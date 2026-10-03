@@ -18,6 +18,7 @@
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
+#include "FrameMan.h"
 #include "Scene.h"
 #include "tracy/TracyOpenGL.hpp"
 
@@ -31,6 +32,12 @@ void DebugMan::DrawImGui() {
 
 	if (m_ShowWorldDebug) {
 		WorldDebugGUI();
+	}
+
+	if (m_ShowPhotoMode) {
+		PhotoModeGUI();
+	} else if (m_PhotoModeActive) {
+		EndPhotoMode();
 	}
 
 	if (m_ShowDebugWindow) {
@@ -55,7 +62,7 @@ void DebugMan::DrawImGui() {
 }
 
 void DebugMan::UpdateMouseOwnership() {
-	bool wantMouse = m_ShowWorldDebug || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
+	bool wantMouse = m_ShowWorldDebug || m_ShowPhotoMode || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
 	if (wantMouse != m_ReleasedMouseForImGui) {
 		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while debug windows are open.
 		g_UInputMan.DisableMouseMoving(wantMouse);
@@ -161,6 +168,86 @@ void DebugMan::WorldDebugGUI() {
 		if (ImGui::Button("Save settings")) {
 			g_PostProcessMan.AdoptAtmosphereAsPlayers();
 			g_SettingsMan.UpdateSettingsFile();
+		}
+	}
+	ImGui::End();
+}
+
+void DebugMan::EndPhotoMode() {
+	if (!m_PhotoKeepLook) {
+		// Keep the time of day and weather the player had; photo mode's look changes were for the photo.
+		g_PostProcessMan.GetLightingSettings() = m_PhotoSavedSettings;
+	}
+	g_TimerMan.PauseSim(false);
+	g_FrameMan.SetHudDisabled(m_PhotoPreviousHUDDisabled, 0);
+	m_PhotoModeActive = false;
+}
+
+void DebugMan::PhotoModeGUI() {
+	bool inActivity = g_ActivityMan.IsInActivity() && g_SceneMan.GetScene();
+	if (inActivity && !m_PhotoModeActive) {
+		m_PhotoModeActive = true;
+		m_PhotoSavedSettings = g_PostProcessMan.GetLightingSettings();
+		m_PhotoPreviousHUDDisabled = g_FrameMan.IsHudDisabled(0);
+		m_PhotoCameraCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
+	}
+	if (m_PhotoModeActive) {
+		g_TimerMan.PauseSim(m_PhotoFreeze);
+		g_FrameMan.SetHudDisabled(m_PhotoHideHUD, 0);
+
+		// Free camera: drag with the right mouse button anywhere outside the window, or the arrow keys.
+		ImGuiIO& io = ImGui::GetIO();
+		float pixelsPerScreenPixel = static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) / std::max(1.0F, io.DisplaySize.x);
+		if (!io.WantCaptureMouse && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+			m_PhotoCameraCenter -= Vector(io.MouseDelta.x, io.MouseDelta.y) * pixelsPerScreenPixel;
+		}
+		float keySpeed = 400.0F * io.DeltaTime * (ImGui::IsKeyDown(ImGuiKey_LeftShift) ? 3.0F : 1.0F);
+		if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) { m_PhotoCameraCenter.m_X -= keySpeed; }
+		if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) { m_PhotoCameraCenter.m_X += keySpeed; }
+		if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) { m_PhotoCameraCenter.m_Y -= keySpeed; }
+		if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) { m_PhotoCameraCenter.m_Y += keySpeed; }
+		g_SceneMan.WrapPosition(m_PhotoCameraCenter);
+		g_CameraMan.SetScrollTarget(m_PhotoCameraCenter, 1.0F, 0);
+	}
+
+	ImGui::SetNextWindowSize(ImVec2(330.0F, 0.0F), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 345.0F, 40.0F), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Photo Mode (F8)", &m_ShowPhotoMode)) {
+		if (!inActivity) {
+			ImGui::TextWrapped("Start a game to use photo mode.");
+		} else {
+			LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+			ImGui::Checkbox("Freeze time", &m_PhotoFreeze);
+			ImGui::SameLine();
+			ImGui::Checkbox("Hide HUD", &m_PhotoHideHUD);
+			ImGui::TextDisabled("Camera: drag with right mouse, or arrow keys (Shift = faster)");
+
+			ImGui::SeparatorText("Look");
+			ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
+			ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0");
+			ImGui::SliderFloat("Exposure", &settings.Exposure, 0.2F, 3.0F);
+			ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
+			ImGui::SliderFloat("Contrast", &settings.Contrast, 0.5F, 1.6F);
+			ImGui::SliderFloat("Temperature", &settings.Temperature, -1.0F, 1.0F);
+			ImGui::SliderFloat("Tint", &settings.Tint, -1.0F, 1.0F);
+			ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);
+			ImGui::SliderFloat("Bloom", &settings.BloomIntensity, 0.0F, 3.0F);
+			ImGui::SliderFloat("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
+			ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
+			ImGui::SliderFloat("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
+			ImGui::SliderFloat("Chromatic aberration", &settings.ChromaticAberration, 0.0F, 4.0F);
+			if (ImGui::Button("Reset look")) {
+				settings = m_PhotoSavedSettings;
+			}
+			ImGui::SameLine();
+			ImGui::Checkbox("Keep look changes", &m_PhotoKeepLook);
+
+			ImGui::Separator();
+			ImGui::Combo("Resolution", &m_PhotoScale, "As shown in the window\0" "2x (1920x1080)\0" "3x\0" "4x (3840x2160)\0");
+			if (ImGui::Button("Take screenshot", ImVec2(-1.0F, 0.0F))) {
+				m_ScreenshotRequested = true;
+			}
+			ImGui::TextDisabled("Saved to the ScreenShots folder.");
 		}
 	}
 	ImGui::End();

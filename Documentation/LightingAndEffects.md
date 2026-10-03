@@ -43,6 +43,14 @@ All of it happens in the terrain shader; the terrain bitmaps are never changed.
 
 At night, stars and a moon appear on the sky layers. These are the background layers with little or no parallax, and both fade out toward the horizon. Heavy rain (intensity above 0.5) brings occasional lightning that briefly lights the sky. Auto exposure (`AutoExposure`, `AutoExposureLow`, `AutoExposureHigh`) only kicks in when the average scene brightness leaves the normal range, such as a screen-filling flash or near-total darkness.
 
+Press **F8** for **Photo Mode**:
+- Freezes time and hides the HUD and screen text.
+- Free camera: drag with the right mouse button, or use the arrow keys.
+- Look sliders: time of day, weather, exposure, grading, bloom, haze, god rays, film grain, chromatic aberration.
+- Screenshots go to the ScreenShots folder, as shown in the window or at 2x, 3x or 4x the internal resolution.
+- Look changes are undone when you close it, unless "Keep look changes" is ticked.
+- F6 and F8 work even while time is frozen.
+
 `LightingSettingsVersion` records which defaults a settings file was written with. When the lighting defaults change a lot (version 2 made interiors and caves much brighter), saved values from older files are ignored so players get the new look.
 
 | Key | Default | What it does |

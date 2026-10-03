@@ -1,5 +1,9 @@
 #include "WindowMan.h"
 #include "TextOverlay.h"
+#include "loadpng.h"
+#include "System.h"
+#include <array>
+#include <ctime>
 #include "RTEError.h"
 #include "SDL3/SDL.h"
 #include "SettingsMan.h"
@@ -888,6 +892,9 @@ void WindowMan::UploadFrame() {
 	} else {
 		BlitScreenBufferToWindows();
 	}
+	if (g_DebugMan.ConsumeScreenshotRequest()) {
+		SaveWindowScreenshot();
+	}
 	g_DebugMan.DrawImGui();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -908,7 +915,7 @@ void WindowMan::BlitTextureToPrimaryWindow(Texture* texture, Shader* shader, boo
 	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &previousMagFilter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, m_BlitTargetFramebuffer);
 	glClear(GL_DEPTH_BUFFER_BIT);
 	g_RenderMan.BeginFrame(nullptr);
 	shader->Begin();
@@ -924,17 +931,93 @@ void WindowMan::BlitTextureToPrimaryWindow(Texture* texture, Shader* shader, boo
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void WindowMan::SaveWindowScreenshot() {
+	int scale = g_DebugMan.GetScreenshotScale();
+	int width = scale > 0 ? static_cast<int>(m_ResX) * scale : m_PrimaryWindowViewport->w;
+	int height = scale > 0 ? static_cast<int>(m_ResY) * scale : m_PrimaryWindowViewport->h;
+	if (width <= 0 || height <= 0) {
+		return;
+	}
+	std::vector<unsigned char> pixels(static_cast<size_t>(width) * height * 4);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	if (scale > 0) {
+		// Draw the frame again, exactly as for the window, but into an offscreen target at the photo's resolution.
+		GLuint framebuffer = 0;
+		GLuint color = 0;
+		GLuint depth = 0;
+		glGenFramebuffers(1, &framebuffer);
+		glGenTextures(1, &color);
+		glBindTexture(GL_TEXTURE_2D, color);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glGenRenderbuffers(1, &depth);
+		glBindRenderbuffer(GL_RENDERBUFFER, depth);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+		glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		SDL_Rect windowViewport = *m_PrimaryWindowViewport;
+		*m_PrimaryWindowViewport = SDL_Rect{0, 0, width, height};
+		m_BlitTargetFramebuffer = framebuffer;
+		if (m_LastPresentUsedTextOverlay) {
+			PresentWithTextOverlay(true);
+		} else {
+			BlitScreenBufferToWindows();
+		}
+		m_BlitTargetFramebuffer = 0;
+		*m_PrimaryWindowViewport = windowViewport;
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+		glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDeleteRenderbuffers(1, &depth);
+		glDeleteTextures(1, &color);
+		glDeleteFramebuffers(1, &framebuffer);
+		glViewport(m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h);
+	} else {
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		glReadPixels(m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+	}
+	BITMAP* image = create_bitmap_ex(32, width, height);
+	for (int y = 0; y < height; ++y) {
+		// GL rows start at the bottom.
+		const unsigned char* row = &pixels[static_cast<size_t>(height - 1 - y) * width * 4];
+		for (int x = 0; x < width; ++x) {
+			_putpixel32(image, x, y, makeacol32(row[x * 4], row[x * 4 + 1], row[x * 4 + 2], 255));
+		}
+	}
+	std::time_t now = std::time(nullptr);
+	std::array<char, 32> stamp{};
+	std::strftime(stamp.data(), stamp.size(), "%Y-%m-%d_%H-%M-%S", std::localtime(&now));
+	std::string fileName = System::GetScreenshotDirectory() + "/Photo_" + stamp.data() + ".png";
+	if (save_png(fileName.c_str(), image, nullptr) == 0) {
+		g_ConsoleMan.PrintString("SYSTEM: Photo saved to: " + fileName);
+	} else {
+		g_ConsoleMan.PrintString("ERROR: Could not save photo to: " + fileName);
+	}
+	destroy_bitmap(image);
+}
+
 void WindowMan::PresentWithTextOverlay(bool redrawLast) {
 	Texture* sceneTexture = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture().lock().get();
 	BlitTextureToPrimaryWindow(sceneTexture, m_ScreenUpscaleShader.get(), false);
 	int windowWidth = 0;
 	int windowHeight = 0;
 	SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowWidth, &windowHeight);
+	if (m_BlitTargetFramebuffer != 0) {
+		// Offscreen photo: the target is exactly the viewport.
+		windowWidth = m_PrimaryWindowViewport->w;
+		windowHeight = m_PrimaryWindowViewport->h;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, m_BlitTargetFramebuffer);
 	TextOverlay::Render(windowWidth, windowHeight, m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h, static_cast<int>(m_ResX), static_cast<int>(m_ResY), redrawLast);
 	BlitTextureToPrimaryWindow(m_BackBuffer32Texture.get(), m_ScreenUpscaleMaskedShader.get(), true);
 }
 
 void WindowMan::BlitScreenBufferToWindows() {
+	glBindFramebuffer(GL_FRAMEBUFFER, m_BlitTargetFramebuffer);
 	glDisable(GL_BLEND);
 	// The upscale shader blends only across pixel boundaries, which needs linear filtering; restore the texture's own filtering afterwards.
 	GLuint screenTexture = m_ScreenBuffer->GetColorTexture().lock()->GetTextureId();

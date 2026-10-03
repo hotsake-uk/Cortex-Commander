@@ -1008,6 +1008,10 @@ void FrameMan::Draw() {
 BITMAP* FrameMan::GetBackBuffer8() const { return m_BackBuffer8->GetBitmap(); }
 
 void FrameMan::DrawScreenText(int playerScreen, AllegroBitmap playerGUIBitmap) {
+	// Photo mode hides all on screen text along with the HUD.
+	if (g_DebugMan.IsPhotoModeHidingHUD()) {
+		return;
+	}
 	int textPosY = 0;
 	// Only draw screen text to actual human players
 	if (playerScreen < g_ActivityMan.GetActivity()->GetHumanCount()) {

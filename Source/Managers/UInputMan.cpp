@@ -1138,8 +1138,6 @@ void UInputMan::HandleSpecialInput() {
 			} else {
 				RTEError::ShowMessageBox("Cannot Save Game - This Activity Does Not Allow QuickSaving!");
 			}
-		} else if (KeyPressed(SDLK_F6)) {
-			g_DebugMan.ToggleWorldDebug();
 		} else if (KeyPressed(SDLK_F9)) {
 			g_ActivityMan.LoadAndLaunchGame("QuickSave");
 		} else if (KeyPressed(SDLK_F10)) {

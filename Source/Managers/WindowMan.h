@@ -222,10 +222,14 @@ namespace RTE {
 		std::unique_ptr<Shader> m_ScreenBlitShader; //!< Blit shader to combine the menu layer and post process layers and show them on screen.
 		std::unique_ptr<Shader> m_ScreenUpscaleShader; //!< Scales the finished frame up to the window with even, crisp pixels at any scale.
 		std::unique_ptr<Shader> m_ScreenUpscaleMaskedShader; //!< Scales the GUI layer (black is transparent) up to the window over what's there.
-		bool m_LastPresentUsedTextOverlay = false; //!< Whether the last frame was shown with PresentWithTextOverlay, for redrawing it.
+		bool m_LastPresentUsedTextOverlay = false;
+		unsigned int m_BlitTargetFramebuffer = 0; //!< Where the frame is shown: 0 for the window, or an offscreen target for high resolution photos. //!< Whether the last frame was shown with PresentWithTextOverlay, for redrawing it.
 
 		/// Draws a texture letterboxed into the primary window with one of the upscale shaders. Flipped like the screen buffer.
 		void BlitTextureToPrimaryWindow(Texture* texture, Shader* shader, bool blend);
+
+		/// Saves the finished frame as shown in the window (window resolution, before ImGui) to the screenshots folder.
+		void SaveWindowScreenshot();
 
 		bool m_AnyWindowHasFocus; //!< Whether any game window has focus.
 		bool m_ResolutionChanged; //!< Whether the resolution was changed through the settings.

@@ -221,8 +221,10 @@ void PollSDLEvents() {
 	while (SDL_PollEvent(&sdlEvent)) {
 		// Clicks, scrolls and typing aimed at a debug window shouldn't also reach the game (releases always do, so nothing gets stuck down).
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
-		bool imGuiTakesEvent = (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
-		                       (imGuiIO.WantCaptureKeyboard && (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_TEXT_INPUT));
+		// Function keys (debug window toggles, quicksave and so on) always reach the game, so a focused debug window can still be closed with its key.
+		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12;
+		bool imGuiTakesEvent = !functionKey && ((imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
+		                                        (imGuiIO.WantCaptureKeyboard && (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_TEXT_INPUT)));
 		if (imGuiTakesEvent) {
 			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
 			continue;
@@ -255,6 +257,14 @@ void PollSDLEvents() {
 				break;
 		}
 		ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+		// Debug window toggles work every frame, even while the simulation is frozen (photo mode) and input otherwise isn't processed.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {
+			if (sdlEvent.key.scancode == SDL_SCANCODE_F6) {
+				g_DebugMan.ToggleWorldDebug();
+			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F8) {
+				g_DebugMan.TogglePhotoMode();
+			}
+		}
 		if (sdlEvent.type >= SDL_EVENT_WINDOW_FIRST && sdlEvent.type <= SDL_EVENT_WINDOW_LAST) {
 			g_WindowMan.QueueWindowEvent(sdlEvent);
 		}

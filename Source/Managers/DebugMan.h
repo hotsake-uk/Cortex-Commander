@@ -1,5 +1,7 @@
 #pragma once
 #include "Singleton.h"
+#include "LightingSettings.h"
+#include "Vector.h"
 #include <memory>
 
 #define g_DebugMan DebugMan::Instance()
@@ -20,6 +22,22 @@ namespace RTE {
 		/// Toggles the World Debug window (time of day, weather, lighting and game speed), bound to F6.
 		void ToggleWorldDebug() { m_ShowWorldDebug = !m_ShowWorldDebug; }
 
+		/// Toggles photo mode (F8): frozen time, a free camera, look controls and window resolution screenshots.
+		void TogglePhotoMode() { m_ShowPhotoMode = !m_ShowPhotoMode; }
+
+		/// Gets whether photo mode is open and hiding the HUD and screen text.
+		bool IsPhotoModeHidingHUD() const { return m_PhotoModeActive && m_PhotoHideHUD; }
+
+		/// Gets and clears whether a photo mode screenshot was asked for. WindowMan takes it from the finished frame, before ImGui is drawn.
+		bool ConsumeScreenshotRequest() {
+			bool requested = m_ScreenshotRequested;
+			m_ScreenshotRequested = false;
+			return requested;
+		}
+
+		/// Gets how many times the internal resolution photo mode screenshots are saved at (1 = as shown in the window).
+		int GetScreenshotScale() const { return m_PhotoScale > 0 ? m_PhotoScale + 1 : 0; }
+
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
@@ -35,6 +53,16 @@ namespace RTE {
 		bool m_ShowPerformanceMan{false};
 		bool m_ShowGraphicsLab{false};
 		bool m_ShowWorldDebug{false};
+		bool m_ShowPhotoMode{false};
+		bool m_PhotoModeActive{false}; //!< Whether photo mode has taken over (time frozen, settings saved), to restore things when it closes.
+		bool m_PhotoFreeze{true};
+		bool m_PhotoHideHUD{true};
+		bool m_PhotoKeepLook{false};
+		bool m_PhotoPreviousHUDDisabled{false};
+		bool m_ScreenshotRequested{false};
+		int m_PhotoScale{0}; //!< Resolution choice: 0 = as shown in the window, 1..3 = 2x..4x the internal resolution.
+		Vector m_PhotoCameraCenter;
+		LightingSettings m_PhotoSavedSettings;
 		bool m_ReleasedMouseForImGui{false}; //!< Whether the mouse was taken from the game so ImGui windows can be used.
 
 		bool m_DrawCameraBounds{false};
@@ -43,6 +71,10 @@ namespace RTE {
 		void DebugOptionsGUI();
 		void GraphicsLabGUI();
 		void WorldDebugGUI();
+		void PhotoModeGUI();
+
+		/// Restores what photo mode changed, when it closes.
+		void EndPhotoMode();
 
 		/// Gives the mouse to ImGui while any interactive debug window is open, and back to the game when they all close.
 		void UpdateMouseOwnership();
