@@ -44,4 +44,7 @@ Write-Scenario "Classic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; Di
 $split = $bunker.Clone(); $split.DefaultActivityName = "Render Test Split Screen"; $split.TimeOfDay = 23
 Write-Scenario "SplitScreen" $split @("Render Test FX")
 Write-Scenario "BunkerPerf" ($bunker + @{ TimeOfDay = 23 }) @("Render Test FX", "Render Test Perf")
+$play = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAScripted"; DefaultActivityName = "One-Man Army"; DefaultSceneName = "Ketanot Hills" }
+Write-Scenario "Play" $play @()
+Write-Scenario "PlayDusk" ($play + @{ TimeOfDay = 19 }) @()
 Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()

@@ -39,6 +39,11 @@ public class RenderTestWin {
 
 $procName = [IO.Path]::GetFileNameWithoutExtension($Exe)
 $p = Get-Process $procName -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$Repo*" } | Select-Object -First 1
+if (-not $p -and -not $PSBoundParameters.ContainsKey("Scenario")) {
+	# Capturing a running game that has gone away (e.g. it quit): report that rather than silently launching a different scenario.
+	"NOT RUNNING: no game process to capture, and no -Scenario given to launch."
+	exit 1
+}
 if (-not $p) {
 	if ($CameraPOI) { $env:CCCP_CAMERA_POI = $CameraPOI } else { Remove-Item Env:CCCP_CAMERA_POI -ErrorAction SilentlyContinue }
 	$env:CCCP_SETTINGSPATH = "Userdata/RenderTest/$Scenario.ini"
