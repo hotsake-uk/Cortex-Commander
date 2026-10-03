@@ -17,6 +17,10 @@ namespace RTE {
 		float AtmosphereHaze = 0.3F; //!< How much the furthest background layers fade into the atmosphere, 0 to 1.
 		glm::vec3 AtmosphereColor = {0.62F, 0.74F, 0.95F}; //!< Color of the atmosphere at noon, linear. Tinted by the time of day.
 
+		int WeatherType = 0; //!< 0 clear, 1 rain, 2 snow.
+		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
+		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
+
 		float TimeOfDay = 12.0F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
 		float DayLengthMinutes = 0.0F; //!< Real minutes for a full day/night cycle (in sim time, so it pauses with the game). 0 keeps the time of day fixed.
 

@@ -123,6 +123,8 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
 		std::unique_ptr<Shader> m_ShockwaveShader;
+		std::unique_ptr<Shader> m_PrecipitationShader;
+		GLuint m_EmptyVAO = 0; //!< For draws that generate their vertices from gl_VertexID.
 
 		GLuint m_FullscreenVAO = 0;
 		GLuint m_FullscreenVBO = 0;

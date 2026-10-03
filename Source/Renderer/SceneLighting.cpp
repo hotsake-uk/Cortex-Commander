@@ -79,6 +79,9 @@ SceneLighting::~SceneLighting() {
 		glDeleteVertexArrays(1, &m_FullscreenVAO);
 		glDeleteBuffers(1, &m_FullscreenVBO);
 	}
+	if (m_EmptyVAO) {
+		glDeleteVertexArrays(1, &m_EmptyVAO);
+	}
 	if (m_QuadVAO) {
 		glDeleteVertexArrays(1, &m_QuadVAO);
 		glDeleteBuffers(1, &m_QuadVBO);
@@ -96,6 +99,7 @@ void SceneLighting::LoadShaders() {
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
 	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
+	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
 }
 
 void SceneLighting::CreateGeometry() {
@@ -113,6 +117,8 @@ void SceneLighting::CreateGeometry() {
 	glVertexAttribPointer(VertexAttribLocation::VERTEX, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
 	glEnableVertexAttribArray(VertexAttribLocation::TEXTURECOORDINATE);
 	glVertexAttribPointer(VertexAttribLocation::TEXTURECOORDINATE, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+
+	glGenVertexArrays(1, &m_EmptyVAO);
 
 	glGenVertexArrays(1, &m_QuadVAO);
 	glGenBuffers(1, &m_QuadVBO);
@@ -636,6 +642,34 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	glActiveTexture(GL_TEXTURE5);
 	glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
 	DrawFullscreen();
+
+	// Rain or snow, lit by the sky, over the lit scene.
+	if (m_Settings.WeatherType > 0 && m_Settings.WeatherIntensity > 0.0F) {
+		TracyGpuZone("Precipitation");
+		int dropCount = static_cast<int>(m_Settings.WeatherIntensity * (m_Settings.WeatherType == 2 ? 1500.0F : 2500.0F) * (static_cast<float>(width * height) / (960.0F * 540.0F)));
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		m_PrecipitationShader->Enable();
+		m_PrecipitationShader->SetVector2f("rteScreenSize", screenSize);
+		m_PrecipitationShader->SetVector2f("rteScreenOrigin", origin);
+		m_PrecipitationShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+		m_PrecipitationShader->SetInt("rteType", m_Settings.WeatherType);
+		m_PrecipitationShader->SetFloat("rteWind", m_Settings.Wind);
+		m_PrecipitationShader->SetInt("rteSkyline", 0);
+		m_PrecipitationShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_PrecipitationShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+		m_PrecipitationShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
+		m_PrecipitationShader->SetInt("rteDynamicLight", 1);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindVertexArray(m_EmptyVAO);
+		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
+		glDisable(GL_BLEND);
+	}
 
 	// Bloom.
 	if (m_Settings.BloomEnabled) {

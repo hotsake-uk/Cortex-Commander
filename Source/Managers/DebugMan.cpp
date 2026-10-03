@@ -59,6 +59,11 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Time of day (h)", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
 		ImGui::SliderFloat("Day length (min, 0 = fixed)", &settings.DayLengthMinutes, 0.0F, 60.0F, "%.1f");
 
+		ImGui::SeparatorText("Weather");
+		ImGui::Combo("Precipitation", &settings.WeatherType, "Clear\0Rain\0Snow\0");
+		ImGui::SliderFloat("Intensity##Weather", &settings.WeatherIntensity, 0.0F, 1.0F);
+		ImGui::SliderFloat("Wind (px/s)", &settings.Wind, -400.0F, 400.0F);
+
 		ImGui::SeparatorText("Glows and dynamic lights");
 		ImGui::SliderFloat("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);
 		ImGui::SliderFloat("Glow light radius", &settings.GlowLightRadiusScale, 0.5F, 10.0F);

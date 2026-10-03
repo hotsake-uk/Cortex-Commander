@@ -143,6 +143,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LightingDebugView", { g_PostProcessMan.GetLightingSettings().DebugView = std::stoi(reader.ReadPropValue()); }); // Read only, for automated screenshots.
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
+	MatchProperty("WeatherType", { g_PostProcessMan.GetLightingSettings().WeatherType = std::stoi(reader.ReadPropValue()); });
+	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingGlowIntensity", { g_PostProcessMan.GetLightingSettings().GlowLightIntensity = std::stof(reader.ReadPropValue()); });
@@ -281,6 +284,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);
 	writer.NewPropertyWithValue("AtmosphereColor", WriteVec3(lighting.AtmosphereColor));
+	writer.NewPropertyWithValue("WeatherType", lighting.WeatherType);
+	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
+	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
 	writer.NewPropertyWithValue("LightingGlowIntensity", lighting.GlowLightIntensity);
