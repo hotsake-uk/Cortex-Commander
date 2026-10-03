@@ -116,5 +116,12 @@ Everything below is built, committed and verified: golden images pass, and a soa
 - **4.1 SDL_GPU backend:** staged plan in `MODERNISATION_PLAN.md`. It brings no visual change on Windows.
 - **4.2 Multithreaded sim helpers:** the fire and liquid passes only touch active cells and are cheap today. Worth revisiting if large liquid scenes get slow.
 - **4.3 Linux/meson packaging:** new sources are added to the meson files but not built or tested on Linux here.
-- **1.4 Gas volumes:** the visual half (smoke scattering) is done. Sight-blocking and toxic gas are not.
-- **3.4 Scenario atmosphere picker and 3.6 editor tooling:** time of day and weather can be set per scene in INI and live in F6, but not yet from the scenario menu.
+- **3.6 Editor tooling:** time of day and weather can be set per scene in INI and live in F6, but not from the scene editor.
+
+**Follow-up round**
+- **Saved games:** loading a saved game works again; it had been failing because saved terrain images weren't found as textures. Burning terrain and moving liquid are now saved too.
+- **3.4 Scenario atmosphere picker:** the scenario setup has **Time** (scene default, dawn, noon, dusk, night) and **Weather** (scene default, clear, rain, snow) buttons.
+- **1.4 Gas volumes:** thick smoke blocks sight for spotting and for the AI's aim checks. Adds the Smoke Grenade and Toxic Gas Grenade.
+- **Liquid weapons:** Napalm Flamer (burning fuel that pools and burns), Water Cannon (knockback, puts fires out) and Acid Sprayer. Liquid drops now join the flow when they settle, and oil is a flowing liquid.
+- **Weather that matters:** rain and snow damp fire, snow slows walkers, and wind drives fire and embers downwind.
+- **Renderer fix:** a preset that copies another and sets its own `SpriteFile` showed the original's frames on the GPU path. Fixed.

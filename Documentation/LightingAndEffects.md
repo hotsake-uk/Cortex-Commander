@@ -47,9 +47,11 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **What lights it:** explosions and fire, flame and napalm particles light flammable terrain.
 - **How it burns:** grass and vegetation flare up and burn away; wood, cloth and rubber burn slowly from the surface in, leaving ash; oil burns fast.
 - **How it spreads:** fire needs air, so only exposed pixels catch, and it climbs upward more readily than sideways.
+- **Weather:** rain (and less so snow) makes it spread less and burn out sooner. Wind makes it spread downwind, and in dry weather carries embers a few pixels downwind to start new fires.
+- **Water** splashing on it puts it out.
 - **What it gives off:** burning areas give light, smoke, embers and flames that hurt whoever stands in them.
 - **Determinism:** it is part of the simulation and stays deterministic. It ticks in fixed sim steps with its own seeded random numbers, and ignitions are sorted before they're applied.
-- **Saves:** fire isn't saved in saved games.
+- **Saves:** burning terrain is saved in saved games and keeps burning when loaded.
 
 **Collapsing terrain** (`TerrainCollapse`, a gameplay setting, also in F6):
 - **When it checks:** half a second and again a second and a half after a big explosion, it looks around the crater for pieces of terrain no longer touching anything.
@@ -58,13 +60,25 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Determinism:** it is part of the simulation and deterministic, with sorted checks and no random numbers.
 
 **Flowing liquids** (`FlowingLiquids`, a gameplay setting, also in F6):
-- **What flows:** Water (material 160), Lava (165) and Acid (167) in the terrain fall, run sideways and pool.
+- **What flows:** Water (material 160), Lava (165), Acid (167) and Oil in the terrain fall, run sideways and pool.
+- **Drops join in:** a liquid particle that settles into the terrain flows too, if it's drawn in its liquid's own colour (so blood, which uses the Water material in red, stays put). A burning particle that settles as something flammable, such as napalm fuel, sets it alight.
 - **Water** puts out fire. It is drawn see-through and shimmering, with a bright surface line.
 - **Lava** flows slowly, glows, sets flammable terrain alight, hurts whatever touches its surface, and sets to stone in a puff of steam where it meets water.
 - **Acid** slowly eats soft terrain and is used up doing it.
+- **Oil** flows more slowly and burns where it pools. It isn't drawn shimmering, because its colour is shared with many sprites.
+- **Saves:** moving liquid is saved in saved games.
 - **Cost:** liquid at rest costs nothing. Only pixels that moved recently, or were disturbed by explosions or collapses, are simulated.
 - **Determinism:** it is part of the simulation and deterministic.
-- **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid")`.
+- **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid"|"Oil")`, `SceneMan:GetFlowingLiquidPixelCount()`, `SceneMan:GetBurningPixelCount()`.
+- **Liquid weapons:** the **Napalm Flamer** sprays burning fuel that pools and burns, the **Water Cannon** knocks people back and puts fires out, and the **Acid Sprayer** lobs globs that sting and eat soft ground.
+
+**Smoke and gas** (`SmokeBlocksSight`, a gameplay setting, also in F6):
+- Thick smoke blocks sight: units can't spot enemies through it, and the AI loses track of targets hidden by it. Thin wisps don't.
+- It's worked out each sim update from the smoke particles on a coarse grid, so it is deterministic. Lua: `SceneMan:SmokeBlocksSight(from, to)`.
+- **Smoke Grenade:** a thick screen lasting about ten seconds. The AI doesn't throw it.
+- **Toxic Gas Grenade:** a green cloud that hurts anyone inside it for about ten seconds, and blocks sight too.
+
+**Weather** also changes gameplay: rain and snow damp fire (see above), snow slows walking by up to 15%, and wind drives fire downwind. The weather stays fixed through a game. It comes from the scene, the scenario setup's **Time** and **Weather** buttons, or the player's settings.
 
 **Night gameplay**:
 - **Headlamps** (`Headlamps`): after dark, soldiers wear headlamps that throw a cone of light where they aim, with a faint visible beam.
