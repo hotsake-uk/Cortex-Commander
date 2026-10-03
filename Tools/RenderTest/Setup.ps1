@@ -64,6 +64,8 @@ $tutorial = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAT
 Write-Scenario "TutorialDusk" ($tutorial + @{ TimeOfDay = 19 }) @()
 Write-Scenario "TutorialNight" ($tutorial + @{ TimeOfDay = 23 }) @()
 Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()
+Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
+Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")
 
 # Golden scenarios: calm, fixed shots compared against committed baselines by Golden.ps1. No explosions, default lighting.
 Write-Scenario "GoldenNoon" $bunker @() -DefaultLighting

@@ -8,7 +8,9 @@ in vec4 vertexColor;
 out vec4 FragColor;
 
 uniform sampler2D rteTexture;
+uniform bool rteUseAlpha; // Multiply by the texture's alpha (soft shapes), for density splats.
 
 void main() {
-	FragColor = vec4(texture(rteTexture, textureUV).rgb * vertexColor.rgb, 1.0);
+	vec4 texel = texture(rteTexture, textureUV);
+	FragColor = vec4(texel.rgb * (rteUseAlpha ? texel.a : 1.0) * vertexColor.rgb, 1.0);
 }

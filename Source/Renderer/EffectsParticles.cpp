@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cmath>
 #include <mutex>
+#include <unordered_set>
 
 using namespace RTE;
 
@@ -53,6 +54,14 @@ namespace {
 	std::mutex s_QueueMutex;
 	std::atomic<int> s_ImpactBudget{c_ImpactsPerFrame};
 	long long s_LastSimUpdate = -1;
+	struct SmokeEntry {
+		glm::vec2 Position;
+		float Radius;
+		float Density;
+	};
+	std::vector<SmokeEntry> s_Smoke;
+	std::unordered_set<const void*> s_SmokeSeen;
+	std::mutex s_SmokeMutex;
 	unsigned int s_Random = 0x9E3779B9u; //!< Render-only random state, never the simulation's.
 
 	float Random01() {
@@ -339,6 +348,40 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 
 unsigned int EffectsParticles::GetPuffTexture() {
 	return GetPuffTexture_();
+}
+
+void EffectsParticles::RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density) {
+	std::scoped_lock lock(s_SmokeMutex);
+	if (s_SmokeSeen.insert(object).second) {
+		s_Smoke.push_back({position, radius, density});
+	}
+}
+
+void EffectsParticles::BeginFrame() {
+	std::scoped_lock lock(s_SmokeMutex);
+	s_Smoke.clear();
+	s_SmokeSeen.clear();
+}
+
+void EffectsParticles::GetSmoke(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& smoke) {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	bool wraps = g_SceneMan.SceneWrapsX();
+	std::scoped_lock lock(s_SmokeMutex);
+	for (const SmokeEntry& entry: s_Smoke) {
+		glm::vec2 position = entry.Position - screenOrigin;
+		if (wraps) {
+			if (position.x < -sceneWidth * 0.5F) {
+				position.x += sceneWidth;
+			} else if (position.x > sceneWidth * 0.5F) {
+				position.x -= sceneWidth;
+			}
+		}
+		float size = entry.Radius * 2.6F;
+		if (position.x < -size || position.y < -size || position.x > static_cast<float>(width) + size || position.y > static_cast<float>(height) + size) {
+			continue;
+		}
+		smoke.push_back({position, size, glm::vec4(1.0F, 1.0F, 1.0F, entry.Density)});
+	}
 }
 
 void EffectsParticles::Clear() {

@@ -105,6 +105,7 @@ void SceneLighting::LoadShaders() {
 	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
 	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
 	m_LitParticleShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/LitParticle.frag");
+	m_SmokeScatterShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SmokeScatter.frag");
 	m_RCCascadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCCascade.frag");
 	m_RCIrradianceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCIrradiance.frag");
 	m_ExposureAdaptShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/ExposureAdapt.frag");
@@ -246,6 +247,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	int rcWidth = std::max(4, width / 2);
 	int rcHeight = std::max(4, height / 2);
 	m_RCScene.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_SmokeDensity.Create(rcWidth, rcHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	for (GLTarget& cascade: m_RCCascades) {
 		cascade.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
@@ -286,6 +288,7 @@ void SceneLighting::DestroyScreenResources() {
 	}
 	m_Luminance.Destroy();
 	m_RCScene.Destroy();
+	m_SmokeDensity.Destroy();
 	for (GLTarget& cascade: m_RCCascades) {
 		cascade.Destroy();
 	}
@@ -799,6 +802,16 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 	size_t puffCount = m_QuadVertices.size() / 4 - puffStart;
+	// Smoke density splats, in half resolution pixels.
+	size_t smokeStart = m_QuadVertices.size() / 4;
+	if (m_Settings.Enabled && m_Settings.SmokeScattering > 0.0F) {
+		std::vector<EffectsParticles::Puff> smoke;
+		EffectsParticles::GetSmoke(origin, width, height, smoke);
+		for (const EffectsParticles::Puff& puff: smoke) {
+			addQuad(puff.Position * 0.5F, glm::vec2(puff.Size * 0.25F), 0.0F, glm::vec3(puff.Color.a), 0.0F);
+		}
+	}
+	size_t smokeCount = m_QuadVertices.size() / 4 - smokeStart;
 	UploadQuads();
 
 	// Shockwave displacement.
@@ -1050,6 +1063,47 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
 		glActiveTexture(GL_TEXTURE0);
 		DrawQuads(puffStart, puffCount);
+		glDisable(GL_BLEND);
+	}
+
+	// Light scattered in smoke: splat the smoke's density, then add the light passing through it.
+	if (smokeCount > 0) {
+		TracyGpuZone("Smoke Scattering");
+		glBindFramebuffer(GL_FRAMEBUFFER, m_SmokeDensity.Framebuffer);
+		glViewport(0, 0, m_SmokeDensity.Width, m_SmokeDensity.Height);
+		glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_EmissiveShader->Enable();
+		m_EmissiveShader->SetInt("rteTexture", 0);
+		m_EmissiveShader->SetBool("rteUseAlpha", true);
+		m_EmissiveShader->SetVector2f("rteScreenSize", glm::vec2(static_cast<float>(m_SmokeDensity.Width), static_cast<float>(m_SmokeDensity.Height)));
+		glActiveTexture(GL_TEXTURE0);
+		// The puff texture's alpha is its shape; its color is white, so the emissive shader outputs the density from the vertex color.
+		glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
+		DrawQuads(smokeStart, smokeCount);
+		m_EmissiveShader->SetBool("rteUseAlpha", false);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_SmokeScatterShader->Enable();
+		m_SmokeScatterShader->SetInt("rteDensity", 0);
+		m_SmokeScatterShader->SetInt("rteDynamicLight", 1);
+		m_SmokeScatterShader->SetInt("rteGI", 2);
+		m_SmokeScatterShader->SetFloat("rteGIStrength", useRadianceCascades ? m_Settings.GIStrength : 0.0F);
+		m_SmokeScatterShader->SetVector2f("rteScreenSize", screenSize);
+		m_SmokeScatterShader->SetFloat("rteStrength", m_Settings.SmokeScattering * 0.35F);
+		m_SmokeScatterShader->SetVector3f("rteSmokeColor", glm::vec3(0.95F, 0.9F, 0.85F));
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_SmokeDensity.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_RCIrradiance.Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
 		glDisable(GL_BLEND);
 	}
 

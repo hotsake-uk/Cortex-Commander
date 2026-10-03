@@ -31,13 +31,14 @@ namespace RTE {
 				int Propagation;
 				bool RadianceCascades;
 				float Particles;
+				float Smoke;
 			};
 			static constexpr Preset presets[] = {
-			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6, false, 0.0F}, // Potato: the classic look.
-			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3, false, 0.5F}, // Low
-			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4, false, 1.0F}, // Medium
-			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6, false, 1.0F}, // High
-			    {true, true, true, true, 1.3F, 0.8F, 0.45F, 12, true, 1.5F}, // Ultra
+			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6, false, 0.0F, 0.0F}, // Potato: the classic look.
+			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3, false, 0.5F, 0.0F}, // Low
+			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4, false, 1.0F, 0.7F}, // Medium
+			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6, false, 1.0F, 1.0F}, // High
+			    {true, true, true, true, 1.3F, 0.8F, 0.45F, 12, true, 1.5F, 1.2F}, // Ultra
 			};
 			const Preset& preset = presets[quality];
 			Enabled = preset.Lighting;
@@ -50,6 +51,7 @@ namespace RTE {
 			PropagationIterationsPerFrame = preset.Propagation;
 			RadianceCascades = preset.RadianceCascades;
 			EffectsParticles = preset.Particles;
+			SmokeScattering = preset.Smoke;
 		}
 
 		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
@@ -89,6 +91,7 @@ namespace RTE {
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.
 		float EffectsParticles = 1.0F; //!< Amount of visual sparks, dust and debris from explosions and impacts, 0 to disable.
+		float SmokeScattering = 1.0F; //!< How brightly smoke catches the light passing through it (fire, muzzle flashes, lamps), 0 to disable.
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.

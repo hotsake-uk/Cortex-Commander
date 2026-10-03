@@ -841,6 +841,7 @@ void FrameMan::Draw() {
 	SceneLighting* sceneLighting = g_PostProcessMan.GetSceneLighting();
 	sceneLighting->Update();
 	EffectsParticles::Update(g_PostProcessMan.GetLightingSettings().EffectsParticles);
+	EffectsParticles::BeginFrame();
 
 	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
 		g_CameraMan.Update(playerScreen);

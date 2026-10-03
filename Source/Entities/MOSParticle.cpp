@@ -1,4 +1,5 @@
 #include "MOSParticle.h"
+#include "EffectsParticles.h"
 
 #include "Atom.h"
 #include "PostProcessMan.h"
@@ -231,4 +232,10 @@ void MOSParticle::Draw(const Camera& camera) const {
 	Color tint = ApplyRenderBlendMode();
 	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, tint);
 	RestoreRenderBlendMode();
+	// Smoke (weightless air particles that float up) scatters the light passing through it.
+	if (m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir) {
+		float density = m_Lifetime > 0 ? std::clamp(1.0F - static_cast<float>(GetAge()) / static_cast<float>(m_Lifetime), 0.0F, 1.0F) : 1.0F;
+		Vector center = GetRenderPos();
+		EffectsParticles::RegisterSmoke(this, glm::vec2(center.m_X, center.m_Y), m_SpriteRadius, density);
+	}
 }

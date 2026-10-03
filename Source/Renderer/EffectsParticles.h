@@ -61,6 +61,19 @@ namespace RTE {
 		/// Gets the GL texture puffs are drawn with (soft round, white with alpha).
 		static unsigned int GetPuffTexture();
 
+		/// Records a smoke particle drawn this frame, for light scattering in smoke. Duplicate calls for the same object (several cameras) are ignored.
+		/// @param object Identifies the smoke particle.
+		/// @param position Scene position of its centre.
+		/// @param radius Its radius in pixels.
+		/// @param density How thick it is, 0 to 1.
+		static void RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density);
+
+		/// Forgets the smoke recorded last frame. Call at the start of each frame's drawing.
+		static void BeginFrame();
+
+		/// Gets the smoke visible in a screen area, as puffs (A = density).
+		static void GetSmoke(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& smoke);
+
 		/// Removes all particles, e.g. when the scene changes.
 		static void Clear();
 

@@ -141,6 +141,7 @@ namespace RTE {
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
 		static constexpr int c_RCCascadeCount = 5;
+		GLTarget m_SmokeDensity; //!< Half resolution smoke density, for light scattering in smoke.
 		GLTarget m_RCScene; //!< Half resolution radiance cascades input: light and occluders.
 		GLTarget m_RCCascades[2]; //!< Ping-ponged cascades, the last one written is cascade 0.
 		GLTarget m_RCIrradiance; //!< Quarter resolution light from radiance cascades.
@@ -162,6 +163,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
 		std::unique_ptr<Shader> m_LitParticleShader;
+		std::unique_ptr<Shader> m_SmokeScatterShader;
 		std::unique_ptr<Shader> m_RCSceneShader;
 		std::unique_ptr<Shader> m_RCCascadeShader;
 		std::unique_ptr<Shader> m_RCIrradianceShader;
