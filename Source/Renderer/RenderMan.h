@@ -5,6 +5,7 @@
 #include "DrawCall.h"
 #include "Texture.h"
 #include <memory>
+#include <array>
 
 #define g_RenderMan RenderMan::Instance()
 
@@ -69,6 +70,12 @@ namespace RTE {
 		/// Returns the texture marking which palette colors glow (256x1, R = emissive strength), so indexed art can be emissive without new assets.
 		GLuint GetEmissivePaletteTexture() const { return m_EmissivePaletteTexture; }
 
+		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 5.
+		void SetGlobalTexture(int unit, GLuint texture) { if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) { m_GlobalTextures[unit - 3] = texture; } }
+
+		/// Gets the textures to bind to units 3 and up for every batch render.
+		const std::array<GLuint, 3>& GetGlobalTextures() const { return m_GlobalTextures; }
+
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
 
@@ -87,6 +94,7 @@ namespace RTE {
 		std::shared_ptr<BitmapTexture> m_ShapesTexture{nullptr};
 		std::shared_ptr<BitmapTexture> m_PaletteTexture{nullptr};
 		GLuint m_EmissivePaletteTexture{0};
+		std::array<GLuint, 3> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};

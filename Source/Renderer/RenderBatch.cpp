@@ -97,6 +97,10 @@ void RenderBatch::Render() {
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetPaletteTexture());
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetEmissivePaletteTexture());
+	for (size_t globalUnit = 0; globalUnit < g_RenderMan.GetGlobalTextures().size(); ++globalUnit) {
+		glActiveTexture(GL_TEXTURE3 + static_cast<GLenum>(globalUnit));
+		glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetGlobalTextures()[globalUnit]);
+	}
 	// Draw call textures are bound to unit 1, so leave it active.
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetShapeTexture());

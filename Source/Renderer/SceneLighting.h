@@ -49,6 +49,10 @@ namespace RTE {
 		/// @return The daylight tint, white at noon.
 		static glm::vec3 GetDaylightTint(float hours);
 
+		/// Prepares the terrain shader (scorch marks, cooling hot spots) for this frame and returns it, to set as the current shader while terrain layers are drawn.
+		/// @return The terrain shader, or nullptr if there's no scene.
+		const Shader* PrepareTerrainShader();
+
 		/// Gets statistics from the last frame, for the Graphics Lab.
 		int GetLastLightCount() const { return m_LastLightCount; }
 		int GetGridCellSize() const { return m_CellSize; }
@@ -105,6 +109,8 @@ namespace RTE {
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
 		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers.
+		GLTarget m_Scorch; //!< World space soot darkness, R.
+		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
 		int m_CurrentSkyLight = 0;
 
 		int m_ScreenWidth = 0;
@@ -128,6 +134,8 @@ namespace RTE {
 		std::unique_ptr<Shader> m_PrecipitationShader;
 		std::unique_ptr<Shader> m_GodRaysShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
+		std::unique_ptr<Shader> m_ScorchShader;
+		std::unique_ptr<Shader> m_TerrainShader;
 		GLuint m_EmptyVAO = 0; //!< For draws that generate their vertices from gl_VertexID.
 
 		GLuint m_FullscreenVAO = 0;
@@ -154,6 +162,7 @@ namespace RTE {
 		void RecomputeSkyline();
 		void UploadOccupancyRows(int firstRow, int endRow);
 		void PropagateSkyLight(int iterations);
+		void StampScorchMarks();
 
 		const GlowInfo& GetGlowInfo(const BitmapTexture* glowTexture);
 

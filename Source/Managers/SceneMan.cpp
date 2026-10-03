@@ -1,4 +1,6 @@
 #include "SceneMan.h"
+#include "SceneLighting.h"
+#include "PostProcessMan.h"
 #include "Shader.h"
 #include "RenderMan.h"
 #include "PostProcessMan.h"
@@ -2670,13 +2672,21 @@ void SceneMan::Draw(const Camera& camera) {
 
 	SLTerrain* terrainLayer = m_pCurrentScene->GetTerrain();
 
+	// Terrain layers get scorch marks and the glow of freshly blasted terrain.
+	const Shader* sceneShader = g_RenderMan.GetCurrentShader();
+	const Shader* terrainShader = g_PostProcessMan.GetSceneLighting()->PrepareTerrainShader();
+
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::BackgroundLayer);
+	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
 	terrainLayer->Draw(camera);
+	g_RenderMan.SetCurrentShader(sceneShader);
 
 	g_MovableMan.Draw(camera);
 
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
+	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
 	terrainLayer->Draw(camera);
+	g_RenderMan.SetCurrentShader(sceneShader);
 
 	int teamId = camera.GetTeam();
 	if (teamId != Activity::NoTeam && m_pCurrentScene->GetUnseenLayer(teamId)) {

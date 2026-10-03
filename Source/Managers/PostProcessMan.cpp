@@ -179,6 +179,30 @@ void PostProcessMan::RegisterShockwave(const Vector& pos, float energy) {
 	m_Shockwaves.push_back(shockwave);
 }
 
+void PostProcessMan::RegisterScorchMark(const Vector& pos, float energy) {
+	if (energy < 2000.0F || !m_LightingSettings.ScorchMarks) {
+		return;
+	}
+	ScorchMark mark{pos, std::clamp(std::sqrt(energy) * 0.45F, 14.0F, 90.0F), std::clamp(0.35F + energy / 40000.0F, 0.35F, 0.8F), GetSmoothSimTime()};
+	std::scoped_lock lock(m_ShockwaveMutex);
+	m_PendingScorchMarks.push_back(mark);
+	m_HotScorchMarks.push_back(mark);
+}
+
+std::vector<PostProcessMan::ScorchMark> PostProcessMan::TakePendingScorchMarks() {
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::vector<ScorchMark> marks;
+	marks.swap(m_PendingScorchMarks);
+	return marks;
+}
+
+const std::vector<PostProcessMan::ScorchMark>& PostProcessMan::GetHotScorchMarks(float duration) {
+	float now = GetSmoothSimTime();
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::erase_if(m_HotScorchMarks, [now, duration](const ScorchMark& mark) { return now - mark.m_StartTime > duration || now < mark.m_StartTime - 1.0F; });
+	return m_HotScorchMarks;
+}
+
 void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves) {
 	const float duration = 0.55F;
 	float now = GetSmoothSimTime();

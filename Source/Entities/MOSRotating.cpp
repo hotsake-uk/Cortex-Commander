@@ -935,6 +935,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		gibEnergy += gibMass * (minVelocity + maxVelocity) * 0.5F * static_cast<float>(gibSettingsObject->GetCount());
 	}
 	g_PostProcessMan.RegisterShockwave(m_Pos, gibEnergy);
+	g_PostProcessMan.RegisterScorchMark(m_Pos, gibEnergy);
 
 	if (m_GibScreenShakeAmount != -1.0F) {
 		g_CameraMan.AddScreenShake(m_GibScreenShakeAmount, m_Pos);

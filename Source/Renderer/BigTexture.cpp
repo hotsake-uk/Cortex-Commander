@@ -64,7 +64,6 @@ void BigTexture::Draw(const Box& source, const Box& dest) {
 void BigTexture::Update(const Box& updateRegion) {
 	ZoneScoped;
 	TracyGpuZone("BigTexture Upload");
-	std::cout << updateRegion.m_Corner << " " << updateRegion.m_Width << " " << updateRegion.m_Height << std::endl;
 	int bytesPerPixel = bitmap_color_depth(m_Bitmap) / 8;
 	glPixelStorei(GL_UNPACK_ALIGNMENT, bitmap_color_depth(m_Bitmap) == 8 ? 1 : 4);
 	for (int i = 0; i < m_Regions.size(); ++i) {

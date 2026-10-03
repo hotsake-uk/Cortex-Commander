@@ -38,6 +38,9 @@ namespace RTE {
 		float GodRays = 0.7F; //!< Strength of light shafts streaming from the sky through gaps in terrain, 0 to disable.
 		float GodRayDecay = 0.965F; //!< How quickly shafts fade along their length.
 
+		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
+		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
+
 		bool BloomEnabled = true;
 		float BloomThreshold = 0.9F;
 		float BloomKnee = 0.4F;

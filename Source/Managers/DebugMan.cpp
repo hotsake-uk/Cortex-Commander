@@ -79,6 +79,10 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Heat haze (px)", &settings.HeatHaze, 0.0F, 6.0F);
 		ImGui::SliderFloat("Shockwave strength", &settings.ShockwaveStrength, 0.0F, 3.0F);
 
+		ImGui::SeparatorText("Terrain effects");
+		ImGui::Checkbox("Scorch marks", &settings.ScorchMarks);
+		ImGui::SliderFloat("Hot spot cooling (s)", &settings.HotSpotSeconds, 0.0F, 10.0F);
+
 		ImGui::SeparatorText("Bloom");
 		ImGui::Checkbox("Bloom enabled", &settings.BloomEnabled);
 		ImGui::SliderFloat("Threshold", &settings.BloomThreshold, 0.0F, 4.0F);

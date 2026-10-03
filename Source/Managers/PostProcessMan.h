@@ -186,8 +186,28 @@ namespace RTE {
 		/// @param energy Energy released, as computed for gib screen shake.
 		void RegisterShockwave(const Vector& pos, float energy);
 
+		/// Registers a scorch mark: soot stamped into the terrain that glows hot for a few seconds. Size and darkness scale with the energy released.
+		/// @param pos Scene position of the explosion.
+		/// @param energy Energy released, as computed for gib screen shake.
+		void RegisterScorchMark(const Vector& pos, float energy);
+
 		/// Gets the active shockwaves that may affect a box, with positions relative to the box, and forgets expired ones. Handles scene wrapping.
 		void GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves);
+
+		/// A soot mark to stamp into the world, and the hot spot it leaves.
+		struct ScorchMark {
+			Vector m_Pos;
+			float m_Radius;
+			float m_Darkness;
+			float m_StartTime;
+		};
+
+		/// Takes the scorch marks registered since the last call, for stamping.
+		std::vector<ScorchMark> TakePendingScorchMarks();
+
+		/// Gets the recent scorch marks that are still hot, and forgets the cooled ones.
+		/// @param duration How long marks stay hot, in seconds.
+		const std::vector<ScorchMark>& GetHotScorchMarks(float duration);
 
 		/// Gets the current simulation time in seconds, including the fraction of the current sim update, for smooth time based effects that pause and slow down with the game.
 		static float GetSmoothSimTime();
@@ -259,6 +279,8 @@ namespace RTE {
 		};
 		std::vector<Shockwave> m_Shockwaves; //!< Active shockwaves, in scene coordinates.
 		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.
+		std::vector<ScorchMark> m_PendingScorchMarks; //!< Scorch marks not stamped yet. Guarded by m_ShockwaveMutex.
+		std::vector<ScorchMark> m_HotScorchMarks; //!< Recent scorch marks, for the cooling glow. Guarded by m_ShockwaveMutex.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.
