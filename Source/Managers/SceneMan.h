@@ -398,6 +398,12 @@ namespace RTE {
 		/// @return A list of the removed pixels, if any.
 		std::vector<MOPixel*>* DislodgePixelRingNoBool(const Vector& centre, float innerRadius, float outerRadius);
 
+		/// Fills air in a circle with a flowing liquid ("Water", "Lava" or "Acid"), applied on the next sim update.
+		/// @param centre Centre of the circle.
+		/// @param radius Radius in pixels.
+		/// @param liquidName Name of the liquid.
+		void PourLiquid(const Vector& centre, float radius, const std::string& liquidName);
+
 		/// Removes a box of pixels from the terrain and adds them to MovableMan.
 		/// @param upperLeftCorner The vector position of the upper left corner of the box.
 		/// @param lowerRightCorner The vector position of the lower right corner of the box.

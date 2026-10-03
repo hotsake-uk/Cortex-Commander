@@ -44,6 +44,7 @@
 #include "DebugMan.h"
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
+#include "FluidSim.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -405,6 +406,7 @@ void RunGameLoop() {
 			}
 			TerrainFire::Update();
 			TerrainCollapse::Update();
+			FluidSim::Update();
 
 			g_LuaMan.ClearScriptTimings();
 			g_MovableMan.Update();

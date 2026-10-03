@@ -127,6 +127,40 @@ void main() {
 	}
 	vec3 normal = EdgeNormal(uvDx, uvDy);
 
+	// Liquids (water, lava, acid), flagged in the emissive palette's B channel.
+	if (rteIndexed) {
+		float colorIndex = texture(rteTexture, textureUV).r;
+		float liquid = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b;
+		if (liquid > 0.1) {
+			bool surface = texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r, 0.0)).b < 0.1;
+			float wave = sin(worldPos.x * 0.35 + rteTime * 2.3) * sin(worldPos.y * 0.21 - rteTime * 1.7) + 0.5 * sin(worldPos.x * 0.11 - rteTime * 0.9);
+			if (liquid < 0.45) {
+				// Water: see-through (an animated dither lets the background show), shimmering, with a bright surface line.
+				float dither = fract(sin(dot(floor(worldPos) + floor(rteTime * 6.0) * 0.37, vec2(12.9898, 78.233))) * 43758.5453);
+				if (!surface && dither < 0.32) {
+					discard;
+				}
+				FragColor.rgb *= 0.9 + 0.15 * wave;
+				if (surface) {
+					FragColor.rgb = mix(FragColor.rgb, vec3(0.75, 0.9, 1.0), 0.55 + 0.2 * wave);
+				}
+			} else if (liquid < 0.8) {
+				// Lava: slow bright currents, crusting darker at the surface.
+				float flow = 0.5 + 0.5 * sin(worldPos.x * 0.18 + worldPos.y * 0.07 + rteTime * 1.1 + wave);
+				FragColor.rgb = mix(vec3(0.75, 0.15, 0.02), vec3(1.0, 0.75, 0.25), flow);
+				if (surface) {
+					FragColor.rgb *= 0.55;
+				}
+				emissive = max(emissive, 0.6 + 0.4 * flow);
+			} else {
+				// Acid: a sickly glow with drifting bubbles.
+				float bubble = step(0.985, fract(sin(dot(floor(worldPos + vec2(0.0, rteTime * 8.0)), vec2(41.3, 289.1))) * 7593.1));
+				FragColor.rgb = mix(FragColor.rgb, vec3(0.85, 1.0, 0.45), bubble * 0.8 + (surface ? 0.35 : 0.0));
+				emissive = max(emissive, 0.25 + bubble * 0.5);
+			}
+		}
+	}
+
 	if (rteLivingWorld && (rteSnowCover > 0.01 || rteWetness > 0.01) && UnderOpenSky(worldPos)) {
 		// How deep below the surface this pixel is: snow lies a few pixels deep on top, rain wets the top layer.
 		float depth = 99.0;

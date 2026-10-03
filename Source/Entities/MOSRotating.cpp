@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
+#include "FluidSim.h"
 
 #include "CameraMan.h"
 #include "SettingsMan.h"
@@ -943,6 +944,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 	if (gibEnergy >= 2000.0F) {
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
+		FluidSim::Disturb(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
 	}
 
 	if (m_GibScreenShakeAmount != -1.0F) {

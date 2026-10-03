@@ -1,5 +1,6 @@
 #include "SceneMan.h"
 #include "EffectsParticles.h"
+#include "FluidSim.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
 #include "Shader.h"
@@ -694,6 +695,10 @@ bool SceneMan::TryPenetrate(int posX,
 		return true;
 	}
 	return false;
+}
+
+void SceneMan::PourLiquid(const Vector& centre, float radius, const std::string& liquidName) {
+	FluidSim::Pour(centre, radius, liquidName.c_str());
 }
 
 MOPixel* SceneMan::DislodgePixel(int posX, int posY) {

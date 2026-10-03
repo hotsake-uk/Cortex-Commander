@@ -57,6 +57,15 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **What stays up:** built structures (concrete, metal, military materials) and anything touching the edge of the world.
 - **Determinism:** it is part of the simulation and deterministic, with sorted checks and no random numbers.
 
+**Flowing liquids** (`FlowingLiquids`, a gameplay setting, also in F6):
+- **What flows:** Water (material 160), Lava (165) and Acid (167) in the terrain fall, run sideways and pool.
+- **Water** puts out fire. It is drawn see-through and shimmering, with a bright surface line.
+- **Lava** flows slowly, glows, sets flammable terrain alight, hurts whatever touches its surface, and sets to stone in a puff of steam where it meets water.
+- **Acid** slowly eats soft terrain and is used up doing it.
+- **Cost:** liquid at rest costs nothing. Only pixels that moved recently, or were disturbed by explosions or collapses, are simulated.
+- **Determinism:** it is part of the simulation and deterministic.
+- **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid")`.
+
 Press **F8** for **Photo Mode**:
 - Freezes time and hides the HUD and screen text.
 - Free camera: drag with the right mouse button, or use the arrow keys.

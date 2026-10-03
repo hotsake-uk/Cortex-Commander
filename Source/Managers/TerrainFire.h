@@ -31,6 +31,9 @@ namespace RTE {
 		/// Queues an explosion's chance of setting flammable terrain around it alight. Thread safe.
 		static void QueueIgniteArea(const Vector& position, float radius);
 
+		/// Puts out the fire at a pixel, if it's burning. Call from the simulation (main thread).
+		static void Extinguish(int x, int y);
+
 		/// Advances the fire one simulation step. Call once per sim update, from the main thread.
 		static void Update();
 

@@ -29,27 +29,43 @@ void RenderMan::Initialize() {
 
 	// The palette's glow yellows (the colors the original dot glows keyed on: gold sparkle, tracers, hot bits) are emissive, so they glint in the dark.
 	// R = emissive strength, G = vegetation (green-dominant colors, which sway in the wind when they're part of the terrain).
-	std::array<unsigned char, 512> emissivePalette{};
-	emissivePalette[g_YellowGlowColor * 2] = 255;
-	emissivePalette[98 * 2] = 255;
-	emissivePalette[120 * 2] = 200;
+	std::array<unsigned char, 1024>& emissivePalette = m_EmissivePalette;
+	emissivePalette.fill(0);
+	emissivePalette[g_YellowGlowColor * 4] = 255;
+	emissivePalette[98 * 4] = 255;
+	emissivePalette[120 * 4] = 200;
 	for (int i = 1; i < 256; ++i) {
 		SDL_Color color = palette->colors[i];
 		int green = color.g;
 		int otherMax = std::max<int>(color.r, color.b);
 		if (green > 50 && green > color.r * 1.1F && green > color.b * 1.2F && green - otherMax > 18) {
-			emissivePalette[i * 2 + 1] = 255;
+			emissivePalette[i * 4 + 1] = 255;
 		}
 	}
 	glGenTextures(1, &m_EmissivePaletteTexture);
 	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, 256, 1, 0, GL_RG, GL_UNSIGNED_BYTE, emissivePalette.data());
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, emissivePalette.data());
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+void RenderMan::SetLiquidPaletteColor(int paletteIndex, int liquidKind, int emissive) {
+	if (paletteIndex <= 0 || paletteIndex > 255 || !m_EmissivePaletteTexture) {
+		return;
+	}
+	m_EmissivePalette[paletteIndex * 4 + 2] = static_cast<unsigned char>(std::clamp(liquidKind, 0, 3) * 85);
+	m_EmissivePalette[paletteIndex * 4] = std::max(m_EmissivePalette[paletteIndex * 4], static_cast<unsigned char>(std::clamp(emissive, 0, 255)));
+	// Liquids aren't vegetation, even if they're green.
+	m_EmissivePalette[paletteIndex * 4 + 1] = 0;
+	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, m_EmissivePalette.data());
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void RenderMan::Destroy() {

@@ -70,6 +70,12 @@ namespace RTE {
 		/// Returns the texture marking which palette colors glow (256x1, R = emissive strength), so indexed art can be emissive without new assets.
 		GLuint GetEmissivePaletteTexture() const { return m_EmissivePaletteTexture; }
 
+		/// Marks a palette color as a liquid (for the terrain shader's water, lava and acid looks) and optionally as emissive.
+		/// @param paletteIndex The palette color.
+		/// @param liquidKind 0 none, 1 water, 2 lava, 3 acid.
+		/// @param emissive How strongly the color glows, 0 to 255.
+		void SetLiquidPaletteColor(int paletteIndex, int liquidKind, int emissive);
+
 		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 5.
 		void SetGlobalTexture(int unit, GLuint texture) {
 			if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) {
@@ -98,6 +104,7 @@ namespace RTE {
 		std::shared_ptr<BitmapTexture> m_ShapesTexture{nullptr};
 		std::shared_ptr<BitmapTexture> m_PaletteTexture{nullptr};
 		GLuint m_EmissivePaletteTexture{0};
+		std::array<unsigned char, 1024> m_EmissivePalette{}; //!< RGBA per palette color: R emissive, G vegetation, B liquid kind.
 		std::array<GLuint, 3> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};

@@ -355,6 +355,21 @@ void TerrainFire::Update() {
 	RegisterLights();
 }
 
+void TerrainFire::Extinguish(int x, int y) {
+	if (s_Burning.empty()) {
+		return;
+	}
+	SLTerrain* terrain = CurrentTerrain();
+	if (!terrain) {
+		return;
+	}
+	int width = terrain->GetBitmap()->w;
+	int height = terrain->GetBitmap()->h;
+	if (WrapPixel(x, y, width, height)) {
+		s_Burning.erase(y * width + x);
+	}
+}
+
 void TerrainFire::GetBurning(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec3>& burning) {
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();

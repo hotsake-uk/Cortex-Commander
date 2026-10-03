@@ -7,6 +7,7 @@
 #include "TimerMan.h"
 #include "Vector.h"
 #include "EffectsParticles.h"
+#include "FluidSim.h"
 
 #include <algorithm>
 #include <array>
@@ -245,6 +246,7 @@ namespace {
 				}
 				if (maxX >= 0) {
 					terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(minX), static_cast<float>(minY - 64)), static_cast<float>(maxX - minX + 1), static_cast<float>(maxY - minY + 65)));
+					FluidSim::Disturb(Vector(static_cast<float>(minX + maxX) * 0.5F, static_cast<float>(minY + maxY) * 0.5F), static_cast<float>(std::max(maxX - minX, maxY - minY)) * 0.5F + 8.0F);
 					// A thud of dust where it lands (visual only).
 					EffectsParticles::SpawnExplosion(Vector(static_cast<float>(minX + maxX) * 0.5F, static_cast<float>(maxY)), std::min(600.0F + static_cast<float>(piece.Keys.size()) * 6.0F, 8000.0F) * std::max(0.3F, piece.Speed / 6.0F));
 				}

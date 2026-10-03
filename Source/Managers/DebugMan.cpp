@@ -17,6 +17,7 @@
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
+#include "FluidSim.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -162,6 +163,12 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d pixels fell)", TerrainCollapse::GetCollapsedCount());
+		bool liquids = FluidSim::IsEnabled();
+		if (ImGui::Checkbox("Flowing liquids", &liquids)) {
+			FluidSim::SetEnabled(liquids);
+		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
 		float timeScale = g_TimerMan.GetTimeScale();
 		if (ImGui::SliderFloat("Game speed", &timeScale, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_TimerMan.SetTimeScale(timeScale);

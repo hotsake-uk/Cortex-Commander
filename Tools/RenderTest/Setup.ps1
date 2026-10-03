@@ -68,6 +68,8 @@ Write-Scenario "Stains" $play @("Render Test Stains")
 Write-Scenario "Fire" $play @("Render Test Fire")
 Write-Scenario "FireNight" ($play + @{ TimeOfDay = 22 }) @("Render Test Fire")
 Write-Scenario "Collapse" $play @("Render Test Collapse")
+Write-Scenario "Liquids" $play @("Render Test Liquids")
+Write-Scenario "LiquidsNight" ($play + @{ TimeOfDay = 22 }) @("Render Test Liquids")
 Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
 Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")
 

@@ -21,6 +21,7 @@ sources += files(
 'SceneMan.cpp',
 'TerrainFire.cpp',
 'TerrainCollapse.cpp',
+'FluidSim.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
 'TimerMan.cpp',
