@@ -237,6 +237,10 @@ void DebugMan::GraphicsLabGUI() {
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {
 			ImGui::Text("Light grid: %d x %d cells of %dpx", lighting->GetGridWidth(), lighting->GetGridHeight(), lighting->GetGridCellSize());
 			ImGui::Text("Dynamic lights last screen: %d", lighting->GetLastLightCount());
+			int atlasPages = 0;
+			int atlasTextures = 0;
+			BitmapTexture::GetAtlasStats(atlasPages, atlasTextures);
+			ImGui::Text("Sprite atlas: %d sprites on %d pages", atlasTextures, atlasPages);
 		}
 
 		ImGui::Separator();

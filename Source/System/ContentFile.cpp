@@ -1,4 +1,5 @@
 #include "ContentFile.h"
+#include <cstdlib>
 
 #include "AudioMan.h"
 #include "PresetMan.h"
@@ -368,6 +369,15 @@ void ContentFile::GetAsAnimation(std::vector<std::shared_ptr<BitmapTexture>>& ve
 		for (int frameNum = 0; frameNum < frameCount; ++frameNum) {
 			std::snprintf(framePath, sizeof(framePath), "%s%03i%s", m_DataPathWithoutExtension.c_str(), frameNum, m_DataPathExtension.c_str());
 			vectorToFill.emplace_back(GetAsTexture(conversionMode, true, framePath));
+		}
+	}
+	// Sprite frames go into the shared atlas, so many different sprites can be drawn together. CCCP_NO_SPRITE_ATLAS turns it off, for comparisons and debugging.
+	static const bool useAtlas = std::getenv("CCCP_NO_SPRITE_ATLAS") == nullptr;
+	if (useAtlas) {
+		for (const std::shared_ptr<BitmapTexture>& frame: vectorToFill) {
+			if (frame) {
+				frame->MoveToAtlas();
+			}
 		}
 	}
 }

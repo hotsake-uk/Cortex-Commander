@@ -694,6 +694,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glm::vec2 halfSize(effect.m_Bitmap->GetDimensions().w * 0.5F, effect.m_Bitmap->GetDimensions().h * 0.5F);
 		// CC angles are counter-clockwise, screen space is Y down.
 		addQuad(glm::vec2(std::floor(effect.m_Pos.m_X), std::floor(effect.m_Pos.m_Y)), halfSize, -effect.m_Angle, glm::vec3(strength), 0.0F);
+		const FloatRect& uvRect = effect.m_Bitmap->GetUVRect();
+		for (size_t vertex = m_QuadVertices.size() - 4; vertex < m_QuadVertices.size(); ++vertex) {
+			m_QuadVertices[vertex].U = uvRect.x + m_QuadVertices[vertex].U * uvRect.w;
+			m_QuadVertices[vertex].V = uvRect.y + m_QuadVertices[vertex].V * uvRect.h;
+		}
 		emissiveTextures.push_back(effect.m_Bitmap->GetTextureId());
 	}
 
