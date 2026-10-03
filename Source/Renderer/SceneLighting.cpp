@@ -102,6 +102,9 @@ void SceneLighting::LoadShaders() {
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
 	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
+	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
+	m_RCCascadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCCascade.frag");
+	m_RCIrradianceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCIrradiance.frag");
 	m_ExposureAdaptShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/ExposureAdapt.frag");
 	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
 	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
@@ -238,6 +241,17 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 		mipHeight = std::max(1, mipHeight / 2);
 		mip.Create(mipWidth, mipHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
+	int rcWidth = std::max(4, width / 2);
+	int rcHeight = std::max(4, height / 2);
+	m_RCScene.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	for (GLTarget& cascade: m_RCCascades) {
+		cascade.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+	m_RCIrradiance.Create(rcWidth / 2, rcHeight / 2, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_RCPreviousLit[screen].Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		m_RCPreviousValid[screen] = false;
+	}
 	// 64x32 log luminance; its mip chain down to 1x1 is the average.
 	m_Luminance.Create(64, 32, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	glBindTexture(GL_TEXTURE_2D, m_Luminance.Texture);
@@ -269,6 +283,15 @@ void SceneLighting::DestroyScreenResources() {
 		mip.Destroy();
 	}
 	m_Luminance.Destroy();
+	m_RCScene.Destroy();
+	for (GLTarget& cascade: m_RCCascades) {
+		cascade.Destroy();
+	}
+	m_RCIrradiance.Destroy();
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_RCPreviousLit[screen].Destroy();
+		m_RCPreviousValid[screen] = false;
+	}
 	for (int screen = 0; screen < c_MaxScreens; ++screen) {
 		for (GLTarget& adapted: m_AdaptedLuminance[screen]) {
 			adapted.Destroy();
@@ -814,6 +837,65 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	// Global illumination by radiance cascades, from the glows drawn above and last frame's lit surfaces.
+	std::shared_ptr<DepthTexture> cascadeDepth = playerScreen->GetDepthTexture().lock();
+	bool useRadianceCascades = m_Settings.Enabled && m_Settings.RadianceCascades && cascadeDepth;
+	float foregroundCascadeThresholdZ = c_TerrainBGDepth * 0.5F;
+	float foregroundCascadeDepth = ((2.0F * foregroundCascadeThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F;
+	if (useRadianceCascades) {
+		TracyGpuZone("Radiance Cascades");
+		glDisable(GL_BLEND);
+		glm::vec2 rcSize(static_cast<float>(m_RCScene.Width), static_cast<float>(m_RCScene.Height));
+		glBindFramebuffer(GL_FRAMEBUFFER, m_RCScene.Framebuffer);
+		glViewport(0, 0, m_RCScene.Width, m_RCScene.Height);
+		m_RCSceneShader->Enable();
+		m_RCSceneShader->SetInt("rteEmissive", 0);
+		m_RCSceneShader->SetInt("rteSceneDepth", 1);
+		m_RCSceneShader->SetInt("rtePreviousLit", 2);
+		m_RCSceneShader->SetVector2f("rtePreviousOffset", m_RCPreviousValid[screenIndex] ? (origin - m_RCPreviousOrigin[screenIndex]) : glm::vec2(0.0F));
+		m_RCSceneShader->SetVector2f("rteTargetSize", rcSize);
+		m_RCSceneShader->SetVector2f("rteScreenSize", screenSize);
+		m_RCSceneShader->SetFloat("rteForegroundDepth", foregroundCascadeDepth);
+		m_RCSceneShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
+		m_RCSceneShader->SetFloat("rteBounce", m_Settings.GIBounce);
+		m_RCSceneShader->SetBool("rteHavePrevious", m_RCPreviousValid[screenIndex]);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, cascadeDepth->GetTextureId());
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_RCPreviousLit[screenIndex].Texture);
+		DrawFullscreen();
+
+		m_RCCascadeShader->Enable();
+		m_RCCascadeShader->SetInt("rteScene", 0);
+		m_RCCascadeShader->SetInt("rteUpper", 1);
+		m_RCCascadeShader->SetInt("rteCascadeCount", c_RCCascadeCount);
+		m_RCCascadeShader->SetVector2f("rteTargetSize", rcSize);
+		m_RCCascadeShader->SetFloat("rteBaseInterval", 1.5F);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_RCScene.Texture);
+		int written = 0;
+		for (int cascade = c_RCCascadeCount - 1; cascade >= 0; --cascade) {
+			int target = (c_RCCascadeCount - 1 - cascade) % 2;
+			glBindFramebuffer(GL_FRAMEBUFFER, m_RCCascades[target].Framebuffer);
+			m_RCCascadeShader->SetInt("rteCascade", cascade);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, m_RCCascades[1 - target].Texture);
+			DrawFullscreen();
+			written = target;
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, m_RCIrradiance.Framebuffer);
+		glViewport(0, 0, m_RCIrradiance.Width, m_RCIrradiance.Height);
+		m_RCIrradianceShader->Enable();
+		m_RCIrradianceShader->SetInt("rteCascade0", 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_RCCascades[written].Texture);
+		DrawFullscreen();
+		glViewport(0, 0, width, height);
+	}
+
 	// Composite the lit scene into HDR.
 	std::shared_ptr<Texture> albedo = playerScreen->GetColorTexture().lock();
 	glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
@@ -826,7 +908,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetInt("rteEmissive", 4);
 	m_CompositeShader->SetInt("rteNormals", 5);
 	m_CompositeShader->SetInt("rteIndirect", 6);
-	bool useIndirect = m_Settings.Enabled && m_Settings.IndirectLight > 0.0F && m_IndirectHistoryValid[screenIndex];
+	// Radiance cascades include bounced light, so the simpler indirect light is left out with them.
+	bool useIndirect = m_Settings.Enabled && m_Settings.IndirectLight > 0.0F && m_IndirectHistoryValid[screenIndex] && !useRadianceCascades;
+	m_CompositeShader->SetInt("rteGI", 7);
+	m_CompositeShader->SetFloat("rteGIStrength", useRadianceCascades ? m_Settings.GIStrength : 0.0F);
 	m_CompositeShader->SetFloat("rteIndirectStrength", useIndirect ? m_Settings.IndirectLight : 0.0F);
 	m_CompositeShader->SetVector2f("rteIndirectOffset", useIndirect ? (origin - m_IndirectHistoryOrigin[screenIndex]) : glm::vec2(0.0F));
 	m_CompositeShader->SetFloat("rteEdgeLighting", normals ? m_Settings.EdgeLighting : 0.0F);
@@ -873,7 +958,22 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE6);
 	glBindTexture(GL_TEXTURE_2D, m_IndirectHistory[screenIndex].Texture);
+	glActiveTexture(GL_TEXTURE7);
+	glBindTexture(GL_TEXTURE_2D, m_RCIrradiance.Texture);
+	glActiveTexture(GL_TEXTURE0);
 	DrawFullscreen();
+
+	// Keep this frame's lit scene for next frame's bounces.
+	if (useRadianceCascades) {
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_RCPreviousLit[screenIndex].Framebuffer);
+		glBlitFramebuffer(0, 0, width, height, 0, 0, m_RCPreviousLit[screenIndex].Width, m_RCPreviousLit[screenIndex].Height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		m_RCPreviousOrigin[screenIndex] = origin;
+		m_RCPreviousValid[screenIndex] = true;
+	} else {
+		m_RCPreviousValid[screenIndex] = false;
+	}
 
 	// Blur the lit scene down for next frame's indirect light. Taken before glows, rain and god rays so only lit surfaces bounce.
 	if (m_Settings.Enabled && m_Settings.IndirectLight > 0.0F) {

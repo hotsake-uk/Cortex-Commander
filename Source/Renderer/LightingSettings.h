@@ -29,13 +29,14 @@ namespace RTE {
 				bool Lighting, Bloom, Distortion, Scorch;
 				float Embers, GodRays, Indirect;
 				int Propagation;
+				bool RadianceCascades;
 			};
 			static constexpr Preset presets[] = {
-			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6}, // Potato: the classic look.
-			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3}, // Low
-			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4}, // Medium
-			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6}, // High
-			    {true, true, true, true, 1.3F, 0.8F, 0.45F, 12}, // Ultra
+			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6, false}, // Potato: the classic look.
+			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3, false}, // Low
+			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4, false}, // Medium
+			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6, false}, // High
+			    {true, true, true, true, 1.3F, 0.8F, 0.45F, 12, true}, // Ultra
 			};
 			const Preset& preset = presets[quality];
 			Enabled = preset.Lighting;
@@ -46,6 +47,7 @@ namespace RTE {
 			GodRays = preset.GodRays;
 			IndirectLight = preset.Indirect;
 			PropagationIterationsPerFrame = preset.Propagation;
+			RadianceCascades = preset.RadianceCascades;
 		}
 
 		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
@@ -71,6 +73,9 @@ namespace RTE {
 		float ShadowStrength = 0.85F; //!< How much terrain blocks dynamic lights, 0 to 1.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
 		float IndirectLight = 0.35F; //!< One bounce of light: lit surfaces bleed their color onto their surroundings. 0 to disable.
+		bool RadianceCascades = false; //!< Global illumination by radiance cascades: glows light their surroundings with soft occlusion, and light bounces off surfaces. Replaces the simpler indirect light.
+		float GIStrength = 1.0F; //!< Brightness of the radiance cascades light.
+		float GIBounce = 0.5F; //!< How much of the light reaching surfaces they pass on.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.

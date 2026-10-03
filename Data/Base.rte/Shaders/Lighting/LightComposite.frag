@@ -32,6 +32,8 @@ uniform vec3 rteForegroundAmbient; // Minimum light on the foreground, so the pl
 uniform sampler2D rteIndirect; // Last frame's lit scene, heavily blurred: the light bouncing off nearby surfaces.
 uniform float rteIndirectStrength;
 uniform vec2 rteIndirectOffset; // How far the screen moved since the indirect light was made, in pixels.
+uniform sampler2D rteGI; // Light from radiance cascades, quarter resolution.
+uniform float rteGIStrength;
 uniform float rteNightSky; // 0 by day, 1 at full night: stars and the moon show on the furthest sky layers.
 uniform vec2 rteMoonPosition; // Screen pixels, as gl_FragCoord (y 0 is the top of the player screen).
 uniform float rteTime; // Seconds, for twinkling.
@@ -107,6 +109,10 @@ void main() {
 			// Fully sky lit areas already look as authored, so the bounce mostly fills shadowed areas and caves.
 			light += min(bounce, vec3(4.0)) * rteIndirectStrength * (1.0 - 0.85 * sky);
 		}
+		if (rteGIStrength > 0.0) {
+			vec3 gi = texture(rteGI, screenUV).rgb;
+			light += min(gi, vec3(6.0)) * rteGIStrength;
+		}
 		if (sceneDepth < rteForegroundDepth) {
 			light = max(light, rteForegroundAmbient);
 		}
@@ -124,6 +130,9 @@ void main() {
 		return;
 	} else if (rteDebugView == 3) {
 		FragColor = vec4(texture(rteDynamicLight, screenUV).rgb, 1.0);
+		return;
+	} else if (rteDebugView == 6) {
+		FragColor = vec4(texture(rteGI, screenUV).rgb * max(rteGIStrength, 1.0), 1.0);
 		return;
 	} else if (rteDebugView == 4) {
 		FragColor = vec4(pow(texture(rteNormals, screenUV).rgb, vec3(2.2)), 1.0);

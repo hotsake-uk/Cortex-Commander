@@ -111,6 +111,7 @@ void DebugMan::WorldDebugGUI() {
 		ImGui::Checkbox("Bloom", &settings.BloomEnabled);
 		ImGui::SameLine();
 		ImGui::Checkbox("Extra effects", &settings.DistortionEnabled);
+		ImGui::Checkbox("Radiance cascades GI", &settings.RadianceCascades);
 		bool smoothText = TextOverlay::IsEnabled();
 		if (ImGui::Checkbox("Smooth HUD text", &smoothText)) {
 			TextOverlay::SetEnabled(smoothText);
@@ -136,7 +137,7 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
 		ImGui::SliderFloat("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
-		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0");
 
 		ImGui::SeparatorText("Game");
 		float timeScale = g_TimerMan.GetTimeScale();
@@ -196,6 +197,9 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		ImGui::SliderFloat("Indirect light", &settings.IndirectLight, 0.0F, 1.5F);
+		ImGui::Checkbox("Radiance cascades GI", &settings.RadianceCascades);
+		ImGui::SliderFloat("GI strength", &settings.GIStrength, 0.0F, 4.0F);
+		ImGui::SliderFloat("GI bounce", &settings.GIBounce, 0.0F, 1.0F);
 
 		ImGui::SeparatorText("Distortion");
 		ImGui::Checkbox("Distortion enabled", &settings.DistortionEnabled);
@@ -236,7 +240,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 
 		ImGui::SeparatorText("Debug");
-		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0");
 
 		ImGui::SeparatorText("Stats");
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {

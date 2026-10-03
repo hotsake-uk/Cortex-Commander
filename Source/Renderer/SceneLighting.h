@@ -140,6 +140,13 @@ namespace RTE {
 		GLTarget m_HDRScene;
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
+		static constexpr int c_RCCascadeCount = 5;
+		GLTarget m_RCScene; //!< Half resolution radiance cascades input: light and occluders.
+		GLTarget m_RCCascades[2]; //!< Ping-ponged cascades, the last one written is cascade 0.
+		GLTarget m_RCIrradiance; //!< Quarter resolution light from radiance cascades.
+		GLTarget m_RCPreviousLit[c_MaxScreens]; //!< Per player screen, last frame's lit scene at half resolution, for bounces.
+		glm::vec2 m_RCPreviousOrigin[c_MaxScreens]; //!< Per player screen, the screen origin m_RCPreviousLit was made at.
+		bool m_RCPreviousValid[c_MaxScreens] = {};
 		GLTarget m_Luminance; //!< Power of two log luminance of the HDR scene, with mipmaps, for auto exposure.
 		int m_LuminanceMaxLod = 0;
 		GLTarget m_AdaptedLuminance[c_MaxScreens][2]; //!< Per player screen, ping-ponged 1x1 adapted log luminance.
@@ -154,6 +161,9 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
+		std::unique_ptr<Shader> m_RCSceneShader;
+		std::unique_ptr<Shader> m_RCCascadeShader;
+		std::unique_ptr<Shader> m_RCIrradianceShader;
 		std::unique_ptr<Shader> m_LuminanceShader;
 		std::unique_ptr<Shader> m_ExposureAdaptShader;
 		std::unique_ptr<Shader> m_ShockwaveShader;

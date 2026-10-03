@@ -174,6 +174,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LightingGlowIntensity", { g_PostProcessMan.GetLightingSettings().GlowLightIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingGlowRadiusScale", { g_PostProcessMan.GetLightingSettings().GlowLightRadiusScale = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingShadowStrength", { g_PostProcessMan.GetLightingSettings().ShadowStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("RadianceCascades", { g_PostProcessMan.GetLightingSettings().RadianceCascades = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("GIStrength", { g_PostProcessMan.GetLightingSettings().GIStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GIBounce", { g_PostProcessMan.GetLightingSettings().GIBounce = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingIndirect", { g_PostProcessMan.GetLightingSettings().IndirectLight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEmissiveIntensity", { g_PostProcessMan.GetLightingSettings().EmissiveIntensity = std::stof(reader.ReadPropValue()); });
@@ -338,6 +341,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
+	writer.NewPropertyWithValue("RadianceCascades", lighting.RadianceCascades);
+	writer.NewPropertyWithValue("GIStrength", lighting.GIStrength);
+	writer.NewPropertyWithValue("GIBounce", lighting.GIBounce);
 	writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
 	writer.NewPropertyWithValue("HeatHaze", lighting.HeatHaze);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
