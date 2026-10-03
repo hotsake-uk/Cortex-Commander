@@ -26,6 +26,10 @@ uniform vec3 rteShadowTint;
 uniform vec3 rteHighlightTint;
 uniform float rteFilmGrain;
 uniform float rteChromaticAberration;
+uniform sampler2D rteAdaptedLuminance; // 1x1, the adapted average log luminance of the scene.
+uniform float rteAutoExposure; // Strength, 0 off.
+uniform float rteAutoExposureLow; // Average luminance range where exposure stays put.
+uniform float rteAutoExposureHigh;
 
 vec3 Shoulder(vec3 color) {
 	if (rteShoulderStart >= 0.999) {
@@ -66,6 +70,12 @@ void main() {
 	}
 	color += texture(rteBloom, sampleUV).rgb * rteBloomIntensity;
 	color *= rteExposure;
+	if (rteAutoExposure > 0.0) {
+		// Only scenes far outside the usual brightness range adapt, so the pixel art keeps its look the rest of the time.
+		float average = exp(texture(rteAdaptedLuminance, vec2(0.5)).r);
+		float target = clamp(average, rteAutoExposureLow, rteAutoExposureHigh);
+		color *= clamp(pow(target / max(average, 0.0001), rteAutoExposure), 0.5, 2.0);
+	}
 
 	float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
 	color = max(mix(vec3(luminance), color, rteSaturation), vec3(0.0));

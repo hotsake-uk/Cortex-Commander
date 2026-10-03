@@ -59,6 +59,11 @@ namespace RTE {
 		int GetGridWidth() const { return m_GridWidth; }
 		int GetGridHeight() const { return m_GridHeight; }
 
+		/// Gets the first player screen's average scene luminance and the exposure auto exposure applied, for the Graphics Lab. Reading them stalls the GPU, so only while it's shown.
+		/// @param averageLuminance The adapted average luminance.
+		/// @param autoExposure The exposure multiplier from auto exposure.
+		void ReadAutoExposure(float& averageLuminance, float& autoExposure) const;
+
 	private:
 		/// A GL texture with an optional framebuffer.
 		struct GLTarget {
@@ -128,6 +133,12 @@ namespace RTE {
 		GLTarget m_HDRScene;
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
+		GLTarget m_Luminance; //!< Power of two log luminance of the HDR scene, with mipmaps, for auto exposure.
+		int m_LuminanceMaxLod = 0;
+		GLTarget m_AdaptedLuminance[c_MaxScreens][2]; //!< Per player screen, ping-ponged 1x1 adapted log luminance.
+		int m_AdaptedLuminanceCurrent[c_MaxScreens] = {};
+		bool m_AdaptedLuminanceValid[c_MaxScreens] = {};
+		double m_LastAdaptSeconds[c_MaxScreens] = {};
 
 		std::unique_ptr<Shader> m_PropagateShader;
 		std::unique_ptr<Shader> m_PointLightShader;
@@ -136,6 +147,8 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
+		std::unique_ptr<Shader> m_LuminanceShader;
+		std::unique_ptr<Shader> m_ExposureAdaptShader;
 		std::unique_ptr<Shader> m_ShockwaveShader;
 		std::unique_ptr<Shader> m_PrecipitationShader;
 		std::unique_ptr<Shader> m_GodRaysShader;

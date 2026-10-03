@@ -122,6 +122,13 @@ void DebugMan::WorldDebugGUI() {
 		brightnessSlider("Playfield light floor", settings.ForegroundAmbient, 1.0F);
 		brightnessSlider("Sky light", settings.SkyColor, 2.0F);
 		ImGui::SliderFloat("Exposure", &settings.Exposure, 0.1F, 4.0F);
+		ImGui::SliderFloat("Auto exposure", &settings.AutoExposure, 0.0F, 1.0F);
+		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting(); lighting && settings.Enabled && settings.AutoExposure > 0.0F) {
+			float averageLuminance = 0.0F;
+			float autoExposure = 1.0F;
+			lighting->ReadAutoExposure(averageLuminance, autoExposure);
+			ImGui::Text("Scene luminance %.3f -> exposure x%.2f", averageLuminance, autoExposure);
+		}
 		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
 		ImGui::SliderFloat("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0");
@@ -203,6 +210,15 @@ void DebugMan::GraphicsLabGUI() {
 
 		ImGui::SeparatorText("Tonemapping and grading");
 		ImGui::SliderFloat("Exposure", &settings.Exposure, 0.1F, 4.0F);
+		ImGui::SliderFloat("Auto exposure", &settings.AutoExposure, 0.0F, 1.0F);
+		ImGui::SliderFloat("Adapt below", &settings.AutoExposureLow, 0.001F, 0.2F, "%.3f", ImGuiSliderFlags_Logarithmic);
+		ImGui::SliderFloat("Adapt above", &settings.AutoExposureHigh, 0.05F, 2.0F, "%.3f", ImGuiSliderFlags_Logarithmic);
+		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting(); lighting && settings.AutoExposure > 0.0F) {
+			float averageLuminance = 0.0F;
+			float autoExposure = 1.0F;
+			lighting->ReadAutoExposure(averageLuminance, autoExposure);
+			ImGui::Text("Scene luminance %.3f, auto exposure x%.2f", averageLuminance, autoExposure);
+		}
 		ImGui::SliderFloat("Highlight shoulder", &settings.ShoulderStart, 0.3F, 1.0F);
 		ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
 		ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);

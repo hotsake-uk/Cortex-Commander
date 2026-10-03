@@ -17,6 +17,7 @@
 #include "tracy/TracyOpenGL.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 using namespace RTE;
@@ -100,6 +101,8 @@ void SceneLighting::LoadShaders() {
 	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
+	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
+	m_ExposureAdaptShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/ExposureAdapt.frag");
 	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
 	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
 	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
@@ -235,6 +238,18 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 		mipHeight = std::max(1, mipHeight / 2);
 		mip.Create(mipWidth, mipHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
+	// 64x32 log luminance; its mip chain down to 1x1 is the average.
+	m_Luminance.Create(64, 32, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	glBindTexture(GL_TEXTURE_2D, m_Luminance.Texture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	m_LuminanceMaxLod = 6;
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		for (GLTarget& adapted: m_AdaptedLuminance[screen]) {
+			adapted.Create(1, 1, GL_R32F, GL_RED, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		}
+		m_AdaptedLuminanceValid[screen] = false;
+	}
 }
 
 void SceneLighting::DestroyScreenResources() {
@@ -252,6 +267,13 @@ void SceneLighting::DestroyScreenResources() {
 	m_HDRScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
+	}
+	m_Luminance.Destroy();
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		for (GLTarget& adapted: m_AdaptedLuminance[screen]) {
+			adapted.Destroy();
+		}
+		m_AdaptedLuminanceValid[screen] = false;
 	}
 	m_ScreenWidth = 0;
 	m_ScreenHeight = 0;
@@ -365,6 +387,22 @@ glm::vec3 SceneLighting::GetDaylightTint(float hours) {
 		}
 	}
 	return keyframes[0].Tint;
+}
+
+void SceneLighting::ReadAutoExposure(float& averageLuminance, float& autoExposure) const {
+	averageLuminance = 0.0F;
+	autoExposure = 1.0F;
+	if (!m_AdaptedLuminanceValid[0] || !m_AdaptedLuminance[0][0].Texture) {
+		return;
+	}
+	float logLuminance = 0.0F;
+	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[0][m_AdaptedLuminanceCurrent[0]].Texture);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, &logLuminance);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	averageLuminance = std::exp(logLuminance);
+	// Same as Tonemap.frag.
+	float target = std::clamp(averageLuminance, m_Settings.AutoExposureLow, m_Settings.AutoExposureHigh);
+	autoExposure = std::clamp(std::pow(target / std::max(averageLuminance, 0.0001F), m_Settings.AutoExposure), 0.5F, 2.0F);
 }
 
 void SceneLighting::StampScorchMarks() {
@@ -891,6 +929,48 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	// Auto exposure: average the scene's log luminance, then let the adapted value drift towards it.
+	bool useAutoExposure = m_Settings.Enabled && m_Settings.AutoExposure > 0.0F;
+	if (useAutoExposure) {
+		TracyGpuZone("Auto Exposure");
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_Luminance.Framebuffer);
+		glViewport(0, 0, m_Luminance.Width, m_Luminance.Height);
+		m_LuminanceShader->Enable();
+		m_LuminanceShader->SetInt("rteScene", 0);
+		m_LuminanceShader->SetVector2f("rteSourceTexelSize", glm::vec2(1.0F / static_cast<float>(width), 1.0F / static_cast<float>(height)) * (static_cast<float>(width) / static_cast<float>(m_Luminance.Width * 4)));
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+		DrawFullscreen();
+		glBindTexture(GL_TEXTURE_2D, m_Luminance.Texture);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+		double nowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		float deltaSeconds = m_AdaptedLuminanceValid[screenIndex] ? static_cast<float>(std::clamp(nowSeconds - m_LastAdaptSeconds[screenIndex], 0.0, 0.25)) : 0.0F;
+		m_LastAdaptSeconds[screenIndex] = nowSeconds;
+		int previous = m_AdaptedLuminanceCurrent[screenIndex];
+		int next = 1 - previous;
+		glBindFramebuffer(GL_FRAMEBUFFER, m_AdaptedLuminance[screenIndex][next].Framebuffer);
+		glViewport(0, 0, 1, 1);
+		m_ExposureAdaptShader->Enable();
+		m_ExposureAdaptShader->SetInt("rteLuminance", 0);
+		m_ExposureAdaptShader->SetInt("rtePrevious", 1);
+		m_ExposureAdaptShader->SetFloat("rteLuminanceLod", static_cast<float>(m_LuminanceMaxLod));
+		m_ExposureAdaptShader->SetFloat("rteDeltaSeconds", deltaSeconds);
+		m_ExposureAdaptShader->SetFloat("rteBrightenSpeed", 3.0F);
+		m_ExposureAdaptShader->SetFloat("rteDarkenSpeed", 1.2F);
+		m_ExposureAdaptShader->SetBool("rteReset", !m_AdaptedLuminanceValid[screenIndex]);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][previous].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		m_AdaptedLuminanceCurrent[screenIndex] = next;
+		m_AdaptedLuminanceValid[screenIndex] = true;
+		glViewport(0, 0, width, height);
+	} else {
+		m_AdaptedLuminanceValid[screenIndex] = false;
+	}
+
 	// Bloom.
 	if (m_Settings.BloomEnabled) {
 		TracyGpuZone("Bloom");
@@ -954,6 +1034,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetVector3f("rteHighlightTint", m_Settings.HighlightTint);
 	m_TonemapShader->SetFloat("rteFilmGrain", m_Settings.FilmGrain);
 	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration);
+	m_TonemapShader->SetInt("rteAdaptedLuminance", 4);
+	m_TonemapShader->SetFloat("rteAutoExposure", useAutoExposure ? m_Settings.AutoExposure : 0.0F);
+	m_TonemapShader->SetFloat("rteAutoExposureLow", m_Settings.AutoExposureLow);
+	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][m_AdaptedLuminanceCurrent[screenIndex]].Texture);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
 	glActiveTexture(GL_TEXTURE1);

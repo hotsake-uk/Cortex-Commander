@@ -183,6 +183,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
 	MatchProperty("BloomIntensity", { g_PostProcessMan.GetLightingSettings().BloomIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("AutoExposureLow", { g_PostProcessMan.GetLightingSettings().AutoExposureLow = std::stof(reader.ReadPropValue()); });
+	MatchProperty("AutoExposureHigh", { g_PostProcessMan.GetLightingSettings().AutoExposureHigh = std::stof(reader.ReadPropValue()); });
+	MatchProperty("AutoExposure", { g_PostProcessMan.GetLightingSettings().AutoExposure = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostExposure", { g_PostProcessMan.GetLightingSettings().Exposure = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GradeTemperature", { g_PostProcessMan.GetLightingSettings().Temperature = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GradeTint", { g_PostProcessMan.GetLightingSettings().Tint = std::stof(reader.ReadPropValue()); });
@@ -268,6 +271,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("PrintDebugInfo", { reader >> m_PrintDebugInfo; });
 	MatchProperty("EnableDebugMenus", { reader >> g_DebugMan.m_ShowDebugWindow; });
 	MatchProperty("ShowGraphicsLab", { g_DebugMan.m_ShowGraphicsLab = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ShowWorldDebug", { g_DebugMan.m_ShowWorldDebug = std::stoi(reader.ReadPropValue()) != 0; }); // Read only, for automated captures.
 	MatchProperty("MeasureModuleLoadTime", { reader >> m_MeasureModuleLoadTime; });
 	MatchProperty("VisibleAssemblyGroup", { m_VisibleAssemblyGroupsList.push_back(reader.ReadPropValue()); });
 	MatchProperty("DisableMod", { m_DisabledMods.try_emplace(reader.ReadPropValue(), true); });
@@ -340,6 +344,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
 	writer.NewPropertyWithValue("BloomIntensity", lighting.BloomIntensity);
 	writer.NewPropertyWithValue("PostExposure", lighting.Exposure);
+	writer.NewPropertyWithValue("AutoExposure", lighting.AutoExposure);
+	writer.NewPropertyWithValue("AutoExposureLow", lighting.AutoExposureLow);
+	writer.NewPropertyWithValue("AutoExposureHigh", lighting.AutoExposureHigh);
 	writer.NewPropertyWithValue("PostVignette", lighting.Vignette);
 	writer.NewPropertyWithValue("GradeTemperature", lighting.Temperature);
 	writer.NewPropertyWithValue("GradeTint", lighting.Tint);
