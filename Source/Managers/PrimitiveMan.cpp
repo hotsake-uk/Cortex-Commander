@@ -10,6 +10,8 @@
 
 #include <array>
 #include "Draw.h"
+#include "RenderMan.h"
+#include "Camera.h"
 #include "glad/gl.h"
 #include "Shader.h"
 #include "PresetMan.h"
@@ -225,60 +227,50 @@ void PrimitiveMan::DrawIconPrimitive(int player, const Vector& centerPos, Entity
 	}
 }
 
-void PrimitiveMan::DrawPrimitives(int player, BITMAP* targetBitmap, const Vector& targetPos) const {
+namespace {
+	/// Maps a Lua-facing DrawBlendMode to a GL blend mode. Advanced (KHR) blend equations need shader support we don't have yet, so those modes use their closest standard equivalent.
+	BlendMode BlendModeForPrimitive(DrawBlendMode blendMode) {
+		switch (blendMode) {
+			case DrawBlendMode::BlendScreen:
+			case DrawBlendMode::BlendLuminance:
+				return BlendMode(Blend::SCREEN);
+			case DrawBlendMode::BlendDodge:
+				return BlendMode(Blend::ADD);
+			case DrawBlendMode::BlendMultiply:
+			case DrawBlendMode::BlendBurn:
+				return BlendMode(GL_DST_COLOR, GL_ZERO, GL_FUNC_ADD);
+			case DrawBlendMode::BlendDifference:
+				return BlendMode(GL_ONE, GL_ONE, GL_FUNC_REVERSE_SUBTRACT);
+			case DrawBlendMode::BlendInvert:
+				return BlendMode(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_FUNC_ADD);
+			default:
+				return BlendMode(Blend::ALPHA);
+		}
+	}
+} // namespace
+
+void PrimitiveMan::DrawPrimitives(int player, const Camera& camera) const {
 	ZoneScoped;
 
 	if (m_ScheduledPrimitives.empty()) {
 		return;
 	}
 
-	int lastDrawMode = DRAW_MODE_SOLID;
-	DrawBlendMode lastBlendMode = DrawBlendMode::NoBlend;
-	std::array<int, 4> lastBlendAmounts = {BlendAmountLimits::MinBlend, BlendAmountLimits::MinBlend, BlendAmountLimits::MinBlend, BlendAmountLimits::MinBlend};
-	GLint currentShader = rlGetShaderCurrent();
-	rlDrawRenderBatchActive();
-	if (GLAD_GL_KHR_blend_equation_advanced_coherent){
-		glBlendBarrierKHR();
-		if (GLAD_GL_KHR_blend_equation_advanced_coherent) {
-			glEnable(GL_BLEND_ADVANCED_COHERENT_KHR);
-		}
-	}
-	const Shader* background = dynamic_cast<const Shader*>(g_PresetMan.GetEntityPreset("Shader", "Background"));
-	rlEnableColorBlend();
+	float previousZOffset = g_RenderMan.GetCurrentZOffset();
 	for (const std::unique_ptr<GraphicalPrimitive>& primitive: m_ScheduledPrimitives) {
-		if (int playerToDrawFor = primitive->m_Player; playerToDrawFor == player || playerToDrawFor == -1) {
-			rlDrawRenderBatchActive();
-			if (DrawBlendMode blendMode = primitive->m_BlendMode; blendMode > DrawBlendMode::NoBlend) {
-				if (const std::array<int, 4>& blendAmounts = primitive->m_ColorChannelBlendAmounts; blendMode != lastBlendMode || blendAmounts != lastBlendAmounts) {
-					if (lastBlendMode == BlendDissolve) {
-						background->Begin();
-					}
-					g_FrameMan.SetBlendMode(blendMode);
-					GLint colorUniform = glGetUniformLocation(rlGetShaderCurrent(), "rteColor");
-					glUniform4f(colorUniform, blendAmounts[0] / static_cast<float>(MaxBlend), blendAmounts[1] / static_cast<float>(MaxBlend), blendAmounts[2] / static_cast<float>(MaxBlend), blendAmounts[3] / static_cast<float>(MaxBlend));
-					lastBlendMode = blendMode;
-					lastBlendAmounts = blendAmounts;
-				}
-			} else {
-				g_FrameMan.SetBlendMode(BlendTransparency);
-				GLint colorUniform = glGetUniformLocation(rlGetShaderCurrent(), "rteColor");
-				glUniform4f(colorUniform, 1.0f, 1.0f, 1.0f, 1.0f);
-				lastBlendMode = DrawBlendMode::NoBlend;
-			}
-			if (GLAD_GL_KHR_blend_equation_advanced_coherent) {
-				glBlendBarrierKHR();
-			}
-			rlZDepth(primitive->m_Depth);
-			//primitive->DrawTiled(targetBitmap, targetPos);
+		if (int playerToDrawFor = primitive->m_Player; playerToDrawFor != player && playerToDrawFor != -1) {
+			continue;
 		}
+		Vector cullCenter;
+		float cullRadius = 0.0f;
+		primitive->GetCullCircle(cullCenter, cullRadius);
+		if (!camera.IsVisible(cullCenter, cullRadius)) {
+			continue;
+		}
+		g_RenderMan.SetActiveBlendMode(BlendModeForPrimitive(primitive->m_BlendMode));
+		g_RenderMan.SetCurrentZOffset(primitive->m_Depth);
+		primitive->Draw();
 	}
-	if (GLAD_GL_KHR_blend_equation_advanced_coherent) {
-		rlDisableAdvancedColorBlend();
-	}
-	rlSetBlendMode(RL_BLEND_ALPHA);
-	background->Begin();
-	GLint colorUniform = glGetUniformLocation(rlGetShaderCurrent(), "rteColor");
-	glUniform4f(colorUniform, 1.0f, 1.0f, 1.0f, 1.0f);
-	rlZDepth(c_DefaultDrawDepth);
-	drawing_mode(DRAW_MODE_SOLID, nullptr, 0, 0);
+	g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));
+	g_RenderMan.SetCurrentZOffset(previousZOffset);
 }

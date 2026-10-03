@@ -3,6 +3,7 @@
 #include "MOSprite.h"
 
 #include <array>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -18,7 +19,7 @@ namespace RTE {
 /// Convenience macro to cut down on duplicate methods in classes that extend GraphicalPrimitive.
 #define GraphicalPrimitiveOverrideMethods \
 	const PrimitiveType GetPrimitiveType() const override { return c_PrimitiveType; } \
-	void Draw(BITMAP* drawScreen, const Vector& targetPos) override;
+	void Draw() override;
 
 		/// Enumeration of the different primitive types derived from GraphicalPrimitive.
 		enum class PrimitiveType {
@@ -54,17 +55,17 @@ namespace RTE {
 		/// Destructor method used to clean up a GraphicalPrimitive object before deletion from system memory.
 		virtual ~GraphicalPrimitive() = default;
 
-		/// Wraps coordinates if current Scene is wrapped.
-		/// @param targetPos Target position.
-		/// @param scenePos Position on scene.
-		Vector WrapCoordinates(Vector targetPos, const Vector& scenePos) const;
+		/// Gets the color this primitive should be drawn with, resolved from the palette and adjusted for the blend mode and amounts.
+		/// @return The color to draw with.
+		Color GetDrawColor() const;
 
-		void DrawTiled(BITMAP* drawScreen, const Vector& targetPos);
+		/// Gets a circle in Scene coordinates that encloses this primitive, for culling.
+		/// @param center Out parameter for the circle's center.
+		/// @param radius Out parameter for the circle's radius.
+		void GetCullCircle(Vector& center, float& radius) const;
 
-		/// Draws this primitive on provided bitmap.
-		/// @param drawScreen Bitmap to draw on.
-		/// @param targetPos Position of graphical primitive.
-		virtual void Draw(BITMAP* drawScreen, const Vector& targetPos) = 0;
+		/// Schedules this primitive for drawing on the active render batch, in Scene coordinates. Scene wrapping is handled by the cameras.
+		virtual void Draw() = 0;
 
 		/// Gets the type identifier of this primitive.
 		/// @return The type identifier of this primitive.

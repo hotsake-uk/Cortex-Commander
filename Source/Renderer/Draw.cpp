@@ -1,4 +1,5 @@
 #include "Draw.h"
+#include "allegro.h"
 #include "GLStateMan.h"
 #include "RenderMan.h"
 #include "glm/gtx/transform.hpp"
@@ -65,6 +66,22 @@ namespace RTE {
 			transform = glm::translate(transform, glm::vec3(origin, 0.0f));
 			draw->m_UniformValues.emplace_back(std::make_unique<Matrix4fValue>(draw->m_Shader->GetTransformUniform(), std::move(transform)));
 
+			return draw;
+		}
+
+		std::shared_ptr<DrawCall> DrawBitmap(BITMAP* bitmap, glm::vec2 pos, glm::vec2 origin, float angle, glm::vec2 scale, Color tint) {
+			ZoneScoped;
+			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
+			draw->m_TextureId = g_GLStateMan.GetStaticTextureFromBitmap(bitmap).id;
+			draw->m_Indexed = bitmap_color_depth(bitmap) == 8;
+			Shape::Shape rect = Shape::Rectangle(FloatRect(0, 0, bitmap->w, bitmap->h), tint);
+			draw->m_Vertices = std::move(rect.m_Vertices);
+			draw->m_Indices = std::move(rect.m_Indices);
+			glm::mat4 transform = glm::translate(glm::vec3(pos, 0.0f));
+			transform = glm::rotate(transform, angle, glm::vec3(0.0f, 0.0f, 1.0f));
+			transform = glm::scale(transform, glm::vec3(scale, 1.0f));
+			transform = glm::translate(transform, glm::vec3(origin, 0.0f));
+			draw->m_UniformValues.emplace_back(std::make_unique<Matrix4fValue>(draw->m_Shader->GetTransformUniform(), std::move(transform)));
 			return draw;
 		}
 

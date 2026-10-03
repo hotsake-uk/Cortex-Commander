@@ -879,7 +879,7 @@ void FrameMan::Draw() {
 				g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, targetPos, playerScreen);
 			}
 
-			g_PrimitiveMan.DrawPrimitives(playerScreen, drawScreenGUI, targetPos);
+			g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
 
 			// Get only the scene-relative post effects that affect this player's screen
 			if (pActivity) {

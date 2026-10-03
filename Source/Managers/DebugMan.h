@@ -17,7 +17,7 @@ namespace RTE {
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
-		bool DrawTilingBounds() { return true; }
+		bool DrawTilingBounds() { return false; }
 
 		bool FreeCamEnabled() { return m_EnableFreeCam; }
 		float FreeCamZoom() { return m_FreeCamZoom; }

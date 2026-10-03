@@ -1820,9 +1820,6 @@ void MOSRotating::Draw(const Camera& camera) const {
 		spritePos += m_RecoilOffset;
 	}
 
-	Draw::Rectangle(Box(m_Pos, 1.0f, 1.0f), g_YellowGlowColor);
-	Draw::Rectangle(Box(m_Pos + m_SpriteOffset, 1.0f, 1.0f), g_RedColor);
-
 	Vector scale(1.0f, 1.0f);
 
 	if (m_HFlipped) {

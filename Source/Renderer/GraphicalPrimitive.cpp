@@ -9,6 +9,7 @@
 #include "AllegroBitmap.h"
 
 #include "Draw.h"
+#include "Shapes.h"
 
 #include <array>
 #include <cmath>
@@ -34,185 +35,201 @@ const GraphicalPrimitive::PrimitiveType PolygonFillPrimitive::c_PrimitiveType = 
 const GraphicalPrimitive::PrimitiveType TextPrimitive::c_PrimitiveType = PrimitiveType::Text;
 const GraphicalPrimitive::PrimitiveType BitmapPrimitive::c_PrimitiveType = PrimitiveType::Bitmap;
 
-Vector GraphicalPrimitive::WrapCoordinates(Vector targetPos, const Vector& scenePos) const {
-	return targetPos + scenePos;
+namespace {
+	glm::vec2 ToVec2(const Vector& vector) { return glm::vec2(vector.m_X, vector.m_Y); }
+	glm::vec2 ToFloorVec2(const Vector& vector) { return glm::vec2(vector.GetFloorIntX(), vector.GetFloorIntY()); }
+
+	template <typename TrianglePrimitiveType>
+	void TriangleCullCircle(const TrianglePrimitiveType& triangle, Vector& center, float& radius) {
+		center = (triangle.m_PointAPos + triangle.m_PointBPos + triangle.m_PointCPos) / 3.0f;
+		radius = std::sqrt(std::max({(triangle.m_PointAPos - center).GetSqrMagnitude(), (triangle.m_PointBPos - center).GetSqrMagnitude(), (triangle.m_PointCPos - center).GetSqrMagnitude()}));
+	}
+
+	float PolygonCullRadius(const std::vector<Vector*>& vertices) {
+		float radius = 0.0f;
+		for (const Vector* vertex: vertices) {
+			radius = std::max(radius, vertex->GetMagnitude());
+		}
+		return radius;
+	}
+} // namespace
+
+Color GraphicalPrimitive::GetDrawColor() const {
+	Color paletteColor(static_cast<int>(m_Color));
+	float red = static_cast<float>(paletteColor.GetR());
+	float green = static_cast<float>(paletteColor.GetG());
+	float blue = static_cast<float>(paletteColor.GetB());
+	float alpha = 255.0f;
+
+	// Text and bitmaps carry their own colors, so only tint them for blending.
+	if (GetPrimitiveType() == PrimitiveType::Text || GetPrimitiveType() == PrimitiveType::Bitmap) {
+		red = green = blue = 255.0f;
+	}
+
+	auto amount = [this](int channel) { return std::clamp(static_cast<float>(m_ColorChannelBlendAmounts[channel]), static_cast<float>(BlendAmountLimits::MinBlend), static_cast<float>(BlendAmountLimits::MaxBlend)) / static_cast<float>(BlendAmountLimits::MaxBlend); };
+
+	switch (m_BlendMode) {
+		case DrawBlendMode::NoBlend:
+			break;
+		case DrawBlendMode::BlendTransparency:
+			// Amounts are how transparent each channel is, 0 being opaque.
+			alpha = 255.0f * (1.0f - (amount(0) + amount(1) + amount(2)) / 3.0f);
+			break;
+		case DrawBlendMode::BlendMultiply:
+			// Amounts are the strength of the effect, so fade towards white (no change) at 0.
+			red = 255.0f + (red - 255.0f) * amount(0);
+			green = 255.0f + (green - 255.0f) * amount(1);
+			blue = 255.0f + (blue - 255.0f) * amount(2);
+			break;
+		case DrawBlendMode::BlendInvert:
+			red = green = blue = 255.0f * amount(3);
+			break;
+		case DrawBlendMode::BlendDissolve:
+			alpha = 255.0f * (1.0f - amount(3));
+			break;
+		default:
+			// Additive-style modes fade towards black (no change) at 0.
+			red *= amount(0);
+			green *= amount(1);
+			blue *= amount(2);
+			break;
+	}
+	return Color(static_cast<int>(red), static_cast<int>(green), static_cast<int>(blue), static_cast<int>(alpha));
 }
 
-void GraphicalPrimitive::DrawTiled(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector tiledTarget{targetPos};
-	if (g_SceneMan.SceneWrapsX()) {
-		tiledTarget.m_X = std::fmod(targetPos.m_X, g_SceneMan.GetSceneWidth());
-	}
-	if (g_SceneMan.SceneWrapsY()) {
-		tiledTarget.m_Y = std::fmod(targetPos.m_Y, g_SceneMan.GetSceneHeight());
-	}
-
-	float bitmapWidth = g_SceneMan.GetSceneWidth();
-	float bitmapHeight = g_SceneMan.GetSceneHeight();
-	float areaToCoverX = drawScreen->w + g_SceneMan.GetTerrain()->GetOffset().m_X;
-	float areaToCoverY = drawScreen->h + g_SceneMan.GetTerrain()->GetOffset().m_Y;
-
-	for (int tiledOffsetX = 0; tiledOffsetX < areaToCoverX;) {
-		float destX = tiledOffsetX - tiledTarget.m_X;
-
-		for (int tiledOffsetY = 0; tiledOffsetY < areaToCoverY;) {
-			float destY = tiledOffsetY - tiledTarget.m_Y;
-			Draw(drawScreen, Vector(destX, destY));
-			if (!g_SceneMan.SceneWrapsY()) {
-				break;
-			}
-			tiledOffsetY += bitmapHeight;
-		}
-		if (!g_SceneMan.SceneWrapsX()) {
+void GraphicalPrimitive::GetCullCircle(Vector& center, float& radius) const {
+	center = m_StartPos;
+	radius = std::sqrt(m_DrawRadiusSquared);
+	switch (GetPrimitiveType()) {
+		case PrimitiveType::Circle:
+			radius = static_cast<float>(static_cast<const CirclePrimitive*>(this)->m_Radius);
+			break;
+		case PrimitiveType::CircleFill:
+			radius = static_cast<float>(static_cast<const CircleFillPrimitive*>(this)->m_Radius);
+			break;
+		case PrimitiveType::Ellipse:
+			radius = static_cast<float>(std::max(static_cast<const EllipsePrimitive*>(this)->m_HorizRadius, static_cast<const EllipsePrimitive*>(this)->m_VertRadius));
+			break;
+		case PrimitiveType::EllipseFill:
+			radius = static_cast<float>(std::max(static_cast<const EllipseFillPrimitive*>(this)->m_HorizRadius, static_cast<const EllipseFillPrimitive*>(this)->m_VertRadius));
+			break;
+		case PrimitiveType::Triangle:
+			TriangleCullCircle(*static_cast<const TrianglePrimitive*>(this), center, radius);
+			break;
+		case PrimitiveType::TriangleFill:
+			TriangleCullCircle(*static_cast<const TriangleFillPrimitive*>(this), center, radius);
+			break;
+		case PrimitiveType::Polygon:
+			radius = PolygonCullRadius(static_cast<const PolygonPrimitive*>(this)->m_Vertices);
+			break;
+		case PrimitiveType::PolygonFill:
+			radius = PolygonCullRadius(static_cast<const PolygonFillPrimitive*>(this)->m_Vertices);
+			break;
+		case PrimitiveType::Text: {
+			const TextPrimitive* text = static_cast<const TextPrimitive*>(this);
+			radius = text->m_TextBitmap ? static_cast<float>(text->m_TextBitmap->w + text->m_TextBitmap->h) : 0.0f;
 			break;
 		}
-		tiledOffsetX += bitmapWidth;
+		case PrimitiveType::Bitmap: {
+			const BitmapPrimitive* bitmap = static_cast<const BitmapPrimitive*>(this);
+			radius = bitmap->m_Bitmap ? static_cast<float>(bitmap->m_Bitmap->w + bitmap->m_Bitmap->h) * std::abs(bitmap->m_Scale) : 0.0f;
+			break;
+		}
+		case PrimitiveType::Box:
+		case PrimitiveType::BoxFill:
+		case PrimitiveType::RoundedBox:
+		case PrimitiveType::RoundedBoxFill:
+			center = (m_StartPos + m_EndPos) / 2.0f;
+			radius = (m_EndPos - m_StartPos).GetMagnitude() / 2.0f;
+			break;
+		default:
+			break;
 	}
-	// Draw(drawScreen, targetPos);
+	// Pad for line thickness and pixel rounding.
+	radius += 4.0f;
 }
 
-void LinePrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	Vector drawEnd = WrapCoordinates(targetPos, m_EndPos);
-	DrawLineEx(drawStart, drawEnd, m_Thickness, {m_Color, 0, 0, 255});
+void LinePrimitive::Draw() {
+	RTE::Draw::Line(ToFloorVec2(m_StartPos), ToFloorVec2(m_EndPos), std::max(m_Thickness, 1.0f), GetDrawColor());
 }
 
-void ArcPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	if (m_Thickness > 1) {
-		DrawRing(drawStart, m_Radius - (m_Thickness / 2.0f), m_Radius + (m_Thickness / 2.0f), m_StartAngle, m_EndAngle, std::abs(m_EndAngle - m_StartAngle), {m_Color, 0, 0, 255});
-	} else {
-		DrawRing(drawStart, m_Radius - 0.5f, m_Radius + 0.5f, m_StartAngle, m_EndAngle, std::abs(m_EndAngle - m_StartAngle), {m_Color, 0, 0, 255});
+void ArcPrimitive::Draw() {
+	float thickness = static_cast<float>(std::max(m_Thickness, 1));
+	RTE::Draw::Ring(ToFloorVec2(m_StartPos), static_cast<float>(m_Radius) - thickness / 2.0f, static_cast<float>(m_Radius) + thickness / 2.0f, m_StartAngle, m_EndAngle, GetDrawColor());
+}
+
+void SplinePrimitive::Draw() {
+	RTE::Draw::LineSpline({ToFloorVec2(m_StartPos), ToFloorVec2(m_GuidePointAPos), ToFloorVec2(m_GuidePointBPos), ToFloorVec2(m_EndPos)}, GetDrawColor());
+}
+
+namespace {
+	/// Normalized integer rectangle covering both corners inclusively, like Allegro's rect/rectfill.
+	FloatRect InclusiveRect(const Vector& cornerA, const Vector& cornerB) {
+		float left = static_cast<float>(std::min(cornerA.GetFloorIntX(), cornerB.GetFloorIntX()));
+		float top = static_cast<float>(std::min(cornerA.GetFloorIntY(), cornerB.GetFloorIntY()));
+		float right = static_cast<float>(std::max(cornerA.GetFloorIntX(), cornerB.GetFloorIntX()));
+		float bottom = static_cast<float>(std::max(cornerA.GetFloorIntY(), cornerB.GetFloorIntY()));
+		return FloatRect(left, top, right - left + 1.0f, bottom - top + 1.0f);
 	}
+} // namespace
+
+void BoxPrimitive::Draw() {
+	RTE::Draw::RectangleLines(InclusiveRect(m_StartPos, m_EndPos), 1.0f, GetDrawColor());
 }
 
-void SplinePrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	Vector drawGuideA = WrapCoordinates(targetPos, m_GuidePointAPos);
-	Vector drawGuideB = WrapCoordinates(targetPos, m_GuidePointBPos);
-	Vector drawEnd = WrapCoordinates(targetPos, m_EndPos);
-
-	std::array<Vector2, 4> guidePoints = {drawStart, drawGuideA, drawGuideB, drawEnd};
-	DrawSplineBasis(guidePoints.data(), guidePoints.size(), 1, {m_Color, 0, 0, 255});
+void BoxFillPrimitive::Draw() {
+	RTE::Draw::Rectangle(InclusiveRect(m_StartPos, m_EndPos), GetDrawColor());
 }
 
-void BoxPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	Vector drawEnd = WrapCoordinates(targetPos, m_EndPos);
-	Vector dimensions = drawEnd - drawStart;
-	DrawRectangleLines(drawStart.m_X, drawStart.m_Y, dimensions.m_X, dimensions.m_Y, {m_Color, 0, 0, 255});
+void RoundedBoxPrimitive::Draw() {
+	RTE::Draw::RoundedRectangleLines(InclusiveRect(m_StartPos, m_EndPos), static_cast<float>(m_CornerRadius), 1.0f, GetDrawColor());
 }
 
-void BoxFillPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	Vector drawEnd = WrapCoordinates(targetPos, m_EndPos);
-	Vector dimensions = drawEnd - drawStart;
-	DrawRectangle(drawStart.m_X, drawStart.m_Y, dimensions.m_X, dimensions.m_Y, {m_Color, 0, 0, 255});
+void RoundedBoxFillPrimitive::Draw() {
+	RTE::Draw::RoundedRectangle(InclusiveRect(m_StartPos, m_EndPos), static_cast<float>(m_CornerRadius), GetDrawColor());
 }
 
-void RoundedBoxPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	if (m_StartPos.m_X > m_EndPos.m_X) {
-		std::swap(m_StartPos.m_X, m_EndPos.m_X);
-	}
-	if (m_StartPos.m_Y > m_EndPos.m_Y) {
-		std::swap(m_StartPos.m_Y, m_EndPos.m_Y);
-	}
-
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	Vector drawEnd = WrapCoordinates(targetPos, m_EndPos);
-	Vector ringCornerTopLeft(drawStart.GetFloorIntX() + m_CornerRadius, drawStart.GetFloorIntY() + m_CornerRadius);
-	Vector ringCornerBottomLeft(drawStart.GetFloorIntX() + m_CornerRadius, drawEnd.GetFloorIntY() - m_CornerRadius + 1.0f);
-	Vector ringCornerTopRight(drawEnd.GetFloorIntX() - m_CornerRadius + 1.0f, drawStart.GetFloorIntY() + m_CornerRadius);
-	Vector ringCornerBottomRight(drawEnd.GetFloorIntX() - m_CornerRadius + 1.0f, drawEnd.GetFloorIntY() - m_CornerRadius + 1.0f);
-
-	DrawRing(ringCornerTopLeft, m_CornerRadius - 1.0f, m_CornerRadius, -90, -180, 90, {m_Color, 0, 0, 255});
-	DrawRing(ringCornerBottomLeft, m_CornerRadius - 1.0f, m_CornerRadius, 90, 180, 90, {m_Color, 0, 0, 255});
-	DrawRing(ringCornerTopRight, m_CornerRadius - 1.0f, m_CornerRadius, 0, -90, 90, {m_Color, 0, 0, 255});
-	DrawRing(ringCornerBottomRight, m_CornerRadius - 1.0f, m_CornerRadius, 90, 0, 90, {m_Color, 0, 0, 255});
-	DrawRectangle(drawStart.GetFloorIntX() + m_CornerRadius, drawStart.GetFloorIntY(), drawEnd.GetFloorIntX() - drawStart.GetFloorIntX() - 2 * m_CornerRadius + 1, 1, {m_Color, 0, 0, 255});
-	DrawRectangle(drawStart.GetFloorIntX() + m_CornerRadius, drawEnd.GetFloorIntY(), drawEnd.GetFloorIntX() - drawStart.GetFloorIntX() - 2 * m_CornerRadius + 1, 1, {m_Color, 0, 0, 255});
-	DrawRectangle(drawStart.GetFloorIntX(), drawStart.GetFloorIntY() + m_CornerRadius, 1, drawEnd.GetFloorIntY() - drawStart.GetFloorIntY() - 2 * m_CornerRadius + 1, {m_Color, 0, 0, 255});
-	DrawRectangle(drawEnd.GetFloorIntX(), drawStart.GetFloorIntY() + m_CornerRadius, 1, drawEnd.GetFloorIntY() - drawStart.GetFloorIntY() - 2 * m_CornerRadius + 1, {m_Color, 0, 0, 255});
+void CirclePrimitive::Draw() {
+	RTE::Draw::CircleLines(ToFloorVec2(m_StartPos), static_cast<float>(m_Radius), GetDrawColor());
 }
 
-void RoundedBoxFillPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	if (m_StartPos.m_X > m_EndPos.m_X) {
-		std::swap(m_StartPos.m_X, m_EndPos.m_X);
-	}
-	if (m_StartPos.m_Y > m_EndPos.m_Y) {
-		std::swap(m_StartPos.m_Y, m_EndPos.m_Y);
-	}
-
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	Vector drawEnd = WrapCoordinates(targetPos, m_EndPos);
-	DrawCircle(drawStart.GetFloorIntX() + m_CornerRadius, drawStart.GetFloorIntY() + m_CornerRadius, m_CornerRadius, {m_Color, 0, 0, 255});
-	DrawCircle(drawStart.GetFloorIntX() + m_CornerRadius, drawEnd.GetFloorIntY() - m_CornerRadius, m_CornerRadius, {m_Color, 0, 0, 255});
-	DrawCircle(drawEnd.GetFloorIntX() - m_CornerRadius, drawStart.GetFloorIntY() + m_CornerRadius, m_CornerRadius, {m_Color, 0, 0, 255});
-	DrawCircle(drawEnd.GetFloorIntX() - m_CornerRadius, drawEnd.GetFloorIntY() - m_CornerRadius, m_CornerRadius, {m_Color, 0, 0, 255});
-	DrawRectangle(drawStart.GetFloorIntX(), drawStart.GetFloorIntY() + m_CornerRadius, drawEnd.GetFloorIntX() - drawStart.GetFloorIntX(), drawEnd.GetFloorIntY() - drawStart.GetFloorIntY() - 2 * m_CornerRadius, {m_Color, 0, 0, 255});
-	DrawRectangle(drawStart.GetFloorIntX() + m_CornerRadius, drawStart.GetFloorIntY(), drawEnd.GetFloorIntX() - drawStart.GetFloorIntX() - 2 * m_CornerRadius, drawEnd.GetFloorIntY() - drawStart.GetFloorIntY(), {m_Color, 0, 0, 255});
+void CircleFillPrimitive::Draw() {
+	RTE::Draw::Circle(ToFloorVec2(m_StartPos), static_cast<float>(m_Radius), GetDrawColor());
 }
 
-void CirclePrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	DrawCircleLines(drawStart.GetFloorIntX(), drawStart.GetFloorIntY(), m_Radius, {m_Color, 0, 0, 255});
+void EllipsePrimitive::Draw() {
+	RTE::Draw::EllipseLines(ToFloorVec2(m_StartPos), static_cast<float>(m_HorizRadius), static_cast<float>(m_VertRadius), GetDrawColor());
 }
 
-void CircleFillPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	DrawCircle(drawStart.GetFloorIntX(), drawStart.GetFloorIntY(), m_Radius, {m_Color, 0, 0, 255});
+void EllipseFillPrimitive::Draw() {
+	RTE::Draw::Ellipse(ToFloorVec2(m_StartPos), static_cast<float>(m_HorizRadius), static_cast<float>(m_VertRadius), GetDrawColor());
 }
 
-void EllipsePrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	DrawEllipseLines(drawStart.GetFloorIntX(), drawStart.GetFloorIntY(), m_HorizRadius, m_VertRadius, {m_Color, 0, 0, 255});
+void TrianglePrimitive::Draw() {
+	RTE::Draw::TriangleLines(ToFloorVec2(m_PointAPos), ToFloorVec2(m_PointBPos), ToFloorVec2(m_PointCPos), GetDrawColor());
 }
 
-void EllipseFillPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-	DrawEllipse(drawStart.GetFloorIntX(), drawStart.GetFloorIntY(), m_HorizRadius, m_VertRadius, {m_Color, 0, 0, 255});
+void TriangleFillPrimitive::Draw() {
+	RTE::Draw::Triangle(ToFloorVec2(m_PointAPos), ToFloorVec2(m_PointBPos), ToFloorVec2(m_PointCPos), GetDrawColor());
 }
 
-void TrianglePrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawPointA = WrapCoordinates(targetPos, m_PointAPos);
-	Vector drawPointB = WrapCoordinates(targetPos, m_PointBPos);
-	Vector drawPointC = WrapCoordinates(targetPos, m_PointCPos);
-	DrawLine(drawPointA.GetFloorIntX(), drawPointA.GetFloorIntY(), drawPointB.GetFloorIntX(), drawPointB.GetFloorIntY(), {m_Color, 0, 0, 255});
-	DrawLine(drawPointB.GetFloorIntX(), drawPointB.GetFloorIntY(), drawPointC.GetFloorIntX(), drawPointC.GetFloorIntY(), {m_Color, 0, 0, 255});
-	DrawLine(drawPointC.GetFloorIntX(), drawPointC.GetFloorIntY(), drawPointA.GetFloorIntX(), drawPointA.GetFloorIntY(), {m_Color, 0, 0, 255});
-}
-
-void TriangleFillPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawPointA = WrapCoordinates(targetPos, m_PointAPos);
-	Vector drawPointB = WrapCoordinates(targetPos, m_PointBPos);
-	Vector drawPointC = WrapCoordinates(targetPos, m_PointCPos);
-	DrawTriangle(drawPointA, drawPointB, drawPointC, {m_Color, 0, 0, 255});
-}
-
-void PolygonPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	Vector drawStart;
-	Vector drawEnd;
-	Vector startPos = WrapCoordinates(targetPos, m_StartPos);
-	for (int i = 0; i < m_Vertices.size(); ++i) {
-		drawStart = startPos - targetPos + (*m_Vertices[i]);
-		drawEnd = startPos - targetPos + ((i + 1 < m_Vertices.size()) ? *m_Vertices[i + 1] : *m_Vertices[0]);
-		DrawLine(drawStart.GetFloorIntX(), drawStart.GetFloorIntY(), drawEnd.GetFloorIntX(), drawEnd.GetFloorIntY(), {m_Color, 0, 0, 255});
-	}
-}
-
-void PolygonFillPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
-	size_t drawPointsSize = m_Vertices.size();
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-
-	std::vector<Vector2> drawPoints = {};
-	drawPoints.reserve(drawPointsSize);
-
+void PolygonPrimitive::Draw() {
+	std::vector<glm::vec2> points;
+	points.reserve(m_Vertices.size());
 	for (const Vector* vertex: m_Vertices) {
-		drawPoints.emplace_back(drawStart.GetFloorIntX() + vertex->GetFloorIntX(), drawStart.GetFloorIntY() + vertex->GetFloorIntY());
+		points.emplace_back(ToFloorVec2(m_StartPos + *vertex));
 	}
-	DrawTriangleStrip(drawPoints.data(), drawPoints.size(), {m_Color, 0, 0, 255});
+	RTE::Draw::PolygonLines(points, GetDrawColor());
 }
 
+void PolygonFillPrimitive::Draw() {
+	std::vector<glm::vec2> points;
+	points.reserve(m_Vertices.size());
+	for (const Vector* vertex: m_Vertices) {
+		points.emplace_back(ToFloorVec2(m_StartPos + *vertex));
+	}
+	RTE::Draw::Polygon(std::move(points), GetDrawColor());
+}
 
 void TextPrimitive::CreateTextBitmap() {
 	if(m_Text.empty()) {
@@ -235,19 +252,12 @@ void TextPrimitive::CreateTextBitmap() {
 	m_TargetPosAlignment = Vector(static_cast<float>(textWidth), 0);
 }
 
-void TextPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
+void TextPrimitive::Draw() {
 	if (!m_TextBitmap) {
 		return;
 	}
-
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos) - m_TargetPosAlignment;
-	Rectangle bitmapRect(0.0f, 0.0f, m_TextBitmap->w, m_TextBitmap->h);
-	Rectangle destRect(
-		drawStart.m_X,
-		drawStart.m_Y,
-		m_TextBitmap->w,
-		m_TextBitmap->h);
-	DrawTexturePro(m_TextBitmap, bitmapRect, destRect, {0.0f, 0.0f}, m_RotAngle, {255, 255, 255, 255});
+	// Rotate around the anchor point. CC angles are counter-clockwise, screen space rotation is clockwise.
+	RTE::Draw::DrawBitmap(m_TextBitmap, ToFloorVec2(m_StartPos), -ToVec2(m_TargetPosAlignment), -m_RotAngle, glm::vec2(1.0f), GetDrawColor());
 }
 
 TextPrimitive::~TextPrimitive() {
@@ -257,19 +267,10 @@ TextPrimitive::~TextPrimitive() {
 	}
 }
 
-void BitmapPrimitive::Draw(BITMAP* drawScreen, const Vector& targetPos) {
+void BitmapPrimitive::Draw() {
 	if (!m_Bitmap) {
 		return;
 	}
-
-	Vector drawStart = WrapCoordinates(targetPos, m_StartPos);
-
-	Rectangle flippedRect(
-		drawStart.m_X - m_Bitmap->w / 2,
-		drawStart.m_Y - m_Bitmap->h / 2,
-		(m_VFlipped ? -m_Bitmap->w : m_Bitmap->w) * m_Scale,
-		(m_HFlipped ? -m_Bitmap->h : m_Bitmap->h) * m_Scale
-	);
-
-	DrawTexturePro(m_Bitmap, Rectangle(0.0f, 0.0f, m_Bitmap->w, m_Bitmap->h), flippedRect, {0.0f, 0.0f}, m_RotAngle, {255, 255, 255, 255});
+	glm::vec2 scale(m_HFlipped ? -m_Scale : m_Scale, m_VFlipped ? -m_Scale : m_Scale);
+	RTE::Draw::DrawBitmap(m_Bitmap, ToFloorVec2(m_StartPos), glm::vec2(-m_Bitmap->w / 2.0f, -m_Bitmap->h / 2.0f), -m_RotAngle, scale, GetDrawColor());
 }
