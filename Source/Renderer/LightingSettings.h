@@ -14,6 +14,9 @@ namespace RTE {
 		float SolidFalloff = 0.6F; //!< How much sky light is kept per grid cell travelled into terrain.
 		int PropagationIterationsPerFrame = 6; //!< Sky light propagation iterations per frame. Light settles into new terrain over a few frames.
 
+		float AtmosphereHaze = 0.3F; //!< How much the furthest background layers fade into the atmosphere, 0 to 1.
+		glm::vec3 AtmosphereColor = {0.62F, 0.74F, 0.95F}; //!< Color of the atmosphere at noon, linear. Tinted by the time of day.
+
 		float TimeOfDay = 12.0F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
 		float DayLengthMinutes = 0.0F; //!< Real minutes for a full day/night cycle (in sim time, so it pauses with the game). 0 keeps the time of day fixed.
 

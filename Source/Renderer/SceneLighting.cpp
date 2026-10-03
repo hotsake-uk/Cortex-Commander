@@ -611,6 +611,11 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	float backgroundThresholdZ = (c_BackgroundDepth + c_TerrainBGDepth) * 0.5F;
 	float backgroundThresholdNDC = (2.0F * backgroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth);
 	m_CompositeShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+	auto depthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
+	m_CompositeShader->SetFloat("rteBackgroundNearDepth", depthForZ(c_BackgroundDepth));
+	m_CompositeShader->SetFloat("rteBackgroundFarDepth", depthForZ(c_BackgroundDepth + c_BackgroundDepthRange));
+	m_CompositeShader->SetVector3f("rteAtmosphereColor", m_Settings.AtmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
+	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? m_Settings.AtmosphereHaze : 0.0F);
 	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 	m_CompositeShader->SetVector2f("rteScreenSize", screenSize);
 	m_CompositeShader->SetVector2f("rteScreenOrigin", origin);

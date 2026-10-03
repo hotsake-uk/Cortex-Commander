@@ -152,6 +152,7 @@ namespace RTE {
 	static constexpr float c_DefaultDrawDepth = 0.0f;
 	static constexpr float c_TerrainBGDepth = 50.0f;
 	static constexpr float c_BackgroundDepth = 100.0f;
+	static constexpr float c_BackgroundDepthRange = 85.0f; //!< Background layers are spread over this much depth beyond c_BackgroundDepth according to their parallax, nearest to furthest.
 
 	static constexpr float c_FarDepth = 200.0f;
 	static constexpr float c_NearDepth = -200.0f;

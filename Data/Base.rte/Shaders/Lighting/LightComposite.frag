@@ -15,6 +15,10 @@ uniform sampler2D rteSkyLight; // World grid, R = sky light 0..1, linearly filte
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
 uniform vec3 rteBackgroundLight; // Linear light on the distant background layers.
+uniform float rteBackgroundNearDepth; // Depth of the nearest background layers.
+uniform float rteBackgroundFarDepth; // Depth of the furthest background layers.
+uniform vec3 rteAtmosphereColor; // Linear haze color, time of day included.
+uniform float rteAtmosphereHaze; // How much the furthest layers fade into the haze.
 uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize; // World size covered by the sky light grid.
@@ -29,9 +33,14 @@ void main() {
 	vec4 albedo = texture(rteAlbedo, screenUV);
 
 	vec3 light;
-	if (texture(rteSceneDepth, screenUV).r > rteBackgroundDepth) {
-		// Background layers are far behind the action: they aren't shadowed by terrain or lit by explosions in front of them.
+	float sceneDepth = texture(rteSceneDepth, screenUV).r;
+	float haze = 0.0;
+	if (sceneDepth > rteBackgroundDepth) {
+		// Background layers are far behind the action: they aren't shadowed by terrain or lit by explosions in front of them, but fade into the atmosphere with distance.
 		light = rteBackgroundLight;
+		float distance = clamp((sceneDepth - rteBackgroundNearDepth) / (rteBackgroundFarDepth - rteBackgroundNearDepth), 0.0, 1.0);
+		// Nothing drawn at all (cleared depth) is open sky.
+		haze = sceneDepth >= 0.9999 ? rteAtmosphereHaze : rteAtmosphereHaze * smoothstep(0.0, 1.0, distance);
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 		float sky = texture(rteSkyLight, worldPos / rteGridWorldSize).r;
@@ -63,5 +72,6 @@ void main() {
 		return;
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
-	FragColor = vec4(albedoLinear * light + emissive, 1.0);
+	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze);
+	FragColor = vec4(litColor + emissive, 1.0);
 }

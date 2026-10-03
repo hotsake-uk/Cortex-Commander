@@ -203,6 +203,9 @@ void SLBackground::Update() {
 	m_MainBitmap = m_Bitmaps.at(m_Frame);
 	m_StaticTexture = m_Textures.at(m_Frame);
 
+	// Layers that scroll slower are further away. Place them deeper so the lighting can haze them by distance. Draw order is unaffected, since further layers are drawn first anyway.
+	m_ZOrder = c_BackgroundDepth + (1.0F - std::clamp(std::abs(m_ScrollRatio.GetX()), 0.0F, 1.0F)) * c_BackgroundDepthRange;
+
 	if (IsAutoScrolling()) {
 		if (m_AutoScrollStepTimer.GetElapsedSimTimeMS() > m_AutoScrollStepInterval) {
 			if (m_WrapX && m_CanAutoScrollX) {
