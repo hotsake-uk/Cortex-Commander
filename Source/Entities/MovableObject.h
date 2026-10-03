@@ -870,6 +870,18 @@ namespace RTE {
 		/// @return The interpolated render position.
 		Vector GetRenderPos() const { return InterpolateRenderPosition(m_RenderPrevPos, m_Pos); }
 
+		/// Gets how this is blended when drawn: 0 normal, 1 additive (glowy energy, plasma), 2 screen (soft light).
+		int GetRenderBlendMode() const { return m_RenderBlendMode; }
+		virtual void SetRenderBlendMode(int blendMode) { m_RenderBlendMode = std::clamp(blendMode, 0, 2); }
+		/// Gets the opacity this is drawn with, 0 to 1.
+		float GetRenderOpacity() const { return m_RenderOpacity; }
+		virtual void SetRenderOpacity(float opacity) { m_RenderOpacity = std::clamp(opacity, 0.0F, 1.0F); }
+
+		/// Applies this' render blend mode to the active render batch and returns the vertex tint to draw with. Call RestoreRenderBlendMode after drawing.
+		Color ApplyRenderBlendMode() const;
+		/// Restores the default blend mode after drawing with ApplyRenderBlendMode.
+		void RestoreRenderBlendMode() const;
+
 		/// Gets the radius of the light this casts. 0 means no light.
 		float GetLightRadius() const { return m_LightRadius; }
 		void SetLightRadius(float radius) { m_LightRadius = radius; }
@@ -1307,6 +1319,8 @@ namespace RTE {
 		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
 		float m_LightFlicker; //!< How much the light randomly flickers, 0 to 1.
+		int m_RenderBlendMode; //!< How this is blended when drawn: 0 normal, 1 additive, 2 screen.
+		float m_RenderOpacity; //!< Opacity this is drawn with, 0 to 1.
 		Vector m_LightOffset; //!< Offset of the light from this' position, rotated and flipped with this.
 		// The effect's rotation angle
 		float m_EffectRotAngle;

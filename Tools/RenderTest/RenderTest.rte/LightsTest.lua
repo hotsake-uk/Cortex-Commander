@@ -11,6 +11,13 @@ function LightsTestScript:UpdateScript()
 			actor.LightOffset = Vector(0, -12);
 		end
 	end
+	-- Dummies are drawn as translucent additive "ghosts", to exercise RenderBlendMode/RenderOpacity.
+	for actor in MovableMan.Actors do
+		if string.find(actor.PresetName, "Dummy") and actor.RenderBlendMode ~= 1 then
+			actor.RenderBlendMode = 1;
+			actor.RenderOpacity = 0.6;
+		end
+	end
 	local pulse = 0.6 + 0.4 * math.sin(self.timer.ElapsedRealTimeMS * 0.004);
 	local center = CameraMan:GetOffset(0) + Vector(FrameMan.PlayerScreenWidth * 0.3, FrameMan.PlayerScreenHeight * 0.5);
 	PostProcessMan:AddLight(center, 220, 90, 160, 255, 1.5 * pulse);

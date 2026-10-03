@@ -976,6 +976,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MovableObject) {
 	    .property("LightGreen", &MovableObject::GetLightGreen)
 	    .property("LightBlue", &MovableObject::GetLightBlue)
 	    .def("SetLightColor", &MovableObject::SetLightColor)
+	    .property("RenderBlendMode", &MovableObject::GetRenderBlendMode, &MovableObject::SetRenderBlendMode)
+	    .property("RenderOpacity", &MovableObject::GetRenderOpacity, &MovableObject::SetRenderOpacity)
 
 	    .def("GetParent", (MOSRotating * (MovableObject::*)()) & MovableObject::GetParent)
 	    .def("GetParent", (const MOSRotating* (MovableObject::*)() const) & MovableObject::GetParent)

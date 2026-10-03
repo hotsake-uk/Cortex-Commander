@@ -592,13 +592,15 @@ void MOSprite::Draw(const Camera& camera) const {
 	float spriteWidth = m_Sprites[m_Frame]->GetDimensions().w;
 	float spriteHeight = m_Sprites[m_Frame]->GetDimensions().h;
 
+	Color tint = ApplyRenderBlendMode();
 	if (!m_HFlipped) {
-		Draw::DrawTexture(m_Sprites[m_Frame].get(), renderPos + m_SpriteOffset);
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), renderPos + m_SpriteOffset, tint);
 	} else {
 		// Mirror the sprite offset around the position, then draw the quad with negative width to flip the texture.
 		float spriteLeft = renderPos.m_X - (spriteWidth + m_SpriteOffset.m_X);
-		Draw::DrawTexture(m_Sprites[m_Frame].get(), FloatRect(spriteLeft + spriteWidth, renderPos.m_Y + m_SpriteOffset.m_Y, -spriteWidth, spriteHeight));
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), FloatRect(spriteLeft + spriteWidth, renderPos.m_Y + m_SpriteOffset.m_Y, -spriteWidth, spriteHeight), tint);
 	}
+	RestoreRenderBlendMode();
 }
 
 void MOSprite::StoreRenderPreviousState() {

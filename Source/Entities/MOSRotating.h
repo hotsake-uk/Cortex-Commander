@@ -331,6 +331,12 @@ namespace RTE {
 		/// Stores the current state as the previous render state, for this and all attachables and wounds. See MovableObject::StoreRenderPreviousState.
 		void StoreRenderPreviousState() override;
 
+		/// Sets the render blend mode of this and all its attachables and wounds, so a whole actor can be made e.g. ghostly at once.
+		void SetRenderBlendMode(int blendMode) override;
+
+		/// Sets the render opacity of this and all its attachables and wounds.
+		void SetRenderOpacity(float opacity) override;
+
 		// Stuff that needs to be updated post-Update.
 		void PostUpdate() override;
 

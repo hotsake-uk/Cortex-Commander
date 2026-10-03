@@ -1314,6 +1314,26 @@ bool MOSRotating::DeepCheck(bool makeMOPs, int skipMOP, int maxMOPs) {
 	return false;
 }
 
+void MOSRotating::SetRenderBlendMode(int blendMode) {
+	MOSprite::SetRenderBlendMode(blendMode);
+	for (Attachable* attachable: m_Attachables) {
+		attachable->SetRenderBlendMode(blendMode);
+	}
+	for (AEmitter* wound: m_Wounds) {
+		wound->SetRenderBlendMode(blendMode);
+	}
+}
+
+void MOSRotating::SetRenderOpacity(float opacity) {
+	MOSprite::SetRenderOpacity(opacity);
+	for (Attachable* attachable: m_Attachables) {
+		attachable->SetRenderOpacity(opacity);
+	}
+	for (AEmitter* wound: m_Wounds) {
+		wound->SetRenderOpacity(opacity);
+	}
+}
+
 void MOSRotating::StoreRenderPreviousState() {
 	MOSprite::StoreRenderPreviousState();
 	for (Attachable* attachable: m_Attachables) {
@@ -1855,7 +1875,9 @@ void MOSRotating::Draw(const Camera& camera) const {
 		scale.m_X *= -1;
 	}
 
-	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale);
+	Color tint = ApplyRenderBlendMode();
+	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale, tint);
+	RestoreRenderBlendMode();
 
 	// Draw all the attached wound emitters, and only if the mode is g_DrawColor and not onlyphysical
 	// Only draw attachables and emitters which are not drawn after parent, so we draw them before

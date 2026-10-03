@@ -88,6 +88,13 @@ AddDevice = HDFirearm
 		Y = -2
 ```
 
+Any `MovableObject` can also be drawn translucent or glowing:
+
+```ini
+	RenderBlendMode = Additive   // Normal (default), Additive (energy, plasma, fire), or Screen (soft light)
+	RenderOpacity = 0.6          // 0..1
+```
+
 Glow effects (`ScreenEffect`) already cast light automatically, in the average colour of their glow image. You don't need to add lights for muzzle flashes, explosions, thrusters or fire.
 
 ## Lua
@@ -99,6 +106,8 @@ actor.LightIntensity = 0.9
 actor:SetLightColor(255, 230, 190)   -- 0-255
 actor.LightOffset = Vector(0, -12)
 actor.LightFlicker = 0.0
+shield.RenderBlendMode = 1   -- 0 normal, 1 additive, 2 screen
+shield.RenderOpacity = 0.5
 print(actor.LightRed, actor.LightGreen, actor.LightBlue)
 
 -- A light for this frame only. Call every update to keep it on:

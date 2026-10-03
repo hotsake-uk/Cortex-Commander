@@ -1,4 +1,5 @@
 #include "MovableObject.h"
+#include "RenderMan.h"
 
 #include "ActivityMan.h"
 #include "PresetMan.h"
@@ -108,6 +109,8 @@ void MovableObject::Clear() {
 	m_LightIntensity = 0.0F;
 	m_LightFlicker = 0.0F;
 	m_LightOffset.Reset();
+	m_RenderBlendMode = 0;
+	m_RenderOpacity = 1.0F;
 
 	m_UniqueID = 0;
 
@@ -237,6 +240,8 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_LightIntensity = reference.m_LightIntensity;
 	m_LightFlicker = reference.m_LightFlicker;
 	m_LightOffset = reference.m_LightOffset;
+	m_RenderBlendMode = reference.m_RenderBlendMode;
+	m_RenderOpacity = reference.m_RenderOpacity;
 
 	m_ForceIntoMasterLuaState = reference.m_ForceIntoMasterLuaState;
 	for (const auto& scriptPath: reference.m_AllLoadedScripts) {
@@ -366,6 +371,17 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 	MatchProperty("LightIntensity", { reader >> m_LightIntensity; });
 	MatchProperty("LightFlicker", { reader >> m_LightFlicker; });
 	MatchProperty("LightOffset", { reader >> m_LightOffset; });
+	MatchProperty("RenderBlendMode", {
+		std::string mode = reader.ReadPropValue();
+		if (mode == "Additive" || mode == "1") {
+			m_RenderBlendMode = 1;
+		} else if (mode == "Screen" || mode == "2") {
+			m_RenderBlendMode = 2;
+		} else {
+			m_RenderBlendMode = 0;
+		}
+	});
+	MatchProperty("RenderOpacity", { reader >> m_RenderOpacity; m_RenderOpacity = std::clamp(m_RenderOpacity, 0.0F, 1.0F); });
 	MatchProperty("EffectStartTime", { reader >> m_EffectStartTime; });
 	MatchProperty("EffectRotAngle", { reader >> m_EffectRotAngle; });
 	MatchProperty("InheritEffectRotAngle", { reader >> m_InheritEffectRotAngle; });
@@ -483,6 +499,8 @@ int MovableObject::Save(Writer& writer) const {
 	writer << m_LightFlicker;
 	writer.NewProperty("LightOffset");
 	writer << m_LightOffset;
+	writer.NewPropertyWithValue("RenderBlendMode", m_RenderBlendMode);
+	writer.NewPropertyWithValue("RenderOpacity", m_RenderOpacity);
 	writer.NewProperty("EffectStartTime");
 	writer << m_EffectStartTime;
 	writer.NewProperty("EffectStopTime");
@@ -862,6 +880,30 @@ void MovableObject::ApplyImpulses() {
 
 	// Clear out the impulses list
 	m_ImpulseForces.clear();
+}
+
+Color MovableObject::ApplyRenderBlendMode() const {
+	int opacity = static_cast<int>(m_RenderOpacity * 255.0F);
+	switch (m_RenderBlendMode) {
+		case 1:
+			g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ADD));
+			return Color(255, 255, 255, opacity);
+		case 2:
+			g_RenderMan.SetActiveBlendMode(BlendMode(Blend::SCREEN));
+			// Screen blending ignores alpha, so fade by darkening instead.
+			return Color(opacity, opacity, opacity, 255);
+		default:
+			if (opacity < 255) {
+				g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));
+			}
+			return Color(255, 255, 255, opacity);
+	}
+}
+
+void MovableObject::RestoreRenderBlendMode() const {
+	if (m_RenderBlendMode != 0 || m_RenderOpacity < 1.0F) {
+		g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));
+	}
 }
 
 void MovableObject::StoreRenderPreviousState() {

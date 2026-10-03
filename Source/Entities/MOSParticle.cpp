@@ -228,5 +228,7 @@ void MOSParticle::Draw(const Camera& camera) const {
 		return;
 	}
 	Vector spritePos((GetRenderPos() + m_SpriteOffset).GetFloored());
-	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos);
+	Color tint = ApplyRenderBlendMode();
+	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, tint);
+	RestoreRenderBlendMode();
 }
