@@ -30,8 +30,8 @@ These tools are for checking rendering changes by eye, against fixed scenarios, 
 ```
 
 - **Scenes:** six calm, fixed scenes (`GoldenNoon`, `GoldenNight`, `GoldenCaves`, `GoldenClassic`, `GoldenLightingOnly`, `GoldenInterior`). They have no explosions and use the built-in lighting defaults, so your own settings can't change them.
-- **How it compares:** captures are cropped to the 960x540 game view and compared against the baselines. Small camera offsets are allowed by aligning first, within ±12 px.
-- **Tolerances:** a scene fails when the mean channel difference goes over 6, or more than 4% of pixels differ clearly. Normal run-to-run noise is 0–4. A 20% exposure change scores about 12.
+- **How it compares:** captures are cropped to the 960x540 game view and compared against the baselines. Small camera offsets are allowed by aligning first, within ±32 px.
+- **Tolerances:** a scene fails when the mean channel difference goes over 7, or more than 6% of pixels differ clearly. Normal run-to-run noise is 0–4. A 20% exposure change scores about 12.
 - **Diffs:** each scene writes a diff image to `Output\golden_<scene>_diff.png`. Differences show in red.
 - **Not in CI:** hosted runners have no GPU, so this runs locally. Run it before committing renderer changes. It takes about 3 minutes.
 

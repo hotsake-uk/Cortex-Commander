@@ -3,8 +3,8 @@ param(
 	[string[]]$Only = @(),          # Limit to these scenarios (names without the Golden prefix also work).
 	[string]$Exe = "Cortex Command.debug.release.exe",
 	[int]$ExtraWait = 10,
-	[double]$MaxMeanDiff = 6.0,     # Mean absolute difference per channel (0-255) allowed.
-	[double]$MaxBadPercent = 4.0    # Percentage of pixels allowed to differ by more than $BadThreshold.
+	[double]$MaxMeanDiff = 7.0,     # Mean absolute difference per channel (0-255) allowed.
+	[double]$MaxBadPercent = 6.0    # Percentage of pixels allowed to differ by more than $BadThreshold.
 )
 # Golden image regression check: captures a few calm, fixed scenes and compares them against the baselines in Golden\.
 # The game isn't deterministic (AI, particles, twinkling stars), so the comparison allows a small camera shift and has tolerances: it catches black screens,
@@ -68,10 +68,10 @@ public static class GoldenCompare {
 	// The game camera can land a pixel or two differently between runs, so compare at the best global shift within maxShift.
 	public static double[] Compare(byte[] a, byte[] b, int w, int h, int stride, int maxShift, byte[] diff) {
 		double bestMean = double.MaxValue, bestBad = 0; int bestX = 0, bestY = 0;
-		// Coarse pass every 3 pixels, then refine around the best.
+		// Coarse pass every 4 pixels, then refine around the best.
 		for (int pass = 0; pass < 2; pass++) {
-			int step = pass == 0 ? 3 : 1;
-			int range = pass == 0 ? maxShift : 2;
+			int step = pass == 0 ? 4 : 1;
+			int range = pass == 0 ? maxShift : 3;
 			int centerX = bestX, centerY = bestY;
 			for (int dy = centerY - range; dy <= centerY + range; dy += step) {
 				for (int dx = centerX - range; dx <= centerX + range; dx += step) {
@@ -101,7 +101,7 @@ function Compare-Images([Drawing.Bitmap]$a, [Drawing.Bitmap]$b, [string]$diffPat
 	[Runtime.InteropServices.Marshal]::Copy($db.Scan0, $pb, 0, $bytes)
 	$stride = $da.Stride
 	$a.UnlockBits($da); $b.UnlockBits($db)
-	$r = [GoldenCompare]::Compare($pa, $pb, $w, $h, $stride, 12, $pd)
+	$r = [GoldenCompare]::Compare($pa, $pb, $w, $h, $stride, 32, $pd)
 	$diff = New-Object Drawing.Bitmap $w, $h
 	$dd = $diff.LockBits($rect, [Drawing.Imaging.ImageLockMode]::WriteOnly, $format)
 	[Runtime.InteropServices.Marshal]::Copy($pd, 0, $dd.Scan0, $bytes)

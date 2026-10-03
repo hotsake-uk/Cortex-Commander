@@ -467,7 +467,13 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::UpdateTargetRegion(const Bo
 		}
 
 		for (auto& region: updateRegions) {
-			m_MainStreamTexture->Update(region);
+			if constexpr (TRACK_DRAWINGS) {
+				// Tracked layers swap between two bitmaps and are redrawn every frame, so there's nothing to save by diffing.
+				m_MainStreamTexture->Update(region);
+			} else {
+				// Terrain and unseen layers rarely change: only upload what did.
+				m_MainStreamTexture->UpdateChanged(region);
+			}
 		}
 		// g_GLStateMan.UpdateDynamicBitmap(m_MainBitmap, true, updateRegions);
 
