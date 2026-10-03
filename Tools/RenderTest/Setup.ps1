@@ -13,10 +13,19 @@ if (-not (Test-Path $baseSettings)) { throw "Run the game once first so Userdata
 $scenarioDir = Join-Path $Repo "Userdata\RenderTest"
 if (-not (Test-Path $scenarioDir)) { New-Item -ItemType Directory -Path $scenarioDir | Out-Null }
 
-function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalScripts) {
+function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalScripts, [switch]$DefaultLighting) {
 	# Captures are compared against each other, so always use the native 960x540 window whatever the player's own settings are.
 	$Overrides = @{ ResolutionMultiplier = 1; Fullscreen = 0 } + $Overrides
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
+	if ($DefaultLighting) {
+		# Golden scenarios use the built-in lighting defaults, so the player's own tweaks (time of day, quality, weather) can't change the baselines.
+		$inLighting = $false
+		$lines = foreach ($line in $lines) {
+			if ($line -match '^// Lighting and Post-Processing') { $inLighting = $true; continue }
+			if ($inLighting -and $line -match '^////') { $inLighting = $false }
+			if (-not $inLighting) { $line }
+		}
+	}
 	$set = @{}
 	$lines = foreach ($line in $lines) {
 		if ($line -match '^(\s*)(\w+)\s*=') {
@@ -55,3 +64,11 @@ $tutorial = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAT
 Write-Scenario "TutorialDusk" ($tutorial + @{ TimeOfDay = 19 }) @()
 Write-Scenario "TutorialNight" ($tutorial + @{ TimeOfDay = 23 }) @()
 Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()
+
+# Golden scenarios: calm, fixed shots compared against committed baselines by Golden.ps1. No explosions, default lighting.
+Write-Scenario "GoldenNoon" $bunker @() -DefaultLighting
+Write-Scenario "GoldenNight" ($bunker + @{ TimeOfDay = 23 }) @() -DefaultLighting
+Write-Scenario "GoldenCaves" $caves @("Render Test Camera Tour") -DefaultLighting
+Write-Scenario "GoldenClassic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0 }) @() -DefaultLighting
+Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 }) @() -DefaultLighting
+Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLighting

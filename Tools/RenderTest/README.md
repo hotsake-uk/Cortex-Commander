@@ -21,6 +21,20 @@ These tools are for checking rendering changes by eye, against fixed scenarios, 
 - To compare against another checkout, pass `-Repo` pointing at its game folder. That folder needs the mod and scenario files too, so run `Setup.ps1 -Repo <path>` there.
 - Then compose the results with `BeforeAfter.ps1 -Before a.png -After b.png -Out compare.png` or `Gallery.ps1`.
 
+## Golden image regression check
+
+```powershell
+.\Golden.ps1            # compare against Golden\*.png; exit code 1 on any failure
+.\Golden.ps1 -Update    # accept the current look as the new baselines (after an intended visual change)
+.\Golden.ps1 -Only Noon,Caves
+```
+
+- **Scenes:** six calm, fixed scenes (`GoldenNoon`, `GoldenNight`, `GoldenCaves`, `GoldenClassic`, `GoldenLightingOnly`, `GoldenInterior`). They have no explosions and use the built-in lighting defaults, so your own settings can't change them.
+- **How it compares:** captures are cropped to the 960x540 game view and compared against the baselines. Small camera offsets are allowed by aligning first, within ±12 px.
+- **Tolerances:** a scene fails when the mean channel difference goes over 6, or more than 4% of pixels differ clearly. Normal run-to-run noise is 0–4. A 20% exposure change scores about 12.
+- **Diffs:** each scene writes a diff image to `Output\golden_<scene>_diff.png`. Differences show in red.
+- **Not in CI:** hosted runners have no GPU, so this runs locally. Run it before committing renderer changes. It takes about 3 minutes.
+
 ## Scenarios
 
 | Scenario | What it shows |
