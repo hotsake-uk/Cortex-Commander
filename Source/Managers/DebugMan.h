@@ -17,6 +17,9 @@ namespace RTE {
 		/// Opens the Graphics Lab, the live lighting and post-processing tuning window.
 		void ShowGraphicsLab() { m_ShowGraphicsLab = true; }
 
+		/// Toggles the World Debug window (time of day, weather, lighting and game speed), bound to F6.
+		void ToggleWorldDebug() { m_ShowWorldDebug = !m_ShowWorldDebug; }
+
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
@@ -31,12 +34,18 @@ namespace RTE {
 		bool m_ImGuiDemoWindow{false};
 		bool m_ShowPerformanceMan{false};
 		bool m_ShowGraphicsLab{false};
+		bool m_ShowWorldDebug{false};
+		bool m_ReleasedMouseForImGui{false}; //!< Whether the mouse was taken from the game so ImGui windows can be used.
 
 		bool m_DrawCameraBounds{false};
 		bool m_DrawSpriteBounds{false};
 
 		void DebugOptionsGUI();
 		void GraphicsLabGUI();
+		void WorldDebugGUI();
+
+		/// Gives the mouse to ImGui while any interactive debug window is open, and back to the game when they all close.
+		void UpdateMouseOwnership();
 
 		bool m_ShowActorDebugGui{false};
 		std::unique_ptr<RenderTarget> m_DebugDrawTarget;

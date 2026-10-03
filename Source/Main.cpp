@@ -219,6 +219,14 @@ void HandleMainArgs(int argCount, char** argValue) {
 void PollSDLEvents() {
 	SDL_Event sdlEvent;
 	while (SDL_PollEvent(&sdlEvent)) {
+		// Clicks, scrolls and typing aimed at a debug window shouldn't also reach the game (releases always do, so nothing gets stuck down).
+		const ImGuiIO& imGuiIO = ImGui::GetIO();
+		bool imGuiTakesEvent = (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
+		                       (imGuiIO.WantCaptureKeyboard && (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_TEXT_INPUT));
+		if (imGuiTakesEvent) {
+			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+			continue;
+		}
 		switch (sdlEvent.type) {
 			case SDL_EVENT_QUIT :
 				System::SetQuit(true);

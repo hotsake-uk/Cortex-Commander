@@ -13,6 +13,10 @@
 #include "PostProcessMan.h"
 #include "SettingsMan.h"
 #include "SceneLighting.h"
+#include "TimerMan.h"
+#include "UInputMan.h"
+#include "ActivityMan.h"
+#include "Scene.h"
 #include "tracy/TracyOpenGL.hpp"
 
 using namespace RTE;
@@ -21,6 +25,12 @@ void Draw() {
 }
 
 void DebugMan::DrawImGui() {
+	UpdateMouseOwnership();
+
+	if (m_ShowWorldDebug) {
+		WorldDebugGUI();
+	}
+
 	if (m_ShowDebugWindow) {
 		DebugOptionsGUI();
 	}
@@ -40,6 +50,102 @@ void DebugMan::DrawImGui() {
 	if (m_ShowGraphicsLab) {
 		GraphicsLabGUI();
 	}
+}
+
+void DebugMan::UpdateMouseOwnership() {
+	bool wantMouse = m_ShowWorldDebug || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
+	if (wantMouse != m_ReleasedMouseForImGui) {
+		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while debug windows are open.
+		g_UInputMan.DisableMouseMoving(wantMouse);
+		m_ReleasedMouseForImGui = wantMouse;
+	}
+	// The game hides the OS cursor and draws its own, so have ImGui draw one too.
+	ImGui::GetIO().MouseDrawCursor = wantMouse;
+}
+
+void DebugMan::WorldDebugGUI() {
+	ImGui::SetNextWindowSize(ImVec2(340.0F, 0.0F), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10.0F, 40.0F), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("World Debug (F6)", &m_ShowWorldDebug)) {
+		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+
+		if (const Scene* scene = g_SceneMan.GetScene(); scene && g_ActivityMan.IsInActivity()) {
+			ImGui::Text("Scene: %s", scene->GetPresetName().c_str());
+		} else {
+			ImGui::TextDisabled("No scene loaded (menus)");
+		}
+		ImGui::Text("%.0f FPS", ImGui::GetIO().Framerate);
+
+		ImGui::SeparatorText("Time of day");
+		ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
+		const std::pair<const char*, float> presets[] = {{"Midnight", 0.0F}, {"Dawn", 6.0F}, {"Noon", 12.0F}, {"Dusk", 19.0F}, {"Night", 22.0F}};
+		for (size_t i = 0; i < std::size(presets); ++i) {
+			if (i > 0) {
+				ImGui::SameLine();
+			}
+			if (ImGui::Button(presets[i].first)) {
+				settings.TimeOfDay = presets[i].second;
+			}
+		}
+		bool timeFlows = settings.DayLengthMinutes > 0.0F;
+		if (ImGui::Checkbox("Time passes", &timeFlows)) {
+			settings.DayLengthMinutes = timeFlows ? 10.0F : 0.0F;
+		}
+		if (timeFlows) {
+			ImGui::SliderFloat("Day length (min)", &settings.DayLengthMinutes, 0.5F, 60.0F, "%.1f", ImGuiSliderFlags_Logarithmic);
+		}
+
+		ImGui::SeparatorText("Weather");
+		ImGui::Combo("Precipitation", &settings.WeatherType, "Clear\0Rain\0Snow\0");
+		ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+		ImGui::SliderFloat("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
+
+		ImGui::SeparatorText("Lighting");
+		ImGui::Checkbox("Lighting", &settings.Enabled);
+		ImGui::SameLine();
+		ImGui::Checkbox("Bloom", &settings.BloomEnabled);
+		ImGui::SameLine();
+		ImGui::Checkbox("Extra effects", &settings.DistortionEnabled);
+		// Brightness sliders scale the colors uniformly, keeping their tint.
+		auto brightnessSlider = [](const char* label, glm::vec3& color, float maxValue) {
+			float level = std::max({color.x, color.y, color.z});
+			if (ImGui::SliderFloat(label, &level, 0.0F, maxValue, "%.2f") && level > 0.0F) {
+				float current = std::max({color.x, color.y, color.z});
+				color = current > 0.0F ? color * (level / current) : glm::vec3(level);
+			}
+		};
+		brightnessSlider("Interior / cave light", settings.Ambient, 1.0F);
+		brightnessSlider("Playfield light floor", settings.ForegroundAmbient, 1.0F);
+		brightnessSlider("Sky light", settings.SkyColor, 2.0F);
+		ImGui::SliderFloat("Exposure", &settings.Exposure, 0.1F, 4.0F);
+		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
+		ImGui::SliderFloat("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0");
+
+		ImGui::SeparatorText("Game");
+		float timeScale = g_TimerMan.GetTimeScale();
+		if (ImGui::SliderFloat("Game speed", &timeScale, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+			g_TimerMan.SetTimeScale(timeScale);
+		}
+		if (ImGui::Button("Normal speed")) {
+			g_TimerMan.SetTimeScale(1.0F);
+		}
+
+		ImGui::Separator();
+		if (ImGui::Button("Graphics Lab")) {
+			m_ShowGraphicsLab = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Performance")) {
+			m_ShowPerformanceMan = !m_ShowPerformanceMan;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Save settings")) {
+			g_PostProcessMan.AdoptAtmosphereAsPlayers();
+			g_SettingsMan.UpdateSettingsFile();
+		}
+	}
+	ImGui::End();
 }
 
 void DebugMan::GraphicsLabGUI() {
@@ -130,7 +236,8 @@ void DebugMan::DebugOptionsGUI() {
 	if (ImGui::Begin("Debug Options", &m_ShowDebugWindow)) {
 		ImGui::Checkbox("Show Performance Stats", &m_ShowPerformanceMan);
 		ImGui::Checkbox("Show Graphics Lab", &m_ShowGraphicsLab);
-		ImGui::Checkbox("Show ImGui Demo Window", &m_ShowDebugWindow);
+		ImGui::Checkbox("Show World Debug (F6)", &m_ShowWorldDebug);
+		ImGui::Checkbox("Show ImGui Demo Window", &m_ImGuiDemoWindow);
 		ImGui::Checkbox("Show Actor debug", &m_ShowActorDebugGui);
 		if (ImGui::TreeNode("Debug Draw")) {
 			ImGui::Checkbox("Draw Camera bounds", &m_DrawCameraBounds);
