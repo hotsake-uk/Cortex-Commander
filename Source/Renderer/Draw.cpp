@@ -7,6 +7,17 @@
 #include "tracy/Tracy.hpp"
 
 using namespace RTE;
+
+namespace {
+	/// Bakes a 2D transform into vertex positions on the CPU, keeping their depth. Cheaper than a per draw call uniform and lets consecutive draws be merged.
+	void TransformVertices(std::vector<Vertex>& vertices, const glm::mat4& transform) {
+		for (Vertex& vertex: vertices) {
+			glm::vec4 position = transform * glm::vec4(vertex.m_Pos.x, vertex.m_Pos.y, 0.0f, 1.0f);
+			vertex.m_Pos.x = position.x;
+			vertex.m_Pos.y = position.y;
+		}
+	}
+} // namespace
 // Raylib-style wrappers kept for the remaining CPU-side draw paths (editor/placement previews, menus). They draw on the active render batch,
 // in whatever space its camera uses. Rotations follow the old vendored raylib convention: radians, with positive values rotating counter-clockwise on screen.
 namespace {
@@ -59,7 +70,7 @@ void RTE::DrawTexturePro(BITMAP* bitmap, Rectangle source, Rectangle dest, Vecto
 	glm::mat4 transform = glm::translate(glm::vec3(dest.x, dest.y, 0.0f));
 	transform = glm::rotate(transform, -rotation, glm::vec3(0.0f, 0.0f, 1.0f));
 	transform = glm::translate(transform, glm::vec3(-origin.x, -origin.y, 0.0f));
-	draw->m_UniformValues.emplace_back(std::make_unique<Matrix4fValue>(draw->m_Shader->GetTransformUniform(), std::move(transform)));
+	TransformVertices(draw->m_Vertices, transform);
 }
 namespace RTE {
 	namespace Draw {
@@ -102,7 +113,7 @@ namespace RTE {
 			transform = glm::rotate(transform, angle, glm::vec3(0.0f, 0.0f, 1.0f));
 			transform = glm::scale(transform, glm::vec3(scale, 1.0f));
 			transform = glm::translate(transform, glm::vec3(origin, 0.0f));
-			draw->m_UniformValues.emplace_back(std::make_unique<Matrix4fValue>(draw->m_Shader->GetTransformUniform(), std::move(transform)));
+			TransformVertices(draw->m_Vertices, transform);
 
 			return draw;
 		}
@@ -119,7 +130,7 @@ namespace RTE {
 			transform = glm::rotate(transform, angle, glm::vec3(0.0f, 0.0f, 1.0f));
 			transform = glm::scale(transform, glm::vec3(scale, 1.0f));
 			transform = glm::translate(transform, glm::vec3(origin, 0.0f));
-			draw->m_UniformValues.emplace_back(std::make_unique<Matrix4fValue>(draw->m_Shader->GetTransformUniform(), std::move(transform)));
+			TransformVertices(draw->m_Vertices, transform);
 			return draw;
 		}
 

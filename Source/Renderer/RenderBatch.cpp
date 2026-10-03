@@ -13,6 +13,15 @@
 
 using namespace RTE;
 
+namespace {
+	bool SameScissor(const std::optional<FloatRect>& a, const std::optional<FloatRect>& b) {
+		if (a.has_value() != b.has_value()) {
+			return false;
+		}
+		return !a.has_value() || (a->x == b->x && a->y == b->y && a->w == b->w && a->h == b->h);
+	}
+} // namespace
+
 VertexBuffer::VertexBuffer() {
 	m_Vertices.reserve(4 * c_DefaultBatchVAOElements);
 	m_Indices.reserve(6 * c_DefaultBatchVAOElements);
@@ -105,17 +114,20 @@ void RenderBatch::Render() {
 	}
 
 	GLuint indexOffset = 0;
-	std::vector<GLuint> activeTextures = {g_RenderMan.GetPaletteTexture(), g_RenderMan.GetShapeTexture()};
 	GLuint activeTexture = g_RenderMan.GetShapeTexture();
-	GLint maxActiveTextures;
-	glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxActiveTextures);
-	// Start with blending disabled and track that, so the first draw call enables its own blend mode (default constructed BlendMode is Blend::NONE).
-	BlendMode activeBlendMode{};
-	glEnable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
 	glDisable(GL_MULTISAMPLE);
 	glDisable(GL_CULL_FACE);
-	for (auto& drawCall: m_DrawCalls) {
+	glEnable(GL_DEPTH_TEST);
+	// Start with blending disabled and track that, so the first draw call enables its own blend mode (default constructed BlendMode is Blend::NONE).
+	BlendMode activeBlendMode{};
+	glDisable(GL_BLEND);
+	GLint indexedUniform = glGetUniformLocation(currentShader->GetProgramID(), "rteIndexed");
+	int activeIndexed = -1;
+	bool transformsDirty = false;
+	bool scissorEnabled = false;
+
+	for (size_t drawIndex = 0; drawIndex < m_DrawCalls.size();) {
+		const std::shared_ptr<DrawCall>& drawCall = m_DrawCalls[drawIndex];
 		if (drawCall->m_Shader && drawCall->m_Shader != currentShader) {
 			currentShader = drawCall->m_Shader;
 			currentShader->Enable();
@@ -124,24 +136,33 @@ void RenderBatch::Render() {
 			if (currentCamera) {
 				currentShader->SetMatrix4f(currentShader->GetProjectionUniform(), currentCamera->GetProjection());
 				currentShader->SetMatrix4f(currentShader->GetViewUniform(), currentCamera->GetView());
-				currentShader->SetMatrix4f(currentShader->GetTransformUniform(), glm::mat4(1.0f));
-				currentShader->SetMatrix4f(currentShader->GetUVTransformUniform(), glm::mat4(1.0f));
 			}
+			transformsDirty = true;
+			indexedUniform = glGetUniformLocation(currentShader->GetProgramID(), "rteIndexed");
+			activeIndexed = -1;
 		}
 
-		currentShader->SetMatrix4f(currentShader->GetTransformUniform(), glm::mat4(1.0f));
-		currentShader->SetMatrix4f(currentShader->GetUVTransformUniform(), glm::mat4(1.0f));
-
+		if (transformsDirty || !drawCall->m_UniformValues.empty()) {
+			currentShader->SetMatrix4f(currentShader->GetTransformUniform(), glm::mat4(1.0f));
+			currentShader->SetMatrix4f(currentShader->GetUVTransformUniform(), glm::mat4(1.0f));
+			transformsDirty = false;
+		}
 		for (auto& uniform: drawCall->m_UniformValues) {
 			uniform->Enable();
 		}
+		if (!drawCall->m_UniformValues.empty()) {
+			// The draw may have changed transforms or other state, so reset before the next one.
+			transformsDirty = true;
+		}
 
 		if (drawCall->m_Scissor != std::nullopt) {
-			FloatRect& scissor = *drawCall->m_Scissor;
+			const FloatRect& scissor = *drawCall->m_Scissor;
 			glEnable(GL_SCISSOR_TEST);
 			glScissor(scissor.x, scissor.y, scissor.w, scissor.h);
-		} else {
+			scissorEnabled = true;
+		} else if (scissorEnabled) {
 			glDisable(GL_SCISSOR_TEST);
+			scissorEnabled = false;
 		}
 
 		if (drawCall->m_TextureId != activeTexture) {
@@ -152,10 +173,33 @@ void RenderBatch::Render() {
 			drawCall->m_BlendMode.Enable();
 			activeBlendMode = drawCall->m_BlendMode;
 		}
+		if (static_cast<int>(drawCall->m_Indexed) != activeIndexed) {
+			glUniform1i(indexedUniform, drawCall->m_Indexed ? 1 : 0);
+			activeIndexed = drawCall->m_Indexed ? 1 : 0;
+		}
 
-		currentShader->SetBool("rteIndexed", drawCall->m_Indexed);
-		GL_CHECK(glDrawElements(drawCall->m_DrawMode, drawCall->m_Indices.size(), GL_UNSIGNED_INT, (GLvoid*)(indexOffset * sizeof(GLuint))));
-		indexOffset += drawCall->m_Indices.size();
+		// Merge following draw calls that would render with exactly the same state into one GL draw. Their indices are contiguous in the index buffer.
+		size_t indexCount = drawCall->m_Indices.size();
+		size_t nextIndex = drawIndex + 1;
+		if (drawCall->m_UniformValues.empty() && drawCall->m_DrawMode == GL_TRIANGLES) {
+			while (nextIndex < m_DrawCalls.size()) {
+				const std::shared_ptr<DrawCall>& next = m_DrawCalls[nextIndex];
+				const Shader* nextShader = next->m_Shader ? next->m_Shader : currentShader;
+				if (nextShader != currentShader || next->m_TextureId != drawCall->m_TextureId || !(next->m_BlendMode == drawCall->m_BlendMode) || next->m_Indexed != drawCall->m_Indexed ||
+				    next->m_DrawMode != GL_TRIANGLES || !next->m_UniformValues.empty() || !SameScissor(next->m_Scissor, drawCall->m_Scissor)) {
+					break;
+				}
+				indexCount += next->m_Indices.size();
+				++nextIndex;
+			}
+		}
+
+		GL_CHECK(glDrawElements(drawCall->m_DrawMode, static_cast<GLsizei>(indexCount), GL_UNSIGNED_INT, (GLvoid*)(indexOffset * sizeof(GLuint))));
+		indexOffset += static_cast<GLuint>(indexCount);
+		drawIndex = nextIndex;
+	}
+	if (scissorEnabled) {
+		glDisable(GL_SCISSOR_TEST);
 	}
 }
 
