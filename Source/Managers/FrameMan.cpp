@@ -873,6 +873,12 @@ void FrameMan::Draw() {
 			// g_SceneMan.Draw(drawScreen, drawScreenGUI, targetPos);
 			g_SceneMan.Draw(camera);
 
+			// The GPU HUD path (MovableMan::DrawHUD(Camera)/Activity::DrawGUI(Camera)) is not implemented yet, so bridge to the CPU HUD drawn into the GUI buffer, which gets composited over the scene below.
+			if (!IsHudDisabled(playerScreen) && pActivity) {
+				g_MovableMan.DrawHUD(drawScreenGUI, targetPos, playerScreen);
+				g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, targetPos, playerScreen);
+			}
+
 			g_PrimitiveMan.DrawPrimitives(playerScreen, drawScreenGUI, targetPos);
 
 			// Get only the scene-relative post effects that affect this player's screen
