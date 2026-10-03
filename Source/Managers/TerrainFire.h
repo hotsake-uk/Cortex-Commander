@@ -1,6 +1,7 @@
 #pragma once
 
 #include "glm/glm.hpp"
+#include <string>
 #include <vector>
 
 namespace RTE {
@@ -39,6 +40,12 @@ namespace RTE {
 
 		/// Gets the burning pixels visible in a screen area, relative to it, with a 0..1 heat each (in z).
 		static void GetBurning(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec3>& burning);
+
+		/// Gets the current state as text, for saved games.
+		static std::string GetSaveState();
+
+		/// Sets state from a saved game, applied when the loaded scene starts.
+		static void SetPendingLoadState(const std::string& state);
 
 		/// Puts out all fire, e.g. when the scene changes.
 		static void Clear();

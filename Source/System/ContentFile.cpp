@@ -295,6 +295,31 @@ std::shared_ptr<BitmapTexture> ContentFile::GetAsTexture(int conversionMode, boo
 		}
 	}
 
+	// Images that only exist in memory (saved game terrain) are in the bitmap cache, not on disk.
+	if (!returnTexture) {
+		auto memoryBitmap = s_LoadedBitmaps[BitDepths::Eight].find(dataPathToLoad);
+		if (memoryBitmap != s_LoadedBitmaps[BitDepths::Eight].end() && s_MemoryPNGs.count(dataPathToLoad)) {
+			BITMAP* source = memoryBitmap->second;
+			BITMAP* bitmap = nullptr;
+			if (storeBitmap) {
+				// Others may still use the cached bitmap; give the texture its own copy.
+				bitmap = create_bitmap_ex(bitmap_color_depth(source), source->w, source->h);
+				blit(source, bitmap, 0, 0, 0, 0, source->w, source->h);
+			} else {
+				// One-time use, like GetAsBitmap: hand the bitmap over and forget the memory image.
+				bitmap = source;
+				s_LoadedBitmaps[BitDepths::Eight].erase(memoryBitmap);
+				SDL_DestroySurface(s_MemoryPNGs[dataPathToLoad]);
+				s_MemoryPNGs.erase(dataPathToLoad);
+			}
+			returnTexture = std::make_shared<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(bitmap));
+			if (storeBitmap) {
+				s_LoadedTextures[dataPathToLoad] = returnTexture;
+			}
+			return returnTexture;
+		}
+	}
+
 	if (!returnTexture) {
 		if (!System::PathExistsCaseSensitive(dataPathToLoad)) {
 			const std::string dataPathWithoutExtension = dataPathToLoad.substr(0, dataPathToLoad.length() - m_DataPathExtension.length());

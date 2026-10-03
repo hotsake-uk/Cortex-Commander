@@ -1,5 +1,6 @@
 #include "FluidSim.h"
 #include "Constants.h"
+#include "ConsoleMan.h"
 #include "EffectsParticles.h"
 #include "Material.h"
 #include "MovableMan.h"
@@ -18,6 +19,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -63,6 +65,8 @@ namespace {
 	std::vector<std::pair<glm::ivec2, int>> s_Disturbances;
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
+	std::string s_PendingLoadState; //!< Saved moving liquid to restore when the loaded scene starts.
+	int s_Width = 0; //!< Width of the terrain the active pixels' keys refer to.
 	unsigned int s_Random = 0x6C8E9CF5u;
 
 	float Random01() {
@@ -154,6 +158,25 @@ void FluidSim::Update() {
 		s_Scene = g_SceneMan.GetScene();
 		s_Random = 0x6C8E9CF5u;
 		s_TablesBuilt = false;
+		if (!s_PendingLoadState.empty() && s_Scene) {
+			// Restore a saved game's moving liquid: the random state, then "x y stillSteps" per pixel.
+			std::istringstream stream(s_PendingLoadState);
+			unsigned int random = 0;
+			stream >> random;
+			if (random != 0) {
+				s_Random = random;
+			}
+			Scene* loadedScene = g_SceneMan.GetScene();
+			int loadedWidth = loadedScene && loadedScene->GetTerrain() ? loadedScene->GetTerrain()->GetBitmap()->w : 0;
+			int x = 0;
+			int y = 0;
+			int still = 0;
+			while (loadedWidth > 0 && stream >> x >> y >> still && s_Active.size() < c_MaxActive) {
+				s_Active.emplace(y * loadedWidth + x, still);
+			}
+			g_ConsoleMan.PrintString("SYSTEM: Restored " + std::to_string(s_Active.size()) + " moving liquid pixels from the saved game.");
+		}
+		s_PendingLoadState.clear();
 	}
 	Scene* scene = g_SceneMan.GetScene();
 	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
@@ -169,6 +192,7 @@ void FluidSim::Update() {
 	}
 	int width = terrain->GetBitmap()->w;
 	int height = terrain->GetBitmap()->h;
+	s_Width = width;
 
 	std::vector<PourRequest> pours;
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
@@ -359,6 +383,23 @@ void FluidSim::Update() {
 			g_MovableMan.AddParticle(flame);
 		}
 	}
+}
+
+std::string FluidSim::GetSaveState() {
+	std::ostringstream stream;
+	stream << s_Random;
+	// Keys were made with the width cached at the last update; the terrain isn't touched here, since saving can happen at any time.
+	int width = s_Width;
+	if (width > 0) {
+		for (const auto& [key, still]: s_Active) {
+			stream << ' ' << key % width << ' ' << key / width << ' ' << still;
+		}
+	}
+	return stream.str();
+}
+
+void FluidSim::SetPendingLoadState(const std::string& state) {
+	s_PendingLoadState = state;
 }
 
 void FluidSim::Clear() {

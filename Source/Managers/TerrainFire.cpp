@@ -1,5 +1,6 @@
 #include "TerrainFire.h"
 #include "Constants.h"
+#include "ConsoleMan.h"
 #include "Material.h"
 #include "MovableMan.h"
 #include "MovableObject.h"
@@ -18,6 +19,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <sstream>
 #include <unordered_map>
 
 using namespace RTE;
@@ -68,6 +70,7 @@ namespace {
 	std::mutex s_FireSourceMutex;
 
 	const void* s_Scene = nullptr;
+	std::string s_PendingLoadState; //!< Saved fire to restore when the loaded scene starts.
 	const void* s_MaterialBitmap = nullptr;
 	long long s_LastTickUpdate = -1;
 	unsigned int s_Random = 0x2545F491u; //!< The fire's own deterministic random state, reset per scene.
@@ -222,6 +225,29 @@ void TerrainFire::Update() {
 		s_MaterialBitmap = materialBitmap;
 		s_Random = 0x2545F491u;
 		s_FuelTableBuilt = false;
+		if (!s_PendingLoadState.empty() && s_Scene) {
+			// Restore a saved game's fire: "x y ticksLeft totalTicks kind" per burning pixel, then the random state.
+			std::istringstream stream(s_PendingLoadState);
+			unsigned int random = 0;
+			stream >> random;
+			if (random != 0) {
+				s_Random = random;
+			}
+			SLTerrain* loadedTerrain = CurrentTerrain();
+			int loadedWidth = loadedTerrain ? loadedTerrain->GetBitmap()->w : 0;
+			int x = 0;
+			int y = 0;
+			int ticksLeft = 0;
+			int totalTicks = 0;
+			int kind = 0;
+			while (loadedWidth > 0 && stream >> x >> y >> ticksLeft >> totalTicks >> kind) {
+				if (kind > 0 && kind <= static_cast<int>(Fuel::Oil) && s_Burning.size() < c_MaxBurning) {
+					s_Burning.emplace(y * loadedWidth + x, BurningPixel{x, y, static_cast<short>(ticksLeft), static_cast<short>(totalTicks), static_cast<Fuel>(kind)});
+				}
+			}
+			g_ConsoleMan.PrintString("SYSTEM: Restored " + std::to_string(s_Burning.size()) + " burning terrain pixels from the saved game.");
+		}
+		s_PendingLoadState.clear();
 	}
 	if (!terrain || !s_Enabled) {
 		std::scoped_lock lock(s_QueueMutex);
@@ -387,6 +413,19 @@ void TerrainFire::GetBurning(const glm::vec2& screenOrigin, int width, int heigh
 		float heat = static_cast<float>(pixel.TicksLeft) / static_cast<float>(std::max<short>(pixel.TotalTicks, 1));
 		burning.emplace_back(position, heat);
 	}
+}
+
+std::string TerrainFire::GetSaveState() {
+	std::ostringstream stream;
+	stream << s_Random;
+	for (const auto& [key, pixel]: s_Burning) {
+		stream << ' ' << pixel.X << ' ' << pixel.Y << ' ' << pixel.TicksLeft << ' ' << pixel.TotalTicks << ' ' << static_cast<int>(pixel.Kind);
+	}
+	return stream.str();
+}
+
+void TerrainFire::SetPendingLoadState(const std::string& state) {
+	s_PendingLoadState = state;
 }
 
 void TerrainFire::Clear() {

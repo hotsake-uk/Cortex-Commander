@@ -1,4 +1,6 @@
 #include "ActivityMan.h"
+#include "TerrainFire.h"
+#include "FluidSim.h"
 #include "Activity.h"
 
 #include "CameraMan.h"
@@ -162,6 +164,9 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	writer->NewPropertyWithValue("PlaceObjectsIfSceneIsRestarted", g_SceneMan.GetPlaceObjectsOnLoad());
 	writer->NewPropertyWithValue("PlaceUnitsIfSceneIsRestarted", g_SceneMan.GetPlaceUnitsOnLoad());
 	writer->NewPropertyWithValue("Scene", modifiableScene.get());
+	// Fire still burning and liquid still flowing, so they carry on after loading. The terrain itself is saved in the scene layers.
+	writer->NewPropertyWithValue("TerrainFireState", TerrainFire::GetSaveState());
+	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
 	std::unique_ptr<std::stringstream> indexStream = std::make_unique<std::stringstream>();
@@ -377,6 +382,10 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			reader >> placeUnitsIfSceneIsRestarted;
 		} else if (propName == "Scene") {
 			reader >> scene.get();
+		} else if (propName == "TerrainFireState") {
+			TerrainFire::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "FlowingLiquidState") {
+			FluidSim::SetPendingLoadState(reader.ReadPropValue());
 		}
 	}
 

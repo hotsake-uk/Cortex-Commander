@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace RTE {
 	class Vector;
 
@@ -30,6 +32,12 @@ namespace RTE {
 
 		/// Advances the liquids one simulation step. Call once per sim update, from the main thread.
 		static void Update();
+
+		/// Gets the current state as text, for saved games.
+		static std::string GetSaveState();
+
+		/// Sets state from a saved game, applied when the loaded scene starts.
+		static void SetPendingLoadState(const std::string& state);
 
 		/// Forgets all moving liquid, e.g. when the scene changes. Liquid pixels stay where they are.
 		static void Clear();
