@@ -1,6 +1,7 @@
 #include "PieMenu.h"
 
 #include "FrameMan.h"
+#include "Draw.h"
 #include "UInputMan.h"
 #include "PresetMan.h"
 #include "SettingsMan.h"
@@ -653,10 +654,10 @@ void PieMenu::Draw(BITMAP* targetBitmap, const Vector& targetPos) const {
 		if (m_DrawBackgroundTransparent) {
 			g_FrameMan.SetTransTableFromPreset(TransparencyPreset::MoreTrans);
 			g_GLStateMan.UpdateDynamicBitmap(m_BGBitmap, true);
-			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_BGBitmap), drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
+			RTE::DrawTexture(m_BGBitmap, drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, RLColor{255, 255, 255, static_cast<unsigned char>(g_FrameMan.GetCurrentAlpha())});
 		} else {
 			g_GLStateMan.UpdateDynamicBitmap(m_BGBitmap, true);
-			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_BGBitmap), drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, {255, 255, 255, 255});
+			RTE::DrawTexture(m_BGBitmap, drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, RLColor{255, 255, 255, 255});
 		}
 	}
 	rlZDepth(c_DefaultDrawDepth);

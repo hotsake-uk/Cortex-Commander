@@ -130,11 +130,12 @@ GLuint GLStateMan::UpdateDynamicBitmap(BITMAP* bitmap, bool updated, const std::
 				for (size_t y = 0; y < updateRegions[i].m_Height; y++) {
 					memcpy(
 						pixels.data() + y * static_cast<int>(updateRegions[i].m_Width) * bytesPerPixel,
-						bitmap->line[y + updateRegions[i].m_Corner.GetFloorIntY()] + updateRegions[i].m_Corner.GetFloorIntX(),
+						bitmap->line[y + updateRegions[i].m_Corner.GetFloorIntY()] + updateRegions[i].m_Corner.GetFloorIntX() * bytesPerPixel,
 						updateRegions[i].m_Width * bytesPerPixel);
 				}
 				glBufferSubData(GL_PIXEL_UNPACK_BUFFER, offsets[i], updateRegions[i].m_Width * updateRegions[i].m_Height * bytesPerPixel, pixels.data());
-				offsets.emplace_back(updateRegions[i].m_Width * updateRegions[i].m_Height * bytesPerPixel);
+				// Regions are packed one after another in the upload buffer.
+				offsets.emplace_back(offsets[i] + static_cast<size_t>(updateRegions[i].m_Width * updateRegions[i].m_Height * bytesPerPixel));
 			}
 			for (size_t i = 0; i < updateRegions.size(); ++i) {
 				GL_CHECK(glTexSubImage2D(

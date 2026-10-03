@@ -100,11 +100,17 @@ namespace RTE {
 
 		/// Gets the foreground color bitmap of this SLTerrain.
 		/// @return A pointer to the foreground color bitmap.
-		BITMAP* GetFGColorBitmap() { return m_FGColorLayer->GetBitmap(); m_FGColorLayer->SetUpdated(); }
+		BITMAP* GetFGColorBitmap() {
+			m_FGColorLayer->SetUpdated();
+			return m_FGColorLayer->GetBitmap();
+		}
 
 		/// Gets the background color bitmap of this SLTerrain.
 		/// @return A pointer to the background color bitmap.
-		BITMAP* GetBGColorBitmap() { return m_BGColorLayer->GetBitmap(); m_BGColorLayer->SetUpdated(); }
+		BITMAP* GetBGColorBitmap() {
+			m_BGColorLayer->SetUpdated();
+			return m_BGColorLayer->GetBitmap();
+		}
 
 		/// Gets the material bitmap of this SLTerrain.
 		/// @return A pointer to the material bitmap.
