@@ -31,30 +31,30 @@ namespace RTE {
 
 		/// Returns the current RenderDepth to be set on new Vertices.
 		/// @return Depth value to use for the current draw call.
-		float GetCurrentDepth() const { return m_RenderBatch->m_CurrentDepth; }
+		float GetCurrentDepth() const { return m_ActiveBatch->m_CurrentDepth; }
 
 		/// Returns the current depth offset to be added to the current depth.
 		/// @return Depth offset to be added to the vertex or transform.
-		float GetCurrentZOffset() const { return m_RenderBatch->m_CurrentZ; }
+		float GetCurrentZOffset() const { return m_ActiveBatch->m_CurrentZ; }
 
 		/// Set the current depth offset, this can be used to change draw order without sorting.
 		/// @param depth The new offset.
-		void SetCurrentZOffset(float depth) { m_RenderBatch->m_CurrentZ = depth; }
+		void SetCurrentZOffset(float depth) { m_ActiveBatch->m_CurrentZ = depth; }
 
 		/// Set the default shader for upcoming draw calls.
 		/// @param shader (non owning) pointer to the new shader.
-		void SetCurrentShader(const Shader* shader) { m_RenderBatch->m_CurrentShader = shader; }
+		void SetCurrentShader(const Shader* shader) { m_ActiveBatch->m_CurrentShader = shader; }
 
-		const Shader* GetCurrentShader() { return m_RenderBatch->m_CurrentShader ? m_RenderBatch->m_CurrentShader : GetDefaultShader(); }
+		const Shader* GetCurrentShader() { return m_ActiveBatch->m_CurrentShader ? m_ActiveBatch->m_CurrentShader : GetDefaultShader(); }
 
-		void SetActiveBlendMode(BlendMode mode) { m_RenderBatch->m_CurrentBlendMode = std::move(mode); }
+		void SetActiveBlendMode(BlendMode mode) { m_ActiveBatch->m_CurrentBlendMode = std::move(mode); }
 
 		/// Add a uniform value to be set on upcoming draw calls.
 		/// @param uniform The unform value to enable.
-		void PushUniform(std::shared_ptr<UniformValueType> uniform) { m_RenderBatch->m_CurrentUniforms.push_back(uniform); }
+		void PushUniform(std::shared_ptr<UniformValueType> uniform) { m_ActiveBatch->m_CurrentUniforms.push_back(uniform); }
 
 		/// Clears active uniforms.
-		void ClearUniforms() { m_RenderBatch->m_CurrentUniforms.clear(); }
+		void ClearUniforms() { m_ActiveBatch->m_CurrentUniforms.clear(); }
 
 		/// Schedules a new draw call on the current batch, initialized with the current shader, uniforms and camera.
 		std::shared_ptr<DrawCall> BeginDraw();

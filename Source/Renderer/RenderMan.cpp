@@ -35,7 +35,7 @@ std::shared_ptr<DrawCall> RenderMan::BeginDraw() {
 	drawCall->m_Shader = m_ActiveBatch->m_CurrentShader;
 	drawCall->m_TextureId = m_ShapesTexture->GetTextureId();
 	drawCall->m_BlendMode = m_ActiveBatch->m_CurrentBlendMode;
-	m_RenderBatch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
+	m_ActiveBatch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
 	return drawCall;
 }
 
