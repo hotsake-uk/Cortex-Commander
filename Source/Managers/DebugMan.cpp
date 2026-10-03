@@ -1,4 +1,5 @@
 #include "DebugMan.h"
+#include "WindowMan.h"
 #include "PerformanceMan.h"
 #include "imgui/imgui.h"
 #include "tracy/Tracy.hpp"
@@ -33,6 +34,20 @@ void Draw() {
 
 void DebugMan::DrawImGui() {
 	UpdateMouseOwnership();
+
+	// Debug windows keep a readable size on big windows and handheld screens: scale with the window height (720 px = 1x).
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		float uiScale = std::clamp(io.DisplaySize.y / 720.0F, 1.0F, 2.5F);
+		float fontScale = uiScale * g_WindowMan.GetImGuiFontBaseScale();
+		if (std::abs(io.FontGlobalScale - fontScale) > 0.001F) {
+			io.FontGlobalScale = fontScale;
+			ImGuiStyle& style = ImGui::GetStyle();
+			style = ImGuiStyle();
+			ImGui::StyleColorsDark(&style);
+			style.ScaleAllSizes(uiScale);
+		}
+	}
 
 	// The modern HUD, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {

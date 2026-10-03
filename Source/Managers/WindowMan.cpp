@@ -1,5 +1,6 @@
 #include "WindowMan.h"
 #include "TextOverlay.h"
+#include <filesystem>
 #include "loadpng.h"
 #include "System.h"
 #include <array>
@@ -141,6 +142,15 @@ void WindowMan::Initialize() {
 	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
 	ImGui::StyleColorsDark();
+	// A TTF font rasterized at twice its normal size, drawn at half scale (see DebugMan), so debug windows stay sharp when scaled up for big screens.
+	{
+		std::string fontPath = g_PresetMan.GetFullModulePath("Base.rte/GUIs/Fonts/Roboto-Medium.ttf");
+		ImFontConfig fontConfig;
+		fontConfig.OversampleH = 2;
+		if (std::filesystem::exists(fontPath) && io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 30.0F, &fontConfig)) {
+			m_ImGuiFontBaseScale = 0.5F;
+		}
+	}
 	ImGui_ImplSDL3_InitForOpenGL(m_PrimaryWindow.get(), m_GLContext.get());
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 	ImGui_ImplOpenGL3_NewFrame();

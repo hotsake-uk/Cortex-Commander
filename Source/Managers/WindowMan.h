@@ -223,6 +223,13 @@ namespace RTE {
 		std::unique_ptr<Shader> m_ScreenUpscaleShader; //!< Scales the finished frame up to the window with even, crisp pixels at any scale.
 		std::unique_ptr<Shader> m_ScreenUpscaleMaskedShader; //!< Scales the GUI layer (black is transparent) up to the window over what's there.
 		bool m_LastPresentUsedTextOverlay = false;
+
+	public:
+		/// Gets the scale the ImGui font must be drawn at to appear at its normal size (it's loaded large for sharp scaling).
+		float GetImGuiFontBaseScale() const { return m_ImGuiFontBaseScale; }
+
+	private:
+		float m_ImGuiFontBaseScale = 1.0F;
 		unsigned int m_BlitTargetFramebuffer = 0; //!< Where the frame is shown: 0 for the window, or an offscreen target for high resolution photos. //!< Whether the last frame was shown with PresentWithTextOverlay, for redrawing it.
 
 		/// Draws a texture letterboxed into the primary window with one of the upscale shaders. Flipped like the screen buffer.
