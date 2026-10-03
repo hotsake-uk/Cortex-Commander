@@ -342,6 +342,10 @@ namespace RTE {
 		/// The bitmap will only be uploaded to GPU once on the first draw. So any modifcations after that will not be drawn.
 		const BITMAP* GetBitmap() const { return m_MainBitmap; }
 
+		/// Gets the GPU texture of this StaticSceneLayer.
+		/// @return (Non owning) pointer to the texture.
+		BitmapTexture* GetStaticTexture() const { return m_StaticTexture.get(); }
+
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
 		void DrawMainTexture(int destX, int destY) const override;
