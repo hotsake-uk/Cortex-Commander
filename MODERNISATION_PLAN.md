@@ -439,3 +439,33 @@ Work happens on the local `modernisation` branch. Each entry corresponds to one 
 - Background fill colours for non-wrapping layers.
 - Dot glows. These are folded into the lighting work (palette emissive flags) instead.
 - A split-screen check.
+
+### M1 parity, continued
+
+- **Tracers:** atom trails drawn on the GPU (they were invisible).
+- **Previews:** placement, deployment and bunker previews, the pie menu background and the inventory carousel work again.
+
+### M3 "First light": done
+
+- **`SceneLighting`** (`Source/Renderer/SceneLighting.*`, shaders in `Data/Base.rte/Shaders/Lighting/`):
+  - A world light grid, refreshed round-robin from the terrain material layer.
+  - Sky light propagated on the GPU.
+  - Glow lights with soft terrain shadows.
+  - HDR composite, with distant background layers detected via depth.
+  - Glows screen-blended as emissive light. This also fixes glows being missing on the GPU renderer.
+  - Bloom, a highlight shoulder and a vignette.
+- **Time of day and day/night cycle:** `TimeOfDay`, `DayLengthMinutes`.
+- **Modder lights:**
+  - INI keys on `MovableObject`: `LightColor`, `LightRadius`, `LightIntensity`, `LightFlicker`, `LightOffset`.
+  - The same properties exposed to Lua, plus `PostProcessMan:AddLight(pos, radius, r, g, b, intensity)`.
+- **Graphics Lab** (ImGui):
+  - Live tuning for every parameter, with stats and debug views (lighting, sky, dynamic, normals).
+  - Settings persist in `Settings.ini`.
+- **Upstream bug fixed:** scene effects registered by activities and global scripts were cleared before they could be drawn.
+
+### M4 (in progress)
+
+- **Automatic edge normals** written by the default sprite shader into a second attachment, used for:
+  - N·L shading of dynamic lights.
+  - Sky light from above.
+- **Performance:** the full lighting pipeline costs about 0.1 ms; frame time is dominated by CPU draw submission (one draw call per particle). Sprite batching is the next performance item.
