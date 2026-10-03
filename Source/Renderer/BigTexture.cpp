@@ -71,12 +71,17 @@ void BigTexture::Update(const Box& updateRegion) {
 		if (!intersect.IsEmpty()) {
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_UploadBuffers[i]);
 			size_t pixelsSize = std::ceil(intersect.m_Width) * std::ceil(intersect.m_Height) * bytesPerPixel;
-			unsigned char* pixels = (unsigned char*)glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, (intersect.m_Corner.GetFloorIntY() %s_MaxGLTextureSize) * m_Textures[i]->GetDimensions().w + intersect.m_Corner.GetFloorIntX() % s_MaxGLTextureSize, pixelsSize, GL_MAP_WRITE_BIT|GL_MAP_INVALIDATE_BUFFER_BIT);
+			// The region is packed tightly from the start of the buffer, which is invalidated (orphaned) every upload anyway.
+			unsigned char* pixels = (unsigned char*)glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, pixelsSize, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+			if (!pixels) {
+				glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+				continue;
+			}
 
 			for (size_t y = 0; y < static_cast<int>(std::ceil(intersect.m_Height)); y++) {
 				memcpy(
 					pixels + y * static_cast<int>(std::ceil(intersect.m_Width)) * bytesPerPixel,
-					m_Bitmap->line[y + intersect.m_Corner.GetFloorIntY()] + intersect.m_Corner.GetFloorIntX(),
+					m_Bitmap->line[y + intersect.m_Corner.GetFloorIntY()] + intersect.m_Corner.GetFloorIntX() * bytesPerPixel,
 					std::ceil(intersect.m_Width) * bytesPerPixel
 				);
 			}
@@ -96,7 +101,7 @@ void BigTexture::Update(const Box& updateRegion) {
 				std::ceil(intersect.m_Height),
 				bytesPerPixel == 1 ? GL_RED : GL_RGBA,
 				GL_UNSIGNED_BYTE,
-				(GLvoid*)((intersect.m_Corner.GetFloorIntY() % s_MaxGLTextureSize) * static_cast<int>(m_Textures[i]->GetDimensions().w) + intersect.m_Corner.GetFloorIntX() % s_MaxGLTextureSize)
+				nullptr
 			);
 
 			glBindTexture(GL_TEXTURE_2D, 0);

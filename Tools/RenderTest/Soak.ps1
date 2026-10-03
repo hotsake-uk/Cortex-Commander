@@ -1,5 +1,5 @@
 # Soak test: drives the running game with move/fire/jump/reload input and samples memory and responsiveness each round.
-# Usage: .\Capture.ps1 -Scenario Play -Exe $Exe -KeepRunning; .\Soak.ps1 -Rounds 30
+# Usage: .\Capture.ps1 -Scenario Play -Exe "Cortex Command.exe" -KeepRunning; .\Soak.ps1 -Rounds 30 [-Exe "Cortex Command.debug.release.exe"]
 param([int]$Rounds = 24, [string]$Exe = "Cortex Command.exe")
 $t = $PSScriptRoot
 . "$t\Input.ps1"

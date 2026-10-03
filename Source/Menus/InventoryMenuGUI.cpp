@@ -2,6 +2,7 @@
 
 #include "WindowMan.h"
 #include "FrameMan.h"
+#include "Draw.h"
 #include "UInputMan.h"
 #include "MovableMan.h"
 #include "PresetMan.h"
@@ -1354,14 +1355,14 @@ void InventoryMenuGUI::DrawCarouselMode(BITMAP* targetBitmap, const Vector& draw
 		g_GLStateMan.UpdateDynamicBitmap(m_CarouselBitmap.get(), true);
 		if (m_CarouselBackgroundTransparent) {
 			g_FrameMan.SetTransTableFromPreset(TransparencyPreset::MoreTrans);
-			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_CarouselBGBitmap.get()), wrappedRectangle.m_Left - m_CarouselBGBitmap->w / 2, wrappedRectangle.m_Top - m_CarouselBGBitmap->h / 2, {255, 255, 255, 75});
-			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_CarouselBitmap.get()), wrappedRectangle.m_Left - m_CarouselBitmap->w / 2, wrappedRectangle.m_Top - m_CarouselBitmap->h / 2, {255, 255, 255, 255});
+			RTE::DrawTexture(m_CarouselBGBitmap.get(), wrappedRectangle.m_Left - m_CarouselBGBitmap->w / 2, wrappedRectangle.m_Top - m_CarouselBGBitmap->h / 2, RLColor{255, 255, 255, 75});
+			RTE::DrawTexture(m_CarouselBitmap.get(), wrappedRectangle.m_Left - m_CarouselBitmap->w / 2, wrappedRectangle.m_Top - m_CarouselBitmap->h / 2, RLColor{255, 255, 255, 255});
 		} else {
 			if (!hasDrawnAtLeastOnce) {
 				
 				draw_sprite(m_CarouselBGBitmap.get(), m_CarouselBitmap.get(), 0, 0);
 			}
-			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_CarouselBGBitmap.get()), wrappedRectangle.m_Left - m_CarouselBGBitmap->w / 2, wrappedRectangle.m_Top - m_CarouselBGBitmap->h / 2, {255, 255, 255, 255});
+			RTE::DrawTexture(m_CarouselBGBitmap.get(), wrappedRectangle.m_Left - m_CarouselBGBitmap->w / 2, wrappedRectangle.m_Top - m_CarouselBGBitmap->h / 2, RLColor{255, 255, 255, 255});
 		}
 		hasDrawnAtLeastOnce = true;
 	}
