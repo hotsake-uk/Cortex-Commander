@@ -62,6 +62,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Glow light radius", &settings.GlowLightRadiusScale, 0.5F, 10.0F);
 		ImGui::SliderFloat("Shadow strength", &settings.ShadowStrength, 0.0F, 1.0F);
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
+		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 
 		ImGui::SeparatorText("Bloom");
 		ImGui::Checkbox("Bloom enabled", &settings.BloomEnabled);
@@ -76,7 +77,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);
 
 		ImGui::SeparatorText("Debug");
-		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0");
 
 		ImGui::SeparatorText("Stats");
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {

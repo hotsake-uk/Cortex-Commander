@@ -14,6 +14,9 @@ uniform sampler2D rteOccupancy; // World grid, R = terrain coverage 0..1, linear
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize; // World size covered by the occupancy grid.
 uniform float rteShadowStrength; // How much each solid sample blocks, 0..1.
+uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
+uniform vec2 rteScreenSize;
+uniform float rteEdgeLighting;
 
 const int c_ShadowSteps = 12;
 
@@ -37,5 +40,14 @@ void main() {
 		transmittance *= 1.0 - occupancy * rteShadowStrength;
 	}
 
-	FragColor = vec4(lightColor.rgb * falloff * transmittance, 1.0);
+	// Edges facing the light catch more of it, edges facing away get less. Normalized so flat surfaces are lit exactly as without normals.
+	float shading = 1.0;
+	vec4 normalSample = texture(rteNormals, gl_FragCoord.xy / rteScreenSize);
+	if (normalSample.a > 0.5) {
+		vec3 normal = normalize(normalSample.xyz * 2.0 - 1.0);
+		vec3 toLight = normalize(vec3(lightCenter - gl_FragCoord.xy, lightRadius * 0.25));
+		shading = mix(1.0, clamp(dot(normal, toLight) / max(toLight.z, 0.05), 0.0, 2.5), rteEdgeLighting);
+	}
+
+	FragColor = vec4(lightColor.rgb * falloff * transmittance * shading, 1.0);
 }

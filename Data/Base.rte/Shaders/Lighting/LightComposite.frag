@@ -20,7 +20,9 @@ uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize; // World size covered by the sky light grid.
 uniform vec3 rteAmbient; // Linear light where no sky light reaches.
 uniform vec3 rteSkyColor; // Linear light under open sky.
-uniform int rteDebugView; // 0 final, 1 lighting on grey, 2 sky light only, 3 dynamic light only.
+uniform int rteDebugView; // 0 final, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals.
+uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
+uniform float rteEdgeLighting;
 
 void main() {
 	vec2 screenUV = gl_FragCoord.xy / rteScreenSize;
@@ -35,6 +37,12 @@ void main() {
 		float sky = texture(rteSkyLight, worldPos / rteGridWorldSize).r;
 		// Shape the falloff a little so cave mouths stay bright and deep caves get properly dark.
 		sky = smoothstep(0.0, 1.0, sky);
+		// Sky light comes from above: upward facing edges catch more of it, undersides less.
+		vec4 normalSample = texture(rteNormals, screenUV);
+		if (normalSample.a > 0.5) {
+			vec3 normal = normalSample.xyz * 2.0 - 1.0;
+			sky *= mix(1.0, clamp(1.0 - normal.y * 0.9, 0.35, 1.6), rteEdgeLighting);
+		}
 		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
 		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));
 		light = mix(rteAmbient, rteSkyColor, sky) + dynamicLight;
@@ -49,6 +57,9 @@ void main() {
 		return;
 	} else if (rteDebugView == 3) {
 		FragColor = vec4(texture(rteDynamicLight, screenUV).rgb, 1.0);
+		return;
+	} else if (rteDebugView == 4) {
+		FragColor = vec4(pow(texture(rteNormals, screenUV).rgb, vec3(2.2)), 1.0);
 		return;
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;

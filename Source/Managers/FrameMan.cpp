@@ -153,6 +153,7 @@ int FrameMan::CreateBackBuffers() {
 		set_clip_state(m_PlayerScreen8->GetBitmap(), 1);
 
 		m_PlayerScreen = std::make_unique<RenderTarget>(FloatRect(0, 0, resX / (m_VSplit ? 2 : 1), resY / (m_HSplit ? 2 : 1)), FloatRect(0, 0, resX / (m_VSplit ? 2 : 1), resY / (m_HSplit ? 2 : 1)));
+		m_PlayerScreen->EnableNormalAttachment();
 
 		// Update these to represent the split screens
 		m_PlayerScreenWidth = m_PlayerScreen->GetSize().w;
@@ -160,6 +161,7 @@ int FrameMan::CreateBackBuffers() {
 	} else {
 		m_PlayerScreen8 = m_BackBuffer8;
 		m_PlayerScreen = m_BackBuffer;
+		m_PlayerScreen->EnableNormalAttachment();
 	}
 
 	m_ScreenDumpBuffer = std::unique_ptr<SDL_Surface, SurfaceDeleter>(SDL_CreateSurface(m_BackBuffer8->GetDimensions().w, m_BackBuffer8->GetDimensions().h, SDL_PIXELFORMAT_RGB24));
@@ -249,6 +251,7 @@ void FrameMan::ResetSplitScreens(bool hSplit, bool vSplit) {
 		set_clip_state(m_PlayerScreen8->GetBitmap(), 1);
 
 		m_PlayerScreen = std::make_unique<RenderTarget>(FloatRect(0, 0, g_WindowMan.GetResX() / (m_VSplit ? 2 : 1), g_WindowMan.GetResY() / (m_HSplit ? 2 : 1)), FloatRect(0, 0, g_WindowMan.GetResX() / (m_VSplit ? 2 : 1), g_WindowMan.GetResY() / (m_HSplit ? 2 : 1)));
+		m_PlayerScreen->EnableNormalAttachment();
 
 		// Update these to represent the split screens
 		m_PlayerScreenWidth = m_PlayerScreen->GetSize().w;
@@ -256,6 +259,7 @@ void FrameMan::ResetSplitScreens(bool hSplit, bool vSplit) {
 	} else {
 		m_PlayerScreen8 = m_BackBuffer8;
 		m_PlayerScreen = m_BackBuffer;
+		m_PlayerScreen->EnableNormalAttachment();
 		// No splits, so set the screen dimensions equal to the back buffer
 		m_PlayerScreenWidth = m_BackBuffer8->GetDimensions().w;
 		m_PlayerScreenHeight = m_BackBuffer8->GetDimensions().h;

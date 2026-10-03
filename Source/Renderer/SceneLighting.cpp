@@ -513,6 +513,8 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	}
 	UploadQuads();
 
+	std::shared_ptr<Texture> normals = playerScreen->GetNormalTexture().lock();
+
 	// Dynamic lights.
 	glBindFramebuffer(GL_FRAMEBUFFER, m_DynamicLight.Framebuffer);
 	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
@@ -527,8 +529,13 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		m_PointLightShader->SetVector2f("rteScreenOrigin", origin);
 		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
+		m_PointLightShader->SetInt("rteNormals", 1);
+		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
 		DrawQuads(0, lightCount);
 		glDisable(GL_BLEND);
 	}
@@ -566,6 +573,8 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	m_CompositeShader->SetInt("rteSceneDepth", 3);
 	m_CompositeShader->SetInt("rteDebugView", m_Settings.DebugView);
 	m_CompositeShader->SetInt("rteEmissive", 4);
+	m_CompositeShader->SetInt("rteNormals", 5);
+	m_CompositeShader->SetFloat("rteEdgeLighting", normals ? m_Settings.EdgeLighting : 0.0F);
 	m_CompositeShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
 	m_CompositeShader->SetFloat("rteMaxDynamicLight", 2.0F);
 	// Layers are drawn at depth z mapped linearly through the cameras' ortho projection. Background layers sit at c_BackgroundDepth, terrain background at c_TerrainBGDepth.
@@ -589,6 +598,8 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+	glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
 	DrawFullscreen();
 
 	// Bloom.

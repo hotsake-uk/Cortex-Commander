@@ -39,6 +39,12 @@ namespace RTE {
 		/// Getter for the depth buffer.
 		std::weak_ptr<DepthTexture> GetDepthTexture() { return m_Depth; }
 
+		/// Adds a second color attachment that shaders write screen space normals to (location 1), for the lighting.
+		void EnableNormalAttachment();
+
+		/// Getter for the normal buffer, if enabled. RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
+		std::weak_ptr<Texture> GetNormalTexture() { return m_Normal; }
+
 		/// Getter for the size of this target.
 		const FloatRect& GetSize() { return m_Size; }
 
@@ -50,5 +56,6 @@ namespace RTE {
 	private:
 		std::shared_ptr<Texture> m_Texture{nullptr};
 		std::shared_ptr<DepthTexture> m_Depth{nullptr};
+		std::shared_ptr<Texture> m_Normal{nullptr};
 	};
 } // namespace RTE
