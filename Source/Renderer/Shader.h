@@ -89,6 +89,9 @@ namespace RTE {
 		/// A GLint containing the location of the requested uniform.
 		int32_t GetUniformLocation(const std::string& name) const;
 
+		/// Gets the GL program object of this shader.
+		GLuint GetProgramID() const { return m_ProgramID; }
+
 		/// Set a boolean uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
