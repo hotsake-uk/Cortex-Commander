@@ -88,6 +88,13 @@ namespace RTE {
 		GUICheckbox* m_RequireClearPathToOrbitCheckbox;
 		GUICheckbox* m_FogOfWarCheckbox;
 		GUICheckbox* m_DeployUnitsCheckbox;
+		GUIButton* m_TimeOfDayButton; //!< Cycles the time of day for the game.
+		GUIButton* m_WeatherButton; //!< Cycles the weather for the game.
+		int m_TimeOfDayChoice = 0; //!< Index into the time of day choices, 0 for the scene's default.
+		int m_WeatherChoice = 0; //!< Index into the weather choices, 0 for the scene's default.
+
+		/// Updates the time of day and weather buttons' text.
+		void UpdateAtmosphereButtons();
 		GUILabel* m_CPULockLabel;
 		GUICollectionBox* m_PlayersAndTeamsConfigBox;
 		std::array<GUICollectionBox*, TeamRows::TeamRowCount> m_TeamIconBoxes;

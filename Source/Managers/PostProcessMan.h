@@ -314,10 +314,24 @@ namespace RTE {
 			float m_StartTime;
 		};
 		std::vector<Shockwave> m_Shockwaves; //!< Active shockwaves, in scene coordinates.
+		float m_ActivityTimeOfDay = -1.0F; //!< Time of day chosen for the current activity, negative for none.
+		int m_ActivityWeather = -1; //!< Weather chosen for the current activity, negative for none.
 
 	public:
 		/// Gets the active shockwaves in scene coordinates, as xy position, z current wavefront radius, w remaining strength. For vegetation pushed by blasts.
 		void GetActiveShockwaves(std::vector<glm::vec4>& shockwaves);
+
+		/// Sets the time of day and weather for the activity about to start, overriding the scene's and the player's settings. Negative values leave them alone.
+		/// Kept for restarts of the same activity, until set again.
+		/// @param timeOfDay Hours, or negative for the default.
+		/// @param weatherType 0 clear, 1 rain, 2 snow, or negative for the default.
+		/// Applies the activity's chosen atmosphere, if any, over the current settings.
+		void ApplyActivityAtmosphere();
+
+		void SetActivityAtmosphere(float timeOfDay, int weatherType) {
+			m_ActivityTimeOfDay = timeOfDay;
+			m_ActivityWeather = weatherType;
+		}
 
 	private:
 		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.

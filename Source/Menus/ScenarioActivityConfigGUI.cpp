@@ -1,4 +1,6 @@
 #include "ScenarioActivityConfigGUI.h"
+#include "GUISound.h"
+#include "PostProcessMan.h"
 
 #include "PresetMan.h"
 #include "UInputMan.h"
@@ -37,6 +39,10 @@ ScenarioActivityConfigGUI::ScenarioActivityConfigGUI(GUIControlManager* parentCo
 	m_RequireClearPathToOrbitCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxRequireClearPathToOrbit"));
 	m_FogOfWarCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxFogOfWar"));
 	m_DeployUnitsCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxDeployUnits"));
+	// Optional in custom layouts.
+	m_TimeOfDayButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonTimeOfDay"));
+	m_WeatherButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonWeather"));
+	UpdateAtmosphereButtons();
 
 	m_PlayersAndTeamsConfigBox = dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("CollectionBoxPlayersAndTeamsConfig"));
 	m_TeamIconBoxes[TeamRows::DisabledTeam] = dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("CollectionBoxDisabledTeamIcon"));
@@ -215,7 +221,26 @@ void ScenarioActivityConfigGUI::ResetActivityConfigBox() {
 	}
 }
 
+namespace {
+	struct AtmosphereChoice {
+		const char* Name;
+		float Value;
+	};
+	constexpr AtmosphereChoice c_TimeChoices[] = {{"Scene default", -1.0F}, {"Dawn", 6.5F}, {"Noon", 12.0F}, {"Dusk", 18.8F}, {"Night", 23.0F}};
+	constexpr AtmosphereChoice c_WeatherChoices[] = {{"Scene default", -1.0F}, {"Clear", 0.0F}, {"Rain", 1.0F}, {"Snow", 2.0F}};
+} // namespace
+
+void ScenarioActivityConfigGUI::UpdateAtmosphereButtons() {
+	if (m_TimeOfDayButton) {
+		m_TimeOfDayButton->SetText(std::string("Time: ") + c_TimeChoices[m_TimeOfDayChoice].Name);
+	}
+	if (m_WeatherButton) {
+		m_WeatherButton->SetText(std::string("Weather: ") + c_WeatherChoices[m_WeatherChoice].Name);
+	}
+}
+
 void ScenarioActivityConfigGUI::StartGame() {
+	g_PostProcessMan.SetActivityAtmosphere(c_TimeChoices[m_TimeOfDayChoice].Value, static_cast<int>(c_WeatherChoices[m_WeatherChoice].Value));
 	GameActivity* gameActivity = dynamic_cast<GameActivity*>(m_SelectedActivity->Clone());
 
 	gameActivity->SetDifficulty(m_ActivityDifficultySlider->GetValue());
@@ -427,6 +452,14 @@ bool ScenarioActivityConfigGUI::HandleInputEvents() {
 			if (guiEvent.GetControl() == m_CancelConfigButton) {
 				g_GUISound.BackButtonPressSound()->Play();
 				SetEnabled(false);
+			} else if (m_TimeOfDayButton && guiEvent.GetControl() == m_TimeOfDayButton) {
+				g_GUISound.ButtonPressSound()->Play();
+				m_TimeOfDayChoice = (m_TimeOfDayChoice + 1) % static_cast<int>(std::size(c_TimeChoices));
+				UpdateAtmosphereButtons();
+			} else if (m_WeatherButton && guiEvent.GetControl() == m_WeatherButton) {
+				g_GUISound.ButtonPressSound()->Play();
+				m_WeatherChoice = (m_WeatherChoice + 1) % static_cast<int>(std::size(c_WeatherChoices));
+				UpdateAtmosphereButtons();
 			} else if (guiEvent.GetControl() == m_StartGameButton) {
 				// Make sure all players have known input devices if multimouse is enabled.
 				g_GUISound.ButtonPressSound()->Play();

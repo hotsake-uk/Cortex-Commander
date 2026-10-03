@@ -268,6 +268,7 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	m_LightingSettings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
 	m_LightingSettings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
 	if (!scene) {
+		ApplyActivityAtmosphere();
 		return;
 	}
 	const Scene::Atmosphere& atmosphere = scene->GetAtmosphere();
@@ -285,6 +286,20 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	}
 	if (atmosphere.Wind > -10000.0F) {
 		m_LightingSettings.Wind = atmosphere.Wind;
+	}
+	ApplyActivityAtmosphere();
+}
+
+void PostProcessMan::ApplyActivityAtmosphere() {
+	if (m_ActivityTimeOfDay >= 0.0F) {
+		m_LightingSettings.TimeOfDay = std::fmod(m_ActivityTimeOfDay, 24.0F);
+		m_LightingSettings.DayLengthMinutes = 0.0F;
+	}
+	if (m_ActivityWeather >= 0) {
+		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, 2);
+		if (m_LightingSettings.WeatherType > 0) {
+			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
+		}
 	}
 }
 
