@@ -103,6 +103,33 @@
     <ClInclude Include="Source\System\MicroPather\micropather.h">
       <Filter>System\MicroPather</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Renderer\Vertex.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\Texture.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\Shapes.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\RenderMan.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\RenderBatch.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\GLState.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\DrawCall.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\Camera.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\BlendMode.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Renderer\raylib\raylib.h">
       <Filter>Renderer\raylib</Filter>
     </ClInclude>
@@ -111,6 +138,9 @@
     </ClInclude>
     <ClInclude Include="Source\Renderer\raylib\rlconfig.h">
       <Filter>Renderer\raylib</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Managers\DebugMan.h">
+      <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\AchievementMan.h">
       <Filter>Managers</Filter>
@@ -644,7 +674,7 @@
     <ClInclude Include="Source\Renderer\BigTexture.h">
       <Filter>Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Managers\GLResourceMan.h">
+    <ClInclude Include="Source\Managers\GLStateMan.h">
       <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Renderer\raylib\rlutils.h">
@@ -699,6 +729,9 @@
     </ClCompile>
     <ClCompile Include="Source\System\MicroPather\micropather.cpp">
       <Filter>System\MicroPather</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\DebugMan.cpp">
+      <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\AchievementMan.cpp">
       <Filter>Managers</Filter>
@@ -1085,6 +1118,30 @@
     <ClCompile Include="Source\Entities\Activity.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Renderer\Vertex.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\Texture.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\Shapes.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\RenderMan.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\RenderBatch.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\GLState.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\Camera.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\BlendMode.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Renderer\GraphicalPrimitive.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
@@ -1247,7 +1304,7 @@
     <ClCompile Include="Source\Renderer\BigTexture.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Managers\GLResourceMan.cpp">
+    <ClCompile Include="Source\Managers\GLStateMan.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Renderer\raylib\rlgl.c">

@@ -9,6 +9,41 @@
 #include <array>
 
 namespace RTE {
+	class UniformValueType {
+	public:
+		UniformValueType(GLint uniformLocation): m_UniformLocation(uniformLocation) {}
+		virtual ~UniformValueType() = default;
+		virtual void Enable() = 0;
+	protected:
+		GLint m_UniformLocation{0};
+	};
+
+	template <typename T>
+	class UniformValue: public UniformValueType {
+	public:
+		UniformValue(GLint uniformLocation, T value): UniformValueType(uniformLocation), m_Value(std::move(value)) {}
+		void Enable() override;
+	private:
+		T m_Value{};
+	};
+
+
+	using BoolValue = UniformValue<bool>;
+	using IntValue = UniformValue<int>;
+	using FloatValue = UniformValue<float>;
+	using Matrix4fValue = UniformValue<glm::mat4>;
+	using Vector2fValue = UniformValue<glm::vec2>;
+	using Vector3fValue = UniformValue<glm::vec3>;
+	using Vector4fValue = UniformValue<glm::vec4>;
+	using Matrix4fvValue = UniformValue<std::vector<glm::mat4>>;
+
+	enum VertexAttribLocation:GLuint {
+		VERTEX,
+		TEXTURECOORDINATE,
+		COLOR,
+		NORMAL
+	};
+
 	class Shader: public Entity {
 	public:
 		EntityAllocation(Shader);
@@ -39,7 +74,7 @@ namespace RTE {
 		bool Compile(const std::string& vertexFilename, const std::string& fragPath);
 
 		/// Enables the shader program for use. Always enable before setting uniforms.
-		void Enable();
+		void Enable() const;
 
 		/// Begin shader draw mode. Flushes the active batch and enables this shader.
 		void Begin() const;
@@ -160,6 +195,8 @@ namespace RTE {
 		/// The location of the texture uniform. This may be -1 if the shader doesn't use textures, in which case the value will be ignored.
 		int GetTextureUniform() const { return m_TextureUniform; }
 
+		int GetPaletteUniform() const { return m_PaletteUniform; }
+
 		/// Get the location of the color modifier uniform.
 		/// @return
 		/// The location of the color modifier uniform. This may be -1 if the shader doesn't use the color mod, in which case the value will  be ignored.
@@ -174,6 +211,10 @@ namespace RTE {
 		/// @return
 		/// The location of the UV transformation matrix uniform. This may be -1 if the shader doesn't use UV transforms, in which case the value will be ignored.
 		int GetUVTransformUniform() const { return m_UVTransformUniform; }
+
+		/// Get the location of the view matrix uniform.
+		/// @return The location of the view matrix uniform. May be -1 if the shader doesn't support view transformation.
+		int GetViewUniform() const { return m_ViewUniform; }
 
 		/// Get the location of the projection matrix uniform.
 		/// @return
@@ -212,10 +253,12 @@ namespace RTE {
 
 		std::array<int, RL_SHADER_LOC_COUNT> m_Locations{};
 
-		GLint m_TextureUniform{0}; //!< Location of the texture uniform (sampler2d rteTexture).
-		GLint m_ColorUniform{0}; //!< Location of the colormod uniform (vec4 rteColor).
-		GLint m_TransformUniform{0}; //!< Location of the transform uniform (mat4 rteTransform).
-		GLint m_UVTransformUniform{0}; //!< Location of the UV transform uniform (mat4 rteUVTransform).
-		GLint m_ProjectionUniform{0}; //!< Location of the projection uniform (mat4 rteProjection).
+		GLint m_TextureUniform{-1}; //!< Location of the texture uniform (sampler2d rteTexture).
+		GLint m_PaletteUniform{-1};
+		GLint m_ColorUniform{-1}; //!< Location of the colormod uniform (vec4 rteColor).
+		GLint m_TransformUniform{-1}; //!< Location of the transform uniform (mat4 rteTransform).
+		GLint m_ViewUniform{-1}; //!< Location of the view matrix uniform (mat4 rteView).
+		GLint m_UVTransformUniform{-1}; //!< Location of the UV transform uniform (mat4 rteUVTransform).
+		GLint m_ProjectionUniform{-1}; //!< Location of the projection uniform (mat4 rteProjection).
 	};
 } // namespace RTE

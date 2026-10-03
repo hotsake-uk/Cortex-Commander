@@ -9,7 +9,10 @@
 #include "PresetMan.h"
 #include "PostProcessMan.h"
 #include "RenderTarget.h"
-#include "GLResourceMan.h"
+#include "GLStateMan.h"
+#include "RenderMan.h"
+#include "DebugMan.h"
+#include "Draw.h"
 
 #include "GLCheck.h"
 #include <SDL3/SDL.h>
@@ -90,9 +93,6 @@ void WindowMan::Destroy() {
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();
-	GL_CHECK(glDeleteTextures(1, &m_BackBuffer32Texture));
-	GL_CHECK(glDeleteBuffers(1, &m_ScreenVBO));
-	GL_CHECK(glDeleteVertexArrays(1, &m_ScreenVAO));
 }
 
 void WindowMan::Initialize() {
@@ -125,6 +125,7 @@ void WindowMan::Initialize() {
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 	CreatePrimaryWindow();
 	InitializeOpenGL();
 
@@ -220,6 +221,99 @@ void WindowMan::CreatePrimaryWindow() {
 #endif
 }
 
+static void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+	// Ignore non-significant error/warning codes (NVidia drivers)
+	// NOTE: Here there are the details with a sample output:
+	// - #131169 - Framebuffer detailed info: The driver allocated storage for renderbuffer 2. (severity: low)
+	// - #131185 - Buffer detailed info: Buffer object 1 (bound to GL_ELEMENT_ARRAY_BUFFER_ARB, usage hint is GL_ENUM_88e4)
+	//             will use VIDEO memory as the source for buffer object operations. (severity: low)
+	// - #131218 - Program/shader state performance warning: Vertex shader in program 7 is being recompiled based on GL state. (severity: medium)
+	// - #131204 - Texture state usage warning: The texture object (0) bound to texture image unit 0 does not have
+	//             a defined base level and cannot be used for texture mapping. (severity: low)
+	if ((id == 131169) || (id == 131185) || (id == 131218) || (id == 131204))
+		return;
+
+	const char* msgSource = NULL;
+	switch (source) {
+		case GL_DEBUG_SOURCE_API:
+			msgSource = "API";
+			break;
+		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+			msgSource = "WINDOW_SYSTEM";
+			break;
+		case GL_DEBUG_SOURCE_SHADER_COMPILER:
+			msgSource = "SHADER_COMPILER";
+			break;
+		case GL_DEBUG_SOURCE_THIRD_PARTY:
+			msgSource = "THIRD_PARTY";
+			break;
+		case GL_DEBUG_SOURCE_APPLICATION:
+			msgSource = "APPLICATION";
+			break;
+		case GL_DEBUG_SOURCE_OTHER:
+			msgSource = "OTHER";
+			break;
+		default:
+			break;
+	}
+
+	const char* msgType = NULL;
+	switch (type) {
+		case GL_DEBUG_TYPE_ERROR:
+			msgType = "ERROR";
+			break;
+		case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+			msgType = "DEPRECATED_BEHAVIOR";
+			break;
+		case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+			msgType = "UNDEFINED_BEHAVIOR";
+			break;
+		case GL_DEBUG_TYPE_PORTABILITY:
+			msgType = "PORTABILITY";
+			break;
+		case GL_DEBUG_TYPE_PERFORMANCE:
+			msgType = "PERFORMANCE";
+			break;
+		case GL_DEBUG_TYPE_MARKER:
+			msgType = "MARKER";
+			break;
+		case GL_DEBUG_TYPE_PUSH_GROUP:
+			msgType = "PUSH_GROUP";
+			break;
+		case GL_DEBUG_TYPE_POP_GROUP:
+			msgType = "POP_GROUP";
+			break;
+		case GL_DEBUG_TYPE_OTHER:
+			msgType = "OTHER";
+			break;
+		default:
+			break;
+	}
+
+	const char* msgSeverity = "DEFAULT";
+	switch (severity) {
+		case GL_DEBUG_SEVERITY_LOW:
+			msgSeverity = "LOW";
+			break;
+		case GL_DEBUG_SEVERITY_MEDIUM:
+			msgSeverity = "MEDIUM";
+			break;
+		case GL_DEBUG_SEVERITY_HIGH:
+			msgSeverity = "HIGH";
+			break;
+		case GL_DEBUG_SEVERITY_NOTIFICATION:
+			msgSeverity = "NOTIFICATION";
+			break;
+		default:
+			break;
+	}
+
+	std::cout << "GL: OpenGL debug message: " << message << "\n";
+	std::cout << "    > Type: " << msgType << "\n";
+	std::cout << "    > Source = " <<  msgSource << "\n";
+	std::cout << "    > Severity = " << msgSeverity << std::endl;
+}
+
 void WindowMan::InitializeOpenGL() {
 	m_GLContext = std::unique_ptr<SDL_GLContextState, SDLContextDeleter>(SDL_GL_CreateContext(m_PrimaryWindow.get()));
 
@@ -228,7 +322,17 @@ void WindowMan::InitializeOpenGL() {
 	}
 
 	if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
+		m_GLContext = nullptr;
 		RTEAbort("Failed to load GL functions!");
+	}
+
+	gladUninstallGLDebug();
+
+	if (GLAD_GL_KHR_debug || GLAD_GL_ARB_debug_output) {
+		std::cout << "Enable Debug output!" << std::endl;
+		glDebugMessageCallback(DebugMessageCallback, nullptr);
+		glEnable(GL_DEBUG_OUTPUT);
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 	}
 
 #ifndef _WIN32
@@ -239,24 +343,12 @@ void WindowMan::InitializeOpenGL() {
 
 	rlLoadExtensions((void*)SDL_GL_GetProcAddress);
 	rlglInit(m_ResX, m_ResY);
-
-	GL_CHECK(glEnable(GL_BLEND));
-	GL_CHECK(glEnable(GL_DEPTH_TEST));
-	GL_CHECK(glGenBuffers(1, &m_ScreenVBO));
-	GL_CHECK(glGenVertexArrays(1, &m_ScreenVAO));
-	GL_CHECK(glBindVertexArray(m_ScreenVAO));
-	GL_CHECK(glGenTextures(1, &m_BackBuffer32Texture));
 	TracyGpuContext;
-	Texture2D shapesTexture = {rlGetTextureIdDefault(), 1, 1, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
-	SetShapesTexture(shapesTexture, {0.0f, 0.0f, 1.0f, 1.0f});
 }
 
 void WindowMan::CreateBackBufferTexture() {
 	m_ScreenBuffer = std::make_unique<RenderTarget>(FloatRect(0, 0, m_ResX, m_ResY), FloatRect(0, 0, m_ResX, m_ResY));
-	GL_CHECK(glBindTexture(GL_TEXTURE_2D, m_BackBuffer32Texture));
-	GL_CHECK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_ResX, m_ResY, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr));
-	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+	m_BackBuffer32Texture = std::make_unique<Texture>(FloatRect(0, 0, m_ResX, m_ResY));
 }
 
 int WindowMan::GetWindowResX() {
@@ -757,38 +849,32 @@ void WindowMan::ClearBackbuffer(bool clearFrameMan) {
 void WindowMan::UploadFrame() {
 
 	m_ScreenBuffer->Begin(g_ActivityMan.IsInActivity());
+	//Camera viewport(Vector(m_ResX / 2, m_ResY / 2), m_ScreenBuffer->GetSize());
+	g_RenderMan.BeginFrame(nullptr);
 
-	rlDisableDepthTest();
-	rlDisableColorBlend();
-	//rlSetBlendMode(RL_BLEND_ALPHA);
-
-	GL_CHECK(glBindTexture(GL_TEXTURE_2D, m_BackBuffer32Texture));
+	glActiveTexture(GL_TEXTURE2);
+	m_BackBuffer32Texture->Bind();
 	GL_CHECK(glPixelStorei(GL_UNPACK_ALIGNMENT, 4));
 	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, g_FrameMan.GetBackBuffer32()->w, g_FrameMan.GetBackBuffer32()->h, GL_RGBA, GL_UNSIGNED_BYTE, g_FrameMan.GetBackBuffer32()->line[0]));
 
-	m_ScreenBlitShader->Begin();
-	rlSetUniformSampler(m_ScreenBlitShader->GetUniformLocation("rteGUITexture"), m_BackBuffer32Texture);
 	if (m_DrawPostProcessBuffer) {
-		Texture2D postBuffer = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture();
-		DrawTextureRec(postBuffer, Rectangle(0.0f, 0.0f, postBuffer.width, -postBuffer.height), {0.0f, 0.0f}, {255, 255, 255, 255});
+		Texture* postBuffer = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture().lock().get();
+		Draw::DrawTexture(postBuffer, {-1.0f, -1.0f, 2.0f, 2.0f});
 	} else {
-		Texture2D empty(rlGetTextureIdDefault(), m_ResX, m_ResY, 1, 0);
-		//rlSetUniformSampler(m_ScreenBlitShader->GetTextureUniform(), 0);
-		DrawTextureRec(m_ScreenBuffer->GetColorTexture(), {0.0f, 0.0f, static_cast<float>(m_ResX), -static_cast<float>(m_ResY)}, {0, 0}, {255, 255, 255, 255});
+		Draw::DrawTexture(m_ScreenBuffer->GetColorTexture().lock().get(), {-1.0f, -1.0f, 2.0f, 2.0f});
 	}
+	m_ScreenBlitShader->Begin();
+	Draw::DrawTexture(m_BackBuffer32Texture.get(), {-1.0f, -1.0f, 2.0f, 2.0f});
 	m_ScreenBlitShader->End();
 	m_ScreenBuffer->End();
+	g_RenderMan.BeginFrame(nullptr);
 
-	rlDisableColorBlend();
+	glDisable(GL_BLEND);
 	if (m_MultiDisplayWindows.empty()) {
-		rlMatrixMode(RL_PROJECTION);
-		rlLoadIdentity();
-		rlOrtho(0, m_ResX, m_ResY, 0, 0.0, 1.0);
-		rlMatrixMode(RL_MODELVIEW);
-		rlLoadIdentity();
+		g_RenderMan.BeginFrame(nullptr);
 		GL_CHECK(glViewport(m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h));
-		DrawTextureRec(m_ScreenBuffer->GetColorTexture(), {0.0f, 0.0f, static_cast<float>(m_ResX), static_cast<float>(-m_ResY)}, {0.0f, 0.0f}, {255, 255, 255, 255});
-		rlDrawRenderBatchActive();
+		Draw::DrawTexture(m_ScreenBuffer->GetColorTexture().lock().get(), {-1.0f, 1.0f, 2.0f, -2.0f});
+		g_RenderMan.DrawActiveBatch();
 	} else {
 		for (size_t i = 0; i < m_MultiDisplayWindows.size(); ++i) {
 			SDL_GL_MakeCurrent(m_MultiDisplayWindows.at(i).get(), m_GLContext.get());
@@ -797,14 +883,11 @@ void WindowMan::UploadFrame() {
 			SDL_GetWindowSizeInPixels(m_MultiDisplayWindows.at(i).get(), &windowW, &windowH);
 			GL_CHECK(glViewport(0, 0, windowW, windowH));
 
-			rlMatrixMode(RL_PROJECTION);
-			rlLoadIdentity();
-			rlOrtho(0, windowW, windowH, 0, -1.0, 1.0);
-
-			DrawTexture(m_ScreenBuffer->GetColorTexture(), 0, 0, {255, 255, 255, 255});
-			rlDrawRenderBatchActive();
+			Draw::DrawTexture(m_ScreenBuffer->GetColorTexture().lock().get(), {-1.0f, 1.0f, 2.0f, -2.0f});
+			g_RenderMan.DrawActiveBatch();
 		}
 	}
+	g_DebugMan.DrawImGui();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	Present();

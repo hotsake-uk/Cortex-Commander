@@ -32,6 +32,7 @@
 #include <sys/sysctl.h>
 #endif
 
+#include "allegro.h"
 #include "backward/backward.hpp"
 
 
@@ -558,7 +559,7 @@ void RTEError::DumpHardwareInfo() {
 
 bool RTEError::DumpAbortScreen() {
 	int success = -1;
-	if (glReadPixels != nullptr) {
+	if (g_WindowMan.GetGLContext()) {
 		int w, h;
 		SDL_GetWindowSizeInPixels(g_WindowMan.GetWindow(), &w, &h);
 		if (!(w > 0 && h > 0)) {

@@ -15,7 +15,7 @@ struct SDL_Palette;
 struct SDL_Surface;
 
 namespace RTE {
-
+	class BitmapTexture;
 	/// A representation of a content file that is stored directly on disk.
 	class ContentFile : public Serializable {
 
@@ -130,6 +130,7 @@ namespace RTE {
 		/// @param dataPathToSpecificFrame Path to a specific frame when loading an animation to avoid overwriting the original preset DataPath when loading each frame.
 		/// @return Pointer to the BITMAP loaded from disk.
 		BITMAP* GetAsBitmap(int conversionMode = 0, bool storeBitmap = true, const std::string& dataPathToSpecificFrame = "");
+		std::shared_ptr<BitmapTexture> GetAsTexture(int conversionMode = 0, bool storeBitmap = true, const std::string& dataPathToSpecificFrame = "");
 
 		/// Fills an existing vector of Allegro BITMAPs representing each frame in the animation with the data represented by this ContentFile object.
 		/// It loads the BITMAPs into the static maps if they're not already loaded. Ownership of the BITMAPs is NOT transferred!
@@ -137,6 +138,7 @@ namespace RTE {
 		/// @param frameCount The number of frames to attempt to load, more than 1 frame will mean 00# is appended to DataPath to handle naming conventions.
 		/// @param conversionMode The Allegro color conversion mode to use when loading this bitmap.
 		void GetAsAnimation(std::vector<BITMAP*>& vectorToFill, int frameCount = 1, int conversionMode = 0);
+		void GetAsAnimation(std::vector<std::shared_ptr<BitmapTexture>>& vectorToFill, int frameCount = 1, int conversionMode = 0);
 
 		/// Gets the data represented by this ContentFile object as a vector of Allegro BITMAPs, each representing a frame in the animation.
 		/// It loads the BITMAPs into the static maps if they're not already loaded. Ownership of the BITMAPs is NOT transferred!
@@ -147,6 +149,12 @@ namespace RTE {
 			std::vector<BITMAP*> returnBitmaps;
 			GetAsAnimation(returnBitmaps, frameCount, conversionMode);
 			return returnBitmaps;
+		}
+
+		std::vector<std::shared_ptr<BitmapTexture>> GetAsTextureAnimation(int frameCount = 1, int conversionMode = 0) {
+			std::vector<std::shared_ptr<BitmapTexture>> returnArray;
+			GetAsAnimation(returnArray, frameCount, conversionMode);
+			return returnArray;
 		}
 
 		/// Gets the data represented by this ContentFile object as an FMOD FSOUND_SAMPLE, loading it into the static maps if it's not already loaded. Ownership of the FSOUND_SAMPLE is NOT transferred!
@@ -180,6 +188,7 @@ namespace RTE {
 
 		static std::unordered_map<size_t, std::string> s_PathHashes; //!< Static map containing the hash values of paths of all loaded data files.
 		static std::array<std::unordered_map<std::string, BITMAP*>, BitDepths::BitDepthCount> s_LoadedBitmaps; //!< Static map containing all the already loaded BITMAPs and their paths for each bit depth.
+		static std::unordered_map<std::string, std::shared_ptr<BitmapTexture>> s_LoadedTextures;
 		static std::unordered_map<std::string, SDL_Surface*> s_MemoryPNGs; //!< Static map containing in-memory PNG files for save/load
 		static std::unordered_map<std::string, FMOD::Sound*> s_LoadedSamples; //!< Static map containing all the already loaded FSOUND_SAMPLEs and their paths.
 

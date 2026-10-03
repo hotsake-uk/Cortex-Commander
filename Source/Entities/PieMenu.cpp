@@ -5,7 +5,7 @@
 #include "PresetMan.h"
 #include "SettingsMan.h"
 #include "LuaMan.h"
-#include "GLResourceMan.h"
+#include "GLStateMan.h"
 
 #include "AHuman.h"
 #include "ContentFile.h"
@@ -652,11 +652,11 @@ void PieMenu::Draw(BITMAP* targetBitmap, const Vector& targetPos) const {
 	if (m_EnabledState != EnabledState::Disabled) {
 		if (m_DrawBackgroundTransparent) {
 			g_FrameMan.SetTransTableFromPreset(TransparencyPreset::MoreTrans);
-			g_GLResourceMan.UpdateDynamicBitmap(m_BGBitmap, true);
-			DrawTexture(g_GLResourceMan.GetStaticTextureFromBitmap(m_BGBitmap), drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
+			g_GLStateMan.UpdateDynamicBitmap(m_BGBitmap, true);
+			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_BGBitmap), drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
 		} else {
-			g_GLResourceMan.UpdateDynamicBitmap(m_BGBitmap, true);
-			DrawTexture(g_GLResourceMan.GetStaticTextureFromBitmap(m_BGBitmap), drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, {255, 255, 255, 255});
+			g_GLStateMan.UpdateDynamicBitmap(m_BGBitmap, true);
+			DrawTexture(g_GLStateMan.GetStaticTextureFromBitmap(m_BGBitmap), drawPos.GetFloorIntX() - m_BGBitmap->w / 2, drawPos.GetFloorIntY() - m_BGBitmap->h / 2, {255, 255, 255, 255});
 		}
 	}
 	rlZDepth(c_DefaultDrawDepth);
@@ -673,6 +673,8 @@ void PieMenu::Draw(BITMAP* targetBitmap, const Vector& targetPos) const {
 	}
 	rlZDepth(c_DefaultDrawDepth);
 }
+
+void PieMenu::Draw(const Camera& camera) const {}
 
 void PieMenu::UpdateWobbling() {
 	float innerRadiusChange = static_cast<float>(m_EnableDisableAnimationTimer.GetElapsedRealTimeMS()) / 6.0F;

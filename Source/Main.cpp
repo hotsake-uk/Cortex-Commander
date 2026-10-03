@@ -18,6 +18,7 @@
 /// Cortex Command Community Project Discord - https://discord.gg/TSU6StNQUG
 /// </summary>
 
+#include "SDL3/SDL_hints.h"
 #include "allegro.h"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
@@ -40,11 +41,13 @@
 #include "UInputMan.h"
 #include "PerformanceMan.h"
 #include "FrameMan.h"
+#include "DebugMan.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
 #include "WindowMan.h"
-#include "GLResourceMan.h"
+#include "GLStateMan.h"
+#include "RenderMan.h"
 #include "CameraMan.h"
 #include "ActivityMan.h"
 #include "PrimitiveMan.h"
@@ -57,6 +60,11 @@
 #include "tracy/Tracy.hpp"
 
 #include "imgui_impl_sdl3.h"
+
+#ifdef RENDERDOC_DEBUG
+#include "renderdoc_app.h"
+#include <dlfcn.h>
+#endif
 
 #ifdef _WIN32
 #include "windows.h"
@@ -77,9 +85,11 @@ void InitializeManagers() {
 	PresetMan::Construct();
 	SettingsMan::Construct();
 	WindowMan::Construct();
-	GLResourceMan::Construct();
+	GLStateMan::Construct();
 	LuaMan::Construct();
 	FrameMan::Construct();
+	RenderMan::Construct();
+	DebugMan::Construct();
 	PerformanceMan::Construct();
 	PostProcessMan::Construct();
 	PrimitiveMan::Construct();
@@ -99,11 +109,12 @@ void InitializeManagers() {
 	g_ThreadMan.Initialize();
 	g_SettingsMan.Initialize();
 	g_WindowMan.Initialize();
-	g_GLResourceMan.Initialize();
+	g_GLStateMan.Initialize();
 
 	g_LuaMan.Initialize();
 	g_TimerMan.Initialize();
 	g_FrameMan.Initialize();
+	g_RenderMan.Initialize();
 	g_PostProcessMan.Initialize();
 	g_PerformanceMan.Initialize();
 
@@ -146,7 +157,8 @@ void DestroyManagers() {
 	g_LuaMan.Destroy();
 	ContentFile::FreeAllLoaded();
 	g_ConsoleMan.Destroy();
-	g_GLResourceMan.Destroy();
+	g_RenderMan.Destroy();
+	g_GLStateMan.Destroy();
 	g_WindowMan.Destroy();
 
 #ifdef DEBUG_BUILD
@@ -287,6 +299,23 @@ void RunMenuLoop() {
 	g_MenuMan.SetIsInMenuScreen(false);
 }
 
+void LoadRenderDoc() {
+#ifdef RENDERDOC_DEBUG
+	RENDERDOC_API_1_1_2 *rdoc_api = NULL;
+	// At init, on linux/android.
+	// For android replace librenderdoc.so with libVkLayer_GLES_RenderDoc.so
+	if (void* mod = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD)) {
+		pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(mod, "RENDERDOC_GetAPI");
+		int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_1_2, (void**)&rdoc_api);
+		assert(ret == 1);
+	}
+	if (rdoc_api) {
+		RENDERDOC_InputButton pause = eRENDERDOC_Key_Pause;
+		rdoc_api->SetCaptureKeys(&pause, 1);
+	}
+#endif
+}
+
 /// <summary>
 /// Game simulation loop.
 /// </summary>
@@ -413,14 +442,14 @@ static const bool RTESetExceptionHandlers = []() {
 /// Implementation of the main function.
 /// </summary>
 int main(int argc, char** argv) {
-	install_allegro(SYSTEM_NONE, &errno, std::atexit);
-	loadpng_init();
+	install_allegro(SYSTEM_NONE, &errno, nullptr);
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD );
 
 	SDL_SetHint(SDL_HINT_MOUSE_AUTO_CAPTURE, "0");
 	SDL_SetHint("SDL_ALLOW_TOPMOST", "0");
-	SDL_HideCursor();
+	// SDL_HideCursor();
+	LoadRenderDoc();
 
 	if (std::filesystem::exists("Base.rte/gamecontrollerdb.txt")) {
 		SDL_AddGamepadMappingsFromFile("Base.rte/gamecontrollerdb.txt");
@@ -473,7 +502,6 @@ int main(int argc, char** argv) {
 
 	DestroyManagers();
 
-	allegro_exit();
 	SDL_Quit();
 
 	return EXIT_SUCCESS;

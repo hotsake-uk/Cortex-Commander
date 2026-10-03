@@ -765,8 +765,9 @@
     <ClInclude Include="Source\Lua\LuabindDefinitions.h" />
     <ClInclude Include="Source\Lua\LuaBindingRegisterDefinitions.h" />
     <ClInclude Include="Source\GUI\GUIWriter.h" />
+    <ClInclude Include="Source\Managers\DebugMan.h" />
     <ClInclude Include="Source\Managers\CameraMan.h" />
-    <ClInclude Include="Source\Managers\GLResourceMan.h" />
+    <ClInclude Include="Source\Managers\GLStateMan.h" />
     <ClInclude Include="Source\Managers\MusicMan.h" />
     <ClInclude Include="Source\Managers\MenuMan.h" />
     <ClInclude Include="Source\Managers\PerformanceMan.h" />
@@ -790,6 +791,15 @@
     <ClInclude Include="Source\Menus\TitleScreen.h" />
     <ClInclude Include="Resources\Credits.h" />
     <ClInclude Include="Resources\resource.h" />
+    <ClInclude Include="Source\Renderer\Vertex.h" />
+    <ClInclude Include="Source\Renderer\Texture.h" />
+    <ClInclude Include="Source\Renderer\Shapes.h" />
+    <ClInclude Include="Source\Renderer\RenderMan.h" />
+    <ClInclude Include="Source\Renderer\RenderBatch.h" />
+    <ClInclude Include="Source\Renderer\GLState.h" />
+    <ClInclude Include="Source\Renderer\DrawCall.h" />
+    <ClInclude Include="Source\Renderer\Camera.h" />
+    <ClInclude Include="Source\Renderer\BlendMode.h" />
     <ClInclude Include="Source\Renderer\Draw.h" />
     <ClInclude Include="Source\Renderer\raylib\rlutils.h" />
     <ClInclude Include="Source\Renderer\RenderTarget.h" />
@@ -1005,7 +1015,8 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <LanguageStandard Condition="'$(VisualStudioVersion)'=='16.0'">stdcpp17</LanguageStandard>
     </ClCompile>
-    <ClCompile Include="Source\Managers\GLResourceMan.cpp" />
+    <ClCompile Include="Source\Managers\DebugMan.cpp" />
+    <ClCompile Include="Source\Managers\GLStateMan.cpp" />
     <ClCompile Include="Source\Managers\MusicMan.cpp" />
     <ClCompile Include="Source\Managers\LuaMan.cpp">
       <ConformanceMode>false</ConformanceMode>
@@ -1047,6 +1058,14 @@
     <ClCompile Include="Source\Menus\SettingsVideoGUI.cpp" />
     <ClCompile Include="Source\Menus\TitleScreen.cpp" />
     <ClCompile Include="Source\Menus\InventoryMenuGUI.cpp" />
+    <ClCompile Include="Source\Renderer\Vertex.cpp" />
+    <ClCompile Include="Source\Renderer\Texture.cpp" />
+    <ClCompile Include="Source\Renderer\Shapes.cpp" />
+    <ClCompile Include="Source\Renderer\RenderMan.cpp" />
+    <ClCompile Include="Source\Renderer\RenderBatch.cpp" />
+    <ClCompile Include="Source\Renderer\GLState.cpp" />
+    <ClCompile Include="Source\Renderer\Camera.cpp" />
+    <ClCompile Include="Source\Renderer\BlendMode.cpp" />
     <ClCompile Include="Source\Renderer\RenderTarget.cpp" />
     <ClCompile Include="Source\Renderer\Shader.cpp" />
     <ClCompile Include="Source\Renderer\Draw.cpp" />

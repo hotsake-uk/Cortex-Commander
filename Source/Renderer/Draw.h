@@ -1,6 +1,13 @@
 #pragma once
 #include "raylib/raylib.h"
 #include "raylib/rlgl.h"
+#include "Camera.h"
+#include "Vertex.h"
+#include "Shapes.h"
+#include "Texture.h"
+#include "RenderTarget.h"
+#include "Rectangles.h"
+#include "RenderMan.h"
 
 struct BITMAP;
 namespace RTE {
@@ -25,6 +32,7 @@ namespace RTE {
 	/// @param scale Scale.
 	/// @param tint Tint color
 	void DrawTextureEx(BITMAP* bitmap, Vector2 pos, float rotation, float scale, RLColor tint);
+
 	/// @brief Draw part of a bitmap to pos.
 	/// @param bitmap The Bitmap
 	/// @param source The Source rectangle inside bitmap.
@@ -40,4 +48,14 @@ namespace RTE {
 	/// @param rotation Rotation angle in radians.
 	/// @param tint tint color.
 	void DrawTexturePro(BITMAP* bitmap, Rectangle source, Rectangle dest, Vector2 origin, float rotation, RLColor tint);
+
+	namespace Draw {
+		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, float posX, float posY, Color tint = {255, 255, 255, 255});
+		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, glm::vec2 pos, Color tint = {255, 255, 255, 255});
+		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, FloatRect dest, Color tint = {255, 255, 255, 255});
+		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, glm::vec2 pos, glm::vec2 origin, float angle, glm::vec2 scale, Color tint = {255, 255, 255, 255});
+		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, FloatRect source, glm::vec2 pos, Color tint);
+		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, const FloatRect& source, const FloatRect& dest, const Color& tint = {255, 255, 255, 255});
+		std::shared_ptr<DrawCall> DrawTexture(Texture* bitmap, FloatRect source, FloatRect dest, glm::vec2 origin, float rotation, Color tint);
+	}
 }

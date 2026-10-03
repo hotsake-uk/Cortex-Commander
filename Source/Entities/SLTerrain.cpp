@@ -8,6 +8,8 @@
 #include "Atom.h"
 #include "DataModule.h"
 #include "PresetMan.h"
+#include "Draw.h"
+#include "tracy/Tracy.hpp"
 
 #include <array>
 #include <execution>
@@ -36,6 +38,9 @@ void SLTerrain::Clear() {
 	m_TerrainObjects.clear();
 	m_UpdatedMaterialAreas.clear();
 	m_OrbitDirection = Directions::Up;
+
+	m_ScrollInfo = Vector(0.0f, 0.0f);
+	m_ScrollRatio = Vector(0.0f, 0.0f);
 }
 
 int SLTerrain::Create() {
@@ -277,10 +282,10 @@ int SLTerrain::LoadData() {
 		m_BGColorLayer->LoadData();
 	} else {
 		m_FGColorLayer->Destroy();
-		m_FGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), true, m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
+		m_FGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
 
 		m_BGColorLayer->Destroy();
-		m_BGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), true, m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
+		m_BGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
 
 		TexturizeTerrain();
 
@@ -295,6 +300,13 @@ int SLTerrain::LoadData() {
 		}
 		CleanAir();
 	}
+
+	m_ScrollInfo.SetXY(0.0f, 0.0f);
+	m_ScrollRatio.SetXY(0.0f, 0.0f);
+
+	m_FGColorLayer->SetScrollRatio(Vector(0.0f, 0.0f));
+	m_BGColorLayer->SetScrollRatio(Vector(0.0f, 0.0f));
+
 	return 0;
 }
 
@@ -503,4 +515,22 @@ void SLTerrain::Draw(const Box& targetDimensions, Box& targetBox, bool offsetNee
 			RTEAbort("Invalid LayerType was set to draw in SLTerrain::Draw!");
 			break;
 	}
+}
+
+void SLTerrain::Draw(const Camera& camera) {
+	ZoneScoped;
+	switch (m_LayerToDraw) {
+		case LayerType::MaterialLayer:
+			SceneLayer::Draw(camera);
+			break;
+		case LayerType::ForegroundLayer:
+			m_FGColorLayer->Draw(camera);
+			break;
+		case LayerType::BackgroundLayer:
+			m_BGColorLayer->Draw(camera);
+			break;
+		default:
+			RTEAbort("Invalid LayerType was set to draw in SLTerrain::Draw");
+			break;
+		}
 }

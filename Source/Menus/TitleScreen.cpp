@@ -4,7 +4,7 @@
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "UInputMan.h"
-#include "GLResourceMan.h"
+#include "GLStateMan.h"
 #include "ActivityMan.h"
 #include "SettingsMan.h"
 
@@ -100,8 +100,8 @@ void TitleScreen::Create(AllegroScreen* guiScreen) {
 }
 
 void TitleScreen::CreateTitleElements() {
-	m_DataRealmsLogo = ContentFile("Base.rte/GUIs/Title/Intro/DRLogo5x.png").GetAsBitmap();
-	m_FmodLogo = ContentFile("Base.rte/GUIs/Title/Intro/FMODLogo.png").GetAsBitmap();
+	m_DataRealmsLogo = ContentFile("Base.rte/GUIs/Title/Intro/DRLogo5x.png").GetAsTexture();
+	m_FmodLogo = ContentFile("Base.rte/GUIs/Title/Intro/FMODLogo.png").GetAsTexture();
 
 	m_PreGameLogoText.Create(ContentFile("Base.rte/GUIs/Title/Intro/PreTitle.png"));
 	m_PreGameLogoText.SetPos(Vector(static_cast<float>(m_TitleScreenMaxWidth / 2), static_cast<float>(g_WindowMan.GetResY() / 2)));
@@ -114,17 +114,17 @@ void TitleScreen::CreateTitleElements() {
 	m_Planet.Create(ContentFile("Base.rte/GUIs/Title/Planet.png"));
 	m_Moon.Create(ContentFile("Base.rte/GUIs/Title/Moon.png"));
 	m_Station.Create(ContentFile("Base.rte/GUIs/Title/Station.png"));
-	m_Nebula.Create(ContentFile("Base.rte/GUIs/Title/Nebula.png"), false, Vector(), false, false, Vector(0, -1.0F));
+	m_Nebula.Create(ContentFile("Base.rte/GUIs/Title/Nebula.png"), Vector(), false, false, Vector(0, -1.0F));
 	m_Nebula.SetScrollRatio(Vector(-1.0F, 1.0F / 3.0F));
 
 	int starSmallBitmapCount = 4;
-	std::vector<BITMAP*> starSmallBitmaps = ContentFile("Base.rte/GUIs/Title/Stars/StarSmall.png").GetAsAnimation(starSmallBitmapCount);
+	std::vector<std::shared_ptr<BitmapTexture>> starSmallBitmaps = ContentFile("Base.rte/GUIs/Title/Stars/StarSmall.png").GetAsTextureAnimation(starSmallBitmapCount);
 
 	int starLargeBitmapCount = 1;
-	std::vector<BITMAP*> starLargeBitmaps = ContentFile("Base.rte/GUIs/Title/Stars/StarLarge.png").GetAsAnimation(starLargeBitmapCount);
+	std::vector<std::shared_ptr<BitmapTexture>> starLargeBitmaps = ContentFile("Base.rte/GUIs/Title/Stars/StarLarge.png").GetAsTextureAnimation(starLargeBitmapCount);
 
 	int starHugeBitmapCount = 2;
-	std::vector<BITMAP*> starHugeBitmaps = ContentFile("Base.rte/GUIs/Title/Stars/StarHuge.png").GetAsAnimation(starHugeBitmapCount);
+	std::vector<std::shared_ptr<BitmapTexture>> starHugeBitmaps = ContentFile("Base.rte/GUIs/Title/Stars/StarHuge.png").GetAsTextureAnimation(starHugeBitmapCount);
 
 	int starCount = (g_WindowMan.GetResX() * m_Nebula.GetBitmap()->h) / 1000;
 	for (int i = 0; i < starCount; ++i) {
@@ -540,22 +540,24 @@ void TitleScreen::UpdateTitleTransitions() {
 }
 
 void TitleScreen::Draw() {
+	Camera scrollCamera(m_ScrollOffset, Box(Vector(0.0f, 0.0f), g_WindowMan.GetResX(), g_WindowMan.GetResY()));
+	g_RenderMan.BeginFrame(&scrollCamera);
 	if (!m_FinishedPlayingIntro) {
 		if (m_IntroSequenceState >= IntroSequence::SlideshowFadeIn) {
-			DrawTitleScreenScene();
+			DrawTitleScreenScene(scrollCamera);
 		}
 		if (m_IntroSequenceState >= IntroSequence::GameLogoAppear) {
 			DrawGameLogo();
 		}
 
 		if (m_IntroSequenceState >= IntroSequence::DataRealmsLogoFadeIn && m_IntroSequenceState <= IntroSequence::DataRealmsLogoFadeOut) {
-			DrawTexture(m_DataRealmsLogo, (m_TitleScreenMaxWidth - m_DataRealmsLogo->w) / 2, (g_WindowMan.GetResY() - m_DataRealmsLogo->h) / 2, RLColor(255, 255, 255, 255));
+			Draw::DrawTexture(m_DataRealmsLogo.get(), (m_TitleScreenMaxWidth - m_DataRealmsLogo->GetDimensions().w) / 2, (g_WindowMan.GetResY() - m_DataRealmsLogo->GetDimensions().h) / 2, Color(255, 255, 255, 255));
 			std::string copyrightNotice(64, '\0');
 			std::snprintf(copyrightNotice.data(), copyrightNotice.size(), "Cortex Command is TM and %c 2023 Data Realms, LLC", -35);
 			AllegroBitmap guiBackBuffer(g_FrameMan.GetBackBuffer32());
 			m_IntroTextFont->DrawAligned(&guiBackBuffer, m_TitleScreenMaxWidth / 2, g_WindowMan.GetResY() - m_IntroTextFont->GetFontHeight() - 5, copyrightNotice, GUIFont::Centre);
 		} else if (m_IntroSequenceState >= IntroSequence::FmodLogoFadeIn && m_IntroSequenceState <= IntroSequence::FmodLogoFadeOut) {
-			DrawTexture(m_FmodLogo, (m_TitleScreenMaxWidth - m_FmodLogo->w) / 2, (g_WindowMan.GetResY() - m_FmodLogo->h) / 2, RLColor(255, 255, 255, 255));
+			Draw::DrawTexture(m_FmodLogo.get(), (m_TitleScreenMaxWidth - m_FmodLogo->GetDimensions().w) / 2, (g_WindowMan.GetResY() - m_FmodLogo->GetDimensions().h) / 2, Color(255, 255, 255, 255));
 			AllegroBitmap guiBackBuffer(g_FrameMan.GetBackBuffer32());
 			m_IntroTextFont->DrawAligned(&guiBackBuffer, m_TitleScreenMaxWidth / 2, g_WindowMan.GetResY() - m_IntroTextFont->GetFontHeight() - 5, "Made with FMOD Studio by Firelight Technologies Pty Ltd.", GUIFont::Centre);
 		} else if (m_IntroSequenceState >= IntroSequence::ShowSlide1 && m_IntroSequenceState <= IntroSequence::ShowSlide8) {
@@ -563,11 +565,14 @@ void TitleScreen::Draw() {
 		} else if (m_IntroSequenceState == IntroSequence::SlideshowEnd) {
 			m_PreGameLogoText.Draw(g_FrameMan.GetBackBuffer32());
 			int blendAmount = 220 + RandomNum(-35, 35);
-			set_screen_blender(blendAmount, blendAmount, blendAmount, blendAmount);
+			g_FrameMan.SetCurrentAlpha(blendAmount);
+			rlSetBlendMode(RL_BLEND_SCREEN);
 			m_PreGameLogoTextGlow.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawTrans);
+			rlSetBlendMode(RL_BLEND_ALPHA);
+			g_FrameMan.SetCurrentAlpha(255);
 		}
 	} else {
-		DrawTitleScreenScene();
+		DrawTitleScreenScene(scrollCamera);
 
 		// In credits have to draw the overlay before the game logo otherwise drawing the game logo again on top of an existing one causes the glow effect to look wonky.
 		if (m_TitleTransitionState == TitleTransition::MainMenuToCredits || m_TitleTransitionState == TitleTransition::CreditsToMainMenu) {
@@ -575,6 +580,7 @@ void TitleScreen::Draw() {
 				DrawOverlayEffectBitmap();
 			}
 			DrawGameLogo();
+			g_RenderMan.DrawActiveBatch();
 			return;
 		}
 		DrawGameLogo();
@@ -582,56 +588,53 @@ void TitleScreen::Draw() {
 	if (m_FadeAmount > 0) {
 		DrawOverlayEffectBitmap();
 	}
+	g_RenderMan.DrawActiveBatch();
 }
 
-void TitleScreen::DrawTitleScreenScene() {
+void TitleScreen::DrawTitleScreenScene(const Camera& camera) {
 	rlDisableDepthTest();
 
 	Box nebulaTargetBox(Vector(), g_FrameMan.GetBackBuffer32()->w, g_FrameMan.GetBackBuffer32()->h);
 	m_Nebula.SetOffset(Vector(static_cast<float>((m_TitleScreenMaxWidth - m_Nebula.GetBitmap()->w) / 2), m_ScrollOffset.GetY()));
 	m_Nebula.Draw(nebulaTargetBox, nebulaTargetBox, true);
 
-	rlEnableColorBlend();
-	rlSetBlendFactorsSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_FUNC_ADD, GL_FUNC_ADD);
-	rlSetBlendMode(RL_BLEND_CUSTOM_SEPARATE);
+	g_RenderMan.SetActiveBlendMode(Blend::SCREEN);
 
 	for (const Star& star: m_BackdropStars) {
 		int intensity = star.Intensity + RandomNum(0, (star.Size == Star::StarSize::StarSmall) ? 35 : 70);
-		// set_screen_blender(intensity, intensity, intensity, intensity);
 		int starPosY = static_cast<int>(star.Position.GetY() - (m_ScrollOffset.GetY() * (m_Nebula.GetScrollRatio().GetY() * ((star.Size == Star::StarSize::StarSmall) ? 0.8F : 1.0F))));
-		DrawTexture(g_GLResourceMan.GetStaticTextureFromBitmap(star.Bitmap), star.Position.m_X, starPosY, RLColor(intensity, intensity, intensity, intensity));
-		// draw_trans_sprite(g_FrameMan.GetBackBuffer32(), star.Bitmap, star.Position.GetFloorIntX(), starPosY);
+		Draw::DrawTexture(star.Bitmap.get(), star.Position.m_X, starPosY, {intensity, intensity, intensity, intensity});
 	}
 
-	rlSetBlendMode(RL_BLEND_ALPHA);
+	g_RenderMan.SetActiveBlendMode(Blend::ALPHA);
 
 	m_PlanetPos.SetXY(static_cast<float>(m_TitleScreenMaxWidth / 2), static_cast<float>(567 - m_ScrollOffset.GetFloorIntY()));
 	m_Moon.SetPos(Vector(m_PlanetPos.GetX() + 200, 364 - (m_ScrollOffset.GetY() * 0.60F)));
 	// m_Moon.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawAlpha);
 	m_Planet.SetPos(m_PlanetPos);
 	// m_Planet.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawAlpha);
-	DrawTextureV(g_GLResourceMan.GetStaticTextureFromBitmap(m_Moon.GetSpriteFrame(0)), m_Moon.GetPos() + m_Moon.GetSpriteOffset(), {255, 255, 255, 255});
-	DrawTextureV(g_GLResourceMan.GetStaticTextureFromBitmap(m_Planet.GetSpriteFrame(0)), m_Planet.GetPos() + m_Planet.GetSpriteOffset(), {255, 255, 255, 255});
+	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_Moon.GetSpriteFrame(0)), m_Moon.GetPos() + m_Moon.GetSpriteOffset(), {255, 255, 255, 255});
+	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_Planet.GetSpriteFrame(0)), m_Planet.GetPos() + m_Planet.GetSpriteOffset(), {255, 255, 255, 255});
 
 	m_StationOffset.SetXY(m_OrbitRadius, 0);
 	m_StationOffset.RadRotate(m_StationOrbitRotation);
 	m_Station.SetPos(m_PlanetPos + m_StationOffset);
 	m_Station.SetRotAngle(-c_HalfPI + m_StationOrbitRotation);
-	// m_Station.Draw(g_FrameMan.GetBackBuffer32());
-	DrawTextureEx(g_GLResourceMan.GetStaticTextureFromBitmap(m_Station.GetSpriteFrame(0)), m_Station.GetPos() + m_Station.GetSpriteOffset() + Vector(m_Station.GetSpriteFrame(0)->w / 2, m_Station.GetSpriteFrame(0)->h / 2), m_StationOrbitRotation - c_HalfPI, 1.0f, {255, 255, 255, 255});
+	//m_Station.Draw(g_FrameMan.GetBackBuffer32());
+	DrawTextureEx(g_GLStateMan.GetStaticTextureFromBitmap(m_Station.GetSpriteFrame(0)), m_Station.GetPos() + m_Station.GetSpriteOffset() + Vector(m_Station.GetSpriteFrame(0)->w / 2, m_Station.GetSpriteFrame(0)->h / 2), m_StationOrbitRotation - c_HalfPI, 1.0f, {255, 255, 255, 255});
 }
 
 void TitleScreen::DrawGameLogo() {
-	DrawTextureV(g_GLResourceMan.GetStaticTextureFromBitmap(m_GameLogo.GetSpriteFrame(0)), m_GameLogo.GetPos() + m_GameLogo.GetSpriteOffset(), {255, 255, 255, 255});
-	// m_GameLogo.Draw(g_FrameMan.GetBackBuffer32());
+	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_GameLogo.GetSpriteFrame(0)), m_GameLogo.GetPos() + m_GameLogo.GetSpriteOffset(), {255, 255, 255, 255});
+	//m_GameLogo.Draw(g_FrameMan.GetBackBuffer32());
 	m_GameLogoGlow.SetPos(m_GameLogo.GetPos());
 	rlEnableColorBlend();
 	rlSetBlendFactorsSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_FUNC_ADD, GL_FUNC_ADD);
 	rlSetBlendMode(RL_BLEND_CUSTOM_SEPARATE);
 	int glowIntensity = 220 + RandomNum(-35, 35);
-	// set_screen_blender(glowIntensity, glowIntensity, glowIntensity, glowIntensity);
-	// m_GameLogoGlow.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawTrans);
-	DrawTextureV(g_GLResourceMan.GetStaticTextureFromBitmap(m_GameLogoGlow.GetSpriteFrame(0)), m_GameLogoGlow.GetPos() + m_GameLogoGlow.GetSpriteOffset(), RLColor(glowIntensity, glowIntensity, glowIntensity, glowIntensity));
+	//set_screen_blender(glowIntensity, glowIntensity, glowIntensity, glowIntensity);
+	//m_GameLogoGlow.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawTrans);
+	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_GameLogoGlow.GetSpriteFrame(0)), m_GameLogoGlow.GetPos() + m_GameLogoGlow.GetSpriteOffset(), RLColor(glowIntensity, glowIntensity, glowIntensity, glowIntensity));
 }
 
 void TitleScreen::DrawSlideshowSlide() {
@@ -654,7 +657,7 @@ void TitleScreen::DrawSlideshowSlide() {
 	set_clip_rect(g_FrameMan.GetBackBuffer32(), 0, 0, m_TitleScreenMaxWidth - g_WindowMan.GetResMultiplier(), g_WindowMan.GetResY());
 
 	//draw_trans_sprite(g_FrameMan.GetBackBuffer32(), m_IntroSlides.at(slide), slidePos.GetFloorIntX(), slidePos.GetFloorIntY());
-	DrawTextureV(g_GLResourceMan.GetStaticTextureFromBitmap(m_IntroSlides.at(slide)), slidePos, RLColor(255, 255, 255, fadeAmount));
+	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_IntroSlides.at(slide)), slidePos, RLColor(255, 255, 255, fadeAmount));
 
 	// Have to immediately reset the clipping rect otherwise the stars in the other displays slowly go into warp speed until the intro sequence is done.
 	set_clip_rect(g_FrameMan.GetBackBuffer32(), 0, 0, g_FrameMan.GetBackBuffer32()->w, g_FrameMan.GetBackBuffer32()->h);

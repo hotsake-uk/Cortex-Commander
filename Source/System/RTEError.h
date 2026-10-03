@@ -1,7 +1,5 @@
 #pragma once
 
-#include "allegro.h"
-#include "loadpng.h"
 
 #ifdef _WIN32
 #define DebuggerBreak IsDebuggerPresent() ? __debugbreak() : std::abort();
@@ -14,6 +12,9 @@
 #else
 #define AbortAction std::abort()
 #endif
+
+#include "allegro.h" //FIXME: Evil
+#include "loadpng.h" //FIXME: Evil
 
 #include <source_location>
 #include <string>

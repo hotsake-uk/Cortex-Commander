@@ -65,6 +65,8 @@ namespace RTE {
 		/// @return Pointer to the primary game window.
 		SDL_Window* GetWindow() const { return m_PrimaryWindow.get(); }
 
+		SDL_GLContextState* GetGLContext() const { return m_GLContext.get(); }
+
 		/// Gets whether any of the game windows is currently in focus.
 		/// @return Whether any of the game windows is currently in focus.
 		bool AnyWindowHasFocus() const { return m_AnyWindowHasFocus; }
@@ -197,8 +199,8 @@ namespace RTE {
 		bool m_FocusEventsDispatchedByDisplaySwitchIn; //!< Whether queued events were dispatched due to raising windows when taking focus of any game window in the previous update.
 
 		std::shared_ptr<SDL_Window> m_PrimaryWindow; //!< The main window.
-		GLuint m_BackBuffer32Texture; //!< Streaming texture for the software rendered stuff.
-		
+		std::unique_ptr<Texture> m_BackBuffer32Texture; //!< Streaming texture for the software rendered stuff.
+
 		std::shared_ptr<RenderTarget> m_ScreenBuffer{};
 		std::unique_ptr<SDL_Rect> m_PrimaryWindowViewport; //!< Viewport for the main window.
 

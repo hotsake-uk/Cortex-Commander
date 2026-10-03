@@ -3,6 +3,7 @@
 #include "SceneMan.h"
 #include "SettingsMan.h"
 #include <algorithm>
+#include "Draw.h"
 
 #include "raylib/raylib.h"
 #include "raylib/rlgl.h"
@@ -47,8 +48,11 @@ int SLBackground::Create() {
 	StaticSceneLayer::Create();
 
 	m_Bitmaps.clear();
+	m_Textures.clear();
 	m_BitmapFile.GetAsAnimation(m_Bitmaps, m_FrameCount);
+	m_BitmapFile.GetAsAnimation(m_Textures, m_FrameCount);
 	m_MainBitmap = m_Bitmaps[0];
+	m_StaticTexture = m_Textures[0];
 
 	if (m_FrameCount == 1) {
 		m_SpriteAnimMode = SpriteAnimMode::NOANIM;
@@ -70,13 +74,13 @@ int SLBackground::Create() {
 int SLBackground::Create(const SLBackground& reference) {
 	StaticSceneLayer::Create(reference);
 
-	// The main bitmap is created and owned by SceneLayer because it can be modified. We need to destroy it to avoid a leak because the bitmaps we'll be using here are owned by ContentFile static maps and are unmodifiable.
-	destroy_bitmap(m_MainBitmap);
 	m_MainBitmapOwned = false;
 
 	m_Bitmaps.clear();
 	m_Bitmaps = reference.m_Bitmaps;
+	m_Textures = reference.m_Textures;
 	m_MainBitmap = m_Bitmaps[0];
+	m_StaticTexture = m_Textures[0];
 
 	m_FillColorLeft = reference.m_FillColorLeft;
 	m_FillColorRight = reference.m_FillColorRight;
@@ -109,7 +113,6 @@ int SLBackground::ReadProperty(const std::string_view& propName, Reader& reader)
 	});
 	MatchProperty("SpriteAnimDuration", { reader >> m_SpriteAnimDuration; });
 	MatchProperty("IsAnimatedManually", { reader >> m_IsAnimatedManually; });
-	MatchProperty("DrawTransparent", { reader >> m_DrawMasked; });
 	MatchProperty("ScrollRatio", {
 		// Actually read the ScrollInfo, not the ratio. The ratios will be initialized later.
 		reader >> m_ScrollInfo;
@@ -118,6 +121,7 @@ int SLBackground::ReadProperty(const std::string_view& propName, Reader& reader)
 		reader >> m_ScaleFactor;
 		SetScaleFactor(m_ScaleFactor);
 	});
+	MatchProperty("DrawTransparent", { bool deprecate; reader >> deprecate; } ); // TODO: Remove
 	MatchProperty("IgnoreAutoScaling", { reader >> m_IgnoreAutoScale; });
 	MatchProperty("OriginPointOffset", { reader >> m_OriginOffset; });
 	MatchProperty("CanAutoScrollX", { reader >> m_CanAutoScrollX; });
@@ -135,7 +139,6 @@ int SLBackground::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SpriteAnimMode", m_SpriteAnimMode);
 	writer.NewPropertyWithValue("SpriteAnimDuration", m_SpriteAnimDuration);
 	writer.NewPropertyWithValue("IsAnimatedManually", m_IsAnimatedManually);
-	writer.NewPropertyWithValue("DrawTransparent", m_DrawMasked);
 	writer.NewPropertyWithValue("ScrollRatio", m_ScrollInfo);
 	writer.NewPropertyWithValue("ScaleFactor", m_ScaleFactor);
 	writer.NewPropertyWithValue("IgnoreAutoScaling", m_IgnoreAutoScale);
@@ -196,7 +199,9 @@ void SLBackground::Update() {
 			m_SpriteAnimTimer.Reset();
 		}
 	}
+
 	m_MainBitmap = m_Bitmaps.at(m_Frame);
+	m_StaticTexture = m_Textures.at(m_Frame);
 
 	if (IsAutoScrolling()) {
 		if (m_AutoScrollStepTimer.GetElapsedSimTimeMS() > m_AutoScrollStepInterval) {
@@ -210,6 +215,15 @@ void SLBackground::Update() {
 			m_AutoScrollStepTimer.Reset();
 		}
 		m_Offset.SetXY(std::floor((m_Offset.GetX() * m_ScrollRatio.GetX()) + m_AutoScrollOffset.GetX()), std::floor((m_Offset.GetY() * m_ScrollRatio.GetY()) + m_AutoScrollOffset.GetY()));
+	} else {
+		m_Offset *= m_ScrollRatio;
+	}
+
+	if (m_WrapX) {
+		m_Offset.m_X = std::fmod(m_Offset.m_X, m_ScaledDimensions.m_X);
+	}
+	if (m_WrapY) {
+		m_Offset.m_Y = std::fmod(m_Offset.m_Y, m_ScaledDimensions.m_Y);
 	}
 }
 
@@ -242,4 +256,8 @@ void SLBackground::Draw(const Box& targetDimensions, Box& targetBox, bool offset
 		}
 	}
 	rlZDepth(c_DefaultDrawDepth);
+}
+
+void SLBackground::Draw(const Camera& camera) {
+	StaticSceneLayer::Draw(camera);
 }

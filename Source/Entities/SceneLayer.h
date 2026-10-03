@@ -10,6 +10,7 @@
 namespace RTE {
 
 	struct BigTexture;
+	class Texture;
 
 	struct SceneLayerInfo {
 		std::string name;
@@ -45,7 +46,7 @@ namespace RTE {
 		/// If wrapping is set to true, the value in scrollInfo is simply the ratio of offset at which any scroll operations will be done in.
 		/// A special command is if wrap is false and the corresponding component is -1.0, that signals that the own width or height should be used as scrollInfo input.
 		/// @return An error return value signaling success or any particular failure. Anything below 0 is an error signal.
-		int Create(const ContentFile& bitmapFile, bool drawMasked, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo);
+		int Create(const ContentFile& bitmapFile, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo);
 
 		/// Makes the SceneLayer object ready for use.
 		/// @param bitmap The BITMAP to use for this SceneLayer. Ownership IS transferred!
@@ -59,7 +60,7 @@ namespace RTE {
 		/// If wrapping is set to true, the value in scrollInfo is simply the ratio of offset at which any scroll operations will be done in.
 		/// A special command is if wrap is false and the corresponding component is -1.0, that signals that the own width or height should be used as scrollInfo input.
 		/// @return An error return value signaling success or any particular failure. Anything below 0 is an error signal.
-		int Create(BITMAP* bitmap, bool drawMasked, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo);
+		int Create(BITMAP* bitmap, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo);
 
 		/// Creates a SceneLayer to be identical to another, by deep copy.
 		/// @param reference A reference to the SceneLayer to deep copy.
@@ -215,13 +216,15 @@ namespace RTE {
 		/// @param targetBox The box on the target bitmap to limit drawing to, with the corner of box being where the scroll position lines up.
 		/// @param offsetNeedsScrollRatioAdjustment Whether the offset of this SceneLayer or the passed in offset override need to be adjusted to scroll ratio.
 		virtual void Draw(const Box& targetDimensions, Box& targetBox, bool offsetNeedsScrollRatioAdjustment = false);
+		virtual void Draw(const Camera& camera);
 #pragma endregion
 
 	protected:
 		ContentFile m_BitmapFile; //!< ContentFile containing the path to this SceneLayer's sprite file.
 
-		std::unique_ptr<BigTexture> m_MainTexture; //!< The Main texture of this SceneLayer, may be tiled for very large scenes.
+		std::unique_ptr<BigTexture> m_MainStreamTexture; //!< The Main texture of this SceneLayer, may be tiled for very large scenes.
 		BITMAP* m_MainBitmap; //!< The main BITMAP of this SceneLayer.
+		std::shared_ptr<BitmapTexture> m_StaticTexture; //!< The Main texture for static Scene Layers.
 		BITMAP* m_BackBitmap; //!< The backbuffer BITMAP of this SceneLayer.
 
 		// We use two bitmaps, as a backbuffer. While the main bitmap is being used, the secondary bitmap will be cleared on a separate thread. This is because we tend to want to clear some scene layers every frame and that is costly.
@@ -231,7 +234,6 @@ namespace RTE {
 
 		bool m_MainBitmapOwned; //!< Whether the main bitmap is owned by this.
 		bool m_MainBitmapUpdated; //!< Whether the main bitmap was updated since the last draw.
-		bool m_DrawMasked; //!< Whether pixels marked as transparent (index 0, magenta) are skipped when drawing or not (masked drawing).
 
 		bool m_WrapX; //!< Whether wrapping is enabled on the X axis.
 		bool m_WrapY; //!< Whether wrapping is enable on the Y axis.
@@ -266,7 +268,9 @@ namespace RTE {
 		/// @param targetBitmap The bitmap to draw to.
 		/// @param targetBox The box on the target bitmap to limit drawing to, with the corner of box being where the scroll position lines up.
 		/// @param drawScaled Whether to use scaled drawing routines or not.
-		void DrawTiled(const Box& targetDim, const Box& targetBox, bool drawScaled) const;
+		void DrawTiled(const Camera& camera) const;
+
+		virtual void DrawMainTexture(int destX, int destY) const {};
 #pragma endregion
 
 	private:
@@ -301,6 +305,7 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
+		void DrawMainTexture(int destX, int destY) const override;
 	};
 
 	class SceneLayer : public SceneLayerImpl<false> {
@@ -321,6 +326,7 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
+		void DrawMainTexture(int destX, int destY) const override;
 	};
 
 	/// SceneLayer that promises to never update its MainBitmap.
@@ -334,9 +340,10 @@ namespace RTE {
 
 		/// Gets the BITMAP that this StaticSceneLayer uses.
 		/// The bitmap will only be uploaded to GPU once on the first draw. So any modifcations after that will not be drawn.
-		BITMAP* GetBitmap() const { return m_MainBitmap; }
+		const BITMAP* GetBitmap() const { return m_MainBitmap; }
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
+		void DrawMainTexture(int destX, int destY) const override;
 	};
 } // namespace RTE

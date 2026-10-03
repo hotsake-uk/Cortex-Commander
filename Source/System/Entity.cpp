@@ -3,6 +3,12 @@
 #include "PresetMan.h"
 #include "DataModule.h"
 
+#if defined(_MSC_VER)
+#define RTE_NO_SANITIZE_ADDRESS __declspec(no_sanitize_address)
+#else
+#define RTE_NO_SANITIZE_ADDRESS __attribute__((no_sanitize_address))
+#endif
+
 namespace RTE {
 
 	Entity::ClassInfo Entity::m_sClass("Entity");
@@ -265,6 +271,7 @@ namespace RTE {
 		return false;
 	}
 
+	RTE_NO_SANITIZE_ADDRESS
 	void* Entity::ClassInfo::GetPoolMemory() {
 #ifdef __SANITIZE_ADDRESS__
 		// If compiled with ASan, sidestep pooling and just use the allocator normally.
@@ -295,6 +302,7 @@ namespace RTE {
 		return foundMemory;
 	}
 
+	RTE_NO_SANITIZE_ADDRESS
 	int Entity::ClassInfo::ReturnPoolMemory(void* returnedMemory) {
 		if (!returnedMemory) {
 			return 0;

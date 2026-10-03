@@ -439,12 +439,14 @@ namespace RTE {
 		/// @param onlyPhysical Whether to not draw any extra 'ghost' items of this MovableObject, (default: false)
 		/// indicator arrows or hovering HUD text and so on.
 		void Draw(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), DrawMode mode = g_DrawColor, bool onlyPhysical = false) const override;
+		void Draw(const Camera& camera) const override;
 
 		/// Draws an aiming aid in front of this HeldDevice.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the Scene. (default: Vector())
 		/// @param whichScreen Which player's screen this is being drawn to. May affect what HUD elements get drawn etc. (default: 0)
 		void DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), int whichScreen = 0, bool playerControlled = false) override;
+		void DrawHUD(const Camera& camera) override;
 
 		/// Estimates what material strength one round in the magazine can destroy.
 		/// @return The maximum material strength the regular or the tracer round can destroy.

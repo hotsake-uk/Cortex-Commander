@@ -1944,6 +1944,30 @@ void MovableMan::Draw(BITMAP* pTargetBitmap, const Vector& targetPos) {
 	}
 }
 
+void MovableMan::Draw(const Camera& camera) {
+	ZoneScoped;
+
+	{
+		ZoneScopedN("Particles Draw GPU");
+		for (auto particle: m_Particles) {
+			particle->Draw(camera);
+		}
+	}
+
+	{
+		ZoneScopedN("Items Draw GPU");
+		for (auto item: m_Items) {
+			item->Draw(camera);
+		}
+	}
+	{
+		ZoneScopedN("Actors Draw GPU");
+		for (auto actor: m_Actors) {
+			actor->Draw(camera);
+		}
+	}
+}
+
 void MovableMan::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int which, bool playerControlled) {
 	ZoneScoped;
 
@@ -1953,4 +1977,15 @@ void MovableMan::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whi
 
 	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
 		(*aIt)->DrawHUD(pTargetBitmap, targetPos, which);
+}
+
+void MovableMan::DrawHUD(const Camera& camera) {
+	ZoneScoped;
+	for (auto item: m_Items) {
+		item->DrawHUD(camera);
+	}
+
+	for (auto actor: m_Actors) {
+		actor->DrawHUD(camera);
+	}
 }

@@ -5,6 +5,8 @@
 #include "SceneMan.h"
 #include "FrameMan.h"
 #include "Draw.h"
+#include "RenderMan.h"
+#include "DebugMan.h"
 
 using namespace RTE;
 
@@ -48,10 +50,12 @@ void MOSprite::Clear() {
 int MOSprite::Create() {
 	if (MovableObject::Create() < 0)
 		return -1;
-	
+
 	// Post-process reading
 	m_aSprite.clear();
 	m_SpriteFile.GetAsAnimation(m_aSprite, m_FrameCount);
+
+	m_SpriteFile.GetAsAnimation(m_Sprites, m_FrameCount);
 
 	if (!m_aSprite.empty() && m_aSprite[0]) {
 		// Set default sprite offset
@@ -82,6 +86,7 @@ int MOSprite::Create(ContentFile spriteFile,
 	m_FrameCount = frameCount;
 	m_aSprite.clear();
 	m_SpriteFile.GetAsAnimation(m_aSprite, m_FrameCount);
+	m_SpriteFile.GetAsAnimation(m_Sprites, m_FrameCount);
 	m_SpriteOffset.SetXY(static_cast<float>(-m_aSprite[0]->w) / 2.0F, static_cast<float>(-m_aSprite[0]->h) / 2.0F);
 
 	m_HFlipped = false;
@@ -111,6 +116,7 @@ int MOSprite::Create(const MOSprite& reference) {
 	m_FrameCount = reference.m_FrameCount;
 	m_Frame = reference.m_Frame;
 	m_aSprite = reference.m_aSprite;
+	m_Sprites = reference.m_Sprites;
 	m_SpriteOffset = reference.m_SpriteOffset;
 	m_SpriteAnimMode = reference.m_SpriteAnimMode;
 	m_SpriteAnimDuration = reference.m_SpriteAnimDuration;
@@ -237,7 +243,7 @@ void MOSprite::Destroy(bool notInherited) {
 	//    delete m_pExitWound;
 
 	if (m_SpriteModified) {
-		for (BITMAP* sprite : m_aSprite) {
+		for (BITMAP* sprite: m_aSprite) {
 			destroy_bitmap(sprite);
 		}
 	}
@@ -409,7 +415,7 @@ bool MOSprite::SetSpritePixelIndex(int x, int y, int whichFrame, int colorIndex,
 	if (!m_SpriteModified) {
 		std::vector<BITMAP*> spriteList;
 
-		for (BITMAP* sprite : m_aSprite) {
+		for (BITMAP* sprite: m_aSprite) {
 			BITMAP* spriteCopy = create_bitmap_ex(8, sprite->w, sprite->h);
 			rectfill(spriteCopy, 0, 0, spriteCopy->w - 1, spriteCopy->h - 1, 0);
 			draw_sprite(spriteCopy, sprite, 0, 0);
@@ -495,10 +501,7 @@ void MOSprite::Update() {
 	}
 }
 
-void MOSprite::Draw(BITMAP* pTargetBitmap,
-                    const Vector& targetPos,
-                    DrawMode mode,
-                    bool onlyPhysical) const {
+void MOSprite::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {
 	if (!m_aSprite[m_Frame])
 		RTEAbort("Sprite frame pointer is null when drawing MOSprite!");
 
@@ -571,5 +574,24 @@ void MOSprite::Draw(BITMAP* pTargetBitmap,
 		}
 
 		g_SceneMan.RegisterDrawing(pTargetBitmap, m_MOID, spriteX, spriteY, spriteX + m_aSprite[m_Frame]->w, spriteY + m_aSprite[m_Frame]->h);
+	}
+}
+
+void MOSprite::Draw(const Camera& camera) const {
+
+	if (g_DebugMan.DrawSpriteBounds()) {
+		Draw::CircleLines(m_Pos, m_SpriteRadius, g_YellowGlowColor);
+	}
+
+	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
+		return;
+	}
+
+	Vector spritePos = m_Pos - m_SpriteOffset;
+
+	if (!m_HFlipped) {
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos);
+	} else {
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), FloatRect(spritePos, -m_Sprites[m_Frame]->GetDimensions().w, m_Sprites[m_Frame]->GetDimensions().h));
 	}
 }

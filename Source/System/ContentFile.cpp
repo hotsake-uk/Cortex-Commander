@@ -7,6 +7,8 @@
 #include "System.h"
 #include "FrameMan.h"
 
+#include "Texture.h"
+
 #include "png.h"
 #include "fmod/fmod.hpp"
 #include "fmod/fmod_errors.h"
@@ -23,6 +25,7 @@ std::array<std::unordered_map<std::string, BITMAP*>, ContentFile::BitDepths::Bit
 std::unordered_map<std::string, SDL_Surface*> ContentFile::s_MemoryPNGs;
 std::unordered_map<std::string, FMOD::Sound*> ContentFile::s_LoadedSamples;
 std::unordered_map<size_t, std::string> ContentFile::s_PathHashes;
+std::unordered_map<std::string, std::shared_ptr<BitmapTexture>> ContentFile::s_LoadedTextures;
 
 void ContentFile::Clear() {
 	m_DataPath.clear();
@@ -58,6 +61,7 @@ void ContentFile::FreeAllLoaded() {
 			destroy_bitmap(bitmapPtr);
 		}
 	}
+	s_LoadedTextures.clear();
 }
 
 int ContentFile::ReadProperty(const std::string_view& propName, Reader& reader) {
@@ -275,6 +279,43 @@ BITMAP* ContentFile::GetAsBitmap(int conversionMode, bool storeBitmap, const std
 	return returnBitmap;
 }
 
+std::shared_ptr<BitmapTexture> ContentFile::GetAsTexture(int conversionMode, bool storeBitmap, const std::string& dataPathToSpecificFrame) {
+	if (m_DataPath.empty()) {
+		return nullptr;
+	}
+	std::shared_ptr<BitmapTexture> returnTexture;
+
+	std::string dataPathToLoad = dataPathToSpecificFrame.empty() ? m_DataPath : dataPathToSpecificFrame;
+
+	auto foundTexture = s_LoadedTextures.find(dataPathToLoad);
+	if (foundTexture != s_LoadedTextures.end()) {
+		if (storeBitmap) {
+			returnTexture = foundTexture->second;
+		}
+	}
+
+	if (!returnTexture) {
+		if (!System::PathExistsCaseSensitive(dataPathToLoad)) {
+			const std::string dataPathWithoutExtension = dataPathToLoad.substr(0, dataPathToLoad.length() - m_DataPathExtension.length());
+			const std::string altFileExtension = (m_DataPathExtension == ".png") ? ".bmp" : ".png";
+
+			if (System::PathExistsCaseSensitive(dataPathWithoutExtension + altFileExtension)) {
+				g_ConsoleMan.AddLoadWarningLogExtensionMismatchEntry(m_DataPath, m_FormattedReaderPosition, altFileExtension);
+				SetDataPath(m_DataPathWithoutExtension + altFileExtension);
+				dataPathToLoad = dataPathWithoutExtension + altFileExtension;
+			} else {
+				RTEAbort("Failed to find image file with following path and name:\n\n" + dataPathToLoad + " or " + altFileExtension + "\n" + m_FormattedReaderPosition);
+			}
+		}
+		returnTexture = std::make_shared<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(LoadAndReleaseBitmap(conversionMode, dataPathToLoad)));
+		if (storeBitmap) {
+			s_LoadedTextures[dataPathToLoad] = returnTexture;
+		}
+	}
+
+	return returnTexture;
+}
+
 void ContentFile::GetAsAnimation(std::vector<BITMAP*>& vectorToFill, int frameCount, int conversionMode) {
 	if (m_DataPath.empty() || frameCount < 1) {
 		return;
@@ -302,6 +343,36 @@ void ContentFile::GetAsAnimation(std::vector<BITMAP*>& vectorToFill, int frameCo
 		}
 	}
 }
+
+void ContentFile::GetAsAnimation(std::vector<std::shared_ptr<BitmapTexture>>& vectorToFill, int frameCount, int conversionMode) {
+	if (m_DataPath.empty() || frameCount < 1) {
+		return;
+	}
+	vectorToFill.reserve(frameCount);
+
+	if (frameCount == 1) {
+		// Check for 000 in the file name in case it is part of an animation but the FrameCount was set to 1. Do not warn about this because it's normal operation, but warn about incorrect extension.
+		if (!System::PathExistsCaseSensitive(m_DataPath)) {
+			const std::string altFileExtension = (m_DataPathExtension == ".png") ? ".bmp" : ".png";
+
+			if (System::PathExistsCaseSensitive(m_DataPathWithoutExtension + "000" + m_DataPathExtension)) {
+				SetDataPath(m_DataPathWithoutExtension + "000" + m_DataPathExtension);
+			} else if (System::PathExistsCaseSensitive(m_DataPathWithoutExtension + "000" + altFileExtension)) {
+				g_ConsoleMan.AddLoadWarningLogExtensionMismatchEntry(m_DataPath, m_FormattedReaderPosition, altFileExtension);
+				SetDataPath(m_DataPathWithoutExtension + "000" + altFileExtension);
+			}
+		}
+		vectorToFill.emplace_back(GetAsTexture(conversionMode));
+	} else {
+		char framePath[1024];
+		for (int frameNum = 0; frameNum < frameCount; ++frameNum) {
+			std::snprintf(framePath, sizeof(framePath), "%s%03i%s", m_DataPathWithoutExtension.c_str(), frameNum, m_DataPathExtension.c_str());
+			vectorToFill.emplace_back(GetAsTexture(conversionMode, true, framePath));
+		}
+	}
+}
+
+
 SDL_Palette* ContentFile::DefaultPaletteToSDL(bool preMask) {
 	SDL_Palette* palette = SDL_CreatePalette(256);
 	std::array<SDL_Color, 256> paletteColor;

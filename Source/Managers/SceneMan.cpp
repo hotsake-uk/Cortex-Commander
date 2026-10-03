@@ -17,6 +17,8 @@
 #include "Atom.h"
 #include "Material.h"
 #include "SoundContainer.h"
+#include "Draw.h"
+#include "DebugMan.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -149,7 +151,7 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 	BITMAP* pBitmap = create_bitmap_ex(8, GetSceneWidth(), GetSceneHeight());
 	clear_to_color(pBitmap, g_MaskColor);
 	m_pMOColorLayer = new SceneLayerTracked();
-	m_pMOColorLayer->Create(pBitmap, true, Vector(), m_pCurrentScene->WrapsX(), m_pCurrentScene->WrapsY(), Vector(1.0, 1.0));
+	m_pMOColorLayer->Create(pBitmap, Vector(), m_pCurrentScene->WrapsX(), m_pCurrentScene->WrapsY(), Vector(1.0, 1.0));
 	pBitmap = 0;
 
 	const int cellSize = 20;
@@ -161,7 +163,7 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 		pBitmap = create_bitmap_ex(8, GetSceneWidth(), GetSceneHeight());
 		clear_to_color(pBitmap, g_MaskColor);
 		m_pDebugLayer = new SceneLayer();
-		m_pDebugLayer->Create(pBitmap, true, Vector(), m_pCurrentScene->WrapsX(), m_pCurrentScene->WrapsY(), Vector(1.0, 1.0));
+		m_pDebugLayer->Create(pBitmap, Vector(), m_pCurrentScene->WrapsX(), m_pCurrentScene->WrapsY(), Vector(1.0, 1.0));
 		pBitmap = nullptr;
 	}
 
@@ -900,7 +902,7 @@ void SceneMan::MakeAllUnseen(Vector pixelSize, const int team) {
 bool SceneMan::LoadUnseenLayer(const std::string& bitmapPath, int team) {
 	ContentFile bitmapFile(bitmapPath.c_str());
 	SceneLayer* pUnseenLayer = new SceneLayer();
-	if (pUnseenLayer->Create(bitmapFile.GetAsBitmap(COLORCONV_NONE, false), true, Vector(), m_pCurrentScene->WrapsX(), m_pCurrentScene->WrapsY(), Vector(1.0, 1.0)) < 0) {
+	if (pUnseenLayer->Create(bitmapFile.GetAsBitmap(COLORCONV_NONE, false), Vector(), m_pCurrentScene->WrapsX(), m_pCurrentScene->WrapsY(), Vector(1.0, 1.0)) < 0) {
 		g_ConsoleMan.PrintString("ERROR: Loading background layer " + pUnseenLayer->GetPresetName() + "\'s data failed!");
 		return false;
 	}
@@ -2544,14 +2546,7 @@ void SceneMan::Update(int screenId) {
 
 	m_LastUpdatedScreen = screenId;
 
-	const Vector& offset = g_CameraMan.GetOffset(screenId);
-	m_pMOColorLayer->SetOffset(offset);
-	if (m_pDebugLayer) {
-		m_pDebugLayer->SetOffset(offset);
-	}
-
 	SLTerrain* terrain = m_pCurrentScene->GetTerrain();
-	terrain->SetOffset(offset);
 	terrain->Update();
 
 	// Background layers may scroll in fractions of the real offset and need special care to avoid jumping after having traversed wrapped edges, so they need the total offset without taking wrapping into account.
@@ -2559,12 +2554,6 @@ void SceneMan::Update(int screenId) {
 	for (SLBackground* backgroundLayer: m_pCurrentScene->GetBackLayers()) {
 		backgroundLayer->SetOffset(unwrappedOffset);
 		backgroundLayer->Update();
-	}
-
-	// Update the unseen obstruction layer for this team's screen view, if there is one.
-	const int teamId = g_CameraMan.GetScreenTeam(screenId);
-	if (SceneLayer* unseenLayer = (teamId != Activity::NoTeam) ? m_pCurrentScene->GetUnseenLayer(teamId) : nullptr) {
-		unseenLayer->SetOffset(offset);
 	}
 
 	if (m_CleanTimer.GetElapsedSimTimeMS() > CLEANAIRINTERVAL) {
@@ -2660,6 +2649,50 @@ void SceneMan::Draw(BITMAP* targetBitmap, BITMAP* targetGUIBitmap, const Vector&
 			}
 
 			break;
+	}
+}
+
+void SceneMan::DrawGUI(const Camera& camera) {
+
+}
+
+void SceneMan::Draw(const Camera& camera) {
+	ZoneScoped;
+	if (!m_pCurrentScene) {
+		return;
+	}
+
+	for (std::list<SLBackground*>::reverse_iterator backgroundLayer = m_pCurrentScene->GetBackLayers().rbegin(); backgroundLayer != m_pCurrentScene->GetBackLayers().rend(); backgroundLayer++) {
+		(*backgroundLayer)->Draw(camera);
+	}
+
+	SLTerrain* terrainLayer = m_pCurrentScene->GetTerrain();
+
+	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::BackgroundLayer);
+	terrainLayer->Draw(camera);
+
+	g_MovableMan.Draw(camera);
+
+	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
+	terrainLayer->Draw(camera);
+
+	int teamId = camera.GetTeam();
+	if (teamId != Activity::NoTeam) {
+		m_pCurrentScene->GetUnseenLayer(teamId)->Draw(camera);
+	}
+
+	if (camera.IsShowHUD()) {
+		g_MovableMan.DrawHUD(camera);
+		g_ActivityMan.GetActivity()->DrawGUI(camera);
+	}
+
+	if (g_DebugMan.DrawNoGravBoxes()) {
+		if (Scene::Area* noGravArea = m_pCurrentScene->GetArea("NoGravityArea")) {
+			const std::vector<Box*>& boxList = noGravArea->GetBoxes();
+			for (auto box: boxList) {
+				Draw::Rectangle(*box, g_RedColor);
+			}
+		}
 	}
 }
 

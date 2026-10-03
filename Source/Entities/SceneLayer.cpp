@@ -5,10 +5,11 @@
 #include "SettingsMan.h"
 #include "ActivityMan.h"
 #include "ThreadMan.h"
-#include "GLResourceMan.h"
+#include "GLStateMan.h"
 #include "BigTexture.h"
 
 #include "Draw.h"
+#include "DebugMan.h"
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyOpenGL.hpp"
 
@@ -36,11 +37,11 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Clear() {
 	m_BitmapFile.Reset();
 	m_MainBitmap = nullptr;
 	m_BackBitmap = nullptr;
-	m_MainTexture.reset();
+	m_MainStreamTexture.reset();
+	m_StaticTexture = nullptr;
 	m_LastClearColor = ColorKeys::g_InvalidColor;
 	m_Drawings.clear();
 	m_MainBitmapOwned = false;
-	m_DrawMasked = true;
 	m_WrapX = true;
 	m_WrapY = true;
 	m_OriginOffset.Reset();
@@ -53,10 +54,11 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Clear() {
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
-int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const ContentFile& bitmapFile, bool drawMasked, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo) {
+int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const ContentFile& bitmapFile, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo) {
 	m_BitmapFile = bitmapFile;
-	m_MainBitmap = m_BitmapFile.GetAsBitmap();
-	Create(m_MainBitmap, drawMasked, offset, wrapX, wrapY, scrollInfo);
+	m_StaticTexture = m_BitmapFile.GetAsTexture();
+	m_MainBitmap = m_StaticTexture->GetBitmap();
+	Create(m_MainBitmap, offset, wrapX, wrapY, scrollInfo);
 
 	m_MainBitmapOwned = false;
 
@@ -64,19 +66,24 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const ContentFile& bi
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
-int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(BITMAP* bitmap, bool drawMasked, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo) {
-	m_MainBitmap = bitmap;
+int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(BITMAP* bitmap, const Vector& offset, bool wrapX, bool wrapY, const Vector& scrollInfo) {
+	if constexpr (STATIC_TEXTURE) {
+		m_StaticTexture = std::make_shared<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(bitmap));
+		m_MainBitmap = m_StaticTexture->GetBitmap();
+	} else {
+		m_MainBitmap = create_bitmap_ex(bitmap_color_depth(bitmap), bitmap->w, bitmap->h);
+		m_MainStreamTexture = std::make_unique<BigTexture>(m_MainBitmap);
+		blit(bitmap, m_MainBitmap, 0, 0, 0, 0, m_MainBitmap->w, m_MainBitmap->h);
+	}
 	RTEAssert(m_MainBitmap, "Null bitmap passed in when creating SceneLayerImpl!");
 
 	m_MainBitmapOwned = true;
 
-	m_BackBitmap = create_bitmap_ex(bitmap_color_depth(m_MainBitmap), m_MainBitmap->w, m_MainBitmap->h);
-	m_LastClearColor = ColorKeys::g_InvalidColor;
-	if constexpr (!STATIC_TEXTURE) {
-		m_MainTexture = std::make_unique<BigTexture>(m_MainBitmap);
+	if constexpr (TRACK_DRAWINGS) {
+		m_BackBitmap = create_bitmap_ex(bitmap_color_depth(m_MainBitmap), m_MainBitmap->w, m_MainBitmap->h);
 	}
+	m_LastClearColor = ColorKeys::g_InvalidColor;
 
-	m_DrawMasked = drawMasked;
 	m_Offset = offset;
 	m_WrapX = wrapX;
 	m_WrapY = wrapY;
@@ -92,7 +99,6 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const SceneLayerImpl&
 	Entity::Create(reference);
 
 	m_BitmapFile = reference.m_BitmapFile;
-	m_DrawMasked = reference.m_DrawMasked;
 	m_WrapX = reference.m_WrapX;
 	m_WrapY = reference.m_WrapY;
 	m_OriginOffset = reference.m_OriginOffset;
@@ -101,28 +107,34 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const SceneLayerImpl&
 	m_ScaleFactor = reference.m_ScaleFactor;
 	m_ScaledDimensions = reference.m_ScaledDimensions;
 
-	if (reference.m_MainBitmap) {
-		// Make a copy of the bitmap because it can be modified in some use cases.
-		BITMAP* bitmapToCopy = reference.m_MainBitmap;
-		RTEAssert(bitmapToCopy, "Couldn't load the bitmap file specified for SceneLayerImpl!");
+	if constexpr (!STATIC_TEXTURE) {
+		if (reference.m_MainBitmap) {
+			// Make a copy of the bitmap because it can be modified in some use cases.
+			BITMAP* bitmapToCopy = reference.m_MainBitmap;
+			RTEAssert(bitmapToCopy, "Couldn't load the bitmap file specified for SceneLayerImpl!");
 
-		m_MainBitmap = create_bitmap_ex(bitmap_color_depth(bitmapToCopy), bitmapToCopy->w, bitmapToCopy->h);
-		RTEAssert(m_MainBitmap, "Failed to allocate BITMAP in SceneLayerImpl::Create");
-		blit(bitmapToCopy, m_MainBitmap, 0, 0, 0, 0, bitmapToCopy->w, bitmapToCopy->h);
+			m_MainBitmap = create_bitmap_ex(bitmap_color_depth(reference.m_MainBitmap), reference.m_MainBitmap->w, reference.m_MainBitmap->h);
 
-		m_BackBitmap = create_bitmap_ex(bitmap_color_depth(m_MainBitmap), m_MainBitmap->w, m_MainBitmap->h);
-		m_LastClearColor = ColorKeys::g_InvalidColor;
+			RTEAssert(m_MainBitmap, "Failed to allocate BITMAP in SceneLayerImpl::Create");
+			blit(bitmapToCopy, m_MainBitmap, 0, 0, 0, 0, bitmapToCopy->w, bitmapToCopy->h);
 
-		if constexpr (!STATIC_TEXTURE) {
-			m_MainTexture = std::make_unique<BigTexture>(m_MainBitmap);
+			m_BackBitmap = create_bitmap_ex(bitmap_color_depth(m_MainBitmap), m_MainBitmap->w, m_MainBitmap->h);
+			m_LastClearColor = ColorKeys::g_InvalidColor;
+
+			m_MainStreamTexture = std::make_unique<BigTexture>(m_MainBitmap);
+
+			m_MainBitmapOwned = true;
+			InitScrollRatios();
+		} else {
+			// If no bitmap to copy, then it has to be loaded with LoadData.
+			m_MainBitmapOwned = false;
 		}
-
-		InitScrollRatios();
-
-		m_MainBitmapOwned = true;
 	} else {
-		// If no bitmap to copy, then it has to be loaded with LoadData.
+		RTEAssert(reference.m_StaticTexture, "No static texture in StaticSceneLayer::Create(ref)");
+		m_StaticTexture = reference.m_StaticTexture;
+		m_MainBitmap = m_StaticTexture->GetBitmap();
 		m_MainBitmapOwned = false;
+		InitScrollRatios();
 	}
 	return 0;
 }
@@ -151,9 +163,6 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Save(Writer& writer) const {
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Destroy(bool notInherited) {
-	if (m_MainBitmapOwned) {
-		destroy_bitmap(m_MainBitmap);
-	}
 	if (m_BackBitmap) {
 		destroy_bitmap(m_BackBitmap);
 	}
@@ -182,10 +191,12 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::InitScrollRatios(bool initF
 		} else {
 			m_ScrollRatio.SetX((mainBitmapWidth - playerScreenWidth) / (m_ScrollInfo.GetX() - playerScreenWidth));
 		}
+		m_ScrollRatio.m_X += 1.0f;
 	}
 	if (m_WrapY) {
 		m_ScrollRatio.SetY(m_ScrollInfo.GetY());
 	} else {
+		// TODO: None of this makes any sense. (Seriously tf is this)
 		if (m_ScrollInfo.GetY() == -1.0F || m_ScrollInfo.GetY() == 1.0) {
 			m_ScrollRatio.SetY(1.0F);
 		} else if (m_ScrollInfo.GetY() == playerScreenHeight) {
@@ -195,24 +206,21 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::InitScrollRatios(bool initF
 		} else {
 			m_ScrollRatio.SetY((mainBitmapHeight - playerScreenHeight) / (m_ScrollInfo.GetY() - playerScreenHeight));
 		}
+		m_ScrollRatio.m_Y += 1.0f;
 	}
 	m_ScaledDimensions.SetXY(mainBitmapWidth * m_ScaleFactor.GetX(), mainBitmapHeight * m_ScaleFactor.GetY());
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::LoadData() {
-	if (m_MainBitmapOwned) {
-		destroy_bitmap(m_MainBitmap);
-		m_MainBitmap = nullptr;
-	}
-
 	// Load from disk and take ownership. Don't cache because the bitmap will be modified.
-	m_MainBitmap = m_BitmapFile.GetAsBitmap(COLORCONV_NONE, false);
+	m_StaticTexture = m_BitmapFile.GetAsTexture(COLORCONV_NONE, STATIC_TEXTURE);
+	m_MainBitmap = m_StaticTexture->GetBitmap();
 	m_MainBitmapOwned = true;
 
 	m_BackBitmap = create_bitmap_ex(bitmap_color_depth(m_MainBitmap), m_MainBitmap->w, m_MainBitmap->h);
 	if constexpr (!STATIC_TEXTURE) {
-		m_MainTexture = std::make_unique<BigTexture>(m_MainBitmap);
+		m_MainStreamTexture = std::make_unique<BigTexture>(m_MainBitmap);
 	}
 	m_LastClearColor = ColorKeys::g_InvalidColor;
 
@@ -255,11 +263,9 @@ std::unique_ptr<BITMAP> SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::CopyBitm
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::ClearData() {
-	if (m_MainBitmap && m_MainBitmapOwned) {
-		destroy_bitmap(m_MainBitmap);
-	}
+	m_StaticTexture = nullptr;
 	m_MainBitmap = nullptr;
-	m_MainTexture.reset();
+	m_MainStreamTexture.reset();
 	m_MainBitmapOwned = false;
 
 	if (m_BackBitmap) {
@@ -426,17 +432,17 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::RegisterDrawing(const Vecto
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::UpdateTargetRegion(const Box& targetBox) {
 	if constexpr (TRACK_DRAWINGS) {
-		m_MainTexture->m_Bitmap = m_MainBitmap;
+		m_MainStreamTexture->m_Bitmap = m_MainBitmap;
 	}
 	if constexpr (!STATIC_TEXTURE) {
 		RTEAssert(bitmap_color_depth(m_MainBitmap) == 8, "Truecolor scenelayer used for non gpu drawing!");
 		std::vector<Box> updateRegions{};
 		float bitmapWidth = m_MainBitmap->w;
 		float bitmapHeight = m_MainBitmap->h;
-		int areaToCoverX = (m_Offset.GetFloorIntX() + targetBox.GetCorner().GetFloorIntX() + targetBox.GetWidth()) / m_ScaleFactor.m_X;
-		int areaToCoverY = (m_Offset.GetFloorIntY() + targetBox.GetCorner().GetFloorIntY() + targetBox.GetHeight()) / m_ScaleFactor.m_Y;
+		int areaToCoverX = (targetBox.GetCorner().GetFloorIntX() + targetBox.GetWidth()) / m_ScaleFactor.m_X;
+		int areaToCoverY = (targetBox.GetCorner().GetFloorIntY() + targetBox.GetHeight()) / m_ScaleFactor.m_Y;
 		Box scaledTarget(targetBox.m_Corner / m_ScaleFactor, targetBox.m_Width / m_ScaleFactor.m_X, targetBox.m_Height / m_ScaleFactor.m_Y);
-		Vector scaledOffset(m_Offset/m_ScaleFactor);
+		Vector scaledOffset(targetBox.GetCorner()/m_ScaleFactor);
 		Box bitmapDimensions(Vector(), bitmapWidth, bitmapHeight);
 
 		for (int tiledOffsetX = 0; tiledOffsetX < areaToCoverX;) {
@@ -461,9 +467,9 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::UpdateTargetRegion(const Bo
 		}
 
 		for (auto& region: updateRegions) {
-			m_MainTexture->Update(region);
+			m_MainStreamTexture->Update(region);
 		}
-		// g_GLResourceMan.UpdateDynamicBitmap(m_MainBitmap, true, updateRegions);
+		// g_GLStateMan.UpdateDynamicBitmap(m_MainBitmap, true, updateRegions);
 
 	} else {}
 }
@@ -472,7 +478,7 @@ template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Draw(const Box& targetDimensions, Box& targetBox, bool offsetNeedsScrollRatioAdjustment) {
 	RTEAssert(m_MainBitmap, "Data of this SceneLayerImpl has not been loaded before trying to draw!");
 	if constexpr(!STATIC_TEXTURE) {
-		RTEAssert(m_MainTexture, "Texture of this SceneLayerImpl has not bee created before trying to draw!");
+		RTEAssert(m_MainStreamTexture, "Texture of this SceneLayerImpl has not been created before trying to draw!");
 	}
 	ZoneScoped;
 	TracyGpuZone("SceneLayer::Draw");
@@ -500,62 +506,101 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Draw(const Box& targetDimen
 
 	bool drawScaled = m_ScaleFactor.GetX() > 1.0F || m_ScaleFactor.GetY() > 1.0F;
 
-	DrawTiled(targetDimensions, targetBox, drawScaled);
+	//DrawTiled(targetDimensions, targetBox, drawScaled);
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
-void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Box& targetDimensions, const Box& targetBox, bool drawScaled) const {
+void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Draw(const Camera& camera) {
+	ZoneScoped;
+	if constexpr (!STATIC_TEXTURE) {
+		RTEAssert(m_MainStreamTexture, "Texture of this SceneLayerImpl has not been created before trying to draw!");
+		if (m_MainBitmapOwned) {
+			UpdateTargetRegion(camera.GetViewport());
+		}
+		m_MainBitmapUpdated = false;
+	} else {
+		RTEAssert(m_StaticTexture, "Static Texture of this scene layer not initialized! " + m_PresetName);
+	}
+	DrawTiled(camera);
+}
+
+template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
+void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& camera) const {
 	ZoneScoped;
 	TracyGpuZone("SceneLayer::DrawTiled");
+	Box targetBox = camera.GetViewport();
+	g_RenderMan.SetCurrentZOffset(m_ZOrder);
 	float bitmapWidth = m_ScaledDimensions.m_X;
 	float bitmapHeight = m_ScaledDimensions.m_Y;
-	int areaToCoverX = m_Offset.GetFloorIntX() + targetBox.GetCorner().GetFloorIntX() + std::min(targetDimensions.GetWidth(), targetBox.GetWidth());
-	int areaToCoverY = m_Offset.GetFloorIntY() + targetBox.GetCorner().GetFloorIntY() + std::min(targetDimensions.GetHeight(), targetBox.GetHeight());
 
-	if (!m_DrawMasked) {
-		rlDrawRenderBatchActive();
-		int maskedUniformLocation = rlGetLocationUniform(rlGetShaderCurrent(), "drawMasked");
-		rlEnableShader(rlGetShaderCurrent());
-		glUniform1i(maskedUniformLocation, 0);
+	int areaToCoverX = m_Offset.GetFloorIntX() + targetBox.GetCorner().GetFloorIntX() + targetBox.GetWidth();
+	int areaToCoverY = m_Offset.GetFloorIntY() + targetBox.GetCorner().GetFloorIntY() + targetBox.GetHeight();
+
+	int tiledOffsetStartX = targetBox.m_Corner.m_X - m_Offset.m_X;
+	int tiledOffsetStartY = targetBox.m_Corner.m_Y - m_Offset.m_Y;
+
+	int skip = 0;
+	bool tileWrapX = g_SceneMan.WrapPosition(tiledOffsetStartX, skip);
+
+	tiledOffsetStartX /= bitmapWidth;
+	tiledOffsetStartX *= bitmapWidth;
+
+	if (tileWrapX) {
+		tiledOffsetStartX -= g_SceneMan.GetSceneWidth();
 	}
 
-	rlZDepth(m_ZOrder);
+	tiledOffsetStartX += m_Offset.m_X;
 
-	for (int tiledOffsetX = 0; tiledOffsetX < areaToCoverX;) {
-		float destX = targetBox.GetCorner().GetFloorIntX() + tiledOffsetX - m_Offset.GetFloorIntX();
+	bool tileWrapY = g_SceneMan.WrapPosition(skip, tiledOffsetStartY);
 
-		for (int tiledOffsetY = 0; tiledOffsetY < areaToCoverY;) {
-			float destY = targetBox.GetCorner().GetFloorIntY() + tiledOffsetY - m_Offset.GetFloorIntY();
+	tiledOffsetStartY /= bitmapHeight;
+	tiledOffsetStartY *= bitmapHeight;
+
+	if (tileWrapY) {
+		tiledOffsetStartY -= g_SceneMan.GetSceneHeight();
+	}
+
+	tiledOffsetStartY += m_Offset.m_Y;
+
+	Draw::Lines::Line(glm::vec2(areaToCoverX, 0.0f), glm::vec2(areaToCoverX, g_SceneMan.GetSceneHeight()), g_RedColor);
+	Draw::Lines::Line(glm::vec2(tiledOffsetStartX, 0.0f), glm::vec2(tiledOffsetStartX, g_SceneMan.GetSceneHeight()), g_YellowGlowColor);
+
+	for (int tiledOffsetX = tiledOffsetStartX; tiledOffsetX < areaToCoverX; tiledOffsetX += bitmapWidth) {
+		int destX =  tiledOffsetX;
+
+		for (int tiledOffsetY = tiledOffsetStartY; tiledOffsetY < areaToCoverY; tiledOffsetY += bitmapHeight) {
+			int destY = tiledOffsetY;
+			DrawMainTexture(destX, destY);
 			if constexpr (STATIC_TEXTURE) {
-				DrawTexturePro(
-				    g_GLResourceMan.GetStaticTextureFromBitmap(m_MainBitmap),
-				    {0.0f, 0.0f, static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->h)},
-				    {destX, destY, bitmapWidth, bitmapHeight},
-				    {0.0f, 0.0f}, 0.0f, {255, 255, 255, 255});
+				Draw::DrawTexture(m_StaticTexture.get(), FloatRect(destX, destY, bitmapWidth, bitmapHeight));
 			} else {
-				m_MainTexture->Draw(
-				    {0.0f, 0.0f, static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->h)},
-				    {destX, destY, bitmapWidth, bitmapHeight});
 			}
 			if (!m_WrapY) {
 				break;
 			}
-			tiledOffsetY += bitmapHeight;
 		}
 		if (!m_WrapX) {
 			break;
 		}
-		tiledOffsetX += bitmapWidth;
 	}
 
-	rlZDepth(c_DefaultDrawDepth);
+	g_RenderMan.SetCurrentZOffset(c_DefaultDrawDepth);
+}
 
-	if (!m_DrawMasked) {
-		rlDrawRenderBatchActive();
-		int drawMaskedUniform = rlGetLocationUniform(rlGetShaderCurrent(), "drawMasked");
-		rlEnableShader(rlGetShaderCurrent());
-		glUniform1i(drawMaskedUniform, 1);
-	}
+void SceneLayerTracked::DrawMainTexture(int destX, int destY) const {
+	m_MainStreamTexture->Draw(
+	    {{0.0f, 0.0f}, static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->h)},
+	    {Vector(destX, destY), m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y});
+}
+
+void SceneLayer::DrawMainTexture(int destX, int destY) const {
+	m_MainStreamTexture->Draw(
+	    {{0.0f, 0.0f}, static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->h)},
+	    {Vector(destX, destY), m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y});
+}
+
+void StaticSceneLayer::DrawMainTexture(int destX, int destY) const {
+	Draw::DrawTexture(m_StaticTexture.get(), FloatRect(destX, destY, m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y));
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>

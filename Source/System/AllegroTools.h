@@ -1,5 +1,9 @@
 #pragma once
 
+extern "C" {
+	typedef struct BITMAP BITMAP;
+}
+
 /// Contains hacks and workarounds for missing or wrong allegro functionality.
 /// Note: Prefer fixing in allegro itself over adding hacks here.
 namespace RTE {
@@ -10,5 +14,10 @@ namespace RTE {
 	unsigned long TrueAlphaBlender(unsigned long x, unsigned long y, unsigned long n);
 	/// Sets the 32bit allegro blender mode to TrueAlphaBlender
 	void SetTrueAlphaBlender();
+
+	class BitmapDeleter {
+	public:
+		void operator()(BITMAP* bitmap);
+	};
 #pragma endregion
 } // namespace RTE

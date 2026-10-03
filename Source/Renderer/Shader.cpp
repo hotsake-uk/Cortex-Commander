@@ -3,11 +3,12 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/type_ptr.hpp"
 #include "GLCheck.h"
-#include "GLResourceMan.h"
+#include "GLStateMan.h"
 #include "PresetMan.h"
 #include "ConsoleMan.h"
 #include "System.h"
 #include "RTEError.h"
+#include "RenderMan.h"
 
 #include "raylib/rlgl.h"
 
@@ -21,7 +22,7 @@ Shader::Shader() :
     m_ProgramID(0), m_TextureUniform(-1), m_ColorUniform(-1), m_TransformUniform(-1), m_ProjectionUniform(-1) {}
 
 Shader::Shader(const std::string& vertexFilename, const std::string& fragPath) :
-    m_ProgramID(g_GLResourceMan.MakeGLProgram()), m_TextureUniform(-1), m_ColorUniform(-1), m_TransformUniform(-1), m_ProjectionUniform(-1) {
+    m_ProgramID(g_GLStateMan.MakeGLProgram()), m_TextureUniform(-1), m_ColorUniform(-1), m_TransformUniform(-1), m_ProjectionUniform(-1) {
 	Compile(vertexFilename, fragPath);
 }
 
@@ -45,7 +46,7 @@ int Shader::Create() {
 	if (m_FragmentPath.empty() || m_VertexPath.empty()) {
 		return -1;
 	}
-	m_ProgramID = g_GLResourceMan.MakeGLProgram();
+	m_ProgramID = g_GLStateMan.MakeGLProgram();
 	Compile(m_VertexPath, m_FragmentPath);
 	return 0;
 }
@@ -73,13 +74,16 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 	std::string error;
 	result = CompileShader(vertexShader, g_PresetMan.GetFullModulePath(vertexPath), error) && CompileShader(fragmentShader, g_PresetMan.GetFullModulePath(fragPath), error);
 	if (result) {
-		GL_CHECK(glBindAttribLocation(m_ProgramID, 0, "rteVertexPosition"));
-		GL_CHECK(glBindAttribLocation(m_ProgramID, 1, "rteVertexTexUV"));
-		GL_CHECK(glBindAttribLocation(m_ProgramID, 3, "rteVertexColor"));
+		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::VERTEX, "rteVertexPosition"));
+		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::TEXTURECOORDINATE, "rteVertexTexUV"));
+		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::NORMAL, "rteNormal"));
+		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::COLOR, "rteVertexColor"));
 		if (Link(vertexShader, fragmentShader)) {
 			m_TextureUniform = GetUniformLocation("rteTexture");
+			m_PaletteUniform = GetUniformLocation("rtePalette");
 			m_ColorUniform = GetUniformLocation("rteColor");
 			m_TransformUniform = GetUniformLocation("rteTransform");
+			m_ViewUniform = GetUniformLocation("rteView");
 			m_UVTransformUniform = GetUniformLocation("rteUVTransform");
 			m_ProjectionUniform = GetUniformLocation("rteProjection");
 		} else {
@@ -97,34 +101,68 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 	return true;
 }
 
-void Shader::Enable() {
+void Shader::Enable() const {
 	rlEnableShader(m_ProgramID);
 }
 void Shader::Begin() const {
-	rlSetShader(m_ProgramID, m_Locations.data());
+	//rlSetShader(m_ProgramID, m_Locations.data());
+	g_RenderMan.SetCurrentShader(this);
 	glUseProgram(m_ProgramID);
 }
 void Shader::End() const {
-	rlSetShader(rlGetShaderIdDefault(), rlGetShaderLocsDefault());
-	rlDisableShader();
-	rlClearActiveTextures();
+	g_RenderMan.SetCurrentShader(g_RenderMan.GetDefaultShader());
 }
 
 GLint Shader::GetUniformLocation(const std::string& name) const { return glGetUniformLocation(m_ProgramID, name.c_str()); }
 
 void Shader::SetBool(const std::string& name, bool value) const { GL_CHECK(glUniform1i(glGetUniformLocation(m_ProgramID, name.c_str()), static_cast<int>(value))); }
 
+template <>
+void BoolValue::Enable() {
+	GL_CHECK(glUniform1i(m_UniformLocation, m_Value));
+}
+
 void Shader::SetInt(const std::string& name, int value) const { GL_CHECK(glUniform1i(glGetUniformLocation(m_ProgramID, name.c_str()), value)); }
+
+template <>
+void IntValue::Enable() {
+	GL_CHECK(glUniform1i(m_UniformLocation, m_Value));
+}
 
 void Shader::SetFloat(const std::string& name, float value) const { GL_CHECK(glUniform1f(glGetUniformLocation(m_ProgramID, name.c_str()), value)); }
 
+template <>
+void FloatValue::Enable() {
+	GL_CHECK(glUniform1f(m_UniformLocation, m_Value));
+}
+
 void Shader::SetMatrix4f(const std::string& name, const glm::mat4& value) const { GL_CHECK(glUniformMatrix4fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, GL_FALSE, glm::value_ptr(value))); }
+
+template <>
+void Matrix4fValue::Enable() {
+	GL_CHECK(glUniformMatrix4fv(m_UniformLocation, 1, GL_FALSE, glm::value_ptr(m_Value)));
+}
 
 void Shader::SetVector2f(const std::string& name, const glm::vec2& value) const { GL_CHECK(glUniform2fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, glm::value_ptr(value))); }
 
+template <>
+void Vector2fValue::Enable() {
+	GL_CHECK(glUniform2fv(m_UniformLocation, 1, glm::value_ptr(m_Value)));
+}
+
 void Shader::SetVector3f(const std::string& name, const glm::vec3& value) const { GL_CHECK(glUniform3fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, glm::value_ptr(value))); }
 
+template <>
+void Vector3fValue::Enable() {
+	GL_CHECK(glUniform3fv(m_UniformLocation, 1, glm::value_ptr(m_Value)));
+}
+
 void Shader::SetVector4f(const std::string& name, const glm::vec4& value) const { GL_CHECK(glUniform4fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, glm::value_ptr(value))); }
+
+template <>
+void Vector4fValue::Enable() {
+	GL_CHECK(glUniform4fv(m_UniformLocation, 1, glm::value_ptr(m_Value)));
+}
 
 void Shader::SetBool(int32_t uniformLoc, bool value) const { GL_CHECK(glUniform1i(uniformLoc, value)); }
 
@@ -174,6 +212,9 @@ bool Shader::CompileShader(GLuint shaderID, const std::string& filename, std::st
 }
 
 bool Shader::Link(GLuint vtxShader, GLuint fragShader) {
+	assert(glLinkProgram);
+	assert(vtxShader);
+	assert(fragShader);
 	GL_CHECK(glAttachShader(m_ProgramID, vtxShader));
 	GL_CHECK(glAttachShader(m_ProgramID, fragShader));
 
