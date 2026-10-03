@@ -43,4 +43,5 @@ Write-Scenario "Primitives" $bunker @("Render Test Primitives")
 Write-Scenario "Classic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0 }) @("Render Test FX")
 $split = $bunker.Clone(); $split.DefaultActivityName = "Render Test Split Screen"; $split.TimeOfDay = 23
 Write-Scenario "SplitScreen" $split @("Render Test FX")
+Write-Scenario "BunkerPerf" ($bunker + @{ TimeOfDay = 23 }) @("Render Test FX", "Render Test Perf")
 Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()
