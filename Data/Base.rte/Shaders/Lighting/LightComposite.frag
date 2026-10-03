@@ -29,6 +29,9 @@ uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5
 uniform float rteEdgeLighting;
 uniform float rteForegroundDepth; // Depth below which pixels are foreground terrain and objects.
 uniform vec3 rteForegroundAmbient; // Minimum light on the foreground, so the playfield stays readable deep underground.
+uniform sampler2D rteIndirect; // Last frame's lit scene, heavily blurred: the light bouncing off nearby surfaces.
+uniform float rteIndirectStrength;
+uniform vec2 rteIndirectOffset; // How far the screen moved since the indirect light was made, in pixels.
 
 void main() {
 	vec2 screenUV = gl_FragCoord.xy / rteScreenSize;
@@ -58,6 +61,13 @@ void main() {
 		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
 		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));
 		light = mix(rteAmbient, rteSkyColor, sky) + dynamicLight;
+		if (rteIndirectStrength > 0.0) {
+			// One bounce: what the surroundings reflect. Reprojected for camera movement; the history is so blurry that's all it needs.
+			vec2 historyUV = (gl_FragCoord.xy + rteIndirectOffset) / rteScreenSize;
+			vec3 bounce = texture(rteIndirect, clamp(historyUV, vec2(0.0), vec2(1.0))).rgb;
+			// Fully sky lit areas already look as authored, so the bounce mostly fills shadowed areas and caves.
+			light += min(bounce, vec3(4.0)) * rteIndirectStrength * (1.0 - 0.85 * sky);
+		}
 		if (sceneDepth < rteForegroundDepth) {
 			light = max(light, rteForegroundAmbient);
 		}

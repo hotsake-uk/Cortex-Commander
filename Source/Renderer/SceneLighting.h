@@ -39,7 +39,7 @@ namespace RTE {
 		/// @param playerScreen The render target holding the unlit scene for this player screen.
 		/// @param screenOrigin Scene position of the player screen's top left pixel.
 		/// @param screenEffects Glow effects visible on this screen, with positions relative to the screen.
-		void LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves);
+		void LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves);
 
 		/// Forces the world light grid to be rebuilt from scratch, e.g. after the scene's terrain changed wholesale.
 		void InvalidateWorld() { m_WorldScene = nullptr; }
@@ -119,6 +119,12 @@ namespace RTE {
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
 		GLTarget m_GodRays; //!< Half resolution light shafts.
+		static constexpr int c_IndirectMipCount = 4;
+		GLTarget m_IndirectMips[c_IndirectMipCount]; //!< Downsample chain of the lit scene, the smallest is the next frame's indirect light.
+		static constexpr int c_MaxScreens = 4;
+		GLTarget m_IndirectHistory[c_MaxScreens]; //!< Per player screen, last frame's heavily blurred lit scene.
+		glm::vec2 m_IndirectHistoryOrigin[c_MaxScreens]; //!< Per player screen, the screen origin the history was made at, for reprojection.
+		bool m_IndirectHistoryValid[c_MaxScreens] = {};
 		GLTarget m_HDRScene;
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];

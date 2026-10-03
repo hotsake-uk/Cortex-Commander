@@ -216,6 +216,17 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	int indirectWidth = width;
+	int indirectHeight = height;
+	for (GLTarget& mip: m_IndirectMips) {
+		indirectWidth = std::max(1, indirectWidth / 2);
+		indirectHeight = std::max(1, indirectHeight / 2);
+		mip.Create(indirectWidth, indirectHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_IndirectHistory[screen].Create(indirectWidth, indirectHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		m_IndirectHistoryValid[screen] = false;
+	}
 	m_HDRScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int mipWidth = width;
 	int mipHeight = height;
@@ -231,6 +242,13 @@ void SceneLighting::DestroyScreenResources() {
 	m_Emissive.Destroy();
 	m_Distortion.Destroy();
 	m_GodRays.Destroy();
+	for (GLTarget& mip: m_IndirectMips) {
+		mip.Destroy();
+	}
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_IndirectHistory[screen].Destroy();
+		m_IndirectHistoryValid[screen] = false;
+	}
 	m_HDRScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
@@ -532,7 +550,8 @@ void SceneLighting::DrawFullscreen() const {
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves) {
+void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves) {
+	screenIndex = std::clamp(screenIndex, 0, c_MaxScreens - 1);
 	ZoneScoped;
 	TracyGpuZone("Scene Lighting");
 	if (!EnsureWorldResources()) {
@@ -733,6 +752,10 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	m_CompositeShader->SetInt("rteDebugView", m_Settings.DebugView);
 	m_CompositeShader->SetInt("rteEmissive", 4);
 	m_CompositeShader->SetInt("rteNormals", 5);
+	m_CompositeShader->SetInt("rteIndirect", 6);
+	bool useIndirect = m_Settings.Enabled && m_Settings.IndirectLight > 0.0F && m_IndirectHistoryValid[screenIndex];
+	m_CompositeShader->SetFloat("rteIndirectStrength", useIndirect ? m_Settings.IndirectLight : 0.0F);
+	m_CompositeShader->SetVector2f("rteIndirectOffset", useIndirect ? (origin - m_IndirectHistoryOrigin[screenIndex]) : glm::vec2(0.0F));
 	m_CompositeShader->SetFloat("rteEdgeLighting", normals ? m_Settings.EdgeLighting : 0.0F);
 	float foregroundCompositeThresholdZ = c_TerrainBGDepth * 0.5F;
 	m_CompositeShader->SetFloat("rteForegroundDepth", ((2.0F * foregroundCompositeThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
@@ -767,7 +790,31 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
 	glActiveTexture(GL_TEXTURE5);
 	glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, m_IndirectHistory[screenIndex].Texture);
 	DrawFullscreen();
+
+	// Blur the lit scene down for next frame's indirect light. Taken before glows, rain and god rays so only lit surfaces bounce.
+	if (m_Settings.Enabled && m_Settings.IndirectLight > 0.0F) {
+		TracyGpuZone("Indirect Light");
+		m_BloomDownsampleShader->Enable();
+		m_BloomDownsampleShader->SetInt("rteSource", 0);
+		m_BloomDownsampleShader->SetBool("rteFirstPass", false);
+		glActiveTexture(GL_TEXTURE0);
+		for (int mip = 0; mip < c_IndirectMipCount; ++mip) {
+			const GLTarget& source = mip == 0 ? m_HDRScene : m_IndirectMips[mip - 1];
+			const GLTarget& destination = mip == c_IndirectMipCount - 1 ? m_IndirectHistory[screenIndex] : m_IndirectMips[mip];
+			glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+			glViewport(0, 0, destination.Width, destination.Height);
+			m_BloomDownsampleShader->SetVector2f("rteSourceTexelSize", glm::vec2(1.0F / source.Width, 1.0F / source.Height));
+			glBindTexture(GL_TEXTURE_2D, source.Texture);
+			DrawFullscreen();
+		}
+		m_IndirectHistoryOrigin[screenIndex] = origin;
+		m_IndirectHistoryValid[screenIndex] = true;
+		glViewport(0, 0, width, height);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+	}
 
 	// Rain or snow, lit by the sky, over the lit scene.
 	if (m_Settings.WeatherType > 0 && m_Settings.WeatherIntensity > 0.0F) {

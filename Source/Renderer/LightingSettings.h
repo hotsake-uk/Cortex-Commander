@@ -29,6 +29,7 @@ namespace RTE {
 		float GlowLightRadiusScale = 8.0F; //!< Radius of glow lights relative to the glow sprite's size.
 		float ShadowStrength = 0.85F; //!< How much terrain blocks dynamic lights, 0 to 1.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
+		float IndirectLight = 0.35F; //!< One bounce of light: lit surfaces bleed their color onto their surroundings. 0 to disable.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.

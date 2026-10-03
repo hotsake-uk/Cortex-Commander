@@ -942,7 +942,7 @@ void FrameMan::Draw() {
 		g_PostProcessMan.GetLightsWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenLights);
 		std::vector<ScreenShockwave> screenShockwaves;
 		g_PostProcessMan.GetShockwavesWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenShockwaves);
-		sceneLighting->LightPlayerScreen(m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights, screenShockwaves);
+		sceneLighting->LightPlayerScreen(playerScreen, m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights, screenShockwaves);
 
 		// Screen-space HUD draws go on top of the scene regardless of scene depth.
 		glClear(GL_DEPTH_BUFFER_BIT);
