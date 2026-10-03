@@ -13,6 +13,7 @@
 #include <memory>
 #include <list>
 #include <vector>
+#include <mutex>
 
 #define g_PostProcessMan PostProcessMan::Instance()
 
@@ -40,6 +41,14 @@ namespace RTE {
 		Vector m_Pos; //!< Light position. Scene coordinates, or relative to a screen, depending on context.
 		glm::vec3 m_Color{1.0F}; //!< Linear light color, intensity included.
 		float m_Radius = 0.0F; //!< Radius in pixels, where the light reaches zero.
+	};
+
+	/// A shockwave ring as seen by one player screen this frame.
+	struct ScreenShockwave {
+		glm::vec2 m_Pos; //!< Position relative to the screen.
+		float m_Radius; //!< Maximum radius of the ring, in pixels.
+		float m_Amplitude; //!< Maximum displacement, in pixels.
+		float m_Progress; //!< How far the ring has expanded, 0 to 1.
 	};
 
 	class PostProcessMan : public Singleton<PostProcessMan> {
@@ -170,6 +179,17 @@ namespace RTE {
 		/// @param lights Out parameter the lights are appended to.
 		void GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const;
 
+		/// Registers an explosion shockwave. Ring size and strength scale with the energy released.
+		/// @param pos Scene position of the explosion.
+		/// @param energy Energy released, as computed for gib screen shake.
+		void RegisterShockwave(const Vector& pos, float energy);
+
+		/// Gets the active shockwaves that may affect a box, with positions relative to the box, and forgets expired ones. Handles scene wrapping.
+		void GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves);
+
+		/// Gets the current simulation time in seconds, including the fraction of the current sim update, for smooth time based effects that pause and slow down with the game.
+		static float GetSmoothSimTime();
+
 		/// Gets the scene lighting, creating it on first use (it needs a GL context).
 		/// @return The scene lighting.
 		SceneLighting* GetSceneLighting();
@@ -208,6 +228,16 @@ namespace RTE {
 		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
 		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates.
+
+		/// An active explosion shockwave.
+		struct Shockwave {
+			Vector m_Pos;
+			float m_Radius;
+			float m_Amplitude;
+			float m_StartTime;
+		};
+		std::vector<Shockwave> m_Shockwaves; //!< Active shockwaves, in scene coordinates.
+		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.

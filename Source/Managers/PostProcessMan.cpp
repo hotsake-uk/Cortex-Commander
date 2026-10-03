@@ -165,6 +165,46 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 	}
 }
 
+float PostProcessMan::GetSmoothSimTime() {
+	return (static_cast<float>(g_TimerMan.GetSimUpdateCount()) + g_TimerMan.GetSimUpdateProportion()) * g_TimerMan.GetDeltaTimeSecs();
+}
+
+void PostProcessMan::RegisterShockwave(const Vector& pos, float energy) {
+	// Only explosions, not every gibbing body part. Explosives release ~10k, limbs and items a few hundred.
+	if (energy < 2000.0F || !m_LightingSettings.DistortionEnabled || m_LightingSettings.ShockwaveStrength <= 0.0F) {
+		return;
+	}
+	Shockwave shockwave{pos, std::clamp(std::sqrt(energy) * 2.2F, 60.0F, 500.0F), std::clamp(energy / 2500.0F, 2.0F, 10.0F) * m_LightingSettings.ShockwaveStrength, GetSmoothSimTime()};
+	std::scoped_lock lock(m_ShockwaveMutex);
+	m_Shockwaves.push_back(shockwave);
+}
+
+void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves) {
+	const float duration = 0.55F;
+	float now = GetSmoothSimTime();
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::erase_if(m_Shockwaves, [now, duration](const Shockwave& shockwave) { return now - shockwave.m_StartTime > duration || now < shockwave.m_StartTime - 1.0F; });
+	for (const Shockwave& shockwave: m_Shockwaves) {
+		float progress = std::clamp((now - shockwave.m_StartTime) / duration, 0.0F, 1.0F);
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			for (int wrapY = -1; wrapY <= 1; ++wrapY) {
+				if (wrapY != 0 && !g_SceneMan.SceneWrapsY()) {
+					continue;
+				}
+				Vector relativePos = shockwave.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
+				if (relativePos.m_X + shockwave.m_Radius >= 0 && relativePos.m_Y + shockwave.m_Radius >= 0 && relativePos.m_X - shockwave.m_Radius <= boxWidth && relativePos.m_Y - shockwave.m_Radius <= boxHeight) {
+					shockwaves.push_back({glm::vec2(relativePos.m_X, relativePos.m_Y), shockwave.m_Radius, shockwave.m_Amplitude, progress});
+				}
+			}
+		}
+	}
+}
+
 SceneLighting* PostProcessMan::GetSceneLighting() {
 	if (!m_SceneLighting) {
 		m_SceneLighting = std::make_unique<SceneLighting>(m_LightingSettings);

@@ -95,6 +95,7 @@ void SceneLighting::LoadShaders() {
 	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
+	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
 }
 
 void SceneLighting::CreateGeometry() {
@@ -196,6 +197,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_ScreenHeight = height;
 	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_HDRScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int mipWidth = width;
 	int mipHeight = height;
@@ -209,6 +211,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 void SceneLighting::DestroyScreenResources() {
 	m_DynamicLight.Destroy();
 	m_Emissive.Destroy();
+	m_Distortion.Destroy();
 	m_HDRScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
@@ -434,7 +437,7 @@ void SceneLighting::DrawFullscreen() const {
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights) {
+void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves) {
 	ZoneScoped;
 	TracyGpuZone("Scene Lighting");
 	if (!EnsureWorldResources()) {
@@ -511,7 +514,34 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		addQuad(glm::vec2(std::floor(effect.m_Pos.m_X), std::floor(effect.m_Pos.m_Y)), halfSize, -effect.m_Angle, glm::vec3(strength), 0.0F);
 		emissiveTextures.push_back(effect.m_Bitmap->GetTextureId());
 	}
+	size_t shockwaveStart = m_QuadVertices.size() / 4;
+	if (m_Settings.DistortionEnabled) {
+		for (const ScreenShockwave& shockwave: screenShockwaves) {
+			// Amplitude and progress travel in the color, radius in the light parameters.
+			size_t firstVertex = m_QuadVertices.size();
+			addQuad(shockwave.m_Pos, glm::vec2(shockwave.m_Radius), 0.0F, glm::vec3(shockwave.m_Amplitude, shockwave.m_Progress, 0.0F), shockwave.m_Radius);
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
+				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
+			}
+		}
+	}
+	size_t shockwaveCount = m_QuadVertices.size() / 4 - shockwaveStart;
 	UploadQuads();
+
+	// Shockwave displacement.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Distortion.Framebuffer);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if (shockwaveCount > 0) {
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_ShockwaveShader->Enable();
+		m_ShockwaveShader->SetVector2f("rteScreenSize", screenSize);
+		DrawQuads(shockwaveStart, shockwaveCount);
+		glDisable(GL_BLEND);
+	}
 
 	std::shared_ptr<Texture> normals = playerScreen->GetNormalTexture().lock();
 
@@ -651,10 +681,20 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.ShoulderStart);
 	m_TonemapShader->SetFloat("rteVignette", m_Settings.Vignette);
 	m_TonemapShader->SetFloat("rteSaturation", m_Settings.Saturation);
+	m_TonemapShader->SetInt("rteDistortion", 2);
+	m_TonemapShader->SetInt("rteEmissive", 3);
+	m_TonemapShader->SetBool("rteDistortionEnabled", m_Settings.DistortionEnabled);
+	m_TonemapShader->SetFloat("rteHeatHaze", m_Settings.HeatHaze);
+	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+	m_TonemapShader->SetInt("rteDebugView", m_Settings.DebugView);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, m_BloomMips[0].Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_Distortion.Texture);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
 	DrawFullscreen();
 
 	glActiveTexture(GL_TEXTURE0);

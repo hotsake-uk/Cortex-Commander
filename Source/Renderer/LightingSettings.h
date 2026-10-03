@@ -23,6 +23,10 @@ namespace RTE {
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
+		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
+		float HeatHaze = 1.5F; //!< Heat haze shimmer, in pixels at full heat.
+		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
+
 		bool BloomEnabled = true;
 		float BloomThreshold = 0.9F;
 		float BloomKnee = 0.4F;

@@ -17,6 +17,7 @@ namespace RTE {
 	class BitmapTexture;
 	struct PostEffect;
 	struct SceneLight;
+	struct ScreenShockwave;
 
 	/// Lights the scene: sky light that propagates through a low resolution grid of the terrain, dynamic lights cast by glow effects, glows drawn as emitted light, bloom and tonemapping.
 	/// Works on each player screen after the scene is drawn and before the HUD, so the HUD is never lit.
@@ -38,7 +39,7 @@ namespace RTE {
 		/// @param playerScreen The render target holding the unlit scene for this player screen.
 		/// @param screenOrigin Scene position of the player screen's top left pixel.
 		/// @param screenEffects Glow effects visible on this screen, with positions relative to the screen.
-		void LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights);
+		void LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves);
 
 		/// Forces the world light grid to be rebuilt from scratch, e.g. after the scene's terrain changed wholesale.
 		void InvalidateWorld() { m_WorldScene = nullptr; }
@@ -109,6 +110,7 @@ namespace RTE {
 		int m_ScreenHeight = 0;
 		GLTarget m_DynamicLight;
 		GLTarget m_Emissive;
+		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
 		GLTarget m_HDRScene;
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
@@ -120,6 +122,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
+		std::unique_ptr<Shader> m_ShockwaveShader;
 
 		GLuint m_FullscreenVAO = 0;
 		GLuint m_FullscreenVBO = 0;

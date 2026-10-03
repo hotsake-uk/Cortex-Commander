@@ -940,7 +940,9 @@ void FrameMan::Draw() {
 		// Light the scene (sky light, glow lights, glows as emitted light, bloom, tonemapping) before anything HUD-like is drawn over it.
 		std::vector<SceneLight> screenLights;
 		g_PostProcessMan.GetLightsWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenLights);
-		sceneLighting->LightPlayerScreen(m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights);
+		std::vector<ScreenShockwave> screenShockwaves;
+		g_PostProcessMan.GetShockwavesWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenShockwaves);
+		sceneLighting->LightPlayerScreen(m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights, screenShockwaves);
 
 		// Screen-space HUD draws go on top of the scene regardless of scene depth.
 		glClear(GL_DEPTH_BUFFER_BIT);

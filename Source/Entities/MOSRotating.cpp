@@ -919,6 +919,23 @@ void MOSRotating::GibThis(const Vector& impactImpulse, MovableObject* movableObj
 }
 
 void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore) {
+	// Explosions push a refraction shockwave out, scaled by the energy of the gibs flying out (the same measure used for automatic screen shake).
+	float gibEnergy = 0.0F;
+	for (const Gib* gibSettingsObject: m_Gibs) {
+		if (gibSettingsObject->GetCount() == 0 || !gibSettingsObject->GetParticlePreset()) {
+			continue;
+		}
+		float gibMass = gibSettingsObject->GetParticlePreset()->GetMass() != 0 ? gibSettingsObject->GetParticlePreset()->GetMass() : 0.0001F;
+		float minVelocity = gibSettingsObject->GetMinVelocity();
+		float maxVelocity = gibSettingsObject->GetMaxVelocity();
+		if (minVelocity == 0 && maxVelocity == 0) {
+			minVelocity = m_GibBlastStrength / gibMass;
+			maxVelocity = minVelocity + 10.0F;
+		}
+		gibEnergy += gibMass * (minVelocity + maxVelocity) * 0.5F * static_cast<float>(gibSettingsObject->GetCount());
+	}
+	g_PostProcessMan.RegisterShockwave(m_Pos, gibEnergy);
+
 	if (m_GibScreenShakeAmount != -1.0F) {
 		g_CameraMan.AddScreenShake(m_GibScreenShakeAmount, m_Pos);
 	}

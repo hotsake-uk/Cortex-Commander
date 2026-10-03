@@ -148,6 +148,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LightingShadowStrength", { g_PostProcessMan.GetLightingSettings().ShadowStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEmissiveIntensity", { g_PostProcessMan.GetLightingSettings().EmissiveIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("HeatHaze", { g_PostProcessMan.GetLightingSettings().HeatHaze = std::stof(reader.ReadPropValue()); });
+	MatchProperty("ShockwaveStrength", { g_PostProcessMan.GetLightingSettings().ShockwaveStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
 	MatchProperty("BloomIntensity", { g_PostProcessMan.GetLightingSettings().BloomIntensity = std::stof(reader.ReadPropValue()); });
@@ -281,6 +284,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
+	writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
+	writer.NewPropertyWithValue("HeatHaze", lighting.HeatHaze);
+	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
 	writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
 	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
 	writer.NewPropertyWithValue("BloomIntensity", lighting.BloomIntensity);

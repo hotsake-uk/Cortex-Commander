@@ -64,6 +64,11 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 
+		ImGui::SeparatorText("Distortion");
+		ImGui::Checkbox("Distortion enabled", &settings.DistortionEnabled);
+		ImGui::SliderFloat("Heat haze (px)", &settings.HeatHaze, 0.0F, 6.0F);
+		ImGui::SliderFloat("Shockwave strength", &settings.ShockwaveStrength, 0.0F, 3.0F);
+
 		ImGui::SeparatorText("Bloom");
 		ImGui::Checkbox("Bloom enabled", &settings.BloomEnabled);
 		ImGui::SliderFloat("Threshold", &settings.BloomThreshold, 0.0F, 4.0F);
@@ -77,7 +82,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);
 
 		ImGui::SeparatorText("Debug");
-		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0");
 
 		ImGui::SeparatorText("Stats");
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {
