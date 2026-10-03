@@ -832,6 +832,9 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		m_GodRaysApplyShader->SetFloat("rteForegroundDepth", ((2.0F * foregroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
 		m_GodRaysApplyShader->SetVector2f("rteScreenSize", screenSize);
 		m_GodRaysApplyShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+		m_GodRaysApplyShader->SetVector2f("rteScreenOrigin", origin);
+		m_GodRaysApplyShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+		m_GodRaysApplyShader->SetFloat("rteDustMotes", 1.0F);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_GodRays.Texture);
 		glActiveTexture(GL_TEXTURE1);
