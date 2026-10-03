@@ -492,6 +492,36 @@ void SceneLighting::Update() {
 	glm::vec3 daylight = GetDaylightTint(m_Settings.TimeOfDay);
 	float dayFactor = std::clamp(glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
 	m_EffectiveSky = m_Settings.SkyColor * daylight;
+	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
+	m_MoonHours = std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F);
+
+	// Lightning in heavy rain: a bright double flicker every so often that briefly lights the whole sky.
+	long long lightningUpdates = m_LightningLastSimUpdate >= 0 ? simUpdateCount - m_LightningLastSimUpdate : 0;
+	m_LightningLastSimUpdate = simUpdateCount;
+	// Sim time, so storms pause with the game.
+	float frameSeconds = std::min(static_cast<float>(lightningUpdates) * g_TimerMan.GetDeltaTimeSecs(), 0.1F);
+	auto nextRandom = [this]() {
+		m_LightningRandom = m_LightningRandom * 1664525u + 1013904223u;
+		return static_cast<float>(m_LightningRandom >> 8) / static_cast<float>(1u << 24);
+	};
+	if (m_Settings.WeatherType == 1 && m_Settings.WeatherIntensity > 0.5F) {
+		m_NextLightningSeconds -= frameSeconds;
+		if (m_NextLightningSeconds <= 0.0F) {
+			m_LightningSecondsLeft = 0.45F;
+			// Heavier storms flash more often.
+			float storm = (m_Settings.WeatherIntensity - 0.5F) * 2.0F;
+			m_NextLightningSeconds = (6.0F + nextRandom() * 16.0F) * (1.2F - 0.6F * storm);
+		}
+	}
+	if (m_LightningSecondsLeft > 0.0F) {
+		m_LightningSecondsLeft = std::max(m_LightningSecondsLeft - frameSeconds, 0.0F);
+		float t = 0.45F - m_LightningSecondsLeft;
+		// Two strokes: a sharp first flash and a weaker echo.
+		m_Lightning = 1.6F * std::exp(-t * 18.0F) + 0.9F * std::exp(-std::abs(t - 0.2F) * 25.0F);
+	} else {
+		m_Lightning = 0.0F;
+	}
+	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning;
 	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
 	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor);
 	// The readability floor drops more at night than the interior ambient does, so night battles outdoors stay dark and moody.
@@ -810,6 +840,14 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteAtmosphereColor", m_Settings.AtmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
 	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? m_Settings.AtmosphereHaze : 0.0F);
 	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(m_Settings.WeatherType > 0 ? m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
+	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+	{
+		// The moon follows the same arc as the sun, high in the sky behind everything. Player screens are drawn top down, so y 0 is the top.
+		float arc = (m_MoonHours - 12.0F) / 6.0F;
+		glm::vec2 moonPosition((0.5F + arc * 0.38F) * screenSize.x, (0.34F - 0.14F * (1.0F - arc * arc)) * screenSize.y);
+		m_CompositeShader->SetVector2f("rteMoonPosition", moonPosition);
+	}
 	m_CompositeShader->SetVector2f("rteScreenSize", screenSize);
 	m_CompositeShader->SetVector2f("rteScreenOrigin", origin);
 	m_CompositeShader->SetVector2f("rteGridWorldSize", gridWorldSize);

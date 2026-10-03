@@ -49,6 +49,8 @@ Write-Scenario "BunkerPerf" ($bunker + @{ TimeOfDay = 23 }) @("Render Test FX", 
 $play = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAScripted"; DefaultActivityName = "One-Man Army"; DefaultSceneName = "Ketanot Hills" }
 Write-Scenario "Play" $play @()
 Write-Scenario "PlayDusk" ($play + @{ TimeOfDay = 19 }) @()
+Write-Scenario "PlayNight" ($play + @{ TimeOfDay = 23 }) @()
+Write-Scenario "PlayStorm" ($play + @{ TimeOfDay = 21; WeatherType = 1; WeatherIntensity = 0.95 }) @()
 $tutorial = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GATutorial"; DefaultActivityName = "Tutorial Mission"; DefaultSceneName = "Tutorial Bunker" }
 Write-Scenario "TutorialDusk" ($tutorial + @{ TimeOfDay = 19 }) @()
 Write-Scenario "TutorialNight" ($tutorial + @{ TimeOfDay = 23 }) @()

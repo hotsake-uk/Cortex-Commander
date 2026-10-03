@@ -32,12 +32,46 @@ uniform vec3 rteForegroundAmbient; // Minimum light on the foreground, so the pl
 uniform sampler2D rteIndirect; // Last frame's lit scene, heavily blurred: the light bouncing off nearby surfaces.
 uniform float rteIndirectStrength;
 uniform vec2 rteIndirectOffset; // How far the screen moved since the indirect light was made, in pixels.
+uniform float rteNightSky; // 0 by day, 1 at full night: stars and the moon show on the furthest sky layers.
+uniform vec2 rteMoonPosition; // Screen pixels, as gl_FragCoord (y 0 is the top of the player screen).
+uniform float rteTime; // Seconds, for twinkling.
+
+float StarHash(vec2 p) {
+	p = fract(p * vec2(123.34, 456.21));
+	p += dot(p, p + 45.32);
+	return fract(p.x * p.y);
+}
+
+// Pixel stars with a slow twinkle, and a pixel-art moon with a soft halo. Linear, added on top of the lit sky.
+vec3 NightSky(vec2 fragCoord) {
+	// The sky barely moves with the camera, like the furthest parallax layers.
+	vec2 skyPixel = floor(fragCoord + rteScreenOrigin * vec2(0.03, -0.03));
+	float hash = StarHash(skyPixel);
+	vec3 sky = vec3(0.0);
+	if (hash > 0.9965) {
+		float brightness = (hash - 0.9965) / 0.0035;
+		float twinkle = 0.65 + 0.35 * sin(rteTime * (0.8 + brightness * 2.5) + hash * 300.0);
+		vec3 tint = mix(vec3(0.75, 0.82, 1.0), vec3(1.0, 0.9, 0.75), fract(hash * 97.0));
+		sky += tint * (0.15 + 0.85 * brightness * brightness) * twinkle * 0.9;
+	}
+	vec2 toMoon = fragCoord - rteMoonPosition;
+	float moonDistance = length(toMoon);
+	if (moonDistance < 6.5) {
+		// A crescent-ish shading so it reads as a moon, not a lamp.
+		float shade = 0.75 + 0.25 * clamp(dot(normalize(toMoon + vec2(0.001)), vec2(-0.7, 0.7)), -1.0, 1.0);
+		sky += vec3(0.95, 0.95, 1.0) * 1.3 * shade;
+	} else {
+		sky += vec3(0.55, 0.62, 0.85) * 0.22 * exp(-(moonDistance - 6.5) / 14.0);
+	}
+	return sky;
+}
 
 void main() {
 	vec2 screenUV = gl_FragCoord.xy / rteScreenSize;
 	vec4 albedo = texture(rteAlbedo, screenUV);
 
 	vec3 light;
+	float nightSkyAmount = 0.0;
 	float sceneDepth = texture(rteSceneDepth, screenUV).r;
 	float haze = 0.0;
 	if (sceneDepth > rteBackgroundDepth) {
@@ -47,6 +81,9 @@ void main() {
 		// Nothing drawn at all (cleared depth) is open sky.
 		// The furthest layers are usually the sky itself, which shouldn't be washed out; haze peaks on the distant scenery in between.
 		haze = sceneDepth >= 0.9999 ? rteAtmosphereHaze * 0.4 : rteAtmosphereHaze * smoothstep(0.0, 0.6, distance) * (1.0 - 0.6 * smoothstep(0.85, 1.0, distance));
+		// Only layers that barely scroll (the sky itself) get stars, so they never show on mountains or nearer scenery.
+		// They also fade towards the horizon, where distant mountains usually are.
+		nightSkyAmount = rteNightSky * smoothstep(0.88, 0.95, distance) * (1.0 - smoothstep(0.25, 0.48, screenUV.y)); // Player screens are drawn top down: UV y 0 is the top.
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 		float sky = texture(rteSkyLight, worldPos / rteGridWorldSize).r;
@@ -94,6 +131,11 @@ void main() {
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
 	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze);
+	if (nightSkyAmount > 0.0) {
+		// Bright parts of the sky art (clouds, glowing horizons) hide the stars.
+		float skyBrightness = dot(litColor, vec3(0.2126, 0.7152, 0.0722));
+		litColor += NightSky(gl_FragCoord.xy) * nightSkyAmount * (1.0 - smoothstep(0.03, 0.12, skyBrightness));
+	}
 	vec3 result = litColor + emissive;
 	FragColor = vec4(any(isnan(result)) || any(isinf(result)) ? vec3(0.0) : result, 1.0);
 }

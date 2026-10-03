@@ -110,6 +110,13 @@ namespace RTE {
 		glm::vec3 m_EffectiveSky{1.0F}; //!< Sky light after time of day, this frame.
 		glm::vec3 m_EffectiveAmbient{1.0F}; //!< Ambient light after time of day, this frame.
 		glm::vec3 m_EffectiveForegroundAmbient{1.0F}; //!< Foreground light floor after time of day, this frame.
+		float m_NightSky = 0.0F; //!< How visible the stars and moon are, this frame.
+		float m_MoonHours = 0.0F; //!< Where the moon is along its path across the sky, in sun-path hours (6 rising, 18 setting).
+		float m_Lightning = 0.0F; //!< Current lightning flash brightness.
+		float m_LightningSecondsLeft = 0.0F; //!< Time left in the current flash.
+		float m_NextLightningSeconds = 8.0F; //!< Sim seconds until the next flash.
+		long long m_LightningLastSimUpdate = -1;
+		unsigned int m_LightningRandom = 12345u; //!< Render-only random state, so lightning never touches the sim's random numbers.
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;

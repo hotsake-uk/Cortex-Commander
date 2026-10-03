@@ -28,6 +28,8 @@ All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in
 
 Press **F6** in game or in the menus for the **World Debug** window: time of day (with Midnight/Dawn/Noon/Dusk/Night presets and an option to let time pass), weather, the lighting toggles, interior/cave light, the playfield light floor, sky light, exposure, god rays, haze, debug views and game speed. It has buttons for the Graphics Lab, performance stats and saving. While any debug window is open the mouse is released from aiming so the window can be used, and clicks on a window don't reach the game.
 
+At night, stars and a moon appear on the sky layers. These are the background layers with little or no parallax, and both fade out toward the horizon. Heavy rain (intensity above 0.5) brings occasional lightning that briefly lights the sky. Auto exposure (`AutoExposure`, `AutoExposureLow`, `AutoExposureHigh`) only kicks in when the average scene brightness leaves the normal range, such as a screen-filling flash or near-total darkness.
+
 `LightingSettingsVersion` records which defaults a settings file was written with. When the lighting defaults change a lot (version 2 made interiors and caves much brighter), saved values from older files are ignored so players get the new look.
 
 | Key | Default | What it does |
