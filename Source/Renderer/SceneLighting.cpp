@@ -609,6 +609,40 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		addQuad(glm::vec2(std::floor(effect.m_Pos.m_X), std::floor(effect.m_Pos.m_Y)), halfSize, -effect.m_Angle, glm::vec3(strength), 0.0F);
 		emissiveTextures.push_back(effect.m_Bitmap->GetTextureId());
 	}
+
+	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
+	if (m_Settings.Embers > 0.0F) {
+		auto hash = [](float n) { return glm::fract(std::sin(n) * 43758.5453F); };
+		float time = PostProcessMan::GetSmoothSimTime();
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		for (const PostEffect& effect: screenEffects) {
+			if (!effect.m_Bitmap) {
+				continue;
+			}
+			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
+			float strength = static_cast<float>(effect.m_Strength) / 255.0F;
+			if (glow.LightColor.r < glow.LightColor.b * 1.4F || strength < 0.25F || glow.Size < 6.0F) {
+				continue;
+			}
+			glm::vec2 world = origin + glm::vec2(effect.m_Pos.m_X, effect.m_Pos.m_Y);
+			glm::vec2 cell = glm::floor(world / 10.0F);
+			float seedBase = hash(cell.x * 12.9898F + cell.y * 78.233F) * 1000.0F;
+			int count = std::clamp(static_cast<int>(glow.Size / 14.0F * m_Settings.Embers), 1, 5);
+			for (int i = 0; i < count; ++i) {
+				float seed = hash(seedBase + static_cast<float>(i) * 17.31F);
+				float seed2 = hash(seedBase + static_cast<float>(i) * 41.17F + 3.0F);
+				float rate = 0.45F + seed * 0.7F;
+				float phase = glm::fract(time * rate + seed * 7.0F);
+				float rise = 25.0F + seed2 * 45.0F;
+				glm::vec2 emberWorld(cell.x * 10.0F + 5.0F + (seed2 - 0.5F) * glow.Size * 0.5F + std::sin(time * 2.3F + seed * 20.0F) * 3.0F * phase, cell.y * 10.0F - phase * rise);
+				float fade = std::pow(1.0F - phase, 1.5F) * strength;
+				glm::vec3 emberColor = glm::mix(glm::vec3(1.0F, 0.85F, 0.45F), glm::vec3(1.0F, 0.35F, 0.08F), phase) * fade;
+				glm::vec2 screen = glm::floor(emberWorld - origin) + glm::vec2(0.5F);
+				addQuad(screen, glm::vec2(0.5F), 0.0F, emberColor, 0.0F);
+				emissiveTextures.push_back(whiteTexture);
+			}
+		}
+	}
 	size_t shockwaveStart = m_QuadVertices.size() / 4;
 	if (m_Settings.DistortionEnabled) {
 		for (const ScreenShockwave& shockwave: screenShockwaves) {

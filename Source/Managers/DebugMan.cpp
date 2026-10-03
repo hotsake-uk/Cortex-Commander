@@ -81,6 +81,7 @@ void DebugMan::GraphicsLabGUI() {
 
 		ImGui::SeparatorText("Terrain effects");
 		ImGui::Checkbox("Scorch marks", &settings.ScorchMarks);
+		ImGui::SliderFloat("Embers", &settings.Embers, 0.0F, 3.0F);
 		ImGui::SliderFloat("Hot spot cooling (s)", &settings.HotSpotSeconds, 0.0F, 10.0F);
 
 		ImGui::SeparatorText("Bloom");

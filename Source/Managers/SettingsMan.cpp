@@ -159,6 +159,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeatHaze", { g_PostProcessMan.GetLightingSettings().HeatHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ShockwaveStrength", { g_PostProcessMan.GetLightingSettings().ShockwaveStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
@@ -311,6 +312,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
 	writer.NewPropertyWithValue("HeatHaze", lighting.HeatHaze);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
+	writer.NewPropertyWithValue("Embers", lighting.Embers);
 	writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
 	writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
 	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
