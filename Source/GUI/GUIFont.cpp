@@ -1,4 +1,7 @@
 #include "GUI.h"
+#include "TextOverlay.h"
+
+#include <unordered_map>
 
 #include <cassert>
 
@@ -104,7 +107,48 @@ bool GUIFont::Load(GUIScreen* Screen, const std::string& Filename) {
 	return true;
 }
 
+bool GUIFont::CaptureForOverlay(GUIBitmap* Bitmap, int X, int Y, const std::string& Text, int HAlign, unsigned long Shadow) {
+	if (!TextOverlay::IsEnabled() || !Bitmap || !m_Font || Text.find('\n') != std::string::npos) {
+		return false;
+	}
+	int depth = m_Font->GetColorDepth();
+	if (!m_OverlayColorsFound) {
+		// The glyph art is drawn in the font's colors: the most common bright color is the fill, the most common dark one the outline.
+		m_OverlayColorsFound = true;
+		unsigned long background = m_Font->GetPixel(m_Font->GetWidth() - 1, 0);
+		unsigned long separator = m_Font->GetPixel(0, 0);
+		std::unordered_map<unsigned long, int> counts;
+		for (int y = 0; y < m_Font->GetHeight(); ++y) {
+			for (int x = 1; x < m_Font->GetWidth(); ++x) {
+				unsigned long pixel = m_Font->GetPixel(x, y);
+				if (pixel != background && pixel != separator) {
+					counts[pixel]++;
+				}
+			}
+		}
+		int bestFill = 0;
+		int bestOutline = 0;
+		for (const auto& [pixel, count]: counts) {
+			unsigned int rgb = TextOverlay::ToRGB(pixel, depth);
+			float luminance = (0.2126F * ((rgb >> 16) & 0xFF) + 0.7152F * ((rgb >> 8) & 0xFF) + 0.0722F * (rgb & 0xFF)) / 255.0F;
+			if (luminance > 0.3F && count > bestFill) {
+				bestFill = count;
+				m_OverlayFill = rgb;
+			} else if (luminance < 0.2F && count > bestOutline) {
+				bestOutline = count;
+				m_OverlayOutline = rgb;
+			}
+		}
+	}
+	unsigned int fill = m_CurrentColor == m_MainColor ? m_OverlayFill : TextOverlay::ToRGB(m_CurrentColor, depth);
+	TextOverlay::Align align = HAlign == Centre ? TextOverlay::Centre : (HAlign == Right ? TextOverlay::Right : TextOverlay::Left);
+	return TextOverlay::Capture(Bitmap->GetBitmap(), X, Y, Text, align, m_FontHeight, fill, m_OverlayOutline, Shadow != 0, CalculateWidth(Text));
+}
+
 void GUIFont::Draw(GUIBitmap* Bitmap, int X, int Y, const std::string& Text, unsigned long Shadow) {
+	if (CaptureForOverlay(Bitmap, X, Y, Text, Left, Shadow)) {
+		return;
+	}
 	unsigned char c;
 	GUIRect Rect;
 	GUIBitmap* Surf = m_CurrentBitmap;
@@ -212,7 +256,7 @@ void GUIFont::DrawAligned(GUIBitmap* Bitmap, int X, int Y, const std::string& Te
 		}
 
 		// If the line is scrolled above the bitmap top, then don't try to draw anything
-		if ((yLine + m_FontHeight) >= 0) {
+		if ((yLine + m_FontHeight) >= 0 && !CaptureForOverlay(Bitmap, X, yLine, TextLine, HAlign, Shadow)) {
 			switch (HAlign) {
 				// Left HAlignment: Where X is the starting point of the text
 				case Left:

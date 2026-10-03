@@ -1,4 +1,5 @@
 #include "GUI.h"
+#include "TextOverlay.h"
 #include "PresetMan.h"
 
 #include <cassert>
@@ -287,11 +288,14 @@ void GUIControlManager::Update(bool ignoreKeyboardEvents) {
 }
 
 void GUIControlManager::Draw() {
-	m_GUIManager->Draw(m_Screen);
+	Draw(m_Screen);
 }
 
 void GUIControlManager::Draw(GUIScreen* pScreen) {
+	// GUI controls keep their text in the bitmap, in drawing order with the other controls.
+	TextOverlay::SuspendCapture();
 	m_GUIManager->Draw(pScreen);
+	TextOverlay::ResumeCapture();
 }
 
 void GUIControlManager::DrawMouse(GUIScreen* guiScreen) {

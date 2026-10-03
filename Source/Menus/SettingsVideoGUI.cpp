@@ -1,4 +1,5 @@
 #include "SettingsVideoGUI.h"
+#include "TextOverlay.h"
 #include "PostProcessMan.h"
 #include "WindowMan.h"
 #include "FrameMan.h"
@@ -63,6 +64,10 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 		}
 	}
 	UpdateVisualEffectControls();
+	m_SmoothHUDTextCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxSmoothHUDText"));
+	if (m_SmoothHUDTextCheckbox) {
+		m_SmoothHUDTextCheckbox->SetCheck(TextOverlay::IsEnabled());
+	}
 
 	m_FullscreenCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxFullscreen"));
 	m_FullscreenCheckbox->SetCheck(m_NewFullscreen);
@@ -454,6 +459,8 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				lightingSettings.DistortionEnabled = enabled;
 				lightingSettings.ScorchMarks = enabled;
 				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
+			} else if (m_SmoothHUDTextCheckbox && guiEvent.GetControl() == m_SmoothHUDTextCheckbox) {
+				TextOverlay::SetEnabled(m_SmoothHUDTextCheckbox->GetCheck());
 			} else if (guiEvent.GetControl() == m_UseMultiDisplaysCheckbox) {
 				g_WindowMan.SetUseMultiDisplays(m_UseMultiDisplaysCheckbox->GetCheck());
 				UpdateCustomResolutionLimits();

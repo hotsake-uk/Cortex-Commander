@@ -192,6 +192,10 @@ namespace RTE {
 		/// Draws the finished screen buffer to the window(s), letterboxed.
 		void BlitScreenBufferToWindows();
 
+		/// Shows the frame with high resolution HUD text: the lit scene scaled up, then the text, then the GUI layer on top.
+		/// @param redrawLast Whether to redraw the last presented frame (window exposed) rather than this frame's.
+		void PresentWithTextOverlay(bool redrawLast);
+
 		void Present();
 #pragma endregion
 
@@ -217,6 +221,11 @@ namespace RTE {
 
 		std::unique_ptr<Shader> m_ScreenBlitShader; //!< Blit shader to combine the menu layer and post process layers and show them on screen.
 		std::unique_ptr<Shader> m_ScreenUpscaleShader; //!< Scales the finished frame up to the window with even, crisp pixels at any scale.
+		std::unique_ptr<Shader> m_ScreenUpscaleMaskedShader; //!< Scales the GUI layer (black is transparent) up to the window over what's there.
+		bool m_LastPresentUsedTextOverlay = false; //!< Whether the last frame was shown with PresentWithTextOverlay, for redrawing it.
+
+		/// Draws a texture letterboxed into the primary window with one of the upscale shaders. Flipped like the screen buffer.
+		void BlitTextureToPrimaryWindow(Texture* texture, Shader* shader, bool blend);
 
 		bool m_AnyWindowHasFocus; //!< Whether any game window has focus.
 		bool m_ResolutionChanged; //!< Whether the resolution was changed through the settings.

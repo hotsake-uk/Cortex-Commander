@@ -1,4 +1,5 @@
 #include "FrameMan.h"
+#include "TextOverlay.h"
 #include "SceneLighting.h"
 
 #include "SDL3/SDL_surface.h"
@@ -861,6 +862,8 @@ void FrameMan::Draw() {
 			UpdateScreenOffsetForSplitScreen(playerScreen, screenOffset);
 		}
 		AllegroBitmap playerGUIBitmap(drawScreenGUI);
+		// HUD text drawn into this screen's GUI layer goes to the high resolution text overlay instead, clipped to this screen.
+		TextOverlay::SetTarget(drawScreenGUI, screenOffset.GetFloorIntX(), screenOffset.GetFloorIntY(), drawScreenGUI->w, drawScreenGUI->h);
 		m_PlayerScreen->Begin(true, 1.0f);
 		g_RenderMan.BeginFrame(nullptr);
 		for (const Camera& camera: g_CameraMan.GetPlayerCameras(playerScreen)) {
@@ -952,6 +955,7 @@ void FrameMan::Draw() {
 
 		g_RenderMan.BeginFrame(nullptr);
 		DrawScreenFlash(playerScreen, drawScreenGUI);
+		TextOverlay::ClearTarget();
 		m_PlayerScreen->End();
 		if (screenCount > 1) {
 			m_BackBuffer->Begin(false);

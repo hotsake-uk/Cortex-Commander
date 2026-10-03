@@ -5,6 +5,7 @@ sources += files(
 'raylib/rtextures.c',
 'glad/gl.c',
 'BigTexture.cpp',
+'TextOverlay.cpp',
 'BlendMode.cpp',
 'Camera.cpp',
 'Draw.cpp',

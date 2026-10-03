@@ -106,5 +106,12 @@ namespace RTE {
 
 		int m_Kerning; // Spacing between characters
 		int m_Leading; // Spacing between lines
+
+		bool m_OverlayColorsFound = false; // Whether the colors below were worked out from the glyph artwork yet.
+		unsigned int m_OverlayFill = 0xFFFFFF; // The font's main fill color, 0xRRGGBB, for high resolution text.
+		unsigned int m_OverlayOutline = 0x000000; // The font's outline color, 0xRRGGBB.
+
+		/// Hands a line of text to the high resolution text overlay if it's aimed at a HUD layer. Returns whether it was taken.
+		bool CaptureForOverlay(GUIBitmap* Bitmap, int X, int Y, const std::string& Text, int HAlign, unsigned long Shadow);
 	};
 } // namespace RTE

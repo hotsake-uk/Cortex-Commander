@@ -102,6 +102,7 @@ namespace RTE {
 		GUICheckbox* m_BloomCheckbox; //!< Toggles bloom.
 		GUICheckbox* m_DistortionCheckbox; //!< Toggles heat haze and shockwaves.
 		GUIComboBox* m_GraphicsQualityComboBox; //!< Picks a graphics quality preset.
+		GUICheckbox* m_SmoothHUDTextCheckbox; //!< Toggles high resolution HUD text.
 		GUICheckbox* m_FullscreenCheckbox;
 		GUICheckbox* m_UseMultiDisplaysCheckbox;
 		GUIRadioButton* m_PresetResolutionRadioButton;

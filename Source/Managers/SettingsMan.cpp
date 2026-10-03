@@ -1,4 +1,5 @@
 #include "SettingsMan.h"
+#include "TextOverlay.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -141,6 +142,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("GraphicsQuality", { g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom)); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
@@ -306,6 +308,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
+	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);

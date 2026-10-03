@@ -13,6 +13,7 @@
 #include "PostProcessMan.h"
 #include "SettingsMan.h"
 #include "SceneLighting.h"
+#include "TextOverlay.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -110,6 +111,10 @@ void DebugMan::WorldDebugGUI() {
 		ImGui::Checkbox("Bloom", &settings.BloomEnabled);
 		ImGui::SameLine();
 		ImGui::Checkbox("Extra effects", &settings.DistortionEnabled);
+		bool smoothText = TextOverlay::IsEnabled();
+		if (ImGui::Checkbox("Smooth HUD text", &smoothText)) {
+			TextOverlay::SetEnabled(smoothText);
+		}
 		// Brightness sliders scale the colors uniformly, keeping their tint.
 		auto brightnessSlider = [](const char* label, glm::vec3& color, float maxValue) {
 			float level = std::max({color.x, color.y, color.z});

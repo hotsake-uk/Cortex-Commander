@@ -1,4 +1,5 @@
 #include "WindowMan.h"
+#include "TextOverlay.h"
 #include "RTEError.h"
 #include "SDL3/SDL.h"
 #include "SettingsMan.h"
@@ -145,6 +146,7 @@ void WindowMan::Initialize() {
 	CreateBackBufferTexture();
 	m_ScreenBlitShader = std::make_unique<Shader>(g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.vert"), g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.frag"));
 	m_ScreenUpscaleShader = std::make_unique<Shader>(g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.vert"), g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenUpscale.frag"));
+	m_ScreenUpscaleMaskedShader = std::make_unique<Shader>(g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.vert"), g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenUpscaleMasked.frag"));
 
 	// SDL is kinda dumb about the taskbar icon so we need to poll after creating the window for it to show up, otherwise there's no icon till it starts polling in the main menu loop.
 	SDL_PollEvent(nullptr);
@@ -774,7 +776,11 @@ bool WindowMan::HandleWindowExposedEvent(void *userdata, SDL_Event *event) {
 		// Rebuilding it here instead would happen outside the frame and could show a cleared screen buffer with only the GUI on it.
 		g_WindowMan.SetViewportLetterboxed();
 		g_WindowMan.ClearBackbuffer(false);
-		g_WindowMan.BlitScreenBufferToWindows();
+		if (g_WindowMan.m_LastPresentUsedTextOverlay) {
+			g_WindowMan.PresentWithTextOverlay(true);
+		} else {
+			g_WindowMan.BlitScreenBufferToWindows();
+		}
 		g_WindowMan.Present();
 	}
 
@@ -875,7 +881,13 @@ void WindowMan::UploadFrame() {
 	m_ScreenBuffer->End();
 	g_RenderMan.BeginFrame(nullptr);
 
-	BlitScreenBufferToWindows();
+	// HUD text captured for high resolution drawing goes between the scene and the GUI layer, so it needs them separately.
+	m_LastPresentUsedTextOverlay = m_DrawPostProcessBuffer && m_MultiDisplayWindows.empty() && TextOverlay::HasPendingText();
+	if (m_LastPresentUsedTextOverlay) {
+		PresentWithTextOverlay(false);
+	} else {
+		BlitScreenBufferToWindows();
+	}
 	g_DebugMan.DrawImGui();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -885,6 +897,41 @@ void WindowMan::UploadFrame() {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();
+}
+
+void WindowMan::BlitTextureToPrimaryWindow(Texture* texture, Shader* shader, bool blend) {
+	GLuint textureId = texture->GetTextureId();
+	GLint previousMinFilter = GL_NEAREST;
+	GLint previousMagFilter = GL_NEAREST;
+	glBindTexture(GL_TEXTURE_2D, textureId);
+	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &previousMinFilter);
+	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &previousMagFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	g_RenderMan.BeginFrame(nullptr);
+	shader->Begin();
+	g_RenderMan.SetActiveBlendMode(blend ? Blend::ALPHA : Blend::NONE);
+	GL_CHECK(glViewport(m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h));
+	Draw::DrawTexture(texture, {-1.0f, 1.0f, 2.0f, -2.0f});
+	g_RenderMan.DrawActiveBatch();
+	shader->End();
+	g_RenderMan.BeginFrame(nullptr);
+	glBindTexture(GL_TEXTURE_2D, textureId);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, previousMinFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, previousMagFilter);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void WindowMan::PresentWithTextOverlay(bool redrawLast) {
+	Texture* sceneTexture = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture().lock().get();
+	BlitTextureToPrimaryWindow(sceneTexture, m_ScreenUpscaleShader.get(), false);
+	int windowWidth = 0;
+	int windowHeight = 0;
+	SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowWidth, &windowHeight);
+	TextOverlay::Render(windowWidth, windowHeight, m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h, static_cast<int>(m_ResX), static_cast<int>(m_ResY), redrawLast);
+	BlitTextureToPrimaryWindow(m_BackBuffer32Texture.get(), m_ScreenUpscaleMaskedShader.get(), true);
 }
 
 void WindowMan::BlitScreenBufferToWindows() {
