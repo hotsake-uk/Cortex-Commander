@@ -40,6 +40,9 @@ namespace RTE {
 
 		Activity::Teams GetTeam() const { return m_Team; }
 
+		/// Sets the team whose view this camera shows, which decides the fog of war drawn.
+		void SetTeam(Activity::Teams team) { m_Team = team; }
+
 		bool IsShowHUD() const { return m_ShowHUD; }
 
 		void SetClipRect(const Box& clipRect) { m_ClipRect = clipRect; }

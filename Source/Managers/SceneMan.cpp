@@ -1,4 +1,6 @@
 #include "SceneMan.h"
+#include "Shader.h"
+#include "RenderMan.h"
 #include "PostProcessMan.h"
 #include "PresetMan.h"
 #include "FrameMan.h"
@@ -2677,8 +2679,13 @@ void SceneMan::Draw(const Camera& camera) {
 	terrainLayer->Draw(camera);
 
 	int teamId = camera.GetTeam();
-	if (teamId != Activity::NoTeam) {
+	if (teamId != Activity::NoTeam && m_pCurrentScene->GetUnseenLayer(teamId)) {
+		// Soft edged fog of war instead of hard blocks.
+		static std::unique_ptr<Shader> s_UnseenSoftShader = std::make_unique<Shader>("Base.rte/Shaders/Blit8.vert", "Base.rte/Shaders/UnseenSoft.frag");
+		const Shader* previousShader = g_RenderMan.GetCurrentShader();
+		g_RenderMan.SetCurrentShader(s_UnseenSoftShader.get());
 		m_pCurrentScene->GetUnseenLayer(teamId)->Draw(camera);
+		g_RenderMan.SetCurrentShader(previousShader);
 	}
 
 	if (camera.IsShowHUD()) {
