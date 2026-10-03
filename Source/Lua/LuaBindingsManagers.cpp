@@ -399,7 +399,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, DebugMan) {
 	return luabind::class_<DebugMan>("DebugManager")
-		.def("ShowDebugOptions", &DebugMan::ShowDebugOptions);
+		.def("ShowDebugOptions", &DebugMan::ShowDebugOptions)
+		.def("ShowGraphicsLab", &DebugMan::ShowGraphicsLab);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, TimerMan) {

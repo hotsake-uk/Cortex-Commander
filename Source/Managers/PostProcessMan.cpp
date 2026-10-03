@@ -137,7 +137,7 @@ void PostProcessMan::UpdatePalette() {
 
 SceneLighting* PostProcessMan::GetSceneLighting() {
 	if (!m_SceneLighting) {
-		m_SceneLighting = std::make_unique<SceneLighting>();
+		m_SceneLighting = std::make_unique<SceneLighting>(m_LightingSettings);
 	}
 	return m_SceneLighting.get();
 }

@@ -10,6 +10,9 @@
 #include "CameraMan.h"
 #include "FrameMan.h"
 #include "SceneMan.h"
+#include "PostProcessMan.h"
+#include "SettingsMan.h"
+#include "SceneLighting.h"
 #include "tracy/TracyOpenGL.hpp"
 
 using namespace RTE;
@@ -33,11 +36,65 @@ void DebugMan::DrawImGui() {
 	if (m_ShowPerformanceMan) {
 		g_PerformanceMan.ImGui();
 	}
+
+	if (m_ShowGraphicsLab) {
+		GraphicsLabGUI();
+	}
+}
+
+void DebugMan::GraphicsLabGUI() {
+	if (ImGui::Begin("Graphics Lab", &m_ShowGraphicsLab)) {
+		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+		const ImGuiColorEditFlags linearColorFlags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR;
+
+		ImGui::SeparatorText("Sky and ambient light");
+		ImGui::Checkbox("Lighting enabled", &settings.Enabled);
+		ImGui::ColorEdit3("Ambient (linear)", &settings.Ambient.x, linearColorFlags);
+		ImGui::ColorEdit3("Sky (linear)", &settings.SkyColor.x, linearColorFlags);
+		ImGui::SliderFloat("Air falloff", &settings.AirFalloff, 0.8F, 0.995F, "%.3f");
+		ImGui::SliderFloat("Terrain falloff", &settings.SolidFalloff, 0.1F, 0.95F, "%.2f");
+		ImGui::SliderInt("Propagation steps/frame", &settings.PropagationIterationsPerFrame, 1, 32);
+
+		ImGui::SeparatorText("Glows and dynamic lights");
+		ImGui::SliderFloat("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);
+		ImGui::SliderFloat("Glow light radius", &settings.GlowLightRadiusScale, 0.5F, 10.0F);
+		ImGui::SliderFloat("Shadow strength", &settings.ShadowStrength, 0.0F, 1.0F);
+		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
+
+		ImGui::SeparatorText("Bloom");
+		ImGui::Checkbox("Bloom enabled", &settings.BloomEnabled);
+		ImGui::SliderFloat("Threshold", &settings.BloomThreshold, 0.0F, 4.0F);
+		ImGui::SliderFloat("Knee", &settings.BloomKnee, 0.01F, 1.0F);
+		ImGui::SliderFloat("Intensity", &settings.BloomIntensity, 0.0F, 3.0F);
+
+		ImGui::SeparatorText("Tonemapping and grading");
+		ImGui::SliderFloat("Exposure", &settings.Exposure, 0.1F, 4.0F);
+		ImGui::SliderFloat("Highlight shoulder", &settings.ShoulderStart, 0.3F, 1.0F);
+		ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
+		ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);
+
+		ImGui::SeparatorText("Stats");
+		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {
+			ImGui::Text("Light grid: %d x %d cells of %dpx", lighting->GetGridWidth(), lighting->GetGridHeight(), lighting->GetGridCellSize());
+			ImGui::Text("Dynamic lights last screen: %d", lighting->GetLastLightCount());
+		}
+
+		ImGui::Separator();
+		if (ImGui::Button("Reset to defaults")) {
+			settings = LightingSettings();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Save to Settings.ini")) {
+			g_SettingsMan.UpdateSettingsFile();
+		}
+	}
+	ImGui::End();
 }
 
 void DebugMan::DebugOptionsGUI() {
 	if (ImGui::Begin("Debug Options", &m_ShowDebugWindow)) {
 		ImGui::Checkbox("Show Performance Stats", &m_ShowPerformanceMan);
+		ImGui::Checkbox("Show Graphics Lab", &m_ShowGraphicsLab);
 		ImGui::Checkbox("Show ImGui Demo Window", &m_ShowDebugWindow);
 		ImGui::Checkbox("Show Actor debug", &m_ShowActorDebugGui);
 		if (ImGui::TreeNode("Debug Draw")) {

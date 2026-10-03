@@ -103,6 +103,9 @@
     <ClInclude Include="Source\System\MicroPather\micropather.h">
       <Filter>System\MicroPather</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Renderer\LightingSettings.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Renderer\SceneLighting.h">
       <Filter>Renderer</Filter>
     </ClInclude>

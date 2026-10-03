@@ -6,6 +6,7 @@
 #include "glm/fwd.hpp"
 #include "SceneMan.h"
 #include "Shader.h"
+#include "LightingSettings.h"
 
 #include <array>
 #include <atomic>
@@ -148,6 +149,10 @@ namespace RTE {
 		/// @return The scene lighting.
 		SceneLighting* GetSceneLighting();
 
+		/// Gets the lighting and post-processing settings. These persist in Settings.ini and can be changed live.
+		/// @return The lighting settings.
+		LightingSettings& GetLightingSettings() { return m_LightingSettings; }
+
 		GLuint GetPaletteTexture() { return m_Palette8Texture; }
 
 	protected:
@@ -176,6 +181,7 @@ namespace RTE {
 		std::shared_ptr<RenderTarget> m_BlitFramebuffer; //!< Framebuffer for blitting the 8bpp backbuffer to the 32bpp backbuffer.
 		std::shared_ptr<RenderTarget> m_PostProcessFramebuffer; //!< Framebuffer for post-processing effects.
 		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
+		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.

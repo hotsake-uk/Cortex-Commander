@@ -65,7 +65,8 @@ void SceneLighting::GLTarget::Destroy() {
 
 #pragma region Creation and Destruction
 
-SceneLighting::SceneLighting() {
+SceneLighting::SceneLighting(LightingSettings& settings) :
+    m_Settings(settings) {
 	LoadShaders();
 	CreateGeometry();
 }
@@ -440,6 +441,7 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 			++lightCount;
 		}
 	}
+	m_LastLightCount = static_cast<int>(lightCount);
 	size_t emissiveStart = m_QuadVertices.size() / 4;
 	std::vector<GLuint> emissiveTextures;
 	for (const PostEffect& effect: screenEffects) {

@@ -14,6 +14,9 @@ namespace RTE {
 
 		void ShowDebugOptions() { m_ShowDebugWindow = true; }
 
+		/// Opens the Graphics Lab, the live lighting and post-processing tuning window.
+		void ShowGraphicsLab() { m_ShowGraphicsLab = true; }
+
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
@@ -27,11 +30,13 @@ namespace RTE {
 		bool m_ShowDebugWindow{false};
 		bool m_ImGuiDemoWindow{false};
 		bool m_ShowPerformanceMan{false};
+		bool m_ShowGraphicsLab{false};
 
 		bool m_DrawCameraBounds{false};
 		bool m_DrawSpriteBounds{false};
 
 		void DebugOptionsGUI();
+		void GraphicsLabGUI();
 
 		bool m_ShowActorDebugGui{false};
 		std::unique_ptr<RenderTarget> m_DebugDrawTarget;

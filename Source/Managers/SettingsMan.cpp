@@ -11,7 +11,26 @@
 #include "DebugMan.h"
 #include "System.h"
 
+#include <sstream>
+#include <algorithm>
 using namespace RTE;
+
+namespace {
+	/// Parses "r g b" (commas also accepted), keeping the fallback for anything missing.
+	glm::vec3 ReadVec3(std::string value, const glm::vec3& fallback) {
+		std::replace(value.begin(), value.end(), ',', ' ');
+		std::istringstream stream(value);
+		glm::vec3 result = fallback;
+		stream >> result.x >> result.y >> result.z;
+		return result;
+	}
+
+	std::string WriteVec3(const glm::vec3& value) {
+		std::ostringstream stream;
+		stream << value.x << " " << value.y << " " << value.z;
+		return stream.str();
+	}
+} // namespace
 
 const std::string SettingsMan::c_ClassName = "SettingsMan";
 
@@ -116,6 +135,21 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LightingAmbient", { g_PostProcessMan.GetLightingSettings().Ambient = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().Ambient); });
+	MatchProperty("LightingSkyColor", { g_PostProcessMan.GetLightingSettings().SkyColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().SkyColor); });
+	MatchProperty("LightingAirFalloff", { g_PostProcessMan.GetLightingSettings().AirFalloff = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingGlowIntensity", { g_PostProcessMan.GetLightingSettings().GlowLightIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingGlowRadiusScale", { g_PostProcessMan.GetLightingSettings().GlowLightRadiusScale = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingShadowStrength", { g_PostProcessMan.GetLightingSettings().ShadowStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingEmissiveIntensity", { g_PostProcessMan.GetLightingSettings().EmissiveIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
+	MatchProperty("BloomIntensity", { g_PostProcessMan.GetLightingSettings().BloomIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("PostExposure", { g_PostProcessMan.GetLightingSettings().Exposure = std::stof(reader.ReadPropValue()); });
+	MatchProperty("PostVignette", { g_PostProcessMan.GetLightingSettings().Vignette = std::stof(reader.ReadPropValue()); });
+	MatchProperty("PostSaturation", { g_PostProcessMan.GetLightingSettings().Saturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("MasterVolume", { g_AudioMan.SetMasterVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("MuteMaster", { reader >> g_AudioMan.m_MuteMaster; });
 	MatchProperty("MusicVolume", { g_AudioMan.SetMusicVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
@@ -190,6 +224,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DrawPixelCheckVisualizations", { reader >> g_SceneMan.m_DrawPixelCheckVisualizations; });
 	MatchProperty("PrintDebugInfo", { reader >> m_PrintDebugInfo; });
 	MatchProperty("EnableDebugMenus", { reader >> g_DebugMan.m_ShowDebugWindow; });
+	MatchProperty("ShowGraphicsLab", { g_DebugMan.m_ShowGraphicsLab = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("MeasureModuleLoadTime", { reader >> m_MeasureModuleLoadTime; });
 	MatchProperty("VisibleAssemblyGroup", { m_VisibleAssemblyGroupsList.push_back(reader.ReadPropValue()); });
 	MatchProperty("DisableMod", { m_DisabledMods.try_emplace(reader.ReadPropValue(), true); });
@@ -224,6 +259,27 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
+
+	writer.NewLine(false, 2);
+	writer.NewDivider(false);
+	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
+	writer.NewLine(false);
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
+	writer.NewPropertyWithValue("LightingAmbient", WriteVec3(lighting.Ambient));
+	writer.NewPropertyWithValue("LightingSkyColor", WriteVec3(lighting.SkyColor));
+	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
+	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
+	writer.NewPropertyWithValue("LightingGlowIntensity", lighting.GlowLightIntensity);
+	writer.NewPropertyWithValue("LightingGlowRadiusScale", lighting.GlowLightRadiusScale);
+	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
+	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
+	writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
+	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
+	writer.NewPropertyWithValue("BloomIntensity", lighting.BloomIntensity);
+	writer.NewPropertyWithValue("PostExposure", lighting.Exposure);
+	writer.NewPropertyWithValue("PostVignette", lighting.Vignette);
+	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);

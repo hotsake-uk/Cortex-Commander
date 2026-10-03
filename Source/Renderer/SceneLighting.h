@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector.h"
+#include "LightingSettings.h"
 #include "glad/gl.h"
 #include "glm/glm.hpp"
 
@@ -16,37 +17,14 @@ namespace RTE {
 	class BitmapTexture;
 	struct PostEffect;
 
-	/// Tunable parameters of the scene lighting and post-processing. Colors are linear.
-	struct LightingSettings {
-		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
-		glm::vec3 Ambient = {0.13F, 0.13F, 0.16F}; //!< Light where no sky light reaches.
-		glm::vec3 SkyColor = {1.0F, 0.98F, 0.95F}; //!< Light under open sky.
-		float AirFalloff = 0.96F; //!< How much sky light is kept per grid cell travelled through air.
-		float SolidFalloff = 0.6F; //!< How much sky light is kept per grid cell travelled into terrain.
-		int PropagationIterationsPerFrame = 6; //!< Sky light propagation iterations per frame. Light settles into new terrain over a few frames.
-
-		float GlowLightIntensity = 2.2F; //!< Brightness of the lights cast by glow effects.
-		float GlowLightRadiusScale = 4.0F; //!< Radius of glow lights relative to the glow sprite's size.
-		float ShadowStrength = 0.85F; //!< How much terrain blocks dynamic lights, 0 to 1.
-		float EmissiveIntensity = 1.0F; //!< Brightness of glow sprites drawn as emitted light.
-
-		bool BloomEnabled = true;
-		float BloomThreshold = 0.9F;
-		float BloomKnee = 0.4F;
-		float BloomIntensity = 0.6F;
-
-		float Exposure = 1.0F;
-		float ShoulderStart = 0.75F; //!< Linear brightness above which highlights are softly compressed.
-		float Vignette = 0.15F;
-		float Saturation = 1.05F;
-	};
-
 	/// Lights the scene: sky light that propagates through a low resolution grid of the terrain, dynamic lights cast by glow effects, glows drawn as emitted light, bloom and tonemapping.
 	/// Works on each player screen after the scene is drawn and before the HUD, so the HUD is never lit.
 	class SceneLighting {
 
 	public:
-		SceneLighting();
+		/// Constructor.
+		/// @param settings The settings to use, not owned. Read every frame, so they can be changed live.
+		explicit SceneLighting(LightingSettings& settings);
 		~SceneLighting();
 
 		/// Gets the tunable settings.
@@ -63,6 +41,12 @@ namespace RTE {
 
 		/// Forces the world light grid to be rebuilt from scratch, e.g. after the scene's terrain changed wholesale.
 		void InvalidateWorld() { m_WorldScene = nullptr; }
+
+		/// Gets statistics from the last frame, for the Graphics Lab.
+		int GetLastLightCount() const { return m_LastLightCount; }
+		int GetGridCellSize() const { return m_CellSize; }
+		int GetGridWidth() const { return m_GridWidth; }
+		int GetGridHeight() const { return m_GridHeight; }
 
 	private:
 		/// A GL texture with an optional framebuffer.
@@ -90,7 +74,7 @@ namespace RTE {
 			float Size; //!< The larger of the glow's dimensions.
 		};
 
-		LightingSettings m_Settings;
+		LightingSettings& m_Settings;
 
 		const void* m_WorldScene = nullptr; //!< The scene the world grid was built for.
 		const void* m_WorldMaterialBitmap = nullptr; //!< The terrain material bitmap the world grid was built from.
@@ -105,6 +89,7 @@ namespace RTE {
 		std::vector<float> m_Skyline; //!< Per grid column, the row of the first mostly solid cell, normalized by grid height.
 		int m_NextRefreshRow = 0; //!< Row the round-robin terrain refresh continues from.
 		int m_FrameCounter = 0;
+		int m_LastLightCount = 0;
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
