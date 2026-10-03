@@ -1,4 +1,5 @@
 #include "SLBackground.h"
+#include "Shapes.h"
 #include "FrameMan.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
@@ -241,21 +242,35 @@ void SLBackground::Draw(const Box& targetDimensions, Box& targetBox, bool offset
 	int targetBoxHeight = static_cast<int>(targetBox.GetHeight());
 
 	rlZDepth(m_ZOrder);
+	// Fills with a palette color; widths and heights may come in negative.
+	auto fillRectangle = [](float x, float y, float width, float height, int paletteIndex) {
+		if (width < 0.0F) {
+			x += width;
+			width = -width;
+		}
+		if (height < 0.0F) {
+			y += height;
+			height = -height;
+		}
+		if (width > 0.0F && height > 0.0F) {
+			Draw::Rectangle(FloatRect(x, y, width, height), Color(paletteIndex));
+		}
+	};
 	// Detect if non-wrapping layer dimensions can't cover the whole target area with its main bitmap. If so, fill in the gap with appropriate solid color sampled from the hanging edge.
 	if (!m_WrapX && bitmapWidth <= targetBoxWidth) {
 		if (m_FillColorLeft != ColorKeys::g_MaskColor && m_Offset.GetFloorIntX() != 0) {
-			DrawRectangle(targetBoxCornerX, targetBoxCornerY, -m_Offset.m_X, targetBoxHeight, {static_cast<unsigned char>(m_FillColorLeft), 0, 0, 255});
+			fillRectangle(targetBoxCornerX, targetBoxCornerY, -m_Offset.m_X, targetBoxHeight, m_FillColorLeft);
 		}
 		if (m_FillColorRight != ColorKeys::g_MaskColor) {
-			DrawRectangle(targetBoxCornerX + bitmapWidth - m_Offset.m_X, targetBoxCornerY, targetBoxWidth - bitmapWidth + m_Offset.m_X, targetBoxHeight, {static_cast<unsigned char>(m_FillColorRight), 0, 0, 255});
+			fillRectangle(targetBoxCornerX + bitmapWidth - m_Offset.m_X, targetBoxCornerY, targetBoxWidth - bitmapWidth + m_Offset.m_X, targetBoxHeight, m_FillColorRight);
 		}
 	}
 	if (!m_WrapY && bitmapHeight <= targetBoxHeight) {
 		if (m_FillColorUp != ColorKeys::g_MaskColor && m_Offset.GetFloorIntY() != 0) {
-			DrawRectangle(targetBoxCornerX, targetBoxCornerY, targetBoxWidth, - m_Offset.m_Y, {static_cast<unsigned char>(m_FillColorUp), 0, 0, 255});
+			fillRectangle(targetBoxCornerX, targetBoxCornerY, targetBoxWidth, - m_Offset.m_Y, m_FillColorUp);
 		}
 		if (m_FillColorDown != ColorKeys::g_MaskColor) {
-			DrawRectangle(targetBoxCornerX, targetBoxCornerY + bitmapHeight - m_Offset.m_Y, targetBoxWidth, targetBoxHeight - bitmapHeight + m_Offset.m_Y, {static_cast<unsigned char>(m_FillColorDown), 0, 0, 255});
+			fillRectangle(targetBoxCornerX, targetBoxCornerY + bitmapHeight - m_Offset.m_Y, targetBoxWidth, targetBoxHeight - bitmapHeight + m_Offset.m_Y, m_FillColorDown);
 		}
 	}
 	rlZDepth(c_DefaultDrawDepth);

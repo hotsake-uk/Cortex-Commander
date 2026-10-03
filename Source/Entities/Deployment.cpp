@@ -1,4 +1,5 @@
 #include "Deployment.h"
+#include "Shapes.h"
 #include "PresetMan.h"
 #include "MetaMan.h"
 #include "ContentFile.h"
@@ -555,7 +556,9 @@ void Deployment::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode m
 				DrawTextureV(pBitmap, aDrawPos[i], {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
 				draw_trans_sprite(pTargetBitmap, pBitmap, aDrawPos[i].GetFloorIntX(), aDrawPos[i].GetFloorIntY());
 				// Draw the spawn radius circle too
-				DrawCircleLines(aDrawPos[i].GetFloorIntX() + (pBitmap->w / 2), aDrawPos[i].GetFloorIntY() + (pBitmap->h / 2), m_SpawnRadius, {static_cast<unsigned char>(c_GUIColorGray), 0, 0, g_FrameMan.GetCurrentAlpha()});
+				Color spawnRadiusColor(c_GUIColorGray);
+				spawnRadiusColor.SetA(g_FrameMan.GetCurrentAlpha());
+				Draw::CircleLines(glm::vec2(aDrawPos[i].GetFloorIntX() + (pBitmap->w / 2), aDrawPos[i].GetFloorIntY() + (pBitmap->h / 2)), static_cast<float>(m_SpawnRadius), spawnRadiusColor);
 			}
 		}
 	}
