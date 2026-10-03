@@ -42,6 +42,11 @@ namespace RTE {
 		/// Forces the world light grid to be rebuilt from scratch, e.g. after the scene's terrain changed wholesale.
 		void InvalidateWorld() { m_WorldScene = nullptr; }
 
+		/// Gets the linear daylight tint for a time of day.
+		/// @param hours Time of day in hours, 0 to 24.
+		/// @return The daylight tint, white at noon.
+		static glm::vec3 GetDaylightTint(float hours);
+
 		/// Gets statistics from the last frame, for the Graphics Lab.
 		int GetLastLightCount() const { return m_LastLightCount; }
 		int GetGridCellSize() const { return m_CellSize; }
@@ -90,6 +95,9 @@ namespace RTE {
 		int m_NextRefreshRow = 0; //!< Row the round-robin terrain refresh continues from.
 		int m_FrameCounter = 0;
 		int m_LastLightCount = 0;
+		long long m_LastSimUpdateCount = -1; //!< For advancing the time of day in sim time.
+		glm::vec3 m_EffectiveSky{1.0F}; //!< Sky light after time of day, this frame.
+		glm::vec3 m_EffectiveAmbient{1.0F}; //!< Ambient light after time of day, this frame.
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
@@ -99,6 +107,7 @@ namespace RTE {
 		int m_ScreenWidth = 0;
 		int m_ScreenHeight = 0;
 		GLTarget m_DynamicLight;
+		GLTarget m_Emissive;
 		GLTarget m_HDRScene;
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];

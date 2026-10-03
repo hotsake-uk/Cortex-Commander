@@ -95,7 +95,7 @@ namespace RTE {
 
 		/// Gets a current global simulation time measured in ms ticks from the start of the simulation up to the last UpdateSim of this TimerMan.
 		/// @return The number of ms passed since the simulation started.
-		long long GetSimTimeMS() const { return static_cast<long long>((static_cast<float>(m_SimTimeTicks) / static_cast<float>(m_TicksPerSecond)) * 0.001F); }
+		long long GetSimTimeMS() const { return static_cast<long long>((static_cast<double>(m_SimTimeTicks) / static_cast<double>(m_TicksPerSecond)) * 1000.0); }
 
 		/// Gets the current number of ticks that the simulation should be updating with.
 		/// @return The current fixed delta time that the simulation should be updating with, in ticks.

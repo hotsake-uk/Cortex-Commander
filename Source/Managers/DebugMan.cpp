@@ -54,6 +54,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Air falloff", &settings.AirFalloff, 0.8F, 0.995F, "%.3f");
 		ImGui::SliderFloat("Terrain falloff", &settings.SolidFalloff, 0.1F, 0.95F, "%.2f");
 		ImGui::SliderInt("Propagation steps/frame", &settings.PropagationIterationsPerFrame, 1, 32);
+		ImGui::SliderFloat("Time of day (h)", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
+		ImGui::SliderFloat("Day length (min, 0 = fixed)", &settings.DayLengthMinutes, 0.0F, 60.0F, "%.1f");
 
 		ImGui::SeparatorText("Glows and dynamic lights");
 		ImGui::SliderFloat("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);
@@ -72,6 +74,9 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Highlight shoulder", &settings.ShoulderStart, 0.3F, 1.0F);
 		ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
 		ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);
+
+		ImGui::SeparatorText("Debug");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0");
 
 		ImGui::SeparatorText("Stats");
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {

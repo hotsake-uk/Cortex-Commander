@@ -8,6 +8,7 @@
 #include "Texture.h"
 #include "GLCheck.h"
 #include "Constants.h"
+#include "TimerMan.h"
 
 #include "allegro.h"
 #include "tracy/Tracy.hpp"
@@ -194,6 +195,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_ScreenWidth = width;
 	m_ScreenHeight = height;
 	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_HDRScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int mipWidth = width;
 	int mipHeight = height;
@@ -206,6 +208,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 
 void SceneLighting::DestroyScreenResources() {
 	m_DynamicLight.Destroy();
+	m_Emissive.Destroy();
 	m_HDRScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
@@ -295,8 +298,52 @@ void SceneLighting::PropagateSkyLight(int iterations) {
 	glActiveTexture(GL_TEXTURE0);
 }
 
+glm::vec3 SceneLighting::GetDaylightTint(float hours) {
+	struct Keyframe {
+		float Hours;
+		glm::vec3 Tint;
+	};
+	static const Keyframe keyframes[] = {
+	    {0.0F, {0.06F, 0.08F, 0.17F}},
+	    {4.5F, {0.06F, 0.08F, 0.17F}},
+	    {5.5F, {0.30F, 0.22F, 0.30F}},
+	    {6.5F, {0.95F, 0.55F, 0.35F}},
+	    {8.0F, {1.0F, 0.92F, 0.82F}},
+	    {12.0F, {1.0F, 1.0F, 1.0F}},
+	    {16.0F, {1.0F, 0.95F, 0.85F}},
+	    {18.0F, {1.0F, 0.62F, 0.38F}},
+	    {19.0F, {0.55F, 0.32F, 0.42F}},
+	    {20.0F, {0.10F, 0.11F, 0.22F}},
+	    {24.0F, {0.06F, 0.08F, 0.17F}}};
+	hours = std::fmod(std::fmod(hours, 24.0F) + 24.0F, 24.0F);
+	for (size_t i = 1; i < std::size(keyframes); ++i) {
+		if (hours <= keyframes[i].Hours) {
+			float t = (hours - keyframes[i - 1].Hours) / (keyframes[i].Hours - keyframes[i - 1].Hours);
+			// Smooth the transitions between keyframes.
+			t = t * t * (3.0F - 2.0F * t);
+			return glm::mix(keyframes[i - 1].Tint, keyframes[i].Tint, t);
+		}
+	}
+	return keyframes[0].Tint;
+}
+
 void SceneLighting::Update() {
 	ZoneScoped;
+
+	// Advance the time of day in sim time, so it pauses with the game.
+	long long simUpdateCount = g_TimerMan.GetSimUpdateCount();
+	if (m_LastSimUpdateCount >= 0 && m_Settings.DayLengthMinutes > 0.0F) {
+		float elapsedSeconds = static_cast<float>(simUpdateCount - m_LastSimUpdateCount) * g_TimerMan.GetDeltaTimeSecs();
+		float hoursPerSecond = 24.0F / (m_Settings.DayLengthMinutes * 60.0F);
+		m_Settings.TimeOfDay = std::fmod(m_Settings.TimeOfDay + elapsedSeconds * hoursPerSecond, 24.0F);
+	}
+	m_LastSimUpdateCount = simUpdateCount;
+	glm::vec3 daylight = GetDaylightTint(m_Settings.TimeOfDay);
+	float dayFactor = std::clamp(glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
+	m_EffectiveSky = m_Settings.SkyColor * daylight;
+	// Caves get a little darker at night too, but not as much as the outdoors.
+	m_EffectiveAmbient = m_Settings.Ambient * (0.6F + 0.4F * dayFactor);
+
 	if (!EnsureWorldResources()) {
 		return;
 	}
@@ -428,8 +475,8 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 				continue;
 			}
 			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
-			float radius = std::max(8.0F, glow.Size * 0.5F * m_Settings.GlowLightRadiusScale);
-			glm::vec3 color = glow.LightColor * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity;
+			float radius = std::max(24.0F, glow.Size * 0.5F * m_Settings.GlowLightRadiusScale);
+			glm::vec3 color = glm::mix(glow.LightColor, glm::vec3(1.0F), 0.25F) * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity;
 			glm::vec2 center(effect.m_Pos.m_X, effect.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(radius), 0.0F, color, radius);
@@ -476,44 +523,17 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		glDisable(GL_BLEND);
 	}
 
-	// Composite the lit scene into HDR.
-	std::shared_ptr<Texture> albedo = playerScreen->GetColorTexture().lock();
-	glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
-	m_CompositeShader->Enable();
-	m_CompositeShader->SetInt("rteAlbedo", 0);
-	m_CompositeShader->SetInt("rteDynamicLight", 1);
-	m_CompositeShader->SetInt("rteSkyLight", 2);
-	m_CompositeShader->SetInt("rteSceneDepth", 3);
-	// Layers are drawn at depth z mapped linearly through the cameras' ortho projection. Background layers sit at c_BackgroundDepth, terrain background at c_TerrainBGDepth.
-	float backgroundThresholdZ = (c_BackgroundDepth + c_TerrainBGDepth) * 0.5F;
-	float backgroundThresholdNDC = (2.0F * backgroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth);
-	m_CompositeShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
-	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_Settings.SkyColor : glm::vec3(1.0F));
-	m_CompositeShader->SetVector2f("rteScreenSize", screenSize);
-	m_CompositeShader->SetVector2f("rteScreenOrigin", origin);
-	m_CompositeShader->SetVector2f("rteGridWorldSize", gridWorldSize);
-	m_CompositeShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_Settings.Ambient : glm::vec3(1.0F));
-	m_CompositeShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_Settings.SkyColor : glm::vec3(1.0F));
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, albedo ? albedo->GetTextureId() : 0);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
-	std::shared_ptr<DepthTexture> sceneDepth = playerScreen->GetDepthTexture().lock();
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
-	DrawFullscreen();
-
-	// Glows as emitted light on top.
+	// Glows, screen blended into their own buffer like the original glows.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Emissive.Framebuffer);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
 	if (!emissiveTextures.empty()) {
 		glEnable(GL_BLEND);
 		glBlendEquation(GL_FUNC_ADD);
-		glBlendFunc(GL_ONE, GL_ONE);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
 		m_EmissiveShader->Enable();
 		m_EmissiveShader->SetInt("rteTexture", 0);
 		m_EmissiveShader->SetVector2f("rteScreenSize", screenSize);
-		m_EmissiveShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
 		glActiveTexture(GL_TEXTURE0);
 		size_t runStart = 0;
 		for (size_t i = 1; i <= emissiveTextures.size(); ++i) {
@@ -525,6 +545,41 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		}
 		glDisable(GL_BLEND);
 	}
+
+	// Composite the lit scene into HDR.
+	std::shared_ptr<Texture> albedo = playerScreen->GetColorTexture().lock();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+	m_CompositeShader->Enable();
+	m_CompositeShader->SetInt("rteAlbedo", 0);
+	m_CompositeShader->SetInt("rteDynamicLight", 1);
+	m_CompositeShader->SetInt("rteSkyLight", 2);
+	m_CompositeShader->SetInt("rteSceneDepth", 3);
+	m_CompositeShader->SetInt("rteDebugView", m_Settings.DebugView);
+	m_CompositeShader->SetInt("rteEmissive", 4);
+	m_CompositeShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
+	m_CompositeShader->SetFloat("rteMaxDynamicLight", 2.0F);
+	// Layers are drawn at depth z mapped linearly through the cameras' ortho projection. Background layers sit at c_BackgroundDepth, terrain background at c_TerrainBGDepth.
+	float backgroundThresholdZ = (c_BackgroundDepth + c_TerrainBGDepth) * 0.5F;
+	float backgroundThresholdNDC = (2.0F * backgroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth);
+	m_CompositeShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	m_CompositeShader->SetVector2f("rteScreenSize", screenSize);
+	m_CompositeShader->SetVector2f("rteScreenOrigin", origin);
+	m_CompositeShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+	m_CompositeShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_EffectiveAmbient : glm::vec3(1.0F));
+	m_CompositeShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, albedo ? albedo->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+	std::shared_ptr<DepthTexture> sceneDepth = playerScreen->GetDepthTexture().lock();
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+	DrawFullscreen();
 
 	// Bloom.
 	if (m_Settings.BloomEnabled) {

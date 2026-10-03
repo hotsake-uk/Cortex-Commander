@@ -8,6 +8,9 @@ out vec4 FragColor;
 
 uniform sampler2D rteAlbedo; // The unlit player screen.
 uniform sampler2D rteDynamicLight; // Screen space, RGB = linear light from dynamic lights.
+uniform sampler2D rteEmissive; // Screen space, RGB = glows in gamma space, screen blended.
+uniform float rteEmissiveIntensity;
+uniform float rteMaxDynamicLight; // Dynamic light softly saturates towards this, so piles of overlapping lights don't blow out.
 uniform sampler2D rteSkyLight; // World grid, R = sky light 0..1, linearly filtered.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
@@ -17,6 +20,7 @@ uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize; // World size covered by the sky light grid.
 uniform vec3 rteAmbient; // Linear light where no sky light reaches.
 uniform vec3 rteSkyColor; // Linear light under open sky.
+uniform int rteDebugView; // 0 final, 1 lighting on grey, 2 sky light only, 3 dynamic light only.
 
 void main() {
 	vec2 screenUV = gl_FragCoord.xy / rteScreenSize;
@@ -31,9 +35,22 @@ void main() {
 		float sky = texture(rteSkyLight, worldPos / rteGridWorldSize).r;
 		// Shape the falloff a little so cave mouths stay bright and deep caves get properly dark.
 		sky = smoothstep(0.0, 1.0, sky);
-		light = mix(rteAmbient, rteSkyColor, sky) + texture(rteDynamicLight, screenUV).rgb;
+		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
+		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));
+		light = mix(rteAmbient, rteSkyColor, sky) + dynamicLight;
 	}
 
 	vec3 albedoLinear = pow(albedo.rgb, vec3(2.2));
-	FragColor = vec4(albedoLinear * light, 1.0);
+	if (rteDebugView == 1) {
+		albedoLinear = vec3(0.5);
+	} else if (rteDebugView == 2) {
+		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
+		FragColor = vec4(vec3(texture(rteSkyLight, worldPos / rteGridWorldSize).r), 1.0);
+		return;
+	} else if (rteDebugView == 3) {
+		FragColor = vec4(texture(rteDynamicLight, screenUV).rgb, 1.0);
+		return;
+	}
+	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
+	FragColor = vec4(albedoLinear * light + emissive, 1.0);
 }
