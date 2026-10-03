@@ -51,7 +51,7 @@ Write-Scenario "BunkerFog" $bunker @("Render Test FX", "Render Test Fog")
 Write-Scenario "Caves" $caves @("Render Test Camera Tour", "Render Test FX")
 Write-Scenario "CavesNightLights" ($caves + @{ TimeOfDay = 23 }) @("Render Test Camera Tour", "Render Test Lights")
 Write-Scenario "Primitives" $bunker @("Render Test Primitives")
-Write-Scenario "Classic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0 }) @("Render Test FX")
+Write-Scenario "Classic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0; EffectsParticles = 0 }) @("Render Test FX")
 $split = $bunker.Clone(); $split.DefaultActivityName = "Render Test Split Screen"; $split.TimeOfDay = 23
 Write-Scenario "SplitScreen" $split @("Render Test FX")
 Write-Scenario "BunkerPerf" ($bunker + @{ TimeOfDay = 23 }) @("Render Test FX", "Render Test Perf")
@@ -69,6 +69,6 @@ Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()
 Write-Scenario "GoldenNoon" $bunker @() -DefaultLighting
 Write-Scenario "GoldenNight" ($bunker + @{ TimeOfDay = 23 }) @() -DefaultLighting
 Write-Scenario "GoldenCaves" $caves @("Render Test Camera Tour") -DefaultLighting
-Write-Scenario "GoldenClassic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0 }) @() -DefaultLighting
+Write-Scenario "GoldenClassic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0; EffectsParticles = 0 }) @() -DefaultLighting
 Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 }) @() -DefaultLighting
 Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLighting

@@ -14,6 +14,7 @@
 #include "SettingsMan.h"
 #include "SceneLighting.h"
 #include "TextOverlay.h"
+#include "EffectsParticles.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -209,6 +210,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SeparatorText("Terrain effects");
 		ImGui::Checkbox("Scorch marks", &settings.ScorchMarks);
 		ImGui::SliderFloat("Embers", &settings.Embers, 0.0F, 3.0F);
+		ImGui::SliderFloat("Sparks, dust and debris", &settings.EffectsParticles, 0.0F, 3.0F);
+		ImGui::Text("Effects particles alive: %d", EffectsParticles::GetCount());
 		ImGui::SliderFloat("Hot spot cooling (s)", &settings.HotSpotSeconds, 0.0F, 10.0F);
 
 		ImGui::SeparatorText("Bloom");

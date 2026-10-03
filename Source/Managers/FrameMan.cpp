@@ -1,5 +1,6 @@
 #include "FrameMan.h"
 #include "TextOverlay.h"
+#include "EffectsParticles.h"
 #include "SceneLighting.h"
 
 #include "SDL3/SDL_surface.h"
@@ -839,6 +840,7 @@ void FrameMan::Draw() {
 
 	SceneLighting* sceneLighting = g_PostProcessMan.GetSceneLighting();
 	sceneLighting->Update();
+	EffectsParticles::Update(g_PostProcessMan.GetLightingSettings().EffectsParticles);
 
 	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
 		g_CameraMan.Update(playerScreen);
@@ -884,6 +886,7 @@ void FrameMan::Draw() {
 			// g_SceneMan.Draw(drawScreen, drawScreenGUI, targetPos);
 			g_SceneMan.Draw(camera);
 
+			EffectsParticles::Draw(camera);
 			g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
 
 			// Get only the scene-relative post effects that affect this player's screen

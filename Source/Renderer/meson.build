@@ -6,6 +6,7 @@ sources += files(
 'glad/gl.c',
 'BigTexture.cpp',
 'TextOverlay.cpp',
+'EffectsParticles.cpp',
 'BlendMode.cpp',
 'Camera.cpp',
 'Draw.cpp',

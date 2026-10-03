@@ -1,4 +1,5 @@
 #include "SceneLighting.h"
+#include "EffectsParticles.h"
 
 #include "PostProcessMan.h"
 #include "SceneMan.h"
@@ -103,6 +104,7 @@ void SceneLighting::LoadShaders() {
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
 	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
 	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
+	m_LitParticleShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/LitParticle.frag");
 	m_RCCascadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCCascade.frag");
 	m_RCIrradianceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCIrradiance.frag");
 	m_ExposureAdaptShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/ExposureAdapt.frag");
@@ -725,6 +727,18 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		emissiveTextures.push_back(effect.m_Bitmap->GetTextureId());
 	}
 
+	// Visual sparks from explosions and impacts: short glowing streaks along their motion.
+	{
+		std::vector<EffectsParticles::Spark> sparks;
+		EffectsParticles::GetSparks(origin, width, height, sparks);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		for (const EffectsParticles::Spark& spark: sparks) {
+			float angle = std::atan2(spark.Direction.y, spark.Direction.x);
+			addQuad(spark.Position - spark.Direction * (spark.Length * 0.5F), glm::vec2(spark.Length * 0.5F + 0.5F, 0.6F), angle, glm::min(spark.Color, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+		}
+	}
+
 	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
 	if (m_Settings.Embers > 0.0F) {
 		auto hash = [](float n) { return glm::fract(std::sin(n) * 43758.5453F); };
@@ -771,6 +785,20 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 	size_t shockwaveCount = m_QuadVertices.size() / 4 - shockwaveStart;
+	// Dust puffs, lit and drawn over the scene after the composite.
+	size_t puffStart = m_QuadVertices.size() / 4;
+	{
+		std::vector<EffectsParticles::Puff> puffs;
+		EffectsParticles::GetPuffs(origin, width, height, puffs);
+		for (const EffectsParticles::Puff& puff: puffs) {
+			size_t firstVertex = m_QuadVertices.size();
+			addQuad(puff.Position, glm::vec2(puff.Size * 0.5F), 0.0F, glm::vec3(puff.Color), 0.0F);
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].A = puff.Color.a;
+			}
+		}
+	}
+	size_t puffCount = m_QuadVertices.size() / 4 - puffStart;
 	UploadQuads();
 
 	// Shockwave displacement.
@@ -995,6 +1023,34 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_IndirectHistoryValid[screenIndex] = true;
 		glViewport(0, 0, width, height);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+	}
+
+	// Translucent particles (dust) lit like the scene behind them.
+	if (puffCount > 0) {
+		TracyGpuZone("Lit Particles");
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		m_LitParticleShader->Enable();
+		m_LitParticleShader->SetVector2f("rteScreenSize", screenSize);
+		m_LitParticleShader->SetVector2f("rteScreenOrigin", origin);
+		m_LitParticleShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_LitParticleShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_EffectiveAmbient : glm::vec3(1.0F));
+		m_LitParticleShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+		m_LitParticleShader->SetInt("rteTexture", 0);
+		m_LitParticleShader->SetInt("rteSkyLight", 1);
+		m_LitParticleShader->SetInt("rteDynamicLight", 2);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawQuads(puffStart, puffCount);
+		glDisable(GL_BLEND);
 	}
 
 	// Rain or snow, lit by the sky, over the lit scene.

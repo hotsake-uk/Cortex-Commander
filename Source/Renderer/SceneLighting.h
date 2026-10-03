@@ -161,6 +161,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
+		std::unique_ptr<Shader> m_LitParticleShader;
 		std::unique_ptr<Shader> m_RCSceneShader;
 		std::unique_ptr<Shader> m_RCCascadeShader;
 		std::unique_ptr<Shader> m_RCIrradianceShader;
