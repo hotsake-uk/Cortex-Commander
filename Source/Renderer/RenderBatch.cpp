@@ -95,12 +95,16 @@ void RenderBatch::Render() {
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetPaletteTexture());
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetEmissivePaletteTexture());
+	// Draw call textures are bound to unit 1, so leave it active.
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetShapeTexture());
 	const Camera* currentCamera = m_CurrentCamera;
 	currentShader->Enable();
 	currentShader->SetInt(currentShader->GetTextureUniform(), 1);
 	currentShader->SetInt(currentShader->GetPaletteUniform(), 0);
+	currentShader->SetInt("rteEmissivePalette", 2);
 	if(!currentCamera) {
 		currentShader->SetMatrix4f(currentShader->GetProjectionUniform(), glm::mat4(1.0f));
 		currentShader->SetMatrix4f(currentShader->GetTransformUniform(), glm::mat4(1.0f));
@@ -133,6 +137,7 @@ void RenderBatch::Render() {
 			currentShader->Enable();
 			currentShader->SetInt(currentShader->GetTextureUniform(), 1);
 			currentShader->SetInt(currentShader->GetPaletteUniform(), 0);
+			currentShader->SetInt("rteEmissivePalette", 2);
 			if (currentCamera) {
 				currentShader->SetMatrix4f(currentShader->GetProjectionUniform(), currentCamera->GetProjection());
 				currentShader->SetMatrix4f(currentShader->GetViewUniform(), currentCamera->GetView());

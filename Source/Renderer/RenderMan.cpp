@@ -1,4 +1,6 @@
 #include "RenderMan.h"
+#include "Constants.h"
+#include <array>
 #include "DrawCall.h"
 #include "allegro.h"
 #include "glad/gl.h"
@@ -24,9 +26,28 @@ void RenderMan::Initialize() {
 		_putpixel32(paletteBitmap.get(), i, 0, makeacol32(color.r, color.g, color.b, color.a));
 	}
 	m_PaletteTexture = std::make_shared<BitmapTexture>(std::move(paletteBitmap), Filter::Nearest, WrapType::ClampToEdge);
+
+	// The palette's glow yellows (the colors the original dot glows keyed on: gold sparkle, tracers, hot bits) are emissive, so they glint in the dark.
+	std::array<unsigned char, 256> emissivePalette{};
+	emissivePalette[g_YellowGlowColor] = 255;
+	emissivePalette[98] = 255;
+	emissivePalette[120] = 200;
+	glGenTextures(1, &m_EmissivePaletteTexture);
+	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 256, 1, 0, GL_RED, GL_UNSIGNED_BYTE, emissivePalette.data());
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
 void RenderMan::Destroy() {
+	if (m_EmissivePaletteTexture) {
+		glDeleteTextures(1, &m_EmissivePaletteTexture);
+		m_EmissivePaletteTexture = 0;
+	}
 }
 
 std::shared_ptr<DrawCall> RenderMan::BeginDraw() {

@@ -66,6 +66,9 @@ namespace RTE {
 		/// Returns the texture id for the default palette. TODO: allow palette swapping.
 		GLuint GetPaletteTexture() { return m_PaletteTexture->GetTextureId(); }
 
+		/// Returns the texture marking which palette colors glow (256x1, R = emissive strength), so indexed art can be emissive without new assets.
+		GLuint GetEmissivePaletteTexture() const { return m_EmissivePaletteTexture; }
+
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
 
@@ -83,6 +86,7 @@ namespace RTE {
 		std::unique_ptr<GLState> m_GLState{nullptr};
 		std::shared_ptr<BitmapTexture> m_ShapesTexture{nullptr};
 		std::shared_ptr<BitmapTexture> m_PaletteTexture{nullptr};
+		GLuint m_EmissivePaletteTexture{0};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};

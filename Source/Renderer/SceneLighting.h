@@ -100,6 +100,7 @@ namespace RTE {
 		long long m_LastSimUpdateCount = -1; //!< For advancing the time of day in sim time.
 		glm::vec3 m_EffectiveSky{1.0F}; //!< Sky light after time of day, this frame.
 		glm::vec3 m_EffectiveAmbient{1.0F}; //!< Ambient light after time of day, this frame.
+		glm::vec3 m_EffectiveForegroundAmbient{1.0F}; //!< Foreground light floor after time of day, this frame.
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;

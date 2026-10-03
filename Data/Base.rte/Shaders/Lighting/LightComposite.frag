@@ -27,6 +27,8 @@ uniform vec3 rteSkyColor; // Linear light under open sky.
 uniform int rteDebugView; // 0 final, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals.
 uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
 uniform float rteEdgeLighting;
+uniform float rteForegroundDepth; // Depth below which pixels are foreground terrain and objects.
+uniform vec3 rteForegroundAmbient; // Minimum light on the foreground, so the playfield stays readable deep underground.
 
 void main() {
 	vec2 screenUV = gl_FragCoord.xy / rteScreenSize;
@@ -40,7 +42,8 @@ void main() {
 		light = rteBackgroundLight;
 		float distance = clamp((sceneDepth - rteBackgroundNearDepth) / (rteBackgroundFarDepth - rteBackgroundNearDepth), 0.0, 1.0);
 		// Nothing drawn at all (cleared depth) is open sky.
-		haze = sceneDepth >= 0.9999 ? rteAtmosphereHaze : rteAtmosphereHaze * smoothstep(0.0, 1.0, distance);
+		// The furthest layers are usually the sky itself, which shouldn't be washed out; haze peaks on the distant scenery in between.
+		haze = sceneDepth >= 0.9999 ? rteAtmosphereHaze * 0.4 : rteAtmosphereHaze * smoothstep(0.0, 0.6, distance) * (1.0 - 0.6 * smoothstep(0.85, 1.0, distance));
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 		float sky = texture(rteSkyLight, worldPos / rteGridWorldSize).r;
@@ -48,13 +51,19 @@ void main() {
 		sky = smoothstep(0.0, 1.0, sky);
 		// Sky light comes from above: upward facing edges catch more of it, undersides less.
 		vec4 normalSample = texture(rteNormals, screenUV);
-		if (normalSample.a > 0.5) {
+		if (normalSample.a > 0.25) {
 			vec3 normal = normalSample.xyz * 2.0 - 1.0;
 			sky *= mix(1.0, clamp(1.0 - normal.y * 0.9, 0.35, 1.6), rteEdgeLighting);
 		}
 		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
 		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));
 		light = mix(rteAmbient, rteSkyColor, sky) + dynamicLight;
+		if (sceneDepth < rteForegroundDepth) {
+			light = max(light, rteForegroundAmbient);
+		}
+		// Emissive palette colors (gold glints, glowing bits) shine regardless of the light around them.
+		float emissive = normalSample.a > 0.25 ? max(normalSample.a - 0.5, 0.0) * 2.0 : 0.0;
+		light = max(light, vec3(emissive * 1.6));
 	}
 
 	vec3 albedoLinear = pow(albedo.rgb, vec3(2.2));

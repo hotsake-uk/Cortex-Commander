@@ -137,6 +137,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingAmbient", { g_PostProcessMan.GetLightingSettings().Ambient = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().Ambient); });
+	MatchProperty("LightingForegroundAmbient", { g_PostProcessMan.GetLightingSettings().ForegroundAmbient = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().ForegroundAmbient); });
 	MatchProperty("LightingSkyColor", { g_PostProcessMan.GetLightingSettings().SkyColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().SkyColor); });
 	MatchProperty("LightingAirFalloff", { g_PostProcessMan.GetLightingSettings().AirFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
@@ -282,6 +283,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
 	writer.NewPropertyWithValue("LightingAmbient", WriteVec3(lighting.Ambient));
 	writer.NewPropertyWithValue("LightingSkyColor", WriteVec3(lighting.SkyColor));
+	writer.NewPropertyWithValue("LightingForegroundAmbient", WriteVec3(lighting.ForegroundAmbient));
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);

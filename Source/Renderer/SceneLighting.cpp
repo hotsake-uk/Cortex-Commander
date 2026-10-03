@@ -356,6 +356,7 @@ void SceneLighting::Update() {
 	m_EffectiveSky = m_Settings.SkyColor * daylight;
 	// Caves get a little darker at night too, but not as much as the outdoors.
 	m_EffectiveAmbient = m_Settings.Ambient * (0.6F + 0.4F * dayFactor);
+	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.6F + 0.4F * dayFactor);
 
 	if (!EnsureWorldResources()) {
 		return;
@@ -615,6 +616,9 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	m_CompositeShader->SetInt("rteEmissive", 4);
 	m_CompositeShader->SetInt("rteNormals", 5);
 	m_CompositeShader->SetFloat("rteEdgeLighting", normals ? m_Settings.EdgeLighting : 0.0F);
+	float foregroundCompositeThresholdZ = c_TerrainBGDepth * 0.5F;
+	m_CompositeShader->SetFloat("rteForegroundDepth", ((2.0F * foregroundCompositeThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+	m_CompositeShader->SetVector3f("rteForegroundAmbient", m_Settings.Enabled ? m_EffectiveForegroundAmbient : glm::vec3(1.0F));
 	m_CompositeShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
 	m_CompositeShader->SetFloat("rteMaxDynamicLight", 2.0F);
 	// Layers are drawn at depth z mapped linearly through the cameras' ortho projection. Background layers sit at c_BackgroundDepth, terrain background at c_TerrainBGDepth.

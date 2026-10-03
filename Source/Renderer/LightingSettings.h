@@ -10,11 +10,12 @@ namespace RTE {
 		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
 		glm::vec3 Ambient = {0.13F, 0.13F, 0.16F}; //!< Light where no sky light reaches.
 		glm::vec3 SkyColor = {1.0F, 0.98F, 0.95F}; //!< Light under open sky.
+		glm::vec3 ForegroundAmbient = {0.4F, 0.39F, 0.42F}; //!< Minimum light on the foreground terrain and objects, so the playfield stays readable deep underground. Caves behind stay darker.
 		float AirFalloff = 0.96F; //!< How much sky light is kept per grid cell travelled through air.
 		float SolidFalloff = 0.6F; //!< How much sky light is kept per grid cell travelled into terrain.
 		int PropagationIterationsPerFrame = 6; //!< Sky light propagation iterations per frame. Light settles into new terrain over a few frames.
 
-		float AtmosphereHaze = 0.3F; //!< How much the furthest background layers fade into the atmosphere, 0 to 1.
+		float AtmosphereHaze = 0.18F; //!< How much the furthest background layers fade into the atmosphere, 0 to 1.
 		glm::vec3 AtmosphereColor = {0.62F, 0.74F, 0.95F}; //!< Color of the atmosphere at noon, linear. Tinted by the time of day.
 
 		int WeatherType = 0; //!< 0 clear, 1 rain, 2 snow.

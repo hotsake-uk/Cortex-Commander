@@ -43,7 +43,7 @@ void main() {
 	// Edges facing the light catch more of it, edges facing away get less. Normalized so flat surfaces are lit exactly as without normals.
 	float shading = 1.0;
 	vec4 normalSample = texture(rteNormals, gl_FragCoord.xy / rteScreenSize);
-	if (normalSample.a > 0.5) {
+	if (normalSample.a > 0.25) {
 		vec3 normal = normalize(normalSample.xyz * 2.0 - 1.0);
 		vec3 toLight = normalize(vec3(lightCenter - gl_FragCoord.xy, lightRadius * 0.25));
 		shading = mix(1.0, clamp(dot(normal, toLight) / max(toLight.z, 0.05), 0.0, 2.5), rteEdgeLighting);

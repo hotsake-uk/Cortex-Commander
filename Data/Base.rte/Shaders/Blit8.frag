@@ -13,6 +13,7 @@ uniform sampler2D rtePalette;
 uniform bool rteIndexed;
 uniform vec4 rteColor;
 uniform bool rteReplaceColor;
+uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows.
 
 vec4 textureAA(sampler2D tex, vec2 uv) {
 	vec2 texsize = vec2(textureSize(tex, 0));
@@ -56,9 +57,11 @@ void main() {
 	// Derivatives must be taken in uniform control flow, before any discard.
 	vec2 uvDx = dFdx(textureUV);
 	vec2 uvDy = dFdy(textureUV);
+	float emissive = 0.0;
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, vec2(textureUV.x, textureUV.y)).r;
 		FragColor = texture(rtePalette, vec2(colorIndex, 0.0F)) * vertexColor;
+		emissive = texture(rteEmissivePalette, vec2(colorIndex, 0.0F)).r;
 	} else {
 		FragColor = textureAA(rteTexture, textureUV) * vertexColor;
 	}
@@ -67,5 +70,6 @@ void main() {
 	} else if (rteReplaceColor) {
 		FragColor.rgba = rteColor;
 	}
-	NormalOut = vec4(EdgeNormal(uvDx, uvDy) * 0.5 + 0.5, 1.0);
+	// Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
+	NormalOut = vec4(EdgeNormal(uvDx, uvDy) * 0.5 + 0.5, 0.5 + 0.5 * emissive);
 }

@@ -51,6 +51,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::Checkbox("Lighting enabled", &settings.Enabled);
 		ImGui::ColorEdit3("Ambient (linear)", &settings.Ambient.x, linearColorFlags);
 		ImGui::ColorEdit3("Sky (linear)", &settings.SkyColor.x, linearColorFlags);
+		ImGui::ColorEdit3("Foreground floor (linear)", &settings.ForegroundAmbient.x, linearColorFlags);
 		ImGui::SliderFloat("Air falloff", &settings.AirFalloff, 0.8F, 0.995F, "%.3f");
 		ImGui::SliderFloat("Terrain falloff", &settings.SolidFalloff, 0.1F, 0.95F, "%.2f");
 		ImGui::SliderInt("Propagation steps/frame", &settings.PropagationIterationsPerFrame, 1, 32);
