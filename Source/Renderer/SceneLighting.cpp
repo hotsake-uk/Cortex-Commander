@@ -936,10 +936,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetInt("rteBloom", 1);
 	m_TonemapShader->SetVector2f("rteScreenSize", screenSize);
 	m_TonemapShader->SetFloat("rteBloomIntensity", m_Settings.BloomEnabled ? m_Settings.BloomIntensity : 0.0F);
-	m_TonemapShader->SetFloat("rteExposure", m_Settings.Exposure);
-	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.ShoulderStart);
-	m_TonemapShader->SetFloat("rteVignette", m_Settings.Vignette);
-	m_TonemapShader->SetFloat("rteSaturation", m_Settings.Saturation);
+	// With lighting off, the image should be the classic one: no exposure, highlight compression, saturation or vignette (the player's own grade still applies).
+	m_TonemapShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
+	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.Enabled ? m_Settings.ShoulderStart : 1.0F);
+	m_TonemapShader->SetFloat("rteVignette", m_Settings.Enabled ? m_Settings.Vignette : 0.0F);
+	m_TonemapShader->SetFloat("rteSaturation", m_Settings.Enabled ? m_Settings.Saturation : 1.0F);
 	m_TonemapShader->SetInt("rteDistortion", 2);
 	m_TonemapShader->SetInt("rteEmissive", 3);
 	m_TonemapShader->SetBool("rteDistortionEnabled", m_Settings.DistortionEnabled);

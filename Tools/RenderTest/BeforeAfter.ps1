@@ -1,6 +1,10 @@
 param([string]$Before, [string]$After, [string]$Out, [string]$LabelBefore = "BEFORE (development)", [string]$LabelAfter = "AFTER (modernisation)", [int]$CropX = 8, [int]$CropY = 31, [int]$CropW = 600, [int]$CropH = 540)
 # Puts two captures side by side (cropped to the game view) with labels.
 Add-Type -AssemblyName System.Drawing
+# .NET resolves relative paths against the process directory, not the PowerShell location.
+$Before = (Resolve-Path $Before).Path
+$After = (Resolve-Path $After).Path
+if (-not [IO.Path]::IsPathRooted($Out)) { $Out = Join-Path (Get-Location).Path $Out }
 $a = [System.Drawing.Bitmap]::FromFile($Before)
 $b = [System.Drawing.Bitmap]::FromFile($After)
 $gap = 8

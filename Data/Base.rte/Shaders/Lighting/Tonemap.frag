@@ -28,6 +28,9 @@ uniform float rteFilmGrain;
 uniform float rteChromaticAberration;
 
 vec3 Shoulder(vec3 color) {
+	if (rteShoulderStart >= 0.999) {
+		return color;
+	}
 	vec3 over = max(color - rteShoulderStart, vec3(0.0));
 	float range = 1.0 - rteShoulderStart;
 	vec3 compressed = rteShoulderStart + range * (1.0 - exp(-over / range));

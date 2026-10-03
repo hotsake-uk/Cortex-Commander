@@ -1,6 +1,9 @@
 param([string[]]$Images, [string[]]$Labels, [string]$Out, [int]$Cols = 2, [int]$CropX = 8, [int]$CropY = 31, [int]$CropW = 600, [int]$CropH = 540)
 # Labelled grid of captures cropped to the game view.
 Add-Type -AssemblyName System.Drawing
+# .NET resolves relative paths against the process directory, not the PowerShell location.
+$Images = @($Images | ForEach-Object { (Resolve-Path $_).Path })
+if (-not [IO.Path]::IsPathRooted($Out)) { $Out = Join-Path (Get-Location).Path $Out }
 $gap = 8; $labelH = 28
 $rows = [math]::Ceiling($Images.Count / $Cols)
 $canvas = New-Object System.Drawing.Bitmap ($Cols * $CropW + ($Cols - 1) * $gap), ($rows * ($CropH + $labelH) + ($rows - 1) * $gap)
