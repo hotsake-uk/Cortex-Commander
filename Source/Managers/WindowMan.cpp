@@ -144,6 +144,7 @@ void WindowMan::Initialize() {
 
 	CreateBackBufferTexture();
 	m_ScreenBlitShader = std::make_unique<Shader>(g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.vert"), g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.frag"));
+	m_ScreenUpscaleShader = std::make_unique<Shader>(g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenBlit.vert"), g_PresetMan.GetFullModulePath("Base.rte/Shaders/ScreenUpscale.frag"));
 
 	// SDL is kinda dumb about the taskbar icon so we need to poll after creating the window for it to show up, otherwise there's no icon till it starts polling in the main menu loop.
 	SDL_PollEvent(nullptr);
@@ -888,8 +889,20 @@ void WindowMan::UploadFrame() {
 
 void WindowMan::BlitScreenBufferToWindows() {
 	glDisable(GL_BLEND);
+	// The upscale shader blends only across pixel boundaries, which needs linear filtering; restore the texture's own filtering afterwards.
+	GLuint screenTexture = m_ScreenBuffer->GetColorTexture().lock()->GetTextureId();
+	GLint previousMinFilter = GL_NEAREST;
+	GLint previousMagFilter = GL_NEAREST;
+	glBindTexture(GL_TEXTURE_2D, screenTexture);
+	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &previousMinFilter);
+	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &previousMagFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	m_ScreenUpscaleShader->Begin();
 	if (m_MultiDisplayWindows.empty()) {
 		g_RenderMan.BeginFrame(nullptr);
+		// BeginFrame resets the shader.
+		m_ScreenUpscaleShader->Begin();
 		GL_CHECK(glViewport(m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h));
 		Draw::DrawTexture(m_ScreenBuffer->GetColorTexture().lock().get(), {-1.0f, 1.0f, 2.0f, -2.0f});
 		g_RenderMan.DrawActiveBatch();
@@ -905,6 +918,11 @@ void WindowMan::BlitScreenBufferToWindows() {
 			g_RenderMan.DrawActiveBatch();
 		}
 	}
+	m_ScreenUpscaleShader->End();
+	glBindTexture(GL_TEXTURE_2D, screenTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, previousMinFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, previousMagFilter);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void WindowMan::Present() {

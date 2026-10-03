@@ -216,6 +216,7 @@ namespace RTE {
 		GLuint m_ScreenVBO; //!< Vertex Buffer Object for the screen quad.
 
 		std::unique_ptr<Shader> m_ScreenBlitShader; //!< Blit shader to combine the menu layer and post process layers and show them on screen.
+		std::unique_ptr<Shader> m_ScreenUpscaleShader; //!< Scales the finished frame up to the window with even, crisp pixels at any scale.
 
 		bool m_AnyWindowHasFocus; //!< Whether any game window has focus.
 		bool m_ResolutionChanged; //!< Whether the resolution was changed through the settings.
