@@ -148,6 +148,7 @@ namespace RTE {
 		MOSParticle m_Moon; //!< The title screen scene moon.
 		MOSParticle m_Planet; //!< The title screen scene planet.
 		Vector m_PlanetPos; //!< The position of the planet on the title screen scene.
+		std::unique_ptr<Camera> m_ScreenCamera; //!< Screen space camera the title screen draws with. Kept alive because menus drawn over the title screen queue GPU draws that are flushed with it later in the frame.
 		float m_PlanetRadius; //!< The radius of the planet.
 		MOSRotating m_Station; //!< The title screen scene station.
 		Vector m_StationOffset; //!< The position of the station on the planet orbit.

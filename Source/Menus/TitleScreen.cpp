@@ -548,7 +548,8 @@ void TitleScreen::UpdateTitleTransitions() {
 
 void TitleScreen::Draw() {
 	// All title screen element positions are computed in screen space (including scrolling), so draw with an unscrolled screen camera.
-	Camera scrollCamera(Vector(0.0f, 0.0f), Box(Vector(0.0f, 0.0f), g_WindowMan.GetResX(), g_WindowMan.GetResY()));
+	m_ScreenCamera = std::make_unique<Camera>(Vector(0.0f, 0.0f), Box(Vector(0.0f, 0.0f), g_WindowMan.GetResX(), g_WindowMan.GetResY()));
+	const Camera& scrollCamera = *m_ScreenCamera;
 	g_RenderMan.BeginFrame(&scrollCamera);
 	if (!m_FinishedPlayingIntro) {
 		if (m_IntroSequenceState >= IntroSequence::SlideshowFadeIn) {
