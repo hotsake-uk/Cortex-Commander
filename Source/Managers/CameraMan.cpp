@@ -303,4 +303,7 @@ void CameraMan::Update(int screenId) {
 	}
 
 	screen.Cameras[0].SetClipState(screen.Cameras.size() > 1);
+	for (Camera& camera: screen.Cameras) {
+		camera.SetTeam(static_cast<Activity::Teams>(screen.ScreenTeam));
+	}
 }
