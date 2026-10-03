@@ -251,10 +251,18 @@ void DebugMan::PhotoModeGUI() {
 			m_PhotoCameraCenter -= Vector(io.MouseDelta.x, io.MouseDelta.y) * pixelsPerScreenPixel;
 		}
 		float keySpeed = 400.0F * io.DeltaTime * (ImGui::IsKeyDown(ImGuiKey_LeftShift) ? 3.0F : 1.0F);
-		if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) { m_PhotoCameraCenter.m_X -= keySpeed; }
-		if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) { m_PhotoCameraCenter.m_X += keySpeed; }
-		if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) { m_PhotoCameraCenter.m_Y -= keySpeed; }
-		if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) { m_PhotoCameraCenter.m_Y += keySpeed; }
+		if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
+			m_PhotoCameraCenter.m_X -= keySpeed;
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
+			m_PhotoCameraCenter.m_X += keySpeed;
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) {
+			m_PhotoCameraCenter.m_Y -= keySpeed;
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) {
+			m_PhotoCameraCenter.m_Y += keySpeed;
+		}
 		g_SceneMan.WrapPosition(m_PhotoCameraCenter);
 		g_CameraMan.SetScrollTarget(m_PhotoCameraCenter, 1.0F, 0);
 	}
@@ -292,7 +300,10 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::Checkbox("Keep look changes", &m_PhotoKeepLook);
 
 			ImGui::Separator();
-			ImGui::Combo("Resolution", &m_PhotoScale, "As shown in the window\0" "2x (1920x1080)\0" "3x\0" "4x (3840x2160)\0");
+			ImGui::Combo("Resolution", &m_PhotoScale, "As shown in the window\0"
+			                                          "2x (1920x1080)\0"
+			                                          "3x\0"
+			                                          "4x (3840x2160)\0");
 			if (ImGui::Button("Take screenshot", ImVec2(-1.0F, 0.0F))) {
 				m_ScreenshotRequested = true;
 			}

@@ -1,6 +1,6 @@
 # Cortex Command: Next Phase Proposal (features, visuals, physics)
 
-The visual modernisation roadmap is done (see `MODERNISATION_PLAN.md`). This is the proposal for what comes next. **Nothing here has been started.** It is waiting for sign-off.
+The visual modernisation roadmap is done (see `MODERNISATION_PLAN.md`). This is the proposal for what came next. It was approved and is now mostly implemented; see **Status** at the end.
 
 **Ground rules (unchanged):**
 - Keep the pixel-art identity.
@@ -63,3 +63,58 @@ Effort: S = a day or two, M = about a week, L = several weeks.
 4. **Phase D: "Reach":** 3.1 modern HUD, 3.5 controller and Deck polish, 2.7 camera zoom, 4.1 SDL_GPU. Whenever wider distribution becomes the goal.
 
 Each phase ends with golden images, soak tests and a playtest like this round.
+
+---
+
+## Status (implemented)
+
+Everything below is built, committed and verified: golden images pass, and a soak test with every system on (stormy night battle) holds memory flat. On the stress scene, everything on gives about 210 FPS (271 before Phase A, 230 before the atlas).
+
+**Phase A: battlefield feels alive (visual only)**
+- **2.2 Effects particles:** sparks, dust and debris chips from explosions and fast terrain hits.
+  - Render only, with their own random numbers.
+  - Sparks are emissive streaks; debris is lit; dust is lit over the scene.
+- **2.1 Light scattering in smoke:** fire, flashes and lamps glow through smoke.
+- **2.6 Stains:** blood and oil stain terrain, in a world-space decal map.
+- **2.5 Living world:**
+  - Vegetation sways with the wind and bends in blasts.
+  - Snow settles on exposed ground while it snows, and melts after.
+  - Rain darkens exposed ground.
+- **3.3 Photo mode (F8):**
+  - Freeze, free camera, look sliders.
+  - Screenshots at window resolution or 2–4x internal resolution.
+
+**Phase B: fire and ruin (changes the simulation, deterministic)**
+- **1.1 Spreading fire:**
+  - Grass and vegetation burn away; wood, cloth and rubber burn to ash; oil burns fast.
+  - Explosions and fire particles light it.
+  - Flames hurt; burning areas give light, smoke and embers; water puts it out.
+- **1.2 Collapsing terrain:** detached pieces fall as rigid chunks after explosions. Concrete and metal hold.
+- **1.5 Wind:** drives particles, embers, dust, vegetation and precipitation. It stays visual and doesn't push projectiles.
+
+**Phase C: water and night**
+- **1.3 + 2.3 Flowing liquids:**
+  - Water, lava and acid flow and pool.
+  - Lava glows, ignites, hurts and turns to stone with water.
+  - Acid eats soft terrain.
+  - Shimmering, see-through water; glowing lava; bubbling acid.
+  - Lua: `SceneMan:PourLiquid`.
+- **3.2 Night gameplay:**
+  - Headlamp cone lights with visible beams.
+  - AI sight shrinks at night (to half, or 80% with a lamp).
+  - New buyable Flare.
+
+**Phase D: reach**
+- **3.1 Modern HUD (optional):** minimap, health and ammo bars, unit-loss feed.
+- **3.5 Scaling (partly done):** debug UI and HUD scale with the window, with a crisp TTF font. Gamepad navigation is on in debug windows. Pixel-art menus were already scaled by the window multiplier and the sharp upscale.
+
+**Deferred, with reasons**
+- **2.4 Metal and wet-surface shininess:** needs per-material specular data. Wet ground already darkens in rain; full speculars are a later polish item.
+- **2.7 Camera zoom:**
+  - Every per-screen pass assumes a 1:1 scale: lighting, terrain upload regions, HUD, text overlay, fog.
+  - Supporting it means reworking each of them, and it's the riskiest remaining item.
+- **4.1 SDL_GPU backend:** staged plan in `MODERNISATION_PLAN.md`. It brings no visual change on Windows.
+- **4.2 Multithreaded sim helpers:** the fire and liquid passes only touch active cells and are cheap today. Worth revisiting if large liquid scenes get slow.
+- **4.3 Linux/meson packaging:** new sources are added to the meson files but not built or tested on Linux here.
+- **1.4 Gas volumes:** the visual half (smoke scattering) is done. Sight-blocking and toxic gas are not.
+- **3.4 Scenario atmosphere picker and 3.6 editor tooling:** time of day and weather can be set per scene in INI and live in F6, but not yet from the scenario menu.

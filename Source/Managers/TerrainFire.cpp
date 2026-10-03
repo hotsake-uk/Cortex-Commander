@@ -79,7 +79,6 @@ namespace {
 	};
 	std::vector<FireLight> s_Lights; //!< Lights of the fire as of its last tick, registered every sim update (scene lights are cleared every update).
 
-
 	float Random01(unsigned int& state) {
 		state ^= state << 13;
 		state ^= state >> 17;
