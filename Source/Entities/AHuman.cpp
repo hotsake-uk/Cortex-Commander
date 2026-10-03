@@ -1414,6 +1414,9 @@ MovableObject* AHuman::LookForMOs(float FOVSpread, unsigned char ignoreMaterial,
 	// Add the spread
 	lookVector.DegRotate(FOVSpread * RandomNormalNum());
 
+	// Night: the look ray reaches less far in the dark (see GetNightSightScale).
+	lookVector *= GetNightSightScale();
+
 	MOID seenMOID = g_SceneMan.CastMORay(aimPos, lookVector, m_MOID, IgnoresWhichTeam(), ignoreMaterial, ignoreAllTerrain, 5);
 	pSeenMO = g_MovableMan.GetMOFromID(seenMOID);
 	if (pSeenMO)

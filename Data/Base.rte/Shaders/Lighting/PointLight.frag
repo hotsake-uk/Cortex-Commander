@@ -7,6 +7,7 @@ in vec4 lightColor;
 in vec2 lightCenter;
 in float lightRadius;
 in vec2 screenPos;
+in vec3 lightCone;
 
 out vec4 FragColor;
 
@@ -17,10 +18,14 @@ uniform float rteShadowStrength; // How much each solid sample blocks, 0..1.
 uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
 uniform vec2 rteScreenSize;
 uniform float rteEdgeLighting;
+uniform bool rteBeamMode; // Drawing the visible beam of cone lights over the lit scene, instead of light falling on surfaces.
 
 const int c_ShadowSteps = 12;
 
 void main() {
+	if (rteBeamMode && lightCone.z < -1.5) {
+		discard;
+	}
 	float distanceSq = dot(localPos, localPos);
 	if (distanceSq >= 1.0) {
 		discard;
@@ -28,6 +33,17 @@ void main() {
 	// Smooth falloff that reaches exactly zero at the radius, so lights never show a hard edge.
 	float falloff = (1.0 - distanceSq);
 	falloff *= falloff;
+	if (lightCone.z > -1.5) {
+		// Flashlight: a soft edged cone, with a little spill right around the lamp.
+		vec2 toPixel = gl_FragCoord.xy - lightCenter;
+		float along = dot(normalize(toPixel + vec2(0.0001)), lightCone.xy);
+		float cone = smoothstep(lightCone.z, mix(lightCone.z, 1.0, 0.35), along);
+		float spill = 0.12 * (1.0 - smoothstep(0.0, 0.12, sqrt(distanceSq)));
+		falloff *= max(cone, spill);
+		if (falloff <= 0.0005) {
+			discard;
+		}
+	}
 
 	// Soft shadow: march from this pixel to the light through the occupancy grid. Skip the ends so lit terrain surfaces and lights embedded in terrain still work.
 	vec2 fromWorld = rteScreenOrigin + gl_FragCoord.xy;
@@ -36,8 +52,18 @@ void main() {
 	for (int i = 1; i < c_ShadowSteps; ++i) {
 		float t = (float(i) / float(c_ShadowSteps)) * 0.9 + 0.05;
 		vec2 sampleWorld = mix(fromWorld, toWorld, t);
+		// Lights sitting on or in the ground (flares, lamps on walls) shouldn't be shadowed by the terrain right around them.
+		if (distance(sampleWorld, toWorld) < 8.0) {
+			continue;
+		}
 		float occupancy = texture(rteOccupancy, sampleWorld / rteGridWorldSize).r;
 		transmittance *= 1.0 - occupancy * rteShadowStrength;
+	}
+
+	if (rteBeamMode) {
+		// A faint haze along the beam, brightest near the lamp.
+		FragColor = vec4(lightColor.rgb * vec3(1.0, 0.92, 0.78) * falloff * transmittance * 0.035, 1.0);
+		return;
 	}
 
 	// Edges facing the light catch more of it, edges facing away get less. Normalized so flat surfaces are lit exactly as without normals.

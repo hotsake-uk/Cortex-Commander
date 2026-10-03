@@ -717,6 +717,12 @@ namespace RTE {
 		/// @return Returns actor's sight distance.
 		float GetSightDistance() const { return m_SightDistance; }
 
+		/// Gets how dark it is from the time of day, 0 by day to 1 at full night.
+		static float GetNightAmount();
+
+		/// Gets how far this actor can see relative to daylight: less at night, unless it has a headlamp on (night gameplay).
+		float GetNightSightScale() const;
+
 		/// Description:		Sets actor's sight distance.
 		/// @param newValue New sight distance value.
 		void SetSightDistance(float newValue) { m_SightDistance = newValue; }

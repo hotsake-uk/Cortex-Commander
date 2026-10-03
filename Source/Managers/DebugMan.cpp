@@ -169,6 +169,9 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		ImGui::Checkbox("Headlamps at night", &settings.Headlamps);
+		ImGui::SameLine();
+		ImGui::Checkbox("Night limits AI sight", &settings.NightAffectsAI);
 		float timeScale = g_TimerMan.GetTimeScale();
 		if (ImGui::SliderFloat("Game speed", &timeScale, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_TimerMan.SetTimeScale(timeScale);

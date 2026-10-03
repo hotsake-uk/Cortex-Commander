@@ -150,6 +150,8 @@ void SceneLighting::CreateGeometry() {
 	glVertexAttribPointer(VertexAttribLocation::COLOR, 4, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, R)));
 	glEnableVertexAttribArray(VertexAttribLocation::NORMAL);
 	glVertexAttribPointer(VertexAttribLocation::NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, CenterX)));
+	glEnableVertexAttribArray(VertexAttribLocation::LIGHTCONE);
+	glVertexAttribPointer(VertexAttribLocation::LIGHTCONE, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, ConeX)));
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_QuadIBO);
 	glBindVertexArray(0);
 }
@@ -450,7 +452,7 @@ void SceneLighting::StampScorchMarks() {
 		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
 		for (const glm::vec2& corner: corners) {
 			glm::vec2 position = center + corner * radius;
-			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, darkness, 0.0F, 0.0F, 1.0F, center.x * cell, center.y * cell, radius});
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, darkness, 0.0F, 0.0F, 1.0F, center.x * cell, center.y * cell, radius, 1.0F, 0.0F, -2.0F});
 		}
 	};
 	for (const PostProcessMan::ScorchMark& mark: marks) {
@@ -493,7 +495,7 @@ void SceneLighting::StampStains() {
 		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
 		for (const glm::vec2& corner: corners) {
 			glm::vec2 position = center + corner * radius;
-			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, color.r, color.g, color.b, 0.55F, center.x * cell, center.y * cell, radius});
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, color.r, color.g, color.b, 0.55F, center.x * cell, center.y * cell, radius, 1.0F, 0.0F, -2.0F});
 		}
 	};
 	for (const EffectsParticles::Stain& stain: stains) {
@@ -755,7 +757,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			glm::vec2 local = corner * halfSize;
 			glm::vec2 rotated(local.x * cosAngle - local.y * sinAngle, local.x * sinAngle + local.y * cosAngle);
 			glm::vec2 position = center + rotated;
-			m_QuadVertices.push_back({position.x, position.y, 0.0F, (corner.x + 1.0F) * 0.5F, (corner.y + 1.0F) * 0.5F, color.r, color.g, color.b, 1.0F, center.x, center.y, radius});
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, (corner.x + 1.0F) * 0.5F, (corner.y + 1.0F) * 0.5F, color.r, color.g, color.b, 1.0F, center.x, center.y, radius, 1.0F, 0.0F, -2.0F});
 		}
 	};
 	size_t lightCount = 0;
@@ -784,6 +786,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
 				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
+				m_QuadVertices[vertex].ConeX = light.m_Direction.x;
+				m_QuadVertices[vertex].ConeY = light.m_Direction.y;
+				m_QuadVertices[vertex].ConeCos = light.m_ConeCos;
 			}
 			++lightCount;
 		}
@@ -944,6 +949,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
 		m_PointLightShader->SetInt("rteNormals", 1);
 		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
+		m_PointLightShader->SetBool("rteBeamMode", false);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);
@@ -1161,6 +1167,28 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
 		glActiveTexture(GL_TEXTURE0);
 		DrawQuads(puffStart, puffCount);
+		glDisable(GL_BLEND);
+	}
+
+	// Flashlight beams visible in the air, as light catching dust. Only cone lights draw anything here.
+	if (lightCount > 0 && m_Settings.Enabled) {
+		TracyGpuZone("Light Beams");
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_PointLightShader->Enable();
+		m_PointLightShader->SetInt("rteOccupancy", 0);
+		m_PointLightShader->SetVector2f("rteScreenSize", screenSize);
+		m_PointLightShader->SetVector2f("rteScreenOrigin", origin);
+		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
+		m_PointLightShader->SetBool("rteBeamMode", true);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		DrawQuads(0, lightCount);
+		m_PointLightShader->SetBool("rteBeamMode", false);
 		glDisable(GL_BLEND);
 	}
 

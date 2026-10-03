@@ -78,6 +78,7 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::TEXTURECOORDINATE, "rteVertexTexUV"));
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::NORMAL, "rteNormal"));
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::COLOR, "rteVertexColor"));
+		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::LIGHTCONE, "rteLightCone"));
 		if (Link(vertexShader, fragmentShader)) {
 			m_TextureUniform = GetUniformLocation("rteTexture");
 			m_PaletteUniform = GetUniformLocation("rtePalette");

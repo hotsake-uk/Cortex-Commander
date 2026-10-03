@@ -192,6 +192,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EffectsParticles", { g_PostProcessMan.GetLightingSettings().EffectsParticles = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
+	MatchProperty("Headlamps", { g_PostProcessMan.GetLightingSettings().Headlamps = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
@@ -363,6 +365,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
 	writer.NewPropertyWithValue("Stains", lighting.Stains);
 	writer.NewPropertyWithValue("LivingWorld", lighting.LivingWorld);
+	writer.NewPropertyWithValue("Headlamps", lighting.Headlamps);
+	writer.NewPropertyWithValue("NightAffectsAI", lighting.NightAffectsAI);
 	writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
 	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
 	writer.NewPropertyWithValue("BloomIntensity", lighting.BloomIntensity);

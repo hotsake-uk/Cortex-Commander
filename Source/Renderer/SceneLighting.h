@@ -82,6 +82,7 @@ namespace RTE {
 			float U, V;
 			float R, G, B, A;
 			float CenterX, CenterY, Radius;
+			float ConeX = 1.0F, ConeY = 0.0F, ConeCos = -2.0F; //!< Cone lights: direction and cosine of the half angle (below -1 for none).
 		};
 
 		/// Cached properties of a glow sprite.

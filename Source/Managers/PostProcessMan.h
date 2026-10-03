@@ -44,6 +44,8 @@ namespace RTE {
 		Vector m_Pos; //!< Light position. Scene coordinates, or relative to a screen, depending on context.
 		glm::vec3 m_Color{1.0F}; //!< Linear light color, intensity included.
 		float m_Radius = 0.0F; //!< Radius in pixels, where the light reaches zero.
+		glm::vec2 m_Direction{1.0F, 0.0F}; //!< For cone lights (flashlights): the direction the cone points, screen space (Y down).
+		float m_ConeCos = -2.0F; //!< Cosine of the cone's half angle; below -1 is an ordinary all-round light.
 	};
 
 	/// A shockwave ring as seen by one player screen this frame.
@@ -171,6 +173,12 @@ namespace RTE {
 		/// @param radius Radius in pixels, where the light reaches zero.
 		/// @param intensity Brightness multiplier.
 		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity);
+
+		/// Registers a cone light (flashlight, headlamp) for the current frame.
+		/// @param pos Where the light comes from, scene coordinates.
+		/// @param direction Direction the cone points (Y down), any length.
+		/// @param halfAngleDegrees Half the cone's width.
+		void RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity);
 
 		/// Registers a dynamic light for the current frame, from Lua. See RegisterLight.
 		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity); }

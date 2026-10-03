@@ -1,4 +1,6 @@
 #include "Actor.h"
+#include "SceneLighting.h"
+#include "PostProcessMan.h"
 
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -1106,7 +1108,37 @@ void Actor::PreControllerUpdate() {
 	}
 }
 
+float Actor::GetNightAmount() {
+	glm::vec3 daylight = SceneLighting::GetDaylightTint(g_PostProcessMan.GetLightingSettings().TimeOfDay);
+	float dayFactor = glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+	return std::clamp((0.45F - dayFactor) / 0.35F, 0.0F, 1.0F);
+}
+
+float Actor::GetNightSightScale() const {
+	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	if (!settings.NightAffectsAI || !settings.Enabled) {
+		return 1.0F;
+	}
+	float night = GetNightAmount();
+	// A headlamp keeps most of the view; without one, eyes only reach about half as far in the dark.
+	float floor = (settings.Headlamps && !IsDead()) ? 0.8F : 0.5F;
+	return 1.0F - night * (1.0F - floor);
+}
+
 void Actor::Update() {
+	// Night: a headlamp lighting where the actor looks, plus a little glow around it. Render only.
+	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_Status != DEAD && m_Status != DYING) {
+		float night = GetNightAmount();
+		if (night > 0.05F) {
+			Vector eyePos = GetEyePos();
+			float aimAngle = GetAimAngle(true);
+			// CC angles are counter-clockwise with Y up; screen space is Y down.
+			Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
+			g_PostProcessMan.RegisterConeLight(eyePos, direction, 26.0F, glm::vec3(255.0F, 240.0F, 215.0F), 210.0F, 1.4F * night);
+			g_PostProcessMan.RegisterLight(eyePos, glm::vec3(255.0F, 235.0F, 210.0F), 36.0F, 0.35F * night);
+		}
+	}
+
 	ZoneScoped;
 
 	/////////////////////////////////

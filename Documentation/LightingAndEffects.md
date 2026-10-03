@@ -66,6 +66,13 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Determinism:** it is part of the simulation and deterministic.
 - **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid")`.
 
+**Night gameplay**:
+- **Headlamps** (`Headlamps`): after dark, soldiers wear headlamps that throw a cone of light where they aim, with a faint visible beam.
+- **AI sight** (`NightAffectsAI`): AI sees only about half as far at night without a headlamp, or 80% with one. This changes gameplay.
+- **Flare:** a buyable grenade that burns red for about 45 seconds.
+- **Cone lights:** available to code via `PostProcessMan::RegisterConeLight`.
+- **Lights near terrain:** a light no longer shadows itself on the terrain right around it, so a lamp lying in grass still lights up its surroundings.
+
 Press **F8** for **Photo Mode**:
 - Freezes time and hides the HUD and screen text.
 - Free camera: drag with the right mouse button, or use the arrow keys.

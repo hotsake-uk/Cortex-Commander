@@ -143,6 +143,17 @@ void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, fl
 	m_SceneLights.push_back({pos, linearColor * intensity, radius});
 }
 
+void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity) {
+	size_t before = m_SceneLights.size();
+	RegisterLight(pos, color, radius, intensity);
+	if (m_SceneLights.size() > before) {
+		glm::vec2 dir(direction.m_X, direction.m_Y);
+		float length = glm::length(dir);
+		m_SceneLights.back().m_Direction = length > 0.0001F ? dir / length : glm::vec2(1.0F, 0.0F);
+		m_SceneLights.back().m_ConeCos = std::cos(halfAngleDegrees * c_PI / 180.0F);
+	}
+}
+
 void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const {
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
@@ -158,7 +169,7 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 				}
 				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
 				if (relativePos.m_X + light.m_Radius >= 0 && relativePos.m_Y + light.m_Radius >= 0 && relativePos.m_X - light.m_Radius <= boxWidth && relativePos.m_Y - light.m_Radius <= boxHeight) {
-					lights.push_back({relativePos, light.m_Color, light.m_Radius});
+					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos});
 				}
 			}
 		}
