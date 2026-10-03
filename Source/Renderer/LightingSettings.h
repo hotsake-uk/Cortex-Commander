@@ -34,6 +34,9 @@ namespace RTE {
 		float HeatHaze = 1.5F; //!< Heat haze shimmer, in pixels at full heat.
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
 
+		float GodRays = 0.7F; //!< Strength of light shafts streaming from the sky through gaps in terrain, 0 to disable.
+		float GodRayDecay = 0.965F; //!< How quickly shafts fade along their length.
+
 		bool BloomEnabled = true;
 		float BloomThreshold = 0.9F;
 		float BloomKnee = 0.4F;

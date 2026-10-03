@@ -100,6 +100,8 @@ void SceneLighting::LoadShaders() {
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
 	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
 	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
+	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
+	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 }
 
 void SceneLighting::CreateGeometry() {
@@ -204,6 +206,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_HDRScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int mipWidth = width;
 	int mipHeight = height;
@@ -218,6 +221,7 @@ void SceneLighting::DestroyScreenResources() {
 	m_DynamicLight.Destroy();
 	m_Emissive.Destroy();
 	m_Distortion.Destroy();
+	m_GodRays.Destroy();
 	m_HDRScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
@@ -668,6 +672,50 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 		glActiveTexture(GL_TEXTURE0);
 		glBindVertexArray(m_EmptyVAO);
 		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
+		glDisable(GL_BLEND);
+	}
+
+	// God rays: light shafts from the sky through gaps in the terrain.
+	if (m_Settings.Enabled && m_Settings.GodRays > 0.0F && sceneDepth) {
+		TracyGpuZone("God Rays");
+		// The sun crosses the sky with the time of day; at night the moon takes over, dimly (the sky light is dim then anyway).
+		float sunHours = (m_Settings.TimeOfDay >= 6.0F && m_Settings.TimeOfDay <= 18.0F) ? m_Settings.TimeOfDay : std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F);
+		glm::vec2 sunPosition(0.5F + ((sunHours - 12.0F) / 6.0F) * 0.7F, -0.7F);
+		glViewport(0, 0, m_GodRays.Width, m_GodRays.Height);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_GodRays.Framebuffer);
+		m_GodRaysShader->Enable();
+		m_GodRaysShader->SetInt("rteSkyline", 0);
+		m_GodRaysShader->SetVector2f("rteScreenOrigin", origin);
+		m_GodRaysShader->SetVector2f("rteScreenSize", screenSize);
+		m_GodRaysShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_GodRaysShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+		m_GodRaysShader->SetVector2f("rteSunPosition", sunPosition);
+		m_GodRaysShader->SetVector3f("rteSunColor", m_EffectiveSky * m_Settings.GodRays);
+		m_GodRaysShader->SetFloat("rteDecay", m_Settings.GodRayDecay);
+		m_GodRaysShader->SetVector2f("rteTargetSize", glm::vec2(m_GodRays.Width, m_GodRays.Height));
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+		DrawFullscreen();
+
+		glViewport(0, 0, width, height);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_GodRaysApplyShader->Enable();
+		m_GodRaysApplyShader->SetInt("rteGodRays", 0);
+		m_GodRaysApplyShader->SetInt("rteSceneDepth", 1);
+		// Behind the foreground terrain and objects (z 0), in front of the terrain background (z c_TerrainBGDepth).
+		float foregroundThresholdZ = c_TerrainBGDepth * 0.5F;
+		m_GodRaysApplyShader->SetFloat("rteForegroundDepth", ((2.0F * foregroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+		m_GodRaysApplyShader->SetVector2f("rteScreenSize", screenSize);
+		m_GodRaysApplyShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_GodRays.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
 		glDisable(GL_BLEND);
 	}
 

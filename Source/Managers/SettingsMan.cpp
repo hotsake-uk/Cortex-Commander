@@ -141,6 +141,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LightingAirFalloff", { g_PostProcessMan.GetLightingSettings().AirFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingDebugView", { g_PostProcessMan.GetLightingSettings().DebugView = std::stoi(reader.ReadPropValue()); }); // Read only, for automated screenshots.
+	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GodRayDecay", { g_PostProcessMan.GetLightingSettings().GodRayDecay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
 	MatchProperty("WeatherType", { g_PostProcessMan.GetLightingSettings().WeatherType = std::stoi(reader.ReadPropValue()); });
@@ -282,6 +284,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingSkyColor", WriteVec3(lighting.SkyColor));
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
+	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
+	writer.NewPropertyWithValue("GodRayDecay", lighting.GodRayDecay);
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);
 	writer.NewPropertyWithValue("AtmosphereColor", WriteVec3(lighting.AtmosphereColor));
 	writer.NewPropertyWithValue("WeatherType", lighting.WeatherType);

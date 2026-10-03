@@ -111,6 +111,7 @@ namespace RTE {
 		GLTarget m_DynamicLight;
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
+		GLTarget m_GodRays; //!< Half resolution light shafts.
 		GLTarget m_HDRScene;
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
@@ -124,6 +125,8 @@ namespace RTE {
 		std::unique_ptr<Shader> m_TonemapShader;
 		std::unique_ptr<Shader> m_ShockwaveShader;
 		std::unique_ptr<Shader> m_PrecipitationShader;
+		std::unique_ptr<Shader> m_GodRaysShader;
+		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		GLuint m_EmptyVAO = 0; //!< For draws that generate their vertices from gl_VertexID.
 
 		GLuint m_FullscreenVAO = 0;

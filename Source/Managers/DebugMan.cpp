@@ -54,6 +54,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Air falloff", &settings.AirFalloff, 0.8F, 0.995F, "%.3f");
 		ImGui::SliderFloat("Terrain falloff", &settings.SolidFalloff, 0.1F, 0.95F, "%.2f");
 		ImGui::SliderInt("Propagation steps/frame", &settings.PropagationIterationsPerFrame, 1, 32);
+		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
+		ImGui::SliderFloat("God ray decay", &settings.GodRayDecay, 0.85F, 0.999F, "%.3f");
 		ImGui::SliderFloat("Atmosphere haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		ImGui::ColorEdit3("Atmosphere (linear)", &settings.AtmosphereColor.x, linearColorFlags);
 		ImGui::SliderFloat("Time of day (h)", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
