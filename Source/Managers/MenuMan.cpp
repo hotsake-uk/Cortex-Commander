@@ -1,4 +1,5 @@
 #include "MenuMan.h"
+#include "RenderMan.h"
 #include "SettingsMan.h"
 #include "WindowMan.h"
 #include "FrameMan.h"
@@ -301,4 +302,6 @@ void MenuMan::Draw() const {
 			}
 		}
 	}
+	// Flush GPU draws queued by menus after the title screen drew (e.g. scenario site markers).
+	g_RenderMan.DrawActiveBatch();
 }

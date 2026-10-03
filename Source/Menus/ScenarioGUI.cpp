@@ -1,4 +1,6 @@
 #include "ScenarioGUI.h"
+#include "RenderMan.h"
+#include "Shapes.h"
 
 #include "WindowMan.h"
 #include "FrameMan.h"
@@ -546,22 +548,16 @@ void ScenarioGUI::DrawSitePoints(BITMAP* drawBitmap) const {
 		int sitePosX = sitePos.GetFloorIntX();
 		int sitePosY = sitePos.GetFloorIntY();
 
+		// Glowing site marker: a dim screen-blended halo and a brighter flickering core.
+		auto siteColor = [&drawColor](int blend, int alpha) { return Color(getr(drawColor) * blend / 255, getg(drawColor) * blend / 255, getb(drawColor) * blend / 255, alpha); };
+		g_RenderMan.SetActiveBlendMode(Blend::SCREEN);
 		blendAmount = 70 + RandomNum(0, 40);
-		set_screen_blender(blendAmount, blendAmount, blendAmount, blendAmount);
-		rlSetBlendMode(RL_BLEND_SCREEN);
-		glUniform4f(rlGetLocationUniformCurrent("rteColor"), blendAmount / 255.0f, blendAmount / 255.0f, blendAmount / 255.0f, blendAmount / 255.0f);
-		DrawCircle(sitePosX, sitePosY, 4.5, RLColor(getr(drawColor), getg(drawColor), getb(drawColor), 128));
-		DrawCircle(sitePosX, sitePosY, 3.5, RLColor(getr(drawColor), getg(drawColor), getb(drawColor), 255));
-		// circlefill(drawBitmap, sitePosX, sitePosY, 4, drawColor);
-		// circlefill(drawBitmap, sitePosX, sitePosY, 2, drawColor);
-
-		rlDrawRenderBatchActive();
+		Draw::Circle(glm::vec2(sitePosX, sitePosY), 4.0f, siteColor(blendAmount / 2, 255));
+		Draw::Circle(glm::vec2(sitePosX, sitePosY), 3.0f, siteColor(blendAmount, 255));
 		blendAmount = 145 + RandomNum(0, 110);
-		glUniform4f(rlGetLocationUniformCurrent("rteColor"), blendAmount / 255.0f, blendAmount / 255.0f, blendAmount / 255.0f, blendAmount / 255.0f);
-		DrawCircle(sitePosX, sitePosY, 2, RLColor(getr(drawColor), getg(drawColor), getb(drawColor), 64));
-		DrawCircle(sitePosX, sitePosY, 0.5, RLColor(getr(drawColor), getg(drawColor), getb(drawColor), 255));
-		rlDrawRenderBatchActive();
-		glUniform4f(rlGetLocationUniformCurrent("rteColor"), 1.0f, 1.0f, 1.0f, 1.0f);
+		Draw::Circle(glm::vec2(sitePosX, sitePosY), 2.0f, siteColor(blendAmount / 4, 255));
+		Draw::Circle(glm::vec2(sitePosX, sitePosY), 0.0f, siteColor(blendAmount, 255));
+		g_RenderMan.SetActiveBlendMode(Blend::ALPHA);
 		set_screen_blender(blendAmount, blendAmount, blendAmount, blendAmount);
 		// circlefill(drawBitmap, sitePosX, sitePosY, 1, drawColor);
 	}

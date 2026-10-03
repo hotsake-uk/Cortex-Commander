@@ -873,12 +873,6 @@ void FrameMan::Draw() {
 			// g_SceneMan.Draw(drawScreen, drawScreenGUI, targetPos);
 			g_SceneMan.Draw(camera);
 
-			// The GPU HUD path (MovableMan::DrawHUD(Camera)/Activity::DrawGUI(Camera)) is not implemented yet, so bridge to the CPU HUD drawn into the GUI buffer, which gets composited over the scene below.
-			if (!IsHudDisabled(playerScreen) && pActivity) {
-				g_MovableMan.DrawHUD(drawScreenGUI, targetPos, playerScreen);
-				g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, targetPos, playerScreen);
-			}
-
 			g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
 
 			// Get only the scene-relative post effects that affect this player's screen
@@ -899,6 +893,28 @@ void FrameMan::Draw() {
 				camera.Draw();
 			}
 		}
+		// The GPU HUD path (MovableMan::DrawHUD(Camera)/Activity::DrawGUI(Camera)) is not implemented yet, so bridge to the CPU HUD drawn into the GUI buffer, which gets composited over the scene later.
+		// Some of it draws through the GPU (placement previews, pie menu, inventory carousel) in screen coordinates, so catch that in a screen-space batch drawn over the scene.
+		if (!m_ScreenSpaceBatch) {
+			m_ScreenSpaceBatch = std::make_unique<RenderBatch>();
+		}
+		Camera screenSpaceCamera(Vector(0.0f, 0.0f), Box(Vector(0.0f, 0.0f), static_cast<float>(drawScreen->w), static_cast<float>(drawScreen->h)));
+		RenderBatch* sceneBatch = g_RenderMan.GetActiveBatch();
+		g_RenderMan.SetActiveBatch(m_ScreenSpaceBatch.get());
+		g_RenderMan.BeginFrame(&screenSpaceCamera);
+		if (!IsHudDisabled(playerScreen) && pActivity) {
+			Vector hudTargetPos = g_CameraMan.GetOffset(playerScreen);
+			if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
+				hudTargetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
+			}
+			if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
+				hudTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
+			}
+			g_MovableMan.DrawHUD(drawScreenGUI, hudTargetPos, playerScreen);
+			g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, hudTargetPos, playerScreen);
+		}
+		g_RenderMan.SetActiveBatch(sceneBatch);
+
 		g_RenderMan.GetActiveBatch()->EndFrame();
 		if (g_DebugMan.FreeCamEnabled()) {
 			g_RenderMan.GetActiveBatch()->m_CurrentCamera = g_DebugMan.GetFreeCam();
@@ -910,6 +926,13 @@ void FrameMan::Draw() {
 			}
 		}
 		g_RenderMan.GetActiveBatch()->ClearDraws();
+
+		// Screen-space HUD draws go on top of the scene regardless of scene depth.
+		glClear(GL_DEPTH_BUFFER_BIT);
+		g_RenderMan.SetActiveBatch(m_ScreenSpaceBatch.get());
+		g_RenderMan.DrawActiveBatch();
+		g_RenderMan.SetActiveBatch(sceneBatch);
+
 		g_RenderMan.BeginFrame(nullptr);
 		DrawScreenFlash(playerScreen, drawScreenGUI);
 		m_PlayerScreen->End();

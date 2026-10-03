@@ -4,6 +4,7 @@
 #include "Timer.h"
 #include "Box.h"
 #include "Hash.h"
+#include "RenderBatch.h"
 
 #include <array>
 #include <unordered_map>
@@ -342,6 +343,7 @@ namespace RTE {
 
 		std::shared_ptr<BitmapTexture> m_PlayerScreen8; //!< Intermediary split screen bitmap.
 		std::shared_ptr<RenderTarget> m_PlayerScreen; //!< Intermediary split screen bitmap.
+		std::unique_ptr<RenderBatch> m_ScreenSpaceBatch; //!< Batch for GPU draws made in screen space by the CPU HUD path, drawn over each player screen.
 		int m_PlayerScreenWidth; //!< Width of the screen of each player. Will be smaller than resolution only if the screen is split.
 		int m_PlayerScreenHeight; //!< Height of the screen of each player. Will be smaller than resolution only if the screen is split.
 

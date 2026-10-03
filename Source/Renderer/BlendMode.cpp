@@ -10,9 +10,14 @@ BlendMode::BlendMode(Blend mode) {
 	m_BlendMode = mode;
 	switch (mode) {
 		case Blend::ALPHA: {
-			m_SrcFunc = GL_SRC_ALPHA;
-			m_DestFunc = GL_ONE_MINUS_SRC_ALPHA;
+			// Blend alpha separately so drawing translucent things over an opaque target keeps the target opaque, otherwise the coverage hole shows through when the target is composited later.
+			m_SrcFunc = 0;
+			m_DestFunc = 0;
 			m_Equation = GL_FUNC_ADD;
+			m_SrcFuncRGB = GL_SRC_ALPHA;
+			m_DestFuncRGB = GL_ONE_MINUS_SRC_ALPHA;
+			m_SrcFuncAlpha = GL_ONE;
+			m_DestFuncAlpha = GL_ONE_MINUS_SRC_ALPHA;
 			break;
 		}
 		case Blend::ALPHA_PREMULTIPLY: {
@@ -62,9 +67,13 @@ BlendMode::BlendMode(Blend mode) {
 			break;
 		}
 		case Blend::ADD: {
-			m_SrcFunc = GL_SRC_ALPHA;
-			m_DestFunc = GL_ONE;
+			m_SrcFunc = 0;
+			m_DestFunc = 0;
 			m_Equation = GL_FUNC_ADD;
+			m_SrcFuncRGB = GL_SRC_ALPHA;
+			m_DestFuncRGB = GL_ONE;
+			m_SrcFuncAlpha = GL_ZERO;
+			m_DestFuncAlpha = GL_ONE;
 			break;
 		}
 		case Blend::MULTIPLY: {
