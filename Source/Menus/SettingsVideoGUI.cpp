@@ -1,4 +1,5 @@
 #include "SettingsVideoGUI.h"
+#include "PostProcessMan.h"
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "ActivityMan.h"
@@ -50,6 +51,21 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 
 	m_EnableVSyncCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxEnableVSync"));
 	m_EnableVSyncCheckbox->SetCheck(g_WindowMan.GetVSyncEnabled());
+
+	const LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
+	// Custom GUI layouts may not have these, so they're optional.
+	m_LightingCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxLighting"));
+	if (m_LightingCheckbox) {
+		m_LightingCheckbox->SetCheck(lightingSettings.Enabled);
+	}
+	m_BloomCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxBloom"));
+	if (m_BloomCheckbox) {
+		m_BloomCheckbox->SetCheck(lightingSettings.BloomEnabled);
+	}
+	m_DistortionCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxDistortion"));
+	if (m_DistortionCheckbox) {
+		m_DistortionCheckbox->SetCheck(lightingSettings.DistortionEnabled);
+	}
 
 	m_FullscreenCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxFullscreen"));
 	m_FullscreenCheckbox->SetCheck(m_NewFullscreen);
@@ -398,6 +414,12 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 		if (guiEvent.GetMsg() == GUICheckbox::Changed) {
 			if (guiEvent.GetControl() == m_EnableVSyncCheckbox) {
 				g_WindowMan.SetVSyncEnabled(m_EnableVSyncCheckbox->GetCheck());
+			} else if (m_LightingCheckbox && guiEvent.GetControl() == m_LightingCheckbox) {
+				g_PostProcessMan.GetLightingSettings().Enabled = m_LightingCheckbox->GetCheck();
+			} else if (m_BloomCheckbox && guiEvent.GetControl() == m_BloomCheckbox) {
+				g_PostProcessMan.GetLightingSettings().BloomEnabled = m_BloomCheckbox->GetCheck();
+			} else if (m_DistortionCheckbox && guiEvent.GetControl() == m_DistortionCheckbox) {
+				g_PostProcessMan.GetLightingSettings().DistortionEnabled = m_DistortionCheckbox->GetCheck();
 			} else if (guiEvent.GetControl() == m_UseMultiDisplaysCheckbox) {
 				g_WindowMan.SetUseMultiDisplays(m_UseMultiDisplaysCheckbox->GetCheck());
 				UpdateCustomResolutionLimits();

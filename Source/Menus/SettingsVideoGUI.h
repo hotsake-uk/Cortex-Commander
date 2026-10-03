@@ -98,6 +98,9 @@ namespace RTE {
 		GUIRadioButton* m_TwoPlayerSplitscreenHSplitRadioButton;
 		GUIRadioButton* m_TwoPlayerSplitscreenVSplitRadioButton;
 		GUICheckbox* m_EnableVSyncCheckbox;
+		GUICheckbox* m_LightingCheckbox; //!< Toggles scene lighting.
+		GUICheckbox* m_BloomCheckbox; //!< Toggles bloom.
+		GUICheckbox* m_DistortionCheckbox; //!< Toggles heat haze and shockwaves.
 		GUICheckbox* m_FullscreenCheckbox;
 		GUICheckbox* m_UseMultiDisplaysCheckbox;
 		GUIRadioButton* m_PresetResolutionRadioButton;
