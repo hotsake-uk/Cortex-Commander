@@ -19,6 +19,8 @@ uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color 
 uniform sampler2D rteScorch; // World space, R = soot darkness.
 uniform vec2 rteScorchWorldSize; // World size covered by the scorch map.
 uniform bool rteScorchEnabled;
+uniform sampler2D rteStains; // World space liquid stains, same cells as the scorch map: RGB color, A coverage.
+uniform bool rteStainsEnabled;
 
 const int c_MaxHotSpots = 16;
 uniform int rteHotSpotCount;
@@ -67,6 +69,14 @@ void main() {
 		FragColor.rgba = rteColor;
 	}
 	vec3 normal = EdgeNormal(uvDx, uvDy);
+
+	if (rteStainsEnabled) {
+		// Liquid stains tint the terrain but keep its texture: the stain's color at the terrain's brightness.
+		vec4 stain = texture(rteStains, worldPos / rteScorchWorldSize);
+		float brightness = dot(FragColor.rgb, vec3(0.299, 0.587, 0.114));
+		vec3 stained = stain.rgb * (0.55 + 0.9 * brightness);
+		FragColor.rgb = mix(FragColor.rgb, stained, clamp(stain.a, 0.0, 0.85));
+	}
 
 	if (rteScorchEnabled) {
 		// Soot: darken towards a warm black, keeping a little of the original color so the texture still reads.

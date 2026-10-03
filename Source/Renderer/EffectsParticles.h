@@ -6,6 +6,8 @@
 namespace RTE {
 	class Camera;
 	class Vector;
+	class Color;
+	class Material;
 
 	/// Purely visual particles: sparks, dust and debris chips from explosions and impacts. They never affect the simulation:
 	/// they're spawned from simulation events through a thread safe queue, move in simulation time with their own random numbers,
@@ -28,6 +30,9 @@ namespace RTE {
 			glm::vec4 Color; //!< RGB albedo 0..1 in gamma space, A opacity.
 		};
 
+		/// Gets a color as 0xRRGGBB: its RGB if set, otherwise its palette index looked up in the palette. 0 if it has neither (index 0 is the mask color).
+		static unsigned int ColorToRGB(const Color& color);
+
 		/// Queues an explosion's effects. Thread safe; call from the simulation.
 		/// @param position Where, in scene coordinates.
 		/// @param energy The gib energy, scaling the amount of effects.
@@ -36,9 +41,9 @@ namespace RTE {
 		/// Queues effects for something hitting terrain. Thread safe and cheap to call often; most calls are skipped by a per frame budget.
 		/// @param position Where, in scene coordinates.
 		/// @param velocity Velocity of the hitting particle.
-		/// @param materialColor Palette index of the hit material's color, for debris and dust.
+		/// @param materialRGB The hit material's color, 0xRRGGBB, for debris and dust.
 		/// @param hardness 0 for soft materials like dirt (dust), 1 for hard ones like metal and rock (sparks).
-		static void SpawnImpact(const Vector& position, const Vector& velocity, int materialColor, float hardness);
+		static void SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialRGB, float hardness);
 
 		/// Moves all particles on by however much simulation time passed since the last call, and adds queued spawns. Call once per frame.
 		/// @param amount Multiplier for how many particles spawn; 0 turns the system off.
@@ -73,6 +78,22 @@ namespace RTE {
 
 		/// Gets the smoke visible in a screen area, as puffs (A = density).
 		static void GetSmoke(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& smoke);
+
+		/// A splat of liquid to stamp into the terrain stain map.
+		struct Stain {
+			glm::vec2 Position; //!< Scene pixels.
+			glm::vec3 Color; //!< 0..1, gamma space.
+			float Radius; //!< Pixels.
+		};
+
+		/// Gets whether drops of a material stain terrain: blood (any color) and oil. Cached per material.
+		static bool IsStainingMaterial(const Material* material);
+
+		/// Queues a stain where blood or oil hit terrain. Thread safe and cheap; a per frame budget skips the excess.
+		static void SpawnStain(const Vector& position, int red, int green, int blue, float speed);
+
+		/// Takes the stains queued since the last call.
+		static std::vector<Stain> TakeStains();
 
 		/// Removes all particles, e.g. when the scene changes.
 		static void Clear();

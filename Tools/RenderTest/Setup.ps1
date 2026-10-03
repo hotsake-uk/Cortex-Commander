@@ -64,6 +64,7 @@ $tutorial = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAT
 Write-Scenario "TutorialDusk" ($tutorial + @{ TimeOfDay = 19 }) @()
 Write-Scenario "TutorialNight" ($tutorial + @{ TimeOfDay = 23 }) @()
 Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()
+Write-Scenario "Stains" $play @("Render Test Stains")
 Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
 Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")
 

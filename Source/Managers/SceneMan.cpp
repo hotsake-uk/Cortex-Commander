@@ -574,7 +574,7 @@ bool SceneMan::TryPenetrate(int posX,
 	Material const* sceneMat = GetMaterialFromID(materialID);
 	Material const* spawnMat;
 	// Visual only: chips, dust and sparks where things hit terrain.
-	EffectsParticles::SpawnImpact(Vector(static_cast<float>(posX), static_cast<float>(posY)), velocity, sceneMat->GetColor().GetIndex(), sceneMat->GetIntegrity() >= 100.0F ? 1.0F : 0.0F);
+	EffectsParticles::SpawnImpact(Vector(static_cast<float>(posX), static_cast<float>(posY)), velocity, EffectsParticles::ColorToRGB(sceneMat->GetColor()), sceneMat->GetIntegrity() >= 100.0F ? 1.0F : 0.0F);
 
 	float sprayScale = 0.1F;
 	float sqrImpMag = impulse.GetSqrMagnitude();

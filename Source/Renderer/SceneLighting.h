@@ -122,6 +122,7 @@ namespace RTE {
 		GLTarget m_SkylineTexture;
 		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers.
 		GLTarget m_Scorch; //!< World space soot darkness, R.
+		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
 		int m_CurrentSkyLight = 0;
 
@@ -174,6 +175,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_GodRaysShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		std::unique_ptr<Shader> m_ScorchShader;
+		std::unique_ptr<Shader> m_StainShader;
 		std::unique_ptr<Shader> m_TerrainShader;
 		GLuint m_EmptyVAO = 0; //!< For draws that generate their vertices from gl_VertexID.
 
@@ -202,6 +204,7 @@ namespace RTE {
 		void UploadOccupancyRows(int firstRow, int endRow);
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
+		void StampStains();
 
 		const GlowInfo& GetGlowInfo(const BitmapTexture* glowTexture);
 

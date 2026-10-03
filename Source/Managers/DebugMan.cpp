@@ -209,6 +209,7 @@ void DebugMan::GraphicsLabGUI() {
 
 		ImGui::SeparatorText("Terrain effects");
 		ImGui::Checkbox("Scorch marks", &settings.ScorchMarks);
+		ImGui::Checkbox("Blood, oil and water stains", &settings.Stains);
 		ImGui::SliderFloat("Embers", &settings.Embers, 0.0F, 3.0F);
 		ImGui::SliderFloat("Sparks, dust and debris", &settings.EffectsParticles, 0.0F, 3.0F);
 		ImGui::SliderFloat("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);

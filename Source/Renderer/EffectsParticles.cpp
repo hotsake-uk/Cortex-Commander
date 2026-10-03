@@ -7,6 +7,7 @@
 #include "TimerMan.h"
 #include "Vector.h"
 #include "Material.h"
+#include "Color.h"
 #include "Draw.h"
 #include "Texture.h"
 #include "glad/gl.h"
@@ -17,6 +18,8 @@
 #include <atomic>
 #include <cmath>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 using namespace RTE;
@@ -42,7 +45,7 @@ namespace {
 		glm::vec2 Position;
 		glm::vec2 Velocity; //!< Pixels per second, for impacts.
 		float Energy; //!< Explosion energy, or 0 for an impact.
-		int MaterialColor;
+		unsigned int MaterialColor; //!< 0xRRGGBB.
 		float Hardness;
 	};
 
@@ -62,6 +65,9 @@ namespace {
 	std::vector<SmokeEntry> s_Smoke;
 	std::unordered_set<const void*> s_SmokeSeen;
 	std::mutex s_SmokeMutex;
+	std::vector<EffectsParticles::Stain> s_Stains;
+	std::mutex s_StainMutex;
+	constexpr size_t c_MaxStainsPerFrame = 400;
 	unsigned int s_Random = 0x9E3779B9u; //!< Render-only random state, never the simulation's.
 
 	float Random01() {
@@ -78,9 +84,8 @@ namespace {
 		return glm::vec2(std::cos(angle), std::sin(angle));
 	}
 
-	glm::u8vec3 PaletteRGB(int index) {
-		Color color(index);
-		return glm::u8vec3(color.GetR(), color.GetG(), color.GetB());
+	glm::u8vec3 UnpackRGB(unsigned int rgb) {
+		return glm::u8vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 	}
 
 	bool IsSolid(float x, float y) {
@@ -116,7 +121,7 @@ namespace {
 			glm::u8vec3 dustColor(110, 100, 92);
 			int groundMaterial = g_SceneMan.GetTerrMatter(static_cast<int>(request.Position.x), static_cast<int>(request.Position.y + 6.0F));
 			if (groundMaterial != g_MaterialAir) {
-				glm::u8vec3 materialRGB = PaletteRGB(g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(groundMaterial))->GetColor().GetIndex());
+				glm::u8vec3 materialRGB = UnpackRGB(EffectsParticles::ColorToRGB(g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(groundMaterial))->GetColor()));
 				dustColor = glm::u8vec3(glm::mix(glm::vec3(materialRGB), glm::vec3(dustColor), 0.5F));
 				int chipCount = static_cast<int>(24.0F * scale);
 				for (int i = 0; i < chipCount; ++i) {
@@ -137,7 +142,7 @@ namespace {
 			return;
 		}
 		glm::vec2 back = -request.Velocity / speed;
-		glm::u8vec3 materialRGB = PaletteRGB(request.MaterialColor);
+		glm::u8vec3 materialRGB = UnpackRGB(request.MaterialColor);
 		if (request.Hardness > 0.5F) {
 			int sparkCount = static_cast<int>(RandomRange(2.0F, 5.0F) * amount);
 			for (int i = 0; i < sparkCount; ++i) {
@@ -208,7 +213,18 @@ void EffectsParticles::SpawnExplosion(const Vector& position, float energy) {
 	s_Queue.push_back({glm::vec2(position.m_X, position.m_Y), glm::vec2(0.0F), energy, 0, 0.0F});
 }
 
-void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocity, int materialColor, float hardness) {
+unsigned int EffectsParticles::ColorToRGB(const Color& color) {
+	if (color.GetR() != 0 || color.GetG() != 0 || color.GetB() != 0) {
+		return (static_cast<unsigned int>(color.GetR()) << 16) | (static_cast<unsigned int>(color.GetG()) << 8) | static_cast<unsigned int>(color.GetB());
+	}
+	if (color.GetIndex() == 0) {
+		return 0;
+	}
+	Color fromPalette(color.GetIndex());
+	return (static_cast<unsigned int>(fromPalette.GetR()) << 16) | (static_cast<unsigned int>(fromPalette.GetG()) << 8) | static_cast<unsigned int>(fromPalette.GetB());
+}
+
+void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialColor, float hardness) {
 	// Only fast hits make visible chips and sparks.
 	if (velocity.GetSqrMagnitude() < 15.0F * 15.0F || s_ImpactBudget.load(std::memory_order_relaxed) <= 0) {
 		return;
@@ -382,6 +398,37 @@ void EffectsParticles::GetSmoke(const glm::vec2& screenOrigin, int width, int he
 		}
 		smoke.push_back({position, size, glm::vec4(1.0F, 1.0F, 1.0F, entry.Density)});
 	}
+}
+
+bool EffectsParticles::IsStainingMaterial(const Material* material) {
+	static std::unordered_map<const Material*, bool> cache;
+	static std::mutex cacheMutex;
+	std::scoped_lock lock(cacheMutex);
+	auto found = cache.find(material);
+	if (found != cache.end()) {
+		return found->second;
+	}
+	const std::string& name = material->GetPresetName();
+	bool staining = name.find("Blood") != std::string::npos || name.find("Oil") != std::string::npos;
+	cache.emplace(material, staining);
+	return staining;
+}
+
+void EffectsParticles::SpawnStain(const Vector& position, int red, int green, int blue, float speed) {
+	std::scoped_lock lock(s_StainMutex);
+	if (s_Stains.size() >= c_MaxStainsPerFrame) {
+		return;
+	}
+	// Faster drops splash wider.
+	float radius = std::clamp(1.0F + speed * 0.12F, 1.0F, 3.5F);
+	s_Stains.push_back({glm::vec2(position.m_X, position.m_Y), glm::vec3(red, green, blue) / 255.0F, radius});
+}
+
+std::vector<EffectsParticles::Stain> EffectsParticles::TakeStains() {
+	std::scoped_lock lock(s_StainMutex);
+	std::vector<Stain> stains;
+	stains.swap(s_Stains);
+	return stains;
 }
 
 void EffectsParticles::Clear() {

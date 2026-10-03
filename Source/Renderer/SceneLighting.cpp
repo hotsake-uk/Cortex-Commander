@@ -114,6 +114,7 @@ void SceneLighting::LoadShaders() {
 	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
+	m_StainShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Stain.frag");
 	m_TerrainShader = std::make_unique<Shader>("Base.rte/Shaders/TerrainLayer.vert", "Base.rte/Shaders/Terrain.frag");
 }
 
@@ -190,6 +191,7 @@ bool SceneLighting::EnsureWorldResources() {
 
 	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
 	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	g_PostProcessMan.TakePendingScorchMarks();
 
 	RefreshOccupancyRows(0, m_GridHeight);
@@ -208,6 +210,7 @@ void SceneLighting::DestroyWorldResources() {
 	m_SkyLight[0].Destroy();
 	m_SkyLight[1].Destroy();
 	m_Scorch.Destroy();
+	m_Stains.Destroy();
 	m_WorldScene = nullptr;
 	m_WorldMaterialBitmap = nullptr;
 	m_SceneWidth = 0;
@@ -476,6 +479,47 @@ void SceneLighting::StampScorchMarks() {
 	glBindVertexArray(0);
 }
 
+void SceneLighting::StampStains() {
+	std::vector<EffectsParticles::Stain> stains = EffectsParticles::TakeStains();
+	if (stains.empty() || !m_Stains.Framebuffer || !m_Settings.Stains) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Stains");
+	m_QuadVertices.clear();
+	float cell = static_cast<float>(m_ScorchCellSize);
+	auto addSplat = [this, cell](glm::vec2 center, float radius, const glm::vec3& color) {
+		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
+		for (const glm::vec2& corner: corners) {
+			glm::vec2 position = center + corner * radius;
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, color.r, color.g, color.b, 0.55F, center.x * cell, center.y * cell, radius});
+		}
+	};
+	for (const EffectsParticles::Stain& stain: stains) {
+		glm::vec2 center = stain.Position / cell;
+		float radius = std::max(1.0F, stain.Radius / cell);
+		addSplat(center, radius, stain.Color);
+		if (m_WrapX) {
+			addSplat(center + glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, stain.Color);
+			addSplat(center - glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, stain.Color);
+		}
+	}
+	UploadQuads();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Stains.Framebuffer);
+	glViewport(0, 0, m_Stains.Width, m_Stains.Height);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	// New stains cover old ones; coverage builds up towards fully stained.
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	m_StainShader->Enable();
+	m_StainShader->SetVector2f("rteScreenSize", glm::vec2(m_Stains.Width, m_Stains.Height));
+	DrawQuads(0, m_QuadVertices.size() / 4);
+	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
 const Shader* SceneLighting::PrepareTerrainShader() {
 	if (!m_Scorch.Texture) {
 		return nullptr;
@@ -485,6 +529,9 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetBool("rteScorchEnabled", m_Settings.ScorchMarks);
 	m_TerrainShader->SetVector2f("rteScorchWorldSize", glm::vec2(static_cast<float>(m_Scorch.Width * m_ScorchCellSize), static_cast<float>(m_Scorch.Height * m_ScorchCellSize)));
 	g_RenderMan.SetGlobalTexture(3, m_Scorch.Texture);
+	g_RenderMan.SetGlobalTexture(4, m_Stains.Texture);
+	m_TerrainShader->SetInt("rteStains", 4);
+	m_TerrainShader->SetBool("rteStainsEnabled", m_Settings.Stains);
 
 	// Hot spots: the most recent marks, cooling over HotSpotSeconds.
 	const std::vector<PostProcessMan::ScorchMark>& hotMarks = g_PostProcessMan.GetHotScorchMarks(std::max(m_Settings.HotSpotSeconds, 0.01F));
@@ -575,6 +622,7 @@ void SceneLighting::Update() {
 	glGetIntegerv(GL_VIEWPORT, previousViewport);
 	PropagateSkyLight(m_Settings.PropagationIterationsPerFrame);
 	StampScorchMarks();
+	StampStains();
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
 }

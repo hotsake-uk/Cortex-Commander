@@ -45,6 +45,7 @@ namespace RTE {
 			BloomEnabled = preset.Bloom;
 			DistortionEnabled = preset.Distortion;
 			ScorchMarks = preset.Scorch;
+			Stains = preset.Scorch;
 			Embers = preset.Embers;
 			GodRays = preset.GodRays;
 			IndirectLight = preset.Indirect;
@@ -94,6 +95,7 @@ namespace RTE {
 		float SmokeScattering = 1.0F; //!< How brightly smoke catches the light passing through it (fire, muzzle flashes, lamps), 0 to disable.
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
+		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
 
 		bool BloomEnabled = true;

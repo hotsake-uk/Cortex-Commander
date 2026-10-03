@@ -458,6 +458,7 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				bool enabled = m_DistortionCheckbox->GetCheck();
 				lightingSettings.DistortionEnabled = enabled;
 				lightingSettings.ScorchMarks = enabled;
+				lightingSettings.Stains = enabled;
 				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
 				lightingSettings.EffectsParticles = enabled ? std::max(lightingSettings.EffectsParticles, 1.0F) : 0.0F;
 			} else if (m_SmoothHUDTextCheckbox && guiEvent.GetControl() == m_SmoothHUDTextCheckbox) {
