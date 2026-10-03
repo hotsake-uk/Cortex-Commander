@@ -7,6 +7,47 @@ namespace RTE {
 	/// Tunable parameters of the scene lighting and post-processing. Colors are linear.
 	/// Persisted in Settings.ini by SettingsMan and editable live in the Graphics Lab (DebugMan).
 	struct LightingSettings {
+		/// Graphics quality presets, from the classic look up to every effect at full quality.
+		enum Quality {
+			QualityPotato,
+			QualityLow,
+			QualityMedium,
+			QualityHigh,
+			QualityUltra,
+			QualityCustom,
+			QualityCount
+		};
+		int GraphicsQuality = QualityHigh; //!< The preset these settings came from, or QualityCustom once individual effects were changed.
+
+		/// Sets the effects that cost performance to one of the presets, leaving the art direction (colors, grading, time of day) alone.
+		void ApplyQualityPreset(int quality) {
+			GraphicsQuality = quality;
+			if (quality < QualityPotato || quality >= QualityCustom) {
+				return;
+			}
+			struct Preset {
+				bool Lighting, Bloom, Distortion, Scorch;
+				float Embers, GodRays, Indirect;
+				int Propagation;
+			};
+			static constexpr Preset presets[] = {
+			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6}, // Potato: the classic look.
+			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3}, // Low
+			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4}, // Medium
+			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6}, // High
+			    {true, true, true, true, 1.3F, 0.8F, 0.45F, 12}, // Ultra
+			};
+			const Preset& preset = presets[quality];
+			Enabled = preset.Lighting;
+			BloomEnabled = preset.Bloom;
+			DistortionEnabled = preset.Distortion;
+			ScorchMarks = preset.Scorch;
+			Embers = preset.Embers;
+			GodRays = preset.GodRays;
+			IndirectLight = preset.Indirect;
+			PropagationIterationsPerFrame = preset.Propagation;
+		}
+
 		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
 		glm::vec3 Ambient = {0.6F, 0.59F, 0.63F}; //!< Light where no sky light reaches: bunker interiors and caves.
 		glm::vec3 SkyColor = {1.0F, 0.98F, 0.95F}; //!< Light under open sky.

@@ -101,6 +101,10 @@ void DebugMan::WorldDebugGUI() {
 		ImGui::SliderFloat("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
 
 		ImGui::SeparatorText("Lighting");
+		int quality = settings.GraphicsQuality;
+		if (ImGui::Combo("Quality", &quality, "Potato (classic)\0Low\0Medium\0High\0Ultra\0Custom\0")) {
+			settings.ApplyQualityPreset(quality);
+		}
 		ImGui::Checkbox("Lighting", &settings.Enabled);
 		ImGui::SameLine();
 		ImGui::Checkbox("Bloom", &settings.BloomEnabled);

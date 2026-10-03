@@ -142,6 +142,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
+	MatchProperty("GraphicsQuality", { g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom)); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingAmbient", {
 		std::string value = reader.ReadPropValue();
@@ -308,6 +309,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLine(false);
 	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
 	writer.NewPropertyWithValue("LightingSettingsVersion", c_LightingSettingsVersion);
+	writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
 	writer.NewPropertyWithValue("LightingAmbient", WriteVec3(lighting.Ambient));
 	writer.NewPropertyWithValue("LightingSkyColor", WriteVec3(lighting.SkyColor));

@@ -52,20 +52,17 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 	m_EnableVSyncCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxEnableVSync"));
 	m_EnableVSyncCheckbox->SetCheck(g_WindowMan.GetVSyncEnabled());
 
-	const LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
 	// Custom GUI layouts may not have these, so they're optional.
 	m_LightingCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxLighting"));
-	if (m_LightingCheckbox) {
-		m_LightingCheckbox->SetCheck(lightingSettings.Enabled);
-	}
 	m_BloomCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxBloom"));
-	if (m_BloomCheckbox) {
-		m_BloomCheckbox->SetCheck(lightingSettings.BloomEnabled);
-	}
 	m_DistortionCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxDistortion"));
-	if (m_DistortionCheckbox) {
-		m_DistortionCheckbox->SetCheck(lightingSettings.DistortionEnabled);
+	m_GraphicsQualityComboBox = dynamic_cast<GUIComboBox*>(m_GUIControlManager->GetControl("ComboGraphicsQuality"));
+	if (m_GraphicsQualityComboBox) {
+		for (const char* name: {"Potato (classic)", "Low", "Medium", "High", "Ultra", "Custom"}) {
+			m_GraphicsQualityComboBox->AddItem(name);
+		}
 	}
+	UpdateVisualEffectControls();
 
 	m_FullscreenCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxFullscreen"));
 	m_FullscreenCheckbox->SetCheck(m_NewFullscreen);
@@ -175,6 +172,22 @@ bool SettingsVideoGUI::IsSupportedResolution(int width, int height) const {
 		return true;
 	}
 	return false;
+}
+
+void SettingsVideoGUI::UpdateVisualEffectControls() {
+	const LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
+	if (m_LightingCheckbox) {
+		m_LightingCheckbox->SetCheck(lightingSettings.Enabled);
+	}
+	if (m_BloomCheckbox) {
+		m_BloomCheckbox->SetCheck(lightingSettings.BloomEnabled);
+	}
+	if (m_DistortionCheckbox) {
+		m_DistortionCheckbox->SetCheck(lightingSettings.DistortionEnabled);
+	}
+	if (m_GraphicsQualityComboBox) {
+		m_GraphicsQualityComboBox->SetSelectedIndex(lightingSettings.GraphicsQuality);
+	}
 }
 
 void SettingsVideoGUI::PopulateResolutionsComboBox() {
@@ -408,6 +421,22 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				m_CustomResolutionBox->Resize(m_CustomResolutionBox->GetWidth(), 165);
 			} else if (guiEvent.GetMsg() == GUIComboBox::Closed) {
 				m_CustomResolutionBox->Resize(m_CustomResolutionBox->GetWidth(), 80);
+			}
+		}
+
+		if (m_GraphicsQualityComboBox && guiEvent.GetControl() == m_GraphicsQualityComboBox && guiEvent.GetMsg() == GUIComboBox::Closed) {
+			int quality = m_GraphicsQualityComboBox->GetSelectedIndex();
+			if (quality >= 0 && quality != LightingSettings::QualityCustom) {
+				g_PostProcessMan.GetLightingSettings().ApplyQualityPreset(quality);
+				UpdateVisualEffectControls();
+			}
+		}
+
+		if (guiEvent.GetMsg() == GUICheckbox::Changed && (guiEvent.GetControl() == m_LightingCheckbox || guiEvent.GetControl() == m_BloomCheckbox || guiEvent.GetControl() == m_DistortionCheckbox)) {
+			// Picking individual effects no longer matches a preset.
+			g_PostProcessMan.GetLightingSettings().GraphicsQuality = LightingSettings::QualityCustom;
+			if (m_GraphicsQualityComboBox) {
+				m_GraphicsQualityComboBox->SetSelectedIndex(LightingSettings::QualityCustom);
 			}
 		}
 

@@ -101,6 +101,7 @@ namespace RTE {
 		GUICheckbox* m_LightingCheckbox; //!< Toggles scene lighting.
 		GUICheckbox* m_BloomCheckbox; //!< Toggles bloom.
 		GUICheckbox* m_DistortionCheckbox; //!< Toggles heat haze and shockwaves.
+		GUIComboBox* m_GraphicsQualityComboBox; //!< Picks a graphics quality preset.
 		GUICheckbox* m_FullscreenCheckbox;
 		GUICheckbox* m_UseMultiDisplaysCheckbox;
 		GUIRadioButton* m_PresetResolutionRadioButton;
@@ -137,6 +138,9 @@ namespace RTE {
 
 		/// Fills the preset resolutions set and combo box with scaled resolutions down to c_MinRes. Defaults the combobox to the closest resolution to c_DefaultRes.
 		void PopulateResolutionsComboBox();
+
+		/// Updates the visual effect checkboxes and quality preset list from the current lighting settings.
+		void UpdateVisualEffectControls();
 
 		/// Creates Resolution multipliers down to c_DefaultRes.
 		void PopulateResMultplierComboBox();
