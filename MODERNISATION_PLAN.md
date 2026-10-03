@@ -403,3 +403,39 @@ Before distributing a fork with modified art or a rebrand, ask the maintainers a
 | Effect INI keys | `Source/Entities/MovableObject.cpp:343-368` |
 | Lua bindings | `Source/Lua/LuaBindingsManagers.cpp`, `LuaBindingsEntities.cpp` |
 | Upstream branches | `origin/gpu-renderer`, `origin/interpolated-render-redux`, `origin/dynamic-two-stage-fow` |
+
+---
+
+## Progress log
+
+Work happens on the local `modernisation` branch. Each entry corresponds to one or more commits.
+
+### M1: Foundation (in progress)
+
+- **Merged `origin/gpu-renderer`** (HeliumAnt's WIP rewrite):
+  - Added the new renderer sources to `RTEA.vcxproj` (the branch only updated meson).
+  - Made `no_sanitize_address` portable to MSVC.
+  - Resolved the conflict with #277 (post-effect rotation).
+- **Brought the GPU renderer to parity with `development`.** The branch was mid-refactor, so a lot was missing:
+  - HUD: bridged to the CPU HUD, drawn once per screen.
+  - Lua/graphical primitives: every shape implemented on the new batch.
+  - Title screen: nebula, planet, moon, station, logo and slides.
+  - Clipped menu text: a depth-test bug in `UploadFrame`.
+  - Sprite particles (`MOSParticle`) drew nothing.
+  - `MOSprite` offset and flip were wrong; `Scale` was ignored.
+  - CPU-path previews (placement, deployment, pie menu, inventory carousel, scenario markers) called no-op wrappers.
+  - Leftover debug pixels and lines drawn every frame.
+  - Alpha blending was never enabled, and translucent draws punched holes in render targets.
+- **Render interpolation:**
+  - Render-only previous-state snapshots, interpolated by the sim accumulator. Wrap-aware, snaps on teleport, pixel-rounded.
+  - Follows Causeless' approach, without the input changes from `interpolated-render-redux` that broke weapon switching.
+- **Upstream bugs fixed along the way:**
+  - `AudioMan::m_MuteAudioOnFocusLoss` was uninitialised. The garbage written to `Settings.ini` made the reader drop every later setting.
+  - `EndlessMetaGameMode` was read under the wrong key.
+- **Dev tooling:** `Mods/RenderTest.rte` (gitignored) holds a primitive gallery and an FX stress script, plus scripted screenshot capture for side-by-side comparison against a `development` baseline worktree.
+
+**Still open for parity:**
+- Atom trails on the GPU.
+- Background fill colours for non-wrapping layers.
+- Dot glows. These are folded into the lighting work (palette emissive flags) instead.
+- A split-screen check.
