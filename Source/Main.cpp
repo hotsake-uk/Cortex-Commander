@@ -362,6 +362,11 @@ void RunGameLoop() {
 			g_PerformanceMan.UpdateMSPSU();
 			g_TimerMan.UpdateSim();
 
+			// If this is the first sim update since a drawn one, clear the scene post effects and lights before anything (activities and their global scripts included) registers new ones.
+			if (g_TimerMan.SimUpdatesSinceDrawn() == 0) {
+				g_PostProcessMan.ClearScenePostEffects();
+			}
+
 			g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::SimTotal);
 
 			g_LuaMan.Update();

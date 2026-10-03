@@ -135,6 +135,36 @@ void PostProcessMan::UpdatePalette() {
 	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 }
 
+void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity) {
+	if (radius <= 0.0F || intensity <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return;
+	}
+	glm::vec3 linearColor(std::pow(std::clamp(color.r, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.g, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.b, 0.0F, 255.0F) / 255.0F, 2.2F));
+	m_SceneLights.push_back({pos, linearColor * intensity, radius});
+}
+
+void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
+	for (const SceneLight& light: m_SceneLights) {
+		// Try the light's position and its wrapped copies, keeping any that reach the box.
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			for (int wrapY = -1; wrapY <= 1; ++wrapY) {
+				if (wrapY != 0 && !g_SceneMan.SceneWrapsY()) {
+					continue;
+				}
+				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
+				if (relativePos.m_X + light.m_Radius >= 0 && relativePos.m_Y + light.m_Radius >= 0 && relativePos.m_X - light.m_Radius <= boxWidth && relativePos.m_Y - light.m_Radius <= boxHeight) {
+					lights.push_back({relativePos, light.m_Color, light.m_Radius});
+				}
+			}
+		}
+	}
+}
+
 SceneLighting* PostProcessMan::GetSceneLighting() {
 	if (!m_SceneLighting) {
 		m_SceneLighting = std::make_unique<SceneLighting>(m_LightingSettings);

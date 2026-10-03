@@ -1283,10 +1283,7 @@ void MovableMan::Update() {
 		g_SceneMan.ClearMOColorLayer();
 	}
 
-	// If this is the first sim update since a drawn one, then clear the post effects
-	if (g_TimerMan.SimUpdatesSinceDrawn() == 0) {
-		g_PostProcessMan.ClearScenePostEffects();
-	}
+	// Scene post effects are cleared at the start of the sim update in RunGameLoop, so activities and global scripts that update before this can register them too.
 	// ---TEMP---
 
 	// Reset the draw HUD roster line settings

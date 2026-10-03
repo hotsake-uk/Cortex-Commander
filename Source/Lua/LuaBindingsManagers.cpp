@@ -189,7 +189,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PerformanceMan) 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) {
 	return luabind::class_<PostProcessMan>("PostProcessManager")
 
-	    .def("RegisterPostEffect", &PostProcessMan::RegisterPostEffect);
+	    .def("RegisterPostEffect", &PostProcessMan::RegisterPostEffect)
+	    .def("AddLight", &PostProcessMan::AddLight);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PresetMan) {

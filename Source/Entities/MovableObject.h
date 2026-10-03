@@ -870,6 +870,24 @@ namespace RTE {
 		/// @return The interpolated render position.
 		Vector GetRenderPos() const { return InterpolateRenderPosition(m_RenderPrevPos, m_Pos); }
 
+		/// Gets the radius of the light this casts. 0 means no light.
+		float GetLightRadius() const { return m_LightRadius; }
+		void SetLightRadius(float radius) { m_LightRadius = radius; }
+		/// Gets the brightness of the light this casts. 0 means no light.
+		float GetLightIntensity() const { return m_LightIntensity; }
+		void SetLightIntensity(float intensity) { m_LightIntensity = intensity; }
+		/// Gets how much the light this casts flickers, 0 to 1.
+		float GetLightFlicker() const { return m_LightFlicker; }
+		void SetLightFlicker(float flicker) { m_LightFlicker = flicker; }
+		/// Sets the color of the light this casts, 0-255 per channel.
+		void SetLightColor(int red, int green, int blue) { m_LightColor.SetRGB(red, green, blue); }
+		int GetLightRed() const { return m_LightColor.GetR(); }
+		int GetLightGreen() const { return m_LightColor.GetG(); }
+		int GetLightBlue() const { return m_LightColor.GetB(); }
+		/// Gets the offset of the light from this' position, rotated and flipped with this.
+		const Vector& GetLightOffset() const { return m_LightOffset; }
+		void SetLightOffset(const Vector& offset) { m_LightOffset = offset; }
+
 		/// Interpolates a position between its value at the previous and the current sim update, taking scene wrapping into account and snapping on teleports.
 		/// @param previous The position at the previous sim update.
 		/// @param current The position at the current sim update.
@@ -1285,6 +1303,11 @@ namespace RTE {
 		int m_EffectStopStrength;
 		// The effect can't be obscured
 		bool m_EffectAlwaysShows;
+		Color m_LightColor; //!< Color of the light this casts, 0-255.
+		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
+		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
+		float m_LightFlicker; //!< How much the light randomly flickers, 0 to 1.
+		Vector m_LightOffset; //!< Offset of the light from this' position, rotated and flipped with this.
 		// The effect's rotation angle
 		float m_EffectRotAngle;
 		// Whether effect's rot angle should be inherited from parent

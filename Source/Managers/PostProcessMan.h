@@ -35,6 +35,13 @@ namespace RTE {
 	};
 
 	/// Singleton manager responsible for all 32bpp post-process effect drawing.
+	/// A dynamic light in the scene, registered for the current frame by MovableObjects with light properties or from Lua.
+	struct SceneLight {
+		Vector m_Pos; //!< Light position. Scene coordinates, or relative to a screen, depending on context.
+		glm::vec3 m_Color{1.0F}; //!< Linear light color, intensity included.
+		float m_Radius = 0.0F; //!< Radius in pixels, where the light reaches zero.
+	};
+
 	class PostProcessMan : public Singleton<PostProcessMan> {
 
 	public:
@@ -67,6 +74,7 @@ namespace RTE {
 		void ClearScenePostEffects() {
 			m_PostSceneEffects.clear();
 			m_GlowAreas.clear();
+			m_SceneLights.clear();
 		}
 #pragma endregion
 
@@ -145,6 +153,23 @@ namespace RTE {
 		/// @return The opengl backbuffer texture for indexed drawings.
 		std::shared_ptr<RenderTarget> GetPostProcessColorBuffer() { return m_PostProcessFramebuffer; }
 
+		/// Registers a dynamic light for the current frame. Lights persist until the next sim update after a drawn frame, like scene post effects.
+		/// @param pos Scene position of the light.
+		/// @param color Light color in 0-255 gamma space, like palette and INI colors.
+		/// @param radius Radius in pixels, where the light reaches zero.
+		/// @param intensity Brightness multiplier.
+		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity);
+
+		/// Registers a dynamic light for the current frame, from Lua. See RegisterLight.
+		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity); }
+
+		/// Gets the scene lights that may affect a box, with positions relative to the box. Handles scene wrapping.
+		/// @param boxPos Scene position of the box's top left corner.
+		/// @param boxWidth Width of the box.
+		/// @param boxHeight Height of the box.
+		/// @param lights Out parameter the lights are appended to.
+		void GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const;
+
 		/// Gets the scene lighting, creating it on first use (it needs a GL context).
 		/// @return The scene lighting.
 		SceneLighting* GetSceneLighting();
@@ -182,6 +207,7 @@ namespace RTE {
 		std::shared_ptr<RenderTarget> m_PostProcessFramebuffer; //!< Framebuffer for post-processing effects.
 		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
 		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
+		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.

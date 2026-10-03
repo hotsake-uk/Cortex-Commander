@@ -434,7 +434,7 @@ void SceneLighting::DrawFullscreen() const {
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects) {
+void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights) {
 	ZoneScoped;
 	TracyGpuZone("Scene Lighting");
 	if (!EnsureWorldResources()) {
@@ -481,6 +481,16 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(radius), 0.0F, color, radius);
 			// The point light shader wants local positions in -1..1 rather than 0..1 UVs.
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
+				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
+			}
+			++lightCount;
+		}
+		for (const SceneLight& light: screenLights) {
+			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
+			size_t firstVertex = m_QuadVertices.size();
+			addQuad(center, glm::vec2(light.m_Radius), 0.0F, light.m_Color, light.m_Radius);
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
 				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;

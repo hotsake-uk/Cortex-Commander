@@ -16,6 +16,7 @@ namespace RTE {
 	class Shader;
 	class BitmapTexture;
 	struct PostEffect;
+	struct SceneLight;
 
 	/// Lights the scene: sky light that propagates through a low resolution grid of the terrain, dynamic lights cast by glow effects, glows drawn as emitted light, bloom and tonemapping.
 	/// Works on each player screen after the scene is drawn and before the HUD, so the HUD is never lit.
@@ -37,7 +38,7 @@ namespace RTE {
 		/// @param playerScreen The render target holding the unlit scene for this player screen.
 		/// @param screenOrigin Scene position of the player screen's top left pixel.
 		/// @param screenEffects Glow effects visible on this screen, with positions relative to the screen.
-		void LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects);
+		void LightPlayerScreen(RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights);
 
 		/// Forces the world light grid to be rebuilt from scratch, e.g. after the scene's terrain changed wholesale.
 		void InvalidateWorld() { m_WorldScene = nullptr; }

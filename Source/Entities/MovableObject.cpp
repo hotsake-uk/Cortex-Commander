@@ -103,6 +103,11 @@ void MovableObject::Clear() {
 	m_EffectStopStrength = 128;
 	m_EffectAlwaysShows = false;
 	m_PostEffectEnabled = false;
+	m_LightColor.SetRGB(255, 255, 255);
+	m_LightRadius = 0.0F;
+	m_LightIntensity = 0.0F;
+	m_LightFlicker = 0.0F;
+	m_LightOffset.Reset();
 
 	m_UniqueID = 0;
 
@@ -227,6 +232,11 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_CanBeSquished = reference.m_CanBeSquished;
 	m_HUDVisible = reference.m_HUDVisible;
 	m_PostEffectEnabled = reference.m_PostEffectEnabled;
+	m_LightColor = reference.m_LightColor;
+	m_LightRadius = reference.m_LightRadius;
+	m_LightIntensity = reference.m_LightIntensity;
+	m_LightFlicker = reference.m_LightFlicker;
+	m_LightOffset = reference.m_LightOffset;
 
 	m_ForceIntoMasterLuaState = reference.m_ForceIntoMasterLuaState;
 	for (const auto& scriptPath: reference.m_AllLoadedScripts) {
@@ -351,6 +361,11 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 		m_ScreenEffectHash = m_ScreenEffectFile.GetHash();
 	});
 	MatchProperty("PostEffectEnabled", { reader >> m_PostEffectEnabled; });
+	MatchProperty("LightColor", { reader >> m_LightColor; });
+	MatchProperty("LightRadius", { reader >> m_LightRadius; });
+	MatchProperty("LightIntensity", { reader >> m_LightIntensity; });
+	MatchProperty("LightFlicker", { reader >> m_LightFlicker; });
+	MatchProperty("LightOffset", { reader >> m_LightOffset; });
 	MatchProperty("EffectStartTime", { reader >> m_EffectStartTime; });
 	MatchProperty("EffectRotAngle", { reader >> m_EffectRotAngle; });
 	MatchProperty("InheritEffectRotAngle", { reader >> m_InheritEffectRotAngle; });
@@ -458,6 +473,16 @@ int MovableObject::Save(Writer& writer) const {
 	writer << m_ScreenEffectFile;
 	writer.NewProperty("PostEffectEnabled");
 	writer << m_PostEffectEnabled;
+	writer.NewProperty("LightColor");
+	writer << m_LightColor;
+	writer.NewProperty("LightRadius");
+	writer << m_LightRadius;
+	writer.NewProperty("LightIntensity");
+	writer << m_LightIntensity;
+	writer.NewProperty("LightFlicker");
+	writer << m_LightFlicker;
+	writer.NewProperty("LightOffset");
+	writer << m_LightOffset;
 	writer.NewProperty("EffectStartTime");
 	writer << m_EffectStartTime;
 	writer.NewProperty("EffectStopTime");
@@ -919,6 +944,15 @@ void MovableObject::Update() {
 
 	if (m_ScreenEffect && m_PostEffectEnabled) {
 		SetPostScreenEffectToDraw();
+	}
+
+	if (m_LightRadius > 0.0F && m_LightIntensity > 0.0F) {
+		Vector lightOffset = m_LightOffset;
+		if (!lightOffset.IsZero()) {
+			lightOffset = lightOffset.GetXFlipped(IsHFlipped()) * GetRotMatrix();
+		}
+		float flicker = m_LightFlicker > 0.0F ? 1.0F - m_LightFlicker * RandomNum(0.0F, 1.0F) : 1.0F;
+		g_PostProcessMan.RegisterLight(m_Pos + lightOffset, glm::vec3(m_LightColor.GetR(), m_LightColor.GetG(), m_LightColor.GetB()), m_LightRadius, m_LightIntensity * flicker);
 	}
 }
 
