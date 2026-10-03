@@ -41,7 +41,7 @@ namespace RTE {
 		bool BloomEnabled = true;
 		float BloomThreshold = 0.9F;
 		float BloomKnee = 0.4F;
-		float BloomIntensity = 0.6F;
+		float BloomIntensity = 0.5F;
 
 		float Exposure = 1.0F;
 		float ShoulderStart = 0.75F; //!< Linear brightness above which highlights are softly compressed.
