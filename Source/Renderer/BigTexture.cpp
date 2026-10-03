@@ -7,6 +7,7 @@
 #include "glad/gl.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyOpenGL.hpp"
 
@@ -47,6 +48,74 @@ BigTexture::BigTexture(BITMAP* bitmap) {
 	}
 }
 
+
+void BigTexture::UpdateChanged(const Box& updateRegion) {
+	ZoneScoped;
+	int bytesPerPixel = bitmap_color_depth(m_Bitmap) / 8;
+	size_t rowBytes = static_cast<size_t>(m_Width) * bytesPerPixel;
+	if (m_MirroredBitmap != m_Bitmap || m_Mirror.size() != rowBytes * m_Height) {
+		// Start from a known state: upload everything once and remember it.
+		Update(Box(Vector(), static_cast<float>(m_Width), static_cast<float>(m_Height)));
+		m_Mirror.resize(rowBytes * m_Height);
+		for (int y = 0; y < m_Height; ++y) {
+			std::memcpy(m_Mirror.data() + y * rowBytes, m_Bitmap->line[y], rowBytes);
+		}
+		m_MirroredBitmap = m_Bitmap;
+		return;
+	}
+
+	int left = std::clamp(updateRegion.m_Corner.GetFloorIntX(), 0, m_Width);
+	int top = std::clamp(updateRegion.m_Corner.GetFloorIntY(), 0, m_Height);
+	int right = std::clamp(static_cast<int>(std::ceil(updateRegion.m_Corner.m_X + updateRegion.m_Width)), 0, m_Width);
+	int bottom = std::clamp(static_cast<int>(std::ceil(updateRegion.m_Corner.m_Y + updateRegion.m_Height)), 0, m_Height);
+	if (left >= right || top >= bottom) {
+		return;
+	}
+	size_t spanBytes = static_cast<size_t>(right - left) * bytesPerPixel;
+	size_t spanOffset = static_cast<size_t>(left) * bytesPerPixel;
+
+	// Bands of rows, each uploading the horizontal extent of its changes, so a few scattered edits don't re-upload the whole view.
+	constexpr int bandHeight = 32;
+	for (int bandTop = top; bandTop < bottom; bandTop += bandHeight) {
+		int bandBottom = std::min(bandTop + bandHeight, bottom);
+		size_t changedFirst = spanBytes;
+		size_t changedLast = 0;
+		int changedTop = -1;
+		int changedBottom = -1;
+		for (int y = bandTop; y < bandBottom; ++y) {
+			const unsigned char* current = m_Bitmap->line[y] + spanOffset;
+			const unsigned char* mirrored = m_Mirror.data() + y * rowBytes + spanOffset;
+			if (std::memcmp(current, mirrored, spanBytes) == 0) {
+				continue;
+			}
+			size_t first = 0;
+			while (current[first] == mirrored[first]) {
+				++first;
+			}
+			size_t last = spanBytes - 1;
+			while (current[last] == mirrored[last]) {
+				--last;
+			}
+			changedFirst = std::min(changedFirst, first);
+			changedLast = std::max(changedLast, last);
+			if (changedTop < 0) {
+				changedTop = y;
+			}
+			changedBottom = y + 1;
+		}
+		if (changedTop < 0) {
+			continue;
+		}
+		int changedLeft = left + static_cast<int>(changedFirst / bytesPerPixel);
+		int changedRight = left + static_cast<int>(changedLast / bytesPerPixel) + 1;
+		Update(Box(Vector(static_cast<float>(changedLeft), static_cast<float>(changedTop)), static_cast<float>(changedRight - changedLeft), static_cast<float>(changedBottom - changedTop)));
+		size_t copyOffset = static_cast<size_t>(changedLeft) * bytesPerPixel;
+		size_t copyBytes = static_cast<size_t>(changedRight - changedLeft) * bytesPerPixel;
+		for (int y = changedTop; y < changedBottom; ++y) {
+			std::memcpy(m_Mirror.data() + y * rowBytes + copyOffset, m_Bitmap->line[y] + copyOffset, copyBytes);
+		}
+	}
+}
 
 void BigTexture::Draw(const Box& source, const Box& dest) {
 	ZoneScoped;
