@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "SmokeGrid.h"
 
 #include "AtomGroup.h"
 #include "RTETools.h"
@@ -1419,6 +1420,10 @@ MovableObject* AHuman::LookForMOs(float FOVSpread, unsigned char ignoreMaterial,
 
 	MOID seenMOID = g_SceneMan.CastMORay(aimPos, lookVector, m_MOID, IgnoresWhichTeam(), ignoreMaterial, ignoreAllTerrain, 5);
 	pSeenMO = g_MovableMan.GetMOFromID(seenMOID);
+	// Thick smoke between the eyes and what they'd see hides it.
+	if (pSeenMO && SmokeGrid::BlocksSight(aimPos, pSeenMO->GetPos())) {
+		return nullptr;
+	}
 	if (pSeenMO)
 		return pSeenMO->GetRootParent();
 

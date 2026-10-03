@@ -73,6 +73,8 @@ Write-Scenario "LiquidsNight" ($play + @{ TimeOfDay = 22 }) @("Render Test Liqui
 Write-Scenario "FlareNight" ($play + @{ TimeOfDay = 23 }) @("Render Test Flare")
 Write-Scenario "PlainSave" $play @("Render Test Save")
 Write-Scenario "FireSave" ($play + @{ TimeOfDay = 22 }) @("Render Test Fire", "Render Test Save")
+Write-Scenario "Grenades" $play @("Render Test Grenades")
+Write-Scenario "GrenadesNoBlock" ($play + @{ SmokeBlocksSight = 0 }) @("Render Test Grenades")
 Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
 Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")
 

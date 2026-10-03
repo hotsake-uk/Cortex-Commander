@@ -3,6 +3,7 @@
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "SmokeGrid.h"
 #include "ModernHUD.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
@@ -146,6 +147,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("SmokeBlocksSight", { SmokeGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FlowingLiquids", { FluidSim::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -414,6 +416,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
+	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
 	writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
 	writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);

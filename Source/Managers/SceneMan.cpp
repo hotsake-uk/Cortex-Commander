@@ -1,6 +1,7 @@
 #include "SceneMan.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "SmokeGrid.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
 #include "Shader.h"
@@ -1443,6 +1444,10 @@ float SceneMan::CastNotMaterialRay(const Vector& start, const Vector& ray, unsig
 
 	// Signal that we didn't hit anything
 	return -1;
+}
+
+bool SceneMan::SmokeBlocksSight(const Vector& start, const Vector& end) const {
+	return SmokeGrid::BlocksSight(start, end);
 }
 
 float SceneMan::CastStrengthSumRay(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial) {

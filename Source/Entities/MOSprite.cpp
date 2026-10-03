@@ -56,6 +56,7 @@ int MOSprite::Create() {
 	m_aSprite.clear();
 	m_SpriteFile.GetAsAnimation(m_aSprite, m_FrameCount);
 
+	m_Sprites.clear(); // Copies start with the copied preset's frames, which a SpriteFile of their own replaces.
 	m_SpriteFile.GetAsAnimation(m_Sprites, m_FrameCount);
 
 	if (!m_aSprite.empty() && m_aSprite[0]) {
@@ -87,6 +88,7 @@ int MOSprite::Create(ContentFile spriteFile,
 	m_FrameCount = frameCount;
 	m_aSprite.clear();
 	m_SpriteFile.GetAsAnimation(m_aSprite, m_FrameCount);
+	m_Sprites.clear();
 	m_SpriteFile.GetAsAnimation(m_Sprites, m_FrameCount);
 	m_SpriteOffset.SetXY(static_cast<float>(-m_aSprite[0]->w) / 2.0F, static_cast<float>(-m_aSprite[0]->h) / 2.0F);
 

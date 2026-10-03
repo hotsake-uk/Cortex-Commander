@@ -55,6 +55,7 @@ namespace RTE {
 		friend struct ManagerLuaBindings;
 		friend class DebugMan;
 		friend class ModernHUD;
+		friend class SmokeGrid;
 
 		/// Public member variable, method and friend function declarations
 	public:

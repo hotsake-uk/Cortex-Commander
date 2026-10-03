@@ -45,6 +45,7 @@
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "SmokeGrid.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -404,6 +405,7 @@ void RunGameLoop() {
 			if (g_SceneMan.GetScene()) {
 				g_SceneMan.GetScene()->Update();
 			}
+			SmokeGrid::Update();
 			TerrainFire::Update();
 			TerrainCollapse::Update();
 			FluidSim::Update();

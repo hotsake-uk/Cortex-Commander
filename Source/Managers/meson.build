@@ -23,6 +23,7 @@ sources += files(
 'TerrainCollapse.cpp',
 'FluidSim.cpp',
 'ModernHUD.cpp',
+'SmokeGrid.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
 'TimerMan.cpp',

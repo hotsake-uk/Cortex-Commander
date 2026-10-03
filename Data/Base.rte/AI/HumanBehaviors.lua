@@ -1107,7 +1107,8 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						local TargetPoint = AI.Target.Pos + AI.TargetOffset;
 
 						if (range < Owner.AimDistance + Weapon.SharpLength + FrameMan.PlayerScreenWidth*0.5) and
-							(not AI.isPlayerOwned or not SceneMan:IsUnseen(TargetPoint.X, TargetPoint.Y, Owner.Team))
+							(not AI.isPlayerOwned or not SceneMan:IsUnseen(TargetPoint.X, TargetPoint.Y, Owner.Team)) and
+							not SceneMan:SmokeBlocksSight(Owner.EyePos, TargetPoint) -- lose track of targets hidden by smoke
 						then
 							if PrjDat.pen > 0 then
 								if SceneMan:CastStrengthSumRay(Weapon.Pos, TargetPoint, 6, rte.grassID) * 5 < PrjDat.pen then

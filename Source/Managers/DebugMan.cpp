@@ -19,6 +19,7 @@
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "SmokeGrid.h"
 #include "ModernHUD.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
@@ -194,6 +195,10 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		bool smokeBlocks = SmokeGrid::IsEnabled();
+		if (ImGui::Checkbox("Smoke blocks sight", &smokeBlocks)) {
+			SmokeGrid::SetEnabled(smokeBlocks);
+		}
 		ImGui::Checkbox("Headlamps at night", &settings.Headlamps);
 		ImGui::SameLine();
 		ImGui::Checkbox("Night limits AI sight", &settings.NightAffectsAI);

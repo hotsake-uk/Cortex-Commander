@@ -606,6 +606,12 @@ namespace RTE {
 		/// all Air, then 0 is returned (Air's strength value is 0).
 		float CastStrengthSumRay(const Vector& start, const Vector& end, int skip = 0, unsigned char ignoreMaterial = g_MaterialAir);
 
+		/// Gets whether thick smoke between two points hides one from the other. Always false when smoke doesn't block sight.
+		/// @param start The starting position.
+		/// @param end The ending position.
+		/// @return Whether smoke blocks the view.
+		bool SmokeBlocksSight(const Vector& start, const Vector& end) const;
+
 		/// Traces along a vector and returns the strongest of all encountered pixels'
 		/// material strength values.
 		/// This will take wrapping into account.
