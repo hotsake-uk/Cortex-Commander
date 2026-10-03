@@ -51,6 +51,14 @@ namespace RTE {
 		float Vignette = 0.15F;
 		float Saturation = 1.05F;
 
+		float Temperature = 0.0F; //!< Color grading white balance, -1 cool to 1 warm.
+		float Tint = 0.0F; //!< Color grading tint, -1 green to 1 magenta.
+		float Contrast = 1.0F; //!< Color grading contrast around mid grey.
+		glm::vec3 ShadowTint = {1.0F, 1.0F, 1.0F}; //!< Color multiplier for the shadows.
+		glm::vec3 HighlightTint = {1.0F, 1.0F, 1.0F}; //!< Color multiplier for the highlights.
+		float FilmGrain = 0.0F; //!< Film grain strength, 0 to 1.
+		float ChromaticAberration = 0.0F; //!< Lens color fringing towards the screen edges, in pixels.
+
 		int DebugView = 0; //!< Not persisted. 0 final image, 1 lighting on grey, 2 sky light only, 3 dynamic light only.
 	};
 } // namespace RTE

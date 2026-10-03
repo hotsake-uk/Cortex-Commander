@@ -198,7 +198,9 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) 
 	    .property("Wind", &PostProcessMan::GetWind, &PostProcessMan::SetWind)
 	    .property("LightingEnabled", &PostProcessMan::GetLightingEnabled, &PostProcessMan::SetLightingEnabled)
 	    .def("SetSkyColor", &PostProcessMan::SetSkyColor)
-	    .def("SetAmbientColor", &PostProcessMan::SetAmbientColor);
+	    .def("SetAmbientColor", &PostProcessMan::SetAmbientColor)
+	    .def("SetColorGrade", &PostProcessMan::SetColorGrade)
+	    .def("SetSplitToning", &PostProcessMan::SetSplitToning);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PresetMan) {

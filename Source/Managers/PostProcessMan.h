@@ -231,6 +231,11 @@ namespace RTE {
 		void SetLightingEnabled(bool enabled) { m_LightingSettings.Enabled = enabled; }
 		/// Sets the sky light color, 0-255 gamma space per channel. Values above 255 brighten.
 		void SetSkyColor(float red, float green, float blue) { m_LightingSettings.SkyColor = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
+		/// Sets the color grade: white balance (-1 cool .. 1 warm), tint (-1 green .. 1 magenta) and contrast (1 neutral).
+		void SetColorGrade(float temperature, float tint, float contrast) { m_LightingSettings.Temperature = temperature; m_LightingSettings.Tint = tint; m_LightingSettings.Contrast = contrast; }
+		/// Sets the shadow and highlight tints for split toning, as linear multipliers (1 = neutral).
+		void SetSplitToning(float shadowR, float shadowG, float shadowB, float highlightR, float highlightG, float highlightB) { m_LightingSettings.ShadowTint = glm::vec3(shadowR, shadowG, shadowB); m_LightingSettings.HighlightTint = glm::vec3(highlightR, highlightG, highlightB); }
+
 		/// Sets the ambient light color where no sky light reaches, 0-255 gamma space per channel.
 		void SetAmbientColor(float red, float green, float blue) { m_LightingSettings.Ambient = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
 #pragma endregion

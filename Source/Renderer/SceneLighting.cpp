@@ -862,6 +862,13 @@ void SceneLighting::LightPlayerScreen(RenderTarget* playerScreen, const Vector& 
 	m_TonemapShader->SetFloat("rteHeatHaze", m_Settings.HeatHaze);
 	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
 	m_TonemapShader->SetInt("rteDebugView", m_Settings.DebugView);
+	m_TonemapShader->SetFloat("rteTemperature", m_Settings.Temperature);
+	m_TonemapShader->SetFloat("rteTint", m_Settings.Tint);
+	m_TonemapShader->SetFloat("rteContrast", m_Settings.Contrast);
+	m_TonemapShader->SetVector3f("rteShadowTint", m_Settings.ShadowTint);
+	m_TonemapShader->SetVector3f("rteHighlightTint", m_Settings.HighlightTint);
+	m_TonemapShader->SetFloat("rteFilmGrain", m_Settings.FilmGrain);
+	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
 	glActiveTexture(GL_TEXTURE1);

@@ -94,6 +94,13 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Highlight shoulder", &settings.ShoulderStart, 0.3F, 1.0F);
 		ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
 		ImGui::SliderFloat("Vignette", &settings.Vignette, 0.0F, 1.0F);
+		ImGui::SliderFloat("Temperature", &settings.Temperature, -1.0F, 1.0F);
+		ImGui::SliderFloat("Tint", &settings.Tint, -1.0F, 1.0F);
+		ImGui::SliderFloat("Contrast", &settings.Contrast, 0.5F, 1.6F);
+		ImGui::ColorEdit3("Shadow tint", &settings.ShadowTint.x, linearColorFlags);
+		ImGui::ColorEdit3("Highlight tint", &settings.HighlightTint.x, linearColorFlags);
+		ImGui::SliderFloat("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
+		ImGui::SliderFloat("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 
 		ImGui::SeparatorText("Debug");
 		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0");

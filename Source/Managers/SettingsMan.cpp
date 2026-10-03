@@ -164,6 +164,13 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
 	MatchProperty("BloomIntensity", { g_PostProcessMan.GetLightingSettings().BloomIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostExposure", { g_PostProcessMan.GetLightingSettings().Exposure = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GradeTemperature", { g_PostProcessMan.GetLightingSettings().Temperature = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GradeTint", { g_PostProcessMan.GetLightingSettings().Tint = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GradeContrast", { g_PostProcessMan.GetLightingSettings().Contrast = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GradeShadowTint", { g_PostProcessMan.GetLightingSettings().ShadowTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().ShadowTint); });
+	MatchProperty("GradeHighlightTint", { g_PostProcessMan.GetLightingSettings().HighlightTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().HighlightTint); });
+	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
+	MatchProperty("ChromaticAberration", { g_PostProcessMan.GetLightingSettings().ChromaticAberration = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostVignette", { g_PostProcessMan.GetLightingSettings().Vignette = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostSaturation", { g_PostProcessMan.GetLightingSettings().Saturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("MasterVolume", { g_AudioMan.SetMasterVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
@@ -310,6 +317,13 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("BloomIntensity", lighting.BloomIntensity);
 	writer.NewPropertyWithValue("PostExposure", lighting.Exposure);
 	writer.NewPropertyWithValue("PostVignette", lighting.Vignette);
+	writer.NewPropertyWithValue("GradeTemperature", lighting.Temperature);
+	writer.NewPropertyWithValue("GradeTint", lighting.Tint);
+	writer.NewPropertyWithValue("GradeContrast", lighting.Contrast);
+	writer.NewPropertyWithValue("GradeShadowTint", WriteVec3(lighting.ShadowTint));
+	writer.NewPropertyWithValue("GradeHighlightTint", WriteVec3(lighting.HighlightTint));
+	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
+	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 
 	writer.NewLine(false, 2);
