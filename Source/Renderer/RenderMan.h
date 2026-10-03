@@ -71,7 +71,11 @@ namespace RTE {
 		GLuint GetEmissivePaletteTexture() const { return m_EmissivePaletteTexture; }
 
 		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 5.
-		void SetGlobalTexture(int unit, GLuint texture) { if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) { m_GlobalTextures[unit - 3] = texture; } }
+		void SetGlobalTexture(int unit, GLuint texture) {
+			if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) {
+				m_GlobalTextures[unit - 3] = texture;
+			}
+		}
 
 		/// Gets the textures to bind to units 3 and up for every batch render.
 		const std::array<GLuint, 3>& GetGlobalTextures() const { return m_GlobalTextures; }

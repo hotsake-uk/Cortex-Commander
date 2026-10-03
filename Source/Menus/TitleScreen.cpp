@@ -626,7 +626,6 @@ void TitleScreen::DrawTitleScreenScene(const Camera& camera) {
 	m_StationOffset.RadRotate(m_StationOrbitRotation);
 	m_Station.SetPos(m_PlanetPos + m_StationOffset);
 	m_Station.SetRotAngle(-c_HalfPI + m_StationOrbitRotation);
-	//m_Station.Draw(g_FrameMan.GetBackBuffer32());
 	// CC rotations are counter-clockwise, screen space rotation is clockwise.
 	Draw::DrawBitmap(m_Station.GetSpriteFrame(0), ToVec2(m_Station.GetPos()), ToVec2(m_Station.GetSpriteOffset()), -m_Station.GetRotAngle(), glm::vec2(1.0f));
 }
