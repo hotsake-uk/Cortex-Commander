@@ -344,6 +344,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("CastNotMaterialRay", (float(SceneMan::*)(const Vector&, const Vector&, unsigned char, int, bool)) & SceneMan::CastNotMaterialRay)
 	    .def("CastStrengthSumRay", &SceneMan::CastStrengthSumRay)
 	    .def("SmokeBlocksSight", &SceneMan::SmokeBlocksSight)
+	    .def("GetBurningPixelCount", &SceneMan::GetBurningPixelCount)
+	    .def("GetFlowingLiquidPixelCount", &SceneMan::GetFlowingLiquidPixelCount)
 	    .def("CastMaxStrengthRay", (float(SceneMan::*)(const Vector&, const Vector&, int, unsigned char)) & SceneMan::CastMaxStrengthRay)
 	    .def("CastMaxStrengthRay", (float(SceneMan::*)(const Vector&, const Vector&, int)) & SceneMan::CastMaxStrengthRay)
 	    .def("CastStrengthRay", &SceneMan::CastStrengthRay)

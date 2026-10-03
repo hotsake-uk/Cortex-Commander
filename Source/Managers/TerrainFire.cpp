@@ -65,6 +65,8 @@ namespace {
 	std::map<int, BurningPixel> s_Burning; //!< Keyed by y * width + x, so iteration order is deterministic.
 	std::vector<std::pair<int, int>> s_IgniteQueue;
 	std::vector<std::pair<glm::vec2, float>> s_AreaQueue;
+	std::vector<glm::ivec3> s_DouseQueue; //!< x, y, radius.
+	std::array<bool, 256> s_DousingTable{};
 	std::mutex s_QueueMutex;
 	std::unordered_map<std::string, bool> s_FireSourceCache;
 	std::mutex s_FireSourceMutex;
@@ -100,6 +102,7 @@ namespace {
 
 	void BuildFuelTable() {
 		s_FuelTable.fill(Fuel::None);
+		s_DousingTable.fill(false);
 		s_AshMaterial = -1;
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
@@ -107,6 +110,7 @@ namespace {
 				continue;
 			}
 			const std::string& name = material->GetPresetName();
+			s_DousingTable[id] = name == "Water";
 			if (Contains(name, "Ash")) {
 				s_AshMaterial = id;
 				Color ashColor = material->GetColor();
@@ -197,6 +201,20 @@ bool TerrainFire::IsFireSource(const MovableObject* object) {
 	return source;
 }
 
+bool TerrainFire::IsDousing(int materialID) {
+	return s_FuelTableBuilt && materialID > 0 && materialID < 256 && s_DousingTable[materialID];
+}
+
+void TerrainFire::QueueDouse(int x, int y, int radius) {
+	if (!s_Enabled) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_DouseQueue.size() < 4096) {
+		s_DouseQueue.emplace_back(x, y, radius);
+	}
+}
+
 void TerrainFire::QueueIgnite(int x, int y) {
 	if (!s_Enabled) {
 		return;
@@ -253,6 +271,7 @@ void TerrainFire::Update() {
 		std::scoped_lock lock(s_QueueMutex);
 		s_IgniteQueue.clear();
 		s_AreaQueue.clear();
+		s_DouseQueue.clear();
 		s_Burning.clear();
 		return;
 	}
@@ -272,10 +291,12 @@ void TerrainFire::Update() {
 	// Apply queued ignitions in a fixed order, whatever order the (possibly parallel) collision code queued them in.
 	std::vector<std::pair<int, int>> ignitions;
 	std::vector<std::pair<glm::vec2, float>> areas;
+	std::vector<glm::ivec3> douses;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		ignitions.swap(s_IgniteQueue);
 		areas.swap(s_AreaQueue);
+		douses.swap(s_DouseQueue);
 	}
 	std::sort(ignitions.begin(), ignitions.end(), [](const auto& a, const auto& b) { return a.second != b.second ? a.second < b.second : a.first < b.first; });
 	ignitions.erase(std::unique(ignitions.begin(), ignitions.end()), ignitions.end());
@@ -295,6 +316,22 @@ void TerrainFire::Update() {
 			}
 		}
 	}
+	// Water last, so it wins over anything set alight at the same time.
+	std::sort(douses.begin(), douses.end(), [](const glm::ivec3& a, const glm::ivec3& b) { return a.y != b.y ? a.y < b.y : (a.x != b.x ? a.x < b.x : a.z < b.z); });
+	for (const glm::ivec3& douse: douses) {
+		if (s_Burning.empty()) {
+			break;
+		}
+		for (int dy = -douse.z; dy <= douse.z; ++dy) {
+			for (int dx = -douse.z; dx <= douse.z; ++dx) {
+				int x = douse.x + dx;
+				int y = douse.y + dy;
+				if (dx * dx + dy * dy <= douse.z * douse.z && WrapPixel(x, y, width, height)) {
+					s_Burning.erase(y * width + x);
+				}
+			}
+		}
+	}
 	if (s_Burning.empty()) {
 		s_Lights.clear();
 		return;
@@ -305,7 +342,13 @@ void TerrainFire::Update() {
 	static constexpr float directionScale[4] = {2.2F, 1.0F, 1.0F, 0.4F};
 	std::vector<std::pair<int, int>> spreadTo;
 	std::vector<int> burntOut;
+	std::vector<int> goneOut;
 	for (auto& [key, pixel]: s_Burning) {
+		if (s_FuelTable[static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y))] == Fuel::None) {
+			// The fuel flowed or was blown away.
+			goneOut.push_back(key);
+			continue;
+		}
 		const FuelProperties& fuel = c_Fuels[static_cast<int>(pixel.Kind)];
 		for (int i = 0; i < 4; ++i) {
 			if (Random01(s_Random) < fuel.Spread * directionScale[i]) {
@@ -315,6 +358,10 @@ void TerrainFire::Update() {
 		if (--pixel.TicksLeft <= 0) {
 			burntOut.push_back(key);
 		}
+	}
+
+	for (int key: goneOut) {
+		s_Burning.erase(key);
 	}
 
 	// Burnt out pixels become air or ash.
@@ -435,6 +482,7 @@ void TerrainFire::Clear() {
 	std::scoped_lock lock(s_QueueMutex);
 	s_IgniteQueue.clear();
 	s_AreaQueue.clear();
+	s_DouseQueue.clear();
 }
 
 int TerrainFire::GetCount() {

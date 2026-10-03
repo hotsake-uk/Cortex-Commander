@@ -4,9 +4,10 @@
 
 namespace RTE {
 	class Vector;
+	class MovableObject;
 
-	/// Flowing liquids in the terrain: water, lava and acid pixels fall, spread sideways and pool.
-	/// Water puts out fire; lava sets things alight, glows, hurts and turns to stone where it meets water; acid eats through soft terrain.
+	/// Flowing liquids in the terrain: water, lava, acid and oil pixels fall, spread sideways and pool.
+	/// Water puts out fire; lava sets things alight, glows, hurts and turns to stone where it meets water; acid eats through soft terrain; oil burns.
 	/// Liquids at rest cost nothing: only pixels that moved recently, or whose surroundings changed, are simulated.
 	/// Part of the simulation and deterministic: fixed sim steps, sorted order, its own seeded random numbers.
 	class FluidSim {
@@ -24,11 +25,16 @@ namespace RTE {
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.
-		/// @param liquidName "Water", "Lava" or "Acid".
+		/// @param liquidName "Water", "Lava", "Acid" or "Oil".
 		static void Pour(const Vector& position, float radius, const char* liquidName);
 
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
+
+		/// Lets a particle that just settled into the terrain join in: a drop of liquid in that liquid's own colour starts flowing (so blood, drawn in water, stays put),
+		/// and a burning particle sets the flammable pixel it became alight. Call after the particle is drawn into the terrain.
+		/// @param particle The settled particle.
+		static void OnParticleSettled(const MovableObject* particle);
 
 		/// Advances the liquids one simulation step. Call once per sim update, from the main thread.
 		static void Update();

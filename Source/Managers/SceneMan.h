@@ -612,6 +612,12 @@ namespace RTE {
 		/// @return Whether smoke blocks the view.
 		bool SmokeBlocksSight(const Vector& start, const Vector& end) const;
 
+		/// Gets how many terrain pixels are on fire.
+		int GetBurningPixelCount() const;
+
+		/// Gets how many liquid pixels in the terrain are flowing.
+		int GetFlowingLiquidPixelCount() const;
+
 		/// Traces along a vector and returns the strongest of all encountered pixels'
 		/// material strength values.
 		/// This will take wrapping into account.

@@ -5,6 +5,7 @@
 #include "Material.h"
 #include "MovableMan.h"
 #include "MovableObject.h"
+#include "MOPixel.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
@@ -32,8 +33,10 @@ namespace {
 		None,
 		Water,
 		Lava,
-		Acid
+		Acid,
+		Oil
 	};
+	constexpr int c_LiquidKinds = 5;
 
 	struct LiquidProperties {
 		int Flow; //!< How far a pixel may run sideways per step.
@@ -44,14 +47,15 @@ namespace {
 	    {4, 1}, // Water
 	    {1, 3}, // Lava
 	    {3, 1}, // Acid
+	    {2, 2}, // Oil
 	};
 
 	constexpr size_t c_MaxActive = 30000;
 	constexpr int c_RestSteps = 20; //!< A pixel that hasn't moved for this many of its steps stops being simulated.
 
 	std::array<Liquid, 256> s_Kinds{};
-	std::array<int, 4> s_MaterialOf{}; //!< Material ID of each liquid kind, 0 if the scene's materials don't have it.
-	std::array<int, 4> s_ColorOf{}; //!< Palette index each liquid is drawn with.
+	std::array<int, c_LiquidKinds> s_MaterialOf{}; //!< Material ID of each liquid kind, 0 if the scene's materials don't have it.
+	std::array<int, c_LiquidKinds> s_ColorOf{}; //!< Palette index each liquid is drawn with.
 	int s_StoneMaterial = 0;
 	int s_StoneColor = 0;
 	bool s_TablesBuilt = false;
@@ -76,6 +80,10 @@ namespace {
 		return static_cast<float>(s_Random & 0xFFFFFF) / static_cast<float>(0x1000000);
 	}
 
+	Liquid LiquidFromName(const std::string& name, Liquid otherwise) {
+		return name == "Water" ? Liquid::Water : (name == "Lava" ? Liquid::Lava : (name == "Acid" ? Liquid::Acid : (name == "Oil" ? Liquid::Oil : otherwise)));
+	}
+
 	void BuildTables() {
 		s_Kinds.fill(Liquid::None);
 		s_MaterialOf.fill(0);
@@ -86,14 +94,17 @@ namespace {
 				continue;
 			}
 			const std::string& name = material->GetPresetName();
-			Liquid kind = name == "Water" ? Liquid::Water : (name == "Lava" ? Liquid::Lava : (name == "Acid" ? Liquid::Acid : Liquid::None));
+			Liquid kind = LiquidFromName(name, Liquid::None);
 			if (kind != Liquid::None) {
 				s_Kinds[id] = kind;
 				s_MaterialOf[static_cast<int>(kind)] = id;
 				Color color = material->GetColor();
 				color.RecalculateIndex();
 				s_ColorOf[static_cast<int>(kind)] = color.GetIndex();
-				g_RenderMan.SetLiquidPaletteColor(color.GetIndex(), static_cast<int>(kind), kind == Liquid::Lava ? 230 : 0);
+				// Oil is drawn plain: its dark brown is shared with too many sprites to shimmer.
+				if (kind != Liquid::Oil) {
+					g_RenderMan.SetLiquidPaletteColor(color.GetIndex(), static_cast<int>(kind), kind == Liquid::Lava ? 230 : 0);
+				}
 			} else if (name == "Stone") {
 				s_StoneMaterial = id;
 				Color color = material->GetColor();
@@ -139,9 +150,28 @@ bool FluidSim::IsLiquid(int materialID) {
 
 void FluidSim::Pour(const Vector& position, float radius, const char* liquidName) {
 	std::string name(liquidName ? liquidName : "Water");
-	Liquid kind = name == "Lava" ? Liquid::Lava : (name == "Acid" ? Liquid::Acid : Liquid::Water);
+	Liquid kind = LiquidFromName(name, Liquid::Water);
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pours.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), std::max(1, static_cast<int>(radius)), kind});
+}
+
+void FluidSim::OnParticleSettled(const MovableObject* particle) {
+	if (!particle || !particle->GetMaterial()) {
+		return;
+	}
+	int material = particle->GetMaterial()->GetIndex();
+	Vector position = particle->GetPos();
+	if (TerrainFire::IsFlammable(material) && TerrainFire::IsFireSource(particle)) {
+		TerrainFire::QueueIgnite(position.GetFloorIntX(), position.GetFloorIntY());
+	}
+	if (!s_Enabled || !IsLiquid(material)) {
+		return;
+	}
+	const MOPixel* pixel = dynamic_cast<const MOPixel*>(particle);
+	if (pixel && pixel->GetColor().GetIndex() == s_ColorOf[static_cast<int>(s_Kinds[material])]) {
+		std::scoped_lock lock(s_QueueMutex);
+		s_Disturbances.emplace_back(glm::ivec2(position.GetFloorIntX(), position.GetFloorIntY()), 1);
+	}
 }
 
 void FluidSim::Disturb(const Vector& position, float radius) {

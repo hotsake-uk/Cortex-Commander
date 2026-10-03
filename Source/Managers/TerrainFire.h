@@ -35,6 +35,12 @@ namespace RTE {
 		/// Puts out the fire at a pixel, if it's burning. Call from the simulation (main thread).
 		static void Extinguish(int x, int y);
 
+		/// Gets whether a material puts fire out where it splashes (water). Thread safe.
+		static bool IsDousing(int materialID);
+
+		/// Queues putting out the fire around a point, where water splashed. Thread safe.
+		static void QueueDouse(int x, int y, int radius);
+
 		/// Advances the fire one simulation step. Call once per sim update, from the main thread.
 		static void Update();
 

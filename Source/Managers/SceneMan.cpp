@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "SmokeGrid.h"
+#include "TerrainFire.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
 #include "Shader.h"
@@ -1448,6 +1449,14 @@ float SceneMan::CastNotMaterialRay(const Vector& start, const Vector& ray, unsig
 
 bool SceneMan::SmokeBlocksSight(const Vector& start, const Vector& end) const {
 	return SmokeGrid::BlocksSight(start, end);
+}
+
+int SceneMan::GetBurningPixelCount() const {
+	return TerrainFire::GetCount();
+}
+
+int SceneMan::GetFlowingLiquidPixelCount() const {
+	return FluidSim::GetActiveCount();
 }
 
 float SceneMan::CastStrengthSumRay(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial) {

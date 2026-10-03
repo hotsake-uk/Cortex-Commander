@@ -1,4 +1,5 @@
 #include "MovableMan.h"
+#include "FluidSim.h"
 
 #include "PrimitiveMan.h"
 #include "PostProcessMan.h"
@@ -1653,6 +1654,7 @@ void MovableMan::Update() {
 				}
 				if ((*parIt)->GetDrawPriority() >= terrMat->GetPriority()) {
 					(*parIt)->DrawToTerrain(g_SceneMan.GetTerrain());
+					FluidSim::OnParticleSettled(*parIt);
 				}
 				(*parIt)->DestroyScriptState();
 				delete (*parIt);
