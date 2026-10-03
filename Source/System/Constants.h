@@ -30,6 +30,7 @@ namespace RTE {
 
 #pragma region Time Constants
 	static constexpr float c_DefaultDeltaTimeS = 0.0166666F; //!< The default simulation update step size, in seconds.
+	static constexpr float c_RenderInterpolationTeleportDistance = 200.0F; //!< Objects that moved further than this in one sim update are treated as teleported and not interpolated.
 	static constexpr float c_RealToSimCap = 0.0166666F; //!< The default cap of number of ticks that the real time can add to the tick accumulator each update.
 #pragma endregion
 

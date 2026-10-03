@@ -1701,6 +1701,19 @@ void MovableMan::Update() {
 void MovableMan::Travel() {
 	ZoneScoped;
 
+	{
+		ZoneScopedN("Store Render State");
+		for (Actor* actor: m_Actors) {
+			actor->StoreRenderPreviousState();
+		}
+		for (MovableObject* item: m_Items) {
+			item->StoreRenderPreviousState();
+		}
+		for (MovableObject* particle: m_Particles) {
+			particle->StoreRenderPreviousState();
+		}
+	}
+
 	// Travel Actors
 	{
 		ZoneScopedN("Actors Travel");

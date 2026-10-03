@@ -38,6 +38,7 @@ void MOSprite::Clear() {
 	m_SpriteDiameter = 2.0F;
 	m_Rotation.Reset();
 	m_PrevRotation.Reset();
+	m_RenderPrevRotation.Reset();
 	m_AngularVel = 0;
 	m_PrevAngVel = 0;
 	m_AngOscillations = 0;
@@ -587,11 +588,27 @@ void MOSprite::Draw(const Camera& camera) const {
 		return;
 	}
 
-	Vector spritePos = m_Pos - m_SpriteOffset;
+	Vector renderPos = GetRenderPos().GetRounded();
+	float spriteWidth = m_Sprites[m_Frame]->GetDimensions().w;
+	float spriteHeight = m_Sprites[m_Frame]->GetDimensions().h;
 
 	if (!m_HFlipped) {
-		Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos);
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), renderPos + m_SpriteOffset);
 	} else {
-		Draw::DrawTexture(m_Sprites[m_Frame].get(), FloatRect(spritePos, -m_Sprites[m_Frame]->GetDimensions().w, m_Sprites[m_Frame]->GetDimensions().h));
+		// Mirror the sprite offset around the position, then draw the quad with negative width to flip the texture.
+		float spriteLeft = renderPos.m_X - (spriteWidth + m_SpriteOffset.m_X);
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), FloatRect(spriteLeft + spriteWidth, renderPos.m_Y + m_SpriteOffset.m_Y, -spriteWidth, spriteHeight));
 	}
+}
+
+void MOSprite::StoreRenderPreviousState() {
+	MovableObject::StoreRenderPreviousState();
+	m_RenderPrevRotation = m_Rotation;
+}
+
+Matrix MOSprite::GetRenderRotMatrix() const {
+	if (!m_HasRenderPrevState) {
+		return m_Rotation;
+	}
+	return Lerp(0.0F, 1.0F, m_RenderPrevRotation, m_Rotation, g_TimerMan.GetSimUpdateProportion());
 }

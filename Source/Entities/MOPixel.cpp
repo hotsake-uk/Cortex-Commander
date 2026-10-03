@@ -246,5 +246,5 @@ void MOPixel::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode,
 }
 
 void MOPixel::Draw(const Camera& camera) const {
-	Draw::Pixel(m_Pos, m_Color);
+	Draw::Pixel(GetRenderPos().GetFloored(), m_Color);
 }

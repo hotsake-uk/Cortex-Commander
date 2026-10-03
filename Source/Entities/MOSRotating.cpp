@@ -1296,6 +1296,16 @@ bool MOSRotating::DeepCheck(bool makeMOPs, int skipMOP, int maxMOPs) {
 	return false;
 }
 
+void MOSRotating::StoreRenderPreviousState() {
+	MOSprite::StoreRenderPreviousState();
+	for (Attachable* attachable: m_Attachables) {
+		attachable->StoreRenderPreviousState();
+	}
+	for (AEmitter* wound: m_Wounds) {
+		wound->StoreRenderPreviousState();
+	}
+}
+
 void MOSRotating::Travel() {
 	MOSprite::Travel();
 
@@ -1813,20 +1823,21 @@ void MOSRotating::Draw(const Camera& camera) const {
 	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
 		return;
 	}
-	Vector spritePos(m_Pos.GetRounded());
+	// Interpolated between the previous and current sim state so motion is smooth at any frame rate. Position is snapped to whole pixels to keep the pixel art crisp.
+	Vector spritePos(GetRenderPos().GetRounded());
 	Vector offset(m_SpriteOffset.GetRounded());
 
 	if (m_Recoiled) {
 		spritePos += m_RecoilOffset;
 	}
 
-	Vector scale(1.0f, 1.0f);
+	Vector scale(m_Scale, m_Scale);
 
 	if (m_HFlipped) {
 		scale.m_X *= -1;
 	}
 
-	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -m_Rotation.GetRadAngle(), scale);
+	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale);
 
 	// Draw all the attached wound emitters, and only if the mode is g_DrawColor and not onlyphysical
 	// Only draw attachables and emitters which are not drawn after parent, so we draw them before

@@ -48,6 +48,10 @@ namespace RTE {
 		/// @return Whether there is enough sim time to do a physics update.
 		bool TimeForSimUpdate() const { return m_SimAccumulator >= m_DeltaTime; }
 
+		/// Gets how far the current frame is between the last simulation update and the next one, from 0 to 1. Used to interpolate render state between sim updates so motion is smooth at any frame rate.
+		/// @return The proportion of a sim update that has elapsed since the last one.
+		float GetSimUpdateProportion() const { return m_DeltaTime > 0 ? std::clamp(static_cast<float>(m_SimAccumulator) / static_cast<float>(m_DeltaTime), 0.0F, 1.0F) : 1.0F; }
+
 		/// Tells whether the current simulation update will be drawn in a frame. Use this to check if it is necessary to draw purely graphical things during the sim update.
 		/// @return Whether this is the last sim update before a frame with its results will appear.
 		bool DrawnSimUpdate() const { return m_DrawnSimUpdate; }

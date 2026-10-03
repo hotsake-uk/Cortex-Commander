@@ -862,6 +862,20 @@ namespace RTE {
 		/// calling Travel.
 		virtual void PreTravel();
 
+		/// Stores the current state as the previous render state. Called at the start of every sim update before anything moves.
+		/// This is render only: it is never read by the simulation, so it can't affect determinism.
+		virtual void StoreRenderPreviousState();
+
+		/// Gets the position to render this at, interpolated between the previous and the current sim update.
+		/// @return The interpolated render position.
+		Vector GetRenderPos() const { return InterpolateRenderPosition(m_RenderPrevPos, m_Pos); }
+
+		/// Interpolates a position between its value at the previous and the current sim update, taking scene wrapping into account and snapping on teleports.
+		/// @param previous The position at the previous sim update.
+		/// @param current The position at the current sim update.
+		/// @return The interpolated position.
+		Vector InterpolateRenderPosition(const Vector& previous, const Vector& current) const;
+
 		/// Travels this MovableObject, using its physical representation.
 		virtual void Travel();
 
@@ -1152,6 +1166,8 @@ namespace RTE {
 		float m_Mass; // In metric kilograms (kg).
 		Vector m_Vel; // In meters per second (m/s).
 		Vector m_PrevPos; // Previous frame's position.
+		Vector m_RenderPrevPos; //!< Position at the start of the last sim update, for render interpolation only.
+		bool m_HasRenderPrevState; //!< Whether the previous render state has been stored since this was created. Freshly spawned objects render at their current state.
 		Vector m_PrevVel; // Previous frame's velocity.
 		float m_DistanceTravelled; //!< An estimate of how many pixels this MO has travelled since its creation.
 		float m_Scale; // The scale that this MovableObject's representation will be drawn in. 1.0 being 1:1;

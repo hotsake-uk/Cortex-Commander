@@ -328,6 +328,9 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Stores the current state as the previous render state, for this and all attachables and wounds. See MovableObject::StoreRenderPreviousState.
+		void StoreRenderPreviousState() override;
+
 		// Stuff that needs to be updated post-Update.
 		void PostUpdate() override;
 

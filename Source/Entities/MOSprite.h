@@ -159,6 +159,13 @@ namespace RTE {
 		/// @return The rotational Matrix of this MovableObject.
 		Matrix GetRotMatrix() const override { return m_Rotation; }
 
+		/// Gets the rotation to render this at, interpolated between the previous and the current sim update.
+		/// @return The interpolated render rotation.
+		Matrix GetRenderRotMatrix() const;
+
+		/// Stores the current state as the previous render state. See MovableObject::StoreRenderPreviousState.
+		void StoreRenderPreviousState() override;
+
 		/// Gets the current rotational angle of of this, in radians.
 		/// @return The rotational angle of this, in radians.
 		float GetRotAngle() const override { return m_Rotation.GetRadAngle(); }
@@ -353,6 +360,7 @@ namespace RTE {
 
 		Matrix m_Rotation; // Rotational matrix of this MovableObject.
 		Matrix m_PrevRotation; // Rotational matrix of this MovableObject, last frame.
+		Matrix m_RenderPrevRotation; //!< Rotation at the start of the last sim update, for render interpolation only.
 		float m_AngularVel; // The angular velocity by which this MovableObject rotates, in radians per second (r/s).
 		float m_PrevAngVel; // Previous frame's angular velocity.
 		ContentFile m_SpriteFile;

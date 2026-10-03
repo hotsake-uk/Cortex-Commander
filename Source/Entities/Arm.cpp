@@ -26,6 +26,7 @@ void Arm::Clear() {
 	m_HandIdleRotation = 0;
 
 	m_HandCurrentOffset.Reset();
+	m_RenderPrevHandPos.Reset();
 
 	m_HandTargets = {};
 	m_HandMovementDelayTimer.Reset();
@@ -388,8 +389,13 @@ void Arm::DrawHand(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode)
 	}
 }
 
+void Arm::StoreRenderPreviousState() {
+	Attachable::StoreRenderPreviousState();
+	m_RenderPrevHandPos = m_JointPos + m_HandCurrentOffset + (m_Recoiled ? m_RecoilOffset : Vector());
+}
+
 void Arm::DrawHand(const Camera& camera) const {
-	Vector handPos(m_JointPos + m_HandCurrentOffset + (m_Recoiled ? m_RecoilOffset : Vector()));
+	Vector handPos(InterpolateRenderPosition(m_RenderPrevHandPos, m_JointPos + m_HandCurrentOffset + (m_Recoiled ? m_RecoilOffset : Vector())).GetRounded());
 	handPos -= Vector(static_cast<float>(m_HandSpriteTexture->GetDimensions().w / 2), static_cast<float>(m_HandSpriteTexture->GetDimensions().h / 2));
 
 	if (m_HFlipped) {

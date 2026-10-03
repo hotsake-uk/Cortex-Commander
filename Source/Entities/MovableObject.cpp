@@ -40,6 +40,8 @@ void MovableObject::Clear() {
 	m_Mass = 0;
 	m_Vel.Reset();
 	m_PrevPos.Reset();
+	m_RenderPrevPos.Reset();
+	m_HasRenderPrevState = false;
 	m_PrevVel.Reset();
 	m_DistanceTravelled = 0;
 	m_Scale = 1.0;
@@ -835,6 +837,23 @@ void MovableObject::ApplyImpulses() {
 
 	// Clear out the impulses list
 	m_ImpulseForces.clear();
+}
+
+void MovableObject::StoreRenderPreviousState() {
+	m_RenderPrevPos = m_Pos;
+	m_HasRenderPrevState = true;
+}
+
+Vector MovableObject::InterpolateRenderPosition(const Vector& previous, const Vector& current) const {
+	if (!m_HasRenderPrevState) {
+		return current;
+	}
+	// Moves across a wrapping seam should interpolate the short way, and anything that moved further than plausible in one update teleported, so don't smear it across the screen.
+	Vector delta = g_SceneMan.ShortestDistance(previous, current, true);
+	if (delta.MagnitudeIsGreaterThan(c_RenderInterpolationTeleportDistance)) {
+		return current;
+	}
+	return current - (delta * (1.0F - g_TimerMan.GetSimUpdateProportion()));
 }
 
 void MovableObject::PreTravel() {
