@@ -3,8 +3,8 @@ param(
 	[string[]]$Only = @(),          # Limit to these scenarios (names without the Golden prefix also work).
 	[string]$Exe = "Cortex Command.debug.release.exe",
 	[int]$ExtraWait = 10,
-	[double]$MaxMeanDiff = 7.0,     # Mean absolute difference per channel (0-255) allowed.
-	[double]$MaxBadPercent = 6.0    # Percentage of pixels allowed to differ by more than $BadThreshold.
+	[double]$MaxMeanDiff = 5.0,     # Mean absolute difference per channel (0-255) allowed.
+	[double]$MaxBadPercent = 4.0    # Percentage of pixels allowed to differ by more than $BadThreshold.
 )
 # Golden image regression check: captures a few calm, fixed scenes and compares them against the baselines in Golden\.
 # The game isn't deterministic (AI, particles, twinkling stars), so the comparison allows a small camera shift and has tolerances: it catches black screens,
@@ -90,7 +90,8 @@ public static class GoldenCompare {
 }
 
 function Compare-Images([Drawing.Bitmap]$a, [Drawing.Bitmap]$b, [string]$diffPath) {
-	$w = [Math]::Min($a.Width, $b.Width); $h = [Math]::Min($a.Height, $b.Height)
+	# Only the left 600 px: most golden scenes have the editor panel on the right, which is fixed while the world can land a few pixels differently.
+	$w = [Math]::Min(600, [Math]::Min($a.Width, $b.Width)); $h = [Math]::Min($a.Height, $b.Height)
 	$rect = New-Object Drawing.Rectangle 0, 0, $w, $h
 	$format = [Drawing.Imaging.PixelFormat]::Format32bppArgb
 	$da = $a.LockBits($rect, [Drawing.Imaging.ImageLockMode]::ReadOnly, $format)
@@ -102,7 +103,8 @@ function Compare-Images([Drawing.Bitmap]$a, [Drawing.Bitmap]$b, [string]$diffPat
 	$stride = $da.Stride
 	$a.UnlockBits($da); $b.UnlockBits($db)
 	$r = [GoldenCompare]::Compare($pa, $pb, $w, $h, $stride, 32, $pd)
-	$diff = New-Object Drawing.Bitmap $w, $h
+	# Same width as the sources so its rows have the same stride as the comparison buffers.
+	$diff = New-Object Drawing.Bitmap $a.Width, $h
 	$dd = $diff.LockBits($rect, [Drawing.Imaging.ImageLockMode]::WriteOnly, $format)
 	[Runtime.InteropServices.Marshal]::Copy($pd, 0, $dd.Scan0, $bytes)
 	$diff.UnlockBits($dd); $diff.Save($diffPath); $diff.Dispose()

@@ -48,7 +48,6 @@ BigTexture::BigTexture(BITMAP* bitmap) {
 	}
 }
 
-
 void BigTexture::UpdateChanged(const Box& updateRegion) {
 	ZoneScoped;
 	int bytesPerPixel = bitmap_color_depth(m_Bitmap) / 8;

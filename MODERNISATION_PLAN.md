@@ -560,13 +560,33 @@ Work happens on the local `modernisation` branch. Each entry corresponds to one 
 - F6 World Debug window: time of day, weather, lighting, auto exposure readout, quality and game speed.
 - While debug windows are open the mouse is released and clicks don't reach the game.
 
-### Remaining roadmap (not started)
+### Status update: roadmap completed
 
-- **GPU HUD and native-resolution UI and fonts (M6):** replace the CPU HUD bridge and the Allegro GUI backend.
-- **Sprite atlas and instanced sprite batching:** the next large performance step.
-- **Dirty-rect terrain uploads:** visible layers still re-upload every frame. Cheap enough now (2.5 ms total draw), but wasteful.
-  - Terrain is written from about 15 places that bypass any hook (see the playtest notes).
-  - A safe version needs a `MarkDirty` at each of them, or a cheap per-row checksum.
-- **Full radiance-cascade GI:** the screen-space bounce covers most of the visual win.
-- **An SDL_GPU backend (M8)** behind the renderer abstraction.
-- **CI golden-image runs** using `Tools/RenderTest`.
+All measured on the Final build, stress scene, VSync off.
+
+- **Golden image regression check:** `Tools/RenderTest/Golden.ps1`.
+  - Six fixed scenes against committed baselines, alignment-tolerant, with thresholds calibrated on run-to-run noise.
+  - A 20% exposure error fails it.
+  - Runs locally, because hosted CI runners have no GPU.
+- **Changed-only terrain uploads:** a CPU mirror of what the GPU holds is diffed in 32-row bands.
+  - Correct for every terrain write path.
+  - Calm scenes upload nothing; CPU cost per layer 0.13 → 0.065 ms.
+- **Sprite atlas:** small 8-bit sprite frames share 2048² pages, so draws merge.
+  - GL draws per frame are about 5× fewer.
+  - Draw time 3.2 → 2.5 ms; 230 → 271 FPS.
+- **High resolution HUD text (Smooth HUD Text):** HUD text is captured and redrawn with a TTF at window resolution, between the scene and the GUI layer.
+  - Text covered in the HUD layer is dropped, so panels still hide it.
+  - GUI control text stays pixel art.
+- **Radiance cascades GI (Ultra):** 2D global illumination from glows, with soft occlusion and multi-bounce. Costs about 0.3 ms.
+
+### Deferred: SDL_GPU backend (M8)
+
+Not started on purpose. It is a port of every GL path:
+- RenderBatch, render targets, about 25 shaders, PBO uploads, the sprite atlas, the ImGui backend.
+- Plus a shader cross-compile step: GLSL → SPIR-V, then DXIL and MSL with SDL_shadercross.
+
+It brings no visual change on Windows. The value is macOS/Metal and console reach, which only matters once the project ships beyond Windows/Linux. Suggested staging:
+1. **Abstraction:** put the GL calls behind a small device interface (textures, targets, pipelines, draws), with GL as the first backend.
+2. **Shaders:** compile them offline to SPIR-V in the build, keeping GLSL for GL.
+3. **First SDL_GPU path:** the batch and the final blit; menus run on it.
+4. **Full pipeline:** the lighting passes; then golden images on both backends.
