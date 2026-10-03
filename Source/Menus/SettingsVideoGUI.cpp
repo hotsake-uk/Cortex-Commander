@@ -419,7 +419,12 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			} else if (m_BloomCheckbox && guiEvent.GetControl() == m_BloomCheckbox) {
 				g_PostProcessMan.GetLightingSettings().BloomEnabled = m_BloomCheckbox->GetCheck();
 			} else if (m_DistortionCheckbox && guiEvent.GetControl() == m_DistortionCheckbox) {
-				g_PostProcessMan.GetLightingSettings().DistortionEnabled = m_DistortionCheckbox->GetCheck();
+				// Extra effects: heat haze, shockwaves, scorch marks and embers.
+				LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
+				bool enabled = m_DistortionCheckbox->GetCheck();
+				lightingSettings.DistortionEnabled = enabled;
+				lightingSettings.ScorchMarks = enabled;
+				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
 			} else if (guiEvent.GetControl() == m_UseMultiDisplaysCheckbox) {
 				g_WindowMan.SetUseMultiDisplays(m_UseMultiDisplaysCheckbox->GetCheck());
 				UpdateCustomResolutionLimits();

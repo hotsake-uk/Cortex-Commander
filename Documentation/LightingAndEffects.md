@@ -24,7 +24,7 @@ Each player screen is drawn as before. Before the HUD goes on top, it is then:
 
 ## Settings (Settings.ini)
 
-All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in the **Graphics Lab**. To open it, set `ShowGraphicsLab = 1`, use *Debug Options → Show Graphics Lab*, or call `DebugMan:ShowGraphicsLab()` from Lua. It has a *Save to Settings.ini* button. The in-game *Video* settings have toggles for Lighting, Bloom and Heat/Shockwaves. Turning all three off gives the classic look.
+All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in the **Graphics Lab**. To open it, set `ShowGraphicsLab = 1`, use *Debug Options → Show Graphics Lab*, or call `DebugMan:ShowGraphicsLab()` from Lua. It has a *Save to Settings.ini* button. The in-game *Video* settings have toggles for Lighting, Bloom and Extra Effects (heat haze, shockwaves, scorch marks, embers). Turning all three off gives the classic look.
 
 | Key | Default | What it does |
 |---|---|---|
@@ -43,6 +43,8 @@ All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in
 | `LightingShadowStrength` | 0.85 | How much terrain blocks dynamic lights. |
 | `LightingEmissiveIntensity` | 1.4 | Brightness of glow sprites. |
 | `LightingEdgeLighting` | 1 | Strength of the automatic edge normals. |
+| `LightingIndirect` | 0.35 | One bounce of light: lit surfaces bleed their colour onto their surroundings, mostly in shadowed areas and caves. |
+| `Embers` | 1 | Embers rising from fire and other warm glows. |
 | `DistortionEnabled` / `HeatHaze` / `ShockwaveStrength` | 1 / 1.5 / 1 | Heat haze above hot things, and refraction rings from explosions. |
 | `ScorchMarks` | 1 | Explosions leave soot on terrain, and the crater rim glows while it cools. |
 | `BloomEnabled` / `BloomThreshold` / `BloomIntensity` | 1 / 0.9 / 0.5 | Bloom. |
