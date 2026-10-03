@@ -51,6 +51,21 @@ All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in
 | `GradeShadowTint` / `GradeHighlightTint` | 1 1 1 / 1 1 1 | Split toning. |
 | `FilmGrain` / `ChromaticAberration` | 0 / 0 | Film grain (0–1) and lens fringing (pixels). |
 
+## Scene atmosphere (INI)
+
+A Scene can set its own time of day and weather. These override the player's settings while the Scene is loaded, and every Scene load restores the player's own atmosphere first.
+
+```ini
+AddScene = Scene
+	PresetName = My Frozen Valley
+	TimeOfDay = 17.5        // Hours. Dusk.
+	DayLengthMinutes = 0    // 0 freezes the time.
+	WeatherType = 2         // 0 clear, 1 rain, 2 snow
+	WeatherIntensity = 0.7
+	Wind = -90
+	...
+```
+
 ## Lights on objects (INI)
 
 Any `MovableObject` (actors, devices, particles, gibs…) can cast a light. The light moves, rotates and flips with the object, and terrain casts soft shadows from it.
@@ -100,7 +115,7 @@ PostProcessMan:SetColorGrade(-0.4, 0.0, 1.1)  -- temperature, tint, contrast
 PostProcessMan:SetSplitToning(0.85, 0.95, 1.15, 1.1, 1.0, 0.9)  -- shadow rgb, highlight rgb
 ```
 
-Settings changed from Lua persist in `Settings.ini` when the player next saves their settings. If your activity sets a mood, restore the previous values when it ends.
+Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) lasts until the next Scene loads. It is never saved over the player's own settings.
 
 ## Shaders
 
