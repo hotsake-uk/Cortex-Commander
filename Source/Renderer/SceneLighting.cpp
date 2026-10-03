@@ -438,7 +438,8 @@ void SceneLighting::Update() {
 	m_EffectiveSky = m_Settings.SkyColor * daylight;
 	// Caves get a little darker at night too, but not as much as the outdoors.
 	m_EffectiveAmbient = m_Settings.Ambient * (0.6F + 0.4F * dayFactor);
-	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.6F + 0.4F * dayFactor);
+	// The readability floor drops more at night than the cave ambient does, so night battles stay dark and moody.
+	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.25F + 0.75F * dayFactor);
 
 	if (!EnsureWorldResources()) {
 		return;
