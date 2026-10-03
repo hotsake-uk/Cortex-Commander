@@ -172,6 +172,8 @@ void CameraMan::ResetAllScreenShake() {
 	for (int screenId = 0; screenId < g_FrameMan.GetScreenCount(); ++screenId) {
 		Screen& screen = m_Screens[screenId];
 		screen.ScreenShakeMagnitude = 0;
+		screen.ScreenShakeTime = 0;
+		screen.ScreenShakeOffset.Reset();
 		screen.ScrollTimer.Reset();
 	}
 }
@@ -228,6 +230,10 @@ void CameraMan::Update(int screenId) {
 		}
 	}
 
+	// Take last update's shake back out, so the view follows its target smoothly underneath the shake.
+	screen.Offset -= screen.ScreenShakeOffset;
+	screen.ScreenShakeOffset.Reset();
+
 	Vector oldOffset(screen.Offset);
 
 	Vector offsetTarget;
@@ -256,11 +262,16 @@ void CameraMan::Update(int screenId) {
 		// So just hard-coded multiply to make 100% in settings correspond to 30% here (much easier than rebalancing everything).
 		const float screenShakeScale = 0.3F;
 
-		Vector screenShakeOffset(1.0F, 0.0F);
-		screenShakeOffset.RadRotate(RandomNormalNum() * c_PI);
-		screenShakeOffset *= screen.ScreenShakeMagnitude * m_ScreenShakeStrength * screenShakeScale;
-
-		newOffset += screenShakeOffset;
+		// Smooth noise (a few incommensurate sines) rather than a new random direction every frame: it reads as a rumble instead of jitter,
+		// doesn't depend on the frame rate, and doesn't use the sim's random numbers.
+		float shakeAmount = screen.ScreenShakeMagnitude * m_ScreenShakeStrength * screenShakeScale;
+		if (shakeAmount > 0.0F) {
+			screen.ScreenShakeTime += static_cast<float>(screen.ScrollTimer.GetElapsedRealTimeS());
+			auto noise = [](float x) { return 0.6F * std::sin(x) + 0.3F * std::sin(2.71F * x + 1.3F) + 0.1F * std::sin(5.13F * x + 2.1F); };
+			float phase = screen.ScreenShakeTime * c_TwoPI * 11.0F;
+			screen.ScreenShakeOffset.SetXY(noise(phase) * shakeAmount, noise(phase * 1.13F + 17.0F) * shakeAmount);
+			newOffset += screen.ScreenShakeOffset;
+		}
 	} else {
 		screen.ScreenShakeMagnitude = 0;
 	}
