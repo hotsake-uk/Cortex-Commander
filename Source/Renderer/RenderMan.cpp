@@ -52,7 +52,15 @@ void RenderMan::Destroy() {
 
 std::shared_ptr<DrawCall> RenderMan::BeginDraw() {
 	ZoneScoped;
-	std::shared_ptr<DrawCall> drawCall = m_ActiveBatch->m_DrawCalls.emplace_back(new DrawCall(m_ActiveBatch->m_DrawCalls.size()));
+	std::shared_ptr<DrawCall> drawCall;
+	if (!m_ActiveBatch->m_FreeDrawCalls.empty()) {
+		drawCall = std::move(m_ActiveBatch->m_FreeDrawCalls.back());
+		m_ActiveBatch->m_FreeDrawCalls.pop_back();
+		drawCall->Reset(static_cast<int>(m_ActiveBatch->m_DrawCalls.size()));
+	} else {
+		drawCall.reset(new DrawCall(static_cast<int>(m_ActiveBatch->m_DrawCalls.size())));
+	}
+	m_ActiveBatch->m_DrawCalls.push_back(drawCall);
 	drawCall->m_Shader = m_ActiveBatch->m_CurrentShader;
 	drawCall->m_TextureId = m_ShapesTexture->GetTextureId();
 	drawCall->m_BlendMode = m_ActiveBatch->m_CurrentBlendMode;

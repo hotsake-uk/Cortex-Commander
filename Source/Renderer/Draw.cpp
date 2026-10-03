@@ -18,6 +18,18 @@ namespace {
 		}
 	}
 } // namespace
+namespace {
+	/// Appends a textured rectangle to a draw call in place, reusing the draw call's vector capacity. Same layout as Shape::Rectangle.
+	void AppendRectangle(DrawCall& draw, const FloatRect& rect, const FloatRect& uv, glm::u8vec4 color) {
+		int base = static_cast<int>(draw.m_Vertices.size());
+		draw.m_Vertices.emplace_back(glm::vec2(rect.x, rect.y), glm::vec2(uv.x, uv.y), color);
+		draw.m_Vertices.emplace_back(glm::vec2(rect.x + rect.w, rect.y + rect.h), glm::vec2(uv.x + uv.w, uv.y + uv.h), color);
+		draw.m_Vertices.emplace_back(glm::vec2(rect.x + rect.w, rect.y), glm::vec2(uv.x + uv.w, uv.y), color);
+		draw.m_Vertices.emplace_back(glm::vec2(rect.x, rect.y + rect.h), glm::vec2(uv.x, uv.y + uv.h), color);
+		draw.m_Indices.insert(draw.m_Indices.end(), {base, base + 1, base + 2, base, base + 3, base + 1});
+	}
+} // namespace
+
 // Raylib-style wrappers kept for the remaining CPU-side draw paths (editor/placement previews, menus). They draw on the active render batch,
 // in whatever space its camera uses. Rotations follow the old vendored raylib convention: radians, with positive values rotating counter-clockwise on screen.
 namespace {
@@ -63,9 +75,7 @@ void RTE::DrawTexturePro(BITMAP* bitmap, Rectangle source, Rectangle dest, Vecto
 	std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 	draw->m_TextureId = g_GLStateMan.GetStaticTextureFromBitmap(bitmap).id;
 	draw->m_Indexed = bitmap_color_depth(bitmap) == 8;
-	Shape::Shape rect = Shape::Rectangle(FloatRect(0.0f, 0.0f, dest.width, dest.height), uv, ToColor(tint));
-	draw->m_Vertices = std::move(rect.m_Vertices);
-	draw->m_Indices = std::move(rect.m_Indices);
+	AppendRectangle(*draw, FloatRect(0.0f, 0.0f, dest.width, dest.height), uv, ToColor(tint));
 	// dest.x/y is where the origin point ends up; rotation is around it.
 	glm::mat4 transform = glm::translate(glm::vec3(dest.x, dest.y, 0.0f));
 	transform = glm::rotate(transform, -rotation, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -84,9 +94,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			Shape::Shape rect = Shape::Rectangle(FloatRect(pos.x, pos.y, texture->GetDimensions().w, texture->GetDimensions().h), tint);
-			draw->m_Vertices = std::move(rect.m_Vertices);
-			draw->m_Indices = std::move(rect.m_Indices);
+			AppendRectangle(*draw, FloatRect(pos.x, pos.y, texture->GetDimensions().w, texture->GetDimensions().h), FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
 			return draw;
 		}
 
@@ -95,9 +103,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			Shape::Shape rect = Shape::Rectangle(dest, tint);
-			draw->m_Vertices = std::move(rect.m_Vertices);
-			draw->m_Indices = std::move(rect.m_Indices);
+			AppendRectangle(*draw, dest, FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
 			return draw;
 		}
 
@@ -106,9 +112,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			Shape::Shape rect = Shape::Rectangle(FloatRect(0, 0, texture->GetDimensions().w, texture->GetDimensions().h), tint);
-			draw->m_Vertices = std::move(rect.m_Vertices);
-			draw->m_Indices = std::move(rect.m_Indices);
+			AppendRectangle(*draw, FloatRect(0, 0, texture->GetDimensions().w, texture->GetDimensions().h), FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
 			glm::mat4 transform = glm::translate(glm::vec3(pos, 0.0f));
 			transform = glm::rotate(transform, angle, glm::vec3(0.0f, 0.0f, 1.0f));
 			transform = glm::scale(transform, glm::vec3(scale, 1.0f));
@@ -123,9 +127,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = g_GLStateMan.GetStaticTextureFromBitmap(bitmap).id;
 			draw->m_Indexed = bitmap_color_depth(bitmap) == 8;
-			Shape::Shape rect = Shape::Rectangle(FloatRect(0, 0, bitmap->w, bitmap->h), tint);
-			draw->m_Vertices = std::move(rect.m_Vertices);
-			draw->m_Indices = std::move(rect.m_Indices);
+			AppendRectangle(*draw, FloatRect(0, 0, bitmap->w, bitmap->h), FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
 			glm::mat4 transform = glm::translate(glm::vec3(pos, 0.0f));
 			transform = glm::rotate(transform, angle, glm::vec3(0.0f, 0.0f, 1.0f));
 			transform = glm::scale(transform, glm::vec3(scale, 1.0f));
@@ -144,9 +146,7 @@ namespace RTE {
 			    source.y / texture->GetDimensions().h,
 			    source.w / texture->GetDimensions().w,
 			    source.h / texture->GetDimensions().h);
-			Shape::Shape rect = Shape::Rectangle(dest, uv, tint);
-			draw->m_Vertices = std::move(rect.m_Vertices);
-			draw->m_Indices = std::move(rect.m_Indices);
+			AppendRectangle(*draw, dest, uv, tint);
 			return draw;
 		}
 

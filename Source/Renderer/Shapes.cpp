@@ -73,8 +73,9 @@ namespace {
 
 	std::shared_ptr<DrawCall> Submit(Shape::Shape&& shape, GLenum drawMode = GL_TRIANGLES) {
 		std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
-		draw->m_Vertices = std::move(shape.m_Vertices);
-		draw->m_Indices = std::move(shape.m_Indices);
+		// Append rather than move, so pooled draw calls keep their capacity.
+		draw->m_Vertices.insert(draw->m_Vertices.end(), shape.m_Vertices.begin(), shape.m_Vertices.end());
+		draw->m_Indices.insert(draw->m_Indices.end(), shape.m_Indices.begin(), shape.m_Indices.end());
 		draw->m_TextureId = g_RenderMan.GetShapeTexture();
 		draw->m_Indexed = false;
 		draw->m_DrawMode = drawMode;
@@ -489,7 +490,17 @@ Shape::Shape Shape::Lines::Line(const glm::vec2& start, const glm::vec2& end, Co
 }
 
 std::shared_ptr<DrawCall> Draw::Pixel(glm::vec2 position, Color color) {
-	return Submit(Shape::Pixel(position, color));
+	// Hot path (every MOPixel), so build the quad in place without temporary vectors.
+	std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
+	glm::u8vec4 vertexColor = color;
+	draw->m_Vertices.emplace_back(position, glm::vec2(0.0f, 0.0f), vertexColor);
+	draw->m_Vertices.emplace_back(position + glm::vec2(1.0f, 1.0f), glm::vec2(1.0f, 1.0f), vertexColor);
+	draw->m_Vertices.emplace_back(position + glm::vec2(1.0f, 0.0f), glm::vec2(1.0f, 0.0f), vertexColor);
+	draw->m_Vertices.emplace_back(position + glm::vec2(0.0f, 1.0f), glm::vec2(0.0f, 1.0f), vertexColor);
+	draw->m_Indices.insert(draw->m_Indices.end(), {0, 1, 2, 0, 3, 1});
+	draw->m_TextureId = g_RenderMan.GetShapeTexture();
+	draw->m_Indexed = false;
+	return draw;
 }
 
 std::shared_ptr<DrawCall> Draw::Pixels(const std::vector<std::pair<int, int>>& positions, Color color) {

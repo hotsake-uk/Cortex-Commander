@@ -76,7 +76,7 @@ void RenderBatch::BeginFrame() {
 	m_CurrentZ = c_DefaultDrawDepth;
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
-	m_DrawCalls.clear();
+	RecycleDrawCalls();
 }
 
 void RenderBatch::EndFrame() {
@@ -212,9 +212,19 @@ void RenderBatch::Render() {
 	}
 }
 
+void RenderBatch::RecycleDrawCalls() {
+	for (std::shared_ptr<DrawCall>& drawCall: m_DrawCalls) {
+		// Only reuse draw calls nobody else is holding on to.
+		if (drawCall.use_count() == 1) {
+			m_FreeDrawCalls.push_back(std::move(drawCall));
+		}
+	}
+	m_DrawCalls.clear();
+}
+
 void RenderBatch::ClearDraws() {
 	ZoneScoped;
-	m_DrawCalls.clear();
+	RecycleDrawCalls();
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 }
