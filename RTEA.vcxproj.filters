@@ -175,6 +175,9 @@
     <ClInclude Include="Source\Managers\PresetMan.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\ModernHUD.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\FluidSim.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -779,6 +782,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\PresetMan.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\ModernHUD.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\FluidSim.cpp">

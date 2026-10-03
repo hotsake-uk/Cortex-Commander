@@ -73,6 +73,11 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Cone lights:** available to code via `PostProcessMan::RegisterConeLight`.
 - **Lights near terrain:** a light no longer shadows itself on the terrain right around it, so a lamp lying in grass still lights up its surroundings.
 
+**Modern HUD** (`ModernHUD`, in Video settings and F6) is drawn crisply at window resolution on top of the classic HUD. It is off by default. It adds:
+- A minimap of the terrain, your view and every unit, coloured by team.
+- Health and ammo bars for the unit you control.
+- A feed of units lost.
+
 Press **F8** for **Photo Mode**:
 - Freezes time and hides the HUD and screen text.
 - Free camera: drag with the right mouse button, or use the arrow keys.

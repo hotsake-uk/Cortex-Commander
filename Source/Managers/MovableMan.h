@@ -54,6 +54,7 @@ namespace RTE {
 		friend class SettingsMan;
 		friend struct ManagerLuaBindings;
 		friend class DebugMan;
+		friend class ModernHUD;
 
 		/// Public member variable, method and friend function declarations
 	public:

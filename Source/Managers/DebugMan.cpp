@@ -18,6 +18,7 @@
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "ModernHUD.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -32,6 +33,11 @@ void Draw() {
 
 void DebugMan::DrawImGui() {
 	UpdateMouseOwnership();
+
+	// The modern HUD, unless photo mode is hiding the HUD.
+	if (!IsPhotoModeHidingHUD()) {
+		ModernHUD::Draw();
+	}
 
 	if (m_ShowWorldDebug) {
 		WorldDebugGUI();
@@ -123,6 +129,10 @@ void DebugMan::WorldDebugGUI() {
 		ImGui::SameLine();
 		ImGui::Checkbox("Extra effects", &settings.DistortionEnabled);
 		ImGui::Checkbox("Radiance cascades GI", &settings.RadianceCascades);
+		bool modernHUD = ModernHUD::IsEnabled();
+		if (ImGui::Checkbox("Modern HUD", &modernHUD)) {
+			ModernHUD::SetEnabled(modernHUD);
+		}
 		bool smoothText = TextOverlay::IsEnabled();
 		if (ImGui::Checkbox("Smooth HUD text", &smoothText)) {
 			TextOverlay::SetEnabled(smoothText);

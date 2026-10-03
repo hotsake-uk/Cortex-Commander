@@ -862,6 +862,7 @@
     <ClInclude Include="Source\Managers\TerrainFire.h" />
     <ClInclude Include="Source\Managers\TerrainCollapse.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
+    <ClInclude Include="Source\Managers\ModernHUD.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
     <ClInclude Include="Source\Managers\TimerMan.h" />
     <ClInclude Include="Source\Managers\UInputMan.h" />
@@ -1407,6 +1408,7 @@
     <ClCompile Include="Source\Managers\TerrainFire.cpp" />
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp" />
     <ClCompile Include="Source\Managers\FluidSim.cpp" />
+    <ClCompile Include="Source\Managers\ModernHUD.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />
     <ClCompile Include="Source\Managers\UInputMan.cpp" />

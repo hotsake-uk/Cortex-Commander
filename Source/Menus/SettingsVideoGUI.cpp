@@ -1,5 +1,6 @@
 #include "SettingsVideoGUI.h"
 #include "TextOverlay.h"
+#include "ModernHUD.h"
 #include "PostProcessMan.h"
 #include "WindowMan.h"
 #include "FrameMan.h"
@@ -64,6 +65,10 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 		}
 	}
 	UpdateVisualEffectControls();
+	m_ModernHUDCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxModernHUD"));
+	if (m_ModernHUDCheckbox) {
+		m_ModernHUDCheckbox->SetCheck(ModernHUD::IsEnabled());
+	}
 	m_SmoothHUDTextCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxSmoothHUDText"));
 	if (m_SmoothHUDTextCheckbox) {
 		m_SmoothHUDTextCheckbox->SetCheck(TextOverlay::IsEnabled());
@@ -462,6 +467,8 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				lightingSettings.LivingWorld = enabled;
 				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
 				lightingSettings.EffectsParticles = enabled ? std::max(lightingSettings.EffectsParticles, 1.0F) : 0.0F;
+			} else if (m_ModernHUDCheckbox && guiEvent.GetControl() == m_ModernHUDCheckbox) {
+				ModernHUD::SetEnabled(m_ModernHUDCheckbox->GetCheck());
 			} else if (m_SmoothHUDTextCheckbox && guiEvent.GetControl() == m_SmoothHUDTextCheckbox) {
 				TextOverlay::SetEnabled(m_SmoothHUDTextCheckbox->GetCheck());
 			} else if (guiEvent.GetControl() == m_UseMultiDisplaysCheckbox) {
