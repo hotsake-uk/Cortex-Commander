@@ -25,6 +25,20 @@ namespace RTE {
 	private:
 		DrawCall(int id) :
 			m_Id(id) {}
+
+		/// Resets this for reuse from the pool, keeping the vectors' capacity.
+		void Reset(int id) {
+			m_Vertices.clear();
+			m_Indices.clear();
+			m_Indexed = true;
+			m_TextureId = 0;
+			m_BlendMode = BlendMode();
+			m_Shader = nullptr;
+			m_UniformValues.clear();
+			m_Scissor.reset();
+			m_DrawMode = GL_TRIANGLES;
+			m_Id = id;
+		}
 		DrawCall(DrawCall&& drawCall) = default;
 		int m_Id{0};
 		DrawCall(DrawCall&) = delete;

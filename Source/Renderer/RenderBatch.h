@@ -40,6 +40,7 @@ namespace RTE {
 		constexpr static float c_DrawDepthIncrement = -(c_FarDepth - c_NearDepth) / 16777216.0f;
 		VertexBuffer m_VertexBuffers{};
 		std::vector<std::shared_ptr<DrawCall>> m_DrawCalls{};
+		std::vector<std::shared_ptr<DrawCall>> m_FreeDrawCalls{}; //!< Finished draw calls kept for reuse, so drawing doesn't allocate every frame.
 		float m_CurrentDepth{0.0f};
 		float m_CurrentZ{0.0f};
 		const Shader* m_CurrentShader{nullptr};
@@ -70,6 +71,9 @@ namespace RTE {
 			Render();
 			ClearDraws();
 		}
+
+		/// Moves the current draw calls to the free list for reuse.
+		void RecycleDrawCalls();
 
 	private:
 		void ApplyDrawCalls();
