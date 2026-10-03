@@ -510,3 +510,33 @@ Work happens on the local `modernisation` branch. Each entry corresponds to one 
 - Radiance-cascade GI.
 - An SDL_GPU backend.
 - A CI-run golden-image harness. The scripted screenshot comparisons currently live outside the repo.
+
+
+### Status update: performance, polish, tooling
+
+- **Performance:**
+  - Draw calls are pooled and quads built in place. Final build on the night bunker stress scene: 169 → 250 FPS, draw time 4.0 → 2.5 ms.
+  - Verified in the shipping Final configuration.
+- **New effects:**
+  - One-bounce screen-space indirect light.
+  - Embers rising from fire.
+  - Dust motes in god rays.
+  - Per-object `RenderBlendMode` (Normal, Additive, Screen) and `RenderOpacity`, cascading to attachables.
+- **Classic parity:**
+  - With Lighting, Bloom and Extra Effects off, the image matches `development` side by side.
+  - The tonemap is neutral when lighting is off.
+  - Fixed: a highlight shoulder of 1.0 produced NaNs and a black screen.
+- **Tooling:** `Tools/RenderTest`, an in-repo scenario capture harness:
+  - Scenario settings, a dev mod, burst captures, baseline comparison, contact sheets.
+  - README included.
+- **Formatting:** lines changed on this branch are clang-format clean (formatted with clang-format-diff, so upstream code is left alone).
+
+### Remaining roadmap (not started)
+
+- **GPU HUD and native-resolution UI and fonts (M6):** replace the CPU HUD bridge and the Allegro GUI backend.
+- **Sprite atlas and instanced sprite batching:** the next large performance step.
+- **Dirty-rect terrain uploads:** visible layers still re-upload every frame. Cheap enough now (2.5 ms total draw), but wasteful.
+- **Full radiance-cascade GI:** the screen-space bounce covers most of the visual win.
+- **Graphics quality presets:** Potato to Ultra.
+- **An SDL_GPU backend (M8)** behind the renderer abstraction.
+- **CI golden-image runs** using `Tools/RenderTest`.
