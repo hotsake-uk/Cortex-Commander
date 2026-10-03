@@ -15,6 +15,8 @@ namespace RTE {
 			std::vector<int> m_Indices{};
 		};
 		Shape Pixel(glm::vec2 position, Color color);
+		/// Many single pixels in one shape.
+		Shape Pixels(const std::vector<std::pair<int, int>>& positions, Color color);
 		Shape Line(glm::vec2 start, glm::vec2 end, Color color);
 		Shape Line(glm::vec2 start, glm::vec2 end, float thickness, Color color);
 		Shape LineStrip(const std::vector<glm::vec2>& points, Color color);
@@ -51,6 +53,7 @@ namespace RTE {
 	} // namespace Shape
 	namespace Draw {
 		std::shared_ptr<DrawCall> Pixel(glm::vec2 position, Color color);
+		std::shared_ptr<DrawCall> Pixels(const std::vector<std::pair<int, int>>& positions, Color color);
 		std::shared_ptr<DrawCall> Line(glm::vec2 start, glm::vec2 end, Color color);
 		std::shared_ptr<DrawCall> Line(glm::vec2 start, glm::vec2 end, float thickness, Color color);
 		std::shared_ptr<DrawCall> LineStrip(const std::vector<glm::vec2>& points, Color color);
