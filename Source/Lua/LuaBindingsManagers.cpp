@@ -190,7 +190,15 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) 
 	return luabind::class_<PostProcessMan>("PostProcessManager")
 
 	    .def("RegisterPostEffect", &PostProcessMan::RegisterPostEffect)
-	    .def("AddLight", &PostProcessMan::AddLight);
+	    .def("AddLight", &PostProcessMan::AddLight)
+	    .property("TimeOfDay", &PostProcessMan::GetTimeOfDay, &PostProcessMan::SetTimeOfDay)
+	    .property("DayLengthMinutes", &PostProcessMan::GetDayLengthMinutes, &PostProcessMan::SetDayLengthMinutes)
+	    .property("WeatherType", &PostProcessMan::GetWeatherType, &PostProcessMan::SetWeatherType)
+	    .property("WeatherIntensity", &PostProcessMan::GetWeatherIntensity, &PostProcessMan::SetWeatherIntensity)
+	    .property("Wind", &PostProcessMan::GetWind, &PostProcessMan::SetWind)
+	    .property("LightingEnabled", &PostProcessMan::GetLightingEnabled, &PostProcessMan::SetLightingEnabled)
+	    .def("SetSkyColor", &PostProcessMan::SetSkyColor)
+	    .def("SetAmbientColor", &PostProcessMan::SetAmbientColor);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PresetMan) {

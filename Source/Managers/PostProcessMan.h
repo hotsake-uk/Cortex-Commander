@@ -14,6 +14,8 @@
 #include <list>
 #include <vector>
 #include <mutex>
+#include <algorithm>
+#include <cmath>
 
 #define g_PostProcessMan PostProcessMan::Instance()
 
@@ -193,6 +195,25 @@ namespace RTE {
 		/// Gets the scene lighting, creating it on first use (it needs a GL context).
 		/// @return The scene lighting.
 		SceneLighting* GetSceneLighting();
+
+#pragma region Atmosphere Lua Accessors
+		float GetTimeOfDay() const { return m_LightingSettings.TimeOfDay; }
+		void SetTimeOfDay(float hours) { m_LightingSettings.TimeOfDay = std::fmod(std::fmod(hours, 24.0F) + 24.0F, 24.0F); }
+		float GetDayLengthMinutes() const { return m_LightingSettings.DayLengthMinutes; }
+		void SetDayLengthMinutes(float minutes) { m_LightingSettings.DayLengthMinutes = std::max(minutes, 0.0F); }
+		int GetWeatherType() const { return m_LightingSettings.WeatherType; }
+		void SetWeatherType(int weatherType) { m_LightingSettings.WeatherType = std::clamp(weatherType, 0, 2); }
+		float GetWeatherIntensity() const { return m_LightingSettings.WeatherIntensity; }
+		void SetWeatherIntensity(float intensity) { m_LightingSettings.WeatherIntensity = std::clamp(intensity, 0.0F, 1.0F); }
+		float GetWind() const { return m_LightingSettings.Wind; }
+		void SetWind(float wind) { m_LightingSettings.Wind = wind; }
+		bool GetLightingEnabled() const { return m_LightingSettings.Enabled; }
+		void SetLightingEnabled(bool enabled) { m_LightingSettings.Enabled = enabled; }
+		/// Sets the sky light color, 0-255 gamma space per channel. Values above 255 brighten.
+		void SetSkyColor(float red, float green, float blue) { m_LightingSettings.SkyColor = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
+		/// Sets the ambient light color where no sky light reaches, 0-255 gamma space per channel.
+		void SetAmbientColor(float red, float green, float blue) { m_LightingSettings.Ambient = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
+#pragma endregion
 
 		/// Gets the lighting and post-processing settings. These persist in Settings.ini and can be changed live.
 		/// @return The lighting settings.
