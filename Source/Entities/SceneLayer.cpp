@@ -562,8 +562,10 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& cam
 
 	tiledOffsetStartY += m_Offset.m_Y;
 
-	Draw::Lines::Line(glm::vec2(areaToCoverX, 0.0f), glm::vec2(areaToCoverX, g_SceneMan.GetSceneHeight()), g_RedColor);
-	Draw::Lines::Line(glm::vec2(tiledOffsetStartX, 0.0f), glm::vec2(tiledOffsetStartX, g_SceneMan.GetSceneHeight()), g_YellowGlowColor);
+	if (g_DebugMan.DrawTilingBounds()) {
+		Draw::Lines::Line(glm::vec2(areaToCoverX, 0.0f), glm::vec2(areaToCoverX, g_SceneMan.GetSceneHeight()), g_RedColor);
+		Draw::Lines::Line(glm::vec2(tiledOffsetStartX, 0.0f), glm::vec2(tiledOffsetStartX, g_SceneMan.GetSceneHeight()), g_YellowGlowColor);
+	}
 
 	for (int tiledOffsetX = tiledOffsetStartX; tiledOffsetX < areaToCoverX; tiledOffsetX += bitmapWidth) {
 		int destX =  tiledOffsetX;

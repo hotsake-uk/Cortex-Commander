@@ -57,5 +57,10 @@ namespace RTE {
 		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, FloatRect source, glm::vec2 pos, Color tint);
 		std::shared_ptr<DrawCall> DrawTexture(Texture* texture, const FloatRect& source, const FloatRect& dest, const Color& tint = {255, 255, 255, 255});
 		std::shared_ptr<DrawCall> DrawTexture(Texture* bitmap, FloatRect source, FloatRect dest, glm::vec2 origin, float rotation, Color tint);
+
+		/// Draws a (non owned) Allegro BITMAP, using its cached static GL texture. 8 bit bitmaps are drawn palette indexed.
+		/// @param origin Offset from pos to the bitmap's top left corner, before rotation and scale.
+		/// @param angle Rotation in radians.
+		std::shared_ptr<DrawCall> DrawBitmap(BITMAP* bitmap, glm::vec2 pos, glm::vec2 origin, float angle, glm::vec2 scale, Color tint = {255, 255, 255, 255});
 	}
 }

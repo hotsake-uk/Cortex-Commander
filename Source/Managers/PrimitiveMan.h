@@ -28,8 +28,7 @@ namespace RTE {
 		/// @param player Player to draw for.
 		/// @param targetBitmap Bitmap to draw on.
 		/// @param targetPos Position to draw.
-		void DrawPrimitives(int player, BITMAP* targetBitmap, const Vector& targetPos) const;
-		void DrawPrimitives(int player, const Camera& camera) const {}
+		void DrawPrimitives(int player, const Camera& camera) const;
 #pragma endregion
 
 #pragma region Primitive Draw Scheduling

@@ -1,12 +1,14 @@
 #pragma once
 #include "Color.h"
 #include "glm/fwd.hpp"
+#include <array>
 #include <vector>
 #include <memory>
 #include "Vertex.h"
 
 namespace RTE {
 	class DrawCall;
+	/// Shapes are in scene/screen pixel space: a pixel at (x, y) covers [x, x+1). Angles for arcs/sectors/rings are in degrees.
 	namespace Shape {
 		struct Shape {
 			std::vector<Vertex> m_Vertices{};
@@ -18,6 +20,8 @@ namespace RTE {
 		Shape LineStrip(const std::vector<glm::vec2>& points, Color color);
 		Shape LineStrip(const std::vector<glm::vec2>& points, float thickness, Color color);
 		Shape LineBezier(glm::vec2 start, glm::vec2 end, Color color);
+		/// Cubic bezier through 4 control points (start, guide A, guide B, end).
+		Shape LineSpline(const std::array<glm::vec2, 4>& controlPoints, Color color);
 		Shape Circle(glm::vec2 center, float radius, Color color);
 		Shape CircleSector(glm::vec2 center, float radius, float startAngle, float endAngle, Color color);
 		Shape CircleLines(glm::vec2 center, float radius, Color color);
@@ -37,6 +41,7 @@ namespace RTE {
 		Shape TriangleLines(glm::vec2 point1, glm::vec2 point2, glm::vec2 point3, Color color);
 		Shape TriangleStrip(std::vector<glm::vec2> points, Color color);
 		Shape Polygon(std::vector<glm::vec2> points, Color color);
+		Shape PolygonLines(const std::vector<glm::vec2>& points, Color color);
 		/// Lines mode shapes. Don't use for primitives.
 		namespace Lines {
 			Shape VectorArrow(glm::vec2 pos, glm::vec2 vector, Color color);
@@ -51,10 +56,11 @@ namespace RTE {
 		std::shared_ptr<DrawCall> LineStrip(const std::vector<glm::vec2>& points, Color color);
 		std::shared_ptr<DrawCall> LineStrip(const std::vector<glm::vec2>& points, float thickness, Color color);
 		std::shared_ptr<DrawCall> LineBezier(glm::vec2 start, glm::vec2 end, Color color);
+		std::shared_ptr<DrawCall> LineSpline(const std::array<glm::vec2, 4>& controlPoints, Color color);
 		std::shared_ptr<DrawCall> Circle(glm::vec2 center, float radius, Color color);
 		std::shared_ptr<DrawCall> CircleSector(glm::vec2 center, float radius, float startAngle, float endAngle, Color color);
 		std::shared_ptr<DrawCall> CircleLines(glm::vec2 center, float radius, Color color);
-		std::shared_ptr<DrawCall> CircleLinesSector(glm::vec2 center, float radius, Color color);
+		std::shared_ptr<DrawCall> CircleLinesSector(glm::vec2 center, float radius, float startAngle, float endAngle, Color color);
 		std::shared_ptr<DrawCall> Ellipse(glm::vec2 center, float radiusH, float radiusV, Color color);
 		std::shared_ptr<DrawCall> EllipseLines(glm::vec2 center, float radiusH, float radiusV, Color color);
 		std::shared_ptr<DrawCall> Ring(glm::vec2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, Color color);
@@ -68,6 +74,7 @@ namespace RTE {
 		std::shared_ptr<DrawCall> TriangleLines(glm::vec2 point1, glm::vec2 point2, glm::vec2 point3, Color color);
 		std::shared_ptr<DrawCall> TriangleStrip(std::vector<glm::vec2> points, Color color);
 		std::shared_ptr<DrawCall> Polygon(std::vector<glm::vec2> points, Color color);
+		std::shared_ptr<DrawCall> PolygonLines(const std::vector<glm::vec2>& points, Color color);
 		namespace Lines {
 			std::shared_ptr<DrawCall> VectorArrow(glm::vec2 pos, glm::vec2 vector, Color color);
 			std::shared_ptr<DrawCall> Rectangle(const FloatRect& rect, Color color);

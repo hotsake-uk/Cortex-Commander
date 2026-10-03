@@ -109,8 +109,8 @@ void RenderBatch::Render() {
 	GLuint activeTexture = g_RenderMan.GetShapeTexture();
 	GLint maxActiveTextures;
 	glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxActiveTextures);
-	BlendMode activeBlendMode(Blend::ALPHA);
-	activeBlendMode.Enable();
+	// Start with blending disabled and track that, so the first draw call enables its own blend mode (default constructed BlendMode is Blend::NONE).
+	BlendMode activeBlendMode{};
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 	glDisable(GL_MULTISAMPLE);
