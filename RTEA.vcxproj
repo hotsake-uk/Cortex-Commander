@@ -864,6 +864,7 @@
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
     <ClInclude Include="Source\Managers\SmokeGrid.h" />
+    <ClInclude Include="Source\Managers\WeatherEffects.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
     <ClInclude Include="Source\Managers\TimerMan.h" />
     <ClInclude Include="Source\Managers\UInputMan.h" />

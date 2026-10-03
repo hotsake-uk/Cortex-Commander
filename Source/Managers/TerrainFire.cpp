@@ -12,6 +12,7 @@
 #include "TimerMan.h"
 #include "Vector.h"
 #include "EffectsParticles.h"
+#include "WeatherEffects.h"
 
 #include <algorithm>
 #include <array>
@@ -337,9 +338,16 @@ void TerrainFire::Update() {
 		return;
 	}
 
-	// Spread to neighbours (fire climbs: up is likelier than sideways, down least), then burn down.
+	// Spread to neighbours (fire climbs: up is likelier than sideways, down least, and downwind likelier than upwind), then burn down.
+	// Rain and snow damp it: it spreads less and burns out sooner. In dry wind, embers carry it a little way downwind.
 	static constexpr int neighbours[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
-	static constexpr float directionScale[4] = {2.2F, 1.0F, 1.0F, 0.4F};
+	float rain = WeatherEffects::GetRain();
+	float snow = WeatherEffects::GetSnow();
+	float wind = WeatherEffects::GetWind();
+	float damping = std::max(1.0F - 0.75F * rain - 0.35F * snow, 0.1F);
+	const float directionScale[4] = {2.2F, 1.0F - 0.7F * std::max(wind, 0.0F) + 0.8F * std::max(-wind, 0.0F), 1.0F + 0.8F * std::max(wind, 0.0F) - 0.7F * std::max(-wind, 0.0F), 0.4F};
+	float emberChance = (rain == 0.0F && snow == 0.0F) ? 0.006F * std::abs(wind) : 0.0F;
+	float quenchChance = 0.3F * rain + 0.1F * snow;
 	std::vector<std::pair<int, int>> spreadTo;
 	std::vector<int> burntOut;
 	std::vector<int> goneOut;
@@ -351,9 +359,16 @@ void TerrainFire::Update() {
 		}
 		const FuelProperties& fuel = c_Fuels[static_cast<int>(pixel.Kind)];
 		for (int i = 0; i < 4; ++i) {
-			if (Random01(s_Random) < fuel.Spread * directionScale[i]) {
+			if (Random01(s_Random) < fuel.Spread * directionScale[i] * damping) {
 				spreadTo.emplace_back(pixel.X + neighbours[i][0], pixel.Y + neighbours[i][1]);
 			}
+		}
+		if (emberChance > 0.0F && Random01(s_Random) < emberChance) {
+			int distance = 3 + static_cast<int>(Random01(s_Random) * 9.0F);
+			spreadTo.emplace_back(pixel.X + (wind > 0.0F ? distance : -distance), pixel.Y - static_cast<int>(Random01(s_Random) * 5.0F));
+		}
+		if (quenchChance > 0.0F && Random01(s_Random) < quenchChance) {
+			--pixel.TicksLeft;
 		}
 		if (--pixel.TicksLeft <= 0) {
 			burntOut.push_back(key);

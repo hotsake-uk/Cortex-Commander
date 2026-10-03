@@ -175,6 +175,9 @@
     <ClInclude Include="Source\Managers\PresetMan.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\WeatherEffects.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\SmokeGrid.h">
       <Filter>Managers</Filter>
     </ClInclude>

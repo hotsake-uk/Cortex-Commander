@@ -76,6 +76,11 @@ Write-Scenario "FireSave" ($play + @{ TimeOfDay = 22 }) @("Render Test Fire", "R
 Write-Scenario "Grenades" $play @("Render Test Grenades")
 Write-Scenario "GrenadesNoBlock" ($play + @{ SmokeBlocksSight = 0 }) @("Render Test Grenades")
 Write-Scenario "LiquidWeapons" ($play + @{ TimeOfDay = 20 }) @("Render Test Liquid Weapons")
+Write-Scenario "WeatherCalm" ($play + @{ WeatherType = 0; Wind = 0 }) @("Render Test Weather")
+Write-Scenario "WeatherRain" ($play + @{ WeatherType = 1; WeatherIntensity = 0.9; Wind = 0 }) @("Render Test Weather")
+Write-Scenario "WeatherSnow" ($play + @{ WeatherType = 2; WeatherIntensity = 1; Wind = 0 }) @("Render Test Weather")
+Write-Scenario "WeatherWindRight" ($play + @{ WeatherType = 0; Wind = 150 }) @("Render Test Weather")
+Write-Scenario "WeatherWindLeft" ($play + @{ WeatherType = 0; Wind = -150 }) @("Render Test Weather")
 Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
 Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")
 
