@@ -469,3 +469,44 @@ Work happens on the local `modernisation` branch. Each entry corresponds to one 
   - N·L shading of dynamic lights.
   - Sky light from above.
 - **Performance:** the full lighting pipeline costs about 0.1 ms; frame time is dominated by CPU draw submission (one draw call per particle). Sprite batching is the next performance item.
+
+
+### Status update: M4 and M5 largely done, M6 and M7 started
+
+- **Lighting quality:**
+  - Edge normals.
+  - Emissive palette colours: gold sparkle and tracers glint.
+  - A foreground readability floor.
+  - Blending fixed so it never touches the normal attachment.
+- **Post stack:**
+  - Heat haze and explosion shockwaves.
+  - God rays from the sky into caves.
+  - Atmospheric haze on parallax layers.
+  - Colour grading (temperature, tint, contrast, split toning), film grain and chromatic aberration.
+- **World:**
+  - Procedural rain and snow: GPU-generated, wind-blown, kept out from under overhangs, lit by fire.
+  - A day/night cycle.
+  - Per-scene atmosphere INI keys. Rayvord Tundra and Paeterra Ice Caves now snow.
+  - Scorch marks with cooling, glowing crater rims (a GPU decal map; the physics bitmaps are never touched).
+- **Fog of war:** it was never drawn on the GPU renderer, because cameras had no team. It now draws with soft, dithered edges.
+- **Split-screen:** verified, with each screen lit independently.
+- **Settings and tools:**
+  - Video settings toggles for Lighting, Bloom and Heat/Shockwaves; turning all three off gives the classic look.
+  - The Graphics Lab exposes everything.
+- **Modding:**
+  - `Documentation/LightingAndEffects.md`.
+  - Lua API for lights, atmosphere and grading.
+  - INI lights on any `MovableObject`.
+- **Performance:**
+  - Draw-call merging, and sprite transforms baked on the CPU.
+  - Removed per-frame `std::cout` spam from `BigTexture` uploads.
+  - The lighting pipeline costs about 0.7 ms per screen.
+
+**Still open:**
+- A GPU HUD and fonts at native resolution.
+- A sprite atlas.
+- Dirty-rect terrain uploads.
+- A general visual particle system.
+- Radiance-cascade GI.
+- An SDL_GPU backend.
+- A CI-run golden-image harness. The scripted screenshot comparisons currently live outside the repo.
