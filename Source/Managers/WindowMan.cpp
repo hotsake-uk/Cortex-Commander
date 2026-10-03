@@ -857,12 +857,14 @@ void WindowMan::UploadFrame() {
 	GL_CHECK(glPixelStorei(GL_UNPACK_ALIGNMENT, 4));
 	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, g_FrameMan.GetBackBuffer32()->w, g_FrameMan.GetBackBuffer32()->h, GL_RGBA, GL_UNSIGNED_BYTE, g_FrameMan.GetBackBuffer32()->line[0]));
 
+	// The GUI is always composited on top of whatever is in the screen buffer, so don't let it depth test against earlier draws (e.g. the title screen's stars punched holes in menu text).
+	glClear(GL_DEPTH_BUFFER_BIT);
+
 	if (m_DrawPostProcessBuffer) {
 		Texture* postBuffer = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture().lock().get();
 		Draw::DrawTexture(postBuffer, {-1.0f, -1.0f, 2.0f, 2.0f});
-	} else {
-		Draw::DrawTexture(m_ScreenBuffer->GetColorTexture().lock().get(), {-1.0f, -1.0f, 2.0f, 2.0f});
 	}
+	// Otherwise the screen buffer already holds the frame, drawing it onto itself would be a feedback loop.
 	m_ScreenBlitShader->Begin();
 	Draw::DrawTexture(m_BackBuffer32Texture.get(), {-1.0f, -1.0f, 2.0f, 2.0f});
 	m_ScreenBlitShader->End();

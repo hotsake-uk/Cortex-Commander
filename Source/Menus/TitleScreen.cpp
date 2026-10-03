@@ -1,4 +1,7 @@
 #include "TitleScreen.h"
+#include "RenderMan.h"
+#include "Shapes.h"
+#include "Texture.h"
 
 #include "Constants.h"
 #include "WindowMan.h"
@@ -20,6 +23,10 @@
 #include "Draw.h"
 
 using namespace RTE;
+
+namespace {
+	glm::vec2 ToVec2(const Vector& vector) { return glm::vec2(vector.m_X, vector.m_Y); }
+} // namespace
 
 void TitleScreen::Clear() {
 	m_FadeAmount = 0;
@@ -540,7 +547,8 @@ void TitleScreen::UpdateTitleTransitions() {
 }
 
 void TitleScreen::Draw() {
-	Camera scrollCamera(m_ScrollOffset, Box(Vector(0.0f, 0.0f), g_WindowMan.GetResX(), g_WindowMan.GetResY()));
+	// All title screen element positions are computed in screen space (including scrolling), so draw with an unscrolled screen camera.
+	Camera scrollCamera(Vector(0.0f, 0.0f), Box(Vector(0.0f, 0.0f), g_WindowMan.GetResX(), g_WindowMan.GetResY()));
 	g_RenderMan.BeginFrame(&scrollCamera);
 	if (!m_FinishedPlayingIntro) {
 		if (m_IntroSequenceState >= IntroSequence::SlideshowFadeIn) {
@@ -592,11 +600,9 @@ void TitleScreen::Draw() {
 }
 
 void TitleScreen::DrawTitleScreenScene(const Camera& camera) {
-	rlDisableDepthTest();
-
-	Box nebulaTargetBox(Vector(), g_FrameMan.GetBackBuffer32()->w, g_FrameMan.GetBackBuffer32()->h);
-	m_Nebula.SetOffset(Vector(static_cast<float>((m_TitleScreenMaxWidth - m_Nebula.GetBitmap()->w) / 2), m_ScrollOffset.GetY()));
-	m_Nebula.Draw(nebulaTargetBox, nebulaTargetBox, true);
+	// The nebula scrolls at its scroll ratio relative to the title scroll offset.
+	glm::vec2 nebulaPos(static_cast<float>((m_TitleScreenMaxWidth - m_Nebula.GetBitmap()->w) / 2), -std::floor(m_ScrollOffset.GetY() * m_Nebula.GetScrollRatio().GetY()));
+	Draw::DrawTexture(m_Nebula.GetStaticTexture(), nebulaPos);
 
 	g_RenderMan.SetActiveBlendMode(Blend::SCREEN);
 
@@ -613,28 +619,25 @@ void TitleScreen::DrawTitleScreenScene(const Camera& camera) {
 	// m_Moon.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawAlpha);
 	m_Planet.SetPos(m_PlanetPos);
 	// m_Planet.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawAlpha);
-	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_Moon.GetSpriteFrame(0)), m_Moon.GetPos() + m_Moon.GetSpriteOffset(), {255, 255, 255, 255});
-	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_Planet.GetSpriteFrame(0)), m_Planet.GetPos() + m_Planet.GetSpriteOffset(), {255, 255, 255, 255});
+	Draw::DrawBitmap(m_Moon.GetSpriteFrame(0), ToVec2(m_Moon.GetPos()), ToVec2(m_Moon.GetSpriteOffset()), 0.0f, glm::vec2(1.0f));
+	Draw::DrawBitmap(m_Planet.GetSpriteFrame(0), ToVec2(m_Planet.GetPos()), ToVec2(m_Planet.GetSpriteOffset()), 0.0f, glm::vec2(1.0f));
 
 	m_StationOffset.SetXY(m_OrbitRadius, 0);
 	m_StationOffset.RadRotate(m_StationOrbitRotation);
 	m_Station.SetPos(m_PlanetPos + m_StationOffset);
 	m_Station.SetRotAngle(-c_HalfPI + m_StationOrbitRotation);
 	//m_Station.Draw(g_FrameMan.GetBackBuffer32());
-	DrawTextureEx(g_GLStateMan.GetStaticTextureFromBitmap(m_Station.GetSpriteFrame(0)), m_Station.GetPos() + m_Station.GetSpriteOffset() + Vector(m_Station.GetSpriteFrame(0)->w / 2, m_Station.GetSpriteFrame(0)->h / 2), m_StationOrbitRotation - c_HalfPI, 1.0f, {255, 255, 255, 255});
+	// CC rotations are counter-clockwise, screen space rotation is clockwise.
+	Draw::DrawBitmap(m_Station.GetSpriteFrame(0), ToVec2(m_Station.GetPos()), ToVec2(m_Station.GetSpriteOffset()), -m_Station.GetRotAngle(), glm::vec2(1.0f));
 }
 
 void TitleScreen::DrawGameLogo() {
-	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_GameLogo.GetSpriteFrame(0)), m_GameLogo.GetPos() + m_GameLogo.GetSpriteOffset(), {255, 255, 255, 255});
-	//m_GameLogo.Draw(g_FrameMan.GetBackBuffer32());
+	Draw::DrawBitmap(m_GameLogo.GetSpriteFrame(0), ToVec2(m_GameLogo.GetPos()), ToVec2(m_GameLogo.GetSpriteOffset()), 0.0f, glm::vec2(1.0f));
 	m_GameLogoGlow.SetPos(m_GameLogo.GetPos());
-	rlEnableColorBlend();
-	rlSetBlendFactorsSeparate(GL_ONE, GL_ONE_MINUS_SRC_COLOR, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_FUNC_ADD, GL_FUNC_ADD);
-	rlSetBlendMode(RL_BLEND_CUSTOM_SEPARATE);
 	int glowIntensity = 220 + RandomNum(-35, 35);
-	//set_screen_blender(glowIntensity, glowIntensity, glowIntensity, glowIntensity);
-	//m_GameLogoGlow.Draw(g_FrameMan.GetBackBuffer32(), Vector(), DrawMode::g_DrawTrans);
-	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_GameLogoGlow.GetSpriteFrame(0)), m_GameLogoGlow.GetPos() + m_GameLogoGlow.GetSpriteOffset(), RLColor(glowIntensity, glowIntensity, glowIntensity, glowIntensity));
+	g_RenderMan.SetActiveBlendMode(Blend::SCREEN);
+	Draw::DrawBitmap(m_GameLogoGlow.GetSpriteFrame(0), ToVec2(m_GameLogoGlow.GetPos()), ToVec2(m_GameLogoGlow.GetSpriteOffset()), 0.0f, glm::vec2(1.0f), Color(glowIntensity, glowIntensity, glowIntensity, glowIntensity));
+	g_RenderMan.SetActiveBlendMode(Blend::ALPHA);
 }
 
 void TitleScreen::DrawSlideshowSlide() {
@@ -657,7 +660,7 @@ void TitleScreen::DrawSlideshowSlide() {
 	set_clip_rect(g_FrameMan.GetBackBuffer32(), 0, 0, m_TitleScreenMaxWidth - g_WindowMan.GetResMultiplier(), g_WindowMan.GetResY());
 
 	//draw_trans_sprite(g_FrameMan.GetBackBuffer32(), m_IntroSlides.at(slide), slidePos.GetFloorIntX(), slidePos.GetFloorIntY());
-	DrawTextureV(g_GLStateMan.GetStaticTextureFromBitmap(m_IntroSlides.at(slide)), slidePos, RLColor(255, 255, 255, fadeAmount));
+	Draw::DrawBitmap(m_IntroSlides.at(slide), ToVec2(slidePos), glm::vec2(0.0f), 0.0f, glm::vec2(1.0f), Color(255, 255, 255, fadeAmount));
 
 	// Have to immediately reset the clipping rect otherwise the stars in the other displays slowly go into warp speed until the intro sequence is done.
 	set_clip_rect(g_FrameMan.GetBackBuffer32(), 0, 0, g_FrameMan.GetBackBuffer32()->w, g_FrameMan.GetBackBuffer32()->h);
@@ -671,8 +674,5 @@ void TitleScreen::DrawSlideshowSlide() {
 void TitleScreen::DrawOverlayEffectBitmap() const {
 	set_trans_blender(m_FadeAmount, m_FadeAmount, m_FadeAmount, m_FadeAmount);
 	draw_trans_sprite(g_FrameMan.GetBackBuffer32(), g_FrameMan.GetOverlayBitmap32(), 0, 0);
-	rlEnableColorBlend();
-	rlSetBlendMode(RL_BLEND_ALPHA);
-	DrawRectangle(0, 0, g_WindowMan.GetResX(), g_WindowMan.GetResY(), RLColor(1, 1, 1, m_FadeAmount));
-	rlDrawRenderBatchActive();
+	Draw::Rectangle(FloatRect(0.0f, 0.0f, static_cast<float>(g_WindowMan.GetResX()), static_cast<float>(g_WindowMan.GetResY())), Color(1, 1, 1, m_FadeAmount));
 }
