@@ -542,6 +542,18 @@ namespace RTE {
 		/// @return A Vector describing the global acceleration.
 		Vector GetGlobalAcc() const { return m_GlobalAcc; }
 
+		/// Optional atmosphere this Scene asks for, overriding the player's settings while it's loaded. Negative values mean not set.
+		struct Atmosphere {
+			float TimeOfDay = -1.0F;
+			float DayLengthMinutes = -1.0F;
+			int WeatherType = -1;
+			float WeatherIntensity = -1.0F;
+			float Wind = -100000.0F; //!< Not set below -10000.
+		};
+
+		/// Gets the atmosphere this Scene asks for.
+		const Atmosphere& GetAtmosphere() const { return m_Atmosphere; }
+
 		/// Sets the global acceleration (in m/s^2) that is applied to all movable
 		/// objects' velocities during every frame. Typically models gravity.
 		/// @param newValue A Vector describing the global acceleration.
@@ -773,6 +785,7 @@ namespace RTE {
 
 		// The global acceleration vector in m/s^2. (think gravity/wind)
 		Vector m_GlobalAcc;
+		Atmosphere m_Atmosphere; //!< Optional time of day and weather for this Scene.
 		// Names of all Schemes and selected assemblies for them
 		std::map<std::string, const BunkerAssembly*> m_SelectedAssemblies;
 		// Amounts of limited assemblies

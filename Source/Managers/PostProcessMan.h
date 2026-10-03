@@ -22,6 +22,7 @@
 namespace RTE {
 	class RenderTarget;
 	class SceneLighting;
+	class Scene;
 	/// Struct for storing GL information in the BITMAP->extra field.
 
 	/// Structure for storing a post-process screen effect to be applied at the last stage of 32bpp rendering.
@@ -240,6 +241,16 @@ namespace RTE {
 		void SetAmbientColor(float red, float green, float blue) { m_LightingSettings.Ambient = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
 #pragma endregion
 
+		/// Resets the atmosphere (time of day, weather) to the player's settings and applies the overrides of the newly loaded Scene, if any.
+		/// Also undoes any atmosphere changes scripts made during the previous Scene.
+		void ApplySceneAtmosphere(const Scene* scene);
+
+		/// Gets the settings to save to Settings.ini: the player's own atmosphere, not a Scene's or script's.
+		LightingSettings GetLightingSettingsToSave() const;
+
+		/// Makes the current atmosphere the player's own, so it's what gets saved and restored between Scenes (used by the Graphics Lab).
+		void AdoptAtmosphereAsPlayers() { m_PlayerAtmosphere = m_LightingSettings; m_PlayerAtmosphereCaptured = true; }
+
 		/// Gets the lighting and post-processing settings. These persist in Settings.ini and can be changed live.
 		/// @return The lighting settings.
 		LightingSettings& GetLightingSettings() { return m_LightingSettings; }
@@ -273,6 +284,8 @@ namespace RTE {
 		std::shared_ptr<RenderTarget> m_PostProcessFramebuffer; //!< Framebuffer for post-processing effects.
 		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
 		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
+		LightingSettings m_PlayerAtmosphere; //!< The player's own atmosphere settings, captured when the first Scene loads.
+		bool m_PlayerAtmosphereCaptured = false;
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates.
 
 		/// An active explosion shockwave.

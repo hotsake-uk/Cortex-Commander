@@ -130,6 +130,8 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 		return -1;
 	}
 
+	g_PostProcessMan.ApplySceneAtmosphere(m_pCurrentScene);
+
 	// Report successful load to the console
 	g_ConsoleMan.PrintString("SYSTEM: Scene \"" + m_pCurrentScene->GetPresetName() + "\" was loaded");
 

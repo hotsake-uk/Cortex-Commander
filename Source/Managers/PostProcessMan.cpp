@@ -229,6 +229,63 @@ void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, in
 	}
 }
 
+void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
+	if (!m_PlayerAtmosphereCaptured) {
+		m_PlayerAtmosphere = m_LightingSettings;
+		m_PlayerAtmosphereCaptured = true;
+	}
+	m_LightingSettings.TimeOfDay = m_PlayerAtmosphere.TimeOfDay;
+	m_LightingSettings.DayLengthMinutes = m_PlayerAtmosphere.DayLengthMinutes;
+	m_LightingSettings.WeatherType = m_PlayerAtmosphere.WeatherType;
+	m_LightingSettings.WeatherIntensity = m_PlayerAtmosphere.WeatherIntensity;
+	m_LightingSettings.Wind = m_PlayerAtmosphere.Wind;
+	m_LightingSettings.SkyColor = m_PlayerAtmosphere.SkyColor;
+	m_LightingSettings.Ambient = m_PlayerAtmosphere.Ambient;
+	m_LightingSettings.Temperature = m_PlayerAtmosphere.Temperature;
+	m_LightingSettings.Tint = m_PlayerAtmosphere.Tint;
+	m_LightingSettings.Contrast = m_PlayerAtmosphere.Contrast;
+	m_LightingSettings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
+	m_LightingSettings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
+	if (!scene) {
+		return;
+	}
+	const Scene::Atmosphere& atmosphere = scene->GetAtmosphere();
+	if (atmosphere.TimeOfDay >= 0.0F) {
+		m_LightingSettings.TimeOfDay = std::fmod(atmosphere.TimeOfDay, 24.0F);
+	}
+	if (atmosphere.DayLengthMinutes >= 0.0F) {
+		m_LightingSettings.DayLengthMinutes = atmosphere.DayLengthMinutes;
+	}
+	if (atmosphere.WeatherType >= 0) {
+		m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, 2);
+	}
+	if (atmosphere.WeatherIntensity >= 0.0F) {
+		m_LightingSettings.WeatherIntensity = std::clamp(atmosphere.WeatherIntensity, 0.0F, 1.0F);
+	}
+	if (atmosphere.Wind > -10000.0F) {
+		m_LightingSettings.Wind = atmosphere.Wind;
+	}
+}
+
+LightingSettings PostProcessMan::GetLightingSettingsToSave() const {
+	LightingSettings settings = m_LightingSettings;
+	if (m_PlayerAtmosphereCaptured) {
+		settings.TimeOfDay = m_PlayerAtmosphere.TimeOfDay;
+		settings.DayLengthMinutes = m_PlayerAtmosphere.DayLengthMinutes;
+		settings.WeatherType = m_PlayerAtmosphere.WeatherType;
+		settings.WeatherIntensity = m_PlayerAtmosphere.WeatherIntensity;
+		settings.Wind = m_PlayerAtmosphere.Wind;
+		settings.SkyColor = m_PlayerAtmosphere.SkyColor;
+		settings.Ambient = m_PlayerAtmosphere.Ambient;
+		settings.Temperature = m_PlayerAtmosphere.Temperature;
+		settings.Tint = m_PlayerAtmosphere.Tint;
+		settings.Contrast = m_PlayerAtmosphere.Contrast;
+		settings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
+		settings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
+	}
+	return settings;
+}
+
 SceneLighting* PostProcessMan::GetSceneLighting() {
 	if (!m_SceneLighting) {
 		m_SceneLighting = std::make_unique<SceneLighting>(m_LightingSettings);

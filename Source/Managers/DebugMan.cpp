@@ -117,6 +117,7 @@ void DebugMan::GraphicsLabGUI() {
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Save to Settings.ini")) {
+			g_PostProcessMan.AdoptAtmosphereAsPlayers();
 			g_SettingsMan.UpdateSettingsFile();
 		}
 	}

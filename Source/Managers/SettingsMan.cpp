@@ -287,7 +287,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewDivider(false);
 	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
 	writer.NewLine(false);
-	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
 	writer.NewPropertyWithValue("LightingAmbient", WriteVec3(lighting.Ambient));
 	writer.NewPropertyWithValue("LightingSkyColor", WriteVec3(lighting.SkyColor));
