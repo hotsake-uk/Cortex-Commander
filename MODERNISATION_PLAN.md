@@ -531,12 +531,42 @@ Work happens on the local `modernisation` branch. Each entry corresponds to one 
   - README included.
 - **Formatting:** lines changed on this branch are clang-format clean (formatted with clang-format-diff, so upstream code is left alone).
 
+### Status update: playtest, fixes, world and feel
+
+**Hands-on playtest.**
+- Real keyboard and mouse input through `Tools/RenderTest/Input.ps1`.
+- Covered: combat, menus, settings, scene changes and soak runs (`Soak.ps1`). Memory plateaus and there were no crashes.
+
+**Bugs found and fixed:**
+- **Scenario site markers:** didn't draw because the camera they were flushed with had gone out of scope.
+- **Black frames on window expose:** an event watch rebuilt the frame outside the frame loop.
+- **Pie menu ring and inventory carousel never drew:** they still called vendored raylib functions. So did background edge fills and the deployment spawn radius.
+- **Region upload bugs:** in BigTexture and GLStateMan, for 32-bit bitmaps, multiple regions, and the PBO offset.
+
+**Lighting:**
+- Interiors and caves are much brighter: ambient 0.6, barely dimming at night.
+- `LightingSettingsVersion` drops stale saved values.
+- Auto exposure with a dead zone. It reacts to flashes and near-total darkness, but leaves ordinary scenes untouched.
+
+**World:**
+- Night sky: twinkling stars and a moon on the near-static sky layers.
+- Lightning in heavy rain.
+
+**Feel:**
+- Smooth screen shake that no longer drives the camera path or uses the sim RNG.
+
+**Settings and tools:**
+- Graphics Quality presets (Potato to Ultra, plus Custom) in the Video settings.
+- F6 World Debug window: time of day, weather, lighting, auto exposure readout, quality and game speed.
+- While debug windows are open the mouse is released and clicks don't reach the game.
+
 ### Remaining roadmap (not started)
 
 - **GPU HUD and native-resolution UI and fonts (M6):** replace the CPU HUD bridge and the Allegro GUI backend.
 - **Sprite atlas and instanced sprite batching:** the next large performance step.
 - **Dirty-rect terrain uploads:** visible layers still re-upload every frame. Cheap enough now (2.5 ms total draw), but wasteful.
+  - Terrain is written from about 15 places that bypass any hook (see the playtest notes).
+  - A safe version needs a `MarkDirty` at each of them, or a cheap per-row checksum.
 - **Full radiance-cascade GI:** the screen-space bounce covers most of the visual win.
-- **Graphics quality presets:** Potato to Ultra.
 - **An SDL_GPU backend (M8)** behind the renderer abstraction.
 - **CI golden-image runs** using `Tools/RenderTest`.

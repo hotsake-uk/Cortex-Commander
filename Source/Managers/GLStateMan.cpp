@@ -129,9 +129,9 @@ GLuint GLStateMan::UpdateDynamicBitmap(BITMAP* bitmap, bool updated, const std::
 				std::vector<unsigned char> pixels(updateRegions[i].m_Width * updateRegions[i].m_Height * bytesPerPixel);
 				for (size_t y = 0; y < updateRegions[i].m_Height; y++) {
 					memcpy(
-						pixels.data() + y * static_cast<int>(updateRegions[i].m_Width) * bytesPerPixel,
-						bitmap->line[y + updateRegions[i].m_Corner.GetFloorIntY()] + updateRegions[i].m_Corner.GetFloorIntX() * bytesPerPixel,
-						updateRegions[i].m_Width * bytesPerPixel);
+					    pixels.data() + y * static_cast<int>(updateRegions[i].m_Width) * bytesPerPixel,
+					    bitmap->line[y + updateRegions[i].m_Corner.GetFloorIntY()] + updateRegions[i].m_Corner.GetFloorIntX() * bytesPerPixel,
+					    updateRegions[i].m_Width * bytesPerPixel);
 				}
 				glBufferSubData(GL_PIXEL_UNPACK_BUFFER, offsets[i], updateRegions[i].m_Width * updateRegions[i].m_Height * bytesPerPixel, pixels.data());
 				// Regions are packed one after another in the upload buffer.

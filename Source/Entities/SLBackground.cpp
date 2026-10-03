@@ -267,7 +267,7 @@ void SLBackground::Draw(const Box& targetDimensions, Box& targetBox, bool offset
 	}
 	if (!m_WrapY && bitmapHeight <= targetBoxHeight) {
 		if (m_FillColorUp != ColorKeys::g_MaskColor && m_Offset.GetFloorIntY() != 0) {
-			fillRectangle(targetBoxCornerX, targetBoxCornerY, targetBoxWidth, - m_Offset.m_Y, m_FillColorUp);
+			fillRectangle(targetBoxCornerX, targetBoxCornerY, targetBoxWidth, -m_Offset.m_Y, m_FillColorUp);
 		}
 		if (m_FillColorDown != ColorKeys::g_MaskColor) {
 			fillRectangle(targetBoxCornerX, targetBoxCornerY + bitmapHeight - m_Offset.m_Y, targetBoxWidth, targetBoxHeight - bitmapHeight + m_Offset.m_Y, m_FillColorDown);

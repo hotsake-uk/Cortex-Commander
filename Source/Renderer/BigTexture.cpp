@@ -80,10 +80,9 @@ void BigTexture::Update(const Box& updateRegion) {
 
 			for (size_t y = 0; y < static_cast<int>(std::ceil(intersect.m_Height)); y++) {
 				memcpy(
-					pixels + y * static_cast<int>(std::ceil(intersect.m_Width)) * bytesPerPixel,
-					m_Bitmap->line[y + intersect.m_Corner.GetFloorIntY()] + intersect.m_Corner.GetFloorIntX() * bytesPerPixel,
-					std::ceil(intersect.m_Width) * bytesPerPixel
-				);
+				    pixels + y * static_cast<int>(std::ceil(intersect.m_Width)) * bytesPerPixel,
+				    m_Bitmap->line[y + intersect.m_Corner.GetFloorIntY()] + intersect.m_Corner.GetFloorIntX() * bytesPerPixel,
+				    std::ceil(intersect.m_Width) * bytesPerPixel);
 			}
 			glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 
@@ -93,16 +92,15 @@ void BigTexture::Update(const Box& updateRegion) {
 			assert(m_Textures[i]->GetDimensions().w >= intersect.m_Width);
 			assert(m_Textures[i]->GetDimensions().h >= intersect.m_Height);
 			glTexSubImage2D(
-				GL_TEXTURE_2D,
-				0,
-				intersect.m_Corner.GetFloorIntX() % s_MaxGLTextureSize,
-				intersect.m_Corner.GetFloorIntY() % s_MaxGLTextureSize,
-				std::ceil(intersect.m_Width),
-				std::ceil(intersect.m_Height),
-				bytesPerPixel == 1 ? GL_RED : GL_RGBA,
-				GL_UNSIGNED_BYTE,
-				nullptr
-			);
+			    GL_TEXTURE_2D,
+			    0,
+			    intersect.m_Corner.GetFloorIntX() % s_MaxGLTextureSize,
+			    intersect.m_Corner.GetFloorIntY() % s_MaxGLTextureSize,
+			    std::ceil(intersect.m_Width),
+			    std::ceil(intersect.m_Height),
+			    bytesPerPixel == 1 ? GL_RED : GL_RGBA,
+			    GL_UNSIGNED_BYTE,
+			    nullptr);
 
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
