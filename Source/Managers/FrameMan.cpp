@@ -1,4 +1,5 @@
 #include "FrameMan.h"
+#include "SceneLighting.h"
 
 #include "SDL3/SDL_surface.h"
 #include "WindowMan.h"
@@ -831,6 +832,9 @@ void FrameMan::Draw() {
 
 	const Activity* pActivity = g_ActivityMan.GetActivity();
 
+	SceneLighting* sceneLighting = g_PostProcessMan.GetSceneLighting();
+	sceneLighting->Update();
+
 	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
 		g_CameraMan.Update(playerScreen);
 		g_CameraMan.SetCameraZoom(1.0f, playerScreen);
@@ -902,14 +906,16 @@ void FrameMan::Draw() {
 		RenderBatch* sceneBatch = g_RenderMan.GetActiveBatch();
 		g_RenderMan.SetActiveBatch(m_ScreenSpaceBatch.get());
 		g_RenderMan.BeginFrame(&screenSpaceCamera);
+		// Scene position of this player screen's top left pixel.
+		Vector screenTargetPos = g_CameraMan.GetOffset(playerScreen);
+		if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
+			screenTargetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
+		}
+		if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
+			screenTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
+		}
 		if (!IsHudDisabled(playerScreen) && pActivity) {
-			Vector hudTargetPos = g_CameraMan.GetOffset(playerScreen);
-			if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
-				hudTargetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
-			}
-			if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
-				hudTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
-			}
+			const Vector& hudTargetPos = screenTargetPos;
 			g_MovableMan.DrawHUD(drawScreenGUI, hudTargetPos, playerScreen);
 			g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, hudTargetPos, playerScreen);
 		}
@@ -926,6 +932,9 @@ void FrameMan::Draw() {
 			}
 		}
 		g_RenderMan.GetActiveBatch()->ClearDraws();
+
+		// Light the scene (sky light, glow lights, glows as emitted light, bloom, tonemapping) before anything HUD-like is drawn over it.
+		sceneLighting->LightPlayerScreen(m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects);
 
 		// Screen-space HUD draws go on top of the scene regardless of scene depth.
 		glClear(GL_DEPTH_BUFFER_BIT);

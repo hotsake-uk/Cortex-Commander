@@ -17,6 +17,7 @@
 
 namespace RTE {
 	class RenderTarget;
+	class SceneLighting;
 	/// Struct for storing GL information in the BITMAP->extra field.
 
 	/// Structure for storing a post-process screen effect to be applied at the last stage of 32bpp rendering.
@@ -143,6 +144,10 @@ namespace RTE {
 		/// @return The opengl backbuffer texture for indexed drawings.
 		std::shared_ptr<RenderTarget> GetPostProcessColorBuffer() { return m_PostProcessFramebuffer; }
 
+		/// Gets the scene lighting, creating it on first use (it needs a GL context).
+		/// @return The scene lighting.
+		SceneLighting* GetSceneLighting();
+
 		GLuint GetPaletteTexture() { return m_Palette8Texture; }
 
 	protected:
@@ -170,6 +175,7 @@ namespace RTE {
 		GLuint m_Palette8Texture; //!< Palette texture for incoming indexed drawings.
 		std::shared_ptr<RenderTarget> m_BlitFramebuffer; //!< Framebuffer for blitting the 8bpp backbuffer to the 32bpp backbuffer.
 		std::shared_ptr<RenderTarget> m_PostProcessFramebuffer; //!< Framebuffer for post-processing effects.
+		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.

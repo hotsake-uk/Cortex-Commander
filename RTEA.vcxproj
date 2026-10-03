@@ -791,6 +791,7 @@
     <ClInclude Include="Source\Menus\TitleScreen.h" />
     <ClInclude Include="Resources\Credits.h" />
     <ClInclude Include="Resources\resource.h" />
+    <ClInclude Include="Source\Renderer\SceneLighting.h" />
     <ClInclude Include="Source\Renderer\Vertex.h" />
     <ClInclude Include="Source\Renderer\Texture.h" />
     <ClInclude Include="Source\Renderer\Shapes.h" />
@@ -1058,6 +1059,7 @@
     <ClCompile Include="Source\Menus\SettingsVideoGUI.cpp" />
     <ClCompile Include="Source\Menus\TitleScreen.cpp" />
     <ClCompile Include="Source\Menus\InventoryMenuGUI.cpp" />
+    <ClCompile Include="Source\Renderer\SceneLighting.cpp" />
     <ClCompile Include="Source\Renderer\Vertex.cpp" />
     <ClCompile Include="Source\Renderer\Texture.cpp" />
     <ClCompile Include="Source\Renderer\Shapes.cpp" />

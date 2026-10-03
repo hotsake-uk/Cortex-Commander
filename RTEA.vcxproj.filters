@@ -103,6 +103,9 @@
     <ClInclude Include="Source\System\MicroPather\micropather.h">
       <Filter>System\MicroPather</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Renderer\SceneLighting.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Renderer\Vertex.h">
       <Filter>Renderer</Filter>
     </ClInclude>
@@ -1117,6 +1120,9 @@
     </ClCompile>
     <ClCompile Include="Source\Entities\Activity.cpp">
       <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\SceneLighting.cpp">
+      <Filter>Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Source\Renderer\Vertex.cpp">
       <Filter>Renderer</Filter>

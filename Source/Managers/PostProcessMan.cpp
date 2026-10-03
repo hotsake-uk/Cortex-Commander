@@ -1,4 +1,5 @@
 #include "PostProcessMan.h"
+#include "SceneLighting.h"
 
 #include "CameraMan.h"
 #include "WindowMan.h"
@@ -134,10 +135,18 @@ void PostProcessMan::UpdatePalette() {
 	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 }
 
+SceneLighting* PostProcessMan::GetSceneLighting() {
+	if (!m_SceneLighting) {
+		m_SceneLighting = std::make_unique<SceneLighting>();
+	}
+	return m_SceneLighting.get();
+}
+
 void PostProcessMan::Destroy() {
 	for (std::pair<int, BITMAP*> tempBitmapEntry: m_TempEffectBitmaps) {
 		destroy_bitmap(tempBitmapEntry.second);
 	}
+	m_SceneLighting.reset();
 	DestroyGLPointers();
 	ClearScreenPostEffects();
 	ClearScenePostEffects();
