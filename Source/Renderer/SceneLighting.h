@@ -111,6 +111,8 @@ namespace RTE {
 		glm::vec3 m_EffectiveAmbient{1.0F}; //!< Ambient light after time of day, this frame.
 		glm::vec3 m_EffectiveForegroundAmbient{1.0F}; //!< Foreground light floor after time of day, this frame.
 		float m_NightSky = 0.0F; //!< How visible the stars and moon are, this frame.
+		float m_SnowCover = 0.0F; //!< How deep snow has settled on exposed ground, 0 to 1. Builds up while it snows, melts otherwise.
+		float m_Wetness = 0.0F; //!< How wet exposed ground is from rain, 0 to 1.
 		float m_MoonHours = 0.0F; //!< Where the moon is along its path across the sky, in sun-path hours (6 rising, 18 setting).
 		float m_Lightning = 0.0F; //!< Current lightning flash brightness.
 		float m_LightningSecondsLeft = 0.0F; //!< Time left in the current flash.

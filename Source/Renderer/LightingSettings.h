@@ -46,6 +46,7 @@ namespace RTE {
 			DistortionEnabled = preset.Distortion;
 			ScorchMarks = preset.Scorch;
 			Stains = preset.Scorch;
+			LivingWorld = preset.Distortion;
 			Embers = preset.Embers;
 			GodRays = preset.GodRays;
 			IndirectLight = preset.Indirect;
@@ -96,6 +97,7 @@ namespace RTE {
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
+		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
 
 		bool BloomEnabled = true;

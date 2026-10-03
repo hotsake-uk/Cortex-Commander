@@ -32,6 +32,13 @@ Press **F6** in game or in the menus for the **World Debug** window: time of day
 
 **Smoke scattering** (`SmokeScattering`, where 0 turns it off): smoke particles, meaning Air-material MOSParticles with negative gravity, are splatted into a half-resolution density buffer. The light passing through them, from dynamic lights and radiance cascades, is added where the smoke is, so fire, muzzle flashes and lamps glow through smoke. The smoke sprites themselves are unchanged.
 
+**Living world** (`LivingWorld`):
+- Vegetation in the terrain (green-dominant palette colours) sways with the wind and gusts, more towards the tips, and is pushed outwards as blast waves pass.
+- Snow builds up a few pixels deep on ground under open sky while it snows, over about a minute, and melts afterwards.
+- Rain darkens exposed surfaces and they dry slowly.
+
+All of it happens in the terrain shader; the terrain bitmaps are never changed.
+
 **Radiance cascades GI** (`RadianceCascades = 1`, which the Ultra preset turns on) is 2D global illumination at half resolution. Glows such as fire, explosions and lamps light their surroundings with soft occlusion from terrain and objects. Lit surfaces pass on part of their light (`GIBounce`), building up to several bounces over a few frames. It replaces the screen-space indirect light, costs about 0.3 ms, and `GIStrength` scales it. The Graphics Lab has a "GI only" view.
 
 At night, stars and a moon appear on the sky layers. These are the background layers with little or no parallax, and both fade out toward the horizon. Heavy rain (intensity above 0.5) brings occasional lightning that briefly lights the sky. Auto exposure (`AutoExposure`, `AutoExposureLow`, `AutoExposureHigh`) only kicks in when the average scene brightness leaves the normal range, such as a screen-filling flash or near-total darkness.

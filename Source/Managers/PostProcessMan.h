@@ -306,6 +306,12 @@ namespace RTE {
 			float m_StartTime;
 		};
 		std::vector<Shockwave> m_Shockwaves; //!< Active shockwaves, in scene coordinates.
+
+	public:
+		/// Gets the active shockwaves in scene coordinates, as xy position, z current wavefront radius, w remaining strength. For vegetation pushed by blasts.
+		void GetActiveShockwaves(std::vector<glm::vec4>& shockwaves);
+
+	private:
 		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.
 		std::vector<ScorchMark> m_PendingScorchMarks; //!< Scorch marks not stamped yet. Guarded by m_ShockwaveMutex.
 		std::vector<ScorchMark> m_HotScorchMarks; //!< Recent scorch marks, for the cooling glow. Guarded by m_ShockwaveMutex.

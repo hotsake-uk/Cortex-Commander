@@ -28,14 +28,23 @@ void RenderMan::Initialize() {
 	m_PaletteTexture = std::make_shared<BitmapTexture>(std::move(paletteBitmap), Filter::Nearest, WrapType::ClampToEdge);
 
 	// The palette's glow yellows (the colors the original dot glows keyed on: gold sparkle, tracers, hot bits) are emissive, so they glint in the dark.
-	std::array<unsigned char, 256> emissivePalette{};
-	emissivePalette[g_YellowGlowColor] = 255;
-	emissivePalette[98] = 255;
-	emissivePalette[120] = 200;
+	// R = emissive strength, G = vegetation (green-dominant colors, which sway in the wind when they're part of the terrain).
+	std::array<unsigned char, 512> emissivePalette{};
+	emissivePalette[g_YellowGlowColor * 2] = 255;
+	emissivePalette[98 * 2] = 255;
+	emissivePalette[120 * 2] = 200;
+	for (int i = 1; i < 256; ++i) {
+		SDL_Color color = palette->colors[i];
+		int green = color.g;
+		int otherMax = std::max<int>(color.r, color.b);
+		if (green > 50 && green > color.r * 1.1F && green > color.b * 1.2F && green - otherMax > 18) {
+			emissivePalette[i * 2 + 1] = 255;
+		}
+	}
 	glGenTextures(1, &m_EmissivePaletteTexture);
 	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 256, 1, 0, GL_RED, GL_UNSIGNED_BYTE, emissivePalette.data());
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, 256, 1, 0, GL_RG, GL_UNSIGNED_BYTE, emissivePalette.data());
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);

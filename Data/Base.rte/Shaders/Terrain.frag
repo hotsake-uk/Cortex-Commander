@@ -14,7 +14,18 @@ uniform sampler2D rtePalette;
 uniform bool rteIndexed;
 uniform vec4 rteColor;
 uniform bool rteReplaceColor;
-uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows.
+uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows, G = whether it's a vegetation color.
+
+uniform bool rteLivingWorld;
+uniform float rteTime; // Seconds.
+uniform float rteWind; // Pixels per second, negative blows left.
+uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
+uniform float rteWetness; // 0..1, how wet exposed ground is.
+uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
+uniform vec2 rteGridWorldSize;
+const int c_MaxBlasts = 8;
+uniform int rteBlastCount;
+uniform vec4 rteBlasts[c_MaxBlasts]; // xy = world position, z = wavefront radius, w = strength.
 
 uniform sampler2D rteScorch; // World space, R = soot darkness.
 uniform vec2 rteScorchWorldSize; // World size covered by the scorch map.
@@ -52,12 +63,58 @@ vec3 EdgeNormal(vec2 uvDx, vec2 uvDy) {
 	return normalize(vec3(outward * edge, 1.0 - 0.6 * edge));
 }
 
+bool IsVegetation(float colorIndex) {
+	return colorIndex > 0.0 && texture(rteEmissivePalette, vec2(colorIndex, 0.0)).g > 0.5;
+}
+
+// How far vegetation at this point leans, in pixels per pixel of height: wind with gusts rolling across, plus blast waves pushing outwards as they pass.
+float Lean(vec2 world) {
+	float wind = clamp(rteWind / 150.0, -1.5, 1.5);
+	float gust = 0.6 * sin(rteTime * 1.3 + world.x * 0.045) + 0.4 * sin(rteTime * 2.9 + world.x * 0.13 + world.y * 0.05);
+	float lean = wind * 0.45 + gust * (0.15 + 0.25 * abs(wind));
+	for (int i = 0; i < rteBlastCount; ++i) {
+		vec2 toPoint = world - rteBlasts[i].xy;
+		float distance = length(toPoint);
+		float front = exp(-pow((distance - rteBlasts[i].z) / 14.0, 2.0));
+		lean += sign(toPoint.x) * front * rteBlasts[i].w * 0.35;
+	}
+	return lean;
+}
+
+// Whether a point of terrain is exposed to the open sky (not under an overhang or in a cave).
+bool UnderOpenSky(vec2 world) {
+	vec2 gridUV = world / rteGridWorldSize;
+	float skyline = texture(rteSkyline, vec2(fract(gridUV.x), 0.5)).r;
+	return gridUV.y < skyline + 10.0 / rteGridWorldSize.y;
+}
+
 void main() {
 	vec2 uvDx = dFdx(textureUV);
 	vec2 uvDy = dFdy(textureUV);
 	float emissive = 0.0;
+	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
+		if (rteLivingWorld) {
+			// Vegetation sways: count how far up a stalk this pixel is, lean the stalk that much, and draw whatever vegetation lands here.
+			float height = 0.0;
+			for (int k = 1; k <= 6; ++k) {
+				if (!IsVegetation(texture(rteTexture, textureUV + vec2(0.0, texel.y * float(k))).r)) {
+					break;
+				}
+				height += 1.0;
+			}
+			float offset = clamp(floor(Lean(worldPos) * height * 0.35 + 0.5), -3.0, 3.0);
+			if (offset != 0.0) {
+				float sourceIndex = texture(rteTexture, textureUV - vec2(offset * texel.x, 0.0)).r;
+				if (IsVegetation(sourceIndex)) {
+					colorIndex = sourceIndex;
+				} else if (IsVegetation(colorIndex)) {
+					// The blade moved away from here and nothing replaced it.
+					discard;
+				}
+			}
+		}
 		FragColor = texture(rtePalette, vec2(colorIndex, 0.0F)) * vertexColor;
 		emissive = texture(rteEmissivePalette, vec2(colorIndex, 0.0F)).r;
 	} else {
@@ -69,6 +126,25 @@ void main() {
 		FragColor.rgba = rteColor;
 	}
 	vec3 normal = EdgeNormal(uvDx, uvDy);
+
+	if (rteLivingWorld && (rteSnowCover > 0.01 || rteWetness > 0.01) && UnderOpenSky(worldPos)) {
+		// How deep below the surface this pixel is: snow lies a few pixels deep on top, rain wets the top layer.
+		float depth = 99.0;
+		for (int k = 1; k <= 5; ++k) {
+			if (Coverage(textureUV - vec2(0.0, texel.y * float(k))) < 0.5) {
+				depth = float(k);
+				break;
+			}
+		}
+		float snowDepth = rteSnowCover * 5.0;
+		if (depth <= snowDepth) {
+			float brightness = dot(FragColor.rgb, vec3(0.299, 0.587, 0.114));
+			vec3 snow = vec3(0.86, 0.9, 0.98) * (0.85 + 0.25 * brightness);
+			FragColor.rgb = mix(FragColor.rgb, snow, depth <= snowDepth - 1.0 ? 0.95 : 0.6);
+		} else if (depth <= 3.0 && rteWetness > 0.01) {
+			FragColor.rgb *= mix(vec3(1.0), vec3(0.68, 0.7, 0.78), rteWetness);
+		}
+	}
 
 	if (rteStainsEnabled) {
 		// Liquid stains tint the terrain but keep its texture: the stain's color at the terrain's brightness.

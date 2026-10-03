@@ -203,6 +203,16 @@ const std::vector<PostProcessMan::ScorchMark>& PostProcessMan::GetHotScorchMarks
 	return m_HotScorchMarks;
 }
 
+void PostProcessMan::GetActiveShockwaves(std::vector<glm::vec4>& shockwaves) {
+	const float duration = 0.55F;
+	float now = GetSmoothSimTime();
+	std::scoped_lock lock(m_ShockwaveMutex);
+	for (const Shockwave& shockwave: m_Shockwaves) {
+		float progress = std::clamp((now - shockwave.m_StartTime) / duration, 0.0F, 1.0F);
+		shockwaves.emplace_back(shockwave.m_Pos.m_X, shockwave.m_Pos.m_Y, shockwave.m_Radius * progress, shockwave.m_Amplitude * (1.0F - progress));
+	}
+}
+
 void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves) {
 	const float duration = 0.55F;
 	float now = GetSmoothSimTime();

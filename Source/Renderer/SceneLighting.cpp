@@ -530,6 +530,28 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetVector2f("rteScorchWorldSize", glm::vec2(static_cast<float>(m_Scorch.Width * m_ScorchCellSize), static_cast<float>(m_Scorch.Height * m_ScorchCellSize)));
 	g_RenderMan.SetGlobalTexture(3, m_Scorch.Texture);
 	g_RenderMan.SetGlobalTexture(4, m_Stains.Texture);
+	g_RenderMan.SetGlobalTexture(5, m_SkylineTexture.Texture);
+	m_TerrainShader->SetBool("rteLivingWorld", m_Settings.LivingWorld);
+	m_TerrainShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+	m_TerrainShader->SetFloat("rteWind", m_Settings.Wind);
+	m_TerrainShader->SetFloat("rteSnowCover", m_Settings.LivingWorld ? m_SnowCover : 0.0F);
+	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
+	m_TerrainShader->SetInt("rteSkyline", 5);
+	m_TerrainShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
+	{
+		std::vector<glm::vec4> blasts;
+		if (m_Settings.LivingWorld) {
+			g_PostProcessMan.GetActiveShockwaves(blasts);
+		}
+		constexpr size_t maxBlasts = 8;
+		if (blasts.size() > maxBlasts) {
+			blasts.resize(maxBlasts);
+		}
+		m_TerrainShader->SetInt("rteBlastCount", static_cast<int>(blasts.size()));
+		if (!blasts.empty()) {
+			glUniform4fv(m_TerrainShader->GetUniformLocation("rteBlasts"), static_cast<GLsizei>(blasts.size()), &blasts[0].x);
+		}
+	}
 	m_TerrainShader->SetInt("rteStains", 4);
 	m_TerrainShader->SetBool("rteStainsEnabled", m_Settings.Stains);
 
@@ -597,6 +619,12 @@ void SceneLighting::Update() {
 		m_Lightning = 0.0F;
 	}
 	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning;
+
+	// Snow settles over about a minute of heavy snowfall and melts slower than that; rain wets the ground quickly and dries slowly.
+	float snowTarget = m_Settings.WeatherType == 2 ? m_Settings.WeatherIntensity : 0.0F;
+	float wetTarget = m_Settings.WeatherType == 1 ? std::min(1.0F, m_Settings.WeatherIntensity * 1.3F) : 0.0F;
+	m_SnowCover += std::clamp(snowTarget - m_SnowCover, -frameSeconds / 90.0F, frameSeconds / 60.0F);
+	m_Wetness += std::clamp(wetTarget - m_Wetness, -frameSeconds / 60.0F, frameSeconds / 8.0F);
 	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
 	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor);
 	// The readability floor drops more at night than the interior ambient does, so night battles outdoors stay dark and moody.
