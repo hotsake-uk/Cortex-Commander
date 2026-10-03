@@ -28,7 +28,8 @@ namespace {
 	enum class Kind : unsigned char {
 		Spark,
 		Debris,
-		Dust
+		Dust,
+		Ember
 	};
 
 	struct Particle {
@@ -42,6 +43,7 @@ namespace {
 	};
 
 	struct SpawnRequest {
+		bool Ember = false;
 		glm::vec2 Position;
 		glm::vec2 Velocity; //!< Pixels per second, for impacts.
 		float Energy; //!< Explosion energy, or 0 for an impact.
@@ -108,6 +110,10 @@ namespace {
 	}
 
 	void SpawnFromRequest(const SpawnRequest& request, float amount) {
+		if (request.Ember) {
+			Add({request.Position, glm::vec2(RandomRange(-8.0F, 8.0F), RandomRange(-40.0F, -20.0F)), 0.0F, RandomRange(0.8F, 2.0F), 1.0F, glm::u8vec3(255, 160, 60), Kind::Ember});
+			return;
+		}
 		if (request.Energy > 0.0F) {
 			// Explosion: a burst of sparks, a ring of dust, and chips of whatever it went off against.
 			float scale = std::clamp(request.Energy / 6000.0F, 0.3F, 3.0F) * amount;
@@ -210,7 +216,7 @@ void EffectsParticles::SpawnExplosion(const Vector& position, float energy) {
 		return;
 	}
 	std::scoped_lock lock(s_QueueMutex);
-	s_Queue.push_back({glm::vec2(position.m_X, position.m_Y), glm::vec2(0.0F), energy, 0, 0.0F});
+	s_Queue.push_back({false, glm::vec2(position.m_X, position.m_Y), glm::vec2(0.0F), energy, 0, 0.0F});
 }
 
 unsigned int EffectsParticles::ColorToRGB(const Color& color) {
@@ -224,6 +230,14 @@ unsigned int EffectsParticles::ColorToRGB(const Color& color) {
 	return (static_cast<unsigned int>(fromPalette.GetR()) << 16) | (static_cast<unsigned int>(fromPalette.GetG()) << 8) | static_cast<unsigned int>(fromPalette.GetB());
 }
 
+void EffectsParticles::SpawnEmber(const Vector& position) {
+	std::scoped_lock lock(s_QueueMutex);
+	SpawnRequest request{};
+	request.Ember = true;
+	request.Position = glm::vec2(position.m_X, position.m_Y);
+	s_Queue.push_back(request);
+}
+
 void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialColor, float hardness) {
 	// Only fast hits make visible chips and sparks.
 	if (velocity.GetSqrMagnitude() < 15.0F * 15.0F || s_ImpactBudget.load(std::memory_order_relaxed) <= 0) {
@@ -233,7 +247,7 @@ void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocit
 		return;
 	}
 	std::scoped_lock lock(s_QueueMutex);
-	s_Queue.push_back({glm::vec2(position.m_X, position.m_Y), glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM, 0.0F, materialColor, hardness});
+	s_Queue.push_back({false, glm::vec2(position.m_X, position.m_Y), glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM, 0.0F, materialColor, hardness});
 }
 
 void EffectsParticles::Update(float amount) {
@@ -262,6 +276,12 @@ void EffectsParticles::Update(float amount) {
 	constexpr float gravity = 9.8F * c_PPM;
 	for (Particle& particle: s_Particles) {
 		particle.Age += seconds;
+		if (particle.Type == Kind::Ember) {
+			// Embers float up on the heat, wobble, and drift with the wind.
+			particle.Velocity += (glm::vec2(wind * 0.5F + std::sin(particle.Age * 7.0F + particle.Life * 13.0F) * 15.0F, -30.0F) - particle.Velocity) * std::min(1.0F, seconds * 1.5F);
+			particle.Position += particle.Velocity * seconds;
+			continue;
+		}
 		if (particle.Type == Kind::Dust) {
 			// Dust billows out, slows quickly, rises a little and drifts with the wind.
 			particle.Velocity += (glm::vec2(wind * 0.4F, -6.0F) - particle.Velocity) * std::min(1.0F, seconds * 2.5F);
@@ -316,7 +336,7 @@ void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int h
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
-		if (particle.Type != Kind::Spark) {
+		if (particle.Type != Kind::Spark && particle.Type != Kind::Ember) {
 			continue;
 		}
 		glm::vec2 position = particle.Position - screenOrigin;
@@ -333,6 +353,11 @@ void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int h
 		float speed = glm::length(particle.Velocity);
 		glm::vec2 direction = speed > 0.01F ? particle.Velocity / speed : glm::vec2(1.0F, 0.0F);
 		// Motion blurred streak: longer when fast.
+		if (particle.Type == Kind::Ember) {
+			float life = 1.0F - particle.Age / particle.Life;
+			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life)});
+			continue;
+		}
 		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle)});
 	}
 }

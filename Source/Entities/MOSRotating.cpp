@@ -1,5 +1,6 @@
 #include "MOSRotating.h"
 #include "EffectsParticles.h"
+#include "TerrainFire.h"
 
 #include "CameraMan.h"
 #include "SettingsMan.h"
@@ -938,6 +939,9 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 	g_PostProcessMan.RegisterShockwave(m_Pos, gibEnergy);
 	g_PostProcessMan.RegisterScorchMark(m_Pos, gibEnergy);
 	EffectsParticles::SpawnExplosion(m_Pos, gibEnergy);
+	if (gibEnergy >= 2000.0F) {
+		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
+	}
 
 	if (m_GibScreenShakeAmount != -1.0F) {
 		g_CameraMan.AddScreenShake(m_GibScreenShakeAmount, m_Pos);

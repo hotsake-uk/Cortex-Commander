@@ -859,6 +859,7 @@
     <ClInclude Include="Source\Managers\MovableMan.h" />
     <ClInclude Include="Source\Managers\PresetMan.h" />
     <ClInclude Include="Source\Managers\SceneMan.h" />
+    <ClInclude Include="Source\Managers\TerrainFire.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
     <ClInclude Include="Source\Managers\TimerMan.h" />
     <ClInclude Include="Source\Managers\UInputMan.h" />
@@ -1401,6 +1402,7 @@
     <ClCompile Include="Source\Managers\MovableMan.cpp" />
     <ClCompile Include="Source\Managers\PresetMan.cpp" />
     <ClCompile Include="Source\Managers\SceneMan.cpp" />
+    <ClCompile Include="Source\Managers\TerrainFire.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />
     <ClCompile Include="Source\Managers\UInputMan.cpp" />

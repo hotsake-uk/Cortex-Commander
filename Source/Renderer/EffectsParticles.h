@@ -45,6 +45,9 @@ namespace RTE {
 		/// @param hardness 0 for soft materials like dirt (dust), 1 for hard ones like metal and rock (sparks).
 		static void SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialRGB, float hardness);
 
+		/// Queues a glowing ember that rises from a fire. Render only.
+		static void SpawnEmber(const Vector& position);
+
 		/// Moves all particles on by however much simulation time passed since the last call, and adds queued spawns. Call once per frame.
 		/// @param amount Multiplier for how many particles spawn; 0 turns the system off.
 		static void Update(float amount);

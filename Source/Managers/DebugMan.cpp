@@ -15,6 +15,7 @@
 #include "SceneLighting.h"
 #include "TextOverlay.h"
 #include "EffectsParticles.h"
+#include "TerrainFire.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -148,6 +149,12 @@ void DebugMan::WorldDebugGUI() {
 		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0");
 
 		ImGui::SeparatorText("Game");
+		bool terrainFire = TerrainFire::IsEnabled();
+		if (ImGui::Checkbox("Spreading fire", &terrainFire)) {
+			TerrainFire::SetEnabled(terrainFire);
+		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("(%d burning)", TerrainFire::GetCount());
 		float timeScale = g_TimerMan.GetTimeScale();
 		if (ImGui::SliderFloat("Game speed", &timeScale, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_TimerMan.SetTimeScale(timeScale);

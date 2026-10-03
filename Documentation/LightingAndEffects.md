@@ -43,6 +43,14 @@ All of it happens in the terrain shader; the terrain bitmaps are never changed.
 
 At night, stars and a moon appear on the sky layers. These are the background layers with little or no parallax, and both fade out toward the horizon. Heavy rain (intensity above 0.5) brings occasional lightning that briefly lights the sky. Auto exposure (`AutoExposure`, `AutoExposureLow`, `AutoExposureHigh`) only kicks in when the average scene brightness leaves the normal range, such as a screen-filling flash or near-total darkness.
 
+**Spreading fire** (`TerrainFire` in the gameplay settings, also in F6):
+- **What lights it:** explosions and fire, flame and napalm particles light flammable terrain.
+- **How it burns:** grass and vegetation flare up and burn away; wood, cloth and rubber burn slowly from the surface in, leaving ash; oil burns fast.
+- **How it spreads:** fire needs air, so only exposed pixels catch, and it climbs upward more readily than sideways.
+- **What it gives off:** burning areas give light, smoke, embers and flames that hurt whoever stands in them.
+- **Determinism:** it is part of the simulation and stays deterministic. It ticks in fixed sim steps with its own seeded random numbers, and ignitions are sorted before they're applied.
+- **Saves:** fire isn't saved in saved games.
+
 Press **F8** for **Photo Mode**:
 - Freezes time and hides the HUD and screen text.
 - Free camera: drag with the right mouse button, or use the arrow keys.

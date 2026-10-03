@@ -42,6 +42,7 @@
 #include "PerformanceMan.h"
 #include "FrameMan.h"
 #include "DebugMan.h"
+#include "TerrainFire.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -401,6 +402,7 @@ void RunGameLoop() {
 			if (g_SceneMan.GetScene()) {
 				g_SceneMan.GetScene()->Update();
 			}
+			TerrainFire::Update();
 
 			g_LuaMan.ClearScriptTimings();
 			g_MovableMan.Update();

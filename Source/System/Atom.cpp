@@ -1,5 +1,6 @@
 #include "Atom.h"
 #include "EffectsParticles.h"
+#include "TerrainFire.h"
 
 #include "SLTerrain.h"
 #include "MovableMan.h"
@@ -906,6 +907,11 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 				hitPos[X] = intPos[X];
 				hitPos[Y] = intPos[Y];
 				++hitCount;
+
+				// Fire, flame and napalm particles set flammable terrain alight.
+				if (TerrainFire::IsFlammable(hitMaterialID) && TerrainFire::IsFireSource(m_OwnerMO)) {
+					TerrainFire::QueueIgnite(intPos[X], intPos[Y]);
+				}
 
 				// Visual only: blood and oil leave stains where they splash on terrain.
 				if (m_Material && m_Material->GetIntegrity() <= 1.0F && velocity.MagnitudeIsGreaterThan(2.0F) && hitMaterial->GetIndex() != g_MaterialOutOfBounds && EffectsParticles::IsStainingMaterial(m_Material)) {

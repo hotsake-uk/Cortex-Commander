@@ -1,5 +1,6 @@
 #include "SceneLighting.h"
 #include "EffectsParticles.h"
+#include "TerrainFire.h"
 
 #include "PostProcessMan.h"
 #include "SceneMan.h"
@@ -815,6 +816,27 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			float angle = std::atan2(spark.Direction.y, spark.Direction.x);
 			addQuad(spark.Position - spark.Direction * (spark.Length * 0.5F), glm::vec2(spark.Length * 0.5F + 0.5F, 0.6F), angle, glm::min(spark.Color, glm::vec3(1.0F)), 0.0F);
 			emissiveTextures.push_back(whiteTexture);
+		}
+	}
+
+	// Burning terrain: each pixel flickers between yellow and deep orange as it burns down, and sometimes throws an ember.
+	{
+		std::vector<glm::vec3> burning;
+		TerrainFire::GetBurning(origin, width, height, burning);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		float time = PostProcessMan::GetSmoothSimTime();
+		for (const glm::vec3& pixel: burning) {
+			glm::vec2 position(pixel.x, pixel.y);
+			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F)) + std::floor(time * 14.0F) * 3.1F) * 43758.5453F);
+			float heat = pixel.z;
+			glm::vec3 color = glm::mix(glm::vec3(0.9F, 0.25F, 0.03F), glm::vec3(1.0F, 0.85F, 0.35F), std::clamp(heat * 0.7F + noise * 0.5F, 0.0F, 1.0F)) * (0.7F + 0.6F * noise);
+			// A flame tongue above the pixel, taller where it's hotter.
+			float flameHeight = 1.0F + std::floor(noise * 3.0F * (0.4F + heat));
+			addQuad(position + glm::vec2(0.5F, 0.5F - flameHeight * 0.5F), glm::vec2(0.5F, flameHeight * 0.5F + 0.5F), 0.0F, glm::min(color, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			if (noise > 0.995F) {
+				EffectsParticles::SpawnEmber(Vector(position.x + origin.x, position.y + origin.y - 2.0F));
+			}
 		}
 	}
 
