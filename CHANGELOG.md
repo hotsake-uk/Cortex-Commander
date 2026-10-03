@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Added</b></summary>
 
+- Scene lighting and post-processing (see `Documentation/LightingAndEffects.md`).
+	Sky light that spreads through the terrain (caves get darker the deeper they go, digging lets light in), ambient light, and dynamic lights with soft terrain shadows. Every glow effect now casts light in its own color, so muzzle flashes, explosions, thrusters and fire light up their surroundings with no content changes.
+	Automatic edge normals for all sprites and terrain so edges catch the light, emissive palette colors (gold sparkle, tracers), HDR bloom, highlight compression, vignette and color grading (temperature, tint, contrast, split toning, film grain, chromatic aberration).
+	Time of day and day/night cycle (`TimeOfDay`, `DayLengthMinutes`), atmospheric haze on distant background layers, god rays into caves, and procedural rain and snow (`WeatherType`, `WeatherIntensity`, `Wind`) that stays out from under overhangs.
+	Heat haze above hot things, refraction shockwaves from explosions, and scorch marks with cooling, glowing crater rims.
+	Soft edged fog of war.
+	Visual-only render interpolation between simulation updates for smooth motion at any frame rate.
+	New `MovableObject` INI and Lua properties `LightColor` (Lua `SetLightColor(r, g, b)`, `LightRed/Green/Blue`), `LightRadius`, `LightIntensity`, `LightFlicker` and `LightOffset`.
+	New `PostProcessMan` Lua functions and properties: `AddLight(pos, radius, r, g, b, intensity)`, `TimeOfDay`, `DayLengthMinutes`, `WeatherType`, `WeatherIntensity`, `Wind`, `LightingEnabled`, `SetSkyColor(r, g, b)`, `SetAmbientColor(r, g, b)`, `SetColorGrade(temperature, tint, contrast)`, `SetSplitToning(...)`.
+	Lighting, Bloom and Heat/Shockwaves toggles in the Video settings, many new `Settings.ini` keys, and a Graphics Lab debug window (`ShowGraphicsLab`, `DebugMan:ShowGraphicsLab()`) for live tuning.
+
 - Pathfinding and navigation overhaul, including jetpack/jump-aware pathfinding.  
 	Actors will now choose their path depending on how high they can jump, instead of always taking the shortest flying path. This will reduce instances of the AI getting stuck while trying to take paths that are impossible for them.  
 	Improvements to both `ACrab` and `AHuman` navigation. `ACrab`s are now aware of how to pathfind and navigate using their jetpack, and will use it where applicable. Actors are better at using their jetpack, and will use automovers if their jetpack is not sufficient to reach a destination.  
