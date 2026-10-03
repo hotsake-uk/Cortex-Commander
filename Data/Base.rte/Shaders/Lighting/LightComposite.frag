@@ -65,6 +65,8 @@ void main() {
 			// One bounce: what the surroundings reflect. Reprojected for camera movement; the history is so blurry that's all it needs.
 			vec2 historyUV = (gl_FragCoord.xy + rteIndirectOffset) / rteScreenSize;
 			vec3 bounce = texture(rteIndirect, clamp(historyUV, vec2(0.0), vec2(1.0))).rgb;
+			// Never let a bad value in the history feed back into every following frame.
+			bounce = any(isnan(bounce)) || any(isinf(bounce)) ? vec3(0.0) : bounce;
 			// Fully sky lit areas already look as authored, so the bounce mostly fills shadowed areas and caves.
 			light += min(bounce, vec3(4.0)) * rteIndirectStrength * (1.0 - 0.85 * sky);
 		}
@@ -92,5 +94,6 @@ void main() {
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
 	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze);
-	FragColor = vec4(litColor + emissive, 1.0);
+	vec3 result = litColor + emissive;
+	FragColor = vec4(any(isnan(result)) || any(isinf(result)) ? vec3(0.0) : result, 1.0);
 }

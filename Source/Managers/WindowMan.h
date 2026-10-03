@@ -189,6 +189,9 @@ namespace RTE {
 		/// Copies the BackBuffer32 content to GPU and shows it on screen.
 		void UploadFrame();
 
+		/// Draws the finished screen buffer to the window(s), letterboxed.
+		void BlitScreenBufferToWindows();
+
 		void Present();
 #pragma endregion
 

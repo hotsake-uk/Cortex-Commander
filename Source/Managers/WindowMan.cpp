@@ -769,9 +769,12 @@ void WindowMan::DisplaySwitchOut() const {
 
 bool WindowMan::HandleWindowExposedEvent(void *userdata, SDL_Event *event) {
 	if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
+		// Re-show the last finished frame (e.g. while the window is being dragged or something was moved over it).
+		// Rebuilding it here instead would happen outside the frame and could show a cleared screen buffer with only the GUI on it.
 		g_WindowMan.SetViewportLetterboxed();
 		g_WindowMan.ClearBackbuffer(false);
-		g_WindowMan.UploadFrame();
+		g_WindowMan.BlitScreenBufferToWindows();
+		g_WindowMan.Present();
 	}
 
 	return true;
@@ -871,6 +874,19 @@ void WindowMan::UploadFrame() {
 	m_ScreenBuffer->End();
 	g_RenderMan.BeginFrame(nullptr);
 
+	BlitScreenBufferToWindows();
+	g_DebugMan.DrawImGui();
+	ImGui::Render();
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	Present();
+	TracyGpuCollect;
+	FrameMark;
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplSDL3_NewFrame();
+	ImGui::NewFrame();
+}
+
+void WindowMan::BlitScreenBufferToWindows() {
 	glDisable(GL_BLEND);
 	if (m_MultiDisplayWindows.empty()) {
 		g_RenderMan.BeginFrame(nullptr);
@@ -889,15 +905,6 @@ void WindowMan::UploadFrame() {
 			g_RenderMan.DrawActiveBatch();
 		}
 	}
-	g_DebugMan.DrawImGui();
-	ImGui::Render();
-	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-	Present();
-	TracyGpuCollect;
-	FrameMark;
-	ImGui_ImplOpenGL3_NewFrame();
-	ImGui_ImplSDL3_NewFrame();
-	ImGui::NewFrame();
 }
 
 void WindowMan::Present() {
