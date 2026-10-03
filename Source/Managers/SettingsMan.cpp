@@ -1,6 +1,7 @@
 #include "SettingsMan.h"
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "TerrainCollapse.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -143,6 +144,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
@@ -401,6 +403,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLine(false);
 	writer.NewPropertyWithValue("ShowForeignItems", m_ShowForeignItems);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
+	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
 	writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
 	writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);

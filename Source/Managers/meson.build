@@ -20,6 +20,7 @@ sources += files(
 'PrimitiveMan.cpp',
 'SceneMan.cpp',
 'TerrainFire.cpp',
+'TerrainCollapse.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
 'TimerMan.cpp',

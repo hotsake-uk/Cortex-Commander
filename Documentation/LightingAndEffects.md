@@ -51,6 +51,12 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Determinism:** it is part of the simulation and stays deterministic. It ticks in fixed sim steps with its own seeded random numbers, and ignitions are sorted before they're applied.
 - **Saves:** fire isn't saved in saved games.
 
+**Collapsing terrain** (`TerrainCollapse`, a gameplay setting, also in F6):
+- **When it checks:** half a second and again a second and a half after a big explosion, it looks around the crater for pieces of terrain no longer touching anything.
+- **What falls:** pieces up to 2500 pixels drop as rigid chunks, accelerating until they land with a puff of dust.
+- **What stays up:** built structures (concrete, metal, military materials) and anything touching the edge of the world.
+- **Determinism:** it is part of the simulation and deterministic, with sorted checks and no random numbers.
+
 Press **F8** for **Photo Mode**:
 - Freezes time and hides the HUD and screen text.
 - Free camera: drag with the right mouse button, or use the arrow keys.
