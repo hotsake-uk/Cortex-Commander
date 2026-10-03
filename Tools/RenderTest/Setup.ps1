@@ -14,6 +14,8 @@ $scenarioDir = Join-Path $Repo "Userdata\RenderTest"
 if (-not (Test-Path $scenarioDir)) { New-Item -ItemType Directory -Path $scenarioDir | Out-Null }
 
 function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalScripts) {
+	# Captures are compared against each other, so always use the native 960x540 window whatever the player's own settings are.
+	$Overrides = @{ ResolutionMultiplier = 1; Fullscreen = 0 } + $Overrides
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
 	$set = @{}
 	$lines = foreach ($line in $lines) {
@@ -47,4 +49,7 @@ Write-Scenario "BunkerPerf" ($bunker + @{ TimeOfDay = 23 }) @("Render Test FX", 
 $play = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAScripted"; DefaultActivityName = "One-Man Army"; DefaultSceneName = "Ketanot Hills" }
 Write-Scenario "Play" $play @()
 Write-Scenario "PlayDusk" ($play + @{ TimeOfDay = 19 }) @()
+$tutorial = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GATutorial"; DefaultActivityName = "Tutorial Mission"; DefaultSceneName = "Tutorial Bunker" }
+Write-Scenario "TutorialDusk" ($tutorial + @{ TimeOfDay = 19 }) @()
+Write-Scenario "TutorialNight" ($tutorial + @{ TimeOfDay = 23 }) @()
 Write-Scenario "Menu" @{ LaunchIntoActivity = 0; SkipIntro = 1 } @()

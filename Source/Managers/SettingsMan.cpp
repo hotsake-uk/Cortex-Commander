@@ -30,6 +30,11 @@ namespace {
 		stream << value.x << " " << value.y << " " << value.z;
 		return stream.str();
 	}
+
+	/// Bumped when lighting defaults change enough that values saved by older versions should be dropped in favour of the new defaults.
+	/// 2: brighter ambient light in interiors and caves.
+	constexpr int c_LightingSettingsVersion = 2;
+	int s_ReadLightingSettingsVersion = 0; //!< Version of the lighting settings in the file being read, 0 when it has none.
 } // namespace
 
 const std::string SettingsMan::c_ClassName = "SettingsMan";
@@ -37,6 +42,7 @@ const std::string SettingsMan::c_ClassName = "SettingsMan";
 void SettingsMan::Clear() {
 	m_SettingsPath = System::GetUserdataDirectory() + "Settings.ini";
 	m_SettingsNeedOverwrite = false;
+	s_ReadLightingSettingsVersion = 0;
 
 	m_FlashOnBrainDamage = true;
 	m_BlipOnRevealUnseen = false;
@@ -135,9 +141,20 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("LightingAmbient", { g_PostProcessMan.GetLightingSettings().Ambient = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().Ambient); });
-	MatchProperty("LightingForegroundAmbient", { g_PostProcessMan.GetLightingSettings().ForegroundAmbient = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().ForegroundAmbient); });
+	MatchProperty("LightingAmbient", {
+		std::string value = reader.ReadPropValue();
+		if (s_ReadLightingSettingsVersion >= 2) {
+			g_PostProcessMan.GetLightingSettings().Ambient = ReadVec3(value, g_PostProcessMan.GetLightingSettings().Ambient);
+		}
+	});
+	MatchProperty("LightingForegroundAmbient", {
+		std::string value = reader.ReadPropValue();
+		if (s_ReadLightingSettingsVersion >= 2) {
+			g_PostProcessMan.GetLightingSettings().ForegroundAmbient = ReadVec3(value, g_PostProcessMan.GetLightingSettings().ForegroundAmbient);
+		}
+	});
 	MatchProperty("LightingSkyColor", { g_PostProcessMan.GetLightingSettings().SkyColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().SkyColor); });
 	MatchProperty("LightingAirFalloff", { g_PostProcessMan.GetLightingSettings().AirFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
@@ -290,6 +307,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
 	writer.NewLine(false);
 	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
+	writer.NewPropertyWithValue("LightingSettingsVersion", c_LightingSettingsVersion);
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
 	writer.NewPropertyWithValue("LightingAmbient", WriteVec3(lighting.Ambient));
 	writer.NewPropertyWithValue("LightingSkyColor", WriteVec3(lighting.SkyColor));

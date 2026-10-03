@@ -454,10 +454,10 @@ void SceneLighting::Update() {
 	glm::vec3 daylight = GetDaylightTint(m_Settings.TimeOfDay);
 	float dayFactor = std::clamp(glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
 	m_EffectiveSky = m_Settings.SkyColor * daylight;
-	// Caves get a little darker at night too, but not as much as the outdoors.
-	m_EffectiveAmbient = m_Settings.Ambient * (0.6F + 0.4F * dayFactor);
-	// The readability floor drops more at night than the cave ambient does, so night battles stay dark and moody.
-	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.25F + 0.75F * dayFactor);
+	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
+	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor);
+	// The readability floor drops more at night than the interior ambient does, so night battles outdoors stay dark and moody.
+	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.4F + 0.6F * dayFactor);
 
 	if (!EnsureWorldResources()) {
 		return;
