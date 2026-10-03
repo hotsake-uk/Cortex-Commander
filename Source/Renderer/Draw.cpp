@@ -94,7 +94,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			AppendRectangle(*draw, FloatRect(pos.x, pos.y, texture->GetDimensions().w, texture->GetDimensions().h), FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
+			AppendRectangle(*draw, FloatRect(pos.x, pos.y, texture->GetDimensions().w, texture->GetDimensions().h), texture->GetUVRect(), tint);
 			return draw;
 		}
 
@@ -103,7 +103,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			AppendRectangle(*draw, dest, FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
+			AppendRectangle(*draw, dest, texture->GetUVRect(), tint);
 			return draw;
 		}
 
@@ -112,7 +112,7 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			AppendRectangle(*draw, FloatRect(0, 0, texture->GetDimensions().w, texture->GetDimensions().h), FloatRect(0.0f, 0.0f, 1.0f, 1.0f), tint);
+			AppendRectangle(*draw, FloatRect(0, 0, texture->GetDimensions().w, texture->GetDimensions().h), texture->GetUVRect(), tint);
 			glm::mat4 transform = glm::translate(glm::vec3(pos, 0.0f));
 			transform = glm::rotate(transform, angle, glm::vec3(0.0f, 0.0f, 1.0f));
 			transform = glm::scale(transform, glm::vec3(scale, 1.0f));
@@ -141,11 +141,11 @@ namespace RTE {
 			std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 			draw->m_TextureId = texture->GetTextureId();
 			draw->m_Indexed = texture->GetBitDepth() == 8;
-			FloatRect uv = FloatRect(
+			FloatRect uv = texture->MapUV(FloatRect(
 			    source.x / texture->GetDimensions().w,
 			    source.y / texture->GetDimensions().h,
 			    source.w / texture->GetDimensions().w,
-			    source.h / texture->GetDimensions().h);
+			    source.h / texture->GetDimensions().h));
 			AppendRectangle(*draw, dest, uv, tint);
 			return draw;
 		}
