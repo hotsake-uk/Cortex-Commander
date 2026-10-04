@@ -21,11 +21,17 @@
 
 namespace RTE {
 
+	/// Thrown instead of aborting the game when something goes fatally wrong while a mod is being loaded. Whoever loads mods catches it, leaves that mod out and carries on.
+	struct ModLoadFailure {
+		std::string Description; //!< What went wrong, and where.
+	};
+
 	/// Class for runtime error handling.
 	class RTEError {
 
 	public:
 		static bool s_CurrentlyAborting; //!< Flag to prevent a potential recursive fault while attempting to save the game when aborting.
+		static bool s_LoadingMod; //!< Whether a mod (not one of the game's own modules) is being loaded right now. Fatal errors then fail the mod, not the game.
 		static bool s_IgnoreAllAsserts; //!< Whether to skip the assert dialog and just let everything burn at whatever point that happens.
 		static std::string s_LastIgnoredAssertDescription; //!< The last ignored assert message.
 		static std::source_location s_LastIgnoredAssertLocation; //!< The last ignored assert call site.

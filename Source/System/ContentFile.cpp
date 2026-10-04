@@ -515,7 +515,31 @@ FMOD::Sound* ContentFile::LoadAndReleaseSound(bool abortGameForInvalidSound, boo
 			}
 		}
 		if (!foundAltExtension) {
+			// The game's own gunshot sounds used to be called Fire1, Fire2...; they're Shot1, Shot2... now. Mods that borrow them by the old name get the new files.
+			if (size_t oldName = m_DataPath.rfind("/Sounds/Fire"); oldName != std::string::npos) {
+				std::string renamed = m_DataPath;
+				renamed.replace(oldName, 12, "/Sounds/Shot");
+				if (System::PathExistsCaseSensitive(renamed)) {
+					SetDataPath(renamed);
+					foundAltExtension = true;
+				}
+			}
+			// Likewise single sounds that became numbered sets: Chamber is Chamber1, Chamber2... now.
+			if (!foundAltExtension && !m_DataPathWithoutExtension.empty() && !std::isdigit(static_cast<unsigned char>(m_DataPathWithoutExtension.back()))) {
+				std::string numbered = m_DataPathWithoutExtension + "1" + m_DataPathExtension;
+				if (System::PathExistsCaseSensitive(numbered)) {
+					SetDataPath(numbered);
+					foundAltExtension = true;
+				}
+			}
+		}
+		if (!foundAltExtension) {
 			std::string errorMessage = "Failed to find audio file with following path and name:\n\n" + m_DataPath + " or any alternative supported file type";
+			if (RTEError::s_LoadingMod) {
+				// A missing sound makes a mod quieter, not unusable.
+				g_ConsoleMan.AddLoadWarningLogEntry("Sound file not found, so that sound is silent: \"" + m_DataPath + "\" " + m_FormattedReaderPosition + ".");
+				return nullptr;
+			}
 			RTEAssert(!abortGameForInvalidSound, errorMessage + "\n" + m_FormattedReaderPosition);
 			g_ConsoleMan.PrintString(errorMessage + ". The file was not loaded!");
 			return nullptr;

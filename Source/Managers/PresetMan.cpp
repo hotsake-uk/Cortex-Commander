@@ -63,6 +63,11 @@ void PresetMan::Destroy() {
 	for (std::vector<DataModule*>::iterator dmItr = m_pDataModules.begin(); dmItr != m_pDataModules.end(); ++dmItr) {
 		delete (*dmItr);
 	}
+	for (DataModule* failedModule: m_FailedModules) {
+		delete failedModule;
+	}
+	m_FailedModules.clear();
+	m_FailedMods.clear();
 
 	Clear();
 }
@@ -108,6 +113,34 @@ bool PresetMan::LoadDataModule(const std::string& moduleName, bool official, boo
 		m_DataModuleIDs.try_emplace(lowercaseName, m_pDataModules.size() - 1);
 	}
 
+	if (!official && !userdata) {
+		// A mod with something wrong in it is left out, with a note of what was wrong, and the game carries on without it.
+		RTEError::s_LoadingMod = true;
+		std::string failure;
+		try {
+			if (newModule->Create(moduleName, progressCallback) < 0) {
+				failure = "Its Index.ini could not be read.";
+			}
+		} catch (const ModLoadFailure& modLoadFailure) {
+			failure = modLoadFailure.Description;
+		}
+		RTEError::s_LoadingMod = false;
+		if (!failure.empty()) {
+			m_pDataModules.pop_back();
+			m_DataModuleIDs.erase(lowercaseName);
+			m_FailedModules.emplace_back(newModule);
+			m_FailedMods[moduleName] = failure;
+			std::string oneLine = failure;
+			std::replace(oneLine.begin(), oneLine.end(), '\n', ' ');
+			g_ConsoleMan.AddLoadWarningLogEntry("MOD NOT LOADED: " + moduleName + ": " + oneLine);
+			g_ConsoleMan.PrintString("ERROR: The mod " + moduleName + " was not loaded: " + oneLine);
+			if (progressCallback) {
+				progressCallback(moduleName + " was NOT loaded: " + oneLine, true);
+			}
+			return false;
+		}
+		return true;
+	}
 	if (newModule->Create(moduleName, progressCallback) < 0) {
 		RTEAbort("Failed to find the " + moduleName + " Data Module!");
 		return false;

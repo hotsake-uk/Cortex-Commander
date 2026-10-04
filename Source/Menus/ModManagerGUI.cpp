@@ -65,6 +65,11 @@ void ModManagerGUI::PopulateKnownModsList() {
 			}
 		}
 	}
+	// Mods that are switched on but failed to load, with what went wrong in each.
+	for (const auto& [modPath, failure]: g_PresetMan.GetFailedMods()) {
+		ModRecord failedModRecord = {modPath, "FAILED TO LOAD", "This mod could not be loaded, and was left out:\n" + failure, g_SettingsMan.IsModDisabled(modPath)};
+		m_KnownMods.emplace_back(failedModRecord);
+	}
 	// Add missing data from disabled mods settings
 	for (const auto& [modPath, modDisabled]: g_SettingsMan.GetDisabledModsMap()) {
 		bool found = false;

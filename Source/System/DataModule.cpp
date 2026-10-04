@@ -1,3 +1,4 @@
+#include "ConsoleMan.h"
 #include "DataModule.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
@@ -171,7 +172,9 @@ int DataModule::ReadProperty(const std::string_view& propName, Reader& reader) {
 			try {
 				m_SupportedGameVersion = new version::Semver200_version(versionText);
 			} catch (version::Parse_error&) {
-				reader.ReportError("Couldn't parse the supported game version from the value provided: \"" + versionText + "\"!\nThe supported game version must be a valid semantic version number.\n");
+				// Mods from before version 6 wrote things like "Pre-Release 5.0" here. They're tried anyway, with a note.
+				g_ConsoleMan.AddLoadWarningLogEntry(m_FileName + " says it was made for \"" + versionText + "\", from before version numbers were settled. Loaded anyway; it may not work fully.");
+				m_SupportedGameVersion = new version::Semver200_version("5.0.0");
 			}
 		}
 	});
@@ -494,9 +497,9 @@ bool DataModule::AddToTypeMap(Entity* entityToAdd) {
 void DataModule::CheckSupportedGameVersion() const {
 	static const std::string contactAuthor = "Please contact the mod author or ask for help in the CCCP discord server.";
 	
-	RTEAssert(m_SupportedGameVersion, m_FileName + " does not specify a supported Cortex Command version, so it is not compatible with this version of Cortex Command (" + c_GameVersion.str() + ")\n\n" + contactAuthor);
-
+	// A version that doesn't match is worth a note, not a refusal: most mods made for older versions load and play, and one that really can't is caught and left out when it fails.
 	if (!m_SupportedGameVersion) {
+		g_ConsoleMan.AddLoadWarningLogEntry(m_FileName + " doesn't say which game version it was made for (this is " + c_GameVersion.str() + "). Loaded anyway.");
 		return;
 	}
 	
@@ -506,16 +509,8 @@ void DataModule::CheckSupportedGameVersion() const {
 
 	bool modulePrereleaseVersionMismatch = !m_SupportedGameVersion->prerelease().empty();
 	bool moduleBuildVersionMismatch = !m_SupportedGameVersion->build().empty();
-	RTEAssert(!modulePrereleaseVersionMismatch && !moduleBuildVersionMismatch, m_FileName + " was developed for pre-release build of Cortex Command v" + m_SupportedGameVersion->str() + ", so this game version (v" + c_GameVersion.str() + ") may not support it.\n\n" + contactAuthor);
-
-	bool gamePrereleaseVersionMismatch = !c_GameVersion.prerelease().empty();
-	bool gameBuildVersionMismatch = !c_GameVersion.build().empty();
-	RTEAssert(!gamePrereleaseVersionMismatch && !gameBuildVersionMismatch, m_FileName + " was developed for Cortex Command v" + m_SupportedGameVersion->str() + ", so this pre-release version of the game (v" + c_GameVersion.str() + ") may not support it.\n\n" + contactAuthor);
-
-	// Game engine is the same major version as the Module
-	bool majorVersionMatch = c_GameVersion.major() == m_SupportedGameVersion->major();
-	// Game engine is at least the minor version the Module requires (allow patch mismatch)
-	bool minorVersionInRange = m_SupportedGameVersion->inc_minor() <= c_GameVersion.inc_minor();
-
-	RTEAssert(majorVersionMatch && minorVersionInRange, m_FileName + " was developed for Cortex Command v" + m_SupportedGameVersion->str() + ", so this version of Cortex Command (v" + c_GameVersion.str() + ") may not support it.\n\n" + contactAuthor);
+	// Mods made for version 6 are what this version is built to run. Anything else gets a note.
+	if (modulePrereleaseVersionMismatch || moduleBuildVersionMismatch || m_SupportedGameVersion->major() < 6 || *m_SupportedGameVersion > c_GameVersion) {
+		g_ConsoleMan.AddLoadWarningLogEntry(m_FileName + " was made for Cortex Command " + m_SupportedGameVersion->str() + " (this is " + c_GameVersion.str() + "). Loaded anyway; it may not work fully.");
+	}
 }

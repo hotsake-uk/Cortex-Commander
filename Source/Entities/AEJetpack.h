@@ -31,6 +31,11 @@ namespace RTE {
 		/// @param reference A reference to the AEJetpack to deep copy.
 		/// @return An error return value signaling success or any particular failure. Anything below 0 is an error signal.
 		int Create(const AEJetpack& reference);
+
+		/// Makes a jetpack of what was read for a unit's Jetpack. Older mods describe theirs as a plain AEmitter; that is turned into a jetpack with the emitter's settings.
+		/// @param readPreset What was read. Ownership IS transferred: it's either returned as it is or replaced and deleted.
+		/// @return The jetpack, or nullptr if what was read can't be one.
+		static AEJetpack* FromReadPreset(Entity* readPreset);
 #pragma endregion
 
 #pragma region Destruction

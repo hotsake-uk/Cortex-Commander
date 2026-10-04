@@ -84,6 +84,9 @@ namespace RTE {
 		/// @param filePath The filename of the file to write to.
 		void SaveLoadWarningLog(const std::string& filePath);
 
+		/// Adds a line to the log of things that went wrong during loading without stopping the game.
+		void AddLoadWarningLogEntry(const std::string& entry) { m_LoadWarningLog.emplace(entry); }
+
 		/// Writes all the input strings to a log in the order they were entered.
 		/// @param filePath The filename of the file to write to.
 		void SaveInputLog(const std::string& filePath);

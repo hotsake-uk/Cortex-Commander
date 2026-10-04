@@ -110,7 +110,8 @@ SoundData SoundSet::ReadAndGetSoundData(Reader& reader) {
 		soundFile.SetFormattedReaderPosition("in file " + reader.GetCurrentFilePath() + " on line " + reader.GetCurrentFileLine());
 
 		FMOD::Sound* soundObject = soundFile.GetAsSound();
-		if (g_AudioMan.IsAudioEnabled() && !soundObject) {
+		// In a mod a sound that can't be found is left out (and noted where it was looked for); anywhere else it's an error.
+		if (g_AudioMan.IsAudioEnabled() && !soundObject && !RTEError::s_LoadingMod) {
 			reader.ReportError(std::string("Failed to load the sound from the file"));
 		}
 

@@ -240,7 +240,30 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("ThrowPrepTime", { reader >> m_ThrowPrepTime; });
 	MatchProperty("Head", { SetHead(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("LookToAimRatio", { reader >> m_LookToAimRatio; });
-	MatchProperty("Jetpack", { SetJetpack(dynamic_cast<AEJetpack*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("Jetpack", { SetJetpack(AEJetpack::FromReadPreset(g_PresetMan.ReadReflectedPreset(reader))); });
+	// Older mods set how the jetpack flies on the unit itself. Those settings live on the jetpack now, so they're passed on to it.
+	MatchProperty("JumpTime", {
+		float jumpTime;
+		reader >> jumpTime;
+		if (m_pJetpack) {
+			m_pJetpack->SetJetTimeTotal(jumpTime * 1000.0F);
+			m_pJetpack->SetJetTimeLeft(jumpTime * 1000.0F);
+		}
+	});
+	MatchProperty("JumpReplenishRate", {
+		float replenishRate;
+		reader >> replenishRate;
+		if (m_pJetpack) {
+			m_pJetpack->SetJetReplenishRate(replenishRate);
+		}
+	});
+	MatchProperty("JumpAngleRange", {
+		float angleRange;
+		reader >> angleRange;
+		if (m_pJetpack) {
+			m_pJetpack->SetJetAngleRange(angleRange);
+		}
+	});
 	MatchProperty("FGArmFlailScalar", { reader >> m_FGArmFlailScalar; });
 	MatchProperty("BGArmFlailScalar", { reader >> m_BGArmFlailScalar; });
 	MatchProperty("ArmSwingRate", { reader >> m_ArmSwingRate; });

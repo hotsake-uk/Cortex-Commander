@@ -59,6 +59,10 @@ namespace RTE {
 			if (refName != "None") {
 				std::string className = GetClassName();
 				const Entity* preset = g_PresetMan.GetEntityPreset(className, refName, reader.GetReadModuleID());
+				if (!preset && className == "AEJetpack") {
+					// Older mods define their jetpacks as plain emitters. A jetpack can be copied from one: it takes the emitter's settings.
+					preset = g_PresetMan.GetEntityPreset("AEmitter", refName, reader.GetReadModuleID());
+				}
 				if (preset) {
 					preset->Clone(this);
 				} else {

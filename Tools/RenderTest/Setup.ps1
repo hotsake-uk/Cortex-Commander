@@ -163,3 +163,5 @@ Write-Scenario "LightsFixturesOnly" ($shadowBunker + @{ TimeOfDay = 23; WeatherT
 Write-Scenario "LightsDarkInterior" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingAmbient = "0.12 0.12 0.15"; LightingForegroundAmbient = "0.12 0.12 0.14" }) @("Render Test Light Fixtures")
 # Two of the bunker's lamps destroyed: they should be dark (compare with GoldenShadows, the same view with them whole).
 Write-Scenario "LightsBroken" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingDebugView = 1 }) @("Render Test Light Break")
+# Every mod in turn in a short fight (see Tools\Mods\Test-Mods.ps1 -Play).
+Write-Scenario "ModSweep" ($sandbox + @{ TimeOfDay = 13; WeatherType = 0 }) @("Render Test Mod Sweep")

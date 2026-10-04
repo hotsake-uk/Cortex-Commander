@@ -1,5 +1,6 @@
 #pragma once
 
+#include "RTEError.h"
 #include "Vector.h"
 #include "ContentFile.h"
 #include "LuaMan.h"
@@ -103,7 +104,13 @@ namespace RTE {
 
 		/// Adds a copy of the given SoundData to this SoundSet.
 		/// @param soundDataToAdd The SoundData to copy to this SoundSet.
-		void AddSoundData(const SoundData& soundDataToAdd) { m_SoundData.push_back(soundDataToAdd); }
+		void AddSoundData(const SoundData& soundDataToAdd) {
+			// A sound a mod asked for that could not be found is left out, so nothing ever tries to play it.
+			if (!soundDataToAdd.SoundObject && RTEError::s_LoadingMod) {
+				return;
+			}
+			m_SoundData.push_back(soundDataToAdd);
+		}
 
 		/// Adds a copy of the passed in SoundSet as a sub SoundSet of this SoundSet. Ownership IS transferred!
 		/// @param soundSetToAdd A reference to the SoundSet to be copied in as a sub SoundSet of this SoundSet. Ownership IS transferred!

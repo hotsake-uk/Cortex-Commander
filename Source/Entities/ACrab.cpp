@@ -226,7 +226,30 @@ int ACrab::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return Actor::ReadProperty(propName, reader));
 
 	MatchProperty("Turret", { SetTurret(dynamic_cast<Turret*>(g_PresetMan.ReadReflectedPreset(reader))); });
-	MatchProperty("Jetpack", { SetJetpack(dynamic_cast<AEJetpack*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("Jetpack", { SetJetpack(AEJetpack::FromReadPreset(g_PresetMan.ReadReflectedPreset(reader))); });
+	// Older mods set how the jetpack flies on the unit itself. Those settings live on the jetpack now, so they're passed on to it.
+	MatchProperty("JumpTime", {
+		float jumpTime;
+		reader >> jumpTime;
+		if (m_pJetpack) {
+			m_pJetpack->SetJetTimeTotal(jumpTime * 1000.0F);
+			m_pJetpack->SetJetTimeLeft(jumpTime * 1000.0F);
+		}
+	});
+	MatchProperty("JumpReplenishRate", {
+		float replenishRate;
+		reader >> replenishRate;
+		if (m_pJetpack) {
+			m_pJetpack->SetJetReplenishRate(replenishRate);
+		}
+	});
+	MatchProperty("JumpAngleRange", {
+		float angleRange;
+		reader >> angleRange;
+		if (m_pJetpack) {
+			m_pJetpack->SetJetAngleRange(angleRange);
+		}
+	});
 	MatchForwards("LFGLeg") MatchProperty("LeftFGLeg", { SetLeftFGLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchForwards("LBGLeg") MatchProperty("LeftBGLeg", { SetLeftBGLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchForwards("RFGLeg") MatchProperty("RightFGLeg", { SetRightFGLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader))); });

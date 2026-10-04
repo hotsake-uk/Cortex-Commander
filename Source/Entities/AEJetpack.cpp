@@ -54,6 +54,20 @@ int AEJetpack::Create(const AEJetpack& reference) {
 	return 0;
 }
 
+AEJetpack* AEJetpack::FromReadPreset(Entity* readPreset) {
+	if (AEJetpack* jetpack = dynamic_cast<AEJetpack*>(readPreset)) {
+		return jetpack;
+	}
+	if (AEmitter* emitter = dynamic_cast<AEmitter*>(readPreset)) {
+		AEJetpack* jetpack = new AEJetpack();
+		emitter->Clone(jetpack);
+		delete emitter;
+		return jetpack;
+	}
+	delete readPreset;
+	return nullptr;
+}
+
 int AEJetpack::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return AEmitter::ReadProperty(propName, reader));
 

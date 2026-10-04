@@ -1,3 +1,5 @@
+#include "ConsoleMan.h"
+#include "RTEError.h"
 #include "Serializable.h"
 
 namespace RTE {
@@ -26,6 +28,11 @@ namespace RTE {
 
 	int Serializable::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader.ReadPropValue();
+		if (RTEError::s_LoadingMod) {
+			// A mod made for another version of the game may set things this one doesn't have. That one setting is passed over, with a note; the rest of the mod loads.
+			g_ConsoleMan.AddLoadWarningLogEntry("Unknown property '" + std::string(propName) + "' passed over in " + reader.GetCurrentFilePath() + " at line " + reader.GetCurrentFileLine() + ".");
+			return -1;
+		}
 		reader.ReportError("Could not match property '" + std::string(propName) + "'!");
 		return -1;
 	}

@@ -114,6 +114,9 @@ namespace RTE {
 		/// @return The number of modules loaded so far, both official and non.
 		int GetTotalModuleCount() { return m_pDataModules.size(); }
 
+		/// Gets the mods that were left out because they failed to load, with what went wrong in each.
+		const std::map<std::string, std::string>& GetFailedMods() const { return m_FailedMods; }
+
 		/// Gets the total number of OFFICIAL modules loaded so far.
 		/// @return The number of official modules loaded so far.
 		int GetOfficialModuleCount() { return m_OfficialModuleCount; }
@@ -350,6 +353,8 @@ namespace RTE {
 	protected:
 		// Owned and loaded DataModule:s
 		std::vector<DataModule*> m_pDataModules;
+		std::vector<DataModule*> m_FailedModules; //!< What was read of mods that failed to load. Not listed anywhere, but kept so anything that already points into them stays valid.
+		std::map<std::string, std::string> m_FailedMods; //!< The mods that failed to load, with what went wrong.
 
 		// Names of all DataModule:s mapped to indices into the m_pDataModules vector.
 		// The names are all lowercase name so we can more easily find them in case-agnostic fashion

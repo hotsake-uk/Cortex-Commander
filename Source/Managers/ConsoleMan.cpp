@@ -209,6 +209,12 @@ void ConsoleMan::PrintString(const std::string& stringToPrint) {
 	std::scoped_lock<std::mutex> printStringLock(printStringMutex);
 
 	m_OutputLog.emplace_back("\n" + stringToPrint);
+	// With CCCP_CONSOLE_LOG set to a file name, every line also goes straight to that file, so script errors can be read while the game runs or after it's been killed.
+	static const char* liveLogPath = std::getenv("CCCP_CONSOLE_LOG");
+	if (liveLogPath) {
+		static std::ofstream liveLog(liveLogPath, std::ios::trunc);
+		liveLog << stringToPrint << std::endl;
+	}
 	if (System::IsLoggingToCLI()) {
 		System::PrintToCLI(stringToPrint);
 	}

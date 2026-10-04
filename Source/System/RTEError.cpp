@@ -39,6 +39,7 @@
 using namespace RTE;
 
 bool RTEError::s_CurrentlyAborting = false;
+bool RTEError::s_LoadingMod = false;
 bool RTEError::s_IgnoreAllAsserts = false;
 std::string RTEError::s_LastIgnoredAssertDescription = "";
 std::source_location RTEError::s_LastIgnoredAssertLocation = {};
@@ -327,6 +328,10 @@ void RTEError::UnhandledExceptionFunc(const std::string& description, const std:
 }
 
 void RTEError::AbortFunc(const std::string& description, const std::source_location& srcLocation) {
+	if (s_LoadingMod && !System::IsInExternalModuleValidationMode()) {
+		// A broken mod mustn't take the game down with it.
+		throw ModLoadFailure{description};
+	}
 	s_CurrentlyAborting = true;
 
 	if (!System::IsInExternalModuleValidationMode()) {
@@ -396,6 +401,9 @@ void RTEError::AbortFunc(const std::string& description, const std::source_locat
 }
 
 void RTEError::AssertFunc(const std::string& description, const std::source_location& srcLocation) {
+	if (s_LoadingMod && !System::IsInExternalModuleValidationMode()) {
+		throw ModLoadFailure{description};
+	}
 	if (System::IsInExternalModuleValidationMode()) {
 		AbortFunc(description, srcLocation);
 	}
