@@ -47,6 +47,7 @@
 #include "FluidSim.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
+#include "ActorFire.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -413,6 +414,7 @@ void RunGameLoop() {
 			Sandbox::Update();
 			SmokeGrid::Update();
 			TerrainFire::Update();
+			ActorFire::Update();
 			TerrainCollapse::Update();
 			FluidSim::Update();
 

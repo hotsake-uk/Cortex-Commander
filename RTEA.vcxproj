@@ -864,6 +864,7 @@
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
     <ClInclude Include="Source\Managers\SmokeGrid.h" />
+    <ClInclude Include="Source\Managers\ActorFire.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
@@ -1413,6 +1414,7 @@
     <ClCompile Include="Source\Managers\FluidSim.cpp" />
     <ClCompile Include="Source\Managers\ModernHUD.cpp" />
     <ClCompile Include="Source\Managers\SmokeGrid.cpp" />
+    <ClCompile Include="Source\Managers\ActorFire.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />

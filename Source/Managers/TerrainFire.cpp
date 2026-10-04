@@ -4,6 +4,7 @@
 #include "Material.h"
 #include "MovableMan.h"
 #include "MovableObject.h"
+#include "MOPixel.h"
 #include "PostProcessMan.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
@@ -68,6 +69,7 @@ namespace {
 	std::vector<std::pair<glm::vec2, float>> s_AreaQueue;
 	std::vector<glm::ivec3> s_DouseQueue; //!< x, y, radius.
 	std::array<bool, 256> s_DousingTable{};
+	int s_WaterColor = -1; //!< Palette index water is drawn with.
 	std::mutex s_QueueMutex;
 	std::unordered_map<std::string, bool> s_FireSourceCache;
 	std::mutex s_FireSourceMutex;
@@ -112,6 +114,11 @@ namespace {
 			}
 			const std::string& name = material->GetPresetName();
 			s_DousingTable[id] = name == "Water";
+			if (name == "Water") {
+				Color waterColor = material->GetColor();
+				waterColor.RecalculateIndex();
+				s_WaterColor = waterColor.GetIndex();
+			}
 			if (Contains(name, "Ash")) {
 				s_AshMaterial = id;
 				Color ashColor = material->GetColor();
@@ -202,8 +209,48 @@ bool TerrainFire::IsFireSource(const MovableObject* object) {
 	return source;
 }
 
+bool TerrainFire::IsBurningNear(const Vector& position, int radius) {
+	SLTerrain* terrain = CurrentTerrain();
+	if (s_Burning.empty() || !terrain) {
+		return false;
+	}
+	int width = terrain->GetBitmap()->w;
+	int height = terrain->GetBitmap()->h;
+	int centerX = position.GetFloorIntX();
+	int centerY = position.GetFloorIntY();
+	for (int dy = -radius; dy <= radius; ++dy) {
+		for (int dx = -radius; dx <= radius; ++dx) {
+			int x = centerX + dx;
+			int y = centerY + dy;
+			if (WrapPixel(x, y, width, height) && s_Burning.count(y * width + x)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void TerrainFire::SpawnSteam(const Vector& position, int count) {
+	for (int i = 0; i < count; ++i) {
+		if (MovableObject* steam = CreateEffect("MOSParticle", "Steam Puff")) {
+			steam->SetPos(position + Vector((Random01(s_Random) - 0.5F) * 6.0F, -2.0F - Random01(s_Random) * 4.0F));
+			steam->SetVel(Vector((Random01(s_Random) - 0.5F) * 1.5F, -1.0F - Random01(s_Random) * 1.5F));
+			g_MovableMan.AddParticle(steam);
+		}
+	}
+}
+
 bool TerrainFire::IsDousing(int materialID) {
 	return s_FuelTableBuilt && materialID > 0 && materialID < 256 && s_DousingTable[materialID];
+}
+
+bool TerrainFire::IsDousingParticle(const MovableObject* particle, const Material* material) {
+	if (!material || !IsDousing(material->GetIndex())) {
+		return false;
+	}
+	const MOPixel* pixel = dynamic_cast<const MOPixel*>(particle);
+	// Only drops of water: blood sprays are water-material sprites too.
+	return pixel && pixel->GetColor().GetIndex() == s_WaterColor;
 }
 
 void TerrainFire::QueueDouse(int x, int y, int radius) {
@@ -323,14 +370,19 @@ void TerrainFire::Update() {
 		if (s_Burning.empty()) {
 			break;
 		}
+		size_t putOut = 0;
 		for (int dy = -douse.z; dy <= douse.z; ++dy) {
 			for (int dx = -douse.z; dx <= douse.z; ++dx) {
 				int x = douse.x + dx;
 				int y = douse.y + dy;
 				if (dx * dx + dy * dy <= douse.z * douse.z && WrapPixel(x, y, width, height)) {
-					s_Burning.erase(y * width + x);
+					putOut += s_Burning.erase(y * width + x);
 				}
 			}
+		}
+		// Water on fire hisses into steam.
+		if (putOut > 0 && Random01(s_Random) < 0.5F) {
+			SpawnSteam(Vector(static_cast<float>(douse.x), static_cast<float>(douse.y)), 1);
 		}
 	}
 	if (s_Burning.empty()) {
@@ -452,8 +504,8 @@ void TerrainFire::Extinguish(int x, int y) {
 	}
 	int width = terrain->GetBitmap()->w;
 	int height = terrain->GetBitmap()->h;
-	if (WrapPixel(x, y, width, height)) {
-		s_Burning.erase(y * width + x);
+	if (WrapPixel(x, y, width, height) && s_Burning.erase(y * width + x) > 0 && Random01(s_Random) < 0.08F) {
+		SpawnSteam(Vector(static_cast<float>(x), static_cast<float>(y)), 1);
 	}
 }
 

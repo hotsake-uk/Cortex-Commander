@@ -7,6 +7,7 @@
 namespace RTE {
 	class MovableObject;
 	class Vector;
+	class Material;
 
 	/// Fire that spreads through flammable terrain (grass, vegetation, wood, oil) and burns it away or to ash.
 	/// This is part of the simulation and deterministic: it updates in fixed sim steps with its own seeded random numbers,
@@ -38,8 +39,23 @@ namespace RTE {
 		/// Gets whether a material puts fire out where it splashes (water). Thread safe.
 		static bool IsDousing(int materialID);
 
+		/// Gets whether a particle puts fire out: water drawn in water's own colour (blood is drawn in water too, but red, and doesn't). Thread safe.
+		/// @param particle The particle.
+		/// @param material Its material.
+		static bool IsDousingParticle(const MovableObject* particle, const Material* material);
+
 		/// Queues putting out the fire around a point, where water splashed. Thread safe.
 		static void QueueDouse(int x, int y, int radius);
+
+		/// Gets whether any terrain is burning within a square around a point. Safe to call during the sim update, from any thread, but not while the fire itself updates.
+		/// @param position The centre.
+		/// @param radius Half the square's side, in pixels.
+		static bool IsBurningNear(const Vector& position, int radius);
+
+		/// Puffs of steam (where water meets fire or lava), which rise, fade and block sight like smoke. Main thread only.
+		/// @param position Where.
+		/// @param count How many puffs.
+		static void SpawnSteam(const Vector& position, int count);
 
 		/// Advances the fire one simulation step. Call once per sim update, from the main thread.
 		static void Update();

@@ -3,6 +3,7 @@
 #include "FluidSim.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
+#include "ActorFire.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
 #include "Shader.h"
@@ -1449,6 +1450,14 @@ float SceneMan::CastNotMaterialRay(const Vector& start, const Vector& ray, unsig
 
 bool SceneMan::SmokeBlocksSight(const Vector& start, const Vector& end) const {
 	return SmokeGrid::BlocksSight(start, end);
+}
+
+bool SceneMan::IsBurningNear(const Vector& position, int radius) const {
+	return TerrainFire::IsBurningNear(position, radius);
+}
+
+int SceneMan::GetBurningUnitCount() const {
+	return ActorFire::GetCount();
 }
 
 int SceneMan::GetBurningPixelCount() const {

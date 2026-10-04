@@ -1,6 +1,7 @@
 #include "Atom.h"
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
+#include "ActorFire.h"
 
 #include "SLTerrain.h"
 #include "MovableMan.h"
@@ -892,6 +893,8 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 				m_LastHit.RootBody[HITEE] = m_LastHit.Body[HITEE]->GetRootParent();
 				m_LastHit.RootBody[HITOR]->OnMOHit(m_LastHit);
 				m_LastHit.RootBody[HITEE]->OnMOHit(m_LastHit);
+				// Fire sets what it hits alight, and water puts it out.
+				ActorFire::OnHit(m_OwnerMO, m_LastHit.RootBody[HITEE], m_Material);
 			}
 
 			///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -913,7 +916,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 					TerrainFire::QueueIgnite(intPos[X], intPos[Y]);
 				}
 				// Water puts out fire where it splashes.
-				if (m_Material && TerrainFire::IsDousing(m_Material->GetIndex())) {
+				if (TerrainFire::IsDousingParticle(m_OwnerMO, m_Material)) {
 					TerrainFire::QueueDouse(intPos[X], intPos[Y], 4);
 				}
 

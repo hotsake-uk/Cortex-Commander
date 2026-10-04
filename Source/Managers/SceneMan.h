@@ -615,6 +615,14 @@ namespace RTE {
 		/// Gets how many terrain pixels are on fire.
 		int GetBurningPixelCount() const;
 
+		/// Gets whether any terrain is burning near a point.
+		/// @param position The centre.
+		/// @param radius How far to look, in pixels.
+		bool IsBurningNear(const Vector& position, int radius) const;
+
+		/// Gets how many units are on fire.
+		int GetBurningUnitCount() const;
+
 		/// Gets how many liquid pixels in the terrain are flowing.
 		int GetFlowingLiquidPixelCount() const;
 

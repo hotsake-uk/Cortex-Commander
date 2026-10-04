@@ -20,6 +20,7 @@
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "SmokeGrid.h"
+#include "ActorFire.h"
 #include "Sandbox.h"
 #include "ModernHUD.h"
 #include "TimerMan.h"
@@ -201,6 +202,10 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		bool burningUnits = ActorFire::IsEnabled();
+		if (ImGui::Checkbox("Units catch fire", &burningUnits)) {
+			ActorFire::SetEnabled(burningUnits);
+		}
 		bool smokeBlocks = SmokeGrid::IsEnabled();
 		if (ImGui::Checkbox("Smoke blocks sight", &smokeBlocks)) {
 			SmokeGrid::SetEnabled(smokeBlocks);

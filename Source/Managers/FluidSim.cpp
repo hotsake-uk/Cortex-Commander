@@ -302,6 +302,9 @@ void FluidSim::Update() {
 				terrain->SetFGColorPixel(nx, ny, ColorKeys::g_MaskColor);
 				ActivateAround(nx, ny, width, height, terrain);
 				EffectsParticles::SpawnExplosion(Vector(static_cast<float>(nx), static_cast<float>(ny)), 520.0F);
+				if (Random01() < 0.5F) {
+					TerrainFire::SpawnSteam(Vector(static_cast<float>(nx), static_cast<float>(ny)), 1);
+				}
 				reacted = true;
 				break;
 			}
