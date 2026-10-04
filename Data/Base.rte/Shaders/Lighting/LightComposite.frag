@@ -20,6 +20,8 @@ uniform float rteSunShadows; // How much shade darkens the sky light, 0 (no dire
 uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at full strength: darker and cooler.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
 uniform float rteContactShading; // How much background walls darken right next to solid objects and terrain, 0 (off) to 1.
+uniform float rteMetals; // How strongly metallic surfaces mirror their surroundings and glint in the sun, 0 for none.
+uniform float rteSpecular; // Strength of highlights on shiny surfaces.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
 uniform vec3 rteBackgroundLight; // Linear light on the distant background layers.
@@ -121,6 +123,9 @@ void main() {
 	vec4 albedo = texture(rteAlbedo, screenUV);
 
 	vec3 light;
+	// Light thrown straight back by shiny surfaces: added on top of the lit surface, white on most things and tinted by the surface on metal.
+	vec3 highlights = vec3(0.0);
+	float metalness = 0.0;
 	float nightSkyAmount = 0.0;
 	float sceneDepth = texture(rteSceneDepth, screenUV).r;
 	float haze = 0.0;
@@ -147,8 +152,10 @@ void main() {
 			float normalY = normalSample.y * 2.0 - 1.0;
 			sky *= mix(1.0, clamp(1.0 - normalY * 0.9, 0.35, 1.6), rteEdgeLighting);
 		}
-		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
-		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));
+		vec4 dynamicSample = texture(rteDynamicLight, screenUV);
+		vec3 dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicSample.rgb / rteMaxDynamicLight));
+		// Highlights from the lights, in the lights' own color.
+		highlights = dynamicSample.rgb / max(max(dynamicSample.r, max(dynamicSample.g, dynamicSample.b)), 0.001) * min(dynamicSample.a, 6.0);
 		// Daylight has a direction. Where the sun (or moon) can't be seen, the sky light is dimmer and cooler; under open sky in full sun it is exactly as without shadows.
 		bool solidObject = normalSample.a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
 		bool terrainPixel = sceneDepth < rteForegroundDepth && !solidObject;
@@ -184,6 +191,24 @@ void main() {
 		if (rteGIStrength > 0.0) {
 			vec3 gi = texture(rteGI, screenUV).rgb;
 			light += min(gi, vec3(6.0)) * rteGIStrength;
+		}
+		vec4 surfaceSample = normalSample.a > 0.25 ? texture(rteSurface, screenUV) : vec4(0.0);
+		metalness = surfaceSample.r;
+		if (rteMetals > 0.0 && normalSample.a > 0.25) {
+			vec2 tiltXY = normalSample.xy * 2.0 - 1.0;
+			vec3 normal = vec3(tiltXY, sqrt(max(1.0 - dot(tiltXY, tiltXY), 0.0)));
+			if (metalness > 0.02) {
+				// Metal mirrors what's around it instead of scattering light: the sky where it leans up, the dark ground where it leans down. Facing the viewer it shows the horizon, which leaves it as it was.
+				float lean = -tiltXY.y;
+				float mirrored = lean >= 0.0 ? mix(1.0, 1.75, lean) : mix(1.0, 0.4, -lean);
+				light *= mix(1.0, mirrored, metalness * min(rteMetals, 1.5));
+			}
+			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches.
+			float gloss = max(surfaceSample.g, 1.0 - normalSample.b);
+			if (gloss > 0.1) {
+				vec3 halfway = normalize(vec3(rteSunDirection * 0.8, 0.6) + vec3(0.0, 0.0, 1.0));
+				highlights += rteSkyColor * pow(max(dot(normal, halfway), 0.0), mix(24.0, 90.0, gloss)) * gloss * daylight * rteMetals * rteSpecular * mix(0.5, 1.6, metalness);
+			}
 		}
 		if (rteContactShading > 0.0 && sceneDepth >= rteForegroundDepth) {
 			// Background walls darken right next to solid objects and next to terrain, so things look anchored to the scene instead of pasted on.
@@ -243,6 +268,8 @@ void main() {
 		float skyBrightness = dot(litColor, vec3(0.2126, 0.7152, 0.0722));
 		litColor += NightSky(gl_FragCoord.xy) * nightSkyAmount * (1.0 - smoothstep(0.03, 0.12, skyBrightness));
 	}
+	// Highlights: white on most things, taking the surface's own color on metal (which is why gold glints gold and steel glints white).
+	litColor += highlights * mix(vec3(1.0), albedoLinear * 2.5 + 0.15, metalness) * (1.0 - haze);
 	vec3 result = litColor + emissive;
 	FragColor = vec4(any(isnan(result)) || any(isinf(result)) ? vec3(0.0) : result, 1.0);
 }

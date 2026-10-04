@@ -373,6 +373,11 @@ void HeldDevice::Update() {
 	}
 }
 
+void HeldDevice::GetDefaultSurface(float& metalness, float& gloss) const {
+	metalness = 0.8F;
+	gloss = 0.6F;
+}
+
 void HeldDevice::Draw(BITMAP* pTargetBitmap,
                       const Vector& targetPos,
                       DrawMode mode,

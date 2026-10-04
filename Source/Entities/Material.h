@@ -115,6 +115,16 @@ namespace RTE {
 		/// Indicates whether or not to use the Material's own color when a pixel of this Material is knocked loose from the terrain.
 		/// @return Whether the Material's color, or the terrain pixel's color should be applied.
 		bool UsesOwnColor() const { return m_UseOwnColor; }
+
+		/// Gets how metallic things made of this Material look under the lighting: metal mirrors its surroundings and tints its highlights.
+		/// Set with Metalness in INI; when it isn't, a value that suits the Material's name is used (the metals, "Military Stuff" and so on).
+		/// @return The metalness, 0 to 1.
+		float GetMetalness() const;
+
+		/// Gets how glossy things made of this Material look under the lighting: how strong and tight the highlights lights throw on them are.
+		/// Set with Gloss in INI; when it isn't, a value that suits the Material's name is used.
+		/// @return The gloss, 0 to 1.
+		float GetGloss() const;
 #pragma endregion
 
 #pragma region Operator Overloads
@@ -152,6 +162,9 @@ namespace RTE {
 		unsigned char m_SettleMaterialIndex; //!< The material to turn particles of this into when they settle on the terrain. 0 here means to spawn this material.
 		unsigned char m_SpawnMaterialIndex; //!< The material to spawn instead of this one for special effects, etc. 0 here means to spawn this material.
 		bool m_IsScrap; //!< Whether this material is scrap material made from gibs of things that have already been blown apart.
+
+		mutable float m_Metalness; //!< How metallic this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
+		mutable float m_Gloss; //!< How glossy this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
 
 		Color m_Color; //!< The natural color of this material.
 		bool m_UseOwnColor; //!< Whether or not to use the own color when a pixel of this material is knocked loose from the terrain. If 0, then the terrain pixel's color will be applied instead.

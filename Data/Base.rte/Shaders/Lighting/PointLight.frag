@@ -129,19 +129,24 @@ void main() {
 
 	// Edges facing the light catch more of it, edges facing away get less. Normalized so flat surfaces are lit exactly as without normals.
 	float shading = 1.0;
+	float highlight = 0.0;
 	vec4 normalSample = texture(rteNormals, gl_FragCoord.xy / rteScreenSize);
 	if (normalSample.a > 0.25) {
 		vec2 normalXY = normalSample.xy * 2.0 - 1.0;
 		vec3 normal = vec3(normalXY, sqrt(max(1.0 - dot(normalXY, normalXY), 0.0)));
 		vec3 toLight = normalize(vec3(lightCenter - gl_FragCoord.xy, lightRadius * 0.25));
 		shading = mix(1.0, clamp(dot(normal, toLight) / max(toLight.z, 0.05), 0.0, 2.5), rteEdgeLighting);
-		// Shiny surfaces throw the light back at the viewer where it strikes them squarely: a hot spot near the light, and glints on edges turned towards it.
+		// Shiny surfaces throw the light back at the viewer where it strikes them squarely: a hot spot near the light, and glints on edges and relief turned towards it.
+		// The glossier the surface the tighter the highlight, and metal throws back more of the light.
 		float shine = 1.0 - normalSample.b;
 		if (shine > 0.02 && rteSpecular > 0.0) {
+			float metalness = texture(rteSurface, gl_FragCoord.xy / rteScreenSize).r;
 			vec3 halfway = normalize(toLight + vec3(0.0, 0.0, 1.0));
-			shading += pow(max(dot(normal, halfway), 0.0), 28.0) * shine * rteSpecular * 2.0;
+			highlight = pow(max(dot(normal, halfway), 0.0), mix(18.0, 64.0, shine)) * shine * rteSpecular * mix(1.6, 3.2, metalness);
 		}
 	}
 
-	FragColor = vec4(lightColor.rgb * falloff * transmittance * shading, 1.0);
+	// Alpha gathers the highlights' brightness (the blend adds it up like the color): the composite adds them on top of the lit surface instead of multiplying them by its color.
+	float brightness = dot(lightColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+	FragColor = vec4(lightColor.rgb * falloff * transmittance * shading, highlight * brightness * falloff * transmittance);
 }

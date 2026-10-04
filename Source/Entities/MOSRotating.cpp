@@ -1855,7 +1855,25 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 
 glm::u8vec4 MOSRotating::GetRenderSurface() const {
 	bool castsShadow = m_CastsShadow && m_RenderBlendMode == 0 && m_RenderOpacity >= 0.9F;
-	return glm::u8vec4(0, 0, castsShadow ? 255 : 0, 0);
+	// What this looks like it's made of: its own setting, else the setting of the unit or object it's part of, else its physical material's.
+	// So a robot marked as metal is metal down to its fingers, while a soldier's rifle is still steel and his sleeves still cloth.
+	float metalness = m_Metalness;
+	float gloss = m_Gloss;
+	if (metalness < 0.0F || gloss < 0.0F) {
+		float defaultMetalness = 0.0F;
+		float defaultGloss = 0.0F;
+		GetDefaultSurface(defaultMetalness, defaultGloss);
+		metalness = metalness < 0.0F ? defaultMetalness : metalness;
+		gloss = gloss < 0.0F ? defaultGloss : gloss;
+	}
+	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), castsShadow ? 255 : 0, 0);
+}
+
+void MOSRotating::GetDefaultSurface(float& metalness, float& gloss) const {
+	const MovableObject* root = GetRootParent();
+	const Material* material = GetMaterial();
+	metalness = (root != this && root->GetMetalness() >= 0.0F) ? root->GetMetalness() : (material ? material->GetMetalness() : 0.0F);
+	gloss = (root != this && root->GetGloss() >= 0.0F) ? root->GetGloss() : (material ? material->GetGloss() : 0.0F);
 }
 
 void MOSRotating::Draw(const Camera& camera) const {

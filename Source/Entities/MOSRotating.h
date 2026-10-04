@@ -473,6 +473,11 @@ namespace RTE {
 		/// @return The surface values (see MovableObject::GetRenderSurface).
 		glm::u8vec4 GetRenderSurface() const override;
 
+		/// Gets how metallic and glossy this looks when it hasn't been set for it: like the unit or object it's part of if that has been set, else like its physical material.
+		/// @param metalness Filled in with how metallic, 0 to 1.
+		/// @param gloss Filled in with how glossy, 0 to 1.
+		virtual void GetDefaultSurface(float& metalness, float& gloss) const;
+
 		/// Gets whether the damage multiplier for this MOSRotating has been directly set, or is at its default value.
 		/// @return Whether the damage multiplier for this MOSRotating has been set.
 		bool HasNoSetDamageMultiplier() const { return m_NoSetDamageMultiplier; }

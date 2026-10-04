@@ -350,6 +350,11 @@ namespace RTE {
 		void DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), int whichScreen = 0, bool playerControlled = false) override;
 		void DrawHUD(const Camera& camera) override;
 
+		/// Gets how metallic and glossy this looks when it hasn't been set for it. Guns, tools and shields are steel whoever is holding them, unless their INI says otherwise.
+		/// @param metalness Filled in with how metallic, 0 to 1.
+		/// @param gloss Filled in with how glossy, 0 to 1.
+		void GetDefaultSurface(float& metalness, float& gloss) const override;
+
 		/// Resest all the timers used by this. Can be emitters, etc. This is to prevent backed up emissions to come out all at once while this has been held dormant in an inventory.
 		void ResetAllTimers() override {
 			Attachable::ResetAllTimers();

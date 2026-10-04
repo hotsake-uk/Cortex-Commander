@@ -8,7 +8,7 @@ in vec4 vertexColor;
 in vec2 worldPos;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalOut;
-layout(location = 2) out vec4 SurfaceOut; // R how metallic, G how glossy, B 1 for solid objects that cast shadows (never terrain: the light grid handles its shadows).
+layout(location = 2) out vec4 SurfaceOut; // R how metallic, G how glossy (both from the terrain's material), B 1 for solid objects that cast shadows (never terrain: the light grid handles its shadows).
 
 uniform sampler2D rteTexture;
 uniform sampler2D rtePalette;
@@ -24,6 +24,8 @@ uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
 uniform float rteWetness; // 0..1, how wet exposed ground is.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
 uniform vec2 rteGridWorldSize;
+uniform sampler2D rteWorldGrid; // The light grid's terrain map: R = how solid each cell is, G = how metallic its material, B = how glossy.
+uniform float rteRelief; // How much the terrain's own texture counts as relief for the lighting, 0 for none.
 const int c_MaxBlasts = 8;
 uniform int rteBlastCount;
 uniform vec4 rteBlasts[c_MaxBlasts]; // xy = world position, z = wavefront radius, w = strength.
@@ -62,6 +64,32 @@ vec3 EdgeNormal(vec2 uvDx, vec2 uvDy) {
 	}
 	vec2 outward = -normalize(screenGradient);
 	return normalize(vec3(outward * edge, 1.0 - 0.6 * edge));
+}
+
+// How high a point of the terrain's texture stands, going by how bright it is. Below zero where there's nothing.
+float Height(vec2 uv) {
+	if (rteIndexed) {
+		float colorIndex = texture(rteTexture, uv).r;
+		return colorIndex > 0.0 ? dot(texture(rtePalette, vec2(colorIndex, 0.0)).rgb, vec3(0.299, 0.587, 0.114)) : -1.0;
+	}
+	vec4 color = texture(rteTexture, uv);
+	return color.a > 0.5 ? dot(color.rgb, vec3(0.299, 0.587, 0.114)) : -1.0;
+}
+
+// The tilt the texture's own shading implies (see Blit8.frag): seams, plates and stones lean the surface a little, so lights pick them out.
+vec2 ReliefTilt(vec2 uvDx, vec2 uvDy) {
+	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+	float here = Height(textureUV);
+	if (here < 0.0) {
+		return vec2(0.0);
+	}
+	float left = Height(textureUV - vec2(texel.x, 0.0));
+	float right = Height(textureUV + vec2(texel.x, 0.0));
+	float up = Height(textureUV - vec2(0.0, texel.y));
+	float down = Height(textureUV + vec2(0.0, texel.y));
+	vec2 gradient = vec2((right < 0.0 ? here : right) - (left < 0.0 ? here : left), (down < 0.0 ? here : down) - (up < 0.0 ? here : up));
+	mat2 uvPerPixel = mat2(uvDx / texel, uvDy / texel);
+	return -(transpose(uvPerPixel) * gradient) * 1.6;
 }
 
 bool IsVegetation(float colorIndex) {
@@ -128,12 +156,24 @@ void main() {
 	}
 	vec3 normal = EdgeNormal(uvDx, uvDy);
 	float shine = 0.0;
+	float metalness = 0.0;
+	float gloss = 0.0;
 
 	// Liquids (water, lava, acid), flagged in the emissive palette's B channel.
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
 		shine = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).a;
 		float liquid = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b;
+		// Solid terrain looks like what it's made of: steel plating is metal, concrete has a dull sheen, earth has none. The palette's guess (greys shine) is kept for
+		// background walls, which have no material, at a lower strength, and for liquids.
+		vec4 grid = texture(rteWorldGrid, worldPos / rteGridWorldSize);
+		if (grid.r > 0.3 && liquid < 0.1) {
+			metalness = grid.g;
+			gloss = grid.b;
+			shine = gloss;
+		} else if (liquid < 0.1) {
+			shine *= 0.6;
+		}
 		if (liquid > 0.1) {
 			bool surface = texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r, 0.0)).b < 0.1;
 			float wave = sin(worldPos.x * 0.35 + rteTime * 2.3) * sin(worldPos.y * 0.21 - rteTime * 1.7) + 0.5 * sin(worldPos.x * 0.11 - rteTime * 0.9);
@@ -224,6 +264,10 @@ void main() {
 		}
 	}
 	// RG: normal x and y. B: 1 - shininess. Alpha: drawn, with emissive strength.
+	if (rteRelief > 0.0) {
+		// Rough ground would glitter if every speck of its texture tilted it, so the smoother and shinier the material, the more its texture counts.
+		normal = normalize(normal + vec3(ReliefTilt(uvDx, uvDy) * rteRelief * mix(0.35, 1.0, max(shine, metalness)), 0.0));
+	}
 	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
-	SurfaceOut = vec4(0.0, 0.0, 0.0, 1.0);
+	SurfaceOut = vec4(metalness, gloss, 0.0, 1.0);
 }

@@ -52,10 +52,10 @@ Status: **done**, **in progress**, **next**, or **later** (not asked for yet).
 
 | # | Item | What you see | Status |
 |---|---|---|---|
-| 7 | **Material per object** | Every object already has a physical material (metal, flesh, cloth). It drives the look too: a robot is metal all over, fatigues stay matte. Today shine is guessed from grey palette colours. | next |
-| 8 | **Surface detail from the art** | A relief worked out from each sprite's own pixels, so plates, rivets and folds catch light. Today only the outline does. | next |
-| 9 | **Metal shading** | Metal reflects the sky from above and the ground from below, with tinted highlights and a bright rim. This is what makes a grey robot read as steel. | next |
-| 10 | **Terrain by real material** | Steel plating, gold, ice and mud shaded from the material map, not guessed from colour. | next |
+| 7 | **Material per object** | Every object has a look (how metallic, how glossy) from its INI, the unit it belongs to, or its physical material. Before, shine was guessed from grey palette colours. | done |
+| 8 | **Surface detail from the art** | A relief worked out from each sprite's own pixels, so plates, rivets and folds catch light. Before, only the outline did. | done |
+| 9 | **Metal shading** | Metal mirrors the sky from above and the ground from below, is rounded off like a tube, and takes tinted highlights. | done |
+| 10 | **Terrain by real material** | Solid terrain is shaded by what it's made of (steel plating, concrete, ice, earth), not guessed from colour. | done |
 | 11 | Surface states | Wet after wading or rain, sooty near blasts, snow settling, barrels and struck metal glowing hot. | later |
 
 ### Other visuals
@@ -103,10 +103,12 @@ Short design notes, updated as things are built.
 
 ### Materials (7 to 10)
 
-- **Material per object (7).** Each draw carries its object's surface values (how metallic, how glossy), taken from its physical material. `Material` presets get optional keys so mods can set them.
-- **Surface detail (8).** The sprite shader works out a relief from brightness differences between neighbouring pixels and adds it to the outline bevel that exists already.
-- **Metal shading (9).** Metallic pixels reflect a simple sky-over-ground environment according to their relief, get a bright rim, and take sharper highlights from lights.
-- **Terrain by material (10).** The terrain shader reads the material layer, so its surface values come from the real material of each pixel.
+- **Material per object (7).** Each draw carries its object's look (how metallic, how glossy): its own `Metalness`/`Gloss` if set, else its unit's, else its physical material's. `Material` presets take the same keys, with defaults by name. Held devices count as steel.
+  - The stock "Military Stuff" and "Civilian Stuff" materials are used for soldiers' bodies and kit alike, so they are only mildly metallic; robots, drones, turrets and craft are marked in their INI instead.
+- **Surface detail (8).** The sprite and terrain shaders work out a tilt from brightness differences between neighbouring pixels and add it to the outline bevel. Rough terrain gets less of it, so earth doesn't glitter.
+- **Metal shading (9).** A pass rounds metallic and glossy objects off over a few pixels from each sprite's edge (sprites are told apart by depth). Metal then mirrors sky above and ground below according to its lean. Highlights from lights are gathered separately and added on top, white on most things and in the surface's colour on metal; glossy surfaces also glint in the sun.
+- **Terrain by material (10).** The light grid's terrain map also holds how metallic and glossy each cell's material is, and the terrain shader reads it. It is four pixels coarse, which is fine for plating against earth. Background walls have no material, so they keep the colour guess at a lower strength.
+- **Honest note on how it looks:** in the dark bunker test the change is visible but modest: heads and limbs of the shiny robots shade round instead of blowing out flat, and plating picks up highlights. It is strongest on bright, glossy units near a light.
 
 ### Performance (16, 17)
 
@@ -122,3 +124,4 @@ Short design notes, updated as things are built.
 - **2026-10-04:** shadows (items 1 to 3) built, with a regression scene (`GoldenShadows`) and test scenarios (`Shadows*`). Background wall depth fixed. Light shafts now follow the sun.
 - **2026-10-04:** a crash in the Modern HUD fixed (it read the controlled unit a frame after the unit was deleted).
 - **2026-10-04:** performance items 16 and 17 done.
+- **2026-10-04:** materials (items 7 to 10) built, with `Materials*` test scenarios.

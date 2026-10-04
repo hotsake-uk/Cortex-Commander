@@ -53,6 +53,26 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - An object can opt out with `CastsShadow = 0` in its INI (any `MOSRotating`: energy shields, holograms), or `object.CastsShadow = false` from Lua. Anything drawn see-through or with an additive or screen blend mode never casts.
 - The Graphics Lab's views include "Solid objects and distance to them" and "Where the sun is visible", for checking what casts and what is lit.
 
+**Materials** (what things look like they're made of; sliders in the Graphics Lab):
+- **Metal and gloss.** Every object and every terrain material has two looks: how metallic it is and how glossy.
+  - Metal mirrors its surroundings: brighter where it leans up towards the sky, darker where it leans down, with highlights in its own colour. Glossy things take tight, bright highlights from lights and glint in the sun.
+  - Metallic and glossy objects are also rounded off, so a limb or a barrel shades like a tube, not a flat cut-out.
+  - `LightingMetals` (1) scales the mirroring, rounding and sun glints; 0 turns them off. `LightingSpecular` scales highlights.
+- **Where the looks come from.** An object uses its own `Metalness` and `Gloss` if its INI sets them, else those of the unit or object it's part of, else those of its physical material. Held devices (guns, tools, shields) count as steel unless they say otherwise.
+  - Robots, drones, turrets and craft in the stock modules are marked in their INI. Dummies are glossy plastic.
+  - A `Material` can set `Metalness` and `Gloss` too. Without them it gets values that suit its name (the metals, gold, glass, ice, concrete and so on).
+  - Solid terrain looks like what it's made of: steel plating is metal, concrete has a dull sheen, earth has none.
+- **Relief** (`LightingRelief`, 0.6): the lighting reads a sprite's or the terrain's own shading as relief, so painted plates, rivets and folds catch the light. 0 leaves only the outline bevel.
+
+```ini
+AddActor = AHuman
+	PresetName = My Chrome Robot
+	Metalness = 1      // 0 to 1. Its parts take this unless they set their own.
+	Gloss = 0.9        // 0 to 1.
+```
+
+From Lua: `object.Metalness = 0.8`, `object.Gloss = 0.5` (below 0 means "not set").
+
 **Spreading fire** (`TerrainFire` in the gameplay settings, also in F6):
 - **What lights it:** explosions and fire, flame and napalm particles light flammable terrain.
 - **How it burns:** grass and vegetation flare up and burn away; wood, cloth and rubber burn slowly from the surface in, leaving ash; oil burns fast.
@@ -185,7 +205,9 @@ Press **F8** for **Photo Mode**:
 | `ContactShading` | 0.4 | How much background walls darken next to objects and solid ground. |
 | `LightingEmissiveIntensity` | 1.4 | Brightness of glow sprites. |
 | `LightingEdgeLighting` | 1 | Strength of the automatic edge normals. |
-| `LightingSpecular` | 1 | Highlights that lights throw on shiny surfaces: grey metal and concrete, rain-wet ground, water and acid. 0 turns them off. |
+| `LightingSpecular` | 1 | Highlights that lights throw on glossy surfaces: metal, glass, rain-wet ground, water and acid. 0 turns them off. |
+| `LightingMetals` | 1 | How strongly metal mirrors its surroundings, is rounded off, and glints in the sun. |
+| `LightingRelief` | 0.6 | How much sprites' and terrain's own shading counts as relief. |
 | `LightingIndirect` | 0.35 | One bounce of light: lit surfaces bleed their colour onto their surroundings, mostly in shadowed areas and caves. |
 | `Embers` | 1 | Embers rising from fire and other warm glows. |
 | `DistortionEnabled` / `HeatHaze` / `ShockwaveStrength` | 1 / 1.5 / 1 | Heat haze above hot things, and refraction rings from explosions. |

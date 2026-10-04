@@ -98,7 +98,7 @@ namespace RTE {
 		}
 
 		/// Gets the textures to bind to units 3 and up for every batch render.
-		const std::array<GLuint, 3>& GetGlobalTextures() const { return m_GlobalTextures; }
+		const std::array<GLuint, 4>& GetGlobalTextures() const { return m_GlobalTextures; }
 
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
@@ -119,7 +119,7 @@ namespace RTE {
 		std::shared_ptr<BitmapTexture> m_PaletteTexture{nullptr};
 		GLuint m_EmissivePaletteTexture{0};
 		std::array<unsigned char, 1024> m_EmissivePalette{}; //!< RGBA per palette color: R emissive, G vegetation, B liquid kind.
-		std::array<GLuint, 3> m_GlobalTextures{};
+		std::array<GLuint, 4> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};

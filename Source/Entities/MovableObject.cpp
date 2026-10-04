@@ -119,6 +119,8 @@ void MovableObject::Clear() {
 	m_LightOffset.Reset();
 	m_RenderBlendMode = 0;
 	m_RenderOpacity = 1.0F;
+	m_Metalness = -1.0F;
+	m_Gloss = -1.0F;
 
 	m_UniqueID = 0;
 
@@ -255,6 +257,8 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_LightOffset = reference.m_LightOffset;
 	m_RenderBlendMode = reference.m_RenderBlendMode;
 	m_RenderOpacity = reference.m_RenderOpacity;
+	m_Metalness = reference.m_Metalness;
+	m_Gloss = reference.m_Gloss;
 
 	m_ForceIntoMasterLuaState = reference.m_ForceIntoMasterLuaState;
 	for (const auto& scriptPath: reference.m_AllLoadedScripts) {
@@ -400,6 +404,8 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 		}
 	});
 	MatchProperty("RenderOpacity", { reader >> m_RenderOpacity; m_RenderOpacity = std::clamp(m_RenderOpacity, 0.0F, 1.0F); });
+	MatchProperty("Metalness", { reader >> m_Metalness; m_Metalness = std::min(m_Metalness, 1.0F); });
+	MatchProperty("Gloss", { reader >> m_Gloss; m_Gloss = std::min(m_Gloss, 1.0F); });
 	MatchProperty("EffectStartTime", { reader >> m_EffectStartTime; });
 	MatchProperty("EffectRotAngle", { reader >> m_EffectRotAngle; });
 	MatchProperty("InheritEffectRotAngle", { reader >> m_InheritEffectRotAngle; });
@@ -526,6 +532,12 @@ int MovableObject::Save(Writer& writer) const {
 	writer << m_LightOffset;
 	writer.NewPropertyWithValue("RenderBlendMode", m_RenderBlendMode);
 	writer.NewPropertyWithValue("RenderOpacity", m_RenderOpacity);
+	if (m_Metalness >= 0.0F) {
+		writer.NewPropertyWithValue("Metalness", m_Metalness);
+	}
+	if (m_Gloss >= 0.0F) {
+		writer.NewPropertyWithValue("Gloss", m_Gloss);
+	}
 	writer.NewProperty("EffectStartTime");
 	writer << m_EffectStartTime;
 	writer.NewProperty("EffectStopTime");

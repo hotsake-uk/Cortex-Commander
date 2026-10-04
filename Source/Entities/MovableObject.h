@@ -878,6 +878,15 @@ namespace RTE {
 		float GetRenderOpacity() const { return m_RenderOpacity; }
 		virtual void SetRenderOpacity(float opacity) { m_RenderOpacity = std::clamp(opacity, 0.0F, 1.0F); }
 
+		/// Gets how metallic this is set to look under the lighting (see Material::GetMetalness). Below 0 means not set: it then looks like the unit or object it's part of, or else like its physical material.
+		float GetMetalness() const { return m_Metalness; }
+		/// Sets how metallic this looks under the lighting, 0 to 1, or below 0 to leave it to what it's part of and what it's made of.
+		void SetMetalness(float metalness) { m_Metalness = std::min(metalness, 1.0F); }
+		/// Gets how glossy this is set to look under the lighting (see Material::GetGloss). Below 0 means not set.
+		float GetGloss() const { return m_Gloss; }
+		/// Sets how glossy this looks under the lighting, 0 to 1, or below 0 to leave it to what it's part of and what it's made of.
+		void SetGloss(float gloss) { m_Gloss = std::min(gloss, 1.0F); }
+
 		/// Gets how the lighting should treat this when it's drawn: R how metallic, G how glossy, B whether it's a solid object that casts shadows (0 or 255).
 		/// Particles and effects are unmarked; MOSRotatings (units, their parts, devices, doors, wreckage) mark themselves.
 		/// @return The surface values.
@@ -1355,6 +1364,8 @@ namespace RTE {
 		float m_LightConeDirection; //!< Which way the cone points, in degrees clockwise from the way this faces.
 		int m_RenderBlendMode; //!< How this is blended when drawn: 0 normal, 1 additive, 2 screen.
 		float m_RenderOpacity; //!< Opacity this is drawn with, 0 to 1.
+		float m_Metalness; //!< How metallic this looks under the lighting, 0 to 1. Below 0 when not set.
+		float m_Gloss; //!< How glossy this looks under the lighting, 0 to 1. Below 0 when not set.
 		Vector m_LightOffset; //!< Offset of the light from this' position, rotated and flipped with this.
 		// The effect's rotation angle
 		float m_EffectRotAngle;

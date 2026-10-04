@@ -6,6 +6,7 @@
 #include "PerformanceMan.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
+#include "Material.h"
 #include "RenderTarget.h"
 #include "Shader.h"
 #include "Texture.h"
@@ -101,6 +102,7 @@ void SceneLighting::LoadShaders() {
 	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
 	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
 	m_OccluderJumpShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderJump.frag");
+	m_SurfaceRoundShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SurfaceRound.frag");
 	m_CompositeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightComposite.frag");
 	m_EmissiveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/Emissive.frag");
 	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
@@ -183,12 +185,22 @@ bool SceneLighting::EnsureWorldResources() {
 	m_GridWidth = (m_SceneWidth + m_CellSize - 1) / m_CellSize;
 	m_GridHeight = (m_SceneHeight + m_CellSize - 1) / m_CellSize;
 
-	m_Occupancy.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight, 0);
+	m_Occupancy.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight * 4, 0);
+	// What each terrain material looks like, for the grid's material values.
+	m_MaterialMetalness.fill(0);
+	m_MaterialGloss.fill(0);
+	for (int id = 1; id < 256; ++id) {
+		const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+		if (material && material->GetIndex() == id) {
+			m_MaterialMetalness[id] = static_cast<unsigned char>(std::clamp(material->GetMetalness(), 0.0F, 1.0F) * 255.0F);
+			m_MaterialGloss[id] = static_cast<unsigned char>(std::clamp(material->GetGloss(), 0.0F, 1.0F) * 255.0F);
+		}
+	}
 	m_Skyline.assign(m_GridWidth, 0.0F);
 
 	GLint wrapS = m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE;
 	GLint wrapT = m_WrapY ? GL_REPEAT : GL_CLAMP_TO_EDGE;
-	m_OccupancyTexture.Create(m_GridWidth, m_GridHeight, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
+	m_OccupancyTexture.Create(m_GridWidth, m_GridHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
 	m_SkylineTexture.Create(m_GridWidth, 1, GL_R32F, GL_RED, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, false);
 	for (GLTarget& skyLight: m_SkyLight) {
 		skyLight.Create(m_GridWidth, m_GridHeight, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
@@ -234,6 +246,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	for (GLTarget& seeds: m_OccluderSeeds) {
 		seeds.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
+	m_RoundedNormals.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
@@ -287,6 +300,7 @@ void SceneLighting::DestroyScreenResources() {
 	for (GLTarget& seeds: m_OccluderSeeds) {
 		seeds.Destroy();
 	}
+	m_RoundedNormals.Destroy();
 	m_Emissive.Destroy();
 	m_Distortion.Destroy();
 	m_GodRays.Destroy();
@@ -337,12 +351,27 @@ void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow) {
 		int y1 = std::min(row * m_CellSize + sampleFar, m_SceneHeight - 1);
 		const unsigned char* line0 = materialBitmap->line[y0];
 		const unsigned char* line1 = materialBitmap->line[y1];
-		unsigned char* occupancyRow = &m_Occupancy[static_cast<size_t>(row) * m_GridWidth];
+		unsigned char* occupancyRow = &m_Occupancy[static_cast<size_t>(row) * m_GridWidth * 4];
 		for (int column = 0; column < m_GridWidth; ++column) {
 			int x0 = std::min(column * m_CellSize + sampleNear, m_SceneWidth - 1);
 			int x1 = std::min(column * m_CellSize + sampleFar, m_SceneWidth - 1);
-			int solidSamples = !IsOpenMaterial(line0[x0]) + !IsOpenMaterial(line0[x1]) + !IsOpenMaterial(line1[x0]) + !IsOpenMaterial(line1[x1]);
-			occupancyRow[column] = static_cast<unsigned char>((solidSamples * 255) / 4);
+			const unsigned char materials[4] = {line0[x0], line0[x1], line1[x0], line1[x1]};
+			int solidSamples = 0;
+			int metalness = 0;
+			int gloss = 0;
+			for (unsigned char material: materials) {
+				if (!IsOpenMaterial(material)) {
+					++solidSamples;
+					metalness += m_MaterialMetalness[material];
+					gloss += m_MaterialGloss[material];
+				}
+			}
+			unsigned char* cell = occupancyRow + column * 4;
+			cell[0] = static_cast<unsigned char>((solidSamples * 255) / 4);
+			// What the solid part of the cell is made of, so a thin metal plate isn't diluted by the air beside it.
+			cell[1] = static_cast<unsigned char>(solidSamples > 0 ? metalness / solidSamples : 0);
+			cell[2] = static_cast<unsigned char>(solidSamples > 0 ? gloss / solidSamples : 0);
+			cell[3] = 255;
 		}
 	}
 }
@@ -351,7 +380,7 @@ void SceneLighting::RecomputeSkyline() {
 	ZoneScoped;
 	for (int column = 0; column < m_GridWidth; ++column) {
 		int row = 0;
-		while (row < m_GridHeight && m_Occupancy[static_cast<size_t>(row) * m_GridWidth + column] < 128) {
+		while (row < m_GridHeight && m_Occupancy[(static_cast<size_t>(row) * m_GridWidth + column) * 4] < 128) {
 			++row;
 		}
 		m_Skyline[column] = static_cast<float>(row) / static_cast<float>(m_GridHeight);
@@ -367,7 +396,7 @@ void SceneLighting::UploadOccupancyRows(int firstRow, int endRow) {
 	}
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, firstRow, m_GridWidth, endRow - firstRow, GL_RED, GL_UNSIGNED_BYTE, &m_Occupancy[static_cast<size_t>(firstRow) * m_GridWidth]));
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, firstRow, m_GridWidth, endRow - firstRow, GL_RGBA, GL_UNSIGNED_BYTE, &m_Occupancy[static_cast<size_t>(firstRow) * m_GridWidth * 4]));
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
@@ -545,6 +574,15 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	g_RenderMan.SetGlobalTexture(3, m_Scorch.Texture);
 	g_RenderMan.SetGlobalTexture(4, m_Stains.Texture);
 	g_RenderMan.SetGlobalTexture(5, m_SkylineTexture.Texture);
+	g_RenderMan.SetGlobalTexture(6, m_OccupancyTexture.Texture);
+	m_TerrainShader->SetInt("rteWorldGrid", 6);
+	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
+	// The sprite shader reads sprites' own shading as relief too.
+	if (const Shader* spriteShader = g_RenderMan.GetDefaultShader()) {
+		spriteShader->Enable();
+		spriteShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
+		m_TerrainShader->Enable();
+	}
 	m_TerrainShader->SetBool("rteLivingWorld", m_Settings.LivingWorld);
 	m_TerrainShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
 	m_TerrainShader->SetFloat("rteWind", m_Settings.Wind);
@@ -1004,6 +1042,26 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	}
 
 	std::shared_ptr<Texture> normals = playerScreen->GetNormalTexture().lock();
+	GLuint normalTexture = normals ? normals->GetTextureId() : 0;
+	// Metallic and glossy objects are rounded off, so they turn from the sky above to the ground below instead of being flat with a thin rim. Everything after this reads the rounded normals.
+	if (std::shared_ptr<DepthTexture> roundingDepth = playerScreen->GetDepthTexture().lock(); m_Settings.Enabled && m_Settings.Metals > 0.0F && normals && surface && roundingDepth && m_RoundedNormals.Texture) {
+		logStages.Next("Lighting: rounding metal");
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_RoundedNormals.Framebuffer);
+		m_SurfaceRoundShader->Enable();
+		m_SurfaceRoundShader->SetInt("rteNormals", 0);
+		m_SurfaceRoundShader->SetInt("rteSurface", 1);
+		m_SurfaceRoundShader->SetInt("rteSceneDepth", 2);
+		m_SurfaceRoundShader->SetFloat("rteRounding", m_Settings.Metals);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, roundingDepth->GetTextureId());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, normalTexture);
+		DrawFullscreen();
+		normalTexture = m_RoundedNormals.Texture;
+	}
 
 	logStages.Next("Lighting: lights and their shadows");
 	// Dynamic lights.
@@ -1030,7 +1088,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
+		glBindTexture(GL_TEXTURE_2D, normalTexture);
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, occluders);
 		glActiveTexture(GL_TEXTURE3);
@@ -1190,6 +1248,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));
 	m_CompositeShader->SetFloat("rteUnitShadows", unitShadows);
 	m_CompositeShader->SetFloat("rteContactShading", occluders ? m_Settings.ContactShading : 0.0F);
+	m_CompositeShader->SetFloat("rteMetals", (m_Settings.Enabled && surface) ? m_Settings.Metals : 0.0F);
+	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glActiveTexture(GL_TEXTURE9);
@@ -1208,7 +1268,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
 	glActiveTexture(GL_TEXTURE5);
-	glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
+	glBindTexture(GL_TEXTURE_2D, normalTexture);
 	glActiveTexture(GL_TEXTURE6);
 	glBindTexture(GL_TEXTURE_2D, m_IndirectHistory[screenIndex].Texture);
 	glActiveTexture(GL_TEXTURE7);

@@ -5,6 +5,7 @@
 #include "glad/gl.h"
 #include "glm/glm.hpp"
 
+#include <array>
 #include <list>
 #include <memory>
 #include <unordered_map>
@@ -109,7 +110,9 @@ namespace RTE {
 		int m_GridHeight = 0;
 		bool m_WrapX = false;
 		bool m_WrapY = false;
-		std::vector<unsigned char> m_Occupancy; //!< Terrain coverage per grid cell, 0 air .. 255 solid.
+		std::vector<unsigned char> m_Occupancy; //!< Four bytes per grid cell: terrain coverage (0 air .. 255 solid), then how metallic and how glossy the terrain there is (from its materials), then a spare.
+		std::array<unsigned char, 256> m_MaterialMetalness{}; //!< How metallic each terrain material looks, 0 to 255.
+		std::array<unsigned char, 256> m_MaterialGloss{}; //!< How glossy each terrain material looks, 0 to 255.
 		std::vector<float> m_Skyline; //!< Per grid column, the row of the first mostly solid cell, normalized by grid height.
 		int m_NextRefreshRow = 0; //!< Row the round-robin terrain refresh continues from.
 		int m_FrameCounter = 0;
@@ -144,6 +147,7 @@ namespace RTE {
 		int m_ScreenHeight = 0;
 		GLTarget m_DynamicLight;
 		GLTarget m_OccluderSeeds[2]; //!< Ping-ponged jump flood buffers: RG = position of the nearest pixel of a solid object.
+		GLTarget m_RoundedNormals; //!< The player screen's normals with metallic and glossy objects rounded off (see SurfaceRound.frag).
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
 		GLTarget m_GodRays; //!< Half resolution light shafts.
@@ -175,6 +179,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_PointLightShader;
 		std::unique_ptr<Shader> m_OccluderSeedShader;
 		std::unique_ptr<Shader> m_OccluderJumpShader;
+		std::unique_ptr<Shader> m_SurfaceRoundShader;
 		std::unique_ptr<Shader> m_CompositeShader;
 		std::unique_ptr<Shader> m_EmissiveShader;
 		std::unique_ptr<Shader> m_BloomDownsampleShader;

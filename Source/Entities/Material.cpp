@@ -1,9 +1,71 @@
 #include "Material.h"
 #include "Constants.h"
 
+#include <algorithm>
+#include <string>
+
 using namespace RTE;
 
 ConcreteClassInfo(Material, Entity, 0);
+
+namespace {
+	/// How materials look when their INI doesn't say, by name: part of the name, metalness, gloss. The first match wins, so the more particular names come first.
+	struct SurfaceGuess {
+		const char* NamePart;
+		float Metalness;
+		float Gloss;
+	};
+	constexpr SurfaceGuess c_SurfaceGuesses[] = {
+	    {"Scrap Metal", 0.7F, 0.35F},
+	    {"Mangled Metal", 0.7F, 0.35F},
+	    {"Mega Metal", 1.0F, 0.85F},
+	    {"Bullet Casing", 1.0F, 0.9F},
+	    {"Metal", 0.9F, 0.7F},
+	    {"Gold", 1.0F, 0.9F},
+	    {"Xenocronium", 0.8F, 0.8F},
+	    // The "stuff" materials are used for soldiers' bodies and kit alike, so they're only mildly metallic. Robots and craft say what they are themselves, and held devices count as steel.
+	    {"Armoured Military Stuff", 0.45F, 0.45F},
+	    {"Military Stuff", 0.3F, 0.35F},
+	    {"Civilian Stuff", 0.15F, 0.25F},
+	    {"Glass", 0.15F, 1.0F},
+	    {"Ice", 0.1F, 0.9F},
+	    {"Armoured Flesh", 0.25F, 0.35F},
+	    {"Shelled Flesh", 0.15F, 0.45F},
+	    {"Kevlared Flesh", 0.1F, 0.2F},
+	    {"Flesh", 0.0F, 0.12F},
+	    {"Bone", 0.0F, 0.2F},
+	    {"Wet Concrete", 0.0F, 0.6F},
+	    {"Concrete", 0.0F, 0.3F},
+	    {"Stone", 0.0F, 0.2F},
+	    {"Bedrock", 0.0F, 0.2F},
+	    {"Rubber", 0.0F, 0.25F},
+	    {"Bouncy", 0.0F, 0.3F},
+	    {"Snow", 0.0F, 0.3F}};
+
+	const SurfaceGuess& GuessSurface(const std::string& materialName) {
+		static constexpr SurfaceGuess matte{"", 0.0F, 0.05F};
+		for (const SurfaceGuess& guess: c_SurfaceGuesses) {
+			if (materialName.find(guess.NamePart) != std::string::npos) {
+				return guess;
+			}
+		}
+		return matte;
+	}
+} // namespace
+
+float Material::GetMetalness() const {
+	if (m_Metalness < 0.0F) {
+		m_Metalness = GuessSurface(GetPresetName()).Metalness;
+	}
+	return m_Metalness;
+}
+
+float Material::GetGloss() const {
+	if (m_Gloss < 0.0F) {
+		m_Gloss = GuessSurface(GetPresetName()).Gloss;
+	}
+	return m_Gloss;
+}
 
 void Material::Clear() {
 	m_Index = 0;
@@ -20,6 +82,8 @@ void Material::Clear() {
 	m_SettleMaterialIndex = 0;
 	m_SpawnMaterialIndex = 0;
 	m_IsScrap = false;
+	m_Metalness = -1.0F;
+	m_Gloss = -1.0F;
 	m_Color.Reset();
 	m_UseOwnColor = false;
 	m_FGTextureFile.Reset();
@@ -45,6 +109,8 @@ int Material::Create(const Material& reference) {
 	m_SettleMaterialIndex = reference.m_SettleMaterialIndex;
 	m_SpawnMaterialIndex = reference.m_SpawnMaterialIndex;
 	m_IsScrap = reference.m_IsScrap;
+	m_Metalness = reference.m_Metalness;
+	m_Gloss = reference.m_Gloss;
 	m_Color = reference.m_Color;
 	m_UseOwnColor = reference.m_UseOwnColor;
 	m_FGTextureFile = reference.m_FGTextureFile;
@@ -86,6 +152,14 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SettleMaterial", { reader >> m_SettleMaterialIndex; });
 	MatchForwards("SpawnMaterial") MatchProperty("TransformsInto", { reader >> m_SpawnMaterialIndex; });
 	MatchProperty("IsScrap", { reader >> m_IsScrap; });
+	MatchProperty("Metalness", {
+		reader >> m_Metalness;
+		m_Metalness = std::clamp(m_Metalness, 0.0F, 1.0F);
+	});
+	MatchProperty("Gloss", {
+		reader >> m_Gloss;
+		m_Gloss = std::clamp(m_Gloss, 0.0F, 1.0F);
+	});
 	MatchProperty("Color", { reader >> m_Color; });
 	MatchProperty("UseOwnColor", { reader >> m_UseOwnColor; });
 	MatchProperty("FGTextureFile", {

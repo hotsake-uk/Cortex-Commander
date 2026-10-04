@@ -133,3 +133,10 @@ Write-Scenario "ShadowsNightGreyOff" ($shadowBunker + @{ TimeOfDay = 23; Lightin
 Write-Scenario "ShadowsDayGrey" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 }) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGreyOff" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
 Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0 }) @("Render Test Shadows") -DefaultLighting
+# Materials: units of different makes with a lamp in the tutorial bunker, by night and by day, each with metal reflections and relief off for comparison.
+$noMaterials = @{ LightingMetals = 0; LightingRelief = 0 }
+Write-Scenario "MaterialsNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Materials")
+Write-Scenario "MaterialsNightOff" ($shadowBunker + @{ TimeOfDay = 23 } + $noMaterials) @("Render Test Materials")
+Write-Scenario "MaterialsDay" ($shadowBunker + @{ TimeOfDay = 14 }) @("Render Test Materials")
+Write-Scenario "MaterialsDayOff" ($shadowBunker + @{ TimeOfDay = 14 } + $noMaterials) @("Render Test Materials")
+Write-Scenario "MaterialsNormals" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 4 }) @("Render Test Materials")
