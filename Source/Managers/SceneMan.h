@@ -221,6 +221,16 @@ namespace RTE {
 		/// @return An unsigned char specifying the requested pixel's material index.
 		unsigned char GetTerrMatter(int pixelX, int pixelY);
 
+		/// While one of these is alive on a thread, GetTerrMatter on that thread reports liquid in the terrain as air.
+		/// Bodies (anything with an AtomGroup: units, limbs, devices, gibs) travel under it, so they move through water, lava, acid and oil instead of hitting and destroying it.
+		/// Single particles don't, so drops and bullets still strike a liquid's surface.
+		struct LiquidsPassable {
+			LiquidsPassable() { ++s_LiquidsPassableDepth; }
+			~LiquidsPassable() { --s_LiquidsPassableDepth; }
+			LiquidsPassable(const LiquidsPassable&) = delete;
+			LiquidsPassable& operator=(const LiquidsPassable&) = delete;
+		};
+
 		/// Gets a MOID from pixel coordinates in the Scene. LockScene() must be called before using this method.
 		/// @param pixelX The X coordinate of the Scene pixel to test.
 		/// @param pixelY The Y coordinate of the Scene pixel to test.
@@ -1035,6 +1045,7 @@ namespace RTE {
 		SoundContainer* m_pUnseenRevealSound;
 
 		bool m_DrawRayCastVisualizations; //!< Whether to visibly draw RayCasts to the Scene debug Bitmap.
+		static thread_local int s_LiquidsPassableDepth; //!< How many LiquidsPassable scopes are alive on this thread.
 		bool m_DrawPixelCheckVisualizations; //!< Whether to visibly draw pixel checks (GetTerrMatter and GetMOIDPixel) to the Scene debug Bitmap.
 
 		// The last screen everything has been updated to

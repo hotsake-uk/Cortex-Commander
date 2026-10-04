@@ -5,6 +5,7 @@
 #include "FluidSim.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
+#include "ActorWater.h"
 #include "ModernHUD.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
@@ -148,6 +149,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("SwimmingAndDrowning", { ActorWater::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BurningUnits", { ActorFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmokeBlocksSight", { SmokeGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FlowingLiquids", { FluidSim::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -426,6 +428,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
+	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
 	writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
 	writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);

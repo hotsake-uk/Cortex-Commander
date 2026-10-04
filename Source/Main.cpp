@@ -48,6 +48,7 @@
 #include "SmokeGrid.h"
 #include "Sandbox.h"
 #include "ActorFire.h"
+#include "ActorWater.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -422,6 +423,7 @@ void RunGameLoop() {
 			ActorFire::Update();
 			TerrainCollapse::Update();
 			FluidSim::Update();
+			ActorWater::Update();
 
 			g_LuaMan.ClearScriptTimings();
 			g_MovableMan.Update();

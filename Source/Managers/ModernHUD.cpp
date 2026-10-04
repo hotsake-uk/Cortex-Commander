@@ -1,5 +1,6 @@
 #include "ModernHUD.h"
 #include "AHuman.h"
+#include "ActorWater.h"
 #include "Activity.h"
 #include "ActivityMan.h"
 #include "CameraMan.h"
@@ -206,6 +207,9 @@ void ModernHUD::Draw() {
 		std::snprintf(label, sizeof(label), "%d / %d", static_cast<int>(health), static_cast<int>(maxHealth));
 		DrawBar(drawList, base, ImVec2(barWidth, barHeight), healthFraction, healthColor, label);
 		base.y += barHeight + 6.0F * scale;
+		if (float air = ActorWater::GetAir(controlled); air < 1.0F) {
+			DrawBar(drawList, ImVec2(base.x, base.y - barHeight * 2.0F - 12.0F * scale - 20.0F * scale - 14.0F * scale), ImVec2(barWidth, 12.0F * scale), air, air > 0.3F ? IM_COL32(110, 190, 255, 255) : IM_COL32(230, 60, 50, 255), "");
+		}
 		if (const AHuman* human = dynamic_cast<const AHuman*>(controlled)) {
 			if (const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(human->GetEquippedItem())) {
 				int rounds = firearm->GetRoundInMagCount();

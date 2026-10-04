@@ -21,6 +21,7 @@
 #include "FluidSim.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
+#include "ActorWater.h"
 #include "Controller.h"
 #include "Sandbox.h"
 #include "ModernHUD.h"
@@ -219,6 +220,10 @@ void DebugMan::WorldDebugGUI() {
 		bool aiPaused = Controller::IsAIPaused();
 		if (ImGui::Checkbox("Pause AI", &aiPaused)) {
 			Controller::SetAIPaused(aiPaused);
+		}
+		bool swimming = ActorWater::IsEnabled();
+		if (ImGui::Checkbox("Units swim, float and drown", &swimming)) {
+			ActorWater::SetEnabled(swimming);
 		}
 		bool burningUnits = ActorFire::IsEnabled();
 		if (ImGui::Checkbox("Units catch fire", &burningUnits)) {

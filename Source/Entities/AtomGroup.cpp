@@ -1,4 +1,5 @@
 #include "AtomGroup.h"
+#include "FluidSim.h"
 
 #include "Actor.h"
 #include "SLTerrain.h"
@@ -324,6 +325,7 @@ float AtomGroup::Travel(float travelTime, bool callOnBounce, bool callOnSink) {
 
 // TODO: Break down and rework this trainwreck.
 float AtomGroup::Travel(Vector& position, Vector& velocity, Matrix& rotation, float& angularVel, bool& didWrap, Vector& totalImpulse, float mass, float travelTime, bool callOnBounce, bool callOnSink) {
+	SceneMan::LiquidsPassable liquidsPassable; // Bodies move through liquid rather than hitting it.
 	ZoneScoped;
 
 	RTEAssert(m_OwnerMOSR, "Tried to travel an AtomGroup that has no parent!");
@@ -763,6 +765,7 @@ float AtomGroup::Travel(Vector& position, Vector& velocity, Matrix& rotation, fl
 
 // TODO: Break down and rework this dumpsterfire.
 Vector AtomGroup::PushTravel(Vector& position, const Vector& velocity, float pushForce, bool& didWrap, float travelTime, bool callOnBounce, bool callOnSink) {
+	SceneMan::LiquidsPassable liquidsPassable; // Bodies move through liquid rather than hitting it.
 	ZoneScoped;
 
 	RTEAssert(m_OwnerMOSR, "Tried to push-travel an AtomGroup that has no parent!");
@@ -1316,6 +1319,7 @@ void AtomGroup::FlailAsLimb(const Vector& ownerPos, const Vector& jointOffset, c
 }
 
 bool AtomGroup::InTerrain() const {
+	SceneMan::LiquidsPassable liquidsPassable; // Bodies move through liquid rather than hitting it.
 	RTEAssert(m_OwnerMOSR, "Tried to check overlap with terrain for an AtomGroup that has no parent!");
 
 	bool penetrates = false;
@@ -1333,6 +1337,7 @@ bool AtomGroup::InTerrain() const {
 }
 
 float AtomGroup::RatioInTerrain() const {
+	SceneMan::LiquidsPassable liquidsPassable; // Bodies move through liquid rather than hitting it.
 	RTEAssert(m_OwnerMOSR, "Tried to check ratio in terrain for an AtomGroup that has no parent!");
 
 	Vector atomPos;
@@ -1366,6 +1371,9 @@ bool AtomGroup::ResolveTerrainIntersection(Vector& position, unsigned char stron
 		atom->SetupPos(position + atomOffset);
 		atomPos = atom->GetCurrentPos();
 		hitMaterial = g_SceneMan.GetTerrain()->GetMaterialPixel(atomPos.GetFloorIntX(), atomPos.GetFloorIntY());
+		if (FluidSim::IsLiquid(hitMaterial)) {
+			hitMaterial = g_MaterialAir;
+		}
 		if (hitMaterial != g_MaterialAir && strengthThreshold > 0.0F && g_SceneMan.GetMaterialFromID(hitMaterial)->GetIntegrity() > strengthThreshold) {
 			intersectingAtoms.push_back(atom);
 		}

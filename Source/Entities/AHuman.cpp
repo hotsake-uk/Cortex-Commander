@@ -1,6 +1,7 @@
 #include "AHuman.h"
 #include "SmokeGrid.h"
 #include "WeatherEffects.h"
+#include "ActorWater.h"
 
 #include "AtomGroup.h"
 #include "RTETools.h"
@@ -1543,6 +1544,8 @@ void AHuman::UpdateLimbPathSpeed() {
 		}
 		// Trudging through snow is slower
 		travelSpeedMultiplier *= WeatherEffects::GetWalkSpeedMultiplier();
+		// Wading is slower still
+		travelSpeedMultiplier *= ActorWater::GetWalkSpeedMultiplier(this);
 
 		// If we're moving slowly horizontally, move at reduced speed (otherwise our legs kick about wildly as we're not yet up to speed)
 		// Calculate a min multiplier that is based on the total walkpath speed (so a fast walkpath has a smaller multipler). This is so a slow walkpath gets up to speed faster

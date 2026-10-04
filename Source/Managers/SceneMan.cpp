@@ -371,6 +371,8 @@ BITMAP* SceneMan::GetDebugBitmap() const {
 	return m_pDebugLayer->GetBitmap();
 }
 
+thread_local int SceneMan::s_LiquidsPassableDepth = 0;
+
 unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	RTEAssert(m_pCurrentScene, "Trying to get terrain matter before there is a scene or terrain!");
 
@@ -394,7 +396,12 @@ unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	if (pixelY < 0)
 		return g_MaterialAir;
 
-	return getpixel(pTMatBitmap, pixelX, pixelY);
+	int material = getpixel(pTMatBitmap, pixelX, pixelY);
+	// Bodies move through liquid, see LiquidsPassable.
+	if (s_LiquidsPassableDepth > 0 && material != g_MaterialAir && FluidSim::IsLiquid(material)) {
+		return g_MaterialAir;
+	}
+	return material;
 }
 
 MOID SceneMan::GetMOIDPixel(int pixelX, int pixelY, int ignoreTeam) {

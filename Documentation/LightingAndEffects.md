@@ -72,6 +72,14 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid"|"Oil")`, `SceneMan:GetFlowingLiquidPixelCount()`, `SceneMan:GetBurningPixelCount()`.
 - **Liquid weapons:** the **Napalm Flamer** sprays burning fuel that pools and burns, the **Water Cannon** knocks people back and puts fires out, and the **Acid Sprayer** lobs globs that sting and eat soft ground.
 
+**Swimming and drowning** (`SwimmingAndDrowning`, a gameplay setting, also in F6):
+- Bodies (units, limbs, weapons, wreckage) move through liquid instead of hitting and destroying it, so pools and floods stay put when units walk in. Single particles, such as drops and bullets, still strike the surface.
+- **Wading** slows walking, more the deeper the unit is.
+- **Buoyancy:** light units float (a lightly armed soldier, about 145 kg all in, just floats; robots like the Dummy bob high), and heavy armour and big guns sink.
+- **Air:** flesh and blood units hold their breath for 12 seconds with their heads under, then lose health until they surface. Robots and drones don't breathe. The Modern HUD shows an air bar for the unit you control.
+- **Acid** hurts anything standing in it. Lava sets units alight (see Burning units).
+- Deterministic, with no random numbers.
+
 **Smoke and gas** (`SmokeBlocksSight`, a gameplay setting, also in F6):
 - Thick smoke blocks sight: units can't spot enemies through it, and the AI loses track of targets hidden by it. Thin wisps don't.
 - It's worked out each sim update from the smoke particles on a coarse grid, so it is deterministic. Lua: `SceneMan:SmokeBlocksSight(from, to)`.

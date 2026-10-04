@@ -25,6 +25,7 @@ sources += files(
 'ModernHUD.cpp',
 'SmokeGrid.cpp',
 'ActorFire.cpp',
+'ActorWater.cpp',
 'Sandbox.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
