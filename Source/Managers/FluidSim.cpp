@@ -53,10 +53,10 @@ namespace {
 	    {3, 2, 2}, // Oil
 	};
 
-	constexpr size_t c_MaxActive = 200000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten.
+	constexpr size_t c_MaxActive = 80000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten. Each costs about 0.07 microseconds an update, so this bounds a map-wide flood to about 6 ms.
 	constexpr int c_RestSteps = 20; //!< A pixel that hasn't got any lower for this many of its steps stops being simulated.
 	constexpr int c_SweepPixelsPerUpdate = 30000; //!< How much of the terrain is checked each update for liquid left hanging (see Sweep).
-	constexpr int c_LevelSearchesPerUpdate = 20; //!< How many stuck pixels may look for a lower spot through the liquid each update.
+	constexpr int c_LevelSearchesPerUpdate = 12; //!< How many stuck pixels may look for a lower spot through the liquid each update. A search through a big body costs up to about 0.1 ms, so this bounds them to about 1 ms an update.
 	constexpr int c_LevelSearchCells = 14000; //!< How many liquid pixels such a search may cross: enough for a pit, a tunnel and the pit beyond.
 
 	std::array<Liquid, 256> s_Kinds{};
@@ -109,8 +109,42 @@ namespace {
 		/// Drops stale and repeated keys and sorts the rest, highest first.
 		void Tidy() {
 			Keys.erase(std::remove_if(Keys.begin(), Keys.end(), [this](int key) { return Grid[key] == 0; }), Keys.end());
-			std::sort(Keys.begin(), Keys.end(), std::greater<int>());
+			SortHighestFirst();
 			Keys.erase(std::unique(Keys.begin(), Keys.end()), Keys.end());
+		}
+		/// Sorts the keys, highest first. A big flood has hundreds of thousands of them to sort every update, which a radix sort does several times faster than a comparison sort.
+		void SortHighestFirst() {
+			size_t count = Keys.size();
+			if (count < 4096) {
+				std::sort(Keys.begin(), Keys.end(), std::greater<int>());
+				return;
+			}
+			static std::vector<int> scratch;
+			scratch.resize(count);
+			int* from = Keys.data();
+			int* to = scratch.data();
+			// Three passes of 11 bits, lowest first, cover any key (they're never negative). Each pass keeps the order of the one before.
+			for (int pass = 0; pass < 3; ++pass) {
+				int shift = pass * 11;
+				size_t starts[2048] = {};
+				for (size_t i = 0; i < count; ++i) {
+					++starts[(from[i] >> shift) & 2047];
+				}
+				size_t total = 0;
+				for (size_t& start: starts) {
+					size_t inBucket = start;
+					start = total;
+					total += inBucket;
+				}
+				for (size_t i = 0; i < count; ++i) {
+					to[starts[(from[i] >> shift) & 2047]++] = from[i];
+				}
+				std::swap(from, to);
+			}
+			// After an odd number of passes the result, lowest first, is in the scratch buffer. Copy it back the other way round.
+			for (size_t i = 0; i < count; ++i) {
+				Keys[i] = scratch[count - 1 - i];
+			}
 		}
 		void Clear() {
 			for (int key: Keys) {
@@ -178,11 +212,18 @@ namespace {
 		s_TablesBuilt = true;
 	}
 
-	Liquid KindAt(const SLTerrain* terrain, int x, int y) { return s_Kinds[static_cast<unsigned char>(terrain->GetMaterialPixel(x, y))]; }
+	/// The liquid at a pixel. The coordinates must already be inside the world (see InWorld): this reads the material bitmap directly, without the layer's own wrapping and bounds checks, because it's called tens of thousands of times an update.
+	Liquid KindAt(const SLTerrain* terrain, int x, int y) { return s_Kinds[terrain->GetBitmap()->line[y][x]]; }
+
+	bool s_WrapsX = false; //!< Whether the scene wraps sideways. Looked up once an update: InWorld is called hundreds of thousands of times in a big flood.
 
 	bool InWorld(int& x, int& y, int width, int height) {
-		if (g_SceneMan.SceneWrapsX()) {
-			x = ((x % width) + width) % width;
+		if (s_WrapsX) {
+			if (x < 0) {
+				x += width;
+			} else if (x >= width) {
+				x -= width;
+			}
 		}
 		return x >= 0 && y >= 0 && x < width && y < height;
 	}
@@ -268,22 +309,30 @@ namespace {
 			return;
 		}
 		BITMAP* materialBitmap = terrain->GetBitmap();
+		size_t index = s_SweepCursor < total ? s_SweepCursor : 0;
+		int x = static_cast<int>(index % static_cast<size_t>(width));
+		int y = static_cast<int>(index / static_cast<size_t>(width));
 		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
-			size_t index = s_SweepCursor;
-			s_SweepCursor = (s_SweepCursor + 1) % total;
-			int x = static_cast<int>(index % static_cast<size_t>(width));
-			int y = static_cast<int>(index / static_cast<size_t>(width));
-			if (y + 1 >= height || s_Kinds[materialBitmap->line[y][x]] == Liquid::None || s_Active.Grid[index] != 0) {
-				continue;
+			// Nearly every pixel isn't liquid, so that's checked first and costs next to nothing.
+			if (s_Kinds[materialBitmap->line[y][x]] != Liquid::None && y + 1 < height && s_Active.Grid[index] == 0) {
+				// Air right below, or below and to a side, means it has somewhere to go.
+				const unsigned char* below = materialBitmap->line[y + 1];
+				int left = x > 0 ? x - 1 : (s_WrapsX ? width - 1 : x);
+				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
+				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
+					Activate(x, y, width, height, terrain);
+				}
 			}
-			// Air right below, or below and to a side, means it has somewhere to go.
-			const unsigned char* below = materialBitmap->line[y + 1];
-			int left = x > 0 ? x - 1 : (g_SceneMan.SceneWrapsX() ? width - 1 : x);
-			int right = x + 1 < width ? x + 1 : (g_SceneMan.SceneWrapsX() ? 0 : x);
-			if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
-				Activate(x, y, width, height, terrain);
+			++index;
+			if (++x == width) {
+				x = 0;
+				if (++y == height) {
+					y = 0;
+					index = 0;
+				}
 			}
 		}
+		s_SweepCursor = index;
 	}
 
 	MovableObject* CreateEffect(const char* className, const char* presetName) {
@@ -386,6 +435,7 @@ void FluidSim::Update() {
 	int width = terrain->GetBitmap()->w;
 	int height = terrain->GetBitmap()->h;
 	s_Width = width;
+	s_WrapsX = g_SceneMan.SceneWrapsX();
 	s_Active.Resize(static_cast<size_t>(width) * static_cast<size_t>(height));
 
 	std::vector<PourRequest> pours;
@@ -401,9 +451,11 @@ void FluidSim::Update() {
 		if (material == 0) {
 			continue;
 		}
+		// Requests come from scripts and can be anywhere; bring the centre into the world here, so InWorld only ever has to wrap by one scene width.
+		int pourX = s_WrapsX ? ((pour.X % width) + width) % width : pour.X;
 		for (int dy = -pour.Radius; dy <= pour.Radius; ++dy) {
 			for (int dx = -pour.Radius; dx <= pour.Radius; ++dx) {
-				int x = pour.X + dx;
+				int x = pourX + dx;
 				int y = pour.Y + dy;
 				if (dx * dx + dy * dy <= pour.Radius * pour.Radius && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == g_MaterialAir) {
 					terrain->SetMaterialPixel(x, y, material);
@@ -415,9 +467,11 @@ void FluidSim::Update() {
 	}
 	std::sort(disturbances.begin(), disturbances.end(), [](const auto& a, const auto& b) { return a.first.y != b.first.y ? a.first.y < b.first.y : (a.first.x != b.first.x ? a.first.x < b.first.x : a.second < b.second); });
 	for (const auto& [center, radius]: disturbances) {
-		for (int dy = -radius; dy <= radius; ++dy) {
-			for (int dx = -radius; dx <= radius; ++dx) {
-				Activate(center.x + dx, center.y + dy, width, height, terrain);
+		int centerX = s_WrapsX ? ((center.x % width) + width) % width : center.x;
+		int reach = std::min(radius, width / 2);
+		for (int dy = -reach; dy <= reach; ++dy) {
+			for (int dx = -reach; dx <= reach; ++dx) {
+				Activate(centerX + dx, center.y + dy, width, height, terrain);
 			}
 		}
 	}
@@ -444,6 +498,10 @@ void FluidSim::Update() {
 	std::vector<int> settled;
 	std::vector<glm::ivec2> hurtSpots;
 	int levelSearches = 0;
+	// Read straight from the material bitmap's rows in the loop below; coordinates are brought into the world first.
+	BITMAP* materialBitmap = terrain->GetBitmap();
+	// Water only needs to put fire out when something is burning.
+	bool anyFire = TerrainFire::GetCount() > 0;
 	for (int key: keys) {
 		int x = key % width;
 		int y = key / width;
@@ -457,16 +515,20 @@ void FluidSim::Update() {
 			continue;
 		}
 
-		// Reactions with neighbours.
+		// Reactions with neighbours. Only lava and acid react, and water only has fire to put out when something is burning; for everything else there's nothing to check.
 		static constexpr int neighbours[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
 		bool reacted = false;
+		bool mayReact = kind == Liquid::Lava || kind == Liquid::Acid || (kind == Liquid::Water && anyFire);
 		for (const auto& offset: neighbours) {
+			if (!mayReact) {
+				break;
+			}
 			int nx = x + offset[0];
 			int ny = y + offset[1];
 			if (!InWorld(nx, ny, width, height)) {
 				continue;
 			}
-			int neighbourMaterial = terrain->GetMaterialPixel(nx, ny);
+			int neighbourMaterial = materialBitmap->line[ny][nx];
 			Liquid neighbourKind = s_Kinds[static_cast<unsigned char>(neighbourMaterial)];
 			if (kind == Liquid::Lava && neighbourKind == Liquid::Water && s_StoneMaterial) {
 				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam.
@@ -485,7 +547,7 @@ void FluidSim::Update() {
 			if (kind == Liquid::Lava && TerrainFire::IsFlammable(neighbourMaterial) && Random01() < 0.2F) {
 				TerrainFire::QueueIgnite(nx, ny);
 			}
-			if (kind == Liquid::Water) {
+			if (kind == Liquid::Water && anyFire) {
 				TerrainFire::Extinguish(nx, ny);
 			}
 			if (kind == Liquid::Acid && neighbourKind == Liquid::None && neighbourMaterial != g_MaterialAir) {
@@ -505,19 +567,19 @@ void FluidSim::Update() {
 				}
 			}
 		}
-		if (kind == Liquid::Water) {
+		if (kind == Liquid::Water && anyFire) {
 			TerrainFire::Extinguish(x, y);
 		}
 		if (reacted) {
 			settled.push_back(key);
 			continue;
 		}
-		if (kind == Liquid::Lava && y > 0 && terrain->GetMaterialPixel(x, y - 1) == g_MaterialAir && Random01() < 0.01F) {
+		if (kind == Liquid::Lava && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < 0.01F) {
 			hurtSpots.emplace_back(x, y - 1);
 		}
 
 		auto canMoveTo = [&](int tx, int ty) {
-			return InWorld(tx, ty, width, height) && terrain->GetMaterialPixel(tx, ty) == g_MaterialAir;
+			return InWorld(tx, ty, width, height) && materialBitmap->line[ty][tx] == g_MaterialAir;
 		};
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
