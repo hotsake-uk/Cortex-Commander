@@ -149,3 +149,10 @@ Write-Scenario "LookNoir" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0; Grad
 Write-Scenario "Sky" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120 }) @()
 Write-Scenario "SkyOff" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120; CloudShadows = 0; SunDisc = 0 }) @()
 Write-Scenario "SkyGrey" ($shadowBunker + @{ TimeOfDay = 14; WeatherType = 0; Wind = 200; CloudShadows = 1; LightingDebugView = 1; ModernHUD = 0 }) @("Render Test Shadows")
+# Surface states: units that are wet, sooty, snowed on and glowing hot, by night with a lamp and by day, and with the states switched off.
+Write-Scenario "SurfacesNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Surfaces")
+Write-Scenario "SurfacesDay" ($shadowBunker + @{ TimeOfDay = 14 }) @("Render Test Surfaces")
+Write-Scenario "SurfacesOff" ($shadowBunker + @{ TimeOfDay = 14; SurfaceStates = 0 }) @("Render Test Surfaces")
+# A soldier standing out in heavy snow and rain: after half a minute he's snowed on or wet.
+Write-Scenario "SurfacesSnow" ($play + @{ TimeOfDay = 14; WeatherType = 2; WeatherIntensity = 1 }) @()
+Write-Scenario "SurfacesRain" ($play + @{ TimeOfDay = 14; WeatherType = 1; WeatherIntensity = 1 }) @()

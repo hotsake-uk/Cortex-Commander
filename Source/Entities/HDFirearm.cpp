@@ -702,6 +702,8 @@ void HDFirearm::Update() {
 			}
 
 			if (roundsFired >= 1) {
+				// Every shot warms the gun; sustained fire makes it glow.
+				AddHeat(0.07F * static_cast<float>(roundsFired));
 				m_FiredOnce = true;
 				m_FireFrame = true;
 				m_LastFireTmr.Reset();

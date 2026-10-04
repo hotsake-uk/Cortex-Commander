@@ -56,7 +56,7 @@ Status: **done**, **in progress**, **next**, or **later** (not asked for yet).
 | 8 | **Surface detail from the art** | A relief worked out from each sprite's own pixels, so plates, rivets and folds catch light. Before, only the outline did. | done |
 | 9 | **Metal shading** | Metal mirrors the sky from above and the ground from below, is rounded off like a tube, and takes tinted highlights. | done |
 | 10 | **Terrain by real material** | Solid terrain is shaded by what it's made of (steel plating, concrete, ice, earth), not guessed from colour. | done |
-| 11 | Surface states | Wet after wading or rain, sooty near blasts, snow settling, barrels and struck metal glowing hot. | later |
+| 11 | **Surface states** | Wet after wading or rain, sooty near blasts, snow settling, barrels and struck metal glowing hot. | done |
 
 ### Other visuals
 
@@ -125,5 +125,6 @@ Short design notes, updated as things are built.
 - **2026-10-04:** a crash in the Modern HUD fixed (it read the controlled unit a frame after the unit was deleted).
 - **2026-10-04:** performance items 16 and 17 done.
 - **2026-10-04:** materials (items 7 to 10) built, with `Materials*` test scenarios.
+- **2026-10-04:** item 11 built. Checked in captures: each state set by script on a row of units (`Surfaces*` scenarios), and a soldier standing in real snowfall and rain. Not checked in play: soot from a real blast, a gun heating from firing, a struck plate. While testing, the sandbox test scenes turned out to have lost their camera when the sandbox window was hidden for captures; fixed, and the shadows regression baseline re-recorded on the view it was meant to have.
 - **2026-10-04:** item 6 built: the sun's disc by day, and cloud shadows that drift with the wind (checked in four lighting-only frames ten seconds apart). The shadows regression scene runs with clouds off, so it stays the same from run to run.
 - **2026-10-04:** items 12 to 15 built. Explosions and the Noir look checked in captures. The shimmer is built and scripted in the materials test, but against that scene's dark wall it couldn't be told apart, so it still needs a look in play. Tracer light and the background blur were not checked on their own.

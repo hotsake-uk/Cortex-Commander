@@ -459,6 +459,10 @@ void MOSRotating::DetachAttachablesFromImpulse(Vector& impulseVector) {
 
 void MOSRotating::AddWoundExt(AEmitter* woundToAdd, const Vector& parentOffsetToSet, bool checkGibWoundLimit, bool isEntryWound, bool isExitWound) {
 	if (woundToAdd && !m_ToDelete) {
+		// Metal glows for a moment where it's struck.
+		if (const Material* struck = GetMaterial(); struck && struck->GetMetalness() + std::max(m_Metalness, 0.0F) > 0.25F) {
+			AddHeat(0.45F);
+		}
 		if (checkGibWoundLimit && m_GibWoundLimit > 0 && m_Wounds.size() + 1 >= m_GibWoundLimit) {
 			// Find and detach an attachable near the new wound before gibbing the object itself. TODO: Perhaps move this to Actor, since it's more relevant there?
 			if (Attachable* attachableToDetach = GetNearestDetachableAttachableToOffset(parentOffsetToSet); attachableToDetach && m_DetachAttachablesBeforeGibbingFromWounds) {
@@ -945,6 +949,14 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 	g_PostProcessMan.RegisterScorchMark(m_Pos, gibEnergy);
 	EffectsParticles::SpawnExplosion(m_Pos, gibEnergy);
 	if (gibEnergy >= 2000.0F) {
+		// A blast blackens the units near it, more the closer they are.
+		float sootReach = std::clamp(std::sqrt(gibEnergy) * 0.9F, 40.0F, 150.0F);
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			float distance = g_SceneMan.ShortestDistance(m_Pos, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
+			if (actor != this && distance < sootReach) {
+				actor->SetSoot(actor->GetSoot() + 0.6F * (1.0F - distance / sootReach));
+			}
+		}
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
 		FluidSim::Disturb(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
@@ -1866,7 +1878,22 @@ glm::u8vec4 MOSRotating::GetRenderSurface() const {
 		metalness = metalness < 0.0F ? defaultMetalness : metalness;
 		gloss = gloss < 0.0F ? defaultGloss : gloss;
 	}
-	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), castsShadow ? 255 : 0, 0);
+	// What has happened to it: wet things are glossy and sooty ones dull; heat and snow travel to the shader packed in the last value (heat in the high half, snow in the low).
+	int packedStates = 0;
+	if (g_PostProcessMan.GetLightingSettings().SurfaceStates) {
+		const MovableObject* root = GetRootParent();
+		gloss = std::max(gloss, root->GetWetness() * 0.85F) * (1.0F - 0.7F * root->GetSoot());
+		metalness *= 1.0F - 0.5F * root->GetSoot();
+		int heat = static_cast<int>(std::clamp(m_Heat, 0.0F, 1.0F) * 15.0F + 0.5F);
+		// Snow lies on what's uppermost: the head and shoulders and what's held up there, not on legs and feet under them.
+		float snowCover = root->GetSnowCover();
+		if (snowCover > 0.0F && root != this) {
+			snowCover *= std::clamp((root->GetPos().m_Y - m_Pos.m_Y + 5.0F) / 8.0F, 0.0F, 1.0F);
+		}
+		int snow = static_cast<int>(std::clamp(snowCover, 0.0F, 1.0F) * 15.0F + 0.5F);
+		packedStates = heat * 16 + snow;
+	}
+	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), castsShadow ? 255 : 0, static_cast<unsigned char>(packedStates));
 }
 
 void MOSRotating::GetDefaultSurface(float& metalness, float& gloss) const {

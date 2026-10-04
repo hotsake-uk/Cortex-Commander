@@ -107,6 +107,24 @@ void main() {
 		FragColor.rgba = rteColor;
 	}
 	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
+	// What has happened to the object, packed into the surface's last value: heat in the high half, snow in the low.
+	float packedStates = floor(vertexSurface.a * 255.0 + 0.5);
+	float heat = floor(packedStates / 16.0) / 15.0;
+	float snow = mod(packedStates, 16.0) / 15.0;
+	if (snow > 0.0) {
+		// Snow lies where nothing of the sprite is above: its top pixel, and thinner on the one below. "Above" is up the screen, whichever way the sprite is turned.
+		float lying = 1.0 - Coverage(textureUV - uvDy);
+		lying = max(lying, 0.3 * (1.0 - Coverage(textureUV - uvDy * 2.0)));
+		FragColor.rgb = mix(FragColor.rgb, vec3(0.9, 0.93, 1.0), clamp(lying * snow * 1.4, 0.0, 0.95));
+		shine *= 1.0 - lying * snow;
+	}
+	if (heat > 0.0) {
+		// Hot metal glows from dull red to orange.
+		vec3 glow = mix(vec3(0.75, 0.12, 0.03), vec3(1.0, 0.6, 0.18), heat);
+		float brightness = dot(FragColor.rgb, vec3(0.3, 0.55, 0.15));
+		FragColor.rgb = mix(FragColor.rgb, glow * (0.6 + 1.1 * brightness), heat * 0.75);
+		emissive = max(emissive, heat * 0.85);
+	}
 	vec3 normal = normalize(EdgeNormal(uvDx, uvDy) + vec3(relief, 0.0));
 	// An object that says what it's made of is as glossy as that; the palette's guess (greys are metal or concrete) only counts in full for things that don't say, like particles.
 	bool hasSurface = vertexSurface.r + vertexSurface.g > 0.0;

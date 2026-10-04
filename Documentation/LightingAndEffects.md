@@ -74,6 +74,15 @@ AddActor = AHuman
 
 From Lua: `object.Metalness = 0.8`, `object.Gloss = 0.5` (below 0 means "not set").
 
+**Surface states** (`SurfaceStates`, on; a tick box in the Graphics Lab): units show what has happened to them. Looks only, nothing in the simulation reads them.
+- **Wet:** darker and glossy. At once when wading; building up in rain under open sky; dry again in about twenty seconds.
+- **Sooty:** blackened and dull. From explosions nearby (more the closer) and from burning. Wears off over a couple of minutes, sooner in rain, and washes off in water.
+- **Snow:** white on the head, shoulders and whatever is held up there. Settles on a unit standing still in snowfall under open sky, over about twenty seconds of heavy snow; moving shakes it off.
+- **Heat:** glowing from dull red to orange, and it shows in the dark. A gun warms with every shot, so sustained fire makes it glow; metal glows for a moment where it's hit; burning units glow. Cools in a few seconds.
+- A unit's parts share its wetness, soot and snow. Heat is each part's own.
+
+From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowCover`, `gun.Heat`. Units' wetness, soot and snow are set by the game every update, so a script that wants to hold one has to keep setting it.
+
 **Explosions, energy and looks:**
 - **Explosions** throw balls of fire that swell, roll upwards and burn out into dark smoke, which hangs and drifts for a few seconds; on the ground, a ring of dust races out either side. Visual only, part of `EffectsParticles`.
 - **Tracers** (`TracerLights`, on): fast shots with a trail throw a little light in their trail's colour on what they pass. At most 40 a frame.

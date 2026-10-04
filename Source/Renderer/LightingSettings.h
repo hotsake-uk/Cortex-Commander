@@ -155,6 +155,7 @@ namespace RTE {
 		float Relief = 0.6F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
 		float SunDisc = 1.0F; //!< Brightness of the sun drawn in the sky by day, 0 for none.
 		float CloudShadows = 0.5F; //!< How much drifting clouds shade the ground under open sky, 0 for none. Needs SunShadows.
+		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.

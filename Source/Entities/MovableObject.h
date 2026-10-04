@@ -926,6 +926,20 @@ namespace RTE {
 		/// Sets which way the light's cone points, in degrees clockwise from the way this faces.
 		void SetLightConeDirection(float degrees) { m_LightConeDirection = degrees; }
 
+		/// How this looks from what has happened to it, each 0 to 1. They only change how it's drawn. Units get them from the world (see ActorWater); anything can set them.
+		/// Wet: darker and glossy, drying off. Soot: blackened by blasts and fire, wearing off slowly and washing off. Snow cover: white on its upper edges. Heat: glowing, cooling in a few seconds.
+		/// A unit's parts take its wetness, soot and snow; heat is each part's own (a barrel, a struck plate).
+		float GetWetness() const { return m_Wetness; }
+		void SetWetness(float wetness) { m_Wetness = std::clamp(wetness, 0.0F, 1.0F); }
+		float GetSoot() const { return m_Soot; }
+		void SetSoot(float soot) { m_Soot = std::clamp(soot, 0.0F, 1.0F); }
+		float GetSnowCover() const { return m_SnowCover; }
+		void SetSnowCover(float snowCover) { m_SnowCover = std::clamp(snowCover, 0.0F, 1.0F); }
+		float GetHeat() const { return m_Heat; }
+		void SetHeat(float heat) { m_Heat = std::clamp(heat, 0.0F, 1.0F); }
+		/// Adds to this' heat, up to glowing fully.
+		void AddHeat(float heat) { m_Heat = std::clamp(m_Heat + heat, 0.0F, 1.0F); }
+
 		/// Gets how strongly the scene shimmers around this (see PostProcessMan::RegisterShimmer). 0 for none.
 		float GetShimmer() const { return m_Shimmer; }
 		/// Sets how strongly the scene shimmers around this, around 1; 0 for none. For energy shields, cloaks and hot things.
@@ -1361,6 +1375,10 @@ namespace RTE {
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
 		float m_LightFlicker; //!< How much the light randomly flickers, 0 to 1.
 		float m_Shimmer; //!< How strongly the scene shimmers around this, 0 for none.
+		float m_Wetness; //!< How wet this looks, 0 to 1.
+		float m_Soot; //!< How sooty this looks, 0 to 1.
+		float m_SnowCover; //!< How much snow lies on this, 0 to 1.
+		float m_Heat; //!< How hot this glows, 0 to 1.
 		std::string m_VisualEmission; //!< Kind of purely visual particles this gives off ("Sparks", "Dust", "Debris", "Embers"), or empty for none.
 		float m_VisualEmissionRate; //!< How many it gives off per second.
 		float m_VisualEmissionSpread; //!< How much their direction and speed vary, 0 to 1.

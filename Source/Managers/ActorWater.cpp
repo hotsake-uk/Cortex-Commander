@@ -7,6 +7,8 @@
 #include "MovableMan.h"
 #include "SceneMan.h"
 #include "TimerMan.h"
+#include "PostProcessMan.h"
+#include "WeatherEffects.h"
 
 #include <algorithm>
 #include <string>
@@ -31,6 +33,68 @@ namespace {
 		return material == s_WaterMaterial || material == s_AcidMaterial;
 	}
 
+	/// Whether there's nothing solid above a point for a good way up, so rain and snow reach it.
+	bool UnderOpenSky(const Vector& position) {
+		for (float up = 24.0F; up <= 240.0F; up += 24.0F) {
+			if (position.m_Y - up < 0.0F) {
+				return true;
+			}
+			if (MaterialAt(position - Vector(0.0F, up)) != g_MaterialAir) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/// How units look from what the world has done to them: wet from wading and rain, snowed on when they stand still in snowfall, sooty and hot while burning. Looks only.
+	void UpdateSurfaceStates() {
+		if (!g_PostProcessMan.GetLightingSettings().SurfaceStates) {
+			return;
+		}
+		float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+		float rain = WeatherEffects::GetRain();
+		float snow = WeatherEffects::GetSnow();
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			float wetness = actor->GetWetness();
+			float soot = actor->GetSoot();
+			float snowCover = actor->GetSnowCover();
+			bool inLiquid = actor->NumberValueExists(c_DepthTag);
+			bool weather = (rain > 0.0F || snow > 0.0F) && UnderOpenSky(actor->GetPos());
+			if (inLiquid) {
+				// Soaked at once, and the water takes the soot and snow with it.
+				wetness = 1.0F;
+				soot = std::max(soot - deltaTime * 0.5F, 0.0F);
+				snowCover = 0.0F;
+			} else if (weather && rain > 0.0F) {
+				wetness = std::min(wetness + deltaTime * 0.12F * rain, 0.4F + 0.5F * rain);
+				soot = std::max(soot - deltaTime * 0.03F * rain, 0.0F);
+			} else {
+				// Dry in about twenty seconds.
+				wetness = std::max(wetness - deltaTime * 0.05F, 0.0F);
+			}
+			if (weather && snow > 0.0F && !inLiquid && actor->GetVel().MagnitudeIsLessThan(1.5F)) {
+				// Snow settles on whoever stands still: fully covered in about twenty seconds of heavy snow.
+				snowCover = std::min(snowCover + deltaTime * 0.05F * snow, 1.0F);
+			} else if (snowCover > 0.0F) {
+				// Moving shakes it off; out of the snowfall it melts.
+				snowCover = std::max(snowCover - deltaTime * (actor->GetVel().MagnitudeIsGreaterThan(3.0F) ? 0.5F : 0.04F), 0.0F);
+			}
+			if (actor->NumberValueExists("OnFire")) {
+				// Burning: blackening as it goes, and glowing.
+				soot = std::min(soot + deltaTime * 0.25F, 1.0F);
+				actor->AddHeat(deltaTime * 1.2F);
+				wetness = 0.0F;
+				snowCover = 0.0F;
+			} else {
+				// Soot wears off over a couple of minutes.
+				soot = std::max(soot - deltaTime * 0.008F, 0.0F);
+			}
+			actor->SetWetness(wetness);
+			actor->SetSoot(soot);
+			actor->SetSnowCover(snowCover);
+		}
+	}
+
 	/// Flesh and blood units breathe; robots, drones and brains in jars don't.
 	bool Breathes(const Actor* actor) {
 		const Material* material = actor->GetMaterial();
@@ -49,6 +113,9 @@ void ActorWater::Update() {
 			s_WaterMaterial = water && water->GetIndex() != g_MaterialAir ? water->GetIndex() : -1;
 			s_AcidMaterial = acid && acid->GetIndex() != g_MaterialAir ? acid->GetIndex() : -1;
 		}
+	}
+	if (s_Scene) {
+		UpdateSurfaceStates();
 	}
 	if (!s_Enabled || !FluidSim::IsEnabled() || !s_Scene || (s_WaterMaterial < 0 && s_AcidMaterial < 0)) {
 		return;

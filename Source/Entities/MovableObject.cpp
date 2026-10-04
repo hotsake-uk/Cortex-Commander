@@ -111,6 +111,10 @@ void MovableObject::Clear() {
 	m_LightIntensity = 0.0F;
 	m_LightFlicker = 0.0F;
 	m_Shimmer = 0.0F;
+	m_Wetness = 0.0F;
+	m_Soot = 0.0F;
+	m_SnowCover = 0.0F;
+	m_Heat = 0.0F;
 	m_VisualEmission.clear();
 	m_VisualEmissionRate = 0.0F;
 	m_VisualEmissionSpread = 0.6F;
@@ -933,11 +937,19 @@ Color MovableObject::ApplyRenderBlendMode() const {
 			g_RenderMan.SetActiveBlendMode(BlendMode(Blend::SCREEN));
 			// Screen blending ignores alpha, so fade by darkening instead.
 			return Color(opacity, opacity, opacity, 255);
-		default:
+		default: {
 			if (opacity < 255) {
 				g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));
 			}
+			// Wet things are a little darker; sooty ones are blackened, warmly.
+			const MovableObject* root = GetRootParent();
+			if ((root->m_Wetness > 0.01F || root->m_Soot > 0.01F) && g_PostProcessMan.GetLightingSettings().SurfaceStates) {
+				float wet = 1.0F - 0.3F * root->m_Wetness;
+				float soot = root->m_Soot;
+				return Color(static_cast<int>(255.0F * wet * (1.0F - 0.6F * soot)), static_cast<int>(255.0F * wet * (1.0F - 0.64F * soot)), static_cast<int>(255.0F * wet * (1.0F - 0.68F * soot)), opacity);
+			}
 			return Color(255, 255, 255, opacity);
+		}
 	}
 }
 
@@ -1037,6 +1049,11 @@ void MovableObject::Update() {
 			m_VisualEmissionDue -= static_cast<float>(count);
 			EffectsParticles::Emit(m_VisualEmission, m_Pos, m_Vel, m_VisualEmissionSpread, count, 0);
 		}
+	}
+
+	if (m_Heat > 0.0F) {
+		// Hot metal cools in a few seconds.
+		m_Heat = std::max(m_Heat - g_TimerMan.GetDeltaTimeSecs() * 0.3F, 0.0F);
 	}
 
 	if (m_Shimmer > 0.0F) {

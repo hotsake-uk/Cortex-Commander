@@ -1585,6 +1585,11 @@ void Sandbox::DrawGUI() {
 		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), banner);
 	}
 	if (!s_Open) {
+		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
+			// Automated test runs keep the window shut, but the camera they've placed has to stay where they put it.
+			UpdateFreeCamera();
+			return;
+		}
 		s_FreeCameraStarted = false;
 		return;
 	}

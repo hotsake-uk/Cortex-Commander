@@ -429,6 +429,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		ImGui::SliderFloat("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
 		ImGui::SliderFloat("Metal reflections", &settings.Metals, 0.0F, 2.0F);
+		ImGui::Checkbox("Wet, sooty, snowy and hot surfaces", &settings.SurfaceStates);
 		ImGui::Checkbox("Tracers light what they pass", &settings.TracerLights);
 		ImGui::SliderFloat("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
 		ImGui::TextUnformatted("Looks:");

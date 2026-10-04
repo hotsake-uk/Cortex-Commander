@@ -231,6 +231,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunDisc", { g_PostProcessMan.GetLightingSettings().SunDisc = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudShadows", { g_PostProcessMan.GetLightingSettings().CloudShadows = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SurfaceStates", { g_PostProcessMan.GetLightingSettings().SurfaceStates = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("TracerLights", { g_PostProcessMan.GetLightingSettings().TracerLights = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ChromaticAberration", { g_PostProcessMan.GetLightingSettings().ChromaticAberration = std::stof(reader.ReadPropValue()); });
@@ -415,6 +416,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
 	writer.NewPropertyWithValue("SunDisc", lighting.SunDisc);
 	writer.NewPropertyWithValue("CloudShadows", lighting.CloudShadows);
+	writer.NewPropertyWithValue("SurfaceStates", lighting.SurfaceStates);
 	writer.NewPropertyWithValue("TracerLights", lighting.TracerLights);
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
 	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
