@@ -53,7 +53,7 @@ namespace {
 	    {3, 2, 2}, // Oil
 	};
 
-	constexpr size_t c_MaxActive = 80000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten. Each costs about 0.07 microseconds an update, so this bounds a map-wide flood to about 6 ms.
+	constexpr size_t c_MaxActive = 80000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten. Measured with this many moving at once: 6 to 8 ms an update, with spikes to 11 ms.
 	constexpr int c_RestSteps = 20; //!< A pixel that hasn't got any lower for this many of its steps stops being simulated.
 	constexpr int c_SweepPixelsPerUpdate = 30000; //!< How much of the terrain is checked each update for liquid left hanging (see Sweep).
 	constexpr int c_LevelSearchesPerUpdate = 12; //!< How many stuck pixels may look for a lower spot through the liquid each update. A search through a big body costs up to about 0.1 ms, so this bounds them to about 1 ms an update.
