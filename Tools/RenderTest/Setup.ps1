@@ -156,3 +156,8 @@ Write-Scenario "SurfacesOff" ($shadowBunker + @{ TimeOfDay = 14; SurfaceStates =
 # A soldier standing out in heavy snow and rain: after half a minute he's snowed on or wet.
 Write-Scenario "SurfacesSnow" ($play + @{ TimeOfDay = 14; WeatherType = 2; WeatherIntensity = 1 }) @()
 Write-Scenario "SurfacesRain" ($play + @{ TimeOfDay = 14; WeatherType = 1; WeatherIntensity = 1 }) @()
+# Lights of the scenery: the tutorial bunker by night with its own lamps, with the placeable fixtures added along the bottom corridor, and in the lighting-only view.
+Write-Scenario "LightsFixtures" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0 }) @("Render Test Light Fixtures")
+Write-Scenario "LightsFixturesOnly" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingDebugView = 1 }) @("Render Test Light Fixtures")
+# The same with the interiors' own light turned well down, so the lamps do the lighting.
+Write-Scenario "LightsDarkInterior" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingAmbient = "0.12 0.12 0.15"; LightingForegroundAmbient = "0.12 0.12 0.14" }) @("Render Test Light Fixtures")

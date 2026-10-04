@@ -2,6 +2,11 @@
 #include "TerrainFrosting.h"
 #include "TerrainDebris.h"
 #include "TerrainObject.h"
+#include "PostProcessMan.h"
+#include "EffectsParticles.h"
+#include "RTETools.h"
+
+#include <functional>
 #include "SceneObject.h"
 #include "MOSprite.h"
 #include "MOPixel.h"
@@ -26,6 +31,63 @@ SLTerrain::~SLTerrain() {
 	Destroy(true);
 }
 
+const std::string TerrainLight::c_ClassName = "TerrainLight";
+
+void TerrainLight::Clear() {
+	m_Pos.Reset();
+	m_Color.SetRGB(255, 225, 180);
+	m_Radius = 110.0F;
+	m_Intensity = 1.0F;
+	m_Flicker = 0.0F;
+	m_Pulse = 0.0F;
+	m_ConeAngle = 0.0F;
+	m_ConeDirection = 90.0F;
+	m_Anchored = -1;
+	m_AnchorOffset.Reset();
+}
+
+int TerrainLight::ReadProperty(const std::string_view& propName, Reader& reader) {
+	StartPropertyList(return Serializable::ReadProperty(propName, reader));
+
+	MatchProperty("Offset", { reader >> m_Pos; });
+	MatchProperty("Position", { reader >> m_Pos; });
+	MatchProperty("Color", { reader >> m_Color; });
+	MatchProperty("Radius", { reader >> m_Radius; });
+	MatchProperty("Intensity", { reader >> m_Intensity; });
+	MatchProperty("Flicker", { reader >> m_Flicker; });
+	MatchProperty("Pulse", { reader >> m_Pulse; });
+	MatchProperty("ConeAngle", { reader >> m_ConeAngle; });
+	MatchProperty("ConeDirection", { reader >> m_ConeDirection; });
+	MatchProperty("Anchored", { reader >> m_Anchored; });
+	MatchProperty("AnchorOffset", { reader >> m_AnchorOffset; });
+
+	EndPropertyList;
+}
+
+int TerrainLight::Save(Writer& writer) const {
+	Serializable::Save(writer);
+
+	writer.NewPropertyWithValue("Position", m_Pos);
+	writer.NewPropertyWithValue("Color", m_Color);
+	writer.NewPropertyWithValue("Radius", m_Radius);
+	writer.NewPropertyWithValue("Intensity", m_Intensity);
+	if (m_Flicker > 0.0F) {
+		writer.NewPropertyWithValue("Flicker", m_Flicker);
+	}
+	if (m_Pulse > 0.0F) {
+		writer.NewPropertyWithValue("Pulse", m_Pulse);
+	}
+	if (m_ConeAngle > 0.0F) {
+		writer.NewPropertyWithValue("ConeAngle", m_ConeAngle);
+		writer.NewPropertyWithValue("ConeDirection", m_ConeDirection);
+	}
+	if (m_Anchored >= 0) {
+		writer.NewPropertyWithValue("Anchored", m_Anchored);
+		writer.NewPropertyWithValue("AnchorOffset", m_AnchorOffset);
+	}
+	return 0;
+}
+
 void SLTerrain::Clear() {
 	m_Width = 0;
 	m_Height = 0;
@@ -36,6 +98,8 @@ void SLTerrain::Clear() {
 	m_TerrainFrostings.clear();
 	m_TerrainDebris.clear();
 	m_TerrainObjects.clear();
+	m_Lights.clear();
+	m_LightCheckCounter = 0;
 	m_UpdatedMaterialAreas.clear();
 	m_OrbitDirection = Directions::Up;
 
@@ -86,6 +150,8 @@ int SLTerrain::Create(const SLTerrain& reference) {
 		m_TerrainObjects.emplace_back(terrainObject);
 	}
 
+	m_Lights = reference.m_Lights;
+
 	m_OrbitDirection = reference.m_OrbitDirection;
 
 	return 0;
@@ -119,6 +185,11 @@ int SLTerrain::ReadProperty(const std::string_view& propName, Reader& reader) {
 		std::unique_ptr<TerrainObject> terrainObject = std::make_unique<TerrainObject>();
 		reader >> terrainObject.get();
 		m_TerrainObjects.emplace_back(terrainObject.release());
+	});
+	MatchProperty("AddLight", {
+		TerrainLight light;
+		reader >> light;
+		m_Lights.emplace_back(light);
 	});
 	MatchProperty("OrbitDirection", {
 		std::string orbitDirection;
@@ -167,6 +238,12 @@ int SLTerrain::Save(Writer& writer) const {
 			writer.NewPropertyWithValue("Position", terrainObject->GetPos());
 			writer.ObjectEnd();
 		}
+	}
+
+	// Lights that came with placed objects are written too. Should the objects be placed again on loading, each just replaces its own.
+	for (const TerrainLight& light: m_Lights) {
+		writer.NewProperty("AddLight");
+		writer << light;
 	}
 
 	writer.NewProperty("OrbitDirection");
@@ -269,6 +346,82 @@ void SLTerrain::TexturizeTerrain() {
 			              _putpixel(bgLayerTexture, xPos, yPos, bgPixelColor);
 		              }
 	              });
+}
+
+void SLTerrain::AddLight(const TerrainLight& light) {
+	if (light.m_Radius <= 0.0F || light.m_Intensity <= 0.0F) {
+		return;
+	}
+	TerrainLight newLight = light;
+	if (m_WrapX && m_MainBitmap) {
+		newLight.m_Pos.m_X = std::fmod(std::fmod(newLight.m_Pos.m_X, static_cast<float>(m_MainBitmap->w)) + static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->w));
+	}
+	for (TerrainLight& existing: m_Lights) {
+		// One lamp to a spot: background pieces are painted with the glow of the lamp of the module they belong in, and both bring it.
+		if (std::abs(existing.m_Pos.m_X - newLight.m_Pos.m_X) < 10.0F && std::abs(existing.m_Pos.m_Y - newLight.m_Pos.m_Y) < 10.0F) {
+			existing = newLight;
+			return;
+		}
+	}
+	m_Lights.emplace_back(newLight);
+}
+
+int SLTerrain::RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove) {
+	size_t before = m_Lights.size();
+	std::erase_if(m_Lights, shouldRemove);
+	return static_cast<int>(before - m_Lights.size());
+}
+
+void SLTerrain::UpdateLights() {
+	if (m_Lights.empty()) {
+		return;
+	}
+	auto solidAt = [](const Vector& point) { return g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) > MaterialColorKeys::g_MaterialCavity; };
+
+	bool checkFixtures = ++m_LightCheckCounter >= 20;
+	if (checkFixtures) {
+		m_LightCheckCounter = 0;
+	}
+	float time = PostProcessMan::GetSmoothSimTime();
+	for (auto light = m_Lights.begin(); light != m_Lights.end();) {
+		if (light->m_Anchored < 0) {
+			// What does it hang on? Something solid right at it, else the nearest solid thing within a few pixels: above first, as lamps mostly hang from ceilings.
+			light->m_Anchored = 0;
+			static const std::array<Vector, 4> directions = {Vector(0.0F, -1.0F), Vector(-1.0F, 0.0F), Vector(1.0F, 0.0F), Vector(0.0F, 1.0F)};
+			for (int distance = 0; distance <= 5 && light->m_Anchored == 0; ++distance) {
+				for (const Vector& direction: directions) {
+					if (solidAt(light->m_Pos + direction * static_cast<float>(distance))) {
+						light->m_Anchored = 1;
+						light->m_AnchorOffset = direction * static_cast<float>(distance);
+						break;
+					}
+					if (distance == 0) {
+						break;
+					}
+				}
+			}
+		} else if (checkFixtures && light->m_Anchored == 1 && !solidAt(light->m_Pos + light->m_AnchorOffset)) {
+			// What it hung on has been shot or blown away: it goes out in a shower of sparks.
+			EffectsParticles::Emit("Sparks", light->m_Pos, Vector(0.0F, 2.0F), 1.0F, 14, 0);
+			light = m_Lights.erase(light);
+			continue;
+		}
+		float brightness = light->m_Intensity;
+		if (light->m_Flicker > 0.0F) {
+			brightness *= 1.0F - light->m_Flicker * RandomNum(0.0F, 1.0F);
+		}
+		if (light->m_Pulse > 0.0F) {
+			brightness *= 0.5F + 0.5F * std::sin(time * light->m_Pulse * c_TwoPI + light->m_Pos.m_X);
+		}
+		glm::vec3 color(light->m_Color.GetR(), light->m_Color.GetG(), light->m_Color.GetB());
+		if (light->m_ConeAngle > 0.0F) {
+			float direction = light->m_ConeDirection * c_PI / 180.0F;
+			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, light->m_Radius, brightness);
+		} else {
+			g_PostProcessMan.RegisterLight(light->m_Pos, color, light->m_Radius, brightness);
+		}
+		++light;
+	}
 }
 
 int SLTerrain::LoadData() {

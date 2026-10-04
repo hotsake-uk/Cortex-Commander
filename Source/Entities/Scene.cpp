@@ -2477,6 +2477,10 @@ void Scene::Update() {
 
 	m_PathfindingUpdated = false;
 
+	if (m_pTerrain) {
+		m_pTerrain->UpdateLights();
+	}
+
 	if (g_SettingsMan.BlipOnRevealUnseen()) {
 		// Highlight the pixels that have been revealed on the unseen maps
 		for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {

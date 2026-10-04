@@ -254,6 +254,42 @@ AddScene = Scene
 
 **From the scene editor:** set the time and weather you want in the World Debug window (F6), press "Use the current time and weather" under "This scene's own atmosphere", then save the scene. The keys above are written into it.
 
+## Lights in the scenery (INI)
+
+Bunker pieces and other `TerrainObject`s can bring lamps with them. When the piece is placed the lamps become part of the scene: they shine from then on, cast shadows like any light, and are saved with the game.
+
+```ini
+AddTerrainObject = TerrainObject
+	PresetName = My Lit Corridor
+	...
+	AddLight = TerrainLight
+		Offset = Vector        // From the top left corner of the piece's pictures, in pixels. Put it in the open, not inside something solid.
+			X = 47.5
+			Y = 25
+		Color = Color
+			R = 150
+			G = 200
+			B = 255
+		Radius = 125           // Pixels, where the light reaches zero.
+		Intensity = 1.4
+		Flicker = 0            // 0..1 random flicker.
+		Pulse = 0              // Times a second it swells and fades (warning lights). 0 is steady.
+		ConeAngle = 0          // Above 0 it's a beam with this half-angle in degrees.
+		ConeDirection = 90     // Which way the beam points, in degrees clockwise from pointing right. 90 is straight down.
+```
+
+- A piece can have any number of `AddLight` blocks. A copy (`CopyOf`) keeps its original's lights; `ClearLights = 1` drops them.
+- **Lamps can be destroyed.** A lamp hangs on the nearest solid thing within five pixels of it (the pixel it's on, else above, beside, below). When that is shot or blown away the lamp goes out in a few sparks. A lamp with nothing solid near it (one painted on a back wall) stays.
+- **One lamp to a spot.** A lamp placed within ten pixels of another replaces it, and building a piece over a lamp removes the lamp. So a background piece painted with a lamp's glow can bring the lamp without doubling the one of the module it's put in.
+- A `Scene`'s terrain can have lamps of its own: `AddLight = TerrainLight` inside the `Terrain = SLTerrain` block, with `Position` in scene coordinates.
+- From Lua: `SceneMan:AddTerrainLight(pos, r, g, b, radius, intensity)` puts one up, `SceneMan:RemoveTerrainLights(pos, radius)` takes down those near a point.
+
+**Stock pieces.** The lamps painted on the stock bunker pieces are real: the blue ceiling lamps of the concrete modules and tutorial pieces, the white and yellow strip and panel lights, lit windows and screens, the brain vault and rocket silo, vending machines, and the Browncoats' sodium and amber lamps. Brain cases, teleporters and consoles glow a little too.
+
+**Placeable fixtures** (group `Bunker Lights`, in the build menus and the sandbox's Structure tool): Ceiling Lamp, Wall Lamp and Tiny Light in White, Warm, Blue, Red and Green; Floor Lamp and Strip Light in White and Warm; Floodlight Down, Left and Right (beams); Warning Beacon (pulses red); Flickering Lamp. They're drawn on the back wall, so they never block anything. `Tools/MakeBunkerLights.py` draws them and writes their INI.
+
+How much the lamps matter depends on how bright interiors are without them: `LightingAmbient` (0.6 by default) and `LightingForegroundAmbient` (0.5) light every interior evenly. Turn them down (the F6 window's interior light) and bunkers are lit by their lamps, and go dark where the lamps are shot out.
+
 ## Lights on objects (INI)
 
 Any `MovableObject` (actors, devices, particles, gibs…) can cast a light. The light moves, rotates and flips with the object, and terrain casts soft shadows from it.

@@ -2,11 +2,10 @@
 
 #include "SceneObject.h"
 #include "ContentFile.h"
+#include "SLTerrain.h"
 #include <algorithm>
 
 namespace RTE {
-
-	class SLTerrain;
 
 	/// A feature of the terrain, which includes foreground color layer, material layer and optional background layer.
 	class TerrainObject : public SceneObject {
@@ -85,6 +84,13 @@ namespace RTE {
 		/// @return A reference to the list of child objects. Ownership of the list is NOT transferred!
 		const std::vector<SceneObject::SOPlacer>& GetChildObjects() const { return m_ChildObjects; }
 
+		/// Gets the lights that come with this TerrainObject. Their positions are offsets from the top left corner of its bitmaps.
+		const std::vector<TerrainLight>& GetLights() const { return m_Lights; }
+
+		/// Adds a light to this TerrainObject.
+		/// @param light The light, positioned from the top left corner of this' bitmaps.
+		void AddLight(const TerrainLight& light) { m_Lights.emplace_back(light); }
+
 		/// Gets a BITMAP showing a good identifiable icon of this, for use in GUI lists.
 		/// @return A good identifiable graphical representation of this in a BITMAP, if available. If not, nullptr is returned. Ownership is NOT transferred!
 		BITMAP* GetGraphicalIcon() const override;
@@ -132,6 +138,8 @@ namespace RTE {
 		bool m_OffsetDefined; //!< Whether the offset has been defined and shouldn't be automatically set.
 
 		std::vector<SceneObject::SOPlacer> m_ChildObjects; //!< The objects that are placed along with this TerrainObject on the Scene.
+
+		std::vector<TerrainLight> m_Lights; //!< The lights that come with this, positioned from the top left corner of its bitmaps.
 
 	private:
 		/// Draws this TerrainObject's graphical and material representations to the specified SLTerrain's respective layers.

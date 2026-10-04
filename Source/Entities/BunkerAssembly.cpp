@@ -70,6 +70,13 @@ void BunkerAssembly::AddPlacedObject(SceneObject* pSO) {
 			draw_sprite(m_pPresentationBitmap, pTObject->GetFGColorBitmap(), objectPos.GetFloorIntX(), objectPos.GetFloorIntY());
 		}
 
+		// Its lights become this assembly's.
+		for (const TerrainLight& light: pTObject->GetLights()) {
+			TerrainLight assemblyLight = light;
+			assemblyLight.m_Pos = light.m_Pos + objectPos.GetFloored();
+			m_Lights.emplace_back(assemblyLight);
+		}
+
 		// Read and add all child objects
 		pTObject->SetTeam(GetTeam());
 

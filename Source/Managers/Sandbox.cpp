@@ -369,7 +369,7 @@ namespace {
 			g_PresetMan.GetAllOfType(entities, type);
 			AddPresets(s_Items, entities, true, false);
 		}
-		for (const char* group: {"Bunker Modules", "Bunker Systems"}) {
+		for (const char* group: {"Bunker Modules", "Bunker Systems", "Bunker Lights"}) {
 			std::list<Entity*> entities;
 			g_PresetMan.GetAllOfGroup(entities, group, "All");
 			AddPresets(s_Structures, entities, false, false);

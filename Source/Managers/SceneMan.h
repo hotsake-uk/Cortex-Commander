@@ -968,6 +968,17 @@ namespace RTE {
 		/// ownership was transferred. If no success, the object was deleted.
 		bool AddSceneObject(SceneObject* pObject);
 
+		/// Puts up a light that stays in the scene, like the lamps of bunker modules: it shines until what it hangs on (anything solid within five pixels) is destroyed, and is saved with the game.
+		/// @param pos Where, in scene coordinates. A light already within ten pixels is replaced.
+		/// @param red, green, blue Its color, 0-255.
+		/// @param radius How far it reaches, in pixels.
+		/// @param intensity How bright it is.
+		void AddTerrainLight(const Vector& pos, float red, float green, float blue, float radius, float intensity);
+
+		/// Takes down the scene's lights within a distance of a point.
+		/// @return How many were taken down.
+		int RemoveTerrainLights(const Vector& pos, float radius);
+
 		/// Updates the state of this SceneMan. Supposed to be done every frame
 		/// before drawing.
 		/// @param screenId Which screen to update for. (default: 0)

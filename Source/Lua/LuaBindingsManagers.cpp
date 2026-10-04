@@ -326,6 +326,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("GetMaterial", &SceneMan::GetMaterial)
 	    .def("GetMaterialFromID", &SceneMan::GetMaterialFromID)
 	    .def("GetTerrMatter", &SceneMan::GetTerrMatter)
+	    .def("AddTerrainLight", &SceneMan::AddTerrainLight)
+	    .def("RemoveTerrainLights", &SceneMan::RemoveTerrainLights)
 	    .def("GetMOIDPixel", (MOID(SceneMan::*)(int, int)) & SceneMan::GetMOIDPixel)
 	    .def("GetMOIDPixel", (MOID(SceneMan::*)(int, int, int)) & SceneMan::GetMOIDPixel)
 	    .def("SetLayerDrawMode", &SceneMan::SetLayerDrawMode)

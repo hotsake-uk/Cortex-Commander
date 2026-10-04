@@ -1,4 +1,4 @@
-# Cortex Commander: Visuals and Performance Plan
+﻿# Cortex Commander: Visuals and Performance Plan
 
 The earlier plans are done (`MODERNISATION_PLAN.md`, `FEATURE_PROPOSAL.md`). This one covers the next round: shadows, materials that look like what they are, better effects, and making the engine cope with bigger fights.
 
@@ -125,6 +125,7 @@ Short design notes, updated as things are built.
 - **2026-10-04:** a crash in the Modern HUD fixed (it read the controlled unit a frame after the unit was deleted).
 - **2026-10-04:** performance items 16 and 17 done.
 - **2026-10-04:** materials (items 7 to 10) built, with `Materials*` test scenarios.
+- **2026-10-04:** lights in the scenery (not one of the numbered items). `TerrainObject`s can carry lamps (`AddLight = TerrainLight`), which join the scene when the piece is placed, are saved with it, and go out when their fixture is destroyed. 67 stock pieces got the lamps their art already showed (90 lamps), 24 small placeable fixtures were added (`Bunker Lights`), and brain cases, teleporters and consoles glow. Checked in captures of the tutorial bunker by night. Not checked: saving and loading a game with lamps, shooting a lamp out, the Browncoat pieces in a scene, and the build menu listing the new group.
 - **2026-10-04:** item 11 built. Checked in captures: each state set by script on a row of units (`Surfaces*` scenarios), and a soldier standing in real snowfall and rain. Not checked in play: soot from a real blast, a gun heating from firing, a struck plate. While testing, the sandbox test scenes turned out to have lost their camera when the sandbox window was hidden for captures; fixed, and the shadows regression baseline re-recorded on the view it was meant to have.
 - **2026-10-04:** item 6 built: the sun's disc by day, and cloud shadows that drift with the wind (checked in four lighting-only frames ten seconds apart). The shadows regression scene runs with clouds off, so it stays the same from run to run.
 - **2026-10-04:** items 12 to 15 built. Explosions and the Noir look checked in captures. The shimmer is built and scripted in the materials test, but against that scene's dark wall it couldn't be told apart, so it still needs a look in play. Tracer light and the background blur were not checked on their own.

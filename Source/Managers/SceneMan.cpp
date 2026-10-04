@@ -2594,6 +2594,25 @@ bool SceneMan::AddSceneObject(SceneObject* sceneObject) {
 	return result;
 }
 
+void SceneMan::AddTerrainLight(const Vector& pos, float red, float green, float blue, float radius, float intensity) {
+	if (SLTerrain* terrain = GetTerrain()) {
+		TerrainLight light;
+		light.m_Pos = pos;
+		light.m_Color.SetRGB(static_cast<int>(red), static_cast<int>(green), static_cast<int>(blue));
+		light.m_Radius = radius;
+		light.m_Intensity = intensity;
+		terrain->AddLight(light);
+	}
+}
+
+int SceneMan::RemoveTerrainLights(const Vector& pos, float radius) {
+	SLTerrain* terrain = GetTerrain();
+	if (!terrain) {
+		return 0;
+	}
+	return terrain->RemoveLights([&](const TerrainLight& light) { return ShortestDistance(pos, light.m_Pos, SceneWrapsX()).MagnitudeIsLessThan(radius); });
+}
+
 void SceneMan::Update(int screenId) {
 	ZoneScoped;
 

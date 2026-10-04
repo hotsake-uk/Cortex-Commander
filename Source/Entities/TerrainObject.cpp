@@ -28,6 +28,7 @@ void TerrainObject::Clear() {
 	m_BitmapOffset.Reset();
 	m_OffsetDefined = false;
 	m_ChildObjects.clear();
+	m_Lights.clear();
 }
 
 int TerrainObject::Create() {
@@ -62,6 +63,7 @@ int TerrainObject::Create(const TerrainObject& reference) {
 	for (const SceneObject::SOPlacer& childObject: reference.m_ChildObjects) {
 		m_ChildObjects.emplace_back(childObject);
 	}
+	m_Lights = reference.m_Lights;
 	return 0;
 }
 
@@ -89,6 +91,18 @@ int TerrainObject::ReadProperty(const std::string_view& propName, Reader& reader
 		reader >> newChildObject;
 		newChildObject.SetTeam(m_Team);
 		m_ChildObjects.emplace_back(newChildObject);
+	});
+	MatchProperty("AddLight", {
+		TerrainLight light;
+		reader >> light;
+		m_Lights.emplace_back(light);
+	});
+	MatchProperty("ClearLights", {
+		bool clearLights;
+		reader >> clearLights;
+		if (clearLights) {
+			m_Lights.clear();
+		}
 	});
 	MatchProperty("ClearChildObjects", {
 		bool clearChildObjects;
@@ -120,6 +134,19 @@ int TerrainObject::Save(Writer& writer) const {
 
 	for (const SceneObject::SOPlacer& childObject: m_ChildObjects) {
 		writer.NewPropertyWithValue("AddChildObject", childObject);
+	}
+	for (const TerrainLight& light: m_Lights) {
+		writer.NewProperty("AddLight");
+		writer.ObjectStart("TerrainLight");
+		writer.NewPropertyWithValue("Offset", light.m_Pos);
+		writer.NewPropertyWithValue("Color", light.m_Color);
+		writer.NewPropertyWithValue("Radius", light.m_Radius);
+		writer.NewPropertyWithValue("Intensity", light.m_Intensity);
+		writer.NewPropertyWithValue("Flicker", light.m_Flicker);
+		writer.NewPropertyWithValue("Pulse", light.m_Pulse);
+		writer.NewPropertyWithValue("ConeAngle", light.m_ConeAngle);
+		writer.NewPropertyWithValue("ConeDirection", light.m_ConeDirection);
+		writer.ObjectEnd();
 	}
 	return 0;
 }
@@ -165,6 +192,21 @@ bool TerrainObject::PlaceOnTerrain(SLTerrain* terrain) {
 		return false;
 	}
 	DrawToTerrain(terrain);
+
+	// Lamps that were where this now is are built over; this' own are put up.
+	Vector corner = (m_Pos + m_BitmapOffset).GetFloored();
+	auto drawnAt = [](BITMAP* bitmap, int x, int y) { return bitmap && x >= 0 && y >= 0 && x < bitmap->w && y < bitmap->h && _getpixel(bitmap, x, y) != ColorKeys::g_MaskColor; };
+	terrain->RemoveLights([&](const TerrainLight& light) {
+		int x = static_cast<int>(std::floor(light.m_Pos.m_X - corner.m_X));
+		int y = static_cast<int>(std::floor(light.m_Pos.m_Y - corner.m_Y));
+		return drawnAt(m_FGColorBitmap, x, y) || drawnAt(m_BGColorBitmap, x, y) || drawnAt(m_MaterialBitmap, x, y);
+	});
+	for (const TerrainLight& light: m_Lights) {
+		TerrainLight placed = light;
+		placed.m_Pos = corner + light.m_Pos;
+		placed.m_Anchored = -1;
+		terrain->AddLight(placed);
+	}
 
 	// Reapply the team so all children are guaranteed to be on the same team.
 	SetTeam(GetTeam());

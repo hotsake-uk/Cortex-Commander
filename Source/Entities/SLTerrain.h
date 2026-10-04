@@ -2,6 +2,7 @@
 
 #include "SceneLayer.h"
 #include "Matrix.h"
+#include "Color.h"
 
 namespace RTE {
 
@@ -9,6 +10,35 @@ namespace RTE {
 	class TerrainFrosting;
 	class TerrainObject;
 	class TerrainDebris;
+
+	/// A light that is part of the scenery: a lamp on a bunker wall, a floodlight, a warning light. It stays where it is and shines until what holds it is destroyed.
+	/// On a TerrainObject its position is an offset from the top left corner of the object's bitmaps; on the terrain it's a scene position.
+	class TerrainLight : public Serializable {
+
+	public:
+		SerializableClassNameGetter;
+		SerializableOverrideMethods;
+
+		TerrainLight() { Clear(); }
+
+		void Reset() override { Clear(); }
+
+		Vector m_Pos; //!< Where the light is.
+		Color m_Color; //!< Its color, 0-255.
+		float m_Radius; //!< How far it reaches, in pixels.
+		float m_Intensity; //!< How bright it is.
+		float m_Flicker; //!< How much it flickers at random, 0 to 1.
+		float m_Pulse; //!< How many times a second it swells and fades, 0 for a steady light.
+		float m_ConeAngle; //!< Half-angle of its beam in degrees, 0 for a light that shines all round.
+		float m_ConeDirection; //!< Which way the beam points, in degrees clockwise from pointing right (90 is straight down).
+		int m_Anchored; //!< Whether it hangs on something solid, and so goes out when that is destroyed. -1 until that's been looked up.
+		Vector m_AnchorOffset; //!< Where the solid thing it hangs on is, from the light.
+
+	private:
+		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
+
+		void Clear();
+	};
 
 	/// Collection of scrolling layers that compose the terrain of the Scene.
 	class SLTerrain : public SceneLayer {
@@ -173,6 +203,20 @@ namespace RTE {
 		/// @param newArea The Box defining the newly updated material area that can be unwrapped and may be out of bounds of the scene.
 		void AddUpdatedMaterialArea(const Box& newArea) { m_UpdatedMaterialAreas.emplace_back(newArea); }
 
+		/// Adds a light to the scenery. One already at the same spot is replaced.
+		/// @param light The light, with its position in scene coordinates.
+		void AddLight(const TerrainLight& light);
+
+		/// Removes the scenery lights for which the test says so.
+		/// @return How many were removed.
+		int RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove);
+
+		/// Gets the lights of the scenery.
+		const std::vector<TerrainLight>& GetLights() const { return m_Lights; }
+
+		/// Makes the scenery's lights shine this update, and puts out the ones whose fixture has been destroyed. Only for the terrain of the Scene being played.
+		void UpdateLights();
+
 		/// Removes any color pixel in the color layer of this SLTerrain wherever there is an air material pixel in the material layer.
 		void CleanAir();
 
@@ -227,6 +271,9 @@ namespace RTE {
 		std::vector<TerrainFrosting*> m_TerrainFrostings; //!< The TerrainFrostings that need to be placed on this SLTerrain.
 		std::vector<TerrainDebris*> m_TerrainDebris; //!< The TerrainDebris that need to be  placed on this SLTerrain.
 		std::vector<TerrainObject*> m_TerrainObjects; //!< The TerrainObjects that need to be placed on this SLTerrain.
+
+		std::vector<TerrainLight> m_Lights; //!< The lights of the scenery, in scene coordinates.
+		int m_LightCheckCounter; //!< Counts updates between checks of whether the lights' fixtures are still there.
 
 		std::deque<Box> m_UpdatedMaterialAreas; //!< List of areas of the material layer (main bitmap) which have been affected by new objects copied to it. These boxes are NOT wrapped, and can be out of bounds!
 
