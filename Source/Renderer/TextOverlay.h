@@ -31,7 +31,7 @@ namespace RTE {
 		/// @param offsetY Position of the bitmap's top left pixel on the screen, in internal pixels.
 		/// @param clipWidth Size of the area of the screen text from this bitmap may cover, in internal pixels.
 		/// @param clipHeight Size of the area of the screen text from this bitmap may cover, in internal pixels.
-		static void SetTarget(const BITMAP* bitmap, int offsetX, int offsetY, int clipWidth, int clipHeight);
+		static void SetTarget(const BITMAP* bitmap, int offsetX, int offsetY, int clipWidth, int clipHeight, float scale = 1.0F);
 
 		/// Stops capturing text for the target bitmap. Text that something else was drawn over after it was captured is dropped,
 		/// since overlay text is drawn above the whole layer but in the bitmap it would have been covered.

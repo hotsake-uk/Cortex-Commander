@@ -119,6 +119,14 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - Health and ammo bars for the unit you control.
 - A feed of units lost.
 
+**Camera zoom:**
+- **Ctrl + mouse wheel** zooms the view out (down to 0.4x, about six times as much world on screen) or in (up to 2x). In the Sandbox god view the wheel alone zooms. There are sliders in F6 and the sandbox's World tab.
+- The whole view (scene, lighting and HUD) is drawn at the size of the area it shows and scaled to the screen, so every effect works at any zoom. Far backgrounds don't zoom: the sky and backdrop stay put.
+- HUD text stays readable when zoomed out (with Smooth HUD Text on); HUD icons shrink with the view.
+- The view eases back to 1x while the buy menu or the build phase is open, because those menus are laid out for the normal screen. Menus and editors don't zoom. A new game starts at 1x.
+- Split screens zoom together. Zooming far out costs GPU time in proportion to the area shown.
+- Lua: `FrameMan.CameraZoom` (read and write). `FrameMan.PlayerScreenWidth` and `Height` give the size of the area in view, so they change with the zoom.
+
 Press **F8** for **Photo Mode**:
 - Freezes time and hides the HUD and screen text.
 - Free camera: drag with the right mouse button, or use the arrow keys.

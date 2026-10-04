@@ -121,8 +121,8 @@ int UInputMan::Initialize() {
 	m_PlayerScreenMouseBounds = {
 	    0,
 	    0,
-	    static_cast<int>(g_FrameMan.GetPlayerFrameBufferWidth(Players::NoPlayer) * g_WindowMan.GetResMultiplier()),
-	    static_cast<int>(g_FrameMan.GetPlayerFrameBufferHeight(Players::NoPlayer) * g_WindowMan.GetResMultiplier())};
+	    static_cast<int>(g_FrameMan.GetUnzoomedPlayerScreenWidth() * g_WindowMan.GetResMultiplier()),
+	    static_cast<int>(g_FrameMan.GetUnzoomedPlayerScreenHeight() * g_WindowMan.GetResMultiplier())};
 
 	return 0;
 }
@@ -532,8 +532,8 @@ void UInputMan::ForceMouseWithinPlayerScreen(bool force, int whichPlayer) {
 	float resMultiplier = g_WindowMan.GetResMultiplier();
 
 	if (force && (whichPlayer >= Players::PlayerOne && whichPlayer < Players::MaxPlayerCount)) {
-		int screenWidth = g_FrameMan.GetPlayerFrameBufferWidth(whichPlayer) * resMultiplier;
-		int screenHeight = g_FrameMan.GetPlayerFrameBufferHeight(whichPlayer) * resMultiplier;
+		int screenWidth = g_FrameMan.GetUnzoomedPlayerScreenWidth() * resMultiplier;
+		int screenHeight = g_FrameMan.GetUnzoomedPlayerScreenHeight() * resMultiplier;
 
 		switch (g_ActivityMan.GetActivity()->ScreenOfPlayer(whichPlayer)) {
 			case 0:

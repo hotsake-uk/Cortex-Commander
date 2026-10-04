@@ -54,7 +54,7 @@ Vector CameraMan::GetUnwrappedOffset(int screenId) const {
 
 void CameraMan::SetScroll(const Vector& center, int screenId) {
 	Screen& screen = m_Screens[screenId];
-	screen.Offset.SetXY(static_cast<float>(center.GetFloorIntX() - (g_WindowMan.GetResX() / 2)), static_cast<float>(center.GetFloorIntY() - (g_WindowMan.GetResY() / 2)));
+	screen.Offset.SetXY(static_cast<float>(center.GetFloorIntX() - (g_FrameMan.GetPlayerScreenWidth() / 2)), static_cast<float>(center.GetFloorIntY() - (g_FrameMan.GetPlayerScreenHeight() / 2)));
 	CheckOffset(screenId);
 }
 
@@ -237,8 +237,8 @@ void CameraMan::Update(int screenId) {
 	Vector oldOffset(screen.Offset);
 
 	Vector offsetTarget;
-	offsetTarget.SetX(screen.ScrollTarget.GetX() - static_cast<float>(g_WindowMan.GetResX() / (g_FrameMan.GetVSplit() ? 4 : 2)));
-	offsetTarget.SetY(screen.ScrollTarget.GetY() - static_cast<float>(g_WindowMan.GetResY() / (g_FrameMan.GetHSplit() ? 4 : 2)));
+	offsetTarget.SetX(screen.ScrollTarget.GetX() - static_cast<float>(g_FrameMan.GetPlayerScreenWidth() / 2));
+	offsetTarget.SetY(screen.ScrollTarget.GetY() - static_cast<float>(g_FrameMan.GetPlayerScreenHeight() / 2));
 	// Take the occlusion of the screens into account so that the scroll target is still centered on the terrain-visible portion of the screen.
 	offsetTarget -= (screen.ScreenOcclusion / 2);
 

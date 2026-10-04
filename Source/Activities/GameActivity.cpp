@@ -916,6 +916,15 @@ void GameActivity::End() {
 	m_GameOverTimer.Reset();
 }
 
+bool GameActivity::AnyPlayerInScreenMenu() const {
+	for (int player = Players::PlayerOne; player < Players::MaxPlayerCount; ++player) {
+		if (m_IsActive[player] && m_IsHuman[player] && m_pBuyGUI[player] && m_pBuyGUI[player]->IsVisible()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void GameActivity::SetFreeBuildMode(bool build) {
 	if (build == m_FreeBuildMode) {
 		return;

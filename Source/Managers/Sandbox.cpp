@@ -1523,6 +1523,10 @@ bool Sandbox::IsGodMode() {
 	return activity && InGame() && activity->GetPresetName() == "Sandbox";
 }
 
+bool Sandbox::WantsWheelZoom() {
+	return s_Open && IsGodMode() && !s_Possessed && !ImGui::GetIO().WantCaptureMouse;
+}
+
 bool Sandbox::CapturesWorldClicks() {
 	return s_Open && CurrentTool().Kind != Tool::None && InGame() && !ImGui::GetIO().WantCaptureMouse;
 }
@@ -1644,7 +1648,7 @@ void Sandbox::DrawGUI() {
 			Controller::SetAIPaused(aiPaused);
 		}
 		ImGui::PopStyleColor();
-		ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.");
+		ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.  Wheel: zoom.");
 		ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
 		ToolButtons({Tool::Remove, Tool::RallyPoint});
 
@@ -1789,6 +1793,14 @@ void Sandbox::DrawGUI() {
 					}
 				}
 				ImGui::Separator();
+				float zoom = g_FrameMan.GetCameraZoom();
+				if (ImGui::SliderFloat("Zoom", &zoom, FrameMan::c_MinCameraZoom, FrameMan::c_MaxCameraZoom, "%.2fx")) {
+					g_FrameMan.SetCameraZoom(zoom);
+				}
+				ImGui::SameLine();
+				if (ImGui::SmallButton("1x")) {
+					g_FrameMan.SetCameraZoom(1.0F);
+				}
 				ImGui::Checkbox("Free camera", &s_FreeCamera);
 				ImGui::SameLine();
 				ImGui::Checkbox("Follow the action", &s_FollowAction);

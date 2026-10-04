@@ -1,4 +1,5 @@
 #include "FrameMan.h"
+#include "GameActivity.h"
 #include "TextOverlay.h"
 #include "EffectsParticles.h"
 #include "SceneLighting.h"
@@ -128,6 +129,64 @@ int FrameMan::Initialize() {
 	return 0;
 }
 
+int FrameMan::GetUnzoomedPlayerScreenWidth() const {
+	return g_WindowMan.GetResX() / (m_VSplit ? 2 : 1);
+}
+
+int FrameMan::GetUnzoomedPlayerScreenHeight() const {
+	return g_WindowMan.GetResY() / (m_HSplit ? 2 : 1);
+}
+
+void FrameMan::CreatePlayerScreens() {
+	int screenWidth = GetUnzoomedPlayerScreenWidth();
+	int screenHeight = GetUnzoomedPlayerScreenHeight();
+	if (m_HSplit || m_VSplit || m_CameraZoom != 1.0F) {
+		// Zoomed views are drawn at the size of the part of the world they show, then scaled to the screen.
+		int viewWidth = std::max(static_cast<int>(std::round(static_cast<float>(screenWidth) / m_CameraZoom)), 16);
+		int viewHeight = std::max(static_cast<int>(std::round(static_cast<float>(screenHeight) / m_CameraZoom)), 16);
+		m_PlayerScreen8 = std::make_unique<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(create_bitmap_ex(8, viewWidth, viewHeight)));
+		clear_to_color(m_PlayerScreen8->GetBitmap(), 0);
+		set_clip_state(m_PlayerScreen8->GetBitmap(), 1);
+
+		m_PlayerScreen = std::make_unique<RenderTarget>(FloatRect(0, 0, viewWidth, viewHeight), FloatRect(0, 0, viewWidth, viewHeight));
+		m_PlayerScreen->EnableNormalAttachment();
+
+		m_PlayerScreenWidth = viewWidth;
+		m_PlayerScreenHeight = viewHeight;
+	} else {
+		m_PlayerScreen8 = m_BackBuffer8;
+		m_PlayerScreen = m_BackBuffer;
+		m_PlayerScreen->EnableNormalAttachment();
+		m_PlayerScreenWidth = m_BackBuffer8->GetDimensions().w;
+		m_PlayerScreenHeight = m_BackBuffer8->GetDimensions().h;
+	}
+}
+
+void FrameMan::SetCameraZoom(float zoom) {
+	m_CameraZoomTarget = std::clamp(zoom, c_MinCameraZoom, c_MaxCameraZoom);
+	// Close enough to normal is normal, so the plain 1:1 path is used.
+	if (std::abs(m_CameraZoomTarget - 1.0F) < 0.03F) {
+		m_CameraZoomTarget = 1.0F;
+	}
+}
+
+void FrameMan::UpdateCameraZoom() {
+	// Only running games zoom: menus, editors, the build phase and the buy menu lay their screens out for the real resolution, so the view eases back to normal for them.
+	const GameActivity* game = dynamic_cast<const GameActivity*>(g_ActivityMan.GetActivity());
+	bool canZoom = g_ActivityMan.IsInActivity() && game && game->GetActivityState() == Activity::ActivityState::Running && !game->AnyPlayerInScreenMenu();
+	float target = canZoom ? m_CameraZoomTarget : 1.0F;
+	float zoom = m_CameraZoom;
+	if (!canZoom || std::abs(target - zoom) < 0.01F) {
+		zoom = target;
+	} else {
+		zoom += (target - zoom) * 0.35F;
+	}
+	if (zoom != m_CameraZoom) {
+		m_CameraZoom = zoom;
+		CreatePlayerScreens();
+	}
+}
+
 int FrameMan::CreateBackBuffers() {
 	int resX = g_WindowMan.GetResX();
 	int resY = g_WindowMan.GetResY();
@@ -145,26 +204,7 @@ int FrameMan::CreateBackBuffers() {
 	m_OverlayBitmap32 = std::unique_ptr<BITMAP, BitmapDeleter>(create_bitmap_ex(c_BPP, resX, resY));
 	clear_to_color(m_OverlayBitmap32.get(), 0);
 
-	m_PlayerScreenWidth = m_BackBuffer8->GetDimensions().w;
-	m_PlayerScreenHeight = m_BackBuffer8->GetDimensions().h;
-
-	// Create the splitscreen buffer
-	if (m_HSplit || m_VSplit) {
-		m_PlayerScreen8 = std::make_unique<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(create_bitmap_ex(8, resX / (m_VSplit ? 2 : 1), resY / (m_HSplit ? 2 : 1))));
-		clear_to_color(m_PlayerScreen8->GetBitmap(), 0);
-		set_clip_state(m_PlayerScreen8->GetBitmap(), 1);
-
-		m_PlayerScreen = std::make_unique<RenderTarget>(FloatRect(0, 0, resX / (m_VSplit ? 2 : 1), resY / (m_HSplit ? 2 : 1)), FloatRect(0, 0, resX / (m_VSplit ? 2 : 1), resY / (m_HSplit ? 2 : 1)));
-		m_PlayerScreen->EnableNormalAttachment();
-
-		// Update these to represent the split screens
-		m_PlayerScreenWidth = m_PlayerScreen->GetSize().w;
-		m_PlayerScreenHeight = m_PlayerScreen->GetSize().h;
-	} else {
-		m_PlayerScreen8 = m_BackBuffer8;
-		m_PlayerScreen = m_BackBuffer;
-		m_PlayerScreen->EnableNormalAttachment();
-	}
+	CreatePlayerScreens();
 
 	m_ScreenDumpBuffer = std::unique_ptr<SDL_Surface, SurfaceDeleter>(SDL_CreateSurface(m_BackBuffer8->GetDimensions().w, m_BackBuffer8->GetDimensions().h, SDL_PIXELFORMAT_RGB24));
 
@@ -246,26 +286,10 @@ void FrameMan::ResetSplitScreens(bool hSplit, bool vSplit) {
 	m_HSplit = hSplit;
 	m_VSplit = vSplit;
 
-	// Create the splitscreen buffer
-	if (m_HSplit || m_VSplit) {
-		m_PlayerScreen8 = std::make_unique<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(create_bitmap_ex(8, g_WindowMan.GetResX() / (m_VSplit ? 2 : 1), g_WindowMan.GetResY() / (m_HSplit ? 2 : 1))));
-		clear_to_color(m_PlayerScreen8->GetBitmap(), 0);
-		set_clip_state(m_PlayerScreen8->GetBitmap(), 1);
-
-		m_PlayerScreen = std::make_unique<RenderTarget>(FloatRect(0, 0, g_WindowMan.GetResX() / (m_VSplit ? 2 : 1), g_WindowMan.GetResY() / (m_HSplit ? 2 : 1)), FloatRect(0, 0, g_WindowMan.GetResX() / (m_VSplit ? 2 : 1), g_WindowMan.GetResY() / (m_HSplit ? 2 : 1)));
-		m_PlayerScreen->EnableNormalAttachment();
-
-		// Update these to represent the split screens
-		m_PlayerScreenWidth = m_PlayerScreen->GetSize().w;
-		m_PlayerScreenHeight = m_PlayerScreen->GetSize().h;
-	} else {
-		m_PlayerScreen8 = m_BackBuffer8;
-		m_PlayerScreen = m_BackBuffer;
-		m_PlayerScreen->EnableNormalAttachment();
-		// No splits, so set the screen dimensions equal to the back buffer
-		m_PlayerScreenWidth = m_BackBuffer8->GetDimensions().w;
-		m_PlayerScreenHeight = m_BackBuffer8->GetDimensions().h;
-	}
+	// A new game starts at the normal zoom.
+	m_CameraZoomTarget = 1.0F;
+	m_CameraZoom = 1.0F;
+	CreatePlayerScreens();
 	for (int i = 0; i < c_MaxScreenCount; ++i) {
 		m_FlashScreenColor[i] = -1;
 		m_FlashedLastFrame[i] = false;
@@ -826,6 +850,11 @@ void FrameMan::Draw() {
 	clear_to_color(m_BackBuffer8->GetBitmap(), 0);
 	m_BackBuffer->Begin(true);
 
+	UpdateCameraZoom();
+	// Whether the players' views are drawn into buffers of their own (split screens, or a zoomed view) rather than straight into the back buffer.
+	bool separateScreens = m_PlayerScreen != m_BackBuffer;
+	bool zoomed = m_CameraZoom != 1.0F;
+
 	// Count how many split screens we'll need
 	int screenCount = (m_HSplit ? 2 : 1) * (m_VSplit ? 2 : 1);
 	RTEAssert(screenCount <= 1 || m_PlayerScreen, "Splitscreen surface not ready when needed!");
@@ -850,8 +879,8 @@ void FrameMan::Draw() {
 		screenRelativeEffects.clear();
 		screenRelativeGlowBoxes.clear();
 		// rlSetUniformSampler(backgroundShader.GetUniformLocation("rtePalette"), g_PostProcessMan.GetPaletteTexture());
-		BITMAP* drawScreen = (screenCount == 1) ? m_BackBuffer8->GetBitmap() : m_PlayerScreen8->GetBitmap();
-		BITMAP* drawScreenGUI = (screenCount == 1) ? m_BackBuffer8->GetBitmap() : m_PlayerScreen8->GetBitmap();
+		BITMAP* drawScreen = m_PlayerScreen8->GetBitmap();
+		BITMAP* drawScreenGUI = m_PlayerScreen8->GetBitmap();
 		// Need to clear the backbuffers because Scene background layers can be too small to fill the whole backbuffer or drawn masked resulting in artifacts from the previous frame.
 		clear_to_color(drawScreenGUI, ColorKeys::g_MaskColor);
 		// If in online multiplayer mode clear to mask color otherwise the scene background layers will get drawn over.
@@ -866,7 +895,7 @@ void FrameMan::Draw() {
 		}
 		AllegroBitmap playerGUIBitmap(drawScreenGUI);
 		// HUD text drawn into this screen's GUI layer goes to the high resolution text overlay instead, clipped to this screen.
-		TextOverlay::SetTarget(drawScreenGUI, screenOffset.GetFloorIntX(), screenOffset.GetFloorIntY(), drawScreenGUI->w, drawScreenGUI->h);
+		TextOverlay::SetTarget(drawScreenGUI, screenOffset.GetFloorIntX(), screenOffset.GetFloorIntY(), GetUnzoomedPlayerScreenWidth(), GetUnzoomedPlayerScreenHeight(), m_CameraZoom);
 		m_PlayerScreen->Begin(true, 1.0f);
 		g_RenderMan.BeginFrame(nullptr);
 		for (const Camera& camera: g_CameraMan.GetPlayerCameras(playerScreen)) {
@@ -902,8 +931,10 @@ void FrameMan::Draw() {
 
 			DrawScreenText(playerScreen, playerGUIBitmap);
 
-			// Draw the intermediate draw splitscreen to the appropriate spot on the back buffer
-			blit(drawScreen, m_BackBuffer8->GetBitmap(), 0, 0, screenOffset.GetFloorIntX(), screenOffset.GetFloorIntY(), drawScreen->w, drawScreen->h);
+			// Draw the intermediate draw splitscreen to the appropriate spot on the back buffer. A zoomed view's is scaled there on the GPU instead, below.
+			if (separateScreens && !zoomed) {
+				blit(drawScreen, m_BackBuffer8->GetBitmap(), 0, 0, screenOffset.GetFloorIntX(), screenOffset.GetFloorIntY(), drawScreen->w, drawScreen->h);
+			}
 			if (g_DebugMan.FreeCamEnabled()) {
 				camera.Draw();
 			}
@@ -961,11 +992,23 @@ void FrameMan::Draw() {
 		DrawScreenFlash(playerScreen, drawScreenGUI);
 		TextOverlay::ClearTarget();
 		m_PlayerScreen->End();
-		if (screenCount > 1) {
+		if (separateScreens) {
 			m_BackBuffer->Begin(false);
 			Camera backbufferView(Vector(0.0f, 0.0f), Box(Vector(0.0f, 0.0f), m_BackBuffer->GetSize().w, m_BackBuffer->GetSize().h));
 			g_RenderMan.BeginFrame(&backbufferView);
-			Draw::DrawTexture(m_PlayerScreen->GetColorTexture().lock().get(), screenOffset);
+			if (zoomed) {
+				// Scale the view to the player's screen, then its HUD layer over it.
+				FloatRect screenRect(screenOffset.m_X, screenOffset.m_Y, static_cast<float>(GetUnzoomedPlayerScreenWidth()), static_cast<float>(GetUnzoomedPlayerScreenHeight()));
+				Draw::DrawTexture(m_PlayerScreen->GetColorTexture().lock().get(), screenRect);
+				m_BackBuffer->End();
+				m_BackBuffer->Begin(false);
+				g_RenderMan.BeginFrame(&backbufferView);
+				glClear(GL_DEPTH_BUFFER_BIT);
+				m_PlayerScreen8->Update();
+				Draw::DrawTexture(m_PlayerScreen8.get(), screenRect)->m_Indexed = true;
+			} else {
+				Draw::DrawTexture(m_PlayerScreen->GetColorTexture().lock().get(), screenOffset);
+			}
 			m_BackBuffer->End();
 		}
 		//g_PostProcessMan.AdjustEffectsPosToPlayerScreen(playerScreen, drawScreen, screenOffset, screenRelativeEffects, screenRelativeGlowBoxes);

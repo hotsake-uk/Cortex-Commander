@@ -270,6 +270,12 @@ namespace RTE {
 		/// @param drawScaled Whether to use scaled drawing routines or not.
 		void DrawTiled(const Camera& camera) const;
 
+		/// Where a tile lands on a zoomed view, for layers drawn as if the view weren't zoomed (see m_ZoomDrawScale).
+		FloatRect ZoomedDrawRect(float x, float y, float width, float height) const;
+
+		mutable float m_ZoomDrawScale = 1.0F; //!< When not 1, the layer is laid out for m_ZoomDrawBox (the unzoomed screen around the view's centre) and scaled by this about its centre to fill the zoomed view. Far backgrounds use it so they don't zoom with the camera.
+		mutable Box m_ZoomDrawBox; //!< The box the layer is laid out for when m_ZoomDrawScale isn't 1.
+
 		virtual void DrawMainTexture(int destX, int destY) const {};
 #pragma endregion
 

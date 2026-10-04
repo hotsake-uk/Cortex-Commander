@@ -76,6 +76,28 @@ namespace RTE {
 		std::shared_ptr<RenderTarget> GetBackBuffer() const { return m_BackBuffer; }
 #pragma endregion
 
+#pragma region Camera Zoom
+		/// Gets the camera zoom the players' views are heading for: 1 is normal, below 1 is zoomed out (more of the world on screen), above 1 zoomed in.
+		float GetCameraZoom() const { return m_CameraZoomTarget; }
+
+		/// Sets the camera zoom for the players' views. It eases there over a few frames. Only games zoom; menus and editors stay at 1.
+		/// The whole view (scene, lighting and HUD) is drawn at a larger or smaller size and scaled to the screen, so GetPlayerScreenWidth and Height change with it.
+		/// @param zoom 1 is normal, below 1 zooms out, above 1 zooms in. Clamped to the range allowed.
+		void SetCameraZoom(float zoom);
+
+		/// Gets the zoom the views are drawn with right now (easing towards GetCameraZoom).
+		float GetCurrentCameraZoom() const { return m_CameraZoom; }
+
+		/// Gets the width of each player's screen in screen pixels, whatever the zoom.
+		int GetUnzoomedPlayerScreenWidth() const;
+
+		/// Gets the height of each player's screen in screen pixels, whatever the zoom.
+		int GetUnzoomedPlayerScreenHeight() const;
+
+		static constexpr float c_MinCameraZoom = 0.4F;
+		static constexpr float c_MaxCameraZoom = 2.0F;
+#pragma endregion
+
 #pragma region Split-Screen Handling
 		/// Gets whether the screen is split horizontally across the screen, ie as two splitscreens one above the other.
 		/// @return Whether or not screen has a horizontal split.
@@ -343,6 +365,14 @@ namespace RTE {
 
 		std::shared_ptr<BitmapTexture> m_PlayerScreen8; //!< Intermediary split screen bitmap.
 		std::shared_ptr<RenderTarget> m_PlayerScreen; //!< Intermediary split screen bitmap.
+		float m_CameraZoomTarget = 1.0F; //!< The camera zoom asked for.
+		float m_CameraZoom = 1.0F; //!< The camera zoom in use, easing towards the target.
+
+		/// Creates the buffers each player's view is drawn into, at the size the split screens and the camera zoom call for.
+		void CreatePlayerScreens();
+
+		/// Eases the camera zoom towards its target and resizes the player screens to match. Called once per drawn frame.
+		void UpdateCameraZoom();
 		std::unique_ptr<RenderBatch> m_ScreenSpaceBatch; //!< Batch for GPU draws made in screen space by the CPU HUD path, drawn over each player screen.
 		int m_PlayerScreenWidth; //!< Width of the screen of each player. Will be smaller than resolution only if the screen is split.
 		int m_PlayerScreenHeight; //!< Height of the screen of each player. Will be smaller than resolution only if the screen is split.

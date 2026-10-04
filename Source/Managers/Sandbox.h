@@ -26,6 +26,9 @@ namespace RTE {
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 
+		/// Gets whether the mouse wheel zooms the camera: the sandbox window is open in the god view and the mouse isn't over a debug window.
+		static bool WantsWheelZoom();
+
 		/// Draws the sandbox window, the brush outline and the free camera. Call from the ImGui frame.
 		static void DrawGUI();
 

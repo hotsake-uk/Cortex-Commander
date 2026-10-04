@@ -76,6 +76,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, FrameMan) {
 	return luabind::class_<FrameMan>("FrameManager")
 
 	    .property("PlayerScreenWidth", &FrameMan::GetPlayerScreenWidth)
+	    .property("CameraZoom", &FrameMan::GetCameraZoom, &FrameMan::SetCameraZoom)
 	    .property("PlayerScreenHeight", &FrameMan::GetPlayerScreenHeight)
 	    .property("ScreenCount", &FrameMan::GetScreenCount)
 	    .property("ResolutionMultiplier", &FrameMan::GetResolutionMultiplier)

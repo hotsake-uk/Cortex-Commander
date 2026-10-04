@@ -176,8 +176,9 @@ template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::InitScrollRatios(bool initForNetworkPlayer, int player) {
 	float mainBitmapWidth = static_cast<float>(m_MainBitmap->w);
 	float mainBitmapHeight = static_cast<float>(m_MainBitmap->h);
-	float playerScreenWidth = static_cast<float>(initForNetworkPlayer ? g_FrameMan.GetPlayerFrameBufferWidth(player) : g_FrameMan.GetPlayerScreenWidth());
-	float playerScreenHeight = static_cast<float>(initForNetworkPlayer ? g_FrameMan.GetPlayerFrameBufferHeight(player) : g_FrameMan.GetPlayerScreenHeight());
+	// The unzoomed screen: zoomed views draw far layers as if they weren't zoomed.
+	float playerScreenWidth = static_cast<float>(g_FrameMan.GetUnzoomedPlayerScreenWidth());
+	float playerScreenHeight = static_cast<float>(g_FrameMan.GetUnzoomedPlayerScreenHeight());
 
 	if (m_WrapX) {
 		m_ScrollRatio.SetX(m_ScrollInfo.GetX());
@@ -534,7 +535,7 @@ template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& camera) const {
 	ZoneScoped;
 	TracyGpuZone("SceneLayer::DrawTiled");
-	Box targetBox = camera.GetViewport();
+	Box targetBox = m_ZoomDrawScale != 1.0F ? m_ZoomDrawBox : camera.GetViewport();
 	g_RenderMan.SetCurrentZOffset(m_ZOrder);
 	float bitmapWidth = m_ScaledDimensions.m_X;
 	float bitmapHeight = m_ScaledDimensions.m_Y;
@@ -579,10 +580,6 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& cam
 		for (int tiledOffsetY = tiledOffsetStartY; tiledOffsetY < areaToCoverY; tiledOffsetY += bitmapHeight) {
 			int destY = tiledOffsetY;
 			DrawMainTexture(destX, destY);
-			if constexpr (STATIC_TEXTURE) {
-				Draw::DrawTexture(m_StaticTexture.get(), FloatRect(destX, destY, bitmapWidth, bitmapHeight));
-			} else {
-			}
 			if (!m_WrapY) {
 				break;
 			}
@@ -608,7 +605,17 @@ void SceneLayer::DrawMainTexture(int destX, int destY) const {
 }
 
 void StaticSceneLayer::DrawMainTexture(int destX, int destY) const {
-	Draw::DrawTexture(m_StaticTexture.get(), FloatRect(destX, destY, m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y));
+	Draw::DrawTexture(m_StaticTexture.get(), ZoomedDrawRect(static_cast<float>(destX), static_cast<float>(destY), m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y));
+}
+
+template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
+FloatRect SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::ZoomedDrawRect(float x, float y, float width, float height) const {
+	if (m_ZoomDrawScale == 1.0F) {
+		return FloatRect(x, y, width, height);
+	}
+	float centerX = m_ZoomDrawBox.GetCorner().m_X + m_ZoomDrawBox.GetWidth() * 0.5F;
+	float centerY = m_ZoomDrawBox.GetCorner().m_Y + m_ZoomDrawBox.GetHeight() * 0.5F;
+	return FloatRect(centerX + (x - centerX) * m_ZoomDrawScale, centerY + (y - centerY) * m_ZoomDrawScale, width * m_ZoomDrawScale, height * m_ZoomDrawScale);
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>

@@ -112,6 +112,9 @@ namespace RTE {
 		/// @param build Whether to build.
 		void SetFreeBuildMode(bool build);
 
+		/// Gets whether any player has a menu open that's laid out for the unzoomed screen (the buy menu), so the camera shouldn't be zoomed.
+		bool AnyPlayerInScreenMenu() const;
+
 		/// Gets whether the game is in the middle of a free build.
 		bool IsFreeBuildMode() const { return m_FreeBuildMode; }
 

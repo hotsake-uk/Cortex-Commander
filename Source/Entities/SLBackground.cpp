@@ -154,7 +154,7 @@ int SLBackground::Save(Writer& writer) const {
 
 void SLBackground::InitScaleFactors() {
 	if (!m_IgnoreAutoScale) {
-		float fitScreenScaleFactor = std::clamp(static_cast<float>(std::min(g_SceneMan.GetSceneHeight(), g_FrameMan.GetPlayerScreenHeight())) / static_cast<float>(m_MainBitmap->h), 1.0F, 2.0F);
+		float fitScreenScaleFactor = std::clamp(static_cast<float>(std::min(g_SceneMan.GetSceneHeight(), g_FrameMan.GetUnzoomedPlayerScreenHeight())) / static_cast<float>(m_MainBitmap->h), 1.0F, 2.0F);
 
 		switch (g_SettingsMan.GetSceneBackgroundAutoScaleMode()) {
 			case LayerAutoScaleMode::FitScreen:
@@ -277,5 +277,14 @@ void SLBackground::Draw(const Box& targetDimensions, Box& targetBox, bool offset
 }
 
 void SLBackground::Draw(const Camera& camera) {
+	// Backgrounds are far away: a zoomed camera sees them just as an unzoomed one does. Lay the layer out for the unzoomed screen and scale that to fill the view.
+	if (g_FrameMan.GetCurrentCameraZoom() != 1.0F) {
+		const Box& view = camera.GetViewport();
+		float width = static_cast<float>(g_FrameMan.GetUnzoomedPlayerScreenWidth());
+		float height = static_cast<float>(g_FrameMan.GetUnzoomedPlayerScreenHeight());
+		m_ZoomDrawBox = Box(view.GetCorner() + Vector(std::floor((view.GetWidth() - width) * 0.5F), std::floor((view.GetHeight() - height) * 0.5F)), width, height);
+		m_ZoomDrawScale = view.GetWidth() / width;
+	}
 	StaticSceneLayer::Draw(camera);
+	m_ZoomDrawScale = 1.0F;
 }

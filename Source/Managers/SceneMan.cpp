@@ -2587,7 +2587,11 @@ void SceneMan::Update(int screenId) {
 	terrain->Update();
 
 	// Background layers may scroll in fractions of the real offset and need special care to avoid jumping after having traversed wrapped edges, so they need the total offset without taking wrapping into account.
-	const Vector& unwrappedOffset = g_CameraMan.GetUnwrappedOffset(screenId);
+	Vector unwrappedOffset = g_CameraMan.GetUnwrappedOffset(screenId);
+	if (g_FrameMan.GetCurrentCameraZoom() != 1.0F) {
+		// Backgrounds are laid out for the unzoomed screen around the view's centre (see SLBackground::Draw).
+		unwrappedOffset += Vector(std::floor(static_cast<float>(g_FrameMan.GetPlayerScreenWidth() - g_FrameMan.GetUnzoomedPlayerScreenWidth()) * 0.5F), std::floor(static_cast<float>(g_FrameMan.GetPlayerScreenHeight() - g_FrameMan.GetUnzoomedPlayerScreenHeight()) * 0.5F));
+	}
 	for (SLBackground* backgroundLayer: m_pCurrentScene->GetBackLayers()) {
 		backgroundLayer->SetOffset(unwrappedOffset);
 		backgroundLayer->Update();

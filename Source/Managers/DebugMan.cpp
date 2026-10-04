@@ -203,6 +203,11 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		float cameraZoom = g_FrameMan.GetCameraZoom();
+		if (ImGui::SliderFloat("Camera zoom", &cameraZoom, FrameMan::c_MinCameraZoom, FrameMan::c_MaxCameraZoom, "%.2fx")) {
+			g_FrameMan.SetCameraZoom(cameraZoom);
+		}
+		ImGui::TextDisabled("(Ctrl + mouse wheel in game)");
 		bool aiPaused = Controller::IsAIPaused();
 		if (ImGui::Checkbox("Pause AI", &aiPaused)) {
 			Controller::SetAIPaused(aiPaused);

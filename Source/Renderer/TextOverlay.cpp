@@ -72,6 +72,7 @@ namespace {
 	int s_TargetY = 0;
 	int s_TargetClipWidth = 0;
 	int s_TargetClipHeight = 0;
+	float s_TargetScale = 1.0F; //!< How much the target bitmap is scaled when it's put on screen (the camera zoom).
 	std::vector<CapturedText> s_Pending;
 	std::vector<CapturedText> s_Presented;
 
@@ -169,8 +170,9 @@ namespace {
 	}
 } // namespace
 
-void TextOverlay::SetTarget(const BITMAP* bitmap, int offsetX, int offsetY, int clipWidth, int clipHeight) {
+void TextOverlay::SetTarget(const BITMAP* bitmap, int offsetX, int offsetY, int clipWidth, int clipHeight, float scale) {
 	s_Target = bitmap;
+	s_TargetScale = scale;
 	s_TargetX = offsetX;
 	s_TargetY = offsetY;
 	s_TargetClipWidth = clipWidth;
@@ -201,7 +203,9 @@ bool TextOverlay::Capture(const BITMAP* target, int x, int y, const std::string&
 	int boxLeft = align == Centre ? x - bitmapWidth / 2 : (align == Right ? x - bitmapWidth : x);
 	int boxRight = boxLeft + bitmapWidth;
 	size_t boxHash = HashRegion(target, boxLeft, y, boxRight, y + lineHeight);
-	s_Pending.push_back({text, static_cast<float>(x + s_TargetX), static_cast<float>(y + s_TargetY), align, static_cast<float>(lineHeight), fillRGB, outlineRGB, shadow, s_TargetX, s_TargetY, s_TargetClipWidth, s_TargetClipHeight, boxLeft, y, boxRight, y + lineHeight, boxHash});
+	// On a zoomed view the text sits where its spot in the view lands on screen. It shrinks and grows with the view, but stays readable when zoomed far out.
+	float textScale = std::max(s_TargetScale, 0.7F);
+	s_Pending.push_back({text, static_cast<float>(x) * s_TargetScale + static_cast<float>(s_TargetX), static_cast<float>(y) * s_TargetScale + static_cast<float>(s_TargetY), align, static_cast<float>(lineHeight) * textScale, fillRGB, outlineRGB, shadow, s_TargetX, s_TargetY, s_TargetClipWidth, s_TargetClipHeight, boxLeft, y, boxRight, y + lineHeight, boxHash});
 	return true;
 }
 
