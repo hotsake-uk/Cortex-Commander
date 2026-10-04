@@ -195,8 +195,16 @@ void DebugMan::WorldDebugGUI() {
 				color = current > 0.0F ? color * (level / current) : glm::vec3(level);
 			}
 		};
+		// The interior light takes the floor with it: the floor is the least light units and solid ground ever get, so left behind it would keep them bright in a dark room.
+		float interiorBefore = std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z});
 		brightnessSlider("Interior / cave light", settings.Ambient, 1.0F);
-		brightnessSlider("Playfield light floor", settings.ForegroundAmbient, 1.0F);
+		float interiorNow = std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z});
+		if (interiorNow != interiorBefore) {
+			float floorLevel = std::max({settings.ForegroundAmbient.x, settings.ForegroundAmbient.y, settings.ForegroundAmbient.z});
+			settings.ForegroundAmbient = floorLevel > 0.001F ? settings.ForegroundAmbient * (interiorNow * 0.83F / floorLevel) : glm::vec3(interiorNow * 0.83F);
+		}
+		brightnessSlider("Least light on units and ground", settings.ForegroundAmbient, 1.0F);
+		ImGui::SetItemTooltip("Units and solid ground never get darker than this, indoors or out. The slider above sets it too; move this one afterwards to keep them more visible than the walls behind.");
 		brightnessSlider("Sky light", settings.SkyColor, 2.0F);
 		ImGui::SliderFloat("Exposure", &settings.Exposure, 0.1F, 4.0F);
 		ImGui::SliderFloat("Auto exposure", &settings.AutoExposure, 0.0F, 1.0F);
@@ -402,11 +410,12 @@ void DebugMan::GraphicsLabGUI() {
 		// One slider for how bright interiors and caves are without any lamps: it scales the ambient light and the foreground floor together, keeping their tints.
 		// Turned down, bunkers are lit by their lamps and go dark where those are shot out.
 		float ambientLevel = std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z});
-		if (ImGui::SliderFloat("Ambient lighting", &ambientLevel, 0.02F, 1.0F, "%.2f")) {
+		if (ImGui::SliderFloat("Ambient lighting", &ambientLevel, 0.01F, 1.0F, "%.2f")) {
 			float floorLevel = std::max({settings.ForegroundAmbient.x, settings.ForegroundAmbient.y, settings.ForegroundAmbient.z});
-			float scale = ambientLevel / std::max(std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z}), 0.001F);
-			settings.Ambient *= scale;
-			settings.ForegroundAmbient = floorLevel > 0.001F ? settings.ForegroundAmbient * scale : glm::vec3(ambientLevel * 0.83F);
+			float before = std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z});
+			settings.Ambient = before > 0.001F ? settings.Ambient * (ambientLevel / before) : glm::vec3(ambientLevel);
+			// The floor (the least light units and solid ground get) goes just under it, so units in a dark room are dark too.
+			settings.ForegroundAmbient = floorLevel > 0.001F ? settings.ForegroundAmbient * (ambientLevel * 0.83F / floorLevel) : glm::vec3(ambientLevel * 0.83F);
 		}
 		ImGui::SetItemTooltip("How bright interiors and caves are without lamps. Lower it and bunkers are lit by their lamps.");
 		ImGui::ColorEdit3("Ambient (linear)", &settings.Ambient.x, linearColorFlags);
