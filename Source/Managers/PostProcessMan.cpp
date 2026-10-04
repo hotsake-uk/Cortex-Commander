@@ -279,7 +279,7 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 		m_LightingSettings.DayLengthMinutes = atmosphere.DayLengthMinutes;
 	}
 	if (atmosphere.WeatherType >= 0) {
-		m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, 2);
+		m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, 4);
 	}
 	if (atmosphere.WeatherIntensity >= 0.0F) {
 		m_LightingSettings.WeatherIntensity = std::clamp(atmosphere.WeatherIntensity, 0.0F, 1.0F);
@@ -296,7 +296,7 @@ void PostProcessMan::ApplyActivityAtmosphere() {
 		m_LightingSettings.DayLengthMinutes = 0.0F;
 	}
 	if (m_ActivityWeather >= 0) {
-		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, 2);
+		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, 4);
 		if (m_LightingSettings.WeatherType > 0) {
 			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
 		}

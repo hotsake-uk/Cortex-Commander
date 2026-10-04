@@ -10,7 +10,7 @@ out float dropAlpha;
 uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform float rteTime;
-uniform int rteType; // 1 rain, 2 snow.
+uniform int rteType; // 1 rain, 2 snow, 3 ash fall, 4 dust storm.
 uniform float rteWind; // Horizontal speed, pixels per second.
 
 float Hash(float n) {
@@ -26,9 +26,16 @@ void main() {
 	float seedB = Hash(float(drop) * 1.731 + 4.1);
 	float seedC = Hash(float(drop) * 0.913 + 9.7);
 
-	bool snow = rteType == 2;
-	float fallSpeed = snow ? mix(30.0, 60.0, seedC) : mix(520.0, 760.0, seedC);
+	// Snow and ash are flakes that drift down; rain and dust are streaks.
+	bool snow = rteType == 2 || rteType == 3;
+	bool dust = rteType == 4;
+	float fallSpeed = rteType == 3 ? mix(14.0, 34.0, seedC) : (snow ? mix(30.0, 60.0, seedC) : mix(520.0, 760.0, seedC));
 	vec2 velocity = vec2(rteWind * (snow ? 0.6 : 1.0), fallSpeed);
+	if (dust) {
+		// A dust storm blows nearly level, at least at a stiff breeze whatever the wind setting.
+		float gale = (rteWind < 0.0 ? -1.0 : 1.0) * max(abs(rteWind) * 2.5, 260.0);
+		velocity = vec2(gale * mix(0.7, 1.3, seedC), mix(10.0, 60.0, seedA));
+	}
 
 	// A repeating field slightly larger than the screen.
 	vec2 fieldSize = rteScreenSize + vec2(64.0);
@@ -41,13 +48,13 @@ void main() {
 
 	vec2 direction = normalize(velocity);
 	vec2 side = vec2(-direction.y, direction.x);
-	float length = snow ? 2.0 : mix(7.0, 13.0, seedC);
-	float width = snow ? 2.0 : 1.0;
+	float length = rteType == 3 ? 3.0 : snow ? 2.0 : (dust ? mix(5.0, 11.0, seedC) : mix(7.0, 13.0, seedC));
+	float width = rteType == 3 ? 3.0 : snow ? 2.0 : (dust ? 1.5 : 1.0);
 	vec2 position = head - direction * length * (1.0 - cornerPos.y) + side * width * (cornerPos.x - 0.5);
 
 	worldPos = position;
 	quadPos = cornerPos;
-	dropAlpha = snow ? mix(0.55, 0.9, seedA) : mix(0.25, 0.5, seedA);
+	dropAlpha = rteType == 3 ? mix(0.75, 1.0, seedA) : snow ? mix(0.55, 0.9, seedA) : (dust ? mix(0.15, 0.4, seedA) : mix(0.25, 0.5, seedA));
 	vec2 screenPos = position - rteScreenOrigin;
 	gl_Position = vec4((screenPos / rteScreenSize) * 2.0 - 1.0, 0.0, 1.0);
 }

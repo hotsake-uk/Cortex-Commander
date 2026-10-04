@@ -227,7 +227,7 @@ namespace {
 		float Value;
 	};
 	constexpr AtmosphereChoice c_TimeChoices[] = {{"Scene default", -1.0F}, {"Dawn", 6.5F}, {"Noon", 12.0F}, {"Dusk", 18.8F}, {"Night", 23.0F}};
-	constexpr AtmosphereChoice c_WeatherChoices[] = {{"Scene default", -1.0F}, {"Clear", 0.0F}, {"Rain", 1.0F}, {"Snow", 2.0F}};
+	constexpr AtmosphereChoice c_WeatherChoices[] = {{"Scene default", -1.0F}, {"Clear", 0.0F}, {"Rain", 1.0F}, {"Snow", 2.0F}, {"Ash fall", 3.0F}, {"Dust storm", 4.0F}};
 } // namespace
 
 void ScenarioActivityConfigGUI::UpdateAtmosphereButtons() {

@@ -24,10 +24,14 @@ void main() {
 	}
 	float alpha = dropAlpha * rteIntensity;
 	vec3 color;
-	if (rteType == 2) {
-		// Soft round flake.
+	if (rteType == 2 || rteType == 3) {
+		// Soft round flake: white snow, or grey ash.
 		alpha *= 1.0 - smoothstep(0.35, 0.5, length(quadPos - 0.5));
-		color = vec3(0.9, 0.93, 1.0);
+		color = rteType == 2 ? vec3(0.9, 0.93, 1.0) : vec3(0.5, 0.48, 0.47);
+	} else if (rteType == 4) {
+		// A streak of blown dust.
+		alpha *= quadPos.y * 1.3;
+		color = vec3(0.8, 0.66, 0.46);
 	} else {
 		// Streak that fades towards its tail.
 		alpha *= quadPos.y * 1.3;

@@ -1073,8 +1073,18 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	auto depthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
 	m_CompositeShader->SetFloat("rteBackgroundNearDepth", depthForZ(c_BackgroundDepth));
 	m_CompositeShader->SetFloat("rteBackgroundFarDepth", depthForZ(c_BackgroundDepth + c_BackgroundDepthRange));
-	m_CompositeShader->SetVector3f("rteAtmosphereColor", m_Settings.AtmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
-	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? m_Settings.AtmosphereHaze : 0.0F);
+	// A dust storm hangs a tan haze over the distance; ash fall a grey one.
+	glm::vec3 atmosphereColor = m_Settings.AtmosphereColor;
+	float atmosphereHaze = m_Settings.AtmosphereHaze;
+	if (m_Settings.WeatherType == 4) {
+		atmosphereColor = glm::mix(atmosphereColor, glm::vec3(0.8F, 0.64F, 0.42F), std::min(m_Settings.WeatherIntensity, 1.0F));
+		atmosphereHaze = std::min(atmosphereHaze + 0.55F * m_Settings.WeatherIntensity, 1.0F);
+	} else if (m_Settings.WeatherType == 3) {
+		atmosphereColor = glm::mix(atmosphereColor, glm::vec3(0.42F, 0.4F, 0.4F), std::min(m_Settings.WeatherIntensity, 1.0F) * 0.8F);
+		atmosphereHaze = std::min(atmosphereHaze + 0.3F * m_Settings.WeatherIntensity, 1.0F);
+	}
+	m_CompositeShader->SetVector3f("rteAtmosphereColor", atmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
+	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? atmosphereHaze : 0.0F);
 	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(m_Settings.WeatherType > 0 ? m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
 	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
@@ -1237,7 +1247,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// Rain or snow, lit by the sky, over the lit scene.
 	if (m_Settings.WeatherType > 0 && m_Settings.WeatherIntensity > 0.0F) {
 		TracyGpuZone("Precipitation");
-		int dropCount = static_cast<int>(m_Settings.WeatherIntensity * (m_Settings.WeatherType == 2 ? 1500.0F : 2500.0F) * (static_cast<float>(width * height) / (960.0F * 540.0F)));
+		static constexpr float dropsPerScreen[5] = {0.0F, 2500.0F, 1500.0F, 1800.0F, 2200.0F};
+		int dropCount = static_cast<int>(m_Settings.WeatherIntensity * dropsPerScreen[std::clamp(m_Settings.WeatherType, 0, 4)] * (static_cast<float>(width * height) / (960.0F * 540.0F)));
 		glEnable(GL_BLEND);
 		glBlendEquation(GL_FUNC_ADD);
 		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

@@ -67,7 +67,7 @@ namespace RTE {
 		float AtmosphereHaze = 0.18F; //!< How much the furthest background layers fade into the atmosphere, 0 to 1.
 		glm::vec3 AtmosphereColor = {0.62F, 0.74F, 0.95F}; //!< Color of the atmosphere at noon, linear. Tinted by the time of day.
 
-		int WeatherType = 0; //!< 0 clear, 1 rain, 2 snow.
+		int WeatherType = 0; //!< 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm.
 		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
 		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
 

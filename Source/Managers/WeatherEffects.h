@@ -27,6 +27,17 @@ namespace RTE {
 			return std::clamp(g_PostProcessMan.GetLightingSettings().Wind / 150.0F, -1.0F, 1.0F);
 		}
 
+		/// Gets how thick a dust storm is, 0 for none to 1.
+		inline float GetDust() {
+			const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+			return settings.WeatherType == 4 ? std::clamp(settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		}
+
+		/// Gets how far units see compared to normal: a dust storm cuts it to as little as half.
+		inline float GetSightMultiplier() {
+			return 1.0F - 0.5F * GetDust();
+		}
+
 		/// Gets how fast units walk compared to normal: snow slows them down a little.
 		inline float GetWalkSpeedMultiplier() {
 			return 1.0F - 0.15F * GetSnow();

@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include "WeatherEffects.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
 
@@ -1116,13 +1117,15 @@ float Actor::GetNightAmount() {
 
 float Actor::GetNightSightScale() const {
 	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	// Blown dust hides things day or night.
+	float weather = WeatherEffects::GetSightMultiplier();
 	if (!settings.NightAffectsAI || !settings.Enabled) {
-		return 1.0F;
+		return weather;
 	}
 	float night = GetNightAmount();
 	// A headlamp keeps most of the view; without one, eyes only reach about half as far in the dark.
 	float floor = (settings.Headlamps && !IsDead()) ? 0.8F : 0.5F;
-	return 1.0F - night * (1.0F - floor);
+	return (1.0F - night * (1.0F - floor)) * weather;
 }
 
 void Actor::Update() {

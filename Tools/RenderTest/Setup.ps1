@@ -103,3 +103,6 @@ Write-Scenario "GoldenCaves" $caves @("Render Test Camera Tour") -DefaultLightin
 Write-Scenario "GoldenClassic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0; EffectsParticles = 0; Stains = 0; LivingWorld = 0; SmokeScattering = 0 }) @() -DefaultLighting
 Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 }) @() -DefaultLighting
 Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLighting
+
+Write-Scenario "BunkerAsh" ($bunker + @{ WeatherType = 3; WeatherIntensity = 0.9 }) @()
+Write-Scenario "BunkerDust" ($bunker + @{ WeatherType = 4; WeatherIntensity = 0.9; Wind = 120 }) @()

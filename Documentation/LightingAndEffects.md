@@ -163,7 +163,7 @@ Press **F8** for **Photo Mode**:
 | `DayLengthMinutes` | 0 | Length of a full day/night cycle in minutes. 0 keeps the time fixed. |
 | `AtmosphereHaze` / `AtmosphereColor` | 0.18 / 0.62 0.74 0.95 | Distant background layers fade into the atmosphere, based on their parallax. |
 | `GodRays` / `GodRayDecay` | 0.7 / 0.965 | Light shafts from the sky through gaps in the terrain. |
-| `WeatherType` | 0 | 0 clear, 1 rain, 2 snow. Precipitation doesn't fall under overhangs or in caves. |
+| `WeatherType` | 0 | 0 clear, 1 rain, 2 snow, 3 ash fall (grey flakes and a grey haze), 4 dust storm (dust blown level, a tan haze, and units see up to half as far). Precipitation doesn't fall under overhangs or in caves. |
 | `WeatherIntensity` / `Wind` | 0.6 / 60 | How heavy the rain or snow is, and its horizontal speed in px/s. |
 | `LightingGlowIntensity` / `LightingGlowRadiusScale` | 2.5 / 8 | Brightness and reach of the light that glow effects cast. |
 | `LightingShadowStrength` | 0.85 | How much terrain blocks dynamic lights. |
@@ -189,7 +189,7 @@ AddScene = Scene
 	PresetName = My Frozen Valley
 	TimeOfDay = 17.5        // Hours. Dusk.
 	DayLengthMinutes = 0    // 0 freezes the time.
-	WeatherType = 2         // 0 clear, 1 rain, 2 snow
+	WeatherType = 2         // 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm
 	WeatherIntensity = 0.7
 	Wind = -90
 	...
@@ -257,7 +257,7 @@ PostProcessMan:AddLight(position, radius, r, g, b, intensity)
 -- Atmosphere for scripted scenes:
 PostProcessMan.TimeOfDay = 6.8          -- dawn
 PostProcessMan.DayLengthMinutes = 20    -- 0 to freeze the time
-PostProcessMan.WeatherType = 1          -- 0 clear, 1 rain, 2 snow
+PostProcessMan.WeatherType = 1          -- 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm
 PostProcessMan.WeatherIntensity = 0.9
 PostProcessMan.Wind = -120
 PostProcessMan.LightingEnabled = true
