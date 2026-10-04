@@ -108,15 +108,11 @@ Everything below is built, committed and verified: golden images pass, and a soa
 - **3.1 Modern HUD (optional):** minimap, health and ammo bars, unit-loss feed.
 - **3.5 Scaling (partly done):** debug UI and HUD scale with the window, with a crisp TTF font. Gamepad navigation is on in debug windows. Pixel-art menus were already scaled by the window multiplier and the sharp upscale.
 
-**Deferred, with reasons**
-- **2.4 Metal and wet-surface shininess:** needs per-material specular data. Wet ground already darkens in rain; full speculars are a later polish item.
-- **2.7 Camera zoom:**
-  - Every per-screen pass assumes a 1:1 scale: lighting, terrain upload regions, HUD, text overlay, fog.
-  - Supporting it means reworking each of them, and it's the riskiest remaining item.
-- **4.1 SDL_GPU backend:** staged plan in `MODERNISATION_PLAN.md`. It brings no visual change on Windows.
-- **4.2 Multithreaded sim helpers:** the fire and liquid passes only touch active cells and are cheap today. Worth revisiting if large liquid scenes get slow.
-- **4.3 Linux/meson packaging:** new sources are added to the meson files but not built or tested on Linux here.
-- **3.6 Editor tooling:** time of day and weather can be set per scene in INI and live in F6, but not from the scene editor.
+**Still open, with reasons**
+- **4.1 SDL_GPU backend:** not started. It's a port of every OpenGL path and about 25 shaders, and brings no visual change on Windows. The staged plan is in `MODERNISATION_PLAN.md`.
+- **4.3 Linux/meson build check:** new sources are in the meson files, but there is no Linux machine or WSL here to build and test on.
+- **3.5 Controller and Steam Deck polish:** debug UI and HUD scale with the window and gamepad navigation works in debug windows, but radial menus and Deck defaults haven't been tuned on a Deck.
+- **3.6 Scene editor panels:** a scene's time and weather can now be set from F6 and saved by the scene editor (see the completion round), but there are no dedicated editor panels for lighting or liquids.
 
 **Follow-up round**
 - **Saved games:** loading a saved game works again; it had been failing because saved terrain images weren't found as textures. Burning terrain and moving liquid are now saved too.
@@ -125,3 +121,20 @@ Everything below is built, committed and verified: golden images pass, and a soa
 - **Liquid weapons:** Napalm Flamer (burning fuel that pools and burns), Water Cannon (knockback, puts fires out) and Acid Sprayer. Liquid drops now join the flow when they settle, and oil is a flowing liquid.
 - **Weather that matters:** rain and snow damp fire, snow slows walkers, and wind drives fire and embers downwind.
 - **Renderer fix:** a preset that copies another and sets its own `SpriteFile` showed the original's frames on the GPU path. Fixed.
+
+**Completion round (what the two plans still had open)**
+- **2.7 Camera zoom:** 0.4x to 2x with Ctrl + wheel (wheel alone in the sandbox). The whole view is drawn at the size of the area shown and scaled, so lighting, HUD and split screens all work.
+- **2.4 Metal and wet-surface shine:** lights throw highlights on grey metal and concrete, rain-wet ground and water.
+- **1.3 Swimming:** bodies pass through liquid, light units float, heavy ones sink, and flesh units drown. Water was reworked to flow and find its level.
+- **4.2 Faster liquid pass:** done as a faster single-threaded pass rather than threads, which would have cost determinism. A 30,000-pixel flood went from 17 ms to under 5 ms per update.
+- **Feel (plan phase 6):** hit-stop, recoil kick, frame cap, optional CRT scanlines, damage numbers and hit-direction arcs on the Modern HUD.
+- **Modding (plan phase 7):** cone lights and visual particle emission from INI and Lua.
+- **Weather (plan phase 5):** ash fall and dust storms.
+- **3.6:** a scene's own time and weather can be set from F6 for the scene editor to save.
+
+**Left out on purpose from the modernisation plan's wish list**
+- **UI drawn fully on the GPU:** the HUD text overlay and Modern HUD cover the visible gain. Porting the GUI library is a large job with no change the player would see.
+- **3D LUT grading and a choice of tonemappers:** the parametric grading (temperature, tint, contrast, split toning) covers the same ground.
+- **Authored normal and emissive map files, truecolour sprites, mod shader hooks:** automatic edge normals and the emissive palette serve existing content; these only matter once someone is making new art for them.
+- **Bullet-pock decals:** bullets already chip real holes in the terrain.
+- **Golden images in CI:** hosted runners have no GPU, so the check runs locally.

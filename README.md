@@ -40,18 +40,22 @@ The Community Project's priority is a stable, faithful, multi-platform Cortex Co
 - **Time of day and weather:** a day/night cycle with stars, moon and lightning in storms. Rain darkens the ground, and snow settles on it and melts.
 - **Living world:** vegetation sways in the wind and bends in blast waves. Blood and oil stain terrain. Explosions throw sparks, dust and debris chips.
 - **Night gameplay:** soldiers wear headlamps after dark, AI sight shrinks at night, and there's a buyable Flare.
+- **Camera zoom:** Ctrl + mouse wheel zooms out to see about six times as much of the battlefield, or in to 2x, with lighting and HUD intact.
+- **Shine:** lights throw highlights on metal, concrete, wet ground and water.
 - **Photo mode (F8):** freeze time, free camera, look sliders, and screenshots at up to 4x internal resolution.
-- **Quality of life:** an optional modern HUD (minimap, health and ammo bars, kill feed), crisp TTF text, smooth screen shake, sharp upscaling, quality presets, and soft fog of war restored.
+- **Feel:** hit-stop on big blasts, a recoil kick, a frame cap and optional CRT scanlines.
+- **Quality of life:** an optional modern HUD (minimap, health and ammo bars, kill feed, damage numbers and hit-direction arcs), crisp TTF text, smooth screen shake, sharp upscaling, quality presets, and soft fog of war restored.
 
 ![An explosion at dusk](Documentation/Images/explosion_dusk.png)
 
 ### New simulation systems
 - **Spreading fire:** grass and vegetation burn away, wood burns to ash, oil burns fast. It climbs, spreads downwind, is damped by rain and snow, and is put out by water.
-- **Flowing liquids:** water, lava, acid and oil flow and pool. Water puts out fire, lava sets things alight and turns to stone in water, and acid eats soft ground.
+- **Flowing liquids:** water, lava, acid and oil run downhill, pool and find their own level, even through tunnels. Water puts out fire, lava sets things alight and turns to stone in water, and acid eats soft ground.
 - **Collapsing terrain:** pieces blasted loose fall as rigid chunks. Concrete and metal structures hold.
 - **Burning soldiers:** units catch fire, panic, run and spread it, until they burn out or hit water. Water on fire throws up **steam**, which blocks sight.
+- **Swimming and drowning:** units wade, light ones float, heavy ones sink, and soldiers run out of air under water. Robots don't breathe.
 - **Smoke and gas block sight:** units can't see through thick smoke, so smoke screens actually work.
-- **Weather matters:** rain and snow damp fire, snow slows soldiers down, and wind drives fire and embers.
+- **Weather matters:** rain and snow damp fire, snow slows soldiers down, wind drives fire and embers, and dust storms cut how far units see. Ash fall and dust storms join rain and snow.
 - **Saved games** keep burning fire and flowing liquid.
 
 ### New gear
@@ -87,6 +91,7 @@ Pick **Sandbox** in the scenario menu and play as a god:
 | **F6** | World Debug: time of day, weather, lighting toggles, gameplay systems, game speed, Pause AI |
 | **F7** | Sandbox tools (the whole game in Sandbox mode, a debug panel elsewhere) |
 | **F8** | Photo mode |
+| **Ctrl + wheel** | Camera zoom (the wheel alone in the Sandbox god view) |
 | *Video settings* | Lighting, Bloom, Extra Effects and quality presets. Turn them off for the classic look. |
 
 Full details of every setting, the INI properties for modders and the Lua API are in **[Documentation/LightingAndEffects.md](Documentation/LightingAndEffects.md)**. The design and history are in [MODERNISATION_PLAN.md](MODERNISATION_PLAN.md) and [FEATURE_PROPOSAL.md](FEATURE_PROPOSAL.md).
@@ -99,7 +104,7 @@ Full details of every setting, the INI properties for modders and the Lua API ar
 - **No prebuilt releases yet.** Build it from source (below). The game data is included in the repository.
 - **Mods** that work with the Community Project should work here too.
 - **How it's made:** this fork is developed with the help of AI coding assistance (Claude Code), with every change built and tested in the game. The commit history records what changed and why.
-- **Deferred for now:** camera zoom, an SDL_GPU backend, and per-material specular highlights. The reasons are in FEATURE_PROPOSAL.md.
+- **Not done yet:** an SDL_GPU backend (Vulkan/Metal/DX12) and a tested Linux build. The reasons are in FEATURE_PROPOSAL.md.
 
 Bug reports and ideas are welcome in this repository's issues. Please report problems with the base game to the [Community Project](https://github.com/cortex-command-community/Cortex-Command-Community-Project/issues) instead.
 
