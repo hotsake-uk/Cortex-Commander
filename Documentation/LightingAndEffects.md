@@ -73,6 +73,13 @@ AddActor = AHuman
 
 From Lua: `object.Metalness = 0.8`, `object.Gloss = 0.5` (below 0 means "not set").
 
+**Explosions, energy and looks:**
+- **Explosions** throw balls of fire that swell, roll upwards and burn out into dark smoke, which hangs and drifts for a few seconds; on the ground, a ring of dust races out either side. Visual only, part of `EffectsParticles`.
+- **Tracers** (`TracerLights`, on): fast shots with a trail throw a little light in their trail's colour on what they pass. At most 40 a frame.
+- **Shimmer:** any object can bend the scene around it in a wobbling ring, for energy shields, cloaks and hot things: `Shimmer = 1` in INI, `object.Shimmer = 1` from Lua, or `PostProcessMan:AddShimmer(pos, radius, strength)` each update. Needs Distortion on.
+- **Depth** (`BackgroundBlur`, 0.6): the far background layers are softened a little, more the further away they are.
+- **Looks:** ready-made grades in the Graphics Lab and Photo Mode (F8): Natural, Gritty, Vivid, Noir. They set saturation, contrast, tints, vignette, grain and bloom, which can then be adjusted as before. Lua: `PostProcessMan:ApplyLook(0..3)`.
+
 **Spreading fire** (`TerrainFire` in the gameplay settings, also in F6):
 - **What lights it:** explosions and fire, flame and napalm particles light flammable terrain.
 - **How it burns:** grass and vegetation flare up and burn away; wood, cloth and rubber burn slowly from the surface in, leaving ash; oil burns fast.

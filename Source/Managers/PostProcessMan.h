@@ -89,6 +89,7 @@ namespace RTE {
 			m_PostSceneEffects.clear();
 			m_GlowAreas.clear();
 			m_SceneLights.clear();
+			m_Shimmers.clear();
 		}
 #pragma endregion
 
@@ -195,6 +196,12 @@ namespace RTE {
 		/// @param energy Energy released, as computed for gib screen shake.
 		void RegisterShockwave(const Vector& pos, float energy);
 
+		/// Registers a shimmer for the current frame: the scene behind is bent in a wobbling ring, as around an energy shield or a cloaked unit. Call every update to keep it up.
+		/// @param pos Scene position of its centre.
+		/// @param radius How far out it reaches, in pixels.
+		/// @param strength How strongly it bends, around 1.
+		void RegisterShimmer(const Vector& pos, float radius, float strength);
+
 		/// Registers a scorch mark: soot stamped into the terrain that glows hot for a few seconds. Size and darkness scale with the energy released.
 		/// @param pos Scene position of the explosion.
 		/// @param energy Energy released, as computed for gib screen shake.
@@ -241,6 +248,9 @@ namespace RTE {
 		/// Sets the sky light color, 0-255 gamma space per channel. Values above 255 brighten.
 		void SetSkyColor(float red, float green, float blue) { m_LightingSettings.SkyColor = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
 		/// Sets the color grade: white balance (-1 cool .. 1 warm), tint (-1 green .. 1 magenta) and contrast (1 neutral).
+		/// Sets the grading, grain, vignette and bloom to a ready-made look: 0 natural, 1 gritty, 2 vivid, 3 noir.
+		void ApplyLook(int look) { m_LightingSettings.ApplyLook(look); }
+
 		void SetColorGrade(float temperature, float tint, float contrast) {
 			m_LightingSettings.Temperature = temperature;
 			m_LightingSettings.Tint = tint;
@@ -314,6 +324,7 @@ namespace RTE {
 			float m_StartTime;
 		};
 		std::vector<Shockwave> m_Shockwaves; //!< Active shockwaves, in scene coordinates.
+		std::vector<Shockwave> m_Shimmers; //!< Shimmers registered for the current frame (the start time isn't used).
 		float m_ActivityTimeOfDay = -1.0F; //!< Time of day chosen for the current activity, negative for none.
 		int m_ActivityWeather = -1; //!< Weather chosen for the current activity, negative for none.
 

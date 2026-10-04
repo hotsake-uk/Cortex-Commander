@@ -344,6 +344,21 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::TextDisabled("Camera: drag with right mouse, or arrow keys (Shift = faster)");
 
 			ImGui::SeparatorText("Look");
+			if (ImGui::Button("Natural##Look")) {
+				settings.ApplyLook(LightingSettings::LookNatural);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Gritty##Look")) {
+				settings.ApplyLook(LightingSettings::LookGritty);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Vivid##Look")) {
+				settings.ApplyLook(LightingSettings::LookVivid);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Noir##Look")) {
+				settings.ApplyLook(LightingSettings::LookNoir);
+			}
 			ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
 			ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
 			ImGui::SliderFloat("Exposure", &settings.Exposure, 0.2F, 3.0F);
@@ -412,6 +427,25 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		ImGui::SliderFloat("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
 		ImGui::SliderFloat("Metal reflections", &settings.Metals, 0.0F, 2.0F);
+		ImGui::Checkbox("Tracers light what they pass", &settings.TracerLights);
+		ImGui::SliderFloat("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
+		ImGui::TextUnformatted("Looks:");
+		ImGui::SameLine();
+		if (ImGui::Button("Natural")) {
+			settings.ApplyLook(LightingSettings::LookNatural);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Gritty")) {
+			settings.ApplyLook(LightingSettings::LookGritty);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Vivid")) {
+			settings.ApplyLook(LightingSettings::LookVivid);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Noir")) {
+			settings.ApplyLook(LightingSettings::LookNoir);
+		}
 		ImGui::SliderFloat("Surface relief", &settings.Relief, 0.0F, 1.5F);
 		ImGui::SliderFloat("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
 		ImGui::SliderFloat("Indirect light", &settings.IndirectLight, 0.0F, 1.5F);

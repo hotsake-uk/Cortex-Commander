@@ -57,6 +57,58 @@ namespace RTE {
 			ApplyShadowPreset(quality);
 		}
 
+		/// The ready-made looks: grading, grain, vignette and bloom together.
+		enum Look {
+			LookNatural,
+			LookGritty,
+			LookVivid,
+			LookNoir,
+			LookCount
+		};
+
+		/// Sets the grading, grain, vignette and bloom to one of the ready-made looks. Natural is the defaults.
+		void ApplyLook(int look) {
+			Saturation = 1.05F;
+			Contrast = 1.0F;
+			Temperature = 0.0F;
+			Tint = 0.0F;
+			Vignette = 0.15F;
+			FilmGrain = 0.0F;
+			BloomIntensity = 0.5F;
+			ShadowTint = {1.0F, 1.0F, 1.0F};
+			HighlightTint = {1.0F, 1.0F, 1.0F};
+			switch (look) {
+				case LookGritty:
+					// Drained and hard, with cold shadows and a little grain.
+					Saturation = 0.78F;
+					Contrast = 1.16F;
+					Temperature = -0.08F;
+					Vignette = 0.32F;
+					FilmGrain = 0.22F;
+					ShadowTint = {0.9F, 0.97F, 1.08F};
+					HighlightTint = {1.05F, 1.0F, 0.94F};
+					break;
+				case LookVivid:
+					// Rich colour and glowing lights.
+					Saturation = 1.32F;
+					Contrast = 1.07F;
+					Temperature = 0.06F;
+					Vignette = 0.1F;
+					BloomIntensity = 0.75F;
+					break;
+				case LookNoir:
+					// Black and white, deep contrast, heavy vignette and grain.
+					Saturation = 0.0F;
+					Contrast = 1.28F;
+					Vignette = 0.42F;
+					FilmGrain = 0.3F;
+					BloomIntensity = 0.6F;
+					break;
+				default:
+					break;
+			}
+		}
+
 		/// Sets only the shadow effects to a preset's values: directional daylight from Low up, shadows from solid objects and contact shading from Medium up.
 		/// Also used when reading settings saved before these existed, so they follow the saved preset.
 		void ApplyShadowPreset(int quality) {
@@ -101,6 +153,8 @@ namespace RTE {
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
 		float Metals = 1.0F; //!< How strongly metallic surfaces mirror their surroundings (sky from above, ground from below) and glint in the sun, 0 for none.
 		float Relief = 0.6F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
+		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
+		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.

@@ -77,6 +77,9 @@ namespace RTE {
 		/// Gets the dust puffs visible in a screen area, positioned relative to it.
 		static void GetPuffs(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& puffs);
 
+		/// Gets the fire of explosions visible in a screen area, as puffs that glow (RGB brightness, to draw into the emissive buffer with the puff texture).
+		static void GetFire(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& fire);
+
 		/// Gets the GL texture puffs are drawn with (soft round, white with alpha).
 		static unsigned int GetPuffTexture();
 

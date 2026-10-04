@@ -924,6 +924,17 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 
+	// The fire of explosions: soft glowing balls, drawn into the glow buffer with the puff's round shape.
+	{
+		std::vector<EffectsParticles::Puff> fire;
+		EffectsParticles::GetFire(origin, width, height, fire);
+		GLuint puffTexture = EffectsParticles::GetPuffTexture();
+		for (const EffectsParticles::Puff& ball: fire) {
+			addQuad(ball.Position, glm::vec2(ball.Size * 0.5F), 0.0F, glm::min(glm::vec3(ball.Color), glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(puffTexture);
+		}
+	}
+
 	// Burning terrain: each pixel flickers between yellow and deep orange as it burns down, and sometimes throws an ember.
 	{
 		std::vector<glm::vec3> burning;
@@ -1115,10 +1126,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		for (size_t i = 1; i <= emissiveTextures.size(); ++i) {
 			if (i == emissiveTextures.size() || emissiveTextures[i] != emissiveTextures[runStart]) {
 				glBindTexture(GL_TEXTURE_2D, emissiveTextures[runStart]);
+				// Puffs (the fire of explosions) are a round shape in the texture's alpha.
+				m_EmissiveShader->SetBool("rteUseAlpha", emissiveTextures[runStart] == EffectsParticles::GetPuffTexture());
 				DrawQuads(emissiveStart + runStart, i - runStart);
 				runStart = i;
 			}
 		}
+		m_EmissiveShader->SetBool("rteUseAlpha", false);
 		glDisable(GL_BLEND);
 	}
 
@@ -1249,6 +1263,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteUnitShadows", unitShadows);
 	m_CompositeShader->SetFloat("rteContactShading", occluders ? m_Settings.ContactShading : 0.0F);
 	m_CompositeShader->SetFloat("rteMetals", (m_Settings.Enabled && surface) ? m_Settings.Metals : 0.0F);
+	m_CompositeShader->SetFloat("rteBackgroundBlur", m_Settings.Enabled ? m_Settings.BackgroundBlur : 0.0F);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);

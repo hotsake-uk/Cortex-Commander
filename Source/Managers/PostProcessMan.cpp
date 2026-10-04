@@ -190,6 +190,16 @@ void PostProcessMan::RegisterShockwave(const Vector& pos, float energy) {
 	m_Shockwaves.push_back(shockwave);
 }
 
+void PostProcessMan::RegisterShimmer(const Vector& pos, float radius, float strength) {
+	if (radius <= 1.0F || strength <= 0.0F || !m_LightingSettings.DistortionEnabled || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return;
+	}
+	std::scoped_lock lock(m_ShockwaveMutex);
+	if (m_Shimmers.size() < 64) {
+		m_Shimmers.push_back({pos, radius, strength, 0.0F});
+	}
+}
+
 void PostProcessMan::RegisterScorchMark(const Vector& pos, float energy) {
 	if (energy < 2000.0F || !m_LightingSettings.ScorchMarks) {
 		return;
@@ -246,6 +256,22 @@ void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, in
 					shockwaves.push_back({glm::vec2(relativePos.m_X, relativePos.m_Y), shockwave.m_Radius, shockwave.m_Amplitude, progress});
 				}
 			}
+		}
+	}
+	// Shimmers are the same ring held in place: its radius breathes in and out a little, each at its own pace.
+	for (const Shockwave& shimmer: m_Shimmers) {
+		Vector relativePos = shimmer.m_Pos - boxPos;
+		if (g_SceneMan.SceneWrapsX()) {
+			if (relativePos.m_X < -sceneWidth * 0.5F) {
+				relativePos.m_X += sceneWidth;
+			} else if (relativePos.m_X > sceneWidth * 0.5F) {
+				relativePos.m_X -= sceneWidth;
+			}
+		}
+		if (relativePos.m_X + shimmer.m_Radius >= 0 && relativePos.m_Y + shimmer.m_Radius >= 0 && relativePos.m_X - shimmer.m_Radius <= boxWidth && relativePos.m_Y - shimmer.m_Radius <= boxHeight) {
+			float wobble = 0.62F + 0.16F * std::sin(now * 3.1F + shimmer.m_Pos.m_X * 0.37F + shimmer.m_Pos.m_Y * 0.21F);
+			// The ring's strength falls off with its progress in the shader; make up for that so the strength asked for is what shows.
+			shockwaves.push_back({glm::vec2(relativePos.m_X, relativePos.m_Y), shimmer.m_Radius, shimmer.m_Amplitude * 3.0F / ((1.0F - wobble) * (1.0F - wobble)) * 0.15F, wobble});
 		}
 	}
 }

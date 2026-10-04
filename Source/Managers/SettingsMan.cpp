@@ -229,6 +229,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("GradeShadowTint", { g_PostProcessMan.GetLightingSettings().ShadowTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().ShadowTint); });
 	MatchProperty("GradeHighlightTint", { g_PostProcessMan.GetLightingSettings().HighlightTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().HighlightTint); });
 	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
+	MatchProperty("TracerLights", { g_PostProcessMan.GetLightingSettings().TracerLights = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ChromaticAberration", { g_PostProcessMan.GetLightingSettings().ChromaticAberration = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostVignette", { g_PostProcessMan.GetLightingSettings().Vignette = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostSaturation", { g_PostProcessMan.GetLightingSettings().Saturation = std::stof(reader.ReadPropValue()); });
@@ -409,6 +411,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("GradeShadowTint", WriteVec3(lighting.ShadowTint));
 	writer.NewPropertyWithValue("GradeHighlightTint", WriteVec3(lighting.HighlightTint));
 	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
+	writer.NewPropertyWithValue("TracerLights", lighting.TracerLights);
+	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
 	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 

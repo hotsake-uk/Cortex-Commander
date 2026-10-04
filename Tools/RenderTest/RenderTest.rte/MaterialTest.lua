@@ -20,4 +20,6 @@ function MaterialTestScript:UpdateScript()
 		end
 	end
 	PostProcessMan:AddLight(Vector(995, 700), 240, 255, 215, 170, 2.0);
+	-- A shimmer between two of them, as around a shield.
+	PostProcessMan:AddShimmer(Vector(1048, 712), 26, 1);
 end

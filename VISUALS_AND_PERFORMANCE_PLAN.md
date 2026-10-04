@@ -62,10 +62,10 @@ Status: **done**, **in progress**, **next**, or **later** (not asked for yet).
 
 | # | Item | What you see | Status |
 |---|---|---|---|
-| 12 | **Better explosions** | Fireballs that roll into smoke, smoke columns lit from within, dust rings along the ground. | next |
-| 13 | **Energy effects** | Shimmer for shields and cloaks, tracers that light what they pass. | next |
-| 14 | **Depth** | Slight blur and haze on far backgrounds. | next |
-| 15 | **Look presets** | Gritty, Vivid, Noir. | next |
+| 12 | **Better explosions** | Fireballs that roll into smoke, smoke that lingers, dust rings along the ground. | done |
+| 13 | **Energy effects** | Shimmer for shields and cloaks, tracers that light what they pass. | done (shimmer not yet confirmed by eye) |
+| 14 | **Depth** | Slight blur on far backgrounds (haze was there already). | done |
+| 15 | **Look presets** | Natural, Gritty, Vivid, Noir. | done |
 
 ### Performance
 
@@ -125,3 +125,4 @@ Short design notes, updated as things are built.
 - **2026-10-04:** a crash in the Modern HUD fixed (it read the controlled unit a frame after the unit was deleted).
 - **2026-10-04:** performance items 16 and 17 done.
 - **2026-10-04:** materials (items 7 to 10) built, with `Materials*` test scenarios.
+- **2026-10-04:** items 12 to 15 built. Explosions and the Noir look checked in captures. The shimmer is built and scripted in the materials test, but against that scene's dark wall it couldn't be told apart, so it still needs a look in play. Tracer light and the background blur were not checked on their own.

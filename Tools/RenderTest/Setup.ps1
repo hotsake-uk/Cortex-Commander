@@ -140,3 +140,6 @@ Write-Scenario "MaterialsNightOff" ($shadowBunker + @{ TimeOfDay = 23 } + $noMat
 Write-Scenario "MaterialsDay" ($shadowBunker + @{ TimeOfDay = 14 }) @("Render Test Materials")
 Write-Scenario "MaterialsDayOff" ($shadowBunker + @{ TimeOfDay = 14 } + $noMaterials) @("Render Test Materials")
 Write-Scenario "MaterialsNormals" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 4 }) @("Render Test Materials")
+# The ready-made looks, on the bunker with explosions: gritty and noir (set as the values ApplyLook gives).
+Write-Scenario "LookGritty" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0.78; GradeContrast = 1.16; GradeTemperature = -0.08; PostVignette = 0.32; FilmGrain = 0.22 }) @("Render Test FX")
+Write-Scenario "LookNoir" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0; GradeContrast = 1.28; PostVignette = 0.42; FilmGrain = 0.3 }) @("Render Test FX")

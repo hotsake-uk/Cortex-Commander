@@ -926,6 +926,10 @@ namespace RTE {
 		/// Sets which way the light's cone points, in degrees clockwise from the way this faces.
 		void SetLightConeDirection(float degrees) { m_LightConeDirection = degrees; }
 
+		/// Gets how strongly the scene shimmers around this (see PostProcessMan::RegisterShimmer). 0 for none.
+		float GetShimmer() const { return m_Shimmer; }
+		/// Sets how strongly the scene shimmers around this, around 1; 0 for none. For energy shields, cloaks and hot things.
+		void SetShimmer(float shimmer) { m_Shimmer = std::max(shimmer, 0.0F); }
 		float GetLightFlicker() const { return m_LightFlicker; }
 		void SetLightFlicker(float flicker) { m_LightFlicker = flicker; }
 		/// Sets the color of the light this casts, 0-255 per channel.
@@ -1356,6 +1360,7 @@ namespace RTE {
 		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
 		float m_LightFlicker; //!< How much the light randomly flickers, 0 to 1.
+		float m_Shimmer; //!< How strongly the scene shimmers around this, 0 for none.
 		std::string m_VisualEmission; //!< Kind of purely visual particles this gives off ("Sparks", "Dust", "Debris", "Embers"), or empty for none.
 		float m_VisualEmissionRate; //!< How many it gives off per second.
 		float m_VisualEmissionSpread; //!< How much their direction and speed vary, 0 to 1.

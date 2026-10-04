@@ -110,6 +110,7 @@ void MovableObject::Clear() {
 	m_LightRadius = 0.0F;
 	m_LightIntensity = 0.0F;
 	m_LightFlicker = 0.0F;
+	m_Shimmer = 0.0F;
 	m_VisualEmission.clear();
 	m_VisualEmissionRate = 0.0F;
 	m_VisualEmissionSpread = 0.6F;
@@ -249,6 +250,7 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_LightRadius = reference.m_LightRadius;
 	m_LightIntensity = reference.m_LightIntensity;
 	m_LightFlicker = reference.m_LightFlicker;
+	m_Shimmer = reference.m_Shimmer;
 	m_VisualEmission = reference.m_VisualEmission;
 	m_VisualEmissionRate = reference.m_VisualEmissionRate;
 	m_VisualEmissionSpread = reference.m_VisualEmissionSpread;
@@ -387,6 +389,7 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 	MatchProperty("LightRadius", { reader >> m_LightRadius; });
 	MatchProperty("LightIntensity", { reader >> m_LightIntensity; });
 	MatchProperty("LightFlicker", { reader >> m_LightFlicker; });
+	MatchProperty("Shimmer", { reader >> m_Shimmer; m_Shimmer = std::max(m_Shimmer, 0.0F); });
 	MatchProperty("VisualEmission", { m_VisualEmission = reader.ReadPropValue(); });
 	MatchProperty("VisualEmissionRate", { reader >> m_VisualEmissionRate; });
 	MatchProperty("VisualEmissionSpread", { reader >> m_VisualEmissionSpread; });
@@ -1034,6 +1037,10 @@ void MovableObject::Update() {
 			m_VisualEmissionDue -= static_cast<float>(count);
 			EffectsParticles::Emit(m_VisualEmission, m_Pos, m_Vel, m_VisualEmissionSpread, count, 0);
 		}
+	}
+
+	if (m_Shimmer > 0.0F) {
+		g_PostProcessMan.RegisterShimmer(m_Pos, std::max(GetRadius() * 1.35F, 10.0F), m_Shimmer);
 	}
 
 	if (m_LightRadius > 0.0F && m_LightIntensity > 0.0F) {

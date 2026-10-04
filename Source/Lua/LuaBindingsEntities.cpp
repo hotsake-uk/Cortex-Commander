@@ -972,6 +972,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MovableObject) {
 	    .property("LightRadius", &MovableObject::GetLightRadius, &MovableObject::SetLightRadius)
 	    .property("LightIntensity", &MovableObject::GetLightIntensity, &MovableObject::SetLightIntensity)
 	    .property("LightFlicker", &MovableObject::GetLightFlicker, &MovableObject::SetLightFlicker)
+	    .property("Shimmer", &MovableObject::GetShimmer, &MovableObject::SetShimmer)
 	    .def("SetVisualEmission", &MovableObject::SetVisualEmission)
 	    .property("LightConeAngle", &MovableObject::GetLightConeAngle, &MovableObject::SetLightConeAngle)
 	    .property("LightConeDirection", &MovableObject::GetLightConeDirection, &MovableObject::SetLightConeDirection)

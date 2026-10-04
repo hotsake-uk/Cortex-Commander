@@ -29,7 +29,9 @@ namespace {
 		Spark,
 		Debris,
 		Dust,
-		Ember
+		Ember,
+		Fire, //!< A ball of an explosion's fire: glows, swells and rises, and is gone in about a second.
+		Smoke //!< What the fire leaves: dark, rising, lingering for seconds. Lit like dust.
 	};
 
 	struct Particle {
@@ -167,6 +169,28 @@ namespace {
 			for (int i = 0; i < dustCount; ++i) {
 				glm::vec2 offset = RandomDirection() * RandomRange(2.0F, 12.0F) * std::sqrt(scale);
 				Add({request.Position + offset, glm::normalize(offset + glm::vec2(0.0F, -2.0F)) * RandomRange(15.0F, 60.0F), 0.0F, RandomRange(1.5F, 3.5F), RandomRange(3.0F, 6.0F), dustColor, Kind::Dust});
+			}
+			// The fireball: balls of fire that swell and roll upwards, each leaving smoke that appears as it burns out and hangs in the air for a few seconds.
+			float reach = std::sqrt(scale);
+			int fireCount = static_cast<int>(7.0F * scale) + 2;
+			for (int i = 0; i < fireCount; ++i) {
+				glm::vec2 offset = RandomDirection() * RandomRange(0.0F, 9.0F) * reach;
+				glm::vec2 velocity = glm::normalize(offset + glm::vec2(0.0F, -3.0F)) * RandomRange(20.0F, 70.0F) * reach;
+				float fireLife = RandomRange(0.45F, 1.0F);
+				float size = RandomRange(5.0F, 9.0F) * reach;
+				Add({request.Position + offset, velocity, 0.0F, fireLife, size, glm::u8vec3(255, 190, 90), Kind::Fire});
+				// A negative age keeps the smoke unseen until its fire is nearly out.
+				unsigned char grey = static_cast<unsigned char>(RandomRange(38.0F, 62.0F));
+				Add({request.Position + offset, velocity * 0.6F, -fireLife * 0.6F, RandomRange(3.0F, 6.5F), size * 1.2F, glm::u8vec3(grey, grey, grey), Kind::Smoke});
+			}
+			if (groundMaterial != g_MaterialAir) {
+				// A ring of dust racing out along the ground either side.
+				int ringCount = static_cast<int>(9.0F * scale) + 2;
+				for (int i = 0; i < ringCount; ++i) {
+					float side = (i % 2 == 0) ? 1.0F : -1.0F;
+					glm::vec2 velocity(side * RandomRange(90.0F, 260.0F) * reach, RandomRange(-25.0F, -5.0F));
+					Add({request.Position + glm::vec2(side * RandomRange(2.0F, 8.0F), RandomRange(-2.0F, 3.0F)), velocity, 0.0F, RandomRange(1.2F, 2.6F), RandomRange(3.0F, 5.5F), dustColor, Kind::Dust});
+				}
 			}
 			return;
 		}
@@ -342,6 +366,20 @@ void EffectsParticles::Update(float amount) {
 			particle.Position += particle.Velocity * seconds;
 			continue;
 		}
+		if (particle.Type == Kind::Fire || particle.Type == Kind::Smoke) {
+			// Fire and its smoke roll upwards on their own heat, swelling as they go; smoke slows, keeps rising and leans with the wind.
+			if (particle.Age >= 0.0F) {
+				bool fire = particle.Type == Kind::Fire;
+				particle.Velocity += (glm::vec2(wind * (fire ? 0.2F : 0.6F), fire ? -38.0F : -16.0F) - particle.Velocity) * std::min(1.0F, seconds * (fire ? 2.0F : 1.2F));
+				particle.Size += seconds * (fire ? 9.0F : 3.5F);
+				particle.Position += particle.Velocity * seconds;
+			} else {
+				// Smoke waiting for its fire to burn out travels with it.
+				particle.Velocity += (glm::vec2(wind * 0.2F, -38.0F) - particle.Velocity) * std::min(1.0F, seconds * 2.0F);
+				particle.Position += particle.Velocity * seconds;
+			}
+			continue;
+		}
 		if (particle.Type == Kind::Dust) {
 			// Dust billows out, slows quickly, rises a little and drifts with the wind.
 			particle.Velocity += (glm::vec2(wind * 0.4F, -6.0F) - particle.Velocity) * std::min(1.0F, seconds * 2.5F);
@@ -426,7 +464,7 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
-		if (particle.Type != Kind::Dust) {
+		if ((particle.Type != Kind::Dust && particle.Type != Kind::Smoke) || particle.Age < 0.0F) {
 			continue;
 		}
 		glm::vec2 position = particle.Position - screenOrigin;
@@ -442,8 +480,35 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 			continue;
 		}
 		float remaining = 1.0F - particle.Age / particle.Life;
-		float fadeIn = std::clamp(particle.Age * 6.0F, 0.0F, 1.0F);
-		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, 0.4F * remaining * fadeIn)});
+		// Smoke comes in slowly as its fire dies; dust is there at once.
+		float fadeIn = std::clamp(particle.Age * (particle.Type == Kind::Smoke ? 2.5F : 6.0F), 0.0F, 1.0F);
+		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn)});
+	}
+}
+
+void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& fire) {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	bool wraps = g_SceneMan.SceneWrapsX();
+	for (const Particle& particle: s_Particles) {
+		if (particle.Type != Kind::Fire) {
+			continue;
+		}
+		glm::vec2 position = particle.Position - screenOrigin;
+		if (wraps) {
+			if (position.x < -sceneWidth * 0.5F) {
+				position.x += sceneWidth;
+			} else if (position.x > sceneWidth * 0.5F) {
+				position.x -= sceneWidth;
+			}
+		}
+		float size = particle.Size * 2.0F;
+		if (position.x < -size || position.y < -size || position.x > static_cast<float>(width) + size || position.y > static_cast<float>(height) + size) {
+			continue;
+		}
+		// White hot at first, through yellow and orange to a dull red as it burns out.
+		float burnt = std::clamp(particle.Age / particle.Life, 0.0F, 1.0F);
+		glm::vec3 color = burnt < 0.35F ? glm::mix(glm::vec3(1.0F, 0.95F, 0.75F), glm::vec3(1.0F, 0.7F, 0.2F), burnt / 0.35F) : glm::mix(glm::vec3(1.0F, 0.7F, 0.2F), glm::vec3(0.6F, 0.12F, 0.02F), (burnt - 0.35F) / 0.65F);
+		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F)});
 	}
 }
 

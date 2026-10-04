@@ -204,6 +204,22 @@ void MOPixel::RestDetection() {
 void MOPixel::Update() {
 	MovableObject::Update();
 
+	// A fast shot with a trail is a tracer: it throws a little light in its trail's color on what it passes. Only so many a frame, so a firefight doesn't turn into hundreds of lights.
+	if (m_Atom && m_Atom->GetTrailLength() > 0 && m_LightRadius <= 0.0F && !m_ScreenEffect && g_PostProcessMan.GetLightingSettings().TracerLights && g_PostProcessMan.GetLightingSettings().Enabled && m_Vel.MagnitudeIsGreaterThan(40.0F)) {
+		static long long s_TracerUpdate = -1;
+		static int s_TracersLit = 0;
+		long long update = g_TimerMan.GetSimUpdateCount();
+		if (update != s_TracerUpdate) {
+			s_TracerUpdate = update;
+			s_TracersLit = 0;
+		}
+		if (s_TracersLit < 40) {
+			++s_TracersLit;
+			Color trailColor(m_Atom->GetTrailColor().GetIndex());
+			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), 28.0F, 0.55F);
+		}
+	}
+
 	// TODO: Rework this once we figure out how we want to handle it
 	if (m_HitsMOs && m_Sharpness > 0) {
 		if (m_DistanceTravelled > m_LethalRange) {

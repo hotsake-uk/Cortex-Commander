@@ -21,6 +21,7 @@ uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at f
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
 uniform float rteContactShading; // How much background walls darken right next to solid objects and terrain, 0 (off) to 1.
 uniform float rteMetals; // How strongly metallic surfaces mirror their surroundings and glint in the sun, 0 for none.
+uniform float rteBackgroundBlur; // How much the far background layers are softened, 0 for none.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
@@ -136,6 +137,20 @@ void main() {
 		// Nothing drawn at all (cleared depth) is open sky.
 		// The furthest layers are usually the sky itself, which shouldn't be washed out; haze peaks on the distant scenery in between.
 		haze = sceneDepth >= 0.9999 ? rteAtmosphereHaze * 0.4 : rteAtmosphereHaze * smoothstep(0.0, 0.6, distance) * (1.0 - 0.6 * smoothstep(0.85, 1.0, distance));
+		if (rteBackgroundBlur > 0.0 && distance > 0.15) {
+			// The further a layer, the softer it is drawn, like a lens focused on the fight. Only other background pixels are mixed in, so nothing in front bleeds into it.
+			vec2 reach = rteBackgroundBlur * distance * 1.6 / rteScreenSize;
+			vec4 mixed = albedo;
+			float count = 1.0;
+			for (int i = 0; i < 4; ++i) {
+				vec2 offset = vec2(i < 2 ? 1.0 : -1.0, (i % 2 == 0) ? 1.0 : -1.0) * reach;
+				if (texture(rteSceneDepth, screenUV + offset).r > rteBackgroundDepth) {
+					mixed += texture(rteAlbedo, screenUV + offset);
+					count += 1.0;
+				}
+			}
+			albedo = mixed / count;
+		}
 		// Only layers that barely scroll (the sky itself) get stars, so they never show on mountains or nearer scenery.
 		// They also fade towards the horizon, where distant mountains usually are.
 		nightSkyAmount = rteNightSky * smoothstep(0.88, 0.95, distance) * (1.0 - smoothstep(0.25, 0.48, screenUV.y)); // Player screens are drawn top down: UV y 0 is the top.
