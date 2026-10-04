@@ -6,6 +6,7 @@
 #include "ActivityMan.h"
 #include "CameraMan.h"
 #include "ConsoleMan.h"
+#include "Controller.h"
 #include "Constants.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
@@ -1466,6 +1467,10 @@ void Sandbox::SetAutoBattleSide(int team, const std::string& faction, int budget
 	}
 }
 
+void Sandbox::SetAIPaused(bool paused) {
+	Controller::SetAIPaused(paused);
+}
+
 void Sandbox::StartAutoBattle() {
 	if (!InGame()) {
 		return;
@@ -1553,6 +1558,16 @@ void Sandbox::DrawGUI() {
 		s_Possessed = nullptr;
 		s_FreeCameraStarted = false;
 	}
+	if (Controller::IsAIPaused() && InGame()) {
+		// A reminder that nobody will move until it's resumed.
+		const char* banner = "AI PAUSED";
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		ImVec2 size = ImGui::CalcTextSize(banner);
+		float scale = 1.6F;
+		ImVec2 at((ImGui::GetIO().DisplaySize.x - size.x * scale) * 0.5F, 36.0F);
+		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, 150), 4.0F);
+		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), banner);
+	}
 	if (!s_Open) {
 		s_FreeCameraStarted = false;
 		return;
@@ -1623,6 +1638,12 @@ void Sandbox::DrawGUI() {
 			return;
 		}
 		SideStatus();
+		bool aiPaused = Controller::IsAIPaused();
+		ImGui::PushStyleColor(ImGuiCol_Text, aiPaused ? IM_COL32(255, 210, 80, 255) : ImGui::GetColorU32(ImGuiCol_Text));
+		if (ImGui::Checkbox("Pause AI (set things up, then let them loose)", &aiPaused)) {
+			Controller::SetAIPaused(aiPaused);
+		}
+		ImGui::PopStyleColor();
 		ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.");
 		ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
 		ToolButtons({Tool::Remove, Tool::RallyPoint});
@@ -1788,6 +1809,11 @@ void Sandbox::DrawGUI() {
 }
 
 void Sandbox::Update() {
+	static const Activity* lastActivity = nullptr;
+	if (g_ActivityMan.GetActivity() != lastActivity) {
+		lastActivity = g_ActivityMan.GetActivity();
+		Controller::SetAIPaused(false);
+	}
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
 	if (!InGame()) {

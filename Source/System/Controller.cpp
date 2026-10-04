@@ -5,6 +5,7 @@
 #include "MovableMan.h"
 #include "Actor.h"
 #include "PieMenu.h"
+#include "ACraft.h"
 
 #include <array>
 
@@ -163,7 +164,10 @@ void Controller::Update() {
 			GetInputFromPlayer();
 			break;
 		case InputMode::CIM_AI:
-			if (ShouldUpdateAIThisFrame()) {
+			if (IsHeldByPausedAI()) {
+				// Standing still while the AI is paused.
+				ResetCommandState();
+			} else if (ShouldUpdateAIThisFrame()) {
 				// AI will be updated in separate UpdateAI call, but we need to clear the command state for them
 				ResetCommandState();
 			}
@@ -193,8 +197,14 @@ void Controller::GetInputFromPlayer() {
 	UpdatePlayerInput(lastControlStates);
 }
 
+bool Controller::s_AIPaused = false;
+
+bool Controller::IsHeldByPausedAI() const {
+	return s_AIPaused && m_InputMode == InputMode::CIM_AI && !dynamic_cast<const ACraft*>(m_ControlledActor);
+}
+
 bool Controller::ShouldUpdateAIThisFrame() const {
-	if (IsDisabled() || m_InputMode != InputMode::CIM_AI) {
+	if (IsDisabled() || m_InputMode != InputMode::CIM_AI || IsHeldByPausedAI()) {
 		return false;
 	}
 

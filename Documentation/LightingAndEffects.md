@@ -102,6 +102,7 @@ At night, stars and a moon appear on the sky layers. These are the background la
   - Hold position, attack nearest enemy, hunt brains, patrol, go to the side's rally point, or do nothing.
   - Given when units spawn, or to a whole side from the Orders tab. "Everyone attack!" starts a free-for-all.
   - Units told to attack pick a new target when theirs dies.
+- **Pause AI** (top of the sandbox window, also in F6): every AI-run unit stands still and holds fire, so you can set up armies, bunkers and traps, then untick it to let them loose. Physics, fire and liquids carry on. Craft keep flying, units you control still move, and a banner shows while it's paused. A new game starts with the AI running. Lua: `SandboxPauseAI(true/false)`.
 - **Drop squad:** a squad arrives by dropship or rocket over the point you click, then the craft flies off.
 - **Command and Follow:** with Command, drag a box to select units, then click the ground to send them there or an enemy to attack it. Follow locks the camera onto a unit; "Follow the action" (World tab) keeps the camera on the closest fighting. Moving the camera yourself stops following.
 - **Auto battle (Orders tab):** give sides a faction and a budget. Each buys waves of its faction's units and drops them in to attack until one side is left, and the winner is announced. Lua: `SandboxAutoBattleSide(side, faction, budget)`, `SandboxStartAutoBattle()`.

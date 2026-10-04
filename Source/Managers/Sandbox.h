@@ -61,6 +61,10 @@ namespace RTE {
 		/// Starts an auto battle between the sides set up for it (Lua: SandboxStartAutoBattle).
 		static void StartAutoBattle();
 
+		/// Pauses or resumes the AI everywhere: AI-run units stand still until it's resumed (Lua: SandboxPauseAI).
+		/// @param paused Whether to pause.
+		static void SetAIPaused(bool paused);
+
 	private:
 		static bool s_Open; //!< Whether the sandbox window is open.
 

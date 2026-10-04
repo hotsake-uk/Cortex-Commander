@@ -21,6 +21,7 @@
 #include "FluidSim.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
+#include "Controller.h"
 #include "Sandbox.h"
 #include "ModernHUD.h"
 #include "TimerMan.h"
@@ -202,6 +203,10 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		bool aiPaused = Controller::IsAIPaused();
+		if (ImGui::Checkbox("Pause AI", &aiPaused)) {
+			Controller::SetAIPaused(aiPaused);
+		}
 		bool burningUnits = ActorFire::IsEnabled();
 		if (ImGui::Checkbox("Units catch fire", &burningUnits)) {
 			ActorFire::SetEnabled(burningUnits);

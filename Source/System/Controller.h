@@ -290,6 +290,15 @@ namespace RTE {
 		/// Returns whether the AI should be updated this frame.
 		/// @return Whether the AI should be updated this frame.
 		bool ShouldUpdateAIThisFrame() const;
+
+		/// Gets whether the AI is paused: AI-run units (except craft, which would fall) stand still and do nothing, so a battle can be set up in peace.
+		static bool IsAIPaused() { return s_AIPaused; }
+
+		/// Pauses or resumes the AI.
+		static void SetAIPaused(bool paused) { s_AIPaused = paused; }
+
+		/// Gets whether this controller's actor is held still by the paused AI.
+		bool IsHeldByPausedAI() const;
 #pragma endregion
 
 #pragma region Virtual Override Methods
@@ -349,6 +358,7 @@ namespace RTE {
 		std::pair<std::pair<float, float>, bool> m_AnalogCursorAngleLimits; //!< Analog aim value limits, as well as whether or not the limit is actually enabled.
 
 	private:
+		static bool s_AIPaused; //!< Whether the AI is paused.
 #pragma region Update Breakdown
 		/// Updates the player's inputs portion of this Controller. For breaking down Update into more comprehensible chunks.
 		/// This method will call both UpdatePlayerPieMenuInput and UpdatePlayerAnalogInput.
