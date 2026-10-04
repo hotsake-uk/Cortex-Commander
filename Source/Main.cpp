@@ -490,7 +490,8 @@ static const bool RTESetExceptionHandlers = []() {
 int main(int argc, char** argv) {
 	install_allegro(SYSTEM_NONE, &errno, nullptr);
 
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD );
+	// Automated test runs set CCCP_NO_GAMEPAD so a controller in use elsewhere on the machine can't steer them.
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | (std::getenv("CCCP_NO_GAMEPAD") ? 0 : SDL_INIT_GAMEPAD));
 
 	SDL_SetHint(SDL_HINT_MOUSE_AUTO_CAPTURE, "0");
 	SDL_SetHint("SDL_ALLOW_TOPMOST", "0");

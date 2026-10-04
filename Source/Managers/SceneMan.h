@@ -636,6 +636,9 @@ namespace RTE {
 		/// Gets how many liquid pixels in the terrain are flowing.
 		int GetFlowingLiquidPixelCount() const;
 
+		/// Gets how long the last liquid update took, in milliseconds.
+		float GetLiquidUpdateMS() const;
+
 		/// Traces along a vector and returns the strongest of all encountered pixels'
 		/// material strength values.
 		/// This will take wrapping into account.

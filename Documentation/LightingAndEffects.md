@@ -62,12 +62,15 @@ At night, stars and a moon appear on the sky layers. These are the background la
 **Flowing liquids** (`FlowingLiquids`, a gameplay setting, also in F6):
 - **What flows:** Water (material 160), Lava (165), Acid (167) and Oil in the terrain fall, run sideways and pool.
 - **Drops join in:** a liquid particle that settles into the terrain flows too, if it's drawn in its liquid's own colour (so blood, which uses the Water material in red, stays put). A burning particle that settles as something flammable, such as napalm fuel, sets it alight.
-- **Water** puts out fire. It is drawn see-through and shimmering, with a bright surface line.
+- **Water** puts out fire. It is drawn translucent, deepening in colour with depth, with slow ripples of light and a bright line where it meets the air.
 - **Lava** flows slowly, glows, sets flammable terrain alight, hurts whatever touches its surface, and sets to stone in a puff of steam where it meets water.
 - **Acid** slowly eats soft terrain and is used up doing it.
 - **Oil** flows more slowly and burns where it pools. It isn't drawn shimmering, because its colour is shared with many sprites.
 - **Saves:** moving liquid is saved in saved games.
-- **Cost:** liquid at rest costs nothing. Only pixels that moved recently, or were disturbed by explosions or collapses, are simulated.
+- **How it moves:** each drop falls, then runs along the level the way it was already heading, turns round at walls and drops off the first edge it finds. So liquid runs downhill and spreads out instead of piling up like sand.
+- **Finding its level:** liquid that has nowhere left to run looks through the body it belongs to for a lower free spot and moves there. Connected pools come to one level, including through a tunnel or under a wall.
+- **Nothing gets left hanging:** liquid wakes when ground next to it is dug, shot or blasted away, and a sweep of the whole map every few seconds catches anything missed. Any amount can be poured; beyond 200,000 moving pixels the rest wait their turn.
+- **Cost:** liquid at rest costs nothing. A flood of 30,000 moving pixels costs under 5 ms per update (F6 shows the count and time).
 - **Determinism:** it is part of the simulation and deterministic.
 - **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid"|"Oil")`, `SceneMan:GetFlowingLiquidPixelCount()`, `SceneMan:GetBurningPixelCount()`.
 - **Liquid weapons:** the **Napalm Flamer** sprays burning fuel that pools and burns, the **Water Cannon** knocks people back and puts fires out, and the **Acid Sprayer** lobs globs that sting and eat soft ground.
@@ -194,6 +197,8 @@ AddScene = Scene
 	Wind = -90
 	...
 ```
+
+**From the scene editor:** set the time and weather you want in the World Debug window (F6), press "Use the current time and weather" under "This scene's own atmosphere", then save the scene. The keys above are written into it.
 
 ## Lights on objects (INI)
 

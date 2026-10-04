@@ -554,6 +554,9 @@ namespace RTE {
 		/// Gets the atmosphere this Scene asks for.
 		const Atmosphere& GetAtmosphere() const { return m_Atmosphere; }
 
+		/// Sets the atmosphere this Scene asks for. It's saved with the Scene, so the scene editor can give a Scene its own time of day and weather.
+		void SetAtmosphere(const Atmosphere& atmosphere) { m_Atmosphere = atmosphere; }
+
 		/// Sets the global acceleration (in m/s^2) that is applied to all movable
 		/// objects' velocities during every frame. Typically models gravity.
 		/// @param newValue A Vector describing the global acceleration.

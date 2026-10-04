@@ -148,6 +148,31 @@ void DebugMan::WorldDebugGUI() {
 		if (ImGui::Combo("Quality", &quality, "Potato (classic)\0Low\0Medium\0High\0Ultra\0Custom\0")) {
 			settings.ApplyQualityPreset(quality);
 		}
+		// Scene makers: keep what's set above as the scene's own atmosphere. It's written when the scene is saved from the scene editor.
+		if (Scene* scene = g_SceneMan.GetScene()) {
+			ImGui::SeparatorText("This scene's own atmosphere");
+			const Scene::Atmosphere& own = scene->GetAtmosphere();
+			if (own.TimeOfDay >= 0.0F || own.WeatherType >= 0) {
+				static const char* weatherNames[] = {"clear", "rain", "snow", "ash fall", "dust storm"};
+				ImGui::Text("Set: %.1f h, %s", own.TimeOfDay, own.WeatherType >= 0 && own.WeatherType <= 4 ? weatherNames[own.WeatherType] : "default weather");
+			} else {
+				ImGui::TextDisabled("Not set (uses the player's settings)");
+			}
+			if (ImGui::Button("Use the current time and weather")) {
+				Scene::Atmosphere atmosphere;
+				atmosphere.TimeOfDay = settings.TimeOfDay;
+				atmosphere.DayLengthMinutes = settings.DayLengthMinutes;
+				atmosphere.WeatherType = settings.WeatherType;
+				atmosphere.WeatherIntensity = settings.WeatherIntensity;
+				atmosphere.Wind = settings.Wind;
+				scene->SetAtmosphere(atmosphere);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Clear")) {
+				scene->SetAtmosphere(Scene::Atmosphere());
+			}
+			ImGui::TextDisabled("Saved when the scene is saved in the scene editor.");
+		}
 		ImGui::Checkbox("Lighting", &settings.Enabled);
 		ImGui::SameLine();
 		ImGui::Checkbox("Bloom", &settings.BloomEnabled);
@@ -203,7 +228,7 @@ void DebugMan::WorldDebugGUI() {
 			FluidSim::SetEnabled(liquids);
 		}
 		ImGui::SameLine();
-		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
 		float hitStop = g_CameraMan.GetHitStopStrength();
 		if (ImGui::SliderFloat("Hit-stop on big blasts", &hitStop, 0.0F, 2.0F)) {
 			g_CameraMan.SetHitStopStrength(hitStop);

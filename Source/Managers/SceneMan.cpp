@@ -547,6 +547,8 @@ int SceneMan::RemoveOrphans(int posX, int posY,
 		}
 		m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 		m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
+		// Liquid resting against the pixel that just went may now have somewhere to flow.
+		FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 	}
 
 	int xoff[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
@@ -635,11 +637,15 @@ bool SceneMan::TryPenetrate(int posX,
 			}
 			m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
+			// Liquid resting against the pixel that just went may now have somewhere to flow.
+			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
 		else if (RandomNum() <= airRatio) {
 			m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
+			// Liquid resting against the pixel that just went may now have somewhere to flow.
+			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 		}
 
 		// Save the impulse force effects of the penetrating particle.
@@ -737,6 +743,8 @@ MOPixel* SceneMan::DislodgePixel(int posX, int posY) {
 
 	m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, ColorKeys::g_MaskColor);
 	m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, MaterialColorKeys::g_MaterialAir);
+	// Liquid resting against the pixel that just went may now have somewhere to flow.
+	FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 
 	return pixelMO;
 }
@@ -1469,6 +1477,10 @@ int SceneMan::GetBurningUnitCount() const {
 
 int SceneMan::GetBurningPixelCount() const {
 	return TerrainFire::GetCount();
+}
+
+float SceneMan::GetLiquidUpdateMS() const {
+	return FluidSim::GetLastUpdateMS();
 }
 
 int SceneMan::GetFlowingLiquidPixelCount() const {

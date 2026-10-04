@@ -349,6 +349,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("IsBurningNear", &SceneMan::IsBurningNear)
 	    .def("GetBurningUnitCount", &SceneMan::GetBurningUnitCount)
 	    .def("GetFlowingLiquidPixelCount", &SceneMan::GetFlowingLiquidPixelCount)
+	    .def("GetLiquidUpdateMS", &SceneMan::GetLiquidUpdateMS)
 	    .def("CastMaxStrengthRay", (float(SceneMan::*)(const Vector&, const Vector&, int, unsigned char)) & SceneMan::CastMaxStrengthRay)
 	    .def("CastMaxStrengthRay", (float(SceneMan::*)(const Vector&, const Vector&, int)) & SceneMan::CastMaxStrengthRay)
 	    .def("CastStrengthRay", &SceneMan::CastStrengthRay)

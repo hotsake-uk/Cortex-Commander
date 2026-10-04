@@ -106,3 +106,5 @@ Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLi
 
 Write-Scenario "BunkerAsh" ($bunker + @{ WeatherType = 3; WeatherIntensity = 0.9 }) @()
 Write-Scenario "BunkerDust" ($bunker + @{ WeatherType = 4; WeatherIntensity = 0.9; Wind = 120 }) @()
+Write-Scenario "Flood" $sandbox @("Render Test Flood")
+Write-Scenario "Level" $sandbox @("Render Test Level")

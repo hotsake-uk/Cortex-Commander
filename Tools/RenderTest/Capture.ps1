@@ -47,6 +47,8 @@ if (-not $p -and -not $PSBoundParameters.ContainsKey("Scenario")) {
 if (-not $p) {
 	if ($CameraPOI) { $env:CCCP_CAMERA_POI = $CameraPOI } else { Remove-Item Env:CCCP_CAMERA_POI -ErrorAction SilentlyContinue }
 	$env:CCCP_SETTINGSPATH = "Userdata/RenderTest/$Scenario.ini"
+	# A controller being used for something else on this machine mustn't steer the test.
+	$env:CCCP_NO_GAMEPAD = "1"
 	$p = Start-Process -FilePath (Join-Path $Repo $Exe) -WorkingDirectory $Repo -PassThru
 	Start-Sleep 5
 	# Wait for LogLoading.txt to stop changing (it's buffered, so ExtraWait covers the rest of loading).

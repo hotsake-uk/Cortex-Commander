@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <set>
@@ -40,18 +42,22 @@ namespace {
 
 	struct LiquidProperties {
 		int Flow; //!< How far a pixel may run sideways per step.
+		int Fall; //!< How far a pixel may fall per step.
 		int MoveEvery; //!< Moves every this many sim updates; viscous liquids are slower.
 	};
 	constexpr LiquidProperties c_Liquids[] = {
-	    {0, 1}, // None
-	    {4, 1}, // Water
-	    {1, 3}, // Lava
-	    {3, 1}, // Acid
-	    {2, 2}, // Oil
+	    {0, 0, 1}, // None
+	    {8, 3, 1}, // Water
+	    {1, 1, 3}, // Lava
+	    {6, 3, 1}, // Acid
+	    {3, 2, 2}, // Oil
 	};
 
-	constexpr size_t c_MaxActive = 30000;
-	constexpr int c_RestSteps = 20; //!< A pixel that hasn't moved for this many of its steps stops being simulated.
+	constexpr size_t c_MaxActive = 200000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten.
+	constexpr int c_RestSteps = 20; //!< A pixel that hasn't got any lower for this many of its steps stops being simulated.
+	constexpr int c_SweepPixelsPerUpdate = 30000; //!< How much of the terrain is checked each update for liquid left hanging (see Sweep).
+	constexpr int c_LevelSearchesPerUpdate = 20; //!< How many stuck pixels may look for a lower spot through the liquid each update.
+	constexpr int c_LevelSearchCells = 14000; //!< How many liquid pixels such a search may cross: enough for a pit, a tunnel and the pit beyond.
 
 	std::array<Liquid, 256> s_Kinds{};
 	std::array<int, c_LiquidKinds> s_MaterialOf{}; //!< Material ID of each liquid kind, 0 if the scene's materials don't have it.
@@ -60,7 +66,64 @@ namespace {
 	int s_StoneColor = 0;
 	bool s_TablesBuilt = false;
 
-	std::map<int, int> s_Active; //!< Moving liquid pixels (y * width + x) and how many steps they've been still. Ordered, so deterministic.
+	/// The moving liquid pixels. A grid byte per terrain pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
+	/// Pixels are visited in descending key order (bottom to top), so the result is deterministic. A flat grid and a list are many times faster than an ordered map for floods of tens of thousands of pixels.
+	struct ActiveSet {
+		std::vector<unsigned char> Grid; //!< 0 = not active. Otherwise the low 6 bits are steps without getting lower + 1, and the top bit is the way the pixel is heading (set = right).
+		std::vector<int> Keys; //!< Keys of active pixels, plus stale ones (no longer active) that are dropped at the next update.
+		size_t Count = 0;
+
+		void Resize(size_t pixels) {
+			if (Grid.size() != pixels) {
+				Grid.assign(pixels, 0);
+				Keys.clear();
+				Count = 0;
+			}
+		}
+		bool Contains(int key) const { return key >= 0 && static_cast<size_t>(key) < Grid.size() && Grid[key] != 0; }
+		void Add(int key, int still, bool headingRight) {
+			if (key >= 0 && static_cast<size_t>(key) < Grid.size() && Grid[key] == 0) {
+				Grid[key] = static_cast<unsigned char>((std::min(still, 62) + 1) | (headingRight ? 0x80 : 0));
+				Keys.push_back(key);
+				++Count;
+			}
+		}
+		void Remove(int key) {
+			if (Contains(key)) {
+				Grid[key] = 0;
+				--Count;
+			}
+		}
+		/// Counts another still step, returning how many that makes.
+		int StillStep(int key) {
+			if (!Contains(key)) {
+				return 0;
+			}
+			if ((Grid[key] & 0x3F) < 63) {
+				++Grid[key];
+			}
+			return (Grid[key] & 0x3F) - 1;
+		}
+		int Still(int key) const { return Contains(key) ? (Grid[key] & 0x3F) - 1 : 0; }
+		bool HeadingRight(int key) const { return Contains(key) && (Grid[key] & 0x80) != 0; }
+		/// Drops stale and repeated keys and sorts the rest, highest first.
+		void Tidy() {
+			Keys.erase(std::remove_if(Keys.begin(), Keys.end(), [this](int key) { return Grid[key] == 0; }), Keys.end());
+			std::sort(Keys.begin(), Keys.end(), std::greater<int>());
+			Keys.erase(std::unique(Keys.begin(), Keys.end()), Keys.end());
+		}
+		void Clear() {
+			for (int key: Keys) {
+				Grid[key] = 0;
+			}
+			Keys.clear();
+			Count = 0;
+		}
+		bool Empty() const { return Count == 0; }
+	};
+	ActiveSet s_Active;
+	std::vector<int> s_Waiting; //!< Pixels that should start moving but couldn't, because too many already were. They get their turn as room frees up.
+	size_t s_SweepCursor = 0; //!< Where the sweep for hanging liquid has got to in the terrain.
 	struct PourRequest {
 		int X, Y, Radius;
 		Liquid Kind;
@@ -125,8 +188,13 @@ namespace {
 	}
 
 	void Activate(int x, int y, int width, int height, const SLTerrain* terrain) {
-		if (s_Active.size() < c_MaxActive && InWorld(x, y, width, height) && KindAt(terrain, x, y) != Liquid::None) {
-			s_Active.emplace(y * width + x, 0);
+		if (InWorld(x, y, width, height) && !s_Active.Contains(y * width + x) && KindAt(terrain, x, y) != Liquid::None) {
+			if (s_Active.Count < c_MaxActive) {
+				// A pixel that starts moving heads one way or the other by where it is, so a body of liquid spreads both ways.
+				s_Active.Add(y * width + x, 0, ((x + y) & 1) != 0);
+			} else if (s_Waiting.size() < 2000000) {
+				s_Waiting.push_back(y * width + x);
+			}
 		}
 	}
 
@@ -134,6 +202,86 @@ namespace {
 		for (int dy = -1; dy <= 1; ++dy) {
 			for (int dx = -1; dx <= 1; ++dx) {
 				Activate(x + dx, y + dy, width, height, terrain);
+			}
+		}
+	}
+
+	/// Looks through the body of liquid a pixel belongs to for a free spot that's lower than the pixel, so liquid finds its own level: across a wide pool, under a wall or through a pipe.
+	/// The search spreads out from the pixel through liquid of the same material, in a fixed order, inside a window around it.
+	/// @return Whether a spot was found; if so it's in foundX and foundY.
+	bool FindLowerSpot(const SLTerrain* terrain, int startX, int startY, int width, int height, int& foundX, int& foundY) {
+		constexpr int halfWidth = 400;
+		constexpr int halfHeight = 200;
+		constexpr int windowWidth = halfWidth * 2 + 1;
+		constexpr int windowHeight = halfHeight * 2 + 1;
+		static std::vector<unsigned char> visited;
+		static std::vector<glm::ivec2> frontier;
+		visited.assign(static_cast<size_t>(windowWidth) * windowHeight, 0);
+		frontier.clear();
+		BITMAP* materialBitmap = terrain->GetBitmap();
+		bool wraps = g_SceneMan.SceneWrapsX();
+		int liquidMaterial = materialBitmap->line[startY][startX];
+		frontier.emplace_back(0, 0);
+		visited[static_cast<size_t>(halfHeight) * windowWidth + halfWidth] = 1;
+		// Down first, then sideways, then up: the lowest spots are found first.
+		static constexpr int offsets[4][2] = {{0, 1}, {-1, 0}, {1, 0}, {0, -1}};
+		for (size_t next = 0; next < frontier.size() && next < static_cast<size_t>(c_LevelSearchCells); ++next) {
+			glm::ivec2 cell = frontier[next];
+			for (const auto& offset: offsets) {
+				int relativeX = cell.x + offset[0];
+				int relativeY = cell.y + offset[1];
+				if (relativeX < -halfWidth || relativeX > halfWidth || relativeY < -halfHeight || relativeY > halfHeight) {
+					continue;
+				}
+				size_t index = static_cast<size_t>(relativeY + halfHeight) * windowWidth + (relativeX + halfWidth);
+				if (visited[index]) {
+					continue;
+				}
+				visited[index] = 1;
+				int x = startX + relativeX;
+				int y = startY + relativeY;
+				if (wraps) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height) {
+					continue;
+				}
+				int material = materialBitmap->line[y][x];
+				if (material == liquidMaterial) {
+					frontier.emplace_back(relativeX, relativeY);
+				} else if (material == g_MaterialAir && relativeY >= 1) {
+					// Lower than the pixel by at least a row, so moving there brings the two levels together rather than swapping them.
+					foundX = x;
+					foundY = y;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/// Checks a stretch of the terrain for liquid that should be moving but isn't being simulated: left hanging over a gap when ground was removed without a wake-up, or loaded from a scene.
+	/// A little each update, working through the whole terrain every few seconds.
+	void Sweep(const SLTerrain* terrain, int width, int height) {
+		size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
+		if (total == 0) {
+			return;
+		}
+		BITMAP* materialBitmap = terrain->GetBitmap();
+		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
+			size_t index = s_SweepCursor;
+			s_SweepCursor = (s_SweepCursor + 1) % total;
+			int x = static_cast<int>(index % static_cast<size_t>(width));
+			int y = static_cast<int>(index / static_cast<size_t>(width));
+			if (y + 1 >= height || s_Kinds[materialBitmap->line[y][x]] == Liquid::None || s_Active.Grid[index] != 0) {
+				continue;
+			}
+			// Air right below, or below and to a side, means it has somewhere to go.
+			const unsigned char* below = materialBitmap->line[y + 1];
+			int left = x > 0 ? x - 1 : (g_SceneMan.SceneWrapsX() ? width - 1 : x);
+			int right = x + 1 < width ? x + 1 : (g_SceneMan.SceneWrapsX() ? 0 : x);
+			if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
+				Activate(x, y, width, height, terrain);
 			}
 		}
 	}
@@ -182,7 +330,19 @@ void FluidSim::Disturb(const Vector& position, float radius) {
 	s_Disturbances.emplace_back(glm::ivec2(static_cast<int>(position.m_X), static_cast<int>(position.m_Y)), static_cast<int>(radius));
 }
 
+namespace {
+	float s_LastUpdateMS = 0.0F;
+}
+
+float FluidSim::GetLastUpdateMS() {
+	return s_LastUpdateMS;
+}
+
 void FluidSim::Update() {
+	struct UpdateTimer {
+		std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
+		~UpdateTimer() { s_LastUpdateMS = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - Start).count(); }
+	} updateTimer;
 	if (g_SceneMan.GetScene() != s_Scene) {
 		Clear();
 		s_Scene = g_SceneMan.GetScene();
@@ -198,13 +358,16 @@ void FluidSim::Update() {
 			}
 			Scene* loadedScene = g_SceneMan.GetScene();
 			int loadedWidth = loadedScene && loadedScene->GetTerrain() ? loadedScene->GetTerrain()->GetBitmap()->w : 0;
+			if (loadedWidth > 0) {
+				s_Active.Resize(static_cast<size_t>(loadedWidth) * static_cast<size_t>(loadedScene->GetTerrain()->GetBitmap()->h));
+			}
 			int x = 0;
 			int y = 0;
 			int still = 0;
-			while (loadedWidth > 0 && stream >> x >> y >> still && s_Active.size() < c_MaxActive) {
-				s_Active.emplace(y * loadedWidth + x, still);
+			while (loadedWidth > 0 && stream >> x >> y >> still && s_Active.Count < c_MaxActive) {
+				s_Active.Add(y * loadedWidth + x, still, ((x + y) & 1) != 0);
 			}
-			g_ConsoleMan.PrintString("SYSTEM: Restored " + std::to_string(s_Active.size()) + " moving liquid pixels from the saved game.");
+			g_ConsoleMan.PrintString("SYSTEM: Restored " + std::to_string(s_Active.Count) + " moving liquid pixels from the saved game.");
 		}
 		s_PendingLoadState.clear();
 	}
@@ -214,7 +377,7 @@ void FluidSim::Update() {
 		std::scoped_lock lock(s_QueueMutex);
 		s_Pours.clear();
 		s_Disturbances.clear();
-		s_Active.clear();
+		s_Active.Clear();
 		return;
 	}
 	if (!s_TablesBuilt) {
@@ -223,6 +386,7 @@ void FluidSim::Update() {
 	int width = terrain->GetBitmap()->w;
 	int height = terrain->GetBitmap()->h;
 	s_Width = width;
+	s_Active.Resize(static_cast<size_t>(width) * static_cast<size_t>(height));
 
 	std::vector<PourRequest> pours;
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
@@ -257,19 +421,29 @@ void FluidSim::Update() {
 			}
 		}
 	}
-	if (s_Active.empty()) {
+	// Pixels that were waiting for room get their turn, oldest first.
+	if (!s_Waiting.empty() && s_Active.Count < c_MaxActive) {
+		size_t taken = 0;
+		while (taken < s_Waiting.size() && s_Active.Count < c_MaxActive) {
+			int key = s_Waiting[taken++];
+			Activate(key % width, key / width, width, height, terrain);
+		}
+		s_Waiting.erase(s_Waiting.begin(), s_Waiting.begin() + static_cast<std::ptrdiff_t>(taken));
+	}
+	Sweep(terrain, width, height);
+	if (s_Active.Empty()) {
+		s_Active.Keys.clear();
 		return;
 	}
 
 	long long simUpdate = g_TimerMan.GetSimUpdateCount();
 	// Bottom to top, so a column of liquid falls together instead of one pixel per step.
-	std::vector<int> keys;
-	keys.reserve(s_Active.size());
-	for (auto it = s_Active.rbegin(); it != s_Active.rend(); ++it) {
-		keys.push_back(it->first);
-	}
+	// A copy, because pixels woken during the step are added to the set and take their turn next step.
+	s_Active.Tidy();
+	std::vector<int> keys = s_Active.Keys;
 	std::vector<int> settled;
 	std::vector<glm::ivec2> hurtSpots;
+	int levelSearches = 0;
 	for (int key: keys) {
 		int x = key % width;
 		int y = key / width;
@@ -345,46 +519,70 @@ void FluidSim::Update() {
 		auto canMoveTo = [&](int tx, int ty) {
 			return InWorld(tx, ty, width, height) && terrain->GetMaterialPixel(tx, ty) == g_MaterialAir;
 		};
+		int heading = s_Active.HeadingRight(key) ? 1 : -1;
+		int still = s_Active.Still(key);
 		int targetX = x;
 		int targetY = y;
 		bool moved = false;
+		bool gotLower = false;
 		if (canMoveTo(x, y + 1)) {
-			targetY = y + 1;
+			// Straight down, a few pixels a step so it pours rather than trickles.
+			for (int fall = 0; fall < properties.Fall && canMoveTo(x, targetY + 1); ++fall) {
+				++targetY;
+			}
 			moved = true;
+			gotLower = true;
 		} else {
-			int first = Random01() < 0.5F ? -1 : 1;
-			for (int side: {first, -first}) {
-				int sx = x + side;
-				InWorld(sx, y, width, height);
-				if (canMoveTo(sx, y + 1)) {
-					targetX = sx;
+			// Down and to a side, the way it's heading first.
+			for (int side: {heading, -heading}) {
+				if (canMoveTo(x + side, y + 1)) {
+					targetX = x + side;
 					targetY = y + 1;
+					heading = side;
 					moved = true;
+					gotLower = true;
 					break;
 				}
 			}
 			if (!moved) {
-				// Run sideways to find the level.
-				for (int side: {first, -first}) {
+				// Run along the level the way it's heading, turning round at a wall, and drop off the first edge it finds.
+				for (int side: {heading, -heading}) {
 					for (int step = 1; step <= properties.Flow; ++step) {
-						int sx = x + side * step;
-						if (!canMoveTo(sx, y)) {
+						int sideX = x + side * step;
+						if (!canMoveTo(sideX, y)) {
 							break;
 						}
-						targetX = sx;
+						targetX = sideX;
 						moved = true;
-						InWorld(targetX, targetY, width, height);
-						// Stop as soon as there's a way down, so liquid pours off ledges.
-						int belowX = targetX;
-						int belowY = y + 1;
-						if (canMoveTo(belowX, belowY)) {
+						if (canMoveTo(sideX, y + 1)) {
+							targetY = y + 1;
+							gotLower = true;
 							break;
 						}
 					}
 					if (moved) {
+						heading = side;
 						break;
 					}
 				}
+			}
+		}
+		// Stuck, or only wandering along the top: look through the body of liquid for a lower free spot, so separate parts of it come to one level.
+		// Only so many may look each update. The rest wait for their turn without counting towards coming to rest, so none miss out.
+		bool waitingToSearch = false;
+		if (!gotLower && still == 3 && canMoveTo(x, y - 1)) {
+			if (levelSearches < c_LevelSearchesPerUpdate) {
+				++levelSearches;
+				int foundX = 0;
+				int foundY = 0;
+				if (FindLowerSpot(terrain, x, y, width, height, foundX, foundY)) {
+					targetX = foundX;
+					targetY = foundY;
+					moved = true;
+					gotLower = true;
+				}
+			} else {
+				waitingToSearch = true;
 			}
 		}
 		if (moved) {
@@ -397,17 +595,21 @@ void FluidSim::Update() {
 			terrain->SetFGColorPixel(targetX, targetY, color);
 			terrain->SetMaterialPixel(x, y, g_MaterialAir);
 			terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
-			s_Active.erase(key);
-			s_Active[target] = 0;
+			s_Active.Remove(key);
+			// Running along the level without getting any lower counts towards coming to rest, so ripples die down.
+			int newStill = gotLower ? 0 : (waitingToSearch ? still : still + 1);
+			if (newStill < c_RestSteps) {
+				s_Active.Add(target, newStill, heading > 0);
+			}
 			// Whatever was resting around it may now flow into the gap.
 			ActivateAround(x, y, width, height, terrain);
-		} else if (++s_Active[key] >= c_RestSteps) {
+		} else if (!waitingToSearch && s_Active.StillStep(key) >= c_RestSteps) {
 			settled.push_back(key);
 		}
 	}
 
 	for (int key: settled) {
-		s_Active.erase(key);
+		s_Active.Remove(key);
 	}
 	for (const glm::ivec2& spot: hurtSpots) {
 		if (MovableObject* flame = CreateEffect("MOPixel", "Flame Hurt Particle")) {
@@ -424,8 +626,18 @@ std::string FluidSim::GetSaveState() {
 	// Keys were made with the width cached at the last update; the terrain isn't touched here, since saving can happen at any time.
 	int width = s_Width;
 	if (width > 0) {
-		for (const auto& [key, still]: s_Active) {
-			stream << ' ' << key % width << ' ' << key / width << ' ' << still;
+		// Lowest key first, as saves have always listed them.
+		std::vector<int> keys;
+		keys.reserve(s_Active.Count);
+		for (int key: s_Active.Keys) {
+			if (s_Active.Contains(key)) {
+				keys.push_back(key);
+			}
+		}
+		std::sort(keys.begin(), keys.end());
+		keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+		for (int key: keys) {
+			stream << ' ' << key % width << ' ' << key / width << ' ' << s_Active.Still(key);
 		}
 	}
 	return stream.str();
@@ -436,12 +648,14 @@ void FluidSim::SetPendingLoadState(const std::string& state) {
 }
 
 void FluidSim::Clear() {
-	s_Active.clear();
+	s_Active.Clear();
+	s_Waiting.clear();
+	s_SweepCursor = 0;
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pours.clear();
 	s_Disturbances.clear();
 }
 
 int FluidSim::GetActiveCount() {
-	return static_cast<int>(s_Active.size());
+	return static_cast<int>(s_Active.Count);
 }

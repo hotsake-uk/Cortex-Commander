@@ -137,14 +137,21 @@ void main() {
 			bool surface = texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r, 0.0)).b < 0.1;
 			float wave = sin(worldPos.x * 0.35 + rteTime * 2.3) * sin(worldPos.y * 0.21 - rteTime * 1.7) + 0.5 * sin(worldPos.x * 0.11 - rteTime * 0.9);
 			if (liquid < 0.45) {
-				// Water: see-through (an animated dither lets the background show), shimmering, with a bright surface line.
-				float dither = fract(sin(dot(floor(worldPos) + floor(rteTime * 6.0) * 0.37, vec2(12.9898, 78.233))) * 43758.5453);
-				if (!surface && dither < 0.32) {
-					discard;
+				// Water: translucent, deepening in colour with depth, with slow ripples of light and a bright line where it meets the air.
+				float depth = 7.0;
+				for (int k = 1; k <= 6; ++k) {
+					if (texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y * float(k))).r, 0.0)).b < 0.1) {
+						depth = float(k);
+						break;
+					}
 				}
-				FragColor.rgb *= 0.9 + 0.15 * wave;
-				if (surface) {
-					FragColor.rgb = mix(FragColor.rgb, vec3(0.75, 0.9, 1.0), 0.55 + 0.2 * wave);
+				float deep = smoothstep(1.0, 7.0, depth);
+				float ripple = 0.5 + 0.5 * sin(worldPos.x * 0.09 + worldPos.y * 0.05 + rteTime * 1.3 + 1.7 * sin(worldPos.y * 0.07 - rteTime * 0.8));
+				vec3 water = mix(vec3(0.27, 0.6, 0.8), vec3(0.06, 0.3, 0.52), deep) * (0.93 + 0.12 * ripple);
+				FragColor = vec4(water, mix(0.6, 0.8, deep));
+				// Open to the air above (not under a ceiling of rock): the surface catches the light and laps a little.
+				if (surface && Coverage(textureUV - vec2(0.0, texel.y)) < 0.5) {
+					FragColor = vec4(mix(water, vec3(0.82, 0.94, 1.0), 0.6 + 0.2 * wave), 0.92);
 				}
 			} else if (liquid < 0.8) {
 				// Lava: slow bright currents, crusting darker at the surface.

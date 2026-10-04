@@ -51,6 +51,9 @@ namespace RTE {
 		/// Gets how many liquid pixels are moving, for statistics.
 		static int GetActiveCount();
 
+		/// Gets how long the last update took, in milliseconds, for statistics.
+		static float GetLastUpdateMS();
+
 	private:
 		static bool s_Enabled; //!< Whether flowing liquids are on.
 	};
