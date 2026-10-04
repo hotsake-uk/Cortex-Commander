@@ -1,4 +1,4 @@
-﻿# Cortex Commander: Visuals and Performance Plan
+# Cortex Commander: Visuals and Performance Plan
 
 The earlier plans are done (`MODERNISATION_PLAN.md`, `FEATURE_PROPOSAL.md`). This one covers the next round: shadows, materials that look like what they are, better effects, and making the engine cope with bigger fights.
 
