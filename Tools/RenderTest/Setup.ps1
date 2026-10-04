@@ -161,3 +161,5 @@ Write-Scenario "LightsFixtures" ($shadowBunker + @{ TimeOfDay = 23; WeatherType 
 Write-Scenario "LightsFixturesOnly" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingDebugView = 1 }) @("Render Test Light Fixtures")
 # The same with the interiors' own light turned well down, so the lamps do the lighting.
 Write-Scenario "LightsDarkInterior" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingAmbient = "0.12 0.12 0.15"; LightingForegroundAmbient = "0.12 0.12 0.14" }) @("Render Test Light Fixtures")
+# Two of the bunker's lamps destroyed: they should be dark (compare with GoldenShadows, the same view with them whole).
+Write-Scenario "LightsBroken" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingDebugView = 1 }) @("Render Test Light Break")

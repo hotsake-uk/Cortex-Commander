@@ -279,14 +279,17 @@ AddTerrainObject = TerrainObject
 ```
 
 - A piece can have any number of `AddLight` blocks. A copy (`CopyOf`) keeps its original's lights; `ClearLights = 1` drops them.
-- **Lamps can be destroyed.** A lamp hangs on the nearest solid thing within five pixels of it (the pixel it's on, else above, beside, below). When that is shot or blown away the lamp goes out in a few sparks. A lamp with nothing solid near it (one painted on a back wall) stays.
+- **Lamps can be destroyed**, and go out for good in a few sparks. Three things do it:
+  - A shot passing through the lamp (any fast, sharp projectile within about four pixels of it).
+  - An explosion nearby: the bigger the blast, the further it reaches, from 20 to 75 pixels.
+  - Losing what it hangs on. A lamp hangs on the nearest solid thing within five pixels of it (the pixel it's on, else above, beside, below), and goes out when that is dug, shot or blown away.
 - **One lamp to a spot.** A lamp placed within ten pixels of another replaces it, and building a piece over a lamp removes the lamp. So a background piece painted with a lamp's glow can bring the lamp without doubling the one of the module it's put in.
 - A `Scene`'s terrain can have lamps of its own: `AddLight = TerrainLight` inside the `Terrain = SLTerrain` block, with `Position` in scene coordinates.
 - From Lua: `SceneMan:AddTerrainLight(pos, r, g, b, radius, intensity)` puts one up, `SceneMan:RemoveTerrainLights(pos, radius)` takes down those near a point.
 
 **Stock pieces.** The lamps painted on the stock bunker pieces are real: the blue ceiling lamps of the concrete modules and tutorial pieces, the white and yellow strip and panel lights, lit windows and screens, the brain vault and rocket silo, vending machines, and the Browncoats' sodium and amber lamps. Brain cases, teleporters and consoles glow a little too.
 
-**Placeable fixtures** (group `Bunker Lights`, in the build menus and the sandbox's Structure tool): Ceiling Lamp, Wall Lamp and Tiny Light in White, Warm, Blue, Red and Green; Floor Lamp and Strip Light in White and Warm; Floodlight Down, Left and Right (beams); Warning Beacon (pulses red); Flickering Lamp. They're drawn on the back wall, so they never block anything. `Tools/MakeBunkerLights.py` draws them and writes their INI.
+**Placeable fixtures** (group `Bunker Lights`, in the build menus and the sandbox's Structure tool): Ceiling Lamp, Wall Lamp and Tiny Light in White, Warm, Blue, Red and Green; Floor Lamp and Strip Light in White and Warm; Floodlight Down, Left and Right (beams); Warning Beacon (pulses red); Flickering Lamp. They're drawn on the back wall, so they never block anything; the lamp's picture stays when it's smashed, only its light goes. `Tools/MakeBunkerLights.py` draws them and writes their INI.
 
 How much the lamps matter depends on how bright interiors are without them: `LightingAmbient` (0.6 by default) and `LightingForegroundAmbient` (0.5) light every interior evenly. Turn them down (the F6 window's interior light) and bunkers are lit by their lamps, and go dark where the lamps are shot out.
 

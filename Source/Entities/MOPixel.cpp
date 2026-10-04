@@ -1,3 +1,4 @@
+#include "SLTerrain.h"
 #include "MOPixel.h"
 
 #include "Atom.h"
@@ -217,6 +218,13 @@ void MOPixel::Update() {
 			++s_TracersLit;
 			Color trailColor(m_Atom->GetTrailColor().GetIndex());
 			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), 28.0F, 0.55F);
+		}
+	}
+
+	// A shot that passes through a lamp of the scenery smashes it.
+	if (m_Sharpness > 0 && m_Vel.MagnitudeIsGreaterThan(25.0F)) {
+		if (SLTerrain* terrain = g_SceneMan.GetTerrain()) {
+			terrain->ShootLightsAlong(m_PrevPos, m_Pos);
 		}
 	}
 

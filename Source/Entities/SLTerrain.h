@@ -4,6 +4,8 @@
 #include "Matrix.h"
 #include "Color.h"
 
+#include <mutex>
+
 namespace RTE {
 
 	class MOPixel;
@@ -214,6 +216,12 @@ namespace RTE {
 		/// Gets the lights of the scenery.
 		const std::vector<TerrainLight>& GetLights() const { return m_Lights; }
 
+		/// Smashes the scenery's lights within a distance of a point: they go out for good, on the next update. For explosions. Safe to call from any thread.
+		void BreakLightsNear(const Vector& pos, float radius);
+
+		/// Smashes any of the scenery's lights that a shot passes through on its way between two points. Cheap when there's no lamp near. Safe to call from any thread.
+		void ShootLightsAlong(const Vector& from, const Vector& to);
+
 		/// Makes the scenery's lights shine this update, and puts out the ones whose fixture has been destroyed. Only for the terrain of the Scene being played.
 		void UpdateLights();
 
@@ -274,6 +282,11 @@ namespace RTE {
 
 		std::vector<TerrainLight> m_Lights; //!< The lights of the scenery, in scene coordinates.
 		int m_LightCheckCounter; //!< Counts updates between checks of whether the lights' fixtures are still there.
+		std::vector<unsigned char> m_LightCells; //!< A coarse grid over the scene marking where there's a light nearby, so shots can tell quickly that they aren't hitting one.
+		int m_LightCellColumns; //!< How many cells wide that grid is.
+		bool m_LightCellsStale; //!< Whether the lights have changed since the grid was made.
+		std::vector<std::pair<Vector, float>> m_LightBreaks; //!< Places and distances where lights are to be smashed on the next update.
+		std::mutex m_LightBreaksMutex; //!< Guards m_LightBreaks.
 
 		std::deque<Box> m_UpdatedMaterialAreas; //!< List of areas of the material layer (main bitmap) which have been affected by new objects copied to it. These boxes are NOT wrapped, and can be out of bounds!
 

@@ -951,6 +951,10 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 	if (gibEnergy >= 2000.0F) {
 		// A blast blackens the units near it, more the closer they are.
 		float sootReach = std::clamp(std::sqrt(gibEnergy) * 0.9F, 40.0F, 150.0F);
+		// And smashes the lamps close to it, whatever they hang on.
+		if (SLTerrain* terrain = g_SceneMan.GetTerrain()) {
+			terrain->BreakLightsNear(m_Pos, sootReach * 0.5F);
+		}
 		for (Actor* actor: g_MovableMan.GetActorList()) {
 			float distance = g_SceneMan.ShortestDistance(m_Pos, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
 			if (actor != this && distance < sootReach) {

@@ -100,6 +100,10 @@ void SLTerrain::Clear() {
 	m_TerrainObjects.clear();
 	m_Lights.clear();
 	m_LightCheckCounter = 0;
+	m_LightCells.clear();
+	m_LightCellColumns = 0;
+	m_LightCellsStale = true;
+	m_LightBreaks.clear();
 	m_UpdatedMaterialAreas.clear();
 	m_OrbitDirection = Directions::Up;
 
@@ -151,6 +155,7 @@ int SLTerrain::Create(const SLTerrain& reference) {
 	}
 
 	m_Lights = reference.m_Lights;
+	m_LightCellsStale = true;
 
 	m_OrbitDirection = reference.m_OrbitDirection;
 
@@ -190,6 +195,7 @@ int SLTerrain::ReadProperty(const std::string_view& propName, Reader& reader) {
 		TerrainLight light;
 		reader >> light;
 		m_Lights.emplace_back(light);
+		m_LightCellsStale = true;
 	});
 	MatchProperty("OrbitDirection", {
 		std::string orbitDirection;
@@ -352,6 +358,7 @@ void SLTerrain::AddLight(const TerrainLight& light) {
 	if (light.m_Radius <= 0.0F || light.m_Intensity <= 0.0F) {
 		return;
 	}
+	m_LightCellsStale = true;
 	TerrainLight newLight = light;
 	if (m_WrapX && m_MainBitmap) {
 		newLight.m_Pos.m_X = std::fmod(std::fmod(newLight.m_Pos.m_X, static_cast<float>(m_MainBitmap->w)) + static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->w));
@@ -369,7 +376,48 @@ void SLTerrain::AddLight(const TerrainLight& light) {
 int SLTerrain::RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove) {
 	size_t before = m_Lights.size();
 	std::erase_if(m_Lights, shouldRemove);
+	m_LightCellsStale = true;
 	return static_cast<int>(before - m_Lights.size());
+}
+
+namespace {
+	constexpr int c_LightCellSize = 16;
+}
+
+void SLTerrain::BreakLightsNear(const Vector& pos, float radius) {
+	if (m_Lights.empty()) {
+		return;
+	}
+	std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+	m_LightBreaks.emplace_back(pos, radius);
+}
+
+void SLTerrain::ShootLightsAlong(const Vector& from, const Vector& to) {
+	if (m_Lights.empty() || m_LightCells.empty()) {
+		return;
+	}
+	Vector path = to - from;
+	float length = path.GetMagnitude();
+	// A jump this long is a wrap across the scene's seam, not a flight.
+	if (length > 400.0F) {
+		return;
+	}
+	int steps = std::max(static_cast<int>(std::ceil(length / 5.0F)), 1);
+	int rows = static_cast<int>(m_LightCells.size()) / m_LightCellColumns;
+	for (int step = 0; step <= steps; ++step) {
+		Vector point = from + path * (static_cast<float>(step) / static_cast<float>(steps));
+		int cellX = static_cast<int>(std::floor(point.m_X)) / c_LightCellSize;
+		int cellY = static_cast<int>(std::floor(point.m_Y)) / c_LightCellSize;
+		if (point.m_X < 0.0F || point.m_Y < 0.0F || cellX >= m_LightCellColumns || cellY >= rows || !m_LightCells[cellY * m_LightCellColumns + cellX]) {
+			continue;
+		}
+		for (const TerrainLight& light: m_Lights) {
+			if (std::abs(light.m_Pos.m_X - point.m_X) < 4.5F && std::abs(light.m_Pos.m_Y - point.m_Y) < 4.5F) {
+				BreakLightsNear(light.m_Pos, 1.0F);
+				return;
+			}
+		}
+	}
 }
 
 void SLTerrain::UpdateLights() {
@@ -377,6 +425,49 @@ void SLTerrain::UpdateLights() {
 		return;
 	}
 	auto solidAt = [](const Vector& point) { return g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) > MaterialColorKeys::g_MaterialCavity; };
+
+	// Lamps that were shot or blown up since the last update go out.
+	{
+		std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+		if (!m_LightBreaks.empty()) {
+			for (auto light = m_Lights.begin(); light != m_Lights.end();) {
+				bool smashed = false;
+				for (const auto& [where, radius]: m_LightBreaks) {
+					if (g_SceneMan.ShortestDistance(where, light->m_Pos, m_WrapX).MagnitudeIsLessThan(radius)) {
+						smashed = true;
+						break;
+					}
+				}
+				if (smashed) {
+					EffectsParticles::Emit("Sparks", light->m_Pos, Vector(0.0F, 2.0F), 1.0F, 14, 0);
+					light = m_Lights.erase(light);
+					m_LightCellsStale = true;
+				} else {
+					++light;
+				}
+			}
+			m_LightBreaks.clear();
+		}
+	}
+	if (m_LightCellsStale && m_MainBitmap) {
+		// Mark the cell of each lamp and the ones around it.
+		m_LightCellsStale = false;
+		m_LightCellColumns = m_MainBitmap->w / c_LightCellSize + 1;
+		int rows = m_MainBitmap->h / c_LightCellSize + 1;
+		m_LightCells.assign(static_cast<size_t>(m_LightCellColumns) * rows, 0);
+		for (const TerrainLight& light: m_Lights) {
+			int cellX = static_cast<int>(light.m_Pos.m_X) / c_LightCellSize;
+			int cellY = static_cast<int>(light.m_Pos.m_Y) / c_LightCellSize;
+			for (int y = std::max(cellY - 1, 0); y <= std::min(cellY + 1, rows - 1); ++y) {
+				for (int x = std::max(cellX - 1, 0); x <= std::min(cellX + 1, m_LightCellColumns - 1); ++x) {
+					m_LightCells[y * m_LightCellColumns + x] = 1;
+				}
+			}
+		}
+	}
+	if (m_Lights.empty()) {
+		return;
+	}
 
 	bool checkFixtures = ++m_LightCheckCounter >= 20;
 	if (checkFixtures) {
@@ -404,6 +495,7 @@ void SLTerrain::UpdateLights() {
 			// What it hung on has been shot or blown away: it goes out in a shower of sparks.
 			EffectsParticles::Emit("Sparks", light->m_Pos, Vector(0.0F, 2.0F), 1.0F, 14, 0);
 			light = m_Lights.erase(light);
+			m_LightCellsStale = true;
 			continue;
 		}
 		float brightness = light->m_Intensity;
