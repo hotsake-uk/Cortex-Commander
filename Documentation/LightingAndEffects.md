@@ -70,7 +70,7 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **How it moves:** each drop falls, then runs along the level the way it was already heading, turns round at walls and drops off the first edge it finds. So liquid runs downhill and spreads out instead of piling up like sand.
 - **Finding its level:** liquid that has nowhere left to run looks through the body it belongs to for a lower free spot and moves there. Connected pools come to one level, including through a tunnel or under a wall.
 - **Nothing gets left hanging:** liquid wakes when ground next to it is dug, shot or blasted away, and a sweep of the whole map every few seconds catches anything missed. Any amount can be poured; beyond 80,000 moving pixels the rest wait their turn.
-- **Cost:** liquid at rest costs nothing. Measured on the Final build: about 0.6 ms per update with 6,000 pixels moving, and 6 to 8 ms (with spikes to 11 ms) with the most that can move at once, 80,000. F6 shows the count and time.
+- **Cost:** liquid at rest costs nothing. Measured: about 0.7 ms per update with 6,000 pixels moving (Debug Release build), and 6 to 8 ms, with spikes to 11 ms, with the most that can move at once, 80,000 (Final build). F6 shows the count and time.
 - **Determinism:** it is part of the simulation and deterministic.
 - **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid"|"Oil")`, `SceneMan:GetFlowingLiquidPixelCount()`, `SceneMan:GetBurningPixelCount()`.
 - **Liquid weapons:** the **Napalm Flamer** sprays burning fuel that pools and burns, the **Water Cannon** knocks people back and puts fires out, and the **Acid Sprayer** lobs globs that sting and eat soft ground.
