@@ -399,6 +399,16 @@ void DebugMan::GraphicsLabGUI() {
 
 		ImGui::SeparatorText("Sky and ambient light");
 		ImGui::Checkbox("Lighting enabled", &settings.Enabled);
+		// One slider for how bright interiors and caves are without any lamps: it scales the ambient light and the foreground floor together, keeping their tints.
+		// Turned down, bunkers are lit by their lamps and go dark where those are shot out.
+		float ambientLevel = std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z});
+		if (ImGui::SliderFloat("Ambient lighting", &ambientLevel, 0.02F, 1.0F, "%.2f")) {
+			float floorLevel = std::max({settings.ForegroundAmbient.x, settings.ForegroundAmbient.y, settings.ForegroundAmbient.z});
+			float scale = ambientLevel / std::max(std::max({settings.Ambient.x, settings.Ambient.y, settings.Ambient.z}), 0.001F);
+			settings.Ambient *= scale;
+			settings.ForegroundAmbient = floorLevel > 0.001F ? settings.ForegroundAmbient * scale : glm::vec3(ambientLevel * 0.83F);
+		}
+		ImGui::SetItemTooltip("How bright interiors and caves are without lamps. Lower it and bunkers are lit by their lamps.");
 		ImGui::ColorEdit3("Ambient (linear)", &settings.Ambient.x, linearColorFlags);
 		ImGui::ColorEdit3("Sky (linear)", &settings.SkyColor.x, linearColorFlags);
 		ImGui::ColorEdit3("Foreground floor (linear)", &settings.ForegroundAmbient.x, linearColorFlags);
