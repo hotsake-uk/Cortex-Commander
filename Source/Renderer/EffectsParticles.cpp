@@ -49,6 +49,9 @@ namespace {
 		float Energy; //!< Explosion energy, or 0 for an impact.
 		unsigned int MaterialColor; //!< 0xRRGGBB.
 		float Hardness;
+		int EmitKind = -1; //!< A Kind to emit directly (mods), or -1.
+		int EmitCount = 0;
+		float EmitSpread = 0.0F;
 	};
 
 	constexpr size_t c_MaxParticles = 8000;
@@ -110,6 +113,31 @@ namespace {
 	}
 
 	void SpawnFromRequest(const SpawnRequest& request, float amount) {
+		if (request.EmitKind >= 0) {
+			Kind kind = static_cast<Kind>(request.EmitKind);
+			float speed = glm::length(request.Velocity);
+			int count = std::max(static_cast<int>(std::round(static_cast<float>(request.EmitCount) * amount)), request.EmitCount > 0 ? 1 : 0);
+			for (int i = 0; i < count; ++i) {
+				// Each particle's velocity strays from the given one by up to the spread, in direction and speed.
+				glm::vec2 velocity = request.Velocity + RandomDirection() * std::max(speed, 30.0F) * request.EmitSpread * Random01();
+				glm::u8vec3 color = UnpackRGB(request.MaterialColor);
+				switch (kind) {
+					case Kind::Spark:
+						Add({request.Position, velocity, 0.0F, RandomRange(0.2F, 0.7F), 1.0F, request.MaterialColor ? color : glm::u8vec3(255, 225, 150), Kind::Spark});
+						break;
+					case Kind::Dust:
+						Add({request.Position, velocity, 0.0F, RandomRange(1.0F, 2.5F), RandomRange(2.5F, 5.0F), request.MaterialColor ? color : glm::u8vec3(110, 100, 92), Kind::Dust});
+						break;
+					case Kind::Ember:
+						Add({request.Position, velocity, 0.0F, RandomRange(0.8F, 2.0F), 1.0F, request.MaterialColor ? color : glm::u8vec3(255, 160, 60), Kind::Ember});
+						break;
+					default:
+						Add({request.Position, velocity, 0.0F, RandomRange(1.0F, 2.5F), 1.0F, request.MaterialColor ? color : glm::u8vec3(120, 110, 100), Kind::Debris});
+						break;
+				}
+			}
+			return;
+		}
 		if (request.Ember) {
 			Add({request.Position, glm::vec2(RandomRange(-8.0F, 8.0F), RandomRange(-40.0F, -20.0F)), 0.0F, RandomRange(0.8F, 2.0F), 1.0F, glm::u8vec3(255, 160, 60), Kind::Ember});
 			return;
@@ -236,6 +264,38 @@ void EffectsParticles::SpawnEmber(const Vector& position) {
 	request.Ember = true;
 	request.Position = glm::vec2(position.m_X, position.m_Y);
 	s_Queue.push_back(request);
+}
+
+bool EffectsParticles::Emit(const std::string& kind, const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB) {
+	Kind which;
+	if (kind == "Sparks" || kind == "Spark") {
+		which = Kind::Spark;
+	} else if (kind == "Dust") {
+		which = Kind::Dust;
+	} else if (kind == "Embers" || kind == "Ember") {
+		which = Kind::Ember;
+	} else if (kind == "Debris") {
+		which = Kind::Debris;
+	} else {
+		return false;
+	}
+	if (count <= 0) {
+		return true;
+	}
+	SpawnRequest request;
+	request.EmitKind = static_cast<int>(which);
+	request.EmitCount = std::min(count, 200);
+	request.EmitSpread = std::clamp(spread, 0.0F, 1.0F);
+	request.Position = glm::vec2(position.m_X, position.m_Y);
+	request.Velocity = glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM;
+	request.Energy = 0.0F;
+	request.MaterialColor = colorRGB & 0xFFFFFF;
+	request.Hardness = 0.0F;
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Queue.size() < 2000) {
+		s_Queue.push_back(request);
+	}
+	return true;
 }
 
 void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialColor, float hardness) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "glm/glm.hpp"
+#include <string>
 #include <vector>
 
 namespace RTE {
@@ -44,6 +45,16 @@ namespace RTE {
 		/// @param materialRGB The hit material's color, 0xRRGGBB, for debris and dust.
 		/// @param hardness 0 for soft materials like dirt (dust), 1 for hard ones like metal and rock (sparks).
 		static void SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialRGB, float hardness);
+
+		/// Queues visual particles of one kind, for mods (INI VisualEmission on any object, Lua EmitVisualParticles). Thread safe. Render only: they never touch the simulation.
+		/// @param kind "Sparks" (glowing streaks), "Dust" (soft puffs), "Debris" (little chips that bounce) or "Embers" (rise and drift).
+		/// @param position Where, in scene coordinates.
+		/// @param velocity Which way they fly, in meters per second like an object's velocity.
+		/// @param spread How much each particle's direction and speed vary, 0 (none) to 1 (every direction).
+		/// @param count How many.
+		/// @param colorRGB Their color as 0xRRGGBB, or 0 for the kind's own color.
+		/// @return Whether the kind was recognised.
+		static bool Emit(const std::string& kind, const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB);
 
 		/// Queues a glowing ember that rises from a fire. Render only.
 		static void SpawnEmber(const Vector& position);

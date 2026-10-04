@@ -1,4 +1,6 @@
 #include "MovableObject.h"
+#include "TimerMan.h"
+#include "EffectsParticles.h"
 #include "RenderMan.h"
 
 #include "ActivityMan.h"
@@ -108,6 +110,12 @@ void MovableObject::Clear() {
 	m_LightRadius = 0.0F;
 	m_LightIntensity = 0.0F;
 	m_LightFlicker = 0.0F;
+	m_VisualEmission.clear();
+	m_VisualEmissionRate = 0.0F;
+	m_VisualEmissionSpread = 0.6F;
+	m_VisualEmissionDue = 0.0F;
+	m_LightConeAngle = 0.0F;
+	m_LightConeDirection = 0.0F;
 	m_LightOffset.Reset();
 	m_RenderBlendMode = 0;
 	m_RenderOpacity = 1.0F;
@@ -239,6 +247,11 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_LightRadius = reference.m_LightRadius;
 	m_LightIntensity = reference.m_LightIntensity;
 	m_LightFlicker = reference.m_LightFlicker;
+	m_VisualEmission = reference.m_VisualEmission;
+	m_VisualEmissionRate = reference.m_VisualEmissionRate;
+	m_VisualEmissionSpread = reference.m_VisualEmissionSpread;
+	m_LightConeAngle = reference.m_LightConeAngle;
+	m_LightConeDirection = reference.m_LightConeDirection;
 	m_LightOffset = reference.m_LightOffset;
 	m_RenderBlendMode = reference.m_RenderBlendMode;
 	m_RenderOpacity = reference.m_RenderOpacity;
@@ -370,6 +383,11 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 	MatchProperty("LightRadius", { reader >> m_LightRadius; });
 	MatchProperty("LightIntensity", { reader >> m_LightIntensity; });
 	MatchProperty("LightFlicker", { reader >> m_LightFlicker; });
+	MatchProperty("VisualEmission", { m_VisualEmission = reader.ReadPropValue(); });
+	MatchProperty("VisualEmissionRate", { reader >> m_VisualEmissionRate; });
+	MatchProperty("VisualEmissionSpread", { reader >> m_VisualEmissionSpread; });
+	MatchProperty("LightConeAngle", { reader >> m_LightConeAngle; });
+	MatchProperty("LightConeDirection", { reader >> m_LightConeDirection; });
 	MatchProperty("LightOffset", { reader >> m_LightOffset; });
 	MatchProperty("RenderBlendMode", {
 		std::string mode = reader.ReadPropValue();
@@ -497,6 +515,13 @@ int MovableObject::Save(Writer& writer) const {
 	writer << m_LightIntensity;
 	writer.NewProperty("LightFlicker");
 	writer << m_LightFlicker;
+	if (!m_VisualEmission.empty()) {
+		writer.NewPropertyWithValue("VisualEmission", m_VisualEmission);
+		writer.NewPropertyWithValue("VisualEmissionRate", m_VisualEmissionRate);
+		writer.NewPropertyWithValue("VisualEmissionSpread", m_VisualEmissionSpread);
+	}
+	writer.NewPropertyWithValue("LightConeAngle", m_LightConeAngle);
+	writer.NewPropertyWithValue("LightConeDirection", m_LightConeDirection);
 	writer.NewProperty("LightOffset");
 	writer << m_LightOffset;
 	writer.NewPropertyWithValue("RenderBlendMode", m_RenderBlendMode);
@@ -988,13 +1013,29 @@ void MovableObject::Update() {
 		SetPostScreenEffectToDraw();
 	}
 
+	if (!m_VisualEmission.empty() && m_VisualEmissionRate > 0.0F) {
+		m_VisualEmissionDue += m_VisualEmissionRate * g_TimerMan.GetDeltaTimeSecs();
+		if (m_VisualEmissionDue >= 1.0F) {
+			int count = static_cast<int>(m_VisualEmissionDue);
+			m_VisualEmissionDue -= static_cast<float>(count);
+			EffectsParticles::Emit(m_VisualEmission, m_Pos, m_Vel, m_VisualEmissionSpread, count, 0);
+		}
+	}
+
 	if (m_LightRadius > 0.0F && m_LightIntensity > 0.0F) {
 		Vector lightOffset = m_LightOffset;
 		if (!lightOffset.IsZero()) {
 			lightOffset = lightOffset.GetXFlipped(IsHFlipped()) * GetRotMatrix();
 		}
 		float flicker = m_LightFlicker > 0.0F ? 1.0F - m_LightFlicker * RandomNum(0.0F, 1.0F) : 1.0F;
-		g_PostProcessMan.RegisterLight(m_Pos + lightOffset, glm::vec3(m_LightColor.GetR(), m_LightColor.GetG(), m_LightColor.GetB()), m_LightRadius, m_LightIntensity * flicker);
+		glm::vec3 lightColor(m_LightColor.GetR(), m_LightColor.GetG(), m_LightColor.GetB());
+		if (m_LightConeAngle > 0.0F) {
+			// A beam pointing the way this faces, turned by the cone direction.
+			Vector direction = Vector(1.0F, 0.0F).GetRadRotatedCopy(-m_LightConeDirection * c_PI / 180.0F).GetXFlipped(IsHFlipped()) * GetRotMatrix();
+			g_PostProcessMan.RegisterConeLight(m_Pos + lightOffset, direction, m_LightConeAngle, lightColor, m_LightRadius, m_LightIntensity * flicker);
+		} else {
+			g_PostProcessMan.RegisterLight(m_Pos + lightOffset, lightColor, m_LightRadius, m_LightIntensity * flicker);
+		}
 	}
 }
 

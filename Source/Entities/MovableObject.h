@@ -889,6 +889,28 @@ namespace RTE {
 		float GetLightIntensity() const { return m_LightIntensity; }
 		void SetLightIntensity(float intensity) { m_LightIntensity = intensity; }
 		/// Gets how much the light this casts flickers, 0 to 1.
+		/// Sets the purely visual particles this gives off as it goes. They never affect the simulation.
+		/// @param kind "Sparks", "Dust", "Debris" or "Embers", or an empty string for none.
+		/// @param perSecond How many per second.
+		/// @param spread How much their direction and speed vary, 0 to 1.
+		void SetVisualEmission(const std::string& kind, float perSecond, float spread) {
+			m_VisualEmission = kind;
+			m_VisualEmissionRate = perSecond;
+			m_VisualEmissionSpread = spread;
+		}
+
+		/// Gets the half-angle of this' light's cone in degrees, 0 for a light that shines all round.
+		float GetLightConeAngle() const { return m_LightConeAngle; }
+
+		/// Sets the half-angle of this' light's cone in degrees: above 0 the light is a beam like a flashlight, pointing the way this faces. 0 shines all round.
+		void SetLightConeAngle(float degrees) { m_LightConeAngle = degrees; }
+
+		/// Gets which way the light's cone points, in degrees clockwise from the way this faces.
+		float GetLightConeDirection() const { return m_LightConeDirection; }
+
+		/// Sets which way the light's cone points, in degrees clockwise from the way this faces.
+		void SetLightConeDirection(float degrees) { m_LightConeDirection = degrees; }
+
 		float GetLightFlicker() const { return m_LightFlicker; }
 		void SetLightFlicker(float flicker) { m_LightFlicker = flicker; }
 		/// Sets the color of the light this casts, 0-255 per channel.
@@ -1319,6 +1341,12 @@ namespace RTE {
 		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
 		float m_LightFlicker; //!< How much the light randomly flickers, 0 to 1.
+		std::string m_VisualEmission; //!< Kind of purely visual particles this gives off ("Sparks", "Dust", "Debris", "Embers"), or empty for none.
+		float m_VisualEmissionRate; //!< How many it gives off per second.
+		float m_VisualEmissionSpread; //!< How much their direction and speed vary, 0 to 1.
+		float m_VisualEmissionDue; //!< Fraction of a particle carried over to the next update.
+		float m_LightConeAngle; //!< Half-angle of the light's cone in degrees, 0 for a light that shines all round.
+		float m_LightConeDirection; //!< Which way the cone points, in degrees clockwise from the way this faces.
 		int m_RenderBlendMode; //!< How this is blended when drawn: 0 normal, 1 additive, 2 screen.
 		float m_RenderOpacity; //!< Opacity this is drawn with, 0 to 1.
 		Vector m_LightOffset; //!< Offset of the light from this' position, rotated and flipped with this.

@@ -202,10 +202,22 @@ AddDevice = HDFirearm
 	LightRadius = 180      // Pixels, where the light reaches zero. 0 = no light.
 	LightIntensity = 1.2   // 0 = no light.
 	LightFlicker = 0.1     // 0..1 random flicker, nice for fire and torches.
+	LightConeAngle = 25    // Above 0, the light is a beam (a flashlight) with this half-angle in degrees. 0 shines all round.
+	LightConeDirection = 0 // Which way the beam points, in degrees clockwise from the way the object faces.
 	LightOffset = Vector   // Offset from the object's position, rotated and flipped with it.
 		X = 10
 		Y = -2
 ```
+
+Any `MovableObject` can give off purely visual particles as it goes (they never affect the simulation, and thousands cost next to nothing):
+
+```ini
+	VisualEmission = Sparks        // Sparks, Dust, Debris or Embers
+	VisualEmissionRate = 40        // Per second.
+	VisualEmissionSpread = 0.6     // 0 (straight along the object's velocity) to 1 (every direction).
+```
+
+From Lua: `object:SetVisualEmission("Embers", 20, 0.5)`, or a one-off burst anywhere with `EmitVisualParticles(kind, position, velocity, spread, count, 0xRRGGBB)` (0 for the kind's own colour).
 
 Any `MovableObject` can also be drawn translucent or glowing:
 
@@ -225,6 +237,8 @@ actor.LightIntensity = 0.9
 actor:SetLightColor(255, 230, 190)   -- 0-255
 actor.LightOffset = Vector(0, -12)
 actor.LightFlicker = 0.0
+actor.LightConeAngle = 25      -- a beam; 0 for all round
+actor.LightConeDirection = 0
 shield.RenderBlendMode = 1   -- 0 normal, 1 additive, 2 screen
 shield.RenderOpacity = 0.5
 print(actor.LightRed, actor.LightGreen, actor.LightBlue)

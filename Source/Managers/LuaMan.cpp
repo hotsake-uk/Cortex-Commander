@@ -1,5 +1,6 @@
 #include "LuaMan.h"
 #include "Sandbox.h"
+#include "EffectsParticles.h"
 
 #include "LuabindObjectWrapper.h"
 #include "LuaBindingRegisterDefinitions.h"
@@ -113,6 +114,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxAutoBattleSide", &Sandbox::SetAutoBattleSide),
 	                         luabind::def("SandboxStartAutoBattle", &Sandbox::StartAutoBattle),
 	                         luabind::def("SandboxPauseAI", &Sandbox::SetAIPaused),
+	                         luabind::def("EmitVisualParticles", &EffectsParticles::Emit),
 	                         luabind::def("EaseIn", &EaseIn),
 	                         luabind::def("EaseOut", &EaseOut),
 	                         luabind::def("EaseInOut", &EaseInOut),
