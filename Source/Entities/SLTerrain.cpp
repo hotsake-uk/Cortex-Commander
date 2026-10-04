@@ -286,6 +286,11 @@ int SLTerrain::LoadData() {
 
 		m_BGColorLayer->Destroy();
 		m_BGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
+	}
+	// However the layers were made (Destroy above clears it), the background walls are drawn behind the objects and the foreground in front. The lighting tells them apart by this depth.
+	m_FGColorLayer->SetZOrder(c_DefaultDrawDepth);
+	m_BGColorLayer->SetZOrder(c_TerrainBGDepth);
+	if (!(m_FGColorLayer->IsLoadedFromDisk() && m_BGColorLayer->IsLoadedFromDisk())) {
 
 		TexturizeTerrain();
 

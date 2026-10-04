@@ -8,6 +8,7 @@ in vec4 vertexColor;
 in vec2 worldPos;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalOut;
+layout(location = 2) out vec4 SurfaceOut; // R how metallic, G how glossy, B 1 for solid objects that cast shadows (never terrain: the light grid handles its shadows).
 
 uniform sampler2D rteTexture;
 uniform sampler2D rtePalette;
@@ -224,4 +225,5 @@ void main() {
 	}
 	// RG: normal x and y. B: 1 - shininess. Alpha: drawn, with emissive strength.
 	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
+	SurfaceOut = vec4(0.0, 0.0, 0.0, 1.0);
 }

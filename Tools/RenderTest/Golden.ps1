@@ -20,7 +20,9 @@ $scenarios = @(
 	@{ Name = "GoldenCaves"; CameraPOI = "2" },
 	@{ Name = "GoldenClassic" },
 	@{ Name = "GoldenLightingOnly" },
-	@{ Name = "GoldenInterior" }
+	@{ Name = "GoldenInterior" },
+	# Lighting only, in a quiet sandbox scene with a fixed camera: a sun shaft, a lamp with soldiers' shadows, shaded ground, contact shading. No editor panel, so nearly the whole width is compared.
+	@{ Name = "GoldenShadows"; Width = 930 }
 )
 if ($Only.Count -gt 0) {
 	$wanted = $Only | ForEach-Object { if ($_ -like "Golden*") { $_ } else { "Golden$_" } }
@@ -89,9 +91,9 @@ public static class GoldenCompare {
 "@
 }
 
-function Compare-Images([Drawing.Bitmap]$a, [Drawing.Bitmap]$b, [string]$diffPath) {
-	# Only the left 600 px: most golden scenes have the editor panel on the right, which is fixed while the world can land a few pixels differently.
-	$w = [Math]::Min(600, [Math]::Min($a.Width, $b.Width)); $h = [Math]::Min($a.Height, $b.Height)
+function Compare-Images([Drawing.Bitmap]$a, [Drawing.Bitmap]$b, [string]$diffPath, [int]$width = 600) {
+	# Only the left 600 px by default: most golden scenes have the editor panel on the right, which is fixed while the world can land a few pixels differently.
+	$w = [Math]::Min($width, [Math]::Min($a.Width, $b.Width)); $h = [Math]::Min($a.Height, $b.Height)
 	$rect = New-Object Drawing.Rectangle 0, 0, $w, $h
 	$format = [Drawing.Imaging.PixelFormat]::Format32bppArgb
 	$da = $a.LockBits($rect, [Drawing.Imaging.ImageLockMode]::ReadOnly, $format)
@@ -129,7 +131,7 @@ foreach ($scenario in $scenarios) {
 	}
 	if (-not (Test-Path $baselinePath)) { "FAIL  $name : no baseline (run with -Update)"; $failures++; $reduced.Dispose(); continue }
 	$baseline = [Drawing.Bitmap]::FromFile($baselinePath)
-	$result = Compare-Images $baseline $reduced (Join-Path $OutputDir "golden_$name`_diff.png")
+	$result = Compare-Images $baseline $reduced (Join-Path $OutputDir "golden_$name`_diff.png") $(if ($scenario.Width) { $scenario.Width } else { 600 })
 	$baseline.Dispose(); $reduced.Dispose()
 	$ok = $result.Mean -le $MaxMeanDiff -and $result.BadPercent -le $MaxBadPercent
 	if (-not $ok) { $failures++ }

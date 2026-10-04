@@ -1435,6 +1435,16 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return false;
 	}
 	stroke.Kind = c_Tools[toolIndex].Kind;
+	if (stroke.Kind == Tool::None) {
+		// "Look around" from a script: put the free camera on the point, and stop following anything.
+		s_FreeCamera = true;
+		s_FreeCameraStarted = true;
+		s_FollowTarget = UnitRef();
+		s_FollowAction = false;
+		s_CameraCenter = position;
+		g_CameraMan.SetScroll(position, 0);
+		return true;
+	}
 	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });

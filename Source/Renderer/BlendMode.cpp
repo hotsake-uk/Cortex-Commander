@@ -106,6 +106,8 @@ void BlendMode::Enable() {
 	glEnable(GL_BLEND);
 	// Never blend into the second color attachment (normals and emissive strength): blending would average normals and accumulate the emissive encoding across overlapping draws.
 	glDisablei(GL_BLEND, 1);
+	// Nor into the third (surface values): the last thing drawn at a pixel decides how it is lit.
+	glDisablei(GL_BLEND, 2);
 	if (m_Equation) {
 		glBlendEquation(m_Equation);
 		if (std::find(c_KhrBlendEquations.cbegin(), c_KhrBlendEquations.cend(), m_Equation) != c_KhrBlendEquations.cend()) {

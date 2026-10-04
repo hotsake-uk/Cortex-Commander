@@ -11,7 +11,15 @@ uniform sampler2D rteDynamicLight; // Screen space, RGB = linear light from dyna
 uniform sampler2D rteEmissive; // Screen space, RGB = glows in gamma space, screen blended.
 uniform float rteEmissiveIntensity;
 uniform float rteMaxDynamicLight; // Dynamic light softly saturates towards this, so piles of overlapping lights don't blow out.
-uniform sampler2D rteSkyLight; // World grid, R = sky light 0..1, linearly filtered.
+uniform sampler2D rteSkyLight; // World grid, R = sky light 0..1, G = how much of the sun (or moon) is visible, linearly filtered.
+uniform sampler2D rteOccupancy; // World grid, R = terrain coverage 0..1, linearly filtered.
+uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest pixel of a solid object.
+uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
+uniform vec2 rteSunDirection; // Unit vector towards the sun (or the moon at night), in screen pixels (y down).
+uniform float rteSunShadows; // How much shade darkens the sky light, 0 (no directional daylight) to 1.
+uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at full strength: darker and cooler.
+uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
+uniform float rteContactShading; // How much background walls darken right next to solid objects and terrain, 0 (off) to 1.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
 uniform vec3 rteBackgroundLight; // Linear light on the distant background layers.
@@ -24,7 +32,7 @@ uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize; // World size covered by the sky light grid.
 uniform vec3 rteAmbient; // Linear light where no sky light reaches.
 uniform vec3 rteSkyColor; // Linear light under open sky.
-uniform int rteDebugView; // 0 final, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals.
+uniform int rteDebugView; // 0 final, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals, 6 GI only, 7 solid objects and the distance to them, 8 where the sun is visible.
 uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
 uniform float rteEdgeLighting;
 uniform float rteForegroundDepth; // Depth below which pixels are foreground terrain and objects.
@@ -37,6 +45,46 @@ uniform float rteGIStrength;
 uniform float rteNightSky; // 0 by day, 1 at full night: stars and the moon show on the furthest sky layers.
 uniform vec2 rteMoonPosition; // Screen pixels, as gl_FragCoord (y 0 is the top of the player screen).
 uniform float rteTime; // Seconds, for twinkling.
+
+// Distance in pixels from a point of the player screen to the nearest solid object. The map only reaches about 60 pixels, so it's capped.
+float OccluderDistance(vec2 position) {
+	return min(distance(texture(rteOccluders, position / rteScreenSize).xy, position), 48.0);
+}
+
+// How much of the sun gets past solid objects on its way to a pixel, 0 to 1. See ObjectShadow in PointLight.frag; this one looks along the sun's direction, and objects only shade what's within about a hundred pixels of them.
+float ObjectSunShadow(vec2 from, bool fromSolid) {
+	float t = 1.5;
+	if (fromSolid) {
+		int steps = 0;
+		for (; steps < 9; ++steps) {
+			if (OccluderDistance(from + rteSunDirection * t) > 1.0) {
+				break;
+			}
+			t += 2.0;
+		}
+		if (steps == 9) {
+			return 1.0;
+		}
+		t += 1.0;
+	}
+	float start = t;
+	float visibility = 1.0;
+	for (int i = 0; i < 16 && t < 110.0; ++i) {
+		vec2 position = from + rteSunDirection * t;
+		if (position.x < 0.0 || position.y < 0.0 || position.x >= rteScreenSize.x || position.y >= rteScreenSize.y) {
+			break;
+		}
+		float clearance = OccluderDistance(position);
+		if (clearance < 0.8) {
+			// Fade the shadow out towards the end of its reach instead of cutting it off.
+			return smoothstep(70.0, 110.0, t);
+		}
+		// The sun is a small disc: the soft edge of a shadow widens steadily with the distance from what casts it.
+		visibility = min(visibility, clearance / (0.09 * (t - start) + 1.0));
+		t += max(clearance * 0.95, 1.0);
+	}
+	return clamp(visibility, 0.0, 1.0);
+}
 
 float StarHash(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -89,6 +137,8 @@ void main() {
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 		float sky = texture(rteSkyLight, worldPos / rteGridWorldSize).r;
+		// How far sky light reaches here before shaping: it fades within a few pixels of entering solid ground, which marks the band just under the terrain's surface.
+		float skyReach = sky;
 		// Shape the falloff a little so cave mouths stay bright and deep caves get properly dark.
 		sky = smoothstep(0.0, 1.0, sky);
 		// Sky light comes from above: upward facing edges catch more of it, undersides less.
@@ -99,7 +149,29 @@ void main() {
 		}
 		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
 		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));
-		light = mix(rteAmbient, rteSkyColor, sky) + dynamicLight;
+		// Daylight has a direction. Where the sun (or moon) can't be seen, the sky light is dimmer and cooler; under open sky in full sun it is exactly as without shadows.
+		bool solidObject = normalSample.a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
+		bool terrainPixel = sceneDepth < rteForegroundDepth && !solidObject;
+		vec3 skyColor = rteSkyColor;
+		float daylight = sky;
+		float terrainShade = 0.0;
+		if (rteSunShadows > 0.0) {
+			float sunVisible = texture(rteSkyLight, worldPos / rteGridWorldSize).g;
+			if (rteUnitShadows > 0.0) {
+				sunVisible *= mix(1.0, ObjectSunShadow(gl_FragCoord.xy, solidObject), rteUnitShadows);
+			}
+			float shade = (1.0 - sunVisible) * rteSunShadows;
+			if (terrainPixel) {
+				// Solid ground is kept readable by a floor of light, which would hide the shade. So ground is shaded after that floor, in the band under its surface:
+				// the side of a hill turned away from the sun, the ground under an overhang, the patch a unit's shadow falls on.
+				terrainShade = shade * smoothstep(0.0, 0.25, skyReach);
+			} else {
+				skyColor *= mix(vec3(1.0), rteShadeTint, shade);
+				// Wherever the sun does reach, it lights at nearly full strength however little sky light gets there: sunlight falling through a hatch or a doorway makes a bright patch on the walls inside.
+				daylight = max(sky, sunVisible * min(rteSunShadows * 1.6, 1.0));
+			}
+		}
+		light = mix(rteAmbient, skyColor, daylight) + dynamicLight;
 		if (rteIndirectStrength > 0.0) {
 			// One bounce: what the surroundings reflect. Reprojected for camera movement; the history is so blurry that's all it needs.
 			vec2 historyUV = (gl_FragCoord.xy + rteIndirectOffset) / rteScreenSize;
@@ -113,8 +185,22 @@ void main() {
 			vec3 gi = texture(rteGI, screenUV).rgb;
 			light += min(gi, vec3(6.0)) * rteGIStrength;
 		}
+		if (rteContactShading > 0.0 && sceneDepth >= rteForegroundDepth) {
+			// Background walls darken right next to solid objects and next to terrain, so things look anchored to the scene instead of pasted on.
+			float nearObject = 1.0 - smoothstep(0.5, 7.0, OccluderDistance(gl_FragCoord.xy));
+			vec2 gridUV = worldPos / rteGridWorldSize;
+			vec2 reach = vec2(5.0) / rteGridWorldSize;
+			float terrain = max(max(texture(rteOccupancy, gridUV + vec2(reach.x, 0.0)).r, texture(rteOccupancy, gridUV - vec2(reach.x, 0.0)).r), max(texture(rteOccupancy, gridUV + vec2(0.0, reach.y)).r, texture(rteOccupancy, gridUV - vec2(0.0, reach.y)).r));
+			float nearTerrain = smoothstep(0.05, 0.7, terrain);
+			light *= 1.0 - rteContactShading * max(nearObject, 0.8 * nearTerrain);
+		}
 		if (sceneDepth < rteForegroundDepth) {
 			light = max(light, rteForegroundAmbient);
+		}
+		if (terrainShade > 0.0) {
+			// Shade dims daylight, not the light of lamps and fire falling on the same ground.
+			vec3 shadeFactor = mix(vec3(1.0), rteShadeTint, terrainShade);
+			light = max(light - dynamicLight, vec3(0.0)) * shadeFactor + min(dynamicLight, light);
 		}
 		// Emissive palette colors (gold glints, glowing bits) shine regardless of the light around them.
 		float emissive = normalSample.a > 0.25 ? max(normalSample.a - 0.5, 0.0) * 2.0 : 0.0;
@@ -133,6 +219,18 @@ void main() {
 		return;
 	} else if (rteDebugView == 6) {
 		FragColor = vec4(texture(rteGI, screenUV).rgb * max(rteGIStrength, 1.0), 1.0);
+		return;
+	} else if (rteDebugView == 7) {
+		// Solid objects in white on the map of distances to them (black next to an object, lighter further away).
+		bool solid = texture(rteNormals, screenUV).a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
+		// Background walls (which contact shading darkens) are tinted blue, the background layers beyond them red.
+		vec3 layerTint = sceneDepth > rteBackgroundDepth ? vec3(1.0, 0.5, 0.5) : (sceneDepth >= rteForegroundDepth ? vec3(0.5, 0.7, 1.0) : vec3(1.0));
+		FragColor = vec4(solid ? vec3(1.0, 0.9, 0.3) : layerTint * (0.08 + pow(OccluderDistance(gl_FragCoord.xy) / 48.0, 2.2) * 0.6), 1.0);
+		return;
+	} else if (rteDebugView == 8) {
+		// Where the sun (or moon) can be seen from.
+		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
+		FragColor = vec4(vec3(pow(texture(rteSkyLight, worldPos / rteGridWorldSize).g, 2.2)), 1.0);
 		return;
 	} else if (rteDebugView == 4) {
 		FragColor = vec4(pow(texture(rteNormals, screenUV).rgb, vec3(2.2)), 1.0);

@@ -1,5 +1,6 @@
 // PointLight.frag
-// Smooth radial falloff with soft shadows marched through the terrain occupancy grid. Additively blended into the dynamic light buffer.
+// Smooth radial falloff with soft shadows marched through the terrain occupancy grid, and shadows from solid objects (units, devices, doors, wreckage) traced through the map of distances to them.
+// Additively blended into the dynamic light buffer.
 #version 330 core
 
 in vec2 localPos;
@@ -20,8 +21,62 @@ uniform float rteSpecular; // Strength of highlights on shiny surfaces (metal, c
 uniform vec2 rteScreenSize;
 uniform float rteEdgeLighting;
 uniform bool rteBeamMode; // Drawing the visible beam of cone lights over the lit scene, instead of light falling on surfaces.
+uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest pixel of a solid object.
+uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
+uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
 
 const int c_ShadowSteps = 12;
+
+// Distance in pixels from a point of the player screen to the nearest solid object. The map only reaches about 60 pixels, so it's capped.
+float OccluderDistance(vec2 position) {
+	return min(distance(texture(rteOccluders, position / rteScreenSize).xy, position), 48.0);
+}
+
+// How much of the light gets past solid objects on its way to a pixel, 0 to 1. Steps along the line by the distance to the nearest object each time, so empty space is crossed quickly and thin things are still hit.
+float ObjectShadow(vec2 from, vec2 to, bool fromSolid) {
+	vec2 delta = to - from;
+	float range = length(delta);
+	// A light sits on or in whatever carries it (a headlamp, a muzzle, an engine): don't let the carrier's own skin block it.
+	float end = range - (OccluderDistance(to) < 1.5 ? 22.0 : 5.0);
+	if (end <= 2.0) {
+		return 1.0;
+	}
+	vec2 direction = delta / range;
+	// Bigger lights are bigger sources, with softer shadows.
+	float lightSize = clamp(lightRadius * 0.04, 4.0, 12.0);
+	float t = 1.5;
+	if (fromSolid) {
+		// A pixel of an object: step out of the object first, so it never shadows itself. Bodies too thick to step out of stay lit.
+		int steps = 0;
+		for (; steps < 9; ++steps) {
+			if (OccluderDistance(from + direction * t) > 1.0) {
+				break;
+			}
+			t += 2.0;
+		}
+		if (steps == 9) {
+			return 1.0;
+		}
+		t += 1.0;
+	}
+	float start = t;
+	float visibility = 1.0;
+	for (int i = 0; i < 20 && t < end; ++i) {
+		vec2 position = from + direction * t;
+		if (position.x < 0.0 || position.y < 0.0 || position.x >= rteScreenSize.x || position.y >= rteScreenSize.y) {
+			break;
+		}
+		float clearance = OccluderDistance(position);
+		if (clearance < 0.8) {
+			return 0.0;
+		}
+		// The light isn't a point: it has a size, so a pixel sees it as a small disc, and an object that only just clears the line still hides part of it.
+		// The width of that soft edge grows from nothing at the object to the light's own size far behind it, so shadows are sharp at the feet and softer further away.
+		visibility = min(visibility, clearance * range / (lightSize * (t + 1.0)));
+		t += max(clearance * 0.95, 1.0);
+	}
+	return clamp(visibility, 0.0, 1.0);
+}
 
 void main() {
 	if (rteBeamMode && lightCone.z < -1.5) {
@@ -59,6 +114,11 @@ void main() {
 		}
 		float occupancy = texture(rteOccupancy, sampleWorld / rteGridWorldSize).r;
 		transmittance *= 1.0 - occupancy * rteShadowStrength;
+	}
+
+	if (rteUnitShadows > 0.0) {
+		bool fromSolid = !rteBeamMode && texture(rteSurface, gl_FragCoord.xy / rteScreenSize).b > 0.5;
+		transmittance *= mix(1.0, ObjectShadow(gl_FragCoord.xy, lightCenter, fromSolid), rteUnitShadows);
 	}
 
 	if (rteBeamMode) {

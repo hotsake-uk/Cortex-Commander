@@ -461,6 +461,18 @@ namespace RTE {
 		/// @return Current multiplier value.
 		float GetDamageMultiplier() const { return m_DamageMultiplier; }
 
+		/// Gets whether this casts shadows from lights and the sun. Things that are light or energy rather than matter (flashes, shields, holograms) shouldn't.
+		/// @return Whether this casts shadows.
+		bool GetCastsShadow() const { return m_CastsShadow; }
+
+		/// Sets whether this casts shadows from lights and the sun.
+		/// @param castsShadow Whether this casts shadows.
+		void SetCastsShadow(bool castsShadow) { m_CastsShadow = castsShadow; }
+
+		/// Gets how the lighting should treat this when it's drawn. Anything drawn see-through or as light doesn't cast shadows.
+		/// @return The surface values (see MovableObject::GetRenderSurface).
+		glm::u8vec4 GetRenderSurface() const override;
+
 		/// Gets whether the damage multiplier for this MOSRotating has been directly set, or is at its default value.
 		/// @return Whether the damage multiplier for this MOSRotating has been set.
 		bool HasNoSetDamageMultiplier() const { return m_NoSetDamageMultiplier; }
@@ -586,6 +598,7 @@ namespace RTE {
 		float m_LoudnessOnGib;
 
 		float m_DamageMultiplier; //!< Damage multiplier for this MOSRotating.
+		bool m_CastsShadow; //!< Whether this casts shadows from lights and the sun.
 		bool m_NoSetDamageMultiplier; //!< Whether or not the damage multiplier for this MOSRotating was set.
 
 		Timer m_FlashWhiteTimer; //!< The timer for timing white draw mode duration.

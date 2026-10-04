@@ -74,11 +74,13 @@ void RenderTarget::EnableNormalAttachment() {
 		return;
 	}
 	m_Normal = std::make_shared<Texture>(m_Size, Filter::Nearest, WrapType::ClampToEdge, 32);
+	m_Surface = std::make_shared<Texture>(m_Size, Filter::Nearest, WrapType::ClampToEdge, 32);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_FBO);
 	glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, m_Normal->GetTextureId(), 0);
-	// Draw buffer state belongs to the framebuffer, so this sticks. Shaders that don't write location 1 leave it undefined, which is fine after the lighting has read it.
-	const GLenum drawBuffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-	glDrawBuffers(2, drawBuffers);
+	glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, m_Surface->GetTextureId(), 0);
+	// Draw buffer state belongs to the framebuffer, so this sticks. Shaders that don't write locations 1 and 2 leave them undefined, which is fine after the lighting has read them.
+	const GLenum drawBuffers[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
+	glDrawBuffers(3, drawBuffers);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

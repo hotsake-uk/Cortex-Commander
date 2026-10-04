@@ -132,7 +132,9 @@ namespace RTE {
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
-		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers.
+		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers. R = sky light, G = how much of the sun (or moon) is visible.
+		glm::vec2 m_SunDirection{0.0F, -1.0F}; //!< Unit vector towards the sun (or the moon at night) in scene pixels, y down, this frame.
+		float m_SunShadowStrength = 0.0F; //!< Sun shadow strength after time of day and weather, this frame.
 		GLTarget m_Scorch; //!< World space soot darkness, R.
 		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
@@ -141,6 +143,7 @@ namespace RTE {
 		int m_ScreenWidth = 0;
 		int m_ScreenHeight = 0;
 		GLTarget m_DynamicLight;
+		GLTarget m_OccluderSeeds[2]; //!< Ping-ponged jump flood buffers: RG = position of the nearest pixel of a solid object.
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
 		GLTarget m_GodRays; //!< Half resolution light shafts.
@@ -170,6 +173,8 @@ namespace RTE {
 
 		std::unique_ptr<Shader> m_PropagateShader;
 		std::unique_ptr<Shader> m_PointLightShader;
+		std::unique_ptr<Shader> m_OccluderSeedShader;
+		std::unique_ptr<Shader> m_OccluderJumpShader;
 		std::unique_ptr<Shader> m_CompositeShader;
 		std::unique_ptr<Shader> m_EmissiveShader;
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
@@ -209,6 +214,12 @@ namespace RTE {
 		void DestroyWorldResources();
 		void EnsureScreenResources(int width, int height);
 		void DestroyScreenResources();
+
+		/// Builds the map of distances to solid objects for a player screen, which unit shadows and contact shading are worked out from.
+		/// @param playerScreen The player screen, drawn but not lit yet.
+		/// @param foregroundDepth Depth below which pixels are foreground terrain and objects.
+		/// @return The texture holding, for each pixel, the position of the nearest pixel of a solid object (far away when none is within reach). 0 if it couldn't be built.
+		GLuint BuildOccluderField(RenderTarget* playerScreen, float foregroundDepth);
 
 		/// Recomputes occupancy for a range of grid rows from the terrain material layer.
 		void RefreshOccupancyRows(int firstRow, int endRow);

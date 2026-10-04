@@ -92,6 +92,7 @@ void MOSRotating::Clear() {
 	m_LoudnessOnGib = 1;
 	m_DamageMultiplier = 0;
 	m_NoSetDamageMultiplier = true;
+	m_CastsShadow = true;
 	m_FlashWhiteTimer.Reset();
 	m_FlashWhiteTimer.SetRealTimeLimitMS(0);
 }
@@ -260,6 +261,7 @@ int MOSRotating::Create(const MOSRotating& reference) {
 
 	m_DamageMultiplier = reference.m_DamageMultiplier;
 	m_NoSetDamageMultiplier = reference.m_NoSetDamageMultiplier;
+	m_CastsShadow = reference.m_CastsShadow;
 
 	m_pTempBitmap = reference.m_pTempBitmap;
 	m_pTempBitmapS = reference.m_pTempBitmapS;
@@ -338,6 +340,7 @@ int MOSRotating::ReadProperty(const std::string_view& propName, Reader& reader) 
 		reader >> m_DamageMultiplier;
 		m_NoSetDamageMultiplier = false;
 	});
+	MatchProperty("CastsShadow", { reader >> m_CastsShadow; });
 
 	EndPropertyList;
 }
@@ -1848,6 +1851,11 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 		m_pAtomGroup->Draw(pTargetBitmap, targetPos, false, 122);
 		// m_pDeepGroup->Draw(pTargetBitmap, targetPos, false, 13);
 	}
+}
+
+glm::u8vec4 MOSRotating::GetRenderSurface() const {
+	bool castsShadow = m_CastsShadow && m_RenderBlendMode == 0 && m_RenderOpacity >= 0.9F;
+	return glm::u8vec4(0, 0, castsShadow ? 255 : 0, 0);
 }
 
 void MOSRotating::Draw(const Camera& camera) const {

@@ -102,6 +102,8 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const SceneLayerImpl&
 	m_WrapX = reference.m_WrapX;
 	m_WrapY = reference.m_WrapY;
 	m_OriginOffset = reference.m_OriginOffset;
+	// The depth has to survive copying: scenes are played from copies of their presets, and the lighting tells the terrain's background walls from its foreground by depth.
+	m_ZOrder = reference.m_ZOrder;
 	m_ScrollInfo = reference.m_ScrollInfo;
 	m_ScrollRatio = reference.m_ScrollRatio;
 	m_ScaleFactor = reference.m_ScaleFactor;

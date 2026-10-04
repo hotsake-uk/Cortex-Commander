@@ -208,7 +208,7 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
 		ImGui::SliderFloat("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
-		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0Solid objects and distance to them\0Where the sun is visible\0");
 
 		ImGui::SeparatorText("Game");
 		bool terrainFire = TerrainFire::IsEnabled();
@@ -391,7 +391,6 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Terrain falloff", &settings.SolidFalloff, 0.1F, 0.95F, "%.2f");
 		ImGui::SliderInt("Propagation steps/frame", &settings.PropagationIterationsPerFrame, 1, 32);
 		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
-		ImGui::SliderFloat("God ray decay", &settings.GodRayDecay, 0.85F, 0.999F, "%.3f");
 		ImGui::SliderFloat("Atmosphere haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		ImGui::ColorEdit3("Atmosphere (linear)", &settings.AtmosphereColor.x, linearColorFlags);
 		ImGui::SliderFloat("Time of day (h)", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
@@ -406,6 +405,9 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);
 		ImGui::SliderFloat("Glow light radius", &settings.GlowLightRadiusScale, 0.5F, 10.0F);
 		ImGui::SliderFloat("Shadow strength", &settings.ShadowStrength, 0.0F, 1.0F);
+		ImGui::SliderFloat("Shadows of units and objects", &settings.UnitShadows, 0.0F, 1.0F);
+		ImGui::SliderFloat("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
+		ImGui::SliderFloat("Contact shading", &settings.ContactShading, 0.0F, 1.0F);
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		ImGui::SliderFloat("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
@@ -459,7 +461,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 
 		ImGui::SeparatorText("Debug");
-		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0");
+		ImGui::Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0Solid objects and distance to them\0Where the sun is visible\0");
 
 		ImGui::SeparatorText("Stats");
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting()) {

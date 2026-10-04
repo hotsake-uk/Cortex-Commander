@@ -10,5 +10,6 @@ namespace RTE {
 		glm::vec3 m_Pos{};
 		glm::vec2 m_TextureUV{};
 		glm::u8vec4 m_Color{};
+		glm::u8vec4 m_Surface{}; //!< How the lighting should treat what's drawn: R how metallic, G how glossy, B whether it's a solid object that casts shadows. Taken from the active batch's current surface.
 	};
 }

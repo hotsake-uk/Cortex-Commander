@@ -54,6 +54,18 @@ namespace RTE {
 			RadianceCascades = preset.RadianceCascades;
 			EffectsParticles = preset.Particles;
 			SmokeScattering = preset.Smoke;
+			ApplyShadowPreset(quality);
+		}
+
+		/// Sets only the shadow effects to a preset's values: directional daylight from Low up, shadows from solid objects and contact shading from Medium up.
+		/// Also used when reading settings saved before these existed, so they follow the saved preset.
+		void ApplyShadowPreset(int quality) {
+			if (quality < QualityPotato || quality >= QualityCustom) {
+				return;
+			}
+			SunShadows = quality >= QualityLow ? 0.55F : 0.0F;
+			UnitShadows = quality >= QualityMedium ? 0.85F : 0.0F;
+			ContactShading = quality >= QualityMedium ? 0.4F : 0.0F;
 		}
 
 		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
@@ -77,6 +89,9 @@ namespace RTE {
 		float GlowLightIntensity = 2.5F; //!< Brightness of the lights cast by glow effects.
 		float GlowLightRadiusScale = 8.0F; //!< Radius of glow lights relative to the glow sprite's size.
 		float ShadowStrength = 0.85F; //!< How much terrain blocks dynamic lights, 0 to 1.
+		float UnitShadows = 0.85F; //!< How dark the shadows are that solid objects (units, devices, doors, wreckage) cast from lights and from the sun, 0 to 1. 0 turns them off.
+		float SunShadows = 0.55F; //!< Directional daylight: how much dimmer and cooler ground, walls and units are where the sun (or the moon at night) can't be seen, 0 to 1. 0 turns it off.
+		float ContactShading = 0.4F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
 		float IndirectLight = 0.35F; //!< One bounce of light: lit surfaces bleed their color onto their surroundings. 0 to disable.
 		bool RadianceCascades = false; //!< Global illumination by radiance cascades: glows light their surroundings with soft occlusion, and light bounces off surfaces. Replaces the simpler indirect light.
@@ -90,8 +105,7 @@ namespace RTE {
 		float HeatHaze = 1.5F; //!< Heat haze shimmer, in pixels at full heat.
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
 
-		float GodRays = 0.7F; //!< Strength of light shafts streaming from the sky through gaps in terrain, 0 to disable.
-		float GodRayDecay = 0.965F; //!< How quickly shafts fade along their length.
+		float GodRays = 0.7F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.
 		float EffectsParticles = 1.0F; //!< Amount of visual sparks, dust and debris from explosions and impacts, 0 to disable.
@@ -125,6 +139,6 @@ namespace RTE {
 		float FilmGrain = 0.0F; //!< Film grain strength, 0 to 1.
 		float ChromaticAberration = 0.0F; //!< Lens color fringing towards the screen edges, in pixels.
 
-		int DebugView = 0; //!< Not persisted. 0 final image, 1 lighting on grey, 2 sky light only, 3 dynamic light only.
+		int DebugView = 0; //!< Not persisted. 0 final image, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals, 5 distortion, 6 GI only, 7 solid objects and the distance to them, 8 where the sun is visible.
 	};
 } // namespace RTE

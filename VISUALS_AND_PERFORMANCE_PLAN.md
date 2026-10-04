@@ -41,9 +41,9 @@ Status: **done**, **in progress**, **next**, or **later** (not asked for yet).
 
 | # | Item | What you see | Status |
 |---|---|---|---|
-| 1 | **Unit shadows** | Soldiers, crates, doors and wreckage cast shadows from muzzle flashes, flares, lamps and explosions. Today only terrain blocks light. | next |
-| 2 | **Sun and moon shadows** | Daylight gets a direction. Hills, bunkers and units cast shadows that lengthen towards dawn and dusk; sunlight falls through openings onto bunker walls. | next |
-| 3 | **Contact shading** | A soft dark edge where things stand against walls and in corners, so they look anchored instead of pasted on. | next |
+| 1 | **Unit shadows** | Soldiers, crates, doors and wreckage cast shadows from muzzle flashes, flares, lamps and explosions. Before, only terrain blocked light. | done |
+| 2 | **Sun and moon shadows** | Daylight gets a direction. Hills, bunkers and units cast shadows that turn with the time of day; sunlight falls through openings onto bunker walls. | done |
+| 3 | **Contact shading** | A soft dark edge where things stand against walls and in corners, so they look anchored instead of pasted on. | done |
 | 4 | Tighter light shadows | Lights sample the terrain coarsely, so thin walls can let light through. A distance map fixes that and costs less per light. | later |
 | 5 | Water reflections | The scene mirrored in rippling water, with shimmer on pool floors. | later |
 | 6 | Sky | A visible sun, and drifting clouds that shade the ground. | later |
@@ -94,8 +94,12 @@ Short design notes, updated as things are built.
 - **A mask of solid objects.** The scene's draw pass marks which pixels belong to solid objects (units, items, doors, wreckage). Particles, smoke and glows are left out, so a puff of smoke or a bullet never throws a hard shadow.
 - **A distance map from the mask.** Each frame, every pixel learns how far away the nearest solid object is. Rays can then cross empty space in a few big steps and still hit thin things like rifles.
 - **Unit shadows from lights (1).** Each light's rays are traced through the distance map as well as through the terrain grid they already use. The skin of the object the light sits on is skipped, so a headlamp or muzzle flash isn't blocked by its own carrier.
-- **Sun and moon shadows (2).** The grid that already spreads sky light through the terrain carries a second value: whether the sun (or the moon at night) can be seen from each cell. It spreads the same way, along the sun's direction, so it costs almost nothing and softens with distance. Units add their own crisp shadows through the distance map. Where the sun is visible the picture is exactly as before; shade is darker and a little cooler. Shadows fade out under heavy weather and around sunrise and sunset, when the sun and moon swap.
+- **Sun and moon shadows (2).** The grid that already spreads sky light through the terrain carries a second value: whether the sun (or the moon at night) can be seen from each cell. It spreads the same way, along the sun's direction, so it costs almost nothing and softens with distance. Units add their own crisp shadows through the distance map. Under open sky in full sun the picture is exactly as before; shade is darker and a little cooler. Shadows fade out under heavy weather and around sunrise and sunset, when the sun and moon swap.
+  - Solid ground keeps what reached its surface, so the band under the surface of a hill's far side or an overhang is shaded too.
+  - Where the sun reaches inside a cave or bunker it lights the walls, and the light shafts now come from the same data, so a beam stops where a roof cuts it off.
 - **Contact shading (3).** Background walls darken slightly close to solid objects and close to terrain.
+- **Found on the way:** the terrain's background layer lost its depth whenever a scene was copied from its preset, so it was drawn at the foreground's depth and the lighting couldn't tell walls from solid ground. Light shafts were never shown over walls because of it. Fixed; walls are now treated as walls everywhere.
+- **Measured cost** (test build, 960x540, GPU waits on): the distance map 0.2 ms a frame; lights 0.16 to 0.18 ms with shadows, 0.12 ms before.
 
 ### Materials (7 to 10)
 
@@ -112,3 +116,4 @@ Short design notes, updated as things are built.
 ## Progress log
 
 - **2026-10-04:** performance log added; terrain collapse hitch fixed; this plan written.
+- **2026-10-04:** shadows (items 1 to 3) built, with a regression scene (`GoldenShadows`) and test scenarios (`Shadows*`). Background wall depth fixed. Light shafts now follow the sun.

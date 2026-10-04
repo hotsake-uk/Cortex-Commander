@@ -1,4 +1,5 @@
 #include "AEmitter.h"
+#include "RenderMan.h"
 #include "Atom.h"
 #include "Emission.h"
 #include "PresetMan.h"
@@ -604,13 +605,19 @@ void AEmitter::Draw(BITMAP* pTargetBitmap,
 
 void AEmitter::Draw(const Camera& camera) const {
 
-	// Draw flash if there is one
-	if (m_pFlash && !m_pFlash->IsDrawnAfterParent() && m_EmitEnabled && (!m_FlashOnlyOnBurst || m_BurstTriggered))
+	// Draw flash if there is one. It is light, not matter, so it doesn't cast shadows.
+	if (m_pFlash && !m_pFlash->IsDrawnAfterParent() && m_EmitEnabled && (!m_FlashOnlyOnBurst || m_BurstTriggered)) {
+		g_RenderMan.SetShadowCasting(false);
 		m_pFlash->Draw(camera);
+		g_RenderMan.SetShadowCasting(true);
+	}
 
 	Attachable::Draw(camera);
 
 	// Update and Draw flash if there is one
-	if (m_pFlash && m_pFlash->IsDrawnAfterParent() && m_EmitEnabled && (!m_FlashOnlyOnBurst || m_BurstTriggered))
+	if (m_pFlash && m_pFlash->IsDrawnAfterParent() && m_EmitEnabled && (!m_FlashOnlyOnBurst || m_BurstTriggered)) {
+		g_RenderMan.SetShadowCasting(false);
 		m_pFlash->Draw(camera);
+		g_RenderMan.SetShadowCasting(true);
+	}
 }

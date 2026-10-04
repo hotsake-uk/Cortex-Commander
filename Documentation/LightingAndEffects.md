@@ -43,6 +43,16 @@ All of it happens in the terrain shader; the terrain bitmaps are never changed.
 
 At night, stars and a moon appear on the sky layers. These are the background layers with little or no parallax, and both fade out toward the horizon. Heavy rain (intensity above 0.5) brings occasional lightning that briefly lights the sky. Auto exposure (`AutoExposure`, `AutoExposureLow`, `AutoExposureHigh`) only kicks in when the average scene brightness leaves the normal range, such as a screen-filling flash or near-total darkness.
 
+**Shadows** (three settings, each a strength from 0 to 1 where 0 turns it off; sliders in the Graphics Lab; the quality presets set them):
+- **Shadows of units and objects** (`UnitShadows`, 0.85, Medium and up): soldiers, devices, doors, crates, craft and wreckage block light. A muzzle flash, flare, lamp or explosion throws their shadows across the walls and the ground, sharp at the feet and softer further away. Particles, smoke and flashes cast none, and a light isn't blocked by whatever is carrying it.
+- **Sun and moon shadows** (`SunShadows`, 0.55, Low and up): daylight has a direction, which turns with the time of day; at night it is the moon's, fainter.
+  - Where the sun can't be seen (the far side of a hill, under an overhang, in the shadow of a unit), ground, walls and units are dimmer and cooler. In full sun under open sky nothing changes.
+  - Where the sun gets into a cave or a bunker through an opening, it lights the walls it falls on, and the beam shows in the air (the `GodRays` setting).
+  - Shadows fade out around sunrise and sunset, when the sun and moon swap, and under rain, snow, ash and dust.
+- **Contact shading** (`ContactShading`, 0.4, Medium and up): background walls darken slightly right next to units and objects and next to solid ground, so things look anchored to the scene.
+- An object can opt out with `CastsShadow = 0` in its INI (any `MOSRotating`: energy shields, holograms), or `object.CastsShadow = false` from Lua. Anything drawn see-through or with an additive or screen blend mode never casts.
+- The Graphics Lab's views include "Solid objects and distance to them" and "Where the sun is visible", for checking what casts and what is lit.
+
 **Spreading fire** (`TerrainFire` in the gameplay settings, also in F6):
 - **What lights it:** explosions and fire, flame and napalm particles light flammable terrain.
 - **How it burns:** grass and vegetation flare up and burn away; wood, cloth and rubber burn slowly from the surface in, leaving ash; oil burns fast.
@@ -165,11 +175,14 @@ Press **F8** for **Photo Mode**:
 | `TimeOfDay` | 12 | Hours (0–24). Noon is the classic look; dawn, dusk and night tint the sky, haze and light. |
 | `DayLengthMinutes` | 0 | Length of a full day/night cycle in minutes. 0 keeps the time fixed. |
 | `AtmosphereHaze` / `AtmosphereColor` | 0.18 / 0.62 0.74 0.95 | Distant background layers fade into the atmosphere, based on their parallax. |
-| `GodRays` / `GodRayDecay` | 0.7 / 0.965 | Light shafts from the sky through gaps in the terrain. |
+| `GodRays` | 0.7 | Light shafts in the air of caves and bunkers, where the sun (or moon) gets in through an opening. |
 | `WeatherType` | 0 | 0 clear, 1 rain, 2 snow, 3 ash fall (grey flakes and a grey haze), 4 dust storm (dust blown level, a tan haze, and units see up to half as far). Precipitation doesn't fall under overhangs or in caves. |
 | `WeatherIntensity` / `Wind` | 0.6 / 60 | How heavy the rain or snow is, and its horizontal speed in px/s. |
 | `LightingGlowIntensity` / `LightingGlowRadiusScale` | 2.5 / 8 | Brightness and reach of the light that glow effects cast. |
 | `LightingShadowStrength` | 0.85 | How much terrain blocks dynamic lights. |
+| `UnitShadows` | 0.85 | How dark the shadows of units and objects are, from lights and from the sun. |
+| `SunShadows` | 0.55 | Directional daylight: how much dimmer and cooler things are where the sun (or moon) can't be seen. |
+| `ContactShading` | 0.4 | How much background walls darken next to objects and solid ground. |
 | `LightingEmissiveIntensity` | 1.4 | Brightness of glow sprites. |
 | `LightingEdgeLighting` | 1 | Strength of the automatic edge normals. |
 | `LightingSpecular` | 1 | Highlights that lights throw on shiny surfaces: grey metal and concrete, rain-wet ground, water and acid. 0 turns them off. |
@@ -276,4 +289,6 @@ Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) last
 
 ## Shaders
 
-The lighting shaders live in `Data/Base.rte/Shaders/Lighting/`. The sprite shader `Base.rte/Shaders/Blit8.frag` and the terrain shader `Base.rte/Shaders/Terrain.frag` write a second output: the screen-space normal's x and y in RG, 1 minus the surface's shininess in B, and in alpha 0 for "nothing drawn" or 0.5–1 for "drawn, with emissive strength 0–1". Custom shaders used for scene drawing should write it too.
+The lighting shaders live in `Data/Base.rte/Shaders/Lighting/`. The sprite shader `Base.rte/Shaders/Blit8.frag` and the terrain shader `Base.rte/Shaders/Terrain.frag` write two more outputs. Custom shaders used for scene drawing should write them too.
+- **Location 1, normals:** the screen-space normal's x and y in RG, 1 minus the surface's shininess in B, and in alpha 0 for "nothing drawn" or 0.5–1 for "drawn, with emissive strength 0–1".
+- **Location 2, surface:** how metallic in R, how glossy in G, and in B 1 for solid objects that cast shadows (0 for terrain, particles and effects). Sprites get these per vertex (`rteVertexSurface`), set by the object being drawn.

@@ -908,6 +908,7 @@ void MovableObject::ApplyImpulses() {
 }
 
 Color MovableObject::ApplyRenderBlendMode() const {
+	g_RenderMan.SetCurrentSurface(GetRenderSurface());
 	int opacity = static_cast<int>(m_RenderOpacity * 255.0F);
 	switch (m_RenderBlendMode) {
 		case 1:
@@ -926,6 +927,7 @@ Color MovableObject::ApplyRenderBlendMode() const {
 }
 
 void MovableObject::RestoreRenderBlendMode() const {
+	g_RenderMan.SetCurrentSurface(glm::u8vec4(0));
 	if (m_RenderBlendMode != 0 || m_RenderOpacity < 1.0F) {
 		g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));
 	}

@@ -63,6 +63,9 @@ void VertexBuffer::InitializeBuffers() {
 	GL_CHECK(glEnableVertexAttribArray(VertexAttribLocation::COLOR));
 	GL_CHECK(glVertexAttribPointer(VertexAttribLocation::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, m_Color)));
 
+	GL_CHECK(glEnableVertexAttribArray(VertexAttribLocation::SURFACE));
+	GL_CHECK(glVertexAttribPointer(VertexAttribLocation::SURFACE, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, m_Surface)));
+
 	GL_CHECK(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_IndexBuffer));
 	GL_CHECK(glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_BufferElements * 6 * sizeof(decltype(m_Indices)::value_type), nullptr, GL_DYNAMIC_DRAW));
 	glBindVertexArray(0);
@@ -74,6 +77,8 @@ void RenderBatch::BeginFrame() {
 	ZoneScoped;
 	m_CurrentDepth = 0;
 	m_CurrentZ = c_DefaultDrawDepth;
+	m_CurrentSurface = glm::u8vec4(0);
+	m_ShadowCasting = true;
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 	RecycleDrawCalls();

@@ -11,6 +11,7 @@
 #include "Timer.h"
 #include "LuabindObjectWrapper.h"
 #include "Material.h"
+#include "glm/glm.hpp"
 #include "MovableMan.h"
 
 #include <set>
@@ -877,7 +878,12 @@ namespace RTE {
 		float GetRenderOpacity() const { return m_RenderOpacity; }
 		virtual void SetRenderOpacity(float opacity) { m_RenderOpacity = std::clamp(opacity, 0.0F, 1.0F); }
 
-		/// Applies this' render blend mode to the active render batch and returns the vertex tint to draw with. Call RestoreRenderBlendMode after drawing.
+		/// Gets how the lighting should treat this when it's drawn: R how metallic, G how glossy, B whether it's a solid object that casts shadows (0 or 255).
+		/// Particles and effects are unmarked; MOSRotatings (units, their parts, devices, doors, wreckage) mark themselves.
+		/// @return The surface values.
+		virtual glm::u8vec4 GetRenderSurface() const { return glm::u8vec4(0); }
+
+		/// Applies this' render blend mode and surface to the active render batch and returns the vertex tint to draw with. Call RestoreRenderBlendMode after drawing.
 		Color ApplyRenderBlendMode() const;
 		/// Restores the default blend mode after drawing with ApplyRenderBlendMode.
 		void RestoreRenderBlendMode() const;

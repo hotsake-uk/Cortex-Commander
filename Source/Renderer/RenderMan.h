@@ -42,6 +42,20 @@ namespace RTE {
 		/// @param depth The new offset.
 		void SetCurrentZOffset(float depth) { m_ActiveBatch->m_CurrentZ = depth; }
 
+		/// Sets the surface that upcoming draws are marked with, for the lighting: R how metallic, G how glossy, B whether it's a solid object that casts shadows (0 or 255).
+		/// Set it back to zero after drawing an object, so terrain, particles and effects stay unmarked.
+		/// @param surface The surface values.
+		void SetCurrentSurface(glm::u8vec4 surface) {
+			if (!m_ActiveBatch->m_ShadowCasting) {
+				surface.b = 0;
+			}
+			m_ActiveBatch->m_CurrentSurface = surface;
+		}
+
+		/// Sets whether upcoming surfaces may be marked as casting shadows. Turn it off around parts of an object that are light, not matter (muzzle flashes), and back on afterwards.
+		/// @param shadowCasting Whether shadows may be cast.
+		void SetShadowCasting(bool shadowCasting) { m_ActiveBatch->m_ShadowCasting = shadowCasting; }
+
 		/// Set the default shader for upcoming draw calls.
 		/// @param shader (non owning) pointer to the new shader.
 		void SetCurrentShader(const Shader* shader) { m_ActiveBatch->m_CurrentShader = shader; }

@@ -873,6 +873,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MOSRotating) {
 	    .property("WoundCountAffectsImpulseLimitRatio", &MOSRotating::GetWoundCountAffectsImpulseLimitRatio)
 	    .property("GibAtEndOfLifetime", &MOSRotating::GetGibAtEndOfLifetime, &MOSRotating::SetGibAtEndOfLifetime)
 	    .property("DamageMultiplier", &MOSRotating::GetDamageMultiplier, &MOSRotating::SetDamageMultiplier)
+	    .property("CastsShadow", &MOSRotating::GetCastsShadow, &MOSRotating::SetCastsShadow)
 	    .property("WoundCount", (int(MOSRotating::*)() const) & MOSRotating::GetWoundCount)
 	    .property("OrientToVel", &MOSRotating::GetOrientToVel, &MOSRotating::SetOrientToVel)
 

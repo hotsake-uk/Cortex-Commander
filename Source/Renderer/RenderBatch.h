@@ -5,7 +5,7 @@
 #include "DrawCall.h"
 
 #include "glad/gl.h"
-#include "glm/fwd.hpp"
+#include "glm/glm.hpp"
 #include <optional>
 #include <vector>
 
@@ -43,6 +43,8 @@ namespace RTE {
 		std::vector<std::shared_ptr<DrawCall>> m_FreeDrawCalls{}; //!< Finished draw calls kept for reuse, so drawing doesn't allocate every frame.
 		float m_CurrentDepth{0.0f};
 		float m_CurrentZ{0.0f};
+		glm::u8vec4 m_CurrentSurface{0, 0, 0, 0}; //!< The surface new vertices are given (see Vertex::m_Surface). Zero for anything that isn't a solid object.
+		bool m_ShadowCasting{true}; //!< Whether surfaces set from now on may be marked as casting shadows. Turned off around things like muzzle flashes.
 		const Shader* m_CurrentShader{nullptr};
 		std::vector<std::shared_ptr<UniformValueType>> m_CurrentUniforms{};
 		glm::mat4 m_CurrentView{1.0f};

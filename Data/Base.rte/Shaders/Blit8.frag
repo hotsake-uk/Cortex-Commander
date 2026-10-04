@@ -1,12 +1,15 @@
 // Blit8.frag
 // The default sprite/layer shader. Indexed textures are resolved through the palette.
-// Also writes a screen space normal (location 1) derived from the texture's coverage edges, which gives every sprite and the terrain a small automatic bevel for the lighting to catch.
+// Also writes a screen space normal (location 1) derived from the texture's coverage edges, which gives every sprite and the terrain a small automatic bevel for the lighting to catch,
+// and the surface values of what's drawn (location 2): R how metallic, G how glossy, B 1 for solid objects that cast shadows.
 #version 330 core
 
 in vec2 textureUV;
 in vec4 vertexColor;
+in vec4 vertexSurface;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalOut;
+layout(location = 2) out vec4 SurfaceOut;
 
 uniform sampler2D rteTexture;
 uniform sampler2D rtePalette;
@@ -75,4 +78,5 @@ void main() {
 	}
 	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
 	NormalOut = vec4(EdgeNormal(uvDx, uvDy).xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
+	SurfaceOut = vec4(vertexSurface.rgb, 1.0);
 }

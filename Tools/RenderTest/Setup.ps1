@@ -114,3 +114,22 @@ Write-Scenario "SoakAuto" $soakAuto @("Render Test Sandbox Armies", "Render Test
 # For performance runs with the CCCP_PERF_LOG environment variable set: blasts on the bunker and the ground, by night (many lights) and by day.
 Write-Scenario "Blast" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Blast")
 Write-Scenario "BlastDay" $bunker @("Render Test Blast")
+# Shadows: soldiers and a lamp in the tutorial bunker by night and by day, each with the shadow effects off for comparison, and the open hills late in the afternoon.
+$noShadows = @{ UnitShadows = 0; SunShadows = 0; ContactShading = 0 }
+# (The tutorial activity doesn't run global scripts, so the quiet sandbox activity is used on its scene, with the script placing the camera.)
+$shadowBunker = $sandbox.Clone(); $shadowBunker.DefaultSceneName = "Tutorial Bunker"; $shadowBunker.Headlamps = 0
+Write-Scenario "ShadowsNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Shadows")
+Write-Scenario "ShadowsNightOff" ($shadowBunker + @{ TimeOfDay = 23 } + $noShadows) @("Render Test Shadows")
+Write-Scenario "ShadowsDay" ($shadowBunker + @{ TimeOfDay = 15.5 }) @("Render Test Shadows")
+Write-Scenario "ShadowsDayOff" ($shadowBunker + @{ TimeOfDay = 15.5 } + $noShadows) @("Render Test Shadows")
+Write-Scenario "ShadowsHills" ($play + @{ TimeOfDay = 16.5 }) @()
+Write-Scenario "ShadowsHillsOff" ($play + @{ TimeOfDay = 16.5 } + $noShadows) @()
+Write-Scenario "ShadowsNightMask" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 7 }) @("Render Test Shadows")
+Write-Scenario "ShadowsDaySun" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 8 }) @("Render Test Shadows")
+Write-Scenario "ShadowsNightLight" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 3 }) @("Render Test Shadows")
+# The same with the lighting shown on plain grey, which is the clearest way to see shadows (the bunker walls are very dark).
+Write-Scenario "ShadowsNightGrey" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 1 }) @("Render Test Shadows")
+Write-Scenario "ShadowsNightGreyOff" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
+Write-Scenario "ShadowsDayGrey" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 }) @("Render Test Shadows")
+Write-Scenario "ShadowsDayGreyOff" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
+Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0 }) @("Render Test Shadows") -DefaultLighting

@@ -42,7 +42,8 @@ namespace RTE {
 		TEXTURECOORDINATE,
 		COLOR,
 		NORMAL,
-		LIGHTCONE //!< Light quads: xy cone direction, z cosine of the cone's half angle (below -1 for no cone).
+		LIGHTCONE, //!< Light quads: xy cone direction, z cosine of the cone's half angle (below -1 for no cone).
+		SURFACE //!< Batch vertices: how the lighting should treat what's drawn (see Vertex::m_Surface).
 	};
 
 	class Shader: public Entity {

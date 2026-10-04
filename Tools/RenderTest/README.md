@@ -29,7 +29,8 @@ These tools are for checking rendering changes by eye, against fixed scenarios, 
 .\Golden.ps1 -Only Noon,Caves
 ```
 
-- **Scenes:** six calm, fixed scenes (`GoldenNoon`, `GoldenNight`, `GoldenCaves`, `GoldenClassic`, `GoldenLightingOnly`, `GoldenInterior`). They have no explosions and use the built-in lighting defaults, so your own settings can't change them.
+- **Scenes:** seven calm, fixed scenes (`GoldenNoon`, `GoldenNight`, `GoldenCaves`, `GoldenClassic`, `GoldenLightingOnly`, `GoldenInterior`, `GoldenShadows`). They have no explosions and use the built-in lighting defaults, so your own settings can't change them.
+- **Mouse:** the first six start in the build phase, where the view follows the mouse. If the pointer is over the game window as it opens, the view can land far enough off to fail a scene; run that scene again (`-Only`) before believing it.
 - **How it compares:** captures are cropped to the 960x540 game view and compared against the baselines. Small camera offsets are allowed by aligning first, within ±32 px.
 - **Tolerances:** a scene fails when the mean channel difference goes over 5, or more than 4% of pixels differ clearly, comparing the game area left of the editor panel (x < 600). Normal run-to-run noise is 0–3. A 20% exposure change scores about 12.
 - **Diffs:** each scene writes a diff image to `Output\golden_<scene>_diff.png`. Differences show in red.

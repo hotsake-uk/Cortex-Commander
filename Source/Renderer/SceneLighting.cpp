@@ -99,6 +99,8 @@ void SceneLighting::LoadShaders() {
 	const std::string fullscreenVertex = "Base.rte/Shaders/Lighting/Fullscreen.vert";
 	m_PropagateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightPropagate.frag");
 	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
+	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
+	m_OccluderJumpShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderJump.frag");
 	m_CompositeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightComposite.frag");
 	m_EmissiveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/Emissive.frag");
 	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
@@ -189,7 +191,7 @@ bool SceneLighting::EnsureWorldResources() {
 	m_OccupancyTexture.Create(m_GridWidth, m_GridHeight, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
 	m_SkylineTexture.Create(m_GridWidth, 1, GL_R32F, GL_RED, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, false);
 	for (GLTarget& skyLight: m_SkyLight) {
-		skyLight.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
+		skyLight.Create(m_GridWidth, m_GridHeight, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
 	}
 	m_CurrentSkyLight = 0;
 
@@ -229,6 +231,9 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_ScreenWidth = width;
 	m_ScreenHeight = height;
 	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	for (GLTarget& seeds: m_OccluderSeeds) {
+		seeds.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
@@ -279,6 +284,9 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 
 void SceneLighting::DestroyScreenResources() {
 	m_DynamicLight.Destroy();
+	for (GLTarget& seeds: m_OccluderSeeds) {
+		seeds.Destroy();
+	}
 	m_Emissive.Destroy();
 	m_Distortion.Destroy();
 	m_GodRays.Destroy();
@@ -379,6 +387,8 @@ void SceneLighting::PropagateSkyLight(int iterations) {
 	m_PropagateShader->SetBool("rteWrapY", m_WrapY);
 	m_PropagateShader->SetFloat("rteAirFalloff", m_Settings.AirFalloff);
 	m_PropagateShader->SetFloat("rteSolidFalloff", m_Settings.SolidFalloff);
+	// One cell at a time towards the sun: a whole cell along the longer axis, so the sample always lands in the next row or column.
+	m_PropagateShader->SetVector2f("rteSunStep", m_SunDirection / std::max(std::abs(m_SunDirection.x), std::abs(m_SunDirection.y)));
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glActiveTexture(GL_TEXTURE2);
@@ -596,6 +606,14 @@ void SceneLighting::Update() {
 	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
 	m_MoonHours = std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F);
 
+	// The sun crosses the sky with the time of day, and at night the moon takes over (as for the god rays). Shadows fall away from it.
+	// They fade out as the two swap at the horizon, are fainter by moonlight, and fainter under an overcast sky.
+	bool sunIsUp = m_Settings.TimeOfDay >= 6.0F && m_Settings.TimeOfDay <= 18.0F;
+	float sunArc = ((sunIsUp ? m_Settings.TimeOfDay : std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F)) - 12.0F) / 6.0F;
+	m_SunDirection = glm::normalize(glm::vec2(sunArc * 1.05F, -1.0F));
+	float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+	m_SunShadowStrength = m_Settings.SunShadows * (1.0F - glm::smoothstep(0.8F, 1.0F, std::abs(sunArc))) * (sunIsUp ? 1.0F : 0.6F) * (1.0F - 0.8F * overcast);
+
 	// Lightning in heavy rain: a bright double flicker every so often that briefly lights the whole sky.
 	long long lightningUpdates = m_LightningLastSimUpdate >= 0 ? simUpdateCount - m_LightningLastSimUpdate : 0;
 	m_LightningLastSimUpdate = simUpdateCount;
@@ -694,6 +712,42 @@ const SceneLighting::GlowInfo& SceneLighting::GetGlowInfo(const BitmapTexture* g
 		}
 	}
 	return m_GlowInfoCache.emplace(glowTexture, info).first->second;
+}
+
+GLuint SceneLighting::BuildOccluderField(RenderTarget* playerScreen, float foregroundDepth) {
+	std::shared_ptr<Texture> surface = playerScreen->GetSurfaceTexture().lock();
+	std::shared_ptr<DepthTexture> depth = playerScreen->GetDepthTexture().lock();
+	if (!surface || !depth || !m_OccluderSeeds[0].Texture) {
+		return 0;
+	}
+	TracyGpuZone("Occluder Field");
+	glDisable(GL_BLEND);
+	glViewport(0, 0, m_OccluderSeeds[0].Width, m_OccluderSeeds[0].Height);
+
+	// Seeds: every pixel of a solid object holds its own position.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_OccluderSeeds[0].Framebuffer);
+	m_OccluderSeedShader->Enable();
+	m_OccluderSeedShader->SetInt("rteSurface", 0);
+	m_OccluderSeedShader->SetInt("rteSceneDepth", 1);
+	m_OccluderSeedShader->SetFloat("rteForegroundDepth", foregroundDepth);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, depth->GetTextureId());
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+	DrawFullscreen();
+
+	// Jump flooding: each pass, every pixel takes the nearest seed among itself and eight pixels a step away. A final extra pass at one pixel tidies up the few it gets wrong.
+	m_OccluderJumpShader->Enable();
+	m_OccluderJumpShader->SetInt("rteSeeds", 0);
+	int current = 0;
+	for (int step: {32, 16, 8, 4, 2, 1, 1}) {
+		glBindFramebuffer(GL_FRAMEBUFFER, m_OccluderSeeds[1 - current].Framebuffer);
+		m_OccluderJumpShader->SetInt("rteStep", step);
+		glBindTexture(GL_TEXTURE_2D, m_OccluderSeeds[current].Texture);
+		DrawFullscreen();
+		current = 1 - current;
+	}
+	return m_OccluderSeeds[current].Texture;
 }
 
 void SceneLighting::UploadQuads() {
@@ -927,6 +981,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	PerformanceMan::AddLogCount("# lights on screen", lightCount);
 	PerformanceMan::AddLogCount("# quads for lighting (lights, glows, sparks, fire, dust, smoke)", m_QuadVertices.size() / 4);
 
+	// The map of distances to solid objects, for their shadows and for contact shading.
+	logStages.Next("Lighting: map of solid objects");
+	float foregroundDepth = ((2.0F * (c_TerrainBGDepth * 0.5F) - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F;
+	std::shared_ptr<Texture> surface = playerScreen->GetSurfaceTexture().lock();
+	GLuint occluders = (m_Settings.Enabled && surface && (m_Settings.UnitShadows > 0.0F || m_Settings.ContactShading > 0.0F)) ? BuildOccluderField(playerScreen, foregroundDepth) : 0;
+	float unitShadows = occluders ? m_Settings.UnitShadows : 0.0F;
+
 	logStages.Next("Lighting: shockwaves");
 	// Shockwave displacement.
 	glBindFramebuffer(GL_FRAMEBUFFER, m_Distortion.Framebuffer);
@@ -963,10 +1024,17 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
 		m_PointLightShader->SetFloat("rteSpecular", m_Settings.Specular);
 		m_PointLightShader->SetBool("rteBeamMode", false);
+		m_PointLightShader->SetInt("rteOccluders", 2);
+		m_PointLightShader->SetInt("rteSurface", 3);
+		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, normals ? normals->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, occluders);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		DrawQuads(0, lightCount);
 		glDisable(GL_BLEND);
@@ -1114,6 +1182,20 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 	m_CompositeShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_EffectiveAmbient : glm::vec3(1.0F));
 	m_CompositeShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	m_CompositeShader->SetInt("rteOccupancy", 8);
+	m_CompositeShader->SetInt("rteOccluders", 9);
+	m_CompositeShader->SetInt("rteSurface", 10);
+	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
+	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
+	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));
+	m_CompositeShader->SetFloat("rteUnitShadows", unitShadows);
+	m_CompositeShader->SetFloat("rteContactShading", occluders ? m_Settings.ContactShading : 0.0F);
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE9);
+	glBindTexture(GL_TEXTURE_2D, occluders);
+	glActiveTexture(GL_TEXTURE10);
+	glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, albedo ? albedo->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE1);
@@ -1213,6 +1295,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
 		m_PointLightShader->SetBool("rteBeamMode", true);
+		m_PointLightShader->SetInt("rteOccluders", 2);
+		m_PointLightShader->SetInt("rteSurface", 3);
+		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, occluders);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		DrawQuads(0, lightCount);
@@ -1292,26 +1381,25 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	}
 
 	logStages.Next("Lighting: god rays");
-	// God rays: light shafts from the sky through gaps in the terrain.
+	// God rays: shafts of light in the air of caves and bunkers, wherever the sun (or the moon, dimly) gets in. They fade at the horizon and under an overcast sky, like the shadows.
 	if (m_Settings.Enabled && m_Settings.GodRays > 0.0F && sceneDepth) {
 		TracyGpuZone("God Rays");
-		// The sun crosses the sky with the time of day; at night the moon takes over, dimly (the sky light is dim then anyway).
-		float sunHours = (m_Settings.TimeOfDay >= 6.0F && m_Settings.TimeOfDay <= 18.0F) ? m_Settings.TimeOfDay : std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F);
-		glm::vec2 sunPosition(0.5F + ((sunHours - 12.0F) / 6.0F) * 0.7F, -0.7F);
+		float sunArc = std::abs(m_SunDirection.x / std::max(-m_SunDirection.y, 0.001F)) / 1.05F;
+		float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		float shaftStrength = m_Settings.GodRays * 0.5F * (1.0F - glm::smoothstep(0.8F, 1.0F, sunArc)) * (1.0F - 0.8F * overcast);
 		glViewport(0, 0, m_GodRays.Width, m_GodRays.Height);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_GodRays.Framebuffer);
 		m_GodRaysShader->Enable();
-		m_GodRaysShader->SetInt("rteSkyline", 0);
+		m_GodRaysShader->SetInt("rteSkyLight", 0);
 		m_GodRaysShader->SetVector2f("rteScreenOrigin", origin);
 		m_GodRaysShader->SetVector2f("rteScreenSize", screenSize);
 		m_GodRaysShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_GodRaysShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
-		m_GodRaysShader->SetVector2f("rteSunPosition", sunPosition);
-		m_GodRaysShader->SetVector3f("rteSunColor", m_EffectiveSky * m_Settings.GodRays);
-		m_GodRaysShader->SetFloat("rteDecay", m_Settings.GodRayDecay);
+		m_GodRaysShader->SetVector2f("rteSunDirection", m_SunDirection);
+		m_GodRaysShader->SetVector3f("rteSunColor", m_EffectiveSky * shaftStrength);
 		m_GodRaysShader->SetVector2f("rteTargetSize", glm::vec2(m_GodRays.Width, m_GodRays.Height));
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
 		DrawFullscreen();
 
 		glViewport(0, 0, width, height);

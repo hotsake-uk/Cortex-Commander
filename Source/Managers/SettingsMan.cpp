@@ -158,7 +158,14 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
-	MatchProperty("GraphicsQuality", { g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom)); });
+	MatchProperty("GraphicsQuality", {
+		g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom));
+		// Settings saved before the shadow effects existed have no values for them: follow the saved preset. Values in the file come after this and win.
+		g_PostProcessMan.GetLightingSettings().ApplyShadowPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+	});
+	MatchProperty("UnitShadows", { g_PostProcessMan.GetLightingSettings().UnitShadows = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SunShadows", { g_PostProcessMan.GetLightingSettings().SunShadows = std::stof(reader.ReadPropValue()); });
+	MatchProperty("ContactShading", { g_PostProcessMan.GetLightingSettings().ContactShading = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingAmbient", {
 		std::string value = reader.ReadPropValue();
@@ -177,7 +184,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingDebugView", { g_PostProcessMan.GetLightingSettings().DebugView = std::stoi(reader.ReadPropValue()); }); // Read only, for automated screenshots.
 	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
-	MatchProperty("GodRayDecay", { g_PostProcessMan.GetLightingSettings().GodRayDecay = std::stof(reader.ReadPropValue()); });
+	MatchProperty("GodRayDecay", { reader.ReadPropValue(); }); // In older settings files. Light shafts now follow where the sun reaches, so they have no decay to set.
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
 	MatchProperty("WeatherType", { g_PostProcessMan.GetLightingSettings().WeatherType = std::stoi(reader.ReadPropValue()); });
@@ -352,7 +359,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
-	writer.NewPropertyWithValue("GodRayDecay", lighting.GodRayDecay);
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);
 	writer.NewPropertyWithValue("AtmosphereColor", WriteVec3(lighting.AtmosphereColor));
 	writer.NewPropertyWithValue("WeatherType", lighting.WeatherType);
@@ -363,6 +369,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingGlowIntensity", lighting.GlowLightIntensity);
 	writer.NewPropertyWithValue("LightingGlowRadiusScale", lighting.GlowLightRadiusScale);
 	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
+	writer.NewPropertyWithValue("UnitShadows", lighting.UnitShadows);
+	writer.NewPropertyWithValue("SunShadows", lighting.SunShadows);
+	writer.NewPropertyWithValue("ContactShading", lighting.ContactShading);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
 	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
