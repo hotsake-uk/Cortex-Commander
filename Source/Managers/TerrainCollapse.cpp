@@ -13,7 +13,6 @@
 #include <array>
 #include <string>
 #include <mutex>
-#include <unordered_set>
 #include <vector>
 
 using namespace RTE;
@@ -68,32 +67,44 @@ namespace {
 		float Progress = 0.0F; //!< Fraction of a pixel moved but not applied yet.
 	};
 	std::vector<FallingPiece> s_Falling;
-	std::unordered_set<int> s_FallingKeys; //!< All pixels of falling pieces, which checks ignore.
 
-	void RebuildFallingKeys() {
-		s_FallingKeys.clear();
-		for (const FallingPiece& piece: s_Falling) {
-			s_FallingKeys.insert(piece.Keys.begin(), piece.Keys.end());
+	/// What the checks know about each terrain pixel. A flat array, a byte per pixel: with hash sets a single check of a big crater took 20 to 40 ms, a visible hitch after every blast.
+	enum PixelState : unsigned char {
+		c_Seen = 1, //!< Reached by a fill during the current check.
+		c_Supported = 2, //!< Part of a piece found to be held up during the current check.
+		c_Falling = 4 //!< Part of a falling piece, which checks ignore. Kept between checks.
+	};
+	std::vector<unsigned char> s_State;
+	std::vector<int> s_Touched; //!< Pixels marked seen or supported during the current check, to clear afterwards.
+	std::vector<int> s_Stack;
+	std::vector<int> s_FillSeen; //!< Every pixel the current fill has reached.
+
+	void SetFalling(const std::vector<int>& keys, bool falling) {
+		for (int key: keys) {
+			if (falling) {
+				s_State[key] |= c_Falling;
+			} else {
+				s_State[key] &= static_cast<unsigned char>(~c_Falling);
+			}
 		}
 	}
 
 	/// Flood fills the solid piece containing a pixel. Returns true if it's a small floating piece that should fall, filling its pixels.
-	bool FindFloatingPiece(SLTerrain* terrain, int startX, int startY, int width, int height, bool wrapX, std::unordered_set<int>& supported, std::unordered_set<int>& visited, std::vector<int>& piece) {
+	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece) {
 		piece.clear();
-		std::vector<int> stack{startY * width + startX};
-		std::unordered_set<int> seen{stack.back()};
+		s_Stack.clear();
+		s_FillSeen.clear();
+		s_Stack.push_back(startKey);
+		s_FillSeen.push_back(startKey);
+		s_State[startKey] |= c_Seen;
 		bool floating = true;
-		while (!stack.empty()) {
-			int key = stack.back();
-			stack.pop_back();
+		while (!s_Stack.empty() && floating) {
+			int key = s_Stack.back();
+			s_Stack.pop_back();
 			piece.push_back(key);
-			if (static_cast<int>(piece.size()) > c_MaxIslandPixels || supported.count(key)) {
-				floating = false;
-				break;
-			}
 			int x = key % width;
 			int y = key / width;
-			if (s_Anchors[static_cast<unsigned char>(terrain->GetMaterialPixel(x, y))]) {
+			if (static_cast<int>(piece.size()) > c_MaxIslandPixels || s_Anchors[materialBitmap->line[y][x]]) {
 				floating = false;
 				break;
 			}
@@ -113,24 +124,26 @@ namespace {
 						continue;
 					}
 					int neighbour = ny * width + nx;
-					if (seen.count(neighbour) || s_FallingKeys.count(neighbour) || terrain->GetMaterialPixel(nx, ny) == g_MaterialAir) {
+					unsigned char state = s_State[neighbour];
+					if (state & c_Supported) {
+						// Joined to a piece already found to be held up.
+						floating = false;
 						continue;
 					}
-					seen.insert(neighbour);
-					stack.push_back(neighbour);
+					if ((state & (c_Seen | c_Falling)) || materialBitmap->line[ny][nx] == g_MaterialAir) {
+						continue;
+					}
+					s_State[neighbour] |= c_Seen;
+					s_FillSeen.push_back(neighbour);
+					s_Stack.push_back(neighbour);
 				}
 			}
-			if (!floating) {
-				break;
-			}
 		}
-		for (int key: seen) {
-			visited.insert(key);
-		}
+		s_Touched.insert(s_Touched.end(), s_FillSeen.begin(), s_FillSeen.end());
 		if (!floating) {
-			// Everything reached is held up; later fills that touch it stop early.
-			for (int key: seen) {
-				supported.insert(key);
+			// Everything reached is held up; later fills that touch it stop at once.
+			for (int key: s_FillSeen) {
+				s_State[key] |= c_Supported;
 			}
 			return false;
 		}
@@ -139,28 +152,33 @@ namespace {
 	}
 
 	void RunCheck(SLTerrain* terrain, const Check& check) {
-		int width = terrain->GetBitmap()->w;
-		int height = terrain->GetBitmap()->h;
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int width = materialBitmap->w;
+		int height = materialBitmap->h;
 		bool wrapX = g_SceneMan.SceneWrapsX();
-		std::unordered_set<int> supported;
-		std::unordered_set<int> visited;
 		std::vector<int> piece;
 		std::vector<int> falling;
+		s_Touched.clear();
 		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
+			const unsigned char* materialRow = materialBitmap->line[y];
 			for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
 				int x = wrapX ? (rawX % width + width) % width : rawX;
 				if (x < 0 || x >= width) {
 					continue;
 				}
 				int key = y * width + x;
-				if (visited.count(key) || s_FallingKeys.count(key) || terrain->GetMaterialPixel(x, y) == g_MaterialAir) {
+				if (materialRow[x] == g_MaterialAir || (s_State[key] & (c_Seen | c_Falling))) {
 					continue;
 				}
-				if (FindFloatingPiece(terrain, x, y, width, height, wrapX, supported, visited, piece)) {
+				if (FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece)) {
 					falling.insert(falling.end(), piece.begin(), piece.end());
 				}
 			}
 		}
+		for (int key: s_Touched) {
+			s_State[key] &= static_cast<unsigned char>(~(c_Seen | c_Supported));
+		}
+		s_Touched.clear();
 		if (falling.empty()) {
 			return;
 		}
@@ -172,35 +190,36 @@ namespace {
 		for (int key: falling) {
 			int x = key % width;
 			int y = key / width;
-			fallingPiece.Materials.push_back(static_cast<unsigned char>(terrain->GetMaterialPixel(x, y)));
+			fallingPiece.Materials.push_back(materialBitmap->line[y][x]);
 			fallingPiece.Colors.push_back(terrain->GetFGColorPixel(x, y));
 		}
 		s_CollapsedCount += static_cast<int>(falling.size());
+		SetFalling(fallingPiece.Keys, true);
 		s_Falling.push_back(std::move(fallingPiece));
-		RebuildFallingKeys();
 	}
+
 	/// Moves falling pieces down, accelerating under gravity, until they land; landed pieces are removed.
 	void UpdateFalling(SLTerrain* terrain) {
 		if (s_Falling.empty()) {
 			return;
 		}
-		int width = terrain->GetBitmap()->w;
-		int height = terrain->GetBitmap()->h;
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int width = materialBitmap->w;
+		int height = materialBitmap->h;
 		for (FallingPiece& piece: s_Falling) {
 			piece.Speed = std::min(piece.Speed + 0.12F, 6.0F);
 			piece.Progress += piece.Speed;
 			int steps = static_cast<int>(piece.Progress);
 			piece.Progress -= static_cast<float>(steps);
-			std::unordered_set<int> inPiece(piece.Keys.begin(), piece.Keys.end());
 			bool landed = false;
 			for (int step = 0; step < steps && !landed; ++step) {
-				// Blocked if any pixel would move into solid terrain that isn't part of the piece.
+				// Blocked if any pixel would move into solid terrain that isn't part of the piece. The keys stay sorted as the piece moves, so a binary search tells what's part of it.
 				for (int key: piece.Keys) {
 					int below = key + width;
 					if (key / width + 1 >= height) {
 						continue;
 					}
-					if (!inPiece.count(below) && terrain->GetMaterialPixel(below % width, below / width) != g_MaterialAir) {
+					if (materialBitmap->line[below / width][below % width] != g_MaterialAir && !std::binary_search(piece.Keys.begin(), piece.Keys.end(), below)) {
 						landed = true;
 						break;
 					}
@@ -208,6 +227,7 @@ namespace {
 				if (landed) {
 					break;
 				}
+				SetFalling(piece.Keys, false);
 				for (int key: piece.Keys) {
 					terrain->SetMaterialPixel(key % width, key / width, g_MaterialAir);
 					terrain->SetFGColorPixel(key % width, key / width, ColorKeys::g_MaskColor);
@@ -215,6 +235,9 @@ namespace {
 				std::vector<int> moved;
 				std::vector<unsigned char> movedMaterials;
 				std::vector<int> movedColors;
+				moved.reserve(piece.Keys.size());
+				movedMaterials.reserve(piece.Keys.size());
+				movedColors.reserve(piece.Keys.size());
 				for (size_t i = 0; i < piece.Keys.size(); ++i) {
 					int below = piece.Keys[i] + width;
 					// Pixels falling out of the bottom of the world are gone.
@@ -231,7 +254,7 @@ namespace {
 					terrain->SetMaterialPixel(piece.Keys[i] % width, piece.Keys[i] / width, piece.Materials[i]);
 					terrain->SetFGColorPixel(piece.Keys[i] % width, piece.Keys[i] / width, piece.Colors[i]);
 				}
-				inPiece = std::unordered_set<int>(piece.Keys.begin(), piece.Keys.end());
+				SetFalling(piece.Keys, true);
 			}
 			if (landed || piece.Keys.empty()) {
 				int minX = width;
@@ -250,11 +273,11 @@ namespace {
 					// A thud of dust where it lands (visual only).
 					EffectsParticles::SpawnExplosion(Vector(static_cast<float>(minX + maxX) * 0.5F, static_cast<float>(maxY)), std::min(600.0F + static_cast<float>(piece.Keys.size()) * 6.0F, 8000.0F) * std::max(0.3F, piece.Speed / 6.0F));
 				}
+				SetFalling(piece.Keys, false);
 				piece.Keys.clear();
 			}
 		}
 		s_Falling.erase(std::remove_if(s_Falling.begin(), s_Falling.end(), [](const FallingPiece& piece) { return piece.Keys.empty(); }), s_Falling.end());
-		RebuildFallingKeys();
 	}
 } // namespace
 
@@ -282,6 +305,11 @@ void TerrainCollapse::Update() {
 	if (!s_AnchorsBuilt) {
 		BuildAnchors();
 	}
+	if (size_t pixels = static_cast<size_t>(terrain->GetMaterialBitmap()->w) * static_cast<size_t>(terrain->GetMaterialBitmap()->h); s_State.size() != pixels) {
+		// A terrain of another size: nothing known about its pixels carries over.
+		s_Falling.clear();
+		s_State.assign(pixels, 0);
+	}
 	long long now = g_TimerMan.GetSimUpdateCount();
 	{
 		std::scoped_lock lock(s_QueueMutex);
@@ -304,8 +332,11 @@ void TerrainCollapse::Update() {
 }
 
 void TerrainCollapse::Clear() {
+	// Only falling pieces leave marks on the pixel states between checks.
+	if (!s_Falling.empty()) {
+		std::fill(s_State.begin(), s_State.end(), static_cast<unsigned char>(0));
+	}
 	s_Falling.clear();
-	s_FallingKeys.clear();
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pending.clear();
 	s_Scheduled.clear();
