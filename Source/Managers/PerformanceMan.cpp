@@ -6,12 +6,45 @@
 #include "GUI.h"
 #include "AllegroBitmap.h"
 
+#include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <fstream>
+#include <map>
+#include <mutex>
 
 #include "DebugMan.h"
 #include "imgui/imgui.h"
+#include "glad/gl.h"
 
 using namespace RTE;
+
+bool PerformanceMan::s_Logging = false;
+bool PerformanceMan::s_LogGPU = false;
+
+namespace {
+	struct LogEntry {
+		uint64_t Total = 0; //!< Microseconds, or the sum of the readings for a count entry.
+		uint64_t Calls = 0;
+		uint64_t Worst = 0; //!< The longest single time, or the highest reading.
+	};
+
+	constexpr uint64_t c_LogBlockMicroseconds = 5'000'000; //!< How often the performance log writes its averages.
+	/// The performance counters' names in the performance log.
+	constexpr const char* c_LogCounterNames[PerformanceMan::PerfCounterCount] = {"Sim: total", "Sim: actors AI", "Sim: actors travel", "Sim: actors update", "Sim: particles travel", "Sim: particles update", "Sim: activity update", "Sim: Lua scripts (inside the others)"};
+
+	std::mutex s_LogMutex;
+	std::map<std::string, LogEntry> s_LogEntries; //!< Totals since the last block was written.
+	std::string s_LogPath;
+	uint64_t s_LogStart = 0;
+	uint64_t s_LogBlockStart = 0;
+	uint64_t s_LogLastFrame = 0;
+	uint64_t s_LogWorstFrame = 0;
+	int s_LogSlowFrames = 0; //!< Frames that took longer than 1/60 s.
+	int s_LogVerySlowFrames = 0; //!< Frames that took longer than 1/30 s.
+	int s_LogFrames = 0;
+	int s_LogUpdates = 0;
+} // namespace
 
 const std::array<std::string, PerformanceMan::PerformanceCounters::PerfCounterCount> PerformanceMan::m_PerfCounterNames = {"Total", "Act AI", "Act Travel", "Act Update", "Prt Travel", "Prt Update", "Activity", "Scripts"};
 
@@ -45,6 +78,14 @@ void PerformanceMan::Clear() {
 void PerformanceMan::Initialize() {
 	m_SimUpdateTimer = std::make_unique<Timer>();
 
+	if (const char* logPath = std::getenv("CCCP_PERF_LOG"); logPath && *logPath) {
+		s_LogPath = logPath;
+		s_Logging = true;
+		s_LogGPU = std::getenv("CCCP_PERF_LOG_GPU") != nullptr;
+		std::ofstream log(s_LogPath, std::ios::trunc);
+		log << "Performance log. Each block covers about five seconds. 'share' is of all the time in the block; 'worst' is the longest single call." << (s_LogGPU ? " GPU waits are on, so the frame rate is lower than in normal play." : "") << "\n";
+	}
+
 	for (int counter = 0; counter < PerformanceCounters::PerfCounterCount; ++counter) {
 		for (int i = 0; i < c_MaxSamples; ++i) {
 			m_PerfData[counter][i] = 0;
@@ -60,9 +101,121 @@ void PerformanceMan::StartPerformanceMeasurement(PerformanceCounters counter) {
 void PerformanceMan::StopPerformanceMeasurement(PerformanceCounters counter) {
 	s_PerfMeasureStop[counter] = g_TimerMan.GetAbsoluteTime();
 	AddPerformanceSample(counter, s_PerfMeasureStop[counter] - s_PerfMeasureStart[counter]);
+	if (s_Logging) {
+		AddLogTime(c_LogCounterNames[counter], s_PerfMeasureStop[counter] - s_PerfMeasureStart[counter]);
+	}
+}
+
+void PerformanceMan::AddLogTime(const char* name, uint64_t microseconds) {
+	if (!s_Logging) {
+		return;
+	}
+	std::lock_guard<std::mutex> lock(s_LogMutex);
+	LogEntry& entry = s_LogEntries[name];
+	entry.Total += microseconds;
+	++entry.Calls;
+	entry.Worst = std::max(entry.Worst, microseconds);
+}
+
+PerformanceMan::LogScope::LogScope(const char* name, bool waitForGPU) :
+    m_Name(name), m_WaitForGPU(waitForGPU && s_LogGPU), m_Start(0) {
+	if (s_Logging) {
+		if (m_WaitForGPU) {
+			glFinish();
+		}
+		m_Start = g_TimerMan.GetAbsoluteTime();
+	}
+}
+
+PerformanceMan::LogScope::~LogScope() {
+	if (s_Logging) {
+		if (m_WaitForGPU) {
+			glFinish();
+		}
+		AddLogTime(m_Name, g_TimerMan.GetAbsoluteTime() - m_Start);
+	}
+}
+
+PerformanceMan::LogStages::LogStages(bool waitForGPU) :
+    m_Name(nullptr), m_WaitForGPU(waitForGPU && s_LogGPU), m_Start(0) {}
+
+void PerformanceMan::LogStages::Next(const char* name) {
+	if (!s_Logging) {
+		return;
+	}
+	if (m_WaitForGPU) {
+		glFinish();
+	}
+	uint64_t now = g_TimerMan.GetAbsoluteTime();
+	if (m_Name) {
+		AddLogTime(m_Name, now - m_Start);
+	}
+	m_Name = name;
+	m_Start = now;
+}
+
+void PerformanceMan::UpdateLog() {
+	if (!s_Logging) {
+		return;
+	}
+	uint64_t now = g_TimerMan.GetAbsoluteTime();
+	if (s_LogStart == 0) {
+		s_LogStart = now;
+		s_LogBlockStart = now;
+		s_LogLastFrame = now;
+	}
+	uint64_t frameMicroseconds = now - s_LogLastFrame;
+	s_LogLastFrame = now;
+	s_LogWorstFrame = std::max(s_LogWorstFrame, frameMicroseconds);
+	s_LogSlowFrames += frameMicroseconds > 16'667 ? 1 : 0;
+	s_LogVerySlowFrames += frameMicroseconds > 33'333 ? 1 : 0;
+	++s_LogFrames;
+	AddLogCount("# actors", static_cast<uint64_t>(g_MovableMan.GetActorCount()));
+	AddLogCount("# particles", static_cast<uint64_t>(g_MovableMan.GetParticleCount()));
+	AddLogCount("# MOIDs", static_cast<uint64_t>(g_MovableMan.GetMOIDCount()));
+	if (now - s_LogBlockStart < c_LogBlockMicroseconds) {
+		return;
+	}
+
+	std::vector<std::pair<std::string, LogEntry>> entries;
+	{
+		std::lock_guard<std::mutex> lock(s_LogMutex);
+		entries.assign(s_LogEntries.begin(), s_LogEntries.end());
+		s_LogEntries.clear();
+	}
+	std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) { return left.second.Total > right.second.Total; });
+
+	double blockMicroseconds = static_cast<double>(now - s_LogBlockStart);
+	double frames = static_cast<double>(std::max(s_LogFrames, 1));
+	std::ofstream log(s_LogPath, std::ios::app);
+	char line[256];
+	std::snprintf(line, sizeof(line), "\n== %.0f s | %.1f frames/s (%.2f ms each) | worst frame %.1f ms | %d frames over 16.7 ms, %d over 33 ms | %.1f sim updates/s\n", static_cast<double>(now - s_LogStart) / 1e6, frames * 1e6 / blockMicroseconds, blockMicroseconds / frames / 1000.0, static_cast<double>(s_LogWorstFrame) / 1000.0, s_LogSlowFrames, s_LogVerySlowFrames, static_cast<double>(s_LogUpdates) * 1e6 / blockMicroseconds);
+	log << line;
+	for (const auto& [name, entry]: entries) {
+		if (!name.empty() && name[0] == '#') {
+			continue;
+		}
+		std::snprintf(line, sizeof(line), "%-46s share %5.1f%%  %8.3f ms/frame  %8.3f ms/call  worst %8.3f ms  %7llu calls\n", name.c_str(), static_cast<double>(entry.Total) * 100.0 / blockMicroseconds, static_cast<double>(entry.Total) / frames / 1000.0, static_cast<double>(entry.Total) / static_cast<double>(entry.Calls) / 1000.0, static_cast<double>(entry.Worst) / 1000.0, static_cast<unsigned long long>(entry.Calls));
+		log << line;
+	}
+	for (const auto& [name, entry]: entries) {
+		if (!name.empty() && name[0] == '#') {
+			std::snprintf(line, sizeof(line), "%-46s average %.1f  highest %llu\n", name.c_str(), static_cast<double>(entry.Total) / static_cast<double>(entry.Calls), static_cast<unsigned long long>(entry.Worst));
+			log << line;
+		}
+	}
+	s_LogBlockStart = now;
+	s_LogWorstFrame = 0;
+	s_LogSlowFrames = 0;
+	s_LogVerySlowFrames = 0;
+	s_LogFrames = 0;
+	s_LogUpdates = 0;
 }
 
 void PerformanceMan::NewPerformanceSample() {
+	if (s_Logging) {
+		++s_LogUpdates;
+	}
 	m_Sample++;
 	if (m_Sample >= c_MaxSamples) {
 		m_Sample = 0;

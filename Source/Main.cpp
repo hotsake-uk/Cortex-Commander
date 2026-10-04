@@ -409,28 +409,48 @@ void RunGameLoop() {
 
 			g_FrameMan.Update();
 
-			g_MovableMan.CompleteQueuedMOIDDrawings();
+			{
+				PerformanceMan::LogScope logScope("Sim: waiting for MOID drawing");
+				g_MovableMan.CompleteQueuedMOIDDrawings();
+			}
 
 			g_ConsoleMan.Update();
 			g_ActivityMan.Update();
 
 			if (g_SceneMan.GetScene()) {
+				PerformanceMan::LogScope logScope("Sim: scene update");
 				g_SceneMan.GetScene()->Update();
 			}
-			Sandbox::Update();
-			SmokeGrid::Update();
-			TerrainFire::Update();
-			ActorFire::Update();
-			TerrainCollapse::Update();
-			FluidSim::Update();
-			ActorWater::Update();
+			{
+				PerformanceMan::LogStages logStages;
+				logStages.Next("Sim: sandbox");
+				Sandbox::Update();
+				logStages.Next("Sim: smoke grid");
+				SmokeGrid::Update();
+				logStages.Next("Sim: terrain fire");
+				TerrainFire::Update();
+				logStages.Next("Sim: burning units");
+				ActorFire::Update();
+				logStages.Next("Sim: terrain collapse");
+				TerrainCollapse::Update();
+				logStages.Next("Sim: liquids");
+				FluidSim::Update();
+				logStages.Next("Sim: units in water");
+				ActorWater::Update();
+			}
 
 			g_LuaMan.ClearScriptTimings();
-			g_MovableMan.Update();
+			{
+				PerformanceMan::LogScope logScope("Sim: MovableMan total");
+				g_MovableMan.Update();
+			}
 			g_PerformanceMan.UpdateSortedScriptTimings(g_LuaMan.GetScriptTimings());
 
-			g_AudioMan.Update();
-			g_MusicMan.Update();
+			{
+				PerformanceMan::LogScope logScope("Sim: audio");
+				g_AudioMan.Update();
+				g_MusicMan.Update();
+			}
 
 			g_ActivityMan.LateUpdateGlobalScripts();
 
@@ -467,12 +487,24 @@ void RunGameLoop() {
 		updateTotalTime = updateEndAndDrawStartTime - updateStartTime;
 		drawStartTime = updateEndAndDrawStartTime;
 
-		g_FrameMan.Draw();
-		g_WindowMan.DrawPostProcessBuffer();
-		g_WindowMan.UploadFrame();
+		{
+			PerformanceMan::LogScope logScope("Draw: FrameMan::Draw total", true);
+			g_FrameMan.Draw();
+		}
+		{
+			PerformanceMan::LogScope logScope("Draw: post-process buffer", true);
+			g_WindowMan.DrawPostProcessBuffer();
+		}
+		{
+			PerformanceMan::LogScope logScope("Draw: upload and present", true);
+			g_WindowMan.UploadFrame();
+		}
 
 		drawTotalTime = g_TimerMan.GetAbsoluteTime() - drawStartTime;
 		g_PerformanceMan.UpdateMSPF(updateTotalTime, drawTotalTime);
+		PerformanceMan::AddLogTime("Frame: all sim updates", static_cast<uint64_t>(updateTotalTime));
+		PerformanceMan::AddLogTime("Frame: all drawing", static_cast<uint64_t>(drawTotalTime));
+		g_PerformanceMan.UpdateLog();
 	}
 }
 

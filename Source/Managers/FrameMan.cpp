@@ -868,9 +868,15 @@ void FrameMan::Draw() {
 	const Activity* pActivity = g_ActivityMan.GetActivity();
 
 	SceneLighting* sceneLighting = g_PostProcessMan.GetSceneLighting();
-	sceneLighting->Update();
-	EffectsParticles::Update(g_PostProcessMan.GetLightingSettings().EffectsParticles);
-	EffectsParticles::BeginFrame();
+	{
+		PerformanceMan::LogScope logScope("Draw: light grid update total", true);
+		sceneLighting->Update();
+	}
+	{
+		PerformanceMan::LogScope logScope("Draw: visual particles update");
+		EffectsParticles::Update(g_PostProcessMan.GetLightingSettings().EffectsParticles);
+		EffectsParticles::BeginFrame();
+	}
 
 	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
 		g_CameraMan.Update(playerScreen);
@@ -914,10 +920,13 @@ void FrameMan::Draw() {
 
 			// Draw the scene
 			// g_SceneMan.Draw(drawScreen, drawScreenGUI, targetPos);
-			g_SceneMan.Draw(camera);
+			{
+				PerformanceMan::LogScope logScope("Draw: scene into batch (and terrain uploads)", true);
+				g_SceneMan.Draw(camera);
 
-			EffectsParticles::Draw(camera);
-			g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
+				EffectsParticles::Draw(camera);
+				g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
+			}
 
 			// Get only the scene-relative post effects that affect this player's screen
 			if (pActivity) {
@@ -957,30 +966,38 @@ void FrameMan::Draw() {
 			screenTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
 		}
 		if (!IsHudDisabled(playerScreen) && pActivity) {
+			PerformanceMan::LogScope logScope("Draw: HUD (software)");
 			const Vector& hudTargetPos = screenTargetPos;
 			g_MovableMan.DrawHUD(drawScreenGUI, hudTargetPos, playerScreen);
 			g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, hudTargetPos, playerScreen);
 		}
 		g_RenderMan.SetActiveBatch(sceneBatch);
 
-		g_RenderMan.GetActiveBatch()->EndFrame();
-		if (g_DebugMan.FreeCamEnabled()) {
-			g_RenderMan.GetActiveBatch()->m_CurrentCamera = g_DebugMan.GetFreeCam();
-			g_RenderMan.DrawActiveBatch();
-		} else {
-			for (const Camera& camera: g_CameraMan.GetPlayerCameras(playerScreen)) {
-				g_RenderMan.GetActiveBatch()->m_CurrentCamera = &camera;
-				g_RenderMan.GetActiveBatch()->Render();
+		{
+			PerformanceMan::LogScope logScope("Draw: scene batch render", true);
+			g_RenderMan.GetActiveBatch()->EndFrame();
+			if (g_DebugMan.FreeCamEnabled()) {
+				g_RenderMan.GetActiveBatch()->m_CurrentCamera = g_DebugMan.GetFreeCam();
+				g_RenderMan.DrawActiveBatch();
+			} else {
+				for (const Camera& camera: g_CameraMan.GetPlayerCameras(playerScreen)) {
+					g_RenderMan.GetActiveBatch()->m_CurrentCamera = &camera;
+					g_RenderMan.GetActiveBatch()->Render();
+				}
 			}
+			g_RenderMan.GetActiveBatch()->ClearDraws();
 		}
-		g_RenderMan.GetActiveBatch()->ClearDraws();
 
 		// Light the scene (sky light, glow lights, glows as emitted light, bloom, tonemapping) before anything HUD-like is drawn over it.
 		std::vector<SceneLight> screenLights;
 		g_PostProcessMan.GetLightsWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenLights);
 		std::vector<ScreenShockwave> screenShockwaves;
 		g_PostProcessMan.GetShockwavesWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenShockwaves);
-		sceneLighting->LightPlayerScreen(playerScreen, m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights, screenShockwaves);
+		{
+			PerformanceMan::LogScope logScope("Draw: lighting total", true);
+			PerformanceMan::AddLogCount("# glow effects on screen", screenRelativeEffects.size());
+			sceneLighting->LightPlayerScreen(playerScreen, m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights, screenShockwaves);
+		}
 
 		// Screen-space HUD draws go on top of the scene regardless of scene depth.
 		glClear(GL_DEPTH_BUFFER_BIT);

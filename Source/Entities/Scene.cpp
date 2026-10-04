@@ -2,6 +2,7 @@
 
 #include "PresetMan.h"
 #include "MovableMan.h"
+#include "PerformanceMan.h"
 #include "FrameMan.h"
 #include "ConsoleMan.h"
 #include "SettingsMan.h"
@@ -2404,6 +2405,7 @@ void Scene::BlockUntilAllPathingRequestsComplete() {
 
 void Scene::UpdatePathFinding() {
 	ZoneScoped;
+	PerformanceMan::LogScope logScope("Sim: pathfinding cost update");
 
 	constexpr int nodeUpdatesPerCall = 100;
 	constexpr int maxUnupdatedMaterialAreas = 1000;

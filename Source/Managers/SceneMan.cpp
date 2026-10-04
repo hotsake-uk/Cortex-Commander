@@ -6,6 +6,7 @@
 #include "ActorFire.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
+#include "PerformanceMan.h"
 #include "Shader.h"
 #include "RenderMan.h"
 #include "PostProcessMan.h"
@@ -2722,11 +2723,14 @@ void SceneMan::Draw(const Camera& camera) {
 		return;
 	}
 
+	PerformanceMan::LogStages logStages(true);
+	logStages.Next("Scene draw: backgrounds");
 	for (std::list<SLBackground*>::reverse_iterator backgroundLayer = m_pCurrentScene->GetBackLayers().rbegin(); backgroundLayer != m_pCurrentScene->GetBackLayers().rend(); backgroundLayer++) {
 		(*backgroundLayer)->Draw(camera);
 	}
 
 	SLTerrain* terrainLayer = m_pCurrentScene->GetTerrain();
+	logStages.Next("Scene draw: terrain (and its uploads)");
 
 	// Terrain layers get scorch marks and the glow of freshly blasted terrain.
 	const Shader* sceneShader = g_RenderMan.GetCurrentShader();
@@ -2737,13 +2741,16 @@ void SceneMan::Draw(const Camera& camera) {
 	terrainLayer->Draw(camera);
 	g_RenderMan.SetCurrentShader(sceneShader);
 
+	logStages.Next("Scene draw: objects");
 	g_MovableMan.Draw(camera);
 
+	logStages.Next("Scene draw: terrain (and its uploads)");
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
 	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
 	terrainLayer->Draw(camera);
 	g_RenderMan.SetCurrentShader(sceneShader);
 
+	logStages.Next("Scene draw: fog of war and HUD");
 	int teamId = camera.GetTeam();
 	if (teamId != Activity::NoTeam && m_pCurrentScene->GetUnseenLayer(teamId)) {
 		// Soft edged fog of war instead of hard blocks.

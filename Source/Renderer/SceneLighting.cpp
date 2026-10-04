@@ -3,6 +3,7 @@
 #include "TerrainFire.h"
 
 #include "PostProcessMan.h"
+#include "PerformanceMan.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
 #include "RenderTarget.h"
@@ -639,6 +640,8 @@ void SceneLighting::Update() {
 	++m_FrameCounter;
 
 	// Round-robin refresh of the terrain into the grid, so digging and explosions show up in the lighting within a fraction of a second.
+	PerformanceMan::LogStages logStages(true);
+	logStages.Next("Light grid: terrain refresh and skyline");
 	int rowsPerFrame = std::max(4, m_GridHeight / 30);
 	int firstRow = m_NextRefreshRow;
 	int endRow = std::min(firstRow + rowsPerFrame, m_GridHeight);
@@ -651,9 +654,12 @@ void SceneLighting::Update() {
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
 	GLint previousViewport[4];
 	glGetIntegerv(GL_VIEWPORT, previousViewport);
+	logStages.Next("Light grid: sky light spreading");
 	PropagateSkyLight(m_Settings.PropagationIterationsPerFrame);
+	logStages.Next("Light grid: scorch marks and stains");
 	StampScorchMarks();
 	StampStains();
+	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
 }
@@ -747,6 +753,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glm::vec2 origin(std::floor(screenOrigin.m_X), std::floor(screenOrigin.m_Y));
 	glm::vec2 gridWorldSize(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize));
 
+	PerformanceMan::LogStages logStages(true);
+	logStages.Next("Lighting: building quads (CPU)");
 	// Build light and emissive quads from the glow effects. Lights first, emissives after, so each can be drawn as one range.
 	m_QuadVertices.clear();
 	auto addQuad = [this](glm::vec2 center, glm::vec2 halfSize, float angle, glm::vec3 color, float radius) {
@@ -916,7 +924,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	}
 	size_t smokeCount = m_QuadVertices.size() / 4 - smokeStart;
 	UploadQuads();
+	PerformanceMan::AddLogCount("# lights on screen", lightCount);
+	PerformanceMan::AddLogCount("# quads for lighting (lights, glows, sparks, fire, dust, smoke)", m_QuadVertices.size() / 4);
 
+	logStages.Next("Lighting: shockwaves");
 	// Shockwave displacement.
 	glBindFramebuffer(GL_FRAMEBUFFER, m_Distortion.Framebuffer);
 	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
@@ -933,6 +944,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 
 	std::shared_ptr<Texture> normals = playerScreen->GetNormalTexture().lock();
 
+	logStages.Next("Lighting: lights and their shadows");
 	// Dynamic lights.
 	glBindFramebuffer(GL_FRAMEBUFFER, m_DynamicLight.Framebuffer);
 	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
@@ -960,6 +972,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	logStages.Next("Lighting: glows");
 	// Glows, screen blended into their own buffer like the original glows.
 	glBindFramebuffer(GL_FRAMEBUFFER, m_Emissive.Framebuffer);
 	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
@@ -983,6 +996,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	logStages.Next("Lighting: radiance cascades");
 	// Global illumination by radiance cascades, from the glows drawn above and last frame's lit surfaces.
 	std::shared_ptr<DepthTexture> cascadeDepth = playerScreen->GetDepthTexture().lock();
 	bool useRadianceCascades = m_Settings.Enabled && m_Settings.RadianceCascades && cascadeDepth;
@@ -1042,6 +1056,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glViewport(0, 0, width, height);
 	}
 
+	logStages.Next("Lighting: composite");
 	// Composite the lit scene into HDR.
 	std::shared_ptr<Texture> albedo = playerScreen->GetColorTexture().lock();
 	glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
@@ -1131,6 +1146,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_RCPreviousValid[screenIndex] = false;
 	}
 
+	logStages.Next("Lighting: indirect light blur");
 	// Blur the lit scene down for next frame's indirect light. Taken before glows, rain and god rays so only lit surfaces bounce.
 	if (m_Settings.Enabled && m_Settings.IndirectLight > 0.0F) {
 		TracyGpuZone("Indirect Light");
@@ -1153,6 +1169,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
 	}
 
+	logStages.Next("Lighting: dust, beams and smoke");
 	// Translucent particles (dust) lit like the scene behind them.
 	if (puffCount > 0) {
 		TracyGpuZone("Lit Particles");
@@ -1244,6 +1261,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	logStages.Next("Lighting: precipitation");
 	// Rain or snow, lit by the sky, over the lit scene.
 	if (m_Settings.WeatherType > 0 && m_Settings.WeatherIntensity > 0.0F) {
 		TracyGpuZone("Precipitation");
@@ -1273,6 +1291,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	logStages.Next("Lighting: god rays");
 	// God rays: light shafts from the sky through gaps in the terrain.
 	if (m_Settings.Enabled && m_Settings.GodRays > 0.0F && sceneDepth) {
 		TracyGpuZone("God Rays");
@@ -1320,6 +1339,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
+	logStages.Next("Lighting: auto exposure");
 	// Auto exposure: average the scene's log luminance, then let the adapted value drift towards it.
 	bool useAutoExposure = m_Settings.Enabled && m_Settings.AutoExposure > 0.0F;
 	if (useAutoExposure) {
@@ -1362,6 +1382,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_AdaptedLuminanceValid[screenIndex] = false;
 	}
 
+	logStages.Next("Lighting: bloom");
 	// Bloom.
 	if (m_Settings.BloomEnabled) {
 		TracyGpuZone("Bloom");
@@ -1399,6 +1420,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glViewport(0, 0, width, height);
 	}
 
+	logStages.Next("Lighting: tonemap");
 	// Tonemap back into the player screen.
 	playerScreen->Bind();
 	glViewport(0, 0, width, height);

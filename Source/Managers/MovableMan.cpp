@@ -1473,6 +1473,7 @@ void MovableMan::Update() {
 
 	{
 		ZoneScopedN("MO Transfer and Deletion");
+		PerformanceMan::LogScope logScope("Sim: adding, settling and deleting objects");
 
 		{
 			// Actors
@@ -1669,6 +1670,7 @@ void MovableMan::Update() {
 	m_ActorsSeeFuture = g_ThreadMan.GetPriorityThreadPool().parallelize_loop(m_Actors.size(),
 	                                                                         [&](int start, int end) {
 		                                                                         ZoneScopedN("Actors See");
+		                                                                         PerformanceMan::LogScope logScope("Worker threads: units' sight rays");
 		                                                                         for (int i = start; i < end; ++i) {
 			                                                                         m_Actors[i]->CastSeeRays();
 		                                                                         }
@@ -1679,6 +1681,7 @@ void MovableMan::Update() {
 
 	// Draw the MO matter and IDs to their layers for next frame
 	m_DrawMOIDsTask = g_ThreadMan.GetPriorityThreadPool().submit([this]() {
+		PerformanceMan::LogScope logScope("Worker thread: MOID drawing");
 		UpdateDrawMOIDs();
 	});
 
@@ -1686,6 +1689,7 @@ void MovableMan::Update() {
 	// Draw the MO colors ONLY if this is a drawn update!
 
 	if (g_TimerMan.DrawnSimUpdate()) {
+		PerformanceMan::LogScope logScope("Sim: software draw of objects");
 		Draw(g_SceneMan.GetMOColorBitmap());
 	}
 

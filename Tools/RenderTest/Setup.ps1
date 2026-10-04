@@ -111,3 +111,6 @@ Write-Scenario "Level" $sandbox @("Render Test Level")
 # Plays itself with everything going at once, for SoakAuto.ps1: an auto battle with dropships, a flood, napalm and fuel barrels, and the camera zooming, in dusk rain.
 $soakAuto = $sandbox.Clone(); $soakAuto.TimeOfDay = 19.5; $soakAuto.WeatherType = 1; $soakAuto.WeatherIntensity = 0.7; $soakAuto.Wind = 90
 Write-Scenario "SoakAuto" $soakAuto @("Render Test Sandbox Armies", "Render Test Flood", "Render Test Fire Units", "Render Test Zoom")
+# For performance runs with the CCCP_PERF_LOG environment variable set: blasts on the bunker and the ground, by night (many lights) and by day.
+Write-Scenario "Blast" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Blast")
+Write-Scenario "BlastDay" $bunker @("Render Test Blast")

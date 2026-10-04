@@ -5,6 +5,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <unordered_map>
 #include <memory>
 #include <vector>
@@ -99,6 +100,54 @@ namespace RTE {
 		void SetCurrentPing(int ping) { m_CurrentPing = ping; }
 #pragma endregion
 
+#pragma region Performance Log
+		/// Whether timings are being gathered into a log file, for measuring where a whole run's time goes.
+		/// It's on when the CCCP_PERF_LOG environment variable names the file to write. Averages are added to the file every few seconds.
+		/// With CCCP_PERF_LOG_GPU set as well, scopes that ask for it make the GPU finish its queued work at both ends, so their times include what their draw calls cost there. That slows the game down, so frame rates from such a run aren't the real ones.
+		/// @return Whether the performance log is on.
+		static bool IsLogging() { return s_Logging; }
+
+		/// Adds time to a named entry of the performance log. Safe to call from any thread. Does nothing while the log is off.
+		/// @param name The entry's name.
+		/// @param microseconds The time to add.
+		static void AddLogTime(const char* name, uint64_t microseconds);
+
+		/// Adds a reading (a count of something) to a named entry of the performance log, which reports its average. Start the name with '#'.
+		/// @param name The entry's name.
+		/// @param value The reading.
+		static void AddLogCount(const char* name, uint64_t value) { AddLogTime(name, value); }
+
+		/// Times the scope it lives in into the performance log.
+		struct LogScope {
+			/// @param name The entry's name.
+			/// @param waitForGPU Whether the time should include the GPU's work on the scope's draw calls (see IsLogging). Main thread only.
+			explicit LogScope(const char* name, bool waitForGPU = false);
+			~LogScope();
+
+			const char* m_Name;
+			bool m_WaitForGPU;
+			uint64_t m_Start;
+		};
+
+		/// Times the consecutive stages of a long function into the performance log. Each Next() ends the stage before it, and so does the end of the scope.
+		struct LogStages {
+			/// @param waitForGPU Whether the times should include the GPU's work on each stage's draw calls (see IsLogging). Main thread only.
+			explicit LogStages(bool waitForGPU = false);
+			~LogStages() { Next(nullptr); }
+
+			/// Ends the current stage and starts the next.
+			/// @param name The next stage's entry name, or nullptr for none.
+			void Next(const char* name);
+
+			const char* m_Name;
+			bool m_WaitForGPU;
+			uint64_t m_Start;
+		};
+
+		/// Counts a drawn frame for the performance log, and writes the log's next block when one is due.
+		void UpdateLog();
+#pragma endregion
+
 #pragma region Concrete Methods
 		/// Clears current performance timings.
 		void ResetPerformanceTimings() {
@@ -171,6 +220,9 @@ namespace RTE {
 		std::array<std::array<std::atomic_uint64_t, c_MaxSamples>, PerformanceCounters::PerfCounterCount> m_PerfData; //!< Array to store performance measurements in microseconds.
 
 		std::vector<std::pair<std::string, ScriptTiming>> m_SortedScriptTimings; //!< Sorted vector storing how long scripts took to execute.
+
+		static bool s_Logging; //!< Whether the performance log is on.
+		static bool s_LogGPU; //!< Whether the performance log's scopes may wait for the GPU.
 
 	private:
 #pragma region Performance Counter Handling

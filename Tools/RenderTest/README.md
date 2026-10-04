@@ -67,3 +67,15 @@ These are enabled per scenario in the scenario files:
 - `SoakAuto.ps1` launches the `SoakAuto` scenario, which plays itself (an auto battle with dropships, a flood, napalm and fuel barrels, camera zoom, dusk rain), and samples memory and responsiveness. It sends no input, so it is safe to run while the machine is in use.
 - `Soak.ps1` drives the game with real key presses and mouse clicks. Only run it when nobody is using the machine: its input goes to whichever window has focus.
 - Test runs set `CCCP_NO_GAMEPAD`, so a controller in use for something else cannot steer them.
+
+## Performance log
+
+```powershell
+$env:CCCP_PERF_LOG = "perf.log"   # written in the game folder
+.\Capture.ps1 -Scenario Blast -ExtraWait 50
+```
+
+- With `CCCP_PERF_LOG` set, the game writes where its time went every five seconds. For each part of the sim update and of drawing it gives the share of the time, the average, and the worst single call. Each block also gives the worst frame and how many frames took longer than 16.7 ms and 33 ms. Averages hide hitches; the worst figures show them.
+- Set `CCCP_PERF_LOG_GPU` as well to make the drawing stages wait for the GPU, so their times include its work. That slows the game down, so take frame rates from a run without it.
+- `Blast` (night) and `BlastDay` are the scenarios for it: a blast on the bunker and the ground every 300 ms, then four big bombs at once every 1.5 seconds, then dropships blown up above the bunker.
+- New timed scopes are one line each: `PerformanceMan::LogScope` for a block, `PerformanceMan::LogStages` for the stages of a long function, `PerformanceMan::AddLogCount` for a reading such as a light count.
