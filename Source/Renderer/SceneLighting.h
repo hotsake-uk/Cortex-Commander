@@ -24,6 +24,9 @@ namespace RTE {
 	class SceneLighting {
 
 	public:
+		/// Starts a lightning flash now, as if a bolt just struck (the sandbox's lightning).
+		void TriggerLightning() { m_LightningSecondsLeft = 0.45F; }
+
 		/// Constructor.
 		/// @param settings The settings to use, not owned. Read every frame, so they can be changed live.
 		explicit SceneLighting(LightingSettings& settings);

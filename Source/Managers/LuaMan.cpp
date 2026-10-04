@@ -1,4 +1,5 @@
 #include "LuaMan.h"
+#include "Sandbox.h"
 
 #include "LuabindObjectWrapper.h"
 #include "LuaBindingRegisterDefinitions.h"
@@ -106,6 +107,8 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("Lerp", (float (*)(float, float, float, float, float))&Lerp),
 	                         luabind::def("Lerp", (Vector(*)(float, float, Vector, Vector, float))&Lerp),
 	                         luabind::def("Lerp", (Matrix(*)(float, float, const Matrix&, const Matrix&, float))&Lerp),
+	                         luabind::def("SandboxDo", &Sandbox::Do),
+	                         luabind::def("SandboxCountUnits", &Sandbox::CountUnits),
 	                         luabind::def("EaseIn", &EaseIn),
 	                         luabind::def("EaseOut", &EaseOut),
 	                         luabind::def("EaseInOut", &EaseInOut),

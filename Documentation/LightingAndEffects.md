@@ -87,6 +87,22 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Cone lights:** available to code via `PostProcessMan::RegisterConeLight`.
 - **Lights near terrain:** a light no longer shadows itself on the terrain right around it, so a lamp lying in grass still lights up its surroundings.
 
+**Sandbox** (game mode and F7 tools):
+- **The game mode:** pick **Sandbox** in the scenario menu. You play as a god with a free camera (right-drag or WASD), every unit is run by the AI, including your own side's, and the game never ends.
+- **Spawning:** units from every faction (with squad size, loadout and orders), brains, items and bunker pieces. Each spawn list has a search box. There are four sides: Blue, Red, Green and Yellow.
+- **Brains are optional:** place one for any side to give the others something to hunt and that side something to defend.
+- **Orders:**
+  - Hold position, attack nearest enemy, hunt brains, patrol, go to the side's rally point, or do nothing.
+  - Given when units spawn, or to a whole side from the Orders tab. "Everyone attack!" starts a free-for-all.
+  - Units told to attack pick a new target when theirs dies.
+- **Take control:** click a unit to play it yourself. F7 (or the unit dying) puts you back in the god view.
+- **Paint and Boom:** fire, water, lava, acid, oil, smoke and toxic gas; dig, or add earth, sand, grass, wood or concrete; grenade blasts, big bombs, napalm and lightning strikes.
+- **World tab:** weather, wind, time of day, slow motion, a free camera toggle, and putting out all fire.
+- **In other games:** F7 opens the same tools as a debug panel.
+- **Lua:**
+  - `SandboxDo(tool, position, side, order, count, presetName)` uses any tool from a script. For example, `SandboxDo("Units", pos, 1, 1, 4, "Soldier Light")` spawns four Red soldiers told to attack.
+  - `SandboxCountUnits(side)` counts a side's units.
+
 **Modern HUD** (`ModernHUD`, in Video settings and F6) is drawn crisply at window resolution on top of the classic HUD. It is off by default. It adds:
 - A minimap of the terrain, your view and every unit, coloured by team.
 - Health and ammo bars for the unit you control.

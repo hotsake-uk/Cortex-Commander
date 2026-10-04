@@ -82,6 +82,9 @@ Write-Scenario "WeatherSnow" ($play + @{ WeatherType = 2; WeatherIntensity = 1; 
 Write-Scenario "WeatherWindRight" ($play + @{ WeatherType = 0; Wind = 150 }) @("Render Test Weather")
 Write-Scenario "WeatherWindLeft" ($play + @{ WeatherType = 0; Wind = -150 }) @("Render Test Weather")
 Write-Scenario "SoakFeatures" ($play + @{ TimeOfDay = 19; WeatherType = 1; WeatherIntensity = 0.7; Wind = 90 }) @("Render Test Grenades", "Render Test Liquid Weapons", "Render Test Weather")
+$sandbox = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAScripted"; DefaultActivityName = "Sandbox"; DefaultSceneName = "Ketanot Hills" }
+Write-Scenario "Sandbox" $sandbox @()
+Write-Scenario "SandboxBattle" $sandbox @("Render Test Sandbox")
 Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
 Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")
 

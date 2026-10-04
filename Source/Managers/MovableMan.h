@@ -56,6 +56,7 @@ namespace RTE {
 		friend class DebugMan;
 		friend class ModernHUD;
 		friend class SmokeGrid;
+		friend class Sandbox;
 
 		/// Public member variable, method and friend function declarations
 	public:

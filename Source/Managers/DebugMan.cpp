@@ -20,6 +20,7 @@
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "SmokeGrid.h"
+#include "Sandbox.h"
 #include "ModernHUD.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
@@ -59,6 +60,8 @@ void DebugMan::DrawImGui() {
 		WorldDebugGUI();
 	}
 
+	Sandbox::DrawGUI();
+
 	if (m_ShowPhotoMode) {
 		PhotoModeGUI();
 	} else if (m_PhotoModeActive) {
@@ -87,7 +90,7 @@ void DebugMan::DrawImGui() {
 }
 
 void DebugMan::UpdateMouseOwnership() {
-	bool wantMouse = m_ShowWorldDebug || m_ShowPhotoMode || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
+	bool wantMouse = Sandbox::IsOpen() || m_ShowWorldDebug || m_ShowPhotoMode || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
 	if (wantMouse != m_ReleasedMouseForImGui) {
 		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while debug windows are open.
 		g_UInputMan.DisableMouseMoving(wantMouse);
@@ -109,6 +112,9 @@ void DebugMan::WorldDebugGUI() {
 			ImGui::TextDisabled("No scene loaded (menus)");
 		}
 		ImGui::Text("%.0f FPS", ImGui::GetIO().Framerate);
+		if (ImGui::Button(Sandbox::IsOpen() ? "Close sandbox (F7)" : "Open sandbox (F7)")) {
+			Sandbox::Toggle();
+		}
 
 		ImGui::SeparatorText("Time of day");
 		ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");

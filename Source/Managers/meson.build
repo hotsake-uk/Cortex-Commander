@@ -24,6 +24,7 @@ sources += files(
 'FluidSim.cpp',
 'ModernHUD.cpp',
 'SmokeGrid.cpp',
+'Sandbox.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
 'TimerMan.cpp',

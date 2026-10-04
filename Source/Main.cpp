@@ -46,6 +46,7 @@
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "SmokeGrid.h"
+#include "Sandbox.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -227,7 +228,9 @@ void PollSDLEvents() {
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
 		// Function keys (debug window toggles, quicksave and so on) always reach the game, so a focused debug window can still be closed with its key.
 		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12;
-		bool imGuiTakesEvent = !functionKey && ((imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
+		// While a sandbox tool is picked, left clicks on the world paint instead of firing.
+		bool sandboxTakesClick = Sandbox::CapturesWorldClicks() && sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN && sdlEvent.button.button == SDL_BUTTON_LEFT;
+		bool imGuiTakesEvent = !functionKey && (sandboxTakesClick || (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
 		                                        (imGuiIO.WantCaptureKeyboard && (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_TEXT_INPUT)));
 		if (imGuiTakesEvent) {
 			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
@@ -265,6 +268,8 @@ void PollSDLEvents() {
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {
 			if (sdlEvent.key.scancode == SDL_SCANCODE_F6) {
 				g_DebugMan.ToggleWorldDebug();
+			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F7) {
+				Sandbox::Toggle();
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F8) {
 				g_DebugMan.TogglePhotoMode();
 			}
@@ -405,6 +410,7 @@ void RunGameLoop() {
 			if (g_SceneMan.GetScene()) {
 				g_SceneMan.GetScene()->Update();
 			}
+			Sandbox::Update();
 			SmokeGrid::Update();
 			TerrainFire::Update();
 			TerrainCollapse::Update();
