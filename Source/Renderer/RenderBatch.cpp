@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include "GLStateMan.h"
 #include "RenderMan.h"
+#include "PerformanceMan.h"
 #include "Shader.h"
 #include "glad/gl.h"
 #include "glm/glm.hpp"
@@ -79,6 +80,7 @@ void RenderBatch::BeginFrame() {
 	m_CurrentZ = c_DefaultDrawDepth;
 	m_CurrentSurface = glm::u8vec4(0);
 	m_ShadowCasting = true;
+	m_OpenPixelDraw = nullptr;
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 	RecycleDrawCalls();
@@ -86,7 +88,11 @@ void RenderBatch::BeginFrame() {
 
 void RenderBatch::EndFrame() {
 	ZoneScoped;
+	PerformanceMan::LogStages logStages(true);
+	logStages.Next("Batch: gathering vertices");
+	PerformanceMan::AddLogCount("# draw calls in a batch", m_DrawCalls.size());
 	ApplyDrawCalls();
+	logStages.Next("Batch: uploading vertices");
 	m_VertexBuffers.UpdateBuffers();
 }
 
@@ -218,6 +224,7 @@ void RenderBatch::Render() {
 }
 
 void RenderBatch::RecycleDrawCalls() {
+	m_OpenPixelDraw = nullptr;
 	for (std::shared_ptr<DrawCall>& drawCall: m_DrawCalls) {
 		// Only reuse draw calls nobody else is holding on to.
 		if (drawCall.use_count() == 1) {

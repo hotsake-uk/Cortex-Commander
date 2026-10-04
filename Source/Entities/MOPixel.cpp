@@ -246,8 +246,12 @@ void MOPixel::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode,
 }
 
 void MOPixel::Draw(const Camera& camera) const {
-	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
-		Draw::Pixels(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
+	// Most particles in a big battle are nowhere near the screen: don't hand those to the GPU at all. The margin covers the trail of a fast one that has just left the view.
+	if (!camera.IsVisible(m_Pos, 48.0F)) {
+		return;
 	}
-	Draw::Pixel(GetRenderPos().GetFloored(), m_Color);
+	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
+		Draw::PixelsBatched(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
+	}
+	Draw::PixelBatched(GetRenderPos().GetFloored(), m_Color);
 }

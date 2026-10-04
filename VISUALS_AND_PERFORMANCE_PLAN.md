@@ -71,8 +71,8 @@ Status: **done**, **in progress**, **next**, or **later** (not asked for yet).
 
 | # | Item | What it does | Status |
 |---|---|---|---|
-| 16 | **Batch particle drawing, skip off-screen ones** | Each pixel particle is sent to the GPU separately today, visible or not. | next |
-| 17 | **Drop the leftover software drawing** | Every object is still drawn in software each update for a layer the GPU renderer doesn't use. Glow effects are registered inside that drawing, so that part moves out first. | next |
+| 16 | **Batch particle drawing, skip off-screen ones** | Each pixel particle was sent to the GPU separately, visible or not. | done |
+| 17 | **Drop the leftover software drawing** | Every object was still drawn in software each update, into a layer the GPU renderer doesn't use. | done |
 | 18 | Debris budget | Past a limit, loose terrain pixels become cheap visual-only chips. Changes how rubble piles up in very large fights. | later |
 | 19 | Merge and cap lights | The big battle peaked at 2,863 lights on screen. | later |
 | 20 | Refresh the light grid only where terrain changed | Saves a little every frame, and digging lights up at once. | later |
@@ -110,10 +110,15 @@ Short design notes, updated as things are built.
 
 ### Performance (16, 17)
 
-- **16:** pixel particles off screen are skipped, and the rest go to the GPU in one buffer.
-- **17:** glow registration moves into its own pass over the objects; the software drawing then only runs when something needs that layer (world dumps).
+- **16:** particles off screen are skipped. Pixel particles and their trails that are drawn one after another share a draw call, each pixel still at its own place in the draw order.
+- **17:** the software drawing is gone from the update. Only world dumps look at that layer, and they now draw it when one is taken.
+  - **Correction:** this plan first said glow effects were registered inside that drawing and had to be moved out. That was wrong: they are registered in the objects' updates, and none of the software draw methods has a side effect, so the drawing could simply go.
+- **Measured** (Final build, the 500 unit battle, at about 15,000 particles): a frame took 88.8 ms before and 78.3 ms after. The software drawing was 7.9 ms of that; handing objects to the GPU went from 16.1 to 13.5 ms and rendering the batch from 6.6 to 5.1 ms, with half as many draw calls. The battle in that test is all on screen, so skipping off-screen particles doesn't show in these numbers.
+- **What's left:** the rest of the time is the physics of the particles themselves (item 18).
 
 ## Progress log
 
 - **2026-10-04:** performance log added; terrain collapse hitch fixed; this plan written.
 - **2026-10-04:** shadows (items 1 to 3) built, with a regression scene (`GoldenShadows`) and test scenarios (`Shadows*`). Background wall depth fixed. Light shafts now follow the sun.
+- **2026-10-04:** a crash in the Modern HUD fixed (it read the controlled unit a frame after the unit was deleted).
+- **2026-10-04:** performance items 16 and 17 done.

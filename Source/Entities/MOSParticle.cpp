@@ -222,8 +222,12 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 void MOSParticle::Draw(const Camera& camera) const {
 	RTEAssert(!m_Sprites.empty(), "No sprite bitmaps loaded to draw " + GetPresetName());
 	RTEAssert(m_Frame >= 0 && m_Frame < m_FrameCount, "Frame is out of bounds for " + GetPresetName());
+	// Nowhere near the screen: nothing to hand to the GPU. The margin covers the trail of a fast one that has just left the view.
+	if (!camera.IsVisible(m_Pos, m_SpriteRadius + 48.0F)) {
+		return;
+	}
 	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
-		Draw::Pixels(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
+		Draw::PixelsBatched(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
 	}
 	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
 		return;

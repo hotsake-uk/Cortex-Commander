@@ -1685,13 +1685,8 @@ void MovableMan::Update() {
 		UpdateDrawMOIDs();
 	});
 
-	////////////////////////////////////////////////////////////////////
-	// Draw the MO colors ONLY if this is a drawn update!
-
-	if (g_TimerMan.DrawnSimUpdate()) {
-		PerformanceMan::LogScope logScope("Sim: software draw of objects");
-		Draw(g_SceneMan.GetMOColorBitmap());
-	}
+	// The objects used to be drawn in software into the MO color layer here every drawn update. The GPU renderer draws them from their own Draw(camera),
+	// and the only thing that still looks at that layer is the world dump, which draws it when one is taken (FrameMan::DrawWorldDump). In a 500 unit battle this cost 7 to 8 ms an update.
 
 	// Sort team rosters if necessary
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
@@ -1962,9 +1957,11 @@ void MovableMan::Draw(BITMAP* pTargetBitmap, const Vector& targetPos) {
 
 void MovableMan::Draw(const Camera& camera) {
 	ZoneScoped;
+	PerformanceMan::LogStages logStages;
 
 	{
 		ZoneScopedN("Particles Draw GPU");
+		logStages.Next("Objects draw: particles");
 		for (auto particle: m_Particles) {
 			particle->Draw(camera);
 		}
@@ -1972,12 +1969,14 @@ void MovableMan::Draw(const Camera& camera) {
 
 	{
 		ZoneScopedN("Items Draw GPU");
+		logStages.Next("Objects draw: items");
 		for (auto item: m_Items) {
 			item->Draw(camera);
 		}
 	}
 	{
 		ZoneScopedN("Actors Draw GPU");
+		logStages.Next("Objects draw: units");
 		for (auto actor: m_Actors) {
 			actor->Draw(camera);
 		}

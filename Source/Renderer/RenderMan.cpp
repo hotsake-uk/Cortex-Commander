@@ -96,6 +96,8 @@ std::shared_ptr<DrawCall> RenderMan::BeginDraw() {
 		drawCall.reset(new DrawCall(static_cast<int>(m_ActiveBatch->m_DrawCalls.size())));
 	}
 	m_ActiveBatch->m_DrawCalls.push_back(drawCall);
+	// Whatever this draw is, it ends any run of pixels before it.
+	m_ActiveBatch->m_OpenPixelDraw = nullptr;
 	drawCall->m_Shader = m_ActiveBatch->m_CurrentShader;
 	drawCall->m_TextureId = m_ShapesTexture->GetTextureId();
 	drawCall->m_BlendMode = m_ActiveBatch->m_CurrentBlendMode;

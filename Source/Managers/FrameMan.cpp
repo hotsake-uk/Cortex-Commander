@@ -1174,7 +1174,9 @@ void FrameMan::DrawWorldDump(bool drawForScenePreview) const {
 		int effectStrength = 0;
 		Vector targetPos(0, 0);
 
-		// Draw objects
+		// Draw objects. Nothing keeps the MO color layer drawn any more, so draw it for this dump.
+		g_SceneMan.ClearMOColorLayer();
+		g_MovableMan.Draw(g_SceneMan.GetMOColorBitmap());
 		draw_sprite(m_WorldDumpBuffer.get(), g_SceneMan.GetMOColorBitmap(), 0, 0);
 
 		// Draw post-effects

@@ -120,8 +120,12 @@ foreach ($scenario in $scenarios) {
 	Start-Sleep 2
 	$captureArgs = @{ Scenario = $name; Name = "golden_$name"; Exe = $Exe; ExtraWait = $ExtraWait }
 	if ($scenario.CameraPOI) { $captureArgs.CameraPOI = $scenario.CameraPOI }
-	$captured = & (Join-Path $PSScriptRoot "Capture.ps1") @captureArgs | Select-Object -Last 1
-	if (-not $captured -or -not (Test-Path $captured)) { "FAIL  $name : capture failed ($captured)"; $failures++; continue }
+	$captureOutput = @(& (Join-Path $PSScriptRoot "Capture.ps1") @captureArgs)
+	$captured = $captureOutput | Select-Object -Last 1
+	if (-not $captured -or $captured -notlike "*.png" -or -not (Test-Path $captured)) {
+		# The game didn't get as far as a capture (it exited, or never showed a window): say what the capture script reported.
+		"FAIL  $name : capture failed"; $captureOutput | ForEach-Object { "      $_" }; $failures++; continue
+	}
 	$reduced = Get-Reduced $captured
 	$baselinePath = Join-Path $goldenDir "$name.png"
 	if ($Update) {
