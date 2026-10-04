@@ -1,32 +1,111 @@
-# Cortex Command Community Project Source
-*The Cortex Command Community Project is Free/Libre and Open Source under GNU AGPL v3*
+# Cortex Commander
 
-[![Meson Build (Linux, macOS)](https://github.com/cortex-command-community/Cortex-Command-Community-Project/actions/workflows/meson.yml/badge.svg)](https://github.com/cortex-command-community/Cortex-Command-Community-Project/actions/workflows/meson.yml) [![Windows Build](https://github.com/cortex-command-community/Cortex-Command-Community-Project/actions/workflows/msbuild.yml/badge.svg)](https://github.com/cortex-command-community/Cortex-Command-Community-Project/actions/workflows/msbuild.yml)
+**Cortex Command, relit and expanded.** This fork of the [Cortex Command Community Project](https://github.com/cortex-command-community/Cortex-Command-Community-Project) gives the game a modern lighting and effects renderer, adds new simulation systems (spreading fire, flowing liquids, collapsing terrain, burning soldiers, weather that matters) and a full god-mode **Sandbox**. It keeps the crisp pixel art, the destructible terrain and every existing mod working.
 
-This is a community-driven effort to continue the development of Cortex Command.  
-Stay up to date in our [Discord channel](https://discord.gg/TSU6StNQUG).
+*Free and open source under the GNU AGPL v3, like the project it's built on.*
 
-***
+![Classic look versus Cortex Commander](Documentation/Images/classic_vs_modern.png)
 
-# Installing the Game
-If you just want to play the latest version of the game you can get it from our [website](https://cortex-command-community.github.io/downloads).
+---
 
-# Getting Mods
-You can get mods from our [mod portal](https://cccp.mod.io).
+## Credit where it's due
 
-# How To Make Your Voice Heard #
-So you want to take part in the project? A good start would be going to the discord where the project is discussed. You can find a link [here](https://discord.gg/TSU6StNQUG). All our releases are available under the releases area and all of our bugs, changes, and ideas are tracked in GitHub issues. Feel free to play and suggest changes or point out any problems.
+- **Data Realms** made Cortex Command and released it as open source.
+- The **[Cortex Command Community Project](https://github.com/cortex-command-community/Cortex-Command-Community-Project)** developers have kept it alive for years. They ported it to modern platforms, rewrote huge parts of the engine, added Lua scripting, mod support, the GPU renderer this fork builds on, and much more.
 
-# How To Make Issues #
-Please feel free to add issues and bugs. It's as simple as going to the issues tab and clicking a button. Once you do that, you'll see an easy to follow template to fill in. Try to put in the appropriate category for the issue and it'll be handled from there.
+Everything here sits on top of their work, and all of their commit history is kept intact in this repository. If you want the official game, get it from the [Community Project website](https://cortex-command-community.github.io/downloads). This fork isn't affiliated with or endorsed by either of them.
 
-# How to Contribute #
-If you've got any C++ experience, experience with the game's ini data through modding it, are good at spriting, or know Lua, you can contribute some of your time directly to the project. We'll gladly consider all pull requests that come in and are always happy to have more hands on deck.
+---
 
-# More Information
-See the [Information and Recommendations](https://github.com/cortex-command-community/Cortex-Command-Community-Project/wiki/Information,-Recommended-Plugins-and-Useful-Links) page for more details and useful development tools.
+## How Cortex Commander differs from the original
 
-***
+The Community Project's priority is a stable, faithful, multi-platform Cortex Command. That's the right priority for the official game, but it means big visual and gameplay changes move slowly. This fork takes a different approach:
+
+- **Visuals first.** The aim is "a pixel-art diorama under real light": dark caves that are actually dark, muzzle flashes that light up tunnel walls, explosions that bloom and push heat haze outwards, sunlight that fades as you dig down.
+- **The pixels stay.** The world is still drawn at the game's internal resolution and scaled up crisply. Only the light, bloom and post-processing get the high-resolution treatment.
+- **Old content gets better for free.** The game ships thousands of sprites and hundreds of INI files that nobody is going to redraw. Every new effect works automatically on existing content and mods: glows become lights, terrain gets edge normals, smoke scatters light. Mods can opt into more (lights on objects, glow blend modes, scene atmosphere).
+- **New simulation that stays deterministic.** Fire, liquids, collapse, smoke and burning units are real simulation systems, not just visuals. They run in fixed steps with their own seeded random numbers and sorted update order, so the game stays deterministic.
+- **Everything can be switched off.** A *Classic* setting turns the new look off entirely, and every gameplay system (fire, liquids, collapse, smoke blocking sight, burning units) is a separate setting.
+- **Tested.** A render-test harness with golden-image comparisons, scripted gameplay tests and soak tests checks every change against the original look and for crashes or leaks.
+- **Built on the upstream GPU renderer.** This fork starts from the Community Project's in-progress OpenGL renderer branch, brings it up to parity, and builds the lighting on top. It isn't a separate engine.
+
+---
+
+## What's new
+
+### Lighting and visuals
+- **HDR scene lighting:** sky light that falls off underground, dynamic lights from every glow, muzzle flash and explosion with soft terrain shadows, edge-lit sprites, and an emissive palette so tracers, gold and hot metal glint in the dark.
+- **2D global illumination** (radiance cascades, Ultra preset): fire and lamps light their surroundings, with bounce light.
+- **Post-processing:** bloom, tonemapping, colour grading, heat haze, explosion shockwaves, god rays through gaps in the terrain, atmospheric haze, scorch marks and glowing crater rims, embers, and light scattering in smoke.
+- **Time of day and weather:** a day/night cycle with stars, moon and lightning in storms. Rain darkens the ground, and snow settles on it and melts.
+- **Living world:** vegetation sways in the wind and bends in blast waves. Blood and oil stain terrain. Explosions throw sparks, dust and debris chips.
+- **Night gameplay:** soldiers wear headlamps after dark, AI sight shrinks at night, and there's a buyable Flare.
+- **Photo mode (F8):** freeze time, free camera, look sliders, and screenshots at up to 4x internal resolution.
+- **Quality of life:** an optional modern HUD (minimap, health and ammo bars, kill feed), crisp TTF text, smooth screen shake, sharp upscaling, quality presets, and soft fog of war restored.
+
+![An explosion at dusk](Documentation/Images/explosion_dusk.png)
+
+### New simulation systems
+- **Spreading fire:** grass and vegetation burn away, wood burns to ash, oil burns fast. It climbs, spreads downwind, is damped by rain and snow, and is put out by water.
+- **Flowing liquids:** water, lava, acid and oil flow and pool. Water puts out fire, lava sets things alight and turns to stone in water, and acid eats soft ground.
+- **Collapsing terrain:** pieces blasted loose fall as rigid chunks. Concrete and metal structures hold.
+- **Burning soldiers:** units catch fire, panic, run and spread it, until they burn out or hit water. Water on fire throws up **steam**, which blocks sight.
+- **Smoke and gas block sight:** units can't see through thick smoke, so smoke screens actually work.
+- **Weather matters:** rain and snow damp fire, snow slows soldiers down, and wind drives fire and embers.
+- **Saved games** keep burning fire and flowing liquid.
+
+### New gear
+Smoke Grenade, Toxic Gas Grenade, Flare, **Napalm Flamer** (burning fuel that pools), **Water Cannon** (knockback, puts fires out), **Acid Sprayer**, and the **Fuel Barrel** (leaks oil when shot, explodes in burning fuel).
+
+![Smoke and gas, napalm, the water cannon, and rain](Documentation/Images/new_systems.png)
+
+### Sandbox mode
+Pick **Sandbox** in the scenario menu and play as a god:
+- **Spawn anything:** units from every faction (with squad size, loadout and orders), brains, items, and bunkers through the game's own build menu, for four sides.
+- **Drop squads** by dropship or rocket. Run **auto battles** where each side gets a faction and a budget and the AI buys and sends waves until one side is left.
+- **Command** units: box-select them, then click to move or attack. **Follow** a unit, or let the camera follow the action. **Take control** of any unit yourself.
+- **Paint** fire, water, lava, acid, oil, smoke, gas and terrain. Call down grenades, bombs, napalm and **lightning**.
+- **Pause AI** to set up a battlefield in peace, then let everyone loose.
+- Change the weather and time of day, and use slow motion.
+- Scriptable from Lua (`SandboxDo`, `SandboxAutoBattleSide`, `SandboxPauseAI`, ...).
+
+![A sandbox battle](Documentation/Images/sandbox_battle.png)
+
+### Fixes along the way
+- Loading saved games works again.
+- Fixed the invisible pie menu and inventory carousel on the GPU renderer.
+- Fixed missing scenario map markers.
+- Fixed copied presets with their own sprites drawing the wrong frames.
+- Fixed black frames when the window was exposed.
+
+---
+
+## Controls and where things are
+
+| Key | What it does |
+|---|---|
+| **F6** | World Debug: time of day, weather, lighting toggles, gameplay systems, game speed, Pause AI |
+| **F7** | Sandbox tools (the whole game in Sandbox mode, a debug panel elsewhere) |
+| **F8** | Photo mode |
+| *Video settings* | Lighting, Bloom, Extra Effects and quality presets. Turn them off for the classic look. |
+
+Full details of every setting, the INI properties for modders and the Lua API are in **[Documentation/LightingAndEffects.md](Documentation/LightingAndEffects.md)**. The design and history are in [MODERNISATION_PLAN.md](MODERNISATION_PLAN.md) and [FEATURE_PROPOSAL.md](FEATURE_PROPOSAL.md).
+
+---
+
+## Status
+
+- **A work in progress,** developed and tested on **Windows** (Visual Studio 2022, OpenGL 3.3). New source files are added to the meson build for Linux and macOS, but those builds haven't been tested here yet.
+- **No prebuilt releases yet.** Build it from source (below). The game data is included in the repository.
+- **Mods** that work with the Community Project should work here too.
+- **How it's made:** this fork is developed with the help of AI coding assistance (Claude Code), with every change built and tested in the game. The commit history records what changed and why.
+- **Deferred for now:** camera zoom, an SDL_GPU backend, and per-material specular highlights. The reasons are in FEATURE_PROPOSAL.md.
+
+Bug reports and ideas are welcome in this repository's issues. Please report problems with the base game to the [Community Project](https://github.com/cortex-command-community/Cortex-Command-Community-Project/issues) instead.
+
+---
+
+*The build instructions below are inherited from the Community Project and apply to this fork as well. The Visual Studio solution is `RTEA.sln`. Use the `Final` configuration for a playable build, which produces `Cortex Command.exe` in the repository root.*
 
 # Windows Build Instructions
 First you need to download the necessary files:
