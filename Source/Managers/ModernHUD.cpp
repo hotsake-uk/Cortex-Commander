@@ -193,7 +193,8 @@ void ModernHUD::Draw() {
 	}
 
 	// Controlled unit: name, health and ammo, bottom left.
-	if (Actor* controlled = activity->GetControlledActor(0); controlled && !controlled->IsDead()) {
+	// The game can still be pointing at a unit that was deleted in the sim update just before this frame (it died and was removed), so make sure it's still in the game before reading it.
+	if (Actor* controlled = activity->GetControlledActor(0); g_MovableMan.IsActor(controlled) && !controlled->IsDead()) {
 		float barWidth = 230.0F * scale;
 		float barHeight = 20.0F * scale;
 		ImVec2 base(margin, io.DisplaySize.y - margin - barHeight * 2.0F - 30.0F * scale);
