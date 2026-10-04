@@ -30,6 +30,7 @@
 
 #include "imgui/imgui.h"
 
+#include <cstdlib>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -1546,7 +1547,8 @@ void Sandbox::DrawGUI() {
 	if (IsGodMode()) {
 		if (s_GodActivity != g_ActivityMan.GetActivity()) {
 			s_GodActivity = g_ActivityMan.GetActivity();
-			s_Open = true;
+			// Automated test runs set CCCP_HIDE_PANELS, so the window (wherever the player last left it) doesn't cover what they capture.
+			s_Open = std::getenv("CCCP_HIDE_PANELS") == nullptr;
 			s_FreeCamera = true;
 			s_FreeCameraStarted = false;
 			s_CameraWarmupFrames = 30;

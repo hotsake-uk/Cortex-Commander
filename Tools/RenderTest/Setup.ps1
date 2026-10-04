@@ -15,9 +15,11 @@ if (-not (Test-Path $scenarioDir)) { New-Item -ItemType Directory -Path $scenari
 
 function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalScripts, [switch]$DefaultLighting) {
 	# Captures are compared against each other, so always use the native 960x540 window whatever the player's own settings are.
-	$Overrides = @{ ResolutionMultiplier = 1; Fullscreen = 0 } + $Overrides
+	$Overrides = @{ ResolutionX = 960; ResolutionY = 540; ResolutionMultiplier = 1; Fullscreen = 0 } + $Overrides
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
 	if ($DefaultLighting) {
+		# Cloud shadows drift, so a golden scene would differ from run to run with them on.
+		if (-not $Overrides.ContainsKey('CloudShadows')) { $Overrides.CloudShadows = 0 }
 		# Golden scenarios use the built-in lighting defaults, so the player's own tweaks (time of day, quality, weather) can't change the baselines.
 		$inLighting = $false
 		$lines = foreach ($line in $lines) {
@@ -115,7 +117,7 @@ Write-Scenario "SoakAuto" $soakAuto @("Render Test Sandbox Armies", "Render Test
 Write-Scenario "Blast" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Blast")
 Write-Scenario "BlastDay" $bunker @("Render Test Blast")
 # Shadows: soldiers and a lamp in the tutorial bunker by night and by day, each with the shadow effects off for comparison, and the open hills late in the afternoon.
-$noShadows = @{ UnitShadows = 0; SunShadows = 0; ContactShading = 0 }
+$noShadows = @{ UnitShadows = 0; SunShadows = 0; ContactShading = 0; CloudShadows = 0; SunDisc = 0 }
 # (The tutorial activity doesn't run global scripts, so the quiet sandbox activity is used on its scene, with the script placing the camera.)
 $shadowBunker = $sandbox.Clone(); $shadowBunker.DefaultSceneName = "Tutorial Bunker"; $shadowBunker.Headlamps = 0
 Write-Scenario "ShadowsNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Shadows")
@@ -132,7 +134,7 @@ Write-Scenario "ShadowsNightGrey" ($shadowBunker + @{ TimeOfDay = 23; LightingDe
 Write-Scenario "ShadowsNightGreyOff" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGrey" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 }) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGreyOff" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
-Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0 }) @("Render Test Shadows") -DefaultLighting
+Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0; CloudShadows = 0 }) @("Render Test Shadows") -DefaultLighting
 # Materials: units of different makes with a lamp in the tutorial bunker, by night and by day, each with metal reflections and relief off for comparison.
 $noMaterials = @{ LightingMetals = 0; LightingRelief = 0 }
 Write-Scenario "MaterialsNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Materials")
@@ -143,3 +145,7 @@ Write-Scenario "MaterialsNormals" ($shadowBunker + @{ TimeOfDay = 23; LightingDe
 # The ready-made looks, on the bunker with explosions: gritty and noir (set as the values ApplyLook gives).
 Write-Scenario "LookGritty" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0.78; GradeContrast = 1.16; GradeTemperature = -0.08; PostVignette = 0.32; FilmGrain = 0.22 }) @("Render Test FX")
 Write-Scenario "LookNoir" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0; GradeContrast = 1.28; PostVignette = 0.42; FilmGrain = 0.3 }) @("Render Test FX")
+# The sky: the sun in clear weather, and cloud shadows drifting over the hills (with them off for comparison).
+Write-Scenario "Sky" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120 }) @()
+Write-Scenario "SkyOff" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120; CloudShadows = 0; SunDisc = 0 }) @()
+Write-Scenario "SkyGrey" ($shadowBunker + @{ TimeOfDay = 14; WeatherType = 0; Wind = 200; CloudShadows = 1; LightingDebugView = 1; ModernHUD = 0 }) @("Render Test Shadows")

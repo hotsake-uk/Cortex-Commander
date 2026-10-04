@@ -67,7 +67,7 @@ These are enabled per scenario in the scenario files:
 
 - `SoakAuto.ps1` launches the `SoakAuto` scenario, which plays itself (an auto battle with dropships, a flood, napalm and fuel barrels, camera zoom, dusk rain), and samples memory and responsiveness. It sends no input, so it is safe to run while the machine is in use.
 - `Soak.ps1` drives the game with real key presses and mouse clicks. Only run it when nobody is using the machine: its input goes to whichever window has focus.
-- Test runs set `CCCP_NO_GAMEPAD`, so a controller in use for something else cannot steer them.
+- Test runs set `CCCP_NO_GAMEPAD`, so a controller in use for something else cannot steer them, and `CCCP_HIDE_PANELS`, so the sandbox window (which opens wherever the player last left it) stays out of the shots. Scenarios always run in a 960x540 window.
 
 ## Performance log
 

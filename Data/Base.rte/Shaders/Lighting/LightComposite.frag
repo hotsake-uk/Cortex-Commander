@@ -22,6 +22,10 @@ uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (o
 uniform float rteContactShading; // How much background walls darken right next to solid objects and terrain, 0 (off) to 1.
 uniform float rteMetals; // How strongly metallic surfaces mirror their surroundings and glint in the sun, 0 for none.
 uniform float rteBackgroundBlur; // How much the far background layers are softened, 0 for none.
+uniform vec2 rteSunPosition; // Where the sun is in the sky, in screen pixels as gl_FragCoord (y 0 is the top of the player screen).
+uniform vec3 rteSunDisc; // The sun's color and brightness, linear. Black when it's down or hidden by weather.
+uniform float rteCloudShadows; // How much drifting clouds shade the ground, 0 for none.
+uniform float rteCloudDrift; // How far the clouds have drifted, in scene pixels.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
@@ -87,6 +91,33 @@ float ObjectSunShadow(vec2 from, bool fromSolid) {
 		t += max(clearance * 0.95, 1.0);
 	}
 	return clamp(visibility, 0.0, 1.0);
+}
+
+float CloudHash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float CloudNoise(vec2 p) {
+	vec2 cell = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(CloudHash(cell), CloudHash(cell + vec2(1.0, 0.0)), f.x), mix(CloudHash(cell + vec2(0.0, 1.0)), CloudHash(cell + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+// How much of the sun a drifting cloud hides above a point of the scene, 0 to 1. Clouds are wide soft patches a few hundred pixels across; the shadow falls along the sun's direction, so it leans with the time of day.
+float CloudShade(vec2 worldPos) {
+	// Where the sun's ray to this point crosses the height of the clouds: only the x matters, a column of ground shares a cloud.
+	float along = worldPos.x + rteSunDirection.x / max(-rteSunDirection.y, 0.2) * worldPos.y - rteCloudDrift;
+	float cloud = 0.65 * CloudNoise(vec2(along / 420.0, 3.7)) + 0.35 * CloudNoise(vec2(along / 150.0, 9.1));
+	return smoothstep(0.45, 0.65, cloud);
+}
+
+// The sun: a bright disc with a wide soft glow. Linear, added on top of the sky.
+vec3 SunDisc(vec2 fragCoord) {
+	float sunDistance = length(fragCoord - rteSunPosition);
+	float disc = 1.0 - smoothstep(7.0, 8.5, sunDistance);
+	float glow = exp(-sunDistance / 16.0) * 0.55 + exp(-sunDistance / 70.0) * 0.18;
+	return rteSunDisc * (disc * 2.2 + glow);
 }
 
 float StarHash(vec2 p) {
@@ -179,6 +210,11 @@ void main() {
 		float terrainShade = 0.0;
 		if (rteSunShadows > 0.0) {
 			float sunVisible = texture(rteSkyLight, worldPos / rteGridWorldSize).g;
+			float cloudShade = rteCloudShadows > 0.0 ? rteCloudShadows * CloudShade(worldPos) : 0.0;
+			if (!terrainPixel) {
+				// Clouds drift across the sun: wide soft shadows cross the scene with the wind.
+				sunVisible *= 1.0 - cloudShade;
+			}
 			if (rteUnitShadows > 0.0) {
 				sunVisible *= mix(1.0, ObjectSunShadow(gl_FragCoord.xy, solidObject), rteUnitShadows);
 			}
@@ -187,6 +223,14 @@ void main() {
 				// Solid ground is kept readable by a floor of light, which would hide the shade. So ground is shaded after that floor, in the band under its surface:
 				// the side of a hill turned away from the sun, the ground under an overhang, the patch a unit's shadow falls on.
 				terrainShade = shade * smoothstep(0.0, 0.25, skyReach);
+				if (cloudShade > 0.0) {
+					// A cloud's shadow has to read as a patch crossing the hillside, not a line along its top, so it reaches much deeper into sunlit ground than other shade does:
+					// as far as sky light is found a little way above the pixel.
+					vec2 gridUV = worldPos / rteGridWorldSize;
+					float above = max(texture(rteSkyLight, gridUV - vec2(0.0, 30.0 / rteGridWorldSize.y)).r, texture(rteSkyLight, gridUV - vec2(0.0, 70.0 / rteGridWorldSize.y)).r * 0.7);
+					float underSky = max(smoothstep(0.0, 0.25, skyReach), smoothstep(0.0, 0.3, above));
+					terrainShade = max(terrainShade, cloudShade * rteSunShadows * 1.3 * underSky * sunVisible);
+				}
 			} else {
 				skyColor *= mix(vec3(1.0), rteShadeTint, shade);
 				// Wherever the sun does reach, it lights at nearly full strength however little sky light gets there: sunlight falling through a hatch or a doorway makes a bright patch on the walls inside.
@@ -278,6 +322,11 @@ void main() {
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
 	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze);
+	if (rteSunDisc != vec3(0.0) && sceneDepth > rteBackgroundDepth) {
+		// The sun shows on the sky itself: the furthest layers and where nothing is drawn, never on mountains or nearer scenery.
+		float distance = clamp((sceneDepth - rteBackgroundNearDepth) / (rteBackgroundFarDepth - rteBackgroundNearDepth), 0.0, 1.0);
+		litColor += SunDisc(gl_FragCoord.xy) * smoothstep(0.88, 0.95, distance);
+	}
 	if (nightSkyAmount > 0.0) {
 		// Bright parts of the sky art (clouds, glowing horizons) hide the stars.
 		float skyBrightness = dot(litColor, vec3(0.2126, 0.7152, 0.0722));

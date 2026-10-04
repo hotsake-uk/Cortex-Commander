@@ -49,6 +49,7 @@ At night, stars and a moon appear on the sky layers. These are the background la
   - Where the sun can't be seen (the far side of a hill, under an overhang, in the shadow of a unit), ground, walls and units are dimmer and cooler. In full sun under open sky nothing changes.
   - Where the sun gets into a cave or a bunker through an opening, it lights the walls it falls on, and the beam shows in the air (the `GodRays` setting).
   - Shadows fade out around sunrise and sunset, when the sun and moon swap, and under rain, snow, ash and dust.
+- **The sun and clouds:** by day the sun shows in the sky (`SunDisc`, 1), following the same arc the moon does at night and turning warm towards the horizon; weather hides it. Clouds drift across it with the wind and their shadows cross the ground, units and walls under open sky (`CloudShadows`, 0.5; needs sun shadows on).
 - **Contact shading** (`ContactShading`, 0.4, Medium and up): background walls darken slightly right next to units and objects and next to solid ground, so things look anchored to the scene.
 - An object can opt out with `CastsShadow = 0` in its INI (any `MOSRotating`: energy shields, holograms), or `object.CastsShadow = false` from Lua. Anything drawn see-through or with an additive or screen blend mode never casts.
 - The Graphics Lab's views include "Solid objects and distance to them" and "Where the sun is visible", for checking what casts and what is lit.
@@ -210,6 +211,8 @@ Press **F8** for **Photo Mode**:
 | `UnitShadows` | 0.85 | How dark the shadows of units and objects are, from lights and from the sun. |
 | `SunShadows` | 0.55 | Directional daylight: how much dimmer and cooler things are where the sun (or moon) can't be seen. |
 | `ContactShading` | 0.4 | How much background walls darken next to objects and solid ground. |
+| `SunDisc` | 1 | Brightness of the sun drawn in the sky by day. |
+| `CloudShadows` | 0.5 | How much drifting clouds shade the ground under open sky. |
 | `LightingEmissiveIntensity` | 1.4 | Brightness of glow sprites. |
 | `LightingEdgeLighting` | 1 | Strength of the automatic edge normals. |
 | `LightingSpecular` | 1 | Highlights that lights throw on glossy surfaces: metal, glass, rain-wet ground, water and acid. 0 turns them off. |

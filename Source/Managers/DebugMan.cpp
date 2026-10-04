@@ -423,6 +423,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Shadows of units and objects", &settings.UnitShadows, 0.0F, 1.0F);
 		ImGui::SliderFloat("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
 		ImGui::SliderFloat("Contact shading", &settings.ContactShading, 0.0F, 1.0F);
+		ImGui::SliderFloat("Sun in the sky", &settings.SunDisc, 0.0F, 2.0F);
+		ImGui::SliderFloat("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		ImGui::SliderFloat("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);

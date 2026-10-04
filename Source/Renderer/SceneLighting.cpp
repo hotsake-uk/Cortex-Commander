@@ -651,6 +651,9 @@ void SceneLighting::Update() {
 	m_SunDirection = glm::normalize(glm::vec2(sunArc * 1.05F, -1.0F));
 	float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
 	m_SunShadowStrength = m_Settings.SunShadows * (1.0F - glm::smoothstep(0.8F, 1.0F, std::abs(sunArc))) * (sunIsUp ? 1.0F : 0.6F) * (1.0F - 0.8F * overcast);
+	m_SunArc = sunArc;
+	// The sun's disc sinks into the horizon haze at dawn and dusk, and weather hides it.
+	m_SunDiscStrength = sunIsUp ? m_Settings.SunDisc * (1.0F - glm::smoothstep(0.9F, 1.0F, std::abs(sunArc))) * (1.0F - overcast) : 0.0F;
 
 	// Lightning in heavy rain: a bright double flicker every so often that briefly lights the whole sky.
 	long long lightningUpdates = m_LightningLastSimUpdate >= 0 ? simUpdateCount - m_LightningLastSimUpdate : 0;
@@ -1264,6 +1267,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteContactShading", occluders ? m_Settings.ContactShading : 0.0F);
 	m_CompositeShader->SetFloat("rteMetals", (m_Settings.Enabled && surface) ? m_Settings.Metals : 0.0F);
 	m_CompositeShader->SetFloat("rteBackgroundBlur", m_Settings.Enabled ? m_Settings.BackgroundBlur : 0.0F);
+	// The sun follows the same arc across the sky as the moon does at night: low at the sides, high in the middle. Warm near the horizon.
+	m_CompositeShader->SetVector2f("rteSunPosition", glm::vec2((0.5F + m_SunArc * 0.38F) * screenSize.x, (0.34F - 0.14F * (1.0F - m_SunArc * m_SunArc)) * screenSize.y));
+	m_CompositeShader->SetVector3f("rteSunDisc", m_Settings.Enabled ? glm::mix(glm::vec3(1.0F, 0.97F, 0.88F), glm::vec3(1.0F, 0.6F, 0.3F), glm::smoothstep(0.55F, 1.0F, std::abs(m_SunArc))) * m_SunDiscStrength : glm::vec3(0.0F));
+	// Clouds only shade while there's direct sun to block, and they drift with the wind (slowly even in still air), in sim time.
+	m_CloudDrift = PostProcessMan::GetSmoothSimTime() * (m_Settings.Wind * 0.35F + 6.0F);
+	m_CompositeShader->SetFloat("rteCloudShadows", m_Settings.Enabled ? m_Settings.CloudShadows * std::min(m_SunShadowStrength * 2.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetFloat("rteCloudDrift", m_CloudDrift);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);

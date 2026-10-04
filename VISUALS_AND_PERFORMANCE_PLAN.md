@@ -46,7 +46,7 @@ Status: **done**, **in progress**, **next**, or **later** (not asked for yet).
 | 3 | **Contact shading** | A soft dark edge where things stand against walls and in corners, so they look anchored instead of pasted on. | done |
 | 4 | Tighter light shadows | Lights sample the terrain coarsely, so thin walls can let light through. A distance map fixes that and costs less per light. | later |
 | 5 | Water reflections | The scene mirrored in rippling water, with shimmer on pool floors. | later |
-| 6 | Sky | A visible sun, and drifting clouds that shade the ground. | later |
+| 6 | **Sky** | A visible sun, and drifting clouds that shade the ground. | done |
 
 ### Materials
 
@@ -125,4 +125,5 @@ Short design notes, updated as things are built.
 - **2026-10-04:** a crash in the Modern HUD fixed (it read the controlled unit a frame after the unit was deleted).
 - **2026-10-04:** performance items 16 and 17 done.
 - **2026-10-04:** materials (items 7 to 10) built, with `Materials*` test scenarios.
+- **2026-10-04:** item 6 built: the sun's disc by day, and cloud shadows that drift with the wind (checked in four lighting-only frames ten seconds apart). The shadows regression scene runs with clouds off, so it stays the same from run to run.
 - **2026-10-04:** items 12 to 15 built. Explosions and the Noir look checked in captures. The shimmer is built and scripted in the materials test, but against that scene's dark wall it couldn't be told apart, so it still needs a look in play. Tracer light and the background blur were not checked on their own.

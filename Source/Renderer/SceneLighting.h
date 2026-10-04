@@ -138,6 +138,9 @@ namespace RTE {
 		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers. R = sky light, G = how much of the sun (or moon) is visible.
 		glm::vec2 m_SunDirection{0.0F, -1.0F}; //!< Unit vector towards the sun (or the moon at night) in scene pixels, y down, this frame.
 		float m_SunShadowStrength = 0.0F; //!< Sun shadow strength after time of day and weather, this frame.
+		float m_SunDiscStrength = 0.0F; //!< How bright the sun's disc is in the sky this frame: none at night, fading at the horizon and under weather.
+		float m_SunArc = 0.0F; //!< Where the sun is along its path, -1 rising to 1 setting.
+		float m_CloudDrift = 0.0F; //!< How far the clouds have drifted with the wind, in scene pixels.
 		GLTarget m_Scorch; //!< World space soot darkness, R.
 		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
