@@ -78,6 +78,12 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **Smoke Grenade:** a thick screen lasting about ten seconds. The AI doesn't throw it.
 - **Toxic Gas Grenade:** a green cloud that hurts anyone inside it for about ten seconds, and blocks sight too.
 
+**Burning units** (`BurningUnits`, a gameplay setting, also in F6):
+- Flames, napalm, burning ground and lava set units alight. A burning unit takes damage, panics and runs, and sets grass and anyone it bumps into alight.
+- It burns out after a few seconds. Water puts it out sooner (a pool, the Water Cannon or heavy rain).
+- Water putting out fire, and lava meeting water, throws up **steam** that rises and blocks sight like smoke. Only real water drops douse fire: blood is made of water too, but doesn't.
+- **Fuel Barrel:** leaks oil that flows where it's shot, and explodes in burning fuel when fire reaches it or it's shot to pieces. It's in the build menu and the item list. Lua: `SceneMan:IsBurningNear(pos, radius)`, `SceneMan:GetBurningUnitCount()`.
+
 **Weather** also changes gameplay: rain and snow damp fire (see above), snow slows walking by up to 15%, and wind drives fire downwind. The weather stays fixed through a game. It comes from the scene, the scenario setup's **Time** and **Weather** buttons, or the player's settings.
 
 **Night gameplay**:
@@ -96,6 +102,9 @@ At night, stars and a moon appear on the sky layers. These are the background la
   - Hold position, attack nearest enemy, hunt brains, patrol, go to the side's rally point, or do nothing.
   - Given when units spawn, or to a whole side from the Orders tab. "Everyone attack!" starts a free-for-all.
   - Units told to attack pick a new target when theirs dies.
+- **Drop squad:** a squad arrives by dropship or rocket over the point you click, then the craft flies off.
+- **Command and Follow:** with Command, drag a box to select units, then click the ground to send them there or an enemy to attack it. Follow locks the camera onto a unit; "Follow the action" (World tab) keeps the camera on the closest fighting. Moving the camera yourself stops following.
+- **Auto battle (Orders tab):** give sides a faction and a budget. Each buys waves of its faction's units and drops them in to attack until one side is left, and the winner is announced. Lua: `SandboxAutoBattleSide(side, faction, budget)`, `SandboxStartAutoBattle()`.
 - **Take control:** click a unit to play it yourself. F7 (or the unit dying) puts you back in the god view.
 - **Paint and Boom:** fire, water, lava, acid, oil, smoke and toxic gas; dig, or add earth, sand, grass, wood or concrete; grenade blasts, big bombs, napalm and lightning strikes.
 - **World tab:** weather, wind, time of day, slow motion, a free camera toggle, and putting out all fire.

@@ -110,6 +110,8 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxDo", &Sandbox::Do),
 	                         luabind::def("SandboxCountUnits", &Sandbox::CountUnits),
 	                         luabind::def("SandboxBuildMode", &Sandbox::SetBuildMode),
+	                         luabind::def("SandboxAutoBattleSide", &Sandbox::SetAutoBattleSide),
+	                         luabind::def("SandboxStartAutoBattle", &Sandbox::StartAutoBattle),
 	                         luabind::def("EaseIn", &EaseIn),
 	                         luabind::def("EaseOut", &EaseOut),
 	                         luabind::def("EaseInOut", &EaseInOut),

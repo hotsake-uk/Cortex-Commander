@@ -52,6 +52,15 @@ namespace RTE {
 		/// @return Whether the game is now building.
 		static bool SetBuildMode(bool build);
 
+		/// Sets up one side of an auto battle (Lua: SandboxAutoBattleSide).
+		/// @param team The side.
+		/// @param faction The faction's module name, like "Coalition" or "Browncoats.rte".
+		/// @param budget How much the side can spend, 0 to leave it out.
+		static void SetAutoBattleSide(int team, const std::string& faction, int budget);
+
+		/// Starts an auto battle between the sides set up for it (Lua: SandboxStartAutoBattle).
+		static void StartAutoBattle();
+
 	private:
 		static bool s_Open; //!< Whether the sandbox window is open.
 

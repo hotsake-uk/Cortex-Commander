@@ -86,6 +86,7 @@ $sandbox = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GASc
 Write-Scenario "Sandbox" $sandbox @()
 Write-Scenario "SandboxBattle" $sandbox @("Render Test Sandbox")
 Write-Scenario "FireUnits" $sandbox @("Render Test Fire Units")
+Write-Scenario "SandboxArmies" $sandbox @("Render Test Sandbox Armies")
 $sandboxStrom = $sandbox.Clone(); $sandboxStrom.DefaultSceneName = "Stromatolites"; Write-Scenario "SandboxStress" $sandboxStrom @("Render Test Sandbox Stress")
 Write-Scenario "SmokeNight" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Smoke")
 Write-Scenario "SmokeNightOff" ($bunker + @{ TimeOfDay = 23; SmokeScattering = 0 }) @("Render Test Smoke")

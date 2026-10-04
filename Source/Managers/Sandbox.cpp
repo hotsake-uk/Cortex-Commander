@@ -1,5 +1,6 @@
 #include "Sandbox.h"
 #include "ACrab.h"
+#include "ACraft.h"
 #include "ADoor.h"
 #include "AHuman.h"
 #include "ActivityMan.h"
@@ -67,6 +68,9 @@ namespace {
 		Brain,
 		Item,
 		Structure,
+		Drop,
+		Command,
+		Follow,
 		Fire,
 		Water,
 		Lava,
@@ -87,7 +91,9 @@ namespace {
 		// Not tools, but queued the same way.
 		OrderSide,
 		RemoveSide,
-		Release
+		Release,
+		Select,
+		OrderSelected
 	};
 
 	struct ToolInfo {
@@ -106,6 +112,9 @@ namespace {
 	    {Tool::Brain, "Brain", 0.0F, false},
 	    {Tool::Item, "Item", 0.0F, false},
 	    {Tool::Structure, "Structure", 0.0F, false},
+	    {Tool::Drop, "Drop squad", 0.0F, false},
+	    {Tool::Command, "Command", 0.0F, false},
+	    {Tool::Follow, "Follow", 0.0F, false},
 	    {Tool::Fire, "Fire", 0.08F, true},
 	    {Tool::Water, "Water", 0.03F, true},
 	    {Tool::Lava, "Lava", 0.03F, true},
@@ -190,9 +199,49 @@ namespace {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
+		Vector Position2; //!< Selection box: the other corner.
+		int Craft = 0; //!< Drops: index into c_Crafts.
+	};
+
+	struct CraftChoice {
+		const char* Label;
+		const char* ClassName;
+		const char* PresetName;
+	};
+	constexpr CraftChoice c_Crafts[] = {{"Dropship", "ACDropShip", "Dropship MK1"}, {"Rocket", "ACRocket", "Rocket MK2"}};
+
+	/// A unit the sandbox keeps a hold of, checked against its unique ID before use (its memory may be reused by a new object).
+	struct UnitRef {
+		Actor* Unit = nullptr;
+		long ID = 0;
+	};
+
+	/// One side in an auto battle.
+	struct AutoSide {
+		bool Active = false;
+		int Faction = 0; //!< Index into s_FactionModules.
+		int Budget = 5000;
+		float Spent = 0.0F;
+		int Sent = 0;
+		long long NextWave = 0;
+		bool Broke = false; //!< Can't afford another unit.
 	};
 
 	int s_ToolIndex = 0;
+	int s_Craft = 0;
+	std::vector<UnitRef> s_Selected;
+	UnitRef s_FollowTarget;
+	bool s_FollowAction = false;
+	Vector s_ActionSpot;
+	bool s_ActionSpotValid = false;
+	bool s_Dragging = false;
+	ImVec2 s_DragStart;
+	std::array<AutoSide, 4> s_AutoSides;
+	bool s_AutoRunning = false;
+	int s_AutoWinner = -2; //!< -2 no result yet, -1 a draw, otherwise the winning side.
+	Vector s_AutoCenter;
+	std::vector<int> s_FactionModules;
+	std::vector<std::string> s_FactionNames;
 	int s_Radius = 6;
 	int s_UnitChoice = 0;
 	int s_BrainChoice = 0;
@@ -357,6 +406,17 @@ namespace {
 			}
 			return 0;
 		};
+		s_FactionModules.clear();
+		s_FactionNames.clear();
+		for (const Preset& unit: s_Units) {
+			if (std::find(s_FactionModules.begin(), s_FactionModules.end(), unit.ModuleID) == s_FactionModules.end()) {
+				s_FactionModules.push_back(unit.ModuleID);
+				s_FactionNames.push_back(unit.Module.substr(0, unit.Module.find(".rte")));
+			}
+		}
+		for (size_t side = 0; side < s_AutoSides.size(); ++side) {
+			s_AutoSides[side].Faction = std::min(static_cast<int>(side), static_cast<int>(s_FactionModules.size()) - 1);
+		}
 		s_UnitChoice = preferredIndex(s_Units, "Soldier Light");
 		s_BrainChoice = preferredIndex(s_Brains, "Brain Case");
 		s_ItemChoice = preferredIndex(s_Items, "Frag Grenade");
@@ -504,7 +564,7 @@ namespace {
 	/// Units told to attack get a new target when theirs is gone, and go on guard when no enemies are left.
 	void RetargetAttackers() {
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor->GetNumberValue(c_AttackTag) <= 0.0 || actor->IsPlayerControlled() || !IsCombatant(actor)) {
+			if (actor->GetNumberValue(c_AttackTag) <= 0.0 || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire")) {
 				continue;
 			}
 			const MovableObject* target = actor->GetMOMoveTarget();
@@ -686,6 +746,75 @@ namespace {
 		}
 	}
 
+	Actor* GetRef(const UnitRef& ref) { return ref.Unit && g_MovableMan.IsActor(ref.Unit) && ref.Unit->GetUniqueID() == ref.ID ? ref.Unit : nullptr; }
+
+	UnitRef MakeRef(Actor* actor) { return {actor, actor ? actor->GetUniqueID() : 0}; }
+
+	/// Makes a unit ready to go: armed, on a side, run by the AI, with orders to follow once it's in the world.
+	Actor* CreateUnit(const Preset& preset, int team, int loadout, Order order) {
+		Actor* actor = dynamic_cast<Actor*>(CreateObject(preset.ClassName, preset.PresetName, preset.ModuleID));
+		if (!actor) {
+			return nullptr;
+		}
+		GiveLoadout(actor, preset, loadout);
+		actor->SetTeam(team);
+		actor->SetControllerMode(Controller::CIM_AI);
+		switch (order) {
+			case Order::Attack:
+				// Gets its target once it's out among the enemy.
+				actor->SetNumberValue(c_AttackTag, 1.0);
+				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				break;
+			case Order::HuntBrains:
+				actor->SetAIMode(Actor::AIMODE_BRAINHUNT);
+				break;
+			case Order::Patrol:
+				actor->SetAIMode(Actor::AIMODE_PATROL);
+				break;
+			case Order::Rally:
+				if (team >= 0 && team < c_Sides && s_RallySet[team]) {
+					actor->AddAISceneWaypoint(s_RallyPoints[team]);
+					actor->SetAIMode(Actor::AIMODE_GOTO);
+				}
+				break;
+			case Order::Idle:
+				actor->SetAIMode(Actor::AIMODE_NONE);
+				break;
+			default:
+				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				break;
+		}
+		return actor;
+	}
+
+	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves. Returns what the units cost.
+	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft) {
+		const CraftChoice& choice = c_Crafts[std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)];
+		ACraft* ship = dynamic_cast<ACraft*>(CreateBaseObject(choice.ClassName, choice.PresetName));
+		float cost = 0.0F;
+		if (!ship) {
+			for (Actor* unit: units) {
+				delete unit;
+			}
+			units.clear();
+			return cost;
+		}
+		ActivateSide(team);
+		for (Actor* unit: units) {
+			cost += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
+			ship->AddInventoryItem(unit);
+		}
+		units.clear();
+		bool fromBelow = g_SceneMan.GetTerrain() && g_SceneMan.GetTerrain()->GetOrbitDirection() == Directions::Down;
+		ship->SetPos(Vector(x, fromBelow ? static_cast<float>(g_SceneMan.GetSceneHeight()) : 0.0F));
+		ship->SetTeam(team);
+		ship->SetControllerMode(Controller::CIM_AI);
+		ship->SetAIMode(Actor::AIMODE_DELIVER);
+		ship->ResetAllTimers();
+		g_MovableMan.AddActor(ship);
+		return cost;
+	}
+
 	void SpawnUnits(const Stroke& stroke, bool brain) {
 		const Preset* preset = ChosenPreset(brain ? Tool::Brain : Tool::Unit, stroke.Choice);
 		if (!preset) {
@@ -710,6 +839,20 @@ namespace {
 			g_MovableMan.AddActor(actor);
 			GiveOrder(actor, brain ? Order::Hold : stroke.Orders);
 		}
+	}
+
+	void DropSquad(const Stroke& stroke) {
+		const Preset* preset = ChosenPreset(Tool::Unit, stroke.Choice);
+		if (!preset) {
+			return;
+		}
+		std::vector<Actor*> units;
+		for (int i = 0; i < stroke.Count; ++i) {
+			if (Actor* unit = CreateUnit(*preset, stroke.Team, stroke.Loadout, stroke.Orders)) {
+				units.push_back(unit);
+			}
+		}
+		DropUnits(units, stroke.Team, stroke.Position.m_X, stroke.Craft);
 	}
 
 	void SpawnItem(const Stroke& stroke) {
@@ -776,6 +919,145 @@ namespace {
 		s_Possessed = nullptr;
 	}
 
+	void SelectInBox(const Vector& cornerA, const Vector& cornerB) {
+		s_Selected.clear();
+		float left = std::min(cornerA.m_X, cornerB.m_X);
+		float right = std::max(cornerA.m_X, cornerB.m_X);
+		float top = std::min(cornerA.m_Y, cornerB.m_Y);
+		float bottom = std::max(cornerA.m_Y, cornerB.m_Y);
+		for (Actor* actor: SandboxAccess::Actors()) {
+			const Vector& position = actor->GetPos();
+			if (IsCombatant(actor) && !actor->IsInGroup("Brains") && position.m_X >= left && position.m_X <= right && position.m_Y >= top && position.m_Y <= bottom) {
+				s_Selected.push_back(MakeRef(actor));
+			}
+		}
+	}
+
+	/// The selected units move to a point, or attack the unit there.
+	void CommandSelected(const Vector& position) {
+		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
+		bool attack = target && IsCombatant(target) && std::none_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
+		for (const UnitRef& ref: s_Selected) {
+			if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+				unit->RemoveNumberValue(c_AttackTag);
+				unit->ClearAIWaypoints();
+				if (attack) {
+					unit->AddAIMOWaypoint(target);
+				} else {
+					unit->AddAISceneWaypoint(position);
+				}
+				unit->SetAIMode(Actor::AIMODE_GOTO);
+			}
+		}
+	}
+
+	/// The closest pair of enemies anywhere: where the fighting is.
+	void FindAction() {
+		s_ActionSpotValid = false;
+		float best = 0.0F;
+		std::deque<Actor*>& actors = SandboxAccess::Actors();
+		for (size_t i = 0; i < actors.size(); ++i) {
+			if (!IsCombatant(actors[i])) {
+				continue;
+			}
+			for (size_t j = i + 1; j < actors.size(); ++j) {
+				if (!IsCombatant(actors[j]) || actors[j]->GetTeam() == actors[i]->GetTeam()) {
+					continue;
+				}
+				Vector between = g_SceneMan.ShortestDistance(actors[i]->GetPos(), actors[j]->GetPos(), g_SceneMan.SceneWrapsX());
+				float distance = between.GetSqrMagnitude();
+				if (!s_ActionSpotValid || distance < best) {
+					best = distance;
+					s_ActionSpot = actors[i]->GetPos() + between * 0.5F;
+					s_ActionSpotValid = true;
+				}
+			}
+		}
+	}
+
+	/// The faction's units an auto battle can buy: soldiers mostly, the odd crab.
+	std::vector<const Preset*> FactionUnits(int moduleID) {
+		std::vector<const Preset*> units;
+		for (const Preset& unit: s_Units) {
+			const Entity* entity = unit.ModuleID == moduleID ? g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID) : nullptr;
+			if (entity && !entity->IsInGroup("Actors - Turrets")) {
+				units.push_back(&unit);
+			}
+		}
+		return units;
+	}
+
+	float AutoLaneX(int side) {
+		if (s_RallySet[side]) {
+			return s_RallyPoints[side].m_X;
+		}
+		static constexpr float lanes[c_Sides] = {-0.7F, 0.7F, -0.35F, 0.35F};
+		Vector lane = s_AutoCenter + Vector(lanes[side] * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), 0.0F);
+		g_SceneMan.WrapPosition(lane);
+		return lane.m_X;
+	}
+
+	/// Each side in an auto battle buys a wave every so often with what's left of its budget and sends it in to attack, until one side is left.
+	void UpdateAutoBattle() {
+		if (!s_AutoRunning) {
+			return;
+		}
+		long long now = g_TimerMan.GetSimUpdateCount();
+		for (int side = 0; side < c_Sides; ++side) {
+			AutoSide& autoSide = s_AutoSides[side];
+			if (!autoSide.Active || autoSide.Broke || now < autoSide.NextWave || s_FactionModules.empty()) {
+				continue;
+			}
+			autoSide.NextWave = now + 900;
+			std::vector<const Preset*> choices = FactionUnits(s_FactionModules[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1)]);
+			float left = static_cast<float>(autoSide.Budget) - autoSide.Spent;
+			float waveBudget = std::min(left, 900.0F);
+			std::vector<Actor*> wave;
+			float waveCost = 0.0F;
+			for (int attempt = 0; attempt < 12 && wave.size() < 5 && !choices.empty(); ++attempt) {
+				const Preset* pick = choices[std::min(choices.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(choices.size())))];
+				Actor* unit = CreateUnit(*pick, side, 0, Order::Attack);
+				float cost = unit ? unit->GetTotalValue(unit->GetModuleID(), 1.0F) : 0.0F;
+				if (unit && waveCost + cost <= waveBudget) {
+					wave.push_back(unit);
+					waveCost += cost;
+				} else {
+					delete unit;
+				}
+			}
+			if (wave.empty()) {
+				autoSide.Broke = true;
+				continue;
+			}
+			autoSide.Sent += static_cast<int>(wave.size());
+			autoSide.Spent += DropUnits(wave, side, AutoLaneX(side), 0);
+		}
+		// One side left standing wins.
+		if (now % 60 == 0) {
+			int standing = 0;
+			int lastStanding = -1;
+			bool anySent = false;
+			for (int side = 0; side < c_Sides; ++side) {
+				const AutoSide& autoSide = s_AutoSides[side];
+				if (!autoSide.Active) {
+					continue;
+				}
+				anySent = anySent || autoSide.Sent > 0;
+				if (!autoSide.Broke || Sandbox::CountUnits(side) > 0) {
+					++standing;
+					lastStanding = side;
+				}
+			}
+			if (anySent && standing <= 1) {
+				s_AutoRunning = false;
+				s_AutoWinner = standing == 1 ? lastStanding : -1;
+				std::string result = s_AutoWinner >= 0 ? std::string(c_SideNames[s_AutoWinner]) + " wins!" : std::string("It's a draw!");
+				g_FrameMan.SetScreenText(result, 0, 0, 6000, true);
+				g_ConsoleMan.PrintString("SANDBOX: Auto battle over. " + result);
+			}
+		}
+	}
+
 	void Apply(const Stroke& stroke) {
 		const Vector& at = stroke.Position;
 		float radius = static_cast<float>(stroke.Radius);
@@ -805,6 +1087,26 @@ namespace {
 				break;
 			case Tool::Item:
 				SpawnItem(stroke);
+				break;
+			case Tool::Drop:
+				DropSquad(stroke);
+				break;
+			case Tool::Select:
+				SelectInBox(stroke.Position, stroke.Position2);
+				break;
+			case Tool::Command:
+				CommandSelected(at);
+				break;
+			case Tool::OrderSelected:
+				for (const UnitRef& ref: s_Selected) {
+					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+						GiveOrder(unit, stroke.Orders);
+					}
+				}
+				break;
+			case Tool::Follow:
+				s_FollowTarget = MakeRef(dynamic_cast<Actor*>(ObjectUnder(at, true)));
+				s_FollowAction = false;
 				break;
 			case Tool::Structure:
 				PlaceStructure(stroke);
@@ -900,6 +1202,7 @@ namespace {
 		stroke.Loadout = s_Loadout;
 		stroke.Count = kind == Tool::Structure ? (s_SnapToGrid ? 1 : 0) : s_SquadSize;
 		stroke.LitGrenade = s_LitGrenade;
+		stroke.Craft = s_Craft;
 		s_Queue.push_back(stroke);
 	}
 #pragma endregion
@@ -919,8 +1222,10 @@ namespace {
 			s_CameraCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
 		}
 		ImGuiIO& io = ImGui::GetIO();
+		bool movedByHand = false;
 		if (!io.WantCaptureMouse && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
 			s_CameraCenter -= Vector(io.MouseDelta.x, io.MouseDelta.y) * ScenePixelsPerWindowPixel();
+			movedByHand = io.MouseDelta.x != 0.0F || io.MouseDelta.y != 0.0F;
 		}
 		if (!io.WantCaptureKeyboard) {
 			float keySpeed = 400.0F * io.DeltaTime * (ImGui::IsKeyDown(ImGuiKey_LeftShift) ? 3.0F : 1.0F);
@@ -930,6 +1235,16 @@ namespace {
 			bool down = ImGui::IsKeyDown(ImGuiKey_DownArrow) || ImGui::IsKeyDown(ImGuiKey_S);
 			s_CameraCenter.m_X += (right ? keySpeed : 0.0F) - (left ? keySpeed : 0.0F);
 			s_CameraCenter.m_Y += (down ? keySpeed : 0.0F) - (up ? keySpeed : 0.0F);
+			movedByHand = movedByHand || left || right || up || down;
+		}
+		if (movedByHand) {
+			s_FollowTarget = UnitRef();
+			s_FollowAction = false;
+		}
+		if (Actor* followed = GetRef(s_FollowTarget)) {
+			s_CameraCenter += g_SceneMan.ShortestDistance(s_CameraCenter, followed->GetPos(), g_SceneMan.SceneWrapsX()) * std::min(1.0F, io.DeltaTime * 8.0F);
+		} else if (s_FollowAction && s_ActionSpotValid) {
+			s_CameraCenter += g_SceneMan.ShortestDistance(s_CameraCenter, s_ActionSpot, g_SceneMan.SceneWrapsX()) * std::min(1.0F, io.DeltaTime * 2.0F);
 		}
 		g_SceneMan.WrapPosition(s_CameraCenter);
 		g_SceneMan.ForceBounds(s_CameraCenter);
@@ -1027,6 +1342,29 @@ namespace {
 		drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y - 8.0F), IM_COL32(255, 255, 255, 220), label.c_str());
 	}
 
+	ImVec2 ToScreen(const Vector& scenePosition) {
+		Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), scenePosition, g_SceneMan.SceneWrapsX());
+		float scale = ScenePixelsPerWindowPixel();
+		return ImVec2(onScreen.m_X / scale, onScreen.m_Y / scale);
+	}
+
+	/// Rings over selected units, and a marker over the followed one.
+	void DrawSelection() {
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		for (const UnitRef& ref: s_Selected) {
+			if (const Actor* unit = GetRef(ref)) {
+				ImVec2 at = ToScreen(unit->GetPos());
+				int team = std::clamp(unit->GetTeam(), 0, c_Sides - 1);
+				drawList->AddCircle(at, std::max(unit->GetRadius() / scale, 8.0F), c_SideColors[team], 0, 2.0F);
+			}
+		}
+		if (const Actor* followed = GetRef(s_FollowTarget)) {
+			ImVec2 at = ToScreen(followed->GetPos() - Vector(0.0F, followed->GetRadius() + 8.0F));
+			drawList->AddTriangleFilled(ImVec2(at.x - 6.0F, at.y - 8.0F), ImVec2(at.x + 6.0F, at.y - 8.0F), ImVec2(at.x, at.y), IM_COL32(255, 255, 255, 230));
+		}
+	}
+
 	/// Flags marking each side's rally point.
 	void DrawRallyPoints() {
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
@@ -1077,6 +1415,14 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Queue.push_back(stroke);
 		return true;
 	}
+	if (ContainsIgnoringCase(toolName, "Select") && toolName.size() == 6) {
+		// A box of half-size count around the point.
+		stroke.Kind = Tool::Select;
+		stroke.Position = position - Vector(static_cast<float>(count), static_cast<float>(count));
+		stroke.Position2 = position + Vector(static_cast<float>(count), static_cast<float>(count));
+		s_Queue.push_back(stroke);
+		return true;
+	}
 	int toolIndex = -1;
 	for (int i = 0; i < c_ToolCount; ++i) {
 		std::string name = c_Tools[i].Name;
@@ -1088,7 +1434,7 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return false;
 	}
 	stroke.Kind = c_Tools[toolIndex].Kind;
-	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure) {
+	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
 		if (found == list.end()) {
@@ -1101,6 +1447,44 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	}
 	s_Queue.push_back(stroke);
 	return true;
+}
+
+void Sandbox::SetAutoBattleSide(int team, const std::string& faction, int budget) {
+	if (!s_CatalogueBuilt && InGame()) {
+		BuildCatalogue();
+	}
+	if (team < 0 || team >= c_Sides) {
+		return;
+	}
+	AutoSide& autoSide = s_AutoSides[team];
+	autoSide.Active = budget > 0;
+	autoSide.Budget = budget;
+	for (size_t i = 0; i < s_FactionNames.size(); ++i) {
+		if (s_FactionNames[i] == faction || s_FactionNames[i] + ".rte" == faction) {
+			autoSide.Faction = static_cast<int>(i);
+		}
+	}
+}
+
+void Sandbox::StartAutoBattle() {
+	if (!InGame()) {
+		return;
+	}
+	if (!s_CatalogueBuilt) {
+		BuildCatalogue();
+	}
+	s_AutoCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
+	long long now = g_TimerMan.GetSimUpdateCount();
+	for (int side = 0; side < c_Sides; ++side) {
+		AutoSide& autoSide = s_AutoSides[side];
+		autoSide.Spent = 0.0F;
+		autoSide.Sent = 0;
+		autoSide.Broke = false;
+		// Staggered, so the first ships don't all arrive at once.
+		autoSide.NextWave = now + side * 60;
+	}
+	s_AutoWinner = -2;
+	s_AutoRunning = true;
 }
 
 bool Sandbox::SetBuildMode(bool build) {
@@ -1122,7 +1506,7 @@ bool Sandbox::SetBuildMode(bool build) {
 int Sandbox::CountUnits(int team) {
 	int count = 0;
 	for (const Actor* actor: SandboxAccess::Actors()) {
-		if (IsCombatant(actor) && actor->GetTeam() == team) {
+		if (IsCombatant(actor) && actor->GetTeam() == team && !dynamic_cast<const ACraft*>(actor)) {
 			++count;
 		}
 	}
@@ -1149,6 +1533,10 @@ void Sandbox::DrawGUI() {
 			s_CameraWarmupFrames = 30;
 			s_Possessed = nullptr;
 			s_RallySet.fill(false);
+			s_Selected.clear();
+			s_FollowTarget = UnitRef();
+			s_AutoRunning = false;
+			s_AutoWinner = -2;
 			s_ToolIndex = ToolIndex(Tool::Unit);
 		}
 	} else {
@@ -1182,7 +1570,13 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
-		if (tool.Interval <= 0.0F) {
+		if (tool.Kind == Tool::Command) {
+			// Drag a box to select units; click the ground to send them there, or an enemy to attack it.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_Dragging = true;
+				s_DragStart = io.MousePos;
+			}
+		} else if (tool.Interval <= 0.0F) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				QueueStroke(tool.Kind, position);
 			}
@@ -1195,6 +1589,30 @@ void Sandbox::DrawGUI() {
 		}
 		DrawCursor();
 	}
+	if (s_Dragging) {
+		ImVec2 now = io.MousePos;
+		ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), IM_COL32(255, 255, 255, 200), 0.0F, 0, 1.5F);
+		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			s_Dragging = false;
+			Stroke stroke;
+			float scale = ScenePixelsPerWindowPixel();
+			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x, s_DragStart.y) * scale;
+			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x, now.y) * scale;
+			if (std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F) {
+				stroke.Kind = Tool::Select;
+				stroke.Position = start;
+				stroke.Position2 = end;
+			} else {
+				stroke.Kind = Tool::Command;
+				stroke.Position = end;
+				g_SceneMan.WrapPosition(stroke.Position);
+			}
+			s_Queue.push_back(stroke);
+		}
+	}
+	if (InGame()) {
+		DrawSelection();
+	}
 
 	ImGui::SetNextWindowSize(ImVec2(430.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 445.0F, 40.0F), ImGuiCond_FirstUseEver);
@@ -1206,11 +1624,12 @@ void Sandbox::DrawGUI() {
 		}
 		SideStatus();
 		ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.");
-		ToolButtons({Tool::None, Tool::Possess, Tool::Remove, Tool::RallyPoint});
+		ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
+		ToolButtons({Tool::Remove, Tool::RallyPoint});
 
 		if (ImGui::BeginTabBar("SandboxTabs")) {
 			if (ImGui::BeginTabItem("Spawn")) {
-				ToolButtons({Tool::Unit, Tool::Brain, Tool::Item});
+				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
 					s_ToolIndex = ToolIndex(Tool::Unit);
 				}
@@ -1219,13 +1638,16 @@ void Sandbox::DrawGUI() {
 					Sandbox::SetBuildMode(true);
 				}
 				Tool kind = CurrentTool().Kind;
-				if (kind == Tool::Unit || kind == Tool::Brain || kind == Tool::Item || kind == Tool::Structure) {
+				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Item || kind == Tool::Structure) {
 					PresetList(kind);
 				}
-				if (kind == Tool::Unit || kind == Tool::Brain || kind == Tool::Structure || kind == Tool::RallyPoint) {
+				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Structure || kind == Tool::RallyPoint) {
 					SideChooser();
 				}
-				if (kind == Tool::Unit) {
+				if (kind == Tool::Drop) {
+					ImGui::Combo("Craft", &s_Craft, "Dropship\0Rocket\0");
+				}
+				if (kind == Tool::Unit || kind == Tool::Drop) {
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
 					ImGui::Combo("Orders", &s_Order, c_OrderNames);
@@ -1263,6 +1685,60 @@ void Sandbox::DrawGUI() {
 					s_Queue.push_back(stroke);
 				}
 				ImGui::TextDisabled("Rally point: pick the tool above and click to place this side's flag.");
+
+				ImGui::SeparatorText("Selected units");
+				int selected = static_cast<int>(std::count_if(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) { return GetRef(ref) != nullptr; }));
+				ImGui::Text("%d selected. Use the Command tool: drag a box to select, click to move or attack.", selected);
+				if (ImGui::Button("Give the selected these orders") && selected > 0) {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Orders = static_cast<Order>(s_Order);
+					s_Queue.push_back(stroke);
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Clear selection")) {
+					s_Selected.clear();
+				}
+
+				ImGui::SeparatorText("Auto battle");
+				ImGui::TextWrapped("Each side buys waves of its faction's units with its budget and drops them in to attack, until one side is left.");
+				for (int side = 0; side < c_Sides && !s_FactionNames.empty(); ++side) {
+					AutoSide& autoSide = s_AutoSides[side];
+					ImGui::PushID(side);
+					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
+					ImGui::Checkbox(c_SideNames[side], &autoSide.Active);
+					ImGui::PopStyleColor();
+					ImGui::SameLine(90.0F);
+					ImGui::SetNextItemWidth(120.0F);
+					if (ImGui::BeginCombo("##faction", s_FactionNames[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionNames.size()) - 1)].c_str())) {
+						for (int faction = 0; faction < static_cast<int>(s_FactionNames.size()); ++faction) {
+							if (ImGui::Selectable(s_FactionNames[faction].c_str(), faction == autoSide.Faction)) {
+								autoSide.Faction = faction;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SameLine();
+					ImGui::SetNextItemWidth(-1.0F);
+					ImGui::SliderInt("##budget", &autoSide.Budget, 500, 30000, "%d oz");
+					if (autoSide.Sent > 0) {
+						int alive = Sandbox::CountUnits(side);
+						ImGui::TextDisabled("    spent %.0f oz, sent %d, alive %d, lost %d%s", autoSide.Spent, autoSide.Sent, alive, std::max(autoSide.Sent - alive, 0), autoSide.Broke ? ", out of money" : "");
+					}
+					ImGui::PopID();
+				}
+				if (!s_AutoRunning) {
+					if (ImGui::Button("Start auto battle", ImVec2(-1.0F, 0.0F))) {
+						Sandbox::StartAutoBattle();
+					}
+				} else if (ImGui::Button("Stop auto battle", ImVec2(-1.0F, 0.0F))) {
+					s_AutoRunning = false;
+				}
+				if (s_AutoWinner >= 0) {
+					ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[s_AutoWinner]), "%s won the last battle.", c_SideNames[s_AutoWinner]);
+				} else if (s_AutoWinner == -1) {
+					ImGui::Text("The last battle was a draw.");
+				}
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Paint")) {
@@ -1294,6 +1770,8 @@ void Sandbox::DrawGUI() {
 				ImGui::Separator();
 				ImGui::Checkbox("Free camera", &s_FreeCamera);
 				ImGui::SameLine();
+				ImGui::Checkbox("Follow the action", &s_FollowAction);
+				ImGui::SameLine();
 				if (ImGui::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
@@ -1321,6 +1799,10 @@ void Sandbox::Update() {
 	}
 	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
+	}
+	UpdateAutoBattle();
+	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
+		FindAction();
 	}
 	if (IsGodMode()) {
 		GameActivity* game = CurrentGame();
