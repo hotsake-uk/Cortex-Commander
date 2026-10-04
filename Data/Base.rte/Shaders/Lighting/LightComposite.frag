@@ -94,8 +94,8 @@ void main() {
 		// Sky light comes from above: upward facing edges catch more of it, undersides less.
 		vec4 normalSample = texture(rteNormals, screenUV);
 		if (normalSample.a > 0.25) {
-			vec3 normal = normalSample.xyz * 2.0 - 1.0;
-			sky *= mix(1.0, clamp(1.0 - normal.y * 0.9, 0.35, 1.6), rteEdgeLighting);
+			float normalY = normalSample.y * 2.0 - 1.0;
+			sky *= mix(1.0, clamp(1.0 - normalY * 0.9, 0.35, 1.6), rteEdgeLighting);
 		}
 		vec3 dynamicLight = texture(rteDynamicLight, screenUV).rgb;
 		dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicLight / rteMaxDynamicLight));

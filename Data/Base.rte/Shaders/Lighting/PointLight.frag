@@ -15,7 +15,8 @@ uniform sampler2D rteOccupancy; // World grid, R = terrain coverage 0..1, linear
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize; // World size covered by the occupancy grid.
 uniform float rteShadowStrength; // How much each solid sample blocks, 0..1.
-uniform sampler2D rteNormals; // Player screen normals, RGB = normal * 0.5 + 0.5, A = 1 where something was drawn.
+uniform sampler2D rteNormals; // Player screen normals: RG = normal xy * 0.5 + 0.5, B = 1 - shininess, A > 0.25 where something was drawn.
+uniform float rteSpecular; // Strength of highlights on shiny surfaces (metal, concrete, wet ground, water).
 uniform vec2 rteScreenSize;
 uniform float rteEdgeLighting;
 uniform bool rteBeamMode; // Drawing the visible beam of cone lights over the lit scene, instead of light falling on surfaces.
@@ -70,9 +71,16 @@ void main() {
 	float shading = 1.0;
 	vec4 normalSample = texture(rteNormals, gl_FragCoord.xy / rteScreenSize);
 	if (normalSample.a > 0.25) {
-		vec3 normal = normalize(normalSample.xyz * 2.0 - 1.0);
+		vec2 normalXY = normalSample.xy * 2.0 - 1.0;
+		vec3 normal = vec3(normalXY, sqrt(max(1.0 - dot(normalXY, normalXY), 0.0)));
 		vec3 toLight = normalize(vec3(lightCenter - gl_FragCoord.xy, lightRadius * 0.25));
 		shading = mix(1.0, clamp(dot(normal, toLight) / max(toLight.z, 0.05), 0.0, 2.5), rteEdgeLighting);
+		// Shiny surfaces throw the light back at the viewer where it strikes them squarely: a hot spot near the light, and glints on edges turned towards it.
+		float shine = 1.0 - normalSample.b;
+		if (shine > 0.02 && rteSpecular > 0.0) {
+			vec3 halfway = normalize(toLight + vec3(0.0, 0.0, 1.0));
+			shading += pow(max(dot(normal, halfway), 0.0), 28.0) * shine * rteSpecular * 2.0;
+		}
 	}
 
 	FragColor = vec4(lightColor.rgb * falloff * transmittance * shading, 1.0);

@@ -949,6 +949,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
 		m_PointLightShader->SetInt("rteNormals", 1);
 		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
+		m_PointLightShader->SetFloat("rteSpecular", m_Settings.Specular);
 		m_PointLightShader->SetBool("rteBeamMode", false);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);

@@ -58,10 +58,13 @@ void main() {
 	vec2 uvDx = dFdx(textureUV);
 	vec2 uvDy = dFdy(textureUV);
 	float emissive = 0.0;
+	float shine = 0.0;
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, vec2(textureUV.x, textureUV.y)).r;
 		FragColor = texture(rtePalette, vec2(colorIndex, 0.0F)) * vertexColor;
-		emissive = texture(rteEmissivePalette, vec2(colorIndex, 0.0F)).r;
+		vec4 surface = texture(rteEmissivePalette, vec2(colorIndex, 0.0F));
+		emissive = surface.r;
+		shine = surface.a;
 	} else {
 		FragColor = textureAA(rteTexture, textureUV) * vertexColor;
 	}
@@ -70,6 +73,6 @@ void main() {
 	} else if (rteReplaceColor) {
 		FragColor.rgba = rteColor;
 	}
-	// Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
-	NormalOut = vec4(EdgeNormal(uvDx, uvDy) * 0.5 + 0.5, 0.5 + 0.5 * emissive);
+	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
+	NormalOut = vec4(EdgeNormal(uvDx, uvDy).xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
 }

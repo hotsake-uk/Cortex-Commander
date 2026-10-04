@@ -28,7 +28,7 @@ void RenderMan::Initialize() {
 	m_PaletteTexture = std::make_shared<BitmapTexture>(std::move(paletteBitmap), Filter::Nearest, WrapType::ClampToEdge);
 
 	// The palette's glow yellows (the colors the original dot glows keyed on: gold sparkle, tracers, hot bits) are emissive, so they glint in the dark.
-	// R = emissive strength, G = vegetation (green-dominant colors, which sway in the wind when they're part of the terrain).
+	// R = emissive strength, G = vegetation (green-dominant colors, which sway in the wind when they're part of the terrain), A = shininess (greys: metal and concrete catch highlights from lights).
 	std::array<unsigned char, 1024>& emissivePalette = m_EmissivePalette;
 	emissivePalette.fill(0);
 	emissivePalette[g_YellowGlowColor * 4] = 255;
@@ -40,6 +40,14 @@ void RenderMan::Initialize() {
 		int otherMax = std::max<int>(color.r, color.b);
 		if (green > 50 && green > color.r * 1.1F && green > color.b * 1.2F && green - otherMax > 18) {
 			emissivePalette[i * 4 + 1] = 255;
+		}
+		int brightest = std::max({static_cast<int>(color.r), static_cast<int>(color.g), static_cast<int>(color.b)});
+		int darkest = std::min({static_cast<int>(color.r), static_cast<int>(color.g), static_cast<int>(color.b)});
+		if (brightest > 0 && emissivePalette[i * 4] == 0) {
+			float saturation = static_cast<float>(brightest - darkest) / static_cast<float>(brightest);
+			float greyness = std::clamp((0.2F - saturation) / 0.2F, 0.0F, 1.0F);
+			float brightness = std::clamp((static_cast<float>(brightest) / 255.0F - 0.22F) / 0.45F, 0.0F, 1.0F);
+			emissivePalette[i * 4 + 3] = static_cast<unsigned char>(greyness * brightness * 0.75F * 255.0F);
 		}
 	}
 	glGenTextures(1, &m_EmissivePaletteTexture);
@@ -61,6 +69,8 @@ void RenderMan::SetLiquidPaletteColor(int paletteIndex, int liquidKind, int emis
 	m_EmissivePalette[paletteIndex * 4] = std::max(m_EmissivePalette[paletteIndex * 4], static_cast<unsigned char>(std::clamp(emissive, 0, 255)));
 	// Liquids aren't vegetation, even if they're green.
 	m_EmissivePalette[paletteIndex * 4 + 1] = 0;
+	// Water and acid are glossy; lava glows instead.
+	m_EmissivePalette[paletteIndex * 4 + 3] = static_cast<unsigned char>(emissive > 0 ? 0 : 230);
 	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, m_EmissivePalette.data());

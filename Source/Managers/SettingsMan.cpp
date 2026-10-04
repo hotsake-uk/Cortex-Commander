@@ -190,6 +190,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("GIStrength", { g_PostProcessMan.GetLightingSettings().GIStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GIBounce", { g_PostProcessMan.GetLightingSettings().GIBounce = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingIndirect", { g_PostProcessMan.GetLightingSettings().IndirectLight = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEmissiveIntensity", { g_PostProcessMan.GetLightingSettings().EmissiveIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
@@ -359,6 +360,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
+	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
 	writer.NewPropertyWithValue("RadianceCascades", lighting.RadianceCascades);
 	writer.NewPropertyWithValue("GIStrength", lighting.GIStrength);

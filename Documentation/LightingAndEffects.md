@@ -154,6 +154,7 @@ Press **F8** for **Photo Mode**:
 | `LightingShadowStrength` | 0.85 | How much terrain blocks dynamic lights. |
 | `LightingEmissiveIntensity` | 1.4 | Brightness of glow sprites. |
 | `LightingEdgeLighting` | 1 | Strength of the automatic edge normals. |
+| `LightingSpecular` | 1 | Highlights that lights throw on shiny surfaces: grey metal and concrete, rain-wet ground, water and acid. 0 turns them off. |
 | `LightingIndirect` | 0.35 | One bounce of light: lit surfaces bleed their colour onto their surroundings, mostly in shadowed areas and caves. |
 | `Embers` | 1 | Embers rising from fire and other warm glows. |
 | `DistortionEnabled` / `HeatHaze` / `ShockwaveStrength` | 1 / 1.5 / 1 | Heat haze above hot things, and refraction rings from explosions. |
@@ -241,4 +242,4 @@ Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) last
 
 ## Shaders
 
-The lighting shaders live in `Data/Base.rte/Shaders/Lighting/`. The sprite shader `Base.rte/Shaders/Blit8.frag` and the terrain shader `Base.rte/Shaders/Terrain.frag` write a second output: a screen-space normal in RGB, and in alpha 0 for "nothing drawn" or 0.5–1 for "drawn, with emissive strength 0–1". Custom shaders used for scene drawing should write it too.
+The lighting shaders live in `Data/Base.rte/Shaders/Lighting/`. The sprite shader `Base.rte/Shaders/Blit8.frag` and the terrain shader `Base.rte/Shaders/Terrain.frag` write a second output: the screen-space normal's x and y in RG, 1 minus the surface's shininess in B, and in alpha 0 for "nothing drawn" or 0.5–1 for "drawn, with emissive strength 0–1". Custom shaders used for scene drawing should write it too.

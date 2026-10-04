@@ -126,10 +126,12 @@ void main() {
 		FragColor.rgba = rteColor;
 	}
 	vec3 normal = EdgeNormal(uvDx, uvDy);
+	float shine = 0.0;
 
 	// Liquids (water, lava, acid), flagged in the emissive palette's B channel.
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
+		shine = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).a;
 		float liquid = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b;
 		if (liquid > 0.1) {
 			bool surface = texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r, 0.0)).b < 0.1;
@@ -175,8 +177,11 @@ void main() {
 			float brightness = dot(FragColor.rgb, vec3(0.299, 0.587, 0.114));
 			vec3 snow = vec3(0.86, 0.9, 0.98) * (0.85 + 0.25 * brightness);
 			FragColor.rgb = mix(FragColor.rgb, snow, depth <= snowDepth - 1.0 ? 0.95 : 0.6);
+			shine = 0.0;
 		} else if (depth <= 3.0 && rteWetness > 0.01) {
 			FragColor.rgb *= mix(vec3(1.0), vec3(0.68, 0.7, 0.78), rteWetness);
+			// Wet ground glistens under lights.
+			shine = max(shine, rteWetness * 0.85);
 		}
 	}
 
@@ -210,5 +215,6 @@ void main() {
 			emissive = max(emissive, heat);
 		}
 	}
-	NormalOut = vec4(normal * 0.5 + 0.5, 0.5 + 0.5 * emissive);
+	// RG: normal x and y. B: 1 - shininess. Alpha: drawn, with emissive strength.
+	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
 }

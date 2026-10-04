@@ -370,6 +370,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Shadow strength", &settings.ShadowStrength, 0.0F, 1.0F);
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
+		ImGui::SliderFloat("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
 		ImGui::SliderFloat("Indirect light", &settings.IndirectLight, 0.0F, 1.5F);
 		ImGui::Checkbox("Radiance cascades GI", &settings.RadianceCascades);
 		ImGui::SliderFloat("GI strength", &settings.GIStrength, 0.0F, 4.0F);

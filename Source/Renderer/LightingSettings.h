@@ -82,6 +82,7 @@ namespace RTE {
 		bool RadianceCascades = false; //!< Global illumination by radiance cascades: glows light their surroundings with soft occlusion, and light bounces off surfaces. Replaces the simpler indirect light.
 		float GIStrength = 1.0F; //!< Brightness of the radiance cascades light.
 		float GIBounce = 0.5F; //!< How much of the light reaching surfaces they pass on.
+		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
