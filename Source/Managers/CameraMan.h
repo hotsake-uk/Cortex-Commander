@@ -124,6 +124,17 @@ namespace RTE {
 #pragma region Screen Shake Getters and Setters
 		/// Gets the screen shake strength multiplier.
 		/// @return The screen shake strength multiplier.
+		/// Nudges a screen's view in a direction; it springs back within a moment. For weapon recoil: the view kicks away from the shot. Render only.
+		/// @param kick The nudge in pixels, before the screen shake strength setting is applied.
+		/// @param screenId Which screen.
+		void AddScreenKick(const Vector& kick, int screenId = 0);
+
+		/// Gets how strong the hit-stop on big blasts is: 1 is normal, 0 is off.
+		float GetHitStopStrength() const { return m_HitStopStrength; }
+
+		/// Sets how strong the hit-stop on big blasts is.
+		void SetHitStopStrength(float strength) { m_HitStopStrength = strength; }
+
 		float GetScreenShakeStrength() const { return m_ScreenShakeStrength; }
 
 		/// Sets the screen shake strength multiplier.
@@ -206,10 +217,14 @@ namespace RTE {
 			float ScreenShakeMagnitude = 0; //!< The magnitude of screen shake that is currently being applied.
 			float ScreenShakeTime = 0; //!< Real seconds of shaking so far, driving the shake's smooth noise.
 			Vector ScreenShakeOffset; //!< The shake currently added to Offset, taken back out before the next update so shake never drifts the view.
+			Vector KickOffset; //!< A recoil kick, springing back to nothing.
 
 			std::vector<Camera> Cameras;
 		};
 
+		float m_HitStopStrength = 1.0F; //!< How strong the hit-stop on big blasts is, 0 for none.
+		float m_BlastOnScreen = 0.0F; //!< Screen shake added by blasts since the last drawn frame, to judge whether something big just went off in view.
+		double m_LastHitStopTime = -10.0; //!< Real seconds when the last hit-stop happened, so they don't chain.
 		float m_ScreenShakeStrength; //!< A global multiplier applied to screen shaking strength.
 		float m_ScreenShakeDecay; //!< How quickly screen shake falls off.
 		float m_MaxScreenShakeTime; //!< The maximum amount of screen shake time, i.e. the number of seconds screen shake will happen until ScreenShakeDecay reduces it to zero.

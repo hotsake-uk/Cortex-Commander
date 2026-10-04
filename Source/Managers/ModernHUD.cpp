@@ -15,6 +15,7 @@
 #include "glad/gl.h"
 
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 #include <vector>
 
@@ -40,6 +41,30 @@ namespace {
 	};
 	std::deque<FeedEntry> s_Feed;
 	std::unordered_map<const Actor*, std::pair<std::string, int>> s_KnownActors; //!< Actors seen last frame, with name and team, to notice who's gone.
+
+	/// A number floating up from a unit that just lost health.
+	struct DamageNumber {
+		Vector Position;
+		int Amount;
+		bool Mine; //!< Whether it's the unit the player controls.
+		double Time;
+	};
+	std::vector<DamageNumber> s_DamageNumbers;
+
+	/// What each unit's health was when its last number was shown, by unique ID.
+	struct HealthRecord {
+		float Shown;
+		double LastNumberTime;
+		bool Seen;
+	};
+	std::unordered_map<long, HealthRecord> s_Health;
+
+	/// A red arc near the middle of the screen pointing to where a hit on the player's unit came from.
+	struct DamageArc {
+		float Angle;
+		double Time;
+	};
+	std::vector<DamageArc> s_DamageArcs;
 
 	const ImU32 c_TeamColors[] = {IM_COL32(90, 170, 255, 255), IM_COL32(255, 95, 80, 255), IM_COL32(110, 230, 110, 255), IM_COL32(255, 210, 70, 255)};
 
@@ -121,6 +146,9 @@ namespace {
 void ModernHUD::Draw() {
 	if (!s_Enabled || !g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
 		s_KnownActors.clear();
+		s_Health.clear();
+		s_DamageNumbers.clear();
+		s_DamageArcs.clear();
 		return;
 	}
 	Activity* activity = g_ActivityMan.GetActivity();
@@ -191,6 +219,72 @@ void ModernHUD::Draw() {
 				}
 			}
 		}
+	}
+
+	// Damage numbers over units, and arcs showing where hits on the player's unit came from. One screen only: split screens would need each view mapped.
+	if (g_FrameMan.GetScreenCount() == 1) {
+		double now = ImGui::GetTime();
+		const Actor* mine = activity->GetControlledActor(0);
+		for (auto& [id, record]: s_Health) {
+			record.Seen = false;
+		}
+		for (const Actor* actor: g_MovableMan.m_Actors) {
+			if (!actor || actor->IsDead()) {
+				continue;
+			}
+			float health = actor->GetHealth();
+			auto found = s_Health.find(actor->GetUniqueID());
+			if (found == s_Health.end()) {
+				s_Health.emplace(actor->GetUniqueID(), HealthRecord{health, now, true});
+				continue;
+			}
+			HealthRecord& record = found->second;
+			record.Seen = true;
+			if (health > record.Shown) {
+				record.Shown = health;
+			} else if (record.Shown - health >= 1.0F && now - record.LastNumberTime > 0.3) {
+				// Slow damage (fire, gas) is gathered into a number every so often rather than a stream of ones.
+				s_DamageNumbers.push_back({actor->GetPos() - Vector(0.0F, actor->GetRadius() * 0.6F), static_cast<int>(std::round(record.Shown - health)), actor == mine, now});
+				if (actor == mine && !actor->GetLastAlarmPos().IsZero()) {
+					Vector from = g_SceneMan.ShortestDistance(actor->GetPos(), actor->GetLastAlarmPos(), g_SceneMan.SceneWrapsX());
+					if (from.MagnitudeIsGreaterThan(1.0F)) {
+						s_DamageArcs.push_back({std::atan2(from.m_Y, from.m_X), now});
+					}
+				}
+				record.Shown = health;
+				record.LastNumberTime = now;
+			}
+		}
+		std::erase_if(s_Health, [](const auto& entry) { return !entry.second.Seen; });
+
+		float pixelScale = io.DisplaySize.x / static_cast<float>(std::max(g_FrameMan.GetPlayerScreenWidth(), 1));
+		Vector viewCorner = g_CameraMan.GetOffset(0);
+		for (const DamageNumber& number: s_DamageNumbers) {
+			float age = static_cast<float>(now - number.Time);
+			Vector onScreen = g_SceneMan.ShortestDistance(viewCorner, number.Position, g_SceneMan.SceneWrapsX());
+			ImVec2 at(onScreen.m_X * pixelScale, onScreen.m_Y * pixelScale - age * 34.0F * scale);
+			int alpha = static_cast<int>(255.0F * std::clamp(1.0F - (age - 0.5F) / 0.4F, 0.0F, 1.0F));
+			char text[16];
+			std::snprintf(text, sizeof(text), "-%d", number.Amount);
+			float size = ImGui::GetFontSize() * (number.Amount >= 20 ? 1.35F : 1.0F);
+			drawList->AddText(ImGui::GetFont(), size, ImVec2(at.x + 1.0F, at.y + 1.0F), IM_COL32(0, 0, 0, alpha * 3 / 4), text);
+			drawList->AddText(ImGui::GetFont(), size, at, number.Mine ? IM_COL32(255, 90, 80, alpha) : IM_COL32(255, 235, 200, alpha), text);
+		}
+		std::erase_if(s_DamageNumbers, [now](const DamageNumber& number) { return now - number.Time > 0.9; });
+
+		ImVec2 middle(io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F);
+		float arcRadius = std::min(io.DisplaySize.x, io.DisplaySize.y) * 0.3F;
+		for (const DamageArc& arc: s_DamageArcs) {
+			float age = static_cast<float>(now - arc.Time);
+			int alpha = static_cast<int>(220.0F * std::clamp(1.0F - age / 0.9F, 0.0F, 1.0F));
+			drawList->PathArcTo(middle, arcRadius, arc.Angle - 0.28F, arc.Angle + 0.28F, 16);
+			drawList->PathStroke(IM_COL32(255, 60, 50, alpha), 0, 5.0F * scale);
+		}
+		std::erase_if(s_DamageArcs, [now](const DamageArc& arc) { return now - arc.Time > 0.9; });
+	} else {
+		s_DamageNumbers.clear();
+		s_DamageArcs.clear();
+		s_Health.clear();
 	}
 
 	// Loss feed, top left below the funds: units that died or vanished since last frame.

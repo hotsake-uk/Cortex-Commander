@@ -525,6 +525,9 @@ namespace RTE {
 		/// Gets any point on the scene this actor should be alarmed about this frame.
 		/// @return The new scene point this should look at and see if anything dangerous
 		/// is there or (0,0) if nothing is alarming.
+		/// Gets the last point this actor was alarmed about: when it was hit, a point back along where the shot came from.
+		const Vector& GetLastAlarmPos() const { return m_LastAlarmPos; }
+
 		Vector GetAlarmPoint() {
 			if (m_AlarmTimer.GetElapsedSimTimeMS() > g_TimerMan.GetDeltaTimeMS()) {
 				return Vector();

@@ -103,6 +103,12 @@ namespace RTE {
 		/// @return Whether VSync is enabled.
 		bool GetVSyncEnabled() const { return m_EnableVSync; }
 
+		/// Gets the most frames drawn per second, 0 for no limit.
+		int GetFrameCap() const { return m_FrameCap; }
+
+		/// Sets the most frames drawn per second, 0 for no limit. Saves power and heat when VSync is off or the display is very fast.
+		void SetFrameCap(int framesPerSecond) { m_FrameCap = framesPerSecond <= 0 ? 0 : std::clamp(framesPerSecond, 30, 1000); }
+
 		/// Sets whether VSync is enabled.
 		/// @param enable Whether to enable VSync.
 		void SetVSyncEnabled(bool enable);
@@ -262,6 +268,8 @@ namespace RTE {
 
 		bool m_Fullscreen; //!< Whether the game window is currently in fullscreen.
 
+		int m_FrameCap = 0; //!< The most frames drawn per second, 0 for no limit.
+		long long m_LastPresentTicks = 0; //!< When the last frame was presented, for the frame cap.
 		bool m_EnableVSync; //!< Whether vertical synchronization is enabled.
 		bool m_UseMultiDisplays; //!< Whether the multi-display arrangement should be ignored and only the display the main window is currently positioned at should be used for fullscreen.
 

@@ -1012,6 +1012,9 @@ void WindowMan::SaveWindowScreenshot() {
 
 void WindowMan::PresentWithTextOverlay(bool redrawLast) {
 	Texture* sceneTexture = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture().lock().get();
+	m_ScreenUpscaleShader->Begin();
+	m_ScreenUpscaleShader->SetFloat("rteScanlines", g_ActivityMan.IsInActivity() ? g_PostProcessMan.GetLightingSettings().Scanlines : 0.0F);
+	m_ScreenUpscaleShader->End();
 	BlitTextureToPrimaryWindow(sceneTexture, m_ScreenUpscaleShader.get(), false);
 	int windowWidth = 0;
 	int windowHeight = 0;
@@ -1066,6 +1069,23 @@ void WindowMan::BlitScreenBufferToWindows() {
 }
 
 void WindowMan::Present() {
+	if (m_FrameCap > 0) {
+		// Wait out the rest of this frame's time: sleep for most of it, then spin for the last moment, which sleeping can't hit precisely.
+		long long frameTicks = SDL_GetPerformanceFrequency() / static_cast<Uint64>(m_FrameCap);
+		long long target = m_LastPresentTicks + frameTicks;
+		long long now = static_cast<long long>(SDL_GetPerformanceCounter());
+		if (now < target) {
+			long long sleepNS = (target - now) * 1000000000LL / static_cast<long long>(SDL_GetPerformanceFrequency()) - 1500000LL;
+			if (sleepNS > 0) {
+				SDL_DelayNS(static_cast<Uint64>(sleepNS));
+			}
+			while (static_cast<long long>(SDL_GetPerformanceCounter()) < target) {
+			}
+			m_LastPresentTicks = target;
+		} else {
+			m_LastPresentTicks = now;
+		}
+	}
 	if (m_MultiDisplayWindows.empty()) {
 		SDL_GL_SwapWindow(m_PrimaryWindow.get());
 	} else {

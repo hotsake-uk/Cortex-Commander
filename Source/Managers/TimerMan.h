@@ -2,6 +2,8 @@
 
 #include "Singleton.h"
 
+#include <algorithm>
+
 #include <deque>
 #include <chrono>
 
@@ -38,6 +40,10 @@ namespace RTE {
 		/// Sets the sim to be paused, ie no real time ticks will be transferred to the sim accumulator while this is set to true.
 		/// This also clears the accumulator, to avoid the case where the sim may update while paused when behind schedule.
 		/// @param pause Whether the sim should be paused or not.
+		/// Holds the simulation still for a moment of real time, for impact on big blasts. What the simulation does isn't changed, only when.
+		/// @param realMS How long to hold, in real milliseconds.
+		void HitStop(float realMS) { m_HitStopTicks = std::max(m_HitStopTicks, static_cast<long long>(realMS * 0.001F * static_cast<float>(m_TicksPerSecond))); }
+
 		void PauseSim(bool pause = false) {
 			m_SimPaused = pause;
 			if (pause)
@@ -167,6 +173,7 @@ namespace RTE {
 		float m_SimSpeed; //!< The simulation speed over real time.
 		float m_TimeScale; //!< The relationship between the real world actual time and the simulation time. A value of 2.0 means simulation runs twice as fast as normal, as perceived by a player.
 
+		long long m_HitStopTicks = 0; //!< Real time ticks left of a hit-stop, during which no time goes to the sim accumulator.
 		bool m_SimPaused; //!< Simulation paused; no real time ticks will go to the sim accumulator.
 
 	private:

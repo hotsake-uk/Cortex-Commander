@@ -1413,7 +1413,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetVector3f("rteShadowTint", m_Settings.ShadowTint);
 	m_TonemapShader->SetVector3f("rteHighlightTint", m_Settings.HighlightTint);
 	m_TonemapShader->SetFloat("rteFilmGrain", m_Settings.FilmGrain);
-	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration);
+	// The blast pulse fades in real time, so it also fades during the hit-stop that comes with it.
+	double pulseNow = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	m_BlastPulse *= std::exp(-static_cast<float>(std::clamp(pulseNow - m_BlastPulseLastTime, 0.0, 0.1)) * 9.0F);
+	m_BlastPulseLastTime = pulseNow;
+	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration + (m_Settings.DistortionEnabled ? m_BlastPulse * 2.2F : 0.0F));
 	m_TonemapShader->SetInt("rteAdaptedLuminance", 4);
 	m_TonemapShader->SetFloat("rteAutoExposure", useAutoExposure ? m_Settings.AutoExposure : 0.0F);
 	m_TonemapShader->SetFloat("rteAutoExposureLow", m_Settings.AutoExposureLow);

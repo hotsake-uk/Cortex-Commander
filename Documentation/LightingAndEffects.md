@@ -119,6 +119,13 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - Health and ammo bars for the unit you control.
 - A feed of units lost.
 
+**Feel:**
+- **Hit-stop** (`HitStopStrength`, 1 by default, 0 for off, also in F6): a big blast in view holds the game for 25 to 70 milliseconds and smears the lens for an instant. It happens at most every 0.6 seconds, so chains of explosions don't stutter. Only the timing changes, never what the simulation does.
+- **Recoil kick:** the view kicks back with the gun when the unit you control fires, and springs back. It follows the Screen Shake Strength setting.
+- **Frame cap** (`FrameCap`, 0 for none, also in F6): limits frames per second (30 to 1000), to save power and heat when VSync is off.
+- **CRT scanlines** (`PostScanlines`, 0 to 1, in the Graphics Lab): optional scanlines on the final image.
+- **Modern HUD extras:** numbers float up from units as they lose health (slow damage like fire is gathered up), and a red arc shows which way a hit on your unit came from.
+
 **Camera zoom:**
 - **Ctrl + mouse wheel** zooms the view out (down to 0.4x, about six times as much world on screen) or in (up to 2x). In the Sandbox god view the wheel alone zooms. There are sliders in F6 and the sandbox's World tab.
 - The whole view (scene, lighting and HUD) is drawn at the size of the area it shows and scaled to the screen, so every effect works at any zoom. Far backgrounds don't zoom: the sky and backdrop stay put.

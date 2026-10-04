@@ -27,6 +27,10 @@ namespace RTE {
 		/// Starts a lightning flash now, as if a bolt just struck (the sandbox's lightning).
 		void TriggerLightning() { m_LightningSecondsLeft = 0.45F; }
 
+		/// A big blast just went off in view: smear the lens for an instant (a pulse of chromatic aberration that fades in a fraction of a second).
+		/// @param strength 0 to 1.
+		void AddBlastPulse(float strength) { m_BlastPulse = std::max(m_BlastPulse, strength); }
+
 		/// Constructor.
 		/// @param settings The settings to use, not owned. Read every frame, so they can be changed live.
 		explicit SceneLighting(LightingSettings& settings);
@@ -118,6 +122,8 @@ namespace RTE {
 		float m_SnowCover = 0.0F; //!< How deep snow has settled on exposed ground, 0 to 1. Builds up while it snows, melts otherwise.
 		float m_Wetness = 0.0F; //!< How wet exposed ground is from rain, 0 to 1.
 		float m_MoonHours = 0.0F; //!< Where the moon is along its path across the sky, in sun-path hours (6 rising, 18 setting).
+		float m_BlastPulse = 0.0F; //!< Lens smear from a big blast, fading out.
+		double m_BlastPulseLastTime = 0.0; //!< Real seconds when the pulse was last faded.
 		float m_Lightning = 0.0F; //!< Current lightning flash brightness.
 		float m_LightningSecondsLeft = 0.0F; //!< Time left in the current flash.
 		float m_NextLightningSeconds = 8.0F; //!< Sim seconds until the next flash.

@@ -1,4 +1,8 @@
 #include "CameraMan.h"
+#include "ActivityMan.h"
+#include "TimerMan.h"
+#include "SceneLighting.h"
+#include "PostProcessMan.h"
 
 #include "Activity.h"
 #include "WindowMan.h"
@@ -202,6 +206,15 @@ void CameraMan::AddScreenShake(float magnitude, const Vector& position) {
 		float screenDistance = std::max(frameSize.GetX(), frameSize.GetY()) * screenShakeFalloff;
 		float screenShakeMultipler = std::max(1.0F - (closestDistanceFromScreen / screenDistance), 0.0F);
 		screen.ScreenShakeMagnitude += magnitude * screenShakeMultipler;
+		m_BlastOnScreen += magnitude * screenShakeMultipler;
+	}
+}
+
+void CameraMan::AddScreenKick(const Vector& kick, int screenId) {
+	if (screenId >= 0 && screenId < static_cast<int>(m_Screens.size())) {
+		Screen& screen = m_Screens[screenId];
+		screen.KickOffset += kick * m_ScreenShakeStrength;
+		screen.KickOffset.CapMagnitude(6.0F);
 	}
 }
 
@@ -227,6 +240,20 @@ void CameraMan::Update(int screenId) {
 				screen.SeamCrossCount[Axes::Y] += wrappingScrollDirection;
 			}
 			screen.TargetYWrapped = false;
+		}
+	}
+
+	// A big blast in view: hold the frame for an instant so it lands, and smear the lens. Not again for a while, so chains of explosions don't stutter.
+	if (screenId == 0) {
+		float maxShake = std::max(m_ScreenShakeDecay * m_MaxScreenShakeTime, 0.001F);
+		float blast = m_BlastOnScreen / maxShake;
+		m_BlastOnScreen = 0.0F;
+		double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+		if (blast > 0.45F && m_HitStopStrength > 0.0F && now - m_LastHitStopTime > 0.6 && g_ActivityMan.GetActivity()->GetActivityState() == Activity::ActivityState::Running) {
+			m_LastHitStopTime = now;
+			float strength = std::min(blast, 1.5F) / 1.5F;
+			g_TimerMan.HitStop((25.0F + 45.0F * strength) * std::min(m_HitStopStrength, 2.0F));
+			g_PostProcessMan.GetSceneLighting()->AddBlastPulse(strength * std::min(m_HitStopStrength, 2.0F));
 		}
 	}
 
@@ -274,6 +301,14 @@ void CameraMan::Update(int screenId) {
 		}
 	} else {
 		screen.ScreenShakeMagnitude = 0;
+	}
+	// The recoil kick rides on top of the shake and springs back quickly.
+	screen.KickOffset *= std::exp(-static_cast<float>(screen.ScrollTimer.GetElapsedRealTimeS()) * 16.0F);
+	if (screen.KickOffset.MagnitudeIsGreaterThan(0.05F)) {
+		screen.ScreenShakeOffset += screen.KickOffset;
+		newOffset += screen.KickOffset;
+	} else {
+		screen.KickOffset.Reset();
 	}
 
 	SetOffset(newOffset, screenId);

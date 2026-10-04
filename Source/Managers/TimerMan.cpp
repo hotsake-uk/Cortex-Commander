@@ -86,7 +86,9 @@ void TimerMan::Update() {
 	RTEAssert(timeIncrease > 0, "It seems your CPU is giving bad timing data to the game, this is known to happen on some multi-core processors. This may be fixed by downloading the latest CPU drivers from AMD or Intel.");
 
 	// If not paused, add the new time difference to the sim accumulator
-	if (!m_SimPaused) {
+	if (m_HitStopTicks > 0) {
+		m_HitStopTicks -= timeIncrease;
+	} else if (!m_SimPaused) {
 		m_SimAccumulator += static_cast<long long>(static_cast<float>(timeIncrease) * m_TimeScale);
 	}
 

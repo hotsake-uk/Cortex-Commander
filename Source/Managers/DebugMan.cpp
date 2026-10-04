@@ -203,6 +203,14 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving)", FluidSim::GetActiveCount());
+		float hitStop = g_CameraMan.GetHitStopStrength();
+		if (ImGui::SliderFloat("Hit-stop on big blasts", &hitStop, 0.0F, 2.0F)) {
+			g_CameraMan.SetHitStopStrength(hitStop);
+		}
+		int frameCap = g_WindowMan.GetFrameCap();
+		if (ImGui::SliderInt("Frame cap (0 = none)", &frameCap, 0, 360)) {
+			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
+		}
 		float cameraZoom = g_FrameMan.GetCameraZoom();
 		if (ImGui::SliderFloat("Camera zoom", &cameraZoom, FrameMan::c_MinCameraZoom, FrameMan::c_MaxCameraZoom, "%.2fx")) {
 			g_FrameMan.SetCameraZoom(cameraZoom);
@@ -371,6 +379,7 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		ImGui::SliderFloat("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		ImGui::SliderFloat("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
+		ImGui::SliderFloat("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
 		ImGui::SliderFloat("Indirect light", &settings.IndirectLight, 0.0F, 1.5F);
 		ImGui::Checkbox("Radiance cascades GI", &settings.RadianceCascades);
 		ImGui::SliderFloat("GI strength", &settings.GIStrength, 0.0F, 4.0F);
