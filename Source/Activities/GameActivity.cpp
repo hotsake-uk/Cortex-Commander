@@ -916,6 +916,27 @@ void GameActivity::End() {
 	m_GameOverTimer.Reset();
 }
 
+void GameActivity::SetFreeBuildMode(bool build) {
+	if (build == m_FreeBuildMode) {
+		return;
+	}
+	m_FreeBuildMode = build;
+	m_ActivityState = build ? ActivityState::Editing : ActivityState::Running;
+	for (int player = Players::PlayerOne; player < Players::MaxPlayerCount; ++player) {
+		if (!(m_IsActive[player] && m_IsHuman[player]) || !m_pEditorGUI[player]) {
+			continue;
+		}
+		if (build) {
+			m_pEditorGUI[player]->SetCursorPos(g_CameraMan.GetOffset(ScreenOfPlayer(player)) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F));
+			m_pEditorGUI[player]->SetEditorGUIMode(SceneEditorGUI::PICKINGOBJECT);
+		} else {
+			m_pEditorGUI[player]->SetEditorGUIMode(SceneEditorGUI::INACTIVE);
+		}
+		m_ReadyToStart[player] = false;
+		g_FrameMan.ClearScreenText(ScreenOfPlayer(player));
+	}
+}
+
 void GameActivity::UpdateEditing() {
 	// Editing the scene, just update the editor guis and see if players are ready to start or not
 	if (m_ActivityState != ActivityState::Editing)
@@ -932,6 +953,12 @@ void GameActivity::UpdateEditing() {
 
 		// Set the team associations with each screen displayed
 		g_CameraMan.SetScreenTeam(m_Team[player], ScreenOfPlayer(player));
+
+		// Done with a build in the middle of play: straight back to the game.
+		if (m_FreeBuildMode && m_pEditorGUI[player]->GetEditorGUIMode() == SceneEditorGUI::DONEEDITING) {
+			SetFreeBuildMode(false);
+			return;
+		}
 
 		// Check if the player says he's done editing, and if so, make sure he really is good to go
 		if (m_pEditorGUI[player]->GetEditorGUIMode() == SceneEditorGUI::DONEEDITING) {

@@ -89,7 +89,8 @@ At night, stars and a moon appear on the sky layers. These are the background la
 
 **Sandbox** (game mode and F7 tools):
 - **The game mode:** pick **Sandbox** in the scenario menu. You play as a god with a free camera (right-drag or WASD), every unit is run by the AI, including your own side's, and the game never ends.
-- **Spawning:** units from every faction (with squad size, loadout and orders), brains, items and bunker pieces. Each spawn list has a search box. There are four sides: Blue, Red, Green and Yellow.
+- **Spawning:** units from every faction (with squad size, loadout and orders), brains and items. Each spawn list has a search box. The default loadout uses each faction's guns and plain grenades.
+- **Building:** "Build bunkers with the build menu" opens the game's own build menu in the middle of play. It places straight into the world, and the money never runs out. Choose Done in its pie menu, or press F7, to go back. There are four sides, in the game's own team colours: Red, Green, Blue and Yellow.
 - **Brains are optional:** place one for any side to give the others something to hunt and that side something to defend.
 - **Orders:**
   - Hold position, attack nearest enemy, hunt brains, patrol, go to the side's rally point, or do nothing.
@@ -101,7 +102,7 @@ At night, stars and a moon appear on the sky layers. These are the background la
 - **In other games:** F7 opens the same tools as a debug panel.
 - **Lua:**
   - `SandboxDo(tool, position, side, order, count, presetName)` uses any tool from a script. For example, `SandboxDo("Units", pos, 1, 1, 4, "Soldier Light")` spawns four Red soldiers told to attack.
-  - `SandboxCountUnits(side)` counts a side's units.
+  - `SandboxCountUnits(side)` counts a side's units, and `SandboxBuildMode(true/false)` opens or closes the build menu.
 
 **Modern HUD** (`ModernHUD`, in Video settings and F6) is drawn crisply at window resolution on top of the classic HUD. It is off by default. It adds:
 - A minimap of the terrain, your view and every unit, coloured by team.

@@ -35,7 +35,7 @@ namespace RTE {
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
 		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...) or "Orders" to order a whole side.
 		/// @param position Where to use it.
-		/// @param team The side: 0 Blue, 1 Red, 2 Green, 3 Yellow.
+		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
 		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing.
 		/// @param count Squad size for units, brush size for painting.
 		/// @param presetName What to spawn, for units, brains, items and structures.
@@ -46,6 +46,11 @@ namespace RTE {
 		/// @param team The side.
 		/// @return The number of units.
 		static int CountUnits(int team);
+
+		/// Opens or closes the game's build menu in the middle of play, placing straight into the world (Lua: SandboxBuildMode).
+		/// @param build Whether to build.
+		/// @return Whether the game is now building.
+		static bool SetBuildMode(bool build);
 
 	private:
 		static bool s_Open; //!< Whether the sandbox window is open.

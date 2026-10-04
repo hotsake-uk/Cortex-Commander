@@ -109,6 +109,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("Lerp", (Matrix(*)(float, float, const Matrix&, const Matrix&, float))&Lerp),
 	                         luabind::def("SandboxDo", &Sandbox::Do),
 	                         luabind::def("SandboxCountUnits", &Sandbox::CountUnits),
+	                         luabind::def("SandboxBuildMode", &Sandbox::SetBuildMode),
 	                         luabind::def("EaseIn", &EaseIn),
 	                         luabind::def("EaseOut", &EaseOut),
 	                         luabind::def("EaseInOut", &EaseInOut),

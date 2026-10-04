@@ -58,6 +58,17 @@ function SandboxTestScript:UpdateScript()
 				break;
 			end
 		end
+	elseif self.stage == 5 and t > 50000 then
+		self.stage = 6;
+		self:Log("build mode after closing " .. tostring(SandboxBuildMode(false)) .. ", state " .. ActivityMan:GetActivity().ActivityState);
+	elseif self.stage == 4 and t > 22000 then
+		self.stage = 5;
+		local ok, err = pcall(function()
+			self:Log("build mode " .. tostring(SandboxBuildMode(true)) .. ", state " .. ActivityMan:GetActivity().ActivityState);
+		end);
+		if not ok then
+			self:Log("build mode failed: " .. tostring(err));
+		end
 	end
 	if self.stage >= 1 and self.logTimer:IsPastSimMS(2000) then
 		self.logTimer:Reset();

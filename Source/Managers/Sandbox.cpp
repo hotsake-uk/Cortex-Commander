@@ -136,8 +136,9 @@ namespace {
 	}
 
 	constexpr int c_Sides = 4;
-	constexpr const char* c_SideNames[c_Sides] = {"Blue", "Red", "Green", "Yellow"};
-	constexpr ImU32 c_SideColors[c_Sides] = {IM_COL32(90, 150, 255, 255), IM_COL32(255, 90, 80, 255), IM_COL32(110, 220, 90, 255), IM_COL32(255, 210, 60, 255)};
+	// The game's own team colours, as on the team icons over units' heads.
+	constexpr const char* c_SideNames[c_Sides] = {"Red", "Green", "Blue", "Yellow"};
+	constexpr ImU32 c_SideColors[c_Sides] = {IM_COL32(249, 120, 100, 255), IM_COL32(170, 210, 100, 255), IM_COL32(110, 180, 250, 255), IM_COL32(248, 230, 100, 255)};
 
 	enum class Order {
 		Hold,
@@ -227,7 +228,10 @@ namespace {
 
 	const ToolInfo& CurrentTool() { return c_Tools[s_ToolIndex]; }
 
-	bool InGame() { return g_ActivityMan.IsInActivity() && g_SceneMan.GetScene() && g_SceneMan.GetScene()->GetTerrain(); }
+	bool InGame() {
+		const Activity* activity = g_ActivityMan.GetActivity();
+		return activity && activity->GetActivityState() >= Activity::ActivityState::Editing && activity->GetActivityState() <= Activity::ActivityState::Running && g_SceneMan.GetScene() && g_SceneMan.GetScene()->GetTerrain();
+	}
 
 	GameActivity* CurrentGame() { return dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity()); }
 
@@ -338,7 +342,11 @@ namespace {
 			} else if (entity->IsInGroup("Weapons - Secondary")) {
 				armoury.Secondaries.push_back(&item);
 			} else if (entity->IsInGroup("Bombs - Grenades")) {
-				armoury.Grenades.push_back(&item);
+				// Bandoliers unpack themselves by deleting themselves when held; hand out plain grenades instead, so battlefields aren't strewn with them.
+				const MovableObject* grenade = dynamic_cast<const MovableObject*>(entity);
+				if (grenade && !grenade->StringValueExists("GrenadeName")) {
+					armoury.Grenades.push_back(&item);
+				}
 			}
 		}
 		auto preferredIndex = [](const std::vector<Preset>& list, const char* name) {
@@ -1095,6 +1103,22 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	return true;
 }
 
+bool Sandbox::SetBuildMode(bool build) {
+	GameActivity* game = CurrentGame();
+	if (!game || !InGame()) {
+		return false;
+	}
+	if (build && s_Possessed) {
+		// Building is done from the god view.
+		ReleaseControl();
+	}
+	game->SetFreeBuildMode(build);
+	if (build) {
+		s_Open = false;
+	}
+	return game->IsFreeBuildMode();
+}
+
 int Sandbox::CountUnits(int team) {
 	int count = 0;
 	for (const Actor* actor: SandboxAccess::Actors()) {
@@ -1107,7 +1131,7 @@ int Sandbox::CountUnits(int team) {
 
 bool Sandbox::IsGodMode() {
 	const Activity* activity = g_ActivityMan.GetActivity();
-	return activity && g_ActivityMan.IsInActivity() && activity->GetPresetName() == "Sandbox";
+	return activity && InGame() && activity->GetPresetName() == "Sandbox";
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -1129,6 +1153,9 @@ void Sandbox::DrawGUI() {
 		}
 	} else {
 		s_GodActivity = nullptr;
+	}
+	if (GameActivity* game = CurrentGame(); s_Open && game && game->IsFreeBuildMode()) {
+		game->SetFreeBuildMode(false);
 	}
 	if (s_Open && s_Possessed) {
 		// Back to the god view.
@@ -1183,7 +1210,14 @@ void Sandbox::DrawGUI() {
 
 		if (ImGui::BeginTabBar("SandboxTabs")) {
 			if (ImGui::BeginTabItem("Spawn")) {
-				ToolButtons({Tool::Unit, Tool::Brain, Tool::Item, Tool::Structure});
+				ToolButtons({Tool::Unit, Tool::Brain, Tool::Item});
+				if (CurrentTool().Kind == Tool::Structure) {
+					s_ToolIndex = ToolIndex(Tool::Unit);
+				}
+				if (ImGui::Button("Build bunkers with the build menu", ImVec2(-1.0F, 0.0F))) {
+					// The game's own build menu, placing straight into the world. Choose Done in its pie menu (or press F7) to come back.
+					Sandbox::SetBuildMode(true);
+				}
 				Tool kind = CurrentTool().Kind;
 				if (kind == Tool::Unit || kind == Tool::Brain || kind == Tool::Item || kind == Tool::Structure) {
 					PresetList(kind);
@@ -1295,6 +1329,13 @@ void Sandbox::Update() {
 			s_Possessed = nullptr;
 			s_Open = true;
 			s_FreeCameraStarted = false;
+		}
+		if (game) {
+			for (int team = 0; team < c_Sides; ++team) {
+				if (game->GetTeamFunds(team) < 500000.0F) {
+					game->SetTeamFunds(1000000.0F, team);
+				}
+			}
 		}
 		// The god doesn't get handed a unit: stay watching unless controlling one on purpose.
 		if (game && !s_Possessed && game->GetViewState(Players::PlayerOne) != Activity::ViewState::Observe) {

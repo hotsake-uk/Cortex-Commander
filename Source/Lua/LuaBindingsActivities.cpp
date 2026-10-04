@@ -127,6 +127,8 @@ LuaBindingRegisterFunctionDefinitionForType(ActivityLuaBindings, GameActivity) {
 	    .def_readwrite("GameOverPeriod", &GameActivity::m_GameOverPeriod)
 
 	    .def("SetObservationTarget", &GameActivity::SetObservationTarget)
+	    .def("SetFreeBuildMode", &GameActivity::SetFreeBuildMode)
+	    .property("FreeBuildMode", &GameActivity::IsFreeBuildMode)
 	    .def("SetDeathViewTarget", &GameActivity::SetDeathViewTarget)
 	    .def("SetLandingZone", &GameActivity::SetLandingZone)
 	    .def("GetLandingZone", &GameActivity::GetLandingZone)

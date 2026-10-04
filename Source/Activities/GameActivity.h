@@ -108,6 +108,13 @@ namespace RTE {
 		/// over or a player is in observation mode
 		/// @param newTarget The new absolute position to observe.
 		/// @param player Which player to set it for. (default: 0)
+		/// Starts or ends building in the middle of a game (the Sandbox's build menu): the build menu places straight into the running world, and finishing needs no brain.
+		/// @param build Whether to build.
+		void SetFreeBuildMode(bool build);
+
+		/// Gets whether the game is in the middle of a free build.
+		bool IsFreeBuildMode() const { return m_FreeBuildMode; }
+
 		void SetObservationTarget(const Vector& newTarget, int player = 0) {
 			if (player >= Players::PlayerOne && player < Players::MaxPlayerCount)
 				m_ObservationTarget[player] = newTarget;
@@ -571,6 +578,7 @@ namespace RTE {
 		int m_BannerRepeats[Players::MaxPlayerCount];
 		// Whether each player has marked himself as ready to start. Can still edit while this is set, but when all are set, the game starts
 		bool m_ReadyToStart[Players::MaxPlayerCount];
+		bool m_FreeBuildMode = false; //!< Whether the game is building in the middle of play, see SetFreeBuildMode.
 		// An override purchase list that can be set by a script and will be used instead of what's in the buy menu. Object held in here are NOT OWNED
 		// Once a delivery is made with anything in here, this list is automatically cleared out, and the next delivery will be what's set in the buy menu.
 		std::list<const SceneObject*> m_PurchaseOverride[Players::MaxPlayerCount];
