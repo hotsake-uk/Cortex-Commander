@@ -125,7 +125,7 @@ bool WeatherReaches(vec2 world) {
 		if (p.y < 0.0) {
 			return true;
 		}
-		if (textureLod(rteWorldGrid, p / rteGridWorldSize, 0.0).r > 0.55) {
+		if (textureLod(rteWorldGrid, p / rteGridWorldSize, 0.0).a > 0.55) {
 			return false;
 		}
 		p += back * (i < 20 ? 1.0 : (i < 40 ? 2.0 : 5.0));

@@ -7,7 +7,7 @@ out vec4 FragColor;
 
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteForegroundDepth; // Depth beyond which pixels are behind the foreground terrain and objects.
-uniform sampler2D rteOccupancy; // The world's grid of solid ground: R = how solid each cell is.
+uniform sampler2D rteOccupancy; // The world's grid of solid ground: A = how full each cell is (R is how much it stops light, which water barely does).
 uniform vec2 rteGridWorldSize;
 uniform float rteCellSize; // World pixels per grid cell.
 uniform sampler2D rteDynamicLight; // Screen space dynamic light.
@@ -35,7 +35,7 @@ float Reaches(vec2 at, vec2 direction) {
 		if (p.y < 0.0) {
 			return 1.0;
 		}
-		if (textureLod(rteOccupancy, p / rteGridWorldSize, 0.0).r > 0.55) {
+		if (textureLod(rteOccupancy, p / rteGridWorldSize, 0.0).a > 0.55) {
 			return 0.0;
 		}
 		p += back * (i < 64 ? 1.0 : (i < 128 ? 2.0 : 4.0));

@@ -113,6 +113,7 @@ namespace RTE {
 		std::vector<unsigned char> m_Occupancy; //!< Four bytes per grid cell: terrain coverage (0 air .. 255 solid), then how metallic and how glossy the terrain there is (from its materials), then a spare.
 		std::array<unsigned char, 256> m_MaterialMetalness{}; //!< How metallic each terrain material looks, 0 to 255.
 		std::array<unsigned char, 256> m_MaterialGloss{}; //!< How glossy each terrain material looks, 0 to 255.
+		std::array<unsigned char, 256> m_MaterialLightBlock{}; //!< How much each terrain material stops light, 0 (none, like air) to 255 (all of it, like rock). Water lets most through.
 		std::vector<float> m_Skyline; //!< Per grid column, the row of the first mostly solid cell, normalized by grid height.
 		int m_NextRefreshRow = 0; //!< Row the round-robin terrain refresh continues from.
 		int m_FrameCounter = 0;

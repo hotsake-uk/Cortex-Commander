@@ -190,11 +190,15 @@ bool SceneLighting::EnsureWorldResources() {
 	// What each terrain material looks like, for the grid's material values.
 	m_MaterialMetalness.fill(0);
 	m_MaterialGloss.fill(0);
+	m_MaterialLightBlock.fill(255);
 	for (int id = 1; id < 256; ++id) {
 		const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 		if (material && material->GetIndex() == id) {
 			m_MaterialMetalness[id] = static_cast<unsigned char>(std::clamp(material->GetMetalness(), 0.0F, 1.0F) * 255.0F);
 			m_MaterialGloss[id] = static_cast<unsigned char>(std::clamp(material->GetGloss(), 0.0F, 1.0F) * 255.0F);
+			// Clear liquids let light through, dimming it with depth: sky light reaches down into a pool, and a lamp or a fire under water lights the water around it.
+			const std::string& materialName = material->GetPresetName();
+			m_MaterialLightBlock[id] = materialName == "Water" ? 40 : (materialName == "Acid" ? 60 : (materialName == "Ice" ? 90 : (materialName == "Glass" ? 50 : (materialName == "Oil" ? 170 : 255))));
 		}
 	}
 	m_Skyline.assign(m_GridWidth, 0.0F);
@@ -364,19 +368,22 @@ void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow, int firstColu
 			int solidSamples = 0;
 			int metalness = 0;
 			int gloss = 0;
+			int lightBlock = 0;
 			for (unsigned char material: materials) {
 				if (!IsOpenMaterial(material)) {
 					++solidSamples;
+					lightBlock += m_MaterialLightBlock[material];
 					metalness += m_MaterialMetalness[material];
 					gloss += m_MaterialGloss[material];
 				}
 			}
 			unsigned char* cell = occupancyRow + column * 4;
-			cell[0] = static_cast<unsigned char>((solidSamples * 255) / 4);
+			// R is how much the cell stops light; A is how much of it is filled with anything at all (what rain and snow can't fall through).
+			cell[0] = static_cast<unsigned char>(lightBlock / 4);
 			// What the solid part of the cell is made of, so a thin metal plate isn't diluted by the air beside it.
 			cell[1] = static_cast<unsigned char>(solidSamples > 0 ? metalness / solidSamples : 0);
 			cell[2] = static_cast<unsigned char>(solidSamples > 0 ? gloss / solidSamples : 0);
-			cell[3] = 255;
+			cell[3] = static_cast<unsigned char>((solidSamples * 255) / 4);
 		}
 	}
 }
@@ -385,7 +392,8 @@ void SceneLighting::RecomputeSkyline() {
 	ZoneScoped;
 	for (int column = 0; column < m_GridWidth; ++column) {
 		int row = 0;
-		while (row < m_GridHeight && m_Occupancy[(static_cast<size_t>(row) * m_GridWidth + column) * 4] < 128) {
+		// (By how full the cell is, so the open sky stops at the surface of water and light dims with depth below it.)
+		while (row < m_GridHeight && m_Occupancy[(static_cast<size_t>(row) * m_GridWidth + column) * 4 + 3] < 128) {
 			++row;
 		}
 		m_Skyline[column] = static_cast<float>(row) / static_cast<float>(m_GridHeight);

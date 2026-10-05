@@ -13,7 +13,7 @@ uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform float rteTime;
 uniform int rteType; // 1 rain, 2 snow, 3 ash fall, 4 dust storm.
 uniform float rteWind; // Horizontal speed, pixels per second.
-uniform sampler2D rteOccupancy; // The world's grid of solid ground: R = how solid each cell is.
+uniform sampler2D rteOccupancy; // The world's grid of solid ground: A = how full each cell is (R is how much it stops light, which water barely does).
 uniform vec2 rteGridWorldSize;
 uniform float rteCellSize; // World pixels per grid cell.
 
@@ -30,7 +30,7 @@ float Reaches(vec2 at, vec2 direction, float jitter) {
 		if (p.y < 0.0) {
 			return 1.0;
 		}
-		if (textureLod(rteOccupancy, p / rteGridWorldSize, 0.0).r > 0.55) {
+		if (textureLod(rteOccupancy, p / rteGridWorldSize, 0.0).a > 0.55) {
 			return 0.0;
 		}
 		p += back * (i < 64 ? 1.0 : (i < 128 ? 2.0 : 4.0));
@@ -75,7 +75,7 @@ void main() {
 
 	// Shelter is worked out for the drop as a whole, along the line it is falling down: rain driven by wind gets in under an overhang on the windward side
 	// and leaves a dry strip beyond a wall on the lee side. Each drop's line is nudged a little so the edge of the shelter is soft, not ruled.
-	reaches = textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).r > 0.9 ? 0.0 : Reaches(head, normalize(velocity + vec2((seedB - 0.5) * 60.0, 0.0)), seedA);
+	reaches = textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).a > 0.9 ? 0.0 : Reaches(head, normalize(velocity + vec2((seedB - 0.5) * 60.0, 0.0)), seedA);
 	worldPos = position;
 	quadPos = cornerPos;
 	dropAlpha = rteType == 3 ? mix(0.75, 1.0, seedA) : snow ? mix(0.55, 0.9, seedA) : (dust ? mix(0.15, 0.4, seedA) : mix(0.25, 0.5, seedA));
