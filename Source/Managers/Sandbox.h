@@ -20,6 +20,13 @@ namespace RTE {
 		/// Opens or closes the sandbox window. Opening it while controlling a unit in the Sandbox game mode goes back to the god view.
 		static void Toggle() { s_Open = !s_Open; }
 
+		/// Opens or closes the sandbox window.
+		static void SetOpen(bool open) { s_Open = open; }
+
+		/// Told when every tool window has been put away with the one key. In the Sandbox game mode this is where you step into your character.
+		/// @param atPointer Put the character down where the mouse points instead of where it stands.
+		static void OnToolsClosed(bool atPointer);
+
 		/// Gets whether the current game is the Sandbox game mode.
 		static bool IsGodMode();
 
@@ -67,6 +74,12 @@ namespace RTE {
 		/// Pauses or resumes the AI everywhere: AI-run units stand still until it's resumed (Lua: SandboxPauseAI).
 		/// @param paused Whether to pause.
 		static void SetAIPaused(bool paused);
+
+		/// Gets how your character in the Sandbox game mode is set up (its body, kit and abilities), as one line of text for the settings file.
+		static std::string GetCharacterSetup();
+
+		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
+		static void SetCharacterSetup(const std::string& setup);
 
 	private:
 		static bool s_Open; //!< Whether the sandbox window is open.

@@ -426,7 +426,10 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, DebugMan) {
 	return luabind::class_<DebugMan>("DebugManager")
 	    .def("ShowDebugOptions", &DebugMan::ShowDebugOptions)
-	    .def("ShowGraphicsLab", &DebugMan::ShowGraphicsLab);
+	    .def("ShowGraphicsLab", &DebugMan::ShowGraphicsLab)
+	    .def("OpenTools", &DebugMan::OpenTools)
+	    .def("CloseTools", &DebugMan::CloseTools)
+	    .def("ToggleTools", &DebugMan::ToggleTools);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, TimerMan) {

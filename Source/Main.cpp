@@ -276,11 +276,22 @@ void PollSDLEvents() {
 		}
 		ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
 		// Debug window toggles work every frame, even while the simulation is frozen (photo mode) and input otherwise isn't processed.
+		// Tab in a game is the one key for all of them: every tool window away (in the Sandbox game mode, into your character: Shift+Tab puts it down where the
+		// mouse points), or all of them back. Alt+Tab and Ctrl+Tab are left alone.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_TAB && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
+		    g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
+			g_DebugMan.ToggleTools((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
+		}
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {
 			if (sdlEvent.key.scancode == SDL_SCANCODE_F6) {
 				g_DebugMan.ToggleWorldDebug();
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F7) {
-				Sandbox::Toggle();
+				// In the Sandbox game mode F7 is the same switch as Tab: the god view with its tools, or your character.
+				if (Sandbox::IsGodMode()) {
+					g_DebugMan.ToggleTools();
+				} else {
+					Sandbox::Toggle();
+				}
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F8) {
 				g_DebugMan.TogglePhotoMode();
 			}

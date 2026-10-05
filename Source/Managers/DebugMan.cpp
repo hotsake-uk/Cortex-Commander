@@ -1,4 +1,5 @@
 #include "DebugMan.h"
+#include <unordered_map>
 #include "Actor.h"
 #include "WindowMan.h"
 #include "PerformanceMan.h"
@@ -132,27 +133,108 @@ void DebugMan::DrawImGui() {
 
 bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 	if (!m_DockPanels) {
+		m_PanelKind = 0;
 		return ImGui::Begin(name, open);
 	}
 	ImGuiIO& io = ImGui::GetIO();
 	float uiScale = GetToolScale();
 	float width = std::min(m_PanelWidth * uiScale, io.DisplaySize.x * 0.32F);
 	int sideIndex = side == PanelSide::Left ? 0 : 1;
-	int slot = m_PanelsThisFrame[sideIndex]++;
-	// The side is shared out equally among the panels there. A panel that has just opened squeezes in on the next frame.
-	int count = std::max(m_PanelsLastFrame[sideIndex], slot + 1);
-	float slotHeight = io.DisplaySize.y / static_cast<float>(count);
-	ImGui::SetNextWindowPos(ImVec2(side == PanelSide::Left ? 0.0F : io.DisplaySize.x - width, slotHeight * static_cast<float>(slot)), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(width, slotHeight), ImGuiCond_Always);
-	return ImGui::Begin(name, open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+	++m_PanelsThisFrame[sideIndex];
+	// Each side of the window is one panel the full height of it, and the tool windows docked there are its tabs.
+	ImGui::SetNextWindowPos(ImVec2(side == PanelSide::Left ? 0.0F : io.DisplaySize.x - width, 0.0F), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(width, io.DisplaySize.y), ImGuiCond_Always);
+	ImGui::Begin(side == PanelSide::Left ? "##ToolsLeft" : "##ToolsRight", nullptr,
+	             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+	ImGui::BeginTabBar("##ToolTabs", ImGuiTabBarFlags_FittingPolicyScroll);
+	// A tool window that has just been opened comes to the front.
+	static std::unordered_map<ImGuiID, int> lastSeen;
+	int frame = ImGui::GetFrameCount();
+	int& seen = lastSeen[ImGui::GetID(name)];
+	ImGuiTabItemFlags flags = seen != 0 && seen < frame - 1 ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+	seen = frame;
+	if (ImGui::BeginTabItem(name, open, flags)) {
+		m_PanelKind = 2;
+		ImGui::BeginChild("##Body");
+		return true;
+	}
+	m_PanelKind = 1;
+	return false;
+}
+
+void DebugMan::EndPanel() {
+	if (m_PanelKind == 0) {
+		ImGui::End();
+		return;
+	}
+	if (m_PanelKind == 2) {
+		ImGui::EndChild();
+		ImGui::EndTabItem();
+	}
+	ImGui::EndTabBar();
+	ImGui::End();
+	m_PanelKind = 0;
+}
+
+namespace {
+	enum ToolBit : unsigned { ToolSandbox = 1, ToolWorld = 2, ToolGraphics = 4, ToolOptions = 8, ToolActorDraw = 16, ToolPerformance = 32 };
+}
+
+bool DebugMan::AnyToolWindowOpen() const {
+	return Sandbox::IsOpen() || m_ShowWorldDebug || m_ShowPhotoMode || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
+}
+
+void DebugMan::CloseTools() {
+	unsigned open = (Sandbox::IsOpen() ? ToolSandbox : 0U) | (m_ShowWorldDebug ? ToolWorld : 0U) | (m_ShowGraphicsLab ? ToolGraphics : 0U) | (m_ShowDebugWindow ? ToolOptions : 0U) | (m_ShowActorDebugGui ? ToolActorDraw : 0U) |
+	                (m_ShowPerformanceMan ? ToolPerformance : 0U);
+	if (open != 0) {
+		m_RememberedTools = open;
+	}
+	Sandbox::SetOpen(false);
+	m_ShowWorldDebug = m_ShowGraphicsLab = m_ShowDebugWindow = m_ShowActorDebugGui = m_ShowPerformanceMan = m_ImGuiDemoWindow = false;
+	// Photo mode puts back what it changed when its window is seen to be shut.
+	m_ShowPhotoMode = false;
+}
+
+void DebugMan::OpenTools() {
+	// The first time: the sandbox at one side, the world and the look of it at the other.
+	unsigned open = m_RememberedTools != 0 ? m_RememberedTools : (ToolSandbox | ToolWorld | ToolGraphics);
+	if (Sandbox::IsGodMode()) {
+		open |= ToolSandbox;
+	}
+	Sandbox::SetOpen((open & ToolSandbox) != 0);
+	m_ShowWorldDebug = (open & ToolWorld) != 0;
+	m_ShowGraphicsLab = (open & ToolGraphics) != 0;
+	m_ShowDebugWindow = (open & ToolOptions) != 0;
+	m_ShowActorDebugGui = (open & ToolActorDraw) != 0;
+	m_ShowPerformanceMan = (open & ToolPerformance) != 0;
+}
+
+void DebugMan::ToggleTools(bool atPointer) {
+	if (AnyToolWindowOpen()) {
+		CloseTools();
+		Sandbox::OnToolsClosed(atPointer);
+	} else {
+		OpenTools();
+	}
 }
 
 void DebugMan::UpdateMouseOwnership() {
-	bool wantMouse = Sandbox::IsOpen() || m_ShowWorldDebug || m_ShowPhotoMode || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
-	if (wantMouse != m_ReleasedMouseForImGui) {
-		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while debug windows are open.
-		g_UInputMan.DisableMouseMoving(wantMouse);
-		m_ReleasedMouseForImGui = wantMouse;
+	bool wantMouse = AnyToolWindowOpen();
+	if (wantMouse) {
+		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while tool windows are open.
+		// Checked every frame, not only when a window opens: coming back from another program hands the mouse to the game again, which with tool windows open
+		// shut the pointer into the game's picture, out of reach of the windows.
+		if (!g_UInputMan.IsMouseReleased()) {
+			g_UInputMan.DisableMouseMoving(true);
+		}
+		m_ReleasedMouseForImGui = true;
+	} else if (m_ReleasedMouseForImGui) {
+		m_ReleasedMouseForImGui = false;
+		// Not while the window is in the background: it gets the mouse back by itself when it comes to the front.
+		if (g_WindowMan.AnyWindowHasFocus()) {
+			g_UInputMan.DisableMouseMoving(false);
+		}
 	}
 	// The game hides the OS cursor and draws its own, so have ImGui draw one too.
 	ImGui::GetIO().MouseDrawCursor = wantMouse;
@@ -161,7 +243,7 @@ void DebugMan::UpdateMouseOwnership() {
 void DebugMan::WorldDebugGUI() {
 	ImGui::SetNextWindowSize(ImVec2(340.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(10.0F, 40.0F), ImGuiCond_FirstUseEver);
-	if (BeginPanel("World Debug (F6)", &m_ShowWorldDebug, PanelSide::Left)) {
+	if (BeginPanel("World (F6)###WorldDebug", &m_ShowWorldDebug, PanelSide::Right)) {
 		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 		DrawToolWindowControls();
 
@@ -387,7 +469,7 @@ void DebugMan::WorldDebugGUI() {
 			g_SettingsMan.UpdateSettingsFile();
 		}
 	}
-	ImGui::End();
+	EndPanel();
 }
 
 void DebugMan::EndPhotoMode() {
@@ -437,7 +519,7 @@ void DebugMan::PhotoModeGUI() {
 
 	ImGui::SetNextWindowSize(ImVec2(330.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 345.0F, 40.0F), ImGuiCond_FirstUseEver);
-	if (BeginPanel("Photo Mode (F8)", &m_ShowPhotoMode, PanelSide::Right)) {
+	if (BeginPanel("Photo (F8)###PhotoMode", &m_ShowPhotoMode, PanelSide::Right)) {
 		if (!inActivity) {
 			ImGui::TextWrapped("Start a game to use photo mode.");
 		} else {
@@ -493,11 +575,11 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::TextDisabled("Saved to the ScreenShots folder.");
 		}
 	}
-	ImGui::End();
+	EndPanel();
 }
 
 void DebugMan::GraphicsLabGUI() {
-	if (BeginPanel("Graphics Lab", &m_ShowGraphicsLab, PanelSide::Right)) {
+	if (BeginPanel("Graphics###GraphicsLab", &m_ShowGraphicsLab, PanelSide::Right)) {
 		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 		DrawToolWindowControls();
 		const ImGuiColorEditFlags linearColorFlags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR;
@@ -703,11 +785,11 @@ void DebugMan::GraphicsLabGUI() {
 			g_SettingsMan.UpdateSettingsFile();
 		}
 	}
-	ImGui::End();
+	EndPanel();
 }
 
 void DebugMan::DebugOptionsGUI() {
-	if (BeginPanel("Debug Options", &m_ShowDebugWindow, PanelSide::Right)) {
+	if (BeginPanel("Options###DebugOptions", &m_ShowDebugWindow, PanelSide::Right)) {
 		DrawToolWindowControls();
 		ImGui::Checkbox("Show Performance Stats", &m_ShowPerformanceMan);
 		ImGui::Checkbox("Show Graphics Lab", &m_ShowGraphicsLab);
@@ -767,14 +849,14 @@ void DebugMan::DebugOptionsGUI() {
 			ImGui::TreePop();
 		}
 	}
-	ImGui::End();
+	EndPanel();
 }
 
 
 void DebugMan::ActorDrawDebugGUI() {
 	ZoneScoped;
 	static std::shared_ptr<RenderBatch> batch = std::make_unique<RenderBatch>();
-	if (BeginPanel("Actor Draw Debug", &m_ShowActorDebugGui, PanelSide::Right)) {
+	if (BeginPanel("Actor draw###ActorDraw", &m_ShowActorDebugGui, PanelSide::Right)) {
 		static std::map<MovableObject*, std::unique_ptr<Texture>> MOTargets;
 		static int playerScreen = -1;
 		ImGui::InputInt("Test Draw for Screen (-1 full world):", &playerScreen);
@@ -821,5 +903,5 @@ void DebugMan::ActorDrawDebugGUI() {
 			batch->ClearDraws();
 		}
 	}
-	ImGui::End();
+	EndPanel();
 }

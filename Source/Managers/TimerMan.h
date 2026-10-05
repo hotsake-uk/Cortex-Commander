@@ -44,6 +44,10 @@ namespace RTE {
 		/// @param realMS How long to hold, in real milliseconds.
 		void HitStop(float realMS) { m_HitStopTicks = std::max(m_HitStopTicks, static_cast<long long>(realMS * 0.001F * static_cast<float>(m_TicksPerSecond))); }
 
+		/// Lets the simulation do a number of updates while it is paused, for stepping it by hand.
+		/// @param updates How many updates.
+		void StepSim(int updates = 1) { m_SimAccumulator += m_DeltaTime * updates; }
+
 		void PauseSim(bool pause = false) {
 			m_SimPaused = pause;
 			if (pause)

@@ -28,6 +28,9 @@ namespace RTE {
 		/// Gets whether photo mode is open and hiding the HUD and screen text.
 		bool IsPhotoModeHidingHUD() const { return m_PhotoModeActive && m_PhotoHideHUD; }
 
+		/// Gets whether photo mode is open. It decides for itself whether time is frozen.
+		bool IsPhotoModeOpen() const { return m_ShowPhotoMode || m_PhotoModeActive; }
+
 		/// Gets and clears whether a photo mode screenshot was asked for. WindowMan takes it from the finished frame, before ImGui is drawn.
 		bool ConsumeScreenshotRequest() {
 			bool requested = m_ScreenshotRequested;
@@ -45,6 +48,23 @@ namespace RTE {
 		/// with docking off it's an ordinary floating window. Use it like ImGui::Begin, and close with ImGui::End.
 		/// @param name The window's title. @param open Set to false when the player closes it; nullptr for no close button. @param side Where it docks.
 		bool BeginPanel(const char* name, bool* open, PanelSide side);
+
+		/// Ends a tool window begun with BeginPanel, whatever BeginPanel returned.
+		void EndPanel();
+
+		/// Gets whether any tool window that uses the mouse is open.
+		bool AnyToolWindowOpen() const;
+
+		/// The one key for all the tool windows (Tab in a game): closes every one that is open, remembering which they were, or opens those again.
+		/// In the Sandbox game mode closing them puts you in your character and opening them takes you back to the god view.
+		/// @param atPointer Closing in the Sandbox game mode: put the character down where the mouse points instead of where it stands.
+		void ToggleTools(bool atPointer = false);
+
+		/// Closes every tool window, remembering which were open for the next ToggleTools.
+		void CloseTools();
+
+		/// Opens the tool windows that were open when they were last closed together.
+		void OpenTools();
 
 		/// Draws the controls for the tool windows themselves (how big their text and controls are, how wide the side panels, docked or floating), folded away under a heading.
 		/// For the top of each tool window, so they can be found from any of them.
@@ -70,6 +90,8 @@ namespace RTE {
 
 		/// Gets how much the tool windows are scaled: with the window's height (720 px = 1x), times the size the player chose.
 		float GetToolScale() const;
+		int m_PanelKind{0}; //!< What the BeginPanel in progress began, for EndPanel: 0 a floating window, 1 a tab that isn't the one showing, 2 the tab showing.
+		unsigned m_RememberedTools{0}; //!< The tool windows that were open when they were last closed together, as bits.
 		int m_PanelsThisFrame[2]{0, 0}; //!< How many panels have been begun at each side so far this frame.
 		int m_PanelsLastFrame[2]{0, 0}; //!< How many there were at each side last frame, which is how the side is shared out this frame.
 		bool m_ShowWorldDebug{false};

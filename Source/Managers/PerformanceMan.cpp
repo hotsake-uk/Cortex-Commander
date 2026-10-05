@@ -379,7 +379,7 @@ void PerformanceMan::DrawCurrentPing() const {
 
 void PerformanceMan::ImGui() {
 	CalculateSamplePercentages();
-	if (g_DebugMan.BeginPanel("Performance Statistics", nullptr, DebugMan::PanelSide::Right)) {
+	if (g_DebugMan.BeginPanel("Performance###Performance", nullptr, DebugMan::PanelSide::Right)) {
 		float fps = 1.0F / (m_MSPFAverage / 1000.0F);
 		float ups = 1.0F / (m_MSPSUAverage / 1000.0F);
 		ImGui::Text("FPS: %.0f UPS: %.0f", fps, ups);
@@ -457,7 +457,7 @@ void PerformanceMan::ImGui() {
 			ImGui::TreePop();
 		}
 	}
-	ImGui::End();
+	g_DebugMan.EndPanel();
 }
 
 void PerformanceMan::UpdateSortedScriptTimings(const std::unordered_map<std::string, ScriptTiming>& scriptTimings) {

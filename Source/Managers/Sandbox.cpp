@@ -29,6 +29,9 @@
 #include "TerrainFire.h"
 #include "TerrainObject.h"
 #include "TimerMan.h"
+#include "UInputMan.h"
+#include "AEJetpack.h"
+#include "Magazine.h"
 
 #include "imgui/imgui.h"
 
@@ -118,7 +121,10 @@ namespace {
 		BuildBridge,
 		Napalm,
 		Lightning,
+		PlayCharacter,
 		// Not tools, but queued the same way.
+		PlayerRemake,
+		PlayerRemove,
 		OrderSide,
 		RemoveSide,
 		Release,
@@ -188,6 +194,7 @@ namespace {
 	    {Tool::BuildBridge, "Wooden bridge", 0.0F, false},
 	    {Tool::Napalm, "Napalm burst", 0.0F, false},
 	    {Tool::Lightning, "Lightning", 0.0F, false},
+	    {Tool::PlayCharacter, "Play from here", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -320,6 +327,27 @@ namespace {
 	std::array<Vector, c_Sides> s_RallyPoints;
 	std::array<bool, c_Sides> s_RallySet{};
 	Actor* s_Possessed = nullptr; //!< The unit you're controlling in the god mode, checked with IsActor before use.
+
+	/// Your own character in the Sandbox game mode: what it is, what it carries and what it can do.
+	struct PlayerSetup {
+		std::string Body = "Soldier Heavy";
+		std::vector<std::string> Kit = {"Heavy Digger", "Laser Rifle", "Giga Pulsar", "Assault Rifle", "Constructor", "Medikit"};
+		int Team = 0;
+		bool Unkillable = true;
+		bool EndlessJetpack = true;
+		bool EndlessAmmo = true;
+		bool NumberKeys = true; //!< 1 to 9 take out that item of the kit.
+		bool FlyKey = true; //!< N switches flying through anything on and off.
+		bool EnterOnClose = true; //!< Putting the tools away puts you in the character.
+	};
+	PlayerSetup s_Player;
+	bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
+	bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
+	int s_StepsWanted = 0; //!< Updates to let the paused world do.
+	unsigned long long s_GodStartUpdate = 0; //!< The simulation update the Sandbox game started on: it runs a moment before it first pauses.
+	float s_PlayHintSeconds = 0.0F; //!< How much longer the reminder of the keys shows after stepping into the character.
+	bool s_Flying = false;
+	int s_KitKeyPending = -1; //!< A kit number pressed last update, taken out this one (after the game's own weapon keys have had their say).
 	const Activity* s_GodActivity = nullptr; //!< The Sandbox game the window was last set up for.
 	unsigned int s_Random = 0x5A17B0Bu;
 	SoundContainer* s_Thunder = nullptr; //!< Never deleted: it would outlive the audio system at exit.
@@ -1220,6 +1248,9 @@ namespace {
 
 	UnitRef MakeRef(Actor* actor) { return {actor, actor ? actor->GetUniqueID() : 0}; }
 
+	UnitRef s_PlayerUnit; //!< Your character in the Sandbox game mode, while it lives.
+	int s_PlayerEnterPending = 0; //!< Updates left to wait for the character to be in the world before stepping into it; 0 when not waiting.
+
 	/// Makes a unit ready to go: armed, on a side, run by the AI, with orders to follow once it's in the world.
 	Actor* CreateUnit(const Preset& preset, int team, int loadout, Order order) {
 		Actor* actor = dynamic_cast<Actor*>(CreateObject(preset.ClassName, preset.PresetName, preset.ModuleID));
@@ -1376,17 +1407,201 @@ namespace {
 		if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
 			game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
 			s_Possessed = actor;
-			Sandbox::Toggle();
-			g_ConsoleMan.PrintString("SANDBOX: You're controlling " + actor->GetPresetName() + ". Press F7 to go back to the god view.");
+			s_PlayHintSeconds = 9.0F;
+			// Every tool window goes away, not only the sandbox's: any left open would keep the mouse from the unit.
+			g_DebugMan.CloseTools();
+			g_ConsoleMan.PrintString("SANDBOX: You're controlling " + actor->GetPresetName() + ". Press Tab to go back to the god view.");
+		}
+	}
+
+	void StopFlying() {
+		if (s_Flying) {
+			if (Actor* actor = GetRef(s_PlayerUnit)) {
+				actor->SetPinStrength(0.0F);
+			}
+			s_Flying = false;
 		}
 	}
 
 	void ReleaseControl() {
+		StopFlying();
 		if (GameActivity* game = CurrentGame()) {
 			game->LoseControlOfActor(Players::PlayerOne);
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
 		}
 		s_Possessed = nullptr;
+	}
+
+	const Preset* FindPreset(const std::vector<Preset>& list, const std::string& presetName) {
+		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
+		return found != list.end() ? &*found : nullptr;
+	}
+
+	/// The nearest open air at or above a place, for putting a unit down: a place inside the ground is moved up out of it.
+	Vector OpenAirAt(Vector place) {
+		for (int tries = 0; tries < 400 && g_SceneMan.GetTerrMatter(place.GetFloorIntX(), place.GetFloorIntY()) != g_MaterialAir; ++tries) {
+			place.m_Y -= 2.0F;
+		}
+		return place;
+	}
+
+	/// Standing height over the ground straight below a place.
+	Vector StandingPlaceBelow(Vector place) {
+		place = OpenAirAt(place);
+		int sceneHeight = g_SceneMan.GetSceneHeight();
+		while (place.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(place.GetFloorIntX(), place.GetFloorIntY() + 1) == g_MaterialAir) {
+			place.m_Y += 1.0F;
+		}
+		place.m_Y -= 26.0F;
+		return place;
+	}
+
+	/// Makes your character and puts it in the world. It can be stepped into from the next update.
+	Actor* MakePlayer(const Vector& place) {
+		const Preset* body = FindPreset(s_Units, s_Player.Body);
+		for (const char* fallback: {"Soldier Heavy", "Soldier Light", "Whitebot", "Dummy", "Green Dummy"}) {
+			if (!body) {
+				body = FindPreset(s_Units, fallback);
+			}
+		}
+		if (!body && !s_Units.empty()) {
+			body = &s_Units.front();
+		}
+		Actor* actor = body ? dynamic_cast<Actor*>(CreateObject(body->ClassName, body->PresetName, body->ModuleID)) : nullptr;
+		if (!actor) {
+			return nullptr;
+		}
+		for (const std::string& itemName: s_Player.Kit) {
+			if (const Preset* item = FindPreset(s_Items, itemName)) {
+				if (MovableObject* object = CreateObject(item->ClassName, item->PresetName, item->ModuleID)) {
+					actor->AddInventoryItem(object);
+				}
+			}
+		}
+		int team = std::clamp(s_Player.Team, 0, c_Sides - 1);
+		ActivateSide(team);
+		actor->SetTeam(team);
+		actor->SetControllerMode(Controller::CIM_AI);
+		actor->SetAIMode(Actor::AIMODE_SENTRY);
+		actor->SetPos(place);
+		g_MovableMan.AddActor(actor);
+		s_PlayerUnit = {actor, static_cast<long>(actor->GetUniqueID())};
+		return actor;
+	}
+
+	/// Steps into your character, making it first if there isn't one. The stepping in itself happens in an update soon after, once the character is in the world.
+	/// @param atPlace Whether to put it down at a place first. @param place The place.
+	void EnterPlayer(bool atPlace, const Vector& place) {
+		if (!CurrentGame() || !Sandbox::IsGodMode()) {
+			return;
+		}
+		Actor* actor = GetRef(s_PlayerUnit);
+		if (!actor && s_PlayerEnterPending == 0) {
+			Vector viewMiddle = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.4F);
+			g_SceneMan.WrapPosition(viewMiddle);
+			if (!MakePlayer(atPlace ? OpenAirAt(place) : StandingPlaceBelow(viewMiddle))) {
+				g_ConsoleMan.PrintString("SANDBOX: There is no unit to make your character from.");
+				return;
+			}
+		} else if (actor && atPlace) {
+			StopFlying();
+			actor->SetPos(OpenAirAt(place));
+			actor->SetVel(Vector());
+		}
+		s_PlayerEnterPending = 20;
+	}
+
+	/// Called every update: steps into the character when it is ready, and keeps up what it has been given (no harm, a full jetpack, full magazines, the keys).
+	void UpdatePlayer() {
+		GameActivity* game = CurrentGame();
+		Actor* actor = GetRef(s_PlayerUnit);
+		if (s_PlayerEnterPending > 0 && game) {
+			if (actor) {
+				if (s_Possessed && s_Possessed != actor) {
+					ReleaseControl();
+				}
+				if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
+					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
+					s_Possessed = actor;
+					s_PlayHintSeconds = 9.0F;
+					if (AHuman* human = dynamic_cast<AHuman*>(actor); human && !human->GetEquippedItem()) {
+						human->EquipFirearm(true);
+					}
+					g_DebugMan.CloseTools();
+				}
+				s_PlayerEnterPending = 0;
+			} else if (--s_PlayerEnterPending == 0) {
+				g_DebugMan.OpenTools();
+			}
+		}
+		if (!actor) {
+			s_Flying = false;
+			return;
+		}
+		bool playing = s_Possessed == actor;
+		if (s_Player.Unkillable) {
+			actor->SetHealth(actor->GetMaxHealth());
+			if (int wounds = actor->GetWoundCount(); wounds > 0) {
+				actor->RemoveWounds(wounds);
+			}
+		}
+		AHuman* human = dynamic_cast<AHuman*>(actor);
+		if (s_Player.EndlessJetpack) {
+			AEJetpack* jetpack = human ? human->GetJetpack() : nullptr;
+			if (ACrab* crab = dynamic_cast<ACrab*>(actor)) {
+				jetpack = crab->GetJetpack();
+			}
+			if (jetpack) {
+				jetpack->SetJetTimeLeft(jetpack->GetJetTimeTotal());
+			}
+		}
+		if (s_Player.EndlessAmmo && human) {
+			if (HDFirearm* gun = dynamic_cast<HDFirearm*>(human->GetEquippedItem()); gun && gun->GetMagazine() && gun->GetMagazine()->GetCapacity() > 0) {
+				gun->GetMagazine()->SetRoundCount(gun->GetMagazine()->GetCapacity());
+			}
+		}
+		if (!playing) {
+			StopFlying();
+			s_KitKeyPending = -1;
+			return;
+		}
+		// 1 to 9: that item of the kit, taken out an update after the press so the game's own weapon keys (which share 1 and 2) don't undo it.
+		if (s_KitKeyPending >= 0 && human) {
+			if (static_cast<size_t>(s_KitKeyPending) < s_Player.Kit.size()) {
+				human->EquipNamedDevice(s_Player.Kit[s_KitKeyPending], true);
+			}
+			s_KitKeyPending = -1;
+		}
+		if (s_Player.NumberKeys && !g_ConsoleMan.IsEnabled()) {
+			for (int key = 0; key < 9; ++key) {
+				if (g_UInputMan.KeyPressed(static_cast<SDL_Scancode>(SDL_SCANCODE_1 + key))) {
+					s_KitKeyPending = key;
+				}
+			}
+		}
+		// N: fly through anything. The character is held out of the physics and moved by hand.
+		if (s_Player.FlyKey && !g_ConsoleMan.IsEnabled() && g_UInputMan.KeyPressed(SDL_SCANCODE_N)) {
+			s_Flying = !s_Flying;
+			actor->SetPinStrength(s_Flying ? 100000.0F : 0.0F);
+			s_PlayHintSeconds = 3.0F;
+		} else if (!s_Player.FlyKey) {
+			StopFlying();
+		}
+		if (s_Flying) {
+			const Controller* controller = actor->GetController();
+			Vector move;
+			if (controller) {
+				move.m_X = (controller->IsState(MOVE_RIGHT) ? 1.0F : 0.0F) - (controller->IsState(MOVE_LEFT) ? 1.0F : 0.0F);
+				move.m_Y = ((controller->IsState(MOVE_DOWN) || controller->IsState(BODY_CROUCH)) ? 1.0F : 0.0F) - ((controller->IsState(MOVE_UP) || controller->IsState(BODY_JUMP)) ? 1.0F : 0.0F);
+			}
+			Vector place = actor->GetPos() + move * (420.0F * g_TimerMan.GetDeltaTimeSecs());
+			g_SceneMan.WrapPosition(place);
+			place.m_Y = std::clamp(place.m_Y, 10.0F, static_cast<float>(g_SceneMan.GetSceneHeight() - 10));
+			actor->SetPos(place);
+			actor->SetVel(Vector());
+			actor->SetAngularVel(0.0F);
+			actor->SetRotAngle(0.0F);
+		}
 	}
 
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB) {
@@ -1537,6 +1752,26 @@ namespace {
 				break;
 			case Tool::Release:
 				ReleaseControl();
+				break;
+			case Tool::PlayCharacter:
+				EnterPlayer(stroke.Count > 0, at);
+				break;
+			case Tool::PlayerRemake:
+				if (Actor* old = GetRef(s_PlayerUnit)) {
+					Vector place = old->GetPos();
+					StopFlying();
+					old->SetToDelete(true);
+					s_PlayerUnit = UnitRef();
+					MakePlayer(place);
+				}
+				break;
+			case Tool::PlayerRemove:
+				if (Actor* old = GetRef(s_PlayerUnit)) {
+					StopFlying();
+					old->SetToDelete(true);
+				}
+				s_PlayerUnit = UnitRef();
+				s_PlayerEnterPending = 0;
 				break;
 			case Tool::Remove:
 				if (MovableObject* object = ObjectUnder(at, false)) {
@@ -1818,6 +2053,9 @@ namespace {
 		stroke.Orders = static_cast<Order>(s_Order);
 		stroke.Loadout = s_Loadout;
 		stroke.Count = kind == Tool::Structure ? (s_SnapToGrid ? 1 : 0) : s_SquadSize;
+		if (kind == Tool::PlayCharacter) {
+			stroke.Count = 1;
+		}
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
 		s_Queue.push_back(stroke);
@@ -2151,7 +2389,8 @@ bool Sandbox::SetBuildMode(bool build) {
 	}
 	game->SetFreeBuildMode(build);
 	if (build) {
-		s_Open = false;
+		// The build menu needs the mouse, so every tool window goes away. Tab (or Done in its pie menu) comes back.
+		g_DebugMan.CloseTools();
 	}
 	return game->IsFreeBuildMode();
 }
@@ -2164,6 +2403,61 @@ int Sandbox::CountUnits(int team) {
 		}
 	}
 	return count;
+}
+
+void Sandbox::OnToolsClosed(bool atPointer) {
+	GameActivity* game = CurrentGame();
+	if (!IsGodMode() || !game || game->IsFreeBuildMode() || s_Possessed || !s_Player.EnterOnClose) {
+		return;
+	}
+	if (!s_CatalogueBuilt) {
+		BuildCatalogue();
+	}
+	Stroke stroke;
+	stroke.Kind = Tool::PlayCharacter;
+	stroke.Count = atPointer ? 1 : 0;
+	stroke.Position = MouseScenePosition();
+	s_Queue.push_back(stroke);
+}
+
+std::string Sandbox::GetCharacterSetup() {
+	std::string setup = s_Player.Body + "|" + std::to_string(s_Player.Team) + "|";
+	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus}) {
+		setup += flag ? '1' : '0';
+	}
+	setup += "|";
+	for (size_t i = 0; i < s_Player.Kit.size(); ++i) {
+		setup += (i > 0 ? ";" : "") + s_Player.Kit[i];
+	}
+	return setup;
+}
+
+void Sandbox::SetCharacterSetup(const std::string& setup) {
+	std::vector<std::string> parts;
+	size_t start = 0;
+	for (size_t bar = setup.find('|'); parts.size() < 3 && bar != std::string::npos; bar = setup.find('|', start)) {
+		parts.push_back(setup.substr(start, bar - start));
+		start = bar + 1;
+	}
+	parts.push_back(setup.substr(start));
+	if (parts.size() != 4 || parts[0].empty()) {
+		return;
+	}
+	s_Player.Body = parts[0];
+	s_Player.Team = std::clamp(std::atoi(parts[1].c_str()), 0, c_Sides - 1);
+	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus};
+	for (size_t i = 0; i < std::size(flags) && i < parts[2].size(); ++i) {
+		*flags[i] = parts[2][i] == '1';
+	}
+	s_Player.Kit.clear();
+	for (size_t at = 0; at < parts[3].size();) {
+		size_t end = parts[3].find(';', at);
+		end = end == std::string::npos ? parts[3].size() : end;
+		if (end > at) {
+			s_Player.Kit.push_back(parts[3].substr(at, end - at));
+		}
+		at = end + 1;
+	}
 }
 
 bool Sandbox::IsGodMode() {
@@ -2190,6 +2484,11 @@ void Sandbox::DrawGUI() {
 			s_FreeCameraStarted = false;
 			s_CameraWarmupFrames = 30;
 			s_Possessed = nullptr;
+			s_PlayerUnit = UnitRef();
+			s_PlayerEnterPending = 0;
+			s_Flying = false;
+			s_StepsWanted = 0;
+			s_GodStartUpdate = g_TimerMan.GetSimUpdateCount();
 			s_RallySet.fill(false);
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
@@ -2210,6 +2509,51 @@ void Sandbox::DrawGUI() {
 		s_Queue.push_back(release);
 		s_Possessed = nullptr;
 		s_FreeCameraStarted = false;
+	}
+	// In the Sandbox game mode the world stands still while the tools are open, so things can be set up and tuned. What is done with a tool still happens:
+	// the world is let through one update for it, a sixtieth of a second.
+	{
+		bool wantPause = IsGodMode() && s_Open && s_PauseInMenus && !g_DebugMan.IsPhotoModeOpen() && g_TimerMan.GetSimUpdateCount() > s_GodStartUpdate + 90;
+		if (wantPause) {
+			g_TimerMan.PauseSim(true);
+			s_PausedByMenus = true;
+			if (s_StepsWanted > 0 || !s_Queue.empty() || s_PlayerEnterPending > 0) {
+				g_TimerMan.StepSim(1);
+				s_StepsWanted = std::max(s_StepsWanted - 1, 0);
+			}
+		} else if (s_PausedByMenus) {
+			s_PausedByMenus = false;
+			s_StepsWanted = 0;
+			if (!g_DebugMan.IsPhotoModeOpen()) {
+				g_TimerMan.PauseSim(false);
+			}
+		}
+	}
+	auto banner = [](const char* text, float fromTop, ImU32 color, float alpha) {
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		ImVec2 size = ImGui::CalcTextSize(text);
+		float scale = 1.3F;
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		ImVec2 at(view.x + (view.w - size.x * scale) * 0.5F, view.y + fromTop);
+		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, static_cast<int>(150.0F * alpha)), 4.0F);
+		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, (color & 0x00FFFFFF) | (static_cast<ImU32>(255.0F * alpha) << 24), text);
+	};
+	if (s_PausedByMenus && InGame()) {
+		banner("WORLD PAUSED  -  Tab: play", 8.0F, IM_COL32(150, 210, 255, 255), 1.0F);
+	}
+	if (IsGodMode() && s_Possessed && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		// A reminder of the keys, for a few seconds after stepping in.
+		s_PlayHintSeconds -= ImGui::GetIO().DeltaTime;
+		std::string hint = "Tab: sandbox tools";
+		if (s_Possessed == GetRef(s_PlayerUnit)) {
+			if (s_Player.FlyKey) {
+				hint += s_Flying ? "    N: stop flying" : "    N: fly";
+			}
+			if (s_Player.NumberKeys && !s_Player.Kit.empty()) {
+				hint += "    1-" + std::to_string(std::min<size_t>(s_Player.Kit.size(), 9)) + ": kit";
+			}
+		}
+		banner(hint.c_str(), 8.0F, IM_COL32(255, 255, 255, 255), std::clamp(s_PlayHintSeconds, 0.0F, 1.0F));
 	}
 	if (Controller::IsAIPaused() && InGame()) {
 		// A reminder that nobody will move until it's resumed.
@@ -2293,7 +2637,7 @@ void Sandbox::DrawGUI() {
 		g_DebugMan.DrawToolWindowControls();
 		if (!InGame()) {
 			ImGui::TextWrapped("Start a game to use the sandbox. Pick \"Sandbox\" in the scenario menu for the full god mode.");
-			ImGui::End();
+			g_DebugMan.EndPanel();
 			return;
 		}
 		SideStatus();
@@ -2321,7 +2665,110 @@ void Sandbox::DrawGUI() {
 		ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
 		ToolButtons({Tool::Remove, Tool::RallyPoint});
 
+		if (IsGodMode()) {
+			ImGui::Checkbox("The world stands still while these tools are open", &s_PauseInMenus);
+			ImGui::SetItemTooltip("On: time stops when you come to the tools and starts when you go and play (Tab). What you do with a tool still happens at once.\nOff: the world carries on while you work.");
+			if (s_PausedByMenus) {
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Step")) {
+					s_StepsWanted += 1;
+				}
+				ImGui::SetItemTooltip("Lets the world move one update, a sixtieth of a second. Hold Ctrl and click for a second's worth.");
+				if (ImGui::IsItemDeactivated() && ImGui::GetIO().KeyCtrl) {
+					s_StepsWanted += 59;
+				}
+			}
+		}
 		if (ImGui::BeginTabBar("SandboxTabs")) {
+			if (IsGodMode() && ImGui::BeginTabItem("You")) {
+				bool exists = GetRef(s_PlayerUnit) != nullptr;
+				ImGui::TextWrapped("Your own character, for walking about in what you've made. Tab puts the tools away and puts you in it; Tab again brings you back here. Shift+Tab puts it down where the mouse points.");
+				if (ImGui::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
+					Stroke stroke;
+					stroke.Kind = Tool::PlayCharacter;
+					stroke.Count = 0;
+					s_Queue.push_back(stroke);
+				}
+				ToolButtons({Tool::PlayCharacter});
+				ImGui::SameLine();
+				ImGui::TextDisabled("then click where to start");
+				ImGui::Checkbox("Putting the tools away puts me in it", &s_Player.EnterOnClose);
+				ImGui::SetItemTooltip("Off: Tab only hides and shows the tools, and you stay watching from above.");
+				ImGui::SeparatorText("What it can do");
+				ImGui::Checkbox("Can't be hurt", &s_Player.Unkillable);
+				ImGui::SameLine();
+				ImGui::Checkbox("Endless jetpack", &s_Player.EndlessJetpack);
+				ImGui::Checkbox("Endless ammunition", &s_Player.EndlessAmmo);
+				ImGui::Checkbox("1 to 9 take out that item of the kit", &s_Player.NumberKeys);
+				ImGui::Checkbox("N flies through anything", &s_Player.FlyKey);
+				ImGui::SetItemTooltip("While playing, N lifts the character out of the physics: the movement keys fly it in any direction, through the ground and walls. N again drops it back in.");
+				ImGui::SeparatorText("What it is");
+				for (int side = 0; side < c_Sides; ++side) {
+					if (side > 0) {
+						ImGui::SameLine();
+					}
+					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
+					ImGui::RadioButton((std::string(c_SideNames[side]) + "##you").c_str(), &s_Player.Team, side);
+					ImGui::PopStyleColor();
+				}
+				static char bodyFilter[48] = "";
+				static char kitFilter[48] = "";
+				if (ImGui::BeginCombo("Body", s_Player.Body.c_str(), ImGuiComboFlags_HeightLarge)) {
+					ImGui::InputTextWithHint("##bodyFilter", "Search...", bodyFilter, sizeof(bodyFilter));
+					for (const Preset& unit: s_Units) {
+						if (ContainsIgnoringCase(unit.Label, bodyFilter) && ImGui::Selectable(unit.Label.c_str(), unit.PresetName == s_Player.Body)) {
+							s_Player.Body = unit.PresetName;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::SeparatorText("What it carries");
+				int removeItem = -1;
+				for (size_t i = 0; i < s_Player.Kit.size(); ++i) {
+					ImGui::PushID(static_cast<int>(i));
+					if (ImGui::SmallButton("x")) {
+						removeItem = static_cast<int>(i);
+					}
+					ImGui::SameLine();
+					if (ImGui::SmallButton("^") && i > 0) {
+						std::swap(s_Player.Kit[i], s_Player.Kit[i - 1]);
+					}
+					ImGui::SameLine();
+					bool known = FindPreset(s_Items, s_Player.Kit[i]) != nullptr;
+					ImGui::TextColored(known ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), "%d  %s%s", static_cast<int>(i) + 1, s_Player.Kit[i].c_str(), known ? "" : "  (not in this game)");
+					ImGui::PopID();
+				}
+				if (removeItem >= 0) {
+					s_Player.Kit.erase(s_Player.Kit.begin() + removeItem);
+				}
+				if (ImGui::BeginCombo("##addKit", "Add an item...", ImGuiComboFlags_HeightLarge)) {
+					ImGui::InputTextWithHint("##kitFilter", "Search...", kitFilter, sizeof(kitFilter));
+					for (const Preset& item: s_Items) {
+						if (ContainsIgnoringCase(item.Label, kitFilter) && ImGui::Selectable(item.Label.c_str())) {
+							s_Player.Kit.push_back(item.PresetName);
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (ImGui::Button("Usual kit")) {
+					s_Player.Kit = PlayerSetup().Kit;
+				}
+				ImGui::TextDisabled("A new body or kit is used the next time the character is made.");
+				ImGui::BeginDisabled(!exists);
+				if (ImGui::Button("Make it again now")) {
+					Stroke stroke;
+					stroke.Kind = Tool::PlayerRemake;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Remove it")) {
+					Stroke stroke;
+					stroke.Kind = Tool::PlayerRemove;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::EndDisabled();
+				ImGui::EndTabItem();
+			}
 			if (ImGui::BeginTabItem("Spawn")) {
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
@@ -2550,7 +2997,7 @@ void Sandbox::DrawGUI() {
 			ImGui::EndTabBar();
 		}
 	}
-	ImGui::End();
+	g_DebugMan.EndPanel();
 }
 
 void Sandbox::Update() {
@@ -2592,9 +3039,11 @@ void Sandbox::Update() {
 		if (s_Possessed && !g_MovableMan.IsActor(s_Possessed)) {
 			// The unit you were controlling died: back to the god view.
 			s_Possessed = nullptr;
-			s_Open = true;
+			s_Flying = false;
+			g_DebugMan.OpenTools();
 			s_FreeCameraStarted = false;
 		}
+		UpdatePlayer();
 		if (game) {
 			for (int team = 0; team < c_Sides; ++team) {
 				if (game->GetTeamFunds(team) < 500000.0F) {

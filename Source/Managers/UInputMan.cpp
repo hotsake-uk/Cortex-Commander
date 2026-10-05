@@ -477,12 +477,15 @@ bool UInputMan::AnyMouseButtonPress(SDL_MouseID mouseID) const {
 }
 
 void UInputMan::TrapMousePos(bool trap, int whichPlayer) {
+	// While the mouse is released (the window isn't focused, or tool windows have it), the wish is only remembered: it is applied when the mouse is given back.
+	// The game asks for the trap every frame a unit is controlled, which used to take the pointer away from open tool windows.
+	bool released = IsMouseReleased();
 	if (whichPlayer == Players::NoPlayer) {
 		m_TrapMousePos = trap;
-		SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), trap);
+		SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), trap && !released);
 	} else if (m_ControlScheme.at(whichPlayer).GetDevice() == InputDevice::DEVICE_MOUSE_KEYB) {
 		m_TrapMousePos = trap;
-		SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), m_TrapMousePos || m_EnableMultiMouseKeyboard);
+		SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), (m_TrapMousePos || m_EnableMultiMouseKeyboard) && !released);
 		if (m_EnableMultiMouseKeyboard) {
 			if (auto mouse = m_MouseStates.find(m_ControlScheme.at(whichPlayer).GetDeviceID().mouseKeyboard.mouse); mouse != m_MouseStates.end()) {
 				mouse->second.relativeMode = trap;

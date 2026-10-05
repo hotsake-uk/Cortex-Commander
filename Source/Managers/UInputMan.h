@@ -277,6 +277,9 @@ namespace RTE {
 		/// This is so that when focus is switched back to the game window, it avoids having the window fly away because the user clicked the title bar of the window.
 		/// @param disable Whether to disable mouse positioning or not.
 		void DisableMouseMoving(bool disable = true);
+		/// Gets whether the mouse has been let go of by the game (the window lost focus, or tool windows are using it) and has not been asked back.
+		bool IsMouseReleased() const { return m_DisableMouseMoving && !m_PrepareToEnableMouseMoving; }
+
 
 		/// @brief Check if multi mouse and keyboard should be enabled.
 		/// Checks through a list of human players to see if multimouse is required.
