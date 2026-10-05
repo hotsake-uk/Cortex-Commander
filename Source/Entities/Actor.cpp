@@ -93,6 +93,9 @@ void Actor::Clear() {
 	m_LastAlarmPos.Reset();
 	m_SightDistance = 450.0F;
 	m_Perceptiveness = 0.5F;
+	m_HeadlampBrightness = 1.0F;
+	m_HeadlampColor.SetRGB(255, 240, 215);
+	m_HeadlampHasColor = false;
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
 	m_CharHeight = 0;
@@ -217,6 +220,9 @@ int Actor::Create(const Actor& reference) {
 	m_SeenTargetPos = reference.m_SeenTargetPos;
 	m_SightDistance = reference.m_SightDistance;
 	m_Perceptiveness = reference.m_Perceptiveness;
+	m_HeadlampBrightness = reference.m_HeadlampBrightness;
+	m_HeadlampColor = reference.m_HeadlampColor;
+	m_HeadlampHasColor = reference.m_HeadlampHasColor;
 	m_PainThreshold = reference.m_PainThreshold;
 	m_CanRevealUnseen = reference.m_CanRevealUnseen;
 	m_CharHeight = reference.m_CharHeight;
@@ -345,6 +351,11 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SharpAimDelay", { reader >> m_SharpAimDelay; });
 	MatchProperty("SightDistance", { reader >> m_SightDistance; });
 	MatchProperty("Perceptiveness", { reader >> m_Perceptiveness; });
+	MatchProperty("HeadlampBrightness", { reader >> m_HeadlampBrightness; });
+	MatchProperty("HeadlampColor", {
+		reader >> m_HeadlampColor;
+		m_HeadlampHasColor = true;
+	});
 	MatchProperty("PainThreshold", { reader >> m_PainThreshold; });
 	MatchProperty("CanRevealUnseen", { reader >> m_CanRevealUnseen; });
 	MatchProperty("CharHeight", { reader >> m_CharHeight; });
@@ -429,6 +440,10 @@ int Actor::Save(Writer& writer) const {
 	writer << m_SharpAimDelay;
 	writer.NewProperty("SightDistance");
 	writer << m_SightDistance;
+	writer.NewPropertyWithValue("HeadlampBrightness", m_HeadlampBrightness);
+	if (m_HeadlampHasColor) {
+		writer.NewPropertyWithValue("HeadlampColor", m_HeadlampColor);
+	}
 	writer.NewProperty("Perceptiveness");
 	writer << m_Perceptiveness;
 	writer.NewProperty("PainThreshold");
@@ -1130,15 +1145,23 @@ float Actor::GetNightSightScale() const {
 
 void Actor::Update() {
 	// Night: a headlamp lighting where the actor looks, plus a little glow around it. Render only.
-	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_Status != DEAD && m_Status != DYING) {
-		float night = GetNightAmount();
+	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_HeadlampBrightness > 0.0F && m_Status != DEAD && m_Status != DYING) {
+		float night = lighting.HeadlampsByDay ? 1.0F : GetNightAmount();
 		if (night > 0.05F) {
 			Vector eyePos = GetEyePos();
 			float aimAngle = GetAimAngle(true);
 			// CC angles are counter-clockwise with Y up; screen space is Y down.
 			Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
-			g_PostProcessMan.RegisterConeLight(eyePos, direction, 26.0F, glm::vec3(255.0F, 240.0F, 215.0F), 210.0F, 1.4F * night);
-			g_PostProcessMan.RegisterLight(eyePos, glm::vec3(255.0F, 235.0F, 210.0F), 36.0F, 0.35F * night);
+			// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
+			glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
+			if (m_HeadlampHasColor) {
+				color = glm::vec3(m_HeadlampColor.GetR(), m_HeadlampColor.GetG(), m_HeadlampColor.GetB());
+			} else if (lighting.HeadlampTeamTint > 0.0F && m_Team >= 0 && m_Team < 4) {
+				static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
+				color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
+			}
+			g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * night);
+			g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * night);
 		}
 	}
 

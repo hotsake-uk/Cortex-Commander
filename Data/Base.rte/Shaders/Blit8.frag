@@ -108,7 +108,12 @@ void main() {
 	}
 	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
 	// What has happened to the object, packed into the surface's last value: heat in the high half, snow in the low.
-	float packedStates = floor(vertexSurface.a * 255.0 + 0.5);
+	// A shining thing with no surface of its own (a tracer and its trail) is marked by a half value where solid objects say whether they cast shadows; its last value is then how strongly it shines.
+	bool shining = abs(vertexSurface.b - 0.5) < 0.1;
+	if (shining) {
+		emissive = max(emissive, vertexSurface.a);
+	}
+	float packedStates = shining ? 0.0 : floor(vertexSurface.a * 255.0 + 0.5);
 	float heat = floor(packedStates / 16.0) / 15.0;
 	float snow = mod(packedStates, 16.0) / 15.0;
 	if (snow > 0.0) {
@@ -132,5 +137,5 @@ void main() {
 		shine = max(shine * 0.5, vertexSurface.g);
 	}
 	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
-	SurfaceOut = vec4(vertexSurface.rgb, 1.0);
+	SurfaceOut = vec4(vertexSurface.rg, shining ? 0.0 : vertexSurface.b, 1.0);
 }

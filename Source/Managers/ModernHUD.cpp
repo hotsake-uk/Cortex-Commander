@@ -1,3 +1,4 @@
+#include "WindowMan.h"
 #include "ModernHUD.h"
 #include "AHuman.h"
 #include "ActorWater.h"
@@ -158,7 +159,11 @@ void ModernHUD::Draw() {
 	}
 	ImGuiIO& io = ImGui::GetIO();
 	ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-	float scale = std::clamp(io.DisplaySize.y / 720.0F, 0.75F, 2.5F);
+	// Everything is placed within the game's picture, which isn't the whole window when tool panels are docked at the sides.
+	GameViewRect view = g_WindowMan.GetGameViewRect();
+	ImVec2 viewOrigin(view.x, view.y);
+	ImVec2 viewSize(view.w, view.h);
+	float scale = std::clamp(viewSize.y / 720.0F, 0.75F, 2.5F);
 	float margin = 14.0F * scale;
 
 	// Minimap, top right.
@@ -167,7 +172,7 @@ void ModernHUD::Draw() {
 		float mapWidth = 220.0F * scale;
 		float mapHeight = mapWidth * static_cast<float>(s_Minimap.Height) / static_cast<float>(std::max(1, s_Minimap.Width));
 		mapHeight = std::min(mapHeight, 160.0F * scale);
-		ImVec2 topLeft(io.DisplaySize.x - mapWidth - margin, margin + 24.0F * scale);
+		ImVec2 topLeft(viewOrigin.x + viewSize.x - mapWidth - margin, viewOrigin.y + margin + 24.0F * scale);
 		ImVec2 bottomRight(topLeft.x + mapWidth, topLeft.y + mapHeight);
 		drawList->AddRectFilled(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), IM_COL32(0, 0, 0, 150), 5.0F);
 		drawList->AddImage(static_cast<ImTextureID>(s_Minimap.Texture), topLeft, bottomRight);
@@ -197,7 +202,7 @@ void ModernHUD::Draw() {
 	if (Actor* controlled = activity->GetControlledActor(0); g_MovableMan.IsActor(controlled) && !controlled->IsDead()) {
 		float barWidth = 230.0F * scale;
 		float barHeight = 20.0F * scale;
-		ImVec2 base(margin, io.DisplaySize.y - margin - barHeight * 2.0F - 30.0F * scale);
+		ImVec2 base(viewOrigin.x + margin, viewOrigin.y + viewSize.y - margin - barHeight * 2.0F - 30.0F * scale);
 		drawList->AddText(ImVec2(base.x + 2.0F, base.y), IM_COL32(255, 255, 255, 220), controlled->GetPresetName().c_str());
 		base.y += 20.0F * scale;
 		float health = controlled->GetHealth();
@@ -262,12 +267,12 @@ void ModernHUD::Draw() {
 		}
 		std::erase_if(s_Health, [](const auto& entry) { return !entry.second.Seen; });
 
-		float pixelScale = io.DisplaySize.x / static_cast<float>(std::max(g_FrameMan.GetPlayerScreenWidth(), 1));
+		float pixelScale = viewSize.x / static_cast<float>(std::max(g_FrameMan.GetPlayerScreenWidth(), 1));
 		Vector viewCorner = g_CameraMan.GetOffset(0);
 		for (const DamageNumber& number: s_DamageNumbers) {
 			float age = static_cast<float>(now - number.Time);
 			Vector onScreen = g_SceneMan.ShortestDistance(viewCorner, number.Position, g_SceneMan.SceneWrapsX());
-			ImVec2 at(onScreen.m_X * pixelScale, onScreen.m_Y * pixelScale - age * 34.0F * scale);
+			ImVec2 at(viewOrigin.x + onScreen.m_X * pixelScale, viewOrigin.y + onScreen.m_Y * pixelScale - age * 34.0F * scale);
 			int alpha = static_cast<int>(255.0F * std::clamp(1.0F - (age - 0.5F) / 0.4F, 0.0F, 1.0F));
 			char text[16];
 			std::snprintf(text, sizeof(text), "-%d", number.Amount);
@@ -277,8 +282,8 @@ void ModernHUD::Draw() {
 		}
 		std::erase_if(s_DamageNumbers, [now](const DamageNumber& number) { return now - number.Time > 0.9; });
 
-		ImVec2 middle(io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F);
-		float arcRadius = std::min(io.DisplaySize.x, io.DisplaySize.y) * 0.3F;
+		ImVec2 middle(viewOrigin.x + viewSize.x * 0.5F, viewOrigin.y + viewSize.y * 0.5F);
+		float arcRadius = std::min(viewSize.x, viewSize.y) * 0.3F;
 		for (const DamageArc& arc: s_DamageArcs) {
 			float age = static_cast<float>(now - arc.Time);
 			int alpha = static_cast<int>(220.0F * std::clamp(1.0F - age / 0.9F, 0.0F, 1.0F));

@@ -505,12 +505,17 @@ void SLTerrain::UpdateLights() {
 		if (light->m_Pulse > 0.0F) {
 			brightness *= 0.5F + 0.5F * std::sin(time * light->m_Pulse * c_TwoPI + light->m_Pos.m_X);
 		}
-		glm::vec3 color(light->m_Color.GetR(), light->m_Color.GetG(), light->m_Color.GetB());
+		// The player's settings for scenery lamps: brighter or dimmer, further or nearer, and a tint (applied to the displayed color, so it works like a gel over the lamp).
+		const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		brightness *= lighting.LampBrightness;
+		float reach = light->m_Radius * lighting.LampReach;
+		glm::vec3 gel = glm::pow(glm::max(lighting.LampTint, glm::vec3(0.0F)), glm::vec3(1.0F / 2.2F));
+		glm::vec3 color = glm::vec3(light->m_Color.GetR(), light->m_Color.GetG(), light->m_Color.GetB()) * gel;
 		if (light->m_ConeAngle > 0.0F) {
 			float direction = light->m_ConeDirection * c_PI / 180.0F;
-			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, light->m_Radius, brightness);
+			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness);
 		} else {
-			g_PostProcessMan.RegisterLight(light->m_Pos, color, light->m_Radius, brightness);
+			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness);
 		}
 		++light;
 	}

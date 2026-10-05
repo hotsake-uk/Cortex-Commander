@@ -86,6 +86,7 @@ Last updated: 5 October 2026.
 - **24 placeable fixtures.** A new build group, "Bunker Lights": ceiling lamps, wall lamps, floor lamps, tiny indicator lights, strip lights, floodlights (beams), a pulsing red warning beacon and a flickering lamp. They are painted on the back wall, so they never block movement.
 - **Lamps can be destroyed.** A lamp goes out for good when a shot passes through it, when an explosion goes off nearby, or when the ceiling or wall it hangs on is destroyed.
 - **Glowing equipment.** Brain cases, teleporters and consoles give off a little light.
+- **Light controls.** How colorful all light is, a tint on all of it, and brightness, reach and tint for scenery lamps. Headlamps have brightness, reach, beam width, color, team color and a daytime switch, and a unit can have its own. Tracers shine in their own color.
 
 ## 6. Sky, time of day and weather
 
@@ -122,7 +123,7 @@ Last updated: 5 October 2026.
   - Acid eats soft ground and is used up doing it.
   - Oil burns where it pools.
 - **Collapsing terrain.** After a big explosion, pieces of ground no longer attached to anything fall as solid chunks. Concrete and metal structures stay up.
-- **Burning units.** Flames, napalm, burning ground and lava set units alight. A burning unit takes damage, panics, runs, and spreads fire to what it touches. Water puts it out.
+- **Burning units.** Flames, napalm, burning ground and lava set units of flesh alight; machines never burn, and lasers, explosions and jetpacks don't set anyone on fire. A burning unit takes damage, panics, runs, and spreads fire to what it touches. Water puts it out.
 - **Steam.** Water on fire, and lava meeting water, throws up steam.
 - **Swimming and drowning.** Units move through liquid instead of destroying it. Wading slows them. Light units float and heavy ones sink. Living soldiers run out of air after 12 seconds under water; robots do not breathe.
 - **Smoke and gas block sight.** Units and the AI cannot see through thick smoke or steam, so smoke screens work.
@@ -174,6 +175,7 @@ Last updated: 5 October 2026.
 ## 12. Settings and tools
 
 - **Video settings.** Switches for Lighting, Bloom and Extra Effects, and quality presets from Potato to Ultra.
+- **Docked tool windows.** The Sandbox, World Debug, Graphics Lab and other tools sit in panels at the sides of the window, and the game's picture is fitted between them instead of being covered. A switch lets them float again.
 - **World Debug window (F6).** Time of day, weather, lighting switches, interior light, the gameplay systems above, game speed and Pause AI.
 - **Graphics Lab.** A window with a slider for nearly every visual setting, debug views that show one part of the lighting at a time, and a button to save to `Settings.ini`.
 - **Ambient lighting slider.** One control for how bright interiors are without lamps. Turn it down and bunkers are lit by their lamps, and go dark where the lamps are shot out. It also lowers the minimum light on units, so units in a dark room are dark too.

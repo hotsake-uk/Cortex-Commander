@@ -379,7 +379,7 @@ void PerformanceMan::DrawCurrentPing() const {
 
 void PerformanceMan::ImGui() {
 	CalculateSamplePercentages();
-	if (ImGui::Begin("Performance Statistics")) {
+	if (g_DebugMan.BeginPanel("Performance Statistics", nullptr, DebugMan::PanelSide::Right)) {
 		float fps = 1.0F / (m_MSPFAverage / 1000.0F);
 		float ups = 1.0F / (m_MSPSUAverage / 1000.0F);
 		ImGui::Text("FPS: %.0f UPS: %.0f", fps, ups);

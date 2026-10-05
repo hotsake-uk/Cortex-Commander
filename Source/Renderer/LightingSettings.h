@@ -157,6 +157,25 @@ namespace RTE {
 		float CloudShadows = 0.5F; //!< How much drifting clouds shade the ground under open sky, 0 for none. Needs SunShadows.
 		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
+		float WeatherLight = 0.35F; //!< The least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it. 0 leaves it to the sky and lamps.
+		float TracerGlow = 0.8F; //!< How strongly tracers and their trails shine in their own color (and so bloom), 0 for none.
+		float TracerLightBrightness = 0.55F; //!< Brightness of the light a tracer throws on what it passes.
+		float TracerLightReach = 28.0F; //!< How far a tracer's light reaches, in pixels.
+
+		float LightSaturation = 1.0F; //!< How colorful the light of lamps, glows, flashes and fire is: 0 makes all of it white, above 1 deepens the colors.
+		glm::vec3 LightTint = {1.0F, 1.0F, 1.0F}; //!< A color every lamp, glow, flash and fire light is multiplied by.
+
+		float LampBrightness = 1.0F; //!< Multiplier for the lamps of bunker pieces and other scenery.
+		float LampReach = 1.0F; //!< Multiplier for how far scenery lamps reach.
+		glm::vec3 LampTint = {1.0F, 1.0F, 1.0F}; //!< A color scenery lamps are multiplied by.
+
+		float HeadlampBrightness = 1.4F; //!< Brightness of soldiers' headlamp beams.
+		float HeadlampReach = 210.0F; //!< How far the beams reach, in pixels.
+		float HeadlampWidth = 26.0F; //!< Half-angle of the beams, in degrees.
+		glm::vec3 HeadlampColor = {1.0F, 0.875F, 0.687F}; //!< Color of the beams (linear).
+		float HeadlampGlow = 0.35F; //!< Brightness of the small glow around the lamp itself.
+		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
+		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 

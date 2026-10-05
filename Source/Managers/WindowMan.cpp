@@ -552,8 +552,12 @@ void WindowMan::SetViewportLetterboxed() {
 	int windowW, windowH;
 	SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowW, &windowH);
 	double aspectRatio = m_ResX / static_cast<double>(m_ResY);
-	int width = windowW;
-	int height = (windowW / aspectRatio) + 0.5F;
+	// The picture goes in the part of the window that docked tool panels leave free.
+	int reservedLeft = std::clamp(m_ReservedLeft, 0, windowW / 2 - 40);
+	int reservedRight = std::clamp(m_ReservedRight, 0, windowW / 2 - 40);
+	int freeW = std::max(windowW - reservedLeft - reservedRight, 80);
+	int width = freeW;
+	int height = (freeW / aspectRatio) + 0.5F;
 
 	if (height > windowH) {
 		height = windowH;
@@ -562,9 +566,27 @@ void WindowMan::SetViewportLetterboxed() {
 
 	m_ResMultiplier = width / static_cast<float>(m_ResX);
 
-	int offsetX = (windowW / 2) - (width / 2);
+	int offsetX = reservedLeft + (freeW / 2) - (width / 2);
 	int offsetY = (windowH / 2) - (height / 2);
+	m_GameViewTop = offsetY;
 	m_PrimaryWindowViewport = std::make_unique<SDL_Rect>(offsetX, windowH - offsetY - height, width, height);
+}
+
+void WindowMan::SetReservedSpace(int left, int right) {
+	if (left != m_ReservedLeft || right != m_ReservedRight) {
+		m_ReservedLeft = left;
+		m_ReservedRight = right;
+		if (m_PrimaryWindow) {
+			SetViewportLetterboxed();
+		}
+	}
+}
+
+GameViewRect WindowMan::GetGameViewRect() const {
+	if (!m_PrimaryWindowViewport) {
+		return GameViewRect{0.0F, 0.0F, 1.0F, 1.0F};
+	}
+	return GameViewRect{static_cast<float>(m_PrimaryWindowViewport->x), static_cast<float>(m_GameViewTop), static_cast<float>(m_PrimaryWindowViewport->w), static_cast<float>(m_PrimaryWindowViewport->h)};
 }
 
 void WindowMan::AttemptToRevertToPreviousResolution(bool revertToDefaults) {
@@ -894,6 +916,18 @@ void WindowMan::UploadFrame() {
 	m_ScreenBlitShader->End();
 	m_ScreenBuffer->End();
 	g_RenderMan.BeginFrame(nullptr);
+
+	// The picture doesn't always cover the whole window (bars at the sides of an ill-fitting window, docked tool panels): clear what it leaves, so nothing stale shows there.
+	{
+		int windowW = 0;
+		int windowH = 0;
+		SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowW, &windowH);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, windowW, windowH);
+		glDisable(GL_SCISSOR_TEST);
+		glClearColor(0.055F, 0.06F, 0.075F, 1.0F);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
 
 	// HUD text captured for high resolution drawing goes between the scene and the GUI layer, so it needs them separately.
 	m_LastPresentUsedTextOverlay = m_DrawPostProcessBuffer && m_MultiDisplayWindows.empty() && TextOverlay::HasPendingText();

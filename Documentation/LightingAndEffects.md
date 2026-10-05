@@ -137,12 +137,25 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Toxic Gas Grenade:** a green cloud that hurts anyone inside it for about ten seconds, and blocks sight too.
 
 **Burning units** (`BurningUnits`, a gameplay setting, also in F6):
+- **What burns:** units made of flesh. Robots, droids, drones, turrets, craft and brains in jars never catch fire. A unit counts as a machine if its body's material isn't a flesh one, or if its INI gives it `Metalness` of 0.2 or more.
+- **What sets them alight:** burning fuel and flame-thrower flames (things named Napalm, Incendiary, Flamer, "Flame ... Hurt", "Burn Particle", "Ground Flame"), burning ground and lava. Not explosions' fire puffs, jetpack flames, smoke, muzzle flashes, bullets or lasers.
+- **How easily:** a lick of flame doesn't always take. About a second in a flame-thrower's stream or standing in burning ground does it.
 - Flames, napalm, burning ground and lava set units alight. A burning unit takes damage, panics and runs, and sets grass and anyone it bumps into alight.
 - It burns out after a few seconds. Water puts it out sooner (a pool, the Water Cannon or heavy rain).
 - Water putting out fire, and lava meeting water, throws up **steam** that rises and blocks sight like smoke. Only real water drops douse fire: blood is made of water too, but doesn't.
 - **Fuel Barrel:** leaks oil that flows where it's shot, and explodes in burning fuel when fire reaches it or it's shot to pieces. It's in the build menu and the item list. Lua: `SceneMan:IsBurningNear(pos, radius)`, `SceneMan:GetBurningUnitCount()`.
 
 **Weather** also changes gameplay: rain and snow damp fire (see above), snow slows walking by up to 15%, and wind drives fire downwind. The weather stays fixed through a game. It comes from the scene, the scenario setup's **Time** and **Weather** buttons, or the player's settings.
+
+**Light colors, lamps, headlamps and tracers** (all in the Graphics Lab):
+- **All lights:** `LightSaturation` (1) is how colorful the light of lamps, glows, flashes and fire is: 0 makes it all white, 2 deepens the colors. `LightTint` (`1 1 1`) multiplies every one of them by a color.
+- **Scenery lamps:** `LampBrightness` (1), `LampReach` (1) and `LampTint` (`1 1 1`) change the lamps of bunker pieces and placed fixtures together.
+- **Headlamps:** `HeadlampBrightness` (1.4), `HeadlampReach` (210 px), `HeadlampWidth` (26 degrees, the beam's half-angle), `HeadlampColor` (linear, `1 0.875 0.687`), `HeadlampGlow` (0.35, the small glow around the lamp), `HeadlampTeamTint` (0 to 1: how much each side's lamps take its team color) and `HeadlampsByDay` (on in daylight too).
+  - A unit can have its own: `HeadlampBrightness = 0` in its INI means it has no lamp, `2` a strong one; `HeadlampColor = Color` gives it a color of its own. Lua: `actor.HeadlampBrightness`, `actor:SetHeadlampColor(r, g, b)`, `actor:ClearHeadlampColor()`.
+- **Tracers:** `TracerGlow` (0.8) makes shots with a trail, and the trail, shine in their own color and bloom. `TracerLightBrightness` (0.55) and `TracerLightReach` (28 px) set the light they throw on what they pass.
+- **Weather:** `WeatherLight` (0.35) is the least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it.
+
+**Tool windows** (`DockPanels`, on; `PanelWidth`, 380): the Sandbox, World Debug, Graphics Lab, Photo Mode and the other tool windows are panels at the sides of the window, and the game's picture is fitted into the space between them, so nothing covers it. Sandbox and World Debug dock left; the rest dock right; panels on the same side share it. Debug Options has the switch to let them float again, and the panel width.
 
 **Night gameplay**:
 - **Headlamps** (`Headlamps`): after dark, soldiers wear headlamps that throw a cone of light where they aim, with a faint visible beam.

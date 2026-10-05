@@ -1,3 +1,5 @@
+#include "WindowMan.h"
+#include "DebugMan.h"
 #include "Sandbox.h"
 #include "ACrab.h"
 #include "ACraft.h"
@@ -287,11 +289,18 @@ namespace {
 	GameActivity* CurrentGame() { return dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity()); }
 
 	/// How many scene pixels one window pixel covers (player 1's screen fills the window).
-	float ScenePixelsPerWindowPixel() { return static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) / std::max(1.0F, ImGui::GetIO().DisplaySize.x); }
+	float ScenePixelsPerWindowPixel() { return static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) / std::max(1.0F, g_WindowMan.GetGameViewRect().w); }
+
+	/// The top left corner of the game's picture in the window. With tool panels docked at the sides it isn't the window's own corner.
+	ImVec2 ViewOrigin() {
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		return ImVec2(view.x, view.y);
+	}
 
 	Vector MouseScenePosition() {
 		const ImVec2& mouse = ImGui::GetIO().MousePos;
-		Vector position = g_CameraMan.GetOffset(0) + Vector(mouse.x, mouse.y) * ScenePixelsPerWindowPixel();
+		ImVec2 origin = ViewOrigin();
+		Vector position = g_CameraMan.GetOffset(0) + Vector(mouse.x - origin.x, mouse.y - origin.y) * ScenePixelsPerWindowPixel();
 		g_SceneMan.WrapPosition(position);
 		return position;
 	}
@@ -1328,7 +1337,7 @@ namespace {
 			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice); preset && preset->Width > 0) {
 				// The footprint, where it will land.
 				Vector corner = StructureCorner(*preset, MouseScenePosition(), s_SnapToGrid) - g_CameraMan.GetOffset(0);
-				ImVec2 topLeft(corner.m_X / scale, corner.m_Y / scale);
+				ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 				drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(preset->Width) / scale, topLeft.y + static_cast<float>(preset->Height) / scale), white, 0.0F, 0, 1.5F);
 			}
 		} else {
@@ -1347,7 +1356,7 @@ namespace {
 	ImVec2 ToScreen(const Vector& scenePosition) {
 		Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), scenePosition, g_SceneMan.SceneWrapsX());
 		float scale = ScenePixelsPerWindowPixel();
-		return ImVec2(onScreen.m_X / scale, onScreen.m_Y / scale);
+		return ImVec2(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
 	}
 
 	/// Rings over selected units, and a marker over the followed one.
@@ -1376,7 +1385,7 @@ namespace {
 				continue;
 			}
 			Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), s_RallyPoints[side], g_SceneMan.SceneWrapsX());
-			ImVec2 base(onScreen.m_X / scale, onScreen.m_Y / scale);
+			ImVec2 base(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
 			drawList->AddLine(base, ImVec2(base.x, base.y - 26.0F), IM_COL32(230, 230, 230, 220), 2.0F);
 			drawList->AddTriangleFilled(ImVec2(base.x, base.y - 26.0F), ImVec2(base.x + 16.0F, base.y - 21.0F), ImVec2(base.x, base.y - 16.0F), c_SideColors[side]);
 		}
@@ -1580,7 +1589,7 @@ void Sandbox::DrawGUI() {
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		ImVec2 size = ImGui::CalcTextSize(banner);
 		float scale = 1.6F;
-		ImVec2 at((ImGui::GetIO().DisplaySize.x - size.x * scale) * 0.5F, 36.0F);
+		ImVec2 at(g_WindowMan.GetGameViewRect().x + (g_WindowMan.GetGameViewRect().w - size.x * scale) * 0.5F, g_WindowMan.GetGameViewRect().y + 36.0F);
 		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, 150), 4.0F);
 		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), banner);
 	}
@@ -1632,8 +1641,8 @@ void Sandbox::DrawGUI() {
 			s_Dragging = false;
 			Stroke stroke;
 			float scale = ScenePixelsPerWindowPixel();
-			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x, s_DragStart.y) * scale;
-			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x, now.y) * scale;
+			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * scale;
+			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x - ViewOrigin().x, now.y - ViewOrigin().y) * scale;
 			if (std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F) {
 				stroke.Kind = Tool::Select;
 				stroke.Position = start;
@@ -1652,7 +1661,7 @@ void Sandbox::DrawGUI() {
 
 	ImGui::SetNextWindowSize(ImVec2(430.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 445.0F, 40.0F), ImGuiCond_FirstUseEver);
-	if (ImGui::Begin(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open)) {
+	if (g_DebugMan.BeginPanel(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open, DebugMan::PanelSide::Left)) {
 		if (!InGame()) {
 			ImGui::TextWrapped("Start a game to use the sandbox. Pick \"Sandbox\" in the scenario menu for the full god mode.");
 			ImGui::End();

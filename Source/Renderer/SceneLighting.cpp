@@ -865,13 +865,18 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	};
 	size_t lightCount = 0;
 	if (m_Settings.Enabled) {
+		// Every lamp, glow, flash and fire light goes through the player's light color settings: how colorful light is, and a tint on all of it.
+		auto styled = [this](const glm::vec3& color) {
+			float grey = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+			return glm::max(glm::mix(glm::vec3(grey), color, m_Settings.LightSaturation), glm::vec3(0.0F)) * m_Settings.LightTint;
+		};
 		for (const PostEffect& effect: screenEffects) {
 			if (!effect.m_Bitmap) {
 				continue;
 			}
 			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
 			float radius = std::max(24.0F, glow.Size * 0.5F * m_Settings.GlowLightRadiusScale);
-			glm::vec3 color = glm::mix(glow.LightColor, glm::vec3(1.0F), 0.25F) * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity;
+			glm::vec3 color = styled(glm::mix(glow.LightColor, glm::vec3(1.0F), 0.25F) * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity);
 			glm::vec2 center(effect.m_Pos.m_X, effect.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(radius), 0.0F, color, radius);
@@ -885,7 +890,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		for (const SceneLight& light: screenLights) {
 			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
-			addQuad(center, glm::vec2(light.m_Radius), 0.0F, light.m_Color, light.m_Radius);
+			addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
 				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
@@ -1455,6 +1460,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PrecipitationShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 		m_PrecipitationShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
 		m_PrecipitationShader->SetInt("rteDynamicLight", 1);
+		m_PrecipitationShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);

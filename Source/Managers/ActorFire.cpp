@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace RTE;
@@ -50,8 +52,40 @@ namespace {
 		return preset ? dynamic_cast<MovableObject*>(preset->Clone()) : nullptr;
 	}
 
+	/// Flesh burns; machines don't. A unit burns if its body is made of flesh and nothing says it's metal: robots, droids, drones, turrets, craft and brains in jars never catch fire.
+	bool MadeOfFlesh(const Actor* actor) {
+		if (actor->GetMetalness() >= 0.2F) {
+			return false;
+		}
+		const Material* material = actor->GetMaterial();
+		return material && material->GetPresetName().find("Flesh") != std::string::npos;
+	}
+
 	bool CanBurn(const Actor* actor) {
-		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F;
+		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F && MadeOfFlesh(actor);
+	}
+
+	/// Whether something hitting a unit is the kind of fire that sets people alight: burning fuel and flame-thrower flames.
+	/// Not the puff of an explosion, a jetpack's flame, smoke, a muzzle flash or a laser: those are named "fire" and "flame" too, and used to set people alight at a touch.
+	bool SetsUnitsAlight(const MovableObject* hitter) {
+		static std::unordered_map<std::string, bool> cache;
+		static std::mutex cacheMutex;
+		// A fast, sharp thing is a shot (a bullet, a laser pulse), whatever it's called.
+		if (hitter->GetSharpness() > 5.0F) {
+			return false;
+		}
+		const std::string& name = hitter->GetPresetName();
+		std::scoped_lock lock(cacheMutex);
+		auto found = cache.find(name);
+		if (found != cache.end()) {
+			return found->second;
+		}
+		auto has = [&name](const char* part) { return name.find(part) != std::string::npos; };
+		bool flame = has("Napalm") || has("Incendi") || has("Flamer") || (has("Flame") && has("Hurt")) || has("Burn Particle") || has("Ground Flame");
+		bool harmless = has("Smoke") || has("Puff") || has("Laser") || has("Jet") || has("Sweetener") || has("Muzzle") || has("Body Flame");
+		bool result = flame && !harmless;
+		cache.emplace(name, result);
+		return result;
 	}
 
 	std::vector<Burner>::iterator FindBurner(const MovableObject* object) {
@@ -115,7 +149,7 @@ void ActorFire::OnHit(const MovableObject* hitter, MovableObject* hitRoot, const
 	if (!s_Enabled || !hitter || !hitRoot || hitRoot == hitter) {
 		return;
 	}
-	bool fire = TerrainFire::IsFireSource(hitter);
+	bool fire = SetsUnitsAlight(hitter);
 	bool water = !fire && TerrainFire::IsDousingParticle(hitter, hitterMaterial);
 	if (!fire && !water) {
 		return;
@@ -175,7 +209,11 @@ void ActorFire::Update() {
 	std::sort(douses.begin(), douses.end(), byID);
 	douses.erase(std::unique(douses.begin(), douses.end()), douses.end());
 	for (MovableObject* object: ignitions) {
-		Ignite(object);
+		// A lick of flame doesn't always take: about one update in five of being in the flames does. A second in a flame-thrower's stream still sets anyone alight.
+		// Things that aren't units (fuel barrels) go up at once, as before.
+		if (!dynamic_cast<Actor*>(object) || Random01() < 0.2F) {
+			Ignite(object);
+		}
 	}
 	for (MovableObject* object: douses) {
 		if (auto burner = FindBurner(object); burner != s_Burners.end()) {
@@ -193,7 +231,8 @@ void ActorFire::Update() {
 		}
 		Vector feet = actor->GetPos() + Vector(0.0F, actor->GetRadius() * 0.6F);
 		bool lava = s_LavaMaterial > 0 && (MaterialAt(feet) == s_LavaMaterial || MaterialAt(feet + Vector(0.0F, 3.0F)) == s_LavaMaterial);
-		if (lava || (TerrainFire::IsBurningNear(feet, 4) && Random01() < 0.15F)) {
+		// Standing in burning ground: on average about a second before it takes (it was a third of that).
+		if (lava || (TerrainFire::IsBurningNear(feet, 4) && Random01() < 0.05F)) {
 			Ignite(actor);
 		}
 	}
@@ -235,7 +274,7 @@ void ActorFire::Update() {
 			Vector feet = position + Vector((Random01() - 0.5F) * radius, radius * 0.7F);
 			TerrainFire::QueueIgnite(feet.GetFloorIntX(), feet.GetFloorIntY());
 		}
-		if (Random01() < 0.05F) {
+		if (Random01() < 0.015F) {
 			for (Actor* other: g_MovableMan.m_Actors) {
 				if (other != actor && CanBurn(other) && g_SceneMan.ShortestDistance(position, other->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(14.0F)) {
 					caught.push_back(other);

@@ -20,6 +20,11 @@ union SDL_Event;
 
 namespace RTE {
 
+	/// A rectangle in the window, in window pixels from its top left corner.
+	struct GameViewRect {
+		float x, y, w, h;
+	};
+
 	class Shader;
 	class RenderTarget;
 
@@ -98,6 +103,13 @@ namespace RTE {
 		/// Gets how many times the game resolution is currently being multiplied and the backbuffer stretched across for better readability.
 		/// @return What multiple the game resolution is currently sized at.
 		float GetResMultiplier() const { return m_ResMultiplier; }
+
+		/// Keeps strips at the left and right of the window free of the game's picture, for tool panels docked there. The picture is fitted into what's left.
+		/// @param left, right Widths of the strips, in window pixels. 0 for none.
+		void SetReservedSpace(int left, int right);
+
+		/// Gets where in the window the game's picture is drawn: left, top, width and height in window pixels, measured from the top left corner (as ImGui and the mouse do).
+		GameViewRect GetGameViewRect() const;
 
 		/// Gets whether VSync is enabled.
 		/// @return Whether VSync is enabled.
@@ -263,6 +275,9 @@ namespace RTE {
 
 		int m_ResX; //!< Game window width.
 		int m_ResY; //!< Game window height.
+		int m_ReservedLeft = 0; //!< Width of the strip at the left of the window kept free for docked tool panels.
+		int m_ReservedRight = 0; //!< The same at the right.
+		int m_GameViewTop = 0; //!< Distance from the top of the window to the top of the game's picture.
 		float m_ResMultiplier; //!< The number of times the game window and image should be multiplied and stretched across for better visibility.
 		float m_MaxResMultiplier; //!< The maximum resolution multiplier before the game starts breaking.
 

@@ -500,6 +500,18 @@ namespace RTE {
 		/// @return The current perceptiveness, 0.0 - 1.0
 		float GetPerceptiveness() const { return m_Perceptiveness; }
 
+		/// How bright this unit's own headlamp is next to others': 1 is the usual, 0 means it has none (a drone with no lamp, a creature).
+		float GetHeadlampBrightness() const { return m_HeadlampBrightness; }
+		void SetHeadlampBrightness(float brightness) { m_HeadlampBrightness = std::max(brightness, 0.0F); }
+
+		/// Gives this unit's headlamp a color of its own, 0-255, in place of the player's setting.
+		void SetHeadlampColor(int red, int green, int blue) {
+			m_HeadlampColor.SetRGB(red, green, blue);
+			m_HeadlampHasColor = true;
+		}
+		/// Goes back to the headlamp color of the player's settings.
+		void ClearHeadlampColor() { m_HeadlampHasColor = false; }
+
 		/// Gets whether this actor is able to reveal unseen areas by looking.
 		/// @return Whether this actor can reveal unseen areas.
 		bool GetCanRevealUnseen() const { return m_CanRevealUnseen; }
@@ -969,6 +981,9 @@ namespace RTE {
 		float m_SightDistance;
 		// How perceptive this is of alarming events going on around him, 0.0 - 1.0
 		float m_Perceptiveness;
+		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
+		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
+		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.
 		/// Damage value above which this will play PainSound
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking

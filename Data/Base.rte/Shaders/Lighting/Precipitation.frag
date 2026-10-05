@@ -15,6 +15,7 @@ uniform vec3 rteSkyLight; // Linear sky light, time of day included.
 uniform float rteIntensity;
 uniform sampler2D rteDynamicLight; // Screen space dynamic light: drops glint where lights catch them.
 uniform vec2 rteScreenSize;
+uniform float rteOwnLight; // The least light rain, snow, ash and dust are drawn with, so they can be seen on a dark night.
 
 void main() {
 	vec2 gridUV = worldPos / rteGridWorldSize;
@@ -38,7 +39,7 @@ void main() {
 		color = vec3(0.7, 0.78, 0.9);
 	}
 	vec3 dynamicLight = texture(rteDynamicLight, gl_FragCoord.xy / rteScreenSize).rgb;
-	vec3 light = rteSkyLight + dynamicLight * 1.5;
+	vec3 light = max(rteSkyLight, vec3(rteOwnLight)) + dynamicLight * 1.5;
 	// Lit drops read better: let bright light push the alpha up a little.
 	alpha *= clamp(0.6 + dot(light, vec3(0.333)) * 0.8, 0.6, 1.6);
 	FragColor = vec4(color * light, clamp(alpha, 0.0, 1.0));

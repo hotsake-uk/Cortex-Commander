@@ -38,6 +38,14 @@ namespace RTE {
 		/// Gets how many times the internal resolution photo mode screenshots are saved at (1 = as shown in the window).
 		int GetScreenshotScale() const { return m_PhotoScale > 0 ? m_PhotoScale + 1 : 0; }
 
+		/// Which side of the window a tool panel docks at.
+		enum class PanelSide { Left, Right };
+
+		/// Begins a tool window. With docking on (the default) it is a panel fixed at one side of the game's picture, sharing that side with any others open there;
+		/// with docking off it's an ordinary floating window. Use it like ImGui::Begin, and close with ImGui::End.
+		/// @param name The window's title. @param open Set to false when the player closes it; nullptr for no close button. @param side Where it docks.
+		bool BeginPanel(const char* name, bool* open, PanelSide side);
+
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
@@ -52,6 +60,10 @@ namespace RTE {
 		bool m_ImGuiDemoWindow{false};
 		bool m_ShowPerformanceMan{false};
 		bool m_ShowGraphicsLab{false};
+		bool m_DockPanels{true}; //!< Tool windows are panels at the sides of the game's picture, not floating over it.
+		float m_PanelWidth{380.0F}; //!< Width of the docked panels, before the interface scale.
+		int m_PanelsThisFrame[2]{0, 0}; //!< How many panels have been begun at each side so far this frame.
+		int m_PanelsLastFrame[2]{0, 0}; //!< How many there were at each side last frame, which is how the side is shared out this frame.
 		bool m_ShowWorldDebug{false};
 		bool m_ShowPhotoMode{false};
 		bool m_PhotoModeActive{false}; //!< Whether photo mode has taken over (time frozen, settings saved), to restore things when it closes.

@@ -54,6 +54,18 @@ void DebugMan::DrawImGui() {
 		}
 	}
 
+	// Docked tool panels: the game's picture is fitted between the ones that were open last frame.
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		float uiScale = std::clamp(io.DisplaySize.y / 720.0F, 1.0F, 2.5F);
+		int panelWidth = static_cast<int>(std::min(m_PanelWidth * uiScale, io.DisplaySize.x * 0.32F));
+		for (int side = 0; side < 2; ++side) {
+			m_PanelsLastFrame[side] = m_PanelsThisFrame[side];
+			m_PanelsThisFrame[side] = 0;
+		}
+		g_WindowMan.SetReservedSpace(m_DockPanels && m_PanelsLastFrame[0] > 0 ? panelWidth : 0, m_DockPanels && m_PanelsLastFrame[1] > 0 ? panelWidth : 0);
+	}
+
 	// The modern HUD, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {
 		ModernHUD::Draw();
@@ -92,6 +104,23 @@ void DebugMan::DrawImGui() {
 	}
 }
 
+bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
+	if (!m_DockPanels) {
+		return ImGui::Begin(name, open);
+	}
+	ImGuiIO& io = ImGui::GetIO();
+	float uiScale = std::clamp(io.DisplaySize.y / 720.0F, 1.0F, 2.5F);
+	float width = std::min(m_PanelWidth * uiScale, io.DisplaySize.x * 0.32F);
+	int sideIndex = side == PanelSide::Left ? 0 : 1;
+	int slot = m_PanelsThisFrame[sideIndex]++;
+	// The side is shared out equally among the panels there. A panel that has just opened squeezes in on the next frame.
+	int count = std::max(m_PanelsLastFrame[sideIndex], slot + 1);
+	float slotHeight = io.DisplaySize.y / static_cast<float>(count);
+	ImGui::SetNextWindowPos(ImVec2(side == PanelSide::Left ? 0.0F : io.DisplaySize.x - width, slotHeight * static_cast<float>(slot)), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(width, slotHeight), ImGuiCond_Always);
+	return ImGui::Begin(name, open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+}
+
 void DebugMan::UpdateMouseOwnership() {
 	bool wantMouse = Sandbox::IsOpen() || m_ShowWorldDebug || m_ShowPhotoMode || m_ShowGraphicsLab || m_ShowDebugWindow || m_ShowActorDebugGui || m_ImGuiDemoWindow || m_ShowPerformanceMan;
 	if (wantMouse != m_ReleasedMouseForImGui) {
@@ -106,7 +135,7 @@ void DebugMan::UpdateMouseOwnership() {
 void DebugMan::WorldDebugGUI() {
 	ImGui::SetNextWindowSize(ImVec2(340.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(10.0F, 40.0F), ImGuiCond_FirstUseEver);
-	if (ImGui::Begin("World Debug (F6)", &m_ShowWorldDebug)) {
+	if (BeginPanel("World Debug (F6)", &m_ShowWorldDebug, PanelSide::Left)) {
 		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 
 		if (const Scene* scene = g_SceneMan.GetScene(); scene && g_ActivityMan.IsInActivity()) {
@@ -318,7 +347,7 @@ void DebugMan::PhotoModeGUI() {
 
 		// Free camera: drag with the right mouse button anywhere outside the window, or the arrow keys.
 		ImGuiIO& io = ImGui::GetIO();
-		float pixelsPerScreenPixel = static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) / std::max(1.0F, io.DisplaySize.x);
+		float pixelsPerScreenPixel = static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) / std::max(1.0F, g_WindowMan.GetGameViewRect().w);
 		if (!io.WantCaptureMouse && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
 			m_PhotoCameraCenter -= Vector(io.MouseDelta.x, io.MouseDelta.y) * pixelsPerScreenPixel;
 		}
@@ -341,7 +370,7 @@ void DebugMan::PhotoModeGUI() {
 
 	ImGui::SetNextWindowSize(ImVec2(330.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 345.0F, 40.0F), ImGuiCond_FirstUseEver);
-	if (ImGui::Begin("Photo Mode (F8)", &m_ShowPhotoMode)) {
+	if (BeginPanel("Photo Mode (F8)", &m_ShowPhotoMode, PanelSide::Right)) {
 		if (!inActivity) {
 			ImGui::TextWrapped("Start a game to use photo mode.");
 		} else {
@@ -401,7 +430,7 @@ void DebugMan::PhotoModeGUI() {
 }
 
 void DebugMan::GraphicsLabGUI() {
-	if (ImGui::Begin("Graphics Lab", &m_ShowGraphicsLab)) {
+	if (BeginPanel("Graphics Lab", &m_ShowGraphicsLab, PanelSide::Right)) {
 		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 		const ImGuiColorEditFlags linearColorFlags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR;
 
@@ -434,6 +463,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::Combo("Precipitation", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
 		ImGui::SliderFloat("Intensity##Weather", &settings.WeatherIntensity, 0.0F, 1.0F);
 		ImGui::SliderFloat("Wind (px/s)", &settings.Wind, -400.0F, 400.0F);
+		ImGui::SliderFloat("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
+		ImGui::SetItemTooltip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
 
 		ImGui::SeparatorText("Glows and dynamic lights");
 		ImGui::SliderFloat("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);
@@ -474,6 +505,32 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::Checkbox("Radiance cascades GI", &settings.RadianceCascades);
 		ImGui::SliderFloat("GI strength", &settings.GIStrength, 0.0F, 4.0F);
 		ImGui::SliderFloat("GI bounce", &settings.GIBounce, 0.0F, 1.0F);
+
+		ImGui::SeparatorText("Light colors");
+		ImGui::SliderFloat("Light color strength", &settings.LightSaturation, 0.0F, 2.5F);
+		ImGui::SetItemTooltip("How colorful the light of lamps, glows, flashes and fire is. 0 makes all light white.");
+		ImGui::ColorEdit3("Tint on all lights (linear)", &settings.LightTint.x, linearColorFlags);
+
+		ImGui::SeparatorText("Scenery lamps");
+		ImGui::SliderFloat("Lamp brightness", &settings.LampBrightness, 0.0F, 4.0F);
+		ImGui::SliderFloat("Lamp reach", &settings.LampReach, 0.25F, 3.0F);
+		ImGui::ColorEdit3("Lamp tint (linear)", &settings.LampTint.x, linearColorFlags);
+
+		ImGui::SeparatorText("Headlamps");
+		ImGui::Checkbox("Headlamps", &settings.Headlamps);
+		ImGui::Checkbox("On by day as well", &settings.HeadlampsByDay);
+		ImGui::SliderFloat("Beam brightness", &settings.HeadlampBrightness, 0.0F, 5.0F);
+		ImGui::SliderFloat("Beam reach (px)", &settings.HeadlampReach, 40.0F, 600.0F);
+		ImGui::SliderFloat("Beam width (degrees)", &settings.HeadlampWidth, 5.0F, 80.0F);
+		ImGui::ColorEdit3("Beam color (linear)", &settings.HeadlampColor.x, linearColorFlags);
+		ImGui::SliderFloat("Glow around the lamp", &settings.HeadlampGlow, 0.0F, 2.0F);
+		ImGui::SliderFloat("Team color in the beam", &settings.HeadlampTeamTint, 0.0F, 1.0F);
+
+		ImGui::SeparatorText("Tracers");
+		ImGui::SliderFloat("Tracer glow", &settings.TracerGlow, 0.0F, 1.0F);
+		ImGui::SetItemTooltip("Tracers and their trails shine in their own color and bloom.");
+		ImGui::SliderFloat("Tracer light brightness", &settings.TracerLightBrightness, 0.0F, 3.0F);
+		ImGui::SliderFloat("Tracer light reach (px)", &settings.TracerLightReach, 8.0F, 120.0F);
 
 		ImGui::SeparatorText("Distortion");
 		ImGui::Checkbox("Distortion enabled", &settings.DistortionEnabled);
@@ -545,7 +602,10 @@ void DebugMan::GraphicsLabGUI() {
 }
 
 void DebugMan::DebugOptionsGUI() {
-	if (ImGui::Begin("Debug Options", &m_ShowDebugWindow)) {
+	if (BeginPanel("Debug Options", &m_ShowDebugWindow, PanelSide::Right)) {
+		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
+		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
+		ImGui::SliderFloat("Panel width", &m_PanelWidth, 240.0F, 700.0F, "%.0f");
 		ImGui::Checkbox("Show Performance Stats", &m_ShowPerformanceMan);
 		ImGui::Checkbox("Show Graphics Lab", &m_ShowGraphicsLab);
 		ImGui::Checkbox("Show World Debug (F6)", &m_ShowWorldDebug);
@@ -611,7 +671,7 @@ void DebugMan::DebugOptionsGUI() {
 void DebugMan::ActorDrawDebugGUI() {
 	ZoneScoped;
 	static std::shared_ptr<RenderBatch> batch = std::make_unique<RenderBatch>();
-	if (ImGui::Begin("Actor Draw Debug", &m_ShowActorDebugGui)) {
+	if (BeginPanel("Actor Draw Debug", &m_ShowActorDebugGui, PanelSide::Right)) {
 		static std::map<MovableObject*, std::unique_ptr<Texture>> MOTargets;
 		static int playerScreen = -1;
 		ImGui::InputInt("Test Draw for Screen (-1 full world):", &playerScreen);

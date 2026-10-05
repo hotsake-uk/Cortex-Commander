@@ -217,7 +217,7 @@ void MOPixel::Update() {
 		if (s_TracersLit < 40) {
 			++s_TracersLit;
 			Color trailColor(m_Atom->GetTrailColor().GetIndex());
-			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), 28.0F, 0.55F);
+			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), g_PostProcessMan.GetLightingSettings().TracerLightReach, g_PostProcessMan.GetLightingSettings().TracerLightBrightness);
 		}
 	}
 
@@ -274,8 +274,16 @@ void MOPixel::Draw(const Camera& camera) const {
 	if (!camera.IsVisible(m_Pos, 48.0F)) {
 		return;
 	}
+	// A shot with a trail is a tracer: it and its trail shine in their own color, whatever the light around them, and bloom. Marked for the shader in the surface values (see Blit8.frag).
+	float tracerGlow = (m_Atom && m_Atom->GetTrailLength() > 0 && (m_Sharpness > 0 || m_Vel.MagnitudeIsGreaterThan(30.0F))) ? g_PostProcessMan.GetLightingSettings().TracerGlow : 0.0F;
+	if (tracerGlow > 0.0F) {
+		g_RenderMan.SetCurrentSurface(glm::u8vec4(0, 0, 128, static_cast<unsigned char>(std::clamp(tracerGlow, 0.0F, 1.0F) * 255.0F)));
+	}
 	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
 		Draw::PixelsBatched(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
 	}
 	Draw::PixelBatched(GetRenderPos().GetFloored(), m_Color);
+	if (tracerGlow > 0.0F) {
+		g_RenderMan.SetCurrentSurface(glm::u8vec4(0));
+	}
 }
