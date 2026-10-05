@@ -459,9 +459,9 @@ void MOSRotating::DetachAttachablesFromImpulse(Vector& impulseVector) {
 
 void MOSRotating::AddWoundExt(AEmitter* woundToAdd, const Vector& parentOffsetToSet, bool checkGibWoundLimit, bool isEntryWound, bool isExitWound) {
 	if (woundToAdd && !m_ToDelete) {
-		// Metal glows for a moment where it's struck.
+		// Metal glows for a moment where it's struck: a patch about the wound, not the whole hull.
 		if (const Material* struck = GetMaterial(); struck && struck->GetMetalness() + std::max(m_Metalness, 0.0F) > 0.25F) {
-			AddHeat(0.45F);
+			AddHeatAt(parentOffsetToSet, 0.55F, 5.0F);
 		}
 		if (checkGibWoundLimit && m_GibWoundLimit > 0 && m_Wounds.size() + 1 >= m_GibWoundLimit) {
 			// Find and detach an attachable near the new wound before gibbing the object itself. TODO: Perhaps move this to Actor, since it's more relevant there?

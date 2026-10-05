@@ -197,3 +197,4 @@ Write-Scenario "SkyDeep" ($play + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengt
 Write-Scenario "RaysEvening" ($bunker + @{ TimeOfDay = 16.5; WeatherType = 0; DayLengthMinutes = 0 }) @()
 Write-Scenario "DunkNight" ($sandbox + @{ TimeOfDay = 22; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Dunk", "Render Test Flare")
 Write-Scenario "UnderwaterLight" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Underwater Light")
+Write-Scenario "Effects" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Effects")

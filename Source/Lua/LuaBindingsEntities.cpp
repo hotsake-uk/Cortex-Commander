@@ -996,6 +996,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MovableObject) {
 	    .property("Soot", &MovableObject::GetSoot, &MovableObject::SetSoot)
 	    .property("SnowCover", &MovableObject::GetSnowCover, &MovableObject::SetSnowCover)
 	    .property("Heat", &MovableObject::GetHeat, &MovableObject::SetHeat)
+	    .def("AddHeatAt", &MovableObject::AddHeatAt)
 	    .def("SetVisualEmission", &MovableObject::SetVisualEmission)
 	    .property("LightConeAngle", &MovableObject::GetLightConeAngle, &MovableObject::SetLightConeAngle)
 	    .property("LightConeDirection", &MovableObject::GetLightConeDirection, &MovableObject::SetLightConeDirection)

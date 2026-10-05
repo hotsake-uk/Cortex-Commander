@@ -108,6 +108,7 @@ namespace {
 		BoulderRain,
 		CrashRocket,
 		CrashDropship,
+		Effect,
 		BuildBeam,
 		BuildPillar,
 		BuildRoom,
@@ -177,6 +178,7 @@ namespace {
 	    {Tool::BoulderRain, "Boulder rain", 0.0F, false},
 	    {Tool::CrashRocket, "Crashing rocket", 0.0F, false},
 	    {Tool::CrashDropship, "Crashing dropship", 0.0F, false},
+	    {Tool::Effect, "Effect", 0.0F, false},
 	    {Tool::BuildBeam, "Concrete beam", 0.0F, false},
 	    {Tool::BuildPillar, "Concrete pillar", 0.0F, false},
 	    {Tool::BuildRoom, "Concrete room", 0.0F, false},
@@ -497,8 +499,12 @@ namespace {
 		}
 	}
 
+	int s_EffectChoice = 0;
+
 	int& ChoiceFor(Tool kind) {
 		switch (kind) {
+			case Tool::Effect:
+				return s_EffectChoice;
 			case Tool::Brain:
 				return s_BrainChoice;
 			case Tool::Item:
@@ -760,6 +766,251 @@ namespace {
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+	}
+
+	/// Things that can be put down and left running, for trying the lights, particles and shaders against: each is a light, a source of particles, or both.
+	enum class EffectKind {
+		NuclearGlow,
+		StormCell,
+		RedAlarm,
+		PoliceLights,
+		BlueBeacon,
+		Floodlight,
+		Searchlight,
+		Strobe,
+		Disco,
+		Campfire,
+		Candle,
+		LavaGlow,
+		WeldingArc,
+		Fireflies,
+		Portal,
+		SparkFountain,
+		EmberVent,
+		SmokeStack,
+		ToxicVent,
+		MistVent,
+		DustDevil,
+		FireJet,
+		HeatShimmer,
+		ShockwavePulse,
+		Count
+	};
+	struct EffectInfo {
+		const char* Name;
+		const char* Tip;
+	};
+	constexpr EffectInfo c_Effects[static_cast<int>(EffectKind::Count)] = {
+	    {"Nuclear glow", "A big sickly green light that throbs, with green embers rising and the air shimmering over it."},
+	    {"Storm cell", "Flashes of lightning that light the whole area at odd moments, and now and then a bolt that strikes."},
+	    {"Red alarm", "A red warning lamp sweeping round."},
+	    {"Police lights", "Red and blue flashing by turns."},
+	    {"Blue beacon", "A blue light that pulses slowly."},
+	    {"Floodlight", "A wide white beam straight down."},
+	    {"Searchlight", "A narrow white beam sweeping from side to side."},
+	    {"Strobe", "A white light flashing fast."},
+	    {"Disco", "Three coloured beams turning, changing colour as they go."},
+	    {"Campfire", "A flickering orange light with sparks and embers, and a little smoke."},
+	    {"Candle", "A small warm light that wavers."},
+	    {"Lava glow", "A wide deep-orange glow that breathes slowly, with embers."},
+	    {"Welding arc", "A harsh blue-white light that stutters, throwing sparks."},
+	    {"Fireflies", "A handful of tiny green lights wandering about."},
+	    {"Portal", "A purple light that pulses, with sparks and shimmering air."},
+	    {"Spark fountain", "A steady jet of sparks."},
+	    {"Ember vent", "Embers drifting up."},
+	    {"Smoke stack", "Thick smoke, which lamps light up and units can't see through."},
+	    {"Toxic vent", "Green gas with a dim green light."},
+	    {"Mist vent", "Soft pale spray."},
+	    {"Dust devil", "Dust whirled about."},
+	    {"Fire jet", "A jet of flame. This one is real fire: it burns."},
+	    {"Heat shimmer", "The air shimmering, as over something hot. No light."},
+	    {"Shockwave pulse", "A blast wave rippling out every second and a half. No blast."},
+	};
+	struct PlacedEffect {
+		EffectKind Kind;
+		Vector Position;
+		float Seed = 0.0F; //!< 0 to 1, so two of a kind side by side aren't in step.
+		float Flash = 0.0F; //!< Storms: how bright the current flash is.
+		int Wait = 0; //!< Storms: sim updates until the next flash.
+	};
+	std::vector<PlacedEffect> s_Effects;
+
+	void StrikeLightning(const Vector& target);
+
+	glm::vec3 Hue(float turn) {
+		turn -= std::floor(turn);
+		return glm::vec3(255.0F) * glm::clamp(glm::abs(glm::fract(glm::vec3(turn) + glm::vec3(0.0F, 2.0F / 3.0F, 1.0F / 3.0F)) * 6.0F - 3.0F) - 1.0F, 0.0F, 1.0F);
+	}
+
+	/// Runs the effects that have been put down, once per sim update. They are lights registered afresh each update and visual particles, so removing one leaves nothing behind
+	/// (but for smoke, gas and fire already let out, which are real).
+	void UpdateEffects() {
+		if (s_Effects.empty()) {
+			return;
+		}
+		long long update = g_TimerMan.GetSimUpdateCount();
+		float time = static_cast<float>(update) * g_TimerMan.GetDeltaTimeSecs();
+		for (PlacedEffect& effect: s_Effects) {
+			const Vector& at = effect.Position;
+			float phase = time + effect.Seed * 20.0F;
+			auto every = [&](int updates) { return (update + static_cast<long long>(effect.Seed * 997.0F)) % updates == 0; };
+			switch (effect.Kind) {
+				case EffectKind::NuclearGlow:
+					g_PostProcessMan.RegisterLight(at, glm::vec3(80.0F, 255.0F, 60.0F), 320.0F, 2.2F + 0.7F * std::sin(phase * 1.7F));
+					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 255.0F, 130.0F), 70.0F, 3.0F);
+					g_PostProcessMan.RegisterShimmer(at, 90.0F, 0.7F);
+					if (every(5)) {
+						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 90.0F, (Random01() - 0.5F) * 30.0F), Vector(0.0F, -1.0F), 1.0F, 1, 0x60FF40);
+					}
+					break;
+				case EffectKind::StormCell:
+					if (--effect.Wait <= 0) {
+						effect.Flash = 0.6F + Random01() * 0.6F;
+						effect.Wait = 15 + static_cast<int>(Random01() * 150.0F);
+						if (Random01() < 0.3F) {
+							StrikeLightning(at + Vector((Random01() - 0.5F) * 260.0F, 0.0F));
+						}
+					}
+					effect.Flash *= 0.8F;
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -90.0F), glm::vec3(195.0F, 215.0F, 255.0F), 560.0F, 0.12F + effect.Flash * 7.0F);
+					break;
+				case EffectKind::RedAlarm: {
+					Vector direction(std::cos(phase * 4.0F), std::sin(phase * 4.0F));
+					g_PostProcessMan.RegisterConeLight(at, direction, 26.0F, glm::vec3(255.0F, 28.0F, 18.0F), 280.0F, 3.2F);
+					g_PostProcessMan.RegisterConeLight(at, direction * -1.0F, 26.0F, glm::vec3(255.0F, 28.0F, 18.0F), 280.0F, 3.2F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 40.0F, 25.0F), 26.0F, 1.5F);
+					break;
+				}
+				case EffectKind::PoliceLights: {
+					bool red = std::fmod(phase * 3.0F, 1.0F) < 0.5F;
+					bool lit = std::fmod(phase * 12.0F, 1.0F) < 0.6F;
+					if (lit) {
+						g_PostProcessMan.RegisterLight(at + Vector(red ? -8.0F : 8.0F, 0.0F), red ? glm::vec3(255.0F, 25.0F, 20.0F) : glm::vec3(30.0F, 80.0F, 255.0F), 240.0F, 3.0F);
+					}
+					break;
+				}
+				case EffectKind::BlueBeacon:
+					g_PostProcessMan.RegisterLight(at, glm::vec3(40.0F, 120.0F, 255.0F), 220.0F, 0.2F + 3.0F * std::pow(std::max(std::sin(phase * 2.6F), 0.0F), 4.0F));
+					break;
+				case EffectKind::Floodlight:
+					g_PostProcessMan.RegisterConeLight(at, Vector(0.0F, 1.0F), 36.0F, glm::vec3(255.0F, 244.0F, 222.0F), 460.0F, 3.2F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 244.0F, 222.0F), 22.0F, 1.6F);
+					break;
+				case EffectKind::Searchlight: {
+					float angle = 1.5708F + 0.95F * std::sin(phase * 0.8F);
+					g_PostProcessMan.RegisterConeLight(at, Vector(std::cos(angle), std::sin(angle)), 8.0F, glm::vec3(225.0F, 238.0F, 255.0F), 640.0F, 4.5F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(225.0F, 238.0F, 255.0F), 20.0F, 1.5F);
+					break;
+				}
+				case EffectKind::Strobe:
+					if (std::fmod(phase * 9.0F, 1.0F) < 0.22F) {
+						g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 255.0F, 255.0F), 340.0F, 4.0F);
+					}
+					break;
+				case EffectKind::Disco:
+					for (int beam = 0; beam < 3; ++beam) {
+						float angle = phase * (1.3F + 0.4F * static_cast<float>(beam)) * (beam == 1 ? -1.0F : 1.0F) + static_cast<float>(beam) * 2.1F;
+						g_PostProcessMan.RegisterConeLight(at, Vector(std::cos(angle), std::sin(angle)), 14.0F, Hue(phase * 0.25F + static_cast<float>(beam) / 3.0F), 320.0F, 3.4F);
+					}
+					g_PostProcessMan.RegisterLight(at, Hue(phase * 0.5F), 30.0F, 1.6F);
+					break;
+				case EffectKind::Campfire: {
+					float flicker = 0.6F * std::sin(phase * 11.0F) + 0.4F * std::sin(phase * 23.0F + 1.3F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 150.0F, 60.0F), 160.0F + 10.0F * flicker, 1.7F + 0.45F * flicker);
+					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -14.0F), 24.0F, 0.5F);
+					if (every(3)) {
+						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 10.0F, -2.0F), Vector(0.0F, -1.5F), 0.7F, 1, 0);
+					}
+					if (every(10)) {
+						EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 2.0F, -5.0F), 0.6F, 2, 0);
+					}
+					if (every(120)) {
+						SpawnPuffs("Thick Smoke Ball", at + Vector(0.0F, -8.0F), 3, 1);
+					}
+					break;
+				}
+				case EffectKind::Candle:
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 180.0F, 95.0F), 62.0F, 1.0F + 0.2F * std::sin(phase * 9.0F) + 0.1F * std::sin(phase * 31.0F));
+					break;
+				case EffectKind::LavaGlow:
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 85.0F, 18.0F), 240.0F, 1.7F + 0.35F * std::sin(phase * 0.9F));
+					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -20.0F), 60.0F, 0.6F);
+					if (every(8)) {
+						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 120.0F, 0.0F), Vector(0.0F, -1.0F), 1.0F, 1, 0);
+					}
+					break;
+				case EffectKind::WeldingArc:
+					if (Random01() < 0.6F) {
+						g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 200.0F, 255.0F), 150.0F, 2.5F + Random01() * 3.5F);
+						EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 6.0F, -2.0F - Random01() * 4.0F), 1.0F, 2, 0xCFE4FF);
+					}
+					break;
+				case EffectKind::Fireflies:
+					for (int fly = 0; fly < 7; ++fly) {
+						float own = static_cast<float>(fly) * 1.618F + effect.Seed * 6.0F;
+						Vector where = at + Vector(std::sin(phase * (0.5F + 0.13F * static_cast<float>(fly)) + own) * 60.0F, std::cos(phase * (0.37F + 0.09F * static_cast<float>(fly)) + own * 2.0F) * 34.0F);
+						float glow = std::pow(std::max(std::sin(phase * 2.3F + own * 3.0F), 0.0F), 2.0F);
+						if (glow > 0.05F) {
+							g_PostProcessMan.RegisterLight(where, glm::vec3(190.0F, 255.0F, 90.0F), 18.0F, 1.6F * glow);
+						}
+					}
+					break;
+				case EffectKind::Portal:
+					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 60.0F, 255.0F), 200.0F, 1.8F + 0.8F * std::sin(phase * 3.1F));
+					g_PostProcessMan.RegisterShimmer(at, 46.0F, 1.2F);
+					if (every(2)) {
+						float angle = Random01() * 6.2832F;
+						EffectsParticles::Emit("Sparks", at + Vector(std::cos(angle), std::sin(angle)) * 30.0F, Vector(-std::cos(angle) * 3.0F, -std::sin(angle) * 3.0F), 0.2F, 1, 0xC070FF);
+					}
+					break;
+				case EffectKind::SparkFountain:
+					EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 2.0F, -9.0F), 0.4F, 3, 0);
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -10.0F), glm::vec3(255.0F, 205.0F, 130.0F), 80.0F, 1.3F);
+					break;
+				case EffectKind::EmberVent:
+					if (every(2)) {
+						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 30.0F, 0.0F), Vector(0.0F, -2.0F), 0.8F, 1, 0);
+					}
+					break;
+				case EffectKind::SmokeStack:
+					if (every(14)) {
+						SpawnPuffs("Thick Smoke Ball", at, 4, 1);
+					}
+					break;
+				case EffectKind::ToxicVent:
+					g_PostProcessMan.RegisterLight(at, glm::vec3(120.0F, 255.0F, 70.0F), 90.0F, 0.9F);
+					if (every(22)) {
+						SpawnPuffs("Toxic Gas Ball", at, 4, 1);
+					}
+					break;
+				case EffectKind::MistVent:
+					EffectsParticles::Emit("Mist", at + Vector((Random01() - 0.5F) * 8.0F, 0.0F), Vector((Random01() - 0.5F) * 2.0F, -3.5F), 0.8F, 1, 0);
+					break;
+				case EffectKind::DustDevil:
+					EffectsParticles::Emit("Dust", at + Vector(std::sin(phase * 6.0F) * 14.0F, -std::fmod(phase * 20.0F, 40.0F)), Vector(std::cos(phase * 6.0F) * 4.0F, -3.0F), 0.4F, 1, 0);
+					break;
+				case EffectKind::FireJet:
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -20.0F), glm::vec3(255.0F, 140.0F, 50.0F), 130.0F, 1.8F + 0.4F * std::sin(phase * 17.0F));
+					if (every(2)) {
+						if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
+							flame->SetPos(at);
+							flame->SetVel(Vector((Random01() - 0.5F) * 2.0F, -7.0F - Random01() * 3.0F));
+							g_MovableMan.AddParticle(flame);
+						}
+					}
+					break;
+				case EffectKind::HeatShimmer:
+					g_PostProcessMan.RegisterShimmer(at, 80.0F, 1.3F);
+					break;
+				case EffectKind::ShockwavePulse:
+					if (every(90)) {
+						g_PostProcessMan.RegisterShockwave(at, 6000.0F);
+					}
+					break;
+				default:
+					break;
+			}
+		}
 	}
 
 	/// A place water keeps pouring from until it's removed: a spring, a burst pipe, a tap left on.
@@ -1460,6 +1711,11 @@ namespace {
 				}
 				break;
 			}
+			case Tool::Effect:
+				if (s_Effects.size() < 120) {
+					s_Effects.push_back({static_cast<EffectKind>(std::clamp(stroke.Choice, 0, static_cast<int>(EffectKind::Count) - 1)), at, Random01(), 0.0F, 0});
+				}
+				break;
 			case Tool::CrashRocket:
 				Launch(0, at + Vector(Random01() < 0.5F ? -260.0F : 260.0F, -620.0F), at, 7.5F, "Rocket MK2", 24, "ACRocket", stroke.Team);
 				break;
@@ -1763,6 +2019,24 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	if (toolName == "Remove water spawners") {
 		s_WaterSpawners.clear();
 		return true;
+	}
+	if (toolName == "Remove effects") {
+		s_Effects.clear();
+		return true;
+	}
+	if (toolName == "Effect") {
+		// The preset name is the effect's name.
+		for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
+			if (presetName == c_Effects[i].Name) {
+				Stroke placed;
+				placed.Kind = Tool::Effect;
+				placed.Position = position;
+				placed.Choice = i;
+				s_Queue.push_back(placed);
+				return true;
+			}
+		}
+		return false;
 	}
 	Stroke stroke;
 	stroke.Position = position;
@@ -2194,6 +2468,44 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
 				ImGui::EndTabItem();
 			}
+			if (ImGui::BeginTabItem("Effects")) {
+				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
+				ImGui::SeparatorText("Lights");
+				auto effectButtons = [](std::initializer_list<EffectKind> kinds) {
+					int column = 0;
+					for (EffectKind kind: kinds) {
+						if (column++ % 3 != 0) {
+							ImGui::SameLine();
+						}
+						int index = static_cast<int>(kind);
+						bool chosen = c_Tools[s_ToolIndex].Kind == Tool::Effect && s_EffectChoice == index;
+						if (ImGui::RadioButton(c_Effects[index].Name, chosen)) {
+							s_EffectChoice = index;
+							s_ToolIndex = ToolIndex(Tool::Effect);
+						}
+						ImGui::SetItemTooltip("%s", c_Effects[index].Tip);
+					}
+				};
+				effectButtons({EffectKind::NuclearGlow, EffectKind::StormCell, EffectKind::RedAlarm, EffectKind::PoliceLights, EffectKind::BlueBeacon, EffectKind::Floodlight, EffectKind::Searchlight, EffectKind::Strobe, EffectKind::Disco,
+				               EffectKind::Candle, EffectKind::LavaGlow, EffectKind::Fireflies});
+				ImGui::SeparatorText("Lights with particles");
+				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
+				ImGui::SeparatorText("Particles and air");
+				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				ImGui::Separator();
+				ImGui::BeginDisabled(s_Effects.empty());
+				if (ImGui::Button("Remove all effects")) {
+					s_Effects.clear();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Remove the last one")) {
+					s_Effects.pop_back();
+				}
+				ImGui::EndDisabled();
+				ImGui::SameLine();
+				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
+				ImGui::EndTabItem();
+			}
 			if (ImGui::BeginTabItem("World")) {
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
@@ -2244,6 +2556,7 @@ void Sandbox::Update() {
 		// A new game: nothing is left pouring or on its way in from the last one.
 		s_WaterSpawners.clear();
 		s_Incoming.clear();
+		s_Effects.clear();
 	}
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
@@ -2251,12 +2564,14 @@ void Sandbox::Update() {
 		s_Possessed = nullptr;
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
+		s_Effects.clear();
 		return;
 	}
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
 	UpdateIncoming();
+	UpdateEffects();
 	for (const WaterSpawner& spawner: s_WaterSpawners) {
 		FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), "Water");
 	}

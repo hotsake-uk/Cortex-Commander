@@ -115,6 +115,7 @@ void MovableObject::Clear() {
 	m_Soot = 0.0F;
 	m_SnowCover = 0.0F;
 	m_Heat = 0.0F;
+	m_HotSpots.clear();
 	m_VisualEmission.clear();
 	m_VisualEmissionRate = 0.0F;
 	m_VisualEmissionSpread = 0.6F;
@@ -1057,6 +1058,18 @@ void MovableObject::Update() {
 		// Hot metal cools in a few seconds.
 		m_Heat = std::max(m_Heat - g_TimerMan.GetDeltaTimeSecs() * 0.3F, 0.0F);
 	}
+	if (!m_HotSpots.empty()) {
+		// Each hot place glows as a small light of its own, from a dull red through orange to yellow as it gets hotter, and cools in a few seconds.
+		float cooling = g_TimerMan.GetDeltaTimeSecs() * 0.38F;
+		for (HotSpot& spot: m_HotSpots) {
+			spot.Heat -= cooling;
+			if (spot.Heat > 0.03F) {
+				glm::vec3 color = glm::mix(glm::vec3(255.0F, 45.0F, 8.0F), glm::vec3(255.0F, 190.0F, 80.0F), std::clamp(spot.Heat, 0.0F, 1.0F));
+				g_PostProcessMan.RegisterLight(m_Pos + RotateOffset(spot.Offset), color, spot.Radius * 2.4F + 5.0F, std::min(spot.Heat * 2.2F, 2.4F));
+			}
+		}
+		m_HotSpots.erase(std::remove_if(m_HotSpots.begin(), m_HotSpots.end(), [](const HotSpot& spot) { return spot.Heat <= 0.03F; }), m_HotSpots.end());
+	}
 
 	if (m_Shimmer > 0.0F) {
 		g_PostProcessMan.RegisterShimmer(m_Pos, std::max(GetRadius() * 1.35F, 10.0F), m_Shimmer);
@@ -1311,5 +1324,28 @@ void MovableObject::SetPostScreenEffectToDraw() const {
 		if (m_EffectAlwaysShows || !g_SceneMan.ObscuredPoint(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY())) {
 			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS()), m_EffectRotAngle);
 		}
+	}
+}
+
+void MovableObject::AddHeatAt(const Vector& offset, float heat, float radius) {
+	if (heat <= 0.0F) {
+		return;
+	}
+	// More heat in a place that's already hot makes that place hotter; a new place takes the coolest one's slot once there are six.
+	HotSpot* coolest = nullptr;
+	for (HotSpot& spot: m_HotSpots) {
+		if ((spot.Offset - offset).MagnitudeIsLessThan(std::max(spot.Radius, radius))) {
+			spot.Heat = std::min(spot.Heat + heat, 1.0F);
+			spot.Radius = std::max(spot.Radius, radius);
+			return;
+		}
+		if (!coolest || spot.Heat < coolest->Heat) {
+			coolest = &spot;
+		}
+	}
+	if (m_HotSpots.size() < 6) {
+		m_HotSpots.push_back({offset, std::min(heat, 1.0F), radius});
+	} else if (coolest && coolest->Heat < heat) {
+		*coolest = {offset, std::min(heat, 1.0F), radius};
 	}
 }

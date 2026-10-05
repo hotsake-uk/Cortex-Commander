@@ -940,6 +940,12 @@ namespace RTE {
 		/// Adds to this' heat, up to glowing fully.
 		void AddHeat(float heat) { m_Heat = std::clamp(m_Heat + heat, 0.0F, 1.0F); }
 
+		/// Heats one place on this object, so it glows there and nowhere else: where a shot struck a hull, the muzzle of a gun that's been firing. It cools in a few seconds.
+		/// @param offset The place, relative to this object's position, not rotated or flipped (like a wound's or a muzzle's offset).
+		/// @param heat How much hotter it gets, 0 to 1.
+		/// @param radius How big the glowing patch is, in pixels.
+		void AddHeatAt(const Vector& offset, float heat, float radius = 5.0F);
+
 		/// Gets how strongly the scene shimmers around this (see PostProcessMan::RegisterShimmer). 0 for none.
 		float GetShimmer() const { return m_Shimmer; }
 		/// Sets how strongly the scene shimmers around this, around 1; 0 for none. For energy shields, cloaks and hot things.
@@ -1379,6 +1385,13 @@ namespace RTE {
 		float m_Soot; //!< How sooty this looks, 0 to 1.
 		float m_SnowCover; //!< How much snow lies on this, 0 to 1.
 		float m_Heat; //!< How hot this glows, 0 to 1.
+		/// A place on this object that's hot and glowing.
+		struct HotSpot {
+			Vector Offset; //!< Relative to the object's position, not rotated or flipped.
+			float Heat = 0.0F; //!< 0 to 1.
+			float Radius = 5.0F; //!< Pixels.
+		};
+		std::vector<HotSpot> m_HotSpots; //!< The few places on this object that are glowing hot.
 		std::string m_VisualEmission; //!< Kind of purely visual particles this gives off ("Sparks", "Dust", "Debris", "Embers"), or empty for none.
 		float m_VisualEmissionRate; //!< How many it gives off per second.
 		float m_VisualEmissionSpread; //!< How much their direction and speed vary, 0 to 1.
