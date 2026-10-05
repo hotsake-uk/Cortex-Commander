@@ -347,6 +347,7 @@ namespace {
 		bool Neutral = false; //!< On no side as far as the AI goes: its units take no notice of the character.
 	};
 	PlayerSetup s_Player;
+	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
 	int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
 	bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
@@ -3041,7 +3042,8 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Colony")) {
+			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
+			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony")) {
 				ColonyTab();
 				ImGui::EndTabItem();
 			}

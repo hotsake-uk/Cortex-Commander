@@ -187,7 +187,7 @@ Last updated: 5 October 2026.
 - **Settings panel (F6).** Every setting that can be tuned while the game runs, in one panel: eleven categories, a search across all of them, and named presets that hold everything (files in `Userdata/Presets`). It replaces the World Debug, Graphics Lab and Debug Options windows.
 - **Tab.** In a game, puts every tool window away or brings them back. In the Sandbox game mode that is the switch between the tools (with the world paused) and your own character.
 - **Sandbox character.** A body and kit of your choice with optional abilities: no harm, endless jetpack and ammunition, number keys for the kit, flying through anything, ignored by enemy AI. It can be switched off to only look around.
-- **Colony buildings (first step).** A barracks trains units and keeps a number alive; an extractor earns supply. Placed from the Sandbox's Colony tab.
+- **Colony buildings (first step).** A barracks trains units and keeps a number alive; an extractor earns supply. Hidden for now: the Sandbox's Colony tab is switched off in the code (`c_ShowColonyTab` in `Sandbox.cpp`).
 - **Ambient lighting slider.** One control for how bright interiors are without lamps. Turn it down and bunkers are lit by their lamps, and go dark where the lamps are shot out. It also lowers the minimum light on units, so units in a dark room are dark too.
 - **Settings versioning.** When the default look changes a lot, old saved values are ignored so players get the new look.
 
