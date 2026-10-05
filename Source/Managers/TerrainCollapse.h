@@ -18,6 +18,7 @@ namespace RTE {
 			int MaxPiecePixels = 30000; //!< A connected piece bigger than this counts as the world itself and never falls.
 			int MinFittingPixels = 150; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
 			float BreakStrength = 1.0F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
+			float BlastPush = 0.5F; //!< How hard explosions throw loose pieces: 0 not at all, 1 hard, 3 very hard. Lower also means fewer pieces lying at rest are picked up again.
 			int CrushPixels = 24; //!< A falling piece goes through loose bits of ground of up to this many pixels (leftover scraps, nuggets, a few grains) and flattens them, instead of being held up by them. Never more than a quarter of its own size. 0 turns this off.
 			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
 		};

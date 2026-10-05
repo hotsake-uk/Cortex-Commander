@@ -105,6 +105,8 @@ namespace {
 		NapalmRain,
 		OrbitalBeam,
 		BoulderRain,
+		CrashRocket,
+		CrashDropship,
 		BuildBeam,
 		BuildPillar,
 		BuildRoom,
@@ -171,6 +173,8 @@ namespace {
 	    {Tool::NapalmRain, "Napalm rain", 0.0F, false},
 	    {Tool::OrbitalBeam, "Orbital beam", 0.0F, false},
 	    {Tool::BoulderRain, "Boulder rain", 0.0F, false},
+	    {Tool::CrashRocket, "Crashing rocket", 0.0F, false},
+	    {Tool::CrashDropship, "Crashing dropship", 0.0F, false},
 	    {Tool::BuildBeam, "Concrete beam", 0.0F, false},
 	    {Tool::BuildPillar, "Concrete pillar", 0.0F, false},
 	    {Tool::BuildRoom, "Concrete room", 0.0F, false},
@@ -763,16 +767,20 @@ namespace {
 		Vector From;
 		Vector Target;
 		float Speed = 9.0F; //!< Pixels per update.
+		std::string ClassName = "TDExplosive";
 		std::string Preset = "Standard Bomb";
+		int Team = 0;
 		int Crater = 0; //!< Radius of ground it takes out where it lands, on top of what its blast does.
 		int Life = 900;
 		Vector LastPos;
 	};
 	std::vector<Incoming> s_Incoming;
 
-	void Launch(int delay, const Vector& from, const Vector& target, float speed, const char* preset, int crater) {
+	void Launch(int delay, const Vector& from, const Vector& target, float speed, const char* preset, int crater, const char* className = "TDExplosive", int team = 0) {
 		if (s_Incoming.size() < 200) {
 			Incoming incoming;
+			incoming.ClassName = className;
+			incoming.Team = team;
 			incoming.Delay = delay;
 			incoming.From = from;
 			incoming.Target = target;
@@ -797,14 +805,21 @@ namespace {
 			// Object speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
 			Vector velocity = direction * (incoming.Speed * 3.0F);
 			if (incoming.Id == 0) {
-				MovableObject* object = CreateBaseObject("TDExplosive", incoming.Preset.c_str());
+				MovableObject* object = CreateBaseObject(incoming.ClassName.c_str(), incoming.Preset.c_str());
 				if (!object) {
 					s_Incoming.erase(s_Incoming.begin() + static_cast<std::ptrdiff_t>(i));
 					continue;
 				}
 				object->SetPos(incoming.From);
 				object->SetVel(velocity);
-				object->SetRotAngle(direction.GetAbsRadAngle());
+				if (Actor* craft = dynamic_cast<Actor*>(object)) {
+					// A craft under its own AI, engines burning, that isn't going to make it.
+					craft->SetTeam(incoming.Team);
+					craft->SetControllerMode(Controller::CIM_AI);
+				}
+				if (incoming.ClassName != "ACDropShip") {
+					object->SetRotAngle(incoming.ClassName == "ACRocket" ? direction.GetAbsRadAngle() + 1.5708F : direction.GetAbsRadAngle());
+				}
 				incoming.Id = object->GetUniqueID();
 				AddObject(object);
 				++i;
@@ -817,7 +832,12 @@ namespace {
 				incoming.LastPos = position;
 				// Kept on its line, whatever gravity and the air would do to it.
 				object->SetVel(velocity);
-				object->SetRotAngle(direction.GetAbsRadAngle());
+				if (incoming.ClassName == "ACDropShip") {
+					// A dropship comes down level but out of control, rocking as it goes.
+					object->SetRotAngle(0.35F * std::sin(static_cast<float>(incoming.Life) * 0.21F) + (direction.m_X > 0.0F ? -0.25F : 0.25F));
+				} else {
+					object->SetRotAngle(incoming.ClassName == "ACRocket" ? direction.GetAbsRadAngle() + 1.5708F : direction.GetAbsRadAngle());
+				}
 				EffectsParticles::Emit("Sparks", position - direction * 6.0F, Vector(-velocity.m_X * 0.15F, -velocity.m_Y * 0.15F), 0.5F, 2, 0);
 				EffectsParticles::Emit("Dust", position - direction * 8.0F, Vector(0.0F, -0.5F), 1.0F, 1, 0x8C8C8C);
 				Vector left = g_SceneMan.ShortestDistance(position, incoming.Target, g_SceneMan.SceneWrapsX());
@@ -837,8 +857,13 @@ namespace {
 			}
 			if (MOSRotating* explosive = dynamic_cast<MOSRotating*>(object)) {
 				explosive->GibThis();
-			} else {
+			} else if (incoming.ClassName == "TDExplosive") {
 				Detonate(incoming.Preset.c_str(), position);
+			}
+			if (incoming.ClassName != "TDExplosive") {
+				// A craft full of fuel hitting the ground goes up harder than its wreckage alone.
+				Detonate("Standard Bomb", position);
+				Detonate("Napalm Bomb", position + Vector(0.0F, -6.0F));
 			}
 			s_Incoming.erase(s_Incoming.begin() + static_cast<std::ptrdiff_t>(i));
 		}
@@ -1421,6 +1446,12 @@ namespace {
 				}
 				break;
 			}
+			case Tool::CrashRocket:
+				Launch(0, at + Vector(Random01() < 0.5F ? -260.0F : 260.0F, -620.0F), at, 7.5F, "Rocket MK2", 24, "ACRocket", stroke.Team);
+				break;
+			case Tool::CrashDropship:
+				Launch(0, at + Vector(Random01() < 0.5F ? -620.0F : 620.0F, -420.0F), at, 6.5F, "Dropship MK1", 30, "ACDropShip", stroke.Team);
+				break;
 			case Tool::BoulderRain:
 				for (int i = 0; i < 8; ++i) {
 					TerrainCollapse::SpawnChunk(at + Vector((Random01() - 0.5F) * 300.0F, -260.0F - Random01() * 220.0F), 8.0F + Random01() * 16.0F, "Stone");
@@ -1962,6 +1993,7 @@ void Sandbox::DrawGUI() {
 	ImGui::SetNextWindowSize(ImVec2(430.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 445.0F, 40.0F), ImGuiCond_FirstUseEver);
 	if (g_DebugMan.BeginPanel(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open, DebugMan::PanelSide::Left)) {
+		g_DebugMan.DrawToolWindowControls();
 		if (!InGame()) {
 			ImGui::TextWrapped("Start a game to use the sandbox. Pick \"Sandbox\" in the scenario menu for the full god mode.");
 			ImGui::End();
@@ -2122,6 +2154,8 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
 				ImGui::SeparatorText("From the sky: click where it should land");
 				ToolButtons({Tool::RocketStrike, Tool::RocketBarrage, Tool::CarpetBomb, Tool::Artillery, Tool::NapalmRain, Tool::OrbitalBeam, Tool::BoulderRain});
+				ImGui::SeparatorText("Craft that don't make it: click where it comes down");
+				ToolButtons({Tool::CrashRocket, Tool::CrashDropship});
 				if (!s_Incoming.empty()) {
 					ImGui::TextDisabled("%d on the way", static_cast<int>(s_Incoming.size()));
 				}

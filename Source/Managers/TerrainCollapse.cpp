@@ -1,4 +1,5 @@
 #include "TerrainCollapse.h"
+#include "Actor.h"
 #include "Atom.h"
 #include "Constants.h"
 #include "Material.h"
@@ -413,10 +414,15 @@ namespace {
 			return;
 		}
 		++s_DebrisThisUpdate;
+		// Loose bits drop and scatter; they aren't fired off. (Fast particles of hard material strike sparks where they hit, which made a landing look like a small explosion.)
+		glm::vec2 slow = velocity;
+		if (float speed = glm::length(slow); speed > 1.3F) {
+			slow *= 1.3F / speed;
+		}
 		Color color;
 		color.SetRGBWithIndex(colorIndex);
 		// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
-		MOPixel* pixel = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(position.x, position.y), Vector(velocity.x * 3.0F, velocity.y * 3.0F), new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
+		MOPixel* pixel = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(position.x, position.y), Vector(slow.x * 3.0F, slow.y * 3.0F), new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
 		pixel->SetToHitMOs(false);
 		g_MovableMan.AddParticle(pixel);
 	}
@@ -433,8 +439,7 @@ namespace {
 			}
 		}
 		if (amount > 0) {
-			EffectsParticles::Emit("Dust", Vector(point.x, point.y), Vector(0.0F, -1.5F), 1.0F, amount, rgb);
-			EffectsParticles::Emit("Debris", Vector(point.x, point.y), Vector(0.0F, -3.0F), 1.0F, std::max(amount / 3, 1), rgb);
+			EffectsParticles::Emit("Dust", Vector(point.x, point.y), Vector(0.0F, -0.8F), 1.0F, amount, rgb);
 		}
 	}
 
@@ -969,7 +974,9 @@ namespace {
 				}
 				MovableObject* object = g_MovableMan.GetMOFromID(id);
 				object = object ? object->GetRootParent() : nullptr;
-				if (!object || std::find(struck, struck + struckCount, object) != struck + struckCount) {
+				// Only units are knocked about. Loose objects (dropped weapons, wreckage, unexploded bombs) burst apart when hit this hard, and each one going off under a
+				// landing piece looked like the piece exploding.
+				if (!object || !dynamic_cast<Actor*>(object) || std::find(struck, struck + struckCount, object) != struck + struckCount) {
 					continue;
 				}
 				struck[struckCount++] = object;
@@ -983,7 +990,7 @@ namespace {
 		// Hit harder than its material can take: it cracks.
 		float breakSpeed = (1.6F + body.Toughness / 45.0F) * std::max(TerrainCollapse::GetTuning().BreakStrength, 0.1F);
 		// A thud of dust where it lands (visual only).
-		if (hardestHit > 1.2F) {
+		if (hardestHit > 2.2F) {
 			ThrowDust(hardestPoint, std::min(static_cast<int>((3.0F + static_cast<float>(body.PixelCount) / 120.0F) * hardestHit * 0.5F), 30), body.Materials, body.Colors);
 		}
 		if (hardestHit > breakSpeed && body.BreakCooldown == 0 && body.Generation < c_MaxGeneration && body.PixelCount >= c_MinBreakPixels) {
@@ -1668,7 +1675,7 @@ void TerrainCollapse::Update() {
 			auto pushAt = [&](const glm::vec2& center, float radius) {
 				float distance = glm::length(center - from);
 				float falloff = std::clamp(1.0F - distance / (blast.Reach + radius), 0.0F, 1.0F);
-				return blast.Push * falloff * falloff;
+				return blast.Push * falloff * falloff * std::max(TerrainCollapse::GetTuning().BlastPush, 0.0F);
 			};
 			auto throwBody = [&](Body& body) {
 				float push = pushAt(body.Pos, body.Radius) / (1.0F + body.Mass / 500.0F);

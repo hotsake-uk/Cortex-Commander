@@ -42,6 +42,17 @@ float DebugMan::GetToolScale() const {
 	return std::max(std::clamp(ImGui::GetIO().DisplaySize.y / 720.0F, 1.0F, 2.5F) * m_ToolScale, 0.5F);
 }
 
+void DebugMan::DrawToolWindowControls() {
+	if (ImGui::TreeNode("Size and layout of these windows")) {
+		ImGui::SliderFloat("Size of text and controls", &m_ToolScale, 0.4F, 1.5F, "%.2f");
+		ImGui::SetItemTooltip("How big the tool windows are drawn. 1 is the old size; 0.7 is the usual.");
+		ImGui::SliderFloat("Panel width", &m_PanelWidth, 240.0F, 700.0F, "%.0f");
+		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
+		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
+		ImGui::TreePop();
+	}
+}
+
 void DebugMan::DrawImGui() {
 	UpdateMouseOwnership();
 
@@ -142,6 +153,7 @@ void DebugMan::WorldDebugGUI() {
 	ImGui::SetNextWindowPos(ImVec2(10.0F, 40.0F), ImGuiCond_FirstUseEver);
 	if (BeginPanel("World Debug (F6)", &m_ShowWorldDebug, PanelSide::Left)) {
 		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+		DrawToolWindowControls();
 
 		if (const Scene* scene = g_SceneMan.GetScene(); scene && g_ActivityMan.IsInActivity()) {
 			ImGui::Text("Scene: %s", scene->GetPresetName().c_str());
@@ -286,6 +298,8 @@ void DebugMan::WorldDebugGUI() {
 			ImGui::SetItemTooltip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block.");
 			ImGui::SliderInt("Smallest loose bit of a building that falls", &tuning.MinFittingPixels, 0, 2000);
 			ImGui::SetItemTooltip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
+			ImGui::SliderFloat("How hard explosions throw loose pieces", &tuning.BlastPush, 0.0F, 3.0F, "%.2f");
+			ImGui::SetItemTooltip("0: explosions don't move loose pieces at all. Higher: pieces still moving are thrown harder, and more of the pieces lying at rest near a blast are picked up and thrown.");
 			ImGui::SliderInt("Loose scraps it flattens (pixels)", &tuning.CrushPixels, 0, 300);
 			ImGui::SetItemTooltip("A falling piece goes through loose bits of ground up to this size (leftover scraps of wall, nuggets, grains) instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
 			ImGui::SliderFloat("How hard a landing before a piece cracks", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
@@ -475,6 +489,7 @@ void DebugMan::PhotoModeGUI() {
 void DebugMan::GraphicsLabGUI() {
 	if (BeginPanel("Graphics Lab", &m_ShowGraphicsLab, PanelSide::Right)) {
 		LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+		DrawToolWindowControls();
 		const ImGuiColorEditFlags linearColorFlags = ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR;
 
 		ImGui::SeparatorText("Sky and ambient light");

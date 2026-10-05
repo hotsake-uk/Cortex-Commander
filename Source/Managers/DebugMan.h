@@ -46,6 +46,10 @@ namespace RTE {
 		/// @param name The window's title. @param open Set to false when the player closes it; nullptr for no close button. @param side Where it docks.
 		bool BeginPanel(const char* name, bool* open, PanelSide side);
 
+		/// Draws the controls for the tool windows themselves (how big their text and controls are, how wide the side panels, docked or floating), folded away under a heading.
+		/// For the top of each tool window, so they can be found from any of them.
+		void DrawToolWindowControls();
+
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
