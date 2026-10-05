@@ -244,6 +244,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CloudShadows", { g_PostProcessMan.GetLightingSettings().CloudShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SurfaceStates", { g_PostProcessMan.GetLightingSettings().SurfaceStates = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("TracerLights", { g_PostProcessMan.GetLightingSettings().TracerLights = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("RainSplashes", { g_PostProcessMan.GetLightingSettings().RainSplashes = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherLight", { g_PostProcessMan.GetLightingSettings().WeatherLight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerGlow", { g_PostProcessMan.GetLightingSettings().TracerGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightBrightness", { g_PostProcessMan.GetLightingSettings().TracerLightBrightness = std::stof(reader.ReadPropValue()); });
@@ -451,6 +452,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SurfaceStates", lighting.SurfaceStates);
 	writer.NewPropertyWithValue("TracerLights", lighting.TracerLights);
 	writer.NewPropertyWithValue("WeatherLight", lighting.WeatherLight);
+	writer.NewPropertyWithValue("RainSplashes", lighting.RainSplashes);
 	writer.NewPropertyWithValue("TracerGlow", lighting.TracerGlow);
 	writer.NewPropertyWithValue("TracerLightBrightness", lighting.TracerLightBrightness);
 	writer.NewPropertyWithValue("TracerLightReach", lighting.TracerLightReach);

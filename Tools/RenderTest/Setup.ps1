@@ -123,6 +123,9 @@ $soakAuto = $sandbox.Clone(); $soakAuto.TimeOfDay = 19.5; $soakAuto.WeatherType 
 Write-Scenario "SoakAuto" $soakAuto @("Render Test Sandbox Armies", "Render Test Flood", "Render Test Fire Units", "Render Test Zoom")
 # For performance runs with the CCCP_PERF_LOG environment variable set: blasts on the bunker and the ground, by night (many lights) and by day.
 Write-Scenario "Blast" ($bunker + @{ TimeOfDay = 23 }) @("Render Test Blast")
+Write-Scenario "RainCalm" ($bunker + @{ TimeOfDay = 12; WeatherType = 1; WeatherIntensity = 1; Wind = 0 }) @()
+Write-Scenario "RainWindRight" ($bunker + @{ TimeOfDay = 12; WeatherType = 1; WeatherIntensity = 1; Wind = 380 }) @()
+Write-Scenario "RainWindLeft" ($bunker + @{ TimeOfDay = 12; WeatherType = 1; WeatherIntensity = 1; Wind = -380 }) @()
 Write-Scenario "BlastDay" $bunker @("Render Test Blast")
 # Shadows: soldiers and a lamp in the tutorial bunker by night and by day, each with the shadow effects off for comparison, and the open hills late in the afternoon.
 $noShadows = @{ UnitShadows = 0; SunShadows = 0; ContactShading = 0; CloudShadows = 0; SunDisc = 0 }

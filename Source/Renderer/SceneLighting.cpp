@@ -119,6 +119,7 @@ void SceneLighting::LoadShaders() {
 	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
 	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
+	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
 	m_StainShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Stain.frag");
 	m_TerrainShader = std::make_unique<Shader>("Base.rte/Shaders/TerrainLayer.vert", "Base.rte/Shaders/Terrain.frag");
@@ -1455,19 +1456,44 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PrecipitationShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
 		m_PrecipitationShader->SetInt("rteType", m_Settings.WeatherType);
 		m_PrecipitationShader->SetFloat("rteWind", m_Settings.Wind);
-		m_PrecipitationShader->SetInt("rteSkyline", 0);
+		m_PrecipitationShader->SetInt("rteOccupancy", 0);
+		m_PrecipitationShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
 		m_PrecipitationShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_PrecipitationShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 		m_PrecipitationShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
 		m_PrecipitationShader->SetInt("rteDynamicLight", 1);
 		m_PrecipitationShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
 		glActiveTexture(GL_TEXTURE0);
 		glBindVertexArray(m_EmptyVAO);
 		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
+		// Raindrops splashing on whatever they land on.
+		std::shared_ptr<DepthTexture> splashDepth = playerScreen->GetDepthTexture().lock();
+		if (m_Settings.WeatherType == 1 && m_Settings.RainSplashes > 0.0F && splashDepth) {
+			m_RainSplashShader->Enable();
+			m_RainSplashShader->SetInt("rteSceneDepth", 2);
+			m_RainSplashShader->SetInt("rteOccupancy", 0);
+			m_RainSplashShader->SetInt("rteDynamicLight", 1);
+			// Behind the foreground terrain and objects (z 0), in front of the terrain background (z c_TerrainBGDepth).
+			float splashThresholdZ = c_TerrainBGDepth * 0.5F;
+			m_RainSplashShader->SetFloat("rteForegroundDepth", ((2.0F * splashThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+			m_RainSplashShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+			m_RainSplashShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
+			m_RainSplashShader->SetVector2f("rteScreenSize", screenSize);
+			m_RainSplashShader->SetVector2f("rteScreenOrigin", origin);
+			m_RainSplashShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+			m_RainSplashShader->SetVector2f("rteFall", glm::normalize(glm::vec2(m_Settings.Wind, 640.0F)));
+			m_RainSplashShader->SetFloat("rteAmount", std::clamp(m_Settings.WeatherIntensity * m_Settings.RainSplashes * 0.45F, 0.0F, 1.0F));
+			m_RainSplashShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+			m_RainSplashShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, splashDepth->GetTextureId());
+			glActiveTexture(GL_TEXTURE0);
+			DrawFullscreen();
+		}
 		glDisable(GL_BLEND);
 	}
 

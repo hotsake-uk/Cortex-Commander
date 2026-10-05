@@ -502,6 +502,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Wind (px/s)", &settings.Wind, -400.0F, 400.0F);
 		ImGui::SliderFloat("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		ImGui::SetItemTooltip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
+		ImGui::SliderFloat("Rain splashes", &settings.RainSplashes, 0.0F, 2.0F);
+		ImGui::SetItemTooltip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
 
 		ImGui::SeparatorText("Glows and dynamic lights");
 		ImGui::SliderFloat("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);

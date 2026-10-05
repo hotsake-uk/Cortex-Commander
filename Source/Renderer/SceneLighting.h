@@ -197,6 +197,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_ExposureAdaptShader;
 		std::unique_ptr<Shader> m_ShockwaveShader;
 		std::unique_ptr<Shader> m_PrecipitationShader;
+		std::unique_ptr<Shader> m_RainSplashShader;
 		std::unique_ptr<Shader> m_GodRaysShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		std::unique_ptr<Shader> m_ScorchShader;

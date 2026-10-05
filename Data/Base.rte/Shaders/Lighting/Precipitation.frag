@@ -1,15 +1,14 @@
 // Precipitation.frag
-// Rain streaks and snow flakes, lit by the sky. Hidden under the terrain skyline, so there's no rain under overhangs or in caves.
+// Rain streaks and snow flakes, lit by the sky. Hidden where the ground shelters them from the way they are falling (worked out per drop in the vertex shader).
 #version 330 core
 
 in vec2 quadPos;
 in vec2 worldPos;
 in float dropAlpha;
+flat in float reaches;
 
 out vec4 FragColor;
 
-uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
-uniform vec2 rteGridWorldSize;
 uniform int rteType;
 uniform vec3 rteSkyLight; // Linear sky light, time of day included.
 uniform float rteIntensity;
@@ -18,9 +17,7 @@ uniform vec2 rteScreenSize;
 uniform float rteOwnLight; // The least light rain, snow, ash and dust are drawn with, so they can be seen on a dark night.
 
 void main() {
-	vec2 gridUV = worldPos / rteGridWorldSize;
-	float skyline = texture(rteSkyline, vec2(fract(gridUV.x), 0.5)).r;
-	if (gridUV.y > skyline) {
+	if (reaches < 0.5) {
 		discard;
 	}
 	float alpha = dropAlpha * rteIntensity;

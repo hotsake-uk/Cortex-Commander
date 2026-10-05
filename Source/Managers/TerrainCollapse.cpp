@@ -996,7 +996,7 @@ namespace {
 		}
 		int pare = (neckWidth + 1) / 2;
 		// A window well beyond the blast, since the piece hanging by the neck has to fit inside it to be recognised.
-		int reach = std::min(check.Radius + 90, 220);
+		int reach = std::min(check.Radius + 60, 150);
 		int side = reach * 2 + 1;
 		int left = check.X - reach;
 		int top = check.Y - reach;

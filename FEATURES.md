@@ -127,7 +127,7 @@ Last updated: 5 October 2026.
   - Acid eats soft ground and is used up doing it.
   - Oil burns where it pools.
 - **Loose sand and snow.** Sand, snow, rubble and ash slide and pile at a slope when something disturbs them, and sink in liquid.
-- **Collapsing terrain.** After a big explosion, pieces of ground no longer attached to anything fall as solid bodies with weight. They tip, roll and slide to rest, crack into smaller pieces if they land hard, hit units in their way and can be shot apart as they fall. Pieces of buildings fall too once nothing holds them up.
+- **Collapsing terrain.** After a big explosion, pieces of ground it cut loose fall as solid bodies with weight. Something that was already floating stays up when chipped; cut in two, the smaller part falls. A piece left hanging by a thin neck snaps off. They tip, roll and slide to rest, crack into smaller pieces if they land hard, hit units in their way and can be shot apart as they fall. Pieces of buildings fall too once nothing holds them up.
 - **Burning units.** Flames, napalm, burning ground and lava set units of flesh alight; machines never burn, and lasers, explosions and jetpacks don't set anyone on fire. A burning unit takes damage, panics, runs, and spreads fire to what it touches. Water puts it out.
 - **Steam.** Water on fire, and lava meeting water, throws up steam.
 - **Swimming and drowning.** Units move through liquid instead of destroying it. Wading slows them. Light units float and heavy ones sink. Living soldiers run out of air after 12 seconds under water; robots do not breathe.

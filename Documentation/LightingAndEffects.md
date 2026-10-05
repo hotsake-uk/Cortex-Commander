@@ -102,7 +102,13 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 
 **Collapsing terrain** (`TerrainCollapse`, a gameplay setting, also in F6):
 - **When it checks:** half a second and again a second and a half after a big explosion, it looks around the crater for pieces of terrain no longer touching anything.
-- **What falls:** any piece up to 30,000 pixels that touches no other ground. A bigger one counts as the world and stays.
+- **What falls:** what a blast or digging cuts loose. The system notes how things were before the crater is dug and compares afterwards.
+  - A piece cut from the world falls.
+  - A mass that was already hanging in the air (a floating island, a bunker with nothing under it) stays when it is chipped. Cut in two, the bigger part stays and the smaller falls.
+  - A piece left joined to the rest by a neck of no more than 3 pixels snaps off. One that hung by such a neck before the blast is left.
+  - A piece of more than 30,000 pixels counts as the world and stays.
+- **Tuning** (F6, "What falls, and how"; saved as `CollapseFloatingStays`, `CollapseNeckWidth`, `CollapseMaxPiece`, `CollapseMinFitting`, `CollapseBreakStrength`, `CollapseRestSeconds`): whether floating masses stay, the neck width that snaps (0 for off), the biggest piece that can fall, the smallest loose bit of a building that falls, how hard a landing cracks a piece, and how long a piece lies still before it is ground again.
+- **Landing:** a puff of dust and a few chips in the piece's own colour. No fire or light.
 - **How it falls:** as a rigid body. Its mass and how hard it is to spin come from its materials. It is tested against the ground along its outline, moving no more than a pixel at a time, and where it touches it gets a push with a little bounce and friction (the method rigid body engines such as Box2D use). So a piece tips off a ledge, rolls down a slope and slides to rest. After each push it is lifted clear of the surface (position correction), which is what lets it roll on a corner instead of jamming.
 - **Coming to rest:** a piece becomes ordinary ground again only after lying still for two and a half seconds. Until then it can still tip, roll or be knocked on.
 - **Breaking:** a piece that lands faster than its material can take cracks along jagged lines into smaller pieces, which fall on their own; the tiniest bits fly off as loose particles. Sand and soil break easily, stone needs a long fall, concrete a longer one, and metal doesn't break.
@@ -168,6 +174,8 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
   - A unit can have its own: `HeadlampBrightness = 0` in its INI means it has no lamp, `2` a strong one; `HeadlampColor = Color` gives it a color of its own. Lua: `actor.HeadlampBrightness`, `actor:SetHeadlampColor(r, g, b)`, `actor:ClearHeadlampColor()`.
 - **Aiming dots:** `AimDotsLight` (off; "Aiming dots light the scene" in F6). The dots that show where a weapon points always glow; on, they also cast light on what is around them.
 - **Tracers:** `TracerGlow` (0.8) makes shots with a trail, and the trail, shine in their own color and bloom. `TracerLightBrightness` (0.55) and `TracerLightReach` (28 px) set the light they throw on what they pass.
+- **Weather shelter:** rain, snow, ash and dust are hidden where the ground shelters them from the way they are falling, drop by drop: each drop's line is followed back upwind through the world's grid of solid ground. Wind-driven rain gets in under an overhang on the windward side and leaves a dry strip in the lee of a wall; with no wind it stops at the roof's edge.
+- **Rain splashes:** `RainSplashes` (1; 0 to 2, 0 for none; "Rain splashes" in the Graphics Lab). Little splashes where rain lands on anything it can reach: ground, water, roofs and units. Visual only.
 - **Weather:** `WeatherLight` (0.35) is the least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it.
 
 **Tool windows** (`DockPanels`, on; `PanelWidth`, 380): the Sandbox, World Debug, Graphics Lab, Photo Mode and the other tool windows are panels at the sides of the window, and the game's picture is fitted into the space between them, so nothing covers it. Sandbox and World Debug dock left; the rest dock right; panels on the same side share it. Debug Options has the switch to let them float again, and the panel width.
