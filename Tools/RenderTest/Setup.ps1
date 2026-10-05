@@ -201,5 +201,6 @@ Write-Scenario "Effects" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLe
 Write-Scenario "EffectsDay" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Effects")
 Write-Scenario "ZoomLights" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Zoom", "Render Test Effects")
 Write-Scenario "Colony" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Colony")
+Write-Scenario "Build" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Build")
 Write-Scenario "PlayMenu" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play Menu")
 Write-Scenario "Play" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play")

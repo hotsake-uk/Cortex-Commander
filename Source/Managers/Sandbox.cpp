@@ -35,6 +35,7 @@
 #include "Magazine.h"
 
 #include "imgui/imgui.h"
+#include "glad/gl.h"
 
 #include <cstdlib>
 #include <algorithm>
@@ -43,6 +44,7 @@
 #include <cmath>
 #include <initializer_list>
 #include <list>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -235,6 +237,7 @@ namespace {
 		std::string PresetName;
 		std::string Module;
 		int ModuleID = -1;
+		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
 		int Width = 0; //!< Structures: footprint, for the preview.
 		int Height = 0;
 		float OffsetX = 0.0F;
@@ -248,6 +251,9 @@ namespace {
 		std::vector<const Preset*> Grenades;
 	};
 
+	// The kinds of bunker piece the Build tab offers, as the game's own build menu groups them.
+	constexpr const char* c_StructureGroups[] = {"Bunker Modules", "Bunker Systems", "Bunker Lights", "Bunker Backgrounds", "Bunker Bits", "Bunker Clutter", "Bunker Odds & Ends", "Terrain Objects"};
+	int s_StructureGroup = 0; //!< Which of them the Build tab is listing; one past the last for all.
 	std::vector<Preset> s_Units;
 	std::vector<Preset> s_Brains;
 	std::vector<Preset> s_Items;
@@ -406,7 +412,7 @@ namespace {
 	}
 
 #pragma region Catalogue
-	void AddPresets(std::vector<Preset>& list, const std::list<Entity*>& entities, bool buyableOnly, bool skipBrains) {
+	void AddPresets(std::vector<Preset>& list, const std::list<Entity*>& entities, bool buyableOnly, bool skipBrains, const char* group = "") {
 		for (const Entity* entity: entities) {
 			const SceneObject* object = dynamic_cast<const SceneObject*>(entity);
 			if (!object || (buyableOnly && !object->IsBuyable()) || (skipBrains && object->IsInGroup("Brains"))) {
@@ -419,6 +425,7 @@ namespace {
 			preset.Module = g_PresetMan.GetDataModuleName(preset.ModuleID);
 			std::string faction = preset.Module.substr(0, preset.Module.find(".rte"));
 			preset.Label = preset.PresetName + "  (" + faction + ")";
+			preset.Group = group;
 			if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
 				preset.Width = terrainObject->GetBitmapWidth();
 				preset.Height = terrainObject->GetBitmapHeight();
@@ -466,10 +473,10 @@ namespace {
 			g_PresetMan.GetAllOfType(entities, type);
 			AddPresets(s_Items, entities, true, false);
 		}
-		for (const char* group: {"Bunker Modules", "Bunker Systems", "Bunker Lights"}) {
+		for (const char* group: c_StructureGroups) {
 			std::list<Entity*> entities;
 			g_PresetMan.GetAllOfGroup(entities, group, "All");
-			AddPresets(s_Structures, entities, false, false);
+			AddPresets(s_Structures, entities, false, false, group);
 		}
 		SortAndDedupe(s_Units);
 		SortAndDedupe(s_Brains);
@@ -1416,6 +1423,14 @@ namespace {
 		return topLeft;
 	}
 
+	/// Where a bunker piece's position goes for a click at a place: pieces of terrain are centred on it (and can snap to the bunker grid), doors and the like sit on it.
+	Vector StructurePosition(const Preset& preset, const Vector& click, bool snap) {
+		if (preset.Width > 0) {
+			return StructureCorner(preset, click, snap) - Vector(preset.OffsetX, preset.OffsetY);
+		}
+		return snap ? Vector(std::round(click.m_X / 12.0F) * 12.0F, std::round(click.m_Y / 12.0F) * 12.0F) : click;
+	}
+
 	void PlaceStructure(const Stroke& stroke) {
 		const Preset* preset = ChosenPreset(Tool::Structure, stroke.Choice);
 		const Entity* entity = preset ? g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
@@ -1423,12 +1438,10 @@ namespace {
 		if (!object) {
 			return;
 		}
-		if (dynamic_cast<TerrainObject*>(object)) {
-			// Position plus the bitmap offset is the top left corner.
-			object->SetPos(StructureCorner(*preset, stroke.Position, stroke.Count > 0) - Vector(preset->OffsetX, preset->OffsetY));
-		} else {
+		// The same place the preview showed it.
+		object->SetPos(StructurePosition(*preset, stroke.Position, stroke.Count > 0));
+		if (!dynamic_cast<TerrainObject*>(object)) {
 			// Doors and other moving bunker parts belong to a side, and open for it.
-			object->SetPos(stroke.Position);
 			object->SetTeam(stroke.Team);
 			ActivateSide(stroke.Team);
 		}
@@ -2181,14 +2194,14 @@ namespace {
 		}
 	}
 
-	void PresetList(Tool kind) {
+	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F) {
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
 		ImGui::SetNextItemWidth(-1.0F);
 		ImGui::InputTextWithHint("##filter", "Search...", s_Filter, sizeof(s_Filter));
-		if (ImGui::BeginListBox("##presets", ImVec2(-1.0F, ImGui::GetTextLineHeightWithSpacing() * 8.0F))) {
+		if (ImGui::BeginListBox("##presets", ImVec2(-1.0F, ImGui::GetTextLineHeightWithSpacing() * rows))) {
 			for (int i = 0; i < static_cast<int>(list.size()); ++i) {
-				if (!ContainsIgnoringCase(list[i].Label, s_Filter)) {
+				if (!ContainsIgnoringCase(list[i].Label, s_Filter) || (group && list[i].Group != group)) {
 					continue;
 				}
 				if (ImGui::Selectable(list[i].Label.c_str(), i == choice)) {
@@ -2220,6 +2233,86 @@ namespace {
 		}
 	}
 
+	/// A bunker piece as a picture ImGui can draw: its background and foreground art put together.
+	struct PiecePicture {
+		unsigned int Texture = 0;
+		int Width = 0;
+		int Height = 0;
+		float OffsetX = 0.0F; //!< From the piece's position to the picture's top left corner.
+		float OffsetY = 0.0F;
+	};
+
+	/// Gets the picture of a bunker piece, making it the first time it is asked for. A piece with no art of its own gets an empty picture.
+	const PiecePicture& PictureOf(const Preset& preset) {
+		static std::map<std::string, PiecePicture> pictures;
+		std::string key = preset.ClassName + "/" + preset.Module + "/" + preset.PresetName;
+		if (auto found = pictures.find(key); found != pictures.end()) {
+			return found->second;
+		}
+		PiecePicture& picture = pictures[key];
+		const Entity* entity = g_PresetMan.GetEntityPreset(preset.ClassName, preset.PresetName, preset.ModuleID);
+		std::vector<BITMAP*> layers;
+		if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
+			layers = {terrainObject->GetBGColorBitmap(), terrainObject->GetFGColorBitmap()};
+			picture.OffsetX = terrainObject->GetBitmapOffset().m_X;
+			picture.OffsetY = terrainObject->GetBitmapOffset().m_Y;
+		} else if (const MOSprite* sprite = dynamic_cast<const MOSprite*>(entity)) {
+			layers = {sprite->GetSpriteFrame(0)};
+			picture.OffsetX = sprite->GetSpriteOffset().m_X;
+			picture.OffsetY = sprite->GetSpriteOffset().m_Y;
+		}
+		for (const BITMAP* layer: layers) {
+			if (layer && bitmap_color_depth(const_cast<BITMAP*>(layer)) == 8) {
+				picture.Width = std::max(picture.Width, layer->w);
+				picture.Height = std::max(picture.Height, layer->h);
+			}
+		}
+		if (picture.Width <= 0 || picture.Height <= 0 || picture.Width > 4096 || picture.Height > 4096) {
+			picture.Width = picture.Height = 0;
+			return picture;
+		}
+		PALETTE palette;
+		get_palette(palette);
+		// Palettes come with channels up to 63 or up to 255, depending on who made them.
+		int brightest = 1;
+		for (int i = 0; i < 256; ++i) {
+			brightest = std::max({brightest, static_cast<int>(palette[i].r), static_cast<int>(palette[i].g), static_cast<int>(palette[i].b)});
+		}
+		int scale = brightest <= 63 ? 4 : 1;
+		std::vector<unsigned char> pixels(static_cast<size_t>(picture.Width) * picture.Height * 4, 0);
+		for (const BITMAP* layer: layers) {
+			if (!layer || bitmap_color_depth(const_cast<BITMAP*>(layer)) != 8) {
+				continue;
+			}
+			for (int y = 0; y < layer->h; ++y) {
+				for (int x = 0; x < layer->w; ++x) {
+					int index = layer->line[y][x];
+					if (index == ColorKeys::g_MaskColor) {
+						continue;
+					}
+					unsigned char* pixel = &pixels[(static_cast<size_t>(y) * picture.Width + x) * 4];
+					pixel[0] = static_cast<unsigned char>(std::min(palette[index].r * scale, 255));
+					pixel[1] = static_cast<unsigned char>(std::min(palette[index].g * scale, 255));
+					pixel[2] = static_cast<unsigned char>(std::min(palette[index].b * scale, 255));
+					pixel[3] = 255;
+				}
+			}
+		}
+		GLint boundBefore = 0;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundBefore);
+		glGenTextures(1, &picture.Texture);
+		glBindTexture(GL_TEXTURE_2D, picture.Texture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, picture.Width, picture.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+		glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(boundBefore));
+		return picture;
+	}
+
 	void DrawCursor() {
 		ImGuiIO& io = ImGui::GetIO();
 		const ToolInfo& tool = CurrentTool();
@@ -2242,11 +2335,19 @@ namespace {
 			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
 		} else if (tool.Kind == Tool::Structure) {
-			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice); preset && preset->Width > 0) {
-				// The footprint, where it will land.
-				Vector corner = StructureCorner(*preset, MouseScenePosition(), s_SnapToGrid) - g_CameraMan.GetOffset(0);
-				ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
-				drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(preset->Width) / scale, topLeft.y + static_cast<float>(preset->Height) / scale), white, 0.0F, 0, 1.5F);
+			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice)) {
+				// The piece itself, see-through, exactly where a click will put it, with its outline.
+				const PiecePicture& picture = PictureOf(*preset);
+				if (picture.Width > 0) {
+					Vector corner = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), StructurePosition(*preset, MouseScenePosition(), s_SnapToGrid) + Vector(picture.OffsetX, picture.OffsetY), g_SceneMan.SceneWrapsX());
+					ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
+					ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
+					GameViewRect view = g_WindowMan.GetGameViewRect();
+					drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
+					drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(0.0F, 0.0F), ImVec2(1.0F, 1.0F), IM_COL32(255, 255, 255, 190));
+					drawList->AddRect(topLeft, bottomRight, IM_COL32(255, 255, 255, 110), 0.0F, 0, 1.0F);
+					drawList->PopClipRect();
+				}
 			}
 		} else {
 			float outline = tool.UsesRadius ? static_cast<float>(s_Radius) / scale : 6.0F;
@@ -2258,7 +2359,10 @@ namespace {
 				label += " x" + std::to_string(s_SquadSize);
 			}
 		}
-		drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y - 8.0F), IM_COL32(255, 255, 255, 220), label.c_str());
+		// A bunker piece is shown as itself, so its name would only be in the way.
+		if (tool.Kind != Tool::Structure) {
+			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y - 8.0F), IM_COL32(255, 255, 255, 220), label.c_str());
+		}
 	}
 
 	ImVec2 ToScreen(const Vector& scenePosition) {
@@ -2505,6 +2609,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		stroke.Choice = static_cast<int>(found - list.begin());
 		if (stroke.Kind == Tool::Structure) {
 			stroke.Count = 1;
+			if (std::getenv("CCCP_TEST_POINTER")) {
+				// Test runs that show the building preview: the piece a script placed stays in hand.
+				s_StructureChoice = stroke.Choice;
+				s_ToolIndex = ToolIndex(Tool::Structure);
+			}
 		}
 	}
 	s_Queue.push_back(stroke);
@@ -2815,6 +2924,15 @@ void Sandbox::DrawGUI() {
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
+	// Test runs can't move the real pointer (someone may be using the computer), so they say where it is to be taken to be: CCCP_TEST_POINTER=x,y in window pixels.
+	if (static const char* testPointer = std::getenv("CCCP_TEST_POINTER")) {
+		float x = 0.0F;
+		float y = 0.0F;
+		if (std::sscanf(testPointer, "%f,%f", &x, &y) == 2) {
+			io.MousePos = ImVec2(x, y);
+			io.WantCaptureMouse = false;
+		}
+	}
 	// Paint or spawn with the left mouse button on the world.
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
@@ -3017,10 +3135,6 @@ void Sandbox::DrawGUI() {
 				if (CurrentTool().Kind == Tool::Structure) {
 					s_ToolIndex = ToolIndex(Tool::Unit);
 				}
-				if (ImGui::Button("Build bunkers with the build menu", ImVec2(-1.0F, 0.0F))) {
-					// The game's own build menu, placing straight into the world. Choose Done in its pie menu (or press F7) to come back.
-					Sandbox::SetBuildMode(true);
-				}
 				Tool kind = CurrentTool().Kind;
 				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Item || kind == Tool::Structure) {
 					PresetList(kind);
@@ -3045,6 +3159,37 @@ void Sandbox::DrawGUI() {
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
 			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony")) {
 				ColonyTab();
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Build")) {
+				// Coming to this tab picks up the building tool.
+				static int shownLast = -10;
+				if (ImGui::GetFrameCount() > shownLast + 1 || CurrentTool().Kind != Tool::Structure) {
+					if (ImGui::GetFrameCount() > shownLast + 1) {
+						s_ToolIndex = ToolIndex(Tool::Structure);
+					}
+				}
+				shownLast = ImGui::GetFrameCount();
+				ImGui::TextWrapped("Bunker pieces, placed straight into the world. Pick one: it follows the pointer as it will stand, and a click puts it there. Keep clicking to place more.");
+				ToolButtons({Tool::Structure, Tool::Remove, Tool::None});
+				const int groupCount = static_cast<int>(std::size(c_StructureGroups));
+				std::string groupNames;
+				for (const char* group: c_StructureGroups) {
+					groupNames += std::string(group) + '\0';
+				}
+				groupNames += std::string("Everything") + '\0';
+				ImGui::Combo("Kind", &s_StructureGroup, groupNames.c_str());
+				PresetList(Tool::Structure, s_StructureGroup < groupCount ? c_StructureGroups[s_StructureGroup] : nullptr, 14.0F);
+				ImGui::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
+				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
+				ImGui::TextDisabled("Doors and turrets belong to:");
+				SideChooser();
+				ImGui::Separator();
+				if (ImGui::Button("The game's own build menu", ImVec2(-1.0F, 0.0F))) {
+					// Placing through the game's build menu instead. Choose Done in its pie menu (or press Tab) to come back.
+					Sandbox::SetBuildMode(true);
+				}
+				ImGui::SetItemTooltip("Puts these tools away and opens the build menu the game uses before a battle: everything it offers, moved and placed with the game's own cursor.\nDone in its menu, or Tab, comes back here.");
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Orders")) {
