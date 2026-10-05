@@ -137,10 +137,12 @@ copy external\lib\win\fmod.dll .           # the game needs fmod.dll in the repo
 & ".\Cortex Command.exe"                   # run it from the repository root
 ```
 
+- **Clone to a short path,** such as `C:\Users\<you>\Desktop\Cortex-Commander` or `C:\Games\Cortex-Commander`. Some files in the repository have paths up to 125 characters long, so if the clone folder's own path is longer than about 130 characters, Windows' 260-character limit makes the checkout fail with "Filename too long". Run `git config --global core.longpaths true` before cloning to lift that limit.
 - The first build is slow (several minutes); later ones are quicker.
 - `Build.ps1` finds Visual Studio's MSBuild itself and prints only errors. The full log is written to `Tools\RenderTest\Output\build.log`.
 - Always run the game from the repository root, because `Data/` is found relative to the exe.
 - The first launch creates `Userdata\Settings.ini`. Video settings (lighting, bloom, quality presets) are in the in-game options, and the keys are listed under [Controls](#controls-and-where-things-are).
+- **Per-person files aren't in the repository:** settings, Workbench launch profiles and presets, saved games, screenshots and logs (git ignores `Userdata\`, `Mods\` and the game's log files). Every fresh clone starts on default settings with no mods.
 
 ## Build configurations
 

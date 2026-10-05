@@ -19,6 +19,7 @@ compile_commands.json
 
 
 **/build*
+!Tools/RenderTest/Build.ps1
 
 /enc_temp_folder
 
@@ -93,7 +94,7 @@ CortexCommand.AppImage
 
 # CortexCommand user files
 Screen[sS]hots/
-Mods/
+/Mods/
 User[dD]ata/
 
 allegro.log
