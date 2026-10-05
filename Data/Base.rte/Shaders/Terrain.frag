@@ -22,6 +22,7 @@ uniform float rteTime; // Seconds.
 uniform float rteWind; // Pixels per second, negative blows left.
 uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
 uniform float rteWetness; // 0..1, how wet exposed ground is.
+uniform float rteWaterFoam; // How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth. 0 for none.
 uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
 uniform vec2 rteGridWorldSize;
@@ -128,6 +129,26 @@ bool WeatherReaches(vec2 world) {
 	return true;
 }
 
+// 1 where the terrain pixel at a place is water, 0 otherwise.
+float WaterAt(vec2 uv) {
+	float kind = texture(rteEmissivePalette, vec2(texture(rteTexture, uv).r, 0.0)).b;
+	return (kind > 0.1 && kind < 0.45) ? 1.0 : 0.0;
+}
+
+// How much of the neighbourhood of a pixel is water, 0 to 1: twelve places within two pixels of it.
+float WaterAround(vec2 uv, vec2 texel) {
+	float sum = 0.0;
+	sum += WaterAt(uv + vec2(texel.x, 0.0)) + WaterAt(uv - vec2(texel.x, 0.0)) + WaterAt(uv + vec2(0.0, texel.y)) + WaterAt(uv - vec2(0.0, texel.y));
+	sum += WaterAt(uv + texel) + WaterAt(uv - texel) + WaterAt(uv + vec2(texel.x, -texel.y)) + WaterAt(uv + vec2(-texel.x, texel.y));
+	sum += WaterAt(uv + vec2(2.0 * texel.x, 0.0)) + WaterAt(uv - vec2(2.0 * texel.x, 0.0)) + WaterAt(uv + vec2(0.0, 2.0 * texel.y)) + WaterAt(uv - vec2(0.0, 2.0 * texel.y));
+	return sum / 12.0;
+}
+
+// Froth flickers: each pixel of it a different brightness, changing many times a second, like bubbles forming and bursting.
+float FrothFlicker(vec2 world) {
+	return fract(sin(dot(floor(world) + floor(rteTime * 14.0) * vec2(3.1, 7.7), vec2(12.9898, 78.233))) * 43758.5453);
+}
+
 void main() {
 	vec2 uvDx = dFdx(textureUV);
 	vec2 uvDy = dFdy(textureUV);
@@ -161,6 +182,24 @@ void main() {
 		FragColor = texture(rteTexture, textureUV) * vertexColor;
 	}
 	if (FragColor.a == 0.0) {
+		if (rteIndexed && rteWaterFoam > 0.0) {
+			// Air beside thin, broken water is filled in with froth, so a stream a pixel wide and the stray pixels of a pour read as one frothing fall of water.
+			// Not the air over a pool: that has water right across beneath it.
+			float around = WaterAround(textureUV, texel);
+			if (around > 0.0 && around < 0.45) {
+				float poolBelow = max(WaterAt(textureUV + vec2(-2.0 * texel.x, texel.y)) * WaterAt(textureUV + vec2(2.0 * texel.x, texel.y)),
+				                      WaterAt(textureUV + vec2(-2.0 * texel.x, 2.0 * texel.y)) * WaterAt(textureUV + vec2(2.0 * texel.x, 2.0 * texel.y)) * WaterAt(textureUV + vec2(0.0, 2.0 * texel.y)));
+				float froth = smoothstep(0.0, 0.1, around) * (1.0 - smoothstep(0.3, 0.45, around)) * (1.0 - poolBelow);
+				float flicker = FrothFlicker(worldPos);
+				float alpha = froth * (0.22 + 0.45 * flicker) * min(rteWaterFoam, 1.5);
+				if (alpha > 0.02) {
+					FragColor = vec4(mix(vec3(0.55, 0.78, 0.95), vec3(0.9, 0.97, 1.0), flicker), alpha);
+					NormalOut = vec4(0.5, 0.5, 0.6, 0.5);
+					SurfaceOut = vec4(0.0, 0.0, 0.0, 1.0);
+					return;
+				}
+			}
+		}
 		discard;
 	} else if (rteReplaceColor) {
 		FragColor.rgba = rteColor;
@@ -215,6 +254,15 @@ void main() {
 				// Water is glossy: lamps, fires and the sun glance off it.
 				shine = max(shine, 0.9);
 				FragColor = vec4(water, mix(0.6, 0.8, deep));
+				// Thin, broken water is froth: white and bubbling instead of clear. (Checked only where there's air close by, which the middle of a pool never has.)
+				if (rteWaterFoam > 0.0 && WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) * WaterAt(textureUV - vec2(0.0, 3.0 * texel.y)) < 0.5) {
+					float thin = (1.0 - smoothstep(0.35, 0.75, WaterAround(textureUV, texel))) * min(rteWaterFoam, 1.5);
+					if (thin > 0.0) {
+						float flicker = FrothFlicker(worldPos);
+						FragColor.rgb = mix(FragColor.rgb, mix(vec3(0.6, 0.82, 0.97), vec3(0.93, 0.98, 1.0), flicker), clamp(thin * (0.55 + 0.35 * flicker), 0.0, 1.0));
+						FragColor.a = mix(FragColor.a, 0.92, clamp(thin, 0.0, 1.0));
+					}
+				}
 				// Open to the air above (not under a ceiling of rock): the surface catches the light and laps a little.
 				if (surface && Coverage(textureUV - vec2(0.0, texel.y)) < 0.5) {
 					FragColor = vec4(mix(water, vec3(0.82, 0.94, 1.0), 0.6 + 0.2 * wave), 0.92);
