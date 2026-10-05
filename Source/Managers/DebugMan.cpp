@@ -537,6 +537,9 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Wind (px/s)", &settings.Wind, -400.0F, 400.0F);
 		ImGui::SliderFloat("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		ImGui::SetItemTooltip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
+		ImGui::SeparatorText("Smoke");
+		ImGui::SliderFloat("Soft smoke", &settings.SoftSmoke, 0.0F, 3.0F);
+		ImGui::SetItemTooltip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		ImGui::SeparatorText("Water");
 		ImGui::SliderFloat("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		ImGui::SetItemTooltip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");

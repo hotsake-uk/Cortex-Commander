@@ -788,6 +788,7 @@ namespace {
 		SparkFountain,
 		EmberVent,
 		SmokeStack,
+		SmokePlume,
 		ToxicVent,
 		MistVent,
 		DustDevil,
@@ -819,6 +820,7 @@ namespace {
 	    {"Spark fountain", "A steady jet of sparks."},
 	    {"Ember vent", "Embers drifting up."},
 	    {"Smoke stack", "Thick smoke, which lamps light up and units can't see through."},
+	    {"Smoke plume", "Soft smoke whirled up like the dust devil. Looks only: it doesn't block sight."},
 	    {"Toxic vent", "Green gas with a dim green light."},
 	    {"Mist vent", "Soft pale spray."},
 	    {"Dust devil", "Dust whirled about."},
@@ -976,6 +978,9 @@ namespace {
 					if (every(14)) {
 						SpawnPuffs("Thick Smoke Ball", at, 4, 1);
 					}
+					break;
+				case EffectKind::SmokePlume:
+					EffectsParticles::Emit("Smoke", at + Vector(std::sin(phase * 5.0F) * 12.0F, -std::fmod(phase * 16.0F, 30.0F)), Vector(std::cos(phase * 5.0F) * 3.0F, -2.5F), 0.4F, 1, 0);
 					break;
 				case EffectKind::ToxicVent:
 					g_PostProcessMan.RegisterLight(at, glm::vec3(120.0F, 255.0F, 70.0F), 90.0F, 0.9F);
@@ -2491,7 +2496,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Lights with particles");
 				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
 				ImGui::SeparatorText("Particles and air");
-				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
 				if (ImGui::Button("Remove all effects")) {

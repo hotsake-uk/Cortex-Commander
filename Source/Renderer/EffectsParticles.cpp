@@ -72,6 +72,7 @@ namespace {
 	};
 	std::vector<SmokeEntry> s_Smoke;
 	std::unordered_set<const void*> s_SmokeSeen;
+	int s_SmokeFrame = 0; //!< Frames drawn, for spacing out the soft smoke each smoke sprite trails.
 	std::mutex s_SmokeMutex;
 	std::vector<EffectsParticles::Stain> s_Stains;
 	std::mutex s_StainMutex;
@@ -134,6 +135,12 @@ namespace {
 					case Kind::Ember:
 						Add({request.Position, velocity, 0.0F, RandomRange(0.8F, 2.0F), 1.0F, request.MaterialColor ? color : glm::u8vec3(255, 160, 60), Kind::Ember});
 						break;
+					case Kind::Smoke: {
+						// Soft dark puffs that roll upwards, swell and hang about for a few seconds.
+						unsigned char grey = static_cast<unsigned char>(RandomRange(52.0F, 88.0F));
+						Add({request.Position + RandomDirection() * RandomRange(0.0F, 3.0F), velocity, 0.0F, RandomRange(2.2F, 4.5F), RandomRange(3.0F, 6.0F), request.MaterialColor ? color : glm::u8vec3(grey, grey, grey), Kind::Smoke});
+						break;
+					}
 					case Kind::Mist: {
 						const LightingSettings& mist = g_PostProcessMan.GetLightingSettings();
 						Add({request.Position + RandomDirection() * RandomRange(0.0F, 2.0F) * std::min(mist.WaterMistSize, 1.0F), velocity, 0.0F, RandomRange(0.4F, 0.9F) * std::max(mist.WaterMistLife, 0.05F),
@@ -329,6 +336,8 @@ bool EffectsParticles::Emit(const std::string& kind, const Vector& position, con
 		which = Kind::Debris;
 	} else if (kind == "Mist") {
 		which = Kind::Mist;
+	} else if (kind == "Smoke") {
+		which = Kind::Smoke;
 	} else {
 		return false;
 	}
@@ -558,14 +567,40 @@ unsigned int EffectsParticles::GetPuffTexture() {
 }
 
 void EffectsParticles::RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density) {
-	std::scoped_lock lock(s_SmokeMutex);
-	if (s_SmokeSeen.insert(object).second) {
-		s_Smoke.push_back({position, radius, density});
+	bool puff = false;
+	{
+		std::scoped_lock lock(s_SmokeMutex);
+		if (s_SmokeSeen.insert(object).second) {
+			s_Smoke.push_back({position, radius, density});
+			// Every puff of the game's smoke (a little drawn sprite) trails soft smoke of this kind as well, so smoke billows and hangs instead of being a cluster of sprites.
+			// One soft puff from each sprite every so many frames, each sprite on its own beat.
+			float amount = g_PostProcessMan.GetLightingSettings().SoftSmoke;
+			if (amount > 0.0F) {
+				int period = std::max(static_cast<int>(14.0F / amount), 1);
+				puff = static_cast<int>((reinterpret_cast<uintptr_t>(object) >> 5) + static_cast<uintptr_t>(s_SmokeFrame)) % period == 0;
+			}
+		}
+	}
+	if (puff) {
+		SpawnRequest request;
+		request.EmitKind = static_cast<int>(Kind::Smoke);
+		request.EmitCount = 1;
+		request.EmitSpread = 0.6F;
+		request.Position = position;
+		request.Velocity = glm::vec2(0.0F, -10.0F);
+		request.Energy = 0.0F;
+		request.MaterialColor = 0;
+		request.Hardness = 0.0F;
+		std::scoped_lock lock(s_QueueMutex);
+		if (s_Queue.size() < 2000) {
+			s_Queue.push_back(request);
+		}
 	}
 }
 
 void EffectsParticles::BeginFrame() {
 	std::scoped_lock lock(s_SmokeMutex);
+	++s_SmokeFrame;
 	s_Smoke.clear();
 	s_SmokeSeen.clear();
 }

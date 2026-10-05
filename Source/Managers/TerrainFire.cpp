@@ -486,6 +486,16 @@ void TerrainFire::Update() {
 				g_MovableMan.AddParticle(smoke);
 			}
 		}
+		// Soft smoke whirled up off the fire, the way the sandbox's dust devil whirls dust: it winds from side to side as it climbs. Visual only, and placed by the
+		// clock and the fire's position, not the simulation's random numbers.
+		if (float softSmoke = g_PostProcessMan.GetLightingSettings().SoftSmoke; softSmoke > 0.0F && count >= 2) {
+			long long smokeUpdate = g_TimerMan.GetSimUpdateCount();
+			int every = std::max(static_cast<int>((count >= 6 ? 5.0F : 9.0F) / softSmoke), 1);
+			if ((smokeUpdate + position.x * 7 + position.y * 13) % every == 0) {
+				float wind = static_cast<float>(smokeUpdate) * 0.09F + static_cast<float>(position.x) * 0.37F;
+				EffectsParticles::Emit("Smoke", Vector(static_cast<float>(position.x) + std::sin(wind) * 5.0F, static_cast<float>(position.y) - 5.0F), Vector(std::cos(wind) * 1.6F, -1.6F), 0.35F, 1, 0);
+			}
+		}
 		// Light (render only, so it may flicker with its own random numbers).
 		if (s_Lights.size() < 48 && count >= 2) {
 			s_Lights.push_back({glm::vec2(static_cast<float>(position.x), static_cast<float>(position.y - 4)), std::min(40.0F + static_cast<float>(count) * 2.0F, 130.0F), std::min(0.6F + static_cast<float>(count) * 0.05F, 1.6F)});

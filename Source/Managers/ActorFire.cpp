@@ -1,3 +1,4 @@
+#include "EffectsParticles.h"
 #include "ActorFire.h"
 #include "ADoor.h"
 #include "Actor.h"
@@ -268,6 +269,11 @@ void ActorFire::Update() {
 			flame->SetPos(position + Vector((Random01() - 0.5F) * radius, (Random01() - 0.6F) * radius));
 			flame->SetVel(actor->GetVel() * 0.5F + Vector((Random01() - 0.5F) * 1.0F, -1.0F - Random01()));
 			g_MovableMan.AddParticle(flame);
+		}
+		// And soft smoke winding up off it (visual only).
+		if (g_PostProcessMan.GetLightingSettings().SoftSmoke > 0.0F) {
+			float wind = static_cast<float>(g_TimerMan.GetSimUpdateCount()) * 0.3F;
+			EffectsParticles::Emit("Smoke", position + Vector(std::sin(wind) * 4.0F, -radius * 0.6F), Vector(std::cos(wind) * 1.5F, -1.8F), 0.35F, 1, 0);
 		}
 		// Running burning units set the grass alight, and anyone they bump into.
 		if (Random01() < 0.3F) {

@@ -10,7 +10,7 @@ function EffectsTestScript:UpdateScript()
 		local origin = CameraMan:GetOffset(0);
 		local w = FrameMan.PlayerScreenWidth;
 		local h = FrameMan.PlayerScreenHeight;
-		local names = {"Nuclear glow", "Red alarm", "Blue beacon", "Searchlight", "Disco", "Campfire", "Welding arc", "Fireflies", "Portal", "Spark fountain", "Mist vent", "Lava glow"};
+		local names = {"Nuclear glow", "Red alarm", "Blue beacon", "Searchlight", "Disco", "Campfire", "Welding arc", "Fireflies", "Portal", "Spark fountain", "Smoke plume", "Smoke stack"}; SandboxDo("Fire", origin + Vector(w * 0.5, h * 0.75), 0, 0, 30, "");
 		for i, name in ipairs(names) do
 			local column = (i - 1) % 6;
 			local row = math.floor((i - 1) / 6);
