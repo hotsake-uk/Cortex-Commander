@@ -370,7 +370,8 @@ namespace {
 				const unsigned char* below = materialBitmap->line[y + 1];
 				int left = x > 0 ? x - 1 : (s_WrapsX ? width - 1 : x);
 				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
-				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
+				// Air beside it too: it's the end of a layer on the surface, which may have further to run.
+				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir || materialBitmap->line[y][left] == g_MaterialAir || materialBitmap->line[y][right] == g_MaterialAir) {
 					Activate(x, y, width, height, terrain);
 				} else if (freezing > 0.05F && sweptKind == Liquid::Water && y > 0) {
 					int above = materialBitmap->line[y - 1][x];
@@ -739,7 +740,9 @@ void FluidSim::Update() {
 		bool moved = false;
 		bool gotLower = false;
 		bool swapped = false;
+		bool freeFall = false;
 		if (canMoveTo(x, y + 1)) {
+			freeFall = true;
 			// Falling: faster the longer it falls, drifting the way it was already going, so it pours in an arc.
 			velY = std::min(velY + properties.Gravity, properties.Fall * 4);
 			int steps = std::clamp(velY / 4, kind == Liquid::Powder ? 1 : 2, properties.Fall);
@@ -841,6 +844,71 @@ void FluidSim::Update() {
 					} else {
 						velX = 0;
 					}
+				}
+			}
+		}
+		// Not getting any lower, and at the surface: look along its own row, much further than it can run in a step, for somewhere lower to be.
+		// The look passes through liquid as well as air, since liquid in the way would be pushed along: this is what makes a body of liquid press outwards.
+		// Without it a heap on a wide floor drains by each pixel wandering a little way over the layer below and stopping, which takes minutes and looks as if the heap has set.
+		if (!gotLower && kind != Liquid::Powder && (still & 3) == 1 && canMoveTo(x, y - 1)) {
+			int reach = properties.Flow * 75;
+			for (int side: {heading, -heading}) {
+				int found = 0;
+				for (int step = 1; step <= reach; ++step) {
+					int lookX = x + side * step;
+					int lookY = y;
+					if (!InWorld(lookX, lookY, width, height)) {
+						break;
+					}
+					int material = materialBitmap->line[lookY][lookX];
+					if (material == g_MaterialAir) {
+						if (canMoveTo(lookX, y + 1)) {
+							found = step;
+							break;
+						}
+					} else if (s_Kinds[material] != kind) {
+						break;
+					}
+				}
+				if (found) {
+					targetX = x + side * found;
+					targetY = y + 1;
+					heading = side;
+					moved = true;
+					gotLower = true;
+					break;
+				}
+			}
+		}
+		// Having slipped off an edge it keeps going down the face of the liquid it's part of, to the bottom if it can, in this same step.
+		// One row a step is far too slow: a heap would take the better part of a minute to drain, and looks as if it has set.
+		if (gotLower && !swapped && !freeFall && kind != Liquid::Powder) {
+			int drops = 0;
+			for (int more = 0; more < properties.Flow * 4; ++more) {
+				if (canMoveTo(targetX, targetY + 1)) {
+					// Open air below: from here it falls at its own pace.
+					if (++drops > 2) {
+						break;
+					}
+					++targetY;
+					continue;
+				}
+				drops = 0;
+				bool found = false;
+				for (int step = 1; step <= 4; ++step) {
+					int sideX = targetX + heading * step;
+					if (!canMoveTo(sideX, targetY)) {
+						break;
+					}
+					if (canMoveTo(sideX, targetY + 1)) {
+						targetX = sideX;
+						++targetY;
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					break;
 				}
 			}
 		}
