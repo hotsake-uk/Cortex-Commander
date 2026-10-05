@@ -272,6 +272,23 @@ void DebugMan::WorldDebugGUI() {
 		if (ImGui::Checkbox("Pieces of buildings fall too", &buildingsFall)) {
 			TerrainCollapse::SetBuildingsFall(buildingsFall);
 		}
+		if (ImGui::TreeNode("What falls, and how")) {
+			TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+			ImGui::Checkbox("Floating masses stay up when chipped", &tuning.FloatingStays);
+			ImGui::SetItemTooltip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");
+			ImGui::SliderInt("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
+			ImGui::SetItemTooltip("A piece left joined to the rest by a neck no wider than this breaks off and falls. 0: only pieces cut right through fall.");
+			ImGui::SliderInt("Biggest piece that can fall (pixels)", &tuning.MaxPiecePixels, 500, 200000, "%d", ImGuiSliderFlags_Logarithmic);
+			ImGui::SetItemTooltip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block.");
+			ImGui::SliderInt("Smallest loose bit of a building that falls", &tuning.MinFittingPixels, 0, 2000);
+			ImGui::SetItemTooltip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
+			ImGui::SliderFloat("How hard a landing before a piece cracks", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
+			ImGui::SliderFloat("Seconds lying still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
+			if (ImGui::Button("Back to the usual##collapse")) {
+				tuning = TerrainCollapse::Tuning();
+			}
+			ImGui::TreePop();
+		}
 		bool liquids = FluidSim::IsEnabled();
 		if (ImGui::Checkbox("Flowing liquids", &liquids)) {
 			FluidSim::SetEnabled(liquids);

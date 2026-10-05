@@ -650,6 +650,10 @@ namespace {
 		}
 		int centerX = center.GetFloorIntX();
 		int centerY = center.GetFloorIntY();
+		if (!materialName) {
+			// Dug-out ground may be left hanging. Told before the digging, so it knows what was hanging already.
+			TerrainCollapse::BeginChange(center, static_cast<float>(radius + 30));
+		}
 		bool changed = false;
 		for (int dy = -radius; dy <= radius; ++dy) {
 			for (int dx = -radius; dx <= radius; ++dx) {
@@ -679,9 +683,7 @@ namespace {
 			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(centerX - radius), static_cast<float>(centerY - radius)), static_cast<float>(radius * 2 + 1), static_cast<float>(radius * 2 + 1)));
 			// Liquid around the change may flow into it, and dug-out ground may be left hanging.
 			FluidSim::Disturb(center, static_cast<float>(radius + 2));
-			if (!materialName) {
-				TerrainCollapse::QueueCheck(center, static_cast<float>(radius + 30));
-			}
+
 		}
 	}
 

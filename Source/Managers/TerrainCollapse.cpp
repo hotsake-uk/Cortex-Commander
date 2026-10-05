@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <string>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -26,16 +27,22 @@ using namespace RTE;
 
 bool TerrainCollapse::s_Enabled = true;
 bool TerrainCollapse::s_BuildingsFall = true;
+TerrainCollapse::Tuning TerrainCollapse::s_Tuning;
 
 namespace {
+	/// What was around a blast before it dug its crater, so that what it cut loose can be told from what was already like that.
+	struct Before {
+		std::vector<std::vector<int>> Floating; //!< Each mass that was already hanging in the air: its pixels, sorted.
+		std::vector<std::vector<int>> Hanging; //!< The middle of each piece that was already held on by only a thin neck: its pixels, sorted.
+	};
+
 	struct Check {
 		int X, Y;
 		int Radius;
 		long long DueUpdate; //!< Sim update count when the check runs.
+		std::shared_ptr<Before> Was; //!< Null if nothing is known of how things were.
 	};
 
-	constexpr int c_MaxIslandPixels = 30000; //!< A connected piece bigger than this counts as the world itself and stays put.
-	constexpr int c_MinStructurePixels = 150; //!< Loose bits of a building smaller than this stay where they are: lamps, signs and consoles are drawn hanging in mid-air.
 	constexpr int c_MinBodyPixels = 6; //!< Pieces smaller than this fall as loose particles.
 	constexpr int c_MinBreakPixels = 40; //!< Pieces smaller than this don't crack any further.
 	constexpr int c_MaxGeneration = 4; //!< How many times a piece's pieces may crack again.
@@ -45,7 +52,6 @@ namespace {
 	constexpr float c_MaxSpeed = 9.0F; //!< Pixels per update.
 	constexpr float c_Friction = 0.55F;
 	constexpr float c_Bounce = 0.2F;
-	constexpr int c_RestUpdates = 150; //!< A piece that has lain still for this many updates (two and a half seconds) becomes ordinary ground again. Until then it can still tip, roll or be knocked.
 	constexpr int c_MaxAge = 3600; //!< A piece still moving after this many updates (a minute) is left where it is.
 
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
@@ -385,6 +391,23 @@ namespace {
 		g_MovableMan.AddParticle(pixel);
 	}
 
+	/// A puff of dust and a few chips where a piece lands or breaks, in the colour of what it's made of. Visual only: no fire, no light, nothing that touches the simulation.
+	void ThrowDust(const glm::vec2& point, int amount, const std::vector<unsigned char>& materials, const std::vector<unsigned char>& colors) {
+		unsigned int rgb = 0;
+		for (size_t i = 0; i < materials.size(); i += 7) {
+			if (materials[i]) {
+				Color color;
+				color.SetRGBWithIndex(colors[i]);
+				rgb = EffectsParticles::ColorToRGB(color);
+				break;
+			}
+		}
+		if (amount > 0) {
+			EffectsParticles::Emit("Dust", Vector(point.x, point.y), Vector(0.0F, -1.5F), 1.0F, amount, rgb);
+			EffectsParticles::Emit("Debris", Vector(point.x, point.y), Vector(0.0F, -3.0F), 1.0F, std::max(amount / 3, 1), rgb);
+		}
+	}
+
 	/// Turns everything left of a body into loose particles.
 	void Crumble(Body& body) {
 		for (int y = 0; y < body.H; ++y) {
@@ -533,7 +556,7 @@ namespace {
 		}
 		body.Done = true;
 		// A burst of dust where it broke (visual only).
-		EffectsParticles::SpawnExplosion(Vector(hitPoint.x, hitPoint.y), std::min(500.0F + static_cast<float>(body.PixelCount) * 3.0F, 6000.0F));
+		ThrowDust(hitPoint, std::min(6 + body.PixelCount / 60, 40), body.Materials, body.Colors);
 	}
 
 	/// Brings a body up to date after pixels have been shot, dug or blasted off it: its outline (what it collides with), mass and centre are worked out again
@@ -778,7 +801,9 @@ namespace {
 					pushed = true;
 				}
 			}
-			body.Spin *= 0.995F;
+			// Rolling and sliding lose a little each touch.
+			body.Spin *= 0.985F;
+			body.Vel *= 0.995F;
 			// The impulses set its speed right, but where it was going still has a corner in the ground: a body turns about its middle, so a piece
 			// rolling on a corner dips that corner in. Take the move anyway and lift it out along the surface (what rigid body engines call position
 			// correction). Without this a piece stopped dead at its first touch. A piece that is all but still is left alone, so it doesn't creep.
@@ -829,10 +854,10 @@ namespace {
 		}
 
 		// Hit harder than its material can take: it cracks.
-		float breakSpeed = 1.6F + body.Toughness / 45.0F;
+		float breakSpeed = (1.6F + body.Toughness / 45.0F) * std::max(TerrainCollapse::GetTuning().BreakStrength, 0.1F);
 		// A thud of dust where it lands (visual only).
 		if (hardestHit > 1.2F) {
-			EffectsParticles::SpawnExplosion(Vector(hardestPoint.x, hardestPoint.y), std::min((200.0F + static_cast<float>(body.PixelCount) * 2.0F) * hardestHit * 0.3F, 3000.0F));
+			ThrowDust(hardestPoint, std::min(static_cast<int>((3.0F + static_cast<float>(body.PixelCount) / 120.0F) * hardestHit * 0.5F), 30), body.Materials, body.Colors);
 		}
 		if (hardestHit > breakSpeed && body.BreakCooldown == 0 && body.Generation < c_MaxGeneration && body.PixelCount >= c_MinBreakPixels) {
 			Break(body, hardestPoint, hardestHit / breakSpeed);
@@ -840,10 +865,13 @@ namespace {
 		}
 
 		float movedBy = glm::length(body.Pos - startPos) + std::abs(body.Angle - startAngle) * body.Radius;
-		bool calm = movedBy < 0.2F && glm::length(body.Vel) < 0.3F && std::abs(body.Spin) * body.Radius < 0.3F && responses > 0;
-		body.Still = calm ? body.Still + 1 : 0;
+		// Lying on something and all but stopped. (How far it moved doesn't count: a piece rocking on the pixel grid is lifted clear and drops back for ever.)
+		bool calm = responses > 0 && glm::length(body.Vel) < 0.35F && std::abs(body.Spin) * body.Radius < 0.35F;
+		// A wobble sets the count back a little rather than to nothing, or a piece rocking on a point never comes to rest.
+		body.Still = calm ? body.Still + 1 : (movedBy > 2.0F ? 0 : std::max(body.Still - 4, 0));
 		Stamp(terrain, body);
-		if (body.Still >= c_RestUpdates || body.Age > c_MaxAge) {
+		// A piece that has lain still long enough becomes ordinary ground again. Until then it can still tip, roll or be knocked.
+		if (body.Still >= std::max(static_cast<int>(TerrainCollapse::GetTuning().RestSeconds * 60.0F), 5) || body.Age > c_MaxAge) {
 			Settle(terrain, body);
 		}
 	}
@@ -881,7 +909,7 @@ namespace {
 			int x = key % width;
 			int y = key / width;
 			int material = materialBitmap->line[y][x];
-			if (static_cast<int>(piece.size()) > c_MaxIslandPixels || s_Fixed[material]) {
+			if (static_cast<int>(piece.size()) > TerrainCollapse::GetTuning().MaxPiecePixels || s_Fixed[material]) {
 				floating = false;
 				break;
 			}
@@ -923,7 +951,7 @@ namespace {
 		}
 		s_Touched.insert(s_Touched.end(), s_FillSeen.begin(), s_FillSeen.end());
 		// A small loose bit that's mostly building material is a fitting drawn in mid-air, not rubble.
-		if (floating && structurePixels * 2 > static_cast<int>(piece.size()) && static_cast<int>(piece.size()) < c_MinStructurePixels) {
+		if (floating && structurePixels * 2 > static_cast<int>(piece.size()) && static_cast<int>(piece.size()) < TerrainCollapse::GetTuning().MinFittingPixels) {
 			floating = false;
 		}
 		// With buildings set to stay up, anything with building material in it holds, and holds up the ground joined to it.
@@ -940,11 +968,355 @@ namespace {
 		return true;
 	}
 
+	/// What share of some pixels are in a sorted list of pixels. Every third pixel is tried, which is plenty to tell most from few.
+	float ShareIn(const std::vector<int>& pixels, const std::vector<int>& sortedList) {
+		int tried = 0;
+		int found = 0;
+		for (size_t i = 0; i < pixels.size(); i += 3) {
+			++tried;
+			found += std::binary_search(sortedList.begin(), sortedList.end(), pixels[i]) ? 1 : 0;
+		}
+		return tried > 0 ? static_cast<float>(found) / static_cast<float>(tried) : 0.0F;
+	}
+
+	/// A piece of ground held on by only a thin neck.
+	struct HangingPiece {
+		std::vector<int> Core; //!< The pixels of its middle (what's left of it when its edges are pared away), sorted.
+		std::vector<int> Cut; //!< The pixels across the neck that have to go for it to come free.
+	};
+
+	/// Finds pieces of ground around a point that are joined to the rest by a neck no wider than the tuning allows.
+	/// How: pare the edges off all the ground in a window around the point, by half the neck width. Thin necks vanish; what's left in separate lumps that don't reach
+	/// the window's edge are the middles of hanging pieces. Each is grown back out to its own edge, and the ground touching it beyond that is its neck.
+	void FindHangingPieces(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found) {
+		found.clear();
+		int neckWidth = TerrainCollapse::GetTuning().NeckWidth;
+		if (neckWidth <= 0) {
+			return;
+		}
+		int pare = (neckWidth + 1) / 2;
+		// A window well beyond the blast, since the piece hanging by the neck has to fit inside it to be recognised.
+		int reach = std::min(check.Radius + 90, 220);
+		int side = reach * 2 + 1;
+		int left = check.X - reach;
+		int top = check.Y - reach;
+		auto solidAt = [&](int x, int y) {
+			if (y >= s_Height) {
+				return true;
+			}
+			if (!WrapInWorld(x, y)) {
+				return false;
+			}
+			int material = materialBitmap->line[y][x];
+			return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[y * s_Width + x] & c_Falling);
+		};
+		static std::vector<unsigned char> solid;
+		static std::vector<unsigned char> pared;
+		static std::vector<int> owner;
+		static std::vector<int> depth;
+		static std::vector<int> queue;
+		size_t cells = static_cast<size_t>(side) * side;
+		solid.assign(cells, 0);
+		pared.assign(cells, 0);
+		owner.assign(cells, -1);
+		for (int wy = 0; wy < side; ++wy) {
+			for (int wx = 0; wx < side; ++wx) {
+				solid[static_cast<size_t>(wy) * side + wx] = solidAt(left + wx, top + wy) ? 1 : 0;
+			}
+		}
+		// Rows of solid first, then columns of those: a pixel is kept if everything within the paring distance of it is solid. Beyond the window counts as solid.
+		static std::vector<unsigned char> rows;
+		rows.assign(cells, 0);
+		for (int wy = 0; wy < side; ++wy) {
+			for (int wx = 0; wx < side; ++wx) {
+				bool all = true;
+				for (int d = -pare; d <= pare && all; ++d) {
+					int x = wx + d;
+					all = x < 0 || x >= side || solid[static_cast<size_t>(wy) * side + x];
+				}
+				rows[static_cast<size_t>(wy) * side + wx] = all ? 1 : 0;
+			}
+		}
+		for (int wy = 0; wy < side; ++wy) {
+			for (int wx = 0; wx < side; ++wx) {
+				bool all = true;
+				for (int d = -pare; d <= pare && all; ++d) {
+					int y = wy + d;
+					all = y < 0 || y >= side || rows[static_cast<size_t>(y) * side + wx];
+				}
+				pared[static_cast<size_t>(wy) * side + wx] = all ? 1 : 0;
+			}
+		}
+		static constexpr int steps4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+		int lumps = 0;
+		for (int start = 0; start < static_cast<int>(cells); ++start) {
+			if (!pared[start] || owner[start] >= 0) {
+				continue;
+			}
+			int lump = lumps++;
+			queue.clear();
+			queue.push_back(start);
+			owner[start] = lump;
+			bool reachesEdge = false;
+			for (size_t next = 0; next < queue.size(); ++next) {
+				int cell = queue[next];
+				int wx = cell % side;
+				int wy = cell / side;
+				if (wx == 0 || wy == 0 || wx == side - 1 || wy == side - 1) {
+					reachesEdge = true;
+				}
+				for (const auto& step: steps4) {
+					int nx = wx + step[0];
+					int ny = wy + step[1];
+					if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+						continue;
+					}
+					int neighbour = ny * side + nx;
+					if (pared[neighbour] && owner[neighbour] < 0) {
+						owner[neighbour] = lump;
+						queue.push_back(neighbour);
+					}
+				}
+			}
+			if (reachesEdge || queue.size() < 6) {
+				continue;
+			}
+			// Grow the lump back out through the ground around it, as far as was pared off and one more, to get the whole piece and the root of its neck.
+			size_t coreSize = queue.size();
+			depth.assign(queue.size(), 0);
+			bool spillsOut = false;
+			for (size_t next = 0; next < queue.size(); ++next) {
+				int cell = queue[next];
+				int wx = cell % side;
+				int wy = cell / side;
+				if (depth[next] > pare) {
+					continue;
+				}
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = wx + dx;
+						int ny = wy + dy;
+						if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+							spillsOut = spillsOut || solidAt(left + nx, top + ny);
+							continue;
+						}
+						int neighbour = ny * side + nx;
+						if (solid[neighbour] && owner[neighbour] != lump) {
+							if (pared[neighbour]) {
+								// Ran into another lump's middle without a neck between: not a hanging piece.
+								spillsOut = true;
+								continue;
+							}
+							owner[neighbour] = lump;
+							queue.push_back(neighbour);
+							depth.push_back(depth[next] + 1);
+						}
+					}
+				}
+			}
+			if (spillsOut) {
+				continue;
+			}
+			HangingPiece piece;
+			bool fixed = false;
+			bool building = false;
+			for (size_t i = 0; i < queue.size(); ++i) {
+				int wx = queue[i] % side;
+				int wy = queue[i] / side;
+				int x = left + wx;
+				int y = top + wy;
+				WrapInWorld(x, y);
+				int material = materialBitmap->line[y][x];
+				fixed = fixed || s_Fixed[material];
+				building = building || s_Structure[material];
+				if (i < coreSize) {
+					piece.Core.push_back(y * s_Width + x);
+				}
+				// Ground touching the piece that isn't part of it is its neck.
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = wx + dx;
+						int ny = wy + dy;
+						if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+							continue;
+						}
+						int neighbour = ny * side + nx;
+						if (solid[neighbour] && owner[neighbour] != lump) {
+							int cutX = left + nx;
+							int cutY = top + ny;
+							WrapInWorld(cutX, cutY);
+							piece.Cut.push_back(cutY * s_Width + cutX);
+						}
+					}
+				}
+			}
+			std::sort(piece.Cut.begin(), piece.Cut.end());
+			piece.Cut.erase(std::unique(piece.Cut.begin(), piece.Cut.end()), piece.Cut.end());
+			// Nothing to cut means it's loose already; a lot to cut means it isn't held by a neck at all.
+			if (piece.Cut.empty() || static_cast<int>(piece.Cut.size()) > neckWidth * 4 + 6 || fixed || (building && !TerrainCollapse::BuildingsFall())) {
+				continue;
+			}
+			for (int key: piece.Cut) {
+				int material = materialBitmap->line[key / s_Width][key % s_Width];
+				fixed = fixed || s_Fixed[material];
+			}
+			if (fixed) {
+				continue;
+			}
+			// What's beyond the neck has to be a real body of ground, with a middle of its own: otherwise the "neck" is only the tip of a spike on the piece.
+			bool anchored = false;
+			{
+				static std::vector<int> beyond;
+				static std::vector<unsigned char> seen;
+				seen.assign(cells, 0);
+				beyond.clear();
+				for (int key: piece.Cut) {
+					int wx = ((key % s_Width) - left) % s_Width;
+					wx = wx < 0 ? wx + s_Width : wx;
+					int wy = key / s_Width - top;
+					if (wx >= 0 && wy >= 0 && wx < side && wy < side) {
+						beyond.push_back(wy * side + wx);
+						seen[static_cast<size_t>(wy) * side + wx] = 1;
+					}
+				}
+				for (size_t next = 0; next < beyond.size() && !anchored && next < 4000; ++next) {
+					int wx = beyond[next] % side;
+					int wy = beyond[next] / side;
+					for (const auto& step: steps4) {
+						int nx = wx + step[0];
+						int ny = wy + step[1];
+						if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+							anchored = anchored || solidAt(left + nx, top + ny);
+							continue;
+						}
+						int neighbour = ny * side + nx;
+						if (!solid[neighbour] || seen[neighbour] || owner[neighbour] == lump) {
+							continue;
+						}
+						if (pared[neighbour]) {
+							anchored = true;
+							break;
+						}
+						seen[neighbour] = 1;
+						beyond.push_back(neighbour);
+					}
+				}
+			}
+			if (!anchored) {
+				continue;
+			}
+			std::sort(piece.Core.begin(), piece.Core.end());
+			found.push_back(std::move(piece));
+		}
+	}
+
+	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
+	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check) {
+		auto was = std::make_shared<Before>();
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		std::vector<int> piece;
+		s_Touched.clear();
+		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(s_Height - 1, check.Y + check.Radius); ++y) {
+			for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
+				int x = rawX;
+				if (!WrapInWorld(x, y)) {
+					continue;
+				}
+				int key = y * s_Width + x;
+				int material = materialBitmap->line[y][x];
+				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || (s_State[key] & (c_Seen | c_Falling))) {
+					continue;
+				}
+				if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece)) {
+					std::sort(piece.begin(), piece.end());
+					was->Floating.push_back(piece);
+				}
+			}
+		}
+		for (int key: s_Touched) {
+			s_State[key] &= static_cast<unsigned char>(~(c_Seen | c_Supported));
+		}
+		s_Touched.clear();
+		std::vector<HangingPiece> hanging;
+		FindHangingPieces(materialBitmap, check, hanging);
+		for (HangingPiece& found: hanging) {
+			was->Hanging.push_back(std::move(found.Core));
+		}
+		return was;
+	}
+
+	/// Lifts a loose piece out of the terrain as a body; it's drawn back in where it moves to.
+	void LiftPiece(SLTerrain* terrain, const std::vector<int>& piece) {
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int width = s_Width;
+		int minX = width;
+		int minY = s_Height;
+		int maxX = -1;
+		int maxY = -1;
+		for (int pieceKey: piece) {
+			minX = std::min(minX, pieceKey % width);
+			maxX = std::max(maxX, pieceKey % width);
+			minY = std::min(minY, pieceKey / width);
+			maxY = std::max(maxY, pieceKey / width);
+		}
+		// A piece lying across the seam of a wrapping scene is left alone.
+		if (maxX - minX > width / 2) {
+			return;
+		}
+		Body body;
+		body.W = maxX - minX + 1;
+		body.H = maxY - minY + 1;
+		body.Materials.assign(static_cast<size_t>(body.W) * body.H, 0);
+		body.Colors.assign(static_cast<size_t>(body.W) * body.H, 0);
+		for (int pieceKey: piece) {
+			int px = pieceKey % width;
+			int py = pieceKey / width;
+			int local = (py - minY) * body.W + (px - minX);
+			body.Materials[local] = materialBitmap->line[py][px];
+			body.Colors[local] = static_cast<unsigned char>(terrain->GetFGColorPixel(px, py));
+			body.Stamped.emplace_back(pieceKey, local);
+			s_State[pieceKey] |= c_Falling;
+		}
+		if (!FinishBody(body, glm::vec2(static_cast<float>(minX), static_cast<float>(minY)))) {
+			return;
+		}
+		body.Spin = (Random01() - 0.5F) * 0.006F;
+		s_CollapsedCount += body.PixelCount;
+		s_Bodies.push_back(std::move(body));
+	}
+
 	void RunCheck(SLTerrain* terrain, const Check& check) {
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		int width = materialBitmap->w;
 		int height = materialBitmap->h;
 		bool wrapX = g_SceneMan.SceneWrapsX();
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+
+		// Pieces left hanging by a thin neck snap off: the neck goes, and the piece is then loose like any other. Ones that hung like that before the blast are left.
+		std::vector<HangingPiece> hanging;
+		FindHangingPieces(materialBitmap, check, hanging);
+		for (const HangingPiece& found: hanging) {
+			bool wasLikeThat = false;
+			for (size_t i = 0; check.Was && i < check.Was->Hanging.size() && !wasLikeThat; ++i) {
+				// The same piece, not merely inside a bigger one that hung before.
+				const std::vector<int>& before = check.Was->Hanging[i];
+				wasLikeThat = before.size() < found.Core.size() * 2 && found.Core.size() < before.size() * 2 && ShareIn(found.Core, before) > 0.5F;
+			}
+			if (wasLikeThat) {
+				continue;
+			}
+			for (int key: found.Cut) {
+				int x = key % width;
+				int y = key / width;
+				ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
+				terrain->SetMaterialPixel(x, y, g_MaterialAir);
+				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+			}
+		}
+
+		// Everything loose around the point, and for each, which mass that was already hanging in the air it came from (-1 for none: it was part of the world).
+		std::vector<std::vector<int>> loose;
+		std::vector<int> cameFrom;
 		std::vector<int> piece;
 		s_Touched.clear();
 		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
@@ -961,47 +1333,31 @@ namespace {
 				if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece)) {
 					continue;
 				}
-				int minX = width;
-				int minY = height;
-				int maxX = -1;
-				int maxY = -1;
-				for (int pieceKey: piece) {
-					minX = std::min(minX, pieceKey % width);
-					maxX = std::max(maxX, pieceKey % width);
-					minY = std::min(minY, pieceKey / width);
-					maxY = std::max(maxY, pieceKey / width);
+				int origin = -1;
+				for (size_t i = 0; tuning.FloatingStays && check.Was && i < check.Was->Floating.size() && origin < 0; ++i) {
+					if (ShareIn(piece, check.Was->Floating[i]) > 0.5F) {
+						origin = static_cast<int>(i);
+					}
 				}
-				// A piece lying across the seam of a wrapping scene is left alone.
-				if (maxX - minX > width / 2) {
-					continue;
-				}
-				// Lift it out of the terrain as a body; it's drawn back in where it moves to.
-				Body body;
-				body.W = maxX - minX + 1;
-				body.H = maxY - minY + 1;
-				body.Materials.assign(static_cast<size_t>(body.W) * body.H, 0);
-				body.Colors.assign(static_cast<size_t>(body.W) * body.H, 0);
-				for (int pieceKey: piece) {
-					int px = pieceKey % width;
-					int py = pieceKey / width;
-					int local = (py - minY) * body.W + (px - minX);
-					body.Materials[local] = materialBitmap->line[py][px];
-					body.Colors[local] = static_cast<unsigned char>(terrain->GetFGColorPixel(px, py));
-					body.Stamped.emplace_back(pieceKey, local);
-					s_State[pieceKey] |= c_Falling;
-				}
-				if (!FinishBody(body, glm::vec2(static_cast<float>(minX), static_cast<float>(minY)))) {
-					continue;
-				}
-				body.Spin = (Random01() - 0.5F) * 0.006F;
-				s_CollapsedCount += body.PixelCount;
-				s_Bodies.push_back(std::move(body));
+				loose.push_back(piece);
+				cameFrom.push_back(origin);
 			}
 		}
 		for (int key: s_Touched) {
 			s_State[key] &= static_cast<unsigned char>(~(c_Seen | c_Supported));
 		}
 		s_Touched.clear();
+		// What was cut from the world falls. Of the parts of a mass that was already in the air, the biggest stays where it was and the rest fall:
+		// chip the corner off a floating island and only the chip falls; cut it in two and the smaller half does.
+		for (size_t i = 0; i < loose.size(); ++i) {
+			bool falls = cameFrom[i] < 0;
+			for (size_t other = 0; !falls && other < loose.size(); ++other) {
+				falls = other != i && cameFrom[other] == cameFrom[i] && (loose[other].size() > loose[i].size() || (loose[other].size() == loose[i].size() && other < i));
+			}
+			if (falls) {
+				LiftPiece(terrain, loose[i]);
+			}
+		}
 	}
 
 	/// Makes a lumpy boulder of a material in the air at a point.
@@ -1079,6 +1435,21 @@ void TerrainCollapse::QueueCheck(const Vector& position, float radius) {
 	s_Pending.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), 0});
 }
 
+void TerrainCollapse::BeginChange(const Vector& position, float radius) {
+	if (!s_Enabled) {
+		return;
+	}
+	Check check{static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), 0, nullptr};
+	Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
+	// Only once the system has seen this scene (its tables are for it); before that the check runs without knowing how things were.
+	if (terrain && scene == s_Scene && s_TablesBuilt && s_State.size() == static_cast<size_t>(terrain->GetMaterialBitmap()->w) * static_cast<size_t>(terrain->GetMaterialBitmap()->h)) {
+		check.Was = LookBefore(terrain, check);
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	s_Pending.push_back(check);
+}
+
 void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const char* materialName) {
 	if (!s_Enabled) {
 		return;
@@ -1114,17 +1485,20 @@ void TerrainCollapse::Update() {
 	}
 	long long now = g_TimerMan.GetSimUpdateCount();
 	std::vector<ChunkRequest> chunks;
+	std::vector<Check> pending;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		// Sort for a fixed order, whatever order the gib code queued them in. The crater is still being dug by the blast's particles,
 		// so check after half a second and again after a second and a half.
 		std::sort(s_Pending.begin(), s_Pending.end(), [](const Check& a, const Check& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
-		for (const Check& check: s_Pending) {
-			s_Scheduled.push_back({check.X, check.Y, check.Radius, now + 30});
-			s_Scheduled.push_back({check.X, check.Y, check.Radius, now + 90});
-		}
-		s_Pending.clear();
+		pending.swap(s_Pending);
 		chunks.swap(s_ChunkRequests);
+	}
+	for (const Check& check: pending) {
+		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
+		std::shared_ptr<Before> was = check.Was ? check.Was : LookBefore(terrain, check);
+		s_Scheduled.push_back({check.X, check.Y, check.Radius, now + 30, was});
+		s_Scheduled.push_back({check.X, check.Y, check.Radius, now + 90, was});
 	}
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);

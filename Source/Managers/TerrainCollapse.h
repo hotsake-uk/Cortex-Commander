@@ -11,6 +11,25 @@ namespace RTE {
 	class TerrainCollapse {
 
 	public:
+		/// The numbers that decide what falls and how, for tuning (World Debug, F6) and saved with the settings.
+		struct Tuning {
+			bool FloatingStays = true; //!< A mass that was already hanging in the air before a blast stays up when it's chipped; if it's cut in two, the bigger part stays and the smaller falls. Off, anything touching nothing falls.
+			int NeckWidth = 3; //!< A piece held on by a neck of ground no wider than this many pixels snaps off. 0 turns this off.
+			int MaxPiecePixels = 30000; //!< A connected piece bigger than this counts as the world itself and never falls.
+			int MinFittingPixels = 150; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
+			float BreakStrength = 1.0F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
+			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
+		};
+
+		/// Gets the tuning numbers, to read or change.
+		static Tuning& GetTuning() { return s_Tuning; }
+
+		/// Tells the system that terrain around a point is about to be removed by something other than an explosion (a digging tool), then checks for loose pieces afterwards.
+		/// Call it before the terrain changes, from the main thread: it notes what was already hanging in the air there, so only what the change cuts loose falls.
+		/// @param position Centre of the change, in scene coordinates.
+		/// @param radius How far around it to look.
+		static void BeginChange(const Vector& position, float radius);
+
 		/// Gets whether collapsing terrain is on (a gameplay setting).
 		static bool IsEnabled() { return s_Enabled; }
 
@@ -49,5 +68,6 @@ namespace RTE {
 	private:
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
 		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.
+		static Tuning s_Tuning; //!< What falls and how.
 	};
 } // namespace RTE
