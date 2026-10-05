@@ -300,6 +300,9 @@ int UInputMan::MouseUsedByPlayer() const {
 
 void UInputMan::DisableMouseMoving(bool disable) {
 	if (disable) {
+		// The window is losing the mouse (alt-tab, a tool window taking it): it must not stay fenced into a player's part of the window. The fence is put
+		// back by whatever asked for it the next time it asks.
+		SDL_SetWindowMouseRect(g_WindowMan.GetWindow(), nullptr);
 		SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), false);
 		m_DisableMouseMoving = true;
 		m_PrepareToEnableMouseMoving = false;
@@ -564,8 +567,18 @@ void UInputMan::ForceMouseWithinPlayerScreen(bool force, int whichPlayer) {
 	if (force) {
 		if (g_WindowMan.FullyCoversAllDisplays() || m_EnableMultiMouseKeyboard) {
 			ForceMouseWithinBox(0, 0, m_PlayerScreenMouseBounds.w, m_PlayerScreenMouseBounds.h, whichPlayer);
+		} else if (g_WindowMan.AnyWindowHasFocus() && !m_DisableMouseMoving) {
+			// The fence is in the window's own pixels. The game's picture may be scaled and set in from the window's corner (a maximised window, bars at the sides,
+			// docked tool panels), so the player's part of it is worked out through where the picture is; fencing to the game's own size instead shut the mouse into
+			// the top left part of a bigger window.
+			GameViewRect view = g_WindowMan.GetGameViewRect();
+			float scaleX = view.w / std::max(static_cast<float>(g_WindowMan.GetResX()) * resMultiplier, 1.0F);
+			float scaleY = view.h / std::max(static_cast<float>(g_WindowMan.GetResY()) * resMultiplier, 1.0F);
+			SDL_Rect fence = {static_cast<int>(view.x + static_cast<float>(m_PlayerScreenMouseBounds.x) * scaleX), static_cast<int>(view.y + static_cast<float>(m_PlayerScreenMouseBounds.y) * scaleY),
+			                  std::max(static_cast<int>(static_cast<float>(m_PlayerScreenMouseBounds.w) * scaleX), 1), std::max(static_cast<int>(static_cast<float>(m_PlayerScreenMouseBounds.h) * scaleY), 1)};
+			SDL_SetWindowMouseRect(g_WindowMan.GetWindow(), &fence);
 		} else {
-			SDL_SetWindowMouseRect(g_WindowMan.GetWindow(), &m_PlayerScreenMouseBounds);
+			SDL_SetWindowMouseRect(g_WindowMan.GetWindow(), nullptr);
 		}
 	} else {
 		// Set the mouse bounds to the whole window so ForceMouseWithinBox is not stuck being relative to some player screen, because it can still bind the mouse even if this doesn't.

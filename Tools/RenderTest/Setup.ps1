@@ -199,3 +199,4 @@ Write-Scenario "DunkNight" ($sandbox + @{ TimeOfDay = 22; WeatherType = 0; DayLe
 Write-Scenario "UnderwaterLight" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Underwater Light")
 Write-Scenario "Effects" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Effects")
 Write-Scenario "EffectsDay" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Effects")
+Write-Scenario "ZoomLights" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Zoom", "Render Test Effects")

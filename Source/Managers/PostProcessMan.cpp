@@ -262,9 +262,9 @@ void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, in
 	for (const Shockwave& shimmer: m_Shimmers) {
 		Vector relativePos = shimmer.m_Pos - boxPos;
 		if (g_SceneMan.SceneWrapsX()) {
-			if (relativePos.m_X < -sceneWidth * 0.5F) {
+			if (relativePos.m_X < (static_cast<float>(boxWidth) - sceneWidth) * 0.5F) {
 				relativePos.m_X += sceneWidth;
-			} else if (relativePos.m_X > sceneWidth * 0.5F) {
+			} else if (relativePos.m_X > (static_cast<float>(boxWidth) + sceneWidth) * 0.5F) {
 				relativePos.m_X -= sceneWidth;
 			}
 		}

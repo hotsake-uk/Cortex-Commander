@@ -484,9 +484,9 @@ void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int h
 		}
 		glm::vec2 position = particle.Position - screenOrigin;
 		if (wraps) {
-			if (position.x < -sceneWidth * 0.5F) {
+			if (position.x < (static_cast<float>(width) - sceneWidth) * 0.5F) {
 				position.x += sceneWidth;
-			} else if (position.x > sceneWidth * 0.5F) {
+			} else if (position.x > (static_cast<float>(width) + sceneWidth) * 0.5F) {
 				position.x -= sceneWidth;
 			}
 		}
@@ -514,9 +514,9 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		}
 		glm::vec2 position = particle.Position - screenOrigin;
 		if (wraps) {
-			if (position.x < -sceneWidth * 0.5F) {
+			if (position.x < (static_cast<float>(width) - sceneWidth) * 0.5F) {
 				position.x += sceneWidth;
-			} else if (position.x > sceneWidth * 0.5F) {
+			} else if (position.x > (static_cast<float>(width) + sceneWidth) * 0.5F) {
 				position.x -= sceneWidth;
 			}
 		}
@@ -545,9 +545,9 @@ void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int hei
 		}
 		glm::vec2 position = particle.Position - screenOrigin;
 		if (wraps) {
-			if (position.x < -sceneWidth * 0.5F) {
+			if (position.x < (static_cast<float>(width) - sceneWidth) * 0.5F) {
 				position.x += sceneWidth;
-			} else if (position.x > sceneWidth * 0.5F) {
+			} else if (position.x > (static_cast<float>(width) + sceneWidth) * 0.5F) {
 				position.x -= sceneWidth;
 			}
 		}
@@ -612,9 +612,9 @@ void EffectsParticles::GetSmoke(const glm::vec2& screenOrigin, int width, int he
 	for (const SmokeEntry& entry: s_Smoke) {
 		glm::vec2 position = entry.Position - screenOrigin;
 		if (wraps) {
-			if (position.x < -sceneWidth * 0.5F) {
+			if (position.x < (static_cast<float>(width) - sceneWidth) * 0.5F) {
 				position.x += sceneWidth;
-			} else if (position.x > sceneWidth * 0.5F) {
+			} else if (position.x > (static_cast<float>(width) + sceneWidth) * 0.5F) {
 				position.x -= sceneWidth;
 			}
 		}

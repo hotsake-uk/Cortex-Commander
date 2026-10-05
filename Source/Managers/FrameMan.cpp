@@ -170,13 +170,35 @@ void FrameMan::SetCameraZoom(float zoom) {
 	}
 }
 
+void FrameMan::StepCameraZoom(bool in) {
+	static constexpr float steps[] = {0.4F, 0.5F, 0.75F, 1.0F, 1.5F, 2.0F};
+	float zoom = m_CameraZoomTarget;
+	if (in) {
+		for (float step: steps) {
+			if (step > zoom + 0.01F) {
+				SetCameraZoom(step);
+				return;
+			}
+		}
+	} else {
+		for (int i = static_cast<int>(std::size(steps)) - 1; i >= 0; --i) {
+			if (steps[i] < zoom - 0.01F) {
+				SetCameraZoom(steps[i]);
+				return;
+			}
+		}
+	}
+}
+
 void FrameMan::UpdateCameraZoom() {
 	// Only running games zoom: menus, editors, the build phase and the buy menu lay their screens out for the real resolution, so the view eases back to normal for them.
 	const GameActivity* game = dynamic_cast<const GameActivity*>(g_ActivityMan.GetActivity());
 	bool canZoom = g_ActivityMan.IsInActivity() && game && game->GetActivityState() == Activity::ActivityState::Running && !game->AnyPlayerInScreenMenu();
 	float target = canZoom ? m_CameraZoomTarget : 1.0F;
 	float zoom = m_CameraZoom;
-	if (!canZoom || std::abs(target - zoom) < 0.01F) {
+	// The step to the target is taken at once when close, and the whole way in one go to and from the whole-number zooms would be jarring, so it eases; but it
+	// never rests between: a view held at 1.07x is soft all over.
+	if (!canZoom || std::abs(target - zoom) < 0.02F) {
 		zoom = target;
 	} else {
 		zoom += (target - zoom) * 0.35F;
@@ -1016,6 +1038,15 @@ void FrameMan::Draw() {
 			if (zoomed) {
 				// Scale the view to the player's screen, then its HUD layer over it.
 				FloatRect screenRect(screenOffset.m_X, screenOffset.m_Y, static_cast<float>(GetUnzoomedPlayerScreenWidth()), static_cast<float>(GetUnzoomedPlayerScreenHeight()));
+				// Zoomed in, each pixel of the world is enlarged whole, so pixel art stays sharp. Zoomed out, several pixels of the world share one of the screen
+				// and are averaged; picking one of them instead would make the picture crawl as the camera moves.
+				if (std::shared_ptr<Texture> view = m_PlayerScreen->GetColorTexture().lock()) {
+					GLint filter = m_CameraZoom > 1.0F ? GL_NEAREST : GL_LINEAR;
+					glBindTexture(GL_TEXTURE_2D, view->GetTextureId());
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+					glBindTexture(GL_TEXTURE_2D, 0);
+				}
 				Draw::DrawTexture(m_PlayerScreen->GetColorTexture().lock().get(), screenRect);
 				m_BackBuffer->End();
 				m_BackBuffer->Begin(false);

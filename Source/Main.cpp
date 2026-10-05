@@ -244,7 +244,7 @@ void PollSDLEvents() {
 		}
 		// Camera zoom: Ctrl + mouse wheel in any game, or the wheel alone in the sandbox's god view (where it isn't needed for switching weapons).
 		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
-			g_FrameMan.SetCameraZoom(g_FrameMan.GetCameraZoom() * (sdlEvent.wheel.y > 0.0F ? 1.15F : 1.0F / 1.15F));
+			g_FrameMan.StepCameraZoom(sdlEvent.wheel.y > 0.0F);
 			continue;
 		}
 		switch (sdlEvent.type) {

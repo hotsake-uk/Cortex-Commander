@@ -88,6 +88,11 @@ namespace RTE {
 		/// Gets the zoom the views are drawn with right now (easing towards GetCameraZoom).
 		float GetCurrentCameraZoom() const { return m_CameraZoom; }
 
+		/// Steps the camera zoom to the next of the zooms that keep pixels clean: a half, three quarters, normal, one and a half, double (and 0.4, the furthest out).
+		/// At a half and at double every pixel of the world is exactly four of the screen's or a quarter of one; in between is as near as the screen's own pixels allow.
+		/// @param in True to zoom in a step, false to zoom out.
+		void StepCameraZoom(bool in);
+
 		/// Gets the width of each player's screen in screen pixels, whatever the zoom.
 		int GetUnzoomedPlayerScreenWidth() const;
 

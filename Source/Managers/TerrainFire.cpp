@@ -525,9 +525,9 @@ void TerrainFire::GetBurning(const glm::vec2& screenOrigin, int width, int heigh
 	for (const auto& [key, pixel]: s_Burning) {
 		glm::vec2 position = glm::vec2(static_cast<float>(pixel.X), static_cast<float>(pixel.Y)) - screenOrigin;
 		if (wraps) {
-			if (position.x < -sceneWidth * 0.5F) {
+			if (position.x < (static_cast<float>(width) - sceneWidth) * 0.5F) {
 				position.x += sceneWidth;
-			} else if (position.x > sceneWidth * 0.5F) {
+			} else if (position.x > (static_cast<float>(width) + sceneWidth) * 0.5F) {
 				position.x -= sceneWidth;
 			}
 		}
