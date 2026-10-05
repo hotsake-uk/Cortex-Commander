@@ -260,6 +260,10 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d pieces moving, %d pixels fell)", TerrainCollapse::GetFallingCount(), TerrainCollapse::GetCollapsedCount());
+		bool buildingsFall = TerrainCollapse::BuildingsFall();
+		if (ImGui::Checkbox("Pieces of buildings fall too", &buildingsFall)) {
+			TerrainCollapse::SetBuildingsFall(buildingsFall);
+		}
 		bool liquids = FluidSim::IsEnabled();
 		if (ImGui::Checkbox("Flowing liquids", &liquids)) {
 			FluidSim::SetEnabled(liquids);

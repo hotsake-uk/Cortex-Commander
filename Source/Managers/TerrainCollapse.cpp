@@ -25,6 +25,7 @@
 using namespace RTE;
 
 bool TerrainCollapse::s_Enabled = true;
+bool TerrainCollapse::s_BuildingsFall = true;
 
 namespace {
 	struct Check {
@@ -49,6 +50,7 @@ namespace {
 
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
+	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
 	bool s_TablesBuilt = false;
@@ -56,6 +58,7 @@ namespace {
 	void BuildTables() {
 		s_Fixed.fill(false);
 		s_Structure.fill(false);
+		s_Flimsy.fill(false);
 		s_Density.fill(1.0F);
 		s_Toughness.fill(60.0F);
 		for (int id = 1; id < 256; ++id) {
@@ -65,6 +68,7 @@ namespace {
 			}
 			s_Density[id] = std::clamp(material->GetPixelDensity(), 0.05F, 50.0F);
 			s_Toughness[id] = std::clamp(material->GetIntegrity(), 1.0F, 600.0F);
+			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
 			const std::string& name = material->GetPresetName();
 			for (const char* word: {"Door", "Level End", "Test", "Xenocronium"}) {
 				if (name.find(word) != std::string::npos) {
@@ -132,6 +136,7 @@ namespace {
 		int BreakCooldown = 0;
 		bool Done = false;
 		bool Wet = false; //!< Whether it was in liquid last update.
+		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
 	};
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
@@ -164,7 +169,7 @@ namespace {
 			return false;
 		}
 		int material = materialBitmap->line[y][x];
-		return material != g_MaterialAir && !FluidSim::IsLiquid(material);
+		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material);
 	}
 
 	/// Works out a body's mass, centre, inertia and outline from its bitmap. Returns false if nothing is left of it.
@@ -240,6 +245,7 @@ namespace {
 				if (body.Materials[local]) {
 					body.Materials[local] = 0;
 					--body.PixelCount;
+					body.Damaged = true;
 				}
 				continue;
 			}
@@ -285,7 +291,7 @@ namespace {
 					continue;
 				}
 				int existing = materialBitmap->line[wy][wx];
-				if (existing != g_MaterialAir) {
+				if (existing != g_MaterialAir && !s_Flimsy[existing]) {
 					if (!FluidSim::IsLiquid(existing)) {
 						continue;
 					}
@@ -484,6 +490,102 @@ namespace {
 		EffectsParticles::SpawnExplosion(Vector(hitPoint.x, hitPoint.y), std::min(500.0F + static_cast<float>(body.PixelCount) * 3.0F, 6000.0F));
 	}
 
+	/// Brings a body up to date after pixels have been shot, dug or blasted off it: its outline (what it collides with), mass and centre are worked out again
+	/// from what's left, and if it has come apart, each part becomes a body of its own. Call while the body is lifted out of the terrain.
+	void Rebuild(Body& body) {
+		body.Damaged = false;
+		body.Still = 0;
+		// The connected parts of what's left (joined at corners counts, as it does for terrain).
+		std::vector<int> label(body.Materials.size(), -1);
+		std::vector<std::vector<int>> parts;
+		std::vector<int> stack;
+		for (int start = 0; start < static_cast<int>(label.size()); ++start) {
+			if (!body.Materials[start] || label[start] >= 0) {
+				continue;
+			}
+			int id = static_cast<int>(parts.size());
+			parts.emplace_back();
+			stack.clear();
+			stack.push_back(start);
+			label[start] = id;
+			while (!stack.empty()) {
+				int local = stack.back();
+				stack.pop_back();
+				parts[id].push_back(local);
+				int x = local % body.W;
+				int y = local / body.W;
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = x + dx;
+						int ny = y + dy;
+						if (nx < 0 || ny < 0 || nx >= body.W || ny >= body.H) {
+							continue;
+						}
+						int neighbour = ny * body.W + nx;
+						if (body.Materials[neighbour] && label[neighbour] < 0) {
+							label[neighbour] = id;
+							stack.push_back(neighbour);
+						}
+					}
+				}
+			}
+		}
+		if (parts.size() <= 1) {
+			// Still one piece: the same body, around its new centre of mass.
+			glm::vec2 oldCenter = body.Center;
+			glm::vec2 oldPos = body.Pos;
+			if (!FinishBody(body, glm::vec2(0.0F))) {
+				body.Done = true;
+				return;
+			}
+			body.Pos = ToWorld(body, body.Center - oldCenter, oldPos, body.Angle);
+			return;
+		}
+		for (const std::vector<int>& part: parts) {
+			if (static_cast<int>(part.size()) < c_MinBodyPixels) {
+				for (int local: part) {
+					glm::vec2 offset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
+					ThrowDebris(body.Materials[local], body.Colors[local], ToWorld(body, offset, body.Pos, body.Angle), body.Vel);
+				}
+				continue;
+			}
+			int minX = body.W;
+			int minY = body.H;
+			int maxX = 0;
+			int maxY = 0;
+			for (int local: part) {
+				minX = std::min(minX, local % body.W);
+				maxX = std::max(maxX, local % body.W);
+				minY = std::min(minY, local / body.W);
+				maxY = std::max(maxY, local / body.W);
+			}
+			Body piece;
+			piece.W = maxX - minX + 1;
+			piece.H = maxY - minY + 1;
+			piece.Materials.assign(static_cast<size_t>(piece.W) * piece.H, 0);
+			piece.Colors.assign(static_cast<size_t>(piece.W) * piece.H, 0);
+			for (int local: part) {
+				int index = (local / body.W - minY) * piece.W + (local % body.W - minX);
+				piece.Materials[index] = body.Materials[local];
+				piece.Colors[index] = body.Colors[local];
+			}
+			if (!FinishBody(piece, glm::vec2(0.0F))) {
+				continue;
+			}
+			glm::vec2 centerOffset = glm::vec2(static_cast<float>(minX), static_cast<float>(minY)) + piece.Center - body.Center;
+			piece.Pos = ToWorld(body, centerOffset, body.Pos, body.Angle);
+			piece.Angle = body.Angle;
+			glm::vec2 arm = piece.Pos - body.Pos;
+			piece.Vel = body.Vel + body.Spin * glm::vec2(-arm.y, arm.x);
+			piece.Spin = body.Spin;
+			piece.Generation = body.Generation;
+			piece.BreakCooldown = body.BreakCooldown;
+			piece.Age = body.Age;
+			s_NewBodies.push_back(std::move(piece));
+		}
+		body.Done = true;
+	}
+
 	/// A body has stopped: it stays in the terrain as ordinary ground.
 	void Settle(SLTerrain* terrain, Body& body) {
 		for (const auto& [key, local]: body.Stamped) {
@@ -507,6 +609,12 @@ namespace {
 		if (body.PixelCount < c_MinBodyPixels) {
 			Crumble(body);
 			return;
+		}
+		if (body.Damaged) {
+			Rebuild(body);
+			if (body.Done) {
+				return;
+			}
 		}
 		if (body.Pos.y - body.Radius > static_cast<float>(s_Height)) {
 			// Fell out of the bottom of the world.
@@ -744,6 +852,10 @@ namespace {
 		s_Touched.insert(s_Touched.end(), s_FillSeen.begin(), s_FillSeen.end());
 		// A small loose bit that's mostly building material is a fitting drawn in mid-air, not rubble.
 		if (floating && structurePixels * 2 > static_cast<int>(piece.size()) && static_cast<int>(piece.size()) < c_MinStructurePixels) {
+			floating = false;
+		}
+		// With buildings set to stay up, anything with building material in it holds, and holds up the ground joined to it.
+		if (floating && structurePixels > 0 && !TerrainCollapse::BuildingsFall()) {
 			floating = false;
 		}
 		if (!floating) {

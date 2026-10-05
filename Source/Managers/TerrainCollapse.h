@@ -17,6 +17,12 @@ namespace RTE {
 		/// Sets whether collapsing terrain is on.
 		static void SetEnabled(bool enabled) { s_Enabled = enabled; }
 
+		/// Gets whether pieces of buildings (concrete, metal and the like) fall once nothing holds them. Off, only natural ground falls (a gameplay setting).
+		static bool BuildingsFall() { return s_BuildingsFall; }
+
+		/// Sets whether pieces of buildings fall.
+		static void SetBuildingsFall(bool fall) { s_BuildingsFall = fall; }
+
 		/// Queues a check for floating terrain around a crater. Thread safe.
 		/// @param position Centre of the crater, in scene coordinates.
 		/// @param radius How far around it to look.
@@ -42,5 +48,6 @@ namespace RTE {
 
 	private:
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
+		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.
 	};
 } // namespace RTE
