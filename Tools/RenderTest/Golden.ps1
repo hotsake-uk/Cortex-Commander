@@ -11,6 +11,11 @@ param(
 # missing layers, broken passes and colour shifts, not a soldier that moved. Exit code 0 when everything passes, 1 otherwise.
 . (Join-Path $PSScriptRoot "Common.ps1")
 Add-Type -AssemblyName System.Drawing
+# The scenes are compared with the game's own content only: whatever mods the player has installed must not change them (and loading thirty mods would only slow it down).
+if (-not $env:CCCP_MODS_DIR) { $env:CCCP_MODS_DIR = "ModsTest"; $clearModsDir = $true }
+$testMods = Join-Path $RepoRoot $env:CCCP_MODS_DIR
+if (-not (Test-Path $testMods)) { New-Item -ItemType Directory -Path $testMods | Out-Null }
+Copy-Item -Recurse -Force (Join-Path $PSScriptRoot "RenderTest.rte") $testMods
 
 $goldenDir = Join-Path $PSScriptRoot "Golden"
 if (-not (Test-Path $goldenDir)) { New-Item -ItemType Directory -Path $goldenDir | Out-Null }

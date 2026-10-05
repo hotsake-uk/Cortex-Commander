@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex Commander Workbench</title>
+<style>
+:root {
+	--bg: #14161b; --panel: #1c1f27; --panel2: #232733; --line: #2e3342; --text: #e6e8ee; --dim: #9099ad;
+	--accent: #f2b63d; --good: #4fc37a; --bad: #ef6a5b; --info: #5aa9f0; --warn: #e0a23a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 18px; padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+h1 span { color: var(--accent); }
+h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; align-items: center; }
+.chip { padding: 3px 10px; border-radius: 99px; background: var(--panel2); border: 1px solid var(--line); color: var(--dim); font-size: 12px; white-space: nowrap; }
+.chip b { color: var(--text); font-weight: 600; }
+.chip.on { border-color: var(--good); color: var(--good); }
+.chip.busy { border-color: var(--accent); color: var(--accent); }
+nav { display: flex; gap: 2px; padding: 0 22px; background: var(--panel); border-bottom: 1px solid var(--line); }
+nav button { background: none; border: 0; color: var(--dim); padding: 10px 16px; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+nav button.sel { color: var(--text); border-bottom-color: var(--accent); }
+nav button:hover { color: var(--text); }
+main { padding: 20px 22px 60px; max-width: 1500px; margin: 0 auto; }
+section { display: none; }
+section.sel { display: block; }
+.bar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.bar .grow { flex: 1; }
+button.act { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+button.act:hover:not(:disabled) { border-color: var(--accent); }
+button.act:disabled { opacity: .45; cursor: default; }
+button.act.primary { background: var(--accent); color: #1b1503; border-color: var(--accent); font-weight: 600; }
+button.act.small { padding: 3px 9px; font-size: 12.5px; }
+input[type=text], select, input[type=number] { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+th { text-align: left; font-weight: 600; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+tr.mod:hover td { background: #20242e; }
+.name { font-weight: 600; }
+.sub { color: var(--dim); font-size: 12.5px; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+.pill.active { background: #17382a; color: var(--good); }
+.pill.parked { background: #3a2a14; color: var(--warn); }
+.pill.clean { background: #17382a; color: var(--good); }
+.pill.problems { background: #40201c; color: var(--bad); }
+.pill.untested { background: var(--panel2); color: var(--dim); }
+.pill.running { background: #3b3113; color: var(--accent); }
+.pill.queued { background: var(--panel2); color: var(--info); }
+.pill.done { background: #17382a; color: var(--good); }
+.pill.failed { background: #40201c; color: var(--bad); }
+.problems-box { margin-top: 6px; background: #12141a; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 12px/1.5 Consolas, monospace; color: #d4b7b2; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.card p { margin: 4px 0 12px; color: var(--dim); }
+.scene { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+.scene .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.scene figure { margin: 0; }
+.scene figcaption { color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+.scene img { width: 100%; display: block; border-radius: 4px; background: #000; image-rendering: pixelated; cursor: zoom-in; }
+pre.log { background: #0f1116; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: 12px/1.5 Consolas, monospace; max-height: 62vh; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
+.muted { color: var(--dim); }
+.right { text-align: right; white-space: nowrap; }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #40201c; color: #ffd9d3; border: 1px solid var(--bad); padding: 9px 16px; border-radius: 8px; display: none; z-index: 20; }
+#zoom { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; align-items: center; justify-content: center; z-index: 30; cursor: zoom-out; }
+#zoom img { max-width: 96vw; max-height: 94vh; image-rendering: pixelated; }
+a { color: var(--info); cursor: pointer; text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+	<h1><span>Cortex Commander</span> Workbench</h1>
+	<div class="chips" id="chips"></div>
+	<button class="act primary" id="play">Play the game</button>
+</header>
+<nav id="tabs">
+	<button data-tab="mods" class="sel">Mods</button>
+	<button data-tab="tests">Tests</button>
+	<button data-tab="builds">Builds</button>
+	<button data-tab="jobs">Jobs</button>
+</nav>
+<main>
+	<section id="mods" class="sel">
+		<div class="bar">
+			<input type="text" id="filter" placeholder="Find a mod..." style="width: 240px">
+			<select id="show"><option value="all">All mods</option><option value="active">Active</option><option value="parked">Parked</option><option value="problems">With problems</option><option value="untested">Untested</option></select>
+			<span class="muted" id="modCount"></span>
+			<span class="grow"></span>
+			<button class="act" data-do="testParked" title="Tests each parked mod on its own. The ones that come through clean are moved to Mods.">Test parked mods</button>
+			<button class="act" data-do="testActive" title="Tests each active mod on its own. Any that fail are parked.">Re-check active mods</button>
+			<button class="act" data-do="fixMods" title="Applies the known text fixes (Tools/Mods/Fix-Mods.py) to every mod.">Apply known fixes</button>
+			<button class="act" data-do="openMods">Open Mods folder</button>
+		</div>
+		<table><thead><tr><th style="width: 30%">Mod</th><th>State</th><th>Last test</th><th>Made for</th><th class="right">Size</th><th class="right">Actions</th></tr></thead><tbody id="modRows"></tbody></table>
+		<p class="muted">Active mods are in <b>Mods\</b> and load with the game. Parked mods are in <b>ModsParked\</b> and don't. A test loads the mod in a sandboxed copy of the game, puts its buyable units and weapons through a short scripted fight, and reports what the console said. It can't judge missions, scenes or anything that happens later in a long game.</p>
+	</section>
+
+	<section id="tests">
+		<div class="cards" style="margin-bottom: 18px">
+			<div class="card">
+				<h2>Regression scenes</h2>
+				<p>Captures seven fixed scenes and compares each with its stored baseline picture. Catches accidental changes to the look.</p>
+				<button class="act primary" data-do="golden">Run comparison</button>
+				<button class="act" data-do="goldenUpdate" title="Use after a deliberate change to the look.">Re-record baselines</button>
+			</div>
+			<div class="card">
+				<h2>Capture a scenario</h2>
+				<p>Starts the game in one of the test scenarios and saves a picture of it.</p>
+				<select id="scenario" style="max-width: 190px"></select>
+				<input type="number" id="wait" value="8" min="2" max="120" style="width: 64px" title="Seconds to let the scene run first">
+				<button class="act" data-do="capture">Capture</button>
+				<div id="lastCapture" style="margin-top: 10px"></div>
+			</div>
+		</div>
+		<div id="scenes"></div>
+	</section>
+
+	<section id="builds">
+		<div class="cards">
+			<div class="card">
+				<h2>Test build <span class="muted">(Debug Release)</span></h2>
+				<p>The copy of the game the tests use. Build it after changing the engine. <span id="exeTest"></span></p>
+				<button class="act primary" data-do="buildDebug">Build</button>
+			</div>
+			<div class="card">
+				<h2>Game build <span class="muted">(Final)</span></h2>
+				<p>The copy you play. It can't be replaced while the game is open. <span id="exeFinal"></span></p>
+				<button class="act primary" data-do="buildFinal" id="buildFinal">Build</button>
+			</div>
+			<div class="card">
+				<h2>Repository</h2>
+				<p id="repo"></p>
+				<label class="muted">Copies of the game testing at once: <input type="number" id="slots" min="1" max="6" value="3" style="width: 58px"></label>
+			</div>
+		</div>
+	</section>
+
+	<section id="jobs">
+		<div class="bar"><span class="muted">Everything the Workbench has been asked to do this session. Click a job to read its output.</span></div>
+		<table style="margin-bottom: 16px"><thead><tr><th>#</th><th style="width: 38%">Job</th><th>State</th><th>Result</th><th class="right">Time</th><th class="right"></th></tr></thead><tbody id="jobRows"></tbody></table>
+		<h2 id="logTitle" class="muted">No job selected</h2>
+		<pre class="log" id="log"></pre>
+	</section>
+</main>
+<div id="toast"></div>
+<div id="zoom"><img alt=""></div>
+<script>
+const $ = (selector) => document.querySelector(selector);
+let data = null, openMods = new Set(), selectedJob = null, lastCaptureJob = null;
+
+function text(value) { const span = document.createElement('span'); span.textContent = value ?? ''; return span.innerHTML; }
+function toast(message) { const box = $('#toast'); box.textContent = message; box.style.display = 'block'; clearTimeout(toast.timer); toast.timer = setTimeout(() => box.style.display = 'none', 5000); }
+async function ask(request) {
+	const reply = await fetch('/api/do', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) }).then((r) => r.json()).catch(() => ({ error: 'The Workbench is not answering. Is it still running?' }));
+	if (reply.error) toast(reply.error);
+	refresh();
+	return reply;
+}
+function ago(seconds) {
+	const minutes = Math.round((Date.now() / 1000 - seconds) / 60);
+	if (minutes < 1) return 'just now';
+	if (minutes < 60) return minutes + ' min ago';
+	if (minutes < 60 * 24) return Math.round(minutes / 60) + ' h ago';
+	return Math.round(minutes / 1440) + ' d ago';
+}
+function duration(seconds) { return seconds >= 60 ? Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's' : seconds + 's'; }
+function picture(path, stamp) { return '/picture?path=' + encodeURIComponent(path) + (stamp ? '&t=' + stamp : ''); }
+
+function drawChips() {
+	const chips = [];
+	chips.push(`<span class="chip ${data.gameRunning ? 'on' : ''}">Game: <b>${data.gameRunning ? 'running' : 'closed'}</b></span>`);
+	chips.push(`<span class="chip ${data.running ? 'busy' : ''}">Jobs: <b>${data.running}</b> running, <b>${data.queued}</b> waiting</span>`);
+	const active = data.mods.filter((mod) => mod.where === 'active').length;
+	chips.push(`<span class="chip">Mods: <b>${active}</b> active, <b>${data.mods.length - active}</b> parked</span>`);
+	if (data.repo.head) chips.push(`<span class="chip" title="${text(data.repo.head)}">${text(data.repo.branch)} · <b>${text(data.repo.head.split(' ')[0])}</b>${data.repo.changed ? ' · ' + data.repo.changed + ' changed' : ''}</span>`);
+	$('#chips').innerHTML = chips.join('');
+}
+
+function drawMods() {
+	const filter = $('#filter').value.toLowerCase(), show = $('#show').value;
+	const rows = [];
+	let shown = 0;
+	for (const mod of data.mods) {
+		const verdict = mod.result ? mod.result.verdict : 'untested';
+		if (filter && !(mod.name + ' ' + mod.title + ' ' + mod.author).toLowerCase().includes(filter)) continue;
+		if ((show === 'active' || show === 'parked') && mod.where !== show) continue;
+		if ((show === 'problems' || show === 'untested') && verdict !== show) continue;
+		shown++;
+		const open = openMods.has(mod.name);
+		const problems = mod.result && mod.result.problems.length ? mod.result.problems : null;
+		const testState = mod.busy ? '<span class="pill running">testing...</span>' : `<span class="pill ${verdict}">${verdict === 'problems' ? problems.length + (problems.length === 1 ? ' problem' : ' problems') : verdict}</span>`;
+		rows.push(`<tr class="mod"><td><div class="name">${text(mod.title || mod.name)}</div><div class="sub">${text(mod.name)}${mod.author ? ' · ' + text(mod.author) : ''}</div>
+			${open && mod.description ? `<div class="sub" style="margin-top: 6px">${text(mod.description)}</div>` : ''}
+			${open && problems ? `<div class="problems-box">${text(problems.join('\n'))}</div>` : ''}</td>
+			<td><span class="pill ${mod.where}">${mod.where}</span></td>
+			<td>${testState}${mod.result ? `<div class="sub">${ago(mod.result.time)} · ${duration(mod.result.seconds)}</div>` : ''}${problems || mod.description ? `<div><a data-open="${text(mod.name)}">${open ? 'hide' : 'details'}</a></div>` : ''}</td>
+			<td class="sub">${text(mod.madeFor)}</td><td class="right sub">${mod.megabytes} MB</td>
+			<td class="right"><button class="act small" data-test="${text(mod.name)}" ${mod.busy ? 'disabled' : ''}>Test</button>
+			<button class="act small" data-move="${text(mod.name)}" data-to="${mod.where === 'active' ? 'parked' : 'active'}" ${mod.busy ? 'disabled' : ''}>${mod.where === 'active' ? 'Park' : 'Activate'}</button></td></tr>`);
+	}
+	$('#modRows').innerHTML = rows.join('') || '<tr><td colspan="6" class="muted">No mods match.</td></tr>';
+	$('#modCount').textContent = shown + ' of ' + data.mods.length;
+}
+
+function drawTests() {
+	const select = $('#scenario');
+	if (select.options.length !== data.scenarios.length) select.innerHTML = data.scenarios.map((name) => `<option>${text(name)}</option>`).join('');
+	const lastGolden = [...data.jobs].reverse().find((job) => job.kind === 'golden');
+	$('#scenes').innerHTML = (lastGolden ? `<p class="muted">Last comparison: <span class="pill ${lastGolden.status}">${lastGolden.status}</span> ${text(lastGolden.summary)}</p>` : '') + data.pictures.map((scene) => `<div class="scene"><b>${text(scene.name)}</b>
+		<div class="shots"><figure><figcaption>Baseline</figcaption><img loading="lazy" src="${picture(scene.golden)}"></figure>
+		${scene.latest ? `<figure><figcaption>Latest capture · ${ago(scene.latestTime)}</figcaption><img loading="lazy" src="${picture(scene.latest, scene.latestTime)}"></figure>` : '<figure><figcaption>Latest capture</figcaption><div class="muted">none yet</div></figure>'}
+		${scene.diff ? `<figure><figcaption>Difference</figcaption><img loading="lazy" src="${picture(scene.diff, scene.diffTime)}"></figure>` : ''}</div></div>`).join('');
+	const capture = [...data.jobs].reverse().find((job) => job.kind === 'capture' && job.status === 'done' && job.picture);
+	if (capture && capture.id !== lastCaptureJob) { lastCaptureJob = capture.id; $('#lastCapture').innerHTML = `<img src="${picture(capture.picture, capture.id)}" style="width: 100%; border-radius: 4px; cursor: zoom-in">`; }
+}
+
+function drawBuilds() {
+	const built = (exe) => exe.built ? 'Last built ' + exe.built + '.' : 'Not built yet.';
+	$('#exeFinal').textContent = built(data.exes[0]);
+	$('#exeTest').textContent = built(data.exes[1]);
+	$('#buildFinal').disabled = data.gameRunning;
+	$('#buildFinal').title = data.gameRunning ? 'Close the game first.' : '';
+	$('#repo').innerHTML = `Branch <b>${text(data.repo.branch)}</b><br>${text(data.repo.head)}<br>${data.repo.changed ? data.repo.changed + ' file(s) changed and not committed' : 'Nothing uncommitted'}`;
+	if (document.activeElement !== $('#slots')) $('#slots').value = data.slots;
+}
+
+function drawJobs() {
+	$('#jobRows').innerHTML = [...data.jobs].reverse().map((job) => `<tr class="mod" data-job="${job.id}" style="cursor: pointer; ${job.id === selectedJob ? 'outline: 1px solid var(--accent)' : ''}">
+		<td class="sub">${job.id}</td><td><div class="name">${text(job.title)}</div><div class="sub">${text(job.tail)}</div></td>
+		<td><span class="pill ${job.status}">${job.status}</span></td><td>${text(job.summary)}</td><td class="right sub">${job.seconds ? duration(job.seconds) : ''}</td>
+		<td class="right">${job.status === 'running' || job.status === 'queued' ? `<button class="act small" data-stop="${job.id}">Stop</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nothing yet.</td></tr>';
+}
+
+async function drawLog() {
+	if (selectedJob === null) return;
+	const reply = await fetch('/api/log?job=' + selectedJob).then((r) => r.json()).catch(() => null);
+	if (!reply || !reply.log) return;
+	const box = $('#log'), atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+	$('#logTitle').textContent = reply.title + ' (' + reply.status + ')';
+	$('#logTitle').className = '';
+	box.textContent = reply.log.join('\n');
+	if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+async function refresh() {
+	const fresh = await fetch('/api/state').then((r) => r.json()).catch(() => null);
+	if (!fresh) { $('#chips').innerHTML = '<span class="chip" style="border-color: var(--bad); color: var(--bad)">The Workbench is not answering</span>'; return; }
+	data = fresh;
+	drawChips(); drawMods(); drawTests(); drawBuilds(); drawJobs(); drawLog();
+	$('#play').disabled = data.gameRunning;
+}
+
+document.addEventListener('click', (event) => {
+	const target = event.target;
+	if (target.matches('nav button')) {
+		document.querySelectorAll('nav button, main section').forEach((node) => node.classList.remove('sel'));
+		target.classList.add('sel'); $('#' + target.dataset.tab).classList.add('sel');
+	} else if (target.dataset.open) { openMods.has(target.dataset.open) ? openMods.delete(target.dataset.open) : openMods.add(target.dataset.open); drawMods(); }
+	else if (target.dataset.test) ask({ action: 'testMods', mods: [target.dataset.test], sort: false });
+	else if (target.dataset.move) ask({ action: 'moveMod', mod: target.dataset.move, to: target.dataset.to });
+	else if (target.dataset.stop) { ask({ action: 'stopJob', job: Number(target.dataset.stop) }); event.stopPropagation(); }
+	else if (target.closest('tr[data-job]')) { selectedJob = Number(target.closest('tr[data-job]').dataset.job); drawJobs(); drawLog(); }
+	else if (target.tagName === 'IMG' && !target.closest('#zoom')) { $('#zoom img').src = target.src; $('#zoom').style.display = 'flex'; }
+	else if (target.closest('#zoom')) $('#zoom').style.display = 'none';
+	else if (target.id === 'play') ask({ action: 'play' });
+	else if (target.dataset.do) {
+		const actions = {
+			testParked: { action: 'testWhere', where: 'parked' }, testActive: { action: 'testWhere', where: 'active' }, fixMods: { action: 'fixMods' },
+			openMods: { action: 'openFolder', which: 'mods' }, golden: { action: 'golden' }, goldenUpdate: { action: 'golden', update: true },
+			capture: { action: 'capture', scenario: $('#scenario').value, wait: Number($('#wait').value) }, buildDebug: { action: 'build', config: 'Debug Release' }, buildFinal: { action: 'build', config: 'Final' },
+		};
+		if (target.dataset.do === 'goldenUpdate' && !confirm('Replace all the stored baseline pictures with fresh captures?')) return;
+		ask(actions[target.dataset.do]).then((reply) => { if (reply.job) { selectedJob = reply.job; } });
+	}
+});
+$('#filter').addEventListener('input', drawMods);
+$('#show').addEventListener('change', drawMods);
+$('#slots').addEventListener('change', () => ask({ action: 'setSlots', slots: Number($('#slots').value) }));
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>
