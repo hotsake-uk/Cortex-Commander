@@ -155,6 +155,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("SmokeBlocksSight", { SmokeGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FlowingLiquids", { FluidSim::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -493,6 +494,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
+	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());

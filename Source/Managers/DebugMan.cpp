@@ -270,6 +270,10 @@ void DebugMan::WorldDebugGUI() {
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
+		bool freezing = FluidSim::FreezingEnabled();
+		if (ImGui::Checkbox("Still water freezes over in snow", &freezing)) {
+			FluidSim::SetFreezingEnabled(freezing);
+		}
 		bool powders = FluidSim::PowdersEnabled();
 		if (ImGui::Checkbox("Loose sand and snow slide", &powders)) {
 			FluidSim::SetPowdersEnabled(powders);

@@ -32,6 +32,7 @@ using namespace RTE;
 
 bool FluidSim::s_Enabled = true;
 bool FluidSim::s_Powders = true;
+bool FluidSim::s_Freezing = false;
 
 namespace {
 	enum class Liquid : unsigned char {
@@ -380,7 +381,7 @@ namespace {
 	/// A little each update, working through the whole terrain every few seconds.
 	void Sweep(SLTerrain* terrain, int width, int height) {
 		// In snowy weather still water slowly freezes over from the top.
-		float freezing = s_IceMaterial ? WeatherEffects::GetSnow() : 0.0F;
+		float freezing = s_IceMaterial && FluidSim::FreezingEnabled() ? WeatherEffects::GetSnow() : 0.0F;
 		size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
 		if (total == 0) {
 			return;

@@ -25,6 +25,12 @@ namespace RTE {
 		/// Sets whether loose powders slide and pile.
 		static void SetPowdersEnabled(bool enabled);
 
+		/// Gets whether still water freezes over in snowy weather (a gameplay setting, off unless turned on).
+		static bool FreezingEnabled() { return s_Freezing; }
+
+		/// Sets whether still water freezes over in snowy weather.
+		static void SetFreezingEnabled(bool enabled) { s_Freezing = enabled; }
+
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
@@ -70,5 +76,6 @@ namespace RTE {
 	private:
 		static bool s_Enabled; //!< Whether flowing liquids are on.
 		static bool s_Powders; //!< Whether loose powders slide and pile.
+		static bool s_Freezing; //!< Whether still water freezes over in snowy weather.
 	};
 } // namespace RTE

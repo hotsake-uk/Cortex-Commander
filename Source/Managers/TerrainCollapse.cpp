@@ -53,12 +53,17 @@ namespace {
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
+	int s_IceMaterial = 0;
+	int s_WaterMaterial = 0;
+	int s_WaterColor = 0;
 	bool s_TablesBuilt = false;
 
 	void BuildTables() {
 		s_Fixed.fill(false);
 		s_Structure.fill(false);
 		s_Flimsy.fill(false);
+		s_IceMaterial = 0;
+		s_WaterMaterial = 0;
 		s_Density.fill(1.0F);
 		s_Toughness.fill(60.0F);
 		for (int id = 1; id < 256; ++id) {
@@ -70,6 +75,14 @@ namespace {
 			s_Toughness[id] = std::clamp(material->GetIntegrity(), 1.0F, 600.0F);
 			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
 			const std::string& name = material->GetPresetName();
+			if (name == "Ice") {
+				s_IceMaterial = id;
+			} else if (name == "Water") {
+				s_WaterMaterial = id;
+				Color color = material->GetColor();
+				color.RecalculateIndex();
+				s_WaterColor = color.GetIndex();
+			}
 			for (const char* word: {"Door", "Level End", "Test", "Xenocronium"}) {
 				if (name.find(word) != std::string::npos) {
 					s_Fixed[id] = true;
@@ -291,11 +304,12 @@ namespace {
 					continue;
 				}
 				int existing = materialBitmap->line[wy][wx];
-				if (existing != g_MaterialAir && !s_Flimsy[existing]) {
-					if (!FluidSim::IsLiquid(existing)) {
-						continue;
-					}
-					if (displaced.size() < 4000) {
+				// Liquid is pushed aside (below); grass and the like is flattened; anything else solid is left as it is.
+				if (existing != g_MaterialAir && !FluidSim::IsLiquid(existing) && !s_Flimsy[existing]) {
+					continue;
+				}
+				if (FluidSim::IsLiquid(existing)) {
+					if (displaced.size() < 60000) {
 						displaced.push_back({wx, wy, existing, terrain->GetFGColorPixel(wx, wy)});
 					}
 				}
@@ -306,13 +320,45 @@ namespace {
 				body.Stamped.emplace_back(key, local);
 			}
 		}
+		// Each pixel of liquid the piece now covers goes to the nearest free place: up through the piece and the liquid above it to the surface,
+		// or, under a ceiling, sideways along the highest row it can reach. None is lost, so the level rises around what falls in.
 		for (const Displaced& liquid: displaced) {
-			for (int up = 1; up <= 120 && liquid.Y - up >= 0; ++up) {
-				int material = materialBitmap->line[liquid.Y - up][liquid.X];
-				if (material == g_MaterialAir) {
-					terrain->SetMaterialPixel(liquid.X, liquid.Y - up, liquid.Material);
-					terrain->SetFGColorPixel(liquid.X, liquid.Y - up, liquid.Color);
+			auto passable = [&](int x, int y) {
+				int material = materialBitmap->line[y][x];
+				return FluidSim::IsLiquid(material) || (s_State[y * s_Width + x] & c_Falling);
+			};
+			auto place = [&](int x, int y) {
+				terrain->SetMaterialPixel(x, y, liquid.Material);
+				terrain->SetFGColorPixel(x, y, liquid.Color);
+			};
+			int row = liquid.Y;
+			bool placed = false;
+			for (int y = liquid.Y - 1; y >= 0 && liquid.Y - y <= 700; --y) {
+				if (materialBitmap->line[y][liquid.X] == g_MaterialAir) {
+					place(liquid.X, y);
+					placed = true;
 					break;
+				}
+				if (!passable(liquid.X, y)) {
+					break;
+				}
+				row = y;
+			}
+			for (int side = 0; side < 2 && !placed; ++side) {
+				for (int step = 1; step <= 500; ++step) {
+					int x = liquid.X + (side == 0 ? step : -step);
+					int y = row;
+					if (!WrapInWorld(x, y)) {
+						break;
+					}
+					if (materialBitmap->line[y][x] == g_MaterialAir) {
+						place(x, y);
+						placed = true;
+						break;
+					}
+					if (!passable(x, y)) {
+						break;
+					}
 				}
 			}
 		}
@@ -638,8 +684,10 @@ namespace {
 		body.Wet = inLiquid > 0;
 		if (inLiquid > 0) {
 			float fraction = std::min(1.0F, static_cast<float>(inLiquid) * 4.0F / static_cast<float>(body.Outline.size()));
-			body.Vel *= 1.0F - 0.07F * fraction;
-			body.Spin *= 1.0F - 0.07F * fraction;
+			// Heavy pieces plunge; light ones (wood, soil) are slowed more. Stone is about 2.5 a pixel, concrete and metal more.
+			float drag = std::clamp(0.1F / std::max(body.Mass / static_cast<float>(std::max(body.PixelCount, 1)), 0.5F), 0.02F, 0.09F);
+			body.Vel *= 1.0F - drag * fraction;
+			body.Spin *= 1.0F - 0.05F * fraction;
 		}
 		float speed = glm::length(body.Vel);
 		if (speed > c_MaxSpeed) {
@@ -668,6 +716,30 @@ namespace {
 				body.Pos = tryPos;
 				body.Angle = tryAngle;
 				continue;
+			}
+			// Ice over water doesn't hold a piece that comes down on it at any speed: it breaks back into water where it's hit, and the piece goes on in.
+			if (s_IceMaterial && s_WaterMaterial && glm::length(body.Vel) > 1.0F) {
+				int broken = 0;
+				for (const glm::vec2& contact: contacts) {
+					int cx = static_cast<int>(std::floor(contact.x));
+					int cy = static_cast<int>(std::floor(contact.y));
+					for (int dy = -2; dy <= 2; ++dy) {
+						for (int dx = -2; dx <= 2; ++dx) {
+							int x = cx + dx;
+							int y = cy + dy;
+							if (WrapInWorld(x, y) && materialBitmap->line[y][x] == s_IceMaterial) {
+								terrain->SetMaterialPixel(x, y, s_WaterMaterial);
+								terrain->SetFGColorPixel(x, y, s_WaterColor);
+								++broken;
+							}
+						}
+					}
+				}
+				if (broken > 0) {
+					FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), body.Radius + 6.0F);
+					body.Vel *= 0.92F;
+					continue;
+				}
 			}
 			if (++responses > 6) {
 				break;
