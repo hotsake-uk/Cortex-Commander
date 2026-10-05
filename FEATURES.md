@@ -183,9 +183,11 @@ Last updated: 5 October 2026.
 ## 12. Settings and tools
 
 - **Video settings.** Switches for Lighting, Bloom and Extra Effects, and quality presets from Potato to Ultra.
-- **Docked tool windows.** The Sandbox, World Debug, Graphics Lab and other tools sit in panels at the sides of the window, and the game's picture is fitted between them instead of being covered. A switch lets them float again.
-- **World Debug window (F6).** Time of day, weather, lighting switches, interior light, the gameplay systems above, game speed and Pause AI.
-- **Graphics Lab.** A window with a slider for nearly every visual setting, debug views that show one part of the lighting at a time, and a button to save to `Settings.ini`.
+- **Docked tool windows.** The Sandbox and the settings panel sit in panels at the sides of the window, as tabs where a side has more than one, and the game's picture is fitted between them instead of being covered. A switch lets them float again.
+- **Settings panel (F6).** Every setting that can be tuned while the game runs, in one panel: eleven categories, a search across all of them, and named presets that hold everything (files in `Userdata/Presets`). It replaces the World Debug, Graphics Lab and Debug Options windows.
+- **Tab.** In a game, puts every tool window away or brings them back. In the Sandbox game mode that is the switch between the tools (with the world paused) and your own character.
+- **Sandbox character.** A body and kit of your choice with optional abilities: no harm, endless jetpack and ammunition, number keys for the kit, flying through anything, ignored by enemy AI. It can be switched off to only look around.
+- **Colony buildings (first step).** A barracks trains units and keeps a number alive; an extractor earns supply. Placed from the Sandbox's Colony tab.
 - **Ambient lighting slider.** One control for how bright interiors are without lamps. Turn it down and bunkers are lit by their lamps, and go dark where the lamps are shot out. It also lowers the minimum light on units, so units in a dark room are dark too.
 - **Settings versioning.** When the default look changes a lot, old saved values are ignored so players get the new look.
 

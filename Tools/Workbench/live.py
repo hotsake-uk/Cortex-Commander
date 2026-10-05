@@ -1,20 +1,18 @@
-"""The Workbench's dealings with games it starts: launch profiles, the live link to a running game, and graphics presets.
+"""The Workbench's dealings with games it starts: launch profiles, and a link to each running game to tell how it is doing.
 
-Launch profile: a saved answer to "start the game how?" - which program, where it starts, time and weather, a graphics preset, which mods.
+Launch profile: a saved answer to "start the game how?" - which program, where it starts, time and weather, one of the game's presets, which mods.
   A profile that changes anything is started with its own copy of the settings (your Settings.ini plus the profile's changes), so nothing it does is written back to yours.
-Live link: games started here listen on a port of this computer (CCCP_CONTROL_PORT); see Source/Managers/ControlLink.h for the commands.
-Graphics preset: every setting of the game's "Lighting and Post-Processing" block except the world's own (time of day, weather), saved under a name."""
+Live link: games started here listen on a port of this computer (CCCP_CONTROL_PORT); see Source/Managers/ControlLink.h for the commands. It is used to show
+  whether a game is loading, in the menus or in a game, and to ask it to close.
+Presets are the game's own (the settings panel, F6, saves them to Userdata/Presets): every setting that can be tuned while it runs."""
 import json, os, re, socket, subprocess, threading, time
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 STATE_DIR = os.path.join(REPO, 'Userdata', 'Workbench')
-PRESET_DIR = os.path.join(STATE_DIR, 'Presets')
+PRESET_DIR = os.path.join(REPO, 'Userdata', 'Presets')  # Where the game's settings panel keeps its presets.
 PROFILE_FILE = os.path.join(STATE_DIR, 'profiles.json')
 SETTINGS = os.path.join(REPO, 'Userdata', 'Settings.ini')
 EXES = {'play': 'Cortex Command.exe', 'debug': 'Cortex Command.debug.release.exe'}
-GRAPHICS_HEADING = 'Lighting and Post-Processing Settings'
-# In the graphics block, but about the world or the rules, not the look. A preset leaves these alone.
-NOT_LOOK = {'LightingSettingsVersion', 'GraphicsQuality', 'WeatherType', 'WeatherIntensity', 'Wind', 'TimeOfDay', 'DayLengthMinutes', 'NightAffectsAI'}
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 lock = threading.RLock()
@@ -56,7 +54,7 @@ def processAlive(pid):
 def rememberInstances():
 	"""Writes down the running games, so a restarted Workbench can pick them up again."""
 	with lock:
-		running = [{key: instance[key] for key in ('id', 'name', 'profile', 'exe', 'port', 'started', 'stage', 'preset')} | {'pid': instance['process'].pid} for instance in instances if instance['process'].poll() is None]
+		running = [{key: instance[key] for key in ('id', 'name', 'profile', 'exe', 'port', 'started', 'stage')} | {'pid': instance['process'].pid} for instance in instances if instance['process'].poll() is None]
 	try:
 		os.makedirs(STATE_DIR, exist_ok=True)
 		with open(INSTANCE_FILE, 'w', encoding='utf-8') as out:
@@ -95,23 +93,6 @@ def readText(path):
 		return source.read()
 
 
-def graphicsFromSettings(text):
-	"""The look settings in a settings file, in the file's order: {key: value}."""
-	values = {}
-	inBlock = False
-	for line in text.splitlines():
-		if line.startswith('//'):
-			if GRAPHICS_HEADING in line:
-				inBlock = True
-			elif inBlock and line.startswith('////') and values:
-				break
-			continue
-		match = re.match(r'^\s*(\w+)\s*=\s*(.*?)\s*$', line)
-		if inBlock and match and match.group(1) not in NOT_LOOK:
-			values[match.group(1)] = match.group(2)
-	return values
-
-
 def settingsWith(text, overrides):
 	"""A settings file's text with some keys changed; keys it doesn't have are added at the end. EnableGlobalScript lines are replaced when the overrides give any."""
 	overrides = dict(overrides)
@@ -137,118 +118,29 @@ def settingsWith(text, overrides):
 	return '\n'.join(out) + '\n'
 
 
-# ---------------------------------------------------------------- What the settings are (names, ranges, groups), read from the game's own source
-
-def graphicsMeta():
-	"""For each look setting: the label, group and range the in-game Graphics Lab gives it. Read from the source, so it never falls out of step."""
-	meta = {}
-	try:
-		settingsSource = readText(repoPath('Source', 'Managers', 'SettingsMan.cpp'))
-		labSource = readText(repoPath('Source', 'Managers', 'DebugMan.cpp'))
-	except OSError:
-		return meta
-	memberOf = {}
-	for match in re.finditer(r'MatchProperty\("(\w+)",\s*\{[^}]*?GetLightingSettings\(\)\.(\w+)', settingsSource, re.S):
-		memberOf.setdefault(match.group(1), match.group(2))
-	lab = labSource[labSource.find('ImGui::Begin("Graphics Lab"'):]
-	lab = lab[:lab.find('ImGui::End()')] if 'ImGui::End()' in lab else lab
-	byMember = {}
-	group = 'Other'
-	for line in lab.splitlines():
-		heading = re.search(r'SeparatorText\("([^"]+)"\)', line)
-		if heading:
-			group = heading.group(1)
-		control = re.search(r'ImGui::(SliderFloat|SliderInt|Checkbox|ColorEdit3)\("([^"#]+)[^"]*",\s*&settings\.(\w+)(?:\.x)?(?:,\s*(-?[\d.]+)F?,\s*(-?[\d.]+)F?)?', line)
-		if control and control.group(3) not in byMember:
-			kind = {'SliderFloat': 'number', 'SliderInt': 'whole', 'Checkbox': 'switch', 'ColorEdit3': 'colour'}[control.group(1)]
-			entry = {'label': control.group(2), 'group': group, 'kind': kind}
-			if control.group(4) is not None:
-				entry['min'] = float(control.group(4))
-				entry['max'] = float(control.group(5))
-			byMember[control.group(3)] = entry
-	for key, member in memberOf.items():
-		if key in NOT_LOOK:
-			continue
-		meta[key] = byMember.get(member, {'label': key, 'group': 'Other', 'kind': 'text'})
-	return meta
-
-
-# ---------------------------------------------------------------- Presets
+# ---------------------------------------------------------------- The game's presets
 
 def presetPath(name):
-	if not re.fullmatch(r"[\w .,()'+-]{1,60}", name or ''):
-		raise ValueError('A preset name can have letters, numbers, spaces and . , ( ) \' + - and be up to 60 long.')
+	if not re.fullmatch(r'[\w -]{1,60}', name or ''):
+		raise ValueError('Not a preset name.')
 	return os.path.join(PRESET_DIR, name + '.ini')
 
 
 def readPreset(name):
+	"""The settings a preset holds: {key: value}. The file is in the settings file's own form (a class name, then indented "Key = Value" lines)."""
 	values = {}
 	for line in readText(presetPath(name)).splitlines():
-		match = re.match(r'^\s*(\w+)\s*=\s*(.*?)\s*$', line)
-		if match and not line.lstrip().startswith('//'):
+		match = re.match(r'^\s+(\w+)\s*=\s*(.*?)\s*$', line)
+		if match:
 			values[match.group(1)] = match.group(2)
 	return values
 
 
-def writePreset(name, values, note=''):
-	os.makedirs(PRESET_DIR, exist_ok=True)
-	lines = ['// Cortex Commander graphics preset: %s' % name]
-	if note:
-		lines.append('// ' + note)
-	lines += ['%s = %s' % (key, value) for key, value in values.items() if key not in NOT_LOOK]
-	with open(presetPath(name), 'w', encoding='utf-8', newline='\n') as out:
-		out.write('\n'.join(lines) + '\n')
-
-
 def listPresets():
 	try:
-		names = sorted((name[:-4] for name in os.listdir(PRESET_DIR) if name.endswith('.ini')), key=str.lower)
+		return sorted((name[:-4] for name in os.listdir(PRESET_DIR) if name.endswith('.ini')), key=str.lower)
 	except OSError:
-		names = []
-	presets = []
-	for name in names:
-		try:
-			first = readText(presetPath(name)).splitlines()[:2]
-			note = first[1][3:] if len(first) > 1 and first[1].startswith('// ') else ''
-			presets.append({'name': name, 'note': note, 'saved': int(os.path.getmtime(presetPath(name)))})
-		except (OSError, ValueError):
-			pass
-	return presets
-
-
-def scaled(value, factor):
-	"""A number, or three numbers of a colour, multiplied."""
-	return ' '.join('%g' % (float(part) * factor) for part in value.split())
-
-
-def seedPresets():
-	"""On first use: a few presets to start from, each your current settings with a handful of changes."""
-	if os.path.isdir(PRESET_DIR) and os.listdir(PRESET_DIR):
-		return
-	try:
-		current = graphicsFromSettings(readText(SETTINGS))
-	except OSError:
-		return
-	if not current:
-		return
-
-	def variant(changes, scales=None):
-		values = dict(current)
-		values.update({key: value for key, value in changes.items() if key in values})
-		for key, factor in (scales or {}).items():
-			if key in values:
-				values[key] = scaled(values[key], factor)
-		return values
-
-	neutral = {'PostSaturation': '1.05', 'GradeContrast': '1', 'GradeTemperature': '0', 'GradeTint': '0', 'PostVignette': '0.15', 'FilmGrain': '0', 'BloomIntensity': '0.5', 'GradeShadowTint': '1 1 1', 'GradeHighlightTint': '1 1 1'}
-	writePreset('My settings', current, 'Your settings as they were when the Workbench first ran.')
-	writePreset('Soft glow', variant({}, {'BloomIntensity': 0.4, 'LightingGlowIntensity': 0.6, 'LightingEmissiveIntensity': 0.75}), 'Blooms and glows turned well down.')
-	writePreset('Lamps only', variant({'LightingAmbient': '0.11 0.11 0.125', 'LightingForegroundAmbient': '0.09 0.09 0.1'}), 'Dark interiors, lit by their lamps.')
-	writePreset('Classic', variant({'LightingEnabled': '0', 'BloomEnabled': '0', 'DistortionEnabled': '0', 'ScorchMarks': '0', 'Embers': '0', 'EffectsParticles': '0', 'Stains': '0', 'LivingWorld': '0', 'SmokeScattering': '0'}), 'The original look: lighting, bloom and extra effects off.')
-	writePreset('Look - Natural', variant(neutral), 'Neutral colours.')
-	writePreset('Look - Gritty', variant(dict(neutral, PostSaturation='0.78', GradeContrast='1.16', GradeTemperature='-0.08', PostVignette='0.32', FilmGrain='0.22', GradeShadowTint='0.9 0.97 1.08', GradeHighlightTint='1.05 1 0.94')), 'Drained and hard, with cold shadows and a little grain.')
-	writePreset('Look - Vivid', variant(dict(neutral, PostSaturation='1.32', GradeContrast='1.07', GradeTemperature='0.06', PostVignette='0.1', BloomIntensity='0.75')), 'Rich colour and glowing lights.')
-	writePreset('Look - Noir', variant(dict(neutral, PostSaturation='0', GradeContrast='1.28', PostVignette='0.42', FilmGrain='0.3')), 'Black and white, deep contrast, heavy vignette and grain.')
+		return []
 
 
 # ---------------------------------------------------------------- The live link
@@ -289,24 +181,6 @@ def command(instanceId, line, timeout=3.0):
 		return 'err the game is not answering (still loading?)'
 
 
-def applyValues(instanceId, values):
-	lines = ['%s = %s' % (key, value) for key, value in values.items() if key not in NOT_LOOK]
-	return command(instanceId, 'set ' + '\n'.join(lines)) if lines else 'ok 0'
-
-
-def currentGraphics(instanceId):
-	"""The look settings a running game has right now."""
-	instance = findInstance(instanceId)
-	if not instance:
-		raise ValueError('That game is not running.')
-	relative = 'Instances/%s/Dump.ini' % instance['name']
-	os.makedirs(repoPath('Instances', instance['name']), exist_ok=True)
-	reply = command(instanceId, 'dump ' + relative, 6.0)
-	if not reply.startswith('ok'):
-		raise ValueError(reply[4:] or 'The game did not answer.')
-	return graphicsFromSettings(readText(repoPath(*relative.split('/'))))
-
-
 def watcher():
 	"""Keeps each running game's state fresh, so the page never waits on a game."""
 	while True:
@@ -335,11 +209,10 @@ DEFAULT_PROFILES = [
 	{'name': 'Play', 'note': 'The game as it is, with your settings and mods.', 'exe': 'play', 'start': 'menu'},
 	{'name': 'Sandbox', 'note': 'Straight into the Sandbox god mode.', 'exe': 'play', 'start': 'activity', 'activityType': 'GAScripted', 'activity': 'Sandbox', 'scene': 'Ketanot Hills'},
 	{'name': 'Sandbox at night', 'note': 'The Sandbox in the tutorial bunker after dark.', 'exe': 'play', 'start': 'activity', 'activityType': 'GAScripted', 'activity': 'Sandbox', 'scene': 'Tutorial Bunker', 'timeOfDay': 23, 'weather': 0},
-	{'name': 'Debug with tools', 'note': 'The debug build in the Sandbox with the Graphics Lab and World Debug open.', 'exe': 'debug', 'start': 'activity', 'activityType': 'GAScripted', 'activity': 'Sandbox', 'scene': 'Ketanot Hills', 'graphicsLab': True, 'worldDebug': True},
-	{'name': 'Classic look', 'note': 'The original look, for comparison.', 'exe': 'play', 'start': 'menu', 'preset': 'Classic'},
+	{'name': 'Debug build', 'note': 'The debug build in the Sandbox: slower, with more checks.', 'exe': 'debug', 'start': 'activity', 'activityType': 'GAScripted', 'activity': 'Sandbox', 'scene': 'Ketanot Hills'},
 	{'name': 'Vanilla', 'note': 'No mods at all.', 'exe': 'play', 'start': 'menu', 'mods': 'none'},
 ]
-PROFILE_KEYS = {'name', 'note', 'exe', 'start', 'activityType', 'activity', 'scene', 'timeOfDay', 'weather', 'weatherIntensity', 'wind', 'preset', 'mods', 'modList', 'graphicsLab', 'worldDebug', 'width', 'height', 'fullscreen'}
+PROFILE_KEYS = {'name', 'note', 'exe', 'start', 'activityType', 'activity', 'scene', 'timeOfDay', 'weather', 'weatherIntensity', 'wind', 'preset', 'mods', 'modList', 'tools', 'width', 'height', 'fullscreen'}
 
 
 def loadProfiles():
@@ -359,6 +232,9 @@ def saveProfiles(profiles):
 
 
 def cleanProfile(raw):
+	raw = dict(raw)
+	if raw.get('graphicsLab') or raw.get('worldDebug'):
+		raw['tools'] = True  # Profiles from before the game's tool windows became one settings panel.
 	profile = {key: raw[key] for key in PROFILE_KEYS if key in raw and raw[key] not in ('', None)}
 	name = str(profile.get('name', '')).strip()
 	if not re.fullmatch(r"[\w .,()'+-]{1,60}", name):
@@ -371,7 +247,7 @@ def cleanProfile(raw):
 
 def changesNothing(profile):
 	"""A profile that can use your own settings file as it is."""
-	return profile['start'] == 'menu' and not any(profile.get(key) not in (None, '', False) for key in ('timeOfDay', 'weather', 'weatherIntensity', 'wind', 'preset', 'graphicsLab', 'worldDebug', 'width', 'height', 'fullscreen'))
+	return profile['start'] == 'menu' and not any(profile.get(key) not in (None, '', False) for key in ('timeOfDay', 'weather', 'weatherIntensity', 'wind', 'preset', 'tools', 'width', 'height', 'fullscreen'))
 
 
 def launch(profile, activeMods):
@@ -400,6 +276,12 @@ def launch(profile, activeMods):
 		overrides = {}
 		if profile['start'] == 'activity':
 			overrides.update({'LaunchIntoActivity': 1, 'SkipIntro': 1, 'DefaultActivityType': profile.get('activityType') or 'GAScripted', 'DefaultActivityName': profile.get('activity') or 'Sandbox', 'DefaultSceneName': profile.get('scene') or 'Ketanot Hills'})
+		# The preset first, so the profile's own time and weather win over the ones it holds.
+		if profile.get('preset'):
+			try:
+				overrides.update(readPreset(profile['preset']))
+			except (OSError, ValueError):
+				raise ValueError('The profile uses the preset "%s", which no longer exists. Presets are saved from the settings panel in the game (F6).' % profile['preset'])
 		for key, setting in (('timeOfDay', 'TimeOfDay'), ('weather', 'WeatherType'), ('weatherIntensity', 'WeatherIntensity'), ('wind', 'Wind'), ('width', 'ResolutionX'), ('height', 'ResolutionY')):
 			if profile.get(key) not in (None, ''):
 				overrides[setting] = profile[key]
@@ -407,15 +289,8 @@ def launch(profile, activeMods):
 			overrides['ResolutionMultiplier'] = 1
 		if profile.get('fullscreen') is not None and profile.get('fullscreen') != '':
 			overrides['Fullscreen'] = 1 if profile['fullscreen'] else 0
-		if profile.get('graphicsLab'):
-			overrides['ShowGraphicsLab'] = 1
-		if profile.get('worldDebug'):
+		if profile.get('tools'):
 			overrides['ShowWorldDebug'] = 1
-		if profile.get('preset'):
-			try:
-				overrides.update({key: value for key, value in readPreset(profile['preset']).items() if key not in NOT_LOOK})
-			except (OSError, ValueError):
-				raise ValueError('The profile uses the graphics preset "%s", which no longer exists.' % profile['preset'])
 		try:
 			base = readText(SETTINGS)
 		except OSError:
@@ -437,7 +312,7 @@ def launch(profile, activeMods):
 		environment['CCCP_MODS_DIR'] = stage
 
 	process = subprocess.Popen([exe], cwd=REPO, env=environment)
-	instance = {'id': number, 'name': name, 'profile': profile['name'], 'exe': profile['exe'], 'port': port, 'process': process, 'started': time.time(), 'state': None, 'answering': False, 'stage': stage, 'preset': profile.get('preset') or ''}
+	instance = {'id': number, 'name': name, 'profile': profile['name'], 'exe': profile['exe'], 'port': port, 'process': process, 'started': time.time(), 'state': None, 'answering': False, 'stage': stage}
 	with lock:
 		instances.append(instance)
 	rememberInstances()
@@ -472,17 +347,9 @@ def loadingLine(instance):
 	return modules[-1] if modules else ''
 
 
-def consoleTail(instance, lines=200):
-	try:
-		with open(repoPath('Instances', instance['name'], 'Console.txt'), encoding='utf-8', errors='replace') as log:
-			return log.read().splitlines()[-lines:]
-	except OSError:
-		return []
-
-
 def instanceSummary(instance):
 	running = instance['process'].poll() is None
-	item = {key: instance[key] for key in ('id', 'name', 'profile', 'exe', 'port', 'answering', 'preset')}
+	item = {key: instance[key] for key in ('id', 'name', 'profile', 'exe', 'port', 'answering')}
 	item.update({'running': running, 'seconds': round((instance.get('ended') or time.time()) - instance['started']), 'state': instance['state'] if running else None})
 	if running and not instance['answering']:
 		item['loading'] = loadingLine(instance)
@@ -534,7 +401,6 @@ def readCatalogue():
 
 def start():
 	os.makedirs(STATE_DIR, exist_ok=True)
-	seedPresets()
 	adoptInstances()
 	threading.Thread(target=watcher, daemon=True).start()
 	threading.Thread(target=readCatalogue, daemon=True).start()

@@ -1,5 +1,7 @@
 # Workbench plan: the companion app
 
+**6 October 2026: cut back.** The Workbench is now five pages: Launch, Mods, Tests, Builds, Jobs. The Live and Graphics pages described below were removed: tuning and presets live in the game's own settings panel (F6), and a launch profile can name one of those presets. The Launch page lists the games it started and can close them. The rest of this file is the earlier plan, kept for reference.
+
 The Workbench today is a browser page that manages mods, runs tests and builds the game. This plan turns it into the place you start the game from, control it while it runs, and shape how it looks.
 
 Status (5 October 2026): **steps 1 to 4 are built.** Launch profiles, the live link, the Live page, graphics presets and the live editor work. Gallery, Performance and polish (steps 5 and 6) are not built.

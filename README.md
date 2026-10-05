@@ -88,7 +88,8 @@ Pick **Sandbox** in the scenario menu and play as a god:
 
 | Key | What it does |
 |---|---|
-| **F6** | World Debug: time of day, weather, lighting toggles, gameplay systems, game speed, Pause AI |
+| **Tab** | In a game: every tool window away, or back. In Sandbox mode this switches between the tools and your own character (Shift+Tab puts it down at the pointer) |
+| **F6** | Settings panel: every setting that can be tuned while the game runs, in categories, searchable, with named presets |
 | **F7** | Sandbox tools (the whole game in Sandbox mode, a debug panel elsewhere) |
 | **F8** | Photo mode |
 | **Ctrl + wheel** | Camera zoom (the wheel alone in the Sandbox god view) |
@@ -177,11 +178,12 @@ python Tools\Workbench\workbench.py        # then open http://127.0.0.1:8765
 | Page | What it does |
 |---|---|
 | **Launch** | Saved launch profiles ("Sandbox on this map at night", "classic look", "vanilla, no mods"). Pick one and press Play. |
-| **Live** | The games running now: state, console, time of day, weather, screenshots. |
-| **Graphics** | Graphics presets with live sliders; save a look and make it your default. |
 | **Mods** | Each mod's state; test, park and activate them. Tests run in parallel, each game copy in its own sandbox. |
+| **Tests** | Regression scenes against their baseline pictures, and captures of the test scenarios. |
+| **Builds** | Build the test and game programs. |
+| **Jobs** | Everything the Workbench has been asked to do, with its output. |
 
-The Live page talks to the game over a local-only link (`ControlLink`). The game opens it only when started from the Workbench, or when `ControlLinkPort` is set in `Settings.ini`; a normal launch is unchanged. The design is in [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md). The Gallery and Performance pages in that plan are not built yet.
+A profile can start the game with one of the presets saved from the in-game settings panel (F6). The Launch page shows each game it started (loading, in the menus, in a game, crashed) over a local-only link (`ControlLink`), which the game opens only when started from the Workbench or when `ControlLinkPort` is set in `Settings.ini`.
 
 ## Mods
 

@@ -1,4 +1,4 @@
-"""The Workbench: a page in your browser for running the project's chores - mods, tests, builds - with several copies of the game at once.
+"""The Workbench: a page in your browser for starting the game and running the project's chores - mods, tests, builds - with several copies of the game at once.
 
 Start it:   python Tools/Workbench/workbench.py        (then open http://127.0.0.1:8765, or let Start-Workbench.ps1 do both)
 Needs only Python 3.9 or later. It listens on this computer only.
@@ -164,9 +164,10 @@ def exeInfo(name):
 
 
 def scenarios():
-	folder = repoPath('Userdata', 'RenderTest')
+	"""The test scenarios, read from the script that writes them, so a new one shows up without anything being run first."""
 	try:
-		return sorted(name[:-4] for name in os.listdir(folder) if name.endswith('.ini'))
+		with open(repoPath('Tools', 'RenderTest', 'Setup.ps1'), encoding='utf-8', errors='replace') as source:
+			return sorted(set(re.findall(r'^Write-Scenario "(\w+)"', source.read(), re.M)))
 	except OSError:
 		return []
 
@@ -425,6 +426,8 @@ def goldenJob(update):
 
 def captureJob(scenario, wait):
 	def run(job):
+		# The scenarios' settings files are written afresh first: they are made from your own settings, and a new scenario has none yet.
+		powershell(job, 'Tools/RenderTest/Setup.ps1')
 		code = powershell(job, 'Tools/RenderTest/Capture.ps1', '-Scenario', scenario, '-ExtraWait', str(wait))
 		job['picture'] = 'Tools/RenderTest/Output/%s.png' % scenario
 		job['summary'] = 'captured' if code == 0 else 'failed'
@@ -540,7 +543,7 @@ def act(request):
 
 
 def companionAct(action, request):
-	"""Requests about launching, running games and graphics presets. Returns None if the request isn't one of these."""
+	"""Requests about launch profiles and the games started from them. Returns None if the request isn't one of these."""
 	try:
 		if action == 'launch':
 			profile = next((item for item in live.loadProfiles() if item['name'] == request.get('profile')), None)
@@ -573,15 +576,8 @@ def companionAct(action, request):
 		if action == 'gameCommand':
 			instance = int(request.get('instance', 0))
 			kind = request.get('kind')
-			if kind == 'set':
-				key, value = str(request.get('key', '')), str(request.get('value', ''))
-				if not re.fullmatch(r'\w+', key) or '\n' in value:
-					return {'error': 'Not a setting.'}
-				reply = live.command(instance, 'set %s = %s' % (key, value))
-			elif kind == 'lua':
-				reply = live.command(instance, 'lua ' + str(request.get('code', '')), 8.0)
-			elif kind in ('shot', 'quit'):
-				reply = live.command(instance, kind)
+			if kind == 'quit':
+				reply = live.command(instance, 'quit')
 			elif kind == 'kill':
 				found = live.findInstance(instance)
 				if found and found['process'].poll() is None:
@@ -589,51 +585,7 @@ def companionAct(action, request):
 				reply = 'ok'
 			else:
 				return {'error': 'Unknown command.'}
-			return {'ok': True, 'reply': reply} if reply.startswith('ok') else {'error': reply[4:] or 'The game reported an error; see its console.'}
-		if action == 'savePreset':
-			name = str(request.get('name', '')).strip()
-			if request.get('values'):
-				values = {str(key): str(value) for key, value in request['values'].items() if re.fullmatch(r'\w+', str(key)) and '\n' not in str(value)}
-			elif request.get('instance'):
-				values = live.currentGraphics(int(request['instance']))
-			else:
-				values = live.graphicsFromSettings(live.readText(live.SETTINGS))
-			if not values:
-				return {'error': 'There were no settings to save.'}
-			if os.path.exists(live.presetPath(name)) and not request.get('overwrite'):
-				return {'error': 'There is already a preset called "%s".' % name, 'exists': True}
-			live.writePreset(name, values, str(request.get('note', ''))[:200].replace('\n', ' '))
-			return {'ok': True}
-		if action == 'applyPreset':
-			values = live.readPreset(str(request.get('name', '')))
-			instance = live.findInstance(int(request.get('instance', 0)))
-			reply = live.applyValues(int(request.get('instance', 0)), values)
-			if not reply.startswith('ok'):
-				return {'error': reply[4:]}
-			if instance:
-				instance['preset'] = request.get('name')
-			return {'ok': True}
-		if action == 'deletePreset':
-			os.remove(live.presetPath(str(request.get('name', ''))))
-			return {'ok': True}
-		if action == 'renamePreset':
-			source, target = live.presetPath(str(request.get('name', ''))), live.presetPath(str(request.get('to', '')).strip())
-			if os.path.exists(target):
-				return {'error': 'There is already a preset with that name.'}
-			if request.get('copy'):
-				shutil.copyfile(source, target)
-			else:
-				os.rename(source, target)
-			return {'ok': True}
-		if action == 'defaultPreset':
-			if playerGameRunning():
-				return {'error': 'Close the game first: it writes its own settings when it closes, and would write over this.'}
-			values = live.readPreset(str(request.get('name', '')))
-			text = live.readText(live.SETTINGS)
-			known = set(live.graphicsFromSettings(text))
-			with open(live.SETTINGS, 'w', encoding='ascii', errors='replace', newline='\r\n') as out:
-				out.write(live.settingsWith(text, {key: value for key, value in values.items() if key in known}))
-			return {'ok': True}
+			return {'ok': True, 'reply': reply} if reply.startswith('ok') else {'error': reply[4:] or 'The game did not answer.'}
 	except (ValueError, OSError) as problem:
 		return {'error': str(problem)}
 	return None
@@ -679,20 +631,7 @@ class Handler(BaseHTTPRequestHandler):
 						return self.send(200, json.dumps({'log': job['log'][-1500:], 'status': job['status'], 'title': job['title']}))
 			return self.send(404, '{}')
 		if url.path == '/api/meta':
-			return self.send(200, json.dumps({'graphics': live.graphicsMeta(), 'activities': live.catalogue['activities'], 'scenes': live.catalogue['scenes']}))
-		if url.path == '/api/preset':
-			try:
-				return self.send(200, json.dumps({'values': live.readPreset(query.get('name', [''])[0])}))
-			except (OSError, ValueError) as problem:
-				return self.send(200, json.dumps({'error': str(problem)}))
-		if url.path == '/api/graphics':
-			try:
-				return self.send(200, json.dumps({'values': live.currentGraphics(int(query.get('instance', ['0'])[0]))}))
-			except (OSError, ValueError) as problem:
-				return self.send(200, json.dumps({'error': str(problem)}))
-		if url.path == '/api/console':
-			instance = live.findInstance(int(query.get('instance', ['0'])[0] or 0))
-			return self.send(200, json.dumps({'lines': live.consoleTail(instance) if instance else []}))
+			return self.send(200, json.dumps({'activities': live.catalogue['activities'], 'scenes': live.catalogue['scenes']}))
 		if url.path == '/picture':
 			path = os.path.normpath(os.path.join(REPO, query.get('path', [''])[0]))
 			if any(path.lower().startswith(root.lower() + os.sep) for root in PICTURE_ROOTS) and path.lower().endswith('.png') and os.path.isfile(path):
