@@ -57,8 +57,8 @@ std::string System::InstanceFile(const std::string& fileName) {
 }
 
 bool System::IsUnattendedInstance() {
-	const char* instance = std::getenv("CCCP_INSTANCE");
-	return instance && *instance;
+	const char* unattended = std::getenv("CCCP_UNATTENDED");
+	return unattended && *unattended;
 }
 
 // CCCP_MODS_DIR names another folder to load mods from (next to the game, without a slash), so tests can try mods out without touching the player's own Mods folder.

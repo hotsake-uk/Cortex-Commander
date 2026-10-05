@@ -27,6 +27,7 @@ sources += files(
 'ActorFire.cpp',
 'ActorWater.cpp',
 'Sandbox.cpp',
+'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
 'TimerMan.cpp',

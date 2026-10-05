@@ -9,6 +9,9 @@ and its own logs (CCCP_INSTANCE). Builds and picture comparisons run alone, beca
 import json, os, re, shutil, subprocess, sys, threading, time, traceback, urllib.parse, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import live
+
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 8765
@@ -290,7 +293,7 @@ def testMods(job):
 			return False
 		shutil.copytree(repoPath(FOLDERS[where], name), os.path.join(stage, name))
 	console = os.path.join(instance, 'Console.txt')
-	environment = dict(os.environ, CCCP_MODS_DIR='ModsTest_' + slot, CCCP_INSTANCE=slot, CCCP_SETTINGSPATH=SWEEP_SETTINGS, CCCP_NO_GAMEPAD='1', CCCP_HIDE_PANELS='1', CCCP_CONSOLE_LOG=os.path.join('Instances', slot, 'Console.txt'))
+	environment = dict(os.environ, CCCP_MODS_DIR='ModsTest_' + slot, CCCP_INSTANCE=slot, CCCP_UNATTENDED='1', CCCP_SETTINGSPATH=SWEEP_SETTINGS, CCCP_NO_GAMEPAD='1', CCCP_HIDE_PANELS='1', CCCP_CONSOLE_LOG=os.path.join('Instances', slot, 'Console.txt'))
 	say(job, 'Starting the game with %s (sandbox %s).' % (', '.join(names), slot))
 	started = time.time()
 	process = subprocess.Popen([repoPath(TEST_EXE)], cwd=REPO, env=environment)
@@ -458,6 +461,10 @@ def state():
 			'exes': [exeInfo(PLAY_EXE), exeInfo(TEST_EXE)],
 			'scenarios': scenarios(),
 			'pictures': pictures(),
+			'profiles': live.loadProfiles(),
+			'instances': [live.instanceSummary(instance) for instance in list(live.instances)],
+			'presets': live.listPresets(),
+			'catalogueReady': live.catalogue['read'],
 		}
 
 
@@ -500,11 +507,12 @@ def act(request):
 	if action == 'getMods':
 		return {'job': addJob('script', 'Download the mod list', True, scriptJob(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', repoPath('Tools', 'Mods', 'Get-Mods.ps1')]))['id']}
 	if action == 'play':
-		if not os.path.exists(repoPath(PLAY_EXE)):
-			return {'error': 'The game has not been built yet (Final).'}
-		subprocess.Popen([repoPath(PLAY_EXE)], cwd=REPO)
+		request = {'action': 'launch', 'profile': live.loadProfiles()[0]['name']}
+		action = 'launch'
+	companion = companionAct(action, request)
+	if companion is not None:
 		gameRunning['checked'] = 0
-		return {'ok': True}
+		return companion
 	if action == 'openFolder':
 		folder = {'mods': 'Mods', 'parked': 'ModsParked', 'output': 'Tools/RenderTest/Output'}.get(request.get('which'))
 		if folder and os.path.isdir(repoPath(*folder.split('/'))):
@@ -531,7 +539,107 @@ def act(request):
 	return {'error': 'Unknown request.'}
 
 
-PICTURE_ROOTS = [os.path.join(REPO, 'Tools', 'RenderTest', 'Output'), os.path.join(REPO, 'Tools', 'RenderTest', 'Golden'), os.path.join(REPO, 'Documentation', 'Images')]
+def companionAct(action, request):
+	"""Requests about launching, running games and graphics presets. Returns None if the request isn't one of these."""
+	try:
+		if action == 'launch':
+			profile = next((item for item in live.loadProfiles() if item['name'] == request.get('profile')), None)
+			if not profile:
+				return {'error': 'No such profile.'}
+			active = [mod['name'] for mod in listMods() if mod['where'] == 'active']
+			return {'instance': live.launch(live.cleanProfile(profile), active)['id']}
+		if action == 'saveProfile':
+			profile = live.cleanProfile(request.get('profile') or {})
+			profiles = live.loadProfiles()
+			original = request.get('original') or profile['name']
+			if profile['name'] != original and any(item['name'] == profile['name'] for item in profiles):
+				return {'error': 'There is already a profile with that name.'}
+			index = next((number for number, item in enumerate(profiles) if item['name'] == original), None)
+			if index is None:
+				profiles.append(profile)
+			else:
+				profiles[index] = profile
+			live.saveProfiles(profiles)
+			return {'ok': True}
+		if action == 'deleteProfile':
+			profiles = [item for item in live.loadProfiles() if item['name'] != request.get('profile')]
+			if not profiles:
+				return {'error': 'Keep at least one profile.'}
+			live.saveProfiles(profiles)
+			return {'ok': True}
+		if action == 'resetProfiles':
+			live.saveProfiles([dict(profile) for profile in live.DEFAULT_PROFILES])
+			return {'ok': True}
+		if action == 'gameCommand':
+			instance = int(request.get('instance', 0))
+			kind = request.get('kind')
+			if kind == 'set':
+				key, value = str(request.get('key', '')), str(request.get('value', ''))
+				if not re.fullmatch(r'\w+', key) or '\n' in value:
+					return {'error': 'Not a setting.'}
+				reply = live.command(instance, 'set %s = %s' % (key, value))
+			elif kind == 'lua':
+				reply = live.command(instance, 'lua ' + str(request.get('code', '')), 8.0)
+			elif kind in ('shot', 'quit'):
+				reply = live.command(instance, kind)
+			elif kind == 'kill':
+				found = live.findInstance(instance)
+				if found and found['process'].poll() is None:
+					found['process'].kill()
+				reply = 'ok'
+			else:
+				return {'error': 'Unknown command.'}
+			return {'ok': True, 'reply': reply} if reply.startswith('ok') else {'error': reply[4:] or 'The game reported an error; see its console.'}
+		if action == 'savePreset':
+			name = str(request.get('name', '')).strip()
+			if request.get('values'):
+				values = {str(key): str(value) for key, value in request['values'].items() if re.fullmatch(r'\w+', str(key)) and '\n' not in str(value)}
+			elif request.get('instance'):
+				values = live.currentGraphics(int(request['instance']))
+			else:
+				values = live.graphicsFromSettings(live.readText(live.SETTINGS))
+			if not values:
+				return {'error': 'There were no settings to save.'}
+			if os.path.exists(live.presetPath(name)) and not request.get('overwrite'):
+				return {'error': 'There is already a preset called "%s".' % name, 'exists': True}
+			live.writePreset(name, values, str(request.get('note', ''))[:200].replace('\n', ' '))
+			return {'ok': True}
+		if action == 'applyPreset':
+			values = live.readPreset(str(request.get('name', '')))
+			instance = live.findInstance(int(request.get('instance', 0)))
+			reply = live.applyValues(int(request.get('instance', 0)), values)
+			if not reply.startswith('ok'):
+				return {'error': reply[4:]}
+			if instance:
+				instance['preset'] = request.get('name')
+			return {'ok': True}
+		if action == 'deletePreset':
+			os.remove(live.presetPath(str(request.get('name', ''))))
+			return {'ok': True}
+		if action == 'renamePreset':
+			source, target = live.presetPath(str(request.get('name', ''))), live.presetPath(str(request.get('to', '')).strip())
+			if os.path.exists(target):
+				return {'error': 'There is already a preset with that name.'}
+			if request.get('copy'):
+				shutil.copyfile(source, target)
+			else:
+				os.rename(source, target)
+			return {'ok': True}
+		if action == 'defaultPreset':
+			if playerGameRunning():
+				return {'error': 'Close the game first: it writes its own settings when it closes, and would write over this.'}
+			values = live.readPreset(str(request.get('name', '')))
+			text = live.readText(live.SETTINGS)
+			known = set(live.graphicsFromSettings(text))
+			with open(live.SETTINGS, 'w', encoding='ascii', errors='replace', newline='\r\n') as out:
+				out.write(live.settingsWith(text, {key: value for key, value in values.items() if key in known}))
+			return {'ok': True}
+	except (ValueError, OSError) as problem:
+		return {'error': str(problem)}
+	return None
+
+
+PICTURE_ROOTS = [os.path.join(REPO, 'Tools', 'RenderTest', 'Output'), os.path.join(REPO, 'Tools', 'RenderTest', 'Golden'), os.path.join(REPO, 'Documentation', 'Images'), os.path.join(REPO, 'ScreenShots')]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -560,6 +668,8 @@ class Handler(BaseHTTPRequestHandler):
 		query = urllib.parse.parse_qs(url.query)
 		if url.path == '/':
 			return self.send(200, open(os.path.join(HERE, 'index.html'), 'rb').read(), 'text/html; charset=utf-8')
+		if url.path == '/companion.js':
+			return self.send(200, open(os.path.join(HERE, 'companion.js'), 'rb').read(), 'text/javascript; charset=utf-8')
 		if url.path == '/api/state':
 			return self.send(200, json.dumps(state()))
 		if url.path == '/api/log':
@@ -568,6 +678,21 @@ class Handler(BaseHTTPRequestHandler):
 					if str(job['id']) == query.get('job', [''])[0]:
 						return self.send(200, json.dumps({'log': job['log'][-1500:], 'status': job['status'], 'title': job['title']}))
 			return self.send(404, '{}')
+		if url.path == '/api/meta':
+			return self.send(200, json.dumps({'graphics': live.graphicsMeta(), 'activities': live.catalogue['activities'], 'scenes': live.catalogue['scenes']}))
+		if url.path == '/api/preset':
+			try:
+				return self.send(200, json.dumps({'values': live.readPreset(query.get('name', [''])[0])}))
+			except (OSError, ValueError) as problem:
+				return self.send(200, json.dumps({'error': str(problem)}))
+		if url.path == '/api/graphics':
+			try:
+				return self.send(200, json.dumps({'values': live.currentGraphics(int(query.get('instance', ['0'])[0]))}))
+			except (OSError, ValueError) as problem:
+				return self.send(200, json.dumps({'error': str(problem)}))
+		if url.path == '/api/console':
+			instance = live.findInstance(int(query.get('instance', ['0'])[0] or 0))
+			return self.send(200, json.dumps({'lines': live.consoleTail(instance) if instance else []}))
 		if url.path == '/picture':
 			path = os.path.normpath(os.path.join(REPO, query.get('path', [''])[0]))
 			if any(path.lower().startswith(root.lower() + os.sep) for root in PICTURE_ROOTS) and path.lower().endswith('.png') and os.path.isfile(path):
@@ -587,6 +712,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
 	loadResults()
+	live.start()
 	threading.Thread(target=dispatcher, daemon=True).start()
 	server = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
 	address = 'http://127.0.0.1:%d' % PORT

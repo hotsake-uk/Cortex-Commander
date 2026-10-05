@@ -68,6 +68,42 @@ pre.log { background: #0f1116; border: 1px solid var(--line); border-radius: 8px
 #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; align-items: center; justify-content: center; z-index: 30; cursor: zoom-out; }
 #zoom img { max-width: 96vw; max-height: 94vh; image-rendering: pixelated; }
 a { color: var(--info); cursor: pointer; text-decoration: none; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); margin: 20px 0 8px; font-weight: 600; }
+.cards.wide { grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); }
+.game.over { opacity: .7; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+.stats div { background: var(--panel2); border-radius: 6px; padding: 8px 10px; }
+.stats b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.stats span { color: var(--dim); font-size: 12px; }
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.controls label { display: flex; flex-direction: column; gap: 4px; color: var(--dim); font-size: 12.5px; }
+.controls output { float: right; color: var(--text); font-variant-numeric: tabular-nums; }
+input[type=range] { accent-color: var(--accent); width: 100%; }
+.ended { margin-top: 10px; }
+.split { display: grid; grid-template-columns: 270px 1fr; gap: 22px; align-items: start; }
+.preset { padding: 9px 12px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; cursor: pointer; background: var(--panel); }
+.preset:hover { border-color: var(--dim); }
+.preset.sel { border-color: var(--accent); background: var(--panel2); }
+.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 6px 22px; }
+.setting { display: grid; grid-template-columns: 1fr 150px 74px; gap: 8px; align-items: center; padding: 3px 8px; border-radius: 5px; }
+.setting span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.setting.changed { background: #2b2614; }
+.setting.changed span:first-child { color: var(--accent); }
+.setting input[type=number] { width: 74px; padding: 3px 6px; }
+.setting input[type=checkbox] { justify-self: start; }
+.setting input[type=text] { grid-column: 2 / 4; padding: 3px 6px; }
+.setting .colour { grid-column: 2 / 4; display: flex; gap: 4px; align-items: center; }
+.setting .colour i { width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+.setting .colour input { width: 62px; }
+#question { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 40; }
+#editor { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 15; }
+.dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; width: min(760px, 94vw); max-height: 92vh; overflow: auto; }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span:first-child { color: var(--dim); font-size: 12.5px; }
+.field small { color: var(--dim); }
+.field input[type=text], .field select { width: 100%; }
+.modlist { display: none; grid-template-columns: repeat(3, 1fr); gap: 4px 12px; margin-top: 14px; padding: 12px; background: var(--panel2); border-radius: 6px; max-height: 200px; overflow: auto; }
 </style>
 </head>
 <body>
@@ -77,13 +113,60 @@ a { color: var(--info); cursor: pointer; text-decoration: none; }
 	<button class="act primary" id="play">Play the game</button>
 </header>
 <nav id="tabs">
-	<button data-tab="mods" class="sel">Mods</button>
+	<button data-tab="launch" class="sel">Launch</button>
+	<button data-tab="live">Live</button>
+	<button data-tab="graphics">Graphics</button>
+	<button data-tab="mods">Mods</button>
 	<button data-tab="tests">Tests</button>
 	<button data-tab="builds">Builds</button>
 	<button data-tab="jobs">Jobs</button>
 </nav>
 <main>
-	<section id="mods" class="sel">
+	<section id="launch" class="sel">
+		<div class="bar"><span class="muted">A profile is a saved way of starting the game. Several games can run at once.</span><span class="grow"></span>
+			<button class="act" id="resetProfiles">Restore built-in profiles</button><button class="act primary" id="newProfile">New profile</button></div>
+		<div class="cards" id="profiles"></div>
+		<p class="muted">A profile that changes anything starts the game with its own copy of your settings, so what you change inside that game is not written back to your Settings.ini. Save a look you like as a graphics preset instead.</p>
+	</section>
+
+	<section id="live">
+		<p class="muted" id="noGames">No games are running. Start one from the Launch page.</p>
+		<div class="cards wide" id="games"></div>
+		<div id="consolePanel" style="display: none; margin-top: 16px">
+			<h2 id="consoleTitle"></h2>
+			<pre class="log" id="consoleLog" style="max-height: 40vh"></pre>
+			<div class="bar" style="margin-top: 8px"><input type="text" id="consoleInput" placeholder="A console line (Lua), for example: ActivityMan:GetActivity():SetTeamFunds(100000, 0)" style="flex: 1"><button class="act" id="consoleSend">Run</button></div>
+		</div>
+	</section>
+
+	<section id="graphics">
+		<div class="split">
+			<div>
+				<div class="bar"><h2 style="margin: 0">Presets</h2><span class="grow"></span><button class="act small" data-preset-do="new" title="A new preset from your saved settings.">New</button></div>
+				<div id="presetList"></div>
+			</div>
+			<div>
+				<div class="bar">
+					<h2 style="margin: 0" id="presetTitle">Pick a preset on the left</h2><span class="grow"></span>
+					<select id="liveTo" title="Changes you make below are sent to this game as you make them."></select>
+				</div>
+				<div class="bar">
+					<button class="act primary" data-preset-do="apply" title="Sends every setting below to the game.">Apply to game</button>
+					<button class="act" data-preset-do="pull" title="Takes the game's current settings into the editor.">Take from game</button>
+					<button class="act" data-preset-do="save">Save</button>
+					<button class="act" data-preset-do="saveAs">Save as new...</button>
+					<span class="grow"></span>
+					<button class="act" data-preset-do="default" title="Writes this preset into your Settings.ini.">Make my default</button>
+					<button class="act" data-preset-do="rename">Rename</button>
+					<button class="act" data-preset-do="delete">Delete</button>
+				</div>
+				<p class="muted">With a game chosen at the top right, moving a slider changes that game straight away. A preset holds the look only: time of day and weather are not part of it.</p>
+				<div id="presetEditor"></div>
+			</div>
+		</div>
+	</section>
+
+	<section id="mods">
 		<div class="bar">
 			<input type="text" id="filter" placeholder="Find a mod..." style="width: 240px">
 			<select id="show"><option value="all">All mods</option><option value="active">Active</option><option value="parked">Parked</option><option value="problems">With problems</option><option value="untested">Untested</option></select>
@@ -145,10 +228,14 @@ a { color: var(--info); cursor: pointer; text-decoration: none; }
 		<pre class="log" id="log"></pre>
 	</section>
 </main>
+<div id="editor"></div>
+<div id="question"></div>
 <div id="toast"></div>
 <div id="zoom"><img alt=""></div>
 <script>
 const $ = (selector) => document.querySelector(selector);
+// put(node).innerHTML = html only touches the page when the html differs from what was put there last.
+function put(node) { return { set innerHTML(html) { if (node.dataset.html !== html) { node.dataset.html = html; node.innerHTML = html; } } }; }
 let data = null, openMods = new Set(), selectedJob = null, lastCaptureJob = null;
 
 function text(value) { const span = document.createElement('span'); span.textContent = value ?? ''; return span.innerHTML; }
@@ -176,7 +263,7 @@ function drawChips() {
 	const active = data.mods.filter((mod) => mod.where === 'active').length;
 	chips.push(`<span class="chip">Mods: <b>${active}</b> active, <b>${data.mods.length - active}</b> parked</span>`);
 	if (data.repo.head) chips.push(`<span class="chip" title="${text(data.repo.head)}">${text(data.repo.branch)} · <b>${text(data.repo.head.split(' ')[0])}</b>${data.repo.changed ? ' · ' + data.repo.changed + ' changed' : ''}</span>`);
-	$('#chips').innerHTML = chips.join('');
+	put($('#chips')).innerHTML = chips.join('');
 }
 
 function drawMods() {
@@ -201,7 +288,7 @@ function drawMods() {
 			<td class="right"><button class="act small" data-test="${text(mod.name)}" ${mod.busy ? 'disabled' : ''}>Test</button>
 			<button class="act small" data-move="${text(mod.name)}" data-to="${mod.where === 'active' ? 'parked' : 'active'}" ${mod.busy ? 'disabled' : ''}>${mod.where === 'active' ? 'Park' : 'Activate'}</button></td></tr>`);
 	}
-	$('#modRows').innerHTML = rows.join('') || '<tr><td colspan="6" class="muted">No mods match.</td></tr>';
+	put($('#modRows')).innerHTML = rows.join('') || '<tr><td colspan="6" class="muted">No mods match.</td></tr>';
 	$('#modCount').textContent = shown + ' of ' + data.mods.length;
 }
 
@@ -209,7 +296,7 @@ function drawTests() {
 	const select = $('#scenario');
 	if (select.options.length !== data.scenarios.length) select.innerHTML = data.scenarios.map((name) => `<option>${text(name)}</option>`).join('');
 	const lastGolden = [...data.jobs].reverse().find((job) => job.kind === 'golden');
-	$('#scenes').innerHTML = (lastGolden ? `<p class="muted">Last comparison: <span class="pill ${lastGolden.status}">${lastGolden.status}</span> ${text(lastGolden.summary)}</p>` : '') + data.pictures.map((scene) => `<div class="scene"><b>${text(scene.name)}</b>
+	put($('#scenes')).innerHTML = (lastGolden ? `<p class="muted">Last comparison: <span class="pill ${lastGolden.status}">${lastGolden.status}</span> ${text(lastGolden.summary)}</p>` : '') + data.pictures.map((scene) => `<div class="scene"><b>${text(scene.name)}</b>
 		<div class="shots"><figure><figcaption>Baseline</figcaption><img loading="lazy" src="${picture(scene.golden)}"></figure>
 		${scene.latest ? `<figure><figcaption>Latest capture · ${ago(scene.latestTime)}</figcaption><img loading="lazy" src="${picture(scene.latest, scene.latestTime)}"></figure>` : '<figure><figcaption>Latest capture</figcaption><div class="muted">none yet</div></figure>'}
 		${scene.diff ? `<figure><figcaption>Difference</figcaption><img loading="lazy" src="${picture(scene.diff, scene.diffTime)}"></figure>` : ''}</div></div>`).join('');
@@ -228,7 +315,7 @@ function drawBuilds() {
 }
 
 function drawJobs() {
-	$('#jobRows').innerHTML = [...data.jobs].reverse().map((job) => `<tr class="mod" data-job="${job.id}" style="cursor: pointer; ${job.id === selectedJob ? 'outline: 1px solid var(--accent)' : ''}">
+	put($('#jobRows')).innerHTML = [...data.jobs].reverse().map((job) => `<tr class="mod" data-job="${job.id}" style="cursor: pointer; ${job.id === selectedJob ? 'outline: 1px solid var(--accent)' : ''}">
 		<td class="sub">${job.id}</td><td><div class="name">${text(job.title)}</div><div class="sub">${text(job.tail)}</div></td>
 		<td><span class="pill ${job.status}">${job.status}</span></td><td>${text(job.summary)}</td><td class="right sub">${job.seconds ? duration(job.seconds) : ''}</td>
 		<td class="right">${job.status === 'running' || job.status === 'queued' ? `<button class="act small" data-stop="${job.id}">Stop</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nothing yet.</td></tr>';
@@ -247,13 +334,14 @@ async function drawLog() {
 
 async function refresh() {
 	const fresh = await fetch('/api/state').then((r) => r.json()).catch(() => null);
-	if (!fresh) { $('#chips').innerHTML = '<span class="chip" style="border-color: var(--bad); color: var(--bad)">The Workbench is not answering</span>'; return; }
+	if (!fresh) { put($('#chips')).innerHTML = '<span class="chip" style="border-color: var(--bad); color: var(--bad)">The Workbench is not answering</span>'; return; }
 	data = fresh;
 	drawChips(); drawMods(); drawTests(); drawBuilds(); drawJobs(); drawLog();
+	if (window.drawCompanion) drawCompanion();
 	$('#play').disabled = data.gameRunning;
 }
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
 	const target = event.target;
 	if (target.matches('nav button')) {
 		document.querySelectorAll('nav button, main section').forEach((node) => node.classList.remove('sel'));
@@ -272,7 +360,7 @@ document.addEventListener('click', (event) => {
 			openMods: { action: 'openFolder', which: 'mods' }, golden: { action: 'golden' }, goldenUpdate: { action: 'golden', update: true },
 			capture: { action: 'capture', scenario: $('#scenario').value, wait: Number($('#wait').value) }, buildDebug: { action: 'build', config: 'Debug Release' }, buildFinal: { action: 'build', config: 'Final' },
 		};
-		if (target.dataset.do === 'goldenUpdate' && !confirm('Replace all the stored baseline pictures with fresh captures?')) return;
+		if (target.dataset.do === 'goldenUpdate' && !(await sure('Replace all the stored baseline pictures with fresh captures?'))) return;
 		ask(actions[target.dataset.do]).then((reply) => { if (reply.job) { selectedJob = reply.job; } });
 	}
 });
@@ -282,5 +370,6 @@ $('#slots').addEventListener('change', () => ask({ action: 'setSlots', slots: Nu
 refresh();
 setInterval(refresh, 1500);
 </script>
+<script src="/companion.js"></script>
 </body>
 </html>

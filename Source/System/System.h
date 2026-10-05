@@ -56,7 +56,7 @@ namespace RTE {
 		/// @param fileName The file's usual name, such as "LogConsole.txt".
 		static std::string InstanceFile(const std::string& fileName);
 
-		/// Whether this run is one of several started by a tool (CCCP_INSTANCE is set). Nobody is watching it, so it must never stop to show a message box.
+		/// Whether this run was started by a tool for a test, with nobody watching (CCCP_UNATTENDED is set). It must never stop to show a message box.
 		static bool IsUnattendedInstance();
 
 		/// Gets the userdata directory name.

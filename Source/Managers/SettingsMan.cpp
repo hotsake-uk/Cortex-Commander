@@ -1,3 +1,4 @@
+#include "ControlLink.h"
 #include "SettingsMan.h"
 #include "TextOverlay.h"
 #include "TerrainFire.h"
@@ -313,6 +314,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DrawPixelCheckVisualizations", { reader >> g_SceneMan.m_DrawPixelCheckVisualizations; });
 	MatchProperty("PrintDebugInfo", { reader >> m_PrintDebugInfo; });
 	MatchProperty("EnableDebugMenus", { reader >> g_DebugMan.m_ShowDebugWindow; });
+	MatchProperty("ControlLinkPort", { ControlLink::s_SettingsPort = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("ShowGraphicsLab", { g_DebugMan.m_ShowGraphicsLab = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShowWorldDebug", { g_DebugMan.m_ShowWorldDebug = std::stoi(reader.ReadPropValue()) != 0; }); // Read only, for automated captures.
 	MatchProperty("MeasureModuleLoadTime", { reader >> m_MeasureModuleLoadTime; });
@@ -418,6 +420,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("CloudShadows", lighting.CloudShadows);
 	writer.NewPropertyWithValue("SurfaceStates", lighting.SurfaceStates);
 	writer.NewPropertyWithValue("TracerLights", lighting.TracerLights);
+	if (ControlLink::s_SettingsPort > 0) {
+		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
+	}
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
 	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);

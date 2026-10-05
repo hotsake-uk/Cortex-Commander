@@ -18,6 +18,7 @@
 /// Cortex Command Community Project Discord - https://discord.gg/TSU6StNQUG
 /// </summary>
 
+#include "ControlLink.h"
 #include "SDL3/SDL_hints.h"
 #include "allegro.h"
 #include <SDL3/SDL.h>
@@ -148,6 +149,7 @@ void InitializeManagers() {
 /// Destroys all the managers and frees all loaded data before termination.
 /// </summary>
 void DestroyManagers() {
+	ControlLink::Stop();
 	g_MetaMan.Destroy();
 	g_PerformanceMan.Destroy();
 	g_MovableMan.Destroy();
@@ -225,6 +227,8 @@ void HandleMainArgs(int argCount, char** argValue) {
 /// </summary>
 void PollSDLEvents() {
 	SDL_Event sdlEvent;
+	// Commands from a companion program on this computer (the Workbench), if the link was asked for.
+	ControlLink::Update();
 	while (SDL_PollEvent(&sdlEvent)) {
 		// Clicks, scrolls and typing aimed at a debug window shouldn't also reach the game (releases always do, so nothing gets stuck down).
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
@@ -552,6 +556,8 @@ int main(int argc, char** argv) {
 	HandleMainArgs(argc, argv);
 
 	g_PresetMan.LoadAllDataModules();
+
+	ControlLink::Start();
 
 	if (!System::IsInExternalModuleValidationMode()) {
 		// Load the different input device icons. This can't be done during UInputMan::Create() because the icon presets don't exist so we need to do this after modules are loaded.

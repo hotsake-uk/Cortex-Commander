@@ -866,6 +866,7 @@
     <ClInclude Include="Source\Managers\SmokeGrid.h" />
     <ClInclude Include="Source\Managers\ActorFire.h" />
     <ClInclude Include="Source\Managers\ActorWater.h" />
+    <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
@@ -1418,6 +1419,7 @@
     <ClCompile Include="Source\Managers\ActorFire.cpp" />
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
+    <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />
     <ClCompile Include="Source\Managers\UInputMan.cpp" />
