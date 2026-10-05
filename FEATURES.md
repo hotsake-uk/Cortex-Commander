@@ -118,11 +118,16 @@ Last updated: 5 October 2026.
 
 - **Spreading fire.** Grass and plants burn away. Wood burns slowly to ash. Oil burns fast. Fire needs air, climbs upward, spreads downwind, is weakened by rain and snow, and is put out by water. Burning ground gives light, smoke and flames that hurt.
 - **Flowing liquids.** Water, lava, acid and oil in the terrain fall, run downhill, pool and find a common level, even through a tunnel.
+  - Liquid has momentum: it pours in an arc, speeds up as it runs and sloshes back off walls.
+  - Liquids layer by weight: oil floats on water, water on acid, and everything on lava.
+  - Explosions, units and boulders falling in throw splashes. The drops fly, land and join the liquid again, so none is lost.
+  - In snowy weather still water freezes over. Lava melts ice and snow.
   - Water puts out fire.
   - Lava glows, sets things alight, and turns to stone where it meets water.
   - Acid eats soft ground and is used up doing it.
   - Oil burns where it pools.
-- **Collapsing terrain.** After a big explosion, pieces of ground no longer attached to anything fall as solid chunks. Concrete and metal structures stay up.
+- **Loose sand and snow.** Sand, snow, rubble and ash slide and pile at a slope when something disturbs them, and sink in liquid.
+- **Collapsing terrain.** After a big explosion, pieces of ground no longer attached to anything fall as solid bodies with weight. They tip, roll and slide to rest, crack into smaller pieces if they land hard, hit units in their way and can be shot apart as they fall. Pieces of buildings fall too once nothing holds them up.
 - **Burning units.** Flames, napalm, burning ground and lava set units of flesh alight; machines never burn, and lasers, explosions and jetpacks don't set anyone on fire. A burning unit takes damage, panics, runs, and spreads fire to what it touches. Water puts it out.
 - **Steam.** Water on fire, and lava meeting water, throws up steam.
 - **Swimming and drowning.** Units move through liquid instead of destroying it. Wading slows them. Light units float and heavy ones sink. Living soldiers run out of air after 12 seconds under water; robots do not breathe.
@@ -154,7 +159,8 @@ Last updated: 5 October 2026.
 - **Take control** of any unit and play it yourself.
 - **Drop squads** arrive by dropship or rocket.
 - **Auto battle:** give each side a faction and a budget. The AI buys and sends waves until one side is left.
-- **Paint** fire, water, lava, acid, oil, smoke, gas, earth, sand, grass, wood and concrete. Dig. Call down grenades, bombs, napalm and lightning.
+- **Paint** fire, water, lava, acid, oil, smoke, gas, earth, sand, ice, grass, wood and concrete. Pour loose sand and snow. Drop boulders and lumps of concrete. Dig. Call down grenades, bombs, napalm and lightning.
+- **Speed of time.** A slider from a twentieth of normal speed to three times, to watch a collapse slowly or hurry a battle along.
 - **Pause AI:** every AI unit stands still while you set things up.
 - **World controls:** weather, wind, time of day, slow motion.
 - **Follow** a unit with the camera, or let the camera follow the fighting.

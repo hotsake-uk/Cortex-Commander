@@ -102,9 +102,15 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 
 **Collapsing terrain** (`TerrainCollapse`, a gameplay setting, also in F6):
 - **When it checks:** half a second and again a second and a half after a big explosion, it looks around the crater for pieces of terrain no longer touching anything.
-- **What falls:** pieces up to 2500 pixels drop as rigid chunks, accelerating until they land with a puff of dust.
-- **What stays up:** built structures (concrete, metal, military materials) and anything touching the edge of the world.
-- **Determinism:** it is part of the simulation and deterministic, with sorted checks and no random numbers.
+- **What falls:** any piece up to 30,000 pixels that touches no other ground. A bigger one counts as the world and stays.
+- **How it falls:** as a rigid body. Its mass and how hard it is to spin come from its materials. It is tested against the ground along its outline, moving no more than a pixel at a time, and where it touches it gets a push with a little bounce and friction (the method rigid body engines such as Box2D use). So a piece tips off a ledge, rolls down a slope and slides to rest.
+- **Breaking:** a piece that lands faster than its material can take cracks along jagged lines into smaller pieces, which fall on their own; the tiniest bits fly off as loose particles. Sand and soil break easily, stone needs a long fall, concrete a longer one, and metal doesn't break.
+- **Buildings:** pieces of concrete and metal fall too once nothing holds them. A loose bit that is mostly building material and smaller than 150 pixels stays (lamps, signs and consoles are drawn hanging in mid-air), and so does anything joined to a door or the edge of the world.
+- **While it falls** a piece is part of the terrain, so units collide with it and can stand on it. It hits and pushes units in its way, loses the pixels that are shot or blasted off it, sinks slowly in liquid, and lifts liquid out of its way instead of deleting it.
+- **Not kept:** a saved game stores a falling piece as ground where it was.
+- **Cost:** about 0.1 ms an update in a bombing run on a bunker, 4 ms at worst (Debug Release build).
+- **Determinism:** it is part of the simulation and deterministic, with sorted checks and its own seeded random numbers.
+- **Lua:** `SceneMan:SpawnTerrainChunk(Vector, radius, "Stone")` makes a boulder of any material; `SceneMan:CheckTerrainCollapse(Vector, radius)` runs the check; `SceneMan:GetFallingTerrainChunkCount()`.
 
 **Flowing liquids** (`FlowingLiquids`, a gameplay setting, also in F6):
 - **What flows:** Water (material 160), Lava (165), Acid (167) and Oil in the terrain fall, run sideways and pool.
@@ -114,12 +120,16 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Acid** slowly eats soft terrain and is used up doing it.
 - **Oil** flows more slowly and burns where it pools. It isn't drawn shimmering, because its colour is shared with many sprites.
 - **Saves:** moving liquid is saved in saved games.
-- **How it moves:** each drop falls, then runs along the level the way it was already heading, turns round at walls and drops off the first edge it finds. So liquid runs downhill and spreads out instead of piling up like sand.
+- **How it moves:** each moving pixel has a speed. Falling, it gets faster and drifts the way it was going, so liquid pours in an arc. On the level its speed builds while it has room and dies down otherwise; at a wall it turns round with half its speed, so a wave sloshes back. It drops off the first edge it finds.
+- **Layers:** heavier liquid sinks through lighter. From the top: oil, water, acid, lava.
+- **Splashes:** liquid that lands fast throws drops. An explosion in or beside liquid throws it into the air, and so does a unit or a boulder falling in. Every pixel thrown is a drop that flies and joins the liquid again where it lands; a drop that comes down inside liquid rises to its surface, so none is lost.
+- **Ice:** in snowy weather still water slowly freezes over from the top. Lava melts ice and snow to water.
+- **Loose powders** (`LoosePowders`, a gameplay setting, also in F6): Sand, Snow, Earth Rubble and Ashes fall and slide down slopes when disturbed (by a blast, digging, a landing boulder or flowing liquid beside them), and pile at a slope instead of levelling. Snow stands steeper than sand. Powder sinks in liquid. Ground that nothing disturbs stays as the map made it.
 - **Finding its level:** liquid that has nowhere left to run looks through the body it belongs to for a lower free spot and moves there. Connected pools come to one level, including through a tunnel or under a wall.
 - **Nothing gets left hanging:** liquid wakes when ground next to it is dug, shot or blasted away, and a sweep of the whole map every few seconds catches anything missed. Any amount can be poured; beyond 80,000 moving pixels the rest wait their turn.
 - **Cost:** liquid at rest costs nothing. Measured: about 0.7 ms per update with 6,000 pixels moving (Debug Release build), and 6 to 8 ms, with spikes to 11 ms, with the most that can move at once, 80,000 (Final build). F6 shows the count and time.
 - **Determinism:** it is part of the simulation and deterministic.
-- **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid"|"Oil")`, `SceneMan:GetFlowingLiquidPixelCount()`, `SceneMan:GetBurningPixelCount()`.
+- **Lua:** `SceneMan:PourLiquid(Vector, radius, "Water"|"Lava"|"Acid"|"Oil"|"Sand"|"Snow"|"Earth Rubble"|"Ashes")`, `SceneMan:GetFlowingLiquidPixelCount()`, `SceneMan:GetBurningPixelCount()`.
 - **Liquid weapons:** the **Napalm Flamer** sprays burning fuel that pools and burns, the **Water Cannon** knocks people back and puts fires out, and the **Acid Sprayer** lobs globs that sting and eat soft ground.
 
 **Swimming and drowning** (`SwimmingAndDrowning`, a gameplay setting, also in F6):

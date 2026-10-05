@@ -16,7 +16,7 @@ Asked for on 2026-10-05: make liquids work properly and expand them, rework how 
 | 1.3 | Splashes: liquid that lands fast throws drops that fly and rejoin the pool | built |
 | 1.4 | Loose powders: sand, snow, rubble and ash slide and pile at a slope when disturbed, and sink in liquid | built |
 | 1.5 | Sandbox: pour sand; Lua `SceneMan:PourLiquid` takes powders too | built |
-| 1.6 | Water look: surface line, depth shading | see section 4 |
+| 1.6 | Water look: foam, bending what's behind it | not done, see section 5 |
 
 Kept from before: finding a common level through connected bodies, reactions (lava and water, acid, fire), resting liquid costs nothing, saved games.
 
@@ -37,15 +37,29 @@ Before: a detached piece moved straight down as a frozen shape and stopped at fi
 
 | Step | What | Status |
 |---|---|---|
-| 3.1 | Sand and Boulder tools | built |
-| 3.2 | Time controls (pause, slow motion, single step) | see log |
+| 3.1 | Loose sand, loose snow, boulder, concrete lump and ice tools | built |
+| 3.2 | Speed of time slider (0.05x to 3x) with Slow, Normal and Fast buttons | built; a full pause and single step are not |
 
-## 4. Graphics
+## 4. More liquid behaviour (added while building)
 
 | Step | What | Status |
 |---|---|---|
-| 4.1 | Water: bright surface line, darker with depth, foam where it moves | see log |
+| 4.1 | Explosions, units and boulders falling in throw liquid as drops that rejoin it | built |
+| 4.2 | Drops that land inside liquid rise to its surface (before, most of a splash was lost) | built |
+| 4.3 | Still water freezes over in snowy weather; lava melts ice and snow | built |
+
+## 5. Not done
+
+- **Water's look.** It already had a surface line, depth shading and ripples; nothing was changed. Foam where it moves and bending of what's behind it are still ideas.
+- **Open pits look black.** A pit dug open to the sky shows the scene's dark back wall, not sky. Seen in the tests; not looked into.
+- **Electricity through water, mud, a cryo weapon.** From the earlier agreed list; not built.
+- **Saving falling pieces.** A saved game keeps them as ground where they were.
 
 ## Log
 
-See the bottom of this file for what was checked and what was not.
+2026-10-05:
+- **Checked by test captures:** boulders fall, turn and settle on a slope (Physics); a disc cut loose in a hill drops and settles (Collapse); a 19,000-pixel section of a bunker broke loose under bombing and tipped over (BlastDay); sand piles at a slope; oil and water run down a hill; a grenade and a boulder in a pool (Splash).
+- **Checked by numbers:** two pits joined by a tunnel come to one level (Level, with collapse off: the block of earth between the pits now rightly falls into the tunnel). A grenade in a small pool: 2170 pixels of water before, 1600 back in the pool after, the rest thrown clear of the pit; before the fix 600 came back. A boulder dropped in loses about 1%.
+- **Cost:** the heaviest flood (80,000 moving pixels) 7 to 10 ms an update, as before. Chunk physics 0.1 ms an update under bombing, 4 ms at worst.
+- **The seven regression scenes pass.**
+- **Not checked by eye:** freezing (a pale crust was starting after 50 s of snow, but I can't tell it from the surface line), lava melting ice, liquids layering in a deep pool, a unit's splash, breaking of a big boulder from a long fall, how a falling building piece treats units inside it, the Sandbox's new buttons and the time slider (built, compiled, not clicked).
