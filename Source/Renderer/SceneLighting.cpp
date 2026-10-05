@@ -341,7 +341,11 @@ void SceneLighting::DestroyScreenResources() {
 
 #pragma region World Grid
 
-void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow) {
+void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow, int firstColumn, int endColumn) {
+	if (endColumn < 0 || endColumn > m_GridWidth) {
+		endColumn = m_GridWidth;
+	}
+	firstColumn = std::clamp(firstColumn, 0, endColumn);
 	ZoneScoped;
 	const BITMAP* materialBitmap = static_cast<const BITMAP*>(m_WorldMaterialBitmap);
 	// Sample a 2x2 pattern inside each cell rather than every pixel, which is plenty to tell air, surfaces and solid apart.
@@ -353,7 +357,7 @@ void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow) {
 		const unsigned char* line0 = materialBitmap->line[y0];
 		const unsigned char* line1 = materialBitmap->line[y1];
 		unsigned char* occupancyRow = &m_Occupancy[static_cast<size_t>(row) * m_GridWidth * 4];
-		for (int column = 0; column < m_GridWidth; ++column) {
+		for (int column = firstColumn; column < endColumn; ++column) {
 			int x0 = std::min(column * m_CellSize + sampleNear, m_SceneWidth - 1);
 			int x1 = std::min(column * m_CellSize + sampleFar, m_SceneWidth - 1);
 			const unsigned char materials[4] = {line0[x0], line0[x1], line1[x0], line1[x1]};
@@ -769,6 +773,22 @@ void SceneLighting::Update() {
 	RefreshOccupancyRows(firstRow, endRow);
 	UploadOccupancyRows(firstRow, endRow);
 	m_NextRefreshRow = (endRow >= m_GridHeight) ? 0 : endRow;
+	// Where terrain actually changed since the last frame (a piece falling, liquid moving, digging, a crater) is brought up to date at once, so shade and light
+	// follow it as it moves instead of catching up when the round-robin gets there.
+	bool terrainChanged = false;
+	if (int minX, minY, maxX, maxY; SLTerrain::TakeChangedArea(minX, minY, maxX, maxY)) {
+		int changedFirstRow = std::clamp(minY / m_CellSize - 1, 0, m_GridHeight);
+		int changedEndRow = std::clamp(maxY / m_CellSize + 2, 0, m_GridHeight);
+		// Changes either side of the seam of a wrapping scene, or outside it, take the whole width.
+		bool wholeWidth = minX < 0 || maxX >= m_SceneWidth;
+		int changedFirstColumn = wholeWidth ? 0 : std::clamp(minX / m_CellSize - 1, 0, m_GridWidth);
+		int changedEndColumn = wholeWidth ? m_GridWidth : std::clamp(maxX / m_CellSize + 2, 0, m_GridWidth);
+		if (changedEndRow > changedFirstRow) {
+			RefreshOccupancyRows(changedFirstRow, changedEndRow, changedFirstColumn, changedEndColumn);
+			UploadOccupancyRows(changedFirstRow, changedEndRow);
+			terrainChanged = true;
+		}
+	}
 	RecomputeSkyline();
 
 	GLint previousFramebuffer = 0;
@@ -776,7 +796,8 @@ void SceneLighting::Update() {
 	GLint previousViewport[4];
 	glGetIntegerv(GL_VIEWPORT, previousViewport);
 	logStages.Next("Light grid: sky light spreading");
-	PropagateSkyLight(m_Settings.PropagationIterationsPerFrame);
+	// Sky light spreads a cell a step, so it gets more steps while the ground is changing, to keep up with it.
+	PropagateSkyLight(m_Settings.PropagationIterationsPerFrame * (terrainChanged ? 3 : 1));
 	logStages.Next("Light grid: scorch marks and stains");
 	StampScorchMarks();
 	StampStains();

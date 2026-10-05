@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <climits>
 #include "SceneLayer.h"
 #include "Matrix.h"
 #include "Color.h"
@@ -182,7 +184,20 @@ namespace RTE {
 		/// @param pixelX The X coordinate of the pixel to set.
 		/// @param pixelY The Y coordinate of the pixel to set.
 		/// @param materialID The material index to set the pixel to.
-		void SetMaterialPixel(int pixelX, int pixelY, int materialID) { SetPixel(pixelX, pixelY, materialID); }
+		void SetMaterialPixel(int pixelX, int pixelY, int materialID) {
+			SetPixel(pixelX, pixelY, materialID);
+			NoteMaterialChange(pixelX, pixelY);
+		}
+
+		/// Takes the box around every material pixel changed since this was last called, for whatever keeps its own picture of the terrain up to date (the lighting's grid).
+		/// @return False if nothing changed. Otherwise the box is in the arguments, in scene pixels, both ends included.
+		static bool TakeChangedArea(int& minX, int& minY, int& maxX, int& maxY) {
+			minX = s_ChangedMinX.exchange(INT_MAX, std::memory_order_relaxed);
+			minY = s_ChangedMinY.exchange(INT_MAX, std::memory_order_relaxed);
+			maxX = s_ChangedMaxX.exchange(INT_MIN, std::memory_order_relaxed);
+			maxY = s_ChangedMaxY.exchange(INT_MIN, std::memory_order_relaxed);
+			return maxX >= minX && maxY >= minY;
+		}
 
 		/// Indicates whether a terrain pixel is of Air or Cavity material.
 		/// @param pixelX The X coordinate of the pixel to check.
@@ -301,5 +316,18 @@ namespace RTE {
 		// Disallow the use of some implicit methods.
 		SLTerrain(const SLTerrain& reference) = delete;
 		SLTerrain& operator=(const SLTerrain& rhs) = delete;
+	private:
+		/// Widens the box of changed material pixels to take in one more. Called from wherever terrain is changed, which may be several threads at once.
+		static void NoteMaterialChange(int x, int y) {
+			for (int seen = s_ChangedMinX.load(std::memory_order_relaxed); x < seen && !s_ChangedMinX.compare_exchange_weak(seen, x, std::memory_order_relaxed);) {}
+			for (int seen = s_ChangedMaxX.load(std::memory_order_relaxed); x > seen && !s_ChangedMaxX.compare_exchange_weak(seen, x, std::memory_order_relaxed);) {}
+			for (int seen = s_ChangedMinY.load(std::memory_order_relaxed); y < seen && !s_ChangedMinY.compare_exchange_weak(seen, y, std::memory_order_relaxed);) {}
+			for (int seen = s_ChangedMaxY.load(std::memory_order_relaxed); y > seen && !s_ChangedMaxY.compare_exchange_weak(seen, y, std::memory_order_relaxed);) {}
+		}
+
+		static inline std::atomic<int> s_ChangedMinX{INT_MAX}; //!< The box around the material pixels changed since it was last taken.
+		static inline std::atomic<int> s_ChangedMinY{INT_MAX};
+		static inline std::atomic<int> s_ChangedMaxX{INT_MIN};
+		static inline std::atomic<int> s_ChangedMaxY{INT_MIN};
 	};
 } // namespace RTE

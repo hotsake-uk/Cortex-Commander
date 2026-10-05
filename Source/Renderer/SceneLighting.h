@@ -237,7 +237,7 @@ namespace RTE {
 		GLuint BuildOccluderField(RenderTarget* playerScreen, float foregroundDepth);
 
 		/// Recomputes occupancy for a range of grid rows from the terrain material layer.
-		void RefreshOccupancyRows(int firstRow, int endRow);
+		void RefreshOccupancyRows(int firstRow, int endRow, int firstColumn = 0, int endColumn = -1);
 		void RecomputeSkyline();
 		void UploadOccupancyRows(int firstRow, int endRow);
 		void PropagateSkyLight(int iterations);
