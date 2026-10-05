@@ -185,6 +185,7 @@ namespace RTE {
 		float HeatHaze = 1.5F; //!< Heat haze shimmer, in pixels at full heat.
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
 
+		float SkyFollowsTime = 1.0F; //!< How far the sky art (painted as a blue day) takes the colours of the hour away from midday: a dark night sky, a red dawn and dusk, grey in bad weather. 0 only darkens the art, as before.
 		float GodRays = 0.7F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.

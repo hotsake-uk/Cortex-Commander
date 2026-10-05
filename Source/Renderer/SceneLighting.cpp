@@ -649,6 +649,50 @@ void SceneLighting::Update() {
 	float dayFactor = std::clamp(glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
 	m_EffectiveSky = m_Settings.SkyColor * daylight;
 	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
+	m_SkyDaylight = daylight;
+	{
+		// The sky of the hour, for recoloring the sky art (which is painted as a blue day): overhead, at the horizon, and on cloud. Linear colours.
+		struct SkyOfHour {
+			float Hour;
+			glm::vec3 Zenith, Horizon, Cloud;
+		};
+		static const SkyOfHour hours[] = {
+		    {0.0F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
+		    {4.6F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
+		    {5.6F, {0.03F, 0.045F, 0.16F}, {0.5F, 0.2F, 0.16F}, {0.45F, 0.22F, 0.24F}},
+		    {6.4F, {0.1F, 0.19F, 0.5F}, {1.0F, 0.52F, 0.25F}, {1.0F, 0.62F, 0.48F}},
+		    {8.0F, {0.16F, 0.38F, 0.82F}, {0.5F, 0.7F, 0.95F}, {1.0F, 0.98F, 0.95F}},
+		    {16.0F, {0.16F, 0.38F, 0.82F}, {0.5F, 0.7F, 0.95F}, {1.0F, 0.98F, 0.95F}},
+		    {17.6F, {0.1F, 0.14F, 0.45F}, {1.0F, 0.42F, 0.16F}, {1.0F, 0.55F, 0.35F}},
+		    {18.5F, {0.03F, 0.04F, 0.16F}, {0.45F, 0.14F, 0.14F}, {0.4F, 0.18F, 0.22F}},
+		    {19.6F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
+		    {24.0F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
+		};
+		float hour = std::clamp(m_Settings.TimeOfDay, 0.0F, 24.0F);
+		size_t next = 1;
+		while (next + 1 < std::size(hours) && hours[next].Hour < hour) {
+			++next;
+		}
+		float between = std::clamp((hour - hours[next - 1].Hour) / std::max(hours[next].Hour - hours[next - 1].Hour, 0.001F), 0.0F, 1.0F);
+		m_SkyZenith = glm::mix(hours[next - 1].Zenith, hours[next].Zenith, between);
+		m_SkyHorizon = glm::mix(hours[next - 1].Horizon, hours[next].Horizon, between);
+		m_SkyCloud = glm::mix(hours[next - 1].Cloud, hours[next].Cloud, between);
+		// Around midday the art is right as it is and is left alone; the replacement comes in through the afternoon and goes out through the morning.
+		float away = hour < 12.0F ? 1.0F - glm::smoothstep(7.5F, 9.5F, hour) : glm::smoothstep(14.5F, 16.5F, hour);
+		// Bad weather greys the sky at any hour.
+		float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		if (overcast > 0.0F) {
+			auto grey = [overcast](const glm::vec3& color) {
+				float brightness = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+				return glm::mix(color, glm::vec3(0.75F, 0.8F, 0.88F) * brightness * 0.8F, overcast * 0.75F);
+			};
+			m_SkyZenith = grey(m_SkyZenith);
+			m_SkyHorizon = grey(m_SkyHorizon);
+			m_SkyCloud = grey(m_SkyCloud);
+			away = std::max(away, overcast * 0.7F);
+		}
+		m_SkyRecolor = std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) * away;
+	}
 	m_MoonHours = std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F);
 
 	// The sun crosses the sky with the time of day, and at night the moon takes over (as for the god rays). Shadows fall away from it.
@@ -1256,6 +1300,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteAtmosphereColor", atmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
 	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? atmosphereHaze : 0.0F);
 	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	m_CompositeShader->SetFloat("rteSkyRecolor", m_Settings.Enabled ? m_SkyRecolor : 0.0F);
+	m_CompositeShader->SetVector3f("rteSkyDaylight", m_SkyDaylight);
+	m_CompositeShader->SetFloat("rteSkyOwnLight", m_Settings.Enabled ? std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);
+	m_CompositeShader->SetVector3f("rteSkyHorizon", m_SkyHorizon);
+	m_CompositeShader->SetVector3f("rteSkyCloud", m_SkyCloud);
 	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(m_Settings.WeatherType > 0 ? m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
 	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
 	{

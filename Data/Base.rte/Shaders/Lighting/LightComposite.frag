@@ -50,6 +50,12 @@ uniform vec2 rteIndirectOffset; // How far the screen moved since the indirect l
 uniform sampler2D rteGI; // Light from radiance cascades, quarter resolution.
 uniform float rteGIStrength;
 uniform float rteNightSky; // 0 by day, 1 at full night: stars and the moon show on the furthest sky layers.
+uniform float rteSkyRecolor; // 0..1, how far the sky layers' own painted colours are replaced by the sky of the hour (0 around midday, when the art is right as it is).
+uniform vec3 rteSkyDaylight; // The colour of daylight at this hour (white at noon), apart from how bright the player has set the light on the scene.
+uniform float rteSkyOwnLight; // 0..1, how far the sky is lit by that rather than by the scene's sky light setting.
+uniform vec3 rteSkyZenith; // The sky's colour overhead at this hour, linear.
+uniform vec3 rteSkyHorizon; // And at the horizon.
+uniform vec3 rteSkyCloud; // What the light of the hour makes of white cloud.
 uniform vec2 rteMoonPosition; // Screen pixels, as gl_FragCoord (y 0 is the top of the player screen).
 uniform float rteTime; // Seconds, for twinkling.
 
@@ -159,11 +165,15 @@ void main() {
 	vec3 highlights = vec3(0.0);
 	float metalness = 0.0;
 	float nightSkyAmount = 0.0;
+	float skyLayer = 0.0; // How much this pixel is the sky itself: the furthest layers, or nothing drawn at all.
 	float sceneDepth = texture(rteSceneDepth, screenUV).r;
 	float haze = 0.0;
 	if (sceneDepth > rteBackgroundDepth) {
 		// Background layers are far behind the action: they aren't shadowed by terrain or lit by explosions in front of them, but fade into the atmosphere with distance.
-		light = rteBackgroundLight;
+		// Distant scenery is lit by the hour's own daylight. (The sky light setting is for how much of it falls on the scene in front; turned down for
+		// moodier ground, it used to turn the midday sky and mountains navy as well.)
+		// Away from midday that light is the sky's own colour at the hour, so mountains are dark shapes against a night sky and take the red of a dusk.
+		light = mix(rteBackgroundLight, mix(rteSkyDaylight, (rteSkyHorizon + rteSkyZenith) * 0.32, rteSkyRecolor), rteSkyOwnLight);
 		float distance = clamp((sceneDepth - rteBackgroundNearDepth) / (rteBackgroundFarDepth - rteBackgroundNearDepth), 0.0, 1.0);
 		// Nothing drawn at all (cleared depth) is open sky.
 		// The furthest layers are usually the sky itself, which shouldn't be washed out; haze peaks on the distant scenery in between.
@@ -184,6 +194,7 @@ void main() {
 		}
 		// Only layers that barely scroll (the sky itself) get stars, so they never show on mountains or nearer scenery.
 		// They also fade towards the horizon, where distant mountains usually are.
+		skyLayer = smoothstep(0.88, 0.95, distance);
 		nightSkyAmount = rteNightSky * smoothstep(0.88, 0.95, distance) * (1.0 - smoothstep(0.25, 0.48, screenUV.y)); // Player screens are drawn top down: UV y 0 is the top.
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
@@ -322,6 +333,25 @@ void main() {
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
 	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze);
+	if (rteSkyOwnLight > 0.0 && skyLayer > 0.0) {
+		// The sky itself is as bright as the hour makes it. The sky light setting is for how much of it falls on the scene; turned down for moodier ground, it
+		// used to turn the midday sky navy as well.
+		litColor = mix(litColor, mix(albedoLinear * rteSkyDaylight, rteAtmosphereColor, haze), skyLayer * rteSkyOwnLight * (1.0 - rteSkyRecolor));
+	}
+	if (rteSkyRecolor > 0.0 && skyLayer > 0.0) {
+		// The sky art is painted as a blue day. Darkening it only ever gives a dark blue day, so away from midday its colours are replaced by the sky of the hour:
+		// a gradient from overhead to the horizon where the art is blue sky, and the hour's light on cloud where it is pale. The art's own light and shade is kept faintly.
+		float brightness = dot(albedoLinear, vec3(0.2126, 0.7152, 0.0722));
+		float strongest = max(max(albedoLinear.r, albedoLinear.g), albedoLinear.b);
+		float weakest = min(min(albedoLinear.r, albedoLinear.g), albedoLinear.b);
+		float saturation = strongest > 0.001 ? (strongest - weakest) / strongest : 0.0;
+		float cloud = (1.0 - smoothstep(0.12, 0.38, saturation)) * smoothstep(0.2, 0.55, brightness);
+		float down = clamp(screenUV.y / 0.8, 0.0, 1.0);
+		vec3 gradient = mix(rteSkyZenith, rteSkyHorizon, pow(down, 1.6));
+		gradient *= mix(1.0, clamp(brightness / 0.3, 0.7, 1.4), 0.25);
+		vec3 sky = mix(gradient, rteSkyCloud * (0.35 + brightness), cloud);
+		litColor = mix(litColor, sky, rteSkyRecolor * skyLayer);
+	}
 	if (rteSunDisc != vec3(0.0) && sceneDepth > rteBackgroundDepth) {
 		// The sun shows on the sky itself: the furthest layers and where nothing is drawn, never on mountains or nearer scenery.
 		float distance = clamp((sceneDepth - rteBackgroundNearDepth) / (rteBackgroundFarDepth - rteBackgroundNearDepth), 0.0, 1.0);
