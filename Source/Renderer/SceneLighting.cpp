@@ -647,7 +647,11 @@ void SceneLighting::Update() {
 	m_LastSimUpdateCount = simUpdateCount;
 	glm::vec3 daylight = GetDaylightTint(m_Settings.TimeOfDay);
 	float dayFactor = std::clamp(glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
-	m_EffectiveSky = m_Settings.SkyColor * daylight;
+	// Deep night is darker than early night by a chosen amount: from nightfall the light on the scene falls away to its least at eleven, and comes back from two until first light.
+	float hourNow = m_Settings.TimeOfDay;
+	float deepNight = hourNow >= 19.6F ? glm::smoothstep(19.6F, 23.0F, hourNow) : (hourNow <= 4.6F ? 1.0F - glm::smoothstep(2.0F, 4.6F, hourNow) : 0.0F);
+	float nightDim = 1.0F - std::clamp(m_Settings.DeepNightDarkness, 0.0F, 0.97F) * deepNight;
+	m_EffectiveSky = m_Settings.SkyColor * daylight * nightDim;
 	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
 	m_SkyDaylight = daylight;
 	{
@@ -745,9 +749,9 @@ void SceneLighting::Update() {
 	m_SnowCover += std::clamp(snowTarget - m_SnowCover, -frameSeconds / 90.0F, frameSeconds / 60.0F);
 	m_Wetness += std::clamp(wetTarget - m_Wetness, -frameSeconds / 60.0F, frameSeconds / 8.0F);
 	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
-	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor);
+	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor) * nightDim;
 	// The readability floor drops more at night than the interior ambient does, so night battles outdoors stay dark and moody.
-	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.4F + 0.6F * dayFactor);
+	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.4F + 0.6F * dayFactor) * nightDim;
 
 	if (!EnsureWorldResources()) {
 		return;

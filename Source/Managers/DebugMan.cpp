@@ -496,6 +496,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Air falloff", &settings.AirFalloff, 0.8F, 0.995F, "%.3f");
 		ImGui::SliderFloat("Terrain falloff", &settings.SolidFalloff, 0.1F, 0.95F, "%.2f");
 		ImGui::SliderInt("Propagation steps/frame", &settings.PropagationIterationsPerFrame, 1, 32);
+		ImGui::SliderFloat("Darker in the dead of night", &settings.DeepNightDarkness, 0.0F, 0.95F);
+		ImGui::SetItemTooltip("How much less light there is on the scene from eleven to two than at nightfall. 0.5 is half. Lamps, fires and headlamps aren't dimmed.");
 		ImGui::SliderFloat("Sky takes the hour's colours", &settings.SkyFollowsTime, 0.0F, 1.0F);
 		ImGui::SetItemTooltip("Away from midday the sky art (painted as a blue day) is recoloured: dark at night, red at dawn and dusk, grey in bad weather. 0: the art is only darkened.");
 		ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);

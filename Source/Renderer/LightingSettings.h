@@ -185,6 +185,7 @@ namespace RTE {
 		float HeatHaze = 1.5F; //!< Heat haze shimmer, in pixels at full heat.
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
 
+		float DeepNightDarkness = 0.5F; //!< How much darker the scene is in the dead of night (eleven to two) than at nightfall: 0 not at all, 0.5 half the light, 0.9 a tenth. Lamps, fires and headlamps are not dimmed.
 		float SkyFollowsTime = 1.0F; //!< How far the sky art (painted as a blue day) takes the colours of the hour away from midday: a dark night sky, a red dawn and dusk, grey in bad weather. 0 only darkens the art, as before.
 		float GodRays = 0.7F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
