@@ -200,6 +200,20 @@ void main() {
 				float deep = smoothstep(1.0, 7.0, depth);
 				float ripple = 0.5 + 0.5 * sin(worldPos.x * 0.09 + worldPos.y * 0.05 + rteTime * 1.3 + 1.7 * sin(worldPos.y * 0.07 - rteTime * 0.8));
 				vec3 water = mix(vec3(0.27, 0.6, 0.8), vec3(0.06, 0.3, 0.52), deep) * (0.93 + 0.12 * ripple);
+				// Light playing through it: thin bright lines that wander and cross, stronger in the depths.
+				float bandA = sin(worldPos.x * 0.13 + rteTime * 0.9 + 2.0 * sin(worldPos.y * 0.11 + rteTime * 0.6));
+				float bandB = sin(worldPos.x * 0.07 - rteTime * 0.7 + 1.5 * sin(worldPos.y * 0.17 - rteTime * 0.5));
+				float caustic = pow(max(0.0, 1.0 - abs(bandA + bandB) * 0.9), 6.0);
+				water += vec3(0.22, 0.36, 0.4) * caustic * (0.3 + 0.5 * deep);
+				// Glints: here and there near the surface a pixel flashes white for an instant, each at its own pace.
+				vec2 glintCell = floor(worldPos / 2.0);
+				float glintSeed = fract(sin(dot(glintCell, vec2(12.9898, 78.233))) * 43758.5453);
+				float glint = pow(max(0.0, sin(rteTime * (2.0 + glintSeed * 4.0) + glintSeed * 60.0)), 24.0) * step(0.88, glintSeed);
+				if (depth <= 3.0) {
+					water += vec3(0.9, 0.97, 1.0) * glint * (depth <= 1.0 ? 1.0 : 0.5);
+				}
+				// Water is glossy: lamps, fires and the sun glance off it.
+				shine = max(shine, 0.9);
 				FragColor = vec4(water, mix(0.6, 0.8, deep));
 				// Open to the air above (not under a ceiling of rock): the surface catches the light and laps a little.
 				if (surface && Coverage(textureUV - vec2(0.0, texel.y)) < 0.5) {

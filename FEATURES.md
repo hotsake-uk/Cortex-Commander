@@ -160,6 +160,8 @@ Last updated: 5 October 2026.
 - **Drop squads** arrive by dropship or rocket.
 - **Auto battle:** give each side a faction and a budget. The AI buys and sends waves until one side is left.
 - **Paint** fire, water, lava, acid, oil, smoke, gas, earth, sand, ice, grass, wood and concrete. Pour loose sand and snow. Drop boulders and lumps of concrete. Dig. Call down grenades, bombs, napalm and lightning.
+- **Strikes from the sky.** Click where it should land: a rocket, a barrage of rockets, a stick of bombs, artillery, napalm, a beam that bores straight down, or a rain of boulders. Three sizes of crater blast as well.
+- **Things to knock down.** One click builds a concrete beam, pillar, room or four-storey tower, a wooden bridge, a floating island, or a tank full of water.
 - **Speed of time.** A slider from a twentieth of normal speed to three times, to watch a collapse slowly or hurry a battle along.
 - **Pause AI:** every AI unit stands still while you set things up.
 - **World controls:** weather, wind, time of day, slow motion.

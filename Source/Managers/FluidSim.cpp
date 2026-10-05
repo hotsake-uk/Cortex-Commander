@@ -68,7 +68,7 @@ namespace {
 	constexpr size_t c_MaxActive = 80000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten. Measured with this many moving at once: 6 to 8 ms an update, with spikes to 11 ms.
 	constexpr int c_RestSteps = 20; //!< A pixel that hasn't got any lower for this many of its steps stops being simulated.
 	constexpr int c_SweepPixelsPerUpdate = 90000; //!< How much of the terrain is checked each update for liquid left hanging (see Sweep).
-	constexpr int c_LevelSearchesPerUpdate = 12; //!< How many stuck pixels may look for a lower spot through the liquid each update. A search through a big body costs up to about 0.1 ms, so this bounds them to about 1 ms an update.
+	constexpr int c_LevelSearchesPerUpdate = 32; //!< How many stuck pixels may look for a lower spot through the liquid each update. A search through a big body costs up to about 0.1 ms, so this bounds them to about 1 ms an update.
 	constexpr int c_LevelSearchCells = 14000; //!< How many liquid pixels such a search may cross: enough for a pit, a tunnel and the pit beyond.
 
 	std::array<Liquid, 256> s_Kinds{};
@@ -792,6 +792,11 @@ void FluidSim::Update() {
 			velY = std::min(velY + properties.Gravity, properties.Fall * 4);
 			int steps = std::clamp(velY / 4, kind == Liquid::Powder ? 1 : 2, properties.Fall);
 			int drift = velX >= 4 ? 1 : (velX <= -4 ? -1 : 0);
+			if (drift == 0 && velY >= 12 && kind != Liquid::Powder) {
+				// A stream that has been falling a while frays at its edges: now and then a pixel of it steps sideways as it falls.
+				float stray = Random01();
+				drift = stray < 0.07F ? -1 : (stray > 0.93F ? 1 : 0);
+			}
 			for (int fall = 0; fall < steps; ++fall) {
 				if (drift != 0 && (fall & 1) && canMoveTo(targetX + drift, targetY + 1)) {
 					targetX += drift;
@@ -885,7 +890,41 @@ void FluidSim::Update() {
 					}
 					velX = velX * 3 / 4;
 				}
-				if (!gotLower && canMoveTo(x, y - 1)) {
+				bool atSurface = canMoveTo(x, y - 1);
+				bool atFront = canMoveTo(x - 1, y) || canMoveTo(x + 1, y);
+				if (!gotLower && !atSurface && !atFront && (still & 1) == 0 && y > 0 && s_Kinds[materialBitmap->line[y - 1][x]] == kind) {
+					// Inside the liquid with more of it pressing down from above: if there's an opening along its row within a short way (a hole in a tank's wall,
+					// the mouth of a pipe), it goes out through it. This is what makes liquid under a head of liquid pour out of a hole instead of seeping.
+					for (int side: {heading, -heading}) {
+						int found = 0;
+						for (int step = 1; step <= 48; ++step) {
+							int lookX = x + side * step;
+							int lookY = y;
+							if (!InWorld(lookX, lookY, width, height)) {
+								break;
+							}
+							int material = materialBitmap->line[lookY][lookX];
+							if (material == g_MaterialAir) {
+								found = step;
+								break;
+							}
+							if (s_Kinds[material] != kind) {
+								break;
+							}
+						}
+						if (found) {
+							targetX = x + side * found;
+							targetY = canMoveTo(targetX, y + 1) ? y + 1 : y;
+							heading = side;
+							velX = side * 8;
+							moved = true;
+							gotLower = true;
+							break;
+						}
+					}
+				}
+				// At the surface, or at the front of liquid running under a ceiling or along a pipe.
+				if (!gotLower && (atSurface || atFront)) {
 					// At the surface and not getting lower: look along its own row, as far as a wide room, for somewhere lower to be, and go there.
 					// The look passes through liquid as well as air, since liquid in the way would be pushed along: this is what makes a body of liquid press outwards
 					// and come level in a second or two. A pixel with nowhere lower to go stays where it is; left to wander, the top of a pool never comes to rest.
@@ -937,7 +976,7 @@ void FluidSim::Update() {
 		// Stuck, or only wandering along the top: look through the body of liquid for a lower free spot, so separate parts of it come to one level.
 		// Only so many may look each update. The rest wait for their turn without counting towards coming to rest, so none miss out.
 		bool waitingToSearch = false;
-		if (!gotLower && still == 3 && kind != Liquid::Powder && canMoveTo(x, y - 1)) {
+		if (!gotLower && still >= 3 && (still & 3) == 3 && kind != Liquid::Powder && canMoveTo(x, y - 1)) {
 			if (levelSearches < c_LevelSearchesPerUpdate) {
 				++levelSearches;
 				int foundX = 0;
