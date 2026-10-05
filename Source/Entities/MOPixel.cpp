@@ -217,7 +217,20 @@ void MOPixel::Update() {
 		if (s_TracersLit < 40) {
 			++s_TracersLit;
 			Color trailColor(m_Atom->GetTrailColor().GetIndex());
-			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), g_PostProcessMan.GetLightingSettings().TracerLightReach, g_PostProcessMan.GetLightingSettings().TracerLightBrightness);
+			const LightingSettings& lightSettings = g_PostProcessMan.GetLightingSettings();
+			float reach = lightSettings.TracerLightReach;
+			float brightness = lightSettings.TracerLightBrightness;
+			if (float randomness = std::clamp(lightSettings.TracerLightRandomness, 0.0F, 1.0F); randomness > 0.0F) {
+				// Each tracer keeps a size and brightness of its own for as long as it flies (from its ID, so no two side by side match), and wavers a little as it goes.
+				// Worked out from the ID and the clock, not from the game's random numbers, so it changes nothing in the simulation.
+				unsigned int seed = static_cast<unsigned int>(GetUniqueID()) * 2654435761u;
+				float own = static_cast<float>((seed >> 8) & 0xFFFF) / 65535.0F;
+				float other = static_cast<float>((seed >> 16) & 0xFFFF) / 65535.0F;
+				float waver = std::sin(static_cast<float>(update) * (0.5F + own * 0.9F) + other * 40.0F);
+				reach *= std::max(0.25F, 1.0F + randomness * ((own * 2.0F - 1.0F) * 0.8F + waver * 0.25F));
+				brightness *= std::max(0.1F, 1.0F + randomness * ((other * 2.0F - 1.0F) * 0.6F + waver * 0.3F));
+			}
+			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness);
 		}
 	}
 

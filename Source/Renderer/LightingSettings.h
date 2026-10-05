@@ -161,6 +161,7 @@ namespace RTE {
 		float WeatherLight = 0.35F; //!< The least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it. 0 leaves it to the sky and lamps.
 		float TracerGlow = 0.8F; //!< How strongly tracers and their trails shine in their own color (and so bloom), 0 for none.
 		float TracerLightBrightness = 0.55F; //!< Brightness of the light a tracer throws on what it passes.
+		float TracerLightRandomness = 0.35F; //!< How much tracers' lights differ from one another in size and brightness, and waver as they fly: 0 all alike and steady, 1 anything from a quarter to nearly twice the size.
 		float TracerLightReach = 28.0F; //!< How far a tracer's light reaches, in pixels.
 
 		float LightSaturation = 1.0F; //!< How colorful the light of lamps, glows, flashes and fire is: 0 makes all of it white, above 1 deepens the colors.

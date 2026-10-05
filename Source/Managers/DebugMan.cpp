@@ -44,9 +44,19 @@ float DebugMan::GetToolScale() const {
 
 void DebugMan::DrawToolWindowControls() {
 	if (ImGui::TreeNode("Size and layout of these windows")) {
-		ImGui::SliderFloat("Size of text and controls", &m_ToolScale, 0.4F, 1.5F, "%.2f");
-		ImGui::SetItemTooltip("How big the tool windows are drawn. 1 is the old size; 0.7 is the usual.");
-		ImGui::SliderFloat("Panel width", &m_PanelWidth, 240.0F, 700.0F, "%.0f");
+		// Typed in and applied on Enter (or with the + and - buttons): a slider would resize the window under the mouse as it was dragged.
+		float toolScale = m_ToolScale;
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+		if (ImGui::InputFloat("Size of text and controls", &toolScale, 0.05F, 0.1F, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+			m_ToolScale = std::clamp(toolScale, 0.4F, 1.5F);
+		}
+		ImGui::SetItemTooltip("How big the tool windows are drawn: type a number from 0.4 to 1.5 and press Enter. 1 is the old size; 0.7 is the usual.");
+		float panelWidth = m_PanelWidth;
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+		if (ImGui::InputFloat("Panel width", &panelWidth, 20.0F, 60.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+			m_PanelWidth = std::clamp(panelWidth, 240.0F, 700.0F);
+		}
+		ImGui::SetItemTooltip("How wide the side panels are, before the size above: type a number from 240 to 700 and press Enter.");
 		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
 		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
 		ImGui::TreePop();
@@ -595,6 +605,8 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SetItemTooltip("Tracers and their trails shine in their own color and bloom.");
 		ImGui::SliderFloat("Tracer light brightness", &settings.TracerLightBrightness, 0.0F, 3.0F);
 		ImGui::SliderFloat("Tracer light reach (px)", &settings.TracerLightReach, 8.0F, 120.0F);
+		ImGui::SliderFloat("Tracer light randomness", &settings.TracerLightRandomness, 0.0F, 1.0F);
+		ImGui::SetItemTooltip("How much tracers' lights differ from one another in size and brightness, and waver as they fly. 0: all alike and steady. A small value: each a little different.");
 
 		ImGui::SeparatorText("Distortion");
 		ImGui::Checkbox("Distortion enabled", &settings.DistortionEnabled);
@@ -667,11 +679,7 @@ void DebugMan::GraphicsLabGUI() {
 
 void DebugMan::DebugOptionsGUI() {
 	if (BeginPanel("Debug Options", &m_ShowDebugWindow, PanelSide::Right)) {
-		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
-		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
-		ImGui::SliderFloat("Panel width", &m_PanelWidth, 240.0F, 700.0F, "%.0f");
-		ImGui::SliderFloat("Size of text and controls", &m_ToolScale, 0.4F, 1.5F, "%.2f");
-		ImGui::SetItemTooltip("How big these tool windows are drawn. 1 is the old size; 0.7 is the usual.");
+		DrawToolWindowControls();
 		ImGui::Checkbox("Show Performance Stats", &m_ShowPerformanceMan);
 		ImGui::Checkbox("Show Graphics Lab", &m_ShowGraphicsLab);
 		ImGui::Checkbox("Show World Debug (F6)", &m_ShowWorldDebug);
