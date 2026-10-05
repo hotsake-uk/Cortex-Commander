@@ -24,9 +24,9 @@ Each player screen is drawn as before. Before the HUD goes on top, it is then:
 
 ## Settings (Settings.ini)
 
-All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in the **Graphics Lab**. To open it, set `ShowGraphicsLab = 1`, use *Debug Options → Show Graphics Lab*, or call `DebugMan:ShowGraphicsLab()` from Lua. It has a *Save to Settings.ini* button. The in-game *Video* settings have toggles for Lighting, Bloom and Extra Effects (heat haze, shockwaves, scorch marks, embers). Turning all three off gives the classic look.
+All colours are linear `R G B` (1 = neutral). Most of these can be tuned live in the **settings panel** (**F6**, in a game or in the menus; `DebugMan:ShowGraphicsLab()` from Lua opens it too). Where this document says "Graphics Lab" or "World Debug" it means that panel: the two were merged into it, sorted into categories with a search box. *Keep for next time* writes the settings to Settings.ini, and any setup can be saved as a named preset (a file in `Userdata\Presets`). The in-game *Video* settings have toggles for Lighting, Bloom and Extra Effects (heat haze, shockwaves, scorch marks, embers). Turning all three off gives the classic look.
 
-Press **F6** in game or in the menus for the **World Debug** window: time of day (with Midnight/Dawn/Noon/Dusk/Night presets and an option to let time pass), weather, the lighting toggles, interior/cave light, the playfield light floor, sky light, exposure, god rays, haze, debug views and game speed. It has buttons for the Graphics Lab, performance stats and saving. While any debug window is open the mouse is released from aiming so the window can be used, and clicks on a window don't reach the game.
+The panel's categories are: Time & weather, Sky & daylight, Interiors & shadows, Lamps & lights, Surfaces, Water, Fire, smoke & blast, Falling ground, Camera & image, Game & HUD, and Debug (debug views, performance stats, the layout of the tool windows). **Tab** in a game puts every tool window away or brings them back. While any tool window is open the mouse is released from aiming so the window can be used, and clicks on a window don't reach the game.
 
 **Effects particles** (`EffectsParticles`, a multiplier where 0 turns them off) add sparks, dust and debris chips from explosions and from fast hits on terrain. Hard materials (integrity 100 or more) throw sparks; soft ones throw dust. They are purely visual: the simulation spawns them, but they move in simulation time with their own random numbers and only read the terrain. Sparks glow (emissive), chips are lit in the scene, and dust is lit over the scene. They're part of Extra Effects and the quality presets.
 
@@ -190,7 +190,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Rain splashes:** `RainSplashes` (1; 0 to 2, 0 for none; "Rain splashes" in the Graphics Lab). Little splashes where rain lands on anything it can reach: ground, water, roofs and units. Visual only.
 - **Weather:** `WeatherLight` (0.35) is the least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it.
 
-**Tool windows** (`DockPanels`, on; `PanelWidth`, 380): the Sandbox, World Debug, Graphics Lab, Photo Mode and the other tool windows are panels at the sides of the window, and the game's picture is fitted into the space between them, so nothing covers it. Sandbox and World Debug dock left; the rest dock right; panels on the same side share it. Debug Options has the switch to let them float again, and the panel width.
+**Tool windows** (`DockPanels`, on; `PanelWidth`, 380): the Sandbox, the settings panel, Photo Mode and the other tool windows are panels at the sides of the window, and the game's picture is fitted into the space between them, so nothing covers it. The Sandbox docks left; the rest dock right, as tabs of one panel. The settings panel's Debug category has the switch to let them float again, their size and the panel width.
 
 **Night gameplay**:
 - **Headlamps** (`Headlamps`): after dark, soldiers wear headlamps that throw a cone of light where they aim, with a faint visible beam.
@@ -200,7 +200,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Lights near terrain:** a light no longer shadows itself on the terrain right around it, so a lamp lying in grass still lights up its surroundings.
 
 **Sandbox** (game mode and F7 tools):
-- **The game mode:** pick **Sandbox** in the scenario menu. You play as a god with a free camera (right-drag or WASD), every unit is run by the AI, including your own side's, and the game never ends.
+- **The game mode:** pick **Sandbox** on the main menu (or in the scenario menu, to choose the map). **Tab** switches between the tools, with the world paused, and your own character (the "You" tab sets it up, or switches it off). You play as a god with a free camera (right-drag or WASD), every unit is run by the AI, including your own side's, and the game never ends.
 - **Spawning:** units from every faction (with squad size, loadout and orders), brains and items. Each spawn list has a search box. The default loadout uses each faction's guns and plain grenades.
 - **Building:** "Build bunkers with the build menu" opens the game's own build menu in the middle of play. It places straight into the world, and the money never runs out. Choose Done in its pie menu, or press F7, to go back. There are four sides, in the game's own team colours: Red, Green, Blue and Yellow.
 - **Brains are optional:** place one for any side to give the others something to hunt and that side something to defend.
@@ -233,7 +233,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Modern HUD extras:** numbers float up from units as they lose health (slow damage like fire is gathered up), and a red arc shows which way a hit on your unit came from.
 
 **Camera zoom:**
-- **Ctrl + mouse wheel** zooms the view out (down to 0.4x, about six times as much world on screen) or in (up to 2x). In the Sandbox god view the wheel alone zooms. There are sliders in F6 and the sandbox's World tab.
+- **Ctrl + mouse wheel** zooms the view out (down to 0.4x, but never so far that the view is bigger than the map) or in (up to 2x). In the Sandbox god view the wheel alone zooms. There are sliders in F6 and the sandbox's World tab.
 - The whole view (scene, lighting and HUD) is drawn at the size of the area it shows and scaled to the screen, so every effect works at any zoom. Far backgrounds don't zoom: the sky and backdrop stay put.
 - HUD text stays readable when zoomed out (with Smooth HUD Text on); HUD icons shrink with the view.
 - The view eases back to 1x while the buy menu or the build phase is open, because those menus are laid out for the normal screen. Menus and editors don't zoom. A new game starts at 1x.
@@ -300,7 +300,7 @@ AddScene = Scene
 	...
 ```
 
-**From the scene editor:** set the time and weather you want in the World Debug window (F6), press "Use the current time and weather" under "This scene's own atmosphere", then save the scene. The keys above are written into it.
+**From the scene editor:** set the time and weather you want in the settings panel (F6, Time & weather), press "Use what is set now" under "This scene's own time and weather", then save the scene. The keys above are written into it.
 
 ## Lights in the scenery (INI)
 

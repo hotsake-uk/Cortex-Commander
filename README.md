@@ -40,7 +40,7 @@ The Community Project's priority is a stable, faithful, multi-platform Cortex Co
 - **Time of day and weather:** a day/night cycle with stars, moon and lightning in storms. Rain darkens the ground, and snow settles on it and melts.
 - **Living world:** vegetation sways in the wind and bends in blast waves. Blood and oil stain terrain. Explosions throw sparks, dust and debris chips.
 - **Night gameplay:** soldiers wear headlamps after dark, AI sight shrinks at night, and there's a buyable Flare.
-- **Camera zoom:** Ctrl + mouse wheel zooms out to see about six times as much of the battlefield, or in to 2x, with lighting and HUD intact.
+- **Camera zoom:** Ctrl + mouse wheel zooms out (as far as the map allows, down to 0.4x) or in to 2x, in clean steps, with lighting and HUD intact.
 - **Shine:** lights throw highlights on metal, concrete, wet ground and water.
 - **Photo mode (F8):** freeze time, free camera, look sliders, and screenshots at up to 4x internal resolution.
 - **Feel:** hit-stop on big blasts, a recoil kick, a frame cap and optional CRT scanlines.
@@ -64,16 +64,21 @@ Smoke Grenade, Toxic Gas Grenade, Flare, **Napalm Flamer** (burning fuel that po
 ![Smoke and gas, napalm, the water cannon, and rain](Documentation/Images/new_systems.png)
 
 ### Sandbox mode
-Pick **Sandbox** in the scenario menu and play as a god:
+Pick **Sandbox** on the main menu and play as a god:
+- **Tab** switches between the sandbox tools (the world pauses while they're open) and **your own character**: a body and kit you choose, with optional abilities (no harm, endless jetpack and ammunition, flying through anything, ignored by enemies). Or switch the character off and just look around.
 - **Spawn anything:** units from every faction (with squad size, loadout and orders), brains, items, and bunkers through the game's own build menu, for four sides.
 - **Drop squads** by dropship or rocket. Run **auto battles** where each side gets a faction and a budget and the AI buys and sends waves until one side is left.
 - **Command** units: box-select them, then click to move or attack. **Follow** a unit, or let the camera follow the action. **Take control** of any unit yourself.
 - **Paint** fire, water, lava, acid, oil, smoke, gas and terrain. Call down grenades, bombs, napalm and **lightning**.
 - **Pause AI** to set up a battlefield in peace, then let everyone loose.
 - Change the weather and time of day, and use slow motion.
+- Place lights and particle effects, pour water from spawners, and call in strikes: rockets, artillery, napalm, meteors, crashing dropships.
 - Scriptable from Lua (`SandboxDo`, `SandboxAutoBattleSide`, `SandboxPauseAI`, ...).
 
 ![A sandbox battle](Documentation/Images/sandbox_battle.png)
+
+### One settings panel
+**F6** opens a panel with every setting that can be changed while the game runs (time and weather, lighting, water, fire and smoke, falling ground, camera and image, HUD, debug views), sorted into categories with a search box. Any setup can be saved as a **named preset** and loaded again later; presets are plain files in `Userdata\Presets`.
 
 ### Fixes along the way
 - Loading saved games works again.
@@ -134,9 +139,14 @@ git checkout modernisation                 # skip if it is already the branch yo
 
 copy external\lib\win\fmod.dll .           # the game needs fmod.dll in the repository root
 
+Set-ExecutionPolicy -Scope Process Bypass  # lets this PowerShell window run the project's scripts (see below)
 .\Tools\RenderTest\Build.ps1 -Config Final # builds "Cortex Command.exe" in the repository root
 & ".\Cortex Command.exe"                   # run it from the repository root
 ```
+
+The game opens on the main menu. **Sandbox** there is the quickest way to see what this fork adds; press **Tab** in it to switch between the tools and playing.
+
+- **"Running scripts is disabled on this system":** Windows blocks PowerShell scripts by default. The `Set-ExecutionPolicy -Scope Process Bypass` line above allows them for that one PowerShell window only and changes nothing permanently; run it again in each new window before using the scripts in `Tools\`.
 
 - **Clone to a short path,** such as `C:\Users\<you>\Desktop\Cortex-Commander` or `C:\Games\Cortex-Commander`. Some files in the repository have paths up to 125 characters long, so if the clone folder's own path is longer than about 130 characters, Windows' 260-character limit makes the checkout fail with "Filename too long". Run `git config --global core.longpaths true` before cloning to lift that limit.
 - The first build is slow (several minutes); later ones are quicker.
@@ -165,7 +175,7 @@ Build from the command line without the script:
 
 ## The Workbench (a browser control panel)
 
-The Workbench is a small local web page for the chores around the game: launching it with saved profiles, controlling a running game, editing graphics presets, managing mods, and running tests and builds.
+The Workbench is a small local web page for the chores around the game: launching it with saved profiles, managing mods, and running tests and builds. It is optional; the game runs without it.
 
 ```powershell
 python Tools\Workbench\workbench.py        # then open http://127.0.0.1:8765
@@ -177,7 +187,7 @@ python Tools\Workbench\workbench.py        # then open http://127.0.0.1:8765
 
 | Page | What it does |
 |---|---|
-| **Launch** | Saved launch profiles ("Sandbox on this map at night", "classic look", "vanilla, no mods"). Pick one and press Play. |
+| **Launch** | Saved launch profiles ("Sandbox on this map at night", "debug build", "vanilla, no mods"). Pick one and press Launch. It lists the games it started and can close them. |
 | **Mods** | Each mod's state; test, park and activate them. Tests run in parallel, each game copy in its own sandbox. |
 | **Tests** | Regression scenes against their baseline pictures, and captures of the test scenarios. |
 | **Builds** | Build the test and game programs. |
@@ -202,8 +212,9 @@ Mods go in the `Mods\` folder, and `Data\` holds the base game. The repository d
 `Tools\RenderTest` has scripted scenes, screenshots, golden-image comparisons and soak tests. Its README, [Tools/RenderTest/README.md](Tools/RenderTest/README.md), has the full details. In short:
 
 ```powershell
+Set-ExecutionPolicy -Scope Process Bypass  # once per PowerShell window
 .\Tools\RenderTest\Build.ps1               # build Debug Release
-& ".\Cortex Command.debug.release.exe"     # run once so Userdata\Settings.ini exists
+& ".\Cortex Command.debug.release.exe"     # run once so Userdata\Settings.ini exists, then close it
 .\Tools\RenderTest\Setup.ps1               # install the test mod and scenario settings
 .\Tools\RenderTest\Golden.ps1              # compare seven fixed scenes with the baselines (about 3 minutes)
 ```
@@ -215,6 +226,8 @@ Don't use the mouse over the game window, or resize or maximise it, while a test
 - **The game closes straight away or says a DLL is missing:** copy `fmod.dll` into the repository root and install both Visual C++ redistributables (x86 and x64).
 - **The game says it can't find data:** run it from the repository root.
 - **`Build.ps1` says "MSBuild not found":** install Visual Studio with the C++ desktop workload.
+- **PowerShell says "running scripts is disabled on this system":** run `Set-ExecutionPolicy -Scope Process Bypass` in that window first.
+- **The game starts straight into a level instead of the menu:** `LaunchIntoActivity` is set to 1 in `Userdata\Settings.ini`. Close the game, set it to 0 and start again.
 - **The Workbench's launch buttons do nothing:** the exe hasn't been built yet. Build `Final` and `Debug Release`.
 - **Logs:** `LogConsole.txt` and `LogLoading.txt` in the repository root show what the game was doing. Attach them to bug reports.
 - **A blank or broken picture:** the renderer needs OpenGL 3.3. Update your graphics driver.

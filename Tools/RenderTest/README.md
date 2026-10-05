@@ -4,7 +4,8 @@ These tools are for checking rendering changes by eye, against fixed scenarios, 
 
 ## Setup
 
-1. Build the game with `Build.ps1` (Debug Release by default), then run it once so `Userdata\Settings.ini` exists.
+0. Windows blocks PowerShell scripts by default. In the PowerShell window you'll use, run `Set-ExecutionPolicy -Scope Process Bypass` first; it lasts for that window only.
+1. Build the game with `Build.ps1` (Debug Release by default), then run it once so `Userdata\Settings.ini` exists, and close it.
 2. Run `Setup.ps1`. It installs `RenderTest.rte` into `Mods\` and writes scenario settings files to `Userdata\RenderTest\`. Each scenario is your `Settings.ini` with a few keys changed so the game starts straight into a known scene.
 
 ## Capturing
@@ -15,6 +16,7 @@ These tools are for checking rendering changes by eye, against fixed scenarios, 
 .\Capture.ps1 -Scenario Caves -CameraPOI 2
 ```
 
+- **Close any debug-build game you have open first.** If `Cortex Command.debug.release.exe` is already running from this folder, `Capture.ps1` photographs that one instead of starting the scenario, and closes it afterwards.
 - `Capture.ps1` launches the game with the scenario's settings, using the `CCCP_SETTINGSPATH` environment variable. It waits for loading to finish, captures the window to `Output\`, and closes the game. If an assert or error dialog appears, it captures that instead.
 - Glows and explosions are brief, so use `-Burst` to catch them.
 - `-CameraPOI 1..6` pins the camera tour to one spot, so shots from different builds can be compared.

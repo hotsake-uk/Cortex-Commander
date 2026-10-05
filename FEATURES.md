@@ -244,7 +244,7 @@ These are built and compile, but nobody has looked at them in real play or in a 
 - **Shimmer, tracer light and background blur:** not confirmed by eye.
 - **Surface states:** soot from a real blast, a gun heating from real firing, and a struck plate glowing.
 - **Scenery lamps:** saving and loading a game with lamps; the Browncoat pieces in a real scene; whether the build menus list the new "Bunker Lights" group.
-- **The Graphics Lab ambient slider** and the linked unit light floor: not tried in the running game.
+- **The interior light slider** (settings panel) and the linked unit light floor: not tried in the running game.
 - **The Mod Manager's "FAILED TO LOAD" entry:** not opened to look at.
 - **Linux and macOS builds:** the new files are in the build scripts, but only Windows has been built and run.
 
