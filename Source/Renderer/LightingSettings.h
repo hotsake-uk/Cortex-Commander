@@ -161,6 +161,11 @@ namespace RTE {
 		float WaterFoamStray = 0.25F; //!< How much of that froth a stray pixel or two of water thrown clear gets, against a stream: 0 none (bare pixels), 1 as much as a stream.
 		float WaterFoamBrightness = 1.0F; //!< How bright froth is drawn.
 		float WaterFoamGlow = 0.45F; //!< How much light of its own froth carries, so it shows at night. 0: lit only by what lights the scene.
+		float WaterFoamBubbles = 0.5F; //!< How much froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
+		float WaterMistSize = 0.45F; //!< How big each puff of spray is: 1 is about 3 to 6 pixels across at first.
+		float WaterMistLife = 1.0F; //!< How long each puff lasts: 1 is about half a second to a second.
+		float WaterMistOpacity = 0.42F; //!< How solid each puff is at its start.
+		float WaterMistSpread = 1.0F; //!< How much each puff swells as it thins.
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
 		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.

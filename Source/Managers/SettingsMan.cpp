@@ -252,6 +252,11 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("WaterFoamStray", { g_PostProcessMan.GetLightingSettings().WaterFoamStray = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFoamBrightness", { g_PostProcessMan.GetLightingSettings().WaterFoamBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFoamGlow", { g_PostProcessMan.GetLightingSettings().WaterFoamGlow = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterFoamBubbles", { g_PostProcessMan.GetLightingSettings().WaterFoamBubbles = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterMistSize", { g_PostProcessMan.GetLightingSettings().WaterMistSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterMistLife", { g_PostProcessMan.GetLightingSettings().WaterMistLife = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterMistOpacity", { g_PostProcessMan.GetLightingSettings().WaterMistOpacity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterMistSpread", { g_PostProcessMan.GetLightingSettings().WaterMistSpread = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMist", { g_PostProcessMan.GetLightingSettings().WaterMist = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistBrightness", { g_PostProcessMan.GetLightingSettings().WaterMistBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistGlow", { g_PostProcessMan.GetLightingSettings().WaterMistGlow = std::stof(reader.ReadPropValue()); });
@@ -473,6 +478,11 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("WaterFoamBrightness", lighting.WaterFoamBrightness);
 	writer.NewPropertyWithValue("WaterFoamGlow", lighting.WaterFoamGlow);
 	writer.NewPropertyWithValue("WaterMist", lighting.WaterMist);
+	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
+	writer.NewPropertyWithValue("WaterMistSize", lighting.WaterMistSize);
+	writer.NewPropertyWithValue("WaterMistLife", lighting.WaterMistLife);
+	writer.NewPropertyWithValue("WaterMistOpacity", lighting.WaterMistOpacity);
+	writer.NewPropertyWithValue("WaterMistSpread", lighting.WaterMistSpread);
 	writer.NewPropertyWithValue("WaterMistBrightness", lighting.WaterMistBrightness);
 	writer.NewPropertyWithValue("WaterMistGlow", lighting.WaterMistGlow);
 	writer.NewPropertyWithValue("TracerGlow", lighting.TracerGlow);

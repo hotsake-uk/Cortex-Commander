@@ -134,9 +134,12 @@ namespace {
 					case Kind::Ember:
 						Add({request.Position, velocity, 0.0F, RandomRange(0.8F, 2.0F), 1.0F, request.MaterialColor ? color : glm::u8vec3(255, 160, 60), Kind::Ember});
 						break;
-					case Kind::Mist:
-						Add({request.Position + RandomDirection() * RandomRange(0.0F, 2.0F), velocity, 0.0F, RandomRange(0.4F, 0.9F), RandomRange(1.5F, 3.2F), request.MaterialColor ? color : glm::u8vec3(190, 228, 255), Kind::Mist});
+					case Kind::Mist: {
+						const LightingSettings& mist = g_PostProcessMan.GetLightingSettings();
+						Add({request.Position + RandomDirection() * RandomRange(0.0F, 2.0F) * std::min(mist.WaterMistSize, 1.0F), velocity, 0.0F, RandomRange(0.4F, 0.9F) * std::max(mist.WaterMistLife, 0.05F),
+						     RandomRange(1.5F, 3.2F) * std::max(mist.WaterMistSize, 0.05F), request.MaterialColor ? color : glm::u8vec3(190, 228, 255), Kind::Mist});
 						break;
+					}
 					default:
 						Add({request.Position, velocity, 0.0F, RandomRange(1.0F, 2.5F), 1.0F, request.MaterialColor ? color : glm::u8vec3(120, 110, 100), Kind::Debris});
 						break;
@@ -409,7 +412,7 @@ void EffectsParticles::Update(float amount) {
 		if (particle.Type == Kind::Mist) {
 			// Spray hangs and sinks slowly, spreading as it thins, and leans with the wind.
 			particle.Velocity += (glm::vec2(wind * 0.3F, 14.0F) - particle.Velocity) * std::min(1.0F, seconds * 3.0F);
-			particle.Size += seconds * 4.0F;
+			particle.Size += seconds * 4.0F * g_PostProcessMan.GetLightingSettings().WaterMistSize * g_PostProcessMan.GetLightingSettings().WaterMistSpread;
 			particle.Position += particle.Velocity * seconds;
 			continue;
 		}
@@ -517,7 +520,7 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		float fadeIn = std::clamp(particle.Age * (particle.Type == Kind::Smoke ? 2.5F : 6.0F), 0.0F, 1.0F);
 		if (particle.Type == Kind::Mist) {
 			// A colour above 1 tells the particle shader this one keeps a little light of its own (see LitParticle.frag).
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, 0.42F * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F))});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F))});
 			continue;
 		}
 		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn)});

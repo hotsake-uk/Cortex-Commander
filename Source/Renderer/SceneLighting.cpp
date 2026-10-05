@@ -597,6 +597,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWaterFoamStray", std::clamp(m_Settings.WaterFoamStray, 0.0F, 1.0F));
 	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
 	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
+	m_TerrainShader->SetFloat("rteWaterFoamBubbles", std::clamp(m_Settings.WaterFoamBubbles, 0.0F, 2.0F));
 	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
 	{
 		glm::vec2 fall = m_Settings.WeatherType == 2 ? glm::vec2(m_Settings.Wind * 0.6F, 45.0F) : glm::vec2(m_Settings.Wind, 640.0F);

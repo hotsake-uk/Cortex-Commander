@@ -24,6 +24,7 @@ uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
 uniform float rteWetness; // 0..1, how wet exposed ground is.
 uniform float rteWaterFoamStray; // How much of that froth a stray pixel or two of water gets, against a stream of them: 0 none (they stay bare pixels), 1 as much.
 uniform float rteWaterFoamBright; // How bright the froth is drawn.
+uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
 uniform float rteWaterFoamGlow; // How much light of its own the froth carries, so it shows in the dark.
 uniform float rteWaterFoam; // How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth. 0 for none.
 uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
@@ -147,6 +148,19 @@ float WaterAround(vec2 uv, vec2 texel) {
 	return sum / 12.0;
 }
 
+// The thin bright lines of light that wander and cross through water. The same in still water and in the froth of a pour, so the two look like one thing.
+float WaterCaustic(vec2 world) {
+	float bandA = sin(world.x * 0.13 + rteTime * 0.9 + 2.0 * sin(world.y * 0.11 + rteTime * 0.6));
+	float bandB = sin(world.x * 0.07 - rteTime * 0.7 + 1.5 * sin(world.y * 0.17 - rteTime * 0.5));
+	return pow(max(0.0, 1.0 - abs(bandA + bandB) * 0.9), 6.0);
+}
+
+// Water's own colour near the surface, with its slow ripple of light.
+vec3 WaterShallow(vec2 world) {
+	float ripple = 0.5 + 0.5 * sin(world.x * 0.09 + world.y * 0.05 + rteTime * 1.3 + 1.7 * sin(world.y * 0.07 - rteTime * 0.8));
+	return vec3(0.27, 0.6, 0.8) * (0.93 + 0.12 * ripple);
+}
+
 // Froth flickers: each pixel of it a different brightness, changing many times a second, like bubbles forming and bursting.
 float FrothFlicker(vec2 world) {
 	return fract(sin(dot(floor(world) + floor(rteTime * 9.0) * vec2(3.1, 7.7), vec2(12.9898, 78.233))) * 43758.5453);
@@ -206,17 +220,14 @@ void main() {
 				float stray = 1.0 - smoothstep(1.0, 3.5, beside + corners + twoOff + column * 2.0);
 				presence *= mix(1.0, rteWaterFoamStray, stray);
 				if (presence > 0.02) {
-					// Bubbles: a fine flicker over a slower, blobbier one.
-					// Mostly the slower, blobbier one: a hard sparkle on every pixel made the froth look sharp.
-					float fine = FrothFlicker(worldPos);
-					float blobs = fract(sin(dot(floor(worldPos / 2.0) + floor(rteTime * 5.0) * vec2(5.3, 1.9), vec2(41.3, 289.1))) * 7593.1);
-					float bubble = 0.25 * fine + 0.75 * blobs;
+					// Drawn as water is: its blue with the same lines of light running through it, paling towards the edge the way water's surface line does.
+					// A touch of bubbling keeps it alive, far short of the white sparkle it had, which looked like a different thing from the water it came off.
+					float blobs = fract(sin(dot(floor(worldPos / 2.0) + floor(rteTime * 4.0) * vec2(5.3, 1.9), vec2(41.3, 289.1))) * 7593.1);
 					float strength = min(rteWaterFoam, 1.5);
-					// Blue body close to the water, whitening outwards and wherever a bubble is.
-					vec3 body = vec3(0.27, 0.6, 0.86);
-					vec3 froth = vec3(0.9, 0.97, 1.0);
-					vec3 color = mix(body, froth, clamp((1.0 - close) * 0.7 + bubble * 0.6 - 0.15, 0.0, 1.0)) * rteWaterFoamBright;
-					float alpha = clamp(presence * (0.55 + 0.3 * bubble) * strength, 0.0, 0.9);
+					vec3 color = WaterShallow(worldPos) + vec3(0.22, 0.36, 0.4) * WaterCaustic(worldPos) * 0.45;
+					float edge = 1.0 - close;
+					color = mix(color, vec3(0.82, 0.94, 1.0), clamp(edge * 0.55 + (blobs - 0.5) * 0.25 * rteWaterFoamBubbles, 0.0, 0.85)) * rteWaterFoamBright;
+					float alpha = clamp(presence * (0.62 + 0.12 * blobs * rteWaterFoamBubbles) * strength, 0.0, 0.85);
 					FragColor = vec4(color, alpha);
 					// It carries a little light of its own, so falling water shows in the dark as it does by day.
 					NormalOut = vec4(0.5, 0.5, 0.6, 0.5 + 0.5 * clamp(rteWaterFoamGlow * strength, 0.0, 1.0));
@@ -265,9 +276,7 @@ void main() {
 				float ripple = 0.5 + 0.5 * sin(worldPos.x * 0.09 + worldPos.y * 0.05 + rteTime * 1.3 + 1.7 * sin(worldPos.y * 0.07 - rteTime * 0.8));
 				vec3 water = mix(vec3(0.27, 0.6, 0.8), vec3(0.06, 0.3, 0.52), deep) * (0.93 + 0.12 * ripple);
 				// Light playing through it: thin bright lines that wander and cross, stronger in the depths.
-				float bandA = sin(worldPos.x * 0.13 + rteTime * 0.9 + 2.0 * sin(worldPos.y * 0.11 + rteTime * 0.6));
-				float bandB = sin(worldPos.x * 0.07 - rteTime * 0.7 + 1.5 * sin(worldPos.y * 0.17 - rteTime * 0.5));
-				float caustic = pow(max(0.0, 1.0 - abs(bandA + bandB) * 0.9), 6.0);
+				float caustic = WaterCaustic(worldPos);
 				water += vec3(0.22, 0.36, 0.4) * caustic * (0.3 + 0.5 * deep);
 				// Glints: here and there near the surface a pixel flashes white for an instant, each at its own pace.
 				vec2 glintCell = floor(worldPos / 2.0);
@@ -286,8 +295,9 @@ void main() {
 					// A stray pixel thrown clear of the rest is frothed less than a stream, by the same setting as the froth around it.
 					thin *= mix(rteWaterFoamStray, 1.0, smoothstep(0.0, 0.2, waterNear));
 					if (thin > 0.0) {
+						// Thin water keeps water's colour and lines of light; it is only paler, towards the tone of water's surface line, with a little bubbling.
 						float flicker = FrothFlicker(worldPos);
-						FragColor.rgb = mix(FragColor.rgb, mix(vec3(0.5, 0.78, 0.96), vec3(0.95, 0.99, 1.0), flicker) * rteWaterFoamBright, clamp(thin * (0.6 + 0.4 * flicker), 0.0, 1.0));
+						FragColor.rgb = mix(FragColor.rgb, vec3(0.82, 0.94, 1.0) * rteWaterFoamBright, clamp(thin * (0.38 + 0.3 * (flicker - 0.5) * rteWaterFoamBubbles), 0.0, 1.0));
 						FragColor.a = mix(FragColor.a, 0.96, clamp(thin, 0.0, 1.0));
 						// Froth carries a little light of its own, so it shows in the dark.
 						emissive = max(emissive, rteWaterFoamGlow * clamp(thin, 0.0, 1.0));
