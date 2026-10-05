@@ -73,6 +73,7 @@ Write-Scenario "Sky12" ($play + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMin
 Write-Scenario "Sky17_5" ($play + @{ TimeOfDay = 17.5; WeatherType = 0; DayLengthMinutes = 0 }) @()
 Write-Scenario "Sky18_3" ($play + @{ TimeOfDay = 18.3; WeatherType = 0; DayLengthMinutes = 0 }) @()
 Write-Scenario "Sky21" ($play + @{ TimeOfDay = 21; WeatherType = 0; DayLengthMinutes = 0 }) @()
+Write-Scenario "Sky23_5" ($play + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @()
 Write-Scenario "SkyStorm" ($play + @{ TimeOfDay = 12; WeatherType = 1; WeatherIntensity = 1; DayLengthMinutes = 0 }) @()
 Write-Scenario "Stains" $play @("Render Test Stains")
 Write-Scenario "Fire" $play @("Render Test Fire")

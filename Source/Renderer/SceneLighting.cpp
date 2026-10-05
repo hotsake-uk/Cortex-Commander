@@ -656,17 +656,22 @@ void SceneLighting::Update() {
 			float Hour;
 			glm::vec3 Zenith, Horizon, Cloud;
 		};
+		// Early night and the hour before dawn are a deep navy; from eleven to two the sky is all but black, as it is with no sun anywhere near.
+		static const glm::vec3 navy[3] = {{0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}};
+		static const glm::vec3 black[3] = {{0.0003F, 0.0005F, 0.0022F}, {0.0014F, 0.0024F, 0.007F}, {0.004F, 0.005F, 0.01F}};
 		static const SkyOfHour hours[] = {
-		    {0.0F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
-		    {4.6F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
+		    {0.0F, black[0], black[1], black[2]},
+		    {2.0F, black[0], black[1], black[2]},
+		    {4.6F, navy[0], navy[1], navy[2]},
 		    {5.6F, {0.03F, 0.045F, 0.16F}, {0.5F, 0.2F, 0.16F}, {0.45F, 0.22F, 0.24F}},
 		    {6.4F, {0.1F, 0.19F, 0.5F}, {1.0F, 0.52F, 0.25F}, {1.0F, 0.62F, 0.48F}},
 		    {8.0F, {0.16F, 0.38F, 0.82F}, {0.5F, 0.7F, 0.95F}, {1.0F, 0.98F, 0.95F}},
 		    {16.0F, {0.16F, 0.38F, 0.82F}, {0.5F, 0.7F, 0.95F}, {1.0F, 0.98F, 0.95F}},
 		    {17.6F, {0.1F, 0.14F, 0.45F}, {1.0F, 0.42F, 0.16F}, {1.0F, 0.55F, 0.35F}},
 		    {18.5F, {0.03F, 0.04F, 0.16F}, {0.45F, 0.14F, 0.14F}, {0.4F, 0.18F, 0.22F}},
-		    {19.6F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
-		    {24.0F, {0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}},
+		    {19.6F, navy[0], navy[1], navy[2]},
+		    {23.0F, black[0], black[1], black[2]},
+		    {24.0F, black[0], black[1], black[2]},
 		};
 		float hour = std::clamp(m_Settings.TimeOfDay, 0.0F, 24.0F);
 		size_t next = 1;
