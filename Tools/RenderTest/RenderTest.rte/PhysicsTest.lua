@@ -25,7 +25,7 @@ function PhysicsTestScript:UpdateScript()
 		SceneMan:PourLiquid(origin + Vector(w * 0.66, h * 0.2), 3, self.pours < 25 and "Oil" or "Water");
 	end
 	if self.timer:IsPastSimMS(1000 * (self.logged or 5)) then
-		self.logged = (self.logged or 5) + 2;
+		self.logged = (self.logged or 5) + 1;
 		print("PhysicsTest: " .. SceneMan:GetFallingTerrainChunkCount() .. " pieces moving");
 	end
 end

@@ -55,10 +55,10 @@ namespace {
 	};
 	constexpr LiquidProperties c_Liquids[] = {
 	    {0, 0, 1, 0, 0, 0}, // None
-	    {8, 6, 1, 3, 10, 2}, // Water
+	    {12, 8, 1, 4, 16, 2}, // Water
 	    {1, 2, 3, 2, 4, 4}, // Lava
-	    {6, 6, 1, 3, 8, 3}, // Acid
-	    {3, 4, 2, 2, 5, 1}, // Oil
+	    {9, 8, 1, 4, 12, 3}, // Acid
+	    {5, 5, 1, 3, 6, 1}, // Oil
 	    {0, 5, 1, 2, 0, 5}, // Powder
 	};
 	constexpr int c_SplashSpeed = 14; //!< Liquid landing at least this fast may throw a drop.
@@ -66,7 +66,7 @@ namespace {
 
 	constexpr size_t c_MaxActive = 80000; //!< More than this many moving pixels wait their turn (see s_Waiting) rather than being forgotten. Measured with this many moving at once: 6 to 8 ms an update, with spikes to 11 ms.
 	constexpr int c_RestSteps = 20; //!< A pixel that hasn't got any lower for this many of its steps stops being simulated.
-	constexpr int c_SweepPixelsPerUpdate = 30000; //!< How much of the terrain is checked each update for liquid left hanging (see Sweep).
+	constexpr int c_SweepPixelsPerUpdate = 90000; //!< How much of the terrain is checked each update for liquid left hanging (see Sweep).
 	constexpr int c_LevelSearchesPerUpdate = 12; //!< How many stuck pixels may look for a lower spot through the liquid each update. A search through a big body costs up to about 0.1 ms, so this bounds them to about 1 ms an update.
 	constexpr int c_LevelSearchCells = 14000; //!< How many liquid pixels such a search may cross: enough for a pit, a tunnel and the pit beyond.
 
@@ -180,6 +180,7 @@ namespace {
 	};
 	ActiveSet s_Active;
 	std::vector<int> s_Waiting; //!< Pixels that should start moving but couldn't, because too many already were. They get their turn as room frees up.
+	int s_SweepPass = 0; //!< How many times the sweep has been through the whole terrain.
 	size_t s_SweepCursor = 0; //!< Where the sweep for hanging liquid has got to in the terrain.
 	struct PourRequest {
 		int X, Y, Radius;
@@ -350,6 +351,31 @@ namespace {
 		return false;
 	}
 
+	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air with air below it. The look passes through air and through liquid of its own kind.
+	/// @return How many pixels away the place is, or 0 if there's none within reach.
+	int FindRowDrop(BITMAP* materialBitmap, int x, int y, int side, int reach, int width, int height) {
+		if (y + 1 >= height) {
+			return 0;
+		}
+		Liquid kind = s_Kinds[materialBitmap->line[y][x]];
+		for (int step = 1; step <= reach; ++step) {
+			int lookX = x + side * step;
+			int lookY = y;
+			if (!InWorld(lookX, lookY, width, height)) {
+				return 0;
+			}
+			int material = materialBitmap->line[y][lookX];
+			if (material == g_MaterialAir) {
+				if (materialBitmap->line[y + 1][lookX] == g_MaterialAir) {
+					return step;
+				}
+			} else if (s_Kinds[material] != kind) {
+				return 0;
+			}
+		}
+		return 0;
+	}
+
 	/// Checks a stretch of the terrain for liquid that should be moving but isn't being simulated: left hanging over a gap when ground was removed without a wake-up, or loaded from a scene.
 	/// A little each update, working through the whole terrain every few seconds.
 	void Sweep(SLTerrain* terrain, int width, int height) {
@@ -370,8 +396,14 @@ namespace {
 				const unsigned char* below = materialBitmap->line[y + 1];
 				int left = x > 0 ? x - 1 : (s_WrapsX ? width - 1 : x);
 				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
-				// Air beside it too: it's the end of a layer on the surface, which may have further to run.
-				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir || materialBitmap->line[y][left] == g_MaterialAir || materialBitmap->line[y][right] == g_MaterialAir) {
+				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
+					Activate(x, y, width, height, terrain);
+				} else if ((materialBitmap->line[y][left] == g_MaterialAir || materialBitmap->line[y][right] == g_MaterialAir) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
+					// The end of a layer on the surface, with somewhere lower along its row to go to. (One with nowhere to go is left asleep, or the top of every pool would stir for ever.)
+					Activate(x, y, width, height, terrain);
+				} else if (y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && ((x * 7 + y * 13 + s_SweepPass) & 15) == 0) {
+					// Now and then a pixel of a resting surface is woken to look through the body it's part of for a lower place (see FindLowerSpot): this is what starts
+					// two pools joined below coming to one level. If it finds one, the pixels around it wake and follow; if not, it goes back to sleep. A different one in 16 each pass.
 					Activate(x, y, width, height, terrain);
 				} else if (freezing > 0.05F && sweptKind == Liquid::Water && y > 0) {
 					int above = materialBitmap->line[y - 1][x];
@@ -387,6 +419,7 @@ namespace {
 				if (++y == height) {
 					y = 0;
 					index = 0;
+					++s_SweepPass;
 				}
 			}
 		}
@@ -630,6 +663,17 @@ void FluidSim::Update() {
 	// A copy, because pixels woken during the step are added to the set and take their turn next step.
 	s_Active.Tidy();
 	std::vector<int> keys = s_Active.Keys;
+	// Within each row, right to left on one update and left to right on the next. In a fixed order liquid runs faster one way than the other:
+	// a pixel following another gets to move in the same step only if it's visited after the one in front.
+	if (simUpdate & 1) {
+		size_t rowStart = 0;
+		for (size_t i = 1; i <= keys.size(); ++i) {
+			if (i == keys.size() || keys[i] / width != keys[rowStart] / width) {
+				std::reverse(keys.begin() + static_cast<std::ptrdiff_t>(rowStart), keys.begin() + static_cast<std::ptrdiff_t>(i));
+				rowStart = i;
+			}
+		}
+	}
 	std::vector<int> settled;
 	std::vector<glm::ivec2> hurtSpots;
 	int levelSearches = 0;
@@ -814,69 +858,46 @@ void FluidSim::Update() {
 						break;
 					}
 				}
-				if (!moved) {
-					// Run along the level. Speed builds while there's room and dies down otherwise; at a wall it turns round with half its speed, so a wave sloshes back.
+				if (!moved && std::abs(velX) >= 4) {
+					// Still carrying speed from a fall or a slide: it coasts along the level, slowing, and at a wall turns round with half its speed, so a wave sloshes back.
 					if (!canMoveTo(x + heading, y)) {
 						heading = -heading;
 						velX = -velX / 2;
 					}
-					if (canMoveTo(x + heading, y)) {
-						if (velX * heading < 0) {
-							velX = 0;
-						}
-						velX = std::clamp(velX + heading * properties.FlowGain, -properties.Flow * 4, properties.Flow * 4);
-						int run = std::clamp(std::abs(velX) / 4, 1, properties.Flow);
-						for (int step = 1; step <= run; ++step) {
-							int sideX = x + heading * step;
-							if (!canMoveTo(sideX, y)) {
-								velX = -velX / 2;
-								break;
-							}
-							targetX = sideX;
-							moved = true;
-							if (canMoveTo(sideX, y + 1)) {
-								targetY = y + 1;
-								gotLower = true;
-								break;
-							}
-						}
-						velX = velX * 7 / 8;
-					} else {
-						velX = 0;
+					if (velX * heading < 0) {
+						velX = -velX;
 					}
-				}
-			}
-		}
-		// Not getting any lower, and at the surface: look along its own row, much further than it can run in a step, for somewhere lower to be.
-		// The look passes through liquid as well as air, since liquid in the way would be pushed along: this is what makes a body of liquid press outwards.
-		// Without it a heap on a wide floor drains by each pixel wandering a little way over the layer below and stopping, which takes minutes and looks as if the heap has set.
-		if (!gotLower && kind != Liquid::Powder && (still & 3) == 1 && canMoveTo(x, y - 1)) {
-			int reach = properties.Flow * 75;
-			for (int side: {heading, -heading}) {
-				int found = 0;
-				for (int step = 1; step <= reach; ++step) {
-					int lookX = x + side * step;
-					int lookY = y;
-					if (!InWorld(lookX, lookY, width, height)) {
-						break;
-					}
-					int material = materialBitmap->line[lookY][lookX];
-					if (material == g_MaterialAir) {
-						if (canMoveTo(lookX, y + 1)) {
-							found = step;
+					int run = std::min(std::abs(velX) / 4, properties.Flow);
+					for (int step = 1; step <= run; ++step) {
+						int sideX = x + heading * step;
+						if (!canMoveTo(sideX, y)) {
+							velX = -velX / 2;
 							break;
 						}
-					} else if (s_Kinds[material] != kind) {
-						break;
+						targetX = sideX;
+						moved = true;
+						if (canMoveTo(sideX, y + 1)) {
+							targetY = y + 1;
+							gotLower = true;
+							break;
+						}
 					}
+					velX = velX * 3 / 4;
 				}
-				if (found) {
-					targetX = x + side * found;
-					targetY = y + 1;
-					heading = side;
-					moved = true;
-					gotLower = true;
-					break;
+				if (!gotLower && canMoveTo(x, y - 1)) {
+					// At the surface and not getting lower: look along its own row, as far as a wide room, for somewhere lower to be, and go there.
+					// The look passes through liquid as well as air, since liquid in the way would be pushed along: this is what makes a body of liquid press outwards
+					// and come level in a second or two. A pixel with nowhere lower to go stays where it is; left to wander, the top of a pool never comes to rest.
+					for (int side: {heading, -heading}) {
+						if (int found = FindRowDrop(materialBitmap, x, y, side, properties.Flow * 60, width, height)) {
+							targetX = x + side * found;
+							targetY = y + 1;
+							heading = side;
+							moved = true;
+							gotLower = true;
+							break;
+						}
+					}
 				}
 			}
 		}

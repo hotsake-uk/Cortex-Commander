@@ -92,7 +92,7 @@ Write-Scenario "FireUnits" $sandbox @("Render Test Fire Units")
 Write-Scenario "SandboxArmies" $sandbox @("Render Test Sandbox Armies")
 Write-Scenario "PauseAI" $sandbox @("Render Test Pause AI")
 Write-Scenario "Swim" $sandbox @("Render Test Swim")
-Write-Scenario "Heap" ($sandbox + @{ TimeOfDay = 12 }) @("Render Test Heap")
+Write-Scenario "Heap" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Heap")
 Write-Scenario "Splash" ($sandbox + @{ TimeOfDay = 12 }) @("Render Test Splash")
 Write-Scenario "SplashSnow" ($sandbox + @{ TimeOfDay = 12; WeatherType = 2; WeatherIntensity = 1 }) @("Render Test Splash")
 Write-Scenario "ModFeatures" ($play + @{ TimeOfDay = 23; Headlamps = 0 }) @("Render Test Mod Features")
@@ -113,7 +113,7 @@ Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLi
 Write-Scenario "BunkerAsh" ($bunker + @{ WeatherType = 3; WeatherIntensity = 0.9 }) @()
 Write-Scenario "BunkerDust" ($bunker + @{ WeatherType = 4; WeatherIntensity = 0.9; Wind = 120 }) @()
 Write-Scenario "Flood" $sandbox @("Render Test Flood")
-Write-Scenario "Level" ($sandbox + @{ TerrainCollapse = 0 }) @("Render Test Level") # The block of earth between the two pits would rightly fall into the tunnel.
+Write-Scenario "Level" ($sandbox + @{ TerrainCollapse = 0; WeatherType = 0 }) @("Render Test Level") # The block of earth between the two pits would rightly fall into the tunnel.
 # Plays itself with everything going at once, for SoakAuto.ps1: an auto battle with dropships, a flood, napalm and fuel barrels, and the camera zooming, in dusk rain.
 $soakAuto = $sandbox.Clone(); $soakAuto.TimeOfDay = 19.5; $soakAuto.WeatherType = 1; $soakAuto.WeatherIntensity = 0.7; $soakAuto.Wind = 90
 Write-Scenario "SoakAuto" $soakAuto @("Render Test Sandbox Armies", "Render Test Flood", "Render Test Fire Units", "Render Test Zoom")

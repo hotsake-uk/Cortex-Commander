@@ -43,9 +43,9 @@ namespace {
 	constexpr float c_Gravity = 0.1F; //!< Pixels per update, per update.
 	constexpr float c_MaxSpeed = 9.0F; //!< Pixels per update.
 	constexpr float c_Friction = 0.55F;
-	constexpr float c_Bounce = 0.12F;
-	constexpr int c_RestUpdates = 15; //!< A piece that has barely moved for this many updates has come to rest.
-	constexpr int c_MaxAge = 1500; //!< A piece still moving after this many updates is left where it is.
+	constexpr float c_Bounce = 0.2F;
+	constexpr int c_RestUpdates = 150; //!< A piece that has lain still for this many updates (two and a half seconds) becomes ordinary ground again. Until then it can still tip, roll or be knocked.
+	constexpr int c_MaxAge = 3600; //!< A piece still moving after this many updates (a minute) is left where it is.
 
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
@@ -561,7 +561,7 @@ namespace {
 				body.Angle = tryAngle;
 				continue;
 			}
-			if (++responses > 3) {
+			if (++responses > 6) {
 				break;
 			}
 			// Impulses at the points of contact, a few rounds so several points share the load (as rigid body engines do).
@@ -598,26 +598,30 @@ namespace {
 					pushed = true;
 				}
 			}
-			body.Spin *= 0.985F;
-			if (!pushed) {
-				// Touching but not pressing in (the pixel grid's doing): ease away from the surface if there's room.
-				float length = glm::length(normalSum);
-				if (length > 0.01F) {
-					glm::vec2 nudged = body.Pos + normalSum / length * 0.5F;
+			body.Spin *= 0.995F;
+			// The impulses set its speed right, but where it was going still has a corner in the ground: a body turns about its middle, so a piece
+			// rolling on a corner dips that corner in. Take the move anyway and lift it out along the surface (what rigid body engines call position
+			// correction). Without this a piece stopped dead at its first touch. A piece that is all but still is left alone, so it doesn't creep.
+			bool lively = glm::length(body.Vel) > 0.12F || std::abs(body.Spin) * body.Radius > 0.12F;
+			float length = glm::length(normalSum);
+			if ((lively || !pushed) && length > 0.01F) {
+				glm::vec2 out = normalSum / length;
+				for (float lift: {0.5F, 1.0F, 1.5F, 2.0F, 3.0F}) {
+					glm::vec2 lifted = tryPos + out * lift;
 					bool free = true;
 					for (const glm::vec2& point: body.Outline) {
-						glm::vec2 at = ToWorld(body, point, nudged, body.Angle);
+						glm::vec2 at = ToWorld(body, point, lifted, tryAngle);
 						if (SolidAt(materialBitmap, static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
 							free = false;
 							break;
 						}
 					}
 					if (free) {
-						body.Pos = nudged;
+						body.Pos = lifted;
+						body.Angle = tryAngle;
+						break;
 					}
 				}
-				body.Vel *= 0.9F;
-				body.Spin *= 0.9F;
 			}
 		}
 
@@ -646,18 +650,20 @@ namespace {
 
 		// Hit harder than its material can take: it cracks.
 		float breakSpeed = 1.6F + body.Toughness / 45.0F;
+		// A thud of dust where it lands (visual only).
+		if (hardestHit > 1.2F) {
+			EffectsParticles::SpawnExplosion(Vector(hardestPoint.x, hardestPoint.y), std::min((200.0F + static_cast<float>(body.PixelCount) * 2.0F) * hardestHit * 0.3F, 3000.0F));
+		}
 		if (hardestHit > breakSpeed && body.BreakCooldown == 0 && body.Generation < c_MaxGeneration && body.PixelCount >= c_MinBreakPixels) {
 			Break(body, hardestPoint, hardestHit / breakSpeed);
 			return;
 		}
 
 		float movedBy = glm::length(body.Pos - startPos) + std::abs(body.Angle - startAngle) * body.Radius;
-		body.Still = movedBy < 0.15F ? body.Still + 1 : 0;
+		bool calm = movedBy < 0.2F && glm::length(body.Vel) < 0.3F && std::abs(body.Spin) * body.Radius < 0.3F && responses > 0;
+		body.Still = calm ? body.Still + 1 : 0;
 		Stamp(terrain, body);
 		if (body.Still >= c_RestUpdates || body.Age > c_MaxAge) {
-			if (hardestHit > 0.0F || body.Still >= c_RestUpdates) {
-				EffectsParticles::SpawnExplosion(Vector(body.Pos.x, body.Pos.y + body.Radius * 0.5F), std::min(300.0F + static_cast<float>(body.PixelCount) * 2.0F, 3000.0F));
-			}
 			Settle(terrain, body);
 		}
 	}
