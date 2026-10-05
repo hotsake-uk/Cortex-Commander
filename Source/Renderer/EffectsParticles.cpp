@@ -221,17 +221,37 @@ namespace {
 
 	GLuint GetPuffTexture_() {
 		if (!s_PuffTexture) {
-			constexpr int size = 32;
+			constexpr int size = 64;
 			std::vector<unsigned char> pixels(size * size * 4);
+			// Smooth noise from a fixed table of random values, so the puff is the same every run.
+			auto lattice = [](int x, int y) {
+				unsigned int n = static_cast<unsigned int>(x) * 374761393u + static_cast<unsigned int>(y) * 668265263u;
+				n = (n ^ (n >> 13)) * 1274126177u;
+				return static_cast<float>((n ^ (n >> 16)) & 0xFFFF) / 65535.0F;
+			};
+			auto noise = [&lattice](float x, float y) {
+				int cellX = static_cast<int>(std::floor(x));
+				int cellY = static_cast<int>(std::floor(y));
+				float fx = x - static_cast<float>(cellX);
+				float fy = y - static_cast<float>(cellY);
+				fx = fx * fx * (3.0F - 2.0F * fx);
+				fy = fy * fy * (3.0F - 2.0F * fy);
+				float top = lattice(cellX, cellY) + (lattice(cellX + 1, cellY) - lattice(cellX, cellY)) * fx;
+				float bottom = lattice(cellX, cellY + 1) + (lattice(cellX + 1, cellY + 1) - lattice(cellX, cellY + 1)) * fx;
+				return top + (bottom - top) * fy;
+			};
 			for (int y = 0; y < size; ++y) {
 				for (int x = 0; x < size; ++x) {
 					float dx = (static_cast<float>(x) + 0.5F) / size * 2.0F - 1.0F;
 					float dy = (static_cast<float>(y) + 0.5F) / size * 2.0F - 1.0F;
 					float distance = std::sqrt(dx * dx + dy * dy);
-					// A few overlapping lobes make it read as a billow rather than a disc.
-					float lumps = 0.85F + 0.15F * std::sin(std::atan2(dy, dx) * 5.0F) * std::sin(distance * 7.0F);
-					float alpha = std::clamp(1.0F - distance / lumps, 0.0F, 1.0F);
+					// A round billow with an uneven edge and a little unevenness inside: its reach varies gently with direction (by noise, so there is no
+					// pattern to it; a regular wobble made a five-pointed star), and its thickness varies across it.
+					float billow = 0.6F * noise(dx * 1.6F + 7.3F, dy * 1.6F + 2.1F) + 0.4F * noise(dx * 3.7F + 31.0F, dy * 3.7F + 17.0F);
+					float reach = 0.74F + 0.24F * billow;
+					float alpha = std::clamp(1.0F - distance / reach, 0.0F, 1.0F);
 					alpha = alpha * alpha * (3.0F - 2.0F * alpha);
+					alpha *= 0.82F + 0.18F * noise(dx * 5.5F + 3.0F, dy * 5.5F + 11.0F);
 					unsigned char* pixel = &pixels[(y * size + x) * 4];
 					pixel[0] = pixel[1] = pixel[2] = 255;
 					pixel[3] = static_cast<unsigned char>(alpha * 255.0F);
