@@ -537,8 +537,20 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Wind (px/s)", &settings.Wind, -400.0F, 400.0F);
 		ImGui::SliderFloat("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		ImGui::SetItemTooltip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
-		ImGui::SliderFloat("Froth on pouring water", &settings.WaterFoam, 0.0F, 1.5F);
-		ImGui::SetItemTooltip("Thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as white froth, and froth fills the air beside it. 0 for none.");
+		ImGui::SeparatorText("Pouring water");
+		ImGui::SliderFloat("Froth", &settings.WaterFoam, 0.0F, 1.5F);
+		ImGui::SetItemTooltip("Thin, broken water (a stream off a ledge, the lip of a pour) is drawn as froth, and froth fills the air beside it. 0 for none.");
+		ImGui::SliderFloat("Froth on stray drops", &settings.WaterFoamStray, 0.0F, 1.0F);
+		ImGui::SetItemTooltip("How much of that a pixel or two of water thrown clear of the rest gets. 0: stray drops stay single pixels. 1: as much as a stream.");
+		ImGui::SliderFloat("Froth brightness", &settings.WaterFoamBrightness, 0.2F, 2.0F);
+		ImGui::SliderFloat("Froth glow in the dark", &settings.WaterFoamGlow, 0.0F, 1.0F);
+		ImGui::SetItemTooltip("How much light of its own froth carries. 0: it is as dark as the scene around it at night.");
+		ImGui::SliderFloat("Mist", &settings.WaterMist, 0.0F, 2.0F);
+		ImGui::SetItemTooltip("Soft spray thrown off water that is falling fast or landing. 0 for none.");
+		ImGui::SliderFloat("Mist brightness", &settings.WaterMistBrightness, 0.2F, 2.0F);
+		ImGui::SliderFloat("Mist glow in the dark", &settings.WaterMistGlow, 0.0F, 1.0F);
+		ImGui::SetItemTooltip("The least light mist is drawn with. 0: it is as dark as the scene around it at night.");
+		ImGui::SeparatorText("Weather effects");
 		ImGui::SliderFloat("Rain splashes", &settings.RainSplashes, 0.0F, 2.0F);
 		ImGui::SetItemTooltip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
 

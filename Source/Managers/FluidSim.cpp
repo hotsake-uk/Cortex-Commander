@@ -684,8 +684,11 @@ void FluidSim::Update() {
 	// throw mist is left to chance, and the allowance is only a ceiling for floods.)
 	// Mist: soft puffs thrown off water that's falling fast or landing hard, so a pour looks like water and not like pixels. Visual only: they never touch the
 	// simulation, and which pixels throw them is decided from position and time, not the simulation's random numbers, so turning them off changes nothing else.
-	float foamSetting = g_PostProcessMan.GetLightingSettings().WaterFoam;
-	int mistLeft = foamSetting > 0.0F ? static_cast<int>(400.0F * std::min(foamSetting, 1.5F)) : 0;
+	float mistSetting = std::clamp(g_PostProcessMan.GetLightingSettings().WaterMist, 0.0F, 2.0F);
+	int mistLeft = static_cast<int>(60.0F * mistSetting);
+	// Out of a thousand falling pixels, and out of a thousand landing ones, how many throw a puff this update.
+	int mistFalling = static_cast<int>(10.0F * mistSetting);
+	int mistLanding = static_cast<int>(40.0F * mistSetting);
 	// Read straight from the material bitmap's rows in the loop below; coordinates are brought into the world first.
 	BITMAP* materialBitmap = terrain->GetBitmap();
 	// Water only needs to put fire out when something is burning.
@@ -819,15 +822,15 @@ void FluidSim::Update() {
 			}
 			moved = true;
 			gotLower = true;
-			if (mistLeft > 0 && kind == Liquid::Water && velY >= 8 && (x * 3 + y * 13 + static_cast<int>(simUpdate) * 5) % 3 == 0) {
+			if (mistLeft > 0 && kind == Liquid::Water && velY >= 8 && (x * 37 + y * 113 + static_cast<int>(simUpdate) * 59) % 1000 < mistFalling) {
 				--mistLeft;
 				EffectsParticles::Emit("Mist", Vector(static_cast<float>(targetX), static_cast<float>(targetY)), Vector(static_cast<float>(velX) * 0.25F, static_cast<float>(velY) * 0.25F), 0.5F, 1, 0);
 			}
 		} else {
-			if (mistLeft > 0 && kind == Liquid::Water && velY >= 10 && (x * 11 + y * 3 + static_cast<int>(simUpdate)) % 6 == 0) {
+			if (mistLeft > 0 && kind == Liquid::Water && velY >= 10 && (x * 11 + y * 53 + static_cast<int>(simUpdate) * 131) % 1000 < mistLanding) {
 				// Where it lands, a burst of spray.
 				--mistLeft;
-				EffectsParticles::Emit("Mist", Vector(static_cast<float>(x), static_cast<float>(y - 1)), Vector(0.0F, -2.2F), 1.0F, 3, 0);
+				EffectsParticles::Emit("Mist", Vector(static_cast<float>(x), static_cast<float>(y - 1)), Vector(0.0F, -2.2F), 1.0F, 1, 0);
 			}
 			if (velY >= c_SplashSpeed && kind != Liquid::Powder) {
 				// Landed hard: now and then a drop is thrown up, flies and rejoins the pool where it comes down. The rest of the speed goes sideways.

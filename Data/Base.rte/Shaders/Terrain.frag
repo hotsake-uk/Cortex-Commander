@@ -22,6 +22,9 @@ uniform float rteTime; // Seconds.
 uniform float rteWind; // Pixels per second, negative blows left.
 uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
 uniform float rteWetness; // 0..1, how wet exposed ground is.
+uniform float rteWaterFoamStray; // How much of that froth a stray pixel or two of water gets, against a stream of them: 0 none (they stay bare pixels), 1 as much.
+uniform float rteWaterFoamBright; // How bright the froth is drawn.
+uniform float rteWaterFoamGlow; // How much light of its own the froth carries, so it shows in the dark.
 uniform float rteWaterFoam; // How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth. 0 for none.
 uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
@@ -199,6 +202,9 @@ void main() {
 				// Soft at the edges: full only where water is right beside, falling away over the two pixels beyond.
 				float close = clamp(beside * 0.75 + corners * 0.7 + twoOff * 0.22, 0.0, 1.0);
 				float presence = max(close, clamp(column, 0.0, 1.0) * 0.7) * (1.0 - smoothstep(0.3, 0.45, around)) * (1.0 - poolBelow);
+				// A stray pixel or two thrown clear of the rest gets less of it than a stream does, or every flying drop becomes a blob.
+				float stray = 1.0 - smoothstep(1.0, 3.5, beside + corners + twoOff + column * 2.0);
+				presence *= mix(1.0, rteWaterFoamStray, stray);
 				if (presence > 0.02) {
 					// Bubbles: a fine flicker over a slower, blobbier one.
 					// Mostly the slower, blobbier one: a hard sparkle on every pixel made the froth look sharp.
@@ -209,11 +215,11 @@ void main() {
 					// Blue body close to the water, whitening outwards and wherever a bubble is.
 					vec3 body = vec3(0.27, 0.6, 0.86);
 					vec3 froth = vec3(0.9, 0.97, 1.0);
-					vec3 color = mix(body, froth, clamp((1.0 - close) * 0.7 + bubble * 0.6 - 0.15, 0.0, 1.0));
+					vec3 color = mix(body, froth, clamp((1.0 - close) * 0.7 + bubble * 0.6 - 0.15, 0.0, 1.0)) * rteWaterFoamBright;
 					float alpha = clamp(presence * (0.55 + 0.3 * bubble) * strength, 0.0, 0.9);
 					FragColor = vec4(color, alpha);
 					// It carries a little light of its own, so falling water shows in the dark as it does by day.
-					NormalOut = vec4(0.5, 0.5, 0.6, 0.5 + 0.5 * min(0.45 * strength, 0.6));
+					NormalOut = vec4(0.5, 0.5, 0.6, 0.5 + 0.5 * clamp(rteWaterFoamGlow * strength, 0.0, 1.0));
 					SurfaceOut = vec4(0.0, 0.0, 0.0, 1.0);
 					return;
 				}
@@ -275,13 +281,16 @@ void main() {
 				FragColor = vec4(water, mix(0.6, 0.8, deep));
 				// Thin, broken water is froth: white and bubbling instead of clear. (Checked only where there's air close by, which the middle of a pool never has.)
 				if (rteWaterFoam > 0.0 && WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) * WaterAt(textureUV - vec2(0.0, 3.0 * texel.y)) < 0.5) {
-					float thin = (1.0 - smoothstep(0.35, 0.75, WaterAround(textureUV, texel))) * min(rteWaterFoam, 1.5);
+					float waterNear = WaterAround(textureUV, texel);
+					float thin = (1.0 - smoothstep(0.35, 0.75, waterNear)) * min(rteWaterFoam, 1.5);
+					// A stray pixel thrown clear of the rest is frothed less than a stream, by the same setting as the froth around it.
+					thin *= mix(rteWaterFoamStray, 1.0, smoothstep(0.0, 0.2, waterNear));
 					if (thin > 0.0) {
 						float flicker = FrothFlicker(worldPos);
-						FragColor.rgb = mix(FragColor.rgb, mix(vec3(0.5, 0.78, 0.96), vec3(0.95, 0.99, 1.0), flicker), clamp(thin * (0.6 + 0.4 * flicker), 0.0, 1.0));
+						FragColor.rgb = mix(FragColor.rgb, mix(vec3(0.5, 0.78, 0.96), vec3(0.95, 0.99, 1.0), flicker) * rteWaterFoamBright, clamp(thin * (0.6 + 0.4 * flicker), 0.0, 1.0));
 						FragColor.a = mix(FragColor.a, 0.96, clamp(thin, 0.0, 1.0));
 						// Froth carries a little light of its own, so it shows in the dark.
-						emissive = max(emissive, 0.45 * clamp(thin, 0.0, 1.0));
+						emissive = max(emissive, rteWaterFoamGlow * clamp(thin, 0.0, 1.0));
 						// And it isn't glossy like still water (which is drawn darker for what it reflects).
 						shine = mix(shine, 0.4, clamp(thin, 0.0, 1.0));
 					}

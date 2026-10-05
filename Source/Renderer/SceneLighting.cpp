@@ -594,6 +594,9 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteSnowCover", m_Settings.LivingWorld ? m_SnowCover : 0.0F);
 	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
 	m_TerrainShader->SetFloat("rteWaterFoam", m_Settings.Enabled ? m_Settings.WaterFoam : 0.0F);
+	m_TerrainShader->SetFloat("rteWaterFoamStray", std::clamp(m_Settings.WaterFoamStray, 0.0F, 1.0F));
+	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
+	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
 	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
 	{
 		glm::vec2 fall = m_Settings.WeatherType == 2 ? glm::vec2(m_Settings.Wind * 0.6F, 45.0F) : glm::vec2(m_Settings.Wind, 640.0F);
@@ -1446,6 +1449,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_LitParticleShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_LitParticleShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_EffectiveAmbient : glm::vec3(1.0F));
 		m_LitParticleShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+		m_LitParticleShader->SetFloat("rteMistBright", m_Settings.WaterMistBrightness);
+		m_LitParticleShader->SetFloat("rteMistGlow", m_Settings.Enabled ? m_Settings.WaterMistGlow : 0.0F);
 		m_LitParticleShader->SetInt("rteTexture", 0);
 		m_LitParticleShader->SetInt("rteSkyLight", 1);
 		m_LitParticleShader->SetInt("rteDynamicLight", 2);

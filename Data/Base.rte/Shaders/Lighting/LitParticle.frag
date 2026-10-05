@@ -15,6 +15,8 @@ uniform vec2 rteScreenOrigin;
 uniform vec2 rteScreenSize;
 uniform vec3 rteAmbient;
 uniform vec3 rteSkyColor;
+uniform float rteMistBright; // How bright spray off water is drawn.
+uniform float rteMistGlow; // The least light spray off water is drawn with, so it shows in the dark.
 
 void main() {
 	float alpha = texture(rteTexture, textureUV).a * vertexColor.a;
@@ -28,7 +30,7 @@ void main() {
 	if (albedo.b > 1.0) {
 		// Spray off water (its colour is sent with 1 added as the sign): pale stuff that catches whatever light there is, so it's never drawn darker than this.
 		albedo -= vec3(1.0);
-		light = max(light, vec3(0.42, 0.5, 0.6));
+		light = max(light, vec3(0.84, 1.0, 1.2) * rteMistGlow) * rteMistBright;
 	}
 	FragColor = vec4(pow(albedo, vec3(2.2)) * light, alpha);
 }

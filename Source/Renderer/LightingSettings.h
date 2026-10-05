@@ -158,6 +158,12 @@ namespace RTE {
 		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
 		float WaterFoam = 1.0F; //!< How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth, with froth filling the air beside it. 0 for none. Visual only.
+		float WaterFoamStray = 0.25F; //!< How much of that froth a stray pixel or two of water thrown clear gets, against a stream: 0 none (bare pixels), 1 as much as a stream.
+		float WaterFoamBrightness = 1.0F; //!< How bright froth is drawn.
+		float WaterFoamGlow = 0.45F; //!< How much light of its own froth carries, so it shows at night. 0: lit only by what lights the scene.
+		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
+		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
+		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.
 		float RainSplashes = 1.0F; //!< How many little splashes rain makes where it lands on ground, water, roofs and units. 0 for none. Visual only.
 		float WeatherLight = 0.35F; //!< The least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it. 0 leaves it to the sky and lamps.
 		float TracerGlow = 0.8F; //!< How strongly tracers and their trails shine in their own color (and so bloom), 0 for none.
