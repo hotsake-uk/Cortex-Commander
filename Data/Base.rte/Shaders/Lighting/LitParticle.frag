@@ -24,5 +24,11 @@ void main() {
 	vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 	float sky = smoothstep(0.0, 1.0, texture(rteSkyLight, worldPos / rteGridWorldSize).r);
 	vec3 light = mix(rteAmbient, rteSkyColor, sky) + texture(rteDynamicLight, gl_FragCoord.xy / rteScreenSize).rgb;
-	FragColor = vec4(pow(vertexColor.rgb, vec3(2.2)) * light, alpha);
+	vec3 albedo = vertexColor.rgb;
+	if (albedo.b > 1.0) {
+		// Spray off water (its colour is sent with 1 added as the sign): pale stuff that catches whatever light there is, so it's never drawn darker than this.
+		albedo -= vec3(1.0);
+		light = max(light, vec3(0.42, 0.5, 0.6));
+	}
+	FragColor = vec4(pow(albedo, vec3(2.2)) * light, alpha);
 }

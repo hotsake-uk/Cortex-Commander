@@ -47,7 +47,7 @@ namespace RTE {
 		static void SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialRGB, float hardness);
 
 		/// Queues visual particles of one kind, for mods (INI VisualEmission on any object, Lua EmitVisualParticles). Thread safe. Render only: they never touch the simulation.
-		/// @param kind "Sparks" (glowing streaks), "Dust" (soft puffs), "Debris" (little chips that bounce) or "Embers" (rise and drift).
+		/// @param kind "Sparks" (glowing streaks), "Dust" (soft puffs), "Debris" (little chips that bounce), "Embers" (rise and drift) or "Mist" (soft pale spray that hangs and thins).
 		/// @param position Where, in scene coordinates.
 		/// @param velocity Which way they fly, in meters per second like an object's velocity.
 		/// @param spread How much each particle's direction and speed vary, 0 (none) to 1 (every direction).

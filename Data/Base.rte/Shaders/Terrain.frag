@@ -146,7 +146,7 @@ float WaterAround(vec2 uv, vec2 texel) {
 
 // Froth flickers: each pixel of it a different brightness, changing many times a second, like bubbles forming and bursting.
 float FrothFlicker(vec2 world) {
-	return fract(sin(dot(floor(world) + floor(rteTime * 14.0) * vec2(3.1, 7.7), vec2(12.9898, 78.233))) * 43758.5453);
+	return fract(sin(dot(floor(world) + floor(rteTime * 9.0) * vec2(3.1, 7.7), vec2(12.9898, 78.233))) * 43758.5453);
 }
 
 void main() {
@@ -183,18 +183,37 @@ void main() {
 	}
 	if (FragColor.a == 0.0) {
 		if (rteIndexed && rteWaterFoam > 0.0) {
-			// Air beside thin, broken water is filled in with froth, so a stream a pixel wide and the stray pixels of a pour read as one frothing fall of water.
-			// Not the air over a pool: that has water right across beneath it.
+			// Air around thin, broken water is drawn as part of it, so a few pixels of water read as a body of flowing, frothing water and not as pixels:
+			// close in, the blue of the water itself; further out and up and down its fall, white froth. Not the air over a pool: that has water right across beneath it.
 			float around = WaterAround(textureUV, texel);
-			if (around > 0.0 && around < 0.45) {
+			if (around < 0.45) {
+				// Weighted by distance, so a lone pixel of water gets a round blob about it and not the shape of the places looked at.
+				float beside = WaterAt(textureUV + vec2(texel.x, 0.0)) + WaterAt(textureUV - vec2(texel.x, 0.0)) + WaterAt(textureUV + vec2(0.0, texel.y)) + WaterAt(textureUV - vec2(0.0, texel.y));
+				float corners = WaterAt(textureUV + texel) + WaterAt(textureUV - texel) + WaterAt(textureUV + vec2(texel.x, -texel.y)) + WaterAt(textureUV + vec2(-texel.x, texel.y));
+				float twoOff = WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) + WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) + WaterAt(textureUV + vec2(0.0, 2.0 * texel.y)) + WaterAt(textureUV - vec2(0.0, 2.0 * texel.y));
+				// Water a little way above and below: what joins the separate drops of a falling stream into one, as a tail that thins out.
+				// Only above a drop (water a few pixels below this air), so each falling drop draws a short tail behind it like a streak, and not a cross.
+				float column = 0.5 * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) + 0.3 * WaterAt(textureUV + vec2(0.0, 4.0 * texel.y)) + 0.15 * WaterAt(textureUV + vec2(0.0, 5.0 * texel.y));
 				float poolBelow = max(WaterAt(textureUV + vec2(-2.0 * texel.x, texel.y)) * WaterAt(textureUV + vec2(2.0 * texel.x, texel.y)),
 				                      WaterAt(textureUV + vec2(-2.0 * texel.x, 2.0 * texel.y)) * WaterAt(textureUV + vec2(2.0 * texel.x, 2.0 * texel.y)) * WaterAt(textureUV + vec2(0.0, 2.0 * texel.y)));
-				float froth = smoothstep(0.0, 0.1, around) * (1.0 - smoothstep(0.3, 0.45, around)) * (1.0 - poolBelow);
-				float flicker = FrothFlicker(worldPos);
-				float alpha = froth * (0.22 + 0.45 * flicker) * min(rteWaterFoam, 1.5);
-				if (alpha > 0.02) {
-					FragColor = vec4(mix(vec3(0.55, 0.78, 0.95), vec3(0.9, 0.97, 1.0), flicker), alpha);
-					NormalOut = vec4(0.5, 0.5, 0.6, 0.5);
+				// Soft at the edges: full only where water is right beside, falling away over the two pixels beyond.
+				float close = clamp(beside * 0.75 + corners * 0.7 + twoOff * 0.22, 0.0, 1.0);
+				float presence = max(close, clamp(column, 0.0, 1.0) * 0.7) * (1.0 - smoothstep(0.3, 0.45, around)) * (1.0 - poolBelow);
+				if (presence > 0.02) {
+					// Bubbles: a fine flicker over a slower, blobbier one.
+					// Mostly the slower, blobbier one: a hard sparkle on every pixel made the froth look sharp.
+					float fine = FrothFlicker(worldPos);
+					float blobs = fract(sin(dot(floor(worldPos / 2.0) + floor(rteTime * 5.0) * vec2(5.3, 1.9), vec2(41.3, 289.1))) * 7593.1);
+					float bubble = 0.25 * fine + 0.75 * blobs;
+					float strength = min(rteWaterFoam, 1.5);
+					// Blue body close to the water, whitening outwards and wherever a bubble is.
+					vec3 body = vec3(0.27, 0.6, 0.86);
+					vec3 froth = vec3(0.9, 0.97, 1.0);
+					vec3 color = mix(body, froth, clamp((1.0 - close) * 0.7 + bubble * 0.6 - 0.15, 0.0, 1.0));
+					float alpha = clamp(presence * (0.55 + 0.3 * bubble) * strength, 0.0, 0.9);
+					FragColor = vec4(color, alpha);
+					// It carries a little light of its own, so falling water shows in the dark as it does by day.
+					NormalOut = vec4(0.5, 0.5, 0.6, 0.5 + 0.5 * min(0.45 * strength, 0.6));
 					SurfaceOut = vec4(0.0, 0.0, 0.0, 1.0);
 					return;
 				}
@@ -259,8 +278,12 @@ void main() {
 					float thin = (1.0 - smoothstep(0.35, 0.75, WaterAround(textureUV, texel))) * min(rteWaterFoam, 1.5);
 					if (thin > 0.0) {
 						float flicker = FrothFlicker(worldPos);
-						FragColor.rgb = mix(FragColor.rgb, mix(vec3(0.6, 0.82, 0.97), vec3(0.93, 0.98, 1.0), flicker), clamp(thin * (0.55 + 0.35 * flicker), 0.0, 1.0));
-						FragColor.a = mix(FragColor.a, 0.92, clamp(thin, 0.0, 1.0));
+						FragColor.rgb = mix(FragColor.rgb, mix(vec3(0.5, 0.78, 0.96), vec3(0.95, 0.99, 1.0), flicker), clamp(thin * (0.6 + 0.4 * flicker), 0.0, 1.0));
+						FragColor.a = mix(FragColor.a, 0.96, clamp(thin, 0.0, 1.0));
+						// Froth carries a little light of its own, so it shows in the dark.
+						emissive = max(emissive, 0.45 * clamp(thin, 0.0, 1.0));
+						// And it isn't glossy like still water (which is drawn darker for what it reflects).
+						shine = mix(shine, 0.4, clamp(thin, 0.0, 1.0));
 					}
 				}
 				// Open to the air above (not under a ceiling of rock): the surface catches the light and laps a little.

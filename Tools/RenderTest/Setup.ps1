@@ -111,6 +111,7 @@ Write-Scenario "Dig" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render
 Write-Scenario "Strike" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Strike")
 Write-Scenario "Crash" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Crash")
 Write-Scenario "Pour" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Pour")
+Write-Scenario "PourNight" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Pour")
 Write-Scenario "PourNoFoam" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; WaterFoam = 0 }) @("Render Test Pour")
 Write-Scenario "Heap" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Heap")
 Write-Scenario "Splash" ($sandbox + @{ TimeOfDay = 12 }) @("Render Test Splash")
