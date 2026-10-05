@@ -643,6 +643,12 @@ namespace RTE {
 		/// @param drawWaypoints Whether to enable or disable the drawing of the waypoints. (default: true)
 		void DrawWaypoints(bool drawWaypoints = true) { m_DrawWaypoints = drawWaypoints; }
 
+		/// Gets whether the dotted paths of units moving under AI are drawn. Off, only the unit a player is controlling shows its path (a setting).
+		static bool ShowAIPaths() { return s_ShowAIPaths; }
+
+		/// Sets whether the dotted paths of units moving under AI are drawn.
+		static void SetShowAIPaths(bool show) { s_ShowAIPaths = show; }
+
 		/// Destroys this MOSRotating and creates its specified Gibs in its place with appropriate velocities.
 		/// Any Attachables are removed and also given appropriate velocities.
 		/// @param impactImpulse The impulse (kg * m/s) of the impact causing the gibbing to happen.
@@ -1057,6 +1063,7 @@ namespace RTE {
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;
 		// Whether to draw the waypoints or not in the HUD
 		bool m_DrawWaypoints;
+		static bool s_ShowAIPaths; //!< Whether the paths of units moving under AI are drawn.
 		// Absolute target to move to on the scene; this is usually the point at the front of the movepath list
 		Vector m_MoveTarget;
 		// The MO we're currently following, if any. If still valid, this' position will update the MoveTarget each UpdateAI.

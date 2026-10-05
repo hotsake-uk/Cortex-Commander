@@ -166,6 +166,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Scenery lamps:** `LampBrightness` (1), `LampReach` (1) and `LampTint` (`1 1 1`) change the lamps of bunker pieces and placed fixtures together.
 - **Headlamps:** `HeadlampBrightness` (1.4), `HeadlampReach` (210 px), `HeadlampWidth` (26 degrees, the beam's half-angle), `HeadlampColor` (linear, `1 0.875 0.687`), `HeadlampGlow` (0.35, the small glow around the lamp), `HeadlampTeamTint` (0 to 1: how much each side's lamps take its team color) and `HeadlampsByDay` (on in daylight too).
   - A unit can have its own: `HeadlampBrightness = 0` in its INI means it has no lamp, `2` a strong one; `HeadlampColor = Color` gives it a color of its own. Lua: `actor.HeadlampBrightness`, `actor:SetHeadlampColor(r, g, b)`, `actor:ClearHeadlampColor()`.
+- **Aiming dots:** `AimDotsLight` (off; "Aiming dots light the scene" in F6). The dots that show where a weapon points always glow; on, they also cast light on what is around them.
 - **Tracers:** `TracerGlow` (0.8) makes shots with a trail, and the trail, shine in their own color and bloom. `TracerLightBrightness` (0.55) and `TracerLightReach` (28 px) set the light they throw on what they pass.
 - **Weather:** `WeatherLight` (0.35) is the least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it.
 

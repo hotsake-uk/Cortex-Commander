@@ -871,7 +871,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			return glm::max(glm::mix(glm::vec3(grey), color, m_Settings.LightSaturation), glm::vec3(0.0F)) * m_Settings.LightTint;
 		};
 		for (const PostEffect& effect: screenEffects) {
-			if (!effect.m_Bitmap) {
+			if (!effect.m_Bitmap || effect.m_NoLight) {
 				continue;
 			}
 			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());

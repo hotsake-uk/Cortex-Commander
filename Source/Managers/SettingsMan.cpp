@@ -1,4 +1,5 @@
 #include "ControlLink.h"
+#include "Actor.h"
 #include "SettingsMan.h"
 #include "TextOverlay.h"
 #include "TerrainFire.h"
@@ -252,6 +253,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("HeadlampColor", { g_PostProcessMan.GetLightingSettings().HeadlampColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().HeadlampColor); });
 	MatchProperty("HeadlampGlow", { g_PostProcessMan.GetLightingSettings().HeadlampGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HeadlampTeamTint", { g_PostProcessMan.GetLightingSettings().HeadlampTeamTint = std::stof(reader.ReadPropValue()); });
+	MatchProperty("ShowAIPaths", { Actor::SetShowAIPaths(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("AimDotsLight", { g_PostProcessMan.GetLightingSettings().AimDotsLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampsByDay", { g_PostProcessMan.GetLightingSettings().HeadlampsByDay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DockPanels", { g_DebugMan.m_DockPanels = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("PanelWidth", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 240.0F, 700.0F); });
@@ -457,6 +460,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("HeadlampGlow", lighting.HeadlampGlow);
 	writer.NewPropertyWithValue("HeadlampTeamTint", lighting.HeadlampTeamTint);
 	writer.NewPropertyWithValue("HeadlampsByDay", lighting.HeadlampsByDay);
+	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
+	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
 	writer.NewPropertyWithValue("PanelWidth", g_DebugMan.m_PanelWidth);
 	if (ControlLink::s_SettingsPort > 0) {

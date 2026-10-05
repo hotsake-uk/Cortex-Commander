@@ -175,6 +175,7 @@ namespace RTE {
 		glm::vec3 HeadlampColor = {1.0F, 0.875F, 0.687F}; //!< Color of the beams (linear).
 		float HeadlampGlow = 0.35F; //!< Brightness of the small glow around the lamp itself.
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
+		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.

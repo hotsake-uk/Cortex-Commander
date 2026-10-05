@@ -1,4 +1,5 @@
 #include "DebugMan.h"
+#include "Actor.h"
 #include "WindowMan.h"
 #include "PerformanceMan.h"
 #include "imgui/imgui.h"
@@ -234,6 +235,13 @@ void DebugMan::WorldDebugGUI() {
 		}
 		brightnessSlider("Least light on units and ground", settings.ForegroundAmbient, 1.0F);
 		ImGui::SetItemTooltip("Units and solid ground never get darker than this, indoors or out. The slider above sets it too; move this one afterwards to keep them more visible than the walls behind.");
+		bool showPaths = Actor::ShowAIPaths();
+		if (ImGui::Checkbox("Show the paths of units moving under AI", &showPaths)) {
+			Actor::SetShowAIPaths(showPaths);
+		}
+		ImGui::SetItemTooltip("The dotted yellow line from a unit to where it's been told to go. Off, only the unit you're controlling shows its path.");
+		ImGui::Checkbox("Aiming dots light the scene", &settings.AimDotsLight);
+		ImGui::SetItemTooltip("The dots that show where a weapon points always glow. On, they also cast light on what is around them.");
 		brightnessSlider("Sky light", settings.SkyColor, 2.0F);
 		ImGui::SliderFloat("Exposure", &settings.Exposure, 0.1F, 4.0F);
 		ImGui::SliderFloat("Auto exposure", &settings.AutoExposure, 0.0F, 1.0F);

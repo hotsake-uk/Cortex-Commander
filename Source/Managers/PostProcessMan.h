@@ -32,10 +32,11 @@ namespace RTE {
 		float m_Angle = 0.0F; // Post effect angle in radians.
 		int m_Strength = 128; //!< Scalar float for how hard to blend it in, 0 - 255.
 		Vector m_Pos; //!< Post effect position. Can be relative to the scene, or to the screen, depending on context.
+		bool m_NoLight = false; //!< The glow is drawn but casts no light on the scene (aiming dots, when their light is turned off).
 
 		/// Constructor method used to instantiate a PostEffect object in system memory.
-		PostEffect(const Vector& pos, std::shared_ptr<BitmapTexture> bitmap, size_t bitmapHash, int strength, float angle) :
-		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos) {}
+		PostEffect(const Vector& pos, std::shared_ptr<BitmapTexture> bitmap, size_t bitmapHash, int strength, float angle, bool noLight = false) :
+		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos), m_NoLight(noLight) {}
 	};
 
 	/// Singleton manager responsible for all 32bpp post-process effect drawing.

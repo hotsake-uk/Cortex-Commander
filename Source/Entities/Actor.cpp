@@ -40,6 +40,7 @@ BITMAP* Actor::m_apAIIcons[AIMODE_COUNT];
 std::vector<BITMAP*> Actor::m_apSelectArrow;
 std::vector<BITMAP*> Actor::m_apAlarmExclamation;
 bool Actor::m_sIconsLoaded = false;
+bool Actor::s_ShowAIPaths = false;
 
 #define ARROWTIME 1000
 
@@ -1507,7 +1508,7 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 	}
 
 	// AI waypoints or points of interest
-	if (m_DrawWaypoints && m_PlayerControllable && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
+	if (m_DrawWaypoints && m_PlayerControllable && (s_ShowAIPaths || m_Controller.IsPlayerControlled()) && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
 		// Draw the AI paths, from the ultimate destination back up to the actor's position.
 		// We do this backwards so the lines won't crawl and the dots can be evenly spaced throughout
 		Vector waypoint;

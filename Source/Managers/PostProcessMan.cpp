@@ -376,7 +376,7 @@ void PostProcessMan::AdjustEffectsPosToPlayerScreen(int playerScreen, BITMAP* ta
 	for (const PostEffect& postEffect: screenRelativeEffectsList) {
 		// Make sure we won't be adding any effects to a part of the screen that is occluded by menus and such
 		if (postEffect.m_Pos.GetFloorIntX() > screenOcclusionOffsetX && postEffect.m_Pos.GetFloorIntY() > screenOcclusionOffsetY && postEffect.m_Pos.GetFloorIntX() < occludedOffsetX && postEffect.m_Pos.GetFloorIntY() < occludedOffsetY) {
-			m_PostScreenEffects.emplace_back(postEffect.m_Pos, postEffect.m_Bitmap, postEffect.m_BitmapHash, postEffect.m_Strength, postEffect.m_Angle);
+			m_PostScreenEffects.emplace_back(postEffect.m_Pos, postEffect.m_Bitmap, postEffect.m_BitmapHash, postEffect.m_Strength, postEffect.m_Angle, postEffect.m_NoLight);
 		}
 	}
 	// Adjust glow areas for the player screen's position on the final buffer
@@ -444,7 +444,10 @@ BITMAP* PostProcessMan::GetTempEffectBitmap(BITMAP* bitmap) const {
 void PostProcessMan::RegisterGlowDotEffect(const Vector& effectPos, DotGlowColor color, int strength) {
 	// These effects only apply only once per drawn sim update, and only on the first frame drawn after one or more sim updates
 	if (color != NoDot && g_TimerMan.DrawnSimUpdate() && g_TimerMan.SimUpdatesSinceDrawn() >= 0) {
-		RegisterPostEffect(effectPos, GetDotGlowEffect(color), GetDotGlowEffectHash(color), strength);
+		// Aiming dots glow, but only light the scene around them if that's turned on.
+		if (std::shared_ptr<BitmapTexture> effect = GetDotGlowEffect(color); effect && g_TimerMan.SimUpdatesSinceDrawn() >= 0) {
+			m_PostSceneEffects.push_back(PostEffect(effectPos, effect, GetDotGlowEffectHash(color), strength, 0.0F, !m_LightingSettings.AimDotsLight));
+		}
 	}
 }
 
@@ -490,7 +493,7 @@ bool PostProcessMan::GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHe
 			if (WithinBox(scenePostEffect.m_Pos, boxPos, static_cast<float>(boxWidth), static_cast<float>(boxHeight)) && !unseen) {
 				found = true;
 				postEffectPosRelativeToBox = scenePostEffect.m_Pos - boxPos;
-				effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle));
+				effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight));
 			}
 		}
 	}
@@ -510,7 +513,7 @@ bool PostProcessMan::GetPostScreenEffects(int left, int top, int right, int bott
 		if (WithinBox(scenePostEffect.m_Pos, static_cast<float>(left), static_cast<float>(top), static_cast<float>(right), static_cast<float>(bottom)) && !unseen) {
 			found = true;
 			postEffectPosRelativeToBox = Vector(scenePostEffect.m_Pos.m_X - static_cast<float>(left), scenePostEffect.m_Pos.m_Y - static_cast<float>(top));
-			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle));
+			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight));
 		}
 	}
 	return found;
