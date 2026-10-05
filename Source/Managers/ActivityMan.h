@@ -156,6 +156,10 @@ namespace RTE {
 		/// Loads the "Tutorial Mission" Scene and starts the Tutorial Activity.
 		void SetStartTutorialActivity();
 
+		/// Sets the Sandbox game mode, on the map it names, as the Activity to start.
+		/// @return Whether the Sandbox game mode exists to be started.
+		bool SetStartSandboxActivity();
+
 		/// Loads "Editor Scene" and starts the given editor Activity.
 		/// @param editorToLaunch The editor name to put into effect next time ResetActivity is called.
 		void SetStartEditorActivity(const std::string_view& editorToLaunch);
