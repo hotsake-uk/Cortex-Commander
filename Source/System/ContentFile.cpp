@@ -265,6 +265,15 @@ BITMAP* ContentFile::GetAsBitmap(int conversionMode, bool storeBitmap, const std
 				g_ConsoleMan.AddLoadWarningLogExtensionMismatchEntry(m_DataPath, m_FormattedReaderPosition, altFileExtension);
 				SetDataPath(m_DataPathWithoutExtension + altFileExtension);
 				dataPathToLoad = dataPathWithoutExtension + altFileExtension;
+			} else if (const std::string standIn = System::GetDataDirectory() + "Base.rte/Null.png"; !dataPathToLoad.starts_with(System::GetDataDirectory()) && System::PathExistsCaseSensitive(standIn)) {
+				// A picture a mod points at that isn't there: an empty picture stands in for it, and the mod carries on without that sprite.
+				std::string note = "Image file not found, so an empty picture is used: \"" + dataPathToLoad + "\" " + m_FormattedReaderPosition + ".";
+				if (RTEError::s_LoadingMod) {
+					g_ConsoleMan.AddLoadWarningLogEntry(note);
+				} else {
+					g_ConsoleMan.PrintString("ERROR: " + note);
+				}
+				dataPathToLoad = standIn;
 			} else {
 				RTEAbort("Failed to find image file with following path and name:\n\n" + dataPathToLoad + " or " + altFileExtension + "\n" + m_FormattedReaderPosition);
 			}
@@ -329,6 +338,15 @@ std::shared_ptr<BitmapTexture> ContentFile::GetAsTexture(int conversionMode, boo
 				g_ConsoleMan.AddLoadWarningLogExtensionMismatchEntry(m_DataPath, m_FormattedReaderPosition, altFileExtension);
 				SetDataPath(m_DataPathWithoutExtension + altFileExtension);
 				dataPathToLoad = dataPathWithoutExtension + altFileExtension;
+			} else if (const std::string standIn = System::GetDataDirectory() + "Base.rte/Null.png"; !dataPathToLoad.starts_with(System::GetDataDirectory()) && System::PathExistsCaseSensitive(standIn)) {
+				// A picture a mod points at that isn't there: an empty picture stands in for it, and the mod carries on without that sprite.
+				std::string note = "Image file not found, so an empty picture is used: \"" + dataPathToLoad + "\" " + m_FormattedReaderPosition + ".";
+				if (RTEError::s_LoadingMod) {
+					g_ConsoleMan.AddLoadWarningLogEntry(note);
+				} else {
+					g_ConsoleMan.PrintString("ERROR: " + note);
+				}
+				dataPathToLoad = standIn;
 			} else {
 				RTEAbort("Failed to find image file with following path and name:\n\n" + dataPathToLoad + " or " + altFileExtension + "\n" + m_FormattedReaderPosition);
 			}

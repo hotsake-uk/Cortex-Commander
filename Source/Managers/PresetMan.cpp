@@ -326,6 +326,10 @@ std::string PresetMan::GetFullModulePath(const std::string& modulePath) const {
 	} else if (IsModuleUserdata(moduleName)) {
 		moduleTopDir = System::GetUserdataDirectory();
 	}
+	// Some mods write their paths with the mods folder's usual name in front. That still means "wherever mods are loaded from", even when it's another folder.
+	if (pathTopDir == "Mods/" && moduleTopDir != "Mods/" && moduleTopDir == System::GetModDirectory()) {
+		return moduleTopDir + modulePathGeneric.substr(pathTopDir.size());
+	}
 	return (pathTopDir == moduleTopDir) ? modulePathGeneric : moduleTopDir + modulePathGeneric;
 }
 

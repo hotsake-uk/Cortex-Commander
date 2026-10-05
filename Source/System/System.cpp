@@ -45,7 +45,24 @@ std::filesystem::file_time_type System::s_ProgramStartTime = std::filesystem::fi
 bool System::s_CaseSensitive = true;
 const std::string System::s_DataDirectory = "Data/";
 const std::string System::s_ScreenshotDirectory = "ScreenShots/";
-const std::string System::s_ModDirectory = "Mods/";
+std::string System::InstanceFile(const std::string& fileName) {
+	const char* instance = std::getenv("CCCP_INSTANCE");
+	if (!instance || !*instance) {
+		return fileName;
+	}
+	std::string folder = std::string("Instances/") + instance;
+	std::error_code ignored;
+	std::filesystem::create_directories(folder, ignored);
+	return folder + "/" + fileName;
+}
+
+bool System::IsUnattendedInstance() {
+	const char* instance = std::getenv("CCCP_INSTANCE");
+	return instance && *instance;
+}
+
+// CCCP_MODS_DIR names another folder to load mods from (next to the game, without a slash), so tests can try mods out without touching the player's own Mods folder.
+const std::string System::s_ModDirectory = std::getenv("CCCP_MODS_DIR") ? std::string(std::getenv("CCCP_MODS_DIR")) + "/" : "Mods/";
 const std::string System::s_UserdataDirectory = "Userdata/";
 const std::string System::s_ModulePackageExtension = ".rte";
 const std::string System::s_ZippedModulePackageExtension = ".zip";

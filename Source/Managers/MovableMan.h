@@ -97,6 +97,14 @@ namespace RTE {
 		/// @return The count of MOIDs in use this frame.
 		int GetMOIDCount() { return m_MOIDIndex.size(); }
 
+		/// Takes an object that is being destroyed out of the table of objects by ID, so nothing can look it up after it's gone.
+		/// @param object The object, and the ID it had.
+		void ForgetMOID(const MovableObject* object, MOID id) {
+			if (id != g_NoMOID && id < m_MOIDIndex.size() && m_MOIDIndex[id] == object) {
+				m_MOIDIndex[id] = nullptr;
+			}
+		}
+
 		/// Gets a MOID from pixel coordinates in the Scene.
 		/// @param pixelX The X coordinate of the Scene pixel to get the MOID of.
 		/// @param pixelY The Y coordinate of the Scene pixel to get the MOID of.

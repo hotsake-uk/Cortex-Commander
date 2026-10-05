@@ -278,6 +278,9 @@ void LuaStateWrapper::Initialize() {
 	              "_RequiredPackages = {};\n"
 	              "do local OriginalRequire = require; require = function(filePath) _RequiredPackages[filePath] = true; return OriginalRequire(filePath); end; end\n"
 	              "_ClearRequiredPackages = function() for k, v in pairs(_RequiredPackages) do package.loaded[k] = nil; end; _RequiredPackages = {}; end;\n"
+	              // The conversion functions (ToActor, ToMovableObject and so on) each have two forms, and nothing (nil) fits both equally, which the binding library handles by corrupting memory.
+	              // Scripts do pass nil, typically the result of MovableMan:GetMOFromID for an object that's gone. Nothing in gives nothing out, and never reaches the two forms.
+	              "for name, convert in pairs(_G) do if type(convert) == 'function' and string.match(name, '^To%u') then _G[name] = function(entity) if entity == nil then return nil; end return convert(entity); end end end\n"
 	              // Internal helper functions to add callbacks for async pathing requests
 	              "_AsyncPathCallbacks = {};\n"
 	              "_AddAsyncPathCallback = function(id, callback) _AsyncPathCallbacks[id] = callback; end\n"

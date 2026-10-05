@@ -54,7 +54,7 @@ void LoadingScreen::Create(AllegroScreen* guiScreen, GUIInputWrapper* guiInput, 
 	//g_WindowMan.UploadFrame();
 
 	if (!m_LoadingLogWriter) {
-		m_LoadingLogWriter = std::make_unique<Writer>("LogLoading.txt");
+		m_LoadingLogWriter = std::make_unique<Writer>(System::InstanceFile("LogLoading.txt"));
 		if (!m_LoadingLogWriter->WriterOK()) {
 			RTEError::ShowMessageBox("Failed to instantiate the Loading Log writer!\nModule loading will proceed without being logged!");
 			m_LoadingLogWriter.reset();

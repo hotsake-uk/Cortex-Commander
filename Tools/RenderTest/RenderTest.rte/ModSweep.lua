@@ -34,6 +34,7 @@ function ModSweepScript:Populate(module)
 	local middle = CameraMan:GetOffset(0).X + FrameMan.PlayerScreenWidth * 0.5;
 	local units, items = 0, 0;
 	local firstWeapon = nil;
+	local queue = {};
 	for entity in module.Presets do
 		if itemMakers[entity.ClassName] and entity.ClassName == "HDFirearm" and not firstWeapon then
 			firstWeapon = entity.PresetName;
@@ -41,11 +42,21 @@ function ModSweepScript:Populate(module)
 	end
 	for entity in module.Presets do
 		local className = entity.ClassName;
+		-- Only what a player can actually get: mods are full of helper objects and templates that aren't meant to be put into the world on their own.
+		if unitMakers[className] or itemMakers[className] then
+			local known, buyable = pcall(function() return ToSceneObject(entity).Buyable; end);
+			if known and buyable == false then
+				className = "";
+			end
+		end
 		if unitMakers[className] and units < 24 and className ~= "Actor" then
+			local presetName, slot = entity.PresetName, units;
+			table.insert(queue, function()
+			print("MODSWEEP making " .. className .. " " .. presetName);
 			local ok, problem = pcall(function()
-				local unit = unitMakers[className](entity.PresetName, name);
+				local unit = unitMakers[className](presetName, name);
 				unit.Team = 0;
-				unit.Pos = ground(middle - 40 - units * 22) + Vector(0, className == "AHuman" and -30 or -60);
+				unit.Pos = ground(middle - 40 - slot * 22) + Vector(0, className == "AHuman" and -30 or -60);
 				if className == "AHuman" and firstWeapon then
 					unit:AddInventoryItem(CreateHDFirearm(firstWeapon, name));
 				end
@@ -53,21 +64,26 @@ function ModSweepScript:Populate(module)
 				MovableMan:AddActor(unit);
 			end);
 			if not ok then
-				print("MODSWEEP PROBLEM making " .. className .. " '" .. entity.PresetName .. "' of " .. name .. ": " .. tostring(problem));
+				print("MODSWEEP PROBLEM making " .. className .. " '" .. presetName .. "' of " .. name .. ": " .. tostring(problem));
 			end
+			end);
 			units = units + 1;
 		elseif itemMakers[className] and items < 24 then
+			local presetName, slot = entity.PresetName, items;
+			table.insert(queue, function()
+			print("MODSWEEP making " .. className .. " " .. presetName);
 			local ok, problem = pcall(function()
 				local holder = CreateAHuman("Soldier Light", "Coalition.rte");
 				holder.Team = 0;
-				holder.Pos = ground(middle - 40 - items * 18) + Vector(0, -90);
-				holder:AddInventoryItem(itemMakers[className](entity.PresetName, name));
+				holder.Pos = ground(middle - 40 - slot * 18) + Vector(0, -90);
+				holder:AddInventoryItem(itemMakers[className](presetName, name));
 				holder.AIMode = Actor.AIMODE_SENTRY;
 				MovableMan:AddActor(holder);
 			end);
 			if not ok then
-				print("MODSWEEP PROBLEM making " .. className .. " '" .. entity.PresetName .. "' of " .. name .. ": " .. tostring(problem));
+				print("MODSWEEP PROBLEM making " .. className .. " '" .. presetName .. "' of " .. name .. ": " .. tostring(problem));
 			end
+			end);
 			items = items + 1;
 		end
 	end
@@ -80,6 +96,7 @@ function ModSweepScript:Populate(module)
 		MovableMan:AddActor(enemy);
 	end
 	print("MODSWEEP " .. name .. ": " .. units .. " units and craft, " .. items .. " items");
+	return queue;
 end
 
 function ModSweepScript:UpdateScript()
@@ -96,7 +113,8 @@ function ModSweepScript:UpdateScript()
 		self.moduleIndex = self.moduleIndex + 1;
 		while self.moduleIndex < PresetMan:GetTotalModuleCount() do
 			local module = PresetMan:GetDataModule(self.moduleIndex);
-			if module and not module.IsUserdata and module.FileName ~= "RenderTest.rte" then
+			-- The player's own scenes and saves (UserScenes.rte and the like) aren't mods.
+			if module and module.FileName ~= "RenderTest.rte" and not string.find(module.FileName, "^User") then
 				break;
 			end
 			self.moduleIndex = self.moduleIndex + 1;
@@ -111,9 +129,16 @@ function ModSweepScript:UpdateScript()
 	elseif self.phase == "settle" and self.timer:IsPastSimMS(700) then
 		local module = PresetMan:GetDataModule(self.moduleIndex);
 		print("MODSWEEP BEGIN " .. module.FileName);
-		self:Populate(module);
-		self.phase = "fight";
+		self.queue = self:Populate(module);
+		self.phase = "populate";
 		self.timer:Reset();
+	elseif self.phase == "populate" and self.timer:IsPastSimMS(100) then
+		self.timer:Reset();
+		if #self.queue > 0 then
+			table.remove(self.queue, 1)();
+		else
+			self.phase = "fight";
+		end
 	elseif self.phase == "fight" and self.timer:IsPastSimMS(6000) then
 		print("MODSWEEP END " .. PresetMan:GetDataModule(self.moduleIndex).FileName);
 		self.phase = "next";

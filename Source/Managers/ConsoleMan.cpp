@@ -88,7 +88,7 @@ int ConsoleMan::Initialize() {
 
 void ConsoleMan::Destroy() {
 	if (!g_WindowMan.ResolutionChanged()) {
-		SaveAllText("LogConsole.txt");
+		SaveAllText(System::InstanceFile("LogConsole.txt"));
 	}
 
 	delete m_GUIControlManager;

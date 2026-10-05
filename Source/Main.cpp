@@ -559,13 +559,13 @@ int main(int argc, char** argv) {
 
 		if (g_ConsoleMan.LoadWarningsExist()) {
 			g_ConsoleMan.PrintString("WARNING: Encountered non-fatal errors during module loading!\nSee \"LogLoadingWarning.txt\" for information.");
-			g_ConsoleMan.SaveLoadWarningLog("LogLoadingWarning.txt");
+			g_ConsoleMan.SaveLoadWarningLog(System::InstanceFile("LogLoadingWarning.txt"));
 			// Open the console so the user is aware there are loading warnings.
 			g_ConsoleMan.SetEnabled(true);
 		} else {
 			// Delete an existing log if there are no warnings so there's less junk in the root folder.
-			if (std::filesystem::exists(System::GetWorkingDirectory() + "LogLoadingWarning.txt")) {
-				std::remove("LogLoadingWarning.txt");
+			if (std::filesystem::exists(System::GetWorkingDirectory() + System::InstanceFile("LogLoadingWarning.txt"))) {
+				std::remove(System::InstanceFile("LogLoadingWarning.txt").c_str());
 			}
 		}
 

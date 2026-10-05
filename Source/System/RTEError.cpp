@@ -13,6 +13,9 @@
 #endif
 
 #include <array>
+#include <atomic>
+#include <fstream>
+#include <mutex>
 #include <exception>
 #include <regex>
 #include <utility>
@@ -195,6 +198,26 @@ void RTEError::SetExceptionHandlers() {
 
 #ifdef _WIN32
 #ifndef TARGET_MACHINE_X86
+	// With CCCP_TRACE_EXCEPTIONS set to a file name, the call stack of every C++ exception and access violation is written there the moment it's raised (the first 40),
+	// whether or not something catches it later. For finding where a crash that shows up somewhere else really started.
+	if (std::getenv("CCCP_TRACE_EXCEPTIONS")) {
+		AddVectoredExceptionHandler(1, [](EXCEPTION_POINTERS* exceptPtr) -> LONG {
+			static std::atomic<int> traced = 0;
+			DWORD code = exceptPtr->ExceptionRecord->ExceptionCode;
+			if ((code == 0xE06D7363 || code == EXCEPTION_ACCESS_VIOLATION) && traced++ < 40) {
+				static std::mutex traceMutex;
+				std::lock_guard<std::mutex> lock(traceMutex);
+				backward::StackTrace st;
+				st.load_here(40, exceptPtr->ContextRecord);
+				backward::Printer printer;
+				std::ofstream trace(std::getenv("CCCP_TRACE_EXCEPTIONS"), std::ios::app);
+				trace << "==== exception 0x" << std::hex << code << std::dec << " on thread " << GetCurrentThreadId() << "\n";
+				printer.print(st, trace);
+				trace << std::endl;
+			}
+			return EXCEPTION_CONTINUE_SEARCH;
+		});
+	}
 	SetUnhandledExceptionFilter(RTEWindowsExceptionHandler);
 #else
 	// This only works for C++ exceptions and doesn't catch and access violations and such, or provide much meaningful info.
@@ -207,10 +230,18 @@ void RTEError::SetExceptionHandlers() {
 }
 
 void RTEError::ShowMessageBox(const std::string& message) {
+	if (System::IsUnattendedInstance()) {
+		g_ConsoleMan.PrintString("MESSAGE BOX (not shown, unattended run): " + message);
+		return;
+	}
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "RTE Warning! (>_<)", message.c_str(), nullptr);
 }
 
 bool RTEError::ShowAbortMessageBox(const std::string& message) {
+	if (System::IsUnattendedInstance()) {
+		// Nobody is there to press OK. What went wrong is already in the abort log.
+		return false;
+	}
 	enum AbortMessageButton {
 		ButtonInvalid,
 		ButtonExit,
@@ -244,6 +275,11 @@ bool RTEError::ShowAbortMessageBox(const std::string& message) {
 }
 
 bool RTEError::ShowAssertMessageBox(const std::string& message) {
+	if (System::IsUnattendedInstance()) {
+		// Nobody is there to choose. Note it and carry on, as "Ignore" would.
+		g_ConsoleMan.PrintString("ASSERT (ignored, unattended run): " + message);
+		return false;
+	}
 	enum AssertMessageButton {
 		ButtonInvalid,
 		ButtonAbort,
@@ -313,7 +349,7 @@ void RTEError::UnhandledExceptionFunc(const std::string& description, const std:
 	} else {
 		consoleSaveMsg = "\nThe console has been dumped to 'AbortLog.txt'.";
 	}
-	if (g_ConsoleMan.SaveAllText("AbortLog.txt")) {
+	if (g_ConsoleMan.SaveAllText(System::InstanceFile("AbortLog.txt"))) {
 		exceptionMessage += consoleSaveMsg;
 	}
 	System::PrintToCLI(exceptionMessage);
@@ -323,7 +359,9 @@ void RTEError::UnhandledExceptionFunc(const std::string& description, const std:
 		SDL_SetWindowFullscreen(g_WindowMan.GetWindow(), 0);
 	}
 
-	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "RTE CATASTROPHIC ERROR!!! (X_X)", exceptionMessage.c_str(), nullptr);
+	if (!System::IsUnattendedInstance()) {
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "RTE CATASTROPHIC ERROR!!! (X_X)", exceptionMessage.c_str(), nullptr);
+	}
 	AbortAction;
 }
 
@@ -373,7 +411,7 @@ void RTEError::AbortFunc(const std::string& description, const std::source_locat
 			consoleSaveMsg = "\nThe console has been dumped to 'AbortLog.txt'.";
 		}
 
-		if (g_ConsoleMan.SaveAllText("AbortLog.txt")) {
+		if (g_ConsoleMan.SaveAllText(System::InstanceFile("AbortLog.txt"))) {
 			abortMessage += consoleSaveMsg;
 		}
 		System::PrintToCLI(abortMessage);
@@ -588,7 +626,7 @@ bool RTEError::DumpAbortScreen() {
 		BITMAP* flipBuffer = create_bitmap_ex(24, w, h);
 		draw_sprite_v_flip(flipBuffer, readBuffer, 0, 0);
 
-		success = save_png("AbortScreen.png", flipBuffer, nullptr);
+		success = save_png(System::InstanceFile("AbortScreen.png").c_str(), flipBuffer, nullptr);
 	}
 	return success == 0;
 }

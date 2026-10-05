@@ -7,6 +7,18 @@
 
 using namespace RTE;
 
+namespace {
+	// Mods written for version 6 call GetLimbPathSpeed and SetLimbPathSpeed with a speed preset: 0 slow, 1 normal, 2 fast. Walking was the only thing they changed.
+	// The functions are GetLimbPathTravelSpeed and SetLimbPathTravelSpeed now and take a movement state. The old names keep working: normal is walking, fast is running, slow is crawling.
+	Actor::MovementState LegacySpeedPresetToMovementState(int speedPreset) {
+		return speedPreset >= 2 ? Actor::RUN : (speedPreset <= 0 ? Actor::CRAWL : Actor::WALK);
+	}
+	float LegacyGetLimbPathSpeedAHuman(AHuman& human, int speedPreset) { return human.GetLimbPathTravelSpeed(LegacySpeedPresetToMovementState(speedPreset)); }
+	void LegacySetLimbPathSpeedAHuman(AHuman& human, int speedPreset, float speed) { human.SetLimbPathTravelSpeed(LegacySpeedPresetToMovementState(speedPreset), speed); }
+	float LegacyGetLimbPathSpeedACrab(ACrab& crab, int speedPreset) { return crab.GetLimbPathTravelSpeed(speedPreset >= 2 ? Actor::RUN : Actor::WALK); }
+	void LegacySetLimbPathSpeedACrab(ACrab& crab, int speedPreset, float speed) { crab.SetLimbPathTravelSpeed(speedPreset >= 2 ? Actor::RUN : Actor::WALK, speed); }
+}
+
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Entity) {
 	return luabind::class_<Entity>("Entity")
 
@@ -74,6 +86,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACrab) {
 	    .def("Look", &ACrab::Look)
 	    .def("LookForMOs", &ACrab::LookForMOs)
 	    .def("GetLimbPath", &ACrab::GetLimbPath)
+	    .def("GetLimbPathSpeed", &LegacyGetLimbPathSpeedACrab)
+	    .def("SetLimbPathSpeed", &LegacySetLimbPathSpeedACrab)
 	    .def("GetLimbPathTravelSpeed", &ACrab::GetLimbPathTravelSpeed)
 	    .def("SetLimbPathTravelSpeed", &ACrab::SetLimbPathTravelSpeed)
 	    .def("GetLimbPathPushForce", &ACrab::GetLimbPathPushForce)
@@ -458,6 +472,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .def("LookForGold", &AHuman::LookForGold)
 	    .def("LookForMOs", &AHuman::LookForMOs)
 	    .def("GetLimbPath", &AHuman::GetLimbPath)
+	    .def("GetLimbPathSpeed", &LegacyGetLimbPathSpeedAHuman)
+	    .def("SetLimbPathSpeed", &LegacySetLimbPathSpeedAHuman)
 	    .def("GetLimbPathTravelSpeed", &AHuman::GetLimbPathTravelSpeed)
 	    .def("SetLimbPathTravelSpeed", &AHuman::SetLimbPathTravelSpeed)
 	    .def("GetLimbPathPushForce", &AHuman::GetLimbPathPushForce)

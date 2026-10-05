@@ -135,7 +135,8 @@ MovableObject* MovableMan::GetMOFromID(MOID whichID) {
 		// Anyways, until we can fix the god-awful abomination that is this game's memory ownership semantics, we're stuck with this
 		// Which is also technically undefined behaviour
 		MovableObject* candidate = m_MOIDIndex[whichID];
-		if (candidate->GetID() != whichID) {
+		// Objects take themselves out of the table when they're destroyed, so an empty entry is one that's gone since the table was last rebuilt.
+		if (!candidate || candidate->GetID() != whichID) {
 			return nullptr;
 		}
 

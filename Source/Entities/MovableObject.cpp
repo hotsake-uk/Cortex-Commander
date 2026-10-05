@@ -614,6 +614,8 @@ void MovableObject::Destroy(bool notInherited) {
 	}
 
 	g_MovableMan.UnregisterObject(this);
+	// The table of objects by ID is only rebuilt once an update. Until then it must not go on pointing at this: scripts that go through every ID would be handed freed memory.
+	g_MovableMan.ForgetMOID(this, m_MOID);
 	if (!notInherited) {
 		SceneObject::Destroy();
 	}

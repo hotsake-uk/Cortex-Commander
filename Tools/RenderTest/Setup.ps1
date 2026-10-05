@@ -4,7 +4,7 @@ param([string]$Repo = "")
 . (Join-Path $PSScriptRoot "Common.ps1")
 if (-not $Repo) { $Repo = $RepoRoot }
 
-$modsDir = Join-Path $Repo "Mods"
+$modsDir = Join-Path $Repo $(if ($env:CCCP_MODS_DIR) { $env:CCCP_MODS_DIR } else { "Mods" })
 if (-not (Test-Path $modsDir)) { New-Item -ItemType Directory -Path $modsDir | Out-Null }
 Copy-Item -Recurse -Force (Join-Path $PSScriptRoot "RenderTest.rte") $modsDir
 
