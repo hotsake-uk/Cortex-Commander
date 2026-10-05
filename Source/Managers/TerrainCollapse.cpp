@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <string>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -109,6 +110,19 @@ namespace {
 	}
 
 	std::vector<Check> s_Pending; //!< Checks queued from (possibly parallel) gib code, waiting to be scheduled.
+
+	/// Ground being worn away bit by bit (dug, shot at) is watched in squares of this many pixels. While the wearing goes on in a square, and for a couple of seconds after,
+	/// the ground around it is checked every half second against how it was when the wearing began.
+	constexpr int c_WatchCell = 48;
+	constexpr int c_WatchRadius = 76;
+	struct Watch {
+		long long LastDamage = 0; //!< Sim update when the square last lost a pixel.
+		long long NextCheck = 0;
+		std::shared_ptr<Before> Was;
+	};
+	std::map<std::pair<int, int>, Watch> s_Watches; //!< By square (row, column): ordered, so they are always gone through in the same order.
+	std::vector<int> s_Damage; //!< Pixels knocked out since the last update, x and y by turns. Filled from (possibly parallel) collision code.
+	std::mutex s_DamageMutex;
 	std::vector<Check> s_Scheduled;
 	struct ChunkRequest {
 		int X, Y, Radius;
@@ -1518,6 +1532,17 @@ void TerrainCollapse::QueueCheck(const Vector& position, float radius) {
 	s_Pending.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), 0});
 }
 
+void TerrainCollapse::NoteDamage(int x, int y) {
+	if (!s_Enabled || x < 0 || y < 0) {
+		return;
+	}
+	std::scoped_lock lock(s_DamageMutex);
+	if (s_Damage.size() < 40000) {
+		s_Damage.push_back(x);
+		s_Damage.push_back(y);
+	}
+}
+
 void TerrainCollapse::BeginChange(const Vector& position, float radius) {
 	if (!s_Enabled) {
 		return;
@@ -1586,6 +1611,41 @@ void TerrainCollapse::Update() {
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
 	}
+	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
+	{
+		std::vector<int> damage;
+		{
+			std::scoped_lock lock(s_DamageMutex);
+			damage.swap(s_Damage);
+		}
+		for (size_t i = 0; i + 1 < damage.size(); i += 2) {
+			std::pair<int, int> square(damage[i + 1] / c_WatchCell, damage[i] / c_WatchCell);
+			auto found = s_Watches.find(square);
+			if (found == s_Watches.end()) {
+				Watch watch;
+				watch.LastDamage = now;
+				watch.NextCheck = now + 30;
+				// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing.
+				watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr});
+				s_Watches.emplace(square, std::move(watch));
+			} else {
+				found->second.LastDamage = now;
+			}
+		}
+		int checksLeft = 3;
+		for (auto watch = s_Watches.begin(); watch != s_Watches.end();) {
+			if (checksLeft > 0 && now >= watch->second.NextCheck) {
+				--checksLeft;
+				RunCheck(terrain, {watch->first.second * c_WatchCell + c_WatchCell / 2, watch->first.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, watch->second.Was});
+				watch->second.NextCheck = now + 30;
+				if (now - watch->second.LastDamage > 120) {
+					watch = s_Watches.erase(watch);
+					continue;
+				}
+			}
+			++watch;
+		}
+	}
 	UpdateBodies(terrain);
 	for (const Check& check: s_Scheduled) {
 		if (check.DueUpdate <= now) {
@@ -1602,6 +1662,11 @@ void TerrainCollapse::Clear() {
 	}
 	s_Bodies.clear();
 	s_NewBodies.clear();
+	s_Watches.clear();
+	{
+		std::scoped_lock damageLock(s_DamageMutex);
+		s_Damage.clear();
+	}
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pending.clear();
 	s_Scheduled.clear();

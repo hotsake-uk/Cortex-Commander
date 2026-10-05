@@ -25,6 +25,12 @@ namespace RTE {
 		/// Gets the tuning numbers, to read or change.
 		static Tuning& GetTuning() { return s_Tuning; }
 
+		/// Tells the system a pixel of terrain has just been knocked out by something other than an explosion: a digger, bullets, anything that wears ground away bit by bit.
+		/// Where that goes on, the ground around is watched, and what gets cut loose falls. Thread safe.
+		/// @param x The pixel, in scene coordinates.
+		/// @param y The pixel, in scene coordinates.
+		static void NoteDamage(int x, int y);
+
 		/// Tells the system that terrain around a point is about to be removed by something other than an explosion (a digging tool), then checks for loose pieces afterwards.
 		/// Call it before the terrain changes, from the main thread: it notes what was already hanging in the air there, so only what the change cuts loose falls.
 		/// @param position Centre of the change, in scene coordinates.

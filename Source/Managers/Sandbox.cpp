@@ -95,6 +95,9 @@ namespace {
 		Concrete,
 		Grenade,
 		BigBomb,
+		Demolition,
+		BunkerBuster,
+		Meteor,
 		Napalm,
 		Lightning,
 		// Not tools, but queued the same way.
@@ -144,6 +147,9 @@ namespace {
 	    {Tool::Concrete, "Concrete", 0.03F, true},
 	    {Tool::Grenade, "Grenade blast", 0.0F, false},
 	    {Tool::BigBomb, "Big bomb", 0.0F, false},
+	    {Tool::Demolition, "Demolition charge", 0.0F, false},
+	    {Tool::BunkerBuster, "Bunker buster", 0.0F, false},
+	    {Tool::Meteor, "Meteor strike", 0.0F, false},
 	    {Tool::Napalm, "Napalm burst", 0.0F, false},
 	    {Tool::Lightning, "Lightning", 0.0F, false},
 	};
@@ -1215,6 +1221,20 @@ namespace {
 			case Tool::Grenade:
 				Detonate("Frag Grenade", at);
 				break;
+			case Tool::Demolition:
+			case Tool::BunkerBuster:
+			case Tool::Meteor: {
+				// Blasts that take out a real hole: everything within the crater goes (but for the edge of the world), with bombs going off across it for the fire, the flying debris and the harm.
+				int crater = stroke.Kind == Tool::Demolition ? 34 : (stroke.Kind == Tool::BunkerBuster ? 62 : 100);
+				PaintTerrain(at, crater, nullptr);
+				Detonate("Standard Bomb", at);
+				int extra = stroke.Kind == Tool::Demolition ? 2 : (stroke.Kind == Tool::BunkerBuster ? 5 : 9);
+				for (int i = 0; i < extra; ++i) {
+					float angle = 6.2832F * static_cast<float>(i) / static_cast<float>(extra);
+					Detonate(i % 2 == 0 ? "Standard Bomb" : "Frag Grenade", at + Vector(std::cos(angle), std::sin(angle)) * (static_cast<float>(crater) * 0.6F));
+				}
+				break;
+			}
 			case Tool::BigBomb:
 				Detonate("Standard Bomb", at);
 				break;
@@ -1845,6 +1865,8 @@ void Sandbox::DrawGUI() {
 			}
 			if (ImGui::BeginTabItem("Boom")) {
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
+				ImGui::SeparatorText("Craters");
+				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("World")) {

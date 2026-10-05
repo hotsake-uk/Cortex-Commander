@@ -107,6 +107,7 @@ Write-Scenario "Dunk" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Rende
 Write-Scenario "Island" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Island")
 Write-Scenario "Scrap" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Scrap")
 Write-Scenario "ScrapOff" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; CollapseCrushPixels = 0 }) @("Render Test Scrap")
+Write-Scenario "Dig" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Dig")
 Write-Scenario "Heap" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Heap")
 Write-Scenario "Splash" ($sandbox + @{ TimeOfDay = 12 }) @("Render Test Splash")
 Write-Scenario "SplashSnow" ($sandbox + @{ TimeOfDay = 12; WeatherType = 2; WeatherIntensity = 1 }) @("Render Test Splash")
