@@ -19,13 +19,19 @@ namespace RTE {
 		/// Sets whether flowing liquids are on.
 		static void SetEnabled(bool enabled) { s_Enabled = enabled; }
 
-		/// Gets whether a material is one of the flowing liquids.
+		/// Gets whether loose powders (sand, snow, rubble, ash) slide and pile when disturbed (a gameplay setting).
+		static bool PowdersEnabled() { return s_Powders; }
+
+		/// Sets whether loose powders slide and pile.
+		static void SetPowdersEnabled(bool enabled);
+
+		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.
-		/// @param liquidName "Water", "Lava", "Acid" or "Oil".
+		/// @param liquidName "Water", "Lava", "Acid" or "Oil", or a powder: "Sand", "Snow", "Earth Rubble" or "Ashes".
 		static void Pour(const Vector& position, float radius, const char* liquidName);
 
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
@@ -56,5 +62,6 @@ namespace RTE {
 
 	private:
 		static bool s_Enabled; //!< Whether flowing liquids are on.
+		static bool s_Powders; //!< Whether loose powders slide and pile.
 	};
 } // namespace RTE

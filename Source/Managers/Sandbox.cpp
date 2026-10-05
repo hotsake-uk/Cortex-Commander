@@ -80,6 +80,10 @@ namespace {
 		Lava,
 		Acid,
 		Oil,
+		LooseSand,
+		LooseSnow,
+		Boulder,
+		Slab,
 		Smoke,
 		ToxicGas,
 		Dig,
@@ -124,6 +128,10 @@ namespace {
 	    {Tool::Lava, "Lava", 0.03F, true},
 	    {Tool::Acid, "Acid", 0.03F, true},
 	    {Tool::Oil, "Oil", 0.03F, true},
+	    {Tool::LooseSand, "Loose sand", 0.03F, true},
+	    {Tool::LooseSnow, "Loose snow", 0.03F, true},
+	    {Tool::Boulder, "Boulder", 0.0F, true},
+	    {Tool::Slab, "Concrete lump", 0.0F, true},
 	    {Tool::Smoke, "Smoke", 0.06F, true},
 	    {Tool::ToxicGas, "Toxic gas", 0.06F, true},
 	    {Tool::Dig, "Dig", 0.03F, true},
@@ -1157,6 +1165,18 @@ namespace {
 			case Tool::Oil:
 				FluidSim::Pour(at, radius * 0.5F, "Oil");
 				break;
+			case Tool::LooseSand:
+				FluidSim::Pour(at, radius * 0.5F, "Sand");
+				break;
+			case Tool::LooseSnow:
+				FluidSim::Pour(at, radius * 0.5F, "Snow");
+				break;
+			case Tool::Boulder:
+				TerrainCollapse::SpawnChunk(at, radius * 1.5F + 4.0F, "Stone");
+				break;
+			case Tool::Slab:
+				TerrainCollapse::SpawnChunk(at, radius * 1.5F + 4.0F, "Concrete");
+				break;
 			case Tool::Smoke:
 				SpawnPuffs("Thick Smoke Ball", at, stroke.Radius, 2);
 				break;
@@ -1795,6 +1815,8 @@ void Sandbox::DrawGUI() {
 			if (ImGui::BeginTabItem("Paint")) {
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
+				ImGui::SeparatorText("Loose things");
+				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Grass, Tool::Wood, Tool::Concrete});
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);

@@ -391,7 +391,10 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("DislodgePixelBox", (const std::vector<MOPixel*>* (SceneMan::*)(const Vector& upperLeftCorner, const Vector& lowerRightCorner) const) & SceneMan::DislodgePixelBoxNoBool, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("DislodgePixelRing", (const std::vector<MOPixel*>* (SceneMan::*)(const Vector& centre, float innerRadius, float outerRadius, bool deletePixels) const) & SceneMan::DislodgePixelRing, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("DislodgePixelRing", (const std::vector<MOPixel*>* (SceneMan::*)(const Vector& centre, float innerRadius, float outerRadius) const) & SceneMan::DislodgePixelRingNoBool, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
-	    .def("PourLiquid", &SceneMan::PourLiquid);
+	    .def("PourLiquid", &SceneMan::PourLiquid)
+	    .def("SpawnTerrainChunk", &SceneMan::SpawnTerrainChunk)
+	    .def("CheckTerrainCollapse", &SceneMan::CheckTerrainCollapse)
+	    .def("GetFallingTerrainChunkCount", &SceneMan::GetFallingTerrainChunkCount);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, CameraMan) {

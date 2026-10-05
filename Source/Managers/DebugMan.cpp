@@ -259,13 +259,17 @@ void DebugMan::WorldDebugGUI() {
 			TerrainCollapse::SetEnabled(terrainCollapse);
 		}
 		ImGui::SameLine();
-		ImGui::TextDisabled("(%d pixels fell)", TerrainCollapse::GetCollapsedCount());
+		ImGui::TextDisabled("(%d pieces moving, %d pixels fell)", TerrainCollapse::GetFallingCount(), TerrainCollapse::GetCollapsedCount());
 		bool liquids = FluidSim::IsEnabled();
 		if (ImGui::Checkbox("Flowing liquids", &liquids)) {
 			FluidSim::SetEnabled(liquids);
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
+		bool powders = FluidSim::PowdersEnabled();
+		if (ImGui::Checkbox("Loose sand and snow slide", &powders)) {
+			FluidSim::SetPowdersEnabled(powders);
+		}
 		float hitStop = g_CameraMan.GetHitStopStrength();
 		if (ImGui::SliderFloat("Hit-stop on big blasts", &hitStop, 0.0F, 2.0F)) {
 			g_CameraMan.SetHitStopStrength(hitStop);

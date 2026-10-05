@@ -414,6 +414,20 @@ namespace RTE {
 		/// @param liquidName Name of the liquid.
 		void PourLiquid(const Vector& centre, float radius, const std::string& liquidName);
 
+		/// Makes a boulder of a material in the air, which falls, rolls and may break like any loose piece of terrain.
+		/// @param centre Its centre, in scene coordinates.
+		/// @param radius Its rough radius in pixels (3 to 60).
+		/// @param materialName The material's name, e.g. "Stone".
+		void SpawnTerrainChunk(const Vector& centre, float radius, const std::string& materialName);
+
+		/// Checks for terrain left hanging around a point and lets it fall, as after an explosion.
+		/// @param centre The middle of the area to check, in scene coordinates.
+		/// @param radius How far around it to look.
+		void CheckTerrainCollapse(const Vector& centre, float radius);
+
+		/// Gets how many loose pieces of terrain are moving right now.
+		int GetFallingTerrainChunkCount() const;
+
 		/// Removes a box of pixels from the terrain and adds them to MovableMan.
 		/// @param upperLeftCorner The vector position of the upper left corner of the box.
 		/// @param lowerRightCorner The vector position of the lower right corner of the box.

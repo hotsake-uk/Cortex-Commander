@@ -1,6 +1,7 @@
 #include "SceneMan.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "TerrainCollapse.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
 #include "ActorFire.h"
@@ -2822,4 +2823,16 @@ BITMAP* SceneMan::GetIntermediateBitmapForSettlingIntoTerrain(int moDiameter) co
 		}
 	}
 	return m_IntermediateSettlingBitmaps.back().second;
+}
+
+void SceneMan::SpawnTerrainChunk(const Vector& centre, float radius, const std::string& materialName) {
+	TerrainCollapse::SpawnChunk(centre, radius, materialName.c_str());
+}
+
+void SceneMan::CheckTerrainCollapse(const Vector& centre, float radius) {
+	TerrainCollapse::QueueCheck(centre, radius);
+}
+
+int SceneMan::GetFallingTerrainChunkCount() const {
+	return TerrainCollapse::GetFallingCount();
 }
