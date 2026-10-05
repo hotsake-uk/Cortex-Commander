@@ -537,6 +537,9 @@ void DebugMan::GraphicsLabGUI() {
 		ImGui::SliderFloat("Wind (px/s)", &settings.Wind, -400.0F, 400.0F);
 		ImGui::SliderFloat("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		ImGui::SetItemTooltip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
+		ImGui::SeparatorText("Water");
+		ImGui::SliderFloat("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
+		ImGui::SetItemTooltip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		ImGui::SeparatorText("Pouring water");
 		ImGui::SliderFloat("Froth", &settings.WaterFoam, 0.0F, 1.5F);
 		ImGui::SetItemTooltip("Thin, broken water (a stream off a ledge, the lip of a pour) is drawn as froth, and froth fills the air beside it. 0 for none.");

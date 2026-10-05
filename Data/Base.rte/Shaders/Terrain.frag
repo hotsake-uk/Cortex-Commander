@@ -244,6 +244,7 @@ void main() {
 	float shine = 0.0;
 	float metalness = 0.0;
 	float gloss = 0.0;
+	float glowsThrough = 0.0; // Set for water: light inside it shows as a glow in the water itself (see the surface buffer's B channel).
 
 	// Liquids (water, lava, acid), flagged in the emissive palette's B channel.
 	if (rteIndexed) {
@@ -287,6 +288,7 @@ void main() {
 				}
 				// Water is glossy: lamps, fires and the sun glance off it.
 				shine = max(shine, 0.9);
+				glowsThrough = 0.25;
 				FragColor = vec4(water, mix(0.6, 0.8, deep));
 				// Thin, broken water is froth: white and bubbling instead of clear. (Checked only where there's air close by, which the middle of a pool never has.)
 				if (rteWaterFoam > 0.0 && WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) * WaterAt(textureUV - vec2(0.0, 3.0 * texel.y)) < 0.5) {
@@ -388,5 +390,6 @@ void main() {
 		normal = normalize(normal + vec3(ReliefTilt(uvDx, uvDy) * rteRelief * mix(0.35, 1.0, max(shine, metalness)), 0.0));
 	}
 	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
-	SurfaceOut = vec4(metalness, gloss, 0.0, 1.0);
+	// B: 0 for ground, a quarter for water (which light glows through; solid objects that cast shadows write 1 here, never terrain).
+	SurfaceOut = vec4(metalness, gloss, glowsThrough, 1.0);
 }

@@ -196,9 +196,10 @@ bool SceneLighting::EnsureWorldResources() {
 		if (material && material->GetIndex() == id) {
 			m_MaterialMetalness[id] = static_cast<unsigned char>(std::clamp(material->GetMetalness(), 0.0F, 1.0F) * 255.0F);
 			m_MaterialGloss[id] = static_cast<unsigned char>(std::clamp(material->GetGloss(), 0.0F, 1.0F) * 255.0F);
+			// (Small numbers: a lamp's light is sampled at a fixed number of places on its way to each pixel, so even these take a third or so off it across a pool.)
 			// Clear liquids let light through, dimming it with depth: sky light reaches down into a pool, and a lamp or a fire under water lights the water around it.
 			const std::string& materialName = material->GetPresetName();
-			m_MaterialLightBlock[id] = materialName == "Water" ? 40 : (materialName == "Acid" ? 60 : (materialName == "Ice" ? 90 : (materialName == "Glass" ? 50 : (materialName == "Oil" ? 170 : 255))));
+			m_MaterialLightBlock[id] = materialName == "Water" ? 8 : (materialName == "Acid" ? 14 : (materialName == "Ice" ? 30 : (materialName == "Glass" ? 10 : (materialName == "Oil" ? 120 : 255))));
 		}
 	}
 	m_Skyline.assign(m_GridWidth, 0.0F);
@@ -1346,6 +1347,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? atmosphereHaze : 0.0F);
 	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 	m_CompositeShader->SetFloat("rteSkyRecolor", m_Settings.Enabled ? m_SkyRecolor : 0.0F);
+	m_CompositeShader->SetFloat("rteWaterGlow", m_Settings.Enabled ? m_Settings.WaterLightGlow : 0.0F);
 	m_CompositeShader->SetVector3f("rteSkyDaylight", m_SkyDaylight);
 	m_CompositeShader->SetFloat("rteSkyOwnLight", m_Settings.Enabled ? std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);

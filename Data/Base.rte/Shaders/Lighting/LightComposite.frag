@@ -50,6 +50,7 @@ uniform vec2 rteIndirectOffset; // How far the screen moved since the indirect l
 uniform sampler2D rteGI; // Light from radiance cascades, quarter resolution.
 uniform float rteGIStrength;
 uniform float rteNightSky; // 0 by day, 1 at full night: stars and the moon show on the furthest sky layers.
+uniform float rteWaterGlow; // How much the light of lamps, fires and blasts shows as a glow in water it passes through, in the light's own colour.
 uniform float rteSkyRecolor; // 0..1, how far the sky layers' own painted colours are replaced by the sky of the hour (0 around midday, when the art is right as it is).
 uniform vec3 rteSkyDaylight; // The colour of daylight at this hour (white at noon), apart from how bright the player has set the light on the scene.
 uniform float rteSkyOwnLight; // 0..1, how far the sky is lit by that rather than by the scene's sky light setting.
@@ -165,6 +166,7 @@ void main() {
 	vec3 highlights = vec3(0.0);
 	float metalness = 0.0;
 	float nightSkyAmount = 0.0;
+	vec3 waterGlow = vec3(0.0); // Light scattered in water at this pixel.
 	float skyLayer = 0.0; // How much this pixel is the sky itself: the furthest layers, or nothing drawn at all.
 	float sceneDepth = texture(rteSceneDepth, screenUV).r;
 	float haze = 0.0;
@@ -211,6 +213,11 @@ void main() {
 		}
 		vec4 dynamicSample = texture(rteDynamicLight, screenUV);
 		vec3 dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicSample.rgb / rteMaxDynamicLight));
+		// Water scatters the light passing through it: a lamp under water sits in a glow of its own colour that spreads through the pool, over and above
+		// lighting the water as it would any surface (which only ever gives the light's colour times the water's blue).
+		if (rteWaterGlow > 0.0 && abs(texture(rteSurface, screenUV).b - 0.25) < 0.08) {
+			waterGlow = dynamicLight * rteWaterGlow;
+		}
 		// Highlights from the lights, in the lights' own color.
 		highlights = dynamicSample.rgb / max(max(dynamicSample.r, max(dynamicSample.g, dynamicSample.b)), 0.001) * min(dynamicSample.a, 6.0);
 		// Daylight has a direction. Where the sun (or moon) can't be seen, the sky light is dimmer and cooler; under open sky in full sun it is exactly as without shadows.
@@ -332,7 +339,7 @@ void main() {
 		return;
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
-	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze);
+	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze) + waterGlow;
 	if (rteSkyOwnLight > 0.0 && skyLayer > 0.0) {
 		// The sky itself is as bright as the hour makes it. The sky light setting is for how much of it falls on the scene; turned down for moodier ground, it
 		// used to turn the midday sky navy as well.

@@ -196,3 +196,4 @@ Write-Scenario "ModSweep" ($sandbox + @{ TimeOfDay = 13; WeatherType = 0 }) @("R
 Write-Scenario "SkyDeep" ($play + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0; DeepNightDarkness = 0.95 }) @()
 Write-Scenario "RaysEvening" ($bunker + @{ TimeOfDay = 16.5; WeatherType = 0; DayLengthMinutes = 0 }) @()
 Write-Scenario "DunkNight" ($sandbox + @{ TimeOfDay = 22; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Dunk", "Render Test Flare")
+Write-Scenario "UnderwaterLight" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Underwater Light")
