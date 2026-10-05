@@ -764,6 +764,89 @@ namespace {
 					continue;
 				}
 			}
+			// Loose scraps in the way (a few leftover pixels of wall, a nugget, some grains) don't hold a big piece up: it flattens them and carries on.
+			if (int limit = std::min(TerrainCollapse::GetTuning().CrushPixels, body.PixelCount / 4); limit > 0) {
+				static std::vector<int> scrap;
+				int crushed = 0;
+				for (const glm::vec2& contact: contacts) {
+					int startX = static_cast<int>(std::floor(contact.x));
+					int startY = static_cast<int>(std::floor(contact.y));
+					if (!WrapInWorld(startX, startY) || !SolidAt(materialBitmap, startX, startY)) {
+						continue;
+					}
+					// The connected bit of ground this point is part of, as far as the limit: any more than that and it's no scrap.
+					scrap.clear();
+					scrap.push_back(startY * s_Width + startX);
+					bool small = true;
+					bool fixed = false;
+					for (size_t next = 0; next < scrap.size() && small; ++next) {
+						int x = scrap[next] % s_Width;
+						int y = scrap[next] / s_Width;
+						fixed = fixed || s_Fixed[materialBitmap->line[y][x]];
+						for (int dy = -1; dy <= 1 && small; ++dy) {
+							for (int dx = -1; dx <= 1; ++dx) {
+								int nx = x + dx;
+								int ny = y + dy;
+								if ((dx == 0 && dy == 0) || !SolidAt(materialBitmap, nx, ny)) {
+									continue;
+								}
+								if (!WrapInWorld(nx, ny)) {
+									// Joined to the bottom of the world.
+									small = false;
+									break;
+								}
+								int key = ny * s_Width + nx;
+								if (std::find(scrap.begin(), scrap.end(), key) == scrap.end()) {
+									scrap.push_back(key);
+									if (static_cast<int>(scrap.size()) > limit) {
+										small = false;
+										break;
+									}
+								}
+							}
+						}
+					}
+					if (!small && !fixed && limit >= 9) {
+						// Joined to something bigger, but only a sliver of it here (a stub of wall a pixel or two thick, the tip of a spike): that goes too, just where it's touched.
+						int around = 0;
+						for (int dy = -4; dy <= 4; ++dy) {
+							for (int dx = -4; dx <= 4; ++dx) {
+								around += SolidAt(materialBitmap, startX + dx, startY + dy) ? 1 : 0;
+							}
+						}
+						if (around <= 14) {
+							scrap.clear();
+							for (int dy = -1; dy <= 1; ++dy) {
+								for (int dx = -1; dx <= 1; ++dx) {
+									int x = startX + dx;
+									int y = startY + dy;
+									if (SolidAt(materialBitmap, x, y) && WrapInWorld(x, y) && !s_Fixed[materialBitmap->line[y][x]]) {
+										scrap.push_back(y * s_Width + x);
+									}
+								}
+							}
+							small = !scrap.empty();
+						}
+					}
+					if (!small || fixed) {
+						continue;
+					}
+					for (int key: scrap) {
+						int x = key % s_Width;
+						int y = key / s_Width;
+						ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()));
+						terrain->SetMaterialPixel(x, y, g_MaterialAir);
+						terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+						s_State[key] &= static_cast<unsigned char>(~c_Falling);
+					}
+					crushed += static_cast<int>(scrap.size());
+				}
+				if (crushed > 0) {
+					// It costs the piece a little of its speed, by how much it crushed for its size.
+					body.Vel *= 1.0F - std::min(0.3F, static_cast<float>(crushed) / static_cast<float>(body.PixelCount));
+					continue;
+				}
+			}
 			if (++responses > 6) {
 				break;
 			}

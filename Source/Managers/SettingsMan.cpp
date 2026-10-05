@@ -160,6 +160,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CollapseMaxPiece", { TerrainCollapse::GetTuning().MaxPiecePixels = std::clamp(std::stoi(reader.ReadPropValue()), 500, 200000); });
 	MatchProperty("CollapseMinFitting", { TerrainCollapse::GetTuning().MinFittingPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
 	MatchProperty("CollapseBreakStrength", { TerrainCollapse::GetTuning().BreakStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 10.0F); });
+	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -517,6 +518,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
 	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
+	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());

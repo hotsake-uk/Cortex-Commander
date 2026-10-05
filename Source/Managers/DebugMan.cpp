@@ -286,6 +286,8 @@ void DebugMan::WorldDebugGUI() {
 			ImGui::SetItemTooltip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block.");
 			ImGui::SliderInt("Smallest loose bit of a building that falls", &tuning.MinFittingPixels, 0, 2000);
 			ImGui::SetItemTooltip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
+			ImGui::SliderInt("Loose scraps it flattens (pixels)", &tuning.CrushPixels, 0, 300);
+			ImGui::SetItemTooltip("A falling piece goes through loose bits of ground up to this size (leftover scraps of wall, nuggets, grains) instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
 			ImGui::SliderFloat("How hard a landing before a piece cracks", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
 			ImGui::SliderFloat("Seconds lying still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
 			if (ImGui::Button("Back to the usual##collapse")) {
