@@ -4,8 +4,6 @@
 
 *Free and open source under the GNU AGPL v3, like the project it's built on.*
 
-![Classic look versus Cortex Commander](Documentation/Images/classic_vs_modern.png)
-
 ---
 
 ## Credit where it's due
@@ -46,8 +44,6 @@ The Community Project's priority is a stable, faithful, multi-platform Cortex Co
 - **Feel:** hit-stop on big blasts, a recoil kick, a frame cap and optional CRT scanlines.
 - **Quality of life:** an optional modern HUD (minimap, health and ammo bars, kill feed, damage numbers and hit-direction arcs), crisp TTF text, smooth screen shake, sharp upscaling, quality presets, and soft fog of war restored.
 
-![An explosion at dusk](Documentation/Images/explosion_dusk.png)
-
 ### New simulation systems
 - **Spreading fire:** grass and vegetation burn away, wood burns to ash, oil burns fast. It climbs, spreads downwind, is damped by rain and snow, and is put out by water.
 - **Flowing liquids:** water, lava, acid and oil run downhill, pool and find their own level, even through tunnels. Water puts out fire, lava sets things alight and turns to stone in water, and acid eats soft ground.
@@ -61,8 +57,6 @@ The Community Project's priority is a stable, faithful, multi-platform Cortex Co
 ### New gear
 Smoke Grenade, Toxic Gas Grenade, Flare, **Napalm Flamer** (burning fuel that pools), **Water Cannon** (knockback, puts fires out), **Acid Sprayer**, and the **Fuel Barrel** (leaks oil when shot, explodes in burning fuel).
 
-![Smoke and gas, napalm, the water cannon, and rain](Documentation/Images/new_systems.png)
-
 ### Sandbox mode
 Pick **Sandbox** on the main menu and play as a god:
 - **Tab** switches between the sandbox tools (the world pauses while they're open) and **your own character**: a body and kit you choose, with optional abilities (no harm, endless jetpack and ammunition, flying through anything, ignored by enemies). Or switch the character off and just look around.
@@ -74,8 +68,6 @@ Pick **Sandbox** on the main menu and play as a god:
 - Change the weather and time of day, and use slow motion.
 - Place lights and particle effects, pour water from spawners, and call in strikes: rockets, artillery, napalm, meteors, crashing dropships.
 - Scriptable from Lua (`SandboxDo`, `SandboxAutoBattleSide`, `SandboxPauseAI`, ...).
-
-![A sandbox battle](Documentation/Images/sandbox_battle.png)
 
 ### One settings panel
 **F6** opens a panel with every setting that can be changed while the game runs (time and weather, lighting, water, fire and smoke, falling ground, camera and image, HUD, debug views), sorted into categories with a search box. Any setup can be saved as a **named preset** and loaded again later; presets are plain files in `Userdata\Presets`.
@@ -347,7 +339,6 @@ This repository includes launch configurations to automatically build and debug 
   - macOS:
     - [All the dependencies listed above](#dependencies)
     - The [`lldb`](https://lldb.llvm.org/) debugger 
-
 
 These launch configurations are accessible via the [Run and Debug](https://code.visualstudio.com/docs/editor/debugging#_run-and-debug-view) view, and provide profiles to build and run the game in Release mode or any of the [3 Debug modes](https://github.com/cortex-command-community/Cortex-Command-Community-Project/wiki/Meson-build-options). 
 
