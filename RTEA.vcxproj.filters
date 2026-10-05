@@ -769,6 +769,9 @@
     <ClCompile Include="Source\System\MicroPather\micropather.cpp">
       <Filter>System\MicroPather</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SettingsPanel.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\DebugMan.cpp">
       <Filter>Managers</Filter>
     </ClCompile>

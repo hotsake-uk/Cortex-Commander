@@ -23,6 +23,8 @@
 #include "System.h"
 
 #include <sstream>
+#include <filesystem>
+#include <cctype>
 #include <algorithm>
 using namespace RTE;
 
@@ -390,28 +392,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	EndPropertyList;
 }
 
-int SettingsMan::Save(Writer& writer) const {
-	Serializable::Save(writer);
-
-	writer.NewDivider(false);
-	writer.NewLineString("// Display Settings", false);
-	writer.NewLine(false);
-	writer.NewPropertyWithValue("PaletteFile", g_FrameMan.m_PaletteFile);
-	writer.NewPropertyWithValue("ResolutionX", g_WindowMan.m_ResX);
-	writer.NewPropertyWithValue("ResolutionY", g_WindowMan.m_ResY);
-	writer.NewPropertyWithValue("ResolutionMultiplier", g_WindowMan.m_ResMultiplier);
-	writer.NewPropertyWithValue("Fullscreen", g_WindowMan.m_Fullscreen);
-	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
-	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
-	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
-	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
-	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
-
-	writer.NewLine(false, 2);
-	writer.NewDivider(false);
-	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
-	writer.NewLine(false);
-	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
+void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting) const {
 	writer.NewPropertyWithValue("LightingSettingsVersion", c_LightingSettingsVersion);
 	writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
@@ -509,6 +490,120 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("HeadlampsByDay", lighting.HeadlampsByDay);
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
+	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
+	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
+	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
+	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
+	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
+	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
+	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
+	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
+	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
+	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
+	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
+	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
+	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
+	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
+	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
+	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
+	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
+	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
+	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
+	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
+}
+
+namespace {
+	/// Makes a name safe to be a file's: letters, digits, spaces, dashes and underscores.
+	std::string PresetFileName(const std::string& name) {
+		std::string safe;
+		for (char letter: name) {
+			if (std::isalnum(static_cast<unsigned char>(letter)) || letter == ' ' || letter == '-' || letter == '_') {
+				safe += letter;
+			}
+		}
+		while (!safe.empty() && safe.back() == ' ') {
+			safe.pop_back();
+		}
+		while (!safe.empty() && safe.front() == ' ') {
+			safe.erase(safe.begin());
+		}
+		return safe.substr(0, 48);
+	}
+
+	std::string PresetFolder() { return System::GetUserdataDirectory() + "Presets/"; }
+}
+
+std::string SettingsMan::SavePreset(const std::string& name) const {
+	std::string safe = PresetFileName(name);
+	if (safe.empty()) {
+		return "";
+	}
+	std::error_code error;
+	std::filesystem::create_directories(PresetFolder(), error);
+	Writer writer(PresetFolder() + safe + ".ini");
+	if (!writer.WriterOK()) {
+		return "";
+	}
+	writer.ObjectStart(GetClassName());
+	// As they are on screen now, not as the player's own behind a scene that sets its time and weather.
+	SaveTunables(writer, g_PostProcessMan.GetLightingSettings());
+	writer.ObjectEnd();
+	writer.EndWrite();
+	return safe;
+}
+
+bool SettingsMan::LoadPreset(const std::string& name) {
+	std::string path = PresetFolder() + PresetFileName(name) + ".ini";
+	if (!std::filesystem::exists(path)) {
+		return false;
+	}
+	Reader reader(path, false, nullptr, true, true);
+	if (!reader.ReaderOK()) {
+		return false;
+	}
+	// The same reading as the settings file gets, of a file that holds only the tunable settings.
+	return CreateSerializable(reader, true, false, false) >= 0;
+}
+
+bool SettingsMan::DeletePreset(const std::string& name) const {
+	std::error_code error;
+	return std::filesystem::remove(PresetFolder() + PresetFileName(name) + ".ini", error);
+}
+
+std::vector<std::string> SettingsMan::ListPresets() const {
+	std::vector<std::string> names;
+	std::error_code error;
+	for (const auto& entry: std::filesystem::directory_iterator(PresetFolder(), error)) {
+		if (entry.is_regular_file() && entry.path().extension() == ".ini") {
+			names.push_back(entry.path().stem().string());
+		}
+	}
+	std::sort(names.begin(), names.end());
+	return names;
+}
+
+int SettingsMan::Save(Writer& writer) const {
+	Serializable::Save(writer);
+
+	writer.NewDivider(false);
+	writer.NewLineString("// Display Settings", false);
+	writer.NewLine(false);
+	writer.NewPropertyWithValue("PaletteFile", g_FrameMan.m_PaletteFile);
+	writer.NewPropertyWithValue("ResolutionX", g_WindowMan.m_ResX);
+	writer.NewPropertyWithValue("ResolutionY", g_WindowMan.m_ResY);
+	writer.NewPropertyWithValue("ResolutionMultiplier", g_WindowMan.m_ResMultiplier);
+	writer.NewPropertyWithValue("Fullscreen", g_WindowMan.m_Fullscreen);
+	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
+	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
+	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
+	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
+	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+
+	writer.NewLine(false, 2);
+	writer.NewDivider(false);
+	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
+	writer.NewLine(false);
+	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
 	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
 	writer.NewPropertyWithValue("PanelWidth", g_DebugMan.m_PanelWidth);
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
@@ -516,9 +611,7 @@ int SettingsMan::Save(Writer& writer) const {
 	if (ControlLink::s_SettingsPort > 0) {
 		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
 	}
-	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
-	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
-	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
+	SaveTunables(writer, lighting);
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
@@ -544,23 +637,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLineString("// Gameplay Settings", false);
 	writer.NewLine(false);
 	writer.NewPropertyWithValue("ShowForeignItems", m_ShowForeignItems);
-	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
-	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
-	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
-	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
-	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
-	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
-	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
-	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
-	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
-	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
-	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
-	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
-	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
-	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
-	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
-	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
-	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
 	writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
 	writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);

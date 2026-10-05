@@ -5,6 +5,7 @@ sources += files(
 'CameraMan.cpp',
 'ConsoleMan.cpp',
 'DebugMan.cpp',
+'SettingsPanel.cpp',
 'FrameMan.cpp',
 #'LuaMan.cpp',
 'GLStateMan.cpp',

@@ -4,6 +4,8 @@
 #include "Singleton.h"
 
 #include <list>
+#include <string>
+#include <vector>
 #include <cmath>
 #include <algorithm>
 
@@ -42,6 +44,25 @@ namespace RTE {
 
 		/// Overwrites the settings file to save changes made from within the game.
 		void UpdateSettingsFile() const;
+
+		/// Saves every setting that can be tuned while the game runs (the look, time and weather, water, fire, falling ground) as a named preset, a file in Userdata/Presets.
+		/// @param name The name. Characters that can't be in a file's name are dropped.
+		/// @return The name it was saved under, or nothing if it couldn't be.
+		std::string SavePreset(const std::string& name) const;
+
+		/// Loads a preset saved by SavePreset over the settings as they are.
+		/// @return Whether there was one of that name.
+		bool LoadPreset(const std::string& name);
+
+		/// Deletes a preset.
+		/// @return Whether there was one of that name.
+		bool DeletePreset(const std::string& name) const;
+
+		/// Gets the names of the presets there are, in order.
+		std::vector<std::string> ListPresets() const;
+
+		/// Writes the settings that can be tuned while the game runs: what a preset holds, and part of the settings file.
+		void SaveTunables(Writer& writer, const struct LightingSettings& lighting) const;
 #pragma endregion
 
 #pragma region Engine Settings

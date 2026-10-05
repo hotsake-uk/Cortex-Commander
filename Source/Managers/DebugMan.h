@@ -14,6 +14,7 @@ namespace RTE {
 		void Draw();
 		void DrawImGui();
 
+		/// Opens the settings panel at its debug part.
 		void ShowDebugOptions() { m_ShowDebugWindow = true; }
 
 		/// Opens the Graphics Lab, the live lighting and post-processing tuning window.
@@ -110,9 +111,13 @@ namespace RTE {
 		bool m_DrawCameraBounds{false};
 		bool m_DrawSpriteBounds{false};
 
-		void DebugOptionsGUI();
-		void GraphicsLabGUI();
-		void WorldDebugGUI();
+		/// The settings panel (F6): everything that can be tuned while the game runs, in categories, searchable, with presets. In SettingsPanel.cpp.
+		void SettingsGUI();
+		void FreeCamGUI();
+		int m_SettingsCategory{0}; //!< Which category of the settings panel is showing.
+
+		/// Gets how wide the docked panel at a side is, in window pixels.
+		float GetPanelWidth(PanelSide side) const;
 		void PhotoModeGUI();
 
 		/// Restores what photo mode changed, when it closes.

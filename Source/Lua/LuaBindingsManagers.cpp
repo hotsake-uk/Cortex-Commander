@@ -415,6 +415,9 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, CameraMan) {
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	return luabind::class_<SettingsMan>("SettingsManager")
+	    .def("SavePreset", &SettingsMan::SavePreset)
+	    .def("LoadPreset", &SettingsMan::LoadPreset)
+	    .def("DeletePreset", &SettingsMan::DeletePreset)
 
 	    .property("PrintDebugInfo", &SettingsMan::PrintDebugInfo, &SettingsMan::SetPrintDebugInfo)
 	    .property("RecommendedMOIDCount", &SettingsMan::RecommendedMOIDCount)
