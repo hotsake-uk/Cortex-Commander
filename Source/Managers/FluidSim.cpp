@@ -13,6 +13,7 @@
 #include "Scene.h"
 #include "TerrainFire.h"
 #include "TimerMan.h"
+#include "WeatherEffects.h"
 #include "Vector.h"
 #include "RenderMan.h"
 
@@ -77,6 +78,9 @@ namespace {
 	std::array<int, 256> s_PourColor{}; //!< Palette index a poured pixel of each flowing material gets.
 	int s_StoneMaterial = 0;
 	int s_StoneColor = 0;
+	int s_IceMaterial = 0;
+	int s_IceColor = 0;
+	int s_SnowMaterial = 0;
 	bool s_TablesBuilt = false;
 
 	/// The moving liquid pixels. A grid byte per terrain pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
@@ -183,6 +187,11 @@ namespace {
 	};
 	std::vector<PourRequest> s_Pours;
 	std::vector<std::pair<glm::ivec2, int>> s_Disturbances;
+	struct SplashRequest {
+		int X, Y, Radius;
+		float Share, Speed;
+	};
+	std::vector<SplashRequest> s_Splashes;
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
 	std::string s_PendingLoadState; //!< Saved moving liquid to restore when the loaded scene starts.
@@ -207,6 +216,8 @@ namespace {
 		s_PowderSticky.fill(false);
 		s_PourColor.fill(0);
 		s_StoneMaterial = 0;
+		s_IceMaterial = 0;
+		s_SnowMaterial = 0;
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -214,6 +225,14 @@ namespace {
 			}
 			const std::string& name = material->GetPresetName();
 			Liquid kind = LiquidFromName(name, Liquid::None);
+			if (name == "Ice") {
+				s_IceMaterial = id;
+				Color color = material->GetColor();
+				color.RecalculateIndex();
+				s_IceColor = color.GetIndex();
+			} else if (name == "Snow") {
+				s_SnowMaterial = id;
+			}
 			if (kind != Liquid::None) {
 				s_Kinds[id] = kind;
 				s_MaterialOf[static_cast<int>(kind)] = id;
@@ -333,7 +352,9 @@ namespace {
 
 	/// Checks a stretch of the terrain for liquid that should be moving but isn't being simulated: left hanging over a gap when ground was removed without a wake-up, or loaded from a scene.
 	/// A little each update, working through the whole terrain every few seconds.
-	void Sweep(const SLTerrain* terrain, int width, int height) {
+	void Sweep(SLTerrain* terrain, int width, int height) {
+		// In snowy weather still water slowly freezes over from the top.
+		float freezing = s_IceMaterial ? WeatherEffects::GetSnow() : 0.0F;
 		size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
 		if (total == 0) {
 			return;
@@ -351,6 +372,12 @@ namespace {
 				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
 				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
 					Activate(x, y, width, height, terrain);
+				} else if (freezing > 0.05F && sweptKind == Liquid::Water && y > 0) {
+					int above = materialBitmap->line[y - 1][x];
+					if ((above == g_MaterialAir || (above == s_IceMaterial && Random01() < 0.25F)) && Random01() < freezing * 0.04F) {
+						terrain->SetMaterialPixel(x, y, s_IceMaterial);
+						terrain->SetFGColorPixel(x, y, s_IceColor);
+					}
 				}
 			}
 			++index;
@@ -409,6 +436,16 @@ void FluidSim::OnParticleSettled(const MovableObject* particle) {
 	if (pixel && pixel->GetColor().GetIndex() == s_ColorOf[static_cast<int>(s_Kinds[material])]) {
 		std::scoped_lock lock(s_QueueMutex);
 		s_Disturbances.emplace_back(glm::ivec2(position.GetFloorIntX(), position.GetFloorIntY()), 1);
+	}
+}
+
+void FluidSim::Splash(const Vector& position, float radius, float share, float speed) {
+	if (!s_Enabled) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Splashes.size() < 64) {
+		s_Splashes.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), std::clamp(static_cast<int>(radius), 2, 80), std::clamp(share, 0.0F, 1.0F), std::clamp(speed, 1.0F, 30.0F)});
 	}
 }
 
@@ -481,10 +518,61 @@ void FluidSim::Update() {
 
 	std::vector<PourRequest> pours;
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
+	std::vector<SplashRequest> splashRequests;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		pours.swap(s_Pours);
 		disturbances.swap(s_Disturbances);
+		splashRequests.swap(s_Splashes);
+	}
+	// Liquid thrown into the air by blasts and by things falling in. Each pixel thrown becomes a flying drop that joins the liquid again where it lands, so none is lost.
+	std::sort(splashRequests.begin(), splashRequests.end(), [](const SplashRequest& a, const SplashRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
+	int dropsLeft = 260;
+	for (const SplashRequest& splash: splashRequests) {
+		BITMAP* splashBitmap = terrain->GetBitmap();
+		int splashX = s_WrapsX ? ((splash.X % width) + width) % width : splash.X;
+		for (int dy = -splash.Radius; dy <= splash.Radius && dropsLeft > 0; ++dy) {
+			for (int dx = -splash.Radius; dx <= splash.Radius && dropsLeft > 0; ++dx) {
+				int x = splashX + dx;
+				int y = splash.Y + dy;
+				if (dx * dx + dy * dy > splash.Radius * splash.Radius || !InWorld(x, y, width, height)) {
+					continue;
+				}
+				int material = splashBitmap->line[y][x];
+				Liquid kind = s_Kinds[material];
+				if (kind == Liquid::None || kind == Liquid::Powder) {
+					continue;
+				}
+				// Only liquid near the open surface can go anywhere.
+				bool open = false;
+				for (int up = 1; up <= 4 && y - up >= 0; ++up) {
+					int above = splashBitmap->line[y - up][x];
+					if (above == g_MaterialAir) {
+						open = true;
+						break;
+					}
+					if (s_Kinds[above] == Liquid::None) {
+						break;
+					}
+				}
+				if (!open || Random01() >= splash.Share) {
+					continue;
+				}
+				--dropsLeft;
+				Color color;
+				color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
+				terrain->SetMaterialPixel(x, y, g_MaterialAir);
+				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				s_Active.Remove(y * width + x);
+				const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
+				float outward = static_cast<float>(dx) / static_cast<float>(splash.Radius);
+				Vector velocity((outward * 0.7F + (Random01() - 0.5F) * 0.6F) * splash.Speed, -(0.35F + Random01() * 0.65F) * splash.Speed);
+				MOPixel* drop = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(static_cast<float>(x), static_cast<float>(y - 1)), velocity, new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
+				drop->SetToHitMOs(false);
+				g_MovableMan.AddParticle(drop);
+				ActivateAround(x, y, width, height, terrain);
+			}
+		}
 	}
 	std::sort(pours.begin(), pours.end(), [](const PourRequest& a, const PourRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 	for (const PourRequest& pour: pours) {
@@ -590,6 +678,12 @@ void FluidSim::Update() {
 				}
 				reacted = true;
 				break;
+			}
+			if (kind == Liquid::Lava && neighbourMaterial != g_MaterialAir && (neighbourMaterial == s_IceMaterial || neighbourMaterial == s_SnowMaterial) && s_MaterialOf[static_cast<int>(Liquid::Water)] && Random01() < 0.3F) {
+				// Lava melts ice and snow to water (which then quenches it to stone).
+				terrain->SetMaterialPixel(nx, ny, s_MaterialOf[static_cast<int>(Liquid::Water)]);
+				terrain->SetFGColorPixel(nx, ny, s_ColorOf[static_cast<int>(Liquid::Water)]);
+				Activate(nx, ny, width, height, terrain);
 			}
 			if (kind == Liquid::Lava && TerrainFire::IsFlammable(neighbourMaterial) && Random01() < 0.2F) {
 				TerrainFire::QueueIgnite(nx, ny);
@@ -848,6 +942,7 @@ void FluidSim::Clear() {
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pours.clear();
 	s_Disturbances.clear();
+	s_Splashes.clear();
 }
 
 int FluidSim::GetActiveCount() {

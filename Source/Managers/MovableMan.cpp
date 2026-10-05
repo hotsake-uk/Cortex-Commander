@@ -1654,6 +1654,24 @@ void MovableMan::Update() {
 					}
 					(*parIt)->SetPos(parPos.GetFloored());
 				}
+				if (terrMat->GetIndex() != g_MaterialAir && FluidSim::IsLiquid((*parIt)->GetMaterial()->GetIndex())) {
+					// A drop of liquid that comes to rest inside liquid (bodies and particles pass through it) would vanish into the pixel that's already there.
+					// It rises to the surface above instead, so splashes lose nothing.
+					int dropX = parPos.GetFloorIntX();
+					int dropY = parPos.GetFloorIntY();
+					for (int up = 0; up < 400 && dropY >= 0; ++up, --dropY) {
+						int material = g_SceneMan.GetTerrain()->GetMaterialPixel(dropX, dropY);
+						if (material == g_MaterialAir) {
+							parPos.SetXY(static_cast<float>(dropX), static_cast<float>(dropY));
+							(*parIt)->SetPos(parPos);
+							terrMat = g_SceneMan.GetMaterialFromID(g_MaterialAir);
+							break;
+						}
+						if (!FluidSim::IsLiquid(material)) {
+							break;
+						}
+					}
+				}
 				if ((*parIt)->GetDrawPriority() >= terrMat->GetPriority()) {
 					(*parIt)->DrawToTerrain(g_SceneMan.GetTerrain());
 					FluidSim::OnParticleSettled(*parIt);

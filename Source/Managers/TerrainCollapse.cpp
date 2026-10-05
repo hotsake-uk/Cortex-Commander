@@ -131,6 +131,7 @@ namespace {
 		int Generation = 0;
 		int BreakCooldown = 0;
 		bool Done = false;
+		bool Wet = false; //!< Whether it was in liquid last update.
 	};
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
@@ -523,6 +524,10 @@ namespace {
 				++inLiquid;
 			}
 		}
+		if (inLiquid > 0 && !body.Wet && glm::length(body.Vel) > 1.5F) {
+			FluidSim::Splash(Vector(body.Pos.x, body.Pos.y + body.Radius * 0.5F), body.Radius + 4.0F, 0.35F, glm::length(body.Vel) * 1.6F);
+		}
+		body.Wet = inLiquid > 0;
 		if (inLiquid > 0) {
 			float fraction = std::min(1.0F, static_cast<float>(inLiquid) * 4.0F / static_cast<float>(body.Outline.size()));
 			body.Vel *= 1.0F - 0.07F * fraction;

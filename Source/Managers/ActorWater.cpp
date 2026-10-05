@@ -146,6 +146,10 @@ void ActorWater::Update() {
 			}
 			continue;
 		}
+		if (!actor->NumberValueExists(c_DepthTag) && actor->GetVel().GetMagnitude() > 4.0F) {
+			// Dropping or running in throws up a splash.
+			FluidSim::Splash(feet, actor->GetRadius() * 0.6F + 3.0F, 0.3F, std::min(actor->GetVel().GetMagnitude() * 0.55F, 10.0F));
+		}
 		actor->SetNumberValue(c_DepthTag, static_cast<double>(depth));
 
 		if (depth >= 2) {

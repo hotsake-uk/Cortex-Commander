@@ -37,6 +37,13 @@ namespace RTE {
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
 
+		/// Throws some of the liquid near a point into the air as drops, which fly and rejoin it where they land: for explosions and things falling in. Thread safe.
+		/// @param position Centre, in scene coordinates.
+		/// @param radius How far around it liquid is thrown from.
+		/// @param share How much of the liquid near the surface there goes flying, 0 to 1.
+		/// @param speed How hard it's thrown, in metres a second.
+		static void Splash(const Vector& position, float radius, float share, float speed);
+
 		/// Lets a particle that just settled into the terrain join in: a drop of liquid in that liquid's own colour starts flowing (so blood, drawn in water, stays put),
 		/// and a burning particle sets the flammable pixel it became alight. Call after the particle is drawn into the terrain.
 		/// @param particle The settled particle.

@@ -89,6 +89,7 @@ namespace {
 		Dig,
 		Earth,
 		Sand,
+		Ice,
 		Grass,
 		Wood,
 		Concrete,
@@ -137,6 +138,7 @@ namespace {
 	    {Tool::Dig, "Dig", 0.03F, true},
 	    {Tool::Earth, "Earth", 0.03F, true},
 	    {Tool::Sand, "Sand", 0.03F, true},
+	    {Tool::Ice, "Ice", 0.03F, true},
 	    {Tool::Grass, "Grass", 0.03F, true},
 	    {Tool::Wood, "Wood", 0.03F, true},
 	    {Tool::Concrete, "Concrete", 0.03F, true},
@@ -1196,6 +1198,9 @@ namespace {
 			case Tool::Sand:
 				PaintTerrain(at, stroke.Radius, "Sand");
 				break;
+			case Tool::Ice:
+				PaintTerrain(at, stroke.Radius, "Ice");
+				break;
 			case Tool::Grass:
 				PaintTerrain(at, stroke.Radius, "Grass");
 				break;
@@ -1690,6 +1695,20 @@ void Sandbox::DrawGUI() {
 		SideStatus();
 		bool aiPaused = Controller::IsAIPaused();
 		ImGui::PushStyleColor(ImGuiCol_Text, aiPaused ? IM_COL32(255, 210, 80, 255) : ImGui::GetColorU32(ImGuiCol_Text));
+		{
+			// How fast time runs, to watch a blast or a collapse slowly or hurry a long battle along.
+			float timeScale = g_TimerMan.GetTimeScale();
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.45F);
+			if (ImGui::SliderFloat("Speed of time", &timeScale, 0.05F, 3.0F, "%.2fx")) {
+				g_TimerMan.SetTimeScale(timeScale);
+			}
+			for (const auto& [label, scale]: {std::pair<const char*, float>{"Slow", 0.25F}, {"Normal", 1.0F}, {"Fast", 2.0F}}) {
+				ImGui::SameLine();
+				if (ImGui::SmallButton(label)) {
+					g_TimerMan.SetTimeScale(scale);
+				}
+			}
+		}
 		if (ImGui::Checkbox("Pause AI (set things up, then let them loose)", &aiPaused)) {
 			Controller::SetAIPaused(aiPaused);
 		}
@@ -1818,7 +1837,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Terrain");
-				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Grass, Tool::Wood, Tool::Concrete});
+				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
 				ImGui::EndTabItem();
 			}
