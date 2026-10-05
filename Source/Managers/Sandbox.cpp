@@ -80,6 +80,7 @@ namespace {
 		Lava,
 		Acid,
 		Oil,
+		WaterSpawner,
 		LooseSand,
 		LooseSnow,
 		Boulder,
@@ -148,6 +149,7 @@ namespace {
 	    {Tool::Lava, "Lava", 0.03F, true},
 	    {Tool::Acid, "Acid", 0.03F, true},
 	    {Tool::Oil, "Oil", 0.03F, true},
+	    {Tool::WaterSpawner, "Water spawner", 0.0F, true},
 	    {Tool::LooseSand, "Loose sand", 0.03F, true},
 	    {Tool::LooseSnow, "Loose snow", 0.03F, true},
 	    {Tool::Boulder, "Boulder", 0.0F, true},
@@ -760,6 +762,13 @@ namespace {
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
 	}
 
+	/// A place water keeps pouring from until it's removed: a spring, a burst pipe, a tap left on.
+	struct WaterSpawner {
+		Vector Position;
+		int Radius = 3; //!< How wide the pour is: air within this many pixels of the place is kept full of water.
+	};
+	std::vector<WaterSpawner> s_WaterSpawners;
+
 	/// Something on its way in from the sky: a rocket, a shell or a bomb. It is kept on its line until it gets there or hits something, then goes off.
 	struct Incoming {
 		int Delay = 0; //!< Sim updates until it's launched.
@@ -1351,6 +1360,11 @@ namespace {
 			case Tool::Oil:
 				FluidSim::Pour(at, radius * 0.5F, "Oil");
 				break;
+			case Tool::WaterSpawner:
+				if (s_WaterSpawners.size() < 64) {
+					s_WaterSpawners.push_back({at, std::max(1, stroke.Radius / 2)});
+				}
+				break;
 			case Tool::LooseSand:
 				FluidSim::Pour(at, radius * 0.5F, "Sand");
 				break;
@@ -1745,6 +1759,10 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	}
 	if (!s_CatalogueBuilt) {
 		BuildCatalogue();
+	}
+	if (toolName == "Remove water spawners") {
+		s_WaterSpawners.clear();
+		return true;
 	}
 	Stroke stroke;
 	stroke.Position = position;
@@ -2141,6 +2159,19 @@ void Sandbox::DrawGUI() {
 			if (ImGui::BeginTabItem("Paint")) {
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
+				ImGui::SeparatorText("Water that keeps coming");
+				ToolButtons({Tool::WaterSpawner});
+				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");
+				ImGui::SameLine();
+				ImGui::BeginDisabled(s_WaterSpawners.empty());
+				if (ImGui::Button("Remove all water spawners")) {
+					s_WaterSpawners.clear();
+				}
+				ImGui::EndDisabled();
+				if (!s_WaterSpawners.empty()) {
+					ImGui::SameLine();
+					ImGui::TextDisabled("%d pouring", static_cast<int>(s_WaterSpawners.size()));
+				}
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Terrain");
@@ -2210,18 +2241,25 @@ void Sandbox::Update() {
 	if (g_ActivityMan.GetActivity() != lastActivity) {
 		lastActivity = g_ActivityMan.GetActivity();
 		Controller::SetAIPaused(false);
+		// A new game: nothing is left pouring or on its way in from the last one.
+		s_WaterSpawners.clear();
+		s_Incoming.clear();
 	}
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
 	if (!InGame()) {
 		s_Possessed = nullptr;
 		s_Incoming.clear();
+		s_WaterSpawners.clear();
 		return;
 	}
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
 	UpdateIncoming();
+	for (const WaterSpawner& spawner: s_WaterSpawners) {
+		FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), "Water");
+	}
 	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
 	}
