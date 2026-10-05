@@ -963,6 +963,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		}
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
+		TerrainCollapse::Blast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
 		FluidSim::Disturb(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
 		// A blast in or beside liquid throws it into the air.
 		FluidSim::Splash(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F + 6.0F, 10.0F, 60.0F), 0.4F, std::clamp(std::sqrt(gibEnergy) * 0.12F, 5.0F, 18.0F));

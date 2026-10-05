@@ -174,6 +174,22 @@ namespace {
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
 
+	/// A piece that came to rest not long ago and is ordinary ground again. Remembered so a blast beside it can pick it up and throw it, as debris lying about should be.
+	struct Rested {
+		std::vector<int> Keys; //!< Its pixels in the terrain.
+		glm::vec2 Center{0.0F};
+		float Radius = 0.0F;
+		long long When = 0; //!< Sim update when it came to rest.
+	};
+	std::vector<Rested> s_Rested;
+	constexpr size_t c_MaxRested = 64;
+	constexpr long long c_RestedUpdates = 3600; //!< How long a rested piece is remembered: a minute.
+	struct BlastRequest {
+		int X, Y;
+		float Reach, Push;
+	};
+	std::vector<BlastRequest> s_Blasts;
+
 	/// What the checks know about each terrain pixel. A flat array, a byte per pixel: with hash sets a single check of a big crater took 20 to 40 ms, a visible hitch after every blast.
 	enum PixelState : unsigned char {
 		c_Seen = 1, //!< Reached by a fill during the current check.
@@ -674,6 +690,20 @@ namespace {
 		for (const auto& [key, local]: body.Stamped) {
 			s_State[key] &= static_cast<unsigned char>(~c_Falling);
 		}
+		if (body.Stamped.size() >= 10 && body.Stamped.size() <= 8000) {
+			Rested rested;
+			rested.Keys.reserve(body.Stamped.size());
+			for (const auto& [key, local]: body.Stamped) {
+				rested.Keys.push_back(key);
+			}
+			rested.Center = body.Pos;
+			rested.Radius = body.Radius;
+			rested.When = g_TimerMan.GetSimUpdateCount();
+			if (s_Rested.size() >= c_MaxRested) {
+				s_Rested.erase(s_Rested.begin());
+			}
+			s_Rested.push_back(std::move(rested));
+		}
 		float reach = body.Radius + 2.0F;
 		terrain->AddUpdatedMaterialArea(Box(Vector(body.Pos.x - reach, body.Pos.y - reach - 64.0F), reach * 2.0F, reach * 2.0F + 64.0F));
 		FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), reach + 6.0F);
@@ -990,7 +1020,7 @@ namespace {
 	}
 
 	/// Flood fills the solid piece containing a pixel. Returns true if it's a floating piece that should fall, filling its pixels.
-	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece) {
+	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece, bool keepFittings = true) {
 		piece.clear();
 		s_Stack.clear();
 		s_FillSeen.clear();
@@ -1048,7 +1078,8 @@ namespace {
 		}
 		s_Touched.insert(s_Touched.end(), s_FillSeen.begin(), s_FillSeen.end());
 		// A small loose bit that's mostly building material is a fitting drawn in mid-air, not rubble.
-		if (floating && structurePixels * 2 > static_cast<int>(piece.size()) && static_cast<int>(piece.size()) < TerrainCollapse::GetTuning().MinFittingPixels) {
+		// (Only when it isn't known what was hanging before the blast. When it is, fittings are among the things that were, and stay for that reason, while scraps the blast made fall.)
+		if (keepFittings && floating && structurePixels * 2 > static_cast<int>(piece.size()) && static_cast<int>(piece.size()) < TerrainCollapse::GetTuning().MinFittingPixels) {
 			floating = false;
 		}
 		// With buildings set to stay up, anything with building material in it holds, and holds up the ground joined to it.
@@ -1324,7 +1355,7 @@ namespace {
 				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || (s_State[key] & (c_Seen | c_Falling))) {
 					continue;
 				}
-				if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece)) {
+				if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece, false)) {
 					std::sort(piece.begin(), piece.end());
 					was->Floating.push_back(piece);
 				}
@@ -1427,7 +1458,7 @@ namespace {
 				if (materialRow[x] == g_MaterialAir || FluidSim::IsLiquid(materialRow[x]) || (s_State[key] & (c_Seen | c_Falling))) {
 					continue;
 				}
-				if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece)) {
+				if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, !(tuning.FloatingStays && check.Was))) {
 					continue;
 				}
 				int origin = -1;
@@ -1532,6 +1563,16 @@ void TerrainCollapse::QueueCheck(const Vector& position, float radius) {
 	s_Pending.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), 0});
 }
 
+void TerrainCollapse::Blast(const Vector& position, float reach, float energy) {
+	if (!s_Enabled) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Blasts.size() < 256) {
+		s_Blasts.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), std::max(reach, 8.0F), std::clamp(std::sqrt(std::max(energy, 0.0F)) * 0.055F, 1.2F, 9.0F)});
+	}
+}
+
 void TerrainCollapse::NoteDamage(int x, int y) {
 	if (!s_Enabled || x < 0 || y < 0) {
 		return;
@@ -1611,6 +1652,66 @@ void TerrainCollapse::Update() {
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
 	}
+	// Explosions throw loose pieces: the ones still moving, and ones lying where they came to rest in the last minute, which are lifted out of the ground again.
+	{
+		std::vector<BlastRequest> blasts;
+		{
+			std::scoped_lock lock(s_QueueMutex);
+			blasts.swap(s_Blasts);
+		}
+		s_Rested.erase(std::remove_if(s_Rested.begin(), s_Rested.end(), [now](const Rested& rested) { return now - rested.When > c_RestedUpdates; }), s_Rested.end());
+		std::sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Push < b.Push); });
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		for (const BlastRequest& blast: blasts) {
+			glm::vec2 from(static_cast<float>(blast.X), static_cast<float>(blast.Y));
+			// How hard a piece at a place is thrown, in pixels per update, before its weight is counted.
+			auto pushAt = [&](const glm::vec2& center, float radius) {
+				float distance = glm::length(center - from);
+				float falloff = std::clamp(1.0F - distance / (blast.Reach + radius), 0.0F, 1.0F);
+				return blast.Push * falloff * falloff;
+			};
+			auto throwBody = [&](Body& body) {
+				float push = pushAt(body.Pos, body.Radius) / (1.0F + body.Mass / 500.0F);
+				if (push <= 0.01F) {
+					return;
+				}
+				glm::vec2 away = body.Pos - from;
+				// Up and away rather than straight along the ground.
+				away.y -= 0.35F * glm::length(away) + 1.0F;
+				body.Vel += glm::normalize(away) * push;
+				body.Spin += (Random01() - 0.5F) * 0.12F * std::min(push, 3.0F);
+				body.Still = 0;
+			};
+			for (Body& body: s_Bodies) {
+				if (!body.Done) {
+					throwBody(body);
+				}
+			}
+			for (size_t i = 0; i < s_Rested.size();) {
+				Rested& rested = s_Rested[i];
+				if (pushAt(rested.Center, rested.Radius) < 0.6F) {
+					++i;
+					continue;
+				}
+				// What's left of it where it lay. If most of it is gone (blasted, dug, built over), it's forgotten.
+				std::vector<int> piece;
+				for (int key: rested.Keys) {
+					int material = materialBitmap->line[key / s_Width][key % s_Width];
+					if (material != g_MaterialAir && !FluidSim::IsLiquid(material) && !s_Fixed[material] && !(s_State[key] & c_Falling)) {
+						piece.push_back(key);
+					}
+				}
+				if (piece.size() * 10 >= rested.Keys.size() * 7 && piece.size() >= 10) {
+					size_t before = s_Bodies.size();
+					LiftPiece(terrain, piece);
+					if (s_Bodies.size() > before) {
+						throwBody(s_Bodies.back());
+					}
+				}
+				s_Rested.erase(s_Rested.begin() + static_cast<std::ptrdiff_t>(i));
+			}
+		}
+	}
 	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
 	{
 		std::vector<int> damage;
@@ -1663,6 +1764,8 @@ void TerrainCollapse::Clear() {
 	s_Bodies.clear();
 	s_NewBodies.clear();
 	s_Watches.clear();
+	s_Rested.clear();
+	s_Blasts.clear();
 	{
 		std::scoped_lock damageLock(s_DamageMutex);
 		s_Damage.clear();

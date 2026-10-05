@@ -25,6 +25,12 @@ namespace RTE {
 		/// Gets the tuning numbers, to read or change.
 		static Tuning& GetTuning() { return s_Tuning; }
 
+		/// Tells the system of an explosion, so it can throw the loose pieces near it: ones still moving, and ones that came to rest in the last minute, which are picked up again. Thread safe.
+		/// @param position The middle of the blast, in scene coordinates.
+		/// @param reach How far it's felt, in pixels.
+		/// @param energy How big it is (a gibbing object's gib energy).
+		static void Blast(const Vector& position, float reach, float energy);
+
 		/// Tells the system a pixel of terrain has just been knocked out by something other than an explosion: a digger, bullets, anything that wears ground away bit by bit.
 		/// Where that goes on, the ground around is watched, and what gets cut loose falls. Thread safe.
 		/// @param x The pixel, in scene coordinates.

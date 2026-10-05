@@ -98,6 +98,20 @@ namespace {
 		Demolition,
 		BunkerBuster,
 		Meteor,
+		RocketStrike,
+		RocketBarrage,
+		CarpetBomb,
+		Artillery,
+		NapalmRain,
+		OrbitalBeam,
+		BoulderRain,
+		BuildBeam,
+		BuildPillar,
+		BuildRoom,
+		BuildTower,
+		BuildIsland,
+		BuildTank,
+		BuildBridge,
 		Napalm,
 		Lightning,
 		// Not tools, but queued the same way.
@@ -150,6 +164,20 @@ namespace {
 	    {Tool::Demolition, "Demolition charge", 0.0F, false},
 	    {Tool::BunkerBuster, "Bunker buster", 0.0F, false},
 	    {Tool::Meteor, "Meteor strike", 0.0F, false},
+	    {Tool::RocketStrike, "Rocket strike", 0.0F, false},
+	    {Tool::RocketBarrage, "Rocket barrage", 0.0F, false},
+	    {Tool::CarpetBomb, "Carpet bombing", 0.0F, false},
+	    {Tool::Artillery, "Artillery", 0.0F, false},
+	    {Tool::NapalmRain, "Napalm rain", 0.0F, false},
+	    {Tool::OrbitalBeam, "Orbital beam", 0.0F, false},
+	    {Tool::BoulderRain, "Boulder rain", 0.0F, false},
+	    {Tool::BuildBeam, "Concrete beam", 0.0F, false},
+	    {Tool::BuildPillar, "Concrete pillar", 0.0F, false},
+	    {Tool::BuildRoom, "Concrete room", 0.0F, false},
+	    {Tool::BuildTower, "Tower", 0.0F, false},
+	    {Tool::BuildIsland, "Floating island", 0.0F, false},
+	    {Tool::BuildTank, "Tank of water", 0.0F, false},
+	    {Tool::BuildBridge, "Wooden bridge", 0.0F, false},
 	    {Tool::Napalm, "Napalm burst", 0.0F, false},
 	    {Tool::Lightning, "Lightning", 0.0F, false},
 	};
@@ -693,6 +721,129 @@ namespace {
 		}
 	}
 
+	/// Fills a box with a terrain material, where there's air (or everything, to build over what's there).
+	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		const Material* found = g_SceneMan.GetMaterial(materialName);
+		if (!found || found->GetIndex() == g_MaterialAir) {
+			return;
+		}
+		Color materialColor = found->GetColor();
+		materialColor.RecalculateIndex();
+		int color = materialColor.GetIndex();
+		Color darker = materialColor;
+		darker.SetRGB(materialColor.GetR() * 4 / 5, materialColor.GetG() * 4 / 5, materialColor.GetB() * 4 / 5);
+		darker.RecalculateIndex();
+		int speckleColor = darker.GetIndex() > 1 ? darker.GetIndex() : color;
+		int left = topLeft.GetFloorIntX();
+		int top = topLeft.GetFloorIntY();
+		for (int dy = 0; dy < boxHeight; ++dy) {
+			for (int dx = 0; dx < boxWidth; ++dx) {
+				int x = left + dx;
+				int y = top + dy;
+				if (g_SceneMan.SceneWrapsX()) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height || terrain->GetMaterialPixel(x, y) != g_MaterialAir) {
+					continue;
+				}
+				terrain->SetMaterialPixel(x, y, found->GetIndex());
+				terrain->SetFGColorPixel(x, y, Random01() < 0.25F ? speckleColor : color);
+			}
+		}
+		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+	}
+
+	/// Something on its way in from the sky: a rocket, a shell or a bomb. It is kept on its line until it gets there or hits something, then goes off.
+	struct Incoming {
+		int Delay = 0; //!< Sim updates until it's launched.
+		long Id = 0; //!< The flying object's unique ID once launched, 0 before.
+		Vector From;
+		Vector Target;
+		float Speed = 9.0F; //!< Pixels per update.
+		std::string Preset = "Standard Bomb";
+		int Crater = 0; //!< Radius of ground it takes out where it lands, on top of what its blast does.
+		int Life = 900;
+		Vector LastPos;
+	};
+	std::vector<Incoming> s_Incoming;
+
+	void Launch(int delay, const Vector& from, const Vector& target, float speed, const char* preset, int crater) {
+		if (s_Incoming.size() < 200) {
+			Incoming incoming;
+			incoming.Delay = delay;
+			incoming.From = from;
+			incoming.Target = target;
+			incoming.Speed = speed;
+			incoming.Preset = preset;
+			incoming.Crater = crater;
+			incoming.LastPos = from;
+			s_Incoming.push_back(incoming);
+		}
+	}
+
+	void UpdateIncoming() {
+		for (size_t i = 0; i < s_Incoming.size();) {
+			Incoming& incoming = s_Incoming[i];
+			if (incoming.Delay > 0) {
+				--incoming.Delay;
+				++i;
+				continue;
+			}
+			Vector line = g_SceneMan.ShortestDistance(incoming.From, incoming.Target, g_SceneMan.SceneWrapsX());
+			Vector direction = line.GetMagnitude() > 0.01F ? line / line.GetMagnitude() : Vector(0.0F, 1.0F);
+			// Object speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
+			Vector velocity = direction * (incoming.Speed * 3.0F);
+			if (incoming.Id == 0) {
+				MovableObject* object = CreateBaseObject("TDExplosive", incoming.Preset.c_str());
+				if (!object) {
+					s_Incoming.erase(s_Incoming.begin() + static_cast<std::ptrdiff_t>(i));
+					continue;
+				}
+				object->SetPos(incoming.From);
+				object->SetVel(velocity);
+				object->SetRotAngle(direction.GetAbsRadAngle());
+				incoming.Id = object->GetUniqueID();
+				AddObject(object);
+				++i;
+				continue;
+			}
+			MovableObject* object = g_MovableMan.FindObjectByUniqueID(incoming.Id);
+			bool arrived = object == nullptr || --incoming.Life <= 0;
+			Vector position = object ? object->GetPos() : incoming.LastPos;
+			if (object) {
+				incoming.LastPos = position;
+				// Kept on its line, whatever gravity and the air would do to it.
+				object->SetVel(velocity);
+				object->SetRotAngle(direction.GetAbsRadAngle());
+				EffectsParticles::Emit("Sparks", position - direction * 6.0F, Vector(-velocity.m_X * 0.15F, -velocity.m_Y * 0.15F), 0.5F, 2, 0);
+				EffectsParticles::Emit("Dust", position - direction * 8.0F, Vector(0.0F, -0.5F), 1.0F, 1, 0x8C8C8C);
+				Vector left = g_SceneMan.ShortestDistance(position, incoming.Target, g_SceneMan.SceneWrapsX());
+				arrived = arrived || left.GetMagnitude() < incoming.Speed * 1.5F || left.Dot(direction) < 0.0F;
+				// Or it has run into the ground, or a building, on the way.
+				for (float ahead = 0.0F; ahead <= incoming.Speed && !arrived; ahead += 3.0F) {
+					Vector probe = position + direction * ahead;
+					arrived = probe.m_Y > 0.0F && g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != g_MaterialAir;
+				}
+			}
+			if (!arrived) {
+				++i;
+				continue;
+			}
+			if (incoming.Crater > 0) {
+				PaintTerrain(position, incoming.Crater, nullptr);
+			}
+			if (MOSRotating* explosive = dynamic_cast<MOSRotating*>(object)) {
+				explosive->GibThis();
+			} else {
+				Detonate(incoming.Preset.c_str(), position);
+			}
+			s_Incoming.erase(s_Incoming.begin() + static_cast<std::ptrdiff_t>(i));
+		}
+	}
+
 	/// A lightning strike: a jagged bolt from the sky to the first thing below the point, a flash, fire and harm where it lands, and thunder.
 	void StrikeLightning(const Vector& target) {
 		Vector ground = target;
@@ -1220,6 +1371,108 @@ namespace {
 				break;
 			case Tool::Grenade:
 				Detonate("Frag Grenade", at);
+				break;
+			case Tool::RocketStrike:
+				// One heavy rocket out of the sky, from one side or the other, into the point marked.
+				Launch(0, at + Vector(Random01() < 0.5F ? -320.0F : 320.0F, -560.0F), at, 10.0F, "Standard Bomb", 26);
+				break;
+			case Tool::RocketBarrage:
+				for (int i = 0; i < 8; ++i) {
+					Vector target = at + Vector((Random01() - 0.5F) * 160.0F, (Random01() - 0.5F) * 40.0F);
+					Launch(i * 9, target + Vector(-380.0F + Random01() * 120.0F, -560.0F), target, 11.0F, i % 3 == 0 ? "Standard Bomb" : "Frag Grenade", 14);
+				}
+				break;
+			case Tool::CarpetBomb:
+				// A stick of bombs dropped in a line across the point, one after another.
+				for (int i = 0; i < 10; ++i) {
+					Vector target = at + Vector(-225.0F + 50.0F * static_cast<float>(i), 0.0F);
+					Launch(i * 7, target + Vector(-60.0F, -520.0F), target + Vector(0.0F, 400.0F), 8.0F, "Standard Bomb", 10);
+				}
+				break;
+			case Tool::Artillery:
+				// Shells lobbed in from far off to one side, landing around the point.
+				for (int i = 0; i < 5; ++i) {
+					Vector target = at + Vector((Random01() - 0.5F) * 90.0F, 0.0F);
+					Launch(i * 28, target + Vector(-760.0F, -430.0F), target + Vector(120.0F, 68.0F), 13.0F, "Standard Bomb", 18);
+				}
+				break;
+			case Tool::NapalmRain:
+				for (int i = 0; i < 7; ++i) {
+					Vector target = at + Vector((Random01() - 0.5F) * 260.0F, 0.0F);
+					Launch(i * 10, target + Vector(0.0F, -520.0F), target + Vector(0.0F, 400.0F), 7.0F, "Napalm Bomb", 0);
+				}
+				break;
+			case Tool::OrbitalBeam: {
+				// A beam straight down from the sky: it bores a shaft through whatever is under the point, a long way down, and sets fire to what will burn.
+				StrikeLightning(at);
+				int depth = 0;
+				for (float y = 0.0F; y < static_cast<float>(g_SceneMan.GetSceneHeight()) && depth < 420; y += 6.0F) {
+					Vector point(at.m_X, y);
+					bool ground = g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) != g_MaterialAir;
+					if (!ground && depth == 0) {
+						continue;
+					}
+					depth += 6;
+					PaintTerrain(point, 6, nullptr);
+					if (depth % 72 == 6) {
+						Detonate("Frag Grenade", point);
+						TerrainFire::QueueIgniteArea(point, 14.0F);
+					}
+				}
+				break;
+			}
+			case Tool::BoulderRain:
+				for (int i = 0; i < 8; ++i) {
+					TerrainCollapse::SpawnChunk(at + Vector((Random01() - 0.5F) * 300.0F, -260.0F - Random01() * 220.0F), 8.0F + Random01() * 16.0F, "Stone");
+				}
+				break;
+			case Tool::BuildBeam:
+				PaintBox(at + Vector(-80.0F, -5.0F), 160, 10, "Concrete");
+				break;
+			case Tool::BuildPillar:
+				PaintBox(at + Vector(-6.0F, -70.0F), 12, 140, "Concrete");
+				break;
+			case Tool::BuildRoom:
+				// Four walls with a doorway in each side.
+				PaintBox(at + Vector(-70.0F, -45.0F), 140, 8, "Concrete");
+				PaintBox(at + Vector(-70.0F, 37.0F), 140, 8, "Concrete");
+				PaintBox(at + Vector(-70.0F, -45.0F), 8, 52, "Concrete");
+				PaintBox(at + Vector(62.0F, -45.0F), 8, 52, "Concrete");
+				break;
+			case Tool::BuildTower:
+				// Four storeys of concrete floors and walls, standing on the point marked: something tall to bring down.
+				for (int floor = 0; floor < 4; ++floor) {
+					float top = -72.0F * static_cast<float>(floor + 1);
+					PaintBox(at + Vector(-50.0F, top), 100, 8, "Concrete");
+					PaintBox(at + Vector(-50.0F, top), 8, floor % 2 == 0 ? 72 : 44, "Concrete");
+					PaintBox(at + Vector(42.0F, top), 8, floor % 2 == 0 ? 44 : 72, "Concrete");
+				}
+				PaintBox(at + Vector(-50.0F, -8.0F), 100, 8, "Concrete");
+				break;
+			case Tool::BuildIsland: {
+				// A lump of earth and rock hanging in the air, to chip at and cut up.
+				static constexpr float lumps[7][3] = {{-42.0F, 0.0F, 20.0F}, {-14.0F, 4.0F, 24.0F}, {16.0F, 2.0F, 24.0F}, {44.0F, -2.0F, 18.0F}, {-4.0F, 22.0F, 16.0F}, {22.0F, 20.0F, 12.0F}, {-26.0F, -14.0F, 12.0F}};
+				for (const auto& lump: lumps) {
+					PaintTerrain(at + Vector(lump[0], lump[1]), static_cast<int>(lump[2]), lump[2] > 17.0F ? "Earth" : "Stone");
+				}
+				break;
+			}
+			case Tool::BuildTank:
+				// An open concrete tank, filled with water.
+				PaintBox(at + Vector(-70.0F, 40.0F), 140, 8, "Concrete");
+				PaintBox(at + Vector(-70.0F, -48.0F), 8, 90, "Concrete");
+				PaintBox(at + Vector(62.0F, -48.0F), 8, 90, "Concrete");
+				for (float y = -30.0F; y <= 26.0F; y += 14.0F) {
+					for (float x = -48.0F; x <= 48.0F; x += 16.0F) {
+						FluidSim::Pour(at + Vector(x, y), 9.0F, "Water");
+					}
+				}
+				break;
+			case Tool::BuildBridge:
+				PaintBox(at + Vector(-110.0F, -3.0F), 220, 6, "Wood");
+				for (float x = -100.0F; x <= 100.0F; x += 50.0F) {
+					PaintBox(at + Vector(x - 2.0F, 3.0F), 4, 14, "Wood");
+				}
 				break;
 			case Tool::Demolition:
 			case Tool::BunkerBuster:
@@ -1867,6 +2120,13 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
 				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
+				ImGui::SeparatorText("From the sky: click where it should land");
+				ToolButtons({Tool::RocketStrike, Tool::RocketBarrage, Tool::CarpetBomb, Tool::Artillery, Tool::NapalmRain, Tool::OrbitalBeam, Tool::BoulderRain});
+				if (!s_Incoming.empty()) {
+					ImGui::TextDisabled("%d on the way", static_cast<int>(s_Incoming.size()));
+				}
+				ImGui::SeparatorText("Things to knock down");
+				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("World")) {
@@ -1921,11 +2181,13 @@ void Sandbox::Update() {
 	strokes.swap(s_Queue);
 	if (!InGame()) {
 		s_Possessed = nullptr;
+		s_Incoming.clear();
 		return;
 	}
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
+	UpdateIncoming();
 	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
 	}
