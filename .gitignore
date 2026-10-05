@@ -116,3 +116,5 @@ ModsTest_*/
 ModSweepConsole.txt
 ExceptionTrace.txt
 ModsLaunch_*/
+
+__pycache__/

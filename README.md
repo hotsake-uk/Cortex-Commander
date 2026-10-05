@@ -110,29 +110,120 @@ Bug reports and ideas are welcome in this repository's issues. Please report pro
 
 ---
 
-*The build instructions below are inherited from the Community Project and apply to this fork as well. The Visual Studio solution is `RTEA.sln`. Use the `Final` configuration for a playable build, which produces `Cortex Command.exe` in the repository root.*
+# Building and running
 
-# Windows Build Instructions
-First you need to download the necessary files:
+There are no prebuilt releases, so you build the game from source. Everything needed is in this repository: the engine source, the game data (`Data/`), the third-party libraries (`external/`) and `fmod.dll` (`external/lib/win`). Nothing else has to be downloaded to build it.
 
-1. Install the necessary tools.  
-You'll probably want [Visual Studio Community Edition](https://visualstudio.microsoft.com/downloads/) (build supports 2019 (>=16.10) and 2022 versions. Earlier versions are not supported due to lack of C++20 standard library features and conformance).  
-You also need to have both x86 and x64 versions of the [Visual C++ Redistributable for Visual Studio 2015-2022](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads) installed in order to run the compiled builds.  
-You may also want to check out the list of recommended Visual Studio plugins [here](https://github.com/cortex-command-community/Cortex-Command-Community-Project/wiki/Information,-Recommended-Plugins-and-Useful-Links).
+## Quick start (Windows)
 
-2. Clone this Repository into a folder.  
+You need:
 
-3. Copy the `fmod.dll` library from `Cortex-Command-Community-Project\external\lib\win` into the root directory.
+- **Windows 10 or 11, 64-bit.** This is the only platform tested.
+- **[Visual Studio 2022](https://visualstudio.microsoft.com/downloads/)** (Community is fine) with the **Desktop development with C++** workload. 2019 (16.10 or later) also works, but the scripts below are tested with 2022.
+- **The Visual C++ 2015-2022 Redistributable**, both [x86 and x64](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads), to run the compiled game.
+- **Git.**
+- **Python 3.9 or later** (only for the Workbench, below). It needs no extra packages.
 
-Now you're ready to build and launch the game.  
-Simply open `RTEA.sln` with Visual Studio, choose your target platform (x86 or x64) and configuration, and run the project.
+Then, in PowerShell:
 
-* Use `Debug Full` for debugging with all visual elements enabled (builds fast, runs very slow).
-* Use `Debug Minimal` for debugging with all visual elements disabled (builds fast, runs slightly faster).
-* Use `Debug Release` for a debugger-enabled release build (builds slow, runs almost as fast as Final. **Debugging may be unreliable due to compiler optimizations**).
-* Use `Final` to build release executable.
+```powershell
+git clone https://github.com/hotsake-uk/Cortex-Commander
+cd Cortex-Commander
+git checkout modernisation                 # skip if it is already the branch you got
 
-The first build will take a while, but future ones should be quicker.
+copy external\lib\win\fmod.dll .           # the game needs fmod.dll in the repository root
+
+.\Tools\RenderTest\Build.ps1 -Config Final # builds "Cortex Command.exe" in the repository root
+& ".\Cortex Command.exe"                   # run it from the repository root
+```
+
+- The first build is slow (several minutes); later ones are quicker.
+- `Build.ps1` finds Visual Studio's MSBuild itself and prints only errors. The full log is written to `Tools\RenderTest\Output\build.log`.
+- Always run the game from the repository root, because `Data/` is found relative to the exe.
+- The first launch creates `Userdata\Settings.ini`. Video settings (lighting, bloom, quality presets) are in the in-game options, and the keys are listed under [Controls](#controls-and-where-things-are).
+
+## Build configurations
+
+You can also open `RTEA.sln` in Visual Studio, pick **x64** and a configuration, and press F5. The scripts take the same names.
+
+| Configuration | Produces | Use it for |
+|---|---|---|
+| `Final` | `Cortex Command.exe` | Playing. Optimised, fastest. |
+| `Debug Release` | `Cortex Command.debug.release.exe` | Day-to-day development and testing. Almost as fast as Final, with a debugger and asserts. Debugging can be unreliable because of optimisation. |
+| `Debug Full` | `Cortex Command.debug.full.exe` | Debugging with every visual element on. Builds fast, runs very slowly. |
+| `Debug Minimal` | `Cortex Command.debug.minimal.exe` | Debugging with visuals off. Builds fast, runs slightly faster. |
+| `Profiling` | `Cortex Command.profiling.exe` | Profiling with Tracy. |
+
+Build from the command line without the script:
+
+```powershell
+& "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" RTEA.sln /p:Configuration="Debug Release" /p:Platform=x64 /m /v:minimal
+```
+
+## The Workbench (a browser control panel)
+
+The Workbench is a small local web page for the chores around the game: launching it with saved profiles, controlling a running game, editing graphics presets, managing mods, and running tests and builds.
+
+```powershell
+python Tools\Workbench\workbench.py        # then open http://127.0.0.1:8765
+```
+
+`Tools\Workbench\Start-Workbench.ps1` does the same, and `--no-browser` stops it opening a browser tab by itself. It listens on this computer only. Leave the window open while you use it, and press Ctrl+C to stop it.
+
+**Build the game first.** The Workbench starts the exes in the repository root: `Cortex Command.exe` to play, and `Cortex Command.debug.release.exe` for tests. Without them its launch and test features have nothing to run.
+
+| Page | What it does |
+|---|---|
+| **Launch** | Saved launch profiles ("Sandbox on this map at night", "classic look", "vanilla, no mods"). Pick one and press Play. |
+| **Live** | The games running now: state, console, time of day, weather, screenshots. |
+| **Graphics** | Graphics presets with live sliders; save a look and make it your default. |
+| **Mods** | Each mod's state; test, park and activate them. Tests run in parallel, each game copy in its own sandbox. |
+
+The Live page talks to the game over a local-only link (`ControlLink`). The game opens it only when started from the Workbench, or when `ControlLinkPort` is set in `Settings.ini`; a normal launch is unchanged. The design is in [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md). The Gallery and Performance pages in that plan are not built yet.
+
+## Mods
+
+Mods go in the `Mods\` folder, and `Data\` holds the base game. The repository doesn't include any mods, and the folders `Mods\`, `ModsParked\` and `ModsTest*\` are ignored by git.
+
+```powershell
+.\Tools\Mods\Get-Mods.ps1                  # downloads the mods in Tools\Mods\modlist.txt from mod.io into Mods\
+```
+
+- The engine skips old or broken mods with a note in the log instead of aborting.
+- Loading around 30 mods takes about 100 seconds, and the window can show "not responding" meanwhile. It is loading.
+- Mods are other people's work and have their own licences.
+
+## Testing rendering changes
+
+`Tools\RenderTest` has scripted scenes, screenshots, golden-image comparisons and soak tests. Its README, [Tools/RenderTest/README.md](Tools/RenderTest/README.md), has the full details. In short:
+
+```powershell
+.\Tools\RenderTest\Build.ps1               # build Debug Release
+& ".\Cortex Command.debug.release.exe"     # run once so Userdata\Settings.ini exists
+.\Tools\RenderTest\Setup.ps1               # install the test mod and scenario settings
+.\Tools\RenderTest\Golden.ps1              # compare seven fixed scenes with the baselines (about 3 minutes)
+```
+
+Don't use the mouse over the game window, or resize or maximise it, while a test runs, because that spoils the captures. If a scene fails, run it again with `-Only <scene>` before trusting the failure. `Golden.ps1` needs a GPU, so it can't run in CI. Run it before committing renderer changes.
+
+## Troubleshooting
+
+- **The game closes straight away or says a DLL is missing:** copy `fmod.dll` into the repository root and install both Visual C++ redistributables (x86 and x64).
+- **The game says it can't find data:** run it from the repository root.
+- **`Build.ps1` says "MSBuild not found":** install Visual Studio with the C++ desktop workload.
+- **The Workbench's launch buttons do nothing:** the exe hasn't been built yet. Build `Final` and `Debug Release`.
+- **Logs:** `LogConsole.txt` and `LogLoading.txt` in the repository root show what the game was doing. Attach them to bug reports.
+- **A blank or broken picture:** the renderer needs OpenGL 3.3. Update your graphics driver.
+
+---
+
+*The sections below are inherited from the Community Project. They cover the Visual Studio build in more detail, and building on Linux and macOS with meson (not tested for this fork).*
+
+# Windows Build Instructions (upstream)
+1. Install the necessary tools (see the quick start above). You may also want the [recommended Visual Studio plugins](https://github.com/cortex-command-community/Cortex-Command-Community-Project/wiki/Information,-Recommended-Plugins-and-Useful-Links).
+2. Clone this repository into a folder.
+3. Copy `fmod.dll` from `external\lib\win` into the repository root.
+4. Open `RTEA.sln` with Visual Studio, choose x64 and a configuration (see [Build configurations](#build-configurations)), and run the project.
 
 If you want to use an IDE other than Visual Studio, you will have to build using meson. Check the [Linux](#building) and [Installing Dependencies](#installing-dependencies) section for pointers.
 
