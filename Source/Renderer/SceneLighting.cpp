@@ -476,7 +476,7 @@ void SceneLighting::ReadAutoExposure(float& averageLuminance, float& autoExposur
 	glBindTexture(GL_TEXTURE_2D, 0);
 	averageLuminance = std::exp(logLuminance);
 	// Same as Tonemap.frag.
-	float target = std::clamp(averageLuminance, m_Settings.AutoExposureLow, m_Settings.AutoExposureHigh);
+	float target = std::clamp(averageLuminance, m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh);
 	autoExposure = std::clamp(std::pow(target / std::max(averageLuminance, 0.0001F), m_Settings.AutoExposure), 0.5F, 2.0F);
 }
 
@@ -650,7 +650,9 @@ void SceneLighting::Update() {
 	// Deep night is darker than early night by a chosen amount: from nightfall the light on the scene falls away to its least at eleven, and comes back from two until first light.
 	float hourNow = m_Settings.TimeOfDay;
 	float deepNight = hourNow >= 19.6F ? glm::smoothstep(19.6F, 23.0F, hourNow) : (hourNow <= 4.6F ? 1.0F - glm::smoothstep(2.0F, 4.6F, hourNow) : 0.0F);
-	float nightDim = 1.0F - std::clamp(m_Settings.DeepNightDarkness, 0.0F, 0.97F) * deepNight;
+	// The slider is how much darker it looks, so the light itself falls by more than that (eyes and screens don't see light in proportion).
+	float nightDim = std::pow(1.0F - std::clamp(m_Settings.DeepNightDarkness, 0.0F, 0.97F) * deepNight, 2.2F);
+	m_NightDim = nightDim;
 	m_EffectiveSky = m_Settings.SkyColor * daylight * nightDim;
 	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
 	m_SkyDaylight = daylight;
@@ -1723,7 +1725,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration + (m_Settings.DistortionEnabled ? m_BlastPulse * 2.2F : 0.0F));
 	m_TonemapShader->SetInt("rteAdaptedLuminance", 4);
 	m_TonemapShader->SetFloat("rteAutoExposure", useAutoExposure ? m_Settings.AutoExposure : 0.0F);
-	m_TonemapShader->SetFloat("rteAutoExposureLow", m_Settings.AutoExposureLow);
+	// The dead of night is meant to be dark: auto exposure mustn't brighten it back up, so the level it lifts dark scenes towards drops with the light.
+	m_TonemapShader->SetFloat("rteAutoExposureLow", m_Settings.AutoExposureLow * m_NightDim);
 	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][m_AdaptedLuminanceCurrent[screenIndex]].Texture);

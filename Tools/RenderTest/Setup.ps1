@@ -187,3 +187,4 @@ Write-Scenario "LightsDarkInterior" ($shadowBunker + @{ TimeOfDay = 23; WeatherT
 Write-Scenario "LightsBroken" ($shadowBunker + @{ TimeOfDay = 23; WeatherType = 0; LightingDebugView = 1 }) @("Render Test Light Break")
 # Every mod in turn in a short fight (see Tools\Mods\Test-Mods.ps1 -Play).
 Write-Scenario "ModSweep" ($sandbox + @{ TimeOfDay = 13; WeatherType = 0 }) @("Render Test Mod Sweep")
+Write-Scenario "SkyDeep" ($play + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0; DeepNightDarkness = 0.95 }) @()
