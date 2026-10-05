@@ -38,13 +38,17 @@ using namespace RTE;
 void Draw() {
 }
 
+float DebugMan::GetToolScale() const {
+	return std::max(std::clamp(ImGui::GetIO().DisplaySize.y / 720.0F, 1.0F, 2.5F) * m_ToolScale, 0.5F);
+}
+
 void DebugMan::DrawImGui() {
 	UpdateMouseOwnership();
 
 	// Debug windows keep a readable size on big windows and handheld screens: scale with the window height (720 px = 1x).
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		float uiScale = std::clamp(io.DisplaySize.y / 720.0F, 1.0F, 2.5F);
+		float uiScale = GetToolScale();
 		float fontScale = uiScale * g_WindowMan.GetImGuiFontBaseScale();
 		if (std::abs(io.FontGlobalScale - fontScale) > 0.001F) {
 			io.FontGlobalScale = fontScale;
@@ -58,7 +62,7 @@ void DebugMan::DrawImGui() {
 	// Docked tool panels: the game's picture is fitted between the ones that were open last frame.
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		float uiScale = std::clamp(io.DisplaySize.y / 720.0F, 1.0F, 2.5F);
+		float uiScale = GetToolScale();
 		int panelWidth = static_cast<int>(std::min(m_PanelWidth * uiScale, io.DisplaySize.x * 0.32F));
 		for (int side = 0; side < 2; ++side) {
 			m_PanelsLastFrame[side] = m_PanelsThisFrame[side];
@@ -110,7 +114,7 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 		return ImGui::Begin(name, open);
 	}
 	ImGuiIO& io = ImGui::GetIO();
-	float uiScale = std::clamp(io.DisplaySize.y / 720.0F, 1.0F, 2.5F);
+	float uiScale = GetToolScale();
 	float width = std::min(m_PanelWidth * uiScale, io.DisplaySize.x * 0.32F);
 	int sideIndex = side == PanelSide::Left ? 0 : 1;
 	int slot = m_PanelsThisFrame[sideIndex]++;
@@ -645,6 +649,8 @@ void DebugMan::DebugOptionsGUI() {
 		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
 		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
 		ImGui::SliderFloat("Panel width", &m_PanelWidth, 240.0F, 700.0F, "%.0f");
+		ImGui::SliderFloat("Size of text and controls", &m_ToolScale, 0.4F, 1.5F, "%.2f");
+		ImGui::SetItemTooltip("How big these tool windows are drawn. 1 is the old size; 0.7 is the usual.");
 		ImGui::Checkbox("Show Performance Stats", &m_ShowPerformanceMan);
 		ImGui::Checkbox("Show Graphics Lab", &m_ShowGraphicsLab);
 		ImGui::Checkbox("Show World Debug (F6)", &m_ShowWorldDebug);

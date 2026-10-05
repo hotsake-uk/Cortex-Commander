@@ -62,6 +62,10 @@ namespace RTE {
 		bool m_ShowGraphicsLab{false};
 		bool m_DockPanels{true}; //!< Tool windows are panels at the sides of the game's picture, not floating over it.
 		float m_PanelWidth{380.0F}; //!< Width of the docked panels, before the interface scale.
+		float m_ToolScale{0.7F}; //!< How big the tool windows' text and controls are, as a share of the size that follows the window's height.
+
+		/// Gets how much the tool windows are scaled: with the window's height (720 px = 1x), times the size the player chose.
+		float GetToolScale() const;
 		int m_PanelsThisFrame[2]{0, 0}; //!< How many panels have been begun at each side so far this frame.
 		int m_PanelsLastFrame[2]{0, 0}; //!< How many there were at each side last frame, which is how the side is shared out this frame.
 		bool m_ShowWorldDebug{false};

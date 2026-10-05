@@ -22,6 +22,7 @@ uniform float rteTime; // Seconds.
 uniform float rteWind; // Pixels per second, negative blows left.
 uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
 uniform float rteWetness; // 0..1, how wet exposed ground is.
+uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
 uniform vec2 rteGridWorldSize;
 uniform sampler2D rteWorldGrid; // The light grid's terrain map: R = how solid each cell is, G = how metallic its material, B = how glossy.
@@ -110,11 +111,21 @@ float Lean(vec2 world) {
 	return lean;
 }
 
-// Whether a point of terrain is exposed to the open sky (not under an overhang or in a cave).
-bool UnderOpenSky(vec2 world) {
-	vec2 gridUV = world / rteGridWorldSize;
-	float skyline = texture(rteSkyline, vec2(fract(gridUV.x), 0.5)).r;
-	return gridUV.y < skyline + 10.0 / rteGridWorldSize.y;
+// Whether rain or snow reaches a point: follows the line it falls down back upwind through the world's grid of solid ground, until it is out of the top of the
+// world (it reaches) or meets ground (the point is sheltered). The same test the falling drops use, with fewer and longer steps since it runs for every pixel of exposed ground.
+bool WeatherReaches(vec2 world) {
+	vec2 back = -rteWeatherFall * (rteGridWorldSize.x / float(textureSize(rteWorldGrid, 0).x));
+	vec2 p = world + back * 1.5;
+	for (int i = 0; i < 56; ++i) {
+		if (p.y < 0.0) {
+			return true;
+		}
+		if (textureLod(rteWorldGrid, p / rteGridWorldSize, 0.0).r > 0.55) {
+			return false;
+		}
+		p += back * (i < 20 ? 1.0 : (i < 40 ? 2.0 : 5.0));
+	}
+	return true;
 }
 
 void main() {
@@ -211,7 +222,7 @@ void main() {
 		}
 	}
 
-	if (rteLivingWorld && (rteSnowCover > 0.01 || rteWetness > 0.01) && UnderOpenSky(worldPos)) {
+	if (rteLivingWorld && (rteSnowCover > 0.01 || rteWetness > 0.01)) {
 		// How deep below the surface this pixel is: snow lies a few pixels deep on top, rain wets the top layer.
 		float depth = 99.0;
 		for (int k = 1; k <= 5; ++k) {
@@ -219,6 +230,10 @@ void main() {
 				depth = float(k);
 				break;
 			}
+		}
+		// Only ground the weather can get to: tested from the air just above the surface, along the way the weather is falling.
+		if (depth < 99.0 && !WeatherReaches(worldPos - vec2(0.0, depth + 1.0))) {
+			depth = 99.0;
 		}
 		float snowDepth = rteSnowCover * 5.0;
 		if (depth <= snowDepth) {

@@ -589,6 +589,12 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWind", m_Settings.Wind);
 	m_TerrainShader->SetFloat("rteSnowCover", m_Settings.LivingWorld ? m_SnowCover : 0.0F);
 	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
+	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
+	{
+		glm::vec2 fall = m_Settings.WeatherType == 2 ? glm::vec2(m_Settings.Wind * 0.6F, 45.0F) : glm::vec2(m_Settings.Wind, 640.0F);
+		fall.x = std::clamp(fall.x, -fall.y * 2.0F, fall.y * 2.0F);
+		m_TerrainShader->SetVector2f("rteWeatherFall", glm::normalize(fall));
+	}
 	m_TerrainShader->SetInt("rteSkyline", 5);
 	m_TerrainShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
 	{
