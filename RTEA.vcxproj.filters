@@ -178,6 +178,9 @@
     <ClInclude Include="Source\Managers\WeatherEffects.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\Colony.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\Sandbox.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -800,6 +803,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\PresetMan.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\Colony.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\Sandbox.cpp">

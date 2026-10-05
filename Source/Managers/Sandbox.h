@@ -75,6 +75,17 @@ namespace RTE {
 		/// @param paused Whether to pause.
 		static void SetAIPaused(bool paused);
 
+		/// Makes a unit with its faction's usual weapons and puts it in the world, for things that produce units (Colony's barracks).
+		/// @param presetName The unit. @param team The side. @param position Where. @param order Its orders, as for Do.
+		/// @return The unit, or nothing if there is no such unit.
+		static Actor* SpawnUnit(const std::string& presetName, int team, const Vector& position, int order);
+
+		/// Gets what a unit costs, without weapons. 0 if there is no such unit.
+		static float UnitCost(const std::string& presetName);
+
+		/// Fills a box of the terrain with a material where there is air, or with an empty name clears it to air.
+		static void FillBox(const Vector& topLeft, int width, int height, const std::string& materialName);
+
 		/// Gets how your character in the Sandbox game mode is set up (its body, kit and abilities), as one line of text for the settings file.
 		static std::string GetCharacterSetup();
 

@@ -868,6 +868,7 @@
     <ClInclude Include="Source\Managers\ActorWater.h" />
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
+    <ClInclude Include="Source\Managers\Colony.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
     <ClInclude Include="Source\Managers\TimerMan.h" />
@@ -1420,6 +1421,7 @@
     <ClCompile Include="Source\Managers\ActorFire.cpp" />
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
+    <ClCompile Include="Source\Managers\Colony.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />

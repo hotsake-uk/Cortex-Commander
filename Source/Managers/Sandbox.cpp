@@ -7,6 +7,7 @@
 #include "AHuman.h"
 #include "ActivityMan.h"
 #include "CameraMan.h"
+#include "Colony.h"
 #include "ConsoleMan.h"
 #include "Controller.h"
 #include "Constants.h"
@@ -122,6 +123,8 @@ namespace {
 		Napalm,
 		Lightning,
 		PlayCharacter,
+		Barracks,
+		Extractor,
 		// Not tools, but queued the same way.
 		PlayerRemake,
 		PlayerRemove,
@@ -195,6 +198,8 @@ namespace {
 	    {Tool::Napalm, "Napalm burst", 0.0F, false},
 	    {Tool::Lightning, "Lightning", 0.0F, false},
 	    {Tool::PlayCharacter, "Play from here", 0.0F, false},
+	    {Tool::Barracks, "Barracks", 0.0F, false},
+	    {Tool::Extractor, "Extractor", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -341,6 +346,7 @@ namespace {
 		bool EnterOnClose = true; //!< Putting the tools away puts you in the character.
 	};
 	PlayerSetup s_Player;
+	int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
 	bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
 	int s_StepsWanted = 0; //!< Updates to let the paused world do.
@@ -791,6 +797,35 @@ namespace {
 				}
 				terrain->SetMaterialPixel(x, y, found->GetIndex());
 				terrain->SetFGColorPixel(x, y, Random01() < 0.25F ? speckleColor : color);
+			}
+		}
+		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+	}
+
+	/// Clears a box of the terrain to air.
+	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		int left = topLeft.GetFloorIntX();
+		int top = topLeft.GetFloorIntY();
+		TerrainCollapse::BeginChange(topLeft + Vector(static_cast<float>(boxWidth) * 0.5F, static_cast<float>(boxHeight) * 0.5F), static_cast<float>(std::max(boxWidth, boxHeight)) * 0.75F + 30.0F);
+		for (int dy = 0; dy < boxHeight; ++dy) {
+			for (int dx = 0; dx < boxWidth; ++dx) {
+				int x = left + dx;
+				int y = top + dy;
+				if (g_SceneMan.SceneWrapsX()) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height) {
+					continue;
+				}
+				int existing = terrain->GetMaterialPixel(x, y);
+				if (existing == g_MaterialAir || existing == g_MaterialOutOfBounds) {
+					continue;
+				}
+				terrain->SetMaterialPixel(x, y, g_MaterialAir);
+				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
@@ -1756,6 +1791,16 @@ namespace {
 			case Tool::PlayCharacter:
 				EnterPlayer(stroke.Count > 0, at);
 				break;
+			case Tool::Barracks:
+				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
+					ActivateSide(stroke.Team);
+					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(stroke.Orders), stroke.Count);
+				}
+				break;
+			case Tool::Extractor:
+				ActivateSide(stroke.Team);
+				Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1);
+				break;
 			case Tool::PlayerRemake:
 				if (Actor* old = GetRef(s_PlayerUnit)) {
 					Vector place = old->GetPos();
@@ -2055,6 +2100,8 @@ namespace {
 		stroke.Count = kind == Tool::Structure ? (s_SnapToGrid ? 1 : 0) : s_SquadSize;
 		if (kind == Tool::PlayCharacter) {
 			stroke.Count = 1;
+		} else if (kind == Tool::Barracks) {
+			stroke.Count = s_ColonyKeep;
 		}
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
@@ -2177,7 +2224,21 @@ namespace {
 		float scale = ScenePixelsPerWindowPixel();
 		ImU32 white = IM_COL32(255, 255, 255, 170);
 		std::string label = tool.Name;
-		if (tool.Kind == Tool::Structure) {
+		if (tool.Kind == Tool::Barracks || tool.Kind == Tool::Extractor) {
+			// The plot it will take, on the ground under the pointer.
+			const Colony::Type& type = Colony::GetType(tool.Kind == Tool::Barracks ? Colony::Kind::Barracks : Colony::Kind::Extractor);
+			Vector ground = MouseScenePosition();
+			int sceneHeight = g_SceneMan.GetSceneHeight();
+			for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
+				ground.m_Y -= 1.0F;
+			}
+			while (ground.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY() + 1) == g_MaterialAir) {
+				ground.m_Y += 1.0F;
+			}
+			Vector corner = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)), g_SceneMan.SceneWrapsX());
+			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
+			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
+		} else if (tool.Kind == Tool::Structure) {
 			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice); preset && preset->Width > 0) {
 				// The footprint, where it will land.
 				Vector corner = StructureCorner(*preset, MouseScenePosition(), s_SnapToGrid) - g_CameraMan.GetOffset(0);
@@ -2201,6 +2262,117 @@ namespace {
 		Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), scenePosition, g_SceneMan.SceneWrapsX());
 		float scale = ScenePixelsPerWindowPixel();
 		return ImVec2(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
+	}
+
+	/// A label over each colony building: whose it is, what it is doing and how far along.
+	void DrawColony() {
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float scale = ScenePixelsPerWindowPixel();
+		// Kept to the picture of the game, so a label never lies over a tool panel.
+		drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
+		for (const Colony::Building& building: Colony::Buildings()) {
+			const Colony::Type& type = Colony::GetType(building.What);
+			ImVec2 top = ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(type.Height) - 6.0F));
+			if (top.x < view.x - 100.0F || top.x > view.x + view.w + 100.0F || top.y < view.y || top.y > view.y + view.h + 40.0F) {
+				continue;
+			}
+			std::string label = std::string(type.Name) + (building.What == Colony::Kind::Barracks ? "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive) : "");
+			ImVec2 size = ImGui::CalcTextSize(label.c_str());
+			ImVec2 at(top.x - size.x * 0.5F, top.y - size.y - 6.0F);
+			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
+			drawList->AddText(at, c_SideColors[building.Team], label.c_str());
+			if (building.What == Colony::Kind::Barracks && building.Paid) {
+				float barWidth = std::max(static_cast<float>(type.Width) / scale * 0.6F, 30.0F);
+				ImVec2 barAt(top.x - barWidth * 0.5F, top.y - 3.0F);
+				drawList->AddRectFilled(barAt, ImVec2(barAt.x + barWidth, barAt.y + 4.0F), IM_COL32(0, 0, 0, 160));
+				drawList->AddRectFilled(barAt, ImVec2(barAt.x + barWidth * std::clamp(building.Progress, 0.0F, 1.0F), barAt.y + 4.0F), c_SideColors[building.Team]);
+			}
+		}
+		drawList->PopClipRect();
+	}
+
+	/// The Colony tab of the sandbox window.
+	void ColonyTab() {
+		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. They are built of concrete: wreck one and it stops.");
+		ImGui::Checkbox("Training is free", &Colony::Free());
+		ImGui::SetItemTooltip("Off: a barracks pays for each unit from the supply of its side, which grows slowly by itself and faster with extractors.");
+		if (!Colony::Free()) {
+			for (int side = 0; side < c_Sides; ++side) {
+				ImGui::PushID(side);
+				ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
+				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
+				ImGui::DragFloat(c_SideNames[side], &Colony::Supply(side), 10.0F, 0.0F, 999999.0F, "%.0f supply");
+				ImGui::PopStyleColor();
+				ImGui::PopID();
+			}
+		}
+		ImGui::SeparatorText("Build");
+		ToolButtons({Tool::Barracks, Tool::Extractor});
+		Tool kind = CurrentTool().Kind;
+		if (kind == Tool::Barracks || kind == Tool::Extractor) {
+			SideChooser();
+		}
+		if (kind == Tool::Barracks) {
+			ImGui::TextDisabled("It trains:");
+			PresetList(Tool::Unit);
+			ImGui::Combo("Their orders", &s_Order, c_OrderNames);
+			ImGui::SliderInt("Keeps this many alive", &s_ColonyKeep, 1, 20);
+		}
+		ImGui::SeparatorText("Standing");
+		std::vector<Colony::Building>& buildings = Colony::Buildings();
+		if (buildings.empty()) {
+			ImGui::TextDisabled("Nothing built yet.");
+		}
+		int removeID = -1;
+		for (Colony::Building& building: buildings) {
+			ImGui::PushID(building.ID);
+			const Colony::Type& type = Colony::GetType(building.What);
+			ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[building.Team]);
+			bool open = ImGui::TreeNode("##building", "%s %d (%s)", type.Name, building.ID, c_SideNames[building.Team]);
+			ImGui::PopStyleColor();
+			ImGui::SameLine();
+			ImGui::TextDisabled("%s", building.Status.c_str());
+			if (open) {
+				if (building.What == Colony::Kind::Barracks) {
+					if (building.Paid) {
+						ImGui::ProgressBar(building.Progress, ImVec2(-1.0F, 0.0F));
+					}
+					if (ImGui::BeginCombo("Trains", building.Unit.c_str(), ImGuiComboFlags_HeightLarge)) {
+						for (const Preset& unit: s_Units) {
+							if (ImGui::Selectable(unit.Label.c_str(), unit.PresetName == building.Unit)) {
+								building.Unit = unit.PresetName;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::Combo("Their orders", &building.Orders, c_OrderNames);
+					ImGui::SliderInt("Keeps this many alive", &building.KeepAlive, 1, 20);
+					ImGui::Text("%d alive, %d trained in all. One takes %.0f s%s.", static_cast<int>(building.Alive.size()), building.Produced, Colony::TrainingSeconds(std::max(Sandbox::UnitCost(building.Unit), 20.0F)),
+					            Colony::Free() ? "" : (" and " + std::to_string(static_cast<int>(std::max(Sandbox::UnitCost(building.Unit), 20.0F))) + " supply").c_str());
+				} else {
+					ImGui::TextDisabled("%s", type.Description);
+				}
+				ImGui::Checkbox("Stopped", &building.Paused);
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Look at it")) {
+					s_FreeCamera = true;
+					s_FollowTarget = UnitRef();
+					s_FollowAction = false;
+					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
+				}
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Close it down")) {
+					removeID = building.ID;
+				}
+				ImGui::SetItemTooltip("It stops being a building. What it was built of stays standing.");
+				ImGui::TreePop();
+			}
+			ImGui::PopID();
+		}
+		if (removeID >= 0) {
+			Colony::Remove(removeID);
+		}
 	}
 
 	/// Rings over selected units, and a marker over the followed one.
@@ -2321,7 +2493,7 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		g_CameraMan.SetScroll(position, 0);
 		return true;
 	}
-	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure) {
+	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
 		if (found == list.end()) {
@@ -2403,6 +2575,41 @@ int Sandbox::CountUnits(int team) {
 		}
 	}
 	return count;
+}
+
+Actor* Sandbox::SpawnUnit(const std::string& presetName, int team, const Vector& position, int order) {
+	if (!InGame()) {
+		return nullptr;
+	}
+	if (!s_CatalogueBuilt) {
+		BuildCatalogue();
+	}
+	const Preset* preset = FindPreset(s_Units, presetName);
+	Actor* actor = preset ? CreateUnit(*preset, team, 0, static_cast<Order>(std::clamp(order, 0, static_cast<int>(Order::Idle)))) : nullptr;
+	if (!actor) {
+		return nullptr;
+	}
+	ActivateSide(team);
+	actor->SetPos(position);
+	g_MovableMan.AddActor(actor);
+	return actor;
+}
+
+float Sandbox::UnitCost(const std::string& presetName) {
+	const Preset* preset = FindPreset(s_Units, presetName);
+	const SceneObject* object = preset ? dynamic_cast<const SceneObject*>(g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
+	return object ? object->GetGoldValue(preset->ModuleID, 1.0F, 1.0F) : 0.0F;
+}
+
+void Sandbox::FillBox(const Vector& topLeft, int width, int height, const std::string& materialName) {
+	if (!InGame() || width <= 0 || height <= 0) {
+		return;
+	}
+	if (materialName.empty()) {
+		ClearBox(topLeft, width, height);
+	} else {
+		PaintBox(topLeft, width, height, materialName.c_str());
+	}
 }
 
 void Sandbox::OnToolsClosed(bool atPointer) {
@@ -2564,6 +2771,9 @@ void Sandbox::DrawGUI() {
 		ImVec2 at(g_WindowMan.GetGameViewRect().x + (g_WindowMan.GetGameViewRect().w - size.x * scale) * 0.5F, g_WindowMan.GetGameViewRect().y + 36.0F);
 		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, 150), 4.0F);
 		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), banner);
+	}
+	if (InGame() && !Colony::Buildings().empty() && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		DrawColony();
 	}
 	if (!s_Open) {
 		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
@@ -2799,6 +3009,10 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndTabItem();
 			}
+			if (ImGui::BeginTabItem("Colony")) {
+				ColonyTab();
+				ImGui::EndTabItem();
+			}
 			if (ImGui::BeginTabItem("Orders")) {
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
@@ -3005,6 +3219,7 @@ void Sandbox::Update() {
 	if (g_ActivityMan.GetActivity() != lastActivity) {
 		lastActivity = g_ActivityMan.GetActivity();
 		Controller::SetAIPaused(false);
+		Colony::Clear();
 		// A new game: nothing is left pouring or on its way in from the last one.
 		s_WaterSpawners.clear();
 		s_Incoming.clear();
@@ -3031,6 +3246,7 @@ void Sandbox::Update() {
 		RetargetAttackers();
 	}
 	UpdateAutoBattle();
+	Colony::Update();
 	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
 		FindAction();
 	}
