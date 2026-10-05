@@ -1,5 +1,7 @@
 // GodRaysApply.frag
-// Adds the god rays to the HDR scene over the air inside caves and bunkers: the terrain background layer, not solid foreground terrain, objects or the open sky.
+// Adds the god rays to the HDR scene. They are light in the air, so they show in front of whatever is behind that air: fully over back walls and over the sky
+// and scenery beyond an opening (where they fade out by themselves, since a beam only shows against shade), and not over solid ground and objects in the plane of
+// the action (the inside of solid ground counts as shade, so beams drawn there showed as a haze on hillsides). Before, they were drawn over back walls only, and were cut off dead straight where a wall's art ended.
 // Dust motes drift through the shafts and glint where the light is strongest.
 #version 330 core
 
@@ -34,11 +36,11 @@ float Motes(vec2 worldPos) {
 void main() {
 	vec2 uv = gl_FragCoord.xy / rteScreenSize;
 	float depth = texture(rteSceneDepth, uv).r;
-	float terrainBackground = step(rteForegroundDepth, depth) * (1.0 - step(rteBackgroundDepth, depth));
+	float behindTheAir = step(rteForegroundDepth, depth);
 	vec3 rays = texture(rteGodRays, uv).rgb;
 	vec3 color = rays;
 	if (rteDustMotes > 0.0) {
 		color += rays * Motes(rteScreenOrigin + gl_FragCoord.xy) * 6.0 * rteDustMotes;
 	}
-	FragColor = vec4(color * terrainBackground, 1.0);
+	FragColor = vec4(color * behindTheAir, 1.0);
 }
