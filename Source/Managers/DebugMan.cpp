@@ -227,7 +227,8 @@ void DebugMan::ToggleTools(bool atPointer) {
 }
 
 void DebugMan::UpdateMouseOwnership() {
-	bool wantMouse = AnyToolWindowOpen();
+	// Looking around the Sandbox game mode from above uses the pointer too, even with every tool window hidden.
+	bool wantMouse = AnyToolWindowOpen() || Sandbox::IsLookingAround();
 	if (wantMouse) {
 		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while tool windows are open.
 		// Checked every frame, not only when a window opens: coming back from another program hands the mouse to the game again, which with tool windows open

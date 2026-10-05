@@ -546,7 +546,7 @@ Actor* MovableMan::GetClosestEnemyActor(int team, const Vector& scenePoint, int 
 	Actor* pClosestActor = 0;
 
 	for (std::deque<Actor*>::iterator aIt = m_Actors.begin(); aIt != m_Actors.end(); ++aIt) {
-		if ((*aIt)->GetTeam() == team)
+		if ((*aIt)->GetTeam() == team || (*aIt)->IsIgnoredByAI())
 			continue;
 
 		Vector distanceVec = g_SceneMan.ShortestDistance((*aIt)->GetPos(), scenePoint, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());

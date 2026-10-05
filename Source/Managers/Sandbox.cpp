@@ -343,7 +343,8 @@ namespace {
 		bool EndlessAmmo = true;
 		bool NumberKeys = true; //!< 1 to 9 take out that item of the kit.
 		bool FlyKey = true; //!< N switches flying through anything on and off.
-		bool EnterOnClose = true; //!< Putting the tools away puts you in the character.
+		bool EnterOnClose = true; //!< There is a character at all: putting the tools away puts you in it. Off, you only ever look around.
+		bool Neutral = false; //!< On no side as far as the AI goes: its units take no notice of the character.
 	};
 	PlayerSetup s_Player;
 	int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
@@ -586,7 +587,7 @@ namespace {
 		Actor* nearest = nullptr;
 		float nearestDistance = 0.0F;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor == of || !IsCombatant(actor) || actor->GetTeam() == of->GetTeam()) {
+			if (actor == of || !IsCombatant(actor) || actor->GetTeam() == of->GetTeam() || actor->IsIgnoredByAI()) {
 				continue;
 			}
 			float distance = g_SceneMan.ShortestDistance(of->GetPos(), actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -1574,6 +1575,7 @@ namespace {
 			return;
 		}
 		bool playing = s_Possessed == actor;
+		actor->SetIgnoredByAI(s_Player.Neutral);
 		if (s_Player.Unkillable) {
 			actor->SetHealth(actor->GetMaxHealth());
 			if (int wounds = actor->GetWoundCount(); wounds > 0) {
@@ -2614,7 +2616,12 @@ void Sandbox::FillBox(const Vector& topLeft, int width, int height, const std::s
 
 void Sandbox::OnToolsClosed(bool atPointer) {
 	GameActivity* game = CurrentGame();
-	if (!IsGodMode() || !game || game->IsFreeBuildMode() || s_Possessed || !s_Player.EnterOnClose) {
+	if (!IsGodMode() || !game || game->IsFreeBuildMode() || s_Possessed) {
+		return;
+	}
+	if (!s_Player.EnterOnClose) {
+		// No character: the tools are only hidden, and you go on looking around.
+		s_PlayHintSeconds = 6.0F;
 		return;
 	}
 	if (!s_CatalogueBuilt) {
@@ -2629,7 +2636,7 @@ void Sandbox::OnToolsClosed(bool atPointer) {
 
 std::string Sandbox::GetCharacterSetup() {
 	std::string setup = s_Player.Body + "|" + std::to_string(s_Player.Team) + "|";
-	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus}) {
+	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral}) {
 		setup += flag ? '1' : '0';
 	}
 	setup += "|";
@@ -2652,7 +2659,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 	s_Player.Body = parts[0];
 	s_Player.Team = std::clamp(std::atoi(parts[1].c_str()), 0, c_Sides - 1);
-	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus};
+	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral};
 	for (size_t i = 0; i < std::size(flags) && i < parts[2].size(); ++i) {
 		*flags[i] = parts[2][i] == '1';
 	}
@@ -2673,7 +2680,14 @@ bool Sandbox::IsGodMode() {
 }
 
 bool Sandbox::WantsWheelZoom() {
-	return s_Open && IsGodMode() && !s_Possessed && !ImGui::GetIO().WantCaptureMouse;
+	return IsLookingAround() && !ImGui::GetIO().WantCaptureMouse;
+}
+
+bool Sandbox::IsLookingAround() {
+	// Automated test runs (CCCP_HIDE_PANELS) place the camera themselves and want no pointer in their pictures.
+	static const bool testRun = std::getenv("CCCP_HIDE_PANELS") != nullptr;
+	const GameActivity* game = CurrentGame();
+	return IsGodMode() && game && !s_Possessed && s_PlayerEnterPending == 0 && !game->IsFreeBuildMode() && (!testRun || s_Open);
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -2748,11 +2762,13 @@ void Sandbox::DrawGUI() {
 	if (s_PausedByMenus && InGame()) {
 		banner("WORLD PAUSED  -  Tab: play", 8.0F, IM_COL32(150, 210, 255, 255), 1.0F);
 	}
-	if (IsGodMode() && s_Possessed && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
+	if (IsGodMode() && (s_Possessed || !s_Open) && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A reminder of the keys, for a few seconds after stepping in.
 		s_PlayHintSeconds -= ImGui::GetIO().DeltaTime;
 		std::string hint = "Tab: sandbox tools";
-		if (s_Possessed == GetRef(s_PlayerUnit)) {
+		if (!s_Possessed) {
+			hint += "    Right drag / WASD: move    Wheel: zoom";
+		} else if (s_Possessed == GetRef(s_PlayerUnit)) {
 			if (s_Player.FlyKey) {
 				hint += s_Flying ? "    N: stop flying" : "    N: fly";
 			}
@@ -2774,6 +2790,11 @@ void Sandbox::DrawGUI() {
 	}
 	if (InGame() && !Colony::Buildings().empty() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		DrawColony();
+	}
+	if (!s_Open && IsLookingAround()) {
+		// The tools are hidden but you're still above it all: the view goes on moving with the mouse and keys.
+		UpdateFreeCamera();
+		return;
 	}
 	if (!s_Open) {
 		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
@@ -2892,7 +2913,17 @@ void Sandbox::DrawGUI() {
 		if (ImGui::BeginTabBar("SandboxTabs")) {
 			if (IsGodMode() && ImGui::BeginTabItem("You")) {
 				bool exists = GetRef(s_PlayerUnit) != nullptr;
-				ImGui::TextWrapped("Your own character, for walking about in what you've made. Tab puts the tools away and puts you in it; Tab again brings you back here. Shift+Tab puts it down where the mouse points.");
+				if (ImGui::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
+					Stroke stroke;
+					stroke.Kind = Tool::PlayerRemove;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::SetItemTooltip("On: Tab puts the tools away and puts you in your character.\nOff: there is no character. Tab only hides and shows the tools, and you go on looking around from above.");
+				if (!s_Player.EnterOnClose) {
+					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
+					ImGui::EndTabItem();
+				} else {
+				ImGui::TextWrapped("For walking about in what you've made. Tab puts the tools away and puts you in it; Tab again brings you back here. Shift+Tab puts it down where the mouse points.");
 				if (ImGui::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayCharacter;
@@ -2902,14 +2933,14 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::PlayCharacter});
 				ImGui::SameLine();
 				ImGui::TextDisabled("then click where to start");
-				ImGui::Checkbox("Putting the tools away puts me in it", &s_Player.EnterOnClose);
-				ImGui::SetItemTooltip("Off: Tab only hides and shows the tools, and you stay watching from above.");
 				ImGui::SeparatorText("What it can do");
 				ImGui::Checkbox("Can't be hurt", &s_Player.Unkillable);
 				ImGui::SameLine();
 				ImGui::Checkbox("Endless jetpack", &s_Player.EndlessJetpack);
 				ImGui::Checkbox("Endless ammunition", &s_Player.EndlessAmmo);
 				ImGui::Checkbox("1 to 9 take out that item of the kit", &s_Player.NumberKeys);
+				ImGui::Checkbox("Enemies take no notice of it", &s_Player.Neutral);
+				ImGui::SetItemTooltip("On: units run by the AI don't see your character as an enemy and don't pick it as a target, whatever side it is on. Stray shots and blasts still reach it.");
 				ImGui::Checkbox("N flies through anything", &s_Player.FlyKey);
 				ImGui::SetItemTooltip("While playing, N lifts the character out of the physics: the movement keys fly it in any direction, through the ground and walls. N again drops it back in.");
 				ImGui::SeparatorText("What it is");
@@ -2978,6 +3009,7 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndDisabled();
 				ImGui::EndTabItem();
+				}
 			}
 			if (ImGui::BeginTabItem("Spawn")) {
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});

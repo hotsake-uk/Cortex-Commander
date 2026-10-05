@@ -755,6 +755,12 @@ MovableObject* ACrab::LookForMOs(float FOVSpread, unsigned char ignoreMaterial, 
 
 	MOID seenMOID = g_SceneMan.CastMORay(aimPos, lookVector, m_MOID, IgnoresWhichTeam(), ignoreMaterial, ignoreAllTerrain, 5);
 	pSeenMO = g_MovableMan.GetMOFromID(seenMOID);
+	// Somebody the AI is to take no notice of isn't seen at all.
+	if (pSeenMO) {
+		if (const Actor* seenActor = dynamic_cast<const Actor*>(g_MovableMan.GetMOFromID(pSeenMO->GetRootID())); seenActor && seenActor->IsIgnoredByAI()) {
+			return nullptr;
+		}
+	}
 	// Thick smoke between the eyes and what they'd see hides it.
 	if (pSeenMO && SmokeGrid::BlocksSight(aimPos, pSeenMO->GetPos())) {
 		return nullptr;

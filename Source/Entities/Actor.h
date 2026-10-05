@@ -146,6 +146,12 @@ namespace RTE {
 		/// @return Whether or not this Actor can be controlled by human players.
 		bool IsPlayerControllable() const { return m_PlayerControllable; }
 
+		/// Gets whether units run by the AI take no notice of this Actor: they don't see it as an enemy and don't pick it as a target.
+		bool IsIgnoredByAI() const { return m_IgnoredByAI; }
+
+		/// Sets whether units run by the AI take no notice of this Actor. For a player walking about a battle as a bystander.
+		void SetIgnoredByAI(bool ignored) { m_IgnoredByAI = ignored; }
+
 		/// Sets whether or not this Actor can be controlled by human players.
 		/// @param playerControllable Whether or not this Actor should be able to be controlled by human players.
 		void SetPlayerControllable(bool playerControllable) { m_PlayerControllable = playerControllable; }
@@ -910,6 +916,7 @@ namespace RTE {
 		AtomGroup* m_pHitBody;
 		Controller m_Controller;
 		bool m_PlayerControllable; //!< Whether or not this Actor can be controlled by human players.
+		bool m_IgnoredByAI = false; //!< Whether units run by the AI take no notice of this Actor. Not copied or saved: it is set on the one Actor while it lives.
 
 		// Sounds
 		SoundContainer* m_BodyHitSound;

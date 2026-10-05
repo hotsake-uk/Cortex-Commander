@@ -33,6 +33,9 @@ namespace RTE {
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 
+		/// Gets whether you're looking around the Sandbox game mode from above, in no unit, with or without the tools showing. The mouse then moves the view.
+		static bool IsLookingAround();
+
 		/// Gets whether the mouse wheel zooms the camera: the sandbox window is open in the god view and the mouse isn't over a debug window.
 		static bool WantsWheelZoom();
 

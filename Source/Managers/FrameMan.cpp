@@ -195,6 +195,16 @@ void FrameMan::UpdateCameraZoom() {
 	const GameActivity* game = dynamic_cast<const GameActivity*>(g_ActivityMan.GetActivity());
 	bool canZoom = g_ActivityMan.IsInActivity() && game && game->GetActivityState() == Activity::ActivityState::Running && !game->AnyPlayerInScreenMenu();
 	float target = canZoom ? m_CameraZoomTarget : 1.0F;
+	if (canZoom && target < 1.0F && g_SceneMan.GetScene()) {
+		// Never so far out that the view is wider or taller than the scene: past that the sky repeats and lights, rays and effects no longer sit where they belong.
+		float furthestOut = std::max(static_cast<float>(GetUnzoomedPlayerScreenWidth()) / std::max(static_cast<float>(g_SceneMan.GetSceneWidth()), 1.0F),
+		                             static_cast<float>(GetUnzoomedPlayerScreenHeight()) / std::max(static_cast<float>(g_SceneMan.GetSceneHeight()), 1.0F));
+		furthestOut = std::min(furthestOut * 1.02F, 1.0F);
+		if (target < furthestOut) {
+			target = furthestOut;
+			m_CameraZoomTarget = furthestOut;
+		}
+	}
 	float zoom = m_CameraZoom;
 	// The step to the target is taken at once when close, and the whole way in one go to and from the whole-number zooms would be jarring, so it eases; but it
 	// never rests between: a view held at 1.07x is soft all over.
