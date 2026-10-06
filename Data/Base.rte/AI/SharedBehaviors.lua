@@ -1654,10 +1654,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													if Owner.Head and above > -Owner.Height * 0.2 and feetClear and chestClear and not AI.climbClearY and not shaftNow and math.abs(stepX) >= 10 then
 														wantVelX = stepX > 0 and math.max(2, wantVelX) or math.min(-2, wantVelX);
 													end
+													-- The keys are pressed when the speed is off what's wanted by more than a band: a wide one in the open, so the nozzle
+													-- isn't flicked about, and a narrow one while climbing a column, where the walk speed carried in at the foot (1.5 m/s is
+													-- 30 px a second) took the unit forty pixels off a hatch's column in the time the climb took, into the slab beside it.
+													local band = (above < -Owner.Height * 0.2 and math.abs(CurrDist.X) < Owner.Height * 0.15) and 0.5 or 1.5;
 													local offVelX = wantVelX - Owner.Vel.X;
-													if offVelX > 1.5 then
+													if offVelX > band then
 														nextLatMove = Actor.LAT_RIGHT;
-													elseif offVelX < -1.5 then
+													elseif offVelX < -band then
 														nextLatMove = Actor.LAT_LEFT;
 													else
 														nextLatMove = Actor.LAT_STILL;

@@ -690,6 +690,15 @@ namespace RTE {
 
 		/// Gets how many waypoints there are in the ScenePath currently
 		/// @return The number of waypoints in the ScenePath.
+		/// Calculates a path for a given searcher (what an actor's GetPathAgent describes) into pathResult, with what each step is in kinds (one per
+		/// point after the first; may be nullptr). The same answer the actor itself would be given.
+		/// @return The total cost of the path, or -1 when there is none.
+		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, const PathAgent& agent, Activity::Teams team, std::list<PathStepKind>* kinds = nullptr);
+
+		/// The kinds of the steps of the last path calculated on this thread through CalculatePathForActor, as PathStepKind values (0 walk,
+		/// 1 crawl, 2 jump, 3 fall, 4 dig, 5 door), one per point of GetScenePath after the first.
+		std::list<int>& GetScenePathStepKinds();
+
 		int GetScenePathSize() const;
 
 		std::list<Vector>& GetScenePath();

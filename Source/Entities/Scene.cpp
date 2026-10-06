@@ -46,6 +46,7 @@ const std::string Scene::Area::c_ClassName = "Area";
 
 // Holds the path calculated by CalculateScenePath
 thread_local std::list<Vector> s_ScenePath;
+thread_local std::list<int> s_ScenePathKinds; // What each step of s_ScenePath is, when it was asked for with a searcher's sizes.
 
 Scene::Scene() {
 	Clear();
@@ -2497,6 +2498,16 @@ std::shared_ptr<volatile PathRequest> Scene::CalculatePathAsync(const Vector& st
 
 std::shared_ptr<volatile PathRequest> Scene::CalculatePathAsync(const Vector& start, const Vector& end, const PathAgent& agent, Activity::Teams team, PathCompleteCallback callback) {
 	return GetPathFinder(team).CalculatePathAsync(start, end, agent, callback);
+}
+
+float Scene::CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, const PathAgent& agent, Activity::Teams team, std::list<PathStepKind>* kinds) {
+	float totalCostResult = -1;
+	int result = GetPathFinder(team).CalculatePath(start, end, pathResult, totalCostResult, agent, kinds);
+	return (result == micropather::MicroPather::SOLVED || result == micropather::MicroPather::START_END_SAME) ? totalCostResult : -1;
+}
+
+std::list<int>& Scene::GetScenePathStepKinds() {
+	return s_ScenePathKinds;
 }
 
 int Scene::GetScenePathSize() const {

@@ -305,6 +305,10 @@ namespace RTE {
 
 #pragma region Scene Lua Adapters
 	struct LuaAdaptersScene {
+		/// A path with the actor's own sizes and abilities (its GetPathAgent), which is the answer the actor itself is given; the plain
+		/// CalculatePath paths with the header's defaults (standing room 40, half width 6), which can differ from a unit's. The kinds of
+		/// the steps are left in GetScenePathStepKinds.
+		static int CalculatePathForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team);
 		static int CalculatePath1(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
 			return CalculatePath(luaSelfObject, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
 		}

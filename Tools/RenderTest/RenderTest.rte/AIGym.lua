@@ -154,14 +154,18 @@ function AIGymScript:UpdateScript()
 				self.crabDescribed = self.crabDescribed or course.crab;
 				ConsoleMan:PrintString("AIGYM unit " .. actor.PresetName .. " height " .. math.floor(actor.Height) .. " radius " .. math.floor(actor.Radius) .. " jump height " .. math.floor(actor.JumpHeight * 20) .. " px aim range " .. math.floor(actor.AimRange * 100) / 100);
 			end
-			-- What the pathfinder makes of the course, before the unit tries it.
-			local found = SceneMan.Scene:CalculatePath(SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 10), course.to + Vector(0, -actor.Height * 0.5), actor.JumpHeight, 35, Activity.TEAM_1);
+			-- What the pathfinder makes of the course, before the unit tries it: with the unit's own sizes (the plain CalculatePath paths with
+			-- the header's defaults, standing room 40 and half width 6, which is not what the unit is given), and the kind of each step in
+			-- brackets (0 walk, 1 crawl, 2 jump, 3 fall, 4 dig, 5 door), as the AITRACE nodes: line has them.
+			local found = SceneMan.Scene:CalculatePathForActor(actor, SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 10), course.to + Vector(0, -actor.Height * 0.5), Activity.TEAM_1);
+			local kinds = {};
+			for kind in SceneMan.Scene:GetScenePathStepKinds() do table.insert(kinds, kind); end
 			local nodes = "";
 			local count = 0;
 			for node in SceneMan.Scene:GetScenePath() do
 				count = count + 1;
 				if count <= 40 then
-					nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y);
+					nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y) .. (count > 1 and kinds[count - 1] and ("(" .. kinds[count - 1] .. ")") or "");
 				end
 			end
 			ConsoleMan:PrintString("AIGYM path for " .. course.name .. ": result " .. tostring(found) .. ", " .. count .. " nodes:" .. nodes);

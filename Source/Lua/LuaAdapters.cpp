@@ -285,6 +285,23 @@ int LuaAdaptersScene::CalculatePath(Scene* luaSelfObject, const Vector& start, c
 	return -1;
 }
 
+int LuaAdaptersScene::CalculatePathForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team) {
+	std::list<Vector>& threadScenePath = luaSelfObject->GetScenePath();
+	std::list<int>& threadKinds = luaSelfObject->GetScenePathStepKinds();
+	team = std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour);
+	PathAgent agent = actor ? actor->GetPathAgent() : PathAgent();
+	std::list<PathStepKind> kinds;
+	luaSelfObject->CalculatePath(start, end, threadScenePath, agent, team, &kinds);
+	threadKinds.clear();
+	for (PathStepKind kind: kinds) {
+		threadKinds.push_back(static_cast<int>(kind));
+	}
+	if (!threadScenePath.empty()) {
+		return static_cast<int>(threadScenePath.size());
+	}
+	return -1;
+}
+
 void LuaAdaptersScene::CalculatePathAsync(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team) {
 	team = std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour);
 

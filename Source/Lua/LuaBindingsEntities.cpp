@@ -1260,6 +1260,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Scene) {
 	    .def("DescribePathNodeAt", &Scene::DescribePathNodeAt)
 	    .def("CalculatePath", &LuaAdaptersScene::CalculatePath)
 	    .def("CalculatePath", &LuaAdaptersScene::CalculatePath1)
+	    .def("CalculatePathForActor", &LuaAdaptersScene::CalculatePathForActor)
+	    .def("GetScenePathStepKinds", &Scene::GetScenePathStepKinds, luabind::return_stl_iterator)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync1)
 

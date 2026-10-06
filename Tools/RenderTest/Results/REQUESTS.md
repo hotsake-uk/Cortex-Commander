@@ -7,7 +7,14 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), the crab's lean on purpose** (GoToWpt publishes jetLeanX: towards the waypoint in a climb when the way is clear at
+- **(this push), a tight hand on the column** (GoToWpt: while climbing a column the move keys correct the sideways speed beyond 0.5 m/s,
+  not 1.5: the walk speed carried in at the foot took the unit 40 px off a hatch's column during the climb). Also harness: the gyms'
+  `path for` lines now come from `Scene:CalculatePathForActor` (the unit's own sizes) and carry each step's kind in brackets, so they
+  match the AITRACE `nodes:` lines and the offline model. Expect: in traces, the x of a unit climbing a hatch stays within ~10 px of
+  the column; the `path for` lines may differ from before where the default sizes (standing room 40, half width 6) gave a different
+  route; that is the print catching up, not the AI changing.
+
+- **07c5feeb, the crab's lean on purpose** (GoToWpt publishes jetLeanX: towards the waypoint in a climb when the way is clear at
   chest height, against the speed when braking, else 0; NativeCrabAI sets the move stick to (0.27 x lean, -1), which is a nozzle lean
   in screen terms whatever the crab faces; the four-facing planner predicts a crab's thrust vertical and no longer flips its facing).
   Expect: "crab over the hill" makes progress up the near slope instead of rising and falling in its own column, and arrives; "crab

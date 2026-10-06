@@ -206,9 +206,16 @@ function AIBunkerScript:UpdateScript()
 				actor:SetNumberValue("AITrace", 1);
 			end
 			MovableMan:AddActor(actor);
-			local found = SceneMan.Scene:CalculatePath(SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 3), course.to, actor.JumpHeight, 35, Activity.TEAM_1);
+			-- The unit's own route (its sizes, not the header's defaults), each point with the kind of the step that reaches it.
+			local found = SceneMan.Scene:CalculatePathForActor(actor, SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 3), course.to, Activity.TEAM_1);
+			local kinds = {};
+			for kind in SceneMan.Scene:GetScenePathStepKinds() do table.insert(kinds, kind); end
 			local nodes = "";
-			for node in SceneMan.Scene:GetScenePath() do nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
+			local count = 0;
+			for node in SceneMan.Scene:GetScenePath() do
+				count = count + 1;
+				nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y) .. (count > 1 and kinds[count - 1] and ("(" .. kinds[count - 1] .. ")") or "");
+			end
 			ConsoleMan:PrintString("AIBUNKER path for " .. course.name .. ": " .. tostring(found) .. " nodes:" .. nodes);
 			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 			end
