@@ -57,6 +57,9 @@ function AIGymScript:UpdateScript()
 		for x = 160, 320, 160 do SandboxDo("Concrete beam", Vector(west + x, 616), 0, 0, 1, ""); end
 		-- A wall on the ceiling, so the only way is through.
 		SandboxDo("Concrete pillar", Vector(west + 240, 541), 0, 0, 1, "");
+		-- A room on a floor, with a 30 px doorway at the foot of each side wall: a bunker's corridor, to be crawled through.
+		for x = 0, 480, 160 do SandboxDo("Concrete beam", Vector(west + x, 200), 0, 0, 1, ""); end
+		SandboxDo("Concrete room", Vector(west + 240, 150), 0, 0, 1, "");
 	end
 	if not self.started and t > 3500 then
 		self.started = true;
@@ -67,6 +70,7 @@ function AIGymScript:UpdateScript()
 			{ from = Vector(left - 60, 352), to = Vector(left + 680, 226), name = "steps up" },
 			{ from = Vector(left - 960, 372), to = Vector(left - 290, 372), name = "gap" },
 			{ from = Vector(left - 960, 652), to = Vector(left - 360, 652), name = "low tunnel" },
+			{ from = Vector(left - 960, 192), to = Vector(left - 360, 192), name = "through the room" },
 			{ from = self:GroundAt(middle - 260), to = self:GroundAt(middle + 260), name = "over the hill" },
 			{ from = self:GroundAt(middle - 40), to = self:CaveFloorAt(middle), name = "down into the cave" },
 			-- The scene's own slopes: the far side of the hill drops 500 px over 450.
