@@ -398,19 +398,21 @@ class PathFinder:
         isInNoGrav = False  # g_SceneMan.IsPointInNoGravArea(node->Pos): no such areas in this scene.
         allowDiagonal = not isInNoGrav
 
+        # A fall is paid for by the node: every step into a node still high above the ground costs a little more (FallCost).
+
         down = adj[DOWN]
         if down is not None and down.m_Navigable:
             # (Down through a gap narrower than the body is no way down; down through ground is a dig, and the digger makes its own room.)
-            cost = (1.0 + GetMaterialTransitionCost(mats[DOWN]) + radiatedCost) * (1.0 if (self.RoomToPass(down) or not Open(mats[DOWN])) else 1000.0)
+            cost = (1.0 + GetMaterialTransitionCost(mats[DOWN]) + radiatedCost) * (1.0 if (self.RoomToPass(down) or not Open(mats[DOWN])) else 1000.0) + self.FallCost(down)
             push((down, cost))
 
         rightDown = adj[RIGHTDOWN]
         if rightDown is not None and rightDown.m_Navigable and allowDiagonal:
-            push((rightDown, 1.4 + (GetMaterialTransitionCost(mats[RIGHTDOWN]) * 1.4) + radiatedCost))
+            push((rightDown, 1.4 + (GetMaterialTransitionCost(mats[RIGHTDOWN]) * 1.4) + radiatedCost + self.FallCost(rightDown)))
 
         downLeft = adj[DOWNLEFT]
         if downLeft is not None and downLeft.m_Navigable and allowDiagonal:
-            push((downLeft, 1.4 + (GetMaterialTransitionCost(mats[DOWNLEFT]) * 1.4) + radiatedCost))
+            push((downLeft, 1.4 + (GetMaterialTransitionCost(mats[DOWNLEFT]) * 1.4) + radiatedCost + self.FallCost(downLeft)))
 
         if isInNoGrav or self.NodeIsOnSolidGround(node):
             # Cost to discourage us from going up.
@@ -420,12 +422,12 @@ class PathFinder:
             # way says whether it's a walk, a crawl (slower), or no way through at all for this searcher.
             left = adj[LEFT]
             if left is not None and left.m_Navigable:
-                cost = (1.0 + GetMaterialTransitionCost(mats[LEFT]) + radiatedCost) * (self.HeadRoomFactor(node, left) if Open(mats[LEFT]) else 1.0)
+                cost = (1.0 + GetMaterialTransitionCost(mats[LEFT]) + radiatedCost) * (self.HeadRoomFactor(node, left) if Open(mats[LEFT]) else 1.0) + self.FallCost(left)
                 push((left, cost))
 
             right = adj[RIGHT]
             if right is not None and right.m_Navigable:
-                cost = (1.0 + GetMaterialTransitionCost(mats[RIGHT]) + radiatedCost) * (self.HeadRoomFactor(node, right) if Open(mats[RIGHT]) else 1.0)
+                cost = (1.0 + GetMaterialTransitionCost(mats[RIGHT]) + radiatedCost) * (self.HeadRoomFactor(node, right) if Open(mats[RIGHT]) else 1.0) + self.FallCost(right)
                 push((right, cost))
 
             # Jumping vertically
@@ -515,12 +517,12 @@ class PathFinder:
             # Add cost for digging at 45 degrees and for digging upwards. (A step up a slope wants the head room a walk does.)
             upRight = adj[UPRIGHT]
             if upRight is not None and upRight.m_Navigable and allowDiagonal:
-                cost = (1.4 + (extraUpCost * 1.4) + (GetMaterialTransitionCost(mats[UPRIGHT]) * 1.4 * 3.0) + radiatedCost) * (self.HeadRoomFactor(node, upRight) if Open(mats[UPRIGHT]) else 1.0)
+                cost = (1.4 + (extraUpCost * 1.4) + (GetMaterialTransitionCost(mats[UPRIGHT]) * 1.4 * 3.0) + radiatedCost) * (self.HeadRoomFactor(node, upRight) if Open(mats[UPRIGHT]) else 1.0) + self.FallCost(upRight)
                 push((upRight, cost))
 
             leftUp = adj[LEFTUP]
             if leftUp is not None and leftUp.m_Navigable and allowDiagonal:
-                cost = (1.4 + (extraUpCost * 1.4) + (GetMaterialTransitionCost(mats[LEFTUP]) * 1.4 * 3.0) + radiatedCost) * (self.HeadRoomFactor(node, leftUp) if Open(mats[LEFTUP]) else 1.0)
+                cost = (1.4 + (extraUpCost * 1.4) + (GetMaterialTransitionCost(mats[LEFTUP]) * 1.4 * 3.0) + radiatedCost) * (self.HeadRoomFactor(node, leftUp) if Open(mats[LEFTUP]) else 1.0) + self.FallCost(leftUp)
                 push((leftUp, cost))
 
         return adjacentList
@@ -581,6 +583,25 @@ class PathFinder:
         return material.integrity <= 5.0
 
     # --- PathFinder::RoomToPass (735-737) -------------------------------------------------------------------------------------------------
+    # --- PathFinder::FallCost -------------------------------------------------------------------------------------------------------------
+    C_SAFE_FALL_NODES = 4
+    C_FALL_COST_REACH = 24
+    C_FALL_COST_PER_NODE = 2.5
+
+    def DropNodes(self, node):
+        """Down the column to the first node that stands on something, up to the reach."""
+        drop = 0
+        while node is not None and not self.NodeIsOnSolidGround(node) and drop < self.C_FALL_COST_REACH:
+            node = node.AdjacentNodes[DOWN]
+            drop += 1
+        return drop
+
+    def FallCost(self, to):
+        """Nothing for a flier or within a safe drop (a storey); beyond that, so much a node for the height still to fall."""
+        if self.s.JumpHeight == FLT_MAX:
+            return 0.0
+        return self.C_FALL_COST_PER_NODE if self.DropNodes(to) > self.C_SAFE_FALL_NODES else 0.0
+
     def RoomToPass(self, node, widths=2.0):
         return self.s.JumpHeight == FLT_MAX or float(node.ClearLeft + node.ClearRight + 1) >= self.s.HalfWidth * widths  # +1: the node's own column
 

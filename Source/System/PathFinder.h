@@ -216,6 +216,9 @@ namespace RTE {
 #pragma endregion
 
 	private:
+		static constexpr int c_SafeFallNodes = 4; //!< A drop of this many nodes (a storey, 96 px) costs nothing extra: it is what a hatch is.
+		static constexpr int c_FallCostReach = 24; //!< How far down a fall is measured for its cost; past this it is as dear as it gets.
+		static constexpr float c_FallCostPerNode = 2.5F; //!< The extra cost of each node of a fall that is still more than the safe drop above the ground: about what a rung of a jump costs, since the jetpack brakes the fall with fuel at the bottom.
 		static constexpr float c_NodeCostChangeEpsilon = 5.0F; //!< The minimum change in a PathNodes's cost for the pathfinder to recognize a change and reset itself. This is so minor changes (e.g. blood particles) don't force constant pathfinder resets.
 
 		MicroPather* m_Pather; //!< The actual pathing object that does the pathfinding work. Owned.
@@ -257,6 +260,12 @@ namespace RTE {
 
 		/// Whether a material along an edge is as good as air (nothing to dig), so the room at the nodes is what matters.
 		bool Open(const Material& material) const;
+
+		/// How many nodes a body falls from a node before it stands on something, up to c_FallCostReach.
+		int DropNodes(const PathNode& node) const;
+
+		/// What a step into a node costs for the fall it is part of: nothing within a storey of the ground, a rung's worth higher up.
+		float FallCost(const PathNode& to) const;
 
 		/// Whether the searcher's body fits through a node, by the room to either side of it.
 		/// Whether a body of the searcher's width fits through this node sideways: the air either side of it over its floor adds up to

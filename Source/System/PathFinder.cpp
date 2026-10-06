@@ -512,21 +512,27 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	bool isInNoGrav = g_SceneMan.IsPointInNoGravArea(node->Pos);
 	bool allowDiagonal = !isInNoGrav; // We don't allow diagonals in nograv to improve automover behaviour
 
+	// A fall is paid for by the node: every step into a node that is still high above the ground (FallCost) costs a little more, so a
+	// fall costs by its height, however it began. Falling cost nothing however far, so a route that left a bunker by an opening, dropped
+	// four hundred pixels down its outside wall and came back in at the bottom beat the hatches inside; the jetpack then paid for the
+	// fall in fuel, braking at the bottom, or the body did. (Charged once at the step off something standing, the search hopped up a
+	// rung or two of a jump and stepped off those into the drop for nothing: a search with no memory can't tell a rung from a fall.)
+
 	if (node->Down && node->Down->m_Navigable) {
 		// (Down through a gap narrower than the body is no way down; down through ground is a dig, and the digger makes its own room.)
-		adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->DownMaterial) + radiatedCost) * ((RoomToPass(*node->Down) || !Open(*node->DownMaterial)) ? 1.0F : 1000.0F);
+		adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->DownMaterial) + radiatedCost) * ((RoomToPass(*node->Down) || !Open(*node->DownMaterial)) ? 1.0F : 1000.0F) + FallCost(*node->Down);
 		adjCost.state = static_cast<void*>(node->Down);
 		adjacentList->push_back(adjCost);
 	}
 
 	if (node->RightDown && node->RightDown->m_Navigable && allowDiagonal) {
-		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->RightDownMaterial) * 1.4F) + radiatedCost;
+		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->RightDownMaterial) * 1.4F) + radiatedCost + FallCost(*node->RightDown);
 		adjCost.state = static_cast<void*>(node->RightDown);
 		adjacentList->push_back(adjCost);
 	}
 
 	if (node->DownLeft && node->DownLeft->m_Navigable && allowDiagonal) {
-		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->DownLeftMaterial) * 1.4F) + radiatedCost;
+		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->DownLeftMaterial) * 1.4F) + radiatedCost + FallCost(*node->DownLeft);
 		adjCost.state = static_cast<void*>(node->DownLeft);
 		adjacentList->push_back(adjCost);
 	}
@@ -538,14 +544,15 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards. The head room along the way says
 		// whether it's a walk, a crawl (slower), or no way through at all for this searcher.
 		// (The room only matters where the way is open: through ground, a digger makes its own.)
+		// (A sideways step into the air over a drop is the start of a fall too, and pays like the rest of it.)
 		if (node->Left && node->Left->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F);
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F) + FallCost(*node->Left);
 			adjCost.state = static_cast<void*>(node->Left);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->Right && node->Right->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F);
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
 		}
@@ -671,13 +678,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Add cost for digging at 45 degrees and for digging upwards. (A step up a slope wants the head room a walk does: a crawl's worth at
 		// the least, and dearer under a low ceiling.)
 		if (node->UpRight && node->UpRight->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F) + FallCost(*node->UpRight); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->UpRight);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->LeftUp && node->LeftUp->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F) + FallCost(*node->LeftUp); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
 		}
@@ -735,6 +742,27 @@ bool PathFinder::NodeIsOnSolidGround(const PathNode& node) const {
 	// Anything that isn't air is stood on: the bushes on a hillside are walked over, not through, and taking only what's too hard to dig
 	// as ground left every node over a thick layer of them hanging in the air, with no way along but a jet.
 	return s_JumpHeight == FLT_MAX || (node.Down && node.DownMaterial->GetIntegrity() > 0.0F);
+}
+
+int PathFinder::DropNodes(const PathNode& node) const {
+	// Down the column to the first node that stands on something.
+	int drop = 0;
+	const PathNode* current = &node;
+	while (current && !NodeIsOnSolidGround(*current) && drop < c_FallCostReach) {
+		current = current->Down;
+		++drop;
+	}
+	return drop;
+}
+
+float PathFinder::FallCost(const PathNode& to) const {
+	// Nothing for a flier or in no gravity, and nothing within a storey of the ground, which is what a hatch drops. Higher than that, each
+	// node of the fall costs about what a rung of a jump does: the jetpack brakes a long fall with fuel at the bottom, and a body without
+	// one takes the fall. (The height is measured by walking down the column to the first node that stands on something.)
+	if (s_JumpHeight == FLT_MAX || g_SceneMan.IsPointInNoGravArea(to.Pos)) {
+		return 0.0F;
+	}
+	return DropNodes(to) > c_SafeFallNodes ? c_FallCostPerNode : 0.0F;
 }
 
 bool PathFinder::Open(const Material& material) const {
