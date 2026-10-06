@@ -33,6 +33,10 @@ namespace RTE {
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 
+		/// The play key (P) in the Sandbox game mode: from above, steps into your character; from a unit, goes back above with the tools still hidden.
+		/// @param atPointer Stepping in: put the character down where the mouse points first.
+		static void TogglePlay(bool atPointer);
+
 		/// Gets whether you're looking around the Sandbox game mode from above, in no unit, with or without the tools showing. The mouse then moves the view.
 		static bool IsLookingAround();
 

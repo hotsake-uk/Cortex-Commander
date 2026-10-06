@@ -114,6 +114,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxAutoBattleSide", &Sandbox::SetAutoBattleSide),
 	                         luabind::def("SandboxStartAutoBattle", &Sandbox::StartAutoBattle),
 	                         luabind::def("SandboxPauseAI", &Sandbox::SetAIPaused),
+	                         luabind::def("SandboxTogglePlay", &Sandbox::TogglePlay),
 	                         luabind::def("EmitVisualParticles", &EffectsParticles::Emit),
 	                         luabind::def("EaseIn", &EaseIn),
 	                         luabind::def("EaseOut", &EaseOut),

@@ -282,6 +282,11 @@ void PollSDLEvents() {
 		    g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 			g_DebugMan.ToggleTools((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
 		}
+		// P in the Sandbox game mode: into your character, or back above. Shift+P puts the character down where the mouse points first.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_P && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
+		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
+			Sandbox::TogglePlay((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
+		}
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {
 			if (sdlEvent.key.scancode == SDL_SCANCODE_F6) {
 				g_DebugMan.ToggleWorldDebug();

@@ -59,7 +59,7 @@ Smoke Grenade, Toxic Gas Grenade, Flare, **Napalm Flamer** (burning fuel that po
 
 ### Sandbox mode
 Pick **Sandbox** on the main menu and play as a god:
-- **Tab** switches between the sandbox tools (the world pauses while they're open) and **your own character**: a body and kit you choose, with optional abilities (no harm, endless jetpack and ammunition, flying through anything, ignored by enemies). Or switch the character off and just look around.
+- **Tab** hides and shows the sandbox tools (the world pauses while they're open, and whatever tool you picked keeps working with them hidden). **P** puts you in **your own character**: a body and kit you choose, with optional abilities (no harm, endless jetpack and ammunition, flying through anything, ignored by enemies). Or switch the character off and just look around.
 - **Spawn anything:** units from every faction (with squad size, loadout and orders), brains, items, and bunkers through the game's own build menu, for four sides.
 - **Drop squads** by dropship or rocket. Run **auto battles** where each side gets a faction and a budget and the AI buys and sends waves until one side is left.
 - **Command** units: box-select them, then click to move or attack. **Follow** a unit, or let the camera follow the action. **Take control** of any unit yourself.
@@ -85,7 +85,8 @@ Pick **Sandbox** on the main menu and play as a god:
 
 | Key | What it does |
 |---|---|
-| **Tab** | In a game: every tool window away, or back. In Sandbox mode this switches between the tools and your own character (Shift+Tab puts it down at the pointer) |
+| **Tab** | In a game: every tool window away, or back. In Sandbox mode the tool in hand keeps working with the windows hidden |
+| **P** | Sandbox mode: into your own character, or back above (Shift+P or Shift+Tab puts it down at the pointer first) |
 | **F6** | Settings panel: every setting that can be tuned while the game runs, in categories, searchable, with named presets |
 | **F7** | Sandbox tools (the whole game in Sandbox mode, a debug panel elsewhere) |
 | **F8** | Photo mode |

@@ -2729,9 +2729,39 @@ void Sandbox::OnToolsClosed(bool atPointer) {
 	if (!IsGodMode() || !game || game->IsFreeBuildMode() || s_Possessed) {
 		return;
 	}
+	// With a tool in hand, or no character, the tools are only hidden: you stay above, the tool goes on working on the world, and P steps into the character.
+	// With nothing in hand ("Look around") putting the tools away is stepping into the character, as is Shift+Tab whatever is in hand.
+	if (!s_Player.EnterOnClose || (CurrentTool().Kind != Tool::None && !atPointer)) {
+		s_PlayHintSeconds = 8.0F;
+		return;
+	}
+	if (!s_CatalogueBuilt) {
+		BuildCatalogue();
+	}
+	Stroke stroke;
+	stroke.Kind = Tool::PlayCharacter;
+	stroke.Count = atPointer ? 1 : 0;
+	stroke.Position = MouseScenePosition();
+	s_Queue.push_back(stroke);
+}
+
+void Sandbox::TogglePlay(bool atPointer) {
+	GameActivity* game = CurrentGame();
+	if (!IsGodMode() || !game || game->IsFreeBuildMode()) {
+		return;
+	}
+	if (s_Possessed) {
+		// Back above, with the tools as they were (hidden) and whatever tool was in hand still in it.
+		Stroke release;
+		release.Kind = Tool::Release;
+		s_Queue.push_back(release);
+		s_Possessed = nullptr;
+		s_FreeCameraStarted = false;
+		s_PlayHintSeconds = 8.0F;
+		return;
+	}
 	if (!s_Player.EnterOnClose) {
-		// No character: the tools are only hidden, and you go on looking around.
-		s_PlayHintSeconds = 6.0F;
+		g_ConsoleMan.PrintString("SANDBOX: There is no character to play. Tick \"Have a character of my own\" in the sandbox's You tab.");
 		return;
 	}
 	if (!s_CatalogueBuilt) {
@@ -2801,7 +2831,8 @@ bool Sandbox::IsLookingAround() {
 }
 
 bool Sandbox::CapturesWorldClicks() {
-	return s_Open && CurrentTool().Kind != Tool::None && InGame() && !ImGui::GetIO().WantCaptureMouse;
+	// With the tools hidden in the Sandbox game mode, the tool in hand still works on the world.
+	return (s_Open || IsLookingAround()) && CurrentTool().Kind != Tool::None && InGame() && !ImGui::GetIO().WantCaptureMouse;
 }
 
 void Sandbox::DrawGUI() {
@@ -2877,8 +2908,17 @@ void Sandbox::DrawGUI() {
 		s_PlayHintSeconds -= ImGui::GetIO().DeltaTime;
 		std::string hint = "Tab: sandbox tools";
 		if (!s_Possessed) {
+			if (s_Player.EnterOnClose) {
+				hint += "    P: play";
+			}
+			if (CurrentTool().Kind != Tool::None) {
+				hint += std::string("    In hand: ") + CurrentTool().Name;
+			}
 			hint += "    Right drag / WASD: move    Wheel: zoom";
-		} else if (s_Possessed == GetRef(s_PlayerUnit)) {
+		} else {
+			hint += "    P: back above";
+		}
+		if (s_Possessed && s_Possessed == GetRef(s_PlayerUnit)) {
 			if (s_Player.FlyKey) {
 				hint += s_Flying ? "    N: stop flying" : "    N: fly";
 			}
@@ -2901,12 +2941,10 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !Colony::Buildings().empty() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		DrawColony();
 	}
-	if (!s_Open && IsLookingAround()) {
-		// The tools are hidden but you're still above it all: the view goes on moving with the mouse and keys.
-		UpdateFreeCamera();
-		return;
-	}
-	if (!s_Open) {
+	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
+	// working. Only the window itself is left out.
+	bool hiddenButAbove = !s_Open && IsLookingAround();
+	if (!s_Open && !hiddenButAbove) {
 		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
 			// Automated test runs keep the window shut, but the camera they've placed has to stay where they put it.
 			UpdateFreeCamera();
@@ -2981,6 +3019,9 @@ void Sandbox::DrawGUI() {
 		DrawSelection();
 	}
 
+	if (hiddenButAbove) {
+		return;
+	}
 	ImGui::SetNextWindowSize(ImVec2(430.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 445.0F, 40.0F), ImGuiCond_FirstUseEver);
 	if (g_DebugMan.BeginPanel(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open, DebugMan::PanelSide::Left)) {
@@ -3042,7 +3083,7 @@ void Sandbox::DrawGUI() {
 					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
 					ImGui::EndTabItem();
 				} else {
-				ImGui::TextWrapped("For walking about in what you've made. Tab puts the tools away and puts you in it; Tab again brings you back here. Shift+Tab puts it down where the mouse points.");
+				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
 				if (ImGui::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayCharacter;
