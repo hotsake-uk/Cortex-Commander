@@ -4,6 +4,7 @@
 #include "WindowMan.h"
 #include "PerformanceMan.h"
 #include "imgui/imgui.h"
+#include "ToolWidgets.h"
 #include "tracy/Tracy.hpp"
 #include "Draw.h"
 #include "RenderTarget.h"
@@ -251,9 +252,9 @@ void DebugMan::DrawToolWindowControls() {
 			m_PanelWidth = std::clamp(panelWidth, 240.0F, 700.0F);
 		}
 		ImGui::SetItemTooltip("How wide the side panels are, before the size above: type a number from 240 to 700 and press Enter.");
-		ImGui::Checkbox("The game's own pixel lettering", &m_PixelFont);
+		ToolUI::Checkbox("The game's own pixel lettering", &m_PixelFont);
 		ImGui::SetItemTooltip("On: these windows are lettered in the game's small pixel font. Off: a smooth font, which is easier to read at length.");
-		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
+		ToolUI::Checkbox("Dock tool windows at the sides", &m_DockPanels);
 		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
 		ImGui::TreePop();
 	}
@@ -498,25 +499,25 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::TextWrapped("Start a game to use photo mode.");
 		} else {
 			LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
-			ImGui::Checkbox("Freeze time", &m_PhotoFreeze);
+			ToolUI::Checkbox("Freeze time", &m_PhotoFreeze);
 			ImGui::SameLine();
-			ImGui::Checkbox("Hide HUD", &m_PhotoHideHUD);
+			ToolUI::Checkbox("Hide HUD", &m_PhotoHideHUD);
 			ImGui::TextDisabled("Camera: drag with right mouse, or arrow keys (Shift = faster)");
 
 			ImGui::SeparatorText("Look");
-			if (ImGui::Button("Natural##Look")) {
+			if (ToolUI::Button("Natural##Look")) {
 				settings.ApplyLook(LightingSettings::LookNatural);
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Gritty##Look")) {
+			if (ToolUI::Button("Gritty##Look")) {
 				settings.ApplyLook(LightingSettings::LookGritty);
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Vivid##Look")) {
+			if (ToolUI::Button("Vivid##Look")) {
 				settings.ApplyLook(LightingSettings::LookVivid);
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Noir##Look")) {
+			if (ToolUI::Button("Noir##Look")) {
 				settings.ApplyLook(LightingSettings::LookNoir);
 			}
 			ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
@@ -532,18 +533,18 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
 			ImGui::SliderFloat("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 			ImGui::SliderFloat("Chromatic aberration", &settings.ChromaticAberration, 0.0F, 4.0F);
-			if (ImGui::Button("Reset look")) {
+			if (ToolUI::Button("Reset look")) {
 				settings = m_PhotoSavedSettings;
 			}
 			ImGui::SameLine();
-			ImGui::Checkbox("Keep look changes", &m_PhotoKeepLook);
+			ToolUI::Checkbox("Keep look changes", &m_PhotoKeepLook);
 
 			ImGui::Separator();
 			ImGui::Combo("Resolution", &m_PhotoScale, "As shown in the window\0"
 			                                          "2x (1920x1080)\0"
 			                                          "3x\0"
 			                                          "4x (3840x2160)\0");
-			if (ImGui::Button("Take screenshot", ImVec2(-1.0F, 0.0F))) {
+			if (ToolUI::Button("Take screenshot", ImVec2(-1.0F, 0.0F))) {
 				m_ScreenshotRequested = true;
 			}
 			ImGui::TextDisabled("Saved to the ScreenShots folder.");
@@ -554,7 +555,7 @@ void DebugMan::PhotoModeGUI() {
 
 void DebugMan::FreeCamGUI() {
 	if (ImGui::TreeNode("Free Cam")) {
-		ImGui::Checkbox("Enable Free Cam", &m_EnableFreeCam);
+		ToolUI::Checkbox("Enable Free Cam", &m_EnableFreeCam);
 		if (m_EnableFreeCam && g_SceneMan.GetScene()) {
 			ImDrawList* draw_list = ImGui::GetWindowDrawList();
 			ImVec2 p = ImGui::GetCursorScreenPos();

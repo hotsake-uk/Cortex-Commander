@@ -35,6 +35,7 @@
 #include "Magazine.h"
 
 #include "imgui/imgui.h"
+#include "ToolWidgets.h"
 #include "glad/gl.h"
 
 #include <cstdlib>
@@ -45,6 +46,7 @@
 #include <initializer_list>
 #include <list>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -2173,13 +2175,457 @@ namespace {
 		}
 	}
 
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star };
+	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
+	constexpr const char* c_IconArt[] = {
+	    // Eye
+	    "............"
+	    "............"
+	    "...######..."
+	    "..#......#.."
+	    ".#..####..#."
+	    "#..#++##...#"
+	    "#..#+###...#"
+	    ".#..####..#."
+	    "..#......#.."
+	    "...######..."
+	    "............"
+	    "............",
+	    // Arrows
+	    ".....##....."
+	    "....####...."
+	    "...######..."
+	    ".....##....."
+	    "..#..##..#.."
+	    ".##########."
+	    ".##########."
+	    "..#..##..#.."
+	    ".....##....."
+	    "...######..."
+	    "....####...."
+	    ".....##.....",
+	    // Target
+	    ".....##....."
+	    "...######..."
+	    "..##.##.##.."
+	    ".##..##..##."
+	    ".#........#."
+	    "####.++.####"
+	    "####.++.####"
+	    ".#........#."
+	    ".##..##..##."
+	    "..##.##.##.."
+	    "...######..."
+	    ".....##.....",
+	    // Person
+	    "....####...."
+	    "...#++###..."
+	    "...#+####..."
+	    "....####...."
+	    "..########.."
+	    ".##.####.##."
+	    ".##.####.##."
+	    ".##.####.##."
+	    "....####...."
+	    "....#..#...."
+	    "...##..##..."
+	    "...##..##...",
+	    // Cross
+	    "............"
+	    ".##......##."
+	    ".###....###."
+	    "..###..###.."
+	    "...######..."
+	    "....####...."
+	    "....####...."
+	    "...######..."
+	    "..###..###.."
+	    ".###....###."
+	    ".##......##."
+	    "............",
+	    // Flag
+	    "..#........."
+	    "..######...."
+	    "..#+#####..."
+	    "..########.."
+	    "..#######..."
+	    "..######...."
+	    "..#........."
+	    "..#........."
+	    "..#........."
+	    "..#........."
+	    ".####......."
+	    "######......",
+	    // Jar
+	    "...######..."
+	    "..########.."
+	    "..#......#.."
+	    ".#..####..#."
+	    ".#.#++###.#."
+	    ".#.#+####.#."
+	    ".#.######.#."
+	    ".#..####..#."
+	    ".#........#."
+	    "..########.."
+	    ".##########."
+	    ".##########.",
+	    // Gun
+	    "............"
+	    "............"
+	    ".##########."
+	    ".#+########."
+	    ".##########."
+	    ".####..#...."
+	    ".###..##...."
+	    ".###........"
+	    ".###........"
+	    ".##........."
+	    "............"
+	    "............",
+	    // Wall
+	    "############"
+	    "#+###+###+##"
+	    "############"
+	    "............"
+	    "############"
+	    "##+###+###+#"
+	    "############"
+	    "............"
+	    "############"
+	    "#+###+###+##"
+	    "############"
+	    "............",
+	    // Down
+	    "...######..."
+	    "..########.."
+	    ".##########."
+	    ".#.#.##.#.#."
+	    ".....##....."
+	    ".....##....."
+	    "..#..##..#.."
+	    "..########.."
+	    "...######..."
+	    "....####...."
+	    ".....##....."
+	    "............",
+	    // Flame
+	    ".....#......"
+	    "....##......"
+	    "....###..#.."
+	    "...####.##.."
+	    "..#########."
+	    "..#########."
+	    ".####++####."
+	    ".###++++###."
+	    ".###++++###."
+	    "..##++++##.."
+	    "...######..."
+	    "............",
+	    // Drop
+	    ".....#......"
+	    ".....##....."
+	    "....###....."
+	    "....####...."
+	    "...######..."
+	    "..########.."
+	    "..#+######.."
+	    ".##+#######."
+	    ".##+#######."
+	    "..########.."
+	    "...######..."
+	    "............",
+	    // Cloud
+	    "............"
+	    "....###....."
+	    "...#####.##."
+	    "..##########"
+	    ".###########"
+	    "############"
+	    "############"
+	    ".##########."
+	    "............"
+	    "..#...#...#."
+	    "....#...#..."
+	    "............",
+	    // Grains
+	    "............"
+	    "............"
+	    ".....#......"
+	    "....#+#....."
+	    "...#####...."
+	    "..#+####.#.."
+	    ".########+#."
+	    ".#########.."
+	    "############"
+	    "############"
+	    "............"
+	    "............",
+	    // Chunk
+	    "............"
+	    "...#####...."
+	    "..#++####..."
+	    ".#+#######.."
+	    ".##########."
+	    ".##########."
+	    ".##########."
+	    ".##########."
+	    "..########.."
+	    "...######..."
+	    "............"
+	    "............",
+	    // Pick
+	    "..######...."
+	    ".########..."
+	    "##....####.."
+	    "#.......###."
+	    "........###."
+	    ".......###.."
+	    "......###..."
+	    ".....###...."
+	    "....###....."
+	    "...###......"
+	    "..###......."
+	    "..##........",
+	    // Bomb
+	    "........#.#."
+	    ".......#.#.."
+	    "......##...."
+	    "....####...."
+	    "..########.."
+	    ".##########."
+	    ".#+########."
+	    ".#+########."
+	    ".##########."
+	    ".##########."
+	    "..########.."
+	    "....####....",
+	    // Rocket
+	    ".........##."
+	    "........###."
+	    "......####.."
+	    "....######.."
+	    "...#+####..."
+	    "..#+####...."
+	    "..#####....."
+	    ".#.###......"
+	    "#..##......."
+	    ".#.........."
+	    "#.#........."
+	    "............",
+	    // Bolt
+	    "......###..."
+	    ".....###...."
+	    "....###....."
+	    "...###......"
+	    "..#######..."
+	    ".....###...."
+	    "....###....."
+	    "...###......"
+	    "..###......."
+	    "..##........"
+	    ".##........."
+	    ".#..........",
+	    // Star
+	    ".....#......"
+	    ".....#......"
+	    "....###....."
+	    "....###....."
+	    "###########."
+	    ".#########.."
+	    "..#######..."
+	    "...#####...."
+	    "..###.###..."
+	    "..##...##..."
+	    ".##.....##.."
+	    "............",
+	};
+
+	struct ToolLook {
+		Icon Art;
+		ImU32 Color;
+	};
+
+	ToolLook LookOf(Tool kind) {
+		switch (kind) {
+			case Tool::None:
+				return {Icon::Eye, IM_COL32(232, 224, 190, 255)};
+			case Tool::Command:
+				return {Icon::Arrows, IM_COL32(232, 224, 190, 255)};
+			case Tool::Follow:
+				return {Icon::Target, IM_COL32(232, 224, 190, 255)};
+			case Tool::Possess:
+				return {Icon::Person, IM_COL32(242, 182, 61, 255)};
+			case Tool::Remove:
+				return {Icon::Cross, IM_COL32(239, 106, 91, 255)};
+			case Tool::RallyPoint:
+				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
+			case Tool::Unit:
+				return {Icon::Person, IM_COL32(232, 224, 190, 255)};
+			case Tool::Brain:
+				return {Icon::Jar, IM_COL32(240, 150, 170, 255)};
+			case Tool::Item:
+				return {Icon::Gun, IM_COL32(200, 205, 215, 255)};
+			case Tool::Structure:
+				return {Icon::Wall, IM_COL32(170, 170, 165, 255)};
+			case Tool::Drop:
+				return {Icon::Down, IM_COL32(232, 224, 190, 255)};
+			case Tool::PlayCharacter:
+				return {Icon::Person, IM_COL32(130, 220, 120, 255)};
+			case Tool::Barracks:
+				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
+			case Tool::Extractor:
+				return {Icon::Wall, IM_COL32(120, 200, 230, 255)};
+			case Tool::Fire:
+				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
+			case Tool::Napalm:
+				return {Icon::Flame, IM_COL32(255, 90, 30, 255)};
+			case Tool::NapalmRain:
+				return {Icon::Flame, IM_COL32(255, 60, 30, 255)};
+			case Tool::Water:
+				return {Icon::Drop, IM_COL32(90, 170, 240, 255)};
+			case Tool::Lava:
+				return {Icon::Drop, IM_COL32(255, 110, 30, 255)};
+			case Tool::Acid:
+				return {Icon::Drop, IM_COL32(140, 230, 60, 255)};
+			case Tool::Oil:
+				return {Icon::Drop, IM_COL32(120, 90, 140, 255)};
+			case Tool::WaterSpawner:
+				return {Icon::Down, IM_COL32(90, 170, 240, 255)};
+			case Tool::Smoke:
+				return {Icon::Cloud, IM_COL32(190, 190, 190, 255)};
+			case Tool::ToxicGas:
+				return {Icon::Cloud, IM_COL32(150, 220, 80, 255)};
+			case Tool::LooseSand:
+				return {Icon::Grains, IM_COL32(222, 190, 120, 255)};
+			case Tool::LooseSnow:
+				return {Icon::Grains, IM_COL32(240, 245, 255, 255)};
+			case Tool::Sand:
+				return {Icon::Grains, IM_COL32(200, 170, 100, 255)};
+			case Tool::Boulder:
+				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
+			case Tool::Slab:
+				return {Icon::Chunk, IM_COL32(180, 180, 175, 255)};
+			case Tool::Earth:
+				return {Icon::Chunk, IM_COL32(150, 100, 60, 255)};
+			case Tool::Ice:
+				return {Icon::Chunk, IM_COL32(170, 220, 250, 255)};
+			case Tool::Grass:
+				return {Icon::Chunk, IM_COL32(110, 180, 70, 255)};
+			case Tool::Wood:
+				return {Icon::Chunk, IM_COL32(170, 120, 70, 255)};
+			case Tool::Concrete:
+				return {Icon::Chunk, IM_COL32(170, 170, 165, 255)};
+			case Tool::BoulderRain:
+				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
+			case Tool::Dig:
+				return {Icon::Pick, IM_COL32(232, 224, 190, 255)};
+			case Tool::Grenade:
+				return {Icon::Bomb, IM_COL32(120, 150, 90, 255)};
+			case Tool::BigBomb:
+				return {Icon::Bomb, IM_COL32(90, 90, 100, 255)};
+			case Tool::Demolition:
+				return {Icon::Bomb, IM_COL32(239, 106, 91, 255)};
+			case Tool::BunkerBuster:
+				return {Icon::Bomb, IM_COL32(242, 182, 61, 255)};
+			case Tool::CarpetBomb:
+				return {Icon::Bomb, IM_COL32(150, 150, 160, 255)};
+			case Tool::Artillery:
+				return {Icon::Bomb, IM_COL32(200, 160, 90, 255)};
+			case Tool::Meteor:
+				return {Icon::Rocket, IM_COL32(255, 140, 40, 255)};
+			case Tool::RocketStrike:
+				return {Icon::Rocket, IM_COL32(220, 220, 225, 255)};
+			case Tool::RocketBarrage:
+				return {Icon::Rocket, IM_COL32(239, 106, 91, 255)};
+			case Tool::CrashRocket:
+				return {Icon::Rocket, IM_COL32(242, 182, 61, 255)};
+			case Tool::CrashDropship:
+				return {Icon::Rocket, IM_COL32(120, 200, 230, 255)};
+			case Tool::Lightning:
+				return {Icon::Bolt, IM_COL32(255, 240, 120, 255)};
+			case Tool::OrbitalBeam:
+				return {Icon::Bolt, IM_COL32(120, 220, 255, 255)};
+			case Tool::Effect:
+				return {Icon::Star, IM_COL32(255, 220, 120, 255)};
+			case Tool::BuildBeam:
+				return {Icon::Wall, IM_COL32(170, 170, 165, 255)};
+			case Tool::BuildPillar:
+				return {Icon::Wall, IM_COL32(170, 170, 165, 255)};
+			case Tool::BuildRoom:
+				return {Icon::Wall, IM_COL32(170, 170, 165, 255)};
+			case Tool::BuildTower:
+				return {Icon::Wall, IM_COL32(200, 200, 195, 255)};
+			case Tool::BuildIsland:
+				return {Icon::Chunk, IM_COL32(150, 100, 60, 255)};
+			case Tool::BuildTank:
+				return {Icon::Drop, IM_COL32(90, 170, 240, 255)};
+			case Tool::BuildBridge:
+				return {Icon::Wall, IM_COL32(170, 120, 70, 255)};
+			default:
+				return {Icon::Star, IM_COL32(232, 224, 190, 255)};
+		}
+	}
+
+	/// Draws one of the tool pictures, each of its pixels a square of the size given.
+	void DrawIcon(ImDrawList* drawList, Icon icon, ImVec2 at, float pixel, ImU32 color) {
+		const char* art = c_IconArt[static_cast<int>(icon)];
+		ImU32 highlight = IM_COL32(255, 255, 255, (color >> IM_COL32_A_SHIFT) & 0xFF);
+		for (int y = 0; y < 12; ++y) {
+			for (int x = 0; x < 12; ++x) {
+				char dot = art[y * 12 + x];
+				if (dot != '.') {
+					drawList->AddRectFilled(ImVec2(at.x + static_cast<float>(x) * pixel, at.y + static_cast<float>(y) * pixel), ImVec2(at.x + static_cast<float>(x + 1) * pixel, at.y + static_cast<float>(y + 1) * pixel), dot == '+' ? highlight : color);
+				}
+			}
+		}
+	}
+
+	/// Test runs can't click a tab, so they name the one the sandbox window is to open on: CCCP_TEST_TAB=Spawn. Asked for once, on the first frame.
+	ImGuiTabItemFlags TestTab(const char* name) {
+		static const char* wanted = std::getenv("CCCP_TEST_TAB");
+		static int frames = 0;
+		if (wanted && std::string(wanted) == name && frames < 3) {
+			++frames;
+			return ImGuiTabItemFlags_SetSelected;
+		}
+		return ImGuiTabItemFlags_None;
+	}
+
+	/// The tools to pick from, as a row of tiles: each its picture with its name under it, the one in hand lit up.
 	void ToolButtons(std::initializer_list<Tool> tools) {
+		const ImGuiStyle& style = ImGui::GetStyle();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		float pixel = ToolUI::Pixel() * 2.0F;
+		const int perRow = 4;
+		float gap = style.ItemSpacing.x * 0.5F;
+		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float pad = pixel * 2.0F;
+		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int column = 0;
 		for (Tool kind: tools) {
-			if (column++ % 4 != 0) {
-				ImGui::SameLine();
+			int index = ToolIndex(kind);
+			if (column++ % perRow != 0) {
+				ImGui::SameLine(0.0F, gap);
 			}
-			ImGui::RadioButton(c_Tools[ToolIndex(kind)].Name, &s_ToolIndex, ToolIndex(kind));
+			ImGui::PushID(index);
+			ImVec2 at = ImGui::GetCursorScreenPos();
+			if (ImGui::InvisibleButton("##tool", ImVec2(width, height))) {
+				s_ToolIndex = index;
+			}
+			bool hovered = ImGui::IsItemHovered();
+			bool selected = s_ToolIndex == index;
+			ImVec2 to(at.x + width, at.y + height);
+			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
+			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			ToolLook look = LookOf(kind);
+			DrawIcon(drawList, look.Art, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, look.Color);
+			const char* name = c_Tools[index].Name;
+			float wrap = width - pad;
+			ImVec2 nameSize = ImGui::CalcTextSize(name, nullptr, false, wrap);
+			ImGui::PushClipRect(at, to, true);
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name, nullptr, wrap);
+			ImGui::PopClipRect();
+			ImGui::PopID();
 		}
 	}
 
@@ -2189,7 +2635,7 @@ namespace {
 				ImGui::SameLine();
 			}
 			ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
-			ImGui::RadioButton(c_SideNames[side], &s_Team, side);
+			ToolUI::RadioButton(c_SideNames[side], &s_Team, side);
 			ImGui::PopStyleColor();
 		}
 	}
@@ -2252,19 +2698,52 @@ namespace {
 		PiecePicture& picture = pictures[key];
 		const Entity* entity = g_PresetMan.GetEntityPreset(preset.ClassName, preset.PresetName, preset.ModuleID);
 		std::vector<BITMAP*> layers;
+		std::unique_ptr<BITMAP, void (*)(BITMAP*)> portrait(nullptr, destroy_bitmap);
+		int cropX = 0, cropY = 0, cropWidth = 0, cropHeight = 0; //!< If set, the part of the one layer that is the picture.
 		if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
 			layers = {terrainObject->GetBGColorBitmap(), terrainObject->GetFGColorBitmap()};
 			picture.OffsetX = terrainObject->GetBitmapOffset().m_X;
 			picture.OffsetY = terrainObject->GetBitmapOffset().m_Y;
+		} else if (const Actor* actorPreset = dynamic_cast<const Actor*>(entity); actorPreset && !dynamic_cast<const ADoor*>(entity)) {
+			// A unit is many parts: a copy of it is stood up and drawn whole, the way the game's build menu shows the thing in hand, and the picture cut to fit.
+			const int room = 160;
+			portrait.reset(create_bitmap_ex(8, room, room));
+			clear_to_color(portrait.get(), ColorKeys::g_MaskColor);
+			if (Actor* copy = dynamic_cast<Actor*>(actorPreset->Clone())) {
+				copy->SetPos(Vector(static_cast<float>(room / 2), static_cast<float>(room / 2)));
+				copy->SetTeam(0);
+				copy->FullUpdate();
+				copy->SetPos(Vector(static_cast<float>(room / 2), static_cast<float>(room / 2)));
+				copy->Draw(portrait.get(), Vector(), g_DrawColor, true);
+				delete copy;
+			}
+			int left = room, top = room, right = -1, bottom = -1;
+			for (int y = 0; y < room; ++y) {
+				for (int x = 0; x < room; ++x) {
+					if (portrait->line[y][x] != ColorKeys::g_MaskColor) {
+						left = std::min(left, x);
+						right = std::max(right, x);
+						top = std::min(top, y);
+						bottom = std::max(bottom, y);
+					}
+				}
+			}
+			if (right >= left) {
+				cropX = left;
+				cropY = top;
+				cropWidth = right - left + 1;
+				cropHeight = bottom - top + 1;
+				layers = {portrait.get()};
+			}
 		} else if (const MOSprite* sprite = dynamic_cast<const MOSprite*>(entity)) {
-			layers = {sprite->GetSpriteFrame(0)};
+			layers = {sprite->GetGraphicalIcon()};
 			picture.OffsetX = sprite->GetSpriteOffset().m_X;
 			picture.OffsetY = sprite->GetSpriteOffset().m_Y;
 		}
 		for (const BITMAP* layer: layers) {
 			if (layer && bitmap_color_depth(const_cast<BITMAP*>(layer)) == 8) {
-				picture.Width = std::max(picture.Width, layer->w);
-				picture.Height = std::max(picture.Height, layer->h);
+				picture.Width = std::max(picture.Width, cropWidth > 0 ? cropWidth : layer->w);
+				picture.Height = std::max(picture.Height, cropHeight > 0 ? cropHeight : layer->h);
 			}
 		}
 		if (picture.Width <= 0 || picture.Height <= 0 || picture.Width > 4096 || picture.Height > 4096) {
@@ -2284,9 +2763,9 @@ namespace {
 			if (!layer || bitmap_color_depth(const_cast<BITMAP*>(layer)) != 8) {
 				continue;
 			}
-			for (int y = 0; y < layer->h; ++y) {
-				for (int x = 0; x < layer->w; ++x) {
-					int index = layer->line[y][x];
+			for (int y = 0; y < std::min(layer->h - cropY, picture.Height); ++y) {
+				for (int x = 0; x < std::min(layer->w - cropX, picture.Width); ++x) {
+					int index = layer->line[y + cropY][x + cropX];
 					if (index == ColorKeys::g_MaskColor) {
 						continue;
 					}
@@ -2322,7 +2801,7 @@ namespace {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float cell = ImGui::GetFontSize() * 6.0F;
 		float labelHeight = ImGui::GetTextLineHeight() * 2.0F;
-		ImGui::BeginChild("##pictures", ImVec2(-1.0F, std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 5.5F, cell * 2.5F)), ImGuiChildFlags_Borders);
+		ImGui::BeginChild("##pictures", ImVec2(-1.0F, std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F)), ImGuiChildFlags_Borders);
 		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
 		int shown = 0;
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -2468,7 +2947,7 @@ namespace {
 	/// The Colony tab of the sandbox window.
 	void ColonyTab() {
 		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. They are built of concrete: wreck one and it stops.");
-		ImGui::Checkbox("Training is free", &Colony::Free());
+		ToolUI::Checkbox("Training is free", &Colony::Free());
 		ImGui::SetItemTooltip("Off: a barracks pays for each unit from the supply of its side, which grows slowly by itself and faster with extractors.");
 		if (!Colony::Free()) {
 			for (int side = 0; side < c_Sides; ++side) {
@@ -2526,16 +3005,16 @@ namespace {
 				} else {
 					ImGui::TextDisabled("%s", type.Description);
 				}
-				ImGui::Checkbox("Stopped", &building.Paused);
+				ToolUI::Checkbox("Stopped", &building.Paused);
 				ImGui::SameLine();
-				if (ImGui::SmallButton("Look at it")) {
+				if (ToolUI::SmallButton("Look at it")) {
 					s_FreeCamera = true;
 					s_FollowTarget = UnitRef();
 					s_FollowAction = false;
 					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
 				}
 				ImGui::SameLine();
-				if (ImGui::SmallButton("Close it down")) {
+				if (ToolUI::SmallButton("Close it down")) {
 					removeID = building.ID;
 				}
 				ImGui::SetItemTooltip("It stops being a building. What it was built of stays standing.");
@@ -3109,12 +3588,12 @@ void Sandbox::DrawGUI() {
 			}
 			for (const auto& [label, scale]: {std::pair<const char*, float>{"Slow", 0.25F}, {"Normal", 1.0F}, {"Fast", 2.0F}}) {
 				ImGui::SameLine();
-				if (ImGui::SmallButton(label)) {
+				if (ToolUI::SmallButton(label)) {
 					g_TimerMan.SetTimeScale(scale);
 				}
 			}
 		}
-		if (ImGui::Checkbox("Pause AI (set things up, then let them loose)", &aiPaused)) {
+		if (ToolUI::Checkbox("Pause AI (set things up, then let them loose)", &aiPaused)) {
 			Controller::SetAIPaused(aiPaused);
 		}
 		ImGui::PopStyleColor();
@@ -3123,11 +3602,11 @@ void Sandbox::DrawGUI() {
 		ToolButtons({Tool::Remove, Tool::RallyPoint});
 
 		if (IsGodMode()) {
-			ImGui::Checkbox("The world stands still while these tools are open", &s_PauseInMenus);
+			ToolUI::Checkbox("The world stands still while these tools are open", &s_PauseInMenus);
 			ImGui::SetItemTooltip("On: time stops when you come to the tools and starts when you go and play (Tab). What you do with a tool still happens at once.\nOff: the world carries on while you work.");
 			if (s_PausedByMenus) {
 				ImGui::SameLine();
-				if (ImGui::SmallButton("Step")) {
+				if (ToolUI::SmallButton("Step")) {
 					s_StepsWanted += 1;
 				}
 				ImGui::SetItemTooltip("Lets the world move one update, a sixtieth of a second. Hold Ctrl and click for a second's worth.");
@@ -3137,9 +3616,9 @@ void Sandbox::DrawGUI() {
 			}
 		}
 		if (ImGui::BeginTabBar("SandboxTabs")) {
-			if (IsGodMode() && ImGui::BeginTabItem("You")) {
+			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
 				bool exists = GetRef(s_PlayerUnit) != nullptr;
-				if (ImGui::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
+				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemove;
 					s_Queue.push_back(stroke);
@@ -3150,7 +3629,7 @@ void Sandbox::DrawGUI() {
 					ImGui::EndTabItem();
 				} else {
 				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
-				if (ImGui::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
+				if (ToolUI::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayCharacter;
 					stroke.Count = 0;
@@ -3160,14 +3639,14 @@ void Sandbox::DrawGUI() {
 				ImGui::SameLine();
 				ImGui::TextDisabled("then click where to start");
 				ImGui::SeparatorText("What it can do");
-				ImGui::Checkbox("Can't be hurt", &s_Player.Unkillable);
+				ToolUI::Checkbox("Can't be hurt", &s_Player.Unkillable);
 				ImGui::SameLine();
-				ImGui::Checkbox("Endless jetpack", &s_Player.EndlessJetpack);
-				ImGui::Checkbox("Endless ammunition", &s_Player.EndlessAmmo);
-				ImGui::Checkbox("1 to 9 take out that item of the kit", &s_Player.NumberKeys);
-				ImGui::Checkbox("Enemies take no notice of it", &s_Player.Neutral);
+				ToolUI::Checkbox("Endless jetpack", &s_Player.EndlessJetpack);
+				ToolUI::Checkbox("Endless ammunition", &s_Player.EndlessAmmo);
+				ToolUI::Checkbox("1 to 9 take out that item of the kit", &s_Player.NumberKeys);
+				ToolUI::Checkbox("Enemies take no notice of it", &s_Player.Neutral);
 				ImGui::SetItemTooltip("On: units run by the AI don't see your character as an enemy and don't pick it as a target, whatever side it is on. Stray shots and blasts still reach it.");
-				ImGui::Checkbox("N flies through anything", &s_Player.FlyKey);
+				ToolUI::Checkbox("N flies through anything", &s_Player.FlyKey);
 				ImGui::SetItemTooltip("While playing, N lifts the character out of the physics: the movement keys fly it in any direction, through the ground and walls. N again drops it back in.");
 				ImGui::SeparatorText("What it is");
 				for (int side = 0; side < c_Sides; ++side) {
@@ -3175,7 +3654,7 @@ void Sandbox::DrawGUI() {
 						ImGui::SameLine();
 					}
 					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
-					ImGui::RadioButton((std::string(c_SideNames[side]) + "##you").c_str(), &s_Player.Team, side);
+					ToolUI::RadioButton((std::string(c_SideNames[side]) + "##you").c_str(), &s_Player.Team, side);
 					ImGui::PopStyleColor();
 				}
 				static char bodyFilter[48] = "";
@@ -3193,11 +3672,11 @@ void Sandbox::DrawGUI() {
 				int removeItem = -1;
 				for (size_t i = 0; i < s_Player.Kit.size(); ++i) {
 					ImGui::PushID(static_cast<int>(i));
-					if (ImGui::SmallButton("x")) {
+					if (ToolUI::SmallButton("x")) {
 						removeItem = static_cast<int>(i);
 					}
 					ImGui::SameLine();
-					if (ImGui::SmallButton("^") && i > 0) {
+					if (ToolUI::SmallButton("^") && i > 0) {
 						std::swap(s_Player.Kit[i], s_Player.Kit[i - 1]);
 					}
 					ImGui::SameLine();
@@ -3217,18 +3696,18 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::EndCombo();
 				}
-				if (ImGui::Button("Usual kit")) {
+				if (ToolUI::Button("Usual kit")) {
 					s_Player.Kit = PlayerSetup().Kit;
 				}
 				ImGui::TextDisabled("A new body or kit is used the next time the character is made.");
 				ImGui::BeginDisabled(!exists);
-				if (ImGui::Button("Make it again now")) {
+				if (ToolUI::Button("Make it again now")) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemake;
 					s_Queue.push_back(stroke);
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("Remove it")) {
+				if (ToolUI::Button("Remove it")) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemove;
 					s_Queue.push_back(stroke);
@@ -3237,14 +3716,14 @@ void Sandbox::DrawGUI() {
 				ImGui::EndTabItem();
 				}
 			}
-			if (ImGui::BeginTabItem("Spawn")) {
+			if (ImGui::BeginTabItem("Spawn", nullptr, TestTab("Spawn"))) {
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
 					s_ToolIndex = ToolIndex(Tool::Unit);
 				}
 				Tool kind = CurrentTool().Kind;
-				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Item || kind == Tool::Structure) {
-					PresetList(kind);
+				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Item) {
+					PictureGrid(kind, nullptr);
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Structure || kind == Tool::RallyPoint) {
 					SideChooser();
@@ -3257,22 +3736,18 @@ void Sandbox::DrawGUI() {
 					LoadoutChooser();
 					ImGui::Combo("Orders", &s_Order, c_OrderNames);
 				} else if (kind == Tool::Item) {
-					ImGui::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
+					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {
-					ImGui::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
+					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
 				ImGui::EndTabItem();
 			}
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
-			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony")) {
+			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony", nullptr, TestTab("Colony"))) {
 				ColonyTab();
 				ImGui::EndTabItem();
 			}
-			// Test runs that show the building tool (CCCP_TEST_POINTER) open on this tab.
-			static bool openOnBuild = std::getenv("CCCP_TEST_POINTER") != nullptr;
-			bool buildTab = ImGui::BeginTabItem("Build", nullptr, openOnBuild ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None);
-			openOnBuild = false;
-			if (buildTab) {
+			if (ImGui::BeginTabItem("Build", nullptr, TestTab("Build"))) {
 				// Coming to this tab picks up the building tool.
 				static int shownLast = -10;
 				if (ImGui::GetFrameCount() > shownLast + 1 || CurrentTool().Kind != Tool::Structure) {
@@ -3291,30 +3766,30 @@ void Sandbox::DrawGUI() {
 				groupNames += std::string("Everything") + '\0';
 				ImGui::Combo("Kind", &s_StructureGroup, groupNames.c_str());
 				PictureGrid(Tool::Structure, s_StructureGroup < groupCount ? c_StructureGroups[s_StructureGroup] : nullptr);
-				ImGui::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
+				ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
 				ImGui::TextDisabled("Doors and turrets belong to:");
 				SideChooser();
 				ImGui::Separator();
-				if (ImGui::Button("The game's own build menu", ImVec2(-1.0F, 0.0F))) {
+				if (ToolUI::Button("The game's own build menu", ImVec2(-1.0F, 0.0F))) {
 					// Placing through the game's build menu instead. Choose Done in its pie menu (or press Tab) to come back.
 					Sandbox::SetBuildMode(true);
 				}
 				ImGui::SetItemTooltip("Puts these tools away and opens the build menu the game uses before a battle: everything it offers, moved and placed with the game's own cursor.\nDone in its menu, or Tab, comes back here.");
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Orders")) {
+			if (ImGui::BeginTabItem("Orders", nullptr, TestTab("Orders"))) {
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
 				ImGui::Combo("Orders", &s_Order, c_OrderNames);
-				if (ImGui::Button("Give orders", ImVec2(-1.0F, 0.0F))) {
+				if (ToolUI::Button("Give orders", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::OrderSide;
 					stroke.Team = s_Team;
 					stroke.Orders = static_cast<Order>(s_Order);
 					s_Queue.push_back(stroke);
 				}
-				if (ImGui::Button("Everyone attack!", ImVec2(-1.0F, 0.0F))) {
+				if (ToolUI::Button("Everyone attack!", ImVec2(-1.0F, 0.0F))) {
 					for (int side = 0; side < c_Sides; ++side) {
 						Stroke stroke;
 						stroke.Kind = Tool::OrderSide;
@@ -3323,7 +3798,7 @@ void Sandbox::DrawGUI() {
 						s_Queue.push_back(stroke);
 					}
 				}
-				if (ImGui::Button("Remove this side's units", ImVec2(-1.0F, 0.0F))) {
+				if (ToolUI::Button("Remove this side's units", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::RemoveSide;
 					stroke.Team = s_Team;
@@ -3334,14 +3809,14 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Selected units");
 				int selected = static_cast<int>(std::count_if(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) { return GetRef(ref) != nullptr; }));
 				ImGui::Text("%d selected. Use the Command tool: drag a box to select, click to move or attack.", selected);
-				if (ImGui::Button("Give the selected these orders") && selected > 0) {
+				if (ToolUI::Button("Give the selected these orders") && selected > 0) {
 					Stroke stroke;
 					stroke.Kind = Tool::OrderSelected;
 					stroke.Orders = static_cast<Order>(s_Order);
 					s_Queue.push_back(stroke);
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("Clear selection")) {
+				if (ToolUI::Button("Clear selection")) {
 					s_Selected.clear();
 				}
 
@@ -3351,7 +3826,7 @@ void Sandbox::DrawGUI() {
 					AutoSide& autoSide = s_AutoSides[side];
 					ImGui::PushID(side);
 					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
-					ImGui::Checkbox(c_SideNames[side], &autoSide.Active);
+					ToolUI::Checkbox(c_SideNames[side], &autoSide.Active);
 					ImGui::PopStyleColor();
 					ImGui::SameLine(90.0F);
 					ImGui::SetNextItemWidth(120.0F);
@@ -3373,10 +3848,10 @@ void Sandbox::DrawGUI() {
 					ImGui::PopID();
 				}
 				if (!s_AutoRunning) {
-					if (ImGui::Button("Start auto battle", ImVec2(-1.0F, 0.0F))) {
+					if (ToolUI::Button("Start auto battle", ImVec2(-1.0F, 0.0F))) {
 						Sandbox::StartAutoBattle();
 					}
-				} else if (ImGui::Button("Stop auto battle", ImVec2(-1.0F, 0.0F))) {
+				} else if (ToolUI::Button("Stop auto battle", ImVec2(-1.0F, 0.0F))) {
 					s_AutoRunning = false;
 				}
 				if (s_AutoWinner >= 0) {
@@ -3386,7 +3861,7 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Paint")) {
+			if (ImGui::BeginTabItem("Paint", nullptr, TestTab("Paint"))) {
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
 				ImGui::SeparatorText("Water that keeps coming");
@@ -3394,7 +3869,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");
 				ImGui::SameLine();
 				ImGui::BeginDisabled(s_WaterSpawners.empty());
-				if (ImGui::Button("Remove all water spawners")) {
+				if (ToolUI::Button("Remove all water spawners")) {
 					s_WaterSpawners.clear();
 				}
 				ImGui::EndDisabled();
@@ -3409,7 +3884,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Boom")) {
+			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
 				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
@@ -3424,7 +3899,7 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Effects")) {
+			if (ImGui::BeginTabItem("Effects", nullptr, TestTab("Effects"))) {
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
 				ImGui::SeparatorText("Lights");
 				auto effectButtons = [](std::initializer_list<EffectKind> kinds) {
@@ -3435,7 +3910,7 @@ void Sandbox::DrawGUI() {
 						}
 						int index = static_cast<int>(kind);
 						bool chosen = c_Tools[s_ToolIndex].Kind == Tool::Effect && s_EffectChoice == index;
-						if (ImGui::RadioButton(c_Effects[index].Name, chosen)) {
+						if (ToolUI::RadioButton(c_Effects[index].Name, chosen)) {
 							s_EffectChoice = index;
 							s_ToolIndex = ToolIndex(Tool::Effect);
 						}
@@ -3450,11 +3925,11 @@ void Sandbox::DrawGUI() {
 				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
-				if (ImGui::Button("Remove all effects")) {
+				if (ToolUI::Button("Remove all effects")) {
 					s_Effects.clear();
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("Remove the last one")) {
+				if (ToolUI::Button("Remove the last one")) {
 					s_Effects.pop_back();
 				}
 				ImGui::EndDisabled();
@@ -3462,7 +3937,7 @@ void Sandbox::DrawGUI() {
 				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("World")) {
+			if (ImGui::BeginTabItem("World", nullptr, TestTab("World"))) {
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
@@ -3472,7 +3947,7 @@ void Sandbox::DrawGUI() {
 					if (hour != 6.5F) {
 						ImGui::SameLine();
 					}
-					if (ImGui::Button(name)) {
+					if (ToolUI::Button(name)) {
 						settings.TimeOfDay = hour;
 					}
 				}
@@ -3482,18 +3957,18 @@ void Sandbox::DrawGUI() {
 					g_FrameMan.SetCameraZoom(zoom);
 				}
 				ImGui::SameLine();
-				if (ImGui::SmallButton("1x")) {
+				if (ToolUI::SmallButton("1x")) {
 					g_FrameMan.SetCameraZoom(1.0F);
 				}
-				ImGui::Checkbox("Free camera", &s_FreeCamera);
+				ToolUI::Checkbox("Free camera", &s_FreeCamera);
 				ImGui::SameLine();
-				ImGui::Checkbox("Follow the action", &s_FollowAction);
+				ToolUI::Checkbox("Follow the action", &s_FollowAction);
 				ImGui::SameLine();
-				if (ImGui::Checkbox("Slow motion", &s_SlowMotion)) {
+				if (ToolUI::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
 				ImGui::Text("%d burning, %d liquid pixels flowing", TerrainFire::GetCount(), FluidSim::GetActiveCount());
-				if (ImGui::Button("Put out all fire")) {
+				if (ToolUI::Button("Put out all fire")) {
 					TerrainFire::Clear();
 				}
 				ImGui::EndTabItem();

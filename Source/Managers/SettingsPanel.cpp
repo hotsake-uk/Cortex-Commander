@@ -25,6 +25,7 @@
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
+#include "ToolWidgets.h"
 
 #include <algorithm>
 #include <cctype>
@@ -81,7 +82,7 @@ namespace {
 
 	bool Slider(const char* label, float* value, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) { return Shown(label) && ImGui::SliderFloat(label, value, low, high, format, flags); }
 	bool SliderI(const char* label, int* value, int low, int high, const char* format = "%d", ImGuiSliderFlags flags = 0) { return Shown(label) && ImGui::SliderInt(label, value, low, high, format, flags); }
-	bool Check(const char* label, bool* value) { return Shown(label) && ImGui::Checkbox(label, value); }
+	bool Check(const char* label, bool* value) { return Shown(label) && ToolUI::Checkbox(label, value); }
 	bool Combo(const char* label, int* value, const char* items) { return Shown(label) && ImGui::Combo(label, value, items); }
 	bool Tint(const char* label, float* value) { return Shown(label) && ImGui::ColorEdit3(label, value, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR); }
 
@@ -140,7 +141,7 @@ namespace {
 		ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName));
 		ImGui::SameLine();
 		ImGui::BeginDisabled(s_PresetName[0] == 0);
-		if (ImGui::Button("Save")) {
+		if (ToolUI::Button("Save")) {
 			std::string saved = g_SettingsMan.SavePreset(s_PresetName);
 			s_PresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\".";
 			std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", saved.c_str());
@@ -148,20 +149,20 @@ namespace {
 		}
 		ImGui::SetItemTooltip("Keeps every setting as it is now under this name. Saving under a name that exists replaces it.");
 		ImGui::SameLine();
-		if (ImGui::Button("Delete")) {
+		if (ToolUI::Button("Delete")) {
 			s_PresetMessage = g_SettingsMan.DeletePreset(s_PresetName) ? std::string("Deleted \"") + s_PresetName + "\"." : "There is no preset of that name.";
 			s_PresetName[0] = 0;
 			s_PresetsListed = false;
 		}
 		ImGui::EndDisabled();
-		if (ImGui::Button("Usual settings")) {
+		if (ToolUI::Button("Usual settings")) {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
 		ImGui::SameLine();
-		if (ImGui::Button("Keep for next time")) {
+		if (ToolUI::Button("Keep for next time")) {
 			g_PostProcessMan.AdoptAtmosphereAsPlayers();
 			g_SettingsMan.UpdateSettingsFile();
 			s_PresetMessage = "The game will start like this.";
@@ -188,7 +189,7 @@ void DebugMan::SettingsGUI() {
 				if (i > 0) {
 					ImGui::SameLine();
 				}
-				if (ImGui::Button(hours[i].first)) {
+				if (ToolUI::Button(hours[i].first)) {
 					settings.TimeOfDay = hours[i].second;
 				}
 			}
@@ -220,7 +221,7 @@ void DebugMan::SettingsGUI() {
 			} else {
 				ImGui::TextDisabled("Not set (uses the player's settings)");
 			}
-			if (ImGui::Button("Use what is set now")) {
+			if (ToolUI::Button("Use what is set now")) {
 				Scene::Atmosphere atmosphere;
 				atmosphere.TimeOfDay = settings.TimeOfDay;
 				atmosphere.DayLengthMinutes = settings.DayLengthMinutes;
@@ -230,7 +231,7 @@ void DebugMan::SettingsGUI() {
 				scene->SetAtmosphere(atmosphere);
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Clear")) {
+			if (ToolUI::Button("Clear")) {
 				scene->SetAtmosphere(Scene::Atmosphere());
 			}
 			ImGui::TextDisabled("Saved when the scene is saved in the scene editor.");
@@ -413,7 +414,7 @@ void DebugMan::SettingsGUI() {
 		Tip("A falling piece goes through loose bits of ground up to this size instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
 		Slider("How hard a landing cracks a piece", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
 		Slider("Seconds still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
-		if (Plain() && ImGui::Button("Usual falling")) {
+		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
 		}
 	};
@@ -424,7 +425,7 @@ void DebugMan::SettingsGUI() {
 			const std::pair<const char*, int> looks[] = {{"Natural", LightingSettings::LookNatural}, {"Gritty", LightingSettings::LookGritty}, {"Vivid", LightingSettings::LookVivid}, {"Noir", LightingSettings::LookNoir}};
 			for (const auto& [name, look]: looks) {
 				ImGui::SameLine();
-				if (ImGui::Button(name)) {
+				if (ToolUI::Button(name)) {
 					settings.ApplyLook(look);
 				}
 			}
@@ -470,7 +471,7 @@ void DebugMan::SettingsGUI() {
 		if (Slider("Game speed", &timeScale, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_TimerMan.SetTimeScale(timeScale);
 		}
-		if (Plain() && ImGui::Button("Normal speed")) {
+		if (Plain() && ToolUI::Button("Normal speed")) {
 			g_TimerMan.SetTimeScale(1.0F);
 		}
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
