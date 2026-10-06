@@ -56,7 +56,7 @@ function AIBunkerScript:Settle(point, height)
 end
 
 function AIBunkerScript:UpdateScript()
-	local t = self.timer.ElapsedRealTimeMS;
+	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 2500 then
 		self.built = true;
 		SandboxDo("Look around", self.lookAt, 0, 0, 1, "");
@@ -192,7 +192,7 @@ function AIBunkerScript:UpdateScript()
 							end
 						end
 					end
-					if runner.tick:IsPastRealMS(1000) then
+					if runner.tick:IsPastSimMS(1000) then
 						runner.tick:Reset();
 						local moved = SceneMan:ShortestDistance(runner.lastPos, a.Pos, false).Magnitude;
 						runner.still = moved < 4 and runner.still + 1 or 0;

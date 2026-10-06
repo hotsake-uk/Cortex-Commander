@@ -33,7 +33,7 @@ function AIGymScript:CaveFloorAt(x)
 end
 
 function AIGymScript:UpdateScript()
-	local t = self.timer.ElapsedRealTimeMS;
+	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 1500 then
 		-- Courses built in the sky out of concrete beams (160 x 10, centred on the point), so what each tests is known exactly.
 		self.built = true;

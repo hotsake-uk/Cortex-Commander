@@ -1,4 +1,5 @@
 #include "PathFinder.h"
+#include <chrono>
 
 #include "ConsoleMan.h"
 #include "Material.h"
@@ -31,6 +32,7 @@ thread_local MicroPatherWrapper s_Pather;
 
 // How high the given agent can jump / jetpack vertically, in metres
 thread_local float s_JumpHeight = 0.0F;
+thread_local double s_LastSolveMS = 0.0; //!< Debug: how long the last solve took.
 
 // How high the given agent can jump / jetpack vertically, in nodes
 thread_local int s_JumpHeightVertical = 0;
@@ -240,7 +242,9 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	}
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
+		auto solveStart = std::chrono::steady_clock::now();
 		result = GetPather()->Solve(static_cast<void*>(startNode), static_cast<void*>(endNode), &statePath, &totalCostResult);
+		s_LastSolveMS = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - solveStart).count();
 		// A route that only exists through ground the searcher can't dig is usually down to the start node: a unit pressed into a bunker wall or
 		// a ledge stands in a cell whose every edge samples concrete. The neighbouring cells are tried as starts before that answer is given.
 		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F) {
@@ -292,7 +296,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	if (std::getenv("CCCP_PATH_LOG")) {
 		// Debug: the cost of each step along the found path, so the grid's view of the terrain can be checked against the scene.
-		std::string line = "PATHLOG " + std::to_string(static_cast<int>(start.m_X)) + "," + std::to_string(static_cast<int>(start.m_Y)) + " -> " + std::to_string(static_cast<int>(end.m_X)) + "," + std::to_string(static_cast<int>(end.m_Y)) + " dig " + std::to_string(static_cast<int>(digStrength)) + " result " + std::to_string(result) + " cost " + std::to_string(totalCostResult) + ":";
+		std::string line = "PATHLOG " + std::to_string(static_cast<int>(start.m_X)) + "," + std::to_string(static_cast<int>(start.m_Y)) + " -> " + std::to_string(static_cast<int>(end.m_X)) + "," + std::to_string(static_cast<int>(end.m_Y)) + " dig " + std::to_string(static_cast<int>(digStrength)) + " result " + std::to_string(result) + " cost " + std::to_string(totalCostResult) + " in " + std::to_string(static_cast<int>(s_LastSolveMS)) + " ms:";
 		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
 			std::vector<micropather::StateCost> adjacent;
 			AdjacentCost(statePath[i], &adjacent);
@@ -330,9 +334,14 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			float dx = g_SceneMan.ShortestDistance(from->Pos, to->Pos).m_X;
 			float dy = to->Pos.m_Y - from->Pos.m_Y;
 			if (kind == PathStepKind::Jump && std::abs(dx) >= 1.0F && dy <= -nodeSize * 1.5F && -dy >= std::abs(dx) * 1.5F) {
-				Vector apex(from->Pos.m_X, to->Pos.m_Y - nodeSize * 1.5F);
+				// No higher than the landing's ceiling allows: a shaft that comes up through the floor of a corridor has the corridor's
+				// ceiling just over the landing, and a top of the column put above it was a climb into the ceiling, so never made.
+				float landingFloor = to->Surface >= 0.0F ? to->Surface : to->Pos.m_Y + nodeSize * 0.5F;
+				float lowestTop = landingFloor - static_cast<float>(to->FreeHeight) + s_StandHeight * 0.75F + 8.0F;
+				float apexY = std::max(to->Pos.m_Y - nodeSize * 1.5F, lowestTop);
+				Vector apex(from->Pos.m_X, apexY);
 				g_SceneMan.ForceBounds(apex);
-				if (g_SceneMan.GetTerrMatter(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
+				if (apexY < to->Pos.m_Y - 4.0F && g_SceneMan.GetTerrMatter(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
 					steps.push_back({apex, PathStepKind::Jump});
 				}
 			}
@@ -567,6 +576,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 						if (!step || !step->m_Navigable || stepMaterial->GetIntegrity() > s_DigStrength) {
 							return nullptr;
 						}
+						// A landing wants room to stand up in: a jet doesn't come down into a crawlspace, and a unit sent to land on a
+						// ledge with a ceiling a few pixels over it climbed into the ceiling and was pushed about under it.
+						if (static_cast<float>(step->FreeHeight) < s_StandHeight) {
+							return nullptr;
+						}
 						if (NodeIsOnSolidGround(*step)) {
 							adjCost.cost = totalMaterialCost + stepCost + GetMaterialTransitionCost(*stepMaterial) + radiatedCost;
 							adjCost.state = const_cast<PathNode*>(step);
@@ -602,6 +616,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					// solid ceiling, stop
 					break;
 				}
+				// A jet comes down where there's room to stand, not into a crawlspace (see the landings of the vertical jump).
+				if (Open(*currentNode->UpRightMaterial) && static_cast<float>(currentNode->UpRight->FreeHeight) < s_StandHeight) {
+					break;
+				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
 				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
@@ -624,6 +642,9 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					// solid ceiling, stop
 					break;
 				}
+				if (Open(*currentNode->LeftUpMaterial) && static_cast<float>(currentNode->LeftUp->FreeHeight) < s_StandHeight) {
+					break;
+				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
 				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
@@ -638,15 +659,16 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			}
 		}
 
-		// Add cost for digging at 45 degrees and for digging upwards.
+		// Add cost for digging at 45 degrees and for digging upwards. (A step up a slope wants the head room a walk does: a crawl's worth at
+		// the least, and dearer under a low ceiling.)
 		if (node->UpRight && node->UpRight->m_Navigable && allowDiagonal) {
-			adjCost.cost = 1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost; // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->UpRight);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->LeftUp && node->LeftUp->m_Navigable && allowDiagonal) {
-			adjCost.cost = 1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost; // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
 		}
@@ -745,8 +767,14 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	if (material && material->GetIndex() == MaterialColorKeys::g_MaterialDoor) {
 		return PathStepKind::Door;
 	}
+	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
+	// line at all but up the column and over onto a ledge (the landing edges), which is a jump. (Read as a dig, a step up onto a 24 px
+	// ledge whose corner the line clipped was neither hopped nor climbed by a unit with no digger, and it stood at the step for ever.)
 	if (material && material->GetIntegrity() > c_PathFindingDefaultDigStrength && std::abs(dy) <= nodeSize && std::abs(dx) <= nodeSize) {
-		return PathStepKind::Dig;
+		if (material->GetIntegrity() <= s_DigStrength) {
+			return PathStepKind::Dig;
+		}
+		return dy < -1.0F ? PathStepKind::Jump : PathStepKind::Walk;
 	}
 	if (dy < -1.0F) {
 		return PathStepKind::Jump;

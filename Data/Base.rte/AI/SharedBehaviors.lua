@@ -425,6 +425,29 @@ function SharedBehaviors.MayClose(AI, Owner)
 	return false;
 end
 
+-- The middle of a shaft a point is in: walls within reach both ways at that height. @return The middle's x, or nil in the open.
+function SharedBehaviors.ShaftMiddle(Owner, x, y, reach)
+	local Left = Vector();
+	local Right = Vector();
+	local leftHit = SceneMan:CastObstacleRay(Vector(x, y), Vector(-reach, 0), Left, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
+	local rightHit = SceneMan:CastObstacleRay(Vector(x, y), Vector(reach, 0), Right, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
+	if leftHit and rightHit then
+		return (Left.X + Right.X) * 0.5, Right.X - Left.X;
+	end
+	return nil;
+end
+
+-- An open column near the unit for a climb of a given height: the nearest sideways offset (within half a body either way) from which
+-- the way up is clear. @param Up The climb, as a vector. @return The offset, or nil.
+function SharedBehaviors.OpenColumnNear(Owner, Up)
+	for _, dx in ipairs({ 0, -Owner.Height * 0.25, Owner.Height * 0.25, -Owner.Height * 0.5, Owner.Height * 0.5 }) do
+		if SceneMan:CastObstacleRay(Owner.Pos + Vector(dx, -Owner.Height * 0.3), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+			return dx;
+		end
+	end
+	return nil;
+end
+
 function SharedBehaviors.Trace(Owner, text)
 	if Owner:NumberValueExists("AITrace") then
 		ConsoleMan:PrintString("AITRACE [" .. Owner.PresetName .. " " .. Owner.Team .. " at " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. "] " .. text);
@@ -759,6 +782,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				-- What the pathfinder meant by this step (0 walk, 1 crawl, 2 jump, 3 fall, 4 dig, 5 door), so it needn't be guessed from the
 				-- ground: a step off an edge is walked off, not hopped; a jump is jetted whatever the slope looks like; a crawl is gone prone for.
 				Waypoint.Kind = Owner.MovePathStepKind;
+				-- (A dig step for a unit with nothing to dig with is whatever the ground makes it: it mustn't keep the unit from a hop or a climb.)
+				if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
+					Waypoint.Kind = 0;
+				end
 				if Owner:NumberValueExists("AITrace") and Waypoint.Kind ~= LastTracedKind then
 					LastTracedKind = Waypoint.Kind;
 					ConsoleMan:PrintString("AITRACE step kind " .. tostring(Waypoint.Kind) .. " to " .. math.floor(pos.X) .. "," .. math.floor(pos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " prone " .. tostring(AI.proneState == AHuman.PRONE));
@@ -1154,6 +1181,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										Owner:RemoveMovePathBeginning();
 										Waypoint.Pos = NextPos;
 										Waypoint.Kind = Owner.MovePathStepKind;
+										if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
+											Waypoint.Kind = 0;
+										end
 										if Waypoint.Kind == 3 then
 											Waypoint.Type = "drop";
 										end
@@ -1355,8 +1385,15 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												local towardsX = CurrDist.X;
 												local Hit = Vector();
 												-- Room over the head for the climb itself, no more: a ceiling well above where we're going is no ceiling.
-												local Up = Vector(0, math.min(-Owner.Height * 0.5, above - Owner.Height * 0.3));
-												local ceiling = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.3), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
+												-- (As far as the head travels, a little over: a probe a third of a body past the waypoint found the ceiling over every
+												-- landing at the mouth of a shaft, and the climb was never made.)
+												local Up = Vector(0, math.min(-Owner.Height * 0.2, above - 4));
+												-- In a shaft the climb is up its middle, so that's where the way up is looked at from: a unit a few pixels off the middle
+												-- of a shaft two bodies wide had its ray up hit the wall's edge, and stood at the bottom for ever.
+												local shaftX = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height * 0.6);
+												local probeX = shaftX or Owner.Pos.X;
+												local ceiling = SceneMan:CastObstacleRay(Vector(probeX, Owner.Pos.Y - Owner.Height * 0.3), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
+												AI.climbShaftX = shaftX;
 												-- A tall climb wants a near full tank: started on half of one it ends part way up the face, with the fall and the wait to
 												-- refill to show for it. So the unit waits at the foot until the tank is in.
 												-- (How much is wanted comes from the body: the height the full tank buys, against the height to climb, with a third over.)
@@ -1372,15 +1409,25 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													climbing = true;
 													AI.jetClimb = true;
 													AI.climbClearY = nil;
+													AI.climbStartX = Owner.Pos.X;
 													if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: wpt dx " .. math.floor(towardsX) .. " dy " .. math.floor(above)); end
 												else
 													climbRefused = true;
 												end
 											end
 											if climbRefused then
-												-- A climb is what's wanted and it can't be had here: no jet, the legs and the stuck handling take it from here.
+												-- A climb is what's wanted and it can't be had here: no jet. Under a ceiling, a step towards the nearest column that is
+												-- open above (the edge of the ceiling, the middle of the shaft); else the legs and the stuck handling take it from here.
 												AI.jump = false;
 												AI.jetClimb = false;
+												if not AI.flying then
+													local Up = Vector(0, math.min(-Owner.Height * 0.2, above - 4));
+													local dx = SharedBehaviors.OpenColumnNear(Owner, Up);
+													if dx and math.abs(dx) > 2 then
+														nextLatMove = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling, stepping " .. math.floor(dx) .. " to an open column"); end
+													end
+												end
 											elseif climbing or (AI.jetClimb and wantsClimb) then
 												-- Up at the waypoint's height the climb is over, but only once the feet would clear whatever we step onto next: the waypoint
 												-- sits up to a node above the ledge's top, and the step off it is sideways, so the way at foot level has to be open
@@ -1433,7 +1480,13 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													local Lip = Vector();
 													local Over = Vector(0, math.max(-Owner.Height * 0.6, math.min(-Owner.Height * 0.2, above)));
 													if above < -Owner.Height * 0.1 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.25), Over, Lip, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
-														AI.climbClearX = Owner.Pos.X + (CurrDist.X > 0 and -1 or 1) * Owner.Height * 0.3;
+														-- Out from under it towards the nearest column that is open above (the mouth of a shaft in a corridor's ceiling is on
+														-- the waypoint's side; a cliff's lip is on the far side), and no further than a node or so from where the climb began:
+														-- indoors there is always a ceiling, and a push away from the waypoint every tick walked units the length of a corridor.
+														local startX = AI.climbStartX or Owner.Pos.X;
+														local openDx = SharedBehaviors.OpenColumnNear(Owner, Over);
+														local pushX = openDx and (Owner.Pos.X + openDx) or (Owner.Pos.X + (CurrDist.X > 0 and -1 or 1) * Owner.Height * 0.3);
+														AI.climbClearX = math.max(startX - Owner.Height * 0.6, math.min(startX + Owner.Height * 0.6, pushX));
 														AI.climbClearY = Lip.Y;
 														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling at " .. math.floor(Lip.Y) .. ", keeping out from under it"); end
 													end
@@ -1446,6 +1499,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- slope (that only pins us to it) or when the waypoint is straight above. Too fast either way and the nozzle is leant against it:
 													-- the speed walked up with was carrying units under the ledges they were climbing to.
 													local wantVelX = math.max(-4, math.min(4, CurrDist.X / 20));
+													-- In a shaft, the middle of it is what's kept to, whatever side the waypoint is on; the walls come first.
+													local shaftNow = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height * 0.6);
+													if shaftNow then
+														wantVelX = math.max(-2, math.min(2, (shaftNow - Owner.Pos.X) / 6));
+													end
 													-- (A crab's jet is for lift only: leant, it threw the crab backwards off the slope. Its legs do the sideways work.)
 													if not Owner.Head then
 														wantVelX = 0;

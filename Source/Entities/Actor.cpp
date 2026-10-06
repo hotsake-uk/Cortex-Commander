@@ -1165,6 +1165,7 @@ void Actor::PreControllerUpdate() {
 		if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
 			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));
+			// (Each point after the first with the kind of the step that reaches it.)
 			std::string nodes;
 			auto kind = m_MovePathKinds.begin();
 			int count = 0;
@@ -1173,7 +1174,7 @@ void Actor::PreControllerUpdate() {
 					break;
 				}
 				nodes += " " + std::to_string(static_cast<int>(point.m_X)) + "," + std::to_string(static_cast<int>(point.m_Y));
-				if (kind != m_MovePathKinds.end()) {
+				if (count > 1 && kind != m_MovePathKinds.end()) {
 					nodes += "(" + std::to_string(static_cast<int>(*kind)) + ")";
 					++kind;
 				}
