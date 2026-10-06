@@ -295,6 +295,11 @@ namespace {
 		long ID = 0;
 	};
 
+	Actor* GetRef(const UnitRef& ref) { return ref.Unit && g_MovableMan.IsActor(ref.Unit) && ref.Unit->GetUniqueID() == ref.ID ? ref.Unit : nullptr; }
+
+	UnitRef MakeRef(Actor* actor) { return {actor, actor ? actor->GetUniqueID() : 0}; }
+
+
 	/// One side in an auto battle.
 	struct AutoSide {
 		bool Active = false;
@@ -328,7 +333,7 @@ namespace {
 	int s_StructureChoice = 0;
 	char s_Filter[64] = "";
 	int s_Team = 1;
-	int s_Order = static_cast<int>(Order::Attack);
+	int s_Order = static_cast<int>(Order::Idle); //!< Units placed stand and wait for orders unless told otherwise.
 	int s_Loadout = 0;
 	int s_SquadSize = 1;
 	bool s_LitGrenade = false;
@@ -359,8 +364,9 @@ namespace {
 	};
 	PlayerSetup s_Player;
 	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
-	bool s_RingOpen = false; //!< The ring of sides is up, round where the right button went down with a side-taking tool in hand.
+	bool s_RingOpen = false; //!< A ring of choices is up, round where the right button went down.
 	ImVec2 s_RingCenter;
+	Vector s_RingScenePoint; //!< Where in the world the right button went down, which the choice is about.
 	int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
 	bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
@@ -638,6 +644,45 @@ namespace {
 		return found;
 	}
 
+	/// An order to a unit that is put into effect on the next update: the AI only looks at a new destination when its mode changes, so the unit is dropped out
+	/// of GOTO for one update and put back into it with the new waypoint. Orders given straight would be ignored by a unit already going somewhere.
+	struct PendingOrder {
+		UnitRef Unit;
+		Vector Waypoint;
+		Actor* Target = nullptr; //!< An enemy to go for instead of a place.
+		long TargetID = 0;
+		bool Attack = false; //!< Keep attacking (a new target when this one dies).
+	};
+	std::vector<PendingOrder> s_PendingOrders;
+
+	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack) {
+		unit->RemoveNumberValue(c_AttackTag);
+		unit->ClearAIWaypoints();
+		unit->SetAIMode(Actor::AIMODE_SENTRY);
+		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
+	}
+
+	void ApplyPendingOrders() {
+		std::vector<PendingOrder> orders;
+		orders.swap(s_PendingOrders);
+		for (const PendingOrder& order: orders) {
+			Actor* unit = GetRef(order.Unit);
+			if (!unit) {
+				continue;
+			}
+			unit->ClearAIWaypoints();
+			if (order.Target && g_MovableMan.IsActor(order.Target) && static_cast<long>(order.Target->GetUniqueID()) == order.TargetID) {
+				unit->AddAIMOWaypoint(order.Target);
+			} else {
+				unit->AddAISceneWaypoint(order.Waypoint);
+			}
+			unit->SetAIMode(Actor::AIMODE_GOTO);
+			if (order.Attack) {
+				unit->SetNumberValue(c_AttackTag, 1.0);
+			}
+		}
+	}
+
 	void GiveOrder(Actor* actor, Order order) {
 		if (!actor || dynamic_cast<ADoor*>(actor) || actor->IsInGroup("Brains")) {
 			return;
@@ -645,12 +690,11 @@ namespace {
 		actor->RemoveNumberValue(c_AttackTag);
 		switch (order) {
 			case Order::Attack:
-				actor->SetNumberValue(c_AttackTag, 1.0);
-				actor->ClearAIWaypoints();
 				if (Actor* enemy = NearestEnemy(actor)) {
-					actor->AddAIMOWaypoint(enemy);
-					actor->SetAIMode(Actor::AIMODE_GOTO);
+					SendUnit(actor, enemy->GetPos(), enemy, true);
 				} else {
+					actor->SetNumberValue(c_AttackTag, 1.0);
+					actor->ClearAIWaypoints();
 					actor->SetAIMode(Actor::AIMODE_SENTRY);
 				}
 				break;
@@ -661,11 +705,10 @@ namespace {
 				actor->SetAIMode(Actor::AIMODE_PATROL);
 				break;
 			case Order::Rally:
-				actor->ClearAIWaypoints();
 				if (int team = actor->GetTeam(); team >= 0 && team < c_Sides && s_RallySet[team]) {
-					actor->AddAISceneWaypoint(s_RallyPoints[team]);
-					actor->SetAIMode(Actor::AIMODE_GOTO);
+					SendUnit(actor, s_RallyPoints[team], nullptr, false);
 				} else {
+					actor->ClearAIWaypoints();
 					actor->SetAIMode(Actor::AIMODE_SENTRY);
 				}
 				break;
@@ -1300,10 +1343,6 @@ namespace {
 		}
 	}
 
-	Actor* GetRef(const UnitRef& ref) { return ref.Unit && g_MovableMan.IsActor(ref.Unit) && ref.Unit->GetUniqueID() == ref.ID ? ref.Unit : nullptr; }
-
-	UnitRef MakeRef(Actor* actor) { return {actor, actor ? actor->GetUniqueID() : 0}; }
-
 	UnitRef s_PlayerUnit; //!< Your character in the Sandbox game mode, while it lives.
 	int s_PlayerEnterPending = 0; //!< Updates left to wait for the character to be in the world before stepping into it; 0 when not waiting.
 
@@ -1760,29 +1799,53 @@ namespace {
 		for (size_t i = 0; i < units.size(); ++i) {
 			Actor* unit = units[i];
 			const Vector& spot = spots[std::min(i, spots.size() - 1)];
-			unit->RemoveNumberValue(c_AttackTag);
-			unit->ClearAIWaypoints();
 			// The waypoint a little above the ground, where the unit's middle will be.
-			unit->AddAISceneWaypoint(spot + Vector(0.0F, -unit->GetHeight() * 0.5F));
-			unit->SetAIMode(Actor::AIMODE_GOTO);
+			SendUnit(unit, spot + Vector(0.0F, -unit->GetHeight() * 0.5F), nullptr, false);
 		}
 	}
 
 	void CommandSelected(const Vector& position) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
 		bool attack = target && IsCombatant(target) && std::none_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
-		for (const UnitRef& ref: s_Selected) {
-			if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
-				unit->RemoveNumberValue(c_AttackTag);
-				unit->ClearAIWaypoints();
-				if (attack) {
-					unit->AddAIMOWaypoint(target);
-					unit->SetAIMode(Actor::AIMODE_GOTO);
+		if (attack) {
+			for (const UnitRef& ref: s_Selected) {
+				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+					SendUnit(unit, target->GetPos(), target, true);
 				}
 			}
-		}
-		if (!attack) {
+		} else {
 			MoveUnitsTo(UnitsToMove(0, true), position);
+		}
+	}
+
+	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack there, 2 hold where they are.
+	void OrderSelectedUnits(int choice, const Vector& point) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		if (choice == 0) {
+			MoveUnitsTo(units, point);
+		} else if (choice == 1) {
+			// The nearest enemy to the point, if there is one close, else the place itself with orders to fight whatever is met.
+			Actor* target = nullptr;
+			float nearest = 400.0F * 400.0F;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (!IsCombatant(actor) || actor->IsIgnoredByAI() || units.empty() || actor->GetTeam() == units.front()->GetTeam()) {
+					continue;
+				}
+				float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+				if (distance < nearest) {
+					nearest = distance;
+					target = actor;
+				}
+			}
+			for (Actor* unit: units) {
+				SendUnit(unit, point, target, true);
+			}
+		} else if (choice == 2) {
+			for (Actor* unit: units) {
+				unit->RemoveNumberValue(c_AttackTag);
+				unit->ClearAIWaypoints();
+				unit->SetAIMode(Actor::AIMODE_SENTRY);
+			}
 		}
 	}
 
@@ -1963,6 +2026,11 @@ namespace {
 				CommandSelected(at);
 				break;
 			case Tool::OrderSelected:
+				if (stroke.Count >= 100) {
+					// From the command ring: move, attack or hold, about a point.
+					OrderSelectedUnits(stroke.Count - 100, at);
+					break;
+				}
 				for (const UnitRef& ref: s_Selected) {
 					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
 						GiveOrder(unit, stroke.Orders);
@@ -3103,67 +3171,107 @@ namespace {
 		}
 	}
 
-	/// The ring of sides: held open with the right button while a side-taking tool is in hand, four coloured quarters round the pointer; let go over one to take it.
+	/// One choice on a ring.
+	struct RingItem {
+		const char* Label;
+		ImU32 Color;
+	};
+
+	/// A ring of choices round where the right button went down, held open while it is held: the choice under the pointer is lit, and letting go takes it.
+	/// @param items The choices, from the top going clockwise. @param current The one in force now, lit when the pointer is in the middle.
+	/// @return The choice let go over, -1 for none (let go in the middle), or -2 while the ring is still held open.
+	int DrawRing(const std::vector<RingItem>& items, int current) {
+		ImGuiIO& io = ImGui::GetIO();
+		float pixel = ToolUI::Pixel();
+		float inner = pixel * 14.0F;
+		float outer = pixel * 36.0F;
+		int count = static_cast<int>(items.size());
+		ImVec2 away(io.MousePos.x - s_RingCenter.x, io.MousePos.y - s_RingCenter.y);
+		float distance = std::sqrt(away.x * away.x + away.y * away.y);
+		// Each choice has an equal slice; the first is centred straight up.
+		const float slice = 6.2832F / static_cast<float>(count);
+		int under = -1;
+		if (distance > inner * 0.6F) {
+			float angle = std::atan2(away.y, away.x) + 1.5708F + slice * 0.5F; // 0 at the top edge of the first slice, growing clockwise.
+			while (angle < 0.0F) {
+				angle += 6.2832F;
+			}
+			under = static_cast<int>(angle / slice) % count;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		for (int i = 0; i < count; ++i) {
+			bool lit = i == under || (under < 0 && i == current);
+			ImU32 color = items[i].Color;
+			ImU32 fill = (color & 0x00FFFFFF) | (static_cast<ImU32>(lit ? 230 : 120) << IM_COL32_A_SHIFT);
+			float from = -1.5708F - slice * 0.5F + slice * static_cast<float>(i) + 0.05F;
+			float to = from + slice - 0.1F;
+			float reach = lit ? outer + pixel * 3.0F : outer;
+			drawList->PathClear();
+			drawList->PathArcTo(s_RingCenter, reach, from, to, 16);
+			drawList->PathArcTo(s_RingCenter, inner, to, from, 16);
+			drawList->PathFillConvex(fill);
+			drawList->PathClear();
+			drawList->PathArcTo(s_RingCenter, reach, from, to, 16);
+			drawList->PathArcTo(s_RingCenter, inner, to, from, 16);
+			drawList->PathStroke(IM_COL32(20, 24, 16, 230), ImDrawFlags_Closed, pixel);
+			float middle = (from + to) * 0.5F;
+			float textReach = (inner + outer) * 0.5F;
+			ImVec2 nameSize = ImGui::CalcTextSize(items[i].Label);
+			ImVec2 at(std::floor(s_RingCenter.x + std::cos(middle) * textReach - nameSize.x * 0.5F), std::floor(s_RingCenter.y + std::sin(middle) * textReach - nameSize.y * 0.5F));
+			drawList->AddText(ImVec2(at.x + pixel, at.y + pixel), IM_COL32(0, 0, 0, 200), items[i].Label);
+			drawList->AddText(at, IM_COL32(255, 255, 255, 255), items[i].Label);
+		}
+		// The choice in force, in the middle.
+		drawList->AddCircleFilled(s_RingCenter, inner - pixel * 2.0F, IM_COL32(20, 24, 16, 220));
+		int shown = under >= 0 ? under : current;
+		if (shown >= 0 && shown < count) {
+			drawList->AddCircleFilled(s_RingCenter, inner - pixel * 5.0F, items[shown].Color);
+		}
+		static const bool testHeld = std::getenv("CCCP_TEST_RING") != nullptr;
+		if (ImGui::IsMouseDown(ImGuiMouseButton_Right) || testHeld) {
+			return -2;
+		}
+		s_RingOpen = false;
+		return under;
+	}
+
+	/// The rings the right button opens, by the tool in hand: the sides for anything made for a side, the commands for the command tool.
 	void DrawSideRing() {
 		ImGuiIO& io = ImGui::GetIO();
+		Tool kind = CurrentTool().Kind;
+		bool hasRing = TakesSide(kind) || kind == Tool::Command;
 		if (!s_RingOpen) {
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && TakesSide(CurrentTool().Kind)) {
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing) {
 				s_RingOpen = true;
 				s_RingCenter = io.MousePos;
+				s_RingScenePoint = MouseScenePosition();
 			}
 			return;
 		}
-		float pixel = ToolUI::Pixel();
-		float inner = pixel * 14.0F;
-		float outer = pixel * 34.0F;
-		ImVec2 away(io.MousePos.x - s_RingCenter.x, io.MousePos.y - s_RingCenter.y);
-		float distance = std::sqrt(away.x * away.x + away.y * away.y);
-		// The quarters: Red above, Green to the right, Blue below, Yellow to the left.
-		int under = -1;
-		if (distance > inner * 0.6F) {
-			float angle = std::atan2(away.y, away.x); // 0 to the right, positive downwards.
-			if (angle > -2.356F && angle <= -0.785F) {
-				under = 0;
-			} else if (angle > -0.785F && angle <= 0.785F) {
-				under = 1;
-			} else if (angle > 0.785F && angle <= 2.356F) {
-				under = 2;
-			} else {
-				under = 3;
+		if (kind == Tool::Command) {
+			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Leave", IM_COL32(150, 150, 140, 255)}};
+			int picked = DrawRing(commands, -1);
+			if (picked == -2) {
+				return;
 			}
+			Stroke stroke;
+			stroke.Kind = Tool::OrderSelected;
+			stroke.Position = s_RingScenePoint;
+			stroke.Count = 100 + picked;
+			if (picked == 3) {
+				s_ToolIndex = ToolIndex(Tool::None);
+			} else if (picked >= 0) {
+				s_Queue.push_back(stroke);
+			}
+			return;
 		}
-		ImDrawList* drawList = ImGui::GetForegroundDrawList();
-		const float quarterStart[c_Sides] = {-2.356F, -0.785F, 0.785F, 2.356F};
+		std::vector<RingItem> sides;
 		for (int side = 0; side < c_Sides; ++side) {
-			bool lit = side == under || (under < 0 && side == s_Team);
-			ImU32 color = c_SideColors[side];
-			ImU32 fill = (color & 0x00FFFFFF) | (static_cast<ImU32>(lit ? 230 : 110) << IM_COL32_A_SHIFT);
-			float from = quarterStart[side] + 0.06F;
-			float to = quarterStart[side] + 1.571F - 0.06F;
-			drawList->PathClear();
-			drawList->PathArcTo(s_RingCenter, lit ? outer + pixel * 3.0F : outer, from, to, 12);
-			drawList->PathArcTo(s_RingCenter, inner, to, from, 12);
-			drawList->PathFillConvex(fill);
-			drawList->PathClear();
-			drawList->PathArcTo(s_RingCenter, lit ? outer + pixel * 3.0F : outer, from, to, 12);
-			drawList->PathArcTo(s_RingCenter, inner, to, from, 12);
-			drawList->PathStroke(IM_COL32(20, 24, 16, 230), ImDrawFlags_Closed, pixel);
-			float middle = (from + to) * 0.5F;
-			float reach = (inner + outer) * 0.5F;
-			ImVec2 nameSize = ImGui::CalcTextSize(c_SideNames[side]);
-			ImVec2 at(s_RingCenter.x + std::cos(middle) * reach - nameSize.x * 0.5F, s_RingCenter.y + std::sin(middle) * reach - nameSize.y * 0.5F);
-			drawList->AddText(ImVec2(at.x + pixel, at.y + pixel), IM_COL32(0, 0, 0, 200), c_SideNames[side]);
-			drawList->AddText(at, IM_COL32(255, 255, 255, 255), c_SideNames[side]);
+			sides.push_back({c_SideNames[side], c_SideColors[side]});
 		}
-		// The side in hand, in the middle.
-		drawList->AddCircleFilled(s_RingCenter, inner - pixel * 2.0F, IM_COL32(20, 24, 16, 220));
-		drawList->AddCircleFilled(s_RingCenter, inner - pixel * 5.0F, c_SideColors[under >= 0 ? under : s_Team]);
-		static const bool testHeld = std::getenv("CCCP_TEST_RING") != nullptr;
-		if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && !testHeld) {
-			if (under >= 0) {
-				s_Team = under;
-			}
-			s_RingOpen = false;
+		int picked = DrawRing(sides, s_Team);
+		if (picked >= 0) {
+			s_Team = picked;
 		}
 	}
 
@@ -3480,7 +3588,7 @@ namespace {
 			if (tool.Kind == Tool::Drop) {
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(field * 0.7F);
-				ImGui::Combo("##craft", &s_Craft, "Dropship Rocket ");
+				ImGui::Combo("##craft", &s_Craft, "Dropship\0Rocket\0");
 			}
 		} else if (tool.Kind == Tool::Structure) {
 			const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice);
@@ -3520,7 +3628,7 @@ namespace {
 			}
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
-			ImGui::TextDisabled("%d selected.  Drag a box to select; click the ground to send them, an enemy to attack it.", static_cast<int>(s_Selected.size()));
+			ImGui::TextDisabled("%d selected.  Drag a box to select; click the ground to send them, an enemy to attack it; hold the right button for move, attack, hold.", static_cast<int>(s_Selected.size()));
 		}
 		return shown;
 	}
@@ -4655,6 +4763,7 @@ void Sandbox::Update() {
 		s_Effects.clear();
 		return;
 	}
+	ApplyPendingOrders();
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
