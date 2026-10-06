@@ -176,3 +176,43 @@ Each step is measured on the gym before and after, and committed on its own.
 6. **Combat movement** (#17, done; see the combat gym), **squads** (#18): new behaviours, each with a gym course (a wall to take cover
    behind, a target to flank, a squad to move as one).
 7. More gym courses as problems are found in play: a cliff taller than one tank of fuel, a door, water, a narrow shaft to climb.
+
+## Handover, 2026-10-06 evening
+
+Branch `ai-overhaul` on hotsake-uk/Cortex-Commander (origin). Last commit 423329a92. Everything below is pushed.
+
+### Where things stand
+
+- Outdoor gym (`Tools\RenderTest\AIGym.ps1 -Runs N -Wait 70`, courses in `RenderTest.rte/AIGym.lua`): all 15 human courses
+  pass, in simulation seconds. Open: the crab over the hill (#16): the crab's jet lean throws it backwards off the slope.
+- Combat gym (`Tools\RenderTest\AICombat.ps1 -Trace`): five fights, all do what they should.
+- Indoor gym: `Tools\RenderTest\Gym.ps1 -Run -Maps "Bywater Barracks,Hemslock Hold" -Exe "Cortex Command.debug.release.exe"`
+  runs the maps' saved courses (`Userdata\Gyms\<map>.txt`, made in play with the sandbox's Gym tab, god mode) at the same time in
+  their own windows. The maps come from the BB+ mod in `Mods\BB+.rte` (git-ignored: only the machine with the mod can run them).
+  `Tools\RenderTest\AIBunker.ps1 -Scenario AIBywater -Trace` runs the five courses written into `RenderTest.rte/AIBunker.lua`
+  instead when the map has no saved gym. On Bywater Barracks the units now climb shafts and hatches, but none of those five
+  courses finishes inside 60 s: the routes are long and there are stalls still to find. That is the work in front of us.
+- The user's standard: units should only get stuck in impossible spots, never in base-game bunker layouts, inside or out.
+
+### How to look at a stall
+
+1. Run one course, zoomed, traced, with the grid around a point dumped:
+   `CCCP_BUNKER_VIEW=x,y,zoom CCCP_BUNKER_ONLY=n CCCP_BUNKER_TRACE=n CCCP_BUNKER_DUMP=x,y CCCP_AI_LOG=1
+   CCCP_CONSOLE_LOG=<abs path> powershell -File Tools\RenderTest\Capture.ps1 -Scenario AIBywater -Name X -ExtraWait 4 -Burst 6 -BurstIntervalMs 8000`
+   (run `Tools\RenderTest\Setup.ps1` first after editing anything under `Tools\RenderTest\RenderTest.rte`; it copies the module into Mods).
+2. In the log: `AITRACE nodes:` is the route with each point's step kind (0 walk, 1 crawl, 2 jump, 3 fall, 4 dig, 5 door);
+   `AITRACE pop:` says why a waypoint was dropped; `AITRACE climb:` / `jet:` say what the jet logic did; `AIBUNKER grid node ...`
+   is the grid's view of a node (surface, ground, free head room, clearance either side, the material each way, 0 = air);
+   `PATHLOG` (with `CCCP_PATH_LOG=1`) has every solve with its cost and time. Captures land in `Tools\RenderTest\Output`.
+3. The pieces: `Source/System/PathFinder.cpp` (grid: `UpdateNodeCosts`, `AdjacentCost` with the jump chains and landings,
+   `StepKindBetween`, the apex and the straight-run merging in `CalculatePath`), `Source/Entities/Actor.cpp` (`UpdateMovePath`,
+   `PreControllerUpdate`, the path display), `Data/Base.rte/AI/SharedBehaviors.lua` (`GoToWpt`: the climb controller from
+   "A climb:" on, waypoint popping, the stuck handling; the combat rules in `OrderKind`/`FightsOnTheMove`/`RetreatUpdate`/
+   `FindFlank`), `HumanBehaviors.lua` (`ShootTarget`, `HoldRange`, `TakeCover`), `NativeHumanAI.lua`.
+
+### Rules of the road
+
+- Commit as `147993921+hotsake-uk@users.noreply.github.com`, push to origin only, never upstream; never push the
+  `backup/modernisation-before-email-rewrite` branch. Mods are not committed.
+- Debug build: `Tools\RenderTest\Build.ps1`; Final: `-Config Final`, only when `Cortex Command.exe` isn't running (the user plays it).
+- Measure before and after on the gyms; sim-time numbers are the ones that count.
