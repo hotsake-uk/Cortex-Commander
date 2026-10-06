@@ -205,5 +205,6 @@ Write-Scenario "Build" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLength
 Write-Scenario "Move" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Move")
 Write-Scenario "Attack" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Attack")
 Write-Scenario "AIGym" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Gym") # The courses are floating concrete; a shot at one must not bring it down.
+$sandboxOutpost = $sandbox.Clone(); $sandboxOutpost.DefaultSceneName = "Zekarra Mining Outpost"; Write-Scenario "AIMap" ($sandboxOutpost + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test AI Map")
 Write-Scenario "PlayMenu" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play Menu")
 Write-Scenario "Play" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play")

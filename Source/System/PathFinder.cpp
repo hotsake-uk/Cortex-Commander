@@ -216,6 +216,28 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
 		result = GetPather()->Solve(static_cast<void*>(startNode), static_cast<void*>(endNode), &statePath, &totalCostResult);
+		// A route that only exists through ground the searcher can't dig is usually down to the start node: a unit pressed into a bunker wall or
+		// a ledge stands in a cell whose every edge samples concrete. The neighbouring cells are tried as starts before that answer is given.
+		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F) {
+			const PathNode* alternatives[] = {startNode->Up, startNode->Down, startNode->Left, startNode->Right, startNode->LeftUp, startNode->UpRight, startNode->DownLeft, startNode->RightDown};
+			for (const PathNode* alternative: alternatives) {
+				if (!alternative || !alternative->m_Navigable || g_SceneMan.GetTerrMatter(static_cast<int>(alternative->Pos.m_X), static_cast<int>(alternative->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir) {
+					continue;
+				}
+				std::vector<void*> otherPath;
+				float otherCost = 0.0F;
+				GetPather()->Reset();
+				int otherResult = GetPather()->Solve(const_cast<PathNode*>(alternative), static_cast<void*>(endNode), &otherPath, &otherCost);
+				if (otherResult == MicroPather::SOLVED && otherCost < totalCostResult) {
+					result = otherResult;
+					statePath = otherPath;
+					totalCostResult = otherCost;
+					if (totalCostResult <= 100000.0F) {
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	if (result == MicroPather::NO_SOLUTION) {

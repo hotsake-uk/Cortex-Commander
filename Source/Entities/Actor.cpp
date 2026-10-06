@@ -1,4 +1,4 @@
-﻿#include "Actor.h"
+#include "Actor.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
@@ -122,6 +122,7 @@ void Actor::Clear() {
 	m_MovePath.clear();
 	m_UpdateMovePath = false;
 	m_ImpossiblePaths = 0;
+	m_PathRetryTimer.Reset();
 	m_MoveProximityLimit = 20.0F;
 	m_AIBaseDigStrength = c_PathFindingDefaultDigStrength;
 	m_BaseMass = std::numeric_limits<float>::infinity();
@@ -1023,6 +1024,10 @@ void Actor::UpdateMovePath() {
 	if (g_SceneMan.GetScene() == nullptr) {
 		return;
 	}
+	// After an impossible answer, a few seconds for the unit to be somewhere else before asking again.
+	if (m_ImpossiblePaths > 0 && !m_PathRetryTimer.IsPastSimMS(3000)) {
+		return;
+	}
 
 	// Estimate how much material this actor can dig through
 	float digStrength = EstimateDigStrength();
@@ -1140,15 +1145,19 @@ void Actor::PreControllerUpdate() {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
 			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));
 		}
-		// A route that only exists through ground the unit can't dig is no route. One such answer can be down to where the unit is standing (wedged
-		// under a ledge, say), so it gets to try again from elsewhere; when the answer keeps coming back the same, the unit is left with nothing to
-		// follow and the AI stands down rather than pushing at the wall for ever.
+		// A route that only exists through ground the unit can't dig is no route. One such answer is usually down to where the unit is standing
+		// (wedged under a ledge, pressed into a bunker wall), so the route isn't followed, the unit is left to the stuck handling for a few seconds,
+		// and then it asks again from wherever that has got it. Only when the answer keeps coming back the same is it left with nothing to follow,
+		// and the AI stands down rather than pushing at the wall for ever.
 		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
-		if (m_ImpossiblePaths >= 3) {
-			m_ImpossiblePaths = 0;
+		if (impossible) {
+			m_PathRetryTimer.Reset();
 			m_MovePath.clear();
-			m_Waypoints.clear();
+			if (m_ImpossiblePaths >= 6) {
+				m_ImpossiblePaths = 0;
+				m_Waypoints.clear();
+			}
 			m_PathRequest.reset();
 			return;
 		}
