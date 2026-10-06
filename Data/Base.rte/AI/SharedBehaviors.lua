@@ -876,7 +876,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					local Floor = Vector();
 					local floorY = Owner.Pos.Y + feetBelowPos;
 					if SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.5), 5, Floor, 2, rte.grassID, true) then
-						floorY = Floor.Y;
+						-- (Never deeper than the standing feet: over the edge of a drop the floor is further down, and a probe taken from there sat
+						-- at chest height and read a knee-high step ahead as no head room.)
+						floorY = math.min(Floor.Y, Owner.Pos.Y + feetBelowPos);
 					end
 					local topHeadPos = Vector(Owner.Pos.X, math.min(Owner.Pos.Y - 4, floorY - standingHeight));
 
@@ -1243,7 +1245,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							-- beside it and drove it under the floor slab. A jump point on the floor (a 24 px step, a landing) is for the legs and pops as
 							-- any other: held to its height, a prone unit at a step under a doorway, which may not jet, crept against it for five seconds.
 							local apexPoint = Waypoint.Kind == 2 and not SceneMan:CastStrengthRay(Waypoint.Pos, Vector(0, Owner.Height * 0.6), 5, Vector(), 3, rte.grassID, true);
-							local notThereYet = CurrDist:MagnitudeIsGreaterThan(tolerance) or (apexPoint and CurrDist.Y < -6);
+							-- (And only in the air: standing on the landing under a top that sits 20 px over Pos, nothing else would ever pop it.)
+							local notThereYet = CurrDist:MagnitudeIsGreaterThan(tolerance) or (apexPoint and CurrDist.Y < -6 and (AI.jetClimb or AI.flying));
 							if notThereYet then	-- not close enough to the waypoint
 								ArrivedTimer:Reset();
 
@@ -1318,11 +1321,16 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										-- corridor, so a knee-high step in a corridor was a wall, and jetted at.)
 										local chest = Owner.Pos + Vector(0, -Owner.Height * 0.1);
 										local head = Owner.Pos + Vector(0, -underHeadTop);
-										local chestHit = SceneMan:CastStrengthRay(chest, ahead, 5, Vector(), 2, rte.grassID, true);
-										local headHit = SceneMan:CastStrengthRay(head, ahead, 5, Vector(), 2, rte.grassID, true);
-										-- Chest and head both blocked is a wall; chest alone is a steep slope or a step, which the legs and climbing arms deal with,
-										-- and the stuck handling jets if they can't.
-										if chestHit and headHit and Waypoint.Kind ~= 3 and Waypoint.Kind ~= 4 then
+										local ChestHit = Vector();
+										local HeadHit = Vector();
+										local chestHit = SceneMan:CastStrengthRay(chest, ahead, 5, ChestHit, 2, rte.grassID, true);
+										local headHit = SceneMan:CastStrengthRay(head, ahead, 5, HeadHit, 2, rte.grassID, true);
+										-- Chest and head both blocked, at much the same distance, is a wall (a face); chest alone, or the head's hit well beyond the
+										-- chest's, is a steep slope or a step, which the legs and climbing arms deal with, and the stuck handling jets if they can't.
+										-- (Both hitting was enough before: with the head ray at 42 px over the feet a 45 degree slope met both within a body length,
+										-- and slopes that were walked were jetted at.)
+										local face = chestHit and headHit and math.abs(HeadHit.X - ChestHit.X) < 8;
+										if face and Waypoint.Kind ~= 3 and Waypoint.Kind ~= 4 then
 											WallAhead = true;
 											local up = (side < 0) and (Obstacles[Obst.L_UP] == true) or (side > 0 and Obstacles[Obst.R_UP] == true);
 											if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not up then
@@ -1445,17 +1453,29 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- of a shaft two bodies wide had its ray up hit the wall's edge, and stood at the bottom for ever.
 												-- (Out to a body's height either way: a hub's opening is 96 px across, and from a column near one wall of it the far wall
 												-- was out of a shorter reach, so the opening wasn't a shaft and the climb drifted into its side.)
-												local shaftX = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
+												local shaftX, shaftWidth = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
+												-- (A shaft, not a room: with both walls of a room within reach its middle was taken for a shaft's, and the way up looked at
+												-- from there, beside the hatch, found the ceiling every time.)
+												if shaftWidth and shaftWidth > Owner.Height * 1.2 then
+													shaftX = nil;
+												end
 												local probeX = shaftX or Owner.Pos.X;
 												local ceiling = SceneMan:CastObstacleRay(Vector(probeX, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
+												if ceiling and probeX ~= Owner.Pos.X then
+													-- Or from our own column, which may be the open one.
+													ceiling = SceneMan:CastObstacleRay(Vector(Owner.Pos.X, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
+												end
 												AI.climbShaftX = shaftX;
-												-- A tall climb wants a near full tank: started on half of one it ends part way up the face, with the fall and the wait to
-												-- refill to show for it. So the unit waits at the foot until the tank is in.
-												-- (How much is wanted comes from the body: the height the full tank buys, against the height to climb, with a third over.)
-												local jet = SharedBehaviors.JetNumbers(AI, Owner);
+												-- A tall climb wants the fuel it will take: started on half a tank it ends part way up the face, with the fall and the wait
+												-- to refill to show for it. So the unit waits at the foot until the tank is in. How much is wanted is the time the climb
+												-- takes at the rate it is flown (8 m/s at the most, see the climb), which is what the jet burns by, with six tenths of a
+												-- second over for the hover and the step off at the top; never more than 95% of a tank, or it would never go.
+												-- (It used to be reckoned from the height a whole tank buys, 440 px for a soldier, but that is the height of a ballistic
+												-- burn, and a climb flown under control at 5 m/s got about 250 px from a tank: a 192 px shaft left it with nothing at the top.)
 												local tall = above < -Owner.Height * 0.5;
-												local fullTankHeight = math.max(1, Owner.JumpHeight * GetPPM());
-												local tankIn = Owner.Jetpack.JetTimeLeft >= (tall and Owner.Jetpack.JetTimeTotal * math.min(0.95, (-above * 1.8) / fullTankHeight) or AI.minBurstTime);
+												local climbSeconds = -above / (8 * GetPPM());
+												local fuelWanted = math.min(Owner.Jetpack.JetTimeTotal * 0.95, climbSeconds * 1000 * 0.9 + 600);
+												local tankIn = Owner.Jetpack.JetTimeLeft >= (tall and fuelWanted or AI.minBurstTime);
 												tankIn = tankIn and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime;
 												if not tankIn and tall and not AI.flying then
 													AI.refuel = true;
@@ -1500,7 +1520,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- sits up to a node above the ledge's top, and the step off it is sideways, so the way at foot level has to be open
 												-- that way. It is also over well past the waypoint's height, and when the tank runs dry.
 												local stepX = CurrDist.X;
-												if math.abs(stepX) < 10 and NextWptPos then
+												-- The top of a column is a place to turn at, not to land on: the drift and the step off aim at the point after it, the landing,
+												-- from wherever the column was climbed. (Measured to the top itself when the unit was more than 10 px off its column, the
+												-- step off went towards the column, over the hole.)
+												if NextWptPos and (apexPoint or math.abs(stepX) < 10) then
 													stepX = SceneMan:ShortestDistance(Owner.Pos, NextWptPos, false).X;
 												end
 												local feetClear = true;
@@ -1522,7 +1545,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- cut with the feet merely level with the floor, a node short of it, dropped the unit back down the hole it had climbed
 													-- (in the air, with the jet out, nothing moves a unit sideways).
 													local groundUnderFeet = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), Vector(0, Owner.Height * 0.25), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
-													local overLanding = groundUnderFeet or math.abs(stepX) < Owner.Height * 0.15;
+													-- (Only a landing itself counts as reached by being under us; a top-of-column is over the hole by definition.)
+													local overLanding = groundUnderFeet or (not apexPoint and math.abs(stepX) < Owner.Height * 0.15);
 													local done = (above > -Owner.Height * 0.2 and feetClear and overLanding and math.abs(stepX) < Owner.Height * 0.4) or above > Owner.Height * 0.6 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
 													-- A crab's climb is over at the height: it lands on legs either side, so there is no step off a lip to wait for, and a
 													-- slope ahead at foot level is not a floor that is fouled. Held to the human rules against the gym's hill it rose a
@@ -1545,7 +1569,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- The rate of climb comes down as the top nears: what it reaches the top at, it coasts on past it (eighty pixels, from five
 													-- metres a second), and that was fuel and height to come down again.
 													local toGo = -above - Owner.Height * 0.2;
-													local climbRate = math.max(1, math.min(5, toGo / 15));
+													-- (Up to 8 m/s while there is more than 120 px to go: a climb costs fuel by the second, not by the pixel, so the faster
+													-- the tall part is flown the more of the tank is left for the top. A 192 px shaft flown at 5 m/s took nine tenths of
+													-- the tank and left nothing for the step off. The rate still comes down with the height to go, so the top is reached
+													-- at a speed the coast past it can be measured in pixels.)
+													local climbRate = math.max(1, math.min(8, toGo / 15));
 													-- With some play in it: every relight can be a burst, at a burst's worth of fuel, so the fewer the better.
 													if Owner.Head and above > -Owner.Height * 0.2 and not feetClear and math.abs(stepX) >= 10 and not AI.climbClearY and above < Owner.Height * 0.5 then
 														-- At the point's height but the feet still foul the floor we step onto (the point sits as low as the landing's
@@ -1594,7 +1622,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													local secondsToTop = math.max(1, -above / (climbRate * GetPPM()));
 													local wantVelX = math.max(-4, math.min(4, CurrDist.X / (secondsToTop * GetPPM())));
 													-- In a shaft, the middle of it is what's kept to, whatever side the waypoint is on; the walls come first.
-													local shaftNow = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
+													local shaftNow, shaftNowWidth = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
+													if shaftNowWidth and shaftNowWidth > Owner.Height * 1.2 then
+														shaftNow = nil; -- A room, not a shaft (see the climb's start).
+													end
 													if shaftNow then
 														wantVelX = math.max(-2, math.min(2, (shaftNow - Owner.Pos.X) / 6));
 													end

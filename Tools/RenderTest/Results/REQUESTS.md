@@ -7,7 +7,15 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), the climb's ending, five faults from Results/af7836b** (GoToWpt): only an apex over a drop waits for its height, a
+- **(this push), the climb's ending, from the review** (GoToWpt): a top-of-column point always hands the drift and the step off to the
+  landing after it; its height rule applies only in the air; a wall is told from a slope by the two rays hitting at the same distance,
+  so 45 degree ground is walked again; a room up to 200 px wide is no longer taken for a shaft; the crawl probe never drops below the
+  standing head; tall climbs fly at up to 8 m/s and the tank check wants the climb's real fuel plus a reserve for the top (a 192 px
+  shaft left 10% of the tank at the top before). Expect: sky "bottom corridor to the top room" and "bottom to the top gallery" well
+  under 30 s with fuel to spare at the top; no `jet: wall ahead` on the hill's 45 degree steps; "steps up" and "onto the ledge" as
+  before or faster.
+
+- **7d8b18a7, the climb's ending, five faults from Results/af7836b** (GoToWpt): only an apex over a drop waits for its height, a
   jump point on the floor pops as before (fixes outdoor "through the room" back to ~14 s); a jump landing beside the unit at its height
   is not popped from 30 px away (Bywater course 5's pit, course 1's hatch); the lip probe reaches no higher than where the head will be
   at the waypoint, so a corridor's ceiling is no longer a lip pushing the unit onto the far lip (sky "up the hatch", "bottom corridor
