@@ -62,3 +62,15 @@ The capture of the middle of Bywater (`CCCP_BUNKER_LOOK=1820,560,2`) shows (1820
 1764,573 and 1836,573). Units started there stood on the leaves and were gibbed when one swung (died at full health, 3 of the last 9
 runs). The start of "middle to the mid left room" and the goal of "bottom right to the middle" are now (1950,590), in the open room
 east of the shaft (floor about 610). Both courses' numbers start again from the next run.
+
+## Addendum: Bywater with the new "middle" (3 runs, same build)
+
+`newmiddle_*.log`, `results_newmiddle.txt`. **5/15, no deaths.** Use this as the Bywater baseline from here on.
+
+| Course | Result |
+|---|---|
+| bottom corridor to the top room | 0/3 (854-943 px short, near 1381-1604,911-931) |
+| mid left room to the right column | 2/3 (22.5, 41.5 s; once 50 px short, stood still 26 s at 2147,868) |
+| top room to the bottom corridor | 2/3 (35.5, 37.5 s; once outside at 1230,1072, fault 1) |
+| middle to the mid left room | 1/3 (26.5 s; else 99 / 177 px short) |
+| bottom right to the middle | 0/3 |
