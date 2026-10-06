@@ -1040,7 +1040,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											local above = Waypoint.Pos.Y - Owner.Pos.Y; -- Negative when the waypoint is higher than us.
 											-- (Not "and AI.flying": that only comes on after a second clear of the ground, and a climb up a slope brushes it all the way.)
 											local climbing = AI.jetClimb;
-											local wantsClimb = AI.proneState ~= AHuman.PRONE and ((above < -Owner.Height * 0.25) or (WallAhead and above < Owner.Height * 0.3));
+											-- A rise steeper than the legs can walk (about 40 degrees: a slope gentler than that is walked, however far up the waypoint
+												-- is, where units were jetting over every hill crest), or a wall in the way at any height.
+												local steep = -above > math.abs(CurrDist.X) * 0.85;
+												local wantsClimb = AI.proneState ~= AHuman.PRONE and ((above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
 											local climbRefused = false;
 											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
 												local towardsX = CurrDist.X;

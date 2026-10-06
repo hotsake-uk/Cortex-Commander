@@ -1552,13 +1552,14 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 		}
 	}
 
-	// Don't proceed to draw all the secret stuff below if this screen is for a player on the other team!
-	if (g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->GetTeamOfPlayer(whichScreen) != m_Team) {
+	// Don't proceed to draw all the secret stuff below if this screen is for a player on the other team! (Unless the AI paths are being
+	// shown on purpose: that is a look at every side's units, and in the sandbox the viewer is on no team at all.)
+	if (!s_ShowAIPaths && g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->GetTeamOfPlayer(whichScreen) != m_Team) {
 		return;
 	}
 
 	// AI waypoints or points of interest
-	if (m_DrawWaypoints && m_PlayerControllable && (s_ShowAIPaths || m_Controller.IsPlayerControlled()) && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
+	if ((s_ShowAIPaths || (m_DrawWaypoints && m_PlayerControllable && m_Controller.IsPlayerControlled())) && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
 		// Draw the AI paths, from the ultimate destination back up to the actor's position.
 		// We do this backwards so the lines won't crawl and the dots can be evenly spaced throughout
 		Vector waypoint;

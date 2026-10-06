@@ -736,50 +736,6 @@ namespace {
 		return nearest;
 	}
 
-	/// Units that have stopped moving on the way somewhere are sent again, so the AI works out a fresh path from where they are; after a few tries they give up and hold.
-	void NudgeStuckUnits() {
-		static std::map<long, std::pair<Vector, int>> lastSeen; // By unique ID: where the unit was last time, and how many times running it hadn't moved.
-		std::map<long, std::pair<Vector, int>> seenNow;
-		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor->GetAIMode() != Actor::AIMODE_GOTO || actor->IsPlayerControlled() || !IsCombatant(actor)) {
-				continue;
-			}
-			long id = static_cast<long>(actor->GetUniqueID());
-			const MovableObject* target = actor->GetMOMoveTarget();
-			bool chasing = target && g_MovableMan.ValidMO(target);
-			Vector goal = chasing ? target->GetPos() : actor->GetLastAIWaypoint();
-			if (g_SceneMan.ShortestDistance(actor->GetPos(), goal, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(chasing ? 120.0F : 30.0F)) {
-				continue;
-			}
-			int still = 0;
-			if (auto before = lastSeen.find(id); before != lastSeen.end() && g_SceneMan.ShortestDistance(before->second.first, actor->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(6.0F)) {
-				still = before->second.second + 1;
-			}
-			if (still >= 6) {
-				// Three seconds without getting anywhere.
-				still = 0;
-				int tries = static_cast<int>(actor->GetNumberValue("SandboxStuck")) + 1;
-				actor->SetNumberValue("SandboxStuck", tries);
-				if (tries > 4) {
-					actor->RemoveNumberValue("SandboxStuck");
-					HoldUnit(actor);
-				} else {
-					bool attack = actor->GetNumberValue(c_AttackTag) > 0.0;
-					Actor* chosen = chasing ? const_cast<Actor*>(dynamic_cast<const Actor*>(target)) : nullptr;
-					double x = actor->GetNumberValue(c_AttackXTag);
-					double y = actor->GetNumberValue(c_AttackYTag);
-					SendUnit(actor, goal, chosen, attack);
-					if (attack && actor->NumberValueExists(c_AttackXTag)) {
-						actor->SetNumberValue(c_AttackXTag, x);
-						actor->SetNumberValue(c_AttackYTag, y);
-					}
-				}
-			}
-			seenNow[id] = {actor->GetPos(), still};
-		}
-		lastSeen.swap(seenNow);
-	}
-
 	void ApplyPendingOrders() {
 		std::vector<PendingOrder> orders;
 		orders.swap(s_PendingOrders);
@@ -1961,7 +1917,10 @@ namespace {
 				if (static_cast<int>(reachable.size()) >= static_cast<int>(units.size())) {
 					break;
 				}
-				if (scene->CalculatePath(units.front()->GetPos(), spot, path, units.front()->GetAIBaseDigStrength() > 0.0F ? FLT_MAX : 0.0F) >= 0.0F) {
+				// With the unit's own reach, as its AI will search: the same jump height, dig strength and breaching, on its team's grid.
+				Actor* leader = units.front();
+				float cost = scene->CalculatePath(leader->GetPos(), spot, path, leader->EstimateJumpHeight(), leader->EstimateDigStrength(), static_cast<Activity::Teams>(leader->GetTeam()), leader->EstimateBreachStrength());
+				if (cost >= 0.0F && cost < 100000.0F) {
 					reachable.push_back(spot);
 				}
 			}
@@ -5134,9 +5093,8 @@ void Sandbox::Update() {
 	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
 	}
-	if (g_TimerMan.GetSimUpdateCount() % 30 == 0) {
-		NudgeStuckUnits();
-	}
+	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
+	// can't be had are the AI's own business now, and re-ordering a unit every three seconds only restarted whatever it was in the middle of.)
 	UpdateAutoBattle();
 	Colony::Update();
 	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {

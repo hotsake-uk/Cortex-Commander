@@ -211,7 +211,7 @@ namespace RTE {
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
 		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
-		bool NightAffectsAI = true; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay.
+		bool NightAffectsAI = false; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay; off by default so the AI isn't handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
 

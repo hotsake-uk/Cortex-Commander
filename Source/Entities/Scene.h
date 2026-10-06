@@ -669,7 +669,7 @@ namespace RTE {
 		/// @param team The team we're pathing for (doors for this team will be considered passable).
 		/// @return The total minimum difficulty cost calculated between the two points on
 		/// the scene.
-		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight = FLT_MAX, float digStrength = c_PathFindingDefaultDigStrength, Activity::Teams team = Activity::Teams::NoTeam);
+		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight = FLT_MAX, float digStrength = c_PathFindingDefaultDigStrength, Activity::Teams team = Activity::Teams::NoTeam, float breachStrength = -1.0F);
 
 		/// Asynchronously calculates the least difficult path between two points on the current Scene. Takes both distance and materials into account.
 		/// When pathing using the NoTeam pathFinder, no doors are considered passable.

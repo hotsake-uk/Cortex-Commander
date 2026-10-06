@@ -2483,9 +2483,9 @@ void Scene::UpdatePathFinding() {
 	m_PathfindingUpdated = true;
 }
 
-float Scene::CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight, float digStrength, Activity::Teams team) {
+float Scene::CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight, float digStrength, Activity::Teams team, float breachStrength) {
 	float totalCostResult = -1;
-	int result = GetPathFinder(team).CalculatePath(start, end, pathResult, totalCostResult, jumpHeight, digStrength);
+	int result = GetPathFinder(team).CalculatePath(start, end, pathResult, totalCostResult, jumpHeight, digStrength, breachStrength);
 
 	// It's ok if start and end nodes happen to be the same, the exact pixel locations are added at the front and end of the result regardless
 	return (result == micropather::MicroPather::SOLVED || result == micropather::MicroPather::START_END_SAME) ? totalCostResult : -1;

@@ -202,7 +202,7 @@ Write-Scenario "EffectsDay" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayL
 Write-Scenario "ZoomLights" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Zoom", "Render Test Effects")
 Write-Scenario "Colony" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Colony")
 Write-Scenario "Build" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Build")
-Write-Scenario "Move" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Move")
+Write-Scenario "Move" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1 }) @("Render Test Move") # The paths the units take are drawn.
 Write-Scenario "Attack" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Attack")
 Write-Scenario "AIGym" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Gym") # The courses are floating concrete; a shot at one must not bring it down.
 $sandboxOutpost = $sandbox.Clone(); $sandboxOutpost.DefaultSceneName = "Zekarra Mining Outpost"; Write-Scenario "AIMap" ($sandboxOutpost + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test AI Map")

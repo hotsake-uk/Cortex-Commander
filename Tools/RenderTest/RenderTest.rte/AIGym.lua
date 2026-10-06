@@ -92,6 +92,10 @@ function AIGymScript:UpdateScript()
 			-- The scene's own slopes: the far side of the hill drops 500 px over 450.
 			{ from = self:GroundAt(middle + 40), to = self:GroundAt(middle + 480), name = "down the slope" },
 			{ from = self:GroundAt(middle + 520), to = self:GroundAt(middle + 80), name = "up the slope" },
+			-- The scene's own cliff on the far side of the hill (166 px, sheer): straight onto its top from its foot, and across the
+			-- dip behind the hill's crest (a jet across, or a walk down and up).
+			{ from = self:GroundAt(middle + 450), to = self:GroundAt(middle + 330), name = "onto the ledge" },
+			{ from = self:GroundAt(middle + 320), to = self:GroundAt(middle + 120), name = "across the dip" },
 			-- A digger: the goal is 140 px straight down into the valley floor on the left, and the only way is through.
 			{ from = self:GroundAt(left - 300), to = self:GroundAt(left - 300) + Vector(0, 140), name = "dig down", digger = true },
 			-- A crab (legs both sides, no head, no jetpack) on the easy courses.
