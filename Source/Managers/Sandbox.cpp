@@ -249,6 +249,8 @@ namespace {
 		std::string Module;
 		int ModuleID = -1;
 		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
+		std::string Kind; //!< A subcategory to list by: for units "Infantry", "Mecha", "Turrets"; for items "Primary weapons", "Grenades", "Tools"...
+		bool Modded = false; //!< From a module that isn't one of the game's own.
 		int Width = 0; //!< Structures: footprint, for the preview.
 		int Height = 0;
 		float OffsetX = 0.0F;
@@ -466,6 +468,21 @@ namespace {
 			std::string faction = preset.Module.substr(0, preset.Module.find(".rte"));
 			preset.Label = preset.PresetName + "  (" + faction + ")";
 			preset.Group = group;
+			preset.Modded = !g_PresetMan.IsModuleOfficial(preset.Module);
+			// The subcategory, from the groups the game files put the thing in.
+			if (preset.ClassName == "AHuman") {
+				preset.Kind = object->IsInGroup("Brains") ? "Brains" : "Infantry";
+			} else if (preset.ClassName == "ACrab") {
+				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
+			} else if (preset.ClassName == "HDFirearm") {
+				preset.Kind = object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
+			} else if (preset.ClassName == "TDExplosive") {
+				preset.Kind = object->IsInGroup("Bombs - Grenades") ? "Grenades" : "Bombs";
+			} else if (preset.ClassName == "HeldDevice") {
+				preset.Kind = object->IsInGroup("Shields") ? "Shields" : "Other items";
+			} else {
+				preset.Kind = group;
+			}
 			if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
 				preset.Width = terrainObject->GetBitmapWidth();
 				preset.Height = terrainObject->GetBitmapHeight();
@@ -3090,6 +3107,41 @@ namespace {
 		}
 	}
 
+	/// Things marked as favourites (Ctrl+click on a tile): a star on the tile, and a filter to list only them.
+	std::vector<Pin> s_Favourites;
+
+	int FindFavourite(Tool kind, const std::string& presetName) {
+		for (size_t i = 0; i < s_Favourites.size(); ++i) {
+			if (s_Favourites[i].Kind == kind && s_Favourites[i].PresetName == presetName) {
+				return static_cast<int>(i);
+			}
+		}
+		return -1;
+	}
+
+	void ToggleFavourite(Tool kind, const std::string& presetName) {
+		if (int at = FindFavourite(kind, presetName); at >= 0) {
+			s_Favourites.erase(s_Favourites.begin() + at);
+		} else {
+			s_Favourites.push_back({kind, presetName});
+		}
+	}
+
+	/// A small gold star in the top left corner of a tile that is a favourite.
+	void DrawFavouriteMark(ImDrawList* drawList, ImVec2 from) {
+		float pixel = ToolUI::Pixel();
+		ImVec2 centre(from.x + pixel * 6.0F, from.y + pixel * 6.0F);
+		float outer = pixel * 5.0F;
+		float inner = pixel * 2.0F;
+		ImVec2 points[10];
+		for (int i = 0; i < 10; ++i) {
+			float angle = -1.5708F + 0.6283F * static_cast<float>(i);
+			float reach = (i % 2 == 0) ? outer : inner;
+			points[i] = ImVec2(centre.x + std::cos(angle) * reach, centre.y + std::sin(angle) * reach);
+		}
+		drawList->AddConcavePolyFilled(points, 10, IM_COL32(242, 182, 61, 255));
+	}
+
 	/// A small gold corner on a tile that is pinned to the bar.
 	void DrawPinMark(ImDrawList* drawList, ImVec2 from, ImVec2 to) {
 		float size = ToolUI::Pixel() * 5.0F;
@@ -3304,11 +3356,70 @@ namespace {
 	}
 
 	/// A list of presets to pick from as a grid of their pictures, each with its name under it. For things whose look is what you choose them by.
+	bool s_ShowModded = true; //!< Whether things from mods are listed at all.
+	bool s_FavouritesOnly = false; //!< Whether only favourites are listed.
+	std::map<Tool, std::string> s_KindFilter; //!< Per tool, the subcategory listed ("" for all).
+	std::map<Tool, std::string> s_ModFilter; //!< Per tool, the module listed ("" for all).
+
+	/// A combo of the distinct values of one field over the list, with "All" first. @return Whether the choice changed.
+	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values) {
+		std::string items = "All";
+		items.push_back(0);
+		int current = 0;
+		for (size_t i = 0; i < values.size(); ++i) {
+			items += values[i];
+			items.push_back(0);
+			if (values[i] == chosen) {
+				current = static_cast<int>(i) + 1;
+			}
+		}
+		items.push_back(0);
+		if (ImGui::Combo(label, &current, items.c_str())) {
+			chosen = current == 0 ? "" : values[current - 1];
+			return true;
+		}
+		return false;
+	}
+
 	void PictureGrid(Tool kind, const char* group) {
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
 		ImGui::SetNextItemWidth(-1.0F);
 		ImGui::InputTextWithHint("##filter", "Search...", s_Filter, sizeof(s_Filter));
+		// Narrowing the list: by subcategory (not for structures, whose own Kind combo does that), by mod, and whether mods are listed at all.
+		{
+			std::vector<std::string> kinds;
+			std::vector<std::string> mods;
+			for (const Preset& preset: list) {
+				if (group && preset.Group != group) {
+					continue;
+				}
+				if (!preset.Kind.empty() && std::find(kinds.begin(), kinds.end(), preset.Kind) == kinds.end()) {
+					kinds.push_back(preset.Kind);
+				}
+				if ((s_ShowModded || !preset.Modded) && std::find(mods.begin(), mods.end(), preset.Module) == mods.end()) {
+					mods.push_back(preset.Module);
+				}
+			}
+			std::sort(kinds.begin(), kinds.end());
+			std::sort(mods.begin(), mods.end());
+			float third = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0F) / 3.0F;
+			ToolUI::Checkbox("Favourites", &s_FavouritesOnly);
+			ImGui::SetItemTooltip("Only the things marked as favourites (Ctrl+click on a tile marks one, and again unmarks it).");
+			ImGui::SameLine();
+			ToolUI::Checkbox("Show modded", &s_ShowModded);
+			ImGui::SetItemTooltip("Whether things from mods are listed, as well as the game's own.");
+			if (kind != Tool::Structure) {
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(third);
+				ChoiceCombo("##kind", s_KindFilter[kind], kinds);
+				ImGui::SetItemTooltip("The kind of thing listed.");
+			}
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(third);
+			ChoiceCombo("##mod", s_ModFilter[kind], mods);
+			ImGui::SetItemTooltip("Only things from this module (faction or mod).");
+		}
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float cell = ImGui::GetFontSize() * 6.0F;
 		float labelHeight = ImGui::GetTextLineHeight() * 2.0F;
@@ -3319,6 +3430,12 @@ namespace {
 		for (int i = 0; i < static_cast<int>(list.size()); ++i) {
 			const Preset& preset = list[i];
 			if (!ContainsIgnoringCase(preset.Label, s_Filter) || (group && preset.Group != group)) {
+				continue;
+			}
+			if ((!s_ShowModded && preset.Modded) || (!s_KindFilter[kind].empty() && preset.Kind != s_KindFilter[kind]) || (!s_ModFilter[kind].empty() && preset.Module != s_ModFilter[kind])) {
+				continue;
+			}
+			if (s_FavouritesOnly && FindFavourite(kind, preset.PresetName) < 0) {
 				continue;
 			}
 			if (shown++ % columns != 0) {
@@ -3355,9 +3472,11 @@ namespace {
 			}
 			if (hovered) {
 				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
-				ImGui::SetTooltip("%s\n%s%s%s", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() ? "\nRight click: keep it on the bar, or take it off" : "");
+				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() ? "\nRight click: keep it on the bar, or take it off" : "");
 			}
-			if (picked) {
+			if (picked && ImGui::GetIO().KeyCtrl) {
+				ToggleFavourite(kind, preset.PresetName);
+			} else if (picked) {
 				choice = i;
 				TookTool(ToolIndex(kind));
 			}
@@ -3366,6 +3485,9 @@ namespace {
 			}
 			if (ImGui::IsItemVisible() && FindPin(kind, preset.PresetName) >= 0) {
 				DrawPinMark(drawList, at, ImVec2(at.x + size.x, at.y + size.y));
+			}
+			if (ImGui::IsItemVisible() && FindFavourite(kind, preset.PresetName) >= 0) {
+				DrawFavouriteMark(drawList, at);
 			}
 			ImGui::PopID();
 		}
@@ -4617,6 +4739,34 @@ std::string Sandbox::GetCharacterSetup() {
 		setup += (i > 0 ? ";" : "") + s_Player.Kit[i];
 	}
 	return setup;
+}
+
+std::string Sandbox::GetFavourites() {
+	std::string favourites;
+	for (const Pin& favourite: s_Favourites) {
+		favourites += (favourites.empty() ? "" : ";") + std::string(c_Tools[ToolIndex(favourite.Kind)].Name) + "=" + favourite.PresetName;
+	}
+	return favourites;
+}
+
+void Sandbox::SetFavourites(const std::string& favourites) {
+	s_Favourites.clear();
+	for (size_t at = 0; at < favourites.size();) {
+		size_t end = favourites.find(';', at);
+		end = end == std::string::npos ? favourites.size() : end;
+		std::string one = favourites.substr(at, end - at);
+		size_t equals = one.find('=');
+		if (equals != std::string::npos) {
+			std::string toolName = one.substr(0, equals);
+			for (int i = 0; i < c_ToolCount; ++i) {
+				if (toolName == c_Tools[i].Name) {
+					s_Favourites.push_back({c_Tools[i].Kind, one.substr(equals + 1)});
+					break;
+				}
+			}
+		}
+		at = end + 1;
+	}
 }
 
 std::string Sandbox::GetPins() {

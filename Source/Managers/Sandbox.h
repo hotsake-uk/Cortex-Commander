@@ -99,6 +99,12 @@ namespace RTE {
 		/// Gets the things pinned to the sandbox's bar, as one line of text for the settings file.
 		static std::string GetPins();
 
+		/// The things marked as favourites in the sandbox's lists, as a line of text for the settings file.
+		static std::string GetFavourites();
+
+		/// Sets the favourites from a line of text made by GetFavourites.
+		static void SetFavourites(const std::string& favourites);
+
 		/// Sets the things pinned to the sandbox's bar from a line of text made by GetPins.
 		static void SetPins(const std::string& pins);
 
