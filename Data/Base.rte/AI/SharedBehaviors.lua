@@ -1229,7 +1229,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								end
 							end
 
-							if CurrDist:MagnitudeIsGreaterThan(tolerance) then	-- not close enough to the waypoint
+							-- A jump's point is reached from its height, not from anywhere within the tolerance: the top of a hatch's column sits just over
+							-- the floor it lands on, and "reached" from 28 px below it, while the feet were still a body's length down the hatch, turned
+							-- the unit for the landing beside it and drove it under the floor slab.
+							local notThereYet = CurrDist:MagnitudeIsGreaterThan(tolerance) or (Waypoint.Kind == 2 and CurrDist.Y < -6);
+							if notThereYet then	-- not close enough to the waypoint
 								ArrivedTimer:Reset();
 
 								-- check if we have LOS to the waypoint
@@ -1428,7 +1432,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												local Up = Vector(0, math.min(-Owner.Height * 0.2, above - 4));
 												-- In a shaft the climb is up its middle, so that's where the way up is looked at from: a unit a few pixels off the middle
 												-- of a shaft two bodies wide had its ray up hit the wall's edge, and stood at the bottom for ever.
-												local shaftX = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height * 0.6);
+												-- (Out to a body's height either way: a hub's opening is 96 px across, and from a column near one wall of it the far wall
+												-- was out of a shorter reach, so the opening wasn't a shaft and the climb drifted into its side.)
+												local shaftX = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
 												local probeX = shaftX or Owner.Pos.X;
 												local ceiling = SceneMan:CastObstacleRay(Vector(probeX, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
 												AI.climbShaftX = shaftX;
@@ -1507,7 +1513,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													local toGo = -above - Owner.Height * 0.2;
 													local climbRate = math.max(1, math.min(5, toGo / 15));
 													-- With some play in it: every relight can be a burst, at a burst's worth of fuel, so the fewer the better.
-													if above > -Owner.Height * 0.2 then
+													if above > -Owner.Height * 0.2 and not feetClear and math.abs(stepX) >= 10 and not AI.climbClearY and above < Owner.Height * 0.5 then
+														-- At the point's height but the feet still foul the floor we step onto (the point sits as low as the landing's
+														-- ceiling allows, and the feet hang a fifth of a body under it): a slow rise, a metre a second, until they clear.
+														-- Hovering here just burned the tank in the hatch.
+														AI.jump = Owner.Vel.Y > (AI.jump and -1.5 or -0.5);
+													elseif above > -Owner.Height * 0.2 then
 														AI.jump = Owner.Vel.Y > (AI.jump and -1.5 or 0.5);
 													else
 														AI.jump = Owner.Vel.Y > (AI.jump and -climbRate - 2 or -climbRate + 1);
@@ -1536,9 +1547,13 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- Sideways it is flown by speed: a little drift towards the waypoint, more the further off it is, and none at all into a wall or
 													-- slope (that only pins us to it) or when the waypoint is straight above. Too fast either way and the nozzle is leant against it:
 													-- the speed walked up with was carrying units under the ledges they were climbing to.
-													local wantVelX = math.max(-4, math.min(4, CurrDist.X / 20));
+													-- Paced to the climb: the sideways distance is covered in the time the height takes at the climb rate, so a 24 px lean
+													-- over a 300 px climb is a slow drift that arrives at the top beside the landing, not a 1.2 m/s slide that had the unit
+													-- against the side of the opening 250 px below it, and stuck under the floor there. Near the top it is the old rule.
+													local secondsToTop = math.max(1, -above / (climbRate * GetPPM()));
+													local wantVelX = math.max(-4, math.min(4, CurrDist.X / (secondsToTop * GetPPM())));
 													-- In a shaft, the middle of it is what's kept to, whatever side the waypoint is on; the walls come first.
-													local shaftNow = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height * 0.6);
+													local shaftNow = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
 													if shaftNow then
 														wantVelX = math.max(-2, math.min(2, (shaftNow - Owner.Pos.X) / 6));
 													end

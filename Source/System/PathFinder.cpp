@@ -334,14 +334,23 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			float dx = g_SceneMan.ShortestDistance(from->Pos, to->Pos).m_X;
 			float dy = to->Pos.m_Y - from->Pos.m_Y;
 			if (kind == PathStepKind::Jump && std::abs(dx) >= 1.0F && dy <= -nodeSize * 1.5F && -dy >= std::abs(dx) * 1.5F) {
-				// No higher than the landing's ceiling allows: a shaft that comes up through the floor of a corridor has the corridor's
-				// ceiling just over the landing, and a top of the column put above it was a climb into the ceiling, so never made.
+				// Where the body's centre is when its feet have just cleared the landing's floor: the feet hang about 0.45 of the standing
+				// height under it and the head's top reaches 0.55 over it. Twenty pixels of clearance under the feet in the open; under a
+				// ceiling, as little as keeps the head two pixels clear of it (a 44 px body in a 48 px corridor gets two under the feet).
+				// (It used to sit 0.75 of a standing height and 8 px under the ceiling, which in a corridor left the feet 11 px below the
+				// floor it was to step onto: the step-off found the slab in the way and the unit hovered in the hatch until the tank ran out.)
 				float landingFloor = to->Surface >= 0.0F ? to->Surface : to->Pos.m_Y + nodeSize * 0.5F;
-				float lowestTop = landingFloor - static_cast<float>(to->FreeHeight) + s_StandHeight * 0.75F + 8.0F;
-				float apexY = std::max(to->Pos.m_Y - nodeSize * 1.5F, lowestTop);
+				float ceiling = landingFloor - static_cast<float>(to->FreeHeight);
+				float feetClearY = landingFloor - s_StandHeight * 0.45F - 20.0F;
+				float headClearY = ceiling + s_StandHeight * 0.55F + 2.0F;
+				float apexY = std::max(feetClearY, headClearY);
 				Vector apex(from->Pos.m_X, apexY);
 				g_SceneMan.ForceBounds(apex);
-				if (apexY < to->Pos.m_Y - 4.0F && g_SceneMan.GetTerrMatter(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
+				// Only when it is above where the body stands on the landing (its centre about 0.45 of a standing height over the floor):
+				// lower than that it is no top at all. (Measured against the node's centre it was skipped whenever the centre sat high in
+				// its cell, and the climb was flown as the one straight line again.)
+				float standingY = landingFloor - s_StandHeight * 0.45F;
+				if (apexY < standingY + 1.0F && g_SceneMan.GetTerrMatter(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
 					steps.push_back({apex, PathStepKind::Jump});
 				}
 			}
