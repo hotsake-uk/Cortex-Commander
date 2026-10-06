@@ -7,7 +7,29 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), from Results/97a4c41: the cut-short route's end, the climb from beside the column, the tank check with a weakening
+- **(this push), from Results/1f2f3d6: doors opened from the doorway, nobody left in a door's way, every team's grid kept up, and
+  the review's fixes** (ADoor, Scene, Actor, GoToWpt, the gyms). Needs a build (C++).
+  - *Door manners at the sensor* (`ADoor::SensesPoint` / `NearestSensorPoint` / `SweepContains`, bound to Lua; GoToWpt): a door of
+    ours that isn't open is opened by standing in its doorway, on a sensor's ray (the unit walks to the nearest point of a ray, `door:
+    going to the doorway of`, and holds there, `door: in the doorway of`, until the state is OPEN); the old 80 px wait is kept only for
+    a door with no sensors. And nobody stands in the way of an open door's piece: in its sweep (five discs along the piece's travel,
+    twice its radius when it swings) the legs keep moving, the squad's hold included. Expect: Bywater course 2 through Door A instead
+    of 27 s outside it; no instant full-health death under a door; sky "bottom corridor to the top room" up the Doors B shaft (with
+    the goal fix of dd8435f1). Please trace Bywater course 2 again (`CCCP_BUNKER_TRACE=2`).
+  - *Every team's grid takes the terrain updates* (Scene.cpp: the per-team re-sample no longer skips teams the activity doesn't call
+    active). The squad course's followers were given routes down through the valley under the beam to a leader 300 px along it, and
+    the leader stopped 250 px short of its goal: the sandbox's AI teams (1 and 2) aren't the activity's, so their grids never took in
+    the beams placed at 1.5 s and their units pathed on the bare hills. This touches every combat course and probably the firefight's
+    recent "both dead". Expect: `AICOMBAT squad route leader/follower 1` lines (every 10 s, new) along the beam with (0) steps, the
+    leader reaching east+900 and back to east+100, followers holding 50-70 px apart when it stands (minpair while standing well over
+    30), and the other combat courses as before or better.
+  - *The review's fixes to dd8435f1*: the stand-down after six impossible routes drops the kept goal (else the unit asked for ever);
+    `ClearMovePath` drops it (a sentry's facing route must not become a later order's goal); `GetMovePathEnd` returns it (saves);
+    the climb's fuel model knows the jet won't relight under 250 ms of tank and keeps a reserve of at least 300; the step under the
+    open column is taken only over floor; the sky gym teams its doors once they exist (the pass at build time found none: placed
+    structures join MovableMan.Actors a frame later).
+
+- **dd8435f1, from Results/97a4c41: the cut-short route's end, the climb from beside the column, the tank check with a weakening
   jet; stairs for crabs** (Actor, ACrab, GoToWpt, AIBunker.lua). Each line one change and what to look for:
   - *A route's goal is kept apart from its last point* (`Actor::m_MovePathGoal`, used by `GetLastAIWaypoint` and `UpdateMovePath`).
     The sky "bottom corridor to the top room" fault: a cut-short route ends at the cut, and the next request (the line-of-sight
@@ -174,10 +196,13 @@ so here.
 4. The `AIGYM unit` line for any other unit you run.
 5. A trace of sky "bottom corridor to the top room" (`CCCP_BUNKER_TRACE=1`) with the Doors B piece in the shaft: the door manners'
    first measurement (see the push above).
-8. Bywater's instant death under Door A (2076,792) at 2079,872 (Results/97a4c41 run 1, "mid left room to the right column"): a trace
+8. ~~Bywater's instant death under Door A~~ Answered by the course 2 trace (84fbd112c): the manners waited outside the door's one
+   sensor ray; the push after dd8435f1 waits in the doorway instead and keeps out of the piece's way. Still wanted: the course 2
+   trace on it.
+   ~~Bywater's instant death under Door A (2076,792) at 2079,872 (Results/97a4c41 run 1, "mid left room to the right column"): a trace
    of that course (`CCCP_BUNKER_TRACE=2`) in one repeat, to see whether the door manners (`door: waiting for`) fired and where the unit
    stood when the leaf came down. If it was standing in place under a hatch of its own team that had opened for it and then closed,
-   that is a hold spot inside the leaf's sweep, and I need the leaf's reach.
+   that is a hold spot inside the leaf's sweep, and I need the leaf's reach.~~
 9. The combat gym's firefight: both dead 3/3 on 97a4c41 against team 2 surviving before. Nothing in that push touches the fighting
    rules; if it repeats on 1f2f3d6 and later, the `AICOMBAT firefight` lines of one run (positions, `sees`/`blind`) would show whether
    the attacker now closes differently (the "passed"/pop changes do run under a move order).

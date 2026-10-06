@@ -293,6 +293,13 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
     cut. A climb begins from under the open column (the own column is probed first, then the shaft's middle; with the middle open and
     the own column capped the legs go under the opening before the jet lights). `ACrab::GetPathAgent` says the legs take stairs. The
     sky gym gives its doors to the units as soon as the bunker stands.
+17. From Results/1f2f3d6: door manners at the sensor (`ADoor::SensesPoint`, `NearestSensorPoint`, `SweepContains`, bound to Lua): a
+    door of ours is opened by standing in its doorway on a sensor's ray, and nobody stands in the way of an open door's piece
+    (`SharedBehaviors.InDoorSweep`; the squad's hold leaves it too). Every team's path grid takes the terrain updates, active in the
+    activity or not: the sandbox's AI teams' grids had never seen the beams placed after the scene started, so the combat gym's units
+    pathed on the bare hills (the squad's valley routes, the leader stopping short). The review's fixes to the kept goal (the
+    stand-down and ClearMovePath drop it, GetMovePathEnd returns it), the fuel model's 250 ms relight floor and the step under the
+    column only over floor.
 
 ### Tools/PathSim
 
@@ -301,7 +308,13 @@ modules' material bitmaps. It gives the game's routes node for node (checked aga
 layout was designed and how the grid changes above were checked before a push: `python3 -I Tools/PathSim/pathsim.py sky --layout new`.
 Keep `grid_rules.py` in step with the C++. It models the grid only; whether a unit can follow a route is the gym's business.
 
-### Where the numbers stand (Results/97a4c41, three runs each)
+### Where the numbers stand (Results/1f2f3d6, three runs each)
+
+Outdoor 15/16, combat all resolve, sky 18/21, Bywater 4/15. The squad holds its line on the move (50-60 px apart) but bunched when the
+leader stood and the leader stopped 250 px short of its goals: its routes went through the valley under the beam (the team grid fault,
+item 17). Bywater course 2's trace: the door manners waited 27 s outside a Door Slide Long's one sensor ray, which crosses the doorway.
+
+### The round before (Results/97a4c41, three runs each)
 
 Outdoor 15-16/16, combat all resolve (the firefight's attacker now dies too, 3/3, unexplained), the sky bunker 18/21 (the Doors B shaft
 0/3, the cut-short goal fault above), Bywater 6/15. Stairs: the soldier 4.5-6.5 s, the Dreadnought 11.5 s up and 5.5 down. Bywater

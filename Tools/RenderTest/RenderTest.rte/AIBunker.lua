@@ -136,12 +136,28 @@ function AIBunkerScript:UpdateScript()
 		self:Place("L-Junction D", 1992, 240);
 		self:Place("Steep Stairs D", 2088, 288);
 		self:Place("End D", 2184, 240);
-		-- The doors just placed become the units' at once: a team's own doors are erased from its grid only as their areas are re-sampled,
-		-- a few nodes a frame behind the modules' own boxes, and set at 5 s the Doors B leaves still cost the first route 600000.
+		-- The doors just placed become the units' as soon as they exist: a team's own doors are erased from its grid only as their areas
+		-- are re-sampled, a few nodes a frame behind the modules' own boxes, and set at 5 s the Doors B leaves still cost the first route
+		-- 600000. (The modules go in on the next sim update and their doors join MovableMan.Actors a frame after that, so this is done on
+		-- the ticks after, until a door is found.)
+		self.doorsPending = true;
+	end
+	if self.doorsPending then
+		local found = false;
 		for actor in MovableMan.Actors do
 			if actor.ClassName == "ADoor" then
 				actor.Team = 0;
+				found = true;
 			end
+		end
+		for actor in MovableMan.AddedActors do
+			if actor.ClassName == "ADoor" then
+				actor.Team = 0;
+				found = true;
+			end
+		end
+		if found then
+			self.doorsPending = false;
 		end
 	end
 	if not self.started and t > 5000 and not self.lookOnly then

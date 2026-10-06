@@ -178,6 +178,31 @@ function AICombatScript:UpdateScript()
 					if t - course.start > 8000 and (not course.turnedAt or t - course.turnedAt > 8000) and MovableMan:ValidMO(course.units[1]) and course.units[1].Vel.Largest < 1 and minPair < course.worstMinPair then
 						course.worstMinPair = minPair;
 					end
+					-- The routes, every ten seconds: the leader's to its goal and the first follower's to the leader, as the grid gives them
+					-- (the first round's followers were given routes down through the valley under the beam).
+					if not course.nextRouteAt or t - course.start >= course.nextRouteAt then
+						course.nextRouteAt = (course.nextRouteAt or 0) + 10000;
+						local function route(unit, target, label)
+							local found = SceneMan.Scene:CalculatePathForActor(unit, SceneMan:MovePointToGround(unit.Pos, unit.Height * 0.2, 3), target, Activity.TEAM_1);
+							local kinds = {};
+							for kind in SceneMan.Scene:GetScenePathStepKinds() do table.insert(kinds, kind); end
+							local nodes = "";
+							local count = 0;
+							for node in SceneMan.Scene:GetScenePath() do
+								count = count + 1;
+								if count <= 16 then
+									nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y) .. (count > 1 and kinds[count - 1] and ("(" .. kinds[count - 1] .. ")") or "");
+								end
+							end
+							ConsoleMan:PrintString("AICOMBAT squad route " .. label .. ": " .. tostring(found) .. " nodes:" .. nodes .. (count > 16 and " ..." or ""));
+						end
+						if MovableMan:ValidMO(course.units[1]) then
+							route(course.units[1], course.goal, "leader");
+							if course.units[2] and MovableMan:ValidMO(course.units[2]) then
+								route(course.units[2], course.units[1].Pos, "follower 1 to the leader");
+							end
+						end
+					end
 					-- At 30 s the leader is sent back the way it came: the line has to turn about.
 					if not course.turned and t - course.start > 30000 and MovableMan:ValidMO(course.units[1]) then
 						course.turned = true;

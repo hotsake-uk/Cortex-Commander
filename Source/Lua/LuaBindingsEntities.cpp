@@ -353,6 +353,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
 	    .property("DoorMoveEndSound", &ADoor::GetDoorMoveEndSound, &LuaAdaptersPropertyOwnershipSafetyFaker::ADoorSetDoorMoveEndSound)
 
 	    .def("GetDoorState", &ADoor::GetDoorState)
+	    .def("SensesPoint", &ADoor::SensesPoint)
+	    .def("NearestSensorPoint", &ADoor::NearestSensorPoint)
+	    .def("SweepContains", &ADoor::SweepContains)
 	    .def("OpenDoor", &ADoor::OpenDoor)
 	    .def("CloseDoor", &ADoor::CloseDoor)
 	    .def("StopDoor", &ADoor::StopDoor)

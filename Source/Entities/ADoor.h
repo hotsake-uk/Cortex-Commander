@@ -66,6 +66,18 @@ namespace RTE {
 		/// @return The current state of this ADoor. See the DoorState enum.
 		DoorState GetDoorState() const { return m_DoorState; }
 
+		/// Whether a body at a point would be seen by one of this door's sensors: within the radius of a sensor's ray, as the sensors lie now.
+		/// (The door opens for what its sensors see, and a sensor is a ray across the doorway, so a unit that wants it open stands there.)
+		/// @param point The body's position. @param radius How far from the ray the body still counts as on it.
+		bool SensesPoint(const Vector& point, float radius) const;
+
+		/// The nearest point to a position on any of this door's sensor rays, in scene coordinates, or a zero vector when it has no sensors.
+		Vector NearestSensorPoint(const Vector& from) const;
+
+		/// Whether a point lies in the way of the moving door piece, anywhere between its open and closed positions, within a margin: where
+		/// a body is crushed when the door closes.
+		bool SweepContains(const Vector& point, float margin) const;
+
 		/// Sets whether this ADoor closes (or opens) after a while by default.
 		/// @param closedByDefault Whether the door by default goes to a closed position. If not, then it will open after a while.
 		void SetClosedByDefault(bool closedByDefault) { m_ClosedByDefault = closedByDefault; }

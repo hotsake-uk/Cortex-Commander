@@ -412,7 +412,11 @@ function SharedBehaviors.ClimbFuelLeft(AI, Owner, height, fuel)
 		if t > 6 or fuel <= 0 then
 			return -1;
 		end
-		local rate = math.max(20, math.min(cap, math.sqrt(2 * gravity * math.max(0, height - y - 12))));
+		local rate = math.max(20, math.min(cap, math.sqrt(2 * gravity * math.max(0, height - y))));
+		-- (The jet will not relight under 250 ms of tank, AEJetpack says; a climb that needs a pulse with less has none.)
+		if not lit and up < rate - 20 and fuel <= 250 then
+			return -1;
+		end
 		lit = up < (lit and rate + 20 or rate - 20);
 		if lit then
 			local factor = lowMul + (highMul - lowMul) * math.max(0, math.min(1, fuel / total));
@@ -680,6 +684,20 @@ function SharedBehaviors.SquadTrimPath(Owner, Point, LeaderGround)
 	end
 	Owner:RemoveMovePathEnd();
 	Owner:AddToMovePathEnd(Point);
+end
+
+-- Whether the unit stands in the way of a door of ours (or no one's) that isn't shut: where its moving piece will be when it closes,
+-- which it does a second and a half after its sensors last saw a body, on whatever is there.
+function SharedBehaviors.InDoorSweep(Owner)
+	for mo in MovableMan:GetMOsInRadius(Owner.Pos, Owner.Height * 1.2) do
+		if mo.ClassName == "ADoor" and (mo.Team == Owner.Team or mo.Team == Activity.NOTEAM) then
+			local door = ToADoor(mo);
+			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Owner.Pos, Owner.Height * 0.3) then
+				return true;
+			end
+		end
+	end
+	return false;
 end
 
 -- Whether a step sideways from here is onto ground, not off a drop or into a wall. @param dir -1 or 1.
@@ -1009,7 +1027,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		-- this is the only sideways force a flying crab has.
 		AI.jetLeanX = 0;
 		AI.jetSteady = false; -- Set by the climb: relight the jet without a burst (see the native AI's jump state).
-		local doorHold = false; -- Waiting a little short of a door of ours that hasn't opened yet (see below).
+		local doorHold = false; -- Standing in the doorway of a door of ours, on its sensor, for it to open (see below).
+		local doorGoal = nil; -- The doorway to go and stand in.
+		local doorPass = false; -- In the way of an open door's piece: no standing here.
 
 		-- ugh
 		local wptIndex = 0;
@@ -1304,7 +1324,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
 											Goal = AI.squadPoint or Owner.MOMoveTarget.Pos;
 											ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
-											local off = ToGoal.Largest > Owner.Height * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1;
+											-- (And not held in the way of a door's piece: see InDoorSweep.)
+											local off = ToGoal.Largest > Owner.Height * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1 or SharedBehaviors.InDoorSweep(Owner);
 											if off and StraightTo() then
 												Waypoint.Pos = Goal;
 												break;
@@ -1587,10 +1608,30 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								-- it, and a leaf in motion kills whatever stands in its sweep (a unit that jetted up into a floor hatch as its leaves swung
 								-- was gibbed at full health). Enemy doors are the fighting rules' business, and the pather's.
 								local DoorAhead = SharedBehaviors.DoorAhead(Owner, Waypoint.Pos);
-								if DoorAhead and DoorAhead:GetDoorState() ~= ADoor.OPEN and DoorAhead.Door then
-									local toLeaf = SceneMan:ShortestDistance(Owner.Pos, DoorAhead.Door.Pos, false).Magnitude;
-									doorHold = toLeaf < Owner.Height * 0.8;
-									if doorHold and Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE door: waiting for " .. DoorAhead.PresetName .. " (state " .. DoorAhead:GetDoorState() .. ") " .. math.floor(toLeaf) .. " px off"); end
+								if DoorAhead and DoorAhead.Door then
+									local state = DoorAhead:GetDoorState();
+									if state ~= ADoor.OPEN then
+										-- Not open yet. It opens for what its sensors see, and a sensor is a ray across the doorway: a unit waiting 80 px short of
+										-- a Door Slide Long's one ray was never seen, and stood 27 s at a door that never opened. So the way to have it open is
+										-- to stand in the doorway, on a sensor's ray, and that is where the wait is.
+										if DoorAhead:SensesPoint(Owner.Pos, Owner.Height * 0.25) then
+											doorHold = true;
+										else
+											local Sense = DoorAhead:NearestSensorPoint(Owner.Pos);
+											if Sense.Largest > 0 then
+												doorGoal = SceneMan:MovePointToGround(Sense, Owner.Height * 0.2, 4);
+											else
+												-- (A door with no sensors opens by other means; a wait short of its piece is the most that can be done.)
+												doorHold = SceneMan:ShortestDistance(Owner.Pos, DoorAhead.Door.Pos, false).Magnitude < Owner.Height * 0.8;
+											end
+										end
+										if (doorHold or doorGoal) and Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE door: " .. (doorHold and "in the doorway of " or "going to the doorway of ") .. DoorAhead.PresetName .. " (state " .. state .. ")"); end
+									end
+								end
+								-- An open door's piece is no place to stand: it closes a second and a half after its sensors last saw a body, on whatever
+								-- is in its way (three units died at full health under doors of their own team), so in its way the legs keep moving.
+								if SharedBehaviors.InDoorSweep(Owner) then
+									doorPass = true;
 								end
 								local WallAhead = false; -- Something chest high in the way on the side we're walking.
 								-- control horizontal movement
@@ -1743,7 +1784,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- (And a dig is dug, never jetted: the shaft's walls looked like a wall ahead, and the digger was jetted out of its own hole.)
 												-- (Nor stairs: steeper than the legs' slope limit as the rise reads from their foot, but the pather only sends a unit up
 												-- stairs it can walk, and a soldier walks the base game's steepest.)
-												local wantsClimb = not doorHold and AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and Waypoint.Kind ~= 6 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.3) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
+												local wantsClimb = not doorHold and not doorGoal and AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and Waypoint.Kind ~= 6 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.3) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
 											local climbRefused = false;
 											local stepToColumnDx = nil; -- A step to take first, to under the column the climb goes up.
 											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
@@ -1790,8 +1831,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- off: 450 ms, since the jet is weak by then. A climb that no full tank makes by that reckoning is tried on a full one.
 												local tankIn;
 												if tall then
-													-- (Less for a short climb, whose hover is short: a 54 px step wanted 450 ms over its own burn, and waited on half a tank.)
-													local reserve = math.min(450, 150 - above);
+													-- (Less for a short climb, whose hover is short: a 54 px step wanted 450 ms over its own burn, and waited on half a tank;
+													-- never under 300, since below 250 the hover at the top could not relight at all.)
+													local reserve = math.min(450, math.max(300, 150 - above));
 													if SharedBehaviors.ClimbFuelLeft(AI, Owner, -above, Owner.Jetpack.JetTimeLeft) >= reserve then
 														tankIn = true;
 													elseif SharedBehaviors.ClimbFuelLeft(AI, Owner, -above, Owner.Jetpack.JetTimeTotal) < reserve then
@@ -1809,7 +1851,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- A climb begins from under the open column, not beside it: lit under the slab beside a hatch, with the drift to carry it
 												-- across, a unit burned half a tank pinned to the slab's underside before it was under the opening. On the ground the legs
 												-- go there first (see the refusal below); in the air, passing a ledge on the way up, the drift is all there is.
-												if not ceiling and tankIn and not AI.flying and math.abs(columnX - Owner.Pos.X) >= Owner.Height * 0.12 then
+												-- (And only on floor: over a hole, a landing inside a shaft, the climb starts here and drifts, as before.)
+												if not ceiling and tankIn and not AI.flying and math.abs(columnX - Owner.Pos.X) >= Owner.Height * 0.12 and SceneMan:CastObstacleRay(Vector(columnX, Owner.Pos.Y), Vector(0, Owner.Height * 0.5), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0 then
 													climbRefused = true;
 													stepToColumnDx = columnX - Owner.Pos.X;
 												elseif not ceiling and tankIn then
@@ -2204,8 +2247,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			NoLOSTimer:Reset();
 		end
 
-		-- Waiting for a door: still, and no jet from the ground; in the air under it (a hatch), a hover, so the leaves aren't met on the way
-		-- up. Standing here is not being stuck.
+		-- Waiting for a door, in its doorway: still, and no jet from the ground; in the air under it (a hatch), a hover, so the leaves aren't
+		-- met on the way up. Standing here is not being stuck. Short of the doorway, the legs take us there (no jet: the shut door reads as a
+		-- wall ahead, which the walk code would hop at).
 		if doorHold then
 			nextLatMove = Actor.LAT_STILL;
 			if AI.flying then
@@ -2213,6 +2257,16 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			else
 				AI.jump = false;
 			end
+			StuckTimer:Reset();
+		elseif doorGoal and not AI.flying then
+			local dx = SceneMan:ShortestDistance(Owner.Pos, doorGoal, false).X;
+			nextLatMove = dx < -3 and Actor.LAT_LEFT or (dx > 3 and Actor.LAT_RIGHT or Actor.LAT_STILL);
+			AI.jump = false;
+			StuckTimer:Reset();
+		end
+		-- In the way of an open door's piece: on, whatever else stopped the legs.
+		if doorPass and not AI.flying and nextLatMove == Actor.LAT_STILL then
+			nextLatMove = (CurrDist and CurrDist.X < 0) and Actor.LAT_LEFT or Actor.LAT_RIGHT;
 			StuckTimer:Reset();
 		end
 

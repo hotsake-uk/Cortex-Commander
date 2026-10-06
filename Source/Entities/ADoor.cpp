@@ -1,5 +1,6 @@
 #include "ADoor.h"
 #include "AtomGroup.h"
+#include "SceneMan.h"
 #include "Attachable.h"
 #include "Matrix.h"
 #include "SLTerrain.h"
@@ -499,6 +500,57 @@ void ADoor::Update() {
 	if (m_Status == DEAD) {
 		GibThis();
 	}
+}
+
+bool ADoor::SensesPoint(const Vector& point, float radius) const {
+	for (const ADSensor& sensor: m_Sensors) {
+		// The ray as SenseActor casts it: from the start offset, flipped and rotated with the door.
+		Vector start = m_Pos + sensor.GetStartOffset().GetXFlipped(m_HFlipped) * m_Rotation;
+		Vector ray = sensor.GetSensorRay().GetXFlipped(m_HFlipped) * m_Rotation;
+		Vector toPoint = g_SceneMan.ShortestDistance(start, point);
+		float length2 = ray.Dot(ray);
+		float t = length2 > 0.0F ? std::clamp(toPoint.Dot(ray) / length2, 0.0F, 1.0F) : 0.0F;
+		if ((toPoint - ray * t).GetMagnitude() <= radius) {
+			return true;
+		}
+	}
+	return false;
+}
+
+Vector ADoor::NearestSensorPoint(const Vector& from) const {
+	Vector nearest;
+	float nearestDistance = -1.0F;
+	for (const ADSensor& sensor: m_Sensors) {
+		Vector start = m_Pos + sensor.GetStartOffset().GetXFlipped(m_HFlipped) * m_Rotation;
+		Vector ray = sensor.GetSensorRay().GetXFlipped(m_HFlipped) * m_Rotation;
+		Vector toPoint = g_SceneMan.ShortestDistance(start, from);
+		float length2 = ray.Dot(ray);
+		float t = length2 > 0.0F ? std::clamp(toPoint.Dot(ray) / length2, 0.0F, 1.0F) : 0.0F;
+		float distance = (toPoint - ray * t).GetMagnitude();
+		if (nearestDistance < 0.0F || distance < nearestDistance) {
+			nearestDistance = distance;
+			nearest = start + ray * t;
+		}
+	}
+	return nearest;
+}
+
+bool ADoor::SweepContains(const Vector& point, float margin) const {
+	if (!m_Door) {
+		return false;
+	}
+	// The piece hangs where its offset puts it, between the closed and open offsets as it moves; a piece that swings (the angles differ)
+	// reaches about twice its radius from there, one that slides about its radius. Five places along the travel, a disc at each.
+	float reach = m_Door->GetRadius() * (std::abs(m_OpenAngle - m_ClosedAngle) > 0.1F ? 2.0F : 1.0F) + margin;
+	for (int i = 0; i <= 4; ++i) {
+		float fraction = static_cast<float>(i) / 4.0F;
+		Vector offset = m_ClosedOffset + (m_OpenOffset - m_ClosedOffset) * fraction;
+		Vector centre = m_Pos + offset.GetXFlipped(m_HFlipped) * m_Rotation;
+		if (g_SceneMan.ShortestDistance(centre, point).GetMagnitude() <= reach) {
+			return true;
+		}
+	}
+	return false;
 }
 
 void ADoor::UpdateSensors() {

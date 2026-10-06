@@ -1217,6 +1217,9 @@ void Actor::PreControllerUpdate() {
 			if (m_ImpossiblePaths >= 6) {
 				m_ImpossiblePaths = 0;
 				m_Waypoints.clear();
+				// The stand-down: with the goal kept, GetLastAIWaypoint never says "here", and the unit asks for the same route for ever.
+				m_HasMovePathGoal = false;
+				m_MoveTarget = m_Pos;
 			}
 			m_PathRequest.reset();
 			return;

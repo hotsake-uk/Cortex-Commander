@@ -2444,7 +2444,10 @@ void Scene::UpdatePathFinding() {
 	if (!updatedNodes.empty()) {
 		// Update each team's pathFinder
 		for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
-			if (!g_ActivityMan.ActivityRunning() || !g_ActivityMan.GetActivity()->TeamActive(team)) {
+			// Every team's grid, active in the activity or not: the sandbox's AI-run teams aren't the activity's, so their grids never took in
+			// a beam placed after the scene started, and their units pathed on the bare terrain under it (the combat gym's squad was given a
+			// route down through the valley to a leader standing 300 px along the same beam).
+			if (!g_ActivityMan.ActivityRunning()) {
 				continue;
 			}
 

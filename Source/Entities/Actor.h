@@ -444,6 +444,7 @@ namespace RTE {
 			m_MovePathKinds.clear();
 			m_MoveTarget = m_Pos;
 			m_MoveVector.Reset();
+			m_HasMovePathGoal = false; // The path and the place it was for go together: a route a sentry asked for to face along must not become a later order's goal.
 		}
 
 		/// Adds a coordinate to the beginning of the MovePath, meaning the one
@@ -481,6 +482,10 @@ namespace RTE {
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
 		Vector GetMovePathEnd() const {
+			// The route's end is the place it was asked for to, not where an obstacle cut it.
+			if (m_HasMovePathGoal) {
+				return m_MovePathGoal;
+			}
 			if (!m_MovePath.empty()) {
 				return m_MovePath.back();
 			}
