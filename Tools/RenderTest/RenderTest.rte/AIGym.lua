@@ -2,8 +2,9 @@ function AIGymScript:StartScript()
 	self.timer = Timer();
 	self.runners = {};
 	self.report = {};
-	self.traceCourse = 12; -- Which course's unit writes a trace line every second.
+	self.traceCourse = 4; -- Which course's unit writes a trace line every second.
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
+	self.lookAt = Vector(SceneMan.SceneWidth * 0.5 + 940, 260); -- Where the camera is put, for a look at a course (nil for the default).
 end
 
 -- The AI gym: units are given set courses to get round, and how they do is written to the console as AIGYM lines.
@@ -57,6 +58,20 @@ function AIGymScript:UpdateScript()
 		for x = 160, 320, 160 do SandboxDo("Concrete beam", Vector(west + x, 616), 0, 0, 1, ""); end
 		-- A wall on the ceiling, so the only way is through.
 		SandboxDo("Concrete pillar", Vector(west + 240, 541), 0, 0, 1, "");
+		-- A wall with a 56 px doorway at its foot, shut by a sliding door of the unit's own team, which opens for it. Off to the right over
+		-- the far valley, clear of everything else (and of the scene's seam, which a start near x = 0 was over).
+		local east = left + 1200;
+		local doorAt = Vector(east + 160, 300);
+		SandboxDo("Concrete beam", Vector(east + 80, 300), 0, 0, 1, "");
+		SandboxDo("Concrete beam", Vector(east + 240, 300), 0, 0, 1, "");
+		SandboxDo("Concrete pillar", Vector(doorAt.X, 169), 0, 0, 1, "");
+		-- The long slide, stood on end (as the bunker pieces have it): its bar slides 53 px, enough to clear a doorway a unit can crawl through.
+		local door = CreateADoor("Door Slide Long", "Base.rte");
+		door.RotAngle = math.pi * 0.5;
+		door.Pos = Vector(doorAt.X, 165); -- The bar (68 px) hangs 102 px under Pos when shut, filling the doorway, and 49 when open, clear of it.
+		door.Team = 0;
+		MovableMan:AddActor(door);
+		self.door = door;
 		-- A room on a floor, with a 30 px doorway at the foot of each side wall: a bunker's corridor, to be crawled through.
 		for x = 0, 480, 160 do SandboxDo("Concrete beam", Vector(west + x, 200), 0, 0, 1, ""); end
 		SandboxDo("Concrete room", Vector(west + 240, 150), 0, 0, 1, "");
@@ -71,6 +86,7 @@ function AIGymScript:UpdateScript()
 			{ from = Vector(left - 960, 372), to = Vector(left - 290, 372), name = "gap" },
 			{ from = Vector(left - 960, 652), to = Vector(left - 360, 652), name = "low tunnel" },
 			{ from = Vector(left - 960, 192), to = Vector(left - 360, 192), name = "through the room" },
+			{ from = Vector(left + 1220, 292), to = Vector(left + 1500, 292), name = "through the door" },
 			{ from = self:GroundAt(middle - 260), to = self:GroundAt(middle + 260), name = "over the hill" },
 			{ from = self:GroundAt(middle - 40), to = self:CaveFloorAt(middle), name = "down into the cave" },
 			-- The scene's own slopes: the far side of the hill drops 500 px over 450.
@@ -114,7 +130,7 @@ function AIGymScript:UpdateScript()
 			ConsoleMan:PrintString("AIGYM path variants for " .. course.name .. ": ground start " .. a .. ", raised end " .. b .. ", end 24 up " .. c);
 			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, digger = course.digger, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 		end
-		SandboxDo("Look around", Vector(left + 300, 360), 0, 0, 1, "");
+		SandboxDo("Look around", self.lookAt or Vector(left + 300, 360), 0, 0, 1, "");
 		-- Where the scene's own ground is, so a course isn't built into it by mistake.
 		local profile = "";
 		for x = left - 1000, left + 1000, 100 do
@@ -130,6 +146,12 @@ function AIGymScript:UpdateScript()
 		local cliff = "";
 		for x = middle + 300, middle + 500, 12 do cliff = cliff .. " " .. x .. ":" .. self:GroundAt(x).Y; end
 		ConsoleMan:PrintString("AIGYM cliff profile:" .. cliff);
+		if self.door then
+			local column = "";
+			for y = 240, 320, 5 do column = column .. " " .. y .. ":" .. SceneMan:GetTerrMatter(left + 1360, y); end
+			local bar = self.door.Door;
+			ConsoleMan:PrintString("AIGYM door at " .. self.door.Pos.X .. "," .. self.door.Pos.Y .. " bar " .. (bar and (bar.Pos.X .. "," .. bar.Pos.Y .. " " .. ToMOSprite(bar):GetSpriteWidth() .. "x" .. ToMOSprite(bar):GetSpriteHeight()) or "none") .. " column at " .. (left + 1360) .. ":" .. column);
+		end
 		local r = SceneMan.Scene:CalculatePath(self:GroundAt(middle + 460), self:GroundAt(middle + 340), 22, 35, Activity.TEAM_1);
 		local n = "";
 		for node in SceneMan.Scene:GetScenePath() do n = n .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
@@ -176,7 +198,11 @@ function AIGymScript:UpdateScript()
 					runner.lastTick = t;
 					if self.traceCourse == i or (self.traceAll and math.floor((t - runner.start) / 1000) % 2 == 0) then
 						local fuel = actor.Jetpack and math.floor(actor.Jetpack.JetTimeLeft) or -1;
-						ConsoleMan:PrintString("AIGYM trace " .. runner.name .. " " .. math.floor((t - runner.start) / 1000) .. "s pos " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " vel " .. math.floor(actor.Vel.X * 10) / 10 .. "," .. math.floor(actor.Vel.Y * 10) / 10 .. " fuel " .. fuel .. " path " .. actor.MovePathSize .. " health " .. math.floor(actor.Health));
+						local extra = "";
+						if runner.name == "through the door" and self.door and MovableMan:IsActor(self.door) then
+							extra = " door team " .. self.door.Team .. " state " .. self.door:GetDoorState() .. " target " .. (actor.AIMode == Actor.AIMODE_GOTO and "goto" or tostring(actor.AIMode));
+						end
+						ConsoleMan:PrintString("AIGYM trace " .. runner.name .. " " .. math.floor((t - runner.start) / 1000) .. "s pos " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " vel " .. math.floor(actor.Vel.X * 10) / 10 .. "," .. math.floor(actor.Vel.Y * 10) / 10 .. " fuel " .. fuel .. " path " .. actor.MovePathSize .. " health " .. math.floor(actor.Health) .. extra);
 					end
 					if SceneMan:ShortestDistance(actor.Pos, runner.lastPos, false).Magnitude < 4 then
 						runner.still = runner.still + 1;

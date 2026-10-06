@@ -512,7 +512,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				-- We only crawl it it's quite flat, otherwise climb
 				local crawlThresholdDegrees = 30;
 				if angleDegrees <= crawlThresholdDegrees and Owner.Head and Owner.Head:IsAttached() then
-					local topHeadPos = Owner.Head.Pos - Vector(0, Owner.Head.Radius*0.7);
+					-- (A few pixels over the top of the head: a doorway that would just scrape it was walked into standing, and that is a wall.)
+					local topHeadPos = Owner.Head.Pos - Vector(0, Owner.Head.Radius*0.7 + 5);
 
 					-- first check up to the top of the head, and then from there forward
 					if SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
@@ -904,7 +905,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									end
 									-- What is in the way on that side, chest high and knee high, a body length ahead: a knee-high step is walked over, a wall
 									-- is hopped with the jetpack when there is head room, and crawled under when the gap is low.
-									if nextLatMove ~= Actor.LAT_STILL and Waypoint.Pos.Y < Owner.Pos.Y + Owner.Height * 0.5 then
+									-- (Not when crawling: the wall is the top of a doorway we're going under, and the way through is the path's.)
+									if nextLatMove ~= Actor.LAT_STILL and Waypoint.Pos.Y < Owner.Pos.Y + Owner.Height * 0.5 and AI.proneState ~= AHuman.PRONE then
 										local side = nextLatMove == Actor.LAT_LEFT and -1 or 1;
 										local ahead = Vector(side * Owner.Height * 0.45, 0);
 										local chest = Owner.Pos + Vector(0, -Owner.Height * 0.2);
@@ -990,8 +992,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												AI.jump = false;
 											end
 										else
-											if Waypoint.Type ~= "drop" and not Lower(Waypoint, Owner, 20) and Owner.Jetpack.JetpackType == AEJetpack.Standard then
-												-- jump over low obstacles unless we want to jump off a ledge
+											if Waypoint.Type ~= "drop" and not Lower(Waypoint, Owner, 20) and Owner.Jetpack.JetpackType == AEJetpack.Standard and AI.proneState ~= AHuman.PRONE then
+												-- jump over low obstacles unless we want to jump off a ledge (and not while crawling under something)
 												if nextLatMove == Actor.LAT_RIGHT and Obstacles[Obst.R_FRONT] and not Obstacles[Obst.R_UP] then
 													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop right"); end
 													AI.jump = true;

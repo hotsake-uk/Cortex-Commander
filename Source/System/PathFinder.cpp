@@ -159,11 +159,12 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	g_SceneMan.ForceBounds(start);
 	g_SceneMan.ForceBounds(end);
 
-	// Convert from absolute scene pixel coordinates to path node indices.
+	// Convert from absolute scene pixel coordinates to path node indices: the node whose cell the point is in. (It used to be the cell half a
+	// node up, which for a point under a low ceiling was the node inside the ceiling, and the only way out of that was through it.)
 	int startNodeX = std::floor(start.m_X / static_cast<float>(m_NodeDimension));
-	int startNodeY = std::max(0.0F, std::floor((start.m_Y / static_cast<float>(m_NodeDimension) - 0.5f)));
+	int startNodeY = std::max(0.0F, std::floor(start.m_Y / static_cast<float>(m_NodeDimension)));
 	int endNodeX = std::floor(end.m_X / static_cast<float>(m_NodeDimension));
-	int endNodeY = std::max(0.0F, std::floor((end.m_Y / static_cast<float>(m_NodeDimension) - 0.5f)));
+	int endNodeY = std::max(0.0F, std::floor(end.m_Y / static_cast<float>(m_NodeDimension)));
 
 	// Clear out the results if it happens to contain anything
 	pathResult.clear();
@@ -192,14 +193,29 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	int result = MicroPather::NO_SOLUTION;
 	std::vector<void*> statePath;
 
-	// If end node is invalid, there's no path
-	PathNode* endNode = GetPathNodeAtGridCoords(endNodeX, endNodeY);
-	// A goal a little above the ground falls in the cell over the surface's: that is the node a unit stands at, so the search ends there.
+	// A node whose centre is in solid ground is no place to start or finish: the one above (the surface node) is, when it's open, or else
+	// the one below. A goal a little above the ground falls in the cell over the surface's: that is the node a unit stands at, so the
+	// search ends there.
+	auto openNode = [this](PathNode* node) -> PathNode* {
+		auto buried = [](const PathNode* n) { return n && g_SceneMan.GetTerrMatter(static_cast<int>(n->Pos.m_X), static_cast<int>(n->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir; };
+		if (buried(node)) {
+			if (node->Up && !buried(node->Up)) {
+				return node->Up;
+			}
+			if (node->Down && !buried(node->Down)) {
+				return node->Down;
+			}
+		}
+		return node;
+	};
+	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY));
+	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY));
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
 	}
-	if (endNode && endNode->m_Navigable) {
-		result = GetPather()->Solve(static_cast<void*>(GetPathNodeAtGridCoords(startNodeX, startNodeY)), static_cast<void*>(endNode), &statePath, &totalCostResult);
+	// If end node is invalid, there's no path
+	if (startNode && endNode && endNode->m_Navigable) {
+		result = GetPather()->Solve(static_cast<void*>(startNode), static_cast<void*>(endNode), &statePath, &totalCostResult);
 	}
 
 	if (result == MicroPather::NO_SOLUTION) {
