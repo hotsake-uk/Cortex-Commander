@@ -2592,6 +2592,15 @@ namespace {
 
 	std::string s_WantedTab; //!< The tab of the sandbox window to bring to the front, asked for from the bar.
 	std::string s_CurrentTab; //!< The tab of the sandbox window that is showing.
+	std::map<std::string, int> s_LastToolOfTab; //!< The tool last picked on each tab, so coming back to the tab from the bar picks it up again.
+
+	/// Notes that a tool was picked on the tab showing, for the bar to bring back with the tab.
+	void TookTool(int toolIndex) {
+		s_ToolIndex = toolIndex;
+		if (!s_CurrentTab.empty()) {
+			s_LastToolOfTab[s_CurrentTab] = toolIndex;
+		}
+	}
 
 	/// Says whether a tab of the sandbox window is to be brought to the front this frame: because the bar asked for it, or a test run did (they can't click, so
 	/// they name the one the window is to open on: CCCP_TEST_TAB=Spawn).
@@ -2658,7 +2667,7 @@ namespace {
 			ImGui::PushID(index);
 			ImVec2 at = ImGui::GetCursorScreenPos();
 			if (ImGui::InvisibleButton("##tool", ImVec2(width, height))) {
-				s_ToolIndex = index;
+				TookTool(index);
 			}
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
 				TogglePin(kind, "");
@@ -2902,7 +2911,7 @@ namespace {
 			}
 			if (picked) {
 				choice = i;
-				s_ToolIndex = ToolIndex(kind);
+				TookTool(ToolIndex(kind));
 			}
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
 				TogglePin(kind, preset.PresetName);
@@ -3461,6 +3470,10 @@ namespace {
 						Sandbox::SetOpen(true);
 						s_WantedTab = part.Name;
 						s_CurrentTab = part.Name;
+						// Whatever was last picked on that part comes back to hand with it.
+						if (auto remembered = s_LastToolOfTab.find(part.Name); remembered != s_LastToolOfTab.end()) {
+							s_ToolIndex = remembered->second;
+						}
 					}
 				}
 				ImGui::PopID();
@@ -4331,7 +4344,7 @@ void Sandbox::DrawGUI() {
 						bool chosen = c_Tools[s_ToolIndex].Kind == Tool::Effect && s_EffectChoice == index;
 						if (ToolUI::RadioButton(c_Effects[index].Name, chosen)) {
 							s_EffectChoice = index;
-							s_ToolIndex = ToolIndex(Tool::Effect);
+							TookTool(ToolIndex(Tool::Effect));
 						}
 						ImGui::SetItemTooltip("%s", c_Effects[index].Tip);
 					}
