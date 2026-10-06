@@ -118,6 +118,8 @@ void Actor::Clear() {
 	m_MoveTarget.Reset();
 	m_pMOMoveTarget = nullptr;
 	m_PrevPathTarget.Reset();
+	m_MovePathGoal.Reset();
+	m_HasMovePathGoal = false;
 	m_MoveVector.Reset();
 	m_MovePath.clear();
 	m_MovePathKinds.clear();
@@ -284,6 +286,8 @@ int Actor::Create(const Actor& reference) {
 	m_MoveTarget = reference.m_MoveTarget;
 	m_pMOMoveTarget = reference.m_pMOMoveTarget;
 	m_PrevPathTarget = reference.m_PrevPathTarget;
+	m_MovePathGoal = reference.m_MovePathGoal;
+	m_HasMovePathGoal = reference.m_HasMovePathGoal;
 	m_MoveVector = reference.m_MoveVector;
 	m_MovePath.clear();
 	m_UpdateMovePath = reference.m_UpdateMovePath;
@@ -1056,18 +1060,25 @@ void Actor::UpdateMovePath() {
 
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
 	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		m_HasMovePathGoal = false;
 		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), agent, static_cast<Activity::Teams>(m_Team));
 	} else {
+		// The place the route is asked for to is kept (m_MovePathGoal): a route cut short at an obstacle ends short of it, and taken from the
+		// route's last point, as it used to be, the next request went to the cut and the unit "arrived" there, at the foot of a hatch its
+		// own team's door had been erased from the grid a moment too late to pass.
 		// Do we currently have a path to a static target we would like to still pursue?
 		if (m_MovePath.empty()) {
 			// Ok no path going, so get a new path to the next waypoint, if there is a next waypoint
 			if (!m_Waypoints.empty()) {
 				// Make sure the path starts from the ground and not somewhere up in the air if/when dropped out of ship
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_Waypoints.front().first), agent, static_cast<Activity::Teams>(m_Team));
+				m_MovePathGoal = onGround(m_Waypoints.front().first);
+				m_HasMovePathGoal = true;
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_MovePathGoal, agent, static_cast<Activity::Teams>(m_Team));
 
 				// If the waypoint was tied to an MO to pursue, then load it into the current MO target
 				if (g_MovableMan.ValidMO(m_Waypoints.front().second)) {
 					m_pMOMoveTarget = m_Waypoints.front().second;
+					m_HasMovePathGoal = false;
 				} else {
 					m_pMOMoveTarget = 0;
 				}
@@ -1075,14 +1086,22 @@ void Actor::UpdateMovePath() {
 				// We loaded the waypoint, no need to keep it
 				m_Waypoints.pop_front();
 			}
-			// Just try to get to the last Move Target
+			// Just try to get to the place we were going, else the last Move Target
 			else {
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MoveTarget), agent, static_cast<Activity::Teams>(m_Team));
+				if (!m_HasMovePathGoal) {
+					m_MovePathGoal = onGround(m_MoveTarget);
+					m_HasMovePathGoal = true;
+				}
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_MovePathGoal, agent, static_cast<Activity::Teams>(m_Team));
 			}
 		}
-		// We had a path before trying to update, so use its last point as the final destination
+		// We had a path before trying to update, so go on to the place it was for (or, with none kept, its last point).
 		else {
-			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(Vector(m_MovePath.back())), agent, static_cast<Activity::Teams>(m_Team));
+			if (!m_HasMovePathGoal) {
+				m_MovePathGoal = onGround(Vector(m_MovePath.back()));
+				m_HasMovePathGoal = true;
+			}
+			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_MovePathGoal, agent, static_cast<Activity::Teams>(m_Team));
 		}
 	}
 

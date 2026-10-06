@@ -268,8 +268,9 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
     over the slope clear), a walking edge two up and one over (and down) for a `PathAgent::WalksStairs` searcher (AHuman yes), the
     step kind `Stairs` (6); the script walks kind 6 (no climb, no wall-ahead jet, no hop). A cut-short route keeps its real last point.
     `ADoor::SetTeam` re-samples the door's grid area (a team's own doors are erased from its grid, but only re-sampled areas).
-13. The climb's fuel and speed: `SharedBehaviors.ClimbFuel` (full burn to the cap, held, a coast to the top; a burst's worth for the
-    start and a reserve for the top) is what the tank check asks for; the cap is 12 m/s for humans, 8 for crabs
+13. The climb's fuel and speed: the tank check flies the climb (`SharedBehaviors.ClimbFuelLeft`: full burn to the cap, held, a coast
+    to the top, a thirtieth of a second at a time, with the thrust falling as the jetpack's throttle follows the fuel left) from the
+    fuel in the tank, and goes when what is left at the top covers the hover (150 ms + the height, up to 450); the cap is 12 m/s for humans, 8 for crabs
     (`ClimbSpeedCap`); the rate with a height to go is what gravity alone stops 12 px short of it (`sqrt(2 g toGo)`), capped; a
     climb's relights are steady (`AI.jetSteady`: the native AIs skip the burst), and the native AI's 150 ms jet hold is off in a
     climb. The climb state ends at a new jump point well above (re-decided), a column's top is never "passed" from below while the
@@ -287,6 +288,11 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
     and in plain sight, and holds still in place until the place moves off; the old loop steered every follower straight at the
     leader and froze them all on its spot. The `teamBlockState` machinery is still dead and untouched. The combat gym's "squad"
     course measures spread and the closest pair, with a turn-about at 30 s.
+16. From Results/97a4c41: `Actor::m_MovePathGoal` keeps a route's goal apart from its last point (`GetLastAIWaypoint`,
+    `UpdateMovePath`): a cut-short route's end had become the goal through the line-of-sight re-path, and the unit "arrived" at the
+    cut. A climb begins from under the open column (the own column is probed first, then the shaft's middle; with the middle open and
+    the own column capped the legs go under the opening before the jet lights). `ACrab::GetPathAgent` says the legs take stairs. The
+    sky gym gives its doors to the units as soon as the bunker stands.
 
 ### Tools/PathSim
 
@@ -295,7 +301,14 @@ modules' material bitmaps. It gives the game's routes node for node (checked aga
 layout was designed and how the grid changes above were checked before a push: `python3 -I Tools/PathSim/pathsim.py sky --layout new`.
 Keep `grid_rules.py` in step with the C++. It models the grid only; whether a unit can follow a route is the gym's business.
 
-### Where the numbers stand (Results/d3c6d8d, three runs each)
+### Where the numbers stand (Results/97a4c41, three runs each)
+
+Outdoor 15-16/16, combat all resolve (the firefight's attacker now dies too, 3/3, unexplained), the sky bunker 18/21 (the Doors B shaft
+0/3, the cut-short goal fault above), Bywater 6/15. Stairs: the soldier 4.5-6.5 s, the Dreadnought 11.5 s up and 5.5 down. Bywater
+course 1's traces showed the climb lit beside the column (550 ms pinned under the slab) and the constant-thrust fuel sum passing
+climbs the weakening jet could not make.
+
+### The round before (Results/d3c6d8d, three runs each)
 
 Outdoor 15/16 (the crab over the hill), combat all resolve, the sky bunker 21/21, Bywater 5/15 and no deaths. The tester's walk test
 settled that a soldier walks the steep stairs unaided in 4 s (the grid routed them as jet hops: 20-46 s). The Bywater traces showed
@@ -311,8 +324,9 @@ because the probe reached 4 px into the pather's 2 px margin.
   (`CCCP_BUNKER_UNIT=crab` on the stairs courses), then `ACrab::GetPathAgent` gets `WalksStairs`.
 - The jump planner after a climb: it still relights in bursts (a kick and 130 ms each) when flying level with a point off to one side;
   the climb's fuel model should keep the tank from being dry there, but the planner's own pulses could be made steady too.
-- Door manners are measured on the sky bunker's Doors B piece for the first time this push.
-- Squads have their first cut (item 15), measured on the combat gym's "squad" course from this push; not yet: a follower whose
+- Door manners are measured on the sky bunker's Doors B piece from 97a4c419 on (the first round never reached the leaves: the
+  cut-short goal fault, item 16).
+- Squads have their first cut (item 15), measured on the combat gym's "squad" course from 1f2f3d60; not yet: a follower whose
   place is up a ledge the leader jetted onto (it waits at the foot until the leader walks on), a dead leader's followers (they go
   sentry, as before), and the sandbox's Guard order (GOTO at an MO), which follows the one followed itself.
 - Not yet looked at: the four-facing jet planner indoors (its rays start 40 px over Pos, inside a 48 px ceiling, so it

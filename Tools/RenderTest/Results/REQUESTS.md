@@ -7,7 +7,30 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), squads keep a place in line** (SharedBehaviors SquadTrailUpdate/SquadSlot/SquadPoint/SquadTrimPath, the native AIs'
+- **(this push), from Results/97a4c41: the cut-short route's end, the climb from beside the column, the tank check with a weakening
+  jet; stairs for crabs** (Actor, ACrab, GoToWpt, AIBunker.lua). Each line one change and what to look for:
+  - *A route's goal is kept apart from its last point* (`Actor::m_MovePathGoal`, used by `GetLastAIWaypoint` and `UpdateMovePath`).
+    The sky "bottom corridor to the top room" fault: a cut-short route ends at the cut, and the next request (the line-of-sight
+    re-path) was made to the route's last point, so the cut became the goal, and the arrival test (`GetLastAIWaypoint` = the route's
+    last point) said "arrived" there. Expect that course to re-path to the top room and climb the Doors B shaft (3/3 if the door is
+    out of the grid, see next), and no unit standing at a cut with `path 0` for good anywhere.
+  - *The gym's doors are the units' from the moment the bunker stands* (AIBunker.lua: a door-team pass right after the modules are
+    placed, as well as the one at 5 s): a team's doors are erased from its grid only as their areas are re-sampled, a few nodes a
+    frame, and set at 5 s the first route still cost 600000. Expect the first `path for` of the sky course to cost under 100 (no
+    600000). If it still costs 600000, please `CCCP_BUNKER_DUMP=1608,369` (the Doors B leaves) and say what material the grid sees.
+  - *A climb begins from under the open column* (GoToWpt): with its own column capped and the shaft's middle open 31 px over, the unit
+    walks under the opening first, then lights; lit beside it, Bywater course 1 burned 550 ms pinned to the slab's underside at 31 s
+    (1449 to 1477,673, no rise). Expect `climb: stepping N under the open column first` lines and no second of burn without rise at a
+    climb's start; the `under a ceiling at 765/850` pushes at the foot of climbs should go with it.
+  - *The tank check flies the climb with the jet it will have* (`SharedBehaviors.ClimbFuelLeft`: a thirtieth of a second at a time,
+    the thrust falling with the tank as the jetpack's throttle does, 1.2 of nominal full to 0.8 empty, from the fuel actually in the
+    tank; the climb goes when what is left at the top covers the hover, 150 ms + the height in px up to 450). Expect Bywater course
+    1's 167 px climb at 5 s to wait for the tank instead of starting on 829 and ending with 55, and the 329 px one to go only near
+    full; `fuel` at the top of each climb well over 100.
+  - *Crabs walk stairs on purpose* (`ACrab::GetPathAgent`: WalksStairs): the Dreadnought was offered the (6) steps by a chance
+    labelling last round and walked them; now the grid offers them to it. Expect the same 11.5 s / 5.5 s with `CCCP_BUNKER_UNIT=crab`.
+
+- **1f2f3d60, squads keep a place in line** (SharedBehaviors SquadTrailUpdate/SquadSlot/SquadPoint/SquadTrimPath, the native AIs'
   per-tick follow block, GoToWpt's follow branch; a "squad" course in the combat gym). A squad follower (AIMODE_SQUAD with an MO
   waypoint on the leader) no longer steers straight at the leader and freezes against it: it keeps a place in line, its slot's distance
   (about 70 px per slot for soldiers) back along the way the leader came, from a trail of the leader's ground positions that each
@@ -136,8 +159,8 @@ so here.
 ## Open requests
 
 1. The crab trace (above).
-2. ~~**Can the legs walk the steep stairs?**~~ Answered in Results/d3c6d8d: a soldier walks them in 4 s. The grid now offers the walking
-   edge (97a4c419). Still open for the Dreadnought: the stairs courses with `CCCP_BUNKER_UNIT=crab`.
+2. ~~**Can the legs walk the steep stairs?**~~ Answered in Results/d3c6d8d (a soldier, 4 s) and Results/97a4c41 (the Dreadnought,
+   11.5 s up, 5.5 down). Both walk them; the grid offers the edge to both now.
    ~~**Can the legs walk the steep stairs?** The grid routes Steep Stairs D as jet hops because its diagonal edges are 1:1 and the stair is
    2:1 (6 px risers, 3 px treads, 63 degrees). If a Soldier Light can walk up them unaided, the grid should offer a walking edge up
    stairs and the courses would drop from 20-46 s to a few seconds. Please try: a soldier placed at the stairs' foot (2060,340) with
@@ -151,6 +174,13 @@ so here.
 4. The `AIGYM unit` line for any other unit you run.
 5. A trace of sky "bottom corridor to the top room" (`CCCP_BUNKER_TRACE=1`) with the Doors B piece in the shaft: the door manners'
    first measurement (see the push above).
+8. Bywater's instant death under Door A (2076,792) at 2079,872 (Results/97a4c41 run 1, "mid left room to the right column"): a trace
+   of that course (`CCCP_BUNKER_TRACE=2`) in one repeat, to see whether the door manners (`door: waiting for`) fired and where the unit
+   stood when the leaf came down. If it was standing in place under a hatch of its own team that had opened for it and then closed,
+   that is a hold spot inside the leaf's sweep, and I need the leaf's reach.
+9. The combat gym's firefight: both dead 3/3 on 97a4c41 against team 2 surviving before. Nothing in that push touches the fighting
+   rules; if it repeats on 1f2f3d6 and later, the `AICOMBAT firefight` lines of one run (positions, `sees`/`blind`) would show whether
+   the attacker now closes differently (the "passed"/pop changes do run under a move order).
 7. The combat gym's new "squad" course: its AICOMBAT lines (every 2 s) and, if a follower stands still more than 10 s while the
    leader is more than 150 px away, an AITRACE of it (the first follower is traced; `CCCP_AI_LOG=1`).
 6. Bywater course 1's stand at 1756,924 (9-12 s in Results/d3c6d8d: still until `jet: stuck`, next point 1716,915 then a crawl to

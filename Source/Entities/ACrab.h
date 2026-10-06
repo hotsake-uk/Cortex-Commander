@@ -273,6 +273,9 @@ namespace RTE {
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const override;
 
+		/// What this crab is to the path grid (see Actor::GetPathAgent): the same, and its legs take stairs.
+		PathAgent GetPathAgent() const override;
+
 		/// Protected member variable and method declarations
 	protected:
 		/// Function that is called when we get a new movepath.

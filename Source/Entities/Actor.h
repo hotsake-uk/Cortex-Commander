@@ -407,14 +407,18 @@ namespace RTE {
 			m_MovePathKinds.clear();
 			m_MoveTarget = m_Pos;
 			m_MoveVector.Reset();
+			m_HasMovePathGoal = false;
 		}
 
-		/// Gets the last or furthest set AI waypoint of this. If none, this' pos
-		/// is returned.
+		/// Gets the last or furthest set AI waypoint of this: the last of its waypoints, else the place its route was asked for to, else
+		/// the route's last point. If none, this' pos is returned. (The route's last point is not the place when the route was cut short
+		/// at an obstacle: taken for it, a unit that walked to the cut had "arrived" and stood there for good.)
 		/// @return The furthest set AI waypoint of this.
 		Vector GetLastAIWaypoint() const {
 			if (!m_Waypoints.empty()) {
 				return m_Waypoints.back().first;
+			} else if (m_HasMovePathGoal) {
+				return m_MovePathGoal;
 			} else if (!m_MovePath.empty()) {
 				return m_MovePath.back();
 			}
@@ -1113,6 +1117,8 @@ namespace RTE {
 		const MovableObject* m_pMOMoveTarget;
 		// The point previous on the path to the one currently assigned the move target
 		Vector m_PrevPathTarget;
+		Vector m_MovePathGoal; //!< The place the current route was asked for to (a scene point, not an MO), kept apart from the route's last point, which a cut-short route stops short of.
+		bool m_HasMovePathGoal; //!< Whether m_MovePathGoal holds a place.
 		// The relative, scene-wrapped difference between the current m_Pos and the m_MoveTarget.
 		Vector m_MoveVector;
 		// The calculated path to get to that move-to target

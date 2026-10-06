@@ -386,32 +386,46 @@ function SharedBehaviors.ClimbSpeedCap(Owner)
 	return Owner.Head and 12 or 8;
 end
 
--- The fuel a climb of a height takes, in ms of burn: full burn up to the speed cap, held there (lit the fraction of the time that
--- holds the speed against gravity), and let coast to the top from the height gravity alone stops it in; with a burst's worth for
--- the start and a reserve for the hover and the step off at the top. The old reckoning (the climb's seconds at the cap, nine tenths
--- lit) had no accelerating phase and no coast, and passed a 320 px climb that the tank cannot make under control.
--- @param height The climb, in px, positive. @return ms.
-function SharedBehaviors.ClimbFuel(AI, Owner, height)
+-- What the tank has left at the top of a climb of a height, begun with so much fuel, in ms; or -1 when the climb can't be made on it.
+-- Flown as the climb flies it, a thirtieth of a second at a time: full burn to the speed cap, held there, let coast from the height
+-- gravity alone stops it in, to 32 px under the point (the rate's twelve pixels short of the fifth of a body the hover band begins at,
+-- where the hover takes over on the reserve). The thrust falls with the tank: a jetpack's throttle follows the fuel left
+-- (AEJetpack::UpdateBurstState), 1.2 of the nominal when full to 0.8 when empty for the base game's packs, and the nominal is what
+-- JetNumbers has (EstimateImpulse takes no throttle). Summed from a constant thrust, as it was, the check passed a 329 px climb on
+-- 1338 ms that ran dry at the top, and a 167 px one on 1203 that got there with 55.
+function SharedBehaviors.ClimbFuelLeft(AI, Owner, height, fuel)
 	local jet = SharedBehaviors.JetNumbers(AI, Owner);
-	if jet.accel <= 1 then
-		return math.huge;
+	local Pack = Owner.Jetpack;
+	if jet.accel <= 1 or not Pack then
+		return -1;
 	end
-	-- The flight is flown to 32 px under the point (the rate's twelve pixels short of the fifth of a body the hover band begins at); the
-	-- hover from there is the reserve's.
 	height = math.max(0, height - 32);
-	local gravity = SceneMan.GlobalAcc.Y * GetPPM(); -- px/s^2
-	local cap = SharedBehaviors.ClimbSpeedCap(Owner) * GetPPM(); -- px/s
-	local toCap = cap / jet.accel; -- Seconds of full burn to reach the cap.
-	local heightToCap = 0.5 * jet.accel * toCap * toCap;
-	local coast = cap * cap / (2 * gravity); -- What gravity alone takes off the top from the cap.
-	local lit;
-	if heightToCap + coast >= height then
-		-- The cap is never reached: a burn and a coast. (a/2) t^2 + (a t)^2 / (2g) = h.
-		lit = math.sqrt(height / (jet.accel * 0.5 + jet.accel * jet.accel / (2 * gravity)));
-	else
-		lit = toCap + (height - heightToCap - coast) / cap * (gravity / (jet.accel + gravity));
+	local gravity = SceneMan.GlobalAcc.Y * GetPPM();
+	local thrust = jet.accel + gravity;
+	local total = math.max(1, Pack.JetTimeTotal);
+	local lowMul, highMul = Pack.NegativeThrottleMultiplier, Pack.PositiveThrottleMultiplier;
+	local cap = SharedBehaviors.ClimbSpeedCap(Owner) * GetPPM();
+	local dt = 1 / 30;
+	local y, up, t, lit = 0, 0, 0, false; -- Climbed so far, the speed upwards (px/s), the time, whether the jet is lit.
+	fuel = fuel - 200; -- The burst that lights it.
+	while y < height do
+		if t > 6 or fuel <= 0 then
+			return -1;
+		end
+		local rate = math.max(20, math.min(cap, math.sqrt(2 * gravity * math.max(0, height - y - 12))));
+		lit = up < (lit and rate + 20 or rate - 20);
+		if lit then
+			local factor = lowMul + (highMul - lowMul) * math.max(0, math.min(1, fuel / total));
+			up = up + (thrust * factor - gravity) * dt;
+			fuel = fuel - dt * 1000;
+		else
+			up = up - gravity * dt;
+			fuel = math.min(total, fuel + dt * 1000 * Pack.JetReplenishRate);
+		end
+		y = y + up * dt;
+		t = t + dt;
 	end
-	return lit * 1000 + 200 + 300;
+	return fuel;
 end
 
 -- Fighting on the move, cover, flanking and falling back: the rules shared by the human and crab AIs. They read the unit's standing order
@@ -1731,6 +1745,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- stairs it can walk, and a soldier walks the base game's steepest.)
 												local wantsClimb = not doorHold and AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and Waypoint.Kind ~= 6 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.3) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
 											local climbRefused = false;
+											local stepToColumnDx = nil; -- A step to take first, to under the column the climb goes up.
 											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
 												local towardsX = CurrDist.X;
 												local Hit = Vector();
@@ -1750,29 +1765,54 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													shaftX = nil;
 												end
 												local probeX = shaftX or Owner.Pos.X;
-												-- (A door of ours across the column is no ceiling: it opens as we come up to it, and the manners above hold us short of it
-												-- until it has. The pather already routes through it.)
-												local ceiling = SceneMan:CastObstacleRay(Vector(probeX, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 and not SharedBehaviors.OurDoorAt(Owner, Hit);
-												if ceiling and probeX ~= Owner.Pos.X then
-													-- Or from our own column, which may be the open one.
-													ceiling = SceneMan:CastObstacleRay(Vector(Owner.Pos.X, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 and not SharedBehaviors.OurDoorAt(Owner, Hit);
+												-- The way up is looked at from our own column first, then from the shaft's middle. (A door of ours across the column is no
+												-- ceiling: it opens as we come up to it, and the manners above hold us short of it until it has. The pather already routes
+												-- through it.)
+												local function OpenAbove(x)
+													return SceneMan:CastObstacleRay(Vector(x, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 or SharedBehaviors.OurDoorAt(Owner, Hit) ~= nil;
+												end
+												local columnX = Owner.Pos.X; -- The column the climb goes up.
+												local ceiling = not OpenAbove(Owner.Pos.X);
+												if ceiling and probeX ~= Owner.Pos.X and OpenAbove(probeX) then
+													ceiling = false;
+													columnX = probeX;
 												end
 												AI.climbShaftX = shaftX;
 												-- A tall climb wants the fuel it will take: started on half a tank it ends part way up the face, with the fall and the wait
 												-- to refill to show for it. So the unit waits at the foot until the tank is in. How much is wanted is what the climb burns
-												-- flown the way it is flown (see ClimbFuel), with a reserve for the hover and the step off at the top; never more than 95%
-												-- of a tank, or it would never go.
+												-- flown the way it is flown (see ClimbFuelLeft), with a reserve for the hover and the step off at the top; never more than
+												-- 95% of a tank, or it would never go.
 												-- (It used to be reckoned from the height a whole tank buys, 440 px for a soldier, but that is the height of a ballistic
 												-- burn, and a climb flown under control at 5 m/s got about 250 px from a tank: a 192 px shaft left it with nothing at the top.
 												-- Then from the climb's seconds at 8 m/s, nine tenths lit, which let a 320 px climb go that the tank could not make.)
 												local tall = above < -Owner.Height * 0.5;
-												local fuelWanted = math.min(Owner.Jetpack.JetTimeTotal * 0.95, SharedBehaviors.ClimbFuel(AI, Owner, -above));
-												local tankIn = Owner.Jetpack.JetTimeLeft >= (tall and fuelWanted or AI.minBurstTime);
+												-- What the climb would leave at the top, flown from the tank as it is (see ClimbFuelLeft), must cover the hover and the step
+												-- off: 450 ms, since the jet is weak by then. A climb that no full tank makes by that reckoning is tried on a full one.
+												local tankIn;
+												if tall then
+													-- (Less for a short climb, whose hover is short: a 54 px step wanted 450 ms over its own burn, and waited on half a tank.)
+													local reserve = math.min(450, 150 - above);
+													if SharedBehaviors.ClimbFuelLeft(AI, Owner, -above, Owner.Jetpack.JetTimeLeft) >= reserve then
+														tankIn = true;
+													elseif SharedBehaviors.ClimbFuelLeft(AI, Owner, -above, Owner.Jetpack.JetTimeTotal) < reserve then
+														tankIn = Owner.Jetpack.JetTimeLeft >= Owner.Jetpack.JetTimeTotal * 0.95;
+													else
+														tankIn = false;
+													end
+												else
+													tankIn = true;
+												end
 												tankIn = tankIn and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime;
 												if not tankIn and tall and not AI.flying then
 													AI.refuel = true;
 												end
-												if not ceiling and tankIn then
+												-- A climb begins from under the open column, not beside it: lit under the slab beside a hatch, with the drift to carry it
+												-- across, a unit burned half a tank pinned to the slab's underside before it was under the opening. On the ground the legs
+												-- go there first (see the refusal below); in the air, passing a ledge on the way up, the drift is all there is.
+												if not ceiling and tankIn and not AI.flying and math.abs(columnX - Owner.Pos.X) >= Owner.Height * 0.12 then
+													climbRefused = true;
+													stepToColumnDx = columnX - Owner.Pos.X;
+												elseif not ceiling and tankIn then
 													climbing = true;
 													AI.jetClimb = true;
 													AI.climbClearY = nil;
@@ -1789,11 +1829,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												AI.jump = false;
 												AI.jetClimb = false;
 												if not AI.flying then
-													local Up = Vector(0, math.min(-Owner.Height * 0.2, above + 4));
-													local dx = SharedBehaviors.OpenColumnNear(Owner, Up);
+													local dx = stepToColumnDx;
+													if not dx then
+														local Up = Vector(0, math.min(-Owner.Height * 0.2, above + 4));
+														dx = SharedBehaviors.OpenColumnNear(Owner, Up);
+													end
 													if dx and math.abs(dx) > 2 then
 														nextLatMove = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
-														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling, stepping " .. math.floor(dx) .. " to an open column"); end
+														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: " .. (stepToColumnDx and ("stepping " .. math.floor(dx) .. " under the open column first") or ("under a ceiling, stepping " .. math.floor(dx) .. " to an open column"))); end
 													end
 												end
 											elseif (climbing or (AI.jetClimb and wantsClimb)) and ClimbTimer.ElapsedSimTimeMS > 1500 and not AI.flying and Owner.Vel.Y > -0.5 and above < -Owner.Height * 0.2 then
