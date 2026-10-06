@@ -311,6 +311,27 @@ void UInputMan::DisableMouseMoving(bool disable) {
 		m_PrepareToEnableMouseMoving = true;
 	}
 }
+void UInputMan::GiveMouseBackNow() {
+	DisableMouseMoving(false);
+	GameViewRect view = g_WindowMan.GetGameViewRect();
+	float x = m_MouseStates[0].position.m_X;
+	float y = m_MouseStates[0].position.m_Y;
+	float mouseX = 0.0F;
+	float mouseY = 0.0F;
+	SDL_GetMouseState(&mouseX, &mouseY);
+	x = mouseX - view.x;
+	y = mouseY - view.y;
+	if (x < 0.0F || y < 0.0F || x >= view.w || y >= view.h) {
+		SDL_WarpMouseInWindow(g_WindowMan.GetWindow(), view.x + view.w * 0.5F, view.y + view.h * 0.5F);
+		x = view.w * 0.5F;
+		y = view.h * 0.5F;
+	}
+	m_MouseStates[0].position = {x, y};
+	m_DisableMouseMoving = m_PrepareToEnableMouseMoving = false;
+	// Trapped for aiming, or not, as the game last asked.
+	SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), m_TrapMousePos || m_EnableMultiMouseKeyboard);
+}
+
 bool UInputMan::CheckMultiMouseKeyboardEnabled(std::optional<std::reference_wrapper<const std::vector<int>>> players) {
 	if (m_ForceDisableMultiMouseKeyboard) {
 		m_EnableMultiMouseKeyboard = false;

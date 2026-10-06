@@ -280,6 +280,11 @@ namespace RTE {
 		/// Gets whether the mouse has been let go of by the game (the window lost focus, or tool windows are using it) and has not been asked back.
 		bool IsMouseReleased() const { return m_DisableMouseMoving && !m_PrepareToEnableMouseMoving; }
 
+		/// Gives the mouse back to the game at once, wherever the pointer is: it is put in the middle of the game's picture if it is outside it.
+		/// For the tool windows handing it back: DisableMouseMoving(false) alone waits for the pointer to come into the picture by itself, and a pointer left over a
+		/// tool window at the side never does while the game has it, so nothing moved.
+		void GiveMouseBackNow();
+
 
 		/// @brief Check if multi mouse and keyboard should be enabled.
 		/// Checks through a list of human players to see if multimouse is required.

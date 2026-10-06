@@ -440,7 +440,7 @@ void DebugMan::UpdateMouseOwnership() {
 		m_ReleasedMouseForImGui = false;
 		// Not while the window is in the background: it gets the mouse back by itself when it comes to the front.
 		if (g_WindowMan.AnyWindowHasFocus()) {
-			g_UInputMan.DisableMouseMoving(false);
+			g_UInputMan.GiveMouseBackNow();
 		}
 	}
 	// The game hides the OS cursor and draws its own, so have ImGui draw one too.
