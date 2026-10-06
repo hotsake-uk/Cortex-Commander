@@ -84,8 +84,18 @@ Still open, in rough order of value:
     walking band sits a few pixels up off the bumps. A climb's lip memory clears only once the feet are past the lip.
 16. **Crabs.** `NativeCrabAI.lua` shares `GoToWpt`, so the movement work reaches them, but nothing has been measured on a crab: no head
     for the wall probe, legs on both sides, jets on some. They need a gym course of their own.
-17. **Combat movement.** AttackTarget just walks at the target; no use of cover, no flanking, no retreat to refuel or heal; the "Guard"
-    command mode in the sandbox is a hold with a wider look. The command tool's attack focus (`c_AttackTag`) is sandbox-side only.
+17. **Combat movement.** *Done, for humans (crabs get the engagement rule and the retreat):* the fighting rules read the unit's standing
+    order (`SharedBehaviors.OrderKind`: move / attack / defend / guard, from the AI mode and the sandbox's tags, so a game waypoint order
+    and a sandbox order fight the same way). A move order's unit fires on the way and doesn't stop; attack and guard units stop, fight and
+    close in; a defender stands. In range they hold about half the weapon's reach (snipers most of it, explosives clear of the blast),
+    closing in by the path when further off, backing off a step when much nearer, and shifting a step now and then (`HoldRange`).
+    Reloads and a bad hit are taken behind cover a few steps away when there is any (`FindCover`, `TakeCover`, `LeaveCover`: in a side
+    view that is under or back from a ledge, not behind a wall). A target in sight that the shots can't reach for 1.5 s is flanked: a
+    spot above or beside it with a line of sight, within fifty path nodes (`FindFlank`, `StartFlank`, `FlankUpdate`; also from the last
+    known spot of an enemy that was shooting at us). Under 30% health with no enemy in sight a unit falls back to the brain or a friend
+    (never through the enemy; away from it if there's no one the right side), waits 25 s to be patched up, and takes its order up again
+    (`RetreatUpdate`); not brains, defenders or player-posted sentries. Strafing and flanking scale with the team's AI skill. The sandbox
+    leaves units that are falling back or flanking alone.
 18. **Squads** move as individuals. (The `teamBlockState` machinery that looks like it handles team-mates in the way is dead: nothing
     ever sets BLOCKED.) Formation offsets along the leader's path would do most of what's wanted.
 
@@ -129,6 +139,16 @@ The crab is the one to watch: its jet is weak for the 60° slope, and when a re-
 through the valley it goes, and falls into the far one. The cliff takes most of a human's tank; a unit that arrives at the foot with
 half a tank waits for it to fill rather than failing part way up.
 
+### The combat gym
+
+`Tools\RenderTest\AICombat.ps1` (scenario `AICombat`, script `RenderTest.rte/AICombat.lua`): five small fights on beams in the sky, one per
+rule, written up as AICOMBAT lines every two seconds (position, health, mode, whether each unit's eyes have a line to the other) and the
+AI's own AITRACE lines (`range:`, `cover:`, `flank:`, `retreat:`). firefight: an attacker sent at a defender along a bare beam. cover: a
+unit below a ledge the enemy stands on, its head showing over the lip; reloads go under the ledge and come out again. dug in: the same
+with the body hidden too, which the attacker can't hit and should go round. move: a move-order unit walks past an enemy on a ledge and
+should arrive. retreat: a unit on 20 health with its brain down the beam. As of 2026-10-06 all five do what they should; the dug-in
+attacker usually dies first, as it would.
+
 ## On a real map
 
 `Tools\RenderTest\RenderTest.rte\AIMap.lua` (scenario `AIMap`, same harness as the gym) sends a soldier, a soldier with a Heavy Digger and
@@ -151,6 +171,6 @@ Each step is measured on the gym before and after, and committed on its own.
 4. **Jet numbers from the body** (#15, done): `AEJetpack` exposes reachable height and arrest time; the climb and the governor use them, the
    tuned constants go.
 5. **Crabs** (#16): a crab on the gym courses, and whatever that shows.
-6. **Combat movement** (#17), **squads** (#18): new behaviours, each with a gym course (a wall to take cover behind, a target to flank,
-   a squad to move as one).
+6. **Combat movement** (#17, done; see the combat gym), **squads** (#18): new behaviours, each with a gym course (a wall to take cover
+   behind, a target to flank, a squad to move as one).
 7. More gym courses as problems are found in play: a cliff taller than one tank of fuel, a door, water, a narrow shaft to climb.

@@ -859,7 +859,8 @@ namespace {
 	/// Units told to attack get a new target when theirs is gone, and go on guard when no enemies are left.
 	void RetargetAttackers() {
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor->GetNumberValue(c_AttackTag) <= 0.0 || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire")) {
+			// (A unit falling back hurt or working round a flank is left to it; the AI puts its order back after.)
+			if (actor->GetNumberValue(c_AttackTag) <= 0.0 || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire") || actor->NumberValueExists("AIRetreat") || actor->NumberValueExists("AIFlank")) {
 				continue;
 			}
 			const MovableObject* target = actor->GetMOMoveTarget();

@@ -40,7 +40,7 @@ function NativeCrabAI:Create(Owner)
 	Members.idleAimTime = Owner:NumberValueExists("AIIdleAimTime") and Owner:GetNumberValue("AIIdleAimTime") or 500;
 
 	-- set shooting skill
-	Members.aimSpeed, Members.aimSkill = SharedBehaviors.GetTeamShootingSkill(Owner.Team);
+	Members.aimSpeed, Members.aimSkill, Members.skill = SharedBehaviors.GetTeamShootingSkill(Owner.Team);
 
 	-- the native AI assume the jetpack cannot be destroyed
 	if Owner.Jetpack then
@@ -278,6 +278,13 @@ function NativeCrabAI:Update(Owner)
 				self.AlarmTimer:Reset();
 			end
 		end
+
+		-- The fighting rules that outlast any one behaviour: a flank seen through, and falling back when badly hurt.
+		if self.Target and MovableMan:ValidMO(self.Target) then
+			self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
+		end
+		SharedBehaviors.FlankUpdate(self, Owner);
+		SharedBehaviors.RetreatUpdate(self, Owner);
 
 		if self.teamBlockState == Actor.IGNORINGBLOCK then
 			if self.BlockedTimer:IsPastSimMS(20000) then

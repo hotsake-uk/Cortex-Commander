@@ -130,6 +130,15 @@ function NativeHumanAI:Update(Owner)
 			self.squadShoot = false;
 			self.useMedikit = false;
 
+			-- The fighting rules' state goes too: a unit a player took over mid-retreat kept its retreating tag, and was a "move" order to
+			-- the rules (and left alone by the sandbox) ever after.
+			self.closingIn = false;
+			self.Cover = nil;
+			self.Flank = nil;
+			self.Retreat = nil;
+			Owner:RemoveNumberValue("AIRetreat");
+			Owner:RemoveNumberValue("AIFlank");
+
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;
 			self.deviceState = AHuman.STILL;
@@ -598,6 +607,23 @@ function NativeHumanAI:Update(Owner)
 		end
 	end
 
+	-- The fighting rules that outlast any one behaviour: hits taken (for the cover rules), coming out of cover, a flank seen through, and
+	-- falling back when badly hurt. An enemy that can't be seen any more but was shooting at us from somewhere known is flanked too.
+	if self.LastHealth and Owner.Health < self.LastHealth then
+		self.HitTimer = self.HitTimer or Timer();
+		self.HitTimer:Reset();
+	end
+	self.LastHealth = Owner.Health;
+	if self.Target and MovableMan:ValidMO(self.Target) then
+		self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
+	end
+	HumanBehaviors.LeaveCover(self, Owner);
+	SharedBehaviors.FlankUpdate(self, Owner);
+	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
+		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+	end
+	SharedBehaviors.RetreatUpdate(self, Owner);
+
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then
 			self.teamBlockState = Actor.NOTBLOCKED;
@@ -832,6 +858,8 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 	self.NextCleanup = function(AI)
 		AI.fire = false;
 		AI.canHitTarget = false;
+		AI.closingIn = false;
+		AI.ShotBlockedTimer = nil;
 		AI.deviceState = AHuman.STILL;
 		AI.proneState = AHuman.NOTPRONE;
 		AI.TargetLostTimer:SetSimTimeLimitMS(2000);

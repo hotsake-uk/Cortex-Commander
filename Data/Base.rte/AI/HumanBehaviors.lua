@@ -1052,8 +1052,8 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						else
 							AI.canHitTarget = false;
 
-							-- the target is too far away
-							if not AI.isPlayerOwned or Owner.AIMode ~= Actor.AIMODE_SENTRY then
+							-- the target is too far away: go after it, if the order allows (an attack, or the guard modes; never a move or a defence)
+							if SharedBehaviors.MayClose(AI, Owner) then
 								if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then	-- move towards the target
 									local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4); -- move back here later
 									Owner:ClearAIWaypoints();
@@ -1062,6 +1062,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 									AI:CreateGoToBehavior(Owner);
 									AI.proneState = AHuman.NOTPRONE;
 								end
+								AI.closingIn = true;
 							else
 								-- TODO: switch weapon properly
 								if Weapon:HasObjectInGroup("Weapons - Primary") then
@@ -1085,7 +1086,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 								end
 							end
 						end
-					elseif not AI.isPlayerOwned or not (Owner.AIMode == Actor.AIMODE_SENTRY or Owner.AIMode == Actor.AIMODE_SQUAD) then -- target out of reach; move towards it
+					elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and SharedBehaviors.MayClose(AI, Owner) then -- target out of reach; move towards it
 						-- check if we are already moving towards an actor
 						if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then	-- move towards the target
 							local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4); -- move back here later
@@ -1096,6 +1097,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 							AI.proneState = AHuman.NOTPRONE;
 							AI.canHitTarget = false;
 						end
+						AI.closingIn = true;
 					end
 				else
 					checkAim = true;
@@ -1106,6 +1108,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						AI.TargetLostTimer:SetSimTimeLimitMS(700);
 						local TargetPoint = AI.Target.Pos + AI.TargetOffset;
 
+						local shotClear = false;
 						if (range < Owner.AimDistance + Weapon.SharpLength + FrameMan.PlayerScreenWidth*0.5) and
 							(not AI.isPlayerOwned or not SceneMan:IsUnseen(TargetPoint.X, TargetPoint.Y, Owner.Team)) and
 							not SceneMan:SmokeBlocksSight(Owner.EyePos, TargetPoint) -- lose track of targets hidden by smoke
@@ -1114,24 +1117,45 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 								if SceneMan:CastStrengthSumRay(Weapon.Pos, TargetPoint, 6, rte.grassID) * 5 < PrjDat.pen then
 									AI.TargetLostTimer:Reset(); -- we can shoot at the target
 									AI.OldTargetPos = Vector(AI.Target.Pos.X, AI.Target.Pos.Y);
+									shotClear = true;
 								end
 							else
 								if SceneMan:CastStrengthSumRay(Weapon.Pos, TargetPoint, 6, rte.grassID) < 120 then
 									AI.TargetLostTimer:Reset(); -- we can shoot at the target
 									AI.OldTargetPos = Vector(AI.Target.Pos.X, AI.Target.Pos.Y);
+									shotClear = true;
 								end
+							end
+						end
+						-- A target in sight that the shots can't reach (dug in behind a ridge, say) for long enough: somewhere else to shoot it from.
+						-- (A shot at the head counts as a shot: a target flat on the ground had its body behind the ground's own bumps.)
+						if not shotClear and AI.Target.EyePos and SharedBehaviors.CanSee(Weapon.Pos, AI.Target.EyePos) then
+							shotClear = true;
+						end
+						if shotClear then
+							AI.ShotBlockedTimer = nil;
+						elseif not AI.ShotBlockedTimer then
+							AI.ShotBlockedTimer = Timer();
+						elseif AI.ShotBlockedTimer:IsPastSimMS(1500) then
+							AI.ShotBlockedTimer = nil;
+							if SharedBehaviors.StartFlank(AI, Owner, TargetPoint, PrjDat.rng) then
+								break;
 							end
 						end
 					end
 				end
 
 				if AI.canHitTarget then
-					if not Owner.aggressive then
-						AI.lateralMoveState = Actor.LAT_STILL;
-					end
+					HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist);
 					if not AI.flying then
 						AI.deviceState = AHuman.AIMING;
 					end
+				end
+				-- Just hit and hurt: a moment behind something, then out again.
+				if AI.HitTimer and not AI.HitTimer:IsPastSimMS(400) and Owner.Health < Owner.MaxHealth * 0.5 and not AI.Cover then
+					HumanBehaviors.TakeCover(AI, Owner, AI.Target.Pos, "hurt");
+				elseif AI.Cover and not AI.Cover.Leaving then
+					HumanBehaviors.TakeCover(AI, Owner, AI.Target.Pos, AI.Cover.Why);
 				end
 
 				-- add some filtered noise to the aim
@@ -1224,9 +1248,9 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 			if Owner.EquippedItem and ToHeldDevice(Owner.EquippedItem):IsReloading() then
 				ShootTimer:Reset();
 				AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.Pos, AI.Target.Pos, false).Normalized;
-				if AI.lateralMoveState == Actor.LAT_STILL then
+				-- Behind something for the reload, if there's something to be behind a few steps away; else flat on the ground.
+				if not HumanBehaviors.TakeCover(AI, Owner, AI.Target.Pos, "reload") and AI.lateralMoveState == Actor.LAT_STILL then
 					AI.proneState = AHuman.PRONE;
-					--AI.Ctrl:SetState(Controller.BODY_PRONE, true);
 				end
 			elseif Owner:EquipFirearm(true) then
 				local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame, just in case the magazine is replenished by another script
@@ -1314,6 +1338,146 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 	end
 
 	return true;
+end
+
+-- In range of a target: the distance kept, and the odd step sideways. A move order's unit walks on (the move behaviour has the legs); a
+-- defender stands; anyone else holds about half the weapon's reach (snipers most of it, explosives well clear of their own blast),
+-- closing in by the path when further off than that and backing off a step when much nearer, and otherwise shifts a step one way or
+-- the other now and then, so it isn't the same mark twice. The better the AI, the more it shifts.
+function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
+	local kind = SharedBehaviors.OrderKind(Owner);
+	if Owner.aggressive or kind == "move" then
+		return;
+	end
+	AI.lateralMoveState = Actor.LAT_STILL;
+	if kind == "defend" or AI.flying or AI.proneState == AHuman.PRONE or AI.Cover then
+		AI.closingIn = false;
+		return;
+	end
+	local holdRange = PrjDat.rng * 0.55;
+	if Weapon:HasObjectInGroup("Weapons - Sniper") then
+		holdRange = PrjDat.rng * 0.9;
+	elseif PrjDat.blast > 0 then
+		holdRange = math.max(PrjDat.blast * 2.5, PrjDat.rng * 0.5);
+	end
+	holdRange = math.max(120, math.min(holdRange, FrameMan.PlayerScreenWidth * 0.6));
+	local towards = Dist.X > 0 and 1 or -1;
+	if range > holdRange * 1.3 and SharedBehaviors.MayClose(AI, Owner) then
+		-- Too far for a good shot: closing in by the path, firing on the way (the move behaviour keeps the legs going while closingIn is set).
+		if not AI.closingIn then
+			if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then
+				local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4);
+				Owner:ClearAIWaypoints();
+				Owner:AddAIMOWaypoint(AI.Target);
+				Owner:AddAISceneWaypoint(OldWaypoint);
+				AI:CreateGoToBehavior(Owner);
+			end
+			AI.closingIn = true;
+			SharedBehaviors.Trace(Owner, "range: closing from " .. math.floor(range) .. " to " .. math.floor(holdRange));
+		end
+		return;
+	end
+	if AI.closingIn then
+		SharedBehaviors.Trace(Owner, "range: holding at " .. math.floor(range));
+	end
+	AI.closingIn = false;
+	if range < holdRange * 0.4 and not Weapon:HasObjectInGroup("Weapons - Melee") and SharedBehaviors.StepIsSafe(Owner, -towards) then
+		AI.lateralMoveState = towards > 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT; -- Too close: a step back.
+		return;
+	end
+	if not AI.StrafeTimer then
+		AI.StrafeTimer = Timer();
+		AI.StrafeWait = 2000;
+	end
+	if AI.StrafeUntil and not AI.StrafeUntil:IsPastSimMS(AI.StrafeFor) then
+		AI.lateralMoveState = AI.StrafeDir > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+	elseif AI.StrafeTimer:IsPastSimMS(AI.StrafeWait) then
+		AI.StrafeTimer:Reset();
+		AI.StrafeUntil = nil;
+		AI.StrafeWait = math.random(1500, 3500) * (2 - AI.skill / 100);
+		if Owner.FirearmIsReady and math.random() * 100 < AI.skill * 0.8 then
+			local dir = math.random() < 0.5 and 1 or -1;
+			if not SharedBehaviors.StepIsSafe(Owner, dir) then
+				dir = -dir;
+			end
+			if SharedBehaviors.StepIsSafe(Owner, dir) then
+				AI.StrafeDir = dir;
+				AI.StrafeUntil = Timer();
+				AI.StrafeFor = math.random(250, 450);
+				AI.lateralMoveState = dir > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+			end
+		end
+	end
+end
+
+-- A few steps behind something the target can't see through, to reload or to recover from a hit, and then out again (LeaveCover).
+-- A defender only goes as far as half a body, so it's still at its post. @return Whether the legs are taken for it this tick.
+function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
+	if AI.flying or Owner.aggressive then
+		return false;
+	end
+	local kind = SharedBehaviors.OrderKind(Owner);
+	if not AI.Cover then
+		if AI.CoverRestTimer and not AI.CoverRestTimer:IsPastSimMS(why == "hurt" and 6000 or 1500) then
+			return false;
+		end
+		AI.CoverRestTimer = Timer();
+		local Spot = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.Height * 0.5 or Owner.Height * 1.5);
+		if not Spot then
+			return false;
+		end
+		AI.Cover = { Spot = Spot, Return = Vector(Owner.Pos.X, Owner.Pos.Y), Timer = Timer(), Why = why, There = false, Leaving = false };
+		SharedBehaviors.Trace(Owner, "cover: " .. why .. ", " .. math.floor(SceneMan:ShortestDistance(Owner.Pos, Spot, false).X) .. " px over");
+	end
+	if AI.Cover.Leaving then
+		return false;
+	end
+	local dx = SceneMan:ShortestDistance(Owner.Pos, AI.Cover.Spot, false).X;
+	if not AI.Cover.There and math.abs(dx) > 6 and not AI.Cover.Timer:IsPastSimMS(3000) then
+		AI.lateralMoveState = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+		AI.proneState = AHuman.NOTPRONE;
+	else
+		if not AI.Cover.There then
+			AI.Cover.There = true;
+			AI.Cover.Timer:Reset();
+		end
+		AI.lateralMoveState = Actor.LAT_STILL;
+	end
+	return true;
+end
+
+-- Out of cover again, back to where the unit was, once the reload is done or the moment's rest is over. Called every tick by the AI's
+-- update, so it happens whether or not the shooting rules are still running.
+function HumanBehaviors.LeaveCover(AI, Owner)
+	if not AI.Cover then
+		return;
+	end
+	if not AI.Cover.Leaving then
+		if not AI.Cover.There then
+			return;
+		end
+		local reloading = Owner.EquippedItem and ToHeldDevice(Owner.EquippedItem):IsReloading();
+		local rested = AI.Cover.Timer:IsPastSimMS(AI.Cover.Why == "hurt" and 1500 or 300);
+		if reloading or not rested then
+			return;
+		end
+		AI.Cover.Leaving = true;
+		AI.Cover.Timer:Reset();
+	end
+	-- Not while off on a walk, or lying down.
+	if (AI.GoToBehavior and not AI.Target) or AI.proneState == AHuman.PRONE then
+		AI.Cover = nil;
+		AI.CoverRestTimer = Timer();
+		return;
+	end
+	local dx = SceneMan:ShortestDistance(Owner.Pos, AI.Cover.Return, false).X;
+	if math.abs(dx) > 6 and not AI.Cover.Timer:IsPastSimMS(3000) then
+		AI.lateralMoveState = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+	else
+		SharedBehaviors.Trace(Owner, "cover: out again");
+		AI.Cover = nil;
+		AI.CoverRestTimer = Timer();
+	end
 end
 
 -- throw a grenade at the selected target

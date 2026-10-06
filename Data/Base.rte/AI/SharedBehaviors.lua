@@ -378,6 +378,273 @@ function SharedBehaviors.JetNumbers(AI, Owner)
 	return numbers;
 end
 
+-- Fighting on the move, cover, flanking and falling back: the rules shared by the human and crab AIs. They read the unit's standing order
+-- from its AI mode and the tags the sandbox's command tool leaves on it, so a unit sent somewhere by the game's own waypoint order and
+-- one sent by the sandbox fight the same way.
+
+-- What the unit has been told to do, as the fighting rules read it: "move" (get there; shoot back on the way but don't stop for it),
+-- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
+-- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
+function SharedBehaviors.OrderKind(Owner)
+	if Owner:NumberValueExists("SandboxDefendX") then
+		return "defend";
+	end
+	if Owner:NumberValueExists("AIRetreat") then
+		return "move";
+	end
+	if Owner:GetNumberValue("SandboxAttack") > 0 or Owner.AIMode == Actor.AIMODE_BRAINHUNT then
+		return "attack";
+	end
+	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
+		return "move";
+	end
+	return "guard";
+end
+
+-- Whether a unit with a target in sight keeps going for its waypoint: on a move order, or when its script marks it aggressive (the Ronin
+-- do when hurt), or when it's closing in on a target it can't hit from here.
+function SharedBehaviors.FightsOnTheMove(AI, Owner)
+	if Owner.aggressive then
+		return true;
+	end
+	local kind = SharedBehaviors.OrderKind(Owner);
+	if kind == "move" then
+		return true;
+	end
+	return AI.closingIn == true and kind ~= "defend";
+end
+
+-- Whether a unit may leave its spot to go after a target it can't hit from where it is.
+function SharedBehaviors.MayClose(AI, Owner)
+	local kind = SharedBehaviors.OrderKind(Owner);
+	if kind == "attack" then
+		return true;
+	elseif kind == "guard" then
+		return not AI.isPlayerOwned or Owner.AIMode ~= Actor.AIMODE_SENTRY;
+	end
+	return false;
+end
+
+function SharedBehaviors.Trace(Owner, text)
+	if Owner:NumberValueExists("AITrace") then
+		ConsoleMan:PrintString("AITRACE [" .. Owner.PresetName .. " " .. Owner.Team .. " at " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. "] " .. text);
+	end
+end
+
+-- Whether a step sideways from here is onto ground, not off a drop or into a wall. @param dir -1 or 1.
+function SharedBehaviors.StepIsSafe(Owner, dir)
+	local reach = Owner.Height * 0.4;
+	local Step = Vector(dir * reach, 0);
+	if SceneMan:CastObstacleRay(Owner.Pos, Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+		return false; -- A wall.
+	end
+	local Foot = Owner.Pos + Step;
+	return SceneMan:CastObstacleRay(Foot, Vector(0, Owner.Height * 0.8), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0; -- Ground within reach of the feet.
+end
+
+-- Whether a point can be seen from an eye: nothing much in the way for the ray. (The same measure the shooting rules use for a shot.)
+function SharedBehaviors.CanSee(EyePos, Point)
+	return SceneMan:CastStrengthSumRay(EyePos, Point, 6, rte.grassID) < 120;
+end
+
+-- A spot near the unit, on the ground, that can't be seen from a point: cover to reload or recover behind. Looked for a step at a time
+-- out to reach either side, nearest first, along ground a walk away (no climb or drop of more than half a body, no wall between).
+-- @return The spot, or nil.
+function SharedBehaviors.FindCover(Owner, FromPos, reach)
+	local eyeUp = Owner.Height * 0.3;
+	if not SharedBehaviors.CanSee(Owner.Pos + Vector(0, -eyeUp), FromPos) then
+		return nil; -- Already out of its sight: nowhere better to be.
+	end
+	for step = 1, math.floor(reach / 8) do
+		for _, dir in ipairs({1, -1}) do
+			local Spot = Owner.Pos + Vector(dir * step * 8, -Owner.Height * 0.2);
+			Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 4);
+			local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
+			if math.abs(Way.Y) < Owner.Height * 0.5 and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+				if not SharedBehaviors.CanSee(Spot + Vector(0, -eyeUp), FromPos) then
+					return Spot;
+				end
+			end
+		end
+	end
+	return nil;
+end
+
+-- A place from which a dug-in target can be shot: above it or to one side, with a line of sight to it, that the pather can reach in
+-- not too many nodes. @param range How far this unit's weapon reaches. @return The spot, or nil.
+function SharedBehaviors.FindFlank(AI, Owner, TargetPos, range)
+	local stand = math.max(150, math.min(400, range * 0.6));
+	local candidates = {};
+	for _, angle in ipairs({60, 90, 120, 40, 140}) do -- Degrees up from the target's right, over the top.
+		local rad = math.rad(angle);
+		table.insert(candidates, TargetPos + Vector(math.cos(rad) * stand, -math.sin(rad) * stand));
+	end
+	table.insert(candidates, TargetPos + Vector(stand, -Owner.Height));
+	table.insert(candidates, TargetPos + Vector(-stand, -Owner.Height));
+	local best, bestCost = nil, 50; -- The cap: a flank worth fifty nodes is a walk across the map.
+	for _, Spot in ipairs(candidates) do
+		Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 6);
+		-- Somewhere else (a flank of ten pixels was the same spot with the same problem), seen from about where the gun would be held.
+		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) == rte.airID and SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height * 1.5) and SharedBehaviors.CanSee(Spot + Vector(0, -Owner.Height * 0.1), TargetPos) then
+			local Dist = SceneMan:ShortestDistance(Spot, TargetPos, false);
+			if Dist:MagnitudeIsGreaterThan(stand * 0.5) and Dist:MagnitudeIsLessThan(range) then
+				local cost = SceneMan.Scene:CalculatePath(Owner.Pos, Spot, Owner.JumpHeight, 35, Owner.Team);
+				if cost > 1 and cost < bestCost then
+					best, bestCost = Spot, cost;
+				end
+			end
+		end
+	end
+	return best, bestCost;
+end
+
+-- Keeps a unit's standing order so it can be put back after a flank or a retreat.
+function SharedBehaviors.RememberOrder(AI, Owner)
+	local keep = { mode = Owner.AIMode, attack = Owner:GetNumberValue("SandboxAttack") };
+	if Owner.AIMode == Actor.AIMODE_GOTO then
+		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+			keep.target = Owner.MOMoveTarget;
+		elseif Owner:GetWaypointListSize() > 0 then
+			keep.waypoint = Owner:GetLastAIWaypoint();
+		end
+	end
+	return keep;
+end
+
+function SharedBehaviors.RestoreOrder(AI, Owner, keep)
+	Owner:ClearAIWaypoints();
+	if keep.mode == Actor.AIMODE_GOTO then
+		if keep.target and MovableMan:ValidMO(keep.target) then
+			Owner:AddAIMOWaypoint(keep.target);
+		elseif keep.waypoint then
+			Owner:AddAISceneWaypoint(keep.waypoint);
+		else
+			keep.mode = Actor.AIMODE_SENTRY;
+		end
+	end
+	Owner.AIMode = keep.mode;
+	if keep.attack > 0 then
+		Owner:SetNumberValue("SandboxAttack", keep.attack);
+	end
+end
+
+-- Falling back: a badly hurt unit with no enemy in sight goes to the nearest friend (the brain for choice) and waits a while to be
+-- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
+-- Called every tick by the AI's update. @return Whether the unit is falling back.
+function SharedBehaviors.RetreatUpdate(AI, Owner)
+	if AI.Retreat then
+		local done = false;
+		if Owner.Health >= Owner.MaxHealth * 0.6 then
+			done = true; -- Patched up.
+		elseif AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(25000) then
+			done = true; -- Nobody came; back to it.
+		elseif not AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(40000) then
+			done = true; -- Never got there.
+		elseif not AI.Retreat.Arrived and (not AI.GoToBehavior or SceneMan:ShortestDistance(Owner.Pos, AI.Retreat.Spot, false):MagnitudeIsLessThan(100)) then
+			AI.Retreat.Arrived = true; -- The walk is over.
+			AI.Retreat.WaitTimer:Reset();
+		end
+		if done then
+			SharedBehaviors.Trace(Owner, "retreat: over, health " .. math.floor(Owner.Health));
+			Owner:RemoveNumberValue("AIRetreat");
+			SharedBehaviors.RestoreOrder(AI, Owner, AI.Retreat.Keep);
+			AI.Retreat = nil;
+			return false;
+		end
+		return true;
+	end
+	if Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
+		return false;
+	end
+	local kind = SharedBehaviors.OrderKind(Owner);
+	if kind == "defend" or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("AIFlank") then
+		return false;
+	end
+	if not AI.RetreatCheckTimer then
+		AI.RetreatCheckTimer = Timer();
+	elseif not AI.RetreatCheckTimer:IsPastSimMS(2000) then
+		return false; -- Two seconds clear of enemies first.
+	end
+	-- Somewhere to go: the brain, or the nearest friend that isn't right here; but never through the enemy last seen. With no friend
+	-- the right side of it, it's a way back from the enemy along the ground.
+	local Friend = MovableMan:GetClosestBrainActor(Owner.Team, Owner.Pos);
+	if not Friend or Friend.ID == Owner.ID then
+		Friend = MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Owner.Pos, 3000, Vector(), Owner);
+	end
+	if Friend and (Friend.ID == Owner.ID or SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false):MagnitudeIsLessThan(150)) then
+		Friend = nil;
+	end
+	local Spot;
+	local enemyDx = AI.LastEnemyPos and SceneMan:ShortestDistance(Owner.Pos, AI.LastEnemyPos, false).X or 0;
+	if Friend then
+		local friendDx = SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false).X;
+		if enemyDx * friendDx > 0 and math.abs(friendDx) > math.abs(enemyDx) - 100 then
+			Friend = nil; -- The friend is past the enemy.
+		else
+			Spot = SceneMan:MovePointToGround(Friend.Pos + Vector(math.random(-60, 60), 0), math.floor(Owner.Height * 0.2), 4);
+		end
+	end
+	if not Spot then
+		if enemyDx == 0 then
+			return false;
+		end
+		Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(enemyDx > 0 and -350 or 350, -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) ~= rte.airID then
+			return false;
+		end
+	end
+	AI.Retreat = { Keep = SharedBehaviors.RememberOrder(AI, Owner), WaitTimer = Timer(), Arrived = false, Spot = Spot };
+	Owner:SetNumberValue("AIRetreat", 1);
+	Owner:RemoveNumberValue("SandboxAttack");
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "retreat: health " .. math.floor(Owner.Health) .. ", falling back to " .. (Friend and Friend.PresetName or "away from the enemy") .. " at " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
+	return true;
+end
+
+-- A flank once started is seen through: when the unit gets there (or gives up), its order is put back and it looks for the target again.
+-- Called every tick by the AI's update.
+function SharedBehaviors.FlankUpdate(AI, Owner)
+	if not AI.Flank then
+		return;
+	end
+	local arrived = Owner.AIMode ~= Actor.AIMODE_GOTO or SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
+	if arrived or AI.Flank.Timer:IsPastSimMS(15000) then
+		SharedBehaviors.Trace(Owner, "flank: " .. (arrived and "there" or "gave up"));
+		Owner:RemoveNumberValue("AIFlank");
+		SharedBehaviors.RestoreOrder(AI, Owner, AI.Flank.Keep);
+		AI.Flank = nil;
+		AI.FlankRestTimer = Timer();
+	end
+end
+
+-- Starts a flank towards a spot with a line of sight to a target that can't be shot from here. @return Whether one was started.
+function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
+	if AI.Flank or AI.Retreat or not SharedBehaviors.MayClose(AI, Owner) or AI.skill < 40 then
+		return false;
+	end
+	if AI.FlankRestTimer and not AI.FlankRestTimer:IsPastSimMS(8000) then
+		return false;
+	end
+	AI.FlankRestTimer = Timer();
+	if math.random() * 100 > AI.skill then
+		return false; -- The better the AI, the more often it thinks of it.
+	end
+	local Spot, cost = SharedBehaviors.FindFlank(AI, Owner, TargetPos, range);
+	if not Spot then
+		SharedBehaviors.Trace(Owner, "flank: nowhere to go");
+		return false;
+	end
+	AI.Flank = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Spot, Timer = Timer() };
+	Owner:SetNumberValue("AIFlank", 1);
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "flank: to " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y) .. " (" .. cost .. " nodes)");
+	return true;
+end
+
 function SharedBehaviors.GetRealVelocity(Owner)
 	-- Calculate a velocity based on our actual movement. This is because otherwise gravity falsely reports that we have a downward velocity, even if our net movement is zero.
 	-- Note - we use normal delta time, not AI delta time, because PrevPos is updated per-tick (not per-AI-tick)
@@ -1415,13 +1682,15 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 		-- movement commands
 		if (AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD) or (Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm")) then
-			if Owner.aggressive then	-- the aggressive behavior setting makes the AI pursue waypoint at all times
+			-- An enemy in sight. On a move order, with an aggressive script, or closing in on one out of reach, the waypoint is still
+			-- pursued and the shooting rules aim and fire on the way; otherwise the legs stop and the shooting rules have them.
+			if SharedBehaviors.FightsOnTheMove(AI, Owner) then
 				AI.lateralMoveState = nextLatMove;
 			else
 				AI.lateralMoveState = Actor.LAT_STILL;
-			end
-			if not AI.flying then
-				AI.jump = false;
+				if not AI.flying then
+					AI.jump = false;
+				end
 			end
 		else
 			AI.lateralMoveState = nextLatMove;
