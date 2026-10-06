@@ -38,6 +38,7 @@
 #include "ToolWidgets.h"
 #include "glad/gl.h"
 
+#include <fstream>
 #include <cstdlib>
 #include <algorithm>
 #include <array>
@@ -3119,12 +3120,38 @@ namespace {
 		return -1;
 	}
 
+	/// Favourites are the player's, whatever game is played, and are kept in their own file the moment they change (the settings file is
+	/// only written when asked to be, and favourites marked in a game were lost at the next start).
+	constexpr const char* c_FavouritesFile = "Userdata/SandboxFavourites.txt";
+
+	void SaveFavouritesFile() {
+		if (std::ofstream file(c_FavouritesFile, std::ios::trunc); file) {
+			file << Sandbox::GetFavourites() << '\n';
+		}
+	}
+
+	void LoadFavouritesFile() {
+		static bool loaded = false;
+		if (loaded) {
+			return;
+		}
+		loaded = true;
+		if (std::ifstream file(c_FavouritesFile); file) {
+			std::string line;
+			std::getline(file, line);
+			if (!line.empty()) {
+				Sandbox::SetFavourites(line);
+			}
+		}
+	}
+
 	void ToggleFavourite(Tool kind, const std::string& presetName) {
 		if (int at = FindFavourite(kind, presetName); at >= 0) {
 			s_Favourites.erase(s_Favourites.begin() + at);
 		} else {
 			s_Favourites.push_back({kind, presetName});
 		}
+		SaveFavouritesFile();
 	}
 
 	/// A small gold star in the top left corner of a tile that is a favourite.
@@ -3382,6 +3409,7 @@ namespace {
 	}
 
 	void PictureGrid(Tool kind, const char* group) {
+		LoadFavouritesFile();
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
 		ImGui::SetNextItemWidth(-1.0F);
@@ -3405,7 +3433,15 @@ namespace {
 			std::sort(mods.begin(), mods.end());
 			float third = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0F) / 3.0F;
 			ToolUI::Checkbox("Favourites", &s_FavouritesOnly);
-			ImGui::SetItemTooltip("Only the things marked as favourites (Ctrl+click on a tile marks one, and again unmarks it).");
+			ImGui::SetItemTooltip("Only the things marked as favourites (Ctrl+click on a tile marks one, and again unmarks it). Favourites are yours, kept whatever game is played.");
+			if (s_FavouritesOnly && !s_Favourites.empty()) {
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Clear")) {
+					s_Favourites.clear();
+					SaveFavouritesFile();
+				}
+				ImGui::SetItemTooltip("Unmarks every favourite.");
+			}
 			ImGui::SameLine();
 			ToolUI::Checkbox("Show modded", &s_ShowModded);
 			ImGui::SetItemTooltip("Whether things from mods are listed, as well as the game's own.");

@@ -288,8 +288,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("PanelsOverlay", { g_DebugMan.m_PanelsOverlay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DockPanels", { g_DebugMan.m_DockPanels = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SandboxCharacter", { Sandbox::SetCharacterSetup(reader.ReadPropValue()); });
-	MatchProperty("SandboxPins", { Sandbox::SetPins(reader.ReadPropValue()); });
-	MatchProperty("SandboxFavourites", { Sandbox::SetFavourites(reader.ReadPropValue()); });
+	MatchProperty("SandboxPins", { /* Pins used to live here; they belong to the saved game now. */ reader.ReadPropValue(); });
+	MatchProperty("SandboxFavourites", { /* Favourites used to live here; they have their own file now. */ reader.ReadPropValue(); });
 	MatchProperty("PixelToolFont", { g_DebugMan.m_PixelFont = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ToolScale", { g_DebugMan.m_ToolScale = std::clamp(std::stof(reader.ReadPropValue()), 0.4F, 1.5F); });
 	MatchProperty("PanelWidth", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 240.0F, 700.0F); });
@@ -614,12 +614,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
 	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
 	writer.NewPropertyWithValue("SandboxCharacter", Sandbox::GetCharacterSetup());
-	if (!Sandbox::GetFavourites().empty()) {
-		writer.NewPropertyWithValue("SandboxFavourites", Sandbox::GetFavourites());
-	}
-	if (!Sandbox::GetPins().empty()) {
-		writer.NewPropertyWithValue("SandboxPins", Sandbox::GetPins());
-	}
 	if (ControlLink::s_SettingsPort > 0) {
 		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
 	}
