@@ -311,25 +311,65 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	}
 
 	if (!statePath.empty()) {
-		// Replace the approximate first point from the pathfound path with the exact starting point.
-		pathResult.push_back(start);
-		std::vector<void*>::iterator itr = statePath.begin();
-		itr++;
+		// The points of the path and what each step to them is, from the nodes they go between. The approximate first point is the exact
+		// start and the last the exact end.
+		struct Step {
+			Vector Pos;
+			PathStepKind Kind;
+		};
+		std::vector<Step> steps;
+		steps.push_back({start, PathStepKind::Walk});
+		float nodeSize = static_cast<float>(m_NodeDimension);
+		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
+			const PathNode* from = static_cast<const PathNode*>(statePath[i]);
+			const PathNode* to = static_cast<const PathNode*>(statePath[i + 1]);
+			PathStepKind kind = StepKindBetween(from, to);
+			// A jump that is up a lot and over a little is up, then over: a jet column with a landing on the ledge beside it. Flown as the
+			// one straight line it was, the line went into the face of the ledge under its lip, and the unit was pressed there burning.
+			// So the top of the column goes in first, a node and a half over the landing (the feet clear the lip), when it's in the open.
+			float dx = g_SceneMan.ShortestDistance(from->Pos, to->Pos).m_X;
+			float dy = to->Pos.m_Y - from->Pos.m_Y;
+			if (kind == PathStepKind::Jump && std::abs(dx) >= 1.0F && dy <= -nodeSize * 1.5F && -dy >= std::abs(dx) * 1.5F) {
+				Vector apex(from->Pos.m_X, to->Pos.m_Y - nodeSize * 1.5F);
+				g_SceneMan.ForceBounds(apex);
+				if (g_SceneMan.GetTerrMatter(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
+					steps.push_back({apex, PathStepKind::Jump});
+				}
+			}
+			steps.push_back({to->Pos, kind});
+		}
+		steps.back().Pos = end;
 
-		// Convert from a list of state void pointers to a list of scene position vectors.
-		for (; itr != statePath.end(); ++itr) {
-			pathResult.push_back((static_cast<PathNode*>(*itr))->Pos);
+		// Fewer points along a straight: a walk is one waypoint per node, and along a beam forty of them were each "arrived at" in turn,
+		// with the checks that go with it. Walks that keep heading the same way on much the same level are run together, up to a few
+		// nodes at a time so the movement script's look at the next waypoint still looks a sensible way ahead. Nothing else is touched:
+		// a crawl, a jump, a fall, a dig and a door each want their own point.
+		std::vector<Step> fewer;
+		fewer.push_back(steps.front());
+		int run = 0;
+		for (size_t i = 1; i < steps.size(); ++i) {
+			bool last = i + 1 == steps.size();
+			if (!last && i + 1 < steps.size() && steps[i].Kind == PathStepKind::Walk && steps[i + 1].Kind == PathStepKind::Walk && run < 7) {
+				float dxHere = g_SceneMan.ShortestDistance(fewer.back().Pos, steps[i].Pos).m_X;
+				float dxNext = g_SceneMan.ShortestDistance(steps[i].Pos, steps[i + 1].Pos).m_X;
+				float dyNext = steps[i + 1].Pos.m_Y - steps[i].Pos.m_Y;
+				float dyRun = steps[i + 1].Pos.m_Y - fewer.back().Pos.m_Y;
+				if (dxHere * dxNext > 0.0F && std::abs(dyNext) <= nodeSize && std::abs(dyRun) <= nodeSize) {
+					++run; // This point is passed through on the way to the next.
+					continue;
+				}
+			}
+			fewer.push_back(steps[i]);
+			run = 0;
 		}
 
-		// Adjust the last point to be exactly where the end is supposed to be (really?).
-		pathResult.pop_back();
-		pathResult.push_back(end);
-
-		// What each step is, from the nodes it goes between.
+		for (const Step& step: fewer) {
+			pathResult.push_back(step.Pos);
+		}
 		if (kinds) {
 			kinds->clear();
-			for (size_t i = 0; i + 1 < statePath.size(); ++i) {
-				kinds->push_back(StepKindBetween(static_cast<const PathNode*>(statePath[i]), static_cast<const PathNode*>(statePath[i + 1])));
+			for (size_t i = 1; i < fewer.size(); ++i) {
+				kinds->push_back(fewer[i].Kind);
 			}
 		}
 	} else {
@@ -503,7 +543,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					break;
 				}
 				// Too close to a wall to go up past it: a jet pressed to a cliff face burns and doesn't lift. The next column out is used instead.
-				if (Open(*currentNode->UpMaterial) && !RoomToPass(*currentNode->Up)) {
+				if (Open(*currentNode->UpMaterial) && !RoomToPass(*currentNode->Up, 3.0F)) {
 					break;
 				}
 
@@ -670,8 +710,8 @@ bool PathFinder::Open(const Material& material) const {
 	return material.GetIntegrity() <= 5.0F;
 }
 
-bool PathFinder::RoomToPass(const PathNode& node) const {
-	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight) >= s_HalfWidth * 2.0F;
+bool PathFinder::RoomToPass(const PathNode& node, float widths) const {
+	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight) >= s_HalfWidth * widths;
 }
 
 float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const {

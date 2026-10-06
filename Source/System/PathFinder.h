@@ -259,7 +259,10 @@ namespace RTE {
 		bool Open(const Material& material) const;
 
 		/// Whether the searcher's body fits through a node, by the room to either side of it.
-		bool RoomToPass(const PathNode& node) const;
+		/// Whether a body of the searcher's width fits through this node sideways: the air either side of it over its floor adds up to
+		/// the width wanted. @param widths How many body widths of room: two for a fall or a walk, three for a jet column (a jet in a
+		/// shaft a body wide only bounces off the walls).
+		bool RoomToPass(const PathNode& node, float widths = 2.0F) const;
 
 		/// The cost factor for walking between two nodes by the head room: 1 standing, 2 crawling, 1000 for no way through.
 		float HeadRoomFactor(const PathNode& from, const PathNode& to) const;

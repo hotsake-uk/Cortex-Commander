@@ -1100,7 +1100,8 @@ PathAgent Actor::GetPathAgent() const {
 	// CharHeight is about twice the sprite's height; the body stands about 0.45 of it tall and lies about a quarter of it.
 	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.42F);
 	agent.CrawlHeight = agent.StandHeight;
-	agent.HalfWidth = std::clamp(GetRadius() * 0.35F, 5.0F, 14.0F);
+	// (Half the sprite's reach, near enough; at a third of it a soldier was sent down a shaft its own width, and stuck there.)
+	agent.HalfWidth = std::clamp(GetRadius() * 0.5F, 8.0F, 16.0F);
 	return agent;
 }
 

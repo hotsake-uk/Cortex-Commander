@@ -72,8 +72,10 @@ Still open, in rough order of value:
     from the moment a search is queued, not from when a worker picks it up, so a search still in the queue can't start on a grid being
     written (new searches are only queued from the main thread, which is the one doing the rebuild). The rebuild runs with nothing
     queued or running, so there is nothing to double-buffer.
-14. **No path simplification.** Forty waypoints along a straight beam; each is "arrived at" with a 100 ms timer. Collinear runs should
-    collapse, so arrival checks and the passed-waypoint popping have less to do.
+14. **No path simplification.** *Done:* walks that keep heading the same way on much the same level are run together in the pather's
+    answer, up to eight nodes a waypoint; crawls, jumps, falls, digs and doors keep their own points. With it, a jump that is up a lot
+    and over a little (a jet column with a landing on the ledge beside it) gets the top of the column as a point of its own, a node and a
+    half over the landing: flown as the one straight line it was, the line went into the face under the ledge's lip.
 15. **The jet model in the script is a guess.** *Done:* `SharedBehaviors.JetNumbers` works the net climb acceleration, the distance a fall
     at a given speed takes to arrest, and the height the fuel left buys, from the body (`EstimateImpulse`, mass, `JumpHeight`, the tank).
     The landing brake fires on the real stopping distance instead of "half a second's fall", and a tall climb waits for the fuel the
@@ -167,7 +169,7 @@ Each step is measured on the gym before and after, and committed on its own.
    `{pos, kind, height}` per point; `Actor` keeps the kinds alongside `m_MovePath`; the Lua gets them through `MovePath` or a new accessor.
 2. **Clearance-aware grid** (#11): free height per node, body-size-dependent sideways edges, standing nodes on the surface. The sampling
    fudge goes. Crawl passages and flat walking come out of this.
-3. **Double-buffered cost updates and path simplification** (#13 done, #14 open): correctness and less waypoint churn.
+3. **Double-buffered cost updates and path simplification** (#13, #14 done): correctness and less waypoint churn.
 4. **Jet numbers from the body** (#15, done): `AEJetpack` exposes reachable height and arrest time; the climb and the governor use them, the
    tuned constants go.
 5. **Crabs** (#16): a crab on the gym courses, and whatever that shows.

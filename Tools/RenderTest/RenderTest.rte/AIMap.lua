@@ -48,10 +48,17 @@ function AIMapScript:UpdateScript()
 			end
 			MovableMan:AddActor(actor);
 			local found = SceneMan.Scene:CalculatePath(SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 3), course.to, actor.JumpHeight, course.digger and 100 or 35, Activity.TEAM_2);
-			ConsoleMan:PrintString("AIMAP path for " .. course.name .. ": " .. tostring(found) .. " nodes from " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " to " .. math.floor(course.to.X) .. "," .. math.floor(course.to.Y));
+			local nodes = "";
+			for node in SceneMan.Scene:GetScenePath() do nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
+			ConsoleMan:PrintString("AIMAP path for " .. course.name .. ": " .. tostring(found) .. " nodes from " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " to " .. math.floor(course.to.X) .. "," .. math.floor(course.to.Y) .. ":" .. nodes);
 			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, digger = course.digger, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 		end
 		SandboxDo("Look around", self.lookAt or Vector(1400, 500), 0, 0, 1, "");
+		for y = 740, 860, 24 do
+			local row = "";
+			for x = 852, 972, 24 do row = row .. " | " .. SceneMan.Scene:DescribePathNodeAt(Vector(x, y)); end
+			ConsoleMan:PrintString("AIMAP grid" .. row);
+		end
 		for _, y in ipairs({ 640, 655, 665, 675 }) do
 			local row = "";
 			for x = 900, 1010, 6 do row = row .. " " .. x .. ":" .. SceneMan:GetTerrMatter(x, y); end
