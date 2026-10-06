@@ -3470,9 +3470,12 @@ namespace {
 						Sandbox::SetOpen(true);
 						s_WantedTab = part.Name;
 						s_CurrentTab = part.Name;
-						// Whatever was last picked on that part comes back to hand with it.
+						// Whatever was last picked on that part comes back to hand with it; the first time, the part's first tool.
+						static const std::map<std::string, Tool> firstTools = {{"Spawn", Tool::Unit}, {"Build", Tool::Structure}, {"Paint", Tool::Fire}, {"Boom", Tool::Grenade}, {"Effects", Tool::Effect}, {"Orders", Tool::Command}, {"You", Tool::PlayCharacter}};
 						if (auto remembered = s_LastToolOfTab.find(part.Name); remembered != s_LastToolOfTab.end()) {
 							s_ToolIndex = remembered->second;
+						} else if (auto first = firstTools.find(part.Name); first != firstTools.end()) {
+							s_ToolIndex = ToolIndex(first->second);
 						}
 					}
 				}
