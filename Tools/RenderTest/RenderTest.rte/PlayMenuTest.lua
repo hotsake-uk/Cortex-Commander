@@ -13,6 +13,7 @@ function PlayMenuTestScript:UpdateScript()
 		local loaded = SettingsMan:LoadPreset("Render test");
 		ConsoleMan:PrintString("PRESET TEST saved '" .. saved .. "' loaded " .. tostring(loaded) .. " hour " .. hourBefore .. " -> " .. PostProcessMan.TimeOfDay);
 		SettingsMan:DeletePreset("Render test");
+		SandboxSetPins("Units=Soldier Heavy;Units=Dummy;Structure=Brain Vault;Item=Heavy Digger;Water=;Lightning=");
 		DebugMan:OpenTools();
 	end
 end

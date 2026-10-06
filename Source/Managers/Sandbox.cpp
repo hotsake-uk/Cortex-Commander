@@ -2580,15 +2580,53 @@ namespace {
 		}
 	}
 
-	/// Test runs can't click a tab, so they name the one the sandbox window is to open on: CCCP_TEST_TAB=Spawn. Asked for once, on the first frame.
+	std::string s_WantedTab; //!< The tab of the sandbox window to bring to the front, asked for from the bar.
+	std::string s_CurrentTab; //!< The tab of the sandbox window that is showing.
+
+	/// Says whether a tab of the sandbox window is to be brought to the front this frame: because the bar asked for it, or a test run did (they can't click, so
+	/// they name the one the window is to open on: CCCP_TEST_TAB=Spawn).
 	ImGuiTabItemFlags TestTab(const char* name) {
-		static const char* wanted = std::getenv("CCCP_TEST_TAB");
-		static int frames = 0;
-		if (wanted && std::string(wanted) == name && frames < 3) {
-			++frames;
+		static const char* testWanted = std::getenv("CCCP_TEST_TAB");
+		static int testFrames = 0;
+		if (testWanted && std::string(testWanted) == name && testFrames < 3) {
+			++testFrames;
+			return ImGuiTabItemFlags_SetSelected;
+		}
+		if (!s_WantedTab.empty() && s_WantedTab == name) {
+			s_WantedTab.clear();
 			return ImGuiTabItemFlags_SetSelected;
 		}
 		return ImGuiTabItemFlags_None;
+	}
+
+	/// A thing kept to hand on the bar: a tool, or a tool with what it makes (a unit to spawn, a bunker piece to build).
+	struct Pin {
+		Tool Kind = Tool::None;
+		std::string PresetName; //!< Empty for a tool alone.
+	};
+	std::vector<Pin> s_Pins;
+
+	int FindPin(Tool kind, const std::string& presetName) {
+		for (size_t i = 0; i < s_Pins.size(); ++i) {
+			if (s_Pins[i].Kind == kind && s_Pins[i].PresetName == presetName) {
+				return static_cast<int>(i);
+			}
+		}
+		return -1;
+	}
+
+	void TogglePin(Tool kind, const std::string& presetName) {
+		if (int at = FindPin(kind, presetName); at >= 0) {
+			s_Pins.erase(s_Pins.begin() + at);
+		} else if (s_Pins.size() < 24) {
+			s_Pins.push_back({kind, presetName});
+		}
+	}
+
+	/// A small gold corner on a tile that is pinned to the bar.
+	void DrawPinMark(ImDrawList* drawList, ImVec2 from, ImVec2 to) {
+		float size = ToolUI::Pixel() * 5.0F;
+		drawList->AddTriangleFilled(ImVec2(to.x - size, from.y), ImVec2(to.x, from.y), ImVec2(to.x, from.y + size), IM_COL32(242, 182, 61, 255));
 	}
 
 	/// The tools to pick from, as a row of tiles: each its picture with its name under it, the one in hand lit up.
@@ -2612,6 +2650,9 @@ namespace {
 			if (ImGui::InvisibleButton("##tool", ImVec2(width, height))) {
 				s_ToolIndex = index;
 			}
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
+				TogglePin(kind, "");
+			}
 			bool hovered = ImGui::IsItemHovered();
 			bool selected = s_ToolIndex == index;
 			ImVec2 to(at.x + width, at.y + height);
@@ -2619,6 +2660,9 @@ namespace {
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
 			ToolLook look = LookOf(kind);
 			DrawIcon(drawList, look.Art, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, look.Color);
+			if (FindPin(kind, "") >= 0) {
+				DrawPinMark(drawList, at, to);
+			}
 			const char* name = c_Tools[index].Name;
 			float wrap = width - pad;
 			ImVec2 nameSize = ImGui::CalcTextSize(name, nullptr, false, wrap);
@@ -2844,11 +2888,17 @@ namespace {
 			}
 			if (hovered) {
 				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
-				ImGui::SetTooltip("%s\n%s%s", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str());
+				ImGui::SetTooltip("%s\n%s%s%s", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() ? "\nRight click: keep it on the bar, or take it off" : "");
 			}
 			if (picked) {
 				choice = i;
 				s_ToolIndex = ToolIndex(kind);
+			}
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
+				TogglePin(kind, preset.PresetName);
+			}
+			if (ImGui::IsItemVisible() && FindPin(kind, preset.PresetName) >= 0) {
+				DrawPinMark(drawList, at, ImVec2(at.x + size.x, at.y + size.y));
 			}
 			ImGui::PopID();
 		}
@@ -3072,6 +3122,206 @@ namespace {
 			}
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s %d", c_SideNames[side], counts[side]);
 		}
+	}
+	/// How fast time runs, the AI's pause, and in the Sandbox game mode whether the world stands still while the window is open.
+	void TimeControls() {
+		bool aiPaused = Controller::IsAIPaused();
+		float timeScale = g_TimerMan.GetTimeScale();
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.45F);
+		if (ImGui::SliderFloat("Speed of time", &timeScale, 0.05F, 3.0F, "%.2fx")) {
+			g_TimerMan.SetTimeScale(timeScale);
+		}
+		for (const auto& [label, scale]: {std::pair<const char*, float>{"Slow", 0.25F}, {"Normal", 1.0F}, {"Fast", 2.0F}}) {
+			ImGui::SameLine();
+			if (ToolUI::SmallButton(label)) {
+				g_TimerMan.SetTimeScale(scale);
+			}
+		}
+		ImGui::PushStyleColor(ImGuiCol_Text, aiPaused ? IM_COL32(255, 210, 80, 255) : ImGui::GetColorU32(ImGuiCol_Text));
+		if (ToolUI::Checkbox("Pause AI (set things up, then let them loose)", &aiPaused)) {
+			Controller::SetAIPaused(aiPaused);
+		}
+		ImGui::PopStyleColor();
+		if (Sandbox::IsGodMode()) {
+			ToolUI::Checkbox("The world stands still while this window is open", &s_PauseInMenus);
+			ImGui::SetItemTooltip("On: time stops while this window is open and starts when it is put away (Tab) or you go and play (P). What you do with a tool still happens at once.\nOff: the world carries on while you work.");
+			if (s_PausedByMenus) {
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Step")) {
+					s_StepsWanted += 1;
+				}
+				ImGui::SetItemTooltip("Lets the world move one update, a sixtieth of a second. Hold Ctrl and click for a second's worth.");
+				if (ImGui::IsItemDeactivated() && ImGui::GetIO().KeyCtrl) {
+					s_StepsWanted += 59;
+				}
+			}
+		}
+	}
+
+	/// One tile of the bar: a picture drawn by the caller, a name under it if there is room for names, lit when it is the one in use.
+	/// @return 1 if clicked, 2 if right-clicked, 0 otherwise.
+	template <typename DrawPicture> int BarTile(const char* id, const char* name, const char* tip, bool selected, bool withNames, DrawPicture drawPicture) {
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		float pixel = ToolUI::Pixel() * 2.0F;
+		float pad = pixel * 1.5F;
+		float picture = pixel * 12.0F;
+		ImVec2 nameSize = withNames ? ImGui::CalcTextSize(name) : ImVec2(0.0F, 0.0F);
+		ImVec2 size(std::max(picture + pad * 2.0F, nameSize.x + pad * 2.0F), pad + picture + (withNames ? nameSize.y + ToolUI::Pixel() : 0.0F) + pad);
+		ImVec2 at = ImGui::GetCursorScreenPos();
+		int result = ImGui::InvisibleButton(id, size) ? 1 : 0;
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+			result = 2;
+		}
+		bool hovered = ImGui::IsItemHovered();
+		ImVec2 to(at.x + size.x, at.y + size.y);
+		drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
+		drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+		drawPicture(drawList, ImVec2(std::floor(at.x + (size.x - picture) * 0.5F), at.y + pad), picture);
+		if (withNames) {
+			drawList->AddText(ImVec2(std::floor(at.x + (size.x - nameSize.x) * 0.5F), at.y + pad + picture + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name);
+		}
+		if (hovered && tip && *tip) {
+			ImGui::SetTooltip("%s", tip);
+		}
+		return result;
+	}
+
+	/// The sandbox's bar along the bottom of the picture, in the Sandbox game mode while you're above it all: the main tools, the parts of the sandbox window to
+	/// open, and the things you've pinned. It is there whether the window is open or not.
+	void DrawBar() {
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		struct Part {
+			const char* Name;
+			Icon Art;
+			ImU32 Color;
+			const char* Tip;
+		};
+		static const Part parts[] = {
+		    {"Spawn", Icon::Person, IM_COL32(232, 224, 190, 255), "Units, squads dropped from orbit, brains and items"},
+		    {"Build", Icon::Wall, IM_COL32(170, 170, 165, 255), "Bunker pieces, placed straight into the world"},
+		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Fire, liquids, smoke, loose and solid ground"},
+		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Blasts, strikes from the sky, and things to knock down"},
+		    {"Effects", Icon::Star, IM_COL32(255, 220, 120, 255), "Lights and particle effects to put down"},
+		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders for whole sides, and auto battles"},
+		    {"World", Icon::Cloud, IM_COL32(190, 190, 190, 255), "Time, weather, the speed of the world, the camera"},
+		    {"You", Icon::Person, IM_COL32(130, 220, 120, 255), "Your own character: what it is, carries and can do"},
+		};
+		static const Tool mainTools[] = {Tool::None, Tool::Command, Tool::Follow, Tool::Possess, Tool::Remove, Tool::RallyPoint};
+		static const char* mainNames[] = {"Look", "Command", "Follow", "Control", "Remove", "Rally"};
+
+		// Names go under the pictures if the bar then still fits across the picture of the game.
+		float pixel = ToolUI::Pixel() * 2.0F;
+		float bare = pixel * 15.0F + style.ItemSpacing.x;
+		float named = 0.0F;
+		for (const char* name: mainNames) {
+			named += std::max(pixel * 15.0F, ImGui::CalcTextSize(name).x + pixel * 3.0F) + style.ItemSpacing.x;
+		}
+		for (const Part& part: parts) {
+			named += std::max(pixel * 15.0F, ImGui::CalcTextSize(part.Name).x + pixel * 3.0F) + style.ItemSpacing.x;
+		}
+		named += bare + style.ItemSpacing.x * 6.0F + style.WindowPadding.x * 2.0F;
+		bool withNames = named < view.w - 16.0F;
+
+		ImGui::SetNextWindowPos(ImVec2(view.x + view.w * 0.5F, view.y + view.h - 6.0F), ImGuiCond_Always, ImVec2(0.5F, 1.0F));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0F, 8.0F));
+		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
+			// What you've pinned, in a row of its own above.
+			int unpin = -1;
+			for (size_t i = 0; i < s_Pins.size(); ++i) {
+				const Pin& pin = s_Pins[i];
+				int toolIndex = ToolIndex(pin.Kind);
+				const std::vector<Preset>& list = ListFor(pin.Kind);
+				int presetIndex = -1;
+				if (!pin.PresetName.empty()) {
+					for (size_t j = 0; j < list.size(); ++j) {
+						if (list[j].PresetName == pin.PresetName) {
+							presetIndex = static_cast<int>(j);
+							break;
+						}
+					}
+				}
+				if (i > 0) {
+					ImGui::SameLine();
+				}
+				ImGui::PushID(static_cast<int>(i) + 1000);
+				bool inHand = s_ToolIndex == toolIndex && (pin.PresetName.empty() || ChoiceFor(pin.Kind) == presetIndex);
+				std::string tip = (pin.PresetName.empty() ? std::string(c_Tools[toolIndex].Name) : pin.PresetName + "  (" + c_Tools[toolIndex].Name + ")") + "\nRight click: take it off the bar";
+				int clicked = BarTile("##pin", "", tip.c_str(), inHand, false, [&](ImDrawList* drawList, ImVec2 at, float room) {
+					const PiecePicture* picture = presetIndex >= 0 ? &PictureOf(list[presetIndex]) : nullptr;
+					if (picture && picture->Width > 0) {
+						float fit = std::min(room / static_cast<float>(picture->Width), room / static_cast<float>(picture->Height));
+						if (fit >= 1.0F) {
+							fit = std::floor(fit);
+						}
+						ImVec2 size(static_cast<float>(picture->Width) * fit, static_cast<float>(picture->Height) * fit);
+						ImVec2 corner(std::floor(at.x + (room - size.x) * 0.5F), std::floor(at.y + (room - size.y) * 0.5F));
+						drawList->AddImage(static_cast<ImTextureID>(picture->Texture), corner, ImVec2(corner.x + size.x, corner.y + size.y));
+					} else {
+						ToolLook look = LookOf(pin.Kind);
+						DrawIcon(drawList, look.Art, at, room / 12.0F, look.Color);
+					}
+				});
+				if (clicked == 1) {
+					s_ToolIndex = toolIndex;
+					if (presetIndex >= 0) {
+						ChoiceFor(pin.Kind) = presetIndex;
+					}
+				} else if (clicked == 2) {
+					unpin = static_cast<int>(i);
+				}
+				ImGui::PopID();
+			}
+			if (unpin >= 0) {
+				s_Pins.erase(s_Pins.begin() + unpin);
+			}
+			if (!s_Pins.empty()) {
+				ImGui::Separator();
+			}
+
+			// Into your character.
+			if (s_Player.EnterOnClose) {
+				if (BarTile("##play", "Play", "Step into your own character (P). Shift+P puts it down where the mouse points first.", false, withNames, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, Icon::Person, at, room / 12.0F, IM_COL32(130, 220, 120, 255)); }) == 1) {
+					Sandbox::TogglePlay(false);
+				}
+				ImGui::SameLine(0.0F, style.ItemSpacing.x * 2.5F);
+			}
+			// The main tools.
+			for (size_t i = 0; i < std::size(mainTools); ++i) {
+				int index = ToolIndex(mainTools[i]);
+				ToolLook look = LookOf(mainTools[i]);
+				ImGui::PushID(index);
+				if (BarTile("##main", mainNames[i], c_Tools[index].Name, s_ToolIndex == index, withNames, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
+					s_ToolIndex = index;
+				}
+				ImGui::PopID();
+				ImGui::SameLine(0.0F, i + 1 < std::size(mainTools) ? -1.0F : style.ItemSpacing.x * 2.5F);
+			}
+			// The parts of the sandbox window: a click opens the window on that part, and a click on the one showing puts the window away.
+			for (size_t i = 0; i < std::size(parts); ++i) {
+				const Part& part = parts[i];
+				if (std::string(part.Name) == "You" && !Sandbox::IsGodMode()) {
+					continue;
+				}
+				bool showing = Sandbox::IsOpen() && s_CurrentTab == part.Name;
+				ImGui::PushID(static_cast<int>(i) + 500);
+				if (BarTile("##part", part.Name, part.Tip, showing, withNames, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, part.Art, at, room / 12.0F, part.Color); }) == 1) {
+					if (showing) {
+						Sandbox::SetOpen(false);
+					} else {
+						Sandbox::SetOpen(true);
+						s_WantedTab = part.Name;
+						s_CurrentTab = part.Name;
+					}
+				}
+				ImGui::PopID();
+				if (i + 1 < std::size(parts)) {
+					ImGui::SameLine();
+				}
+			}
+		}
+		ImGui::End();
+		ImGui::PopStyleVar();
 	}
 #pragma endregion
 } // namespace
@@ -3331,6 +3581,34 @@ std::string Sandbox::GetCharacterSetup() {
 	return setup;
 }
 
+std::string Sandbox::GetPins() {
+	std::string pins;
+	for (const Pin& pin: s_Pins) {
+		pins += (pins.empty() ? "" : ";") + std::string(c_Tools[ToolIndex(pin.Kind)].Name) + "=" + pin.PresetName;
+	}
+	return pins;
+}
+
+void Sandbox::SetPins(const std::string& pins) {
+	s_Pins.clear();
+	for (size_t at = 0; at < pins.size();) {
+		size_t end = pins.find(';', at);
+		end = end == std::string::npos ? pins.size() : end;
+		std::string one = pins.substr(at, end - at);
+		size_t equals = one.find('=');
+		if (equals != std::string::npos) {
+			std::string toolName = one.substr(0, equals);
+			for (int i = 0; i < c_ToolCount; ++i) {
+				if (toolName == c_Tools[i].Name && s_Pins.size() < 24) {
+					s_Pins.push_back({c_Tools[i].Kind, one.substr(equals + 1)});
+					break;
+				}
+			}
+		}
+		at = end + 1;
+	}
+}
+
 void Sandbox::SetCharacterSetup(const std::string& setup) {
 	std::vector<std::string> parts;
 	size_t start = 0;
@@ -3564,59 +3842,33 @@ void Sandbox::DrawGUI() {
 		DrawSelection();
 	}
 
+	if (IsLookingAround() && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		DrawBar();
+	}
 	if (hiddenButAbove) {
 		return;
 	}
 	ImGui::SetNextWindowSize(ImVec2(430.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 445.0F, 40.0F), ImGuiCond_FirstUseEver);
 	if (g_DebugMan.BeginPanel(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open, DebugMan::PanelSide::Left)) {
-		g_DebugMan.DrawToolWindowControls();
 		if (!InGame()) {
-			ImGui::TextWrapped("Start a game to use the sandbox. Pick \"Sandbox\" in the scenario menu for the full god mode.");
+			g_DebugMan.DrawToolWindowControls();
+			ImGui::TextWrapped("Start a game to use the sandbox. Pick \"Sandbox\" on the main menu for the full god mode.");
 			g_DebugMan.EndPanel();
 			return;
 		}
-		SideStatus();
-		bool aiPaused = Controller::IsAIPaused();
-		ImGui::PushStyleColor(ImGuiCol_Text, aiPaused ? IM_COL32(255, 210, 80, 255) : ImGui::GetColorU32(ImGuiCol_Text));
-		{
-			// How fast time runs, to watch a blast or a collapse slowly or hurry a long battle along.
-			float timeScale = g_TimerMan.GetTimeScale();
-			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.45F);
-			if (ImGui::SliderFloat("Speed of time", &timeScale, 0.05F, 3.0F, "%.2fx")) {
-				g_TimerMan.SetTimeScale(timeScale);
-			}
-			for (const auto& [label, scale]: {std::pair<const char*, float>{"Slow", 0.25F}, {"Normal", 1.0F}, {"Fast", 2.0F}}) {
-				ImGui::SameLine();
-				if (ToolUI::SmallButton(label)) {
-					g_TimerMan.SetTimeScale(scale);
-				}
-			}
-		}
-		if (ToolUI::Checkbox("Pause AI (set things up, then let them loose)", &aiPaused)) {
-			Controller::SetAIPaused(aiPaused);
-		}
-		ImGui::PopStyleColor();
-		ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.  Wheel: zoom.");
-		ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
-		ToolButtons({Tool::Remove, Tool::RallyPoint});
-
-		if (IsGodMode()) {
-			ToolUI::Checkbox("The world stands still while these tools are open", &s_PauseInMenus);
-			ImGui::SetItemTooltip("On: time stops when you come to the tools and starts when you go and play (Tab). What you do with a tool still happens at once.\nOff: the world carries on while you work.");
-			if (s_PausedByMenus) {
-				ImGui::SameLine();
-				if (ToolUI::SmallButton("Step")) {
-					s_StepsWanted += 1;
-				}
-				ImGui::SetItemTooltip("Lets the world move one update, a sixtieth of a second. Hold Ctrl and click for a second's worth.");
-				if (ImGui::IsItemDeactivated() && ImGui::GetIO().KeyCtrl) {
-					s_StepsWanted += 59;
-				}
-			}
+		if (!IsGodMode()) {
+			// In other games there is no bar, so the window carries the main tools itself.
+			g_DebugMan.DrawToolWindowControls();
+			SideStatus();
+			TimeControls();
+			ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.  Wheel: zoom.");
+			ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
+			ToolButtons({Tool::Remove, Tool::RallyPoint});
 		}
 		if (ImGui::BeginTabBar("SandboxTabs")) {
 			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
+				s_CurrentTab = "You";
 				bool exists = GetRef(s_PlayerUnit) != nullptr;
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
 					Stroke stroke;
@@ -3717,6 +3969,7 @@ void Sandbox::DrawGUI() {
 				}
 			}
 			if (ImGui::BeginTabItem("Spawn", nullptr, TestTab("Spawn"))) {
+				s_CurrentTab = "Spawn";
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
 					s_ToolIndex = ToolIndex(Tool::Unit);
@@ -3744,10 +3997,12 @@ void Sandbox::DrawGUI() {
 			}
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
 			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony", nullptr, TestTab("Colony"))) {
+				s_CurrentTab = "Colony";
 				ColonyTab();
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Build", nullptr, TestTab("Build"))) {
+				s_CurrentTab = "Build";
 				// Coming to this tab picks up the building tool.
 				static int shownLast = -10;
 				if (ImGui::GetFrameCount() > shownLast + 1 || CurrentTool().Kind != Tool::Structure) {
@@ -3779,6 +4034,7 @@ void Sandbox::DrawGUI() {
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Orders", nullptr, TestTab("Orders"))) {
+				s_CurrentTab = "Orders";
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
 				ImGui::Combo("Orders", &s_Order, c_OrderNames);
@@ -3862,6 +4118,7 @@ void Sandbox::DrawGUI() {
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Paint", nullptr, TestTab("Paint"))) {
+				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
 				ImGui::SeparatorText("Water that keeps coming");
@@ -3885,6 +4142,7 @@ void Sandbox::DrawGUI() {
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
+				s_CurrentTab = "Boom";
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
 				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
@@ -3900,6 +4158,7 @@ void Sandbox::DrawGUI() {
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Effects", nullptr, TestTab("Effects"))) {
+				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
 				ImGui::SeparatorText("Lights");
 				auto effectButtons = [](std::initializer_list<EffectKind> kinds) {
@@ -3938,6 +4197,12 @@ void Sandbox::DrawGUI() {
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("World", nullptr, TestTab("World"))) {
+				s_CurrentTab = "World";
+				if (IsGodMode()) {
+					SideStatus();
+					TimeControls();
+					ImGui::Separator();
+				}
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);

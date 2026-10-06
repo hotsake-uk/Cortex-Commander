@@ -96,6 +96,12 @@ namespace RTE {
 		/// Gets how your character in the Sandbox game mode is set up (its body, kit and abilities), as one line of text for the settings file.
 		static std::string GetCharacterSetup();
 
+		/// Gets the things pinned to the sandbox's bar, as one line of text for the settings file.
+		static std::string GetPins();
+
+		/// Sets the things pinned to the sandbox's bar from a line of text made by GetPins.
+		static void SetPins(const std::string& pins);
+
 		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
 		static void SetCharacterSetup(const std::string& setup);
 
