@@ -1,4 +1,4 @@
-#include "WindowMan.h"
+﻿#include "WindowMan.h"
 #include "DebugMan.h"
 #include "Sandbox.h"
 #include "ACrab.h"
@@ -333,7 +333,7 @@ namespace {
 	int s_StructureChoice = 0;
 	char s_Filter[64] = "";
 	int s_Team = 1;
-	int s_Order = static_cast<int>(Order::Idle); //!< Units placed stand and wait for orders unless told otherwise.
+	int s_Order = static_cast<int>(Order::Hold); //!< Units placed hold their position, firing back, until told otherwise.
 	int s_Loadout = 0;
 	int s_SquadSize = 1;
 	bool s_LitGrenade = false;
