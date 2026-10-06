@@ -1,0 +1,350 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Bywater Barracks" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER path for bottom corridor to the top room: 7 nodes: 1695,1169 1716,1188 1716,1082 1740,1092 1788,1092 1788,912 1920,137
+AIBUNKER path for mid left room to the right column: 22 nodes: 1620,797 1644,804 1668,804 1668,828 1692,852 1716,876 1740,900 1764,924 1764,948 1812,900 1836,924 1836,948 1860,924 1932,924 1956,900 2004,924 2028,948 2172,972 2196,996 2196,1020 2196,828 2170,823
+AIBUNKER path for top room to the bottom corridor: 50 nodes: 1922,112 1764,132 1716,84 1692,108 1692,132 1692,156 1692,180 1668,204 1644,228 1620,252 1596,276 1572,300 1548,324 1524,348 1500,372 1500,396 1500,420 1500,444 1500,468 1500,492 1500,516 1500,540 1500,564 1500,588 1500,612 1500,636 1476,660 1476,684 1476,708 1476,732 1476,756 1476,780 1644,804 1668,804 1668,828 1692,852 1716,876 1740,900 1764,924 1788,948 1788,972 1788,996 1788,1020 1788,1044 1764,1068 1716,1092 1716,1116 1716,1140 1692,1164 1695,1168
+AIBUNKER path for middle to the mid left room: 36 nodes: 1823,531 1812,432 1764,468 1740,444 1644,444 1644,468 1644,492 1644,516 1644,540 1644,564 1644,588 1644,612 1644,636 1644,660 1620,684 1620,434 1596,444 1572,444 1548,444 1524,420 1524,444 1524,468 1524,492 1524,516 1524,540 1524,564 1524,588 1524,612 1500,636 1476,660 1476,684 1476,708 1476,732 1476,756 1476,780 1620,796
+AIBUNKER path for bottom right to the middle: 52 nodes: 2130,1073 2220,1092 2220,1116 2244,1140 2244,1082 2268,1092 2292,1092 2340,1044 2340,1068 2340,1092 2340,972 2316,996 2220,1020 2172,996 2148,972 2028,972 1980,924 1956,900 1860,924 1788,852 1764,876 1740,900 1692,924 1668,948 1644,804 1476,804 1476,636 1500,660 1524,684 1524,420 1548,444 1572,444 1620,444 1620,468 1620,492 1620,516 1620,540 1620,564 1620,588 1620,612 1620,636 1644,660 1668,684 1692,684 1716,660 1740,660 1764,684 1788,708 1788,732 1788,756 1812,780 1820,563
+AITRACE path: none to follow, asking again from 1695,1171
+AIBUNKER grid node 1716,1092 surface -1 ground no free 49 clear 36/9 up 0 upright 0 right 0 rightdown 400 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1740,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1788,1068 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1788,924 surface -1 ground no free 96 clear 36/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1764,924 surface -1 ground no free 96 clear 12/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1740,900 surface -1 ground no free 48 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1740,900 surface -1 ground no free 48 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1692,924 surface -1 ground no free 96 clear 48/20 up 0 upright 0 right 0 rightdown 200 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1500,924 surface -1 ground no free 48 clear 45/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1452,924 surface -1 ground no free 65 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1428,948 surface 960 ground yes free 96 clear 48/8 up 0 upright 400 right 400 rightdown 400 down 200 downleft 200 left 0 leftup 0
+AIBUNKER grid node 1428,948 surface 960 ground yes free 96 clear 48/8 up 0 upright 400 right 400 rightdown 400 down 200 downleft 200 left 0 leftup 0
+AITRACE step kind 2 to 1716,1085 from 1695,1171 prone false
+AITRACE climb: wpt dx 21 dy -87
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AIBUNKER trace bottom corridor to the top room 2s pos 1694,1105 vel -0.2,-3.1 fuel 1190 path 30 left 994 aim 1.57 facing right
+AITRACE pop: reached 1716,1085 from 1694,1104, 29 left
+AITRACE jet: hop left
+AITRACE jet: hop left
+AIBUNKER trace bottom corridor to the top room 3s pos 1682,1068 vel -2,-1.6 fuel 1185 path 29 left 961 aim 1.57 facing left
+AIBUNKER trace mid left room to the right column 3s pos 1709,914 vel 1.5,4.5 fuel 1125 path 15 left 469 aim 1.04 facing right
+AIBUNKER trace top room to the bottom corridor 3s pos 1846,114 vel -2.5,-0.3 fuel 1500 path 48 left 1064 aim -0.01 facing left
+AIBUNKER trace middle to the mid left room 3s pos 1829,538 vel -0.9,-1.1 fuel 1243 path 34 left 331 aim 0 facing left
+AIBUNKER trace bottom right to the middle 3s pos 2192,1075 vel 2.3,-0.8 fuel 1500 path 52 left 633 aim -0.01 facing right
+AIBUNKER trace bottom corridor to the top room 4s pos 1677,1066 vel 0,-0.6 fuel 87 path 29 left 960 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 5s pos 1693,1081 vel 0.4,-2.3 fuel 1197 path 29 left 971 aim 0 facing right
+AIBUNKER middle to the mid left room: died
+AITRACE climb: under a ceiling at 1041, keeping out from under it
+AIBUNKER trace bottom corridor to the top room 6s pos 1691,1065 vel -1.2,-0.7 fuel 866 path 29 left 956 aim 1.57 facing left
+AIBUNKER trace mid left room to the right column 6s pos 1829,898 vel 1.4,1.9 fuel 863 path 10 left 349 aim 0.94 facing right
+AIBUNKER trace top room to the bottom corridor 6s pos 1714,111 vel -1.6,-0.3 fuel 1500 path 47 left 1056 aim -0.01 facing left
+AIBUNKER trace bottom right to the middle 6s pos 2209,1074 vel -2.1,-1.7 fuel 815 path 48 left 642 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 7s pos 1687,1074 vel -0.1,3.3 fuel 245 path 29 left 966 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 8s pos 1703,1092 vel 1.9,3.3 fuel 1182 path 29 left 980 aim 0 facing right
+AITRACE jet: landing brake at 5.6
+AITRACE pop: reached 1740,1073 from 1716,1103, 28 left
+AITRACE step kind 0 to 1788,1073 from 1716,1101 prone false
+AIBUNKER trace bottom corridor to the top room 9s pos 1703,1068 vel -1.4,0.1 fuel 1064 path 28 left 956 aim 0 facing left
+AIBUNKER trace mid left room to the right column 9s pos 1936,906 vel 5.4,0.1 fuel 1500 path 8 left 247 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 9s pos 1536,358 vel 0.9,-0.6 fuel 721 path 36 left 824 aim 0.75 facing left
+AIBUNKER trace bottom right to the middle 9s pos 2232,1108 vel 2.7,3.9 fuel 159 path 48 left 683 aim 1.49 facing right
+AIBUNKER trace bottom corridor to the top room 10s pos 1684,1063 vel 0.9,0.8 fuel 79 path 28 left 956 aim 0.94 facing left
+AIBUNKER trace bottom corridor to the top room 11s pos 1689,1072 vel -0.3,3.2 fuel 280 path 28 left 963 aim 0.2 facing left
+AITRACE jet: landing brake at 5.6
+AITRACE jet: landing brake at 5.9
+AITRACE jet: landing brake at 6.6
+AITRACE jet: landing brake at 6.2
+AIBUNKER trace bottom corridor to the top room 12s pos 1716,1125 vel -0.6,-3.2 fuel 638 path 28 left 1009 aim 1.27 facing right
+AIBUNKER trace mid left room to the right column 12s pos 2092,975 vel -1.4,-1.6 fuel 1500 path 8 left 171 aim 0.03 facing left
+AIBUNKER trace top room to the bottom corridor 12s pos 1476,452 vel 2.7,4.7 fuel 1146 path 32 left 748 aim 0 facing right
+AIBUNKER trace bottom right to the middle 12s pos 2210,1071 vel -1.5,-3.3 fuel 687 path 48 left 640 aim 1.57 facing left
+AIBUNKER trace bottom corridor to the top room 13s pos 1697,1079 vel -1.6,-3 fuel 780 path 28 left 968 aim 1.57 facing left
+AITRACE path: none to follow, asking again from 1680,1064
+AITRACE step kind 3 to 1692,1116 from 1680,1064 prone false
+AIBUNKER trace bottom corridor to the top room 14s pos 1678,1063 vel -0.7,-0.6 fuel 125 path 34 left 957 aim 0.94 facing left
+AITRACE pop: reached 1692,1116 from 1679,1079, 33 left
+AITRACE pop: passed 1692,1168 for 1692,1168 from 1678,1080
+AIBUNKER trace bottom corridor to the top room 15s pos 1674,1084 vel -1.6,0.8 fuel 26 path 32 left 978 aim 0.2 facing right
+AIBUNKER trace mid left room to the right column 15s pos 1997,930 vel 0.5,-0.9 fuel 1317 path 8 left 202 aim 1.57 facing right
+AIBUNKER trace top room to the bottom corridor 15s pos 1451,734 vel -1.7,4.1 fuel 1197 path 19 left 496 aim 1.41 facing right
+AIBUNKER trace bottom right to the middle 15s pos 2213,1067 vel -1.8,-1.6 fuel 1185 path 48 left 639 aim 1.57 facing left
+AITRACE jet: landing brake at 6
+AITRACE jet: landing brake at 6
+AITRACE jet: landing brake at 6.7
+AITRACE jet: landing brake at 6.1
+AITRACE jet: landing brake at 5.8
+AIBUNKER trace bottom corridor to the top room 16s pos 1712,1159 vel -1.1,2 fuel 410 path 32 left 1043 aim 1.21 facing right
+AIBUNKER trace bottom corridor to the top room 17s pos 1710,1166 vel 1.6,2.5 fuel 222 path 32 left 1050 aim 0.26 facing right
+AITRACE crawl: going prone, wpt dx -50 dy -9
+AIBUNKER trace bottom corridor to the top room 18s pos 1751,1179 vel 0.7,0.1 fuel 1419 path 32 left 1056 aim 0.05 facing right
+AIBUNKER trace mid left room to the right column 18s pos 1952,817 vel 0.2,-2.7 fuel 1048 path 3 left 217 aim 1.57 facing right
+AIBUNKER trace top room to the bottom corridor 18s pos 1475,799 vel 2.4,-0.2 fuel 1500 path 18 left 429 aim 0.02 facing right
+AIBUNKER trace bottom right to the middle 18s pos 2066,1087 vel -1.4,-1.7 fuel 1500 path 8 left 579 aim 0.01 facing left
+AITRACE pop: passed 1692,1168 for 1716,1169 from 1752,1180
+AITRACE step kind 0 to 1716,1169 from 1753,1179 prone true
+AIBUNKER trace bottom corridor to the top room 19s pos 1755,1180 vel -0.3,0.1 fuel 1500 path 31 left 1056 aim 0.01 facing left
+AIBUNKER trace bottom corridor to the top room 20s pos 1755,1180 vel -0.3,0.1 fuel 1500 path 31 left 1056 aim 0 facing left
+AITRACE jet: stuck
+AIBUNKER trace bottom corridor to the top room 21s pos 1755,1180 vel -0.3,0.1 fuel 1500 path 31 left 1056 aim 0 facing left
+AIBUNKER trace mid left room to the right column 21s pos 1969,769 vel 1.8,1.3 fuel 1500 path 3 left 207 aim 0.12 facing left
+AIBUNKER trace top room to the bottom corridor 21s pos 1655,815 vel 2.8,2.4 fuel 1500 path 15 left 354 aim 0 facing right
+AIBUNKER trace bottom right to the middle 21s pos 1977,1079 vel -4.9,1.1 fuel 1500 path 6 left 540 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 22s pos 1755,1180 vel -0.3,0.1 fuel 1500 path 31 left 1056 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 23s pos 1761,1181 vel 0.1,0.2 fuel 1500 path 31 left 1056 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 24s pos 1761,1181 vel -0.2,0 fuel 1500 path 31 left 1056 aim 0 facing left
+AIBUNKER trace mid left room to the right column 24s pos 1960,830 vel -0.2,2.1 fuel 1091 path 3 left 209 aim 0.74 facing right
+AIBUNKER trace top room to the bottom corridor 24s pos 1689,839 vel -1,-0.3 fuel 1500 path 14 left 328 aim 0 facing right
+AIBUNKER trace bottom right to the middle 24s pos 1875,1082 vel -1.6,-0.3 fuel 1500 path 5 left 522 aim 0 facing left
+AITRACE jet: stuck
+AIBUNKER trace bottom corridor to the top room 25s pos 1761,1181 vel -0.2,0 fuel 1500 path 31 left 1056 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 26s pos 1769,1181 vel -0.2,0 fuel 1500 path 31 left 1055 aim 0 facing left
+AITRACE path: none to follow, asking again from 1769,1181
+AITRACE step kind 2 to 1716,1085 from 1769,1181 prone false
+AITRACE climb: under a ceiling, stepping -50 to an open column
+AITRACE climb: under a ceiling, stepping -50 to an open column
+AITRACE climb: under a ceiling, stepping -50 to an open column
+AIBUNKER trace bottom corridor to the top room 27s pos 1742,1171 vel -4.4,-1.3 fuel 1500 path 25 left 1049 aim 0 facing left
+AIBUNKER trace mid left room to the right column 27s pos 1966,842 vel 0,0 fuel 1500 path 3 left 204 aim 0.02 facing right
+AIBUNKER trace top room to the bottom corridor 27s pos 1705,934 vel -0.4,-1.8 fuel 882 path 13 left 233 aim 1.57 facing left
+AIBUNKER trace bottom right to the middle 27s pos 1811,1075 vel 0,0.6 fuel 1500 path 4 left 512 aim 0 facing left
+AITRACE climb: under a ceiling, stepping -25 to an open column
+AITRACE climb: under a ceiling, stepping -25 to an open column
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE climb: wpt dx -3 dy -88
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AIBUNKER trace bottom corridor to the top room 28s pos 1689,1137 vel 0.3,-1.2 fuel 566 path 25 left 1026 aim 1.57 facing right
+AIBUNKER trace bottom corridor to the top room 29s pos 1696,1129 vel 1.1,-0.9 fuel 75 path 25 left 1017 aim 0.48 facing right
+AIBUNKER trace bottom corridor to the top room 30s pos 1716,1135 vel -0.1,-0.7 fuel 276 path 25 left 1018 aim 0.1 facing right
+AIBUNKER trace mid left room to the right column 30s pos 1976,819 vel 0.1,0 fuel 1500 path 2 left 193 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 30s pos 1803,955 vel 2,3.3 fuel 1500 path 10 left 239 aim 0.98 facing left
+AIBUNKER trace bottom right to the middle 30s pos 1811,1075 vel -0.1,-1 fuel 1500 path 4 left 512 aim 0 facing left
+AITRACE pop: reached 1716,1085 from 1716,1120, 24 left
+AIBUNKER trace bottom corridor to the top room 31s pos 1715,1118 vel -0.5,-2.6 fuel 131 path 24 left 1002 aim 0.02 facing right
+AIBUNKER trace bottom corridor to the top room 32s pos 1717,1093 vel 1.2,-2 fuel 1328 path 24 left 978 aim 0 facing right
+AITRACE jet: hop right
+AITRACE jet: hop right
+AITRACE pop: reached 1740,1073 from 1720,1082, 23 left
+AITRACE step kind 0 to 1788,1073 from 1721,1079 prone false
+AIBUNKER trace bottom corridor to the top room 33s pos 1716,1065 vel -1.2,-0.9 fuel 397 path 23 left 950 aim 0 facing left
+AIBUNKER trace mid left room to the right column 33s pos 1975,801 vel 0.3,0 fuel 1500 path 3 left 195 aim 0.07 facing right
+AIBUNKER trace top room to the bottom corridor 33s pos 1816,1005 vel 0.1,0.1 fuel 1500 path 7 left 203 aim 0.03 facing left
+AIBUNKER trace bottom right to the middle 33s pos 1810,1075 vel -0.1,0.6 fuel 1500 path 4 left 512 aim 0.1 facing left
+AITRACE jet: landing brake at 6.6
+AIBUNKER trace bottom corridor to the top room 34s pos 1703,1115 vel -2.4,3.1 fuel 62 path 23 left 1001 aim 1.15 facing left
+AITRACE jet: landing brake at 7.1
+AIBUNKER trace bottom corridor to the top room 35s pos 1686,1147 vel 2.1,0.6 fuel 1199 path 23 left 1036 aim 0.53 facing right
+AITRACE jet: hop left
+AITRACE jet: hop left
+AITRACE jet: hop left
+AITRACE jet: hop left
+AIBUNKER trace bottom corridor to the top room 36s pos 1699,1082 vel -0.8,-4.3 fuel 1126 path 23 left 971 aim 0 facing left
+AIBUNKER trace mid left room to the right column 36s pos 1975,801 vel -0.2,-0.1 fuel 1500 path 3 left 195 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 36s pos 1693,1098 vel -3.9,3.5 fuel 1317 path 3 left 69 aim 1.49 facing right
+AIBUNKER trace bottom right to the middle 36s pos 1810,1049 vel 0.6,-0.6 fuel 1312 path 4 left 486 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 37s pos 1681,1063 vel 0.1,-1.4 fuel 575 path 23 left 956 aim 1.57 facing left
+AIBUNKER stall mid left room to the right column (still 4 s) at 1975,801 vel -0.6,-0.6 aim 0 facing right prone 1 fuel 1500 path 3 first step kind 0 stuck 2800 ms
+AIBUNKER stall route left (3): 2100,833 2148,818 2170,823
+AIBUNKER grid node 1932,756 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,756 surface -1 ground no free 96 clear 22/23 up 0 upright 200 right 200 rightdown 200 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1980,756 surface -1 ground yes free 0 clear 45/0 up 200 upright 400 right 400 rightdown 400 down 400 downleft 200 left 200 leftup 200
+AIBUNKER grid node 2004,756 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 400 left 400 leftup 400
+AIBUNKER grid node 2028,756 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1932,780 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,780 surface -1 ground no free 96 clear 22/23 up 0 upright 200 right 200 rightdown 200 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1980,780 surface -1 ground yes free 0 clear 45/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 200 leftup 200
+AIBUNKER grid node 2004,780 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 2028,780 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 400 down 400 downleft 400 left 200 leftup 200
+AIBUNKER grid node 1932,804 surface -1 ground no free 1 clear 0/48 up 400 upright 400 right 400 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,804 surface -1 ground no free 96 clear 24/48 up 0 upright 400 right 200 rightdown 0 down 0 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1980,804 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 400 rightdown 200 down 0 downleft 0 left 200 leftup 200
+AIBUNKER grid node 2004,804 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 200 rightdown 200 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 2028,804 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 200 rightdown 200 down 0 downleft 200 left 200 leftup 400
+AIBUNKER grid node 1932,828 surface -1 ground no free 25 clear 0/48 up 0 upright 200 right 0 rightdown 200 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,828 surface -1 ground no free 96 clear 24/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 0 leftup 400
+AIBUNKER grid node 1980,828 surface -1 ground no free 48 clear 48/48 up 0 upright 400 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 2004,828 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 2028,828 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1932,852 surface -1 ground no free 49 clear 0/45 up 0 upright 400 right 0 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,852 surface -1 ground no free 96 clear 24/21 up 0 upright 0 right 0 rightdown 400 down 0 downleft 200 left 0 leftup 200
+AIBUNKER grid node 1980,852 surface 852 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 2004,852 surface 852 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 2028,852 surface 852 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER top room to the bottom corridor: arrived in 37.5 s, stood still 0 s
+AIBUNKER trace bottom corridor to the top room 38s pos 1678,1087 vel 1.5,0.9 fuel 170 path 23 left 981 aim 0 facing right
+AITRACE jet: landing brake at 5.7
+AITRACE jet: landing brake at 6
+AIBUNKER trace bottom corridor to the top room 39s pos 1712,1117 vel -0.9,-0.1 fuel 1350 path 23 left 1001 aim 0.84 facing right
+AIBUNKER trace mid left room to the right column 39s pos 1967,881 vel -0.5,-0.9 fuel 56 path 4 left 211 aim 0.19 facing right
+AIBUNKER trace bottom right to the middle 39s pos 1836,1075 vel 0,-0.6 fuel 1500 path 0 left 512 aim -0.39 facing left
+AITRACE path: none to follow, asking again from 1709,1118
+AITRACE step kind 2 to 1716,1085 from 1708,1118 prone false
+AITRACE climb: wpt dx 7 dy -34
+AITRACE pop: reached 1716,1085 from 1706,1116, 29 left
+AITRACE jet: hop right
+AITRACE jet: hop right
+AITRACE jet: hop right
+AITRACE pop: reached 1740,1073 from 1702,1084, 28 left
+AIBUNKER trace bottom corridor to the top room 40s pos 1701,1083 vel -1.7,-2.5 fuel 1126 path 28 left 971 aim 0 facing left
+AITRACE step kind 0 to 1788,1073 from 1701,1082 prone false
+AIBUNKER trace bottom corridor to the top room 41s pos 1676,1063 vel -0.3,-0.5 fuel 488 path 28 left 958 aim 1.57 facing left
+AIBUNKER stall bottom right to the middle (still 4 s) at 1836,1074 vel -0.1,0.4 aim -0.08 facing left prone 0 fuel 1500 path 0 first step kind -1 stuck 0 ms
+AIBUNKER stall route left (0):
+AIBUNKER grid node 1788,1020 surface -1 ground no free 96 clear 10/35 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1812,1020 surface -1 ground no free 96 clear 34/11 up 0 upright 400 right 400 rightdown 200 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1836,1020 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1860,1020 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1884,1020 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 400 down 400 downleft 400 left 200 leftup 200
+AIBUNKER grid node 1788,1044 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 400 leftup 400
+AIBUNKER grid node 1812,1044 surface -1 ground no free 96 clear 48/48 up 0 upright 400 right 200 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1836,1044 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 400 rightdown 200 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1860,1044 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 200 rightdown 200 down 0 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1884,1044 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 400 rightdown 200 down 0 downleft 200 left 200 leftup 400
+AIBUNKER grid node 1788,1068 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1812,1068 surface -1 ground no free 96 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1836,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1860,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1884,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1788,1092 surface 1092 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1812,1092 surface 1092 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1836,1092 surface 1092 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1860,1092 surface 1092 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1884,1092 surface 1092 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1788,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1812,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1836,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1860,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 90 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1884,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 90 downleft 200 left 400 leftup 400
+AIBUNKER trace bottom corridor to the top room 42s pos 1680,1064 vel 1.6,0.8 fuel 256 path 28 left 957 aim 0.43 facing left
+AIBUNKER trace mid left room to the right column 42s pos 1967,883 vel 0.1,0 fuel 1309 path 4 left 211 aim 0 facing right
+AIBUNKER trace bottom right to the middle 42s pos 1837,1074 vel 0.1,0 fuel 1500 path 0 left 512 aim -0.28 facing right
+AIBUNKER trace bottom corridor to the top room 43s pos 1680,1082 vel 1.6,-1.9 fuel 544 path 28 left 975 aim 0.09 facing right
+AIBUNKER trace bottom corridor to the top room 44s pos 1716,1077 vel -0.4,-1.2 fuel 1395 path 28 left 962 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 45s pos 1695,1063 vel 0.4,-0.8 fuel 460 path 28 left 952 aim 1.57 facing left
+AIBUNKER trace mid left room to the right column 45s pos 1983,826 vel 0.3,1.6 fuel 150 path 3 left 186 aim 0.84 facing left
+AIBUNKER trace bottom right to the middle 45s pos 1837,1075 vel 0,-0.7 fuel 1500 path 0 left 512 aim -0.09 facing right
+AIBUNKER trace bottom corridor to the top room 46s pos 1702,1069 vel 0,2.2 fuel 228 path 28 left 957 aim 0.41 facing left
+AIBUNKER trace bottom corridor to the top room 47s pos 1692,1100 vel 3,2.8 fuel 430 path 28 left 989 aim 0.08 facing right
+AITRACE jet: landing brake at 5.8
+AITRACE jet: landing brake at 5.5
+AIBUNKER trace bottom corridor to the top room 48s pos 1695,1110 vel -2.9,-2 fuel 225 path 28 left 999 aim 0.59 facing right
+AIBUNKER trace mid left room to the right column 48s pos 2041,835 vel -0.1,2.7 fuel 220 path 3 left 128 aim 0.35 facing left
+AIBUNKER trace bottom right to the middle 48s pos 1837,1074 vel -0.1,-0.8 fuel 1500 path 0 left 512 aim -0.58 facing right
+AIBUNKER trace bottom corridor to the top room 49s pos 1714,1100 vel 2.2,-3 fuel 209 path 28 left 985 aim 0.12 facing right
+AIBUNKER trace bottom corridor to the top room 50s pos 1737,1070 vel 2.5,-1.8 fuel 1298 path 28 left 951 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 51s pos 1737,1065 vel -0.6,-1.1 fuel 200 path 28 left 946 aim 0 facing left
+AIBUNKER trace mid left room to the right column 51s pos 2088,844 vel 0.7,1.5 fuel 1500 path 2 left 84 aim 0.48 facing right
+AIBUNKER trace bottom right to the middle 51s pos 1837,1075 vel 0,1.2 fuel 1500 path 0 left 512 aim 0.15 facing right
+AITRACE path: none to follow, asking again from 1716,1088
+AITRACE step kind 2 to 1716,1085 from 1714,1092 prone false
+AITRACE pop: reached 1716,1085 from 1714,1092, 29 left
+AITRACE climb: wpt dx 29 dy -28
+AIBUNKER trace bottom corridor to the top room 52s pos 1707,1106 vel -2,2.2 fuel 212 path 29 left 991 aim 1.41 facing left
+AITRACE jet: landing brake at 5.8
+AIBUNKER trace bottom corridor to the top room 53s pos 1687,1156 vel 2.7,0.2 fuel 960 path 29 left 1045 aim 0.94 facing right
+AIBUNKER mid left room to the right column: arrived in 53.5 s, stood still 0 s
+AITRACE climb: under a ceiling at 1139, keeping out from under it
+AIBUNKER trace bottom corridor to the top room 54s pos 1732,1162 vel -0.6,-0.6 fuel 676 path 29 left 1042 aim 0 facing left
+AIBUNKER trace bottom right to the middle 54s pos 1837,1075 vel 0,-0.9 fuel 1500 path 0 left 512 aim -0.32 facing right
+AIBUNKER trace bottom corridor to the top room 55s pos 1718,1183 vel -2.1,1.7 fuel 98 path 29 left 1065 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 56s pos 1782,1171 vel 4.8,-1.7 fuel 1298 path 29 left 1043 aim 0 facing left
+AITRACE climb: under a ceiling at 1139, keeping out from under it
+AIBUNKER trace bottom corridor to the top room 57s pos 1798,1162 vel -1.8,-0.5 fuel 200 path 29 left 1032 aim 0 facing left
+AIBUNKER trace bottom right to the middle 57s pos 1837,1074 vel 0,0 fuel 1500 path 0 left 512 aim 0.24 facing right
+AIBUNKER trace bottom corridor to the top room 58s pos 1771,1172 vel -2.2,-1 fuel 1181 path 29 left 1045 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 59s pos 1746,1162 vel -0.2,-0.7 fuel 530 path 29 left 1039 aim 0 facing left
+AITRACE climb: under a ceiling at 1139, keeping out from under it
+AIBUNKER trace bottom corridor to the top room 60s pos 1739,1175 vel -2,-1.3 fuel 471 path 29 left 1053 aim 0 facing left
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 1053 px short, stood still 0 s, at 1739,1175
+AIBUNKER stall bottom corridor to the top room (gave up) at 1739,1175 vel -2,-1.3 aim 0 facing left prone 0 fuel 471 path 29 first step kind 2 stuck 0 ms
+AIBUNKER stall route left (29): 1740,1073 1788,1073 1788,912 1764,929 1740,905 1740,904 1692,928 1500,929 1452,929 1428,940 1428,940 1428,768
+AIBUNKER grid node 1692,1116 surface -1 ground no free 73 clear 12/33 up 0 upright 0 right 0 rightdown 0 down 0 downleft 200 left 400 leftup 200
+AIBUNKER grid node 1716,1116 surface -1 ground no free 73 clear 36/9 up 0 upright 400 right 400 rightdown 400 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1740,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1764,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1788,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1692,1140 surface -1 ground no free 96 clear 12/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 200 left 200 leftup 400
+AIBUNKER grid node 1716,1140 surface -1 ground no free 96 clear 36/48 up 0 upright 400 right 400 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1740,1140 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 400 rightdown 200 down 0 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1764,1140 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 200 rightdown 200 down 0 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1788,1140 surface -1 ground no free 1 clear 48/35 up 400 upright 400 right 400 rightdown 200 down 0 downleft 200 left 200 leftup 400
+AIBUNKER grid node 1692,1164 surface -1 ground no free 96 clear 12/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1716,1164 surface -1 ground no free 96 clear 36/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1740,1164 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1764,1164 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1788,1164 surface -1 ground no free 48 clear 48/35 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1692,1188 surface 1188 ground yes free 96 clear 12/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 200 leftup 200
+AIBUNKER grid node 1716,1188 surface 1188 ground yes free 96 clear 36/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1740,1188 surface 1188 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1764,1188 surface 1188 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1788,1188 surface 1188 ground yes free 48 clear 48/35 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1692,1212 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 90 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1716,1212 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 150 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1740,1212 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 90 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1764,1212 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 70 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1788,1212 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 70 downleft 200 left 400 leftup 400
+AIBUNKER trace bottom right to the middle 60s pos 1837,1074 vel 0,0.1 fuel 1500 path 0 left 512 aim -0.31 facing right
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 512 px short, stood still 23 s, at 1837,1074
+AIBUNKER stall bottom right to the middle (gave up) at 1837,1074 vel 0,0.1 aim -0.31 facing right prone 0 fuel 1500 path 0 first step kind -1 stuck 0 ms
+AIBUNKER stall route left (0):
+AIBUNKER grid node 1788,1020 surface -1 ground no free 96 clear 10/35 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1812,1020 surface -1 ground no free 96 clear 34/11 up 0 upright 400 right 400 rightdown 200 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1836,1020 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1860,1020 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1884,1020 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 400 down 400 downleft 400 left 200 leftup 200
+AIBUNKER grid node 1788,1044 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 400 leftup 400
+AIBUNKER grid node 1812,1044 surface -1 ground no free 96 clear 48/48 up 0 upright 400 right 200 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1836,1044 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 400 rightdown 200 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1860,1044 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 200 rightdown 200 down 0 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1884,1044 surface -1 ground no free 1 clear 48/48 up 400 upright 400 right 400 rightdown 200 down 0 downleft 200 left 200 leftup 400
+AIBUNKER grid node 1788,1068 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1812,1068 surface -1 ground no free 96 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1836,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1860,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1884,1068 surface -1 ground no free 48 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1788,1092 surface 1092 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1812,1092 surface 1092 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1836,1092 surface 1092 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1860,1092 surface 1092 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1884,1092 surface 1092 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1788,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1812,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1836,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1860,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 90 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1884,1116 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 90 downleft 200 left 400 leftup 400
+AIBUNKER done
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE pop: reached 1740,1073 from 1705,1075, 28 left
+AITRACE step kind 0 to 1788,1073 from 1704,1074 prone false
+AITRACE jet: landing brake at 6.7
+AITRACE jet: landing brake at 5.7
+AITRACE jet: landing brake at 5.8
+AITRACE path: none to follow, asking again from 1708,1170
+AITRACE step kind 2 to 1716,1085 from 1711,1171 prone false
+AITRACE climb: wpt dx 4 dy -87
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE pop: reached 1716,1085 from 1704,1100, 29 left
+AITRACE pop: reached 1740,1073 from 1705,1082, 28 left
+AITRACE step kind 0 to 1788,1073 from 1705,1079 prone false
+AITRACE pop: reached 1788,1073 from 1755,1070, 27 left
+AITRACE step kind 2 to 1788,912 from 1755,1068 prone false
+AITRACE climb: under a ceiling at 1043, keeping out from under it
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE pop: passed 1788,912 for 1764,929 from 1801,988
+AITRACE pop: reached 1764,929 from 1790,948, 25 left

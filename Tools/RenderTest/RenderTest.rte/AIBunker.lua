@@ -35,7 +35,7 @@ function AIBunkerScript:StartScript()
 			{ from = Vector(1620, 700), to = Vector(2170, 580), name = "mid left room to the right column" },
 			{ from = Vector(1920, 150), to = Vector(1695, 1040), name = "top room to the bottom corridor" },
 			{ from = Vector(1820, 580), to = Vector(1620, 700), name = "middle to the mid left room" },
-			{ from = Vector(2070, 1040), to = Vector(1820, 580), name = "bottom right to the middle" },
+			{ from = Vector(2130, 1070), to = Vector(1820, 580), name = "bottom right to the middle" }, -- (From 2070 it was put inside a pillar, and died there.)
 		},
 	};
 end
@@ -220,7 +220,18 @@ function AIBunkerScript:UpdateScript()
 			if not runner.done then
 				if not MovableMan:ValidMO(a) then
 					runner.done = true;
-					ConsoleMan:PrintString("AIBUNKER " .. runner.name .. ": died");
+					local last = runner.last;
+					ConsoleMan:PrintString("AIBUNKER " .. runner.name .. ": died" .. (last and (" after " .. math.floor((last.t - runner.start) / 100) / 10 .. " s, last seen at " .. math.floor(last.x) .. "," .. math.floor(last.y) .. " vel " .. math.floor(last.vx * 10) / 10 .. "," .. math.floor(last.vy * 10) / 10 .. " health " .. math.floor(last.hp)) or ""));
+				else
+					-- What the unit was doing when it was last seen alive, and every knock that cost it health (the speed it had says whether
+					-- it was a fall, a crush or a shot).
+					if runner.last and a.Health < runner.last.hp - 5 then
+						ConsoleMan:PrintString("AIBUNKER hurt " .. runner.name .. " health " .. math.floor(runner.last.hp) .. " -> " .. math.floor(a.Health) .. " at " .. math.floor(a.Pos.X) .. "," .. math.floor(a.Pos.Y) .. " vel before " .. math.floor(runner.last.vx * 10) / 10 .. "," .. math.floor(runner.last.vy * 10) / 10 .. " now " .. math.floor(a.Vel.X * 10) / 10 .. "," .. math.floor(a.Vel.Y * 10) / 10);
+					end
+					runner.last = { t = t, x = a.Pos.X, y = a.Pos.Y, vx = a.Vel.X, vy = a.Vel.Y, hp = a.Health };
+				end
+				if not MovableMan:ValidMO(a) then
+					-- (Written up above.)
 				elseif not runner.sent and t - runner.start > 1500 then
 					runner.sent = true;
 					a:ClearAIWaypoints();

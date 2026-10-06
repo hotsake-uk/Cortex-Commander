@@ -1,0 +1,73 @@
+﻿commit 2362a79ed3a0c0ca35799d9fae97bcc3eb2ddabc  AI: one definition of standing room, on the grid's side and the script's
+--- AIBunker run 1 (95 s)
+AIBUNKER path for low left to top right: 9 nodes: 1520,437 1692,444 1716,468 1740,444 1812,468 1836,444 1908,468 1932,252 2070,252
+AIBUNKER path for across the gap: 12 nodes: 1510,365 1548,348 1620,372 1668,348 1716,372 1716,396 1716,420 1788,444 1812,468 1836,444 1908,468 1900,348
+AIBUNKER path for top left to low right: 15 nodes: 1520,245 1692,252 1716,276 1716,300 1716,324 1716,348 1716,372 1716,396 1716,420 1788,444 1812,468 1836,444 1908,468 1932,444 2070,444
+AIBUNKER path for up the shaft: 7 nodes: 1792,449 1788,468 1764,444 1716,444 1716,468 1740,252 1792,252
+AIBUNKER path for low right to mid left: 11 nodes: 2080,437 1908,444 1884,468 1860,444 1788,468 1764,444 1692,468 1668,348 1596,372 1548,348 1510,348
+AIBUNKER top left to low right: arrived in 18.5 s, stood still 0 s
+AIBUNKER low right to mid left: arrived in 35.5 s, stood still 0 s
+AIBUNKER low left to top right: arrived in 40.5 s, stood still 0 s
+AIBUNKER across the gap: GAVE UP after 60 s, 102 px short, stood still 14 s, at 1876,448
+AIBUNKER up the shaft: GAVE UP after 60 s, 111 px short, stood still 0 s, at 1731,345
+AIBUNKER done
+--- AIBywater run 1 (95 s)
+AIBUNKER path for bottom corridor to the top room: 7 nodes: 1695,1169 1716,1188 1716,1082 1740,1092 1788,1092 1788,912 1920,137
+AIBUNKER path for mid left room to the right column: 22 nodes: 1620,797 1644,804 1668,804 1668,828 1692,852 1716,876 1740,900 1764,924 1764,948 1812,900 1836,924 1836,948 1860,924 1932,924 1956,900 2004,924 2028,948 2172
+AIBUNKER path for top room to the bottom corridor: 50 nodes: 1922,112 1764,132 1716,84 1692,108 1692,132 1692,156 1692,180 1668,204 1644,228 1620,252 1596,276 1572,300 1548,324 1524,348 1500,372 1500,396 1500,420 1500,44
+AIBUNKER path for middle to the mid left room: 36 nodes: 1823,531 1812,432 1764,468 1740,444 1644,444 1644,468 1644,492 1644,516 1644,540 1644,564 1644,588 1644,612 1644,636 1644,660 1620,684 1620,434 1596,444 1572,444 1
+AIBUNKER path for bottom right to the middle: 52 nodes: 2130,1073 2220,1092 2220,1116 2244,1140 2244,1082 2268,1092 2292,1092 2340,1044 2340,1068 2340,1092 2340,972 2316,996 2220,1020 2172,996 2148,972 2028,972 1980,924 
+AIBUNKER middle to the mid left room: died
+AIBUNKER top room to the bottom corridor: arrived in 37.5 s, stood still 0 s
+AIBUNKER mid left room to the right column: arrived in 53.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 1053 px short, stood still 0 s, at 1739,1175
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 512 px short, stood still 23 s, at 1837,1074
+AIBUNKER done
+--- AIBunker run 2 (95 s)
+AIBUNKER path for low left to top right: 9 nodes: 1520,437 1692,444 1716,468 1740,444 1812,468 1836,444 1908,468 1932,252 2070,252
+AIBUNKER path for across the gap: 12 nodes: 1510,365 1548,348 1620,372 1668,348 1716,372 1716,396 1716,420 1788,444 1812,468 1836,444 1908,468 1900,348
+AIBUNKER path for top left to low right: 15 nodes: 1520,245 1692,252 1716,276 1716,300 1716,324 1716,348 1716,372 1716,396 1716,420 1788,444 1812,468 1836,444 1908,468 1932,444 2070,444
+AIBUNKER path for up the shaft: 7 nodes: 1792,449 1788,468 1764,444 1716,444 1716,468 1740,252 1792,252
+AIBUNKER path for low right to mid left: 11 nodes: 2080,437 1908,444 1884,468 1860,444 1788,468 1764,444 1692,468 1668,348 1596,372 1548,348 1510,348
+AIBUNKER top left to low right: arrived in 18.5 s, stood still 0 s
+AIBUNKER low left to top right: arrived in 19.5 s, stood still 0 s
+AIBUNKER up the shaft: arrived in 28.5 s, stood still 0 s
+AIBUNKER low right to mid left: arrived in 37.5 s, stood still 0 s
+AIBUNKER across the gap: GAVE UP after 60 s, 98 px short, stood still 22 s, at 1935,439
+AIBUNKER done
+--- AIBywater run 2 (95 s)
+AIBUNKER path for bottom corridor to the top room: 7 nodes: 1695,1169 1716,1188 1716,1082 1740,1092 1788,1092 1788,912 1920,137
+AIBUNKER path for mid left room to the right column: 22 nodes: 1620,797 1644,804 1668,804 1668,828 1692,852 1716,876 1740,900 1764,924 1764,948 1812,900 1836,924 1836,948 1860,924 1932,924 1956,900 2004,924 2028,948 2172
+AIBUNKER path for top room to the bottom corridor: 50 nodes: 1922,112 1764,132 1716,84 1692,108 1692,132 1692,156 1692,180 1668,204 1644,228 1620,252 1596,276 1572,300 1548,324 1524,348 1500,372 1500,396 1500,420 1500,44
+AIBUNKER path for middle to the mid left room: 36 nodes: 1823,531 1812,432 1764,468 1740,444 1644,444 1644,468 1644,492 1644,516 1644,540 1644,564 1644,588 1644,612 1644,636 1644,660 1620,684 1620,434 1596,444 1572,444 1
+AIBUNKER path for bottom right to the middle: 52 nodes: 2130,1073 2220,1092 2220,1116 2244,1140 2244,1082 2268,1092 2292,1092 2340,1044 2340,1068 2340,1092 2340,972 2316,996 2220,1020 2172,996 2148,972 2028,972 1980,924 
+AIBUNKER middle to the mid left room: died
+AIBUNKER top room to the bottom corridor: arrived in 55.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 915 px short, stood still 0 s, at 1218,725
+AIBUNKER mid left room to the right column: GAVE UP after 60 s, 74 px short, stood still 0 s, at 2098,844
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 241 px short, stood still 0 s, at 1606,676
+AIBUNKER done
+--- AIBunker run 3 (95 s)
+AIBUNKER path for low left to top right: 9 nodes: 1520,437 1692,444 1716,468 1740,444 1812,468 1836,444 1908,468 1932,252 2070,252
+AIBUNKER path for across the gap: 12 nodes: 1510,365 1548,348 1620,372 1668,348 1716,372 1716,396 1716,420 1788,444 1812,468 1836,444 1908,468 1900,348
+AIBUNKER path for top left to low right: 15 nodes: 1520,245 1692,252 1716,276 1716,300 1716,324 1716,348 1716,372 1716,396 1716,420 1788,444 1812,468 1836,444 1908,468 1932,444 2070,444
+AIBUNKER path for up the shaft: 7 nodes: 1792,449 1788,468 1764,444 1716,444 1716,468 1740,252 1792,252
+AIBUNKER path for low right to mid left: 11 nodes: 2080,437 1908,444 1884,468 1860,444 1788,468 1764,444 1692,468 1668,348 1596,372 1548,348 1510,348
+AIBUNKER up the shaft: arrived in 12.5 s, stood still 0 s
+AIBUNKER top left to low right: arrived in 14.5 s, stood still 0 s
+AIBUNKER low right to mid left: arrived in 22.5 s, stood still 0 s
+AIBUNKER low left to top right: arrived in 24.5 s, stood still 0 s
+AIBUNKER across the gap: GAVE UP after 60 s, 104 px short, stood still 40 s, at 1886,451
+AIBUNKER done
+--- AIBywater run 3 (95 s)
+AIBUNKER path for bottom corridor to the top room: 7 nodes: 1695,1169 1716,1188 1716,1082 1740,1092 1788,1092 1788,912 1920,137
+AIBUNKER path for mid left room to the right column: 22 nodes: 1620,797 1644,804 1668,804 1668,828 1692,852 1716,876 1740,900 1764,924 1764,948 1812,900 1836,924 1836,948 1860,924 1932,924 1956,900 2004,924 2028,948 2172
+AIBUNKER path for top room to the bottom corridor: 50 nodes: 1922,112 1764,132 1716,84 1692,108 1692,132 1692,156 1692,180 1668,204 1644,228 1620,252 1596,276 1572,300 1548,324 1524,348 1500,372 1500,396 1500,420 1500,44
+AIBUNKER path for middle to the mid left room: 36 nodes: 1823,531 1812,432 1764,468 1740,444 1644,444 1644,468 1644,492 1644,516 1644,540 1644,564 1644,588 1644,612 1644,636 1644,660 1620,684 1620,434 1596,444 1572,444 1
+AIBUNKER path for bottom right to the middle: 52 nodes: 2130,1073 2220,1092 2220,1116 2244,1140 2244,1082 2268,1092 2292,1092 2340,1044 2340,1068 2340,1092 2340,972 2316,996 2220,1020 2172,996 2148,972 2028,972 1980,924 
+AIBUNKER middle to the mid left room: died
+AIBUNKER mid left room to the right column: arrived in 51.5 s, stood still 0 s
+AIBUNKER top room to the bottom corridor: arrived in 59.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 745 px short, stood still 0 s, at 1188,280
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 524 px short, stood still 0 s, at 1973,1064
+AIBUNKER done
