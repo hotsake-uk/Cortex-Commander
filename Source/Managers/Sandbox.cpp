@@ -2313,6 +2313,73 @@ namespace {
 		return picture;
 	}
 
+	/// A list of presets to pick from as a grid of their pictures, each with its name under it. For things whose look is what you choose them by.
+	void PictureGrid(Tool kind, const char* group) {
+		const std::vector<Preset>& list = ListFor(kind);
+		int& choice = ChoiceFor(kind);
+		ImGui::SetNextItemWidth(-1.0F);
+		ImGui::InputTextWithHint("##filter", "Search...", s_Filter, sizeof(s_Filter));
+		const ImGuiStyle& style = ImGui::GetStyle();
+		float cell = ImGui::GetFontSize() * 6.0F;
+		float labelHeight = ImGui::GetTextLineHeight() * 2.0F;
+		ImGui::BeginChild("##pictures", ImVec2(-1.0F, std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 5.5F, cell * 2.5F)), ImGuiChildFlags_Borders);
+		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
+		int shown = 0;
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		for (int i = 0; i < static_cast<int>(list.size()); ++i) {
+			const Preset& preset = list[i];
+			if (!ContainsIgnoringCase(preset.Label, s_Filter) || (group && preset.Group != group)) {
+				continue;
+			}
+			if (shown++ % columns != 0) {
+				ImGui::SameLine();
+			}
+			ImGui::PushID(i);
+			ImVec2 at = ImGui::GetCursorScreenPos();
+			ImVec2 size(cell, cell + labelHeight);
+			bool picked = ImGui::InvisibleButton("##piece", size);
+			bool hovered = ImGui::IsItemHovered();
+			// Only the ones on screen have their pictures made.
+			if (ImGui::IsItemVisible()) {
+				bool selected = i == choice;
+				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(70, 96, 140, 255) : hovered ? IM_COL32(52, 60, 78, 255) : IM_COL32(26, 30, 40, 255), 3.0F);
+				if (selected) {
+					drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), IM_COL32(242, 182, 61, 255), 3.0F, 0, 2.0F);
+				}
+				const PiecePicture& picture = PictureOf(preset);
+				if (picture.Width > 0) {
+					// As big as fits, by whole pixels when it can be so the art stays crisp.
+					float room = cell - 8.0F;
+					float fit = std::min(room / static_cast<float>(picture.Width), room / static_cast<float>(picture.Height));
+					if (fit >= 1.0F) {
+						fit = std::floor(fit);
+					}
+					fit = std::min(fit, 3.0F);
+					ImVec2 pictureSize(static_cast<float>(picture.Width) * fit, static_cast<float>(picture.Height) * fit);
+					ImVec2 corner(std::floor(at.x + (cell - pictureSize.x) * 0.5F), std::floor(at.y + (cell - pictureSize.y) * 0.5F));
+					drawList->AddImage(static_cast<ImTextureID>(picture.Texture), corner, ImVec2(corner.x + pictureSize.x, corner.y + pictureSize.y));
+				}
+				ImGui::PushClipRect(ImVec2(at.x + 2.0F, at.y + cell), ImVec2(at.x + size.x - 2.0F, at.y + size.y), true);
+				ImVec2 nameSize = ImGui::CalcTextSize(preset.PresetName.c_str(), nullptr, false, cell - 4.0F);
+				drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(at.x + std::max((cell - nameSize.x) * 0.5F, 2.0F), at.y + cell), IM_COL32(230, 232, 238, 255), preset.PresetName.c_str(), nullptr, cell - 4.0F);
+				ImGui::PopClipRect();
+			}
+			if (hovered) {
+				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
+				ImGui::SetTooltip("%s\n%s%s", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str());
+			}
+			if (picked) {
+				choice = i;
+				s_ToolIndex = ToolIndex(kind);
+			}
+			ImGui::PopID();
+		}
+		if (shown == 0) {
+			ImGui::TextDisabled("Nothing of that kind matches.");
+		}
+		ImGui::EndChild();
+	}
+
 	void DrawCursor() {
 		ImGuiIO& io = ImGui::GetIO();
 		const ToolInfo& tool = CurrentTool();
@@ -3202,7 +3269,11 @@ void Sandbox::DrawGUI() {
 				ColonyTab();
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Build")) {
+			// Test runs that show the building tool (CCCP_TEST_POINTER) open on this tab.
+			static bool openOnBuild = std::getenv("CCCP_TEST_POINTER") != nullptr;
+			bool buildTab = ImGui::BeginTabItem("Build", nullptr, openOnBuild ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None);
+			openOnBuild = false;
+			if (buildTab) {
 				// Coming to this tab picks up the building tool.
 				static int shownLast = -10;
 				if (ImGui::GetFrameCount() > shownLast + 1 || CurrentTool().Kind != Tool::Structure) {
@@ -3220,7 +3291,7 @@ void Sandbox::DrawGUI() {
 				}
 				groupNames += std::string("Everything") + '\0';
 				ImGui::Combo("Kind", &s_StructureGroup, groupNames.c_str());
-				PresetList(Tool::Structure, s_StructureGroup < groupCount ? c_StructureGroups[s_StructureGroup] : nullptr, 14.0F);
+				PictureGrid(Tool::Structure, s_StructureGroup < groupCount ? c_StructureGroups[s_StructureGroup] : nullptr);
 				ImGui::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
 				ImGui::TextDisabled("Doors and turrets belong to:");
