@@ -362,6 +362,10 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 	const_cast<Vector&>(pathRequest->startPos) = start;
 	const_cast<Vector&>(pathRequest->targetPos) = end;
 
+	// Counted from the moment it's queued, not from when a thread picks it up: the grid's cost updates wait for the count to be zero, and
+	// a request still in the queue when they ran was then solved on a grid being written under it (new requests are only queued from the
+	// main thread, which is the one doing the rebuild, so with nothing queued or running the rebuild has the grid to itself).
+	++m_CurrentPathingRequests;
 	g_ThreadMan.GetBackgroundThreadPool().push_task(
 	    [this, start, end, agent, callback](std::shared_ptr<volatile PathRequest> volRequest) {
 		    // Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
@@ -379,6 +383,7 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 		    // Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
 		    // This has the awkward side-effect that the complete flag is actually false during the callback - but that's fine, if it's called we know it's complete anyways
 		    request.complete = true;
+		    --m_CurrentPathingRequests;
 	    },
 	    pathRequest);
 
