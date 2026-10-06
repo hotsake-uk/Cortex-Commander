@@ -356,6 +356,8 @@ namespace {
 	};
 	PlayerSetup s_Player;
 	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
+	bool s_RingOpen = false; //!< The ring of sides is up, round where the right button went down with a side-taking tool in hand.
+	ImVec2 s_RingCenter;
 	int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
 	bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
@@ -811,6 +813,11 @@ namespace {
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+	}
+
+	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
+	bool TakesSide(Tool kind) {
+		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor;
 	}
 
 	/// Clears a box of the terrain to air.
@@ -2143,7 +2150,10 @@ namespace {
 		}
 		ImGuiIO& io = ImGui::GetIO();
 		bool movedByHand = false;
-		if (!io.WantCaptureMouse && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+		// Dragging with the right button moves the view, unless the tool in hand makes things for a side: then the right button is for the ring of sides, and the
+		// middle button (or the keys) moves the view.
+		bool rightPans = !TakesSide(CurrentTool().Kind) || !Sandbox::CapturesWorldClicks();
+		if (!io.WantCaptureMouse && !s_RingOpen && ((rightPans && ImGui::IsMouseDown(ImGuiMouseButton_Right)) || ImGui::IsMouseDown(ImGuiMouseButton_Middle))) {
 			s_CameraCenter -= Vector(io.MouseDelta.x, io.MouseDelta.y) * ScenePixelsPerWindowPixel();
 			movedByHand = io.MouseDelta.x != 0.0F || io.MouseDelta.y != 0.0F;
 		}
@@ -2954,9 +2964,80 @@ namespace {
 				label += " x" + std::to_string(s_SquadSize);
 			}
 		}
-		// A bunker piece is shown as itself, so its name would only be in the way.
-		if (tool.Kind != Tool::Structure) {
+		if (TakesSide(tool.Kind) && tool.Kind != Tool::Structure) {
+			// Whose it will be, in that side's colour, and how to change it.
+			std::string whose = std::string(c_SideNames[s_Team]) + "  (right button: change side)";
+			ImVec2 at(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F);
+			drawList->AddText(ImVec2(at.x + 1.0F, at.y + 1.0F), IM_COL32(0, 0, 0, 200), whose.c_str());
+			drawList->AddText(at, c_SideColors[s_Team], whose.c_str());
+		}
+		// A bunker piece is shown as itself, so its name would only be in the way; under the ring of sides nothing is.
+		if (tool.Kind != Tool::Structure && !s_RingOpen) {
 			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y - 8.0F), IM_COL32(255, 255, 255, 220), label.c_str());
+		}
+	}
+
+	/// The ring of sides: held open with the right button while a side-taking tool is in hand, four coloured quarters round the pointer; let go over one to take it.
+	void DrawSideRing() {
+		ImGuiIO& io = ImGui::GetIO();
+		if (!s_RingOpen) {
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && TakesSide(CurrentTool().Kind)) {
+				s_RingOpen = true;
+				s_RingCenter = io.MousePos;
+			}
+			return;
+		}
+		float pixel = ToolUI::Pixel();
+		float inner = pixel * 14.0F;
+		float outer = pixel * 34.0F;
+		ImVec2 away(io.MousePos.x - s_RingCenter.x, io.MousePos.y - s_RingCenter.y);
+		float distance = std::sqrt(away.x * away.x + away.y * away.y);
+		// The quarters: Red above, Green to the right, Blue below, Yellow to the left.
+		int under = -1;
+		if (distance > inner * 0.6F) {
+			float angle = std::atan2(away.y, away.x); // 0 to the right, positive downwards.
+			if (angle > -2.356F && angle <= -0.785F) {
+				under = 0;
+			} else if (angle > -0.785F && angle <= 0.785F) {
+				under = 1;
+			} else if (angle > 0.785F && angle <= 2.356F) {
+				under = 2;
+			} else {
+				under = 3;
+			}
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		const float quarterStart[c_Sides] = {-2.356F, -0.785F, 0.785F, 2.356F};
+		for (int side = 0; side < c_Sides; ++side) {
+			bool lit = side == under || (under < 0 && side == s_Team);
+			ImU32 color = c_SideColors[side];
+			ImU32 fill = (color & 0x00FFFFFF) | (static_cast<ImU32>(lit ? 230 : 110) << IM_COL32_A_SHIFT);
+			float from = quarterStart[side] + 0.06F;
+			float to = quarterStart[side] + 1.571F - 0.06F;
+			drawList->PathClear();
+			drawList->PathArcTo(s_RingCenter, lit ? outer + pixel * 3.0F : outer, from, to, 12);
+			drawList->PathArcTo(s_RingCenter, inner, to, from, 12);
+			drawList->PathFillConvex(fill);
+			drawList->PathClear();
+			drawList->PathArcTo(s_RingCenter, lit ? outer + pixel * 3.0F : outer, from, to, 12);
+			drawList->PathArcTo(s_RingCenter, inner, to, from, 12);
+			drawList->PathStroke(IM_COL32(20, 24, 16, 230), ImDrawFlags_Closed, pixel);
+			float middle = (from + to) * 0.5F;
+			float reach = (inner + outer) * 0.5F;
+			ImVec2 nameSize = ImGui::CalcTextSize(c_SideNames[side]);
+			ImVec2 at(s_RingCenter.x + std::cos(middle) * reach - nameSize.x * 0.5F, s_RingCenter.y + std::sin(middle) * reach - nameSize.y * 0.5F);
+			drawList->AddText(ImVec2(at.x + pixel, at.y + pixel), IM_COL32(0, 0, 0, 200), c_SideNames[side]);
+			drawList->AddText(at, IM_COL32(255, 255, 255, 255), c_SideNames[side]);
+		}
+		// The side in hand, in the middle.
+		drawList->AddCircleFilled(s_RingCenter, inner - pixel * 2.0F, IM_COL32(20, 24, 16, 220));
+		drawList->AddCircleFilled(s_RingCenter, inner - pixel * 5.0F, c_SideColors[under >= 0 ? under : s_Team]);
+		static const bool testHeld = std::getenv("CCCP_TEST_RING") != nullptr;
+		if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && !testHeld) {
+			if (under >= 0) {
+				s_Team = under;
+			}
+			s_RingOpen = false;
 		}
 	}
 
@@ -3158,15 +3239,15 @@ namespace {
 		}
 	}
 
-	/// One tile of the bar: a picture drawn by the caller, a name under it if there is room for names, lit when it is the one in use.
+	/// One tile of the bar: a small picture drawn by the caller, lit when it is the one in use, its name as a tooltip.
 	/// @return 1 if clicked, 2 if right-clicked, 0 otherwise.
-	template <typename DrawPicture> int BarTile(const char* id, const char* name, const char* tip, bool selected, bool withNames, DrawPicture drawPicture) {
+	template <typename DrawPicture> int BarTile(const char* id, const char* tip, bool selected, DrawPicture drawPicture) {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		float pixel = ToolUI::Pixel() * 2.0F;
-		float pad = pixel * 1.5F;
-		float picture = pixel * 12.0F;
-		ImVec2 nameSize = withNames ? ImGui::CalcTextSize(name) : ImVec2(0.0F, 0.0F);
-		ImVec2 size(std::max(picture + pad * 2.0F, nameSize.x + pad * 2.0F), pad + picture + (withNames ? nameSize.y + ToolUI::Pixel() : 0.0F) + pad);
+		float pixel = ToolUI::Pixel();
+		float dot = pixel * 1.5F; // One pixel of the picture.
+		float picture = dot * 12.0F;
+		float pad = pixel * 3.0F;
+		ImVec2 size(picture + pad * 2.0F, picture + pad * 2.0F);
 		ImVec2 at = ImGui::GetCursorScreenPos();
 		int result = ImGui::InvisibleButton(id, size) ? 1 : 0;
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
@@ -3174,16 +3255,65 @@ namespace {
 		}
 		bool hovered = ImGui::IsItemHovered();
 		ImVec2 to(at.x + size.x, at.y + size.y);
-		drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
-		drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
-		drawPicture(drawList, ImVec2(std::floor(at.x + (size.x - picture) * 0.5F), at.y + pad), picture);
-		if (withNames) {
-			drawList->AddText(ImVec2(std::floor(at.x + (size.x - nameSize.x) * 0.5F), at.y + pad + picture + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name);
+		// A sunken socket; the one in use sits raised and gold-edged, the one under the pointer lightens.
+		ImU32 well = selected ? IM_COL32(105, 121, 71, 255) : hovered ? IM_COL32(68, 82, 54, 255) : IM_COL32(30, 37, 26, 255);
+		drawList->AddRectFilled(at, to, well);
+		if (selected) {
+			drawList->AddRect(at, to, IM_COL32(242, 182, 61, 255), 0.0F, 0, pixel);
+			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), IM_COL32(255, 240, 180, 90));
+		} else {
+			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), IM_COL32(0, 0, 0, 110));
+			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), IM_COL32(0, 0, 0, 110));
+			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, IM_COL32(255, 240, 180, 24));
 		}
+		drawPicture(drawList, ImVec2(at.x + pad, at.y + pad), picture);
 		if (hovered && tip && *tip) {
 			ImGui::SetTooltip("%s", tip);
 		}
 		return result;
+	}
+
+	/// A thin upright gold rule between groups of tiles on the bar.
+	void BarDivider() {
+		ImGui::SameLine(0.0F, ToolUI::Pixel() * 4.0F);
+		ImVec2 at = ImGui::GetCursorScreenPos();
+		float height = ToolUI::Pixel() * 24.0F;
+		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + ToolUI::Pixel()), ImVec2(at.x + ToolUI::Pixel(), at.y + height - ToolUI::Pixel()), IM_COL32(170, 128, 48, 200));
+		ImGui::Dummy(ImVec2(ToolUI::Pixel(), height));
+		ImGui::SameLine(0.0F, ToolUI::Pixel() * 4.0F);
+	}
+
+	/// The bar's plate: an olive slab with cut corners and a gold line round it, drawn behind the window's contents.
+	void BarPlate() {
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImVec2 at = ImGui::GetWindowPos();
+		ImVec2 size = ImGui::GetWindowSize();
+		ImVec2 to(at.x + size.x, at.y + size.y);
+		float pixel = ToolUI::Pixel();
+		float cut = pixel * 5.0F;
+		auto shape = [&](float grow) {
+			drawList->PathClear();
+			drawList->PathLineTo(ImVec2(at.x - grow + cut, at.y - grow));
+			drawList->PathLineTo(ImVec2(to.x + grow - cut, at.y - grow));
+			drawList->PathLineTo(ImVec2(to.x + grow, at.y - grow + cut));
+			drawList->PathLineTo(ImVec2(to.x + grow, to.y + grow - cut));
+			drawList->PathLineTo(ImVec2(to.x + grow - cut, to.y + grow));
+			drawList->PathLineTo(ImVec2(at.x - grow + cut, to.y + grow));
+			drawList->PathLineTo(ImVec2(at.x - grow, to.y + grow - cut));
+			drawList->PathLineTo(ImVec2(at.x - grow, at.y - grow + cut));
+		};
+		shape(pixel * 2.0F);
+		drawList->PathFillConvex(IM_COL32(14, 17, 12, 230));
+		shape(0.0F);
+		drawList->PathFillConvex(IM_COL32(44, 53, 37, 245));
+		shape(pixel);
+		drawList->PathStroke(IM_COL32(170, 128, 48, 255), ImDrawFlags_Closed, pixel);
+		// A faint lighter band along the top, as a lip.
+		drawList->AddRectFilled(ImVec2(at.x + cut, at.y + pixel), ImVec2(to.x - cut, at.y + pixel * 2.0F), IM_COL32(255, 240, 180, 30));
+		// Studs in the corners.
+		for (ImVec2 corner: {ImVec2(at.x + cut, at.y + cut), ImVec2(to.x - cut, at.y + cut), ImVec2(at.x + cut, to.y - cut), ImVec2(to.x - cut, to.y - cut)}) {
+			drawList->AddRectFilled(ImVec2(corner.x - pixel, corner.y - pixel), ImVec2(corner.x + pixel, corner.y + pixel), IM_COL32(242, 182, 61, 160));
+		}
 	}
 
 	/// The sandbox's bar along the bottom of the picture, in the Sandbox game mode while you're above it all: the main tools, the parts of the sandbox window to
@@ -3191,6 +3321,7 @@ namespace {
 	void DrawBar() {
 		GameViewRect view = g_WindowMan.GetGameViewRect();
 		const ImGuiStyle& style = ImGui::GetStyle();
+		float pixel = ToolUI::Pixel();
 		struct Part {
 			const char* Name;
 			Icon Art;
@@ -3198,36 +3329,31 @@ namespace {
 			const char* Tip;
 		};
 		static const Part parts[] = {
-		    {"Spawn", Icon::Person, IM_COL32(232, 224, 190, 255), "Units, squads dropped from orbit, brains and items"},
-		    {"Build", Icon::Wall, IM_COL32(170, 170, 165, 255), "Bunker pieces, placed straight into the world"},
-		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Fire, liquids, smoke, loose and solid ground"},
-		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Blasts, strikes from the sky, and things to knock down"},
-		    {"Effects", Icon::Star, IM_COL32(255, 220, 120, 255), "Lights and particle effects to put down"},
-		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders for whole sides, and auto battles"},
-		    {"World", Icon::Cloud, IM_COL32(190, 190, 190, 255), "Time, weather, the speed of the world, the camera"},
-		    {"You", Icon::Person, IM_COL32(130, 220, 120, 255), "Your own character: what it is, carries and can do"},
+		    {"Spawn", Icon::Person, IM_COL32(232, 224, 190, 255), "Spawn: units, squads dropped from orbit, brains and items"},
+		    {"Build", Icon::Wall, IM_COL32(170, 170, 165, 255), "Build: bunker pieces, placed straight into the world"},
+		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Paint: fire, liquids, smoke, loose and solid ground"},
+		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Boom: blasts, strikes from the sky, and things to knock down"},
+		    {"Effects", Icon::Star, IM_COL32(255, 220, 120, 255), "Effects: lights and particle effects to put down"},
+		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders: orders for whole sides, and auto battles"},
+		    {"World", Icon::Cloud, IM_COL32(190, 190, 190, 255), "World: time, weather, the speed of the world, the camera"},
+		    {"You", Icon::Person, IM_COL32(130, 220, 120, 255), "You: your own character, what it is, carries and can do"},
 		};
 		static const Tool mainTools[] = {Tool::None, Tool::Command, Tool::Follow, Tool::Possess, Tool::Remove, Tool::RallyPoint};
-		static const char* mainNames[] = {"Look", "Command", "Follow", "Control", "Remove", "Rally"};
 
-		// Names go under the pictures if the bar then still fits across the picture of the game.
-		float pixel = ToolUI::Pixel() * 2.0F;
-		float bare = pixel * 15.0F + style.ItemSpacing.x;
-		float named = 0.0F;
-		for (const char* name: mainNames) {
-			named += std::max(pixel * 15.0F, ImGui::CalcTextSize(name).x + pixel * 3.0F) + style.ItemSpacing.x;
-		}
-		for (const Part& part: parts) {
-			named += std::max(pixel * 15.0F, ImGui::CalcTextSize(part.Name).x + pixel * 3.0F) + style.ItemSpacing.x;
-		}
-		named += bare + style.ItemSpacing.x * 6.0F + style.WindowPadding.x * 2.0F;
-		bool withNames = named < view.w - 16.0F;
-
-		ImGui::SetNextWindowPos(ImVec2(view.x + view.w * 0.5F, view.y + view.h - 6.0F), ImGuiCond_Always, ImVec2(0.5F, 1.0F));
+		ImGui::SetNextWindowPos(ImVec2(view.x + view.w * 0.5F, view.y + view.h - pixel * 6.0F), ImGuiCond_Always, ImVec2(0.5F, 1.0F));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0F, 8.0F));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pixel * 8.0F, pixel * 5.0F));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pixel * 2.0F, pixel * 3.0F));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
 		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
-			// What you've pinned, in a row of its own above.
+			BarPlate();
+			// What you've pinned, in a row of its own above the rest.
 			int unpin = -1;
+			if (!s_Pins.empty()) {
+				ImGui::TextDisabled("Pinned");
+				ImGui::SameLine(0.0F, pixel * 4.0F);
+			}
 			for (size_t i = 0; i < s_Pins.size(); ++i) {
 				const Pin& pin = s_Pins[i];
 				int toolIndex = ToolIndex(pin.Kind);
@@ -3247,7 +3373,7 @@ namespace {
 				ImGui::PushID(static_cast<int>(i) + 1000);
 				bool inHand = s_ToolIndex == toolIndex && (pin.PresetName.empty() || ChoiceFor(pin.Kind) == presetIndex);
 				std::string tip = (pin.PresetName.empty() ? std::string(c_Tools[toolIndex].Name) : pin.PresetName + "  (" + c_Tools[toolIndex].Name + ")") + "\nRight click: take it off the bar";
-				int clicked = BarTile("##pin", "", tip.c_str(), inHand, false, [&](ImDrawList* drawList, ImVec2 at, float room) {
+				int clicked = BarTile("##pin", tip.c_str(), inHand, [&](ImDrawList* drawList, ImVec2 at, float room) {
 					const PiecePicture* picture = presetIndex >= 0 ? &PictureOf(list[presetIndex]) : nullptr;
 					if (picture && picture->Width > 0) {
 						float fit = std::min(room / static_cast<float>(picture->Width), room / static_cast<float>(picture->Height));
@@ -3276,27 +3402,46 @@ namespace {
 				s_Pins.erase(s_Pins.begin() + unpin);
 			}
 			if (!s_Pins.empty()) {
-				ImGui::Separator();
+				// A gold rule between the pins and the rest.
+				ImVec2 at = ImGui::GetCursorScreenPos();
+				float width = ImGui::GetContentRegionAvail().x;
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), IM_COL32(170, 128, 48, 160));
+				ImGui::Dummy(ImVec2(width, pixel * 3.0F));
 			}
 
 			// Into your character.
 			if (s_Player.EnterOnClose) {
-				if (BarTile("##play", "Play", "Step into your own character (P). Shift+P puts it down where the mouse points first.", false, withNames, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, Icon::Person, at, room / 12.0F, IM_COL32(130, 220, 120, 255)); }) == 1) {
+				if (BarTile("##play", "Play: step into your own character (P). Shift+P puts it down where the mouse points first.", false, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, Icon::Person, at, room / 12.0F, IM_COL32(130, 220, 120, 255)); }) == 1) {
 					Sandbox::TogglePlay(false);
 				}
-				ImGui::SameLine(0.0F, style.ItemSpacing.x * 2.5F);
+				BarDivider();
 			}
 			// The main tools.
 			for (size_t i = 0; i < std::size(mainTools); ++i) {
 				int index = ToolIndex(mainTools[i]);
 				ToolLook look = LookOf(mainTools[i]);
 				ImGui::PushID(index);
-				if (BarTile("##main", mainNames[i], c_Tools[index].Name, s_ToolIndex == index, withNames, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
+				if (i > 0) {
+					ImGui::SameLine();
+				}
+				if (BarTile("##main", c_Tools[index].Name, s_ToolIndex == index, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
 					s_ToolIndex = index;
 				}
 				ImGui::PopID();
-				ImGui::SameLine(0.0F, i + 1 < std::size(mainTools) ? -1.0F : style.ItemSpacing.x * 2.5F);
 			}
+			BarDivider();
+			// The side things are made for, in its colour: a click goes round the sides.
+			{
+				std::string tip = std::string("Side: ") + c_SideNames[s_Team] + ". Click to go to the next side; or hold the right button over the world with a unit in hand for the ring of sides.";
+				if (BarTile("##side", tip.c_str(), false, [&](ImDrawList* drawList, ImVec2 at, float room) {
+					    float inset = room * 0.2F;
+					    drawList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), c_SideColors[s_Team]);
+					    drawList->AddRect(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), IM_COL32(20, 24, 16, 255), 0.0F, 0, pixel);
+				    }) == 1) {
+					s_Team = (s_Team + 1) % c_Sides;
+				}
+			}
+			BarDivider();
 			// The parts of the sandbox window: a click opens the window on that part, and a click on the one showing puts the window away.
 			for (size_t i = 0; i < std::size(parts); ++i) {
 				const Part& part = parts[i];
@@ -3305,7 +3450,10 @@ namespace {
 				}
 				bool showing = Sandbox::IsOpen() && s_CurrentTab == part.Name;
 				ImGui::PushID(static_cast<int>(i) + 500);
-				if (BarTile("##part", part.Name, part.Tip, showing, withNames, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, part.Art, at, room / 12.0F, part.Color); }) == 1) {
+				if (i > 0) {
+					ImGui::SameLine();
+				}
+				if (BarTile("##part", part.Tip, showing, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, part.Art, at, room / 12.0F, part.Color); }) == 1) {
 					if (showing) {
 						Sandbox::SetOpen(false);
 					} else {
@@ -3315,13 +3463,11 @@ namespace {
 					}
 				}
 				ImGui::PopID();
-				if (i + 1 < std::size(parts)) {
-					ImGui::SameLine();
-				}
 			}
 		}
 		ImGui::End();
-		ImGui::PopStyleVar();
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar(4);
 	}
 #pragma endregion
 } // namespace
@@ -3792,6 +3938,10 @@ void Sandbox::DrawGUI() {
 		if (std::sscanf(testPointer, "%f,%f", &x, &y) == 2) {
 			io.MousePos = ImVec2(x, y);
 			io.WantCaptureMouse = false;
+			if (std::getenv("CCCP_TEST_RING") && !s_RingOpen) {
+				s_RingOpen = true;
+				s_RingCenter = ImVec2(x - 40.0F, y - 10.0F);
+			}
 		}
 	}
 	// Paint or spawn with the left mouse button on the world.
@@ -3815,7 +3965,12 @@ void Sandbox::DrawGUI() {
 				QueueStroke(tool.Kind, position);
 			}
 		}
-		DrawCursor();
+		DrawSideRing();
+		if (!s_RingOpen) {
+			DrawCursor();
+		}
+	} else {
+		s_RingOpen = false;
 	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
