@@ -319,6 +319,7 @@ namespace {
 	Vector s_ActionSpot;
 	bool s_ActionSpotValid = false;
 	bool s_Dragging = false;
+	bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
 	ImVec2 s_DragStart;
 	std::array<AutoSide, 4> s_AutoSides;
 	bool s_AutoRunning = false;
@@ -364,6 +365,25 @@ namespace {
 	};
 	PlayerSetup s_Player;
 	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
+	/// What the command tool does with a click on the world.
+	enum class CommandMode {
+		Move, //!< Each selected unit to its own spot round the point; a click on an enemy attacks it, a click on a friend selects it.
+		Attack, //!< Go for the nearest enemy to the point, or the point itself with orders to fight.
+		Guard //!< Follow the friendly unit clicked and stay with it.
+	};
+	CommandMode s_CommandMode = CommandMode::Move;
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard"};
+	float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
+	std::array<std::vector<UnitRef>, 10> s_Groups; //!< Control groups: Ctrl+number keeps the selection, the number alone brings it back.
+
+	/// A mark left where an order was given, fading over a moment.
+	struct OrderMark {
+		Vector Position;
+		float Life; //!< Seconds left.
+		ImU32 Color;
+	};
+	std::vector<OrderMark> s_OrderMarks;
+
 	bool s_RingOpen = false; //!< A ring of choices is up, round where the right button went down.
 	ImVec2 s_RingCenter;
 	Vector s_RingScenePoint; //!< Where in the world the right button went down, which the choice is about.
@@ -1729,7 +1749,7 @@ namespace {
 			return spots;
 		}
 		const int sceneHeight = g_SceneMan.GetSceneHeight();
-		const float stride = 18.0F;
+		const float stride = std::clamp(s_Spacing, 8.0F, 60.0F);
 		// Outwards from the point: there, then left and right in turn, further each time.
 		for (int step = 0; step < count * 6 && static_cast<int>(spots.size()) < count; ++step) {
 			float offset = step == 0 ? 0.0F : (static_cast<float>((step + 1) / 2) * stride) * ((step % 2 == 1) ? -1.0F : 1.0F);
@@ -1804,17 +1824,81 @@ namespace {
 		}
 	}
 
-	void CommandSelected(const Vector& position) {
+	void OrderSelectedUnits(int choice, const Vector& point);
+
+	/// The side the selection belongs to: the first selected unit's, else the side in hand.
+	int SelectionTeam() {
+		for (const UnitRef& ref: s_Selected) {
+			if (const Actor* unit = GetRef(ref)) {
+				return unit->GetTeam();
+			}
+		}
+		return s_Team;
+	}
+
+	void MarkOrder(const Vector& at, ImU32 color) { s_OrderMarks.push_back({at, 1.0F, color}); }
+
+	/// A click on the world with the command tool, as the mode says. Count: 0 a plain click, 1 with Shift held (add to the selection), 2 a double click
+	/// (select every unit of that kind in sight).
+	void CommandSelected(const Vector& position, int modifier) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
-		bool attack = target && IsCombatant(target) && std::none_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
+		bool friendly = target && IsCombatant(target) && !target->IsInGroup("Brains") && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
+		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
+		if (s_CommandMode == CommandMode::Guard) {
+			// Follow the friend clicked; with nobody there, nothing happens.
+			if (friendly && !selected) {
+				for (const UnitRef& ref: s_Selected) {
+					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit != target) {
+						SendUnit(unit, target->GetPos(), target, false);
+					}
+				}
+				MarkOrder(target->GetPos(), IM_COL32(120, 220, 120, 255));
+			}
+			return;
+		}
+		if (s_CommandMode == CommandMode::Attack) {
+			OrderSelectedUnits(1, position);
+			MarkOrder(position, IM_COL32(239, 106, 91, 255));
+			return;
+		}
+		// Move: a friend is picked up into the selection, an enemy attacked, the ground gone to.
+		if (friendly && (modifier != 0 || !selected || s_Selected.size() == 1)) {
+			if (modifier == 2) {
+				// Every unit of that kind in sight.
+				GameViewRect view = g_WindowMan.GetGameViewRect();
+				float scale = ScenePixelsPerWindowPixel();
+				Vector corner = g_CameraMan.GetOffset(0);
+				Vector far = corner + Vector(view.w * scale, view.h * scale);
+				for (Actor* actor: SandboxAccess::Actors()) {
+					Vector onScreen = g_SceneMan.ShortestDistance(corner, actor->GetPos(), g_SceneMan.SceneWrapsX());
+					if (IsCombatant(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
+					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return ref.Unit == actor; })) {
+						s_Selected.push_back(MakeRef(actor));
+					}
+				}
+			} else if (modifier == 1) {
+				if (selected) {
+					s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; }), s_Selected.end());
+				} else {
+					s_Selected.push_back(MakeRef(target));
+				}
+			} else {
+				s_Selected.clear();
+				s_Selected.push_back(MakeRef(target));
+			}
+			return;
+		}
+		bool attack = target && IsCombatant(target) && !selected && !friendly;
 		if (attack) {
 			for (const UnitRef& ref: s_Selected) {
 				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
 					SendUnit(unit, target->GetPos(), target, true);
 				}
 			}
+			MarkOrder(target->GetPos(), IM_COL32(239, 106, 91, 255));
 		} else {
 			MoveUnitsTo(UnitsToMove(0, true), position);
+			MarkOrder(position, IM_COL32(110, 180, 250, 255));
 		}
 	}
 
@@ -2023,7 +2107,7 @@ namespace {
 				SelectInBox(stroke.Position, stroke.Position2);
 				break;
 			case Tool::Command:
-				CommandSelected(at);
+				CommandSelected(at, stroke.Count);
 				break;
 			case Tool::OrderSelected:
 				if (stroke.Count >= 100) {
@@ -3141,21 +3225,88 @@ namespace {
 				label += " x" + std::to_string(s_SquadSize);
 			}
 		}
-		if (tool.Kind == Tool::OrderMove || (tool.Kind == Tool::Command && !s_Selected.empty())) {
+		float pixel = ToolUI::Pixel();
+		auto flag = [&](const Vector& spot, ImU32 color) {
+			ImVec2 at = ToScreen(spot);
+			drawList->AddTriangleFilled(ImVec2(at.x, at.y - pixel * 2.0F), ImVec2(at.x - pixel * 3.0F, at.y - pixel * 7.0F), ImVec2(at.x + pixel * 3.0F, at.y - pixel * 7.0F), color);
+			drawList->AddRectFilled(ImVec2(at.x - pixel * 4.0F, at.y - pixel), ImVec2(at.x + pixel * 4.0F, at.y + pixel), color);
+		};
+		auto crosshair = [&](const Vector& where, ImU32 color, float reach) {
+			ImVec2 at = ToScreen(where);
+			drawList->AddCircle(at, reach, color, 0, pixel);
+			drawList->AddLine(ImVec2(at.x - reach * 1.4F, at.y), ImVec2(at.x - reach * 0.5F, at.y), color, pixel);
+			drawList->AddLine(ImVec2(at.x + reach * 0.5F, at.y), ImVec2(at.x + reach * 1.4F, at.y), color, pixel);
+			drawList->AddLine(ImVec2(at.x, at.y - reach * 1.4F), ImVec2(at.x, at.y - reach * 0.5F), color, pixel);
+			drawList->AddLine(ImVec2(at.x, at.y + reach * 0.5F), ImVec2(at.x, at.y + reach * 1.4F), color, pixel);
+		};
+		if (tool.Kind == Tool::OrderMove) {
 			// Where each unit will stand: a marker on the ground for every one, so the order can be seen before it is given.
-			std::vector<Actor*> units = UnitsToMove(s_Team, tool.Kind == Tool::Command);
-			std::vector<Vector> spots = StandingSpots(MouseScenePosition(), static_cast<int>(units.size()));
-			ImU32 color = tool.Kind == Tool::Command ? IM_COL32(255, 255, 255, 230) : c_SideColors[s_Team];
-			float pixel = ToolUI::Pixel();
-			for (const Vector& spot: spots) {
-				ImVec2 at = ToScreen(spot);
-				drawList->AddTriangleFilled(ImVec2(at.x, at.y - pixel * 2.0F), ImVec2(at.x - pixel * 3.0F, at.y - pixel * 7.0F), ImVec2(at.x + pixel * 3.0F, at.y - pixel * 7.0F), color);
-				drawList->AddRectFilled(ImVec2(at.x - pixel * 4.0F, at.y - pixel), ImVec2(at.x + pixel * 4.0F, at.y + pixel), color);
+			std::vector<Actor*> units = UnitsToMove(s_Team, false);
+			for (const Vector& spot: StandingSpots(MouseScenePosition(), static_cast<int>(units.size()))) {
+				flag(spot, c_SideColors[s_Team]);
 			}
-			if (units.empty()) {
-				label = tool.Kind == Tool::OrderMove ? std::string(c_SideNames[s_Team]) + " has no units to move" : "No units selected";
+			label = units.empty() ? std::string(c_SideNames[s_Team]) + " has no units to move" : std::to_string(units.size()) + (units.size() == 1 ? " unit will come here" : " units will come here");
+		} else if (tool.Kind == Tool::Command) {
+			// What the click will do, in the mode's own colour and marks.
+			Vector point = MouseScenePosition();
+			Actor* under = dynamic_cast<Actor*>(ObjectUnder(point, true));
+			bool underIsUnit = under && IsCombatant(under) && !under->IsInGroup("Brains");
+			bool underIsFriend = underIsUnit && (s_Selected.empty() || under->GetTeam() == SelectionTeam());
+			std::vector<Actor*> units = UnitsToMove(0, true);
+			std::string count = std::to_string(units.size()) + (units.size() == 1 ? " unit" : " units");
+			if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
+				if (underIsUnit) {
+					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
+					label = "Select " + under->GetPresetName() + "  (Shift: add, double click: all of this kind)";
+				} else {
+					label = units.empty() ? "Drag a box round units to select them" : "Move " + count + " here";
+				}
+			} else if (s_CommandMode == CommandMode::Attack || (s_CommandMode == CommandMode::Move && underIsUnit && !underIsFriend)) {
+				ImU32 red = IM_COL32(239, 106, 91, 255);
+				Actor* target = (underIsUnit && !underIsFriend) ? under : nullptr;
+				float nearest = 400.0F * 400.0F;
+				for (Actor* actor: SandboxAccess::Actors()) {
+					if (target || !IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == SelectionTeam()) {
+						continue;
+					}
+					float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+					if (distance < nearest) {
+						nearest = distance;
+						target = actor;
+					}
+				}
+				if (target && !(underIsUnit && !underIsFriend)) {
+					// Found near the point rather than under the pointer.
+					for (Actor* actor: SandboxAccess::Actors()) {
+						if (IsCombatant(actor) && !actor->IsIgnoredByAI() && actor->GetTeam() != SelectionTeam() && g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() <= nearest) {
+							target = actor;
+						}
+					}
+				}
+				if (target) {
+					crosshair(target->GetPos(), red, std::max(target->GetRadius() / scale, 8.0F) + pixel * 3.0F);
+					drawList->AddLine(io.MousePos, ToScreen(target->GetPos()), (red & 0x00FFFFFF) | (120u << IM_COL32_A_SHIFT), pixel);
+					label = "Attack " + target->GetPresetName() + " with " + count;
+				} else {
+					crosshair(point, red, pixel * 6.0F);
+					label = count + " attack towards here (no enemy near)";
+				}
+			} else if (s_CommandMode == CommandMode::Guard) {
+				ImU32 green = IM_COL32(120, 220, 120, 255);
+				if (underIsFriend) {
+					ImVec2 at = ToScreen(under->GetPos());
+					float reach = std::max(under->GetRadius() / scale, 8.0F) + pixel * 3.0F;
+					drawList->AddCircle(at, reach, green, 0, pixel * 1.5F);
+					drawList->AddCircle(at, reach + pixel * 3.0F, (green & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT), 0, pixel);
+					label = count + " guard " + under->GetPresetName();
+				} else {
+					label = "Guard: point at a friendly unit for " + count + " to stay with";
+				}
 			} else {
-				label = std::to_string(units.size()) + (units.size() == 1 ? " unit will come here" : " units will come here");
+				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
+					flag(spot, IM_COL32(110, 180, 250, 255));
+				}
+				label = "Move " + count + " here";
 			}
 		}
 		if (TakesSide(tool.Kind) && tool.Kind != Tool::Structure) {
@@ -3249,19 +3400,22 @@ namespace {
 			return;
 		}
 		if (kind == Tool::Command) {
-			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}};
-			int picked = DrawRing(commands, -1);
+			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Guard", IM_COL32(120, 220, 120, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}};
+			int picked = DrawRing(commands, static_cast<int>(s_CommandMode));
 			if (picked == -2) {
 				return;
 			}
-			Stroke stroke;
-			stroke.Kind = Tool::OrderSelected;
-			stroke.Position = s_RingScenePoint;
-			stroke.Count = 100 + picked;
-			if (picked == 3) {
-				s_Selected.clear();
-			} else if (picked >= 0) {
+			if (picked >= 0 && picked <= 2) {
+				// The mode for the clicks to come.
+				s_CommandMode = static_cast<CommandMode>(picked);
+			} else if (picked == 3) {
+				Stroke stroke;
+				stroke.Kind = Tool::OrderSelected;
+				stroke.Position = s_RingScenePoint;
+				stroke.Count = 100 + 2;
 				s_Queue.push_back(stroke);
+			} else if (picked == 4) {
+				s_Selected.clear();
 			}
 			return;
 		}
@@ -3403,6 +3557,33 @@ namespace {
 				drawList->AddCircle(at, std::max(unit->GetRadius() / scale, 8.0F), c_SideColors[team], 0, 2.0F);
 			}
 		}
+		// With the command tool in hand, each selected unit shows where it is going.
+		if (CurrentTool().Kind == Tool::Command) {
+			for (const UnitRef& ref: s_Selected) {
+				const Actor* unit = GetRef(ref);
+				if (!unit || unit->GetAIMode() != Actor::AIMODE_GOTO) {
+					continue;
+				}
+				const MovableObject* target = unit->GetMOMoveTarget();
+				bool chasing = target && g_MovableMan.ValidMO(target);
+				Vector goal = chasing ? target->GetPos() : unit->GetLastAIWaypoint();
+				if (g_SceneMan.ShortestDistance(unit->GetPos(), goal, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(12.0F)) {
+					continue;
+				}
+				ImU32 color = chasing ? IM_COL32(239, 106, 91, 140) : IM_COL32(110, 180, 250, 140);
+				drawList->AddLine(ToScreen(unit->GetPos()), ToScreen(goal), color, 1.0F);
+				drawList->AddCircleFilled(ToScreen(goal), 3.0F, color);
+			}
+		}
+		// The marks of orders just given, fading.
+		float seconds = ImGui::GetIO().DeltaTime;
+		for (OrderMark& mark: s_OrderMarks) {
+			mark.Life -= seconds;
+			float size = 6.0F + (1.0F - mark.Life) * 10.0F;
+			ImU32 color = (mark.Color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(mark.Life, 0.0F, 1.0F) * 220.0F) << IM_COL32_A_SHIFT);
+			drawList->AddCircle(ToScreen(mark.Position), size, color, 0, 2.0F);
+		}
+		s_OrderMarks.erase(std::remove_if(s_OrderMarks.begin(), s_OrderMarks.end(), [](const OrderMark& mark) { return mark.Life <= 0.0F; }), s_OrderMarks.end());
 		if (const Actor* followed = GetRef(s_FollowTarget)) {
 			ImVec2 at = ToScreen(followed->GetPos() - Vector(0.0F, followed->GetRadius() + 8.0F));
 			drawList->AddTriangleFilled(ImVec2(at.x - 6.0F, at.y - 8.0F), ImVec2(at.x + 6.0F, at.y - 8.0F), ImVec2(at.x, at.y), IM_COL32(255, 255, 255, 230));
@@ -3628,15 +3809,52 @@ namespace {
 			}
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
-			ImGui::TextDisabled("%d selected", static_cast<int>(s_Selected.size()));
+			// The mode of the clicks, in its colours.
+			for (int mode = 0; mode < 3; ++mode) {
+				if (mode > 0) {
+					ImGui::SameLine();
+				}
+				static const ImU32 modeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255)};
+				ImGui::PushStyleColor(ImGuiCol_Text, modeColors[mode]);
+				int current = static_cast<int>(s_CommandMode);
+				if (ToolUI::RadioButton(c_CommandModeNames[mode], &current, mode)) {
+					s_CommandMode = static_cast<CommandMode>(current);
+				}
+				ImGui::PopStyleColor();
+			}
+			ImGui::SameLine(0.0F, pixel * 6.0F);
+			// What is selected, by kind.
+			std::map<std::string, int> kinds;
+			int alive = 0;
+			for (const UnitRef& ref: s_Selected) {
+				if (const Actor* unit = GetRef(ref)) {
+					++kinds[unit->GetPresetName()];
+					++alive;
+				}
+			}
+			std::string what = alive == 0 ? "Nothing selected" : std::to_string(alive) + " selected:";
+			for (const auto& [name, number]: kinds) {
+				what += " " + std::to_string(number) + " " + name + ",";
+			}
+			if (!kinds.empty()) {
+				what.pop_back();
+			}
+			ImGui::TextDisabled("%s", what.c_str());
 			ImGui::SameLine();
-			ImGui::BeginDisabled(s_Selected.empty());
+			ImGui::BeginDisabled(alive == 0);
 			if (ToolUI::SmallButton("Deselect")) {
 				s_Selected.clear();
 			}
-			ImGui::EndDisabled();
 			ImGui::SameLine();
-			ImGui::TextDisabled("Drag a box to select. Click the ground to send them, an enemy to attack it. Hold the right button for move, attack, hold.");
+			if (ToolUI::SmallButton("Follow")) {
+				s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
+				s_FollowAction = false;
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine(0.0F, pixel * 6.0F);
+			ImGui::SetNextItemWidth(field * 0.8F);
+			ImGui::SliderFloat("##spacing", &s_Spacing, 8.0F, 60.0F, "Spacing %.0f px");
+			ImGui::SetItemTooltip("How far apart units stand when sent somewhere together.\nDrag a box to select; Shift+click adds; double click takes all of a kind in sight; Ctrl+A everyone on the side.\nCtrl+number keeps the selection, the number brings it back. Hold the right button over the world for the ring.");
 		}
 		return shown;
 	}
@@ -4304,6 +4522,29 @@ void Sandbox::DrawGUI() {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
+				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+			}
+			// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back.
+			if (!io.WantCaptureKeyboard) {
+				for (int number = 0; number < 10; ++number) {
+					if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
+						if (io.KeyCtrl) {
+							s_Groups[number] = s_Selected;
+						} else if (!s_Groups[number].empty()) {
+							s_Selected = s_Groups[number];
+						}
+					}
+				}
+				if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+					// Everyone on the selection's side.
+					int team = SelectionTeam();
+					s_Selected.clear();
+					for (Actor* actor: SandboxAccess::Actors()) {
+						if (IsCombatant(actor) && actor->GetTeam() == team && !actor->IsInGroup("Brains")) {
+							s_Selected.push_back(MakeRef(actor));
+						}
+					}
+				}
 			}
 		} else if (tool.Interval <= 0.0F) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -4340,6 +4581,7 @@ void Sandbox::DrawGUI() {
 				stroke.Kind = Tool::Command;
 				stroke.Position = end;
 				g_SceneMan.WrapPosition(stroke.Position);
+				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
 			}
 			s_Queue.push_back(stroke);
 		}
