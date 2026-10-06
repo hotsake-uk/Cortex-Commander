@@ -981,14 +981,16 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												if nextLatMove == Actor.LAT_RIGHT and Obstacles[Obst.R_FRONT] and not Obstacles[Obst.R_UP] then
 													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop right"); end
 													AI.jump = true;
+													-- Something high in front as well: straight up, not backwards. Backing off with the jet lit (the nozzle leans the way
+													-- we move) sent units flying back down the slope they had just climbed.
 													if Obstacles[Obst.R_HIGH] then
-														nextLatMove = Actor.LAT_LEFT; -- TODO: only when too close to the obstacle?
+														nextLatMove = Actor.LAT_STILL;
 													end
 												elseif nextLatMove == Actor.LAT_LEFT and Obstacles[Obst.L_FRONT] and not Obstacles[Obst.L_UP] then
 													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop left"); end
 													AI.jump = true;
 													if Obstacles[Obst.L_HIGH] then
-														nextLatMove = Actor.LAT_RIGHT; -- TODO: only when too close to the obstacle?
+														nextLatMove = Actor.LAT_STILL;
 													end
 												end
 											end

@@ -1030,7 +1030,12 @@ void Actor::UpdateMovePath() {
 
 	// A place to go to is taken to be on the ground under it: a point in the air can only be reached by a jump from the node straight below, so a waypoint
 	// a little above the ground, or past the edge of what it was over, had no path at all and the unit flew for it blind.
-	auto onGround = [this](const Vector& place) { return g_SceneMan.MovePointToGround(place, m_CharHeight * 0.2F, 10); };
+	// (Sampled every 3 px: at 10 a thin floor could be stepped over by the search, which then put the target on the next floor down. And
+	// from inside the scene: a point over the top edge was being bounded to somewhere the search didn't see the top floor from.)
+	auto onGround = [this](const Vector& place) {
+		Vector inScene(place.m_X, std::max(1.0F, place.m_Y));
+		return g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
+	};
 	// The start is on the ground too, but not when that is far below: a unit part way up a jetpack climb, or just dropped from a ship, would be given
 	// a route that begins at the bottom and heads down for it. The ground has to be near for the start to be moved to it.
 	Vector start = onGround(m_Pos);

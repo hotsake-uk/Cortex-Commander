@@ -73,7 +73,8 @@ Still open, in rough order of value:
     collapse, so arrival checks and the passed-waypoint popping have less to do.
 15. **The jet model in the script is a guess.** `jetImpulseFactor`, `jetBurstFactor` and the 0.4 s horizon are tuned constants. The body
     knows its thrust, mass and fuel; expose a "height reachable with the fuel left" and "time to arrest this fall" and use those.
-16. **Crabs.** `NativeCrabAI.lua` has its own, older `GoToWpt`; none of the above reaches it.
+16. **Crabs.** `NativeCrabAI.lua` shares `GoToWpt`, so the movement work reaches them, but nothing has been measured on a crab: no head
+    for the wall probe, legs on both sides, jets on some. They need a gym course of their own.
 17. **Combat movement.** AttackTarget just walks at the target; no use of cover, no flanking, no retreat to refuel or heal; the "Guard"
     command mode in the sandbox is a hold with a wider look. The command tool's attack focus (`c_AttackTag`) is sandbox-side only.
 18. **Squads** move as individuals that block each other (`teamBlockState` is a 20 s timeout). Formation offsets along the leader's path
@@ -125,7 +126,7 @@ Each step is measured on the gym before and after, and committed on its own.
 3. **Double-buffered cost updates and path simplification** (#13, #14): correctness and less waypoint churn.
 4. **Jet numbers from the body** (#15): `AEJetpack` exposes reachable height and arrest time; the climb and the governor use them, the
    tuned constants go.
-5. **Crabs** (#16): move `NativeCrabAI` onto the shared `GoToWpt`.
+5. **Crabs** (#16): a crab on the gym courses, and whatever that shows.
 6. **Combat movement** (#17), **squads** (#18): new behaviours, each with a gym course (a wall to take cover behind, a target to flank,
    a squad to move as one).
 7. More gym courses as problems are found in play: a cliff taller than one tank of fuel, a door, water, a narrow shaft to climb.

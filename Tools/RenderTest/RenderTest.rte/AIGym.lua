@@ -2,7 +2,7 @@ function AIGymScript:StartScript()
 	self.timer = Timer();
 	self.runners = {};
 	self.report = {};
-	self.traceCourse = 5; -- Which course's unit writes a trace line every second.
+	self.traceCourse = 11; -- Which course's unit writes a trace line every second.
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
 end
 
@@ -76,9 +76,12 @@ function AIGymScript:UpdateScript()
 			-- The scene's own slopes: the far side of the hill drops 500 px over 450.
 			{ from = self:GroundAt(middle + 40), to = self:GroundAt(middle + 480), name = "down the slope" },
 			{ from = self:GroundAt(middle + 520), to = self:GroundAt(middle + 80), name = "up the slope" },
+			-- A crab (legs both sides, no head, no jetpack) on the easy courses.
+			{ from = Vector(left - 60, 32), to = Vector(left + 680, 32), name = "crab flat run", crab = true },
+			{ from = self:GroundAt(middle - 260), to = self:GroundAt(middle + 260), name = "crab over the hill", crab = true },
 		};
 		for i, course in ipairs(courses) do
-			local actor = CreateAHuman("Soldier Light", "Coalition.rte");
+			local actor = course.crab and CreateACrab("Dreadnought", "Dummy.rte") or CreateAHuman("Soldier Light", "Coalition.rte");
 			actor.Pos = course.from + Vector(0, -20);
 			actor.Team = 0;
 			actor.AIMode = Actor.AIMODE_SENTRY;
@@ -151,9 +154,11 @@ function AIGymScript:UpdateScript()
 					actor.AIMode = Actor.AIMODE_GOTO;
 				end
 			else
-				-- Measured from the feet, since the goal is a point on the ground.
-				local distance = SceneMan:ShortestDistance(actor.Pos + Vector(0, actor.Height * 0.45), runner.goal, false).Magnitude;
-				if distance < 40 then
+				-- Arrived when alongside the goal, which is a point on the ground, and not far above or below it (crabs and humans carry
+				-- their Pos at different heights over their feet).
+				local offset = SceneMan:ShortestDistance(actor.Pos, runner.goal, false);
+				local distance = offset.Magnitude;
+				if math.abs(offset.X) < 40 and math.abs(offset.Y) < actor.Height * 0.7 then
 					runner.done = true;
 					table.insert(self.report, "AIGYM " .. runner.name .. ": arrived in " .. math.floor((t - runner.start) / 100) / 10 .. " s, stood still " .. runner.still .. " s");
 					ConsoleMan:PrintString(self.report[#self.report]);
