@@ -1605,6 +1605,12 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 				// Draw these backwards so the skip phase works
 				skipPhase = g_FrameMan.DrawLine(pTargetBitmap, (*lLast) - targetPos, (*lItr) - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, skipPhase, true);
 				lLast = lItr;
+				// Each node of the path marked too, when the paths are being shown on purpose: the dotted line alone is a pixel every sixteen, and
+				// hard to see.
+				if (s_ShowAIPaths) {
+					Vector node = (*lItr) - targetPos;
+					circlefill(pTargetBitmap, node.GetFloorIntX(), node.GetFloorIntY(), 1, g_YellowGlowColor);
+				}
 			}
 
 			// Draw the line between the current position and to the start of the movepath, backwards so the dotted lines doesn't crawl

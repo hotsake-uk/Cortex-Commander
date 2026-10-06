@@ -230,9 +230,10 @@ namespace {
 		Patrol,
 		Rally,
 		Idle,
+		DigGold,
 		MoveTo
 	};
-	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Move to a place\0";
+	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Dig for gold\0Move to a place\0";
 	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
 	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
 	constexpr const char* c_AttackXTag = "SandboxAttackX"; //!< Number values on units told to attack towards a place: they fight what is near it, and hold there otherwise.
@@ -388,6 +389,7 @@ namespace {
 	std::vector<OrderMark> s_OrderMarks;
 
 	bool s_RingOpen = false; //!< A ring of choices is up, round where the right button went down.
+	int s_RingPage = 0; //!< Which ring the command tool shows: 0 the basic commands while the button is held, 1 the native AI modes ("More"), 2 the basic ring held up until a click.
 	ImVec2 s_RingCenter;
 	Vector s_RingScenePoint; //!< Where in the world the right button went down, which the choice is about.
 	int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
@@ -675,6 +677,7 @@ namespace {
 		Actor* Target = nullptr; //!< An enemy to go for instead of a place.
 		long TargetID = 0;
 		bool Attack = false; //!< Keep attacking (a new target when this one dies).
+		std::vector<Vector> Then; //!< Further places to go on to, in order (shift-clicks).
 	};
 	std::vector<PendingOrder> s_PendingOrders;
 
@@ -750,6 +753,9 @@ namespace {
 			} else {
 				unit->AddAISceneWaypoint(order.Waypoint);
 			}
+			for (const Vector& then: order.Then) {
+				unit->AddAISceneWaypoint(then);
+			}
 			unit->SetAIMode(Actor::AIMODE_GOTO);
 			if (std::getenv("CCCP_SANDBOX_LOG")) {
 				g_ConsoleMan.PrintString("SANDBOX: " + unit->GetPresetName() + " sent to " + std::to_string(static_cast<int>(order.Waypoint.m_X)) + "," + std::to_string(static_cast<int>(order.Waypoint.m_Y)) + (order.Target ? " after " + order.Target->GetPresetName() : "") + " mode now " + std::to_string(unit->GetAIMode()));
@@ -791,6 +797,10 @@ namespace {
 				break;
 			case Order::Idle:
 				actor->SetAIMode(Actor::AIMODE_NONE);
+				break;
+			case Order::DigGold:
+				actor->ClearAIWaypoints();
+				actor->SetAIMode(Actor::AIMODE_GOLDDIG);
 				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
@@ -1485,6 +1495,10 @@ namespace {
 			case Order::Idle:
 				actor->SetAIMode(Actor::AIMODE_NONE);
 				break;
+			case Order::DigGold:
+				actor->ClearAIWaypoints();
+				actor->SetAIMode(Actor::AIMODE_GOLDDIG);
+				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
@@ -1956,6 +1970,8 @@ namespace {
 
 	/// A click on the world with the command tool, as the mode says. Count: 0 a plain click, 1 with Shift held (add to the selection), 2 a double click
 	/// (select every unit of that kind in sight).
+	void QueueWaypoint(std::vector<Actor*> units, const Vector& point);
+
 	void CommandSelected(const Vector& position, int modifier) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
 		if (std::getenv("CCCP_SANDBOX_LOG")) {
@@ -2015,9 +2031,29 @@ namespace {
 				}
 			}
 			MarkOrder(target->GetPos(), IM_COL32(239, 106, 91, 255));
+		} else if (modifier == 1) {
+			// Shift: on to here after where they're going.
+			QueueWaypoint(UnitsToMove(0, true), position);
+			MarkOrder(position, IM_COL32(110, 180, 250, 255));
 		} else {
 			MoveUnitsTo(UnitsToMove(0, true), position);
 			MarkOrder(position, IM_COL32(110, 180, 250, 255));
+		}
+	}
+
+	/// A further place for the selected units to go on to after where they're going (a shift-click): the route is then the player's own, leg by leg.
+	/// A unit going nowhere is simply sent there.
+	void QueueWaypoint(std::vector<Actor*> units, const Vector& point) {
+		for (Actor* unit: units) {
+			Vector waypoint = point + Vector(0.0F, -unit->GetHeight() * 0.5F);
+			auto pending = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; });
+			if (pending != s_PendingOrders.end()) {
+				pending->Then.push_back(waypoint);
+			} else if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
+				unit->AddAISceneWaypoint(waypoint);
+			} else {
+				SendUnit(unit, waypoint, nullptr, false);
+			}
 		}
 	}
 
@@ -3451,7 +3487,8 @@ namespace {
 	/// A ring of choices round where the right button went down, held open while it is held: the choice under the pointer is lit, and letting go takes it.
 	/// @param items The choices, from the top going clockwise. @param current The one in force now, lit when the pointer is in the middle.
 	/// @return The choice let go over, -1 for none (let go in the middle), or -2 while the ring is still held open.
-	int DrawRing(const std::vector<RingItem>& items, int current) {
+	/// @param sticky The ring stays up after the right button is let go, and a left click takes the choice under the pointer (a right click, none).
+	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false) {
 		ImGuiIO& io = ImGui::GetIO();
 		float pixel = ToolUI::Pixel();
 		float inner = pixel * 14.0F;
@@ -3499,6 +3536,17 @@ namespace {
 			drawList->AddCircleFilled(s_RingCenter, inner - pixel * 5.0F, items[shown].Color);
 		}
 		static const bool testHeld = std::getenv("CCCP_TEST_RING") != nullptr;
+		if (sticky) {
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_RingOpen = false;
+				return under;
+			}
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+				s_RingOpen = false;
+				return -1;
+			}
+			return -2;
+		}
 		if (ImGui::IsMouseDown(ImGuiMouseButton_Right) || testHeld) {
 			return -2;
 		}
@@ -3514,14 +3562,36 @@ namespace {
 		if (!s_RingOpen) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing) {
 				s_RingOpen = true;
+				s_RingPage = 0;
 				s_RingCenter = io.MousePos;
 				s_RingScenePoint = MouseScenePosition();
 			}
 			return;
 		}
+		if (kind == Tool::Command && s_RingPage == 1) {
+			// The game's own AI modes for the units picked, as the pie menu offers them when playing a unit. Up until a click, since the button
+			// that held the first ring open has been let go.
+			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255)}, {"Patrol", IM_COL32(120, 200, 220, 255)}, {"Hunt brains", IM_COL32(239, 106, 91, 255)}, {"Dig for gold", IM_COL32(230, 200, 80, 255)}, {"Rally point", IM_COL32(180, 140, 240, 255)}, {"Do nothing", IM_COL32(150, 150, 140, 255)}, {"Back", IM_COL32(110, 180, 250, 255)}};
+			static const Order orders[] = {Order::Hold, Order::Patrol, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
+			int picked = DrawRing(modes, -1, true);
+			if (picked == -2) {
+				return;
+			}
+			if (picked >= 0 && picked < 6) {
+				Stroke stroke;
+				stroke.Kind = Tool::OrderSelected;
+				stroke.Position = s_RingScenePoint;
+				stroke.Orders = orders[picked];
+				s_Queue.push_back(stroke);
+			} else if (picked == 6) {
+				s_RingOpen = true;
+				s_RingPage = 2;
+			}
+			return;
+		}
 		if (kind == Tool::Command) {
-			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Guard", IM_COL32(120, 220, 120, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}};
-			int picked = DrawRing(commands, static_cast<int>(s_CommandMode));
+			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Guard", IM_COL32(120, 220, 120, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}, {"More...", IM_COL32(200, 200, 200, 255)}};
+			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
 			}
@@ -3536,6 +3606,9 @@ namespace {
 				s_Queue.push_back(stroke);
 			} else if (picked == 4) {
 				s_Selected.clear();
+			} else if (picked == 5) {
+				s_RingOpen = true;
+				s_RingPage = 1;
 			}
 			return;
 		}
@@ -3974,7 +4047,7 @@ namespace {
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			ImGui::SetNextItemWidth(field * 0.8F);
 			ImGui::SliderFloat("##spacing", &s_Spacing, 8.0F, 60.0F, "Spacing %.0f px");
-			ImGui::SetItemTooltip("How far apart units stand when sent somewhere together.\nDrag a box to select; Shift+click adds; double click takes all of a kind in sight; Ctrl+A everyone on the side.\nCtrl+number keeps the selection, the number brings it back. Hold the right button over the world for the ring.");
+			ImGui::SetItemTooltip("How far apart units stand when sent somewhere together.\nDrag a box to select; Shift+click adds a unit, or on the ground queues another place to go on to; double click takes all of a kind in sight; Ctrl+A everyone on the side.\nCtrl+number keeps the selection, the number brings it back. Hold the right button over the world for the ring.");
 		}
 		return shown;
 	}
