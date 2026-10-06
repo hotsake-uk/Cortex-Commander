@@ -307,6 +307,24 @@ void PollSDLEvents() {
 	}
 }
 
+/// Dev: with CCCP_TEST_RESOLUTION set to "WxH", the resolution is changed to that a few seconds in, as the settings menu would, so a
+/// crash in the change can be caught by the test harness with the debug build's stack trace.
+void TestResolutionChange() {
+	static const char* wanted = std::getenv("CCCP_TEST_RESOLUTION");
+	static bool done = false;
+	static Timer timer;
+	if (!wanted || done || !timer.IsPastRealMS(4000)) {
+		return;
+	}
+	done = true;
+	int width = 0;
+	int height = 0;
+	if (std::sscanf(wanted, "%dx%d", &width, &height) == 2 && width > 0 && height > 0) {
+		g_ConsoleMan.PrintString("TEST: changing resolution to " + std::to_string(width) + "x" + std::to_string(height));
+		g_WindowMan.ChangeResolution(width, height, 1.0F, false);
+	}
+}
+
 /// <summary>
 /// Game menus loop.
 /// </summary>
@@ -320,6 +338,7 @@ void RunMenuLoop() {
 		PollSDLEvents();
 
 		g_WindowMan.Update();
+		TestResolutionChange();
 
 		g_UInputMan.Update();
 		g_TimerMan.Update();
@@ -402,6 +421,7 @@ void RunGameLoop() {
 
 		PollSDLEvents();
 		g_WindowMan.Update();
+		TestResolutionChange();
 		g_WindowMan.ClearBackbuffer();
 
 		g_TimerMan.Update();

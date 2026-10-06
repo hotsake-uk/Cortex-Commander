@@ -58,9 +58,24 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const ContentFile& bi
 	m_BitmapFile = bitmapFile;
 	m_StaticTexture = m_BitmapFile.GetAsTexture();
 	m_MainBitmap = m_StaticTexture->GetBitmap();
+	if constexpr (STATIC_TEXTURE) {
+		// The texture from the file cache is shared with everything else that loads this picture, so it is used as it is. (It was handed to
+		// Create(BITMAP*), which wrapped its bitmap in a second texture that owned it too: the bitmap was freed with the first layer to go,
+		// and the next layer made from the cache, the title screen's nebula after a resolution change, read freed memory and crashed.)
+		m_MainBitmapOwned = false;
+		if constexpr (TRACK_DRAWINGS) {
+			m_BackBitmap = create_bitmap_ex(bitmap_color_depth(m_MainBitmap), m_MainBitmap->w, m_MainBitmap->h);
+		}
+		m_LastClearColor = ColorKeys::g_InvalidColor;
+		m_Offset = offset;
+		m_WrapX = wrapX;
+		m_WrapY = wrapY;
+		m_ScrollInfo = scrollInfo;
+		InitScrollRatios();
+		return 0;
+	}
+	// A streamed layer draws on a copy of its own, which Create(BITMAP*) makes.
 	Create(m_MainBitmap, offset, wrapX, wrapY, scrollInfo);
-
-	m_MainBitmapOwned = false;
 
 	return 0;
 }

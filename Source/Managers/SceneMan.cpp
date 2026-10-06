@@ -204,8 +204,9 @@ int SceneMan::SetSceneToLoad(const std::string& sceneName, bool placeObjects, bo
 int SceneMan::LoadScene() {
 	// In case we have no set Scene reference to load from, do something graceful about it
 	if (!m_pSceneToLoad) {
-		// Try to use the Scene the current Activity is associated with
-		if (g_ActivityMan.GetActivity())
+		// Try to use the Scene the current Activity is associated with (when it names one: looking up a Scene called "" was an error in the
+		// console at every start, right before the default scene loaded fine).
+		if (g_ActivityMan.GetActivity() && !g_ActivityMan.GetActivity()->GetSceneName().empty())
 			SetSceneToLoad(g_ActivityMan.GetActivity()->GetSceneName());
 
 		// If that failed, then resort to the default scene name
