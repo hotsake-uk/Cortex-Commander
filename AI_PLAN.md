@@ -253,6 +253,16 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
 7. A fall costs by its height: every step into a node more than a storey above the ground costs a rung's worth (2.5), charged per node
    so a search with no memory can't dodge it by hopping off a rung; hatch drops and slopes cost nothing extra.
 8. A step off an edge is not a crawl: an airborne node's free height is measured from its centre and says nothing about head room.
+9. The climb's ending, from the gym (Results/af7836b) and a review of the diffs: only a top-of-column point waits to be reached from
+   its height, and only in the air; a landing beside the unit isn't popped from 30 px off; the lip probe reaches no higher than a
+   few pixels under where the head will be at the waypoint; a climb that leaves the unit on the ground for 1.5 s has failed and asks
+   for a new route; the drift and the step off aim at the landing, not the top of the column; a wall is told from a slope by the two
+   rays hitting at the same distance; a room is not a shaft; the move keys hold the column to within 0.5 m/s; tall climbs fly at up to
+   8 m/s and the tank check asks for the climb's real fuel plus a reserve; in the air or climbing a unit stands up (a prone body may
+   not jet); the landing brake leans towards the landing.
+10. The crab: its climb ends at the height (it lands on legs either side); its jet leans on purpose through the move stick, towards
+    its waypoint or against its speed, in screen terms whatever it faces; the planner predicts its thrust vertical.
+11. Harness: `Scene:CalculatePathForActor` and `GetScenePathStepKinds`, so the gyms print the route the unit really has.
 
 ### Tools/PathSim
 
@@ -260,6 +270,11 @@ An offline Python model of the path grid, `PathFinder.cpp` mirrored function by 
 modules' material bitmaps. It gives the game's routes node for node (checked against the `AITRACE nodes:` lines) and is how the new
 layout was designed and how the grid changes above were checked before a push: `python3 -I Tools/PathSim/pathsim.py sky --layout new`.
 Keep `grid_rules.py` in step with the C++. It models the grid only; whether a unit can follow a route is the gym's business.
+
+### Where the numbers stand (Results/3e9b13f, three runs each)
+
+Outdoor 15/16 (the crab over the hill still fails), combat all resolve, the new sky bunker 17/21 with one perfect run, Bywater 3/15
+(two of its five courses were re-sited by the tester: one start sat on a rotating floor hatch that gibbed the unit, one in a pillar).
 
 ### Open, as of this writing
 

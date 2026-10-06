@@ -868,10 +868,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				-- half its body still over the hole, and a prone unit may not jet, so it slid back down the hatch, and did so for the whole minute.
 				local climbingNow = AI.jetClimb or AI.flying or (ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit());
 				if climbingNow then
-					-- (Whatever it was doing stays as it is; standing up mid-air is nothing, and lying down is the harm.)
-					if AI.proneState ~= AHuman.PRONE then
-						AI.proneState = AHuman.NOTPRONE;
-					end
+					-- And up off the ground if it is lying down: a prone body may not jet, so a unit that stepped off a corridor's edge prone fell
+					-- the whole outside wall of a bunker with no brake and no steering, past the landing it was meant for, while the planner asked
+					-- for the jet every tick; and one lying under a small climb waited four seconds for the stuck handler to stand it up.
+					AI.proneState = AHuman.NOTPRONE;
 				elseif angleDegrees <= crawlThresholdDegrees and Owner.Head and Owner.Head:IsAttached() then
 					-- Where the top of the head is when standing: the standing height up from the floor under the unit, so the pose doesn't move it.
 					-- (Not where the head is now: prone, it's lower, the way looked clear, the unit stood up into the ceiling, and so on every tick.
@@ -1597,7 +1597,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- over the head's height there is the corridor's own, not a lip. (Probed a fifth of a body up from wherever we were, the
 													-- 48 px corridor's ceiling was a lip to every unit coming up a hatch into it, the push out from under it went away from
 													-- the landing, and the unit came down on the far lip or back in the hole.)
-													local headAtWaypoint = Waypoint.Pos.Y - headAbovePos - 4;
+													-- (A few pixels under the head's top there, not over it: over it was the ceiling the pather had just fitted the head
+													-- under, and the sky bunker's hatch still read it as a lip.)
+													local headAtWaypoint = Waypoint.Pos.Y - headAbovePos + 4;
 													local overTo = math.max(headAtWaypoint - (Owner.Pos.Y - underHeadTop), -Owner.Height * 0.6);
 													local Over = Vector(0, math.min(-2, overTo));
 													local overOpen = overTo < -4;
@@ -1672,7 +1674,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														nextLatMove = CurrDist.X < -3 and Actor.LAT_LEFT or (CurrDist.X > 3 and Actor.LAT_RIGHT or Actor.LAT_STILL);
 														-- And the nozzle leans a little towards the waypoint when it is off to one side and the way there is clear at chest
 														-- height, in screen terms, whichever way the crab faces: with lift alone the crab came down where it took off.
-														if math.abs(CurrDist.X) > Owner.Height * 0.15 and chestClear then
+														-- (Whether or not the chest ray is clear that way: on the slope it is climbing it never is, and gated on it the crab
+														-- rose straight up and came down where it took off.)
+														if math.abs(CurrDist.X) > Owner.Height * 0.15 then
 															AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
 														end
 													end
@@ -1891,6 +1895,13 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: landing brake at " .. math.floor(Owner.Vel.Y * 10) / 10); end
 				AI.jump = true;
 				nextAimAngle = math.pi * 0.5;
+				-- Leant a little towards the landing when that is off to one side: the brake is the last of the jet before the ground, and a
+				-- unit that came down a long drop with the walk speed it stepped off with landed sixty pixels past its point, outside the bunker.
+				if Waypoint and CurrDist and math.abs(CurrDist.X) > Owner.Height * 0.15 then
+					nextLatMove = CurrDist.X > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+					nextAimAngle = 0;
+					AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
+				end
 			end
 		end
 

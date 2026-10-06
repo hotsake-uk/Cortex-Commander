@@ -7,7 +7,16 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), a tight hand on the column** (GoToWpt: while climbing a column the move keys correct the sideways speed beyond 0.5 m/s,
+- **(this push), standing up in the air, and the hatch's false lip** (GoToWpt): a unit in the air or climbing stands up (a prone body may
+  not jet, so it fell Bywater's outside wall prone, unsteered, and waited prone under a small climb); the lip probe stops a few pixels
+  under where the head will be at the waypoint (it reached 4 px over it, into the corridor ceiling: the sky hatch's "under a ceiling at
+  310"); the landing brake leans towards the landing when it is off to one side; a crab's lean towards its waypoint no longer waits for
+  a clear chest ray (on the slope it is climbing it never is). Expect: Bywater "top room to the bottom corridor" back to 3/3 and no
+  `prone true` in the air in its trace; sky "up the hatch" 3/3 with no "under a ceiling at 310"; the crab making ground up the near
+  slope. Please trace the crab (`CCCP_GYM_TRACE=15`) this round, and say whether it is ever thrown BACKWARDS (down-slope) while the
+  jet is lit: if so, the stick's lean is facing-relative and I'll mirror it.
+
+- **3e9b13f4, a tight hand on the column** (GoToWpt: while climbing a column the move keys correct the sideways speed beyond 0.5 m/s,
   not 1.5: the walk speed carried in at the foot took the unit 40 px off a hatch's column during the climb). Also harness: the gyms'
   `path for` lines now come from `Scene:CalculatePathForActor` (the unit's own sizes) and carry each step's kind in brackets, so they
   match the AITRACE `nodes:` lines and the offline model. Expect: in traces, the x of a unit climbing a hatch stays within ~10 px of
@@ -71,9 +80,20 @@ The commit message of each push says the same at more length; this is the checkl
   courses at a walking pace; the Bywater unit stays on the corridor after its first hatch. Crawl steps in the grid begin under 44 px
   instead of 42, so nothing walked in the base modules (48 px) becomes a crawl.
 
+## Cadence
+
+Understood: one push per 30-40 minute run, batched; the newest commit is what gets tested. If a push needs measuring on its own I'll say
+so here.
+
 ## Open requests
 
-1. **The Bywater middle-room deaths** (af7836b fault 4): yes please, a capture of "middle to the mid left room" around 1812,432 in its
-   first five seconds, to see whether a door closes on the unit. If it is a door, the movement script needs door manners (wait for
-   it to open; don't jet through a doorway), which I'll write once confirmed; tell me the door's preset and which way it moves.
-2. The `AIGYM unit` line for any other unit you run (height, radius, aim range), so the body fractions can be checked against it.
+1. The crab trace (above).
+2. **Can the legs walk the steep stairs?** The grid routes Steep Stairs D as jet hops because its diagonal edges are 1:1 and the stair is
+   2:1 (6 px risers, 3 px treads, 63 degrees). If a Soldier Light can walk up them unaided, the grid should offer a walking edge up
+   stairs and the courses would drop from 20-46 s to a few seconds. Please try: a soldier placed at the stairs' foot (2060,340) with
+   its jetpack disabled (e.g. `actor.Jetpack.JetTimeTotal = 0` or remove it) and a waypoint at the top landing (2160,244), and say how
+   far up it gets and in how long; and the same for the Dreadnought.
+3. The Bywater "middle" moved off the Doors B hatch: agreed. The hatch itself is a hazard the AI should learn (wait for a door to open,
+   never hover in a leaf's sweep); a sky-bunker course with a Doors B hatch in a floor would let me measure that later. If you can tell
+   me the preset names that make up "Doors B" in Bywater (the scene file), I'll build one into AIBunker.lua.
+4. The `AIGYM unit` line for any other unit you run.
