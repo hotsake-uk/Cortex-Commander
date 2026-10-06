@@ -64,3 +64,28 @@ No trace yet. I'll trace course 5 next round as well.
 
 `CCCP_BUNKER_UNIT=crab` sends the Dreadnought instead of the soldier. `CCCP_BUNKER_NOJET=1` empties every jetpack. `CCCP_BUNKER_WALK=1`
 replaces the AI with the walk key held towards the goal.
+
+## Addendum: traces of Bywater courses 1 and 5 (same build)
+
+### Course 1, `AIBywater_trace1.log`: now close, it reaches the top room's height at 55 s
+
+The first hatch (2-5 s) and the second climb (5-8 s) work. Time is lost in three places:
+1. **9-12 s**: stands still at 1756,924 (fuel full) until `jet: stuck`. Its next point is 1716,915, then a crawl step to 1692,928.
+2. **22-44 s, a 317 px climb started on too little fuel**: `step kind 2 to 1500,348 from 1461,667`. Fuel was 782 at 21 s and 117 at
+   22 s. At up to 8 m/s (ba4f53b) the tank went in about a second, the unit ran dry at 1539,470, flailed for 6 s, fell all the way
+   down and out to 1248,1008 at the bottom left, and took until 44 s to get back to the foot. The tank check let it start: at 8 m/s
+   the climb needs more than the check reckons, or the burn rate at that speed is higher than modelled.
+3. **54-60 s, overshoot at the top of the same climb** (second attempt, full tank): it reaches 1500,348, then carries on up at 5-7
+   m/s to 1547,196, 1689,78 and 1768,33, passing its next points (1596,353 / 1644,329) as "passed" from 150 px above them, then
+   falls back to 1511,562. Nothing brakes the climb near its top at the higher speed.
+
+### Course 5, `AIBywater_trace5.log`
+
+1. **3-33 s, trapped in the small pit** at 2220-2244, 1070-1140. Each try at the 54 px climb out (`wpt dx 0 dy -54`) burns most of a
+   tank with almost no rise (fuel 1500 to 25 in 2 s at 5 s, then 247, 300, 100). That looks like jetting into the lip, then
+   `climb: down again, asking for a new route`, and again. It gets out walking left at 33 s.
+2. **45-60 s, a route whose first point is at the unit's feet**: standing at 1785-1791,1075 with a full tank, it re-paths **every
+   second** (14 `path for` lines), and each route begins `1784,1072 -> 1788,1092(3)`, a Fall point 17-20 px under Pos, at its own feet,
+   then the 293 px climb `1788,799(2)`. The Fall point is never popped, so the climb never starts, until `jet: stuck` at 55 s.
+   Suggest: drop a first point that is within a few pixels of the unit's feet, or pop a Fall point when the unit is standing on the
+   floor at its column.
