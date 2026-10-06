@@ -1034,6 +1034,11 @@ void Actor::UpdateMovePath() {
 	if (m_ImpossiblePaths > 0 && !m_PathRetryTimer.IsPastSimMS(3000)) {
 		return;
 	}
+	// At a door that's in the way, the route is asked for again now and then, not every frame: when the door opens or is shot out, the
+	// grid takes the change and the next answer goes through.
+	if (m_WaitingAtDoor && !m_PathRetryTimer.IsPastSimMS(1500)) {
+		return;
+	}
 
 	// What this actor is to the path grid: what it can jump, dig and breach, and how big it is.
 	PathAgent agent = GetPathAgent();
@@ -1206,10 +1211,18 @@ void Actor::PreControllerUpdate() {
 		// and the AI stands down rather than pushing at the wall for ever.
 		// (The pathfinder cuts such a route short at the obstacle; while there is still a way to go along it, it's followed, and the counting
 		// starts once the unit is there.)
-		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F && m_MovePath.size() <= 3;
+		// (Not when it's a door that's in the way: a door opens for its own side and is shot open by the other, so the unit goes to it and
+		// waits, keeping its goal. Counted as a dead end, the six answers it got while the door was being shot at stood it down, and it never
+		// went through the doorway once the door was gone.)
+		bool cutAtDoor = m_PathRequest->cutAtDoor;
+		m_WaitingAtDoor = cutAtDoor && m_MovePath.size() <= 3;
+		if (m_WaitingAtDoor) {
+			m_PathRetryTimer.Reset();
+		}
+		bool impossible = !cutAtDoor && m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F && m_MovePath.size() <= 3;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
-		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || (m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
+		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || (!cutAtDoor && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
 		if (impossible) {
 			m_PathRetryTimer.Reset();
 			m_MovePath.clear();

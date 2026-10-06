@@ -47,6 +47,7 @@ namespace RTE {
 		std::list<PathStepKind> kinds; //!< What each step of the path is, one per point of path after the first.
 		float pathLength = 0.0f;
 		float totalCost = 0.0f;
+		bool cutAtDoor = false; //!< Whether the route was cut short at a door the searcher can't get through (yet): a door opens, or is shot open, so this is no dead end.
 		Vector startPos;
 		Vector targetPos;
 	};

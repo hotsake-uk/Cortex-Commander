@@ -33,6 +33,7 @@ thread_local MicroPatherWrapper s_Pather;
 // How high the given agent can jump / jetpack vertically, in metres
 thread_local float s_JumpHeight = 0.0F;
 thread_local double s_LastSolveMS = 0.0; //!< Debug: how long the last solve took.
+thread_local bool s_LastCutAtDoor = false; //!< Whether the last route this thread solved was cut short at a door (see CalculatePath).
 
 // How high the given agent can jump / jetpack vertically, in nodes
 thread_local int s_JumpHeightVertical = 0;
@@ -280,6 +281,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// it can and deals with the obstacle there (shooting a door, the stuck handling), or stands down there, rather than at the start. The cost
 	// stays that of the whole route, so the asker knows it was cut.
 	bool cut = false;
+	s_LastCutAtDoor = false;
 	if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && statePath.size() > 2) {
 		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
 			std::vector<micropather::StateCost> adjacent;
@@ -291,6 +293,12 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				}
 			}
 			if (expensive) {
+				// (A cut at a door is told apart: the door opens for its own side, or is shot open, and then the way through is there; a unit
+				// that took it for a dead end gave up on its goal, and stood at the shot-out doorway for good.)
+				const PathNode* fromNode = static_cast<const PathNode*>(statePath[i]);
+				const PathNode* toNode = static_cast<const PathNode*>(statePath[i + 1]);
+				const Material* blocking = StrongestMaterialAlongLine(fromNode->Pos, toNode->Pos);
+				s_LastCutAtDoor = blocking && blocking->GetIndex() == MaterialColorKeys::g_MaterialDoor;
 				statePath.resize(std::max<size_t>(2, i + 1));
 				cut = true;
 				break;
@@ -440,6 +448,7 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 		    int status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
 
 		    request.status = status;
+		    request.cutAtDoor = s_LastCutAtDoor;
 		    request.pathLength = request.path.size();
 
 		    if (callback) {

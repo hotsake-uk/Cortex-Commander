@@ -1139,6 +1139,7 @@ namespace RTE {
 		bool m_PathImpossible; //!< Whether the last route asked for came back with no way there (or only through ground that can't be dug), for the path display.
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
+		bool m_WaitingAtDoor = false; //!< At the end of a route cut short at a door: the route is asked for again every couple of seconds, until the door is open or gone.
 		// The minimum range to consider having reached a move target is considered
 		float m_MoveProximityLimit;
 		// Current movement state.
