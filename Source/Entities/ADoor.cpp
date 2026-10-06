@@ -350,6 +350,17 @@ void ADoor::CorrectAttachableAndWoundPositionsAndRotations() const {
 	MOSRotating::CorrectAttachableAndWoundPositionsAndRotations();
 }
 
+void ADoor::SetTeam(int team) {
+	bool changed = team != m_Team;
+	Actor::SetTeam(team);
+	// The grids sample the door's material where it was drawn, each team's with its own doors taken out, so a door that changes hands
+	// has to be sampled again by all of them. (A gym that handed a map's doors to the unit's team found the unit's grid still had them
+	// as walls, and it stood under a hatch of its own it was told it couldn't pass.)
+	if (changed && m_Door && m_DoorMaterialDrawn && g_SceneMan.GetTerrain()) {
+		g_SceneMan.GetTerrain()->AddUpdatedMaterialArea(m_Door->GetBoundingBox());
+	}
+}
+
 void ADoor::OpenDoor() {
 	if (m_DoorState == STOPPED) {
 		SharedDoorControls();

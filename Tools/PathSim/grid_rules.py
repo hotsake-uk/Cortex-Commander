@@ -31,7 +31,8 @@ class PathStepKind:
     Fall = 3
     Dig = 4
     Door = 5
-    NAMES = ["Walk", "Crawl", "Jump", "Fall", "Dig", "Door"]
+    Stairs = 6
+    NAMES = ["Walk", "Crawl", "Jump", "Fall", "Dig", "Door", "Stairs"]
 
 
 class PathNode:
@@ -40,7 +41,7 @@ class PathNode:
     c_MaxAdjacentNodeCount = 8
     c_ClearanceReach = 96
 
-    __slots__ = ("Pos", "m_Navigable", "Surface", "FreeHeight", "ClearLeft", "ClearRight", "AdjacentNodes", "AdjacentNodeBlockingMaterials", "id", "gx", "gy")
+    __slots__ = ("Pos", "m_Navigable", "Surface", "FreeHeight", "ClearLeft", "ClearRight", "StairsUpRight", "StairsUpLeft", "AdjacentNodes", "AdjacentNodeBlockingMaterials", "id", "gx", "gy")
 
     def __init__(self, pos, out_of_bounds_material):
         self.Pos = pos
@@ -49,6 +50,8 @@ class PathNode:
         self.FreeHeight = 0
         self.ClearLeft = 0
         self.ClearRight = 0
+        self.StairsUpRight = False  # Stairs (or a slope of about sixty degrees) from this node's floor up to the node two up and one right.
+        self.StairsUpLeft = False
         self.AdjacentNodes = [None] * 8
         self.AdjacentNodeBlockingMaterials = [out_of_bounds_material] * 8  # Costs are infinite unless recalculated as otherwise.
         self.id = -1
@@ -91,6 +94,7 @@ class SearchParams:
         self.StandHeight = 40.0
         self.CrawlHeight = 22.0
         self.HalfWidth = 6.0
+        self.WalksStairs = False
 
 
 class PathResult:
@@ -197,6 +201,7 @@ class PathFinder:
         s.StandHeight = agent.StandHeight
         s.CrawlHeight = agent.CrawlHeight
         s.HalfWidth = agent.HalfWidth
+        s.WalksStairs = agent.WalksStairs
 
         # Make sure start and end are within scene bounds.
         start = scene.ForceBounds(start)
@@ -275,6 +280,7 @@ class PathFinder:
             totalCostResult = FLT_MAX  # Otherwise micropather inits it to zero :)
 
         # A route that needs what the searcher hasn't got (digging, a door shot open) is cut short at the first such edge.
+        cut = False
         if result == astar.SOLVED and totalCostResult > 100000.0 and len(statePath) > 2:
             for i in range(len(statePath) - 1):
                 expensive = False
@@ -283,6 +289,7 @@ class PathFinder:
                         expensive = True
                 if expensive:
                     statePath = statePath[:max(2, i + 1)]
+                    cut = True
                     break
 
         out.result = result
@@ -317,7 +324,9 @@ class PathFinder:
                     if apexY < standingY + 1.0 and GetTerrMatter(int(apex[0]), int(apex[1])) == MATERIAL_AIR:
                         steps.append([apex, PathStepKind.Jump])
                 steps.append([to.Pos, kind])
-            steps[-1][0] = end
+            # (Not when the route was cut short: then the last point is the node the unit can get to, not the goal.)
+            if not cut:
+                steps[-1][0] = end
 
             # Fewer points along a straight: walks that keep heading the same way on much the same level are run together, up to a
             # few nodes at a time. Nothing else is touched.
@@ -429,6 +438,22 @@ class PathFinder:
             if right is not None and right.m_Navigable:
                 cost = (1.0 + GetMaterialTransitionCost(mats[RIGHT]) + radiatedCost) * (self.HeadRoomFactor(node, right) if Open(mats[RIGHT]) else 1.0) + self.FallCost(right)
                 push((right, cost))
+
+            # Stairs: a steep walk, two nodes up for one over, for a searcher whose legs take it (see UpdateNodeCosts for what counts);
+            # and down them likewise.
+            if s.WalksStairs and s.JumpHeight < FLT_MAX:
+                upRight = node.Up.UpRight if node.Up is not None else None
+                if node.StairsUpRight and upRight is not None and upRight.m_Navigable:
+                    push((upRight, (2.24 + extraUpCost * 2.0 + radiatedCost) * self.HeadRoomFactor(node, upRight)))
+                upLeft = node.Up.LeftUp if node.Up is not None else None
+                if node.StairsUpLeft and upLeft is not None and upLeft.m_Navigable:
+                    push((upLeft, (2.24 + extraUpCost * 2.0 + radiatedCost) * self.HeadRoomFactor(node, upLeft)))
+                downRight = node.Down.RightDown if node.Down is not None else None
+                if downRight is not None and downRight.m_Navigable and downRight.StairsUpLeft:
+                    push((downRight, (2.24 + radiatedCost) * self.HeadRoomFactor(node, downRight)))
+                downLeft = node.Down.DownLeft if node.Down is not None else None
+                if downLeft is not None and downLeft.m_Navigable and downLeft.StairsUpRight:
+                    push((downLeft, (2.24 + radiatedCost) * self.HeadRoomFactor(node, downLeft)))
 
             # Jumping vertically
             if s.JumpHeight < FLT_MAX:
@@ -642,6 +667,12 @@ class PathFinder:
             if material.integrity <= self.s.DigStrength:
                 return PathStepKind.Dig
             return PathStepKind.Jump if dy < -1.0 else PathStepKind.Walk
+        # Stairs, up or down (see UpdateNodeCosts): two nodes of height for one of width, with the lower node's flag set towards the upper.
+        if abs(abs(dx) - nodeSize) < 1.0 and abs(abs(dy) - 2.0 * nodeSize) < 1.0:
+            lower = frm if dy < 0.0 else to
+            rightwards = dx > 0.0 if dy < 0.0 else dx < 0.0
+            if (lower.StairsUpRight if rightwards else lower.StairsUpLeft):
+                return PathStepKind.Stairs
         if dy < -1.0:
             return PathStepKind.Jump
         if dy > nodeSize + 1.0 or (dy > 1.0 and abs(dx) < 1.0):
@@ -677,6 +708,8 @@ class PathFinder:
         oldFreeHeight = node.FreeHeight
         oldClearLeft = node.ClearLeft
         oldClearRight = node.ClearRight
+        oldStairsUpRight = node.StairsUpRight
+        oldStairsUpLeft = node.StairsUpLeft
 
         def getStrongerMaterial(first, second):
             return first if first.integrity > second.integrity else second
@@ -711,6 +744,23 @@ class PathFinder:
             right += 1
         node.ClearLeft = left
         node.ClearRight = right
+
+        # Stairs: both nodes with a surface, a rise of 30 to 60 px over the 24 of width, and two lines a little over the slope clear.
+        def stairsTo(target):
+            if target is None or node.Surface < 0.0:
+                return False
+            targetSurface = self.SurfaceUnder(target)
+            if targetSurface < 0.0:
+                return False
+            rise = node.Surface - targetSurface
+            if rise < 30.0 or rise > 60.0:
+                return False
+            here = (node.Pos[0], node.Surface)
+            there = (target.Pos[0], targetSurface)
+            return (self.Open(self.StrongestMaterialAlongLine((here[0], here[1] - 10.0), (there[0], there[1] - 10.0)))
+                    and self.Open(self.StrongestMaterialAlongLine((here[0], here[1] - 18.0), (there[0], there[1] - 18.0))))
+        node.StairsUpRight = stairsTo(node.Up.UpRight if node.Up is not None else None)
+        node.StairsUpLeft = stairsTo(node.Up.LeftUp if node.Up is not None else None)
 
         # Look at each existing adjacent node and calculate the cost for each. Only down and right (and the two right diagonals) are
         # calculated here; the other side pulls its up-and-left data from the other node's down-and-right (UpdateNodeList).
@@ -761,6 +811,10 @@ class PathFinder:
             doorChanged = oldMat is not newMat and (oldMat.index == MATERIAL_DOOR or newMat.index == MATERIAL_DOOR)
             if delta > self.c_NodeCostChangeEpsilon or doorChanged:
                 return True
+
+        # Stairs appearing or going count as a change.
+        if node.StairsUpRight != oldStairsUpRight or node.StairsUpLeft != oldStairsUpLeft:
+            return True
 
         # Room that has changed enough to matter to a body counts as a change too.
         if abs(node.FreeHeight - oldFreeHeight) >= 4 or abs(node.ClearLeft - oldClearLeft) >= 3 or abs(node.ClearRight - oldClearRight) >= 3:

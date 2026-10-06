@@ -51,6 +51,7 @@ thread_local float s_BreachStrength = 0.0F;
 thread_local float s_StandHeight = 40.0F;
 thread_local float s_CrawlHeight = 22.0F;
 thread_local float s_HalfWidth = 6.0F;
+thread_local bool s_WalksStairs = false; // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
     Pos(pos) {
@@ -178,6 +179,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_StandHeight = agent.StandHeight;
 	s_CrawlHeight = agent.CrawlHeight;
 	s_HalfWidth = agent.HalfWidth;
+	s_WalksStairs = agent.WalksStairs;
 
 	++m_CurrentPathingRequests;
 
@@ -277,6 +279,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// A route that needs what the searcher hasn't got (digging, a door shot open) is cut short at the first such edge: the unit goes as far as
 	// it can and deals with the obstacle there (shooting a door, the stuck handling), or stands down there, rather than at the start. The cost
 	// stays that of the whole route, so the asker knows it was cut.
+	bool cut = false;
 	if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && statePath.size() > 2) {
 		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
 			std::vector<micropather::StateCost> adjacent;
@@ -289,6 +292,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			}
 			if (expensive) {
 				statePath.resize(std::max<size_t>(2, i + 1));
+				cut = true;
 				break;
 			}
 		}
@@ -356,7 +360,11 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			}
 			steps.push_back({to->Pos, kind});
 		}
-		steps.back().Pos = end;
+		// (Not when the route was cut short at an obstacle: then the last point is the node the unit can get to, and giving it the goal's
+		// coordinates told a unit at the foot of a hatch it couldn't pass to jump 771 px to the room above.)
+		if (!cut) {
+			steps.back().Pos = end;
+		}
 
 		// Fewer points along a straight: a walk is one waypoint per node, and along a beam forty of them were each "arrived at" in turn,
 		// with the checks that go with it. Walks that keep heading the same way on much the same level are run together, up to a few
@@ -555,6 +563,38 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
+		}
+
+		// Stairs: a steep walk, two nodes up for one over, for a searcher whose legs take it (see UpdateNodeCosts for what counts). A
+		// soldier walks the base game's steep stairs unaided in four seconds; routed as two jump rungs and a landing, which was all the
+		// grid could offer for a 2:1 rise, the same stairs took twenty to forty seconds of hopping. Dearer than a diagonal step by the
+		// extra node of height, cheaper than the rungs it replaces; and down them likewise, which is cheaper than the falls it replaces.
+		if (s_WalksStairs && s_JumpHeight < FLT_MAX) {
+			const PathNode* upRight = node->Up ? node->Up->UpRight : nullptr;
+			if (node->StairsUpRight && upRight && upRight->m_Navigable) {
+				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upRight);
+				adjCost.state = const_cast<PathNode*>(upRight);
+				adjacentList->push_back(adjCost);
+			}
+			const PathNode* upLeft = node->Up ? node->Up->LeftUp : nullptr;
+			if (node->StairsUpLeft && upLeft && upLeft->m_Navigable) {
+				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft);
+				adjCost.state = const_cast<PathNode*>(upLeft);
+				adjacentList->push_back(adjCost);
+			}
+			// Down: the node two down and one over whose stairs lead up to this one.
+			const PathNode* downRight = node->Down ? node->Down->RightDown : nullptr;
+			if (downRight && downRight->m_Navigable && downRight->StairsUpLeft) {
+				adjCost.cost = (2.24F + radiatedCost) * HeadRoomFactor(*node, *downRight);
+				adjCost.state = const_cast<PathNode*>(downRight);
+				adjacentList->push_back(adjCost);
+			}
+			const PathNode* downLeft = node->Down ? node->Down->DownLeft : nullptr;
+			if (downLeft && downLeft->m_Navigable && downLeft->StairsUpRight) {
+				adjCost.cost = (2.24F + radiatedCost) * HeadRoomFactor(*node, *downLeft);
+				adjCost.state = const_cast<PathNode*>(downLeft);
+				adjacentList->push_back(adjCost);
+			}
 		}
 
 		// Jumping vertically
@@ -823,6 +863,14 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 		}
 		return dy < -1.0F ? PathStepKind::Jump : PathStepKind::Walk;
 	}
+	// Stairs, up or down (see UpdateNodeCosts): two nodes of height for one of width, with the lower node's stairs flag set towards the upper.
+	if (std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - 2.0F * nodeSize) < 1.0F) {
+		const PathNode* lower = dy < 0.0F ? from : to;
+		bool rightwards = dy < 0.0F ? dx > 0.0F : dx < 0.0F; // From the lower node, which way the stairs go up.
+		if (rightwards ? lower->StairsUpRight : lower->StairsUpLeft) {
+			return PathStepKind::Stairs;
+		}
+	}
 	if (dy < -1.0F) {
 		return PathStepKind::Jump;
 	}
@@ -862,6 +910,8 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	int oldFreeHeight = node->FreeHeight;
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
+	bool oldStairsUpRight = node->StairsUpRight;
+	bool oldStairsUpLeft = node->StairsUpLeft;
 
 	auto getStrongerMaterial = [](const Material* first, const Material* second) {
 		return first->GetIntegrity() > second->GetIntegrity() ? first : second;
@@ -908,6 +958,31 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		}
 		node->ClearLeft = left;
 		node->ClearRight = right;
+	}
+
+	// Stairs: a steep walk, two nodes up for one over, that legs can take. Flagged when both nodes have a surface, the rise is between 30
+	// and 60 px over the 24 of width (about 50 to 70 degrees: the base game's steep stairs are 6 px risers on 3 px treads), and two lines a
+	// little over the slope between the two surfaces are clear, which is a staircase or a slope and not a wall with a ledge on it. Gentler
+	// rises are the diagonal step's; steeper ones a jump's.
+	{
+		auto stairsTo = [&](const PathNode* target) -> bool {
+			if (!target || node->Surface < 0.0F) {
+				return false;
+			}
+			float targetSurface = SurfaceUnder(*target);
+			if (targetSurface < 0.0F) {
+				return false;
+			}
+			float rise = node->Surface - targetSurface;
+			if (rise < 30.0F || rise > 60.0F) {
+				return false;
+			}
+			Vector here(node->Pos.m_X, node->Surface);
+			Vector there(target->Pos.m_X, targetSurface);
+			return Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -10.0F), there + Vector(0.0F, -10.0F))) && Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -18.0F), there + Vector(0.0F, -18.0F)));
+		};
+		node->StairsUpRight = stairsTo(node->Up ? node->Up->UpRight : nullptr);
+		node->StairsUpLeft = stairsTo(node->Up ? node->Up->LeftUp : nullptr);
 	}
 
 	// Look at each existing adjacent node and calculate the cost for each. Start and end are offset to cover more terrain.
@@ -964,6 +1039,11 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		if (delta > c_NodeCostChangeEpsilon || doorChanged) {
 			return true;
 		}
+	}
+
+	// Stairs appearing or going count as a change.
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft) {
+		return true;
 	}
 
 	// Room that has changed enough to matter to a body counts as a change too.

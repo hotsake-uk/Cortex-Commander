@@ -16,6 +16,7 @@ function NativeCrabAI:Create(Owner)
 	Members.fire = false;
 	Members.groundContact = 5;
 	Members.flying = false;
+	Members.jetSteady = false; -- The movement script asks for the jet without a burst (a climb's pulses; a burst is a kick and a burst's worth of fuel).
 
 	Members.AirTimer = Timer();
 	Members.ReloadTimer = Timer();
@@ -355,7 +356,8 @@ function NativeCrabAI:Update(Owner)
 		if self.jumpState == ACrab.PREJUMP then
 			self.jumpState = ACrab.UPJUMP;
 		elseif self.jumpState ~= ACrab.UPJUMP then	-- the jetpack is off
-			self.jumpState = ACrab.PREJUMP;
+			-- A burst only when one can be had and is wanted; otherwise straight to the steady jet, which doesn't charge for a burst that never came.
+			self.jumpState = (Owner.Jetpack:CanTriggerBurst() and not self.jetSteady) and ACrab.PREJUMP or ACrab.UPJUMP;
 		end
 	else
 		self.jumpState = ACrab.NOTJUMPING;

@@ -7,7 +7,40 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), standing up in the air, and the hatch's false lip** (GoToWpt): a unit in the air or climbing stands up (a prone body may
+- **(this push), stairs on the legs, a climb's fuel and speed, doors of our own** (PathFinder, GoToWpt, the native AIs, ADoor;
+  AIBunker.lua's shaft piece is now "Doors B"). Each line is one change with what to look for:
+  - *Stairs are walked.* The grid offers a walking edge up and down stairs (two nodes up for one over, where both nodes have a floor,
+    the rise is 30 to 60 px and two lines over the slope are clear) to a searcher whose legs take them: a human's say yes, a crab's no
+    (nothing known yet). Such steps are kind 6 in the route print and the AITRACE `step kind` lines; the script walks them (no climb, no
+    `jet: wall ahead`, no hop). Expect: sky "up the stairs" and "down the stairs" routes `2076,348(0) 2100,300(6) 2124,252(6)` (checked
+    offline) and the courses down from 20-46 s to a few seconds, like your walk test. Please run the stairs courses with
+    `CCCP_BUNKER_UNIT=crab` once and say whether the Dreadnought's legs get up them: if so I'll say yes for crabs too.
+  - *A cut-short route keeps its real last point* (it was relabelled with the goal's coordinates: the 771 px "jump" to the room above).
+  - *A door's team change re-samples its grid* (`ADoor::SetTeam`): a door the gym sets to the unit's team is erased from that team's grid
+    at once. Expect Bywater routes through its doors as (5) and (0) steps where before they went round or stopped short.
+  - *The climb's tank check reckons the climb's real fuel* from the body's thrust (full burn to the cap, held, then a coast to the top),
+    the cap raised to 12 m/s for humans (8 for crabs); the rate near the top is what gravity alone stops in time, so the jet goes out
+    for the top rather than holding a speed the coast gives for nothing; a climb's relights are steady (no burst: a burst is a kick and
+    130 ms of fuel, right for leaving the ground and wrong for every hover pulse), and the native AI's 150 ms jet hold is off in a
+    climb. Expect Bywater course 1's 317 px climb (1500,348) refused until the tank is full, then flown in one go with fuel left at the
+    top, and no 5-7 m/s carry-on past the top; the sky bunker's 192 px climbs a little quicker and with more fuel left.
+  - *The climb state ends at a new jump point well above* (re-decided: way up, tank), *a column's top is never "passed" from below while
+    the climb is on*, and *a top straight overhead isn't "passed" by a 1 px wobble*. Expect no `pop: passed <top> for <landing> from
+    <far below>` lines; Bywater course 5's pit climb (54 px, `wpt dx 0 dy -54`) no longer popped early.
+  - *The climb's ceiling probe stops 4 px under where the head will be at the point* (it went 4 px over, into the pather's 2 px margin,
+    so the top of every ceiling-limited shaft read as a ceiling and the climb was refused without a word: Bywater course 5 at 1788,
+    15 s standing under an open shaft). Expect that course to climb at 45 s instead of re-pathing every second.
+  - *Doors of ours are no ceiling and no loss of sight*: a ray that stops on door material belonging to a door of our team (or no team)
+    counts as clear for the climb's probe, the line-of-sight re-path and the "passed" check.
+  - *Door manners*: a door of ours on the way that isn't open is waited for 80 px short of its leaf (standing still on the ground, or
+    hovering if in the air); no climb starts through it; waiting there is not being stuck. The sky bunker's k1 shaft piece is now
+    "Doors B" (two leaves, no team), so sky "bottom corridor to the top room" climbs through it. Expect: `door: waiting for Door Rotate
+    Short Horiz` lines under the leaves, the climb resuming once they are open, no gibs; the course a few seconds slower than before
+    (the wait) but 3/3. Please trace it (`CCCP_BUNKER_TRACE=1`) in one repeat.
+  - *Over a floor at the height, a climb is done whatever the sideways distance to its point*: after a hatch's top, the merged run of
+    walk nodes along the corridor (109 px to the next point) no longer keeps the unit hovering for it.
+
+- **d3c6d8dd, standing up in the air, and the hatch's false lip** (GoToWpt): a unit in the air or climbing stands up (a prone body may
   not jet, so it fell Bywater's outside wall prone, unsteered, and waited prone under a small climb); the lip probe stops a few pixels
   under where the head will be at the waypoint (it reached 4 px over it, into the corridor ceiling: the sky hatch's "under a ceiling at
   310"); the landing brake leans towards the landing when it is off to one side; a crab's lean towards its waypoint no longer waits for
@@ -88,12 +121,21 @@ so here.
 ## Open requests
 
 1. The crab trace (above).
-2. **Can the legs walk the steep stairs?** The grid routes Steep Stairs D as jet hops because its diagonal edges are 1:1 and the stair is
+2. ~~**Can the legs walk the steep stairs?**~~ Answered in Results/d3c6d8d: a soldier walks them in 4 s. The grid now offers the walking
+   edge (this push). Still open for the Dreadnought: the stairs courses with `CCCP_BUNKER_UNIT=crab`.
+   ~~**Can the legs walk the steep stairs?** The grid routes Steep Stairs D as jet hops because its diagonal edges are 1:1 and the stair is
    2:1 (6 px risers, 3 px treads, 63 degrees). If a Soldier Light can walk up them unaided, the grid should offer a walking edge up
    stairs and the courses would drop from 20-46 s to a few seconds. Please try: a soldier placed at the stairs' foot (2060,340) with
    its jetpack disabled (e.g. `actor.Jetpack.JetTimeTotal = 0` or remove it) and a waypoint at the top landing (2160,244), and say how
-   far up it gets and in how long; and the same for the Dreadnought.
-3. The Bywater "middle" moved off the Doors B hatch: agreed. The hatch itself is a hazard the AI should learn (wait for a door to open,
+   far up it gets and in how long; and the same for the Dreadnought.~~
+3. ~~The Bywater "middle" moved off the Doors B hatch~~ Done: "Doors B" is a TerrainObject in BunkerSystems/Doors/Doors.ini (a shaft
+   piece with two "Door Rotate Short Horiz" leaves at (+-36, 33)); it is now the sky bunker's k1 shaft piece (this push).
+   The Bywater "middle" moved off the Doors B hatch: agreed. The hatch itself is a hazard the AI should learn (wait for a door to open,
    never hover in a leaf's sweep); a sky-bunker course with a Doors B hatch in a floor would let me measure that later. If you can tell
    me the preset names that make up "Doors B" in Bywater (the scene file), I'll build one into AIBunker.lua.
 4. The `AIGYM unit` line for any other unit you run.
+5. A trace of sky "bottom corridor to the top room" (`CCCP_BUNKER_TRACE=1`) with the Doors B piece in the shaft: the door manners'
+   first measurement (see the push above).
+6. Bywater course 1's stand at 1756,924 (9-12 s in Results/d3c6d8d: still until `jet: stuck`, next point 1716,915 then a crawl to
+   1692,928): if it is still there this round, a `CCCP_BUNKER_DUMP` of the grid around 1716-1756,900-930 would tell me whether the
+   point is a wall's or a step's.

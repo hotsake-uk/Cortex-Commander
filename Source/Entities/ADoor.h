@@ -127,6 +127,11 @@ namespace RTE {
 
 		/// Resets the sensor Timer for this ADoor, effectively making it ignore Actors.
 		void ResetSensorTimer() { m_SensorTimer.Reset(); }
+
+		/// Sets which team this door is on, and has every team's path grid look at it again: a team's own doors are left out of its grid
+		/// (they open for its units) and everyone else's are in it, so a change of team changes the grids, and nothing else told them.
+		/// @param team The team to set.
+		void SetTeam(int team) override;
 #pragma endregion
 
 #pragma region Virtual Override Methods

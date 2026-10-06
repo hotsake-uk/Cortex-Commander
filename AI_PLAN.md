@@ -263,6 +263,21 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
 10. The crab: its climb ends at the height (it lands on legs either side); its jet leans on purpose through the move stick, towards
     its waypoint or against its speed, in screen terms whatever it faces; the planner predicts its thrust vertical.
 11. Harness: `Scene:CalculatePathForActor` and `GetScenePathStepKinds`, so the gyms print the route the unit really has.
+12. Stairs on the legs: `PathNode::StairsUpRight/UpLeft` (both nodes with a floor, a rise of 30 to 60 px over the 24 of width, two lines
+    over the slope clear), a walking edge two up and one over (and down) for a `PathAgent::WalksStairs` searcher (AHuman yes), the
+    step kind `Stairs` (6); the script walks kind 6 (no climb, no wall-ahead jet, no hop). A cut-short route keeps its real last point.
+    `ADoor::SetTeam` re-samples the door's grid area (a team's own doors are erased from its grid, but only re-sampled areas).
+13. The climb's fuel and speed: `SharedBehaviors.ClimbFuel` (full burn to the cap, held, a coast to the top; a burst's worth for the
+    start and a reserve for the top) is what the tank check asks for; the cap is 12 m/s for humans, 8 for crabs
+    (`ClimbSpeedCap`); the rate with a height to go is what gravity alone stops 12 px short of it (`sqrt(2 g toGo)`), capped; a
+    climb's relights are steady (`AI.jetSteady`: the native AIs skip the burst), and the native AI's 150 ms jet hold is off in a
+    climb. The climb state ends at a new jump point well above (re-decided), a column's top is never "passed" from below while the
+    climb is on, and the sign test of "passed" needs more than 6 px of sideways offset. Over a floor at the height the climb is done
+    whatever the sideways distance to its point. The climb's ceiling probe stops 4 px under where the head will be at the point.
+14. Doors of our own: `SharedBehaviors.OurDoorAt` (a ray stopped on door material of a door of our team or no team is clear) for the
+    climb's probe, the line-of-sight re-path and the "passed" check; `SharedBehaviors.DoorAhead` and the hold 80 px short of a door
+    of ours that isn't open (still on the ground, a hover in the air, no climb through it). The sky bunker's k1 shaft piece is
+    "Doors B" to measure it.
 
 ### Tools/PathSim
 
@@ -271,16 +286,22 @@ modules' material bitmaps. It gives the game's routes node for node (checked aga
 layout was designed and how the grid changes above were checked before a push: `python3 -I Tools/PathSim/pathsim.py sky --layout new`.
 Keep `grid_rules.py` in step with the C++. It models the grid only; whether a unit can follow a route is the gym's business.
 
-### Where the numbers stand (Results/3e9b13f, three runs each)
+### Where the numbers stand (Results/d3c6d8d, three runs each)
 
-Outdoor 15/16 (the crab over the hill still fails), combat all resolve, the new sky bunker 17/21 with one perfect run, Bywater 3/15
-(two of its five courses were re-sited by the tester: one start sat on a rotating floor hatch that gibbed the unit, one in a pillar).
+Outdoor 15/16 (the crab over the hill), combat all resolve, the sky bunker 21/21, Bywater 5/15 and no deaths. The tester's walk test
+settled that a soldier walks the steep stairs unaided in 4 s (the grid routed them as jet hops: 20-46 s). The Bywater traces showed
+the climb state carried over a popped column top onto the next shaft's jump point (a 317 px climb flown on the fuel the last one left,
+and on a full tank run dry at the top, where the planner took over in bursts), and a ceiling-limited shaft's climb refused silently
+because the probe reached 4 px into the pather's 2 px margin.
 
 ### Open, as of this writing
 
 - Results for pushes 2 to 8 are pending on the test machine; the expectations are in `Results/REQUESTS.md`.
 - Bywater's "mid left room to the right column" (the course that never passed) and the crab over the hill are the two to watch.
-- The steep stairs are climbed by the grid as jet hops (the diagonal chains are 1:1, the stairs 2:1); whether the legs walk them is
-  for the gym to say.
+- The stairs edge is on for humans only; whether the Dreadnought's legs take Steep Stairs D is for the gym to say
+  (`CCCP_BUNKER_UNIT=crab` on the stairs courses), then `ACrab::GetPathAgent` gets `WalksStairs`.
+- The jump planner after a climb: it still relights in bursts (a kick and 130 ms each) when flying level with a point off to one side;
+  the climb's fuel model should keep the tank from being dry there, but the planner's own pulses could be made steady too.
+- Door manners are measured on the sky bunker's Doors B piece for the first time this push.
 - Not yet looked at: squads (#18), the four-facing jet planner indoors (its rays start 40 px over Pos, inside a 48 px ceiling, so it
   never jets indoors; the climb controller does that work), doors on Bywater.

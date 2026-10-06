@@ -118,7 +118,11 @@ function AIBunkerScript:UpdateScript()
 		self:Place("End D", 2184, 432);
 		-- Middle storey: the shaft passes through at k1 (walled off from the corridor); the corridor runs from a dead end at k2 over the
 		-- hatch's mouth (k3) to the hub (k5) and into the stairs (k6).
-		self:Place("Shaft A", 1608, 336);
+		-- (The shaft's middle piece is "Doors B": a shaft piece with two swinging leaves across it, no one's team, so they open for
+		-- whoever comes. It is here to measure the AI's door manners: a leaf in motion gibs what stands in its sweep, and a unit should
+		-- wait short of a closed door for it to open, on the ground or hovering in the shaft, and never jet up into the leaves. Before
+		-- this it was "Shaft A", a plain shaft.)
+		self:Place("Doors B", 1608, 336);
 		self:Place("End B", 1704, 336);
 		self:Place("T-Junction D", 1800, 336);
 		self:Place("Tunnel A", 1896, 336);

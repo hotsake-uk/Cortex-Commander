@@ -1020,6 +1020,8 @@ PathAgent AHuman::GetPathAgent() const {
 	// wide as the gun held out in its hand, 16 half-widths with a long one, and a 48 px hatch (three half-widths wanted for a jet column)
 	// was shut to it; and the radius moves with the arm, so the answer changed between one path and the next. 14 px for a soldier.
 	agent.HalfWidth = std::clamp(m_CharHeight * 0.14F, 8.0F, 16.0F);
+	// The legs take stairs: a soldier walks the base game's steep stairs (6 px risers on 3 px treads) unaided in four seconds.
+	agent.WalksStairs = true;
 	return agent;
 }
 

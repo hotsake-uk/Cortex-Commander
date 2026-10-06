@@ -46,10 +46,10 @@ KETANOT_TERRAIN = "Data/Base.rte/Scenes/Terrains/KetanotHills.png"  # the SLTerr
 # corner + 72: 264 / 360 / 456. Openings are 48 px wide at offset 24-71 of a module edge.
 #
 #   top    k0 End B   k1 T-Junction D   k2 End D   k3 (sky)   k4 End B   k5 L-Junction D   k6 Steep Stairs D (upper)  k7 End D
-#   mid    k0 (sky)   k1 Shaft A        k2 End B   k3 T-Junction D   k4 Tunnel A   k5 Hub A   k6 Steep Stairs D (lower)  k7 (sky)
+#   mid    k0 (sky)   k1 Doors B        k2 End B   k3 T-Junction D   k4 Tunnel A   k5 Hub A   k6 Steep Stairs D (lower)  k7 (sky)
 #   bottom k0 End B   k1 T-Junction B   k2 Tunnel A   k3 T-Junction B   k4 Tunnel A   k5 T-Junction B   k6 Tunnel A   k7 End D
 #
-# Features: the SHAFT (b) k1: T-Junction B foot, Shaft A, T-Junction D mouth into the top room (End B + T-Junction D + End D; reachable
+# Features: the SHAFT (b) k1: T-Junction B foot, Doors B (a shaft piece with two swinging leaves), T-Junction D mouth into the top room (End B + T-Junction D + End D; reachable
 # only by the shaft). The HATCH (a) k3: T-Junction D (mid, open down) directly over T-Junction B (bottom, open up): a 48 px passage
 # through both slabs. The HUB crossing (c) k5: Hub A on the mid corridor with T-Junction B under it (its floor hole leads to the bottom
 # corridor) and L-Junction D over it (its roof hole leads up into a two-module top gallery, End B + L-Junction D: the L-junction corner
@@ -75,7 +75,7 @@ NEW_BUNKER_LAYOUT = [
     ("Tunnel A", _col(6) + 48, NEW_LOW + 48),  # k6
     ("End D", _col(7) + 48, NEW_LOW + 48),  # k7: right dead end, open left
     # middle storey
-    ("Shaft A", _col(1) + 48, NEW_MID + 48),  # k1: the shaft's middle
+    ("Doors B", _col(1) + 48, NEW_MID + 48),  # k1: the shaft's middle: a Doors B piece (open top and bottom; its two swinging leaves are MOs the model doesn't see)
     ("End B", _col(2) + 48, NEW_MID + 48),  # k2: left dead end of the mid corridor (closed left, against the shaft wall)
     ("T-Junction D", _col(3) + 48, NEW_MID + 48),  # k3: hatch top (open down, left, right; closed roof)
     ("Tunnel A", _col(4) + 48, NEW_MID + 48),  # k4
@@ -111,23 +111,25 @@ LAYOUTS = {
 
 
 def load_module_bitmaps_for(repo_root, layout):
-    """Mat bitmaps for every preset a layout uses, found through BunkerModules.ini."""
+    """Mat bitmaps for every preset a layout uses, found through BunkerModules.ini (and the door pieces' Doors.ini)."""
     import re
-    ini = os.path.join(repo_root, "Data/Base.rte/Scenes/Objects/Bunkers/BunkerModules/BunkerModules.ini")
+    inis = [os.path.join(repo_root, "Data/Base.rte/Scenes/Objects/Bunkers/BunkerModules/BunkerModules.ini"),
+            os.path.join(repo_root, "Data/Base.rte/Scenes/Objects/Bunkers/BunkerSystems/Doors/Doors.ini")]
     mats = {}
-    name = None
-    with open(ini, encoding="utf-8", errors="replace") as handle:
-        for raw in handle:
-            line = raw.split("//", 1)[0].rstrip()
-            s = line.strip()
-            indent = len(line) - len(line.lstrip("\t "))
-            if s.startswith("AddTerrainObject"):
-                name = None
-            m = re.match(r"^(\w+)\s*=\s*(.*)$", s)
-            if m and m.group(1) == "PresetName" and indent == 1:
-                name = m.group(2)
-            if m and m.group(1) == "FilePath" and "Mat" in m.group(2) and name and name not in mats:
-                mats[name] = m.group(2)
+    for ini in inis:
+        name = None
+        with open(ini, encoding="utf-8", errors="replace") as handle:
+            for raw in handle:
+                line = raw.split("//", 1)[0].rstrip()
+                s = line.strip()
+                indent = len(line) - len(line.lstrip("\t "))
+                if s.startswith("AddTerrainObject"):
+                    name = None
+                m = re.match(r"^(\w+)\s*=\s*(.*)$", s)
+                if m and m.group(1) == "PresetName" and indent == 1:
+                    name = m.group(2)
+                if m and m.group(1) == "FilePath" and "Mat" in m.group(2) and name and name not in mats:
+                    mats[name] = m.group(2)
     bitmaps = {}
     for preset, _, _ in layout:
         if preset in bitmaps:

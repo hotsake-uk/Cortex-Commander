@@ -24,7 +24,8 @@ namespace RTE {
 		Jump, //!< Up, by jetpack or legs: the step's height says how far.
 		Fall, //!< Down, off an edge.
 		Dig, //!< Through ground the searcher can dig.
-		Door //!< Through a door the searcher can open or breach.
+		Door, //!< Through a door the searcher can open or breach.
+		Stairs //!< Up or down stairs, or a slope of about sixty degrees, on the legs: two nodes of height for one of width.
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -35,6 +36,7 @@ namespace RTE {
 		float StandHeight = 40.0F; //!< Head room it needs to walk upright, in pixels.
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
+		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 	};
 
 	/// Information required to make an async pathing request.
@@ -64,6 +66,8 @@ namespace RTE {
 		int FreeHeight = 0; //!< Air above the surface (or above the centre, for a node in the air) in the node's column, up to c_ClearanceReach.
 		int ClearLeft = 0; //!< Air to the left of the centre (a little over the surface, for a node on the ground), up to a node's width.
 		int ClearRight = 0; //!< Air to the right, likewise.
+		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
+		bool StairsUpLeft = false; //!< Likewise up to the left.
 		static constexpr int c_ClearanceReach = 96; //!< How far up the free height is measured.
 
 		/// Pointers to all adjacent PathNodes, in clockwise order with top first. These are not owned, and may be 0 if adjacent to non-wrapping scene border.

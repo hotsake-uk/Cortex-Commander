@@ -33,8 +33,9 @@ C_PATHFINDING_DEFAULT_DIG_STRENGTH = 35.0
 
 
 class PathAgent:
-    def __init__(self, JumpHeight=FLT_MAX, DigStrength=35.0, BreachStrength=-1.0, StandHeight=40.0, CrawlHeight=22.0, HalfWidth=6.0):
+    def __init__(self, JumpHeight=FLT_MAX, DigStrength=35.0, BreachStrength=-1.0, StandHeight=40.0, CrawlHeight=22.0, HalfWidth=6.0, WalksStairs=False):
         self.JumpHeight = JumpHeight
+        self.WalksStairs = WalksStairs  # Whether its legs take stairs and slopes of about sixty degrees (AHuman: yes).
         self.DigStrength = DigStrength
         self.BreachStrength = BreachStrength
         self.StandHeight = StandHeight
@@ -137,7 +138,7 @@ def soldier_light_agent(jump_height=None, half_width=SOLDIER_LIGHT_HALF_WIDTH, d
     stand = max(16.0, SOLDIER_LIGHT_CHAR_HEIGHT * 0.44)
     crawl = max(12.0, SOLDIER_LIGHT_CHAR_HEIGHT * 0.24)
     return PathAgent(JumpHeight=jump_height, DigStrength=dig_strength, BreachStrength=dig_strength if breach_strength is None else breach_strength,
-                     StandHeight=stand, CrawlHeight=crawl, HalfWidth=max(8.0, min(16.0, half_width)))
+                     StandHeight=stand, CrawlHeight=crawl, HalfWidth=max(8.0, min(16.0, half_width)), WalksStairs=True)
 
 
 def lua_default_agent(jump_height=None, dig_strength=C_PATHFINDING_DEFAULT_DIG_STRENGTH, mass=SOLDIER_LIGHT_MASS_ESTIMATE):
