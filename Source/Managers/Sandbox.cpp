@@ -2342,10 +2342,9 @@ namespace {
 			// Only the ones on screen have their pictures made.
 			if (ImGui::IsItemVisible()) {
 				bool selected = i == choice;
-				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(70, 96, 140, 255) : hovered ? IM_COL32(52, 60, 78, 255) : IM_COL32(26, 30, 40, 255), 3.0F);
-				if (selected) {
-					drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), IM_COL32(242, 182, 61, 255), 3.0F, 0, 2.0F);
-				}
+				// In the colours of the game's own menus: olive cells, the picked one brighter with a gold edge.
+				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(85, 96, 68, 255) : hovered ? IM_COL32(57, 75, 42, 255) : IM_COL32(24, 29, 21, 255));
+				drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(242, 182, 61, 255) : IM_COL32(60, 70, 48, 255), 0.0F, 0, selected ? 2.0F : 1.0F);
 				const PiecePicture& picture = PictureOf(preset);
 				if (picture.Width > 0) {
 					// As big as fits, by whole pixels when it can be so the art stays crisp.
@@ -2961,7 +2960,7 @@ void Sandbox::DrawGUI() {
 	auto banner = [](const char* text, float fromTop, ImU32 color, float alpha) {
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		ImVec2 size = ImGui::CalcTextSize(text);
-		float scale = 1.3F;
+		float scale = g_DebugMan.UsingPixelFont() ? 1.0F : 1.3F;
 		GameViewRect view = g_WindowMan.GetGameViewRect();
 		ImVec2 at(view.x + (view.w - size.x * scale) * 0.5F, view.y + fromTop);
 		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, static_cast<int>(150.0F * alpha)), 4.0F);
@@ -3000,7 +2999,7 @@ void Sandbox::DrawGUI() {
 		const char* banner = "AI PAUSED";
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		ImVec2 size = ImGui::CalcTextSize(banner);
-		float scale = 1.6F;
+		float scale = g_DebugMan.UsingPixelFont() ? 2.0F : 1.6F;
 		ImVec2 at(g_WindowMan.GetGameViewRect().x + (g_WindowMan.GetGameViewRect().w - size.x * scale) * 0.5F, g_WindowMan.GetGameViewRect().y + 36.0F);
 		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, 150), 4.0F);
 		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), banner);

@@ -33,6 +33,11 @@
 #include "FrameMan.h"
 #include "Scene.h"
 #include "tracy/TracyOpenGL.hpp"
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include "ContentFile.h"
+#include "PresetMan.h"
+#include <filesystem>
+#include <vector>
 
 using namespace RTE;
 
@@ -110,6 +115,121 @@ namespace {
 	}
 } // namespace
 
+void DebugMan::PrepareFonts() {
+	// Once, as soon as the game's art can be loaded (the palette has to be set first, which the loading screen sees to).
+	if (m_PixelFonts[0] || m_PixelFontTries > 600) {
+		return;
+	}
+	if (++m_PixelFontTries < 5) {
+		return;
+	}
+	std::string path = "Base.rte/GUIs/Skins/FontSmall.png";
+	if (!std::filesystem::exists(g_PresetMan.GetFullModulePath(path))) {
+		m_PixelFontTries = 1000;
+		return;
+	}
+	BITMAP* sheet = ContentFile(path.c_str()).GetAsBitmap(COLORCONV_NONE, false);
+	if (!sheet || bitmap_color_depth(sheet) != 8) {
+		if (sheet) {
+			destroy_bitmap(sheet);
+		}
+		return;
+	}
+	// The sheet is rows of sixteen letters from the space on. A marker colour (the top left pixel) sits between letters on the first row of each line and
+	// down the left edge at the start of each line; the top right pixel is the background.
+	int marker = sheet->line[0][0];
+	int background = sheet->line[0][sheet->w - 1];
+	int lineHeight = 0;
+	for (int y = 1; y < sheet->h; ++y) {
+		if (sheet->line[y][0] == marker) {
+			lineHeight = y;
+			break;
+		}
+	}
+	struct Letter {
+		int Code, X, Y, Width;
+	};
+	std::vector<Letter> letters;
+	if (lineHeight > 0) {
+		int x = 1;
+		int y = 0;
+		int onLine = 0;
+		for (int code = 32; code < 256 && y + lineHeight <= sheet->h; ++code) {
+			int width = 0;
+			while (x + width < sheet->w && sheet->line[y][x + width] != marker) {
+				++width;
+			}
+			if (width > 0) {
+				letters.push_back({code, x, y, width});
+			}
+			x += width + 1;
+			if (++onLine >= 16) {
+				onLine = 0;
+				x = 1;
+				y += lineHeight;
+			}
+		}
+	}
+	if (letters.size() < 60) {
+		destroy_bitmap(sheet);
+		m_PixelFontTries = 1000;
+		return;
+	}
+	PALETTE palette;
+	get_palette(palette);
+	int brightest = 1;
+	for (int i = 0; i < 256; ++i) {
+		brightest = std::max({brightest, static_cast<int>(palette[i].r), static_cast<int>(palette[i].g), static_cast<int>(palette[i].b)});
+	}
+	int channelScale = brightest <= 63 ? 4 : 1;
+
+	ImGuiIO& io = ImGui::GetIO();
+	std::vector<std::vector<int>> rects(4);
+	for (int size = 1; size <= 4; ++size) {
+		ImFontConfig config;
+		config.SizePixels = static_cast<float>(lineHeight * size);
+		config.PixelSnapH = true;
+		config.OversampleH = config.OversampleV = 1;
+		ImFont* font = io.Fonts->AddFontDefault(&config);
+		m_PixelFonts[size - 1] = font;
+		for (const Letter& letter: letters) {
+			rects[size - 1].push_back(io.Fonts->AddCustomRectFontGlyph(font, static_cast<ImWchar>(letter.Code), letter.Width * size, lineHeight * size, static_cast<float>((letter.Code == ' ' ? letter.Width : std::max(letter.Width - 1, 2)) * size)));
+		}
+	}
+	unsigned char* pixels = nullptr;
+	int atlasWidth = 0;
+	int atlasHeight = 0;
+	io.Fonts->GetTexDataAsRGBA32(&pixels, &atlasWidth, &atlasHeight);
+	for (int size = 1; size <= 4; ++size) {
+		for (size_t i = 0; i < letters.size(); ++i) {
+			const ImFontAtlasCustomRect* rect = io.Fonts->GetCustomRectByIndex(rects[size - 1][i]);
+			const Letter& letter = letters[i];
+			if (!rect || !rect->IsPacked()) {
+				continue;
+			}
+			for (int y = 0; y < rect->Height; ++y) {
+				for (int x = 0; x < rect->Width; ++x) {
+					int index = sheet->line[letter.Y + y / size][letter.X + x / size];
+					unsigned char* pixel = pixels + (static_cast<size_t>(rect->Y + y) * atlasWidth + rect->X + x) * 4;
+					if (index == background || index == marker) {
+						pixel[0] = pixel[1] = pixel[2] = 255;
+						pixel[3] = 0;
+						continue;
+					}
+					// The letters' own shades are kept as shades of whatever colour the text is drawn in: the fill is white, the outline dark.
+					int level = std::min((palette[index].r + palette[index].g + palette[index].b) * channelScale / 3, 255);
+					pixel[0] = pixel[1] = pixel[2] = static_cast<unsigned char>(level);
+					pixel[3] = 255;
+				}
+			}
+		}
+	}
+	destroy_bitmap(sheet);
+	// The picture of the fonts that the drawing code holds is made again from the new atlas.
+	ImGui_ImplOpenGL3_DestroyFontsTexture();
+	ImGui_ImplOpenGL3_CreateFontsTexture();
+}
+
 float DebugMan::GetPanelWidth(PanelSide side) const {
 	// The right side holds the settings panel, which has its list of categories beside its controls, so it is the wider.
 	float displayWidth = ImGui::GetIO().DisplaySize.x;
@@ -131,6 +251,8 @@ void DebugMan::DrawToolWindowControls() {
 			m_PanelWidth = std::clamp(panelWidth, 240.0F, 700.0F);
 		}
 		ImGui::SetItemTooltip("How wide the side panels are, before the size above: type a number from 240 to 700 and press Enter.");
+		ImGui::Checkbox("The game's own pixel lettering", &m_PixelFont);
+		ImGui::SetItemTooltip("On: these windows are lettered in the game's small pixel font. Off: a smooth font, which is easier to read at length.");
 		ImGui::Checkbox("Dock tool windows at the sides", &m_DockPanels);
 		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
 		ImGui::TreePop();
@@ -144,9 +266,17 @@ void DebugMan::DrawImGui() {
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		float uiScale = GetToolScale();
-		float fontScale = uiScale * g_WindowMan.GetImGuiFontBaseScale();
-		if (std::abs(io.FontGlobalScale - fontScale) > 0.001F) {
+		// The game's pixel font is drawn at a whole size, picked to come out about as big as the smooth font would have; the smooth font scales freely.
+		int pixelSize = std::clamp(static_cast<int>(std::lround(uiScale * 1.7F)), 1, 4);
+		ImFont* pixelFont = m_PixelFont ? m_PixelFonts[pixelSize - 1] : nullptr;
+		ImFont* wanted = pixelFont ? pixelFont : io.Fonts->Fonts[0];
+		m_PixelFontInUse = pixelFont != nullptr && io.FontDefault == pixelFont;
+		float fontScale = pixelFont ? 1.0F : uiScale * g_WindowMan.GetImGuiFontBaseScale();
+		static float styledFor = 0.0F;
+		if (std::abs(io.FontGlobalScale - fontScale) > 0.001F || io.FontDefault != wanted || styledFor != uiScale) {
 			io.FontGlobalScale = fontScale;
+			io.FontDefault = wanted;
+			styledFor = uiScale;
 			ImGuiStyle& style = ImGui::GetStyle();
 			style = ImGuiStyle();
 			ImGui::StyleColorsDark(&style);

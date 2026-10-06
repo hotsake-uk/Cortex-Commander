@@ -945,6 +945,7 @@ void WindowMan::UploadFrame() {
 	Present();
 	TracyGpuCollect;
 	FrameMark;
+	g_DebugMan.PrepareFonts();
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();

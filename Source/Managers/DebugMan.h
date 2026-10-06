@@ -4,6 +4,8 @@
 #include "Vector.h"
 #include <memory>
 
+struct ImFont;
+
 #define g_DebugMan DebugMan::Instance()
 
 namespace RTE {
@@ -53,6 +55,12 @@ namespace RTE {
 		/// Ends a tool window begun with BeginPanel, whatever BeginPanel returned.
 		void EndPanel();
 
+		/// Makes the game's own pixel font available to the tool windows, the first time it can be. Call between frames (not between ImGui's NewFrame and Render).
+		void PrepareFonts();
+
+		/// Gets whether the tool windows are being drawn in the game's pixel font, which should only ever be drawn at whole sizes.
+		bool UsingPixelFont() const { return m_PixelFont && m_PixelFontInUse; }
+
 		/// Gets whether any tool window that uses the mouse is open.
 		bool AnyToolWindowOpen() const;
 
@@ -91,6 +99,10 @@ namespace RTE {
 
 		/// Gets how much the tool windows are scaled: with the window's height (720 px = 1x), times the size the player chose.
 		float GetToolScale() const;
+		bool m_PixelFont{true}; //!< The tool windows use the game's own pixel font, not the smooth one.
+		bool m_PixelFontInUse{false}; //!< Whether a pixel font is the one being drawn with this frame.
+		int m_PixelFontTries{0}; //!< Frames waited so far for the game's font art to be loadable.
+		::ImFont* m_PixelFonts[4]{}; //!< The game's small font at 1x to 4x, each baked at its own size so no pixel is ever blurred.
 		int m_PanelKind{0}; //!< What the BeginPanel in progress began, for EndPanel: 0 a floating window, 1 a tab that isn't the one showing, 2 the tab showing.
 		unsigned m_RememberedTools{0}; //!< The tool windows that were open when they were last closed together, as bits.
 		int m_PanelsThisFrame[2]{0, 0}; //!< How many panels have been begun at each side so far this frame.
