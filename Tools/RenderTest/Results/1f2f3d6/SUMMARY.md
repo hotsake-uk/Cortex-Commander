@@ -43,3 +43,28 @@ sense it and stay open, and is the gym's `actor.Team = 0` reaching the door as i
 ## 3. Still open from 97a4c41
 
 The Doors B shaft (route cut short, door still in the grid), and tall climbs on part of a tank. Both unchanged here.
+
+## Addendum: Bywater course 2 traced (`AIBywater_trace2.log`, same build). The door manners deadlock with the door
+
+The first `door:` lines yet:
+```
+AITRACE door: waiting for Door Slide Long (state 0) 70 px off
+AITRACE door: waiting for Door Slide Long (state 0) 69 px off
+AITRACE door: waiting for Door Slide Long (state 0) 72 px off
+```
+From 33 s the unit stands at 2018,835, 70 px short of Bywater's Door A (2076,792, a `Door Slide Long`), and the door stays at state 0
+(closed) for the rest of the minute. **The door never opens because the unit is waiting outside its sensor.** From
+Base.rte/Scenes/Objects/Bunkers/BunkerSystems/Doors/Doors.ini (line 1095), `Door Slide Long`:
+- has one sensor: `StartOffset (-106,-52)`, `SensorRay (0,104)`, `SkipPixels 8`, rotated with the door (`Rotation 90`). That's a
+  single 104 px ray across the doorway itself, so only a body in the doorway is seen;
+- has `SensorInterval 100`, `DoorMoveTime 1500`, `ResetDefaultDelay 1500`, `ClosedByDefault 1`: it opens over 1.5 s once it sees
+  someone, and starts closing 1.5 s after it last saw someone.
+
+So a unit holding 80 px short of a closed leaf waits for ever: the door is waiting for the unit. Suggest: walk *up to* a closed door of
+our team, into its sensor ray (the doorway), and wait there. Don't climb or hover through it while it's moving. Pass through promptly
+once it's open, because it closes 1.5 s after the last sighting, which would explain the instant full-health deaths under doors: a
+unit lingering or hovering in a doorway as the door shuts on it. Other door presets may have other sensor shapes, so reading the
+door's own sensors (offset and ray) would be safer than a fixed distance.
+
+The rest of course 2's minute (20-33 s): it gets up the 45 px hatch at 1956 to 1956,830 and the corridor at 1980,833, walks right
+towards 2100,833, and stalls under the door.
