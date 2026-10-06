@@ -1,0 +1,413 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIGYM unit Soldier Light height 100 radius 28 jump height 440 px aim range 1.57
+AIGYM path for flat run: result 6, 6 nodes: 1320,15 1524,36(0) 1716,36(0) 1908,36(0) 2028,36(0) 2060,0(0)
+AIGYM path variants for flat run: ground start 5, raised end 6, end 24 up 6
+AIGYM path for steps up: result 10, 10 nodes: 1320,335 1524,348(0) 1572,348(0) 1620,324(2) 1740,324(0) 1740,189(2) 1788,228(2) 1980,228(0) 2004,228(0) 2060,176(2)
+AIGYM path variants for steps up: ground start 9, raised end 10, end 24 up 10
+AIGYM path for gap: result 8, 8 nodes: 420,355 612,372(0) 708,372(0) 756,324(2) 780,348(0) 972,372(0) 1044,372(0) 1090,322(2)
+AIGYM path variants for gap: ground start 7, raised end 8, end 24 up 7
+AIGYM path for low tunnel: result 20, 20 nodes: 420,635 444,660(0) 540,660(0) 564,660(1) 588,660(1) 612,660(1) 636,660(1) 660,660(1) 684,660(1) 708,660(1) 732,660(1) 756,660(1) 780,660(1) 804,660(1) 828,660(1) 852,660(1) 876,660(1) 900,660(1) 972,660(0) 1020,602(2)
+AIGYM path variants for low tunnel: ground start 19, raised end 19, end 24 up 19
+AIGYM path for through the room: result 7, 7 nodes: 420,175 444,204(0) 612,204(0) 660,180(2) 852,204(0) 948,204(0) 1020,142(2)
+AIGYM path variants for through the room: ground start 6, raised end 6, end 24 up 6
+AIGYM path for through the door: result 5, 5 nodes: 2600,275 2628,300(0) 2820,300(0) 2844,300(0) 2880,242(2)
+AIGYM path variants for through the door: ground start 4, raised end 4, end 24 up 4
+AIGYM path for over the hill: result 20, 20 nodes: 1540,723 1596,660(2) 1596,588(2) 1620,612(0) 1668,588(2) 1692,564(2) 1764,492(2) 1788,516(0) 1836,540(0) 1860,564(0) 1884,540(2) 1932,564(0) 1956,588(0) 1980,612(0) 2004,588(2) 2028,612(0) 2028,636(3) 2052,660(0) 2052,684(3) 2060,672(3)
+AIGYM path variants for over the hill: ground start 21, raised end 20, end 24 up 20
+AIGYM path for down into the cave: result 28, 28 nodes: 1760,537 1764,564(3) 1740,540(2) 1716,564(0) 1692,540(2) 1668,564(0) 1644,588(0) 1644,612(3) 1620,588(2) 1596,612(0) 1596,636(3) 1572,660(0) 1548,684(0) 1524,708(0) 1524,732(3) 1500,756(0) 1476,780(0) 1452,804(0) 1428,828(0) 1428,852(3) 1428,876(3) 1452,900(0) 1476,924(1) 1668,948(0) 1740,972(0) 1764,996(0) 1788,1020(0) 1800,984(2)
+AIGYM path variants for down into the cave: ground start 28, raised end 28, end 24 up 28
+AIGYM path for down the slope: result 25, 25 nodes: 1840,543 1860,564(0) 1884,540(2) 1932,564(0) 1956,588(0) 1980,612(0) 2004,588(2) 2028,612(0) 2052,636(0) 2076,660(0) 2076,684(3) 2076,708(3) 2100,732(0) 2124,756(0) 2148,780(0) 2172,804(0) 2172,828(3) 2196,852(0) 2220,876(0) 2220,900(3) 2220,924(3) 2244,948(0) 2268,972(0) 2292,996(0) 2280,1010(3)
+AIGYM path variants for down the slope: ground start 27, raised end 25, end 24 up 27
+AIGYM path for up the slope: result 20, 20 nodes: 2320,1069 2316,1092(3) 2292,1068(2) 2268,1044(2) 2220,1020(2) 2196,1020(0) 2196,798(2) 2148,828(2) 2124,852(0) 2100,828(2) 2100,709(2) 2076,756(2) 2052,708(6) 2052,605(2) 2028,636(2) 2028,612(2) 2004,636(0) 2004,588(2) 1980,612(0) 1880,524(2)
+AIGYM path variants for up the slope: ground start 23, raised end 21, end 24 up 23
+AIGYM path for onto the ledge: result 7, 7 nodes: 2250,1029 2244,1044(3) 2220,1020(2) 2196,1020(0) 2196,798(2) 2148,828(2) 2130,792(2)
+AIGYM path variants for onto the ledge: ground start 7, raised end 7, end 24 up 7
+AIGYM path for across the dip: result 14, 14 nodes: 2120,829 2124,852(3) 2100,828(2) 2100,709(2) 2076,756(2) 2052,708(6) 2052,605(2) 2028,636(2) 2028,612(2) 2004,636(0) 2004,588(2) 1980,612(0) 1932,588(2) 1920,534(2)
+AIGYM path variants for across the dip: ground start 14, raised end 15, end 24 up 14
+AIGYM path for dig down: result 5, 5 nodes: 1080,1111 1092,1140(4) 1092,1164(4) 1092,1188(4) 1080,1218(4)
+AIGYM path variants for dig down: ground start 7, raised end 5, end 24 up 6
+AIGYM unit Dreadnought height 110 radius 42 jump height 169 px aim range 0.5
+AIGYM path for crab flat run: result 6, 6 nodes: 1320,13 1524,36(0) 1716,36(0) 1908,36(0) 2028,36(0) 2060,0(0)
+AIGYM path variants for crab flat run: ground start 5, raised end 6, end 24 up 6
+AIGYM path for crab over the hill: result 18, 18 nodes: 1537,729 1596,660(2) 1596,588(2) 1620,612(0) 1668,588(2) 1692,564(2) 1764,492(2) 1788,516(0) 1836,540(0) 1860,564(0) 1884,540(2) 1932,564(0) 1956,588(0) 1980,612(0) 2004,588(2) 2028,612(0) 2052,636(0) 2060,667(3)
+AIGYM path variants for crab over the hill: ground start 21, raised end 18, end 24 up 20
+AIGYM path for up through the gap: result 6, 6 nodes: 2870,584 2916,588(0) 2916,475(2) 2892,516(2) 2820,516(0) 2780,460(2)
+AIGYM path variants for up through the gap: ground start 5, raised end 6, end 24 up 6
+AIGYM ground profile (ignoring concrete): 380:1108 480:1012 580:946 680:958 780:990 880:1038 980:1092 1080:1128 1180:1124 1280:1078 1380:1006 1480:794 1580:670 1680:574 1780:538 1880:574 1980:608 2080:754 2180:856 2280:1060 2380:1114
+AIGYM cliff profile: 2100:820 2112:834 2124:844 2136:840 2148:838 2160:840 2172:844 2184:864 2196:1030 2208:1028 2220:1024 2232:1040 2244:1044 2256:1048 2268:1054 2280:1060 2292:1070
+AIGYM slope profile: 1860:566 1872:572 1884:578 1896:584 1908:570 1920:584 1932:594 1944:596 1956:604 1968:610 1980:608 1992:624 2004:634 2016:634 2028:648 2040:682 2052:706 2064:724 2076:750 2088:784 2100:820 2112:834
+AIGYM grid node 1908,588 surface -1 ground yes free 0 clear 0/0 up 20 upright 20 right 20 rightdown 55 down 55 downleft 70 left 55 leftup 20
+AIGYM grid node 1908,564 surface 570 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 20 down 20 downleft 0 left 0 leftup 0
+AIGYM grid node 1932,588 surface 593 ground yes free 96 clear 11/48 up 0 upright 0 right 0 rightdown 20 down 55 downleft 55 left 20 leftup 20
+AIGYM grid node 1932,564 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 20 left 0 leftup 0
+AIGYM grid node 1956,612 surface 604 ground yes free 96 clear 17/48 up 0 upright 0 right 0 rightdown 55 down 55 downleft 70 left 55 leftup 20
+AIGYM grid node 1956,588 surface -1 ground no free 96 clear 17/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 55 left 0 leftup 0
+AIGYM grid node 1980,612 surface 607 ground yes free 96 clear 34/48 up 0 upright 0 right 20 rightdown 20 down 55 downleft 55 left 0 leftup 0
+AIGYM grid node 1980,588 surface -1 ground no free 96 clear 34/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2004,636 surface 633 ground yes free 96 clear 11/48 up 0 upright 0 right 20 rightdown 20 down 55 downleft 70 left 55 leftup 20
+AIGYM grid node 2004,612 surface -1 ground no free 96 clear 11/48 up 0 upright 0 right 0 rightdown 20 down 0 downleft 55 left 20 leftup 0
+AIGYM grid node 2028,636 surface 645 ground yes free 96 clear 6/48 up 0 upright 0 right 0 rightdown 0 down 20 downleft 55 left 20 leftup 20
+AIGYM grid node 2028,612 surface -1 ground no free 96 clear 43/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2052,684 surface -1 ground no free 96 clear 3/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 55 left 55 leftup 20
+AIGYM grid node 2052,660 surface -1 ground no free 96 clear 12/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 55 left 20 leftup 0
+AIGYM grid node 2076,732 surface -1 ground no free 96 clear 4/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 55 left 55 leftup 20
+AIGYM grid node 2076,708 surface -1 ground no free 96 clear 22/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 55 left 20 leftup 0
+AIGYM grid node 2100,804 surface -1 ground no free 96 clear 5/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 140 left 140 leftup 90
+AIGYM grid node 2100,780 surface -1 ground no free 96 clear 12/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 140 left 55 leftup 20
+AIGYM grid room node 420,204 surface 195 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 200 leftup 0 | node 420,228 surface -1 ground no free 24 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200 | node 492,204 surface 195 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM slope path from 2090,774: 2090,774 2100,804 2100,828 2100,711 2076,756 2076,684 2052,708 2052,607 2028,636 2028,612 2004,636 2004,588 1980,612 1932,588 1908,564 1880,554
+AIGYM slope path from 2060,702: 2060,702 2052,708 2052,607 2028,636 2028,612 2004,636 2004,588 1980,612 1932,588 1908,564 1880,554
+AIGYM slope path from 2030,628: 2030,628 2028,612 2004,636 2004,588 1980,612 1932,588 1908,564 1880,554
+AIGYM slope path from 2000,606: 2000,606 2004,636 2004,588 1980,612 1932,588 1908,564 1880,554
+AIGYM door at 2740,165 bar 2740,267 68x12 column at 2740: 240:181 245:181 250:181 255:181 260:181 265:181 270:181 275:181 280:181 285:181 290:181 295:181 300:181 305:0 310:0 315:0 320:0
+AIGYM cliff path: 5 nodes: 2260,1050 2220,1020 2196,1020 2196,800 2140,840
+AIGYM upper slope path: 16 nodes: 2140,840 2124,852 2100,828 2100,711 2076,756 2076,684 2052,708 2052,607 2028,636 2028,612 2004,636 2004,588 1980,612 1932,588 1908,564 1880,574
+AIGYM trace flat run 0s pos 1320,18 vel 0,-1.2 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace steps up 0s pos 1320,338 vel 0,-1.2 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace gap 0s pos 420,358 vel 0,-1.2 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace low tunnel 0s pos 420,638 vel 0,-1.2 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace through the room 0s pos 420,178 vel 0,-1.2 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace through the door 0s pos 2600,278 vel 0,-1.2 fuel 1500 path 0 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 0s pos 1540,735 vel -0.1,-0.6 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace down into the cave 0s pos 1760,537 vel 0,-0.7 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace down the slope 0s pos 1840,549 vel 0,-0.3 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace up the slope 0s pos 2320,1069 vel 0,-0.7 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace onto the ledge 0s pos 2250,1029 vel 0,0.5 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace across the dip 0s pos 2120,822 vel 0,-0.4 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace dig down 0s pos 1080,1110 vel 0,-0.6 fuel 1500 path 0 health 100 aim 0 facing right
+AIGYM trace crab flat run 0s pos 1320,27 vel 0,-0.7 fuel 2500 path 0 health 100 aim 0.04 facing right
+AIGYM trace crab over the hill 0s pos 1536,740 vel -0.1,-0.8 fuel 2500 path 0 health 100 aim 0.02 facing right
+AIGYM trace up through the gap 0s pos 2870,577 vel 0,-0.3 fuel 1500 path 0 health 100 aim 0 facing right
+AITRACE path: none to follow, asking again from 2870,577
+AITRACE step kind 2 to 2916,475 from 2870,578 prone false
+AITRACE climb: under a ceiling, stepping 25 to an open column
+AITRACE climb: wpt dx 15 dy -103
+AIGYM trace up through the gap 1s pos 2900,577 vel 2.2,-0.3 fuel 1500 path 3 health 100 aim 1.57 facing right
+AIGYM trace flat run 2s pos 1396,17 vel 2.3,-0.4 fuel 1500 path 3 health 100 aim 0 facing right
+AIGYM trace steps up 2s pos 1396,337 vel 2.4,-0.6 fuel 1500 path 7 health 100 aim 0 facing right
+AIGYM trace gap 2s pos 507,357 vel 4.3,0.1 fuel 1500 path 5 health 100 aim 0 facing right
+AIGYM trace low tunnel 2s pos 496,637 vel 2.4,-0.6 fuel 1500 path 18 health 100 aim 0 facing right
+AIGYM trace through the room 2s pos 489,178 vel 2.1,-0.8 fuel 1500 path 5 health 100 aim 0 facing right
+AIGYM trace through the door 2s pos 2664,277 vel -0.7,-0.4 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 2s pos 1540,655 vel 0,-1.6 fuel 1049 path 19 health 100 aim 1.57 facing right
+AIGYM trace down into the cave 2s pos 1701,562 vel -2.1,4.5 fuel 1500 path 23 health 100 aim 0 facing left
+AIGYM trace down the slope 2s pos 1866,557 vel 2.1,0.3 fuel 1500 path 25 health 100 aim 0 facing right
+AIGYM trace up the slope 2s pos 2264,1028 vel -2.7,-2.4 fuel 1333 path 18 health 100 aim 1.57 facing right
+AIGYM trace onto the ledge 2s pos 2226,1000 vel -1.7,-2.5 fuel 833 path 3 health 100 aim 1.21 facing left
+AIGYM trace across the dip 2s pos 2114,753 vel -0.1,-1.7 fuel 1200 path 9 health 100 aim 1.57 facing right
+AIGYM trace dig down 2s pos 1079,1120 vel -0.1,-0.4 fuel 1500 path 5 health 100 aim -1.54 facing right
+AIGYM trace crab flat run 2s pos 1332,26 vel 2.4,-0.3 fuel 2500 path 3 health 100 aim 0 facing right
+AIGYM trace crab over the hill 2s pos 1548,718 vel 1.4,-3.5 fuel 1916 path 19 health 100 aim 0 facing right
+AIGYM trace up through the gap 2s pos 2912,489 vel -0.2,-0.5 fuel 1366 path 3 health 100 aim 0 facing left
+AITRACE pop: passed 2916,475 for 2892,497 from 2899,494
+AITRACE pop: reached 2892,497 from 2898,492, 1 left
+AITRACE step kind 0 to 2780,497 from 2898,491 prone false
+AIGYM trace up through the gap 3s pos 2899,486 vel 0.8,-3.1 fuel 949 path 1 health 100 aim 0 facing right
+AITRACE jet: planner delta 5 flying true wpt dy 18
+AITRACE jet: planner delta 11 flying true wpt dy 31
+AIGYM trace flat run 4s pos 1516,18 vel 4,-1 fuel 1500 path 3 health 100 aim 0 facing right
+AIGYM trace steps up 4s pos 1519,338 vel 4,-0.9 fuel 1500 path 7 health 100 aim 0 facing right
+AIGYM trace gap 4s pos 677,358 vel 4.2,-1.1 fuel 1500 path 5 health 100 aim 0 facing right
+AIGYM trace low tunnel 4s pos 568,647 vel 0.8,0.2 fuel 1500 path 16 health 100 aim 0 facing right
+AIGYM trace through the room 4s pos 566,179 vel 2.2,-1.1 fuel 1500 path 5 health 100 aim 0 facing right
+AIGYM trace through the door 4s pos 2668,278 vel 0,0.1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 4s pos 1571,628 vel 1.8,-0.1 fuel 716 path 19 health 100 aim 1.57 facing right
+AIGYM trace down into the cave 4s pos 1670,557 vel -2,1 fuel 1500 path 22 health 100 aim 0 facing left
+AIGYM trace down the slope 4s pos 1903,566 vel 2.8,-1.9 fuel 1500 path 24 health 100 aim 0 facing right
+AIGYM trace up the slope 4s pos 2206,999 vel -2,-2.1 fuel 1033 path 16 health 100 aim 0 facing right
+AIGYM trace onto the ledge 4s pos 2200,810 vel -0.2,0.5 fuel 1500 path 3 health 100 aim 0 facing left
+AIGYM trace across the dip 4s pos 2109,725 vel -1,-0.3 fuel 866 path 9 health 100 aim 1.57 facing left
+AIGYM trace dig down 4s pos 1079,1130 vel 0,-0.6 fuel 1500 path 4 health 100 aim 1.08 facing right
+AIGYM trace crab flat run 4s pos 1429,26 vel 2.4,-0.4 fuel 2500 path 3 health 100 aim 0 facing right
+AIGYM trace crab over the hill 4s pos 1539,710 vel -1.6,-1.7 fuel 1816 path 20 health 100 aim 0 facing right
+AIGYM trace up through the gap 4s pos 2902,464 vel -1.8,1.5 fuel 1266 path 1 health 100 aim 0 facing left
+AITRACE jet: planner delta 8 flying true wpt dy 31
+AITRACE jet: planner delta 7 flying true wpt dy 19
+AITRACE jet: landing brake at 5.5
+AITRACE jet: landing brake at 6.2
+AITRACE jet: landing brake at 5.6
+AIGYM up through the gap: arrived in 4.9 s, stood still 0 s
+AIGYM onto the ledge: arrived in 5.1 s, stood still 1 s
+AIGYM trace flat run 6s pos 1686,19 vel 4.2,-0.6 fuel 1500 path 3 health 100 aim 0 facing right
+AIGYM trace steps up 6s pos 1615,323 vel 0,-1.1 fuel 583 path 5 health 100 aim 0 facing right
+AIGYM trace gap 6s pos 756,343 vel 0.6,-0.6 fuel 1116 path 4 health 100 aim 1.57 facing left
+AIGYM trace low tunnel 6s pos 628,647 vel 1.6,-1.1 fuel 1500 path 13 health 100 aim 0 facing right
+AIGYM trace through the room 6s pos 638,179 vel 3,1.5 fuel 1500 path 4 health 100 aim 0 facing right
+AIGYM trace through the door 6s pos 2668,278 vel -0.1,-1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM stall through the door (still 4 s) at 2668,278 vel -0.1,-1 aim 0 facing right prone 0 fuel 1500 path 1 first step kind 0 stuck 0 ms
+AIGYM stall route left (1): 2880,276
+AIGYM grid node 2628,228 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2652,228 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2676,228 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2700,228 surface -1 ground no free 96 clear 48/33 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2724,228 surface -1 ground no free 96 clear 48/9 up 0 upright 200 right 200 rightdown 220 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2628,252 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2652,252 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2676,252 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2700,252 surface -1 ground no free 96 clear 48/32 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2724,252 surface -1 ground no free 96 clear 48/8 up 0 upright 220 right 220 rightdown 220 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2628,276 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2652,276 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2676,276 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2700,276 surface -1 ground no free 96 clear 48/32 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2724,276 surface -1 ground no free 96 clear 48/8 up 0 upright 220 right 220 rightdown 220 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2628,300 surface 295 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2652,300 surface 295 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2676,300 surface 295 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2700,300 surface 295 ground yes free 96 clear 48/32 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2724,300 surface 295 ground yes free 96 clear 48/8 up 0 upright 220 right 220 rightdown 220 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2628,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2652,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2676,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2700,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2724,324 surface -1 ground no free 20 clear 48/48 up 200 upright 220 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM trace over the hill 6s pos 1590,566 vel -0.8,-4.2 fuel 124 path 16 health 100 aim 0.65 facing left
+AIGYM trace down into the cave 6s pos 1636,588 vel -0.3,-1.9 fuel 1500 path 19 health 100 aim 0.21 facing left
+AIGYM trace down the slope 6s pos 2043,633 vel 3.4,5.2 fuel 1500 path 18 health 100 aim 0 facing right
+AIGYM trace up the slope 6s pos 2227,597 vel 2.6,-9.6 fuel 241 path 15 health 100 aim 0.21 facing right
+AIGYM trace across the dip 6s pos 2067,717 vel -0.6,2.7 fuel 1116 path 5 health 100 aim 0.53 facing left
+AIGYM trace dig down 6s pos 1079,1139 vel -0.1,-0.6 fuel 1500 path 4 health 100 aim -0.55 facing right
+AIGYM trace crab flat run 6s pos 1527,26 vel 2.3,-0.7 fuel 2500 path 3 health 100 aim 0 facing right
+AIGYM trace crab over the hill 6s pos 1522,757 vel 0.6,-4.2 fuel 2083 path 20 health 100 aim 0 facing right
+AIGYM trace flat run 8s pos 1855,17 vel 4.2,0.4 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace steps up 8s pos 1701,302 vel 1.2,-0.9 fuel 1500 path 5 health 100 aim 0 facing right
+AIGYM trace gap 8s pos 777,334 vel -0.1,-1.4 fuel 699 path 4 health 100 aim 1.57 facing left
+AIGYM trace low tunnel 8s pos 690,646 vel 1.6,-0.6 fuel 1500 path 11 health 100 aim 0 facing right
+AIGYM trace through the room 8s pos 693,177 vel 0.3,-2.6 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace through the door 8s pos 2668,278 vel 0,-1.3 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 8s pos 1415,514 vel -7.7,1.5 fuel 208 path 16 health 100 aim 0 facing right
+AIGYM trace down into the cave 8s pos 1561,670 vel -1.4,4 fuel 1383 path 16 health 100 aim 1.41 facing right
+AIGYM trace down the slope 8s pos 2160,822 vel 3.2,4.7 fuel 1175 path 10 health 100 aim 0.73 facing right
+AIGYM trace up the slope 8s pos 2462,287 vel 5.3,-4.8 fuel 158 path 15 health 100 aim 0 facing left
+AIGYM trace across the dip 8s pos 2050,631 vel -1,-0.2 fuel 1083 path 4 health 100 aim 0 facing left
+AIGYM trace dig down 8s pos 1085,1150 vel 0,-0.7 fuel 1500 path 4 health 100 aim 1.05 facing left
+AIGYM trace crab flat run 8s pos 1625,26 vel 2.4,-0.6 fuel 2500 path 3 health 100 aim 0 facing right
+AIGYM trace crab over the hill 8s pos 1535,676 vel -0.8,-3.5 fuel 1483 path 20 health 100 aim 0 facing right
+AIGYM down the slope: arrived in 9.7 s, stood still 0 s
+AIGYM flat run: arrived in 9.9 s, stood still 0 s
+AIGYM trace steps up 10s pos 1777,215 vel 1,-2.1 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace gap 10s pos 810,308 vel 4.1,0.1 fuel 633 path 2 health 100 aim 0 facing right
+AIGYM trace low tunnel 10s pos 755,645 vel 1.5,-0.4 fuel 1500 path 8 health 100 aim 0 facing right
+AIGYM trace through the room 10s pos 772,178 vel 1.4,-0.3 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace through the door 10s pos 2668,278 vel 0,-1.2 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 10s pos 1291,839 vel 2.8,8.7 fuel 408 path 16 health 100 aim 0 facing right
+AIGYM trace down into the cave 10s pos 1440,806 vel -3.7,2.9 fuel 1283 path 9 health 100 aim 0 facing right
+AIGYM trace up the slope 10s pos 2471,239 vel -5.1,0.6 fuel 74 path 15 health 100 aim 0 facing left
+AIGYM trace across the dip 10s pos 2024,596 vel -0.6,-0.1 fuel 666 path 3 health 100 aim 0.94 facing left
+AIGYM trace dig down 10s pos 1093,1151 vel 0,1.5 fuel 1500 path 3 health 100 aim -1.31 facing left
+AIGYM trace crab flat run 10s pos 1723,26 vel 2.4,-0.2 fuel 2500 path 2 health 100 aim 0 facing right
+AIGYM trace crab over the hill 10s pos 1505,504 vel -0.7,-0.4 fuel 116 path 20 health 100 aim 0 facing right
+AIGYM trace steps up 12s pos 1861,211 vel 2.4,0.9 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace gap 12s pos 984,356 vel 4.1,-0.3 fuel 1500 path 1 health 100 aim 0 facing right
+AIGYM trace low tunnel 12s pos 820,645 vel 1.5,-0.9 fuel 1500 path 5 health 100 aim 0 facing right
+AIGYM trace through the room 12s pos 825,185 vel 1.6,-0.4 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace through the door 12s pos 2668,278 vel 0,-0.6 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 12s pos 1430,945 vel 1.4,-1.7 fuel 1366 path 16 health 100 aim 0 facing right
+AIGYM trace down into the cave 12s pos 1439,936 vel -0.2,-0.4 fuel 1500 path 6 health 100 aim 0.08 facing right
+AIGYM trace up the slope 12s pos 2249,663 vel -2,5.1 fuel 108 path 15 health 100 aim 0 facing right
+AIGYM trace across the dip 12s pos 2013,606 vel -0.7,-1.6 fuel 733 path 1 health 100 aim 1.57 facing left
+AIGYM trace dig down 12s pos 1090,1174 vel -0.1,0 fuel 1500 path 2 health 100 aim 0.08 facing right
+AIGYM trace crab flat run 12s pos 1820,26 vel 2.4,-0.6 fuel 2500 path 2 health 100 aim 0 facing right
+AIGYM trace crab over the hill 12s pos 1479,749 vel -0.5,2.4 fuel 1649 path 20 health 100 aim 0 facing right
+AIGYM gap: arrived in 12.8 s, stood still 0 s
+AIGYM across the dip: arrived in 13.8 s, stood still 1 s
+AIGYM trace steps up 14s pos 1954,213 vel 2.1,-1.1 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace low tunnel 14s pos 873,648 vel 1.1,-1.2 fuel 1500 path 1 health 100 aim 0 facing right
+AIGYM trace through the room 14s pos 965,178 vel 4.2,-0.9 fuel 1500 path 2 health 100 aim 0 facing right
+AIGYM trace through the door 14s pos 2668,277 vel 0,-0.6 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 14s pos 1538,926 vel 0,-0.7 fuel 1500 path 17 health 100 aim 0 facing right
+AIGYM trace down into the cave 14s pos 1442,931 vel 0.8,-2.4 fuel 1500 path 4 health 100 aim 0 facing right
+AIGYM trace up the slope 14s pos 2375,1026 vel 8.2,12.3 fuel 191 path 15 health 100 aim 0 facing right
+AIGYM trace dig down 14s pos 1090,1178 vel 0,-0.6 fuel 1500 path 2 health 100 aim 1.08 facing left
+AIGYM trace crab flat run 14s pos 1909,26 vel 2.4,-0.4 fuel 2500 path 1 health 100 aim 0 facing right
+AIGYM trace crab over the hill 14s pos 1514,777 vel 0.7,-1.6 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM through the room: arrived in 14.1 s, stood still 0 s
+AIGYM steps up: arrived in 15.5 s, stood still 0 s
+AIGYM trace low tunnel 16s pos 938,640 vel 3.8,-1.1 fuel 1500 path 1 health 100 aim 0 facing right
+AIGYM trace through the door 16s pos 2668,277 vel 0,-0.4 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 16s pos 1665,936 vel 4.2,-0.7 fuel 1500 path 17 health 100 aim 0 facing right
+AIGYM trace down into the cave 16s pos 1517,933 vel 1.5,-2 fuel 1500 path 4 health 100 aim 0 facing right
+AIGYM trace up the slope 16s pos 2403,1097 vel 0.6,-0.6 fuel 1466 path 22 health 100 aim 0 facing left
+AIGYM trace dig down 16s pos 1091,1187 vel 0,-0.7 fuel 1500 path 2 health 100 aim -1.39 facing left
+AIGYM trace crab flat run 16s pos 2007,26 vel 2.4,-0.5 fuel 2500 path 1 health 100 aim 0 facing right
+AIGYM trace crab over the hill 16s pos 1525,767 vel 0.5,-2.2 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM crab flat run: arrived in 16.2 s, stood still 1 s
+AIGYM low tunnel: arrived in 16.5 s, stood still 0 s
+AIGYM trace through the door 18s pos 2668,277 vel 0,-0.1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 18s pos 1860,1033 vel 4.5,-0.1 fuel 1500 path 14 health 100 aim 0 facing right
+AIGYM trace down into the cave 18s pos 1584,938 vel 0.9,-0.2 fuel 1500 path 4 health 100 aim 0 facing right
+AIGYM trace up the slope 18s pos 2341,1068 vel -1.3,-0.8 fuel 1066 path 20 health 100 aim 1.57 facing right
+AIGYM trace dig down 18s pos 1092,1199 vel 0,-1.1 fuel 1500 path 2 health 100 aim 1.33 facing left
+AIGYM trace crab over the hill 18s pos 1523,754 vel 0.9,-2.1 fuel 2250 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 20s pos 2668,278 vel 0,0.8 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 20s pos 2014,1019 vel 3.5,-1.8 fuel 1500 path 10 health 100 aim 0 facing right
+AIGYM trace down into the cave 20s pos 1657,933 vel 1.6,0.2 fuel 1500 path 4 health 100 aim 0 facing right
+AIGYM trace up the slope 20s pos 2301,1041 vel -0.9,-0.9 fuel 649 path 19 health 100 aim 1.57 facing right
+AIGYM trace dig down 20s pos 1095,1210 vel 0,-0.6 fuel 1500 path 1 health 100 aim -1.28 facing left
+AIGYM trace crab over the hill 20s pos 1535,739 vel 1.1,-1.9 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 22s pos 2668,278 vel 0,-0.7 fuel 1500 path 2 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 22s pos 2076,982 vel 0.2,0.1 fuel 1233 path 9 health 100 aim 1.57 facing left
+AIGYM trace down into the cave 22s pos 1725,951 vel 1.8,2.1 fuel 1500 path 4 health 100 aim 0 facing right
+AIGYM trace up the slope 22s pos 2218,976 vel -6.1,-3.8 fuel 216 path 17 health 100 aim 0.08 facing left
+AIGYM trace dig down 22s pos 1094,1221 vel 0.2,0 fuel 1500 path 1 health 100 aim -1.48 facing left
+AIGYM trace crab over the hill 22s pos 1543,736 vel -0.5,-2.5 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM dig down: arrived in 22.5 s, stood still 7 s
+AIGYM down into the cave: arrived in 22.7 s, stood still 3 s
+AIGYM trace through the door 24s pos 2668,278 vel 0,-1.2 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 24s pos 2175,1004 vel 4,0.7 fuel 1500 path 8 health 100 aim 0.12 facing right
+AIGYM trace up the slope 24s pos 2111,984 vel 0.3,3.9 fuel 708 path 17 health 100 aim 0 facing right
+AIGYM trace crab over the hill 24s pos 1547,720 vel 2.3,-0.8 fuel 2249 path 19 health 100 aim 0 facing right
+AIGYM trace through the door 26s pos 2668,278 vel 0,-0.9 fuel 1500 path 2 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 26s pos 2212,746 vel -2.2,-11.1 fuel 133 path 7 health 100 aim 0.48 facing left
+AIGYM trace up the slope 26s pos 2191,1006 vel 3.1,-3.6 fuel 1333 path 16 health 100 aim 0 facing left
+AIGYM trace crab over the hill 26s pos 1548,705 vel -1.2,-1.1 fuel 1849 path 20 health 100 aim 0.43 facing left
+AIGYM trace through the door 28s pos 2668,278 vel 0,-0.9 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 28s pos 1995,407 vel -5.8,-7.5 fuel 49 path 6 health 100 aim 0 facing right
+AIGYM trace up the slope 28s pos 2201,806 vel -1.3,0 fuel 1299 path 16 health 100 aim 1.57 facing left
+AIGYM trace crab over the hill 28s pos 1495,605 vel -1.4,-1.2 fuel 216 path 20 health 100 aim 0.02 facing left
+AIGYM trace through the door 30s pos 2668,277 vel 0,-0.6 fuel 1500 path 2 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 30s pos 1960,283 vel 4.8,-1.2 fuel 91 path 6 health 100 aim 0 facing right
+AIGYM trace up the slope 30s pos 2155,829 vel -0.7,-1.8 fuel 1333 path 13 health 100 aim 0.91 facing left
+AIGYM trace crab over the hill 30s pos 1471,795 vel 1.2,-1.6 fuel 1749 path 20 health 100 aim 0 facing right
+AIGYM trace through the door 32s pos 2668,277 vel 0,-0.1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 32s pos 2232,531 vel 3.7,14 fuel 958 path 6 health 100 aim 0 facing left
+AIGYM trace up the slope 32s pos 2115,759 vel 0.3,-1.8 fuel 1200 path 11 health 100 aim 1.57 facing right
+AIGYM trace crab over the hill 32s pos 1517,777 vel 0.2,-1.9 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 34s pos 2668,277 vel 0,-0.2 fuel 1500 path 2 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 34s pos 2180,826 vel 1.1,0.7 fuel 333 path 6 health 100 aim 0 facing right
+AIGYM trace up the slope 34s pos 2125,736 vel 0.2,-1.1 fuel 783 path 11 health 100 aim 1.57 facing right
+AIGYM trace crab over the hill 34s pos 1530,761 vel 1.6,-1.8 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 36s pos 2668,277 vel 0,0.2 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 36s pos 2206,929 vel -1.3,-4.4 fuel 316 path 6 health 100 aim 1.57 facing right
+AIGYM trace up the slope 36s pos 2081,704 vel -1.1,-3.2 fuel 199 path 7 health 100 aim 1.27 facing right
+AIGYM trace crab over the hill 36s pos 1530,760 vel -0.5,-1 fuel 2049 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 38s pos 2668,278 vel 0,0.2 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 38s pos 2268,777 vel 5.7,-1.9 fuel 149 path 6 health 100 aim 0.07 facing right
+AIGYM trace up the slope 38s pos 2154,643 vel 5.1,2.7 fuel 241 path 7 health 100 aim 0.05 facing right
+AIGYM trace crab over the hill 38s pos 1529,752 vel 0,-0.7 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 40s pos 2668,278 vel 0,-1.2 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 40s pos 2505,914 vel 2,9.9 fuel 641 path 6 health 100 aim 0 facing left
+AIGYM trace up the slope 40s pos 2374,806 vel 1.4,8.1 fuel 274 path 7 health 100 aim 0 facing left
+AIGYM trace crab over the hill 40s pos 1529,746 vel -0.1,-0.6 fuel 2500 path 21 health 100 aim 0 facing right
+AIGYM trace through the door 42s pos 2668,278 vel 0,-0.9 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 42s pos 2383,1099 vel -3,-2.2 fuel 849 path 6 health 100 aim 0 facing left
+AIGYM trace up the slope 42s pos 2279,1042 vel -3.3,-0.9 fuel 774 path 7 health 100 aim 0 facing left
+AIGYM trace crab over the hill 42s pos 1532,737 vel 0.9,-1.6 fuel 2316 path 19 health 100 aim 0 facing right
+AIGYM trace through the door 44s pos 2668,278 vel 0,-1.1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 44s pos 2283,1042 vel -2.9,-2.4 fuel 1500 path 10 health 100 aim 0 facing left
+AIGYM trace up the slope 44s pos 2209,872 vel -0.4,-11.4 fuel 633 path 16 health 100 aim 1.57 facing right
+AIGYM trace crab over the hill 44s pos 1541,737 vel 0.1,-0.3 fuel 2049 path 19 health 100 aim 0 facing right
+AIGYM trace through the door 46s pos 2668,278 vel 0,-1.1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 46s pos 2204,868 vel -0.3,-11.2 fuel 791 path 7 health 100 aim 1.57 facing right
+AIGYM trace up the slope 46s pos 2167,803 vel -1.4,2.5 fuel 1433 path 15 health 100 aim 0.84 facing left
+AIGYM trace crab over the hill 46s pos 1544,732 vel -0.8,-1.5 fuel 2316 path 19 health 100 aim 0 facing right
+AIGYM trace through the door 48s pos 2668,278 vel 0,-0.9 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace over the hill 48s pos 2156,830 vel -1.9,-2.9 fuel 1116 path 4 health 100 aim 0.3 facing left
+AIGYM trace up the slope 48s pos 2100,802 vel 0.2,-1.6 fuel 383 path 11 health 100 aim 1.57 facing right
+AIGYM trace crab over the hill 48s pos 1553,719 vel -0.1,-0.1 fuel 2249 path 19 health 100 aim 0 facing right
+AIGYM over the hill: arrived in 49.1 s, stood still 0 s
+AIGYM trace through the door 50s pos 2668,278 vel 0,-1.1 fuel 1500 path 2 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace up the slope 50s pos 2173,820 vel 5.8,1.2 fuel 8 path 11 health 100 aim 0.07 facing right
+AIGYM trace crab over the hill 50s pos 1537,699 vel 0,-1.8 fuel 1883 path 19 health 100 aim 0 facing right
+AIGYM trace through the door 52s pos 2668,278 vel 0,-1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace up the slope 52s pos 2267,1035 vel -2.7,6.5 fuel 124 path 11 health 100 aim 0 facing left
+AIGYM trace crab over the hill 52s pos 1558,549 vel 0.5,-3.3 fuel 183 path 18 health 100 aim 0 facing right
+AIGYM trace through the door 54s pos 2668,278 vel 0,-0.8 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace up the slope 54s pos 2204,909 vel -1.1,-11.8 fuel 599 path 11 health 100 aim 1.57 facing right
+AIGYM trace crab over the hill 54s pos 1571,670 vel 0.3,-2.1 fuel 1249 path 18 health 100 aim 0 facing right
+AIGYM trace through the door 56s pos 2668,278 vel 0,1.1 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace up the slope 56s pos 2167,740 vel -1.2,-0.1 fuel 1183 path 11 health 100 aim 1.57 facing right
+AIGYM trace crab over the hill 56s pos 1585,620 vel -1.2,-0.1 fuel 1983 path 18 health 100 aim 0 facing right
+AIGYM trace through the door 58s pos 2668,278 vel 0,-1.2 fuel 1500 path 1 health 100 aim 0 facing right door team 0 state 0 target goto
+AIGYM trace up the slope 58s pos 2083,716 vel -1.8,-0.4 fuel 766 path 11 health 100 aim 0 facing right
+AIGYM trace crab over the hill 58s pos 1564,689 vel 2.4,-0.4 fuel 2250 path 18 health 100 aim 0.05 facing right
+AIGYM through the door: GAVE UP after 60 s, 212 px short, stood still 57 s, mode 3, at 2668,278 goal 2880,292
+AIGYM stall through the door (gave up) at 2668,278 vel 0,-0.9 aim 0 facing right prone 0 fuel 1500 path 1 first step kind 0 stuck 0 ms
+AIGYM stall route left (1): 2880,276
+AIGYM grid node 2628,228 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2652,228 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2676,228 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2700,228 surface -1 ground no free 96 clear 48/33 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2724,228 surface -1 ground no free 96 clear 48/9 up 0 upright 200 right 200 rightdown 220 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2628,252 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2652,252 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2676,252 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2700,252 surface -1 ground no free 96 clear 48/33 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2724,252 surface -1 ground no free 96 clear 48/9 up 0 upright 220 right 220 rightdown 220 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2628,276 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2652,276 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2676,276 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2700,276 surface -1 ground no free 96 clear 48/33 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2724,276 surface -1 ground no free 96 clear 48/9 up 0 upright 220 right 220 rightdown 220 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2628,300 surface 295 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2652,300 surface 295 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2676,300 surface 295 ground yes free 96 clear 48/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2700,300 surface 295 ground yes free 96 clear 48/33 up 0 upright 0 right 0 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2724,300 surface 295 ground yes free 96 clear 48/9 up 0 upright 220 right 220 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIGYM grid node 2628,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2652,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2676,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2700,324 surface -1 ground no free 20 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM grid node 2724,324 surface -1 ground no free 20 clear 48/48 up 200 upright 220 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIGYM up the slope: GAVE UP after 60 s, 317 px short, stood still 1 s, mode 3, at 2101,801 goal 1880,574
+AIGYM stall up the slope (gave up) at 2101,801 vel -1.7,-3.2 aim 0 facing left prone 0 fuel 1175 path 7 first step kind 2 stuck 0 ms
+AIGYM stall route left (7): 2028,625 2004,618 2004,618 1980,593 1932,573 1908,557 1880,562
+AIGYM grid node 2052,756 surface -1 ground yes free 0 clear 0/0 up 55 upright 55 right 55 rightdown 140 down 90 downleft 140 left 90 leftup 90
+AIGYM grid node 2076,756 surface 749 ground yes free 96 clear 2/48 up 0 upright 0 right 1 rightdown 20 down 55 downleft 140 left 55 leftup 55
+AIGYM grid node 2100,756 surface -1 ground no free 96 clear 18/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 55 left 1 leftup 0
+AIGYM grid node 2124,756 surface -1 ground no free 96 clear 42/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2148,756 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2052,780 surface -1 ground yes free 0 clear 0/0 up 90 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2076,780 surface -1 ground yes free 0 clear 0/0 up 55 upright 55 right 55 rightdown 90 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2100,780 surface -1 ground no free 96 clear 13/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 140 left 55 leftup 20
+AIGYM grid node 2124,780 surface -1 ground no free 96 clear 37/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2148,780 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2052,804 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2076,804 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2100,804 surface -1 ground no free 96 clear 6/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 140 left 140 leftup 90
+AIGYM grid node 2124,804 surface -1 ground no free 96 clear 31/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2148,804 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 2052,828 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2076,828 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2100,828 surface 819 ground yes free 96 clear 6/48 up 0 upright 0 right 140 rightdown 0 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2124,828 surface -1 ground no free 96 clear 12/48 up 0 upright 0 right 0 rightdown 140 down 0 downleft 140 left 140 leftup 0
+AIGYM grid node 2148,828 surface 838 ground yes free 96 clear 39/48 up 0 upright 0 right 0 rightdown 0 down 140 downleft 0 left 0 leftup 0
+AIGYM grid node 2052,852 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2076,852 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2100,852 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM grid node 2124,852 surface 843 ground yes free 96 clear 12/48 up 0 upright 0 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 0
+AIGYM grid node 2148,852 surface -1 ground yes free 0 clear 0/0 up 140 upright 140 right 140 rightdown 140 down 140 downleft 140 left 140 leftup 140
+AIGYM crab over the hill: GAVE UP after 60 s, 483 px short, stood still 14 s, mode 3, at 1578,676 goal 2060,722
+AIGYM stall crab over the hill (gave up) at 1578,676 vel 0.3,-0.3 aim 0 facing right prone - fuel 1933 path 19 first step kind 2 stuck 0 ms
+AIGYM stall route left (19): 1596,639 1596,588 1620,591 1692,555 1716,543 1788,521 1812,528 1836,540 1860,545 1884,557 1932,571 1956,586
+AIGYM grid node 1524,636 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1548,636 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1572,636 surface -1 ground no free 96 clear 48/31 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1596,636 surface -1 ground no free 96 clear 48/6 up 0 upright 20 right 55 rightdown 70 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1620,636 surface -1 ground yes free 0 clear 0/0 up 55 upright 55 right 55 rightdown 70 down 70 downleft 55 left 55 leftup 55
+AIGYM grid node 1524,660 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1548,660 surface -1 ground no free 96 clear 48/39 up 0 upright 0 right 0 rightdown 20 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1572,660 surface -1 ground no free 96 clear 48/15 up 0 upright 0 right 1 rightdown 70 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1596,660 surface 651 ground yes free 96 clear 48/6 up 0 upright 55 right 55 rightdown 70 down 70 downleft 20 left 1 leftup 0
+AIGYM grid node 1620,660 surface -1 ground yes free 0 clear 0/0 up 70 upright 70 right 70 rightdown 70 down 70 downleft 70 left 55 leftup 70
+AIGYM grid node 1524,684 surface -1 ground no free 96 clear 48/37 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1548,684 surface -1 ground no free 96 clear 48/16 up 0 upright 0 right 1 rightdown 55 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1572,684 surface 687 ground yes free 96 clear 48/3 up 0 upright 20 right 55 rightdown 70 down 55 downleft 20 left 1 leftup 20
+AIGYM grid node 1596,684 surface -1 ground yes free 0 clear 0/0 up 70 upright 70 right 70 rightdown 70 down 70 downleft 70 left 55 leftup 70
+AIGYM grid node 1620,684 surface -1 ground yes free 0 clear 0/0 up 70 upright 70 right 70 rightdown 90 down 70 downleft 70 left 70 leftup 70
+AIGYM grid node 1524,708 surface -1 ground no free 96 clear 48/37 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1548,708 surface -1 ground no free 96 clear 48/13 up 0 upright 20 right 55 rightdown 70 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1572,708 surface -1 ground yes free 0 clear 0/0 up 55 upright 70 right 70 rightdown 140 down 70 downleft 55 left 55 leftup 55
+AIGYM grid node 1596,708 surface -1 ground yes free 0 clear 0/0 up 70 upright 70 right 70 rightdown 150 down 90 downleft 70 left 70 leftup 70
+AIGYM grid node 1620,708 surface -1 ground yes free 0 clear 0/0 up 70 upright 70 right 140 rightdown 140 down 70 downleft 150 left 70 leftup 70
+AIGYM grid node 1524,732 surface -1 ground no free 96 clear 48/24 up 0 upright 0 right 0 rightdown 55 down 0 downleft 0 left 0 leftup 0
+AIGYM grid node 1548,732 surface 736 ground yes free 96 clear 48/2 up 0 upright 55 right 70 rightdown 70 down 55 downleft 1 left 0 leftup 0
+AIGYM grid node 1572,732 surface -1 ground yes free 0 clear 0/0 up 70 upright 70 right 70 rightdown 140 down 70 downleft 70 left 70 leftup 70
+AIGYM grid node 1596,732 surface -1 ground yes free 0 clear 0/0 up 90 upright 150 right 150 rightdown 140 down 140 downleft 140 left 70 leftup 140
+AIGYM grid node 1620,732 surface -1 ground yes free 0 clear 0/0 up 70 upright 140 right 140 rightdown 140 down 140 downleft 140 left 150 leftup 150
+AIGYM done

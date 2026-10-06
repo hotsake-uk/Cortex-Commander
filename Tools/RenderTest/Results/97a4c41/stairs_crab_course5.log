@@ -1,0 +1,40 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER path for up the stairs: 5 nodes: 2060,339 2076,348(0) 2100,300(6) 2124,252(6) 2160,244(0)
+AITRACE path: none to follow, asking again from 2060,352
+AITRACE path for Dreadnought: status 0, 5 nodes, cost 20.000000, from 2060,339 to 2160,243
+AITRACE nodes: 2060,339 2076,348(0) 2100,300(6) 2124,252(6) 2160,243(0)
+AITRACE step kind 6 to 2100,284 from 2060,352 prone false
+AITRACE no jet: delta -123 above false walkable false tooHigh false fast false blocked true range 154 wpt dx 39 dy -69 lat 2
+AITRACE no jet: delta -103 above false walkable false tooHigh false fast false blocked true range 126 wpt dx 34 dy -63 lat 2
+AITRACE jet: landing brake at 3.1
+AITRACE no jet: delta -49 above false walkable false tooHigh false fast false blocked false range 74 wpt dx 31 dy -67 lat 2
+AITRACE no jet: delta -52 above false walkable false tooHigh false fast false blocked false range 77 wpt dx 32 dy -67 lat 2
+AITRACE no jet: delta -34 above false walkable false tooHigh false fast false blocked false range 60 wpt dx 36 dy -65 lat 2
+AITRACE no jet: delta -35 above false walkable false tooHigh false fast false blocked false range 57 wpt dx 35 dy -61 lat 2
+AIBUNKER trace up the stairs 3s pos 2071,340 vel 2,-1.4 fuel 2500 path 3 left 131 aim 0 facing right
+AITRACE no jet: delta -38 above false walkable false tooHigh false fast false blocked false range 52 wpt dx 27 dy -57 lat 2
+AITRACE no jet: delta -122 above false walkable false tooHigh false fast false blocked true range 134 wpt dx 22 dy -57 lat 2
+AITRACE no jet: delta -111 above false walkable false tooHigh false fast false blocked true range 123 wpt dx 24 dy -56 lat 2
+AITRACE no jet: delta -110 above false walkable false tooHigh false fast false blocked true range 123 wpt dx 29 dy -54 lat 2
+AITRACE no jet: delta -122 above false walkable false tooHigh false fast false blocked true range 129 wpt dx 27 dy -47 lat 2
+AITRACE no jet: delta -135 above false walkable false tooHigh false fast false blocked true range 137 wpt dx 19 dy -46 lat 2
+AITRACE no jet: delta -126 above false walkable false tooHigh false fast false blocked true range 132 wpt dx 21 dy -37 lat 2
+AITRACE pop: reached 2100,284 from 2096,303, 2 left
+AIBUNKER trace up the stairs 6s pos 2083,302 vel -1.4,0.3 fuel 2500 path 2 left 96 aim 0 facing right
+AITRACE no jet: delta -123 above false walkable false tooHigh false fast false blocked true range 156 wpt dx 42 dy -63 lat 2
+AITRACE no jet: delta -129 above false walkable false tooHigh false fast false blocked true range 160 wpt dx 38 dy -69 lat 2
+AITRACE no jet: delta -128 above false walkable false tooHigh false fast false blocked true range 152 wpt dx 37 dy -62 lat 2
+AITRACE no jet: delta -110 above false walkable false tooHigh false fast false blocked true range 123 wpt dx 25 dy -57 lat 2
+AITRACE no jet: delta -128 above false walkable false tooHigh false fast false blocked true range 142 wpt dx 27 dy -57 lat 2
+AITRACE no jet: delta -109 above false walkable false tooHigh false fast false blocked true range 112 wpt dx 23 dy -45 lat 2
+AITRACE no jet: delta -106 above false walkable false tooHigh false fast false blocked true range 115 wpt dx 24 dy -35 lat 2
+AIBUNKER trace up the stairs 9s pos 2111,272 vel 2,-0.4 fuel 2500 path 2 left 56 aim 0 facing right
+AITRACE pop: reached 2124,242 from 2119,259, 1 left
+AITRACE step kind 0 to 2160,243 from 2119,258 prone false
+AIBUNKER up the stairs: arrived in 11.5 s, stood still 0 s
+AIBUNKER done

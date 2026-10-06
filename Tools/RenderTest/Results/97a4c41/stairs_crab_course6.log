@@ -1,0 +1,50 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER path for down the stairs: 6 nodes: 2160,243 2100,252(0) 2076,276(1) 2076,300(3) 2052,324(0) 2060,340(3)
+AITRACE path: none to follow, asking again from 2160,244
+AITRACE path for Dreadnought: status 0, 6 nodes, cost 7.800000, from 2160,243 to 2060,339
+AITRACE nodes: 2160,243 2100,252(0) 2076,276(1) 2076,300(3) 2052,324(0) 2060,339(3)
+AITRACE step kind 1 to 2076,276 from 2160,244 prone false
+AIBUNKER trace down the stairs 3s pos 2159,245 vel -0.2,1.1 fuel 2500 path 4 left 137 aim 0 facing left
+AITRACE jet: landing brake at 3.9
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE jet: wall ahead
+AITRACE climb: wpt dx -25 dy 12
+AITRACE jet: landing brake at 3.6
+AITRACE jet: wall ahead
+AITRACE climb: wpt dx -23 dy 10
+AITRACE jet: wall ahead
+AITRACE climb: wpt dx -21 dy 10
+AITRACE jet: wall ahead
+AITRACE climb: wpt dx -18 dy 8
+AITRACE jet: wall ahead
+AITRACE climb: wpt dx -16 dy 6
+AITRACE pop: reached 2076,276 from 2088,271, 3 left
+AITRACE jet: landing brake at 3.4
+AITRACE step kind 3 to 2076,332 from 2086,273 prone false
+AITRACE jet: landing brake at 4.1
+AITRACE jet: landing brake at 4.1
+AITRACE jet: landing brake at 4
+AITRACE jet: landing brake at 4
+AITRACE jet: landing brake at 3.3
+AITRACE jet: landing brake at 3.2
+AITRACE jet: landing brake at 3
+AITRACE jet: landing brake at 3
+AITRACE pop: reached 2076,332 from 2072,292, 2 left
+AITRACE step kind 0 to 2052,338 from 2071,294 prone false
+AITRACE pop: passed 2052,338 for 2060,339 from 2071,294
+AITRACE step kind 3 to 2060,339 from 2070,296 prone false
+AITRACE jet: landing brake at 3.4
+AITRACE pop: reached 2060,339 from 2069,301, 0 left
+AIBUNKER down the stairs: arrived in 5.5 s, stood still 0 s
+AIBUNKER done
