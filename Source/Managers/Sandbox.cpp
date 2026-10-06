@@ -129,6 +129,7 @@ namespace {
 		PlayCharacter,
 		Barracks,
 		Extractor,
+		OrderMove,
 		// Not tools, but queued the same way.
 		PlayerRemake,
 		PlayerRemove,
@@ -204,6 +205,7 @@ namespace {
 	    {Tool::PlayCharacter, "Play from here", 0.0F, false},
 	    {Tool::Barracks, "Barracks", 0.0F, false},
 	    {Tool::Extractor, "Extractor", 0.0F, false},
+	    {Tool::OrderMove, "Move a side here", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -227,9 +229,10 @@ namespace {
 		HuntBrains,
 		Patrol,
 		Rally,
-		Idle
+		Idle,
+		MoveTo
 	};
-	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0";
+	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Move to a place\0";
 	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
 
 	/// A preset the sandbox can spawn.
@@ -817,7 +820,7 @@ namespace {
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
 	bool TakesSide(Tool kind) {
-		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor;
+		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::OrderMove;
 	}
 
 	/// Clears a box of the terrain to air.
@@ -1679,6 +1682,92 @@ namespace {
 	}
 
 	/// The selected units move to a point, or attack the unit there.
+	/// Places for a number of units to stand as near a point as the ground allows: on the ground, spread out either side of it, never inside anything.
+	/// Each is where a unit's feet go.
+	std::vector<Vector> StandingSpots(const Vector& around, int count) {
+		std::vector<Vector> spots;
+		if (count <= 0 || !g_SceneMan.GetScene()) {
+			return spots;
+		}
+		const int sceneHeight = g_SceneMan.GetSceneHeight();
+		const float stride = 18.0F;
+		// Outwards from the point: there, then left and right in turn, further each time.
+		for (int step = 0; step < count * 6 && static_cast<int>(spots.size()) < count; ++step) {
+			float offset = step == 0 ? 0.0F : (static_cast<float>((step + 1) / 2) * stride) * ((step % 2 == 1) ? -1.0F : 1.0F);
+			Vector probe = around + Vector(offset, 0.0F);
+			g_SceneMan.WrapPosition(probe);
+			int x = probe.GetFloorIntX();
+			int y = probe.GetFloorIntY();
+			// Up out of the ground if inside it, then down to the ground beneath, within a short way of the point.
+			int climbed = 0;
+			while (climbed < 120 && y > 0 && g_SceneMan.GetTerrMatter(x, y) != g_MaterialAir) {
+				--y;
+				++climbed;
+			}
+			int fell = 0;
+			while (fell < 240 && y < sceneHeight - 2 && g_SceneMan.GetTerrMatter(x, y + 1) == g_MaterialAir) {
+				++y;
+				++fell;
+			}
+			if (fell >= 240 || y >= sceneHeight - 2) {
+				continue;
+			}
+			// Head room, and nothing already chosen too close.
+			bool clear = true;
+			for (int up = 2; up <= 40 && clear; up += 4) {
+				clear = g_SceneMan.GetTerrMatter(x, y - up) == g_MaterialAir;
+			}
+			for (const Vector& taken: spots) {
+				if (clear && g_SceneMan.ShortestDistance(taken, Vector(static_cast<float>(x), static_cast<float>(y)), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(stride * 0.7F)) {
+					clear = false;
+				}
+			}
+			if (clear) {
+				spots.emplace_back(static_cast<float>(x), static_cast<float>(y));
+			}
+		}
+		return spots;
+	}
+
+	/// The units a move order from a point goes to: a side's, or the selected ones.
+	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly) {
+		std::vector<Actor*> units;
+		if (selectedOnly) {
+			for (const UnitRef& ref: s_Selected) {
+				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+					units.push_back(unit);
+				}
+			}
+		} else {
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (actor->GetTeam() == team && IsCombatant(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains")) {
+					units.push_back(actor);
+				}
+			}
+		}
+		return units;
+	}
+
+	/// Sends units to stand round a point, each to its own spot, the nearest unit to the nearest spot.
+	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point) {
+		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()));
+		if (spots.empty()) {
+			return;
+		}
+		std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
+			return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+		});
+		for (size_t i = 0; i < units.size(); ++i) {
+			Actor* unit = units[i];
+			const Vector& spot = spots[std::min(i, spots.size() - 1)];
+			unit->RemoveNumberValue(c_AttackTag);
+			unit->ClearAIWaypoints();
+			// The waypoint a little above the ground, where the unit's middle will be.
+			unit->AddAISceneWaypoint(spot + Vector(0.0F, -unit->GetHeight() * 0.5F));
+			unit->SetAIMode(Actor::AIMODE_GOTO);
+		}
+	}
+
 	void CommandSelected(const Vector& position) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
 		bool attack = target && IsCombatant(target) && std::none_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
@@ -1688,11 +1777,12 @@ namespace {
 				unit->ClearAIWaypoints();
 				if (attack) {
 					unit->AddAIMOWaypoint(target);
-				} else {
-					unit->AddAISceneWaypoint(position);
+					unit->SetAIMode(Actor::AIMODE_GOTO);
 				}
-				unit->SetAIMode(Actor::AIMODE_GOTO);
 			}
+		}
+		if (!attack) {
+			MoveUnitsTo(UnitsToMove(0, true), position);
 		}
 	}
 
@@ -1887,11 +1977,17 @@ namespace {
 				PlaceStructure(stroke);
 				break;
 			case Tool::OrderSide:
+				if (stroke.Orders == Order::MoveTo) {
+					break;
+				}
 				for (Actor* actor: SandboxAccess::Actors()) {
 					if (actor->GetTeam() == stroke.Team && IsCombatant(actor) && !actor->IsPlayerControlled()) {
 						GiveOrder(actor, stroke.Orders);
 					}
 				}
+				break;
+			case Tool::OrderMove:
+				MoveUnitsTo(UnitsToMove(stroke.Team, false), at);
 				break;
 			case Tool::RemoveSide:
 				for (Actor* actor: SandboxAccess::Actors()) {
@@ -2485,6 +2581,8 @@ namespace {
 				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
 			case Tool::Extractor:
 				return {Icon::Wall, IM_COL32(120, 200, 230, 255)};
+			case Tool::OrderMove:
+				return {Icon::Arrows, IM_COL32(242, 182, 61, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:
@@ -2927,6 +3025,8 @@ namespace {
 		ImGui::EndChild();
 	}
 
+	ImVec2 ToScreen(const Vector& scenePosition);
+
 	void DrawCursor() {
 		ImGuiIO& io = ImGui::GetIO();
 		const ToolInfo& tool = CurrentTool();
@@ -2971,6 +3071,23 @@ namespace {
 			label = preset->PresetName;
 			if (tool.Kind == Tool::Unit && s_SquadSize > 1) {
 				label += " x" + std::to_string(s_SquadSize);
+			}
+		}
+		if (tool.Kind == Tool::OrderMove || (tool.Kind == Tool::Command && !s_Selected.empty())) {
+			// Where each unit will stand: a marker on the ground for every one, so the order can be seen before it is given.
+			std::vector<Actor*> units = UnitsToMove(s_Team, tool.Kind == Tool::Command);
+			std::vector<Vector> spots = StandingSpots(MouseScenePosition(), static_cast<int>(units.size()));
+			ImU32 color = tool.Kind == Tool::Command ? IM_COL32(255, 255, 255, 230) : c_SideColors[s_Team];
+			float pixel = ToolUI::Pixel();
+			for (const Vector& spot: spots) {
+				ImVec2 at = ToScreen(spot);
+				drawList->AddTriangleFilled(ImVec2(at.x, at.y - pixel * 2.0F), ImVec2(at.x - pixel * 3.0F, at.y - pixel * 7.0F), ImVec2(at.x + pixel * 3.0F, at.y - pixel * 7.0F), color);
+				drawList->AddRectFilled(ImVec2(at.x - pixel * 4.0F, at.y - pixel), ImVec2(at.x + pixel * 4.0F, at.y + pixel), color);
+			}
+			if (units.empty()) {
+				label = tool.Kind == Tool::OrderMove ? std::string(c_SideNames[s_Team]) + " has no units to move" : "No units selected";
+			} else {
+				label = std::to_string(units.size()) + (units.size() == 1 ? " unit will come here" : " units will come here");
 			}
 		}
 		if (TakesSide(tool.Kind) && tool.Kind != Tool::Structure) {
@@ -3567,12 +3684,15 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		stroke.Choice = static_cast<int>(found - list.begin());
 		if (stroke.Kind == Tool::Structure) {
 			stroke.Count = 1;
-			if (std::getenv("CCCP_TEST_POINTER")) {
-				// Test runs that show the building preview: the piece a script placed stays in hand.
-				s_StructureChoice = stroke.Choice;
-				s_ToolIndex = ToolIndex(Tool::Structure);
-			}
 		}
+		if (std::getenv("CCCP_TEST_POINTER")) {
+			ChoiceFor(stroke.Kind) = stroke.Choice;
+		}
+	}
+	if (std::getenv("CCCP_TEST_POINTER")) {
+		// Test runs that show what the pointer does: what a script used stays in hand, for the side it used.
+		s_ToolIndex = toolIndex;
+		s_Team = std::clamp(team, 0, c_Sides - 1);
 	}
 	s_Queue.push_back(stroke);
 	return true;
@@ -3818,7 +3938,8 @@ bool Sandbox::IsLookingAround() {
 
 bool Sandbox::CapturesWorldClicks() {
 	// With the tools hidden in the Sandbox game mode, the tool in hand still works on the world.
-	return (s_Open || IsLookingAround()) && CurrentTool().Kind != Tool::None && InGame() && !ImGui::GetIO().WantCaptureMouse;
+	static const bool testPointer = std::getenv("CCCP_TEST_POINTER") != nullptr;
+	return (s_Open || IsLookingAround() || testPointer) && CurrentTool().Kind != Tool::None && InGame() && !ImGui::GetIO().WantCaptureMouse;
 }
 
 void Sandbox::DrawGUI() {
@@ -4214,7 +4335,11 @@ void Sandbox::DrawGUI() {
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
 				ImGui::Combo("Orders", &s_Order, c_OrderNames);
-				if (ToolUI::Button("Give orders", ImVec2(-1.0F, 0.0F))) {
+				if (static_cast<Order>(s_Order) == Order::MoveTo) {
+					// Given by clicking the place: the pointer shows where each unit will stand first.
+					ToolButtons({Tool::OrderMove});
+					ImGui::TextWrapped("Click where the side should go. Each unit is shown a place of its own on the ground there, as close to the point as the ground allows, and the nearest unit takes the nearest place.");
+				} else if (ToolUI::Button("Give orders", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::OrderSide;
 					stroke.Team = s_Team;
