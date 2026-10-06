@@ -2822,9 +2822,9 @@ namespace {
 		}
 	}
 
-	void LoadoutChooser() {
+	void LoadoutChooser(const char* label = "Loadout") {
 		const char* current = s_Loadout == 0 ? "Faction default" : (s_Loadout == 1 ? "Unarmed" : (s_Loadout - 2 < static_cast<int>(s_Weapons.size()) ? s_Weapons[s_Loadout - 2]->Label.c_str() : "?"));
-		if (ImGui::BeginCombo("Loadout", current)) {
+		if (ImGui::BeginCombo(label, current)) {
 			if (ImGui::Selectable("Faction default", s_Loadout == 0)) {
 				s_Loadout = 0;
 			}
@@ -3442,6 +3442,89 @@ namespace {
 		}
 	}
 
+	/// The settings of the tool in hand, in a row at the top of the bar: brush size for painting, squad size and orders for units, and so on.
+	/// Returns whether anything was shown.
+	bool ContextRow() {
+		const ToolInfo& tool = CurrentTool();
+		float pixel = ToolUI::Pixel();
+		float field = ImGui::GetFontSize() * 9.0F;
+		bool shown = false;
+		auto start = [&](const char* what) {
+			ImGui::TextDisabled("%s", what);
+			ImGui::SameLine(0.0F, pixel * 4.0F);
+			shown = true;
+		};
+		if (tool.UsesRadius) {
+			start(tool.Name);
+			ImGui::SetNextItemWidth(field);
+			ImGui::SliderInt("##brush", &s_Radius, 1, 40, "Brush %d px");
+			ImGui::SameLine();
+			for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 10}, {"L", 24}}) {
+				if (ToolUI::SmallButton(label)) {
+					s_Radius = size;
+				}
+				ImGui::SameLine();
+			}
+			ImGui::NewLine();
+		} else if (tool.Kind == Tool::Unit || tool.Kind == Tool::Drop) {
+			const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind));
+			start(preset ? preset->PresetName.c_str() : tool.Name);
+			ImGui::SetNextItemWidth(field * 0.7F);
+			ImGui::SliderInt("##squad", &s_SquadSize, 1, 10, "Squad of %d");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(field);
+			ImGui::Combo("##orders", &s_Order, c_OrderNames);
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(field);
+			LoadoutChooser("##loadout");
+			if (tool.Kind == Tool::Drop) {
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(field * 0.7F);
+				ImGui::Combo("##craft", &s_Craft, "Dropship Rocket ");
+			}
+		} else if (tool.Kind == Tool::Structure) {
+			const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice);
+			start(preset ? preset->PresetName.c_str() : tool.Name);
+			ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
+		} else if (tool.Kind == Tool::Item) {
+			const Preset* preset = ChosenPreset(Tool::Item, s_ItemChoice);
+			start(preset ? preset->PresetName.c_str() : tool.Name);
+			ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
+		} else if (tool.Kind == Tool::Barracks) {
+			start(tool.Name);
+			ImGui::SetNextItemWidth(field);
+			ImGui::SliderInt("##keep", &s_ColonyKeep, 1, 20, "Keeps %d alive");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(field);
+			ImGui::Combo("##orders", &s_Order, c_OrderNames);
+		} else if (tool.Kind == Tool::Effect) {
+			start(tool.Name);
+			ImGui::SetNextItemWidth(field * 1.4F);
+			if (ImGui::BeginCombo("##effect", c_Effects[std::clamp(s_EffectChoice, 0, static_cast<int>(EffectKind::Count) - 1)].Name)) {
+				for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
+					if (ImGui::Selectable(c_Effects[i].Name, i == s_EffectChoice)) {
+						s_EffectChoice = i;
+					}
+				}
+				ImGui::EndCombo();
+			}
+		} else if (tool.Kind == Tool::OrderMove || tool.Kind == Tool::RallyPoint || tool.Kind == Tool::Brain) {
+			start(tool.Name);
+			for (int side = 0; side < c_Sides; ++side) {
+				if (side > 0) {
+					ImGui::SameLine();
+				}
+				ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
+				ToolUI::RadioButton(c_SideNames[side], &s_Team, side);
+				ImGui::PopStyleColor();
+			}
+		} else if (tool.Kind == Tool::Command) {
+			start(tool.Name);
+			ImGui::TextDisabled("%d selected.  Drag a box to select; click the ground to send them, an enemy to attack it.", static_cast<int>(s_Selected.size()));
+		}
+		return shown;
+	}
+
 	/// The sandbox's bar along the bottom of the picture, in the Sandbox game mode while you're above it all: the main tools, the parts of the sandbox window to
 	/// open, and the things you've pinned. It is there whether the window is open or not.
 	void DrawBar() {
@@ -3475,6 +3558,13 @@ namespace {
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
 		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
 			BarPlate();
+			// The settings of the tool in hand, in a row of their own at the top.
+			if (ContextRow()) {
+				ImVec2 at = ImGui::GetCursorScreenPos();
+				float width = ImGui::GetContentRegionAvail().x;
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), IM_COL32(170, 128, 48, 160));
+				ImGui::Dummy(ImVec2(width, pixel * 3.0F));
+			}
 			// What you've pinned, in a row of its own above the rest.
 			int unpin = -1;
 			if (!s_Pins.empty()) {
