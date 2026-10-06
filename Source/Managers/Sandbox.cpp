@@ -234,6 +234,9 @@ namespace {
 	};
 	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Move to a place\0";
 	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
+	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
+	constexpr const char* c_AttackXTag = "SandboxAttackX"; //!< Number values on units told to attack towards a place: they fight what is near it, and hold there otherwise.
+	constexpr const char* c_AttackYTag = "SandboxAttackY";
 
 	/// A preset the sandbox can spawn.
 	struct Preset {
@@ -677,9 +680,104 @@ namespace {
 
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack) {
 		unit->RemoveNumberValue(c_AttackTag);
+		if (attack && target) {
+			unit->SetNumberValue(c_TargetTag, static_cast<double>(target->GetUniqueID()));
+		} else {
+			unit->RemoveNumberValue(c_TargetTag);
+		}
+		if (!attack) {
+			unit->RemoveNumberValue(c_AttackXTag);
+			unit->RemoveNumberValue(c_AttackYTag);
+		}
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
+		// An earlier order still waiting is dropped.
+		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; }), s_PendingOrders.end());
 		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
+	}
+
+	/// Holds a unit where it is, forgetting every order it had.
+	void HoldUnit(Actor* unit) {
+		unit->RemoveNumberValue(c_AttackTag);
+		unit->RemoveNumberValue(c_TargetTag);
+		unit->RemoveNumberValue(c_AttackXTag);
+		unit->RemoveNumberValue(c_AttackYTag);
+		unit->ClearAIWaypoints();
+		unit->SetAIMode(Actor::AIMODE_SENTRY);
+		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; }), s_PendingOrders.end());
+	}
+
+	Actor* ActorWithID(long id) {
+		if (id == 0) {
+			return nullptr;
+		}
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (static_cast<long>(actor->GetUniqueID()) == id) {
+				return actor;
+			}
+		}
+		return nullptr;
+	}
+
+	/// The nearest enemy of a side to a point within a reach, or none.
+	Actor* NearestEnemyTo(const Vector& point, int team, float reach) {
+		Actor* nearest = nullptr;
+		float best = reach * reach;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || actor->IsInGroup("Brains")) {
+				continue;
+			}
+			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+			if (distance < best) {
+				best = distance;
+				nearest = actor;
+			}
+		}
+		return nearest;
+	}
+
+	/// Units that have stopped moving on the way somewhere are sent again, so the AI works out a fresh path from where they are; after a few tries they give up and hold.
+	void NudgeStuckUnits() {
+		static std::map<long, std::pair<Vector, int>> lastSeen; // By unique ID: where the unit was last time, and how many times running it hadn't moved.
+		std::map<long, std::pair<Vector, int>> seenNow;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (actor->GetAIMode() != Actor::AIMODE_GOTO || actor->IsPlayerControlled() || !IsCombatant(actor)) {
+				continue;
+			}
+			long id = static_cast<long>(actor->GetUniqueID());
+			const MovableObject* target = actor->GetMOMoveTarget();
+			bool chasing = target && g_MovableMan.ValidMO(target);
+			Vector goal = chasing ? target->GetPos() : actor->GetLastAIWaypoint();
+			if (g_SceneMan.ShortestDistance(actor->GetPos(), goal, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(chasing ? 120.0F : 30.0F)) {
+				continue;
+			}
+			int still = 0;
+			if (auto before = lastSeen.find(id); before != lastSeen.end() && g_SceneMan.ShortestDistance(before->second.first, actor->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(6.0F)) {
+				still = before->second.second + 1;
+			}
+			if (still >= 6) {
+				// Three seconds without getting anywhere.
+				still = 0;
+				int tries = static_cast<int>(actor->GetNumberValue("SandboxStuck")) + 1;
+				actor->SetNumberValue("SandboxStuck", tries);
+				if (tries > 4) {
+					actor->RemoveNumberValue("SandboxStuck");
+					HoldUnit(actor);
+				} else {
+					bool attack = actor->GetNumberValue(c_AttackTag) > 0.0;
+					Actor* chosen = chasing ? const_cast<Actor*>(dynamic_cast<const Actor*>(target)) : nullptr;
+					double x = actor->GetNumberValue(c_AttackXTag);
+					double y = actor->GetNumberValue(c_AttackYTag);
+					SendUnit(actor, goal, chosen, attack);
+					if (attack && actor->NumberValueExists(c_AttackXTag)) {
+						actor->SetNumberValue(c_AttackXTag, x);
+						actor->SetNumberValue(c_AttackYTag, y);
+					}
+				}
+			}
+			seenNow[id] = {actor->GetPos(), still};
+		}
+		lastSeen.swap(seenNow);
 	}
 
 	void ApplyPendingOrders() {
@@ -697,6 +795,9 @@ namespace {
 				unit->AddAISceneWaypoint(order.Waypoint);
 			}
 			unit->SetAIMode(Actor::AIMODE_GOTO);
+			if (std::getenv("CCCP_SANDBOX_LOG")) {
+				g_ConsoleMan.PrintString("SANDBOX: " + unit->GetPresetName() + " sent to " + std::to_string(static_cast<int>(order.Waypoint.m_X)) + "," + std::to_string(static_cast<int>(order.Waypoint.m_Y)) + (order.Target ? " after " + order.Target->GetPresetName() : "") + " mode now " + std::to_string(unit->GetAIMode()));
+			}
 			if (order.Attack) {
 				unit->SetNumberValue(c_AttackTag, 1.0);
 			}
@@ -749,7 +850,39 @@ namespace {
 			}
 			const MovableObject* target = actor->GetMOMoveTarget();
 			const Actor* targetActor = target && g_MovableMan.ValidMO(target) ? dynamic_cast<const Actor*>(target) : nullptr;
-			if (actor->GetAIMode() == Actor::AIMODE_GOTO && targetActor && IsCombatant(targetActor) && targetActor->GetTeam() != actor->GetTeam()) {
+			bool chasingEnemy = actor->GetAIMode() == Actor::AIMODE_GOTO && targetActor && IsCombatant(targetActor) && targetActor->GetTeam() != actor->GetTeam();
+			// An enemy chosen for it is kept after while it lives, whatever else is about.
+			if (Actor* chosen = ActorWithID(static_cast<long>(actor->GetNumberValue(c_TargetTag))); chosen && IsCombatant(chosen) && chosen->GetTeam() != actor->GetTeam()) {
+				if (!chasingEnemy || targetActor != chosen) {
+					bool towardsPlace = actor->NumberValueExists(c_AttackXTag);
+					double x = actor->GetNumberValue(c_AttackXTag);
+					double y = actor->GetNumberValue(c_AttackYTag);
+					SendUnit(actor, chosen->GetPos(), chosen, true);
+					if (towardsPlace) {
+						actor->SetNumberValue(c_AttackXTag, x);
+						actor->SetNumberValue(c_AttackYTag, y);
+					}
+				}
+				continue;
+			}
+			actor->RemoveNumberValue(c_TargetTag);
+			if (chasingEnemy) {
+				continue;
+			}
+			// Told to attack towards a place: the nearest enemy to it, else go there and stand ready.
+			if (actor->NumberValueExists(c_AttackXTag)) {
+				Vector place(static_cast<float>(actor->GetNumberValue(c_AttackXTag)), static_cast<float>(actor->GetNumberValue(c_AttackYTag)));
+				double x = place.m_X;
+				double y = place.m_Y;
+				if (Actor* enemy = NearestEnemyTo(place, actor->GetTeam(), 500.0F)) {
+					SendUnit(actor, enemy->GetPos(), enemy, true);
+				} else if (!g_SceneMan.ShortestDistance(actor->GetPos(), place, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(60.0F) && actor->GetAIMode() != Actor::AIMODE_GOTO) {
+					SendUnit(actor, place, nullptr, true);
+				} else {
+					continue;
+				}
+				actor->SetNumberValue(c_AttackXTag, x);
+				actor->SetNumberValue(c_AttackYTag, y);
 				continue;
 			}
 			GiveOrder(actor, Order::Attack);
@@ -1738,6 +1871,13 @@ namespace {
 				s_Selected.push_back(MakeRef(actor));
 			}
 		}
+		if (std::getenv("CCCP_SANDBOX_LOG")) {
+			std::string where;
+			for (const Actor* actor: SandboxAccess::Actors()) {
+				where += " " + actor->GetPresetName() + "@" + std::to_string(static_cast<int>(actor->GetPos().m_X)) + "," + std::to_string(static_cast<int>(actor->GetPos().m_Y));
+			}
+			g_ConsoleMan.PrintString("SANDBOX: select box " + std::to_string(static_cast<int>(left)) + "," + std::to_string(static_cast<int>(top)) + " to " + std::to_string(static_cast<int>(right)) + "," + std::to_string(static_cast<int>(bottom)) + " took " + std::to_string(s_Selected.size()) + "; actors:" + where);
+		}
 	}
 
 	/// The selected units move to a point, or attack the unit there.
@@ -1809,10 +1949,27 @@ namespace {
 
 	/// Sends units to stand round a point, each to its own spot, the nearest unit to the nearest spot.
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point) {
-		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()));
+		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()) * 2);
 		if (spots.empty()) {
 			return;
 		}
+		// Spots no unit can get to (walled off, across a gap too wide) are passed over, so nobody is sent to stand at a wall.
+		if (Scene* scene = g_SceneMan.GetScene(); scene && !units.empty()) {
+			std::vector<Vector> reachable;
+			std::list<Vector> path;
+			for (const Vector& spot: spots) {
+				if (static_cast<int>(reachable.size()) >= static_cast<int>(units.size())) {
+					break;
+				}
+				if (scene->CalculatePath(units.front()->GetPos(), spot, path, units.front()->GetAIBaseDigStrength() > 0.0F ? FLT_MAX : 0.0F) >= 0.0F) {
+					reachable.push_back(spot);
+				}
+			}
+			if (!reachable.empty()) {
+				spots = reachable;
+			}
+		}
+		spots.resize(std::min(spots.size(), units.size()));
 		std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
 			return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
 		});
@@ -1842,6 +1999,9 @@ namespace {
 	/// (select every unit of that kind in sight).
 	void CommandSelected(const Vector& position, int modifier) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
+		if (std::getenv("CCCP_SANDBOX_LOG")) {
+			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
+		}
 		bool friendly = target && IsCombatant(target) && !target->IsInGroup("Brains") && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
 		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
 		if (s_CommandMode == CommandMode::Guard) {
@@ -1923,12 +2083,13 @@ namespace {
 			}
 			for (Actor* unit: units) {
 				SendUnit(unit, point, target, true);
+				unit->SetNumberValue(c_AttackXTag, point.m_X);
+				unit->SetNumberValue(c_AttackYTag, point.m_Y);
 			}
 		} else if (choice == 2) {
 			for (Actor* unit: units) {
-				unit->RemoveNumberValue(c_AttackTag);
-				unit->ClearAIWaypoints();
-				unit->SetAIMode(Actor::AIMODE_SENTRY);
+				HoldUnit(unit);
+				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
 		}
 	}
@@ -4811,20 +4972,6 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::TextDisabled("Rally point: pick the tool above and click to place this side's flag.");
 
-				ImGui::SeparatorText("Selected units");
-				int selected = static_cast<int>(std::count_if(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) { return GetRef(ref) != nullptr; }));
-				ImGui::Text("%d selected. Use the Command tool: drag a box to select, click to move or attack.", selected);
-				if (ToolUI::Button("Give the selected these orders") && selected > 0) {
-					Stroke stroke;
-					stroke.Kind = Tool::OrderSelected;
-					stroke.Orders = static_cast<Order>(s_Order);
-					s_Queue.push_back(stroke);
-				}
-				ImGui::SameLine();
-				if (ToolUI::Button("Clear selection")) {
-					s_Selected.clear();
-				}
-
 				// Auto battles are still there for scripts (SandboxAutoBattleSide, SandboxStartAutoBattle); their controls were taken out of the window.
 				ImGui::EndTabItem();
 			}
@@ -4986,6 +5133,9 @@ void Sandbox::Update() {
 	}
 	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
+	}
+	if (g_TimerMan.GetSimUpdateCount() % 30 == 0) {
+		NudgeStuckUnits();
 	}
 	UpdateAutoBattle();
 	Colony::Update();

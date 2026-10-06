@@ -203,5 +203,6 @@ Write-Scenario "ZoomLights" ($sandbox + @{ TimeOfDay = 23.5; WeatherType = 0; Da
 Write-Scenario "Colony" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Colony")
 Write-Scenario "Build" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Build")
 Write-Scenario "Move" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Move")
+Write-Scenario "Attack" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Attack")
 Write-Scenario "PlayMenu" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play Menu")
 Write-Scenario "Play" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play")
