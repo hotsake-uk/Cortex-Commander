@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Singleton.h"
 #include "LightingSettings.h"
 #include "Vector.h"
@@ -10,6 +10,7 @@ struct ImFont;
 
 namespace RTE {
 	class RenderTarget;
+	struct GameViewRect;
 	class DebugMan : public Singleton<DebugMan> {
 		friend class SettingsMan;
 	public:
@@ -93,6 +94,7 @@ namespace RTE {
 		bool m_ImGuiDemoWindow{false};
 		bool m_ShowPerformanceMan{false};
 		bool m_ShowGraphicsLab{false};
+		bool m_PanelsOverlay{true}; //!< Docked panels lie over the game's picture, which keeps its full size, instead of pushing it into the space between them.
 		bool m_DockPanels{true}; //!< Tool windows are panels at the sides of the game's picture, not floating over it.
 		float m_PanelWidth{380.0F}; //!< Width of the docked panels, before the interface scale.
 		float m_ToolScale{0.7F}; //!< How big the tool windows' text and controls are, as a share of the size that follows the window's height.
@@ -130,6 +132,12 @@ namespace RTE {
 
 		/// Gets how wide the docked panel at a side is, in window pixels.
 		float GetPanelWidth(PanelSide side) const;
+
+	public:
+		/// Gets the part of the game's picture not covered by docked panels this frame, in window pixels: where things that must stay in sight (the sandbox bar, banners) go.
+		GameViewRect GetUncoveredView() const;
+
+	private:
 		void PhotoModeGUI();
 
 		/// Restores what photo mode changed, when it closes.

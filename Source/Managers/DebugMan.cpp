@@ -1,4 +1,4 @@
-#include "DebugMan.h"
+﻿#include "DebugMan.h"
 #include <unordered_map>
 #include "Actor.h"
 #include "WindowMan.h"
@@ -53,7 +53,7 @@ namespace {
 	/// Dresses the tool windows in the game's own menu colours (the olive panels, parchment text and gold of its skins) with square, hard-edged shapes.
 	void ApplyGameTheme(ImGuiStyle& style) {
 		auto rgb = [](int r, int g, int b, float a = 1.0F) { return ImVec4(static_cast<float>(r) / 255.0F, static_cast<float>(g) / 255.0F, static_cast<float>(b) / 255.0F, a); };
-		const ImVec4 panel = rgb(38, 46, 32, 0.97F);
+		const ImVec4 panel = rgb(38, 46, 32, 0.93F);
 		const ImVec4 panelDark = rgb(24, 29, 21);
 		const ImVec4 field = rgb(57, 75, 42);
 		const ImVec4 fieldHover = rgb(85, 96, 68);
@@ -231,6 +231,21 @@ void DebugMan::PrepareFonts() {
 	ImGui_ImplOpenGL3_CreateFontsTexture();
 }
 
+GameViewRect DebugMan::GetUncoveredView() const {
+	GameViewRect view = g_WindowMan.GetGameViewRect();
+	if (m_DockPanels && m_PanelsOverlay) {
+		float left = m_PanelsLastFrame[0] > 0 ? GetPanelWidth(PanelSide::Left) : 0.0F;
+		float right = m_PanelsLastFrame[1] > 0 ? GetPanelWidth(PanelSide::Right) : 0.0F;
+		float from = std::max(view.x, left);
+		float to = std::min(view.x + view.w, ImGui::GetIO().DisplaySize.x - right);
+		if (to - from > 100.0F) {
+			view.x = from;
+			view.w = to - from;
+		}
+	}
+	return view;
+}
+
 float DebugMan::GetPanelWidth(PanelSide side) const {
 	// The right side holds the settings panel, which has its list of categories beside its controls, so it is the wider.
 	float displayWidth = ImGui::GetIO().DisplaySize.x;
@@ -255,7 +270,11 @@ void DebugMan::DrawToolWindowControls() {
 		ToolUI::Checkbox("The game's own pixel lettering", &m_PixelFont);
 		ImGui::SetItemTooltip("On: these windows are lettered in the game's small pixel font. Off: a smooth font, which is easier to read at length.");
 		ToolUI::Checkbox("Dock tool windows at the sides", &m_DockPanels);
-		ImGui::SetItemTooltip("On: tool windows are panels beside the game's picture. Off: they float over it and can be moved.");
+		ImGui::SetItemTooltip("On: tool windows are panels at the sides of the window. Off: they float and can be moved.");
+		if (m_DockPanels) {
+			ToolUI::Checkbox("Panels lie over the picture", &m_PanelsOverlay);
+			ImGui::SetItemTooltip("On: the game's picture keeps its full size and the panels cover its edges. Off: the picture is fitted into the space between the panels.");
+		}
 		ImGui::TreePop();
 	}
 }
@@ -293,7 +312,9 @@ void DebugMan::DrawImGui() {
 			m_PanelsLastFrame[side] = m_PanelsThisFrame[side];
 			m_PanelsThisFrame[side] = 0;
 		}
-		g_WindowMan.SetReservedSpace(m_DockPanels && m_PanelsLastFrame[0] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Left)) : 0, m_DockPanels && m_PanelsLastFrame[1] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Right)) : 0);
+		// Panels either lie over the picture or push it into the space between them.
+		bool pushes = m_DockPanels && !m_PanelsOverlay;
+		g_WindowMan.SetReservedSpace(pushes && m_PanelsLastFrame[0] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Left)) : 0, pushes && m_PanelsLastFrame[1] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Right)) : 0);
 	}
 
 	// The modern HUD, unless photo mode is hiding the HUD.

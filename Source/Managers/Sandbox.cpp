@@ -3319,7 +3319,7 @@ namespace {
 	/// The sandbox's bar along the bottom of the picture, in the Sandbox game mode while you're above it all: the main tools, the parts of the sandbox window to
 	/// open, and the things you've pinned. It is there whether the window is open or not.
 	void DrawBar() {
-		GameViewRect view = g_WindowMan.GetGameViewRect();
+		GameViewRect view = g_DebugMan.GetUncoveredView();
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float pixel = ToolUI::Pixel();
 		struct Part {
@@ -3864,7 +3864,7 @@ void Sandbox::DrawGUI() {
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		ImVec2 size = ImGui::CalcTextSize(text);
 		float scale = g_DebugMan.UsingPixelFont() ? 1.0F : 1.3F;
-		GameViewRect view = g_WindowMan.GetGameViewRect();
+		GameViewRect view = g_DebugMan.GetUncoveredView();
 		ImVec2 at(view.x + (view.w - size.x * scale) * 0.5F, view.y + fromTop);
 		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, static_cast<int>(150.0F * alpha)), 4.0F);
 		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, (color & 0x00FFFFFF) | (static_cast<ImU32>(255.0F * alpha) << 24), text);
@@ -3913,6 +3913,13 @@ void Sandbox::DrawGUI() {
 	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
 	// working. Only the window itself is left out.
 	bool hiddenButAbove = !s_Open && IsLookingAround();
+	// The bar is there whenever you're above the world and not playing a unit, whatever else is open or hidden.
+	if (IsGodMode() && InGame() && !s_Possessed && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		if (!s_CatalogueBuilt) {
+			BuildCatalogue();
+		}
+		DrawBar();
+	}
 	if (!s_Open && !hiddenButAbove) {
 		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
 			// Automated test runs keep the window shut, but the camera they've placed has to stay where they put it.
@@ -3997,9 +4004,6 @@ void Sandbox::DrawGUI() {
 		DrawSelection();
 	}
 
-	if (IsLookingAround() && !g_DebugMan.IsPhotoModeHidingHUD()) {
-		DrawBar();
-	}
 	if (hiddenButAbove) {
 		return;
 	}

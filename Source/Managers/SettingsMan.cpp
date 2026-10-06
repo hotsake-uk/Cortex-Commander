@@ -285,6 +285,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ShowAIPaths", { Actor::SetShowAIPaths(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("AimDotsLight", { g_PostProcessMan.GetLightingSettings().AimDotsLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampsByDay", { g_PostProcessMan.GetLightingSettings().HeadlampsByDay = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("PanelsOverlay", { g_DebugMan.m_PanelsOverlay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DockPanels", { g_DebugMan.m_DockPanels = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SandboxCharacter", { Sandbox::SetCharacterSetup(reader.ReadPropValue()); });
 	MatchProperty("SandboxPins", { Sandbox::SetPins(reader.ReadPropValue()); });
@@ -607,6 +608,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLine(false);
 	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
 	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
+	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
 	writer.NewPropertyWithValue("PanelWidth", g_DebugMan.m_PanelWidth);
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
 	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
