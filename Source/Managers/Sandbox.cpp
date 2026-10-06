@@ -3249,7 +3249,7 @@ namespace {
 			return;
 		}
 		if (kind == Tool::Command) {
-			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Leave", IM_COL32(150, 150, 140, 255)}};
+			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}};
 			int picked = DrawRing(commands, -1);
 			if (picked == -2) {
 				return;
@@ -3259,7 +3259,7 @@ namespace {
 			stroke.Position = s_RingScenePoint;
 			stroke.Count = 100 + picked;
 			if (picked == 3) {
-				s_ToolIndex = ToolIndex(Tool::None);
+				s_Selected.clear();
 			} else if (picked >= 0) {
 				s_Queue.push_back(stroke);
 			}
@@ -3628,7 +3628,15 @@ namespace {
 			}
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
-			ImGui::TextDisabled("%d selected.  Drag a box to select; click the ground to send them, an enemy to attack it; hold the right button for move, attack, hold.", static_cast<int>(s_Selected.size()));
+			ImGui::TextDisabled("%d selected", static_cast<int>(s_Selected.size()));
+			ImGui::SameLine();
+			ImGui::BeginDisabled(s_Selected.empty());
+			if (ToolUI::SmallButton("Deselect")) {
+				s_Selected.clear();
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::TextDisabled("Drag a box to select. Click the ground to send them, an enemy to attack it. Hold the right button for move, attack, hold.");
 		}
 		return shown;
 	}
@@ -4575,45 +4583,7 @@ void Sandbox::DrawGUI() {
 					s_Selected.clear();
 				}
 
-				ImGui::SeparatorText("Auto battle");
-				ImGui::TextWrapped("Each side buys waves of its faction's units with its budget and drops them in to attack, until one side is left.");
-				for (int side = 0; side < c_Sides && !s_FactionNames.empty(); ++side) {
-					AutoSide& autoSide = s_AutoSides[side];
-					ImGui::PushID(side);
-					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
-					ToolUI::Checkbox(c_SideNames[side], &autoSide.Active);
-					ImGui::PopStyleColor();
-					ImGui::SameLine(90.0F);
-					ImGui::SetNextItemWidth(120.0F);
-					if (ImGui::BeginCombo("##faction", s_FactionNames[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionNames.size()) - 1)].c_str())) {
-						for (int faction = 0; faction < static_cast<int>(s_FactionNames.size()); ++faction) {
-							if (ImGui::Selectable(s_FactionNames[faction].c_str(), faction == autoSide.Faction)) {
-								autoSide.Faction = faction;
-							}
-						}
-						ImGui::EndCombo();
-					}
-					ImGui::SameLine();
-					ImGui::SetNextItemWidth(-1.0F);
-					ImGui::SliderInt("##budget", &autoSide.Budget, 500, 30000, "%d oz");
-					if (autoSide.Sent > 0) {
-						int alive = Sandbox::CountUnits(side);
-						ImGui::TextDisabled("    spent %.0f oz, sent %d, alive %d, lost %d%s", autoSide.Spent, autoSide.Sent, alive, std::max(autoSide.Sent - alive, 0), autoSide.Broke ? ", out of money" : "");
-					}
-					ImGui::PopID();
-				}
-				if (!s_AutoRunning) {
-					if (ToolUI::Button("Start auto battle", ImVec2(-1.0F, 0.0F))) {
-						Sandbox::StartAutoBattle();
-					}
-				} else if (ToolUI::Button("Stop auto battle", ImVec2(-1.0F, 0.0F))) {
-					s_AutoRunning = false;
-				}
-				if (s_AutoWinner >= 0) {
-					ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[s_AutoWinner]), "%s won the last battle.", c_SideNames[s_AutoWinner]);
-				} else if (s_AutoWinner == -1) {
-					ImGui::Text("The last battle was a draw.");
-				}
+				// Auto battles are still there for scripts (SandboxAutoBattleSide, SandboxStartAutoBattle); their controls were taken out of the window.
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Paint", nullptr, TestTab("Paint"))) {
