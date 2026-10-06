@@ -191,9 +191,19 @@ function AIBunkerScript:UpdateScript()
 			if only and i ~= only then
 				course = nil;
 			end
-			local actor = course and CreateAHuman("Soldier Light", "Coalition.rte") or nil;
+			-- CCCP_BUNKER_UNIT=crab sends the Dreadnought instead of the soldier, and CCCP_BUNKER_NOJET=1 empties every jetpack: experiments
+			-- on what the legs alone can do (the steep stairs, say), asked for in Results/REQUESTS.md.
+			local crab = os and os.getenv and os.getenv("CCCP_BUNKER_UNIT") == "crab";
+			local actor = course and (crab and CreateACrab("Dreadnought", "Dummy.rte") or CreateAHuman("Soldier Light", "Coalition.rte")) or nil;
 			if actor then
-			actor:AddInventoryItem(CreateHDFirearm("Assault Rifle", "Coalition.rte"));
+			if not crab then
+				actor:AddInventoryItem(CreateHDFirearm("Assault Rifle", "Coalition.rte"));
+			end
+			if os and os.getenv and os.getenv("CCCP_BUNKER_NOJET") == "1" and actor.Jetpack then
+				actor.Jetpack.JetTimeTotal = 0;
+				actor.Jetpack.JetTimeLeft = 0;
+				ConsoleMan:PrintString("AIBUNKER jetpack emptied for " .. course.name);
+			end
 			if not self.skyBunker then
 				-- Onto the floor under the point, standing (the point is somewhere in the room's air).
 				course.from = self:Settle(course.from, actor.Height);
@@ -242,9 +252,21 @@ function AIBunkerScript:UpdateScript()
 				elseif not runner.sent and t - runner.start > 1500 then
 					runner.sent = true;
 					a:ClearAIWaypoints();
-					a:AddAISceneWaypoint(runner.goal);
-					a.AIMode = Actor.AIMODE_GOTO;
+					if os and os.getenv and os.getenv("CCCP_BUNKER_WALK") == "1" then
+						-- The legs alone: no AI, the walk key held towards the goal every frame (and up, for climbing arms).
+						runner.walk = true;
+						a:GetController().InputMode = Controller.CIM_DISABLED;
+					else
+						a:AddAISceneWaypoint(runner.goal);
+						a.AIMode = Actor.AIMODE_GOTO;
+					end
 				elseif runner.sent then
+					if runner.walk then
+						local ctrl = a:GetController();
+						local right = SceneMan:ShortestDistance(a.Pos, runner.goal, false).X > 0;
+						ctrl:SetState(right and Controller.MOVE_RIGHT or Controller.MOVE_LEFT, true);
+						ctrl:SetState(Controller.MOVE_UP, true);
+					end
 					if not runner.tick then
 						runner.tick = Timer();
 					end
