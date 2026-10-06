@@ -7,7 +7,14 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), the climb's ending, from the review** (GoToWpt): a top-of-column point always hands the drift and the step off to the
+- **(this push), the crab's lean on purpose** (GoToWpt publishes jetLeanX: towards the waypoint in a climb when the way is clear at
+  chest height, against the speed when braking, else 0; NativeCrabAI sets the move stick to (0.27 x lean, -1), which is a nozzle lean
+  in screen terms whatever the crab faces; the four-facing planner predicts a crab's thrust vertical and no longer flips its facing).
+  Expect: "crab over the hill" makes progress up the near slope instead of rising and falling in its own column, and arrives; "crab
+  flat run" back to ~15 s (no jets on the flat: a vertical jet never beats a walk in the planner's sums). If the crab is thrown
+  BACKWARDS again, the stick's lean is facing-relative after all and I'll mirror it by HFlipped.
+
+- **ba4f53b1, the climb's ending, from the review** (GoToWpt): a top-of-column point always hands the drift and the step off to the
   landing after it; its height rule applies only in the air; a wall is told from a slope by the two rays hitting at the same distance,
   so 45 degree ground is walked again; a room up to 200 px wide is no longer taken for a shaft; the crawl probe never drops below the
   standing head; tall climbs fly at up to 8 m/s and the tank check wants the climb's real fuel plus a reserve for the top (a 192 px

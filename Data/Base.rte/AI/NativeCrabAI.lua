@@ -367,13 +367,15 @@ function NativeCrabAI:Update(Owner)
 		elseif self.jumpState == ACrab.UPJUMP then
 			self.Ctrl:SetState(Controller.BODY_JUMP, true); -- trigger normal jetpack emission
 		end
-		-- A crab's jet is lift and nothing else. The nozzle follows the aim and leans forward by up to fourteen degrees when the aim is level,
-		-- and a crab's turret can't aim far enough up to take the lean out (the Dreadnought's range is half a radian), so every climb was also a
-		-- push the way it faced: up the gym's steep hill, with the facing flipped by a brake or a step back, that threw it backwards off the
-		-- slope (it got over the hill one run in three). The move stick, when it is pushed, sets the nozzle directly and the crab's walking
-		-- doesn't read it, so it is pushed straight up whenever the jet is lit; the legs do the sideways work.
+		-- A crab's jet is lift, leant only on purpose. The nozzle follows the aim and leans forward by up to fourteen degrees when the aim is
+		-- level, and a crab's turret can't aim far enough up to take the lean out (the Dreadnought's range is half a radian), so every climb
+		-- was also a push the way it faced: up the gym's steep hill, with the facing flipped by a brake or a step back, that threw it backwards
+		-- off the slope (it got over the hill one run in three). The move stick, when it is pushed, sets the nozzle directly, in screen terms
+		-- whichever way the crab faces, and the crab's walking doesn't read it. So whenever the jet is lit the stick is pushed up, and over to
+		-- the side the movement script asks for (jetLeanX, -1 to 1: towards its waypoint in a climb, against its speed when braking); the
+		-- legs flail while the jet is lit, so this is the only sideways force a flying crab has. 0.27 across is the full fourteen degrees.
 		if self.jumpState ~= ACrab.NOTJUMPING then
-			self.Ctrl.AnalogMove = Vector(0, -1);
+			self.Ctrl.AnalogMove = Vector((self.jetLeanX or 0) * 0.27, -1);
 		end
 	end
 end

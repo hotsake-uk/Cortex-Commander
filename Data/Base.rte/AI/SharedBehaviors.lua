@@ -790,6 +790,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		Waypoint = nil;
 		HasMovePath = false;
 		NextWptPos = nil; -- The waypoint after this one, so a climb knows which way it steps off at the top.
+		-- The lean a crab's jet is to have this tick, -1, 0 or 1 (the crab AI sets its move stick by it; see NativeCrabAI.lua): straight up
+		-- unless a climb or a brake below asks otherwise. A crab's turret can't aim the nozzle, and its legs flail while the jet is lit, so
+		-- this is the only sideways force a flying crab has.
+		AI.jetLeanX = 0;
 
 		-- ugh
 		local wptIndex = 0;
@@ -1662,6 +1666,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- towards the waypoint as it rises and wherever it touches the slope.
 													if not Owner.Head then
 														nextLatMove = CurrDist.X < -3 and Actor.LAT_LEFT or (CurrDist.X > 3 and Actor.LAT_RIGHT or Actor.LAT_STILL);
+														-- And the nozzle leans a little towards the waypoint when it is off to one side and the way there is clear at chest
+														-- height, in screen terms, whichever way the crab faces: with lift alone the crab came down where it took off.
+														if math.abs(CurrDist.X) > Owner.Height * 0.15 and chestClear then
+															AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
+														end
 													end
 													-- The nozzle leans a few degrees forward whenever the aim is level, so a climb aimed level drifts, and keeps gathering speed, the
 													-- way it faces. Aimed straight up it lifts and nothing else: that's the climb, with the lean kept for the drift towards the waypoint.
@@ -1682,7 +1691,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 												-- when jumping (check four directions)
 												for k, Face in pairs(Facings) do
-													local JetAccel = Vector(-jetStrength, 0):RadRotate(Owner.RotAngle+1.375*math.pi+Face.facing*0.25);
+													-- (A crab's nozzle is held straight up, or leant on purpose by the lean above; the planner predicts it vertical.)
+													local JetAccel = Vector(-jetStrength, 0):RadRotate(Owner.Head and (Owner.RotAngle+1.375*math.pi+Face.facing*0.25) or (Owner.RotAngle + 1.5*math.pi));
 													local JumpPos = Owner.Pos + PixelVel + (Accel + JetAccel) * (t*t*0.5);
 
 													-- a burst add a one time boost to acceleration
@@ -1770,7 +1780,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													nextAimAngle = Owner:GetAimAngle(false) * 0.5 + Facings[1].aim * 0.5; -- adjust jetpack nozzle direction
 													nextLatMove = Actor.LAT_STILL;
 
-													if Facings[1].facing > 1.4 then
+													if not Owner.Head then
+														-- A crab's facing doesn't lean its jet: it leans towards the waypoint when that is off to one side.
+														if math.abs(CurrDist.X) > Owner.Height * 0.15 then
+															AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
+														end
+													elseif Facings[1].facing > 1.4 then
 														if not Owner.HFlipped then
 															nextLatMove = Actor.LAT_LEFT;
 														end
@@ -1864,6 +1879,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: sideways brake at " .. math.floor(Owner.Vel.X * 10) / 10); end
 				nextAimAngle = 0;
 				nextLatMove = Owner.Vel.X > 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+				AI.jetLeanX = Owner.Vel.X > 0 and -1 or 1; -- A crab's nozzle leans against the speed the same way.
 				if fuel then
 					AI.jump = true;
 				end
