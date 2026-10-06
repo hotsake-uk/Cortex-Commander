@@ -155,6 +155,9 @@ namespace RTE {
 		/// @return How many pathfinding requests are currently active.
 		int GetCurrentPathingRequests() const { return m_CurrentPathingRequests.load(); }
 
+		/// Debug: what the grid makes of the node at a scene point, as a line of text (its surface, ground, room and the material each way).
+		std::string DescribeNodeAt(const Vector& scenePos);
+
 		/// Recalculates all the costs between all the PathNodes by tracing lines in the material layer and summing all the material strengths for each encountered pixel. Also resets the pather itself.
 		void RecalculateAllCosts();
 
@@ -252,6 +255,9 @@ namespace RTE {
 		/// @return Whether the node is on solid ground.
 		bool NodeIsOnSolidGround(const PathNode& node) const;
 
+		/// Whether a material along an edge is as good as air (nothing to dig), so the room at the nodes is what matters.
+		bool Open(const Material& material) const;
+
 		/// Whether the searcher's body fits through a node, by the room to either side of it.
 		bool RoomToPass(const PathNode& node) const;
 
@@ -265,6 +271,12 @@ namespace RTE {
 		/// @param node The node.
 		/// @return The y of the surface, or -1 when the cell's top is already solid (the node is buried) or there is no ground in the cell.
 		float SurfaceUnder(const PathNode& node) const;
+
+		/// Where a body at this node stands: a little over the ground in its cell, when there is ground in it, or else the node's centre.
+		/// Steps to and from a node are sampled between standing points, not centres: a centre is anywhere from above the surface to buried
+		/// in it, and from a centre two pixels under a slope every way up but back down the slope read as through ground.
+		Vector StandingPoint(const PathNode& node, float lift) const;
+
 
 		/// Gets the cost for transitioning through this Material.
 		/// @param material The Material to get the transition cost for.

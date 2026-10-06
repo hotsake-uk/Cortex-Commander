@@ -150,6 +150,23 @@ function AIGymScript:UpdateScript()
 		local cliff = "";
 		for x = middle + 300, middle + 500, 12 do cliff = cliff .. " " .. x .. ":" .. self:GroundAt(x).Y; end
 		ConsoleMan:PrintString("AIGYM cliff profile:" .. cliff);
+		local slope = "";
+		for x = middle + 60, middle + 320, 12 do slope = slope .. " " .. x .. ":" .. self:GroundAt(x).Y; end
+		ConsoleMan:PrintString("AIGYM slope profile:" .. slope);
+		for x = middle + 100, middle + 300, 24 do
+			local g = self:GroundAt(x).Y;
+			ConsoleMan:PrintString("AIGYM grid " .. SceneMan.Scene:DescribePathNodeAt(Vector(x, g - 2)));
+			ConsoleMan:PrintString("AIGYM grid " .. SceneMan.Scene:DescribePathNodeAt(Vector(x, g - 26)));
+		end
+		ConsoleMan:PrintString("AIGYM grid room " .. SceneMan.Scene:DescribePathNodeAt(Vector(left - 960, 192)) .. " | " .. SceneMan.Scene:DescribePathNodeAt(Vector(left - 960, 216)) .. " | " .. SceneMan.Scene:DescribePathNodeAt(Vector(left - 900, 192)));
+		-- Debug: what the pather makes of the upper slope on its own, from a few footings along it.
+		for _, fromX in ipairs({middle + 290, middle + 260, middle + 230, middle + 200}) do
+			local from = self:GroundAt(fromX) + Vector(0, -20);
+			SceneMan.Scene:CalculatePath(from, self:GroundAt(middle + 80) + Vector(0, -20), 22, 35, Activity.TEAM_1);
+			local nodes = "";
+			for node in SceneMan.Scene:GetScenePath() do nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
+			ConsoleMan:PrintString("AIGYM slope path from " .. math.floor(from.X) .. "," .. math.floor(from.Y) .. ":" .. nodes);
+		end
 		if self.door then
 			local column = "";
 			for y = 240, 320, 5 do column = column .. " " .. y .. ":" .. SceneMan:GetTerrMatter(left + 1360, y); end

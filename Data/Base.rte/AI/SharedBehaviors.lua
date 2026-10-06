@@ -358,6 +358,26 @@ function SharedBehaviors.PinArea(AI, Owner, Abort)
 	return true;
 end
 
+-- The jet's numbers from the body, so the flying rules need no tuned constants: its net upward acceleration at full burn, how far a fall
+-- at a given speed takes to arrest, and how much height the fuel left buys.
+function SharedBehaviors.JetNumbers(AI, Owner)
+	local numbers = { accel = 0, stopDistance = function(vDown) return math.huge; end, heightForFuel = 0 };
+	if not Owner.Jetpack or not AI.jetImpulseFactor or Owner.Mass <= 0 then
+		return numbers;
+	end
+	local gravity = SceneMan.GlobalAcc.Y * GetPPM(); -- px/s^2, down.
+	local thrust = AI.jetImpulseFactor / Owner.Mass; -- px/s^2 straight up at full burn.
+	numbers.accel = thrust - gravity;
+	if numbers.accel > 1 then
+		numbers.stopDistance = function(vDown)
+			local v = math.max(0, vDown) * GetPPM();
+			return v * v / (2 * numbers.accel);
+		end
+	end
+	numbers.heightForFuel = Owner.JumpHeight * GetPPM() * (Owner.Jetpack.JetTimeLeft / math.max(1, Owner.Jetpack.JetTimeTotal));
+	return numbers;
+end
+
 function SharedBehaviors.GetRealVelocity(Owner)
 	-- Calculate a velocity based on our actual movement. This is because otherwise gravity falsely reports that we have a downward velocity, even if our net movement is zero.
 	-- Note - we use normal delta time, not AI delta time, because PrevPos is updated per-tick (not per-AI-tick)
@@ -1060,7 +1080,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												local steep = -above > math.abs(CurrDist.X) * 0.85;
 												-- The path says this step is a jump: that settles it, whatever the slope looks like from here.
 												-- (And a dig is dug, never jetted: the shaft's walls looked like a wall ahead, and the digger was jetted out of its own hole.)
-												local wantsClimb = AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.15) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
+												local wantsClimb = AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.3) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
 											local climbRefused = false;
 											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
 												local towardsX = CurrDist.X;
@@ -1070,8 +1090,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												local ceiling = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.3), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
 												-- A tall climb wants a near full tank: started on half of one it ends part way up the face, with the fall and the wait to
 												-- refill to show for it. So the unit waits at the foot until the tank is in.
-												local tall = above < -Owner.Height;
-												local tankIn = Owner.Jetpack.JetTimeLeft >= (tall and Owner.Jetpack.JetTimeTotal * 0.85 or AI.minBurstTime);
+												-- (How much is wanted comes from the body: the height the full tank buys, against the height to climb, with a third over.)
+												local jet = SharedBehaviors.JetNumbers(AI, Owner);
+												local tall = above < -Owner.Height * 0.5;
+												local fullTankHeight = math.max(1, Owner.JumpHeight * GetPPM());
+												local tankIn = Owner.Jetpack.JetTimeLeft >= (tall and Owner.Jetpack.JetTimeTotal * math.min(0.95, (-above * 1.8) / fullTankHeight) or AI.minBurstTime);
+												tankIn = tankIn and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime;
 												if not tankIn and tall and not AI.flying then
 													AI.refuel = true;
 												end
@@ -1144,18 +1168,28 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														AI.climbClearY = Lip.Y;
 														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling at " .. math.floor(Lip.Y) .. ", keeping out from under it"); end
 													end
-													if AI.climbClearY and Owner.Pos.Y - Owner.Height * 0.3 < AI.climbClearY then
+													-- (Above it once the feet are: cleared at head height, the drift back for the waypoint took the unit straight back under
+													-- the lip, and the push out again cost the rest of the tank.)
+													if AI.climbClearY and Owner.Pos.Y + Owner.Height * 0.2 < AI.climbClearY - 4 then
 														AI.climbClearY = nil; -- Above it now.
 													end
 													-- Sideways it is flown by speed: a little drift towards the waypoint, more the further off it is, and none at all into a wall or
 													-- slope (that only pins us to it) or when the waypoint is straight above. Too fast either way and the nozzle is leant against it:
 													-- the speed walked up with was carrying units under the ledges they were climbing to.
 													local wantVelX = math.max(-4, math.min(4, CurrDist.X / 20));
-													if AI.climbClearY then
+													-- (A crab's jet is for lift only: leant, it threw the crab backwards off the slope. Its legs do the sideways work.)
+													if not Owner.Head then
+														wantVelX = 0;
+													elseif AI.climbClearY then
 														wantVelX = math.max(-3, math.min(3, (AI.climbClearX - Owner.Pos.X) / 10));
 													elseif touchingWall and AI.jump and Owner.Vel.Y > -1 then
 														wantVelX = stepX > 0 and -1.5 or 1.5;
 													elseif not chestClear or math.abs(CurrDist.X) < Owner.Height * 0.15 then
+														wantVelX = 0;
+													elseif SceneMan:CastObstacleRay(Owner.Pos + Vector(wantVelX > 0 and Owner.Height * 0.25 or -Owner.Height * 0.25, -Owner.Height * 0.25), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+														-- No drifting in under something: the column a little way over towards the waypoint has to be open above us as far as the
+														-- climb goes, or we climb straight here and drift once we're past it. (A cliff with a hollow under its lip drew units
+														-- in under the lip, where they burned the tank pinned.)
 														wantVelX = 0;
 													end
 													local offVelX = wantVelX - Owner.Vel.X;
@@ -1344,10 +1378,18 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		if Owner.Jetpack then
 			local fuel = Owner.Jetpack.JetTimeLeft >= AI.minBurstTime;
 			local fastSideways = math.abs(Owner.Vel.X) > 8;
+			-- Falling onto ground that the jet couldn't stop us short of: how far the stop takes comes from the body's thrust, not a guess at a
+			-- half second's fall.
 			local fallingOnGround = false;
-			if Owner.Vel.Y > 6 then
-				local drop = Vector(0, Owner.Vel.Y * GetPPM() * 0.5 + Owner.Height * 0.2);
-				fallingOnGround = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), drop, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0;
+			-- (Not for a fall the body can take anyway, which a stop a few pixels long says it is; and not while digging down a shaft.)
+			local digging = Waypoint ~= nil and Waypoint.Kind == 4;
+			if Owner.Vel.Y > 3 and not digging then
+				local jet = SharedBehaviors.JetNumbers(AI, Owner);
+				local stop = jet.stopDistance(Owner.Vel.Y);
+				if stop > Owner.Height * 0.3 and stop < 4000 then
+					local drop = Vector(0, stop * 1.3 + Owner.Height * 0.3);
+					fallingOnGround = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), drop, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0;
+				end
 			end
 			if fastSideways and (AI.flying or Owner.Vel.Y > 6 or AI.jump) then
 				-- The lean against the speed is set whether or not there's fuel for more: a jet already lit on the last of the tank was

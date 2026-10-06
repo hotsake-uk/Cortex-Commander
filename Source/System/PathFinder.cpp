@@ -450,8 +450,8 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	bool allowDiagonal = !isInNoGrav; // We don't allow diagonals in nograv to improve automover behaviour
 
 	if (node->Down && node->Down->m_Navigable) {
-		// (Down through a gap narrower than the body is no way down.)
-		adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->DownMaterial) + radiatedCost) * (RoomToPass(*node->Down) ? 1.0F : 1000.0F);
+		// (Down through a gap narrower than the body is no way down; down through ground is a dig, and the digger makes its own room.)
+		adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->DownMaterial) + radiatedCost) * ((RoomToPass(*node->Down) || !Open(*node->DownMaterial)) ? 1.0F : 1000.0F);
 		adjCost.state = static_cast<void*>(node->Down);
 		adjacentList->push_back(adjCost);
 	}
@@ -474,14 +474,15 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 
 		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards. The head room along the way says
 		// whether it's a walk, a crawl (slower), or no way through at all for this searcher.
+		// (The room only matters where the way is open: through ground, a digger makes its own.)
 		if (node->Left && node->Left->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * HeadRoomFactor(*node, *node->Left);
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F);
 			adjCost.state = static_cast<void*>(node->Left);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->Right && node->Right->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * HeadRoomFactor(*node, *node->Right);
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
 		}
@@ -497,7 +498,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					break;
 				}
 				// Too close to a wall to go up past it: a jet pressed to a cliff face burns and doesn't lift. The next column out is used instead.
-				if (!RoomToPass(*currentNode->Up)) {
+				if (Open(*currentNode->UpMaterial) && !RoomToPass(*currentNode->Up)) {
 					break;
 				}
 
@@ -535,6 +536,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					if (const PathNode* step = landing(currentNode->Right, currentNode->RightMaterial, 1.0F)) {
 						landing(step->Right, step->RightMaterial, 2.0F);
 					}
+					// And diagonally up onto a steep slope's face: a slope too steep for the diagonal chains, with its surface a node or more up
+					// for every node across, was only climbed by going far above it and coming back down.
+					landing(currentNode->LeftUp, currentNode->LeftUpMaterial, 1.4F + extraUpCost);
+					landing(currentNode->UpRight, currentNode->UpRightMaterial, 1.4F + extraUpCost);
 				}
 			}
 		} else if (node->Up && node->Up->m_Navigable) {
@@ -625,8 +630,39 @@ float PathFinder::SurfaceUnder(const PathNode& node) const {
 	return -1.0F;
 }
 
+std::string PathFinder::DescribeNodeAt(const Vector& scenePos) {
+	int gridX = static_cast<int>(std::floor(scenePos.m_X / static_cast<float>(m_NodeDimension)));
+	int gridY = static_cast<int>(std::floor(scenePos.m_Y / static_cast<float>(m_NodeDimension)));
+	PathNode* node = GetPathNodeAtGridCoords(gridX, gridY);
+	if (!node) {
+		return "no node";
+	}
+	auto integrity = [](const Material* material) { return material ? std::to_string(static_cast<int>(material->GetIntegrity())) : "-"; };
+	std::string text = "node " + std::to_string(static_cast<int>(node->Pos.m_X)) + "," + std::to_string(static_cast<int>(node->Pos.m_Y));
+	text += node->m_Navigable ? "" : " unnavigable";
+	text += " surface " + std::to_string(static_cast<int>(node->Surface)) + " ground " + (NodeIsOnSolidGround(*node) ? "yes" : "no");
+	text += " free " + std::to_string(node->FreeHeight) + " clear " + std::to_string(node->ClearLeft) + "/" + std::to_string(node->ClearRight);
+	text += " up " + integrity(node->UpMaterial) + " upright " + integrity(node->UpRightMaterial) + " right " + integrity(node->RightMaterial) + " rightdown " + integrity(node->RightDownMaterial);
+	text += " down " + integrity(node->DownMaterial) + " downleft " + integrity(node->DownLeftMaterial) + " left " + integrity(node->LeftMaterial) + " leftup " + integrity(node->LeftUpMaterial);
+	return text;
+}
+
+Vector PathFinder::StandingPoint(const PathNode& node, float lift) const {
+	float surface = SurfaceUnder(node);
+	if (surface < 0.0F) {
+		return node.Pos;
+	}
+	return Vector(node.Pos.m_X, surface - lift);
+}
+
 bool PathFinder::NodeIsOnSolidGround(const PathNode& node) const {
-	return s_JumpHeight == FLT_MAX || (node.Down && node.DownMaterial->GetIntegrity() > c_PathFindingDefaultDigStrength);
+	// Anything that isn't air is stood on: the bushes on a hillside are walked over, not through, and taking only what's too hard to dig
+	// as ground left every node over a thick layer of them hanging in the air, with no way along but a jet.
+	return s_JumpHeight == FLT_MAX || (node.Down && node.DownMaterial->GetIntegrity() > 0.0F);
+}
+
+bool PathFinder::Open(const Material& material) const {
+	return material.GetIntegrity() <= 5.0F;
 }
 
 bool PathFinder::RoomToPass(const PathNode& node) const {
@@ -715,9 +751,13 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		node->Surface = SurfaceUnder(*node);
 		// The floor a body at this node stands on: the first solid pixel from the centre down to a node below it (a floor just past the cell's
 		// edge is still what the node stands on; measured from the centre instead, a crawl-high tunnel read as no room at all).
+		// (The surface in the cell is the floor whether the centre is over it or a few pixels under it: a centre just under a slope read
+		// as buried, with no room at all, and walking along the slope was out of the question.)
 		int centreY = static_cast<int>(node->Pos.m_Y);
 		int floor = -1;
-		if (g_SceneMan.GetTerrMatter(x, centreY) == MaterialColorKeys::g_MaterialAir) {
+		if (node->Surface >= 0.0F) {
+			floor = static_cast<int>(node->Surface);
+		} else if (g_SceneMan.GetTerrMatter(x, centreY) == MaterialColorKeys::g_MaterialAir) {
 			for (int y = centreY + 1; y <= centreY + m_NodeDimension; ++y) {
 				if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
 					floor = y;
@@ -753,8 +793,9 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// or a bumpy floor is walked along the way a unit walks it. Nodes centred on a 24 px grid are anywhere from on the surface to buried
 		// in it, and with the rays cast at the node centres the only way along a flat beam was to hop up a node and drop back at every
 		// column, and a gentle slope was a wall. Cells without ground get a band just above the centre.
-		Vector upper(0.0F, -6.0F);
-		Vector lower(0.0F, -1.0F);
+		// (The band sits a few pixels up: a pixel over the surface read every bump of a bushy hillside as something to push through.)
+		Vector upper(0.0F, -10.0F);
+		Vector lower(0.0F, -4.0F);
 		Vector here = node->Pos;
 		Vector there = node->Right->Pos;
 		float groundHere = SurfaceUnder(*node);
@@ -766,19 +807,27 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		node->RightMaterial = getStrongerMaterial(StrongestMaterialAlongLine(here + upper, there + upper), StrongestMaterialAlongLine(here + lower, there + lower));
 	}
 
+	// Down, and the diagonals, go from this node's centre to where a body stands at the other node (see StandingPoint): a node whose
+	// centre is a couple of pixels under the ground in its cell was a dead end upwards, with its own surface in the way of every line up
+	// out of it, and the way up a steep slope was a two hundred pixel jet from a column further along it.
 	if (node->Down) {
-		Vector offset(3.0F, 0.0F);
-		node->DownMaterial = getStrongerMaterial(StrongestMaterialAlongLine(node->Pos - offset, node->Down->Pos - offset), StrongestMaterialAlongLine(node->Pos + offset, node->Down->Pos + offset));
+		// One line, down the column: the pair a few pixels either side read a slope's surface as a ceiling over the node under it, and
+		// whether a body fits down a gap is RoomToPass's business now.
+		node->DownMaterial = StrongestMaterialAlongLine(StandingPoint(*node, 3.0F), StandingPoint(*node->Down, 3.0F));
 	}
 
 	if (node->UpRight) {
 		Vector offset(2.0F, 2.0F);
-		node->UpRightMaterial = getStrongerMaterial(StrongestMaterialAlongLine(node->Pos - offset, node->UpRight->Pos - offset), StrongestMaterialAlongLine(node->Pos + offset, node->UpRight->Pos + offset));
+		Vector here = StandingPoint(*node, 5.0F);
+		Vector there = StandingPoint(*node->UpRight, 5.0F);
+		node->UpRightMaterial = getStrongerMaterial(StrongestMaterialAlongLine(here - offset, there - offset), StrongestMaterialAlongLine(here + offset, there + offset));
 	}
 
 	if (node->RightDown) {
 		Vector offset(2.0F, -2.0F);
-		node->RightDownMaterial = getStrongerMaterial(StrongestMaterialAlongLine(node->Pos - offset, node->RightDown->Pos - offset), StrongestMaterialAlongLine(node->Pos + offset, node->RightDown->Pos + offset));
+		Vector here = StandingPoint(*node, 5.0F);
+		Vector there = StandingPoint(*node->RightDown, 5.0F);
+		node->RightDownMaterial = getStrongerMaterial(StrongestMaterialAlongLine(here - offset, there - offset), StrongestMaterialAlongLine(here + offset, there + offset));
 	}
 
 	for (int i = 0; i < PathNode::c_MaxAdjacentNodeCount; ++i) {

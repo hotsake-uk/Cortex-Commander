@@ -1257,6 +1257,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Scene) {
 	    .def("ResetPathFinding", &Scene::ResetPathFinding)
 	    .def("UpdatePathFinding", &Scene::UpdatePathFinding)
 	    .def("PathFindingUpdated", &Scene::PathFindingUpdated)
+	    .def("DescribePathNodeAt", &Scene::DescribePathNodeAt)
 	    .def("CalculatePath", &LuaAdaptersScene::CalculatePath)
 	    .def("CalculatePath", &LuaAdaptersScene::CalculatePath1)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync)

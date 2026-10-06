@@ -671,6 +671,9 @@ namespace RTE {
 		/// the scene.
 		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight = FLT_MAX, float digStrength = c_PathFindingDefaultDigStrength, Activity::Teams team = Activity::Teams::NoTeam, float breachStrength = -1.0F);
 
+		/// Debug: what the shared path grid makes of the node at a scene point, as a line of text.
+		std::string DescribePathNodeAt(const Vector& scenePos) { return GetPathFinder(Activity::Teams::NoTeam).DescribeNodeAt(scenePos); }
+
 		/// Asynchronously calculates the least difficult path between two points on the current Scene. Takes both distance and materials into account.
 		/// When pathing using the NoTeam pathFinder, no doors are considered passable.
 		/// @param start Start position of the pathfinding request.

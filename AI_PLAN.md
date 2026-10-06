@@ -68,12 +68,20 @@ Still open, in rough order of value:
     (`PathStepKind`, `Actor::GetMovePathStepKind`, `MovePathStepKind` in Lua), and the movement script acts on it: a jump step is
     jetted whatever the slope looks like, a fall step is walked off (no hop, no wall-jet), a crawl step is gone prone for, a dig step is
     never jetted.
-13. **Grid updates aren't double-buffered.** `RecalculateAreaCosts` writes nodes while solves read them on other threads; the starvation
-    guard papers over it. Costs should be rebuilt into a copy and swapped.
+13. **Grid updates aren't double-buffered.** *Done, without the copy:* the request count that the cost rebuild waits on is now taken
+    from the moment a search is queued, not from when a worker picks it up, so a search still in the queue can't start on a grid being
+    written (new searches are only queued from the main thread, which is the one doing the rebuild). The rebuild runs with nothing
+    queued or running, so there is nothing to double-buffer.
 14. **No path simplification.** Forty waypoints along a straight beam; each is "arrived at" with a 100 ms timer. Collinear runs should
     collapse, so arrival checks and the passed-waypoint popping have less to do.
-15. **The jet model in the script is a guess.** `jetImpulseFactor`, `jetBurstFactor` and the 0.4 s horizon are tuned constants. The body
-    knows its thrust, mass and fuel; expose a "height reachable with the fuel left" and "time to arrest this fall" and use those.
+15. **The jet model in the script is a guess.** *Done:* `SharedBehaviors.JetNumbers` works the net climb acceleration, the distance a fall
+    at a given speed takes to arrest, and the height the fuel left buys, from the body (`EstimateImpulse`, mass, `JumpHeight`, the tank).
+    The landing brake fires on the real stopping distance instead of "half a second's fall", and a tall climb waits for the fuel the
+    height actually wants instead of 85% of a tank. Found on the way, in the grid: a node whose centre sat a couple of pixels under a
+    slope's surface was a dead end upwards (its own surface was in the way of every line out of it), and the thick bushes on a hillside
+    (integrity 20, "diggable") weren't ground at all, so a 55-degree slope was climbed by a 264 px jet from a column further along it and
+    a glide back down. Edges are now sampled between where a body stands at each node, anything that isn't air is stood on, and the
+    walking band sits a few pixels up off the bumps. A climb's lip memory clears only once the feet are past the lip.
 16. **Crabs.** `NativeCrabAI.lua` shares `GoToWpt`, so the movement work reaches them, but nothing has been measured on a crab: no head
     for the wall probe, legs on both sides, jets on some. They need a gym course of their own.
 17. **Combat movement.** AttackTarget just walks at the target; no use of cover, no flanking, no retreat to refuel or heal; the "Guard"
@@ -139,8 +147,8 @@ Each step is measured on the gym before and after, and committed on its own.
    `{pos, kind, height}` per point; `Actor` keeps the kinds alongside `m_MovePath`; the Lua gets them through `MovePath` or a new accessor.
 2. **Clearance-aware grid** (#11): free height per node, body-size-dependent sideways edges, standing nodes on the surface. The sampling
    fudge goes. Crawl passages and flat walking come out of this.
-3. **Double-buffered cost updates and path simplification** (#13, #14): correctness and less waypoint churn.
-4. **Jet numbers from the body** (#15): `AEJetpack` exposes reachable height and arrest time; the climb and the governor use them, the
+3. **Double-buffered cost updates and path simplification** (#13 done, #14 open): correctness and less waypoint churn.
+4. **Jet numbers from the body** (#15, done): `AEJetpack` exposes reachable height and arrest time; the climb and the governor use them, the
    tuned constants go.
 5. **Crabs** (#16): a crab on the gym courses, and whatever that shows.
 6. **Combat movement** (#17), **squads** (#18): new behaviours, each with a gym course (a wall to take cover behind, a target to flank,
