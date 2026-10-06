@@ -476,8 +476,13 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
 		Check("Night limits AI sight", &settings.NightAffectsAI);
-		Toggle("Show the paths of units moving under AI", Actor::ShowAIPaths(), [](bool on) { Actor::SetShowAIPaths(on); });
-		Tip("The dotted yellow line from a unit to where it's been told to go. Off, only the unit you're controlling shows its path.");
+		{
+			int paths = Actor::ShowAIPaths();
+			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
+				Actor::SetShowAIPaths(paths);
+			}
+			Tip("The dotted yellow line from a unit to where it's been told to go, with each node marked. Never: only the unit you're controlling shows its path. Selected: the units picked with the sandbox's command tool.");
+		}
 		Heading("HUD");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });

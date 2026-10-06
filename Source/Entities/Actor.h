@@ -650,10 +650,15 @@ namespace RTE {
 		void DrawWaypoints(bool drawWaypoints = true) { m_DrawWaypoints = drawWaypoints; }
 
 		/// Gets whether the dotted paths of units moving under AI are drawn. Off, only the unit a player is controlling shows its path (a setting).
-		static bool ShowAIPaths() { return s_ShowAIPaths; }
+		/// How the paths of units moving under AI are drawn: 0 never (only the unit being played), 1 always, 2 for the units selected in the sandbox.
+		static int ShowAIPaths() { return s_ShowAIPaths; }
 
 		/// Sets whether the dotted paths of units moving under AI are drawn.
-		static void SetShowAIPaths(bool show) { s_ShowAIPaths = show; }
+		static void SetShowAIPaths(int show) { s_ShowAIPaths = show; }
+
+		/// Whether this unit is selected in the sandbox: it carries the selection arrow and, with paths shown for selected units, its path.
+		bool IsSandboxSelected() const { return m_SandboxSelected; }
+		void SetSandboxSelected(bool selected) { m_SandboxSelected = selected; }
 
 		/// Destroys this MOSRotating and creates its specified Gibs in its place with appropriate velocities.
 		/// Any Attachables are removed and also given appropriate velocities.
@@ -1074,7 +1079,8 @@ namespace RTE {
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;
 		// Whether to draw the waypoints or not in the HUD
 		bool m_DrawWaypoints;
-		static bool s_ShowAIPaths; //!< Whether the paths of units moving under AI are drawn.
+		static int s_ShowAIPaths; //!< How the paths of units moving under AI are drawn: 0 never, 1 always, 2 for the units selected in the sandbox.
+		bool m_SandboxSelected = false; //!< Selected in the sandbox: carries the selection arrow, and its path when paths are shown for the selection.
 		// Absolute target to move to on the scene; this is usually the point at the front of the movepath list
 		Vector m_MoveTarget;
 		// The MO we're currently following, if any. If still valid, this' position will update the MoveTarget each UpdateAI.

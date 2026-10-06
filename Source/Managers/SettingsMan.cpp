@@ -282,7 +282,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("HeadlampColor", { g_PostProcessMan.GetLightingSettings().HeadlampColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().HeadlampColor); });
 	MatchProperty("HeadlampGlow", { g_PostProcessMan.GetLightingSettings().HeadlampGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HeadlampTeamTint", { g_PostProcessMan.GetLightingSettings().HeadlampTeamTint = std::stof(reader.ReadPropValue()); });
-	MatchProperty("ShowAIPaths", { Actor::SetShowAIPaths(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ShowAIPaths", { Actor::SetShowAIPaths(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2)); });
 	MatchProperty("AimDotsLight", { g_PostProcessMan.GetLightingSettings().AimDotsLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampsByDay", { g_PostProcessMan.GetLightingSettings().HeadlampsByDay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("PanelsOverlay", { g_DebugMan.m_PanelsOverlay = std::stoi(reader.ReadPropValue()) != 0; });

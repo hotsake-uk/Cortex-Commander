@@ -238,6 +238,8 @@ namespace {
 	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
 	constexpr const char* c_AttackXTag = "SandboxAttackX"; //!< Number values on units told to attack towards a place: they fight what is near it, and hold there otherwise.
 	constexpr const char* c_AttackYTag = "SandboxAttackY";
+	constexpr const char* c_DefendXTag = "SandboxDefendX"; //!< Number values on units told to defend a spot: they fight from it and go back to it when moved off.
+	constexpr const char* c_DefendYTag = "SandboxDefendY";
 
 	/// A preset the sandbox can spawn.
 	struct Preset {
@@ -683,6 +685,8 @@ namespace {
 
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack) {
 		unit->RemoveNumberValue(c_AttackTag);
+		unit->RemoveNumberValue(c_DefendXTag);
+		unit->RemoveNumberValue(c_DefendYTag);
 		if (attack && target) {
 			unit->SetNumberValue(c_TargetTag, static_cast<double>(target->GetUniqueID()));
 		} else {
@@ -705,6 +709,8 @@ namespace {
 		unit->RemoveNumberValue(c_TargetTag);
 		unit->RemoveNumberValue(c_AttackXTag);
 		unit->RemoveNumberValue(c_AttackYTag);
+		unit->RemoveNumberValue(c_DefendXTag);
+		unit->RemoveNumberValue(c_DefendYTag);
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; }), s_PendingOrders.end());
@@ -805,6 +811,30 @@ namespace {
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
+		}
+	}
+
+	/// Units told to defend a spot go back to it when they've been moved off it (shoved, blown, or drawn after an enemy), and stand guard there again.
+	void ReturnDefenders() {
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (!actor->NumberValueExists(c_DefendXTag) || actor->IsPlayerControlled() || !IsCombatant(actor)) {
+				continue;
+			}
+			Vector post(static_cast<float>(actor->GetNumberValue(c_DefendXTag)), static_cast<float>(actor->GetNumberValue(c_DefendYTag)));
+			float off = g_SceneMan.ShortestDistance(actor->GetPos(), post, g_SceneMan.SceneWrapsX()).GetMagnitude();
+			if (actor->GetAIMode() == Actor::AIMODE_GOTO) {
+				// On the way back: once there, guard again.
+				if (off < 30.0F) {
+					actor->ClearAIWaypoints();
+					actor->SetAIMode(Actor::AIMODE_SENTRY);
+				}
+			} else if (off > 60.0F) {
+				double x = post.m_X;
+				double y = post.m_Y;
+				SendUnit(actor, post, nullptr, false);
+				actor->SetNumberValue(c_DefendXTag, x);
+				actor->SetNumberValue(c_DefendYTag, y);
+			}
 		}
 	}
 
@@ -2082,8 +2112,20 @@ namespace {
 				unit->SetNumberValue(c_AttackYTag, point.m_Y);
 			}
 		} else if (choice == 2) {
+			// Cancel: every order forgotten, and the side's standing orders apply.
 			for (Actor* unit: units) {
 				HoldUnit(unit);
+				if (static_cast<Order>(s_Order) != Order::MoveTo) {
+					GiveOrder(unit, static_cast<Order>(s_Order));
+				}
+				MarkOrder(unit->GetPos(), IM_COL32(200, 160, 120, 255));
+			}
+		} else if (choice == 3) {
+			// Defend: stand this ground and fight from it, moving as little as can be; a unit shoved or drawn off its post is sent back.
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				unit->SetNumberValue(c_DefendXTag, unit->GetPos().m_X);
+				unit->SetNumberValue(c_DefendYTag, unit->GetPos().m_Y);
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
 		}
@@ -3590,7 +3632,7 @@ namespace {
 			return;
 		}
 		if (kind == Tool::Command) {
-			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Guard", IM_COL32(120, 220, 120, 255)}, {"Hold", IM_COL32(242, 182, 61, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}, {"More...", IM_COL32(200, 200, 200, 255)}};
+			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Guard", IM_COL32(120, 220, 120, 255)}, {"Defend", IM_COL32(242, 182, 61, 255)}, {"Cancel", IM_COL32(200, 160, 120, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}, {"More...", IM_COL32(200, 200, 200, 255)}};
 			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
@@ -3598,15 +3640,16 @@ namespace {
 			if (picked >= 0 && picked <= 2) {
 				// The mode for the clicks to come.
 				s_CommandMode = static_cast<CommandMode>(picked);
-			} else if (picked == 3) {
+			} else if (picked == 3 || picked == 4) {
+				// Defend where they stand (3), or cancel their orders (4).
 				Stroke stroke;
 				stroke.Kind = Tool::OrderSelected;
 				stroke.Position = s_RingScenePoint;
-				stroke.Count = 100 + 2;
+				stroke.Count = 100 + (picked == 3 ? 3 : 2);
 				s_Queue.push_back(stroke);
-			} else if (picked == 4) {
-				s_Selected.clear();
 			} else if (picked == 5) {
+				s_Selected.clear();
+			} else if (picked == 6) {
 				s_RingOpen = true;
 				s_RingPage = 1;
 			}
@@ -3739,15 +3782,20 @@ namespace {
 		}
 	}
 
-	/// Rings over selected units, and a marker over the followed one.
+	/// Selected units are marked by the game's own selection arrow (drawn by the unit's HUD, with a glow), and the followed one by a marker.
+	std::vector<UnitRef> s_MarkedSelected; //!< The units carrying the arrow last time, so it can be taken off them.
 	void DrawSelection() {
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-		float scale = ScenePixelsPerWindowPixel();
+		for (const UnitRef& ref: s_MarkedSelected) {
+			if (Actor* unit = GetRef(ref)) {
+				unit->SetSandboxSelected(false);
+			}
+		}
+		s_MarkedSelected.clear();
 		for (const UnitRef& ref: s_Selected) {
-			if (const Actor* unit = GetRef(ref)) {
-				ImVec2 at = ToScreen(unit->GetPos());
-				int team = std::clamp(unit->GetTeam(), 0, c_Sides - 1);
-				drawList->AddCircle(at, std::max(unit->GetRadius() / scale, 8.0F), c_SideColors[team], 0, 2.0F);
+			if (Actor* unit = GetRef(ref)) {
+				unit->SetSandboxSelected(true);
+				s_MarkedSelected.push_back(ref);
 			}
 		}
 		// With the command tool in hand, each selected unit shows where it is going.
@@ -4038,6 +4086,25 @@ namespace {
 			if (ToolUI::SmallButton("Deselect")) {
 				s_Selected.clear();
 			}
+			ImGui::EndDisabled();
+			ImGui::SameLine(0.0F, pixel * 6.0F);
+			// Whose routes are drawn: the game's own AI path drawing, as the settings have it.
+			ImGui::TextDisabled("Routes");
+			ImGui::SameLine();
+			{
+				int paths = Actor::ShowAIPaths();
+				static const char* routeNames[] = {"Never", "Always", "Selected"};
+				for (int mode = 0; mode < 3; ++mode) {
+					if (mode > 0) {
+						ImGui::SameLine();
+					}
+					int shown = (mode + 1) % 3; // Shown in the order Always, Selected, Never.
+					if (ToolUI::RadioButton(routeNames[shown], &paths, shown)) {
+						Actor::SetShowAIPaths(paths);
+					}
+				}
+			}
+			ImGui::BeginDisabled(alive == 0);
 			ImGui::SameLine();
 			if (ToolUI::SmallButton("Follow")) {
 				s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
@@ -5165,6 +5232,7 @@ void Sandbox::Update() {
 	}
 	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
+		ReturnDefenders();
 	}
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
 	// can't be had are the AI's own business now, and re-ordering a unit every three seconds only restarted whatever it was in the middle of.)

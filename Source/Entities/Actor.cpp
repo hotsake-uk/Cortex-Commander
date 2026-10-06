@@ -41,7 +41,7 @@ BITMAP* Actor::m_apAIIcons[AIMODE_COUNT];
 std::vector<BITMAP*> Actor::m_apSelectArrow;
 std::vector<BITMAP*> Actor::m_apAlarmExclamation;
 bool Actor::m_sIconsLoaded = false;
-bool Actor::s_ShowAIPaths = false;
+int Actor::s_ShowAIPaths = 0;
 
 #define ARROWTIME 1000
 
@@ -1494,6 +1494,15 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 	// Draw the selection arrow, if controlled and under the arrow's time limit
 	if (m_Controller.IsPlayerControlled() && m_NewControlTmr.GetElapsedSimTimeMS() < ARROWTIME) {
 		draw_sprite(pTargetBitmap, m_apSelectArrow[m_Team], cpuPos.m_X, EaseOut(drawPos.m_Y + m_HUDStack - 60, drawPos.m_Y + m_HUDStack - 20, m_NewControlTmr.GetElapsedSimTimeMS() / (float)ARROWTIME));
+	} else if (m_SandboxSelected) {
+		// Selected in the sandbox: the same arrow, bobbing over the head for as long as it's selected, with a glow so it shows against anything.
+		float bob = std::sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.006F) * 3.0F;
+		int arrowY = drawPos.GetFloorIntY() + m_HUDStack - 20 + static_cast<int>(bob);
+		int team = std::clamp(m_Team, 0, static_cast<int>(m_apSelectArrow.size()) - 1);
+		if (team >= 0 && !m_apSelectArrow.empty()) {
+			draw_sprite(pTargetBitmap, m_apSelectArrow[team], cpuPos.m_X, arrowY);
+			g_PostProcessMan.RegisterGlowArea(Vector(m_Pos.m_X, m_Pos.m_Y + static_cast<float>(m_HUDStack - 20 + 7) + bob), 8);
+		}
 	}
 
 	// Draw the alarm exclamation mark if we are alarmed!
@@ -1554,12 +1563,13 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 	// Don't proceed to draw all the secret stuff below if this screen is for a player on the other team! (Unless the AI paths are being
 	// shown on purpose: that is a look at every side's units, and in the sandbox the viewer is on no team at all.)
-	if (!s_ShowAIPaths && g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->GetTeamOfPlayer(whichScreen) != m_Team) {
+	if (s_ShowAIPaths == 0 && g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->GetTeamOfPlayer(whichScreen) != m_Team) {
 		return;
 	}
 
 	// AI waypoints or points of interest
-	if ((s_ShowAIPaths || (m_DrawWaypoints && m_PlayerControllable && m_Controller.IsPlayerControlled())) && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
+	bool pathShown = s_ShowAIPaths == 1 || (s_ShowAIPaths == 2 && m_SandboxSelected);
+	if ((pathShown || (m_DrawWaypoints && m_PlayerControllable && m_Controller.IsPlayerControlled())) && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
 		// Draw the AI paths, from the ultimate destination back up to the actor's position.
 		// We do this backwards so the lines won't crawl and the dots can be evenly spaced throughout
 		Vector waypoint;
@@ -1607,7 +1617,7 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 				lLast = lItr;
 				// Each node of the path marked too, when the paths are being shown on purpose: the dotted line alone is a pixel every sixteen, and
 				// hard to see.
-				if (s_ShowAIPaths) {
+				if (pathShown) {
 					Vector node = (*lItr) - targetPos;
 					circlefill(pTargetBitmap, node.GetFloorIntX(), node.GetFloorIntY(), 1, g_YellowGlowColor);
 				}
