@@ -695,6 +695,10 @@ namespace RTE {
 		/// @return The actor's dig strength.
 		virtual float EstimateDigStrength() const;
 
+		/// Estimates what door this actor can get through: by digging, or by shooting it open with what it carries.
+		/// @return The strongest door material it can breach. Default is the dig strength.
+		virtual float EstimateBreachStrength() const { return EstimateDigStrength(); }
+
 		/// Estimates how high this actor can jump. Default implementation returns FLT_MAX.
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const;

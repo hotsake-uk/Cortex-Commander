@@ -120,6 +120,16 @@ The crab is the one to watch: its jet is weak for the 60° slope, and when a re-
 through the valley it goes, and falls into the far one. The cliff takes most of a human's tank; a unit that arrives at the foot with
 half a tank waits for it to fill rather than failing part way up.
 
+## On a real map
+
+`Tools\RenderTest\RenderTest.rte\AIMap.lua` (scenario `AIMap`, same harness as the gym) sends a soldier, a soldier with a Heavy Digger and
+a Dreadnought from the landing zone of Zekarra Mining Outpost to the brain room deep in its bunker, 2200 px away through corridors and
+doors of the other team, with the garrison removed. The digger gets there in 50–90 s. The plain soldier and the crab get as far as the
+bunker's doors (about 250 px short) and stop: nothing they carry can open a blast door, and that is the mission's design. On the way the
+map found what the gym hadn't: a prone unit's jet drives it along the ground, the crawl decision flapped, a unit climbing round an
+overhang kept drifting back under it, enemy doors were "open" to everyone in the path grid, and a route that needs what the unit hasn't
+got is now cut short at the obstacle so the unit goes as far as it can.
+
 ## The plan
 
 Each step is measured on the gym before and after, and committed on its own.

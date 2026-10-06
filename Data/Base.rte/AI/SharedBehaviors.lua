@@ -866,7 +866,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								ArrivedTimer:Reset();
 
 								-- check if we have LOS to the waypoint
-								if SceneMan:CastObstacleRay(Owner.Pos, CurrDist, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 then
+								-- (A climb has no line of sight to its top from under the lip it's climbing round, and a new path every second, each
+								-- one starting the climb over, kept the unit bobbing at the foot of the shaft.)
+								if AI.jetClimb or SceneMan:CastObstacleRay(Owner.Pos, CurrDist, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 then
 									NoLOSTimer:Reset();
 								elseif NoLOSTimer:IsPastSimTimeLimit() then	-- calculate new path
 									Waypoint = nil;

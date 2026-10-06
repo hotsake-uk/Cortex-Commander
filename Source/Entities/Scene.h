@@ -680,7 +680,7 @@ namespace RTE {
 		/// @param team The team we're pathing for (doors for this team will be considered passable).
 		/// @param callback The callback function we'll call after our pathfind request has finished calculating.
 		/// @return A shared pointer to the volatile PathRequest to be used to track whehter the asynchrnous path calculation has been completed, and check its results.
-		std::shared_ptr<volatile PathRequest> CalculatePathAsync(const Vector& start, const Vector& end, float jumpHeight = FLT_MAX, float digStrength = c_PathFindingDefaultDigStrength, Activity::Teams team = Activity::Teams::NoTeam, PathCompleteCallback callback = nullptr);
+		std::shared_ptr<volatile PathRequest> CalculatePathAsync(const Vector& start, const Vector& end, float jumpHeight = FLT_MAX, float digStrength = c_PathFindingDefaultDigStrength, Activity::Teams team = Activity::Teams::NoTeam, PathCompleteCallback callback = nullptr, float breachStrength = -1.0F);
 
 		/// Gets how many waypoints there are in the ScenePath currently
 		/// @return The number of waypoints in the ScenePath.

@@ -287,6 +287,10 @@ namespace RTE {
 		/// @return The maximum material strength this AHuman's digger can penetrate, or a default dig strength if they don't have a digger.
 		float EstimateDigStrength() const override;
 
+		/// Estimates what door this AHuman can get through: with a digger, or by shooting it open with the strongest firearm carried.
+		/// @return The strongest door material it can breach.
+		float EstimateBreachStrength() const override;
+
 		// Estimates how high this actor can jump.
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const override;

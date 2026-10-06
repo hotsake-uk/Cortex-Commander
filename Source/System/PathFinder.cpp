@@ -41,6 +41,10 @@ thread_local int s_JumpHeightDiagonal = 0;
 // TODO: Enhance MicroPather to add that capability (or write our own pather)!
 thread_local float s_DigStrength = 0.0F;
 
+// What door material the search can get through: dug, or shot open. Doors used to be open to everyone, so a unit with a rifle that couldn't
+// scratch a blast door was routed through it, and stood at it.
+thread_local float s_BreachStrength = 0.0F;
+
 RTE::PathNode::PathNode(const Vector& pos) :
     Pos(pos) {
 	const Material* outOfBounds = g_SceneMan.GetMaterialFromID(MaterialColorKeys::g_MaterialOutOfBounds);
@@ -150,7 +154,7 @@ MicroPather* PathFinder::GetPather() {
 	return s_Pather.m_Instance;
 }
 
-int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, float jumpHeight, float digStrength) {
+int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, float jumpHeight, float digStrength, float breachStrength) {
 	ZoneScoped;
 
 	++m_CurrentPathingRequests;
@@ -188,6 +192,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	// Actors capable of digging can use s_DigStrength to modify the node adjacency cost.
 	s_DigStrength = digStrength;
+	s_BreachStrength = breachStrength < 0.0F ? digStrength : breachStrength;
 
 	// Do the actual pathfinding, fetch out the list of states that comprise the best path.
 	int result = MicroPather::NO_SOLUTION;
@@ -245,6 +250,26 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		totalCostResult = std::numeric_limits<float>::max();
 	}
 
+	// A route that needs what the searcher hasn't got (digging, a door shot open) is cut short at the first such edge: the unit goes as far as
+	// it can and deals with the obstacle there (shooting a door, the stuck handling), or stands down there, rather than at the start. The cost
+	// stays that of the whole route, so the asker knows it was cut.
+	if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && statePath.size() > 2) {
+		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
+			std::vector<micropather::StateCost> adjacent;
+			AdjacentCost(statePath[i], &adjacent);
+			bool expensive = false;
+			for (const micropather::StateCost& adj: adjacent) {
+				if (adj.state == statePath[i + 1] && adj.cost > 100000.0F) {
+					expensive = true;
+				}
+			}
+			if (expensive) {
+				statePath.resize(std::max<size_t>(2, i + 1));
+				break;
+			}
+		}
+	}
+
 	if (std::getenv("CCCP_PATH_LOG")) {
 		// Debug: the cost of each step along the found path, so the grid's view of the terrain can be checked against the scene.
 		std::string line = "PATHLOG " + std::to_string(static_cast<int>(start.m_X)) + "," + std::to_string(static_cast<int>(start.m_Y)) + " -> " + std::to_string(static_cast<int>(end.m_X)) + "," + std::to_string(static_cast<int>(end.m_Y)) + " dig " + std::to_string(static_cast<int>(digStrength)) + " result " + std::to_string(result) + " cost " + std::to_string(totalCostResult) + ":";
@@ -291,18 +316,18 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	return result;
 }
 
-std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector start, Vector end, float jumpHeight, float digStrength, PathCompleteCallback callback) {
+std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector start, Vector end, float jumpHeight, float digStrength, PathCompleteCallback callback, float breachStrength) {
 	std::shared_ptr<volatile PathRequest> pathRequest = std::make_shared<PathRequest>();
 
 	const_cast<Vector&>(pathRequest->startPos) = start;
 	const_cast<Vector&>(pathRequest->targetPos) = end;
 
 	g_ThreadMan.GetBackgroundThreadPool().push_task(
-	    [this, start, end, jumpHeight, digStrength, callback](std::shared_ptr<volatile PathRequest> volRequest) {
+	    [this, start, end, jumpHeight, digStrength, breachStrength, callback](std::shared_ptr<volatile PathRequest> volRequest) {
 		    // Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
 		    PathRequest& request = const_cast<PathRequest&>(*volRequest);
 
-		    int status = this->CalculatePath(start, end, request.path, request.totalCost, jumpHeight, digStrength);
+		    int status = this->CalculatePath(start, end, request.path, request.totalCost, jumpHeight, digStrength, breachStrength);
 
 		    request.status = status;
 		    request.pathLength = request.path.size();
@@ -561,8 +586,9 @@ bool PathFinder::NodeIsOnSolidGround(const PathNode& node) const {
 float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	float strength = material.GetIntegrity();
 
-	// Always treat doors as diggable.
-	if (strength > s_DigStrength && material.GetIndex() != MaterialColorKeys::g_MaterialDoor) {
+	// A door is open to whoever can dig it or shoot it open; anything else is open to whoever can dig it.
+	bool door = material.GetIndex() == MaterialColorKeys::g_MaterialDoor;
+	if (strength > (door ? s_BreachStrength : s_DigStrength)) {
 		strength *= 1000.0F;
 	}
 

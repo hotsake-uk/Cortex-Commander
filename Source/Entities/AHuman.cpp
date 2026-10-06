@@ -991,6 +991,24 @@ float AHuman::EstimateDigStrength() const {
 	return maxPenetration;
 }
 
+float AHuman::EstimateBreachStrength() const {
+	// A door is shot open with anything that penetrates it (NativeHumanAI's rule: nine tenths of the firearm's penetration beats the door's
+	// integrity), so a unit with a rifle paths through doors the rifle can open, and round the ones it can't.
+	float breach = EstimateDigStrength();
+	auto consider = [&breach](const MovableObject* item) {
+		if (const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(item)) {
+			breach = std::max(breach, firearm->GetAIPenetration() * 0.9F);
+		}
+	};
+	if (m_pFGArm && m_pFGArm->IsAttached()) {
+		consider(m_pFGArm->GetHeldDevice());
+	}
+	for (const MovableObject* inventoryItem: m_Inventory) {
+		consider(inventoryItem);
+	}
+	return breach;
+}
+
 float AHuman::EstimateJumpHeight() const {
 	if (!m_pJetpack) {
 		return 0.0F;

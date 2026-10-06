@@ -2491,8 +2491,8 @@ float Scene::CalculatePath(const Vector& start, const Vector& end, std::list<Vec
 	return (result == micropather::MicroPather::SOLVED || result == micropather::MicroPather::START_END_SAME) ? totalCostResult : -1;
 }
 
-std::shared_ptr<volatile PathRequest> Scene::CalculatePathAsync(const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team, PathCompleteCallback callback) {
-	return GetPathFinder(team).CalculatePathAsync(start, end, jumpHeight, digStrength, callback);
+std::shared_ptr<volatile PathRequest> Scene::CalculatePathAsync(const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team, PathCompleteCallback callback, float breachStrength) {
+	return GetPathFinder(team).CalculatePathAsync(start, end, jumpHeight, digStrength, callback, breachStrength);
 }
 
 int Scene::GetScenePathSize() const {

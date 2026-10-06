@@ -1032,6 +1032,7 @@ void Actor::UpdateMovePath() {
 	// Estimate how much material this actor can dig through
 	float digStrength = EstimateDigStrength();
 	float jumpHeight = EstimateJumpHeight();
+	float breachStrength = EstimateBreachStrength();
 
 	// A place to go to is taken to be on the ground under it: a point in the air can only be reached by a jump from the node straight below, so a waypoint
 	// a little above the ground, or past the edge of what it was over, had no path at all and the unit flew for it blind.
@@ -1055,14 +1056,14 @@ void Actor::UpdateMovePath() {
 
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
 	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
-		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
 	} else {
 		// Do we currently have a path to a static target we would like to still pursue?
 		if (m_MovePath.empty()) {
 			// Ok no path going, so get a new path to the next waypoint, if there is a next waypoint
 			if (!m_Waypoints.empty()) {
 				// Make sure the path starts from the ground and not somewhere up in the air if/when dropped out of ship
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_Waypoints.front().first), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_Waypoints.front().first), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
 
 				// If the waypoint was tied to an MO to pursue, then load it into the current MO target
 				if (g_MovableMan.ValidMO(m_Waypoints.front().second)) {
@@ -1076,12 +1077,12 @@ void Actor::UpdateMovePath() {
 			}
 			// Just try to get to the last Move Target
 			else {
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MoveTarget), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MoveTarget), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
 			}
 		}
 		// We had a path before trying to update, so use its last point as the final destination
 		else {
-			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(Vector(m_MovePath.back())), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(Vector(m_MovePath.back())), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
 		}
 	}
 
@@ -1149,7 +1150,9 @@ void Actor::PreControllerUpdate() {
 		// (wedged under a ledge, pressed into a bunker wall), so the route isn't followed, the unit is left to the stuck handling for a few seconds,
 		// and then it asks again from wherever that has got it. Only when the answer keeps coming back the same is it left with nothing to follow,
 		// and the AI stands down rather than pushing at the wall for ever.
-		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F;
+		// (The pathfinder cuts such a route short at the obstacle; while there is still a way to go along it, it's followed, and the counting
+		// starts once the unit is there.)
+		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F && m_MovePath.size() <= 3;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		if (impossible) {
 			m_PathRetryTimer.Reset();
