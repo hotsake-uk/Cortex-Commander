@@ -32,6 +32,31 @@ function AIGymScript:CaveFloorAt(x)
 	return self:GroundAt(x, y);
 end
 
+-- What the grid and the route look like where a unit has stopped: the unit's state, the points left on its route, and the grid's view of
+-- the nodes two either way of it. Written when a unit has been still for four seconds and when it gives up, so a stall can be read from
+-- the log of an ordinary run, without a second run with a grid dump aimed at the spot.
+function AIGymScript:DumpStall(runner, why)
+	local a = runner.actor;
+	local x, y = math.floor(a.Pos.X), math.floor(a.Pos.Y);
+	local prone = a.ClassName == "AHuman" and tostring(ToAHuman(a).ProneState) or "-";
+	local stuck = a:NumberValueExists("AI_StuckForTime") and math.floor(a:GetNumberValue("AI_StuckForTime")) or 0;
+	ConsoleMan:PrintString("AIGYM stall " .. runner.name .. " (" .. why .. ") at " .. x .. "," .. y .. " vel " .. math.floor(a.Vel.X * 10) / 10 .. "," .. math.floor(a.Vel.Y * 10) / 10 .. " aim " .. math.floor(a:GetAimAngle(false) * 100) / 100 .. " facing " .. (a.HFlipped and "left" or "right") .. " prone " .. prone .. " fuel " .. (a.Jetpack and math.floor(a.Jetpack.JetTimeLeft) or -1) .. " path " .. a.MovePathSize .. " first step kind " .. tostring(a.MovePathStepKind) .. " stuck " .. stuck .. " ms");
+	local points = "";
+	local count = 0;
+	for p in a.MovePath do
+		count = count + 1;
+		if count <= 12 then
+			points = points .. " " .. math.floor(p.X) .. "," .. math.floor(p.Y);
+		end
+	end
+	ConsoleMan:PrintString("AIGYM stall route left (" .. count .. "):" .. points);
+	for gy = y - 48, y + 48, 24 do
+		for gx = x - 48, x + 48, 24 do
+			ConsoleMan:PrintString("AIGYM grid " .. SceneMan.Scene:DescribePathNodeAt(Vector(gx, gy)));
+		end
+	end
+end
+
 function AIGymScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 1500 then
@@ -122,8 +147,9 @@ function AIGymScript:UpdateScript()
 				actor:SetNumberValue("AITrace", 1); -- The movement AI says why it jets, as AITRACE lines.
 			end
 			MovableMan:AddActor(actor);
-			if i == 1 then
-				ConsoleMan:PrintString("AIGYM unit " .. actor.PresetName .. " height " .. math.floor(actor.Height) .. " jump height " .. math.floor(actor.JumpHeight * 20) .. " px");
+			if i == 1 or (course.crab and not self.crabDescribed) then
+				self.crabDescribed = self.crabDescribed or course.crab;
+				ConsoleMan:PrintString("AIGYM unit " .. actor.PresetName .. " height " .. math.floor(actor.Height) .. " radius " .. math.floor(actor.Radius) .. " jump height " .. math.floor(actor.JumpHeight * 20) .. " px aim range " .. math.floor(actor.AimRange * 100) / 100);
 			end
 			-- What the pathfinder makes of the course, before the unit tries it.
 			local found = SceneMan.Scene:CalculatePath(SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 10), course.to + Vector(0, -actor.Height * 0.5), actor.JumpHeight, 35, Activity.TEAM_1);
@@ -223,6 +249,7 @@ function AIGymScript:UpdateScript()
 					runner.done = true;
 					table.insert(self.report, "AIGYM " .. runner.name .. ": GAVE UP after 60 s, " .. math.floor(distance) .. " px short, stood still " .. runner.still .. " s, mode " .. actor.AIMode .. ", at " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " goal " .. math.floor(runner.goal.X) .. "," .. math.floor(runner.goal.Y));
 					ConsoleMan:PrintString(self.report[#self.report]);
+					self:DumpStall(runner, "gave up");
 				elseif not runner.lastTick or t - runner.lastTick > 1000 then
 					runner.lastTick = t;
 					if self.traceCourse == i or (self.traceAll and math.floor((t - runner.start) / 1000) % 2 == 0) then
@@ -231,10 +258,16 @@ function AIGymScript:UpdateScript()
 						if runner.name == "through the door" and self.door and MovableMan:IsActor(self.door) then
 							extra = " door team " .. self.door.Team .. " state " .. self.door:GetDoorState() .. " target " .. (actor.AIMode == Actor.AIMODE_GOTO and "goto" or tostring(actor.AIMode));
 						end
-						ConsoleMan:PrintString("AIGYM trace " .. runner.name .. " " .. math.floor((t - runner.start) / 1000) .. "s pos " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " vel " .. math.floor(actor.Vel.X * 10) / 10 .. "," .. math.floor(actor.Vel.Y * 10) / 10 .. " fuel " .. fuel .. " path " .. actor.MovePathSize .. " health " .. math.floor(actor.Health) .. extra);
+						ConsoleMan:PrintString("AIGYM trace " .. runner.name .. " " .. math.floor((t - runner.start) / 1000) .. "s pos " .. math.floor(actor.Pos.X) .. "," .. math.floor(actor.Pos.Y) .. " vel " .. math.floor(actor.Vel.X * 10) / 10 .. "," .. math.floor(actor.Vel.Y * 10) / 10 .. " fuel " .. fuel .. " path " .. actor.MovePathSize .. " health " .. math.floor(actor.Health) .. " aim " .. math.floor(actor:GetAimAngle(false) * 100) / 100 .. " facing " .. (actor.HFlipped and "left" or "right") .. extra);
 					end
 					if SceneMan:ShortestDistance(actor.Pos, runner.lastPos, false).Magnitude < 4 then
 						runner.still = runner.still + 1;
+						runner.stillRun = (runner.stillRun or 0) + 1;
+						if runner.stillRun == 4 then
+							self:DumpStall(runner, "still 4 s");
+						end
+					else
+						runner.stillRun = 0;
 					end
 					runner.lastPos = Vector(actor.Pos.X, actor.Pos.Y);
 				end

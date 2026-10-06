@@ -55,6 +55,31 @@ function AIBunkerScript:Settle(point, height)
 	return Vector(x, y - math.floor(height * 0.2));
 end
 
+-- What the grid and the route look like where a unit has stopped: the unit's state, the points left on its route, and the grid's view of
+-- the nodes two either way of it. Written when a unit has been still for four seconds and when it gives up, so a stall can be read from
+-- the log of an ordinary run, without a second run with CCCP_BUNKER_DUMP aimed at the spot.
+function AIBunkerScript:DumpStall(runner, why)
+	local a = runner.actor;
+	local x, y = math.floor(a.Pos.X), math.floor(a.Pos.Y);
+	local prone = a.ClassName == "AHuman" and tostring(ToAHuman(a).ProneState) or "-";
+	local stuck = a:NumberValueExists("AI_StuckForTime") and math.floor(a:GetNumberValue("AI_StuckForTime")) or 0;
+	ConsoleMan:PrintString("AIBUNKER stall " .. runner.name .. " (" .. why .. ") at " .. x .. "," .. y .. " vel " .. math.floor(a.Vel.X * 10) / 10 .. "," .. math.floor(a.Vel.Y * 10) / 10 .. " aim " .. math.floor(a:GetAimAngle(false) * 100) / 100 .. " facing " .. (a.HFlipped and "left" or "right") .. " prone " .. prone .. " fuel " .. (a.Jetpack and math.floor(a.Jetpack.JetTimeLeft) or -1) .. " path " .. a.MovePathSize .. " first step kind " .. tostring(a.MovePathStepKind) .. " stuck " .. stuck .. " ms");
+	local points = "";
+	local count = 0;
+	for p in a.MovePath do
+		count = count + 1;
+		if count <= 12 then
+			points = points .. " " .. math.floor(p.X) .. "," .. math.floor(p.Y);
+		end
+	end
+	ConsoleMan:PrintString("AIBUNKER stall route left (" .. count .. "):" .. points);
+	for gy = y - 48, y + 48, 24 do
+		for gx = x - 48, x + 48, 24 do
+			ConsoleMan:PrintString("AIBUNKER grid " .. SceneMan.Scene:DescribePathNodeAt(Vector(gx, gy)));
+		end
+	end
+end
+
 function AIBunkerScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 2500 then
@@ -197,9 +222,12 @@ function AIBunkerScript:UpdateScript()
 						local moved = SceneMan:ShortestDistance(runner.lastPos, a.Pos, false).Magnitude;
 						runner.still = moved < 4 and runner.still + 1 or 0;
 						runner.lastPos = Vector(a.Pos.X, a.Pos.Y);
+						if runner.still == 4 then
+							self:DumpStall(runner, "still 4 s");
+						end
 						local left = SceneMan:ShortestDistance(a.Pos, runner.goal, false).Magnitude;
 						if i == self.traceCourse or math.floor((t - runner.start) / 1000) % 3 == 0 then
-							ConsoleMan:PrintString("AIBUNKER trace " .. runner.name .. " " .. math.floor((t - runner.start) / 1000) .. "s pos " .. math.floor(a.Pos.X) .. "," .. math.floor(a.Pos.Y) .. " vel " .. math.floor(a.Vel.X * 10) / 10 .. "," .. math.floor(a.Vel.Y * 10) / 10 .. " fuel " .. (a.Jetpack and math.floor(a.Jetpack.JetTimeLeft) or 0) .. " path " .. a.MovePathSize .. " left " .. math.floor(left));
+							ConsoleMan:PrintString("AIBUNKER trace " .. runner.name .. " " .. math.floor((t - runner.start) / 1000) .. "s pos " .. math.floor(a.Pos.X) .. "," .. math.floor(a.Pos.Y) .. " vel " .. math.floor(a.Vel.X * 10) / 10 .. "," .. math.floor(a.Vel.Y * 10) / 10 .. " fuel " .. (a.Jetpack and math.floor(a.Jetpack.JetTimeLeft) or 0) .. " path " .. a.MovePathSize .. " left " .. math.floor(left) .. " aim " .. math.floor(a:GetAimAngle(false) * 100) / 100 .. " facing " .. (a.HFlipped and "left" or "right"));
 						end
 						if left < 40 then
 							runner.done = true;
@@ -207,6 +235,7 @@ function AIBunkerScript:UpdateScript()
 						elseif t - runner.start > 60000 then
 							runner.done = true;
 							ConsoleMan:PrintString("AIBUNKER " .. runner.name .. ": GAVE UP after 60 s, " .. math.floor(left) .. " px short, stood still " .. runner.still .. " s, at " .. math.floor(a.Pos.X) .. "," .. math.floor(a.Pos.Y));
+							self:DumpStall(runner, "gave up");
 						end
 					end
 				end
