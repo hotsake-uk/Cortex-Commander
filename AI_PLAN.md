@@ -216,3 +216,56 @@ Branch `ai-overhaul` on hotsake-uk/Cortex-Commander (origin). Last commit 423329
   `backup/modernisation-before-email-rewrite` branch. Mods are not committed.
 - Debug build: `Tools\RenderTest\Build.ps1`; Final: `-Config Final`, only when `Cortex Command.exe` isn't running (the user plays it).
 - Measure before and after on the gyms; sim-time numbers are the ones that count.
+
+## The cloud session, 2026-10-06 evening on
+
+Branch `ai-overhaul`, developed in a cloud session that cannot run the game, tested on the user's Windows machine by a local session
+that watches the branch's tip: every push gets a build and the full gym run, three repeats of each indoor suite, and the results come
+back as a commit under `Tools/RenderTest/Results/<sha>/` (a `SUMMARY.md` with a pass table and a diagnosis of every failure, and the
+raw logs). Requests from the cloud side to the test side go in `Tools/RenderTest/Results/REQUESTS.md`, with a checklist of what each
+push is expected to change. One change per push, so each run measures one thing.
+
+### What the first test run found (Results/7f09496)
+
+The indoor stalls came mostly from the grid and the movement script disagreeing about standing room: the grid called a 48 px corridor
+walkable (standing room 0.42 of the height, 42 px) while the script probed for the head 55 px over the floor, went prone in every
+corridor and crawled at five pixels a second, and a unit fresh out of a hatch lay down over the hole and slid back in. Second, climbs
+drifted towards their landing while still far below it, into the side of the opening or under the floor slab. Third, the crab's turret
+(aim range 0.5 rad) could never aim the nozzle straight up, so its every climb was a push the way it faced. And the sky bunker as
+first built was not a fair test: Hub A is open on all four sides, so stacked hubs were chimneys open to the sky at both ends.
+
+### What was changed, in push order
+
+1. The gyms write a stall block (state, route left, the 5 x 5 grid around the unit) at four seconds still and at give-up; aim and
+   facing in the trace lines.
+2. One definition of standing room, 0.44 of the height (44 px for a soldier, head 24 px over Pos, feet 20 under): `AHuman::GetPathAgent`
+   and `SharedBehaviors.StandingHeight`; the crawl probe measured from the floor under the unit; head-high rays start under the head's
+   top; the wall-ahead chest ray at 0.1 of the height; no lying down while climbing, stepping off a climb or in the air.
+3. The climb keeps to its column: the pather's apex point sits where the feet have just cleared the landing's floor (as low as the
+   landing's ceiling allows); a jump point is reached only from its height; a slow rise while the feet still foul the floor; the drift
+   paced to the climb; the shaft's middle looked for a body's height either way.
+4. A crab's jet is lift only: `NativeCrabAI.lua` pushes the controller's move stick straight up whenever the jet is lit, which the
+   jetpack turns into a vertical nozzle whatever the turret aims.
+5. The sky bunker rebuilt as a sealed layout (shaft, hatch, hub crossing, steep stairs, dead ends, a corner), seven courses on floors.
+6. The step off a climb lands: done only with floor under the feet (or the landing straight below), and at height the drift across is
+   a walking pace at the least; the 12 s re-path waits for a climb to end; RoomToPass counts the node's own column (a 48 px hatch is
+   48, not 47); a human's half width is 0.14 of the height, from the body, not the radius (which reaches to the gun in the hand).
+7. A fall costs by its height: every step into a node more than a storey above the ground costs a rung's worth (2.5), charged per node
+   so a search with no memory can't dodge it by hopping off a rung; hatch drops and slopes cost nothing extra.
+8. A step off an edge is not a crawl: an airborne node's free height is measured from its centre and says nothing about head room.
+
+### Tools/PathSim
+
+An offline Python model of the path grid, `PathFinder.cpp` mirrored function by function, run on the sky bunker built from the
+modules' material bitmaps. It gives the game's routes node for node (checked against the `AITRACE nodes:` lines) and is how the new
+layout was designed and how the grid changes above were checked before a push: `python3 -I Tools/PathSim/pathsim.py sky --layout new`.
+Keep `grid_rules.py` in step with the C++. It models the grid only; whether a unit can follow a route is the gym's business.
+
+### Open, as of this writing
+
+- Results for pushes 2 to 8 are pending on the test machine; the expectations are in `Results/REQUESTS.md`.
+- Bywater's "mid left room to the right column" (the course that never passed) and the crab over the hill are the two to watch.
+- The steep stairs are climbed by the grid as jet hops (the diagonal chains are 1:1, the stairs 2:1); whether the legs walk them is
+  for the gym to say.
+- Not yet looked at: squads (#18), the four-facing jet planner indoors (its rays start 40 px over Pos, inside a 48 px ceiling, so it
+  never jets indoors; the climb controller does that work), doors on Bywater.
