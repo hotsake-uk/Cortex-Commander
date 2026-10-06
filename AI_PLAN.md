@@ -82,12 +82,11 @@ Still open, in rough order of value:
 
 ## The gym
 
-`Tools/RenderTest/RenderTest.rte/AIGym.lua`, scenario `AIGym` in `Tools/RenderTest/Setup.ps1`. It builds six courses out of concrete beams
-(flat run, steps up with a 36 px hop and a 90 px jet, a 70 px gap, a 34 px tunnel with a pillar so there's no way over, over the scene's
-own hill, and down into a cave that can't be reached without digging), sends a Soldier Light down each and writes `AIGYM` lines: the
-pathfinder's answer for each course, a ground profile, a trace of each unit every two seconds, and when it arrived, died or gave up.
-With `CCCP_AI_LOG=1` the movement script says why it jets (`AITRACE`), for actors given the `AITrace` number value; `CCCP_PATH_LOG=1`
-prints every solve with its per-step costs.
+`Tools/RenderTest/RenderTest.rte/AIGym.lua`, scenario `AIGym` in `Tools/RenderTest/Setup.ps1`. It builds courses out of concrete beams,
+clear of the scene's own hill and of each other, sends a unit down each and writes `AIGYM` lines: the pathfinder's answer for each course,
+a ground profile, a trace of each unit every two seconds, and when it arrived, died or gave up. With `-Trace` (`CCCP_AI_LOG=1`) the
+movement script says why it jets (`AITRACE`), for the unit of the course `traceCourse` names (the `AITrace` number value on the actor);
+`CCCP_PATH_LOG=1` prints every solve with its per-step costs, and the cost of the grid updates every five seconds.
 
 Run it (the debug-release build, from `Tools\RenderTest\Build.ps1`, must not already be running):
 
@@ -95,25 +94,31 @@ Run it (the debug-release build, from `Tools\RenderTest\Build.ps1`, must not alr
 powershell -ExecutionPolicy Bypass -File Tools\RenderTest\AIGym.ps1 -Runs 4
 ```
 
-`-Trace` adds the `AITRACE` lines; the full console log of each run is left in `Tools\RenderTest\Output\aigym_<n>.txt`.
+`-Trace` adds the `AITRACE` lines; the full console log of each run is left in `Tools\RenderTest\Outputigym_<n>.txt`.
 
-Where things stand (four runs, seconds to arrive):
+Where things stand (seconds to arrive, over several runs):
 
-| course             | before        | now                      |
-|--------------------|---------------|--------------------------|
-| flat run           | 12            | 12                       |
-| gap                | 8–9           | 10–13                    |
-| steps up           | impossible    | 12–15                    |
-| low tunnel         | 24–35*        | 16–19                    |
-| over the hill      | 20–60, deaths | 13–18, a rare give-up    |
-| down into the cave | loops         | 15–17                    |
-| down the slope     | –             | 10–11                    |
-| up the slope       | –             | 12–41 (a 166 px cliff)   |
+| course              | what it asks                                              | before         | now                 |
+|---------------------|-----------------------------------------------------------|----------------|---------------------|
+| flat run            | 800 px of beam                                            | 12             | 10–12               |
+| steps up            | a 36 px hop, then a 90 px jet onto a ledge                | impossible     | 12–16               |
+| gap                 | 70 px to jump                                             | 8–9            | 10–14               |
+| low tunnel          | 34 px of head room for 320 px, with a wall over the top   | 24–35*         | 16–20               |
+| through the room    | two 30 px doorways                                        | –              | 11–14               |
+| through the door    | a 56 px doorway with a team door shut across it           | –              | 5                   |
+| over the hill       | the scene's hill, 60° up one side and down the other      | 20–60, deaths  | 13–20, a rare give-up |
+| down into the cave  | under the hill                                            | loops          | 15–23               |
+| down the slope      | 500 px down the far side                                  | –              | 9–12                |
+| up the slope        | back up it, over a 166 px vertical cliff                  | –              | 12–40               |
+| dig down            | a Heavy Digger, 140 px into the valley floor              | never          | 19–30               |
+| crab flat run       | a Dummy Dreadnought on the beam                           | –              | 15                  |
+| crab over the hill  | the Dreadnought over the hill                             | –              | 22–50, fails half the time |
 
 \* the tunnel used to be built into the hill, so its "detour" was the pathfinder being right.
 
-The cliff is the course to watch: it takes most of a tank, the unit presses itself to the face (the push-off helps), and a unit that
-arrives at the foot with half a tank now waits for it to fill rather than failing part way up.
+The crab is the one to watch: its jet is weak for the 60° slope, and when a re-path from part way up gives it the long way round
+through the valley it goes, and falls into the far one. The cliff takes most of a human's tank; a unit that arrives at the foot with
+half a tank waits for it to fill rather than failing part way up.
 
 ## The plan
 
