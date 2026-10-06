@@ -557,46 +557,32 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& cam
 	float bitmapWidth = m_ScaledDimensions.m_X;
 	float bitmapHeight = m_ScaledDimensions.m_Y;
 
-	int areaToCoverX = m_Offset.GetFloorIntX() + targetBox.GetCorner().GetFloorIntX() + targetBox.GetWidth();
-	int areaToCoverY = m_Offset.GetFloorIntY() + targetBox.GetCorner().GetFloorIntY() + targetBox.GetHeight();
-
-	int tiledOffsetStartX = targetBox.m_Corner.m_X - m_Offset.m_X;
-	int tiledOffsetStartY = targetBox.m_Corner.m_Y - m_Offset.m_Y;
-
-	int skip = 0;
-	bool tileWrapX = g_SceneMan.WrapPosition(tiledOffsetStartX, skip);
-
-	tiledOffsetStartX /= bitmapWidth;
-	tiledOffsetStartX *= bitmapWidth;
-
-	if (tileWrapX) {
-		tiledOffsetStartX -= g_SceneMan.GetSceneWidth();
-	}
-
-	tiledOffsetStartX += m_Offset.m_X;
-
-	bool tileWrapY = g_SceneMan.WrapPosition(skip, tiledOffsetStartY);
-
-	tiledOffsetStartY /= bitmapHeight;
-	tiledOffsetStartY *= bitmapHeight;
-
-	if (tileWrapY) {
-		tiledOffsetStartY -= g_SceneMan.GetSceneHeight();
-	}
-
-	tiledOffsetStartY += m_Offset.m_Y;
+	// The tiles sit at the layer's offset plus whole bitmaps either way, and the first one drawn is the last at or before the view's
+	// corner; they go on until the view is covered. The view is in scene coordinates and the camera draws them as they are, so the
+	// scene's own seam is nothing to the tiling. (It used to wrap the first tile's position round the scene and then take the scene's
+	// width off it, which moved every tile by the scene width modulo the bitmap width whenever that wrap turned on or off: with
+	// a 1434 px bitmap on a 3600 px scene, a 732 px jump of the whole layer at some point of every pan. And it floored negative
+	// positions towards zero, leaving a bitmap's worth of the view bare at the left.)
+	float viewLeft = targetBox.m_Corner.m_X;
+	float viewTop = targetBox.m_Corner.m_Y;
+	float areaToCoverX = viewLeft + targetBox.GetWidth();
+	float areaToCoverY = viewTop + targetBox.GetHeight();
+	float tiledOffsetStartX = std::floor((viewLeft - m_Offset.m_X) / bitmapWidth) * bitmapWidth + m_Offset.m_X;
+	float tiledOffsetStartY = std::floor((viewTop - m_Offset.m_Y) / bitmapHeight) * bitmapHeight + m_Offset.m_Y;
 
 	if (g_DebugMan.DrawTilingBounds()) {
 		Draw::Lines::Line(glm::vec2(areaToCoverX, 0.0f), glm::vec2(areaToCoverX, g_SceneMan.GetSceneHeight()), g_RedColor);
 		Draw::Lines::Line(glm::vec2(tiledOffsetStartX, 0.0f), glm::vec2(tiledOffsetStartX, g_SceneMan.GetSceneHeight()), g_YellowGlowColor);
 	}
 
-	for (int tiledOffsetX = tiledOffsetStartX; tiledOffsetX < areaToCoverX; tiledOffsetX += bitmapWidth) {
-		int destX =  tiledOffsetX;
+	for (float tiledOffsetX = tiledOffsetStartX; tiledOffsetX < areaToCoverX; tiledOffsetX += bitmapWidth) {
+		int destX = static_cast<int>(std::floor(tiledOffsetX));
+		int tileWidth = static_cast<int>(std::floor(tiledOffsetX + bitmapWidth)) - destX;
 
-		for (int tiledOffsetY = tiledOffsetStartY; tiledOffsetY < areaToCoverY; tiledOffsetY += bitmapHeight) {
-			int destY = tiledOffsetY;
-			DrawMainTexture(destX, destY);
+		for (float tiledOffsetY = tiledOffsetStartY; tiledOffsetY < areaToCoverY; tiledOffsetY += bitmapHeight) {
+			int destY = static_cast<int>(std::floor(tiledOffsetY));
+			int tileHeight = static_cast<int>(std::floor(tiledOffsetY + bitmapHeight)) - destY;
+			DrawMainTexture(destX, destY, tileWidth, tileHeight);
 			if (!m_WrapY) {
 				break;
 			}
@@ -609,20 +595,20 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& cam
 	g_RenderMan.SetCurrentZOffset(c_DefaultDrawDepth);
 }
 
-void SceneLayerTracked::DrawMainTexture(int destX, int destY) const {
+void SceneLayerTracked::DrawMainTexture(int destX, int destY, int width, int height) const {
 	m_MainStreamTexture->Draw(
 	    {{0.0f, 0.0f}, static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->h)},
-	    {Vector(destX, destY), m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y});
+	    {Vector(destX, destY), static_cast<float>(width), static_cast<float>(height)});
 }
 
-void SceneLayer::DrawMainTexture(int destX, int destY) const {
+void SceneLayer::DrawMainTexture(int destX, int destY, int width, int height) const {
 	m_MainStreamTexture->Draw(
 	    {{0.0f, 0.0f}, static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->h)},
-	    {Vector(destX, destY), m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y});
+	    {Vector(destX, destY), static_cast<float>(width), static_cast<float>(height)});
 }
 
-void StaticSceneLayer::DrawMainTexture(int destX, int destY) const {
-	Draw::DrawTexture(m_StaticTexture.get(), ZoomedDrawRect(static_cast<float>(destX), static_cast<float>(destY), m_ScaledDimensions.m_X, m_ScaledDimensions.m_Y));
+void StaticSceneLayer::DrawMainTexture(int destX, int destY, int width, int height) const {
+	Draw::DrawTexture(m_StaticTexture.get(), ZoomedDrawRect(static_cast<float>(destX), static_cast<float>(destY), static_cast<float>(width), static_cast<float>(height)));
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>

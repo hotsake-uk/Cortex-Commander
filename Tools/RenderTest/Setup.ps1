@@ -15,7 +15,10 @@ if (-not (Test-Path $scenarioDir)) { New-Item -ItemType Directory -Path $scenari
 
 function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalScripts, [switch]$DefaultLighting) {
 	# Captures are compared against each other, so always use the native 960x540 window whatever the player's own settings are.
-	$Overrides = @{ ResolutionX = 960; ResolutionY = 540; ResolutionMultiplier = 1; Fullscreen = 0 } + $Overrides
+	# (A scenario may ask for another size, for things that only show at a size: its own keys win.)
+	$defaults = @{ ResolutionX = 960; ResolutionY = 540; ResolutionMultiplier = 1; Fullscreen = 0 }
+	foreach ($key in $Overrides.Keys) { $defaults[$key] = $Overrides[$key] }
+	$Overrides = $defaults
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
 	if ($DefaultLighting) {
 		# Cloud shadows drift, so a golden scene would differ from run to run with them on.
@@ -206,6 +209,9 @@ Write-Scenario "Move" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthM
 Write-Scenario "Reorder" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Reorder")
 Write-Scenario "Attack" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Attack")
 Write-Scenario "AIGym" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Gym") # The courses are floating concrete; a shot at one must not bring it down.
+Write-Scenario "Backgrounds" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Backgrounds")
+Write-Scenario "BackgroundsHD" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ResolutionX = 2560; ResolutionY = 1440 }) @("Render Test Backgrounds")
+Write-Scenario "BackgroundsFHD" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ResolutionX = 1920; ResolutionY = 1080 }) @("Render Test Backgrounds")
 Write-Scenario "AICombat" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Combat")
 $sandboxOutpost = $sandbox.Clone(); $sandboxOutpost.DefaultSceneName = "Zekarra Mining Outpost"; Write-Scenario "AIMap" ($sandboxOutpost + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test AI Map")
 Write-Scenario "PlayMenu" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play Menu")

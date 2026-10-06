@@ -276,7 +276,9 @@ namespace RTE {
 		mutable float m_ZoomDrawScale = 1.0F; //!< When not 1, the layer is laid out for m_ZoomDrawBox (the unzoomed screen around the view's centre) and scaled by this about its centre to fill the zoomed view. Far backgrounds use it so they don't zoom with the camera.
 		mutable Box m_ZoomDrawBox; //!< The box the layer is laid out for when m_ZoomDrawScale isn't 1.
 
-		virtual void DrawMainTexture(int destX, int destY) const {};
+		/// Draws the layer's picture with its top left at a scene position, at a size: the tiles' sizes are snapped so each ends exactly where
+		/// the next begins, which a fractional scaled width (an auto-scale of 1.86) doesn't do on its own.
+		virtual void DrawMainTexture(int destX, int destY, int width, int height) const {};
 #pragma endregion
 
 	private:
@@ -311,7 +313,7 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
-		void DrawMainTexture(int destX, int destY) const override;
+		void DrawMainTexture(int destX, int destY, int width, int height) const override;
 	};
 
 	class SceneLayer : public SceneLayerImpl<false> {
@@ -332,7 +334,7 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
-		void DrawMainTexture(int destX, int destY) const override;
+		void DrawMainTexture(int destX, int destY, int width, int height) const override;
 	};
 
 	/// SceneLayer that promises to never update its MainBitmap.
@@ -354,6 +356,6 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
-		void DrawMainTexture(int destX, int destY) const override;
+		void DrawMainTexture(int destX, int destY, int width, int height) const override;
 	};
 } // namespace RTE
