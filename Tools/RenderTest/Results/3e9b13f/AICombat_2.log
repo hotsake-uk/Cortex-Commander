@@ -1,0 +1,268 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AICOMBAT started 5 courses
+AITRACE [Soldier Light 1 at 2400,530] retreat: health 20, falling back to Brain Robot at 3043,536
+AITRACE path: none to follow, asking again from 1000,171
+AITRACE path: none to follow, asking again from 2320,271
+AITRACE path: none to follow, asking again from 2400,532
+AITRACE step kind 0 to 1044,228 from 1000,174 prone false
+AITRACE step kind 0 to 3200,277 from 2320,274 prone false
+AITRACE step kind 0 to 2460,588 from 2400,536 prone false
+AITRACE path: none to follow, asking again from 1016,179
+AITRACE step kind 0 to 1068,228 from 1015,178 prone false
+AITRACE path: none to follow, asking again from 2430,537
+AITRACE path: none to follow, asking again from 1049,177
+AICOMBAT firefight 2s: [1 at 1050,177 hp 100 mode 3 sees R0] [2 at 1760,177 hp 100 mode 1 sees L-20]
+AICOMBAT cover 2s: [1 at 630,458 hp 400 mode 1 sees R33] [2 at 920,308 hp 400 mode 1 sees L-22]
+AICOMBAT dug in 2s: [1 at 630,738 hp 100 mode 1 sees L4] [2 at 920,567 hp 100 mode 1 sees L-13]
+AICOMBAT move 2s: [1 at 2386,278 hp 100 mode 3 sees R0] [2 at 2780,137 hp 85 mode 1 sees L-8]
+AICOMBAT retreat 2s: [1 at 2460,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 2472,537
+AITRACE path: none to follow, asking again from 1092,178
+AITRACE path: none to follow, asking again from 2514,537
+AICOMBAT firefight 4s: [1 at 1114,179 hp 100 mode 3 sees L0] [2 at 1760,178 hp 100 mode 1 sees L10]
+AICOMBAT cover 4s: [1 at 620,458 hp 315 mode 1 sees R26] [2 at 920,308 hp 332 mode 1 sees L-27]
+AICOMBAT dug in 4s: [1 at 631,737 hp 100 mode 1 sees R36] [2 at 920,568 hp 100 mode 1 sees L-28]
+AICOMBAT move 4s: [1 at 2480,277 hp 100 mode 3 blind R0] [2 at 2780,138 hp 85 mode 1 blind L-22]
+AICOMBAT retreat 4s: [1 at 2533,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE [Soldier Light 1 at 620,458] cover: reload, 64 px over
+AITRACE path: none to follow, asking again from 1118,178
+AITRACE path: none to follow, asking again from 2550,540
+AITRACE step kind 0 to 609,449 from 632,457 prone false
+AITRACE path: none to follow, asking again from 632,457
+AITRACE step kind 3 to 636,492 from 634,458 prone false
+AITRACE [Soldier Light 2 at 920,568] cover: reload, 48 px over
+AITRACE path: none to follow, asking again from 1159,177
+AITRACE pop: reached 605,467 from 621,457, 20 left
+AITRACE pop: reached 605,467 from 619,457, 19 left
+AITRACE pop: reached 605,467 from 618,457, 18 left
+AITRACE pop: reached 605,467 from 616,457, 17 left
+AITRACE step kind 0 to 612,588 from 615,458 prone false
+AITRACE pop: reached 605,467 from 615,458, 16 left
+AITRACE pop: reached 605,467 from 613,459, 15 left
+AITRACE path: none to follow, asking again from 2621,545
+AITRACE pop: reached 605,467 from 611,460, 14 left
+AITRACE step kind 3 to 564,660 from 610,459 prone false
+AITRACE pop: reached 605,467 from 610,459, 13 left
+AITRACE pop: reached 605,467 from 608,459, 12 left
+AITRACE pop: reached 605,467 from 607,459, 11 left
+AITRACE pop: reached 605,467 from 605,458, 10 left
+AITRACE pop: reached 605,467 from 604,458, 9 left
+AITRACE pop: reached 605,467 from 602,458, 8 left
+AITRACE pop: reached 605,467 from 601,458, 7 left
+AITRACE pop: reached 605,467 from 599,457, 6 left
+AITRACE pop: reached 605,467 from 598,457, 5 left
+AITRACE pop: reached 605,467 from 596,457, 4 left
+AITRACE pop: reached 605,467 from 595,457, 3 left
+AITRACE step kind 0 to 588,924 from 593,457 prone false
+AITRACE pop: reached 605,467 from 593,457, 2 left
+AITRACE pop: reached 605,467 from 591,457, 1 left
+AITRACE path: none to follow, asking again from 588,459
+AICOMBAT firefight 6s: [1 at 1191,179 hp 100 mode 3 sees L0] [2 at 1758,179 hp 100 mode 1 sees L-14]
+AICOMBAT cover 6s: [1 at 586,460 hp 238 mode 1 sees L3] [2 at 902,317 hp 325 mode 1 sees L-29]
+AICOMBAT dug in 6s: [1 at 631,738 hp 91 mode 1 blind R30] [2 at 946,567 hp 71 mode 1 blind L-27]
+AICOMBAT move 6s: [1 at 2635,278 hp 100 mode 3 blind R0] [2 at 2780,138 hp 84 mode 1 blind L-26]
+AICOMBAT retreat 6s: [1 at 2646,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 1205,177
+AITRACE path: none to follow, asking again from 2677,539
+AITRACE [Soldier Light 1 at 589,458] flank: to 1211,306 (12 nodes)
+AITRACE path: none to follow, asking again from 592,457
+AITRACE step kind 2 to 660,454 from 594,457 prone false
+AITRACE path: none to follow, asking again from 1231,181
+AITRACE pop: reached 660,454 from 647,454, 9 left
+AITRACE step kind 0 to 708,454 from 650,454 prone false
+AITRACE path: none to follow, asking again from 2725,537
+AICOMBAT firefight 8s: [1 at 1232,178 hp 76 mode 3 blind R1] [2 at 1742,190 hp 100 mode 1 sees L1]
+AICOMBAT cover 8s: [1 at 685,458 hp 232 mode 3 flanking sees R0] [2 at 909,308 hp 322 mode 1 sees L-33]
+AICOMBAT dug in 8s: [1 at 647,745 hp 90 mode 1 blind R30] [2 at 944,567 hp 70 mode 1 blind L-28]
+AICOMBAT move 8s: [1 at 2803,279 hp 100 mode 3 blind R0] [2 at 2780,138 hp 84 mode 1 blind L-3]
+AICOMBAT retreat 8s: [1 at 2745,539 hp 20 mode 3 retreating blind R0] [1 at 3000,533 hp 100 mode 1 blind R0]
+AITRACE pop: reached 708,454 from 694,457, 8 left
+AITRACE step kind 2 to 876,300 from 697,457 prone false
+AITRACE climb: wpt dx 178 dy -158
+AITRACE path: none to follow, asking again from 1229,181
+AITRACE path: none to follow, asking again from 2786,544
+AITRACE jet: sideways brake at 8.3
+AITRACE jet: sideways brake at 9.4
+AITRACE jet: sideways brake at 10.4
+AITRACE path: none to follow, asking again from 2819,537
+AICOMBAT firefight 10s: [1 at 1212,187 hp -66 mode 3 sees R0] [2 at 1748,185 hp 96 mode 1 blind L-1]
+AICOMBAT cover 10s: [1 at 1248,230 hp -324 mode 3 flanking sees R26] [2 at 910,308 hp 319 mode 1 sees R25]
+AICOMBAT dug in 10s: [1 at 644,738 hp 90 mode 1 blind L-31] [2 at 944,567 hp 69 mode 1 blind L0]
+AICOMBAT move 10s: [1 at 2907,278 hp 100 mode 3 blind R0] [2 at 2780,137 hp 83 mode 1 blind L25]
+AICOMBAT retreat 10s: [1 at 2826,540 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 2857,537
+AITRACE step kind 3 to 2892,588 from 2860,538 prone false
+AITRACE path: none to follow, asking again from 2893,538
+AICOMBAT firefight 12s: [1 gone] [2 at 1751,177 hp 96 mode 1]
+AICOMBAT cover 12s: [1 gone] [2 at 910,308 hp 316 mode 1]
+AICOMBAT dug in 12s: [1 at 644,738 hp 90 mode 1 blind L-4] [2 at 944,568 hp 68 mode 1 blind L27]
+AICOMBAT move 12s: [1 at 2999,277 hp 100 mode 3 blind R0] [2 at 2780,137 hp 83 mode 1 blind L1]
+AICOMBAT retreat 12s: [1 at 2892,541 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 2916,539
+AITRACE path: none to follow, asking again from 3100,278
+AITRACE path: none to follow, asking again from 2935,542
+AICOMBAT firefight 14s: [1 gone] [2 at 1751,178 hp 96 mode 1]
+AICOMBAT cover 14s: [1 gone] [2 at 910,308 hp 313 mode 1]
+AICOMBAT dug in 14s: [1 at 644,737 hp 89 mode 1 blind L23] [2 at 944,568 hp 67 mode 1 blind L0]
+AICOMBAT move 14s: [1 at 3129,278 hp 100 mode 3 blind R0] [2 at 2780,137 hp 82 mode 1 blind L-27]
+AICOMBAT retreat 14s: [1 at 2949,537 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 2962,537
+AITRACE path: none to follow, asking again from 3003,542
+AICOMBAT firefight 16s: [1 gone] [2 at 1751,178 hp 96 mode 1]
+AICOMBAT cover 16s: [1 gone] [2 at 910,309 hp 310 mode 1]
+AICOMBAT dug in 16s: [1 at 644,737 hp 89 mode 1 blind L3] [2 at 944,568 hp 66 mode 1 blind L-29]
+AICOMBAT move 16s: [1 at 3203,278 hp 100 mode 3 sees R13] [2 at 2780,138 hp 82 mode 1 sees L-3]
+AICOMBAT retreat 16s: [1 at 3005,541 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 3010,542
+AITRACE jet: stuck
+AITRACE path: none to follow, asking again from 3011,537
+AICOMBAT firefight 18s: [1 gone] [2 at 1751,178 hp 95 mode 1]
+AICOMBAT cover 18s: [1 gone] [2 at 910,308 hp 308 mode 1]
+AICOMBAT dug in 18s: [1 at 644,738 hp 88 mode 1 blind L-24] [2 at 944,567 hp 65 mode 1 blind L82]
+AICOMBAT move 18s: [1 at 3203,277 hp 100 mode 3 sees R12] [2 at 2780,137 hp 81 mode 1 sees L24]
+AICOMBAT retreat 18s: [1 at 3011,536 hp 20 mode 3 retreating blind R0] [1 at 3000,533 hp 100 mode 1 blind R0]
+AITRACE jet: landing brake at 5.7
+AITRACE path: none to follow, asking again from 3030,536
+AICOMBAT firefight 20s: [1 gone] [2 at 1751,178 hp 95 mode 1]
+AICOMBAT cover 20s: [1 gone] [2 at 910,308 hp 305 mode 1]
+AICOMBAT dug in 20s: [1 at 644,738 hp 88 mode 1 blind L68] [2 at 947,570 hp 64 mode 1 blind R69]
+AICOMBAT move 20s: [1 at 3203,278 hp 100 mode 3 sees R-74] [2 at 2780,138 hp 81 mode 1 sees L1]
+AICOMBAT retreat 20s: [1 at 3022,538 hp 20 mode 3 retreating blind L12] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 22s: [1 gone] [2 at 1751,177 hp 95 mode 1]
+AICOMBAT cover 22s: [1 gone] [2 at 910,308 hp 302 mode 1]
+AICOMBAT dug in 22s: [1 at 648,738 hp 87 mode 1 blind L-26] [2 at 945,567 hp 63 mode 1 blind R-11]
+AICOMBAT move 22s: [1 at 3203,278 hp 100 mode 3 sees R82] [2 at 2780,137 hp 80 mode 1 sees L-26]
+AICOMBAT retreat 22s: [1 at 3020,538 hp 20 mode 3 retreating blind L13] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 24s: [1 gone] [2 at 1751,177 hp 95 mode 1]
+AICOMBAT cover 24s: [1 gone] [2 at 910,310 hp 299 mode 1]
+AICOMBAT dug in 24s: [1 at 648,738 hp 87 mode 1 blind L1] [2 at 945,568 hp 62 mode 1 blind R24]
+AICOMBAT move 24s: [1 at 3201,278 hp 100 mode 3 sees L1] [2 at 2780,138 hp 80 mode 1 sees L81]
+AICOMBAT retreat 24s: [1 at 3021,538 hp 20 mode 3 retreating blind R-19] [1 at 3000,533 hp 100 mode 1 blind R0]
+AITRACE [Soldier Light 1 at 3020,538] retreat: over, health 20
+AICOMBAT firefight 26s: [1 gone] [2 at 1751,178 hp 95 mode 1]
+AICOMBAT cover 26s: [1 gone] [2 at 914,308 hp 296 mode 1]
+AICOMBAT dug in 26s: [1 at 648,737 hp 86 mode 1 blind L32] [2 at 945,568 hp 61 mode 1 blind R-54]
+AICOMBAT move 26s: [1 at 3204,278 hp 100 mode 3 sees L19] [2 at 2780,137 hp 51 mode 1 sees R-21]
+AICOMBAT retreat 26s: [1 at 3017,537 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE [Soldier Light 1 at 3205,278] cover: reload, 8 px over
+AICOMBAT firefight 28s: [1 gone] [2 at 1750,178 hp 95 mode 1]
+AICOMBAT cover 28s: [1 gone] [2 at 921,307 hp 293 mode 1]
+AICOMBAT dug in 28s: [1 at 650,738 hp 86 mode 1 blind L-33] [2 at 945,568 hp 60 mode 1 blind L64]
+AICOMBAT move 28s: [1 at 3221,284 hp -22 mode 3 sees L17] [2 at 2779,137 hp 2 mode 2 blind R-18]
+AICOMBAT retreat 28s: [1 at 3017,538 hp 20 mode 2 blind R21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 30s: [1 gone] [2 at 1754,178 hp 95 mode 1]
+AICOMBAT cover 30s: [1 gone] [2 at 920,308 hp 290 mode 1]
+AICOMBAT dug in 30s: [1 at 651,738 hp 85 mode 1 blind L7] [2 at 947,568 hp 59 mode 1 blind L65]
+AICOMBAT move 30s: [1 gone] [2 at 2778,137 hp -1 mode 2]
+AICOMBAT retreat 30s: [1 at 3017,537 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 32s: [1 gone] [2 at 1754,177 hp 95 mode 1]
+AICOMBAT cover 32s: [1 gone] [2 at 919,307 hp 287 mode 1]
+AICOMBAT dug in 32s: [1 at 650,738 hp 85 mode 1 blind L20] [2 at 954,569 hp 58 mode 1 blind R5]
+AICOMBAT move 32s: [1 gone] [2 gone]
+AICOMBAT retreat 32s: [1 at 3017,538 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 34s: [1 gone] [2 at 1754,178 hp 94 mode 1]
+AICOMBAT cover 34s: [1 gone] [2 at 919,307 hp 285 mode 1]
+AICOMBAT dug in 34s: [1 at 648,739 hp 84 mode 1 blind L-35] [2 at 952,568 hp 57 mode 1 blind L-15]
+AICOMBAT move 34s: [1 gone] [2 gone]
+AICOMBAT retreat 34s: [1 at 3017,538 hp 20 mode 2 blind R21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 36s: [1 gone] [2 at 1755,177 hp 94 mode 1]
+AICOMBAT cover 36s: [1 gone] [2 at 919,308 hp 282 mode 1]
+AICOMBAT dug in 36s: [1 at 650,738 hp 84 mode 1 blind L11] [2 at 958,568 hp 56 mode 1 blind L21]
+AICOMBAT move 36s: [1 gone] [2 gone]
+AICOMBAT retreat 36s: [1 at 3017,538 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 38s: [1 gone] [2 at 1755,178 hp 94 mode 1]
+AICOMBAT cover 38s: [1 gone] [2 at 919,307 hp 279 mode 1]
+AICOMBAT dug in 38s: [1 at 650,738 hp 83 mode 1 blind L-11] [2 at 960,567 hp 55 mode 1 blind R72]
+AICOMBAT move 38s: [1 gone] [2 gone]
+AICOMBAT retreat 38s: [1 at 3020,538 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 40s: [1 gone] [2 at 1755,177 hp 94 mode 1]
+AICOMBAT cover 40s: [1 gone] [2 at 919,307 hp 276 mode 1]
+AICOMBAT dug in 40s: [1 at 650,738 hp 83 mode 1 blind L-13] [2 at 962,567 hp 54 mode 1 blind L22]
+AICOMBAT move 40s: [1 gone] [2 gone]
+AICOMBAT retreat 40s: [1 at 3020,538 hp 20 mode 2 blind R21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 42s: [1 gone] [2 at 1755,178 hp 94 mode 1]
+AICOMBAT cover 42s: [1 gone] [2 at 919,307 hp 275 mode 1]
+AICOMBAT dug in 42s: [1 at 652,738 hp 82 mode 1 blind L7] [2 at 964,569 hp 53 mode 1 blind R-16]
+AICOMBAT move 42s: [1 gone] [2 gone]
+AICOMBAT retreat 42s: [1 at 3019,538 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 44s: [1 gone] [2 at 1754,178 hp 94 mode 1]
+AICOMBAT cover 44s: [1 gone] [2 at 919,307 hp 275 mode 1]
+AICOMBAT dug in 44s: [1 at 652,737 hp 82 mode 1 blind L-29] [2 at 962,568 hp 53 mode 1 blind L37]
+AICOMBAT move 44s: [1 gone] [2 gone]
+AICOMBAT retreat 44s: [1 at 3023,538 hp 20 mode 2 blind L21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 46s: [1 gone] [2 at 1757,177 hp 94 mode 1]
+AICOMBAT cover 46s: [1 gone] [2 at 918,309 hp 275 mode 1]
+AICOMBAT dug in 46s: [1 at 652,738 hp 82 mode 1 blind L4] [2 at 965,567 hp 53 mode 1 blind L-18]
+AICOMBAT move 46s: [1 gone] [2 gone]
+AICOMBAT retreat 46s: [1 at 3021,538 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 48s: [1 gone] [2 at 1757,177 hp 94 mode 1]
+AICOMBAT cover 48s: [1 gone] [2 at 920,307 hp 274 mode 1]
+AICOMBAT dug in 48s: [1 at 652,738 hp 82 mode 1 blind L21] [2 at 965,568 hp 53 mode 1 blind L72]
+AICOMBAT move 48s: [1 gone] [2 gone]
+AICOMBAT retreat 48s: [1 at 3021,538 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 50s: [1 gone] [2 at 1757,177 hp 94 mode 1]
+AICOMBAT cover 50s: [1 gone] [2 at 921,307 hp 274 mode 1]
+AICOMBAT dug in 50s: [1 at 653,738 hp 82 mode 1 blind L10] [2 at 965,568 hp 53 mode 1 blind L0]
+AICOMBAT move 50s: [1 gone] [2 gone]
+AICOMBAT retreat 50s: [1 at 3023,538 hp 20 mode 2 blind L21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 52s: [1 gone] [2 at 1758,178 hp 94 mode 1]
+AICOMBAT cover 52s: [1 gone] [2 at 921,308 hp 274 mode 1]
+AICOMBAT dug in 52s: [1 at 659,738 hp 82 mode 1 blind L-19] [2 at 966,568 hp 53 mode 1 blind L-2]
+AICOMBAT move 52s: [1 gone] [2 gone]
+AICOMBAT retreat 52s: [1 at 3023,538 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 54s: [1 gone] [2 at 1760,178 hp 94 mode 1]
+AICOMBAT cover 54s: [1 gone] [2 at 921,308 hp 273 mode 1]
+AICOMBAT dug in 54s: [1 at 659,738 hp 82 mode 1 blind L9] [2 at 970,567 hp 53 mode 1 blind L59]
+AICOMBAT move 54s: [1 gone] [2 gone]
+AICOMBAT retreat 54s: [1 at 3020,538 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 56s: [1 gone] [2 at 1760,178 hp 94 mode 1]
+AICOMBAT cover 56s: [1 gone] [2 at 921,308 hp 273 mode 1]
+AICOMBAT dug in 56s: [1 at 659,738 hp 82 mode 1 blind L18] [2 at 968,568 hp 53 mode 1 blind L-1]
+AICOMBAT move 56s: [1 gone] [2 gone]
+AICOMBAT retreat 56s: [1 at 3020,537 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 58s: [1 gone] [2 at 1760,177 hp 94 mode 1]
+AICOMBAT cover 58s: [1 gone] [2 at 921,307 hp 272 mode 1]
+AICOMBAT dug in 58s: [1 at 660,738 hp 82 mode 1 blind L-10] [2 at 968,568 hp 53 mode 1 blind L3]
+AICOMBAT move 58s: [1 gone] [2 gone]
+AICOMBAT retreat 58s: [1 at 3020,537 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 60s: [1 gone] [2 at 1760,178 hp 94 mode 1]
+AICOMBAT cover 60s: [1 gone] [2 at 921,307 hp 272 mode 1]
+AICOMBAT dug in 60s: [1 at 661,738 hp 82 mode 1 blind L-19] [2 at 967,568 hp 53 mode 1 blind R4]
+AICOMBAT move 60s: [1 gone] [2 gone]
+AICOMBAT retreat 60s: [1 at 3020,538 hp 20 mode 2 blind R21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 62s: [1 gone] [2 at 1762,178 hp 94 mode 1]
+AICOMBAT cover 62s: [1 gone] [2 at 921,308 hp 272 mode 1]
+AICOMBAT dug in 62s: [1 at 662,738 hp 82 mode 1 blind L8] [2 at 968,568 hp 53 mode 1 blind L63]
+AICOMBAT move 62s: [1 gone] [2 gone]
+AICOMBAT retreat 62s: [1 at 3020,537 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 64s: [1 gone] [2 at 1762,178 hp 94 mode 1]
+AICOMBAT cover 64s: [1 gone] [2 at 921,307 hp 271 mode 1]
+AICOMBAT dug in 64s: [1 at 664,738 hp 82 mode 1 blind L19] [2 at 978,568 hp 53 mode 1 blind R-16]
+AICOMBAT move 64s: [1 gone] [2 gone]
+AICOMBAT retreat 64s: [1 at 3020,537 hp 20 mode 2 blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AITRACE path: none to follow, asking again from 982,568
+AITRACE step kind 2 to 948,564 from 982,568 prone false
+AICOMBAT firefight 66s: [1 gone] [2 at 1762,177 hp 94 mode 1]
+AICOMBAT cover 66s: [1 gone] [2 at 921,308 hp 271 mode 1]
+AICOMBAT dug in 66s: [1 at 664,738 hp 82 mode 1 blind L-9] [2 at 977,568 hp 53 mode 3 blind R5]
+AICOMBAT move 66s: [1 gone] [2 gone]
+AICOMBAT retreat 66s: [1 at 3014,537 hp 20 mode 2 blind R21] [1 at 3000,533 hp 100 mode 1 blind R0]
+AITRACE pop: reached 948,564 from 963,569, 1 left
+AITRACE step kind 0 to 920,565 from 962,569 prone false
+AICOMBAT firefight 68s: [1 gone] [2 at 1762,178 hp 94 mode 1]
+AICOMBAT cover 68s: [1 gone] [2 at 923,308 hp 271 mode 1]
+AICOMBAT dug in 68s: [1 at 664,738 hp 82 mode 1 sees L-80] [2 at 912,568 hp 53 mode 1 sees R17]
+AICOMBAT move 68s: [1 gone] [2 gone]
+AICOMBAT retreat 68s: [1 at 3014,538 hp 20 mode 2 blind R21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight result: team 2 hp 94 at 1762,178
+AICOMBAT cover result: team 2 hp 270 at 924,308
+AICOMBAT dug in result: team 1 hp 82 at 665,738; team 2 hp 53 at 912,567
+AICOMBAT move result: 
+AICOMBAT retreat result: team 1 hp 20 at 3014,537; team 1 hp 100 at 3000,533
+AICOMBAT done
+AITRACE [Soldier Light 2 at 915,569] cover: out again

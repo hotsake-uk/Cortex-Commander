@@ -34,8 +34,8 @@ function AIBunkerScript:StartScript()
 			{ from = Vector(1695, 1040), to = Vector(1920, 150), name = "bottom corridor to the top room" },
 			{ from = Vector(1620, 700), to = Vector(2170, 580), name = "mid left room to the right column" },
 			{ from = Vector(1920, 150), to = Vector(1695, 1040), name = "top room to the bottom corridor" },
-			{ from = Vector(1820, 580), to = Vector(1620, 700), name = "middle to the mid left room" },
-			{ from = Vector(2130, 1070), to = Vector(1820, 580), name = "bottom right to the middle" }, -- (From 2070 it was put inside a pillar, and died there.)
+			{ from = Vector(1950, 590), to = Vector(1620, 700), name = "middle to the mid left room" }, -- ("The middle" was the shaft at 1800 with a swinging floor hatch, Doors B, whose leaves gibbed units started on them; now the room east of it.)
+			{ from = Vector(2130, 1070), to = Vector(1950, 590), name = "bottom right to the middle" }, -- (From 2070 it was put inside a pillar, and died there. The goal is the room east of the hatch shaft, as above.)
 		},
 	};
 end
