@@ -776,11 +776,18 @@ bool PathFinder::RoomToPass(const PathNode& node, float widths) const {
 	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight + 1) >= s_HalfWidth * widths;
 }
 
+bool PathFinder::HasFloor(const PathNode& node) const {
+	return node.Surface >= 0.0F || NodeIsOnSolidGround(node);
+}
+
 float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const {
 	if (s_JumpHeight == FLT_MAX) {
 		return 1.0F;
 	}
-	int headRoom = std::min(from.FreeHeight, to.FreeHeight);
+	// A node with no floor under it has its free height measured from its own centre, not from a floor, so it says nothing about a
+	// body's head room: a step into one is a step off an edge, and only the room where the step starts counts. (Measured from the
+	// centre, the node over a hatch or past the top step of a stair read as a crawlspace, and units lay down to walk off the edge.)
+	int headRoom = HasFloor(to) ? std::min(from.FreeHeight, to.FreeHeight) : from.FreeHeight;
 	if (static_cast<float>(headRoom) < s_CrawlHeight) {
 		return 1000.0F;
 	}
@@ -822,7 +829,9 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	if (dy > nodeSize + 1.0F || (dy > 1.0F && std::abs(dx) < 1.0F)) {
 		return PathStepKind::Fall;
 	}
-	if (static_cast<float>(std::min(from->FreeHeight, to->FreeHeight)) < s_StandHeight) {
+	// (Only where both have floors: see HeadRoomFactor.)
+	int headRoom = HasFloor(*to) ? std::min(from->FreeHeight, to->FreeHeight) : from->FreeHeight;
+	if (static_cast<float>(headRoom) < s_StandHeight) {
 		return PathStepKind::Crawl;
 	}
 	return PathStepKind::Walk;

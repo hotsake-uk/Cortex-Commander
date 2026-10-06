@@ -602,6 +602,10 @@ class PathFinder:
             return 0.0
         return self.C_FALL_COST_PER_NODE if self.DropNodes(to) > self.C_SAFE_FALL_NODES else 0.0
 
+    # --- PathFinder::HasFloor -------------------------------------------------------------------------------------------------------------
+    def HasFloor(self, node):
+        return node.Surface >= 0.0 or self.NodeIsOnSolidGround(node)
+
     def RoomToPass(self, node, widths=2.0):
         return self.s.JumpHeight == FLT_MAX or float(node.ClearLeft + node.ClearRight + 1) >= self.s.HalfWidth * widths  # +1: the node's own column
 
@@ -610,7 +614,8 @@ class PathFinder:
         s = self.s
         if s.JumpHeight == FLT_MAX:
             return 1.0
-        headRoom = min(frm.FreeHeight, to.FreeHeight)
+        # (A node with no floor under it has its free height measured from its centre: only the room where the step starts counts.)
+        headRoom = min(frm.FreeHeight, to.FreeHeight) if self.HasFloor(to) else frm.FreeHeight
         if float(headRoom) < s.CrawlHeight:
             return 1000.0
         if float(headRoom) < s.StandHeight:
@@ -641,7 +646,9 @@ class PathFinder:
             return PathStepKind.Jump
         if dy > nodeSize + 1.0 or (dy > 1.0 and abs(dx) < 1.0):
             return PathStepKind.Fall
-        if float(min(frm.FreeHeight, to.FreeHeight)) < self.s.StandHeight:
+        headRoom = min(frm.FreeHeight, to.FreeHeight) if self.HasFloor(to) else frm.FreeHeight  # (only where both have floors)
+
+        if float(headRoom) < self.s.StandHeight:
             return PathStepKind.Crawl
         return PathStepKind.Walk
 

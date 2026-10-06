@@ -273,6 +273,9 @@ namespace RTE {
 		/// shaft a body wide only bounces off the walls).
 		bool RoomToPass(const PathNode& node, float widths = 2.0F) const;
 
+		/// Whether a node has a floor within reach under it (its own surface, or ground just below): its head room is then a body's.
+		bool HasFloor(const PathNode& node) const;
+
 		/// The cost factor for walking between two nodes by the head room: 1 standing, 2 crawling, 1000 for no way through.
 		float HeadRoomFactor(const PathNode& from, const PathNode& to) const;
 

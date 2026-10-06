@@ -7,7 +7,12 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), a fall costs by its height** (PathFinder: every step into a node more than a storey above the ground costs a rung's
+- **(this push), head room for a step off an edge** (PathFinder HeadRoomFactor / StepKindBetween: a node with no floor under it has
+  its free height measured from its own centre, so it says nothing about head room, and only the room where the step starts counts).
+  Expect: the sky bunker's "down the hatch" and "down the stairs" routes carry no Crawl (1) steps where the unit walks into the hole
+  or off a step (the route print shows (0)/(3) there), and no `crawl: going prone` at those points.
+
+- **d4b81ebe, a fall costs by its height** (PathFinder: every step into a node more than a storey above the ground costs a rung's
   worth, 2.5, so a 400 px drop costs about 30 more than it did and a hatch's 96 px drop nothing). Expect on Bywater: the `AIBUNKER path
   for top room to the bottom corridor` line no longer runs down the outside at x 1500/1476 from y 372 to 780 but stays inside through
   the hatches, and "bottom right to the middle" likewise; on the sky bunker no route changes (checked offline); outdoors "down into the
