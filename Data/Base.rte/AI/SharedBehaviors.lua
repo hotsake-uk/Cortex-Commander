@@ -425,6 +425,20 @@ function SharedBehaviors.MayClose(AI, Owner)
 	return false;
 end
 
+-- The standing body, in pixels, from the height: the feet are a fifth of the height under Pos and the top of the head about a quarter
+-- over it, so a Soldier Light (height 100, its head 24 px over Pos by its sprites) stands 44 px tall and walks a 48 px tunnel with room
+-- to spare. The path grid takes its standing room from the same fraction (AHuman::GetPathAgent), so the two never disagree about a
+-- corridor: when they did, the grid routed a walk through the 48 px corridors of every bunker and this script, probing 55 px over the
+-- floor for the head, went prone in them and crawled at five pixels a second.
+function SharedBehaviors.StandingHeight(Owner)
+	return Owner.Height * 0.44;
+end
+
+-- How far the top of the head is over Pos when standing.
+function SharedBehaviors.HeadAbovePos(Owner)
+	return Owner.Height * 0.24;
+end
+
 -- The middle of a shaft a point is in: walls within reach both ways at that height. @return The middle's x, or nil in the open.
 function SharedBehaviors.ShaftMiddle(Owner, x, y, reach)
 	local Left = Vector();
@@ -441,7 +455,7 @@ end
 -- the way up is clear. @param Up The climb, as a vector. @return The offset, or nil.
 function SharedBehaviors.OpenColumnNear(Owner, Up)
 	for _, dx in ipairs({ 0, -Owner.Height * 0.25, Owner.Height * 0.25, -Owner.Height * 0.5, Owner.Height * 0.5 }) do
-		if SceneMan:CastObstacleRay(Owner.Pos + Vector(dx, -Owner.Height * 0.3), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+		if SceneMan:CastObstacleRay(Owner.Pos + Vector(dx, -SharedBehaviors.HeadAbovePos(Owner) + 2), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
 			return dx;
 		end
 	end
@@ -760,6 +774,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	ClimbStepTimer:SetSimTimeLimitMS(700);
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
 	ProneHoldTimer:SetSimTimeLimitMS(1200);
+	-- The body: where the feet and the top of the head are (see SharedBehaviors.StandingHeight). Rays that must start in the open under a
+	-- ceiling the body just fits start a couple of pixels under the head's top.
+	local feetBelowPos = Owner.Height * 0.2;
+	local standingHeight = SharedBehaviors.StandingHeight(Owner);
+	local headAbovePos = SharedBehaviors.HeadAbovePos(Owner);
+	local underHeadTop = headAbovePos - 2;
 	NeedsNewPath = true;
 	AI.jetClimb = false; -- A climb from a previous order or path is over.
 
@@ -839,11 +859,25 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 				-- We only crawl it it's quite flat, otherwise climb
 				local crawlThresholdDegrees = 30;
-				if angleDegrees <= crawlThresholdDegrees and Owner.Head and Owner.Head:IsAttached() then
-					-- Where the top of the head is when standing (a few pixels over it: a doorway that would just scrape it was walked into standing,
-					-- and that is a wall). Not where the head is now: prone, it's lower, the way looked clear, the unit stood up into the ceiling, and
-					-- so on every tick.
-					local topHeadPos = Owner.Pos - Vector(0, Owner.Height * 0.3 + 5);
+				-- Not while climbing, stepping off the top of a climb, or in the air: a unit that had just come up through a hatch lay down with
+				-- half its body still over the hole, and a prone unit may not jet, so it slid back down the hatch, and did so for the whole minute.
+				local climbingNow = AI.jetClimb or AI.flying or (ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit());
+				if climbingNow then
+					-- (Whatever it was doing stays as it is; standing up mid-air is nothing, and lying down is the harm.)
+					if AI.proneState ~= AHuman.PRONE then
+						AI.proneState = AHuman.NOTPRONE;
+					end
+				elseif angleDegrees <= crawlThresholdDegrees and Owner.Head and Owner.Head:IsAttached() then
+					-- Where the top of the head is when standing: the standing height up from the floor under the unit, so the pose doesn't move it.
+					-- (Not where the head is now: prone, it's lower, the way looked clear, the unit stood up into the ceiling, and so on every tick.
+					-- And not a fixed distance over Pos either: that put the probe 55 px over the floor, in the ceiling of every 48 px corridor,
+					-- which the grid rightly calls walkable, and units crawled the length of them.)
+					local Floor = Vector();
+					local floorY = Owner.Pos.Y + feetBelowPos;
+					if SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.5), 5, Floor, 2, rte.grassID, true) then
+						floorY = Floor.Y;
+					end
+					local topHeadPos = Vector(Owner.Pos.X, math.min(Owner.Pos.Y - 4, floorY - standingHeight));
 
 					-- first check up to the top of the head, and then from there forward
 					if Waypoint.Kind == 1 or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
@@ -1263,8 +1297,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									if nextLatMove ~= Actor.LAT_STILL and Waypoint.Pos.Y < Owner.Pos.Y + Owner.Height * 0.5 and AI.proneState ~= AHuman.PRONE then
 										local side = nextLatMove == Actor.LAT_LEFT and -1 or 1;
 										local ahead = Vector(side * Owner.Height * 0.45, 0);
-										local chest = Owner.Pos + Vector(0, -Owner.Height * 0.2);
-										local head = Owner.Pos + Vector(0, -Owner.Height * 0.3); -- The top of the head: Height is about twice the sprite.
+										-- The chest is a tenth of the height over Pos (thirty pixels over the feet) and the head ray just under the head's top: a step
+										-- of up to thirty pixels passes under both, one up to the head's height blocks the chest alone, and only something higher
+										-- than the body blocks both. (With the rays 40 and 50 px over the feet, the head's was in the ceiling of every 48 px
+										-- corridor, so a knee-high step in a corridor was a wall, and jetted at.)
+										local chest = Owner.Pos + Vector(0, -Owner.Height * 0.1);
+										local head = Owner.Pos + Vector(0, -underHeadTop);
 										local chestHit = SceneMan:CastStrengthRay(chest, ahead, 5, Vector(), 2, rte.grassID, true);
 										local headHit = SceneMan:CastStrengthRay(head, ahead, 5, Vector(), 2, rte.grassID, true);
 										-- Chest and head both blocked is a wall; chest alone is a steep slope or a step, which the legs and climbing arms deal with,
@@ -1392,7 +1430,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- of a shaft two bodies wide had its ray up hit the wall's edge, and stood at the bottom for ever.
 												local shaftX = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height * 0.6);
 												local probeX = shaftX or Owner.Pos.X;
-												local ceiling = SceneMan:CastObstacleRay(Vector(probeX, Owner.Pos.Y - Owner.Height * 0.3), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
+												local ceiling = SceneMan:CastObstacleRay(Vector(probeX, Owner.Pos.Y - underHeadTop), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
 												AI.climbShaftX = shaftX;
 												-- A tall climb wants a near full tank: started on half of one it ends part way up the face, with the fall and the wait to
 												-- refill to show for it. So the unit waits at the foot until the tank is in.
@@ -1479,7 +1517,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- under it every other tick. (The look up goes only as far as the climb does: a roof above where we're heading is no roof.)
 													local Lip = Vector();
 													local Over = Vector(0, math.max(-Owner.Height * 0.6, math.min(-Owner.Height * 0.2, above)));
-													if above < -Owner.Height * 0.1 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.25), Over, Lip, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+													if above < -Owner.Height * 0.1 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -underHeadTop), Over, Lip, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 														-- Out from under it towards the nearest column that is open above (the mouth of a shaft in a corridor's ceiling is on
 														-- the waypoint's side; a cliff's lip is on the far side), and no further than a node or so from where the climb began:
 														-- indoors there is always a ceiling, and a push away from the waypoint every tick walked units the length of a corridor.
@@ -1513,7 +1551,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														wantVelX = stepX > 0 and -1.5 or 1.5;
 													elseif not chestClear or math.abs(CurrDist.X) < Owner.Height * 0.15 then
 														wantVelX = 0;
-													elseif SceneMan:CastObstacleRay(Owner.Pos + Vector(wantVelX > 0 and Owner.Height * 0.25 or -Owner.Height * 0.25, -Owner.Height * 0.25), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+													elseif SceneMan:CastObstacleRay(Owner.Pos + Vector(wantVelX > 0 and Owner.Height * 0.25 or -Owner.Height * 0.25, -underHeadTop), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 														-- No drifting in under something: the column a little way over towards the waypoint has to be open above us as far as the
 														-- climb goes, or we climb straight here and drift once we're past it. (A cliff with a hollow under its lip drew units
 														-- in under the lip, where they burned the tank pinned.)

@@ -1011,6 +1011,10 @@ float AHuman::EstimateBreachStrength() const {
 
 PathAgent AHuman::GetPathAgent() const {
 	PathAgent agent = Actor::GetPathAgent();
+	// The standing body: the feet are a fifth of the height under Pos and the top of the head about a quarter over it, so a Soldier Light
+	// (height 100) stands 44 px tall and a 48 px tunnel, the bunker modules' corridor, is walked upright. The movement script measures its
+	// head room by the same fraction (SharedBehaviors.StandingHeight), so the grid and the script agree about every corridor.
+	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.44F);
 	agent.CrawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
 	return agent;
 }
