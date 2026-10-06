@@ -3524,25 +3524,77 @@ namespace {
 	struct RingItem {
 		const char* Label;
 		ImU32 Color;
+		const char* Icon = nullptr; //!< One of the game's pie menu icons (Base.rte/GUIs/PieMenus/PieIcons/<Icon>000.png).
 	};
 
-	/// A ring of choices round where the right button went down, held open while it is held: the choice under the pointer is lit, and letting go takes it.
-	/// @param items The choices, from the top going clockwise. @param current The one in force now, lit when the pointer is in the middle.
-	/// @return The choice let go over, -1 for none (let go in the middle), or -2 while the ring is still held open.
+	/// A picture made from one of the game's own 8-bit image files, the first time it is asked for: the pie menu's icons and cursor.
+	const PiecePicture& PictureOfFile(const std::string& path) {
+		static std::map<std::string, PiecePicture> pictures;
+		if (auto found = pictures.find(path); found != pictures.end()) {
+			return found->second;
+		}
+		PiecePicture& picture = pictures[path];
+		BITMAP* bitmap = ContentFile(path.c_str()).GetAsBitmap();
+		if (!bitmap || bitmap_color_depth(bitmap) != 8) {
+			return picture;
+		}
+		picture.Width = bitmap->w;
+		picture.Height = bitmap->h;
+		PALETTE palette;
+		get_palette(palette);
+		int brightest = 1;
+		for (int i = 0; i < 256; ++i) {
+			brightest = std::max({brightest, static_cast<int>(palette[i].r), static_cast<int>(palette[i].g), static_cast<int>(palette[i].b)});
+		}
+		int scale = brightest <= 63 ? 4 : 1;
+		std::vector<unsigned char> pixels(static_cast<size_t>(picture.Width) * picture.Height * 4, 0);
+		for (int y = 0; y < picture.Height; ++y) {
+			for (int x = 0; x < picture.Width; ++x) {
+				int index = bitmap->line[y][x];
+				if (index == ColorKeys::g_MaskColor) {
+					continue;
+				}
+				unsigned char* pixel = &pixels[(static_cast<size_t>(y) * picture.Width + x) * 4];
+				pixel[0] = static_cast<unsigned char>(std::min(palette[index].r * scale, 255));
+				pixel[1] = static_cast<unsigned char>(std::min(palette[index].g * scale, 255));
+				pixel[2] = static_cast<unsigned char>(std::min(palette[index].b * scale, 255));
+				pixel[3] = 255;
+			}
+		}
+		GLint boundBefore = 0;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundBefore);
+		glGenTextures(1, &picture.Texture);
+		glBindTexture(GL_TEXTURE_2D, picture.Texture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, picture.Width, picture.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+		glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(boundBefore));
+		return picture;
+	}
+
+	/// A ring of choices round where the right button went down, held open while it is held, in the look of the game's own pie menu: a dark
+	/// band with the choices' icons round it, separated by lines, the cursor on the inner edge pointing at the one under the pointer, and
+	/// that one's name outside the band. Letting go takes it.
+	/// @param items The choices, from the top going clockwise. @param current The one in force now, named when the pointer is in the middle.
 	/// @param sticky The ring stays up after the right button is let go, and a left click takes the choice under the pointer (a right click, none).
+	/// @return The choice let go over, -1 for none (let go in the middle), or -2 while the ring is still up.
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false) {
 		ImGuiIO& io = ImGui::GetIO();
 		float pixel = ToolUI::Pixel();
-		// Roomy: seven choices round it, and the labels must read.
-		float inner = pixel * 22.0F;
-		float outer = pixel * 58.0F;
+		// The game's pie menu: an inner radius of 58 and a band 16 thick, in game pixels. A little thicker here, for icons at twice the size.
+		float inner = pixel * 50.0F;
+		float thickness = pixel * 26.0F;
+		float outer = inner + thickness;
 		int count = static_cast<int>(items.size());
 		ImVec2 away(io.MousePos.x - s_RingCenter.x, io.MousePos.y - s_RingCenter.y);
 		float distance = std::sqrt(away.x * away.x + away.y * away.y);
 		// Each choice has an equal slice; the first is centred straight up.
 		const float slice = 6.2832F / static_cast<float>(count);
 		int under = -1;
-		if (distance > inner * 0.6F) {
+		if (distance > inner * 0.5F) {
 			float angle = std::atan2(away.y, away.x) + 1.5708F + slice * 0.5F; // 0 at the top edge of the first slice, growing clockwise.
 			while (angle < 0.0F) {
 				angle += 6.2832F;
@@ -3550,33 +3602,67 @@ namespace {
 			under = static_cast<int>(angle / slice) % count;
 		}
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
-		for (int i = 0; i < count; ++i) {
-			bool lit = i == under || (under < 0 && i == current);
-			ImU32 color = items[i].Color;
-			ImU32 fill = (color & 0x00FFFFFF) | (static_cast<ImU32>(lit ? 230 : 120) << IM_COL32_A_SHIFT);
-			float from = -1.5708F - slice * 0.5F + slice * static_cast<float>(i) + 0.05F;
-			float to = from + slice - 0.1F;
-			float reach = lit ? outer + pixel * 3.0F : outer;
+		const ImU32 band = IM_COL32(0, 0, 0, 128); // The pie menu's background: black at half.
+		const ImU32 separator = IM_COL32(0, 0, 0, 220);
+		// The band.
+		drawList->AddCircle(s_RingCenter, (inner + outer) * 0.5F, band, 64, thickness);
+		// The slice under the pointer, lit a little (an arc as thick as the band: a filled sector isn't convex, and bled into the middle).
+		if (under >= 0) {
+			float from = -1.5708F - slice * 0.5F + slice * static_cast<float>(under);
 			drawList->PathClear();
-			drawList->PathArcTo(s_RingCenter, reach, from, to, 16);
-			drawList->PathArcTo(s_RingCenter, inner, to, from, 16);
-			drawList->PathFillConvex(fill);
-			drawList->PathClear();
-			drawList->PathArcTo(s_RingCenter, reach, from, to, 16);
-			drawList->PathArcTo(s_RingCenter, inner, to, from, 16);
-			drawList->PathStroke(IM_COL32(20, 24, 16, 230), ImDrawFlags_Closed, pixel);
-			float middle = (from + to) * 0.5F;
-			float textReach = (inner + outer) * 0.5F;
-			ImVec2 nameSize = ImGui::CalcTextSize(items[i].Label);
-			ImVec2 at(std::floor(s_RingCenter.x + std::cos(middle) * textReach - nameSize.x * 0.5F), std::floor(s_RingCenter.y + std::sin(middle) * textReach - nameSize.y * 0.5F));
-			drawList->AddText(ImVec2(at.x + pixel, at.y + pixel), IM_COL32(0, 0, 0, 200), items[i].Label);
-			drawList->AddText(at, IM_COL32(255, 255, 255, 255), items[i].Label);
+			drawList->PathArcTo(s_RingCenter, (inner + outer) * 0.5F, from, from + slice, 16);
+			drawList->PathStroke(IM_COL32(255, 255, 255, 40), 0, thickness);
 		}
-		// The choice in force, in the middle.
-		drawList->AddCircleFilled(s_RingCenter, inner - pixel * 2.0F, IM_COL32(20, 24, 16, 220));
+		// The separators, and the edges.
+		for (int i = 0; i < count; ++i) {
+			float edge = -1.5708F - slice * 0.5F + slice * static_cast<float>(i);
+			ImVec2 a(s_RingCenter.x + std::cos(edge) * inner, s_RingCenter.y + std::sin(edge) * inner);
+			ImVec2 b(s_RingCenter.x + std::cos(edge) * outer, s_RingCenter.y + std::sin(edge) * outer);
+			drawList->AddLine(a, b, separator, pixel * 2.0F);
+		}
+		drawList->AddCircle(s_RingCenter, inner, separator, 64, pixel);
+		drawList->AddCircle(s_RingCenter, outer, separator, 64, pixel);
+		// The icons, each in the middle of its slice, at twice their size; a choice without one shows its colour.
+		for (int i = 0; i < count; ++i) {
+			float middle = -1.5708F + slice * static_cast<float>(i);
+			ImVec2 at(s_RingCenter.x + std::cos(middle) * (inner + thickness * 0.5F), s_RingCenter.y + std::sin(middle) * (inner + thickness * 0.5F));
+			const PiecePicture* picture = items[i].Icon ? &PictureOfFile(std::string("Base.rte/GUIs/PieMenus/PieIcons/") + items[i].Icon + "000.png") : nullptr;
+			if (picture && picture->Texture) {
+				float w = static_cast<float>(picture->Width) * pixel * 2.0F;
+				float h = static_cast<float>(picture->Height) * pixel * 2.0F;
+				ImVec2 corner(std::floor(at.x - w * 0.5F), std::floor(at.y - h * 0.5F));
+				ImU32 tint = (i == under || (under < 0 && i == current)) ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
+				drawList->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(picture->Texture)), corner, ImVec2(corner.x + w, corner.y + h), ImVec2(0, 0), ImVec2(1, 1), tint);
+			} else {
+				drawList->AddCircleFilled(at, pixel * 6.0F, items[i].Color);
+				drawList->AddCircle(at, pixel * 6.0F, separator, 0, pixel);
+			}
+		}
+		// The cursor on the inner edge, pointing at the choice under the pointer (or the one in force), as the pie menu's does.
 		int shown = under >= 0 ? under : current;
 		if (shown >= 0 && shown < count) {
-			drawList->AddCircleFilled(s_RingCenter, inner - pixel * 5.0F, items[shown].Color);
+			float middle = -1.5708F + slice * static_cast<float>(shown);
+			const PiecePicture& cursor = PictureOfFile("Base.rte/GUIs/PieMenus/PieCursor.png");
+			if (cursor.Texture) {
+				// The cursor art points right; it is turned to the slice.
+				float w = static_cast<float>(cursor.Width) * pixel * 2.0F;
+				float h = static_cast<float>(cursor.Height) * pixel * 2.0F;
+				ImVec2 at(s_RingCenter.x + std::cos(middle) * (inner - w * 0.5F), s_RingCenter.y + std::sin(middle) * (inner - w * 0.5F));
+				float c = std::cos(middle);
+				float s = std::sin(middle);
+				auto turned = [&](float x, float y) { return ImVec2(at.x + x * c - y * s, at.y + x * s + y * c); };
+				drawList->AddImageQuad(static_cast<ImTextureID>(static_cast<intptr_t>(cursor.Texture)), turned(-w * 0.5F, -h * 0.5F), turned(w * 0.5F, -h * 0.5F), turned(w * 0.5F, h * 0.5F), turned(-w * 0.5F, h * 0.5F));
+			}
+			// Its name, outside the band on that side.
+			const char* label = items[shown].Label;
+			ImVec2 nameSize = ImGui::CalcTextSize(label);
+			float textReach = outer + pixel * 4.0F;
+			ImVec2 anchor(s_RingCenter.x + std::cos(middle) * textReach, s_RingCenter.y + std::sin(middle) * textReach);
+			float x = std::cos(middle) > 0.3F ? anchor.x : (std::cos(middle) < -0.3F ? anchor.x - nameSize.x : anchor.x - nameSize.x * 0.5F);
+			float y = std::sin(middle) > 0.3F ? anchor.y : (std::sin(middle) < -0.3F ? anchor.y - nameSize.y : anchor.y - nameSize.y * 0.5F);
+			ImVec2 pos(std::floor(x), std::floor(y));
+			drawList->AddText(ImVec2(pos.x + pixel, pos.y + pixel), IM_COL32(0, 0, 0, 220), label);
+			drawList->AddText(pos, IM_COL32(255, 255, 255, 255), label);
 		}
 		static const bool testHeld = std::getenv("CCCP_TEST_RING") != nullptr;
 		if (sticky) {
@@ -3614,7 +3700,7 @@ namespace {
 		if (kind == Tool::Command && s_RingPage == 1) {
 			// The game's own AI modes for the units picked, as the pie menu offers them when playing a unit. Up until a click, since the button
 			// that held the first ring open has been let go.
-			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255)}, {"Patrol", IM_COL32(120, 200, 220, 255)}, {"Hunt brains", IM_COL32(239, 106, 91, 255)}, {"Dig for gold", IM_COL32(230, 200, 80, 255)}, {"Rally point", IM_COL32(180, 140, 240, 255)}, {"Do nothing", IM_COL32(150, 150, 140, 255)}, {"Back", IM_COL32(110, 180, 250, 255)}};
+			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
 			static const Order orders[] = {Order::Hold, Order::Patrol, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 			int picked = DrawRing(modes, -1, true);
 			if (picked == -2) {
@@ -3633,7 +3719,7 @@ namespace {
 			return;
 		}
 		if (kind == Tool::Command) {
-			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255)}, {"Attack", IM_COL32(239, 106, 91, 255)}, {"Guard", IM_COL32(120, 220, 120, 255)}, {"Defend", IM_COL32(242, 182, 61, 255)}, {"Cancel", IM_COL32(200, 160, 120, 255)}, {"Deselect", IM_COL32(150, 150, 140, 255)}, {"More...", IM_COL32(200, 200, 200, 255)}};
+			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
 			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
@@ -3657,8 +3743,9 @@ namespace {
 			return;
 		}
 		std::vector<RingItem> sides;
+		static const char* teamIcons[] = {"Team1", "Team2", "Team3", "Team4"};
 		for (int side = 0; side < c_Sides; ++side) {
-			sides.push_back({c_SideNames[side], c_SideColors[side]});
+			sides.push_back({c_SideNames[side], c_SideColors[side], side < 4 ? teamIcons[side] : nullptr});
 		}
 		int picked = DrawRing(sides, s_Team);
 		if (picked >= 0) {
