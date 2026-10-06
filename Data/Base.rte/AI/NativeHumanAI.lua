@@ -365,23 +365,35 @@ function NativeHumanAI:Update(Owner)
 	if Owner.MOMoveTarget then
 		-- make the last waypoint marker stick to the MO we are following
 		if MovableMan:ValidMO(Owner.MOMoveTarget) then
-			Owner:RemoveMovePathEnd();
-			Owner:AddToMovePathEnd(Owner.MOMoveTarget.Pos);
+			local Leader = nil;
+			if Owner.AIMode == Actor.AIMODE_SQUAD then
+				Leader = MovableMan:GetMOFromID(Owner:GetAIMOWaypointID());
+				if Leader then
+					if IsAHuman(Leader) then
+						Leader = ToAHuman(Leader);
+					elseif IsACrab(Leader) then
+						Leader = ToACrab(Leader);
+					else
+						Leader = nil;
+					end
+				end
+			end
+			if Leader then
+				-- A place in line behind the leader, so far back along the way it came (SharedBehaviors.SquadPoint): the route ends there,
+				-- not at the leader, which every follower used to steer straight at and shove for.
+				local Point, LeaderGround = SharedBehaviors.SquadPoint(self, Owner, Leader);
+				self.squadPoint = Point;
+				SharedBehaviors.SquadTrimPath(Owner, Point, LeaderGround);
+			else
+				-- make the last waypoint marker stick to the MO we are following
+				self.squadPoint = nil;
+				Owner:RemoveMovePathEnd();
+				Owner:AddToMovePathEnd(Owner.MOMoveTarget.Pos);
+			end
 
 			if Owner.AIMode == Actor.AIMODE_SQUAD then
 				-- look where the SL looks, if not moving
 				if not self.jump and self.lateralMoveState == Actor.LAT_STILL then
-					local Leader = MovableMan:GetMOFromID(Owner:GetAIMOWaypointID());
-					if Leader then
-						if IsAHuman(Leader) then
-							Leader = ToAHuman(Leader);
-						elseif IsACrab(Leader) then
-							Leader = ToACrab(Leader);
-						else
-							Leader = nil;
-						end
-					end
-
 					if Leader then
 						local dist = SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest;
 						local radius = (Leader.Height + Owner.Height) * 0.5;

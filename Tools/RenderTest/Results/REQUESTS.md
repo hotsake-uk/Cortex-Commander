@@ -7,7 +7,22 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), stairs on the legs, a climb's fuel and speed, doors of our own** (PathFinder, GoToWpt, the native AIs, ADoor;
+- **(this push), squads keep a place in line** (SharedBehaviors SquadTrailUpdate/SquadSlot/SquadPoint/SquadTrimPath, the native AIs'
+  per-tick follow block, GoToWpt's follow branch; a "squad" course in the combat gym). A squad follower (AIMODE_SQUAD with an MO
+  waypoint on the leader) no longer steers straight at the leader and freezes against it: it keeps a place in line, its slot's distance
+  (about 70 px per slot for soldiers) back along the way the leader came, from a trail of the leader's ground positions that each
+  follower records itself. The route is still asked for to the leader, and its end is trimmed to the place every tick. In place it
+  holds still; when the place moves off (the leader walks on) or something comes between, it walks again. Harness: `AICombat` gets a
+  sixth course, "squad": a leader with three followers sent 640 px along a beam at `east + 820` (east = SceneWidth/2 + 580) and sent
+  back at 30 s; its AICOMBAT lines carry `spread` (farthest follower from the leader) and `minpair` (closest two of the four), and
+  the result line the closest two while the leader stood (sampled 8 s after the start and 8 s after the turn). Expect: spread settling
+  around 210-250 px while walking and at the stop, the closest two while standing never under about 40 px (they used to stack on
+  the leader's spot), the line turning about after 30 s without the followers piling into the leader, and no stop-start lurching
+  while the leader walks (followers steer at their moving places, and hold only when the leader stands). The leader's own course time is a plain GOTO and should be unchanged. Also: the outdoor gym's "path
+  variants" lines now use the unit's own path agent (prints only), and the climb's fuel estimate is trimmed to the height flown (a
+  96 px hatch now wants 1072 ms of tank instead of 1201: a unit on 3/4 of a tank goes at once).
+
+- **97a4c419, stairs on the legs, a climb's fuel and speed, doors of our own** (PathFinder, GoToWpt, the native AIs, ADoor;
   AIBunker.lua's shaft piece is now "Doors B"). Each line is one change with what to look for:
   - *Stairs are walked.* The grid offers a walking edge up and down stairs (two nodes up for one over, where both nodes have a floor,
     the rise is 30 to 60 px and two lines over the slope are clear) to a searcher whose legs take them: a human's say yes, a crab's no
@@ -122,20 +137,22 @@ so here.
 
 1. The crab trace (above).
 2. ~~**Can the legs walk the steep stairs?**~~ Answered in Results/d3c6d8d: a soldier walks them in 4 s. The grid now offers the walking
-   edge (this push). Still open for the Dreadnought: the stairs courses with `CCCP_BUNKER_UNIT=crab`.
+   edge (97a4c419). Still open for the Dreadnought: the stairs courses with `CCCP_BUNKER_UNIT=crab`.
    ~~**Can the legs walk the steep stairs?** The grid routes Steep Stairs D as jet hops because its diagonal edges are 1:1 and the stair is
    2:1 (6 px risers, 3 px treads, 63 degrees). If a Soldier Light can walk up them unaided, the grid should offer a walking edge up
    stairs and the courses would drop from 20-46 s to a few seconds. Please try: a soldier placed at the stairs' foot (2060,340) with
    its jetpack disabled (e.g. `actor.Jetpack.JetTimeTotal = 0` or remove it) and a waypoint at the top landing (2160,244), and say how
    far up it gets and in how long; and the same for the Dreadnought.~~
 3. ~~The Bywater "middle" moved off the Doors B hatch~~ Done: "Doors B" is a TerrainObject in BunkerSystems/Doors/Doors.ini (a shaft
-   piece with two "Door Rotate Short Horiz" leaves at (+-36, 33)); it is now the sky bunker's k1 shaft piece (this push).
+   piece with two "Door Rotate Short Horiz" leaves at (+-36, 33)); it is now the sky bunker's k1 shaft piece (97a4c419).
    The Bywater "middle" moved off the Doors B hatch: agreed. The hatch itself is a hazard the AI should learn (wait for a door to open,
    never hover in a leaf's sweep); a sky-bunker course with a Doors B hatch in a floor would let me measure that later. If you can tell
    me the preset names that make up "Doors B" in Bywater (the scene file), I'll build one into AIBunker.lua.
 4. The `AIGYM unit` line for any other unit you run.
 5. A trace of sky "bottom corridor to the top room" (`CCCP_BUNKER_TRACE=1`) with the Doors B piece in the shaft: the door manners'
    first measurement (see the push above).
+7. The combat gym's new "squad" course: its AICOMBAT lines (every 2 s) and, if a follower stands still more than 10 s while the
+   leader is more than 150 px away, an AITRACE of it (the first follower is traced; `CCCP_AI_LOG=1`).
 6. Bywater course 1's stand at 1756,924 (9-12 s in Results/d3c6d8d: still until `jet: stuck`, next point 1716,915 then a crawl to
    1692,928): if it is still there this round, a `CCCP_BUNKER_DUMP` of the grid around 1716-1756,900-930 would tell me whether the
    point is a wall's or a step's.

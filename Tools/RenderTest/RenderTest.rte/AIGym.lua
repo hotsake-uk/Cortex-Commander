@@ -169,9 +169,10 @@ function AIGymScript:UpdateScript()
 				end
 			end
 			ConsoleMan:PrintString("AIGYM path for " .. course.name .. ": result " .. tostring(found) .. ", " .. count .. " nodes:" .. nodes);
-			local a = SceneMan.Scene:CalculatePath(SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 10), course.to, actor.JumpHeight, 35, Activity.TEAM_1);
-			local b = SceneMan.Scene:CalculatePath(course.from, course.to + Vector(0, -actor.Height * 0.5), actor.JumpHeight, 35, Activity.TEAM_1);
-			local c = SceneMan.Scene:CalculatePath(course.from, course.to + Vector(0, -24), actor.JumpHeight, 35, Activity.TEAM_1);
+			-- (With the unit's own sizes, as the unit itself is pathed: the header's defaults gave routes the unit never had.)
+			local a = SceneMan.Scene:CalculatePathForActor(actor, SceneMan:MovePointToGround(actor.Pos, actor.Height * 0.2, 10), course.to, Activity.TEAM_1);
+			local b = SceneMan.Scene:CalculatePathForActor(actor, course.from, course.to + Vector(0, -actor.Height * 0.5), Activity.TEAM_1);
+			local c = SceneMan.Scene:CalculatePathForActor(actor, course.from, course.to + Vector(0, -24), Activity.TEAM_1);
 			ConsoleMan:PrintString("AIGYM path variants for " .. course.name .. ": ground start " .. a .. ", raised end " .. b .. ", end 24 up " .. c);
 			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, digger = course.digger, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 		end

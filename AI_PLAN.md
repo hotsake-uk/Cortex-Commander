@@ -99,7 +99,8 @@ Still open, in rough order of value:
     (`RetreatUpdate`); not brains, defenders or player-posted sentries. Strafing and flanking scale with the team's AI skill. The sandbox
     leaves units that are falling back or flanking alone.
 18. **Squads** move as individuals. (The `teamBlockState` machinery that looks like it handles team-mates in the way is dead: nothing
-    ever sets BLOCKED.) Formation offsets along the leader's path would do most of what's wanted.
+    ever sets BLOCKED.) Formation offsets along the leader's path would do most of what's wanted. (Done, first cut: places in line
+    along the leader's trail; see the cloud session's item 15.)
 
 ## The gym
 
@@ -278,6 +279,14 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
     climb's probe, the line-of-sight re-path and the "passed" check; `SharedBehaviors.DoorAhead` and the hold 80 px short of a door
     of ours that isn't open (still on the ground, a hover in the air, no climb through it). The sky bunker's k1 shaft piece is
     "Doors B" to measure it.
+15. Squads (#18): a follower keeps a place in line behind its leader. `SharedBehaviors.SquadTrailUpdate` records the leader's ground
+    positions (one per 16 px, up to 64; none while it is in the air), `SquadSlot` ranks the followers by UniqueID once a second,
+    `SquadPoint` measures the slot's distance (0.35 of the two heights per slot) back along the trail (a leap between two points is
+    not walked along; with no trail yet, beside the leader on the follower's side), and `SquadTrimPath` trims the follower's route,
+    asked for to the leader, to end at the place each tick. GoToWpt's follow branch steers straight at the place only when it is near
+    and in plain sight, and holds still in place until the place moves off; the old loop steered every follower straight at the
+    leader and froze them all on its spot. The `teamBlockState` machinery is still dead and untouched. The combat gym's "squad"
+    course measures spread and the closest pair, with a turn-about at 30 s.
 
 ### Tools/PathSim
 
@@ -303,5 +312,8 @@ because the probe reached 4 px into the pather's 2 px margin.
 - The jump planner after a climb: it still relights in bursts (a kick and 130 ms each) when flying level with a point off to one side;
   the climb's fuel model should keep the tank from being dry there, but the planner's own pulses could be made steady too.
 - Door manners are measured on the sky bunker's Doors B piece for the first time this push.
-- Not yet looked at: squads (#18), the four-facing jet planner indoors (its rays start 40 px over Pos, inside a 48 px ceiling, so it
+- Squads have their first cut (item 15), measured on the combat gym's "squad" course from this push; not yet: a follower whose
+  place is up a ledge the leader jetted onto (it waits at the foot until the leader walks on), a dead leader's followers (they go
+  sentry, as before), and the sandbox's Guard order (GOTO at an MO), which follows the one followed itself.
+- Not yet looked at: the four-facing jet planner indoors (its rays start 40 px over Pos, inside a 48 px ceiling, so it
   never jets indoors; the climb controller does that work), doors on Bywater.

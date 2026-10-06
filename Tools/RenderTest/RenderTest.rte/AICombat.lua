@@ -15,14 +15,19 @@ end
 --   move:       a unit on a plain move order walks the length of a beam past an enemy up on a ledge. It should fire back on the way
 --               and arrive, not stop for the fight.
 --   retreat:    a badly hurt unit with its brain down the beam. It should fall back to the brain, wait, and then take up its post again.
-function AICombatScript:Spawn(preset, pos, team, facingLeft)
+--   squad:      a leader with three followers in squad mode, sent 640 px along a beam and, at 30 s, back again. The followers should
+--               string out behind the leader about 70 px apart, each on its own spot, turn with it, and never stand on one another.
+--               The AICOMBAT lines carry "spread" (the farthest follower from the leader) and "minpair" (the closest two of the four).
+function AICombatScript:Spawn(preset, pos, team, facingLeft, noTrace)
 	local actor = CreateAHuman(preset, "Coalition.rte");
 	actor.Pos = pos;
 	actor.Team = team;
 	actor.HFlipped = facingLeft == true;
 	actor.AIMode = Actor.AIMODE_SENTRY;
 	actor:AddInventoryItem(CreateHDFirearm("Assault Rifle", "Coalition.rte"));
-	actor:SetNumberValue("AITrace", 1);
+	if not noTrace then
+		actor:SetNumberValue("AITrace", 1);
+	end
 	MovableMan:AddActor(actor);
 	return actor;
 end
@@ -54,6 +59,8 @@ function AICombatScript:UpdateScript()
 		SandboxDo("Concrete beam", Vector(east + 400, 160), 0, 0, 1, "");
 		-- retreat: a 640 px beam.
 		for x = 0, 640, 160 do SandboxDo("Concrete beam", Vector(east + x, 560), 0, 0, 1, ""); end
+		-- squad: a 1120 px beam (the ground under it is 190 px or more lower).
+		for x = 0, 960, 160 do SandboxDo("Concrete beam", Vector(east + x, 820), 0, 0, 1, ""); end
 	end
 	if not self.started and t > 3500 then
 		self.started = true;
@@ -108,6 +115,21 @@ function AICombatScript:UpdateScript()
 		MovableMan:AddActor(brain);
 		a.Health = 20;
 		table.insert(self.courses, { name = "retreat", units = { a, brain }, start = t });
+		-- squad: the leader on a move order, three followers in squad mode behind it (only the first traced).
+		local leader = self:Spawn("Soldier Light", Vector(east + 260, 820) + up, 1, false, true);
+		leader:ClearAIWaypoints();
+		leader:AddAISceneWaypoint(Vector(east + 900, 800));
+		leader.AIMode = Actor.AIMODE_GOTO;
+		local squad = { leader };
+		for i = 1, 3 do
+			local f = self:Spawn("Soldier Light", Vector(east + 260 - 60 * i, 820) + up, 1, false, i > 1);
+			f:ClearAIWaypoints();
+			f:AddAIMOWaypoint(leader);
+			f.AIMode = Actor.AIMODE_SQUAD;
+			f:UpdateMovePath();
+			table.insert(squad, f);
+		end
+		table.insert(self.courses, { name = "squad", units = squad, goal = Vector(east + 900, 800), back = Vector(east + 100, 800), squad = true, worstMinPair = math.huge, start = t });
 		SandboxDo("Look around", self.lookAt or Vector(left, 220), 0, 0, 1, "");
 		ConsoleMan:PrintString("AICOMBAT started " .. #self.courses .. " courses");
 	end
@@ -124,7 +146,7 @@ function AICombatScript:UpdateScript()
 						local tags = "";
 						if unit:NumberValueExists("AIRetreat") then tags = tags .. " retreating"; end
 						if unit:NumberValueExists("AIFlank") then tags = tags .. " flanking"; end
-						local other = course.units[3 - i];
+						local other = (not course.squad) and course.units[3 - i] or nil;
 						if other and MovableMan:ValidMO(other) and unit.EyePos then
 							local Trace = SceneMan:ShortestDistance(unit.EyePos, other.EyePos or other.Pos, false);
 							local id = SceneMan:CastMORay(unit.EyePos, Trace, unit.ID, unit.IgnoresWhichTeam, rte.grassID, false, 5);
@@ -133,6 +155,38 @@ function AICombatScript:UpdateScript()
 						line = line .. " [" .. unit.Team .. " at " .. math.floor(unit.Pos.X) .. "," .. math.floor(unit.Pos.Y) .. " hp " .. math.floor(unit.Health) .. " mode " .. unit.AIMode .. tags .. "]";
 					else
 						line = line .. " [" .. i .. " gone]";
+					end
+				end
+				if course.squad then
+					-- How the squad is strung out: the farthest follower from the leader, and the closest two of them all.
+					local spread, minPair = 0, math.huge;
+					for i, unit in ipairs(course.units) do
+						if MovableMan:ValidMO(unit) then
+							if i > 1 and MovableMan:ValidMO(course.units[1]) then
+								spread = math.max(spread, SceneMan:ShortestDistance(unit.Pos, course.units[1].Pos, false).Magnitude);
+							end
+							for j = i + 1, #course.units do
+								if MovableMan:ValidMO(course.units[j]) then
+									minPair = math.min(minPair, SceneMan:ShortestDistance(unit.Pos, course.units[j].Pos, false).Magnitude);
+								end
+							end
+						end
+					end
+					line = line .. " spread " .. math.floor(spread) .. " minpair " .. (minPair < math.huge and math.floor(minPair) or -1);
+					-- (Only while the leader stands, and not through the turn-about: on the move and turning about, followers rightly pass
+					-- through the leader's spot and one another's.)
+					if t - course.start > 8000 and (not course.turnedAt or t - course.turnedAt > 8000) and MovableMan:ValidMO(course.units[1]) and course.units[1].Vel.Largest < 1 and minPair < course.worstMinPair then
+						course.worstMinPair = minPair;
+					end
+					-- At 30 s the leader is sent back the way it came: the line has to turn about.
+					if not course.turned and t - course.start > 30000 and MovableMan:ValidMO(course.units[1]) then
+						course.turned = true;
+						course.turnedAt = t;
+						course.units[1]:ClearAIWaypoints();
+						course.units[1]:AddAISceneWaypoint(course.back);
+						course.units[1].AIMode = Actor.AIMODE_GOTO;
+						course.goal = course.back;
+						line = line .. " (leader sent back)";
 					end
 				end
 				ConsoleMan:PrintString(line);
@@ -150,6 +204,9 @@ function AICombatScript:UpdateScript()
 				local extra = "";
 				if course.goal and MovableMan:ValidMO(course.units[1]) then
 					extra = " mover " .. math.floor(SceneMan:ShortestDistance(course.units[1].Pos, course.goal, false).Magnitude) .. " px from goal";
+				end
+				if course.squad then
+					extra = extra .. " closest two while the leader stood " .. (course.worstMinPair < math.huge and math.floor(course.worstMinPair) or -1) .. " px";
 				end
 				ConsoleMan:PrintString("AICOMBAT " .. course.name .. " result: " .. table.concat(alive, "; ") .. extra);
 			end

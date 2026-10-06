@@ -396,6 +396,9 @@ function SharedBehaviors.ClimbFuel(AI, Owner, height)
 	if jet.accel <= 1 then
 		return math.huge;
 	end
+	-- The flight is flown to 32 px under the point (the rate's twelve pixels short of the fifth of a body the hover band begins at); the
+	-- hover from there is the reserve's.
+	height = math.max(0, height - 32);
 	local gravity = SceneMan.GlobalAcc.Y * GetPPM(); -- px/s^2
 	local cap = SharedBehaviors.ClimbSpeedCap(Owner) * GetPPM(); -- px/s
 	local toCap = cap / jet.accel; -- Seconds of full burn to reach the cap.
@@ -541,6 +544,128 @@ function SharedBehaviors.DoorAhead(Owner, ToPos)
 		end
 	end
 	return best;
+end
+
+-- Squads: a follower keeps a place in line behind its leader, so far back along the way the leader came. The leader's route isn't
+-- readable (a player's leader has none, and a unit's is popped as it is walked), so each follower keeps its own record of where the
+-- leader has walked and measures back along that. The place is what the follower's route ends at and what it holds at; the leader
+-- itself is only where the route is asked for to (there is sure to be a way to where the leader stands).
+
+-- Where the leader has walked: ground points, newest first, one for every 16 px it moves on the ground, up to 64 of them. A leader in
+-- the air leaves no point (the trail is where feet have been), and a new leader starts a new trail.
+-- @return The leader's present ground point, or nil while it is in the air.
+function SharedBehaviors.SquadTrailUpdate(AI, Owner, Leader)
+	if AI.squadLeaderID ~= Leader.UniqueID or not AI.squadTrail then
+		AI.squadTrail = {};
+		AI.squadLeaderID = Leader.UniqueID;
+	end
+	local trail = AI.squadTrail;
+	-- On the ground: something under the feet within a third of its height.
+	if not SceneMan:CastStrengthRay(Leader.Pos, Vector(0, Leader.Height * 0.35), 5, Vector(), 2, rte.grassID, true) then
+		return nil;
+	end
+	local Ground = SceneMan:MovePointToGround(Leader.Pos, Leader.Height * 0.2, 4);
+	if #trail == 0 or SceneMan:ShortestDistance(trail[1], Ground, false):MagnitudeIsGreaterThan(16) then
+		table.insert(trail, 1, Ground);
+		if #trail > 64 then
+			table.remove(trail);
+		end
+	end
+	return Ground;
+end
+
+-- The follower's place in line, 1 for the nearest: its rank by UniqueID among the leader's followers, which is the same on every tick
+-- and every machine. Looked up once a second.
+function SharedBehaviors.SquadSlot(AI, Owner, Leader)
+	if AI.squadSlot and AI.squadSlotTimer and not AI.squadSlotTimer:IsPastSimTimeLimit() then
+		return AI.squadSlot;
+	end
+	if not AI.squadSlotTimer then
+		AI.squadSlotTimer = Timer();
+		AI.squadSlotTimer:SetSimTimeLimitMS(1000);
+	end
+	AI.squadSlotTimer:Reset();
+	local ids = {};
+	for actor in MovableMan.Actors do
+		-- (GetAIMOWaypointID checks its pointer; another actor's MOMoveTarget may still point at an MO deleted last frame. A dying
+		-- unit gives up its place.)
+		if actor.AIMode == Actor.AIMODE_SQUAD and actor.Team == Owner.Team and actor.Status < Actor.DYING and actor:GetAIMOWaypointID() == Leader.ID then
+			table.insert(ids, actor.UniqueID);
+		end
+	end
+	table.sort(ids);
+	AI.squadSlot = 1;
+	for i, id in ipairs(ids) do
+		if id == Owner.UniqueID then
+			AI.squadSlot = i;
+			break;
+		end
+	end
+	return AI.squadSlot;
+end
+
+-- The place a follower keeps to: its slot's distance back along the leader's trail (a slot is about a third of the two heights, 70 px
+-- for two soldiers), on the ground. A leap or a flight between two trail points is not walked along; the place sits at its near end
+-- until the leader walks on. When the trail runs out short of the place (the leader has only just set off, or stands where it was
+-- put), the place is on past the trail's oldest point the way the leader came from, or, with no direction yet, beside the leader on
+-- the follower's side; where that ground is open and near enough level; else the trail's end. (The trail's end alone was the leader's
+-- own spot for every follower of a standing leader, and they all converged on it.)
+-- @return The place, and the leader's ground point.
+function SharedBehaviors.SquadPoint(AI, Owner, Leader)
+	local Ground = SharedBehaviors.SquadTrailUpdate(AI, Owner, Leader);
+	local trail = AI.squadTrail;
+	local gap = (Leader.Height + Owner.Height) * 0.35;
+	local back = gap * SharedBehaviors.SquadSlot(AI, Owner, Leader);
+	local LeaderGround = Ground or trail[1] or Leader.Pos;
+	local From = LeaderGround;
+	local LastSeg = nil;
+	for i = 1, #trail do
+		local To = trail[i];
+		local Seg = SceneMan:ShortestDistance(From, To, false);
+		local length = Seg.Magnitude;
+		if length > Leader.Height + Owner.Height then
+			return From, LeaderGround;
+		end
+		if length >= back then
+			return SceneMan:MovePointToGround(From + Seg * (back / math.max(1, length)), Owner.Height * 0.2, 4), LeaderGround;
+		end
+		back = back - length;
+		From = To;
+		if length > 1 then
+			LastSeg = Seg;
+		end
+	end
+	local Dir = LastSeg and LastSeg.Normalized or Vector(SceneMan:ShortestDistance(Leader.Pos, Owner.Pos, false).X < 0 and -1 or 1, 0);
+	local Beyond = SceneMan:MovePointToGround(From + Dir * back + Vector(0, -Owner.Height * 0.2), Owner.Height * 0.2, 4);
+	if SceneMan:GetTerrMatter(Beyond.X, Beyond.Y) == rte.airID and math.abs(Beyond.Y - From.Y) < Owner.Height * 0.5 then
+		return Beyond, LeaderGround;
+	end
+	return From, LeaderGround;
+end
+
+-- The follower's route ends at its place, not at the leader: the route is asked for to the leader, and here the nodes beyond the place
+-- (nearer the leader than the place is) come off its end and the place goes on. Every tick, so the end follows the place as it moves.
+function SharedBehaviors.SquadTrimPath(Owner, Point, LeaderGround)
+	local placeToLeader = SceneMan:ShortestDistance(Point, LeaderGround, false).Magnitude;
+	while Owner.MovePathSize >= 2 do
+		-- The last real node: the one before the point put on last tick.
+		local count = 0;
+		local Node = nil;
+		for pos in Owner.MovePath do
+			count = count + 1;
+			if count == Owner.MovePathSize - 1 then
+				Node = pos;
+			end
+		end
+		if not Node or SceneMan:ShortestDistance(Node, LeaderGround, false).Magnitude >= placeToLeader - 12 then
+			break;
+		end
+		Owner:RemoveMovePathEnd();
+		Owner:RemoveMovePathEnd();
+		Owner:AddToMovePathEnd(Point);
+	end
+	Owner:RemoveMovePathEnd();
+	Owner:AddToMovePathEnd(Point);
 end
 
 -- Whether a step sideways from here is onto ground, not off a drop or into a wall. @param dir -1 or 1.
@@ -1085,11 +1210,15 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			if Owner.MovePathSize == 0 then	-- arrived
 				if Owner.MOMoveTarget then -- following actor
 					if Owner.MOMoveTarget:IsActor() then
-						local Trace = SceneMan:ShortestDistance(Owner.Pos, Owner.MOMoveTarget.Pos, false);
+						-- (A squad's follower goes to its place in line, not to the leader: see the native AI and SquadPoint.)
+						local Goal = AI.squadPoint or Owner.MOMoveTarget.Pos;
+						local Trace = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
+						-- (In plain sight: the ray says whether something is in the way; read the other way round, it added the waypoint
+						-- only when something was.)
 						if Trace.Largest < Owner.Height * 0.5 + (Owner.MOMoveTarget.Height or 100) * 0.5 and
-							SceneMan:CastStrengthRay(Owner.Pos, Trace, 5, Vector(), 4, rte.grassID, true)
-						then -- add a waypoint if the MOMoveTarget is close and in LOS
-							Waypoint = {Pos=SceneMan:MovePointToGround(Owner.MOMoveTarget.Pos, Owner.Height*0.2, 4)};
+							not SceneMan:CastStrengthRay(Owner.Pos, Trace, 5, Vector(), 4, rte.grassID, true)
+						then -- add a waypoint if the place is close and in LOS
+							Waypoint = {Pos=SceneMan:MovePointToGround(Goal, Owner.Height*0.2, 4)};
 						else
 							NeedsNewPath = true; -- update the path
 							AI.jetClimb = false;
@@ -1119,12 +1248,36 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
 						local Trace = SceneMan:ShortestDistance(Owner.Pos, Owner.MOMoveTarget.Pos, false);
 
-						-- WTF is the following code for? It causes us to idle and do nothing forever??
 						if Owner.MOMoveTarget.Team == Owner.Team then
-							if Trace.Largest > Owner.Height * 0.3 + (Owner.MOMoveTarget.Height or 100) * 0.3 then
-								Waypoint.Pos = Owner.MOMoveTarget.Pos;
-							else	-- arrived
+							-- Following one of ours: a squad's follower keeps to its place in line behind the leader (AI.squadPoint, from the
+							-- native AI each tick: so far back along the way the leader came), anyone else to the one followed. The route's
+							-- last point is that place; near it and in plain sight it is walked straight to. (It used to be steered straight
+							-- at from any distance, through whatever was in the way, and all of a squad at the leader itself, where they
+							-- shoved for the one spot.)
+							local Goal = AI.squadPoint or Owner.MOMoveTarget.Pos;
+							local ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
+							-- Straight at the place: near, level (a climb is the pather's) and nothing between, measured a fifth of a body up so
+							-- the line over the brow of a hill doesn't clip it.
+							local Lift = Vector(0, -Owner.Height * 0.2);
+							local function StraightTo()
+								return ToGoal:MagnitudeIsLessThan(Owner.Height * 1.5) and math.abs(ToGoal.Y) < Owner.Height * 0.3 and SceneMan:CastObstacleRay(Owner.Pos + Lift, ToGoal, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 6) < 0;
+							end
+							-- A place in line already stands off the leader, so its radius must be under half the gap between places, or two
+							-- places' "in place" overlap and two followers hold on the one spot; following a unit itself, the old radius.
+							local nearIn = AI.squadPoint and 0.15 or 0.3;
+							local nearOut = AI.squadPoint and 0.25 or 0.4;
+							-- (And no holding while the one followed is on the move: the place moves with it, and a follower that held until
+							-- it was 50 px off, then asked for a new route and walked back, lurched along in stops and starts.)
+							local moving = Owner.MOMoveTarget.Vel.Largest > 1;
+							if moving or ToGoal.Largest > Owner.Height * nearIn + (Owner.MOMoveTarget.Height or 100) * nearIn then
+								if StraightTo() then
+									Waypoint.Pos = Goal;
+								end
+							else	-- in place
 								if not AI.flying then
+									-- Held here, still, until the place moves off (the leader walks on) or something comes between: the stuck
+									-- handling and the scheduled re-path don't count the wait. Out of the hold, the place is walked straight to
+									-- when it is near and in plain sight, else a new route is asked for.
 									while true do
 										StuckTimer:Reset();
 										UpdatePathTimer:Reset();
@@ -1135,9 +1288,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										if _abrt then return true end
 
 										if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
-											Trace = SceneMan:ShortestDistance(Owner.Pos, Owner.MOMoveTarget.Pos, false);
-											if Trace.Largest > Owner.Height * 0.4 + (Owner.MOMoveTarget.Height or 100) * 0.4 or
-												SceneMan:CastStrengthRay(Owner.Pos, Trace, 5, Vector(), 4, rte.doorID, true)
+											Goal = AI.squadPoint or Owner.MOMoveTarget.Pos;
+											ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
+											local off = ToGoal.Largest > Owner.Height * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1;
+											if off and StraightTo() then
+												Waypoint.Pos = Goal;
+												break;
+											end
+											if off or SceneMan:CastObstacleRay(Owner.Pos + Lift, ToGoal, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 6) >= 0
 											then
 												Waypoint = nil;
 												NeedsNewPath = true; -- update the path
