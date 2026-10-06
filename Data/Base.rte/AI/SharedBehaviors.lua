@@ -414,6 +414,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	NoLOSTimer:SetSimTimeLimitMS(1000);
 
 	local StuckTimer = Timer();
+	local StuckDirectionTimer = Timer(); -- A direction tried when stuck is kept for a moment before another is tried.
+	StuckDirectionTimer:SetSimTimeLimitMS(500);
+	local StuckJumped = false; -- One jetpack try per time stuck.
+	local StuckJumpTimer = Timer(); -- How long that try is let burn.
+	StuckJumpTimer:SetSimTimeLimitMS(350);
 	StuckTimer:SetSimTimeLimitMS(1000);
 	local AverageVel = Owner.Vel;
 
@@ -429,7 +434,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local Obst = {R_LOW = 1, R_FRONT = 2, R_HIGH = 3, R_UP = 5, L_UP = 6, L_HIGH = 8, L_FRONT = 9, L_LOW = 10};
 	local Facings = {{aim=0, facing=0}, {aim=1.4, facing=1.4}, {aim=1.4, facing=math.pi-1.4}, {aim=0, facing=math.pi}};
 
-	local NeedsNewPath, Waypoint, HasMovePath, Dist, CurrDist;
+	local NeedsNewPath, Waypoint, HasMovePath, Dist, CurrDist, NextWptPos;
+	local ClimbStepX = 0; -- The sideways step off the top of a jetpack climb, kept up a moment after the jet goes out.
+	local ClimbStepTimer = Timer();
+	ClimbStepTimer:SetSimTimeLimitMS(700);
 	NeedsNewPath = true;
 
 	Owner:RemoveNumberValue("AI_StuckForTime");
@@ -437,17 +445,24 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	while true do
 		Waypoint = nil;
 		HasMovePath = false;
+		NextWptPos = nil; -- The waypoint after this one, so a climb knows which way it steps off at the top.
 
 		-- ugh
+		local wptIndex = 0;
 		for pos in Owner.MovePath do
-			HasMovePath = true;
-			Waypoint = {};
-			Waypoint.Pos = pos;
-			Waypoint.Type = nil;
-			if Owner.MovePathSize == 1 then
-				Waypoint.Type = "last";
+			wptIndex = wptIndex + 1;
+			if wptIndex == 1 then
+				HasMovePath = true;
+				Waypoint = {};
+				Waypoint.Pos = pos;
+				Waypoint.Type = nil;
+				if Owner.MovePathSize == 1 then
+					Waypoint.Type = "last";
+				end
+			else
+				NextWptPos = pos;
+				break;
 			end
-			break;
 		end
 
 		if Waypoint ~= nil and Waypoint.Type ~= "air" then
@@ -523,6 +538,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				Owner:RemoveNumberValue("AI_StuckForTime");
 			end
 			StuckTimer:Reset();
+			StuckJumped = false;
 		end
 
 		if AI.refuel and Owner.Jetpack then
@@ -530,8 +546,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			if Owner.Jetpack.JetTimeLeft > Owner.Jetpack.JetTimeTotal * 0.98 or (AI.flying and Owner.Vel.Y < -3 and Owner.Jetpack.JetTimeLeft > AI.minBurstTime*2) then
 				AI.refuel = false;
 			elseif not AI.flying then
+				-- No jetting until there's fuel, but walking goes on: standing still until the tank was nearly full was the long pauses at the foot of every ledge.
 				AI.jump = false;
-				AI.lateralMoveState = Actor.LAT_STILL;
 			end
 		elseif UpdatePathTimer:IsPastSimTimeLimit() then
 			UpdatePathTimer:Reset();
@@ -562,17 +578,30 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				end
 			else
 				local updateInterval = SettingsMan.AIUpdateInterval;
-
-				-- Try swapping direction, with a 15% random chance per tick while we're stuck
-				if PosRand() > (1 - 0.15) / updateInterval then
+				-- The chances are per second of game time, spread over the AI's ticks: the old sums came out at over half a chance per tick, so a stuck unit
+				-- flipped direction and dropped prone and stood up at thirty times a second, which is the twitching players saw.
+				local ticksPerSecond = 60 / math.max(updateInterval, 1);
+				local flipChance = 1 - (1 - 0.6) ^ (1 / ticksPerSecond); -- about once every two seconds
+				local proneChance = 1 - (1 - 0.15) ^ (1 / ticksPerSecond); -- about once every seven seconds
+				if StuckDirectionTimer:IsPastSimTimeLimit() and PosRand() < flipChance then
 					nextLatMove = AI.lateralMoveState == Actor.LAT_LEFT and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+					StuckDirectionTimer:Reset();
 				end
-
-				-- Try swapping prone/unprone, with a 0.5% random chance per tick while we're stuck
-				if PosRand() > (1 - 0.005) / updateInterval then
+				if PosRand() < proneChance then
 					AI.proneState = AI.proneState == AHuman.PRONE and AHuman.NOTPRONE or AHuman.PRONE;
 				end
-
+				-- A jetpack is the usual way off whatever we're stuck on: one burst, when there's fuel and head room on the side we're heading.
+				if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not StuckJumped then
+					local headRoom = (nextLatMove == Actor.LAT_LEFT and not Obstacles[Obst.L_UP]) or (nextLatMove ~= Actor.LAT_LEFT and not Obstacles[Obst.R_UP]);
+					if headRoom then
+						AI.jump = true;
+						StuckJumped = true;
+						StuckJumpTimer:Reset();
+						if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE jet: stuck"); end
+					end
+				elseif StuckJumped and StuckJumpTimer:IsPastSimTimeLimit() then
+					AI.jump = false;
+				end
 				-- refuelling done
 				if AI.refuel and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= Owner.Jetpack.JetTimeTotal * 0.99 then
 					AI.jump = true;
@@ -775,6 +804,33 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								tolerance = tolerance * 2;
 							end
 
+							-- A waypoint behind us with the next one in plain sight is done with: the path's nodes are only 24 px apart, and waiting to stand on
+							-- each one pulled a running or flying unit back to every node it had passed.
+							if Waypoint.Type ~= "last" and Owner.MovePathSize > 1 and CurrDist:MagnitudeIsGreaterThan(tolerance) then
+								local NextPos = nil;
+								local index = 0;
+								for pos in Owner.MovePath do
+									index = index + 1;
+									if index == 2 then
+										NextPos = pos;
+										break;
+									end
+								end
+								if NextPos then
+									local ToNext = SceneMan:ShortestDistance(Owner.Pos, NextPos, false);
+									local passed = ToNext:MagnitudeIsLessThan(CurrDist.Magnitude) or (CurrDist.X * ToNext.X < 0 and math.abs(CurrDist.X) < Owner.Height * 0.5 and math.abs(CurrDist.Y) < Owner.Height * 0.5);
+									if passed and SceneMan:CastObstacleRay(Owner.Pos, ToNext, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 then
+										PrevWptPos = Waypoint.Pos;
+										Owner:RemoveMovePathBeginning();
+										Waypoint.Pos = NextPos;
+										if Owner.MovePathSize == 1 then
+											Waypoint.Type = "last";
+										end
+										CurrDist = ToNext;
+									end
+								end
+							end
+
 							if CurrDist:MagnitudeIsGreaterThan(tolerance) then	-- not close enough to the waypoint
 								ArrivedTimer:Reset();
 
@@ -816,14 +872,41 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							end
 
 							if Waypoint then	-- move towards the waypoint
+								local WallAhead = false; -- Something chest high in the way on the side we're walking.
 								-- control horizontal movement
-								if not AI.flying then
+								if ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit() and not AI.jetClimb then
+									-- Stepping off the top of a climb: carried on until we're over the ledge or down on it.
+									nextLatMove = ClimbStepX > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+								elseif ClimbStepX ~= 0 then
+									ClimbStepX = 0;
+								end
+								if not AI.flying and ClimbStepX == 0 then
 									if CurrDist.X < -3 then
 										nextLatMove = Actor.LAT_LEFT;
 									elseif CurrDist.X > 3 then
 										nextLatMove = Actor.LAT_RIGHT;
 									else
 										nextLatMove = Actor.LAT_STILL;
+									end
+									-- What is in the way on that side, chest high and knee high, a body length ahead: a knee-high step is walked over, a wall
+									-- is hopped with the jetpack when there is head room, and crawled under when the gap is low.
+									if nextLatMove ~= Actor.LAT_STILL and Waypoint.Pos.Y < Owner.Pos.Y + Owner.Height * 0.5 then
+										local side = nextLatMove == Actor.LAT_LEFT and -1 or 1;
+										local ahead = Vector(side * Owner.Height * 0.45, 0);
+										local chest = Owner.Pos + Vector(0, -Owner.Height * 0.2);
+										local head = Owner.Pos + Vector(0, -Owner.Height * 0.3); -- The top of the head: Height is about twice the sprite.
+										local chestHit = SceneMan:CastStrengthRay(chest, ahead, 5, Vector(), 2, rte.grassID, true);
+										local headHit = SceneMan:CastStrengthRay(head, ahead, 5, Vector(), 2, rte.grassID, true);
+										-- Chest and head both blocked is a wall; chest alone is a steep slope or a step, which the legs and climbing arms deal with,
+										-- and the stuck handling jets if they can't.
+										if chestHit and headHit then
+											WallAhead = true;
+											local up = side < 0 and Obstacles[Obst.L_UP] or Obstacles[Obst.R_UP];
+											if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not up then
+												AI.jump = true;
+												if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE jet: wall ahead"); end
+											end
+										end
 									end
 								end
 
@@ -895,12 +978,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										else
 											if Waypoint.Type ~= "drop" and not Lower(Waypoint, Owner, 20) and Owner.Jetpack.JetpackType == AEJetpack.Standard then
 												-- jump over low obstacles unless we want to jump off a ledge
-												if nextLatMove == Actor.LAT_RIGHT and (Obstacles[Obst.R_LOW] or Obstacles[Obst.R_FRONT]) and not Obstacles[Obst.R_UP] then
+												if nextLatMove == Actor.LAT_RIGHT and Obstacles[Obst.R_FRONT] and not Obstacles[Obst.R_UP] then
+													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop right"); end
 													AI.jump = true;
 													if Obstacles[Obst.R_HIGH] then
 														nextLatMove = Actor.LAT_LEFT; -- TODO: only when too close to the obstacle?
 													end
-												elseif nextLatMove == Actor.LAT_LEFT and (Obstacles[Obst.L_LOW] or Obstacles[Obst.L_FRONT]) and not Obstacles[Obst.L_UP] then
+												elseif nextLatMove == Actor.LAT_LEFT and Obstacles[Obst.L_FRONT] and not Obstacles[Obst.L_UP] then
+													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop left"); end
 													AI.jump = true;
 													if Obstacles[Obst.L_HIGH] then
 														nextLatMove = Actor.LAT_RIGHT; -- TODO: only when too close to the obstacle?
@@ -908,67 +993,220 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												end
 											end
 
-											-- predict jetpack movement...
-											local jetStrength = (AI.jetImpulseFactor / Owner.Mass);
-											local t = math.min(0.4, Owner.Jetpack.JetTimeLeft*0.001);
-											local PixelVel = Owner.Vel * (GetPPM() * t);
-											local Accel = SceneMan.GlobalAcc * GetPPM();
-
-											-- a burst use 10x more fuel
-											if Owner.Jetpack:CanTriggerBurst() then
-												t = math.max(math.min(0.4, Owner.Jetpack.JetTimeLeft*0.001-TimerMan.AIDeltaTimeSecs*10), TimerMan.AIDeltaTimeSecs);
+											-- A climb: the waypoint is higher than the legs can manage, so the jetpack takes us up, with the move keys pushing us along towards it
+											-- (the nozzle leans with the direction moved). It is held until we are up at the waypoint's height, and it isn't lit under a ceiling,
+											-- when we're already going fast sideways, or when the tank is low.
+											local above = Waypoint.Pos.Y - Owner.Pos.Y; -- Negative when the waypoint is higher than us.
+											-- (Not "and AI.flying": that only comes on after a second clear of the ground, and a climb up a slope brushes it all the way.)
+											local climbing = AI.jetClimb;
+											local wantsClimb = (above < -Owner.Height * 0.25) or (WallAhead and above < Owner.Height * 0.3 and AI.proneState ~= AHuman.PRONE);
+											local climbRefused = false;
+											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
+												local towardsX = CurrDist.X;
+												local Hit = Vector();
+												-- Room over the head for the climb itself, no more: a ceiling well above where we're going is no ceiling.
+												local Up = Vector(0, math.min(-Owner.Height * 0.5, above - Owner.Height * 0.3));
+												local ceiling = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.3), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
+												if not ceiling and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime then
+													climbing = true;
+													AI.jetClimb = true;
+													if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: wpt dx " .. math.floor(towardsX) .. " dy " .. math.floor(above)); end
+												else
+													climbRefused = true;
+												end
 											end
+											if climbRefused then
+												-- A climb is what's wanted and it can't be had here: no jet, the legs and the stuck handling take it from here.
+												AI.jump = false;
+												AI.jetClimb = false;
+											elseif climbing or (AI.jetClimb and wantsClimb) then
+												-- Up at the waypoint's height the climb is over, but only once the feet would clear whatever we step onto next: the waypoint
+												-- sits up to a node above the ledge's top, and the step off it is sideways, so the way at foot level has to be open
+												-- that way. It is also over well past the waypoint's height, and when the tank runs dry.
+												local stepX = CurrDist.X;
+												if math.abs(stepX) < 10 and NextWptPos then
+													stepX = SceneMan:ShortestDistance(Owner.Pos, NextWptPos, false).X;
+												end
+												local feetClear = true;
+												local chestClear = true;
+												if math.abs(stepX) >= 10 then
+													local reach = math.abs(stepX) + Owner.Height * 0.15; -- All the way to it: a ledge short of the ray's end was stepped off towards, and fallen short of.
+													local Step = Vector(stepX > 0 and reach or -reach, 0);
+													-- (Height is about twice the sprite: the feet are a fifth of it under Pos.)
+													feetClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
+													chestClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
+												end
+												-- Up at the height with the way clear, but not yet near the landing sideways, it isn't over: the jet went out a hundred pixels
+													-- short of a ledge and the unit dropped below it on the way; now it hovers across (see below).
+													local done = (above > -Owner.Height * 0.2 and feetClear and math.abs(stepX) < Owner.Height * 0.4) or above > Owner.Height * 0.6 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
+												if done then
+													AI.jetClimb = false;
+													AI.jump = false;
+													-- Up: step off onto the ledge. Nothing else moves us sideways while in the air, so this is kept up for a moment.
+													if feetClear and math.abs(stepX) >= 10 then
+														nextLatMove = stepX > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+														ClimbStepX = stepX;
+														ClimbStepTimer:Reset();
+													end
+												else
+													-- Lit in pulses: already going up at a fair rate, it coasts, or the climb shoots far past the top. Hill tops were cleared by a hundred pixels.
+													-- Up at the height but not yet over the landing, it hovers: lit whenever we start to drop.
+													-- The rate of climb comes down as the top nears: what it reaches the top at, it coasts on past it (eighty pixels, from five
+													-- metres a second), and that was fuel and height to come down again.
+													local toGo = -above - Owner.Height * 0.2;
+													local climbRate = math.max(1, math.min(5, toGo / 15));
+													if above > -Owner.Height * 0.2 then
+														AI.jump = Owner.Vel.Y > 0.5;
+													else
+														AI.jump = Owner.Vel.Y > -climbRate;
+													end
+													-- Sideways it is flown by speed: a little drift towards the waypoint, more the further off it is, and none at all into a wall or
+													-- slope (that only pins us to it) or when the waypoint is straight above. Too fast either way and the nozzle is leant against it:
+													-- the speed walked up with was carrying units under the ledges they were climbing to.
+													local wantVelX = math.max(-4, math.min(4, CurrDist.X / 20));
+													if not chestClear or math.abs(CurrDist.X) < Owner.Height * 0.15 then
+														wantVelX = 0;
+													end
+													local offVelX = wantVelX - Owner.Vel.X;
+													if offVelX > 1.5 then
+														nextLatMove = Actor.LAT_RIGHT;
+													elseif offVelX < -1.5 then
+														nextLatMove = Actor.LAT_LEFT;
+													else
+														nextLatMove = Actor.LAT_STILL;
+													end
+													-- Under something (the underside of the ledge we're climbing to, usually): no way up here, so it's back out the way we came,
+													-- away from the waypoint, hovering, until the sky over the head is open again.
+													-- (Only as far up as the climb goes: a roof above where we're heading is no roof.)
+													local Over = Vector(0, math.max(-Owner.Height * 0.6, math.min(-Owner.Height * 0.2, above)));
+													if above < -Owner.Height * 0.1 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.25), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+														nextLatMove = CurrDist.X > 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+														AI.jump = Owner.Vel.Y > 0.5;
+														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling, backing out"); end
+													end
+													-- The nozzle leans a few degrees forward whenever the aim is level, so a climb aimed level drifts, and keeps gathering speed, the
+													-- way it faces. Aimed straight up it lifts and nothing else: that's the climb, with the lean kept for the drift towards the waypoint.
+													nextAimAngle = nextLatMove == Actor.LAT_STILL and math.pi * 0.5 or 0;
+												end
+											else
+												AI.jetClimb = false;
+												-- predict jetpack movement...
+												local jetStrength = (AI.jetImpulseFactor / Owner.Mass);
+												local t = math.min(0.4, Owner.Jetpack.JetTimeLeft*0.001);
+												local PixelVel = Owner.Vel * (GetPPM() * t);
+												local Accel = SceneMan.GlobalAcc * GetPPM();
 
-											-- when jumping (check four directions)
-											for k, Face in pairs(Facings) do
-												local JetAccel = Vector(-jetStrength, 0):RadRotate(Owner.RotAngle+1.375*math.pi+Face.facing*0.25);
-												local JumpPos = Owner.Pos + PixelVel + (Accel + JetAccel) * (t*t*0.5);
-
-												-- a burst add a one time boost to acceleration
+												-- a burst use 10x more fuel
 												if Owner.Jetpack:CanTriggerBurst() then
-													JumpPos = JumpPos + Vector(-AI.jetBurstFactor, 0):AbsRotateTo(JetAccel);
+													t = math.max(math.min(0.4, Owner.Jetpack.JetTimeLeft*0.001-TimerMan.AIDeltaTimeSecs*10), TimerMan.AIDeltaTimeSecs);
 												end
 
-												-- check for obstacles from the head
-												Trace = SceneMan:ShortestDistance(Owner.Pos, JumpPos, false);
-												Facings[k].range = SceneMan:ShortestDistance(Waypoint.Pos, JumpPos, false).Magnitude;
-											end
+												-- when jumping (check four directions)
+												for k, Face in pairs(Facings) do
+													local JetAccel = Vector(-jetStrength, 0):RadRotate(Owner.RotAngle+1.375*math.pi+Face.facing*0.25);
+													local JumpPos = Owner.Pos + PixelVel + (Accel + JetAccel) * (t*t*0.5);
 
-											-- when falling or walking
-											local FallPos = Owner.Pos + PixelVel;
-											if AI.flying then
-												FallPos = FallPos + Accel * (t*t*0.5);
-											end
-
-											-- check for obstacles when falling/walking
-											local Trace = SceneMan:ShortestDistance(Owner.Pos, FallPos, false);
-											SceneMan:CastObstacleRay(Owner.Pos, Trace, FallPos, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3);
-
-											local deltaToJump = 5;
-											if Owner.Jetpack.JetpackType == AEJetpack.JumpPack then
-												deltaToJump = deltaToJump * 1.4;
-											end
-
-											table.sort(Facings, function(A, B) return A.range < B.range end);
-											local delta = SceneMan:ShortestDistance(Waypoint.Pos, FallPos, false).Magnitude - Facings[1].range;
-											if delta < 1 then
-												AI.jump = false;
-											elseif delta > deltaToJump or (AI.flying and Owner.Jetpack.JetpackType == AEJetpack.Standard) then
-												AI.jump = true;
-												nextAimAngle = Owner:GetAimAngle(false) * 0.5 + Facings[1].aim * 0.5; -- adjust jetpack nozzle direction
-												nextLatMove = Actor.LAT_STILL;
-
-												if Facings[1].facing > 1.4 then
-													if not Owner.HFlipped then
-														nextLatMove = Actor.LAT_LEFT;
+													-- a burst add a one time boost to acceleration
+													if Owner.Jetpack:CanTriggerBurst() then
+														JumpPos = JumpPos + Vector(-AI.jetBurstFactor, 0):AbsRotateTo(JetAccel);
 													end
-												elseif Owner.HFlipped then
-													nextLatMove = Actor.LAT_RIGHT;
+
+													-- A flight that would end in a ceiling or a wall is as bad as it gets: the hit point is where we'd really end up, and the score is doubled.
+													local Trace = SceneMan:ShortestDistance(Owner.Pos, JumpPos, false);
+													local Hit = Vector();
+													if SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.4), Trace, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+														JumpPos = Hit + Vector(0, Owner.Height * 0.4);
+														Facings[k].range = SceneMan:ShortestDistance(Waypoint.Pos, JumpPos, false).Magnitude * 2 + 50;
+														Facings[k].blocked = true;
+													else
+														Facings[k].range = SceneMan:ShortestDistance(Waypoint.Pos, JumpPos, false).Magnitude;
+														Facings[k].blocked = false;
+													end
+												end
+
+												-- when falling or walking
+												local FallPos = Owner.Pos + PixelVel;
+												if AI.flying then
+													FallPos = FallPos + Accel * (t*t*0.5);
+												elseif nextLatMove ~= Actor.LAT_STILL then
+													-- On our feet we'd be walking, not standing: where a walk of the same time gets us, along the ground. Scored from where we are
+													-- standing, every jet looked better than a walk that was taken to go nowhere.
+													local walkSpeed = 2.5 * GetPPM(); -- pixels a second, about a soldier's walk
+													local Ahead = Vector((nextLatMove == Actor.LAT_LEFT and -1 or 1) * walkSpeed * t, 0);
+													FallPos = SceneMan:MovePointToGround(Owner.Pos + Ahead, Owner.Height * 0.4, 6);
+												end
+
+												-- check for obstacles when falling/walking
+												local Trace = SceneMan:ShortestDistance(Owner.Pos, FallPos, false);
+												SceneMan:CastObstacleRay(Owner.Pos, Trace, FallPos, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3);
+
+												local deltaToJump = 5;
+												if Owner.Jetpack.JetpackType == AEJetpack.JumpPack then
+													deltaToJump = deltaToJump * 1.4;
+												end
+
+												table.sort(Facings, function(A, B) return A.range < B.range end);
+												local delta = SceneMan:ShortestDistance(Waypoint.Pos, FallPos, false).Magnitude - Facings[1].range;
+												-- Going up, once the waypoint is no longer above the chest the climb is done: thrusting on from there is the hovering past the ledge.
+												local aboveWaypoint = Owner.Vel.Y < 0 and (Waypoint.Pos.Y - Owner.Pos.Y) > -Owner.Height * 0.3;
+												-- On the ground, the jetpack is for what can't be walked: a wall in the way, or a waypoint well above us. A slope is walked.
+												local walkable = not AI.flying and not WallAhead and (Waypoint.Pos.Y - Owner.Pos.Y) > -Owner.Height * 0.25;
+												-- Well above the waypoint already: whatever the scores say, more height is wasted fuel.
+												local tooHigh = (Waypoint.Pos.Y - Owner.Pos.Y) > Owner.Height;
+												-- Already going fast enough sideways: more thrust only builds a speed that ends in a wall. Momentum is let carry.
+												local fastEnough = math.abs(Owner.Vel.X) > 5 and Owner.Vel.Y < 8;
+												-- Under an overhang with the waypoint above: every flight hits the ceiling. Step out from under it first, towards a side with ground
+												-- under it and open sky over it; with no such side, the usual choice is made and the stuck handling takes it from there.
+												local underOverhang = not AI.flying and Facings[1].blocked and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.Height * 0.25;
+												local stepTo = Actor.LAT_STILL;
+												if underOverhang then
+													local function sideOpen(dir)
+														local foot = Owner.Pos + Vector(dir * Owner.Height * 0.35, 0);
+														local ground = SceneMan:CastStrengthRay(foot, Vector(0, Owner.Height * 0.7), 5, Vector(), 2, rte.grassID, true);
+														local sky = not SceneMan:CastStrengthRay(foot + Vector(0, -Owner.Height * 0.3), Vector(0, -Owner.Height * 1.4), 5, Vector(), 2, rte.grassID, true);
+														return ground and sky;
+													end
+													local towards = CurrDist.X < 0 and -1 or 1;
+													if sideOpen(towards) then
+														stepTo = towards < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+													elseif sideOpen(-towards) then
+														stepTo = towards < 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+													else
+														underOverhang = false;
+													end
+												end
+												if underOverhang then
+													AI.jump = false;
+													nextLatMove = stepTo;
+													if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE overhang: stepping " .. (nextLatMove == Actor.LAT_LEFT and "left" or "right")); end
+												elseif delta < 1 or aboveWaypoint or walkable or tooHigh or fastEnough then
+													if Owner:NumberValueExists("AITrace") and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.Height * 0.25 and not AI.flying and math.random() < 0.1 then
+														ConsoleMan:PrintString("AITRACE no jet: delta " .. math.floor(delta) .. " above " .. tostring(aboveWaypoint) .. " walkable " .. tostring(walkable) .. " tooHigh " .. tostring(tooHigh) .. " fast " .. tostring(fastEnough) .. " blocked " .. tostring(Facings[1].blocked) .. " range " .. math.floor(Facings[1].range) .. " wpt dx " .. math.floor(CurrDist.X) .. " dy " .. math.floor(CurrDist.Y) .. " lat " .. tostring(nextLatMove));
+													end
+													AI.jump = false;
+												elseif delta > deltaToJump then
+													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: planner delta " .. math.floor(delta) .. " flying " .. tostring(AI.flying) .. " wpt dy " .. math.floor(Waypoint.Pos.Y - Owner.Pos.Y)); end
+													AI.jump = true;
+													nextAimAngle = Owner:GetAimAngle(false) * 0.5 + Facings[1].aim * 0.5; -- adjust jetpack nozzle direction
+													nextLatMove = Actor.LAT_STILL;
+
+													if Facings[1].facing > 1.4 then
+														if not Owner.HFlipped then
+															nextLatMove = Actor.LAT_LEFT;
+														end
+													elseif Owner.HFlipped then
+														nextLatMove = Actor.LAT_RIGHT;
+													end
+													-- Still stepping off the top of a climb: that keeps the sideways input.
+													if ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit() then
+														nextLatMove = ClimbStepX > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+													end
 												end
 											end
 										end
 									end
 								end
+								
 							end
 						end
 					end
@@ -976,6 +1214,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			end
 		else	-- no waypoint list
 			NeedsNewPath = false;
+			if Owner.Vel.Y < 15 then
+				AI.jump = false;
+			end
+			nextLatMove = Actor.LAT_STILL;
+			AI.lateralMoveState = Actor.LAT_STILL;
 
 			local Trace = SceneMan:ShortestDistance(Owner.Pos, Owner:GetLastAIWaypoint(), false);
 			Owner:UpdateMovePath();
@@ -985,6 +1228,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				local _ai, _ownr, _abrt = coroutine.yield();
 				if _abrt then return true end
 			end
+			-- A fresh path is a fresh start: standing still while it was worked out, or before the order came, is not being stuck.
+			StuckTimer:Reset();
+			StuckJumped = false;
 
 			-- have we arrived?
 			if not Owner.MOMoveTarget then
@@ -1006,6 +1252,34 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 			Owner:DrawWaypoints(true);
 			NoLOSTimer:Reset();
+		end
+
+		-- A governor on flight, whatever else was decided, and even while the tank is left to refill (which skips everything above). Falling
+		-- fast with the ground coming up inside the next half second, the jet is lit straight up to take the speed off; going fast sideways, the
+		-- nozzle is leant against it (the move keys away from the way we face flip the lean). Units flying over a hill used to come down far
+		-- past it, hard enough to die.
+		if Owner.Jetpack then
+			local fuel = Owner.Jetpack.JetTimeLeft >= AI.minBurstTime;
+			local fastSideways = math.abs(Owner.Vel.X) > 8;
+			local fallingOnGround = false;
+			if Owner.Vel.Y > 6 then
+				local drop = Vector(0, Owner.Vel.Y * GetPPM() * 0.5 + Owner.Height * 0.2);
+				fallingOnGround = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), drop, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0;
+			end
+			if fastSideways and (AI.flying or Owner.Vel.Y > 6 or AI.jump) then
+				-- The lean against the speed is set whether or not there's fuel for more: a jet already lit on the last of the tank was
+				-- still leaning forward, and took a unit to thirty metres a second.
+				if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: sideways brake at " .. math.floor(Owner.Vel.X * 10) / 10); end
+				nextAimAngle = 0;
+				nextLatMove = Owner.Vel.X > 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+				if fuel then
+					AI.jump = true;
+				end
+			elseif fallingOnGround and fuel then
+				if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: landing brake at " .. math.floor(Owner.Vel.Y * 10) / 10); end
+				AI.jump = true;
+				nextAimAngle = math.pi * 0.5;
+			end
 		end
 
 		-- movement commands

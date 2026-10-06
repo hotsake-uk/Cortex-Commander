@@ -2407,17 +2407,27 @@ void Scene::UpdatePathFinding() {
 	ZoneScoped;
 	PerformanceMan::LogScope logScope("Sim: pathfinding cost update");
 
-	constexpr int nodeUpdatesPerCall = 100;
+	// Plenty of nodes at a time: the node updates run in parallel, and a grid that lags the terrain sends units through ground that is there and round
+	// ground that isn't. A hundred a call, as it was, took seconds to take in one blast or one built wall.
+	constexpr int nodeUpdatesPerCall = 2000;
 	constexpr int maxUnupdatedMaterialAreas = 1000;
 
-	// If any pathing requests are active, don't update things yet, wait till they're finished
-	// TODO: this can indefinitely block updates if pathing requests are made every frame. Figure out a solution for this
-	// Either force-complete pathing requests occasionally, or delay starting new pathing requests if we've not updated in a while
+	// The node costs can't change under a path that is being worked out, so wait for requests in flight; but not for ever: with units asking for paths
+	// every frame the grid never got updated at all, so after a moment the requests are waited out instead.
+	static Timer starvedTimer;
+	bool requestsInFlight = false;
 	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
 		if (GetPathFinder(static_cast<Activity::Teams>(team)).GetCurrentPathingRequests() != 0) {
-			return;
+			requestsInFlight = true;
 		};
 	}
+	if (requestsInFlight) {
+		if (m_pTerrain->GetUpdatedMaterialAreas().empty() || !starvedTimer.IsPastRealMS(300)) {
+			return;
+		}
+		BlockUntilAllPathingRequestsComplete();
+	}
+	starvedTimer.Reset();
 
 	int nodesToUpdate = nodeUpdatesPerCall / g_ActivityMan.GetActivity()->GetTeamCount();
 	if (m_pTerrain->GetUpdatedMaterialAreas().size() > maxUnupdatedMaterialAreas) {
@@ -2513,8 +2523,8 @@ void Scene::Update() {
 		}
 	}
 
-	// Occasionally update pathfinding. There's a tradeoff between how often updates occur vs how big the multithreaded batched node lists to update are.
-	if (m_PartialPathUpdateTimer.IsPastRealMS(100)) {
+	// Often: the grid should take in a change to the terrain within a few frames.
+	if (m_PartialPathUpdateTimer.IsPastRealMS(33)) {
 		UpdatePathFinding();
 	}
 }

@@ -1,4 +1,5 @@
-#include "Actor.h"
+﻿#include "Actor.h"
+#include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
 #include "PostProcessMan.h"
@@ -120,6 +121,7 @@ void Actor::Clear() {
 	m_MoveVector.Reset();
 	m_MovePath.clear();
 	m_UpdateMovePath = false;
+	m_ImpossiblePaths = 0;
 	m_MoveProximityLimit = 20.0F;
 	m_AIBaseDigStrength = c_PathFindingDefaultDigStrength;
 	m_BaseMass = std::numeric_limits<float>::infinity();
@@ -1026,16 +1028,26 @@ void Actor::UpdateMovePath() {
 	float digStrength = EstimateDigStrength();
 	float jumpHeight = EstimateJumpHeight();
 
+	// A place to go to is taken to be on the ground under it: a point in the air can only be reached by a jump from the node straight below, so a waypoint
+	// a little above the ground, or past the edge of what it was over, had no path at all and the unit flew for it blind.
+	auto onGround = [this](const Vector& place) { return g_SceneMan.MovePointToGround(place, m_CharHeight * 0.2F, 10); };
+	// The start is on the ground too, but not when that is far below: a unit part way up a jetpack climb, or just dropped from a ship, would be given
+	// a route that begins at the bottom and heads down for it. The ground has to be near for the start to be moved to it.
+	Vector start = onGround(m_Pos);
+	if (start.m_Y - m_Pos.m_Y > m_CharHeight) {
+		start = m_Pos;
+	}
+
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
 	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
-		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(g_SceneMan.MovePointToGround(m_Pos, m_CharHeight * 0.2, 10), m_pMOMoveTarget->GetPos(), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
 	} else {
 		// Do we currently have a path to a static target we would like to still pursue?
 		if (m_MovePath.empty()) {
 			// Ok no path going, so get a new path to the next waypoint, if there is a next waypoint
 			if (!m_Waypoints.empty()) {
 				// Make sure the path starts from the ground and not somewhere up in the air if/when dropped out of ship
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(g_SceneMan.MovePointToGround(m_Pos, m_CharHeight * 0.2, 10), m_Waypoints.front().first, jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_Waypoints.front().first), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
 
 				// If the waypoint was tied to an MO to pursue, then load it into the current MO target
 				if (g_MovableMan.ValidMO(m_Waypoints.front().second)) {
@@ -1049,12 +1061,12 @@ void Actor::UpdateMovePath() {
 			}
 			// Just try to get to the last Move Target
 			else {
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(g_SceneMan.MovePointToGround(m_Pos, m_CharHeight * 0.2, 10), m_MoveTarget, jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MoveTarget), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
 			}
 		}
 		// We had a path before trying to update, so use its last point as the final destination
 		else {
-			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(g_SceneMan.MovePointToGround(m_Pos, m_CharHeight * 0.2, 10), Vector(m_MovePath.back()), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
+			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(Vector(m_MovePath.back())), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team));
 		}
 	}
 
@@ -1114,6 +1126,22 @@ void Actor::OnNewMovePath() {
 void Actor::PreControllerUpdate() {
 	if (m_PathRequest && m_PathRequest->complete) {
 		m_MovePath = const_cast<std::list<Vector>&>(m_PathRequest->path);
+		if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
+			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));
+		}
+		// A route that only exists through ground the unit can't dig is no route. One such answer can be down to where the unit is standing (wedged
+		// under a ledge, say), so it gets to try again from elsewhere; when the answer keeps coming back the same, the unit is left with nothing to
+		// follow and the AI stands down rather than pushing at the wall for ever.
+		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F;
+		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
+		if (m_ImpossiblePaths >= 3) {
+			m_ImpossiblePaths = 0;
+			m_MovePath.clear();
+			m_Waypoints.clear();
+			m_PathRequest.reset();
+			return;
+		}
 		m_PathRequest.reset();
 		OnNewMovePath();
 	}

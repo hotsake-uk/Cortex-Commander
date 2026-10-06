@@ -12,11 +12,14 @@ function NativeHumanAI:Create(Owner)
 	Members.jumpState = AHuman.NOTJUMPING;
 	Members.deviceState = AHuman.STILL;
 	Members.lastAIMode = Actor.AIMODE_NONE;
+	Members.JumpHoldTimer = Timer();
+	Members.JumpHoldTimer:SetSimTimeLimitMS(150);
 	Members.teamBlockState = Actor.NOTBLOCKED;
 	Members.SentryFacing = Owner.HFlipped;
 	Members.fire = false;
 	Members.groundContact = 5;
 	Members.flying = false;
+	Members.jetClimb = false; -- Climbing on the jetpack to a waypoint above; held until up at its height.
 	Members.running = false;
 
 	Members.squadShoot = false;
@@ -621,11 +624,18 @@ function NativeHumanAI:Update(Owner)
 	if (not self.jump and Owner.Vel.Y > 18) then
 		self.jump = true;
 	end
+	-- A jet once lit stays lit for a moment: the planner's wish flickers from tick to tick, and every relighting cost a burst's worth of fuel for nothing.
+	if self.jump then
+		self.JumpHoldTimer:Reset();
+	elseif self.jumpState ~= AHuman.NOTJUMPING and not self.JumpHoldTimer:IsPastSimTimeLimit() and Owner.Vel.Y < 0 then
+		self.jump = true;
+	end
 	if self.jump and Owner.Jetpack and Owner.Jetpack.JetTimeLeft > TimerMan.AIDeltaTimeMS then
 		if self.jumpState == AHuman.PREJUMP then
 			self.jumpState = AHuman.UPJUMP;
 		elseif self.jumpState ~= AHuman.UPJUMP then	-- the jetpack is off
-			self.jumpState = AHuman.PREJUMP;
+			-- A burst only when one can be had; otherwise straight to the steady jet, which doesn't charge for a burst that never came.
+			self.jumpState = Owner.Jetpack:CanTriggerBurst() and AHuman.PREJUMP or AHuman.UPJUMP;
 		end
 	else
 		self.jumpState = AHuman.NOTJUMPING;

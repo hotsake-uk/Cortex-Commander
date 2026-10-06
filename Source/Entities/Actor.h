@@ -1085,6 +1085,8 @@ namespace RTE {
 		std::shared_ptr<volatile PathRequest> m_PathRequest;
 		// Whether it's time to update the path
 		bool m_UpdateMovePath;
+		// How many path answers in a row needed digging the unit can't do; at three the unit stands down.
+		int m_ImpossiblePaths;
 		// The minimum range to consider having reached a move target is considered
 		float m_MoveProximityLimit;
 		// Current movement state.

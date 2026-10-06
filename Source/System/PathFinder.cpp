@@ -1,5 +1,6 @@
 #include "PathFinder.h"
 
+#include "ConsoleMan.h"
 #include "Material.h"
 #include "Scene.h"
 #include "SceneMan.h"
@@ -9,6 +10,7 @@
 
 #include <array>
 #include <execution>
+#include <mutex>
 
 using namespace RTE;
 
@@ -201,6 +203,26 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		totalCostResult = std::numeric_limits<float>::max();
 	}
 
+	if (std::getenv("CCCP_PATH_LOG")) {
+		// Debug: the cost of each step along the found path, so the grid's view of the terrain can be checked against the scene.
+		std::string line = "PATHLOG " + std::to_string(static_cast<int>(start.m_X)) + "," + std::to_string(static_cast<int>(start.m_Y)) + " -> " + std::to_string(static_cast<int>(end.m_X)) + "," + std::to_string(static_cast<int>(end.m_Y)) + " dig " + std::to_string(static_cast<int>(digStrength)) + " result " + std::to_string(result) + " cost " + std::to_string(totalCostResult) + ":";
+		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
+			std::vector<micropather::StateCost> adjacent;
+			AdjacentCost(statePath[i], &adjacent);
+			float stepCost = -1.0F;
+			for (const micropather::StateCost& adj: adjacent) {
+				if (adj.state == statePath[i + 1]) {
+					stepCost = adj.cost;
+				}
+			}
+			const PathNode* node = static_cast<PathNode*>(statePath[i + 1]);
+			line += " " + std::to_string(static_cast<int>(node->Pos.m_X)) + "," + std::to_string(static_cast<int>(node->Pos.m_Y)) + "=" + std::to_string(static_cast<int>(stepCost));
+		}
+		static std::mutex logMutex;
+		std::lock_guard<std::mutex> lock(logMutex);
+		g_ConsoleMan.PrintString(line);
+	}
+
 	if (!statePath.empty()) {
 		// Replace the approximate first point from the pathfound path with the exact starting point.
 		pathResult.push_back(start);
@@ -339,8 +361,8 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	}
 
 	if (isInNoGrav || NodeIsOnSolidGround(*node)) {
-		// Cost to discourage us from going up
-		const float extraUpCost = 3.0F;
+		// Cost to discourage us from going up. At 3 a hill was worth a long walk round, which is what units did; at half that they go over.
+		const float extraUpCost = 1.5F;
 
 		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards
 		if (node->Left && node->Left->m_Navigable) {
@@ -376,9 +398,25 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				adjacentList->push_back(adjCost);
 
 				currentNode = currentNode->Up;
+
+				// Landing on a ledge beside the jump: a node up the column is only a stop if there's ground under it, which there isn't next to a
+				// ledge. So from each rung of the jump, a step sideways onto a node that does stand on ground is offered too, which is how a
+				// jetpack really gets onto a platform: up its side, then on.
+				if (!NodeIsOnSolidGround(*currentNode)) {
+					if (currentNode->Left && currentNode->Left->m_Navigable && NodeIsOnSolidGround(*currentNode->Left)) {
+						adjCost.cost = totalMaterialCost + 1.0F + GetMaterialTransitionCost(*currentNode->LeftMaterial) + radiatedCost;
+						adjCost.state = static_cast<void*>(currentNode->Left);
+						adjacentList->push_back(adjCost);
+					}
+					if (currentNode->Right && currentNode->Right->m_Navigable && NodeIsOnSolidGround(*currentNode->Right)) {
+						adjCost.cost = totalMaterialCost + 1.0F + GetMaterialTransitionCost(*currentNode->RightMaterial) + radiatedCost;
+						adjCost.state = static_cast<void*>(currentNode->Right);
+						adjacentList->push_back(adjCost);
+					}
+				}
 			}
 		} else if (node->Up && node->Up->m_Navigable) {
-			adjCost.cost = 1.0F + (extraUpCost) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 3.0F) + radiatedCost; // Three times more expensive when digging.
+			adjCost.cost = 1.0F + (extraUpCost) + (GetMaterialTransitionCost(*node->UpMaterial) * 3.0F) + radiatedCost; // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->Up);
 			adjacentList->push_back(adjCost);
 		}

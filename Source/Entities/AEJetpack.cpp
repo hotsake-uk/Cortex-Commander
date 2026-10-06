@@ -152,8 +152,11 @@ void AEJetpack::UpdateBurstState(Actor& parentActor) {
 	if (m_JetTimeLeft > minimumTimeToBeginThrusting || wasEmittingLastFrame || IsFullyFueled()) {
 		switch (m_JetpackType) {
 			case JetpackType::Standard:
-				if (controller.IsState(BODY_JUMPSTART) && !IsOutOfFuel()) {
+				if (controller.IsState(BODY_JUMPSTART) && !IsOutOfFuel() && CanTriggerBurst()) {
 					Burst(parentActor, fuelUseMultiplier);
+				} else if (controller.IsState(BODY_JUMPSTART) && !IsOutOfFuel()) {
+					// Asked for a burst too soon after the last: a plain jet, not a burst's worth of fuel for no push.
+					Thrust(parentActor, fuelUseMultiplier);
 				} else if (controller.IsState(BODY_JUMP) && !IsOutOfFuel() && (GetJetTimeRatio() >= m_MinimumFuelRatio || wasEmittingLastFrame)) {
 					Thrust(parentActor, fuelUseMultiplier);
 				} else {
