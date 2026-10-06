@@ -116,7 +116,9 @@ function NativeCrabAI:Update(Owner)
 	end
 
 	-- check if the AI mode has changed or if we need a new behavior
-	if Owner.AIMode ~= self.lastAIMode or not self.Behavior then
+	-- (Or told to go somewhere while the behaviour left over from arriving is still running: see NativeHumanAI.)
+	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
+	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
 			local msg, done = coroutine.resume(self.Behavior, self, Owner, true);

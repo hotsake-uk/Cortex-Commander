@@ -3533,8 +3533,9 @@ namespace {
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false) {
 		ImGuiIO& io = ImGui::GetIO();
 		float pixel = ToolUI::Pixel();
-		float inner = pixel * 14.0F;
-		float outer = pixel * 36.0F;
+		// Roomy: seven choices round it, and the labels must read.
+		float inner = pixel * 22.0F;
+		float outer = pixel * 58.0F;
 		int count = static_cast<int>(items.size());
 		ImVec2 away(io.MousePos.x - s_RingCenter.x, io.MousePos.y - s_RingCenter.y);
 		float distance = std::sqrt(away.x * away.x + away.y * away.y);
@@ -3798,24 +3799,7 @@ namespace {
 				s_MarkedSelected.push_back(ref);
 			}
 		}
-		// With the command tool in hand, each selected unit shows where it is going.
-		if (CurrentTool().Kind == Tool::Command) {
-			for (const UnitRef& ref: s_Selected) {
-				const Actor* unit = GetRef(ref);
-				if (!unit || unit->GetAIMode() != Actor::AIMODE_GOTO) {
-					continue;
-				}
-				const MovableObject* target = unit->GetMOMoveTarget();
-				bool chasing = target && g_MovableMan.ValidMO(target);
-				Vector goal = chasing ? target->GetPos() : unit->GetLastAIWaypoint();
-				if (g_SceneMan.ShortestDistance(unit->GetPos(), goal, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(12.0F)) {
-					continue;
-				}
-				ImU32 color = chasing ? IM_COL32(239, 106, 91, 140) : IM_COL32(110, 180, 250, 140);
-				drawList->AddLine(ToScreen(unit->GetPos()), ToScreen(goal), color, 1.0F);
-				drawList->AddCircleFilled(ToScreen(goal), 3.0F, color);
-			}
-		}
+		// (No line from each unit to where it is going: the game draws the route itself, as Routes on the command row has it.)
 		// The marks of orders just given, fading.
 		float seconds = ImGui::GetIO().DeltaTime;
 		for (OrderMark& mark: s_OrderMarks) {

@@ -195,7 +195,10 @@ function NativeHumanAI:Update(Owner)
 	end
 
 	-- check if the AI mode has changed or if we need a new behavior
-	if Owner.AIMode ~= self.lastAIMode or not(self.Behavior or self.GoToBehavior) then
+	-- (Or if we're told to go somewhere and aren't: after arriving the mode stays GOTO while the behaviour is Sentry, and a new order with new
+	-- waypoints then looked like no change at all, so the unit never set off until the mode was knocked out of GOTO and back.)
+	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and not self.GoToBehavior and not self.NextGoTo and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
+	if Owner.AIMode ~= self.lastAIMode or not(self.Behavior or self.GoToBehavior) or newOrder then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
 			local msg, done = coroutine.resume(self.Behavior, self, Owner, true);
