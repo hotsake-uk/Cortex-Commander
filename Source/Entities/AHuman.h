@@ -291,6 +291,9 @@ namespace RTE {
 		/// @return The strongest door material it can breach.
 		float EstimateBreachStrength() const override;
 
+		/// A human to the path grid: it can crawl, so it needs less head room than it stands.
+		PathAgent GetPathAgent() const override;
+
 		// Estimates how high this actor can jump.
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const override;

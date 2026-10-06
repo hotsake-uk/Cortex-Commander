@@ -1009,6 +1009,12 @@ float AHuman::EstimateBreachStrength() const {
 	return breach;
 }
 
+PathAgent AHuman::GetPathAgent() const {
+	PathAgent agent = Actor::GetPathAgent();
+	agent.CrawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
+	return agent;
+}
+
 float AHuman::EstimateJumpHeight() const {
 	if (!m_pJetpack) {
 		return 0.0F;

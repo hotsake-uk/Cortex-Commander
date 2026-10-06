@@ -445,6 +445,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 	local NeedsNewPath, Waypoint, HasMovePath, Dist, CurrDist, NextWptPos;
 	local ClimbStepX = 0; -- The sideways step off the top of a jetpack climb, kept up a moment after the jet goes out.
+	local LastTracedKind = -2;
 	local ClimbStepTimer = Timer();
 	ClimbStepTimer:SetSimTimeLimitMS(700);
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
@@ -468,8 +469,18 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				Waypoint = {};
 				Waypoint.Pos = pos;
 				Waypoint.Type = nil;
+				-- What the pathfinder meant by this step (0 walk, 1 crawl, 2 jump, 3 fall, 4 dig, 5 door), so it needn't be guessed from the
+				-- ground: a step off an edge is walked off, not hopped; a jump is jetted whatever the slope looks like; a crawl is gone prone for.
+				Waypoint.Kind = Owner.MovePathStepKind;
+				if Owner:NumberValueExists("AITrace") and Waypoint.Kind ~= LastTracedKind then
+					LastTracedKind = Waypoint.Kind;
+					ConsoleMan:PrintString("AITRACE step kind " .. tostring(Waypoint.Kind) .. " to " .. math.floor(pos.X) .. "," .. math.floor(pos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " prone " .. tostring(AI.proneState == AHuman.PRONE));
+				end
 				if Owner.MovePathSize == 1 then
 					Waypoint.Type = "last";
+				end
+				if Waypoint.Kind == 3 then
+					Waypoint.Type = "drop";
 				end
 			else
 				NextWptPos = pos;
@@ -521,7 +532,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					local topHeadPos = Owner.Pos - Vector(0, Owner.Height * 0.3 + 5);
 
 					-- first check up to the top of the head, and then from there forward
-					if SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
+					if Waypoint.Kind == 1 or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
 						if Owner:NumberValueExists("AITrace") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
 						AI.proneState = AHuman.PRONE;
 						ProneHoldTimer:Reset();
@@ -854,6 +865,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										PrevWptPos = Waypoint.Pos;
 										Owner:RemoveMovePathBeginning();
 										Waypoint.Pos = NextPos;
+										Waypoint.Kind = Owner.MovePathStepKind;
+										if Waypoint.Kind == 3 then
+											Waypoint.Type = "drop";
+										end
 										if Owner.MovePathSize == 1 then
 											Waypoint.Type = "last";
 										end
@@ -935,7 +950,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										local headHit = SceneMan:CastStrengthRay(head, ahead, 5, Vector(), 2, rte.grassID, true);
 										-- Chest and head both blocked is a wall; chest alone is a steep slope or a step, which the legs and climbing arms deal with,
 										-- and the stuck handling jets if they can't.
-										if chestHit and headHit then
+										if chestHit and headHit and Waypoint.Kind ~= 3 and Waypoint.Kind ~= 4 then
 											WallAhead = true;
 											local up = (side < 0) and (Obstacles[Obst.L_UP] == true) or (side > 0 and Obstacles[Obst.R_UP] == true);
 											if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not up then
@@ -1043,7 +1058,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											-- A rise steeper than the legs can walk (about 40 degrees: a slope gentler than that is walked, however far up the waypoint
 												-- is, where units were jetting over every hill crest), or a wall in the way at any height.
 												local steep = -above > math.abs(CurrDist.X) * 0.85;
-												local wantsClimb = AI.proneState ~= AHuman.PRONE and ((above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
+												-- The path says this step is a jump: that settles it, whatever the slope looks like from here.
+												-- (And a dig is dug, never jetted: the shaft's walls looked like a wall ahead, and the digger was jetted out of its own hole.)
+												local wantsClimb = AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.15) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
 											local climbRefused = false;
 											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
 												local towardsX = CurrDist.X;

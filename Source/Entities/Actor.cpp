@@ -120,6 +120,7 @@ void Actor::Clear() {
 	m_PrevPathTarget.Reset();
 	m_MoveVector.Reset();
 	m_MovePath.clear();
+	m_MovePathKinds.clear();
 	m_UpdateMovePath = false;
 	m_ImpossiblePaths = 0;
 	m_PathRetryTimer.Reset();
@@ -1029,10 +1030,8 @@ void Actor::UpdateMovePath() {
 		return;
 	}
 
-	// Estimate how much material this actor can dig through
-	float digStrength = EstimateDigStrength();
-	float jumpHeight = EstimateJumpHeight();
-	float breachStrength = EstimateBreachStrength();
+	// What this actor is to the path grid: what it can jump, dig and breach, and how big it is.
+	PathAgent agent = GetPathAgent();
 
 	// A place to go to is taken to be on the ground under it: a point in the air can only be reached by a jump from the node straight below, so a waypoint
 	// a little above the ground, or past the edge of what it was over, had no path at all and the unit flew for it blind.
@@ -1056,14 +1055,14 @@ void Actor::UpdateMovePath() {
 
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
 	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
-		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
+		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), agent, static_cast<Activity::Teams>(m_Team));
 	} else {
 		// Do we currently have a path to a static target we would like to still pursue?
 		if (m_MovePath.empty()) {
 			// Ok no path going, so get a new path to the next waypoint, if there is a next waypoint
 			if (!m_Waypoints.empty()) {
 				// Make sure the path starts from the ground and not somewhere up in the air if/when dropped out of ship
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_Waypoints.front().first), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_Waypoints.front().first), agent, static_cast<Activity::Teams>(m_Team));
 
 				// If the waypoint was tied to an MO to pursue, then load it into the current MO target
 				if (g_MovableMan.ValidMO(m_Waypoints.front().second)) {
@@ -1077,12 +1076,12 @@ void Actor::UpdateMovePath() {
 			}
 			// Just try to get to the last Move Target
 			else {
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MoveTarget), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MoveTarget), agent, static_cast<Activity::Teams>(m_Team));
 			}
 		}
 		// We had a path before trying to update, so use its last point as the final destination
 		else {
-			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(Vector(m_MovePath.back())), jumpHeight, digStrength, static_cast<Activity::Teams>(m_Team), nullptr, breachStrength);
+			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(Vector(m_MovePath.back())), agent, static_cast<Activity::Teams>(m_Team));
 		}
 	}
 
@@ -1091,6 +1090,18 @@ void Actor::UpdateMovePath() {
 
 float Actor::EstimateDigStrength() const {
 	return m_AIBaseDigStrength;
+}
+
+PathAgent Actor::GetPathAgent() const {
+	PathAgent agent;
+	agent.JumpHeight = EstimateJumpHeight();
+	agent.DigStrength = EstimateDigStrength();
+	agent.BreachStrength = EstimateBreachStrength();
+	// CharHeight is about twice the sprite's height; the body stands about 0.45 of it tall and lies about a quarter of it.
+	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.42F);
+	agent.CrawlHeight = agent.StandHeight;
+	agent.HalfWidth = std::clamp(GetRadius() * 0.35F, 5.0F, 14.0F);
+	return agent;
 }
 
 float Actor::EstimateJumpHeight() const {
@@ -1114,15 +1125,21 @@ void Actor::SetPieMenu(PieMenu* newPieMenu) {
 }
 
 void Actor::OnNewMovePath() {
+	auto popFront = [this]() {
+		m_MovePath.pop_front();
+		if (!m_MovePathKinds.empty()) {
+			m_MovePathKinds.pop_front();
+		}
+	};
 	if (!m_MovePath.empty()) {
-		// Remove the first one; it's our position
+		// Remove the first one; it's our position (the path's kinds are one per point after it, so they stay)
 		m_PrevPathTarget = m_MovePath.front();
 		m_MovePath.pop_front();
 		// Also remove the one after that; it may move in opposite direction since it heads to the nearest PathNode center
 		// Unless it is the last one, in which case it shouldn't be removed
 		if (m_MovePath.size() > 1) {
 			m_PrevPathTarget = m_MovePath.front();
-			m_MovePath.pop_front();
+			popFront();
 		}
 	} else if (m_pMOMoveTarget) {
 		m_MoveTarget = m_pMOMoveTarget->GetPos();
@@ -1142,6 +1159,7 @@ void Actor::OnNewMovePath() {
 void Actor::PreControllerUpdate() {
 	if (m_PathRequest && m_PathRequest->complete) {
 		m_MovePath = const_cast<std::list<Vector>&>(m_PathRequest->path);
+		m_MovePathKinds = const_cast<std::list<PathStepKind>&>(m_PathRequest->kinds);
 		if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
 			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));
@@ -1157,6 +1175,7 @@ void Actor::PreControllerUpdate() {
 		if (impossible) {
 			m_PathRetryTimer.Reset();
 			m_MovePath.clear();
+			m_MovePathKinds.clear();
 			if (m_ImpossiblePaths >= 6) {
 				m_ImpossiblePaths = 0;
 				m_Waypoints.clear();
@@ -1247,6 +1266,9 @@ void Actor::Update() {
 				// Save the last one before being popped off so we can use it to check if we need to dig (if there's any material between last and current)
 				m_PrevPathTarget = m_MovePath.front();
 				m_MovePath.pop_front();
+				if (!m_MovePathKinds.empty()) {
+					m_MovePathKinds.pop_front();
+				}
 			} else {
 				break;
 			}
@@ -1260,6 +1282,7 @@ void Actor::Update() {
 			// Clear out the current path, the player apparently took a shortcut
 			if (pathPointVec.MagnitudeIsLessThan(m_MoveProximityLimit) && !g_SceneMan.CastStrengthRay(m_Pos, pathPointVec, 5, notUsed, 0, g_MaterialDoor)) {
 				m_MovePath.clear();
+				m_MovePathKinds.clear();
 			}
 		}
 

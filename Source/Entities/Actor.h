@@ -404,6 +404,7 @@ namespace RTE {
 			m_pMOMoveTarget = 0;
 			m_Waypoints.clear();
 			m_MovePath.clear();
+			m_MovePathKinds.clear();
 			m_MoveTarget = m_Pos;
 			m_MoveVector.Reset();
 		}
@@ -436,6 +437,7 @@ namespace RTE {
 		/// to the next Waypoint.
 		void ClearMovePath() {
 			m_MovePath.clear();
+			m_MovePathKinds.clear();
 			m_MoveTarget = m_Pos;
 			m_MoveVector.Reset();
 		}
@@ -445,6 +447,7 @@ namespace RTE {
 		/// @param newCoordinate The new coordinate to add to the front of the MovePath.
 		void AddToMovePathBeginning(Vector newCoordinate) {
 			m_MovePath.push_front(newCoordinate);
+			m_MovePathKinds.push_front(PathStepKind::Walk);
 			m_MoveTarget = newCoordinate;
 			m_MoveVector.Reset();
 		}
@@ -452,7 +455,24 @@ namespace RTE {
 		/// Adds a coordinate to the end of the MovePath, meaning the one
 		/// closest to this Actor's next waypoint.
 		/// @param m_MovePath.push_back(newCoordinate The new coordinate to add to the end of the MovePath.
-		void AddToMovePathEnd(Vector newCoordinate) { m_MovePath.push_back(newCoordinate); }
+		void AddToMovePathEnd(Vector newCoordinate) {
+			m_MovePath.push_back(newCoordinate);
+			m_MovePathKinds.push_back(PathStepKind::Walk);
+		}
+
+		/// What the step to the first point of the MovePath is (see PathStepKind), or -1 with no path.
+		int GetMovePathStepKind() const { return m_MovePathKinds.empty() ? -1 : static_cast<int>(m_MovePathKinds.front()); }
+
+		/// What the step to the second point of the MovePath is, or -1 when there is no second point.
+		int GetMovePathNextStepKind() const {
+			if (m_MovePathKinds.size() < 2) {
+				return -1;
+			}
+			return static_cast<int>(*std::next(m_MovePathKinds.begin()));
+		}
+
+		/// The searcher this actor is to the path grid: what it can jump, dig and breach, and how big it is.
+		virtual PathAgent GetPathAgent() const;
 
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
@@ -475,6 +495,9 @@ namespace RTE {
 		bool RemoveMovePathBeginning() {
 			if (!m_MovePath.empty()) {
 				m_MovePath.pop_front();
+				if (!m_MovePathKinds.empty()) {
+					m_MovePathKinds.pop_front();
+				}
 				m_MoveTarget = m_MovePath.empty() ? m_Pos : m_MovePath.front();
 				m_MoveVector.Reset();
 				return true;
@@ -489,6 +512,9 @@ namespace RTE {
 		bool RemoveMovePathEnd() {
 			if (!m_MovePath.empty()) {
 				m_MovePath.pop_back();
+				if (!m_MovePathKinds.empty()) {
+					m_MovePathKinds.pop_back();
+				}
 				return true;
 			}
 			return false;
@@ -1091,6 +1117,8 @@ namespace RTE {
 		Vector m_MoveVector;
 		// The calculated path to get to that move-to target
 		std::list<Vector> m_MovePath;
+		// What each step of that path is, kept alongside it.
+		std::list<PathStepKind> m_MovePathKinds;
 		// The current pathfinding request
 		std::shared_ptr<volatile PathRequest> m_PathRequest;
 		// Whether it's time to update the path

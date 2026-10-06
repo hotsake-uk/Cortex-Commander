@@ -45,6 +45,11 @@ thread_local float s_DigStrength = 0.0F;
 // scratch a blast door was routed through it, and stood at it.
 thread_local float s_BreachStrength = 0.0F;
 
+// The searcher's size: head room to stand and to crawl, and half its width.
+thread_local float s_StandHeight = 40.0F;
+thread_local float s_CrawlHeight = 22.0F;
+thread_local float s_HalfWidth = 6.0F;
+
 RTE::PathNode::PathNode(const Vector& pos) :
     Pos(pos) {
 	const Material* outOfBounds = g_SceneMan.GetMaterialFromID(MaterialColorKeys::g_MaterialOutOfBounds);
@@ -155,7 +160,22 @@ MicroPather* PathFinder::GetPather() {
 }
 
 int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, float jumpHeight, float digStrength, float breachStrength) {
+	PathAgent agent;
+	agent.JumpHeight = jumpHeight;
+	agent.DigStrength = digStrength;
+	agent.BreachStrength = breachStrength;
+	return CalculatePath(start, end, pathResult, totalCostResult, agent, nullptr);
+}
+
+int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, const PathAgent& agent, std::list<PathStepKind>* kinds) {
 	ZoneScoped;
+
+	float jumpHeight = agent.JumpHeight;
+	float digStrength = agent.DigStrength;
+	float breachStrength = agent.BreachStrength;
+	s_StandHeight = agent.StandHeight;
+	s_CrawlHeight = agent.CrawlHeight;
+	s_HalfWidth = agent.HalfWidth;
 
 	++m_CurrentPathingRequests;
 
@@ -304,10 +324,22 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		// Adjust the last point to be exactly where the end is supposed to be (really?).
 		pathResult.pop_back();
 		pathResult.push_back(end);
+
+		// What each step is, from the nodes it goes between.
+		if (kinds) {
+			kinds->clear();
+			for (size_t i = 0; i + 1 < statePath.size(); ++i) {
+				kinds->push_back(StepKindBetween(static_cast<const PathNode*>(statePath[i]), static_cast<const PathNode*>(statePath[i + 1])));
+			}
+		}
 	} else {
 		// Empty path, give exact start and end.
 		pathResult.push_back(start);
 		pathResult.push_back(end);
+		if (kinds) {
+			kinds->clear();
+			kinds->push_back(PathStepKind::Walk);
+		}
 	}
 
 	--m_CurrentPathingRequests;
@@ -317,17 +349,25 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 }
 
 std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector start, Vector end, float jumpHeight, float digStrength, PathCompleteCallback callback, float breachStrength) {
+	PathAgent agent;
+	agent.JumpHeight = jumpHeight;
+	agent.DigStrength = digStrength;
+	agent.BreachStrength = breachStrength;
+	return CalculatePathAsync(start, end, agent, callback);
+}
+
+std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector start, Vector end, const PathAgent& agent, PathCompleteCallback callback) {
 	std::shared_ptr<volatile PathRequest> pathRequest = std::make_shared<PathRequest>();
 
 	const_cast<Vector&>(pathRequest->startPos) = start;
 	const_cast<Vector&>(pathRequest->targetPos) = end;
 
 	g_ThreadMan.GetBackgroundThreadPool().push_task(
-	    [this, start, end, jumpHeight, digStrength, breachStrength, callback](std::shared_ptr<volatile PathRequest> volRequest) {
+	    [this, start, end, agent, callback](std::shared_ptr<volatile PathRequest> volRequest) {
 		    // Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
 		    PathRequest& request = const_cast<PathRequest&>(*volRequest);
 
-		    int status = this->CalculatePath(start, end, request.path, request.totalCost, jumpHeight, digStrength, breachStrength);
+		    int status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
 
 		    request.status = status;
 		    request.pathLength = request.path.size();
@@ -410,7 +450,8 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	bool allowDiagonal = !isInNoGrav; // We don't allow diagonals in nograv to improve automover behaviour
 
 	if (node->Down && node->Down->m_Navigable) {
-		adjCost.cost = 1.0F + GetMaterialTransitionCost(*node->DownMaterial) + radiatedCost;
+		// (Down through a gap narrower than the body is no way down.)
+		adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->DownMaterial) + radiatedCost) * (RoomToPass(*node->Down) ? 1.0F : 1000.0F);
 		adjCost.state = static_cast<void*>(node->Down);
 		adjacentList->push_back(adjCost);
 	}
@@ -431,15 +472,16 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Cost to discourage us from going up. At 3 a hill was worth a long walk round, which is what units did; at half that they go over.
 		const float extraUpCost = 1.5F;
 
-		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards
+		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards. The head room along the way says
+		// whether it's a walk, a crawl (slower), or no way through at all for this searcher.
 		if (node->Left && node->Left->m_Navigable) {
-			adjCost.cost = 1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost;
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * HeadRoomFactor(*node, *node->Left);
 			adjCost.state = static_cast<void*>(node->Left);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->Right && node->Right->m_Navigable) {
-			adjCost.cost = 1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost;
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * HeadRoomFactor(*node, *node->Right);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
 		}
@@ -452,6 +494,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			for (int i = 0; i < s_JumpHeightVertical; ++i) {
 				if (currentNode->Up == nullptr || !currentNode->Up->m_Navigable || currentNode->UpMaterial->GetIntegrity() > c_PathFindingDefaultDigStrength) {
 					// solid ceiling, stop
+					break;
+				}
+				// Too close to a wall to go up past it: a jet pressed to a cliff face burns and doesn't lift. The next column out is used instead.
+				if (!RoomToPass(*currentNode->Up)) {
 					break;
 				}
 
@@ -583,6 +629,56 @@ bool PathFinder::NodeIsOnSolidGround(const PathNode& node) const {
 	return s_JumpHeight == FLT_MAX || (node.Down && node.DownMaterial->GetIntegrity() > c_PathFindingDefaultDigStrength);
 }
 
+bool PathFinder::RoomToPass(const PathNode& node) const {
+	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight) >= s_HalfWidth * 2.0F;
+}
+
+float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const {
+	if (s_JumpHeight == FLT_MAX) {
+		return 1.0F;
+	}
+	int headRoom = std::min(from.FreeHeight, to.FreeHeight);
+	if (static_cast<float>(headRoom) < s_CrawlHeight) {
+		return 1000.0F;
+	}
+	if (static_cast<float>(headRoom) < s_StandHeight) {
+		return 1.4F; // A crawl is slower; much dearer than this and a tunnel was worth flying over the top of.
+	}
+	return 1.0F;
+}
+
+PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* to) const {
+	if (!from || !to) {
+		return PathStepKind::Walk;
+	}
+	// The material along the step, from whichever side has it sampled (down and right are sampled; up and left are the neighbour's).
+	const Material* material = nullptr;
+	for (int i = 0; i < PathNode::c_MaxAdjacentNodeCount; ++i) {
+		if (from->AdjacentNodes[i] == to) {
+			material = from->AdjacentNodeBlockingMaterials[i];
+		}
+	}
+	float dx = g_SceneMan.ShortestDistance(from->Pos, to->Pos).m_X;
+	float dy = to->Pos.m_Y - from->Pos.m_Y;
+	float nodeSize = static_cast<float>(m_NodeDimension);
+	if (material && material->GetIndex() == MaterialColorKeys::g_MaterialDoor) {
+		return PathStepKind::Door;
+	}
+	if (material && material->GetIntegrity() > c_PathFindingDefaultDigStrength && std::abs(dy) <= nodeSize && std::abs(dx) <= nodeSize) {
+		return PathStepKind::Dig;
+	}
+	if (dy < -1.0F) {
+		return PathStepKind::Jump;
+	}
+	if (dy > nodeSize + 1.0F || (dy > 1.0F && std::abs(dx) < 1.0F)) {
+		return PathStepKind::Fall;
+	}
+	if (static_cast<float>(std::min(from->FreeHeight, to->FreeHeight)) < s_StandHeight) {
+		return PathStepKind::Crawl;
+	}
+	return PathStepKind::Walk;
+}
+
 float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	float strength = material.GetIntegrity();
 
@@ -605,10 +701,50 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	std::array<const Material*, PathNode::c_MaxAdjacentNodeCount> oldMaterials = node->AdjacentNodeBlockingMaterials;
+	int oldFreeHeight = node->FreeHeight;
+	int oldClearLeft = node->ClearLeft;
+	int oldClearRight = node->ClearRight;
 
 	auto getStrongerMaterial = [](const Material* first, const Material* second) {
 		return first->GetIntegrity() > second->GetIntegrity() ? first : second;
 	};
+
+	// How much room there is at this node: air up from the surface (or the centre), and to either side a little over the surface.
+	{
+		int x = static_cast<int>(node->Pos.m_X);
+		node->Surface = SurfaceUnder(*node);
+		// The floor a body at this node stands on: the first solid pixel from the centre down to a node below it (a floor just past the cell's
+		// edge is still what the node stands on; measured from the centre instead, a crawl-high tunnel read as no room at all).
+		int centreY = static_cast<int>(node->Pos.m_Y);
+		int floor = -1;
+		if (g_SceneMan.GetTerrMatter(x, centreY) == MaterialColorKeys::g_MaterialAir) {
+			for (int y = centreY + 1; y <= centreY + m_NodeDimension; ++y) {
+				if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+					floor = y;
+					break;
+				}
+			}
+		} else {
+			floor = centreY; // Buried: no room at all.
+		}
+		int from = floor >= 0 ? floor - 1 : centreY;
+		int free = 0;
+		while (free < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, from - free) == MaterialColorKeys::g_MaterialAir) {
+			++free;
+		}
+		node->FreeHeight = free;
+		int sideY = floor >= 0 ? floor - 10 : centreY;
+		int left = 0;
+		while (left < m_NodeDimension && g_SceneMan.GetTerrMatter(x - 1 - left, sideY) == MaterialColorKeys::g_MaterialAir) {
+			++left;
+		}
+		int right = 0;
+		while (right < m_NodeDimension && g_SceneMan.GetTerrMatter(x + 1 + right, sideY) == MaterialColorKeys::g_MaterialAir) {
+			++right;
+		}
+		node->ClearLeft = left;
+		node->ClearRight = right;
+	}
 
 	// Look at each existing adjacent node and calculate the cost for each. Start and end are offset to cover more terrain.
 	// Note that we only calculate transitions to one side (down and right), because for the other side we can pull our up-and-left transition data from the other node's down-and-right.
@@ -655,6 +791,11 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		if (delta > c_NodeCostChangeEpsilon || doorChanged) {
 			return true;
 		}
+	}
+
+	// Room that has changed enough to matter to a body counts as a change too.
+	if (std::abs(node->FreeHeight - oldFreeHeight) >= 4 || std::abs(node->ClearLeft - oldClearLeft) >= 3 || std::abs(node->ClearRight - oldClearRight) >= 3) {
+		return true;
 	}
 
 	// None of the updates was past our epsilon, so ignore it and pretend it never happened.

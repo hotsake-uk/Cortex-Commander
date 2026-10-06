@@ -222,6 +222,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("InventorySize", &Actor::GetInventorySize)
 	    .property("MaxInventoryMass", &Actor::GetMaxInventoryMass)
 	    .property("MovePathSize", &Actor::GetMovePathSize)
+	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
+	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)
 	    .property("IsWaitingOnNewMovePath", &Actor::IsWaitingOnNewMovePath)
 	    .property("AimDistance", &Actor::GetAimDistance, &Actor::SetAimDistance)

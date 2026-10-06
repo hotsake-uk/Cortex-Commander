@@ -59,14 +59,15 @@ twice the sprite's height; the feet are a fifth of it under `Pos`.
 
 Still open, in rough order of value:
 
-11. **The grid has no idea of body size.** A 34 px tunnel is "open" to a standing unit; a one-node gap is a corridor; a jump chain's
-    column can run up a cliff face the unit's body overlaps. The fix is a clearance-aware grid: nodes carry the free height above the floor
-    and the free width, sideways edges require the unit's (standing or prone) height, jump columns keep half a body from walls. *Partly
-    done:* walking edges are now sampled along the ground surface at each column, and the goal node is the one the unit stands at, which
-    took out the zigzag along flat surfaces and made gentle slopes walkable.
-12. **Jump edges aren't annotated.** The path is a list of points; the script re-derives "this is a jump" from the geometry, which is where
-    most of the judgement errors come from. The pather should return the edge kind (walk, fall, jump of N nodes, dig, door) with each point,
-    and the script should act on it directly: hold the jet for a known height, step off at a known column.
+11. **The grid has no idea of body size.** *Done:* each node now carries the head room above the floor it stands on and the room to
+    either side of it; walking needs the searcher's crawl height (and costs 1.4x under its standing height), falling through and jumping up
+    a column need its width, and the searcher's sizes go in with every search (`PathAgent`: jump, dig and breach strengths, stand and
+    crawl heights, half width; `Actor::GetPathAgent`, humans with a crawl height). A jet column too close to a cliff face is refused
+    and the next one out used.
+12. **Jump edges aren't annotated.** *Done:* every step of a path comes back tagged walk / crawl / jump / fall / dig / door
+    (`PathStepKind`, `Actor::GetMovePathStepKind`, `MovePathStepKind` in Lua), and the movement script acts on it: a jump step is
+    jetted whatever the slope looks like, a fall step is walked off (no hop, no wall-jet), a crawl step is gone prone for, a dig step is
+    never jetted.
 13. **Grid updates aren't double-buffered.** `RecalculateAreaCosts` writes nodes while solves read them on other threads; the starvation
     guard papers over it. Costs should be rebuilt into a copy and swapped.
 14. **No path simplification.** Forty waypoints along a straight beam; each is "arrived at" with a 100 ms timer. Collinear runs should

@@ -2495,6 +2495,10 @@ std::shared_ptr<volatile PathRequest> Scene::CalculatePathAsync(const Vector& st
 	return GetPathFinder(team).CalculatePathAsync(start, end, jumpHeight, digStrength, callback, breachStrength);
 }
 
+std::shared_ptr<volatile PathRequest> Scene::CalculatePathAsync(const Vector& start, const Vector& end, const PathAgent& agent, Activity::Teams team, PathCompleteCallback callback) {
+	return GetPathFinder(team).CalculatePathAsync(start, end, agent, callback);
+}
+
 int Scene::GetScenePathSize() const {
 	return s_ScenePath.size();
 }

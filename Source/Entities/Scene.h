@@ -682,6 +682,9 @@ namespace RTE {
 		/// @return A shared pointer to the volatile PathRequest to be used to track whehter the asynchrnous path calculation has been completed, and check its results.
 		std::shared_ptr<volatile PathRequest> CalculatePathAsync(const Vector& start, const Vector& end, float jumpHeight = FLT_MAX, float digStrength = c_PathFindingDefaultDigStrength, Activity::Teams team = Activity::Teams::NoTeam, PathCompleteCallback callback = nullptr, float breachStrength = -1.0F);
 
+		/// Asynchronously calculates a path for a given searcher on a team's grid; the request carries what each step is.
+		std::shared_ptr<volatile PathRequest> CalculatePathAsync(const Vector& start, const Vector& end, const PathAgent& agent, Activity::Teams team, PathCompleteCallback callback = nullptr);
+
 		/// Gets how many waypoints there are in the ScenePath currently
 		/// @return The number of waypoints in the ScenePath.
 		int GetScenePathSize() const;

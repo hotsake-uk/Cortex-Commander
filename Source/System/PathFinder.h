@@ -17,11 +17,32 @@ namespace RTE {
 	class Scene;
 	class Material;
 
+	/// What a step along a path is: the kind of move the pathfinder meant by it, so whoever follows the path needn't guess from the geometry.
+	enum class PathStepKind {
+		Walk = 0, //!< Along the ground (a slope included).
+		Crawl, //!< Along the ground with too little head room to stand.
+		Jump, //!< Up, by jetpack or legs: the step's height says how far.
+		Fall, //!< Down, off an edge.
+		Dig, //!< Through ground the searcher can dig.
+		Door //!< Through a door the searcher can open or breach.
+	};
+
+	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
+	struct PathAgent {
+		float JumpHeight = FLT_MAX; //!< How high it can get on a jump or a tank of jet fuel, in metres. FLT_MAX for anything that flies.
+		float DigStrength = 35.0F; //!< The strongest material it can dig through (c_PathFindingDefaultDigStrength).
+		float BreachStrength = -1.0F; //!< The strongest door it can get through; -1 for the dig strength.
+		float StandHeight = 40.0F; //!< Head room it needs to walk upright, in pixels.
+		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
+		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
+	};
+
 	/// Information required to make an async pathing request.
 	struct PathRequest {
 		bool complete = false;
 		int status = MicroPather::NO_SOLUTION;
 		std::list<Vector> path;
+		std::list<PathStepKind> kinds; //!< What each step of the path is, one per point of path after the first.
 		float pathLength = 0.0f;
 		float totalCost = 0.0f;
 		Vector startPos;
@@ -38,6 +59,12 @@ namespace RTE {
 		Vector Pos; //!< Absolute position of the center of this PathNode in the scene.
 
 		bool m_Navigable; //!< Whether this node can be navigated through.
+
+		float Surface = -1.0F; //!< The ground surface in this node's column within its cell, or -1 for none (the node is in the air, or buried).
+		int FreeHeight = 0; //!< Air above the surface (or above the centre, for a node in the air) in the node's column, up to c_ClearanceReach.
+		int ClearLeft = 0; //!< Air to the left of the centre (a little over the surface, for a node on the ground), up to a node's width.
+		int ClearRight = 0; //!< Air to the right, likewise.
+		static constexpr int c_ClearanceReach = 96; //!< How far up the free height is measured.
 
 		/// Pointers to all adjacent PathNodes, in clockwise order with top first. These are not owned, and may be 0 if adjacent to non-wrapping scene border.
 		std::array<PathNode*, c_MaxAdjacentNodeCount> AdjacentNodes;
@@ -105,6 +132,11 @@ namespace RTE {
 		/// @return Success or failure, expressed as SOLVED, NO_SOLUTION, or START_END_SAME.
 		int CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, float jumpHeight, float digStrength, float breachStrength = -1.0F);
 
+		/// Calculates a path for a given searcher, with what each step of it is.
+		/// @param agent What the searcher can do and how big it is.
+		/// @param kinds Where to put what each step is, one per point of the path after the first; may be nullptr.
+		int CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, const PathAgent& agent, std::list<PathStepKind>* kinds);
+
 		/// Calculates and returns the least difficult path between two points on the current scene.
 		/// This is asynchronous and thus will not block the current thread.
 		/// @param start Start positions on the scene to find the path between.
@@ -114,6 +146,9 @@ namespace RTE {
 		/// @param callback The callback function to be run when the path calculation is completed.
 		/// @return A shared pointer to the volatile PathRequest to be used to track whether the asynchronous path calculation has been completed, and check its results.
 		std::shared_ptr<volatile PathRequest> CalculatePathAsync(Vector start, Vector end, float jumpHeight, float digStrength, PathCompleteCallback callback = nullptr, float breachStrength = -1.0F);
+
+		/// Asynchronously calculates a path for a given searcher; the request carries what each step is.
+		std::shared_ptr<volatile PathRequest> CalculatePathAsync(Vector start, Vector end, const PathAgent& agent, PathCompleteCallback callback = nullptr);
 
 		// <summary>
 		/// Returns how many pathfinding requests are currently active.
@@ -216,6 +251,15 @@ namespace RTE {
 		/// @param node The node we're checking.
 		/// @return Whether the node is on solid ground.
 		bool NodeIsOnSolidGround(const PathNode& node) const;
+
+		/// Whether the searcher's body fits through a node, by the room to either side of it.
+		bool RoomToPass(const PathNode& node) const;
+
+		/// The cost factor for walking between two nodes by the head room: 1 standing, 2 crawling, 1000 for no way through.
+		float HeadRoomFactor(const PathNode& from, const PathNode& to) const;
+
+		/// What a step from one node to the next is.
+		PathStepKind StepKindBetween(const PathNode* from, const PathNode* to) const;
 
 		/// The ground surface within a node's cell: the first solid pixel from the top of the cell down the node's column.
 		/// @param node The node.
