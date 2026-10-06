@@ -212,6 +212,10 @@ Write-Scenario "AIGym" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLength
 Write-Scenario "Backgrounds" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Backgrounds")
 Write-Scenario "BackgroundsHD" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ResolutionX = 2560; ResolutionY = 1440 }) @("Render Test Backgrounds")
 Write-Scenario "BackgroundsFHD" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ResolutionX = 1920; ResolutionY = 1080 }) @("Render Test Backgrounds")
+Write-Scenario "AIBunker" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test AI Bunker")
+# The same on real bunker maps from the BB+ mod (when it is installed).
+$sandboxBywater = $sandbox.Clone(); $sandboxBywater.DefaultSceneName = "Bywater Barracks"; Write-Scenario "AIBywater" ($sandboxBywater + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1 }) @("Render Test AI Bunker")
+$sandboxHemslock = $sandbox.Clone(); $sandboxHemslock.DefaultSceneName = "Hemslock Hold"; Write-Scenario "AIHemslock" ($sandboxHemslock + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1 }) @("Render Test AI Bunker")
 Write-Scenario "AICombat" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Combat")
 $sandboxOutpost = $sandbox.Clone(); $sandboxOutpost.DefaultSceneName = "Zekarra Mining Outpost"; Write-Scenario "AIMap" ($sandboxOutpost + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test AI Map")
 Write-Scenario "PlayMenu" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play Menu")

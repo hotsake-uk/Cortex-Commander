@@ -1149,6 +1149,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									local ToNext = SceneMan:ShortestDistance(Owner.Pos, NextPos, false);
 									local passed = ToNext:MagnitudeIsLessThan(CurrDist.Magnitude) or (CurrDist.X * ToNext.X < 0 and math.abs(CurrDist.X) < Owner.Height * 0.5 and math.abs(CurrDist.Y) < Owner.Height * 0.5);
 									if passed and SceneMan:CastObstacleRay(Owner.Pos, ToNext, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 then
+										if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE pop: passed " .. math.floor(Waypoint.Pos.X) .. "," .. math.floor(Waypoint.Pos.Y) .. " for " .. math.floor(NextPos.X) .. "," .. math.floor(NextPos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
 										PrevWptPos = Waypoint.Pos;
 										Owner:RemoveMovePathBeginning();
 										Waypoint.Pos = NextPos;
@@ -1202,6 +1203,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										AI.jetClimb = false;
 									end
 								else
+									if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE pop: reached " .. math.floor(Waypoint.Pos.X) .. "," .. math.floor(Waypoint.Pos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. ", " .. Owner.MovePathSize - 1 .. " left"); end
 									PrevWptPos = Waypoint.Pos;
 									Owner:RemoveMovePathBeginning();
 									Waypoint = nil;
@@ -1605,6 +1607,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			AI.lateralMoveState = Actor.LAT_STILL;
 
 			local Trace = SceneMan:ShortestDistance(Owner.Pos, Owner:GetLastAIWaypoint(), false);
+			if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE path: none to follow, asking again from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
+			-- A fresh path gets its time: the no-line-of-sight timer that asked for it was left run out, so the very next tick asked again, and
+			-- a unit whose first waypoint was out of sight (through a hatch under it) asked for the same path every frame and went nowhere.
+			NoLOSTimer:Reset();
 			Owner:UpdateMovePath();
 
 			-- wait until movepath is updated

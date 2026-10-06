@@ -819,12 +819,14 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		}
 		node->FreeHeight = free;
 		int sideY = floor >= 0 ? floor - 10 : centreY;
+		// (Out to two nodes a side: measured to one, a shaft two nodes wide read as narrower than it was from either of its columns, since
+		// neither is in the middle, and a jet column was refused where a body would have fitted twice over.)
 		int left = 0;
-		while (left < m_NodeDimension && g_SceneMan.GetTerrMatter(x - 1 - left, sideY) == MaterialColorKeys::g_MaterialAir) {
+		while (left < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x - 1 - left, sideY) == MaterialColorKeys::g_MaterialAir) {
 			++left;
 		}
 		int right = 0;
-		while (right < m_NodeDimension && g_SceneMan.GetTerrMatter(x + 1 + right, sideY) == MaterialColorKeys::g_MaterialAir) {
+		while (right < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x + 1 + right, sideY) == MaterialColorKeys::g_MaterialAir) {
 			++right;
 		}
 		node->ClearLeft = left;

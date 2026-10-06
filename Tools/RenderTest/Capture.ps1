@@ -49,8 +49,8 @@ if (-not $p) {
 	$env:CCCP_SETTINGSPATH = "Userdata/RenderTest/$Scenario.ini"
 	# A controller being used for something else on this machine mustn't steer the test.
 	$env:CCCP_NO_GAMEPAD = "1"
-	# The sandbox window opens wherever the player last left it; keep it out of the shots.
-	$env:CCCP_HIDE_PANELS = "1"
+	# The sandbox window opens wherever the player last left it; keep it out of the shots (unless a tab of it is what the shot is of).
+	if (-not $env:CCCP_TEST_TAB) { $env:CCCP_HIDE_PANELS = "1" } else { Remove-Item Env:CCCP_HIDE_PANELS -ErrorAction SilentlyContinue }
 	$p = Start-Process -FilePath (Join-Path $Repo $Exe) -WorkingDirectory $Repo -PassThru
 	Start-Sleep 5
 	# Wait for LogLoading.txt to stop changing (it's buffered, so ExtraWait covers the rest of loading).

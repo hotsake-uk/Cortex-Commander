@@ -2,7 +2,7 @@ function AIGymScript:StartScript()
 	self.timer = Timer();
 	self.runners = {};
 	self.report = {};
-	self.traceCourse = 13; -- Which course's unit writes a trace line every second.
+	self.traceCourse = 16; -- Which course's unit writes a trace line every second.
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
 	self.lookAt = Vector(SceneMan.SceneWidth * 0.5 + 940, 260); -- Where the camera is put, for a look at a course (nil for the default).
 end
@@ -72,6 +72,11 @@ function AIGymScript:UpdateScript()
 		door.Team = 0;
 		MovableMan:AddActor(door);
 		self.door = door;
+		-- A low room whose ceiling stops short of a wall, leaving a 70 px gap up to the floor above (a bunker's upper storey): the unit starts
+		-- under the ceiling's end and has to go up through the gap and back over onto the roof.
+		for x = 80, 400, 160 do SandboxDo("Concrete beam", Vector(east + x, 600), 0, 0, 1, ""); end
+		for x = 80, 240, 160 do SandboxDo("Concrete beam", Vector(east + x, 520), 0, 0, 1, ""); end
+		SandboxDo("Concrete pillar", Vector(east + 396, 530), 0, 0, 1, "");
 		-- A room on a floor, with a 30 px doorway at the foot of each side wall: a bunker's corridor, to be crawled through.
 		for x = 0, 480, 160 do SandboxDo("Concrete beam", Vector(west + x, 200), 0, 0, 1, ""); end
 		SandboxDo("Concrete room", Vector(west + 240, 150), 0, 0, 1, "");
@@ -80,6 +85,7 @@ function AIGymScript:UpdateScript()
 		self.started = true;
 		local middle = SceneMan.SceneWidth * 0.5;
 		local left = middle - 420;
+		local east = left + 1200;
 		local courses = {
 			{ from = Vector(left - 60, 32), to = Vector(left + 680, 32), name = "flat run" },
 			{ from = Vector(left - 60, 352), to = Vector(left + 680, 226), name = "steps up" },
@@ -101,6 +107,8 @@ function AIGymScript:UpdateScript()
 			-- A crab (legs both sides, no head, no jetpack) on the easy courses.
 			{ from = Vector(left - 60, 32), to = Vector(left + 680, 32), name = "crab flat run", crab = true },
 			{ from = self:GroundAt(middle - 260), to = self:GroundAt(middle + 260), name = "crab over the hill", crab = true },
+			-- Up through the gap between a low room's ceiling and the wall beside it, onto the roof.
+			{ from = Vector(east + 290, 590), to = Vector(east + 200, 510), name = "up through the gap" },
 		};
 		for i, course in ipairs(courses) do
 			local actor = course.crab and CreateACrab("Dreadnought", "Dummy.rte") or CreateAHuman("Soldier Light", "Coalition.rte");

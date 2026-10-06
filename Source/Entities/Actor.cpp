@@ -123,6 +123,7 @@ void Actor::Clear() {
 	m_MovePathKinds.clear();
 	m_UpdateMovePath = false;
 	m_ImpossiblePaths = 0;
+	m_PathImpossible = false;
 	m_PathRetryTimer.Reset();
 	m_MoveProximityLimit = 20.0F;
 	m_AIBaseDigStrength = c_PathFindingDefaultDigStrength;
@@ -1164,6 +1165,20 @@ void Actor::PreControllerUpdate() {
 		if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
 			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));
+			std::string nodes;
+			auto kind = m_MovePathKinds.begin();
+			int count = 0;
+			for (const Vector& point: m_MovePath) {
+				if (++count > 60) {
+					break;
+				}
+				nodes += " " + std::to_string(static_cast<int>(point.m_X)) + "," + std::to_string(static_cast<int>(point.m_Y));
+				if (kind != m_MovePathKinds.end()) {
+					nodes += "(" + std::to_string(static_cast<int>(*kind)) + ")";
+					++kind;
+				}
+			}
+			g_ConsoleMan.PrintString("AITRACE nodes:" + nodes);
 		}
 		// A route that only exists through ground the unit can't dig is no route. One such answer is usually down to where the unit is standing
 		// (wedged under a ledge, pressed into a bunker wall), so the route isn't followed, the unit is left to the stuck handling for a few seconds,
@@ -1173,6 +1188,8 @@ void Actor::PreControllerUpdate() {
 		// starts once the unit is there.)
 		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F && m_MovePath.size() <= 3;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
+		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
+		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || (m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
 		if (impossible) {
 			m_PathRetryTimer.Reset();
 			m_MovePath.clear();
@@ -1593,6 +1610,8 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 	// AI waypoints or points of interest
 	bool pathShown = s_ShowAIPaths == 1 || (s_ShowAIPaths == 2 && m_SandboxSelected);
+	// (Red when the route couldn't be found, or only goes through ground this unit can't dig: the destination is out of its reach.)
+	int pathColor = m_PathImpossible ? g_RedColor : g_YellowGlowColor;
 	if ((pathShown || (m_DrawWaypoints && m_PlayerControllable && m_Controller.IsPlayerControlled())) && (m_AIMode == AIMODE_GOTO || m_AIMode == AIMODE_SQUAD)) {
 		// Draw the AI paths, from the ultimate destination back up to the actor's position.
 		// We do this backwards so the lines won't crawl and the dots can be evenly spaced throughout
@@ -1605,19 +1624,19 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 		if (!m_Waypoints.empty()) {
 			// Draw the first destination/waypoint point
 			//            waypoint = m_MoveTarget - targetPos;
-			//            circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, g_YellowGlowColor);
+			//            circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, pathColor);
 
 			// Draw the additional waypoint points beyond the first one
 			vLast = m_Waypoints.rbegin();
 			vItr = m_Waypoints.rbegin();
 			for (; vItr != m_Waypoints.rend(); ++vItr) {
 				// Draw the line
-				g_FrameMan.DrawLine(pTargetBitmap, (*vLast).first - targetPos, (*vItr).first - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, 0, true);
+				g_FrameMan.DrawLine(pTargetBitmap, (*vLast).first - targetPos, (*vItr).first - targetPos, pathColor, 0, AILINEDOTSPACING, 0, true);
 				vLast = vItr;
 
 				// Draw the points
 				waypoint = (*vItr).first - targetPos;
-				circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, g_YellowGlowColor);
+				circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, pathColor);
 
 				// Add pixel glow area around it, in scene coordinates
 				g_PostProcessMan.RegisterGlowArea((*vItr).first, 5);
@@ -1625,9 +1644,9 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 			// Draw line from the last movetarget on the current path to the first waypoint in queue after that
 			if (!m_MovePath.empty()) {
-				g_FrameMan.DrawLine(pTargetBitmap, m_MovePath.back() - targetPos, m_Waypoints.front().first - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, 0, true);
+				g_FrameMan.DrawLine(pTargetBitmap, m_MovePath.back() - targetPos, m_Waypoints.front().first - targetPos, pathColor, 0, AILINEDOTSPACING, 0, true);
 			} else {
-				g_FrameMan.DrawLine(pTargetBitmap, m_MoveTarget - targetPos, m_Waypoints.front().first - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, 0, true);
+				g_FrameMan.DrawLine(pTargetBitmap, m_MoveTarget - targetPos, m_Waypoints.front().first - targetPos, pathColor, 0, AILINEDOTSPACING, 0, true);
 			}
 		}
 
@@ -1637,22 +1656,22 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 			lItr = m_MovePath.rbegin();
 			for (; lItr != m_MovePath.rend(); ++lItr) {
 				// Draw these backwards so the skip phase works
-				skipPhase = g_FrameMan.DrawLine(pTargetBitmap, (*lLast) - targetPos, (*lItr) - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, skipPhase, true);
+				skipPhase = g_FrameMan.DrawLine(pTargetBitmap, (*lLast) - targetPos, (*lItr) - targetPos, pathColor, 0, AILINEDOTSPACING, skipPhase, true);
 				lLast = lItr;
 				// Each node of the path marked too, when the paths are being shown on purpose: the dotted line alone is a pixel every sixteen, and
 				// hard to see.
 				if (pathShown) {
 					Vector node = (*lItr) - targetPos;
-					circlefill(pTargetBitmap, node.GetFloorIntX(), node.GetFloorIntY(), 1, g_YellowGlowColor);
+					circlefill(pTargetBitmap, node.GetFloorIntX(), node.GetFloorIntY(), 1, pathColor);
 				}
 			}
 
 			// Draw the line between the current position and to the start of the movepath, backwards so the dotted lines doesn't crawl
-			skipPhase = g_FrameMan.DrawLine(pTargetBitmap, m_MovePath.front() - targetPos, m_Pos - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, skipPhase, true);
+			skipPhase = g_FrameMan.DrawLine(pTargetBitmap, m_MovePath.front() - targetPos, m_Pos - targetPos, pathColor, 0, AILINEDOTSPACING, skipPhase, true);
 
 			// Draw the first destination/waypoint point
 			waypoint = m_MovePath.back() - targetPos;
-			circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, g_YellowGlowColor);
+			circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, pathColor);
 
 			// Add pixel glow area around it, in scene coordinates
 			g_PostProcessMan.RegisterGlowArea(m_MovePath.back(), 5);
@@ -1660,11 +1679,11 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 			// No points left on movepath, so draw straight line to the movetarget
 
 			// Draw it backwards so the dotted lines doesn't crawl
-			skipPhase = g_FrameMan.DrawLine(pTargetBitmap, m_MoveTarget - targetPos, m_Pos - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, skipPhase, true);
+			skipPhase = g_FrameMan.DrawLine(pTargetBitmap, m_MoveTarget - targetPos, m_Pos - targetPos, pathColor, 0, AILINEDOTSPACING, skipPhase, true);
 
 			// Draw the first destination/waypoint point
 			waypoint = m_MoveTarget - targetPos;
-			circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, g_YellowGlowColor);
+			circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, pathColor);
 
 			// Add pixel glow area around it, in scene coordinates
 			g_PostProcessMan.RegisterGlowArea(m_MoveTarget, 5);
