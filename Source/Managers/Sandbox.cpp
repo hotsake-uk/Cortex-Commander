@@ -3319,7 +3319,8 @@ namespace {
 	/// The sandbox's bar along the bottom of the picture, in the Sandbox game mode while you're above it all: the main tools, the parts of the sandbox window to
 	/// open, and the things you've pinned. It is there whether the window is open or not.
 	void DrawBar() {
-		GameViewRect view = g_DebugMan.GetUncoveredView();
+		// In the middle of the picture, and it stays there: opening a panel doesn't shove it along.
+		GameViewRect view = g_WindowMan.GetGameViewRect();
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float pixel = ToolUI::Pixel();
 		struct Part {
