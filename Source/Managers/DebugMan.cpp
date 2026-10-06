@@ -43,6 +43,73 @@ float DebugMan::GetToolScale() const {
 	return std::max(std::clamp(ImGui::GetIO().DisplaySize.y / 720.0F, 1.0F, 2.5F) * m_ToolScale, 0.5F);
 }
 
+namespace {
+	/// Dresses the tool windows in the game's own menu colours (the olive panels, parchment text and gold of its skins) with square, hard-edged shapes.
+	void ApplyGameTheme(ImGuiStyle& style) {
+		auto rgb = [](int r, int g, int b, float a = 1.0F) { return ImVec4(static_cast<float>(r) / 255.0F, static_cast<float>(g) / 255.0F, static_cast<float>(b) / 255.0F, a); };
+		const ImVec4 panel = rgb(38, 46, 32, 0.97F);
+		const ImVec4 panelDark = rgb(24, 29, 21);
+		const ImVec4 field = rgb(57, 75, 42);
+		const ImVec4 fieldHover = rgb(85, 96, 68);
+		const ImVec4 fieldActive = rgb(105, 121, 71);
+		const ImVec4 gold = rgb(242, 182, 61);
+		const ImVec4 goldDim = rgb(170, 128, 48);
+		const ImVec4 parchment = rgb(232, 224, 190);
+		ImVec4* colors = style.Colors;
+		colors[ImGuiCol_Text] = parchment;
+		colors[ImGuiCol_TextDisabled] = rgb(150, 150, 120);
+		colors[ImGuiCol_WindowBg] = panel;
+		colors[ImGuiCol_ChildBg] = rgb(0, 0, 0, 0.0F);
+		colors[ImGuiCol_PopupBg] = rgb(30, 37, 26, 0.98F);
+		colors[ImGuiCol_Border] = goldDim;
+		colors[ImGuiCol_BorderShadow] = rgb(0, 0, 0, 0.0F);
+		colors[ImGuiCol_FrameBg] = field;
+		colors[ImGuiCol_FrameBgHovered] = fieldHover;
+		colors[ImGuiCol_FrameBgActive] = fieldActive;
+		colors[ImGuiCol_TitleBg] = panelDark;
+		colors[ImGuiCol_TitleBgActive] = field;
+		colors[ImGuiCol_TitleBgCollapsed] = panelDark;
+		colors[ImGuiCol_MenuBarBg] = panelDark;
+		colors[ImGuiCol_ScrollbarBg] = panelDark;
+		colors[ImGuiCol_ScrollbarGrab] = fieldHover;
+		colors[ImGuiCol_ScrollbarGrabHovered] = fieldActive;
+		colors[ImGuiCol_ScrollbarGrabActive] = gold;
+		colors[ImGuiCol_CheckMark] = gold;
+		colors[ImGuiCol_SliderGrab] = gold;
+		colors[ImGuiCol_SliderGrabActive] = rgb(255, 214, 110);
+		colors[ImGuiCol_Button] = field;
+		colors[ImGuiCol_ButtonHovered] = fieldHover;
+		colors[ImGuiCol_ButtonActive] = goldDim;
+		colors[ImGuiCol_Header] = field;
+		colors[ImGuiCol_HeaderHovered] = fieldHover;
+		colors[ImGuiCol_HeaderActive] = goldDim;
+		colors[ImGuiCol_Separator] = goldDim;
+		colors[ImGuiCol_SeparatorHovered] = gold;
+		colors[ImGuiCol_SeparatorActive] = gold;
+		colors[ImGuiCol_ResizeGrip] = fieldHover;
+		colors[ImGuiCol_ResizeGripHovered] = gold;
+		colors[ImGuiCol_ResizeGripActive] = gold;
+		colors[ImGuiCol_Tab] = panelDark;
+		colors[ImGuiCol_TabHovered] = fieldHover;
+		colors[ImGuiCol_TabSelected] = field;
+		colors[ImGuiCol_TabSelectedOverline] = gold;
+		colors[ImGuiCol_TabDimmed] = panelDark;
+		colors[ImGuiCol_TabDimmedSelected] = field;
+		colors[ImGuiCol_PlotHistogram] = gold;
+		colors[ImGuiCol_TextSelectedBg] = rgb(170, 128, 48, 0.6F);
+		colors[ImGuiCol_NavHighlight] = gold;
+		// Hard edges throughout: nothing in the game's own menus is rounded.
+		style.WindowRounding = style.ChildRounding = style.FrameRounding = style.PopupRounding = style.ScrollbarRounding = style.GrabRounding = style.TabRounding = 0.0F;
+		style.WindowBorderSize = 2.0F;
+		style.ChildBorderSize = 1.0F;
+		style.FrameBorderSize = 0.0F;
+		style.TabBarBorderSize = 2.0F;
+		style.TabBarOverlineSize = 2.0F;
+		style.SeparatorTextBorderSize = 2.0F;
+		style.GrabMinSize = 10.0F;
+	}
+} // namespace
+
 float DebugMan::GetPanelWidth(PanelSide side) const {
 	// The right side holds the settings panel, which has its list of categories beside its controls, so it is the wider.
 	float displayWidth = ImGui::GetIO().DisplaySize.x;
@@ -83,6 +150,7 @@ void DebugMan::DrawImGui() {
 			ImGuiStyle& style = ImGui::GetStyle();
 			style = ImGuiStyle();
 			ImGui::StyleColorsDark(&style);
+			ApplyGameTheme(style);
 			style.ScaleAllSizes(uiScale);
 		}
 	}
