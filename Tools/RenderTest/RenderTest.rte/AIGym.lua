@@ -2,17 +2,21 @@ function AIGymScript:StartScript()
 	self.timer = Timer();
 	self.runners = {};
 	self.report = {};
-	self.traceCourse = 2; -- Which course's unit writes a trace line every second.
+	self.traceCourse = 8; -- Which course's unit writes a trace line every second.
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
 end
 
 -- The AI gym: units are given set courses to get round, and how they do is written to the console as AIGYM lines.
 -- Run with CCCP_CONSOLE_LOG set and read the lines: the pathfinder's answer for each course, a trace of one unit, one line per unit when it
 -- arrives or gives up, and "AIGYM done" at the end.
--- The ground straight below a point, from a height below the beams of the sky courses.
+-- The scene's own ground straight below a point: the first thing from the top that isn't air or the concrete of the courses.
 function AIGymScript:GroundAt(x, fromY)
-	local y = fromY or 700;
-	while y < SceneMan.SceneHeight - 1 and SceneMan:GetTerrMatter(x, y) == rte.airID do
+	local y = fromY or 0;
+	while y < SceneMan.SceneHeight - 1 do
+		local matter = SceneMan:GetTerrMatter(x, y);
+		if matter ~= rte.airID and matter ~= 177 then
+			break;
+		end
 		y = y + 2;
 	end
 	return Vector(x, y);
@@ -65,6 +69,9 @@ function AIGymScript:UpdateScript()
 			{ from = Vector(left - 960, 652), to = Vector(left - 360, 652), name = "low tunnel" },
 			{ from = self:GroundAt(middle - 260), to = self:GroundAt(middle + 260), name = "over the hill" },
 			{ from = self:GroundAt(middle - 40), to = self:CaveFloorAt(middle), name = "down into the cave" },
+			-- The scene's own slopes: the far side of the hill drops 500 px over 450.
+			{ from = self:GroundAt(middle + 40), to = self:GroundAt(middle + 480), name = "down the slope" },
+			{ from = self:GroundAt(middle + 520), to = self:GroundAt(middle + 80), name = "up the slope" },
 		};
 		for i, course in ipairs(courses) do
 			local actor = CreateAHuman("Soldier Light", "Coalition.rte");
@@ -108,6 +115,17 @@ function AIGymScript:UpdateScript()
 			profile = profile .. " " .. x .. ":" .. y;
 		end
 		ConsoleMan:PrintString("AIGYM ground profile (ignoring concrete):" .. profile);
+		local cliff = "";
+		for x = middle + 300, middle + 500, 12 do cliff = cliff .. " " .. x .. ":" .. self:GroundAt(x).Y; end
+		ConsoleMan:PrintString("AIGYM cliff profile:" .. cliff);
+		local r = SceneMan.Scene:CalculatePath(self:GroundAt(middle + 460), self:GroundAt(middle + 340), 22, 35, Activity.TEAM_1);
+		local n = "";
+		for node in SceneMan.Scene:GetScenePath() do n = n .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
+		ConsoleMan:PrintString("AIGYM cliff path: " .. r .. " nodes:" .. n);
+		r = SceneMan.Scene:CalculatePath(self:GroundAt(middle + 340), self:GroundAt(middle + 80), 22, 35, Activity.TEAM_1);
+		n = "";
+		for node in SceneMan.Scene:GetScenePath() do n = n .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
+		ConsoleMan:PrintString("AIGYM upper slope path: " .. r .. " nodes:" .. n);
 	end
 	if not self.started then
 		return;

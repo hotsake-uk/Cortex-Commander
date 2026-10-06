@@ -1029,12 +1029,16 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												end
 												local feetClear = true;
 												local chestClear = true;
+												local touchingWall = false;
 												if math.abs(stepX) >= 10 then
 													local reach = math.abs(stepX) + Owner.Height * 0.15; -- All the way to it: a ledge short of the ray's end was stepped off towards, and fallen short of.
 													local Step = Vector(stepX > 0 and reach or -reach, 0);
 													-- (Height is about twice the sprite: the feet are a fifth of it under Pos.)
 													feetClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
 													chestClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
+													-- Right up against it and not rising for all the jet: a unit pressed to a wall just burns, so that's a push away from it.
+													local Touch = Vector(stepX > 0 and Owner.Height * 0.15 or -Owner.Height * 0.15, 0);
+													touchingWall = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.1), Touch, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 or SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.1), Touch, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
 												end
 												-- Up at the height with the way clear, but not yet near the landing sideways, it isn't over: the jet went out a hundred pixels
 													-- short of a ledge and the unit dropped below it on the way; now it hovers across (see below).
@@ -1055,16 +1059,19 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- metres a second), and that was fuel and height to come down again.
 													local toGo = -above - Owner.Height * 0.2;
 													local climbRate = math.max(1, math.min(5, toGo / 15));
+													-- With some play in it: every relight can be a burst, at a burst's worth of fuel, so the fewer the better.
 													if above > -Owner.Height * 0.2 then
-														AI.jump = Owner.Vel.Y > 0.5;
+														AI.jump = Owner.Vel.Y > (AI.jump and -1.5 or 0.5);
 													else
-														AI.jump = Owner.Vel.Y > -climbRate;
+														AI.jump = Owner.Vel.Y > (AI.jump and -climbRate - 2 or -climbRate + 1);
 													end
 													-- Sideways it is flown by speed: a little drift towards the waypoint, more the further off it is, and none at all into a wall or
 													-- slope (that only pins us to it) or when the waypoint is straight above. Too fast either way and the nozzle is leant against it:
 													-- the speed walked up with was carrying units under the ledges they were climbing to.
 													local wantVelX = math.max(-4, math.min(4, CurrDist.X / 20));
-													if not chestClear or math.abs(CurrDist.X) < Owner.Height * 0.15 then
+													if touchingWall and AI.jump and Owner.Vel.Y > -1 then
+														wantVelX = stepX > 0 and -1.5 or 1.5;
+													elseif not chestClear or math.abs(CurrDist.X) < Owner.Height * 0.15 then
 														wantVelX = 0;
 													end
 													local offVelX = wantVelX - Owner.Vel.X;

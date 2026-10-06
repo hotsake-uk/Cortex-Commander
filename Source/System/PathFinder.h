@@ -217,6 +217,11 @@ namespace RTE {
 		/// @return Whether the node is on solid ground.
 		bool NodeIsOnSolidGround(const PathNode& node) const;
 
+		/// The ground surface within a node's cell: the first solid pixel from the top of the cell down the node's column.
+		/// @param node The node.
+		/// @return The y of the surface, or -1 when the cell's top is already solid (the node is buried) or there is no ground in the cell.
+		float SurfaceUnder(const PathNode& node) const;
+
 		/// Gets the cost for transitioning through this Material.
 		/// @param material The Material to get the transition cost for.
 		/// @return The transition cost for the Material.

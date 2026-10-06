@@ -194,6 +194,10 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	// If end node is invalid, there's no path
 	PathNode* endNode = GetPathNodeAtGridCoords(endNodeX, endNodeY);
+	// A goal a little above the ground falls in the cell over the surface's: that is the node a unit stands at, so the search ends there.
+	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
+		endNode = endNode->Down;
+	}
 	if (endNode && endNode->m_Navigable) {
 		result = GetPather()->Solve(static_cast<void*>(GetPathNodeAtGridCoords(startNodeX, startNodeY)), static_cast<void*>(endNode), &statePath, &totalCostResult);
 	}
@@ -389,7 +393,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
-				float extraJumpCost = f * f * 0.5F; // Exponential cost increase for jumping higher
+				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
 				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost;
 
@@ -401,17 +405,26 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 
 				// Landing on a ledge beside the jump: a node up the column is only a stop if there's ground under it, which there isn't next to a
 				// ledge. So from each rung of the jump, a step sideways onto a node that does stand on ground is offered too, which is how a
-				// jetpack really gets onto a platform: up its side, then on.
+				// jetpack really gets onto a platform: up its side, then on. Two steps when the first is still in the air, for the top of a
+				// steep slope, whose first node in from the drop is over the face.
 				if (!NodeIsOnSolidGround(*currentNode)) {
-					if (currentNode->Left && currentNode->Left->m_Navigable && NodeIsOnSolidGround(*currentNode->Left)) {
-						adjCost.cost = totalMaterialCost + 1.0F + GetMaterialTransitionCost(*currentNode->LeftMaterial) + radiatedCost;
-						adjCost.state = static_cast<void*>(currentNode->Left);
-						adjacentList->push_back(adjCost);
+					auto landing = [&](const PathNode* step, const Material* stepMaterial, float stepCost) -> const PathNode* {
+						if (!step || !step->m_Navigable || stepMaterial->GetIntegrity() > s_DigStrength) {
+							return nullptr;
+						}
+						if (NodeIsOnSolidGround(*step)) {
+							adjCost.cost = totalMaterialCost + stepCost + GetMaterialTransitionCost(*stepMaterial) + radiatedCost;
+							adjCost.state = const_cast<PathNode*>(step);
+							adjacentList->push_back(adjCost);
+							return nullptr;
+						}
+						return step;
+					};
+					if (const PathNode* step = landing(currentNode->Left, currentNode->LeftMaterial, 1.0F)) {
+						landing(step->Left, step->LeftMaterial, 2.0F);
 					}
-					if (currentNode->Right && currentNode->Right->m_Navigable && NodeIsOnSolidGround(*currentNode->Right)) {
-						adjCost.cost = totalMaterialCost + 1.0F + GetMaterialTransitionCost(*currentNode->RightMaterial) + radiatedCost;
-						adjCost.state = static_cast<void*>(currentNode->Right);
-						adjacentList->push_back(adjCost);
+					if (const PathNode* step = landing(currentNode->Right, currentNode->RightMaterial, 1.0F)) {
+						landing(step->Right, step->RightMaterial, 2.0F);
 					}
 				}
 			}
@@ -432,7 +445,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
-				float extraJumpCost = f * f * 0.5F; // Exponential cost increase for jumping higher
+				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
 				totalMaterialCost += 1.4F + (extraUpCost * 1.4F) + (extraJumpCost * 1.4f) + (GetMaterialTransitionCost(*currentNode->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost;
 
@@ -454,7 +467,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
-				float extraJumpCost = f * f * 0.5F; // Exponential cost increase for jumping higher
+				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
 				totalMaterialCost += 1.4F + (extraUpCost * 1.4F) + (extraJumpCost * 1.4f) + (GetMaterialTransitionCost(*currentNode->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost;
 
@@ -487,6 +500,20 @@ bool PathFinder::PositionsAreTheSamePathNode(const Vector& pos1, const Vector& p
 	int endNodeX = std::floor(pos2.m_X / static_cast<float>(m_NodeDimension));
 	int endNodeY = std::floor(pos2.m_Y / static_cast<float>(m_NodeDimension));
 	return startNodeX == endNodeX && startNodeY == endNodeY;
+}
+
+float PathFinder::SurfaceUnder(const PathNode& node) const {
+	int x = static_cast<int>(node.Pos.m_X);
+	int top = static_cast<int>(node.Pos.m_Y) - m_NodeDimension / 2;
+	if (g_SceneMan.GetTerrMatter(x, top) != MaterialColorKeys::g_MaterialAir) {
+		return -1.0F;
+	}
+	for (int y = top + 1; y <= top + m_NodeDimension; ++y) {
+		if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+			return static_cast<float>(y);
+		}
+	}
+	return -1.0F;
 }
 
 bool PathFinder::NodeIsOnSolidGround(const PathNode& node) const {
@@ -522,8 +549,21 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	// Look at each existing adjacent node and calculate the cost for each. Start and end are offset to cover more terrain.
 	// Note that we only calculate transitions to one side (down and right), because for the other side we can pull our up-and-left transition data from the other node's down-and-right.
 	if (node->Right) {
-		Vector offset(0.0F, 3.0F);
-		node->RightMaterial = getStrongerMaterial(StrongestMaterialAlongLine(node->Pos - offset, node->Right->Pos - offset), StrongestMaterialAlongLine(node->Pos + offset, node->Right->Pos + offset));
+		// Walking is sampled along the ground, when both cells have ground in them: a band just above the surface at each column, so a slope
+		// or a bumpy floor is walked along the way a unit walks it. Nodes centred on a 24 px grid are anywhere from on the surface to buried
+		// in it, and with the rays cast at the node centres the only way along a flat beam was to hop up a node and drop back at every
+		// column, and a gentle slope was a wall. Cells without ground get a band just above the centre.
+		Vector upper(0.0F, -6.0F);
+		Vector lower(0.0F, -1.0F);
+		Vector here = node->Pos;
+		Vector there = node->Right->Pos;
+		float groundHere = SurfaceUnder(*node);
+		float groundThere = SurfaceUnder(*node->Right);
+		if (groundHere >= 0.0F && groundThere >= 0.0F) {
+			here.m_Y = groundHere;
+			there.m_Y = groundThere;
+		}
+		node->RightMaterial = getStrongerMaterial(StrongestMaterialAlongLine(here + upper, there + upper), StrongestMaterialAlongLine(here + lower, there + lower));
 	}
 
 	if (node->Down) {
