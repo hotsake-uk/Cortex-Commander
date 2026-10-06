@@ -1,0 +1,241 @@
+﻿commit 5355fe156c1f1044268345dfe3353025402a4480  AI_PLAN: handover notes for the indoor pathing work and the gym tooling
+--- build
+EXIT 0
+0 unique errors
+--- AIGym (96 s)
+AIGYM unit Soldier Light height 100 jump height 440 px
+AIGYM path for flat run: result 6, 6 nodes: 1320,15 1524,36 1716,36 1908,36 2028,36 2060,0
+AIGYM path for steps up: result 10, 10 nodes: 1320,335 1524,348 1572,348 1620,324 1740,324 1740,192 1788,228 1980,228 2004,228 2060,176
+AIGYM path for gap: result 8, 8 nodes: 420,355 612,372 708,372 756,324 780,348 972,372 1044,372 1090,322
+AIGYM path for low tunnel: result 20, 20 nodes: 420,635 444,660 540,660 564,660 588,660 612,660 636,660 660,660 684,660 708,660 732,660 756,660 780,660 804,660 828,660 852,660 876,660 900,660 972,660 1020,602
+AIGYM path for through the room: result 7, 7 nodes: 420,175 444,204 612,204 660,180 852,204 948,204 1020,142
+AIGYM path for through the door: result 5, 5 nodes: 2600,275 2628,300 2820,300 2844,300 2880,242
+AIGYM path for over the hill: result 20, 20 nodes: 1540,723 1596,660 1596,588 1620,612 1668,588 1692,564 1764,492 1788,516 1836,540 1860,564 1884,540 1932,564 1956,588 1980,612 2004,588 2028,612 2028,636 2052,660 2052,68
+AIGYM path for down into the cave: result 28, 28 nodes: 1760,537 1764,564 1740,540 1716,564 1692,540 1668,564 1644,588 1644,612 1620,588 1596,612 1596,636 1572,660 1548,684 1524,708 1524,732 1500,756 1476,780 1452,804 14
+AIGYM path for down the slope: result 25, 25 nodes: 1840,543 1860,564 1884,540 1932,564 1956,588 1980,612 2004,588 2028,612 2052,636 2076,660 2100,684 2124,708 2148,732 2172,756 2196,780 2196,804 2220,828 2244,852 2268,8
+AIGYM path for up the slope: result 21, 21 nodes: 2320,1069 2316,1092 2292,1068 2268,1044 2220,1020 2196,1020 2196,792 2148,828 2124,852 2100,828 2100,720 2076,756 2076,684 2052,708 2052,600 2028,636 2028,612 2004,636 20
+AIGYM path for onto the ledge: result 7, 7 nodes: 2250,1029 2244,1044 2220,1020 2196,1020 2196,792 2148,828 2130,792
+AIGYM path for across the dip: result 15, 15 nodes: 2120,829 2124,852 2100,828 2100,720 2076,756 2076,684 2052,708 2052,600 2028,636 2028,612 2004,636 2004,588 1980,612 1932,588 1920,534
+AIGYM path for dig down: result 5, 5 nodes: 1080,1111 1092,1140 1092,1164 1092,1188 1080,1218
+AIGYM path for crab flat run: result 6, 6 nodes: 1320,13 1524,36 1716,36 1908,36 2028,36 2060,0
+AIGYM path for crab over the hill: result 18, 18 nodes: 1537,729 1596,660 1596,588 1620,612 1668,588 1692,564 1764,492 1788,516 1836,540 1860,564 1884,540 1932,564 1956,588 1980,612 2004,588 2028,612 2052,636 2060,667
+AIGYM path for up through the gap: result 6, 6 nodes: 2870,584 2916,588 2916,480 2892,516 2820,516 2780,460
+AIGYM up through the gap: arrived in 3.8 s, stood still 0 s
+AIGYM through the door: arrived in 4.7 s, stood still 0 s
+AIGYM down the slope: arrived in 9.8 s, stood still 0 s
+AIGYM flat run: arrived in 9.9 s, stood still 0 s
+AIGYM across the dip: arrived in 10 s, stood still 1 s
+AIGYM gap: arrived in 10.7 s, stood still 0 s
+AIGYM steps up: arrived in 11.6 s, stood still 0 s
+AIGYM over the hill: arrived in 13.2 s, stood still 1 s
+AIGYM through the room: arrived in 14.1 s, stood still 0 s
+AIGYM low tunnel: arrived in 14.8 s, stood still 0 s
+AIGYM crab flat run: arrived in 15.2 s, stood still 0 s
+AIGYM onto the ledge: arrived in 19.2 s, stood still 1 s
+AIGYM dig down: arrived in 20.3 s, stood still 8 s
+AIGYM up the slope: arrived in 24 s, stood still 1 s
+AIGYM down into the cave: arrived in 24.5 s, stood still 1 s
+AIGYM crab over the hill: GAVE UP after 60 s, 1068 px short, stood still 12 s, mode 3, at 1074,1135 goal 2060,722
+AIGYM done
+--- AICombat (100 s)
+AICOMBAT started 5 courses
+AICOMBAT firefight 2s: [1 at 1053,178 hp 100 mode 3 sees R0] [2 at 1760,178 hp 100 mode 1 sees L-20]
+AICOMBAT cover 2s: [1 at 630,457 hp 371 mode 1 sees R26] [2 at 920,307 hp 371 mode 1 sees L-31]
+AICOMBAT dug in 2s: [1 at 630,738 hp 100 mode 1 sees R29] [2 at 920,567 hp 100 mode 1 sees L-29]
+AICOMBAT move 2s: [1 at 2387,278 hp 82 mode 3 sees R25] [2 at 2780,137 hp 82 mode 1 sees L-20]
+AICOMBAT retreat 2s: [1 at 2461,539 hp 20 mode 3 retreating blind R0] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 4s: [1 at 1080,174 hp 100 mode 3 sees R0] [2 at 1760,178 hp 100 mode 1 sees L10]
+AICOMBAT cover 4s: [1 at 640,457 hp 320 mode 1 sees R27] [2 at 920,308 hp 235 mode 1 sees L-31]
+AICOMBAT dug in 4s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 4s: [1 at 2480,277 hp 81 mode 3 blind R28] [2 at 2784,138 hp 46 mode 2 blind L-20]
+AICOMBAT retreat 4s: [1 at 2534,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 6s: [1 at 1137,180 hp 100 mode 3 sees L0] [2 at 1760,178 hp 100 mode 1 sees L5]
+AICOMBAT cover 6s: [1 at 663,457 hp 318 mode 1 sees R37] [2 at 925,308 hp 228 mode 1 sees R-9]
+AICOMBAT dug in 6s: [1 gone] [2 at 920,567 hp 100 mode 1]
+AICOMBAT move 6s: [1 at 2502,278 hp 80 mode 3 blind R0] [2 at 2784,138 hp 44 mode 2 blind L-20]
+AICOMBAT retreat 6s: [1 at 2648,540 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 8s: [1 at 1187,179 hp 100 mode 3 sees L0] [2 at 1761,178 hp 100 mode 1 sees L68]
+AICOMBAT cover 8s: [1 at 648,441 hp 315 mode 3 flanking blind R0] [2 at 939,319 hp -246 mode 1 blind L-31]
+AICOMBAT dug in 8s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 8s: [1 at 2653,277 hp 80 mode 3 blind R0] [2 at 2784,138 hp 42 mode 2 blind R-20]
+AICOMBAT retreat 8s: [1 at 2748,538 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 10s: [1 at 1283,180 hp 100 mode 3 sees R3] [2 at 1765,178 hp 100 mode 1 sees L1]
+AICOMBAT cover 10s: [1 at 747,289 hp 313 mode 3 flanking] [2 gone]
+AICOMBAT dug in 10s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 10s: [1 at 2820,277 hp 79 mode 3 blind R0] [2 at 2781,138 hp 40 mode 2 blind L-20]
+AICOMBAT retreat 10s: [1 at 2801,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 12s: [1 at 1286,182 hp 1 mode 3 sees R1] [2 at 1765,178 hp 63 mode 1 sees L1]
+AICOMBAT cover 12s: [1 at 851,231 hp 311 mode 3 flanking] [2 gone]
+AICOMBAT dug in 12s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 12s: [1 at 2932,278 hp 78 mode 3 blind R0] [2 at 2782,138 hp 38 mode 2 blind L-20]
+AICOMBAT retreat 12s: [1 at 2846,541 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 14s: [1 gone] [2 at 1765,178 hp 18 mode 2]
+AICOMBAT cover 14s: [1 at 936,296 hp 308 mode 3 flanking] [2 gone]
+AICOMBAT dug in 14s: [1 gone] [2 at 920,567 hp 100 mode 1]
+AICOMBAT move 14s: [1 at 3023,258 hp 78 mode 3 blind R90] [2 at 2779,138 hp 36 mode 2 blind R-20]
+AICOMBAT retreat 14s: [1 at 2895,540 hp 20 mode 3 retreating blind L0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 16s: [1 gone] [2 at 1766,178 hp 16 mode 2]
+AICOMBAT cover 16s: [1 at 1032,320 hp 306 mode 3 flanking] [2 gone]
+AICOMBAT dug in 16s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 16s: [1 at 3135,254 hp 77 mode 3 sees L23] [2 at 2778,138 hp 34 mode 2 sees R-13]
+AICOMBAT retreat 16s: [1 at 2889,523 hp 20 mode 3 retreating blind L0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 18s: [1 gone] [2 at 1764,178 hp 13 mode 2]
+AICOMBAT cover 18s: [1 at 1079,268 hp 304 mode 3 flanking] [2 gone]
+AICOMBAT dug in 18s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 18s: [1 at 3133,276 hp 77 mode 3 blind L29] [2 at 2775,137 hp 32 mode 2 blind R-22]
+AICOMBAT retreat 18s: [1 at 2898,538 hp 20 mode 3 retreating blind L3] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 20s: [1 gone] [2 at 1764,178 hp 10 mode 2]
+AICOMBAT cover 20s: [1 at 1045,317 hp 302 mode 3 flanking] [2 gone]
+AICOMBAT dug in 20s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 20s: [1 at 3190,290 hp 76 mode 3 blind L19] [2 at 2775,137 hp 30 mode 2 blind R-16]
+AICOMBAT retreat 20s: [1 at 2884,543 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 22s: [1 gone] [2 at 1766,178 hp 8 mode 2]
+AICOMBAT cover 22s: [1 at 1009,303 hp 299 mode 3 flanking] [2 gone]
+AICOMBAT dug in 22s: [1 gone] [2 at 920,567 hp 100 mode 1]
+AICOMBAT move 22s: [1 at 3187,278 hp 75 mode 3 sees L18] [2 at 2775,137 hp 28 mode 2 sees R-16]
+AICOMBAT retreat 22s: [1 at 2893,539 hp 20 mode 3 retreating blind L0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 24s: [1 gone] [2 at 1768,177 hp 5 mode 2]
+AICOMBAT cover 24s: [1 at 1009,322 hp 297 mode 1] [2 gone]
+AICOMBAT dug in 24s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 24s: [1 at 3190,278 hp 75 mode 3 sees L18] [2 at 2777,138 hp -3 mode 2 sees L-16]
+AICOMBAT retreat 24s: [1 at 2889,538 hp 20 mode 3 retreating blind L5] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 26s: [1 gone] [2 at 1764,177 hp 3 mode 2]
+AICOMBAT cover 26s: [1 at 1009,321 hp 295 mode 1] [2 gone]
+AICOMBAT dug in 26s: [1 gone] [2 at 920,567 hp 100 mode 1]
+AICOMBAT move 26s: [1 at 3190,277 hp 74 mode 3] [2 gone]
+AICOMBAT retreat 26s: [1 at 2898,538 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 28s: [1 gone] [2 at 1762,178 hp 0 mode 2]
+AICOMBAT cover 28s: [1 at 1009,321 hp 292 mode 1] [2 gone]
+AICOMBAT dug in 28s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 28s: [1 at 3190,278 hp 74 mode 3] [2 gone]
+AICOMBAT retreat 28s: [1 at 2896,537 hp 20 mode 2 blind R1] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 30s: [1 gone] [2 gone]
+AICOMBAT cover 30s: [1 at 1009,321 hp 290 mode 1] [2 gone]
+AICOMBAT dug in 30s: [1 gone] [2 at 920,568 hp 100 mode 1]
+AICOMBAT move 30s: [1 at 3190,278 hp 73 mode 3] [2 gone]
+AICOMBAT retreat 30s: [1 at 2896,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 32s: [1 gone] [2 gone]
+AICOMBAT cover 32s: [1 at 1009,321 hp 288 mode 1] [2 gone]
+AICOMBAT dug in 32s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 32s: [1 at 3190,278 hp 72 mode 3] [2 gone]
+AICOMBAT retreat 32s: [1 at 2896,538 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 34s: [1 gone] [2 gone]
+AICOMBAT cover 34s: [1 at 1009,321 hp 286 mode 1] [2 gone]
+AICOMBAT dug in 34s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 34s: [1 at 3190,278 hp 72 mode 3] [2 gone]
+AICOMBAT retreat 34s: [1 at 2895,538 hp 20 mode 2 blind R1] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 36s: [1 gone] [2 gone]
+AICOMBAT cover 36s: [1 at 1009,321 hp 283 mode 1] [2 gone]
+AICOMBAT dug in 36s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 36s: [1 at 3190,279 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 36s: [1 at 2897,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 38s: [1 gone] [2 gone]
+AICOMBAT cover 38s: [1 at 1009,321 hp 281 mode 1] [2 gone]
+AICOMBAT dug in 38s: [1 gone] [2 at 921,567 hp 100 mode 1]
+AICOMBAT move 38s: [1 at 3190,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 38s: [1 at 2897,537 hp 20 mode 2 blind R1] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 40s: [1 gone] [2 gone]
+AICOMBAT cover 40s: [1 at 1009,321 hp 280 mode 1] [2 gone]
+AICOMBAT dug in 40s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 40s: [1 at 3190,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 40s: [1 at 2897,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 42s: [1 gone] [2 gone]
+AICOMBAT cover 42s: [1 at 1009,321 hp 278 mode 1] [2 gone]
+AICOMBAT dug in 42s: [1 gone] [2 at 920,567 hp 100 mode 1]
+AICOMBAT move 42s: [1 at 3193,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 42s: [1 at 2897,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 44s: [1 gone] [2 gone]
+AICOMBAT cover 44s: [1 at 1009,321 hp 277 mode 1] [2 gone]
+AICOMBAT dug in 44s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 44s: [1 at 3193,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 44s: [1 at 2897,538 hp 20 mode 2 blind R1] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 46s: [1 gone] [2 gone]
+AICOMBAT cover 46s: [1 at 1009,321 hp 276 mode 1] [2 gone]
+AICOMBAT dug in 46s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 46s: [1 at 3193,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 46s: [1 at 2897,538 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 48s: [1 gone] [2 gone]
+AICOMBAT cover 48s: [1 at 1009,321 hp 275 mode 1] [2 gone]
+AICOMBAT dug in 48s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 48s: [1 at 3193,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 48s: [1 at 2897,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 50s: [1 gone] [2 gone]
+AICOMBAT cover 50s: [1 at 1009,321 hp 274 mode 1] [2 gone]
+AICOMBAT dug in 50s: [1 gone] [2 at 922,568 hp 100 mode 1]
+AICOMBAT move 50s: [1 at 3193,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 50s: [1 at 2897,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 52s: [1 gone] [2 gone]
+AICOMBAT cover 52s: [1 at 1009,321 hp 272 mode 1] [2 gone]
+AICOMBAT dug in 52s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 52s: [1 at 3196,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 52s: [1 at 2897,538 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 54s: [1 gone] [2 gone]
+AICOMBAT cover 54s: [1 at 1009,321 hp 271 mode 1] [2 gone]
+AICOMBAT dug in 54s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 54s: [1 at 3196,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 54s: [1 at 2894,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 56s: [1 gone] [2 gone]
+AICOMBAT cover 56s: [1 at 1009,321 hp 270 mode 1] [2 gone]
+AICOMBAT dug in 56s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 56s: [1 at 3196,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 56s: [1 at 2896,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 58s: [1 gone] [2 gone]
+AICOMBAT cover 58s: [1 at 1009,321 hp 269 mode 1] [2 gone]
+AICOMBAT dug in 58s: [1 gone] [2 at 921,568 hp 100 mode 1]
+AICOMBAT move 58s: [1 at 3194,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 58s: [1 at 2897,537 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 60s: [1 gone] [2 gone]
+AICOMBAT cover 60s: [1 at 1009,321 hp 268 mode 1] [2 gone]
+AICOMBAT dug in 60s: [1 gone] [2 at 924,568 hp 100 mode 1]
+AICOMBAT move 60s: [1 at 3195,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 60s: [1 at 2897,538 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 62s: [1 gone] [2 gone]
+AICOMBAT cover 62s: [1 at 1009,321 hp 266 mode 1] [2 gone]
+AICOMBAT dug in 62s: [1 gone] [2 at 924,568 hp 100 mode 1]
+AICOMBAT move 62s: [1 at 3195,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 62s: [1 at 2897,537 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 64s: [1 gone] [2 gone]
+AICOMBAT cover 64s: [1 at 1009,321 hp 265 mode 1] [2 gone]
+AICOMBAT dug in 64s: [1 gone] [2 at 924,568 hp 100 mode 1]
+AICOMBAT move 64s: [1 at 3195,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 64s: [1 at 2895,538 hp 20 mode 2 blind R1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight 66s: [1 gone] [2 gone]
+AICOMBAT cover 66s: [1 at 1009,321 hp 264 mode 1] [2 gone]
+AICOMBAT dug in 66s: [1 gone] [2 at 924,568 hp 100 mode 1]
+AICOMBAT move 66s: [1 at 3196,277 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 66s: [1 at 2894,538 hp 20 mode 2 blind R1] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT firefight 68s: [1 gone] [2 gone]
+AICOMBAT cover 68s: [1 at 1009,321 hp 263 mode 1] [2 gone]
+AICOMBAT dug in 68s: [1 gone] [2 at 924,568 hp 100 mode 1]
+AICOMBAT move 68s: [1 at 3197,278 hp 71 mode 3] [2 gone]
+AICOMBAT retreat 68s: [1 at 2894,538 hp 20 mode 2 blind L1] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT firefight result: 
+AICOMBAT cover result: team 1 hp 262 at 1009,321
+AICOMBAT dug in result: team 2 hp 100 at 924,568
+AICOMBAT move result: team 1 hp 71 at 3197,278 mover 2 px from goal
+AICOMBAT retreat result: team 1 hp 20 at 2894,538; team 1 hp 100 at 3000,533
+AICOMBAT done
+--- AIBunker (95 s)
+AIBUNKER path for low left to top right: 12 nodes: 1520,437 1692,444 1716,468 1716,492 1716,516 1716,540 1716,564 1740,252 1860,252 1908,204 1908,228 2070,252
+AIBUNKER path for across the gap: 16 nodes: 1510,365 1548,348 1620,372 1668,348 1716,372 1716,396 1716,420 1788,444 1812,468 1812,492 1836,516 1860,540 1884,564 1884,588 1908,564 1900,348
+AIBUNKER path for top left to low right: 13 nodes: 1520,245 1668,252 1716,204 1716,228 1884,252 1908,276 1908,300 1908,324 1908,348 1908,372 1908,396 1908,420 2070,444
+AIBUNKER path for up the shaft: 7 nodes: 1792,521 1764,540 1764,564 1740,540 1716,564 1740,252 1792,252
+AIBUNKER path for low right to mid left: 14 nodes: 2080,437 1932,444 1884,396 1884,420 1812,444 1788,468 1788,492 1764,516 1740,540 1716,564 1668,348 1596,372 1548,348 1510,348
+AIBUNKER up the shaft: arrived in 27.5 s, stood still 0 s
+AIBUNKER low right to mid left: arrived in 53.5 s, stood still 0 s
+AIBUNKER low left to top right: GAVE UP after 60 s, 290 px short, stood still 0 s, at 1917,499
+AIBUNKER across the gap: GAVE UP after 60 s, 232 px short, stood still 6 s, at 1913,580
+AIBUNKER top left to low right: GAVE UP after 60 s, 286 px short, stood still 0 s, at 1783,450
+AIBUNKER done
+--- AIBywater (95 s)
+AIBUNKER path for bottom corridor to the top room: 7 nodes: 1695,1169 1716,1188 1716,1082 1740,1092 1788,1092 1788,912 1920,137
+AIBUNKER path for mid left room to the right column: 22 nodes: 1620,797 1644,804 1668,804 1668,828 1692,852 1716,876 1740,900 1764,924 1764,948 1812,900 1836,924 1836,948 1860,924 1932,924 1956,900 2004,924 2028,948 2172
+AIBUNKER path for top room to the bottom corridor: 50 nodes: 1922,112 1764,132 1716,84 1692,108 1692,132 1692,156 1692,180 1668,204 1644,228 1620,252 1596,276 1572,300 1548,324 1524,348 1500,372 1500,396 1500,420 1500,44
+AIBUNKER path for middle to the mid left room: 36 nodes: 1823,531 1812,432 1764,468 1740,444 1644,444 1644,468 1644,492 1644,516 1644,540 1644,564 1644,588 1644,612 1644,636 1644,660 1620,684 1620,434 1596,444 1572,444 1
+AIBUNKER path for bottom right to the middle: 53 nodes: 2070,1030 2124,1068 2220,1092 2220,1116 2244,1140 2244,1082 2268,1092 2292,1092 2340,1044 2340,1068 2340,1092 2340,972 2316,996 2220,1020 2172,996 2148,972 2028,972
+AIBUNKER bottom right to the middle: died
+AIBUNKER middle to the mid left room: arrived in 40.5 s, stood still 0 s
+AIBUNKER top room to the bottom corridor: arrived in 41.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 1082 px short, stood still 0 s, at 1268,1001
+AIBUNKER mid left room to the right column: GAVE UP after 60 s, 251 px short, stood still 0 s, at 1936,916
+AIBUNKER done

@@ -3,6 +3,9 @@ function AIGymScript:StartScript()
 	self.runners = {};
 	self.report = {};
 	self.traceCourse = 16; -- Which course's unit writes a trace line every second.
+	if os and os.getenv and tonumber(os.getenv("CCCP_GYM_TRACE") or "") then
+		self.traceCourse = tonumber(os.getenv("CCCP_GYM_TRACE")); -- (The test machine picks the traced course without an edit.)
+	end
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
 	self.lookAt = Vector(SceneMan.SceneWidth * 0.5 + 940, 260); -- Where the camera is put, for a look at a course (nil for the default).
 end

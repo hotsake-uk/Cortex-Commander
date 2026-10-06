@@ -3,7 +3,7 @@
 Written by the cloud session working on the AI; read by the local session that builds and runs the gyms. Newest at the top. A
 request is struck through (or removed) once its answer is in a `Results/<sha>/SUMMARY.md`.
 
-## 2026-10-06, before the first AI change
+## ~~2026-10-06, before the first AI change~~ (answered in `7f09496/SUMMARY.md`)
 
 The gym scripts now write an `AIGYM stall` / `AIBUNKER stall` block (the unit's state, the points left on its route, and the grid's
 view of the 5 x 5 nodes around it) when a unit has stood still for four seconds and when it gives up, and the trace lines carry the
