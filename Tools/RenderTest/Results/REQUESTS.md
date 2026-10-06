@@ -7,7 +7,16 @@ request is struck through (or removed) once its answer is in a `Results/<sha>/SU
 
 The commit message of each push says the same at more length; this is the checklist.
 
-- **(this push), head room for a step off an edge** (PathFinder HeadRoomFactor / StepKindBetween: a node with no floor under it has
+- **(this push), the climb's ending, five faults from Results/af7836b** (GoToWpt): only an apex over a drop waits for its height, a
+  jump point on the floor pops as before (fixes outdoor "through the room" back to ~14 s); a jump landing beside the unit at its height
+  is not popped from 30 px away (Bywater course 5's pit, course 1's hatch); the lip probe reaches no higher than where the head will be
+  at the waypoint, so a corridor's ceiling is no longer a lip pushing the unit onto the far lip (sky "up the hatch", "bottom corridor
+  to the top room"); a climb that leaves the unit on the ground for 1.5 s has failed and asks for a new route at once, and the 12 s
+  re-path is held only while the climb is in the air (no more one-point routes held for 45 s); a crab's climb cuts at the height and
+  its legs drive towards the waypoint (crab over the hill: no 100 px overshoot, tank not burned on a 23 px climb). Expect sky 21/21
+  or close, Bywater courses 1 and 5 improving, crab arriving, "through the room" 14 s.
+
+- **c553485a, head room for a step off an edge** (PathFinder HeadRoomFactor / StepKindBetween: a node with no floor under it has
   its free height measured from its own centre, so it says nothing about head room, and only the room where the step starts counts).
   Expect: the sky bunker's "down the hatch" and "down the stairs" routes carry no Crawl (1) steps where the unit walks into the hole
   or off a step (the route print shows (0)/(3) there), and no `crawl: going prone` at those points.
@@ -42,24 +51,7 @@ The commit message of each push says the same at more length; this is the checkl
 
 ## Open requests
 
-1. The Bywater course 2 trace (above).
+1. **The Bywater middle-room deaths** (af7836b fault 4): yes please, a capture of "middle to the mid left room" around 1812,432 in its
+   first five seconds, to see whether a door closes on the unit. If it is a door, the movement script needs door manners (wait for
+   it to open; don't jet through a doorway), which I'll write once confirmed; tell me the door's preset and which way it moves.
 2. The `AIGYM unit` line for any other unit you run (height, radius, aim range), so the body fractions can be checked against it.
-
-## ~~2026-10-06, before the first AI change~~ (answered in `7f09496/SUMMARY.md`)
-
-The gym scripts now write an `AIGYM stall` / `AIBUNKER stall` block (the unit's state, the points left on its route, and the grid's
-view of the 5 x 5 nodes around it) when a unit has stood still for four seconds and when it gives up, and the trace lines carry the
-unit's aim angle and facing. So the per-stall grid dumps need no second run.
-
-1. Include the sky bunker in every run: `Tools\RenderTest\AIBunker.ps1 -Scenario AIBunker` (Ketanot Hills with the three-storey bunker
-   of base-game modules; AIBunker.lua's own five courses: low left to top right, across the gap, top left to low right, up the shaft,
-   low right to mid left). Those are base-game layouts, which is the standard the user set, and they need no mod. Please give their
-   pass/fail and times in SUMMARY.md alongside Bywater's.
-2. For each Bywater and sky bunker course that gives up, the `AIBUNKER stall` blocks and the `AITRACE nodes:` line of the last route the
-   unit had (the traced course only has AITRACE; if one course is clearly the worst, trace that one with `CCCP_BUNKER_TRACE=n`).
-3. For "crab over the hill": the `AIGYM trace` lines (now with `aim` and `facing`) for the whole run, and the `AITRACE climb:` / `jet:`
-   lines with `traceCourse = 15` in AIGym.lua (it's 16 at the moment). I want to see which way the crab faces, and its aim, at the
-   moment it is thrown back down the slope.
-4. The `AIGYM unit` lines (height, radius, jump height, aim range) for the Soldier Light and the Dreadnought: the grid's thresholds
-   (standing room 0.42 of the height, crawl room 0.24, half width = radius / 2 clamped to 8..16) hang off them.
-5. If Hemslock Hold has saved gym courses, its GYM lines too.
