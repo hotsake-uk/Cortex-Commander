@@ -205,6 +205,10 @@ function AICombatScript:UpdateScript()
 				if course.goal and MovableMan:ValidMO(course.units[1]) then
 					extra = " mover " .. math.floor(SceneMan:ShortestDistance(course.units[1].Pos, course.goal, false).Magnitude) .. " px from goal";
 				end
+				if course.squad and course.back and MovableMan:ValidMO(course.units[1]) then
+					-- (The leader was sent back at 30 s, so its distance is to the way back, not the first goal.)
+					extra = " leader " .. math.floor(SceneMan:ShortestDistance(course.units[1].Pos, course.back, false).Magnitude) .. " px from the way-back goal";
+				end
 				if course.squad then
 					extra = extra .. " closest two while the leader stood " .. (course.worstMinPair < math.huge and math.floor(course.worstMinPair) or -1) .. " px";
 				end

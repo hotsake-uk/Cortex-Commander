@@ -1,0 +1,1059 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AICOMBAT started 6 courses
+AITRACE [Soldier Light 1 at 2400,530] retreat: health 20, falling back to Brain Robot at 3043,536
+AITRACE step kind 0 to 2628,852 from 2580,790 prone false
+AITRACE path: none to follow, asking again from 2580,790
+AITRACE path: none to follow, asking again from 1000,171
+AITRACE path: none to follow, asking again from 2320,271
+AITRACE path: none to follow, asking again from 2400,532
+AITRACE step kind 0 to 1044,228 from 1000,174 prone false
+AITRACE step kind 0 to 3200,277 from 2320,274 prone false
+AITRACE step kind 0 to 2460,588 from 2400,536 prone false
+AITRACE pop: reached 2571,797 from 2579,807, 12 left
+AITRACE pop: reached 2578,799 from 2578,805, 11 left
+AITRACE pop: reached 2576,799 from 2576,802, 10 left
+AITRACE pop: reached 2585,798 from 2575,802, 9 left
+AITRACE pop: reached 2579,797 from 2575,802, 8 left
+AITRACE pop: reached 2579,796 from 2574,801, 7 left
+AITRACE pop: reached 2580,798 from 2574,800, 6 left
+AITRACE pop: reached 2581,795 from 2574,799, 5 left
+AITRACE pop: reached 2582,797 from 2574,799, 4 left
+AITRACE pop: reached 2584,798 from 2573,798, 3 left
+AITRACE step kind 2 to 2892,1029 from 2572,797 prone false
+AITRACE pop: reached 2586,796 from 2572,797, 2 left
+AITRACE step kind 0 to 2916,1025 from 2570,797 prone false
+AITRACE pop: reached 2586,795 from 2570,797, 1 left
+AITRACE path: none to follow, asking again from 1016,179
+AITRACE path: none to follow, asking again from 2567,797
+AITRACE step kind 0 to 1068,228 from 1015,178 prone false
+AITRACE path: none to follow, asking again from 2430,537
+AITRACE path: none to follow, asking again from 1050,177
+AICOMBAT firefight 2s: [1 at 1051,178 hp 100 mode 3 sees R0] [2 at 1760,178 hp 100 mode 1 sees L-20]
+AICOMBAT cover 2s: [1 at 629,458 hp 392 mode 1 sees R28] [2 at 920,308 hp 400 mode 1 sees L-30]
+AICOMBAT dug in 2s: [1 at 630,738 hp 100 mode 1 sees R29] [2 at 920,568 hp 100 mode 1 sees L-29]
+AICOMBAT move 2s: [1 at 2372,277 hp 61 mode 3 sees R16] [2 at 2780,137 hp 100 mode 1 sees L-17]
+AICOMBAT retreat 2s: [1 at 2461,539 hp 20 mode 3 retreating blind R0] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 2s: [1 at 2697,798 hp 100 mode 3] [1 at 2593,797 hp 100 mode 11] [1 at 2535,798 hp 100 mode 11] [1 at 2459,799 hp 100 mode 11] spread 238 minpair 57
+AITRACE path: none to follow, asking again from 2472,537
+AITRACE path: none to follow, asking again from 1086,177
+AITRACE path: none to follow, asking again from 2514,537
+AICOMBAT firefight 4s: [1 at 1130,177 hp 100 mode 3 sees R0] [2 at 1760,178 hp 100 mode 1 sees L10]
+AICOMBAT cover 4s: [1 at 625,459 hp 227 mode 1 blind R25] [2 at 904,321 hp -165 mode 1 blind L-27]
+AICOMBAT dug in 4s: [1 at 629,737 hp 67 mode 1 sees R36] [2 at 920,568 hp 100 mode 1 sees L-28]
+AICOMBAT move 4s: [1 at 2464,279 hp 55 mode 3 blind R24] [2 at 2781,137 hp 100 mode 1 blind L-17]
+AICOMBAT retreat 4s: [1 at 2533,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 4s: [1 at 2770,798 hp 100 mode 3] [1 at 2674,799 hp 100 mode 11] [1 at 2605,797 hp 100 mode 11] [1 at 2536,797 hp 100 mode 11] spread 233 minpair 68
+AITRACE [Soldier Light 1 at 625,458] flank: to 1216,311 (43 nodes)
+AITRACE path: none to follow, asking again from 1139,178
+AITRACE path: none to follow, asking again from 624,458
+AITRACE step kind 3 to 660,492 from 624,459 prone false
+AITRACE [Soldier Light 2 at 920,568] cover: reload, 40 px over
+AITRACE path: none to follow, asking again from 2550,540
+AITRACE pop: reached 2735,799 from 2720,798, 13 left
+AITRACE pop: reached 2737,799 from 2723,797, 12 left
+AITRACE pop: reached 2738,799 from 2726,797, 11 left
+AITRACE pop: reached 2740,799 from 2729,797, 10 left
+AITRACE pop: reached 2741,799 from 2732,797, 9 left
+AITRACE pop: reached 2743,798 from 2734,798, 8 left
+AITRACE pop: reached 2744,798 from 2737,799, 7 left
+AITRACE step kind 3 to 2748,1020 from 2740,799 prone false
+AITRACE pop: reached 2746,798 from 2740,799, 6 left
+AITRACE step kind 0 to 2772,1044 from 2743,798 prone false
+AITRACE pop: reached 2748,797 from 2743,798, 5 left
+AITRACE pop: reached 2749,797 from 2746,798, 4 left
+AITRACE pop: reached 2751,796 from 2749,797, 3 left
+AITRACE step kind 2 to 2844,1059 from 2751,797 prone false
+AITRACE pop: reached 2754,796 from 2751,797, 2 left
+AITRACE pop: reached 2756,796 from 2754,797, 1 left
+AITRACE step kind 0 to 2759,796 from 2757,797 prone false
+AITRACE path: none to follow, asking again from 2760,799
+AITRACE pop: reached 2767,796 from 2764,800, 9 left
+AITRACE pop: reached 2769,796 from 2766,800, 8 left
+AITRACE path: none to follow, asking again from 2621,545
+AITRACE pop: reached 2772,796 from 2768,800, 7 left
+AITRACE pop: reached 2775,796 from 2769,800, 6 left
+AITRACE pop: reached 2777,797 from 2770,800, 5 left
+AITRACE [Soldier Light 1 at 629,738] flank: to 1237,569 (16 nodes)
+AITRACE pop: reached 2780,798 from 2771,799, 4 left
+AITRACE pop: reached 2783,798 from 2772,799, 3 left
+AITRACE path: none to follow, asking again from 629,737
+AITRACE pop: reached 2785,799 from 2775,798, 2 left
+AITRACE step kind 2 to 3036,985 from 2777,797 prone false
+AITRACE pop: reached 2788,795 from 2777,797, 1 left
+AITRACE step kind 0 to 612,780 from 629,738 prone false
+AITRACE path: none to follow, asking again from 1189,178
+AITRACE step kind 0 to 2791,795 from 2780,797 prone false
+AITRACE path: none to follow, asking again from 2782,797
+AITRACE pop: reached 2800,795 from 2787,799, 10 left
+AITRACE pop: reached 2803,795 from 2790,799, 9 left
+AITRACE pop: reached 2808,799 from 2793,798, 8 left
+AITRACE pop: reached 2809,799 from 2795,797, 7 left
+AITRACE pop: reached 2812,799 from 2798,797, 6 left
+AITRACE path: none to follow, asking again from 661,459
+AITRACE pop: reached 2815,798 from 2801,797, 5 left
+AITRACE pop: reached 2817,798 from 2804,797, 4 left
+AITRACE step kind 2 to 900,294 from 662,459 prone false
+AITRACE climb: wpt dx 237 dy -166
+AICOMBAT firefight 6s: [1 at 1194,179 hp 100 mode 3 sees R0] [2 at 1760,177 hp 100 mode 1 sees L-1]
+AICOMBAT cover 6s: [1 at 662,459 hp 221 mode 3 flanking] [2 gone]
+AICOMBAT dug in 6s: [1 at 625,738 hp 66 mode 3 flanking blind R14] [2 at 948,567 hp 100 mode 1 blind L-38]
+AICOMBAT move 6s: [1 at 2520,278 hp 52 mode 3 blind R0] [2 at 2781,137 hp 100 mode 1 blind L-9]
+AICOMBAT retreat 6s: [1 at 2645,539 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 6s: [1 at 2888,799 hp 100 mode 3] [1 at 2805,797 hp 100 mode 11] [1 at 2698,799 hp 100 mode 11] [1 at 2660,799 hp 100 mode 11] spread 228 minpair 38
+AITRACE pop: reached 2820,798 from 2807,797, 3 left
+AITRACE step kind 2 to 3036,985 from 2810,798 prone false
+AITRACE pop: reached 2825,798 from 2810,798, 2 left
+AITRACE step kind 0 to 3060,977 from 2813,799 prone false
+AITRACE pop: reached 2827,798 from 2813,799, 1 left
+AITRACE path: none to follow, asking again from 2814,800
+AITRACE path: none to follow, asking again from 2677,539
+AITRACE path: none to follow, asking again from 613,738
+AITRACE path: none to follow, asking again from 1248,182
+AITRACE step kind 3 to 612,780 from 613,738 prone false
+AITRACE pop: reached 2859,799 from 2844,798, 9 left
+AITRACE pop: reached 2863,799 from 2847,797, 8 left
+AITRACE pop: reached 2865,799 from 2850,797, 7 left
+AITRACE pop: reached 2867,799 from 2853,797, 6 left
+AITRACE step kind 3 to 2940,948 from 2856,797 prone false
+AITRACE pop: reached 2870,799 from 2856,797, 5 left
+AITRACE pop: reached 2873,799 from 2859,798, 4 left
+AITRACE pop: reached 2875,799 from 2861,799, 3 left
+AITRACE step kind 0 to 2916,1018 from 2864,800 prone false
+AITRACE pop: reached 2878,798 from 2864,800, 2 left
+AITRACE pop: reached 2881,798 from 2867,799, 1 left
+AITRACE path: none to follow, asking again from 2872,798
+AITRACE pop: reached 2892,796 from 2878,798, 7 left
+AITRACE pop: reached 2895,796 from 2880,799, 6 left
+AITRACE pop: reached 2898,797 from 2883,800, 5 left
+AITRACE pop: reached 2901,797 from 2886,801, 4 left
+AITRACE pop: reached 2903,797 from 2888,800, 3 left
+AITRACE pop: reached 2906,797 from 2891,800, 2 left
+AITRACE pop: reached 2902,797 from 2894,799, 1 left
+AITRACE path: none to follow, asking again from 2725,537
+AITRACE path: none to follow, asking again from 2903,801
+AITRACE step kind 3 to 2916,852 from 2902,801 prone false
+AITRACE pop: reached 2902,797 from 2902,801, 8 left
+AITRACE pop: reached 2902,797 from 2902,802, 7 left
+AITRACE path: none to follow, asking again from 613,738
+AITRACE pop: reached 2900,797 from 2902,802, 6 left
+AITRACE step kind 0 to 2940,924 from 2903,802 prone false
+AITRACE pop: reached 2898,797 from 2903,802, 5 left
+AITRACE path: none to follow, asking again from 1300,179
+AITRACE step kind 3 to 2940,948 from 2905,801 prone false
+AITRACE pop: reached 2897,796 from 2905,801, 4 left
+AITRACE pop: reached 2895,796 from 2907,799, 3 left
+AITRACE pop: reached 2893,796 from 2909,798, 2 left
+AICOMBAT firefight 8s: [1 at 1300,178 hp 100 mode 3 sees R1] [2 at 1761,178 hp 100 mode 1 sees L68]
+AICOMBAT cover 8s: [1 at 754,301 hp 216 mode 3 flanking] [2 gone]
+AICOMBAT dug in 8s: [1 at 613,738 hp 65 mode 3 flanking blind R26] [2 at 948,568 hp 100 mode 1 blind L-10]
+AICOMBAT move 8s: [1 at 2628,277 hp 49 mode 3 blind R0] [2 at 2781,138 hp 100 mode 1 blind L18]
+AICOMBAT retreat 8s: [1 at 2745,539 hp 20 mode 3 retreating blind R0] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 8s: [1 at 2962,798 hp 100 mode 3] [1 at 2915,798 hp 100 mode 11] [1 at 2791,797 hp 100 mode 11] [1 at 2778,798 hp 100 mode 11] spread 184 minpair 13
+AITRACE pop: reached 2896,797 from 2914,799, 1 left
+AITRACE step kind 0 to 2898,797 from 2911,799 prone false
+AITRACE path: none to follow, asking again from 2903,798
+AITRACE step kind 3 to 2916,852 from 2909,797 prone false
+AITRACE pop: reached 2923,799 from 2911,797, 8 left
+AITRACE pop: reached 2924,795 from 2914,797, 7 left
+AITRACE step kind 0 to 2940,900 from 2917,798 prone false
+AITRACE pop: reached 2925,795 from 2917,798, 6 left
+AITRACE step kind 3 to 2940,924 from 2919,800 prone false
+AITRACE pop: reached 2925,795 from 2919,800, 5 left
+AITRACE pop: reached 2925,795 from 2921,801, 4 left
+AITRACE pop: reached 2926,795 from 2922,802, 3 left
+AITRACE path: none to follow, asking again from 2786,544
+AITRACE step kind 0 to 2964,1002 from 2923,803 prone false
+AITRACE pop: reached 2929,795 from 2923,803, 2 left
+AITRACE pop: reached 2930,795 from 2923,802, 1 left
+AITRACE path: none to follow, asking again from 2925,802
+AITRACE path: none to follow, asking again from 614,739
+AITRACE step kind 3 to 2940,852 from 2928,801 prone false
+AITRACE pop: reached 2935,795 from 2928,801, 8 left
+AITRACE path: none to follow, asking again from 1300,177
+AITRACE pop: reached 2934,795 from 2933,800, 7 left
+AITRACE pop: reached 2931,795 from 2935,799, 6 left
+AITRACE pop: reached 2929,795 from 2938,799, 5 left
+AITRACE pop: reached 2927,795 from 2941,798, 4 left
+AITRACE pop: reached 2927,795 from 2944,798, 3 left
+AITRACE step kind 0 to 2964,1002 from 2947,797 prone false
+AITRACE pop: reached 2954,799 from 2963,800, 2 left
+AITRACE pop: reached 2956,799 from 2963,799, 1 left
+AITRACE path: none to follow, asking again from 2957,802
+AITRACE path: none to follow, asking again from 2819,537
+AITRACE step kind 3 to 2988,852 from 2955,803 prone false
+AITRACE pop: reached 2968,799 from 2955,803, 8 left
+AITRACE step kind 0 to 3012,876 from 2955,802 prone false
+AITRACE pop: reached 2970,799 from 2955,802, 7 left
+AITRACE pop: reached 2973,799 from 2955,802, 6 left
+AITRACE step kind 3 to 3036,924 from 2955,802 prone false
+AITRACE pop: reached 2975,799 from 2955,802, 5 left
+AITRACE jet: stuck
+AITRACE step kind 0 to 3012,948 from 2956,802 prone false
+AITRACE path: none to follow, asking again from 1300,178
+AITRACE path: none to follow, asking again from 615,734
+AITRACE pop: reached 2975,799 from 2960,799, 4 left
+AICOMBAT firefight 10s: [1 at 1300,178 hp 85 mode 3 sees R-1] [2 at 1748,192 hp 85 mode 1 sees L4]
+AICOMBAT cover 10s: [1 at 876,278 hp 210 mode 3 flanking] [2 gone]
+AICOMBAT dug in 10s: [1 at 617,728 hp 64 mode 3 flanking blind R22] [2 at 948,568 hp 100 mode 1 blind L17]
+AICOMBAT move 10s: [1 at 2797,278 hp 46 mode 3 blind R0] [2 at 2781,138 hp 100 mode 1 blind L9]
+AICOMBAT retreat 10s: [1 at 2825,540 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 10s: [1 at 3011,800 hp 100 mode 3] [1 at 2960,799 hp 100 mode 11] [1 at 2910,799 hp 100 mode 11] [1 at 2867,797 hp 100 mode 11] spread 143 minpair 43
+AITRACE step kind 3 to 3012,991 from 2961,799 prone false
+AITRACE pop: reached 2977,799 from 2961,799, 3 left
+AITRACE pop: reached 2979,799 from 2962,798, 2 left
+AITRACE pop: reached 2981,798 from 2963,798, 1 left
+AITRACE step kind 0 to 2983,798 from 2965,798 prone false
+AITRACE pop: reached 900,294 from 891,285, 5 left
+AITRACE step kind 0 to 924,305 from 893,288 prone false
+AITRACE jet: landing brake at 5.7
+AITRACE pop: reached 924,305 from 906,303, 4 left
+AITRACE jet: landing brake at 5.7
+AITRACE jet: landing brake at 6
+AITRACE path: none to follow, asking again from 2857,537
+AITRACE step kind 3 to 2892,588 from 2860,538 prone false
+AITRACE path: none to follow, asking again from 2986,802
+AITRACE jet: stuck
+AITRACE step kind 3 to 3012,852 from 2986,804 prone false
+AITRACE path: none to follow, asking again from 664,740
+AITRACE pop: reached 3002,796 from 2987,804, 7 left
+AITRACE pop: reached 3002,796 from 2987,803, 6 left
+AITRACE step kind 0 to 3036,900 from 2988,801 prone false
+AITRACE pop: reached 3005,796 from 2988,800, 5 left
+AITRACE step kind 3 to 3036,924 from 2989,800 prone false
+AITRACE pop: reached 3006,796 from 2989,800, 4 left
+AITRACE path: none to follow, asking again from 1294,179
+AITRACE pop: reached 3008,796 from 2990,799, 3 left
+AITRACE pop: reached 3009,797 from 2991,799, 2 left
+AITRACE pop: reached 3011,797 from 2992,798, 1 left
+AITRACE step kind 0 to 3012,797 from 2994,798 prone false
+AITRACE path: none to follow, asking again from 2995,798
+AITRACE step kind 3 to 3012,852 from 2998,797 prone false
+AITRACE pop: reached 3017,797 from 2998,797, 7 left
+AITRACE pop: reached 3019,798 from 3000,797, 6 left
+AITRACE step kind 0 to 3036,900 from 3001,797 prone false
+AITRACE pop: reached 3020,798 from 3001,797, 5 left
+AITRACE step kind 3 to 3036,924 from 3003,797 prone false
+AITRACE pop: reached 3022,798 from 3003,797, 4 left
+AITRACE pop: reached 3023,798 from 3004,797, 3 left
+AITRACE pop: reached 3025,798 from 3006,798, 2 left
+AITRACE step kind 0 to 3060,977 from 3006,798 prone false
+AITRACE path: none to follow, asking again from 2893,538
+AITRACE pop: reached 3024,798 from 3006,798, 1 left
+AITRACE path: none to follow, asking again from 3007,800
+AICOMBAT firefight 12s: [1 gone] [2 at 1755,186 hp 20 mode 2]
+AICOMBAT cover 12s: [1 at 959,307 hp 204 mode 3 flanking] [2 gone]
+AICOMBAT dug in 12s: [1 at 662,738 hp 63 mode 3 flanking blind R0] [2 at 948,567 hp 100 mode 1 blind L10]
+AICOMBAT move 12s: [1 at 2967,278 hp 43 mode 3 blind R0] [2 at 2781,138 hp 100 mode 1 blind L-18]
+AICOMBAT retreat 12s: [1 at 2892,541 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 12s: [1 at 3062,801 hp 100 mode 3] [1 at 3007,801 hp 100 mode 11] [1 at 2957,798 hp 100 mode 11] [1 at 2901,798 hp 100 mode 11] spread 161 minpair 50
+AITRACE path: none to follow, asking again from 662,738
+AITRACE step kind 3 to 3036,852 from 3009,801 prone false
+AITRACE pop: reached 3024,798 from 3009,801, 7 left
+AITRACE pop: reached 3023,798 from 3010,800, 6 left
+AITRACE pop: reached 3021,798 from 3011,799, 5 left
+AITRACE pop: reached 3020,798 from 3012,799, 4 left
+AITRACE pop: reached 3019,797 from 3013,798, 3 left
+AITRACE pop: reached 3018,797 from 3014,798, 2 left
+AITRACE step kind 0 to 3060,977 from 3015,798 prone false
+AITRACE pop: reached 3017,797 from 3015,798, 1 left
+AITRACE path: none to follow, asking again from 3018,797
+AITRACE step kind 3 to 3036,852 from 3021,797 prone false
+AITRACE pop: reached 3011,796 from 3021,797, 7 left
+AITRACE pop: reached 3010,796 from 3023,797, 6 left
+AITRACE pop: reached 3012,796 from 3024,798, 5 left
+AITRACE pop: reached 3013,796 from 3026,799, 4 left
+AITRACE pop: reached 3013,796 from 3027,799, 3 left
+AITRACE step kind 0 to 3060,971 from 3029,799 prone false
+AITRACE pop: reached 3015,796 from 3029,799, 2 left
+AITRACE pop: reached 3016,796 from 3030,799, 1 left
+AITRACE path: none to follow, asking again from 2916,539
+AITRACE path: none to follow, asking again from 3032,797
+AITRACE step kind 3 to 3036,852 from 3032,798 prone false
+AITRACE pop: reached 3015,796 from 3032,797, 7 left
+AITRACE path: none to follow, asking again from 662,737
+AITRACE pop: reached 3014,796 from 3032,798, 6 left
+AITRACE path: none to follow, asking again from 3101,277
+AITRACE path: none to follow, asking again from 2935,542
+AITRACE pop: reached 3014,796 from 3032,798, 5 left
+AITRACE pop: reached 3014,796 from 3032,798, 4 left
+AICOMBAT firefight 14s: [1 gone] [2 at 1762,178 hp 17 mode 2]
+AICOMBAT cover 14s: [1 at 1062,311 hp 198 mode 3 flanking] [2 gone]
+AICOMBAT dug in 14s: [1 at 662,737 hp 62 mode 3 flanking blind R0] [2 at 948,568 hp 100 mode 1 blind L-18]
+AICOMBAT move 14s: [1 at 3092,277 hp 40 mode 3 blind L0] [2 at 2781,138 hp 100 mode 1 blind L-9]
+AICOMBAT retreat 14s: [1 at 2948,537 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 14s: [1 at 3083,798 hp 100 mode 3] [1 at 3032,797 hp 100 mode 11] [1 at 2957,797 hp 100 mode 11] [1 at 2900,797 hp 100 mode 11] spread 183 minpair 50
+AITRACE jet: stuck
+AITRACE path: none to follow, asking again from 664,734
+AITRACE pop: reached 3014,796 from 3032,798, 3 left
+AITRACE step kind 0 to 3060,971 from 3032,798 prone false
+AITRACE pop: reached 1116,305 from 1105,317, 3 left
+AITRACE path: none to follow, asking again from 3082,278
+AITRACE step kind 2 to 3156,204 from 3082,278 prone false
+AITRACE climb: wpt dx 73 dy -75
+AITRACE path: none to follow, asking again from 2962,537
+AITRACE pop: reached 3014,796 from 3032,797, 2 left
+AITRACE pop: reached 3015,796 from 3033,796, 1 left
+AITRACE jet: landing brake at 5.9
+AITRACE path: none to follow, asking again from 3034,793
+AITRACE jet: planner delta 5 flying true wpt dy 46
+AITRACE step kind 3 to 3036,852 from 3036,788 prone false
+AITRACE pop: reached 3018,797 from 3036,788, 7 left
+AITRACE pop: reached 1140,305 from 1126,310, 2 left
+AITRACE step kind 2 to 1188,305 from 1128,312 prone false
+AITRACE path: none to follow, asking again from 678,742
+AITRACE jet: planner delta 8 flying true wpt dy 3
+AITRACE pop: reached 3036,799 from 3061,795, 6 left
+AITRACE [Soldier Light 1 at 1166,311] flank: there
+AITRACE pop: reached 3037,799 from 3062,798, 5 left
+AITRACE pop: reached 3038,799 from 3063,800, 4 left
+AITRACE path: none to follow, asking again from 3003,542
+AITRACE pop: reached 3037,799 from 3064,802, 3 left
+AITRACE step kind 0 to 3060,971 from 3065,804 prone false
+AITRACE pop: reached 3038,799 from 3065,804, 2 left
+AITRACE pop: reached 3038,799 from 3065,806, 1 left
+AICOMBAT firefight 16s: [1 gone] [2 at 1760,178 hp 15 mode 2]
+AICOMBAT cover 16s: [1 at 1175,317 hp 193 mode 2] [2 gone]
+AICOMBAT dug in 16s: [1 at 686,737 hp 61 mode 3 flanking blind R0] [2 at 948,568 hp 100 mode 1 blind L-10]
+AICOMBAT move 16s: [1 at 3138,222 hp 37 mode 3 sees R90] [2 at 2781,139 hp 100 mode 1 sees R-16]
+AICOMBAT retreat 16s: [1 at 3003,542 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 16s: [1 at 3105,805 hp 100 mode 3] [1 at 3067,809 hp 100 mode 11] [1 at 2976,800 hp 100 mode 11] [1 at 2903,799 hp 100 mode 11] spread 201 minpair 38
+AITRACE path: none to follow, asking again from 685,738
+AITRACE path: none to follow, asking again from 3051,797
+AITRACE step kind 3 to 3060,852 from 3048,798 prone false
+AITRACE pop: reached 3043,799 from 3048,798, 7 left
+AITRACE pop: reached 3046,799 from 3046,799, 6 left
+AITRACE pop: reached 3048,798 from 3044,800, 5 left
+AITRACE pop: reached 3050,798 from 3043,802, 4 left
+AITRACE pop: reached 3051,797 from 3041,804, 3 left
+AITRACE step kind 0 to 3084,967 from 3040,804 prone false
+AITRACE [Soldier Light 1 at 3181,218] retreat: health 22, falling back to Brain Robot at 2973,535
+AITRACE pop: reached 3054,797 from 3039,804, 2 left
+AITRACE pop: reached 3055,796 from 3038,803, 1 left
+AITRACE path: none to follow, asking again from 3183,218
+AITRACE path: none to follow, asking again from 3010,542
+AITRACE step kind 0 to 3132,324 from 3186,221 prone false
+AITRACE jet: landing brake at 5.7
+AITRACE jet: landing brake at 5.6
+AITRACE jet: landing brake at 6.3
+AITRACE jet: landing brake at 5.8
+AITRACE path: none to follow, asking again from 686,739
+AITRACE jet: landing brake at 6.1
+AITRACE jet: planner delta 35 flying true wpt dy 48
+AITRACE jet: landing brake at 6.7
+AITRACE jet: landing brake at 6.2
+AITRACE path: none to follow, asking again from 680,738
+AITRACE jet: stuck
+AICOMBAT firefight 18s: [1 gone] [2 at 1758,176 hp 12 mode 2]
+AICOMBAT cover 18s: [1 at 1172,310 hp 187 mode 2] [2 gone]
+AICOMBAT dug in 18s: [1 at 676,739 hp 60 mode 3 flanking blind R0] [2 at 948,568 hp 100 mode 1 blind L17]
+AICOMBAT move 18s: [1 at 3173,288 hp -22 mode 3 retreating blind L22] [2 at 2781,139 hp 100 mode 1 blind R-15]
+AICOMBAT retreat 18s: [1 at 3011,537 hp 20 mode 3 retreating blind R0] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 18s: [1 at 3105,798 hp 100 mode 3] [1 at 3080,798 hp 100 mode 11] [1 at 3006,798 hp 100 mode 11] [1 at 2982,798 hp 100 mode 11] spread 122 minpair 24
+AITRACE path: none to follow, asking again from 3011,536
+AITRACE jet: landing brake at 6
+AITRACE path: none to follow, asking again from 685,742
+AITRACE path: none to follow, asking again from 3031,538
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE path: none to follow, asking again from 3098,797
+AICOMBAT firefight 20s: [1 gone] [2 at 1758,178 hp 9 mode 2]
+AICOMBAT cover 20s: [1 at 1170,307 hp 181 mode 2] [2 gone]
+AICOMBAT dug in 20s: [1 at 683,739 hp 58 mode 3 flanking blind R0] [2 at 948,568 hp 100 mode 1 blind L10]
+AICOMBAT move 20s: [1 gone] [2 at 2781,139 hp 100 mode 1]
+AICOMBAT retreat 20s: [1 at 3029,537 hp 20 mode 3 retreating blind L21] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 20s: [1 at 3109,798 hp 100 mode 3] [1 at 3098,798 hp 100 mode 11] [1 at 3006,798 hp 100 mode 11] [1 at 2982,798 hp 100 mode 11] spread 126 minpair 10
+AITRACE path: none to follow, asking again from 683,738
+AITRACE path: none to follow, asking again from 3098,797
+AITRACE [Soldier Light 1 at 683,737] flank: gave up
+AITRACE path: none to follow, asking again from 3098,797
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE path: none to follow, asking again from 3098,797
+AITRACE step kind 3 to 3108,852 from 3098,798 prone false
+AITRACE pop: reached 3116,798 from 3098,798, 7 left
+AITRACE pop: reached 3104,798 from 3098,798, 6 left
+AITRACE pop: reached 3104,798 from 3098,798, 5 left
+AITRACE pop: reached 3104,798 from 3098,798, 4 left
+AITRACE pop: reached 3104,798 from 3098,797, 3 left
+AITRACE pop: reached 3104,798 from 3098,797, 2 left
+AITRACE pop: reached 3104,798 from 3098,798, 1 left
+AITRACE step kind 0 to 3104,798 from 3098,798 prone false
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE step kind 3 to 3108,852 from 3098,798 prone false
+AITRACE pop: reached 3104,798 from 3098,798, 7 left
+AITRACE pop: reached 3104,798 from 3098,798, 6 left
+AICOMBAT firefight 22s: [1 gone] [2 at 1761,177 hp 7 mode 2]
+AICOMBAT cover 22s: [1 at 1169,308 hp 175 mode 2] [2 gone]
+AICOMBAT dug in 22s: [1 at 684,737 hp 57 mode 1 blind R5] [2 at 948,567 hp 100 mode 1 blind L-17]
+AICOMBAT move 22s: [1 gone] [2 at 2781,140 hp 100 mode 1]
+AICOMBAT retreat 22s: [1 at 3028,538 hp 20 mode 3 retreating blind L5] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 22s: [1 at 3125,767 hp 100 mode 3] [1 at 3098,798 hp 100 mode 11] [1 at 3006,797 hp 100 mode 11] [1 at 3009,801 hp 100 mode 11] spread 122 minpair 4
+AITRACE pop: reached 3104,798 from 3098,798, 5 left
+AITRACE pop: reached 3104,798 from 3098,797, 4 left
+AITRACE pop: reached 3104,798 from 3098,797, 3 left
+AITRACE pop: reached 3104,798 from 3098,798, 2 left
+AITRACE step kind 0 to 3132,977 from 3098,798 prone false
+AITRACE pop: reached 3104,798 from 3098,798, 1 left
+AITRACE path: none to follow, asking again from 3098,797
+AITRACE step kind 3 to 3108,852 from 3098,798 prone false
+AITRACE pop: reached 3110,797 from 3098,798, 7 left
+AITRACE pop: reached 3109,797 from 3098,798, 6 left
+AITRACE pop: reached 3111,797 from 3098,798, 5 left
+AITRACE pop: reached 3109,796 from 3098,798, 4 left
+AITRACE pop: reached 3110,797 from 3098,797, 3 left
+AITRACE pop: reached 3110,797 from 3098,797, 2 left
+AITRACE step kind 0 to 3132,977 from 3098,798 prone false
+AITRACE pop: reached 3110,797 from 3098,798, 1 left
+AITRACE path: none to follow, asking again from 3098,798
+AITRACE step kind 3 to 3108,852 from 3098,798 prone false
+AITRACE pop: reached 3108,796 from 3098,798, 7 left
+AITRACE pop: reached 3108,796 from 3098,798, 6 left
+AITRACE pop: reached 3108,796 from 3098,798, 5 left
+AITRACE pop: reached 3105,796 from 3098,797, 4 left
+AITRACE pop: reached 3106,796 from 3098,798, 3 left
+AITRACE pop: reached 3106,796 from 3098,798, 2 left
+AICOMBAT firefight 24s: [1 gone] [2 at 1759,178 hp 4 mode 2]
+AICOMBAT cover 24s: [1 at 1169,308 hp 169 mode 2] [2 gone]
+AICOMBAT dug in 24s: [1 at 684,738 hp 56 mode 1 blind R21] [2 at 948,568 hp 100 mode 1 blind L-15]
+AICOMBAT move 24s: [1 gone] [2 at 2781,139 hp 100 mode 1]
+AICOMBAT retreat 24s: [1 at 3028,538 hp 20 mode 3 retreating blind R-28] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 24s: [1 at 3134,801 hp 100 mode 3] [1 at 3098,798 hp 100 mode 11] [1 at 3020,798 hp 100 mode 11] [1 at 3011,798 hp 100 mode 11] spread 123 minpair 9
+AITRACE step kind 0 to 3132,977 from 3098,798 prone false
+AITRACE pop: reached 3107,796 from 3098,798, 1 left
+AITRACE path: none to follow, asking again from 3098,797
+AITRACE step kind 3 to 3108,852 from 3098,798 prone false
+AITRACE [Soldier Light 1 at 3028,538] retreat: over, health 20
+AITRACE pop: reached 3111,797 from 3098,797, 7 left
+AITRACE pop: reached 3110,797 from 3098,797, 6 left
+AICOMBAT firefight 26s: [1 gone] [2 at 1759,178 hp 1 mode 2]
+AICOMBAT cover 26s: [1 at 1167,309 hp 164 mode 2] [2 gone]
+AICOMBAT dug in 26s: [1 at 684,738 hp 55 mode 1 blind R-73] [2 at 948,568 hp 100 mode 1 blind R-1]
+AICOMBAT move 26s: [1 gone] [2 at 2781,139 hp 100 mode 1]
+AICOMBAT retreat 26s: [1 at 3027,537 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 26s: [1 at 3130,798 hp 100 mode 3] [1 at 3098,797 hp 100 mode 11] [1 at 3020,798 hp 100 mode 11] [1 at 3014,798 hp 100 mode 11] spread 115 minpair 5
+AITRACE pop: reached 3110,797 from 3098,797, 5 left
+AITRACE pop: reached 3110,797 from 3098,797, 4 left
+AITRACE pop: reached 3111,797 from 3098,798, 3 left
+AITRACE pop: reached 3111,797 from 3098,798, 2 left
+AITRACE step kind 0 to 3132,977 from 3098,798 prone false
+AITRACE pop: reached 3108,796 from 3098,798, 1 left
+AITRACE path: none to follow, asking again from 3098,797
+AITRACE step kind 3 to 3108,852 from 3098,797 prone false
+AITRACE pop: reached 3106,796 from 3098,797, 7 left
+AITRACE pop: reached 3105,796 from 3097,798, 6 left
+AITRACE pop: reached 3112,797 from 3098,798, 5 left
+AITRACE pop: reached 3112,797 from 3098,798, 4 left
+AITRACE pop: reached 3112,797 from 3097,797, 3 left
+AITRACE pop: reached 3112,797 from 3097,797, 2 left
+AITRACE step kind 0 to 3132,977 from 3097,798 prone false
+AITRACE pop: reached 3112,797 from 3097,798, 1 left
+AITRACE path: none to follow, asking again from 3097,798
+AITRACE step kind 3 to 3108,852 from 3097,797 prone false
+AITRACE pop: reached 3112,797 from 3097,797, 7 left
+AITRACE pop: reached 3112,797 from 3097,797, 6 left
+AITRACE pop: reached 3112,797 from 3097,798, 5 left
+AITRACE pop: reached 3112,797 from 3097,799, 4 left
+AITRACE pop: reached 3112,797 from 3097,800, 3 left
+AITRACE pop: reached 3112,797 from 3098,801, 2 left
+AITRACE pop: reached 3112,797 from 3099,801, 1 left
+AITRACE step kind 0 to 3112,797 from 3100,800 prone false
+AITRACE path: none to follow, asking again from 3100,799
+AITRACE step kind 3 to 3108,852 from 3102,798 prone false
+AITRACE pop: reached 3116,797 from 3102,798, 7 left
+AITRACE pop: reached 3118,797 from 3103,798, 6 left
+AITRACE pop: reached 3116,797 from 3105,796, 5 left
+AITRACE pop: reached 3118,797 from 3107,795, 4 left
+AITRACE pop: reached 3120,797 from 3108,793, 3 left
+AITRACE pop: reached 3119,797 from 3111,791, 2 left
+AITRACE pop: reached 3120,797 from 3113,789, 1 left
+AITRACE step kind 0 to 3119,797 from 3115,787 prone false
+AITRACE path: none to follow, asking again from 3117,786
+AITRACE path: none to follow, asking again from 3124,786
+AICOMBAT firefight 28s: [1 gone] [2 at 1749,191 hp -1 mode 2]
+AICOMBAT cover 28s: [1 at 1169,307 hp 158 mode 2] [2 gone]
+AICOMBAT dug in 28s: [1 at 684,738 hp 54 mode 1 blind L82] [2 at 946,567 hp 100 mode 1 blind L-18]
+AICOMBAT move 28s: [1 gone] [2 at 2782,137 hp 100 mode 1]
+AICOMBAT retreat 28s: [1 at 3026,537 hp 20 mode 2 blind R13] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 28s: [1 at 3122,802 hp 100 mode 3] [1 at 3135,794 hp 100 mode 11] [1 at 3040,801 hp 100 mode 11] [1 at 3014,797 hp 100 mode 11] spread 107 minpair 15
+AITRACE jet: planner delta 8 flying true wpt dy -4
+AITRACE jet: planner delta 10 flying true wpt dy -9
+AITRACE path: none to follow, asking again from 3118,803
+AITRACE path: none to follow, asking again from 3116,803
+AITRACE path: none to follow, asking again from 3114,800
+AITRACE path: none to follow, asking again from 3113,800
+AITRACE path: none to follow, asking again from 3113,801
+AITRACE path: none to follow, asking again from 3115,801
+AITRACE path: none to follow, asking again from 3117,799
+AITRACE path: none to follow, asking again from 3119,801
+AITRACE path: none to follow, asking again from 3120,803
+AITRACE step kind 3 to 3132,852 from 3119,801 prone false
+AITRACE pop: reached 3120,797 from 3119,801, 7 left
+AITRACE pop: reached 3120,797 from 3118,800, 6 left
+AITRACE pop: reached 3117,797 from 3118,800, 5 left
+AITRACE pop: reached 3119,797 from 3118,800, 4 left
+AITRACE pop: reached 3121,798 from 3117,800, 3 left
+AICOMBAT firefight 30s: [1 gone] [2 gone]
+AICOMBAT cover 30s: [1 at 1168,308 hp 152 mode 2] [2 gone]
+AICOMBAT dug in 30s: [1 at 687,738 hp 53 mode 1 blind R-15] [2 at 946,568 hp 100 mode 1 blind L9]
+AICOMBAT move 30s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 30s: [1 at 3029,537 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 30s: [1 at 3104,799 hp 100 mode 3] [1 at 3117,800 hp 100 mode 11] [1 at 3079,797 hp 100 mode 11] [1 at 3043,798 hp 100 mode 11] spread 60 minpair 13 (leader sent back)
+AITRACE pop: reached 3124,798 from 3118,800, 2 left
+AITRACE step kind 0 to 3108,979 from 3118,800 prone false
+AITRACE pop: reached 3126,798 from 3118,800, 1 left
+AITRACE path: none to follow, asking again from 3118,801
+AITRACE path: none to follow, asking again from 3118,801
+AITRACE path: none to follow, asking again from 3117,801
+AITRACE step kind 3 to 3108,852 from 3116,799 prone false
+AITRACE pop: reached 3122,799 from 3116,799, 7 left
+AITRACE pop: reached 3122,799 from 3115,798, 6 left
+AITRACE pop: reached 3120,799 from 3114,799, 5 left
+AITRACE pop: reached 3119,799 from 3113,799, 4 left
+AITRACE pop: reached 3118,799 from 3112,798, 3 left
+AITRACE pop: reached 3117,799 from 3110,798, 2 left
+AITRACE step kind 0 to 3084,977 from 3109,797 prone false
+AITRACE pop: reached 3115,799 from 3109,797, 1 left
+AITRACE path: none to follow, asking again from 3106,797
+AITRACE step kind 3 to 3108,852 from 3103,797 prone false
+AITRACE pop: reached 3109,799 from 3103,797, 7 left
+AITRACE pop: reached 3106,795 from 3101,798, 6 left
+AITRACE pop: reached 3105,795 from 3100,799, 5 left
+AITRACE pop: reached 3104,795 from 3098,799, 4 left
+AITRACE pop: reached 3103,795 from 3097,798, 3 left
+AITRACE pop: reached 3101,795 from 3095,798, 2 left
+AITRACE step kind 0 to 3084,977 from 3094,798 prone false
+AITRACE pop: reached 3100,795 from 3094,798, 1 left
+AITRACE path: none to follow, asking again from 3091,797
+AITRACE step kind 3 to 3084,852 from 3088,797 prone false
+AITRACE pop: reached 3094,795 from 3088,797, 7 left
+AITRACE pop: reached 3092,795 from 3086,797, 6 left
+AITRACE pop: reached 3093,795 from 3084,797, 5 left
+AITRACE pop: reached 3095,795 from 3083,799, 4 left
+AITRACE pop: reached 3094,795 from 3083,799, 3 left
+AITRACE pop: reached 3094,795 from 3083,800, 2 left
+AITRACE step kind 0 to 3060,977 from 3083,801 prone false
+AITRACE pop: reached 3095,795 from 3083,801, 1 left
+AITRACE path: none to follow, asking again from 3081,800
+AITRACE step kind 3 to 3084,852 from 3079,799 prone false
+AICOMBAT firefight 32s: [1 gone] [2 gone]
+AICOMBAT cover 32s: [1 at 1169,309 hp 146 mode 2] [2 gone]
+AICOMBAT dug in 32s: [1 at 683,738 hp 52 mode 1 blind L57] [2 at 946,567 hp 100 mode 1 blind L18]
+AICOMBAT move 32s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 32s: [1 at 3029,538 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 32s: [1 at 3035,799 hp 100 mode 3] [1 at 3087,798 hp 100 mode 11] [1 at 3101,798 hp 100 mode 11] [1 at 3106,798 hp 100 mode 11] spread 70 minpair 4
+AITRACE pop: reached 3105,798 from 3089,797, 7 left
+AITRACE pop: reached 3105,798 from 3089,797, 6 left
+AITRACE pop: reached 3105,798 from 3089,798, 5 left
+AITRACE pop: reached 3105,798 from 3089,797, 4 left
+AICOMBAT firefight 34s: [1 gone] [2 gone]
+AICOMBAT cover 34s: [1 at 1172,309 hp 141 mode 2] [2 gone]
+AICOMBAT dug in 34s: [1 at 685,738 hp 51 mode 1 blind L35] [2 at 946,568 hp 100 mode 1 blind L-9]
+AICOMBAT move 34s: [1 gone] [2 at 2782,137 hp 100 mode 1]
+AICOMBAT retreat 34s: [1 at 3029,537 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 34s: [1 at 3035,798 hp 100 mode 3] [1 at 3089,797 hp 100 mode 11] [1 at 3102,798 hp 100 mode 11] [1 at 3109,798 hp 100 mode 11] spread 73 minpair 7
+AITRACE pop: reached 3105,798 from 3089,798, 3 left
+AITRACE pop: reached 3105,798 from 3089,799, 2 left
+AITRACE step kind 0 to 3060,977 from 3089,799 prone false
+AITRACE pop: reached 3105,798 from 3089,798, 1 left
+AITRACE path: none to follow, asking again from 3089,797
+AITRACE step kind 3 to 3084,852 from 3089,798 prone false
+AITRACE pop: reached 3104,798 from 3088,797, 7 left
+AITRACE pop: reached 3103,798 from 3088,795, 6 left
+AITRACE pop: reached 3103,798 from 3087,793, 5 left
+AITRACE pop: reached 3101,797 from 3086,791, 4 left
+AITRACE pop: reached 3100,797 from 3084,788, 3 left
+AITRACE step kind 0 to 3060,971 from 3083,786 prone false
+AITRACE pop: reached 3099,797 from 3083,786, 2 left
+AITRACE pop: passed 3097,796 for 3097,796 from 3082,782
+AICOMBAT firefight 36s: [1 gone] [2 gone]
+AICOMBAT cover 36s: [1 at 1175,308 hp 135 mode 2] [2 gone]
+AICOMBAT dug in 36s: [1 at 685,738 hp 50 mode 1 blind L-6] [2 at 946,567 hp 100 mode 1 blind L-18]
+AICOMBAT move 36s: [1 gone] [2 at 2782,137 hp 100 mode 1]
+AICOMBAT retreat 36s: [1 at 3029,538 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 36s: [1 at 3016,757 hp 100 mode 3] [1 at 3066,764 hp 100 mode 11] [1 at 3110,799 hp 100 mode 11] [1 at 3105,799 hp 100 mode 11] spread 103 minpair 4
+AITRACE jet: planner delta 11 flying true wpt dy 19
+AITRACE jet: planner delta 10 flying true wpt dy 5
+AITRACE path: none to follow, asking again from 3069,803
+AITRACE step kind 3 to 3060,852 from 3067,804 prone false
+AITRACE pop: reached 3075,799 from 3067,804, 8 left
+AITRACE pop: reached 3073,799 from 3066,802, 7 left
+AITRACE pop: reached 3071,799 from 3064,801, 6 left
+AITRACE pop: reached 3068,799 from 3062,799, 5 left
+AITRACE pop: reached 3066,799 from 3061,798, 4 left
+AITRACE step kind 0 to 3036,985 from 3059,797 prone false
+AITRACE pop: reached 3063,799 from 3059,797, 3 left
+AITRACE pop: reached 3060,799 from 3057,797, 2 left
+AITRACE step kind 3 to 3012,1001 from 3055,797 prone false
+AITRACE pop: reached 3057,799 from 3055,797, 1 left
+AITRACE step kind 0 to 3055,799 from 3053,797 prone false
+AITRACE path: none to follow, asking again from 3052,798
+AITRACE step kind 3 to 3060,852 from 3051,799 prone false
+AITRACE pop: reached 3052,799 from 3051,799, 8 left
+AITRACE pop: reached 3052,799 from 3051,800, 7 left
+AITRACE pop: reached 3052,799 from 3051,801, 6 left
+AITRACE pop: reached 3054,799 from 3051,802, 5 left
+AITRACE pop: reached 3055,799 from 3053,802, 4 left
+AITRACE step kind 0 to 3036,985 from 3054,801 prone false
+AITRACE pop: reached 3056,799 from 3054,801, 3 left
+AITRACE pop: reached 3059,799 from 3056,800, 2 left
+AITRACE pop: reached 3060,799 from 3057,800, 1 left
+AITRACE path: none to follow, asking again from 3060,800
+AITRACE step kind 3 to 3060,852 from 3062,802 prone false
+AITRACE pop: reached 3053,799 from 3062,802, 8 left
+AITRACE pop: reached 3053,799 from 3062,801, 7 left
+AITRACE pop: reached 3055,799 from 3062,800, 6 left
+AITRACE pop: reached 3056,799 from 3062,800, 5 left
+AITRACE pop: reached 3059,799 from 3060,799, 4 left
+AITRACE step kind 0 to 3036,985 from 3058,798 prone false
+AITRACE pop: reached 3058,799 from 3058,798, 3 left
+AITRACE pop: reached 3055,799 from 3056,798, 2 left
+AITRACE pop: reached 3052,799 from 3053,797, 1 left
+AITRACE path: none to follow, asking again from 3047,797
+AICOMBAT firefight 38s: [1 gone] [2 gone]
+AICOMBAT cover 38s: [1 at 1175,308 hp 129 mode 2] [2 gone]
+AICOMBAT dug in 38s: [1 at 685,738 hp 49 mode 2 blind L3] [2 at 946,568 hp 100 mode 1 blind L9]
+AICOMBAT move 38s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 38s: [1 at 3029,538 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 38s: [1 at 2975,799 hp 100 mode 3] [1 at 3046,798 hp 100 mode 11] [1 at 3086,801 hp 100 mode 11] [1 at 3105,797 hp 100 mode 11] spread 129 minpair 19
+AITRACE step kind 3 to 3036,852 from 3042,799 prone false
+AITRACE pop: reached 3041,798 from 3042,799, 8 left
+AITRACE pop: reached 3037,798 from 3039,799, 7 left
+AITRACE pop: reached 3034,798 from 3036,798, 6 left
+AITRACE pop: reached 3032,798 from 3033,798, 5 left
+AITRACE pop: reached 3029,798 from 3031,797, 4 left
+AITRACE pop: reached 3026,798 from 3028,797, 3 left
+AITRACE step kind 0 to 3012,991 from 3025,798 prone false
+AITRACE pop: reached 3024,798 from 3025,798, 2 left
+AITRACE pop: reached 3023,798 from 3024,798, 1 left
+AITRACE path: none to follow, asking again from 3025,798
+AITRACE step kind 3 to 3036,852 from 3021,798 prone false
+AITRACE pop: reached 3013,798 from 3021,798, 8 left
+AITRACE pop: reached 3010,798 from 3018,798, 7 left
+AITRACE pop: reached 3007,798 from 3015,798, 6 left
+AITRACE step kind 0 to 3012,924 from 3012,798 prone false
+AITRACE pop: reached 3004,798 from 3012,798, 5 left
+AITRACE pop: reached 3002,798 from 3009,799, 4 left
+AITRACE pop: reached 3000,798 from 3009,799, 3 left
+AITRACE pop: reached 2999,798 from 3009,800, 2 left
+AITRACE step kind 3 to 2940,1006 from 3009,801 prone false
+AITRACE pop: reached 2999,798 from 3009,801, 1 left
+AITRACE step kind 0 to 3000,798 from 3009,802 prone false
+AITRACE path: none to follow, asking again from 3010,802
+AITRACE step kind 3 to 3012,852 from 3014,799 prone false
+AITRACE pop: reached 3005,798 from 3014,799, 8 left
+AITRACE pop: reached 3008,798 from 3015,798, 7 left
+AITRACE step kind 0 to 3036,900 from 3017,798 prone false
+AITRACE pop: reached 3008,798 from 3017,798, 6 left
+AITRACE pop: reached 3006,798 from 3018,798, 5 left
+AITRACE pop: reached 3004,798 from 3020,798, 4 left
+AITRACE pop: reached 3001,798 from 3020,799, 3 left
+AITRACE pop: reached 3006,798 from 3015,799, 2 left
+AITRACE step kind 3 to 2940,1006 from 3013,798 prone false
+AITRACE pop: reached 3009,798 from 3013,798, 1 left
+AITRACE step kind 0 to 3008,798 from 3011,797 prone false
+AITRACE path: none to follow, asking again from 2996,800
+AITRACE step kind 3 to 2988,852 from 2993,802 prone false
+AITRACE pop: reached 3004,798 from 2993,802, 8 left
+AITRACE step kind 0 to 3012,876 from 2993,801 prone false
+AITRACE pop: reached 3005,798 from 2993,801, 7 left
+AITRACE pop: reached 3006,798 from 2994,800, 6 left
+AITRACE pop: reached 3008,798 from 2995,799, 5 left
+AITRACE pop: reached 3008,798 from 2997,798, 4 left
+AITRACE pop: reached 3007,798 from 2998,797, 3 left
+AITRACE pop: reached 3005,798 from 3000,797, 2 left
+AITRACE step kind 3 to 2940,1006 from 3001,797 prone false
+AITRACE pop: reached 3004,798 from 3001,797, 1 left
+AITRACE step kind 0 to 3003,798 from 3002,798 prone false
+AITRACE path: none to follow, asking again from 3004,799
+AITRACE step kind 3 to 3012,852 from 3006,802 prone false
+AITRACE pop: reached 3005,798 from 3006,802, 8 left
+AITRACE pop: reached 3007,798 from 3005,802, 7 left
+AITRACE step kind 0 to 3036,900 from 3004,802 prone false
+AITRACE pop: reached 3009,798 from 3004,802, 6 left
+AITRACE pop: reached 3008,798 from 3001,801, 5 left
+AICOMBAT firefight 40s: [1 gone] [2 gone]
+AICOMBAT cover 40s: [1 at 1178,307 hp 123 mode 2] [2 gone]
+AICOMBAT dug in 40s: [1 at 691,738 hp 48 mode 2 blind R3] [2 at 946,567 hp 100 mode 1 blind L18]
+AICOMBAT move 40s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 40s: [1 at 3029,537 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 40s: [1 at 2939,802 hp 100 mode 3] [1 at 3001,801 hp 100 mode 11] [1 at 3061,797 hp 100 mode 11] [1 at 3108,798 hp 100 mode 11] spread 169 minpair 47
+AITRACE pop: reached 3006,798 from 2999,801, 4 left
+AITRACE pop: reached 3005,798 from 2997,801, 3 left
+AITRACE pop: reached 3004,798 from 2995,801, 2 left
+AITRACE step kind 3 to 2940,1006 from 2993,802 prone false
+AITRACE pop: reached 3004,798 from 2992,803, 1 left
+AITRACE step kind 0 to 3005,798 from 2992,803 prone false
+AITRACE path: none to follow, asking again from 2993,803
+AITRACE step kind 3 to 2988,852 from 2997,800 prone false
+AITRACE pop: reached 3007,798 from 3002,797, 8 left
+AITRACE step kind 0 to 3012,876 from 3003,795 prone false
+AITRACE pop: reached 3007,798 from 3003,795, 7 left
+AITRACE pop: reached 3008,798 from 3003,793, 6 left
+AITRACE pop: reached 3009,798 from 3004,791, 5 left
+AITRACE pop: reached 3007,798 from 3005,788, 4 left
+AITRACE pop: reached 3008,798 from 3006,785, 3 left
+AITRACE pop: reached 3007,798 from 3008,782, 2 left
+AITRACE step kind 3 to 2940,1006 from 3009,779 prone false
+AITRACE pop: reached 3005,798 from 3009,779, 1 left
+AITRACE step kind 0 to 3010,798 from 3011,776 prone false
+AICOMBAT firefight 42s: [1 gone] [2 gone]
+AICOMBAT cover 42s: [1 at 1181,308 hp 119 mode 2] [2 gone]
+AICOMBAT dug in 42s: [1 at 689,738 hp 48 mode 2 blind L3] [2 at 946,568 hp 100 mode 1 blind L-9]
+AICOMBAT move 42s: [1 gone] [2 at 2782,137 hp 100 mode 1]
+AICOMBAT retreat 42s: [1 at 3029,538 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 42s: [1 at 2961,771 hp 100 mode 3] [1 at 3025,767 hp 100 mode 11] [1 at 3061,798 hp 100 mode 11] [1 at 3108,797 hp 100 mode 11] spread 149 minpair 47
+AITRACE [Soldier Light 1 at 1182,307] retreat: health 119, falling back to away from the enemy at 1532,738
+AITRACE path: none to follow, asking again from 1182,308
+AITRACE jet: planner delta 5 flying true wpt dy 21
+AITRACE step kind 0 to 1236,348 from 1182,309 prone false
+AITRACE jet: planner delta 10 flying true wpt dy 2
+AITRACE path: none to follow, asking again from 1227,307
+AITRACE path: none to follow, asking again from 2963,799
+AITRACE pop: reached 2953,799 from 2958,797, 8 left
+AITRACE pop: reached 2952,799 from 2956,797, 7 left
+AITRACE pop: reached 2952,799 from 2947,800, 6 left
+AITRACE pop: reached 2952,799 from 2946,802, 5 left
+AITRACE pop: reached 2952,799 from 2947,802, 4 left
+AITRACE pop: reached 2953,799 from 2949,802, 3 left
+AITRACE pop: reached 2954,799 from 2951,801, 2 left
+AITRACE step kind 3 to 2940,1006 from 2952,800 prone false
+AITRACE pop: reached 2955,799 from 2952,800, 1 left
+AITRACE step kind 0 to 2956,799 from 2954,800 prone false
+AITRACE path: none to follow, asking again from 2956,800
+AICOMBAT firefight 44s: [1 gone] [2 gone]
+AICOMBAT cover 44s: [1 at 1298,311 hp 116 mode 3 retreating] [2 gone]
+AICOMBAT dug in 44s: [1 at 689,739 hp 48 mode 2 blind L3] [2 at 946,568 hp 100 mode 1 blind L-79]
+AICOMBAT move 44s: [1 gone] [2 at 2782,137 hp 100 mode 1]
+AICOMBAT retreat 44s: [1 at 3028,538 hp 20 mode 2 blind L13] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 44s: [1 at 2941,801 hp 100 mode 3] [1 at 2957,801 hp 100 mode 11] [1 at 3036,800 hp 100 mode 11] [1 at 3104,800 hp 100 mode 11] spread 163 minpair 16
+AITRACE path: none to follow, asking again from 1291,309
+AITRACE path: none to follow, asking again from 1328,308
+AITRACE pop: reached 2958,798 from 2959,797, 8 left
+AITRACE pop: reached 2959,798 from 2959,798, 7 left
+AITRACE pop: reached 2959,798 from 2959,798, 6 left
+AITRACE pop: reached 2958,798 from 2959,800, 5 left
+AITRACE pop: reached 2957,799 from 2959,801, 4 left
+AITRACE pop: reached 2956,799 from 2959,803, 3 left
+AICOMBAT firefight 46s: [1 gone] [2 gone]
+AICOMBAT cover 46s: [1 at 1356,313 hp 112 mode 3 retreating] [2 gone]
+AICOMBAT dug in 46s: [1 at 692,738 hp 48 mode 2 blind R3] [2 at 946,568 hp 100 mode 1 blind L82]
+AICOMBAT move 46s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 46s: [1 at 3029,538 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 46s: [1 at 2940,800 hp 100 mode 3] [1 at 2958,798 hp 100 mode 11] [1 at 3034,799 hp 100 mode 11] [1 at 3100,798 hp 100 mode 11] spread 160 minpair 19
+AITRACE pop: reached 1380,348 from 1372,339, 16 left
+AITRACE climb: wpt dx 20 dy -26
+AITRACE pop: passed 1404,372 for 1428,396 from 1387,417
+AITRACE pop: passed 1428,396 for 1452,420 from 1398,452
+AITRACE pop: reached 2955,799 from 2959,798, 2 left
+AITRACE pop: passed 1452,420 for 1476,444 from 1415,483
+AITRACE step kind 3 to 2940,1006 from 2959,797 prone false
+AITRACE pop: reached 2954,799 from 2959,798, 1 left
+AITRACE step kind 0 to 2954,799 from 2959,798 prone false
+AITRACE path: none to follow, asking again from 2959,798
+AICOMBAT firefight 48s: [1 gone] [2 gone]
+AICOMBAT cover 48s: [1 at 1437,472 hp 109 mode 3 retreating] [2 gone]
+AICOMBAT dug in 48s: [1 at 691,737 hp 48 mode 2 blind R3] [2 at 949,569 hp 100 mode 1 blind R7]
+AICOMBAT move 48s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 48s: [1 at 3030,537 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 48s: [1 at 2938,797 hp 100 mode 3] [1 at 2959,798 hp 100 mode 11] [1 at 3037,798 hp 100 mode 11] [1 at 3100,797 hp 100 mode 11] spread 162 minpair 20
+AITRACE pop: reached 2954,799 from 2959,798, 8 left
+AITRACE [Soldier Light 2 at 925,570] cover: out again
+AITRACE pop: reached 1476,444 from 1454,467, 12 left
+AITRACE pop: reached 2954,799 from 2959,798, 7 left
+AITRACE pop: reached 2954,799 from 2959,798, 6 left
+AITRACE pop: reached 1500,468 from 1466,467, 11 left
+AITRACE pop: reached 2954,799 from 2959,797, 5 left
+AITRACE pop: reached 2952,799 from 2958,796, 4 left
+AITRACE pop: reached 2952,799 from 2957,795, 3 left
+AITRACE pop: reached 2951,799 from 2956,794, 2 left
+AITRACE step kind 3 to 2940,1006 from 2955,792 prone false
+AITRACE pop: reached 2947,799 from 2955,792, 1 left
+AITRACE step kind 0 to 2948,799 from 2954,790 prone false
+AITRACE path: none to follow, asking again from 2953,788
+AITRACE pop: reached 2951,799 from 2952,783, 8 left
+AITRACE pop: reached 2951,799 from 2951,781, 7 left
+AITRACE pop: reached 2951,799 from 2951,780, 6 left
+AITRACE pop: reached 2951,799 from 2950,779, 5 left
+AITRACE pop: reached 2951,799 from 2947,781, 4 left
+AITRACE pop: reached 2951,799 from 2946,783, 3 left
+AITRACE pop: reached 2951,799 from 2945,785, 2 left
+AITRACE step kind 3 to 2940,1006 from 2945,788 prone false
+AITRACE pop: reached 2951,799 from 2945,788, 1 left
+AITRACE step kind 0 to 2951,799 from 2944,791 prone false
+AITRACE jet: landing brake at 6.1
+AITRACE path: none to follow, asking again from 2942,803
+AITRACE pop: reached 2947,798 from 2942,805, 7 left
+AITRACE pop: reached 2950,798 from 2942,805, 6 left
+AITRACE pop: reached 2949,798 from 2942,806, 5 left
+AITRACE pop: reached 2948,798 from 2942,808, 4 left
+AITRACE pop: reached 2949,798 from 2943,809, 3 left
+AITRACE pop: reached 2950,798 from 2943,809, 2 left
+AITRACE pop: reached 2951,798 from 2943,808, 1 left
+AICOMBAT firefight 50s: [1 gone] [2 gone]
+AICOMBAT cover 50s: [1 at 1492,464 hp 75 mode 3 retreating] [2 gone]
+AICOMBAT dug in 50s: [1 at 691,738 hp 48 mode 2 sees L3] [2 at 917,567 hp 100 mode 1 sees R10]
+AICOMBAT move 50s: [1 gone] [2 at 2782,137 hp 100 mode 1]
+AICOMBAT retreat 50s: [1 at 3032,537 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 50s: [1 at 2923,808 hp 100 mode 3] [1 at 2944,807 hp 100 mode 11] [1 at 3020,800 hp 100 mode 11] [1 at 3095,798 hp 100 mode 11] spread 172 minpair 20
+AITRACE path: none to follow, asking again from 2944,804
+AITRACE pop: reached 2952,798 from 2944,802, 7 left
+AITRACE pop: reached 1524,492 from 1497,464, 10 left
+AITRACE pop: reached 2951,798 from 2944,801, 6 left
+AITRACE pop: reached 2950,798 from 2943,800, 5 left
+AITRACE step kind 3 to 3036,924 from 2943,800 prone false
+AITRACE pop: reached 2948,798 from 2940,799, 4 left
+AITRACE step kind 0 to 3060,971 from 2939,798 prone false
+AITRACE pop: reached 2947,798 from 2939,798, 3 left
+AITRACE pop: reached 2950,798 from 2938,798, 2 left
+AITRACE pop: reached 2950,798 from 2936,798, 1 left
+AITRACE path: none to follow, asking again from 2933,798
+AITRACE jet: planner delta 17 flying true wpt dy 27
+AICOMBAT firefight 52s: [1 gone] [2 gone]
+AICOMBAT cover 52s: [1 gone] [2 gone]
+AICOMBAT dug in 52s: [1 at 692,738 hp 48 mode 2 sees L3] [2 at 916,568 hp 100 mode 1 sees R8]
+AICOMBAT move 52s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 52s: [1 at 3033,538 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 52s: [1 at 2916,798 hp 100 mode 3] [1 at 2932,798 hp 100 mode 11] [1 at 2983,797 hp 100 mode 11] [1 at 3073,797 hp 100 mode 11] spread 157 minpair 16
+AITRACE pop: reached 2951,798 from 2932,798, 7 left
+AITRACE pop: reached 2951,798 from 2932,798, 6 left
+AITRACE pop: reached 2951,798 from 2932,798, 5 left
+AITRACE step kind 3 to 3036,924 from 2932,798 prone false
+AITRACE pop: reached 2951,798 from 2932,798, 4 left
+AITRACE step kind 0 to 3060,971 from 2932,798 prone false
+AITRACE pop: reached 2951,798 from 2932,797, 3 left
+AITRACE pop: reached 2951,798 from 2932,797, 2 left
+AICOMBAT firefight 54s: [1 gone] [2 gone]
+AICOMBAT cover 54s: [1 gone] [2 gone]
+AICOMBAT dug in 54s: [1 at 709,737 hp 48 mode 2 sees R26] [2 at 916,568 hp 100 mode 1 sees R18]
+AICOMBAT move 54s: [1 gone] [2 at 2782,138 hp 100 mode 1]
+AICOMBAT retreat 54s: [1 at 3031,537 hp 20 mode 2 blind R13] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 54s: [1 at 2915,797 hp 100 mode 3] [1 at 2932,798 hp 100 mode 11] [1 at 2983,797 hp 100 mode 11] [1 at 3073,797 hp 100 mode 11] spread 158 minpair 17
+AITRACE pop: reached 2950,798 from 2932,797, 1 left
+AITRACE path: none to follow, asking again from 2931,795
+AITRACE pop: reached 2946,798 from 2931,787, 7 left
+AITRACE pop: reached 2946,798 from 2931,789, 6 left
+AITRACE pop: reached 2946,798 from 2931,792, 5 left
+AITRACE step kind 3 to 3036,924 from 2931,795 prone false
+AITRACE pop: reached 2946,798 from 2931,795, 4 left
+AITRACE step kind 0 to 3060,971 from 2931,798 prone false
+AITRACE pop: reached 2946,798 from 2931,798, 3 left
+AITRACE pop: reached 2946,798 from 2932,801, 2 left
+AITRACE pop: reached 2946,798 from 2932,803, 1 left
+AITRACE path: none to follow, asking again from 2951,800
+AITRACE path: none to follow, asking again from 2952,800
+AITRACE pop: reached 2966,796 from 2954,798, 8 left
+AITRACE pop: reached 2964,796 from 2956,797, 7 left
+AITRACE pop: reached 2962,796 from 2957,797, 6 left
+AITRACE pop: reached 2960,796 from 2959,798, 5 left
+AITRACE pop: reached 2958,796 from 2960,798, 4 left
+AITRACE pop: reached 2956,796 from 2962,799, 3 left
+AITRACE pop: reached 2954,796 from 2963,801, 2 left
+AITRACE step kind 3 to 2940,1006 from 2964,802 prone false
+AITRACE pop: reached 2953,796 from 2963,803, 1 left
+AITRACE step kind 0 to 2951,796 from 2962,803 prone false
+AITRACE path: none to follow, asking again from 2959,801
+AITRACE pop: reached 2945,797 from 2955,799, 8 left
+AITRACE pop: reached 2943,797 from 2953,799, 7 left
+AICOMBAT firefight 56s: [1 gone] [2 gone]
+AICOMBAT cover 56s: [1 gone] [2 gone]
+AICOMBAT dug in 56s: [1 at 711,737 hp 48 mode 2 sees R40] [2 at 916,568 hp 100 mode 1 sees L-27]
+AICOMBAT move 56s: [1 gone] [2 at 2783,137 hp 100 mode 1]
+AICOMBAT retreat 56s: [1 at 3035,537 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 56s: [1 at 2940,798 hp 100 mode 3] [1 at 2953,799 hp 100 mode 11] [1 at 2999,798 hp 100 mode 11] [1 at 3065,797 hp 100 mode 11] spread 124 minpair 12
+AITRACE pop: reached 2941,797 from 2950,798, 6 left
+AITRACE pop: reached 2939,798 from 2948,798, 5 left
+AITRACE pop: reached 2937,798 from 2945,799, 4 left
+AITRACE pop: reached 2936,798 from 2945,800, 3 left
+AITRACE pop: reached 2935,798 from 2944,801, 2 left
+AITRACE step kind 3 to 2940,1006 from 2945,802 prone false
+AITRACE pop: reached 2936,798 from 2945,802, 1 left
+AITRACE step kind 0 to 2935,798 from 2946,802 prone false
+AITRACE path: none to follow, asking again from 2946,803
+AITRACE path: none to follow, asking again from 2946,802
+AITRACE [Soldier Light 2 at 916,567] cover: hurt, 32 px over
+AICOMBAT firefight 58s: [1 gone] [2 gone]
+AICOMBAT cover 58s: [1 gone] [2 gone]
+AICOMBAT dug in 58s: [1 at 715,738 hp 48 mode 2 blind R38] [2 at 933,570 hp -22 mode 1 blind L-39]
+AICOMBAT move 58s: [1 gone] [2 at 2783,136 hp 100 mode 1]
+AICOMBAT retreat 58s: [1 at 3038,538 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 58s: [1 at 2942,797 hp 100 mode 3] [1 at 2946,797 hp 100 mode 11] [1 at 2972,798 hp 100 mode 11] [1 at 3057,797 hp 100 mode 11] spread 115 minpair 4
+AITRACE path: none to follow, asking again from 2946,798
+AITRACE path: none to follow, asking again from 2946,797
+AITRACE path: none to follow, asking again from 2946,797
+AITRACE path: none to follow, asking again from 2943,794
+AITRACE step kind 3 to 2940,852 from 2941,791 prone false
+AITRACE pop: reached 2935,798 from 2941,791, 8 left
+AITRACE pop: reached 2938,798 from 2939,789, 7 left
+AITRACE pop: reached 2938,798 from 2938,787, 6 left
+AITRACE pop: reached 2938,798 from 2937,785, 5 left
+AITRACE pop: reached 2938,798 from 2935,783, 4 left
+AITRACE pop: reached 2938,798 from 2934,782, 3 left
+AITRACE pop: reached 2938,798 from 2932,781, 2 left
+AITRACE pop: reached 2938,798 from 2931,781, 1 left
+AITRACE step kind 0 to 2938,798 from 2930,781 prone false
+AITRACE path: none to follow, asking again from 2928,782
+AITRACE step kind 3 to 2940,852 from 2926,784 prone false
+AITRACE pop: reached 2938,798 from 2926,784, 9 left
+AITRACE pop: reached 2938,798 from 2924,786, 8 left
+AITRACE pop: reached 2938,798 from 2923,789, 7 left
+AITRACE pop: reached 2938,798 from 2921,792, 6 left
+AITRACE pop: reached 2938,798 from 2920,795, 5 left
+AITRACE pop: reached 2938,798 from 2919,799, 4 left
+AITRACE jet: landing brake at 5.7
+AITRACE pop: reached 2938,798 from 2918,802, 3 left
+AITRACE pop: reached 2938,798 from 2917,804, 2 left
+AITRACE step kind 0 to 2916,1025 from 2916,806 prone false
+AITRACE pop: reached 2923,796 from 2916,806, 1 left
+AITRACE path: none to follow, asking again from 2915,808
+AITRACE pop: reached 2926,796 from 2915,809, 7 left
+AITRACE pop: reached 2924,796 from 2915,808, 6 left
+AITRACE pop: reached 2924,796 from 2915,807, 5 left
+AITRACE pop: reached 2927,796 from 2916,805, 4 left
+AITRACE pop: reached 2928,797 from 2916,804, 3 left
+AITRACE pop: reached 2929,797 from 2916,804, 2 left
+AITRACE pop: reached 2931,797 from 2917,804, 1 left
+AITRACE path: none to follow, asking again from 2917,803
+AITRACE path: none to follow, asking again from 2918,799
+AITRACE path: none to follow, asking again from 2919,800
+AICOMBAT firefight 60s: [1 gone] [2 gone]
+AICOMBAT cover 60s: [1 gone] [2 gone]
+AICOMBAT dug in 60s: [1 at 715,737 hp 48 mode 2] [2 gone]
+AICOMBAT move 60s: [1 gone] [2 at 2783,137 hp 100 mode 1]
+AICOMBAT retreat 60s: [1 at 3039,538 hp 20 mode 2 blind R13] [1 at 3000,533 hp 100 mode 1 blind R0]
+AICOMBAT squad 60s: [1 at 2915,800 hp 100 mode 3] [1 at 2914,798 hp 100 mode 11] [1 at 3033,793 hp 100 mode 11] [1 at 3016,797 hp 100 mode 11] spread 118 minpair 2
+AITRACE path: none to follow, asking again from 2912,798
+AITRACE path: none to follow, asking again from 2915,798
+AITRACE path: none to follow, asking again from 2915,798
+AICOMBAT firefight 62s: [1 gone] [2 gone]
+AICOMBAT cover 62s: [1 gone] [2 gone]
+AICOMBAT dug in 62s: [1 at 716,738 hp 48 mode 2] [2 gone]
+AICOMBAT move 62s: [1 gone] [2 at 2779,138 hp 100 mode 1]
+AICOMBAT retreat 62s: [1 at 3038,538 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 62s: [1 at 2914,797 hp 100 mode 3] [1 at 2915,798 hp 100 mode 11] [1 at 2974,797 hp 100 mode 11] [1 at 3012,798 hp 100 mode 11] spread 97 minpair 0
+AITRACE path: none to follow, asking again from 2915,797
+AITRACE path: none to follow, asking again from 2915,798
+AITRACE path: none to follow, asking again from 2916,793
+AITRACE path: none to follow, asking again from 2919,786
+AITRACE pop: reached 2923,796 from 2922,779, 7 left
+AITRACE pop: reached 2923,796 from 2923,776, 6 left
+AITRACE jet: landing brake at 5.5
+AITRACE pop: reached 2952,798 from 2946,777, 5 left
+AITRACE pop: reached 2951,797 from 2946,779, 4 left
+AITRACE pop: reached 2951,797 from 2946,780, 3 left
+AITRACE pop: reached 2952,797 from 2947,782, 2 left
+AITRACE pop: reached 2951,798 from 2947,783, 1 left
+AICOMBAT firefight 64s: [1 gone] [2 gone]
+AICOMBAT cover 64s: [1 gone] [2 gone]
+AICOMBAT dug in 64s: [1 at 712,738 hp 48 mode 2] [2 gone]
+AICOMBAT move 64s: [1 gone] [2 at 2779,138 hp 100 mode 1]
+AICOMBAT retreat 64s: [1 at 3042,538 hp 20 mode 2 blind L13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 64s: [1 at 2939,810 hp 100 mode 3] [1 at 2948,786 hp 100 mode 11] [1 at 2956,797 hp 100 mode 11] [1 at 3012,798 hp 100 mode 11] spread 73 minpair 13
+AITRACE path: none to follow, asking again from 2963,797
+AICOMBAT firefight 66s: [1 gone] [2 gone]
+AICOMBAT cover 66s: [1 gone] [2 gone]
+AICOMBAT dug in 66s: [1 at 712,738 hp 48 mode 2] [2 gone]
+AICOMBAT move 66s: [1 gone] [2 at 2779,137 hp 100 mode 1]
+AICOMBAT retreat 66s: [1 at 3042,537 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 66s: [1 at 2939,798 hp 100 mode 3] [1 at 2963,798 hp 100 mode 11] [1 at 2954,797 hp 100 mode 11] [1 at 3012,798 hp 100 mode 11] spread 72 minpair 9
+AITRACE pop: reached 2951,797 from 2963,798, 8 left
+AITRACE pop: reached 2951,797 from 2963,798, 7 left
+AITRACE pop: reached 2952,797 from 2963,796, 6 left
+AITRACE pop: reached 2952,798 from 2964,795, 5 left
+AITRACE pop: reached 2951,797 from 2964,793, 4 left
+AITRACE pop: reached 2950,797 from 2965,790, 3 left
+AITRACE pop: reached 2950,797 from 2966,787, 2 left
+AITRACE step kind 3 to 2940,1006 from 2967,784 prone false
+AITRACE pop: passed 2947,797 for 2947,797 from 2968,781
+AITRACE step kind 0 to 2946,797 from 2969,777 prone false
+AITRACE jet: landing brake at 5.8
+AICOMBAT firefight 68s: [1 gone] [2 gone]
+AICOMBAT cover 68s: [1 gone] [2 gone]
+AICOMBAT dug in 68s: [1 at 711,738 hp 48 mode 2] [2 gone]
+AICOMBAT move 68s: [1 gone] [2 at 2779,138 hp 100 mode 1]
+AICOMBAT retreat 68s: [1 at 3042,537 hp 20 mode 2 blind R13] [1 at 3000,534 hp 100 mode 1 blind R0]
+AICOMBAT squad 68s: [1 at 2969,804 hp 100 mode 3] [1 at 2983,802 hp 100 mode 11] [1 at 2977,792 hp 100 mode 11] [1 at 2985,797 hp 100 mode 11] spread 17 minpair 4
+AITRACE path: none to follow, asking again from 2914,797
+AITRACE step kind 3 to 2916,852 from 2914,798 prone false
+AITRACE pop: reached 2927,798 from 2915,798, 8 left
+AITRACE pop: reached 2927,798 from 2915,798, 7 left
+AITRACE pop: reached 2926,798 from 2916,801, 6 left
+AITRACE step kind 0 to 2940,924 from 2916,802 prone false
+AITRACE pop: reached 2925,798 from 2916,802, 5 left
+AITRACE step kind 3 to 2940,948 from 2916,802 prone false
+AITRACE pop: reached 2924,798 from 2916,802, 4 left
+AICOMBAT firefight result: 
+AICOMBAT cover result: 
+AICOMBAT dug in result: team 1 hp 48 at 717,737
+AICOMBAT move result: team 2 hp 100 at 2779,137
+AICOMBAT retreat result: team 1 hp 20 at 3042,538; team 1 hp 100 at 3000,533
+AICOMBAT squad result: team 1 hp 100 at 2939,801; team 1 hp 100 at 2916,802; team 1 hp 100 at 2938,803; team 1 hp 100 at 2958,802 mover 459 px from goal closest two while the leader stood 0 px
+AICOMBAT done
+AITRACE pop: reached 2924,798 from 2916,797, 3 left
+AITRACE pop: reached 2924,798 from 2916,798, 2 left
+AITRACE pop: reached 2924,798 from 2916,797, 1 left
+AITRACE step kind 0 to 2924,798 from 2916,798 prone false
+AITRACE path: none to follow, asking again from 2917,797
+AITRACE step kind 3 to 2916,852 from 2919,795 prone false
+AITRACE pop: reached 2922,798 from 2919,795, 8 left
+AITRACE pop: reached 2920,798 from 2920,793, 7 left
+AITRACE pop: reached 2918,798 from 2921,792, 6 left
+AITRACE step kind 0 to 2940,924 from 2922,790 prone false
+AITRACE pop: reached 2917,798 from 2922,790, 5 left
+AITRACE step kind 3 to 2940,948 from 2924,788 prone false
+AITRACE pop: reached 2913,798 from 2924,788, 4 left
+AITRACE pop: reached 2913,798 from 2924,785, 3 left
+AITRACE pop: reached 2913,798 from 2925,783, 2 left
+AITRACE pop: passed 2913,798 for 2913,798 from 2930,779
+AITRACE step kind 0 to 2913,798 from 2931,779 prone false
+AITRACE jet: landing brake at 5.5
+AITRACE path: none to follow, asking again from 2916,798
+AITRACE step kind 3 to 2916,852 from 2911,797 prone false
+AITRACE pop: reached 2954,797 from 2935,799, 8 left
+AITRACE pop: reached 2956,797 from 2938,800, 7 left
+AITRACE pop: reached 2957,797 from 2941,802, 6 left
+AITRACE step kind 0 to 2940,924 from 2944,803 prone false
+AITRACE pop: reached 2957,797 from 2947,802, 5 left
+AITRACE step kind 3 to 2940,948 from 2947,802 prone false
+AITRACE pop: reached 2957,797 from 2947,801, 4 left
+AITRACE pop: reached 2957,797 from 2947,801, 3 left
+AITRACE step kind 0 to 2964,1002 from 2947,800 prone false
+AITRACE pop: reached 2958,797 from 2947,800, 2 left
+AITRACE step kind 3 to 2964,1002 from 2947,800 prone false
+AITRACE pop: reached 2959,797 from 2947,797, 1 left
+AITRACE step kind 0 to 2959,797 from 2947,798 prone false
+AITRACE path: none to follow, asking again from 2947,798
+AITRACE path: none to follow, asking again from 2947,797
+AITRACE path: none to follow, asking again from 2947,798
+AITRACE path: none to follow, asking again from 2947,798
+AITRACE path: none to follow, asking again from 2947,798
+AITRACE path: none to follow, asking again from 2947,794
+AITRACE path: none to follow, asking again from 2944,786
+AITRACE step kind 3 to 2940,852 from 2942,779 prone false
+AITRACE jet: planner delta 20 flying true wpt dy 18
+AITRACE pop: reached 2962,797 from 2925,781, 8 left
+AITRACE pop: reached 2965,799 from 2945,798, 7 left
+AITRACE pop: reached 2966,799 from 2948,798, 6 left
+AITRACE pop: reached 2965,799 from 2951,797, 5 left
+AITRACE pop: reached 2964,799 from 2954,797, 4 left
+AITRACE pop: reached 2966,799 from 2956,797, 3 left
+AITRACE pop: reached 2965,799 from 2959,797, 2 left
+AITRACE pop: reached 2966,799 from 2962,798, 1 left
+AITRACE step kind 0 to 2963,799 from 2965,799 prone false
+AITRACE path: none to follow, asking again from 2970,799
+AITRACE pop: reached 2957,799 from 2973,800, 8 left
+AITRACE pop: reached 2957,799 from 2969,798, 7 left
+AITRACE pop: reached 2958,799 from 2967,798, 6 left
+AITRACE pop: reached 2959,799 from 2965,797, 5 left
+AITRACE pop: reached 2959,799 from 2962,797, 4 left
+AITRACE pop: reached 2960,799 from 2960,798, 3 left
+AITRACE pop: reached 2961,799 from 2958,799, 2 left
+AITRACE step kind 3 to 2940,1006 from 2955,800 prone false
+AITRACE pop: reached 2963,799 from 2955,800, 1 left
+AITRACE step kind 0 to 2964,799 from 2953,799 prone false
+AITRACE path: none to follow, asking again from 2950,799
