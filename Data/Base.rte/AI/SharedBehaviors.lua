@@ -931,7 +931,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					nextLatMove = CurrDist.X < -3 and Actor.LAT_LEFT or (CurrDist.X > 3 and Actor.LAT_RIGHT or Actor.LAT_STILL);
 				end
 			end
-		elseif UpdatePathTimer:IsPastSimTimeLimit() then
+		elseif UpdatePathTimer:IsPastSimTimeLimit() and not AI.jetClimb then
+			-- (Not in the middle of a climb: a new path half way up a shaft put the jet out, and the unit fell back to the foot and started
+			-- over on a tank sized for one climb. The tank bounds how long a climb can hold this off; the timer stays past, so it fires the
+			-- tick the climb ends.)
 			UpdatePathTimer:Reset();
 
 			AI.deviceState = AHuman.STILL;
@@ -1495,7 +1498,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												end
 												-- Up at the height with the way clear, but not yet near the landing sideways, it isn't over: the jet went out a hundred pixels
 													-- short of a ledge and the unit dropped below it on the way; now it hovers across (see below).
-													local done = (above > -Owner.Height * 0.2 and feetClear and math.abs(stepX) < Owner.Height * 0.4) or above > Owner.Height * 0.6 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
+													-- And floor under the feet, or the landing straight below: a hatch's landing is a node past the hole's edge, and the jet
+													-- cut with the feet merely level with the floor, a node short of it, dropped the unit back down the hole it had climbed
+													-- (in the air, with the jet out, nothing moves a unit sideways).
+													local groundUnderFeet = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), Vector(0, Owner.Height * 0.25), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
+													local overLanding = groundUnderFeet or math.abs(stepX) < Owner.Height * 0.15;
+													local done = (above > -Owner.Height * 0.2 and feetClear and overLanding and math.abs(stepX) < Owner.Height * 0.4) or above > Owner.Height * 0.6 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
 												if done then
 													AI.jetClimb = false;
 													AI.jump = false;
@@ -1571,6 +1579,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														-- climb goes, or we climb straight here and drift once we're past it. (A cliff with a hollow under its lip drew units
 														-- in under the lip, where they burned the tank pinned.)
 														wantVelX = 0;
+													end
+													-- Up at the height and clear to step across: at a walking pace at the least. The paced drift for a landing one node over
+													-- is 1.2 m/s, under the move keys' dead band below, so no key was ever pressed and the unit hovered in the hatch's mouth
+													-- until the tank was dry. (Not while a shaft's middle is being kept: that is the hole itself, and the walls come first.)
+													if Owner.Head and above > -Owner.Height * 0.2 and feetClear and chestClear and not AI.climbClearY and not shaftNow and math.abs(stepX) >= 10 then
+														wantVelX = stepX > 0 and math.max(2, wantVelX) or math.min(-2, wantVelX);
 													end
 													local offVelX = wantVelX - Owner.Vel.X;
 													if offVelX > 1.5 then

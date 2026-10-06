@@ -742,7 +742,10 @@ bool PathFinder::Open(const Material& material) const {
 }
 
 bool PathFinder::RoomToPass(const PathNode& node, float widths) const {
-	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight) >= s_HalfWidth * widths;
+	// The run of air through the node counts the node's own column: the clearances are counted from the pixels beside the centre, so a
+	// 48 px hatch measured 47 from either column in it, and the jet column up it was refused for a unit three half-widths of 16 wide by
+	// that one pixel.
+	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight + 1) >= s_HalfWidth * widths;
 }
 
 float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const {
