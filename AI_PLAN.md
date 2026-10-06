@@ -77,8 +77,8 @@ Still open, in rough order of value:
     for the wall probe, legs on both sides, jets on some. They need a gym course of their own.
 17. **Combat movement.** AttackTarget just walks at the target; no use of cover, no flanking, no retreat to refuel or heal; the "Guard"
     command mode in the sandbox is a hold with a wider look. The command tool's attack focus (`c_AttackTag`) is sandbox-side only.
-18. **Squads** move as individuals that block each other (`teamBlockState` is a 20 s timeout). Formation offsets along the leader's path
-    would do most of it.
+18. **Squads** move as individuals. (The `teamBlockState` machinery that looks like it handles team-mates in the way is dead: nothing
+    ever sets BLOCKED.) Formation offsets along the leader's path would do most of what's wanted.
 
 ## The gym
 
