@@ -1,12 +1,18 @@
 function AIBunkerScript:StartScript()
 	self.timer = Timer();
 	-- An indoor gym: a three-storey bunker built of the game's own modules in the sky over Ketanot Hills (the sandbox map has no bunker of
-	-- its own), with hubs for junctions, a shaft, a stair, a gap in the middle storey and dead ends. Units are put down inside it and sent
+	-- its own): a shaft from the bottom corridor to a room at the top, a hatch between the bottom and middle storeys, a hub where the
+	-- middle corridor crosses a column that runs from the bottom corridor up to a gallery, steep stairs from the middle storey to a
+	-- landing room at the top, dead ends and a corner. Every opening is meant: the modules' ports (each has 48 px openings on set sides)
+	-- were read off their material bitmaps, and the whole is sealed, with nothing open to the sky. Units are put down inside it and sent
 	-- to other places inside it, one course each at the same time, and how they do is written up as AIBUNKER lines: the path the finder
 	-- gives, a line a second per unit, and arrived / gave up. CCCP_BUNKER_TRACE is the course whose unit writes AITRACE lines.
+	-- (The first layout had Hub A everywhere a junction was wanted; a hub is open on all four sides, so stacked hubs were chimneys open
+	-- to the sky at both ends, the bottom storey had holes in its floor, the shaft's top was capped by the tunnel over it, and one course's
+	-- goal hung in a chimney, where the pather dropped it to the hills below. Units fell out of the bunker and climbed back in all day.)
 	-- On a real map (the scenario's scene) nothing is built: the map's own bunker is the course, with courses of its own below.
 	-- CCCP_BUNKER_LOOK as "x,y,zoom" puts the camera somewhere at a zoom, for a capture of a layout, and runs no courses.
-	self.lookAt = Vector(1792, 330);
+	self.lookAt = Vector(1848, 330);
 	self.traceCourse = 1;
 	if os and os.getenv and tonumber(os.getenv("CCCP_BUNKER_TRACE") or "") then
 		self.traceCourse = tonumber(os.getenv("CCCP_BUNKER_TRACE"));
@@ -95,25 +101,37 @@ function AIBunkerScript:UpdateScript()
 		-- A real map: its bunker is the course. (Nothing to build.)
 	elseif self.built and self.skyBunker and not self.builtModules then
 		self.builtModules = true;
-		-- Modules are 96 px squares (stairs 96 x 144), placed by their centres. Three storeys: 228, 324 and 420.
-		local top, mid, low = 228, 324, 420;
-		-- Top storey: a corridor the whole width, with hubs at the shaft and the right end.
-		for _, x in ipairs({ 1504, 1600, 1792, 1984, 2080 }) do self:Place("Tunnel A", x, top); end
-		self:Place("Hub A", 1696, top);
-		self:Place("Hub A", 1888, top);
-		-- Middle storey: a hub at each end and in the middle, a gap (nothing at 1600: open air down to the low storey's roof), a shaft up
-		-- and down at 1792, and a stair down to the low storey at 1984.
-		self:Place("Hub A", 1504, mid);
-		self:Place("Hub A", 1696, mid);
-		self:Place("Shaft A", 1792, mid);
-		self:Place("Hub A", 1888, mid);
-		self:Place("Stairs A", 1984, mid + 24);
-		self:Place("Tunnel A", 2080, mid);
-		-- Low storey: a corridor the whole width.
-		for _, x in ipairs({ 1504, 1600, 1984, 2080 }) do self:Place("Tunnel A", x, low); end
-		self:Place("Hub A", 1696, low);
-		self:Place("Hub A", 1792, low);
-		self:Place("Hub A", 1888, low);
+		-- Modules are 96 px squares (Steep Stairs D is 96 x 192), placed by their centres, which the sandbox snaps to the 24 px grid: a
+		-- centre of corner + 48 snaps to itself. Module columns k = 0..7 have their corners at x 1464 + 96 k; the storeys' corners are at
+		-- y 192, 288 and 384, their floors at 264, 360 and 456, their corridors 48 px tall.
+		-- Each module's ports: End B opens right, End D left; T-Junction B opens left, right and up (a full floor: the foot of a shaft or
+		-- hatch); T-Junction D opens left, right and down (a hole in its floor: the mouth); Hub A opens all four ways; L-Junction D opens
+		-- left and down; Shaft A top and bottom; Steep Stairs D takes the lower corridor in on its left and lets out at the top on its right.
+		-- Bottom storey: a closed corridor the whole width, with the feet of the shaft (k1), the hatch (k3) and the hub's column (k5).
+		self:Place("End B", 1512, 432);
+		self:Place("T-Junction B", 1608, 432);
+		self:Place("Tunnel A", 1704, 432);
+		self:Place("T-Junction B", 1800, 432);
+		self:Place("Tunnel A", 1896, 432);
+		self:Place("T-Junction B", 1992, 432);
+		self:Place("Tunnel A", 2088, 432);
+		self:Place("End D", 2184, 432);
+		-- Middle storey: the shaft passes through at k1 (walled off from the corridor); the corridor runs from a dead end at k2 over the
+		-- hatch's mouth (k3) to the hub (k5) and into the stairs (k6).
+		self:Place("Shaft A", 1608, 336);
+		self:Place("End B", 1704, 336);
+		self:Place("T-Junction D", 1800, 336);
+		self:Place("Tunnel A", 1896, 336);
+		self:Place("Hub A", 1992, 336);
+		-- Top storey: the room at the top of the shaft (k0-k2, reached only by the shaft), a gallery over the hub's column (k4-k5, with the
+		-- corner at k5 opening down onto the hub), the stairs (k6) and the landing room they let out into (k7).
+		self:Place("End B", 1512, 240);
+		self:Place("T-Junction D", 1608, 240);
+		self:Place("End D", 1704, 240);
+		self:Place("End B", 1896, 240);
+		self:Place("L-Junction D", 1992, 240);
+		self:Place("Steep Stairs D", 2088, 288);
+		self:Place("End D", 2184, 240);
 	end
 	if not self.started and t > 5000 and not self.lookOnly then
 		self.started = true;
@@ -138,12 +156,18 @@ function AIBunkerScript:UpdateScript()
 				end
 			end
 		end
+		-- Each point is 20 px over a solid stretch of floor with 48 px of head room, never over a hole (the T-junctions' floors are only the
+		-- 24 px strips either side of their holes; the rooms' floors are whole). What the pather makes of each, from the offline grid model:
+		-- the shaft is one 192 px jet with a landing onto the mouth's floor strip; the hatch up is a 96 px jet; the hatch down a walk into
+		-- the hole and a fall; the hub is crossed by a hop over its hole; the stairs are climbed as two jet hops and come down as falls.
 		local courses = {
-			{ from = Vector(1520, 444), to = Vector(2070, 252), name = "low left to top right" },
-			{ from = Vector(1510, 348), to = Vector(1900, 348), name = "across the gap" },
-			{ from = Vector(1520, 252), to = Vector(2070, 444), name = "top left to low right" },
-			{ from = Vector(1792, 444), to = Vector(1792, 252), name = "up the shaft" },
-			{ from = Vector(2080, 444), to = Vector(1510, 348), name = "low right to mid left" },
+			{ from = Vector(1700, 436), to = Vector(1520, 244), name = "bottom corridor to the top room" },
+			{ from = Vector(1700, 436), to = Vector(1700, 340), name = "up the hatch" },
+			{ from = Vector(1700, 340), to = Vector(1700, 436), name = "down the hatch" },
+			{ from = Vector(1900, 340), to = Vector(2060, 340), name = "across the hub" },
+			{ from = Vector(2060, 340), to = Vector(2160, 244), name = "up the stairs" },
+			{ from = Vector(2160, 244), to = Vector(2060, 340), name = "down the stairs" },
+			{ from = Vector(1900, 436), to = Vector(1900, 244), name = "bottom to the top gallery" },
 		};
 		-- Courses made in play with the sandbox's Gym tab (Userdata/Gyms/<scene>.txt) come first; the sandbox runs and times them itself.
 		local gymFile = io.open("Userdata/Gyms/" .. tostring(self.sceneName) .. ".txt", "r");
