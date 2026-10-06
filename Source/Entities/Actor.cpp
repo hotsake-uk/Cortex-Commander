@@ -1032,8 +1032,13 @@ void Actor::UpdateMovePath() {
 	// a little above the ground, or past the edge of what it was over, had no path at all and the unit flew for it blind.
 	// (Sampled every 3 px: at 10 a thin floor could be stepped over by the search, which then put the target on the next floor down. And
 	// from inside the scene: a point over the top edge was being bounded to somewhere the search didn't see the top floor from.)
+	// A target inside the ground stays where it is: it's a place to dig to, and "the ground under it" is itself, so the search was lifting
+	// it a fifth of a height every time the path was asked for again, and the digger never got there.
 	auto onGround = [this](const Vector& place) {
 		Vector inScene(place.m_X, std::max(1.0F, place.m_Y));
+		if (g_SceneMan.GetTerrMatter(static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y)) != MaterialColorKeys::g_MaterialAir) {
+			return inScene;
+		}
 		return g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
 	};
 	// The start is on the ground too, but not when that is far below: a unit part way up a jetpack climb, or just dropped from a ship, would be given

@@ -2,7 +2,7 @@ function AIGymScript:StartScript()
 	self.timer = Timer();
 	self.runners = {};
 	self.report = {};
-	self.traceCourse = 11; -- Which course's unit writes a trace line every second.
+	self.traceCourse = 12; -- Which course's unit writes a trace line every second.
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
 end
 
@@ -76,6 +76,8 @@ function AIGymScript:UpdateScript()
 			-- The scene's own slopes: the far side of the hill drops 500 px over 450.
 			{ from = self:GroundAt(middle + 40), to = self:GroundAt(middle + 480), name = "down the slope" },
 			{ from = self:GroundAt(middle + 520), to = self:GroundAt(middle + 80), name = "up the slope" },
+			-- A digger: the goal is 140 px straight down into the valley floor on the left, and the only way is through.
+			{ from = self:GroundAt(left - 300), to = self:GroundAt(left - 300) + Vector(0, 140), name = "dig down", digger = true },
 			-- A crab (legs both sides, no head, no jetpack) on the easy courses.
 			{ from = Vector(left - 60, 32), to = Vector(left + 680, 32), name = "crab flat run", crab = true },
 			{ from = self:GroundAt(middle - 260), to = self:GroundAt(middle + 260), name = "crab over the hill", crab = true },
@@ -83,6 +85,9 @@ function AIGymScript:UpdateScript()
 		for i, course in ipairs(courses) do
 			local actor = course.crab and CreateACrab("Dreadnought", "Dummy.rte") or CreateAHuman("Soldier Light", "Coalition.rte");
 			actor.Pos = course.from + Vector(0, -20);
+			if course.digger then
+				actor:AddInventoryItem(CreateHDFirearm("Heavy Digger", "Base.rte"));
+			end
 			actor.Team = 0;
 			actor.AIMode = Actor.AIMODE_SENTRY;
 			if i == self.traceCourse then
@@ -107,7 +112,7 @@ function AIGymScript:UpdateScript()
 			local b = SceneMan.Scene:CalculatePath(course.from, course.to + Vector(0, -actor.Height * 0.5), actor.JumpHeight, 35, Activity.TEAM_1);
 			local c = SceneMan.Scene:CalculatePath(course.from, course.to + Vector(0, -24), actor.JumpHeight, 35, Activity.TEAM_1);
 			ConsoleMan:PrintString("AIGYM path variants for " .. course.name .. ": ground start " .. a .. ", raised end " .. b .. ", end 24 up " .. c);
-			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
+			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, digger = course.digger, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 		end
 		SandboxDo("Look around", Vector(left + 300, 360), 0, 0, 1, "");
 		-- Where the scene's own ground is, so a course isn't built into it by mistake.
@@ -150,7 +155,8 @@ function AIGymScript:UpdateScript()
 					runner.sent = true;
 					runner.start = t;
 					actor:ClearAIWaypoints();
-					actor:AddAISceneWaypoint(runner.goal + Vector(0, -actor.Height * 0.5));
+					-- Half a body over the goal, which is a point on the ground; into the ground (digging), the goal is where the body goes.
+					actor:AddAISceneWaypoint(runner.goal + Vector(0, runner.digger and 0 or -actor.Height * 0.5));
 					actor.AIMode = Actor.AIMODE_GOTO;
 				end
 			else
@@ -158,7 +164,7 @@ function AIGymScript:UpdateScript()
 				-- their Pos at different heights over their feet).
 				local offset = SceneMan:ShortestDistance(actor.Pos, runner.goal, false);
 				local distance = offset.Magnitude;
-				if math.abs(offset.X) < 40 and math.abs(offset.Y) < actor.Height * 0.7 then
+				if math.abs(offset.X) < 40 and math.abs(offset.Y) < (runner.digger and 40 or actor.Height * 0.7) then
 					runner.done = true;
 					table.insert(self.report, "AIGYM " .. runner.name .. ": arrived in " .. math.floor((t - runner.start) / 100) / 10 .. " s, stood still " .. runner.still .. " s");
 					ConsoleMan:PrintString(self.report[#self.report]);

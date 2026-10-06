@@ -5,6 +5,8 @@
 #include "PerformanceMan.h"
 #include "FrameMan.h"
 #include "ConsoleMan.h"
+
+#include <chrono>
 #include "SettingsMan.h"
 #include "ThreadMan.h"
 #include "MetaMan.h"
@@ -2406,6 +2408,7 @@ void Scene::BlockUntilAllPathingRequestsComplete() {
 void Scene::UpdatePathFinding() {
 	ZoneScoped;
 	PerformanceMan::LogScope logScope("Sim: pathfinding cost update");
+	auto callStart = std::chrono::steady_clock::now();
 
 	// Plenty of nodes at a time: the node updates run in parallel, and a grid that lags the terrain sends units through ground that is there and round
 	// ground that isn't. A hundred a call, as it was, took seconds to take in one blast or one built wall.
@@ -2451,6 +2454,28 @@ void Scene::UpdatePathFinding() {
 
 			// Place back the material representation of all doors of this team so they are as we found them.
 			g_MovableMan.OverrideMaterialDoors(false, team);
+		}
+	}
+
+	if (std::getenv("CCCP_PATH_LOG")) {
+		// Debug: what the grid updates cost, every few seconds.
+		static Timer reportTimer;
+		static int calls = 0;
+		static int nodes = 0;
+		static double totalMs = 0.0;
+		static double worstMs = 0.0;
+		double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - callStart).count();
+		++calls;
+		nodes += static_cast<int>(updatedNodes.size());
+		totalMs += ms;
+		worstMs = std::max(worstMs, ms);
+		if (reportTimer.IsPastRealMS(5000)) {
+			g_ConsoleMan.PrintString("PATHLOG grid updates: " + std::to_string(calls) + " calls in 5 s, " + std::to_string(nodes) + " nodes, " + std::to_string(static_cast<int>(totalMs)) + " ms in all, worst " + std::to_string(static_cast<int>(worstMs)) + " ms, " + std::to_string(m_pTerrain->GetUpdatedMaterialAreas().size()) + " areas waiting");
+			reportTimer.Reset();
+			calls = 0;
+			nodes = 0;
+			totalMs = 0.0;
+			worstMs = 0.0;
 		}
 	}
 

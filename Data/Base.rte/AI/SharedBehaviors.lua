@@ -376,6 +376,15 @@ function SharedBehaviors.UpdateAverageVel(Owner, AverageVel)
 end
 
 -- move to the next waypoint
+-- Where a waypoint is really meant: on the ground under it, unless it is inside the ground already, in which case it is a place to dig to and
+-- is left alone. (MovePointToGround lifts a buried point by the height given, every time it is asked, and a digger never got to it.)
+function SharedBehaviors.WaypointOnGround(pos, height)
+	if SceneMan:GetTerrMatter(pos.X, pos.Y) ~= rte.airID then
+		return Vector(pos.X, pos.Y);
+	end
+	return SceneMan:MovePointToGround(pos, height * 0.2, 4);
+end
+
 function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	-- check if we have arrived
 	if not (Owner.AIMode == Actor.AIMODE_SQUAD or Owner:GetWaypointListSize() > 0) then
@@ -591,7 +600,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					AI.proneState = AI.proneState == AHuman.PRONE and AHuman.NOTPRONE or AHuman.PRONE;
 				end
 				-- A jetpack is the usual way off whatever we're stuck on: one burst, when there's fuel and head room on the side we're heading.
-				if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not StuckJumped then
+				-- Not when the goal is below us, though: a digger stuck in its own shaft was blown out of it.
+				local goalBelow = SceneMan:ShortestDistance(Owner.Pos, Owner:GetLastAIWaypoint(), false).Y > Owner.Height * 0.3;
+				if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not StuckJumped and not goalBelow then
 					local headRoom = (nextLatMove == Actor.LAT_LEFT and not Obstacles[Obst.L_UP]) or (nextLatMove ~= Actor.LAT_LEFT and not Obstacles[Obst.R_UP]);
 					if headRoom then
 						AI.jump = true;
@@ -621,8 +632,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 						end
 					end
 				else	-- moving towards a scene point
-					--local GroundPos = Owner:GetLastAIWaypoint()
-					local GroundPos = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height*0.2, 4);
+					local GroundPos = SharedBehaviors.WaypointOnGround(Owner:GetLastAIWaypoint(), Owner.Height);
 					if SceneMan:ShortestDistance(GroundPos, Owner.Pos, false).Largest < Owner.Height * 0.4 then
 						if Owner.AIMode == Actor.AIMODE_GOTO then
 							AI.SentryFacing = Owner.HFlipped; -- guard this direction
@@ -634,6 +644,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 						Owner:ClearMovePath();
 						Owner:DrawWaypoints(false);
 						return true;
+					else
+						-- The path ran out short of the goal (a buried goal that the dig hasn't reached, say): another path, not a wait for the
+						-- next scheduled one with the stuck handling going off in the meantime.
+						NeedsNewPath = true;
 					end
 				end
 			else
@@ -850,7 +864,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								if Waypoint.Type == "last" then
 									if not AI.flying and Owner.Vel.Largest < 5 then
 										if not Owner.MOMoveTarget then
-											local ProxyWpt = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height*0.2, 4);
+											local ProxyWpt = SharedBehaviors.WaypointOnGround(Owner:GetLastAIWaypoint(), Owner.Height);
 											if SceneMan:ShortestDistance(Owner.Pos, ProxyWpt, false).Largest < Owner.Height*0.4 then
 												Owner:ClearAIWaypoints();
 												Owner:ClearMovePath();
