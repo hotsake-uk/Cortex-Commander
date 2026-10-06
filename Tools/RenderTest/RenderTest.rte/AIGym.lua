@@ -2,7 +2,7 @@ function AIGymScript:StartScript()
 	self.timer = Timer();
 	self.runners = {};
 	self.report = {};
-	self.traceCourse = 8; -- Which course's unit writes a trace line every second.
+	self.traceCourse = 5; -- Which course's unit writes a trace line every second.
 	self.traceAll = true; -- Every course's unit writes one every two seconds.
 end
 

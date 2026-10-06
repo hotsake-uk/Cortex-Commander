@@ -59,10 +59,11 @@ twice the sprite's height; the feet are a fifth of it under `Pos`.
 
 Still open, in rough order of value:
 
-11. **The grid has no idea of body size.** A node 3 px above a floor can't be walked along (the sample ray clips the floor), so paths along
-    a flat surface zigzag up and down a node; a 34 px tunnel is "open" to a standing unit; a one-node gap is a corridor. The fix is a
-    clearance-aware grid: nodes carry the free height above the floor, sideways edges require the unit's (standing or prone) height, and
-    the surface node is the one the unit actually stands at. This also removes the ±3 px sampling fudge.
+11. **The grid has no idea of body size.** A 34 px tunnel is "open" to a standing unit; a one-node gap is a corridor; a jump chain's
+    column can run up a cliff face the unit's body overlaps. The fix is a clearance-aware grid: nodes carry the free height above the floor
+    and the free width, sideways edges require the unit's (standing or prone) height, jump columns keep half a body from walls. *Partly
+    done:* walking edges are now sampled along the ground surface at each column, and the goal node is the one the unit stands at, which
+    took out the zigzag along flat surfaces and made gentle slopes walkable.
 12. **Jump edges aren't annotated.** The path is a list of points; the script re-derives "this is a jump" from the geometry, which is where
     most of the judgement errors come from. The pather should return the edge kind (walk, fall, jump of N nodes, dig, door) with each point,
     and the script should act on it directly: hold the jet for a known height, step off at a known column.
@@ -97,16 +98,21 @@ powershell -ExecutionPolicy Bypass -File Tools\RenderTest\AIGym.ps1 -Runs 4
 
 Where things stand (four runs, seconds to arrive):
 
-| course            | before      | now         |
-|-------------------|-------------|-------------|
-| flat run          | 12          | 12          |
-| gap               | 8–9         | 10–12       |
-| steps up          | impossible  | 11–15       |
-| low tunnel        | 24–35*      | 15–19       |
-| over the hill     | 20–60, deaths | 12–15     |
-| down into the cave| loops       | stands down |
+| course             | before        | now                      |
+|--------------------|---------------|--------------------------|
+| flat run           | 12            | 12                       |
+| gap                | 8–9           | 10–13                    |
+| steps up           | impossible    | 12–15                    |
+| low tunnel         | 24–35*        | 16–19                    |
+| over the hill      | 20–60, deaths | 13–18, a rare give-up    |
+| down into the cave | loops         | 15–17                    |
+| down the slope     | –             | 10–11                    |
+| up the slope       | –             | 12–41 (a 166 px cliff)   |
 
 \* the tunnel used to be built into the hill, so its "detour" was the pathfinder being right.
+
+The cliff is the course to watch: it takes most of a tank, the unit presses itself to the face (the push-off helps), and a unit that
+arrives at the foot with half a tank now waits for it to fill rather than failing part way up.
 
 ## The plan
 

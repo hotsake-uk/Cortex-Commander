@@ -1007,7 +1007,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- Room over the head for the climb itself, no more: a ceiling well above where we're going is no ceiling.
 												local Up = Vector(0, math.min(-Owner.Height * 0.5, above - Owner.Height * 0.3));
 												local ceiling = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.3), Up, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0;
-												if not ceiling and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime then
+												-- A tall climb wants a near full tank: started on half of one it ends part way up the face, with the fall and the wait to
+												-- refill to show for it. So the unit waits at the foot until the tank is in.
+												local tall = above < -Owner.Height;
+												local tankIn = Owner.Jetpack.JetTimeLeft >= (tall and Owner.Jetpack.JetTimeTotal * 0.85 or AI.minBurstTime);
+												if not tankIn and tall and not AI.flying then
+													AI.refuel = true;
+												end
+												if not ceiling and tankIn then
 													climbing = true;
 													AI.jetClimb = true;
 													if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: wpt dx " .. math.floor(towardsX) .. " dy " .. math.floor(above)); end
