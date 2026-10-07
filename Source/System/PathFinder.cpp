@@ -231,23 +231,28 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// A node whose centre is in solid ground is no place to start or finish: the one above (the surface node) is, when it's open, or else
 	// the one below. A goal a little above the ground falls in the cell over the surface's: that is the node a unit stands at, so the
 	// search ends there.
-	auto openNode = [this](PathNode* node) -> PathNode* {
+	// (The open one on the point's side first: a point in the lower half of a buried cell is under it, and always taking the one above, a
+	// waypoint inside the thin ceiling slab of a bunker corridor was put on the roof over it, and the unit went outside and round to get there.)
+	auto openNode = [this](PathNode* node, const Vector& point) -> PathNode* {
 		auto buried = [](const PathNode* n) { return n && g_SceneMan.GetTerrMatter(static_cast<int>(n->Pos.m_X), static_cast<int>(n->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir; };
-		if (buried(node)) {
-			if (node->Up && !buried(node->Up)) {
-				return node->Up;
+		if (node && buried(node)) {
+			bool below = point.m_Y > node->Pos.m_Y;
+			PathNode* first = below ? node->Down : node->Up;
+			PathNode* second = below ? node->Up : node->Down;
+			if (first && !buried(first)) {
+				return first;
 			}
-			if (node->Down && !buried(node->Down)) {
-				return node->Down;
+			if (second && !buried(second)) {
+				return second;
 			}
 		}
 		return node;
 	};
-	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY));
+	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY), start);
 	// A searcher with a jetpack asking from the air (a re-path or a route check part way through a jump) flies on from where it is; see
 	// AdjacentCost.
 	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
-	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY));
+	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY), end);
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
 	}

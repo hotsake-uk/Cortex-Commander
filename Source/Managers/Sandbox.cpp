@@ -1929,11 +1929,24 @@ namespace {
 			g_SceneMan.WrapPosition(probe);
 			int x = probe.GetFloorIntX();
 			int y = probe.GetFloorIntY();
-			// Up out of the ground if inside it, then down to the ground beneath, within a short way of the point.
-			int climbed = 0;
-			while (climbed < 120 && y > 0 && g_SceneMan.GetTerrMatter(x, y) != g_MaterialAir) {
-				--y;
-				++climbed;
+			// Out of the ground if inside it, by the nearer side (down when they're even), then down to the ground beneath, within a short way of
+			// the point. (Only ever up, a click on a bunker's ceiling slab sent the unit a storey up, or onto the roof.)
+			if (g_SceneMan.GetTerrMatter(x, y) != g_MaterialAir) {
+				int up = 0;
+				while (up < 120 && y - up > 0 && g_SceneMan.GetTerrMatter(x, y - up) != g_MaterialAir) {
+					++up;
+				}
+				int down = 0;
+				while (down < 120 && y + down < sceneHeight - 2 && g_SceneMan.GetTerrMatter(x, y + down) != g_MaterialAir) {
+					++down;
+				}
+				if (down < 120 && down <= up) {
+					y += down;
+				} else if (up < 120) {
+					y -= up;
+				} else {
+					continue;
+				}
 			}
 			int fell = 0;
 			while (fell < 240 && y < sceneHeight - 2 && g_SceneMan.GetTerrMatter(x, y + 1) == g_MaterialAir) {
@@ -2011,8 +2024,10 @@ namespace {
 		for (size_t i = 0; i < units.size(); ++i) {
 			Actor* unit = units[i];
 			const Vector& spot = spots[std::min(i, spots.size() - 1)];
-			// The waypoint a little above the ground, where the unit's middle will be.
-			SendUnit(unit, spot + Vector(0.0F, -unit->GetHeight() * 0.5F), nullptr, false);
+			// The waypoint just over the ground where the feet go (the AI puts it at its own standing height from there). Half the unit's height up,
+			// as it was, was inside the ceiling of a low corridor, and a waypoint inside a thin slab is taken to be on top of it: a unit sent a few
+			// steps along a bunker corridor went out and round to the roof over it.
+			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false);
 		}
 	}
 
@@ -2106,8 +2121,10 @@ namespace {
 	/// A further place for the selected units to go on to after where they're going (a shift-click): the route is then the player's own, leg by leg.
 	/// A unit going nowhere is simply sent there.
 	void QueueWaypoint(std::vector<Actor*> units, const Vector& point) {
+		std::vector<Vector> spots = StandingSpots(point, 1);
 		for (Actor* unit: units) {
-			Vector waypoint = point + Vector(0.0F, -unit->GetHeight() * 0.5F);
+			// (Just over the ground under the point, as for a move: see MoveUnitsTo.)
+			Vector waypoint = (spots.empty() ? point : spots.front()) + Vector(0.0F, -4.0F);
 			auto pending = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; });
 			if (pending != s_PendingOrders.end()) {
 				pending->Then.push_back(waypoint);
