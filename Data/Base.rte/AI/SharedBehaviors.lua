@@ -2071,7 +2071,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							-- inside a tunnel the jump point at its mouth was "reached" 33 px below and 19 across it, the climb took over, stood the unit
 							-- up into the slab, and it never got out.
 							local function LowCeilingUnder(Point)
-								return Point.Y < Owner.Pos.Y - 6 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, -Owner.Height * 0.3), 5, Vector(), 3, rte.grassID, true);
+								-- (Lying down only: a unit standing in a 48 px corridor touches its ceiling with this probe, and then no step up in the
+								-- corridor was ever reached.)
+								return AI.proneState == AHuman.PRONE and Point.Y < Owner.Pos.Y - 6 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, -Owner.Height * 0.3), 5, Vector(), 3, rte.grassID, true);
 							end
 
 							-- A waypoint behind us with the next one in plain sight is done with: the path's nodes are only 24 px apart, and waiting to stand on
