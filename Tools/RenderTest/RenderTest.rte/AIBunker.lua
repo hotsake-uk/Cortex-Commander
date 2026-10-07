@@ -21,7 +21,7 @@ function AIBunkerScript:StartScript()
 	-- screen is saved five times a second, and each is marked in the log ("REPLAY frame n") so the trace lines can be laid against them.
 	if os and os.getenv and os.getenv("CCCP_RECORD") == "1" then
 		self.record = true;
-		pcall(function() SettingsMan.NavDebugOverlay = 2; end);
+		pcall(function() SettingsMan.NavDebugOverlay = tonumber(os.getenv("CCCP_RECORD_OVERLAY") or "2") or 2; end);
 	end
 	-- CCCP_NAV_DEBUG as a level (1 the grid, 2 the routes and flights too) turns the navigation debug overlay on for this run, for a capture
 	-- of what the units make of the place. (The harness force-closes the game, so Settings.ini is not written with it.)
@@ -242,6 +242,8 @@ function AIBunkerScript:UpdateScript()
 				local a = runner.actor;
 				if not runner.done and MovableMan:ValidMO(a) and a:NumberValueExists("AITrace") then
 					SandboxDo("Look around", a.Pos, 0, 0, 1, "");
+					-- (Close in, so the limbs can be seen: CCCP_RECORD_ZOOM, 2 by default.)
+					pcall(function() FrameMan.CameraZoom = tonumber(os.getenv("CCCP_RECORD_ZOOM") or "2") or 2; end);
 					self.recordFrame = self.recordFrame + 1;
 					ConsoleMan:PrintString(string.format("REPLAY frame %d t %.1f at %d,%d vel %.1f,%.1f", self.recordFrame, t / 1000, math.floor(a.Pos.X), math.floor(a.Pos.Y), a.Vel.X, a.Vel.Y));
 					FrameMan:SaveScreenToPNG(string.format("Replay_%05d", self.recordFrame));
@@ -459,6 +461,15 @@ function AIBunkerScript:UpdateScript()
 			-- on what the legs alone can do (the steep stairs, say), asked for in Results/REQUESTS.md.
 			local crab = os and os.getenv and os.getenv("CCCP_BUNKER_UNIT") == "crab";
 			local actor = course and (crab and CreateACrab("Dreadnought", "Dummy.rte") or CreateAHuman("Soldier Light", "Coalition.rte")) or nil;
+			-- CCCP_BUNKER_NOJET=1: soldiers with no jetpack, so every way up is a ladder or a mantle (the ladders' climb, see AHuman::UpdateLadder).
+			if actor and os and os.getenv and os.getenv("CCCP_BUNKER_NOJET") == "1" and IsAHuman(actor) then
+				local human = ToAHuman(actor);
+				if human.Jetpack then
+					local removed = pcall(function() human:RemoveAttachable(human.Jetpack, false, false); end);
+					if not removed then pcall(function() human.Jetpack.JetTimeTotal = 1; end); end
+					ConsoleMan:PrintString("AIBUNKER no jetpack: " .. (removed and "removed" or "tank cut to 1 ms") .. " for " .. course.name);
+				end
+			end
 			if actor then
 			if not crab then
 				actor:AddInventoryItem(CreateHDFirearm("Assault Rifle", "Coalition.rte"));

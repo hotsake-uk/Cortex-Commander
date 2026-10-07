@@ -1034,6 +1034,11 @@ PathAgent AHuman::GetPathAgent() const {
 	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
 	// The flight links (PathFinder::AddFlightLinks): for a standard jetpack, its full tank.
 	agent.JetTimeMS = (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard) ? m_pJetpack->GetJetTimeTotal() : 0.0F;
+	// Ladders are a way up and down for anything with a hand to climb them with (see UpdateLadder), routed for now only where the jet
+	// can't do the work: no jetpack, or one that lifts the unit less than four nodes. (Routed for every soldier, as the cheaper way, ladders
+	// on a map full of them, Bywater, took over the routes there before the follower handles every way they meet the rest: a route that
+	// stepped down a laddered hatch to climb back up it stood a unit still for the minute. A player climbs any ladder regardless.)
+	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F);
 	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
 	// burns more of the tank for the same shaft).
 	if (agent.JetTimeMS > 0.0F) {
@@ -1044,6 +1049,11 @@ PathAgent AHuman::GetPathAgent() const {
 
 float AHuman::EstimateJumpHeight() const {
 	if (!m_pJetpack) {
+		return 0.0F;
+	}
+	// A tank too small for the jet to light (AEJetpack: 250 ms at the throttle, or its minimum ratio) is no jump: counted from its burst,
+	// a 1 ms tank was given three nodes of jump, and routes up shafts the unit could never leave the floor of.
+	if (m_pJetpack->GetJetTimeTotal() <= std::max(250.0F * std::max(m_pJetpack->GetThrottleFactor(), 0.5F), m_pJetpack->GetMinimumFuelRatio() * m_pJetpack->GetJetTimeTotal())) {
 		return 0.0F;
 	}
 
@@ -1703,6 +1713,9 @@ void AHuman::PreControllerUpdate() {
 	m_Paths[FGROUND][m_MovementState].SetHFlip(m_HFlipped);
 	m_Paths[BGROUND][m_MovementState].SetHFlip(m_HFlipped);
 
+	// A ladder taken hold of or let go of, before the jet reads its key (see UpdateLadderInput).
+	UpdateLadderInput();
+
 	if (m_pJetpack && m_pJetpack->IsAttached()) {
 		m_pJetpack->UpdateBurstState(*this);
 
@@ -1718,6 +1731,15 @@ void AHuman::PreControllerUpdate() {
 	const float movementThreshold = 1.0F;
 	bool isStill = (m_Vel + m_PrevVel).MagnitudeIsLessThan(movementThreshold);
 	bool isSharpAiming = m_Controller.IsState(AIM_SHARP);
+	// Whether the aim holds the facing (walking backwards, flying one way and looking the other). A player's does whenever it is held,
+	// as ever. An AI unit's only in a fight: firing or aiming sharp, or within a second and a half of it. The AI's look-round, an alarm's
+	// glance and a squad's look where its leader looks all leave an aim set, and units walked backwards to a jump and took off facing
+	// away from it.
+	if (isSharpAiming || m_Controller.IsState(WEAPON_FIRE)) {
+		m_FightAimTimer.Reset();
+	}
+	const bool aiNotFighting = m_Controller.GetInputMode() == Controller::CIM_AI && m_FightAimTimer.IsPastSimMS(1500);
+	const bool aimHoldsFacing = (!analogAim.IsZero() || isSharpAiming) && !aiNotFighting;
 
 	// If the pie menu is on, try to preserve whatever move state we had before it going into effect.
 	// This is only done for digital input, where the user needs to use the keyboard to choose pie slices.
@@ -1759,7 +1781,7 @@ void AHuman::PreControllerUpdate() {
 
 			// Walk backwards if the aiming is already focused in the opposite direction of travel.
 			// Note that we check against zero here rather than the deadzone, because using the deadzone makes jetpacking mouse players unable to fly one way and aim the other.
-			if (!analogAim.IsZero() || isSharpAiming) {
+			if (aimHoldsFacing) {
 				m_Paths[FGROUND][m_MovementState].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 				m_Paths[BGROUND][m_MovementState].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 			} else if ((m_Controller.IsState(MOVE_RIGHT) && m_HFlipped) || (m_Controller.IsState(MOVE_LEFT) && !m_HFlipped)) {
@@ -1885,6 +1907,11 @@ void AHuman::PreControllerUpdate() {
 		}
 		m_AimAngle = analogAim.GetAbsRadAngle();
 
+		// (An AI unit flying out of a fight faces the way it is going; its aim is only a look, which the head and arms take relative to that.)
+		bool faceTravel = aiNotFighting && m_MovementState == JUMP && std::abs(m_Vel.m_X) > 1.5F;
+		if (faceTravel) {
+			analogAim.m_X = m_Vel.m_X > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
+		}
 		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
 			SetHFlipped(!m_HFlipped);
 			m_CheckTerrIntersection = true;
@@ -2231,7 +2258,10 @@ void AHuman::PreControllerUpdate() {
 		pathOffset = m_WalkPathOffset;
 	}
 
-	if (m_Status == STABLE && !m_LimbPushForcesAndCollisionsDisabled && m_MovementState != NOMOVE) {
+	if (m_Ladder.active) {
+		// On a ladder: hands and feet on the rungs (see UpdateLadderLimbs), not the walk's paths.
+		UpdateLadderLimbs();
+	} else if (m_Status == STABLE && !m_LimbPushForcesAndCollisionsDisabled && m_MovementState != NOMOVE) {
 		// This exists to support disabling foot collisions if the limbpath has that flag set.
 		if ((m_pFGFootGroup->GetAtomCount() == 0 && m_BackupFGFootGroup->GetAtomCount() > 0) != m_Paths[FGROUND][m_MovementState].FootCollisionsShouldBeDisabled()) {
 			m_BackupFGFootGroup->SetLimbPos(m_pFGFootGroup->GetLimbPos());
@@ -2498,12 +2528,12 @@ void AHuman::PreControllerUpdate() {
 	}
 
 	if (m_pFGLeg) {
-		m_pFGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE);
+		m_pFGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active);
 		m_pFGLeg->SetTargetPosition(m_pFGFootGroup->GetLimbPos(m_HFlipped));
 	}
 
 	if (m_pBGLeg) {
-		m_pBGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE);
+		m_pBGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active);
 		m_pBGLeg->SetTargetPosition(m_pBGFootGroup->GetLimbPos(m_HFlipped));
 	}
 
@@ -2522,6 +2552,10 @@ void AHuman::PreControllerUpdate() {
 		if (m_Mantling && !m_pFGArm->GetHeldDevice()) {
 			m_pFGArm->ClearHandTargets();
 			m_pFGArm->AddHandTarget("Mantle Lip", GetMantleLip());
+		} else if (m_Ladder.active && !m_pFGArm->GetHeldDevice() && m_Ladder.gripped[0]) {
+			// On a ladder: the hand on its rung, a pixel in from the rung's end.
+			m_pFGArm->ClearHandTargets();
+			m_pFGArm->AddHandTarget("Ladder Rung", Vector(m_Ladder.gripX - 1.0F, m_Ladder.grip[0]));
 		} else if (m_Status == STABLE) {
 			if (m_ArmClimbing[FGROUND]) {
 				m_pFGArm->AddHandTarget("Hand AtomGroup Limb Pos", m_pFGHandGroup->GetLimbPos(m_HFlipped));
@@ -2541,6 +2575,9 @@ void AHuman::PreControllerUpdate() {
 			// The back hand on the lip, pulling.
 			m_pBGArm->ClearHandTargets();
 			m_pBGArm->AddHandTarget("Mantle Lip", GetMantleLip() + Vector(GetMantleDir() * 6.0F, 0.0F));
+		} else if (m_Ladder.active && !m_pBGArm->GetHeldDevice() && m_Ladder.gripped[1]) {
+			m_pBGArm->ClearHandTargets();
+			m_pBGArm->AddHandTarget("Ladder Rung", Vector(m_Ladder.gripX + 1.0F, m_Ladder.grip[1]));
 		} else if (m_Status == STABLE) {
 			if (m_ArmClimbing[BGROUND]) {
 				// Can't climb or crawl with the shield
@@ -2620,7 +2657,7 @@ void AHuman::Update() {
 
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
 	// paths while it pulls.
-	if (!m_Mantling) {
+	if (!m_Mantling && !m_Ladder.active) {
 		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
 		float bodyWidth = static_cast<float>(GetSpriteWidth());
 		if (m_pHead) {
@@ -2630,6 +2667,8 @@ void AHuman::Update() {
 	}
 	if (m_Mantling) {
 		UpdateMantle();
+	} else if (m_Ladder.active) {
+		UpdateLadder();
 	} else {
 		CorrectCorners();
 	}

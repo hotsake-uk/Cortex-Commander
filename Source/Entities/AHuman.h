@@ -328,7 +328,9 @@ namespace RTE {
 		/// @return The ratio.
 		float GetJetAccelRatio() const { return m_JetAccelRatio; }
 		/// Whether the body is flying on its jet just now (lit, or lit in the last 0.4 s): it passes the ladders' rungs, and a ladder lets it go.
-		bool IsJetFlying() const { return GetPassMaterial() != 0; }
+		bool IsJetFlying() const { return GetPassMaterial() != 0 && !m_Ladder.active; }
+		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
+		bool IsClimbingLadder() const { return m_Ladder.active; }
 
 		/// Switches the currently held device (if any) to the first found shield
 		/// in the inventory. If the held device already is a shield, or no
@@ -734,6 +736,7 @@ namespace RTE {
 		Vector m_JetPrevVel; //!< Last frame's velocity, for the learning.
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		double m_JetLastLitSimMS = -1.0; //!< When the jet was last lit (sim ms), for passing the ladders' rungs while flying (see LearnFlight).
+		Timer m_FightAimTimer; //!< Since the unit last fired or aimed sharp: an AI unit's aim holds its facing (walking backwards) only in a fight.
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
 		int m_PilotLastChoice = -1;
 		bool m_WasAirborne = false; //!< Whether last frame nothing was under the feet (for the landing squat).
@@ -805,6 +808,38 @@ namespace RTE {
 		};
 		RouteMover m_Mover;
 
+		/// Climbing a ladder: the body held to the ladder's line and moved along it by the climb (as the mantle moves it: gravity, the jet and
+		/// the walls are nothing to it meanwhile), the hands and feet on the rungs, one limb at a time, hand and opposite foot in turn.
+		struct LadderClimb {
+			bool active = false;
+			bool material = false; //!< Rungs of the Ladder material; else a background ladder (rungs every 8 px).
+			float bodyX = 0.0F; //!< Where the body hangs.
+			float gripX = 0.0F; //!< Where the hands and feet take the rungs (the rungs' outer ends).
+			int wallSide = 0; //!< Which side the ladder stands from a wall: -1 the wall on the left, 1 on the right, 0 free-standing.
+			Vector pos; //!< Where the body is held.
+			float climbed = 0.0F; //!< Distance climbed, for the sway.
+			std::array<float, 4> grip = {}; //!< The rung (y) each limb holds: FG hand, BG hand, FG foot, BG foot.
+			std::array<bool, 4> gripped = {};
+			double lastRegripMS = -1.0;
+			double lastHandRegripMS = -1.0;
+			int lastLimb = -1;
+			Timer lostTimer;
+			Timer startTimer;
+		};
+		LadderClimb m_Ladder;
+		/// The ladder within reach across of a point, if any: where a climber's body hangs on it, where its rungs are taken, which side its wall
+		/// is, and whether its rungs are Ladder material (else a background ladder). @return Whether there is one.
+		/// @param way -1 for a ladder going up from here (rungs over the chest), 1 for one going down (rungs under the feet), 0 for either.
+		bool FindLadderNear(const Vector& at, float reachX, float& bodyX, float& gripX, int& wallSide, bool& material, int way = 0) const;
+		/// The rungs (their y) of the ladder being climbed between two heights, top first.
+		void LadderRungs(float fromY, float toY, std::vector<float>& rungs) const;
+		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
+		void UpdateLadderInput();
+		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.
+		void UpdateLadder();
+		/// The hands and feet on the rungs.
+		void UpdateLadderLimbs();
+		void LetGoOfLadder(const Vector& velocity);
 		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
 		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it

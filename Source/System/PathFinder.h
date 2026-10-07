@@ -25,7 +25,8 @@ namespace RTE {
 		Fall, //!< Down, off an edge.
 		Dig, //!< Through ground the searcher can dig.
 		Door, //!< Through a door the searcher can open or breach.
-		Stairs //!< Up or down stairs, or a slope of about sixty degrees, on the legs: two nodes of height for one of width.
+		Stairs, //!< Up or down stairs, or a slope of about sixty degrees, on the legs: two nodes of height for one of width.
+		Ladder //!< Up or down a ladder, hand over hand (see AHuman::UpdateLadder), or off its top or side onto a floor.
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -42,6 +43,7 @@ namespace RTE {
 		float JetClimbMSPerPx = 6.0F; //!< The fuel its climbs burn per pixel of height, in ms, from its own jet's push (see AHuman::ClimbFuelPerPixel).
 		Vector Velocity; //!< Its velocity when it asks, in m/s: a search started in the air charges for going against it (see AdjacentCost).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
+		bool ClimbsLadders = false; //!< Whether it climbs ladders hand over hand (a humanoid with an arm): ladders are a way up and down for it, jet or none.
 	};
 
 	/// Information required to make an async pathing request.
@@ -70,6 +72,7 @@ namespace RTE {
 		/// against one, out from it. (Routes were the cells' centres, and up a shaft or a climb beside a ledge they ran against one wall: units
 		/// jetted into the wall, or strafed to line up.) The search, the grid and the costs keep to Pos.
 		Vector Anchor;
+		bool Ladder = false; //!< Rungs of the Ladder material in or beside this cell: a way up and down for a climber (the anchor is where its body climbs).
 
 		bool m_Navigable; //!< Whether this node can be navigated through.
 
@@ -254,6 +257,7 @@ namespace RTE {
 		MicroPather* m_Pather; //!< The actual pathing object that does the pathfinding work. Owned.
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
 		unsigned int m_NodeDimension; //!< The width and height of each PathNode, in pixels on the scene.
+		unsigned char m_LadderMaterial = 0; //!< The Ladder material's index (the bunkers' rungs), 0 when there is none; looked up once at creation.
 		Vector m_Offset;
 		int m_GridWidth; //!< The width of the pathing grid, in PathNodes.
 		int m_GridHeight; //!< The height of the pathing grid, in PathNodes.

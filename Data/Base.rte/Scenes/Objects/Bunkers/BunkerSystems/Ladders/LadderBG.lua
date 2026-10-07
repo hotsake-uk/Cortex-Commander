@@ -38,6 +38,11 @@ function Update(self)
 					elseif actor.Jetpack then
 						flying = actor.Jetpack:IsEmitting();
 					end
+					-- (Nor one the engine is climbing the ladder with, hand over hand: AHuman.ClimbingLadder.)
+					local okClimb, climbing = pcall(function() return actor.ClimbingLadder; end);
+					if okClimb and climbing then
+						flying = true;
+					end
 					if limbs and actor.Status == Actor.STABLE and not controller:IsState(Controller.BODY_JUMP) and not flying then
 						local velFactor = 1 + actor.Vel.Magnitude * 0.3;
 						local aimAngle = actor:GetAimAngle(false);

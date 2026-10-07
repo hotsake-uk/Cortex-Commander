@@ -6,6 +6,9 @@
 #include "AHuman.h"
 #include "ADoor.h"
 #include "AEJetpack.h"
+#include "AtomGroup.h"
+#include "Arm.h"
+#include "Leg.h"
 #include "ConsoleMan.h"
 #include "TimerMan.h"
 #include "MovableMan.h"
@@ -35,6 +38,22 @@ namespace {
 	bool Solid(float x, float y) {
 		return g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y)) != MaterialColorKeys::g_MaterialAir;
 	}
+
+	/// The Ladder material's index (the bunkers' rungs; see Materials.ini), 0 when there is none.
+	unsigned char LadderMaterialID() {
+		static int s_Ladder = -1;
+		if (s_Ladder < 0) {
+			const Material* ladder = g_SceneMan.GetMaterial("Ladder");
+			s_Ladder = ladder ? ladder->GetIndex() : 0;
+		}
+		return static_cast<unsigned char>(s_Ladder);
+	}
+
+	/// Solid for a climber: terrain that isn't air nor the ladder's own rungs.
+	bool SolidNotLadder(float x, float y) {
+		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID();
+	}
 } // namespace
 
 // The base game's background ladders: a script node at the middle of each 24 px piece holds a humanoid in front of it, and moves it up when
@@ -63,6 +82,437 @@ const Vector* AHuman::LadderNear(const Vector& point, float reachX, float reachY
 		}
 	}
 	return best;
+}
+
+// ---------------------------------------------------------------- Ladders
+
+bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float& gripX, int& wallSide, bool& material, int way) const {
+	const float h = m_CharHeight;
+	const unsigned char ladder = LadderMaterialID();
+	if (ladder != 0) {
+		// The nearest column with rungs in it, across from the point, over most of a body's height (the rungs are 3 px bars every 8 px,
+		// so the look is every 2 px down).
+		const int x = static_cast<int>(at.m_X);
+		// (From an overhead reach, about a body over the head's middle: a ladder whose foot is above the floor is reached up to and taken.)
+		const int top = static_cast<int>(at.m_Y - h * 0.9F);
+		const int bottom = static_cast<int>(at.m_Y + h * 0.35F);
+		auto columnHas = [&](int cx) {
+			for (int y = top; y <= bottom; y += 2) {
+				if (g_SceneMan.GetTerrMatter(cx, y) == ladder) {
+					return true;
+				}
+			}
+			return false;
+		};
+		// (For a way up or down, the nearest ladder that goes that way: beside a shaft going up there can be one going down, nearer.)
+		const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+		auto goesTheWay = [&](int cx) {
+			if (way == 0) {
+				return true;
+			}
+			int from = way < 0 ? top : static_cast<int>(at.m_Y + feet + 2.0F);
+			int to = way < 0 ? static_cast<int>(at.m_Y - h * 0.15F) : static_cast<int>(at.m_Y + feet + h * 0.5F);
+			for (int y = from; y <= to; y += 2) {
+				if (g_SceneMan.GetTerrMatter(cx, y) == ladder) {
+					return true;
+				}
+			}
+			return false;
+		};
+		int found = INT_MIN;
+		for (int d = 0; d <= static_cast<int>(reachX) && found == INT_MIN; ++d) {
+			if (columnHas(x - d) && goesTheWay(x - d)) {
+				found = x - d;
+			} else if (d > 0 && columnHas(x + d) && goesTheWay(x + d)) {
+				found = x + d;
+			}
+		}
+		if (found != INT_MIN) {
+			// The ladder's width (its rail and the rungs out from it), and the wall it stands from.
+			int left = found;
+			int right = found;
+			while (found - left < 24 && (columnHas(left - 1) || columnHas(left - 2))) {
+				left -= columnHas(left - 1) ? 1 : 2;
+			}
+			while (right - found < 24 && (columnHas(right + 1) || columnHas(right + 2))) {
+				right += columnHas(right + 1) ? 1 : 2;
+			}
+			auto wallAt = [&](int wx) {
+				for (int y = top; y <= bottom; y += 6) {
+					if (SolidNotLadder(static_cast<float>(wx), static_cast<float>(y))) {
+						return true;
+					}
+				}
+				return false;
+			};
+			wallSide = wallAt(left - 2) ? -1 : (wallAt(right + 2) ? 1 : 0);
+			// The rungs' outer ends are taken (the rail is against the wall); the body hangs a few pixels off them on the open side.
+			if (wallSide < 0) {
+				gripX = static_cast<float>(right) - 2.0F;
+				bodyX = static_cast<float>(right) + 7.0F;
+			} else if (wallSide > 0) {
+				gripX = static_cast<float>(left) + 2.0F;
+				bodyX = static_cast<float>(left) - 7.0F;
+			} else {
+				gripX = bodyX = static_cast<float>(left + right) * 0.5F;
+			}
+			material = true;
+			return true;
+		}
+	}
+	// A background ladder: no material, a node every 24 px that its script holds a body in front of.
+	if (const Vector* node = LadderNear(at, reachX, h * 0.5F)) {
+		gripX = bodyX = node->m_X;
+		wallSide = 0;
+		material = false;
+		return true;
+	}
+	return false;
+}
+
+void AHuman::LadderRungs(float fromY, float toY, std::vector<float>& rungs) const {
+	rungs.clear();
+	if (!m_Ladder.material) {
+		// (A background ladder's rungs are drawn every 8 px.)
+		for (float y = std::floor(fromY / 8.0F) * 8.0F + 4.0F; y <= toY; y += 8.0F) {
+			if (y >= fromY) {
+				rungs.push_back(y);
+			}
+		}
+		return;
+	}
+	// The rows with rung at the rungs' outer ends: each run of them one rung, at its middle.
+	const unsigned char ladder = LadderMaterialID();
+	const int x = static_cast<int>(m_Ladder.gripX);
+	bool inRung = false;
+	int runStart = 0;
+	for (int y = static_cast<int>(fromY); y <= static_cast<int>(toY) + 1; ++y) {
+		bool has = g_SceneMan.GetTerrMatter(x, y) == ladder || g_SceneMan.GetTerrMatter(x - 1, y) == ladder || g_SceneMan.GetTerrMatter(x + 1, y) == ladder;
+		if (has && !inRung) {
+			inRung = true;
+			runStart = y;
+		} else if (!has && inRung) {
+			inRung = false;
+			rungs.push_back(static_cast<float>(runStart + y - 1) * 0.5F);
+		}
+	}
+}
+
+void AHuman::LetGoOfLadder(const Vector& velocity) {
+	m_Ladder.active = false;
+	m_Vel = velocity;
+}
+
+void AHuman::UpdateLadderInput() {
+	Controller& ctrl = m_Controller;
+	const bool up = ctrl.IsState(MOVE_UP);
+	const bool down = ctrl.IsState(MOVE_DOWN);
+	const bool left = ctrl.IsState(MOVE_LEFT);
+	const bool right = ctrl.IsState(MOVE_RIGHT);
+	const bool jump = ctrl.IsState(BODY_JUMP);
+	const bool side = left || right;
+	LadderClimb& ladder = m_Ladder;
+	if (ladder.active) {
+		if (m_Status != STABLE) {
+			ladder.active = false;
+			return;
+		}
+		// A side key steps off (onto a floor beside, or a jump away with the jet's key too); the jet's key alone lets go and jets. With up
+		// held, the jet's key is climbing, not the jet: on the mouse and keyboard the two are the one key, W.
+		if (side) {
+			LetGoOfLadder(Vector(right ? 2.0F : -2.0F, -1.2F));
+			return;
+		}
+		if (jump && !up) {
+			LetGoOfLadder(Vector());
+			return;
+		}
+		if (jump && up) {
+			ctrl.SetState(BODY_JUMP, false);
+			ctrl.SetState(BODY_JUMPSTART, false);
+		}
+		return;
+	}
+	// Taking hold: up or down pressed at a ladder, standing, with a hand to climb with; not while flying past (the jet lit lately), nor with
+	// a side key held (walking past it, or stepping off).
+	if (!(up || down) || side) {
+		return;
+	}
+	// (Why not, in the trace, once a second: the trace is how a unit standing at a ladder's foot is understood.)
+	auto refused = [&](const std::string& why) {
+		if (m_Mover.traceTimer.IsPastSimMS(1000)) {
+			m_Mover.traceTimer.Reset();
+			MoverTrace("no hold on a ladder: " + why);
+		}
+	};
+	if (m_Status != STABLE || m_Mantling || m_GettingUp || m_ProneState != NOTPRONE || IsJetFlying() || (!m_pFGArm && !m_pBGArm)) {
+		refused(m_Status != STABLE ? "not stable" : (m_Mantling ? "mantling" : (m_GettingUp ? "getting up" : (m_ProneState != NOTPRONE ? "prone" : (IsJetFlying() ? "flying" : "no arms")))));
+		return;
+	}
+	const float h = m_CharHeight;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	float bodyX = 0.0F;
+	float gripX = 0.0F;
+	int wallSide = 0;
+	bool material = false;
+	if (!FindLadderNear(m_Pos, h * 0.3F, bodyX, gripX, wallSide, material, up ? -1 : 1)) {
+		refused("none in reach");
+		return;
+	}
+	if (std::abs(Towards(m_Pos, Vector(bodyX, m_Pos.m_Y)).m_X) > h * 0.35F) {
+		refused("too far across (" + std::to_string(static_cast<int>(bodyX)) + ")");
+		return;
+	}
+	ladder = LadderClimb();
+	ladder.material = material;
+	ladder.bodyX = bodyX;
+	ladder.gripX = gripX;
+	ladder.wallSide = wallSide;
+	std::vector<float> rungs;
+	ladder.active = true;
+	LadderRungs(m_Pos.m_Y - h * 0.95F, m_Pos.m_Y + feet + h * 0.5F, rungs);
+	ladder.active = false;
+	// Up wants rungs above the chest; down wants rungs under the feet (taking hold from the top of it).
+	bool rungsAbove = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y < m_Pos.m_Y - h * 0.15F; });
+	bool rungsBelow = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y > m_Pos.m_Y + feet + 2.0F; });
+	if ((up && !rungsAbove) || (down && !up && !rungsBelow)) {
+		refused(std::string(up ? "no rungs above" : "no rungs below") + " (" + std::to_string(rungs.size()) + " rungs, grip x " + std::to_string(static_cast<int>(gripX)) + ")");
+		return;
+	}
+	ladder.active = true;
+	ladder.pos = m_Pos;
+	ladder.startTimer.Reset();
+	ladder.lostTimer.Reset();
+	if (jump) {
+		ctrl.SetState(BODY_JUMP, false);
+		ctrl.SetState(BODY_JUMPSTART, false);
+	}
+	MoverTrace(std::string("took hold of a ladder (") + (material ? "rungs" : "background") + ", wall " + std::to_string(wallSide) + ")");
+}
+
+void AHuman::UpdateLadder() {
+	LadderClimb& ladder = m_Ladder;
+	if (!ladder.active) {
+		return;
+	}
+	if (m_Status != STABLE || m_Mantling) {
+		ladder.active = false;
+		return;
+	}
+	const float h = m_CharHeight;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	const float dt = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+	const double now = g_TimerMan.GetSimTimeMS();
+
+	// The ladder, followed as the body goes (a ladder of pieces, a wall that changes); let go of when it is gone a quarter second.
+	{
+		float bodyX = 0.0F;
+		float gripX = 0.0F;
+		int wallSide = 0;
+		bool material = false;
+		const int way = m_Controller.IsState(MOVE_UP) ? -1 : (m_Controller.IsState(MOVE_DOWN) ? 1 : 0);
+		if (FindLadderNear(ladder.pos, h * 0.45F, bodyX, gripX, wallSide, material, way) || (way != 0 && FindLadderNear(ladder.pos, h * 0.45F, bodyX, gripX, wallSide, material, 0))) {
+			ladder.bodyX = bodyX;
+			ladder.gripX = gripX;
+			ladder.wallSide = wallSide;
+			ladder.material = material;
+			ladder.lostTimer.Reset();
+		} else if (ladder.lostTimer.IsPastSimMS(250)) {
+			MoverTrace("the ladder is gone; letting go");
+			LetGoOfLadder(Vector());
+			return;
+		}
+	}
+	const int move = m_Controller.IsState(MOVE_UP) ? -1 : (m_Controller.IsState(MOVE_DOWN) ? 1 : 0);
+	std::vector<float> rungs;
+	LadderRungs(ladder.pos.m_Y - h * 1.2F, ladder.pos.m_Y + feet + h * 0.6F, rungs);
+	const float feetY = ladder.pos.m_Y + feet;
+
+	// The pace: a steady climb, quicker down; each pull of a hand a surge, eased off while the next hand reaches, and eased in at the start.
+	float pace = (move < 0 ? 2.1F : 2.8F) * c_PPM;
+	float pull = 1.0F;
+	if (ladder.lastHandRegripMS >= 0.0) {
+		float since = std::clamp(static_cast<float>(now - ladder.lastHandRegripMS) / 220.0F, 0.0F, 1.0F);
+		pull = 0.55F + 0.45F * since * since * (3.0F - 2.0F * since);
+	}
+	float start = std::clamp(static_cast<float>(ladder.startTimer.GetElapsedSimTimeMS()) / 250.0F, 0.0F, 1.0F);
+	float dy = static_cast<float>(move) * pace * pull * (0.35F + 0.65F * start) * dt;
+
+	if (move < 0) {
+		// No higher than standing on the top rung (it waits there for a side key, or for the floor to take it), nor into a ceiling.
+		float topRung = rungs.empty() ? feetY : rungs.front();
+		float highest = topRung - 2.0F - feet;
+		if (ladder.pos.m_Y + dy < highest) {
+			dy = std::min(0.0F, highest - ladder.pos.m_Y);
+		}
+		float headTop = ladder.pos.m_Y + dy - h * 0.26F - 2.0F;
+		for (float dx: {-4.0F, 0.0F, 4.0F}) {
+			if (SolidNotLadder(ladder.pos.m_X + dx, headTop)) {
+				dy = 0.0F;
+			}
+		}
+	} else if (move > 0) {
+		// Down onto a floor: standing on it ends the climb. A ladder that ends in the air is let go of a little way past its last rung.
+		for (float dx: {-4.0F, 0.0F, 4.0F}) {
+			for (float y = feetY; y <= feetY + dy + 2.0F; y += 1.0F) {
+				if (SolidNotLadder(ladder.pos.m_X + dx, y)) {
+					ladder.active = false;
+					m_Vel.Reset();
+					MoverTrace("off the ladder at its foot");
+					return;
+				}
+			}
+		}
+		float bottomRung = rungs.empty() ? feetY : rungs.back();
+		if (feetY > bottomRung + h * 0.3F) {
+			MoverTrace("past the ladder's last rung; letting go");
+			LetGoOfLadder(Vector(0.0F, 1.0F));
+			return;
+		}
+	}
+	ladder.pos.m_Y += dy;
+	ladder.climbed += std::abs(dy);
+
+	// Across: eased to the ladder's line, with a little sway towards the wall and back on each pull (over two rungs' climb).
+	float sway = ladder.wallSide != 0 ? 1.2F * std::sin(ladder.climbed * (c_PI / 16.0F)) : 0.0F;
+	float targetX = ladder.bodyX - static_cast<float>(ladder.wallSide) * std::abs(sway) * 0.5F;
+	float gap = Towards(ladder.pos, Vector(targetX, ladder.pos.m_Y)).m_X;
+	ladder.pos.m_X += gap * std::min(1.0F, dt * 10.0F);
+
+	// The body is put where the climb has it, and its speed is what that movement is (the limbs and the camera go by it); upright; the
+	// ladder's rungs passed (the limbs take them, the body hangs among them).
+	m_Vel = Towards(m_Pos, ladder.pos) * (c_MPP / dt);
+	m_Pos = ladder.pos;
+	m_AngularVel = 0.0F;
+	m_Rotation.SetRadAngle(m_Rotation.GetRadAngle() * 0.8F);
+	SetPassMaterial(LadderMaterialID());
+	// The AI's unit faces the ladder and looks the way it climbs (a player's aim is the player's).
+	if (m_Controller.GetInputMode() == Controller::CIM_AI) {
+		if (ladder.wallSide != 0) {
+			m_HFlipped = ladder.wallSide < 0;
+		}
+		SetAimAngle(move < 0 ? 0.9F : (move > 0 ? -0.6F : 0.2F));
+	}
+
+	// At the top with a floor under the feet (a landing reached by the last rung): standing, and done.
+	if (move < 0 && dy == 0.0F && !rungs.empty() && feetY <= rungs.front() + 1.0F) {
+		for (float dx: {-6.0F, 0.0F, 6.0F}) {
+			if (SolidNotLadder(ladder.pos.m_X + dx, feetY + 2.0F)) {
+				ladder.active = false;
+				m_Vel.Reset();
+				MoverTrace("over the top of the ladder");
+				return;
+			}
+		}
+	}
+}
+
+void AHuman::UpdateLadderLimbs() {
+	LadderClimb& ladder = m_Ladder;
+	const float h = m_CharHeight;
+	const double now = g_TimerMan.GetSimTimeMS();
+	std::vector<float> rungs;
+	LadderRungs(m_Pos.m_Y - h * 1.2F, m_Pos.m_Y + h * 0.9F, rungs);
+	if (rungs.empty()) {
+		return;
+	}
+	const int move = m_Controller.IsState(MOVE_UP) ? -1 : (m_Controller.IsState(MOVE_DOWN) ? 1 : 0);
+
+	// Each limb's joint and reach: the shoulders and hips. A hand holding something stays on it (a rifle is carried up a ladder).
+	struct Limb {
+		bool present;
+		bool hand;
+		Vector joint;
+		float reach;
+	};
+	std::array<Limb, 4> limbs = {Limb{m_pFGArm && !m_pFGArm->GetHeldDevice(), true, m_pFGArm ? m_pFGArm->GetJointPos() : m_Pos, m_pFGArm ? m_pFGArm->GetMaxLength() : 0.0F},
+	                             Limb{m_pBGArm && !m_pBGArm->GetHeldDevice(), true, m_pBGArm ? m_pBGArm->GetJointPos() : m_Pos, m_pBGArm ? m_pBGArm->GetMaxLength() : 0.0F},
+	                             Limb{m_pFGLeg != nullptr, false, m_pFGLeg ? m_Pos + RotateOffset(m_pFGLeg->GetParentOffset()) : m_Pos, m_pFGLeg ? m_pFGLeg->GetMaxLength() : 0.0F},
+	                             Limb{m_pBGLeg != nullptr, false, m_pBGLeg ? m_Pos + RotateOffset(m_pBGLeg->GetParentOffset()) : m_Pos, m_pBGLeg ? m_pBGLeg->GetMaxLength() : 0.0F}};
+	// The rung nearest a height, within a band if any is (else the nearest of all).
+	auto rungNear = [&](float want, float low, float high) {
+		float best = rungs.front();
+		float bestScore = std::numeric_limits<float>::max();
+		for (float y: rungs) {
+			float score = std::abs(y - want) + ((y < low || y > high) ? 1000.0F : 0.0F);
+			if (score < bestScore) {
+				bestScore = score;
+				best = y;
+			}
+		}
+		return best;
+	};
+	// Which limb most wants a new rung: one with none, one outside its comfortable band, or one the climb has left behind (a hand come down
+	// to the shoulder going up, a foot stretched out below; the other way round going down). One limb at a time, and the hand and opposite
+	// foot after one another, as a climber goes: front hand, back foot, back hand, front foot.
+	int pick = -1;
+	float pickScore = 0.0F;
+	for (int i = 0; i < 4; ++i) {
+		const Limb& limb = limbs[i];
+		if (!limb.present || limb.reach <= 0.0F) {
+			continue;
+		}
+		float rel = ladder.grip[i] - limb.joint.m_Y;
+		float low = limb.hand ? -0.95F * limb.reach : 0.35F * limb.reach;
+		float high = limb.hand ? -0.15F * limb.reach : 0.98F * limb.reach;
+		float over = 0.0F;
+		if (!ladder.gripped[i]) {
+			over = 1000.0F;
+		} else if (rel < low) {
+			over = low - rel;
+		} else if (rel > high) {
+			over = rel - high;
+		} else if (move < 0) {
+			over = limb.hand ? rel - (-0.3F * limb.reach) : rel - 0.9F * limb.reach;
+		} else if (move > 0) {
+			over = limb.hand ? (-0.92F * limb.reach) - rel : (0.45F * limb.reach) - rel;
+		}
+		if (over <= 0.0F) {
+			continue;
+		}
+		int partner = ladder.lastLimb == 0 ? 3 : (ladder.lastLimb == 3 ? 1 : (ladder.lastLimb == 1 ? 2 : (ladder.lastLimb == 2 ? 0 : -1)));
+		float score = over + (i == partner ? 6.0F : 0.0F);
+		if (score > pickScore) {
+			pickScore = score;
+			pick = i;
+		}
+	}
+	if (pick >= 0 && (ladder.lastRegripMS < 0.0 || now - ladder.lastRegripMS > 70.0)) {
+		const Limb& limb = limbs[pick];
+		float want = 0.0F;
+		if (move < 0) {
+			want = limb.hand ? -0.85F : 0.5F;
+		} else if (move > 0) {
+			want = limb.hand ? -0.35F : 0.9F;
+		} else {
+			want = limb.hand ? -0.6F : 0.75F;
+		}
+		float low = limb.joint.m_Y + (limb.hand ? -0.95F : 0.35F) * limb.reach;
+		float high = limb.joint.m_Y + (limb.hand ? -0.15F : 0.98F) * limb.reach;
+		bool inReach = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y >= low && y <= high; });
+		// (A foot with no rung in reach hangs, straight down from its hip, until the climb brings one: reaching up to a ladder whose foot is
+		// over the floor, or at the bottom of one that ends in the air. A hand with none takes the nearest, which is the reach up.)
+		ladder.grip[pick] = (!limb.hand && !inReach) ? limb.joint.m_Y + 0.9F * limb.reach : rungNear(limb.joint.m_Y + want * limb.reach, low, high);
+		bool first = !ladder.gripped[pick];
+		ladder.gripped[pick] = true;
+		ladder.lastRegripMS = now;
+		ladder.lastLimb = pick;
+		if (limb.hand) {
+			ladder.lastHandRegripMS = now;
+		} else if (!first && m_StrideSound && m_StrideSound->GetLoopSetting() >= 0) {
+			// (A foot set on a rung: the step's sound, as on the ground.)
+			m_StrideSound->Play(m_Pos);
+		}
+	}
+
+	// The feet on their rungs, just in from the rungs' ends, one a little behind the other. (The hands are given theirs with the arms'.)
+	const float inward = ladder.wallSide != 0 ? -static_cast<float>(ladder.wallSide) : 0.0F;
+	if (m_pFGLeg && ladder.gripped[2]) {
+		m_pFGFootGroup->SetLimbPos(Vector(ladder.gripX + inward * 1.0F - 1.0F, ladder.grip[2] - 1.0F), m_HFlipped);
+	}
+	if (m_pBGLeg && ladder.gripped[3]) {
+		m_pBGFootGroup->SetLimbPos(Vector(ladder.gripX + inward * 1.0F + 1.0F, ladder.grip[3] - 1.0F), m_HFlipped);
+	}
 }
 
 // A door of ours, or no one's, whose moving part lies near the line from us to a point, within a body and a half.
@@ -309,6 +759,7 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 	Vector last = m_Pos;
 	bool takeOffFound = false;
 	takeOff = m_Pos;
+	auto kindIt = m_MovePathKinds.begin();
 	struct Candidate {
 		Vector pos;
 		float floorY;
@@ -319,6 +770,18 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 		++index;
 		if (index > 30) {
 			break;
+		}
+		// (A leg up or down a ladder is climbed: no flight, and where it ends is no landing for one.)
+		PathStepKind legKind = kindIt != m_MovePathKinds.end() ? *kindIt : PathStepKind::Walk;
+		if (kindIt != m_MovePathKinds.end()) {
+			++kindIt;
+		}
+		if (legKind == PathStepKind::Ladder) {
+			if (airborne) {
+				break;
+			}
+			last = point;
+			continue;
 		}
 		Vector leg = Towards(last, point);
 		int samples = static_cast<int>(leg.GetMagnitude() / 16.0F);
@@ -634,7 +1097,9 @@ int AHuman::MoveAlongRoute() {
 		// (Terrain only: another unit between us and the point, as in any squad in a corridor, asked for a new route every second, and each
 		// one could begin from a node behind us; our doors open as we come.)
 		bool inSight = !g_SceneMan.CastStrengthRay(m_Pos, toPoint, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
-		if (inSight || airborne || DoorAhead(m_MovePath.front())) {
+		// (A ladder's next point is often out of sight, over a lip or down a hatch: the climb goes to it, not a new route every second.)
+		bool ladderStep = !m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Ladder;
+		if (inSight || airborne || ladderStep || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
@@ -703,6 +1168,23 @@ int AHuman::MoveAlongRoute() {
 	};
 	if (mover.doorIgnoreID != 0 && mover.doorIgnoreTimer.IsPastSimMS(5000)) {
 		mover.doorIgnoreID = 0;
+	}
+
+	// ---- On a ladder: up or down it to the route's point, and off its side or over its top to one beside. ----
+	if (IsClimbingLadder()) {
+		mover.flight = RouteMover::Flight();
+		mover.fuelWaiting = false;
+		if (!m_MovePath.empty()) {
+			Vector to = Towards(m_Pos, m_MovePath.front());
+			if (to.m_Y < -6.0F) {
+				ctrl.SetState(MOVE_UP, true);
+			} else if (to.m_Y > 6.0F) {
+				ctrl.SetState(MOVE_DOWN, true);
+			} else if (std::abs(to.m_X) > 8.0F) {
+				ctrl.SetState(to.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+			}
+		}
+		return RouteMover::Moving;
 	}
 
 	// ---- The flight: planned take-off to touchdown, flown by the pilot. ----
@@ -937,6 +1419,18 @@ int AHuman::MoveAlongRoute() {
 
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
 	if (holdForDoor(point, false)) {
+		return RouteMover::Moving;
+	}
+
+	// The route goes up or down a ladder from here: to the ladder's line first (a side key held is no grab), then up or down to take hold.
+	if (kind == PathStepKind::Ladder && std::abs(toPoint.m_Y) > h * 0.2F) {
+		if (std::abs(toPoint.m_X) > h * 0.25F) {
+			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		} else {
+			ctrl.SetState(toPoint.m_Y < 0.0F ? MOVE_UP : MOVE_DOWN, true);
+			SetAimAngle(toPoint.m_Y < 0.0F ? 0.9F : -0.6F);
+		}
+		mover.progressTimer.Reset();
 		return RouteMover::Moving;
 	}
 

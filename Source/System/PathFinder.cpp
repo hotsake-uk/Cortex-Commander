@@ -56,6 +56,7 @@ thread_local float s_StandHeight = 40.0F;
 thread_local float s_CrawlHeight = 22.0F;
 thread_local float s_HalfWidth = 6.0F;
 thread_local bool s_WalksStairs = false;
+thread_local bool s_ClimbsLadders = false; // Whether the searcher climbs ladders (PathAgent::ClimbsLadders).
 thread_local float s_MantleHeight = 0.0F; // How high a ledge the searcher mantles onto (PathAgent::MantleHeight).
 thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s (PathAgent::Velocity).
 thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathAgent::JetTimeMS).
@@ -91,6 +92,11 @@ int PathFinder::Create(int nodeDimension) {
 	RTEAssert(g_SceneMan.GetScene(), "Scene doesn't exist or isn't loaded when creating PathFinder!");
 
 	m_NodeDimension = nodeDimension;
+	// (Here, once, on the main thread: the nodes are measured on many threads at once, and a lookup that isn't found prints.)
+	{
+		const Material* ladder = g_SceneMan.GetMaterial("Ladder");
+		m_LadderMaterial = ladder ? static_cast<unsigned char>(ladder->GetIndex()) : 0;
+	}
 	int sceneWidth = g_SceneMan.GetSceneWidth();
 	int sceneHeight = g_SceneMan.GetSceneHeight();
 
@@ -190,6 +196,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_CrawlHeight = agent.CrawlHeight;
 	s_HalfWidth = agent.HalfWidth;
 	s_WalksStairs = agent.WalksStairs;
+	s_ClimbsLadders = agent.ClimbsLadders;
 	s_MantleHeight = agent.MantleHeight;
 	s_Velocity = agent.Velocity;
 	s_JetTimeMS = agent.JetTimeMS;
@@ -587,6 +594,53 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	// four hundred pixels down its outside wall and came back in at the bottom beat the hatches inside; the jetpack then paid for the
 	// fall in fuel, braking at the bottom, or the body did. (Charged once at the step off something standing, the search hopped up a
 	// rung or two of a jump and stepped off those into the drop for nothing: a search with no memory can't tell a rung from a fall.)
+
+	// Ladders, for a searcher that climbs them (see PathAgent::ClimbsLadders): up and down the rungs whatever its jet, off the side onto a
+	// floor beside, and over the top onto a floor there; and onto the foot of one from the floor under it. Priced by the climb's pace
+	// (dearer up than a walk, about a walk down), so a jet that is clearly quicker still wins for a unit that has one, and a unit with
+	// too little jet for a shaft has the ladder up it. (The jump links up a shaft are for the jet; with only those, a unit whose tank
+	// couldn't make the climb was told there was no way up a laddered shaft at all.)
+	if (s_ClimbsLadders && s_JumpHeight < FLT_MAX) {
+		auto standsAt = [&](const PathNode* n) {
+			return n && n->m_Navigable && NodeIsOnSolidGround(*n) && static_cast<float>(n->FreeHeight) >= s_StandHeight;
+		};
+		auto link = [&](const PathNode* to, float cost) {
+			adjCost.cost = cost + radiatedCost;
+			adjCost.state = const_cast<PathNode*>(to);
+			adjacentList->push_back(adjCost);
+		};
+		if (node->Ladder) {
+			if (node->Up && node->Up->m_Navigable && Open(*node->UpMaterial) && (node->Up->Ladder || standsAt(node->Up))) {
+				link(node->Up, 2.0F);
+			}
+			if (node->Down && node->Down->m_Navigable && Open(*node->DownMaterial) && (node->Down->Ladder || standsAt(node->Down))) {
+				link(node->Down, 1.2F);
+			}
+			for (const PathNode* side: {node->Left, node->Right}) {
+				if (standsAt(side)) {
+					link(side, 1.3F);
+				}
+			}
+			// Over the top: the floor beside the node above the last rung.
+			if (node->Up && node->Up->m_Navigable && !node->Up->Ladder) {
+				for (const PathNode* side: {node->Up->Left, node->Up->Right}) {
+					if (standsAt(side)) {
+						link(side, 2.2F);
+					}
+				}
+			}
+		} else if (standsAt(node) && node->Up && node->Up->m_Navigable && Open(*node->UpMaterial)) {
+			// Onto the foot of a ladder over this floor: the node above, or reached up to two nodes up, in this column or one either side
+			// (a ladder whose foot is over the floor of the corridor under its shaft).
+			const PathNode* oneUp = node->Up;
+			const PathNode* twoUp = (oneUp->Up && oneUp->Up->m_Navigable && Open(*oneUp->UpMaterial)) ? oneUp->Up : nullptr;
+			for (const PathNode* target: std::array<const PathNode*, 6>{oneUp, oneUp->Left, oneUp->Right, twoUp, twoUp ? twoUp->Left : nullptr, twoUp ? twoUp->Right : nullptr}) {
+				if (target && target->m_Navigable && target->Ladder) {
+					link(target, target == oneUp ? 2.0F : (target == twoUp ? 4.5F : 3.5F));
+				}
+			}
+		}
+	}
 
 	if (node->Down && node->Down->m_Navigable) {
 		// (Down through a gap narrower than the body is no way down; down through ground is a dig, and the digger makes its own room.)
@@ -1008,6 +1062,14 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	if (material && material->GetIndex() == MaterialColorKeys::g_MaterialDoor) {
 		return PathStepKind::Door;
 	}
+	// Up or down a ladder (either end on one, straight up or down), or off one onto a floor beside or over its top: climbed, not flown.
+	if (s_ClimbsLadders && (from->Ladder || to->Ladder) && std::abs(dx) <= nodeSize + 1.0F && std::abs(dy) <= nodeSize + 1.0F && (std::abs(dx) < 1.0F || from->Ladder)) {
+		return PathStepKind::Ladder;
+	}
+	// (Reached up to from a floor: a ladder's foot one or two nodes over it.)
+	if (s_ClimbsLadders && to->Ladder && !from->Ladder && dy < -1.0F && dy >= -2.0F * nodeSize - 1.0F && std::abs(dx) <= nodeSize + 1.0F) {
+		return PathStepKind::Ladder;
+	}
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
 	// line at all but up the column and over onto a ledge (the landing edges), which is a jump. (Read as a dig, a step up onto a 24 px
 	// ledge whose corner the line clipped was neither hopped nor climbed by a unit with no digger, and it stood at the step for ever.)
@@ -1068,6 +1130,7 @@ void PathFinder::DrawDebug(const Box& area) {
 	static const unsigned char stepColor = static_cast<unsigned char>(Color(70, 220, 230).GetIndex());
 	static const unsigned char stairsColor = static_cast<unsigned char>(Color(220, 80, 220).GetIndex());
 	static const unsigned char channelColor = static_cast<unsigned char>(Color(150, 120, 255).GetIndex());
+	static const unsigned char ladderColor = static_cast<unsigned char>(Color(255, 150, 40).GetIndex());
 	// A soldier's sizes (Soldier Light, height 100): the grid is the same for every searcher; what fits is the searcher's.
 	const float stand = 44.0F;
 	const float crawl = 24.0F;
@@ -1078,6 +1141,10 @@ void PathFinder::DrawDebug(const Box& area) {
 	for (int gy = std::max(0, fromY); gy <= toY; ++gy) {
 		for (int gx = fromX; gx <= toX; ++gx) {
 			const PathNode* node = GetPathNodeAtGridCoords(gx, gy);
+			// (A ladder node: an orange tick where the climber's body goes.)
+			if (node && node->m_Navigable && node->Ladder) {
+				g_PrimitiveMan.DrawLinePrimitive(node->Anchor + Vector(-2.0F, 0.0F), node->Anchor + Vector(2.0F, 0.0F), ladderColor);
+			}
 			// (A node in the air whose anchor is off its centre, in a shaft or a hatch: a small dot where routes through it go.)
 			if (node && node->m_Navigable && node->Surface < 0.0F && std::abs(node->Anchor.m_X - node->Pos.m_X) >= 2.0F) {
 				g_PrimitiveMan.DrawCircleFillPrimitive(node->Anchor, 1, channelColor);
@@ -1235,6 +1302,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	int oldFreeHeight = node->FreeHeight;
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
+	bool oldLadder = node->Ladder;
 	bool oldStairsUpRight = node->StairsUpRight;
 	bool oldGrounded = node->Grounded;
 	bool oldStairsUpLeft = node->StairsUpLeft;
@@ -1342,6 +1410,42 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		}
 		anchorX = std::clamp(anchorX, static_cast<float>(x - nodeSize), static_cast<float>(x + nodeSize));
 		node->Anchor = Vector(anchorX + (node->Pos.m_X - static_cast<float>(x)), node->Pos.m_Y);
+
+		// A ladder: rungs of the Ladder material at this node's height, within a node either side of its centre. The nearest strip of rungs
+		// is the ladder; the climber's body hangs beside it on the open side (off the wall the rungs stand from), and that is the anchor, so a
+		// route up a ladder runs where the body climbs. (Only the Ladder material: a background ladder is no material at all, and the
+		// nodes are measured on many threads, where the scene's particles can't be looked at.)
+		node->Ladder = false;
+		if (m_LadderMaterial != 0) {
+			int stripLeft = INT_MAX;
+			int stripRight = INT_MIN;
+			for (int dy: {-8, 0, 8}) {
+				int y = centreY + dy;
+				for (int d = 0; d <= nodeSize; ++d) {
+					for (int sx: {x - d, x + d}) {
+						if (g_SceneMan.GetTerrMatter(sx, y) == m_LadderMaterial) {
+							stripLeft = std::min(stripLeft, sx);
+							stripRight = std::max(stripRight, sx);
+						}
+					}
+				}
+			}
+			if (stripLeft != INT_MAX && stripRight - stripLeft <= nodeSize) {
+				node->Ladder = true;
+				int mid = (stripLeft + stripRight) / 2;
+				auto wall = [&](int wx) {
+					unsigned char id = g_SceneMan.GetTerrMatter(wx, centreY);
+					return id != MaterialColorKeys::g_MaterialAir && id != m_LadderMaterial;
+				};
+				float bodyX = static_cast<float>(mid);
+				if (wall(stripLeft - 2)) {
+					bodyX = static_cast<float>(stripRight) + 7.0F;
+				} else if (wall(stripRight + 2)) {
+					bodyX = static_cast<float>(stripLeft) - 7.0F;
+				}
+				node->Anchor = Vector(bodyX + (node->Pos.m_X - static_cast<float>(x)), node->Pos.m_Y);
+			}
+		}
 	}
 
 	// Stepping over something low on a floor: a kerb, a sandbag, a lump of rubble, between this node's floor and a floor level with it one or
@@ -1506,7 +1610,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->Ladder != oldLadder) {
 		return true;
 	}
 
