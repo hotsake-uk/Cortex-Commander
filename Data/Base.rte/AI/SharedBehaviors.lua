@@ -550,7 +550,9 @@ function SharedBehaviors.FlightControl(AI, Owner, Target, state)
 	-- Moving sideways takes the jet (the keys only lean the nozzle): kept lit while well off the speed wanted and not already rising fast.
 	-- (Not with the point level or below and a floor close under the feet: there the unit lands and walks. Jetting for the sideways speed
 	-- at the foot of a shaft held a unit up against the lip of the corridor it was to walk into, until the tank was empty.)
-	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > -2 then
+	-- (Only while not rising faster than the height wants: the jet lifts as well as pushes, and lit for the speed towards a point level with
+	-- the unit it carried one 140 px up past a roof, and its tank with it.)
+	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > math.max(-2, wantVelY - 1) then
 		local floorNear = above <= 8 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.9), 5, Vector(), 2, rte.grassID, true);
 		if not floorNear then
 			jump = true;
@@ -1662,7 +1664,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					-- the whole outside wall of a bunker with no brake and no steering, past the landing it was meant for, while the planner asked
 					-- for the jet every tick; and one lying under a small climb waited four seconds for the stuck handler to stand it up.
 					AI.proneState = AHuman.NOTPRONE;
-				elseif angleDegrees <= crawlThresholdDegrees and Owner.Head and Owner.Head:IsAttached() then
+				elseif Owner.Head and Owner.Head:IsAttached() then
 					-- Where the top of the head is when standing: the standing height up from the floor under the unit, so the pose doesn't move it.
 					-- (Not where the head is now: prone, it's lower, the way looked clear, the unit stood up into the ceiling, and so on every tick.
 					-- And not a fixed distance over Pos either: that put the probe 55 px over the floor, in the ceiling of every 48 px corridor,
@@ -1675,19 +1677,26 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 						floorY = math.min(Floor.Y, Owner.Pos.Y + feetBelowPos);
 					end
 					local topHeadPos = Vector(Owner.Pos.X, math.min(Owner.Pos.Y - 4, floorY - standingHeight));
+					-- No room to stand right here (the mouth of a low tunnel): kept down whatever the way on looks like. Stood up for a point
+					-- steeply above, a unit at a tunnel's mouth put its head into the slab over it and could not walk the last steps out.
+					local noRoomHere = AI.proneState == AHuman.PRONE and SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true);
+					if angleDegrees > crawlThresholdDegrees and not noRoomHere then
+						AI.proneState = AHuman.NOTPRONE;
+					else
 
 					-- first check up to the top of the head, and then from there forward
 					-- (A crawl step lays the unit down only once it is near: the step's point is where the low part is, and a route's points can be a
 					-- long way apart. Prone from 100 px out, a unit at the top of the tower lay at its start and never crawled to the hatch.)
-					local crawlStepNear = Waypoint.Kind == 1 and SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsLessThan(Owner.Height * 0.65);
-					if crawlStepNear or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
-						if Owner:NumberValueExists("AITrace") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
-						AI.proneState = AHuman.PRONE;
-						ProneHoldTimer:Reset();
-					elseif AI.proneState ~= AHuman.PRONE or ProneHoldTimer:IsPastSimTimeLimit() then
-						-- (Kept down a moment after the way looks clear: a crawl through a slot was stood up in the middle of.)
-						if Owner:NumberValueExists("AITrace") and AI.proneState == AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: standing up"); end
-						AI.proneState = AHuman.NOTPRONE;
+						local crawlStepNear = Waypoint.Kind == 1 and SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsLessThan(Owner.Height * 0.65);
+						if crawlStepNear or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
+							if Owner:NumberValueExists("AITrace") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
+							AI.proneState = AHuman.PRONE;
+							ProneHoldTimer:Reset();
+						elseif AI.proneState ~= AHuman.PRONE or ProneHoldTimer:IsPastSimTimeLimit() then
+							-- (Kept down a moment after the way looks clear: a crawl through a slot was stood up in the middle of.)
+							if Owner:NumberValueExists("AITrace") and AI.proneState == AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: standing up"); end
+							AI.proneState = AHuman.NOTPRONE;
+						end
 					end
 				else
 					AI.proneState = AHuman.NOTPRONE;
@@ -2056,6 +2065,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								return Waypoint.Kind == 2 and not SceneMan:CastStrengthRay(Waypoint.Pos, Vector(0, Owner.Height * 0.6), 5, Vector(), 3, rte.grassID, true);
 							end
 							local apexPoint = IsApexPoint();
+							-- Under a low ceiling (a tunnel, or the slab over its mouth), a point above us is not reached, nor passed, however near: from
+							-- inside a tunnel the jump point at its mouth was "reached" 33 px below and 19 across it, the climb took over, stood the unit
+							-- up into the slab, and it never got out.
+							local function LowCeilingUnder(Point)
+								return Point.Y < Owner.Pos.Y - 6 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, -Owner.Height * 0.3), 5, Vector(), 3, rte.grassID, true);
+							end
 
 							-- A waypoint behind us with the next one in plain sight is done with: the path's nodes are only 24 px apart, and waiting to stand on
 							-- each one pulled a running or flying unit back to every node it had passed.
@@ -2079,6 +2094,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									-- climbed with no look at the tank.)
 									local passed = ToNext:MagnitudeIsLessThan(CurrDist.Magnitude) or (CurrDist.X * ToNext.X < 0 and math.abs(CurrDist.X) > 6 and math.abs(CurrDist.X) < Owner.Height * 0.5 and math.abs(CurrDist.Y) < Owner.Height * 0.5);
 									if apexPoint and AI.jetClimb and CurrDist.Y < -6 then
+										passed = false;
+									end
+									if passed and (LowCeilingUnder(Waypoint.Pos) or LowCeilingUnder(NextPos)) then
 										passed = false;
 									end
 									-- (Through a door of ours is in plain sight: it opens as we come.)
@@ -2113,7 +2131,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 							-- (The top of a column is held to its height only in the air: standing on the landing under a top that sits 20 px over Pos,
 							-- nothing else would ever pop it.)
-							local notThereYet = Climb ~= nil or CurrDist:MagnitudeIsGreaterThan(tolerance) or (apexPoint and CurrDist.Y < -6 and (AI.jetClimb or AI.flying));
+							local notThereYet = Climb ~= nil or CurrDist:MagnitudeIsGreaterThan(tolerance) or (apexPoint and CurrDist.Y < -6 and (AI.jetClimb or AI.flying)) or LowCeilingUnder(Waypoint.Pos);
 							if notThereYet then	-- not close enough to the waypoint
 								ArrivedTimer:Reset();
 
