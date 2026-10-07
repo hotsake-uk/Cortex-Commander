@@ -1126,6 +1126,7 @@ PathAgent Actor::GetPathAgent() const {
 	agent.JumpHeight = EstimateJumpHeight();
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
+	agent.Velocity = m_Vel;
 	// CharHeight is about twice the sprite's height; the body stands about 0.45 of it tall and lies about a quarter of it.
 	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.42F);
 	agent.CrawlHeight = agent.StandHeight;
@@ -1300,10 +1301,27 @@ void Actor::PreControllerUpdate() {
 				g_ConsoleMan.PrintString("AITRACE route check: not reachable from " + std::to_string(static_cast<int>(m_Pos.m_X)) + "," + std::to_string(static_cast<int>(m_Pos.m_Y)) + ", keeping the route");
 			}
 			m_PathRequest.reset();
+		} else if (reachable && !m_MovePath.empty() && m_Vel.MagnitudeIsGreaterThan(2.0F)) {
+			// Nor when it turns the unit back against the way it is going at speed, unless it is clearly cheaper than what is left of the route
+			// it has: a check from mid-air, which knows nothing of momentum, sent units round in the air for a route no better than their own.
+			const std::list<Vector>& answer = const_cast<std::list<Vector>&>(m_PathRequest->path);
+			auto second = std::next(answer.begin());
+			Vector heading = g_SceneMan.ShortestDistance(m_Pos, second != answer.end() ? *second : answer.front());
+			if (heading.MagnitudeIsGreaterThan(1.0F) && heading.Dot(m_Vel) < 0.0F && m_PathCostAtAdoption > 0.0F && m_PathSizeAtAdoption > 0) {
+				float left = m_PathCostAtAdoption * static_cast<float>(m_MovePath.size()) / static_cast<float>(m_PathSizeAtAdoption);
+				if (m_PathRequest->totalCost > left * 0.8F) {
+					if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+						g_ConsoleMan.PrintString("AITRACE route check: turns back at speed for " + std::to_string(m_PathRequest->totalCost) + " against " + std::to_string(left) + " left, keeping the route");
+					}
+					m_PathRequest.reset();
+				}
+			}
 		}
 	}
 	if (m_PathRequest && m_PathRequest->complete) {
 		m_MovePath = const_cast<std::list<Vector>&>(m_PathRequest->path);
+		m_PathCostAtAdoption = m_PathRequest->totalCost;
+		m_PathSizeAtAdoption = static_cast<int>(m_MovePath.size());
 		m_MovePathKinds = const_cast<std::list<PathStepKind>&>(m_PathRequest->kinds);
 		if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +

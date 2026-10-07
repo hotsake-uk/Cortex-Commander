@@ -1160,6 +1160,8 @@ namespace RTE {
 		Timer m_PathRetryTimer;
 		std::vector<std::pair<Vector, double>> m_AvoidPoints; //!< Places this failed jumps at, and the sim time (ms) each is avoided until.
 		// The mantle: a pull up onto a ledge, or over a low obstacle, that the legs or the jet alone would struggle with (see TryStartMantle).
+		float m_PathCostAtAdoption = 0.0F; //!< The cost of the route being followed when it was taken, and how many points it had then: for weighing a route check's answer against what is left of it.
+		int m_PathSizeAtAdoption = 0;
 		bool m_Mantling = false;
 		float m_MantleDir = 0.0F; //!< -1 left, 1 right.
 		Vector m_MantleStart; //!< Where the body was.

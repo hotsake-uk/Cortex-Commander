@@ -432,6 +432,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	return ConcreteTypeLuaClassDefinition(AHuman, Actor)
 
 	    .def(luabind::constructor<>())
+	    .def("PilotFlight", &AHuman::PilotFlight)
+	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
 
 	    .property("Head", &AHuman::GetHead, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetHead)
 	    .property("Jetpack", &AHuman::GetJetpack, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetJetpack)

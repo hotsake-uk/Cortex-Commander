@@ -38,6 +38,7 @@ namespace RTE {
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
 		float MantleHeight = 0.0F; //!< How high a ledge it pulls itself up onto from the ground, in pixels (0 for none; see Actor::TryStartMantle).
+		Vector Velocity; //!< Its velocity when it asks, in m/s: a search started in the air charges for going against it (see AdjacentCost).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 	};
 
@@ -318,6 +319,11 @@ namespace RTE {
 		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
 		/// @param node The node the rung rises into.
 		float ClimbMarginCost(const PathNode& node) const;
+
+		/// What a jump's landing costs over its own for how little floor there is round it: a pinpoint ledge has to be hit just so, and a wide
+		/// floor forgives a jump that comes down a little long or short.
+		/// @param node The landing.
+		float LandingWidthCost(const PathNode& node) const;
 
 		/// What a step into a node costs over its own for the searcher's recent failures there (PathAgent::Avoid).
 		float AvoidCost(const PathNode& node) const;

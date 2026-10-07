@@ -2601,6 +2601,8 @@ void AHuman::Update() {
 
 	Actor::Update();
 
+	LearnFlight();
+
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
 	// paths while it pulls.
 	if (!m_Mantling) {
@@ -3216,4 +3218,166 @@ int AHuman::WhilePieMenuOpenListener(const PieMenu* pieMenu) {
 		}
 	}
 	return result;
+}
+
+float AHuman::JetAccelNow() const {
+	if (!m_pJetpack || GetMass() <= 0.0F || g_TimerMan.GetDeltaTimeSecs() <= 0.0F) {
+		return 0.0F;
+	}
+	// The jetpack's modelled impulse a frame (its throttle, which follows the fuel left, included), as a push in px/s^2, by what flying has shown.
+	float modelled = m_pJetpack->EstimateImpulse(false) / GetMass() / g_TimerMan.GetDeltaTimeSecs();
+	return modelled * c_PPM * m_JetAccelRatio;
+}
+
+void AHuman::LearnFlight() {
+	if (!m_pJetpack || !m_pJetpack->IsAttached()) {
+		return;
+	}
+	float dt = g_TimerMan.GetDeltaTimeSecs();
+	float radius = std::max(GetRadius() * 0.5F, 10.0F);
+	// Nothing touching the body: no terrain anywhere round it a little past its middle's reach.
+	bool touching = false;
+	for (int i = 0; i < 8 && !touching; ++i) {
+		Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
+		touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
+	}
+	bool free = m_pJetpack->IsEmitting() && !touching && m_Status != INACTIVE && !m_Mantling;
+	if (free && m_JetPrevFree && dt > 0.0F) {
+		// The push the jet gave over the last frame: the change of speed, less gravity's part of it.
+		Vector accel = (m_Vel - m_JetPrevVel) / dt - g_SceneMan.GetGlobalAcc();
+		float modelled = m_pJetpack->EstimateImpulse(false) / std::max(GetMass(), 0.1F) / dt;
+		if (modelled > 0.1F) {
+			float ratio = accel.GetMagnitude() / modelled;
+			if (ratio > 0.3F && ratio < 3.0F) {
+				m_JetAccelRatio += (ratio - m_JetAccelRatio) * 0.03F;
+			}
+		}
+	}
+	m_JetPrevFree = free;
+	m_JetPrevVel = m_Vel;
+	// Standing still on the ground: how far under Pos the floor is.
+	if (!m_pJetpack->IsEmitting() && m_Vel.MagnitudeIsLessThan(0.5F) && m_Status == STABLE) {
+		for (int down = 0; down < static_cast<int>(m_CharHeight); down += 2) {
+			if (g_SceneMan.GetTerrMatter(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY() + down) != MaterialColorKeys::g_MaterialAir) {
+				float feetHere = static_cast<float>(down);
+				m_FeetBelowPos = m_FeetBelowPos < 0.0F ? feetHere : m_FeetBelowPos + (feetHere - m_FeetBelowPos) * 0.1F;
+				break;
+			}
+		}
+	}
+}
+
+Vector AHuman::PilotFlight(const Vector& target, float floorY) {
+	if (!m_pJetpack) {
+		return Vector(0.0F, 0.0F);
+	}
+	const float ppm = c_PPM;
+	const float g = g_SceneMan.GetGlobalAcc().GetY() * ppm; // px/s^2, down.
+	const float fullAccel = JetAccelNow(); // px/s^2 along the nozzle.
+	const float maxLean = c_HalfPI * m_pJetpack->GetJetAngleRange();
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F;
+	const bool landing = floorY >= 0.0F;
+	const float halfWidth = std::max(6.0F, static_cast<float>(GetSpriteWidth()) * 0.5F);
+	// The jet's reach sideways: its push at full lean, lit most of the time; and up, against gravity.
+	const float sideAccel = std::max(20.0F, fullAccel * std::sin(maxLean) * 0.7F);
+	const float upBrake = std::max(30.0F, (fullAccel - g) * 0.6F);
+	const float fuelTotal = std::max(m_pJetpack->GetJetTimeTotal(), 1.0F);
+	const float negThrottle = m_pJetpack->GetNegativeThrottleMultiplier();
+	const float posThrottle = m_pJetpack->GetPositiveThrottleMultiplier();
+	const float factorNow = std::max(0.05F, negThrottle + m_pJetpack->GetJetTimeRatio() * (posThrottle - negThrottle));
+
+	// The speeds wanted at a place (px/s, down positive): up to the height first, then across at a speed that can be stopped in the room
+	// left, then down onto the floor over it.
+	auto wanted = [&](const Vector& pos) {
+		Vector toTarget = g_SceneMan.ShortestDistance(pos, target, g_SceneMan.SceneWrapsX());
+		bool overIt = std::abs(toTarget.m_X) < std::max(6.0F, m_CharHeight * 0.12F);
+		float aimY = landing ? floorY - feet - (overIt ? 0.0F : 10.0F) : target.m_Y;
+		float rise = pos.m_Y - aimY; // Above zero: still to go up.
+		float wantVy;
+		if (rise > 0.0F) {
+			wantVy = -std::min(9.0F * ppm, std::sqrt(2.0F * g * rise));
+		} else {
+			wantVy = std::min((overIt && landing) ? 2.5F * ppm : 6.0F * ppm, std::sqrt(2.0F * upBrake * -rise));
+		}
+		float wantVx = 0.0F;
+		if (rise < 12.0F) {
+			float room = std::max(0.0F, std::abs(toTarget.m_X) - 4.0F);
+			float cap = std::clamp(std::abs(toTarget.m_X), 3.0F * ppm, 7.0F * ppm);
+			wantVx = (toTarget.m_X > 0.0F ? 1.0F : -1.0F) * std::min(cap, std::sqrt(2.0F * sideAccel * room));
+		}
+		return Vector(wantVx, wantVy);
+	};
+	// The rule a choice is followed by in the simulation: lean to the sideways speed wanted, jet to the vertical one.
+	auto follow = [&](const Vector& pos, const Vector& vel, float& lean, bool& jet) {
+		Vector want = wanted(pos);
+		lean = std::clamp((want.m_X - vel.m_X) / (sideAccel * 0.25F), -1.0F, 1.0F);
+		jet = vel.m_Y > want.m_Y || (std::abs(want.m_X - vel.m_X) > 30.0F && vel.m_Y > want.m_Y - 40.0F);
+	};
+	auto hits = [&](const Vector& pos) {
+		const Vector points[] = {pos, pos + Vector(0.0F, feet * 0.9F), pos + Vector(0.0F, -m_CharHeight * 0.3F), pos + Vector(-halfWidth, 0.0F), pos + Vector(halfWidth, 0.0F)};
+		for (const Vector& point: points) {
+			if (g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	const float leans[] = {-1.0F, -0.5F, 0.0F, 0.5F, 1.0F};
+	const float step = 1.0F / 30.0F;
+	const float holdTime = 0.2F;
+	const float horizon = 1.0F;
+	float bestCost = std::numeric_limits<float>::max();
+	int bestChoice = 7;
+	for (int choice = 0; choice < 10; ++choice) {
+		bool heldJet = choice >= 5;
+		float heldLean = leans[choice % 5];
+		Vector pos = m_Pos;
+		Vector vel = m_Vel * ppm;
+		float fuel = m_pJetpack->GetJetTimeLeft();
+		float cost = 0.0F;
+		for (float t = 0.0F; t < horizon; t += step) {
+			float lean = heldLean;
+			bool jet = heldJet;
+			if (t >= holdTime) {
+				follow(pos, vel, lean, jet);
+			}
+			Vector accel(0.0F, g);
+			if (jet && fuel > 0.0F) {
+				float factor = std::max(0.05F, negThrottle + (fuel / fuelTotal) * (posThrottle - negThrottle));
+				float push = fullAccel * factor / factorNow;
+				float angle = lean * maxLean;
+				accel += Vector(std::sin(angle) * push, -std::cos(angle) * push);
+				fuel -= step * 1000.0F;
+			}
+			vel += accel * step;
+			pos += vel * step;
+			Vector want = wanted(pos);
+			Vector off = (vel - want) / ppm;
+			cost += (off.m_X * off.m_X + off.m_Y * off.m_Y) * step;
+			if (hits(pos)) {
+				// Into the terrain: the rest of the flight is as good as lost, the sooner the worse.
+				cost += 50.0F * (horizon - t + step);
+				break;
+			}
+		}
+		// A little for keeping last tick's choice, so near-equal ones don't flicker.
+		if (choice == m_PilotLastChoice) {
+			cost *= 0.95F;
+		}
+		if (cost < bestCost) {
+			bestCost = cost;
+			bestChoice = choice;
+		}
+	}
+	m_PilotLastChoice = bestChoice;
+	bool jet = bestChoice >= 5;
+	float lean = leans[bestChoice % 5];
+	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range),
+	// mirrored with the body (AEJetpack::UpdateBurstState).
+	float stickX = std::tan(lean * maxLean);
+	if (m_HFlipped) {
+		stickX = -stickX;
+	}
+	return Vector(stickX, jet ? 1.0F : 0.0F);
 }

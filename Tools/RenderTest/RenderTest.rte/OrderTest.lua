@@ -89,8 +89,79 @@ function OrderTestScript:Bumps(t)
 	end
 end
 
+-- CCCP_ORDER_PROBE="x1,y1,x2,y2;...": on whatever map is loaded, for each pair: a soldier's route from the first point to the second (both
+-- dropped to the floor under them), the grid along the way, and a real try at it, as PROBE lines.
+function OrderTestScript:Probe(t)
+	if not self.probes then
+		self.probes = {};
+		for a, b, c, d in string.gmatch(os.getenv("CCCP_ORDER_PROBE"), "(-?%d+),(-?%d+),(-?%d+),(-?%d+)") do
+			table.insert(self.probes, { from = Vector(tonumber(a), tonumber(b)), to = Vector(tonumber(c), tonumber(d)) });
+		end
+		self.probeIndex = 0;
+		self.probeAt = t;
+		return;
+	end
+	if t < self.probeAt then
+		return;
+	end
+	local a = self.probeUnit;
+	if self.probing then
+		local p = self.probes[self.probeIndex];
+		local left = SceneMan:ShortestDistance(a.Pos, p.goal, false);
+		if left.Magnitude < 30 or t - self.probing > 20000 then
+			ConsoleMan:PrintString("PROBE " .. self.probeIndex .. " try: " .. (left.Magnitude < 30 and ("there in " .. math.floor((t - self.probing) / 100) / 10 .. " s") or ("not there, at " .. math.floor(a.Pos.X) .. "," .. math.floor(a.Pos.Y))));
+			self.probing = nil;
+		else
+			return;
+		end
+	end
+	self.probeIndex = self.probeIndex + 1;
+	local p = self.probes[self.probeIndex];
+	if not p then
+		ConsoleMan:PrintString("PROBE done");
+		self.probeAt = math.huge;
+		return;
+	end
+	if not a or not MovableMan:ValidMO(a) then
+		a = CreateAHuman("Soldier Light", "Coalition.rte");
+		a.Team = 0;
+		a.AIMode = Actor.AIMODE_SENTRY;
+		a.Pos = Vector(p.from.X, p.from.Y);
+		MovableMan:AddActor(a);
+		self.probeUnit = a;
+	end
+	local from = SceneMan:MovePointToGround(p.from, 20, 2);
+	local to = SceneMan:MovePointToGround(p.to, 20, 2);
+	p.goal = to;
+	local cost = SceneMan.Scene:CalculatePathForActor(a, from, to, Activity.TEAM_1);
+	local nodes = "";
+	for node in SceneMan.Scene:GetScenePath() do
+		nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y);
+	end
+	ConsoleMan:PrintString("PROBE " .. self.probeIndex .. " from " .. math.floor(from.X) .. "," .. math.floor(from.Y) .. " to " .. math.floor(to.X) .. "," .. math.floor(to.Y) .. ": cost " .. tostring(cost) .. ", points" .. nodes);
+	local midX = (from.X + to.X) * 0.5;
+	for gx = midX - 48, midX + 48, 24 do
+		for _, gy in ipairs({ to.Y - 24, to.Y }) do
+			ConsoleMan:PrintString("PROBE " .. self.probeIndex .. " grid " .. SceneMan.Scene:DescribePathNodeAt(Vector(gx, gy)));
+		end
+	end
+	a:ClearAIWaypoints();
+	a.Pos = Vector(from.X, from.Y - 10);
+	a.Vel = Vector();
+	a:AddAISceneWaypoint(to);
+	a.AIMode = Actor.AIMODE_GOTO;
+	self.probing = t;
+	self.probeAt = t;
+end
+
 function OrderTestScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
+	if os and os.getenv and os.getenv("CCCP_ORDER_PROBE") then
+		if t > 6000 then
+			self:Probe(t);
+		end
+		return;
+	end
 	if os and os.getenv and os.getenv("CCCP_ORDER_BUMPS") == "1" then
 		if t > 5000 then
 			self:Bumps(t);

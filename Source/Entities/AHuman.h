@@ -298,6 +298,21 @@ namespace RTE {
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const override;
 
+		/// Flies the jetpack for a tick towards a point, the way a person flies one: predicted, not reacted. The jet's real push is known
+		/// (learned in flight: see m_JetAccelRatio), and for each of ten choices (the jet on or off, leant hard or a little either way, or
+		/// straight) the next second is flown in simulation, the choice held for the first fifth of it and a tracking rule after, against the
+		/// terrain; the choice whose flight best follows the speeds wanted (up to just over the landing's height, across at a speed the jet's
+		/// lean can stop from in the room left, then down onto it) and hits nothing is taken. The lean is set by the analog stick, which
+		/// tilts the nozzle without turning the body round, so braking needs no turn.
+		/// @param target The landing point, or the point to pass through.
+		/// @param floorY The landing's floor (its top surface's y), or below zero for a point in the air to pass through.
+		/// @return The analog stick's X to hold (with -1 for its Y), and in Y 1 to jet or 0 not to.
+		Vector PilotFlight(const Vector& target, float floorY);
+
+		/// Gets what this has learned of its jet's real push, against what the jetpack's numbers say. 1 is as modelled.
+		/// @return The ratio.
+		float GetJetAccelRatio() const { return m_JetAccelRatio; }
+
 		/// Switches the currently held device (if any) to the first found shield
 		/// in the inventory. If the held device already is a shield, or no
 		/// shield is in inventory, nothing happens.
@@ -696,6 +711,18 @@ namespace RTE {
 
 		/// Private member variable and method declarations
 	private:
+		float m_JetAccelRatio = 1.0F; //!< The jet's measured push against its modelled one, learned while it flies free (see PilotFlight).
+		Vector m_JetPrevVel; //!< Last frame's velocity, for the learning.
+		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
+		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
+		int m_PilotLastChoice = -1; //!< PilotFlight's last choice, kept unless another is clearly better.
+
+		/// The jet's push at full lean-less burn now, in px/s^2, as learned.
+		float JetAccelNow() const;
+
+		/// Learns the jet's real push and the standing height, each frame (see PilotFlight).
+		void LearnFlight();
+
 		/// Clears all the member variables of this AHuman, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();

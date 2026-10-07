@@ -54,6 +54,7 @@ thread_local float s_CrawlHeight = 22.0F;
 thread_local float s_HalfWidth = 6.0F;
 thread_local bool s_WalksStairs = false;
 thread_local float s_MantleHeight = 0.0F; // How high a ledge the searcher mantles onto (PathAgent::MantleHeight).
+thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s (PathAgent::Velocity).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
@@ -185,6 +186,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_HalfWidth = agent.HalfWidth;
 	s_WalksStairs = agent.WalksStairs;
 	s_MantleHeight = agent.MantleHeight;
+	s_Velocity = agent.Velocity;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 
 	++m_CurrentPathingRequests;
@@ -549,8 +551,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	if (node == s_FlyingStart) {
 		int gridX = static_cast<int>(std::floor(node->Pos.m_X / static_cast<float>(m_NodeDimension)));
 		int gridY = static_cast<int>(std::floor(node->Pos.m_Y / static_cast<float>(m_NodeDimension)));
-		for (int dy = -3; dy <= 3; ++dy) {
-			for (int dx = -4; dx <= 4; ++dx) {
+		// (Six across and four up or down: at four, a roof four and a half nodes off a unit half way up its climb was out of reach, and the
+		// route from there went back down to the wall and up again.)
+		for (int dy = -4; dy <= 4; ++dy) {
+			for (int dx = -6; dx <= 6; ++dx) {
 				if ((dx == 0 && dy == 0) || (std::abs(dx) <= 1 && std::abs(dy) <= 1)) {
 					continue;
 				}
@@ -617,7 +621,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		}
 
 		// Stepping over something low on the floor, to the floor level with this one or two nodes along (see UpdateNodeCosts): stepped or vaulted
-		// over when it is within half the searcher's standing height and there is room to stand over it, crawled over when there is only room
+		// over when it is within 0.6 of the searcher's standing height and there is room to stand over it, crawled over when there is only room
 		// to crawl. Priced as the walk plus the effort, so a route takes it over going round, as a person would.
 		if (s_JumpHeight < FLT_MAX && node->Surface >= 0.0F) {
 			// (Known to this end or the other: see PathNode::StepOverRiseLeft.)
@@ -632,7 +636,9 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 				float rise = std::max(riseHere, riseThere);
 				float room = static_cast<float>(riseHere >= riseThere ? (leftward ? node->StepOverRoomLeft[k] : node->StepOverRoom[k]) : (leftward ? to->StepOverRoom[k] : to->StepOverRoomLeft[k]));
-				if (rise > s_StandHeight * 0.5F || room < s_CrawlHeight) {
+				// (Up to 0.6 of the standing height: a soldier gets over a 24 px block in a 48 px tunnel, and at half, 22 px, the step was refused one
+				// way round, where nothing else on the grid stood in for it, and the unit went 400 px round.)
+				if (rise > s_StandHeight * 0.6F || room < s_CrawlHeight) {
 					return;
 				}
 				float walk = static_cast<float>(k + 1);
@@ -743,7 +749,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 							return nullptr;
 						}
 						if (NodeIsOnSolidGround(*step)) {
-							adjCost.cost = totalMaterialCost + stepCost + GetMaterialTransitionCost(*stepMaterial) + radiatedCost;
+							adjCost.cost = totalMaterialCost + stepCost + GetMaterialTransitionCost(*stepMaterial) + radiatedCost + LandingWidthCost(*step);
 							adjCost.state = const_cast<PathNode*>(step);
 							adjacentList->push_back(adjCost);
 							return nullptr;
@@ -835,6 +841,21 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		}
 	}
 
+	// From a start in the air, a step against the way the searcher is moving costs for the speed it has to undo: a person in mid-jump goes on
+	// to somewhere ahead before turning back for somewhere behind. Free of it, a route asked mid-air at the top of a climb went back down the
+	// wall and up again, and the unit, at speed, turned round in the air for it.
+	if (node == s_FlyingStart && s_Velocity.MagnitudeIsGreaterThan(1.0F)) {
+		for (micropather::StateCost& adjacent: *adjacentList) {
+			Vector step = g_SceneMan.ShortestDistance(node->Pos, static_cast<const PathNode*>(adjacent.state)->Pos);
+			if (step.MagnitudeIsGreaterThan(0.5F)) {
+				float along = step.GetNormalized().Dot(s_Velocity);
+				if (along < 0.0F) {
+					adjacent.cost += -along * 0.8F;
+				}
+			}
+		}
+	}
+
 	// The searcher has failed here lately (PathAgent::Avoid): every step into a node near one costs more for it, so its next route goes another way
 	// if there is a reasonable one, rather than at the same jump again.
 	if (s_Avoid) {
@@ -880,6 +901,14 @@ std::string PathFinder::DescribeNodeAt(const Vector& scenePos) {
 	text += " free " + std::to_string(node->FreeHeight) + " clear " + std::to_string(node->ClearLeft) + "/" + std::to_string(node->ClearRight);
 	text += " up " + integrity(node->UpMaterial) + " upright " + integrity(node->UpRightMaterial) + " right " + integrity(node->RightMaterial) + " rightdown " + integrity(node->RightDownMaterial);
 	text += " down " + integrity(node->DownMaterial) + " downleft " + integrity(node->DownLeftMaterial) + " left " + integrity(node->LeftMaterial) + " leftup " + integrity(node->LeftUpMaterial);
+	for (int k = 0; k < 2; ++k) {
+		if (node->StepOverRise[k] > 0.0F) {
+			text += " stepright" + std::to_string(k + 1) + " " + std::to_string(static_cast<int>(node->StepOverRise[k])) + "/" + std::to_string(node->StepOverRoom[k]);
+		}
+		if (node->StepOverRiseLeft[k] > 0.0F) {
+			text += " stepleft" + std::to_string(k + 1) + " " + std::to_string(static_cast<int>(node->StepOverRiseLeft[k])) + "/" + std::to_string(node->StepOverRoomLeft[k]);
+		}
+	}
 	return text;
 }
 
@@ -1014,6 +1043,18 @@ float PathFinder::ClimbMarginCost(const PathNode& node) const {
 		cost += 1.0F;
 	}
 	return cost;
+}
+
+float PathFinder::LandingWidthCost(const PathNode& node) const {
+	if (node.Surface < 0.0F) {
+		return 0.0F;
+	}
+	// Floor level with the landing's, a node either side.
+	auto level = [&node](const PathNode* side) {
+		return side && side->m_Navigable && side->Surface >= 0.0F && std::abs(side->Surface - node.Surface) <= 6.0F;
+	};
+	int sides = (level(node.Left) ? 1 : 0) + (level(node.Right) ? 1 : 0);
+	return static_cast<float>(2 - sides);
 }
 
 float PathFinder::AvoidCost(const PathNode& node) const {
@@ -1151,14 +1192,25 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			int fromX = static_cast<int>(std::min(node->Pos.m_X, target->Pos.m_X));
 			int toX = static_cast<int>(std::max(node->Pos.m_X, target->Pos.m_X));
 			for (int x = fromX + 2; x < toX - 1 && passable; x += 2) {
+				// The top of what stands here: the last solid pixel under a clear run of 8. (Not the first air going up: bunker blocks have
+				// pockets of air in their material, and a 24 px metal block read as having 1 px of room over it, from inside itself.)
 				int y = floorY - 1;
-				while (y > floorY - 48 && g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+				int lastSolid = floorY;
+				int clearRun = 0;
+				while (y > floorY - 48 && clearRun < 8) {
+					if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+						lastSolid = y;
+						clearRun = 0;
+					} else {
+						++clearRun;
+					}
 					--y;
 				}
-				if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+				if (clearRun < 8) {
 					passable = false;
 					break;
 				}
+				y = lastSolid - 1;
 				int air = 0;
 				while (air < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, y - air) == MaterialColorKeys::g_MaterialAir) {
 					++air;
