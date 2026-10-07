@@ -156,6 +156,11 @@ namespace RTE {
 		/// @param newHoverHeightModifier The new modifier for height at which this ACDropShip should hover above terrain.
 		void SetHoverHeightModifier(float newHoverHeightModifier) { m_HoverHeightModifier = newHoverHeightModifier; }
 
+		/// The engine's drop ship autopilot, one AI update of it: a faithful port of Base.rte/AI/NativeDropShipAI.lua (the hover height,
+		/// the two PID controllers, the delivery stages, avoiding other craft and terrain, going home, scuttling when stuck), so a ship
+		/// flies as it did under the script. Base.rte/AI/DropShipAI.lua calls it where the build has it; a mod's own script is untouched.
+		void UpdateAutopilot();
+
 		/// Protected member variable and method declarations
 	protected:
 		// Member variables
@@ -192,6 +197,48 @@ namespace RTE {
 
 		/// Private member variable and method declarations
 	private:
+		/// The script's RegulatorPID (Base.rte/AI/PID.lua): the input leaked through a filter, ticked once per sim update since the last.
+		struct AutopilotPID {
+			float p = 0.0F;
+			float i = 0.0F;
+			float d = 0.0F;
+			float leak = 1.0F;
+			float integralMax = 0.0F;
+			int ticks = 1;
+			float lastInput = 0.0F;
+			float filtered = 0.0F;
+			float integral = 0.0F;
+			float Update(float rawInput, float target);
+		};
+		/// The autopilot's state (the script's members).
+		struct DropShipAutopilot {
+			bool begun = false;
+			Timer stuckTimer;
+			Timer hatchTimer;
+			Timer avoidTimer;
+			Timer playerInterferedTimer;
+			AIMode lastAIMode = AIMODE_NONE;
+			float savedHoverHeightModifier = 0.0F;
+			float hoverAlt = 0.0F;
+			AutopilotPID xPID;
+			AutopilotPID yPID;
+			Vector waypoint;
+			bool hasWaypoint = false;
+			bool reachedWaypoint = false;
+			int deliveryState = FALL;
+			int altitudeMoveState = HOVER;
+			bool avoidHover = false; //!< The script's AvoidMoveState: hold altitude while stepping round another craft.
+			bool search = false; //!< Craft checked on every second avoid update, terrain on the others.
+		};
+		DropShipAutopilot m_Autopilot;
+
+		/// The hover height for the AI mode (the script's hoverAlt).
+		float AutopilotHoverAltitude() const;
+		/// The highest of the ground points a hover height above the ground under a point and a radius either side (the script's three samples).
+		float AutopilotGroundBelow(const Vector& from, float hoverAlt);
+		/// What is in the way of travel: 0 nothing, 1 something that isn't a craft, 2 another craft.
+		int AutopilotObstacleAhead();
+
 		/// Clears all the member variables of this ACDropShip, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();

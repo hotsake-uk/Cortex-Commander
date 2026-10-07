@@ -4,6 +4,13 @@
 #include "Matrix.h"
 #include "AEmitter.h"
 #include "PresetMan.h"
+#include "ActivityMan.h"
+#include "Activity.h"
+#include "MovableMan.h"
+#include "SceneMan.h"
+#include "SettingsMan.h"
+
+#include <limits>
 
 #include "tracy/Tracy.hpp"
 
@@ -568,5 +575,293 @@ void ACDropShip::SetLeftHatch(Attachable* newHatch) {
 			m_pLHatch->SetDamageMultiplier(1.0F);
 		}
 		m_pLHatch->SetInheritsRotAngle(false);
+	}
+}
+
+// ---------------------------------------------------------------- The drop ship's autopilot (a port of Base.rte/AI/NativeDropShipAI.lua)
+
+float ACDropShip::AutopilotPID::Update(float rawInput, float target) {
+	float err = 0.0F;
+	float change = 0.0F;
+	for (int tick = 0; tick < ticks; ++tick) {
+		filtered = filtered * (1.0F - leak) + rawInput * leak;
+		err = filtered - target;
+		change = filtered - lastInput;
+		lastInput = filtered;
+		integral = std::clamp(integral + err, -integralMax, integralMax);
+	}
+	return p * err + i * integral + d * change;
+}
+
+namespace {
+	// Where the scene's orbit is, from a point: far off the edge the craft goes home by.
+	RTE::Vector DropShipOrbitPoint(const RTE::Vector& pos) {
+		switch (RTE::g_SceneMan.GetSceneOrbitDirection()) {
+			case RTE::Directions::Down:
+				return RTE::Vector(pos.m_X, static_cast<float>(RTE::g_SceneMan.GetSceneHeight()) + 5000.0F);
+			case RTE::Directions::Left:
+				return RTE::Vector(-5000.0F, pos.m_Y);
+			case RTE::Directions::Right:
+				return RTE::Vector(static_cast<float>(RTE::g_SceneMan.GetSceneWidth()) + 5000.0F, pos.m_Y);
+			default:
+				return RTE::Vector(pos.m_X, -5000.0F);
+		}
+	}
+} // namespace
+
+float ACDropShip::AutopilotHoverAltitude() const {
+	if (m_AIMode == AIMODE_BRAINHUNT) {
+		return GetRadius() * 1.7F + m_HoverHeightModifier;
+	} else if (m_AIMode == AIMODE_BOMB) {
+		return GetRadius() * 6.0F + m_HoverHeightModifier;
+	}
+	return GetDiameter() + m_HoverHeightModifier;
+}
+
+float ACDropShip::AutopilotGroundBelow(const Vector& from, float hoverAlt) {
+	float radius = GetRadius();
+	int height = static_cast<int>(hoverAlt);
+	float lowest = g_SceneMan.MovePointToGround(Vector(from.m_X - radius, from.m_Y), height, 12).m_Y;
+	lowest = std::min(lowest, g_SceneMan.MovePointToGround(Vector(from.m_X, from.m_Y), height, 12).m_Y);
+	return std::min(lowest, g_SceneMan.MovePointToGround(Vector(from.m_X + radius, from.m_Y), height, 12).m_Y);
+}
+
+int ACDropShip::AutopilotObstacleAhead() {
+	MOID obstacle = DetectObstacle(GetDiameter() + m_Vel.GetMagnitude() * 70.0F);
+	if (obstacle > 0 && obstacle != g_NoMOID) {
+		const MovableObject* root = g_MovableMan.GetMOFromID(g_MovableMan.GetRootMOID(obstacle));
+		if (root && (root->GetClassName() == "ACDropShip" || root->GetClassName() == "ACRocket")) {
+			return 2;
+		}
+		return 1;
+	}
+	return 0;
+}
+
+void ACDropShip::UpdateAutopilot() {
+	DropShipAutopilot& ai = m_Autopilot;
+	Controller& ctrl = m_Controller;
+	const float radius = GetRadius();
+	const float diameter = GetDiameter();
+	const float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	const bool orbitUp = g_SceneMan.GetSceneOrbitDirection() == Directions::Up;
+
+	// The script's Create: the hover height, the controllers, and a human team's empty ship kept from going home at once.
+	if (!ai.begun) {
+		ai.begun = true;
+		ai.avoidTimer.SetSimTimeLimitMS(500);
+		ai.playerInterferedTimer.SetSimTimeLimitMS(500);
+		ai.playerInterferedTimer.Reset();
+		ai.stuckTimer.Reset();
+		ai.hatchTimer.Reset();
+		ai.lastAIMode = AIMODE_NONE;
+		ai.savedHoverHeightModifier = m_HoverHeightModifier;
+		ai.hoverAlt = diameter + m_HoverHeightModifier;
+		int ticks = std::max(1, g_SettingsMan.GetAIUpdateInterval());
+		ai.xPID = AutopilotPID{0.05F, 0.01F, 2.5F, 0.8F, 50.0F, ticks};
+		ai.yPID = AutopilotPID{0.1F, 0.0F, 2.5F, 0.6F, std::numeric_limits<float>::max() / 2.0F, ticks};
+		if (m_AIMode == AIMODE_DELIVER && IsInventoryEmpty() && g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->IsHumanTeam(m_Team)) {
+			m_AIMode = AIMODE_STAY;
+		}
+	}
+
+	// A new hover height, or a new order: a new waypoint and delivery stage.
+	bool hoverHeightModifierChanged = ai.savedHoverHeightModifier != m_HoverHeightModifier;
+	if (hoverHeightModifierChanged) {
+		ai.savedHoverHeightModifier = m_HoverHeightModifier;
+		ai.hoverAlt = AutopilotHoverAltitude();
+	}
+	if (hoverHeightModifierChanged || m_AIMode != ai.lastAIMode) {
+		UpdateMovePath();
+		ai.lastAIMode = static_cast<AIMode>(m_AIMode);
+		if (m_AIMode == AIMODE_RETURN) {
+			ai.deliveryState = LAUNCH;
+			ai.waypoint = DropShipOrbitPoint(m_Pos);
+			ai.hasWaypoint = true;
+		} else if (m_AIMode == AIMODE_GOTO) {
+			ai.hasWaypoint = false;
+		} else if (m_AIMode == AIMODE_SENTRY) {
+			ai.waypoint = m_Pos;
+			ai.hasWaypoint = true;
+			ai.deliveryState = STANDBY;
+		} else {
+			float startingHeight = orbitUp ? (hoverHeightModifierChanged ? radius * 1.25F : std::max(radius * 1.25F, m_Pos.m_Y)) : m_Pos.m_Y;
+			ai.waypoint = Vector(m_Pos.m_X, AutopilotGroundBelow(Vector(m_Pos.m_X, startingHeight), ai.hoverAlt));
+			ai.hasWaypoint = true;
+			ai.deliveryState = FALL;
+		}
+	}
+
+	// The player flew it a while (no autopilot update for half a second): the waypoint brought back near where it is now.
+	if (ai.playerInterferedTimer.IsPastSimTimeLimit()) {
+		ai.stuckTimer.Reset();
+		Vector futurePos = m_Pos + m_Vel * 20.0F;
+		if (futurePos.m_X > sceneWidth) {
+			futurePos.m_X = g_SceneMan.SceneWrapsX() ? futurePos.m_X - sceneWidth : sceneWidth - radius;
+		} else if (futurePos.m_X < 0.0F) {
+			futurePos.m_X = g_SceneMan.SceneWrapsX() ? futurePos.m_X + sceneWidth : radius;
+		}
+		if (ai.hasWaypoint && std::abs(g_SceneMan.ShortestDistance(futurePos, ai.waypoint, false).m_X) > 100.0F) {
+			if (ai.deliveryState == LAUNCH) {
+				ai.waypoint = Vector(futurePos.m_X, -500.0F);
+			} else {
+				ai.waypoint = Vector(m_Pos.m_X, AutopilotGroundBelow(Vector(m_Pos.m_X, std::max(radius * 1.25F, m_Pos.m_Y)), ai.hoverAlt));
+			}
+		}
+	}
+	ai.playerInterferedTimer.Reset();
+
+	// Go-to: the route's points in turn, and a sentry at the last.
+	if (m_AIMode == AIMODE_GOTO) {
+		if (IsWaitingOnNewMovePath()) {
+			ai.reachedWaypoint = false;
+			ai.hasWaypoint = false;
+			return;
+		}
+		if (!ai.hasWaypoint || ai.reachedWaypoint) {
+			ai.reachedWaypoint = false;
+			if (!m_MovePath.empty()) {
+				ai.waypoint = m_MovePath.back();
+				ai.hasWaypoint = true;
+			}
+		} else if (g_SceneMan.ShortestDistance(m_Pos, ai.waypoint, false).MagnitudeIsLessThan(20.0F)) {
+			if (m_Waypoints.empty()) {
+				m_AIMode = AIMODE_SENTRY;
+				ai.waypoint = m_Pos;
+			} else {
+				ClearMovePath();
+				UpdateMovePath();
+				ai.reachedWaypoint = true;
+			}
+		}
+	}
+	// (The script stopped here with an error when it had nowhere to go; this holds still instead.)
+	if (!ai.hasWaypoint) {
+		ctrl.SetState(MOVE_UP, false);
+		ctrl.SetState(MOVE_DOWN, false);
+		return;
+	}
+
+	// Sideways, on a PID of where it will be in a while.
+	float change = ai.xPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 30.0F, ai.waypoint, false).m_X, 0.0F);
+	if (std::abs(change) > 0.6F) {
+		ctrl.SetAnalogMove(Vector(change / 8.0F, 0.0F));
+	}
+	// Up and down, likewise.
+	change = ai.yPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 5.0F, ai.waypoint, false).m_Y, 0.0F);
+	if (change > 2.0F) {
+		ai.altitudeMoveState = DESCEND;
+	} else if (change < -2.0F) {
+		ai.altitudeMoveState = ASCEND;
+	}
+
+	// The delivery.
+	if (m_AIMode == AIMODE_STAY || m_AIMode == AIMODE_DELIVER) {
+		if (ai.deliveryState == FALL) {
+			if (IsInventoryEmpty() && m_AIMode != AIMODE_BRAINHUNT) {
+				// Nothing to deliver: home.
+				if (m_AIMode != AIMODE_STAY) {
+					ai.deliveryState = LAUNCH;
+					ai.hatchTimer.Reset();
+					ai.waypoint = DropShipOrbitPoint(m_Pos);
+				}
+			} else if (g_SceneMan.ShortestDistance(m_Pos, ai.waypoint, false).MagnitudeIsLessThan(radius) && std::abs(change) < 3.0F && std::abs(m_Vel.m_X) < 4.0F) {
+				// Hovering at the waypoint: unload when the ground is near enough.
+				ai.waypoint = Vector(m_Pos.m_X, AutopilotGroundBelow(m_Pos + Vector(0.0F, -radius), ai.hoverAlt));
+				if (g_SceneMan.ShortestDistance(m_Pos, ai.waypoint, false).MagnitudeIsLessThan(diameter)) {
+					if (m_AIMode == AIMODE_STAY) {
+						ai.deliveryState = STANDBY;
+					} else {
+						ai.deliveryState = UNLOAD;
+						ai.hatchTimer.Reset();
+					}
+				}
+			} else {
+				// Something in the way of the descent: another craft (every second check), stepped round; terrain (the others), hovered over.
+				if (ai.avoidTimer.IsPastSimTimeLimit()) {
+					ai.avoidTimer.Reset();
+					ai.search = !ai.search;
+					if (ai.search) {
+						int obstacle = AutopilotObstacleAhead();
+						if (obstacle == 2) {
+							ai.avoidHover = true;
+							ai.waypoint.m_X += diameter * 2.0F;
+							if (ai.waypoint.m_X > sceneWidth) {
+								ai.waypoint.m_X = g_SceneMan.SceneWrapsX() ? ai.waypoint.m_X - sceneWidth : sceneWidth - radius;
+							}
+						} else if (obstacle == 0) {
+							ai.avoidHover = false;
+						}
+					} else {
+						Vector free;
+						Vector start = m_Pos + Vector(radius, 0.0F);
+						Vector trace = m_Vel * (radius / 2.0F) + Vector(0.0F, 50.0F);
+						if (RandomNum() < 0.5F) {
+							start.m_X -= diameter;
+						}
+						if (g_SceneMan.CastStrengthRay(start, trace, 0.0F, free, 4, 0, true)) {
+							ai.waypoint = Vector(m_Pos.m_X, free.m_Y - ai.hoverAlt);
+						}
+					}
+				}
+				if (ai.avoidHover) {
+					ai.altitudeMoveState = HOVER;
+				}
+			}
+		} else if (ai.deliveryState == UNLOAD) {
+			if (ai.hatchTimer.IsPastSimMS(500)) {
+				ai.hatchTimer.Reset();
+				OpenHatch();
+				if (m_AIMode == AIMODE_BRAINHUNT && HasObjectInGroup("Brains")) {
+					m_AIMode = AIMODE_RETURN;
+				} else {
+					ai.deliveryState = FALL;
+				}
+			}
+		} else if (ai.deliveryState == LAUNCH) {
+			if (ai.hatchTimer.IsPastSimMS(1000)) {
+				ai.hatchTimer.Reset();
+				CloseHatch();
+			}
+			// Another craft in the way of the climb: stepped round the other way.
+			if (ai.avoidTimer.IsPastSimTimeLimit()) {
+				ai.avoidTimer.Reset();
+				int obstacle = AutopilotObstacleAhead();
+				if (obstacle == 2) {
+					ai.avoidHover = true;
+					ai.waypoint.m_X -= diameter * 2.0F;
+					if (ai.waypoint.m_X < 0.0F) {
+						ai.waypoint.m_X = g_SceneMan.SceneWrapsX() ? ai.waypoint.m_X + sceneWidth : radius;
+					}
+				} else if (obstacle == 0) {
+					ai.avoidHover = false;
+				}
+			}
+			if (ai.avoidHover) {
+				ai.altitudeMoveState = HOVER;
+			}
+		}
+	} else {
+		ai.deliveryState = FALL;
+	}
+
+	// The stick.
+	if (ai.altitudeMoveState == ASCEND) {
+		ctrl.SetState(MOVE_UP, true);
+	} else if (ai.altitudeMoveState == DESCEND) {
+		ctrl.SetState(MOVE_DOWN, true);
+	} else {
+		ctrl.SetState(MOVE_UP, false);
+		ctrl.SetState(MOVE_DOWN, false);
+	}
+
+	// Hopelessly stuck (or both engines gone, which leaves it five seconds): scuttled.
+	if (!m_pLThruster && !m_pRThruster && !ai.stuckTimer.IsPastSimMS(35000)) {
+		ai.stuckTimer.SetElapsedSimTimeMS(35000);
+	}
+	if (m_Vel.GetLargest() > 3.0F || m_AIMode == AIMODE_STAY || m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_GOTO) {
+		ai.stuckTimer.Reset();
+	} else if (m_AIMode == AIMODE_SCUTTLE || ai.stuckTimer.IsPastSimMS(40000)) {
+		GibThis();
 	}
 }
