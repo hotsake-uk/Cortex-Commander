@@ -878,13 +878,10 @@ function HumanBehaviors.GoProne(AI, Owner, TargetPos, targetID)
 		end
 	end
 
-	AI.proneState = AHuman.PRONE;
+	-- Down, and a crawl forward towards the target (the engine's motor does both; see SharedBehaviors.Stance and StepTo).
+	SharedBehaviors.Stance(AI, Owner, AHuman.PRONE, 2500);
 	if not Owner.EquippedBGItem then
-		if Dist.X > 0 then
-			AI.lateralMoveState = Actor.LAT_RIGHT;
-		else
-			AI.lateralMoveState = Actor.LAT_LEFT;
-		end
+		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(Dist.X > 0 and Owner.Height * 0.6 or -Owner.Height * 0.6, 0), 1500);
 	end
 
 	return true;
@@ -1250,7 +1247,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 				AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.Pos, AI.Target.Pos, false).Normalized;
 				-- Behind something for the reload, if there's something to be behind a few steps away; else flat on the ground.
 				if not HumanBehaviors.TakeCover(AI, Owner, AI.Target.Pos, "reload") and AI.lateralMoveState == Actor.LAT_STILL then
-					AI.proneState = AHuman.PRONE;
+					SharedBehaviors.Stance(AI, Owner, AHuman.PRONE, 1500);
 				end
 			elseif Owner:EquipFirearm(true) then
 				local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame, just in case the magazine is replenished by another script
@@ -1434,8 +1431,9 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 	end
 	local dx = SceneMan:ShortestDistance(Owner.Pos, AI.Cover.Spot, false).X;
 	if not AI.Cover.There and math.abs(dx) > 6 and not AI.Cover.Timer:IsPastSimMS(3000) then
-		AI.lateralMoveState = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
-		AI.proneState = AHuman.NOTPRONE;
+		-- (Walked by the engine's motor: see SharedBehaviors.StepTo.)
+		SharedBehaviors.StepTo(AI, Owner, AI.Cover.Spot, 3000 - AI.Cover.Timer.ElapsedSimTimeMS);
+		SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 200);
 	else
 		if not AI.Cover.There then
 			AI.Cover.There = true;
@@ -1472,7 +1470,7 @@ function HumanBehaviors.LeaveCover(AI, Owner)
 	end
 	local dx = SceneMan:ShortestDistance(Owner.Pos, AI.Cover.Return, false).X;
 	if math.abs(dx) > 6 and not AI.Cover.Timer:IsPastSimMS(3000) then
-		AI.lateralMoveState = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+		SharedBehaviors.StepTo(AI, Owner, AI.Cover.Return, 3000 - AI.Cover.Timer.ElapsedSimTimeMS);
 	else
 		SharedBehaviors.Trace(Owner, "cover: out again");
 		AI.Cover = nil;

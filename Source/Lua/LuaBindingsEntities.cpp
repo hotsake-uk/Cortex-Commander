@@ -438,6 +438,11 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
 	    .property("JetFlying", &AHuman::IsJetFlying)
 	    .property("ClimbingLadder", &AHuman::IsClimbingLadder)
+	    .property("AIStance", &AHuman::GetAIStance)
+	    .property("TacticalMoveActive", &AHuman::IsTacticalMoveActive)
+	    .def("SetAIStance", &AHuman::SetAIStance)
+	    .def("TacticalMoveTo", &AHuman::TacticalMoveTo)
+	    .def("CancelTacticalMove", &AHuman::CancelTacticalMove)
 
 	    .property("Head", &AHuman::GetHead, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetHead)
 	    .property("Jetpack", &AHuman::GetJetpack, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetJetpack)

@@ -1713,7 +1713,8 @@ void AHuman::PreControllerUpdate() {
 	m_Paths[FGROUND][m_MovementState].SetHFlip(m_HFlipped);
 	m_Paths[BGROUND][m_MovementState].SetHFlip(m_HFlipped);
 
-	// A ladder taken hold of or let go of, before the jet reads its key (see UpdateLadderInput).
+	// The AI's motor (its stance, a tactical move, a fall braked), then a ladder taken hold of or let go of, before the jet reads its key.
+	UpdateAIMotor();
 	UpdateLadderInput();
 
 	if (m_pJetpack && m_pJetpack->IsAttached()) {

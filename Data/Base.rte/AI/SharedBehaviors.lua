@@ -466,7 +466,40 @@ function SharedBehaviors.UsesEngineMover(Owner)
 	if not (ok and member ~= nil) then
 		return false;
 	end
-	return not Owner:HasObjectInGroup("Tools - Diggers");
+	-- (Diggers too, where the engine digs along a route: a build with the motor. An older one's follower doesn't dig.)
+	return not Owner:HasObjectInGroup("Tools - Diggers") or SharedBehaviors.EngineMotor(Owner);
+end
+
+-- The engine's motor (AHuman.SetAIStance, AHuman.TacticalMoveTo; see AHuman::UpdateAIMotor): the scripts say where to go and how to hold the
+-- body, and the engine walks, crawls, climbs and flies. Asked without the error a missing member is, for a build without it (an older exe),
+-- where the scripts press the keys themselves as they did.
+function SharedBehaviors.EngineMotor(Owner)
+	local ok, value = pcall(function() return Owner.TacticalMoveActive; end);
+	return ok and value ~= nil;
+end
+
+-- A stance for a while: AHuman.PRONE or AHuman.NOTPRONE.
+function SharedBehaviors.Stance(AI, Owner, stance, milliseconds)
+	if SharedBehaviors.EngineMotor(Owner) then
+		Owner:SetAIStance(stance == AHuman.PRONE and 2 or 0, milliseconds or 1000);
+	else
+		AI.proneState = stance;
+	end
+end
+
+-- A short move on this floor to a place, for a while; the engine walks (or crawls) it. @return Whether it is still on its way.
+function SharedBehaviors.StepTo(AI, Owner, Place, milliseconds)
+	if SharedBehaviors.EngineMotor(Owner) then
+		Owner:TacticalMoveTo(Place, milliseconds or 3000);
+		return true;
+	end
+	local dx = SceneMan:ShortestDistance(Owner.Pos, Place, false).X;
+	if math.abs(dx) > 6 then
+		AI.lateralMoveState = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+		return true;
+	end
+	AI.lateralMoveState = Actor.LAT_STILL;
+	return false;
 end
 
 -- Following a unit (a squad's leader, or one we were told to follow), as 8.0's GoToWpt did it, for the route-follower's wrapper: near the

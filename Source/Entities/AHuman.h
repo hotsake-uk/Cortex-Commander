@@ -332,6 +332,17 @@ namespace RTE {
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
+		/// The AI's motor (see UpdateAIMotor): what an AI script asks of the body, done by the engine. A script decides where to go and how to
+		/// hold itself; the engine walks, crawls, climbs and flies. (A script may still press the controls itself, as a mod's may.)
+		/// Holds a stance for a while: 0 none (as the movement has it), 1 crouched, 2 prone (crawling, when it also moves).
+		void SetAIStance(int stance, float milliseconds);
+		int GetAIStance() const { return m_AIStance; }
+		/// A short move on this floor, for a while, without touching the unit's orders: a step into cover and back out, a crawl forward to
+		/// shoot. Walked or crawled (as the stance has it), never flown; ended at the place, at a wall the walk's sense finds, or at the time.
+		void TacticalMoveTo(const Vector& place, float milliseconds);
+		void CancelTacticalMove() { m_Tactical.active = false; }
+		bool IsTacticalMoveActive() const { return m_Tactical.active; }
+
 		/// Switches the currently held device (if any) to the first found shield
 		/// in the inventory. If the held device already is a shield, or no
 		/// shield is in inventory, nothing happens.
@@ -802,6 +813,9 @@ namespace RTE {
 			int impossibleAnswers = 0;
 			double lastJetTime = -1.0;
 			Timer senseRerouteTimer; //!< Since the sense last asked for a route round a wall the grid didn't know.
+			bool digging = false; //!< Digging along the route (a Dig step), the digger out; put away again after.
+			float digSweep = 0.0F; //!< The digger's sweep either side of the way, radians.
+			bool digSweepUp = true;
 			bool stuckBackedOff = false; //!< Whether the stuck handling has backed off, and lain down, this time stuck (traced once each).
 			bool stuckLayDown = false;
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
@@ -831,6 +845,19 @@ namespace RTE {
 			Timer startTimer;
 		};
 		LadderClimb m_Ladder;
+		struct TacticalMove {
+			bool active = false;
+			Vector place;
+			Timer timer;
+			float limitMS = 0.0F;
+		};
+		TacticalMove m_Tactical;
+		int m_AIStance = 0;
+		Timer m_AIStanceTimer;
+		float m_AIStanceMS = 0.0F;
+		/// The AI's motor, before anything reads the controls: the stance held, the tactical move walked, and a fall braked (off a route's
+		/// flight, which the pilot brakes): for every AI humanoid, whatever its script, so a script needn't press the jet or the keys itself.
+		void UpdateAIMotor();
 		/// What is in the way a short stride ahead on the ground, the body's whole outline looked at (every 2 px across and up; rungs and doors
 		/// aside), as the walk sees it: nothing, a step the legs take, a low obstacle (and its height), room only to crawl under, or a wall.
 		struct Sensed {

@@ -360,7 +360,7 @@ function NativeHumanAI:Update(Owner)
 	end
 
 	-- (Not over the engine's route-follower, which runs where the way is long, level and open; see AHuman::MoveAlongRoute.)
-	if not self.engineMover then
+	if not self.engineMover and not SharedBehaviors.EngineMotor(Owner) then
 		self.Ctrl:SetState(Controller.MOVE_FAST, self.running);
 	end
 
@@ -524,7 +524,7 @@ function NativeHumanAI:Update(Owner)
 					self.GoToCleanup = nil;
 				end
 			end
-		elseif self.flying then	-- avoid falling damage
+		elseif self.flying and not SharedBehaviors.EngineMotor(Owner) then	-- avoid falling damage (the engine's motor does, where it has one)
 			local jumpThreshold = 9;
 			if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.JumpPack then
 				jumpThreshold = jumpThreshold * 3;
@@ -670,7 +670,7 @@ function NativeHumanAI:Update(Owner)
 	-- force jetpack at detrimental downwards velocity
 	-- (Not while the engine's route-follower and pilot fly the unit: the pilot brakes a fall for its landing, and lit over its head the
 	-- jet threw flights off.)
-	if (not self.jump and Owner.Vel.Y > 18) and not self.engineMover then
+	if (not self.jump and Owner.Vel.Y > 18) and not self.engineMover and not SharedBehaviors.EngineMotor(Owner) then
 		self.jump = true;
 	end
 	-- A jet once lit stays lit for a moment: the planner's wish flickers from tick to tick, and every relighting cost a burst's worth of fuel for nothing.

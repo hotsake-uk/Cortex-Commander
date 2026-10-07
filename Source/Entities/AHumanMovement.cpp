@@ -84,6 +84,83 @@ const Vector* AHuman::LadderNear(const Vector& point, float reachX, float reachY
 	return best;
 }
 
+// ---------------------------------------------------------------- The AI's motor
+
+void AHuman::SetAIStance(int stance, float milliseconds) {
+	m_AIStance = std::clamp(stance, 0, 2);
+	m_AIStanceMS = std::max(milliseconds, 0.0F);
+	m_AIStanceTimer.Reset();
+}
+
+void AHuman::TacticalMoveTo(const Vector& place, float milliseconds) {
+	m_Tactical.active = true;
+	m_Tactical.place = place;
+	m_Tactical.limitMS = std::max(milliseconds, 100.0F);
+	m_Tactical.timer.Reset();
+}
+
+void AHuman::UpdateAIMotor() {
+	if (m_Controller.GetInputMode() != Controller::CIM_AI || m_Status == DYING || m_Status == DEAD) {
+		return;
+	}
+	Controller& ctrl = m_Controller;
+	const float h = m_CharHeight;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+
+	// The stance held, for its while.
+	if (m_AIStance != 0 && m_AIStanceTimer.IsPastSimMS(m_AIStanceMS)) {
+		m_AIStance = 0;
+	}
+	if (m_AIStance == 2 && m_Status == STABLE && !m_Ladder.active) {
+		ctrl.SetState(BODY_PRONE, true);
+	} else if (m_AIStance == 1 && m_Status == STABLE && !m_Ladder.active) {
+		ctrl.SetState(BODY_CROUCH, true);
+	}
+
+	// The tactical move: walked (or crawled) along this floor to the place.
+	if (m_Tactical.active) {
+		float dx = Towards(m_Pos, m_Tactical.place).m_X;
+		const char* ended = nullptr;
+		if (std::abs(dx) <= 6.0F) {
+			ended = "there";
+		} else if (m_Tactical.timer.IsPastSimMS(m_Tactical.limitMS)) {
+			ended = "out of time";
+		} else if (m_Status != STABLE || m_Ladder.active) {
+			ended = "not on its feet";
+		} else {
+			float floorHere = FloorUnder(m_Pos, h * 0.5F + h * 0.33F);
+			float floorY = floorHere >= 0.0F ? std::min(floorHere, m_Pos.m_Y + feet) : m_Pos.m_Y + feet;
+			float standing = m_AIStance == 2 ? std::max(12.0F, h * 0.24F) : std::max(16.0F, h * 0.44F);
+			Sensed sensed = SenseAhead(dx < 0.0F ? -1.0F : 1.0F, floorY, standing);
+			if (sensed.wall && sensed.distance < std::abs(dx)) {
+				ended = "a wall in the way";
+			} else if (FloorUnder(m_Pos + Vector(dx < 0.0F ? -h * 0.3F : h * 0.3F, 0.0F), h * 0.9F) < 0.0F) {
+				ended = "an edge in the way";
+			}
+		}
+		if (ended) {
+			m_Tactical.active = false;
+			MoverTrace(std::string("tactical move ended: ") + ended);
+		} else {
+			ctrl.SetState(dx < 0.0F ? MOVE_RIGHT : MOVE_LEFT, false);
+			ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+	}
+
+	// A fall braked, off a route's flight (the pilot brakes those): falling with the floor coming up inside the jet's stop, the jet lit
+	// straight up, leant against any drift. (The script did this, and lit the jet over the pilot's head on the route's flights too.)
+	const bool standardJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+	if (standardJet && !m_Mover.flight.active && !m_Ladder.active && m_Vel.m_Y > 6.0F && m_pJetpack->GetJetTimeLeft() > 0.0F) {
+		float accel = JetAccelAtFuel(m_pJetpack->GetJetTimeLeft()) - g_SceneMan.GetGlobalAcc().m_Y * c_PPM;
+		float speed = m_Vel.m_Y * c_PPM;
+		float stop = accel > 1.0F ? speed * speed / (2.0F * accel) : h * 6.0F;
+		if (FloorUnder(m_Pos + Vector(0.0F, feet), stop * 1.3F + h * 0.4F) >= 0.0F) {
+			ctrl.SetState(BODY_JUMP, true);
+			ctrl.SetAnalogMove(Vector(std::clamp(-m_Vel.m_X * 0.3F, -0.6F, 0.6F), -1.0F));
+		}
+	}
+}
+
 // ---------------------------------------------------------------- The walk's sense of what is ahead
 
 AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing) const {
@@ -1046,6 +1123,11 @@ int AHuman::MoveAlongRoute() {
 	if (m_Waypoints.empty() && m_MovePath.empty() && !m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		return RouteMover::Arrived;
 	}
+	// A tactical move (a step into cover, a crawl forward to shoot; see TacticalMoveTo) has the legs: the route waits for it.
+	if (m_Tactical.active) {
+		mover.progressTimer.Reset();
+		return RouteMover::Moving;
+	}
 	// Knocked over, or getting up: no keys (the legs' walking while down was the flailing), and not stuck for it.
 	if (m_Status != STABLE || m_GettingUp) {
 		mover.progressTimer.Reset();
@@ -1480,6 +1562,44 @@ int AHuman::MoveAlongRoute() {
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
 	if (holdForDoor(point, false)) {
 		return RouteMover::Moving;
+	}
+
+	// A dig step (ground this unit's digger cuts, on the route): the digger out, aimed along the way and swept a little either side, fired
+	// while there is ground within reach ahead, and the legs on into the cut once its first part is clear; put away again when the way is
+	// open. (The script's follower did this for diggers; now the engine's does, and diggers follow routes like everyone else.)
+	if (kind == PathStepKind::Dig && HasObjectInGroup("Tools - Diggers")) {
+		Vector way = toPoint;
+		if (way.MagnitudeIsGreaterThan(1.0F)) {
+			way.Normalize();
+			Vector hit;
+			bool groundAhead = g_SceneMan.CastStrengthRay(m_Pos, way * (h * 0.5F), 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
+			if (groundAhead && EquipDiggingTool(true)) {
+				mover.digging = true;
+				if (std::abs(way.m_X) > 0.15F) {
+					m_HFlipped = way.m_X < 0.0F;
+				}
+				const float dt = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+				mover.digSweep += (mover.digSweepUp ? 1.0F : -1.0F) * 2.5F * dt;
+				if (std::abs(mover.digSweep) > 0.4F) {
+					mover.digSweep = std::clamp(mover.digSweep, -0.4F, 0.4F);
+					mover.digSweepUp = !mover.digSweepUp;
+				}
+				// (The aim is relative to the facing: up positive, the way's angle off level.)
+				float angle = std::atan2(-way.m_Y, std::abs(way.m_X));
+				SetAimAngle(std::clamp(angle + mover.digSweep, -GetAimRange(), GetAimRange()));
+				ctrl.SetState(WEAPON_FIRE, true);
+				// On into the cut once its first part is clear at the chest.
+				if (!g_SceneMan.CastStrengthRay(m_Pos, way * (h * 0.3F), 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor) && std::abs(toPoint.m_X) > 3.0F) {
+					ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				}
+				mover.progressTimer.Reset();
+				return RouteMover::Moving;
+			}
+		}
+	}
+	if (mover.digging) {
+		mover.digging = false;
+		EquipFirearm(true);
 	}
 
 	// The route goes up or down a ladder from here: to the ladder's line first (a side key held is no grab), then up or down to take hold.
