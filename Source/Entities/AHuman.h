@@ -731,7 +731,6 @@ namespace RTE {
 			LANDJUMP
 		};
 
-
 #pragma region Event Handling
 		/// Event listener to be run while this AHuman's PieMenu is opened.
 		/// @param pieMenu The PieMenu this event listener needs to listen to. This will always be this' m_PieMenu and only exists for std::bind.
@@ -773,7 +772,11 @@ namespace RTE {
 
 		/// The route-follower's state (see MoveAlongRoute).
 		struct RouteMover {
-			enum Result { Moving = 0, Arrived = 1, Impossible = 2 };
+			enum Result {
+				Moving = 0,
+				Arrived = 1,
+				Impossible = 2
+			};
 			struct Flight {
 				bool active = false;
 				Vector landing;
@@ -807,6 +810,9 @@ namespace RTE {
 			long doorIgnoreID = 0;
 			Timer proneHoldTimer;
 			Timer hopTimer;
+			Vector stuckSpot; //!< Where the step it was last long stuck on led (its landing, or the route's next point).
+			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
+			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer traceTimer;
 			bool fuelWaiting = false; //!< Standing for the tank to fill before a flight, and since when.
 			Timer fuelWaitTimer;

@@ -1215,8 +1215,43 @@ int AHuman::MoveAlongRoute() {
 	bool stuck = mover.progressTimer.IsPastSimMS(2500);
 	if (stuck && mover.progressTimer.IsPastSimMS(6000)) {
 		// Long stuck: the route asked for afresh from here, and the place avoided.
-		MoverTrace("stuck; new route");
 		AvoidPathPoint(m_MovePath.empty() ? m_Pos : m_MovePath.front(), 20000.0F);
+		// Stuck again on a step to much the same place (within a node and a half, inside the minute): the one big step there isn't working
+		// for this unit, so that step (from here to there: the flight's take-off and landing when there is one ahead, else the next point) is
+		// made dearer, more each time, until a route of smaller steps to the same place wins: onto the ledge first and then over, rather
+		// than up and over in one. Only that step: the steps of a route by way of somewhere else start or end elsewhere and cost the same,
+		// and the rest of the route stands. (Avoided only lightly, a unit was sent at the same jump time after time, where waypoints placed
+		// by hand broke it into two easy ones.)
+		{
+			Vector from = m_Pos;
+			Vector to = m_MovePath.empty() ? m_Pos : m_MovePath.front();
+			Vector landing;
+			Vector takeOff;
+			float landingFloorY = 0.0F;
+			int pointsToLanding = 0;
+			if (FindLanding(landing, landingFloorY, pointsToLanding, takeOff)) {
+				from = takeOff;
+				to = landing;
+			}
+			float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
+			if (mover.stuckLevel > 0 && Towards(mover.stuckSpot, to).MagnitudeIsLessThan(near) && !mover.stuckSpotTimer.IsPastSimMS(60000)) {
+				++mover.stuckLevel;
+			} else {
+				mover.stuckLevel = 1;
+				mover.stuckSpot = to;
+				mover.stuckSpotTimer.Reset();
+			}
+			if (mover.stuckLevel >= 2) {
+				// (Each mark is another 25 on that step: two the second time, four the third and after.)
+				int marks = mover.stuckLevel == 2 ? 2 : 4;
+				for (int k = 0; k < marks; ++k) {
+					AvoidPathLink(from, to, 30000.0F);
+				}
+				MoverTrace("stuck again on the step to " + std::to_string(static_cast<int>(to.m_X)) + "," + std::to_string(static_cast<int>(to.m_Y)) + " (" + std::to_string(mover.stuckLevel) + " times); smaller steps there");
+			} else {
+				MoverTrace("stuck; new route");
+			}
+		}
 		RefreshRoute();
 		mover.flight = RouteMover::Flight();
 		mover.bestGap = -1.0F;
