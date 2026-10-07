@@ -783,8 +783,9 @@ namespace RTE {
 		RouteMover m_Mover;
 
 		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
-		static Timer s_LadderNodesTimer;
-		static bool s_LadderNodesKnown;
+		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
+		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it
+		                                      //!< reads, and crashed the game before its window opened.)
 		static const Vector* LadderNear(const Vector& point, float reachX, float reachY);
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		bool InDoorSweep() const;

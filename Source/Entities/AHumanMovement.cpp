@@ -7,6 +7,7 @@
 #include "ADoor.h"
 #include "AEJetpack.h"
 #include "ConsoleMan.h"
+#include "TimerMan.h"
 #include "MovableMan.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
@@ -38,13 +39,12 @@ namespace {
 // The base game's background ladders: a script node at the middle of each 24 px piece holds a humanoid in front of it, and moves it up when
 // it aims up and presses up, down likewise. The nodes are found among the scene's particles now and then and kept.
 std::vector<Vector> AHuman::s_LadderNodes;
-Timer AHuman::s_LadderNodesTimer;
-bool AHuman::s_LadderNodesKnown = false;
+double AHuman::s_LadderNodesSimTimeMS = -1.0;
 
 const Vector* AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
-	if (!s_LadderNodesKnown || s_LadderNodesTimer.IsPastSimMS(4000)) {
-		s_LadderNodesKnown = true;
-		s_LadderNodesTimer.Reset();
+	double now = g_TimerMan.GetSimTimeMS();
+	if (s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0) {
+		s_LadderNodesSimTimeMS = now;
 		s_LadderNodes.clear();
 		for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
 			if (particle && particle->GetPresetName() == "Background Ladder Node" && particle->GetPinStrength() > 0.0F) {
