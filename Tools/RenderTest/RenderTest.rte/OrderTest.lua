@@ -17,8 +17,86 @@ function OrderTestScript:StartScript()
 	self.index = 0;
 end
 
+-- CCCP_ORDER_BUMPS=1 instead: a concrete bump of 10, 16 and 22 px stands on the bottom corridor's floor in each of its plain stretches
+-- (x 1704, 1896, 2088), and the route a soldier is given from one side of each to the other is written up as a BUMP line: its cost and
+-- points, and whether it goes over or round.
+function OrderTestScript:Bumps(t)
+	if not self.bumpsPlaced then
+		self.bumpsPlaced = true;
+		self.bumps = { { x = 1704, h = 10 }, { x = 1896, h = 16 }, { x = 2088, h = 22 } };
+		for _, b in ipairs(self.bumps) do
+			local block = CreateTerrainObject("Concrete Block", "Base.rte");
+			block.Pos = Vector(b.x - 12, 456 - b.h);
+			SceneMan:AddSceneObject(block);
+		end
+		self.unit = CreateAHuman("Soldier Light", "Coalition.rte");
+		self.unit.Pos = Vector(1560, 436);
+		self.unit.Team = 0;
+		self.unit.AIMode = Actor.AIMODE_SENTRY;
+		MovableMan:AddActor(self.unit);
+		self.bumpsAt = t + 3000;
+		return;
+	end
+	if self.bumpsAt and t > self.bumpsAt then
+		self.bumpsAt = nil;
+		for _, b in ipairs(self.bumps) do
+			local from = Vector(b.x - 60, 445);
+			local to = Vector(b.x + 60, 445);
+			local cost = SceneMan.Scene:CalculatePathForActor(self.unit, from, to, Activity.TEAM_1);
+			local nodes = "";
+			local lowest = 0;
+			for node in SceneMan.Scene:GetScenePath() do
+				nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y);
+				lowest = math.max(lowest, 456 - node.Y);
+			end
+			ConsoleMan:PrintString("BUMP " .. b.h .. " px at " .. b.x .. ": cost " .. tostring(cost) .. ", " .. (lowest > 100 and "goes round" or "goes over") .. ", points" .. nodes);
+			for _, gy in ipairs({ 420, 444 }) do
+				for gx = b.x - 36, b.x + 36, 24 do
+					ConsoleMan:PrintString("BUMP grid " .. b.h .. ": " .. SceneMan.Scene:DescribePathNodeAt(Vector(gx, gy)));
+				end
+			end
+		end
+		ConsoleMan:PrintString("BUMP unit height " .. math.floor(self.unit.Height) .. ", radius " .. math.floor(self.unit.IndividualRadius));
+		self.cross = 0;
+		self.crossAt = t;
+	end
+	-- Then across each, for real: the unit put down left of it and sent to the right of it, 15 s each.
+	if self.crossAt and t >= self.crossAt then
+		local a = self.unit;
+		if self.crossing then
+			local b = self.bumps[self.cross];
+			local over = a.Pos.X > b.x + 20 and math.abs(a.Pos.Y - 445) < 30;
+			if over or t - self.crossing > 15000 then
+				ConsoleMan:PrintString("BUMP cross " .. b.h .. " px: " .. (over and ("over in " .. math.floor((t - self.crossing) / 100) / 10 .. " s") or ("not over, at " .. math.floor(a.Pos.X) .. "," .. math.floor(a.Pos.Y))));
+				self.crossing = nil;
+			else
+				return;
+			end
+		end
+		self.cross = self.cross + 1;
+		local b = self.bumps[self.cross];
+		if not b then
+			self.crossAt = nil;
+			ConsoleMan:PrintString("BUMP done");
+			return;
+		end
+		a:ClearAIWaypoints();
+		a.Pos = Vector(b.x - 60, 436);
+		a.Vel = Vector();
+		a:AddAISceneWaypoint(Vector(b.x + 60, 452));
+		a.AIMode = Actor.AIMODE_GOTO;
+		self.crossing = t;
+	end
+end
+
 function OrderTestScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
+	if os and os.getenv and os.getenv("CCCP_ORDER_BUMPS") == "1" then
+		if t > 5000 then
+			self:Bumps(t);
+		end
+		return;
+	end
 	if not self.unit and t > 5000 then
 		self.unit = CreateAHuman("Soldier Light", "Coalition.rte");
 		self.unit.Pos = Vector(1560, 436);

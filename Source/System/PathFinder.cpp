@@ -616,6 +616,38 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjacentList->push_back(adjCost);
 		}
 
+		// Stepping over something low on the floor, to the floor level with this one or two nodes along (see UpdateNodeCosts): stepped or vaulted
+		// over when it is within half the searcher's standing height and there is room to stand over it, crawled over when there is only room
+		// to crawl. Priced as the walk plus the effort, so a route takes it over going round, as a person would.
+		if (s_JumpHeight < FLT_MAX && node->Surface >= 0.0F) {
+			// (Known to this end or the other: see PathNode::StepOverRiseLeft.)
+			auto stepOver = [&](bool leftward, int k, const PathNode* to) {
+				if (!to || !to->m_Navigable) {
+					return;
+				}
+				float riseHere = leftward ? node->StepOverRiseLeft[k] : node->StepOverRise[k];
+				float riseThere = leftward ? to->StepOverRise[k] : to->StepOverRiseLeft[k];
+				if (riseHere <= 0.0F && riseThere <= 0.0F) {
+					return;
+				}
+				float rise = std::max(riseHere, riseThere);
+				float room = static_cast<float>(riseHere >= riseThere ? (leftward ? node->StepOverRoomLeft[k] : node->StepOverRoom[k]) : (leftward ? to->StepOverRoom[k] : to->StepOverRoomLeft[k]));
+				if (rise > s_StandHeight * 0.5F || room < s_CrawlHeight) {
+					return;
+				}
+				float walk = static_cast<float>(k + 1);
+				float effort = rise / static_cast<float>(m_NodeDimension);
+				float crawl = room < s_StandHeight ? walk * 2.0F : 0.0F;
+				adjCost.cost = walk + 0.5F + effort + crawl + radiatedCost;
+				adjCost.state = const_cast<PathNode*>(to);
+				adjacentList->push_back(adjCost);
+			};
+			stepOver(false, 0, node->Right);
+			stepOver(false, 1, node->Right ? node->Right->Right : nullptr);
+			stepOver(true, 0, node->Left);
+			stepOver(true, 1, node->Left ? node->Left->Left : nullptr);
+		}
+
 		// Mantles: up onto a ledge one or two nodes up and one across, when its top is within the searcher's reach (it pulls itself up and over;
 		// see Actor::TryStartMantle). Priced as a short walk plus the lift, so a route takes the ledge a person would simply climb onto rather
 		// than a jet hop that needs the height just right. Room is wanted to stand on top and to rise in place first.
@@ -1025,6 +1057,9 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	bool oldStairsUpRight = node->StairsUpRight;
 	bool oldGrounded = node->Grounded;
 	bool oldStairsUpLeft = node->StairsUpLeft;
+	std::array<float, 2> oldStepOverRise = node->StepOverRise;
+	std::array<int, 2> oldStepOverRoom = node->StepOverRoom;
+	std::array<float, 2> oldStepOverRiseLeft = node->StepOverRiseLeft;
 
 	auto getStrongerMaterial = [](const Material* first, const Material* second) {
 		return first->GetIntegrity() > second->GetIntegrity() ? first : second;
@@ -1086,6 +1121,57 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		}
 		node->ClearLeft = left;
 		node->ClearRight = right;
+	}
+
+	// Stepping over something low on a floor: a kerb, a sandbag, a lump of rubble, between this node's floor and a floor level with it one or
+	// two nodes to the right. The walk there is blocked by it, and with too little room on top to stand, the grid had no way past at all: a
+	// unit ordered a few steps along a corridor with a knee-high lump in it went round by the next storey. The lump's height over the floor
+	// and the air over it are kept, and the search allows the step for what the searcher can step, vault or crawl over (see AdjacentCost).
+	{
+		for (int k = 0; k < 4; ++k) {
+			bool leftward = k >= 2;
+			int reach = k % 2;
+			float& riseOut = leftward ? node->StepOverRiseLeft[reach] : node->StepOverRise[reach];
+			int& roomOut = leftward ? node->StepOverRoomLeft[reach] : node->StepOverRoom[reach];
+			riseOut = -1.0F;
+			roomOut = 0;
+			const PathNode* next = leftward ? node->Left : node->Right;
+			const PathNode* target = reach == 0 ? next : (next ? (leftward ? next->Left : next->Right) : nullptr);
+			if (!target || node->Surface < 0.0F) {
+				continue;
+			}
+			float targetSurface = SurfaceUnder(*target);
+			if (targetSurface < 0.0F || std::abs(targetSurface - node->Surface) > 6.0F) {
+				continue;
+			}
+			int floorY = static_cast<int>(std::max(node->Surface, targetSurface));
+			int highest = floorY; // The top of the highest thing between, as the first air over it.
+			int room = PathNode::c_ClearanceReach;
+			bool passable = true;
+			int fromX = static_cast<int>(std::min(node->Pos.m_X, target->Pos.m_X));
+			int toX = static_cast<int>(std::max(node->Pos.m_X, target->Pos.m_X));
+			for (int x = fromX + 2; x < toX - 1 && passable; x += 2) {
+				int y = floorY - 1;
+				while (y > floorY - 48 && g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+					--y;
+				}
+				if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+					passable = false;
+					break;
+				}
+				int air = 0;
+				while (air < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, y - air) == MaterialColorKeys::g_MaterialAir) {
+					++air;
+				}
+				highest = std::min(highest, y + 1);
+				room = std::min(room, air);
+			}
+			float rise = static_cast<float>(floorY - highest);
+			if (passable && rise > 4.0F) {
+				riseOut = rise;
+				roomOut = room;
+			}
+		}
 	}
 
 	// Stairs: a steep walk, two nodes up for one over, that legs can take. Flagged when both nodes have a surface, the rise is between 30
@@ -1188,7 +1274,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft) {
 		return true;
 	}
 

@@ -72,6 +72,14 @@ namespace RTE {
 		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
 		bool Grounded = false; //!< Whether a body here stands on something: any of the lines down across the cell meets ground (see UpdateNodeCosts).
 		bool StairsUpLeft = false; //!< Likewise up to the left.
+		/// Stepping over something low between this node's floor and a floor level with it one node (index 0) or two nodes (index 1) to the right:
+		/// how high the thing is over the floor, or -1 when there is nothing to step over (or no such floor, or it is too high), and the air over it.
+		std::array<float, 2> StepOverRise = {-1.0F, -1.0F};
+		std::array<int, 2> StepOverRoom = {0, 0};
+		/// Likewise to the left, so that either end of a step has it: a lump put down after the grid was built is re-sampled only by the nodes
+		/// whose cells it is in, and the floor two nodes to one side of it never heard of it.
+		std::array<float, 2> StepOverRiseLeft = {-1.0F, -1.0F};
+		std::array<int, 2> StepOverRoomLeft = {0, 0};
 		static constexpr int c_ClearanceReach = 96; //!< How far up the free height is measured.
 
 		/// Pointers to all adjacent PathNodes, in clockwise order with top first. These are not owned, and may be 0 if adjacent to non-wrapping scene border.
