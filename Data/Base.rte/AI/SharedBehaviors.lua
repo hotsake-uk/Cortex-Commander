@@ -452,6 +452,24 @@ end
 -- The nodes are looked up from the scene's particles every few seconds and kept.
 -- (Locals, not fields of SharedBehaviors: the table is made read-only once this file has loaded, and a field set at run time was an
 -- error that ended every unit's movement the first time it planned a climb, so nobody used the jetpack at all.)
+-- Flights are flown by the engine's pilot (AHuman::PilotFlight) unless CCCP_LUA_PILOT=1 asks for the script's (SharedBehaviors.FlightControl),
+-- for comparing the two. (Flight gym, 14 proven courses: engine 28/28 landed, 6.8 s, 3.8 s of fuel, 17 px overshoot, 0.1 reversals; script
+-- 23/28, 9.6 s, 7.2 s, 41 px, 0.8; the original AI 14/42.) A build without the pilot (an older exe) falls back to the script's.
+-- The navigation debug overlay's level (SettingsMan.NavDebugOverlay), or 0 on a build that hasn't got it: the scripts are read by whatever
+-- build runs them, and reading a member the build lacks is an error that would end the unit's movement script.
+-- Whether the build running this has the engine's pilot (AHuman::PilotFlight), asked without the error a missing member is.
+function SharedBehaviors.HasEnginePilot(Owner)
+	local ok, member = pcall(function() return Owner.PilotFlight; end);
+	return ok and member ~= nil;
+end
+
+function SharedBehaviors.NavDebugLevel()
+	local ok, level = pcall(function() return SettingsMan.NavDebugOverlay; end);
+	return (ok and type(level) == "number") and level or 0;
+end
+
+local EnginePilot = not (os and os.getenv and os.getenv("CCCP_LUA_PILOT") == "1");
+
 local LadderCache = nil;
 local LadderCacheTimer = nil;
 function SharedBehaviors.LadderNodes()
@@ -3152,8 +3170,24 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		else
 			FlightPlan = nil;
 		end
+		AI.pilotFlight = false;
+		if FlightPlan and SharedBehaviors.NavDebugLevel() >= 2 then
+			-- The navigation debug overlay: the flight's landing, and a line to it.
+			PrimitiveMan:DrawCirclePrimitive(FlightPlan.landing.pos, 6, 254);
+			PrimitiveMan:DrawLinePrimitive(FlightPlan.landing.pos + Vector(-10, 0), FlightPlan.landing.pos + Vector(10, 0), 254);
+			PrimitiveMan:DrawLinePrimitive(Owner.Pos, FlightPlan.landing.pos, 254);
+		end
 		if FlightPlan then
-			nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, FlightPlan.landing.pos, FlightPlan.state);
+			if EnginePilot and SharedBehaviors.HasEnginePilot(Owner) then
+				-- Flown by the engine (AHuman::PilotFlight): predicted a second ahead on the jet's learned push, the nozzle leant by the stick.
+				local Command = Owner:PilotFlight(FlightPlan.landing.pos, FlightPlan.landing.floorY);
+				AI.jump = Command.Y > 0.5;
+				AI.jetStick = Command.X;
+				AI.pilotFlight = true;
+				nextLatMove = Actor.LAT_STILL;
+			else
+				nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, FlightPlan.landing.pos, FlightPlan.state);
+			end
 			AI.jetClimb = false;
 			AI.jetSteady = true;
 			Climb = nil;

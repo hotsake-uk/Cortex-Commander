@@ -172,6 +172,12 @@ namespace RTE {
 		/// @return How many pathfinding requests are currently active.
 		int GetCurrentPathingRequests() const { return m_CurrentPathingRequests.load(); }
 
+		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
+		/// green where a soldier stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs, magenta
+		/// for the stairs.
+		/// @param area The part of the scene to draw, in scene coordinates.
+		void DrawDebug(const Box& area);
+
 		/// Debug: what the grid makes of the node at a scene point, as a line of text (its surface, ground, room and the material each way).
 		std::string DescribeNodeAt(const Vector& scenePos);
 

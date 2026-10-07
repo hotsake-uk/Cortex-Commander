@@ -191,6 +191,15 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
+		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
+		/// step-overs and stairs between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug).
+		/// @return The level.
+		int NavDebugOverlay() const { return m_NavDebugOverlay; }
+
+		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
+		/// @param level 0, 1 or 2.
+		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 2); }
+
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
 
@@ -399,6 +408,7 @@ namespace RTE {
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
+		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

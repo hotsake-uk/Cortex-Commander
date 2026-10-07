@@ -671,7 +671,7 @@ function NativeHumanAI:Update(Owner)
 	-- top of every shaft was overshot by that.)
 	if self.jump then
 		self.JumpHoldTimer:Reset();
-	elseif self.jumpState ~= AHuman.NOTJUMPING and not self.jetClimb and not self.JumpHoldTimer:IsPastSimTimeLimit() and Owner.Vel.Y < 0 then
+	elseif self.jumpState ~= AHuman.NOTJUMPING and not self.jetClimb and not self.pilotFlight and not self.JumpHoldTimer:IsPastSimTimeLimit() and Owner.Vel.Y < 0 then
 		self.jump = true;
 	end
 	if self.jump and Owner.Jetpack and Owner.Jetpack.JetTimeLeft > TimerMan.AIDeltaTimeMS then
@@ -691,6 +691,12 @@ function NativeHumanAI:Update(Owner)
 		elseif self.jumpState == AHuman.UPJUMP then
 			self.Ctrl:SetState(Controller.BODY_JUMP, true); -- trigger normal jetpack emission
 		end
+	end
+
+	-- The engine pilot's lean of the nozzle (see AHuman::PilotFlight): by the stick, which tilts it without turning the body round.
+	if self.jetStick then
+		self.Ctrl.AnalogMove = Vector(self.jetStick, -1);
+		self.jetStick = nil;
 	end
 
 	if self.proneState == AHuman.GOPRONE then

@@ -1,4 +1,6 @@
 #include "PathFinder.h"
+#include "PrimitiveMan.h"
+#include "Color.h"
 #include <chrono>
 
 #include "ConsoleMan.h"
@@ -1043,6 +1045,48 @@ float PathFinder::ClimbMarginCost(const PathNode& node) const {
 		cost += 1.0F;
 	}
 	return cost;
+}
+
+void PathFinder::DrawDebug(const Box& area) {
+	static const unsigned char standColor = static_cast<unsigned char>(Color(80, 220, 90).GetIndex());
+	static const unsigned char crawlColor = static_cast<unsigned char>(Color(240, 210, 60).GetIndex());
+	static const unsigned char noRoomColor = static_cast<unsigned char>(Color(230, 60, 50).GetIndex());
+	static const unsigned char stepColor = static_cast<unsigned char>(Color(70, 220, 230).GetIndex());
+	static const unsigned char stairsColor = static_cast<unsigned char>(Color(220, 80, 220).GetIndex());
+	// A soldier's sizes (Soldier Light, height 100): the grid is the same for every searcher; what fits is the searcher's.
+	const float stand = 44.0F;
+	const float crawl = 24.0F;
+	int fromX = static_cast<int>(std::floor(area.GetCorner().m_X / static_cast<float>(m_NodeDimension)));
+	int fromY = static_cast<int>(std::floor(area.GetCorner().m_Y / static_cast<float>(m_NodeDimension)));
+	int toX = static_cast<int>(std::ceil((area.GetCorner().m_X + area.GetWidth()) / static_cast<float>(m_NodeDimension)));
+	int toY = static_cast<int>(std::ceil((area.GetCorner().m_Y + area.GetHeight()) / static_cast<float>(m_NodeDimension)));
+	for (int gy = std::max(0, fromY); gy <= toY; ++gy) {
+		for (int gx = fromX; gx <= toX; ++gx) {
+			const PathNode* node = GetPathNodeAtGridCoords(gx, gy);
+			if (!node || !node->m_Navigable || node->Surface < 0.0F || !NodeIsOnSolidGround(*node)) {
+				continue;
+			}
+			Vector standing(node->Pos.m_X, node->Surface - 3.0F);
+			float free = static_cast<float>(node->FreeHeight);
+			unsigned char color = free >= stand ? standColor : (free >= crawl ? crawlColor : noRoomColor);
+			g_PrimitiveMan.DrawCircleFillPrimitive(standing, 2, color);
+			for (int k = 0; k < 2; ++k) {
+				if (node->StepOverRise[k] > 0.0F) {
+					const PathNode* target = k == 0 ? node->Right : (node->Right ? node->Right->Right : nullptr);
+					if (target) {
+						Vector over(target->Pos.m_X, standing.m_Y);
+						g_PrimitiveMan.DrawLinePrimitive(standing + Vector(0.0F, -node->StepOverRise[k] - 2.0F), over + Vector(0.0F, -node->StepOverRise[k] - 2.0F), stepColor);
+					}
+				}
+			}
+			if (node->StairsUpRight && node->Up && node->Up->UpRight) {
+				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->UpRight->Pos, stairsColor);
+			}
+			if (node->StairsUpLeft && node->Up && node->Up->LeftUp) {
+				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->LeftUp->Pos, stairsColor);
+			}
+		}
+	}
 }
 
 float PathFinder::LandingWidthCost(const PathNode& node) const {

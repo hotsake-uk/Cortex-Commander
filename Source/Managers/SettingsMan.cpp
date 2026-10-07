@@ -65,6 +65,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_NavDebugOverlay = 0;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
 	m_EnableSmartBuyMenuNavigation = true;
@@ -327,6 +328,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
@@ -654,6 +656,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);

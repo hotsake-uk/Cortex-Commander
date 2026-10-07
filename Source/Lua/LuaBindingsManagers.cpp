@@ -422,6 +422,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("PrintDebugInfo", &SettingsMan::PrintDebugInfo, &SettingsMan::SetPrintDebugInfo)
 	    .property("RecommendedMOIDCount", &SettingsMan::RecommendedMOIDCount)
 	    .property("AIUpdateInterval", &SettingsMan::GetAIUpdateInterval, &SettingsMan::SetAIUpdateInterval)
+	    .property("NavDebugOverlay", &SettingsMan::NavDebugOverlay, &SettingsMan::SetNavDebugOverlay)
 	    .property("ShowEnemyHUD", &SettingsMan::ShowEnemyHUD)
 	    .property("AutomaticGoldDeposit", &SettingsMan::GetAutomaticGoldDeposit);
 }

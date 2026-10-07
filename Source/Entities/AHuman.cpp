@@ -3329,7 +3329,11 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	const float horizon = 1.0F;
 	float bestCost = std::numeric_limits<float>::max();
 	int bestChoice = 7;
+	const bool drawn = g_SettingsMan.NavDebugOverlay() >= 2;
+	std::vector<Vector> flown;
+	std::vector<Vector> bestFlown;
 	for (int choice = 0; choice < 10; ++choice) {
+		flown.clear();
 		bool heldJet = choice >= 5;
 		float heldLean = leans[choice % 5];
 		Vector pos = m_Pos;
@@ -3352,6 +3356,9 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 			}
 			vel += accel * step;
 			pos += vel * step;
+			if (drawn) {
+				flown.push_back(pos);
+			}
 			Vector want = wanted(pos);
 			Vector off = (vel - want) / ppm;
 			cost += (off.m_X * off.m_X + off.m_Y * off.m_Y) * step;
@@ -3368,9 +3375,22 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		if (cost < bestCost) {
 			bestCost = cost;
 			bestChoice = choice;
+			if (drawn) {
+				bestFlown = flown;
+			}
 		}
 	}
 	m_PilotLastChoice = bestChoice;
+	// The navigation debug overlay: the flight predicted for the choice taken, and the landing.
+	if (drawn) {
+		static const unsigned char pathColor = static_cast<unsigned char>(Color(250, 220, 70).GetIndex());
+		Vector last = m_Pos;
+		for (const Vector& point: bestFlown) {
+			g_PrimitiveMan.DrawLinePrimitive(last, point, pathColor);
+			last = point;
+		}
+		g_PrimitiveMan.DrawCirclePrimitive(target, 5, g_WhiteColor);
+	}
 	bool jet = bestChoice >= 5;
 	float lean = leans[bestChoice % 5];
 	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range),
