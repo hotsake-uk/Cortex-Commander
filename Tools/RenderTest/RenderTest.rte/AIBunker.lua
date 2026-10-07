@@ -226,6 +226,29 @@ function AIBunkerScript:RouteCompare()
 end
 
 function AIBunkerScript:UpdateScript()
+	-- CCCP_PROBE_WEAK=1: once, the materials weaker than the path finder's default dig strength (35) inside the bunker's area, by name, with
+	-- how many pixels and their extent: a route may pass through those for a unit with no digger.
+	if not self.probed and os and os.getenv and os.getenv("CCCP_PROBE_WEAK") == "1" and self.timer.ElapsedSimTimeMS > 3000 then
+		self.probed = true;
+		local found = {};
+		for x = 1300, 2400, 2 do
+			for y = 40, 1260, 2 do
+				local id = SceneMan:GetTerrMatter(x, y);
+				if id ~= 0 then
+					local mat = SceneMan:GetMaterialFromID(id);
+					if mat and mat.StructuralIntegrity <= 35 then
+						local f = found[mat.PresetName] or { n = 0, x0 = x, x1 = x, y0 = y, y1 = y, s = mat.StructuralIntegrity };
+						f.n = f.n + 1; f.x0 = math.min(f.x0, x); f.x1 = math.max(f.x1, x); f.y0 = math.min(f.y0, y); f.y1 = math.max(f.y1, y);
+						found[mat.PresetName] = f;
+					end
+				end
+			end
+		end
+		for name, f in pairs(found) do
+			ConsoleMan:PrintString("PROBE weak " .. name .. " (" .. f.s .. "): " .. f.n .. " samples, x " .. f.x0 .. "-" .. f.x1 .. ", y " .. f.y0 .. "-" .. f.y1);
+		end
+		ConsoleMan:PrintString("PROBE done");
+	end
 	if self.navShotTimer and #self.navShots > 0 and self.navShotTimer:IsPastSimMS(self.navShots[1]) then
 		table.remove(self.navShots, 1);
 		FrameMan:SaveScreenToPNG("NavDebug");

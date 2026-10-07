@@ -363,9 +363,10 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		struct Step {
 			Vector Pos;
 			PathStepKind Kind;
+			Vector Centre; //!< The node's centre, where the step falls back to when its anchor puts a leg through something solid.
 		};
 		std::vector<Step> steps;
-		steps.push_back({start, PathStepKind::Walk});
+		steps.push_back({start, PathStepKind::Walk, start});
 		float nodeSize = static_cast<float>(m_NodeDimension);
 		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
 			const PathNode* from = static_cast<const PathNode*>(statePath[i]);
@@ -394,10 +395,10 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				// its cell, and the climb was flown as the one straight line again.)
 				float standingY = landingFloor - s_StandHeight * 0.45F;
 				if (apexY < standingY + 1.0F && TerrNav(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
-					steps.push_back({apex, PathStepKind::Jump});
+					steps.push_back({apex, PathStepKind::Jump, apex});
 				}
 			}
-			steps.push_back({to->Anchor, kind});
+			steps.push_back({to->Anchor, kind, to->Pos});
 		}
 		// (Not when the route was cut short at an obstacle: then the last point is the node the unit can get to, and giving it the goal's
 		// coordinates told a unit at the foot of a hatch it couldn't pass to jump 771 px to the room above.)
@@ -409,6 +410,23 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		// with the checks that go with it. Walks that keep heading the same way on much the same level are run together, up to a few
 		// nodes at a time so the movement script's look at the next waypoint still looks a sensible way ahead. Nothing else is touched:
 		// a crawl, a jump, a fall, a dig and a door each want their own point.
+		// Every leg between the route's points open, as the search found the legs between the nodes' centres: where an anchor (see
+		// PathNode::Anchor) puts a leg through something solid (a ledge's corner between two anchors moved off their walls), the point goes back
+		// to its node's centre, and the one before it too if that isn't enough. (The search knows only the centres; a route drawn through a
+		// ledge's corner sent units up into the ledge's underside instead of round its lip.)
+		auto legOpen = [&](const Vector& a, const Vector& b) { return Open(*StrongestMaterialAlongLine(a, b)); };
+		for (size_t i = 1; i < steps.size(); ++i) {
+			if (legOpen(steps[i - 1].Pos, steps[i].Pos)) {
+				continue;
+			}
+			steps[i].Pos = steps[i].Centre;
+			if (!legOpen(steps[i - 1].Pos, steps[i].Pos) && i > 1) {
+				steps[i - 1].Pos = steps[i - 1].Centre;
+			}
+		}
+		// (And the leg out of each point moved back, checked again on the next pass of the loop's own order: a point put back can open or
+		// close the leg after it, which the next iteration looks at.)
+
 		std::vector<Step> fewer;
 		fewer.push_back(steps.front());
 		int run = 0;
