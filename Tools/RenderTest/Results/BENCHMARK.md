@@ -1,36 +1,44 @@
 # AI benchmark: our AI against the original
 
-Each course was run three times on each build with `Tools/RenderTest/Bench.ps1`, and the tables were made by `Bench.py`.
+Each round runs every course three times with `Tools/RenderTest/Bench.ps1`, and `Bench.py` makes the tables.
 The original AI is the community build at bc93d5a5e (worktree `../cccp-ai-baseline`), with gyms patched for its older pathfinder.
-Our AI is `ai-overhaul` at 30e038a1a. A course counts when the unit arrives within 60 seconds.
+A course counts when the unit arrives within 60 seconds. There are 126 runs per round.
 
-## Totals
+## Every round
 
-| Suite | Original | Ours |
-|---|---|---|
-| Gym courses | 40/48 | 47/48 |
-| Sky bunker | 21/21 | 21/21 |
-| Ladder tower | 23/24 | 23/24 |
-| Bywater Barracks | 5/15 | 6/15 |
-| Hemslock Hold | 14/18 | 17/18 |
-| **All** | **103/126** | **114/126** |
+| Build | Gym | Sky | Tower | Bywater | Hemslock | All |
+|---|---|---|---|---|---|---|
+| Original AI | 40/48 | 21/21 | 23/24 | 5/15 | 14/18 | **103/126** |
+| Ours, round 1 | 46/48 | 19/21 | 21/24 | 6/15 | 8/18 | **100/126** |
+| Ours, round 3 | 47/48 | 21/21 | 23/24 | 6/15 | 17/18 | **114/126** |
+| Ours, round 4 | 48/48 | 21/21 | 24/24 | 10/15 | 14/18 | **117/126** |
+| Ours, round 5 | 43/48 | 21/21 | 24/24 | 9/15 | 15/18 | **112/126** |
+| Ours, round 6 | 44/48 | 20/21 | 24/24 | 5/15 | 14/18 | **107/126** |
+| Ours, round 7 | 46/48 | 21/21 | 24/24 | 7/15 | 13/18 | **111/126** |
 
-## How we got here in this round
+Rounds swing by about five runs with no code change, mostly on the two real maps. Round 6 included two changes that were then
+reverted or narrowed, because they cost the gym's gap course and Bywater. Round 7 is the current code (778cda1b9).
 
-The first benchmark of this round (bench1) had ours at 100/126, behind the original. Traces of the failures found these faults, each fixed:
+## What the original never does and ours does
 
-- A crawl step laid the unit down from 100 px away, so units at the tower top lay at their start and never reached the hatch.
-- Flight control jetted for sideways speed at the foot of a shaft and held units against the corridor's lip until the tank was empty.
-- Under a ceiling, the climber walked to the nearest opening, which could lead away from the ladder the route went up.
-- A drop whose node sat on the edge of a slab left the unit standing on the lip all minute (Hemslock roof, Bywater west hatch).
-- A shaft climb planned mid-hop, far from its column, flew there at 11 m/s, overshot and ran dry.
-- In flight the unit now steers for the furthest route point in clear view, and take-off direction comes from the flight controller.
+- **Crab over the hill:** original 0/3, ours 3/3 in every round since round 1.
+- **Hemslock, east hall to the far west upper floor:** original 0/3, ours 2/3 to 3/3.
+- **Bywater, middle to the mid left room:** original 0/3, ours 1/3 to 3/3.
+- **Dig down:** original 1/3, ours 3/3.
 
-## Where ours is still behind
+## Faults found and fixed from traces in this work
 
-- Bywater "top room to the bottom corridor": original 2/3, ours 0/3.
-- Some times are slower: tower descents and the Hemslock east wing climb.
+- A crawl step laid the unit down from 100 px away; tower units never reached the hatch.
+- Flight control jetted for sideways speed at a shaft's foot and pinned units under the corridor's lip.
+- Under a ceiling the climber walked to the nearest opening, away from the ladder the route used.
+- A drop whose node sat on a slab's edge left the unit standing on the lip (Hemslock roof, Bywater west hatch).
+- A shaft climb planned mid-hop flew to its column at 11 m/s and overshot.
+- Mantling pulled units back up out of the hatch they were dropping through.
+- At a tunnel's mouth units stood up into the slab over it, and counted the climb's points as reached from inside.
+- In flight the unit steers for the furthest route point in clear view, and take-off direction comes from flight control.
 
-Full tables: `bench1/` (first run, both builds), `bench2/` and `bench3/` (ours after fixes). Compare with:
+## Still behind or unsteady
 
-    python Tools/RenderTest/Bench.py Tools/RenderTest/Results/bench1/base/results.csv Tools/RenderTest/Results/bench3/ours/results.csv
+- Hemslock "east wing up a storey": the original passes 3/3, ours 0/3 to 3/3. The route crawls a 45 px tunnel and climbs
+  the outside wall from its mouth, then makes a long diagonal jump onto the roof that sometimes overshoots.
+- Bywater "bottom corridor to the top room" and "bottom right to the middle" stay at 0 to 2 of 3 for both builds.
