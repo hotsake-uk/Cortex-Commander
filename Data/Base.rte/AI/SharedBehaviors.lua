@@ -432,6 +432,330 @@ function SharedBehaviors.ClimbFuelLeft(AI, Owner, height, fuel)
 	return fuel;
 end
 
+-- The climb: a jetpack climb up a column to a landing, as the path finder lays it out (a jump point well above the unit, the top of the
+-- column, and usually a landing beside the top on the floor the climb is for). It is one piece of work in stages, each with a test for
+-- being done and a test for having failed, run by GoToWpt in place of its walking and jetting for as long as the climb lasts:
+--   align  on the ground, walk until under the column's middle;
+--   fuel   stand there until the tank holds what the climb will burn, with a reserve for the top;
+--   rise   jet straight up the column's middle, the rate brought down as the top nears so the coast ends there;
+--   step   hold that height and move across onto the landing until there is floor under the feet;
+--   done   the climb's points are taken off the route and the legs walk on.
+-- A failure (couldn't get under the column, no rise for a while, fell back, ran dry, took too long) ends the climb and asks for a new
+-- route from where the unit is. The old climb was a dozen rules spread through GoToWpt, each fixing one place; this is the same physics
+-- in one place, in order. Small hops, slopes and walls in the way are still the walking code's.
+
+-- The floor under a point, looking down so far. @return Its y, or nil.
+function SharedBehaviors.FloorUnder(Owner, Point, reach)
+	local Hit = Vector();
+	if SceneMan:CastObstacleRay(Point, Vector(0, reach), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 then
+		return Hit.Y;
+	end
+	return nil;
+end
+
+-- Whether a vertical line is open from one height up to another at an x (a door of ours across it counts as open: it opens as we come).
+function SharedBehaviors.ColumnOpen(Owner, x, fromY, toY)
+	if toY >= fromY then
+		return true;
+	end
+	local Hit = Vector();
+	return SceneMan:CastObstacleRay(Vector(x, fromY), Vector(0, toY - fromY), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) < 0 or SharedBehaviors.OurDoorAt(Owner, Hit) ~= nil;
+end
+
+-- A climb's plan from the route, or nil when this is no climb for the climber. @param Top The jump point well above (the route's first
+-- point). @param NextPos The route's point after it, if any.
+function SharedBehaviors.ClimbPlan(AI, Owner, Top, NextPos)
+	local H = Owner.Height;
+	local feetBelowPos = H * 0.2;
+	local headAbovePos = SharedBehaviors.HeadAbovePos(Owner);
+	local plan = { stage = "align", top = Vector(Top.X, Top.Y), pops = 1, timer = Timer(), stageTimer = Timer() };
+	-- The landing: the point after the top, when it is level with it and close beside it (the pather's "up, then over"). Without one the
+	-- top is a point on a floor of its own and the climb ends standing there.
+	plan.landing = Vector(Top.X, Top.Y);
+	if NextPos and math.abs(NextPos.Y - Top.Y) <= H * 0.5 and math.abs(SceneMan:ShortestDistance(Top, NextPos, false).X) <= H * 1.2 then
+		plan.landing = Vector(NextPos.X, NextPos.Y);
+		plan.pops = 2;
+	end
+	-- The column: the middle of the free channel the body goes up, where it is narrowest. Looked at every 6 px from the head's start to the
+	-- top, out to 0.6 of a body either side of the pather's column node: the walls' nearest faces (a ladder's rungs and its pole are the
+	-- left wall's, wherever they reach furthest) bound the channel, and the climb goes up its middle. Up the node's own x, a soldier 28 px
+	-- wide climbed with its side in a ladder's rungs and burned a tank getting two thirds of the way.
+	local colX = Top.X;
+	local leftFace, rightFace = nil, nil;
+	local reach = H * 0.6;
+	for y = Owner.Pos.Y - headAbovePos, Top.Y - headAbovePos, -6 do
+		local Probe = Vector(Top.X, y);
+		if SceneMan:GetTerrMatter(Probe.X, Probe.Y) == rte.airID then
+			local Hit = Vector();
+			if SceneMan:CastObstacleRay(Probe, Vector(-reach, 0), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 1) >= 0 then
+				leftFace = math.max(leftFace or -math.huge, Hit.X);
+			end
+			if SceneMan:CastObstacleRay(Probe, Vector(reach, 0), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 1) >= 0 then
+				rightFace = math.min(rightFace or math.huge, Hit.X);
+			end
+		end
+	end
+	if leftFace and rightFace and rightFace > leftFace then
+		colX = (leftFace + rightFace) * 0.5;
+	elseif leftFace then
+		-- A wall on one side only (a cliff, a ledge): keep the body clear of it.
+		colX = math.max(Top.X, leftFace + Owner.Height * 0.16);
+	elseif rightFace then
+		colX = math.min(Top.X, rightFace - Owner.Height * 0.16);
+	end
+	plan.channelLeft, plan.channelRight = leftFace, rightFace;
+	-- A shaft or a hatch: walls both sides of the column, near enough that the body has to keep to its middle. That is what this climber is
+	-- for; a climb up an open cliff or a ledge on a hill is left to the walking code, which flies those well.
+	plan.shaft = leftFace ~= nil and rightFace ~= nil and (rightFace - leftFace) <= H * 1.2;
+	-- Open from where the head starts to where it will be at the top; else the nearest open line a little either side; else no climb here.
+	local headStart = Owner.Pos.Y - headAbovePos + 2;
+	local headTop = Top.Y - headAbovePos + 2;
+	local found = nil;
+	for _, dx in ipairs({ 0, -H * 0.08, H * 0.08, -H * 0.16, H * 0.16, -H * 0.24, H * 0.24 }) do
+		if SharedBehaviors.ColumnOpen(Owner, colX + dx, headStart, headTop) then
+			found = colX + dx;
+			break;
+		end
+	end
+	plan.colX = found or colX;
+	plan.blocked = found == nil;
+	-- How high to rise: to the top; and when the landing is off to one side, until the feet clear the landing's floor, by as much as the
+	-- landing's ceiling allows (a 48 px corridor leaves a 44 px body four pixels).
+	plan.sideways = SceneMan:ShortestDistance(Vector(plan.colX, Top.Y), plan.landing, false).X;
+	plan.riseToY = Top.Y;
+	if math.abs(plan.sideways) >= 10 then
+		local floorY = SharedBehaviors.FloorUnder(Owner, plan.landing + Vector(0, -4), H * 0.6) or (plan.landing.Y + feetBelowPos);
+		local ceilY = nil;
+		local Hit = Vector();
+		if SceneMan:CastObstacleRay(Vector(plan.landing.X, floorY - 2), Vector(0, -H), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 then
+			ceilY = Hit.Y;
+		end
+		local room = ceilY and (floorY - ceilY - SharedBehaviors.StandingHeight(Owner) - 1) or 6;
+		local clearance = math.max(1, math.min(6, room));
+		plan.floorY = floorY;
+		-- (The feet just over the landing's floor: the top point can sit higher than that, and held there the feet hung over the ledge too
+		-- high for the look down to find its floor, and the step across never ended.)
+		plan.riseToY = floorY - feetBelowPos - clearance;
+	end
+	plan.startY = Owner.Pos.Y;
+	plan.bestY = Owner.Pos.Y;
+	return plan;
+end
+
+-- One tick of a climb. Sets the jet on AI. @return status ("run", "done" or "fail"), the lateral move, the aim angle, and a reason
+-- when it failed.
+function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
+	local H = Owner.Height;
+	local ppm = GetPPM();
+	local gravity = SceneMan.GlobalAcc.Y * ppm;
+	local feetBelowPos = H * 0.2;
+	local Pack = Owner.Jetpack;
+	local isCrab = not Owner.Head;
+	local lat = Actor.LAT_STILL;
+	local aim = math.pi * 0.5;
+	AI.jetLeanX = 0;
+	AI.jetSteady = false;
+
+	local function Trace(text)
+		if Owner:NumberValueExists("AITrace") then
+			ConsoleMan:PrintString("AITRACE climb: " .. text);
+		end
+	end
+	local function Stage(name)
+		plan.stage = name;
+		plan.stageTimer:Reset();
+		Trace(name .. " at " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " col " .. math.floor(plan.colX) .. " to y " .. math.floor(plan.riseToY) .. " fuel " .. math.floor(Pack.JetTimeLeft));
+	end
+	local function Fail(reason)
+		AI.jump = false;
+		AI.jetClimb = false;
+		Trace("failed (" .. reason .. ") at " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " in " .. plan.stage);
+		return "fail", Actor.LAT_STILL, 0, reason;
+	end
+	local function Toward(dx, deadband)
+		if dx < -deadband then
+			return Actor.LAT_LEFT;
+		elseif dx > deadband then
+			return Actor.LAT_RIGHT;
+		end
+		return Actor.LAT_STILL;
+	end
+	-- Sideways by speed: keys pressed when the speed is off what's wanted by more than a band (each press leans the nozzle).
+	local function HoldSpeedX(wantVelX, band)
+		local off = wantVelX - Owner.Vel.X;
+		if off > band then
+			return Actor.LAT_RIGHT;
+		elseif off < -band then
+			return Actor.LAT_LEFT;
+		end
+		return Actor.LAT_STILL;
+	end
+	local function GroundUnderFeet()
+		return SceneMan:CastObstacleRay(Owner.Pos + Vector(0, feetBelowPos), Vector(0, H * 0.3), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
+	end
+
+	if not Pack or Pack.JetpackType ~= AEJetpack.Standard then
+		return Fail("no jetpack");
+	end
+	if plan.blocked then
+		return Fail("no open column");
+	end
+	if plan.timer:IsPastSimMS(12000) then
+		return Fail("took too long");
+	end
+
+	if plan.stage == "align" then
+		AI.jump = false;
+		AI.jetClimb = false;
+		if AI.flying then
+			-- Already in the air (passing a ledge on the way up from the last climb): straight into the rise, if the tank holds the climb from
+			-- here. With no fuel it waits to land (and then refuels under the column as usual): straight into the rise on an empty tank, a unit
+			-- that had just fallen out of a climb failed again at once, every frame.
+			if SharedBehaviors.ClimbFuelLeft(AI, Owner, Owner.Pos.Y - plan.riseToY, Pack.JetTimeLeft) >= 450 then
+				plan.startY = Owner.Pos.Y;
+				plan.bestY = Owner.Pos.Y;
+				plan.progressTimer = Timer();
+				Stage("rise");
+			end
+		else
+			local dx = plan.colX - Owner.Pos.X;
+			if math.abs(dx) <= math.max(3, H * 0.05) then
+				Stage("fuel");
+			elseif plan.stageTimer:IsPastSimMS(3000) then
+				return Fail("couldn't get under the column");
+			else
+				lat = Toward(dx, 1);
+				aim = 0;
+			end
+		end
+	end
+
+	if plan.stage == "fuel" then
+		AI.jump = false;
+		AI.jetClimb = false;
+		local reserve = (math.abs(plan.sideways) >= 10 and not isCrab) and 450 or 300;
+		local height = Owner.Pos.Y - plan.riseToY;
+		local ok = SharedBehaviors.ClimbFuelLeft(AI, Owner, height, Pack.JetTimeLeft) >= reserve;
+		if not ok and SharedBehaviors.ClimbFuelLeft(AI, Owner, height, Pack.JetTimeTotal) < reserve then
+			-- No tank makes it by the reckoning: go on a full one.
+			ok = Pack.JetTimeLeft >= Pack.JetTimeTotal * 0.95;
+		end
+		-- Still under the column while waiting.
+		local dx = plan.colX - Owner.Pos.X;
+		if math.abs(dx) > H * 0.08 then
+			lat = Toward(dx, 1);
+			aim = 0;
+		end
+		if ok then
+			plan.startY = Owner.Pos.Y;
+			plan.bestY = Owner.Pos.Y;
+			plan.progressTimer = Timer();
+			Stage("rise");
+		elseif plan.stageTimer:IsPastSimMS(250) and not plan.waitTraced then
+			plan.waitTraced = true;
+			Trace("waiting for fuel: " .. math.floor(Pack.JetTimeLeft) .. " of " .. math.floor(Pack.JetTimeTotal) .. " for " .. math.floor(height) .. " px");
+		end
+	end
+
+	if plan.stage == "rise" then
+		AI.jetClimb = true;
+		plan.progressTimer = plan.progressTimer or Timer();
+		-- Progress: a new best height resets the clock; none for 800 ms is a climb that isn't going anywhere.
+		if Owner.Pos.Y < plan.bestY - 3 then
+			plan.bestY = Owner.Pos.Y;
+			plan.progressTimer:Reset();
+		end
+		if Pack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4 then
+			return Fail("ran dry");
+		end
+		if Owner.Pos.Y > plan.startY + H * 0.3 then
+			return Fail("fell back");
+		end
+		if plan.progressTimer:IsPastSimMS(800) then
+			return Fail("no rise");
+		end
+		local toGo = Owner.Pos.Y - plan.riseToY; -- Positive while below the height.
+		if toGo <= 0 then
+			if isCrab or math.abs(plan.sideways) < 10 then
+				-- Straight up onto what's at the top (or a crab, which lands on legs either side): done at the height.
+				AI.jump = false;
+				AI.jetClimb = false;
+				if math.abs(plan.sideways) >= 10 then
+					lat = plan.sideways > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+					AI.jetLeanX = plan.sideways > 0 and 1 or -1;
+				end
+				Stage("done");
+			else
+				plan.holdY = plan.riseToY;
+				Stage("step");
+			end
+		else
+			-- The rate allowed is what gravity alone stops a few pixels short of the height, up to the cap: the tall part flown fast, the
+			-- jet out where the coast just reaches the top.
+			local rate = math.max(1, math.min(SharedBehaviors.ClimbSpeedCap(Owner), math.sqrt(2 * gravity * math.max(0, toGo - 8)) / ppm));
+			AI.jump = Owner.Vel.Y > (AI.jump and -rate - 1 or -rate + 1);
+			-- (Every relight a burst for the first 400 ms cost 130 ms of tank a time, which the fuel reckoning counts once: one burst to
+			-- leave the ground, then a steady jet.)
+			AI.jetSteady = AI.flying or plan.stageTimer:IsPastSimMS(150);
+			-- Kept to the column's middle, tightly: the walk speed carried in takes a unit off a hatch's column into the slab beside it.
+			local dx = plan.colX - Owner.Pos.X;
+			if isCrab then
+				if math.abs(dx) > 6 then
+					AI.jetLeanX = dx > 0 and 1 or -1;
+				end
+				lat = Toward(dx, 3);
+			else
+				lat = HoldSpeedX(math.max(-2, math.min(2, dx / 6)), 0.4);
+				aim = lat == Actor.LAT_STILL and math.pi * 0.5 or 0;
+			end
+		end
+	end
+
+	if plan.stage == "step" then
+		AI.jetClimb = true;
+		if Pack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4 then
+			return Fail("ran dry at the top");
+		end
+		if plan.stageTimer:IsPastSimMS(2500) then
+			return Fail("couldn't step across");
+		end
+		if Owner.Pos.Y > plan.holdY + H * 0.4 then
+			return Fail("dropped from the top");
+		end
+		local side = plan.sideways > 0 and 1 or -1;
+		-- The way across at foot and shin height: blocked means the feet don't clear yet, so hold a little higher.
+		local reach = Vector(side * (math.abs(plan.sideways) + H * 0.15), 0);
+		local feetClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, feetBelowPos - 2), reach, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, H * 0.1), reach, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
+		if not feetClear then
+			plan.holdY = math.max(plan.top.Y - H * 0.3, plan.holdY - 1);
+		end
+		local across = (Owner.Pos.X - plan.colX) * side; -- How far across towards the landing.
+		if GroundUnderFeet() and across >= math.min(math.abs(plan.sideways), H * 0.25) then
+			AI.jump = false;
+			AI.jetClimb = false;
+			lat = side > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+			Stage("done");
+		else
+			-- Hold the height: lit when below it or sinking.
+			local err = Owner.Pos.Y - plan.holdY; -- Positive when below.
+			AI.jump = (err > 0 and Owner.Vel.Y > -1.5) or (err > -6 and Owner.Vel.Y > 1);
+			AI.jetSteady = true;
+			if feetClear then
+				lat = HoldSpeedX(side * 2.5, 0.5);
+				aim = lat == Actor.LAT_STILL and math.pi * 0.5 or 0;
+			else
+				lat = HoldSpeedX(math.max(-1, math.min(1, (plan.colX - Owner.Pos.X) / 6)), 0.4);
+			end
+		end
+	end
+
+	if plan.stage == "done" then
+		AI.jetClimb = false;
+		return "done", lat, aim;
+	end
+	return "run", lat, aim;
+end
+
 -- Fighting on the move, cover, flanking and falling back: the rules shared by the human and crab AIs. They read the unit's standing order
 -- from its AI mode and the tags the sandbox's command tool leaves on it, so a unit sent somewhere by the game's own waypoint order and
 -- one sent by the sandbox fight the same way.
@@ -1005,6 +1329,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local ClimbStepTimer = Timer();
 	ClimbStepTimer:SetSimTimeLimitMS(700);
 	local ClimbTimer = Timer(); -- How long the climb in progress has been going.
+	local Climb = nil; -- The column climb in progress (see SharedBehaviors.ClimbPlan), or nil.
+	local DoorWaitTimer = Timer(); -- How long the wait at the door in DoorWaitID has gone on without it opening.
+	local DoorWaitID = nil; -- The door waited at (its UniqueID).
+	local DoorIgnoreID = nil; -- A door whose wait gave up: walked into as before, for a while (see DoorIgnoreTimer).
+	local DoorIgnoreTimer = Timer();
+	local NotAShaft = nil; -- The last jump point looked at and found not to be a shaft's (left to the walking code).
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
 	ProneHoldTimer:SetSimTimeLimitMS(1200);
 	-- The body: where the feet and the top of the head are (see SharedBehaviors.StandingHeight). Rays that must start in the open under a
@@ -1103,7 +1433,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				local crawlThresholdDegrees = 30;
 				-- Not while climbing, stepping off the top of a climb, or in the air: a unit that had just come up through a hatch lay down with
 				-- half its body still over the hole, and a prone unit may not jet, so it slid back down the hatch, and did so for the whole minute.
-				local climbingNow = AI.jetClimb or AI.flying or (ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit());
+				local climbingNow = Climb ~= nil or AI.jetClimb or AI.flying or (ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit());
 				if climbingNow then
 					-- And up off the ground if it is lying down: a prone body may not jet, so a unit that stepped off a corridor's edge prone fell
 					-- the whole outside wall of a bunker with no brake and no steering, past the landing it was meant for, while the planner asked
@@ -1163,7 +1493,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			StuckJumped = false;
 		end
 
-		if AI.refuel and Owner.Jetpack then
+		if Climb then
+			StuckTimer:Reset(); -- (The climb has failure tests of its own.)
+		end
+
+		if AI.refuel and Owner.Jetpack and not Climb then
 			-- if jetpack is full or we are falling we can stop refuelling
 			if Owner.Jetpack.JetTimeLeft > Owner.Jetpack.JetTimeTotal * 0.98 or (AI.flying and Owner.Vel.Y < -3 and Owner.Jetpack.JetTimeLeft > AI.minBurstTime*2) then
 				AI.refuel = false;
@@ -1175,7 +1509,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					nextLatMove = CurrDist.X < -3 and Actor.LAT_LEFT or (CurrDist.X > 3 and Actor.LAT_RIGHT or Actor.LAT_STILL);
 				end
 			end
-		elseif UpdatePathTimer:IsPastSimTimeLimit() and not (AI.jetClimb and AI.flying) then
+		elseif UpdatePathTimer:IsPastSimTimeLimit() and not Climb and not (AI.jetClimb and AI.flying) then
 			-- (Not in the middle of a climb that is in the air: a new path half way up a shaft put the jet out, and the unit fell back to the
 			-- foot and started over on a tank sized for one climb. The tank bounds how long a climb can hold this off; the timer stays past,
 			-- so it fires the tick the climb ends. On the ground it fires regardless: a unit that had fallen out of its climb and stood under
@@ -1491,7 +1825,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 							-- A waypoint behind us with the next one in plain sight is done with: the path's nodes are only 24 px apart, and waiting to stand on
 							-- each one pulled a running or flying unit back to every node it had passed.
-							if Waypoint.Type ~= "last" and Owner.MovePathSize > 1 and CurrDist:MagnitudeIsGreaterThan(tolerance) then
+							if not Climb and Waypoint.Type ~= "last" and Owner.MovePathSize > 1 and CurrDist:MagnitudeIsGreaterThan(tolerance) then
 								local NextPos = nil;
 								local index = 0;
 								for pos in Owner.MovePath do
@@ -1545,7 +1879,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 							-- (The top of a column is held to its height only in the air: standing on the landing under a top that sits 20 px over Pos,
 							-- nothing else would ever pop it.)
-							local notThereYet = CurrDist:MagnitudeIsGreaterThan(tolerance) or (apexPoint and CurrDist.Y < -6 and (AI.jetClimb or AI.flying));
+							local notThereYet = Climb ~= nil or CurrDist:MagnitudeIsGreaterThan(tolerance) or (apexPoint and CurrDist.Y < -6 and (AI.jetClimb or AI.flying));
 							if notThereYet then	-- not close enough to the waypoint
 								ArrivedTimer:Reset();
 
@@ -1555,7 +1889,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								-- (A door of ours in the way is no loss of sight: it opens as we come. With a closed hatch door of its own team over it, a
 								-- unit under a shaft asked for a new route every second, and never climbed.)
 								local Blocked = Vector();
-								if AI.jetClimb or SceneMan:CastObstacleRay(Owner.Pos, CurrDist, Blocked, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 or SharedBehaviors.OurDoorAt(Owner, Blocked) then
+								if Climb or AI.jetClimb or SceneMan:CastObstacleRay(Owner.Pos, CurrDist, Blocked, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 or SharedBehaviors.OurDoorAt(Owner, Blocked) then
 									NoLOSTimer:Reset();
 								elseif NoLOSTimer:IsPastSimTimeLimit() then	-- calculate new path
 									Waypoint = nil;
@@ -1608,13 +1942,19 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								-- it, and a leaf in motion kills whatever stands in its sweep (a unit that jetted up into a floor hatch as its leaves swung
 								-- was gibbed at full health). Enemy doors are the fighting rules' business, and the pather's.
 								local DoorAhead = SharedBehaviors.DoorAhead(Owner, Waypoint.Pos);
+								-- (A door whose wait came to nothing is walked into, as doors were before these manners, for five seconds: a unit that
+								-- thought itself on a sensor it wasn't quite on, outdoors at a slide door stood on end, waited the whole minute.)
+								if DoorAhead and DoorIgnoreID == DoorAhead.UniqueID and not DoorIgnoreTimer:IsPastSimMS(5000) then
+									DoorAhead = nil;
+								end
 								if DoorAhead and DoorAhead.Door then
 									local state = DoorAhead:GetDoorState();
 									if state ~= ADoor.OPEN then
 										-- Not open yet. It opens for what its sensors see, and a sensor is a ray across the doorway: a unit waiting 80 px short of
 										-- a Door Slide Long's one ray was never seen, and stood 27 s at a door that never opened. So the way to have it open is
 										-- to stand in the doorway, on a sensor's ray, and that is where the wait is.
-										if DoorAhead:SensesPoint(Owner.Pos, Owner.Height * 0.25) then
+										-- (On the ray, not near it: the door sees a body crossing the ray, and a unit 25 px off it wasn't seen.)
+										if DoorAhead:SensesPoint(Owner.Pos, 6) then
 											doorHold = true;
 										else
 											local Sense = DoorAhead:NearestSensorPoint(Owner.Pos);
@@ -1625,6 +1965,19 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												doorHold = SceneMan:ShortestDistance(Owner.Pos, DoorAhead.Door.Pos, false).Magnitude < Owner.Height * 0.8;
 											end
 										end
+										if doorHold or doorGoal then
+											if DoorWaitID ~= DoorAhead.UniqueID then
+												DoorWaitID = DoorAhead.UniqueID;
+												DoorWaitTimer:Reset();
+											elseif state == ADoor.CLOSED and DoorWaitTimer:IsPastSimMS(2000) then
+												if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE door: " .. DoorAhead.PresetName .. " didn't open in 2 s, walking into it"); end
+												DoorIgnoreID = DoorAhead.UniqueID;
+												DoorIgnoreTimer:Reset();
+												DoorWaitID = nil;
+												doorHold = false;
+												doorGoal = nil;
+											end
+										end
 										if (doorHold or doorGoal) and Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE door: " .. (doorHold and "in the doorway of " or "going to the doorway of ") .. DoorAhead.PresetName .. " (state " .. state .. ")"); end
 									end
 								end
@@ -1633,6 +1986,52 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								if SharedBehaviors.InDoorSweep(Owner) then
 									doorPass = true;
 								end
+								-- A climb up a column to a landing (a jump point well above us) is the climber's: see SharedBehaviors.ClimbPlan. The walking
+								-- and jetting below wait while it runs; a door of ours in the way is waited for first (the manners above).
+								local climbHandled = false;
+								if not Climb and not doorHold and not doorGoal and Waypoint.Kind == 2 and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and CurrDist.Y < -Owner.Height * 0.3 and not (NotAShaft and SceneMan:ShortestDistance(NotAShaft, Waypoint.Pos, false):MagnitudeIsLessThan(4)) then
+									Climb = SharedBehaviors.ClimbPlan(AI, Owner, Waypoint.Pos, NextWptPos);
+									if not Climb.shaft then
+										NotAShaft = Vector(Waypoint.Pos.X, Waypoint.Pos.Y);
+										Climb = nil;
+									end
+								end
+								if Climb and Climb.stage == "align" and Climb.stageTimer.ElapsedSimTimeMS < 1 then
+									if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: plan from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " up column " .. math.floor(Climb.colX) .. " to y " .. math.floor(Climb.riseToY) .. ", landing " .. math.floor(Climb.landing.X) .. "," .. math.floor(Climb.landing.Y) .. (Climb.blocked and ", no open column" or "")); end
+								end
+								if Climb then
+									climbHandled = true;
+									AI.proneState = AHuman.NOTPRONE;
+									if not doorHold and not doorGoal then
+										local status, lat, aim = SharedBehaviors.ClimbUpdate(AI, Owner, Climb);
+										nextLatMove = lat;
+										nextAimAngle = aim;
+										if status == "done" then
+											-- Its points off the route, if they are still the route's first, and the legs walk on.
+											local pops = 0;
+											for pos in Owner.MovePath do
+												if SceneMan:ShortestDistance(pos, Climb.top, false):MagnitudeIsLessThan(4) then
+													pops = Climb.pops;
+												end
+												break;
+											end
+											for _ = 1, pops do
+												if Owner.MovePathSize > 0 then
+													Owner:RemoveMovePathBeginning();
+												end
+											end
+											PrevWptPos = Vector(Climb.landing.X, Climb.landing.Y);
+											Climb = nil;
+											StuckTimer:Reset();
+										elseif status == "fail" then
+											-- A new route from here.
+											Climb = nil;
+											Waypoint = nil;
+											NeedsNewPath = true;
+										end
+									end
+								end
+								if not climbHandled then
 								local WallAhead = false; -- Something chest high in the way on the side we're walking.
 								-- control horizontal movement
 								if ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit() and not AI.jetClimb then
@@ -2195,7 +2594,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										end
 									end
 								end
-								
+								end -- (not climbHandled)
 							end
 						end
 					end
@@ -2203,6 +2602,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			end
 		else	-- no waypoint list
 			NeedsNewPath = false;
+			Climb = nil;
+			AI.jetClimb = false;
 			if Owner.Vel.Y < 15 then
 				AI.jump = false;
 			end
