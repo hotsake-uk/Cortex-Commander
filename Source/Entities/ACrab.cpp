@@ -776,6 +776,8 @@ PathAgent ACrab::GetPathAgent() const {
 	// The legs take stairs: on the test machine the Dreadnought walked the base game's steep stairs (6 px risers on 3 px treads) up in
 	// eleven seconds and down in five, offered the walking edge by a chance labelling of a jump's landing.
 	agent.WalksStairs = true;
+	// Ledges it pulls itself up onto (Actor::TryStartMantle), when the setting is on.
+	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
 	return agent;
 }
 

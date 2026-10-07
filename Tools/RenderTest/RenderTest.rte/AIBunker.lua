@@ -30,6 +30,15 @@ function AIBunkerScript:StartScript()
 	self.runners = {};
 	-- The courses on the real maps: points inside rooms, dropped to the floor under them when the units are placed.
 	self.courseTable = {
+		["Hemslock Hold"] = {
+			-- (From the route comparison: pairs of standing spots the original pathfinder routes between, with a storey or more of height.)
+			{ from = Vector(2268, 472), to = Vector(1308, 280), name = "east hall to the far west upper floor" },
+			{ from = Vector(2748, 424), to = Vector(2484, 304), name = "east wing up a storey" },
+			{ from = Vector(2412, 124), to = Vector(2604, 472), name = "roof down into the east wing" },
+			{ from = Vector(1476, 172), to = Vector(1260, 376), name = "west roof down two floors" },
+			{ from = Vector(2220, 808), to = Vector(2676, 616), name = "lower hall up to the east" },
+			{ from = Vector(2532, 616), to = Vector(2316, 808), name = "east down to the lower hall" },
+		},
 		["Bywater Barracks"] = {
 			{ from = Vector(1695, 1040), to = Vector(1920, 150), name = "bottom corridor to the top room" },
 			{ from = Vector(1620, 700), to = Vector(2170, 580), name = "mid left room to the right column" },

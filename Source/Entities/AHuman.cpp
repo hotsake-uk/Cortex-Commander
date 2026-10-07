@@ -1029,6 +1029,8 @@ PathAgent AHuman::GetPathAgent() const {
 	agent.HalfWidth = std::clamp(bodyWidth * 0.5F + 2.0F, 6.0F, 16.0F);
 	// The legs take stairs: a soldier walks the base game's steep stairs (6 px risers on 3 px treads) unaided in four seconds.
 	agent.WalksStairs = true;
+	// Ledges it pulls itself up onto from the ground (Actor::TryStartMantle), when the setting is on.
+	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
 	return agent;
 }
 

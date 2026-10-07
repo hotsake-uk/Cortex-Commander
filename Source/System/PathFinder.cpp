@@ -53,6 +53,7 @@ thread_local float s_StandHeight = 40.0F;
 thread_local float s_CrawlHeight = 22.0F;
 thread_local float s_HalfWidth = 6.0F;
 thread_local bool s_WalksStairs = false;
+thread_local float s_MantleHeight = 0.0F; // How high a ledge the searcher mantles onto (PathAgent::MantleHeight).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
@@ -183,6 +184,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_CrawlHeight = agent.CrawlHeight;
 	s_HalfWidth = agent.HalfWidth;
 	s_WalksStairs = agent.WalksStairs;
+	s_MantleHeight = agent.MantleHeight;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 
 	++m_CurrentPathingRequests;
@@ -607,6 +609,26 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
+		}
+
+		// Mantles: up onto a ledge one or two nodes up and one across, when its top is within the searcher's reach (it pulls itself up and over;
+		// see Actor::TryStartMantle). Priced as a short walk plus the lift, so a route takes the ledge a person would simply climb onto rather
+		// than a jet hop that needs the height just right. Room is wanted to stand on top and to rise in place first.
+		if (s_MantleHeight > 0.0F && s_JumpHeight < FLT_MAX && node->Surface >= 0.0F && node->Up && node->Up->m_Navigable && Open(*node->UpMaterial)) {
+			const PathNode* oneUp = node->Up;
+			const PathNode* twoUp = (oneUp->Up && oneUp->Up->m_Navigable && Open(*oneUp->UpMaterial)) ? oneUp->Up : nullptr;
+			for (const PathNode* target: {oneUp->Left, oneUp->Right, twoUp ? twoUp->Left : nullptr, twoUp ? twoUp->Right : nullptr}) {
+				if (!target || !target->m_Navigable || target->Surface < 0.0F || !NodeIsOnSolidGround(*target)) {
+					continue;
+				}
+				float rise = node->Surface - target->Surface;
+				if (rise <= 4.0F || rise > s_MantleHeight || static_cast<float>(target->FreeHeight) < s_StandHeight || static_cast<float>(node->FreeHeight) < s_StandHeight + rise * 0.5F) {
+					continue;
+				}
+				adjCost.cost = 1.5F + rise / static_cast<float>(m_NodeDimension) + radiatedCost;
+				adjCost.state = const_cast<PathNode*>(target);
+				adjacentList->push_back(adjCost);
+			}
 		}
 
 		// Stairs: a steep walk, two nodes up for one over, for a searcher whose legs take it (see UpdateNodeCosts for what counts). A

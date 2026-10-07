@@ -37,6 +37,7 @@ namespace RTE {
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
+		float MantleHeight = 0.0F; //!< How high a ledge it pulls itself up onto from the ground, in pixels (0 for none; see Actor::TryStartMantle).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 	};
 

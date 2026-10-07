@@ -483,6 +483,49 @@ function SharedBehaviors.LadderAt(Point, reachX, reachY)
 	return best;
 end
 
+-- Steering in open flight towards a point, for a humanoid already in the air (the planner in GoToWpt decides the take-off). The old way
+-- re-chose every tick between four fixed jet directions by where each would put the unit in 0.4 s; with no memory between ticks it
+-- flipped the unit's facing mid-air whenever another scored a little better, the turn took a moment to undo, and units jetted the wrong
+-- way or swapped direction and never caught up, though the route was right. This flies it as a person would: a sideways speed towards
+-- the point that eases as it nears, corrected only when clearly off (and held, not flipped, while it is near enough), and the jet for
+-- what the height needs: to rise to the point with the coast, or to come down no faster than the jet can stop before it.
+-- @param state A table kept between ticks (the key held). @return The move key, whether to jet, and the aim angle.
+function SharedBehaviors.FlightControl(AI, Owner, Target, state)
+	local ppm = GetPPM();
+	local gravity = SceneMan.GlobalAcc.Y * ppm;
+	local To = SceneMan:ShortestDistance(Owner.Pos, Target, false);
+	-- Sideways: covered in about 0.7 s, up to 4 m/s.
+	local wantVelX = math.max(-4, math.min(4, To.X / (0.7 * ppm)));
+	local offX = wantVelX - Owner.Vel.X;
+	local lat = state.lat or Actor.LAT_STILL;
+	if offX > 0.8 then
+		lat = Actor.LAT_RIGHT;
+	elseif offX < -0.8 then
+		lat = Actor.LAT_LEFT;
+	elseif math.abs(offX) < 0.3 then
+		lat = Actor.LAT_STILL;
+	end
+	state.lat = lat;
+	-- Up or down: the vertical speed wanted (m/s, down positive).
+	local above = -To.Y; -- How far the point is above us, px.
+	local wantVelY;
+	if above > 0 then
+		wantVelY = -math.min(8, math.sqrt(2 * gravity * (above + 8)) / ppm);
+	else
+		local jet = SharedBehaviors.JetNumbers(AI, Owner);
+		local brake = math.max(jet.accel, gravity * 0.3);
+		wantVelY = math.min(8, math.sqrt(2 * brake * math.max(0, -above - 8)) / ppm);
+	end
+	local jump = Owner.Vel.Y > wantVelY + (state.jump and -0.5 or 0.5);
+	-- Moving sideways takes the jet (the keys only lean the nozzle): kept lit while well off the speed wanted and not already rising fast.
+	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > -2 then
+		jump = true;
+	end
+	state.jump = jump;
+	local aim = lat ~= Actor.LAT_STILL and 0 or math.pi * 0.5;
+	return lat, jump, aim;
+end
+
 -- The floor under a point, looking down so far. @return Its y, or nil.
 function SharedBehaviors.FloorUnder(Owner, Point, reach)
 	local Hit = Vector();
@@ -1475,6 +1518,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local DoorWaitID = nil; -- The door waited at (its UniqueID).
 	local DoorIgnoreID = nil; -- A door whose wait gave up: walked into as before, for a while (see DoorIgnoreTimer).
 	local DoorIgnoreTimer = Timer();
+	local FlightState = {}; -- Kept between ticks by SharedBehaviors.FlightControl.
 	local RouteCheckTimer = Timer(); -- How long since the route was last checked in flight (see Actor::RequestRouteCheck).
 	local NotAShaft = nil; -- The last jump point looked at and found not to be a shaft's (left to the walking code).
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
@@ -2625,6 +2669,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												end
 											else
 												AI.jetClimb = false;
+												if Owner.Head and AI.flying and not WallAhead and not hopping and Owner.Jetpack.JetpackType == AEJetpack.Standard then
+													-- In the air: steered by SharedBehaviors.FlightControl, not re-chosen from four directions every tick.
+													nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, Waypoint.Pos, FlightState);
+												else
+												FlightState = {};
 												-- predict jetpack movement...
 												local jetStrength = (AI.jetImpulseFactor / Owner.Mass);
 												local t = math.min(0.4, Owner.Jetpack.JetTimeLeft*0.001);
@@ -2732,18 +2781,19 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														if math.abs(CurrDist.X) > Owner.Height * 0.15 then
 															AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
 														end
-													elseif Facings[1].facing > 1.4 then
-														if not Owner.HFlipped then
-															nextLatMove = Actor.LAT_LEFT;
-														end
-													elseif Owner.HFlipped then
-														nextLatMove = Actor.LAT_RIGHT;
+													else
+														-- The take-off is the planner's; its direction is the flight controller's, towards the point. (Facing for whichever
+														-- of the four fixed jet directions scored best, the unit turned and jetted away from where it was going whenever the
+														-- backward lean scored a little better.)
+														nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, Waypoint.Pos, FlightState);
+														AI.jump = true;
 													end
 													-- Still stepping off the top of a climb: that keeps the sideways input.
 													if ClimbStepX ~= 0 and not ClimbStepTimer:IsPastSimTimeLimit() then
 														nextLatMove = ClimbStepX > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
 													end
 												end
+												end -- (not FlightControl)
 											end
 										end
 									end
