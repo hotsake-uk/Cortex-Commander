@@ -1795,7 +1795,50 @@ int AHuman::MoveAlongRoute() {
 		// end jetted into its ceiling, burned the tank, refilled, and did it again for the whole minute, 60 px short of the shaft it was to
 		// go up; and one that waited for fuel where no flight could begin, then hopped when the wait ran out, waited again for the minute.
 		bool wayUpOpen = FlightWayClear(landing, landingFloorY);
-		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen;
+		// Round a corner: a landing above that the body can't fly to in a straight line (a lip, an overhang, a ledge's underside in the way)
+		// is flown to by way of the route's own corner, as up a shaft: straight to a point at the corner, level with standing over the
+		// landing's floor, then stepped across onto it. The pilot otherwise flies straight for the landing whatever the route's points
+		// between, and the route's turn round the lip was cut: units flew into the underside of the ledge the route went round, where
+		// the same route given as waypoints by hand, corner and all, was flown easily. The corner: the route's last point before the
+		// landing that both legs are clear to, at the landing's height, or else the column over here (the way FlightWayClear tests).
+		bool cornerVia = false;
+		Vector cornerPoint;
+		if (!inShaft && toLanding.m_Y < -h * 0.3F) {
+			// (The body's outline along the line: head, feet and both sides.)
+			auto bodyLineClear = [&](const Vector& from, const Vector& to) {
+				Vector line = Towards(from, to);
+				Vector hit;
+				for (const Vector& offset: {Vector(0.0F, -h * 0.3F), Vector(0.0F, feet - 4.0F), Vector(-h * 0.15F, 0.0F), Vector(h * 0.15F, 0.0F)}) {
+					if (g_SceneMan.CastStrengthRay(from + offset, line, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
+						return false;
+					}
+				}
+				return true;
+			};
+			Vector standOver(landing.m_X, landingFloorY - feet - 2.0F);
+			if (!bodyLineClear(m_Pos, standOver)) {
+				float cornerY = landingFloorY - feet - 8.0F;
+				std::vector<float> columns;
+				int index = 0;
+				for (const Vector& routePoint: m_MovePath) {
+					if (++index >= pointsToLanding) {
+						break;
+					}
+					columns.push_back(m_Pos.m_X + Towards(m_Pos, routePoint).m_X);
+				}
+				std::reverse(columns.begin(), columns.end());
+				columns.push_back(m_Pos.m_X);
+				for (float x: columns) {
+					Vector corner(x, cornerY);
+					if (corner.m_Y < m_Pos.m_Y - h * 0.3F && bodyLineClear(m_Pos, corner) && bodyLineClear(corner, standOver)) {
+						cornerVia = true;
+						cornerPoint = corner;
+						break;
+					}
+				}
+			}
+		}
+		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen || cornerVia;
 		if (!canTakeOff) {
 			mover.fuelWaiting = false;
 			if (mover.traceTimer.IsPastSimMS(1000)) {
@@ -1863,7 +1906,11 @@ int AHuman::MoveAlongRoute() {
 				mover.flight.startY = m_Pos.m_Y;
 				mover.flight.bestY = m_Pos.m_Y;
 				mover.flight.takeOff = m_Pos;
-				mover.flight.via = inShaft;
+				mover.flight.via = inShaft || cornerVia;
+				if (cornerVia && !inShaft) {
+					mover.flight.viaPoint = cornerPoint;
+					MoverTrace("round the corner via " + std::to_string(static_cast<int>(cornerPoint.m_X)) + "," + std::to_string(static_cast<int>(cornerPoint.m_Y)));
+				}
 				if (inShaft) {
 					// Over the mouth: at the shaft's middle, where the body's centre is standing on the landing's floor and a little over (the
 					// feet just clear of the lip). A body's height over it was in the ceiling of the corridor the landing is in, and the
