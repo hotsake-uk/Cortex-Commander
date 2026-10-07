@@ -1249,8 +1249,11 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		m_MantleStart = m_Pos;
 		m_MantleUp = m_Pos + up;
 		m_MantleEnd = target;
-		// Quicker for a small step than a full pull-up: a third of a second for the highest.
-		m_MantleDurationMS = 120.0F + static_cast<float>(lift) * 4.0F;
+		// The lip the hands go for: between the start and the end, at the ledge's floor.
+		m_MantleLip = Vector((m_Pos.m_X + target.m_X) * 0.5F, target.m_Y + height * 0.2F);
+		m_MantleProgress = 0.0F;
+		// Quicker for a small step than a full pull-up: about 0.4 s for the highest, so the pull reads as one.
+		m_MantleDurationMS = 160.0F + static_cast<float>(lift) * 5.0F;
 		m_MantleTimer.Reset();
 		return true;
 	}
@@ -1268,7 +1271,14 @@ void Actor::UpdateMantle() {
 	// Up for the first half, across for the second; the body is put where it should be each frame (gravity and the jet are nothing
 	// while the arms pull), and its speed is what that movement is, so the limbs animate with it.
 	float progress = std::clamp(static_cast<float>(m_MantleTimer.GetElapsedSimTimeMS()) / std::max(m_MantleDurationMS, 1.0F), 0.0F, 1.0F);
-	Vector target = progress < 0.5F ? m_MantleStart + (m_MantleUp - m_MantleStart) * (progress * 2.0F) : m_MantleUp + (m_MantleEnd - m_MantleUp) * ((progress - 0.5F) * 2.0F);
+	m_MantleProgress = progress;
+	// One curve from the start up and over onto the ledge (a quadratic through the corner), eased in and out: up a line and across a
+	// line at a constant rate, as it was, the body cornered like a lift.
+	float eased = progress * progress * (3.0F - 2.0F * progress);
+	float a = (1.0F - eased) * (1.0F - eased);
+	float b = 2.0F * (1.0F - eased) * eased;
+	float c = eased * eased;
+	Vector target = m_MantleStart * a + m_MantleUp * b + m_MantleEnd * c;
 	float deltaTime = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 	m_Vel = (target - m_Pos) * (c_MPP / deltaTime);
 	m_Pos = target;

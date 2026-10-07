@@ -486,10 +486,12 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		AI.lateralMoveState = Actor.LAT_STILL;
 		AI.jump = false;
 		AI.pilotFlight = true; -- (The engine holds the jet as it means to: no hold timer of the native AI's over it.)
+		AI.engineMover = not holding; -- (And the run key: the follower runs where the way is open.)
 		if not holding then
 			local result = Owner:MoveAlongRoute();
 			if result == 1 then
 				-- Arrived.
+				AI.engineMover = false;
 				if Owner.AIMode == Actor.AIMODE_GOTO then
 					AI.SentryFacing = Owner.HFlipped;
 					AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
@@ -501,6 +503,7 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 				return true;
 			elseif result == 2 then
 				-- No route to it: the order is dropped, as GoToWpt drops it.
+				AI.engineMover = false;
 				if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE GoToRoute: no route; standing down"); end
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
@@ -509,7 +512,10 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			end
 		end
 		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
-		if _abrt then return true end
+		if _abrt then
+			AI.engineMover = false;
+			return true;
+		end
 	end
 end
 

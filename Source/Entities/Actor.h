@@ -1163,6 +1163,14 @@ namespace RTE {
 		float m_PathCostAtAdoption = 0.0F; //!< The cost of the route being followed when it was taken, and how many points it had then: for weighing a route check's answer against what is left of it.
 		int m_PathSizeAtAdoption = 0;
 		bool m_Mantling = false;
+		Vector m_MantleLip; //!< The ledge's lip the hands reach for while mantling.
+		float m_MantleProgress = 0.0F; //!< How far through the mantle, 0 to 1.
+		/// Gets how far the mantle has got, 0 to 1 (0 when not mantling).
+		float GetMantleProgress() const { return m_Mantling ? m_MantleProgress : 0.0F; }
+		/// Gets which way the mantle goes, -1 or 1 (0 when not mantling).
+		float GetMantleDir() const { return m_Mantling ? m_MantleDir : 0.0F; }
+		/// Gets the lip the hands reach for while mantling.
+		const Vector& GetMantleLip() const { return m_MantleLip; }
 		float m_MantleDir = 0.0F; //!< -1 left, 1 right.
 		Vector m_MantleStart; //!< Where the body was.
 		Vector m_MantleUp; //!< Where it is lifted to first.

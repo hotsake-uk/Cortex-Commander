@@ -605,6 +605,19 @@ int AHuman::MoveAlongRoute() {
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 	}
+	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
+	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
+	if (!prone && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
+		bool floorAllTheWay = true;
+		float stepDirection = toPoint.m_X > 0.0F ? 1.0F : -1.0F;
+		for (float ahead = 12.0F; ahead <= h * 1.5F && floorAllTheWay; ahead += 12.0F) {
+			float floorAhead = FloorUnder(m_Pos + Vector(stepDirection * ahead, 0.0F), h * 0.9F);
+			floorAllTheWay = floorAhead >= 0.0F && std::abs(floorAhead - floorY) < h * 0.3F;
+		}
+		if (floorAllTheWay) {
+			ctrl.SetState(MOVE_FAST, true);
+		}
+	}
 	SetAimAngle(0.0F);
 	// A step up the legs don't take, or a wall: after a moment with no progress, a hop (the mantle takes most steps).
 	if (stuck && standardJet && !prone && m_pJetpack->GetJetTimeLeft() > 300.0F) {

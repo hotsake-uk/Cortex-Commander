@@ -2514,7 +2514,10 @@ void AHuman::PreControllerUpdate() {
 		}
 		m_pFGArm->SetRotAngle(affectingBodyAngle + adjustedAimAngle);
 
-		if (m_Status == STABLE) {
+		if (m_Mantling && !m_pFGArm->GetHeldDevice()) {
+			m_pFGArm->ClearHandTargets();
+			m_pFGArm->AddHandTarget("Mantle Lip", GetMantleLip());
+		} else if (m_Status == STABLE) {
 			if (m_ArmClimbing[FGROUND]) {
 				m_pFGArm->AddHandTarget("Hand AtomGroup Limb Pos", m_pFGHandGroup->GetLimbPos(m_HFlipped));
 			}
@@ -2529,7 +2532,11 @@ void AHuman::PreControllerUpdate() {
 		float affectingBodyAngle = m_Status < INACTIVE ? m_BGArmFlailScalar : 1.0F;
 		m_pBGArm->SetRotAngle(std::abs(std::sin(rot)) * rot * affectingBodyAngle + adjustedAimAngle);
 
-		if (m_Status == STABLE) {
+		if (m_Mantling) {
+			// The back hand on the lip, pulling.
+			m_pBGArm->ClearHandTargets();
+			m_pBGArm->AddHandTarget("Mantle Lip", GetMantleLip() + Vector(GetMantleDir() * 6.0F, 0.0F));
+		} else if (m_Status == STABLE) {
 			if (m_ArmClimbing[BGROUND]) {
 				// Can't climb or crawl with the shield
 				// if (m_MovementState != CRAWL || m_ProneState == LAYINGPRONE) {
@@ -2620,6 +2627,32 @@ void AHuman::Update() {
 		UpdateMantle();
 	} else {
 		CorrectCorners();
+	}
+
+	// Weight on landing: a squat on touchdown, deeper the harder the fall, eased off over a quarter of a second; and the legs tucked (a
+	// full crouch) while mantling. Both through the crouch override, which is put back when they are done.
+	{
+		const float feetReach = m_CharHeight * 0.5F + 6.0F;
+		Vector hit;
+		bool airborne = !g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, feetReach), 5.0F, hit, 2);
+		if (m_WasAirborne && !airborne && !m_Mantling && m_Status == STABLE && m_Vel.m_Y > 3.0F) {
+			m_LandingSquat = std::clamp((m_Vel.m_Y - 3.0F) / 9.0F, 0.25F, 1.0F);
+			m_LandingTimer.Reset();
+		}
+		m_WasAirborne = airborne;
+		float squat = m_LandingSquat > 0.0F ? m_LandingSquat * (1.0F - std::clamp(static_cast<float>(m_LandingTimer.GetElapsedSimTimeMS()) / 250.0F, 0.0F, 1.0F)) : 0.0F;
+		if (squat <= 0.02F) {
+			m_LandingSquat = 0.0F;
+			squat = 0.0F;
+		}
+		float wanted = m_Mantling ? 1.0F : squat;
+		if (wanted > 0.0F && (m_CrouchAmountOverride == -1.0F || m_CrouchOverrideOurs)) {
+			m_CrouchAmountOverride = wanted;
+			m_CrouchOverrideOurs = true;
+		} else if (m_CrouchOverrideOurs) {
+			m_CrouchAmountOverride = -1.0F;
+			m_CrouchOverrideOurs = false;
+		}
 	}
 
 	////////////////////////////////////
@@ -2747,6 +2780,14 @@ void AHuman::Update() {
 				rotTarget += Lerp(0.0F, 1.0F, 0.0F, difference, m_CrouchAmount);
 			}
 			
+			// Leaning: into a mantle (over the ledge, most at mid-pull), and into the jet's push in flight, as a person leans the way they go.
+			// (Positive rotation leans a right-facing body back, so a lean towards +x is negative.)
+			if (m_Mantling) {
+				rotTarget += -GetMantleDir() * 0.45F * std::sin(GetMantleProgress() * c_PI);
+			} else if (m_pJetpack && m_pJetpack->IsEmitting()) {
+				float stick = std::clamp(m_Controller.GetAnalogMove().m_X, -1.0F, 1.0F);
+				rotTarget += -stick * 0.3F;
+			}
 			float rotDiff = rot - rotTarget;
 			if (std::abs(rotDiff) > c_PI * 0.75F) {
 				// We've h-flipped, so just snap to new orientation

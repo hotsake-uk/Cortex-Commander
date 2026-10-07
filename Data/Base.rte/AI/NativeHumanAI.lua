@@ -359,7 +359,10 @@ function NativeHumanAI:Update(Owner)
 		self.RunStateTimer:Reset();
 	end
 
-	self.Ctrl:SetState(Controller.MOVE_FAST, self.running);
+	-- (Not over the engine's route-follower, which runs where the way is long, level and open; see AHuman::MoveAlongRoute.)
+	if not self.engineMover then
+		self.Ctrl:SetState(Controller.MOVE_FAST, self.running);
+	end
 
 	self.squadShoot = false;
 	if Owner.MOMoveTarget then

@@ -731,6 +731,10 @@ namespace RTE {
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
 		int m_PilotLastChoice = -1;
+		bool m_WasAirborne = false; //!< Whether last frame nothing was under the feet (for the landing squat).
+		float m_LandingSquat = 0.0F; //!< How deep the landing squat goes, 0 to 1; eases off over a moment after touchdown.
+		Timer m_LandingTimer;
+		bool m_CrouchOverrideOurs = false; //!< Whether the crouch override is this class's (the squat or the mantle), to put back after.
 		bool m_GettingUp = false; //!< Rising from lying knocked over: the body is lifted and righted over a moment (see UpdateGetUp).
 		Timer m_GetUpTimer;
 		float m_GetUpFromRot = 0.0F;
