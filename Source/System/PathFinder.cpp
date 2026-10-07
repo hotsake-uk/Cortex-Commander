@@ -1138,7 +1138,7 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 			}
 			// The fuel the flight takes, as the route-follower reckons it (AHuman::FlightFuelNeeded): the climb at about 4 m/s, the crossing
 			// lit about half the time, a third over.
-			float fuel = (std::max(0.0F, rise + 12.0F) / (4.0F * ppm) + across / (5.0F * ppm) * 0.5F) * 1000.0F * 1.3F + 200.0F;
+			float fuel = (std::max(0.0F, rise + 12.0F) / (8.0F * ppm) + across / (5.0F * ppm) * 0.5F) * 1000.0F * 1.2F + 200.0F;
 			if (fuel > s_JetTimeMS * 0.95F) {
 				continue;
 			}

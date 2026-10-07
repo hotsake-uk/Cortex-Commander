@@ -3374,7 +3374,9 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		bool overIt = landing ? (fromTarget >= zoneLeft && fromTarget <= zoneRight) : std::abs(toTarget.m_X) < 6.0F;
 		float aimY = landing ? floorY - feet - (overIt ? 0.0F : 10.0F) : target.m_Y;
 		float rise = pos.m_Y - aimY; // Above zero: still to go up.
-		float wantVy = rise > 0.0F ? -std::min(9.0F * ppm, std::sqrt(2.0F * g * rise)) : std::min(9.0F * ppm, allowedFall(-rise));
+		// Up at the speed gravity alone would stop at the top, up to 12 m/s: burn hard early and coast, as a climb costs fuel by the second
+		// lit, not by the pixel. Capped at 9 the jet held the speed the whole way up a 190 px shaft and ran the tank dry at the mouth.
+		float wantVy = rise > 0.0F ? -std::min(12.0F * ppm, std::sqrt(2.0F * g * rise)) : std::min(9.0F * ppm, allowedFall(-rise));
 		float wantVx;
 		if (overIt && landing) {
 			// Over the landing: no steering but to stay over it, down to where its floor ends at the speed the jet's lean can stop from.
@@ -3504,6 +3506,12 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	// The lean moves towards the one chosen at a thumb's pace, full swing in a third of a second: snapped between full left and full right,
 	// as it was, the nozzle wagged and the body with it.
 	float leanChosen = leans[bestChoice % leanCount];
+	if (!jetChosen) {
+		// With the jet out every lean scores alike, and the first (full left) won: the lean the tracking rule would want is held instead,
+		// so the nozzle points the right way the moment the jet comes back.
+		Vector want = wanted(m_Pos, m_Vel * ppm);
+		leanChosen = std::clamp((want.m_X - m_Vel.m_X * ppm) / (sideAccel * 0.25F), -1.0F, 1.0F);
+	}
 	float slew = 6.0F * g_TimerMan.GetDeltaTimeSecs() * static_cast<float>(std::max(1, g_SettingsMan.GetAIUpdateInterval()));
 	m_PilotLean += std::clamp(leanChosen - m_PilotLean, -slew, slew);
 	// Traced (CCCP_AI_LOG and the AITrace value): what it chose and why, four times a second.

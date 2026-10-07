@@ -777,6 +777,8 @@ namespace RTE {
 			Timer proneHoldTimer;
 			Timer hopTimer;
 			Timer traceTimer;
+			bool fuelWaiting = false; //!< Standing for the tank to fill before a flight, and since when.
+			Timer fuelWaitTimer;
 			int impossibleAnswers = 0;
 			double lastJetTime = -1.0;
 		};
@@ -796,6 +798,9 @@ namespace RTE {
 		/// The shaft the unit stands in, if any: walls both sides within a body's height. @return Whether in one; its middle and width.
 		bool ShaftHere(float& middleX, float& width) const;
 		void PopRoutePoint();
+		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
+		/// target to the unit's own place: every refresh told the unit it had arrived.)
+		void RefreshRoute();
 		void MoverTrace(const std::string& text) const;
 
 		/// Learns the jet's real push and the standing height, each frame (see PilotFlight).
