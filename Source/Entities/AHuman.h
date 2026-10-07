@@ -566,6 +566,10 @@ namespace RTE {
 
 		/// Detects slopes in terrain and updates the walk path rotation for the corresponding Layer accordingly.
 		/// @param whichLayer The Layer in question.
+		/// Corner correction: walking into a step, or rising on the jetpack into a lip, by no more than 3 px, the body is shifted past it
+		/// (lifted over the step, or slid aside off the lip), provided the whole body fits where it is shifted to.
+		void CorrectCorners();
+
 		void UpdateWalkAngle(AHuman::Layer whichLayer);
 
 		/// Detects overhead ceilings and crouches for them.

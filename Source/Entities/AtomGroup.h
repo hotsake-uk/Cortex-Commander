@@ -265,6 +265,11 @@ namespace RTE {
 		/// @param position Current position of the owner MOSR.
 		/// @param strongerThan Only attempt to move out of materials stronger than this specific ID.
 		/// @return Whether any intersection was successfully resolved. Will return true even if there wasn't any intersections to begin with.
+		/// Whether every Atom of this would be clear of terrain (air or liquid) with the owner at a position, as rotated now.
+		/// @param position The owner's position to test.
+		/// @return Whether this fits there.
+		bool FitsAt(const Vector& position) const;
+
 		bool ResolveTerrainIntersection(Vector& position, unsigned char strongerThan = 0) const;
 
 		/// Checks whether any of the Atoms in this AtomGroup are on top of MOSprites, and if so, attempt to move the OwnerMO out so none of the Atoms are inside the other MOSprite's silhouette anymore.

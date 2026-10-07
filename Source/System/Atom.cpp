@@ -22,6 +22,51 @@ int Atom::s_PoolAllocBlockCount = 200;
 int Atom::s_InstancesInUse = 0;
 
 // This forms a circle around the Atom's offset center, to check for mask color pixels in order to determine the normal at the Atom's position.
+namespace {
+	// Whether a solid terrain pixel is part of a speck: a clump of no more than four pixels touching each other (diagonally too). Loose
+	// pixels left by blasts and digging, a single stray pixel on a floor, a crumb on a ledge: an actor's body brushes through these
+	// rather than catching on them. Anything bigger is real terrain. (Looked at only when an actor's Atom hits terrain, and at most
+	// five pixels deep, so it costs little; and it reads the terrain the same way every time, so the simulation stays deterministic.)
+	bool IsTerrainSpeck(int x, int y) {
+		constexpr int maxSpeck = 4;
+		int found[maxSpeck + 1][2];
+		int count = 0;
+		found[count][0] = x;
+		found[count][1] = y;
+		++count;
+		for (int i = 0; i < count; ++i) {
+			for (int dy = -1; dy <= 1; ++dy) {
+				for (int dx = -1; dx <= 1; ++dx) {
+					if (dx == 0 && dy == 0) {
+						continue;
+					}
+					int nx = found[i][0] + dx;
+					int ny = found[i][1] + dy;
+					if (g_SceneMan.GetTerrMatter(nx, ny) == MaterialColorKeys::g_MaterialAir) {
+						continue;
+					}
+					bool seen = false;
+					for (int j = 0; j < count; ++j) {
+						if (found[j][0] == nx && found[j][1] == ny) {
+							seen = true;
+							break;
+						}
+					}
+					if (!seen) {
+						if (count > maxSpeck - 1) {
+							return false; // A fifth pixel: real terrain.
+						}
+						found[count][0] = nx;
+						found[count][1] = ny;
+						++count;
+					}
+				}
+			}
+		}
+		return true;
+	}
+} // namespace
+
 const int Atom::s_NormalChecks[c_NormalCheckCount][2] = {{0, -3}, {1, -3}, {2, -2}, {3, -1}, {3, 0}, {3, 1}, {2, 2}, {1, 3}, {0, 3}, {-1, 3}, {-2, 2}, {-3, 1}, {-3, 0}, {-3, -1}, {-2, -2}, {-1, -3}};
 
 Atom::Atom() {
@@ -555,7 +600,8 @@ bool Atom::StepForward() {
 			g_SceneMan.WrapPosition(m_IntPos[X], m_IntPos[Y]);
 
 			// Detect terrain hits, if not disabled.
-			if (!m_OwnerMO->m_IgnoreTerrain && g_MaterialAir != (m_TerrainMatHit = g_SceneMan.GetTerrMatter(m_IntPos[X], m_IntPos[Y]))) {
+			// (A speck is no hit for an actor's body: see IsTerrainSpeck.)
+			if (!m_OwnerMO->m_IgnoreTerrain && g_MaterialAir != (m_TerrainMatHit = g_SceneMan.GetTerrMatter(m_IntPos[X], m_IntPos[Y])) && !(m_OwnerMO->GetRootParent()->IsActor() && IsTerrainSpeck(m_IntPos[X], m_IntPos[Y]))) {
 				// Check if we're temporarily disabled from hitting terrain
 				if (!m_TerrainHitsDisabled) {
 					m_OwnerMO->SetHitWhatTerrMaterial(m_TerrainMatHit);

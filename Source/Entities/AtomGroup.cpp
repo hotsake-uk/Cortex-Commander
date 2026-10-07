@@ -1354,6 +1354,17 @@ float AtomGroup::RatioInTerrain() const {
 }
 
 // TODO: Look into breaking this into smaller methods.
+bool AtomGroup::FitsAt(const Vector& position) const {
+	for (const Atom* atom: m_Atoms) {
+		Vector atomPos = position + m_OwnerMOSR->RotateOffset(atom->GetOffset());
+		unsigned char material = g_SceneMan.GetTerrMatter(atomPos.GetFloorIntX(), atomPos.GetFloorIntY());
+		if (material != g_MaterialAir && !FluidSim::IsLiquid(material)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool AtomGroup::ResolveTerrainIntersection(Vector& position, unsigned char strongerThan) const {
 	thread_local std::vector<Atom*> intersectingAtoms;
 	intersectingAtoms.clear();

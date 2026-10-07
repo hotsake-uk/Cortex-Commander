@@ -1507,6 +1507,49 @@ void AHuman::OnNewMovePath() {
 	Actor::OnNewMovePath();
 }
 
+void AHuman::CorrectCorners() {
+	// Units used to stop dead on corners a player would slide past: the tip of a ladder's rung, the lip of a hatch, a pixel-high step in a
+	// corridor's floor. The AI then burned its tank or stood there. A shift of up to 3 px, only when the whole body (torso and head) fits
+	// where it goes, so walls and ceilings still stop it.
+	if (!m_pAtomGroup || m_Status == INACTIVE || m_Status == DYING || m_Status == DEAD || m_PinStrength > 0.0F) {
+		return;
+	}
+	constexpr int maxShift = 3;
+	auto fits = [this](const Vector& shift) {
+		if (!m_pAtomGroup->FitsAt(m_Pos + shift)) {
+			return false;
+		}
+		return !m_pHead || !m_pHead->GetAtomGroup() || m_pHead->GetAtomGroup()->FitsAt(m_pHead->GetPos() + shift);
+	};
+	bool left = m_Controller.IsState(MOVE_LEFT);
+	bool right = m_Controller.IsState(MOVE_RIGHT);
+	// Walking (or flying) sideways and held up by a small step: lifted over it.
+	if (left != right && std::abs(m_Vel.m_X) < 1.0F) {
+		float dir = right ? 1.0F : -1.0F;
+		if (!fits(Vector(dir * 2.0F, 0.0F))) {
+			for (int k = 1; k <= maxShift; ++k) {
+				if (fits(Vector(0.0F, static_cast<float>(-k))) && fits(Vector(dir * 2.0F, static_cast<float>(-k)))) {
+					m_Pos.m_Y -= static_cast<float>(k);
+					return;
+				}
+			}
+		}
+	}
+	// Rising on the jetpack and held down by a lip over the head or a shoulder: slid aside past it, the way the keys are pressed first.
+	if (m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y > -1.0F && !fits(Vector(0.0F, -2.0F))) {
+		float first = left ? -1.0F : 1.0F;
+		for (int k = 1; k <= maxShift; ++k) {
+			for (float dir: {first, -first}) {
+				Vector side(dir * static_cast<float>(k), 0.0F);
+				if (fits(side) && fits(side + Vector(0.0F, -2.0F))) {
+					m_Pos.m_X += side.m_X;
+					return;
+				}
+			}
+		}
+	}
+}
+
 void AHuman::UpdateWalkAngle(AHuman::Layer whichLayer) {
 	if (m_Controller.IsState(BODY_JUMP)) {
 		m_WalkAngle[whichLayer] = Matrix(c_QuarterPI * GetFlipFactor());
@@ -2547,6 +2590,8 @@ void AHuman::Update() {
 	float rot = m_Rotation.GetRadAngle(); // eugh, for backwards compat to be the same behaviour as with multithreaded AI
 
 	Actor::Update();
+
+	CorrectCorners();
 
 	////////////////////////////////////
 	// Update viewpoint
