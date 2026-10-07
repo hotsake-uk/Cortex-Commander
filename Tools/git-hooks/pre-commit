@@ -1,0 +1,16 @@
+#!/bin/sh
+# Every commit carries its own game version: the patch number of c_VersionString in Source/System/GameVersion.h goes up by one, and the
+# file is added to the commit. Bump the major or minor by hand (setting the patch to 0); this hook counts on from there. A commit that
+# already changes the version line (a hand bump) is left as it is.
+file="Source/System/GameVersion.h"
+[ -f "$file" ] || exit 0
+if git diff --cached -U0 -- "$file" | grep -q '^+.*c_VersionString'; then
+	exit 0
+fi
+current=$(sed -n -E 's/.*c_VersionString = "([0-9]+)\.([0-9]+)\.([0-9]+)".*/\1 \2 \3/p' "$file")
+set -- $current
+[ $# -eq 3 ] || exit 0
+next="$1.$2.$(( $3 + 1 ))"
+sed -i -E "s/(c_VersionString = \")[0-9]+\.[0-9]+\.[0-9]+\"/\1$next\"/" "$file"
+git add "$file"
+exit 0
