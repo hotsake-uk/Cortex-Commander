@@ -63,8 +63,8 @@ function RecoverGymScript:UpdateScript()
 			actor.Team = 0;
 			actor.AIMode = Actor.AIMODE_SENTRY;
 			MovableMan:AddActor(actor);
-			-- (The goal is this side of the wall when there is one.)
-			table.insert(self.runners, { actor = actor, case = case, goal = Vector(case.padX + (case.wall and 120 or 300), standY), start = t, knocked = false, sent = false, done = false, unstableMS = 0, uprightAt = nil, wasUnstable = false, relapses = 0 });
+			-- (With a wall, the goal is back behind the start: the unit hits the wall at speed, and has to get up and walk back to it.)
+			table.insert(self.runners, { actor = actor, case = case, goal = Vector(case.padX + (case.wall and 20 or 300), standY), start = t, knocked = false, sent = false, done = false, unstableMS = 0, uprightAt = nil, wasUnstable = false, relapses = 0 });
 		end
 	end
 	if not self.spawned then
