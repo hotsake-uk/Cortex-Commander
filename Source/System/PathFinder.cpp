@@ -53,6 +53,7 @@ thread_local float s_StandHeight = 40.0F;
 thread_local float s_CrawlHeight = 22.0F;
 thread_local float s_HalfWidth = 6.0F;
 thread_local bool s_WalksStairs = false;
+thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -241,6 +242,9 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		return node;
 	};
 	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY));
+	// A searcher with a jetpack asking from the air (a re-path or a route check part way through a jump) flies on from where it is; see
+	// AdjacentCost.
+	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
 	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY));
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
@@ -530,6 +534,33 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 
 	bool isInNoGrav = g_SceneMan.IsPointInNoGravArea(node->Pos);
 	bool allowDiagonal = !isInNoGrav; // We don't allow diagonals in nograv to improve automover behaviour
+
+	// From the start of a search asked in the air by a searcher with a jetpack: straight on to anything within a short flight (four nodes
+	// across, three up or down) that is in plain sight. A node in the air has no way sideways or up of its own (those start from the
+	// ground), so a route asked for mid-jump fell to the floor and climbed back up, and the unit turned round in the air to follow it.
+	// Only from the start, so routes don't chain flights across the sky.
+	if (node == s_FlyingStart) {
+		int gridX = static_cast<int>(std::floor(node->Pos.m_X / static_cast<float>(m_NodeDimension)));
+		int gridY = static_cast<int>(std::floor(node->Pos.m_Y / static_cast<float>(m_NodeDimension)));
+		for (int dy = -3; dy <= 3; ++dy) {
+			for (int dx = -4; dx <= 4; ++dx) {
+				if ((dx == 0 && dy == 0) || (std::abs(dx) <= 1 && std::abs(dy) <= 1)) {
+					continue;
+				}
+				PathNode* target = GetPathNodeAtGridCoords(gridX + dx, gridY + dy);
+				if (!target || !target->m_Navigable || !Open(*StrongestMaterialAlongLine(node->Pos, target->Pos))) {
+					continue;
+				}
+				// Somewhere a body fits, and if it stands there, somewhere it can stand up.
+				if (!RoomToPass(*target, 2.0F) || (NodeIsOnSolidGround(*target) && static_cast<float>(target->FreeHeight) < s_StandHeight)) {
+					continue;
+				}
+				adjCost.cost = std::sqrt(static_cast<float>(dx * dx + dy * dy)) * 1.5F + (dy < 0 ? static_cast<float>(-dy) * 0.5F : 0.0F);
+				adjCost.state = static_cast<void*>(target);
+				adjacentList->push_back(adjCost);
+			}
+		}
+	}
 
 	// (Only the steps down pay it: a step across, in the air or on the ground, is flight or a walk, not a fall. Charged on the sideways steps
 	// too, a flight straight across a high room cost more than diving to its floor and climbing back up, and that is the route units took.)
