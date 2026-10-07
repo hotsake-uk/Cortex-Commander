@@ -2223,7 +2223,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								-- A climb up a column to a landing (a jump point well above us) is the climber's: see SharedBehaviors.ClimbPlan. The walking
 								-- and jetting below wait while it runs; a door of ours in the way is waited for first (the manners above).
 								local climbHandled = false;
-								if not Climb and not doorHold and not doorGoal and Waypoint.Kind == 2 and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and CurrDist.Y < -Owner.Height * 0.3 and not (NotAShaft and SceneMan:ShortestDistance(NotAShaft, Waypoint.Pos, false):MagnitudeIsLessThan(4)) then
+								-- (In the air, only from near the column: the climb's start in the air goes straight to the rise, and planned in a hop 90 px
+								-- short of the column it flew there at 11 m/s, past it, and ran dry. Further out the flight control takes the unit there.)
+								local farInAir = AI.flying and math.abs(CurrDist.X) > Owner.Height * 0.3;
+								if not Climb and not farInAir and not doorHold and not doorGoal and Waypoint.Kind == 2 and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and CurrDist.Y < -Owner.Height * 0.3 and not (NotAShaft and SceneMan:ShortestDistance(NotAShaft, Waypoint.Pos, false):MagnitudeIsLessThan(4)) then
 									Climb = SharedBehaviors.ClimbPlan(AI, Owner, Waypoint.Pos, NextWptPos);
 									if not Climb.shaft and not Climb.ladder then
 										NotAShaft = Vector(Waypoint.Pos.X, Waypoint.Pos.Y);
