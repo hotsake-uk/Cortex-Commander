@@ -66,6 +66,13 @@ if (-not $p) {
 }
 $p.Refresh()
 if ($p.HasExited) { "EXITED code=$($p.ExitCode)"; Get-Content (Join-Path $Repo "LogLoading.txt") -Tail 5; exit 1 }
+# In the background (CCCP_BACKGROUND, the AI gyms' default) the window is hidden and never focused: nothing to capture, and the
+# focus is left with whoever is using the machine.
+if ($env:CCCP_BACKGROUND) {
+	"background run: no capture"
+	if (-not $KeepRunning) { Stop-Process $p -Force; $p.WaitForExit(10000) | Out-Null; Start-Sleep -Milliseconds 1500 }
+	exit 0
+}
 $h = $p.MainWindowHandle
 $assert = [RenderTestWin]::FindTitled($p.Id, "Assert")
 if ($assert -eq [IntPtr]::Zero) { $assert = [RenderTestWin]::FindTitled($p.Id, "ERROR") }

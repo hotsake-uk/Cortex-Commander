@@ -102,6 +102,12 @@ void WindowMan::Destroy() {
 }
 
 void WindowMan::Initialize() {
+	const char* background = std::getenv("CCCP_BACKGROUND");
+	m_Background = background && background[0] != '0';
+	if (m_Background) {
+		m_Fullscreen = false;
+	}
+
 	SDL_free(SDL_GetDisplays(&m_NumDisplays));
 
 	m_PrimaryWindowDisplayIndex = SDL_GetPrimaryDisplay();
@@ -206,6 +212,12 @@ void WindowMan::CreatePrimaryWindow() {
 	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_Y_NUMBER, windowPosY);
 	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, m_ResX * m_ResMultiplier);
 	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, m_ResY * m_ResMultiplier);
+	// In the background (test runs): hidden and never focused, so the person at the machine keeps their mouse and keyboard.
+	if (m_Background) {
+		SDL_SetBooleanProperty(windowProps, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
+		SDL_SetBooleanProperty(windowProps, SDL_PROP_WINDOW_CREATE_FOCUSABLE_BOOLEAN, false);
+		SDL_SetBooleanProperty(windowProps, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, false);
+	}
 	m_PrimaryWindow = std::shared_ptr<SDL_Window>(SDL_CreateWindowWithProperties(windowProps), SDLWindowDeleter());
 	if (!m_PrimaryWindow) {
 		RTEError::ShowMessageBox("Unable to create window because:\n" + std::string(SDL_GetError()) + "!\n\nTrying to revert to defaults!");
@@ -395,7 +407,7 @@ void WindowMan::SetVSyncEnabled(bool enable) {
 }
 
 void WindowMan::RefocusWindow() const {
-	SDL_RaiseWindow(m_PrimaryWindow.get());
+	if (!m_Background) SDL_RaiseWindow(m_PrimaryWindow.get());
 }
 
 void WindowMan::UpdatePrimaryDisplayInfo() {
@@ -787,14 +799,14 @@ void WindowMan::DisplaySwitchIn(SDL_Window* windowThatShouldTakeInputFocus) cons
 
 	if (!m_MultiDisplayWindows.empty()) {
 		for (const auto& window: m_MultiDisplayWindows) {
-			SDL_RaiseWindow(window.get());
+			if (!m_Background) SDL_RaiseWindow(window.get());
 		}
-		SDL_RaiseWindow(windowThatShouldTakeInputFocus);
+		if (!m_Background) SDL_RaiseWindow(windowThatShouldTakeInputFocus);
 	} else {
-		SDL_RaiseWindow(m_PrimaryWindow.get());
+		if (!m_Background) SDL_RaiseWindow(m_PrimaryWindow.get());
 	}
 
-	SDL_HideCursor();
+	if (!m_Background) SDL_HideCursor();
 }
 
 void WindowMan::DisplaySwitchOut() const {
@@ -850,9 +862,9 @@ void WindowMan::Update() {
 			case SDL_EVENT_WINDOW_MOUSE_ENTER:
 				if (SDL_GetWindowID(SDL_GetMouseFocus()) > 0 && m_AnyWindowHasFocus && FullyCoversAllDisplays()) {
 					for (const auto& window: m_MultiDisplayWindows) {
-						SDL_RaiseWindow(window.get());
+						if (!m_Background) SDL_RaiseWindow(window.get());
 					}
-					SDL_RaiseWindow(SDL_GetWindowFromID(windowID));
+					if (!m_Background) SDL_RaiseWindow(SDL_GetWindowFromID(windowID));
 					m_AnyWindowHasFocus = true;
 					m_FocusEventsDispatchedByMovingBetweenWindows = true;
 				}

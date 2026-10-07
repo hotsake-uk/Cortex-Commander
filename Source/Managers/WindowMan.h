@@ -154,6 +154,11 @@ namespace RTE {
 		std::shared_ptr<RenderTarget> GetScreenBuffer() const { return m_ScreenBuffer; }
 
 		void RefocusWindow() const;
+
+		/// Whether the game runs in the background (the CCCP_BACKGROUND environment variable, for test runs): its window opens hidden and
+		/// can't take focus, and it never raises a window, traps, fences or moves the mouse, or hides the cursor.
+		/// @return Whether in the background.
+		bool IsBackground() const { return m_Background; }
 #pragma endregion
 
 #pragma region Resolution Change Handling
@@ -282,6 +287,7 @@ namespace RTE {
 		float m_MaxResMultiplier; //!< The maximum resolution multiplier before the game starts breaking.
 
 		bool m_Fullscreen; //!< Whether the game window is currently in fullscreen.
+		bool m_Background = false; //!< Whether the game runs in the background; see IsBackground.
 
 		int m_FrameCap = 0; //!< The most frames drawn per second, 0 for no limit.
 		long long m_LastPresentTicks = 0; //!< When the last frame was presented, for the frame cap.

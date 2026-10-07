@@ -21,6 +21,8 @@ function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalS
 	$Overrides = $defaults
 	# CCCP_NO_MANTLE=1: mantling off, for telling a mantle fault from others.
 	if ($env:CCCP_NO_MANTLE) { $Overrides.EnableMantling = 0 }
+	# CCCP_BACKGROUND: muted, so a run in the background isn't heard either.
+	if ($env:CCCP_BACKGROUND) { $Overrides.MuteMaster = 1 }
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
 	if ($DefaultLighting) {
 		# Cloud shadows drift, so a golden scene would differ from run to run with them on.
@@ -218,6 +220,8 @@ Write-Scenario "AIBunker" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLen
 # The same on real bunker maps from the BB+ mod (when it is installed).
 $sandboxBywater = $sandbox.Clone(); $sandboxBywater.DefaultSceneName = "Bywater Barracks"; Write-Scenario "AIBywater" ($sandboxBywater + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1 }) @("Render Test AI Bunker")
 $sandboxHemslock = $sandbox.Clone(); $sandboxHemslock.DefaultSceneName = "Hemslock Hold"; Write-Scenario "AIHemslock" ($sandboxHemslock + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1 }) @("Render Test AI Bunker")
+Write-Scenario "AIOrders" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test AI Bunker", "Render Test Order") # Run with CCCP_BUNKER_ONLY=99; see OrderTest.lua.
+Write-Scenario "AIFlight" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test Flight Gym") # Concrete pads in the sky; see FlightGym.lua.
 Write-Scenario "AICombat" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Combat")
 $sandboxOutpost = $sandbox.Clone(); $sandboxOutpost.DefaultSceneName = "Zekarra Mining Outpost"; Write-Scenario "AIMap" ($sandboxOutpost + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test AI Map")
 Write-Scenario "PlayMenu" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test Play Menu")

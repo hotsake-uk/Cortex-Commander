@@ -1,6 +1,7 @@
 param(
 	[int]$Runs = 1,      # How many times to run the gym.
 	[int]$Wait = 75,     # Seconds to let the courses run (a unit that can't make it gives up at 60).
+	[switch]$Foreground, # Show the game window and let it take focus (by default it runs hidden in the background, muted, and leaves the mouse alone).
 	[switch]$Trace,      # Also print the movement script's AITRACE lines for the traced unit.
 	[string]$Scenario = "AIBunker" # AIBunker (the bunker of modules in the sky), AIBywater or AIHemslock (real maps from the BB+ mod).
 )
@@ -13,6 +14,7 @@ if (Get-Process "Cortex Command.debug.release" -ErrorAction SilentlyContinue) {
 	"The debug build is already running; the capture would attach to it and close it. Close it first."
 	exit 1
 }
+if ($Foreground) { Remove-Item Env:\CCCP_BACKGROUND -ErrorAction SilentlyContinue } else { $env:CCCP_BACKGROUND = "1" }
 & "$rt\Setup.ps1" | Out-Null
 for ($i = 1; $i -le $Runs; $i++) {
 	$log = "$rt\Output\aibunker_$i.txt"
