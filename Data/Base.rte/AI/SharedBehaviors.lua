@@ -548,8 +548,13 @@ function SharedBehaviors.FlightControl(AI, Owner, Target, state)
 	end
 	local jump = Owner.Vel.Y > wantVelY + (state.jump and -0.5 or 0.5);
 	-- Moving sideways takes the jet (the keys only lean the nozzle): kept lit while well off the speed wanted and not already rising fast.
+	-- (Not with the point level or below and a floor close under the feet: there the unit lands and walks. Jetting for the sideways speed
+	-- at the foot of a shaft held a unit up against the lip of the corridor it was to walk into, until the tank was empty.)
 	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > -2 then
-		jump = true;
+		local floorNear = above <= 8 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.9), 5, Vector(), 2, rte.grassID, true);
+		if not floorNear then
+			jump = true;
+		end
 	end
 	state.jump = jump;
 	local aim = lat ~= Actor.LAT_STILL and 0 or math.pi * 0.5;
@@ -1672,7 +1677,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					local topHeadPos = Vector(Owner.Pos.X, math.min(Owner.Pos.Y - 4, floorY - standingHeight));
 
 					-- first check up to the top of the head, and then from there forward
-					if Waypoint.Kind == 1 or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
+					-- (A crawl step lays the unit down only once it is near: the step's point is where the low part is, and a route's points can be a
+					-- long way apart. Prone from 100 px out, a unit at the top of the tower lay at its start and never crawled to the hatch.)
+					local crawlStepNear = Waypoint.Kind == 1 and SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsLessThan(Owner.Height * 0.65);
+					if crawlStepNear or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
 						if Owner:NumberValueExists("AITrace") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
 						AI.proneState = AHuman.PRONE;
 						ProneHoldTimer:Reset();
@@ -2443,6 +2451,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													ceiling = false;
 													columnX = probeX;
 												end
+												-- Still under a ceiling: the route's own column, when it is open, before any other. (The nearest opening could be the other
+												-- way: a unit 48 px from the ladder its route went up walked 50 px away from it, to a gap that led nowhere, all minute.)
+												if ceiling and math.abs(towardsX) >= Owner.Height * 0.12 and OpenAbove(Waypoint.Pos.X) then
+													ceiling = false;
+													columnX = Waypoint.Pos.X;
+												end
 												AI.climbShaftX = shaftX;
 												-- A tall climb wants the fuel it will take: started on half a tank it ends part way up the face, with the fall and the wait
 												-- to refill to show for it. So the unit waits at the foot until the tank is in. How much is wanted is what the climb burns
@@ -2907,6 +2921,28 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			nextLatMove = Actor.LAT_STILL;
 			nextAimAngle = -math.pi * 0.5;
 			StuckTimer:Reset();
+		end
+		-- A drop straight down from where we stand, and floor still under the feet: the route's point is a node's middle, which can sit on
+		-- the very edge of the slab beside the hole, and a unit counted that as reached and stood on the lip all minute. A step towards the
+		-- side where the floor falls away.
+		if not Climb and not AI.ladderDown and not AI.flying and Waypoint and CurrDist and Waypoint.Kind == 3 and CurrDist.Y > Owner.Height * 0.3 and math.abs(CurrDist.X) < Owner.Height * 0.3 and math.abs(Owner.Vel.Y) < 1 then
+			local function FloorAt(dx)
+				return SceneMan:CastStrengthRay(Vector(Owner.Pos.X + dx, Owner.Pos.Y), Vector(0, Owner.Height * 0.75), 5, Vector(), 2, rte.grassID, true);
+			end
+			if FloorAt(0) then
+				local reach = Owner.Height * 0.25;
+				local towards = CurrDist.X < 0 and -1 or 1;
+				local side = nil;
+				if not FloorAt(towards * reach) then
+					side = towards;
+				elseif not FloorAt(-towards * reach) then
+					side = -towards;
+				end
+				if side then
+					nextLatMove = side < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+					if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE drop: floor under the feet, stepping " .. (side < 0 and "left" or "right") .. " to the hole"); end
+				end
+			end
 		end
 		-- In the way of an open door's piece: on, whatever else stopped the legs.
 		if doorPass and not AI.flying and nextLatMove == Actor.LAT_STILL then
