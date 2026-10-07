@@ -3288,28 +3288,70 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 
 	// The speeds wanted at a place (px/s, down positive): up to the height first, then across at a speed that can be stopped in the room
 	// left, then down onto the floor over it.
-	auto wanted = [&](const Vector& pos) {
+	// The landing as a person sees it: the stretch of floor level with the target's either side of it, out to three nodes, less half the body
+	// at each end. Anywhere over that will do; held to the point itself, the unit hovered over the platform in bursts to get the last few
+	// pixels right.
+	float zoneLeft = 0.0F;
+	float zoneRight = 0.0F;
+	if (landing) {
+		auto floorAt = [&](float dx) {
+			int x = static_cast<int>(target.m_X + dx);
+			int y = static_cast<int>(floorY);
+			return g_SceneMan.GetTerrMatter(x, y + 1) != MaterialColorKeys::g_MaterialAir && g_SceneMan.GetTerrMatter(x, y - 3) == MaterialColorKeys::g_MaterialAir;
+		};
+		while (zoneLeft > -72.0F && floorAt(zoneLeft - 4.0F)) {
+			zoneLeft -= 4.0F;
+		}
+		while (zoneRight < 72.0F && floorAt(zoneRight + 4.0F)) {
+			zoneRight += 4.0F;
+		}
+		zoneLeft = std::min(0.0F, zoneLeft + halfWidth);
+		zoneRight = std::max(0.0F, zoneRight - halfWidth);
+	}
+	// How fast it may come down with so much height left: as fast as the jet can still bring down to a safe touchdown (5 m/s) by the floor.
+	// Up to then it falls, the jet out: the bursts all the way down were fuel, time and risk for nothing.
+	const float safeTouchdown = 5.0F * ppm;
+	auto allowedFall = [&](float height) {
+		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
+		// reckoning met it too fast and bounced off.)
+		return std::sqrt(safeTouchdown * safeTouchdown + 2.0F * upBrake * 0.7F * std::max(0.0F, height));
+	};
+
+	// The speeds wanted at a place, moving so (px/s, down positive): up to just over the landing's floor, across, then down onto it. The
+	// sideways speed it has is kept while it is towards the landing and can still be stopped in the room left, so a unit that takes off
+	// running carries the run into the jump instead of braking it and starting again.
+	auto wanted = [&](const Vector& pos, const Vector& vel) {
 		Vector toTarget = g_SceneMan.ShortestDistance(pos, target, g_SceneMan.SceneWrapsX());
-		bool overIt = std::abs(toTarget.m_X) < std::max(6.0F, m_CharHeight * 0.12F);
+		float fromTarget = -toTarget.m_X;
+		bool overIt = landing ? (fromTarget >= zoneLeft && fromTarget <= zoneRight) : std::abs(toTarget.m_X) < 6.0F;
 		float aimY = landing ? floorY - feet - (overIt ? 0.0F : 10.0F) : target.m_Y;
 		float rise = pos.m_Y - aimY; // Above zero: still to go up.
-		float wantVy;
-		if (rise > 0.0F) {
-			wantVy = -std::min(9.0F * ppm, std::sqrt(2.0F * g * rise));
+		float wantVy = rise > 0.0F ? -std::min(9.0F * ppm, std::sqrt(2.0F * g * rise)) : std::min(9.0F * ppm, allowedFall(-rise));
+		float wantVx;
+		if (overIt && landing) {
+			// Over the landing: no steering but to stay over it, down to where its floor ends at the speed the jet's lean can stop from.
+			float roomRight = std::max(0.0F, zoneRight - fromTarget);
+			float roomLeft = std::max(0.0F, fromTarget - zoneLeft);
+			wantVx = std::clamp(vel.m_X, -std::sqrt(2.0F * sideAccel * roomLeft), std::sqrt(2.0F * sideAccel * roomRight));
 		} else {
-			wantVy = std::min((overIt && landing) ? 2.5F * ppm : 6.0F * ppm, std::sqrt(2.0F * upBrake * -rise));
-		}
-		float wantVx = 0.0F;
-		if (rise < 12.0F) {
-			float room = std::max(0.0F, std::abs(toTarget.m_X) - 4.0F);
+			float direction = toTarget.m_X > 0.0F ? 1.0F : -1.0F;
+			float room = std::max(0.0F, std::abs(toTarget.m_X) - (landing ? std::max(4.0F, (zoneRight - zoneLeft) * 0.5F) : 4.0F));
+			float stoppable = std::sqrt(2.0F * sideAccel * room);
 			float cap = std::clamp(std::abs(toTarget.m_X), 3.0F * ppm, 7.0F * ppm);
-			wantVx = (toTarget.m_X > 0.0F ? 1.0F : -1.0F) * std::min(cap, std::sqrt(2.0F * sideAccel * room));
+			float along = vel.m_X * direction;
+			wantVx = direction * std::min(std::max(cap, along), stoppable);
+			// Still well under the height it needs: only as fast across as gets there when the climb is done. Carried across at the run's
+			// speed under a ledge, a unit was past it before it was up, and couldn't brake and climb at once; it went 800 px on and fell.
+			if (rise > 12.0F) {
+				float climbTime = std::max(0.3F, rise / (4.0F * ppm));
+				wantVx = direction * std::min(std::abs(wantVx), room / climbTime);
+			}
 		}
 		return Vector(wantVx, wantVy);
 	};
 	// The rule a choice is followed by in the simulation: lean to the sideways speed wanted, jet to the vertical one.
 	auto follow = [&](const Vector& pos, const Vector& vel, float& lean, bool& jet) {
-		Vector want = wanted(pos);
+		Vector want = wanted(pos, vel);
 		lean = std::clamp((want.m_X - vel.m_X) / (sideAccel * 0.25F), -1.0F, 1.0F);
 		jet = vel.m_Y > want.m_Y || (std::abs(want.m_X - vel.m_X) > 30.0F && vel.m_Y > want.m_Y - 40.0F);
 	};
@@ -3359,18 +3401,26 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 			if (drawn) {
 				flown.push_back(pos);
 			}
-			Vector want = wanted(pos);
+			Vector want = wanted(pos, vel);
 			Vector off = (vel - want) / ppm;
 			cost += (off.m_X * off.m_X + off.m_Y * off.m_Y) * step;
+			// And a little for every moment of jet: of two ways that track the speeds as well, the one that burns less.
+			if (jet && fuel > 0.0F) {
+				cost += 0.5F * step;
+			}
 			if (hits(pos)) {
 				// Into the terrain: the rest of the flight is as good as lost, the sooner the worse.
 				cost += 50.0F * (horizon - t + step);
 				break;
 			}
 		}
-		// A little for keeping last tick's choice, so near-equal ones don't flicker.
+		// A little for keeping last tick's choice, so near-equal ones don't flicker, and more for switching the jet on or off: every switch was
+		// a burst of the jet, seventeen to a flight, where a person holds it lit or lets it be.
 		if (choice == m_PilotLastChoice) {
 			cost *= 0.95F;
+		}
+		if (m_PilotLastChoice >= 0 && (choice >= 5) != (m_PilotLastChoice >= 5)) {
+			cost += 0.25F;
 		}
 		if (cost < bestCost) {
 			bestCost = cost;
@@ -3393,11 +3443,9 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	}
 	bool jet = bestChoice >= 5;
 	float lean = leans[bestChoice % 5];
-	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range),
-	// mirrored with the body (AEJetpack::UpdateBurstState).
+	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range).
+	// In the world's terms, whichever way the body faces: measured (the flight gym's CCCP_FLIGHT_STICK), +0.3 pushed a soldier right at
+	// 8 m/s a second facing either way. Mirrored with the facing, as it was, every unit facing left leant the wrong way.
 	float stickX = std::tan(lean * maxLean);
-	if (m_HFlipped) {
-		stickX = -stickX;
-	}
 	return Vector(stickX, jet ? 1.0F : 0.0F);
 }

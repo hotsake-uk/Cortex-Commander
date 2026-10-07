@@ -20,6 +20,9 @@ local AllCourses = {
 	{ batch = 1, grade = "hard", dx = 480, dy = 360, width = 4, name = "down 360 across 480" },
 	{ batch = 1, grade = "precision", dx = 288, dy = -96, width = 2, name = "narrow ledge up 96 across 288" },
 	{ batch = 1, grade = "precision", dx = 240, dy = 216, width = 2, name = "narrow ledge down 216 across 240" },
+	{ batch = 1, grade = "run-up", dx = 312, dy = -96, width = 4, runup = true, name = "run then up 96 across 312" },
+	-- Walks: a floor all the way, in steps a soldier climbs or steps down. No jet is needed at all; the fuel burned is the jet used for nothing.
+	{ batch = 1, grade = "walk", dx = 336, dy = -80, width = 4, steps = 3, name = "walk up three 20 px steps" },
 	-- Batch 2.
 	{ batch = 2, grade = "medium", dx = -264, dy = -72, width = 3, name = "left up 72 across 264" },
 	{ batch = 2, grade = "hard", dx = 600, dy = 0, width = 5, name = "level 600" },
@@ -28,6 +31,9 @@ local AllCourses = {
 	{ batch = 2, grade = "hard", dx = -456, dy = -216, width = 5, name = "up 216 across 456 left" },
 	{ batch = 2, grade = "hard", dx = 360, dy = -288, width = 4, name = "up 288 across 360" },
 	{ batch = 2, grade = "precision", dx = 96, dy = -144, width = 2, name = "narrow ledge up 144 across 96" },
+	{ batch = 2, grade = "run-up", dx = 384, dy = 0, width = 5, runup = true, name = "run then level 384" },
+	{ batch = 2, grade = "run-up", dx = 336, dy = 120, width = 4, runup = true, name = "run then down 120 across 336" },
+	{ batch = 2, grade = "walk", dx = 336, dy = 80, width = 4, steps = 3, name = "walk down three 20 px steps" },
 };
 
 function FlightGymScript:StartScript()
@@ -75,7 +81,9 @@ function FlightGymScript:Build()
 	local rowY = { 380, 860 };
 	for i, course in ipairs(self.courses) do
 		local left = math.min(0, course.dx);
-		local right = math.max(self.startWidth * 24, course.dx + course.width * 24);
+		course.startBlocks = course.runup and 14 or self.startWidth;
+		local padEndOffset = course.dx >= 0 and (course.startBlocks - self.startWidth) * 24 or 0;
+		local right = math.max(course.startBlocks * 24, padEndOffset + course.dx + course.width * 24);
 		local span = right - left;
 		local row = (course.dy > 0 or nextX[2] + span > 3550) and 1 or 2;
 		if row == 1 and nextX[1] + span > 3550 then
@@ -90,11 +98,22 @@ function FlightGymScript:Build()
 		local startX = x - left;
 		local startY = rowY[row];
 		course.startPad = Vector(startX, startY);
-		course.targetPad = Vector(startX + course.dx, startY + course.dy);
+		-- (The target's offset is from the start pad's end on the side it lies, so a long run-up pad doesn't reach under it.)
+		local padEnd = course.dx >= 0 and startX + (course.startBlocks - self.startWidth) * 24 or startX;
+		course.targetPad = Vector(padEnd + course.dx, startY + course.dy);
 		course.run = self.only == nil or self.only == i;
 		if course.run then
-			self:Pad(startX, startY, self.startWidth);
+			self:Pad(startX, startY, course.startBlocks);
 			self:Pad(course.targetPad.X, course.targetPad.Y, course.width);
+			-- A walk's steps: three blocks each, from the start pad's end to the target pad, rising or falling evenly. (A block's top sits
+			-- where its Pos is; a step's riser is the difference, filled down to the next step by the block's own 24 px.)
+			if course.steps then
+				local startEnd = startX + course.startBlocks * 24;
+				for k = 1, course.steps do
+					local stepY = startY + math.floor(course.dy * k / (course.steps + 1));
+					self:Pad(startEnd + (k - 1) * 72, stepY, 3);
+				end
+			end
 		end
 	end
 end
@@ -107,7 +126,12 @@ function FlightGymScript:Spawn()
 			actor:AddInventoryItem(CreateHDFirearm("Assault Rifle", "Coalition.rte"));
 			local h = actor.Height;
 			-- Standing on the middle of the start pad; the goal is over the middle of the target pad, a fifth of a body up.
-			local startPos = Vector(course.startPad.X + self.startWidth * 12, course.startPad.Y - h * 0.5);
+			-- (On a run-up course, at the far end of the long pad from the gap, so it is running when it leaves.)
+			local startX = course.startPad.X + self.startWidth * 12;
+			if course.runup then
+				startX = course.dx >= 0 and (course.startPad.X + 24) or (course.startPad.X + course.startBlocks * 24 - 24);
+			end
+			local startPos = Vector(startX, course.startPad.Y - h * 0.5);
 			actor.Pos = Vector(startPos.X, startPos.Y);
 			actor.Team = 0;
 			actor.AIMode = Actor.AIMODE_SENTRY;
@@ -128,6 +152,7 @@ end
 -- Fresh measures for a flight.
 function FlightGymScript:ResetMeasures(r)
 	r.overX, r.overUp, r.reversals, r.lastSignX, r.fuel, r.fell, r.onPadMS = 0, 0, 0, 0, 0, false, 0;
+	r.pulses, r.lastLit = 0, false;
 	r.lastFuel = r.actor.Jetpack and r.actor.Jetpack.JetTimeLeft or 0;
 end
 
@@ -136,6 +161,11 @@ function FlightGymScript:Measure(r)
 	local a = r.actor;
 	local dt = TimerMan.DeltaTimeMS;
 	if a.Jetpack then
+		local lit = a.Jetpack:IsEmitting();
+		if lit and not r.lastLit then
+			r.pulses = r.pulses + 1;
+		end
+		r.lastLit = lit;
 		local fuel = a.Jetpack.JetTimeLeft;
 		if r.lastFuel and fuel < r.lastFuel then
 			r.fuel = r.fuel + (r.lastFuel - fuel);
@@ -170,7 +200,7 @@ function FlightGymScript:Measure(r)
 	end
 	local onPad = math.abs(fromPad) <= padHalf + 4 and math.abs(a.Pos.Y + h * 0.5 - r.padTop) < h * 0.35 and not airborne and a.Vel.Magnitude < 2;
 	r.onPadMS = onPad and r.onPadMS + dt or 0;
-	local stats = ", fuel " .. math.floor(r.fuel) .. " ms, over " .. math.floor(math.max(0, r.overX)) .. " px, above " .. math.floor(math.max(0, r.overUp)) .. " px, reversals " .. r.reversals .. (r.fell and ", fell" or "");
+	local stats = ", fuel " .. math.floor(r.fuel) .. " ms, over " .. math.floor(math.max(0, r.overX)) .. " px, above " .. math.floor(math.max(0, r.overUp)) .. " px, reversals " .. r.reversals .. ", pulses " .. r.pulses .. (r.fell and ", fell" or "");
 	return r.onPadMS >= 500, stats;
 end
 
@@ -254,8 +284,51 @@ function FlightGymScript:UpdateProof(r, t)
 	end
 end
 
+-- CCCP_FLIGHT_STICK=1: which way the analog stick's X pushes the jet. Two soldiers hang in the air, one facing right and one left, the AI
+-- off; each jets for a second with the stick at (0.3, -1), and the sideways speed it gained is written up as a STICK line.
+function FlightGymScript:StickTest(t)
+	if not self.stick then
+		self.stick = {};
+		for i, flip in ipairs({ false, true }) do
+			local a = CreateAHuman("Soldier Light", "Coalition.rte");
+			a.Pos = Vector(600 + i * 200, 300);
+			a.Team = 0;
+			a.HFlipped = flip;
+			a.AIMode = Actor.AIMODE_SENTRY;
+			MovableMan:AddActor(a);
+			table.insert(self.stick, { actor = a, flip = flip });
+		end
+		self.stickStart = t + 500;
+		return;
+	end
+	for _, entry in ipairs(self.stick) do
+		local a = entry.actor;
+		if MovableMan:ValidMO(a) then
+			local ctrl = a:GetController();
+			ctrl.InputMode = Controller.CIM_DISABLED;
+			if t < self.stickStart then
+				a.Vel = Vector();
+				a.Pos = Vector(a.Pos.X, 300);
+				a.HFlipped = entry.flip;
+			elseif t < self.stickStart + 1000 then
+				ctrl:SetState(Controller.BODY_JUMP, true);
+				ctrl.AnalogMove = Vector(0.3, -1);
+			elseif not entry.done then
+				entry.done = true;
+				ConsoleMan:PrintString("STICK facing " .. (entry.flip and "left" or "right") .. " (now " .. (a.HFlipped and "left" or "right") .. "): stick X +0.3 gave sideways speed " .. math.floor(a.Vel.X * 100) / 100 .. " m/s");
+			end
+		end
+	end
+end
+
 function FlightGymScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
+	if os and os.getenv and os.getenv("CCCP_FLIGHT_STICK") == "1" then
+		if t > 3000 then
+			self:StickTest(t);
+		end
+		return;
+	end
 	if not self.built and t > 2000 then
 		self.built = true;
 		self:Build();

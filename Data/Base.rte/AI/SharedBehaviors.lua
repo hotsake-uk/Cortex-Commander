@@ -539,12 +539,17 @@ end
 -- ledge climbers keep the climb.
 -- @return The landing (the point, and its floor's y), or nil when the route has no flight ahead or it isn't in open air.
 function SharedBehaviors.FindLanding(Owner)
+	-- (The furthest landing along the route that can be flown to straight, through open air and on one tank, not just the first: a route
+	-- across a gap too wide for the grid's jumps dropped into the valley and climbed out, and the unit dived after it instead of flying
+	-- across as a person would.)
 	local h = Owner.Height;
 	local airborne = false;
 	local index = 0;
+	local first = nil;
+	local candidates = {};
 	for pos in Owner.MovePath do
 		index = index + 1;
-		if index > 14 then
+		if index > 30 then
 			break;
 		end
 		local Floor = Vector();
@@ -552,10 +557,33 @@ function SharedBehaviors.FindLanding(Owner)
 		if not grounded then
 			airborne = true;
 		elseif airborne then
-			return { pos = Vector(pos.X, pos.Y), floorY = Floor.Y };
+			local landing = { pos = Vector(pos.X, pos.Y), floorY = Floor.Y };
+			first = first or landing;
+			table.insert(candidates, landing);
+			airborne = false;
 		end
 	end
-	return nil;
+	if not first then
+		return nil;
+	end
+	local Pack = Owner.Jetpack;
+	local ppm = GetPPM();
+	for k = #candidates, 2, -1 do
+		local landing = candidates[k];
+		local Distance = SharedBehaviors.FlightDistance(Owner, landing);
+		local needed = (math.max(0, Distance.rise) / (4 * ppm) + math.abs(Distance.across) / (5 * ppm) * 0.5) * 1000 * 1.3 + 200;
+		if Pack and needed <= Pack.JetTimeTotal * 0.95 and SharedBehaviors.FlightWayClear(Owner, landing) then
+			return landing;
+		end
+	end
+	return first;
+end
+
+-- How far a landing is from the unit: the rise to just over its floor (px, up positive) and the distance across.
+function SharedBehaviors.FlightDistance(Owner, landing)
+	local To = SceneMan:ShortestDistance(Owner.Pos, landing.pos, false);
+	local feetY = Owner.Pos.Y + Owner.Height * 0.2;
+	return { rise = feetY - landing.floorY + 12, across = To.X };
 end
 
 -- Whether the way to a landing is open air for the flight: up at the unit's column to over the landing's floor, then across.
@@ -575,6 +603,40 @@ function SharedBehaviors.FlightWayClear(Owner, landing)
 		end
 	end
 	return true;
+end
+
+-- Whether a landing can be walked to instead of flown: the floor followed from under the unit to under the landing, every 6 px, never
+-- climbing more than a step a soldier takes or mantles (a quarter of its height) nor dropping more than a safe step down (0.6 of it), with
+-- room to crawl over it all the way. A person asks this before lighting a jetpack; the route's points can say "jump" for a few 20 px steps.
+function SharedBehaviors.CanWalkTo(Owner, landing)
+	local h = Owner.Height;
+	local stepUp = h * 0.24;
+	local stepDown = h * 0.6;
+	local room = h * 0.24;
+	local Floor = Vector();
+	if not SceneMan:CastStrengthRay(Owner.Pos, Vector(0, h * 0.8), 5, Floor, 2, rte.grassID, true) then
+		return false;
+	end
+	local floorY = Floor.Y;
+	local To = SceneMan:ShortestDistance(Owner.Pos, landing.pos, false);
+	local steps = math.floor(math.abs(To.X) / 6);
+	local dir = To.X > 0 and 1 or -1;
+	for k = 1, steps do
+		local x = Owner.Pos.X + dir * k * 6;
+		-- A wall higher than a step: solid where the step's top would be.
+		if SceneMan:GetTerrMatter(x, floorY - stepUp) ~= rte.airID then
+			return false;
+		end
+		local Next = Vector();
+		if not SceneMan:CastStrengthRay(Vector(x, floorY - stepUp), Vector(0, stepUp + stepDown), 5, Next, 1, rte.grassID, true) then
+			return false; -- (A gap, or a drop too far to step down.)
+		end
+		floorY = Next.Y;
+		if SceneMan:CastStrengthRay(Vector(x, floorY - 2), Vector(0, -room), 5, Vector(), 1, rte.grassID, true) then
+			return false; -- (No room to get through.)
+		end
+	end
+	return math.abs(floorY - landing.floorY) <= 6;
 end
 
 -- The flight plan for a tick: begun when the planner wants the jet (or the unit is in the air) and the route has a landing ahead in open
@@ -597,18 +659,66 @@ function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
 		if plan.timer:IsPastSimMS(15000) then
 			return nil;
 		end
+		-- Out of fuel in the air, short of the landing: the plan is over. Flown on, it steered for a landing it could no longer reach while
+		-- the unit fell; from here the route is asked again from where it is coming down.
+		if AI.flying and Pack.JetTimeLeft < 60 and not onLanding then
+			if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE flight: out of fuel short of the landing, plan dropped"); end
+			Owner:RequestRouteCheck();
+			return nil;
+		end
 		return plan;
 	end
 	if not (wantsJet or AI.flying) then
 		return nil;
 	end
-	-- Off the ground, with the tank most of the way full (the flight is planned on what it takes, not on what is left after the last).
-	if not AI.flying and Pack.JetTimeLeft < Pack.JetTimeTotal * 0.8 then
+	-- (Not begun in the air on an empty tank: there is nothing to fly it with.)
+	if AI.flying and Pack.JetTimeLeft < 200 then
 		return nil;
 	end
 	local landing = SharedBehaviors.FindLanding(Owner);
 	if not landing then
+		-- A route on the ground all the way (steps, a slope): walked, no jet, when the floor can be followed to a point a few along it. The
+		-- hop code jetted every 20 px step of a stair for want of this question.
+		if not AI.flying then
+			local ahead = nil;
+			local index = 0;
+			for pos in Owner.MovePath do
+				index = index + 1;
+				ahead = pos;
+				if index >= 4 then
+					break;
+				end
+			end
+			if ahead then
+				local Floor = Vector();
+				if SceneMan:CastStrengthRay(ahead, Vector(0, Owner.Height * 0.8), 5, Floor, 2, rte.grassID, true) and SharedBehaviors.CanWalkTo(Owner, { pos = ahead, floorY = Floor.Y }) then
+					return nil, true;
+				end
+			end
+		end
 		return nil;
+	end
+	-- On the ground and it can be walked: no flight, and no jet (see CanWalkTo).
+	if not AI.flying and SharedBehaviors.CanWalkTo(Owner, landing) then
+		return nil, true;
+	end
+	-- Falling with no jet asked for, towards a landing below: a drop, left to gravity (the native AI lights the jet itself at a dangerous
+	-- speed). A plan begun here jetted every step down a stair.
+	if AI.flying and not wantsJet and landing.floorY > Owner.Pos.Y then
+		return nil;
+	end
+	-- Off the ground only with the fuel the flight takes, and a third over: the climb at about 4 m/s, the crossing lit about half the time,
+	-- never more than a full tank. Short of it the unit waits on its feet with the jet out, whatever else asked for it; it used to set off
+	-- on what was left from the last flight, and fell short.
+	if not AI.flying then
+		local ToLanding = SharedBehaviors.FlightDistance(Owner, landing);
+		local ppm = GetPPM();
+		local needed = (math.max(0, ToLanding.rise) / (4 * ppm) + math.abs(ToLanding.across) / (5 * ppm) * 0.5) * 1000 * 1.3 + 200;
+		needed = math.min(needed, Pack.JetTimeTotal * 0.98);
+		if Pack.JetTimeLeft < needed then
+			if Owner:NumberValueExists("AITrace") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: waiting for fuel, " .. math.floor(Pack.JetTimeLeft) .. " of " .. math.floor(needed)); end
+			return nil, true;
+		end
 	end
 	local To = SceneMan:ShortestDistance(Owner.Pos, landing.pos, false);
 	if math.abs(To.X) < h * 0.3 and math.abs(To.Y) < h * 0.6 then
@@ -3166,7 +3276,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 		-- A flight from take-off to touchdown is flown as one, whatever the code above made of this tick (see SharedBehaviors.UpdateFlightPlan).
 		if Waypoint and not doorHold and not doorGoal then
-			FlightPlan = SharedBehaviors.UpdateFlightPlan(AI, Owner, FlightPlan, AI.jump);
+			local walk;
+			FlightPlan, walk = SharedBehaviors.UpdateFlightPlan(AI, Owner, FlightPlan, AI.jump);
+			if walk then
+				AI.jump = false;
+				if Owner:NumberValueExists("AITrace") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: walkable, no jet"); end
+			end
 		else
 			FlightPlan = nil;
 		end

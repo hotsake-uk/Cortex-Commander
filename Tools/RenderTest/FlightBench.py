@@ -11,7 +11,7 @@ import re
 import sys
 from collections import defaultdict
 
-LINE = re.compile(r"FLIGHT (.+?): (landed in ([\d.]+) s|GAVE UP after 30 s.*?|died)(?:, fuel (\d+) ms, over (\d+) px, above (\d+) px, reversals (\d+)(, fell)?)?$")
+LINE = re.compile(r"FLIGHT (.+?): (landed in ([\d.]+) s|GAVE UP after 30 s.*?|died)(?:, fuel (\d+) ms, over (\d+) px, above (\d+) px, reversals (\d+)(?:, pulses (\d+))?(, fell)?)?$")
 
 
 def load(folder):
@@ -29,7 +29,8 @@ def load(folder):
                 "over": int(m.group(5)) if m.group(5) else 0,
                 "above": int(m.group(6)) if m.group(6) else 0,
                 "rev": int(m.group(7)) if m.group(7) else 0,
-                "fell": bool(m.group(8)),
+                "pulses": int(m.group(8)) if m.group(8) else 0,
+                "fell": bool(m.group(9)),
             })
     return runs
 
@@ -47,6 +48,7 @@ def summary(flights):
         "over": f"{mean('over'):.0f}",
         "above": f"{mean('above'):.0f}",
         "rev": f"{mean('rev'):.1f}",
+        "pulses": f"{mean('pulses'):.1f}",
         "fell": f"{sum(f['fell'] for f in flights)}",
     }
 
@@ -54,17 +56,17 @@ def summary(flights):
 def main(folders):
     builds = [(os.path.basename(os.path.normpath(f)), load(f)) for f in folders]
     names = sorted({name for _, runs in builds for name in runs})
-    cols = ["landed", "time", "fuel", "over", "above", "rev", "fell"]
-    print("| Course | Build | Landed | Time | Fuel | Over px | Above px | Reversals | Fell |")
-    print("|---|---|---|---|---|---|---|---|---|")
+    cols = ["landed", "time", "fuel", "over", "above", "rev", "pulses", "fell"]
+    print("| Course | Build | Landed | Time | Fuel | Over px | Above px | Reversals | Jet pulses | Fell |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
     for name in names:
         for build, runs in builds:
             s = summary(runs.get(name, []))
             if s:
                 print(f"| {name} | {build} | " + " | ".join(s[c] for c in cols) + " |")
     print()
-    print("| Build | Landed | Time | Fuel | Over px | Above px | Reversals | Fell |")
-    print("|---|---|---|---|---|---|---|---|")
+    print("| Build | Landed | Time | Fuel | Over px | Above px | Reversals | Jet pulses | Fell |")
+    print("|---|---|---|---|---|---|---|---|---|")
     for build, runs in builds:
         s = summary([f for flights in runs.values() for f in flights])
         if s:

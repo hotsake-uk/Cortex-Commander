@@ -1,4 +1,6 @@
 #include "MovableMan.h"
+#include "ConsoleMan.h"
+#include <unordered_set>
 #include "FluidSim.h"
 
 #include "PrimitiveMan.h"
@@ -730,6 +732,27 @@ void MovableMan::AddItem(HeldDevice* itemToAdd) {
 }
 
 void MovableMan::AddParticle(MovableObject* particleToAdd) {
+	// Added twice (a script adding something that is already in the scene), a particle was deleted once and then read again where the
+	// particles settle, which crashed the game. The second add is refused, and said so once per kind of object.
+	if (particleToAdd) {
+		bool already;
+		{
+			std::lock_guard<std::mutex> particleLock(m_AddedParticlesMutex);
+			already = m_ValidParticles.find(particleToAdd) != m_ValidParticles.end();
+		}
+		if (!already) {
+			std::lock_guard<std::mutex> itemLock(m_AddedItemsMutex);
+			already = m_ValidItems.find(particleToAdd) != m_ValidItems.end();
+		}
+		if (already) {
+			static std::unordered_set<std::string> reported;
+			std::string name = particleToAdd->GetModuleAndPresetName();
+			if (reported.insert(name).second) {
+				g_ConsoleMan.PrintString("WARNING: " + name + " was added to the scene while already in it; the second add was ignored (a script adds it twice?).");
+			}
+			return;
+		}
+	}
 	if (particleToAdd && g_ActivityMan.GetActivity()) {
 		g_ActivityMan.GetActivity()->ForceSetTeamAsActive(particleToAdd->GetTeam());
 
@@ -1644,6 +1667,14 @@ void MovableMan::Update() {
 			while (parIt != m_Particles.end()) {
 				Vector parPos((*parIt)->GetPos());
 				Material const* terrMat = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrain()->GetMaterialPixel(parPos.GetFloorIntX(), parPos.GetFloorIntY()));
+				// (A particle with no material can't settle into the terrain: it is only deleted.)
+				if (!(*parIt)->GetMaterial() || !terrMat) {
+					(*parIt)->DestroyScriptState();
+					delete (*parIt);
+					m_ValidParticles.erase(*parIt);
+					parIt++;
+					continue;
+				}
 				int piling = (*parIt)->GetMaterial()->GetPiling();
 				if (piling > 0) {
 					for (int s = 0; s < piling && (terrMat->GetIndex() == (*parIt)->GetMaterial()->GetIndex() || terrMat->GetIndex() == (*parIt)->GetMaterial()->GetSettleMaterial()); ++s) {
