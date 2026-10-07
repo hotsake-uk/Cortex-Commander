@@ -550,9 +550,11 @@ function SharedBehaviors.FlightControl(AI, Owner, Target, state)
 	-- Moving sideways takes the jet (the keys only lean the nozzle): kept lit while well off the speed wanted and not already rising fast.
 	-- (Not with the point level or below and a floor close under the feet: there the unit lands and walks. Jetting for the sideways speed
 	-- at the foot of a shaft held a unit up against the lip of the corridor it was to walk into, until the tank was empty.)
-	-- (Only while not rising faster than the height wants: the jet lifts as well as pushes, and lit for the speed towards a point level with
-	-- the unit it carried one 140 px up past a roof, and its tank with it.)
-	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > math.max(-2, wantVelY - 1) then
+	-- (Already well above the point, only while not rising: the jet lifts as well as pushes, and lit for the speed towards a point below
+	-- it held a steady climb that carried a unit 140 px up past a roof. Nearer the point's height a little rise is let be: held to no rise
+	-- at all, units crossing a hill sank into its slope and lost the route.)
+	local riseLimit = above < -Owner.Height * 0.3 and math.max(-2, wantVelY - 1) or -2;
+	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > riseLimit then
 		local floorNear = above <= 8 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.9), 5, Vector(), 2, rte.grassID, true);
 		if not floorNear then
 			jump = true;
