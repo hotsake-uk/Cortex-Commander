@@ -52,7 +52,8 @@ thread_local float s_BreachStrength = 0.0F;
 thread_local float s_StandHeight = 40.0F;
 thread_local float s_CrawlHeight = 22.0F;
 thread_local float s_HalfWidth = 6.0F;
-thread_local bool s_WalksStairs = false; // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
+thread_local bool s_WalksStairs = false;
+thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
     Pos(pos) {
@@ -181,6 +182,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_CrawlHeight = agent.CrawlHeight;
 	s_HalfWidth = agent.HalfWidth;
 	s_WalksStairs = agent.WalksStairs;
+	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 
 	++m_CurrentPathingRequests;
 
@@ -626,7 +628,9 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				float f = i + 2; // Exponential cost increase for jumping higher
 				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
-				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost;
+				// (And for how hard the rung is to fly: a person goes up a node or two out from a wall, where there's room to drift over the
+				// lip, not pressed to its face where the jet has to go precisely straight up; see ClimbMarginCost.)
+				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost + ClimbMarginCost(*currentNode->Up);
 
 				adjCost.cost = totalMaterialCost;
 				adjCost.state = static_cast<void*>(currentNode->Up);
@@ -738,6 +742,14 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
+		}
+	}
+
+	// The searcher has failed here lately (PathAgent::Avoid): every step into a node near one costs more for it, so its next route goes another way
+	// if there is a reasonable one, rather than at the same jump again.
+	if (s_Avoid) {
+		for (micropather::StateCost& adjacent: *adjacentList) {
+			adjacent.cost += AvoidCost(*static_cast<const PathNode*>(adjacent.state));
 		}
 	}
 }
@@ -894,6 +906,37 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 		return PathStepKind::Crawl;
 	}
 	return PathStepKind::Walk;
+}
+
+float PathFinder::ClimbMarginCost(const PathNode& node) const {
+	if (s_JumpHeight == FLT_MAX) {
+		return 0.0F;
+	}
+	float nearSide = static_cast<float>(std::min(node.ClearLeft, node.ClearRight));
+	float farSide = static_cast<float>(std::max(node.ClearLeft, node.ClearRight));
+	float cost = 0.0F;
+	// Hugging a wall with open air on the other side: a column a node or two out would do, and is far easier to fly.
+	if (nearSide < s_HalfWidth + 6.0F && farSide >= static_cast<float>(m_NodeDimension) * 1.5F) {
+		cost += 1.5F;
+	}
+	// A gap barely wider than the body: the lift has to be precise.
+	if (static_cast<float>(node.ClearLeft + node.ClearRight + 1) < s_HalfWidth * 4.0F) {
+		cost += 1.0F;
+	}
+	return cost;
+}
+
+float PathFinder::AvoidCost(const PathNode& node) const {
+	if (!s_Avoid) {
+		return 0.0F;
+	}
+	for (const Vector& place: *s_Avoid) {
+		if (g_SceneMan.ShortestDistance(node.Pos, place).MagnitudeIsLessThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
+			// About what a detour of twenty-odd nodes costs: taken only when there's no other reasonable way.
+			return 25.0F;
+		}
+	}
+	return 0.0F;
 }
 
 float PathFinder::GetMaterialTransitionCost(const Material& material) const {

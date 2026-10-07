@@ -36,6 +36,7 @@ namespace RTE {
 		float StandHeight = 40.0F; //!< Head room it needs to walk upright, in pixels.
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
+		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 	};
 
@@ -302,6 +303,14 @@ namespace RTE {
 		/// @param material The Material to get the transition cost for.
 		/// @return The transition cost for the Material.
 		float GetMaterialTransitionCost(const Material& material) const;
+
+		/// What a rung of a jetpack climb up a column costs over its height, for how hard it is to fly: hugging a wall with open air on the
+		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
+		/// @param node The node the rung rises into.
+		float ClimbMarginCost(const PathNode& node) const;
+
+		/// What a step into a node costs over its own for the searcher's recent failures there (PathAgent::Avoid).
+		float AvoidCost(const PathNode& node) const;
 
 		/// Gets the average cost for all transitions out of this PathNode, ignoring infinities/unpathable transitions.
 		/// @param node The PathNode to get the average transition cost for.

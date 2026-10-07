@@ -1131,6 +1131,11 @@ PathAgent Actor::GetPathAgent() const {
 	agent.CrawlHeight = agent.StandHeight;
 	// (Half the sprite's reach, near enough; at a third of it a soldier was sent down a shaft its own width, and stuck there.)
 	agent.HalfWidth = std::clamp(GetRadius() * 0.5F, 8.0F, 16.0F);
+	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
+		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
+			agent.Avoid.push_back(avoid.first);
+		}
+	}
 	return agent;
 }
 
@@ -1184,6 +1189,12 @@ void Actor::OnNewMovePath() {
 	for (std::list<Vector>::iterator lItr = m_MovePath.begin(); lItr != finalItr; ++lItr) {
 		(*lItr) = g_SceneMan.MovePointToGround((*lItr), m_CharHeight * 0.2, 0, g_SettingsMan.GetPathFinderGridNodeSize() * 2.5f);
 	}
+}
+
+void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
+	double now = g_TimerMan.GetSimTimeMS();
+	std::erase_if(m_AvoidPoints, [now](const std::pair<Vector, double>& avoid) { return avoid.second <= now; });
+	m_AvoidPoints.emplace_back(place, now + static_cast<double>(milliseconds));
 }
 
 void Actor::RequestRouteCheck() {

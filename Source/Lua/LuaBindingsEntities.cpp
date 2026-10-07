@@ -284,6 +284,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("SetMovePathToUpdate", &Actor::SetMovePathToUpdate)
 	    .def("UpdateMovePath", &Actor::UpdateMovePath)
 	    .def("RequestRouteCheck", &Actor::RequestRouteCheck)
+	    .def("AvoidPathPoint", &Actor::AvoidPathPoint)
 	    .def("SetAlarmPoint", &Actor::AlarmPoint)
 	    .def("GetAlarmPoint", &Actor::GetAlarmPoint)
 	    .def("IsOrganic", &Actor::IsOrganic)

@@ -951,6 +951,11 @@ namespace RTE {
 		/// overshoot is a new route forward from where it got to, not a turn back for a point already passed.
 		void RequestRouteCheck();
 
+		/// Marks a place where this failed a jump: for so long, routes through it cost more for this (see PathAgent::Avoid).
+		/// @param place The place, a point of the route the jump was to.
+		/// @param milliseconds For how long, in sim time.
+		void AvoidPathPoint(const Vector& place, float milliseconds);
+
 		// Member variables
 		static Entity::ClassInfo m_sClass;
 
@@ -1150,6 +1155,7 @@ namespace RTE {
 		bool m_PathImpossible; //!< Whether the last route asked for came back with no way there (or only through ground that can't be dug), for the path display.
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
+		std::vector<std::pair<Vector, double>> m_AvoidPoints; //!< Places this failed jumps at, and the sim time (ms) each is avoided until.
 		bool m_RouteCheck = false; //!< The path request in flight is a route check (see RequestRouteCheck): its answer is only taken if reachable.
 		bool m_WaitingAtDoor = false; //!< At the end of a route cut short at a door: the route is asked for again every couple of seconds, until the door is open or gone.
 		// The minimum range to consider having reached a move target is considered

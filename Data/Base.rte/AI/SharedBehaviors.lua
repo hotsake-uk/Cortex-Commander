@@ -2377,7 +2377,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- (It used to be reckoned from the height a whole tank buys, 440 px for a soldier, but that is the height of a ballistic
 												-- burn, and a climb flown under control at 5 m/s got about 250 px from a tank: a 192 px shaft left it with nothing at the top.
 												-- Then from the climb's seconds at 8 m/s, nine tenths lit, which let a 320 px climb go that the tank could not make.)
-												local tall = above < -Owner.Height * 0.5;
+												-- (Every climb the route asks for, not only the tall ones: the route is planned on a full tank, and a unit that set off on
+												-- whatever was left from the last one missed what a player, waiting a moment at the foot, makes easily.)
+												local tall = above < -Owner.Height * 0.3;
 												-- What the climb would leave at the top, flown from the tank as it is (see ClimbFuelLeft), must cover the hover and the step
 												-- off: 450 ms, since the jet is weak by then. A climb that no full tank makes by that reckoning is tried on a full one.
 												local tankIn;
