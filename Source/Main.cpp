@@ -38,6 +38,7 @@
 #include "MenuMan.h"
 #include "ConsoleMan.h"
 #include "SettingsMan.h"
+#include <chrono>
 #include "PresetMan.h"
 #include "UInputMan.h"
 #include "PerformanceMan.h"
@@ -482,7 +483,28 @@ void RunGameLoop() {
 			g_LuaMan.ClearScriptTimings();
 			{
 				PerformanceMan::LogScope logScope("Sim: MovableMan total");
+				// CCCP_PERF_LOG: the time the units' update (their scripts and AI included) takes, its average and worst over every 5 s, as
+				// PERF lines in the console, for finding hitches.
+				static const bool perfLog = std::getenv("CCCP_PERF_LOG") != nullptr;
+				auto updateStart = std::chrono::steady_clock::now();
 				g_MovableMan.Update();
+				if (perfLog) {
+					static double total = 0.0;
+					static double worst = 0.0;
+					static int count = 0;
+					static auto windowStart = std::chrono::steady_clock::now();
+					double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count();
+					total += ms;
+					worst = std::max(worst, ms);
+					++count;
+					if (std::chrono::steady_clock::now() - windowStart > std::chrono::seconds(5)) {
+						g_ConsoleMan.PrintString("PERF units update: average " + std::to_string(total / std::max(count, 1)) + " ms, worst " + std::to_string(worst) + " ms, " + std::to_string(count) + " updates, " + std::to_string(g_MovableMan.GetActorCount()) + " actors");
+						total = 0.0;
+						worst = 0.0;
+						count = 0;
+						windowStart = std::chrono::steady_clock::now();
+					}
+				}
 			}
 			g_PerformanceMan.UpdateSortedScriptTimings(g_LuaMan.GetScriptTimings());
 

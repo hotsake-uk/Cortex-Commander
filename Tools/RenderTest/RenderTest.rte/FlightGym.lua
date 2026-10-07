@@ -370,6 +370,23 @@ function FlightGymScript:UpdateScript()
 	if not self.spawned then
 		return;
 	end
+	-- Frame times while the flights run (real time between this script's updates): the average, the worst, and how many were over 50 ms
+	-- (a hitch a player sees), written up as a FRAMES line when all are done.
+	if not self.frameTimer then
+		self.frameTimer = Timer();
+		self.frameCount, self.frameTotal, self.frameWorst, self.frameSlow = 0, 0, 0, 0;
+	else
+		local ms = self.frameTimer.ElapsedRealTimeMS;
+		self.frameTimer:Reset();
+		if not self.finished then
+			self.frameCount = self.frameCount + 1;
+			self.frameTotal = self.frameTotal + ms;
+			self.frameWorst = math.max(self.frameWorst, ms);
+			if ms > 50 then
+				self.frameSlow = self.frameSlow + 1;
+			end
+		end
+	end
 	local allDone = true;
 	for _, r in ipairs(self.runners) do
 		if not r.done then
@@ -407,6 +424,7 @@ function FlightGymScript:UpdateScript()
 	end
 	if allDone and not self.finished then
 		self.finished = true;
+		ConsoleMan:PrintString("FRAMES " .. self.frameCount .. " frames, average " .. math.floor(self.frameTotal / math.max(1, self.frameCount) * 10) / 10 .. " ms, worst " .. math.floor(self.frameWorst) .. " ms, over 50 ms " .. self.frameSlow);
 		ConsoleMan:PrintString((self.proof and "PROOF" or "FLIGHT") .. " done");
 	end
 end

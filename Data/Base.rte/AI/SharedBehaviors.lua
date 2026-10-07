@@ -468,6 +468,9 @@ function SharedBehaviors.NavDebugLevel()
 	return (ok and type(level) == "number") and level or 0;
 end
 
+-- CCCP_NO_FLIGHT_THROTTLE=1: the flight plan looked for every tick, for measuring what the limit saves.
+local FlightThrottleOff = os and os.getenv and os.getenv("CCCP_NO_FLIGHT_THROTTLE") == "1";
+
 local EnginePilot = not (os and os.getenv and os.getenv("CCCP_LUA_PILOT") == "1");
 
 local LadderCache = nil;
@@ -568,7 +571,7 @@ function SharedBehaviors.FindLanding(Owner)
 	end
 	local Pack = Owner.Jetpack;
 	local ppm = GetPPM();
-	for k = #candidates, 2, -1 do
+	for k = #candidates, math.max(2, #candidates - 3), -1 do
 		local landing = candidates[k];
 		local Distance = SharedBehaviors.FlightDistance(Owner, landing);
 		local needed = (math.max(0, Distance.rise) / (4 * ppm) + math.abs(Distance.across) / (5 * ppm) * 0.5) * 1000 * 1.3 + 200;
@@ -619,10 +622,15 @@ function SharedBehaviors.CanWalkTo(Owner, landing)
 	end
 	local floorY = Floor.Y;
 	local To = SceneMan:ShortestDistance(Owner.Pos, landing.pos, false);
-	local steps = math.floor(math.abs(To.X) / 6);
+	-- (Every 12 px, and no further than 360 px: every 6 px over any distance, every tick a jet was wanted, was a share of the hitches seen
+	-- while units flew.)
+	if math.abs(To.X) > 360 then
+		return false;
+	end
+	local steps = math.floor(math.abs(To.X) / 12);
 	local dir = To.X > 0 and 1 or -1;
 	for k = 1, steps do
-		local x = Owner.Pos.X + dir * k * 6;
+		local x = Owner.Pos.X + dir * k * 12;
 		-- A wall higher than a step: solid where the step's top would be.
 		if SceneMan:GetTerrMatter(x, floorY - stepUp) ~= rte.airID then
 			return false;
@@ -1804,6 +1812,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local DoorIgnoreTimer = Timer();
 	local FlightState = {}; -- Kept between ticks by SharedBehaviors.FlightControl.
 	local FlightPlan = nil; -- A flight flown as one, take-off to touchdown (see SharedBehaviors.UpdateFlightPlan).
+	local FlightSearchTimer = Timer(); -- When the landing was last looked for, with no flight under way.
+	local FlightLastWalk = nil; -- Whether the last look found the way walkable.
 	local RouteCheckTimer = Timer(); -- How long since the route was last checked in flight (see Actor::RequestRouteCheck).
 	local NotAShaft = nil; -- The last jump point looked at and found not to be a shaft's (left to the walking code).
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
@@ -3279,7 +3289,17 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		-- handed back mid-climb to the old jump code, eight pixels under the landing, and flown 270 px the other way.)
 		if (Waypoint or FlightPlan) and not doorHold and not doorGoal then
 			local walk;
-			FlightPlan, walk = SharedBehaviors.UpdateFlightPlan(AI, Owner, FlightPlan, AI.jump);
+			-- (Looked for at most four times a second while there is no flight: the landing search and the walk check ray-test along the
+			-- route, and every tick for every unit wanting the jet was hitches in a battle. The last answer about walking holds between.)
+			if FlightPlan or FlightThrottleOff or FlightSearchTimer:IsPastSimMS(250) then
+				if not FlightPlan then
+					FlightSearchTimer:Reset();
+				end
+				FlightPlan, walk = SharedBehaviors.UpdateFlightPlan(AI, Owner, FlightPlan, AI.jump);
+				FlightLastWalk = walk;
+			else
+				walk = FlightLastWalk;
+			end
 			-- (Unless the walk has gone nowhere for over a second: a step the legs can't take at that spot is jetted after all, rather than
 			-- stood at for the rest of the minute.)
 			if walk and StuckTimer:IsPastSimMS(1200) then
