@@ -3997,8 +3997,8 @@ namespace {
 				continue;
 			}
 			auto trim = [](std::string text) {
-				size_t from = text.find_first_not_of(" 	");
-				size_t to = text.find_last_not_of(" 	");
+				size_t from = text.find_first_not_of(" \t\r");
+				size_t to = text.find_last_not_of(" \t\r");
 				return from == std::string::npos ? std::string() : text.substr(from, to - from + 1);
 			};
 			std::string key = trim(line.substr(0, equals));
@@ -5372,7 +5372,8 @@ void Sandbox::DrawGUI() {
 
 	ImGuiIO& io = ImGui::GetIO();
 	// Test runs can't move the real pointer (someone may be using the computer), so they say where it is to be taken to be: CCCP_TEST_POINTER=x,y in window pixels.
-	if (static const char* testPointer = std::getenv("CCCP_TEST_POINTER")) {
+	static const char* testPointer = std::getenv("CCCP_TEST_POINTER");
+	if (testPointer) {
 		float x = 0.0F;
 		float y = 0.0F;
 		if (std::sscanf(testPointer, "%f,%f", &x, &y) == 2) {
