@@ -19,6 +19,8 @@ function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalS
 	$defaults = @{ ResolutionX = 960; ResolutionY = 540; ResolutionMultiplier = 1; Fullscreen = 0 }
 	foreach ($key in $Overrides.Keys) { $defaults[$key] = $Overrides[$key] }
 	$Overrides = $defaults
+	# CCCP_NO_MANTLE=1: mantling off, for telling a mantle fault from others.
+	if ($env:CCCP_NO_MANTLE) { $Overrides.EnableMantling = 0 }
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
 	if ($DefaultLighting) {
 		# Cloud shadows drift, so a golden scene would differ from run to run with them on.

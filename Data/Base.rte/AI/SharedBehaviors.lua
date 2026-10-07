@@ -2932,18 +2932,21 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			local function FloorAt(dx)
 				return SceneMan:CastStrengthRay(Vector(Owner.Pos.X + dx, Owner.Pos.Y), Vector(0, Owner.Height * 0.75), 5, Vector(), 2, rte.grassID, true);
 			end
-			if FloorAt(0) then
+			-- (Floor under either side of the body counts: a unit wedged on the hole's corner had its middle over the hole already, and stood
+			-- there with nothing under Pos.)
+			local side = Owner.Height * 0.12;
+			if FloorAt(0) or FloorAt(-side) or FloorAt(side) then
 				local reach = Owner.Height * 0.25;
 				local towards = CurrDist.X < 0 and -1 or 1;
-				local side = nil;
+				local holeSide = nil;
 				if not FloorAt(towards * reach) then
-					side = towards;
+					holeSide = towards;
 				elseif not FloorAt(-towards * reach) then
-					side = -towards;
+					holeSide = -towards;
 				end
-				if side then
-					nextLatMove = side < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
-					if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE drop: floor under the feet, stepping " .. (side < 0 and "left" or "right") .. " to the hole"); end
+				if holeSide then
+					nextLatMove = holeSide < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+					if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE drop: floor under the feet, stepping " .. (holeSide < 0 and "left" or "right") .. " to the hole"); end
 				end
 			end
 		end

@@ -1219,6 +1219,11 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		return false;
 	}
 	float height = std::max(m_CharHeight, 20.0F);
+	// Not for an AI whose route goes down from here: pressing towards the wall of a hatch it was dropping through, a unit was pulled back
+	// up onto the ledge beside it, walked back to the hole, and did it again for twenty seconds.
+	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
+		return false;
+	}
 	int maxLift = static_cast<int>(height * (rising ? 0.55F : 0.3F));
 	// Far enough over the edge for the body's middle to be over the top.
 	float over = std::max(8.0F, bodyWidth * 0.6F) + 4.0F;
