@@ -988,6 +988,23 @@ int AHuman::MoveAlongRoute() {
 		Vector toTakeOff = Towards(m_Pos, takeOff);
 		Vector toLandingHere = Towards(m_Pos, landing);
 		bool atTakeOff = std::abs(toTakeOff.m_X) <= h * 0.5F && std::abs(toTakeOff.m_Y) <= h * 0.8F;
+		// Once at a take-off, the flight's rules hold while the unit lines up for it nearby (under a shaft's middle, a step to an open
+		// column), for up to four seconds. (Let go of as soon as a step took it half a body off the take-off, the walk took it back to the
+		// route's point, where the step took it off again: back and forth at the foot of a shaft before every climb.)
+		if (atTakeOff) {
+			if (!mover.takeOffCommitted || Towards(mover.takeOffCommit, takeOff).MagnitudeIsGreaterThan(30.0F)) {
+				mover.takeOffCommitTimer.Reset();
+			}
+			mover.takeOffCommitted = true;
+			mover.takeOffCommit = takeOff;
+		} else if (mover.takeOffCommitted) {
+			Vector toCommit = Towards(m_Pos, mover.takeOffCommit);
+			if (Towards(mover.takeOffCommit, takeOff).MagnitudeIsLessThan(30.0F) && std::abs(toCommit.m_X) <= h * 1.2F && std::abs(toCommit.m_Y) <= h * 0.8F && !mover.takeOffCommitTimer.IsPastSimMS(4000)) {
+				atTakeOff = true;
+			} else {
+				mover.takeOffCommitted = false;
+			}
+		}
 		// (A ledge above and to one side: from up to a body and a half short of the take-off, on the way to it, wherever the way up and
 		// across is open from here, as a player jets for a ledge from a few steps back and arcs onto it. Walked to the take-off, the foot
 		// of the wall, the way straight up was under the lip, and the unit pressed against the wall.)
@@ -1007,6 +1024,8 @@ int AHuman::MoveAlongRoute() {
 				mover.fuelWaiting = false;
 			}
 		}
+	} else {
+		mover.takeOffCommitted = false;
 	}
 	bool wantsClimb = above > h * 0.3F && (kind == PathStepKind::Jump || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y + h * 0.4F));
 	if (flightAhead && !CanWalkTo(landing, landingFloorY)) {
@@ -1070,6 +1089,10 @@ int AHuman::MoveAlongRoute() {
 		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen;
 		if (!canTakeOff) {
 			mover.fuelWaiting = false;
+			if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace(std::string("no take-off here for ") + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)) + ": shaft " + (inShaft ? "yes" : "no") + ", way up " + (wayUpOpen ? "open" : "blocked") + ", hop " + (levelHop ? (edgeAhead ? "at the edge" : "not at the edge") : "no"));
+			}
 			// Under a ceiling with the landing above: a step to the nearest line open from the head up to the head's height at the landing,
 			// 0, a quarter and half a body either way, the landing's side first (8.0's SharedBehaviors.OpenColumnNear). Else on towards the
 			// landing's side.
@@ -1238,22 +1261,15 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 	}
-	// Stuck (no progress for 2.5 s, and a new route at 6): besides the hop, lying down for 0.7 s at 4.4 (under something the standing body
-	// catches on). (A back-off the other way, as 8.0's random flips did, read as pacing: no step away from the goal.)
+	// Stuck (no progress for 2.5 s, and a new route at 6): a hop. (A back-off the other way, as 8.0's random flips did, read as pacing, and
+	// lying down for a moment as lying down at random: neither.)
 	float stuckMS = static_cast<float>(mover.progressTimer.GetElapsedSimTimeMS());
 	bool layingDown = false;
 	if (!stuck) {
 		mover.stuckBackedOff = false;
 		mover.stuckLayDown = false;
 	} else if (!mover.fuelWaiting) {
-		if (stuckMS > 4400.0F && stuckMS < 5100.0F && !prone) {
-			ctrl.SetState(BODY_PRONE, true);
-			layingDown = true;
-			if (!mover.stuckLayDown) {
-				mover.stuckLayDown = true;
-				MoverTrace("stuck; lying down");
-			}
-		}
+		// (No lying down when stuck: under a low ceiling the crawl rules lie it down; anywhere else it read as lying down at random.)
 	}
 	// A wall, or a step up the legs don't take: a hop (the mantle takes most steps).
 	if ((stuck || wallAhead || lowObstacle) && standardJet && !prone && !layingDown && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {

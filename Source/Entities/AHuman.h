@@ -796,6 +796,9 @@ namespace RTE {
 			bool stuckLayDown = false;
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
+			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
+			Vector takeOffCommit;
+			Timer takeOffCommitTimer;
 		};
 		RouteMover m_Mover;
 
