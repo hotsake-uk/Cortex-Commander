@@ -436,6 +436,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .def("MoveAlongRoute", &AHuman::MoveAlongRoute)
 	    .def("ResetRouteMovement", &AHuman::ResetRouteMovement)
 	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
+	    .property("JetFlying", &AHuman::IsJetFlying)
 
 	    .property("Head", &AHuman::GetHead, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetHead)
 	    .property("Jetpack", &AHuman::GetJetpack, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetJetpack)

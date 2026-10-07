@@ -327,6 +327,8 @@ namespace RTE {
 		/// Gets what this has learned of its jet's real push, against what the jetpack's numbers say. 1 is as modelled.
 		/// @return The ratio.
 		float GetJetAccelRatio() const { return m_JetAccelRatio; }
+		/// Whether the body is flying on its jet just now (lit, or lit in the last 0.4 s): it passes the ladders' rungs, and a ladder lets it go.
+		bool IsJetFlying() const { return GetPassMaterial() != 0; }
 
 		/// Switches the currently held device (if any) to the first found shield
 		/// in the inventory. If the held device already is a shield, or no
@@ -731,6 +733,7 @@ namespace RTE {
 		mutable double m_ClimbFuelCacheTimeMS = -1.0;
 		Vector m_JetPrevVel; //!< Last frame's velocity, for the learning.
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
+		double m_JetLastLitSimMS = -1.0; //!< When the jet was last lit (sim ms), for passing the ladders' rungs while flying (see LearnFlight).
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
 		int m_PilotLastChoice = -1;
 		bool m_WasAirborne = false; //!< Whether last frame nothing was under the feet (for the landing squat).

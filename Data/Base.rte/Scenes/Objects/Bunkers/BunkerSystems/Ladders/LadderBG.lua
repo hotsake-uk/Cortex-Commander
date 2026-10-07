@@ -29,7 +29,16 @@ function Update(self)
 					actor = ToAHuman(MovableMan:GetMOFromID(mo.RootID));
 					local controller = actor:GetController();
 					local limbs = actor.FGLeg or actor.BGLeg or actor.FGArm or actor.BGArm;
-					if limbs and actor.Status == Actor.STABLE and not controller:IsState(Controller.BODY_JUMP) then
+					-- (Not a soldier flying on its jet: the engine says so (AHuman.JetFlying: lit, or lit a moment ago, so the pulses of a climb don't
+					-- count as letting go), else its jet lit now. Held between pulses, a climb up a laddered shaft stopped dead on every one.)
+					local flying = false;
+					local ok, value = pcall(function() return actor.JetFlying; end);
+					if ok and value ~= nil then
+						flying = value;
+					elseif actor.Jetpack then
+						flying = actor.Jetpack:IsEmitting();
+					end
+					if limbs and actor.Status == Actor.STABLE and not controller:IsState(Controller.BODY_JUMP) and not flying then
 						local velFactor = 1 + actor.Vel.Magnitude * 0.3;
 						local aimAngle = actor:GetAimAngle(false);
 						local climb = false;

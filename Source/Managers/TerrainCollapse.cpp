@@ -99,7 +99,7 @@ namespace {
 			if (name.find("Scrap") != std::string::npos || name.find("Mangled") != std::string::npos) {
 				continue;
 			}
-			for (const char* word: {"Concrete", "Metal", "Military", "Civilian", "Glass"}) {
+			for (const char* word: {"Concrete", "Metal", "Ladder", "Military", "Civilian", "Glass"}) {
 				if (name.find(word) != std::string::npos) {
 					s_Structure[id] = true;
 					break;

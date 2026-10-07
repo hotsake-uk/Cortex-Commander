@@ -21,6 +21,7 @@ namespace {
 	    {"Mega Metal", 1.0F, 0.85F},
 	    {"Bullet Casing", 1.0F, 0.9F},
 	    {"Metal", 0.9F, 0.7F},
+	    {"Ladder", 0.9F, 0.7F}, // (Ladder rungs: Metal under its own index; see Materials.ini.)
 	    {"Gold", 1.0F, 0.9F},
 	    {"Xenocronium", 0.8F, 0.8F},
 	    // The "stuff" materials are used for soldiers' bodies and kit alike, so they're only mildly metallic. Robots and craft say what they are themselves, and held devices count as steel.

@@ -15,6 +15,15 @@
 
 using namespace RTE;
 
+namespace {
+	/// The terrain material at a point as an object's body meets it: air for a material the object passes through just now (see
+	/// MovableObject::SetPassMaterial).
+	inline unsigned char TerrFor(const RTE::MovableObject* owner, int x, int y) {
+		unsigned char id = RTE::g_SceneMan.GetTerrMatter(x, y);
+		return (owner && owner->PassesMaterial(id)) ? 0 : id;
+	}
+} // namespace
+
 const std::string Atom::c_ClassName = "Atom";
 std::mutex Atom::s_MemoryPoolMutex;
 std::vector<void*> Atom::s_AllocatedPool;
@@ -417,7 +426,7 @@ HitData& Atom::TerrHitResponse() {
 	RTEAssert(m_OwnerMO, "Stepping an Atom without a parent MO!");
 
 	if (m_TerrainMatHit) {
-		MID hitMaterialID = g_SceneMan.GetTerrMatter(m_HitPos[X], m_HitPos[Y]);
+		MID hitMaterialID = TerrFor(m_OwnerMO, m_HitPos[X], m_HitPos[Y]);
 		MID domMaterialID = g_MaterialAir;
 		MID subMaterialID = g_MaterialAir;
 		m_LastHit.HitMaterial[HITOR] = m_Material;
@@ -430,9 +439,9 @@ HitData& Atom::TerrHitResponse() {
 		Vector hitAcc = m_LastHit.HitVel[HITOR];
 
 		// Check for and react upon a collision in the dominant direction of travel.
-		if (m_Delta[m_Dom] && ((m_Dom == X && g_SceneMan.GetTerrMatter(m_HitPos[X], m_IntPos[Y])) || (m_Dom == Y && g_SceneMan.GetTerrMatter(m_IntPos[X], m_HitPos[Y])))) {
+		if (m_Delta[m_Dom] && ((m_Dom == X && TerrFor(m_OwnerMO, m_HitPos[X], m_IntPos[Y])) || (m_Dom == Y && TerrFor(m_OwnerMO, m_IntPos[X], m_HitPos[Y])))) {
 			hit[m_Dom] = true;
-			domMaterialID = (m_Dom == X) ? g_SceneMan.GetTerrMatter(m_HitPos[X], m_IntPos[Y]) : g_SceneMan.GetTerrMatter(m_IntPos[X], m_HitPos[Y]);
+			domMaterialID = (m_Dom == X) ? TerrFor(m_OwnerMO, m_HitPos[X], m_IntPos[Y]) : TerrFor(m_OwnerMO, m_IntPos[X], m_HitPos[Y]);
 			domMaterial = g_SceneMan.GetMaterialFromID(domMaterialID);
 
 			// Edit the normal accordingly.
@@ -442,9 +451,9 @@ HitData& Atom::TerrHitResponse() {
 		}
 
 		// Check for and react upon a collision in the submissive direction of travel.
-		if (m_SubStepped && m_Delta[m_Sub] && ((m_Sub == X && g_SceneMan.GetTerrMatter(m_HitPos[X], m_IntPos[Y])) || (m_Sub == Y && g_SceneMan.GetTerrMatter(m_IntPos[X], m_HitPos[Y])))) {
+		if (m_SubStepped && m_Delta[m_Sub] && ((m_Sub == X && TerrFor(m_OwnerMO, m_HitPos[X], m_IntPos[Y])) || (m_Sub == Y && TerrFor(m_OwnerMO, m_IntPos[X], m_HitPos[Y])))) {
 			hit[m_Sub] = true;
-			subMaterialID = (m_Sub == X) ? g_SceneMan.GetTerrMatter(m_HitPos[X], m_IntPos[Y]) : g_SceneMan.GetTerrMatter(m_IntPos[X], m_HitPos[Y]);
+			subMaterialID = (m_Sub == X) ? TerrFor(m_OwnerMO, m_HitPos[X], m_IntPos[Y]) : TerrFor(m_OwnerMO, m_IntPos[X], m_HitPos[Y]);
 			subMaterial = g_SceneMan.GetMaterialFromID(subMaterialID);
 
 			// Edit the normal accordingly.
@@ -501,7 +510,7 @@ bool Atom::SetupPos(Vector startPos) {
 		m_IntPos[Y] = m_PrevIntPos[Y] = std::floor(startPos.m_Y);
 	}
 
-	if ((m_TerrainMatHit = g_SceneMan.GetTerrMatter(m_IntPos[X], m_IntPos[Y])) != g_MaterialAir) {
+	if ((m_TerrainMatHit = TerrFor(m_OwnerMO, m_IntPos[X], m_IntPos[Y])) != g_MaterialAir) {
 		m_OwnerMO->SetHitWhatTerrMaterial(m_TerrainMatHit);
 		if (m_OwnerMO->IntersectionWarning()) {
 			m_TerrainHitsDisabled = true;
@@ -601,7 +610,7 @@ bool Atom::StepForward() {
 
 			// Detect terrain hits, if not disabled.
 			// (A speck is no hit for an actor's body: see IsTerrainSpeck.)
-			if (!m_OwnerMO->m_IgnoreTerrain && g_MaterialAir != (m_TerrainMatHit = g_SceneMan.GetTerrMatter(m_IntPos[X], m_IntPos[Y])) && !(m_OwnerMO->GetRootParent()->IsActor() && IsTerrainSpeck(m_IntPos[X], m_IntPos[Y]))) {
+			if (!m_OwnerMO->m_IgnoreTerrain && g_MaterialAir != (m_TerrainMatHit = TerrFor(m_OwnerMO, m_IntPos[X], m_IntPos[Y])) && !(m_OwnerMO->GetRootParent()->IsActor() && IsTerrainSpeck(m_IntPos[X], m_IntPos[Y]))) {
 				// Check if we're temporarily disabled from hitting terrain
 				if (!m_TerrainHitsDisabled) {
 					m_OwnerMO->SetHitWhatTerrMaterial(m_TerrainMatHit);
@@ -809,7 +818,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 		// Bresenham's line drawing algorithm execution
 		for (domSteps = 0; domSteps < delta[dom] && !(hit[X] || hit[Y]); ++domSteps) {
 			// Check for the special case if the Atom is starting out embedded in terrain. This can happen if something large gets copied to the terrain and embeds some Atoms.
-			if (!m_OwnerMO->m_IgnoreTerrain && domSteps == 0 && g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]) != g_MaterialAir) {
+			if (!m_OwnerMO->m_IgnoreTerrain && domSteps == 0 && TerrFor(m_OwnerMO, intPos[X], intPos[Y]) != g_MaterialAir) {
 				++hitCount;
 				hit[X] = hit[Y] = true;
 				if (g_SceneMan.TryPenetrate(intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.5F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {
@@ -947,7 +956,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 			// Atom-Terrain collision detection and response.
 
 			// If there was no MO collision detected, then check for terrain hits.
-			else if (!m_OwnerMO->m_IgnoreTerrain && (hitMaterialID = g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]))) {
+			else if (!m_OwnerMO->m_IgnoreTerrain && (hitMaterialID = TerrFor(m_OwnerMO, intPos[X], intPos[Y]))) {
 				if (hitMaterialID != g_MaterialAir) {
 					m_OwnerMO->SetHitWhatTerrMaterial(hitMaterialID);
 				}
@@ -1034,9 +1043,9 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 					}
 
 					// Check for and react upon a collision in the dominant direction of travel.
-					if (delta[dom] && ((dom == X && g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y])) || (dom == Y && g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y])))) {
+					if (delta[dom] && ((dom == X && TerrFor(m_OwnerMO, hitPos[X], intPos[Y])) || (dom == Y && TerrFor(m_OwnerMO, intPos[X], hitPos[Y])))) {
 						hit[dom] = true;
-						domMaterialID = (dom == X) ? g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y]) : g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y]);
+						domMaterialID = (dom == X) ? TerrFor(m_OwnerMO, hitPos[X], intPos[Y]) : TerrFor(m_OwnerMO, intPos[X], hitPos[Y]);
 						domMaterial = g_SceneMan.GetMaterialFromID(domMaterialID);
 
 						// Bounce according to the collision.
@@ -1044,9 +1053,9 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 					}
 
 					// Check for and react upon a collision in the submissive direction of travel.
-					if (subStepped && delta[sub] && ((sub == X && g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y])) || (sub == Y && g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y])))) {
+					if (subStepped && delta[sub] && ((sub == X && TerrFor(m_OwnerMO, hitPos[X], intPos[Y])) || (sub == Y && TerrFor(m_OwnerMO, intPos[X], hitPos[Y])))) {
 						hit[sub] = true;
-						subMaterialID = (sub == X) ? g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y]) : g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y]);
+						subMaterialID = (sub == X) ? TerrFor(m_OwnerMO, hitPos[X], intPos[Y]) : TerrFor(m_OwnerMO, intPos[X], hitPos[Y]);
 						subMaterial = g_SceneMan.GetMaterialFromID(subMaterialID);
 
 						// Bounce according to the collision.

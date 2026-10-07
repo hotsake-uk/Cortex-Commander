@@ -13,6 +13,15 @@
 
 using namespace RTE;
 
+namespace {
+	/// The terrain material at a point as an object's body meets it: air for a material the object passes through just now (see
+	/// MovableObject::SetPassMaterial).
+	inline unsigned char TerrFor(const RTE::MovableObject* owner, int x, int y) {
+		unsigned char id = RTE::g_SceneMan.GetTerrMatter(x, y);
+		return (owner && owner->PassesMaterial(id)) ? 0 : id;
+	}
+} // namespace
+
 ConcreteClassInfo(AtomGroup, Entity, 500);
 
 AtomGroup::AtomGroup() {
@@ -938,7 +947,7 @@ Vector AtomGroup::PushTravel(Vector& position, const Vector& velocity, float pus
 					// Count the number of Atoms of this group that hit MOs this step. Used to properly distribute the mass of the owner MO in later collision responses during this step.
 					atomsHitMOsCount++;
 					// If no MO has ever been hit yet during this step, then keep checking for terrain hits.
-				} else if (atomsHitMOsCount == 0 && g_SceneMan.GetTerrMatter(intPos[X] + flippedOffset.GetFloorIntX(), intPos[Y] + flippedOffset.GetFloorIntY())) {
+				} else if (atomsHitMOsCount == 0 && TerrFor(m_OwnerMOSR, intPos[X] + flippedOffset.GetFloorIntX(), intPos[Y] + flippedOffset.GetFloorIntY())) {
 					hitTerrAtoms.push_back({atom, flippedOffset});
 				}
 
@@ -1119,13 +1128,13 @@ Vector AtomGroup::PushTravel(Vector& position, const Vector& velocity, float pus
 
 					Vector newVel = forceVel;
 
-					unsigned char hitMaterialID = g_SceneMan.GetTerrMatter(hitPos[X], hitPos[Y]);
+					unsigned char hitMaterialID = TerrFor(m_OwnerMOSR, hitPos[X], hitPos[Y]);
 					hitMaterial = g_SceneMan.GetMaterialFromID(hitMaterialID);
 
 					// Check for and react upon a collision in the dominant direction of travel.
-					if (delta[dom] && ((dom == X && g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y])) || (dom == Y && g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y])))) {
+					if (delta[dom] && ((dom == X && TerrFor(m_OwnerMOSR, hitPos[X], intPos[Y])) || (dom == Y && TerrFor(m_OwnerMOSR, intPos[X], hitPos[Y])))) {
 						hit[dom] = true;
-						unsigned char domMaterialID = (dom == X) ? g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y]) : g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y]);
+						unsigned char domMaterialID = (dom == X) ? TerrFor(m_OwnerMOSR, hitPos[X], intPos[Y]) : TerrFor(m_OwnerMOSR, intPos[X], hitPos[Y]);
 						domMaterial = g_SceneMan.GetMaterialFromID(domMaterialID);
 
 						// Bounce according to the collision.
@@ -1133,9 +1142,9 @@ Vector AtomGroup::PushTravel(Vector& position, const Vector& velocity, float pus
 					}
 
 					// Check for and react upon a collision in the submissive direction of travel.
-					if (subStepped && delta[sub] && ((sub == X && g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y])) || (sub == Y && g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y])))) {
+					if (subStepped && delta[sub] && ((sub == X && TerrFor(m_OwnerMOSR, hitPos[X], intPos[Y])) || (sub == Y && TerrFor(m_OwnerMOSR, intPos[X], hitPos[Y])))) {
 						hit[sub] = true;
-						unsigned char subMaterialID = (sub == X) ? g_SceneMan.GetTerrMatter(hitPos[X], intPos[Y]) : g_SceneMan.GetTerrMatter(intPos[X], hitPos[Y]);
+						unsigned char subMaterialID = (sub == X) ? TerrFor(m_OwnerMOSR, hitPos[X], intPos[Y]) : TerrFor(m_OwnerMOSR, intPos[X], hitPos[Y]);
 						subMaterial = g_SceneMan.GetMaterialFromID(subMaterialID);
 
 						// Bounce according to the collision.
@@ -1327,7 +1336,7 @@ bool AtomGroup::InTerrain() const {
 
 	for (const Atom* atom: m_Atoms) {
 		atomPos = m_OwnerMOSR->GetPos() + GetAdjustedAtomOffset(atom);
-		if (g_SceneMan.GetTerrMatter(atomPos.GetFloorIntX(), atomPos.GetFloorIntY()) != g_MaterialAir) {
+		if (TerrFor(m_OwnerMOSR, atomPos.GetFloorIntX(), atomPos.GetFloorIntY()) != g_MaterialAir) {
 			penetrates = true;
 			break;
 		}
@@ -1345,7 +1354,7 @@ float AtomGroup::RatioInTerrain() const {
 
 	for (const Atom* atom: m_Atoms) {
 		atomPos = m_OwnerMOSR->GetPos() + GetAdjustedAtomOffset(atom);
-		if (g_SceneMan.GetTerrMatter(atomPos.GetFloorIntX(), atomPos.GetFloorIntY()) != g_MaterialAir) {
+		if (TerrFor(m_OwnerMOSR, atomPos.GetFloorIntX(), atomPos.GetFloorIntY()) != g_MaterialAir) {
 			inTerrain++;
 		}
 	}
@@ -1357,7 +1366,7 @@ float AtomGroup::RatioInTerrain() const {
 bool AtomGroup::FitsAt(const Vector& position) const {
 	for (const Atom* atom: m_Atoms) {
 		Vector atomPos = position + m_OwnerMOSR->RotateOffset(atom->GetOffset());
-		unsigned char material = g_SceneMan.GetTerrMatter(atomPos.GetFloorIntX(), atomPos.GetFloorIntY());
+		unsigned char material = TerrFor(m_OwnerMOSR, atomPos.GetFloorIntX(), atomPos.GetFloorIntY());
 		if (material != g_MaterialAir && !FluidSim::IsLiquid(material)) {
 			return false;
 		}

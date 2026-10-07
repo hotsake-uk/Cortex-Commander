@@ -3283,6 +3283,24 @@ float AHuman::JetAccelNow() const {
 }
 
 void AHuman::LearnFlight() {
+	// Flying on the jet, the body passes the ladders' rungs (the "Ladder" material): lit now, or lit in the last 0.4 s, which the pilot's
+	// pulses never outlast. Out longer (the tank dry, a stall, or let go on purpose) and the rungs are solid again, to land on, catch, or
+	// mantle. Brushed against on the way up a shaft with ladders down its sides, the rungs took the climb's speed and knocked units
+	// back down it.
+	{
+		static int s_LadderMaterial = -1;
+		if (s_LadderMaterial < 0) {
+			const Material* ladder = g_SceneMan.GetMaterial("Ladder");
+			s_LadderMaterial = ladder ? ladder->GetIndex() : 0;
+		}
+		double now = g_TimerMan.GetSimTimeMS();
+		bool lit = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->IsEmitting();
+		if (lit) {
+			m_JetLastLitSimMS = now;
+		}
+		bool flying = m_Status != INACTIVE && m_Status != DEAD && m_JetLastLitSimMS >= 0.0 && now - m_JetLastLitSimMS < 400.0;
+		SetPassMaterial(flying ? static_cast<unsigned char>(s_LadderMaterial) : 0);
+	}
 	if (!m_pJetpack || !m_pJetpack->IsAttached()) {
 		return;
 	}

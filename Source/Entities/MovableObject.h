@@ -333,6 +333,19 @@ namespace RTE {
 		/// @return Whether this can hit terrain.
 		bool IgnoreTerrain() const { return m_IgnoreTerrain; }
 
+		/// A terrain material this object's body (and everything attached to it) passes through just now, as if air; 0 for none. A soldier
+		/// flying on its jet passes the ladders' rungs (AHuman sets it), and meets them again once the jet has been out a moment.
+		unsigned char GetPassMaterial() const { return m_PassMaterial; }
+		void SetPassMaterial(unsigned char material) { m_PassMaterial = material; }
+		/// Whether a terrain material is one this object's body passes through just now (its root's pass material).
+		bool PassesMaterial(unsigned char material) const {
+			if (material == 0) {
+				return false;
+			}
+			const MovableObject* root = GetRootParent();
+			return root->m_PassMaterial != 0 && root->m_PassMaterial == material;
+		}
+
 		/// Sets whether this will collide with any Terrain
 		/// @param ignores Whether this can hit terrain.
 		void SetIgnoreTerrain(bool ignores) { m_IgnoreTerrain = ignores; }
@@ -1433,6 +1446,7 @@ namespace RTE {
 		bool m_ApplyWoundBurstDamageOnCollision; //!< Whether or not this should apply wound burst damage on collision, respecting WoundDamageMultiplier and without creating a wound.
 		// Whether this MO should ignore terrain when traveling
 		bool m_IgnoreTerrain;
+		unsigned char m_PassMaterial = 0; //!< A terrain material passed through as if air just now (see SetPassMaterial); 0 for none.
 		// MOID hit during last Travel
 		MOID m_MOIDHit;
 		// Terrain material hit during last travel
