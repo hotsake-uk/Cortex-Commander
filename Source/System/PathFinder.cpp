@@ -64,7 +64,7 @@ thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
-    Pos(pos) {
+    Pos(pos), Anchor(pos) {
 	const Material* outOfBounds = g_SceneMan.GetMaterialFromID(MaterialColorKeys::g_MaterialOutOfBounds);
 	for (int i = 0; i < c_MaxAdjacentNodeCount; i++) {
 		AdjacentNodes[i] = nullptr;
@@ -378,7 +378,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				float feetClearY = landingFloor - s_StandHeight * 0.45F - 20.0F;
 				float headClearY = ceiling + s_StandHeight * 0.55F + 2.0F;
 				float apexY = std::max(feetClearY, headClearY);
-				Vector apex(from->Pos.m_X, apexY);
+				Vector apex(from->Anchor.m_X, apexY);
 				g_SceneMan.ForceBounds(apex);
 				// Only when it is above where the body stands on the landing (its centre about 0.45 of a standing height over the floor):
 				// lower than that it is no top at all. (Measured against the node's centre it was skipped whenever the centre sat high in
@@ -388,7 +388,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 					steps.push_back({apex, PathStepKind::Jump});
 				}
 			}
-			steps.push_back({to->Pos, kind});
+			steps.push_back({to->Anchor, kind});
 		}
 		// (Not when the route was cut short at an obstacle: then the last point is the node the unit can get to, and giving it the goal's
 		// coordinates told a unit at the foot of a hatch it couldn't pass to jump 771 px to the room above.)
@@ -1067,6 +1067,7 @@ void PathFinder::DrawDebug(const Box& area) {
 	static const unsigned char noRoomColor = static_cast<unsigned char>(Color(230, 60, 50).GetIndex());
 	static const unsigned char stepColor = static_cast<unsigned char>(Color(70, 220, 230).GetIndex());
 	static const unsigned char stairsColor = static_cast<unsigned char>(Color(220, 80, 220).GetIndex());
+	static const unsigned char channelColor = static_cast<unsigned char>(Color(150, 120, 255).GetIndex());
 	// A soldier's sizes (Soldier Light, height 100): the grid is the same for every searcher; what fits is the searcher's.
 	const float stand = 44.0F;
 	const float crawl = 24.0F;
@@ -1077,10 +1078,14 @@ void PathFinder::DrawDebug(const Box& area) {
 	for (int gy = std::max(0, fromY); gy <= toY; ++gy) {
 		for (int gx = fromX; gx <= toX; ++gx) {
 			const PathNode* node = GetPathNodeAtGridCoords(gx, gy);
+			// (A node in the air whose anchor is off its centre, in a shaft or a hatch: a small dot where routes through it go.)
+			if (node && node->m_Navigable && node->Surface < 0.0F && std::abs(node->Anchor.m_X - node->Pos.m_X) >= 2.0F) {
+				g_PrimitiveMan.DrawCircleFillPrimitive(node->Anchor, 1, channelColor);
+			}
 			if (!node || !node->m_Navigable || node->Surface < 0.0F || !NodeIsOnSolidGround(*node)) {
 				continue;
 			}
-			Vector standing(node->Pos.m_X, node->Surface - 3.0F);
+			Vector standing(node->Anchor.m_X, node->Surface - 3.0F);
 			float free = static_cast<float>(node->FreeHeight);
 			unsigned char color = free >= stand ? standColor : (free >= crawl ? crawlColor : noRoomColor);
 			g_PrimitiveMan.DrawCircleFillPrimitive(standing, 2, color);
@@ -1297,6 +1302,42 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		}
 		node->ClearLeft = left;
 		node->ClearRight = right;
+
+		// The anchor (see PathNode::Anchor), from the same look either side, two nodes out. Kept off a wall by 14 px, a soldier's half-width and
+		// a little; in the air with walls both sides within the look, in the channel's middle. On a floor it is only moved where the floor goes
+		// on there (never off an edge), and nowhere further than a node from the centre.
+		float anchorX = static_cast<float>(x);
+		const int reachSide = m_NodeDimension * 2;
+		const float offWall = 14.0F;
+		bool wallLeft = left < reachSide;
+		bool wallRight = right < reachSide;
+		if (floor < 0 || floor > centreY + m_NodeDimension / 2) {
+			if (wallLeft && wallRight) {
+				anchorX += static_cast<float>(right - left) * 0.5F;
+			} else if (wallLeft && static_cast<float>(left) < offWall) {
+				anchorX += offWall - static_cast<float>(left);
+			} else if (wallRight && static_cast<float>(right) < offWall) {
+				anchorX -= offWall - static_cast<float>(right);
+			}
+		} else {
+			if (wallLeft && static_cast<float>(left) < offWall && static_cast<float>(right) > offWall * 2.0F) {
+				anchorX += offWall - static_cast<float>(left);
+			} else if (wallRight && static_cast<float>(right) < offWall && static_cast<float>(left) > offWall * 2.0F) {
+				anchorX -= offWall - static_cast<float>(right);
+			}
+			if (anchorX != static_cast<float>(x)) {
+				int ax = static_cast<int>(anchorX);
+				bool floorThere = false;
+				for (int y = floor - 3; y <= floor + 6 && !floorThere; ++y) {
+					floorThere = g_SceneMan.GetTerrMatter(ax, y) != MaterialColorKeys::g_MaterialAir;
+				}
+				if (!floorThere) {
+					anchorX = static_cast<float>(x);
+				}
+			}
+		}
+		anchorX = std::clamp(anchorX, static_cast<float>(x - m_NodeDimension), static_cast<float>(x + m_NodeDimension));
+		node->Anchor = Vector(anchorX + (node->Pos.m_X - static_cast<float>(x)), node->Pos.m_Y);
 	}
 
 	// Stepping over something low on a floor: a kerb, a sandbag, a lump of rubble, between this node's floor and a floor level with it one or

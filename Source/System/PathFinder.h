@@ -65,6 +65,11 @@ namespace RTE {
 		static constexpr int c_MaxAdjacentNodeCount = 8; //!< The maximum number of adjacent PathNodes to any given PathNode. Thusly, also the number of directions for PathNodes to be in.
 
 		Vector Pos; //!< Absolute position of the center of this PathNode in the scene.
+		/// Where a body is in this node's cell, and what a route through it is given: the centre, moved off the walls the 24 px cells don't line
+		/// up with. In the air between walls (a shaft, a hatch, a gap), the middle of the channel at its height; beside one wall, or on a floor
+		/// against one, out from it. (Routes were the cells' centres, and up a shaft or a climb beside a ledge they ran against one wall: units
+		/// jetted into the wall, or strafed to line up.) The search, the grid and the costs keep to Pos.
+		Vector Anchor;
 
 		bool m_Navigable; //!< Whether this node can be navigated through.
 
