@@ -7,6 +7,10 @@
 #include "AEmitter.h"
 #include "SettingsMan.h"
 #include "PresetMan.h"
+#include "ActivityMan.h"
+#include "Activity.h"
+#include "MovableMan.h"
+#include "SceneMan.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -579,5 +583,285 @@ void ACRocket::Draw(const Camera& camera) const {
 	if (g_SettingsMan.DrawHandAndFootGroupVisualizations()) {
 		m_pRFootGroup->Draw(camera, true, 13);
 		m_pLFootGroup->Draw(camera, true, 13);
+	}
+}
+
+// ---------------------------------------------------------------- The rocket's autopilot (a port of Base.rte/AI/RocketAI.lua)
+
+float ACRocket::AutopilotPID::Update(float rawInput, float target) {
+	float err = 0.0F;
+	float change = 0.0F;
+	for (int tick = 0; tick < ticks; ++tick) {
+		filtered = filtered * (1.0F - leak) + rawInput * leak;
+		err = filtered - target;
+		change = filtered - lastInput;
+		lastInput = filtered;
+		integral = std::clamp(integral + err, -integralMax, integralMax);
+	}
+	return p * err + i * integral + d * change;
+}
+
+void ACRocket::AutopilotMoveLZ() {
+	RocketAutopilot& ai = m_Autopilot;
+	const float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	Vector futurePos = m_Pos + m_Vel * 7.0F;
+	if (futurePos.m_X > sceneWidth) {
+		futurePos.m_X = g_SceneMan.SceneWrapsX() ? futurePos.m_X - sceneWidth : sceneWidth - GetRadius();
+	} else if (futurePos.m_X < 0.0F) {
+		futurePos.m_X = g_SceneMan.SceneWrapsX() ? futurePos.m_X + sceneWidth : GetRadius();
+	}
+	if (ai.deliveryState == LAUNCH) {
+		ai.lzPos.m_X = futurePos.m_X;
+	} else {
+		ai.lzPos = g_SceneMan.MovePointToGround(Vector(futurePos.m_X, std::min(futurePos.m_Y, m_Pos.m_Y)), static_cast<int>(ai.groundDist), 5);
+	}
+}
+
+void ACRocket::UpdateAutopilot() {
+	RocketAutopilot& ai = m_Autopilot;
+	Controller& ctrl = m_Controller;
+	const int interval = std::max(1, g_SettingsMan.GetAIUpdateInterval());
+	const float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+
+	// The script's Create: the landing zone under it, the controllers, and a human team's empty rocket kept from going home at once.
+	if (!ai.begun) {
+		ai.begun = true;
+		ai.stableTimer.Reset();
+		ai.stuckTimer.Reset();
+		ai.doorTimer.Reset();
+		ai.obstacleTimer.SetSimTimeLimitMS(100);
+		ai.playerInterferedTimer.SetSimTimeLimitMS(500);
+		ai.playerInterferedTimer.Reset();
+		ai.deliveryState = FALL;
+		ai.lastAIMode = AIMODE_NONE;
+		ai.groundDist = GetRadius() / 1.35F;
+		ai.lzPos = g_SceneMan.MovePointToGround(m_Pos, static_cast<int>(ai.groundDist), 9);
+		ai.velIntegrator = 0.0F;
+		ai.angPID = AutopilotPID{2.7F, 0.01F, 0.9F, 0.6F, 150.0F, interval, GetRotAngle(), GetRotAngle()};
+		ai.xPID = AutopilotPID{0.2F, 0.0F, 0.5F, 0.6F, 100.0F, interval};
+		ai.yPID = AutopilotPID{0.02F, 0.07F, 4.0F, 0.5F, 30.0F, interval, ai.lzPos.m_Y, ai.lzPos.m_Y};
+		if (m_AIMode == AIMODE_DELIVER && IsInventoryEmpty() && g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->IsHumanTeam(m_Team)) {
+			m_AIMode = AIMODE_STAY;
+		}
+	}
+
+	// The player flew it a while (no autopilot update for half a second): the landing zone brought back near where it is now.
+	if (ai.playerInterferedTimer.IsPastSimTimeLimit()) {
+		ai.stuckTimer.Reset();
+		AutopilotMoveLZ();
+	}
+	ai.playerInterferedTimer.Reset();
+
+	// A new order: home to orbit, or down.
+	if (m_AIMode != ai.lastAIMode) {
+		ai.lastAIMode = static_cast<AIMode>(m_AIMode);
+		if (m_AIMode == AIMODE_RETURN) {
+			ai.deliveryState = LAUNCH;
+			ai.lzPos.m_Y = -10000.0F;
+		} else {
+			ai.deliveryState = FALL;
+		}
+		AutopilotMoveLZ();
+	}
+
+	// Stable and upright for a while: the landing zone right under it.
+	ai.velIntegrator = ai.velIntegrator * 0.8F + m_Vel.GetMagnitude() * 0.2F;
+	if (ai.velIntegrator > 5.0F || std::abs(GetAngularVel()) > 1.0F) {
+		ai.stableTimer.Reset();
+	} else {
+		ai.lzPos.m_X = m_Pos.m_X;
+	}
+
+	auto isCraft = [](const MovableObject* mo) { return mo && (mo->GetClassName() == "ACDropShip" || mo->GetClassName() == "ACRocket"); };
+
+	// The delivery.
+	if (ai.deliveryState == FALL) {
+		// About to hit something on the way down: the landing zone brought nearer.
+		if (ai.lzPos.m_Y - m_Pos.m_Y > GetRadius()) {
+			Vector obstaclePos;
+			Vector freePos;
+			if (g_SceneMan.CastObstacleRay(m_Pos, (m_Vel + Vector(0.0F, 4.0F)) * 15.0F, obstaclePos, freePos, GetID(), IgnoresWhichTeam(), 0, 10) > -1.0F) {
+				AutopilotMoveLZ();
+			}
+		}
+		// Something in the way of the descent: a craft, or a team mate, stepped round.
+		if (ai.obstacleTimer.IsPastSimTimeLimit()) {
+			ai.obstacleTimer.Reset();
+			MOID hit = g_SceneMan.CastMORay(m_Pos, Vector(m_Vel.m_X + RandomNum(-1.0F, 1.0F), std::max(m_Vel.m_Y, 4.0F)) * 40.0F, GetID(), IgnoresWhichTeam(), 0, false, 5);
+			if (hit != g_NoMOID) {
+				MovableObject* mo = g_MovableMan.GetMOFromID(g_MovableMan.GetRootMOID(hit));
+				if (isCraft(mo)) {
+					ai.lzPos.SetXY(mo->GetPos().m_X + mo->GetRadius() * 3.0F, std::max(m_Pos.m_Y - 200.0F, 0.0F));
+					ai.obstacleTimer.SetSimTimeLimitMS(750);
+					ai.obstacle = true;
+				} else if (mo && g_MovableMan.IsActor(mo) && mo->GetTeam() == m_Team) {
+					float newLZx = mo->GetPos().m_X + mo->GetDiameter() + GetDiameter();
+					if (newLZx > sceneWidth) {
+						newLZx = g_SceneMan.SceneWrapsX() ? newLZx - sceneWidth : mo->GetPos().m_X - (mo->GetDiameter() + GetDiameter());
+					}
+					ai.lzPos.SetXY(newLZx, std::max(mo->GetPos().m_Y - 200.0F, 0.0F));
+				}
+			} else if (ai.obstacle) {
+				ai.obstacle = false;
+				AutopilotMoveLZ();
+				ai.obstacleTimer.SetSimTimeLimitMS(100);
+			}
+		}
+		if (m_AIMode == AIMODE_DELIVER && IsInventoryEmpty()) {
+			// Nothing to deliver: home.
+			m_AIMode = AIMODE_RETURN;
+			ai.deliveryState = LAUNCH;
+			ai.lzPos.m_Y = -10000.0F;
+		} else {
+			if (ai.stableTimer.IsPastSimMS(500)) {
+				ai.lzPos = g_SceneMan.MovePointToGround(m_Pos, static_cast<int>(ai.groundDist), 6);
+			}
+			if (m_AIMode != AIMODE_STAY && g_SceneMan.ShortestDistance(m_Pos, ai.lzPos, false).MagnitudeIsLessThan(25.0F)) {
+				ai.deliveryState = UNLOAD;
+			}
+		}
+	} else if (ai.deliveryState == UNLOAD) {
+		if (IsInventoryEmpty() && m_AIMode != AIMODE_STAY) {
+			// Empty: a pause, then home.
+			if (ai.doorTimer.IsPastSimMS(750)) {
+				m_AIMode = AIMODE_RETURN;
+				ai.deliveryState = LAUNCH;
+				ai.lzPos.m_Y = -10000.0F;
+				if (GetHatchState() == OPEN) {
+					CloseHatch();
+				}
+			}
+		} else if (ai.stableTimer.IsPastSimMS(300) && GetHatchState() == CLOSED) {
+			OpenHatch();
+			ai.doorTimer.Reset();
+		}
+	} else if (ai.deliveryState == LAUNCH) {
+		// Another craft in the way of the climb: stepped round.
+		if (ai.obstacleTimer.IsPastSimTimeLimit()) {
+			ai.obstacleTimer.Reset();
+			MOID hit = g_SceneMan.CastMORay(m_Pos, Vector(m_Vel.m_X + RandomNum(-1.0F, 1.0F), std::min(m_Vel.m_Y, -1.0F)) * 50.0F, GetID(), IgnoresWhichTeam(), 0, false, 5);
+			if (hit != g_NoMOID) {
+				MovableObject* mo = g_MovableMan.GetMOFromID(g_MovableMan.GetRootMOID(hit));
+				if (isCraft(mo)) {
+					ai.lzPos.SetXY(mo->GetPos().m_X - (mo->GetDiameter() + GetDiameter()), m_Pos.m_Y + m_Vel.m_Y);
+					ai.obstacleTimer.SetSimTimeLimitMS(750);
+					ai.obstacle = true;
+				}
+			} else if (ai.obstacle) {
+				ai.obstacle = false;
+				ai.lzPos.m_Y = -10000.0F;
+				AutopilotMoveLZ();
+				ai.obstacleTimer.SetSimTimeLimitMS(100);
+			} else {
+				AutopilotMoveLZ();
+			}
+		}
+	}
+
+	if (m_AIMode == AIMODE_GOTO) {
+		ai.lzPos = GetLastAIWaypoint();
+		ai.deliveryState = LAUNCH;
+	}
+
+	const float rotAngle = GetRotAngle();
+	// Up and down: the main engine, in bursts so it doesn't overshoot.
+	if (ai.deliveryState != UNLOAD) {
+		float change = ai.yPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel, ai.lzPos, false).m_Y, 0.0F);
+		if (std::abs(rotAngle) < 0.9F) {
+			if (m_AIMode == AIMODE_GOTO) {
+				if (change < 0.0F) {
+					ai.burstUp = false;
+					ctrl.SetState(MOVE_UP, true);
+				}
+			} else if (ai.deliveryState == LAUNCH && change < -7.0F) {
+				// (No bursts on the way home.)
+				ai.burstUp = false;
+				ctrl.SetState(MOVE_UP, true);
+			} else if (change < -2.2F && !ai.burstUp) {
+				ai.burstUp = true;
+				ai.burstUpWait = std::max(9.0F - change, 2.0F);
+				if (change < -6.0F) {
+					ctrl.SetState(MOVE_UP, true);
+					ai.burstUp = false;
+				}
+			} else if (change > 20.0F) {
+				ai.burstUp = false;
+				ctrl.SetState(MOVE_DOWN, true);
+			}
+		} else if (rotAngle > 2.14F && rotAngle < 4.14F) {
+			// Upside down.
+			ctrl.SetState(MOVE_DOWN, true);
+		}
+	}
+
+	// Sideways: the rocket leans to move.
+	float change = ai.xPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 20.0F, ai.lzPos, false).m_X, 0.0F);
+	float targetAng = 0.0F;
+	if (m_Vel.m_Y > 0.0F) {
+		if (change < -4.0F) {
+			targetAng = -std::max(change / 40.0F, -0.5F);
+		} else if (change > 4.0F) {
+			targetAng = -std::min(change / 40.0F, 0.5F);
+		}
+	} else {
+		if (change > 4.0F) {
+			targetAng = -std::max(change / 40.0F, -0.5F);
+		} else if (change < -4.0F) {
+			targetAng = -std::min(change / 40.0F, 0.5F);
+		}
+	}
+
+	// The lean, on the side thrusters, in bursts (none for a slight tilt).
+	change = ai.angPID.Update(rotAngle + GetAngularVel(), targetAng);
+	if (static_cast<int>(std::floor(std::abs(rotAngle) + 0.9F)) != 0) {
+		if (change > 1.1F && !ai.burstRight) {
+			ai.burstRight = true;
+			ai.burstRightWait = std::max(5.0F - change, 2.0F);
+		} else if (change < -1.1F && !ai.burstLeft) {
+			ai.burstLeft = true;
+			ai.burstLeftWait = std::max(5.0F + change, 2.0F);
+		}
+	}
+
+	// The bursts: a wait, then fired for a few frames.
+	if (ai.burstRight) {
+		ai.burstRightWait -= static_cast<float>(interval);
+		if (ai.burstRightWait < 0.0F) {
+			ctrl.SetState(MOVE_RIGHT, true);
+			if (ai.burstRightWait < -4.0F) {
+				ai.burstRight = false;
+			}
+		}
+	}
+	if (ai.burstLeft) {
+		ai.burstLeftWait -= static_cast<float>(interval);
+		if (ai.burstLeftWait < 0.0F) {
+			ctrl.SetState(MOVE_LEFT, true);
+			if (ai.burstLeftWait < -4.0F) {
+				ai.burstLeft = false;
+			}
+		}
+	}
+	if (ai.burstUp) {
+		ai.burstUpWait -= static_cast<float>(interval);
+		if (ai.burstUpWait < 0.0F) {
+			ctrl.SetState(MOVE_UP, true);
+			if (ai.burstUpWait < -8.0F) {
+				ai.burstUp = false;
+			}
+		}
+	}
+
+	if (m_AIMode == AIMODE_STAY) {
+		ai.stuckTimer.Reset();
+		// (No main engine at a standstill: it closes the hatch.)
+		if (m_Vel.GetLargest() < 6.0F) {
+			ctrl.SetState(MOVE_UP, false);
+		}
+	} else if (m_Vel.GetLargest() > 3.0F) {
+		ai.stuckTimer.Reset();
+	} else if (m_AIMode == AIMODE_SCUTTLE || ai.stuckTimer.IsPastSimMS(40000)) {
+		// Hopelessly stuck: scuttled.
+		GibThis();
 	}
 }

@@ -55,9 +55,18 @@ function Create(self)
 		self.AIMode = Actor.AIMODE_STAY;	-- Stop the craft from returning to orbit immediately
 	end
 	---------------- AI variables end ----------------
+
+	-- The engine's autopilot (ACRocket::UpdateAutopilot, a port of this script) where the build has it; else the script below. (Asked
+	-- without the error a missing member is, for an older exe; CCCP_LUA_CRAFT=1 keeps the script.)
+	local ok, member = pcall(function() return self.UpdateAutopilot; end);
+	self.EngineAutopilot = ok and member ~= nil and not (os and os.getenv and os.getenv("CCCP_LUA_CRAFT") == "1");
 end
 
 function ThreadedUpdateAI(self)
+	if self.EngineAutopilot then
+		self:UpdateAutopilot();
+		return;
+	end
 	self.Ctrl = self:GetController();
 
 	if self.PlayerInterferedTimer:IsPastSimTimeLimit() then

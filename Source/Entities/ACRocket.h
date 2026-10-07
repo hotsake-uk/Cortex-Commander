@@ -157,6 +157,11 @@ namespace RTE {
 		/// @return Current landing gear state.
 		unsigned int GetGearState() const { return m_GearState; }
 
+		/// The engine's rocket autopilot, one AI update of it: a faithful port of Base.rte/AI/RocketAI.lua (the landing zone, the three PID
+		/// controllers, the burst timing of the main and side engines, the delivery stages, stepping round craft and team mates, going home,
+		/// scuttling when stuck), so a rocket flies as it did under the script. RocketAI.lua calls it where the build has it.
+		void UpdateAutopilot();
+
 		/// Protected member variable and method declarations
 	protected:
 		// Member variables
@@ -187,6 +192,48 @@ namespace RTE {
 
 		/// Private member variable and method declarations
 	private:
+		/// The script's RegulatorPID (Base.rte/AI/PID.lua): the input leaked through a filter, ticked once per sim update since the last.
+		struct AutopilotPID {
+			float p = 0.0F;
+			float i = 0.0F;
+			float d = 0.0F;
+			float leak = 1.0F;
+			float integralMax = 0.0F;
+			int ticks = 1;
+			float lastInput = 0.0F;
+			float filtered = 0.0F;
+			float integral = 0.0F;
+			float Update(float rawInput, float target);
+		};
+		/// The autopilot's state (the script's members).
+		struct RocketAutopilot {
+			bool begun = false;
+			Timer stableTimer;
+			Timer stuckTimer;
+			Timer doorTimer;
+			Timer obstacleTimer;
+			Timer playerInterferedTimer;
+			int deliveryState = FALL;
+			AIMode lastAIMode = AIMODE_NONE;
+			float groundDist = 0.0F;
+			Vector lzPos; //!< Where it is going: the landing zone, or the way home.
+			float velIntegrator = 0.0F;
+			AutopilotPID angPID;
+			AutopilotPID xPID;
+			AutopilotPID yPID;
+			bool obstacle = false;
+			bool burstUp = false;
+			float burstUpWait = 0.0F;
+			bool burstLeft = false;
+			float burstLeftWait = 0.0F;
+			bool burstRight = false;
+			float burstRightWait = 0.0F;
+		};
+		RocketAutopilot m_Autopilot;
+
+		/// The script's MoveLZ: the landing zone moved under where it will be shortly (or, going home, just its x).
+		void AutopilotMoveLZ();
+
 		/// Clears all the member variables of this ACRocket, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();
