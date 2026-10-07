@@ -518,7 +518,7 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	if Target.Team ~= Owner.Team then
 		local ToTarget = SceneMan:ShortestDistance(Owner.Pos, Target.Pos, false);
 		if ToTarget.Largest < H * 0.33 + targetH * 0.33 then
-			AI.lateralMoveState = ToTarget.X < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+			SharedBehaviors.StepTo(AI, Owner, Target.Pos, 400);
 			return true;
 		end
 		return false;
@@ -536,6 +536,10 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	if AI.followHold then
 		local off = ToGoal.Largest > H * nearOut + targetH * nearOut or moving or SharedBehaviors.InDoorSweep(Owner);
 		if not off and InSight() then
+			-- (Held: no move of the engine's either.)
+			if SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive then
+				Owner:CancelTacticalMove();
+			end
 			return true;
 		end
 		AI.followHold = false;
@@ -544,8 +548,9 @@ function SharedBehaviors.FollowStep(AI, Owner)
 		return true;
 	end
 	if ToGoal:MagnitudeIsLessThan(H * 1.5) and math.abs(ToGoal.Y) < H * 0.3 and InSight() then
+		-- (Walked by the engine's motor, a short move to the place, renewed each tick while it is near and in sight.)
 		if math.abs(ToGoal.X) > 3 then
-			AI.lateralMoveState = ToGoal.X < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+			SharedBehaviors.StepTo(AI, Owner, Goal, 400);
 		end
 		return true;
 	end
