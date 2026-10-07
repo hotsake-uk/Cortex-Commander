@@ -1,0 +1,13 @@
+#!/bin/sh
+# Every commit message carries the game version it builds (c_VersionString in Source/System/GameVersion.h, as the pre-commit hook left
+# it): a "Version x.y.z" line is added at the end, unless the message has one.
+file="Source/System/GameVersion.h"
+msg="$1"
+[ -f "$file" ] || exit 0
+version=$(sed -n -E 's/.*c_VersionString = "([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' "$file")
+[ -n "$version" ] || exit 0
+if grep -q "^Version $version$" "$msg"; then
+	exit 0
+fi
+printf '\nVersion %s\n' "$version" >> "$msg"
+exit 0
