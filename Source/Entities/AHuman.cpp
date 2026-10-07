@@ -3335,25 +3335,26 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 			float roomLeft = std::max(0.0F, fromTarget - zoneLeft);
 			wantVx = std::clamp(vel.m_X, -std::sqrt(2.0F * sideAccel * roomLeft), std::sqrt(2.0F * sideAccel * roomRight));
 		} else {
+			// Not over it: an arc, as a person flies one. Across from the start, at the speed that spreads the crossing over the time the climb
+			// takes (so the top of the arc comes over the landing), never faster than the lean can stop from in the room left; coming down,
+			// as fast as covers the gap in the fall's time. (Up the wall and then over, as it was, cost a stop at the top and a start again,
+			// and the hover there was the bursts the player saw.)
 			float direction = toTarget.m_X > 0.0F ? 1.0F : -1.0F;
 			float room = std::max(0.0F, std::abs(toTarget.m_X) - (landing ? std::max(4.0F, (zoneRight - zoneLeft) * 0.5F) : 4.0F));
 			float stoppable = std::sqrt(2.0F * sideAccel * room);
 			float cap = std::clamp(std::abs(toTarget.m_X), 3.0F * ppm, 7.0F * ppm);
 			float along = vel.m_X * direction;
-			// Coming down to it: only as fast across as covers the gap in the time the fall takes, which gravity gives for nothing. Held to
-			// the full crossing speed, a unit jumping down to a far platform burned its whole tank on speed it didn't need, and fell short.
-			if (rise < 0.0F) {
+			if (rise > 12.0F) {
+				// Climbing: the time the climb takes at the rate wanted, and the crossing spread over it.
+				float up = std::max(0.0F, -vel.m_Y);
+				float climbTime = std::max(0.3F, rise / std::max(2.5F * ppm, up + 1.5F * ppm));
+				cap = std::clamp(room / climbTime, 1.5F * ppm, cap);
+			} else if (rise < 0.0F) {
 				float down = std::max(0.0F, vel.m_Y);
 				float fallTime = (down + std::sqrt(down * down + 2.0F * g * -rise)) / std::max(g, 1.0F);
 				cap = std::clamp(room / std::max(fallTime, 0.2F), 1.5F * ppm, cap);
 			}
-			wantVx = direction * std::min(std::max(cap, along), stoppable);
-			// Still well under the height it needs: only as fast across as gets there when the climb is done. Carried across at the run's
-			// speed under a ledge, a unit was past it before it was up, and couldn't brake and climb at once; it went 800 px on and fell.
-			if (rise > 12.0F) {
-				float climbTime = std::max(0.3F, rise / (4.0F * ppm));
-				wantVx = direction * std::min(std::abs(wantVx), room / climbTime);
-			}
+			wantVx = direction * std::min(std::max(cap, std::min(along, stoppable)), stoppable);
 		}
 		return Vector(wantVx, wantVy);
 	};
@@ -3373,19 +3374,27 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		return false;
 	};
 
-	const float leans[] = {-1.0F, -0.5F, 0.0F, 0.5F, 1.0F};
+	// The leans tried: five fixed, and the one held now, so flying on as it is is always a choice. The jet on or off with each.
+	const float leans[] = {-1.0F, -0.5F, 0.0F, 0.5F, 1.0F, m_PilotLean};
+	const int leanCount = 6;
+	const int choiceCount = leanCount * 2;
 	const float step = 1.0F / 30.0F;
-	const float holdTime = 0.2F;
+	// The choice is held for a third of a second before the tracking rule takes over: judged on a fifth, a burn too short to matter won or
+	// lost on its first moments, and the jet went on and off thirty times a flight.
+	const float holdTime = 0.33F;
+	// A decision about the jet stands for a moment: lit, it stays lit 150 ms; cut, it stays out 120 ms, unless the flight would hit something.
+	// (A person holds the jet or lets it be; the old choice every tick was the stutter of bursts the player saw.)
+	const bool jetDwell = m_PilotJetTimer.GetElapsedSimTimeMS() < (m_PilotJetOn ? 150.0 : 120.0);
 	const float horizon = 1.0F;
 	float bestCost = std::numeric_limits<float>::max();
-	int bestChoice = 7;
+	int bestChoice = leanCount + 2;
 	const bool drawn = g_SettingsMan.NavDebugOverlay() >= 2;
 	std::vector<Vector> flown;
 	std::vector<Vector> bestFlown;
-	for (int choice = 0; choice < 10; ++choice) {
+	for (int choice = 0; choice < choiceCount; ++choice) {
 		flown.clear();
-		bool heldJet = choice >= 5;
-		float heldLean = leans[choice % 5];
+		bool heldJet = choice >= leanCount;
+		float heldLean = leans[choice % leanCount];
 		Vector pos = m_Pos;
 		Vector vel = m_Vel * ppm;
 		float fuel = m_pJetpack->GetJetTimeLeft();
@@ -3427,8 +3436,9 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		if (choice == m_PilotLastChoice) {
 			cost *= 0.95F;
 		}
-		if (m_PilotLastChoice >= 0 && (choice >= 5) != (m_PilotLastChoice >= 5)) {
-			cost += 0.25F;
+		if (m_PilotLastChoice >= 0 && heldJet != m_PilotJetOn) {
+			// (While the last decision stands, only a flight into the terrain, whose cost is in the tens, outweighs this.)
+			cost += jetDwell ? 8.0F : 0.4F;
 		}
 		if (cost < bestCost) {
 			bestCost = cost;
@@ -3439,12 +3449,22 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		}
 	}
 	m_PilotLastChoice = bestChoice;
+	bool jetChosen = bestChoice >= leanCount;
+	if (jetChosen != m_PilotJetOn) {
+		m_PilotJetOn = jetChosen;
+		m_PilotJetTimer.Reset();
+	}
+	// The lean moves towards the one chosen at a thumb's pace, full swing in a third of a second: snapped between full left and full right,
+	// as it was, the nozzle wagged and the body with it.
+	float leanChosen = leans[bestChoice % leanCount];
+	float slew = 6.0F * g_TimerMan.GetDeltaTimeSecs() * static_cast<float>(std::max(1, g_SettingsMan.GetAIUpdateInterval()));
+	m_PilotLean += std::clamp(leanChosen - m_PilotLean, -slew, slew);
 	// Traced (CCCP_AI_LOG and the AITrace value): what it chose and why, four times a second.
 	if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace") && m_PilotTraceTimer.IsPastSimMS(250)) {
 		m_PilotTraceTimer.Reset();
 		Vector want = wanted(m_Pos, m_Vel * ppm) / ppm;
 		g_ConsoleMan.PrintString("AITRACE pilot at " + std::to_string(m_Pos.GetFloorIntX()) + "," + std::to_string(m_Pos.GetFloorIntY()) + " vel " + std::to_string(static_cast<int>(m_Vel.m_X * 10.0F)) + "," + std::to_string(static_cast<int>(m_Vel.m_Y * 10.0F)) +
-		                         " want " + std::to_string(static_cast<int>(want.m_X * 10.0F)) + "," + std::to_string(static_cast<int>(want.m_Y * 10.0F)) + " (dm/s) jet " + (bestChoice >= 5 ? "on" : "off") + " lean " + std::to_string(static_cast<int>(leans[bestChoice % 5] * 100.0F)) +
+		                         " want " + std::to_string(static_cast<int>(want.m_X * 10.0F)) + "," + std::to_string(static_cast<int>(want.m_Y * 10.0F)) + " (dm/s) jet " + (jetChosen ? "on" : "off") + " lean " + std::to_string(static_cast<int>(m_PilotLean * 100.0F)) +
 		                         " fuel " + std::to_string(static_cast<int>(m_pJetpack->GetJetTimeLeft())) + " push " + std::to_string(static_cast<int>(fullAccel)) + " ratio " + std::to_string(static_cast<int>(m_JetAccelRatio * 100.0F)) + " target " + std::to_string(static_cast<int>(target.m_X)) + "," + std::to_string(static_cast<int>(floorY)) +
 		                         " zone " + std::to_string(static_cast<int>(zoneLeft)) + "/" + std::to_string(static_cast<int>(zoneRight)));
 	}
@@ -3458,8 +3478,8 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		}
 		g_PrimitiveMan.DrawCirclePrimitive(target, 5, g_WhiteColor);
 	}
-	bool jet = bestChoice >= 5;
-	float lean = leans[bestChoice % 5];
+	bool jet = jetChosen;
+	float lean = m_PilotLean;
 	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range).
 	// In the world's terms, whichever way the body faces: measured (the flight gym's CCCP_FLIGHT_STICK), +0.3 pushed a soldier right at
 	// 8 m/s a second facing either way. Mirrored with the facing, as it was, every unit facing left leant the wrong way.

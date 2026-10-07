@@ -716,6 +716,9 @@ namespace RTE {
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
 		int m_PilotLastChoice = -1;
+		bool m_PilotJetOn = false; //!< Whether PilotFlight last asked for the jet, and since when: a decision is held a moment (see PilotFlight).
+		Timer m_PilotJetTimer;
+		float m_PilotLean = 0.0F; //!< The lean PilotFlight last gave, which it moves towards the one chosen at a thumb's pace.
 		Timer m_PilotTraceTimer; //!< For PilotFlight's trace lines. //!< PilotFlight's last choice, kept unless another is clearly better.
 
 		/// The jet's push at full lean-less burn now, in px/s^2, as learned.

@@ -550,10 +550,24 @@ function SharedBehaviors.FindLanding(Owner)
 	local index = 0;
 	local first = nil;
 	local candidates = {};
+	-- (The air is looked for along each leg of the route too, every 16 px: a hop across a gap is one leg from floor to floor, both of its
+	-- points on the ground, and looked at by its points alone it was no flight at all, so the old burst code flew it.)
+	local Last = Vector(Owner.Pos.X, Owner.Pos.Y); -- (The route's points start after the unit's own place: its first leg is from here.)
 	for pos in Owner.MovePath do
 		index = index + 1;
 		if index > 30 then
 			break;
+		end
+		if Last then
+			local Leg = SceneMan:ShortestDistance(Last, pos, false);
+			local samples = math.floor(Leg.Magnitude / 16);
+			for k = 1, samples - 1 do
+				local Sample = Last + Leg * (k / samples);
+				if not SceneMan:CastStrengthRay(Sample, Vector(0, h * 0.8), 5, Vector(), 2, rte.grassID, true) then
+					airborne = true;
+					break;
+				end
+			end
 		end
 		local Floor = Vector();
 		local grounded = SceneMan:CastStrengthRay(pos, Vector(0, h * 0.8), 5, Floor, 2, rte.grassID, true);
@@ -565,6 +579,7 @@ function SharedBehaviors.FindLanding(Owner)
 			table.insert(candidates, landing);
 			airborne = false;
 		end
+		Last = pos;
 	end
 	if not first then
 		return nil;
@@ -712,7 +727,7 @@ function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
 	end
 	-- Falling with no jet asked for, towards a landing below: a drop, left to gravity (the native AI lights the jet itself at a dangerous
 	-- speed). A plan begun here jetted every step down a stair.
-	if AI.flying and not wantsJet and landing.floorY > Owner.Pos.Y then
+	if AI.flying and not wantsJet and landing.floorY > Owner.Pos.Y and math.abs(SceneMan:ShortestDistance(Owner.Pos, landing.pos, false).X) < h * 0.5 then
 		return nil;
 	end
 	-- Off the ground only with the fuel the flight takes, and a third over: the climb at about 4 m/s, the crossing lit about half the time,
