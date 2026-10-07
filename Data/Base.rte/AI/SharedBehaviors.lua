@@ -1737,7 +1737,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		-- jet's overshoot left units following a route that had fallen behind them, turning back for points already passed until the
 		-- scheduled re-path came round. The answer replaces the route only if the goal is reachable from here (Actor::RequestRouteCheck).
 		-- (Not in a shaft climb, which follows its column.)
-		if not Climb and not NeedsNewPath and (AI.flying or AI.jump) and Owner.MovePathSize > 0 and RouteCheckTimer:IsPastSimMS(500) then
+		-- (Nor in a jet climb to a point well above: checked half way up a 170 px diagonal climb onto a roof, the answer from mid-air went
+		-- back down to the wall and up again, the unit took it, and the climb's speed carried it a hundred pixels past the roof.)
+		if not Climb and not AI.jetClimb and not NeedsNewPath and (AI.flying or AI.jump) and Owner.MovePathSize > 0 and RouteCheckTimer:IsPastSimMS(500) then
 			RouteCheckTimer:Reset();
 			Owner:RequestRouteCheck();
 		end
