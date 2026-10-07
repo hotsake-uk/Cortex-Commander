@@ -21,7 +21,18 @@ foreach ($run in 1..$Repeat) {
 			"Sky" { & "$rt\AIBunker.ps1" -Scenario AIBunker | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 			"Tower" { $env:CCCP_BUNKER_TOWER = "1"; & "$rt\AIBunker.ps1" -Scenario AIBunker | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)'; Remove-Item Env:\CCCP_BUNKER_TOWER }
 			"AIBywater" { & "$rt\AIBunker.ps1" -Scenario AIBywater | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
-			"Flight" { & "$rt\AIBunker.ps1" -Scenario AIFlight -Wait 45 | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'FLIGHT (.+?): (landed in ([\d\.]+) s|GAVE UP|died)' }
+			"Flight" {
+				# Both batches of the flight gym (FlightGym.lua), one game each, their logs joined.
+				$log = "$rt\Output\flight_joined.txt"
+				Set-Content $log "" -Encoding utf8
+				foreach ($batch in 1, 2) {
+					$env:CCCP_FLIGHT_BATCH = "$batch"
+					& "$rt\AIBunker.ps1" -Scenario AIFlight -Wait 45 | Out-Null
+					Get-Content "$rt\Output\aibunker_1.txt" | Add-Content $log
+				}
+				Remove-Item Env:\CCCP_FLIGHT_BATCH
+				$pattern = 'FLIGHT (.+?): (landed in ([\d\.]+) s|GAVE UP|died)'
+			}
 			"AIHemslock" { & "$rt\AIBunker.ps1" -Scenario AIHemslock | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 		}
 		if (Test-Path $log) {
