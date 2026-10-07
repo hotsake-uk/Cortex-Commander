@@ -480,6 +480,19 @@ void RunGameLoop() {
 				ActorWater::Update();
 			}
 
+			// CCCP_TIME_SCALE: the simulation run faster than real time (3 for three times), for test runs; set once the game is going.
+			{
+				static bool timeScaleSet = false;
+				if (!timeScaleSet) {
+					timeScaleSet = true;
+					if (const char* scale = std::getenv("CCCP_TIME_SCALE")) {
+						float value = std::strtof(scale, nullptr);
+						if (value > 0.1F && value < 20.0F) {
+							g_TimerMan.SetTimeScale(value);
+						}
+					}
+				}
+			}
 			g_LuaMan.ClearScriptTimings();
 			{
 				PerformanceMan::LogScope logScope("Sim: MovableMan total");

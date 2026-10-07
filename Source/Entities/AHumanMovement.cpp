@@ -223,6 +223,22 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 	return true;
 }
 
+bool AHuman::ShaftHere(float& middleX, float& width) const {
+	float h = m_CharHeight;
+	Vector from(m_Pos.m_X, m_Pos.m_Y - h * 0.1F);
+	Vector leftHit;
+	Vector rightHit;
+	Vector free;
+	bool left = g_SceneMan.CastObstacleRay(from, Vector(-h, 0.0F), leftHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
+	bool right = g_SceneMan.CastObstacleRay(from, Vector(h, 0.0F), rightHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
+	if (!left || !right) {
+		return false;
+	}
+	width = Towards(leftHit, rightHit).m_X;
+	middleX = leftHit.m_X + width * 0.5F;
+	return width <= h * 1.2F;
+}
+
 void AHuman::PopRoutePoint() {
 	if (m_MovePath.empty()) {
 		return;
@@ -399,7 +415,12 @@ int AHuman::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 			mover.lastJetTime = -1.0;
 		} else {
-			Vector command = PilotFlight(flight.landing, flight.floorY);
+			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing.
+			if (flight.via && m_Pos.m_Y <= flight.viaPoint.m_Y + 8.0F) {
+				flight.via = false;
+				MoverTrace("out of the shaft; for the landing");
+			}
+			Vector command = flight.via ? PilotFlight(flight.viaPoint, -1.0F) : PilotFlight(flight.landing, flight.floorY);
 			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 			return RouteMover::Moving;
@@ -498,6 +519,17 @@ int AHuman::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 			return RouteMover::Moving;
 		}
+		// In a shaft (walls both sides) with the landing above: lined up under its middle first, walking there with no jet, and flown up
+		// the middle to a point over the mouth before turning for the landing. Lit beside the middle, a unit scraped up one wall and burned
+		// the tank pinned under the lip.
+		float shaftMiddle = 0.0F;
+		float shaftWidth = 0.0F;
+		bool inShaft = toLanding.m_Y < -h * 0.3F && ShaftHere(shaftMiddle, shaftWidth);
+		if (inShaft && std::abs(shaftMiddle - m_Pos.m_X) > std::max(3.0F, h * 0.05F)) {
+			ctrl.SetState(shaftMiddle < m_Pos.m_X ? MOVE_LEFT : MOVE_RIGHT, true);
+			mover.progressTimer.Reset();
+			return RouteMover::Moving;
+		}
 		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
 		float needed = FlightFuelNeeded(landing, landingFloorY);
 		if (m_pJetpack->GetJetTimeLeft() >= needed || mover.progressTimer.IsPastSimMS(8000)) {
@@ -507,6 +539,12 @@ int AHuman::MoveAlongRoute() {
 				mover.flight.floorY = landingFloorY;
 				mover.flight.pointsToLanding = pointsToLanding;
 				mover.flight.timer.Reset();
+				mover.flight.via = inShaft;
+				if (inShaft) {
+					// Over the mouth: at the shaft's middle, a body's height over the landing's floor (clear of the lip whichever side it is).
+					mover.flight.viaPoint = Vector(shaftMiddle, landingFloorY - h * 1.0F);
+					MoverTrace("up the shaft via " + std::to_string(static_cast<int>(shaftMiddle)) + "," + std::to_string(static_cast<int>(mover.flight.viaPoint.m_Y)));
+				}
 				MoverTrace("take-off for " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)));
 				Vector command = PilotFlight(landing, landingFloorY);
 				ctrl.SetState(BODY_JUMPSTART, true);

@@ -2,7 +2,8 @@ param(
 	[ValidateSet("ours", "base")] [string]$Build = "ours", # Our build, or the original AI's (../cccp-ai-baseline, patched gyms).
 	[int]$Repeat = 3,
 	[string]$Label = "bench",
-	[string[]]$Suites = @("AIGym", "Sky", "Tower", "AIBywater", "AIHemslock")
+	[string[]]$Suites = @("AIGym", "Sky", "Tower", "AIBywater", "AIHemslock"),
+	[double]$Speed = 1 # The simulation's speed against real time, passed to the gym scripts (a pass at 3 takes a third of the time).
 )
 # The AI benchmark: every gym, Repeat times, on one build, each course's result written as a line of results.csv
 # (build,suite,run,course,result,seconds). Tools/RenderTest/Bench.py compares two builds' files.
@@ -17,24 +18,24 @@ foreach ($run in 1..$Repeat) {
 	foreach ($suite in $Suites) {
 		Remove-Item Env:\CCCP_BUNKER_TOWER -ErrorAction SilentlyContinue
 		switch ($suite) {
-			"AIGym" { & "$rt\AIGym.ps1" | Out-Null; $log = "$rt\Output\aigym_1.txt"; $pattern = 'AIGYM (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
-			"Sky" { & "$rt\AIBunker.ps1" -Scenario AIBunker | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
-			"Tower" { $env:CCCP_BUNKER_TOWER = "1"; & "$rt\AIBunker.ps1" -Scenario AIBunker | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)'; Remove-Item Env:\CCCP_BUNKER_TOWER }
-			"AIBywater" { & "$rt\AIBunker.ps1" -Scenario AIBywater | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
-			"Recover" { & "$rt\AIBunker.ps1" -Scenario AIRecover -Wait 30 | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'RECOVER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"AIGym" { & "$rt\AIGym.ps1" -Speed $Speed | Out-Null; $log = "$rt\Output\aigym_1.txt"; $pattern = 'AIGYM (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"Sky" { & "$rt\AIBunker.ps1" -Scenario AIBunker -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"Tower" { $env:CCCP_BUNKER_TOWER = "1"; & "$rt\AIBunker.ps1" -Scenario AIBunker -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)'; Remove-Item Env:\CCCP_BUNKER_TOWER }
+			"AIBywater" { & "$rt\AIBunker.ps1" -Scenario AIBywater -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"Recover" { & "$rt\AIBunker.ps1" -Scenario AIRecover -Wait 30 -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'RECOVER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 			"Flight" {
 				# Both batches of the flight gym (FlightGym.lua), one game each, their logs joined.
 				$log = "$rt\Output\flight_joined.txt"
 				Set-Content $log "" -Encoding utf8
 				foreach ($batch in 1, 2) {
 					$env:CCCP_FLIGHT_BATCH = "$batch"
-					& "$rt\AIBunker.ps1" -Scenario AIFlight -Wait 45 | Out-Null
+					& "$rt\AIBunker.ps1" -Scenario AIFlight -Wait 45 -Speed $Speed | Out-Null
 					Get-Content "$rt\Output\aibunker_1.txt" | Add-Content $log
 				}
 				Remove-Item Env:\CCCP_FLIGHT_BATCH
 				$pattern = 'FLIGHT (.+?): (landed in ([\d\.]+) s|GAVE UP|died)'
 			}
-			"AIHemslock" { & "$rt\AIBunker.ps1" -Scenario AIHemslock | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"AIHemslock" { & "$rt\AIBunker.ps1" -Scenario AIHemslock -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 		}
 		if (Test-Path $log) {
 			Copy-Item $log (Join-Path $out "${suite}_$run.log") -Force

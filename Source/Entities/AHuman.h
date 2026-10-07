@@ -755,6 +755,8 @@ namespace RTE {
 				float floorY = 0.0F;
 				int pointsToLanding = 0;
 				Timer timer;
+				bool via = false; //!< Up a shaft first: flown to a point over its mouth before turning for the landing.
+				Vector viaPoint;
 			};
 			bool begun = false;
 			Flight flight;
@@ -786,6 +788,8 @@ namespace RTE {
 		bool FlightWayClear(const Vector& landing, float landingFloorY) const;
 		bool CanWalkTo(const Vector& landing, float landingFloorY) const;
 		bool FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const;
+		/// The shaft the unit stands in, if any: walls both sides within a body's height. @return Whether in one; its middle and width.
+		bool ShaftHere(float& middleX, float& width) const;
 		void PopRoutePoint();
 		void MoverTrace(const std::string& text) const;
 

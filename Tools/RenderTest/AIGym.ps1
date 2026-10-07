@@ -1,6 +1,7 @@
 param(
 	[int]$Runs = 1,      # How many times to run the gym.
 	[int]$Wait = 75,     # Seconds to let the courses run (a unit that can't make it gives up at 60).
+	[double]$Speed = 1,  # The simulation's speed against real time (CCCP_TIME_SCALE): the waits shrink to match.
 	[switch]$Foreground, # Show the game window and let it take focus (by default it runs hidden in the background, muted, and leaves the mouse alone).
 	[switch]$Trace       # Also print the movement script's AITRACE lines for the traced unit.
 )
@@ -14,6 +15,7 @@ if (Get-Process "Cortex Command.debug.release" -ErrorAction SilentlyContinue) {
 	exit 1
 }
 if ($Foreground) { Remove-Item Env:\CCCP_BACKGROUND -ErrorAction SilentlyContinue } else { $env:CCCP_BACKGROUND = "1" }
+if ($Speed -ne 1) { $env:CCCP_TIME_SCALE = "$Speed"; $Wait = [int][Math]::Ceiling($Wait / $Speed) } else { Remove-Item Env:\CCCP_TIME_SCALE -ErrorAction SilentlyContinue }
 & "$rt\Setup.ps1" | Out-Null
 for ($i = 1; $i -le $Runs; $i++) {
 	$log = "$rt\Output\aigym_$i.txt"
