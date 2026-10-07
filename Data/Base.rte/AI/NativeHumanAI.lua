@@ -396,7 +396,9 @@ function NativeHumanAI:Update(Owner)
 
 			if Owner.AIMode == Actor.AIMODE_SQUAD then
 				-- look where the SL looks, if not moving
-				if not self.jump and self.lateralMoveState == Actor.LAT_STILL then
+				-- (Not while the engine's route-follower drives: the copied keys went on top of its own, and a follower near its leader
+				-- jumped and walked as the leader did instead of as its route said.)
+				if not self.jump and self.lateralMoveState == Actor.LAT_STILL and not self.engineMover then
 					if Leader then
 						local dist = SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest;
 						local radius = (Leader.Height + Owner.Height) * 0.5;
@@ -666,7 +668,9 @@ function NativeHumanAI:Update(Owner)
 		self.Ctrl:SetState(Controller.AIM_SHARP, true);
 	end
 	-- force jetpack at detrimental downwards velocity
-	if (not self.jump and Owner.Vel.Y > 18) then
+	-- (Not while the engine's route-follower and pilot fly the unit: the pilot brakes a fall for its landing, and lit over its head the
+	-- jet threw flights off.)
+	if (not self.jump and Owner.Vel.Y > 18) and not self.engineMover then
 		self.jump = true;
 	end
 	-- A jet once lit stays lit for a moment: the planner's wish flickers from tick to tick, and every relighting cost a burst's worth of fuel for nothing.
@@ -688,7 +692,8 @@ function NativeHumanAI:Update(Owner)
 		self.jumpState = AHuman.NOTJUMPING;
 	end
 
-	if Owner.Jetpack then
+	-- (The script's own jet keys stand down while the engine's route-follower drives: it holds the jet as the flight wants.)
+	if Owner.Jetpack and not self.engineMover then
 		if self.jumpState == AHuman.PREJUMP then
 			self.Ctrl:SetState(Controller.BODY_JUMPSTART, true); -- try to trigger a burst
 		elseif self.jumpState == AHuman.UPJUMP then
@@ -719,7 +724,12 @@ function NativeHumanAI:Update(Owner)
 	self.ladderUp = false;
 	self.ladderDown = false;
 
-	if self.lateralMoveState == Actor.LAT_LEFT then
+	-- (While the engine's route-follower drives, a behaviour's step (a crawl in, a step to cover) only when the follower pressed no side
+	-- key itself this tick: with both keys at once, the unit stood or went the wrong way.)
+	local engineSide = self.engineMover and (self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT));
+	if engineSide then
+		-- (The follower's key stands.)
+	elseif self.lateralMoveState == Actor.LAT_LEFT then
 		self.Ctrl:SetState(Controller.MOVE_LEFT, true);
 	elseif self.lateralMoveState == Actor.LAT_RIGHT then
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);

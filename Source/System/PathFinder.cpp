@@ -250,7 +250,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// (The open one on the point's side first: a point in the lower half of a buried cell is under it, and always taking the one above, a
 	// waypoint inside the thin ceiling slab of a bunker corridor was put on the roof over it, and the unit went outside and round to get there.)
 	auto openNode = [this](PathNode* node, const Vector& point) -> PathNode* {
-		auto buried = [](const PathNode* n) { return n && g_SceneMan.GetTerrMatter(static_cast<int>(n->Pos.m_X), static_cast<int>(n->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir; };
+		auto buried = [this](const PathNode* n) { return n && TerrNav(static_cast<int>(n->Pos.m_X), static_cast<int>(n->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir; };
 		if (node && buried(node)) {
 			bool below = point.m_Y > node->Pos.m_Y;
 			PathNode* first = below ? node->Down : node->Up;
@@ -282,7 +282,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F) {
 			const PathNode* alternatives[] = {startNode->Up, startNode->Down, startNode->Left, startNode->Right, startNode->LeftUp, startNode->UpRight, startNode->DownLeft, startNode->RightDown};
 			for (const PathNode* alternative: alternatives) {
-				if (!alternative || !alternative->m_Navigable || g_SceneMan.GetTerrMatter(static_cast<int>(alternative->Pos.m_X), static_cast<int>(alternative->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir) {
+				if (!alternative || !alternative->m_Navigable || TerrNav(static_cast<int>(alternative->Pos.m_X), static_cast<int>(alternative->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir) {
 					continue;
 				}
 				std::vector<void*> otherPath;
@@ -391,7 +391,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				// lower than that it is no top at all. (Measured against the node's centre it was skipped whenever the centre sat high in
 				// its cell, and the climb was flown as the one straight line again.)
 				float standingY = landingFloor - s_StandHeight * 0.45F;
-				if (apexY < standingY + 1.0F && g_SceneMan.GetTerrMatter(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
+				if (apexY < standingY + 1.0F && TerrNav(static_cast<int>(apex.m_X), static_cast<int>(apex.m_Y)) == MaterialColorKeys::g_MaterialAir) {
 					steps.push_back({apex, PathStepKind::Jump});
 				}
 			}
@@ -616,17 +616,21 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			if (node->Down && node->Down->m_Navigable && Open(*node->DownMaterial) && (node->Down->Ladder || standsAt(node->Down))) {
 				link(node->Down, 1.2F);
 			}
-			for (const PathNode* side: {node->Left, node->Right}) {
-				if (standsAt(side)) {
-					link(side, 1.3F);
-				}
+			// (Off the side and over the top only where the way between is open: a ladder stands against a wall, and offered through it,
+			// the floor on the wall's far side was a step away, and units walked into the wall behind the ladder.)
+			if (standsAt(node->Left) && Open(*node->LeftMaterial)) {
+				link(node->Left, 1.3F);
+			}
+			if (standsAt(node->Right) && Open(*node->RightMaterial)) {
+				link(node->Right, 1.3F);
 			}
 			// Over the top: the floor beside the node above the last rung.
-			if (node->Up && node->Up->m_Navigable && !node->Up->Ladder) {
-				for (const PathNode* side: {node->Up->Left, node->Up->Right}) {
-					if (standsAt(side)) {
-						link(side, 2.2F);
-					}
+			if (node->Up && node->Up->m_Navigable && !node->Up->Ladder && Open(*node->UpMaterial)) {
+				if (standsAt(node->Up->Left) && Open(*node->Up->LeftMaterial)) {
+					link(node->Up->Left, 2.2F);
+				}
+				if (standsAt(node->Up->Right) && Open(*node->Up->RightMaterial)) {
+					link(node->Up->Right, 2.2F);
 				}
 			}
 		} else if (standsAt(node) && node->Up && node->Up->m_Navigable && Open(*node->UpMaterial)) {
@@ -634,7 +638,12 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			// (a ladder whose foot is over the floor of the corridor under its shaft).
 			const PathNode* oneUp = node->Up;
 			const PathNode* twoUp = (oneUp->Up && oneUp->Up->m_Navigable && Open(*oneUp->UpMaterial)) ? oneUp->Up : nullptr;
-			for (const PathNode* target: std::array<const PathNode*, 6>{oneUp, oneUp->Left, oneUp->Right, twoUp, twoUp ? twoUp->Left : nullptr, twoUp ? twoUp->Right : nullptr}) {
+			// (Beside, only through open air: not round the corner of a wall to a ladder on its far side.)
+			const PathNode* oneLeft = Open(*oneUp->LeftMaterial) ? oneUp->Left : nullptr;
+			const PathNode* oneRight = Open(*oneUp->RightMaterial) ? oneUp->Right : nullptr;
+			const PathNode* twoLeft = (twoUp && Open(*twoUp->LeftMaterial)) ? twoUp->Left : nullptr;
+			const PathNode* twoRight = (twoUp && Open(*twoUp->RightMaterial)) ? twoUp->Right : nullptr;
+			for (const PathNode* target: std::array<const PathNode*, 6>{oneUp, oneLeft, oneRight, twoUp, twoLeft, twoRight}) {
 				if (target && target->m_Navigable && target->Ladder) {
 					link(target, target == oneUp ? 2.0F : (target == twoUp ? 4.5F : 3.5F));
 				}
@@ -787,7 +796,9 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 
 				// (And for how hard the rung is to fly: a person goes up a node or two out from a wall, where there's room to drift over the
 				// lip, not pressed to its face where the jet has to go precisely straight up; see ClimbMarginCost.)
-				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost + ClimbMarginCost(*currentNode->Up);
+				// (And a hatch barely wider than the body is a risk: the drift has to be just so, and a miss bangs the lip and falls back.)
+				float tightRisk = RoomToPass(*currentNode->Up, 4.5F) ? 0.0F : 1.2F;
+				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost + ClimbMarginCost(*currentNode->Up) + tightRisk;
 
 				adjCost.cost = totalMaterialCost;
 				adjCost.state = static_cast<void*>(currentNode->Up);
@@ -810,7 +821,9 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 							return nullptr;
 						}
 						if (NodeIsOnSolidGround(*step)) {
-							adjCost.cost = totalMaterialCost + stepCost + GetMaterialTransitionCost(*stepMaterial) + radiatedCost + LandingWidthCost(*step);
+							// (A landing with the ceiling close over it is where the head meets the lip coming in: a risk.)
+							float lipRisk = static_cast<float>(step->FreeHeight) < s_StandHeight * 1.4F ? 2.0F : 0.0F;
+							adjCost.cost = totalMaterialCost + stepCost + GetMaterialTransitionCost(*stepMaterial) + radiatedCost + LandingWidthCost(*step) + lipRisk;
 							adjCost.state = const_cast<PathNode*>(step);
 							adjacentList->push_back(adjCost);
 							return nullptr;
@@ -942,11 +955,11 @@ bool PathFinder::PositionsAreTheSamePathNode(const Vector& pos1, const Vector& p
 float PathFinder::SurfaceUnder(const PathNode& node) const {
 	int x = static_cast<int>(node.Pos.m_X);
 	int top = static_cast<int>(node.Pos.m_Y) - m_NodeDimension / 2;
-	if (g_SceneMan.GetTerrMatter(x, top) != MaterialColorKeys::g_MaterialAir) {
+	if (TerrNav(x, top) != MaterialColorKeys::g_MaterialAir) {
 		return -1.0F;
 	}
 	for (int y = top + 1; y <= top + m_NodeDimension; ++y) {
-		if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+		if (TerrNav(x, y) != MaterialColorKeys::g_MaterialAir) {
 			return static_cast<float>(y);
 		}
 	}
@@ -1234,7 +1247,26 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 			}
 			// The cost: the flight's time against a walk's (a node of walk is about half a second), the take-off and landing, and the fuel.
 			float seconds = std::max(0.0F, rise) / (4.0F * ppm) + across / (5.0F * ppm) + std::max(0.0F, -rise) / (6.0F * ppm) + 0.6F;
-			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target);
+			// And the risk: how likely the flight is to come off first time, not only how long it takes. A tank most of the way spent, a tall
+			// climb, a landing under a low ceiling (the head meets the lip on the way in), or a take-off pressed to a wall: each makes a
+			// miss likelier, and a miss costs the fall and the try again. (Priced on time alone, the hard quick jump through a hatch beat
+			// the two easy hops beside it, and units missed it again and again.)
+			float risk = 0.0F;
+			float tankShare = fuel / std::max(s_JetTimeMS, 1.0F);
+			if (tankShare > 0.6F) {
+				risk += (tankShare - 0.6F) * 12.0F;
+			}
+			float riseNodes = std::max(0.0F, rise) / nodeSize;
+			if (riseNodes > 4.0F) {
+				risk += (riseNodes - 4.0F) * 0.4F;
+			}
+			if (static_cast<float>(target->FreeHeight) < s_StandHeight * 1.4F) {
+				risk += 2.0F;
+			}
+			if (!RoomToPass(node, 3.0F)) {
+				risk += 1.5F;
+			}
+			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target) + risk;
 			links.push_back({target, cost});
 		}
 	}
@@ -1290,7 +1322,26 @@ float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 }
 
 const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end) const {
-	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir);
+	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir, m_LadderMaterial);
+}
+
+unsigned char PathFinder::TerrNav(int x, int y) const {
+	unsigned char id = g_SceneMan.GetTerrMatter(x, y);
+	return (m_LadderMaterial != 0 && id == m_LadderMaterial) ? static_cast<unsigned char>(MaterialColorKeys::g_MaterialAir) : id;
+}
+
+void PathFinder::AddTeamAvoid(const Vector& place, double untilMS) {
+	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
+	m_TeamAvoid.emplace_back(place, untilMS);
+}
+
+void PathFinder::GetTeamAvoid(std::vector<Vector>& places, double nowMS) const {
+	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
+	for (const std::pair<Vector, double>& avoid: m_TeamAvoid) {
+		if (avoid.second > nowMS) {
+			places.push_back(avoid.first);
+		}
+	}
 }
 
 bool PathFinder::UpdateNodeCosts(PathNode* node) const {
@@ -1326,9 +1377,9 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		int floor = -1;
 		if (node->Surface >= 0.0F) {
 			floor = static_cast<int>(node->Surface);
-		} else if (g_SceneMan.GetTerrMatter(x, centreY) == MaterialColorKeys::g_MaterialAir) {
+		} else if (TerrNav(x, centreY) == MaterialColorKeys::g_MaterialAir) {
 			for (int y = centreY + 1; y <= centreY + m_NodeDimension; ++y) {
-				if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+				if (TerrNav(x, y) != MaterialColorKeys::g_MaterialAir) {
 					floor = y;
 					break;
 				}
@@ -1343,7 +1394,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		int free = 0;
 		for (int dx: {0, -4, 4, -8, 8}) {
 			int lineFree = 0;
-			while (lineFree < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x + dx, from - lineFree) == MaterialColorKeys::g_MaterialAir) {
+			while (lineFree < PathNode::c_ClearanceReach && TerrNav(x + dx, from - lineFree) == MaterialColorKeys::g_MaterialAir) {
 				++lineFree;
 			}
 			free = std::max(free, lineFree);
@@ -1358,11 +1409,11 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		int right = 0;
 		for (int dy: {0, -4}) {
 			int lineLeft = 0;
-			while (lineLeft < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x - 1 - lineLeft, sideY + dy) == MaterialColorKeys::g_MaterialAir) {
+			while (lineLeft < m_NodeDimension * 2 && TerrNav(x - 1 - lineLeft, sideY + dy) == MaterialColorKeys::g_MaterialAir) {
 				++lineLeft;
 			}
 			int lineRight = 0;
-			while (lineRight < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x + 1 + lineRight, sideY + dy) == MaterialColorKeys::g_MaterialAir) {
+			while (lineRight < m_NodeDimension * 2 && TerrNav(x + 1 + lineRight, sideY + dy) == MaterialColorKeys::g_MaterialAir) {
 				++lineRight;
 			}
 			left = std::max(left, lineLeft);
@@ -1401,7 +1452,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 				int ax = static_cast<int>(anchorX);
 				bool floorThere = false;
 				for (int y = floor - 3; y <= floor + 6 && !floorThere; ++y) {
-					floorThere = g_SceneMan.GetTerrMatter(ax, y) != MaterialColorKeys::g_MaterialAir;
+					floorThere = TerrNav(ax, y) != MaterialColorKeys::g_MaterialAir;
 				}
 				if (!floorThere) {
 					anchorX = static_cast<float>(x);
@@ -1434,7 +1485,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 				node->Ladder = true;
 				int mid = (stripLeft + stripRight) / 2;
 				auto wall = [&](int wx) {
-					unsigned char id = g_SceneMan.GetTerrMatter(wx, centreY);
+					unsigned char id = TerrNav(wx, centreY);
 					return id != MaterialColorKeys::g_MaterialAir && id != m_LadderMaterial;
 				};
 				float bodyX = static_cast<float>(mid);
@@ -1482,7 +1533,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 				int lastSolid = floorY;
 				int clearRun = 0;
 				while (y > floorY - 48 && clearRun < 8) {
-					if (g_SceneMan.GetTerrMatter(x, y) != MaterialColorKeys::g_MaterialAir) {
+					if (TerrNav(x, y) != MaterialColorKeys::g_MaterialAir) {
 						lastSolid = y;
 						clearRun = 0;
 					} else {
@@ -1496,7 +1547,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 				}
 				y = lastSolid - 1;
 				int air = 0;
-				while (air < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, y - air) == MaterialColorKeys::g_MaterialAir) {
+				while (air < PathNode::c_ClearanceReach && TerrNav(x, y - air) == MaterialColorKeys::g_MaterialAir) {
 					++air;
 				}
 				highest = std::min(highest, y + 1);

@@ -675,7 +675,7 @@ namespace RTE {
 		/// for optimization reasons. 0 = every pixel is checked.
 		/// @param ignoreMaterial A material ID to ignore, IN ADDITION to Air.
 		/// @return The strongest material encountered
-		const Material* CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial);
+		const Material* CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial, unsigned char alsoIgnore = 0);
 
 		/// Traces along a vector and shows where along that ray there is an
 		/// encounter with a pixel of a material with strength more than or equal

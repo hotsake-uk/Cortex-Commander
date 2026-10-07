@@ -482,6 +482,13 @@ namespace RTE {
 		/// @param newParent A pointer to the MOSRotating to set as the new parent. Ownership is NOT transferred!
 		virtual void SetParent(MOSRotating* newParent);
 
+	public:
+		/// Moves this Attachable's terrain collision points (its Atoms, auto-generated from its sprite's outline) a few pixels in from the
+		/// outline, and puts them back into its root parent's group: a soft rim, which grazes terrain without catching on it. Atoms are terrain
+		/// and body-to-body contact only; what hits the Attachable (bullets, grenades, gibs) hits its sprite's pixels, which this leaves alone.
+		/// @param depth The inset, in pixels. Nothing is done when the Atoms are already as deep, or weren't generated from the sprite.
+		void InsetAtomsFromOutline(int depth);
+
 	private:
 		/// Updates the position of this Attachable based on its parent offset and joint offset. Used during update and when something sets these offsets through setters.
 		void UpdatePositionAndJointPositionBasedOnOffsets();

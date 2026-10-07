@@ -1137,6 +1137,10 @@ PathAgent Actor::GetPathAgent() const {
 			agent.Avoid.push_back(avoid.first);
 		}
 	}
+	// And the places the team has failed at lately (see AvoidPathPoint).
+	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoid(agent.Avoid, g_TimerMan.GetSimTimeMS());
+	}
 	return agent;
 }
 
@@ -1196,6 +1200,10 @@ void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
 	double now = g_TimerMan.GetSimTimeMS();
 	std::erase_if(m_AvoidPoints, [now](const std::pair<Vector, double>& avoid) { return avoid.second <= now; });
 	m_AvoidPoints.emplace_back(place, now + static_cast<double>(milliseconds));
+	// And for the whole team, for half as long: the next unit to come that way pays for the place too, rather than finding out the same way.
+	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoid(place, now + static_cast<double>(milliseconds) * 0.5);
+	}
 }
 
 bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {

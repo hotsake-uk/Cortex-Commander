@@ -1214,6 +1214,8 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (failed) {
 			MoverTrace(std::string("flight failed (") + failed + "); new route");
+			// (The landing it failed for is dearer for a while: for this unit, and through AvoidPathPoint for its team.)
+			AvoidPathPoint(flight.landing, 20000.0F);
 			flight = RouteMover::Flight();
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();

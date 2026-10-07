@@ -570,6 +570,22 @@ void Attachable::UpdatePositionAndJointPositionBasedOnOffsets() {
 	}
 }
 
+void Attachable::InsetAtomsFromOutline(int depth) {
+	AtomGroup* group = GetAtomGroup();
+	if (!group || !group->AutoGenerate() || group->GetDepth() >= depth) {
+		return;
+	}
+	bool merged = IsAttached() && m_CollidesWithTerrainWhileAttached;
+	if (merged) {
+		AddOrRemoveAtomsFromRootParentAtomGroup(false, false);
+	}
+	group->SetAtomList({});
+	group->Create(this, group->GetMaterial(), group->GetResolution(), depth);
+	if (merged) {
+		AddOrRemoveAtomsFromRootParentAtomGroup(true, false);
+	}
+}
+
 void Attachable::AddOrRemoveAtomsFromRootParentAtomGroup(bool addAtoms, bool propagateToChildAttachables) {
 	if (IsAttached()) {
 		MOSRotating* rootParentAsMOSR = dynamic_cast<MOSRotating*>(GetRootParent());

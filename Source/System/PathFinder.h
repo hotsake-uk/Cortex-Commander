@@ -1,5 +1,7 @@
 #pragma once
 
+#include <mutex>
+
 #include "Box.h"
 #include "System/MicroPather/micropather.h"
 
@@ -258,6 +260,20 @@ namespace RTE {
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
 		unsigned int m_NodeDimension; //!< The width and height of each PathNode, in pixels on the scene.
 		unsigned char m_LadderMaterial = 0; //!< The Ladder material's index (the bunkers' rungs), 0 when there is none; looked up once at creation.
+
+		/// The terrain at a point as a body meets it: air for the ladders' rungs, which a soldier passes (see AHuman::LearnFlight).
+		unsigned char TerrNav(int x, int y) const;
+
+		std::vector<std::pair<Vector, double>> m_TeamAvoid; //!< Places this team's units have failed at lately (a flight that fell short, a long stuck), and until when (sim ms).
+		mutable std::mutex m_TeamAvoidMutex;
+
+	public:
+		/// Remembers a place a unit of this grid's team failed at, for every unit of the team to route around for a while.
+		void AddTeamAvoid(const Vector& place, double untilMS);
+		/// The team's remembered failures still in force, added to a list.
+		void GetTeamAvoid(std::vector<Vector>& places, double nowMS) const;
+
+	private:
 		Vector m_Offset;
 		int m_GridWidth; //!< The width of the pathing grid, in PathNodes.
 		int m_GridHeight; //!< The height of the pathing grid, in PathNodes.

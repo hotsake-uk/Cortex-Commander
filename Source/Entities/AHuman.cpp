@@ -2653,6 +2653,18 @@ void AHuman::Update() {
 
 	Actor::Update();
 
+	// The head's soft rim (and its helmet's): its terrain contact a couple of pixels in from the sprite's edge, so flying up beside a lip
+	// or under a ceiling's corner it grazes rather than catches, and the unit doesn't stick there. Its hit box (the sprite) is unchanged.
+	if (m_pHead && m_pHead != m_HeadRimFor && m_pHead->IsAttached()) {
+		m_HeadRimFor = m_pHead;
+		m_pHead->InsetAtomsFromOutline(2);
+		for (Attachable* worn: m_pHead->GetAttachableList()) {
+			if (worn && worn->GetCollidesWithTerrainWhileAttached()) {
+				worn->InsetAtomsFromOutline(2);
+			}
+		}
+	}
+
 	LearnFlight();
 
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
@@ -3322,10 +3334,10 @@ float AHuman::JetAccelNow() const {
 }
 
 void AHuman::LearnFlight() {
-	// Flying on the jet, the body passes the ladders' rungs (the "Ladder" material): lit now, or lit in the last 0.4 s, which the pilot's
-	// pulses never outlast. Out longer (the tank dry, a stall, or let go on purpose) and the rungs are solid again, to land on, catch, or
-	// mantle. Brushed against on the way up a shaft with ladders down its sides, the rungs took the climb's speed and knocked units
-	// back down it.
+	// A living soldier's body passes the ladders' rungs (the "Ladder" material): brushed against on the way up a shaft with ladders down its
+	// sides, the rungs took the climb's speed and knocked units back down it, and walked at from a ladder's open side they were a wall.
+	// Whether it is flying on its jet (lit, or lit in the last 0.4 s, which the pilot's pulses never outlast) is kept for the climb, which
+	// a flying unit doesn't take hold of.
 	{
 		static int s_LadderMaterial = -1;
 		if (s_LadderMaterial < 0) {
@@ -3337,8 +3349,11 @@ void AHuman::LearnFlight() {
 		if (lit) {
 			m_JetLastLitSimMS = now;
 		}
-		bool flying = m_Status != INACTIVE && m_Status != DEAD && m_JetLastLitSimMS >= 0.0 && now - m_JetLastLitSimMS < 400.0;
-		SetPassMaterial(flying ? static_cast<unsigned char>(s_LadderMaterial) : 0);
+		m_JetFlying = m_Status != INACTIVE && m_Status != DEAD && m_JetLastLitSimMS >= 0.0 && now - m_JetLastLitSimMS < 400.0;
+		// (Walked through too: a ladder's rungs stood in a corridor, and a unit coming at a ladder from its open side walked into them. A
+		// living soldier passes rungs whatever it is doing; a limp body lands on them; the climb takes hold of them by its hands.)
+		bool alive = m_Status != INACTIVE && m_Status != DEAD && m_Status != DYING;
+		SetPassMaterial(alive ? static_cast<unsigned char>(s_LadderMaterial) : 0);
 	}
 	if (!m_pJetpack || !m_pJetpack->IsAttached()) {
 		return;
@@ -3595,7 +3610,26 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		}
 		g_PrimitiveMan.DrawCirclePrimitive(target, 5, g_WhiteColor);
 	}
-	bool jet = jetChosen;
+	// The head against a ceiling (a lip, a hatch's edge, a landing's ceiling, the ladders' rungs aside): no jet unless falling fast, so the
+	// body drops clear and the lean can carry it across. Held lit, the jet pressed the head into the corner and the unit stuck there,
+	// leaning against it, until the tank ran out.
+	bool headJammed = false;
+	{
+		static int s_Ladder = -1;
+		if (s_Ladder < 0) {
+			const Material* ladder = g_SceneMan.GetMaterial("Ladder");
+			s_Ladder = ladder ? ladder->GetIndex() : 0;
+		}
+		float headTop = m_Pos.m_Y - m_CharHeight * 0.26F;
+		for (float dx: {-4.0F, 0.0F, 4.0F}) {
+			for (float dy: {1.0F, 3.0F}) {
+				unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X + dx), static_cast<int>(headTop - dy));
+				headJammed = headJammed || (id != g_MaterialAir && id != static_cast<unsigned char>(s_Ladder));
+			}
+		}
+		headJammed = headJammed && m_Vel.m_Y > -1.0F && m_Vel.m_Y < 4.0F;
+	}
+	bool jet = jetChosen && !headJammed;
 	float lean = m_PilotLean;
 	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range).
 	// In the world's terms, whichever way the body faces: measured (the flight gym's CCCP_FLIGHT_STICK), +0.3 pushed a soldier right at

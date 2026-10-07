@@ -1574,7 +1574,7 @@ float SceneMan::CastMaxStrengthRay(const Vector& start, const Vector& end, int s
 	return CastMaxStrengthRayMaterial(start, end, skip, ignoreMaterial)->GetIntegrity();
 }
 
-const Material* SceneMan::CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial) {
+const Material* SceneMan::CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial, unsigned char alsoIgnore) {
 	Vector ray = g_SceneMan.ShortestDistance(start, end);
 	const Material* strongestMaterial = GetMaterialFromID(MaterialColorKeys::g_MaterialAir);
 
@@ -1638,7 +1638,7 @@ const Material* SceneMan::CastMaxStrengthRayMaterial(const Vector& start, const 
 
 			// Sum all strengths
 			unsigned char materialID = GetTerrMatter(intPos[X], intPos[Y]);
-			if (materialID != g_MaterialAir && materialID != ignoreMaterial) {
+			if (materialID != g_MaterialAir && materialID != ignoreMaterial && (alsoIgnore == 0 || materialID != alsoIgnore)) {
 				const Material* foundMaterial = GetMaterialFromID(materialID);
 				if (foundMaterial->GetIntegrity() > strongestMaterial->GetIntegrity()) {
 					strongestMaterial = foundMaterial;
