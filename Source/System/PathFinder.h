@@ -40,6 +40,7 @@ namespace RTE {
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
+		std::vector<std::pair<Vector, Vector>> AvoidLinks; //!< Flights (take-off, landing) this unit or its team has failed lately: that take-off for that landing costs more, nothing else does.
 		float MantleHeight = 0.0F; //!< How high a ledge it pulls itself up onto from the ground, in pixels (0 for none; see Actor::TryStartMantle).
 		float JetTimeMS = 0.0F; //!< Its jetpack's full tank, in ms, for the flight links (see PathFinder::AddFlightLinks); 0 for none.
 		float JetClimbMSPerPx = 6.0F; //!< The fuel its climbs burn per pixel of height, in ms, from its own jet's push (see AHuman::ClimbFuelPerPixel).
@@ -264,7 +265,13 @@ namespace RTE {
 		/// The terrain at a point as a body meets it: air for the ladders' rungs, which a soldier passes (see AHuman::LearnFlight).
 		unsigned char TerrNav(int x, int y) const;
 
-		std::vector<std::pair<Vector, double>> m_TeamAvoid; //!< Places this team's units have failed at lately (a flight that fell short, a long stuck), and until when (sim ms).
+		std::vector<std::pair<Vector, double>> m_TeamAvoid; //!< Places this team's units have failed at lately (a long stuck), and until when (sim ms).
+		struct AvoidLink {
+			Vector from;
+			Vector to;
+			double until;
+		};
+		std::vector<AvoidLink> m_TeamAvoidLinks; //!< Flights this team's units have failed lately: from where, for where, until when.
 		mutable std::mutex m_TeamAvoidMutex;
 
 	public:
@@ -272,6 +279,10 @@ namespace RTE {
 		void AddTeamAvoid(const Vector& place, double untilMS);
 		/// The team's remembered failures still in force, added to a list.
 		void GetTeamAvoid(std::vector<Vector>& places, double nowMS) const;
+		/// Remembers a flight a unit of this grid's team failed: from that take-off for that landing, dearer for the whole team for a while.
+		void AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS);
+		/// The team's failed flights still in force, added to a list.
+		void GetTeamAvoidLinks(std::vector<std::pair<Vector, Vector>>& links, double nowMS) const;
 
 	private:
 		Vector m_Offset;

@@ -1137,9 +1137,15 @@ PathAgent Actor::GetPathAgent() const {
 			agent.Avoid.push_back(avoid.first);
 		}
 	}
-	// And the places the team has failed at lately (see AvoidPathPoint).
+	// And the places and flights the team has failed at lately (see AvoidPathPoint and AvoidPathLink).
+	for (const FailedLink& link: m_AvoidLinks) {
+		if (link.until > g_TimerMan.GetSimTimeMS()) {
+			agent.AvoidLinks.emplace_back(link.from, link.to);
+		}
+	}
 	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoid(agent.Avoid, g_TimerMan.GetSimTimeMS());
+		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoidLinks(agent.AvoidLinks, g_TimerMan.GetSimTimeMS());
 	}
 	return agent;
 }
@@ -1203,6 +1209,15 @@ void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
 	// And for the whole team, for half as long: the next unit to come that way pays for the place too, rather than finding out the same way.
 	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoid(place, now + static_cast<double>(milliseconds) * 0.5);
+	}
+}
+
+void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds) {
+	double now = g_TimerMan.GetSimTimeMS();
+	std::erase_if(m_AvoidLinks, [now](const FailedLink& link) { return link.until <= now; });
+	m_AvoidLinks.push_back({from, to, now + static_cast<double>(milliseconds)});
+	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoidLink(from, to, now + static_cast<double>(milliseconds) * 0.5);
 	}
 }
 

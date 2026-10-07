@@ -958,6 +958,8 @@ namespace RTE {
 		/// @param place The place, a point of the route the jump was to.
 		/// @param milliseconds For how long, in sim time.
 		void AvoidPathPoint(const Vector& place, float milliseconds);
+		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long) its team.
+		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds);
 
 		// Member variables
 		static Entity::ClassInfo m_sClass;
@@ -1159,6 +1161,12 @@ namespace RTE {
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
 		std::vector<std::pair<Vector, double>> m_AvoidPoints; //!< Places this failed jumps at, and the sim time (ms) each is avoided until.
+		struct FailedLink {
+			Vector from;
+			Vector to;
+			double until;
+		};
+		std::vector<FailedLink> m_AvoidLinks; //!< Flights this failed lately (take-off, landing), and until when (sim ms).
 		// The mantle: a pull up onto a ledge, or over a low obstacle, that the legs or the jet alone would struggle with (see TryStartMantle).
 		float m_PathCostAtAdoption = 0.0F; //!< The cost of the route being followed when it was taken, and how many points it had then: for weighing a route check's answer against what is left of it.
 		int m_PathSizeAtAdoption = 0;

@@ -62,6 +62,7 @@ thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s
 thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathAgent::JetTimeMS).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
+thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -202,6 +203,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_JetTimeMS = agent.JetTimeMS;
 	s_JetClimbMSPerPx = agent.JetClimbMSPerPx;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
+	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
 	++m_CurrentPathingRequests;
 
@@ -942,6 +944,22 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjacent.cost += AvoidCost(*static_cast<const PathNode*>(adjacent.state));
 		}
 	}
+	// A flight failed lately (PathAgent::AvoidLinks): from near that take-off to near that landing costs more, so the next route takes off
+	// somewhere else for it (a step back, the other side of the shaft) or lands somewhere else; walking past either spot costs nothing.
+	// (Marking the landing's place, as it was, made every route by it dearer, walks and all, though the landing was rarely what failed.)
+	if (s_AvoidLinks) {
+		const float near = static_cast<float>(m_NodeDimension) * 1.5F;
+		for (const std::pair<Vector, Vector>& failed: *s_AvoidLinks) {
+			if (!g_SceneMan.ShortestDistance(node->Pos, failed.first).MagnitudeIsLessThan(near)) {
+				continue;
+			}
+			for (micropather::StateCost& adjacent: *adjacentList) {
+				if (g_SceneMan.ShortestDistance(static_cast<const PathNode*>(adjacent.state)->Pos, failed.second).MagnitudeIsLessThan(near)) {
+					adjacent.cost += 25.0F;
+				}
+			}
+		}
+	}
 }
 
 bool PathFinder::PositionsAreTheSamePathNode(const Vector& pos1, const Vector& pos2) const {
@@ -1333,6 +1351,21 @@ unsigned char PathFinder::TerrNav(int x, int y) const {
 void PathFinder::AddTeamAvoid(const Vector& place, double untilMS) {
 	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
 	m_TeamAvoid.emplace_back(place, untilMS);
+}
+
+void PathFinder::AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS) {
+	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
+	std::erase_if(m_TeamAvoidLinks, [untilMS](const AvoidLink& link) { return link.until < untilMS - 600000.0; });
+	m_TeamAvoidLinks.push_back({from, to, untilMS});
+}
+
+void PathFinder::GetTeamAvoidLinks(std::vector<std::pair<Vector, Vector>>& links, double nowMS) const {
+	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
+	for (const AvoidLink& link: m_TeamAvoidLinks) {
+		if (link.until > nowMS) {
+			links.emplace_back(link.from, link.to);
+		}
+	}
 }
 
 void PathFinder::GetTeamAvoid(std::vector<Vector>& places, double nowMS) const {

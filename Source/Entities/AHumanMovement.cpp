@@ -84,6 +84,58 @@ const Vector* AHuman::LadderNear(const Vector& point, float reachX, float reachY
 	return best;
 }
 
+// ---------------------------------------------------------------- The walk's sense of what is ahead
+
+AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing) const {
+	Sensed sensed;
+	const float h = m_CharHeight;
+	float bodyWidth = static_cast<float>(GetSpriteWidth());
+	if (m_pHead) {
+		bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
+	}
+	const float halfWidth = std::clamp(bodyWidth * 0.5F + 1.0F, 5.0F, 16.0F);
+	const float reach = h * 0.35F;
+	const float crawl = std::max(12.0F, h * 0.24F);
+	auto blocks = [](float x, float y) {
+		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor;
+	};
+	for (float d = halfWidth; d <= halfWidth + reach; d += 2.0F) {
+		float x = m_Pos.m_X + direction * d;
+		// What stands up from the floor here, and the first thing over it up to the head's top.
+		float rise = 0.0F;
+		while (rise < standing + 2.0F && blocks(x, floorY - 2.0F - rise)) {
+			rise += 1.0F;
+		}
+		float over = -1.0F;
+		for (float y = floorY - 2.0F - rise - 1.0F; y >= floorY - standing - 1.0F; y -= 2.0F) {
+			if (blocks(x, y)) {
+				over = floorY - y;
+				break;
+			}
+		}
+		if (rise <= 0.0F && over < 0.0F) {
+			continue;
+		}
+		sensed.any = true;
+		sensed.distance = d;
+		sensed.rise = rise;
+		if (rise >= standing - 2.0F) {
+			sensed.wall = true;
+		} else if (over >= 0.0F) {
+			// Something over head height's run: room under it to crawl (from the floor, or over what stands there), or none.
+			float gap = over - rise;
+			if (gap >= crawl) {
+				sensed.gapUnder = true;
+			} else {
+				sensed.wall = true;
+			}
+		}
+		break;
+	}
+	return sensed;
+}
+
 // ---------------------------------------------------------------- Ladders
 
 bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float& gripX, int& wallSide, bool& material, int way) const {
@@ -1214,8 +1266,9 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (failed) {
 			MoverTrace(std::string("flight failed (") + failed + "); new route");
-			// (The landing it failed for is dearer for a while: for this unit, and through AvoidPathPoint for its team.)
-			AvoidPathPoint(flight.landing, 20000.0F);
+			// (This take-off for that landing is dearer for a while, for this unit and its team: the next try goes from elsewhere, or for
+			// another landing; see Actor::AvoidPathLink.)
+			AvoidPathLink(flight.takeOff, flight.landing, 20000.0F);
 			flight = RouteMover::Flight();
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();
@@ -1276,12 +1329,15 @@ int AHuman::MoveAlongRoute() {
 			// Down again short of a landing above: the climb failed (fallen back down the hatch, or onto the wrong lip). A new route from
 			// here, not the rest of the old one followed from where it was never meant to start.
 			bool landingAbove = flight.floorY < feetY - h * 0.3F;
+			Vector takeOffWas = flight.takeOff;
+			Vector landingWas = flight.landing;
 			flight = RouteMover::Flight();
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();
 			mover.lastJetTime = -1.0;
 			if (!onLanding && !airborne && landingAbove) {
 				MoverTrace("down again under the landing; new route");
+				AvoidPathLink(takeOffWas, landingWas, 20000.0F);
 				RefreshRoute();
 				return RouteMover::Moving;
 			}
@@ -1309,6 +1365,7 @@ int AHuman::MoveAlongRoute() {
 				}
 				if (stepFailed) {
 					MoverTrace(std::string("flight failed (") + stepFailed + "); new route");
+					AvoidPathLink(flight.takeOff, flight.landing, 20000.0F);
 					flight = RouteMover::Flight();
 					mover.bestGap = -1.0F;
 					mover.progressTimer.Reset();
@@ -1400,6 +1457,7 @@ int AHuman::MoveAlongRoute() {
 				mover.flight.riseTimer.Reset();
 				mover.flight.startY = m_Pos.m_Y;
 				mover.flight.bestY = m_Pos.m_Y;
+				mover.flight.takeOff = m_Pos;
 				MoverTrace("flight to " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)));
 			}
 			if (holdForDoor(point, true)) {
@@ -1636,6 +1694,7 @@ int AHuman::MoveAlongRoute() {
 				mover.flight.riseTimer.Reset();
 				mover.flight.startY = m_Pos.m_Y;
 				mover.flight.bestY = m_Pos.m_Y;
+				mover.flight.takeOff = m_Pos;
 				mover.flight.via = inShaft;
 				if (inShaft) {
 					// Over the mouth: at the shaft's middle, where the body's centre is standing on the landing's floor and a little over (the
@@ -1684,7 +1743,21 @@ int AHuman::MoveAlongRoute() {
 	Vector hit;
 	bool noRoomHere = g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topHeadY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 	bool noRoomAhead = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+	{
+		// (Not the ladders' rungs, which the body passes: see AHuman::LearnFlight.)
+		if (noRoomAhead && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+			noRoomAhead = false;
+		}
+	}
 	bool crawlNear = crawl && toPoint.MagnitudeIsLessThan(h * 0.65F);
+	// What is a short stride ahead, the body's whole outline looked at (see SenseAhead): the walk's own eyes, besides the route's.
+	Sensed sensed;
+	if (std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs) {
+		sensed = SenseAhead(toPoint.m_X < 0.0F ? -1.0F : 1.0F, floorY, standing);
+	}
+	if (sensed.gapUnder) {
+		noRoomAhead = true;
+	}
 	// 8.0's crawl rules: only for a way on that is fairly flat (within 30 degrees); a steep one is a climb, and a body lying down may not jet,
 	// so it stands, unless there is no room to stand right here (the mouth of a low tunnel: stood up for a point above, a unit put its head
 	// into the slab over it). Kept down a moment after the way looks clear, or a crawl through a slot was stood up in the middle of.
@@ -1728,33 +1801,33 @@ int AHuman::MoveAlongRoute() {
 	// walls): both blocked at much the same distance is a face higher than the body, hopped at once when there is head room and fuel,
 	// rather than after the 2.5 s with no progress the stuck handling waits. Chest alone is a step or a slope, the legs' and the mantle's.
 	// (Not for a point below us, a drop, nor lying down.)
-	// And a low obstacle (8.0's hop over what is in front and not above): a face between the mantle's height and the body's, in front at knee
-	// and chest height alike (a slope meets the knee's ray well before the chest's), hopped at once with the way up clear. A step the mantle
-	// takes is left to it.
+	// What the sense found ahead, acted on at once rather than after the 2.5 s with no progress the stuck handling waits:
+	// - something low (over a step the legs take and the mantle's reach, under the body's height) is hopped, with head room here and fuel;
+	// - a wall with the route's point level and beyond it is something the grid didn't know (a crate, a lip, a frame smaller than its
+	//   cells): the place is marked for a while and a new route asked for, rather than walking into it for six seconds;
+	// - a wall with the route's point above is the climb's, hopped as before when there is head room.
+	// (Before, the walk only went for the route's point and found out by not getting there; the chest, knee and head rays it had saw
+	// three heights of the body's middle line.)
 	bool wallAhead = false;
 	bool lowObstacle = false;
-	if (!prone && std::abs(toPoint.m_X) > 3.0F && above > -h * 0.2F && standardJet && !mover.fuelWaiting && kind != PathStepKind::Stairs && kind != PathStepKind::Fall && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 100.0F && !DoorAhead(point)) {
-		float dirX = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
-		Vector ray(dirX * h * 0.45F, 0.0F);
-		Vector chestHit;
-		Vector headHit;
-		Vector kneeHit;
-		bool chest = g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, -h * 0.1F), ray, 5.0F, chestHit, 2, MaterialColorKeys::g_MaterialDoor);
-		bool head = chest && g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY + 2.0F), ray, 5.0F, headHit, 2, MaterialColorKeys::g_MaterialDoor);
-		bool headRoom = ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
-		wallAhead = chest && head && std::abs(Towards(chestHit, headHit).m_X) < 6.0F && headRoom;
-		if (chest && !head && headRoom) {
-			bool knee = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - h * 0.1F), ray, 5.0F, kneeHit, 2, MaterialColorKeys::g_MaterialDoor);
-			if (knee && std::abs(Towards(kneeHit, chestHit).m_X) < 6.0F) {
-				Vector top;
-				float topY = floorY;
-				if (g_SceneMan.CastStrengthRay(Vector(chestHit.m_X + dirX * 3.0F, topHeadY + 2.0F), Vector(0.0F, floorY - topHeadY), 5.0F, top, 1, MaterialColorKeys::g_MaterialDoor)) {
-					topY = top.m_Y;
-				}
-				float rise = floorY - topY;
-				float mantle = g_SettingsMan.MantlingEnabled() ? std::max(h, 20.0F) * 0.3F : 0.0F;
-				lowObstacle = rise > mantle + 2.0F && rise < standing;
+	if (sensed.any && !prone && kind != PathStepKind::Fall && !mover.fuelWaiting && !DoorAhead(point)) {
+		const float stepUp = h * 0.15F;
+		const float mantle = g_SettingsMan.MantlingEnabled() ? std::max(h, 20.0F) * 0.3F : 0.0F;
+		const bool canHop = standardJet && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 100.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
+		const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		if (sensed.wall) {
+			bool pointBeyond = toPoint.m_X * direction > sensed.distance + 4.0F && std::abs(toPoint.m_Y) < h * 0.3F;
+			if (pointBeyond && kind != PathStepKind::Jump && mover.senseRerouteTimer.IsPastSimMS(2000)) {
+				mover.senseRerouteTimer.Reset();
+				Vector wallAt(m_Pos.m_X + direction * (sensed.distance + 6.0F), floorY - standing * 0.5F);
+				MoverTrace("wall ahead the route didn't know (" + std::to_string(static_cast<int>(wallAt.m_X)) + "," + std::to_string(static_cast<int>(wallAt.m_Y)) + "); new route round it");
+				AvoidPathPoint(wallAt, 15000.0F);
+				RefreshRoute();
+				return RouteMover::Moving;
 			}
+			wallAhead = !pointBeyond && above > -h * 0.2F && canHop;
+		} else if (!sensed.gapUnder && sensed.rise > std::max(stepUp, mantle + 2.0F) && above > -h * 0.2F && canHop) {
+			lowObstacle = true;
 		}
 	}
 	// Stuck (no progress for 2.5 s, and a new route at 6): a hop. (A back-off the other way, as 8.0's random flips did, read as pacing, and

@@ -777,6 +777,7 @@ namespace RTE {
 				float bestY = 0.0F;
 				Timer riseTimer; //!< Since the climb last gained height.
 				Timer totalTimer; //!< Since the flight began (the other timer starts again at each refuel).
+				Vector takeOff; //!< Where the flight began: a failed flight is remembered as this take-off for that landing (see Actor::AvoidPathLink).
 				bool step = false; //!< Out of a shaft with the landing to one side: holding the height and stepping across onto it.
 				float holdY = 0.0F; //!< The height held while stepping across (raised a pixel at a time until the feet clear the lip).
 				Timer stepTimer;
@@ -800,6 +801,7 @@ namespace RTE {
 			Timer fuelWaitTimer;
 			int impossibleAnswers = 0;
 			double lastJetTime = -1.0;
+			Timer senseRerouteTimer; //!< Since the sense last asked for a route round a wall the grid didn't know.
 			bool stuckBackedOff = false; //!< Whether the stuck handling has backed off, and lain down, this time stuck (traced once each).
 			bool stuckLayDown = false;
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
@@ -829,6 +831,16 @@ namespace RTE {
 			Timer startTimer;
 		};
 		LadderClimb m_Ladder;
+		/// What is in the way a short stride ahead on the ground, the body's whole outline looked at (every 2 px across and up; rungs and doors
+		/// aside), as the walk sees it: nothing, a step the legs take, a low obstacle (and its height), room only to crawl under, or a wall.
+		struct Sensed {
+			bool any = false;
+			float distance = 0.0F; //!< From the body's middle to it.
+			float rise = 0.0F; //!< The height of what stands up from the floor there.
+			bool gapUnder = false; //!< Open underneath to crawl height, blocked at the head.
+			bool wall = false; //!< Blocked from the floor to over the head (or too low a gap to crawl).
+		};
+		Sensed SenseAhead(float direction, float floorY, float standing) const;
 		/// The ladder within reach across of a point, if any: where a climber's body hangs on it, where its rungs are taken, which side its wall
 		/// is, and whether its rungs are Ladder material (else a background ladder). @return Whether there is one.
 		/// @param way -1 for a ladder going up from here (rungs over the chest), 1 for one going down (rungs under the feet), 0 for either.
