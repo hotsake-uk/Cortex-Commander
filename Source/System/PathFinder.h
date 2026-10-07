@@ -353,7 +353,6 @@ namespace RTE {
 		/// in it, and from a centre two pixels under a slope every way up but back down the slope read as through ground.
 		Vector StandingPoint(const PathNode& node, float lift) const;
 
-
 		/// Gets the cost for transitioning through this Material.
 		/// @param material The Material to get the transition cost for.
 		/// @return The transition cost for the Material.
@@ -363,6 +362,16 @@ namespace RTE {
 		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
 		/// @param node The node the rung rises into.
 		float ClimbMarginCost(const PathNode& node) const;
+
+		/// What it costs to fly straight up (or down) a column, from one height to another, for how close its sides pass to something solid:
+		/// the body's edges (a half-width and a little each side of the column) traced the whole way, not only at the nodes' centre rows.
+		/// One edge touching with the other in the open is a column grazing a lip or a corner, which a column further out clears: dear.
+		/// Both edges touching is a shaft, which the shaft-centring flight handles: nothing here (RoomToPass and the tight-gap risk price it).
+		/// @param x The column.
+		/// @param fromY Where the climb starts.
+		/// @param toY Where it ends.
+		/// @return The extra cost.
+		float ColumnGrazeCost(float x, float fromY, float toY) const;
 
 		/// The flight links from a node at the edge of its floor: to floors within reach of a flight as the pilot flies one (up to just over the
 		/// landing, across, down onto it), where the rise, the crossing and the descent are open air and a tank's fuel covers it, priced by the

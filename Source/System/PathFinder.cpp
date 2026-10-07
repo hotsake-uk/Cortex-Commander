@@ -228,7 +228,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_JumpHeight = jumpHeight;
 
 	// How high up we can jump from this node.
-	if(jumpHeight == FLT_MAX) {
+	if (jumpHeight == FLT_MAX) {
 		// Probably quite high.
 		s_JumpHeightVertical = INT_MAX;
 		s_JumpHeightDiagonal = INT_MAX;
@@ -818,7 +818,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				// lip, not pressed to its face where the jet has to go precisely straight up; see ClimbMarginCost.)
 				// (And a hatch barely wider than the body is a risk: the drift has to be just so, and a miss bangs the lip and falls back.)
 				float tightRisk = RoomToPass(*currentNode->Up, 4.5F) ? 0.0F : 1.2F;
-				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost + ClimbMarginCost(*currentNode->Up) + tightRisk;
+				// (And for a lip or corner the body's side brushes between the nodes' centre rows, which their clearances don't see: a thin
+				// platform's edge beside the column, which caught the shoulder and stopped the climb. Units hung up under such an edge on a
+				// route straight up past it when a column a node out, or a route with one more turn, went clear.)
+				float grazeRisk = Open(*currentNode->UpMaterial) ? ColumnGrazeCost(currentNode->Pos.m_X, currentNode->Pos.m_Y, currentNode->Up->Pos.m_Y) : 0.0F;
+				totalMaterialCost += 1.0F + extraUpCost + extraJumpCost + (GetMaterialTransitionCost(*currentNode->UpMaterial) * 3.0F) + radiatedCost + ClimbMarginCost(*currentNode->Up) + tightRisk + grazeRisk;
 
 				adjCost.cost = totalMaterialCost;
 				adjCost.state = static_cast<void*>(currentNode->Up);
@@ -1172,6 +1176,27 @@ float PathFinder::ClimbMarginCost(const PathNode& node) const {
 	return cost;
 }
 
+float PathFinder::ColumnGrazeCost(float x, float fromY, float toY) const {
+	if (s_JumpHeight == FLT_MAX || s_HalfWidth <= 0.0F) {
+		return 0.0F;
+	}
+	auto solidAt = [this](float px, float py) {
+		unsigned char id = TerrNav(static_cast<int>(px), static_cast<int>(py));
+		return id != MaterialColorKeys::g_MaterialAir && !Open(*g_SceneMan.GetMaterialFromID(id));
+	};
+	// (Every 4 px: a lip thinner than that is no lip to a body.)
+	float top = std::min(fromY, toY);
+	float bottom = std::max(fromY, toY);
+	float reach = s_HalfWidth + 2.0F;
+	bool leftTouches = false;
+	bool rightTouches = false;
+	for (float y = top; y <= bottom && !(leftTouches && rightTouches); y += 4.0F) {
+		leftTouches = leftTouches || solidAt(x - reach, y);
+		rightTouches = rightTouches || solidAt(x + reach, y);
+	}
+	return leftTouches != rightTouches ? 2.0F : 0.0F;
+}
+
 void PathFinder::DrawDebug(const Box& area) {
 	static const unsigned char standColor = static_cast<unsigned char>(Color(80, 220, 90).GetIndex());
 	static const unsigned char crawlColor = static_cast<unsigned char>(Color(240, 210, 60).GetIndex());
@@ -1301,6 +1326,10 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 			}
 			if (!RoomToPass(node, 3.0F)) {
 				risk += 1.5F;
+			}
+			// The climb up this column brushing a lip or corner on one side (see ColumnGrazeCost).
+			if (cruiseY < standY - 2.0F) {
+				risk += ColumnGrazeCost(node.Pos.m_X, standY, cruiseY);
 			}
 			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target) + risk;
 			links.push_back({target, cost});
