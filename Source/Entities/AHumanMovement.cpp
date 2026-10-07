@@ -1681,6 +1681,19 @@ int AHuman::MoveAlongRoute() {
 			mover.fuelWaiting = true;
 			mover.fuelWaitTimer.Reset();
 		}
+		// Steadied first: a climb or a jump (anything but a hop across a gap at this level, which wants its run-up) is taken off from a stand,
+		// the walk's speed let die before the jet is lit, as a player does. Taken off mid-stride, the step's speed went into the flight, often
+		// the wrong way, and the pilot spent the jump fighting it: a unit took a step, threw itself off the ledge, and did it again.
+		bool hop = levelHop && edgeAhead;
+		if (canTakeOff && !hop && (std::abs(m_Vel.m_X) > 0.6F || m_Status != STABLE)) {
+			mover.progressTimer.Reset();
+			mover.hopTimer.Reset();
+			if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("steadying before take-off");
+			}
+			return RouteMover::Moving;
+		}
 		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(6000))) {
 			mover.fuelWaiting = false;
 			{
