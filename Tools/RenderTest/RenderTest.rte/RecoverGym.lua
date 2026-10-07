@@ -4,13 +4,16 @@
 -- until it stood upright, whether and when it reached the point, and how many times it went unstable again on the way.
 -- Uses only calls the original AI's build has too, so the same file measures both builds (Tools/RenderTest/Bench.ps1 -Suites Recover).
 
+-- (Hard enough to topple the original game's soldier: a quarter turn past upside down from a little height, a spin with a kick, a run
+-- into a wall, a fall from a storey.)
 local Cases = {
 	{ name = "flung along the pad", vel = Vector(18, 0) },
-	{ name = "dropped from 260 px", drop = 260 },
-	{ name = "set upside down", rot = math.pi },
-	{ name = "spun", angVel = 14 },
-	{ name = "thrown up and back", vel = Vector(-10, -14) },
+	{ name = "dropped from 400 px", drop = 400 },
+	{ name = "set upside down", rot = math.pi + 0.4, lift = 30 },
+	{ name = "spun with a kick", angVel = 25, vel = Vector(6, -8) },
+	{ name = "thrown up and back", vel = Vector(-12, -16) },
 	{ name = "slammed down", vel = Vector(0, 30), lift = 40 },
+	{ name = "run into a wall", vel = Vector(22, 0), wall = true },
 };
 
 function RecoverGymScript:StartScript()
@@ -38,6 +41,14 @@ function RecoverGymScript:UpdateScript()
 			case.padX = x;
 			case.padY = 380;
 			self:Pad(x, 380, 16);
+			-- A wall three blocks tall near the far end of the pad, for the run into it.
+			if case.wall then
+				for k = 1, 3 do
+					local block = CreateTerrainObject("Concrete Block", "Base.rte");
+					block.Pos = Vector(x + 180, 380 - k * 24);
+					SceneMan:AddSceneObject(block);
+				end
+			end
 		end
 		SandboxDo("Look around", Vector(900, 380), 0, 0, 1, "");
 	end
@@ -52,7 +63,8 @@ function RecoverGymScript:UpdateScript()
 			actor.Team = 0;
 			actor.AIMode = Actor.AIMODE_SENTRY;
 			MovableMan:AddActor(actor);
-			table.insert(self.runners, { actor = actor, case = case, goal = Vector(case.padX + 300, standY), start = t, knocked = false, sent = false, done = false, unstableMS = 0, uprightAt = nil, wasUnstable = false, relapses = 0 });
+			-- (The goal is this side of the wall when there is one.)
+			table.insert(self.runners, { actor = actor, case = case, goal = Vector(case.padX + (case.wall and 120 or 300), standY), start = t, knocked = false, sent = false, done = false, unstableMS = 0, uprightAt = nil, wasUnstable = false, relapses = 0 });
 		end
 	end
 	if not self.spawned then
