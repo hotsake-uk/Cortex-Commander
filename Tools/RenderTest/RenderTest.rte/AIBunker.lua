@@ -187,6 +187,13 @@ function AIBunkerScript:RouteCompare()
 			local j = ((i - 1 + math.floor(k * count / 9)) % count) + 1;
 			if j ~= i then
 				local result, n, End = grade(points[i], points[j]);
+				-- (CCCP_ROUTE_SHOW="x,y,x,y": that pair's route printed in full.)
+				local show = os.getenv("CCCP_ROUTE_SHOW");
+				if show and show == (math.floor(points[i].X) .. "," .. math.floor(points[i].Y) .. "," .. math.floor(points[j].X) .. "," .. math.floor(points[j].Y)) then
+					local nodes = "";
+					for node in SceneMan.Scene:GetScenePath() do nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y); end
+					ConsoleMan:PrintString("ROUTESHOW " .. result .. ":" .. nodes);
+				end
 				tally[result] = tally[result] + 1;
 				ConsoleMan:PrintString("ROUTECMP " .. i .. " " .. j .. " " .. math.floor(points[i].X) .. "," .. math.floor(points[i].Y) .. " " .. math.floor(points[j].X) .. "," .. math.floor(points[j].Y) .. " " .. result .. " " .. n .. (End and (" end " .. math.floor(End.X) .. "," .. math.floor(End.Y)) or ""));
 			end

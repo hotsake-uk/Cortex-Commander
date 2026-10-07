@@ -804,7 +804,7 @@ Vector PathFinder::StandingPoint(const PathNode& node, float lift) const {
 bool PathFinder::NodeIsOnSolidGround(const PathNode& node) const {
 	// Anything that isn't air is stood on: the bushes on a hillside are walked over, not through, and taking only what's too hard to dig
 	// as ground left every node over a thick layer of them hanging in the air, with no way along but a jet.
-	return s_JumpHeight == FLT_MAX || (node.Down && node.DownMaterial->GetIntegrity() > 0.0F);
+	return s_JumpHeight == FLT_MAX || (node.Down && node.Grounded);
 }
 
 int PathFinder::DropNodes(const PathNode& node) const {
@@ -965,6 +965,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
 	bool oldStairsUpRight = node->StairsUpRight;
+	bool oldGrounded = node->Grounded;
 	bool oldStairsUpLeft = node->StairsUpLeft;
 
 	auto getStrongerMaterial = [](const Material* first, const Material* second) {
@@ -1087,13 +1088,19 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		Vector top = StandingPoint(*node, 3.0F);
 		Vector bottom = StandingPoint(*node->Down, 3.0F);
 		const Material* weakest = nullptr;
+		bool grounded = false;
 		for (float dx: {0.0F, -4.0F, 4.0F, -8.0F, 8.0F}) {
 			const Material* line = StrongestMaterialAlongLine(top + Vector(dx, 0.0F), bottom + Vector(dx, 0.0F));
 			if (!weakest || line->GetIntegrity() < weakest->GetIntegrity()) {
 				weakest = line;
 			}
+			grounded = grounded || line->GetIntegrity() > 0.0F;
 		}
 		node->DownMaterial = weakest;
+		// Standing is another matter: a body stands on anything under its width, so the node stands on ground when any of the lines meets
+		// some. (Taken from the weakest line, as the way down is, a node at a ledge's edge or on a narrow slope had a line that missed the
+		// ground and was no place to stand; the sloped ledge into Bywater's west hatch cut a hundred routes the original pathfinder takes.)
+		node->Grounded = grounded;
 	}
 
 	if (node->UpRight) {
@@ -1123,7 +1130,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded) {
 		return true;
 	}
 

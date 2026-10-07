@@ -69,6 +69,7 @@ namespace RTE {
 		int ClearLeft = 0; //!< Air to the left of the centre (a little over the surface, for a node on the ground), up to a node's width.
 		int ClearRight = 0; //!< Air to the right, likewise.
 		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
+		bool Grounded = false; //!< Whether a body here stands on something: any of the lines down across the cell meets ground (see UpdateNodeCosts).
 		bool StairsUpLeft = false; //!< Likewise up to the left.
 		static constexpr int c_ClearanceReach = 96; //!< How far up the free height is measured.
 

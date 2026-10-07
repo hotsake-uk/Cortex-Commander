@@ -567,8 +567,12 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::DrawTiled(const Camera& cam
 	float viewTop = targetBox.m_Corner.m_Y;
 	float areaToCoverX = viewLeft + targetBox.GetWidth();
 	float areaToCoverY = viewTop + targetBox.GetHeight();
-	float tiledOffsetStartX = std::floor((viewLeft - m_Offset.m_X) / bitmapWidth) * bitmapWidth + m_Offset.m_X;
-	float tiledOffsetStartY = std::floor((viewTop - m_Offset.m_Y) / bitmapHeight) * bitmapHeight + m_Offset.m_Y;
+	// A layer that doesn't repeat along an axis is there once, at its offset. (Tiled like a repeating one, its single copy went to the
+	// whole bitmap at or before the view's corner, and when that was a bitmap away from its own place, the layer wasn't drawn where it
+	// is at all: zoomed right in, the view laid out for the unzoomed screen reaches half a screen past the zoomed one, and near the top or
+	// bottom of a big map the nearest background layer vanished.)
+	float tiledOffsetStartX = m_WrapX ? std::floor((viewLeft - m_Offset.m_X) / bitmapWidth) * bitmapWidth + m_Offset.m_X : m_Offset.m_X;
+	float tiledOffsetStartY = m_WrapY ? std::floor((viewTop - m_Offset.m_Y) / bitmapHeight) * bitmapHeight + m_Offset.m_Y : m_Offset.m_Y;
 
 	if (g_DebugMan.DrawTilingBounds()) {
 		Draw::Lines::Line(glm::vec2(areaToCoverX, 0.0f), glm::vec2(areaToCoverX, g_SceneMan.GetSceneHeight()), g_RedColor);
