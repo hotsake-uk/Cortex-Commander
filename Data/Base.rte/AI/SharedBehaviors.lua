@@ -450,23 +450,25 @@ end
 -- still against gravity; only the jetpack's key lets go. A unit that jetted up one in pulses was caught and held every time the jet
 -- went out, and one that dropped slowly down a laddered hatch was stopped half way. So a ladder is climbed the way a player climbs it.
 -- The nodes are looked up from the scene's particles every few seconds and kept.
-SharedBehaviors.LadderCache = nil;
-SharedBehaviors.LadderCacheTimer = nil;
+-- (Locals, not fields of SharedBehaviors: the table is made read-only once this file has loaded, and a field set at run time was an
+-- error that ended every unit's movement the first time it planned a climb, so nobody used the jetpack at all.)
+local LadderCache = nil;
+local LadderCacheTimer = nil;
 function SharedBehaviors.LadderNodes()
-	if not SharedBehaviors.LadderCacheTimer then
-		SharedBehaviors.LadderCacheTimer = Timer();
+	if not LadderCacheTimer then
+		LadderCacheTimer = Timer();
 	end
-	if not SharedBehaviors.LadderCache or SharedBehaviors.LadderCacheTimer:IsPastSimMS(4000) then
-		SharedBehaviors.LadderCacheTimer:Reset();
+	if not LadderCache or LadderCacheTimer:IsPastSimMS(4000) then
+		LadderCacheTimer:Reset();
 		local nodes = {};
 		for mo in MovableMan.Particles do
 			if mo.PresetName == "Background Ladder Node" and mo.PinStrength > 0 then
 				table.insert(nodes, Vector(mo.Pos.X, mo.Pos.Y));
 			end
 		end
-		SharedBehaviors.LadderCache = nodes;
+		LadderCache = nodes;
 	end
-	return SharedBehaviors.LadderCache;
+	return LadderCache;
 end
 
 -- The ladder piece nearest a point, within so far sideways and so far up or down. @return Its middle, or nil.
