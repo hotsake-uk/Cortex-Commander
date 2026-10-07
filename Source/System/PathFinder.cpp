@@ -1306,12 +1306,16 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// The anchor (see PathNode::Anchor), from the same look either side, two nodes out. Kept off a wall by 14 px, a soldier's half-width and
 		// a little; in the air with walls both sides within the look, in the channel's middle. On a floor it is only moved where the floor goes
 		// on there (never off an edge), and nowhere further than a node from the centre.
+		// (In signed numbers: m_NodeDimension is unsigned, and x - m_NodeDimension for the grid's first column, x 12, came to four billion,
+		// which put the clamp's low end over its high end; libstdc++'s checks abort on that (every map crashed loading on macOS), and on Windows
+		// those nodes' anchors went four billion pixels off.)
+		const int nodeSize = static_cast<int>(m_NodeDimension);
 		float anchorX = static_cast<float>(x);
-		const int reachSide = m_NodeDimension * 2;
+		const int reachSide = nodeSize * 2;
 		const float offWall = 14.0F;
 		bool wallLeft = left < reachSide;
 		bool wallRight = right < reachSide;
-		if (floor < 0 || floor > centreY + m_NodeDimension / 2) {
+		if (floor < 0 || floor > centreY + nodeSize / 2) {
 			if (wallLeft && wallRight) {
 				anchorX += static_cast<float>(right - left) * 0.5F;
 			} else if (wallLeft && static_cast<float>(left) < offWall) {
@@ -1336,7 +1340,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 				}
 			}
 		}
-		anchorX = std::clamp(anchorX, static_cast<float>(x - m_NodeDimension), static_cast<float>(x + m_NodeDimension));
+		anchorX = std::clamp(anchorX, static_cast<float>(x - nodeSize), static_cast<float>(x + nodeSize));
 		node->Anchor = Vector(anchorX + (node->Pos.m_X - static_cast<float>(x)), node->Pos.m_Y);
 	}
 
