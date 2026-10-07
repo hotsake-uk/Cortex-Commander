@@ -1059,8 +1059,11 @@ void Actor::UpdateMovePath() {
 	};
 	// The start is on the ground too, but not when that is far below: a unit part way up a jetpack climb, or just dropped from a ship, would be given
 	// a route that begins at the bottom and heads down for it. The ground has to be near for the start to be moved to it.
+	// (And not when the unit is off the ground at all, a quarter of a body over where it would stand: a route asked for in the air, by a
+	// re-path or a route check part way through a jump, started at the floor below and behind the unit, so its first point turned the unit
+	// back and dropped it there, undoing the jump. From where the unit is, the route goes on from there.)
 	Vector start = onGround(m_Pos);
-	if (start.m_Y - m_Pos.m_Y > m_CharHeight) {
+	if (start.m_Y - m_Pos.m_Y > m_CharHeight * 0.25F) {
 		start = m_Pos;
 	}
 

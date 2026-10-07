@@ -1,0 +1,86 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Hemslock Hold" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER dump at 1908,348
+AIBUNKER grid node 1860,300 surface 300 ground no free 96 clear 48/20 up 0 upright 400 right 400 rightdown 400 down 0 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1884,300 surface -1 ground yes free 3 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 200 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1908,300 surface -1 ground yes free 0 clear 0/0 up 200 upright 400 right 400 rightdown 200 down 200 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1932,300 surface -1 ground yes free 1 clear 0/0 up 400 upright 400 right 400 rightdown 400 down 200 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,300 surface -1 ground no free 96 clear 16/48 up 0 upright 0 right 0 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1860,324 surface -1 ground no free 96 clear 48/48 up 0 upright 400 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1884,324 surface -1 ground no free 15 clear 48/48 up 200 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 400
+AIBUNKER grid node 1908,324 surface -1 ground no free 14 clear 48/48 up 200 upright 400 right 0 rightdown 400 down 0 downleft 400 left 0 leftup 400
+AIBUNKER grid node 1932,324 surface -1 ground no free 14 clear 48/48 up 200 upright 400 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER grid node 1956,324 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 400
+AIBUNKER grid node 1860,348 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1884,348 surface 360 ground yes free 50 clear 48/48 up 0 upright 400 right 400 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1908,348 surface 359 ground yes free 48 clear 48/48 up 0 upright 0 right 400 rightdown 400 down 200 downleft 400 left 400 leftup 0
+AIBUNKER grid node 1932,348 surface 360 ground yes free 49 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,348 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1860,372 surface -1 ground no free 96 clear 48/8 up 0 upright 400 right 400 rightdown 400 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1884,372 surface -1 ground yes free 0 clear 48/0 up 400 upright 400 right 400 rightdown 400 down 60 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1908,372 surface -1 ground no free 13 clear 12/11 up 200 upright 400 right 400 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1932,372 surface -1 ground yes free 0 clear 1/48 up 400 upright 400 right 400 rightdown 400 down 60 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,372 surface -1 ground no free 96 clear 9/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1860,396 surface -1 ground no free 96 clear 48/8 up 0 upright 400 right 400 rightdown 400 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1884,396 surface -1 ground yes free 0 clear 0/0 up 60 upright 400 right 400 rightdown 400 down 60 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1908,396 surface -1 ground no free 37 clear 12/11 up 0 upright 400 right 400 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1932,396 surface -1 ground yes free 0 clear 0/0 up 60 upright 400 right 400 rightdown 400 down 60 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1956,396 surface -1 ground no free 96 clear 9/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 400 leftup 400
+AIBUNKER dump at 1596,492
+AIBUNKER grid node 1548,444 surface -1 ground no free 25 clear 48/29 up 0 upright 400 right 400 rightdown 400 down 0 downleft 0 left 400 leftup 400
+AIBUNKER grid node 1572,444 surface -1 ground no free 1 clear 48/5 up 220 upright 400 right 400 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1596,444 surface -1 ground no free 1 clear 6/48 up 220 upright 400 right 400 rightdown 400 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1620,444 surface -1 ground no free 2 clear 30/48 up 200 upright 400 right 200 rightdown 0 down 0 downleft 400 left 400 leftup 400
+AIBUNKER grid node 1644,444 surface -1 ground no free 49 clear 48/48 up 0 upright 200 right 200 rightdown 0 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1548,468 surface -1 ground no free 72 clear 48/29 up 0 upright 400 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1572,468 surface -1 ground no free 48 clear 48/5 up 0 upright 400 right 220 rightdown 220 down 0 downleft 0 left 0 leftup 400
+AIBUNKER grid node 1596,468 surface -1 ground no free 48 clear 6/48 up 0 upright 400 right 0 rightdown 0 down 0 downleft 220 left 220 leftup 400
+AIBUNKER grid node 1620,468 surface -1 ground no free 48 clear 30/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 400
+AIBUNKER grid node 1644,468 surface -1 ground no free 95 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1548,492 surface 492 ground yes free 72 clear 48/29 up 0 upright 0 right 0 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1572,492 surface 492 ground yes free 48 clear 48/5 up 0 upright 220 right 220 rightdown 400 down 400 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1596,492 surface 492 ground yes free 48 clear 6/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 400 left 220 leftup 220
+AIBUNKER grid node 1620,492 surface 491 ground yes free 48 clear 30/48 up 0 upright 0 right 0 rightdown 200 down 200 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1644,492 surface 491 ground yes free 95 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 200 downleft 200 left 0 leftup 0
+AIBUNKER grid node 1548,516 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 200 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1572,516 surface -1 ground yes free 0 clear 0/0 up 400 upright 400 right 400 rightdown 200 down 200 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1596,516 surface -1 ground yes free 0 clear 0/0 up 200 upright 400 right 200 rightdown 200 down 200 downleft 200 left 400 leftup 400
+AIBUNKER grid node 1620,516 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1644,516 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 400 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1548,540 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1572,540 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1596,540 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1620,540 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1644,540 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER dump at 996,396
+AIBUNKER grid node 948,348 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 972,348 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 996,348 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1020,348 surface -1 ground no free 96 clear 48/12 up 0 upright 0 right 0 rightdown 200 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1044,348 surface 348 ground yes free 96 clear 48/48 up 0 upright 400 right 400 rightdown 400 down 200 downleft 400 left 0 leftup 0
+AIBUNKER grid node 948,372 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 972,372 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 996,372 surface -1 ground no free 96 clear 48/12 up 0 upright 0 right 0 rightdown 200 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 1020,372 surface 372 ground yes free 96 clear 48/12 up 0 upright 400 right 200 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIBUNKER grid node 1044,372 surface -1 ground no free 1 clear 2/48 up 200 upright 200 right 400 rightdown 200 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 948,396 surface -1 ground no free 96 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 972,396 surface -1 ground no free 96 clear 48/12 up 0 upright 0 right 0 rightdown 200 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 996,396 surface 396 ground yes free 96 clear 48/12 up 0 upright 200 right 200 rightdown 200 down 200 downleft 200 left 0 leftup 0
+AIBUNKER grid node 1020,396 surface -1 ground no free 9 clear 0/48 up 200 upright 200 right 200 rightdown 200 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1044,396 surface -1 ground no free 25 clear 24/48 up 0 upright 400 right 0 rightdown 0 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 948,420 surface -1 ground no free 96 clear 48/26 up 0 upright 0 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 972,420 surface 420 ground no free 96 clear 48/12 up 0 upright 200 right 200 rightdown 200 down 0 downleft 200 left 0 leftup 0
+AIBUNKER grid node 996,420 surface -1 ground yes free 0 clear 0/0 up 200 upright 200 right 200 rightdown 200 down 200 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1020,420 surface -1 ground no free 33 clear 0/48 up 0 upright 200 right 0 rightdown 200 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1044,420 surface -1 ground no free 49 clear 24/47 up 0 upright 0 right 0 rightdown 0 down 0 downleft 200 left 0 leftup 200
+AIBUNKER grid node 948,444 surface -1 ground no free 96 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 972,444 surface -1 ground no free 96 clear 48/48 up 0 upright 200 right 200 rightdown 0 down 0 downleft 0 left 0 leftup 0
+AIBUNKER grid node 996,444 surface -1 ground no free 13 clear 48/48 up 200 upright 200 right 200 rightdown 200 down 0 downleft 0 left 200 leftup 200
+AIBUNKER grid node 1020,444 surface -1 ground no free 57 clear 48/48 up 0 upright 200 right 0 rightdown 0 down 0 downleft 200 left 200 leftup 200
+AIBUNKER grid node 1044,444 surface -1 ground no free 73 clear 48/48 up 0 upright 200 right 400 rightdown 0 down 0 downleft 0 left 0 leftup 200
+AIBUNKER no courses for Hemslock Hold
+AIBUNKER done

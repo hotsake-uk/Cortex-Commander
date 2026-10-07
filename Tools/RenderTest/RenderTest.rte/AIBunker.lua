@@ -86,6 +86,115 @@ function AIBunkerScript:DumpStall(runner, why)
 	end
 end
 
+-- CCCP_ROUTE_COMPARE=1: no courses; instead the routes between many pairs of standing spots in the map's bunker are asked for, as a
+-- Soldier Light would ask, and each is graded, one ROUTECMP line a pair. Run with this build and with the original AI's
+-- (../cccp-ai-baseline, CCCP_ROUTE_BUILD=base, whose pathfinder takes a jump height and dig strength instead of the actor's sizes),
+-- the two logs show the routes our grid refuses that the original grid takes (Tools/RenderTest/RouteCompare.py).
+-- Grades: ok (reaches the goal), cut (ends short of it: our grid cuts a route at what it can't get through), none (no route), wall
+-- (a leg of it goes through ground a soldier can't dig: the original grid's way of saying impossible).
+function AIBunkerScript:RouteCompare()
+	local boxes = {
+		["Bywater Barracks"] = { 1236, 96, 2304, 1164 },
+		["Hemslock Hold"] = { 192, 84, 2880, 996 },
+	};
+	local box = boxes[self.sceneName] or { 0, 0, SceneMan.SceneWidth - 1, SceneMan.SceneHeight - 1 };
+	local base = os.getenv("CCCP_ROUTE_BUILD") == "base";
+	local actor = CreateAHuman("Soldier Light", "Coalition.rte");
+	-- As the team the scene's doors belong to, which they open for in both builds: the comparison is of the route finding, not of how
+	-- each build treats a door of another team (the original routes through those as if they were air).
+	local team = Activity.TEAM_1;
+	for actor in MovableMan.Actors do
+		if actor.ClassName == "ADoor" then
+			team = actor.Team;
+			break;
+		end
+	end
+	-- Standing spots: a floor (solid with air on it) with room over it for a body (44 px up, at the spot and 8 px either side), one per
+	-- 48 px cell, the spot 20 px over the floor (where a soldier's Pos is).
+	local points, cells = {}, {};
+	for x = box[1] + 12, box[3], 24 do
+		for y = box[2] + 1, box[4] do
+			if SceneMan:GetTerrMatter(x, y) ~= rte.airID and SceneMan:GetTerrMatter(x, y - 1) == rte.airID then
+				local room = true;
+				for _, dx in ipairs({ -8, 0, 8 }) do
+					for up = 1, 44, 3 do
+						if SceneMan:GetTerrMatter(x + dx, y - up) ~= rte.airID then
+							room = false;
+							break;
+						end
+					end
+					if not room then break; end
+				end
+				local cell = math.floor(x / 48) .. ":" .. math.floor(y / 48);
+				if room and not cells[cell] then
+					cells[cell] = true;
+					table.insert(points, Vector(x, y - 20));
+				end
+			end
+		end
+	end
+	ConsoleMan:PrintString("ROUTECMP points " .. #points .. " build " .. (base and "base" or "ours") .. " scene " .. tostring(self.sceneName));
+	local function grade(A, B)
+		local n;
+		if base then
+			n = SceneMan.Scene:CalculatePath(A, B, actor.JumpHeight, 35, team);
+		else
+			n = SceneMan.Scene:CalculatePathForActor(actor, A, B, team);
+		end
+		if not n or n < 0 then
+			return "none", 0;
+		end
+		local Last, Prev = nil, nil;
+		local wall = false;
+		for node in SceneMan.Scene:GetScenePath() do
+			local Here = Vector(node.X, node.Y);
+			-- (Only on the original's routes, which aren't cut, and only for a run of more than 10 px of ground too strong to dig along
+			-- one leg: a wall or a floor, not a corner clipped by a diagonal or a merged run of nodes.)
+			if base and Prev and not wall then
+				local Leg = SceneMan:ShortestDistance(Prev, Here, false);
+				local steps = math.max(1, math.floor(Leg.Magnitude / 2));
+				local run = 0;
+				for k = 0, steps do
+					local P = Prev + Leg * (k / steps);
+					local id = SceneMan:GetTerrMatter(P.X, P.Y);
+					if id ~= rte.airID and id ~= rte.doorID and SceneMan:GetMaterialFromID(id).StructuralIntegrity > 35 then
+						run = run + 2;
+						if run > 10 then
+							wall = true;
+							break;
+						end
+					else
+						run = 0;
+					end
+				end
+			end
+			Prev = Here;
+			Last = Here;
+		end
+		if wall then
+			return "wall", n;
+		end
+		if not Last or SceneMan:ShortestDistance(Last, B, false).Magnitude > 40 then
+			return "cut", n, Last;
+		end
+		return "ok", n;
+	end
+	-- Pairs: each spot with eight others spread through the list (the same pairs in both builds, the spots being the same terrain).
+	local count = #points;
+	local tally = { ok = 0, cut = 0, none = 0, wall = 0 };
+	for i = 1, count do
+		for k = 1, 8 do
+			local j = ((i - 1 + math.floor(k * count / 9)) % count) + 1;
+			if j ~= i then
+				local result, n, End = grade(points[i], points[j]);
+				tally[result] = tally[result] + 1;
+				ConsoleMan:PrintString("ROUTECMP " .. i .. " " .. j .. " " .. math.floor(points[i].X) .. "," .. math.floor(points[i].Y) .. " " .. math.floor(points[j].X) .. "," .. math.floor(points[j].Y) .. " " .. result .. " " .. n .. (End and (" end " .. math.floor(End.X) .. "," .. math.floor(End.Y)) or ""));
+			end
+		end
+	end
+	ConsoleMan:PrintString("ROUTECMP tally ok " .. tally.ok .. " cut " .. tally.cut .. " none " .. tally.none .. " wall " .. tally.wall);
+end
+
 function AIBunkerScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 2500 then
@@ -223,9 +332,10 @@ function AIBunkerScript:UpdateScript()
 		self.started = true;
 		-- The scene's own garrison goes, so nothing shoots the units under test; its doors become theirs, as a player's own bunker's are.
 		for actor in MovableMan.Actors do
+			-- (Not in the route comparison, which asks as the doors' own team: see RouteCompare.)
 			if actor.ClassName ~= "ADoor" then
 				actor.ToDelete = true;
-			else
+			elseif not (os and os.getenv and os.getenv("CCCP_ROUTE_COMPARE") == "1") then
 				actor.Team = 0;
 			end
 		end
@@ -233,8 +343,9 @@ function AIBunkerScript:UpdateScript()
 		local only = os and os.getenv and tonumber(os.getenv("CCCP_BUNKER_ONLY") or "") or nil;
 		local dump = os and os.getenv and os.getenv("CCCP_BUNKER_DUMP") or nil;
 		if dump then
-			local dx, dy = dump:match("(-?%d+),(-?%d+)");
-			if dx then
+			-- (Several points, separated by ";".)
+			for dx, dy in dump:gmatch("(-?%d+),(-?%d+)") do
+				ConsoleMan:PrintString("AIBUNKER dump at " .. dx .. "," .. dy);
 				for y = tonumber(dy) - 48, tonumber(dy) + 48, 24 do
 					for x = tonumber(dx) - 48, tonumber(dx) + 48, 24 do
 						ConsoleMan:PrintString("AIBUNKER grid " .. SceneMan.Scene:DescribePathNodeAt(Vector(x, y)));
@@ -246,6 +357,12 @@ function AIBunkerScript:UpdateScript()
 		-- 24 px strips either side of their holes; the rooms' floors are whole). What the pather makes of each, from the offline grid model:
 		-- the shaft is one 192 px jet with a landing onto the mouth's floor strip; the hatch up is a 96 px jet; the hatch down a walk into
 		-- the hole and a fall; the hub is crossed by a hop over its hole; the stairs are climbed as two jet hops and come down as falls.
+		if os and os.getenv and os.getenv("CCCP_ROUTE_COMPARE") == "1" then
+			-- (Five seconds on, once the doors just handed to the units' team are out of that team's grid: a team's own doors are
+			-- erased from its grid only as their areas are re-sampled, and compared in the same frame they read as solid.)
+			self.compareAt = t + 5000;
+			self.routeCompared = true;
+		end
 		local courses = {
 			{ from = Vector(1700, 436), to = Vector(1520, 244), name = "bottom corridor to the top room" },
 			{ from = Vector(1700, 436), to = Vector(1700, 340), name = "up the hatch" },
@@ -257,6 +374,11 @@ function AIBunkerScript:UpdateScript()
 		};
 		if self.tower then
 			courses = self.towerCourses;
+		end
+		if self.routeCompared then
+			courses = {};
+			self.courseTable = nil;
+			self.skyBunker = true; -- (No "no courses" line: the comparison was the run.)
 		end
 		-- Courses made in play with the sandbox's Gym tab (Userdata/Gyms/<scene>.txt) come first; the sandbox runs and times them itself.
 		local gymFile = io.open("Userdata/Gyms/" .. tostring(self.sceneName) .. ".txt", "r");
@@ -340,6 +462,10 @@ function AIBunkerScript:UpdateScript()
 			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 			end
 		end
+	end
+	if self.compareAt and t > self.compareAt then
+		self.compareAt = nil;
+		self:RouteCompare();
 	end
 	if self.started then
 		for i, runner in ipairs(self.runners) do
