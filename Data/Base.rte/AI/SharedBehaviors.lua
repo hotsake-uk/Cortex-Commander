@@ -2925,10 +2925,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			nextAimAngle = -math.pi * 0.5;
 			StuckTimer:Reset();
 		end
-		-- A drop straight down from where we stand, and floor still under the feet: the route's point is a node's middle, which can sit on
+		-- A drop straight down from where we stand (a drop step, or a walk or crawl whose point is well below), and floor still under the feet: the route's point is a node's middle, which can sit on
 		-- the very edge of the slab beside the hole, and a unit counted that as reached and stood on the lip all minute. A step towards the
 		-- side where the floor falls away.
-		if not Climb and not AI.ladderDown and not AI.flying and Waypoint and CurrDist and Waypoint.Kind == 3 and CurrDist.Y > Owner.Height * 0.3 and math.abs(CurrDist.X) < Owner.Height * 0.3 and math.abs(Owner.Vel.Y) < 1 then
+		if not Climb and not AI.ladderDown and not AI.flying and Waypoint and CurrDist and (Waypoint.Kind == 3 or Waypoint.Kind == 0 or Waypoint.Kind == 1) and CurrDist.Y > Owner.Height * 0.3 and math.abs(CurrDist.X) < Owner.Height * 0.3 and math.abs(Owner.Vel.Y) < 1 then
 			local function FloorAt(dx)
 				return SceneMan:CastStrengthRay(Vector(Owner.Pos.X + dx, Owner.Pos.Y), Vector(0, Owner.Height * 0.75), 5, Vector(), 2, rte.grassID, true);
 			end
