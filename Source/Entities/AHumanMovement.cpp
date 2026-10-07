@@ -14,6 +14,7 @@
 #include "Scene.h"
 #include "PresetMan.h"
 #include "Activity.h"
+#include "PrimitiveMan.h"
 
 using namespace RTE;
 
@@ -297,10 +298,17 @@ bool AHuman::CanWalkTo(const Vector& landing, float landingFloorY) const {
 // the air), the first point after with floor under it; or the furthest such that can be flown to straight, on one tank, so a route that
 // dives into a valley and climbs out is flown over instead. @return Whether there is one; the landing, its floor and how many route points it is.
 bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const {
+	Vector takeOff;
+	return FindLanding(landing, landingFloorY, pointsToLanding, takeOff);
+}
+
+bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding, Vector& takeOff) const {
 	float h = m_CharHeight;
 	bool airborne = false;
 	int index = 0;
 	Vector last = m_Pos;
+	bool takeOffFound = false;
+	takeOff = m_Pos;
 	struct Candidate {
 		Vector pos;
 		float floorY;
@@ -323,6 +331,12 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 		float floorY = FloorUnder(point, h * 0.8F);
 		if (floorY < 0.0F) {
 			airborne = true;
+		}
+		if (airborne && !takeOffFound) {
+			takeOffFound = true;
+			takeOff = last; // (The last point on the floor before the air: the unit itself when the first leg leaves the floor.)
+		}
+		if (floorY < 0.0F) {
 		} else if (airborne) {
 			candidates.push_back({point, floorY, index});
 			airborne = false;
@@ -332,8 +346,22 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 	if (candidates.empty()) {
 		return false;
 	}
+	// A further landing only over a dip: every landing before it well below both the floor here and its own (a valley the route goes down
+	// into and climbs out of). Indoors, taking the furthest that could be flown to, a unit flew for a landing 330 px off, came down short,
+	// took the near one on its next route, then the far one again, back and forth for the minute.
+	float floorHere = FloorUnder(m_Pos, h * 0.8F);
+	if (floorHere < 0.0F) {
+		floorHere = m_Pos.m_Y + h * 0.2F;
+	}
 	for (int k = static_cast<int>(candidates.size()) - 1; k >= std::max(1, static_cast<int>(candidates.size()) - 4); --k) {
 		const Candidate& candidate = candidates[k];
+		bool dip = true;
+		for (int j = 0; j < k && dip; ++j) {
+			dip = candidates[j].floorY > std::max(floorHere, candidate.floorY) + h * 0.5F;
+		}
+		if (!dip) {
+			continue;
+		}
 		if (m_pJetpack && FlightFuelNeeded(candidate.pos, candidate.floorY) <= m_pJetpack->GetJetTimeTotal() * 0.95F && FlightWayClear(candidate.pos, candidate.floorY)) {
 			landing = candidate.pos;
 			landingFloorY = candidate.floorY;
@@ -436,8 +464,47 @@ void AHuman::MoverTrace(const std::string& text) const {
 	}
 }
 
+void AHuman::DrawMoverDebug() const {
+	static const unsigned char routeColor = static_cast<unsigned char>(Color(90, 200, 255).GetIndex());
+	static const unsigned char pointColor = static_cast<unsigned char>(Color(255, 255, 255).GetIndex());
+	static const unsigned char takeOffColor = static_cast<unsigned char>(Color(255, 150, 40).GetIndex());
+	static const unsigned char landingColor = static_cast<unsigned char>(Color(80, 230, 90).GetIndex());
+	static const unsigned char viaColor = static_cast<unsigned char>(Color(220, 90, 255).GetIndex());
+	// The route ahead, its first dozen points, and the point in hand.
+	Vector last = m_Pos;
+	int count = 0;
+	for (const Vector& point: m_MovePath) {
+		if (++count > 12) {
+			break;
+		}
+		g_PrimitiveMan.DrawLinePrimitive(last, point, routeColor);
+		last = point;
+	}
+	if (!m_MovePath.empty()) {
+		g_PrimitiveMan.DrawCirclePrimitive(m_MovePath.front(), 3, pointColor);
+	}
+	const RouteMover& mover = m_Mover;
+	if (mover.flight.active) {
+		g_PrimitiveMan.DrawLinePrimitive(m_Pos, mover.flight.via ? mover.flight.viaPoint : mover.flight.landing, landingColor);
+		g_PrimitiveMan.DrawCircleFillPrimitive(Vector(mover.flight.landing.m_X, mover.flight.floorY), 3, landingColor);
+		if (mover.flight.via) {
+			g_PrimitiveMan.DrawCirclePrimitive(mover.flight.viaPoint, 4, viaColor);
+		}
+		if (mover.flight.step) {
+			g_PrimitiveMan.DrawLinePrimitive(Vector(m_Pos.m_X - 8.0F, mover.flight.holdY), Vector(m_Pos.m_X + 8.0F, mover.flight.holdY), viaColor);
+		}
+	} else if (mover.hasTakeOff) {
+		g_PrimitiveMan.DrawCirclePrimitive(mover.debugTakeOff, 4, takeOffColor);
+	}
+	std::string state = mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : "walk");
+	g_PrimitiveMan.DrawTextPrimitive(m_Pos + Vector(0.0F, -m_CharHeight * 0.6F), state, true, 1);
+}
+
 int AHuman::MoveAlongRoute() {
 	RouteMover& mover = m_Mover;
+	if (g_SettingsMan.NavDebugOverlay() >= 2) {
+		DrawMoverDebug();
+	}
 	if (!mover.begun) {
 		mover.begun = true;
 		mover.lastProgressPos = m_Pos;
@@ -445,7 +512,18 @@ int AHuman::MoveAlongRoute() {
 	const float h = m_CharHeight;
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	const bool standardJet = m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
-	const float floorHere = FloorUnder(m_Pos, h * 0.5F + h * 0.33F);
+	// On the ground: floor under the middle or under either side of the body (8.0's look; one standing on a ledge's very edge, or on a
+	// door's leaf, has nothing under its middle), or at rest. (Taken for in the air with no floor under the middle, a unit standing on a
+	// hatch's lip was handed to the pilot, whose lean moves nothing on the ground, and stood there the minute.)
+	float floorHere = FloorUnder(m_Pos, h * 0.5F + h * 0.33F);
+	for (float side: {-h * 0.12F, h * 0.12F}) {
+		if (floorHere < 0.0F) {
+			floorHere = FloorUnder(m_Pos + Vector(side, 0.0F), h * 0.5F + h * 0.33F);
+		}
+	}
+	if (floorHere < 0.0F && m_Vel.MagnitudeIsLessThan(0.3F) && m_Status == STABLE) {
+		floorHere = m_Pos.m_Y + feet;
+	}
 	const bool airborne = floorHere < 0.0F;
 	Controller& ctrl = m_Controller;
 
@@ -553,7 +631,9 @@ int AHuman::MoveAlongRoute() {
 		Vector toPoint = Towards(m_Pos, m_MovePath.front());
 		Vector obstacle;
 		Vector free;
-		bool inSight = g_SceneMan.CastObstacleRay(m_Pos, toPoint, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 9) < 0.0F;
+		// (Terrain only: another unit between us and the point, as in any squad in a corridor, asked for a new route every second, and each
+		// one could begin from a node behind us; our doors open as we come.)
+		bool inSight = !g_SceneMan.CastStrengthRay(m_Pos, toPoint, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
 		if (inSight || airborne || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
@@ -893,10 +973,41 @@ int AHuman::MoveAlongRoute() {
 	}
 
 	// A flight wanted: the point well above, or a gap in the floor on the way, as the route's legs say.
+	// Only at the take-off: where the route leaves the floor, near (within half a body across and most of one up or down). FindLanding
+	// looks thirty points ahead, and with the flight's rules let loose wherever there was a flight anywhere ahead, a unit in a corridor
+	// stood waiting for fuel for a shaft twenty points on, or walked for the far landing's side instead of its next point, back and forth.
+	// (8.0's GoToWpt began a climb only when the waypoint in hand was the jump.) Until there, the route is walked.
 	Vector landing;
 	float landingFloorY = 0.0F;
 	int pointsToLanding = 0;
-	bool flightAhead = standardJet && FindLanding(landing, landingFloorY, pointsToLanding);
+	Vector takeOff;
+	bool flightAhead = standardJet && FindLanding(landing, landingFloorY, pointsToLanding, takeOff);
+	mover.hasTakeOff = flightAhead;
+	mover.debugTakeOff = takeOff;
+	if (flightAhead) {
+		Vector toTakeOff = Towards(m_Pos, takeOff);
+		Vector toLandingHere = Towards(m_Pos, landing);
+		bool atTakeOff = std::abs(toTakeOff.m_X) <= h * 0.5F && std::abs(toTakeOff.m_Y) <= h * 0.8F;
+		// (A ledge above and to one side: from up to a body and a half short of the take-off, on the way to it, wherever the way up and
+		// across is open from here, as a player jets for a ledge from a few steps back and arcs onto it. Walked to the take-off, the foot
+		// of the wall, the way straight up was under the lip, and the unit pressed against the wall.)
+		bool approach = !atTakeOff && std::abs(toTakeOff.m_X) <= h * 1.5F && std::abs(toTakeOff.m_Y) <= h * 0.8F && toLandingHere.m_Y < -h * 0.3F && toTakeOff.m_X * toLandingHere.m_X >= 0.0F && FlightWayClear(landing, landingFloorY);
+		if (!atTakeOff && !approach) {
+			flightAhead = false;
+			mover.fuelWaiting = false;
+		}
+		// Down is walked: a landing below is reached by walking off the edge (the drop step and the walk), the pilot braking in the air,
+		// as 8.0 did it. Only a long jump across, more across than down and more than a body and a half, is flown from the ground. (Flown
+		// "to" a landing straight down a drop, the pilot had no jet to give and leant one way and the other over the edge, and the unit paced
+		// back and forth on the lip, began the flight again every second and a half, and so for the minute; down stairs, it flew them.)
+		if (flightAhead && toLandingHere.m_Y > h * 0.3F) {
+			bool longJump = std::abs(toLandingHere.m_X) > h * 1.5F && std::abs(toLandingHere.m_X) > toLandingHere.m_Y;
+			if (!longJump) {
+				flightAhead = false;
+				mover.fuelWaiting = false;
+			}
+		}
+	}
 	bool wantsClimb = above > h * 0.3F && (kind == PathStepKind::Jump || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y + h * 0.4F));
 	if (flightAhead && !CanWalkTo(landing, landingFloorY)) {
 		Vector toLanding = Towards(m_Pos, landing);
@@ -1046,17 +1157,28 @@ int AHuman::MoveAlongRoute() {
 	bool crawl = kind == PathStepKind::Crawl;
 	// Head room here when standing: the standing height up from the floor; too little, or a crawl step near, and it goes prone.
 	float standing = std::max(16.0F, h * 0.44F);
-	float floorY = floorHere >= 0.0F ? floorHere : m_Pos.m_Y + feet;
+	// (The floor never deeper than the standing feet: over the edge of a drop the floor is further down, and a look from there sat at chest
+	// height and read a knee-high step ahead as no head room.)
+	float floorY = floorHere >= 0.0F ? std::min(floorHere, m_Pos.m_Y + feet) : m_Pos.m_Y + feet;
 	float topHeadY = std::min(m_Pos.m_Y - 4.0F, floorY - standing);
 	Vector heading = toPoint.GetNormalized() * (h * 0.5F);
 	Vector hit;
 	bool noRoomHere = g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topHeadY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 	bool noRoomAhead = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 	bool crawlNear = crawl && toPoint.MagnitudeIsLessThan(h * 0.65F);
-	if (noRoomHere || noRoomAhead || crawlNear) {
+	// 8.0's crawl rules: only for a way on that is fairly flat (within 30 degrees); a steep one is a climb, and a body lying down may not jet,
+	// so it stands, unless there is no room to stand right here (the mouth of a low tunnel: stood up for a point above, a unit put its head
+	// into the slab over it). Kept down a moment after the way looks clear, or a crawl through a slot was stood up in the middle of.
+	bool steep = std::abs(toPoint.m_Y) > std::abs(toPoint.m_X) * 0.577F;
+	bool prone = false;
+	if (steep && !(m_ProneState == PRONE && noRoomHere)) {
+		prone = false;
+	} else if (crawlNear || noRoomHere || noRoomAhead) {
+		prone = true;
 		mover.proneHoldTimer.Reset();
+	} else {
+		prone = m_ProneState == PRONE && !mover.proneHoldTimer.IsPastSimMS(400);
 	}
-	bool prone = !mover.proneHoldTimer.IsPastSimMS(400) && (noRoomHere || noRoomAhead || crawlNear || m_ProneState == PRONE);
 	if (prone) {
 		ctrl.SetState(BODY_PRONE, true);
 	}
@@ -1087,34 +1209,44 @@ int AHuman::MoveAlongRoute() {
 	// walls): both blocked at much the same distance is a face higher than the body, hopped at once when there is head room and fuel,
 	// rather than after the 2.5 s with no progress the stuck handling waits. Chest alone is a step or a slope, the legs' and the mantle's.
 	// (Not for a point below us, a drop, nor lying down.)
+	// And a low obstacle (8.0's hop over what is in front and not above): a face between the mantle's height and the body's, in front at knee
+	// and chest height alike (a slope meets the knee's ray well before the chest's), hopped at once with the way up clear. A step the mantle
+	// takes is left to it.
 	bool wallAhead = false;
-	if (!prone && std::abs(toPoint.m_X) > 3.0F && above > -h * 0.2F && standardJet && !mover.fuelWaiting) {
+	bool lowObstacle = false;
+	if (!prone && std::abs(toPoint.m_X) > 3.0F && above > -h * 0.2F && standardJet && !mover.fuelWaiting && kind != PathStepKind::Stairs && kind != PathStepKind::Fall && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 100.0F && !DoorAhead(point)) {
 		float dirX = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
 		Vector ray(dirX * h * 0.45F, 0.0F);
 		Vector chestHit;
 		Vector headHit;
+		Vector kneeHit;
 		bool chest = g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, -h * 0.1F), ray, 5.0F, chestHit, 2, MaterialColorKeys::g_MaterialDoor);
 		bool head = chest && g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY + 2.0F), ray, 5.0F, headHit, 2, MaterialColorKeys::g_MaterialDoor);
-		wallAhead = chest && head && std::abs(Towards(chestHit, headHit).m_X) < 6.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F) && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 100.0F && !DoorAhead(point);
+		bool headRoom = ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
+		wallAhead = chest && head && std::abs(Towards(chestHit, headHit).m_X) < 6.0F && headRoom;
+		if (chest && !head && headRoom) {
+			bool knee = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - h * 0.1F), ray, 5.0F, kneeHit, 2, MaterialColorKeys::g_MaterialDoor);
+			if (knee && std::abs(Towards(kneeHit, chestHit).m_X) < 6.0F) {
+				Vector top;
+				float topY = floorY;
+				if (g_SceneMan.CastStrengthRay(Vector(chestHit.m_X + dirX * 3.0F, topHeadY + 2.0F), Vector(0.0F, floorY - topHeadY), 5.0F, top, 1, MaterialColorKeys::g_MaterialDoor)) {
+					topY = top.m_Y;
+				}
+				float rise = floorY - topY;
+				float mantle = g_SettingsMan.MantlingEnabled() ? std::max(h, 20.0F) * 0.3F : 0.0F;
+				lowObstacle = rise > mantle + 2.0F && rise < standing;
+			}
+		}
 	}
-	// Stuck (no progress for 2.5 s, and a new route at 6): besides the hop, a back-off the other way for half a second at 3.3 s, and lying
-	// down for 0.7 s at 4.4 (under something the standing body catches on); 8.0 flipped direction and lay down now and then at random.
+	// Stuck (no progress for 2.5 s, and a new route at 6): besides the hop, lying down for 0.7 s at 4.4 (under something the standing body
+	// catches on). (A back-off the other way, as 8.0's random flips did, read as pacing: no step away from the goal.)
 	float stuckMS = static_cast<float>(mover.progressTimer.GetElapsedSimTimeMS());
 	bool layingDown = false;
 	if (!stuck) {
 		mover.stuckBackedOff = false;
 		mover.stuckLayDown = false;
 	} else if (!mover.fuelWaiting) {
-		if (stuckMS > 3300.0F && stuckMS < 3800.0F && std::abs(toPoint.m_X) > 3.0F) {
-			bool right = toPoint.m_X > 0.0F;
-			ctrl.SetState(right ? MOVE_RIGHT : MOVE_LEFT, false);
-			ctrl.SetState(right ? MOVE_LEFT : MOVE_RIGHT, true);
-			ctrl.SetState(MOVE_FAST, false);
-			if (!mover.stuckBackedOff) {
-				mover.stuckBackedOff = true;
-				MoverTrace("stuck; backing off");
-			}
-		} else if (stuckMS > 4400.0F && stuckMS < 5100.0F && !prone) {
+		if (stuckMS > 4400.0F && stuckMS < 5100.0F && !prone) {
 			ctrl.SetState(BODY_PRONE, true);
 			layingDown = true;
 			if (!mover.stuckLayDown) {
@@ -1124,10 +1256,10 @@ int AHuman::MoveAlongRoute() {
 		}
 	}
 	// A wall, or a step up the legs don't take: a hop (the mantle takes most steps).
-	if ((stuck || wallAhead) && standardJet && !prone && !layingDown && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
+	if ((stuck || wallAhead || lowObstacle) && standardJet && !prone && !layingDown && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
 		if (mover.hopTimer.IsPastSimMS(1200)) {
 			mover.hopTimer.Reset();
-			MoverTrace(wallAhead && !stuck ? "wall ahead; hop" : "stuck; hop");
+			MoverTrace(stuck ? "stuck; hop" : (wallAhead ? "wall ahead; hop" : "low obstacle; hop"));
 		}
 		if (!mover.hopTimer.IsPastSimMS(350)) {
 			ctrl.SetState(BODY_JUMP, true);

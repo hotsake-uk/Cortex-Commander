@@ -17,6 +17,14 @@ function AIBunkerScript:StartScript()
 	if os and os.getenv and tonumber(os.getenv("CCCP_BUNKER_TRACE") or "") then
 		self.traceCourse = tonumber(os.getenv("CCCP_BUNKER_TRACE"));
 	end
+	-- CCCP_NAV_DEBUG as a level (1 the grid, 2 the routes and flights too) turns the navigation debug overlay on for this run, for a capture
+	-- of what the units make of the place. (The harness force-closes the game, so Settings.ini is not written with it.)
+	if os and os.getenv and tonumber(os.getenv("CCCP_NAV_DEBUG") or "") then
+		pcall(function() SettingsMan.NavDebugOverlay = tonumber(os.getenv("CCCP_NAV_DEBUG")); end);
+		-- (And a picture of it, from the game's own screen, at 15 s and 30 s: the window is hidden in the background runs.)
+		self.navShotTimer = Timer();
+		self.navShots = { 15000, 30000 };
+	end
 	-- (CCCP_BUNKER_VIEW is the same camera and zoom with the courses run.)
 	local look = os and os.getenv and (os.getenv("CCCP_BUNKER_LOOK") or os.getenv("CCCP_BUNKER_VIEW")) or nil;
 	if look then
@@ -212,6 +220,10 @@ function AIBunkerScript:RouteCompare()
 end
 
 function AIBunkerScript:UpdateScript()
+	if self.navShotTimer and #self.navShots > 0 and self.navShotTimer:IsPastSimMS(self.navShots[1]) then
+		table.remove(self.navShots, 1);
+		FrameMan:SaveScreenToPNG("NavDebug");
+	end
 	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 2500 then
 		self.built = true;

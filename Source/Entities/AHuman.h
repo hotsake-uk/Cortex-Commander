@@ -794,6 +794,8 @@ namespace RTE {
 			double lastJetTime = -1.0;
 			bool stuckBackedOff = false; //!< Whether the stuck handling has backed off, and lain down, this time stuck (traced once each).
 			bool stuckLayDown = false;
+			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
+			bool hasTakeOff = false;
 		};
 		RouteMover m_Mover;
 
@@ -819,6 +821,9 @@ namespace RTE {
 		bool FlightWayClear(const Vector& landing, float landingFloorY) const;
 		bool CanWalkTo(const Vector& landing, float landingFloorY) const;
 		bool FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const;
+		/// FindLanding, and where the flight would take off: the last point on the floor before the route leaves it (the unit itself when the
+		/// route leaves the floor from where it stands).
+		bool FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding, Vector& takeOff) const;
 		/// The shaft a climb goes up, if it is one: walls both sides of the route's column, looked at every few pixels from the head's start
 		/// to the head's height at the top. @param columnX The route's column. @param topHeadY Where the head will be at the top.
 		/// @return Whether a shaft; its middle (moved to a line open all the way up, when the middle isn't) and its width.
@@ -830,6 +835,9 @@ namespace RTE {
 		/// target to the unit's own place: every refresh told the unit it had arrived.)
 		void RefreshRoute();
 		void MoverTrace(const std::string& text) const;
+		/// The navigation debug overlay's view of the route-follower (level 2): the route ahead, the point in hand, and a flight's take-off,
+		/// shaft point and landing.
+		void DrawMoverDebug() const;
 
 		/// Learns the jet's real push and the standing height, each frame (see PilotFlight).
 		void LearnFlight();
