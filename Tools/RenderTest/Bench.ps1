@@ -14,6 +14,9 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $csv = Join-Path $out "results.csv"
 if (-not (Test-Path $csv)) { "build,suite,run,course,result,seconds" | Set-Content $csv -Encoding utf8 }
 $Suites = @($Suites | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+# A manifest for the dashboard (Tools/RenderTest/Dashboard.py): what this job will run, and when it began and ended.
+$manifest = Join-Path $out "job.json"
+@{ label = $Label; build = $Build; suites = @($Suites); repeat = $Repeat; speed = $Speed; startedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"); finishedAt = $null } | ConvertTo-Json | Set-Content $manifest -Encoding utf8
 foreach ($run in 1..$Repeat) {
 	foreach ($suite in $Suites) {
 		Remove-Item Env:\CCCP_BUNKER_TOWER -ErrorAction SilentlyContinue
@@ -50,3 +53,6 @@ foreach ($run in 1..$Repeat) {
 		"$Build $suite run $run done"
 	}
 }
+$m = Get-Content $manifest -Raw | ConvertFrom-Json
+$m.finishedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+$m | ConvertTo-Json | Set-Content $manifest -Encoding utf8

@@ -26,14 +26,22 @@ foreach ($label in Get-ChildItem $results -Directory) {
 		}
 		$suites = ($suiteNames | Where-Object { $bySuite.ContainsKey($_) } | ForEach-Object { "$_ x$($bySuite[$_])" }) -join ", "
 		$repeats = ($bySuite.Values | Measure-Object -Maximum).Maximum
-		# Active if written to in the last 4 minutes; then estimate what a full set of repeats of the suites seen would still take.
+		# Active if written to in the last 4 minutes; then estimate what a full set of repeats of the suites seen would still take, at the
+		# job's own pace so far (the time per suite run from its finished logs; the table above only until it has two).
 		$active = ((Get-Date) - $last).TotalMinutes -lt 4
 		$eta = ""
 		if ($active) {
+			$doneRuns = ($bySuite.Values | Measure-Object -Sum).Sum
+			$totalRuns = $repeats * $bySuite.Count
+			# (Bench.ps1 runs the repeats inside each suite, so the suites not yet seen are unknown: the Suites list given is the guess.)
 			$doneMinutes = 0.0; $totalMinutes = 0.0
 			foreach ($suite in $bySuite.Keys) { $doneMinutes += $bySuite[$suite] * $suiteMinutes[$suite]; $totalMinutes += $repeats * $suiteMinutes[$suite] }
 			$left = [Math]::Max(0, $totalMinutes - $doneMinutes)
-			$eta = "about $([Math]::Round($left)) min left of this repeat set"
+			if ($doneRuns -ge 2) {
+				$pace = ($last - $first).TotalMinutes / ($doneRuns - 1)
+				$left = [Math]::Max(0, ($totalRuns - $doneRuns) * $pace)
+			}
+			$eta = "about $([Math]::Round($left)) min left of this repeat set (ends ~$((Get-Date).AddMinutes($left).ToString('HH:mm')))"
 		}
 		$rows += [PSCustomObject]@{ Job = "$($label.Name)/$($build.Name)"; Started = $first.ToString("HH:mm"); Last = $last.ToString("HH:mm"); State = $(if ($active) { "RUNNING" } else { "done" }); Suites = $suites; Estimate = $eta }
 	}

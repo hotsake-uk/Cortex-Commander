@@ -761,6 +761,8 @@ namespace RTE {
 				Timer timer;
 				bool via = false; //!< Up a shaft first: flown to a point over its mouth before turning for the landing.
 				Vector viaPoint;
+				bool refuelling = false; //!< The tank ran dry under the landing: falling with the jet out until there is enough to go on.
+				int stages = 0; //!< How many times it has refuelled on this flight.
 			};
 			bool begun = false;
 			Flight flight;

@@ -237,11 +237,11 @@ bool AHuman::ShaftHere(float& middleX, float& width) const {
 		Vector leftHit;
 		Vector rightHit;
 		Vector free;
-		bool left = g_SceneMan.CastObstacleRay(from, Vector(-h, 0.0F), leftHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
-		bool right = g_SceneMan.CastObstacleRay(from, Vector(h, 0.0F), rightHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
+		bool left = g_SceneMan.CastObstacleRay(from, Vector(-h * 1.6F, 0.0F), leftHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
+		bool right = g_SceneMan.CastObstacleRay(from, Vector(h * 1.6F, 0.0F), rightHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
 		if (left && right) {
 			float w = Towards(leftHit, rightHit).m_X;
-			if (w <= h * 1.2F && (!found || w < width)) {
+			if (w <= h * 1.6F && (!found || w < width)) {
 				width = w;
 				middleX = leftHit.m_X + w * 0.5F;
 				found = true;
@@ -336,7 +336,9 @@ int AHuman::MoveAlongRoute() {
 		Vector goal = GetLastAIWaypoint();
 		Vector goalGround = Solid(goal.m_X, goal.m_Y) ? goal : g_SceneMan.MovePointToGround(goal, static_cast<int>(h * 0.2F), 4);
 		Vector toGoal = Towards(m_Pos, goalGround);
-		if (toGoal.GetLargest() < h * 0.4F && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
+		// (Within reach is the waypoint's own limit and a little: a unit standing 42 px from a point it called reached was, to everything
+		// waiting on it, 42 px short.)
+		if (toGoal.MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			MoverTrace("arrived");
 			return RouteMover::Arrived;
 		}
@@ -423,11 +425,29 @@ int AHuman::MoveAlongRoute() {
 			ended = true;
 		} else if (flight.timer.IsPastSimMS(15000)) {
 			ended = true;
-		} else if (airborne && standardJet && m_pJetpack->GetJetTimeLeft() < 60.0F && !onLanding) {
-			MoverTrace("out of fuel short of the landing");
-			ended = true;
+		} else if (airborne && standardJet && m_pJetpack->GetJetTimeLeft() < 60.0F && !onLanding && !flight.refuelling) {
+			// Under the landing with the tank dry: a climb in stages, as a player does up a tall shaft. The jet goes out, the tank fills as
+			// the body falls (it fills as fast as it empties), and the climb goes on from lower down; each stage gains a storey or so. Ending
+			// the flight here instead lost the lean, asked for a route, and began a flight again a storey lower each time (a 500 px shaft took
+			// 40 s and the unit scraped a wall).
+			if ((to.m_Y < -h * 0.3F || flight.via) && flight.stages < 6) {
+				flight.refuelling = true;
+				++flight.stages;
+				MoverTrace("out of fuel under the landing; refuelling on the way down");
+			} else {
+				MoverTrace("out of fuel short of the landing");
+				ended = true;
+			}
+		}
+		if (flight.refuelling && standardJet && m_pJetpack->GetJetTimeLeft() >= std::min(m_pJetpack->GetJetTimeTotal() * 0.4F, 400.0F)) {
+			flight.refuelling = false;
+			flight.timer.Reset();
+			MoverTrace("refuelled; climbing on");
 		}
 		if (ended) {
+			if (!onLanding && !airborne) {
+				MoverTrace("flight ended on the ground short of the landing");
+			}
 			if (onLanding) {
 				// The route's points up to the landing are done with.
 				for (int k = 0; k < flight.pointsToLanding && !m_MovePath.empty(); ++k) {
@@ -446,6 +466,11 @@ int AHuman::MoveAlongRoute() {
 				MoverTrace("out of the shaft; for the landing");
 			}
 			Vector command = flight.via ? PilotFlight(flight.viaPoint, -1.0F) : PilotFlight(flight.landing, flight.floorY);
+			if (flight.refuelling) {
+				// Falling with the jet out: a lean only, to stay under the landing (or the shaft's middle), off the walls.
+				float dx = Towards(m_Pos, flight.via ? flight.viaPoint : flight.landing).m_X;
+				command = Vector(std::clamp(dx / (h * 0.5F), -0.6F, 0.6F), 0.0F);
+			}
 			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 			// Still on the ground at the start of the flight: the legs carry it towards the landing (off the edge, for one that is level or
@@ -582,19 +607,31 @@ int AHuman::MoveAlongRoute() {
 		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
 		// (Never more than nine tenths of the tank, which a standing unit's own hops kept it from; and the wait ends after six seconds
 		// whatever the tank says, on a timer of its own, since standing still here is not being stuck.)
-		float needed = std::min(FlightFuelNeeded(landing, landingFloorY), m_pJetpack->GetJetTimeTotal() * 0.9F);
-		if (!mover.fuelWaiting) {
+		// Off only where the flight can begin: the way up and across open from here, a shaft to go up, or a level hop from the edge.
+		// Otherwise the walk goes on, towards the landing's side of here (the route's next point is straight up, which is no key), which
+		// leads to where it can: under the shaft's mouth, to the edge. Taken off wherever the landing was well above, a unit at a corridor's
+		// end jetted into its ceiling, burned the tank, refilled, and did it again for the whole minute, 60 px short of the shaft it was to
+		// go up; and one that waited for fuel where no flight could begin, then hopped when the wait ran out, waited again for the minute.
+		bool wayUpOpen = FlightWayClear(landing, landingFloorY);
+		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen;
+		if (!canTakeOff) {
+			mover.fuelWaiting = false;
+			if (toLanding.m_Y < -h * 0.3F && std::abs(toLanding.m_X) > 3.0F && std::abs(toPoint.m_X) <= 3.0F) {
+				ctrl.SetState(toLanding.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				return RouteMover::Moving;
+			}
+		}
+		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
+		// (Never more than 85 hundredths of the tank, which a standing unit's own hops kept it from; and the wait ends after six seconds
+		// whatever the tank says, on a timer of its own, since standing still here is not being stuck.)
+		float needed = std::min(FlightFuelNeeded(landing, landingFloorY), m_pJetpack->GetJetTimeTotal() * 0.85F);
+		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
 			mover.fuelWaitTimer.Reset();
 		}
-		if (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(6000)) {
+		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(6000))) {
 			mover.fuelWaiting = false;
-			// Off only where the flight can begin: the way up and across open from here, a shaft to go up, or a level hop from the edge.
-			// Otherwise the walk goes on along the route, which leads to where it can (under the shaft's mouth, to the edge). Taken off
-			// wherever the landing was well above, a unit at a corridor's end jetted into its ceiling, burned the tank, refilled, and did
-			// it again for the whole minute, 60 px short of the shaft it was to go up.
-			bool wayUpOpen = FlightWayClear(landing, landingFloorY);
-			if ((levelHop && edgeAhead) || inShaft || wayUpOpen) {
+			{
 				mover.flight.active = true;
 				mover.flight.landing = landing;
 				mover.flight.floorY = landingFloorY;
@@ -615,7 +652,7 @@ int AHuman::MoveAlongRoute() {
 				ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 				return RouteMover::Moving;
 			}
-		} else {
+		} else if (canTakeOff) {
 			mover.progressTimer.Reset();
 			if (mover.traceTimer.IsPastSimMS(1000)) {
 				mover.traceTimer.Reset();
@@ -672,7 +709,7 @@ int AHuman::MoveAlongRoute() {
 	}
 	SetAimAngle(0.0F);
 	// A step up the legs don't take, or a wall: after a moment with no progress, a hop (the mantle takes most steps).
-	if (stuck && standardJet && !prone && m_pJetpack->GetJetTimeLeft() > 300.0F) {
+	if (stuck && standardJet && !prone && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
 		if (mover.hopTimer.IsPastSimMS(1200)) {
 			mover.hopTimer.Reset();
 			MoverTrace("stuck; hop");
