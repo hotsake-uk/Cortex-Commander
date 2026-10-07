@@ -489,7 +489,7 @@ void SceneLighting::ReadAutoExposure(float& averageLuminance, float& autoExposur
 	glBindTexture(GL_TEXTURE_2D, 0);
 	averageLuminance = std::exp(logLuminance);
 	// Same as Tonemap.frag.
-	float target = std::clamp(averageLuminance, m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh);
+	float target = std::clamp(averageLuminance, std::min(m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh), m_Settings.AutoExposureHigh); // (Low never over high: std::clamp aborts on that with libstdc++'s checks.)
 	autoExposure = std::clamp(std::pow(target / std::max(averageLuminance, 0.0001F), m_Settings.AutoExposure), 0.5F, 2.0F);
 }
 

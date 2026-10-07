@@ -567,8 +567,8 @@ void WindowMan::SetViewportLetterboxed() {
 	SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowW, &windowH);
 	double aspectRatio = m_ResX / static_cast<double>(m_ResY);
 	// The picture goes in the part of the window that docked tool panels leave free.
-	int reservedLeft = std::clamp(m_ReservedLeft, 0, windowW / 2 - 40);
-	int reservedRight = std::clamp(m_ReservedRight, 0, windowW / 2 - 40);
+	int reservedLeft = std::clamp(m_ReservedLeft, 0, std::max(0, windowW / 2 - 40));
+	int reservedRight = std::clamp(m_ReservedRight, 0, std::max(0, windowW / 2 - 40));
 	int freeW = std::max(windowW - reservedLeft - reservedRight, 80);
 	int width = freeW;
 	int height = (freeW / aspectRatio) + 0.5F;

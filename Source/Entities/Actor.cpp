@@ -1726,7 +1726,7 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 		// Selected in the sandbox: the same arrow, bobbing over the head for as long as it's selected, with a glow so it shows against anything.
 		float bob = std::sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.006F) * 3.0F;
 		int arrowY = drawPos.GetFloorIntY() + m_HUDStack - 20 + static_cast<int>(bob);
-		int team = std::clamp(m_Team, 0, static_cast<int>(m_apSelectArrow.size()) - 1);
+		int team = std::clamp(m_Team, 0, std::max(0, static_cast<int>(m_apSelectArrow.size()) - 1));
 		if (team >= 0 && !m_apSelectArrow.empty()) {
 			draw_sprite(pTargetBitmap, m_apSelectArrow[team], cpuPos.m_X, arrowY);
 			g_PostProcessMan.RegisterGlowArea(Vector(m_Pos.m_X, m_Pos.m_Y + static_cast<float>(m_HUDStack - 20 + 7) + bob), 8);

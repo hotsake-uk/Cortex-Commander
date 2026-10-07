@@ -923,7 +923,7 @@ namespace {
 					glm::vec2 along(-normal.y, normal.x);
 					pointVel = body.Vel + body.Spin * glm::vec2(-arm.y, arm.x);
 					float armCrossAlong = Cross(arm, along);
-					float drag = std::clamp(-glm::dot(pointVel, along) / (1.0F / body.Mass + armCrossAlong * armCrossAlong / body.Inertia), -c_Friction * push, c_Friction * push);
+					float drag = std::clamp(-glm::dot(pointVel, along) / (1.0F / body.Mass + armCrossAlong * armCrossAlong / body.Inertia), -c_Friction * std::abs(push), c_Friction * std::abs(push));
 					body.Vel += along * (drag / body.Mass);
 					body.Spin += armCrossAlong * drag / body.Inertia;
 					pushed = true;

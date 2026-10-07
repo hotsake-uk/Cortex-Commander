@@ -800,7 +800,8 @@ void FluidSim::Update() {
 			freeFall = true;
 			// Falling: faster the longer it falls, drifting the way it was already going, so it pours in an arc.
 			velY = std::min(velY + properties.Gravity, properties.Fall * 4);
-			int steps = std::clamp(velY / 4, kind == Liquid::Powder ? 1 : 2, properties.Fall);
+			int fewest = kind == Liquid::Powder ? 1 : 2;
+			int steps = std::clamp(velY / 4, fewest, std::max(fewest, properties.Fall)); // (The high end never under the low: std::clamp aborts on that with libstdc++'s checks.)
 			int drift = velX >= 4 ? 1 : (velX <= -4 ? -1 : 0);
 			if (drift == 0 && velY >= 12 && kind != Liquid::Powder) {
 				// A stream that has been falling a while frays at its edges: now and then a pixel of it steps sideways as it falls.
