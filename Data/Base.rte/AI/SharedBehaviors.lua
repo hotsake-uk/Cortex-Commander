@@ -490,6 +490,36 @@ end
 -- the point that eases as it nears, corrected only when clearly off (and held, not flipped, while it is near enough), and the jet for
 -- what the height needs: to rise to the point with the coast, or to come down no faster than the jet can stop before it.
 -- @param state A table kept between ticks (the key held). @return The move key, whether to jet, and the aim angle.
+-- Where a unit in open flight steers for: the furthest of the route's next few points its whole body has a clear way to (rays from
+-- its head and its feet height), not always the first. A route found in the air starts at the node the unit is in, so its first point
+-- was often behind or under a unit moving the other way, and steering for it turned the unit round mid-air for a point it had no need
+-- of; a person cuts the corner to the point they can see. (The pops in GoToWpt drop the points as they are passed.)
+-- @return The point to steer for.
+function SharedBehaviors.FlightTarget(Owner, First)
+	local target = First;
+	local rise = Vector(0, -Owner.Height * 0.3);
+	local drop = Vector(0, Owner.Height * 0.3);
+	local index = 0;
+	for pos in Owner.MovePath do
+		index = index + 1;
+		if index > 6 then
+			break;
+		end
+		if index > 1 then
+			local To = SceneMan:ShortestDistance(Owner.Pos, pos, false);
+			if To:MagnitudeIsGreaterThan(Owner.Height * 4) then
+				break;
+			end
+			if SceneMan:CastObstacleRay(Owner.Pos + rise, To, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0
+			or SceneMan:CastObstacleRay(Owner.Pos + drop, To, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+				break;
+			end
+			target = pos;
+		end
+	end
+	return target;
+end
+
 function SharedBehaviors.FlightControl(AI, Owner, Target, state)
 	local ppm = GetPPM();
 	local gravity = SceneMan.GlobalAcc.Y * ppm;
@@ -2671,7 +2701,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												AI.jetClimb = false;
 												if Owner.Head and AI.flying and not WallAhead and not hopping and Owner.Jetpack.JetpackType == AEJetpack.Standard then
 													-- In the air: steered by SharedBehaviors.FlightControl, not re-chosen from four directions every tick.
-													nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, Waypoint.Pos, FlightState);
+													nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, SharedBehaviors.FlightTarget(Owner, Waypoint.Pos), FlightState);
 												else
 												FlightState = {};
 												-- predict jetpack movement...
