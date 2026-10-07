@@ -1158,7 +1158,9 @@ void MovableMan::OpenAllDoors(bool open, int team) const {
 void MovableMan::OverrideMaterialDoors(bool eraseDoorMaterial, int team) const {
 	for (std::deque<Actor*> actorDeque: {m_Actors, m_AddedActors}) {
 		for (Actor* actor: actorDeque) {
-			if (ADoor* actorAsDoor = dynamic_cast<ADoor*>(actor); actorAsDoor && (team == Activity::NoTeam || actorAsDoor->GetTeam() == team)) {
+			// (No one's doors too: they open for anyone who comes, so every team's grid has them open. Left in, a bunker's neutral doors were walls to
+			// every route, and units went the long way round.)
+			if (ADoor* actorAsDoor = dynamic_cast<ADoor*>(actor); actorAsDoor && (team == Activity::NoTeam || actorAsDoor->GetTeam() == team || actorAsDoor->GetTeam() == Activity::NoTeam)) {
 				actorAsDoor->TempEraseOrRedrawDoorMaterial(eraseDoorMaterial);
 			}
 		}
