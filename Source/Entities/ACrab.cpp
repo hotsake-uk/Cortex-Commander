@@ -1556,3 +1556,211 @@ int ACrab::WhilePieMenuOpenListener(const PieMenu* pieMenu) {
 	}
 	return result;
 }
+
+// ---------------------------------------------------------------- The crab's route-follower
+
+namespace {
+	RTE::Vector CrabTowards(const RTE::Vector& from, const RTE::Vector& to) {
+		return RTE::g_SceneMan.ShortestDistance(from, to, RTE::g_SceneMan.SceneWrapsX());
+	}
+
+	// The floor under a point within so far: its y, or below zero for none.
+	float CrabFloorUnder(const RTE::Vector& point, float reach) {
+		RTE::Vector hit;
+		if (RTE::g_SceneMan.CastStrengthRay(point, RTE::Vector(0.0F, reach), 5.0F, hit, 2)) {
+			return hit.m_Y;
+		}
+		return -1.0F;
+	}
+} // namespace
+
+void ACrab::ResetRouteMovement() {
+	m_CrabMover = CrabMover();
+}
+
+int ACrab::MoveAlongRoute() {
+	CrabMover& mover = m_CrabMover;
+	if (!mover.begun) {
+		mover.begun = true;
+		mover.progressTimer.Reset();
+	}
+	const float h = std::max(m_CharHeight, 30.0F);
+	const float ppm = c_PPM;
+	const float gravity = g_SceneMan.GetGlobalAcc().m_Y * ppm;
+	Controller& ctrl = m_Controller;
+	const bool standardJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+
+	// Nothing to go to.
+	if (m_Waypoints.empty() && m_MovePath.empty() && !m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		return 1;
+	}
+	if (m_Status != STABLE) {
+		mover.progressTimer.Reset();
+		return 0;
+	}
+
+	// The route: asked for when there is none, and now and then anyway.
+	auto refresh = [&]() {
+		Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
+		bool hadGoal = m_HasMovePathGoal || !m_MovePath.empty();
+		m_MovePath.clear();
+		m_MovePathKinds.clear();
+		if (hadGoal) {
+			m_MovePathGoal = goal;
+			m_HasMovePathGoal = true;
+			m_MoveTarget = goal;
+		}
+		UpdateMovePath();
+		mover.repathTimer.Reset();
+		mover.noSightTimer.Reset();
+		mover.bestGap = -1.0F;
+		mover.progressTimer.Reset();
+	};
+	if (m_MovePath.empty() && !IsWaitingOnNewMovePath()) {
+		if (m_ImpossiblePaths > 0 && mover.impossibleAnswers >= 3) {
+			return 2;
+		}
+		UpdateMovePath();
+		if (m_ImpossiblePaths > 0) {
+			++mover.impossibleAnswers;
+		}
+		mover.repathTimer.Reset();
+	}
+	if (IsWaitingOnNewMovePath() || m_MovePath.empty()) {
+		return 0;
+	}
+	mover.impossibleAnswers = 0;
+
+	// On the ground: floor under its middle or either side of its body (a crab is wide).
+	float floorHere = CrabFloorUnder(m_Pos, h * 0.9F);
+	for (float side: {-h * 0.3F, h * 0.3F}) {
+		if (floorHere < 0.0F) {
+			floorHere = CrabFloorUnder(m_Pos + Vector(side, 0.0F), h * 0.9F);
+		}
+	}
+	const bool airborne = floorHere < 0.0F;
+
+	// Arrived: the last point, the goal within reach, standing.
+	if (m_MovePath.size() <= 1 && m_Waypoints.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		Vector goal = GetLastAIWaypoint();
+		if (CrabTowards(m_Pos, goal).MagnitudeIsLessThan(std::max(m_MoveProximityLimit * 1.5F, h * 0.4F)) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
+			return 1;
+		}
+	}
+
+	// Points passed are dropped: within reach, or behind with the next in plain sight (terrain only).
+	{
+		float tolerance = m_MoveProximityLimit * (airborne ? 2.0F : 1.0F);
+		for (int guard = 0; guard < 6 && m_MovePath.size() > 1; ++guard) {
+			Vector toPoint = CrabTowards(m_Pos, m_MovePath.front());
+			Vector toNext = CrabTowards(m_Pos, *std::next(m_MovePath.begin()));
+			Vector hit;
+			bool passed = toPoint.MagnitudeIsLessThan(tolerance) || (toNext.MagnitudeIsLessThan(toPoint.GetMagnitude()) && !g_SceneMan.CastStrengthRay(m_Pos, toNext, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor));
+			if (!passed) {
+				break;
+			}
+			m_PrevPathTarget = m_MovePath.front();
+			m_MovePath.pop_front();
+			if (!m_MovePathKinds.empty()) {
+				m_MovePathKinds.pop_front();
+			}
+		}
+	}
+
+	// Progress, and being stuck: a hop at 2.5 s, a new route round the place at 6.
+	{
+		float gap = CrabTowards(m_Pos, m_MovePath.front()).GetMagnitude();
+		if (mover.bestGap < 0.0F || gap < mover.bestGap - 4.0F) {
+			mover.bestGap = gap;
+			mover.progressTimer.Reset();
+		}
+	}
+	const bool stuck = mover.progressTimer.IsPastSimMS(2500);
+	if (mover.progressTimer.IsPastSimMS(6000)) {
+		AvoidPathPoint(m_MovePath.front(), 20000.0F);
+		refresh();
+		return 0;
+	}
+	// A fresh route now and then (the world changes), or when the next point has been out of sight on the ground for a second.
+	if (!airborne) {
+		Vector hit;
+		bool inSight = !g_SceneMan.CastStrengthRay(m_Pos, CrabTowards(m_Pos, m_MovePath.front()), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		if (inSight) {
+			mover.noSightTimer.Reset();
+		}
+		if (mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) {
+			refresh();
+			return 0;
+		}
+	}
+
+	const Vector point = m_MovePath.front();
+	const PathStepKind kind = m_MovePathKinds.empty() ? PathStepKind::Walk : m_MovePathKinds.front();
+	const Vector toPoint = CrabTowards(m_Pos, point);
+	const float above = -toPoint.m_Y;
+	// The jet's push now, against gravity: what a climb can hold and a brake can stop.
+	const float push = (standardJet && GetMass() > 0.0F && g_TimerMan.GetDeltaTimeSecs() > 0.0F) ? m_pJetpack->EstimateImpulse(false) / GetMass() / g_TimerMan.GetDeltaTimeSecs() * ppm : 0.0F;
+	const float netUp = push - gravity;
+	// The stick for the jet: up, leant by up to the nozzle's full tilt (0.27 across is about fourteen degrees), in screen terms.
+	auto jetWith = [&](float lean) {
+		ctrl.SetState(BODY_JUMP, true);
+		ctrl.SetAnalogMove(Vector(std::clamp(lean, -1.0F, 1.0F) * 0.27F, -1.0F));
+	};
+
+	// ---- In the air: a climb for a point above, held to a rate the coast just reaches it at; else the fall braked for its floor. ----
+	if (airborne) {
+		if (standardJet && m_pJetpack->GetJetTimeLeft() > 0.0F) {
+			float lean = std::clamp(toPoint.m_X / h, -1.0F, 1.0F) - std::clamp(m_Vel.m_X * 0.2F, -0.5F, 0.5F);
+			if (above > h * 0.1F) {
+				float rate = std::min(8.0F, std::sqrt(2.0F * gravity * std::max(0.0F, above - 6.0F)) / ppm);
+				if (m_Vel.m_Y > -rate) {
+					jetWith(lean);
+				}
+			} else if (m_Vel.m_Y > 2.0F && netUp > 1.0F) {
+				float speed = m_Vel.m_Y * ppm;
+				float stop = speed * speed / (2.0F * netUp);
+				if (CrabFloorUnder(m_Pos, stop * 1.3F + h * 0.6F) >= 0.0F) {
+					jetWith(std::clamp(-m_Vel.m_X * 0.3F, -1.0F, 1.0F));
+				}
+			}
+		}
+		if (std::abs(toPoint.m_X) > 3.0F) {
+			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+		return 0;
+	}
+
+	// ---- On the ground. ----
+	// A climb the legs don't take (the route's jump, or the point well above): off from a stand under the way up, with fuel for it.
+	if (standardJet && netUp > 1.0F && (kind == PathStepKind::Jump || above > h * 0.45F) && std::abs(toPoint.m_X) < h * 1.5F && above > h * 0.2F) {
+		if (std::abs(m_Vel.m_X) > 0.6F) {
+			// (Steadied first: the walk's speed into a climb is a push the wrong way, and a crab's jet can barely lean against it.)
+			mover.progressTimer.Reset();
+			return 0;
+		}
+		float seconds = above / std::max(1.0F, std::min(8.0F * ppm, std::sqrt(netUp * above)));
+		float needed = std::min(m_pJetpack->GetJetTimeTotal() * 0.85F, seconds * 1000.0F * 1.3F + 300.0F);
+		if (m_pJetpack->GetJetTimeLeft() < needed) {
+			mover.progressTimer.Reset();
+			return 0;
+		}
+		ctrl.SetState(BODY_JUMPSTART, true);
+		jetWith(std::clamp(toPoint.m_X / h, -1.0F, 1.0F));
+		mover.progressTimer.Reset();
+		return 0;
+	}
+	// The walk.
+	if (std::abs(toPoint.m_X) > 3.0F) {
+		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+	}
+	// Stuck on something the legs don't take: a hop, now and then.
+	if (stuck && standardJet && m_pJetpack->GetJetTimeLeft() > 300.0F) {
+		if (mover.hopTimer.IsPastSimMS(1200)) {
+			mover.hopTimer.Reset();
+		}
+		if (!mover.hopTimer.IsPastSimMS(350)) {
+			jetWith(std::clamp(toPoint.m_X / h, -1.0F, 1.0F));
+		}
+	}
+	return 0;
+}

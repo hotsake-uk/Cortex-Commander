@@ -276,6 +276,14 @@ namespace RTE {
 		/// What this crab is to the path grid (see Actor::GetPathAgent): the same, and its legs take stairs.
 		PathAgent GetPathAgent() const override;
 
+		/// The engine's route-follower for a crab (the crab's own: legs, and a jet that lifts and leans only a little): one tick along the
+		/// route to the AI's waypoint. Walks; climbs on the jet from a stand, the move stick up and leant towards the way (a crab's nozzle
+		/// tilts about fourteen degrees); brakes a fall for its floor; hops when stuck and asks a new route when long stuck.
+		/// @return 0 on its way, 1 arrived, 2 no route to it (as AHuman::MoveAlongRoute).
+		int MoveAlongRoute();
+		/// Forgets the follower's state (a new order).
+		void ResetRouteMovement();
+
 		/// Protected member variable and method declarations
 	protected:
 		/// Function that is called when we get a new movepath.
@@ -375,6 +383,19 @@ namespace RTE {
 
 		/// Private member variable and method declarations
 	private:
+		/// The crab route-follower's state (see MoveAlongRoute).
+		struct CrabMover {
+			bool begun = false;
+			Timer progressTimer; //!< Since it last got nearer the route's point.
+			float bestGap = -1.0F;
+			Timer repathTimer;
+			Timer noSightTimer;
+			Timer hopTimer;
+			int impossibleAnswers = 0;
+			bool climbing = false; //!< In a climb begun from the ground for a point above.
+		};
+		CrabMover m_CrabMover;
+
 		/// Clears all the member variables of this ACrab, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();

@@ -66,6 +66,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACrab) {
 
 	    .property("Turret", &ACrab::GetTurret, &LuaAdaptersPropertyOwnershipSafetyFaker::ACrabSetTurret)
 	    .property("Jetpack", &ACrab::GetJetpack, &LuaAdaptersPropertyOwnershipSafetyFaker::ACrabSetJetpack)
+	    .def("MoveAlongRoute", &ACrab::MoveAlongRoute)
+	    .def("ResetRouteMovement", &ACrab::ResetRouteMovement)
 	    .property("LeftFGLeg", &ACrab::GetLeftFGLeg, &LuaAdaptersPropertyOwnershipSafetyFaker::ACrabSetLeftFGLeg)
 	    .property("LeftBGLeg", &ACrab::GetLeftBGLeg, &LuaAdaptersPropertyOwnershipSafetyFaker::ACrabSetLeftBGLeg)
 	    .property("RightFGLeg", &ACrab::GetRightFGLeg, &LuaAdaptersPropertyOwnershipSafetyFaker::ACrabSetRightFGLeg)

@@ -118,7 +118,7 @@ function NativeCrabAI:Update(Owner)
 
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or told to go somewhere while the behaviour left over from arriving is still running: see NativeHumanAI.)
-	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
+	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and self.BehaviorName ~= "GoToRoute" and self.NextBehaviorName ~= "GoToRoute" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
 	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
@@ -214,7 +214,7 @@ function NativeCrabAI:Update(Owner)
 				end
 			end
 		else
-			if self.GoToName == "GoToWpt" then
+			if self.GoToName == "GoToWpt" or self.GoToName == "GoToRoute" then
 				self:CreateGoToBehavior(Owner);
 			end
 
@@ -226,7 +226,7 @@ function NativeCrabAI:Update(Owner)
 		end
 	elseif Owner.AIMode == Actor.AIMODE_SQUAD then	-- if we are in AIMODE_SQUAD the leader just got killed
 		Owner.AIMode = Actor.AIMODE_SENTRY;
-		if self.GoToName == "GoToWpt" then
+		if self.GoToName == "GoToWpt" or self.GoToName == "GoToRoute" then
 			self:CreateGoToBehavior(Owner);
 		end
 	end
@@ -454,8 +454,12 @@ function NativeCrabAI:CreateSuppressBehavior(Owner)
 end
 
 function NativeCrabAI:CreateGoToBehavior(Owner)
-	self.NextBehavior = coroutine.create(SharedBehaviors.GoToWpt);
-	self.NextBehaviorName = "GoToWpt";
+	-- The engine's route-follower for crabs (ACrab::MoveAlongRoute) where the build has it; else the script's own. (Asked without the error a
+	-- missing member is, for an older exe.)
+	local ok, member = pcall(function() return Owner.MoveAlongRoute; end);
+	local engine = ok and member ~= nil and not (os and os.getenv and os.getenv("CCCP_LUA_MOVER") == "1");
+	self.NextBehavior = coroutine.create(engine and SharedBehaviors.GoToRoute or SharedBehaviors.GoToWpt);
+	self.NextBehaviorName = engine and "GoToRoute" or "GoToWpt";
 
 	self.NextCleanup = function(AI)
 		AI.lateralMoveState = Actor.LAT_STILL;
