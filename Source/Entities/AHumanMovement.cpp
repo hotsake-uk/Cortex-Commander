@@ -722,10 +722,67 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 		} else {
-			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing.
+			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing; a landing off to one side
+			// is stepped across onto (below).
 			if (flight.via && m_Pos.m_Y <= flight.viaPoint.m_Y + 8.0F) {
 				flight.via = false;
-				MoverTrace("out of the shaft; for the landing");
+				flight.step = std::abs(Towards(flight.viaPoint, flight.landing).m_X) >= 10.0F;
+				flight.holdY = flight.viaPoint.m_Y;
+				flight.stepTimer.Reset();
+				MoverTrace(flight.step ? "out of the shaft; stepping across" : "out of the shaft; for the landing");
+			}
+			// The step off the top (8.0's ClimbUpdate "step"): the height held, and only once the way across is clear at foot and shin height
+			// does it move across, at a walking pace, until there is floor under the feet; while the feet would foul the lip, it rises a pixel
+			// at a time. (Handed to the pilot, which flies for the landing's point and brakes for its floor, a unit hung on the lip.)
+			if (flight.step && !flight.refuelling) {
+				float sideways = Towards(flight.viaPoint, flight.landing).m_X;
+				float side = sideways > 0.0F ? 1.0F : -1.0F;
+				const char* stepFailed = nullptr;
+				if (flight.stepTimer.IsPastSimMS(2500)) {
+					stepFailed = "couldn't step across";
+				} else if (m_Pos.m_Y > flight.holdY + h * 0.4F) {
+					stepFailed = "dropped from the top";
+				}
+				if (stepFailed) {
+					MoverTrace(std::string("flight failed (") + stepFailed + "); new route");
+					flight = RouteMover::Flight();
+					mover.bestGap = -1.0F;
+					mover.progressTimer.Reset();
+					RefreshRoute();
+					return RouteMover::Moving;
+				}
+				Vector reach(side * (std::abs(to.m_X) + h * 0.15F), 0.0F);
+				Vector hit;
+				bool feetClear = !g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, feet - 2.0F), reach, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor) && !g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, h * 0.1F), reach, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor);
+				if (!feetClear) {
+					flight.holdY = std::max(flight.floorY - feet - h * 0.3F, flight.holdY - 1.0F);
+				}
+				float across = Towards(flight.viaPoint, m_Pos).m_X * side;
+				bool floorUnderFeet = FloorUnder(m_Pos + Vector(0.0F, feet - 2.0F), h * 0.3F) >= 0.0F;
+				if (floorUnderFeet && across >= std::min(std::abs(sideways), h * 0.25F)) {
+					for (int k = 0; k < flight.pointsToLanding && !m_MovePath.empty(); ++k) {
+						PopRoutePoint();
+					}
+					MoverTrace("stepped off onto the landing");
+					flight = RouteMover::Flight();
+					mover.bestGap = -1.0F;
+					mover.progressTimer.Reset();
+					ctrl.SetState(side > 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+					return RouteMover::Moving;
+				}
+				// The height: lit when below it and not rising fast, or sinking near it.
+				float error = m_Pos.m_Y - flight.holdY; // (Positive when below.)
+				bool jet = (error > 0.0F && m_Vel.m_Y > -1.5F) || (error > -6.0F && m_Vel.m_Y > 1.0F);
+				ctrl.SetState(BODY_JUMP, jet && standardJet && m_pJetpack->GetJetTimeLeft() > 0.0F);
+				// Sideways by speed: across at 2.5 m/s with the way clear, else kept over the column.
+				float wantVelX = feetClear ? side * 2.5F : std::clamp(Towards(m_Pos, flight.viaPoint).m_X / 6.0F, -1.0F, 1.0F);
+				ctrl.SetAnalogMove(Vector(std::clamp((wantVelX - m_Vel.m_X) * 0.6F, -1.0F, 1.0F), -1.0F));
+				if (feetClear && (!airborne || m_Vel.MagnitudeIsLessThan(0.6F))) {
+					ctrl.SetState(side > 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+				}
+				flight.riseTimer.Reset();
+				mover.progressTimer.Reset();
+				return RouteMover::Moving;
 			}
 			if (!flight.refuelling && holdForDoor(flight.via ? flight.viaPoint : flight.landing, true)) {
 				flight.riseTimer.Reset();
@@ -1026,11 +1083,51 @@ int AHuman::MoveAlongRoute() {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		mover.progressTimer.Reset();
 	}
-	// A step up the legs don't take, or a wall: after a moment with no progress, a hop (the mantle takes most steps).
-	if (stuck && standardJet && !prone && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
+	// A wall ahead on the way (8.0's chest and head rays, a little under a body ahead, terrain only so other units and our doors aren't
+	// walls): both blocked at much the same distance is a face higher than the body, hopped at once when there is head room and fuel,
+	// rather than after the 2.5 s with no progress the stuck handling waits. Chest alone is a step or a slope, the legs' and the mantle's.
+	// (Not for a point below us, a drop, nor lying down.)
+	bool wallAhead = false;
+	if (!prone && std::abs(toPoint.m_X) > 3.0F && above > -h * 0.2F && standardJet && !mover.fuelWaiting) {
+		float dirX = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		Vector ray(dirX * h * 0.45F, 0.0F);
+		Vector chestHit;
+		Vector headHit;
+		bool chest = g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, -h * 0.1F), ray, 5.0F, chestHit, 2, MaterialColorKeys::g_MaterialDoor);
+		bool head = chest && g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY + 2.0F), ray, 5.0F, headHit, 2, MaterialColorKeys::g_MaterialDoor);
+		wallAhead = chest && head && std::abs(Towards(chestHit, headHit).m_X) < 6.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F) && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 100.0F && !DoorAhead(point);
+	}
+	// Stuck (no progress for 2.5 s, and a new route at 6): besides the hop, a back-off the other way for half a second at 3.3 s, and lying
+	// down for 0.7 s at 4.4 (under something the standing body catches on); 8.0 flipped direction and lay down now and then at random.
+	float stuckMS = static_cast<float>(mover.progressTimer.GetElapsedSimTimeMS());
+	bool layingDown = false;
+	if (!stuck) {
+		mover.stuckBackedOff = false;
+		mover.stuckLayDown = false;
+	} else if (!mover.fuelWaiting) {
+		if (stuckMS > 3300.0F && stuckMS < 3800.0F && std::abs(toPoint.m_X) > 3.0F) {
+			bool right = toPoint.m_X > 0.0F;
+			ctrl.SetState(right ? MOVE_RIGHT : MOVE_LEFT, false);
+			ctrl.SetState(right ? MOVE_LEFT : MOVE_RIGHT, true);
+			ctrl.SetState(MOVE_FAST, false);
+			if (!mover.stuckBackedOff) {
+				mover.stuckBackedOff = true;
+				MoverTrace("stuck; backing off");
+			}
+		} else if (stuckMS > 4400.0F && stuckMS < 5100.0F && !prone) {
+			ctrl.SetState(BODY_PRONE, true);
+			layingDown = true;
+			if (!mover.stuckLayDown) {
+				mover.stuckLayDown = true;
+				MoverTrace("stuck; lying down");
+			}
+		}
+	}
+	// A wall, or a step up the legs don't take: a hop (the mantle takes most steps).
+	if ((stuck || wallAhead) && standardJet && !prone && !layingDown && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
 		if (mover.hopTimer.IsPastSimMS(1200)) {
 			mover.hopTimer.Reset();
-			MoverTrace("stuck; hop");
+			MoverTrace(wallAhead && !stuck ? "wall ahead; hop" : "stuck; hop");
 		}
 		if (!mover.hopTimer.IsPastSimMS(350)) {
 			ctrl.SetState(BODY_JUMP, true);

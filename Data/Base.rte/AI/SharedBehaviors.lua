@@ -469,9 +469,59 @@ function SharedBehaviors.UsesEngineMover(Owner)
 	return not Owner:HasObjectInGroup("Tools - Diggers");
 end
 
+-- Following a unit (a squad's leader, or one we were told to follow), as 8.0's GoToWpt did it, for the route-follower's wrapper: near the
+-- place and in plain sight (a place in line behind a leader, AI.squadPoint, else the unit itself), walked straight to; in the place,
+-- held still until it moves off (the leader walks on, or a door's sweep); an enemy unit close by, walked at. @return Whether this tick's
+-- movement is handled here (AI.lateralMoveState set), or left to the route-follower.
+function SharedBehaviors.FollowStep(AI, Owner)
+	local Target = Owner.MOMoveTarget;
+	if not Target or not MovableMan:ValidMO(Target) or not IsActor(Target) or AI.flying then
+		AI.followHold = false;
+		return false;
+	end
+	local TargetActor = ToActor(Target);
+	local H = Owner.Height;
+	local targetH = TargetActor.Height or 100;
+	if Target.Team ~= Owner.Team then
+		local ToTarget = SceneMan:ShortestDistance(Owner.Pos, Target.Pos, false);
+		if ToTarget.Largest < H * 0.33 + targetH * 0.33 then
+			AI.lateralMoveState = ToTarget.X < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+			return true;
+		end
+		return false;
+	end
+	local Goal = AI.squadPoint or Target.Pos;
+	local ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
+	local Lift = Vector(0, -H * 0.2);
+	local function InSight()
+		return SceneMan:CastObstacleRay(Owner.Pos + Lift, ToGoal, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 6) < 0;
+	end
+	-- (A place in line stands off the leader already, so its radius is under half the gap between places, or two followers hold one spot.)
+	local nearIn = AI.squadPoint and 0.15 or 0.3;
+	local nearOut = AI.squadPoint and 0.25 or 0.4;
+	local moving = Target.Vel.Largest > 1;
+	if AI.followHold then
+		local off = ToGoal.Largest > H * nearOut + targetH * nearOut or moving or SharedBehaviors.InDoorSweep(Owner);
+		if not off and InSight() then
+			return true;
+		end
+		AI.followHold = false;
+	elseif not moving and ToGoal.Largest <= H * nearIn + targetH * nearIn and InSight() then
+		AI.followHold = true;
+		return true;
+	end
+	if ToGoal:MagnitudeIsLessThan(H * 1.5) and math.abs(ToGoal.Y) < H * 0.3 and InSight() then
+		if math.abs(ToGoal.X) > 3 then
+			AI.lateralMoveState = ToGoal.X < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+		end
+		return true;
+	end
+	return false;
+end
+
 -- The move behaviour on the engine's route-follower: a coroutine like GoToWpt, so the AI drives it the same way, but each tick is one
--- call of AHuman::MoveAlongRoute, which sets the controls itself. The script keeps what is its own: fighting on the move, and what to do
--- on arrival.
+-- call of AHuman::MoveAlongRoute, which sets the controls itself. The script keeps what is its own: fighting on the move, following a
+-- unit near at hand (SharedBehaviors.FollowStep), and what to do on arrival. (Gold digging keeps 8.0's GoToWpt: a digger's unit uses it.)
 function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 	Owner:ResetRouteMovement();
 	AI.jetClimb = false;
@@ -486,6 +536,16 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		AI.lateralMoveState = Actor.LAT_STILL;
 		AI.jump = false;
 		AI.pilotFlight = true; -- (The engine holds the jet as it means to: no hold timer of the native AI's over it.)
+		-- Following a unit near at hand: walked or held here, not routed (the route-follower never "arrives" at a unit, and shoved for its spot).
+		local following = not holding and SharedBehaviors.FollowStep(AI, Owner);
+		if following then
+			holding = true;
+			AI.wasFollowing = true;
+		elseif AI.wasFollowing then
+			-- (Back to the route: its timers start again, or the time spent following read as being stuck.)
+			AI.wasFollowing = false;
+			Owner:ResetRouteMovement();
+		end
 		AI.engineMover = not holding; -- (And the run key: the follower runs where the way is open.)
 		if not holding then
 			local result = Owner:MoveAlongRoute();

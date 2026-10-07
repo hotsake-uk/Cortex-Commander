@@ -769,6 +769,9 @@ namespace RTE {
 				float bestY = 0.0F;
 				Timer riseTimer; //!< Since the climb last gained height.
 				Timer totalTimer; //!< Since the flight began (the other timer starts again at each refuel).
+				bool step = false; //!< Out of a shaft with the landing to one side: holding the height and stepping across onto it.
+				float holdY = 0.0F; //!< The height held while stepping across (raised a pixel at a time until the feet clear the lip).
+				Timer stepTimer;
 			};
 			bool begun = false;
 			Flight flight;
@@ -789,6 +792,8 @@ namespace RTE {
 			Timer fuelWaitTimer;
 			int impossibleAnswers = 0;
 			double lastJetTime = -1.0;
+			bool stuckBackedOff = false; //!< Whether the stuck handling has backed off, and lain down, this time stuck (traced once each).
+			bool stuckLayDown = false;
 		};
 		RouteMover m_Mover;
 
