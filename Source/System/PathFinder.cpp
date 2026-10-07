@@ -949,21 +949,36 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			floor = centreY; // Buried: no room at all.
 		}
 		int from = floor >= 0 ? floor - 1 : centreY;
+		// The most open of a few lines up, the centre's and a few pixels either side: a ladder's rungs stick out 8 px from a shaft's wall, one
+		// every 8 px, and a node whose centre was over them read as having no head room at all, so the shaft beside a ladder was no way up
+		// and every route past one came back impossible. A ceiling or a floor slab fills the cell, and stops all the lines alike.
 		int free = 0;
-		while (free < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, from - free) == MaterialColorKeys::g_MaterialAir) {
-			++free;
+		for (int dx: {0, -4, 4, -8, 8}) {
+			int lineFree = 0;
+			while (lineFree < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x + dx, from - lineFree) == MaterialColorKeys::g_MaterialAir) {
+				++lineFree;
+			}
+			free = std::max(free, lineFree);
 		}
 		node->FreeHeight = free;
 		int sideY = floor >= 0 ? floor - 10 : centreY;
 		// (Out to two nodes a side: measured to one, a shaft two nodes wide read as narrower than it was from either of its columns, since
 		// neither is in the middle, and a jet column was refused where a body would have fitted twice over.)
+		// (At two heights 4 px apart, the more open of each side: a ladder's rungs are 4 px thick on an 8 px pitch, so one of the two passes
+		// between them; measured at one, a shaft with a ladder up its side read 8 px narrower, and too narrow to jet up.)
 		int left = 0;
-		while (left < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x - 1 - left, sideY) == MaterialColorKeys::g_MaterialAir) {
-			++left;
-		}
 		int right = 0;
-		while (right < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x + 1 + right, sideY) == MaterialColorKeys::g_MaterialAir) {
-			++right;
+		for (int dy: {0, -4}) {
+			int lineLeft = 0;
+			while (lineLeft < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x - 1 - lineLeft, sideY + dy) == MaterialColorKeys::g_MaterialAir) {
+				++lineLeft;
+			}
+			int lineRight = 0;
+			while (lineRight < m_NodeDimension * 2 && g_SceneMan.GetTerrMatter(x + 1 + lineRight, sideY + dy) == MaterialColorKeys::g_MaterialAir) {
+				++lineRight;
+			}
+			left = std::max(left, lineLeft);
+			right = std::max(right, lineRight);
 		}
 		node->ClearLeft = left;
 		node->ClearRight = right;
@@ -1021,7 +1036,19 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	if (node->Down) {
 		// One line, down the column: the pair a few pixels either side read a slope's surface as a ceiling over the node under it, and
 		// whether a body fits down a gap is RoomToPass's business now.
-		node->DownMaterial = StrongestMaterialAlongLine(StandingPoint(*node, 3.0F), StandingPoint(*node->Down, 3.0F));
+		// (The weakest of a few lines, the centre's and a few pixels either side: a body goes up or down beside a ladder's rungs, and a line
+		// down the centre that clipped one costed the step at the rung's metal, a thousand times over, and the shaft was no way at all. A
+		// floor fills the cell and stops every line, so a slab is still a slab; whether a body fits is RoomToPass's business, as before.)
+		Vector top = StandingPoint(*node, 3.0F);
+		Vector bottom = StandingPoint(*node->Down, 3.0F);
+		const Material* weakest = nullptr;
+		for (float dx: {0.0F, -4.0F, 4.0F, -8.0F, 8.0F}) {
+			const Material* line = StrongestMaterialAlongLine(top + Vector(dx, 0.0F), bottom + Vector(dx, 0.0F));
+			if (!weakest || line->GetIntegrity() < weakest->GetIntegrity()) {
+				weakest = line;
+			}
+		}
+		node->DownMaterial = weakest;
 	}
 
 	if (node->UpRight) {
