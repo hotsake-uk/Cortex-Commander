@@ -17,6 +17,12 @@ function AIBunkerScript:StartScript()
 	if os and os.getenv and tonumber(os.getenv("CCCP_BUNKER_TRACE") or "") then
 		self.traceCourse = tonumber(os.getenv("CCCP_BUNKER_TRACE"));
 	end
+	-- CCCP_RECORD=1: a replay of the traced course's unit (Replay.ps1): the camera follows it with the navigation overlay on, a frame of the
+	-- screen is saved five times a second, and each is marked in the log ("REPLAY frame n") so the trace lines can be laid against them.
+	if os and os.getenv and os.getenv("CCCP_RECORD") == "1" then
+		self.record = true;
+		pcall(function() SettingsMan.NavDebugOverlay = 2; end);
+	end
 	-- CCCP_NAV_DEBUG as a level (1 the grid, 2 the routes and flights too) turns the navigation debug overlay on for this run, for a capture
 	-- of what the units make of the place. (The harness force-closes the game, so Settings.ini is not written with it.)
 	if os and os.getenv and tonumber(os.getenv("CCCP_NAV_DEBUG") or "") then
@@ -225,6 +231,25 @@ function AIBunkerScript:UpdateScript()
 		FrameMan:SaveScreenToPNG("NavDebug");
 	end
 	local t = self.timer.ElapsedSimTimeMS;
+	if self.record and self.started then
+		if not self.recordTimer then
+			self.recordTimer = Timer();
+			self.recordFrame = 0;
+		end
+		if self.recordTimer:IsPastSimMS(200) then
+			self.recordTimer:Reset();
+			for _, runner in ipairs(self.runners) do
+				local a = runner.actor;
+				if not runner.done and MovableMan:ValidMO(a) and a:NumberValueExists("AITrace") then
+					SandboxDo("Look around", a.Pos, 0, 0, 1, "");
+					self.recordFrame = self.recordFrame + 1;
+					ConsoleMan:PrintString(string.format("REPLAY frame %d t %.1f at %d,%d vel %.1f,%.1f", self.recordFrame, t / 1000, math.floor(a.Pos.X), math.floor(a.Pos.Y), a.Vel.X, a.Vel.Y));
+					FrameMan:SaveScreenToPNG(string.format("Replay_%05d", self.recordFrame));
+					break;
+				end
+			end
+		end
+	end
 	if not self.built and t > 2500 then
 		self.built = true;
 		SandboxDo("Look around", self.lookAt, 0, 0, 1, "");
