@@ -951,6 +951,9 @@ namespace RTE {
 		/// overshoot is a new route forward from where it got to, not a turn back for a point already passed.
 		void RequestRouteCheck();
 
+		/// Whether this is pulling itself up onto a ledge or over an obstacle right now (see TryStartMantle).
+		bool IsMantling() const { return m_Mantling; }
+
 		/// Marks a place where this failed a jump: for so long, routes through it cost more for this (see PathAgent::Avoid).
 		/// @param place The place, a point of the route the jump was to.
 		/// @param milliseconds For how long, in sim time.
@@ -1156,6 +1159,30 @@ namespace RTE {
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
 		std::vector<std::pair<Vector, double>> m_AvoidPoints; //!< Places this failed jumps at, and the sim time (ms) each is avoided until.
+		// The mantle: a pull up onto a ledge, or over a low obstacle, that the legs or the jet alone would struggle with (see TryStartMantle).
+		bool m_Mantling = false;
+		float m_MantleDir = 0.0F; //!< -1 left, 1 right.
+		Vector m_MantleStart; //!< Where the body was.
+		Vector m_MantleUp; //!< Where it is lifted to first.
+		Vector m_MantleEnd; //!< Where it ends, over the ledge.
+		float m_MantleDurationMS = 0.0F;
+		Timer m_MantleTimer;
+
+		/// Whether the body (and a head, for a body that has one) would be clear of terrain shifted by so much.
+		bool BodyFitsShifted(const Vector& shift, MOSRotating* head) const;
+
+		/// Starts a mantle if this is pressing left or right into something it can get up onto: a ledge or an obstacle whose top is no
+		/// higher than 0.3 of the body (0.55 while rising on the jet), with room for the whole body on top and ground under it there.
+		/// Any body works, from its own sizes; the move itself is the same for all.
+		/// @param head The head, if the body has one, so it fits too.
+		/// @param rising Whether the body is going up on its jet.
+		/// @param bodyWidth How wide the body is, for how far over the edge it has to go.
+		/// @return Whether a mantle started.
+		bool TryStartMantle(MOSRotating* head, bool rising, float bodyWidth);
+
+		/// Moves a mantle on: up, then over, then done.
+		void UpdateMantle();
+
 		bool m_RouteCheck = false; //!< The path request in flight is a route check (see RequestRouteCheck): its answer is only taken if reachable.
 		bool m_WaitingAtDoor = false; //!< At the end of a route cut short at a door: the route is asked for again every couple of seconds, until the door is open or gone.
 		// The minimum range to consider having reached a move target is considered

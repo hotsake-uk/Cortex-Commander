@@ -476,6 +476,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
 		Check("Night limits AI sight", &settings.NightAffectsAI);
+		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
+		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		{
 			int paths = Actor::ShowAIPaths();
 			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {

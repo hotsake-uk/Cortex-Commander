@@ -1239,6 +1239,13 @@ void ACrab::Update() {
 
 	Actor::Update();
 
+	// Up onto ledges and over low obstacles, as humanoids do (Actor::TryStartMantle).
+	if (!m_Mantling) {
+		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
+		TryStartMantle(nullptr, rising, static_cast<float>(GetSpriteWidth()));
+	}
+	UpdateMantle();
+
 	////////////////////////////////////
 	// Update viewpoint
 

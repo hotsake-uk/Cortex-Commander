@@ -2281,7 +2281,8 @@ void AHuman::PreControllerUpdate() {
 				}
 				m_ArmClimbing[FGROUND] = false;
 			}
-			bool climbing = m_ArmClimbing[FGROUND] || m_ArmClimbing[BGROUND];
+			// (And while mantling, the arms climb: it is a pull-up, whatever the legs found.)
+			bool climbing = m_ArmClimbing[FGROUND] || m_ArmClimbing[BGROUND] || m_Mantling;
 
 			if (m_StrideSound) {
 				m_StrideSound->SetPosition(m_Pos);
@@ -2598,7 +2599,21 @@ void AHuman::Update() {
 
 	Actor::Update();
 
-	CorrectCorners();
+	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
+	// paths while it pulls.
+	if (!m_Mantling) {
+		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
+		float bodyWidth = static_cast<float>(GetSpriteWidth());
+		if (m_pHead) {
+			bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
+		}
+		TryStartMantle(m_pHead, rising, bodyWidth);
+	}
+	if (m_Mantling) {
+		UpdateMantle();
+	} else {
+		CorrectCorners();
+	}
 
 	////////////////////////////////////
 	// Update viewpoint

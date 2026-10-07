@@ -188,6 +188,12 @@ namespace RTE {
 		/// @return Whether the crab bomb effect is enabled or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
 		bool CrabBombsEnabled() const { return m_EnableCrabBombs; }
 
+		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
+		bool MantlingEnabled() const { return m_EnableMantling; }
+
+		/// Sets whether actors mantle ledges and vault low obstacles.
+		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
+
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
 		void SetCrabBombsEnabled(bool enable) { m_EnableCrabBombs = enable; }
@@ -393,6 +399,7 @@ namespace RTE {
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
+		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.

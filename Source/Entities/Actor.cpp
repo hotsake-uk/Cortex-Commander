@@ -1197,6 +1197,83 @@ void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
 	m_AvoidPoints.emplace_back(place, now + static_cast<double>(milliseconds));
 }
 
+bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
+	if (!m_pAtomGroup || !m_pAtomGroup->FitsAt(m_Pos + shift)) {
+		return false;
+	}
+	return !head || !head->GetAtomGroup() || head->GetAtomGroup()->FitsAt(head->GetPos() + shift);
+}
+
+bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
+	if (m_Mantling || !g_SettingsMan.MantlingEnabled() || !m_pAtomGroup || m_Status == INACTIVE || m_Status == DYING || m_Status == DEAD || m_PinStrength > 0.0F) {
+		return false;
+	}
+	bool left = m_Controller.IsState(MOVE_LEFT);
+	bool right = m_Controller.IsState(MOVE_RIGHT);
+	if (left == right) {
+		return false;
+	}
+	float dir = right ? 1.0F : -1.0F;
+	// Only against something: free to move on, there's nothing to mantle.
+	if (BodyFitsShifted(Vector(dir * 3.0F, 0.0F), head)) {
+		return false;
+	}
+	float height = std::max(m_CharHeight, 20.0F);
+	int maxLift = static_cast<int>(height * (rising ? 0.55F : 0.3F));
+	// Far enough over the edge for the body's middle to be over the top.
+	float over = std::max(8.0F, bodyWidth * 0.6F) + 4.0F;
+	for (int lift = 4; lift <= maxLift; lift += 2) {
+		Vector up(0.0F, static_cast<float>(-lift));
+		Vector end(dir * over, static_cast<float>(-lift));
+		// Room all the way: straight up, then across.
+		if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(0.0F, static_cast<float>(-lift / 2)), head) || !BodyFitsShifted(end, head) || !BodyFitsShifted(Vector(dir * over * 0.5F, static_cast<float>(-lift)), head)) {
+			continue;
+		}
+		// Something to stand on there: ground within the legs' reach under the body's middle.
+		Vector target = m_Pos + end;
+		bool supported = false;
+		for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
+			supported = g_SceneMan.GetTerrMatter(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down) != MaterialColorKeys::g_MaterialAir;
+		}
+		if (!supported) {
+			continue;
+		}
+		m_Mantling = true;
+		m_MantleDir = dir;
+		m_MantleStart = m_Pos;
+		m_MantleUp = m_Pos + up;
+		m_MantleEnd = target;
+		// Quicker for a small step than a full pull-up: a third of a second for the highest.
+		m_MantleDurationMS = 120.0F + static_cast<float>(lift) * 4.0F;
+		m_MantleTimer.Reset();
+		return true;
+	}
+	return false;
+}
+
+void Actor::UpdateMantle() {
+	if (!m_Mantling) {
+		return;
+	}
+	if (m_Status == DYING || m_Status == DEAD || m_Status == INACTIVE) {
+		m_Mantling = false;
+		return;
+	}
+	// Up for the first half, across for the second; the body is put where it should be each frame (gravity and the jet are nothing
+	// while the arms pull), and its speed is what that movement is, so the limbs animate with it.
+	float progress = std::clamp(static_cast<float>(m_MantleTimer.GetElapsedSimTimeMS()) / std::max(m_MantleDurationMS, 1.0F), 0.0F, 1.0F);
+	Vector target = progress < 0.5F ? m_MantleStart + (m_MantleUp - m_MantleStart) * (progress * 2.0F) : m_MantleUp + (m_MantleEnd - m_MantleUp) * ((progress - 0.5F) * 2.0F);
+	float deltaTime = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+	m_Vel = (target - m_Pos) * (c_MPP / deltaTime);
+	m_Pos = target;
+	m_AngularVel = 0.0F;
+	if (progress >= 1.0F) {
+		m_Mantling = false;
+		// On it walking, the way it was going: a vault over a low obstacle is this and the walk off the far side.
+		m_Vel.SetXY(m_MantleDir * 1.5F, 0.0F);
+	}
+}
+
 void Actor::RequestRouteCheck() {
 	if (m_PathRequest || m_UpdateMovePath || m_MovePath.empty()) {
 		return;
