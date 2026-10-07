@@ -530,10 +530,23 @@ int AHuman::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 			return RouteMover::Moving;
 		}
+		// A hop across a gap in the floor at this level (a corridor crossing a shaft's mouth): taken off from the edge, in one arc, as a
+		// person hops it. The way-clear test wants cruising room half a body over the floor, which a 48 px corridor hasn't, so no flight
+		// was ever begun; the unit walked off the edge, fell, and jetted back up from under the far lip (the pilot keeps the hop low under
+		// the ceiling by its own look at the terrain).
+		float direction = toLanding.m_X > 0.0F ? 1.0F : -1.0F;
+		bool levelHop = std::abs(toLanding.m_Y) <= h * 0.3F && std::abs(toLanding.m_X) <= h * 4.0F;
+		bool edgeAhead = false;
+		if (levelHop) {
+			for (float ahead = 6.0F; ahead <= h * 0.45F && !edgeAhead; ahead += 6.0F) {
+				float floorAhead = FloorUnder(m_Pos + Vector(direction * ahead, 0.0F), h * 0.9F);
+				edgeAhead = floorAhead < 0.0F || floorAhead > floorHere + h * 0.4F;
+			}
+		}
 		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
 		float needed = FlightFuelNeeded(landing, landingFloorY);
 		if (m_pJetpack->GetJetTimeLeft() >= needed || mover.progressTimer.IsPastSimMS(8000)) {
-			if (FlightWayClear(landing, landingFloorY) || wantsClimb || std::abs(toLanding.m_Y) > h * 0.3F || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y)) {
+			if ((levelHop && edgeAhead) || FlightWayClear(landing, landingFloorY) || wantsClimb || std::abs(toLanding.m_Y) > h * 0.3F || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y)) {
 				mover.flight.active = true;
 				mover.flight.landing = landing;
 				mover.flight.floorY = landingFloorY;
@@ -545,7 +558,7 @@ int AHuman::MoveAlongRoute() {
 					mover.flight.viaPoint = Vector(shaftMiddle, landingFloorY - h * 1.0F);
 					MoverTrace("up the shaft via " + std::to_string(static_cast<int>(shaftMiddle)) + "," + std::to_string(static_cast<int>(mover.flight.viaPoint.m_Y)));
 				}
-				MoverTrace("take-off for " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)));
+				MoverTrace(std::string(levelHop && edgeAhead ? "hop from the edge for " : "take-off for ") + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)));
 				Vector command = PilotFlight(landing, landingFloorY);
 				ctrl.SetState(BODY_JUMPSTART, true);
 				ctrl.SetState(BODY_JUMP, true);
