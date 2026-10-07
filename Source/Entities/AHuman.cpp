@@ -2703,8 +2703,12 @@ void AHuman::Update() {
 		m_StableRecoverTimer.Reset();
 	}
 
+	UpdateGetUp(rot);
+
 	// Rotational balancing spring calc
-	if (m_Status == STABLE) {
+	if (m_GettingUp) {
+		// (The get-up has the body; see UpdateGetUp.)
+	} else if (m_Status == STABLE) {
 
 		// If we're supposed to be laying down on the ground, make the spring pull the body that way until we reach that angle
 		if (m_ProneState != NOTPRONE) {
@@ -3485,4 +3489,68 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	// 8 m/s a second facing either way. Mirrored with the facing, as it was, every unit facing left leant the wrong way.
 	float stickX = std::tan(lean * maxLean);
 	return Vector(stickX, jet ? 1.0F : 0.0F);
+}
+
+void AHuman::UpdateGetUp(float& rot) {
+	// CCCP_NO_GETUP=1: the old way (a second's wait, then the spring), for measuring.
+	static const bool disabled = std::getenv("CCCP_NO_GETUP") != nullptr;
+	if (disabled || m_Status == DYING || m_Status == DEAD || m_Status == INACTIVE) {
+		return;
+	}
+	const float h = std::max(m_CharHeight, 20.0F);
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	// The floor under the body's middle, within a body.
+	auto floorUnder = [&]() {
+		Vector hit;
+		if (g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, h), 5.0F, hit, 2)) {
+			return hit.m_Y;
+		}
+		return -1.0F;
+	};
+	if (m_GettingUp) {
+		// Lifted to standing and righted over the moment, the body put where it should be each frame (gravity and the legs are nothing
+		// while it pushes itself up), ending upright with no spin.
+		float progress = std::clamp(static_cast<float>(m_GetUpTimer.GetElapsedSimTimeMS()) / 280.0F, 0.0F, 1.0F);
+		float eased = progress * progress * (3.0F - 2.0F * progress);
+		m_Pos = m_GetUpFrom + (m_GetUpTo - m_GetUpFrom) * eased;
+		rot = m_GetUpFromRot * (1.0F - eased);
+		m_Vel.SetXY(0.0F, 0.0F);
+		m_AngularVel = 0.0F;
+		if (progress >= 1.0F) {
+			m_GettingUp = false;
+			rot = 0.0F;
+		}
+		return;
+	}
+	if (m_Status != STABLE) {
+		// Knocked over and come to rest on the ground: stable again now, not after the second the status would wait, and up.
+		// (Lying there the legs were off and the arms flailed, which was the time the player saw units spend on their backs.)
+		bool still = m_Vel.MagnitudeIsLessThan(1.5F) && std::abs(m_AngularVel) < 1.0F;
+		if (still && m_StableRecoverTimer.IsPastSimMS(200) && floorUnder() >= 0.0F) {
+			m_Status = STABLE;
+		} else {
+			return;
+		}
+	}
+	// Stable but lying well off upright, on the ground: the get-up begins, if there is room to stand.
+	if (std::abs(rot) > 0.6F && m_Vel.MagnitudeIsLessThan(3.0F)) {
+		float floorY = floorUnder();
+		if (floorY < 0.0F) {
+			return;
+		}
+		Vector standing(m_Pos.m_X, floorY - feet);
+		// Room for the standing body: nothing solid along its height over the feet.
+		for (float up = 4.0F; up <= h * 0.7F; up += 4.0F) {
+			if (g_SceneMan.GetTerrMatter(static_cast<int>(standing.m_X), static_cast<int>(standing.m_Y - up + feet)) != MaterialColorKeys::g_MaterialAir) {
+				return;
+			}
+		}
+		m_GettingUp = true;
+		m_GetUpTimer.Reset();
+		m_GetUpFromRot = rot;
+		m_GetUpFrom = m_Pos;
+		m_GetUpTo = standing;
+		m_Vel.SetXY(0.0F, 0.0F);
+		m_AngularVel = 0.0F;
+	}
 }

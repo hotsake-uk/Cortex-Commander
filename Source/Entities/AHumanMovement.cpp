@@ -257,6 +257,11 @@ int AHuman::MoveAlongRoute() {
 	if (m_Waypoints.empty() && m_MovePath.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		return RouteMover::Arrived;
 	}
+	// Knocked over, or getting up: no keys (the legs' walking while down was the flailing), and not stuck for it.
+	if (m_Status != STABLE || m_GettingUp) {
+		mover.progressTimer.Reset();
+		return RouteMover::Moving;
+	}
 
 	// The route: asked for when there is none, now and then anyway (the world changes), when the next point has been out of sight a while on
 	// the ground, and when stuck. A route check (the same answer, taken only if it is better) runs in the air.

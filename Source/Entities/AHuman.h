@@ -320,6 +320,10 @@ namespace RTE {
 		/// Forgets the route-follower's state (a new order, or another behaviour taking over).
 		void ResetRouteMovement();
 
+		/// Gets whether this is getting up from having been knocked over (see UpdateGetUp).
+		/// @return Whether it is getting up.
+		bool IsGettingUp() const { return m_GettingUp; }
+
 		/// Gets what this has learned of its jet's real push, against what the jetpack's numbers say. 1 is as modelled.
 		/// @return The ratio.
 		float GetJetAccelRatio() const { return m_JetAccelRatio; }
@@ -727,6 +731,13 @@ namespace RTE {
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
 		int m_PilotLastChoice = -1;
+		bool m_GettingUp = false; //!< Rising from lying knocked over: the body is lifted and righted over a moment (see UpdateGetUp).
+		Timer m_GetUpTimer;
+		float m_GetUpFromRot = 0.0F;
+		Vector m_GetUpFrom;
+		Vector m_GetUpTo;
+		/// Recovers early from being knocked over once the body lies still, and runs the get-up. Called from Update.
+		void UpdateGetUp(float& rot);
 		bool m_PilotJetOn = false; //!< Whether PilotFlight last asked for the jet, and since when: a decision is held a moment (see PilotFlight).
 		Timer m_PilotJetTimer;
 		float m_PilotLean = 0.0F; //!< The lean PilotFlight last gave, which it moves towards the one chosen at a thumb's pace.
