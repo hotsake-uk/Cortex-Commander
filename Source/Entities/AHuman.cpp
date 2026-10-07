@@ -1034,11 +1034,10 @@ PathAgent AHuman::GetPathAgent() const {
 	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
 	// The flight links (PathFinder::AddFlightLinks): for a standard jetpack, its full tank.
 	agent.JetTimeMS = (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard) ? m_pJetpack->GetJetTimeTotal() : 0.0F;
-	// Ladders are a way up and down for anything with a hand to climb them with (see UpdateLadder), routed for now only where the jet
-	// can't do the work: no jetpack, or one that lifts the unit less than four nodes. (Routed for every soldier, as the cheaper way, ladders
-	// on a map full of them, Bywater, took over the routes there before the follower handles every way they meet the rest: a route that
-	// stepped down a laddered hatch to climb back up it stood a unit still for the minute. A player climbs any ladder regardless.)
-	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F);
+	// Ladders are a way up and down for anything with a hand to climb them with (see UpdateLadder), jet or none: the cheapest way wins, as
+	// a player takes the ladder that is there rather than burn the tank. (Routed at first only where the jet couldn't do the work, while the
+	// follower didn't yet handle every way ladders meet the rest of a route.)
+	agent.ClimbsLadders = m_pFGArm != nullptr || m_pBGArm != nullptr;
 	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
 	// burns more of the tank for the same shaft).
 	if (agent.JetTimeMS > 0.0F) {
