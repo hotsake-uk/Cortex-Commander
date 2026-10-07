@@ -483,13 +483,6 @@ function SharedBehaviors.LadderAt(Point, reachX, reachY)
 	return best;
 end
 
--- Steering in open flight towards a point, for a humanoid already in the air (the planner in GoToWpt decides the take-off). The old way
--- re-chose every tick between four fixed jet directions by where each would put the unit in 0.4 s; with no memory between ticks it
--- flipped the unit's facing mid-air whenever another scored a little better, the turn took a moment to undo, and units jetted the wrong
--- way or swapped direction and never caught up, though the route was right. This flies it as a person would: a sideways speed towards
--- the point that eases as it nears, corrected only when clearly off (and held, not flipped, while it is near enough), and the jet for
--- what the height needs: to rise to the point with the coast, or to come down no faster than the jet can stop before it.
--- @param state A table kept between ticks (the key held). @return The move key, whether to jet, and the aim angle.
 -- Where a unit in open flight steers for: the furthest of the route's next few points its whole body has a clear way to (rays from
 -- its head and its feet height), not always the first. A route found in the air starts at the node the unit is in, so its first point
 -- was often behind or under a unit moving the other way, and steering for it turned the unit round mid-air for a point it had no need
@@ -520,44 +513,168 @@ function SharedBehaviors.FlightTarget(Owner, First)
 	return target;
 end
 
+-- A flight from take-off to touchdown, flown as one (see SharedBehaviors.FlightControl): where the route leaves the ground, its landing is
+-- the first point after the airborne part with a floor under it, and the unit flies straight for that, rising first, then across, then
+-- down, rather than for each of the route's points 24 px apart with the climbs flown by other code. That handover was where landings were
+-- overshot by a hundred pixels and turned back for.
+-- Only in open air: the rise at the unit's own column and the crossing at the landing's height must both be clear, or the shaft and
+-- ledge climbers keep the climb.
+-- @return The landing (the point, and its floor's y), or nil when the route has no flight ahead or it isn't in open air.
+function SharedBehaviors.FindLanding(Owner)
+	local h = Owner.Height;
+	local airborne = false;
+	local index = 0;
+	for pos in Owner.MovePath do
+		index = index + 1;
+		if index > 14 then
+			break;
+		end
+		local Floor = Vector();
+		local grounded = SceneMan:CastStrengthRay(pos, Vector(0, h * 0.8), 5, Floor, 2, rte.grassID, true);
+		if not grounded then
+			airborne = true;
+		elseif airborne then
+			return { pos = Vector(pos.X, pos.Y), floorY = Floor.Y };
+		end
+	end
+	return nil;
+end
+
+-- Whether the way to a landing is open air for the flight: up at the unit's column to over the landing's floor, then across.
+function SharedBehaviors.FlightWayClear(Owner, landing)
+	local h = Owner.Height;
+	local cruiseY = math.min(Owner.Pos.Y, landing.floorY - 12 - h * 0.5);
+	local Up = Vector(0, cruiseY - Owner.Pos.Y - h * 0.3);
+	local Over = SceneMan:ShortestDistance(Vector(Owner.Pos.X, cruiseY), Vector(landing.pos.X, cruiseY), false);
+	for _, dx in ipairs({ -h * 0.15, h * 0.15 }) do
+		if Up.Y < -2 and SceneMan:CastObstacleRay(Owner.Pos + Vector(dx, -h * 0.3), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+			return false;
+		end
+	end
+	for _, dy in ipairs({ -h * 0.35, h * 0.35 }) do
+		if SceneMan:CastObstacleRay(Vector(Owner.Pos.X, cruiseY + dy), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+			return false;
+		end
+	end
+	return true;
+end
+
+-- The flight plan for a tick: begun when the planner wants the jet (or the unit is in the air) and the route has a landing ahead in open
+-- air, ended on the landing, or when the unit is back on its feet anywhere else.
+-- @param plan Last tick's plan, or nil. @param wantsJet Whether the walking and climbing code below asked for the jet this tick.
+-- @return This tick's plan, or nil.
+function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
+	local h = Owner.Height;
+	local Pack = Owner.Jetpack;
+	if not Owner.Head or not Pack or Pack.JetpackType ~= AEJetpack.Standard or AI.proneState == AHuman.PRONE then
+		return nil;
+	end
+	if plan then
+		local To = SceneMan:ShortestDistance(Owner.Pos, plan.landing.pos, false);
+		local feetY = Owner.Pos.Y + h * 0.5;
+		local onLanding = math.abs(To.X) < h * 0.25 and math.abs(feetY - plan.landing.floorY) < h * 0.3;
+		if not AI.flying and plan.timer:IsPastSimMS(400) and (onLanding or plan.timer:IsPastSimMS(1200)) then
+			return nil;
+		end
+		if plan.timer:IsPastSimMS(15000) then
+			return nil;
+		end
+		return plan;
+	end
+	if not (wantsJet or AI.flying) then
+		return nil;
+	end
+	-- Off the ground, with the tank most of the way full (the flight is planned on what it takes, not on what is left after the last).
+	if not AI.flying and Pack.JetTimeLeft < Pack.JetTimeTotal * 0.8 then
+		return nil;
+	end
+	local landing = SharedBehaviors.FindLanding(Owner);
+	if not landing then
+		return nil;
+	end
+	local To = SceneMan:ShortestDistance(Owner.Pos, landing.pos, false);
+	if math.abs(To.X) < h * 0.3 and math.abs(To.Y) < h * 0.6 then
+		return nil; -- (A hop: the walking code's.)
+	end
+	if not SharedBehaviors.FlightWayClear(Owner, landing) then
+		return nil;
+	end
+	if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE flight: plan from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " to land at " .. math.floor(landing.pos.X) .. "," .. math.floor(landing.floorY)); end
+	return { landing = landing, state = {}, timer = Timer() };
+end
+
+-- Steering in open flight towards a point, for a humanoid in the air or taking off (the planner in GoToWpt decides the take-off). Flown
+-- the way a person flies a jetpack, and the way the flight gym's scripted pilot proved every one of its courses (Tools/RenderTest/
+-- RenderTest.rte/FlightGym.lua): up to a little over the height of where it is going, across at a speed that suits the distance,
+-- braking so as to stop over it, and only then down onto it. The old way steered for the point itself at every moment, sideways and
+-- up at once: it came at landings from below, caught their edges, ran past them, and turned round in the air for them.
+-- The point's floor: the ground under it within most of a body; with none (a point in the air on the way somewhere), the point is passed
+-- through at its own height, feet a little under it.
+-- @param state A table kept between ticks (the key and the jet held, the point's floor). @return The move key, whether to jet, and the aim.
 function SharedBehaviors.FlightControl(AI, Owner, Target, state)
 	local ppm = GetPPM();
-	local gravity = SceneMan.GlobalAcc.Y * ppm;
+	local g = SceneMan.GlobalAcc.Y * ppm;
+	local h = Owner.Height;
+	local feetY = Owner.Pos.Y + h * 0.5;
 	local To = SceneMan:ShortestDistance(Owner.Pos, Target, false);
-	-- Sideways: covered in about 0.7 s, up to 4 m/s.
-	local wantVelX = math.max(-4, math.min(4, To.X / (0.7 * ppm)));
-	local offX = wantVelX - Owner.Vel.X;
+	-- The floor under the point, looked for again when the point moves.
+	if not state.target or SceneMan:ShortestDistance(state.target, Target, false):MagnitudeIsGreaterThan(4) then
+		state.target = Vector(Target.X, Target.Y);
+		local Floor = Vector();
+		if SceneMan:CastStrengthRay(Target, Vector(0, h * 0.8), 5, Floor, 2, rte.grassID, true) then
+			state.floorY = Floor.Y;
+		else
+			state.floorY = nil;
+		end
+	end
+	local landing = state.floorY ~= nil;
+	local floorY = state.floorY or (Target.Y + h * 0.4);
+	-- Over it: near enough across to come straight down.
+	local overIt = math.abs(To.X) < math.max(6, h * 0.12);
+	-- Up and down: the speed wanted to the height wanted (m/s, down positive). Feet carried a little over the floor while crossing; over
+	-- it, down onto it gently.
+	local margin = landing and 12 or 0;
+	local wantFeetY = (overIt and landing) and (floorY + 4) or (floorY - margin);
+	local toGo = feetY - wantFeetY;
+	local wantVy;
+	if toGo > 0 then
+		wantVy = -math.min(9, math.sqrt(2 * g * toGo) / ppm);
+	else
+		wantVy = math.min((overIt and landing) and 2.5 or 6, math.sqrt(2 * g * 0.6 * -toGo) / ppm);
+	end
+	local jump = Owner.Vel.Y > wantVy + (state.jump and -0.3 or 0.3);
+	-- Across: once the feet are up near the height (or the way across is downhill), at a speed that suits the distance, brought down to
+	-- what the braking can stop from in what is left. Not before: crossing low, the unit met the landing's edge from under it.
+	local wantVx = 0;
+	if feetY < floorY + 8 or toGo < 0 then
+		local speed = math.max(3, math.min(7, math.abs(To.X) / 100));
+		local brake = speed > 5 and 160 or 120;
+		local stopRoom = math.max(0, math.abs(To.X) - 4);
+		wantVx = (To.X > 0 and 1 or -1) * math.min(speed, math.sqrt(2 * brake * stopRoom) / ppm);
+	end
+	local off = wantVx - Owner.Vel.X;
 	local lat = state.lat or Actor.LAT_STILL;
-	if offX > 0.8 then
+	if off > 0.4 then
 		lat = Actor.LAT_RIGHT;
-	elseif offX < -0.8 then
+	elseif off < -0.4 then
 		lat = Actor.LAT_LEFT;
-	elseif math.abs(offX) < 0.3 then
+	elseif math.abs(off) < 0.2 then
 		lat = Actor.LAT_STILL;
 	end
 	state.lat = lat;
-	-- Up or down: the vertical speed wanted (m/s, down positive).
-	local above = -To.Y; -- How far the point is above us, px.
-	local wantVelY;
-	if above > 0 then
-		wantVelY = -math.min(8, math.sqrt(2 * gravity * (above + 8)) / ppm);
-	else
-		local jet = SharedBehaviors.JetNumbers(AI, Owner);
-		local brake = math.max(jet.accel, gravity * 0.3);
-		wantVelY = math.min(8, math.sqrt(2 * brake * math.max(0, -above - 8)) / ppm);
+	-- The sideways push is the jet's lean: lit for it when well off the speed wanted, unless that would be rising faster than the height wants.
+	if lat ~= Actor.LAT_STILL and math.abs(off) > 1 and Owner.Vel.Y > wantVy - 2 then
+		jump = true;
 	end
-	local jump = Owner.Vel.Y > wantVelY + (state.jump and -0.5 or 0.5);
-	-- Moving sideways takes the jet (the keys only lean the nozzle): kept lit while well off the speed wanted and not already rising fast.
-	-- (Not with the point level or below and a floor close under the feet: there the unit lands and walks. Jetting for the sideways speed
-	-- at the foot of a shaft held a unit up against the lip of the corridor it was to walk into, until the tank was empty.)
-	-- (Already well above the point, only while not rising: the jet lifts as well as pushes, and lit for the speed towards a point below
-	-- it held a steady climb that carried a unit 140 px up past a roof. Nearer the point's height a little rise is let be: held to no rise
-	-- at all, units crossing a hill sank into its slope and lost the route.)
-	local riseLimit = above < -Owner.Height * 0.3 and math.max(-2, wantVelY - 1) or -2;
-	if lat ~= Actor.LAT_STILL and math.abs(offX) > 1.5 and Owner.Vel.Y > riseLimit then
-		local floorNear = above <= 8 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.9), 5, Vector(), 2, rte.grassID, true);
-		if not floorNear then
-			jump = true;
+	-- Just over a floor level with the point's: down onto it and walk, no jet. (Hovering along a corridor a little over its floor, the head
+	-- met the ceiling, and a unit at the foot of a shaft was held against the lip of the corridor it was to walk into until the tank was dry.)
+	if landing and not overIt then
+		local Under = Vector();
+		local Mid = Vector();
+		-- (And floor half way there too: over the start of a gap, the floor under the feet is level with the far side's, but it ends.)
+		if SceneMan:CastStrengthRay(Owner.Pos, Vector(0, h * 0.9), 5, Under, 2, rte.grassID, true) and math.abs(Under.Y - floorY) < 10
+		and SceneMan:CastStrengthRay(Owner.Pos + Vector(To.X * 0.5, 0), Vector(0, h * 0.9), 5, Mid, 2, rte.grassID, true) and math.abs(Mid.Y - floorY) < 10 then
+			jump = false;
 		end
 	end
 	state.jump = jump;
@@ -1558,6 +1675,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local DoorIgnoreID = nil; -- A door whose wait gave up: walked into as before, for a while (see DoorIgnoreTimer).
 	local DoorIgnoreTimer = Timer();
 	local FlightState = {}; -- Kept between ticks by SharedBehaviors.FlightControl.
+	local FlightPlan = nil; -- A flight flown as one, take-off to touchdown (see SharedBehaviors.UpdateFlightPlan).
 	local RouteCheckTimer = Timer(); -- How long since the route was last checked in flight (see Actor::RequestRouteCheck).
 	local NotAShaft = nil; -- The last jump point looked at and found not to be a shaft's (left to the walking code).
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
@@ -3026,6 +3144,20 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		-- governor "braked" it.
 		if AI.proneState == AHuman.PRONE then
 			AI.jump = false;
+		end
+
+		-- A flight from take-off to touchdown is flown as one, whatever the code above made of this tick (see SharedBehaviors.UpdateFlightPlan).
+		if Waypoint and not doorHold and not doorGoal then
+			FlightPlan = SharedBehaviors.UpdateFlightPlan(AI, Owner, FlightPlan, AI.jump);
+		else
+			FlightPlan = nil;
+		end
+		if FlightPlan then
+			nextLatMove, AI.jump, nextAimAngle = SharedBehaviors.FlightControl(AI, Owner, FlightPlan.landing.pos, FlightPlan.state);
+			AI.jetClimb = false;
+			AI.jetSteady = true;
+			Climb = nil;
+			StuckTimer:Reset();
 		end
 
 		-- movement commands

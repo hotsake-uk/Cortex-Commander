@@ -1,0 +1,29 @@
+﻿build,suite,run,course,result,seconds
+ours,Flight,1,"precision: narrow ledge down 216 across 240",arrived,5.2
+ours,Flight,1,"easy: up 120 across 240",arrived,6.9
+ours,Flight,1,"easy: level 240",arrived,6.9
+ours,Flight,1,"precision: narrow ledge up 96 across 288",arrived,7.3
+ours,Flight,1,"medium: up 240 across 216",arrived,7.4
+ours,Flight,1,"medium: down 168 across 360",arrived,9.7
+ours,Flight,1,"hard: down 360 across 480",arrived,19.7
+ours,Flight,1,"medium: level 480",gaveup,60
+ours,Flight,1,"precision: narrow ledge up 144 across 96",arrived,3.8
+ours,Flight,1,"hard: up 336 across 168",arrived,7
+ours,Flight,1,"medium: left up 72 across 264",arrived,8.1
+ours,Flight,1,"hard: up 216 across 456 left",arrived,10.4
+ours,Flight,1,"hard: level 600",arrived,19.8
+ours,Flight,1,"hard: up 288 across 360",gaveup,60
+ours,Flight,2,"precision: narrow ledge down 216 across 240",arrived,4.9
+ours,Flight,2,"easy: level 240",arrived,6.3
+ours,Flight,2,"precision: narrow ledge up 96 across 288",arrived,7
+ours,Flight,2,"medium: up 240 across 216",arrived,7.3
+ours,Flight,2,"easy: up 120 across 240",arrived,7.8
+ours,Flight,2,"medium: down 168 across 360",arrived,8.1
+ours,Flight,2,"medium: level 480",arrived,17.6
+ours,Flight,2,"hard: down 360 across 480",arrived,22.4
+ours,Flight,2,"hard: up 336 across 168",arrived,7.2
+ours,Flight,2,"medium: left up 72 across 264",arrived,8.8
+ours,Flight,2,"hard: up 216 across 456 left",arrived,10.5
+ours,Flight,2,"hard: level 600",gaveup,60
+ours,Flight,2,"hard: up 288 across 360",gaveup,60
+ours,Flight,2,"precision: narrow ledge up 144 across 96",gaveup,60

@@ -1,0 +1,43 @@
+﻿build,suite,run,course,result,seconds
+base,Flight,1,"easy: level 240",arrived,4.8
+base,Flight,1,"precision: narrow ledge down 216 across 240",arrived,6.2
+base,Flight,1,"medium: down 168 across 360",arrived,8.9
+base,Flight,1,"easy: up 120 across 240",gaveup,60
+base,Flight,1,"medium: level 480",gaveup,60
+base,Flight,1,"medium: up 240 across 216",gaveup,60
+base,Flight,1,"hard: down 360 across 480",gaveup,60
+base,Flight,1,"precision: narrow ledge up 96 across 288",gaveup,60
+base,Flight,1,"hard: up 288 across 360",died,60
+base,Flight,1,"hard: up 216 across 456 left",died,60
+base,Flight,1,"medium: left up 72 across 264",arrived,19.9
+base,Flight,1,"precision: narrow ledge up 144 across 96",died,60
+base,Flight,1,"hard: level 600",gaveup,60
+base,Flight,1,"hard: up 336 across 168",gaveup,60
+base,Flight,2,"easy: level 240",arrived,4.7
+base,Flight,2,"precision: narrow ledge down 216 across 240",arrived,5.8
+base,Flight,2,"medium: down 168 across 360",arrived,6.8
+base,Flight,2,"medium: up 240 across 216",died,60
+base,Flight,2,"medium: level 480",died,60
+base,Flight,2,"hard: down 360 across 480",died,60
+base,Flight,2,"easy: up 120 across 240",arrived,29.8
+base,Flight,2,"precision: narrow ledge up 96 across 288",gaveup,60
+base,Flight,2,"precision: narrow ledge up 144 across 96",arrived,3
+base,Flight,2,"hard: up 288 across 360",died,60
+base,Flight,2,"hard: up 216 across 456 left",died,60
+base,Flight,2,"hard: level 600",arrived,21.2
+base,Flight,2,"hard: up 336 across 168",died,60
+base,Flight,2,"medium: left up 72 across 264",gaveup,60
+base,Flight,3,"easy: level 240",arrived,4.4
+base,Flight,3,"easy: up 120 across 240",arrived,4.6
+base,Flight,3,"precision: narrow ledge down 216 across 240",arrived,5.8
+base,Flight,3,"precision: narrow ledge up 96 across 288",died,60
+base,Flight,3,"hard: down 360 across 480",died,60
+base,Flight,3,"medium: level 480",died,60
+base,Flight,3,"medium: up 240 across 216",gaveup,60
+base,Flight,3,"medium: down 168 across 360",gaveup,60
+base,Flight,3,"medium: left up 72 across 264",arrived,4.7
+base,Flight,3,"hard: up 288 across 360",died,60
+base,Flight,3,"precision: narrow ledge up 144 across 96",died,60
+base,Flight,3,"hard: level 600",gaveup,60
+base,Flight,3,"hard: up 336 across 168",gaveup,60
+base,Flight,3,"hard: up 216 across 456 left",gaveup,60
