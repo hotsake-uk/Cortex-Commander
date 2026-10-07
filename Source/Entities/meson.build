@@ -10,6 +10,7 @@ sources += files(
 'AEJetpack.cpp',
 'AEmitter.cpp',
 'AHuman.cpp',
+'AHumanMovement.cpp',
 'Arm.cpp',
 'AtomGroup.cpp',
 'Attachable.cpp',
