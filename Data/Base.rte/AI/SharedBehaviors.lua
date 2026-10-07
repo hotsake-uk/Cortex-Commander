@@ -1814,6 +1814,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local FlightPlan = nil; -- A flight flown as one, take-off to touchdown (see SharedBehaviors.UpdateFlightPlan).
 	local FlightSearchTimer = Timer(); -- When the landing was last looked for, with no flight under way.
 	local FlightLastWalk = nil; -- Whether the last look found the way walkable.
+	local WalkBestGap = nil; -- While walking instead of flying: the nearest the unit has been to the route's next point.
+	local WalkProgressTimer = Timer(); -- Since the walk last got 6 px nearer.
+	local WalkJetTimer = Timer(); -- Since the walk was given up on for a moment and the jet allowed.
+	WalkJetTimer:SetSimTimeLimitMS(0);
+	WalkJetTimer.ElapsedSimTimeMS = 100000;
 	local RouteCheckTimer = Timer(); -- How long since the route was last checked in flight (see Actor::RequestRouteCheck).
 	local NotAShaft = nil; -- The last jump point looked at and found not to be a shaft's (left to the walking code).
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
@@ -3300,10 +3305,24 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			else
 				walk = FlightLastWalk;
 			end
-			-- (Unless the walk has gone nowhere for over a second: a step the legs can't take at that spot is jetted after all, rather than
-			-- stood at for the rest of the minute.)
-			if walk and StuckTimer:IsPastSimMS(1200) then
-				walk = false;
+			-- (Unless the walk is getting nowhere: no 6 px nearer the route's next point in a second and a half, and the jet may be used for
+			-- the next two. A step the legs couldn't take at that spot was stood at for the rest of the minute; the stuck timer never ran
+			-- out, the legs' jiggling against the step reset it.)
+			if walk and Waypoint then
+				local gap = SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false).Magnitude;
+				if not WalkBestGap or gap < WalkBestGap - 6 then
+					WalkBestGap = gap;
+					WalkProgressTimer:Reset();
+				elseif WalkProgressTimer:IsPastSimMS(1500) then
+					WalkJetTimer:Reset();
+					WalkProgressTimer:Reset();
+					WalkBestGap = gap;
+				end
+				if not WalkJetTimer:IsPastSimMS(2000) then
+					walk = false;
+				end
+			elseif not walk then
+				WalkBestGap = nil;
 			end
 			if walk then
 				AI.jump = false;
