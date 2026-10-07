@@ -1,0 +1,127 @@
+﻿build,suite,run,course,result,seconds
+base,AIGym,1,"onto the ledge",arrived,4
+base,AIGym,1,"up through the gap",arrived,4.2
+base,AIGym,1,"through the door",arrived,4.9
+base,AIGym,1,"gap",arrived,10.6
+base,AIGym,1,"through the room",arrived,11.2
+base,AIGym,1,"flat run",arrived,12.7
+base,AIGym,1,"steps up",arrived,13.1
+base,AIGym,1,"low tunnel",arrived,14.4
+base,AIGym,1,"over the hill",arrived,15.2
+base,AIGym,1,"crab flat run",arrived,16.7
+base,AIGym,1,"down into the cave",arrived,17.3
+base,AIGym,1,"down the slope",arrived,23.6
+base,AIGym,1,"across the dip",arrived,35
+base,AIGym,1,"up the slope",died,60
+base,AIGym,1,"dig down",gaveup,60
+base,AIGym,1,"crab over the hill",gaveup,60
+base,Sky,1,"up the stairs",arrived,3.5
+base,Sky,1,"down the stairs",arrived,3.5
+base,Sky,1,"up the hatch",arrived,7.5
+base,Sky,1,"down the hatch",arrived,7.5
+base,Sky,1,"bottom corridor to the top room",arrived,9.5
+base,Sky,1,"across the hub",arrived,11.5
+base,Sky,1,"bottom to the top gallery",arrived,16.5
+base,Tower,1,"A up shaft one to C",arrived,7.5
+base,Tower,1,"B up shaft two to D",arrived,12.5
+base,Tower,1,"D down both shafts to A middle",arrived,13.5
+base,Tower,1,"D down both shafts to A",arrived,18.5
+base,Tower,1,"B up one storey to C",arrived,28.5
+base,Tower,1,"A up both shafts to D",arrived,34.5
+base,Tower,1,"C down shaft one to B",arrived,35.5
+base,Tower,1,"A right up shaft one to C middle",arrived,51.5
+base,AIBywater,1,"mid left room to the right column",arrived,24.5
+base,AIBywater,1,"bottom corridor to the top room",gaveup,60
+base,AIBywater,1,"top room to the bottom corridor",gaveup,60
+base,AIBywater,1,"middle to the mid left room",gaveup,60
+base,AIBywater,1,"bottom right to the middle",gaveup,60
+base,AIHemslock,1,"west roof down two floors",arrived,9.5
+base,AIHemslock,1,"roof down into the east wing",arrived,10.5
+base,AIHemslock,1,"east wing up a storey",arrived,19.5
+base,AIHemslock,1,"east down to the lower hall",arrived,27.5
+base,AIHemslock,1,"lower hall up to the east",arrived,33.5
+base,AIHemslock,1,"east hall to the far west upper floor",gaveup,60
+base,AIGym,2,"up through the gap",arrived,4.2
+base,AIGym,2,"through the door",arrived,4.7
+base,AIGym,2,"onto the ledge",arrived,6.8
+base,AIGym,2,"gap",arrived,10.6
+base,AIGym,2,"down the slope",arrived,11.5
+base,AIGym,2,"through the room",arrived,12.3
+base,AIGym,2,"flat run",arrived,12.7
+base,AIGym,2,"over the hill",arrived,13.9
+base,AIGym,2,"low tunnel",arrived,16.8
+base,AIGym,2,"down into the cave",arrived,17.4
+base,AIGym,2,"crab flat run",arrived,17.5
+base,AIGym,2,"steps up",arrived,34.7
+base,AIGym,2,"across the dip",arrived,56.4
+base,AIGym,2,"up the slope",gaveup,60
+base,AIGym,2,"dig down",gaveup,60
+base,AIGym,2,"crab over the hill",gaveup,60
+base,Sky,2,"down the stairs",arrived,3.5
+base,Sky,2,"up the stairs",arrived,5.5
+base,Sky,2,"down the hatch",arrived,6.5
+base,Sky,2,"bottom to the top gallery",arrived,10.5
+base,Sky,2,"up the hatch",arrived,12.5
+base,Sky,2,"bottom corridor to the top room",arrived,16.5
+base,Sky,2,"across the hub",arrived,19.5
+base,Tower,2,"A up shaft one to C",arrived,6.5
+base,Tower,2,"C down shaft one to B",arrived,10.5
+base,Tower,2,"D down both shafts to A middle",arrived,10.5
+base,Tower,2,"D down both shafts to A",arrived,13.5
+base,Tower,2,"B up shaft two to D",arrived,23.5
+base,Tower,2,"B up one storey to C",arrived,24.5
+base,Tower,2,"A up both shafts to D",arrived,31.5
+base,Tower,2,"A right up shaft one to C middle",gaveup,60
+base,AIBywater,2,"mid left room to the right column",arrived,15.5
+base,AIBywater,2,"top room to the bottom corridor",arrived,35.5
+base,AIBywater,2,"bottom corridor to the top room",gaveup,60
+base,AIBywater,2,"middle to the mid left room",gaveup,60
+base,AIBywater,2,"bottom right to the middle",gaveup,60
+base,AIHemslock,2,"roof down into the east wing",arrived,9.5
+base,AIHemslock,2,"west roof down two floors",arrived,9.5
+base,AIHemslock,2,"east wing up a storey",arrived,11.5
+base,AIHemslock,2,"lower hall up to the east",arrived,35.5
+base,AIHemslock,2,"east hall to the far west upper floor",gaveup,60
+base,AIHemslock,2,"east down to the lower hall",gaveup,60
+base,AIGym,3,"up through the gap",arrived,4.1
+base,AIGym,3,"through the door",arrived,4.7
+base,AIGym,3,"gap",arrived,11
+base,AIGym,3,"over the hill",arrived,11.5
+base,AIGym,3,"through the room",arrived,12.7
+base,AIGym,3,"flat run",arrived,12.7
+base,AIGym,3,"steps up",arrived,13
+base,AIGym,3,"low tunnel",arrived,13.1
+base,AIGym,3,"down the slope",arrived,13.6
+base,AIGym,3,"crab flat run",arrived,16.6
+base,AIGym,3,"down into the cave",arrived,16.9
+base,AIGym,3,"dig down",arrived,20.5
+base,AIGym,3,"up the slope",arrived,34.8
+base,AIGym,3,"onto the ledge",arrived,45.3
+base,AIGym,3,"across the dip",gaveup,60
+base,AIGym,3,"crab over the hill",gaveup,60
+base,Sky,3,"down the stairs",arrived,3.5
+base,Sky,3,"up the stairs",arrived,5.5
+base,Sky,3,"down the hatch",arrived,8.5
+base,Sky,3,"across the hub",arrived,8.5
+base,Sky,3,"up the hatch",arrived,9.5
+base,Sky,3,"bottom to the top gallery",arrived,10.5
+base,Sky,3,"bottom corridor to the top room",arrived,19.5
+base,Tower,3,"A up shaft one to C",arrived,5.5
+base,Tower,3,"B up shaft two to D",arrived,10.5
+base,Tower,3,"C down shaft one to B",arrived,11.5
+base,Tower,3,"D down both shafts to A middle",arrived,13.5
+base,Tower,3,"D down both shafts to A",arrived,22.5
+base,Tower,3,"B up one storey to C",arrived,35.5
+base,Tower,3,"A up both shafts to D",arrived,54.5
+base,Tower,3,"A right up shaft one to C middle",arrived,58.5
+base,AIBywater,3,"mid left room to the right column",arrived,19.5
+base,AIBywater,3,"top room to the bottom corridor",arrived,41.5
+base,AIBywater,3,"bottom corridor to the top room",died,60
+base,AIBywater,3,"middle to the mid left room",gaveup,60
+base,AIBywater,3,"bottom right to the middle",gaveup,60
+base,AIHemslock,3,"west roof down two floors",arrived,9.5
+base,AIHemslock,3,"east wing up a storey",arrived,11.5
+base,AIHemslock,3,"roof down into the east wing",arrived,13.5
+base,AIHemslock,3,"east down to the lower hall",arrived,18.5
+base,AIHemslock,3,"lower hall up to the east",arrived,36.5
+base,AIHemslock,3,"east hall to the far west upper floor",gaveup,60
