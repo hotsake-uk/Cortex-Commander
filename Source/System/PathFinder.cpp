@@ -1,4 +1,5 @@
 #include "PathFinder.h"
+#include <algorithm>
 #include "PrimitiveMan.h"
 #include "Color.h"
 #include <chrono>
@@ -57,6 +58,7 @@ thread_local float s_HalfWidth = 6.0F;
 thread_local bool s_WalksStairs = false;
 thread_local float s_MantleHeight = 0.0F; // How high a ledge the searcher mantles onto (PathAgent::MantleHeight).
 thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s (PathAgent::Velocity).
+thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathAgent::JetTimeMS).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
@@ -189,6 +191,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_WalksStairs = agent.WalksStairs;
 	s_MantleHeight = agent.MantleHeight;
 	s_Velocity = agent.Velocity;
+	s_JetTimeMS = agent.JetTimeMS;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 
 	++m_CurrentPathingRequests;
@@ -776,6 +779,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjacentList->push_back(adjCost);
 		}
 
+		// Flights to other floors (see AddFlightLinks).
+		if (s_JumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !isInNoGrav) {
+			AddFlightLinks(*node, adjacentList);
+		}
+
 		// Jumping diagonally
 		if (s_JumpHeight < FLT_MAX && node->UpRight && !isInNoGrav) {
 			const PathNode* currentNode = node->UpRight;
@@ -1018,6 +1026,10 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	if (dy < -1.0F) {
 		return PathStepKind::Jump;
 	}
+	// A step to a node that isn't a neighbour, level or down: a flight link (see AddFlightLinks), flown.
+	if (!material && (std::abs(dx) > nodeSize + 1.0F || std::abs(dy) > nodeSize + 1.0F)) {
+		return PathStepKind::Jump;
+	}
 	if (dy > nodeSize + 1.0F || (dy > 1.0F && std::abs(dx) < 1.0F)) {
 		return PathStepKind::Fall;
 	}
@@ -1086,6 +1098,82 @@ void PathFinder::DrawDebug(const Box& area) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->LeftUp->Pos, stairsColor);
 			}
 		}
+	}
+}
+
+bool PathFinder::IsFloorEdge(const PathNode& node) const {
+	if (!NodeIsOnSolidGround(node) || node.Surface < 0.0F) {
+		return false;
+	}
+	return (node.Left && !NodeIsOnSolidGround(*node.Left)) || (node.Right && !NodeIsOnSolidGround(*node.Right));
+}
+
+void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {
+	if (!IsFloorEdge(node)) {
+		return;
+	}
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	const float ppm = c_PPM;
+	const int gridX = static_cast<int>(std::floor(node.Pos.m_X / nodeSize));
+	const int gridY = static_cast<int>(std::floor(node.Pos.m_Y / nodeSize));
+	const float standY = node.Surface - s_StandHeight * 0.5F;
+	struct Link {
+		const PathNode* target;
+		float cost;
+	};
+	std::vector<Link> links;
+	for (int dy = -12; dy <= 6; ++dy) {
+		for (int dx = -8; dx <= 8; ++dx) {
+			if (std::abs(dx) <= 1 && std::abs(dy) <= 1) {
+				continue;
+			}
+			const PathNode* target = GetPathNodeAtGridCoords(gridX + dx, gridY + dy);
+			if (!target || !target->m_Navigable || !IsFloorEdge(*target) || static_cast<float>(target->FreeHeight) < s_StandHeight) {
+				continue;
+			}
+			float rise = node.Surface - target->Surface; // Up is positive.
+			float across = std::abs(g_SceneMan.ShortestDistance(node.Pos, target->Pos).m_X);
+			if (across < nodeSize * 1.5F && rise > -nodeSize) {
+				continue; // (Next door and level or up: the rungs and mantles have those.)
+			}
+			// The fuel the flight takes, as the route-follower reckons it (AHuman::FlightFuelNeeded): the climb at about 4 m/s, the crossing
+			// lit about half the time, a third over.
+			float fuel = (std::max(0.0F, rise + 12.0F) / (4.0F * ppm) + across / (5.0F * ppm) * 0.5F) * 1000.0F * 1.3F + 200.0F;
+			if (fuel > s_JetTimeMS * 0.95F) {
+				continue;
+			}
+			// Open air: up at this column to the cruising height, across at it (at two heights), and down onto the landing.
+			float cruiseY = std::min(standY, target->Surface - s_StandHeight * 1.1F - 12.0F);
+			Vector here(node.Pos.m_X, standY);
+			Vector cruiseHere(node.Pos.m_X, cruiseY);
+			Vector cruiseThere(target->Pos.m_X, cruiseY);
+			Vector there(target->Pos.m_X, target->Surface - 4.0F);
+			if (cruiseY < standY - 2.0F && !Open(*StrongestMaterialAlongLine(here, cruiseHere))) {
+				continue;
+			}
+			if (!Open(*StrongestMaterialAlongLine(cruiseHere, cruiseThere)) || !Open(*StrongestMaterialAlongLine(cruiseHere + Vector(0.0F, -s_StandHeight * 0.5F), cruiseThere + Vector(0.0F, -s_StandHeight * 0.5F)))) {
+				continue;
+			}
+			if (!Open(*StrongestMaterialAlongLine(cruiseThere, there))) {
+				continue;
+			}
+			// The cost: the flight's time against a walk's (a node of walk is about half a second), the take-off and landing, and the fuel.
+			float seconds = std::max(0.0F, rise) / (4.0F * ppm) + across / (5.0F * ppm) + std::max(0.0F, -rise) / (6.0F * ppm) + 0.6F;
+			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target);
+			links.push_back({target, cost});
+		}
+	}
+	// The cheapest few: a wide window offers many near-alike landings.
+	std::sort(links.begin(), links.end(), [](const Link& a, const Link& b) { return a.cost < b.cost; });
+	micropather::StateCost adjCost;
+	int added = 0;
+	for (const Link& link: links) {
+		if (added++ >= 8) {
+			break;
+		}
+		adjCost.cost = link.cost;
+		adjCost.state = const_cast<PathNode*>(link.target);
+		adjacentList->push_back(adjCost);
 	}
 }
 

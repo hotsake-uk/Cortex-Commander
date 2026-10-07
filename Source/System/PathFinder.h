@@ -38,6 +38,7 @@ namespace RTE {
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
 		float MantleHeight = 0.0F; //!< How high a ledge it pulls itself up onto from the ground, in pixels (0 for none; see Actor::TryStartMantle).
+		float JetTimeMS = 0.0F; //!< Its jetpack's full tank, in ms, for the flight links (see PathFinder::AddFlightLinks); 0 for none.
 		Vector Velocity; //!< Its velocity when it asks, in m/s: a search started in the air charges for going against it (see AdjacentCost).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 	};
@@ -325,6 +326,16 @@ namespace RTE {
 		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
 		/// @param node The node the rung rises into.
 		float ClimbMarginCost(const PathNode& node) const;
+
+		/// The flight links from a node at the edge of its floor: to floors within reach of a flight as the pilot flies one (up to just over the
+		/// landing, across, down onto it), where the rise, the crossing and the descent are open air and a tank's fuel covers it, priced by the
+		/// flight's time and fuel. These are the routes across gaps and up to ledges the column-and-rung jumps never offered.
+		/// @param node The node the flights leave from.
+		/// @param adjacentList The list to add the links to.
+		void AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList);
+
+		/// Whether a node stands at the edge of its floor: on ground, with a neighbour to one side that isn't.
+		bool IsFloorEdge(const PathNode& node) const;
 
 		/// What a jump's landing costs over its own for how little floor there is round it: a pinpoint ledge has to be hit just so, and a wide
 		/// floor forgives a jump that comes down a little long or short.
