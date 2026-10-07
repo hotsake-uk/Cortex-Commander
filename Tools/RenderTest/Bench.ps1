@@ -21,13 +21,14 @@ foreach ($run in 1..$Repeat) {
 			"Sky" { & "$rt\AIBunker.ps1" -Scenario AIBunker | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 			"Tower" { $env:CCCP_BUNKER_TOWER = "1"; & "$rt\AIBunker.ps1" -Scenario AIBunker | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)'; Remove-Item Env:\CCCP_BUNKER_TOWER }
 			"AIBywater" { & "$rt\AIBunker.ps1" -Scenario AIBywater | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"Flight" { & "$rt\AIBunker.ps1" -Scenario AIFlight -Wait 45 | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'FLIGHT (.+?): (landed in ([\d\.]+) s|GAVE UP|died)' }
 			"AIHemslock" { & "$rt\AIBunker.ps1" -Scenario AIHemslock | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 		}
 		if (Test-Path $log) {
 			Copy-Item $log (Join-Path $out "${suite}_$run.log") -Force
 			foreach ($line in Get-Content $log) {
 				if ($line -match $pattern) {
-					$result = if ($Matches[2] -like "arrived*") { "arrived" } elseif ($Matches[2] -eq "died") { "died" } else { "gaveup" }
+					$result = if ($Matches[2] -like "arrived*" -or $Matches[2] -like "landed*") { "arrived" } elseif ($Matches[2] -eq "died") { "died" } else { "gaveup" }
 					$secs = if ($Matches[3]) { $Matches[3] } else { "60" }
 					"$Build,$suite,$run,""$($Matches[1])"",$result,$secs" | Add-Content $csv
 				}
