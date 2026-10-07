@@ -433,6 +433,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 
 	    .def(luabind::constructor<>())
 	    .def("PilotFlight", &AHuman::PilotFlight)
+	    .def("MoveAlongRoute", &AHuman::MoveAlongRoute)
+	    .def("ResetRouteMovement", &AHuman::ResetRouteMovement)
 	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
 
 	    .property("Head", &AHuman::GetHead, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetHead)

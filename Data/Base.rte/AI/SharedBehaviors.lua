@@ -455,6 +455,64 @@ end
 -- Flights are flown by the engine's pilot (AHuman::PilotFlight) unless CCCP_LUA_PILOT=1 asks for the script's (SharedBehaviors.FlightControl),
 -- for comparing the two. (Flight gym, 14 proven courses: engine 28/28 landed, 6.8 s, 3.8 s of fuel, 17 px overshoot, 0.1 reversals; script
 -- 23/28, 9.6 s, 7.2 s, 41 px, 0.8; the original AI 14/42.) A build without the pilot (an older exe) falls back to the script's.
+-- Whether the build running this has the engine's route-follower (AHuman::MoveAlongRoute), and the scripts are to use it: CCCP_LUA_MOVER=1
+-- keeps the script's own (GoToWpt), for comparing the two. (A unit with a digger keeps the script's too, which digs; the engine's doesn't yet.)
+local LuaMover = os and os.getenv and os.getenv("CCCP_LUA_MOVER") == "1";
+function SharedBehaviors.UsesEngineMover(Owner)
+	if LuaMover or not Owner.Head then
+		return false;
+	end
+	local ok, member = pcall(function() return Owner.MoveAlongRoute; end);
+	if not (ok and member ~= nil) then
+		return false;
+	end
+	return not Owner:HasObjectInGroup("Tools - Diggers");
+end
+
+-- The move behaviour on the engine's route-follower: a coroutine like GoToWpt, so the AI drives it the same way, but each tick is one
+-- call of AHuman::MoveAlongRoute, which sets the controls itself. The script keeps what is its own: fighting on the move, and what to do
+-- on arrival.
+function SharedBehaviors.GoToRoute(AI, Owner, Abort)
+	Owner:ResetRouteMovement();
+	AI.jetClimb = false;
+	Owner:RemoveNumberValue("AI_StuckForTime");
+	while true do
+		local holding = false;
+		if AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
+			holding = true;
+		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm") and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
+			holding = true;
+		end
+		AI.lateralMoveState = Actor.LAT_STILL;
+		AI.jump = false;
+		AI.pilotFlight = true; -- (The engine holds the jet as it means to: no hold timer of the native AI's over it.)
+		if not holding then
+			local result = Owner:MoveAlongRoute();
+			if result == 1 then
+				-- Arrived.
+				if Owner.AIMode == Actor.AIMODE_GOTO then
+					AI.SentryFacing = Owner.HFlipped;
+					AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
+					AI:CreateSentryBehavior(Owner);
+				end
+				Owner:ClearAIWaypoints();
+				Owner:ClearMovePath();
+				Owner:DrawWaypoints(false);
+				return true;
+			elseif result == 2 then
+				-- No route to it: the order is dropped, as GoToWpt drops it.
+				if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE GoToRoute: no route; standing down"); end
+				Owner:ClearAIWaypoints();
+				Owner:ClearMovePath();
+				Owner:DrawWaypoints(false);
+				return true;
+			end
+		end
+		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
+		if _abrt then return true end
+	end
+end
+
 -- The navigation debug overlay's level (SettingsMan.NavDebugOverlay), or 0 on a build that hasn't got it: the scripts are read by whatever
 -- build runs them, and reading a member the build lacks is an error that would end the unit's movement script.
 -- Whether the build running this has the engine's pilot (AHuman::PilotFlight), asked without the error a missing member is.

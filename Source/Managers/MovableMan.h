@@ -266,6 +266,10 @@ namespace RTE {
 		/// Gets every Actor currently in the scene, to look through. Not for keeping.
 		const std::deque<Actor*>& GetActorList() const { return m_Actors; }
 
+		/// Gets the particles in the scene (not the ones added this frame).
+		/// @return The particles.
+		const std::deque<MovableObject*>& GetParticleList() const { return m_Particles; }
+
 		/// Gets the number of particles (MOPixel:s) currently held.
 		/// @return The number of particles.
 		long GetParticleCount() const { return m_Particles.size(); }

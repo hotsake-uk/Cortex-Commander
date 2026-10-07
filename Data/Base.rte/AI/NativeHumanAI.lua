@@ -815,7 +815,8 @@ function NativeHumanAI:CreateGetWeaponBehavior(Owner)
 end
 
 function NativeHumanAI:CreateGoToBehavior(Owner)
-	self.NextGoTo = coroutine.create(SharedBehaviors.GoToWpt);
+	-- The engine's route-follower when the build has it (SharedBehaviors.GoToRoute, AHuman::MoveAlongRoute); else the script's own.
+	self.NextGoTo = coroutine.create(SharedBehaviors.UsesEngineMover(Owner) and SharedBehaviors.GoToRoute or SharedBehaviors.GoToWpt);
 	self.NextGoToCleanup = function(AI)
 		AI.lateralMoveState = Actor.LAT_STILL;
 		AI.deviceState = AHuman.STILL;

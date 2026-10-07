@@ -66,6 +66,10 @@ namespace RTE {
 		/// @return The current state of this ADoor. See the DoorState enum.
 		DoorState GetDoorState() const { return m_DoorState; }
 
+		/// Gets this door's sensors, which open it for a unit in front of them.
+		/// @return The sensors.
+		const std::list<ADSensor>& GetSensors() const { return m_Sensors; }
+
 		/// Whether a body at a point would be seen by one of this door's sensors: within the radius of a sensor's ray, as the sensors lie now.
 		/// (The door opens for what its sensors see, and a sensor is a ray across the doorway, so a unit that wants it open stands there.)
 		/// @param point The body's position. @param radius How far from the ray the body still counts as on it.

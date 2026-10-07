@@ -16,6 +16,8 @@ struct BITMAP;
 
 namespace RTE {
 
+	class ADoor;
+
 	class AEJetpack;
 
 	/// A humanoid actor.
@@ -308,6 +310,15 @@ namespace RTE {
 		/// @param floorY The landing's floor (its top surface's y), or below zero for a point in the air to pass through.
 		/// @return The analog stick's X to hold (with -1 for its Y), and in Y 1 to jet or 0 not to.
 		Vector PilotFlight(const Vector& target, float floorY);
+
+		/// Moves this a tick along the route the pathfinder gave it, under AI: every leg, walks, crawls, drops, flights (AHuman::PilotFlight),
+		/// ladders and doors, with the controls set here. Called each AI tick by the movement script (SharedBehaviors.GoToRoute) in place of
+		/// its own route-follower. See AHumanMovement.cpp.
+		/// @return 0 while moving, 1 arrived at the last waypoint, 2 when there is no route to it.
+		int MoveAlongRoute();
+
+		/// Forgets the route-follower's state (a new order, or another behaviour taking over).
+		void ResetRouteMovement();
 
 		/// Gets what this has learned of its jet's real push, against what the jetpack's numbers say. 1 is as modelled.
 		/// @return The ratio.
@@ -723,6 +734,49 @@ namespace RTE {
 
 		/// The jet's push at full lean-less burn now, in px/s^2, as learned.
 		float JetAccelNow() const;
+
+		/// The route-follower's state (see MoveAlongRoute).
+		struct RouteMover {
+			enum Result { Moving = 0, Arrived = 1, Impossible = 2 };
+			struct Flight {
+				bool active = false;
+				Vector landing;
+				float floorY = 0.0F;
+				int pointsToLanding = 0;
+				Timer timer;
+			};
+			bool begun = false;
+			Flight flight;
+			Timer progressTimer; //!< Since the unit last got nearer the route's point.
+			float bestGap = -1.0F;
+			Vector lastProgressPos;
+			Timer repathTimer;
+			Timer noSightTimer;
+			Timer routeCheckTimer;
+			Timer doorWaitTimer;
+			Timer doorIgnoreTimer;
+			long doorWaitID = 0;
+			long doorIgnoreID = 0;
+			Timer proneHoldTimer;
+			Timer hopTimer;
+			Timer traceTimer;
+			int impossibleAnswers = 0;
+			double lastJetTime = -1.0;
+		};
+		RouteMover m_Mover;
+
+		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
+		static Timer s_LadderNodesTimer;
+		static bool s_LadderNodesKnown;
+		static const Vector* LadderNear(const Vector& point, float reachX, float reachY);
+		ADoor* DoorAhead(const Vector& toPoint) const;
+		bool InDoorSweep() const;
+		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
+		bool FlightWayClear(const Vector& landing, float landingFloorY) const;
+		bool CanWalkTo(const Vector& landing, float landingFloorY) const;
+		bool FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const;
+		void PopRoutePoint();
+		void MoverTrace(const std::string& text) const;
 
 		/// Learns the jet's real push and the standing height, each frame (see PilotFlight).
 		void LearnFlight();

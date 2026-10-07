@@ -1469,6 +1469,7 @@
     <ClCompile Include="Source\Entities\ADoor.cpp" />
     <ClCompile Include="Source\Entities\AEmitter.cpp" />
     <ClCompile Include="Source\Entities\AHuman.cpp" />
+    <ClCompile Include="Source\Entities\AHumanMovement.cpp" />
     <ClCompile Include="Source\Entities\Arm.cpp" />
     <ClCompile Include="Source\Entities\AtomGroup.cpp" />
     <ClCompile Include="Source\Entities\Attachable.cpp" />
