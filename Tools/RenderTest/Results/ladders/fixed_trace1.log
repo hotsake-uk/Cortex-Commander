@@ -1,0 +1,64 @@
+WARNING: Encountered non-fatal errors during module loading!
+See "LogLoadingWarning.txt" for information.
+SYSTEM: Loading warning log saved to LogLoadingWarning.txt
+SYSTEM: Activity was reset!
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER ladder piece at 1584,264
+AIBUNKER ladder piece at 1584,288
+AIBUNKER ladder piece at 1584,312
+AIBUNKER ladder piece at 1584,336
+AIBUNKER ladder piece at 1584,360
+AIBUNKER ladder piece at 1584,384
+AIBUNKER ladders placed: 6
+AIBUNKER path for bottom corridor to the top room: 5 nodes: 1700,437 1596,444(0) 1596,242(2) 1572,252(2) 1520,244(0)
+AIBUNKER path for up the hatch: 5 nodes: 1700,437 1788,444(0) 1788,338(2) 1764,348(2) 1700,340(0)
+AIBUNKER path for down the hatch: 6 nodes: 1700,341 1788,348(0) 1788,372(3) 1788,396(3) 1788,420(3) 1700,436(0)
+AIBUNKER path for across the hub: 5 nodes: 1900,341 1956,348(0) 2004,300(2) 2004,324(3) 2060,340(0)
+AIBUNKER path for up the stairs: 5 nodes: 2060,341 2076,348(0) 2100,300(6) 2124,252(6) 2160,244(0)
+AIBUNKER path for down the stairs: 5 nodes: 2160,245 2124,252(0) 2100,300(6) 2076,348(6) 2060,340(0)
+AIBUNKER path for bottom to the top gallery: 5 nodes: 1900,437 1980,444(0) 1980,242(2) 1956,252(2) 1900,244(0)
+AITRACE path: none to follow, asking again from 1700,438
+AITRACE path for Soldier Light: status 0, 5 nodes, cost 49.000000, from 1700,439 to 1520,245
+AITRACE nodes: 1700,439 1596,444(0) 1596,242(2) 1572,252(2) 1520,245(0)
+AIBUNKER grid node 1596,252 surface -1 ground no free 37 clear 48/48 up 0 upright 0 right 0 rightdown 0 down 0 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1572,252 surface 264 ground yes free 48 clear 48/48 up 0 upright 0 right 0 rightdown 400 down 200 downleft 400 left 0 leftup 0
+AIBUNKER grid node 1524,252 surface 264 ground yes free 48 clear 36/48 up 0 upright 0 right 0 rightdown 400 down 200 downleft 200 left 0 leftup 0
+AITRACE step kind 2 to 1596,242 from 1700,439 prone false
+AITRACE climb: under a ceiling, stepping -50 to an open column
+AIBUNKER trace bottom corridor to the top room 2s pos 1670,438 vel -2.4,-0.4 fuel 1500 path 3 left 245 aim -0.02 facing left
+AITRACE path: none to follow, asking again from 1665,438
+AITRACE path for Soldier Light: status 0, 5 nodes, cost 48.000000, from 1665,439 to 1520,245
+AITRACE nodes: 1665,439 1596,444(0) 1596,242(2) 1572,252(2) 1520,245(0)
+AITRACE climb: under a ceiling, stepping -25 to an open column
+AIBUNKER trace bottom corridor to the top room 3s pos 1637,439 vel -2.4,-0.7 fuel 1500 path 3 left 227 aim -0.01 facing left
+AIBUNKER trace up the hatch 3s pos 1769,440 vel 2.2,-1.1 fuel 1500 path 3 left 122 aim -0.01 facing right
+AIBUNKER trace down the hatch 3s pos 1770,345 vel 2.3,-0.8 fuel 1500 path 4 left 115 aim -0.01 facing right
+AIBUNKER trace across the hub 3s pos 1972,353 vel 3.1,-1.2 fuel 1262 path 2 left 88 aim 0 facing left
+AIBUNKER trace up the stairs 3s pos 2091,298 vel 0.9,-2.2 fuel 1500 path 2 left 87 aim 0.24 facing right
+AIBUNKER trace down the stairs 3s pos 2086,279 vel -2.3,5.5 fuel 1392 path 2 left 65 aim 1.41 facing left
+AIBUNKER trace bottom to the top gallery 3s pos 1971,439 vel 3.1,-2.2 fuel 1317 path 3 left 208 aim 0 facing left
+AITRACE climb: wpt dx -35 dy -197
+AITRACE jet: wall ahead
+AIBUNKER trace bottom corridor to the top room 4s pos 1605,324 vel -0.3,-12 fuel 402 path 3 left 116 aim 1.57 facing right
+AIBUNKER down the stairs: arrived in 4.5 s, stood still 0 s
+AIBUNKER trace bottom corridor to the top room 5s pos 1600,251 vel -0.3,-0.5 fuel 1122 path 3 left 80 aim 1.57 facing right
+AIBUNKER across the hub: arrived in 5.5 s, stood still 0 s
+AIBUNKER up the stairs: arrived in 5.5 s, stood still 0 s
+AITRACE pop: reached 1596,242 from 1598,245, 2 left
+AIBUNKER trace bottom corridor to the top room 6s pos 1593,245 vel -1,-1.2 fuel 804 path 2 left 73 aim 1.57 facing left
+AIBUNKER trace up the hatch 6s pos 1782,339 vel -1.7,0 fuel 649 path 2 left 82 aim 1.57 facing left
+AIBUNKER trace down the hatch 6s pos 1742,446 vel -1.7,-0.7 fuel 1500 path 1 left 43 aim 0.1 facing left
+AIBUNKER trace bottom to the top gallery 6s pos 1989,245 vel -0.6,-2.1 fuel 534 path 2 left 89 aim 1.57 facing left
+AITRACE pop: reached 1572,244 from 1590,240, 1 left
+AITRACE step kind 0 to 1520,245 from 1589,238 prone false
+AITRACE crawl: going prone, wpt dx -50 dy -6
+AIBUNKER trace bottom corridor to the top room 7s pos 1575,251 vel -1.6,2.4 fuel 1500 path 1 left 55 aim 0.35 facing left
+AIBUNKER down the hatch: arrived in 7.5 s, stood still 0 s
+AIBUNKER trace bottom corridor to the top room 8s pos 1546,255 vel -1.4,-0.8 fuel 1500 path 1 left 29 aim 0.07 facing left
+AIBUNKER bottom corridor to the top room: arrived in 8.5 s, stood still 0 s
+AIBUNKER up the hatch: arrived in 8.5 s, stood still 0 s
+AITRACE crawl: going prone, wpt dx -44 dy -25
+AIBUNKER trace bottom to the top gallery 9s pos 1942,248 vel -2.1,-1.4 fuel 1500 path 1 left 43 aim 1.57 facing left
+AIBUNKER bottom to the top gallery: arrived in 10.5 s, stood still 0 s
+AIBUNKER done

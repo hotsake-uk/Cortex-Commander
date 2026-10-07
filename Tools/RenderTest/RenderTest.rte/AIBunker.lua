@@ -96,9 +96,37 @@ function AIBunkerScript:UpdateScript()
 		end
 		self.sceneName = SceneMan.Scene.PresetName;
 		self.skyBunker = self.sceneName == "Ketanot Hills";
+		-- CCCP_BUNKER_TOWER=1: instead of the sky bunker, a four-storey tower with two shafts, ladders up both, and courses that climb and
+		-- drop one to three storeys (the user: every vertical way in a real bunker has a ladder, and a lot of vertical paths need testing).
+		self.tower = self.skyBunker and os and os.getenv and os.getenv("CCCP_BUNKER_TOWER") == "1";
 	end
 	if self.built and not self.skyBunker then
 		-- A real map: its bunker is the course. (Nothing to build.)
+	elseif self.built and self.tower and not self.builtModules then
+		self.builtModules = true;
+		-- The tower, on the sky bunker's grid (columns' corners at x 1464 + 96 k, storeys' corners at y 96, 192, 288, 384; floors at 168,
+		-- 264, 360, 456). Shaft one (k1) runs from the bottom storey A up through a hub in B to the mouth in C; shaft two (k3) from its
+		-- foot in B up a plain Shaft A (walled both sides) through C to the mouth in D. Each storey's corridor joins its shafts.
+		-- A (bottom)
+		self:Place("End B", 1512, 432); self:Place("T-Junction B", 1608, 432); self:Place("Tunnel A", 1704, 432); self:Place("Tunnel A", 1800, 432); self:Place("End D", 1896, 432);
+		-- B
+		self:Place("End B", 1512, 336); self:Place("Hub A", 1608, 336); self:Place("Tunnel A", 1704, 336); self:Place("T-Junction B", 1800, 336); self:Place("End D", 1896, 336);
+		-- C (the shaft-two column is a plain shaft here: no way off it at C)
+		self:Place("End B", 1512, 240); self:Place("T-Junction D", 1608, 240); self:Place("Tunnel A", 1704, 240); self:Place("Shaft A", 1800, 240);
+		-- D (top)
+		self:Place("End B", 1704, 144); self:Place("T-Junction D", 1800, 144); self:Place("End D", 1896, 144);
+		-- Courses: points 20 px over the floors (A 436, B 340, C 244, D 148).
+		self.towerCourses = {
+			{ from = Vector(1512, 436), to = Vector(1512, 244), name = "A up shaft one to C" },
+			{ from = Vector(1512, 436), to = Vector(1896, 148), name = "A up both shafts to D" },
+			{ from = Vector(1896, 148), to = Vector(1512, 436), name = "D down both shafts to A" },
+			{ from = Vector(1896, 340), to = Vector(1704, 148), name = "B up shaft two to D" },
+			{ from = Vector(1512, 244), to = Vector(1896, 340), name = "C down shaft one to B" },
+			{ from = Vector(1896, 436), to = Vector(1704, 244), name = "A right up shaft one to C middle" },
+			{ from = Vector(1704, 148), to = Vector(1704, 436), name = "D down both shafts to A middle" },
+			{ from = Vector(1512, 340), to = Vector(1512, 244), name = "B up one storey to C" },
+		};
+		self.ladders = true;
 	elseif self.built and self.skyBunker and not self.builtModules then
 		self.builtModules = true;
 		-- Modules are 96 px squares (Steep Stairs D is 96 x 192), placed by their centres, which the sandbox snaps to the 24 px grid: a
@@ -122,7 +150,10 @@ function AIBunkerScript:UpdateScript()
 		-- whoever comes. It is here to measure the AI's door manners: a leaf in motion gibs what stands in its sweep, and a unit should
 		-- wait short of a closed door for it to open, on the ground or hovering in the shaft, and never jet up into the leaves. Before
 		-- this it was "Shaft A", a plain shaft.)
-		self:Place("Doors B", 1608, 336);
+		-- (CCCP_BUNKER_LADDERS=1: a plain Shaft A here instead, with a base-game ladder up its left wall, put in once the modules stand; the
+		-- user found that every route past a ladder came back impossible.)
+		self.ladders = os and os.getenv and os.getenv("CCCP_BUNKER_LADDERS") == "1";
+		self:Place(self.ladders and "Shaft A" or "Doors B", 1608, 336);
 		self:Place("End B", 1704, 336);
 		self:Place("T-Junction D", 1800, 336);
 		self:Place("Tunnel A", 1896, 336);
@@ -141,6 +172,34 @@ function AIBunkerScript:UpdateScript()
 		-- 600000. (The modules go in on the next sim update and their doors join MovableMan.Actors a frame after that, so this is done on
 		-- the ticks after, until a door is found.)
 		self.doorsPending = true;
+	end
+	if self.ladders and self.builtModules and not self.laddersPlaced and t > 3800 then
+		local middles = self.tower and { 1608, 1800 } or { 1608, 1800, 1992 };
+		local topY = self.tower and 96 or 240;
+		-- A ladder up every vertical way in the bunker: the shaft (k1), the hatch (k3) and the hub's column (k5), against the left wall wherever
+		-- there is one, found by looking left from the column's middle at each 24 px step; "Left Ladder" pieces (12 x 24, placed by their
+		-- top-left corner). The pieces are kept, so each course can say whether its route goes past one.
+		self.laddersPlaced = true;
+		self.ladderPieces = {};
+		for _, middle in ipairs(middles) do
+			for y = topY, 432, 24 do
+				local x = middle;
+				while x > middle - 60 and SceneMan:GetTerrMatter(x, y + 12) == rte.airID do
+					x = x - 1;
+				end
+				if x > middle - 60 and SceneMan:GetTerrMatter(x, y + 12) ~= rte.airID and SceneMan:GetTerrMatter(x, y + 2) ~= rte.airID and SceneMan:GetTerrMatter(x, y + 22) ~= rte.airID then
+					local ladder = CreateTerrainObject("Left Ladder", "Base.rte");
+					if ladder then
+						ladder.Pos = Vector(x + 1, y);
+						SceneMan:AddSceneObject(ladder);
+						table.insert(self.ladderPieces, Vector(x + 7, y + 12));
+					end
+				end
+			end
+		end
+		local where = "";
+		for _, piece in ipairs(self.ladderPieces) do where = where .. " " .. math.floor(piece.X) .. "," .. math.floor(piece.Y); end
+		ConsoleMan:PrintString("AIBUNKER ladders placed: " .. #self.ladderPieces .. " (centres:" .. where .. ")");
 	end
 	if self.doorsPending then
 		local found = false;
@@ -196,6 +255,9 @@ function AIBunkerScript:UpdateScript()
 			{ from = Vector(2160, 244), to = Vector(2060, 340), name = "down the stairs" },
 			{ from = Vector(1900, 436), to = Vector(1900, 244), name = "bottom to the top gallery" },
 		};
+		if self.tower then
+			courses = self.towerCourses;
+		end
 		-- Courses made in play with the sandbox's Gym tab (Userdata/Gyms/<scene>.txt) come first; the sandbox runs and times them itself.
 		local gymFile = io.open("Userdata/Gyms/" .. tostring(self.sceneName) .. ".txt", "r");
 		if gymFile then
@@ -254,6 +316,27 @@ function AIBunkerScript:UpdateScript()
 				nodes = nodes .. " " .. math.floor(node.X) .. "," .. math.floor(node.Y) .. (count > 1 and kinds[count - 1] and ("(" .. kinds[count - 1] .. ")") or "");
 			end
 			ConsoleMan:PrintString("AIBUNKER path for " .. course.name .. ": " .. tostring(found) .. " nodes:" .. nodes);
+			if self.ladderPieces then
+				local passes = 0;
+				local Last = nil;
+				for node in SceneMan.Scene:GetScenePath() do
+					if Last then
+						for _, piece in ipairs(self.ladderPieces) do
+							-- (Sampled along the segment every 6 px.)
+							local Seg = SceneMan:ShortestDistance(Last, node, false);
+							local steps = math.max(1, math.floor(Seg.Magnitude / 6));
+							for k = 0, steps do
+								if SceneMan:ShortestDistance(Last + Seg * (k / steps), piece, false):MagnitudeIsLessThan(30) then
+									passes = passes + 1;
+									break;
+								end
+							end
+						end
+					end
+					Last = Vector(node.X, node.Y);
+				end
+				ConsoleMan:PrintString("AIBUNKER ladder check " .. course.name .. ": the route passes " .. passes .. " ladder piece(s)");
+			end
 			table.insert(self.runners, { actor = actor, goal = course.to, name = course.name, start = t, lastPos = Vector(actor.Pos.X, actor.Pos.Y), still = 0, sent = false, done = false });
 			end
 		end

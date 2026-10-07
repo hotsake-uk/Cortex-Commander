@@ -1,0 +1,37 @@
+﻿commit f45a14cdd78a1cabb022e793ceb17c63e1ae2758  AI: a new order isn't held up by the wait at the last order's door
+--- AIBywater run 1 (97 s)
+AIBUNKER path for bottom corridor to the top room: 28 nodes: 1695,1169 1716,1188(0) 1716,1070(2) 1740,1092(2) 1788,1092(0) 1788,908(2) 1764,948(2) 1740,924(2) 1716,900(2) 1692,924(0) 1668,948(0) 1668,794(2) 1620,804(2) 1
+AIBUNKER path for mid left room to the right column: 23 nodes: 1620,797 1644,804(0) 1644,828(3) 1644,852(3) 1668,876(0) 1692,900(0) 1716,924(0) 1740,900(2) 1764,924(0) 1764,948(3) 1812,900(2) 1836,924(0) 1836,948(3) 1860
+AIBUNKER path for top room to the bottom corridor: 51 nodes: 1922,112 1764,132(0) 1716,84(2) 1692,108(0) 1692,132(3) 1692,156(3) 1692,180(3) 1692,204(3) 1668,228(0) 1644,252(0) 1620,276(0) 1596,300(0) 1572,324(0) 1548,34
+AIBUNKER path for middle to the mid left room: 40 nodes: 1950,581 1932,588(0) 1932,422(2) 1884,444(2) 1860,444(0) 1788,372(2) 1764,396(0) 1740,420(1) 1644,444(0) 1644,468(3) 1644,492(3) 1644,516(3) 1668,540(0) 1644,564(0
+AIBUNKER path for bottom right to the middle: 57 nodes: 2130,1073 2220,1092(0) 2220,1116(3) 2244,1140(0) 2244,1070(2) 2268,1092(2) 2292,1092(0) 2340,1044(2) 2340,1068(3) 2340,1092(3) 2340,972(2) 2316,996(0) 2220,1020(0) 
+AIBUNKER middle to the mid left room: arrived in 26.5 s, stood still 0 s
+AIBUNKER mid left room to the right column: arrived in 46.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 492 px short, stood still 0 s, at 1521,426
+AIBUNKER top room to the bottom corridor: GAVE UP after 60 s, 369 px short, stood still 4 s, at 1644,801
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 376 px short, stood still 0 s, at 1648,806
+AIBUNKER done
+--- AIBywater run 2 (97 s)
+AIBUNKER path for bottom corridor to the top room: 28 nodes: 1695,1169 1716,1188(0) 1716,1070(2) 1740,1092(2) 1788,1092(0) 1788,908(2) 1764,948(2) 1740,924(2) 1716,900(2) 1692,924(0) 1668,948(0) 1668,794(2) 1620,804(2) 1
+AIBUNKER path for mid left room to the right column: 23 nodes: 1620,797 1644,804(0) 1644,828(3) 1644,852(3) 1668,876(0) 1692,900(0) 1716,924(0) 1740,900(2) 1764,924(0) 1764,948(3) 1812,900(2) 1836,924(0) 1836,948(3) 1860
+AIBUNKER path for top room to the bottom corridor: 51 nodes: 1922,112 1764,132(0) 1716,84(2) 1692,108(0) 1692,132(3) 1692,156(3) 1692,180(3) 1692,204(3) 1668,228(0) 1644,252(0) 1620,276(0) 1596,300(0) 1572,324(0) 1548,34
+AIBUNKER path for middle to the mid left room: 40 nodes: 1950,581 1932,588(0) 1932,422(2) 1884,444(2) 1860,444(0) 1788,372(2) 1764,396(0) 1740,420(1) 1644,444(0) 1644,468(3) 1644,492(3) 1644,516(3) 1668,540(0) 1644,564(0
+AIBUNKER path for bottom right to the middle: 57 nodes: 2130,1073 2220,1092(0) 2220,1116(3) 2244,1140(0) 2244,1070(2) 2268,1092(2) 2292,1092(0) 2340,1044(2) 2340,1068(3) 2340,1092(3) 2340,972(2) 2316,996(0) 2220,1020(0) 
+AIBUNKER top room to the bottom corridor: arrived in 48.5 s, stood still 0 s
+AIBUNKER mid left room to the right column: arrived in 55.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 961 px short, stood still 0 s, at 1378,931
+AIBUNKER middle to the mid left room: GAVE UP after 60 s, 126 px short, stood still 16 s, at 1603,670
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 406 px short, stood still 0 s, at 1546,629
+AIBUNKER done
+--- AIBywater run 3 (97 s)
+AIBUNKER path for bottom corridor to the top room: 28 nodes: 1695,1169 1716,1188(0) 1716,1070(2) 1740,1092(2) 1788,1092(0) 1788,908(2) 1764,948(2) 1740,924(2) 1716,900(2) 1692,924(0) 1668,948(0) 1668,794(2) 1620,804(2) 1
+AIBUNKER path for mid left room to the right column: 23 nodes: 1620,797 1644,804(0) 1644,828(3) 1644,852(3) 1668,876(0) 1692,900(0) 1716,924(0) 1740,900(2) 1764,924(0) 1764,948(3) 1812,900(2) 1836,924(0) 1836,948(3) 1860
+AIBUNKER path for top room to the bottom corridor: 51 nodes: 1922,112 1764,132(0) 1716,84(2) 1692,108(0) 1692,132(3) 1692,156(3) 1692,180(3) 1692,204(3) 1668,228(0) 1644,252(0) 1620,276(0) 1596,300(0) 1572,324(0) 1548,34
+AIBUNKER path for middle to the mid left room: 40 nodes: 1950,581 1932,588(0) 1932,422(2) 1884,444(2) 1860,444(0) 1788,372(2) 1764,396(0) 1740,420(1) 1644,444(0) 1644,468(3) 1644,492(3) 1644,516(3) 1668,540(0) 1644,564(0
+AIBUNKER path for bottom right to the middle: 57 nodes: 2130,1073 2220,1092(0) 2220,1116(3) 2244,1140(0) 2244,1070(2) 2268,1092(2) 2292,1092(0) 2340,1044(2) 2340,1068(3) 2340,1092(3) 2340,972(2) 2316,996(0) 2220,1020(0) 
+AIBUNKER mid left room to the right column: arrived in 41.5 s, stood still 0 s
+AIBUNKER top room to the bottom corridor: arrived in 56.5 s, stood still 0 s
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 645 px short, stood still 0 s, at 1442,570
+AIBUNKER middle to the mid left room: GAVE UP after 60 s, 153 px short, stood still 5 s, at 1697,663
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 437 px short, stood still 0 s, at 1666,913
+AIBUNKER done
