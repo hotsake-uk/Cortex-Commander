@@ -699,6 +699,17 @@ function NativeHumanAI:Update(Owner)
 		self.Ctrl:SetState(Controller.BODY_PRONE, true);
 	end
 
+	-- Up or down a ladder (see SharedBehaviors.LadderAt): the base game's background ladders move a unit that aims up and presses up,
+	-- or aims down and presses down.
+	if self.ladderUp then
+		self.Ctrl:SetState(Controller.MOVE_UP, true);
+	elseif self.ladderDown then
+		self.Ctrl:SetState(Controller.MOVE_DOWN, true);
+	end
+	-- (Asked for afresh every tick by the movement script, so a climb that ends or is taken over by another behaviour lets go.)
+	self.ladderUp = false;
+	self.ladderDown = false;
+
 	if self.lateralMoveState == Actor.LAT_LEFT then
 		self.Ctrl:SetState(Controller.MOVE_LEFT, true);
 	elseif self.lateralMoveState == Actor.LAT_RIGHT then

@@ -444,6 +444,43 @@ end
 -- route from where the unit is. The old climb was a dozen rules spread through GoToWpt, each fixing one place; this is the same physics
 -- in one place, in order. Small hops, slopes and walls in the way are still the walking code's.
 
+-- The base game's background ladders ("Background Ladder", Bunker Systems): no material of their own (the hatch they stand in stays
+-- open), and a script node at the middle of each 24 px piece that takes hold of an AHuman in front of it. Aiming up and pressing up
+-- moves it up, aiming down and pressing down moves it down, left or right moves it along its aim, and with nothing pressed it is held
+-- still against gravity; only the jetpack's key lets go. A unit that jetted up one in pulses was caught and held every time the jet
+-- went out, and one that dropped slowly down a laddered hatch was stopped half way. So a ladder is climbed the way a player climbs it.
+-- The nodes are looked up from the scene's particles every few seconds and kept.
+SharedBehaviors.LadderCache = nil;
+SharedBehaviors.LadderCacheTimer = nil;
+function SharedBehaviors.LadderNodes()
+	if not SharedBehaviors.LadderCacheTimer then
+		SharedBehaviors.LadderCacheTimer = Timer();
+	end
+	if not SharedBehaviors.LadderCache or SharedBehaviors.LadderCacheTimer:IsPastSimMS(4000) then
+		SharedBehaviors.LadderCacheTimer:Reset();
+		local nodes = {};
+		for mo in MovableMan.Particles do
+			if mo.PresetName == "Background Ladder Node" and mo.PinStrength > 0 then
+				table.insert(nodes, Vector(mo.Pos.X, mo.Pos.Y));
+			end
+		end
+		SharedBehaviors.LadderCache = nodes;
+	end
+	return SharedBehaviors.LadderCache;
+end
+
+-- The ladder piece nearest a point, within so far sideways and so far up or down. @return Its middle, or nil.
+function SharedBehaviors.LadderAt(Point, reachX, reachY)
+	local best, bestDistance = nil, math.huge;
+	for _, Node in ipairs(SharedBehaviors.LadderNodes()) do
+		local Off = SceneMan:ShortestDistance(Point, Node, false);
+		if math.abs(Off.X) <= reachX and math.abs(Off.Y) <= reachY and Off.Magnitude < bestDistance then
+			best, bestDistance = Node, Off.Magnitude;
+		end
+	end
+	return best;
+end
+
 -- The floor under a point, looking down so far. @return Its y, or nil.
 function SharedBehaviors.FloorUnder(Owner, Point, reach)
 	local Hit = Vector();
@@ -537,6 +574,18 @@ function SharedBehaviors.ClimbPlan(AI, Owner, Top, NextPos)
 		-- high for the look down to find its floor, and the step across never ended.)
 		plan.riseToY = floorY - feetBelowPos - clearance;
 	end
+	-- A background ladder up this column (a piece of it beside the top and one near the foot): the climb is up the ladder, centred on it
+	-- (the ladder takes hold of a body that covers the middle of its pieces). Only for an AHuman, the ladders' scripts take no other.
+	if Owner.Head and Owner.ClassName == "AHuman" then
+		local TopLadder = SharedBehaviors.LadderAt(Vector(Top.X, plan.riseToY), H * 0.4, H * 0.35);
+		local FootLadder = SharedBehaviors.LadderAt(Owner.Pos, H * 0.4, H * 0.5);
+		if TopLadder and FootLadder and math.abs(TopLadder.X - FootLadder.X) < 6 then
+			plan.ladder = true;
+			plan.colX = TopLadder.X;
+			plan.blocked = false;
+			plan.sideways = SceneMan:ShortestDistance(Vector(plan.colX, Top.Y), plan.landing, false).X;
+		end
+	end
 	plan.startY = Owner.Pos.Y;
 	plan.bestY = Owner.Pos.Y;
 	return plan;
@@ -590,6 +639,17 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 		end
 		return Actor.LAT_STILL;
 	end
+	-- Walking to a spot and stopping on it: full pace far off, a slow walk over the last 20 px, and the other key (a brake) when going
+	-- towards it faster than that, or away from it.
+	local function SettleX(dx)
+		local wantVelX = 0;
+		if math.abs(dx) > 20 then
+			wantVelX = dx > 0 and 3 or -3;
+		elseif math.abs(dx) > math.max(3, H * 0.05) then
+			wantVelX = dx > 0 and 0.8 or -0.8;
+		end
+		return HoldSpeedX(wantVelX, 0.3);
+	end
 	local function GroundUnderFeet()
 		return SceneMan:CastObstacleRay(Owner.Pos + Vector(0, feetBelowPos), Vector(0, H * 0.3), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
 	end
@@ -618,15 +678,78 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 				Stage("rise");
 			end
 		else
+			-- Under the column and still before the jet is lit: walked there, slowing over the last 20 px, and braked to a stop. Lit while
+			-- still walking, the walk speed carried the unit past the gap above, and it swung back and forth across it until a swing
+			-- happened to line up.
 			local dx = plan.colX - Owner.Pos.X;
-			if math.abs(dx) <= math.max(3, H * 0.05) then
+			if math.abs(dx) <= math.max(3, H * 0.05) and math.abs(Owner.Vel.X) < 0.4 then
 				Stage("fuel");
-			elseif plan.stageTimer:IsPastSimMS(3000) then
+			elseif plan.stageTimer:IsPastSimMS(4000) then
 				return Fail("couldn't get under the column");
 			else
-				lat = Toward(dx, 1);
+				lat = SettleX(dx);
 				aim = 0;
 			end
+		end
+	end
+
+	if plan.stage == "fuel" and plan.ladder then
+		plan.startY = Owner.Pos.Y;
+		plan.bestY = Owner.Pos.Y;
+		plan.progressTimer = Timer();
+		Stage("ladder");
+	end
+
+	if plan.stage == "ladder" then
+		-- Up the ladder: aim up and press up, no jet; the ladder's script does the moving. No rise for a second and a half (the ladder
+		-- hasn't taken hold) and it is jetted instead.
+		AI.jetClimb = true;
+		AI.jump = false;
+		AI.ladderUp = true;
+		lat = Actor.LAT_STILL;
+		aim = math.pi * 0.5;
+		if Owner.Pos.Y < plan.bestY - 3 then
+			plan.bestY = Owner.Pos.Y;
+			plan.progressTimer:Reset();
+		end
+		if Owner.Pos.Y <= plan.riseToY then
+			if math.abs(plan.sideways) < 10 then
+				AI.ladderUp = false;
+				AI.jetClimb = false;
+				Stage("done");
+			else
+				plan.holdY = plan.riseToY;
+				Stage("ladderStep");
+			end
+		elseif plan.progressTimer:IsPastSimMS(1500) then
+			Trace("the ladder didn't take hold; jetting");
+			AI.ladderUp = false;
+			plan.ladder = false;
+			Stage("fuel");
+		end
+	end
+
+	if plan.stage == "ladderStep" then
+		-- Off the top of the ladder onto the landing: aimed level and walked towards it (the ladder moves a unit along its aim while
+		-- left or right is pressed), until there is floor under the feet.
+		AI.jetClimb = true;
+		AI.jump = false;
+		local side = plan.sideways > 0 and 1 or -1;
+		lat = side > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+		aim = 0;
+		local across = (Owner.Pos.X - plan.colX) * side;
+		if GroundUnderFeet() and across >= math.min(math.abs(plan.sideways), H * 0.25) then
+			AI.jetClimb = false;
+			Stage("done");
+		elseif plan.stageTimer:IsPastSimMS(2500) then
+			return Fail("couldn't step off the ladder");
+		elseif Owner.Pos.Y < plan.riseToY - 2 then
+			-- (Still on the ladder: up a little more while stepping, so the feet clear the landing's edge.)
+			AI.ladderUp = false;
+		else
+			AI.ladderUp = true;
+			aim = math.pi * 0.5;
+			lat = Actor.LAT_STILL;
 		end
 	end
 
@@ -640,13 +763,13 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 			-- No tank makes it by the reckoning: go on a full one.
 			ok = Pack.JetTimeLeft >= Pack.JetTimeTotal * 0.95;
 		end
-		-- Still under the column while waiting.
+		-- Still under the column while waiting, and still: no lift-off with any sideways speed left.
 		local dx = plan.colX - Owner.Pos.X;
-		if math.abs(dx) > H * 0.08 then
-			lat = Toward(dx, 1);
+		lat = SettleX(dx);
+		if lat ~= Actor.LAT_STILL then
 			aim = 0;
 		end
-		if ok then
+		if ok and math.abs(Owner.Vel.X) < 0.4 and math.abs(dx) <= math.max(3, H * 0.05) then
 			plan.startY = Owner.Pos.Y;
 			plan.bestY = Owner.Pos.Y;
 			plan.progressTimer = Timer();
@@ -675,7 +798,15 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 			return Fail("no rise");
 		end
 		local toGo = Owner.Pos.Y - plan.riseToY; -- Positive while below the height.
-		if toGo <= 0 then
+		-- A background ladder alongside (see SharedBehaviors.LadderAt): it takes hold of a unit whenever the jet's key isn't held, and
+		-- holds it still, so a climb that pulsed the jet was caught on every pulse. Beside one, the jet is held lit the whole way up and
+		-- goes out only at the top or with the tank empty; at the top the ladder's hold is the hover, and the step off is along it.
+		local besideLadder = not isCrab and SharedBehaviors.LadderAt(Owner.Pos, H * 0.3, H * 0.4) ~= nil;
+		if toGo <= 0 and besideLadder and math.abs(plan.sideways) >= 10 then
+			AI.jump = false;
+			plan.holdY = plan.riseToY;
+			Stage("ladderStep");
+		elseif toGo <= 0 then
 			if isCrab or math.abs(plan.sideways) < 10 then
 				-- Straight up onto what's at the top (or a crab, which lands on legs either side): done at the height.
 				AI.jump = false;
@@ -697,6 +828,9 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 			-- (Every relight a burst for the first 400 ms cost 130 ms of tank a time, which the fuel reckoning counts once: one burst to
 			-- leave the ground, then a steady jet.)
 			AI.jetSteady = AI.flying or plan.stageTimer:IsPastSimMS(150);
+			if besideLadder then
+				AI.jump = true; -- (Held lit: see above.)
+			end
 			-- Kept to the column's middle, tightly: the walk speed carried in takes a unit off a hatch's column into the slab beside it.
 			local dx = plan.colX - Owner.Pos.X;
 			if isCrab then
@@ -705,10 +839,15 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 				end
 				lat = Toward(dx, 3);
 			else
-				lat = HoldSpeedX(math.max(-2, math.min(2, dx / 6)), 0.4);
+				-- (Gently, so a correction eases in rather than swinging past the middle.)
+				lat = HoldSpeedX(math.max(-1.5, math.min(1.5, dx / 8)), 0.3);
 				aim = lat == Actor.LAT_STILL and math.pi * 0.5 or 0;
 			end
 		end
+	end
+
+	if plan.stage == "step" and not isCrab and SharedBehaviors.LadderAt(Owner.Pos, H * 0.3, H * 0.4) then
+		Stage("ladderStep");
 	end
 
 	if plan.stage == "step" then
@@ -1334,6 +1473,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	local DoorWaitID = nil; -- The door waited at (its UniqueID).
 	local DoorIgnoreID = nil; -- A door whose wait gave up: walked into as before, for a while (see DoorIgnoreTimer).
 	local DoorIgnoreTimer = Timer();
+	local RouteCheckTimer = Timer(); -- How long since the route was last checked in flight (see Actor::RequestRouteCheck).
 	local NotAShaft = nil; -- The last jump point looked at and found not to be a shaft's (left to the walking code).
 	local ProneHoldTimer = Timer(); -- How long a crawl is kept up after the way ahead looks clear.
 	ProneHoldTimer:SetSimTimeLimitMS(1200);
@@ -1357,6 +1497,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		-- this is the only sideways force a flying crab has.
 		AI.jetLeanX = 0;
 		AI.jetSteady = false; -- Set by the climb: relight the jet without a burst (see the native AI's jump state).
+		AI.ladderUp = false; -- Set by a ladder climb: up is pressed (see SharedBehaviors.LadderAt).
+		AI.ladderDown = false; -- Set going down a ladder: down is pressed.
 		local doorHold = false; -- Standing in the doorway of a door of ours, on its sensor, for it to open (see below).
 		local doorGoal = nil; -- The doorway to go and stand in.
 		local doorPass = false; -- In the way of an open door's piece: no standing here.
@@ -1495,6 +1637,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 		if Climb then
 			StuckTimer:Reset(); -- (The climb has failure tests of its own.)
+		end
+		-- In the air or on the jet, the route is checked again twice a second: the same check an order makes, from where the unit is now. A
+		-- jet's overshoot left units following a route that had fallen behind them, turning back for points already passed until the
+		-- scheduled re-path came round. The answer replaces the route only if the goal is reachable from here (Actor::RequestRouteCheck).
+		-- (Not in a shaft climb, which follows its column.)
+		if not Climb and not NeedsNewPath and (AI.flying or AI.jump) and Owner.MovePathSize > 0 and RouteCheckTimer:IsPastSimMS(500) then
+			RouteCheckTimer:Reset();
+			Owner:RequestRouteCheck();
 		end
 
 		if AI.refuel and Owner.Jetpack and not Climb then
@@ -1991,7 +2141,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								local climbHandled = false;
 								if not Climb and not doorHold and not doorGoal and Waypoint.Kind == 2 and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and CurrDist.Y < -Owner.Height * 0.3 and not (NotAShaft and SceneMan:ShortestDistance(NotAShaft, Waypoint.Pos, false):MagnitudeIsLessThan(4)) then
 									Climb = SharedBehaviors.ClimbPlan(AI, Owner, Waypoint.Pos, NextWptPos);
-									if not Climb.shaft then
+									if not Climb.shaft and not Climb.ladder then
 										NotAShaft = Vector(Waypoint.Pos.X, Waypoint.Pos.Y);
 										Climb = nil;
 									end
@@ -2663,6 +2813,15 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			local dx = SceneMan:ShortestDistance(Owner.Pos, doorGoal, false).X;
 			nextLatMove = dx < -3 and Actor.LAT_LEFT or (dx > 3 and Actor.LAT_RIGHT or Actor.LAT_STILL);
 			AI.jump = false;
+			StuckTimer:Reset();
+		end
+		-- Down a ladder: a waypoint well below, nearly straight down, and a ladder here. The ladder catches a slow fall and holds it, so a
+		-- unit that dropped down a laddered hatch was stopped half way; it is climbed down instead, aimed down with down pressed.
+		if not Climb and Waypoint and CurrDist and Owner.Head and CurrDist.Y > Owner.Height * 0.3 and math.abs(CurrDist.X) < Owner.Height * 0.4 and SharedBehaviors.LadderAt(Owner.Pos, Owner.Height * 0.2, Owner.Height * 0.3) then
+			AI.ladderDown = true;
+			AI.jump = false;
+			nextLatMove = Actor.LAT_STILL;
+			nextAimAngle = -math.pi * 0.5;
 			StuckTimer:Reset();
 		end
 		-- In the way of an open door's piece: on, whatever else stopped the legs.

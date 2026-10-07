@@ -283,6 +283,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("DrawWaypoints", &Actor::DrawWaypoints)
 	    .def("SetMovePathToUpdate", &Actor::SetMovePathToUpdate)
 	    .def("UpdateMovePath", &Actor::UpdateMovePath)
+	    .def("RequestRouteCheck", &Actor::RequestRouteCheck)
 	    .def("SetAlarmPoint", &Actor::AlarmPoint)
 	    .def("GetAlarmPoint", &Actor::GetAlarmPoint)
 	    .def("IsOrganic", &Actor::IsOrganic)

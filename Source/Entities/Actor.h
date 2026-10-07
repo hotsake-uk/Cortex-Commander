@@ -945,6 +945,12 @@ namespace RTE {
 		/// Starts updating this Actor's movepath.
 		virtual void UpdateMovePath();
 
+		/// Asks for the route to the current goal again, from where this is now, the same check an order makes. The answer replaces the
+		/// route only when it says the goal is reachable from here (solved, and not only through ground or a door that can't be got through);
+		/// otherwise the route being followed is kept. For a unit in flight, whose route can fall behind it: checked often, a jet's
+		/// overshoot is a new route forward from where it got to, not a turn back for a point already passed.
+		void RequestRouteCheck();
+
 		// Member variables
 		static Entity::ClassInfo m_sClass;
 
@@ -1144,6 +1150,7 @@ namespace RTE {
 		bool m_PathImpossible; //!< Whether the last route asked for came back with no way there (or only through ground that can't be dug), for the path display.
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
+		bool m_RouteCheck = false; //!< The path request in flight is a route check (see RequestRouteCheck): its answer is only taken if reachable.
 		bool m_WaitingAtDoor = false; //!< At the end of a route cut short at a door: the route is asked for again every couple of seconds, until the door is open or gone.
 		// The minimum range to consider having reached a move target is considered
 		float m_MoveProximityLimit;

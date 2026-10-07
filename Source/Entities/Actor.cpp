@@ -1183,7 +1183,29 @@ void Actor::OnNewMovePath() {
 	}
 }
 
+void Actor::RequestRouteCheck() {
+	if (m_PathRequest || m_UpdateMovePath || m_MovePath.empty()) {
+		return;
+	}
+	m_RouteCheck = true;
+	UpdateMovePath();
+	if (!m_PathRequest) {
+		m_RouteCheck = false; // (Nothing was asked: a retry wait is on.)
+	}
+}
+
 void Actor::PreControllerUpdate() {
+	// A route check's answer is taken only when the goal is reachable from here; otherwise the route being followed is kept, as it was.
+	if (m_PathRequest && m_PathRequest->complete && m_RouteCheck) {
+		m_RouteCheck = false;
+		bool reachable = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost <= 100000.0F && !const_cast<std::list<Vector>&>(m_PathRequest->path).empty();
+		if (!reachable && !m_MovePath.empty()) {
+			if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+				g_ConsoleMan.PrintString("AITRACE route check: not reachable from " + std::to_string(static_cast<int>(m_Pos.m_X)) + "," + std::to_string(static_cast<int>(m_Pos.m_Y)) + ", keeping the route");
+			}
+			m_PathRequest.reset();
+		}
+	}
 	if (m_PathRequest && m_PathRequest->complete) {
 		m_MovePath = const_cast<std::list<Vector>&>(m_PathRequest->path);
 		m_MovePathKinds = const_cast<std::list<PathStepKind>&>(m_PathRequest->kinds);
