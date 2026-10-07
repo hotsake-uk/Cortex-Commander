@@ -3275,9 +3275,16 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		end
 
 		-- A flight from take-off to touchdown is flown as one, whatever the code above made of this tick (see SharedBehaviors.UpdateFlightPlan).
-		if Waypoint and not doorHold and not doorGoal then
+		-- (A plan in flight lives through the ticks with no waypoint, while the route is asked for again: dropped on those, the unit was
+		-- handed back mid-climb to the old jump code, eight pixels under the landing, and flown 270 px the other way.)
+		if (Waypoint or FlightPlan) and not doorHold and not doorGoal then
 			local walk;
 			FlightPlan, walk = SharedBehaviors.UpdateFlightPlan(AI, Owner, FlightPlan, AI.jump);
+			-- (Unless the walk has gone nowhere for over a second: a step the legs can't take at that spot is jetted after all, rather than
+			-- stood at for the rest of the minute.)
+			if walk and StuckTimer:IsPastSimMS(1200) then
+				walk = false;
+			end
 			if walk then
 				AI.jump = false;
 				if Owner:NumberValueExists("AITrace") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: walkable, no jet"); end

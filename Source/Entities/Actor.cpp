@@ -1307,7 +1307,11 @@ void Actor::PreControllerUpdate() {
 			const std::list<Vector>& answer = const_cast<std::list<Vector>&>(m_PathRequest->path);
 			auto second = std::next(answer.begin());
 			Vector heading = g_SceneMan.ShortestDistance(m_Pos, second != answer.end() ? *second : answer.front());
-			if (heading.MagnitudeIsGreaterThan(1.0F) && heading.Dot(m_Vel) < 0.0F && m_PathCostAtAdoption > 0.0F && m_PathSizeAtAdoption > 0) {
+			// (Only while the route it has still goes the way it is moving: when its next point is behind too, the unit has overshot, and the
+			// answer, which turns it back, is the one to take. Held to the old route there, a unit that had overshot flew on away from both.)
+			Vector oldHeading = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
+			bool oldGoesOn = oldHeading.Dot(m_Vel) > 0.0F;
+			if (oldGoesOn && heading.MagnitudeIsGreaterThan(1.0F) && heading.Dot(m_Vel) < 0.0F && m_PathCostAtAdoption > 0.0F && m_PathSizeAtAdoption > 0) {
 				float left = m_PathCostAtAdoption * static_cast<float>(m_MovePath.size()) / static_cast<float>(m_PathSizeAtAdoption);
 				if (m_PathRequest->totalCost > left * 0.8F) {
 					if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {

@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "ConsoleMan.h"
 #include "SmokeGrid.h"
 #include "WeatherEffects.h"
 #include "ActorWater.h"
@@ -3339,6 +3340,13 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 			float stoppable = std::sqrt(2.0F * sideAccel * room);
 			float cap = std::clamp(std::abs(toTarget.m_X), 3.0F * ppm, 7.0F * ppm);
 			float along = vel.m_X * direction;
+			// Coming down to it: only as fast across as covers the gap in the time the fall takes, which gravity gives for nothing. Held to
+			// the full crossing speed, a unit jumping down to a far platform burned its whole tank on speed it didn't need, and fell short.
+			if (rise < 0.0F) {
+				float down = std::max(0.0F, vel.m_Y);
+				float fallTime = (down + std::sqrt(down * down + 2.0F * g * -rise)) / std::max(g, 1.0F);
+				cap = std::clamp(room / std::max(fallTime, 0.2F), 1.5F * ppm, cap);
+			}
 			wantVx = direction * std::min(std::max(cap, along), stoppable);
 			// Still well under the height it needs: only as fast across as gets there when the climb is done. Carried across at the run's
 			// speed under a ledge, a unit was past it before it was up, and couldn't brake and climb at once; it went 800 px on and fell.
@@ -3431,6 +3439,15 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		}
 	}
 	m_PilotLastChoice = bestChoice;
+	// Traced (CCCP_AI_LOG and the AITrace value): what it chose and why, four times a second.
+	if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace") && m_PilotTraceTimer.IsPastSimMS(250)) {
+		m_PilotTraceTimer.Reset();
+		Vector want = wanted(m_Pos, m_Vel * ppm) / ppm;
+		g_ConsoleMan.PrintString("AITRACE pilot at " + std::to_string(m_Pos.GetFloorIntX()) + "," + std::to_string(m_Pos.GetFloorIntY()) + " vel " + std::to_string(static_cast<int>(m_Vel.m_X * 10.0F)) + "," + std::to_string(static_cast<int>(m_Vel.m_Y * 10.0F)) +
+		                         " want " + std::to_string(static_cast<int>(want.m_X * 10.0F)) + "," + std::to_string(static_cast<int>(want.m_Y * 10.0F)) + " (dm/s) jet " + (bestChoice >= 5 ? "on" : "off") + " lean " + std::to_string(static_cast<int>(leans[bestChoice % 5] * 100.0F)) +
+		                         " fuel " + std::to_string(static_cast<int>(m_pJetpack->GetJetTimeLeft())) + " push " + std::to_string(static_cast<int>(fullAccel)) + " ratio " + std::to_string(static_cast<int>(m_JetAccelRatio * 100.0F)) + " target " + std::to_string(static_cast<int>(target.m_X)) + "," + std::to_string(static_cast<int>(floorY)) +
+		                         " zone " + std::to_string(static_cast<int>(zoneLeft)) + "/" + std::to_string(static_cast<int>(zoneRight)));
+	}
 	// The navigation debug overlay: the flight predicted for the choice taken, and the landing.
 	if (drawn) {
 		static const unsigned char pathColor = static_cast<unsigned char>(Color(250, 220, 70).GetIndex());

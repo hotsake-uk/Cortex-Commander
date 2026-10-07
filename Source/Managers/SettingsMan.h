@@ -196,6 +196,14 @@ namespace RTE {
 		/// @return The level.
 		int NavDebugOverlay() const { return m_NavDebugOverlay; }
 
+		/// Gets whether the frame rate and the game's version are shown, small, in the top right of the window (a debug aid, on by default).
+		/// @return Whether they are shown.
+		bool ShowFPSAndVersion() const { return m_ShowFPSAndVersion; }
+
+		/// Sets whether the frame rate and the game's version are shown in the top right of the window.
+		/// @param show Whether to show them.
+		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
+
 		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
 		/// @param level 0, 1 or 2.
 		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 2); }
@@ -408,6 +416,7 @@ namespace RTE {
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
+		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.

@@ -1,4 +1,6 @@
 #include "WindowMan.h"
+#include "PerformanceMan.h"
+#include "GameVersion.h"
 #include "TextOverlay.h"
 #include <filesystem>
 #include "loadpng.h"
@@ -952,6 +954,16 @@ void WindowMan::UploadFrame() {
 		SaveWindowScreenshot();
 	}
 	g_DebugMan.DrawImGui();
+	// The frame rate and version, small, in the top right (Settings > Show FPS and version).
+	if (g_SettingsMan.ShowFPSAndVersion()) {
+		float mspf = g_PerformanceMan.GetMSPFAverage();
+		std::string text = "v" + std::string(c_VersionString) + "  " + std::to_string(mspf > 0.0F ? static_cast<int>(std::round(1000.0F / mspf)) : 0) + " fps";
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		ImVec2 size = ImGui::CalcTextSize(text.c_str());
+		ImVec2 corner(ImGui::GetMainViewport()->Pos.x + ImGui::GetMainViewport()->Size.x - size.x - 6.0F, ImGui::GetMainViewport()->Pos.y + 4.0F);
+		drawList->AddText(ImVec2(corner.x + 1.0F, corner.y + 1.0F), IM_COL32(0, 0, 0, 200), text.c_str());
+		drawList->AddText(corner, IM_COL32(235, 235, 235, 230), text.c_str());
+	}
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	Present();

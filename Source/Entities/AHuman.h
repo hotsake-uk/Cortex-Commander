@@ -715,7 +715,8 @@ namespace RTE {
 		Vector m_JetPrevVel; //!< Last frame's velocity, for the learning.
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
-		int m_PilotLastChoice = -1; //!< PilotFlight's last choice, kept unless another is clearly better.
+		int m_PilotLastChoice = -1;
+		Timer m_PilotTraceTimer; //!< For PilotFlight's trace lines. //!< PilotFlight's last choice, kept unless another is clearly better.
 
 		/// The jet's push at full lean-less burn now, in px/s^2, as learned.
 		float JetAccelNow() const;

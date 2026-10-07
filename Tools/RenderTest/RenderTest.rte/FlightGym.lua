@@ -77,36 +77,65 @@ end
 -- over the hills in the middle of the map (x 1350 to 2250, tops up to y 559) unless it stays above y 500, and row 2 only takes courses
 -- that don't go down (the ground elsewhere is below y 950).
 function FlightGymScript:Build()
-	local nextX = { 48, 48 };
-	local rowY = { 380, 860 };
+	-- Each course gets a box of sky of its own: its pads, the flight between (up to 120 px over the higher pad, the lower pad's underside
+	-- and 60 px more), and 60 px either side, clear of every other course's box and of the terrain. (Laid out in two rows with no such
+	-- check, a climb in one row went up into the pads of a drop in the other, and units met pads that weren't theirs.)
+	local boxes = {};
+	local function free(x1, y1, x2, y2)
+		if y1 < 8 or y2 > SceneMan.SceneHeight - 8 then
+			return false;
+		end
+		for _, b in ipairs(boxes) do
+			if x1 < b[3] and x2 > b[1] and y1 < b[4] and y2 > b[2] then
+				return false;
+			end
+		end
+		for y = y1, y2, 12 do
+			for x = x1, x2, 12 do
+				local wx = x % SceneMan.SceneWidth;
+				if SceneMan:GetTerrMatter(wx, y) ~= rte.airID then
+					return false;
+				end
+			end
+		end
+		return true;
+	end
 	for i, course in ipairs(self.courses) do
-		local left = math.min(0, course.dx);
 		course.startBlocks = course.runup and 14 or self.startWidth;
 		local padEndOffset = course.dx >= 0 and (course.startBlocks - self.startWidth) * 24 or 0;
+		local left = math.min(0, course.dx);
 		local right = math.max(course.startBlocks * 24, padEndOffset + course.dx + course.width * 24);
-		local span = right - left;
-		local row = (course.dy > 0 or nextX[2] + span > 3550) and 1 or 2;
-		if row == 1 and nextX[1] + span > 3550 then
-			row = 2;
+		local top = math.min(0, course.dy) - 120;
+		local bottom = math.max(0, course.dy) + 24 + 60;
+		local placed = false;
+		for startY = 200, 900, 60 do
+			for x = 60, SceneMan.SceneWidth - 60, 24 do
+				local x1, y1, x2, y2 = x - 60, startY + top, x + (right - left) + 60, startY + bottom;
+				-- (Clear of the seam where the map wraps: pads across it misbehaved.)
+				if x2 < SceneMan.SceneWidth - 24 and free(x1, y1, x2, y2) then
+					table.insert(boxes, { x1, y1, x2, y2 });
+					local startX = x - left;
+					course.startPad = Vector(startX, startY);
+					local padEnd = course.dx >= 0 and startX + (course.startBlocks - self.startWidth) * 24 or startX;
+					course.targetPad = Vector(padEnd + course.dx, startY + course.dy);
+					placed = true;
+					ConsoleMan:PrintString("FLIGHT layout " .. course.name .. ": start pad " .. math.floor(startX) .. "," .. startY .. ", target pad " .. math.floor(course.targetPad.X) .. "," .. math.floor(course.targetPad.Y));
+					break;
+				end
+			end
+			if placed then
+				break;
+			end
 		end
-		local x = nextX[row];
-		local deep = rowY[row] + math.max(0, course.dy) + 24 > 500;
-		if deep and x + span > 1350 and x < 2250 then
-			x = 2250;
+		if not placed then
+			ConsoleMan:PrintString("FLIGHT " .. course.name .. ": no room for it");
 		end
-		nextX[row] = x + span + 160;
-		local startX = x - left;
-		local startY = rowY[row];
-		course.startPad = Vector(startX, startY);
-		-- (The target's offset is from the start pad's end on the side it lies, so a long run-up pad doesn't reach under it.)
-		local padEnd = course.dx >= 0 and startX + (course.startBlocks - self.startWidth) * 24 or startX;
-		course.targetPad = Vector(padEnd + course.dx, startY + course.dy);
-		course.run = self.only == nil or self.only == i;
+		course.run = placed and (self.only == nil or self.only == i);
 		if course.run then
+			local startX, startY = course.startPad.X, course.startPad.Y;
 			self:Pad(startX, startY, course.startBlocks);
 			self:Pad(course.targetPad.X, course.targetPad.Y, course.width);
-			-- A walk's steps: three blocks each, from the start pad's end to the target pad, rising or falling evenly. (A block's top sits
-			-- where its Pos is; a step's riser is the difference, filled down to the next step by the block's own 24 px.)
+			-- A walk's steps: three blocks each, from the start pad's end to the target pad, rising or falling evenly.
 			if course.steps then
 				local startEnd = startX + course.startBlocks * 24;
 				for k = 1, course.steps do
