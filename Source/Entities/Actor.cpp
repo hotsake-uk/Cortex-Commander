@@ -685,6 +685,7 @@ void Actor::RestDetection() {
 void Actor::AddAIMOWaypoint(const MovableObject* pMOWaypoint) {
 	if (g_MovableMan.ValidMO(pMOWaypoint) && (m_Waypoints.empty() || m_Waypoints.back().second != pMOWaypoint)) {
 		m_Waypoints.push_back(std::pair<Vector, const MovableObject*>(pMOWaypoint->GetPos(), pMOWaypoint));
+		m_WaitingAtDoor = false;
 	}
 }
 

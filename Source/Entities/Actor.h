@@ -391,7 +391,10 @@ namespace RTE {
 		/// go to, in order
 		/// @param m_Waypoints.push_back(std::pair<Vector The new scene point this should try to get to after all other waypoints
 		/// are reached.
-		void AddAISceneWaypoint(const Vector& waypoint) { m_Waypoints.push_back(std::pair<Vector, MovableObject*>(waypoint, (MovableObject*)NULL)); }
+		void AddAISceneWaypoint(const Vector& waypoint) {
+			m_Waypoints.push_back(std::pair<Vector, MovableObject*>(waypoint, (MovableObject*)NULL));
+			m_WaitingAtDoor = false; // (A new order is asked for at once, not after the wait at the last one's door.)
+		}
 
 		/// Adds an MO in the scene as the next waypoint for this to go to, in order
 		/// @param pMOWaypoint The new MO this should try to get to after all other waypoints are reached.
@@ -408,6 +411,7 @@ namespace RTE {
 			m_MoveTarget = m_Pos;
 			m_MoveVector.Reset();
 			m_HasMovePathGoal = false;
+			m_WaitingAtDoor = false;
 		}
 
 		/// Gets the last or furthest set AI waypoint of this: the last of its waypoints, else the place its route was asked for to, else
@@ -445,6 +449,7 @@ namespace RTE {
 			m_MoveTarget = m_Pos;
 			m_MoveVector.Reset();
 			m_HasMovePathGoal = false; // The path and the place it was for go together: a route a sentry asked for to face along must not become a later order's goal.
+			m_WaitingAtDoor = false;
 		}
 
 		/// Adds a coordinate to the beginning of the MovePath, meaning the one
