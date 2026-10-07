@@ -344,3 +344,13 @@ because the probe reached 4 px into the pather's 2 px margin.
   sentry, as before), and the sandbox's Guard order (GOTO at an MO), which follows the one followed itself.
 - Not yet looked at: the four-facing jet planner indoors (its rays start 40 px over Pos, inside a 48 px ceiling, so it
   never jets indoors; the climb controller does that work), doors on Bywater.
+
+## Measured against the original AI (2026-10-07)
+
+See Tools/RenderTest/Results/baseline-original-ai/SUMMARY.md. The last commit before the AI work (bc93d5a5e, upstream's pathfinder,
+built in ../cccp-ai-baseline) was run through Bywater and the ladder tower:
+- **Bywater:** the original passes about 30%. Ours has been 25-45% over the last rounds, so we are not clearly ahead on the real map.
+- **Ladder tower:** the original passes 22/24, our old climb 20/24, the new staged climber 30/32.
+- **The ladder block was ours.** The original pathfinder routes straight up laddered shafts. Our grid's added head room and width
+  checks read wall-ladder rungs as solid and priced the climb as impossible (fixed in 10aa2efb9).
+Rule from now on: a change must beat the original on a real map, and our grid must never refuse a route the original grid takes.

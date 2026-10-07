@@ -1,0 +1,133 @@
+SYSTEM: Activity was reset!
+ERROR: Finding Scene preset '' failed! Has it been properly defined?
+SYSTEM: Scene "Ketanot Hills" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER ladders placed: 14 (centres: 1615,204 1590,276 1590,300 1590,372 1590,396 1807,108 1782,180 1782,204 1782,228 1782,252 1782,276 1782,300 1807,372 1807,396)
+AIBUNKER path for A up shaft one to C: 8 nodes: 1512,437 1548,444 1572,444 1596,444 1596,228 1572,252 1548,252 1512,244
+AIBUNKER ladder check A up shaft one to C: the route passes 4 ladder piece(s)
+AIBUNKER path for A up both shafts to D: 19 nodes: 1512,437 1548,444 1572,444 1596,444 1620,444 1620,324 1644,348 1668,348 1692,348 1716,348 1740,348 1764,348 1788,348 1812,348 1812,132 1836,156 1860,156 1884,156 1896,148
+AIBUNKER ladder check A up both shafts to D: the route passes 4 ladder piece(s)
+AIBUNKER path for D down both shafts to A: 25 nodes: 1896,149 1884,156 1860,156 1836,156 1812,156 1812,180 1812,204 1812,228 1812,252 1788,276 1788,300 1788,324 1764,348 1740,348 1716,348 1692,348 1668,348 1644,348 1620,348 1596,372 1596,396 1596,420 1572,444 1548,444 1512,436
+AIBUNKER ladder check D down both shafts to A: the route passes 16 ladder piece(s)
+AIBUNKER path for B up shaft two to D: 10 nodes: 1896,341 1884,348 1860,348 1836,348 1812,348 1788,348 1788,132 1764,156 1740,156 1704,148
+AIBUNKER ladder check B up shaft two to D: the route passes 8 ladder piece(s)
+AIBUNKER path for C down shaft one to B: 19 nodes: 1512,245 1548,252 1572,252 1596,252 1620,276 1620,300 1620,324 1644,348 1668,348 1692,348 1716,348 1740,348 1764,348 1788,348 1812,348 1836,348 1860,348 1884,348 1896,340
+AIBUNKER ladder check C down shaft one to B: the route passes 4 ladder piece(s)
+AIBUNKER path for A right up shaft one to C middle: 18 nodes: 1896,437 1884,444 1860,444 1836,444 1812,444 1788,444 1764,444 1740,444 1716,444 1692,444 1668,444 1644,444 1620,444 1620,228 1644,252 1668,252 1692,252 1704,244
+AIBUNKER ladder check A right up shaft one to C middle: the route passes 2 ladder piece(s)
+AIBUNKER path for D down both shafts to A middle: 25 nodes: 1704,149 1740,156 1764,156 1788,156 1788,180 1788,204 1788,228 1788,252 1788,276 1788,300 1788,324 1764,348 1740,348 1716,348 1692,348 1668,348 1644,348 1620,348 1620,372 1620,396 1620,420 1644,444 1668,444 1692,444 1704,436
+AIBUNKER ladder check D down both shafts to A middle: the route passes 24 ladder piece(s)
+AIBUNKER path for B up one storey to C: 12 nodes: 1512,341 1548,348 1572,348 1596,348 1596,372 1596,396 1596,420 1596,444 1596,228 1572,252 1548,252 1512,244
+AIBUNKER ladder check B up one storey to C: the route passes 12 ladder piece(s)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER trace A up shaft one to C 2s pos 1552,439 vel 2.3,-0.5 fuel 1500 path 6 left 199 aim -0.01 facing right
+AIBUNKER trace A up shaft one to C 3s pos 1602,413 vel 2.9,-6.3 fuel 877 path 4 left 191 aim 1.39 facing left
+AIBUNKER trace A up both shafts to D 3s pos 1603,440 vel 4.9,0.2 fuel 1500 path 15 left 413 aim -0.01 facing right
+AIBUNKER trace D down both shafts to A 3s pos 1854,153 vel -2.1,-1.4 fuel 1500 path 21 left 443 aim -0.01 facing left
+AIBUNKER trace B up shaft two to D 3s pos 1839,344 vel -2.2,-1.1 fuel 1500 path 6 left 238 aim -0.01 facing left
+AIBUNKER trace C down shaft one to B 3s pos 1595,252 vel 2.1,1.9 fuel 1500 path 15 left 312 aim -0.01 facing right
+AIBUNKER trace A right up shaft one to C middle 3s pos 1802,450 vel -0.5,-3.2 fuel 1500 path 13 left 228 aim -0.01 facing left
+AIBUNKER trace D down both shafts to A middle 3s pos 1794,172 vel -1.4,-3.1 fuel 1500 path 20 left 278 aim -0.01 facing left
+AIBUNKER trace B up one storey to C 3s pos 1590,346 vel 2.2,-0.3 fuel 1500 path 8 left 129 aim -0.01 facing right
+AIBUNKER trace A up shaft one to C 4s pos 1602,249 vel -1.9,4.8 fuel 300 path 2 left 90 aim 0 facing left
+AIBUNKER trace A up shaft one to C 5s pos 1602,328 vel -1.3,6.2 fuel 1097 path 2 left 123 aim 0 facing left
+AIBUNKER trace A up shaft one to C 6s pos 1595,340 vel 0.1,4 fuel 692 path 4 left 127 aim 0.88 facing right
+AIBUNKER trace A up both shafts to D 6s pos 1641,440 vel -3.6,-2.8 fuel 1326 path 17 left 387 aim 0.06 facing left
+AIBUNKER trace D down both shafts to A 6s pos 1818,300 vel 1.4,7.5 fuel 1500 path 15 left 334 aim 0.03 facing right
+AIBUNKER trace B up shaft two to D 6s pos 1787,345 vel -0.1,-0.8 fuel 962 path 4 left 214 aim 0.18 facing right
+AIBUNKER trace C down shaft one to B 6s pos 1690,346 vel -0.8,-2.5 fuel 1500 path 9 left 206 aim 0.03 facing right
+AIBUNKER trace A right up shaft one to C middle 6s pos 1658,437 vel -2.4,-0.3 fuel 1500 path 6 left 198 aim -0.01 facing left
+AIBUNKER trace D down both shafts to A middle 6s pos 1787,171 vel 0.2,0.3 fuel 1500 path 20 left 277 aim -0.01 facing left
+AIBUNKER trace B up one storey to C 6s pos 1596,362 vel -0.1,0.3 fuel 1500 path 7 left 145 aim -0.01 facing right
+AIBUNKER trace A up shaft one to C 7s pos 1604,319 vel 0.6,-6.9 fuel 804 path 4 left 119 aim 1.39 facing left
+AIBUNKER trace A up shaft one to C 8s pos 1599,247 vel -1.9,-1.1 fuel 999 path 2 left 87 aim 0 facing left
+AIBUNKER trace A up shaft one to C 9s pos 1554,251 vel -5.2,1.8 fuel 1500 path 1 left 42 aim 0 facing left
+AIBUNKER trace A up both shafts to D 9s pos 1556,428 vel 1.1,-0.3 fuel 225 path 14 left 440 aim 0.71 facing right
+AIBUNKER trace D down both shafts to A 9s pos 1712,335 vel -1.2,-2.8 fuel 1060 path 9 left 224 aim 0 facing left
+AIBUNKER trace B up shaft two to D 9s pos 1792,204 vel 0.2,-1.2 fuel 713 path 4 left 105 aim 1.39 facing right
+AIBUNKER trace C down shaft one to B 9s pos 1775,342 vel 2.2,-1 fuel 1500 path 5 left 120 aim 0 facing right
+AIBUNKER trace A right up shaft one to C middle 9s pos 1667,430 vel 1.8,-0.8 fuel 896 path 5 left 189 aim 0 facing left
+AIBUNKER trace D down both shafts to A middle 9s pos 1766,343 vel -2.1,-0.9 fuel 1500 path 13 left 111 aim 0.25 facing left
+AIBUNKER trace B up one storey to C 9s pos 1522,439 vel -4.3,-1.1 fuel 1500 path 0 left 195 aim -0.01 facing left
+AIBUNKER trace A up shaft one to C 10s pos 1519,251 vel 0.1,-0.9 fuel 1500 path 0 left 10 aim 0.19 facing right
+AIBUNKER A up shaft one to C: arrived in 10.5 s, stood still 0 s
+AIBUNKER C down shaft one to B: arrived in 11.5 s, stood still 0 s
+AIBUNKER trace A up both shafts to D 12s pos 1562,435 vel 3.8,3.1 fuel 1335 path 15 left 440 aim 0 facing right
+AIBUNKER trace D down both shafts to A 12s pos 1597,384 vel 0,-0.7 fuel 1500 path 5 left 99 aim 0 facing left
+AIBUNKER trace B up shaft two to D 12s pos 1801,223 vel -0.7,-9.5 fuel 613 path 4 left 123 aim 0.14 facing left
+AIBUNKER trace A right up shaft one to C middle 12s pos 1593,438 vel -6.2,-1.7 fuel 1225 path 5 left 224 aim 0 facing right
+AIBUNKER trace D down both shafts to A middle 12s pos 1598,388 vel -0.8,2.6 fuel 1500 path 6 left 116 aim 0 facing right
+AIBUNKER trace B up one storey to C 12s pos 1497,432 vel 1.6,-1.4 fuel 1500 path 0 left 188 aim -0.01 facing left
+AIBUNKER trace A up both shafts to D 15s pos 1654,439 vel -4.3,-1 fuel 1500 path 15 left 378 aim 0.13 facing left
+AIBUNKER trace D down both shafts to A 15s pos 1600,376 vel -0.1,-0.7 fuel 1500 path 2 left 106 aim 0 facing left
+AIBUNKER trace B up shaft two to D 15s pos 1716,159 vel -0.3,-1.5 fuel 432 path 1 left 16 aim 0 facing left
+AIBUNKER B up shaft two to D: arrived in 15.5 s, stood still 0 s
+AIBUNKER trace A right up shaft one to C middle 15s pos 1552,428 vel -0.4,-0.1 fuel 1500 path 7 left 238 aim 0.05 facing right
+AIBUNKER trace D down both shafts to A middle 15s pos 1680,444 vel 1.7,0.4 fuel 1500 path 1 left 24 aim 0 facing right
+AIBUNKER D down both shafts to A middle: arrived in 15.5 s, stood still 0 s
+AIBUNKER trace B up one storey to C 15s pos 1547,442 vel 4.6,0.5 fuel 1500 path 6 left 201 aim -0.01 facing right
+AIBUNKER trace A up both shafts to D 18s pos 1579,439 vel -0.2,0.6 fuel 809 path 15 left 430 aim 0.08 facing right
+AIBUNKER trace D down both shafts to A 18s pos 1580,443 vel -0.3,-1.5 fuel 1281 path 2 left 68 aim 0 facing left
+AIBUNKER trace A right up shaft one to C middle 18s pos 1653,446 vel -1.3,-1.5 fuel 235 path 5 left 208 aim 0.5 facing left
+AIBUNKER trace B up one storey to C 18s pos 1563,440 vel -4.2,-1.8 fuel 1375 path 4 left 202 aim 0.11 facing left
+AIBUNKER D down both shafts to A: arrived in 19.5 s, stood still 0 s
+AIBUNKER trace A up both shafts to D 21s pos 1655,430 vel -0.4,-0.9 fuel 78 path 14 left 371 aim 0.58 facing left
+AIBUNKER trace A right up shaft one to C middle 21s pos 1575,430 vel 0.3,1.2 fuel 126 path 6 left 226 aim 0.22 facing right
+AIBUNKER trace B up one storey to C 21s pos 1590,332 vel -1.5,-0.7 fuel 238 path 4 left 118 aim 0.16 facing left
+AIBUNKER trace A up both shafts to D 24s pos 1603,451 vel 2.1,-1.2 fuel 471 path 15 left 421 aim 0 facing right
+AIBUNKER trace A right up shaft one to C middle 24s pos 1564,429 vel 1.7,-0.5 fuel 274 path 5 left 232 aim 1.32 facing left
+AIBUNKER trace B up one storey to C 24s pos 1616,411 vel -0.9,8.6 fuel 1500 path 7 left 197 aim 0 facing left
+AIBUNKER trace A up both shafts to D 27s pos 1648,439 vel -0.3,-0.8 fuel 1495 path 14 left 382 aim 0.17 facing left
+AIBUNKER trace A right up shaft one to C middle 27s pos 1626,437 vel -4.7,-2.9 fuel 1004 path 5 left 207 aim 1.13 facing right
+AIBUNKER trace B up one storey to C 27s pos 1637,447 vel -0.1,-1 fuel 732 path 4 left 238 aim 0.1 facing right
+AIBUNKER trace A up both shafts to D 30s pos 1575,430 vel 0.1,-0.4 fuel 749 path 14 left 427 aim 0 facing right
+AIBUNKER trace A right up shaft one to C middle 30s pos 1618,365 vel 0.4,-9.9 fuel 603 path 5 left 148 aim 1.39 facing left
+AIBUNKER trace B up one storey to C 30s pos 1542,442 vel -0.2,-2.2 fuel 781 path 6 left 201 aim 0 facing right
+AIBUNKER trace A up both shafts to D 33s pos 1645,428 vel -1.2,-0.8 fuel 91 path 14 left 376 aim 1.02 facing left
+AIBUNKER trace A right up shaft one to C middle 33s pos 1710,256 vel 0,-0.5 fuel 1500 path 0 left 14 aim 0.04 facing left
+AIBUNKER A right up shaft one to C middle: arrived in 33.5 s, stood still 0 s
+AIBUNKER trace B up one storey to C 33s pos 1559,252 vel 0.2,-3 fuel 625 path 2 left 48 aim 0 facing left
+AIBUNKER B up one storey to C: arrived in 34.5 s, stood still 0 s
+AIBUNKER trace A up both shafts to D 36s pos 1613,440 vel 5.6,0 fuel 1225 path 14 left 407 aim 0 facing left
+AIBUNKER trace A up both shafts to D 39s pos 1563,430 vel 0,-0.9 fuel 530 path 14 left 436 aim 1.05 facing right
+AIBUNKER trace A up both shafts to D 42s pos 1669,432 vel -2.6,1.7 fuel 1196 path 15 left 363 aim 0 facing left
+AIBUNKER trace A up both shafts to D 45s pos 1582,440 vel -0.2,-1 fuel 745 path 14 left 428 aim 0.18 facing right
+AIBUNKER trace A up both shafts to D 48s pos 1671,435 vel 4.6,-3.8 fuel 1188 path 14 left 364 aim 0 facing left
+AIBUNKER trace A up both shafts to D 51s pos 1612,338 vel 1.2,5.6 fuel 195 path 12 left 341 aim 0.11 facing right
+AIBUNKER trace A up both shafts to D 54s pos 1629,414 vel 0.1,0.1 fuel 79 path 14 left 377 aim 0.22 facing right
+AIBUNKER trace A up both shafts to D 57s pos 1610,392 vel 2.2,-6.3 fuel 18 path 14 left 376 aim 0 facing right
+AIBUNKER trace A up both shafts to D 60s pos 1577,444 vel 1.7,1.8 fuel 128 path 14 left 435 aim 0 facing right
+AIBUNKER A up both shafts to D: GAVE UP after 60 s, 435 px short, stood still 0 s, at 1577,444
+AIBUNKER stall A up both shafts to D (gave up) at 1577,444 vel 1.7,1.8 aim 0 facing right prone 0 fuel 128 path 14 first step kind - stuck 0 ms
+AIBUNKER stall route left (14): 1620,324 1644,340 1668,340 1692,340 1716,340 1740,340 1764,340 1788,340 1812,340 1812,132 1836,148 1860,148
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER done

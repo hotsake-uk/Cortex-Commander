@@ -1,0 +1,289 @@
+SYSTEM: Activity was reset!
+ERROR: Finding Scene preset '' failed! Has it been properly defined?
+SYSTEM: Scene "Bywater Barracks" was loaded
+SYSTEM: Activity "Sandbox" was successfully started
+AIBUNKER path for bottom corridor to the top room: 42 nodes: 1695,1169 1716,1164 1716,1044 1740,1068 1764,1068 1788,1068 1788,900 1764,924 1740,900 1644,804 1620,804 1596,804 1572,804 1548,804 1524,804 1500,804 1476,780 1452,780 1476,756 1476,636 1500,660 1500,348 1524,372 1548,348 1572,348 1596,348 1620,348 1644,324 1668,300 1692,276 1692,84 1716,108 1740,108 1764,108 1788,108 1812,108 1836,108 1860,108 1884,108 1908,108 1932,108 1920,137
+AIBUNKER path for mid left room to the right column: 28 nodes: 1620,797 1644,804 1668,828 1692,852 1716,876 1740,900 1764,924 1812,876 1836,900 1836,924 1860,900 1884,900 1908,900 1932,900 1956,900 1980,900 2004,924 2028,948 2052,948 2076,972 2100,972 2124,972 2148,948 2172,972 2196,996 2196,804 2172,828 2170,823
+AIBUNKER path for top room to the bottom corridor: 62 nodes: 1922,112 1908,108 1884,108 1860,108 1836,108 1812,108 1788,108 1764,108 1740,108 1716,108 1692,108 1692,132 1692,156 1692,180 1668,204 1644,228 1620,252 1596,276 1572,300 1548,324 1524,348 1500,372 1500,396 1500,420 1500,444 1500,468 1500,492 1500,516 1476,540 1452,564 1452,588 1452,612 1452,636 1452,660 1452,684 1452,708 1452,732 1452,756 1476,780 1500,804 1524,804 1548,804 1572,804 1596,804 1620,804 1644,804 1668,828 1692,852 1716,876 1740,900 1764,924 1788,948 1788,972 1788,996 1788,1020 1788,1044 1764,1068 1740,1068 1716,1092 1716,1116 1692,1140 1695,1168
+AIBUNKER path for middle to the mid left room: 47 nodes: 1950,581 1932,588 1932,468 1956,492 1980,492 2004,492 2028,492 2052,492 2076,492 2076,516 2076,540 2076,564 2076,588 2076,612 2100,636 2124,660 2124,684 2124,708 2124,732 2124,756 2124,780 2148,804 2172,828 2196,852 2196,876 2196,900 2172,924 2148,948 2124,948 2100,972 2076,972 2052,972 2028,948 1980,900 1980,924 1956,900 1932,900 1908,900 1884,900 1860,900 1836,924 1788,876 1764,900 1764,924 1740,900 1644,804 1620,796
+AIBUNKER path for bottom right to the middle: 36 nodes: 2130,1073 2148,1068 2172,1068 2196,1068 2220,1092 2220,1116 2268,1068 2292,1068 2316,1068 2340,1068 2340,1092 2340,972 2316,996 2292,996 2268,996 2244,996 2220,996 2196,996 2196,804 2172,828 2148,828 2124,828 2124,636 2100,660 2076,660 2076,468 2052,492 2028,492 2004,492 1980,492 1956,492 1932,516 1932,540 1932,564 1932,588 1950,580
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER trace bottom corridor to the top room 2s pos 1716,1070 vel 1.2,-5.3 fuel 913 path 40 left 955 aim 1.02 facing left
+AIBUNKER trace bottom corridor to the top room 3s pos 1749,1082 vel 0.7,-2.5 fuel 935 path 37 left 960 aim 0.78 facing right
+AIBUNKER trace mid left room to the right column 3s pos 1694,909 vel 3.3,6.3 fuel 1118 path 23 left 482 aim 0.99 facing left
+AIBUNKER trace top room to the bottom corridor 3s pos 1846,114 vel -2.5,-0.3 fuel 1500 path 57 left 1064 aim -0.01 facing left
+AIBUNKER trace middle to the mid left room 3s pos 1932,585 vel -1,-0.6 fuel 450 path 45 left 376 aim 0 facing left
+AIBUNKER trace bottom right to the middle 3s pos 2205,1087 vel 1.6,0.3 fuel 1500 path 32 left 568 aim -0.01 facing right
+AIBUNKER trace bottom corridor to the top room 4s pos 1797,1048 vel 2.8,-6.8 fuel 859 path 36 left 919 aim 0.08 facing left
+AIBUNKER trace bottom corridor to the top room 5s pos 1804,914 vel -1.6,-3.6 fuel 884 path 36 left 785 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 6s pos 1759,931 vel 1.1,-1.8 fuel 810 path 34 left 810 aim 1.18 facing left
+AIBUNKER trace mid left room to the right column 6s pos 1775,922 vel 5.2,2.5 fuel 1207 path 21 left 406 aim 1.22 facing left
+AIBUNKER trace top room to the bottom corridor 6s pos 1675,204 vel -0.7,5.3 fuel 986 path 47 left 964 aim -0.01 facing left
+AIBUNKER trace middle to the mid left room 6s pos 1950,512 vel 0,-0.1 fuel 1500 path 43 left 435 aim 0.05 facing right
+AIBUNKER trace bottom right to the middle 6s pos 2212,1089 vel 1.2,0.6 fuel 1500 path 0 left 573 aim -0.01 facing left
+AIBUNKER trace bottom corridor to the top room 7s pos 1772,888 vel -1.3,2.7 fuel 185 path 33 left 766 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 8s pos 1753,913 vel -0.1,-0.7 fuel 1166 path 33 left 793 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 9s pos 1741,898 vel -0.9,-0.3 fuel 457 path 33 left 782 aim 0 facing left
+AIBUNKER trace mid left room to the right column 9s pos 1781,888 vel 3.6,-2.5 fuel 1071 path 17 left 394 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 9s pos 1483,405 vel -3.7,4.3 fuel 1135 path 38 left 791 aim 0.02 facing right
+AIBUNKER trace middle to the mid left room 9s pos 1976,497 vel 0,-0.7 fuel 1500 path 42 left 465 aim 0 facing right
+AIBUNKER trace bottom right to the middle 9s pos 2222,1136 vel -0.1,0 fuel 1500 path 0 left 620 aim -0.01 facing left
+AIBUNKER trace bottom corridor to the top room 10s pos 1734,908 vel -0.5,0.6 fuel 745 path 33 left 793 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 11s pos 1677,890 vel -4.3,-6.4 fuel 749 path 33 left 791 aim 1.39 facing left
+AIBUNKER trace bottom corridor to the top room 12s pos 1655,863 vel 0.2,2.8 fuel 255 path 33 left 773 aim 0.32 facing left
+AIBUNKER trace mid left room to the right column 12s pos 2010,925 vel 1.8,-1.7 fuel 1500 path 11 left 189 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 12s pos 1476,632 vel -2.6,13.1 fuel 944 path 33 left 578 aim 0 facing left
+AIBUNKER trace middle to the mid left room 12s pos 2048,501 vel 1,-2.2 fuel 1500 path 37 left 519 aim 0.02 facing right
+AIBUNKER trace bottom right to the middle 12s pos 2228,1112 vel 1,1.9 fuel 1500 path 0 left 601 aim -0.01 facing left
+AIBUNKER trace bottom corridor to the top room 13s pos 1641,936 vel 0,-0.5 fuel 1149 path 33 left 846 aim 0.06 facing left
+AIBUNKER trace bottom corridor to the top room 14s pos 1663,932 vel 2.3,-0.8 fuel 1500 path 36 left 836 aim 0.01 facing right
+AIBUNKER trace bottom corridor to the top room 15s pos 1713,919 vel 3.9,-1.3 fuel 1500 path 34 left 809 aim 0.17 facing right
+AIBUNKER trace mid left room to the right column 15s pos 2154,957 vel 3.5,-0.1 fuel 1500 path 5 left 135 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 15s pos 631,857 vel -29.6,22.1 fuel 29 path 33 left 1108 aim 0 facing left
+AIBUNKER trace middle to the mid left room 15s pos 2045,506 vel 0.5,1 fuel 1347 path 38 left 514 aim 0.06 facing left
+AIBUNKER trace bottom right to the middle 15s pos 2281,1080 vel 1.1,1 fuel 1500 path 28 left 600 aim -0.01 facing right
+AIBUNKER trace bottom corridor to the top room 16s pos 1716,904 vel -1.9,-4.8 fuel 713 path 33 left 793 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 17s pos 1657,834 vel -0.6,-0.8 fuel 92 path 33 left 745 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 18s pos 1659,837 vel -1.3,0.1 fuel 76 path 32 left 747 aim 0 facing left
+AIBUNKER trace mid left room to the right column 18s pos 2277,932 vel 4.8,5.5 fuel 371 path 3 left 153 aim 0.13 facing right
+AIBUNKER trace top room to the bottom corridor 18s pos 73,1195 vel 0.5,-0.8 fuel 1369 path 33 left 1621 aim 0 facing left
+AIBUNKER trace middle to the mid left room 18s pos 2045,499 vel -0.2,-0.4 fuel 1500 path 38 left 519 aim 0 facing right
+AIBUNKER trace bottom right to the middle 18s pos 2311,1075 vel 0.7,0 fuel 1500 path 27 left 613 aim -0.01 facing right
+AIBUNKER trace bottom corridor to the top room 19s pos 1657,825 vel -1.5,-3.3 fuel 537 path 32 left 737 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 20s pos 1642,807 vel -1,-2.3 fuel 1500 path 32 left 725 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 21s pos 1603,811 vel -6,1.9 fuel 1335 path 30 left 745 aim 0 facing left
+AIBUNKER trace mid left room to the right column 21s pos 2168,570 vel -8.6,-8.1 fuel 257 path 3 left 252 aim 0 facing left
+AIBUNKER trace top room to the bottom corridor 21s pos 3589,1216 vel -0.7,-1.6 fuel 1500 path 77 left 1705 aim 0 facing left
+AIBUNKER trace middle to the mid left room 21s pos 2047,497 vel 0.8,-1 fuel 1260 path 37 left 521 aim 0 facing right
+AIBUNKER trace bottom right to the middle 21s pos 2254,1082 vel -4.1,2.7 fuel 1500 path 0 left 587 aim -0.01 facing left
+AIBUNKER trace bottom corridor to the top room 22s pos 1566,798 vel -2.4,0.3 fuel 1500 path 29 left 750 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 23s pos 1525,807 vel 0.6,-2.6 fuel 1500 path 27 left 778 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 24s pos 1495,809 vel -2.7,-1.2 fuel 1500 path 26 left 794 aim 0 facing left
+AIBUNKER trace mid left room to the right column 24s pos 2216,955 vel 0.3,14.1 fuel 792 path 1 left 140 aim 0 facing left
+AIBUNKER trace top room to the bottom corridor 24s pos 3429,1155 vel -5.4,0.3 fuel 1435 path 72 left 1734 aim 0.85 facing left
+AIBUNKER trace middle to the mid left room 24s pos 2040,488 vel 0.7,1.4 fuel 1500 path 38 left 521 aim 0 facing right
+AIBUNKER trace bottom right to the middle 24s pos 2223,1122 vel -3.9,-1.4 fuel 1500 path 0 left 607 aim -0.01 facing left
+AIBUNKER trace bottom corridor to the top room 25s pos 1475,789 vel -0.4,-1.4 fuel 676 path 23 left 789 aim 0.69 facing left
+AIBUNKER trace bottom corridor to the top room 26s pos 1475,790 vel -0.1,-0.2 fuel 1267 path 23 left 791 aim 0.42 facing left
+AIBUNKER mid left room to the right column: arrived in 26.5 s, stood still 0 s
+AIBUNKER trace bottom corridor to the top room 27s pos 1472,788 vel -0.8,-1 fuel 383 path 23 left 790 aim 0.26 facing left
+AIBUNKER trace top room to the bottom corridor 27s pos 3318,1072 vel -1.5,-1.1 fuel 556 path 68 left 1626 aim 0 facing left
+AIBUNKER trace middle to the mid left room 27s pos 2045,496 vel -0.1,-3.3 fuel 1500 path 38 left 520 aim 0 facing right
+AIBUNKER trace bottom right to the middle 27s pos 2250,1077 vel 1.8,3.4 fuel 1323 path 29 left 581 aim -0.01 facing right
+AIBUNKER trace bottom corridor to the top room 28s pos 1488,798 vel 0.5,0 fuel 1500 path 26 left 789 aim 0.01 facing right
+AIBUNKER trace bottom corridor to the top room 29s pos 1462,736 vel 0,-8.9 fuel 383 path 23 left 753 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 30s pos 1483,658 vel 0.1,0.1 fuel 1101 path 22 left 679 aim 0.12 facing left
+AIBUNKER trace top room to the bottom corridor 30s pos 3244,1021 vel -2.2,0.3 fuel 1500 path 67 left 1556 aim 0.02 facing left
+AIBUNKER trace middle to the mid left room 30s pos 2044,498 vel 1.6,-1.7 fuel 1500 path 38 left 518 aim 0 facing right
+AIBUNKER trace bottom right to the middle 30s pos 2296,1080 vel -4.3,2.3 fuel 1500 path 27 left 608 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 31s pos 1484,535 vel 0.6,-9.8 fuel 130 path 21 left 590 aim 0.79 facing right
+AIBUNKER trace bottom corridor to the top room 32s pos 1516,388 vel 0.5,-0.4 fuel 245 path 21 left 475 aim 0.17 facing right
+AIBUNKER trace bottom corridor to the top room 33s pos 1518,397 vel -0.8,-1.9 fuel 99 path 21 left 478 aim 0.03 facing right
+AIBUNKER trace top room to the bottom corridor 33s pos 3211,974 vel -0.7,2.9 fuel 1068 path 65 left 1528 aim 0 facing left
+AIBUNKER trace middle to the mid left room 33s pos 2046,500 vel 1,1 fuel 1500 path 38 left 518 aim 0 facing right
+AIBUNKER trace bottom right to the middle 33s pos 2302,1076 vel -2.3,-1.8 fuel 917 path 25 left 608 aim 0.71 facing right
+AIBUNKER trace bottom corridor to the top room 34s pos 1518,402 vel 0.1,0.1 fuel 84 path 21 left 480 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 35s pos 1520,415 vel -0.1,2.3 fuel 285 path 21 left 487 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 36s pos 1530,436 vel -0.5,-1.8 fuel 140 path 21 left 491 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 36s pos 3096,992 vel -1,0.5 fuel 1500 path 62 left 1412 aim 0 facing left
+AIBUNKER trace middle to the mid left room 36s pos 2043,498 vel -0.7,0.9 fuel 1500 path 38 left 517 aim 0 facing right
+AIBUNKER trace bottom right to the middle 36s pos 2313,1074 vel 1.2,-4.2 fuel 749 path 25 left 614 aim 0.16 facing right
+AIBUNKER trace bottom corridor to the top room 37s pos 1506,502 vel -2.3,11.8 fuel 1294 path 21 left 551 aim 0 facing left
+AIBUNKER stall middle to the mid left room (still 4 s) at 2044,499 vel 0.6,0.8 aim 0 facing right prone 1 fuel 1500 path 38 first step kind - stuck 0 ms
+AIBUNKER stall route left (38): 2076,516 2076,540 2076,564 2076,588 2076,612 2100,663 2124,660 2124,684 2124,708 2124,732 2124,756 2148,818
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER trace bottom corridor to the top room 38s pos 1448,705 vel -2.8,4 fuel 383 path 21 left 738 aim 1.39 facing right
+AIBUNKER trace bottom corridor to the top room 39s pos 1397,936 vel -1.5,13.8 fuel 971 path 21 left 955 aim 0.33 facing right
+AIBUNKER trace top room to the bottom corridor 39s pos 2910,981 vel -2.8,3.6 fuel 1006 path 57 left 1229 aim 0 facing right
+AIBUNKER trace middle to the mid left room 39s pos 2048,498 vel -0.1,-0.7 fuel 1500 path 0 left 521 aim 0.33 facing right
+AIBUNKER trace bottom right to the middle 39s pos 2312,1076 vel 0.1,0 fuel 1500 path 26 left 614 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 40s pos 1407,880 vel 1.3,-6.1 fuel 347 path 21 left 903 aim 1.37 facing right
+AIBUNKER trace bottom corridor to the top room 41s pos 1452,751 vel 3.4,-4.6 fuel 202 path 21 left 772 aim 0.31 facing right
+AIBUNKER trace bottom corridor to the top room 42s pos 1460,729 vel -3.1,2.1 fuel 183 path 23 left 750 aim 0.03 facing left
+AIBUNKER trace top room to the bottom corridor 42s pos 2688,1126 vel -4.3,3 fuel 1500 path 48 left 994 aim 0 facing left
+AIBUNKER trace middle to the mid left room 42s pos 2048,496 vel 0.1,-1.5 fuel 1500 path 0 left 522 aim 0.47 facing right
+AIBUNKER trace bottom right to the middle 42s pos 2302,1071 vel 0,-0.2 fuel 1152 path 25 left 605 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 43s pos 1369,885 vel -4.8,17.2 fuel 1251 path 23 left 929 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 44s pos 1268,1003 vel -2.5,-0.6 fuel 1319 path 23 left 1084 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 45s pos 1260,898 vel 3.5,-11.2 fuel 347 path 23 left 1006 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 45s pos 2557,1131 vel -2.3,1.2 fuel 1500 path 42 left 863 aim 0 facing left
+AIBUNKER trace middle to the mid left room 45s pos 2048,494 vel 0.1,-0.4 fuel 1500 path 0 left 524 aim 1.44 facing right
+AIBUNKER trace bottom right to the middle 45s pos 2302,1083 vel 1.6,-0.4 fuel 932 path 25 left 614 aim 0.03 facing left
+AIBUNKER trace bottom corridor to the top room 46s pos 1390,663 vel 8.5,-9.7 fuel 202 path 23 left 746 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 47s pos 1543,525 vel 0.1,-0.5 fuel 100 path 23 left 540 aim 0 facing left
+AIBUNKER trace bottom corridor to the top room 48s pos 1502,675 vel -2.3,-4.4 fuel 1225 path 23 left 681 aim 0.69 facing left
+AIBUNKER trace top room to the bottom corridor 48s pos 2432,1112 vel -2.2,-1 fuel 1500 path 37 left 739 aim 0 facing left
+AIBUNKER trace middle to the mid left room 48s pos 2048,494 vel -0.1,-0.5 fuel 1500 path 0 left 524 aim -0.94 facing right
+AIBUNKER trace bottom right to the middle 48s pos 2311,1071 vel 0.5,-2.9 fuel 1500 path 26 left 609 aim 0.03 facing right
+AIBUNKER trace bottom corridor to the top room 49s pos 1452,641 vel -2.1,-6 fuel 640 path 21 left 687 aim 1.39 facing right
+AIBUNKER trace bottom corridor to the top room 50s pos 1464,459 vel 3.4,-10.8 fuel 18 path 21 left 558 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 51s pos 1511,377 vel -2.1,2.5 fuel 609 path 21 left 474 aim 0 facing left
+AIBUNKER trace top room to the bottom corridor 51s pos 2330,1074 vel 0.6,-0.4 fuel 280 path 33 left 642 aim 1.26 facing right
+AIBUNKER trace middle to the mid left room 51s pos 2048,493 vel -0.1,-0.5 fuel 1500 path 0 left 524 aim -0.5 facing right
+AIBUNKER trace bottom right to the middle 51s pos 2311,1074 vel 0.5,1 fuel 1500 path 26 left 612 aim 0.01 facing right
+AIBUNKER trace bottom corridor to the top room 52s pos 1465,574 vel -2.8,8.8 fuel 859 path 21 left 630 aim 1.39 facing right
+AIBUNKER trace bottom corridor to the top room 53s pos 1424,658 vel -1.6,4.3 fuel 281 path 21 left 719 aim 0.64 facing right
+AIBUNKER trace bottom corridor to the top room 54s pos 1402,909 vel 1.1,12.4 fuel 739 path 21 left 930 aim 0.13 facing right
+AIBUNKER trace top room to the bottom corridor 54s pos 2351,978 vel -5,0.2 fuel 686 path 33 left 683 aim 0 facing right
+AIBUNKER trace middle to the mid left room 54s pos 2048,492 vel -0.1,-0.5 fuel 1500 path 0 left 525 aim -0.78 facing right
+AIBUNKER trace bottom right to the middle 54s pos 2314,1075 vel 0,-1.6 fuel 1167 path 25 left 615 aim 0.55 facing right
+AIBUNKER trace bottom corridor to the top room 55s pos 1410,948 vel 0.4,-1.9 fuel 1335 path 46 left 958 aim 0.01 facing right
+AIBUNKER trace bottom corridor to the top room 56s pos 1455,925 vel 1,1.9 fuel 1500 path 45 left 914 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 57s pos 1499,933 vel 4,-0.3 fuel 1500 path 43 left 900 aim 0 facing right
+AIBUNKER trace top room to the bottom corridor 57s pos 2175,981 vel -0.5,-3.2 fuel 840 path 25 left 515 aim 0 facing left
+AIBUNKER trace middle to the mid left room 57s pos 2048,492 vel -0.1,-0.5 fuel 1500 path 0 left 525 aim -0.83 facing right
+AIBUNKER trace bottom right to the middle 57s pos 2313,1074 vel 0,0.3 fuel 1500 path 26 left 613 aim 0.16 facing right
+AIBUNKER trace bottom corridor to the top room 58s pos 1571,930 vel 4.2,0.7 fuel 1500 path 40 left 866 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 59s pos 1628,930 vel 2.3,-0.4 fuel 1500 path 37 left 845 aim 0 facing right
+AIBUNKER trace bottom corridor to the top room 60s pos 1675,930 vel 2.4,0.4 fuel 1500 path 36 left 830 aim 0 facing right
+AIBUNKER bottom corridor to the top room: GAVE UP after 60 s, 830 px short, stood still 0 s, at 1675,930
+AIBUNKER stall bottom corridor to the top room (gave up) at 1675,930 vel 2.4,0.4 aim 0 facing right prone 0 fuel 1500 path 36 first step kind - stuck 0 ms
+AIBUNKER stall route left (36): 1692,928 1716,915 1740,904 1644,796 1620,796 1596,796 1572,796 1548,796 1524,796 1500,795 1476,796 1452,784
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER trace top room to the bottom corridor 60s pos 2165,962 vel -1.8,-3.2 fuel 1449 path 24 left 512 aim 0.43 facing left
+AIBUNKER top room to the bottom corridor: GAVE UP after 60 s, 512 px short, stood still 0 s, at 2165,962
+AIBUNKER stall top room to the bottom corridor (gave up) at 2165,962 vel -1.8,-3.2 aim 0.43 facing left prone 0 fuel 1449 path 24 first step kind - stuck 0 ms
+AIBUNKER stall route left (24): 2124,963 2100,964 2076,964 2052,964 2028,964 1980,916 1980,916 1956,904 1932,904 1908,904 1884,904 1860,904
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER trace middle to the mid left room 60s pos 2049,492 vel 0.6,0.4 fuel 1500 path 0 left 525 aim -1.01 facing right
+AIBUNKER middle to the mid left room: GAVE UP after 60 s, 525 px short, stood still 27 s, at 2049,492
+AIBUNKER stall middle to the mid left room (gave up) at 2049,492 vel 0.6,0.4 aim -1.01 facing right prone 0 fuel 1500 path 0 first step kind - stuck 0 ms
+AIBUNKER stall route left (0):
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER trace bottom right to the middle 60s pos 2303,1081 vel -0.1,-0.9 fuel 1500 path 26 left 614 aim 0.04 facing left
+AIBUNKER bottom right to the middle: GAVE UP after 60 s, 614 px short, stood still 0 s, at 2303,1081
+AIBUNKER stall bottom right to the middle (gave up) at 2303,1081 vel -0.1,-0.9 aim 0.04 facing left prone 0 fuel 1500 path 26 first step kind - stuck 0 ms
+AIBUNKER stall route left (26): 2340,1075 2340,972 2316,999 2292,1000 2268,1000 2244,1000 2220,1000 2196,1000 2196,804 2172,824 2148,818 2124,831
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER grid (baseline: no grid dump)
+AIBUNKER done
