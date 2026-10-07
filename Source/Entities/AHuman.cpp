@@ -1019,7 +1019,14 @@ PathAgent AHuman::GetPathAgent() const {
 	// The width from the body, not from the radius: the radius reaches to the farthest point of anything attached, so a soldier was as
 	// wide as the gun held out in its hand, 16 half-widths with a long one, and a 48 px hatch (three half-widths wanted for a jet column)
 	// was shut to it; and the radius moves with the arm, so the answer changed between one path and the next. 14 px for a soldier.
-	agent.HalfWidth = std::clamp(m_CharHeight * 0.14F, 8.0F, 16.0F);
+	// And from the body itself, the torso and the head (the arms and legs are limbs that fold through a gap): a Soldier Light's are 12 px
+	// wide, so 8 px a side with 2 px to spare. Taken as 0.14 of the height, 14, it shut soldiers out of the 24 px shafts real maps are
+	// built with (Hemslock Hold's lift shaft alone cut 129 routes that the original pathfinder takes).
+	float bodyWidth = static_cast<float>(GetSpriteWidth());
+	if (m_pHead) {
+		bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
+	}
+	agent.HalfWidth = std::clamp(bodyWidth * 0.5F + 2.0F, 6.0F, 16.0F);
 	// The legs take stairs: a soldier walks the base game's steep stairs (6 px risers on 3 px treads) unaided in four seconds.
 	agent.WalksStairs = true;
 	return agent;
