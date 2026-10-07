@@ -59,6 +59,7 @@ thread_local bool s_WalksStairs = false;
 thread_local float s_MantleHeight = 0.0F; // How high a ledge the searcher mantles onto (PathAgent::MantleHeight).
 thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s (PathAgent::Velocity).
 thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathAgent::JetTimeMS).
+thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
@@ -192,6 +193,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_MantleHeight = agent.MantleHeight;
 	s_Velocity = agent.Velocity;
 	s_JetTimeMS = agent.JetTimeMS;
+	s_JetClimbMSPerPx = agent.JetClimbMSPerPx;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 
 	++m_CurrentPathingRequests;
@@ -1136,9 +1138,10 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 			if (across < nodeSize * 1.5F && rise > -nodeSize) {
 				continue; // (Next door and level or up: the rungs and mantles have those.)
 			}
-			// The fuel the flight takes, as the route-follower reckons it (AHuman::FlightFuelNeeded): the climb at about 4 m/s, the crossing
-			// lit about half the time, a third over.
-			float fuel = (std::max(0.0F, rise + 12.0F) / (8.0F * ppm) + across / (5.0F * ppm) * 0.5F) * 1000.0F * 1.2F + 200.0F;
+			// The fuel the flight takes, as the route-follower reckons it (AHuman::FlightFuelNeeded): the climb on this unit's own jet (its
+			// fuel per pixel, from its push and tank), the burst that lights it and a reserve for the top; the crossing lit about half the time.
+			float climbFuel = rise > 4.0F ? (rise + 12.0F) * s_JetClimbMSPerPx + (across >= 10.0F ? 450.0F : 300.0F) : 0.0F;
+			float fuel = 200.0F + climbFuel + across / (5.0F * ppm) * 0.5F * 1000.0F * 1.2F;
 			if (fuel > s_JetTimeMS * 0.95F) {
 				continue;
 			}

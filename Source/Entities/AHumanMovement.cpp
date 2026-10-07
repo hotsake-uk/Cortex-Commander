@@ -104,13 +104,136 @@ void AHuman::ResetRouteMovement() {
 	m_Mover.lastProgressPos = m_Pos;
 }
 
-// The fuel a flight takes, in ms: the climb at about 4 m/s, the crossing lit about half the time, and a third over, never more than a tank.
+// The jet's push at a fuel level. A jetpack's throttle follows the fuel left (AEJetpack::UpdateBurstState: from its negative throttle
+// multiplier when empty to its positive one when full, 0.8 to 1.2 for the base game's packs), unless it adjusts for weight instead, when
+// it is what it is now. The push now, as learned in flight (JetAccelNow), is scaled by the throttle there against the throttle now.
+float AHuman::JetAccelAtFuel(float fuel) const {
+	if (!m_pJetpack) {
+		return 0.0F;
+	}
+	float accelNow = JetAccelNow();
+	float factorNow = m_pJetpack->GetThrottleFactor();
+	if (m_pJetpack->GetAdjustsThrottleForWeight() || factorNow <= 0.05F) {
+		return accelNow;
+	}
+	float total = std::max(1.0F, m_pJetpack->GetJetTimeTotal());
+	float throttle = std::clamp(fuel / total, 0.0F, 1.0F) * 2.0F - 1.0F;
+	float low = m_pJetpack->GetNegativeThrottleMultiplier();
+	float high = m_pJetpack->GetPositiveThrottleMultiplier();
+	float factor = low + (high - low) * (throttle + 1.0F) * 0.5F;
+	return accelNow / factorNow * factor;
+}
+
+float AHuman::JetRelightFuel() const {
+	if (!m_pJetpack) {
+		return 0.0F;
+	}
+	return std::max(250.0F * std::max(m_pJetpack->GetThrottleFactor(), 0.5F), m_pJetpack->GetMinimumFuelRatio() * m_pJetpack->GetJetTimeTotal()) + 30.0F;
+}
+
+// The climb flown in thirtieths of a second, as the pilot flies it: full burn to the speed cap (12 m/s), held there, the jet out from the
+// height gravity alone stops it in, to 32 px under the top (the hover and the step off are the reserve's). The push falls with the tank;
+// the tank fills while the jet is out. (8.0's SharedBehaviors.ClimbFuelLeft; a fixed 8 m/s climb, as the reckoning was, took no account of
+// the unit's own jet: a heavy unit on a weak pack climbs slower and burns more of its tank for the same shaft.)
+float AHuman::ClimbFuelLeft(float height, float fuel) const {
+	if (!m_pJetpack) {
+		return -1.0F;
+	}
+	const float gravity = g_SceneMan.GetGlobalAcc().m_Y * c_PPM;
+	const float total = std::max(1.0F, m_pJetpack->GetJetTimeTotal());
+	const float cap = 12.0F * c_PPM;
+	const float relight = JetRelightFuel();
+	const float replenish = m_pJetpack->GetJetReplenishRate();
+	const float use = m_pJetpack->GetAdjustsThrottleForWeight() ? std::max(m_pJetpack->GetThrottleFactor(), 0.1F) : 1.0F;
+	const float dt = 1.0F / 30.0F;
+	if (JetAccelAtFuel(total) <= gravity + 1.0F) {
+		return -1.0F; // (Not even a full tank lifts it.)
+	}
+	height = std::max(0.0F, height - 32.0F);
+	float y = 0.0F;
+	float up = 0.0F;
+	float t = 0.0F;
+	bool lit = false;
+	fuel -= 200.0F; // The burst that lights it.
+	while (y < height) {
+		if (t > 6.0F || fuel <= 0.0F) {
+			return -1.0F;
+		}
+		float rate = std::clamp(std::sqrt(2.0F * gravity * std::max(0.0F, height - y)), 20.0F, cap);
+		// (The jet won't relight on less than its minimum; a climb that needs another pulse with less has none.)
+		if (!lit && up < rate - 20.0F && fuel <= relight) {
+			return -1.0F;
+		}
+		lit = up < (lit ? rate + 20.0F : rate - 20.0F);
+		if (lit) {
+			up += (JetAccelAtFuel(fuel) - gravity) * dt;
+			fuel -= dt * 1000.0F * use;
+		} else {
+			up -= gravity * dt;
+			fuel = std::min(total, fuel + dt * 1000.0F * replenish);
+		}
+		y += up * dt;
+		t += dt;
+	}
+	return fuel;
+}
+
+// The least fuel to begin a climb on and have the reserve left at the top: found by halving between none and a full tank. A climb no
+// full tank makes asks for most of a tank (the flight then climbs in stages, refuelling on the way; see MoveAlongRoute).
+float AHuman::ClimbFuelNeeded(float height, float reserve) const {
+	if (!m_pJetpack) {
+		return 0.0F;
+	}
+	float total = m_pJetpack->GetJetTimeTotal();
+	double now = g_TimerMan.GetSimTimeMS();
+	if (m_ClimbFuelCacheTimeMS < 0.0 || now - m_ClimbFuelCacheTimeMS > 2000.0) {
+		m_ClimbFuelCacheTimeMS = now;
+		m_ClimbFuelCache.fill(-1.0F);
+	}
+	int index = std::clamp(static_cast<int>(height / 8.0F), 0, 127) * 2 + (reserve > 350.0F ? 1 : 0);
+	if (m_ClimbFuelCache[index] >= 0.0F) {
+		return m_ClimbFuelCache[index];
+	}
+	float needed = total * 0.98F;
+	if (ClimbFuelLeft(height, total) >= reserve) {
+		float low = 0.0F;
+		float high = total;
+		for (int k = 0; k < 7; ++k) {
+			float middle = (low + high) * 0.5F;
+			if (ClimbFuelLeft(height, middle) >= reserve) {
+				high = middle;
+			} else {
+				low = middle;
+			}
+		}
+		needed = high;
+	}
+	m_ClimbFuelCache[index] = needed;
+	return needed;
+}
+
+float AHuman::ClimbFuelPerPixel() const {
+	if (!m_pJetpack || m_pJetpack->GetJetTimeTotal() <= 0.0F) {
+		return 6.0F;
+	}
+	float total = m_pJetpack->GetJetTimeTotal();
+	for (float height: {200.0F, 100.0F, 50.0F}) {
+		float left = ClimbFuelLeft(height, total);
+		if (left >= 0.0F) {
+			return std::max(0.5F, (total - 200.0F - left) / height);
+		}
+	}
+	return total; // (No climb worth the name: no flight link goes up.)
+}
+
+// The fuel a flight takes, in ms: the climb on this unit's jet with a reserve for the top (450 ms for a landing off to one side, which
+// is hovered across to, 300 for straight up), or the burst for one that doesn't climb, and the crossing lit about half the time.
 float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY) const {
 	Vector to = Towards(m_Pos, landing);
 	float feetY = m_Pos.m_Y + (m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F);
-	float rise = std::max(0.0F, feetY - landingFloorY + 12.0F);
-	// (The climb at about 8 m/s on average, burn and coast; at 4 a 190 px shaft was reckoned beyond a tank that takes it.)
-	float needed = (rise / (8.0F * c_PPM) + std::abs(to.m_X) / (5.0F * c_PPM) * 0.5F) * 1000.0F * 1.2F + 200.0F;
+	float rise = feetY - landingFloorY + 12.0F;
+	float climb = rise > 16.0F ? ClimbFuelNeeded(rise, std::abs(to.m_X) >= 10.0F ? 450.0F : 300.0F) : 200.0F;
+	float needed = climb + std::abs(to.m_X) / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
 	return m_pJetpack ? std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.98F) : needed;
 }
 
@@ -224,31 +347,63 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 	return true;
 }
 
-bool AHuman::ShaftHere(float& middleX, float& width) const {
-	// Walls both sides at any of a few heights from the chest to a body over the head: a shaft entered from the corridor under its mouth
-	// has its walls above the corridor's ceiling, where a look at chest height along the open corridor found none.
+bool AHuman::ColumnOpen(float x, float fromY, float toY) const {
+	if (toY >= fromY) {
+		return true;
+	}
+	Vector hit;
+	return !g_SceneMan.CastStrengthRay(Vector(x, fromY), Vector(0.0F, toY - fromY), 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
+}
+
+bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& width) const {
+	// Looked at every few pixels from where the head starts to where it will be at the top, at the route's column: wherever there are
+	// walls both sides within reach, the nearest faces bound the channel the body goes up, and the narrowest of them is the shaft. (Looked
+	// at only from where the unit stood, a shaft whose walls begin above the corridor's ceiling, or one beside the unit, wasn't seen, and
+	// a unit beside a 130 px shaft stood there the whole minute. 8.0's SharedBehaviors.ClimbPlan looked along the climb, as this does.)
 	float h = m_CharHeight;
+	float headAbove = h * 0.24F;
+	float fromY = m_Pos.m_Y - headAbove;
+	float span = fromY - topHeadY;
+	if (span <= 0.0F) {
+		return false;
+	}
+	float step = std::max(6.0F, span / 30.0F);
+	float reach = h * 0.9F;
+	float leftFace = -std::numeric_limits<float>::max();
+	float rightFace = std::numeric_limits<float>::max();
 	bool found = false;
-	for (float up: {h * 0.1F, h * 0.45F, h * 0.8F, h * 1.15F}) {
-		Vector from(m_Pos.m_X, m_Pos.m_Y - up);
-		if (Solid(from.m_X, from.m_Y)) {
-			continue; // (Inside the ceiling: no shaft at this height.)
+	for (float y = fromY; y >= topHeadY; y -= step) {
+		if (Solid(columnX, y)) {
+			continue; // (Inside a ceiling or a wall at this height: nothing to measure from.)
 		}
+		Vector from(columnX, y);
 		Vector leftHit;
 		Vector rightHit;
-		Vector free;
-		bool left = g_SceneMan.CastObstacleRay(from, Vector(-h * 1.6F, 0.0F), leftHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
-		bool right = g_SceneMan.CastObstacleRay(from, Vector(h * 1.6F, 0.0F), rightHit, free, m_MOID, IgnoresWhichTeam(), 0, 2) >= 0.0F;
+		bool left = g_SceneMan.CastStrengthRay(from, Vector(-reach, 0.0F), 5.0F, leftHit, 1, MaterialColorKeys::g_MaterialDoor);
+		bool right = g_SceneMan.CastStrengthRay(from, Vector(reach, 0.0F), 5.0F, rightHit, 1, MaterialColorKeys::g_MaterialDoor);
 		if (left && right) {
-			float w = Towards(leftHit, rightHit).m_X;
-			if (w <= h * 1.6F && (!found || w < width)) {
-				width = w;
-				middleX = leftHit.m_X + w * 0.5F;
-				found = true;
-			}
+			leftFace = std::max(leftFace, columnX + Towards(from, leftHit).m_X);
+			rightFace = std::min(rightFace, columnX + Towards(from, rightHit).m_X);
+			found = true;
 		}
 	}
-	return found;
+	if (!found || rightFace <= leftFace) {
+		return false;
+	}
+	width = rightFace - leftFace;
+	if (width > h * 1.6F) {
+		return false;
+	}
+	middleX = (leftFace + rightFace) * 0.5F;
+	// The middle, or the nearest line beside it that is open all the way up (a ladder's rungs, a lip): 8.0 climbed a soldier up a node's
+	// own x with its side in the rungs, and it burned a tank getting two thirds of the way.
+	for (float dx: {0.0F, -h * 0.08F, h * 0.08F, -h * 0.16F, h * 0.16F, -h * 0.24F, h * 0.24F}) {
+		if (ColumnOpen(middleX + dx, fromY + 2.0F, topHeadY + 2.0F)) {
+			middleX += dx;
+			break;
+		}
+	}
+	return true;
 }
 
 void AHuman::RefreshRoute() {
@@ -414,6 +569,62 @@ int AHuman::MoveAlongRoute() {
 		RequestRouteCheck();
 	}
 
+	// A door of ours (or no one's) across the way to a point, not open: held short of it, on the ground at its sensor, in the air hovering
+	// (a hatch across a shaft: its leaves gib what is in their sweep, and a unit flown up into them died at full health). Given up on
+	// after a while (walked or flown into) for 5 s. @return Whether holding for it this tick.
+	auto holdForDoor = [&](const Vector& towards, bool inAir) -> bool {
+		ADoor* door = DoorAhead(towards);
+		if (!door) {
+			return false;
+		}
+		ADoor::DoorState state = door->GetDoorState();
+		if (state == ADoor::OPEN || state == ADoor::OPENING) {
+			mover.doorWaitID = 0;
+			return false;
+		}
+		if (door->GetUniqueID() == mover.doorIgnoreID) {
+			return false;
+		}
+		if (door->GetUniqueID() != mover.doorWaitID) {
+			mover.doorWaitID = door->GetUniqueID();
+			mover.doorWaitTimer.Reset();
+		}
+		if (mover.doorWaitTimer.IsPastSimMS(inAir ? 3000 : 2000)) {
+			MoverTrace(inAir ? "door didn't open; flying into it" : "door didn't open; walking into it");
+			mover.doorIgnoreID = door->GetUniqueID();
+			mover.doorIgnoreTimer.Reset();
+			return false;
+		}
+		mover.progressTimer.Reset();
+		if (inAir) {
+			// A hover where we are: lit when sinking, the stick against any drift.
+			ctrl.SetState(BODY_JUMP, m_Vel.m_Y > 0.3F && m_pJetpack && m_pJetpack->GetJetTimeLeft() > 0.0F);
+			ctrl.SetAnalogMove(Vector(std::clamp(-m_Vel.m_X * 0.4F, -0.6F, 0.6F), -1.0F));
+			return true;
+		}
+		// To the nearest sensor's line, 6 px short of it, and hold there.
+		Vector sense = door->GetPos();
+		float nearest = std::numeric_limits<float>::max();
+		for (const ADSensor& sensor: door->GetSensors()) {
+			Vector start = door->GetPos() + sensor.GetStartOffset().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+			Vector end = start + sensor.GetSensorRay().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+			Vector mid = (start + end) * 0.5F;
+			float distance = Towards(m_Pos, mid).GetMagnitude();
+			if (distance < nearest) {
+				nearest = distance;
+				sense = mid;
+			}
+		}
+		float dx = Towards(m_Pos, sense).m_X;
+		if (std::abs(dx) > 6.0F) {
+			ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+		return true;
+	};
+	if (mover.doorIgnoreID != 0 && mover.doorIgnoreTimer.IsPastSimMS(5000)) {
+		mover.doorIgnoreID = 0;
+	}
+
 	// ---- The flight: planned take-off to touchdown, flown by the pilot. ----
 	if (mover.flight.active) {
 		RouteMover::Flight& flight = mover.flight;
@@ -421,9 +632,33 @@ int AHuman::MoveAlongRoute() {
 		float feetY = m_Pos.m_Y + feet;
 		bool onLanding = std::abs(to.m_X) < h * 0.25F && std::abs(feetY - flight.floorY) < h * 0.3F;
 		bool ended = false;
+		// The climb's failure tests (8.0's SharedBehaviors.ClimbUpdate): no height gained for a second while the way is up, fallen back a
+		// third of a body under where it began, or too long at it (twelve seconds, and four more for each refuel). Any of them ends the
+		// flight and asks for a new route from here. (With only the landing, the tank and fifteen seconds to end it, a unit pinned under a
+		// lip hovered there burning the tank for the fifteen.)
+		float targetY = flight.via ? flight.viaPoint.m_Y : flight.floorY - feet;
+		bool climbingUp = targetY < m_Pos.m_Y - h * 0.3F && !flight.refuelling;
+		if (m_Pos.m_Y < flight.bestY - 3.0F || !climbingUp || !airborne) {
+			flight.bestY = std::min(flight.bestY, m_Pos.m_Y);
+			flight.riseTimer.Reset();
+		}
+		const char* failed = nullptr;
+		if (climbingUp && airborne && flight.riseTimer.IsPastSimMS(1000)) {
+			failed = "no rise";
+		} else if (climbingUp && flight.stages == 0 && m_Pos.m_Y > flight.startY + h * 0.3F) {
+			failed = "fell back";
+		} else if (flight.totalTimer.IsPastSimMS(12000 + 4000 * flight.stages)) {
+			failed = "took too long";
+		}
+		if (failed) {
+			MoverTrace(std::string("flight failed (") + failed + "); new route");
+			flight = RouteMover::Flight();
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			RefreshRoute();
+			return RouteMover::Moving;
+		}
 		if (!airborne && flight.timer.IsPastSimMS(400) && (onLanding || flight.timer.IsPastSimMS(1200))) {
-			ended = true;
-		} else if (flight.timer.IsPastSimMS(15000)) {
 			ended = true;
 		} else if (airborne && standardJet && m_pJetpack->GetJetTimeLeft() < 60.0F && !onLanding && !flight.refuelling) {
 			// Under the landing with the tank dry: a climb in stages, as a player does up a tall shaft. The jet goes out, the tank fills as
@@ -439,10 +674,29 @@ int AHuman::MoveAlongRoute() {
 				ended = true;
 			}
 		}
-		if (flight.refuelling && standardJet && m_pJetpack->GetJetTimeLeft() >= std::min(m_pJetpack->GetJetTimeTotal() * 0.4F, 400.0F)) {
-			flight.refuelling = false;
-			flight.timer.Reset();
-			MoverTrace("refuelled; climbing on");
+		if (flight.refuelling && standardJet) {
+			// Climbing on at a fuel level, not a time: what the rest of the climb takes from here (the climb on this unit's jet, with the
+			// reserve for the top). When no tank holds the rest, as soon as the tank holds the stop of the fall so far and a third of the tank
+			// to climb on with; never under what the jet lights on. And whatever the level, the fall is stopped before the floor below: the
+			// stop's length from the jet's push at this fuel, and the floor looked for a third past it.
+			float fuel = m_pJetpack->GetJetTimeLeft();
+			float total = m_pJetpack->GetJetTimeTotal();
+			float rest = m_Pos.m_Y + feet - (flight.via ? flight.viaPoint.m_Y + feet : flight.floorY);
+			float restNeeded = ClimbFuelNeeded(std::max(0.0F, rest), flight.via ? 300.0F : 450.0F);
+			float netAccel = JetAccelAtFuel(fuel) - g_SceneMan.GetGlobalAcc().m_Y * c_PPM;
+			float fallSpeed = std::max(0.0F, m_Vel.m_Y) * c_PPM;
+			float stopFuel = netAccel > 1.0F ? fallSpeed / netAccel * 1000.0F : total;
+			float level = restNeeded < total * 0.95F ? restNeeded : stopFuel + total / 3.0F;
+			level = std::max(std::min(level, total * 0.85F), JetRelightFuel());
+			float stopLength = netAccel > 1.0F ? fallSpeed * fallSpeed / (2.0F * netAccel) : h * 4.0F;
+			bool floorNear = m_Vel.m_Y > 1.0F && FloorUnder(m_Pos + Vector(0.0F, feet), stopLength * 1.3F + h * 0.3F) >= 0.0F;
+			if (fuel >= level || (floorNear && fuel >= JetRelightFuel())) {
+				flight.refuelling = false;
+				flight.timer.Reset();
+				flight.bestY = m_Pos.m_Y;
+				flight.riseTimer.Reset();
+				MoverTrace(std::string(fuel >= level ? "refuelled; climbing on with " : "floor coming up; climbing on with ") + std::to_string(static_cast<int>(fuel)) + " of " + std::to_string(static_cast<int>(level)));
+			}
 		}
 		if (ended) {
 			if (!onLanding && !airborne) {
@@ -455,15 +709,27 @@ int AHuman::MoveAlongRoute() {
 				}
 				MoverTrace("landed");
 			}
+			// Down again short of a landing above: the climb failed (fallen back down the hatch, or onto the wrong lip). A new route from
+			// here, not the rest of the old one followed from where it was never meant to start.
+			bool landingAbove = flight.floorY < feetY - h * 0.3F;
 			flight = RouteMover::Flight();
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();
 			mover.lastJetTime = -1.0;
+			if (!onLanding && !airborne && landingAbove) {
+				MoverTrace("down again under the landing; new route");
+				RefreshRoute();
+				return RouteMover::Moving;
+			}
 		} else {
 			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing.
 			if (flight.via && m_Pos.m_Y <= flight.viaPoint.m_Y + 8.0F) {
 				flight.via = false;
 				MoverTrace("out of the shaft; for the landing");
+			}
+			if (!flight.refuelling && holdForDoor(flight.via ? flight.viaPoint : flight.landing, true)) {
+				flight.riseTimer.Reset();
+				return RouteMover::Moving;
 			}
 			Vector command = flight.via ? PilotFlight(flight.viaPoint, -1.0F) : PilotFlight(flight.landing, flight.floorY);
 			if (flight.refuelling) {
@@ -503,12 +769,20 @@ int AHuman::MoveAlongRoute() {
 			float landingFloorY = 0.0F;
 			int pointsToLanding = 0;
 			if (m_pJetpack->GetJetTimeLeft() > 200.0F && FindLanding(landing, landingFloorY, pointsToLanding) && !(std::abs(Towards(m_Pos, landing).m_X) < h * 0.5F && landingFloorY > m_Pos.m_Y && !ctrl.IsState(BODY_JUMP))) {
+				mover.flight = RouteMover::Flight();
 				mover.flight.active = true;
 				mover.flight.landing = landing;
 				mover.flight.floorY = landingFloorY;
 				mover.flight.pointsToLanding = pointsToLanding;
 				mover.flight.timer.Reset();
+				mover.flight.totalTimer.Reset();
+				mover.flight.riseTimer.Reset();
+				mover.flight.startY = m_Pos.m_Y;
+				mover.flight.bestY = m_Pos.m_Y;
 				MoverTrace("flight to " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)));
+			}
+			if (holdForDoor(point, true)) {
+				return RouteMover::Moving;
 			}
 			Vector command = PilotFlight(point, pointFloor);
 			// (A drop onto the point's floor is left to gravity until the brake is wanted: the pilot's safe-fall rule asks for the jet only then.)
@@ -525,44 +799,40 @@ int AHuman::MoveAlongRoute() {
 	const float above = -toPoint.m_Y;
 
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
-	if (ADoor* door = DoorAhead(point)) {
-		ADoor::DoorState state = door->GetDoorState();
-		if ((state == ADoor::CLOSED || state == ADoor::CLOSING) && door->GetUniqueID() != mover.doorIgnoreID) {
-			if (door->GetUniqueID() != mover.doorWaitID) {
-				mover.doorWaitID = door->GetUniqueID();
-				mover.doorWaitTimer.Reset();
+	if (holdForDoor(point, false)) {
+		return RouteMover::Moving;
+	}
+
+	// A drop straight down from where we stand (the point well below and nearly straight under us), with floor still under the feet: a
+	// step towards the side where the floor falls away. The route's point is a node's middle, which can sit 2 px from the unit at the very
+	// edge of the slab beside the hole, and with no key for a point that close the unit stood on the lip for the rest of the minute (8.0's
+	// GoToWpt had this; the port had lost it). Floor under either side of the body counts: one wedged on the hole's corner has its middle
+	// over the hole already.
+	if (!ladder && kind != PathStepKind::Jump && kind != PathStepKind::Dig && toPoint.m_Y > h * 0.3F && std::abs(toPoint.m_X) < h * 0.3F && std::abs(m_Vel.m_Y) < 1.0F) {
+		auto floorAt = [&](float dx) {
+			Vector hit;
+			return g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X + dx, m_Pos.m_Y), Vector(0.0F, h * 0.75F), 5.0F, hit, 2);
+		};
+		float side = h * 0.12F;
+		if (floorAt(0.0F) || floorAt(-side) || floorAt(side)) {
+			float reach = h * 0.25F;
+			float towards = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+			float holeSide = 0.0F;
+			if (!floorAt(towards * reach)) {
+				holeSide = towards;
+			} else if (!floorAt(-towards * reach)) {
+				holeSide = -towards;
 			}
-			if (mover.doorWaitTimer.IsPastSimMS(2000)) {
-				MoverTrace("door didn't open; walking into it");
-				mover.doorIgnoreID = door->GetUniqueID();
-				mover.doorIgnoreTimer.Reset();
-			} else {
-				// To the nearest sensor's line, 6 px short of it, and hold there.
-				Vector sense = door->GetPos();
-				float nearest = std::numeric_limits<float>::max();
-				for (const ADSensor& sensor: door->GetSensors()) {
-					Vector start = door->GetPos() + sensor.GetStartOffset().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
-					Vector end = start + sensor.GetSensorRay().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
-					Vector mid = (start + end) * 0.5F;
-					float distance = Towards(m_Pos, mid).GetMagnitude();
-					if (distance < nearest) {
-						nearest = distance;
-						sense = mid;
-					}
+			if (holeSide != 0.0F) {
+				if (mover.traceTimer.IsPastSimMS(1000)) {
+					mover.traceTimer.Reset();
+					MoverTrace(std::string("drop: floor under the feet; stepping ") + (holeSide < 0.0F ? "left" : "right") + " into the hole");
 				}
-				float dx = Towards(m_Pos, sense).m_X;
-				if (std::abs(dx) > 6.0F) {
-					ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
-				}
-				mover.progressTimer.Reset();
+				ctrl.SetState(holeSide < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				SetAimAngle(0.0F);
 				return RouteMover::Moving;
 			}
-		} else if (state == ADoor::OPEN || state == ADoor::OPENING) {
-			mover.doorWaitID = 0;
 		}
-	}
-	if (mover.doorIgnoreID != 0 && mover.doorIgnoreTimer.IsPastSimMS(5000)) {
-		mover.doorIgnoreID = 0;
 	}
 
 	// A flight wanted: the point well above, or a gap in the floor on the way, as the route's legs say.
@@ -583,9 +853,25 @@ int AHuman::MoveAlongRoute() {
 		// In a shaft (walls both sides) with the landing above: lined up under its middle first, walking there with no jet, and flown up
 		// the middle to a point over the mouth before turning for the landing. Lit beside the middle, a unit scraped up one wall and burned
 		// the tank pinned under the lip.
+		// (The route's column: its first point well above us, near; else where we stand.)
+		float columnX = m_Pos.m_X;
+		{
+			int index = 0;
+			for (const Vector& routePoint: m_MovePath) {
+				if (++index > pointsToLanding) {
+					break;
+				}
+				Vector off = Towards(m_Pos, routePoint);
+				if (off.m_Y < -h * 0.3F && std::abs(off.m_X) < h * 1.5F) {
+					columnX = m_Pos.m_X + off.m_X;
+					break;
+				}
+			}
+		}
+		const float standingHeight = std::max(16.0F, h * 0.44F);
 		float shaftMiddle = 0.0F;
 		float shaftWidth = 0.0F;
-		bool inShaft = toLanding.m_Y < -h * 0.3F && ShaftHere(shaftMiddle, shaftWidth);
+		bool inShaft = toLanding.m_Y < -h * 0.3F && ShaftColumn(columnX, landingFloorY - standingHeight, shaftMiddle, shaftWidth);
 		if (inShaft && std::abs(shaftMiddle - m_Pos.m_X) > std::max(3.0F, h * 0.05F)) {
 			ctrl.SetState(shaftMiddle < m_Pos.m_X ? MOVE_LEFT : MOVE_RIGHT, true);
 			mover.progressTimer.Reset();
@@ -616,9 +902,30 @@ int AHuman::MoveAlongRoute() {
 		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen;
 		if (!canTakeOff) {
 			mover.fuelWaiting = false;
-			if (toLanding.m_Y < -h * 0.3F && std::abs(toLanding.m_X) > 3.0F && std::abs(toPoint.m_X) <= 3.0F) {
-				ctrl.SetState(toLanding.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
-				return RouteMover::Moving;
+			// Under a ceiling with the landing above: a step to the nearest line open from the head up to the head's height at the landing,
+			// 0, a quarter and half a body either way, the landing's side first (8.0's SharedBehaviors.OpenColumnNear). Else on towards the
+			// landing's side.
+			if (toLanding.m_Y < -h * 0.3F) {
+				float headTop = m_Pos.m_Y - h * 0.24F + 2.0F;
+				float topHeadY = landingFloorY - standingHeight;
+				float side = toLanding.m_X < 0.0F ? -1.0F : 1.0F;
+				for (float dx: {0.0F, side * h * 0.25F, -side * h * 0.25F, side * h * 0.5F, -side * h * 0.5F}) {
+					if (dx != 0.0F && ColumnOpen(m_Pos.m_X + dx, headTop, topHeadY)) {
+						if (mover.traceTimer.IsPastSimMS(1000)) {
+							mover.traceTimer.Reset();
+							MoverTrace("under a ceiling; stepping " + std::to_string(static_cast<int>(dx)) + " to an open column");
+						}
+						ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+						return RouteMover::Moving;
+					}
+					if (dx == 0.0F && ColumnOpen(m_Pos.m_X, headTop, topHeadY)) {
+						break; // (Open straight up from here: the way across is what's blocked, and the walk goes on.)
+					}
+				}
+				if (std::abs(toLanding.m_X) > 3.0F && std::abs(toPoint.m_X) <= 3.0F) {
+					ctrl.SetState(toLanding.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+					return RouteMover::Moving;
+				}
 			}
 		}
 		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
@@ -632,11 +939,16 @@ int AHuman::MoveAlongRoute() {
 		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(6000))) {
 			mover.fuelWaiting = false;
 			{
+				mover.flight = RouteMover::Flight();
 				mover.flight.active = true;
 				mover.flight.landing = landing;
 				mover.flight.floorY = landingFloorY;
 				mover.flight.pointsToLanding = pointsToLanding;
 				mover.flight.timer.Reset();
+				mover.flight.totalTimer.Reset();
+				mover.flight.riseTimer.Reset();
+				mover.flight.startY = m_Pos.m_Y;
+				mover.flight.bestY = m_Pos.m_Y;
 				mover.flight.via = inShaft;
 				if (inShaft) {
 					// Over the mouth: at the shaft's middle, where the body's centre is standing on the landing's floor and a little over (the
@@ -708,6 +1020,12 @@ int AHuman::MoveAlongRoute() {
 		}
 	}
 	SetAimAngle(0.0F);
+	// In the sweep of an open door of ours: on, whatever else stopped the legs. A door closes a second and a half after its sensors last saw
+	// a body, on whatever is in its way, and units died at full health under doors of their own team.
+	if (!ctrl.IsState(MOVE_LEFT) && !ctrl.IsState(MOVE_RIGHT) && InDoorSweep()) {
+		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		mover.progressTimer.Reset();
+	}
 	// A step up the legs don't take, or a wall: after a moment with no progress, a hop (the mantle takes most steps).
 	if (stuck && standardJet && !prone && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
 		if (mover.hopTimer.IsPastSimMS(1200)) {

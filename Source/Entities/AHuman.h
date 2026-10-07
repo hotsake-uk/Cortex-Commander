@@ -727,6 +727,8 @@ namespace RTE {
 		/// Private member variable and method declarations
 	private:
 		float m_JetAccelRatio = 1.0F; //!< The jet's measured push against its modelled one, learned while it flies free (see PilotFlight).
+		mutable std::array<float, 256> m_ClimbFuelCache; //!< ClimbFuelNeeded by 8 px of height and reserve, refreshed every couple of seconds.
+		mutable double m_ClimbFuelCacheTimeMS = -1.0;
 		Vector m_JetPrevVel; //!< Last frame's velocity, for the learning.
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
@@ -763,6 +765,10 @@ namespace RTE {
 				Vector viaPoint;
 				bool refuelling = false; //!< The tank ran dry under the landing: falling with the jet out until there is enough to go on.
 				int stages = 0; //!< How many times it has refuelled on this flight.
+				float startY = 0.0F; //!< Where the flight began, and the highest it has been (y), for the climb's failure tests.
+				float bestY = 0.0F;
+				Timer riseTimer; //!< Since the climb last gained height.
+				Timer totalTimer; //!< Since the flight began (the other timer starts again at each refuel).
 			};
 			bool begun = false;
 			Flight flight;
@@ -794,11 +800,26 @@ namespace RTE {
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
+		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.
+		float JetAccelAtFuel(float fuel) const;
+		/// The least fuel the jet lights on from rest, in ms (the engine's 250 ms at the throttle, and the pack's own minimum ratio).
+		float JetRelightFuel() const;
+		/// What the tank has left at the top of a straight climb of a height, begun with so much fuel, flown as the pilot flies it (full burn
+		/// to the speed cap, held, coasting from the height gravity stops it in); or below zero when the climb can't be made on it.
+		float ClimbFuelLeft(float height, float fuel) const;
+		/// The least fuel a climb of a height takes with a reserve left at the top, in ms; most of a tank when no tank makes it.
+		float ClimbFuelNeeded(float height, float reserve) const;
+		/// The fuel a climb burns per pixel of height on this unit's jet, for the path finder's flight links (see PathAgent::JetClimbMSPerPx).
+		float ClimbFuelPerPixel() const;
 		bool FlightWayClear(const Vector& landing, float landingFloorY) const;
 		bool CanWalkTo(const Vector& landing, float landingFloorY) const;
 		bool FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const;
-		/// The shaft the unit stands in, if any: walls both sides within a body's height. @return Whether in one; its middle and width.
-		bool ShaftHere(float& middleX, float& width) const;
+		/// The shaft a climb goes up, if it is one: walls both sides of the route's column, looked at every few pixels from the head's start
+		/// to the head's height at the top. @param columnX The route's column. @param topHeadY Where the head will be at the top.
+		/// @return Whether a shaft; its middle (moved to a line open all the way up, when the middle isn't) and its width.
+		bool ShaftColumn(float columnX, float topHeadY, float& middleX, float& width) const;
+		/// Whether a vertical line is open from one height up to another (terrain only: a door across it opens as we come).
+		bool ColumnOpen(float x, float fromY, float toY) const;
 		void PopRoutePoint();
 		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
 		/// target to the unit's own place: every refresh told the unit it had arrived.)

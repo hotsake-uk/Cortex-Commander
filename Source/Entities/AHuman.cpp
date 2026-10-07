@@ -1034,6 +1034,11 @@ PathAgent AHuman::GetPathAgent() const {
 	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
 	// The flight links (PathFinder::AddFlightLinks): for a standard jetpack, its full tank.
 	agent.JetTimeMS = (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard) ? m_pJetpack->GetJetTimeTotal() : 0.0F;
+	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
+	// burns more of the tank for the same shaft).
+	if (agent.JetTimeMS > 0.0F) {
+		agent.JetClimbMSPerPx = ClimbFuelPerPixel();
+	}
 	return agent;
 }
 

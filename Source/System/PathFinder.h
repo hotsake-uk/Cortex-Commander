@@ -39,6 +39,7 @@ namespace RTE {
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
 		float MantleHeight = 0.0F; //!< How high a ledge it pulls itself up onto from the ground, in pixels (0 for none; see Actor::TryStartMantle).
 		float JetTimeMS = 0.0F; //!< Its jetpack's full tank, in ms, for the flight links (see PathFinder::AddFlightLinks); 0 for none.
+		float JetClimbMSPerPx = 6.0F; //!< The fuel its climbs burn per pixel of height, in ms, from its own jet's push (see AHuman::ClimbFuelPerPixel).
 		Vector Velocity; //!< Its velocity when it asks, in m/s: a search started in the air charges for going against it (see AdjacentCost).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 	};
