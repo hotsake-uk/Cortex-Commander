@@ -10,7 +10,8 @@ param(
 $rt = $PSScriptRoot
 $repo = Split-Path $rt -Parent
 Set-Location $repo
-if (Get-Process "Cortex Command.debug.release" -ErrorAction SilentlyContinue) {
+# (This folder's own debug build only: the original AI's build in its own folder has the same name, and may run alongside.)
+if (Get-Process "Cortex Command.debug.release" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$repo*" }) {
 	"The debug build is already running; the capture would attach to it and close it. Close it first."
 	exit 1
 }
