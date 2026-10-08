@@ -514,6 +514,19 @@ namespace SandboxDetail {
 	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
 	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
+	/// How units sent somewhere together stand there (RC-5). Side on, a formation is an order along the ground: who is in front and how close.
+	enum class Formation {
+		Line, //!< Abreast round the point at the spacing, the nearest unit in the middle: as moves always were.
+		Column, //!< Single file back from the point, the nearest unit on it, at the spacing.
+		Spread, //!< Round the point at twice the spacing, so one blast catches fewer.
+		Wedge, //!< The toughest unit on the point, the rest close behind it, toughest first.
+		Count
+	};
+	inline Formation s_Formation = Formation::Line;
+	constexpr const char* c_FormationNames[] = {"Line", "Column", "Spread", "Wedge"};
+	constexpr const char* c_FormationTips[] = {"Abreast round the point at the spacing, the nearest unit in the middle.", "Single file back from the point, the nearest unit on it.", "Round the point at twice the spacing, so one blast catches fewer.", "The toughest unit on the point, the rest close behind it, toughest first."};
+	inline bool s_KeepPace = false; //!< Units sent together walk at the slowest one's pace till they get there (RC-5).
+	inline std::vector<UnitRef> s_Paced; //!< The units held to a group's pace, cleared as each arrives or is given another order.
 	inline std::array<std::vector<UnitRef>, 10> s_Groups; //!< Control groups: Ctrl+number keeps the selection, the number alone brings it back.
 
 	/// A mark left where an order was given, fading over a moment.
@@ -1215,10 +1228,13 @@ namespace SandboxDetail {
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
-	std::vector<Vector> StandingSpots(const Vector& around, int count);
+	std::vector<Vector> StandingSpots(const Vector& around, int count, float stride = 0.0F);
+	std::vector<Vector> FormationSpots(const std::vector<Actor*>& units, const Vector& point, int count, int facing = 0);
 	const std::vector<SpotReach>& SpotReachPreview(const std::vector<Actor*>& units, const Vector& point);
 	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly);
-	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false);
+	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false, int facing = 0);
+	void FacingMoveSelected(const Vector& point, const Vector& facingPoint, bool shift);
+	void UpdatePace();
 	const Actor* FollowedBy(const Actor* unit);
 	void GuardUnit(Actor* unit, Actor* leader);
 	int SelectionTeam();
@@ -1264,6 +1280,7 @@ namespace SandboxDetail {
 	const PiecePicture& PictureOf(const Preset& preset);
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
 	void PictureGrid(Tool kind, const char* group);
+	void FormationCombo(const char* id);
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false);

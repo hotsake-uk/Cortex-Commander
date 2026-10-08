@@ -92,6 +92,8 @@ namespace SandboxDetail {
 		// player gives drops the unit's plan, RC-3.)
 		if (!resend) {
 			standing.Movement = Actor::MOVE_FOLLOW_ORDER;
+			standing.PostFacing = 0;
+			unit->SetPaceLimit(0.0F);
 			DropPlan(unit);
 		}
 		if (!attack) {
@@ -107,6 +109,7 @@ namespace SandboxDetail {
 		DropPlan(unit);
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
+		unit->SetPaceLimit(0.0F);
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
@@ -255,14 +258,14 @@ namespace SandboxDetail {
 
 	/// The selected units move to a point, or attack the unit there.
 	/// Places for a number of units to stand as near a point as the ground allows: on the ground, spread out either side of it, never inside anything.
-	/// Each is where a unit's feet go.
-	std::vector<Vector> StandingSpots(const Vector& around, int count) {
+	/// Each is where a unit's feet go. The spacing is the sandbox's own (s_Spacing) unless one is given.
+	std::vector<Vector> StandingSpots(const Vector& around, int count, float spacing) {
 		std::vector<Vector> spots;
 		if (count <= 0 || !g_SceneMan.GetScene()) {
 			return spots;
 		}
 		const int sceneHeight = g_SceneMan.GetSceneHeight();
-		const float stride = std::clamp(s_Spacing, 8.0F, 60.0F);
+		const float stride = spacing > 0.0F ? std::clamp(spacing, 4.0F, 120.0F) : std::clamp(s_Spacing, 8.0F, 60.0F);
 		// Outwards from the point: there, then left and right in turn, further each time.
 		for (int step = 0; step < count * 6 && static_cast<int>(spots.size()) < count; ++step) {
 			float offset = step == 0 ? 0.0F : (static_cast<float>((step + 1) / 2) * stride) * ((step % 2 == 1) ? -1.0F : 1.0F);
@@ -315,6 +318,73 @@ namespace SandboxDetail {
 	}
 
 
+	/// Which way a group sent to a point faces: the way given, or else the way it is going (from the middle of the units to the point), or else right.
+	int GroupFacing(const std::vector<Actor*>& units, const Vector& point, int facing) {
+		if (facing != 0 || units.empty()) {
+			return facing < 0 ? -1 : 1;
+		}
+		float across = 0.0F;
+		for (const Actor* unit: units) {
+			across += g_SceneMan.ShortestDistance(unit->GetPos(), point, g_SceneMan.SceneWrapsX()).m_X;
+		}
+		return across < 0.0F ? -1 : 1;
+	}
+
+	/// How tough a unit is, for who goes first in a wedge: its health, and how many wounds its body takes.
+	float Toughness(const Actor* unit) { return unit->GetHealth() + static_cast<float>(unit->GetGibWoundLimit()) * 0.25F; }
+
+	/// The places for units sent to a point to stand in the chosen formation (RC-5), first the front (or for a line the middle) and on from
+	/// there, as many as asked for (more than the units, so those no one can reach can be passed over). Units are given them in order: the
+	/// nearest to the point first, or for a wedge the toughest (OrderForFormation).
+	std::vector<Vector> FormationSpots(const std::vector<Actor*>& units, const Vector& point, int count, int facing) {
+		const float spacing = std::clamp(s_Spacing, 8.0F, 60.0F);
+		switch (s_Formation) {
+			case Formation::Spread:
+				return StandingSpots(point, count, spacing * 2.0F);
+			case Formation::Column:
+			case Formation::Wedge: {
+				// Back from the point, against the way they face: a rank at a time, each on the ground there, never too near one already taken.
+				const float behind = -static_cast<float>(GroupFacing(units, point, facing));
+				const float stride = s_Formation == Formation::Column ? spacing : std::max(spacing * 0.6F, 8.0F);
+				std::vector<Vector> spots;
+				for (int rank = 0; rank < count * 3 && static_cast<int>(spots.size()) < count; ++rank) {
+					Vector probe = point + Vector(behind * stride * static_cast<float>(rank), 0.0F);
+					g_SceneMan.WrapPosition(probe);
+					std::vector<Vector> found = StandingSpots(probe, 1, stride);
+					if (found.empty() || std::any_of(spots.begin(), spots.end(), [&found, stride](const Vector& taken) { return g_SceneMan.ShortestDistance(taken, found.front(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(stride * 0.7F); })) {
+						continue;
+					}
+					spots.push_back(found.front());
+				}
+				return spots;
+			}
+			default:
+				return StandingSpots(point, count);
+		}
+	}
+
+	/// Puts units in the order they take the formation's places in (FormationSpots): the nearest to the point first, or for a wedge the toughest.
+	void OrderForFormation(std::vector<Actor*>& units, const Vector& point) {
+		if (s_Formation == Formation::Wedge) {
+			std::stable_sort(units.begin(), units.end(), [](const Actor* a, const Actor* b) { return Toughness(a) > Toughness(b); });
+			return;
+		}
+		std::stable_sort(units.begin(), units.end(), [&point](const Actor* a, const Actor* b) {
+			return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+		});
+	}
+
+	/// The pace a unit walks at, m/s, for keeping a group to its slowest (RC-5); 0 for one that doesn't walk.
+	float WalkPace(Actor* unit) {
+		if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
+			return human->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F;
+		}
+		if (ACrab* crab = dynamic_cast<ACrab*>(unit)) {
+			return crab->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F;
+		}
+		return 0.0F;
+	}
+
 	/// What MoveUnitsTo will make of a move to a point, step for step: twice as many spots as units, each tried with the first unit's reach until
 	/// there are enough it can get to, those taken (or, if none can be reached, the nearest spots regardless). Worked out again only when the
 	/// point, the units or the first unit change, or half a second of frames on, since each try is a path search.
@@ -334,7 +404,7 @@ namespace SandboxDetail {
 		lastLeader = leaderID;
 		lastFrame = frame;
 		preview.clear();
-		for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()) * 2)) {
+		for (const Vector& spot: FormationSpots(units, point, static_cast<int>(units.size()) * 2)) {
 			preview.push_back({spot});
 		}
 		Scene* scene = g_SceneMan.GetScene();
@@ -381,8 +451,8 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units to stand round a point, each to its own spot, the nearest unit to the nearest spot.
-	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove) {
-		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()) * 2);
+	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove, int facing) {
+		std::vector<Vector> spots = FormationSpots(units, point, static_cast<int>(units.size()) * 2, facing);
 		if (spots.empty()) {
 			return;
 		}
@@ -421,9 +491,16 @@ namespace SandboxDetail {
 			}
 		}
 		spots.resize(std::min(spots.size(), units.size()));
-		std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
-			return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-		});
+		OrderForFormation(units, point);
+		// Kept together (RC-5): each no faster than the slowest walker among them, till it gets there (UpdatePace).
+		float pace = 0.0F;
+		if (s_KeepPace && units.size() > 1) {
+			for (Actor* unit: units) {
+				if (float own = WalkPace(unit); own > 0.0F && (pace == 0.0F || own < pace)) {
+					pace = own;
+				}
+			}
+		}
 		for (size_t i = 0; i < units.size(); ++i) {
 			Actor* unit = units[i];
 			const Vector& spot = spots[std::min(i, spots.size() - 1)];
@@ -436,7 +513,43 @@ namespace SandboxDetail {
 				// chosen for it), and once nothing is left its route takes it on to the spot.
 				unit->SetMovementRule(Actor::MOVE_ENGAGE);
 			}
+			// Facing the way given when they get there (RC-5), as a defend-at does (RC-4).
+			unit->SetOrderPostFacing(facing);
+			if (pace > 0.0F) {
+				unit->SetPaceLimit(pace);
+				s_Paced.push_back(MakeRef(unit));
+			}
 		}
+	}
+
+	/// A move (or attack-move, in that mode) to a point, facing the way dragged when they get there (RC-5); with Shift, a step of their plans.
+	void FacingMoveSelected(const Vector& point, const Vector& facingPoint, bool shift) {
+		float across = g_SceneMan.ShortestDistance(point, facingPoint, g_SceneMan.SceneWrapsX()).m_X;
+		int facing = across > 12.0F ? 1 : (across < -12.0F ? -1 : 0);
+		bool attackMove = s_CommandMode == CommandMode::AttackMove;
+		if (shift) {
+			PlanStepFor(UnitsToMove(0, true), attackMove ? PlanKind::AttackMove : PlanKind::Move, point, nullptr, facing);
+		} else {
+			MoveUnitsTo(UnitsToMove(0, true), point, attackMove, facing);
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(attackMove ? CommandMode::AttackMove : CommandMode::Move)]);
+	}
+
+	/// Lets each unit kept to a group's pace (RC-5) walk at its own again once it has got there, been given another order, or been taken over.
+	void UpdatePace() {
+		s_Paced.erase(std::remove_if(s_Paced.begin(), s_Paced.end(), [](const UnitRef& ref) {
+			Actor* unit = GetRef(ref);
+			if (!unit) {
+				return true;
+			}
+			bool pending = std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
+			bool arrived = !pending && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			if (unit->GetPaceLimit() == 0.0F || arrived || unit->IsPlayerControlled()) {
+				unit->SetPaceLimit(0.0F);
+				return true;
+			}
+			return false;
+		}), s_Paced.end());
 	}
 
 	/// Who a unit is following, if anyone: the actor it is to go to, loaded (its move target) or still queued as its last waypoint.
@@ -619,6 +732,7 @@ namespace SandboxDetail {
 				if (step.Kind == PlanKind::AttackMove) {
 					unit->SetMovementRule(Actor::MOVE_ENGAGE);
 				}
+				unit->SetOrderPostFacing(step.Facing);
 				break;
 			case PlanKind::Attack:
 				if (target) {

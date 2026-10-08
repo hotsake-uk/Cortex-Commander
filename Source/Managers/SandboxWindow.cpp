@@ -674,6 +674,21 @@ namespace SandboxDetail {
 	}
 
 
+	/// A choice of formation for moves (RC-5), each with what it does.
+	void FormationCombo(const char* id) {
+		int current = std::clamp(static_cast<int>(s_Formation), 0, static_cast<int>(Formation::Count) - 1);
+		if (ImGui::BeginCombo(id, c_FormationNames[current])) {
+			for (int i = 0; i < static_cast<int>(Formation::Count); ++i) {
+				if (ImGui::Selectable(c_FormationNames[i], i == current)) {
+					s_Formation = static_cast<Formation>(i);
+				}
+				ImGui::SetItemTooltip("%s", c_FormationTips[i]);
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::SetItemTooltip("How units sent somewhere together stand there: %s\nAlt+drag with a move or attack-move faces them the way dragged; column and wedge then line up back from the front.", c_FormationTips[current]);
+	}
+
 	void DrawCursor() {
 		ImGuiIO& io = ImGui::GetIO();
 		const ToolInfo& tool = CurrentTool();
@@ -764,6 +779,16 @@ namespace SandboxDetail {
 			bool underIsFriend = underIsUnit && (s_Selected.empty() || under->GetTeam() == SelectionTeam());
 			std::vector<Actor*> units = UnitsToMove(0, true);
 			std::string count = std::to_string(units.size()) + (units.size() == 1 ? " unit" : " units");
+			// A move's formation (RC-5): at the pointer, or while Alt-dragging at where the drag began, facing the way dragged.
+			Vector formationPoint = point;
+			int formationFacing = 0;
+			if (s_Dragging && io.KeyAlt) {
+				formationPoint = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * scale;
+				g_SceneMan.WrapPosition(formationPoint);
+				float across = io.MousePos.x - s_DragStart.x;
+				formationFacing = across * scale > 12.0F ? 1 : (across * scale < -12.0F ? -1 : 0);
+			}
+			std::string formation = std::string(" in ") + c_FormationNames[static_cast<int>(s_Formation)] + (s_KeepPace ? ", kept together" : "") + (s_Dragging && io.KeyAlt ? "" : "  (Alt-drag: face a way)");
 			if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
 				if (underIsUnit) {
 					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
@@ -804,12 +829,12 @@ namespace SandboxDetail {
 			} else if (s_CommandMode == CommandMode::AttackMove) {
 				// Attack-move (RC-2): where each will stand, and the crosshair over the place, in the mode's orange.
 				ImU32 orange = c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)];
-				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
+				for (const Vector& spot: FormationSpots(units, formationPoint, static_cast<int>(units.size()), formationFacing)) {
 					flag(spot, orange);
 				}
-				crosshair(point, orange, pixel * 6.0F);
-				reachMarks(units, point);
-				label = "Attack-move " + count + " here: they fight what they meet on the way";
+				crosshair(formationPoint, orange, pixel * 6.0F);
+				reachMarks(units, formationPoint);
+				label = "Attack-move " + count + " here" + formation + ": they fight what they meet on the way";
 			} else if (s_CommandMode == CommandMode::DefendAt) {
 				// Defend at (RC-4): where each will stand to hold the place.
 				ImU32 amber = c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)];
@@ -831,11 +856,11 @@ namespace SandboxDetail {
 					label = "Guard: point at a friendly unit for " + count + " to stay with";
 				}
 			} else {
-				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
+				for (const Vector& spot: FormationSpots(units, formationPoint, static_cast<int>(units.size()), formationFacing)) {
 					flag(spot, IM_COL32(110, 180, 250, 255));
 				}
-				reachMarks(units, point);
-				label = "Move " + count + " here";
+				reachMarks(units, formationPoint);
+				label = "Move " + count + " here" + formation;
 			}
 			// With Shift held, the order is a further step of their plans (RC-3), not one for now.
 			if (io.KeyShift && !units.empty() && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
@@ -1080,7 +1105,8 @@ namespace SandboxDetail {
 		if (kind == Tool::Command && s_RingPage == 1) {
 			// The game's own AI modes for the units picked, as the pie menu offers them when playing a unit. Up until a click, since the button
 			// that held the first ring open has been let go.
-			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
+			// (With the two modes of RC-4, Defend at and Patrol, and the formations of RC-5.)
+			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Defend at", c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "Reorient"}, {"Formation...", IM_COL32(110, 180, 250, 255), "SubPieMenu1"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
 			static const Order orders[] = {Order::Hold, Order::Patrol, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 			int picked = DrawRing(modes, -1, true);
 			if (picked == -2) {
@@ -1097,8 +1123,35 @@ namespace SandboxDetail {
 				stroke.Orders = orders[picked];
 				s_Queue.push_back(stroke);
 			} else if (picked == 6) {
+				s_CommandMode = CommandMode::DefendAt;
+			} else if (picked == 7) {
+				s_RingOpen = true;
+				s_RingPage = 5;
+			} else if (picked == 8) {
 				s_RingOpen = true;
 				s_RingPage = 2;
+			}
+			return;
+		}
+		if (kind == Tool::Command && s_RingPage == 5) {
+			// The formation for moves (RC-5), the one in use lit, and keeping together; up until a click. A formation also puts the clicks to moving.
+			static std::vector<RingItem> formations;
+			formations = {{c_FormationNames[0], IM_COL32(110, 180, 250, 255), "GoTo"}, {c_FormationNames[1], IM_COL32(110, 180, 250, 255), "Move"}, {c_FormationNames[2], IM_COL32(110, 180, 250, 255), "Cycle"}, {c_FormationNames[3], IM_COL32(110, 180, 250, 255), "Death"},
+			              {s_KeepPace ? "Keep together: on" : "Keep together: off", IM_COL32(120, 220, 120, 255), "Follow"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
+			int picked = DrawRing(formations, static_cast<int>(s_Formation), true);
+			if (picked == -2) {
+				return;
+			}
+			if (picked >= 0 && picked < static_cast<int>(Formation::Count)) {
+				s_Formation = static_cast<Formation>(picked);
+				if (s_CommandMode != CommandMode::AttackMove) {
+					s_CommandMode = CommandMode::Move;
+				}
+			} else if (picked == 4) {
+				s_KeepPace = !s_KeepPace;
+			} else if (picked == 5) {
+				s_RingOpen = true;
+				s_RingPage = 1;
 			}
 			return;
 		}
@@ -1622,6 +1675,15 @@ namespace SandboxDetail {
 					s_PatrolDraft.clear();
 				}
 				ImGui::EndDisabled();
+			}
+			// How a move or attack-move puts them when they get there (RC-5), and whether they keep together on the way.
+			if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) {
+				ImGui::SameLine(0.0F, pixel * 6.0F);
+				ImGui::SetNextItemWidth(field * 0.7F);
+				FormationCombo("##formation");
+				ImGui::SameLine();
+				ToolUI::Checkbox("Keep together", &s_KeepPace);
+				ImGui::SetItemTooltip("On: units sent together walk at the pace of the slowest of them till they get there, so the fast ones don't arrive alone.");
 			}
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			// What is selected, by kind.

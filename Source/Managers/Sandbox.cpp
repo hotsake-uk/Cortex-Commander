@@ -613,10 +613,12 @@ void Sandbox::DrawGUI() {
 	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
-		// Defend at (RC-4) drags the way to face, drawn as an arrow; anything else drags a box to select.
+		// Defend at (RC-4), and a move or attack-move with Alt held (RC-5), drag the way to face, drawn as an arrow; anything else drags a box
+		// to select.
 		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
-		if (defendAt) {
-			ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)];
+		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
+		if (defendAt || facingMove) {
+			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
 			float side = now.x >= s_DragStart.x ? 1.0F : -1.0F;
 			if (std::abs(now.x - s_DragStart.x) > 12.0F) {
@@ -639,6 +641,12 @@ void Sandbox::DrawGUI() {
 				g_SceneMan.WrapPosition(stroke.Position);
 				stroke.Position2 = end;
 				stroke.Count = io.KeyShift ? 11 : 10;
+			} else if (facingMove) {
+				stroke.Kind = Tool::Command;
+				stroke.Position = start;
+				g_SceneMan.WrapPosition(stroke.Position);
+				stroke.Position2 = end;
+				stroke.Count = io.KeyShift ? 31 : 30;
 			} else if (s_CommandMode == CommandMode::Patrol && CurrentTool().Kind == Tool::Command && !dragged) {
 				// A point of the patrol route being clicked out; the command row starts it.
 				g_SceneMan.WrapPosition(end);
@@ -1105,6 +1113,7 @@ void Sandbox::Update() {
 	if (!InGame()) {
 		s_Possessed = nullptr;
 		s_Plans.clear();
+		s_Paced.clear();
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
 		s_Effects.clear();
@@ -1116,6 +1125,7 @@ void Sandbox::Update() {
 		Apply(stroke);
 	}
 	UpdatePlans();
+	UpdatePace();
 	UpdateIncoming();
 	UpdateEffects();
 	for (const WaterSpawner& spawner: s_WaterSpawners) {

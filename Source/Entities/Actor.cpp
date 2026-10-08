@@ -125,6 +125,7 @@ void Actor::Clear() {
 	m_AIOrderSerial = 0;
 	m_StandingOrder = StandingOrder();
 	m_WeaponRule = WEAPONS_AT_WILL;
+	m_PaceLimit = 0.0F;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
