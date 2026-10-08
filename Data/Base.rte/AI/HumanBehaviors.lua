@@ -224,9 +224,9 @@ function HumanBehaviors.Sentry(AI, Owner, Abort)
 		Owner:ClearMovePath();
 	end
 
-	-- (Posted facing a way, RC-4: that is the way to watch. After the look for the likely way an enemy comes, which would otherwise
-	-- turn it to face that.)
-	if Owner.OrderHasPost and Owner.OrderPostFacing ~= 0 then
+	-- (Posted facing a way, RC-4, or sent somewhere facing a way, RC-5: that is the way to watch. After the look for the likely way an
+	-- enemy comes, which would otherwise turn it to face that.)
+	if Owner.OrderPostFacing ~= 0 then
 		AI.SentryFacing = Owner.OrderPostFacing < 0;
 	end
 	if not AI.SentryPos then
