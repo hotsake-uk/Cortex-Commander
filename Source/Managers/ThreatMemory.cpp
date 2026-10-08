@@ -1,4 +1,5 @@
 #include "ThreatMemory.h"
+#include "ACraft.h"
 #include "ADoor.h"
 #include "Activity.h"
 #include "Actor.h"
@@ -61,7 +62,8 @@ void ThreatMemory::Report(const Actor* reporter, const Actor* enemy) {
 	// The others close by hear of it and turn to face it (the alarm the AI scripts already answer). Not units a player controls: they have
 	// a player's eyes.
 	for (Actor* mate: g_MovableMan.GetActorList()) {
-		if (mate == reporter || mate->GetTeam() != team || mate->IsDead() || mate->IsPlayerControlled() || dynamic_cast<const ADoor*>(mate)) {
+		// (Fighting units only: not doors, and not craft, which have no use for an alarm.)
+		if (mate == reporter || mate->GetTeam() != team || mate->IsDead() || mate->IsPlayerControlled() || dynamic_cast<const ADoor*>(mate) || dynamic_cast<const ACraft*>(mate)) {
 			continue;
 		}
 		if (g_SceneMan.ShortestDistance(reporter->GetPos(), mate->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(c_ShareRange)) {

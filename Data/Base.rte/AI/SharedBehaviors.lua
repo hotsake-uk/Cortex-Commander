@@ -2050,6 +2050,14 @@ end
 
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
 function SharedBehaviors.RememberOrder(AI, Owner)
+	-- (A fall-back or a flank that starts while an enemy's last place is being checked keeps the order from before the check, and the check
+	-- is over: kept as it stood, the unit came back from a fall-back to the checked spot and stayed there as a sentry, its patrol lost.)
+	if AI.Investigate then
+		local keep = AI.Investigate.Keep;
+		AI.Investigate = nil;
+		Owner:RemoveNumberValue("AIInvestigate");
+		return keep;
+	end
 	local keep = { mode = Owner.AIMode, attack = Owner.OrderAttack };
 	-- (A squad follower's leader too: cleared with the waypoints, a follower came back from a fall-back with no one to follow.)
 	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
