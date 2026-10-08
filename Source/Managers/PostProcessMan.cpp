@@ -340,26 +340,124 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 	}
 }
 
-float PostProcessMan::GetDynamicLightAt(const Vector& pos) const {
-	float lit = 0.0F;
-	for (const SceneLight& light: m_LastSceneLights) {
+void PostProcessMan::IndexLastSceneLights() {
+	for (int cell: m_UsedLightCells) {
+		m_LastLightCells[cell].clear();
+	}
+	m_UsedLightCells.clear();
+	const Scene* scene = g_SceneMan.GetScene();
+	if (!scene || g_SceneMan.GetSceneWidth() <= 0 || g_SceneMan.GetSceneHeight() <= 0) {
+		m_LightCellsWide = m_LightCellsHigh = 0;
+		return;
+	}
+	const int wide = (g_SceneMan.GetSceneWidth() + c_LightCellSize - 1) / c_LightCellSize;
+	const int high = (g_SceneMan.GetSceneHeight() + c_LightCellSize - 1) / c_LightCellSize;
+	if (wide != m_LightCellsWide || high != m_LightCellsHigh) {
+		m_LightCellsWide = wide;
+		m_LightCellsHigh = high;
+		m_LastLightCells.assign(static_cast<size_t>(wide) * high, {});
+	}
+	const bool wrapsX = g_SceneMan.SceneWrapsX();
+	const bool wrapsY = g_SceneMan.SceneWrapsY();
+	const int sceneWidth = g_SceneMan.GetSceneWidth();
+	const int sceneHeight = g_SceneMan.GetSceneHeight();
+	// The cells a light's square (centre plus or minus its radius) touches along one axis, as up to two runs: on a wrapping axis the pixel span is
+	// wrapped into the scene first (split in two where it straddles the seam, the whole axis when it is as long as the scene), on the other it
+	// is clipped. Pixels are wrapped before they become cells because the last cell is a partial one when the scene isn't a multiple of 128.
+	struct CellRuns {
+		int Count = 0;
+		int First[2] = {0, 0};
+		int Last[2] = {0, 0};
+	};
+	auto cellRuns = [](float centre, float radius, int size, bool wraps) {
+		CellRuns runs;
+		auto add = [&runs, size](float firstPixel, float lastPixel) {
+			runs.First[runs.Count] = std::clamp(static_cast<int>(std::floor(firstPixel)), 0, size - 1) / c_LightCellSize;
+			runs.Last[runs.Count] = std::clamp(static_cast<int>(std::floor(lastPixel)), 0, size - 1) / c_LightCellSize;
+			++runs.Count;
+		};
+		float from = centre - radius;
+		float to = centre + radius;
+		if (wraps) {
+			if (to - from >= static_cast<float>(size)) {
+				add(0.0F, static_cast<float>(size - 1));
+			} else {
+				float start = std::fmod(from, static_cast<float>(size));
+				if (start < 0.0F) {
+					start += static_cast<float>(size);
+				}
+				float end = start + (to - from);
+				if (end < static_cast<float>(size)) {
+					add(start, end);
+				} else {
+					add(start, static_cast<float>(size - 1));
+					add(0.0F, end - static_cast<float>(size));
+				}
+			}
+		} else if (to >= 0.0F && from < static_cast<float>(size)) {
+			add(std::max(from, 0.0F), std::min(to, static_cast<float>(size - 1)));
+		}
+		return runs;
+	};
+	for (int index = 0; index < static_cast<int>(m_LastSceneLights.size()); ++index) {
+		const SceneLight& light = m_LastSceneLights[index];
 		if (light.m_Radius <= 0.0F) {
 			continue;
 		}
+		CellRuns runsX = cellRuns(light.m_Pos.m_X, light.m_Radius, sceneWidth, wrapsX);
+		CellRuns runsY = cellRuns(light.m_Pos.m_Y, light.m_Radius, sceneHeight, wrapsY);
+		for (int ry = 0; ry < runsY.Count; ++ry) {
+			for (int cellY = runsY.First[ry]; cellY <= runsY.Last[ry]; ++cellY) {
+				for (int rx = 0; rx < runsX.Count; ++rx) {
+					for (int cellX = runsX.First[rx]; cellX <= runsX.Last[rx]; ++cellX) {
+						std::vector<int>& cell = m_LastLightCells[static_cast<size_t>(cellY) * wide + cellX];
+						if (cell.empty() || cell.back() != index) {
+							if (cell.empty()) {
+								m_UsedLightCells.push_back(cellY * wide + cellX);
+							}
+							cell.push_back(index);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+float PostProcessMan::GetDynamicLightAt(const Vector& pos) const {
+	float lit = 0.0F;
+	auto addLight = [&lit, &pos](const SceneLight& light) {
+		if (light.m_Radius <= 0.0F) {
+			return;
+		}
 		Vector toLight = g_SceneMan.ShortestDistance(pos, light.m_Pos, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
 		if (!toLight.MagnitudeIsLessThan(light.m_Radius)) {
-			continue;
+			return;
 		}
 		// A cone light (a headlamp, a flashlight) lights what is in its cone only.
 		if (light.m_ConeCos >= -1.0F && !toLight.IsZero()) {
 			Vector fromLight = -toLight;
 			fromLight.Normalize();
 			if (fromLight.m_X * light.m_Direction.x + fromLight.m_Y * light.m_Direction.y < light.m_ConeCos) {
-				continue;
+				return;
 			}
 		}
 		float brightness = std::clamp(glm::dot(light.m_Color, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
 		lit = std::max(lit, brightness * (1.0F - toLight.GetMagnitude() / light.m_Radius));
+	};
+	if (m_LightCellsWide > 0 && m_LightCellsHigh > 0) {
+		// Only the lights that can reach this place's cell (see IndexLastSceneLights).
+		Vector wrapped = pos;
+		g_SceneMan.WrapPosition(wrapped);
+		int cellX = std::clamp(static_cast<int>(std::floor(wrapped.m_X / c_LightCellSize)), 0, m_LightCellsWide - 1);
+		int cellY = std::clamp(static_cast<int>(std::floor(wrapped.m_Y / c_LightCellSize)), 0, m_LightCellsHigh - 1);
+		for (int index: m_LastLightCells[static_cast<size_t>(cellY) * m_LightCellsWide + cellX]) {
+			addLight(m_LastSceneLights[index]);
+		}
+	} else {
+		for (const SceneLight& light: m_LastSceneLights) {
+			addLight(light);
+		}
 	}
 	return lit;
 }
