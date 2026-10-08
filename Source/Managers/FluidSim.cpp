@@ -711,8 +711,9 @@ bool FluidSim::HoldsBodies(int materialID) {
 	if (!IsLiquid(materialID)) {
 		return false;
 	}
-	Liquid kind = s_Kinds[materialID];
-	return kind == Liquid::Water || kind == Liquid::Acid || kind == Liquid::Other;
+	// Every flowing liquid (L-5): oil and lava too, which before were nothing to a body (no depth, no drag, no slowing). What each does to a
+	// body is its material's: lava's burn and weight, oil's slip.
+	return true;
 }
 
 void FluidSim::SetPowdersEnabled(bool enabled) {
