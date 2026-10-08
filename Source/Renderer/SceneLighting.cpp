@@ -18,6 +18,7 @@
 #include "FrameMan.h"
 #include "DebugMan.h"
 #include <array>
+#include <optional>
 
 #include "allegro.h"
 #include "tracy/Tracy.hpp"
@@ -135,6 +136,7 @@ void SceneLighting::LoadShaders() {
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
 	m_StainShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Stain.frag");
 	m_DecalFadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DecalFade.frag");
+	m_DecalWipeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DecalWipe.frag");
 	m_TerrainShader = std::make_unique<Shader>("Base.rte/Shaders/TerrainLayer.vert", "Base.rte/Shaders/Terrain.frag");
 }
 
@@ -233,6 +235,10 @@ bool SceneLighting::EnsureWorldResources() {
 	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
 	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	m_DecalWipe.Create(m_Scorch.Width, m_Scorch.Height, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, wrapS, wrapT, false);
+	UpdateDecalGroundMaterials();
+	m_DecalGround.assign(static_cast<size_t>(m_DecalWipe.Width) * m_DecalWipe.Height, 0);
+	RefreshDecalGround(0, 0, m_SceneWidth, m_SceneHeight, false);
 	for (GLTarget& fog: m_Fog) {
 		fog.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
 	}
@@ -282,6 +288,9 @@ void SceneLighting::DestroyWorldResources() {
 	m_SkyLight[1].Destroy();
 	m_Scorch.Destroy();
 	m_Stains.Destroy();
+	m_DecalWipe.Destroy();
+	m_DecalWipeRows.clear();
+	m_DecalGround.clear();
 	m_FlowTexture.Destroy();
 	m_ShadowFieldTexture.Destroy();
 	m_ShadowField.clear();
@@ -788,6 +797,89 @@ void SceneLighting::StampStains() {
 	DrawQuads(splatCount, splatCount);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
+bool SceneLighting::UpdateDecalGroundMaterials() {
+	// Ground for the decal maps is what a mark can't stay on once it's gone, or come through when it arrives: anything but air, cavity and the flowing liquids
+	// (water running over a stain, or blood settling and running, leaves the stain under it be). The liquids are FluidSim's, which it works out on its own step.
+	bool changed = false;
+	for (int id = 0; id < 256; ++id) {
+		unsigned char ground = (IsOpenMaterial(static_cast<unsigned char>(id)) || FluidSim::IsLiquid(id)) ? 0 : 1;
+		changed |= m_DecalGroundMaterial[id] != ground;
+		m_DecalGroundMaterial[id] = ground;
+	}
+	return changed;
+}
+
+void SceneLighting::RefreshDecalGround(int minX, int minY, int endX, int endY, bool wipeChanged) {
+	if (!m_DecalWipe.Texture) {
+		return;
+	}
+	const int cell = m_ScorchCellSize;
+	auto cellRange = [cell](int first, int end, int count, bool whole) {
+		return whole ? glm::ivec2(0, count) : glm::ivec2(std::max(first / cell, 0), std::min((end + cell - 1) / cell, count));
+	};
+	glm::ivec2 columnRange = cellRange(minX, endX, m_DecalWipe.Width, minX < 0 || endX > m_SceneWidth);
+	glm::ivec2 rowRange = cellRange(minY, endY, m_DecalWipe.Height, minY < 0 || endY > m_SceneHeight);
+	const int firstColumn = columnRange.x;
+	const int columns = columnRange.y - columnRange.x;
+	const int firstRow = rowRange.x;
+	const int rows = rowRange.y - rowRange.x;
+	if (columns <= 0 || rows <= 0) {
+		return;
+	}
+	ZoneScoped;
+	const BITMAP* materialBitmap = static_cast<const BITMAP*>(m_WorldMaterialBitmap);
+	m_DecalWipeRows.assign(static_cast<size_t>(columns) * rows, 0);
+	bool anyWipe = false;
+	for (int row = 0; row < rows; ++row) {
+		int sceneRow = firstRow + row;
+		unsigned char* groundRow = &m_DecalGround[static_cast<size_t>(sceneRow) * m_DecalWipe.Width];
+		unsigned char* wipeRow = &m_DecalWipeRows[static_cast<size_t>(row) * columns];
+		for (int column = 0; column < columns; ++column) {
+			int sceneColumn = firstColumn + column;
+			// Branch free over the pixels, as this can run over a wide box a frame while things move about the scene.
+			unsigned char ground = 0;
+			for (int y = sceneRow * cell; y < std::min((sceneRow + 1) * cell, m_SceneHeight); ++y) {
+				const unsigned char* line = materialBitmap->line[y];
+				for (int x = sceneColumn * cell; x < std::min((sceneColumn + 1) * cell, m_SceneWidth); ++x) {
+					ground |= m_DecalGroundMaterial[line[x]];
+				}
+			}
+			if (ground != groundRow[sceneColumn]) {
+				groundRow[sceneColumn] = ground;
+				wipeRow[column] = 255;
+				anyWipe = true;
+			}
+		}
+	}
+	if (!wipeChanged || !anyWipe || !m_Scorch.Framebuffer || !m_Stains.Framebuffer) {
+		return;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_DecalWipe.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, firstRow, columns, rows, GL_RED, GL_UNSIGNED_BYTE, m_DecalWipeRows.data()));
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	TracyGpuZone("Decal Wipe");
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(firstColumn, firstRow, columns, rows);
+	m_DecalWipeShader->Enable();
+	m_DecalWipeShader->SetInt("rteDecalWipe", 1);
+	m_DecalWipeShader->SetVector2f("rteDecalWipeSize", glm::vec2(m_DecalWipe.Width, m_DecalWipe.Height));
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_DecalWipe.Texture);
+	glActiveTexture(GL_TEXTURE0);
+	for (const GLTarget* map: {&m_Scorch, &m_Stains}) {
+		glBindFramebuffer(GL_FRAMEBUFFER, map->Framebuffer);
+		glViewport(0, 0, map->Width, map->Height);
+		DrawFullscreen();
+	}
+	glDisable(GL_SCISSOR_TEST);
 	glBindVertexArray(0);
 }
 
@@ -1603,6 +1695,7 @@ void SceneLighting::Update() {
 	// follow it as it moves instead of catching up when the round-robin gets there.
 	bool terrainChanged = false;
 	glm::ivec4 terrainChangedArea(0); // Scene pixels: min x, min y, end x, end y.
+	std::optional<glm::ivec4> pendingDecalGround; // Where the scorch and stain maps' ground is worked out again, in scene pixels as they came: min x, min y, end x, end y.
 	if (int minX, minY, maxX, maxY; SLTerrain::TakeChangedArea(minX, minY, maxX, maxY)) {
 		int changedFirstRow = std::clamp(minY / m_CellSize - 1, 0, m_GridHeight);
 		int changedEndRow = std::clamp(maxY / m_CellSize + 2, 0, m_GridHeight);
@@ -1610,6 +1703,7 @@ void SceneLighting::Update() {
 		bool wholeWidth = minX < 0 || maxX >= m_SceneWidth;
 		int changedFirstColumn = wholeWidth ? 0 : std::clamp(minX / m_CellSize - 1, 0, m_GridWidth);
 		int changedEndColumn = wholeWidth ? m_GridWidth : std::clamp(maxX / m_CellSize + 2, 0, m_GridWidth);
+		pendingDecalGround = glm::ivec4(minX, minY, maxX + 1, maxY + 1);
 		if (changedEndRow > changedFirstRow) {
 			RefreshOccupancyRows(changedFirstRow, changedEndRow, changedFirstColumn, changedEndColumn);
 			UploadOccupancyRows(changedFirstRow, changedEndRow);
@@ -1648,6 +1742,13 @@ void SceneLighting::Update() {
 	// Sky light spreads a cell a step, so it gets more steps while the ground is changing, to keep up with it.
 	PropagateSkyLight(m_Settings.PropagationIterationsPerFrame * (terrainChanged ? 3 : 1));
 	logStages.Next("Light grid: scorch marks and stains");
+	if (UpdateDecalGroundMaterials()) {
+		// Which materials flow changed (a new scene's liquids, or settings): what counts as ground is worked out afresh, without wiping anything for it.
+		RefreshDecalGround(0, 0, m_SceneWidth, m_SceneHeight, false);
+	}
+	if (pendingDecalGround) {
+		RefreshDecalGround(pendingDecalGround->x, pendingDecalGround->y, pendingDecalGround->z, pendingDecalGround->w);
+	}
 	StampScorchMarks();
 	StampStains();
 	FadeDecals(frameSeconds);
