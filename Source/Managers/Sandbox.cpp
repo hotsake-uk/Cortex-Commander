@@ -6092,6 +6092,22 @@ void Sandbox::Update() {
 		s_Effects.clear();
 		// The same random stream from the start of every game, so the same inputs give the same game.
 		s_Random = c_RandomSeed;
+		// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
+		// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
+		s_Possessed = nullptr;
+		s_PlayerUnit = UnitRef();
+		s_PlayerEnterPending = 0;
+		s_Flying = false;
+		s_StepsWanted = 0;
+		s_RallySet.fill(false);
+		s_Selected.clear();
+		for (std::vector<UnitRef>& group: s_Groups) {
+			group.clear();
+		}
+		s_OrderMarks.clear();
+		s_FollowTarget = UnitRef();
+		s_AutoRunning = false;
+		s_AutoWinner = -2;
 	}
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
