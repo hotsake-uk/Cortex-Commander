@@ -403,10 +403,15 @@ function NativeHumanAI:Update(Owner)
 						local dist = SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest;
 						local radius = (Leader.Height + Owner.Height) * 0.5;
 						if dist < radius then
-							local copyControls = {Controller.MOVE_LEFT, Controller.MOVE_RIGHT, Controller.BODY_JUMPSTART, Controller.BODY_JUMP, Controller.BODY_PRONE};
-							for _, control in pairs(copyControls) do
-								local state = Leader:GetController():IsState(control);
-								self.Ctrl:SetState(control, state);
+							-- (The keys only for the script's own mover. On the engine's, this is a follower held on its place (FollowStep), which
+							-- is when engineMover is off: copied, the leader's jet lit the held follower's, AI.flying broke the hold, and the
+							-- route-follower took over mid-air; and the leader's prone or step moved it off its place.)
+							if not SharedBehaviors.UsesEngineMover(Owner) then
+								local copyControls = {Controller.MOVE_LEFT, Controller.MOVE_RIGHT, Controller.BODY_JUMPSTART, Controller.BODY_JUMP, Controller.BODY_PRONE};
+								for _, control in pairs(copyControls) do
+									local state = Leader:GetController():IsState(control);
+									self.Ctrl:SetState(control, state);
+								end
 							end
 							if Leader.EquippedItem then
 								local aimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
