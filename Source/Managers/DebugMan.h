@@ -39,6 +39,9 @@ namespace RTE {
 		/// Gets whether photo mode is open. It decides for itself whether time is frozen.
 		bool IsPhotoModeOpen() const { return m_ShowPhotoMode || m_PhotoModeActive; }
 
+		/// Gets whether "Freeze simulation" on the Debug page is holding the world still.
+		bool IsSimFrozen() const { return m_FreezeSim; }
+
 		/// Gets and clears whether a photo mode screenshot was asked for. WindowMan takes it from the finished frame, before ImGui is drawn.
 		bool ConsumeScreenshotRequest() {
 			bool requested = m_ScreenshotRequested;
