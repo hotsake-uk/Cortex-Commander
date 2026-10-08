@@ -132,6 +132,7 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 	}
 
 	m_pCurrentScene = pNewScene;
+	++m_SceneGeneration;
 	if (m_pCurrentScene->LoadData(placeObjects, true, placeUnits) < 0) {
 		g_ConsoleMan.PrintString("ERROR: Loading scene \'" + m_pCurrentScene->GetPresetName() + "\' failed! Has it been properly defined?");
 		return -1;
