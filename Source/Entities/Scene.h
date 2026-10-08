@@ -703,7 +703,7 @@ namespace RTE {
 		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, const PathAgent& agent, Activity::Teams team, std::list<PathStepKind>* kinds = nullptr);
 
 		/// The kinds of the steps of the last path calculated on this thread through CalculatePathForActor, as PathStepKind values (0 walk,
-		/// 1 crawl, 2 jump, 3 fall, 4 dig, 5 door, 6 stairs, 7 ladder, 8 leap, 9 mantle, 10 crouch, 11 scramble), one per point of GetScenePath after the first.
+		/// 1 crawl, 2 jump, 3 fall, 4 dig, 5 door, 6 stairs, 7 ladder, 8 leap, 9 mantle, 10 crouch, 11 scramble, 12 swim, 13 wade), one per point of GetScenePath after the first.
 		std::list<int>& GetScenePathStepKinds();
 
 		int GetScenePathSize() const;
