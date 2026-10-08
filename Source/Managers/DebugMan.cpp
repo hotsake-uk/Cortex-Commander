@@ -281,6 +281,24 @@ void DebugMan::DrawToolWindowControls() {
 	}
 }
 
+void DebugMan::UpdateFreeze() {
+	if (m_FreezeSim && g_ActivityMan.IsInActivity()) {
+		g_TimerMan.PauseSim(true);
+		m_FrozeSim = true;
+		if (m_FreezeStepsWanted > 0) {
+			g_TimerMan.StepSim(1);
+			--m_FreezeStepsWanted;
+		}
+	} else if (m_FrozeSim) {
+		m_FrozeSim = false;
+		m_FreezeStepsWanted = 0;
+		// Unpaused unless photo mode or the sandbox's open window wants the world still; they set their own pause again each frame they want it.
+		if (!IsPhotoModeOpen()) {
+			g_TimerMan.PauseSim(false);
+		}
+	}
+}
+
 void DebugMan::DrawOverlays() {
 	if (!g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
 		return;
@@ -365,6 +383,7 @@ void DebugMan::DrawImGui() {
 	}
 
 	Sandbox::DrawGUI();
+	UpdateFreeze();
 
 	if (m_ShowPhotoMode) {
 		PhotoModeGUI();
