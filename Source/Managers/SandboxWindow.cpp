@@ -798,9 +798,18 @@ namespace SandboxDetail {
 					drawList->AddLine(io.MousePos, ToScreen(target->GetPos()), (red & 0x00FFFFFF) | (120u << IM_COL32_A_SHIFT), pixel);
 					label = "Attack " + target->GetPresetName() + " with " + count;
 				} else {
-					crosshair(point, red, pixel * 6.0F);
-					label = count + " attack towards here (no enemy near)";
+					crosshair(point, (red & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), pixel * 6.0F);
+					label = "Attack: point at or near an enemy  (to fight towards a place, Attack-move)";
 				}
+			} else if (s_CommandMode == CommandMode::AttackMove) {
+				// Attack-move (RC-2): where each will stand, and the crosshair over the place, in the mode's orange.
+				ImU32 orange = c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)];
+				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
+					flag(spot, orange);
+				}
+				crosshair(point, orange, pixel * 6.0F);
+				reachMarks(units, point);
+				label = "Attack-move " + count + " here: they fight what they meet on the way";
 			} else if (s_CommandMode == CommandMode::Guard) {
 				ImU32 green = IM_COL32(120, 220, 120, 255);
 				if (underIsFriend) {
@@ -1045,27 +1054,27 @@ namespace SandboxDetail {
 				label = std::string(weapons ? "Weapons: " : "Movement: ") + (rule == -1 ? "mixed" : (rule < 0 ? "..." : (weapons ? c_WeaponRuleNames[rule] : c_MovementRuleNames[rule])));
 				return label.c_str();
 			};
-			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
+			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Attack-move", c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "Speed"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
 			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
 			}
-			if (picked >= 0 && picked <= 2) {
-				// The mode for the clicks to come.
+			if (picked >= 0 && picked <= 3) {
+				// The mode for the clicks to come (the slices go in CommandMode's order).
 				s_CommandMode = static_cast<CommandMode>(picked);
-			} else if (picked == 3 || picked == 4) {
-				// Defend where they stand (3), or cancel their orders (4).
+			} else if (picked == 4 || picked == 5) {
+				// Defend where they stand (4), or cancel their orders (5).
 				Stroke stroke;
 				stroke.Kind = Tool::OrderSelected;
 				stroke.Position = s_RingScenePoint;
-				stroke.Count = 100 + (picked == 3 ? 3 : 2);
+				stroke.Count = 100 + (picked == 4 ? 3 : 2);
 				s_Queue.push_back(stroke);
-			} else if (picked == 5) {
+			} else if (picked == 6) {
 				s_Selected.clear();
-			} else if (picked == 6 || picked == 7) {
+			} else if (picked == 7 || picked == 8) {
 				s_RingOpen = true;
-				s_RingPage = picked == 6 ? 3 : 4;
-			} else if (picked == 8) {
+				s_RingPage = picked == 7 ? 3 : 4;
+			} else if (picked == 9) {
 				s_RingOpen = true;
 				s_RingPage = 1;
 			}
@@ -1454,12 +1463,11 @@ namespace SandboxDetail {
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
 			// The mode of the clicks, in its colours.
-			for (int mode = 0; mode < 3; ++mode) {
+			for (int mode = 0; mode < static_cast<int>(std::size(c_CommandModeNames)); ++mode) {
 				if (mode > 0) {
 					ImGui::SameLine();
 				}
-				static const ImU32 modeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255)};
-				ImGui::PushStyleColor(ImGuiCol_Text, modeColors[mode]);
+				ImGui::PushStyleColor(ImGuiCol_Text, c_CommandModeColors[mode]);
 				int current = static_cast<int>(s_CommandMode);
 				if (ToolUI::RadioButton(c_CommandModeNames[mode], &current, mode)) {
 					s_CommandMode = static_cast<CommandMode>(current);
