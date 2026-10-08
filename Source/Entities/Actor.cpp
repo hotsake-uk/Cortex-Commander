@@ -103,6 +103,7 @@ void Actor::Clear() {
 	m_LastAlarmPos.Reset();
 	m_SightDistance = 450.0F;
 	m_Perceptiveness = 0.5F;
+	m_LookRandomState = 0;
 	m_HeadlampBrightness = 1.0F;
 	m_HeadlampColor.SetRGB(255, 240, 215);
 	m_HeadlampHasColor = false;
@@ -632,6 +633,23 @@ Controller::InputMode Actor::SwapControllerModes(Controller::InputMode newMode, 
 	return returnMode;
 }
 
+float Actor::LookRandomNormalNum() {
+	if (m_LookRandomState == 0) {
+		// SplitMix64 of the unique ID, so actors start on unrelated streams.
+		uint64_t seed = static_cast<uint64_t>(GetUniqueID()) + 0x9E3779B97F4A7C15ULL;
+		seed = (seed ^ (seed >> 30)) * 0xBF58476D1CE4E5B9ULL;
+		seed = (seed ^ (seed >> 27)) * 0x94D049BB133111EBULL;
+		m_LookRandomState = (seed ^ (seed >> 31)) | 1;
+	}
+	// Xorshift64*.
+	m_LookRandomState ^= m_LookRandomState >> 12;
+	m_LookRandomState ^= m_LookRandomState << 25;
+	m_LookRandomState ^= m_LookRandomState >> 27;
+	uint64_t bits = m_LookRandomState * 0x2545F4914F6CDD1DULL;
+	// Top 24 bits give an exact float in [0, 1), mapped to [-1, 1).
+	return static_cast<float>(bits >> 40) * (2.0F / 16777216.0F) - 1.0F;
+}
+
 bool Actor::Look(float FOVSpread, float range) {
 	if (!g_SceneMan.AnythingUnseen(m_Team) || m_CanRevealUnseen == false) {
 		return false;
@@ -657,12 +675,12 @@ bool Actor::Look(float FOVSpread, float range) {
 	// If there is no vel, just look in all directions
 	if (lookVector.GetLargest() < 0.01) {
 		lookVector.SetXY(range, 0);
-		lookVector.DegRotate(RandomNum(-180.0F, 180.0F));
+		lookVector.DegRotate(180.0F * LookRandomNormalNum());
 	} else {
 		// Set the distance in the look direction
 		lookVector.SetMagnitude(range);
 		// Add the spread from the directed look
-		lookVector.DegRotate(FOVSpread * RandomNormalNum());
+		lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 	}
 
 	// The smallest dimension of the fog block, divided by two, but always at least one, as the step for the casts
