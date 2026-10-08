@@ -295,6 +295,12 @@ namespace RTE {
 		/// Sets whether the squad links and trails overlay is on.
 		void SetShowSquadLinks(bool show) { m_ShowSquadLinks = show; }
 
+		/// Gets whether the order labels overlay is on: under each unit in view its sandbox order (or AI mode), its control group and whether the AI is paused, and in the sandbox's World tab each auto battle side's budget, spending and next wave.
+		bool ShowOrderLabels() const { return m_ShowOrderLabels; }
+
+		/// Sets whether the order labels overlay is on.
+		void SetShowOrderLabels(bool show) { m_ShowOrderLabels = show; }
+
 		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
 		/// @param level 0 to 3.
 		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 3); }
@@ -518,6 +524,7 @@ namespace RTE {
 		bool m_ShowRecentSolves; //!< Whether the recent path solves overlay is on (see ShowRecentSolves).
 		int m_CombatOverlay; //!< Which units the combat AI overlay draws for (see CombatOverlay).
 		bool m_ShowSquadLinks; //!< Whether the squad links and trails overlay is on (see ShowSquadLinks).
+		bool m_ShowOrderLabels; //!< Whether the order labels overlay is on (see ShowOrderLabels).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
