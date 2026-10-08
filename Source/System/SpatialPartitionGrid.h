@@ -54,6 +54,10 @@ namespace RTE {
 		/// @return A vector of pointers to all MovableObjects within the given Box, who aren't of the ignored team.
 		std::vector<MovableObject*> GetMOsInBox(const Box& box, int ignoreTeam, bool getsHitByMOsOnly) const;
 
+		/// As above, but fills a vector the caller keeps (cleared first), so a hot caller allocates nothing once it has grown.
+		/// @param moList The vector to fill.
+		void GetMOsInBox(const Box& box, int ignoreTeam, bool getsHitByMOsOnly, std::vector<MovableObject*>& moList) const;
+
 		/// Get a vector of pointers to all the MovableObjects within the specified radius of the given center point, who aren't of the ignored team.
 		/// @param center The center point to get MovableObjects around.
 		/// @param radius The radius to get MovableObjects within.

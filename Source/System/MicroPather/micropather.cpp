@@ -237,7 +237,7 @@ PathNodePool::PathNodePool( unsigned _allocate, unsigned _typicalAdjacent )
 PathNodePool::~PathNodePool()
 {
 	Clear();
-	free( firstBlock );
+	FreeBlocks();
 	free( cache );
 	free( hashTable );
 #ifdef TRACK_COLLISION
@@ -273,15 +273,12 @@ void PathNodePool::Clear()
 	totalCollide += collide;
 #endif
 
-	Block* b = blocks;
-	while( b ) {
-		Block* temp = b->nextBlock;
-		if ( b != firstBlock ) {
-			free( b );
-		}
-		b = temp;
+	// Every block is kept for the next solve (a pather is reset before each one, and a big search freed and allocated its extra blocks
+	// every time); they are only freed with the pool (FreeBlocks).
+	unsigned nodesHeld = 0;
+	for ( Block* b = blocks; b; b = b->nextBlock ) {
+		nodesHeld += allocate;
 	}
-	blocks = firstBlock;	// Don't delete the first block (we always need at least that much memory.)
 
 	// Set up for new allocations (but don't do work we don't need to. Reset/Clear can be called frequently.)
 	if ( nAllocated > 0 ) {
@@ -289,13 +286,27 @@ void PathNodePool::Clear()
 		freeMemSentinel.prev = &freeMemSentinel;
 	
 		memset( hashTable, 0, sizeof(PathNode*)*HashSize() );
-		for( unsigned i=0; i<allocate; ++i ) {
-			freeMemSentinel.AddBefore( &firstBlock->pathNode[i] );
+		for ( Block* b = blocks; b; b = b->nextBlock ) {
+			for( unsigned i=0; i<allocate; ++i ) {
+				freeMemSentinel.AddBefore( &b->pathNode[i] );
+			}
 		}
 	}
-	nAvailable = allocate;
+	nAvailable = nodesHeld;
 	nAllocated = 0;
 	cacheSize = 0;
+}
+
+
+void PathNodePool::FreeBlocks()
+{
+	Block* b = blocks;
+	while( b ) {
+		Block* temp = b->nextBlock;
+		free( b );
+		b = temp;
+	}
+	blocks = firstBlock = 0;
 }
 
 

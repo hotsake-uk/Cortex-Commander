@@ -10,6 +10,7 @@
 #include "Box.h"
 #include "Singleton.h"
 #include "SpatialPartitionGrid.h"
+#include <limits>
 
 #include "ActivityMan.h"
 
@@ -679,8 +680,10 @@ namespace RTE {
 		/// @param skip For every pixel checked along the line, how many to skip between them
 		/// for optimization reasons. 0 = every pixel is checked.
 		/// @param ignoreMaterial A material ID to ignore, IN ADDITION to Air.
+		/// @param alsoIgnore A second material ID to ignore, or 0 for none.
+		/// @param stopAbove Stop at the first material found with an integrity above this, and return it: for a caller that only asks whether the line is under some strength.
 		/// @return The strongest material encountered
-		const Material* CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial, unsigned char alsoIgnore = 0);
+		const Material* CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial, unsigned char alsoIgnore = 0, float stopAbove = std::numeric_limits<float>::max());
 
 		/// Traces along a vector and shows where along that ray there is an
 		/// encounter with a pixel of a material with strength more than or equal

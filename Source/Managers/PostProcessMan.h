@@ -125,6 +125,7 @@ namespace RTE {
 			// (The finished update's set is kept for the AI's sight, GetDynamicLightAt: the new update's is being registered while it looks.)
 			m_LastSceneLights.swap(m_SceneLights);
 			m_SceneLights.clear();
+			IndexLastSceneLights();
 			std::scoped_lock lock(m_ShockwaveMutex);
 			m_Shimmers.clear();
 		}
@@ -489,6 +490,15 @@ namespace RTE {
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
 		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.
 		std::vector<SceneLight> m_LastSceneLights; //!< The last finished sim update's lights, for GetDynamicLightAt: not written while a sim update runs.
+		static constexpr int c_LightCellSize = 128; //!< The size of a cell of m_LastLightCells, in pixels.
+		int m_LightCellsWide = 0; //!< How many cells of m_LastLightCells across the scene; 0 while there is no index (no scene).
+		int m_LightCellsHigh = 0; //!< And down.
+		std::vector<std::vector<int>> m_LastLightCells; //!< Per cell, the indices in m_LastSceneLights of the lights that can reach into it.
+		std::vector<int> m_UsedLightCells; //!< The cells of m_LastLightCells that hold any light, to empty them before the next index.
+
+		/// Sorts m_LastSceneLights into m_LastLightCells, so GetDynamicLightAt looks at the lights that can reach a place instead of every light
+		/// in the scene (a burning field registers one per 24 px cell). On the main thread, between sim updates, with the swap in ClearSceneLights.
+		void IndexLastSceneLights();
 
 		/// An active explosion shockwave.
 		struct Shockwave {
