@@ -710,7 +710,17 @@ function NativeHumanAI:Update(Owner)
 	if self.proneState == AHuman.GOPRONE then
 		self.proneState = AHuman.PRONE;
 	elseif self.proneState == AHuman.PRONE then
-		self.Ctrl:SetState(Controller.BODY_PRONE, true);
+		if SharedBehaviors.EngineMotor(Owner) then
+			-- The engine's motor holds the stance (and lets it go for a take-off). Kept up for the whole fight, as the script's prone was,
+			-- till a cleanup or a stand puts proneState back; but a unit on a move order gets up when the stance's while is out, to walk on.
+			if SharedBehaviors.OrderKind(Owner) ~= "move" then
+				Owner:SetAIStance(2, 500);
+			elseif Owner.AIStance ~= 2 then
+				self.proneState = AHuman.NOTPRONE;
+			end
+		else
+			self.Ctrl:SetState(Controller.BODY_PRONE, true);
+		end
 	end
 
 	-- Up or down a ladder (see SharedBehaviors.LadderAt): the base game's background ladders move a unit that aims up and presses up,
