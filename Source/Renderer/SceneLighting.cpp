@@ -996,10 +996,36 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			}
 			++lightCount;
 		}
+		// First, all-round lights that sit on the same couple of pixels with about the same reach (a unit's glow and its headlamp's spill, a burst of tracers, a fire's hot spots) are drawn as one light of their summed colour:
+		// one quad and one shadow march instead of several that light the same pixels the same way.
+		std::vector<SceneLight> mergedLights;
+		mergedLights.reserve(screenLights.size());
+		{
+			std::unordered_map<uint64_t, size_t> mergedAt;
+			mergedAt.reserve(screenLights.size());
+			for (const SceneLight& light: screenLights) {
+				if (light.m_ConeCos >= -1.0F) {
+					mergedLights.push_back(light);
+					continue;
+				}
+				// Two pixel cells, and reach in 10 percent steps.
+				auto cellX = static_cast<uint32_t>(static_cast<int32_t>(std::floor(light.m_Pos.m_X * 0.5F)));
+				auto cellY = static_cast<uint32_t>(static_cast<int32_t>(std::floor(light.m_Pos.m_Y * 0.5F)));
+				auto reachStep = static_cast<uint64_t>(std::clamp(std::log(std::max(light.m_Radius, 1.0F)) / std::log(1.1F), 0.0F, 4095.0F));
+				uint64_t key = (static_cast<uint64_t>(cellX & 0xFFFFFu) << 32) | (static_cast<uint64_t>(cellY & 0xFFFFFu) << 12) | reachStep;
+				if (auto [found, added] = mergedAt.try_emplace(key, mergedLights.size()); !added) {
+					SceneLight& into = mergedLights[found->second];
+					into.m_Color += light.m_Color;
+					into.m_Radius = std::max(into.m_Radius, light.m_Radius);
+				} else {
+					mergedLights.push_back(light);
+				}
+			}
+		}
 		// Past the cap, keep the lights that matter most (brightest over the widest area) and leave out the faintest.
 		std::vector<const SceneLight*> shownLights;
-		shownLights.reserve(screenLights.size());
-		for (const SceneLight& light: screenLights) {
+		shownLights.reserve(mergedLights.size());
+		for (const SceneLight& light: mergedLights) {
 			shownLights.push_back(&light);
 		}
 		size_t lightBudget = static_cast<size_t>(std::max(m_Settings.MaxScreenLights, 0));
