@@ -55,6 +55,7 @@
 #include <list>
 #include <map>
 #include <unordered_map>
+#include <climits>
 #include <unordered_set>
 #include <memory>
 #include <numeric>
@@ -154,7 +155,8 @@ namespace {
 		GymRun, //!< Count: the course to run, or -1 for all of them.
 		GymRemove,
 		ClearWaterSpawners,
-		ClearEffects //!< Count: 1 the last one only, else all.
+		ClearEffects, //!< Count: 1 the last one only, else all.
+		UndoTerrain //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
 	};
 
 	struct ToolInfo {
@@ -1109,6 +1111,78 @@ namespace {
 		return Random01() < 0.25F ? speckleColor : color;
 	}
 
+	/// Terrain painting's undo: each step is what one stroke of a paint or build tool changed (a drag of the brush is one step: changes
+	/// less than a quarter second apart run together), pixel by pixel as it was before, the first change to each pixel only. The last 20
+	/// steps are kept, and a new game forgets them.
+	struct PaintUndoPixel {
+		int X;
+		int Y;
+		int Material;
+		int Color;
+	};
+	struct PaintUndoStep {
+		std::vector<PaintUndoPixel> Pixels;
+		std::unordered_set<long long> Seen;
+		int Left = INT_MAX;
+		int Top = INT_MAX;
+		int Right = INT_MIN;
+		int Bottom = INT_MIN;
+		long long LastUpdate = 0;
+	};
+	std::deque<PaintUndoStep> s_PaintUndo;
+	bool s_RecordPaint = false; //!< While a paint or build stroke is applied (see Apply): only the player's own strokes are undone, not craters.
+	constexpr size_t c_PaintUndoSteps = 20;
+	constexpr size_t c_PaintUndoPixelsPerStep = 2000000;
+
+	/// Keeps a pixel as it is, before a paint or build stroke changes it, for the undo.
+	void RecordPaintPixel(const SLTerrain* terrain, int x, int y) {
+		if (!s_RecordPaint) {
+			return;
+		}
+		long long update = g_TimerMan.GetSimUpdateCount();
+		if (s_PaintUndo.empty() || update - s_PaintUndo.back().LastUpdate > 15) {
+			s_PaintUndo.emplace_back();
+			while (s_PaintUndo.size() > c_PaintUndoSteps) {
+				s_PaintUndo.pop_front();
+			}
+		}
+		PaintUndoStep& step = s_PaintUndo.back();
+		step.LastUpdate = update;
+		if (step.Pixels.size() >= c_PaintUndoPixelsPerStep || !step.Seen.insert((static_cast<long long>(y) << 32) | static_cast<unsigned int>(x)).second) {
+			return;
+		}
+		step.Pixels.push_back({x, y, terrain->GetMaterialPixel(x, y), terrain->GetFGColorPixel(x, y)});
+		step.Left = std::min(step.Left, x);
+		step.Top = std::min(step.Top, y);
+		step.Right = std::max(step.Right, x);
+		step.Bottom = std::max(step.Bottom, y);
+	}
+
+	/// Puts back what the last paint or build stroke changed, as any change to the terrain is made: the pathfinder and the lighting told,
+	/// hanging ground and liquid round it woken.
+	void UndoPaint() {
+		while (!s_PaintUndo.empty() && s_PaintUndo.back().Pixels.empty()) {
+			s_PaintUndo.pop_back();
+		}
+		if (s_PaintUndo.empty() || !g_SceneMan.GetScene()) {
+			return;
+		}
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const PaintUndoStep& step = s_PaintUndo.back();
+		Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
+		Vector center = area.GetCenter();
+		float reach = static_cast<float>(std::max(area.GetWidth(), area.GetHeight())) * 0.75F;
+		// (Undoing a paint takes ground away, which can leave what is over it hanging, as a dig does.)
+		TerrainCollapse::BeginChange(center, reach + 30.0F);
+		for (auto pixel = step.Pixels.rbegin(); pixel != step.Pixels.rend(); ++pixel) {
+			terrain->SetMaterialPixel(pixel->X, pixel->Y, pixel->Material);
+			terrain->SetFGColorPixel(pixel->X, pixel->Y, pixel->Color);
+		}
+		terrain->AddUpdatedMaterialArea(area);
+		FluidSim::Disturb(center, reach + 2.0F);
+		s_PaintUndo.pop_back();
+	}
+
 	/// A change the paint helpers made to the terrain, kept for the paint audit overlay (only while it's on).
 	struct PaintRecord {
 		Box Area;
@@ -1181,6 +1255,7 @@ namespace {
 				if (materialName ? existing != g_MaterialAir : (existing == g_MaterialAir || existing == g_MaterialOutOfBounds)) {
 					continue;
 				}
+				RecordPaintPixel(terrain, x, y);
 				terrain->SetMaterialPixel(x, y, material);
 				terrain->SetFGColorPixel(x, y, materialName ? PaintedColor(paintMaterial, x, y, color, speckleColor) : color);
 				changed = true;
@@ -1223,6 +1298,7 @@ namespace {
 				if (x < 0 || y < 0 || x >= width || y >= height || terrain->GetMaterialPixel(x, y) != g_MaterialAir) {
 					continue;
 				}
+				RecordPaintPixel(terrain, x, y);
 				terrain->SetMaterialPixel(x, y, found->GetIndex());
 				terrain->SetFGColorPixel(x, y, PaintedColor(found, x, y, color, speckleColor));
 			}
@@ -1260,6 +1336,7 @@ namespace {
 				if (existing == g_MaterialAir || existing == g_MaterialOutOfBounds) {
 					continue;
 				}
+				RecordPaintPixel(terrain, x, y);
 				terrain->SetMaterialPixel(x, y, g_MaterialAir);
 				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
 			}
@@ -2633,6 +2710,33 @@ namespace {
 	void Apply(const Stroke& stroke) {
 		const Vector& at = stroke.Position;
 		float radius = static_cast<float>(stroke.Radius);
+		// The terrain brushes and the things to knock down are kept for the undo while they are applied (see RecordPaintPixel).
+		struct RecordingPaint {
+			explicit RecordingPaint(Tool kind) {
+				switch (kind) {
+					case Tool::Dig:
+					case Tool::Earth:
+					case Tool::Sand:
+					case Tool::Ice:
+					case Tool::Grass:
+					case Tool::Wood:
+					case Tool::Concrete:
+					case Tool::BuildBeam:
+					case Tool::BuildPillar:
+					case Tool::BuildRoom:
+					case Tool::BuildTower:
+					case Tool::BuildBridge:
+					case Tool::BuildIsland:
+					case Tool::BuildTank:
+						s_RecordPaint = true;
+						break;
+					default:
+						s_RecordPaint = false;
+						break;
+				}
+			}
+			~RecordingPaint() { s_RecordPaint = false; }
+		} recordingPaint(stroke.Kind);
 		switch (stroke.Kind) {
 			case Tool::Possess:
 				TakeControl(at);
@@ -2759,6 +2863,9 @@ namespace {
 				break;
 			case Tool::ClearWaterSpawners:
 				s_WaterSpawners.clear();
+				break;
+			case Tool::UndoTerrain:
+				UndoPaint();
 				break;
 			case Tool::ClearEffects:
 				if (stroke.Count == 1) {
@@ -5840,6 +5947,10 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
+		QueueSimChange(Tool::UndoTerrain);
+	}
 	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back; Ctrl+A takes the whole side. With the
 	// command tool in hand, wherever the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as
 	// these were, they did nothing with it resting on the window.)
@@ -6170,6 +6281,12 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
+				ImGui::BeginDisabled(s_PaintUndo.empty());
+				if (ToolUI::Button("Undo terrain")) {
+					QueueSimChange(Tool::UndoTerrain);
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time.");
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
@@ -6286,6 +6403,7 @@ void Sandbox::OnActivityStarted() {
 	s_WaterSpawners.clear();
 	s_Incoming.clear();
 	s_Effects.clear();
+	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
