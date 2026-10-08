@@ -579,6 +579,13 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("A label over each unit: its AI mode, the kind of step it's on and the next, the route's cost, the engine mover's state (walk, flight, refuel, fuel wait, settle), how long since it last made progress, its stuck level and impossible-route count, and from its scripts the behaviour, climb stage, target (and whether it's in sight), squad leader and slot, and cover, flank and retreat spots.");
 		}
+		{
+			int combat = g_SettingsMan.CombatOverlay();
+			if (Combo("Combat AI overlay", &combat, "Off\0Inspected units\0Every unit in view\0")) {
+				g_SettingsMan.SetCombatOverlay(combat);
+			}
+			Tip("A line from each unit to its target, green while it can see it and grey while it only remembers where it was; the range it holds to as a ring; and the cover (cyan, with why it went there), flank (orange) and retreat (red) spots it's heading for, each with how long it's been at it.");
+		}
 		Toggle("Squad links and trails", g_SettingsMan.ShowSquadLinks(), [](bool on) { g_SettingsMan.SetShowSquadLinks(on); });
 		Tip("For inspected units in a squad: a green line from the leader to each follower, the leader's trail (yellow) that followers measure back along, and each follower's place in line as a white ring with its slot number.");
 	};

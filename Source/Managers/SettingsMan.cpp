@@ -119,6 +119,7 @@ void SettingsMan::Clear() {
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
 	m_ShowSquadLinks = false;
+	m_CombatOverlay = 0;
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
@@ -389,6 +390,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
 	MatchProperty("ShowSquadLinks", { reader >> m_ShowSquadLinks; });
+	MatchProperty("CombatOverlay", { int which = 0; reader >> which; SetCombatOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
@@ -724,6 +726,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
 	writer.NewPropertyWithValue("ShowSquadLinks", m_ShowSquadLinks);
+	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
 	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
 	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);

@@ -1105,8 +1105,8 @@ function SharedBehaviors.ClimbPlan(AI, Owner, Top, NextPos)
 	return plan;
 end
 
--- What the AI is doing, written into the unit's values for the engine's unit inspector (see Actor::GetDebugState and the "Unit inspector"
--- option under AI debug): the behaviour, the climb stage, the target and whether it is in sight, the squad leader and slot, and the cover,
+-- What the AI is doing, written into the unit's values for the engine's unit inspector and combat overlay (see Actor::GetDebugState and
+-- the "Unit inspector" and "Combat AI overlay" options under AI debug): the behaviour, the climb stage, the target and whether it is in sight, the squad leader and slot, and the cover,
 -- flank and retreat spots. Written only while an overlay wants this unit's (Owner.DebugExport) and only when a value changes, and taken
 -- off again when the overlay stops wanting it, so normal play writes nothing.
 function SharedBehaviors.ExportDebugState(AI, Owner)
@@ -1123,6 +1123,7 @@ function SharedBehaviors.ExportDebugState(AI, Owner)
 			AI.debugExported = nil;
 		end
 		AI.climbTick = nil;
+		AI.holdRangeTick = nil;
 		return;
 	end
 	if not Out then
@@ -1168,6 +1169,17 @@ function SharedBehaviors.ExportDebugState(AI, Owner)
 	PutSpot("AI_Cover", AI.Cover and AI.Cover.Spot);
 	PutSpot("AI_Flank", AI.Flank and AI.Flank.Spot);
 	PutSpot("AI_Retreat", AI.Retreat and AI.Retreat.Spot);
+	-- For the combat overlay: why the unit took cover, how long each spot has been held (to a tenth of a second, so the value changes
+	-- six times a second rather than every tick), and the range HoldRange keeps to (left in AI.holdRangeTick on each tick it runs).
+	local function Tenths(Timer)
+		return Timer and math.floor(Timer.ElapsedSimTimeMS / 100) * 100 or nil;
+	end
+	Put("AI_CoverWhy", AI.Cover and AI.Cover.Why or nil);
+	Put("AI_CoverMs", AI.Cover and Tenths(AI.Cover.Timer));
+	Put("AI_FlankMs", AI.Flank and Tenths(AI.Flank.Timer));
+	Put("AI_RetreatMs", AI.Retreat and Tenths(AI.Retreat.WaitTimer));
+	Put("AI_HoldRange", AI.holdRangeTick and math.floor(AI.holdRangeTick) or nil);
+	AI.holdRangeTick = nil;
 end
 
 -- One tick of a climb. Sets the jet on AI. @return status ("run", "done" or "fail"), the lateral move, the aim angle, and a reason
