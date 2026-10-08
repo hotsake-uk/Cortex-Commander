@@ -388,6 +388,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LampBrightness", { g_PostProcessMan.GetLightingSettings().LampBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LampReach", { g_PostProcessMan.GetLightingSettings().LampReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LampTint", { g_PostProcessMan.GetLightingSettings().LampTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().LampTint); });
+	MatchProperty("LampCache", { g_PostProcessMan.GetLightingSettings().LampCache = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LampCacheDetail", { g_PostProcessMan.GetLightingSettings().LampCacheDetail = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
 	MatchProperty("HeadlampBrightness", { g_PostProcessMan.GetLightingSettings().HeadlampBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HeadlampReach", { g_PostProcessMan.GetLightingSettings().HeadlampReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HeadlampWidth", { g_PostProcessMan.GetLightingSettings().HeadlampWidth = std::stof(reader.ReadPropValue()); });
@@ -661,6 +663,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LampBrightness", lighting.LampBrightness);
 	writer.NewPropertyWithValue("LampReach", lighting.LampReach);
 	writer.NewPropertyWithValue("LampTint", WriteVec3(lighting.LampTint));
+	writer.NewPropertyWithValue("LampCache", lighting.LampCache);
+	writer.NewPropertyWithValue("LampCacheDetail", lighting.LampCacheDetail);
 	writer.NewPropertyWithValue("HeadlampBrightness", lighting.HeadlampBrightness);
 	writer.NewPropertyWithValue("HeadlampReach", lighting.HeadlampReach);
 	writer.NewPropertyWithValue("HeadlampWidth", lighting.HeadlampWidth);

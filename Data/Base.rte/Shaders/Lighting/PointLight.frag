@@ -1,6 +1,7 @@
 // PointLight.frag
 // Smooth radial falloff with soft shadows marched through the terrain occupancy grid, and shadows from solid objects (units, devices, doors, wreckage) traced through the map of distances to them.
-// Additively blended into the dynamic light buffer.
+// Additively blended into the dynamic light buffer, or, in cache mode, into the world lamp cache (LightingSettings::LampCache): there it writes the light
+// arriving at each texel and, to location 1, which way it comes from weighted by its brightness, for LampCacheApply.frag to shade with.
 #version 330 core
 
 in vec2 localPos;
@@ -10,7 +11,8 @@ in float lightRadius;
 in vec2 screenPos;
 in vec3 lightCone;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 DirectionOut;
 
 uniform sampler2D rteOccupancy; // World grid, R = terrain coverage 0..1, linearly filtered.
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
@@ -28,6 +30,8 @@ uniform bool rteShadowFieldOn; // Trace terrain shadows through the distance fie
 uniform sampler2D rteShadowField; // World grid, R = distance to the nearest wall cell, as a fraction of rteShadowFieldReach, linearly filtered.
 uniform float rteShadowFieldReach; // How far the field reaches, in pixels.
 uniform float rteShadowSoftness; // How soft terrain shadows' edges are, 0 sharp to 2.
+uniform bool rteCacheMode; // Drawing into the world lamp cache: positions are in its texels, each rteCacheCell pixels across, from the world's corner.
+uniform float rteCacheCell;
 
 const int c_ShadowSteps = 12;
 
@@ -168,9 +172,18 @@ void main() {
 	}
 
 	// Soft shadow from the terrain between this pixel and the light.
-	vec2 fromWorld = rteScreenOrigin + gl_FragCoord.xy;
-	vec2 toWorld = rteScreenOrigin + lightCenter;
+	float cell = rteCacheMode ? rteCacheCell : 1.0;
+	vec2 fromWorld = rteScreenOrigin + gl_FragCoord.xy * cell;
+	vec2 toWorld = rteScreenOrigin + lightCenter * cell;
 	float transmittance = rteShadowFieldOn ? TerrainShadowTraced(fromWorld, toWorld) : TerrainShadowMarch(fromWorld, toWorld);
+
+	if (rteCacheMode) {
+		vec3 arriving = lightColor.rgb * falloff * transmittance;
+		vec3 toLight = normalize(vec3((lightCenter - gl_FragCoord.xy) * cell, lightRadius * 0.25));
+		FragColor = vec4(arriving, 0.0);
+		DirectionOut = vec4(toLight.xy * dot(arriving, vec3(0.2126, 0.7152, 0.0722)), 0.0, 0.0);
+		return;
+	}
 
 	if (rteUnitShadows > 0.0) {
 		bool fromSolid = !rteBeamMode && texture(rteSurface, gl_FragCoord.xy / rteScreenSize).b > 0.5;

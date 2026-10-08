@@ -62,6 +62,7 @@ namespace RTE {
 		glm::vec2 m_Direction{1.0F, 0.0F}; //!< For cone lights (flashlights): the direction the cone points, screen space (Y down).
 		float m_ConeCos = -2.0F; //!< Cosine of the cone's half angle; below -1 is an ordinary all-round light.
 		LightSource m_Source = LightSource::Other; //!< What registered it.
+		bool m_Steady = false; //!< A scenery lamp that shines all round without flickering or pulsing: drawn from the lamp cache when that's on (LightingSettings::LampCache).
 	};
 
 	/// One straight piece of a lightning bolt as seen by a player screen (PostProcessMan::GetLightningBolts).
@@ -202,7 +203,8 @@ namespace RTE {
 		/// @param radius Radius in pixels, where the light reaches zero.
 		/// @param intensity Brightness multiplier.
 		/// @param source What is registering it, for the lighting-by-source readout.
-		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
+		/// @param steady A scenery lamp that won't change from one frame to the next, for the lamp cache (see SceneLight::m_Steady).
+		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other, bool steady = false);
 
 		/// Registers a cone light (flashlight, headlamp) for the current frame.
 		/// @param pos Where the light comes from, scene coordinates.
