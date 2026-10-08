@@ -1697,10 +1697,23 @@ namespace {
 		EffectsParticles::SpawnExplosion(ground, 900.0F);
 		TerrainFire::QueueIgniteArea(ground, 12.0F);
 		TerrainFire::QueueIgniteArea(ground, 6.0F);
+		// Units within 30 px are struck: up to six charges driven down into the body, fewer the further off, so the blow lands as shots
+		// do, through wounds, armour and the unit's own scripts, and can take a limb. (It took up to 80 health off directly, which went
+		// round all of that and killed a 100-health unit outright within 6 px, never dismembering.)
 		for (Actor* actor: SandboxAccess::Actors()) {
 			float distance = g_SceneMan.ShortestDistance(ground, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
-			if (distance < 30.0F) {
-				actor->SetHealth(actor->GetHealth() - 80.0F * (1.0F - distance / 30.0F));
+			if (distance >= 30.0F) {
+				continue;
+			}
+			int charges = static_cast<int>(std::ceil(6.0F * (1.0F - distance / 30.0F)));
+			float above = std::max(actor->GetRadius(), 12.0F);
+			for (int charge = 0; charge < charges; ++charge) {
+				if (MovableObject* strike = CreateBaseObject("MOPixel", "Lightning Strike Charge")) {
+					strike->SetPos(actor->GetPos() + Vector((Random01() - 0.5F) * 8.0F, -above));
+					strike->SetVel(Vector((Random01() - 0.5F) * 6.0F, 80.0F));
+					strike->SetTeam(Activity::NoTeam);
+					g_MovableMan.AddParticle(strike);
+				}
 			}
 		}
 		if (!s_Thunder) {
