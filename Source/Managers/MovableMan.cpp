@@ -812,6 +812,8 @@ Actor* MovableMan::RemoveActor(MovableObject* pActorToRem) {
 	Actor* removed = nullptr;
 
 	if (pActorToRem) {
+		// Scripts can call this between updates while the sight-ray workers still index m_Actors, and the removed actor may then be freed by Lua GC. Let them finish first.
+		m_ActorsSeeFuture.wait();
 		for (std::deque<Actor*>::iterator itr = m_Actors.begin(); itr != m_Actors.end(); ++itr) {
 			if (*itr == pActorToRem) {
 				std::lock_guard<std::mutex> lock(m_ActorsMutex);
@@ -1339,6 +1341,9 @@ void MovableMan::Update() {
 
 	m_SimUpdateFrameNumber++;
 
+	// Finish our Seeing rays from last frame before anything here moves actors or changes m_Actors (the workers index it by position and read actor state).
+	m_ActorsSeeFuture.wait();
+
 	// ---TEMP ---
 	// These are here for multithreaded AI, but will be unnecessary when multithreaded-sim-and-render is in!
 	// Clear the MO color layer only if this is a drawn update
@@ -1371,9 +1376,6 @@ void MovableMan::Update() {
 	if (g_SettingsMan.GetForceImmediatePathingRequestCompletion() && g_SceneMan.GetScene()) {
 		g_SceneMan.GetScene()->BlockUntilAllPathingRequestsComplete();
 	}
-
-	// Finish our Seeing rays from last frame
-	m_ActorsSeeFuture.wait();
 
 	// Prior to controller/AI update, execute lua callbacks
 	g_LuaMan.ExecuteLuaScriptCallbacks();
