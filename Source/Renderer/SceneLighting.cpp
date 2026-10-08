@@ -2226,6 +2226,29 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 
+	// Energy beams (lightsaber blades): a white-hot core in a halo of the beam's colour, and a fainter wide glow around both for the bloom to spread.
+	{
+		std::vector<EnergyBeamSegment> beams;
+		g_PostProcessMan.GetEnergyBeams(Vector(origin.x, origin.y), width, height, beams);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		for (const EnergyBeamSegment& beam: beams) {
+			glm::vec2 along = beam.To - beam.From;
+			float length = glm::length(along);
+			float angle = length > 0.01F ? std::atan2(along.y, along.x) : 0.0F;
+			glm::vec2 middle = (beam.From + beam.To) * 0.5F;
+			glm::vec3 halo = beam.Color * beam.Color;
+			addQuad(middle, glm::vec2(length * 0.5F + beam.Width * 2.0F, beam.Width * 3.5F + 1.5F), angle, glm::min(halo * beam.Brightness * 0.35F, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+			addQuad(middle, glm::vec2(length * 0.5F + beam.Width, beam.Width * 1.6F + 0.5F), angle, glm::min(halo * beam.Brightness * 0.9F, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+			addQuad(middle, glm::vec2(length * 0.5F + beam.Width * 0.5F, beam.Width * 0.5F), angle, glm::min(glm::mix(beam.Color, glm::vec3(1.0F), 0.8F) * beam.Brightness * 1.2F, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+		}
+	}
+
 	// The fire of explosions: soft glowing balls, drawn into the glow buffer with the puff's round shape.
 	{
 		std::vector<EffectsParticles::Puff> fire;

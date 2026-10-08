@@ -12,6 +12,8 @@
 
 namespace RTE {
 
+	class Camera;
+
 #define SPEEDCOUNT 3
 
 	/// A set of Vector:s making up a motion path for a AtomGroup's limb. The

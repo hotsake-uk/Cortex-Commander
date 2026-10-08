@@ -21,6 +21,7 @@
 
 namespace RTE {
 
+	class Camera;
 	class MovableObject;
 	class Actor;
 	class HeldDevice;
