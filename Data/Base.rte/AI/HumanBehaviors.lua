@@ -1244,6 +1244,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 		else
 			if Owner.EquippedItem and ToHeldDevice(Owner.EquippedItem):IsReloading() then
 				ShootTimer:Reset();
+				HumanBehaviors.StopRangeStep(AI, Owner);
 				AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.Pos, AI.Target.Pos, false).Normalized;
 				-- Behind something for the reload, if there's something to be behind a few steps away; else flat on the ground.
 				if not HumanBehaviors.TakeCover(AI, Owner, AI.Target.Pos, "reload") and AI.lateralMoveState == Actor.LAT_STILL then
@@ -1341,6 +1342,15 @@ end
 -- defender stands; anyone else holds about half the weapon's reach (snipers most of it, explosives well clear of their own blast),
 -- closing in by the path when further off than that and backing off a step when much nearer, and otherwise shifts a step one way or
 -- the other now and then, so it isn't the same mark twice. The better the AI, the more it shifts.
+-- The step sideways HoldRange set, stopped (it is only reset when HoldRange is called again, which wants a weapon ready to hit the target:
+-- a step under way when the magazine ran dry was walked the whole reload, and on after the target died). Left alone for the units whose
+-- legs HoldRange doesn't have (a move order's, an aggressive one's).
+function HumanBehaviors.StopRangeStep(AI, Owner)
+	if not Owner.aggressive and SharedBehaviors.OrderKind(Owner) ~= "move" then
+		AI.lateralMoveState = Actor.LAT_STILL;
+	end
+end
+
 function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
 	local kind = SharedBehaviors.OrderKind(Owner);
 	if Owner.aggressive or kind == "move" then
