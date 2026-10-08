@@ -281,6 +281,13 @@ namespace RTE {
 		/// tilts about fourteen degrees); brakes a fall for its floor; hops when stuck and asks a new route when long stuck.
 		/// @return 0 on its way, 1 arrived, 2 no route to it (as AHuman::MoveAlongRoute).
 		int MoveAlongRoute();
+
+		/// How high a leap of the legs lifts this crab, in pixels (LM-8): the INI's LegJumpHeight, or by default less than a human's for the
+		/// body (a crab is heavy and low). 0 with no legs.
+		float GetLegJumpHeight() const;
+
+		/// Whether the legs can leap just now: standing on a floor, steady, not mantling, a moment after the last landing.
+		bool CanLeap() const;
 		/// Forgets the follower's state (a new order).
 		void ResetRouteMovement() override;
 
@@ -336,6 +343,13 @@ namespace RTE {
 		float m_AimRangeLowerLimit;
 		// Whether mouse input should be locked to the aim range, or whether we can "wander" out. For static emplacements like turrets, this is good, but for moving things it's a bit sticky.
 		bool m_LockMouseAimInput;
+		float m_LegJumpHeight; //!< How high a leap of the legs lifts it, px; below zero for the default (GetLegJumpHeight).
+		float m_LegJumpSpeed; //!< How fast a leap carries it forward, m/s.
+		bool m_Leaping; //!< In the air on a leap of the legs.
+		Timer m_LeapTimer; //!< Since the leap began, or the last landing.
+
+		/// A leap of the legs, on BODY_LEAP when it can (LM-8): up at the speed that rises the leap's height, forward the way the move key goes.
+		void UpdateLeap();
 
 		// AI States
 		enum DeviceHandlingState {
@@ -396,6 +410,13 @@ namespace RTE {
 			int impossibleSeen = 0; //!< The actor's impossible-answer count when last looked at: an answer is counted when it changes.
 			bool climbing = false; //!< In a climb begun from the ground for a point above.
 			Timer climbTimer; //!< Since the climb's burst.
+			long doorWaitID = 0; //!< The door it is holding short of (LM-8, as the human's), by unique ID.
+			Timer doorWaitTimer;
+			long doorIgnoreID = 0; //!< A door that didn't open: walked into, for 5 s.
+			Timer doorIgnoreTimer;
+			Timer senseRerouteTimer; //!< Since the sense last asked for a route round a wall the grid didn't know.
+			int remedy = 0; //!< The next stuck remedy to try (back off, leap, hop), round in turn.
+			Timer remedyTimer; //!< Since the last one began.
 		};
 		CrabMover m_CrabMover;
 
