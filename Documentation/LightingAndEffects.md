@@ -45,7 +45,7 @@ At night, stars and a moon appear on the sky layers. These are the background la
 
 **Shadows** (three settings, each a strength from 0 to 1 where 0 turns it off; sliders in the Graphics Lab; the quality presets set them):
 - **Shadows of units and objects** (`UnitShadows`, 0.85, Medium and up): soldiers, devices, doors, crates, craft and wreckage block light. A muzzle flash, flare, lamp or explosion throws their shadows across the walls and the ground, sharp at the feet and softer further away. Particles, smoke and flashes cast none, and a light isn't blocked by whatever is carrying it.
-- **Sun and moon shadows** (`SunShadows`, 0.55, Low and up): daylight has a direction, which turns with the time of day; at night it is the moon's, fainter.
+- **Sun and moon shadows** (`SunShadows`, 0.55, Low and up): daylight has a direction, which turns with the time of day; at night it is the moon's, fainter. With `SunShadowMap` (on from Low) the shadows come from a shadow map of the scene, crisp near what casts them and softer further off.
   - Where the sun can't be seen (the far side of a hill, under an overhang, in the shadow of a unit), ground, walls and units are dimmer and cooler. In full sun under open sky nothing changes.
   - Where the sun gets into a cave or a bunker through an opening, it lights the walls it falls on, and the beam shows in the air (the `GodRays` setting).
   - Shadows fade out around sunrise and sunset, when the sun and moon swap, and under rain, snow, ash and dust.
@@ -269,6 +269,7 @@ Press **F8** for **Photo Mode**:
 | `LightingShadowStrength` | 0.85 | How much terrain blocks dynamic lights. |
 | `UnitShadows` | 0.85 | How dark the shadows of units and objects are, from lights and from the sun. |
 | `SunShadows` | 0.55 | Directional daylight: how much dimmer and cooler things are where the sun (or moon) can't be seen. |
+| `SunShadowMap` / `SunShadowSoftness` | 1 / 1 | Where the sun can be seen comes from a shadow map of the scene: one strip holding, for each ray from the sun, how far down it gets before the ground. Shadows are pixel-sharp next to what casts them and soften with distance (softness 0–2), and follow the sun at once. Remade only when the sun moves a couple of pixels' worth or the ground changes (then only the rays through the change). Off, or on a scene that wraps vertically: from the light grid, as before. On from Low. |
 | `ContactShading` | 0.4 | How much background walls darken next to objects and solid ground. |
 | `SunDisc` | 1 | Brightness of the sun drawn in the sky by day. |
 | `CloudShadows` | 0.5 | How much drifting clouds shade the ground under open sky. |

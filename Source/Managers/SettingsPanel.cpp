@@ -263,6 +263,11 @@ void DebugMan::SettingsGUI() {
 		Tip("How much less light there is on the scene from eleven to two than at nightfall. 0.5 is half. Lamps, fires and headlamps aren't dimmed.");
 		Slider("Sun in the sky", &settings.SunDisc, 0.0F, 2.0F);
 		Slider("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
+		Check("Crisp sun shadows", &settings.SunShadowMap);
+		Tip("Shadows of hills, bunkers and overhangs are sharp right next to them and softer further off, and they follow the sun as it moves. Off: softer, blockier shadows from the light grid that catch up with the sun over a few frames. On from the Low preset up.");
+		if (settings.SunShadowMap) {
+			Slider("Sun shadow softness", &settings.SunShadowSoftness, 0.0F, 2.0F);
+		}
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		Check("Clouds in the sky", &settings.CloudLayer);
 		Tip("Clouds drift across the sky with the wind, the same clouds whose shadows cross the ground. They gather and darken in rain, snow and ash fall, break up again after, and catch the colours of dawn and dusk. Off: an empty sky, as before. On from the Medium preset up.");

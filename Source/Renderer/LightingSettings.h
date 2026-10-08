@@ -63,6 +63,8 @@ namespace RTE {
 			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
 			// Low lights its steady scenery lamps once into a map instead of every frame.
 			LampCache = quality == QualityLow;
+			// The sun's shadow map: remade only when the ground changes or the sun moves, from Low up (Potato has no sun shadows).
+			SunShadowMap = quality >= QualityLow;
 			// The wetness map: one small pass over the light grid a frame, from Medium up.
 			WetnessMap = quality >= QualityMedium;
 			// The cloud layer: a few noise reads per sky pixel, from Medium up.
@@ -215,6 +217,8 @@ namespace RTE {
 		bool LightShadowField = true; //!< Lights' terrain shadows are traced through a distance field of the terrain: thin walls stop light instead of leaking it, and shadows soften with distance from what casts them. Off: eleven evenly spaced samples of the light grid, as before.
 		float LightShadowSoftness = 1.0F; //!< How soft those shadows' edges are, 0 (sharp) to 2. Bigger lights soften more.
 		float UnitShadows = 0.85F; //!< How dark the shadows are that solid objects (units, devices, doors, wreckage) cast from lights and from the sun, 0 to 1. 0 turns them off.
+		bool SunShadowMap = true; //!< Sun (and moon) shadows from a shadow map of the scene: pixel-sharp next to what casts them and softer further off, and they follow the sun at once. Off: from the light grid, 4 px cells that catch up with the sun over a few frames, as before.
+		float SunShadowSoftness = 1.0F; //!< How soft those shadows grow with distance from what casts them, 0 (sharp) to 2.
 		float SunShadows = 0.55F; //!< Directional daylight: how much dimmer and cooler ground, walls and units are where the sun (or the moon at night) can't be seen, 0 to 1. 0 turns it off.
 		float ContactShading = 0.4F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.

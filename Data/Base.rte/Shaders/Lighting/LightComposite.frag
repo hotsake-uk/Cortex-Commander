@@ -25,6 +25,12 @@ uniform float rteBackgroundBlur; // How much the far background layers are softe
 uniform vec2 rteSunPosition; // Where the sun is in the sky, in screen pixels as gl_FragCoord (y 0 is the top of the player screen).
 uniform vec3 rteSunDisc; // The sun's color and brightness, linear. Black when it's down or hidden by weather.
 uniform float rteCloudShadows; // How much drifting clouds shade the ground, 0 for none.
+uniform bool rteSunMapOn; // Sun shadows from the sun's shadow map (SunShadowMap.frag) rather than the light grid.
+uniform sampler2D rteSunMap; // 1 row: for each ray from the sun, the scene y of the first solid point on it.
+uniform float rteSunMapSlope; // How far a ray moves in x per pixel down, as the map was made.
+uniform float rteSunMapStart; // Where the map's first ray crosses the top of the scene.
+uniform float rteSunMapTexel; // Scene pixels between its rays.
+uniform float rteSunMapSoftness; // How soft shadows grow with distance from what casts them, 0 (sharp) to 2.
 uniform float rteCloudDrift; // How far the clouds have drifted, in scene pixels.
 uniform float rteCloudLayer; // How solid the clouds drawn in the sky are, 0 for none (then the shadows are as they always were).
 uniform float rteCloudCover; // How much of the sky is cloud, 0 to 1; 0.5 is the spread the shadows always had.
@@ -216,6 +222,38 @@ vec4 SkyCloud(vec2 screenUV, vec3 skyLight) {
 	return vec4(color, amount);
 }
 
+// How far below the first solid point on its ray from the sun a point lies, in pixels: 0 or less is in sunlight.
+float SunMapDepth(vec2 worldPos, float offset) {
+	float ray = (worldPos.x + rteSunMapSlope * worldPos.y + offset - rteSunMapStart) / rteSunMapTexel;
+	return worldPos.y - texture(rteSunMap, vec2(ray / float(textureSize(rteSunMap, 0).x), 0.5)).r;
+}
+
+// How much of the sun reaches a point, from the shadow map: sharp next to what casts the shadow and softer the further it falls, from the average distance to the casters around.
+// Ground counts as in the sun for a little way under its surface, fading, so a face turned to the sun is lit and the far side of a hill is not.
+float SunFromMap(vec2 worldPos, bool terrain) {
+	float tolerance = terrain ? 3.0 : 0.5;
+	float search = 3.0 + 9.0 * rteSunMapSoftness;
+	float casterDistance = 0.0;
+	float casters = 0.0;
+	for (int i = -2; i <= 2; ++i) {
+		float depth = SunMapDepth(worldPos, float(i) * search * 0.5);
+		if (depth > tolerance) {
+			casterDistance += depth;
+			casters += 1.0;
+		}
+	}
+	if (casters == 0.0) {
+		return 1.0;
+	}
+	float width = max(0.75, casterDistance / casters * 0.035 * rteSunMapSoftness);
+	float lit = 0.0;
+	for (int i = -2; i <= 2; ++i) {
+		float depth = SunMapDepth(worldPos, float(i) * width * 0.5);
+		lit += terrain ? clamp(1.0 - (depth - tolerance) / 28.0, 0.0, 1.0) : 1.0 - smoothstep(tolerance, tolerance + 1.5, depth);
+	}
+	return lit / 5.0;
+}
+
 // The sun: a bright disc with a wide soft glow. Linear, added on top of the sky.
 vec3 SunDisc(vec2 fragCoord) {
 	float sunDistance = length(fragCoord - rteSunPosition);
@@ -369,7 +407,7 @@ void main() {
 		float daylight = sky;
 		float terrainShade = 0.0;
 		if (rteSunShadows > 0.0) {
-			float sunVisible = texture(rteSkyLight, worldPos / rteGridWorldSize).g;
+			float sunVisible = rteSunMapOn ? SunFromMap(worldPos, terrainPixel) : texture(rteSkyLight, worldPos / rteGridWorldSize).g;
 			float cloudShade = rteCloudShadows > 0.0 ? rteCloudShadows * CloudShade(worldPos) : 0.0;
 			if (!terrainPixel) {
 				// Clouds drift across the sun: wide soft shadows cross the scene with the wind.
@@ -474,7 +512,9 @@ void main() {
 	} else if (rteDebugView == 8) {
 		// Where the sun (or moon) can be seen from.
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
-		FragColor = vec4(vec3(pow(texture(rteSkyLight, worldPos / rteGridWorldSize).g, 2.2)), 1.0);
+		bool solid = texture(rteNormals, screenUV).a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
+		float sun = rteSunMapOn ? SunFromMap(worldPos, sceneDepth < rteForegroundDepth && !solid) : texture(rteSkyLight, worldPos / rteGridWorldSize).g;
+		FragColor = vec4(vec3(pow(sun, 2.2)), 1.0);
 		return;
 	} else if (rteDebugView == 4) {
 		FragColor = vec4(pow(texture(rteNormals, screenUV).rgb, vec3(2.2)), 1.0);
