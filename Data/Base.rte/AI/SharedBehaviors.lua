@@ -2933,6 +2933,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								if Climb then
 									climbHandled = true;
 									AI.proneState = AHuman.NOTPRONE;
+									if doorHold or doorGoal then
+										-- Paused for a door: the climb's stage and rise clocks wait with it. (Left running, a second's wait at a hatch
+										-- was a second of "no rise", and the climb failed the moment it went on.)
+										Climb.stageTimer:Reset();
+										if Climb.progressTimer then
+											Climb.progressTimer:Reset();
+										end
+									end
 									if not doorHold and not doorGoal then
 										local status, lat, aim = SharedBehaviors.ClimbUpdate(AI, Owner, Climb);
 										nextLatMove = lat;
