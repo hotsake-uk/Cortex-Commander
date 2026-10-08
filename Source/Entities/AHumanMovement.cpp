@@ -1222,8 +1222,72 @@ void AHuman::DrawMoverDebug() const {
 	} else if (mover.hasTakeOff) {
 		g_PrimitiveMan.DrawCirclePrimitive(mover.debugTakeOff, 4, takeOffColor);
 	}
+	// The flight as planned (white) beside the way it went (yellow), and over the head a bar of the tank: what the flight was expected to
+	// take (the white tick) against what it has burned (green while within it, red past it). Shown for four seconds after the flight ends.
+	const RouteMover::FlightRecord& record = mover.debugFlight;
+	if (!record.trail.empty() && (record.recording || !record.sinceEnd.IsPastSimMS(4000))) {
+		static const unsigned char plannedColor = static_cast<unsigned char>(Color(235, 235, 235).GetIndex());
+		static const unsigned char trailColor = static_cast<unsigned char>(Color(255, 220, 60).GetIndex());
+		static const unsigned char withinColor = static_cast<unsigned char>(Color(80, 220, 90).GetIndex());
+		static const unsigned char overColor = static_cast<unsigned char>(Color(240, 70, 60).GetIndex());
+		static const unsigned char barColor = static_cast<unsigned char>(Color(120, 120, 120).GetIndex());
+		for (size_t i = 1; i < record.planned.size(); ++i) {
+			g_PrimitiveMan.DrawLinePrimitive(record.planned[i - 1], record.planned[i], plannedColor);
+		}
+		for (size_t i = 1; i < record.trail.size(); ++i) {
+			g_PrimitiveMan.DrawLinePrimitive(record.trail[i - 1], record.trail[i], trailColor);
+		}
+		if (record.tank > 0.0F) {
+			const float width = 30.0F;
+			Vector barLeft = m_Pos + Vector(-width * 0.5F, -m_CharHeight * 0.6F - 10.0F);
+			float used = std::min(1.0F, record.fuelUsed / record.tank);
+			float predicted = std::min(1.0F, record.fuelPredicted / record.tank);
+			g_PrimitiveMan.DrawBoxPrimitive(barLeft, barLeft + Vector(width, 3.0F), barColor);
+			if (used > 0.0F) {
+				g_PrimitiveMan.DrawBoxFillPrimitive(barLeft, barLeft + Vector(width * used, 3.0F), record.fuelUsed > record.fuelPredicted ? overColor : withinColor);
+			}
+			g_PrimitiveMan.DrawLinePrimitive(barLeft + Vector(width * predicted, -2.0F), barLeft + Vector(width * predicted, 5.0F), plannedColor);
+			g_PrimitiveMan.DrawTextPrimitive(barLeft + Vector(width * 0.5F, -10.0F), "fuel " + std::to_string(static_cast<int>(record.fuelUsed)) + " of " + std::to_string(static_cast<int>(record.fuelPredicted)), true, 1);
+		}
+	}
 	std::string state = mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : "walk");
 	g_PrimitiveMan.DrawTextPrimitive(m_Pos + Vector(0.0F, -m_CharHeight * 0.6F), state, true, 1);
+}
+
+void AHuman::RecordFlightDebug() {
+	RouteMover::FlightRecord& record = m_Mover.debugFlight;
+	const RouteMover::Flight& flight = m_Mover.flight;
+	float fuel = m_pJetpack ? m_pJetpack->GetJetTimeLeft() : 0.0F;
+	if (flight.active) {
+		bool sameFlight = record.recording && record.takeOff.m_X == flight.takeOff.m_X && record.takeOff.m_Y == flight.takeOff.m_Y && record.landing.m_X == flight.landing.m_X && record.landing.m_Y == flight.landing.m_Y;
+		if (!sameFlight) {
+			// A new flight (seen the update after take-off, a pixel or two up): its plan in the body's place, as the pilot steers it.
+			record = RouteMover::FlightRecord();
+			record.recording = true;
+			record.takeOff = flight.takeOff;
+			record.landing = flight.landing;
+			record.planned.push_back(flight.takeOff);
+			if (flight.via) {
+				record.planned.push_back(flight.viaPoint);
+			}
+			float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F;
+			record.planned.push_back(Vector(flight.landing.m_X, flight.floorY - feet));
+			record.fuelPredicted = FlightFuelNeeded(flight.landing, flight.floorY);
+			record.tank = m_pJetpack ? m_pJetpack->GetJetTimeTotal() : 0.0F;
+			record.lastFuel = fuel;
+		}
+		record.fuelUsed += std::max(0.0F, record.lastFuel - fuel);
+		record.lastFuel = fuel;
+		if (record.trail.empty() || g_SceneMan.ShortestDistance(record.trail.back(), m_Pos).GetMagnitude() >= 4.0F) {
+			record.trail.push_back(m_Pos);
+			if (record.trail.size() > 240) {
+				record.trail.pop_front();
+			}
+		}
+	} else if (record.recording) {
+		record.recording = false;
+		record.sinceEnd.Reset();
+	}
 }
 
 void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
@@ -1249,7 +1313,10 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 int AHuman::MoveAlongRoute() {
 	RouteMover& mover = m_Mover;
 	if (g_SettingsMan.NavDebugOverlay() >= 2) {
+		RecordFlightDebug();
 		DrawMoverDebug();
+	} else if (!mover.debugFlight.trail.empty()) {
+		mover.debugFlight = RouteMover::FlightRecord();
 	}
 	if (!mover.begun) {
 		mover.begun = true;
