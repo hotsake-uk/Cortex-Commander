@@ -246,6 +246,12 @@ void Arm::UpdateHandCurrentOffset(bool armHasParent, bool heldDeviceIsAThrownDev
 						heldFirearm->SetInheritedRotAngleOffset(0);
 					}
 				}
+				if (m_HeldDevice->GetMeleeSwingArc() > 0) {
+					// The engine's melee swing turns the device, and the hand with it, about the shoulder.
+					float swingAngle = m_HeldDevice->GetMeleeSwingAngle();
+					m_HeldDevice->SetInheritedRotAngleOffset(swingAngle);
+					targetOffset.RadRotate(swingAngle * GetFlipFactor());
+				}
 			} else if (bool parentIsStable = dynamic_cast<Actor*>(m_Parent)->IsStatus(Actor::Status::STABLE); parentIsStable && m_HeldDeviceThisArmIsTryingToSupport) {
 				targetOffset = g_SceneMan.ShortestDistance(m_JointPos, m_HeldDeviceThisArmIsTryingToSupport->GetSupportPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
 			} else {
