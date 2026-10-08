@@ -241,6 +241,14 @@ namespace RTE {
 		/// @return Whether no searches were in flight when it returned.
 		bool WaitForPathingRequests(int timeoutMS = 10000);
 
+		/// Keeps new async searches back from now on, queued, so the ones running can finish on their own and the grid's costs can then be
+		/// rewritten with nothing reading them, without the main thread waiting on them. See ReleaseHeldRequests.
+		/// @return Whether no search is running or queued now, so the grid can be rewritten.
+		bool HoldNewRequests();
+
+		/// Lets new async searches go again, and sends the ones kept back by HoldNewRequests, in the order they were asked for.
+		void ReleaseHeldRequests();
+
 		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
 		/// green where the searcher stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs,
 		/// magenta for the stairs, pale green arcs for the searcher's leaps.
@@ -439,6 +447,9 @@ namespace RTE {
 		bool m_WrapsX; //!< Whether the pathing grid wraps on the X axis.
 		bool m_WrapsY; //!< Whether the pathing grid wraps on the Y axis.
 		std::atomic<int> m_CurrentPathingRequests; //!< The number of active async pathing requests.
+		std::mutex m_HeldRequestsMutex; //!< Guards m_HoldingNewRequests, m_HeldRequests, and the count going up from zero when a search is sent.
+		bool m_HoldingNewRequests = false; //!< Whether new async searches are kept back (HoldNewRequests).
+		std::vector<std::function<void()>> m_HeldRequests; //!< The searches kept back, each the sending of one.
 
 		/// Gets the pather for this thread. Lazily-initialized for each new thread that needs a pather.
 		/// @return The pather for this thread.

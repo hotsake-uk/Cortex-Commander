@@ -262,6 +262,10 @@ bool SceneEditorGUI::TestBrainResidence(bool noBrainIsOK) {
 	}
 
 	// Block on our path request completing (yielding: spun on with none, this took a core from the very search it waited on).
+	// (A search held back while a grid waits to be rewritten would never finish under this wait.)
+	if (m_PathRequest && !m_PathRequest->complete && g_SceneMan.GetScene()) {
+		g_SceneMan.GetScene()->ReleaseHeldPathRequests();
+	}
 	while (m_PathRequest && !m_PathRequest->complete) {
 		std::this_thread::yield();
 	}
@@ -750,6 +754,10 @@ void SceneEditorGUI::Update() {
 			// Placing governor brain, which actually just puts it back into the resident brain roster
 			if (m_PreviousMode == INSTALLINGBRAIN) {
 				// Force our path request to complete so we know whether we can place or not
+				// (A search held back while a grid waits to be rewritten would never finish under this wait.)
+				if (m_PathRequest && !m_PathRequest->complete && g_SceneMan.GetScene()) {
+					g_SceneMan.GetScene()->ReleaseHeldPathRequests();
+				}
 				while (m_PathRequest && !m_PathRequest->complete) {
 					std::this_thread::yield();
 				}

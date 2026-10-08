@@ -2416,6 +2416,12 @@ void Scene::ResetPathFinding() {
 	}
 }
 
+void Scene::ReleaseHeldPathRequests() {
+	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
+		GetPathFinder(static_cast<Activity::Teams>(team)).ReleaseHeldRequests();
+	}
+}
+
 bool Scene::BlockUntilAllPathingRequestsComplete() {
 	bool allComplete = true;
 	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
@@ -2462,14 +2468,25 @@ void Scene::UpdatePathFinding() {
 		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty() && noTeamPathFinder.GetWaitingNodeCount() == 0 && !teamGridBehind()) || !starvedTimer.IsPastRealMS(300)) {
 			return;
 		}
-		if (!BlockUntilAllPathingRequestsComplete()) {
-			// A search still running after the wait's timeout would read node costs written under it, so the grid is left as it is this time
-			// and the changes wait for a later call (they stay queued); the timer makes that call wait its turn again.
-			starvedTimer.Reset();
+		// Starved: new searches are held back on every grid, and the ones running finish on their own threads; a later call, finding none left,
+		// rewrites the grid and lets the held ones go. (The main thread waited for them here, up to the longest search, and a search to a place
+		// with no way through goes over the whole map: hitches of 150 to 380 ms every so often in a fight, INC-STALL-3.)
+		bool idle = true;
+		for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
+			if (!GetPathFinder(static_cast<Activity::Teams>(team)).HoldNewRequests()) {
+				idle = false;
+			}
+		}
+		if (!idle) {
 			return;
 		}
 	}
 	starvedTimer.Reset();
+	// Whatever this call does, the grids take new searches again when it's over, and those held back meanwhile are sent.
+	struct ReleaseHeld {
+		Scene* scene;
+		~ReleaseHeld() { scene->ReleaseHeldPathRequests(); }
+	} releaseHeld{this};
 
 	int nodesToUpdate = nodeUpdatesPerCall / std::max(1, g_ActivityMan.GetActivity()->GetTeamCount());
 	if (m_pTerrain->GetUpdatedMaterialAreas().size() > maxUnupdatedMaterialAreas || noTeamPathFinder.GetWaitingNodeCount() > static_cast<size_t>(nodesToUpdate) * 4) {
