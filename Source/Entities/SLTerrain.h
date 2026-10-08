@@ -190,6 +190,14 @@ namespace RTE {
 			NoteMaterialChange(pixelX, pixelY);
 		}
 
+		/// Records that the material pixels in a box changed, for terrain changed by drawing straight to the material bitmap rather than through SetMaterialPixel. Safe to call from any thread.
+		/// The box may be unwrapped (running past the scene's edges): whatever reads it takes that as a change on both sides of the seam.
+		/// @param minX, minY, maxX, maxY The box, in scene pixels, both ends included.
+		static void NoteMaterialChangeBox(int minX, int minY, int maxX, int maxY) {
+			NoteMaterialChange(minX, minY);
+			NoteMaterialChange(maxX, maxY);
+		}
+
 		/// Takes the box around every material pixel changed since this was last called, for whatever keeps its own picture of the terrain up to date (the lighting's grid).
 		/// @return False if nothing changed. Otherwise the box is in the arguments, in scene pixels, both ends included.
 		static bool TakeChangedArea(int& minX, int& minY, int& maxX, int& maxY) {

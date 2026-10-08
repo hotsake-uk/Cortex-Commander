@@ -336,6 +336,8 @@ void TerrainObject::DrawToTerrain(SLTerrain* terrain) {
 	if (HasMaterialBitmap()) {
 		draw_sprite(terrainMatBitmap, m_MaterialBitmap, posOnScene.GetFloorIntX(), posOnScene.GetFloorIntY());
 		terrain->AddUpdatedMaterialArea(Box(posOnScene, static_cast<float>(m_MaterialBitmap->w), static_cast<float>(m_MaterialBitmap->h)));
+		// For the lighting's grid, which otherwise only hears of single pixels set through SetMaterialPixel. Unwrapped; a piece across the seam is a change on both sides of it.
+		SLTerrain::NoteMaterialChangeBox(posOnScene.GetFloorIntX(), posOnScene.GetFloorIntY(), posOnScene.GetFloorIntX() + m_MaterialBitmap->w - 1, posOnScene.GetFloorIntY() + m_MaterialBitmap->h - 1);
 	}
 	if (HasBGColorBitmap()) {
 		draw_sprite(terrainBGBitmap, m_BGColorBitmap, posOnScene.GetFloorIntX(), posOnScene.GetFloorIntY());
