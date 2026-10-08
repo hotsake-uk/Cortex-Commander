@@ -580,6 +580,14 @@ void DebugMan::SettingsGUI() {
 		Slider("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 		Slider("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 		Slider("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
+		if (settings.Scanlines > 0.0F) {
+			Combo("CRT style", &settings.CRTStyle, "Scanlines\0Aperture grille\0Shadow mask\0Scanlines with bloom\0");
+			Tip("What the CRT effect looks like: dark lines between rows (as before), the vertical colour stripes of a Trinitron-style tube, the dot triads of a shadow-mask tube, or scanlines that bright pixels bloom across.");
+		}
+		Slider("Upscale sharpness", &settings.UpscaleSharpness, 0.0F, 1.0F);
+		Tip("How crisp the picture is when it's scaled up to the window. 1: every game pixel an even, sharp block (as before). 0: plainly smoothed.");
+		Toggle("Whole-number scaling", g_WindowMan.GetIntegerScaling(), [](bool on) { g_WindowMan.SetIntegerScaling(on); });
+		Tip("Scale the picture to the window by a whole number only, so every game pixel is exactly as many screen pixels, with bars around it. Off: fill as much of the window as fits.");
 		Check("Grade answers events", &settings.EventLooks);
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {
