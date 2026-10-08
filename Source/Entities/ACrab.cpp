@@ -748,7 +748,7 @@ MovableObject* ACrab::LookForMOs(float FOVSpread, unsigned char ignoreMaterial, 
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// Night: the look ray reaches less far in the dark (see GetNightSightScale).
 	lookVector *= GetNightSightScale();
