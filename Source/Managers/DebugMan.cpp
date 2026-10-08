@@ -127,7 +127,9 @@ void DebugMan::PrepareFonts() {
 	if (m_PixelFonts[0] || m_PixelFontTries > 600) {
 		return;
 	}
-	if (++m_PixelFontTries < 5) {
+	// (First at the fifth present, which is when it normally works; if the sheet can't be had yet, again every 60 presents rather than every
+	// one, so a sheet that never loads is decoded ten times in the 600 presents tried, not nearly 600.)
+	if (++m_PixelFontTries < 5 || (m_PixelFontTries - 5) % 60 != 0) {
 		return;
 	}
 	std::string path = "Base.rte/GUIs/Skins/FontSmall.png";

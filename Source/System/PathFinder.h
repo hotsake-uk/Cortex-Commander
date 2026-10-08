@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include <vector>
+#include <unordered_map>
 
 using namespace micropather;
 
@@ -392,6 +393,14 @@ namespace RTE {
 		mutable std::mutex m_TeamAvoidMutex;
 		static constexpr size_t c_TeamAvoidKept = 256; //!< How many team avoid places, and how many team avoid flights, are kept at most.
 		std::deque<DebugSolve> m_RecentSolves; //!< The last few searches, for the recent path solves overlay (see GetRecentSolves).
+		/// The nav overlay's leap links, per floor node, kept for half a second (DrawDebug): worked out afresh every sim update for every node in
+		/// view they were 100 k+ ray casts an update on the main thread. Forgotten when the searcher's leap changes, or when the view has moved on far enough to fill it.
+		struct DebugLeaps {
+			double TimeMS = 0.0;
+			std::vector<micropather::StateCost> Links;
+		};
+		std::unordered_map<const PathNode*, DebugLeaps> m_DebugLeaps;
+		std::array<float, 4> m_DebugLeapsAgent{}; //!< The leap height, leap speed, standing height and mantle height the kept links were found for.
 		mutable std::mutex m_RecentSolvesMutex;
 		static constexpr size_t c_RecentSolvesKept = 8;
 
