@@ -2585,6 +2585,31 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("status", m_Status);
 	fields.push_back({"aiMode", m_AIMode >= 0 && m_AIMode < static_cast<int>(std::size(modeNames)) ? modeNames[m_AIMode] : std::to_string(m_AIMode), true});
 	flag("playerControlled", IsPlayerControlled());
+	// The standing order (AI6-2): what the unit was told to do, since the sandbox stopped keeping it in the Sandbox... number values.
+	const StandingOrder& order = m_StandingOrder;
+	flag("orderAttack", order.Attack);
+	if (order.TargetID != 0) {
+		number("orderTarget", static_cast<double>(order.TargetID));
+	}
+	if (order.AutoTargetID != 0) {
+		number("orderAutoTarget", static_cast<double>(order.AutoTargetID));
+	}
+	if (order.HasAttackPlace) {
+		number("orderAttackX", std::floor(order.AttackPlace.m_X));
+		number("orderAttackY", std::floor(order.AttackPlace.m_Y));
+	}
+	if (order.HasPost) {
+		number("orderPostX", std::floor(order.Post.m_X));
+		number("orderPostY", std::floor(order.Post.m_Y));
+		if (order.PostFacing != 0) {
+			fields.push_back({"orderPostFacing", order.PostFacing < 0 ? "left" : "right", true});
+		}
+	}
+	flag("orderHold", order.Hold);
+	static const char* const weaponRuleNames[] = {"at will", "return fire", "hold fire"};
+	static const char* const movementRuleNames[] = {"follow order", "engage", "move only", "hold ground"};
+	fields.push_back({"weaponRule", m_WeaponRule >= 0 && m_WeaponRule < static_cast<int>(std::size(weaponRuleNames)) ? weaponRuleNames[m_WeaponRule] : std::to_string(m_WeaponRule), true});
+	fields.push_back({"movementRule", order.Movement >= 0 && order.Movement < static_cast<int>(std::size(movementRuleNames)) ? movementRuleNames[order.Movement] : std::to_string(order.Movement), true});
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());

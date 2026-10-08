@@ -276,7 +276,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom));
 		// Settings saved before the shadow effects existed have no values for them: follow the saved preset. Values in the file come after this and win.
 		g_PostProcessMan.GetLightingSettings().ApplyShadowPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+		// The light-spreading steps weren't saved before: follow the saved preset too (Low 3, Ultra 12), so they don't go back to 6.
+		LightingSettings preset;
+		preset.ApplyQualityPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+		g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = preset.PropagationIterationsPerFrame;
 	});
+	MatchProperty("LightingPropagationSteps", { g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = std::clamp(std::stoi(reader.ReadPropValue()), 1, 32); });
 	MatchProperty("UnitShadows", { g_PostProcessMan.GetLightingSettings().UnitShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadows", { g_PostProcessMan.GetLightingSettings().SunShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadowMap", { g_PostProcessMan.GetLightingSettings().SunShadowMap = std::stoi(reader.ReadPropValue()) != 0; });
@@ -612,6 +617,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingForegroundAmbient", WriteVec3(lighting.ForegroundAmbient));
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
+	writer.NewPropertyWithValue("LightingPropagationSteps", lighting.PropagationIterationsPerFrame);
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
 	writer.NewPropertyWithValue("FogVolume", lighting.FogVolume);
 	writer.NewPropertyWithValue("FogMorningMist", lighting.FogMorningMist);

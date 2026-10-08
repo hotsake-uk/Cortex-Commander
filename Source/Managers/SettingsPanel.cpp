@@ -450,6 +450,7 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Loose sand and snow slide", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
+		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);

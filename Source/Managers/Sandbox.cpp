@@ -1,4 +1,5 @@
 #include "SandboxInternal.h"
+#include "ActorWater.h"
 #include "Weather.h"
 
 bool Sandbox::s_Open = false;
@@ -496,6 +497,19 @@ void Sandbox::DrawGUI() {
 		}
 		banner(hint.c_str(), 8.0F, IM_COL32(255, 255, 255, 255), std::clamp(s_PlayHintSeconds, 0.0F, 1.0F));
 	}
+	{
+		// The swim keys (LM-4), the first time the unit you play is in liquid over its waist.
+		static long swimHintedFor = 0;
+		static float swimHintSeconds = 0.0F;
+		if (s_Possessed && s_PossessedID != swimHintedFor && g_MovableMan.IsActor(s_Possessed) && static_cast<long>(s_Possessed->GetUniqueID()) == s_PossessedID && ActorWater::IsEnabled() && ActorWater::GetDepth(s_Possessed) >= 2) {
+			swimHintedFor = s_PossessedID;
+			swimHintSeconds = 7.0F;
+		}
+		if (swimHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
+			swimHintSeconds -= ImGui::GetIO().DeltaTime;
+			banner("Swimming: Up or Jump strokes up, Down or Crouch dives    Air runs out with the head under: watch the Air gauge", 34.0F, IM_COL32(150, 210, 255, 255), std::clamp(swimHintSeconds, 0.0F, 1.0F));
+		}
+	}
 	if (Controller::IsAIPaused() && InGame()) {
 		// A reminder that nobody will move until it's resumed.
 		const char* banner = "AI PAUSED";
@@ -555,7 +569,8 @@ void Sandbox::DrawGUI() {
 		}
 	}
 	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
-	if (InGame() && io.KeyCtrl && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
+	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
 		QueueSimChange(Tool::UndoTerrain);
 	}
 	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after

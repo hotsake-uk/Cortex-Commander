@@ -1354,7 +1354,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("stuckLevel", mover.stuckLevel);
 	{
 		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
-		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", false});
+		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
 	if (mover.fuelWaiting) {

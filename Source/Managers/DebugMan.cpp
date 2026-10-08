@@ -394,6 +394,13 @@ void DebugMan::DrawImGui() {
 	if (m_ShowWorldDebug) {
 		SettingsGUI();
 	}
+	// F6 changes are kept when the panel closes (the game-only switches there, mantling, hit-stop, frame cap and the rest, are on no other page that saves).
+	// The atmosphere saved is still the player's own, as "Keep for next time" leaves it, so a scene's weather isn't written.
+	static bool settingsWereOpen = false;
+	if (settingsWereOpen && !m_ShowWorldDebug) {
+		g_SettingsMan.UpdateSettingsFile();
+	}
+	settingsWereOpen = m_ShowWorldDebug;
 
 	Sandbox::DrawGUI();
 	UpdateFreeze();
