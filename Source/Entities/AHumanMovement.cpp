@@ -234,6 +234,12 @@ void AHuman::UpdateLeap() {
 	float rise = std::sqrt(2.0F * gravity * GetLegJumpHeight() * c_MPP);
 	float direction = ctrl.IsState(MOVE_RIGHT) ? 1.0F : (ctrl.IsState(MOVE_LEFT) ? -1.0F : 0.0F);
 	float across = direction != 0.0F ? direction * std::max(m_LegJumpSpeed, m_Vel.m_X * direction) : m_Vel.m_X;
+	// The AI leaps at the leap's own speed, the speed the path grid checked the arc at (PathFinder::LeapFits, PathAgent::LeapSpeed). At a
+	// run's speed, as the route-follower runs, it flew further than checked: into the wall at the back of a two-node ledge, or past a
+	// ledge one node wide. (A player's leap keeps its run-up.)
+	if (direction != 0.0F && m_Controller.GetInputMode() == Controller::CIM_AI) {
+		across = direction * m_LegJumpSpeed;
+	}
 	m_Vel.SetXY(across, std::min(m_Vel.m_Y, 0.0F) - rise);
 	m_Leaping = true;
 	m_LeapTimer.Reset();
