@@ -5,10 +5,17 @@
 #include "System.h"
 
 #include <string_view>
+#include <atomic>
+#include <thread>
 
 namespace RTE {
 
 	RandomGenerator g_RandomGenerator;
+
+	namespace {
+		std::atomic<std::thread::id> s_SimThread{}; //!< The thread SeedRNG was last called on.
+		std::atomic<uint32_t> s_OtherThreadGenerators{0}; //!< How many other threads have made their own generator, to seed each one differently.
+	} // namespace
 
 	void SeedRNG() {
 		// Use a constant seed for determinism.
@@ -29,6 +36,19 @@ namespace RTE {
 		}();
 
 		g_RandomGenerator.Seed(constSeed);
+		s_SimThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
+	}
+
+	RandomGenerator& ThisThreadsRandomGenerator() {
+		if (std::this_thread::get_id() == s_SimThread.load(std::memory_order_relaxed)) {
+			return g_RandomGenerator;
+		}
+		thread_local RandomGenerator otherThreads = []() {
+			RandomGenerator generator;
+			generator.Seed(0x6A09E667u + 0x9E3779B9u * s_OtherThreadGenerators.fetch_add(1, std::memory_order_relaxed));
+			return generator;
+		}();
+		return otherThreads;
 	}
 
 	float Lerp(float scaleStart, float scaleEnd, float startValue, float endValue, float progressScalar) {
