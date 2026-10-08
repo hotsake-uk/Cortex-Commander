@@ -323,7 +323,16 @@ function NativeCrabAI:Update(Owner)
 		if self.Target and MovableMan:ValidMO(self.Target) then
 			self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 		end
+		-- (And as the humans do, AC-9: shot by an enemy it has just lost sight of, it works round to where it can shoot back.)
+		if self.LastHealth and Owner.Health < self.LastHealth then
+			self.HitTimer = self.HitTimer or Timer();
+			self.HitTimer:Reset();
+		end
+		self.LastHealth = Owner.Health;
 		SharedBehaviors.FlankUpdate(self, Owner);
+		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
+			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+		end
 		SharedBehaviors.RetreatUpdate(self, Owner);
 		SharedBehaviors.RememberUpdate(self, Owner);
 
