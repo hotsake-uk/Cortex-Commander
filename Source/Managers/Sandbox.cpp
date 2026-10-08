@@ -249,6 +249,11 @@ namespace {
 		MoveTo
 	};
 	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Dig for gold\0Move to a place\0";
+	// The orders a unit can be made with (a barracks' trainees, a script's units): all but "Move to a place", which needs a place clicked.
+	// (Offered all eight, a barracks told "Dig for gold" or "Move to a place" trained units that did nothing: the number was clamped to
+	// "Do nothing" on the way in.)
+	constexpr const char* c_UnitOrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Dig for gold\0";
+	constexpr int c_LastUnitOrder = static_cast<int>(Order::DigGold);
 	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
 	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
 	constexpr const char* c_AutoTargetTag = "SandboxAutoTarget"; //!< Number value on units told to attack the nearest enemy: the unique ID of the one picked for them, which isn't held to.
@@ -2485,7 +2490,8 @@ namespace {
 			case Tool::Barracks:
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
-					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(stroke.Orders), stroke.Count);
+					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
+					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(stroke.Orders == Order::MoveTo ? Order::Hold : stroke.Orders), stroke.Count);
 				}
 				break;
 			case Tool::Extractor:
@@ -4578,7 +4584,8 @@ namespace {
 						}
 						ImGui::EndCombo();
 					}
-					ImGui::Combo("Their orders", &building.Orders, c_OrderNames);
+					building.Orders = std::clamp(building.Orders, 0, c_LastUnitOrder);
+					ImGui::Combo("Their orders", &building.Orders, c_UnitOrderNames);
 					ImGui::SliderInt("Keeps this many alive", &building.KeepAlive, 1, 20);
 					ImGui::Text("%d alive, %d trained in all. One takes %.0f s%s.", static_cast<int>(building.Alive.size()), building.Produced, Colony::TrainingSeconds(std::max(Sandbox::UnitCost(building.Unit), 20.0F)),
 					            Colony::Free() ? "" : (" and " + std::to_string(static_cast<int>(std::max(Sandbox::UnitCost(building.Unit), 20.0F))) + " supply").c_str());
@@ -5136,7 +5143,7 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	Stroke stroke;
 	stroke.Position = position;
 	stroke.Team = std::clamp(team, 0, c_Sides - 1);
-	stroke.Orders = static_cast<Order>(std::clamp(order, 0, static_cast<int>(Order::Idle)));
+	stroke.Orders = static_cast<Order>(std::clamp(order, 0, c_LastUnitOrder));
 	stroke.Count = std::max(count, 1);
 	stroke.Radius = std::max(count, 1);
 	if (ContainsIgnoringCase(toolName, "Orders") && toolName.size() == 6) {
@@ -5285,7 +5292,7 @@ Actor* Sandbox::SpawnUnit(const std::string& presetName, int team, const Vector&
 		BuildCatalogue();
 	}
 	const Preset* preset = FindPreset(s_Units, presetName);
-	Actor* actor = preset ? CreateUnit(*preset, team, 0, static_cast<Order>(std::clamp(order, 0, static_cast<int>(Order::Idle)))) : nullptr;
+	Actor* actor = preset ? CreateUnit(*preset, team, 0, static_cast<Order>(std::clamp(order, 0, c_LastUnitOrder))) : nullptr;
 	if (!actor) {
 		return nullptr;
 	}
