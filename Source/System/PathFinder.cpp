@@ -70,6 +70,7 @@ thread_local float s_BreachStrength = 0.0F;
 // The searcher's size: head room to stand and to crawl, and half its width.
 thread_local float s_StandHeight = 40.0F;
 thread_local float s_CrawlHeight = 22.0F;
+thread_local float s_CrouchHeight = 40.0F; // Head room to walk crouched: the standing height for a searcher with no crouch (PathAgent::CrouchHeight).
 thread_local float s_HalfWidth = 6.0F;
 thread_local bool s_WalksStairs = false;
 thread_local bool s_ClimbsLadders = false; // Whether the searcher climbs ladders (PathAgent::ClimbsLadders).
@@ -518,6 +519,7 @@ void PathFinder::GetRecentSolves(std::vector<DebugSolve>& solves) const {
 void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_StandHeight = agent.StandHeight;
 	s_CrawlHeight = agent.CrawlHeight;
+	s_CrouchHeight = agent.CrouchHeight > 0.0F ? std::clamp(agent.CrouchHeight, agent.CrawlHeight, agent.StandHeight) : agent.StandHeight;
 	s_HalfWidth = agent.HalfWidth;
 	s_WalksStairs = agent.WalksStairs;
 	s_ClimbsLadders = agent.ClimbsLadders;
@@ -561,6 +563,7 @@ namespace {
 		float BreachStrength = s_BreachStrength;
 		float StandHeight = s_StandHeight;
 		float CrawlHeight = s_CrawlHeight;
+		float CrouchHeight = s_CrouchHeight;
 		float HalfWidth = s_HalfWidth;
 		bool WalksStairs = s_WalksStairs;
 		bool ClimbsLadders = s_ClimbsLadders;
@@ -582,6 +585,7 @@ namespace {
 			s_BreachStrength = BreachStrength;
 			s_StandHeight = StandHeight;
 			s_CrawlHeight = CrawlHeight;
+			s_CrouchHeight = CrouchHeight;
 			s_HalfWidth = HalfWidth;
 			s_WalksStairs = WalksStairs;
 			s_ClimbsLadders = ClimbsLadders;
@@ -930,7 +934,8 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 				float walk = static_cast<float>(k + 1);
 				float effort = rise / static_cast<float>(m_NodeDimension);
-				float crawl = room < s_StandHeight ? walk * 2.0F : 0.0F;
+				// (Doubled for a crawl over it; with room to cross it crouched, only the crouch's slowing: see HeadRoomFactor.)
+				float crawl = room < s_CrouchHeight ? walk * 2.0F : (room < s_StandHeight ? walk * 0.15F : 0.0F);
 				adjCost.cost = walk + 0.5F + effort + crawl + radiatedCost;
 				adjCost.state = const_cast<PathNode*>(to);
 				adjacentList->push_back(adjCost);
@@ -1319,8 +1324,11 @@ float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const
 	if (static_cast<float>(headRoom) < s_CrawlHeight) {
 		return 1000.0F;
 	}
-	if (static_cast<float>(headRoom) < s_StandHeight) {
+	if (static_cast<float>(headRoom) < s_CrouchHeight) {
 		return 1.4F; // A crawl is slower; much dearer than this and a tunnel was worth flying over the top of.
+	}
+	if (static_cast<float>(headRoom) < s_StandHeight) {
+		return 1.15F; // A crouched walk, a little slower than upright (CrouchWalkSpeedMultiplier) and much quicker than a crawl.
 	}
 	return 1.0F;
 }
@@ -1395,8 +1403,11 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	}
 	// (Only where both have floors: see HeadRoomFactor.)
 	int headRoom = HasFloor(*to) ? std::min(from->FreeHeight, to->FreeHeight) : from->FreeHeight;
-	if (static_cast<float>(headRoom) < s_StandHeight) {
+	if (static_cast<float>(headRoom) < s_CrouchHeight) {
 		return PathStepKind::Crawl;
+	}
+	if (static_cast<float>(headRoom) < s_StandHeight) {
+		return PathStepKind::Crouch;
 	}
 	return PathStepKind::Walk;
 }
@@ -1552,6 +1563,7 @@ float PathFinder::ColumnGrazeCost(float x, float fromY, float toY) const {
 void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 	static const unsigned char standColor = static_cast<unsigned char>(Color(80, 220, 90).GetIndex());
 	static const unsigned char crawlColor = static_cast<unsigned char>(Color(240, 210, 60).GetIndex());
+	static const unsigned char crouchColor = static_cast<unsigned char>(Color(170, 230, 70).GetIndex());
 	static const unsigned char noRoomColor = static_cast<unsigned char>(Color(230, 60, 50).GetIndex());
 	static const unsigned char stepColor = static_cast<unsigned char>(Color(70, 220, 230).GetIndex());
 	static const unsigned char stairsColor = static_cast<unsigned char>(Color(220, 80, 220).GetIndex());
@@ -1561,6 +1573,7 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 	// The grid is the same for every searcher; what fits is the searcher's: the inspected unit's sizes (see Scene::Update), or a soldier's.
 	const float stand = agent.StandHeight;
 	const float crawl = agent.CrawlHeight;
+	const float crouch = agent.CrouchHeight > 0.0F ? std::clamp(agent.CrouchHeight, crawl, stand) : stand;
 	// The leaps are the searcher's too (its legs' height and speed), so the overlay looks at the grid as it would.
 	SearcherState kept;
 	ApplyAgent(agent);
@@ -1586,7 +1599,7 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 			}
 			Vector standing(node->Anchor.m_X, node->Surface - 3.0F);
 			float free = static_cast<float>(node->FreeHeight);
-			unsigned char color = free >= stand ? standColor : (free >= crawl ? crawlColor : noRoomColor);
+			unsigned char color = free >= stand ? standColor : (free >= crouch ? crouchColor : (free >= crawl ? crawlColor : noRoomColor));
 			g_PrimitiveMan.DrawCircleFillPrimitive(standing, 2, color);
 			for (int k = 0; k < 2; ++k) {
 				if (node->StepOverRise[k] > 0.0F) {
