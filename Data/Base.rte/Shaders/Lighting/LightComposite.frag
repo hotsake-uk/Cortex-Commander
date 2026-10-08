@@ -67,6 +67,7 @@ uniform float rteWaterReflection; // How strongly water mirrors the scene above 
 uniform sampler2D rteFog; // World grid, R = how thick mist or dust hangs in the air there (FogUpdate.frag).
 uniform float rteFogStrength; // How thick the fog volume is drawn, 0 for none.
 uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
+uniform bool rteWaterSoftReflection; // The reflection is softened with depth (a blur that widens, a fade that deepens), feathered where the open air above the pool ends, and not clipped hard where it leaves the screen or meets other water. Off: sharp and cut off, as before.
 uniform bool rteWaterMirrorSurface; // The reflection is wobbled by the tilt of the surface above each pixel (the terrain pass's normal there, which follows the flow), the whole column together. Off: by the pixel's own tilt, as before.
 
 // Whether a pixel of the player screen is water: the terrain pass flags it with a quarter in the surface buffer's B.
@@ -75,6 +76,12 @@ bool WaterAt(vec2 position) {
 		return false;
 	}
 	return abs(texelFetch(rteSurface, ivec2(position), 0).b - 0.25) < 0.08;
+}
+
+// Whether a pixel of the player screen is open to air (or a unit) rather than rock: what the water surface must have above it to mirror anything.
+bool OpenAirAt(vec2 position) {
+	vec2 uv = position / rteScreenSize;
+	return texture(rteSceneDepth, uv).r >= rteForegroundDepth || texture(rteSurface, uv).b > 0.5;
 }
 
 // How many pixels up from a water pixel the first pixel that isn't water is (y 0 is the top of the player screen), looked for in steps of four
@@ -327,7 +334,7 @@ void main() {
 			// Only a real surface mirrors: open to air (or a unit) above it. Water filling a tunnel up to its rock roof has no surface to mirror in,
 			// only the refracted wall behind it.
 			vec2 aboveSurface = gl_FragCoord.xy - vec2(0.0, surfaceDistance);
-			bool openAbove = surfaceDistance > 0.0 && (texture(rteSceneDepth, aboveSurface / rteScreenSize).r >= rteForegroundDepth || texture(rteSurface, aboveSurface / rteScreenSize).b > 0.5);
+			bool openAbove = surfaceDistance > 0.0 && OpenAirAt(aboveSurface);
 			if (rteWaterReflection > 0.0 && openAbove) {
 				// What a mirror shows is bent by the surface itself, so the tilt is read where the surface is: the topmost water pixel of this column. The whole
 				// column then moves together, an image rippling as the surface does (glassy where the water is still, rippling where it flows).
@@ -340,6 +347,42 @@ void main() {
 				}
 				// Mirrored about the surface line (half a pixel above the topmost water pixel), shifted sideways by the ripples, more the deeper.
 				vec2 mirrored = vec2(gl_FragCoord.x + mirrorTilt.x * (2.0 + depth * 0.25), gl_FragCoord.y - 2.0 * surfaceDistance + 1.0);
+				if (rteWaterSoftReflection) {
+					// A real reflection is blurred and dies away with distance from the surface, and doesn't end in a hard edge: the mirror is a 3x3 blur that
+					// widens with depth, left out where a tap lands on other water or off the screen, faded where the mirror point nears the screen's edge
+					// (the top over a longer run, the rock above beside the pool feathers it across a few pixels), and gone smoothly by the search's reach.
+					float spread = 0.6 + depth * 0.06;
+					vec3 sum = vec3(0.0);
+					float weightSum = 0.0;
+					float backgroundWeight = 0.0;
+					for (int j = -1; j <= 1; ++j) {
+						for (int i = -1; i <= 1; ++i) {
+							vec2 tap = mirrored + vec2(float(i), float(j)) * spread;
+							if (tap.x < 0.0 || tap.y < 0.0 || tap.x >= rteScreenSize.x || tap.y >= rteScreenSize.y || WaterAt(tap)) {
+								continue;
+							}
+							float weight = float((2 - abs(i)) * (2 - abs(j)));
+							vec2 tapUV = tap / rteScreenSize;
+							sum += pow(texture(rteAlbedo, tapUV).rgb, vec3(2.2)) * weight;
+							backgroundWeight += (texture(rteSceneDepth, tapUV).r > rteBackgroundDepth ? weight : 0.0);
+							weightSum += weight;
+						}
+					}
+					if (weightSum > 0.0) {
+						float openness = 0.0;
+						for (int i = -3; i <= 3; ++i) {
+							vec2 side = aboveSurface + vec2(float(i) * 3.0, 0.0);
+							openness += (side.x < 0.0 || side.x >= rteScreenSize.x || OpenAirAt(side)) ? 1.0 : 0.0;
+						}
+						openness = smoothstep(0.2, 0.9, openness / 7.0);
+						float fade = smoothstep(0.0, 40.0, mirrored.y) * smoothstep(0.0, 16.0, mirrored.x) * smoothstep(0.0, 16.0, rteScreenSize.x - mirrored.x);
+						fade *= smoothstep(0.0, 1.0, weightSum / 16.0) * openness * (1.0 - smoothstep(30.0, 64.0, depth));
+						waterReflection = sum / weightSum;
+						waterReflectionBackground = backgroundWeight > 0.5 * weightSum;
+						float fresnel = mix(0.75, 0.2, smoothstep(0.0, 40.0, depth)) + 0.5 * clamp(length(mirrorTilt), 0.0, 0.5);
+						waterReflectionAmount = clamp(rteWaterReflection * fresnel * fade, 0.0, 0.85);
+					}
+				} else {
 				// Faded out where the mirror point leaves the screen, and onto other water (nothing new to show).
 				float fade = smoothstep(0.0, 16.0, mirrored.y) * smoothstep(0.0, 16.0, mirrored.x) * smoothstep(0.0, 16.0, rteScreenSize.x - mirrored.x);
 				if (fade > 0.0 && !WaterAt(mirrored)) {
@@ -350,6 +393,7 @@ void main() {
 					// Fresnel, in two dimensions: strongest just under the surface and where the ripples tip the water towards the view of the sky.
 					float fresnel = mix(0.75, 0.2, smoothstep(0.0, 40.0, depth)) + 0.5 * clamp(length(mirrorTilt), 0.0, 0.5);
 					waterReflectionAmount = clamp(rteWaterReflection * fresnel * fade, 0.0, 0.85);
+				}
 				}
 			}
 		}
