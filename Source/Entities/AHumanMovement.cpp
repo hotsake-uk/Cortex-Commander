@@ -2046,7 +2046,11 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen || cornerVia;
-		if (canTakeOff) {
+		// (Timed only within a node of the take-off (or the half body the steps about it go): walking the last node or two to it, the way up can be blocked from where the unit is
+		// yet open on arrival, and a good take-off was given up on the approach.)
+		Vector toTakeOffNow = Towards(m_Pos, takeOff);
+		bool nearTakeOff = std::abs(toTakeOffNow.m_X) <= std::max(24.0F, h * 0.5F) && std::abs(toTakeOffNow.m_Y) <= h * 0.8F;
+		if (canTakeOff || !nearTakeOff) {
 			mover.noTakeOff = false;
 		} else if (!mover.noTakeOff) {
 			mover.noTakeOff = true;
