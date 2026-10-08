@@ -252,6 +252,7 @@ namespace {
 	constexpr const char* c_AttackYTag = "SandboxAttackY";
 	constexpr const char* c_DefendXTag = "SandboxDefendX"; //!< Number values on units told to defend a spot: they fight from it and go back to it when moved off.
 	constexpr const char* c_DefendYTag = "SandboxDefendY";
+	constexpr const char* c_HoldTag = "SandboxHold"; //!< Number value on units told to hold position: the AI neither wanders off (a hurt sentry patrols) nor falls back.
 	constexpr const char* c_RetreatTag = "AIRetreat"; //!< Number values the Lua AI keeps on a unit falling back or working round a flank; taken off
 	constexpr const char* c_FlankTag = "AIFlank";     //!< by a new order, which tells the AI the order it would put back after is gone.
 
@@ -739,6 +740,7 @@ namespace {
 		unit->RemoveNumberValue(c_DefendXTag);
 		unit->RemoveNumberValue(c_DefendYTag);
 		unit->RemoveNumberValue(c_AutoTargetTag);
+		unit->RemoveNumberValue(c_HoldTag);
 		if (attack && target && lock) {
 			unit->SetNumberValue(c_TargetTag, static_cast<double>(target->GetUniqueID()));
 		} else {
@@ -765,6 +767,7 @@ namespace {
 		unit->RemoveNumberValue(c_AttackYTag);
 		unit->RemoveNumberValue(c_DefendXTag);
 		unit->RemoveNumberValue(c_DefendYTag);
+		unit->RemoveNumberValue(c_HoldTag);
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; }), s_PendingOrders.end());
@@ -840,6 +843,7 @@ namespace {
 		actor->RemoveNumberValue(c_AttackYTag);
 		actor->RemoveNumberValue(c_DefendXTag);
 		actor->RemoveNumberValue(c_DefendYTag);
+		actor->RemoveNumberValue(c_HoldTag);
 		switch (order) {
 			case Order::Attack:
 				// The nearest enemy is where it is sent, not one it has to keep after: on the way the AI fights whatever it meets, and the
@@ -874,6 +878,10 @@ namespace {
 			case Order::DigGold:
 				actor->ClearAIWaypoints();
 				actor->SetAIMode(Actor::AIMODE_GOLDDIG);
+				break;
+			case Order::Hold:
+				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				actor->SetNumberValue(c_HoldTag, 1.0);
 				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
