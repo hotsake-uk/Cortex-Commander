@@ -256,7 +256,11 @@ void main() {
 				}
 				albedo.rgb *= 1.0 - 0.3 * min(rteWaterRefraction, 1.0) * smoothstep(4.0, 64.0, depth);
 			}
-			if (rteWaterReflection > 0.0 && surfaceDistance > 0.0) {
+			// Only a real surface mirrors: open to air (or a unit) above it. Water filling a tunnel up to its rock roof has no surface to mirror in,
+			// only the refracted wall behind it.
+			vec2 aboveSurface = gl_FragCoord.xy - vec2(0.0, surfaceDistance);
+			bool openAbove = surfaceDistance > 0.0 && (texture(rteSceneDepth, aboveSurface / rteScreenSize).r >= rteForegroundDepth || texture(rteSurface, aboveSurface / rteScreenSize).b > 0.5);
+			if (rteWaterReflection > 0.0 && openAbove) {
 				// Mirrored about the surface line (half a pixel above the topmost water pixel), shifted sideways by the ripples, more the deeper.
 				vec2 mirrored = vec2(gl_FragCoord.x + tilt.x * (2.0 + depth * 0.25), gl_FragCoord.y - 2.0 * surfaceDistance + 1.0);
 				// Faded out where the mirror point leaves the screen, and onto other water (nothing new to show).
