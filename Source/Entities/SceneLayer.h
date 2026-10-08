@@ -11,7 +11,6 @@ namespace RTE {
 
 	struct BigTexture;
 	class Texture;
-	class Camera;
 
 	struct SceneLayerInfo {
 		std::string name;
