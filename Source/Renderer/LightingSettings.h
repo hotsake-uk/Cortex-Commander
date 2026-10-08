@@ -359,7 +359,7 @@ namespace RTE {
 		float WetDrySeconds = 120.0F; //!< Game seconds for wet earth to dry once the rain stops, 10 to 600; rock takes up to three times as long.
 		float Puddles = 1.0F; //!< How much water standing in dips is drawn as reflecting puddles, 0 (none) to 1.
 		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
-		bool NightAffectsAI = false; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay; off by default so the AI isn't handicapped.
+		bool NightAffectsAI = false; //!< Stealth (AC-11): at night the AI sees less far and less in the dark, under a roof or away from lights, a lit headlamp gives its wearer away, and footsteps are heard (Actor::HearFootsteps). Changes gameplay; off by default so the AI is not handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
 

@@ -2752,6 +2752,14 @@ void AHuman::PreControllerUpdate() {
 	}
 }
 
+float AHuman::GetFootstepNoise() const {
+	float noise = Actor::GetFootstepNoise();
+	if (m_pJetpack && m_pJetpack->IsEmitting() && m_Status != DYING && m_Status != DEAD) {
+		noise = std::max(noise, 0.45F);
+	}
+	return noise;
+}
+
 void AHuman::Update() {
 	ZoneScoped;
 

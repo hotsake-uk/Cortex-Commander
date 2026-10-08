@@ -99,6 +99,20 @@ function SharedBehaviors.ProcessAlarmEvent(AI, Owner)
 			end
 		end
 	end
+
+	-- Footsteps (AC-11, with the "Night, light and noise affect AI" setting): an enemy running nearby is heard, one walking only closer
+	-- and one crawling hardly at all. Not through much rock, the same test as a close alarm's.
+	local Heard = Owner:HearFootsteps();
+	if Heard.Largest > 0 then
+		local HeardVec = SceneMan:ShortestDistance(Owner.EyePos, Heard, false);
+		if (not AI.LastAlarmVec or SceneMan:ShortestDistance(AI.LastAlarmVec, HeardVec, false):MagnitudeIsGreaterThan(25)) and SceneMan:CastStrengthSumRay(Owner.EyePos, Heard, 4, rte.grassID) < 100 then
+			AI.LastAlarmVec = HeardVec;
+			AI.AlarmPos = Vector(Heard.X, Heard.Y);
+			Owner:SetAlarmPoint(AI.AlarmPos);
+			AI:CreateFaceAlarmBehavior(Owner);
+			return true;
+		end
+	end
 end
 
 -- look at the alarm event

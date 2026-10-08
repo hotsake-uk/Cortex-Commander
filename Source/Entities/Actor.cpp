@@ -1812,10 +1812,14 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float light = 1.0F;
 		if (night > 0.05F) {
 			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
-			if (candidate.actor->GetController()->IsState(WEAPON_FIRE)) {
-				lit = 1.0F;
+			// A lit headlamp gives its wearer away whichever way it points (AC-11).
+			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || (lighting.Headlamps && candidate.actor->GetHeadlampBrightness() > 0.0F)) {
+				lit = std::max(lit, candidate.actor->GetController()->IsState(WEAPON_FIRE) ? 1.0F : 0.6F);
 			}
-			light = std::max(1.0F - night * 0.7F, std::min(1.0F, lit * 1.5F));
+			// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
+			Vector roof;
+			bool roofed = g_SceneMan.CastNotMaterialRay(candidate.actor->GetEyePos(), Vector(0.0F, -std::max(120.0F, candidate.actor->GetHeight() * 3.0F)), g_MaterialAir, roof);
+			light = std::max(1.0F - night * (roofed ? 0.88F : 0.7F), std::min(1.0F, lit * 1.5F));
 		}
 		float moving = candidate.actor->GetVel().MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
 		float profile = std::clamp(candidate.actor->GetSightProfile(), 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
@@ -1824,6 +1828,74 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	}
 	std::sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
 	return m_Sightings;
+}
+
+float Actor::GetFootstepNoise() const {
+	if (m_Status == DYING || m_Status == DEAD || m_Status == INACTIVE) {
+		return 0.0F;
+	}
+	float speed = m_Vel.GetMagnitude();
+	if (speed < 0.5F) {
+		return 0.0F;
+	}
+	float noise = 0.0F;
+	switch (m_MovementState) {
+		case WALK:
+		case RUN:
+		case CLIMB:
+			noise = std::min(0.45F, 0.12F + 0.04F * speed);
+			break;
+		case CRAWL:
+		case ARMCRAWL:
+			noise = 0.04F;
+			break;
+		default:
+			return 0.0F;
+	}
+	// Bent double, softer steps (the profile is 1 standing, 0.8 crouched, under it lying down).
+	noise *= std::clamp(GetSightProfile(), 0.5F, 1.0F);
+	// Ringing on metal underfoot.
+	Vector underfoot;
+	if (g_SceneMan.CastNotMaterialRay(m_Pos, Vector(0.0F, m_CharHeight * 0.6F + 8.0F), g_MaterialAir, underfoot)) {
+		const Material* floor = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(underfoot.GetFloorIntX(), underfoot.GetFloorIntY()));
+		if (floor && floor->GetPresetName().find("Metal") != std::string::npos) {
+			noise *= 1.5F;
+		}
+	}
+	return noise;
+}
+
+Vector Actor::HearFootsteps() const {
+	if (!g_PostProcessMan.GetLightingSettings().NightAffectsAI || m_Perceptiveness <= 0.0F) {
+		return Vector();
+	}
+	// (An alarm event's range is so much of a screen's width; see AlarmEvent. The loudest footsteps, a run on metal, are 0.675.)
+	const float scale = m_Perceptiveness * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.51F;
+	const float farthest = 0.7F * scale;
+	const Vector ears = GetEyePos();
+	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
+	float loudest = 0.0F;
+	Vector heard;
+	for (const Actor* actor: g_MovableMan.GetActorList()) {
+		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI()) {
+			continue;
+		}
+		Vector toActor = g_SceneMan.ShortestDistance(ears, actor->GetPos(), wraps);
+		if (std::abs(toActor.m_X) > farthest || std::abs(toActor.m_Y) > farthest) {
+			continue;
+		}
+		float range = actor->GetFootstepNoise() * scale;
+		float distance = toActor.GetMagnitude();
+		if (range <= 0.0F || distance >= range) {
+			continue;
+		}
+		float loudness = 1.0F - distance / range;
+		if (loudness > loudest) {
+			loudest = loudness;
+			heard = actor->GetPos();
+		}
+	}
+	return heard;
 }
 
 bool Actor::FeelsFire() const {

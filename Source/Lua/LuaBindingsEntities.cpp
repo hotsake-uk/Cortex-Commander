@@ -249,6 +249,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("MovePathSize", &Actor::GetMovePathSize)
 	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
 	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
+	    .property("FootstepNoise", &Actor::GetFootstepNoise)
+	    .def("HearFootsteps", &Actor::HearFootsteps)
 	    .property("Suppression", &Actor::GetSuppression)
 	    .property("Morale", &Actor::GetMorale)
 	    .def("Say", &Actor::Say)

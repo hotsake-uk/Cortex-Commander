@@ -627,6 +627,9 @@ namespace RTE {
 		/// four fifths.
 		float GetSightProfile() const override { return m_ProneState != NOTPRONE ? 0.55F : 1.0F - 0.2F * m_CrouchAmount; }
 
+		/// Actor's footsteps, or a lit jetpack's roar if louder.
+		float GetFootstepNoise() const override;
+
 		/// Gets this AHuman's current crouch amount. 0.0 == fully standing, 1.0 == fully crouched.
 		/// @return This AHuman's current crouch amount.
 		float GetCrouchAmount() const { return m_CrouchAmount; }
