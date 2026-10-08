@@ -214,7 +214,10 @@ function NativeHumanAI:Update(Owner)
 	-- (Or if we're told to go somewhere and aren't: after arriving the mode stays GOTO while the behaviour is Sentry, and a new order with new
 	-- waypoints then looked like no change at all, so the unit never set off until the mode was knocked out of GOTO and back.)
 	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and not self.GoToBehavior and not self.NextGoTo and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
-	if Owner.AIMode ~= self.lastAIMode or not(self.Behavior or self.GoToBehavior) or newOrder then
+	-- (And any order given since this AI's own last update, even one to the mode it is in: the order serial counts them, and the count is
+	-- taken again at the end of each update, so the AI's own waypoint and mode writes are not taken for orders.)
+	local ordered = self.orderSerial ~= nil and Owner.AIOrderSerial ~= self.orderSerial;
+	if Owner.AIMode ~= self.lastAIMode or not(self.Behavior or self.GoToBehavior) or newOrder or ordered then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
 			local msg, done = coroutine.resume(self.Behavior, self, Owner, true);
@@ -247,7 +250,7 @@ function NativeHumanAI:Update(Owner)
 		elseif Owner.AIMode == Actor.AIMODE_PATROL then
 			self:CreatePatrolBehavior(Owner);
 		else
-			if Owner.AIMode ~= self.lastAIMode and Owner.AIMode == Actor.AIMODE_SENTRY then
+			if (Owner.AIMode ~= self.lastAIMode or ordered) and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
 				self.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- store the pos on which we should be standing
 				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's own place and facing, not where it stopped.)
@@ -773,6 +776,8 @@ function NativeHumanAI:Update(Owner)
 	elseif self.lateralMoveState == Actor.LAT_RIGHT then
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);
 	end
+
+	self.orderSerial = Owner.AIOrderSerial;
 end
 
 function NativeHumanAI:Destroy(Owner)

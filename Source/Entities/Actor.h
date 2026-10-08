@@ -395,13 +395,25 @@ namespace RTE {
 		/// @return The current AI mode.
 		int GetAIMode() const { return m_AIMode; }
 
+		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
+		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
+		/// mode it is already in, is seen as new without dropping the unit out of its mode for an update first.
+		/// @return The order serial of this.
+		unsigned int GetAIOrderSerial() const { return m_AIOrderSerial; }
+
 		/// Gets the icon bitmap associated with this' current AI mode and team.
 		/// @return The current AI mode icon of this. Ownership is NOT transferred!
 		BITMAP* GetAIModeIcon();
 
 		/// Sets this' AI mode.
 		/// @param newMode The new AI mode. (default: AIMODE_SENTRY)
-		void SetAIMode(AIMode newMode = AIMODE_SENTRY) { m_AIMode = newMode; }
+		void SetAIMode(AIMode newMode = AIMODE_SENTRY) {
+			// (Only a change counts: scripts that set the mode they want every update would otherwise restart the AI each time.)
+			if (newMode != m_AIMode) {
+				++m_AIOrderSerial;
+			}
+			m_AIMode = newMode;
+		}
 
 		/// Adds an absolute scene point to the list of waypoints this is going to
 		/// go to, in order
@@ -410,6 +422,7 @@ namespace RTE {
 		void AddAISceneWaypoint(const Vector& waypoint) {
 			m_Waypoints.push_back(std::pair<Vector, MovableObject*>(waypoint, (MovableObject*)NULL));
 			m_WaitingAtDoor = false; // (A new order is asked for at once, not after the wait at the last one's door.)
+			++m_AIOrderSerial;
 		}
 
 		/// Adds an MO in the scene as the next waypoint for this to go to, in order
@@ -428,6 +441,7 @@ namespace RTE {
 			m_MoveVector.Reset();
 			m_HasMovePathGoal = false;
 			m_WaitingAtDoor = false;
+			++m_AIOrderSerial;
 		}
 
 		/// Gets the last or furthest set AI waypoint of this: the last of its waypoints, else the place its route was asked for to, else
@@ -1217,6 +1231,7 @@ namespace RTE {
 		static bool m_sIconsLoaded;
 		// The current mode the AI is set to perform as
 		AIMode m_AIMode;
+		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;
