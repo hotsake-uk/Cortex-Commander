@@ -64,20 +64,11 @@ class MainForm : Form
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
-	readonly Button runLatestBtn = new() { Text = "Run latest", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
 	readonly Button openBtn = new() { Text = "Open folder", AutoSize = true };
 	readonly Button cancelBtn = new() { Text = "Cancel", AutoSize = true, Enabled = false };
-	readonly ListView feedList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
-	readonly CheckBox liveBox = new() { Text = "Live", Checked = true, AutoSize = true, Padding = new Padding(8, 3, 0, 0) };
-	readonly NumericUpDown intervalBox = new() { Minimum = 3, Maximum = 600, Value = 10, Width = 50 };
-	readonly Label liveStatus = new() { AutoSize = true, Padding = new Padding(8, 6, 0, 0) };
-	readonly TabPage feedTab = new("Live feed");
-	readonly TabControl bottomTabs = new() { Dock = DockStyle.Fill };
-	Dictionary<string, string>? lastRemote;
-	int unseen;
 	readonly Label status = new() { AutoSize = true, Padding = new Padding(8, 6, 0, 0) };
 
 	List<string> allRefs = new();
@@ -101,88 +92,56 @@ class MainForm : Form
 		iniBox.Text = settings.SettingsIni;
 		modsBox.Text = settings.ModsDir;
 
-		// Simple flow: pick a branch (or type any branch / tag / sha), then Build & Run. Everything else lives under "Commits".
-		var row1 = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 4, RowCount = 1 };
-		row1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-		row1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		row1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		row1.Controls.Add(new Label { Text = "Branch:", AutoSize = true, Padding = new Padding(4, 7, 0, 0) }, 0, 0);
-		row1.Controls.Add(branchBox, 1, 0);
-		row1.Controls.Add(configBox, 2, 0);
-		row1.Controls.Add(fetchBtn, 3, 0);
-
+		// Dead simple: branch, commit, settings, mods, then Build & Launch.
+		static Control Row(string label, Control field, params Control[] extra)
+		{
+			var r = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight };
+			r.Controls.Add(new Label { Text = label, Width = 80, Padding = new Padding(4, 6, 0, 0) });
+			r.Controls.Add(field);
+			r.Controls.AddRange(extra);
+			return r;
+		}
+		branchBox.Dock = DockStyle.None; branchBox.Width = 420;
+		iniBox.Width = 420; modsBox.Width = 420;
 		var iniBrowse = new Button { Text = "...", AutoSize = true };
 		iniBrowse.Click += (_, _) => { using var d = new OpenFileDialog { Filter = "Settings.ini|*.ini|All files|*.*", FileName = iniBox.Text }; if (d.ShowDialog() == DialogResult.OK) iniBox.Text = d.FileName; };
-		var iniClear = new Button { Text = "Clear", AutoSize = true };
-		iniClear.Click += (_, _) => iniBox.Text = "";
-		var row2 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-		row2.Controls.AddRange(new Control[] { new Label { Text = "Settings.ini:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, iniBox, iniBrowse, iniClear });
 		var modsBrowse = new Button { Text = "...", AutoSize = true };
 		modsBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = modsBox.Text }; if (d.ShowDialog() == DialogResult.OK) modsBox.Text = d.SelectedPath; };
-		var modsClear = new Button { Text = "Clear", AutoSize = true };
-		modsClear.Click += (_, _) => modsBox.Text = "";
-		var row2b = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-		row2b.Controls.AddRange(new Control[] { new Label { Text = "Mods folder:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, modsBox, modsBrowse, modsClear });
-
-		buildRunBtn.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
-		buildRunBtn.Padding = new Padding(16, 4, 16, 4);
-		var detailsBtn = new Button { Text = "Commits ▸", AutoSize = true };
-		var row3 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-		row3.Controls.AddRange(new Control[] { buildRunBtn, runLatestBtn, cancelBtn, detailsBtn, status });
+		repoBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = repoBox.Text }; if (d.ShowDialog() == DialogResult.OK) repoBox.Text = d.SelectedPath; };
 
 		commitList.Columns.Add("Commit", 90);
 		commitList.Columns.Add("Version", 70);
 		commitList.Columns.Add("Date", 90);
 		commitList.Columns.Add("Author", 110);
-		commitList.Columns.Add("Message", 500);
-		commitList.Columns.Add("Cached", 60);
+		commitList.Columns.Add("Message", 600);
+		commitList.Columns.Add("Built", 50);
 
-		var advanced = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-		advanced.Controls.AddRange(new Control[] { new Label { Text = "Repo:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, repoBox, repoBrowse, buildBtn, runBtn, deleteBtn, openBtn });
-		repoBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = repoBox.Text }; if (d.ShowDialog() == DialogResult.OK) repoBox.Text = d.SelectedPath; };
-		var details = new Panel { Dock = DockStyle.Top, Height = 280, Visible = false };
-		details.Controls.Add(commitList);
-		details.Controls.Add(advanced);
-		detailsBtn.Click += (_, _) => { details.Visible = !details.Visible; detailsBtn.Text = details.Visible ? "Commits ▾" : "Commits ▸"; };
+		buildRunBtn.Text = "Build && Launch";
+		buildRunBtn.Font = new Font(Font.FontFamily, 12f, FontStyle.Bold);
+		buildRunBtn.Padding = new Padding(20, 6, 20, 6);
+		var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 6) };
+		actions.Controls.AddRange(new Control[] { buildRunBtn, cancelBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
 
-		var logTab = new TabPage("Log");
-		logTab.Controls.Add(log);
-		var feedTop = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-		feedTop.Controls.AddRange(new Control[] { liveBox, new Label { Text = "poll every", AutoSize = true, Padding = new Padding(8, 6, 0, 0) }, intervalBox, new Label { Text = "s", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, liveStatus });
-		feedList.Columns.Add("Time", 70);
-		feedList.Columns.Add("Branch / tag", 200);
-		feedList.Columns.Add("Commit", 90);
-		feedList.Columns.Add("Version", 70);
-		feedList.Columns.Add("Author", 110);
-		feedList.Columns.Add("Message", 600);
-		feedTab.Controls.Add(feedList);
-		feedTab.Controls.Add(feedTop);
-		bottomTabs.TabPages.Add(logTab);
-		bottomTabs.TabPages.Add(feedTab);
-		bottomTabs.SelectedIndexChanged += (_, _) => { if (bottomTabs.SelectedTab == feedTab) { unseen = 0; feedTab.Text = "Live feed"; } };
+		var logPanel = new Panel { Dock = DockStyle.Bottom, Height = 170 };
+		logPanel.Controls.Add(log);
 
-		Controls.Add(bottomTabs);
-		Controls.Add(details);
-		Controls.Add(row3);
-		Controls.Add(row2b);
-		Controls.Add(row2);
-		Controls.Add(row1);
+		Controls.Add(commitList);
+		Controls.Add(logPanel);
+		Controls.Add(actions);
+		Controls.Add(Row("Mods:", modsBox, modsBrowse));
+		Controls.Add(Row("Settings:", iniBox, iniBrowse));
+		Controls.Add(new Label { Text = "Commit (latest is selected; pick an older one if you want):", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(4, 8, 0, 2) });
+		Controls.Add(Row("Branch:", branchBox, fetchBtn));
+		Controls.Add(Row("Repo:", repoBox, repoBrowse));
 
 		fetchBtn.Click += async (_, _) => await FetchAsync();
 		branchBox.SelectionChangeCommitted += async (_, _) => { if (branchBox.SelectedItem is string r) await LoadCommits(r); };
 		branchBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter && branchBox.Text.Trim() != "") { e.SuppressKeyPress = true; await LoadCommits(branchBox.Text.Trim()); } };
 		commitList.DoubleClick += async (_, _) => await BuildAndRun(true);
-		buildBtn.Click += async (_, _) => await BuildAndRun(false, false);
-		runBtn.Click += (_, _) => RunSelected();
-		runLatestBtn.Click += async (_, _) => await RunLatest();
 		buildRunBtn.Click += async (_, _) => await BuildAndRun(true);
-		deleteBtn.Click += async (_, _) => await DeleteSelected();
-		openBtn.Click += (_, _) => { var c = Selected(); if (c != null) Process.Start("explorer.exe", WorktreePath(c)); };
 		cancelBtn.Click += (_, _) => { cts?.Cancel(); try { running?.Kill(true); } catch { } };
 		FormClosing += (_, _) => { SaveSettings(); };
-		feedList.DoubleClick += async (_, _) => await OpenFeedItem();
-		Shown += async (_, _) => { await FetchAsync(); _ = PollLoop(); };
+		Shown += async (_, _) => await FetchAsync();
 	}
 
 	void SaveSettings()
@@ -222,7 +181,7 @@ class MainForm : Form
 	void SetBusy(bool b, string text = "")
 	{
 		busy = b;
-		foreach (var x in new Control[] { runLatestBtn, fetchBtn, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, configBox, repoBox })
+		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, configBox, repoBox })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
 		status.Text = text;
@@ -290,7 +249,6 @@ class MainForm : Form
 		cts = new CancellationTokenSource();
 		await Exec("git", $"fetch {settings.Remote} --tags --prune", Repo, cts.Token);
 		await RefreshRefs();
-		lastRemote = await LsRemote();
 		ApplyFilter();
 		SetBusy(false, $"{allRefs.Count} refs");
 		if (branchBox.Text == "" && currentRef == "")
@@ -334,104 +292,6 @@ class MainForm : Form
 	}
 
 	// ---- Live feed: git has no push notifications for a plain remote, so poll ls-remote (cheap) and fetch only when refs moved.
-
-	async Task<Dictionary<string, string>?> LsRemote()
-	{
-		var (code, o) = await Git($"ls-remote --heads --tags {settings.Remote}");
-		if (code != 0) return null;
-		var d = new Dictionary<string, string>();
-		foreach (var line in o.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-		{
-			var p = line.Split('\t');
-			if (p.Length != 2) continue;
-			var name = p[1].Trim();
-			if (name.EndsWith("^{}")) d[name[..^3]] = p[0]; // annotated tag: use the commit it points at
-			else if (!d.ContainsKey(name) || !name.StartsWith("refs/tags/")) d[name] = p[0];
-		}
-		return d;
-	}
-
-	async Task PollLoop()
-	{
-		while (!IsDisposed)
-		{
-			await Task.Delay((int)intervalBox.Value * 1000);
-			if (IsDisposed || !liveBox.Checked || lastRemote == null) { if (lastRemote == null && !busy && liveBox.Checked) lastRemote = await LsRemote(); continue; }
-			try
-			{
-				var now = await LsRemote();
-				if (now == null) { liveStatus.Text = "remote unreachable"; continue; }
-				var changed = now.Where(kv => !lastRemote.TryGetValue(kv.Key, out var old) || old != kv.Value).ToList();
-				liveStatus.Text = $"checked {DateTime.Now:HH:mm:ss}";
-				if (changed.Count == 0) continue;
-				var before = lastRemote;
-				var (fcode, fout) = await Git($"fetch {settings.Remote} --tags --prune --force");
-				if (fcode != 0) { Append("live fetch failed: " + fout.Trim()); continue; }
-				lastRemote = now;
-				await AnnounceChanges(before, changed);
-				await RefreshRefs();
-				ApplyFilter();
-				if (!string.IsNullOrEmpty(currentRef) && changed.Any(c => c.Key.EndsWith("/" + currentRef.Replace(settings.Remote + "/", "")))) await LoadCommits(currentRef);
-			}
-			catch (Exception ex) { Append("live poll error: " + ex.Message); }
-		}
-	}
-
-	async Task AnnounceChanges(Dictionary<string, string> before, List<KeyValuePair<string, string>> changed)
-	{
-		var re = new Regex("c_VersionString\\s*=\\s*\"([^\"]+)\"");
-		foreach (var (refName, sha) in changed.OrderBy(c => c.Key))
-		{
-			bool isTag = refName.StartsWith("refs/tags/");
-			var label = isTag ? "tag " + refName["refs/tags/".Length..] : refName["refs/heads/".Length..];
-			var tip = isTag ? sha : $"{settings.Remote}/{label}";
-			string range;
-			if (isTag) range = $"-n 1 {sha}";
-			else if (before.TryGetValue(refName, out var old))
-			{
-				var (anc, _) = await Git($"merge-base --is-ancestor {old} {sha}");
-				range = anc == 0 ? $"{old}..{sha} -n 30" : $"-n 5 {sha}"; // force-push: show the new tip
-				if (anc != 0) label += " (force-pushed)";
-			}
-			else
-			{
-				// brand new branch: only show commits not already on another known branch
-				var others = string.Join(" ", before.Where(kv => kv.Key.StartsWith("refs/heads/")).Select(kv => "^" + kv.Value).Distinct());
-				range = $"{sha} {others} -n 10";
-				label += " (new branch)";
-			}
-			var (code, o) = await Git($"log {range} --date=short --format=%H%x09%ad%x09%an%x09%s --");
-			if (code != 0) continue;
-			var commits = o.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Split('\t', 4)).Where(x => x.Length == 4)
-				.Select(x => new CommitInfo(x[0], x[1], x[2], x[3])).Reverse().ToList(); // oldest first, so the newest ends on top
-			foreach (var c in commits)
-			{
-				var (vc, vt) = await Git($"show {c.Sha}:Source/System/GameVersion.h");
-				var m = vc == 0 ? re.Match(vt) : null;
-				var item = new ListViewItem(DateTime.Now.ToString("HH:mm:ss")) { Tag = (isTag ? refName["refs/tags/".Length..] : $"{settings.Remote}/{refName["refs/heads/".Length..]}", c) };
-				item.SubItems.Add(label);
-				item.SubItems.Add(c.Short);
-				item.SubItems.Add(m is { Success: true } ? m.Groups[1].Value : "?");
-				item.SubItems.Add(c.Author);
-				item.SubItems.Add(c.Subject);
-				feedList.Items.Insert(0, item);
-				Append($"[live] {label}: {c.Short} {c.Author}: {c.Subject}");
-				unseen++;
-			}
-		}
-		if (bottomTabs.SelectedTab != feedTab) feedTab.Text = $"Live feed ({unseen} new)";
-		else unseen = 0;
-		System.Media.SystemSounds.Asterisk.Play();
-	}
-
-	async Task OpenFeedItem()
-	{
-		if (feedList.SelectedItems.Count == 0) return;
-		var (r, c) = ((string, CommitInfo))feedList.SelectedItems[0].Tag!;
-		await LoadCommits(r);
-		foreach (ListViewItem it in commitList.Items)
-			if (((CommitInfo)it.Tag!).Sha == c.Sha) { it.Selected = true; it.EnsureVisible(); break; }
-	}
 
 	void ApplyFilter()
 	{
@@ -541,25 +401,6 @@ class MainForm : Form
 		finally { SetBusy(false, currentRef); }
 	}
 
-	// Fetches, jumps to the newest commit of the chosen branch, then runs it (building only if that commit has not been built yet).
-	async Task RunLatest()
-	{
-		if (busy) return;
-		if (branchBox.Text.Trim() == "") { Append("Pick a branch first."); return; }
-		SetBusy(true, "Fetching...");
-		cts = new CancellationTokenSource();
-		var code = await Exec("git", $"fetch {settings.Remote} --tags --prune --force", Repo, cts.Token);
-		SetBusy(false, "");
-		if (code != 0) { Append("Fetch failed; using what is already local."); }
-		else { lastRemote = await LsRemote(); await RefreshRefs(); ApplyFilter(); }
-		await LoadCommits(branchBox.Text.Trim());
-		if (commitList.Items.Count == 0) return;
-		commitList.Items[0].Selected = true;
-		var c = (CommitInfo)commitList.Items[0].Tag!;
-		if (File.Exists(ExePath(c)) && Directory.Exists(WorktreePath(c))) { Append($"Latest is {c.Short}, already built."); Launch(c); }
-		else await BuildAndRun(true);
-	}
-
 	// Copies every *.rte folder of the mods folder into the version's Mods folder (only files that changed), so each version runs with its own copy.
 	// A folder the version ships itself is left alone; ones the launcher copied are marked and kept in sync with the source.
 	const string CopyMarker = ".launcher-copy";
@@ -614,12 +455,6 @@ class MainForm : Form
 	{
 		foreach (ListViewItem it in commitList.Items)
 			if (((CommitInfo)it.Tag!).Sha == c.Sha) it.SubItems[5].Text = File.Exists(ExePath(c)) ? "yes" : "";
-	}
-
-	void RunSelected()
-	{
-		var c = Selected(); if (c == null) return;
-		Launch(c);
 	}
 
 	void Launch(CommitInfo c)

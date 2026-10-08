@@ -16,22 +16,12 @@ From a Developer PowerShell / any shell with `dotnet`:
 That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. Copy it anywhere and double-click it. (For development, `dotnet run` in this folder also works.)
 
 ## Using it
-1. Pick a **Branch** (or type any branch / tag / sha and press Enter). The latest commit is selected automatically.
-2. Pick the configuration and, optionally, a Settings.ini.
-3. Press **Build & Run**.
+1. **Branch**: pick one from the list (or type any branch / tag / sha and press Enter). **Fetch** refreshes the list from the remote.
+2. **Commit**: the latest is selected for you; click an older one if you want it.
+3. **Settings** and **Mods** (both optional): a Settings.ini file is copied to the version's `Userdata/Settings.ini`, and every `*.rte` folder in the mods folder is copied to its `Mods/` folder, changed files only. Your originals are never modified.
+4. **Build & Launch**.
 
-To use an older commit, or to Build / Run separately, delete the cached build, open its folder or change the repo path, expand **Commits**. Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
-
-**Run latest** fetches, moves to the newest commit of the chosen branch, and runs it, building only if that commit has not been built yet.
-
-## Mods folder
-Set **Mods folder** to a folder containing `*.rte` mods (or a single `.rte` folder). Before each run the launcher copies each one into the version's `Mods` folder, transferring only files that changed and removing files you deleted from the source. A mod folder the version ships itself is never touched.
-
-## Settings.ini
-Set the **Settings.ini** box (or browse for a file) to have the launcher copy that file into the version's `Userdata` folder every time it runs a version, replacing whatever is there. The game rewrites its own copy on exit, so your chosen file is never modified. Clear the box to let each version use its own settings.
-
-## Live feed
-The **Live feed** tab polls the remote (`git ls-remote`, every 10s by default; adjustable, or untick Live). When a branch or tag moves it fetches and adds a row per new commit: time, branch or tag, sha, game version, author and message, newest on top, with a chime and an "(N new)" badge on the tab. New branches show their own commits, force-pushes show the new tip, and new tags (e.g. `v8.2.4`) appear as they are created. Double-click a row to jump to that commit in the main list, then Build & Run.
+Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
 ## Where things go
 Each commit is a `git worktree` in `<repo parent>\CortexVersions\<first 10 chars of sha>`. Built versions stay runnable without rebuilding, and your main checkout is never switched. Settings live in `%APPDATA%\CortexLauncher\settings.json` (`VersionsDir` can relocate the cache).
