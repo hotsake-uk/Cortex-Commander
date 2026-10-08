@@ -229,7 +229,7 @@ std::vector<PostProcessMan::ScorchMark> PostProcessMan::TakePendingScorchMarks()
 	return marks;
 }
 
-const std::vector<PostProcessMan::ScorchMark>& PostProcessMan::GetHotScorchMarks(float duration) {
+std::vector<PostProcessMan::ScorchMark> PostProcessMan::GetHotScorchMarks(float duration) {
 	float now = GetSmoothSimTime();
 	std::scoped_lock lock(m_ShockwaveMutex);
 	std::erase_if(m_HotScorchMarks, [now, duration](const ScorchMark& mark) { return now - mark.m_StartTime > duration || now < mark.m_StartTime - 1.0F; });
