@@ -348,6 +348,27 @@ bool SceneMan::SceneWrapsY() const {
 	return false;
 }
 
+Vector SceneMan::GetWrapToScreen(const Vector& relativePos, int screenWidth, int screenHeight) const {
+	Vector shift;
+	if (SceneWrapsX()) {
+		float sceneWidth = static_cast<float>(GetSceneWidth());
+		if (relativePos.m_X < (static_cast<float>(screenWidth) - sceneWidth) * 0.5F) {
+			shift.m_X = sceneWidth;
+		} else if (relativePos.m_X > (static_cast<float>(screenWidth) + sceneWidth) * 0.5F) {
+			shift.m_X = -sceneWidth;
+		}
+	}
+	if (SceneWrapsY()) {
+		float sceneHeight = static_cast<float>(GetSceneHeight());
+		if (relativePos.m_Y < (static_cast<float>(screenHeight) - sceneHeight) * 0.5F) {
+			shift.m_Y = sceneHeight;
+		} else if (relativePos.m_Y > (static_cast<float>(screenHeight) + sceneHeight) * 0.5F) {
+			shift.m_Y = -sceneHeight;
+		}
+	}
+	return shift;
+}
+
 Directions SceneMan::GetSceneOrbitDirection() const {
 	if (m_pCurrentScene) {
 		SLTerrain* terrain = m_pCurrentScene->GetTerrain();

@@ -585,6 +585,7 @@ namespace SandboxDetail {
 	// Scene and window positions: shared with the debug overlays (DebugDraw.h), so they work outside the sandbox too.
 	inline float ScenePixelsPerWindowPixel() { return DebugDraw::ScenePixelsPerWindowPixel(); }
 	inline ImVec2 ViewOrigin() { return DebugDraw::ViewOrigin(); }
+	inline Vector FromCamera(const Vector& scenePosition) { return DebugDraw::FromCamera(scenePosition); }
 	inline Vector MouseScenePosition() { return DebugDraw::MouseScenePosition(); }
 
 	inline bool ContainsIgnoringCase(const std::string& text, const char* filter) {

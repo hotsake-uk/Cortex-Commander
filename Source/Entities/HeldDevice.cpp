@@ -434,22 +434,7 @@ void HeldDevice::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whi
 			Vector drawPos = m_Pos - targetPos;
 			// Adjust the draw position to work if drawn to a target screen bitmap that is straddling a scene seam.
 			if (!targetPos.IsZero()) {
-				int sceneWidth = g_SceneMan.GetSceneWidth();
-				if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-					if ((targetPos.GetFloorIntX() < 0) && (m_Pos.GetFloorIntX() > (sceneWidth - pTargetBitmap->w))) {
-						drawPos.m_X -= static_cast<float>(sceneWidth);
-					} else if ((targetPos.GetFloorIntX() + pTargetBitmap->w > sceneWidth) && (m_Pos.GetFloorIntX() < pTargetBitmap->w)) {
-						drawPos.m_X += static_cast<float>(sceneWidth);
-					}
-				}
-				int sceneHeight = g_SceneMan.GetSceneHeight();
-				if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-					if ((targetPos.GetFloorIntY() < 0) && (m_Pos.GetFloorIntY() > (sceneHeight - pTargetBitmap->h))) {
-						drawPos.m_Y -= static_cast<float>(sceneHeight);
-					} else if ((targetPos.GetFloorIntY() + pTargetBitmap->h > sceneHeight) && (m_Pos.GetFloorIntY() < pTargetBitmap->h)) {
-						drawPos.m_Y += static_cast<float>(sceneHeight);
-					}
-				}
+				drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
 			}
 
 			GUIFont* pSymbolFont = g_FrameMan.GetLargeFont();

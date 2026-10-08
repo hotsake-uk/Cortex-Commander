@@ -1007,9 +1007,8 @@ namespace SandboxDetail {
 		}
 		GameViewRect view = g_WindowMan.GetGameViewRect();
 		float scale = ScenePixelsPerWindowPixel();
-		Vector corner = g_CameraMan.GetOffset(0);
 		for (Actor* actor: SandboxAccess::Actors()) {
-			Vector onScreen = g_SceneMan.ShortestDistance(corner, actor->GetPos(), g_SceneMan.SceneWrapsX());
+			Vector onScreen = FromCamera(actor->GetPos());
 			if (IsSelectable(actor) && actor->GetTeam() == team && kinds.count(actor->GetPresetName()) && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= view.w * scale && onScreen.m_Y <= view.h * scale &&
 			    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 				s_Selected.push_back(MakeRef(actor));
@@ -1132,7 +1131,7 @@ namespace SandboxDetail {
 			while (ground.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY() + 1) == g_MaterialAir) {
 				ground.m_Y += 1.0F;
 			}
-			Vector corner = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)), g_SceneMan.SceneWrapsX());
+			Vector corner = FromCamera(ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)));
 			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
 		} else if (tool.Kind == Tool::Structure) {
@@ -1140,7 +1139,7 @@ namespace SandboxDetail {
 				// The piece itself, see-through, exactly where a click will put it, with its outline.
 				const PiecePicture& picture = PictureOf(*preset);
 				if (picture.Width > 0) {
-					Vector corner = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), StructurePosition(*preset, MouseScenePosition(), s_SnapToGrid) + Vector(picture.OffsetX, picture.OffsetY), g_SceneMan.SceneWrapsX());
+					Vector corner = FromCamera(StructurePosition(*preset, MouseScenePosition(), s_SnapToGrid) + Vector(picture.OffsetX, picture.OffsetY));
 					ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 					ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
 					GameViewRect view = g_WindowMan.GetGameViewRect();
@@ -2077,7 +2076,7 @@ namespace SandboxDetail {
 			if (!s_RallySet[side]) {
 				continue;
 			}
-			Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), s_RallyPoints[side], g_SceneMan.SceneWrapsX());
+			Vector onScreen = FromCamera(s_RallyPoints[side]);
 			ImVec2 base(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
 			drawList->AddLine(base, ImVec2(base.x, base.y - 26.0F), IM_COL32(230, 230, 230, 220), 2.0F);
 			drawList->AddTriangleFilled(ImVec2(base.x, base.y - 26.0F), ImVec2(base.x + 16.0F, base.y - 21.0F), ImVec2(base.x, base.y - 16.0F), c_SideColors[side]);

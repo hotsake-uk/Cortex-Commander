@@ -980,7 +980,7 @@ namespace SandboxDetail {
 				Vector corner = g_CameraMan.GetOffset(0);
 				Vector far = corner + Vector(view.w * scale, view.h * scale);
 				for (Actor* actor: SandboxAccess::Actors()) {
-					Vector onScreen = g_SceneMan.ShortestDistance(corner, actor->GetPos(), g_SceneMan.SceneWrapsX());
+					Vector onScreen = FromCamera(actor->GetPos());
 					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
 					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 						s_Selected.push_back(MakeRef(actor));
