@@ -1300,6 +1300,11 @@ void LuaMan::Update() {
 	LuabindObjectWrapper::ApplyQueuedDeletions();
 }
 
+void LuaMan::WaitForAsyncGarbageCollection() {
+	m_CancelGarbageCollection = true;
+	m_GarbageCollectionTask.wait();
+}
+
 void LuaMan::StartAsyncGarbageCollection() {
 	ZoneScoped;
 
@@ -1311,12 +1316,20 @@ void LuaMan::StartAsyncGarbageCollection() {
 		allStates.push_back(&wrapper);
 	}
 
+	m_CancelGarbageCollection = false;
 	m_GarbageCollectionTask = BS::multi_future<void>();
 	for (LuaStateWrapper* luaState: allStates) {
 		m_GarbageCollectionTask.push_back(
-		    g_ThreadMan.GetPriorityThreadPool().submit([luaState]() {
+		    g_ThreadMan.GetPriorityThreadPool().submit([this, luaState]() {
 			    ZoneScopedN("Lua Garbage Collection");
-			    std::lock_guard<std::recursive_mutex> lock(luaState->GetMutex());
+			    // Don't block on the lock: if WaitForAsyncGarbageCollection is called by a thread that holds this state's lock, blocking here would deadlock it. Skipping one incremental step is harmless.
+			    std::unique_lock<std::recursive_mutex> lock(luaState->GetMutex(), std::defer_lock);
+			    while (!lock.try_lock()) {
+				    if (m_CancelGarbageCollection) {
+					    return;
+				    }
+				    std::this_thread::sleep_for(std::chrono::microseconds(100));
+			    }
 			    lua_gc(luaState->GetLuaState(), LUA_GCSTEP, 100);
 			    lua_gc(luaState->GetLuaState(), LUA_GCSTOP, 0);
 		    }));
