@@ -828,6 +828,18 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetInt("rteFlowField", 7);
 	m_TerrainShader->SetFloat("rteFlowSurface", (m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled()) ? std::clamp(m_Settings.WaterFlowStrength, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteWorldGrid", 6);
+	// What each terrain pixel is made of, so only pixels of a liquid's material are drawn as it, not terrain that happens to share its palette colour.
+	{
+		SLTerrain* terrain = g_SceneMan.GetTerrain();
+		GLuint materialMap = terrain ? terrain->GetMaterialTextureId() : 0;
+		g_RenderMan.SetGlobalTexture(9, materialMap);
+		m_TerrainShader->SetInt("rteMaterialMap", 9);
+		m_TerrainShader->SetBool("rteMaterialMapOn", materialMap != 0);
+		int32_t location = m_TerrainShader->GetUniformLocation("rteMaterialLooks[0]");
+		if (location >= 0) {
+			glUniform4fv(location, 64, g_RenderMan.GetMaterialLiquidLooks().data());
+		}
+	}
 	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
 	// The sprite shader reads sprites' own shading as relief too.
 	if (const Shader* spriteShader = g_RenderMan.GetDefaultShader()) {
@@ -2016,6 +2028,29 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
 	}
 
+	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the fire shader their sprites aren't drawn (MOSParticle::Draw) and they
+	// join the fire front's cells instead, so they burn in the same flames as the ground. A lone one stands about as big as its sprite did.
+	if (fireShader) {
+		std::vector<glm::vec4> flames;
+		EffectsParticles::GetFlames(origin, width, height, flames);
+		for (const glm::vec4& particle: flames) {
+			float size = particle.z;
+			float minX = particle.x - 3.0F * size;
+			float maxX = particle.x + 3.0F * size;
+			float minY = particle.y - 4.0F * size;
+			float maxY = particle.y + 2.0F * size;
+			long long cellX = static_cast<long long>(std::floor((particle.x + origin.x) / 24.0F));
+			long long cellY = static_cast<long long>(std::floor((particle.y + origin.y) / 24.0F));
+			FlameCell& flame = flameCells.try_emplace((cellY << 32) ^ (cellX & 0xFFFFFFFFLL), FlameCell{minX, maxX, minY, maxY, 0.0F, 0}).first->second;
+			flame.MinX = std::min(flame.MinX, minX);
+			flame.MaxX = std::max(flame.MaxX, maxX);
+			flame.MinY = std::min(flame.MinY, minY);
+			flame.MaxY = std::max(flame.MaxY, maxY);
+			flame.Heat += particle.w;
+			++flame.Count;
+		}
+	}
+
 	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
 	if (m_Settings.Embers > 0.0F) {
 		auto hash = [](float n) { return glm::fract(std::sin(n) * 43758.5453F); };
@@ -2396,6 +2431,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteWaterReflection", waterReflections ? std::clamp(m_Settings.WaterReflectionStrength, 0.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetFloat("rteWaterRefraction", waterReflections ? std::clamp(m_Settings.WaterRefraction, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetBool("rteWaterMirrorSurface", m_Settings.WaterMirrorSurface);
+	m_CompositeShader->SetBool("rteWaterSoftReflection", m_Settings.WaterSoftReflection);
 	m_CompositeShader->SetVector3f("rteSkyDaylight", m_SkyDaylight);
 	m_CompositeShader->SetFloat("rteSkyOwnLight", m_Settings.Enabled ? std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);

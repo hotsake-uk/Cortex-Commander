@@ -303,6 +303,30 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 	}
 }
 
+float PostProcessMan::GetDynamicLightAt(const Vector& pos) const {
+	float lit = 0.0F;
+	for (const SceneLight& light: m_LastSceneLights) {
+		if (light.m_Radius <= 0.0F) {
+			continue;
+		}
+		Vector toLight = g_SceneMan.ShortestDistance(pos, light.m_Pos, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		if (!toLight.MagnitudeIsLessThan(light.m_Radius)) {
+			continue;
+		}
+		// A cone light (a headlamp, a flashlight) lights what is in its cone only.
+		if (light.m_ConeCos >= -1.0F && !toLight.IsZero()) {
+			Vector fromLight = -toLight;
+			fromLight.Normalize();
+			if (fromLight.m_X * light.m_Direction.x + fromLight.m_Y * light.m_Direction.y < light.m_ConeCos) {
+				continue;
+			}
+		}
+		float brightness = std::clamp(glm::dot(light.m_Color, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
+		lit = std::max(lit, brightness * (1.0F - toLight.GetMagnitude() / light.m_Radius));
+	}
+	return lit;
+}
+
 float PostProcessMan::GetSmoothSimTime() {
 	return static_cast<float>(GetSmoothSimTimePrecise());
 }

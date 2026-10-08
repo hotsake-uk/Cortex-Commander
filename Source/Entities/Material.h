@@ -5,8 +5,45 @@
 #include "Color.h"
 
 #include <cmath>
+#include <string>
 
 namespace RTE {
+
+	/// How a material behaves in the terrain's simulations (SB-1): the liquids and powders (FluidSim), fire (TerrainFire) and bodies in liquid
+	/// (ActorWater). Set in the material's INI block; anything left unset (below 0, or empty) keeps the stock rule, which goes by the material's
+	/// name, so old mods behave as they did. The names follow the Powder Toy's where they mean the same.
+	struct MaterialBehaviour {
+		int Flows = -1; //!< 1 for a liquid: it falls, runs level and pools (FluidSim).
+		int Powder = -1; //!< 1 for a powder: it falls and slides down slopes but doesn't run level (sand, snow, rubble, ash).
+		int FlowSpeed = -1; //!< How far a pixel may run sideways a step, in pixels.
+		int FallSpeed = -1; //!< How far a pixel may fall a step, in pixels.
+		int MoveEvery = -1; //!< Moves every this many sim updates: the thicker, the higher.
+		int Gravity = -1; //!< Falling speed gained a step, in quarter pixels.
+		int Viscosity = -1; //!< Sideways speed gained a step while it has somewhere to run, in quarter pixels (low is thick).
+		int LiquidWeight = -1; //!< Heavier sinks through lighter.
+		float SlideChance = -1.0F; //!< For a powder: the chance a step of sliding down a slope.
+		int Sticky = -1; //!< For a powder: 1 to slide only off a drop two deep, so it stands steeper (snow).
+		std::string Burns; //!< "Grass", "Wood" or "Oil" for how it burns (TerrainFire), "None" for not at all.
+		int BurnMinTicks = -1; //!< How long a pixel of it burns, in fire ticks (a twentieth of a second), at the least and the most.
+		int BurnMaxTicks = -1;
+		float BurnSpread = -1.0F; //!< The chance a fire tick of setting each flammable neighbour alight.
+		int LeavesAsh = -1; //!< 1 to leave ash where it burned out.
+		float BurnBlast = -1.0F; //!< The chance a pixel of it going up in flames sets off a blast (fuel), 0 to 1.
+		int Douses = -1; //!< 1 if it puts fire out, and quenches what settles in it (water).
+		std::string FreezesTo; //!< What it freezes into, still and under snowfall (water: "Ice").
+		std::string MeltsTo; //!< What it melts into beside something hot (ice and snow: "Water").
+		std::string BoilsTo; //!< What it boils into against something hot ("Air" for steam, water's).
+		std::string SettlesTo; //!< What it sets into where it meets something that douses it (lava: "Stone").
+		std::string DriesTo; //!< What a liquid dries into where it lies still with air over it (mud: "Earth"), from the top down.
+		float DryChance = -1.0F; //!< The chance, each time the terrain's sweep passes a still surface pixel of it (every few seconds), that it dries.
+		int Chills = -1; //!< 1 if it freezes what it touches that freezes (water to ice), and frosts bodies in it (cryogenic fluid).
+		float Evaporates = -1.0F; //!< The chance a step that a pixel of it at the surface boils off into mist (cryogenic fluid: gone in seconds).
+		int Look = -1; //!< The liquid look it's drawn with (RenderMan::SetLiquidPaletteColor: 1 water, 2 lava, 3 acid, 4 oil...), 0 for plain.
+		int Glow = -1; //!< How brightly a liquid of it glows, 0 to 255 (lava 230).
+		int Stains = -1; //!< 1 if drops of it leave stains where they land (blood, oil).
+		int Breathable = -1; //!< 1 if a body can breathe in it; liquids aren't.
+		float TouchDamage = -1.0F; //!< Health a second it takes from a body in it, for each level of depth (acid 5).
+	};
 
 	/// Represents a material and holds all the relevant data.
 	class Material : public Entity {
@@ -125,6 +162,9 @@ namespace RTE {
 		/// Set with Gloss in INI; when it isn't, a value that suits the Material's name is used.
 		/// @return The gloss, 0 to 1.
 		float GetGloss() const;
+
+		/// Gets how this Material behaves in the terrain's simulations (see MaterialBehaviour): unset values keep the stock rule.
+		const MaterialBehaviour& GetBehaviour() const { return m_Behaviour; }
 #pragma endregion
 
 #pragma region Operator Overloads
@@ -164,6 +204,7 @@ namespace RTE {
 		bool m_IsScrap; //!< Whether this material is scrap material made from gibs of things that have already been blown apart.
 
 		mutable float m_Metalness; //!< How metallic this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
+		MaterialBehaviour m_Behaviour; //!< How this behaves in the terrain's liquid, powder and fire simulations.
 		mutable float m_Gloss; //!< How glossy this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
 
 		Color m_Color; //!< The natural color of this material.

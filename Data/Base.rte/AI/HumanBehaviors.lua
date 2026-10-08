@@ -1,6 +1,18 @@
 
 HumanBehaviors = {};
 
+-- spot targets with the engine's scan (see SharedBehaviors.ScanForTargets): a wide view about the facing, and down the aim when aiming.
+-- Brains, snipers, bosses and top-skill (Good or Unfair) units no longer see every enemy on a screen: they look wider and with more rays.
+function HumanBehaviors.ScanTargets(AI, Owner, Skill)
+	if AI.deviceState == AHuman.AIMING then
+		AI.Ctrl:SetState(Controller.AIM_SHARP, true); -- the scan's long, narrow look down the aim
+	end
+	local keen = Skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
+	local fov = (keen and 180 or 120) * (0.6 + Skill / 250);
+	local budget = (keen and 4 or 2) + (AI.Target and 1 or 0);
+	return SharedBehaviors.ScanForTargets(AI, Owner, Skill, fov, budget);
+end
+
 -- spot targets by casting a ray in a random direction
 function HumanBehaviors.LookForTargets(AI, Owner, Skill)
 	local viewAngDeg = RangeRand(50, 120) * Owner.Perceptiveness * (0.5 + Skill/200);
@@ -902,6 +914,12 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 	local ImproveAimTimer = Timer();
 	local ShootTimer = Timer();
 	local shootDelay = RangeRand(440, 590) * AI.aimSpeed + 150;
+	-- Pinned down (AC-3): slower to fire, a worse first aim that settles slower, short bursts over half way, and down behind something
+	-- (or crouched, or flat) by how hard it is being hammered. Unfair AI and machines feel none of it (see SharedBehaviors.Suppression).
+	local suppression = SharedBehaviors.Suppression(AI, Owner);
+	shootDelay = shootDelay + 400 * suppression;
+	local BurstTimer = Timer();
+	local SuppressedStanceTimer = Timer();
 	local AimPoint = AI.Target.Pos + AI.TargetOffset;
 	if not AI.flying and AI.Target.Vel.Largest < 4 and HumanBehaviors.GoProne(AI, Owner, AimPoint, AI.Target.ID) then
 		shootDelay = shootDelay + 250;
@@ -931,11 +949,20 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 	if _abrt then return true end
 
 	local distMultiplier = AI.aimSkill * math.max(math.min(0.0035*Dist.Largest, 1.0), 0.01);
-	local ErrorOffset = Vector(RangeRand(40, 80)*distMultiplier, 0):RadRotate(RangeRand(1, 6));
+	local ErrorOffset = Vector(RangeRand(40, 80)*distMultiplier*(1 + 2*suppression), 0):RadRotate(RangeRand(1, 6));
 	local aimTarget = SceneMan:ShortestDistance(Owner.Pos, AimPoint+ErrorOffset, false).AbsRadAngle;
 	local f1, f2 = 0.5, 0.5; -- aim noise filter
 
 	while true do
+		suppression = SharedBehaviors.Suppression(AI, Owner);
+		-- Over 0.8: behind cover if there is any near, else flat on the ground; over 0.5: behind cover, else crouched. Looked at twice a
+		-- second, each stance held a little longer than that.
+		if suppression > 0.5 and SuppressedStanceTimer:IsPastSimMS(500) and not AI.flying then
+			SuppressedStanceTimer:Reset();
+			if not HumanBehaviors.TakeCover(AI, Owner, AI.Target and AI.Target.Pos or AimPoint, "suppressed") and AI.lateralMoveState == Actor.LAT_STILL then
+				SharedBehaviors.Stance(AI, Owner, suppression > 0.8 and AHuman.PRONE or SharedBehaviors.CROUCHED, 800);
+			end
+		end
 		if not AI.Target or AI.Target:IsDead() then
 			AI.Target = nil;
 
@@ -1184,7 +1211,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					-- reduce the aim point error
 					if ImproveAimTimer:IsPastSimMS(50) then
 						ImproveAimTimer:Reset();
-						ErrorOffset = ErrorOffset * 0.93;
+						ErrorOffset = ErrorOffset * (0.93 + 0.05 * suppression);
 					end
 
 					if AI.canHitTarget and angDiff < 0.7 then
@@ -1235,6 +1262,17 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					openFire = 0;
 				end
 
+				-- (Pinned down, an automatic fires in short bursts: 350 ms on, 400 ms off.)
+				if openFire > 0 and suppression > 0.5 and Weapon and Weapon.FullAuto and BurstTimer:IsPastSimMS(350) then
+					if BurstTimer:IsPastSimMS(750) then
+						BurstTimer:Reset();
+					else
+						openFire = 0;
+					end
+				elseif openFire <= 0 then
+					BurstTimer:Reset();
+				end
+
 				if openFire > 0 then
 					AI.fire = true;
 				else
@@ -1244,6 +1282,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 		else
 			if Owner.EquippedItem and ToHeldDevice(Owner.EquippedItem):IsReloading() then
 				ShootTimer:Reset();
+				HumanBehaviors.StopRangeStep(AI, Owner);
 				AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.Pos, AI.Target.Pos, false).Normalized;
 				-- Behind something for the reload, if there's something to be behind a few steps away; else flat on the ground.
 				if not HumanBehaviors.TakeCover(AI, Owner, AI.Target.Pos, "reload") and AI.lateralMoveState == Actor.LAT_STILL then
@@ -1341,6 +1380,15 @@ end
 -- defender stands; anyone else holds about half the weapon's reach (snipers most of it, explosives well clear of their own blast),
 -- closing in by the path when further off than that and backing off a step when much nearer, and otherwise shifts a step one way or
 -- the other now and then, so it isn't the same mark twice. The better the AI, the more it shifts.
+-- The step sideways HoldRange set, stopped (it is only reset when HoldRange is called again, which wants a weapon ready to hit the target:
+-- a step under way when the magazine ran dry was walked the whole reload, and on after the target died). Left alone for the units whose
+-- legs HoldRange doesn't have (a move order's, an aggressive one's).
+function HumanBehaviors.StopRangeStep(AI, Owner)
+	if not Owner.aggressive and SharedBehaviors.OrderKind(Owner) ~= "move" then
+		AI.lateralMoveState = Actor.LAT_STILL;
+	end
+end
+
 function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
 	local kind = SharedBehaviors.OrderKind(Owner);
 	if Owner.aggressive or kind == "move" then
@@ -1606,7 +1654,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 							if minThrowVel == 0 then
 								minThrowVel = maxThrowVel * 0.2;
 							end
-							aim = HumanBehaviors.GetGrenadeAngle(AimPoint, Vector(), Grenade.MuzzlePos, maxThrowVel);
+							aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, maxThrowVel);
 							if aim then
 								aim = aim - Owner.RotAngle;
 								ThrowTimer:Reset();
@@ -1614,7 +1662,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 								local maxAim = aim;
 
 								-- try again with an average throw vel
-								aim = HumanBehaviors.GetGrenadeAngle(AimPoint, Vector(), Grenade.MuzzlePos, (maxThrowVel + minThrowVel) * 0.5);
+								aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, (maxThrowVel + minThrowVel) * 0.5);
 								if aim then
 									aimTime = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
 								else

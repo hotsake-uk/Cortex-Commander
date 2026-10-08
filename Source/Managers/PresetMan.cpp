@@ -203,9 +203,17 @@ bool PresetMan::LoadAllDataModules() {
 		}
 	}
 
+	// The progress report presents at most every 33 ms, so its last lines are shown now.
+	LoadingScreen::FlushProgressReport();
+
 	if (g_SettingsMan.IsMeasuringModuleLoadTime()) {
 		std::chrono::milliseconds moduleLoadElapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - moduleLoadTimerStart);
 		g_ConsoleMan.PrintString("Module load duration is: " + std::to_string(moduleLoadElapsedTime.count()) + "ms");
+	}
+	// Always logged (LogConsole.txt), so a slow start says whether the file index the case check builds at the first load was the time
+	// (see System::PathExistsCaseSensitive).
+	if (auto [files, indexMS] = System::GetCaseIndexStats(); indexMS >= 0) {
+		g_ConsoleMan.PrintString("File index for the case check: " + std::to_string(files) + " files in " + std::to_string(indexMS) + "ms");
 	}
 	return true;
 }

@@ -206,6 +206,9 @@ const std::vector<MovableObject*>* MovableMan::GetMOsAtPosition(int pixelX, int 
 }
 
 void MovableMan::PurgeAllMOs() {
+	// A restart or scene load can be requested mid-update, while the sight-ray, MOID and Lua GC tasks launched at the end of the last Update are still running on these objects.
+	WaitForWorkerTasks();
+
 	for (std::deque<Actor*>::iterator itr = m_Actors.begin(); itr != m_Actors.end(); ++itr) {
 		(*itr)->DestroyScriptState();
 	}
@@ -677,7 +680,46 @@ bool MovableMan::AddMO(MovableObject* movableObjectToAdd) {
 	return true;
 }
 
+bool MovableMan::AlreadyAdded(const MovableObject* movableObject) {
+	// Added twice (a script adding something that is already in the scene), an object was deleted once and then read again when it was
+	// deleted the second time, which crashed the game: a dropped gun added twice went when a blast destroyed it. The second add is refused,
+	// and said so once per kind of object. (Each list's lock is taken on its own, never two at once.)
+	if (!movableObject) {
+		return false;
+	}
+	bool already;
+	{
+		std::lock_guard<std::mutex> actorLock(m_AddedActorsMutex);
+		already = m_ValidActors.find(movableObject) != m_ValidActors.end();
+	}
+	if (!already) {
+		std::lock_guard<std::mutex> itemLock(m_AddedItemsMutex);
+		already = m_ValidItems.find(movableObject) != m_ValidItems.end();
+	}
+	if (!already) {
+		std::lock_guard<std::mutex> particleLock(m_AddedParticlesMutex);
+		already = m_ValidParticles.find(movableObject) != m_ValidParticles.end();
+	}
+	if (already) {
+		static std::mutex reportedMutex;
+		static std::unordered_set<std::string> reported;
+		std::string name = movableObject->GetModuleAndPresetName();
+		bool first;
+		{
+			std::lock_guard<std::mutex> reportedLock(reportedMutex);
+			first = reported.insert(name).second;
+		}
+		if (first) {
+			g_ConsoleMan.PrintString("WARNING: " + name + " was added to the scene while already in it; the second add was ignored (a script adds it twice?).");
+		}
+	}
+	return already;
+}
+
 void MovableMan::AddActor(Actor* actorToAdd) {
+	if (AlreadyAdded(actorToAdd)) {
+		return;
+	}
 	if (actorToAdd && g_ActivityMan.GetActivity()) {
 		actorToAdd->SetAsAddedToMovableMan();
 		actorToAdd->CorrectAttachableAndWoundPositionsAndRotations();
@@ -708,6 +750,9 @@ void MovableMan::AddActor(Actor* actorToAdd) {
 }
 
 void MovableMan::AddItem(HeldDevice* itemToAdd) {
+	if (AlreadyAdded(itemToAdd)) {
+		return;
+	}
 	if (itemToAdd && g_ActivityMan.GetActivity()) {
 		g_ActivityMan.GetActivity()->ForceSetTeamAsActive(itemToAdd->GetTeam());
 
@@ -732,26 +777,8 @@ void MovableMan::AddItem(HeldDevice* itemToAdd) {
 }
 
 void MovableMan::AddParticle(MovableObject* particleToAdd) {
-	// Added twice (a script adding something that is already in the scene), a particle was deleted once and then read again where the
-	// particles settle, which crashed the game. The second add is refused, and said so once per kind of object.
-	if (particleToAdd) {
-		bool already;
-		{
-			std::lock_guard<std::mutex> particleLock(m_AddedParticlesMutex);
-			already = m_ValidParticles.find(particleToAdd) != m_ValidParticles.end();
-		}
-		if (!already) {
-			std::lock_guard<std::mutex> itemLock(m_AddedItemsMutex);
-			already = m_ValidItems.find(particleToAdd) != m_ValidItems.end();
-		}
-		if (already) {
-			static std::unordered_set<std::string> reported;
-			std::string name = particleToAdd->GetModuleAndPresetName();
-			if (reported.insert(name).second) {
-				g_ConsoleMan.PrintString("WARNING: " + name + " was added to the scene while already in it; the second add was ignored (a script adds it twice?).");
-			}
-			return;
-		}
+	if (AlreadyAdded(particleToAdd)) {
+		return;
 	}
 	if (particleToAdd && g_ActivityMan.GetActivity()) {
 		g_ActivityMan.GetActivity()->ForceSetTeamAsActive(particleToAdd->GetTeam());
@@ -785,6 +812,8 @@ Actor* MovableMan::RemoveActor(MovableObject* pActorToRem) {
 	Actor* removed = nullptr;
 
 	if (pActorToRem) {
+		// Scripts can call this between updates while the sight-ray workers still index m_Actors, and the removed actor may then be freed by Lua GC. Let them finish first.
+		m_ActorsSeeFuture.wait();
 		for (std::deque<Actor*>::iterator itr = m_Actors.begin(); itr != m_Actors.end(); ++itr) {
 			if (*itr == pActorToRem) {
 				std::lock_guard<std::mutex> lock(m_ActorsMutex);
@@ -1058,6 +1087,9 @@ int MovableMan::KillAllEnemyActors(int teamNotToKill) const {
 }
 
 int MovableMan::GetAllActors(bool transferOwnership, std::list<SceneObject*>& actorList, int onlyTeam, bool noBrains) {
+	if (transferOwnership) {
+		WaitForWorkerTasks();
+	}
 	int addedCount = 0;
 
 	// Add all regular Actors
@@ -1100,6 +1132,9 @@ int MovableMan::GetAllActors(bool transferOwnership, std::list<SceneObject*>& ac
 }
 
 int MovableMan::GetAllItems(bool transferOwnership, std::list<SceneObject*>& itemList) {
+	if (transferOwnership) {
+		WaitForWorkerTasks();
+	}
 	int addedCount = 0;
 
 	// Add all regular Items
@@ -1125,6 +1160,9 @@ int MovableMan::GetAllItems(bool transferOwnership, std::list<SceneObject*>& ite
 }
 
 int MovableMan::GetAllParticles(bool transferOwnership, std::list<SceneObject*>& particleList) {
+	if (transferOwnership) {
+		WaitForWorkerTasks();
+	}
 	int addedCount = 0;
 
 	// Add all regular particles
@@ -1303,6 +1341,9 @@ void MovableMan::Update() {
 
 	m_SimUpdateFrameNumber++;
 
+	// Finish our Seeing rays from last frame before anything here moves actors or changes m_Actors (the workers index it by position and read actor state).
+	m_ActorsSeeFuture.wait();
+
 	// ---TEMP ---
 	// These are here for multithreaded AI, but will be unnecessary when multithreaded-sim-and-render is in!
 	// Clear the MO color layer only if this is a drawn update
@@ -1335,9 +1376,6 @@ void MovableMan::Update() {
 	if (g_SettingsMan.GetForceImmediatePathingRequestCompletion() && g_SceneMan.GetScene()) {
 		g_SceneMan.GetScene()->BlockUntilAllPathingRequestsComplete();
 	}
-
-	// Finish our Seeing rays from last frame
-	m_ActorsSeeFuture.wait();
 
 	// Prior to controller/AI update, execute lua callbacks
 	g_LuaMan.ExecuteLuaScriptCallbacks();
@@ -1596,6 +1634,7 @@ void MovableMan::Update() {
 						(*iIt)->SetRestThreshold(500);
 					}
 					m_Particles.push_back(*iIt);
+					m_ValidParticles.insert(*iIt);
 					m_ValidItems.erase(*iIt);
 					iIt++;
 				}
@@ -1975,6 +2014,12 @@ void MovableMan::CompleteQueuedMOIDDrawings() {
 	if (m_DrawMOIDsTask.valid()) {
 		m_DrawMOIDsTask.wait();
 	}
+}
+
+void MovableMan::WaitForWorkerTasks() {
+	m_ActorsSeeFuture.wait();
+	CompleteQueuedMOIDDrawings();
+	g_LuaMan.WaitForAsyncGarbageCollection();
 }
 
 void MovableMan::Draw(BITMAP* pTargetBitmap, const Vector& targetPos) {

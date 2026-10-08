@@ -27,6 +27,12 @@ namespace RTE {
 		/// Sets whether loose powders slide and pile.
 		static void SetPowdersEnabled(bool enabled);
 
+		/// Gets whether blood that settles on the ground runs and pools as a liquid of its own (Blood), rather than staying where it fell (a gameplay setting, off unless turned on).
+		static bool BloodFlows() { return s_BloodFlows; }
+
+		/// Sets whether settled blood runs and pools.
+		static void SetBloodFlows(bool enabled);
+
 		/// Gets whether still water freezes over in snowy weather (a gameplay setting, off unless turned on).
 		static bool FreezingEnabled() { return s_Freezing; }
 
@@ -36,6 +42,10 @@ namespace RTE {
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
+		/// Gets whether a flowing liquid holds up and drags at bodies in it (ActorWater): every flowing liquid, oil and lava included (L-5); what
+		/// each does to a body is its material's (weight, stickiness, touch damage).
+		static bool HoldsBodies(int materialID);
+
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.
@@ -44,6 +54,10 @@ namespace RTE {
 
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
+
+		/// Gets whether there is any liquid or loose powder near a point, from a few samples in a plus shape: for callers that would otherwise queue work on
+		/// dry, solid ground (a gib's disturbance and splash). Reads the terrain only.
+		static bool IsFlowingNear(const Vector& position, float radius);
 
 		/// Throws some of the liquid near a point into the air as drops, which fly and rejoin it where they land: for explosions and things falling in. Thread safe.
 		/// @param position Centre, in scene coordinates.
@@ -91,5 +105,6 @@ namespace RTE {
 		static bool s_Enabled; //!< Whether flowing liquids are on.
 		static bool s_Powders; //!< Whether loose powders slide and pile.
 		static bool s_Freezing; //!< Whether still water freezes over in snowy weather.
+		static bool s_BloodFlows; //!< Whether settled blood runs and pools.
 	};
 } // namespace RTE

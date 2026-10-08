@@ -12,6 +12,8 @@
 
 #include <array>
 #include <deque>
+#include <optional>
+#include <shared_mutex>
 #include <vector>
 
 struct BITMAP;
@@ -323,7 +325,7 @@ namespace RTE {
 		void GetDebugState(std::vector<DebugStateField>& fields) const override;
 
 		/// Forgets the route-follower's state (a new order, or another behaviour taking over).
-		void ResetRouteMovement();
+		void ResetRouteMovement() override;
 
 		/// Gets whether this is getting up from having been knocked over (see UpdateGetUp).
 		/// @return Whether it is getting up.
@@ -334,6 +336,8 @@ namespace RTE {
 		float GetJetAccelRatio() const { return m_JetAccelRatio; }
 		/// Whether the body is flying on its jet just now (lit, or lit in the last 0.4 s): it passes the ladders' rungs, and a ladder lets it go.
 		bool IsJetFlying() const { return m_JetFlying && !m_Ladder.active; }
+		/// Whether the route-follower is flying a planned flight just now (take-off to landing; see MoveAlongRoute).
+		bool IsFlyingRoute() const { return m_Mover.flight.active; }
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
@@ -602,6 +606,27 @@ namespace RTE {
 		/// @param newValue The new value for this AHuman's max walkpath adjustment.
 		void SetMaxWalkPathCrouchShift(float newValue) { m_MaxWalkPathCrouchShift = newValue; }
 
+		/// Gets how tall this AHuman is crouched, as a fraction of its height (the standing body is 0.44 of it, see GetPathAgent).
+		/// @return The crouch height fraction.
+		float GetCrouchHeightFraction() const { return m_CrouchHeightFraction; }
+
+		/// Sets how tall this AHuman is crouched, as a fraction of its height.
+		/// @param newValue The new crouch height fraction.
+		void SetCrouchHeightFraction(float newValue) { m_CrouchHeightFraction = newValue; }
+
+		/// Gets the head room this AHuman needs crouched, in pixels: between its crawl and standing heights.
+		/// @return The crouched height, in pixels.
+		float GetCrouchHeight() const;
+
+		/// Gets how far this AHuman's walk path is shifted up when fully crouched, in pixels: from standing height down to crouched height, or
+		/// MaxWalkPathCrouchShift if that is more.
+		/// @return The full crouch's walk path shift, in pixels.
+		float GetCrouchShift() const;
+
+		/// How much of a target this body makes, for the sight of others (see Actor::ScanForEnemies): lying down a little over half, crouched
+		/// four fifths.
+		float GetSightProfile() const override { return m_ProneState != NOTPRONE ? 0.55F : 1.0F - 0.2F * m_CrouchAmount; }
+
 		/// Gets this AHuman's current crouch amount. 0.0 == fully standing, 1.0 == fully crouched.
 		/// @return This AHuman's current crouch amount.
 		float GetCrouchAmount() const { return m_CrouchAmount; }
@@ -688,6 +713,9 @@ namespace RTE {
 		Timer m_ProneTimer;
 		// The maximum amount our walkpath can be shifted upwards to crouch, whether manually or automatically.
 		float m_MaxWalkPathCrouchShift;
+		float m_CrouchHeightFraction; //!< How tall the body is crouched, as a fraction of its height: the full crouch lowers it from standing (0.44) to this.
+		bool m_CrouchWalking; //!< Whether it is striding on the crouched walk's leg paths (WALKCROUCH): more than half crouched while walking.
+		bool m_CrouchWalkFromWalk; //!< Whether the crouched walk's leg paths were made from the walk's (none given), so they follow its speed and push.
 		// The current crouching amount from 0.0 to 1.0, where 1.0 is applying maximum walk path shift.
 		float m_CrouchAmount;
 		// The script-set forced crouching amount. 0.0 == fully standing, 1.0 == fully crouched, -1 == no override.
@@ -829,6 +857,7 @@ namespace RTE {
 				Timer stepTimer;
 			};
 			bool begun = false;
+			long long lastCallTick = -1; //!< The sim update the follower was last called on, to tell a hold by whoever drives it (see MoveAlongRoute).
 			Flight flight;
 			Timer progressTimer; //!< Since the unit last got nearer the route's point.
 			float bestGap = -1.0F;
@@ -841,12 +870,21 @@ namespace RTE {
 			long doorWaitID = 0;
 			long doorIgnoreID = 0;
 			Timer proneHoldTimer;
+			bool crouching = false; //!< The walk is ducking under something low (see MoveAlongRoute's walk): kept up 400 ms after the room returns.
+			Timer crouchHoldTimer;
 			Timer hopTimer;
 			Vector stuckSpot; //!< Where the step it was last long stuck on led (its landing, or the route's next point).
 			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
 			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
 			bool settling = false; //!< Waiting to settle before a take-off just now.
+			bool leapWatch = false; //!< A leap of the route's is under way: where from and to, to judge it by when it comes down.
+			Vector leapFrom;
+			Vector leapTo;
+			Timer leapTimer;
+			long long pilotedFallTick = -1; //!< The sim update the route-follower last flew a fall without a flight (PilotFlight for the point), for the motor's brake to keep off.
+			bool standUp = false; //!< At a leap's take-off lying down: the motor's prone stance gives way (see UpdateAIMotor), for a moment after.
+			Timer standUpTimer;
 			bool noTakeOff = false; //!< At a take-off that the flight can't begin from, just now.
 			Timer noTakeOffTimer; //!< Since then.
 			Timer settleWaitTimer; //!< Since the wait to settle began: it never lasts more than a second and a half.
@@ -854,13 +892,17 @@ namespace RTE {
 			bool fuelWaiting = false; //!< Standing for the tank to fill before a flight, and since when.
 			Timer fuelWaitTimer;
 			int impossibleAnswers = 0;
+			int impossibleSeen = 0; //!< The actor's impossible-answer count when last looked at: an answer is counted when it changes.
 			double lastJetTime = -1.0;
 			Timer senseRerouteTimer; //!< Since the sense last asked for a route round a wall the grid didn't know.
 			bool digging = false; //!< Digging along the route (a Dig step), the digger out; put away again after.
 			float digSweep = 0.0F; //!< The digger's sweep either side of the way, radians.
 			bool digSweepUp = true;
-			bool stuckBackedOff = false; //!< Whether the stuck handling has backed off, and lain down, this time stuck (traced once each).
-			bool stuckLayDown = false;
+			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
+			Timer remedyTimer; //!< Since it began.
+			Vector remedySpot; //!< Where the unit was stuck when it began.
+			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
+			bool swimming = false; //!< In liquid with the body under (LM-4), since the follower last looked: for the re-route on falling in.
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
@@ -883,6 +925,30 @@ namespace RTE {
 			FlightRecord debugFlight;
 		};
 		RouteMover m_Mover;
+
+		/// The small things a stuck unit tries before the follower's re-path at 6 s, in the order they are tried (LM-3).
+		enum class StuckRemedy {
+			Crouch, //!< Duck and keep walking.
+			BackOff, //!< Half a body back, then on again.
+			Leap, //!< A leap on the legs.
+			Hop, //!< A hop with the jet.
+			Prone, //!< Lie down and crawl.
+			Stand, //!< Stand up from lying down.
+			Count
+		};
+		/// What a remedy did at a spot: kept across routes and orders (the route-follower's own state starts again with each), so a remedy
+		/// that failed at a spot is not tried there again for a while, and one that worked is tried first.
+		struct StuckRemedyMemory {
+			Vector Spot;
+			int Remedy = 0;
+			bool Worked = false;
+			Timer Age;
+		};
+		std::deque<StuckRemedyMemory> m_StuckRemedyMemory;
+		void RememberStuckRemedy(const Vector& spot, int remedy, bool worked);
+		/// Picks the next remedy to try at a spot, of those allowed now and not tried this time stuck: one that worked there first, then the
+		/// rest in order, leaving out those that failed there last time. @return The remedy, or -1 for none.
+		int PickStuckRemedy(const Vector& spot, const std::array<bool, static_cast<int>(StuckRemedy::Count)>& allowed, unsigned int tried) const;
 
 		/// Climbing a ladder: the body held to the ladder's line and moved along it by the climb (as the mantle moves it: gravity, the jet and
 		/// the walls are nothing to it meanwhile), the hands and feet on the rungs, one limb at a time, hand and opposite foot in turn.
@@ -940,10 +1006,14 @@ namespace RTE {
 		void UpdateLadderLimbs();
 		void LetGoOfLadder(const Vector& velocity);
 		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
+		static std::shared_mutex s_LadderNodesMutex; //!< The AI's route-following runs on several threads at once: one refreshes the nodes
+		                                             //!< while the others read them.
 		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it
 		                                      //!< reads, and crashed the game before its window opened.)
-		static const Vector* LadderNear(const Vector& point, float reachX, float reachY);
+		static std::optional<Vector> LadderNear(const Vector& point, float reachX, float reachY);
+		/// Drops the route's points up to a flight's landing: up to the one nearest the landing, or the planned count if none is near it.
+		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;

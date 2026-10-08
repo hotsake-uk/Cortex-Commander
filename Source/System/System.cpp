@@ -25,9 +25,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <regex>
 #include <string>
 #include <utility>
@@ -40,7 +43,10 @@ bool System::s_LogToCLI = false;
 bool System::s_ExternalModuleValidation = false;
 std::string System::s_ThisExePathAndName = "";
 std::string System::s_WorkingDirectory = ".";
-std::vector<size_t> System::s_WorkingTree;
+std::unordered_set<uint64_t> System::s_WorkingTree;
+std::vector<std::string> System::s_UnindexedDirectories;
+bool System::s_WorkingTreeBuilt = false;
+int System::s_WorkingTreeIndexMS = -1;
 std::filesystem::file_time_type System::s_ProgramStartTime = std::filesystem::file_time_type::clock::now();
 bool System::s_CaseSensitive = true;
 const std::string System::s_DataDirectory = "Data/";
@@ -155,18 +161,78 @@ bool System::MakeDirectory(const std::string& pathToMake) {
 	return createResult;
 }
 
-bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
-	// Use Hash for compiler independent hashing.
-	if (s_CaseSensitive) {
-		if (s_WorkingTree.empty()) {
-			for (const std::filesystem::directory_entry& directoryEntry: std::filesystem::recursive_directory_iterator(s_WorkingDirectory, std::filesystem::directory_options::follow_directory_symlink)) {
-				s_WorkingTree.emplace_back(Hash(directoryEntry.path().generic_string().substr(s_WorkingDirectory.length())));
+namespace {
+	/// Whether a directory under the working directory is left out of the case check's index (see System::PathExistsCaseSensitive): what the
+	/// game reads its data from never is, but development and user clutter is. Hidden folders (.git and the like), the user's own folders
+	/// and the launcher's builds at the top, and anywhere another checkout, worktree or build tree sits.
+	bool LeftOutOfCaseIndex(const std::filesystem::path& directory, bool topLevel) {
+		std::string name = directory.filename().generic_string();
+		if (name.empty() || name.ends_with(".rte")) {
+			return false;
+		}
+		if (name.front() == '.') {
+			return true;
+		}
+		// At the top, only the data and the mods are indexed: they are what the game loads by path, and so what the case check is for.
+		// Anything else (userdata, saves, a build tree, a vcpkg or external folder, a copy of the game, whatever a working folder gathers)
+		// is asked of the file system as it is. (A list of what to leave out missed whatever wasn't on it: Liam's start was still slow
+		// with the fix in.)
+		if (topLevel) {
+			auto sameName = [](std::string_view a, std::string_view b) {
+				return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
+			};
+			std::string_view data = System::GetDataDirectory();
+			std::string_view mods = System::GetModDirectory();
+			data = data.substr(0, data.find_last_not_of('/') + 1);
+			mods = mods.substr(0, mods.find_last_not_of('/') + 1);
+			if (!sameName(name, data) && !sameName(name, mods)) {
+				return true;
 			}
 		}
-		if (std::find(s_WorkingTree.begin(), s_WorkingTree.end(), Hash(pathToCheck)) != s_WorkingTree.end()) {
+		std::error_code error;
+		return std::filesystem::exists(directory / ".git", error) || std::filesystem::exists(directory / "meson-private", error) || std::filesystem::exists(directory / "CMakeCache.txt", error);
+	}
+} // namespace
+
+bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
+	// Use Hash for compiler independent hashing.
+	// The working directory's file paths, hashed, are walked once and looked up after. (Kept in a vector and searched end to end for every file
+	// the game loaded, and walked through everything under the game's folder, a checkout's history, build trees and other clones beside it
+	// included, start-up slowed with every file that piled up there: minutes, on a working copy that had been cloned into a few times.)
+	if (s_CaseSensitive) {
+		// (Data is loaded from more than one thread: the index is built and grown under a lock.)
+		static std::mutex workingTreeMutex;
+		std::lock_guard<std::mutex> lock(workingTreeMutex);
+		if (!s_WorkingTreeBuilt) {
+			s_WorkingTreeBuilt = true;
+			const auto indexStart = std::chrono::steady_clock::now();
+			std::error_code error;
+			std::filesystem::recursive_directory_iterator entry(s_WorkingDirectory, std::filesystem::directory_options::follow_directory_symlink | std::filesystem::directory_options::skip_permission_denied, error);
+			for (; !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error)) {
+				std::string relative = entry->path().generic_string().substr(s_WorkingDirectory.length());
+				std::error_code typeError;
+				if (entry->is_directory(typeError) && LeftOutOfCaseIndex(entry->path(), entry.depth() == 0)) {
+					s_UnindexedDirectories.emplace_back(relative + "/");
+					entry.disable_recursion_pending();
+					continue;
+				}
+				s_WorkingTree.insert(Hash(relative));
+			}
+			s_WorkingTreeIndexMS = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - indexStart).count());
+		}
+		// (Asked about by its full path too, from the working directory's set-up; the index is of paths relative to it.)
+		std::string relative = pathToCheck.starts_with(s_WorkingDirectory) ? pathToCheck.substr(s_WorkingDirectory.length()) : pathToCheck;
+		if (s_WorkingTree.contains(Hash(relative))) {
 			return true;
-		} else if (std::filesystem::exists(pathToCheck) && std::filesystem::last_write_time(pathToCheck) > s_ProgramStartTime) {
-			s_WorkingTree.emplace_back(Hash(pathToCheck));
+		}
+		// In a folder left out of the index: asked of the file system as it is, case checked or not.
+		for (const std::string& directory: s_UnindexedDirectories) {
+			if (relative.starts_with(directory) || relative + "/" == directory) {
+				return std::filesystem::exists(pathToCheck);
+			}
+		}
+		if (std::filesystem::exists(pathToCheck) && std::filesystem::last_write_time(pathToCheck) > s_ProgramStartTime) {
+			s_WorkingTree.insert(Hash(relative));
 			return true;
 		}
 		return false;

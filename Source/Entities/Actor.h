@@ -20,8 +20,18 @@ namespace RTE {
 
 	class AtomGroup;
 	class HeldDevice;
+	class Actor;
 	struct PathRequest;
 	enum class PieSliceType : int;
+
+	/// An enemy an actor's scan saw (see Actor::ScanForEnemies): who, where the look landed on it, and how plainly.
+	struct ActorSighting {
+		Actor* Target = nullptr; //!< The enemy seen.
+		Vector HitPos; //!< Where the look landed on it (its body, or its head when the body was hidden).
+		float Visibility = 0.0F; //!< How plainly it was seen, 0 to 1: off the aim, far, dark, still and lying down all make it less.
+		float Distance = 0.0F; //!< From the eyes, in pixels.
+		bool Head = false; //!< Only its head was seen.
+	};
 
 #define AILINEDOTSPACING 16
 
@@ -53,6 +63,7 @@ namespace RTE {
 			CRAWL,
 			ARMCRAWL,
 			CLIMB,
+			WALKCROUCH, //!< Not a state of its own (a crouched walker is in WALK): the slot for the crouched walk's leg paths, which a walker more than half crouched strides on.
 			MOVEMENTSTATECOUNT
 		};
 
@@ -279,6 +290,10 @@ namespace RTE {
 		/// @param newPlayer The player which will control this if the input mode was set to player. (default: -1)
 		void SetControllerMode(Controller::InputMode newMode, int newPlayer = -1);
 
+		/// Forgets the engine route-follower's state, for the actor types that have one (AHuman, ACrab). Called on a change of controller,
+		/// so a player who takes over mid-flight and hands back later doesn't leave a stale flight to be judged failed.
+		virtual void ResetRouteMovement() {}
+
 		/// Sets this Actor's Controller mode and gives back what it used to be.
 		/// @param newMode The new mode to set to.
 		/// @param newPlayer The player which will control this if the input mode was set to player. (default: -1)
@@ -380,13 +395,74 @@ namespace RTE {
 		/// @return The current AI mode.
 		int GetAIMode() const { return m_AIMode; }
 
+		/// A unit's standing order (AI review section 6 item 2): what it was told to do, one typed record that the sandbox, the AI scripts, the HUD and saves all read, where
+		/// before it was six number values under string keys ("SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX/Y", "SandboxDefendX/Y",
+		/// "SandboxHold") that C++ and Lua each spelled out. The parts are independent, as the number values were.
+		struct StandingOrder {
+			bool Attack = false; //!< Told to attack: it gets a new target when its own is gone.
+			long TargetID = 0; //!< The unique ID of an enemy it was told to keep after while it lives, 0 for none.
+			long AutoTargetID = 0; //!< The unique ID of the enemy picked for it last when told to attack the nearest, 0 for none.
+			bool HasAttackPlace = false; //!< Whether it was told to attack towards a place (AttackPlace): it fights what is near it, and holds there otherwise.
+			Vector AttackPlace; //!< That place.
+			bool HasPost = false; //!< Whether it was told to defend a spot (Post): it fights from it and goes back to it when moved off.
+			Vector Post; //!< That spot.
+			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
+		};
+
+		/// Gets this' standing order, to read or change.
+		/// @return The standing order of this.
+		StandingOrder& GetStandingOrder() { return m_StandingOrder; }
+
+		/// Gets this' standing order.
+		/// @return The standing order of this.
+		const StandingOrder& GetStandingOrder() const { return m_StandingOrder; }
+
+		/// Forgets every part of this' standing order.
+		void ClearStandingOrder() { m_StandingOrder = StandingOrder(); }
+
+		/// The standing order's parts one by one, for Lua.
+		bool GetOrderAttack() const { return m_StandingOrder.Attack; }
+		void SetOrderAttack(bool attack) { m_StandingOrder.Attack = attack; }
+		long GetOrderTargetID() const { return m_StandingOrder.TargetID; }
+		void SetOrderTargetID(long id) { m_StandingOrder.TargetID = id; }
+		long GetOrderAutoTargetID() const { return m_StandingOrder.AutoTargetID; }
+		void SetOrderAutoTargetID(long id) { m_StandingOrder.AutoTargetID = id; }
+		bool GetOrderHasAttackPlace() const { return m_StandingOrder.HasAttackPlace; }
+		const Vector& GetOrderAttackPlace() const { return m_StandingOrder.AttackPlace; }
+		void SetOrderAttackPlace(const Vector& place) {
+			m_StandingOrder.AttackPlace = place;
+			m_StandingOrder.HasAttackPlace = true;
+		}
+		void ClearOrderAttackPlace() { m_StandingOrder.HasAttackPlace = false; }
+		bool GetOrderHasPost() const { return m_StandingOrder.HasPost; }
+		const Vector& GetOrderPost() const { return m_StandingOrder.Post; }
+		void SetOrderPost(const Vector& post) {
+			m_StandingOrder.Post = post;
+			m_StandingOrder.HasPost = true;
+		}
+		void ClearOrderPost() { m_StandingOrder.HasPost = false; }
+		bool GetOrderHold() const { return m_StandingOrder.Hold; }
+		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
+
+		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
+		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
+		/// mode it is already in, is seen as new without dropping the unit out of its mode for an update first.
+		/// @return The order serial of this.
+		unsigned int GetAIOrderSerial() const { return m_AIOrderSerial; }
+
 		/// Gets the icon bitmap associated with this' current AI mode and team.
 		/// @return The current AI mode icon of this. Ownership is NOT transferred!
 		BITMAP* GetAIModeIcon();
 
 		/// Sets this' AI mode.
 		/// @param newMode The new AI mode. (default: AIMODE_SENTRY)
-		void SetAIMode(AIMode newMode = AIMODE_SENTRY) { m_AIMode = newMode; }
+		void SetAIMode(AIMode newMode = AIMODE_SENTRY) {
+			// (Only a change counts: scripts that set the mode they want every update would otherwise restart the AI each time.)
+			if (newMode != m_AIMode) {
+				++m_AIOrderSerial;
+			}
+			m_AIMode = newMode;
+		}
 
 		/// Adds an absolute scene point to the list of waypoints this is going to
 		/// go to, in order
@@ -395,6 +471,7 @@ namespace RTE {
 		void AddAISceneWaypoint(const Vector& waypoint) {
 			m_Waypoints.push_back(std::pair<Vector, MovableObject*>(waypoint, (MovableObject*)NULL));
 			m_WaitingAtDoor = false; // (A new order is asked for at once, not after the wait at the last one's door.)
+			++m_AIOrderSerial;
 		}
 
 		/// Adds an MO in the scene as the next waypoint for this to go to, in order
@@ -413,6 +490,7 @@ namespace RTE {
 			m_MoveVector.Reset();
 			m_HasMovePathGoal = false;
 			m_WaitingAtDoor = false;
+			++m_AIOrderSerial;
 		}
 
 		/// Gets the last or furthest set AI waypoint of this: the last of its waypoints, else the place its route was asked for to, else
@@ -781,6 +859,20 @@ namespace RTE {
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const;
 
+		/// Gets the highest drop this actor lands from unhurt with no jet to brake it: the landing speed at which the impact reaches its
+		/// ImpulseDamageThreshold (Update's travel damage starts there), as a height in gravity, never under a storey (96 px, what a hatch
+		/// drops). @return The height, in pixels; FLT_MAX in no gravity or with no threshold.
+		float GetMaxSafeFallHeight() const;
+
+		/// Gets how deep this is in liquid (ActorWater): 0 dry, 1 feet in, 2 body in, 3 head under.
+		int GetLiquidDepth() const;
+
+		/// Gets how much air this has left, from 1 (full, or it doesn't breathe) to 0 (drowning).
+		float GetAirLeft() const;
+
+		/// Gets whether this floats in liquid, rising to the surface and swimming along it, rather than walking the bottom.
+		bool IsFloater() const;
+
 		/// Gets this Actor's base dig strength, or the strength of terrain they can expect to walk through without tools.
 		/// @return The actors base dig strength.
 		float GetAIBaseDigStrength() const { return m_AIBaseDigStrength; }
@@ -794,6 +886,9 @@ namespace RTE {
 
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
+
+		/// After every object has updated, before the deletions: lets go of the item in reach if it is going (see m_pItemInReach).
+		void PostUpdate() override;
 
 		/// Cast see rays for this actor.
 		void CastSeeRays();
@@ -831,6 +926,36 @@ namespace RTE {
 
 		/// Gets how far this actor can see relative to daylight: less at night, unless it has a headlamp on (night gameplay).
 		float GetNightSightScale() const;
+
+		/// Looks for enemies the way a person would, for the AI's scripts: the enemy actors within range inside a wide field of view about the
+		/// facing (and a narrow, longer one about the aim when sharp-aiming), the likeliest first (nearest the aim, then nearest), looked at
+		/// with at most budget rays (body, then head), through terrain, other bodies and thick smoke. Nothing behind it is seen.
+		/// @param fovDegrees The field of view about the facing, in degrees.
+		/// @param range How far it sees in daylight, in pixels; less at night and in dust (GetNightSightScale).
+		/// @param budget How many rays it may cast.
+		/// @return What was seen this call, most visible first: valid until the next call.
+		std::vector<ActorSighting>& ScanForEnemies(float fovDegrees, float range, int budget);
+
+		/// How pinned down this actor is by fire, 0 to 1: raised by shots passing close, blasts near it and hits, and wearing off over a few
+		/// seconds (quicker for a better team). Machines feel none. Read by the AI's scripts (more aim error, ducking, cover).
+		float GetSuppression() const { return m_Suppression; }
+
+		/// How steady this actor's nerve is, 0 to 1: worn down by being pinned down, wounds, friends dying in sight and burning, and coming
+		/// back towards a level that is higher among friends and near its brain and lower when hurt. Under 0.3 the AI pulls back.
+		float GetMorale() const { return m_Morale; }
+
+		/// Adds to how pinned down this actor is (by the AISuppression setting; nothing for a machine).
+		void AddSuppression(float amount);
+
+		/// Changes this actor's morale; a loss is scaled by the AISuppression setting, and nothing changes for a machine.
+		void ChangeMorale(float change);
+
+		/// A shot (a fast, sharp particle that hits bodies) passing along its last step: the actors it went close by and missed are pinned
+		/// down a little. Called by MOPixel and MOSParticle; only so many checks a sim update.
+		static void ShotPassing(const MovableObject& shot);
+
+		/// How much of a target this actor's body makes, for the sight of others (see ScanForEnemies): 1 standing.
+		virtual float GetSightProfile() const { return 1.0F; }
 
 		/// Description:		Sets actor's sight distance.
 		/// @param newValue New sight distance value.
@@ -971,6 +1096,12 @@ namespace RTE {
 
 		/// Protected member variable and method declarations
 	protected:
+		/// Returns a uniformly distributed number in [-1, 1] for the spread of Look rays.
+		/// Look runs on the sight-ray worker threads and the LookFor* helpers on the threaded AI, where the global sim random generator must not be used. This draws from a small per-actor xorshift stream instead,
+		/// seeded from the unique ID, so it is deterministic and each actor is only ever advanced by the one worker that handles it.
+		/// @return Uniformly distributed random number in the range [-1, 1].
+		float LookRandomNormalNum() const;
+
 		/// Function that is called when we get a new movepath.
 		/// This processes and cleans up the movepath.
 		virtual void OnNewMovePath();
@@ -1101,6 +1232,7 @@ namespace RTE {
 		float m_SightDistance;
 		// How perceptive this is of alarming events going on around him, 0.0 - 1.0
 		float m_Perceptiveness;
+		mutable uint64_t m_LookRandomState; //!< Xorshift state for the Look and LookFor* ray spreads, see LookRandomNormalNum. 0 means not seeded yet.
 		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
 		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
 		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.
@@ -1172,6 +1304,8 @@ namespace RTE {
 		static bool m_sIconsLoaded;
 		// The current mode the AI is set to perform as
 		AIMode m_AIMode;
+		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
+		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;
@@ -1194,6 +1328,17 @@ namespace RTE {
 		std::list<Vector> m_MovePath;
 		// What each step of that path is, kept alongside it.
 		std::list<PathStepKind> m_MovePathKinds;
+		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
+		float m_Suppression = 0.0F; //!< How pinned down by fire, 0 to 1 (see GetSuppression).
+		float m_Morale = 1.0F; //!< How steady its nerve is, 0 to 1 (see GetMorale).
+		float m_MoraleLevel = 0.7F; //!< What morale comes back towards: higher among friends and near the brain, lower when hurt.
+		long long m_NearMissUpdate = -1; //!< The sim update of the last near miss, and how much they have pinned it down in it (capped).
+		float m_NearMissThisUpdate = 0.0F;
+		bool m_DeathReported = false; //!< Whether friends in sight have been shaken by its death.
+		/// Suppression wearing off, morale's ups and downs, and a death's effect on the friends who saw it; once a sim update.
+		void UpdateSuppressionAndMorale();
+		/// Whether this actor feels fire at all: not a machine (mechanical and not organic, or metal), a door or a craft.
+		bool FeelsFire() const;
 		// The current pathfinding request
 		std::shared_ptr<volatile PathRequest> m_PathRequest;
 		// Whether it's time to update the path
@@ -1221,7 +1366,7 @@ namespace RTE {
 		/// Gets which way the mantle goes, -1 or 1 (0 when not mantling).
 		float GetMantleDir() const { return m_Mantling ? m_MantleDir : 0.0F; }
 		/// Gets the lip the hands reach for while mantling.
-		const Vector& GetMantleLip() const { return m_MantleLip; }
+		Vector GetMantleLip() const;
 		float m_MantleDir = 0.0F; //!< -1 left, 1 right.
 		Vector m_MantleStart; //!< Where the body was.
 		Vector m_MantleUp; //!< Where it is lifted to first.
@@ -1240,6 +1385,16 @@ namespace RTE {
 		/// @param bodyWidth How wide the body is, for how far over the edge it has to go.
 		/// @return Whether a mantle started.
 		bool TryStartMantle(MOSRotating* head, bool rising, float bodyWidth);
+
+		/// Catches a ledge in the air (LM-6): falling past a lip, or rising beside one with the jet giving out, slowly enough to grab it, with
+		/// a lip at the hands' reach on the side pressed (or asked for) and room to stand over it, the hands take it and the body is pulled
+		/// up onto it by the mantle's move from where it hangs.
+		/// @param head The head, if the body has one, so it fits too.
+		/// @param bodyWidth How wide the body is.
+		/// @param wantDir The side to catch on, -1 or 1, or 0 for the side the move keys press.
+		/// @param lipNearY Only a lip within a third of the body of this height, or any lip when negative.
+		/// @return Whether a catch began (as a mantle).
+		bool TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir = 0.0F, float lipNearY = -1.0F);
 
 		/// Moves a mantle on: up, then over, then done.
 		void UpdateMantle();

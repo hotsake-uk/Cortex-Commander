@@ -12,7 +12,9 @@
 #include "SceneLayer.h"
 
 #include <array>
+#include <deque>
 #include <map>
+#include <unordered_set>
 
 namespace RTE {
 
@@ -656,6 +658,11 @@ namespace RTE {
 		/// marked as outdated.
 		void UpdatePathFinding();
 
+		/// Marks an area whose team grids must be sampled again though its material didn't change, such as a door that changed hands: each team's
+		/// grid takes its own doors out, so the NoTeam grid sees nothing new there and wouldn't pass the change on.
+		/// @param area The area to re-sample in every team's grid. Unwrapped, as the terrain's updated areas are.
+		void AddTeamGridUpdateArea(const Box& area) { m_TeamGridUpdateAreas.emplace_back(area); }
+
 		/// Tells whether the pathfinding data has been updated in the last frame.
 		/// @return Whether the pathfinding data was recalculated fully or partially.
 		bool PathFindingUpdated() { return m_PathfindingUpdated; }
@@ -698,7 +705,7 @@ namespace RTE {
 		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, const PathAgent& agent, Activity::Teams team, std::list<PathStepKind>* kinds = nullptr);
 
 		/// The kinds of the steps of the last path calculated on this thread through CalculatePathForActor, as PathStepKind values (0 walk,
-		/// 1 crawl, 2 jump, 3 fall, 4 dig, 5 door), one per point of GetScenePath after the first.
+		/// 1 crawl, 2 jump, 3 fall, 4 dig, 5 door, 6 stairs, 7 ladder, 8 leap, 9 mantle, 10 crouch, 11 scramble, 12 swim, 13 wade), one per point of GetScenePath after the first.
 		std::list<int>& GetScenePathStepKinds();
 
 		int GetScenePathSize() const;
@@ -780,6 +787,11 @@ namespace RTE {
 		// Pathfinding graph and logic. Owned by this
 		// The array of PathFinders for each team. Because we also have a shared pathfinder using index 0, we need to use MaxTeamCount + 1 to handle all the Teams' PathFinders.
 		std::array<std::unique_ptr<PathFinder>, Activity::Teams::MaxTeamCount + 1> m_pPathFinders;
+		// Areas only the team grids need to take in again (doors changing hands); see AddTeamGridUpdateArea.
+		std::deque<Box> m_TeamGridUpdateAreas;
+		// Per team, the nodes the NoTeam grid sampled again while that team had no part in the scene (not in the activity, no units), so its own
+		// grid skipped them; they are sampled on that grid as soon as the team has a part. Index is the team (TeamOne to TeamFour).
+		std::array<std::unordered_set<int>, Activity::Teams::MaxTeamCount> m_TeamGridSkippedNodes;
 		// Is set to true on any frame the pathfinding data has been updated
 		bool m_PathfindingUpdated;
 		// Timer for when to do an update of the pathfinding data

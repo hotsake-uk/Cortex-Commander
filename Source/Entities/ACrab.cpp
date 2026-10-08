@@ -713,7 +713,7 @@ bool ACrab::Look(float FOVSpread, float range) {
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// The smallest dimension of the fog block, divided by two, but always at least one, as the step for the casts
 	int step = (int)g_SceneMan.GetUnseenResolution(m_Team).GetSmallest() / 2;
@@ -748,7 +748,7 @@ MovableObject* ACrab::LookForMOs(float FOVSpread, unsigned char ignoreMaterial, 
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// Night: the look ray reaches less far in the dark (see GetNightSightScale).
 	lookVector *= GetNightSightScale();
@@ -1580,6 +1580,12 @@ void ACrab::ResetRouteMovement() {
 
 int ACrab::MoveAlongRoute() {
 	CrabMover& mover = m_CrabMover;
+	// Not called for a while (held by its script): the timers start again (see AHuman::MoveAlongRoute).
+	const long long tick = g_TimerMan.GetSimUpdateCount();
+	if (mover.lastCallTick >= 0 && tick - mover.lastCallTick > static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1)) {
+		ResetRouteMovement();
+	}
+	mover.lastCallTick = tick;
 	if (!mover.begun) {
 		mover.begun = true;
 		mover.progressTimer.Reset();
@@ -1621,15 +1627,19 @@ int ACrab::MoveAlongRoute() {
 			return 2;
 		}
 		UpdateMovePath();
-		if (m_ImpossiblePaths > 0) {
+		// Each answer once: for three seconds after an impossible answer UpdateMovePath only waits, and counting every tick of that wait
+		// gave up on the goal in three ticks, before it had been asked again at all.
+		if (m_ImpossiblePaths > 0 && m_ImpossiblePaths != mover.impossibleSeen) {
 			++mover.impossibleAnswers;
 		}
+		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
 	if (IsWaitingOnNewMovePath() || m_MovePath.empty()) {
 		return 0;
 	}
 	mover.impossibleAnswers = 0;
+	mover.impossibleSeen = m_ImpossiblePaths;
 
 	// On the ground: floor under its middle or either side of its body (a crab is wide).
 	float floorHere = CrabFloorUnder(m_Pos, h * 0.9F);
@@ -1640,8 +1650,19 @@ int ACrab::MoveAlongRoute() {
 	}
 	const bool airborne = floorHere < 0.0F;
 
+	// A leg done with more waypoints queued: on to the next (see AHuman::MoveAlongRoute).
+	if (m_MovePath.size() <= 1 && !m_Waypoints.empty() && m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget) && !airborne) {
+		if (CrabTowards(m_Pos, m_MovePathGoal).MagnitudeIsLessThan(std::max(m_MoveProximityLimit * 1.5F, h * 0.4F))) {
+			m_MovePath.clear();
+			m_MovePathKinds.clear();
+			m_HasMovePathGoal = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			return 0;
+		}
+	}
 	// Arrived: the last point, the goal within reach, standing.
-	if (m_MovePath.size() <= 1 && m_Waypoints.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+	if (m_MovePath.size() <= 1 && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		Vector goal = GetLastAIWaypoint();
 		if (CrabTowards(m_Pos, goal).MagnitudeIsLessThan(std::max(m_MoveProximityLimit * 1.5F, h * 0.4F)) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			return 1;
@@ -1731,6 +1752,15 @@ int ACrab::MoveAlongRoute() {
 	}
 
 	// ---- On the ground. ----
+	// A mantle: walked into the ledge, which pulls the crab up onto it (Actor::TryStartMantle); no jet.
+	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
+		if (!IsMantling()) {
+			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		} else {
+			mover.progressTimer.Reset();
+		}
+		return 0;
+	}
 	// A climb the legs don't take (the route's jump, or the point well above): off from a stand under the way up, with fuel for it.
 	if (standardJet && netUp > 1.0F && (kind == PathStepKind::Jump || above > h * 0.45F) && std::abs(toPoint.m_X) < h * 1.5F && above > h * 0.2F) {
 		if (std::abs(m_Vel.m_X) > 0.6F) {
@@ -1744,11 +1774,19 @@ int ACrab::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 			return 0;
 		}
-		ctrl.SetState(BODY_JUMPSTART, true);
+		// The burst once, at the start of the climb: the body stays "on the ground" until it is most of a height clear of the floor, and a
+		// burst sent every tick until then (a base jetpack has no spacing between bursts) emptied the tank under the lip. Again only if a
+		// second on it is still standing here, the climb having come to nothing.
+		if (!mover.climbing || mover.climbTimer.IsPastSimMS(1000)) {
+			ctrl.SetState(BODY_JUMPSTART, true);
+			mover.climbing = true;
+			mover.climbTimer.Reset();
+		}
 		jetWith(std::clamp(toPoint.m_X / h, -1.0F, 1.0F));
 		mover.progressTimer.Reset();
 		return 0;
 	}
+	mover.climbing = false;
 	// The walk.
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);

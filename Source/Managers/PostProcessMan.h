@@ -122,6 +122,8 @@ namespace RTE {
 		/// Clears the lights and shimmers registered so far. They're registered on every sim update and the light pass adds them up, so only the
 		/// last update's set may reach the draw: a frame that runs several sim updates would otherwise draw every light that many times over.
 		void ClearSceneLights() {
+			// (The finished update's set is kept for the AI's sight, GetDynamicLightAt: the new update's is being registered while it looks.)
+			m_LastSceneLights.swap(m_SceneLights);
 			m_SceneLights.clear();
 			std::scoped_lock lock(m_ShockwaveMutex);
 			m_Shimmers.clear();
@@ -245,6 +247,12 @@ namespace RTE {
 		/// @param boxHeight Height of the box.
 		/// @param lights Out parameter the lights are appended to.
 		void GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const;
+
+		/// How lit a place was by the dynamic lights of the last finished sim update (lamps, flames, muzzle flashes, headlamps), 0 to 1: CPU
+		/// side only, for the AI's sight (see Actor::ScanForEnemies). Not the sky's light, nor anything read back from the GPU.
+		/// @param pos The place, in scene coordinates.
+		/// @return 0 for no light reaching it, up to 1 for a bright one close by.
+		float GetDynamicLightAt(const Vector& pos) const;
 
 		/// Registers an explosion shockwave. Ring size and strength scale with the energy released.
 		/// @param pos Scene position of the explosion.
@@ -471,6 +479,7 @@ namespace RTE {
 		bool m_PlayerAtmosphereCaptured = false;
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
 		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.
+		std::vector<SceneLight> m_LastSceneLights; //!< The last finished sim update's lights, for GetDynamicLightAt: not written while a sim update runs.
 
 		/// An active explosion shockwave.
 		struct Shockwave {

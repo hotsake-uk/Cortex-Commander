@@ -62,6 +62,9 @@ void AHuman::Clear() {
 	m_ProneState = NOTPRONE;
 	m_ProneTimer.Reset();
 	m_MaxWalkPathCrouchShift = 6.0F;
+	m_CrouchHeightFraction = 0.33F;
+	m_CrouchWalking = false;
+	m_CrouchWalkFromWalk = false;
 	m_CrouchAmount = 0.0F;
 	m_CrouchAmountOverride = -1.0F;
 	for (int i = 0; i < MOVEMENTSTATECOUNT; ++i) {
@@ -208,6 +211,8 @@ int AHuman::Create(const AHuman& reference) {
 	m_BackupBGFootGroup->SetLimbPos(atomGroupToUseAsFootGroupBG->GetLimbPos());
 
 	m_MaxWalkPathCrouchShift = reference.m_MaxWalkPathCrouchShift;
+	m_CrouchHeightFraction = reference.m_CrouchHeightFraction;
+	m_CrouchWalkFromWalk = reference.m_CrouchWalkFromWalk;
 
 	if (reference.m_StrideSound) {
 		m_StrideSound = dynamic_cast<SoundContainer*>(reference.m_StrideSound->Clone());
@@ -232,6 +237,15 @@ int AHuman::Create(const AHuman& reference) {
 		m_Paths[BGROUND][RUN].SetTravelSpeed(m_Paths[BGROUND][RUN].GetTravelSpeed() * 1.5F);
 		m_Paths[FGROUND][RUN].SetBaseScaleMultiplier(Vector(1.1F, 1.0F));
 		m_Paths[BGROUND][RUN].SetBaseScaleMultiplier(Vector(1.1F, 1.0F));
+	}
+	// And the crouched walk's to the walk's with a shorter stride, if it has none: the crouch's walk path shift lowers the body, these
+	// keep the feet under it. They follow the walk's speed and push as scripts change them (see UpdateLimbPathSpeed).
+	if (m_Paths[FGROUND][WALKCROUCH].GetSegCount() == 0) {
+		m_Paths[FGROUND][WALKCROUCH].Create(reference.m_Paths[FGROUND][WALK]);
+		m_Paths[BGROUND][WALKCROUCH].Create(reference.m_Paths[BGROUND][WALK]);
+		m_Paths[FGROUND][WALKCROUCH].SetBaseScaleMultiplier(Vector(0.85F, 1.0F));
+		m_Paths[BGROUND][WALKCROUCH].SetBaseScaleMultiplier(Vector(0.85F, 1.0F));
+		m_CrouchWalkFromWalk = true;
 	}
 
 	return 0;
@@ -304,6 +318,7 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_BackupBGFootGroup->RemoveAllAtoms();
 	});
 	MatchProperty("MaxWalkPathCrouchShift", { reader >> m_MaxWalkPathCrouchShift; });
+	MatchProperty("CrouchHeightFraction", { reader >> m_CrouchHeightFraction; });
 	MatchProperty("StrideSound", {
 		m_StrideSound = new SoundContainer;
 		reader >> m_StrideSound;
@@ -312,8 +327,13 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("StandLimbPathBG", { reader >> m_Paths[BGROUND][STAND]; });
 	MatchProperty("WalkLimbPath", { reader >> m_Paths[FGROUND][WALK]; });
 	MatchProperty("RunLimbPath", { reader >> m_Paths[FGROUND][RUN]; });
-	MatchProperty("CrouchLimbPath", { reader >> m_Paths[FGROUND][PRONE]; });
-	MatchProperty("CrouchLimbPathBG", { reader >> m_Paths[BGROUND][PRONE]; });
+	MatchProperty("CrouchLimbPath", { reader >> m_Paths[FGROUND][CROUCH]; });
+	MatchProperty("CrouchLimbPathBG", { reader >> m_Paths[BGROUND][CROUCH]; });
+	MatchProperty("CrouchWalkLimbPath", {
+		reader >> m_Paths[FGROUND][WALKCROUCH];
+		m_CrouchWalkFromWalk = false;
+	});
+	MatchProperty("CrouchWalkLimbPathBG", { reader >> m_Paths[BGROUND][WALKCROUCH]; });
 	MatchProperty("CrawlLimbPath", { reader >> m_Paths[FGROUND][CRAWL]; });
 	MatchProperty("ArmCrawlLimbPath", { reader >> m_Paths[FGROUND][ARMCRAWL]; });
 	MatchProperty("ClimbLimbPath", { reader >> m_Paths[FGROUND][CLIMB]; });
@@ -367,6 +387,7 @@ int AHuman::Save(Writer& writer) const {
 	writer << m_pBGFootGroup;
 	writer.NewProperty("MaxWalkPathCrouchShift");
 	writer << m_MaxWalkPathCrouchShift;
+	writer.NewPropertyWithValue("CrouchHeightFraction", m_CrouchHeightFraction);
 	writer.NewProperty("StrideSound");
 	writer << m_StrideSound;
 
@@ -379,7 +400,15 @@ int AHuman::Save(Writer& writer) const {
 	writer.NewProperty("RunLimbPath");
 	writer << m_Paths[FGROUND][RUN];
 	writer.NewProperty("CrouchLimbPath");
-	writer << m_Paths[FGROUND][PRONE];
+	writer << m_Paths[FGROUND][CROUCH];
+	writer.NewProperty("CrouchLimbPathBG");
+	writer << m_Paths[BGROUND][CROUCH];
+	if (!m_CrouchWalkFromWalk) {
+		writer.NewProperty("CrouchWalkLimbPath");
+		writer << m_Paths[FGROUND][WALKCROUCH];
+		writer.NewProperty("CrouchWalkLimbPathBG");
+		writer << m_Paths[BGROUND][WALKCROUCH];
+	}
 	writer.NewProperty("CrawlLimbPath");
 	writer << m_Paths[FGROUND][CRAWL];
 	writer.NewProperty("ArmCrawlLimbPath");
@@ -394,7 +423,7 @@ int AHuman::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("StandRotAngleTarget", m_RotAngleTargets[STAND]);
 	writer.NewPropertyWithValue("WalkRotAngleTarget", m_RotAngleTargets[WALK]);
 	writer.NewPropertyWithValue("RunRotAngleTarget", m_RotAngleTargets[RUN]);
-	writer.NewPropertyWithValue("CrouchRotAngleTarget", m_RotAngleTargets[PRONE]);
+	writer.NewPropertyWithValue("CrouchRotAngleTarget", m_RotAngleTargets[CROUCH]);
 	writer.NewPropertyWithValue("JumpRotAngleTarget", m_RotAngleTargets[JUMP]);
 
 	return 0;
@@ -1025,6 +1054,8 @@ PathAgent AHuman::GetPathAgent() const {
 	// head room by the same fraction (SharedBehaviors.StandingHeight), so the grid and the script agree about every corridor.
 	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.44F);
 	agent.CrawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
+	// And crouched (see GetCrouchHeight): a low beam or a half-shut hatch with this much room under it is walked ducking, not crawled.
+	agent.CrouchHeight = GetCrouchHeight();
 	// The width from the body, not from the radius: the radius reaches to the farthest point of anything attached, so a soldier was as
 	// wide as the gun held out in its hand, 16 half-widths with a long one, and a 48 px hatch (three half-widths wanted for a jet column)
 	// was shut to it; and the radius moves with the arm, so the answer changed between one path and the next. 14 px for a soldier.
@@ -1050,6 +1081,8 @@ PathAgent AHuman::GetPathAgent() const {
 	// The leap of its legs (see UpdateLeap), for anything with a leg.
 	agent.LeapHeight = (m_pFGLeg || m_pBGLeg) ? GetLegJumpHeight() : 0.0F;
 	agent.LeapSpeed = m_LegJumpSpeed;
+	// Rough slopes too steep for stairs, on the legs and arms (LM-10): for anything with an arm to climb with as well as the legs.
+	agent.Scrambles = (m_pFGLeg || m_pBGLeg) && (m_pFGArm || m_pBGArm);
 	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
 	// burns more of the tank for the same shaft).
 	if (agent.JetTimeMS > 0.0F) {
@@ -1470,7 +1503,7 @@ bool AHuman::Look(float FOVSpread, float range) {
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// The smallest dimension of the fog block, divided by two, but always at least one, as the step for the casts
 	int step = (int)g_SceneMan.GetUnseenResolution(m_Team).GetSmallest() / 2;
@@ -1483,7 +1516,7 @@ bool AHuman::Look(float FOVSpread, float range) {
 
 bool AHuman::LookForGold(float FOVSpread, float range, Vector& foundLocation) const {
 	Vector ray(m_HFlipped ? -range : range, 0);
-	ray.DegRotate(FOVSpread * RandomNormalNum());
+	ray.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	return g_SceneMan.CastMaterialRay(m_Pos, ray, g_MaterialGold, foundLocation, 4);
 }
@@ -1510,7 +1543,7 @@ MovableObject* AHuman::LookForMOs(float FOVSpread, unsigned char ignoreMaterial,
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// Night: the look ray reaches less far in the dark (see GetNightSightScale).
 	lookVector *= GetNightSightScale();
@@ -1633,25 +1666,42 @@ void AHuman::UpdateWalkAngle(AHuman::Layer whichLayer) {
 	}
 }
 
+float AHuman::GetCrouchHeight() const {
+	// Between the crawl and the standing heights the path grid uses (see GetPathAgent): a Soldier Light (height 100) crouches to 33 px.
+	const float standHeight = std::max(16.0F, m_CharHeight * 0.44F);
+	const float crawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
+	return std::clamp(m_CharHeight * m_CrouchHeightFraction, crawlHeight, standHeight);
+}
+
+float AHuman::GetCrouchShift() const {
+	// The full crouch lowers the body from its standing height to its crouched one (11 px for a Soldier Light), where it was 6 px whatever
+	// the body: a duck of a head's height, which got nothing under a 36 px pipe but lying down.
+	return std::max(m_MaxWalkPathCrouchShift, std::max(16.0F, m_CharHeight * 0.44F) - GetCrouchHeight());
+}
+
 void AHuman::UpdateCrouching() {
+	const float crouchShift = GetCrouchShift();
 	float desiredWalkPathYOffset = 0.0F;
 	if (m_CrouchAmountOverride != -1.0F) {
 		// If overridden in script, use that directly
-		desiredWalkPathYOffset = m_CrouchAmountOverride * m_MaxWalkPathCrouchShift;
+		desiredWalkPathYOffset = m_CrouchAmountOverride * crouchShift;
 	} else if (!m_Controller.IsState(BODY_PRONE)) {
 		if (m_Controller.IsState(BODY_CROUCH)) {
 			// Manually crouch fully when the crouch controller state is set
-			desiredWalkPathYOffset = m_MaxWalkPathCrouchShift;
+			desiredWalkPathYOffset = crouchShift;
 		} else if (!m_Controller.IsState(BODY_JUMP) && m_pHead) {
 			// Otherwise figure out auto crouching
-			// Cast a ray above our head to either side to determine whether we need to crouch
+			// Cast a ray above our head to either side to determine whether we need to crouch. The rays start as far under the head as the
+			// crouch can lower it, so a ceiling anywhere down to the crouched height is ducked under (they started half a radius under it,
+			// which with a 6 px duck was as low as a ceiling could be ducked).
 			float desiredCrouchHeadRoom = std::floor(m_pHead->GetRadius() + 2.0f);
 			float toPredicted = std::floor(m_Vel.m_X * m_pHead->GetRadius()); // Check where we'll be a second from now
-			Vector hitPosStart = (m_pHead->GetPos() + Vector(0.0F, m_SpriteRadius * 0.5F)).Floor();
-			Vector hitPosPredictedStart = (m_pHead->GetPos() + Vector(toPredicted, m_SpriteRadius * 0.5F)).Floor();
+			const float startBelow = std::max(m_SpriteRadius * 0.5F, crouchShift + 2.0F);
+			Vector hitPosStart = (m_pHead->GetPos() + Vector(0.0F, startBelow)).Floor();
+			Vector hitPosPredictedStart = (m_pHead->GetPos() + Vector(toPredicted, startBelow)).Floor();
 			Vector hitPos, hitPosPredicted;
-			g_SceneMan.CastStrengthRay(hitPosStart, Vector(0.0F, -desiredCrouchHeadRoom + m_SpriteRadius * -0.5F), 1.0F, hitPos, 0, g_MaterialGrass);
-			g_SceneMan.CastStrengthRay(hitPosPredictedStart, Vector(0.0F, -desiredCrouchHeadRoom + m_SpriteRadius * -0.5F), 1.0F, hitPosPredicted, 0, g_MaterialGrass);
+			g_SceneMan.CastStrengthRay(hitPosStart, Vector(0.0F, -desiredCrouchHeadRoom - startBelow), 1.0F, hitPos, 0, g_MaterialGrass);
+			g_SceneMan.CastStrengthRay(hitPosPredictedStart, Vector(0.0F, -desiredCrouchHeadRoom - startBelow), 1.0F, hitPosPredicted, 0, g_MaterialGrass);
 
 			// Don't do it if we're already hitting, we're probably in a weird spot
 			if (hitPosStart.m_Y - hitPos.m_Y <= 2.0F) {
@@ -1667,9 +1717,21 @@ void AHuman::UpdateCrouching() {
 		}
 	}
 
-	float finalWalkPathYOffset = std::clamp(Lerp(0.0F, 1.0F, -m_WalkPathOffset.m_Y, desiredWalkPathYOffset, 0.3F), 0.0F, m_MaxWalkPathCrouchShift);
-	m_CrouchAmount = std::clamp(finalWalkPathYOffset / (m_MaxWalkPathCrouchShift - 0.1f), 0.0F, 1.0F); // because it's lerped, it never hits 1 exactly. thus the -0.1F
+	float finalWalkPathYOffset = std::clamp(Lerp(0.0F, 1.0F, -m_WalkPathOffset.m_Y, desiredWalkPathYOffset, 0.3F), 0.0F, crouchShift);
+	m_CrouchAmount = std::clamp(finalWalkPathYOffset / (crouchShift - 0.1f), 0.0F, 1.0F); // because it's lerped, it never hits 1 exactly. thus the -0.1F
 	m_WalkPathOffset.m_Y = -finalWalkPathYOffset;
+
+	// A walker more than half down strides on the crouched walk's leg paths, and back on the walk's once it is under a third (a band, so
+	// a crouch that hovers about the line doesn't restart the stride every frame).
+	bool crouchWalking = m_MovementState == WALK && m_Paths[FGROUND][WALKCROUCH].GetSegCount() > 0 && m_CrouchAmount >= (m_CrouchWalking ? 0.33F : 0.5F);
+	if (crouchWalking != m_CrouchWalking) {
+		m_CrouchWalking = crouchWalking;
+		m_StrideStart = true;
+		for (MovementState walkPath: {WALK, WALKCROUCH}) {
+			m_Paths[FGROUND][walkPath].Terminate();
+			m_Paths[BGROUND][walkPath].Terminate();
+		}
+	}
 
 	// Adjust our X offset to try to keep our legs under our centre-of-mass
 	const float ratioBetweenBodyAndHeadToAimFor = 0.15F;
@@ -1680,6 +1742,14 @@ void AHuman::UpdateCrouching() {
 
 void AHuman::UpdateLimbPathSpeed() {
 	if (m_MovementState == WALK || m_MovementState == RUN || m_MovementState == CRAWL) {
+		// The paths being strode on: the crouched walk's while crouch-walking (see UpdateCrouching).
+		const MovementState pathState = (m_MovementState == WALK && m_CrouchWalking) ? WALKCROUCH : m_MovementState;
+		if (pathState == WALKCROUCH && m_CrouchWalkFromWalk) {
+			for (int layer = FGROUND; layer <= BGROUND; ++layer) {
+				m_Paths[layer][WALKCROUCH].SetTravelSpeed(m_Paths[layer][WALK].GetTravelSpeed());
+				m_Paths[layer][WALKCROUCH].SetPushForce(m_Paths[layer][WALK].GetPushForce());
+			}
+		}
 		float travelSpeedMultiplier = 1.0F;
 		
 		// If crouching, move at reduced speed
@@ -1693,20 +1763,20 @@ void AHuman::UpdateLimbPathSpeed() {
 
 		// If we're moving slowly horizontally, move at reduced speed (otherwise our legs kick about wildly as we're not yet up to speed)
 		// Calculate a min multiplier that is based on the total walkpath speed (so a fast walkpath has a smaller multipler). This is so a slow walkpath gets up to speed faster
-		const float ourMaxMovementSpeed = std::max(m_Paths[FGROUND][m_MovementState].GetTravelSpeed(), m_Paths[BGROUND][m_MovementState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;
+		const float ourMaxMovementSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;
 		const float minSpeed = 2.0F;
 		const float minMultiplier = minSpeed / ourMaxMovementSpeed;
 		travelSpeedMultiplier *= Lerp(0.0F, ourMaxMovementSpeed, minMultiplier, 1.0F, std::abs(m_Vel.m_X));
 
-		m_Paths[FGROUND][m_MovementState].SetTravelSpeedMultiplier(travelSpeedMultiplier);
-		m_Paths[BGROUND][m_MovementState].SetTravelSpeedMultiplier(travelSpeedMultiplier);
+		m_Paths[FGROUND][pathState].SetTravelSpeedMultiplier(travelSpeedMultiplier);
+		m_Paths[BGROUND][pathState].SetTravelSpeedMultiplier(travelSpeedMultiplier);
 
 		// Also extend our stride depending on speed
 		const float strideXMultiplier = Lerp(0.0F, ourMaxMovementSpeed, 0.8F, 1.2F, std::abs(m_Vel.m_X));
 		const float strideYMultiplier = Lerp(0.0F, ourMaxMovementSpeed, 0.9F, 1.0F, std::abs(m_Vel.m_X));
 		Vector scale = Vector(strideXMultiplier, strideYMultiplier);
-		m_Paths[FGROUND][m_MovementState].SetScaleMultiplier(scale);
-		m_Paths[BGROUND][m_MovementState].SetScaleMultiplier(scale);
+		m_Paths[FGROUND][pathState].SetScaleMultiplier(scale);
+		m_Paths[BGROUND][pathState].SetScaleMultiplier(scale);
 	}
 }
 
@@ -1804,6 +1874,10 @@ void AHuman::PreControllerUpdate() {
 			if (aimHoldsFacing) {
 				m_Paths[FGROUND][m_MovementState].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 				m_Paths[BGROUND][m_MovementState].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+				if (m_MovementState == WALK) {
+					m_Paths[FGROUND][WALKCROUCH].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+					m_Paths[BGROUND][WALKCROUCH].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+				}
 			} else if ((m_Controller.IsState(MOVE_RIGHT) && m_HFlipped) || (m_Controller.IsState(MOVE_LEFT) && !m_HFlipped)) {
 				SetHFlipped(!m_HFlipped);
 				m_CheckTerrIntersection = true;
@@ -2243,7 +2317,8 @@ void AHuman::PreControllerUpdate() {
 	}
 
 	// Item currently set to be within reach has expired or is now out of range
-	if (m_pItemInReach && (m_pItemInReach->ToDelete() || !m_pItemInReach->IsPickupableBy(this) || !g_MovableMan.IsDevice(m_pItemInReach) || g_SceneMan.ShortestDistance(reachPoint, m_pItemInReach->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(reach + m_pItemInReach->GetRadius()))) {
+	// (Whether it is still a device in the scene first: only then is the pointer known to be live.)
+	if (m_pItemInReach && (!g_MovableMan.IsDevice(m_pItemInReach) || m_pItemInReach->ToDelete() || !m_pItemInReach->IsPickupableBy(this) || g_SceneMan.ShortestDistance(reachPoint, m_pItemInReach->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(reach + m_pItemInReach->GetRadius()))) {
 		m_pItemInReach = nullptr;
 	}
 
@@ -2306,7 +2381,7 @@ void AHuman::PreControllerUpdate() {
 			m_Paths[FGROUND][STAND].Terminate();
 			m_Paths[BGROUND][STAND].Terminate();
 
-			MovementState movementPath = m_MovementState == RUN ? RUN : WALK;
+			MovementState movementPath = m_MovementState == RUN ? RUN : (m_MovementState == WALK && m_CrouchWalking ? WALKCROUCH : WALK);
 			float FGLegProg = m_Paths[FGROUND][movementPath].GetRegularProgress();
 			float BGLegProg = m_Paths[BGROUND][movementPath].GetRegularProgress();
 
@@ -2478,20 +2553,24 @@ void AHuman::PreControllerUpdate() {
 				if (m_MovementState == CROUCH) {
 					m_Paths[FGROUND][WALK].Terminate();
 					m_Paths[BGROUND][WALK].Terminate();
+					m_Paths[FGROUND][WALKCROUCH].Terminate();
+					m_Paths[BGROUND][WALKCROUCH].Terminate();
 					m_Paths[FGROUND][CRAWL].Terminate();
 					m_Paths[BGROUND][CRAWL].Terminate();
 
 					if (m_pFGLeg) {
-						m_pFGFootGroup->PushAsLimb(m_Pos.GetFloored() + m_pFGLeg->GetParentOffset().GetXFlipped(m_HFlipped), m_pFGLeg->GetMaxLength(), m_Vel, Matrix(), m_Paths[FGROUND][PRONE], deltaTime);
+						m_pFGFootGroup->PushAsLimb(m_Pos.GetFloored() + m_pFGLeg->GetParentOffset().GetXFlipped(m_HFlipped), m_pFGLeg->GetMaxLength(), m_Vel, Matrix(), m_Paths[FGROUND][CROUCH], deltaTime);
 					}
 
 					if (m_pBGLeg) {
-						m_pBGFootGroup->PushAsLimb(m_Pos.GetFloored() + m_pBGLeg->GetParentOffset().GetXFlipped(m_HFlipped), m_pBGLeg->GetMaxLength(), m_Vel, Matrix(), m_Paths[BGROUND][PRONE], deltaTime);
+						m_pBGFootGroup->PushAsLimb(m_Pos.GetFloored() + m_pBGLeg->GetParentOffset().GetXFlipped(m_HFlipped), m_pBGLeg->GetMaxLength(), m_Vel, Matrix(), m_Paths[BGROUND][CROUCH], deltaTime);
 					}
 
 				} else {
 					m_Paths[FGROUND][WALK].Terminate();
 					m_Paths[BGROUND][WALK].Terminate();
+					m_Paths[FGROUND][WALKCROUCH].Terminate();
+					m_Paths[BGROUND][WALKCROUCH].Terminate();
 					m_Paths[FGROUND][CRAWL].Terminate();
 					m_Paths[BGROUND][CRAWL].Terminate();
 					m_Paths[FGROUND][ARMCRAWL].Terminate();
@@ -2696,6 +2775,21 @@ void AHuman::Update() {
 			bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
 		}
 		TryStartMantle(m_pHead, rising, bodyWidth);
+		// Or a ledge caught in the air (LM-6): on the side pressed; and for the route-follower with the jet giving out under a flight's
+		// landing beside it, that landing's lip, whatever is pressed (the catch before the flight is judged failed).
+		if (!m_Mantling) {
+			float catchDir = 0.0F;
+			float lipNearY = -1.0F;
+			const RouteMover::Flight& flight = m_Mover.flight;
+			if (!m_Controller.IsPlayerControlled() && flight.active && !flight.step && m_pJetpack && (flight.refuelling || m_pJetpack->GetJetTimeLeft() < 60.0F)) {
+				float toLanding = g_SceneMan.ShortestDistance(m_Pos, flight.landing).m_X;
+				if (std::abs(toLanding) < m_CharHeight) {
+					catchDir = toLanding < 0.0F ? -1.0F : 1.0F;
+					lipNearY = flight.floorY;
+				}
+			}
+			TryCatchLedge(m_pHead, bodyWidth, catchDir, lipNearY);
+		}
 	}
 	if (m_Mantling) {
 		UpdateMantle();
@@ -2721,7 +2815,8 @@ void AHuman::Update() {
 			m_LandingSquat = 0.0F;
 			squat = 0.0F;
 		}
-		float wanted = m_Mantling ? 1.0F : squat;
+		// (The squat as deep as it was, MaxWalkPathCrouchShift at most: the full crouch is deeper now, see GetCrouchShift.)
+		float wanted = m_Mantling ? 1.0F : squat * std::min(1.0F, m_MaxWalkPathCrouchShift / GetCrouchShift());
 		if (wanted > 0.0F && (m_CrouchAmountOverride == -1.0F || m_CrouchOverrideOurs)) {
 			m_CrouchAmountOverride = wanted;
 			m_CrouchOverrideOurs = true;

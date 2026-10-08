@@ -29,6 +29,9 @@ runs:
     - uses: actions/checkout@v4
       with:
         repository: tpoechtrager/osxcross
+        # Pinned: osxcross's July 2026 rework asks for a build flavour at a prompt (and only skips it for UNATTENDED=1, not "yes"), which
+        # stops the job. This is the last commit before it.
+        ref: e6ab3fa7423f9235ce9ed6381d6d3af191b46b59
         path: ${{env.OSXCROSS_FOLDER}}
 
     - shell: bash

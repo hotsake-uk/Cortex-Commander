@@ -97,6 +97,17 @@ namespace RTE {
 		/// Gets the smoke visible in a screen area, as puffs (A = density).
 		static void GetSmoke(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& smoke);
 
+		/// Records a flame sprite particle drawn this frame, whose flame the fire shader draws instead of its sprite (see LightingSettings::FireShader).
+		/// Duplicate calls for the same object (several cameras) are ignored.
+		/// @param object Identifies the flame particle.
+		/// @param position Scene position of the foot of the flame.
+		/// @param size How big it is, 0 to 1 (grows in as it's lit).
+		/// @param heat How hot, 0 to 1.
+		static void RegisterFlame(const void* object, const glm::vec2& position, float size, float heat);
+
+		/// Gets the flame particles visible in a screen area, relative to it (z = size, w = heat).
+		static void GetFlames(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec4>& flames);
+
 		/// A splat of liquid to stamp into the terrain stain map.
 		struct Stain {
 			glm::vec2 Position; //!< Scene pixels.

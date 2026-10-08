@@ -115,6 +115,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_AISuppression = 1.0F;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -126,7 +127,6 @@ void SettingsMan::Clear() {
 	m_ShowLightSources = false;
 	m_ShowSunDirection = false;
 	m_WorldSimOverlay = 0;
-	m_SandboxLightningFromSky = true;
 	m_SandboxStrokeLog = false;
 	m_SandboxSpotReach = false;
 	m_LightsBySource = false;
@@ -244,6 +244,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -381,6 +382,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("WaterReflectionStrength", { g_PostProcessMan.GetLightingSettings().WaterReflectionStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterRefraction", { g_PostProcessMan.GetLightingSettings().WaterRefraction = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterRipples", { g_PostProcessMan.GetLightingSettings().WaterRipples = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterSoftReflection", { g_PostProcessMan.GetLightingSettings().WaterSoftReflection = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterMirrorSurface", { g_PostProcessMan.GetLightingSettings().WaterMirrorSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFoamBubbles", { g_PostProcessMan.GetLightingSettings().WaterFoamBubbles = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFlowSurface", { g_PostProcessMan.GetLightingSettings().WaterFlowSurface = std::stoi(reader.ReadPropValue()) != 0; });
@@ -467,6 +469,10 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("AISuppression", {
+		reader >> m_AISuppression;
+		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
+	});
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -476,7 +482,6 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
 	MatchProperty("ShowSunDirection", { reader >> m_ShowSunDirection; });
 	MatchProperty("WorldSimOverlay", { int which = 0; reader >> which; SetWorldSimOverlay(which); });
-	MatchProperty("SandboxLightningFromSky", { reader >> m_SandboxLightningFromSky; });
 	MatchProperty("SandboxStrokeLog", { reader >> m_SandboxStrokeLog; });
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
@@ -686,6 +691,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterRefraction", lighting.WaterRefraction);
 	writer.NewPropertyWithValue("WaterRipples", lighting.WaterRipples);
 	writer.NewPropertyWithValue("WaterMirrorSurface", lighting.WaterMirrorSurface);
+	writer.NewPropertyWithValue("WaterSoftReflection", lighting.WaterSoftReflection);
 	writer.NewPropertyWithValue("SoftSmoke", lighting.SoftSmoke);
 	writer.NewPropertyWithValue("WaterMistSize", lighting.WaterMistSize);
 	writer.NewPropertyWithValue("WaterMistLife", lighting.WaterMistLife);
@@ -732,6 +738,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
 	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
+	writer.NewPropertyWithValue("BloodFlows", FluidSim::BloodFlows());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
@@ -882,6 +889,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
@@ -891,7 +899,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
 	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
 	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
-	writer.NewPropertyWithValue("SandboxLightningFromSky", m_SandboxLightningFromSky);
 	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
 	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
 	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);

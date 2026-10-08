@@ -5,6 +5,7 @@
 #include "MovableMan.h"
 #include "MovableObject.h"
 #include "MOPixel.h"
+#include "MOSRotating.h"
 #include "PostProcessMan.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
@@ -13,6 +14,7 @@
 #include "TimerMan.h"
 #include "Vector.h"
 #include "EffectsParticles.h"
+#include "FluidSim.h"
 #include "WeatherEffects.h"
 
 #include <algorithm>
@@ -60,6 +62,10 @@ namespace {
 	};
 
 	std::array<Fuel, 256> s_FuelTable{};
+	std::array<FuelProperties, 256> s_FuelProps{}; //!< How each material burns: its fuel's stock row, with what its behaviour sets (MaterialBehaviour, SB-1).
+	std::array<float, 256> s_BlastChance{}; //!< The chance a pixel of each material going up sets off a blast (fuel; MaterialBehaviour::BurnBlast).
+	std::vector<std::pair<int, int>> s_Blasts; //!< Blasts set off this tick, to go off on the main thread at the end of it.
+	double s_LastBlastMS = -1.0e9; //!< When the last blast went off: one every quarter second at most, however much fuel goes up.
 	bool s_FuelTableBuilt = false;
 	int s_AshMaterial = -1;
 	int s_AshColor = 0;
@@ -75,6 +81,7 @@ namespace {
 	std::mutex s_FireSourceMutex;
 
 	const void* s_Scene = nullptr;
+	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up (L-1: not the address alone).
 	std::string s_PendingLoadState; //!< Saved fire to restore when the loaded scene starts.
 	const void* s_MaterialBitmap = nullptr;
 	long long s_LastTickUpdate = -1;
@@ -105,6 +112,8 @@ namespace {
 
 	void BuildFuelTable() {
 		s_FuelTable.fill(Fuel::None);
+		s_FuelProps.fill(c_Fuels[0]);
+		s_BlastChance.fill(0.0F);
 		s_DousingTable.fill(false);
 		s_AshMaterial = -1;
 		for (int id = 1; id < 256; ++id) {
@@ -113,7 +122,9 @@ namespace {
 				continue;
 			}
 			const std::string& name = material->GetPresetName();
-			s_DousingTable[id] = name == "Water";
+			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			// What puts fire out and how things burn: as the material's behaviour says (SB-1), and where it says nothing, by its name, as before.
+			s_DousingTable[id] = behaviour.Douses >= 0 ? behaviour.Douses == 1 : name == "Water";
 			if (name == "Water") {
 				Color waterColor = material->GetColor();
 				waterColor.RecalculateIndex();
@@ -131,6 +142,19 @@ namespace {
 			} else if (Contains(name, "Wood") || Contains(name, "Cloth") || Contains(name, "Rubber") || Contains(name, "Timber")) {
 				s_FuelTable[id] = Fuel::Wood;
 			}
+			if (!behaviour.Burns.empty()) {
+				const std::string& burns = behaviour.Burns;
+				s_FuelTable[id] = burns == "Grass" ? Fuel::Grass : (burns == "Wood" ? Fuel::Wood : (burns == "Oil" ? Fuel::Oil : Fuel::None));
+			}
+			FuelProperties fuel = c_Fuels[static_cast<int>(s_FuelTable[id])];
+			if (s_FuelTable[id] != Fuel::None) {
+				fuel.MinTicks = behaviour.BurnMinTicks >= 0 ? std::max(behaviour.BurnMinTicks, 1) : fuel.MinTicks;
+				fuel.MaxTicks = behaviour.BurnMaxTicks >= 0 ? std::max(behaviour.BurnMaxTicks, fuel.MinTicks) : std::max(fuel.MaxTicks, fuel.MinTicks);
+				fuel.Spread = behaviour.BurnSpread >= 0.0F ? std::clamp(behaviour.BurnSpread, 0.0F, 1.0F) : fuel.Spread;
+				fuel.LeavesAsh = behaviour.LeavesAsh >= 0 ? behaviour.LeavesAsh == 1 : fuel.LeavesAsh;
+			}
+			s_FuelProps[id] = fuel;
+			s_BlastChance[id] = s_FuelTable[id] != Fuel::None && behaviour.BurnBlast > 0.0F ? std::min(behaviour.BurnBlast, 1.0F) : 0.0F;
 		}
 		s_FuelTableBuilt = true;
 	}
@@ -175,13 +199,27 @@ namespace {
 		if (s_Burning.count(key)) {
 			return;
 		}
-		Fuel kind = s_FuelTable[static_cast<unsigned char>(terrain->GetMaterialPixel(x, y))];
+		unsigned char material = static_cast<unsigned char>(terrain->GetMaterialPixel(x, y));
+		Fuel kind = s_FuelTable[material];
 		if (kind == Fuel::None || !IsExposed(terrain, x, y, width, height)) {
 			return;
 		}
-		const FuelProperties& fuel = c_Fuels[static_cast<int>(kind)];
+		const FuelProperties& fuel = s_FuelProps[material];
 		short ticks = static_cast<short>(fuel.MinTicks + static_cast<int>(Random01(s_Random) * static_cast<float>(fuel.MaxTicks - fuel.MinTicks + 1)));
 		s_Burning.emplace(key, BurningPixel{x, y, ticks, ticks, kind});
+		// A pool resting beside it wakes, so it can put the fire out (M-2: liquids only react while awake). Only when there is one: most fire is nowhere near water.
+		for (const auto& [dx, dy]: {std::pair{0, -1}, std::pair{-1, 0}, std::pair{1, 0}, std::pair{0, 1}}) {
+			int nx = x + dx;
+			int ny = y + dy;
+			if (WrapPixel(nx, ny, width, height) && FluidSim::IsLiquid(terrain->GetMaterialPixel(nx, ny))) {
+				FluidSim::Disturb(Vector(static_cast<float>(x), static_cast<float>(y)), 1.0F);
+				break;
+			}
+		}
+		// Fuel goes up with a bang now and then.
+		if (s_BlastChance[material] > 0.0F && Random01(s_Random) < s_BlastChance[material]) {
+			s_Blasts.emplace_back(x, y);
+		}
 	}
 
 	MovableObject* CreateEffect(const char* className, const char* presetName) {
@@ -286,11 +324,12 @@ void TerrainFire::QueueIgniteArea(const Vector& position, float radius) {
 void TerrainFire::Update() {
 	SLTerrain* terrain = CurrentTerrain();
 	const void* materialBitmap = terrain ? terrain->GetMaterialBitmap() : nullptr;
-	if (g_SceneMan.GetScene() != s_Scene || materialBitmap != s_MaterialBitmap) {
+	if (g_SceneMan.GetScene() != s_Scene || materialBitmap != s_MaterialBitmap || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		// New scene: start over, deterministically.
 		Clear();
 		s_Scene = g_SceneMan.GetScene();
 		s_MaterialBitmap = materialBitmap;
+		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_Random = 0x2545F491u;
 		s_FuelTableBuilt = false;
 		if (!s_PendingLoadState.empty() && s_Scene) {
@@ -389,6 +428,7 @@ void TerrainFire::Update() {
 	}
 	if (s_Burning.empty()) {
 		s_Lights.clear();
+		s_Blasts.clear();
 		return;
 	}
 
@@ -406,12 +446,13 @@ void TerrainFire::Update() {
 	std::vector<int> burntOut;
 	std::vector<int> goneOut;
 	for (auto& [key, pixel]: s_Burning) {
-		if (s_FuelTable[static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y))] == Fuel::None) {
+		unsigned char burningMaterial = static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y));
+		if (s_FuelTable[burningMaterial] == Fuel::None) {
 			// The fuel flowed or was blown away.
 			goneOut.push_back(key);
 			continue;
 		}
-		const FuelProperties& fuel = c_Fuels[static_cast<int>(pixel.Kind)];
+		const FuelProperties& fuel = s_FuelProps[burningMaterial];
 		for (int i = 0; i < 4; ++i) {
 			if (Random01(s_Random) < fuel.Spread * directionScale[i] * damping) {
 				spreadTo.emplace_back(pixel.X + neighbours[i][0], pixel.Y + neighbours[i][1]);
@@ -440,7 +481,8 @@ void TerrainFire::Update() {
 	int maxY = -1;
 	for (int key: burntOut) {
 		const BurningPixel& pixel = s_Burning[key];
-		bool ash = c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh && s_AshMaterial > 0;
+		unsigned char burntMaterial = static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y));
+		bool ash = (s_FuelTable[burntMaterial] != Fuel::None ? s_FuelProps[burntMaterial].LeavesAsh : c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh) && s_AshMaterial > 0;
 		terrain->SetMaterialPixel(pixel.X, pixel.Y, ash ? s_AshMaterial : g_MaterialAir);
 		terrain->SetFGColorPixel(pixel.X, pixel.Y, ash ? s_AshColor : ColorKeys::g_MaskColor);
 		minX = std::min(minX, pixel.X);
@@ -503,7 +545,58 @@ void TerrainFire::Update() {
 			s_Lights.push_back({glm::vec2(static_cast<float>(position.x), static_cast<float>(position.y - 4)), std::min(40.0F + static_cast<float>(count) * 2.0F, 130.0F), std::min(0.6F + static_cast<float>(count) * 0.05F, 1.6F)});
 		}
 	}
+	// Fuel blasts set off this tick (TryIgnite): one at the first of them, at most one every quarter second of sim time, the rest just burn.
+	if (!s_Blasts.empty()) {
+		double nowMS = static_cast<double>(g_TimerMan.GetSimTimeMS());
+		if (nowMS - s_LastBlastMS >= 250.0) {
+			s_LastBlastMS = nowMS;
+			if (MovableObject* blast = CreateEffect("TDExplosive", "Fuel Barrel")) {
+				blast->SetPos(Vector(static_cast<float>(s_Blasts.front().first), static_cast<float>(s_Blasts.front().second)));
+				MOSRotating* explosive = dynamic_cast<MOSRotating*>(blast);
+				g_MovableMan.AddMO(blast);
+				if (explosive) {
+					explosive->GibThis();
+				}
+			}
+		}
+		s_Blasts.clear();
+	}
 	RegisterLights();
+}
+
+void TerrainFire::MoveBurning(int fromX, int fromY, int toX, int toY) {
+	if (s_Burning.empty()) {
+		return;
+	}
+	SLTerrain* terrain = CurrentTerrain();
+	if (!terrain) {
+		return;
+	}
+	int width = terrain->GetBitmap()->w;
+	int height = terrain->GetBitmap()->h;
+	if (!WrapPixel(fromX, fromY, width, height) || !WrapPixel(toX, toY, width, height)) {
+		return;
+	}
+	int fromKey = fromY * width + fromX;
+	int toKey = toY * width + toX;
+	if (fromKey == toKey) {
+		return;
+	}
+	// (Re-keyed, not burned again: it keeps the ticks it has left.)
+	auto from = s_Burning.extract(fromKey);
+	auto to = s_Burning.extract(toKey);
+	if (!from.empty()) {
+		from.key() = toKey;
+		from.mapped().X = toX;
+		from.mapped().Y = toY;
+		s_Burning.insert(std::move(from));
+	}
+	if (!to.empty()) {
+		to.key() = fromKey;
+		to.mapped().X = fromX;
+		to.mapped().Y = fromY;
+		s_Burning.insert(std::move(to));
+	}
 }
 
 void TerrainFire::Extinguish(int x, int y) {
@@ -556,6 +649,8 @@ void TerrainFire::SetPendingLoadState(const std::string& state) {
 
 void TerrainFire::Clear() {
 	s_Burning.clear();
+	s_Blasts.clear();
+	s_LastBlastMS = -1.0e9;
 	s_Lights.clear();
 	s_LastTickUpdate = -1;
 	std::scoped_lock lock(s_QueueMutex);

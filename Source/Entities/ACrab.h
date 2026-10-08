@@ -282,7 +282,7 @@ namespace RTE {
 		/// @return 0 on its way, 1 arrived, 2 no route to it (as AHuman::MoveAlongRoute).
 		int MoveAlongRoute();
 		/// Forgets the follower's state (a new order).
-		void ResetRouteMovement();
+		void ResetRouteMovement() override;
 
 		/// Protected member variable and method declarations
 	protected:
@@ -386,13 +386,16 @@ namespace RTE {
 		/// The crab route-follower's state (see MoveAlongRoute).
 		struct CrabMover {
 			bool begun = false;
+			long long lastCallTick = -1; //!< The sim update the follower was last called on, to tell a hold (see AHuman::MoveAlongRoute).
 			Timer progressTimer; //!< Since it last got nearer the route's point.
 			float bestGap = -1.0F;
 			Timer repathTimer;
 			Timer noSightTimer;
 			Timer hopTimer;
 			int impossibleAnswers = 0;
+			int impossibleSeen = 0; //!< The actor's impossible-answer count when last looked at: an answer is counted when it changes.
 			bool climbing = false; //!< In a climb begun from the ground for a point above.
+			Timer climbTimer; //!< Since the climb's burst.
 		};
 		CrabMover m_CrabMover;
 

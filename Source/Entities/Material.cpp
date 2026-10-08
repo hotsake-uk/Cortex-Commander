@@ -85,6 +85,7 @@ void Material::Clear() {
 	m_IsScrap = false;
 	m_Metalness = -1.0F;
 	m_Gloss = -1.0F;
+	m_Behaviour = MaterialBehaviour();
 	m_Color.Reset();
 	m_UseOwnColor = false;
 	m_FGTextureFile.Reset();
@@ -112,6 +113,7 @@ int Material::Create(const Material& reference) {
 	m_IsScrap = reference.m_IsScrap;
 	m_Metalness = reference.m_Metalness;
 	m_Gloss = reference.m_Gloss;
+	m_Behaviour = reference.m_Behaviour;
 	m_Color = reference.m_Color;
 	m_UseOwnColor = reference.m_UseOwnColor;
 	m_FGTextureFile = reference.m_FGTextureFile;
@@ -161,6 +163,37 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> m_Gloss;
 		m_Gloss = std::clamp(m_Gloss, 0.0F, 1.0F);
 	});
+	// How it behaves in the terrain's simulations (SB-1; see MaterialBehaviour).
+	MatchProperty("Flows", { reader >> m_Behaviour.Flows; });
+	MatchProperty("Powder", { reader >> m_Behaviour.Powder; });
+	MatchProperty("FlowSpeed", { reader >> m_Behaviour.FlowSpeed; });
+	MatchProperty("FallSpeed", { reader >> m_Behaviour.FallSpeed; });
+	MatchProperty("MoveEvery", { reader >> m_Behaviour.MoveEvery; });
+	MatchProperty("Gravity", { reader >> m_Behaviour.Gravity; });
+	MatchProperty("Viscosity", { reader >> m_Behaviour.Viscosity; });
+	MatchForwards("Weight") MatchProperty("LiquidWeight", { reader >> m_Behaviour.LiquidWeight; });
+	MatchProperty("SlideChance", { reader >> m_Behaviour.SlideChance; });
+	MatchProperty("Sticky", { reader >> m_Behaviour.Sticky; });
+	MatchProperty("Burns", { reader >> m_Behaviour.Burns; });
+	MatchProperty("BurnMinTicks", { reader >> m_Behaviour.BurnMinTicks; });
+	MatchProperty("BurnMaxTicks", { reader >> m_Behaviour.BurnMaxTicks; });
+	MatchProperty("BurnSpread", { reader >> m_Behaviour.BurnSpread; });
+	MatchProperty("LeavesAsh", { reader >> m_Behaviour.LeavesAsh; });
+	MatchProperty("BurnBlast", { reader >> m_Behaviour.BurnBlast; });
+	MatchProperty("Douses", { reader >> m_Behaviour.Douses; });
+	MatchProperty("FreezesTo", { reader >> m_Behaviour.FreezesTo; });
+	MatchProperty("MeltsTo", { reader >> m_Behaviour.MeltsTo; });
+	MatchProperty("BoilsTo", { reader >> m_Behaviour.BoilsTo; });
+	MatchProperty("SettlesTo", { reader >> m_Behaviour.SettlesTo; });
+	MatchProperty("DriesTo", { reader >> m_Behaviour.DriesTo; });
+	MatchProperty("DryChance", { reader >> m_Behaviour.DryChance; });
+	MatchProperty("Chills", { reader >> m_Behaviour.Chills; });
+	MatchProperty("Evaporates", { reader >> m_Behaviour.Evaporates; });
+	MatchProperty("Look", { reader >> m_Behaviour.Look; });
+	MatchProperty("Glow", { reader >> m_Behaviour.Glow; });
+	MatchForwards("StainsAs") MatchProperty("Stains", { reader >> m_Behaviour.Stains; });
+	MatchProperty("Breathable", { reader >> m_Behaviour.Breathable; });
+	MatchProperty("TouchDamage", { reader >> m_Behaviour.TouchDamage; });
 	MatchProperty("Color", { reader >> m_Color; });
 	MatchProperty("UseOwnColor", { reader >> m_UseOwnColor; });
 	MatchProperty("FGTextureFile", {
@@ -195,6 +228,48 @@ int Material::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("UseOwnColor", m_UseOwnColor);
 		writer.NewPropertyWithValue("FGTextureFile", m_FGTextureFile);
 		writer.NewPropertyWithValue("BGTextureFile", m_BGTextureFile);
+		// The behaviour, only what is set: unset values keep the stock rule.
+		const MaterialBehaviour& b = m_Behaviour;
+		auto number = [&writer](const char* name, auto value) {
+			if (value >= 0) {
+				writer.NewPropertyWithValue(name, value);
+			}
+		};
+		auto text = [&writer](const char* name, const std::string& value) {
+			if (!value.empty()) {
+				writer.NewPropertyWithValue(name, value);
+			}
+		};
+		number("Flows", b.Flows);
+		number("Powder", b.Powder);
+		number("FlowSpeed", b.FlowSpeed);
+		number("FallSpeed", b.FallSpeed);
+		number("MoveEvery", b.MoveEvery);
+		number("Gravity", b.Gravity);
+		number("Viscosity", b.Viscosity);
+		number("LiquidWeight", b.LiquidWeight);
+		number("SlideChance", b.SlideChance);
+		number("Sticky", b.Sticky);
+		text("Burns", b.Burns);
+		number("BurnMinTicks", b.BurnMinTicks);
+		number("BurnMaxTicks", b.BurnMaxTicks);
+		number("BurnSpread", b.BurnSpread);
+		number("LeavesAsh", b.LeavesAsh);
+		number("BurnBlast", b.BurnBlast);
+		number("Douses", b.Douses);
+		text("FreezesTo", b.FreezesTo);
+		text("MeltsTo", b.MeltsTo);
+		text("BoilsTo", b.BoilsTo);
+		text("SettlesTo", b.SettlesTo);
+		text("DriesTo", b.DriesTo);
+		number("DryChance", b.DryChance);
+		number("Chills", b.Chills);
+		number("Evaporates", b.Evaporates);
+		number("Look", b.Look);
+		number("Glow", b.Glow);
+		number("Stains", b.Stains);
+		number("Breathable", b.Breathable);
+		number("TouchDamage", b.TouchDamage);
 	}
 	return 0;
 }

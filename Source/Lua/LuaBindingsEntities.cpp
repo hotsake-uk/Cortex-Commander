@@ -206,6 +206,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("Status", &Actor::GetStatus, &Actor::SetStatus)
 	    .property("MovementState", &Actor::GetMovementState, &Actor::SetMovementState)
 	    .property("Health", &Actor::GetHealth, &Actor::SetHealth)
+	    .property("LiquidDepth", &Actor::GetLiquidDepth)
+	    .property("AirLeft", &Actor::GetAirLeft)
+	    .property("IsFloater", &Actor::IsFloater)
 	    .property("PrevHealth", &Actor::GetPrevHealth)
 	    .property("MaxHealth", &Actor::GetMaxHealth, &Actor::SetMaxHealth)
 	    .property("InventoryMass", &Actor::GetInventoryMass)
@@ -220,6 +223,15 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("SharpAimProgress", &Actor::GetSharpAimProgress)
 	    .property("Height", &Actor::GetHeight)
 	    .property("AIMode", &Actor::GetAIMode, &Actor::SetAIMode)
+	    .property("AIOrderSerial", &Actor::GetAIOrderSerial)
+	    .property("OrderAttack", &Actor::GetOrderAttack, &Actor::SetOrderAttack)
+	    .property("OrderTargetID", &Actor::GetOrderTargetID, &Actor::SetOrderTargetID)
+	    .property("OrderAutoTargetID", &Actor::GetOrderAutoTargetID, &Actor::SetOrderAutoTargetID)
+	    .property("OrderHasAttackPlace", &Actor::GetOrderHasAttackPlace)
+	    .property("OrderAttackPlace", &Actor::GetOrderAttackPlace, &Actor::SetOrderAttackPlace)
+	    .property("OrderHasPost", &Actor::GetOrderHasPost)
+	    .property("OrderPost", &Actor::GetOrderPost, &Actor::SetOrderPost)
+	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
 	    .property("DeploymentID", &Actor::GetDeploymentID)
 	    .property("PassengerSlots", &Actor::GetPassengerSlots, &Actor::SetPassengerSlots)
 	    .property("Perceptiveness", &Actor::GetPerceptiveness, &Actor::SetPerceptiveness)
@@ -232,6 +244,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("MaxInventoryMass", &Actor::GetMaxInventoryMass)
 	    .property("MovePathSize", &Actor::GetMovePathSize)
 	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
+	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
+	    .property("Suppression", &Actor::GetSuppression)
+	    .property("Morale", &Actor::GetMorale)
 	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)
 	    .property("IsWaitingOnNewMovePath", &Actor::IsWaitingOnNewMovePath)
@@ -269,6 +284,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("AddAISceneWaypoint", &Actor::AddAISceneWaypoint)
 	    .def("AddAIMOWaypoint", &Actor::AddAIMOWaypoint)
 	    .def("ClearAIWaypoints", &Actor::ClearAIWaypoints)
+	    .def("ClearStandingOrder", &Actor::ClearStandingOrder)
+	    .def("ClearOrderAttackPlace", &Actor::ClearOrderAttackPlace)
+	    .def("ClearOrderPost", &Actor::ClearOrderPost)
 	    .def("GetLastAIWaypoint", &Actor::GetLastAIWaypoint)
 	    .def("GetAIMOWaypointID", &Actor::GetAIMOWaypointID)
 	    .def("GetWaypointListSize", &Actor::GetWaypointsSize)
@@ -315,6 +333,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	                            luabind::value("CRAWL", Actor::MovementState::CRAWL),
 	                            luabind::value("ARMCRAWL", Actor::MovementState::ARMCRAWL),
 	                            luabind::value("CLIMB", Actor::MovementState::CLIMB),
+	                            luabind::value("WALKCROUCH", Actor::MovementState::WALKCROUCH),
 	                            luabind::value("MOVEMENTSTATECOUNT", Actor::MovementState::MOVEMENTSTATECOUNT)]
 	    .enum_("AIMode")[luabind::value("AIMODE_NONE", Actor::AIMode::AIMODE_NONE),
 	                     luabind::value("AIMODE_SENTRY", Actor::AIMode::AIMODE_SENTRY),
@@ -352,6 +371,16 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .enum_("ActorHotkeyType")[luabind::value("PRIMARYHOTKEY", Actor::ActorHotkeyType::PRIMARYHOTKEY),
 	                              luabind::value("AUXILIARYHOTKEY", Actor::ActorHotkeyType::AUXILIARYHOTKEY),
 	                              luabind::value("ACTORHOTKEYTYPECOUNT", Actor::ActorHotkeyType::ACTORHOTKEYTYPECOUNT)];
+}
+
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ActorSighting) {
+	return luabind::class_<ActorSighting>("ActorSighting")
+
+	    .def_readonly("Target", &ActorSighting::Target)
+	    .def_readonly("HitPos", &ActorSighting::HitPos)
+	    .def_readonly("Visibility", &ActorSighting::Visibility)
+	    .def_readonly("Distance", &ActorSighting::Distance)
+	    .def_readonly("Head", &ActorSighting::Head);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
@@ -446,6 +475,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .def("ResetRouteMovement", &AHuman::ResetRouteMovement)
 	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
 	    .property("JetFlying", &AHuman::IsJetFlying)
+	    .property("FlyingRoute", &AHuman::IsFlyingRoute)
 	    .property("ClimbingLadder", &AHuman::IsClimbingLadder)
 	    .property("LegJumpHeight", &AHuman::GetLegJumpHeight, &AHuman::SetLegJumpHeight)
 	    .property("LegJumpSpeed", &AHuman::GetLegJumpSpeed, &AHuman::SetLegJumpSpeed)
@@ -466,6 +496,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("FGFoot", &AHuman::GetFGFoot, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetFGFoot)
 	    .property("BGFoot", &AHuman::GetBGFoot, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetBGFoot)
 	    .property("MaxWalkPathCrouchShift", &AHuman::GetMaxWalkPathCrouchShift, &AHuman::SetMaxWalkPathCrouchShift)
+	    .property("CrouchHeightFraction", &AHuman::GetCrouchHeightFraction, &AHuman::SetCrouchHeightFraction)
+	    .property("CrouchHeight", &AHuman::GetCrouchHeight)
 	    .property("CrouchAmount", &AHuman::GetCrouchAmount)
 	    .property("CrouchAmountOverride", &AHuman::GetCrouchAmountOverride, &AHuman::SetCrouchAmountOverride)
 	    .property("StrideSound", &AHuman::GetStrideSound, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetStrideSound)

@@ -30,7 +30,21 @@ namespace RTE {
 		Door, //!< Through a door the searcher can open or breach.
 		Stairs, //!< Up or down stairs, or a slope of about sixty degrees, on the legs: two nodes of height for one of width.
 		Ladder, //!< Up or down a ladder, hand over hand (see AHuman::UpdateLadder), or off its top or side onto a floor.
-		Leap //!< Across a gap or up onto a low ledge on a leap of the legs (see AHuman::UpdateLeap): no jet.
+		Leap, //!< Across a gap or up onto a low ledge on a leap of the legs (see AHuman::UpdateLeap): no jet.
+		Mantle, //!< Up onto a ledge one or two nodes up and one across, pulled up onto by pressing into it (see Actor::TryStartMantle): no jet.
+		Crouch, //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
+		Scramble, //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
+		Swim, //!< Along the surface of liquid too deep to wade, swum by a searcher that floats (PathAgent::Floats).
+		Wade //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
+	};
+
+	/// What liquid fills a node's column under its surface (see PathNode::Liquid). Told by the material's name, the four FluidSim pours.
+	enum class PathLiquid : unsigned char {
+		None = 0,
+		Water, //!< Swum or waded; drowns what breathes with its head under for long.
+		Oil, //!< Waded: nothing swims or drowns in it (ActorWater leaves it alone).
+		Acid, //!< Eats anything in it (ActorWater): never routed through but as a last resort.
+		Lava //!< Sets flesh alight (ActorFire): routed through only by what doesn't burn (PathAgent::CrossesLava).
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -40,6 +54,7 @@ namespace RTE {
 		float BreachStrength = -1.0F; //!< The strongest door it can get through; -1 for the dig strength.
 		float StandHeight = 40.0F; //!< Head room it needs to walk upright, in pixels.
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
+		float CrouchHeight = 0.0F; //!< Head room it needs to walk crouched (see AHuman::GetCrouchHeight); 0 for something that can't, which crawls under anything lower than it stands.
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
 		std::vector<std::pair<Vector, Vector>> AvoidLinks; //!< Flights (take-off, landing) this unit or its team has failed lately: that take-off for that landing costs more, nothing else does.
@@ -51,11 +66,31 @@ namespace RTE {
 		bool ClimbsLadders = false; //!< Whether it climbs ladders hand over hand (a humanoid with an arm): ladders are a way up and down for it, jet or none.
 		float LeapHeight = 0.0F; //!< How high a leap of its legs lifts it, in pixels (see AHuman::GetLegJumpHeight); 0 for none.
 		float LeapSpeed = 4.0F; //!< How fast a leap carries it forward, in m/s.
+		float MaxSafeFall = FLT_MAX; //!< For a searcher with no jet to brake a fall, the highest drop it lands from unhurt, in pixels (see Actor::GetMaxSafeFallHeight): falls higher are not routed. FLT_MAX for no limit.
+		bool Scrambles = false; //!< Whether it scrambles up rough slopes too steep for stairs on its legs and arms (a humanoid with an arm).
+		bool Floats = false; //!< Whether it floats in deep water (ActorWater::IsFloater) and swims along the surface, rather than walking the bottom.
+		float BreathSeconds = FLT_MAX; //!< How long it holds its breath with its head under, in seconds (ActorWater::GetBreathSeconds); FLT_MAX for what doesn't breathe.
+		bool CrossesLava = false; //!< Whether it may be routed through lava: what doesn't burn (machines).
+	};
+
+	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
+	/// Release on the write and acquire on the read, so the results are all there to be read once it says so (a plain bool worked on x86's
+	/// strong ordering, by luck; elsewhere the asker could copy a half-built path). Copies take the value, so a request can still be copied.
+	struct PathRequestDoneFlag {
+		std::atomic<bool> Value{false};
+		PathRequestDoneFlag() = default;
+		PathRequestDoneFlag(const PathRequestDoneFlag& other) : Value(other.Value.load(std::memory_order_acquire)) {}
+		PathRequestDoneFlag& operator=(const PathRequestDoneFlag& other) {
+			Value.store(other.Value.load(std::memory_order_acquire), std::memory_order_release);
+			return *this;
+		}
+		operator bool() const volatile { return Value.load(std::memory_order_acquire); }
+		void operator=(bool done) volatile { Value.store(done, std::memory_order_release); }
 	};
 
 	/// Information required to make an async pathing request.
 	struct PathRequest {
-		bool complete = false;
+		PathRequestDoneFlag complete;
 		int status = MicroPather::NO_SOLUTION;
 		std::list<Vector> path;
 		std::list<PathStepKind> kinds; //!< What each step of the path is, one per point of path after the first.
@@ -81,7 +116,7 @@ namespace RTE {
 		Vector Anchor;
 		bool Ladder = false; //!< Rungs of the Ladder material in or beside this cell: a way up and down for a climber (the anchor is where its body climbs).
 
-		bool m_Navigable; //!< Whether this node can be navigated through.
+		bool m_Navigable = true; //!< Whether this node can be navigated through.
 
 		float Surface = -1.0F; //!< The ground surface in this node's column within its cell, or -1 for none (the node is in the air, or buried).
 		int FreeHeight = 0; //!< Air above the surface (or above the centre, for a node in the air) in the node's column, up to c_ClearanceReach.
@@ -90,6 +125,12 @@ namespace RTE {
 		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
 		bool Grounded = false; //!< Whether a body here stands on something: any of the lines down across the cell meets ground (see UpdateNodeCosts).
 		bool StairsUpLeft = false; //!< Likewise up to the left.
+		bool ScrambleUpRight = false; //!< Whether a rough slope of loose or diggable ground, too steep for stairs, leads from this node's floor up to the floor of the node three up and one to the right (see UpdateNodeCosts).
+		bool ScrambleUpLeft = false; //!< Likewise up to the left.
+		/// Liquid under this node's surface (LM-4): the surface is then the liquid's, and LiquidDepth is how far down its centre column the
+		/// liquid goes before the bottom, up to c_ClearanceReach. None and 0 for a dry node.
+		PathLiquid Liquid = PathLiquid::None;
+		int LiquidDepth = 0;
 		/// Stepping over something low between this node's floor and a floor level with it one node (index 0) or two nodes (index 1) to the right:
 		/// how high the thing is over the floor, or -1 when there is nothing to step over (or no such floor, or it is too high), and the air over it.
 		std::array<float, 2> StepOverRise = {-1.0F, -1.0F};
@@ -99,6 +140,8 @@ namespace RTE {
 		std::array<float, 2> StepOverRiseLeft = {-1.0F, -1.0F};
 		std::array<int, 2> StepOverRoomLeft = {0, 0};
 		static constexpr int c_ClearanceReach = 96; //!< How far up the free height is measured.
+		static constexpr int c_SamplingReachUpNodes = 6; //!< How many rows up a node's measures look: a step-over's room, up to 48 px over its floor and c_ClearanceReach more.
+		static constexpr int c_SamplingReachSideNodes = 2; //!< How many columns either side a node's measures look: the clearances and the step-overs.
 
 		/// Pointers to all adjacent PathNodes, in clockwise order with top first. These are not owned, and may be 0 if adjacent to non-wrapping scene border.
 		std::array<PathNode*, c_MaxAdjacentNodeCount> AdjacentNodes;
@@ -189,6 +232,12 @@ namespace RTE {
 		/// @return How many pathfinding requests are currently active.
 		int GetCurrentPathingRequests() const { return m_CurrentPathingRequests.load(); }
 
+		/// Waits for this grid's path searches in flight to finish, yielding the thread meanwhile, but not for ever: after the time given it
+		/// says so in the console and gives up, so a search that never ends can't freeze the game.
+		/// @param timeoutMS How long to wait at most, in real milliseconds.
+		/// @return Whether no searches were in flight when it returned.
+		bool WaitForPathingRequests(int timeoutMS = 10000);
+
 		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
 		/// green where the searcher stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs,
 		/// magenta for the stairs, pale green arcs for the searcher's leaps.
@@ -245,9 +294,20 @@ namespace RTE {
 
 		/// Recalculates the costs between all the PathNodes touching a deque of specific rectangular areas (which will be wrapped). Also resets the pather itself, if necessary.
 		/// @param boxList The deque of Boxes representing the updated areas.
-		/// @param nodeUpdateLimit The maximum number of PathNodes we'll try to update this frame. True PathNode update count can be higher if we received a big box, as we always do at least 1 box.
-		/// @return The set of PathNode ids that were updated.
+		/// Every box is taken off the deque and its nodes marked as waiting (a node waits once however many boxes touch it); then the oldest waiting
+		/// nodes, up to the limit, are sampled again. The rest wait for the next call.
+		/// @param nodeUpdateLimit The maximum number of PathNodes we'll update this call.
+		/// @return The ids of the PathNodes that were sampled again, or none if no cost changed.
 		std::vector<int> RecalculateAreaCosts(std::deque<Box>& boxList, size_t nodeUpdateLimit);
+
+		/// How many nodes are marked as changed and not yet sampled again (see RecalculateAreaCosts).
+		size_t GetWaitingNodeCount() const { return m_WaitingNodes.size(); }
+
+		/// Helper function for getting the PathNode ids in a Box.
+		/// @param box The Box of which all PathNodes it touches should be returned.
+		/// @param samplingReach Whether to take in too every node whose measures look into the box, for re-sampling after a terrain change.
+		/// @return A list of the PathNode ids inside the box.
+		std::vector<int> GetNodeIdsInBox(Box box, bool samplingReach = false);
 
 		/// Updates a set of PathNodes, adjusting their transitions.
 		/// This does NOT update the pather, which is required if PathNode costs changed.
@@ -305,8 +365,17 @@ namespace RTE {
 
 		MicroPather* m_Pather; //!< The actual pathing object that does the pathfinding work. Owned.
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
+		std::deque<int> m_WaitingNodes; //!< Ids of nodes in changed areas not sampled again yet, oldest first (see RecalculateAreaCosts).
+		std::vector<bool> m_NodeWaiting; //!< Per node id, whether it is in m_WaitingNodes.
 		unsigned int m_NodeDimension; //!< The width and height of each PathNode, in pixels on the scene.
 		unsigned char m_LadderMaterial = 0; //!< The Ladder material's index (the bunkers' rungs), 0 when there is none; looked up once at creation.
+		std::array<unsigned char, 5> m_LiquidMaterials = {}; //!< The liquids' material indices, by PathLiquid (0 when the scene has none); looked up once at creation.
+
+		/// Which liquid a material index is, or None.
+		PathLiquid LiquidOf(unsigned char id) const;
+
+		/// The extra cost of a step into a node with liquid under it, for this searcher (see AdjacentCost); 0 for a dry node.
+		float LiquidCost(const PathNode& to) const;
 
 		/// The terrain at a point as a body meets it: air for the ladders' rungs, which a soldier passes (see AHuman::LearnFlight).
 		unsigned char TerrNav(int x, int y) const;
@@ -360,11 +429,6 @@ namespace RTE {
 		/// @param node The PathNode to update all costs of. It's safe to pass nullptr here. OWNERSHIP IS NOT TRANSFERRED!
 		/// @return Whether the PathNodes costs changed.
 		bool UpdateNodeCosts(PathNode* node) const;
-
-		/// Helper function for getting the PathNode ids in a Box.
-		/// @param box The Box of which all PathNodes it touches should be returned.
-		/// @return A list of the PathNode ids inside the box.
-		std::vector<int> GetNodeIdsInBox(Box box);
 
 		/// Helper function to determine if a node is on solid fround.
 		/// @param node The node we're checking.
@@ -422,6 +486,10 @@ namespace RTE {
 		/// @param to The floor it lands on.
 		/// @return Whether the leap fits.
 		bool LeapFits(const PathNode& from, const PathNode& to) const;
+
+		/// Whether door material at a place is a door this grid sees through: one of the grid's side, erased while its nodes were sampled
+		/// (Scene::UpdatePathFinding, OverrideMaterialDoors), so no edge of the node there, or of its neighbours into it, sampled a door.
+		bool DoorSeenThrough(const Vector& at) const;
 
 		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list, priced a little over the walk of the same distance.
 		/// @param node The node.

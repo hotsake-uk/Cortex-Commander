@@ -143,7 +143,10 @@ void Colony::Update() {
 			building.Status = building.Paused ? "Stopped" : "Earning supply";
 			continue;
 		}
-		building.Alive.erase(std::remove_if(building.Alive.begin(), building.Alive.end(), [](const std::pair<Actor*, long>& unit) { return !g_MovableMan.IsActor(unit.first) || static_cast<long>(unit.first->GetUniqueID()) != unit.second; }),
+		// (Dead too, not just gone: a body is a valid actor until it settles, and was counted alive meanwhile, so no replacement was made.)
+		building.Alive.erase(std::remove_if(building.Alive.begin(), building.Alive.end(), [](const std::pair<Actor*, long>& unit) {
+			                     return !g_MovableMan.IsActor(unit.first) || static_cast<long>(unit.first->GetUniqueID()) != unit.second || unit.first->IsDead() || unit.first->GetHealth() <= 0.0F;
+		                     }),
 		                     building.Alive.end());
 		if (building.Paused) {
 			building.Status = "Stopped";

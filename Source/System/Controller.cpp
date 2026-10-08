@@ -170,6 +170,12 @@ void Controller::Update() {
 			} else if (ShouldUpdateAIThisFrame()) {
 				// AI will be updated in separate UpdateAI call, but we need to clear the command state for them
 				ResetCommandState();
+			} else {
+				// Between AI updates the AI's keys are held as they were, which is right for a held key but not for a press: a take-off's
+				// jump start, set on an AI frame, was seen again on the frame after and the jetpack burst twice (and a leap press was offered
+				// twice). The presses last the one frame they were made on, as a player's do.
+				m_ControlStates[ControlState::BODY_JUMPSTART] = false;
+				m_ControlStates[ControlState::BODY_LEAP] = false;
 			}
 			break;
 		default:
@@ -200,6 +206,7 @@ void Controller::GetInputFromPlayer() {
 bool Controller::s_AIPaused = false;
 
 bool Controller::IsHeldByPausedAI() const {
+	// (Not craft: held, a craft's controls go slack and it drops out of the sky, delivery and passengers with it.)
 	return s_AIPaused && m_InputMode == InputMode::CIM_AI && !dynamic_cast<const ACraft*>(m_ControlledActor);
 }
 

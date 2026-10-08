@@ -478,13 +478,108 @@ function SharedBehaviors.EngineMotor(Owner)
 	return ok and value ~= nil;
 end
 
--- A stance for a while: AHuman.PRONE or AHuman.NOTPRONE.
-function SharedBehaviors.Stance(AI, Owner, stance, milliseconds)
-	if SharedBehaviors.EngineMotor(Owner) then
-		Owner:SetAIStance(stance == AHuman.PRONE and 2 or 0, milliseconds or 1000);
-	else
-		AI.proneState = stance;
+-- Whether the engine's scan (Actor.ScanForEnemies) is there, for a build without it (an older exe), where the scripts look with one
+-- random ray a tick as they did.
+function SharedBehaviors.CanScan(Owner)
+	local ok, value = pcall(function() return Owner.ScanForEnemies; end);
+	return ok and value ~= nil;
+end
+
+-- Spotting by the engine's scan (AC-1): a person's look, not a random ray. The scan says which enemies are in view and how plainly
+-- (Actor.ScanForEnemies); noticing one takes a moment that is shorter the plainer it is and the better the unit, so a poor unit is slow
+-- to react, not blind, and a crawling enemy at the edge of the view can get close. Run every update while fighting, every third while
+-- not, which keeps the rays near the one a tick the old look cast. @return The enemy noticed (the plainest), and where the look landed on
+-- it; or nothing.
+-- @param fovDegrees The field of view about the facing. @param budget The rays a scan may cast.
+function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
+	local fighting = AI.Target ~= nil;
+	AI.scanTick = (AI.scanTick or 0) + 1;
+	if not fighting and AI.scanTick % 3 ~= 0 then
+		return nil;
 	end
+	AI.ScanClock = AI.ScanClock or Timer();
+	AI.Noticing = AI.Noticing or {};
+	local now = AI.ScanClock.ElapsedSimTimeMS;
+	local elapsed = math.min((now - (AI.lastScanMS or now)) / 1000, 0.5);
+	AI.lastScanMS = now;
+	-- (As far as the old look reached: the aim distance and half a screen.)
+	local range = Owner.AimDistance + FrameMan.PlayerScreenWidth * 0.51;
+	-- How fast noticing fills, per second at full visibility: about 0.3 s for the best units, about 1.2 s for the worst; skill 0 to 100.
+	local rate = (0.8 + (skill or 50) / 40) * Owner.Perceptiveness;
+	local noticed, noticedHit, noticedVisibility, noticedID;
+	local current, currentHit, currentID;
+	for Sighting in Owner:ScanForEnemies(fovDegrees, range, budget) do
+		local Target = Sighting.Target;
+		local HitPos = Sighting.HitPos;
+		-- AI-teams ignore the fog
+		if Target and (not AI.isPlayerOwned or not SceneMan:IsUnseen(HitPos.X, HitPos.Y, Owner.Team) or not SceneMan:IsUnseen(Target.Pos.X, Target.Pos.Y, Owner.Team)) then
+			local id = Target.UniqueID;
+			local entry = AI.Noticing[id];
+			if not entry then
+				entry = {progress = 0};
+				AI.Noticing[id] = entry;
+			end
+			-- (A target already being fought is known: no delay to keep it.)
+			if AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target.UniqueID == id then
+				entry.progress = 1;
+				current, currentHit, currentID = Target, Vector(HitPos.X, HitPos.Y), id;
+			else
+				-- (At least a tick's worth, for the first scan.)
+				entry.progress = entry.progress + Sighting.Visibility * rate * math.max(elapsed, TimerMan.DeltaTimeSecs);
+			end
+			entry.seenMS = now;
+			if entry.progress >= 1 and (not noticed or Sighting.Visibility > noticedVisibility) then
+				noticed, noticedHit, noticedVisibility, noticedID = Target, Vector(HitPos.X, HitPos.Y), Sighting.Visibility, id;
+			end
+		end
+	end
+	-- Out of view for a second and a half: what was half-noticed is forgotten.
+	for id, entry in pairs(AI.Noticing) do
+		if now - entry.seenMS > 1500 then
+			AI.Noticing[id] = nil;
+		end
+	end
+	-- The enemy being fought, while in view, is what is answered (so the fight keeps it, TargetLostTimer and all), but every fourth scan
+	-- the plainest other one noticed, so a worse threat can take its place, as the old look's stray rays let it. (By UniqueID: luabind has no == for two Actor
+	-- userdata, and threw "No such operator defined" here.)
+	if current and (not noticed or noticedID == currentID or AI.scanTick % 4 ~= 0) then
+		return current, currentHit;
+	end
+	return noticed, noticedHit;
+end
+
+-- The crouched stance for SharedBehaviors.Stance (the engine's stance 1): ducked behind low cover or made small, on its feet.
+SharedBehaviors.CROUCHED = "crouched";
+
+-- How pinned down and how steady a unit is (Actor.Suppression and Actor.Morale, AC-3): 0 and 1 for Unfair AI, which ignores it, and for a
+-- build without them. @return suppression, morale.
+function SharedBehaviors.Suppression(AI, Owner)
+	if AI.ignoresSuppression == nil then
+		local ok, value = pcall(function() return Owner.Suppression; end);
+		AI.ignoresSuppression = not (ok and value ~= nil) or (AI.skill or Activity.DEFAULTSKILL) >= Activity.UNFAIRSKILL;
+	end
+	if AI.ignoresSuppression then
+		return 0, 1;
+	end
+	return Owner.Suppression, Owner.Morale;
+end
+
+-- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate).
+function SharedBehaviors.Shaken(AI, Owner)
+	local _, morale = SharedBehaviors.Suppression(AI, Owner);
+	return morale < 0.3;
+end
+
+-- A stance for a while: AHuman.PRONE, AHuman.NOTPRONE or SharedBehaviors.CROUCHED. AI.proneState says whether it is prone, for the rules
+-- that read it ("not while prone": no strafe, no cover move, no jet, no second GoProne); a crouch is not prone. With the engine's motor,
+-- the native AI keeps the engine's stance up while it does (see NativeHumanAI:Update). (Left NOTPRONE, every one of those guards was dead,
+-- and a unit strafed sideways lying down.) The crouch is the engine motor's only: without it the stance is just not prone.
+function SharedBehaviors.Stance(AI, Owner, stance, milliseconds)
+	local crouched = stance == SharedBehaviors.CROUCHED;
+	if SharedBehaviors.EngineMotor(Owner) then
+		Owner:SetAIStance(stance == AHuman.PRONE and 2 or (crouched and 1 or 0), milliseconds or 1000);
+	end
+	AI.proneState = crouched and AHuman.NOTPRONE or stance;
 end
 
 -- A short move on this floor to a place, for a while; the engine walks (or crawls) it. @return Whether it is still on its way.
@@ -533,8 +628,22 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	local nearIn = AI.squadPoint and 0.15 or 0.3;
 	local nearOut = AI.squadPoint and 0.25 or 0.4;
 	local moving = Target.Vel.Largest > 1;
+	-- Near the place and in a door's sweep: out of it. (Only near the place: a follower on its way through a doorway walks on through.)
+	local Exit = not moving and ToGoal.Largest < H * 1.5 and SharedBehaviors.DoorSweepExit(Owner, Goal);
+	if Exit then
+		AI.followHold = false;
+		SharedBehaviors.StepTo(AI, Owner, Exit, 600);
+		return true;
+	end
+	-- (Out of it, with the place still in the open door's sweep: waited for here, near the place, till the door shuts.)
+	if not moving and ToGoal.Largest < H * 1.5 and SharedBehaviors.DoorSweptBy(Owner, Goal) then
+		if SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive then
+			Owner:CancelTacticalMove();
+		end
+		return true;
+	end
 	if AI.followHold then
-		local off = ToGoal.Largest > H * nearOut + targetH * nearOut or moving or SharedBehaviors.InDoorSweep(Owner);
+		local off = ToGoal.Largest > H * nearOut + targetH * nearOut or moving;
 		if not off and InSight() then
 			-- (Held: no move of the engine's either.)
 			if SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive then
@@ -562,6 +671,7 @@ end
 -- unit near at hand (SharedBehaviors.FollowStep), and what to do on arrival. (Gold digging keeps 8.0's GoToWpt: a digger's unit uses it.)
 function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 	Owner:ResetRouteMovement();
+	AI.routeHeld = false;
 	AI.jetClimb = false;
 	Owner:RemoveNumberValue("AI_StuckForTime");
 	while true do
@@ -575,6 +685,12 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		AI.jump = false;
 		AI.pilotFlight = true; -- (The engine holds the jet as it means to: no hold timer of the native AI's over it.)
 		-- Following a unit near at hand: walked or held here, not routed (the route-follower never "arrives" at a unit, and shoved for its spot).
+		-- A flight under way is flown on to its landing whatever turns up: held mid-air, the jet went out under the unit, and when the
+		-- route-follower was called again it judged the flight "down again under the landing" and marked a good take-off failed for 20 s
+		-- (for its team 10). (Humans only: the crab follower plans no flights.)
+		if holding and Owner.ClassName == "AHuman" and Owner.FlyingRoute then
+			holding = false;
+		end
 		local following = not holding and SharedBehaviors.FollowStep(AI, Owner);
 		if following then
 			holding = true;
@@ -585,6 +701,16 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			Owner:ResetRouteMovement();
 		end
 		AI.engineMover = not holding; -- (And the run key: the follower runs where the way is open.)
+		if holding then
+			AI.routeHeld = true;
+		elseif AI.routeHeld then
+			-- Back from a hold (a fight, a look at an alarm): the route-follower's timers and flight start again. It isn't called while
+			-- held, so its stuck timers ran on through the hold, and the first tick after a fight of more than 6 s marked the step it was on
+			-- avoided, for the whole team when a flight was ahead, and asked for a new route; a flight cut short by the hold was judged
+			-- failed and its take-off avoided too.
+			AI.routeHeld = false;
+			Owner:ResetRouteMovement();
+		end
 		if not holding then
 			local result = Owner:MoveAlongRoute();
 			if result == 1 then
@@ -1495,13 +1621,15 @@ end
 -- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
-	if Owner:NumberValueExists("SandboxDefendX") then
-		return "defend";
+	-- (A defender on its way back to its post is moving, not standing its ground: told "defend" while the mode said "go there", the
+	-- fighting rules held it still wherever it had been shoved to.)
+	if Owner.OrderHasPost then
+		return Owner.AIMode == Actor.AIMODE_GOTO and "move" or "defend";
 	end
 	if Owner:NumberValueExists("AIRetreat") then
 		return "move";
 	end
-	if Owner:GetNumberValue("SandboxAttack") > 0 or Owner.AIMode == Actor.AIMODE_BRAINHUNT then
+	if Owner.OrderAttack or Owner.AIMode == Actor.AIMODE_BRAINHUNT then
 		return "attack";
 	end
 	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
@@ -1525,6 +1653,10 @@ end
 
 -- Whether a unit may leave its spot to go after a target it can't hit from where it is.
 function SharedBehaviors.MayClose(AI, Owner)
+	-- (Told to hold position in the sandbox: it fights from where it stands, and does not walk after a target it cannot hit from there.)
+	if Owner.OrderHold then
+		return false;
+	end
 	local kind = SharedBehaviors.OrderKind(Owner);
 	if kind == "attack" then
 		return true;
@@ -1768,15 +1900,41 @@ end
 -- Whether the unit stands in the way of a door of ours (or no one's) that isn't shut: where its moving piece will be when it closes,
 -- which it does a second and a half after its sensors last saw a body, on whatever is there.
 function SharedBehaviors.InDoorSweep(Owner)
-	for mo in MovableMan:GetMOsInRadius(Owner.Pos, Owner.Height * 1.2) do
+	return SharedBehaviors.DoorSweptBy(Owner, Owner.Pos) ~= nil;
+end
+
+-- The open door of the unit's side whose piece sweeps a place (the unit's own, or one it means to stand on), or nil.
+function SharedBehaviors.DoorSweptBy(Owner, Pos)
+	for mo in MovableMan:GetMOsInRadius(Pos, Owner.Height * 1.2) do
 		if mo.ClassName == "ADoor" and (mo.Team == Owner.Team or mo.Team == Activity.NOTEAM) then
 			local door = ToADoor(mo);
-			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Owner.Pos, Owner.Height * 0.3) then
-				return true;
+			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Pos, Owner.Height * 0.3) then
+				return door;
 			end
 		end
 	end
-	return false;
+	return nil;
+end
+
+-- Standing in a door's sweep: the nearest spot on this floor clear of it, the goal's side first, onto ground. nil when not in a sweep,
+-- or no such spot is near. (A squad's place in the sweep was let go of, walked to again, and held again: the follower stood in the door
+-- for good.)
+function SharedBehaviors.DoorSweepExit(Owner, Goal)
+	local door = SharedBehaviors.DoorSweptBy(Owner, Owner.Pos);
+	if not door then
+		return nil;
+	end
+	local H = Owner.Height;
+	local first = SceneMan:ShortestDistance(Owner.Pos, Goal, false).X < 0 and -1 or 1;
+	for _, reach in ipairs({0.5, 0.8, 1.2}) do
+		for _, side in ipairs({first, -first}) do
+			local Spot = Owner.Pos + Vector(side * H * reach, 0);
+			if not door:SweepContains(Spot, H * 0.3) and SharedBehaviors.StepIsSafe(Owner, side) then
+				return Spot;
+			end
+		end
+	end
+	return nil;
 end
 
 -- Whether a step sideways from here is onto ground, not off a drop or into a wall. @param dir -1 or 1.
@@ -1848,20 +2006,33 @@ end
 
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
 function SharedBehaviors.RememberOrder(AI, Owner)
-	local keep = { mode = Owner.AIMode, attack = Owner:GetNumberValue("SandboxAttack") };
-	if Owner.AIMode == Actor.AIMODE_GOTO then
+	local keep = { mode = Owner.AIMode, attack = Owner.OrderAttack };
+	-- (A squad follower's leader too: cleared with the waypoints, a follower came back from a fall-back with no one to follow.)
+	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
 		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
 			keep.target = Owner.MOMoveTarget;
 		elseif Owner:GetWaypointListSize() > 0 then
 			keep.waypoint = Owner:GetLastAIWaypoint();
 		end
+	elseif Owner.AIMode == Actor.AIMODE_SENTRY then
+		-- (A sentry's post and the way it faced: kept as the mode only, a sentry came back from a fall-back and stood guard wherever the
+		-- fall-back had ended. A crab keeps no post of its own; where it stood is its post.)
+		local Post = AI.SentryPos or Owner.Pos;
+		keep.post = Vector(Post.X, Post.Y);
+		keep.facing = AI.SentryFacing;
 	end
 	return keep;
 end
 
 function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 	Owner:ClearAIWaypoints();
-	if keep.mode == Actor.AIMODE_GOTO then
+	if keep.mode == Actor.AIMODE_SQUAD then
+		if keep.target and MovableMan:ValidMO(keep.target) then
+			Owner:AddAIMOWaypoint(keep.target);
+		else
+			keep.mode = Actor.AIMODE_SENTRY;
+		end
+	elseif keep.mode == Actor.AIMODE_GOTO then
 		if keep.target and MovableMan:ValidMO(keep.target) then
 			Owner:AddAIMOWaypoint(keep.target);
 		elseif keep.waypoint then
@@ -1869,26 +2040,229 @@ function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 		else
 			keep.mode = Actor.AIMODE_SENTRY;
 		end
+	elseif keep.mode == Actor.AIMODE_SENTRY and keep.post then
+		-- Back on guard at the post: walked back to it when away (the engine makes the unit a sentry again on arrival, and the AI's update
+		-- takes the post and facing from AI.ReturnPost then), else simply on guard there again.
+		AI.SentryPos = Vector(keep.post.X, keep.post.Y);
+		AI.SentryFacing = keep.facing;
+		AI.ReturnPost = { Pos = keep.post, facing = keep.facing };
+		if SceneMan:ShortestDistance(Owner.Pos, keep.post, false):MagnitudeIsGreaterThan(Owner.Height * 0.7) then
+			Owner:AddAISceneWaypoint(keep.post);
+			keep.mode = Actor.AIMODE_GOTO;
+		end
 	end
 	Owner.AIMode = keep.mode;
-	if keep.attack > 0 then
-		Owner:SetNumberValue("SandboxAttack", keep.attack);
+	if keep.attack then
+		Owner.OrderAttack = true;
 	end
+end
+
+-- An attack order's own targeting, run by the unit's AI (it was the sandbox's once-a-second RetargetAttackers poll, which re-sent units
+-- from outside and pulled them out of fights the AI had chosen). Called every tick by the human and crab AIs before they look for a new
+-- behaviour, so a redirect made here is taken up the same tick. It only steers a unit that has nothing to fight: one with a target in
+-- sight, falling back, flanking or burning is left to that. In order:
+--   an enemy the player picked (OrderTargetID) is kept after while it lives;
+--   one the unit is already going for, whoever picked it, is left alone;
+--   told to attack towards a place, it goes for the nearest enemy within 500 px of the place, else back to the place and stands ready;
+--   otherwise it goes for the nearest enemy it has a route to, by route length, trying the few nearest in a straight line. An enemy it
+--   was sent at and stood down from (no route) is skipped for 20 s. Brains only when nothing else is left; never craft.
+function SharedBehaviors.AttackOrderUpdate(AI, Owner)
+	if not Owner.OrderAttack then
+		AI.AttackOrder = nil;
+		return;
+	end
+	local state = AI.AttackOrder;
+	if not state then
+		state = { Timer = Timer(), GaveUpOn = {}, first = true };
+		AI.AttackOrder = state;
+	end
+	-- (Once a second, as the poll was, and at once when an order has been given since the AI's last update: GiveOrder leaves the first pick
+	-- to this. The AI's own writes don't count, as in its new-order check.)
+	if AI.orderSerial ~= nil and Owner.AIOrderSerial ~= AI.orderSerial then
+		state.first = true;
+	end
+	if not state.first and not state.Timer:IsPastSimMS(state.wait or 1000) then
+		return;
+	end
+	state.first = false;
+	state.wait = nil;
+	state.Timer:Reset();
+	if AI.Target or AI.Retreat or AI.Flank or Owner:NumberValueExists("OnFire") or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
+		return;
+	end
+
+	for id, Since in pairs(state.GaveUpOn) do
+		if Since:IsPastSimMS(20000) then
+			state.GaveUpOn[id] = nil;
+		end
+	end
+
+	-- Everyone on the other sides worth going for, and the picked enemies looked up, in one pass.
+	local chosen, autoPicked;
+	local Enemies = {};
+	for Act in MovableMan.Actors do
+		if Act.Team ~= Owner.Team and Act.Team >= 0 and Act.Team < 4 and Act.Status < Actor.DYING and Act.Health > 0 and Act.ClassName ~= "ADoor" then
+			if Owner.OrderTargetID ~= 0 and Act.UniqueID == Owner.OrderTargetID then
+				chosen = Act;
+			end
+			if Owner.OrderAutoTargetID ~= 0 and Act.UniqueID == Owner.OrderAutoTargetID then
+				autoPicked = Act;
+			end
+			if not Act.IgnoredByAI and not IsACraft(Act) then
+				table.insert(Enemies, Act);
+			end
+		end
+	end
+
+	local function goAfter(Enemy, why)
+		Owner:ClearAIWaypoints();
+		Owner:AddAIMOWaypoint(Enemy);
+		Owner.AIMode = Actor.AIMODE_GOTO;
+		SharedBehaviors.Trace(Owner, "attack order: after " .. Enemy.PresetName .. " (" .. why .. ")");
+	end
+
+	local Target = Owner.MOMoveTarget;
+	local chasing = Target and MovableMan:IsActor(Target) and Target.Team ~= Owner.Team and Target.Team >= 0;
+	-- (Waypoints not yet taken up: a waypoint is loaded as the move target only when its route is asked for, so a unit sent a moment ago
+	-- reads as after nothing; re-sent then, it restarted its walk every second.)
+	local sent = Owner.AIMode == Actor.AIMODE_GOTO and Owner:GetWaypointListSize() > 0;
+	if chosen then
+		if not sent and (not chasing or Target.UniqueID ~= chosen.UniqueID) then
+			goAfter(chosen, "its target");
+		end
+		return;
+	end
+	Owner.OrderTargetID = 0;
+	if chasing or sent then
+		return;
+	end
+
+	local function nearestTo(Point, reach)
+		local best, bestDist, bestIsBrain = nil, reach * reach, false;
+		for _, Act in ipairs(Enemies) do
+			local brain = Act:IsInGroup("Brains");
+			local dist = SceneMan:ShortestDistance(Point, Act.Pos, SceneMan.SceneWrapsX).SqrMagnitude;
+			if dist < reach * reach and (not best or (bestIsBrain and not brain) or (brain == bestIsBrain and dist < bestDist)) then
+				best, bestDist, bestIsBrain = Act, dist, brain;
+			end
+		end
+		return best;
+	end
+
+	if Owner.OrderHasAttackPlace then
+		local Place = Owner.OrderAttackPlace;
+		local Enemy = nearestTo(Place, 500);
+		if Enemy then
+			goAfter(Enemy, "near its place");
+		elseif SceneMan:ShortestDistance(Owner.Pos, Place, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(60) and Owner.AIMode ~= Actor.AIMODE_GOTO then
+			Owner:ClearAIWaypoints();
+			Owner:AddAISceneWaypoint(Place);
+			Owner.AIMode = Actor.AIMODE_GOTO;
+			SharedBehaviors.Trace(Owner, "attack order: back to its place");
+		end
+		return;
+	end
+
+	-- Not after anything. The enemy picked for it last time, still there, with no waypoint left, is one it had no route to (a stand-down
+	-- on an impossible route clears the waypoints), so it is given a rest from that one.
+	if autoPicked and Owner:GetWaypointListSize() == 0 then
+		state.GaveUpOn[autoPicked.UniqueID] = Timer();
+	end
+	Owner.OrderAutoTargetID = 0;
+
+	-- The few nearest in a straight line (brains after everyone else), then the shortest route among them.
+	local Candidates = {};
+	for _, Act in ipairs(Enemies) do
+		if not state.GaveUpOn[Act.UniqueID] then
+			table.insert(Candidates, { Act = Act, brain = Act:IsInGroup("Brains"), dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, SceneMan.SceneWrapsX).SqrMagnitude });
+		end
+	end
+	table.sort(Candidates, function(a, b)
+		if a.brain ~= b.brain then
+			return not a.brain;
+		end
+		return a.dist < b.dist;
+	end);
+	local best, bestLength, bestIsBrain = nil, math.huge, false;
+	for i = 1, math.min(#Candidates, 4) do
+		local c = Candidates[i];
+		-- (Once a non-brain with a route is found, brains further down the list can't beat it.)
+		if best and c.brain and not bestIsBrain then
+			break;
+		end
+		local length = SceneMan.Scene:CalculatePathForActor(Owner, Owner.Pos, c.Act.Pos, Owner.Team);
+		if length > 0 then
+			-- (A route cut short at an obstacle ends somewhere else: not a way to the enemy.)
+			local Last;
+			for Point in SceneMan.Scene:GetScenePath() do
+				Last = Point;
+			end
+			if Last and not SceneMan:ShortestDistance(Last, c.Act.Pos, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(Owner.Height + 40) and length < bestLength then
+				best, bestLength, bestIsBrain = c.Act, length, c.brain;
+			end
+		else
+			state.GaveUpOn[c.Act.UniqueID] = Timer();
+		end
+	end
+	if best then
+		goAfter(best, "nearest by route");
+		Owner.OrderAutoTargetID = best.UniqueID;
+	else
+		-- (Nothing it can get to: on guard where it is until something turns up, the order kept, and the searches spaced out.)
+		state.wait = 5000;
+		if Owner.AIMode == Actor.AIMODE_GOTO and Owner:GetWaypointListSize() == 0 and not Owner.MOMoveTarget then
+			Owner.AIMode = Actor.AIMODE_SENTRY;
+		end
+	end
+end
+
+-- Whether the walk of a fall-back is over (got there, or stood down with no route): nothing left of it, the waypoints, the path or
+-- one being worked out. (Not "no GoTo behaviour": that is swapped in a tick or two after the order, and crabs never set it, so a fall-back
+-- was "arrived" the tick after it began and its wait ran down wherever the unit was.) A second's grace first, for the order to be taken up.
+function SharedBehaviors.RetreatWalkOver(AI, Owner)
+	return AI.Retreat.WaitTimer:IsPastSimMS(1000) and Owner:GetWaypointListSize() == 0 and Owner.MovePathSize == 0 and not Owner.IsWaitingOnNewMovePath;
+end
+
+-- Whether the unit has been given another order since a fall-back or a flank sent it to a spot: another mode, or a waypoint queued last
+-- that isn't the spot. (Put back unconditionally, a pie-menu order given meanwhile was wiped up to 25 s later.) Not something to follow:
+-- the AI's own detours (to a weapon to pick up, closing on a target) set that and queue the spot again after it.
+function SharedBehaviors.OrderChangedSince(Owner, Spot)
+	if Owner.AIMode ~= Actor.AIMODE_GOTO then
+		-- (Sentry at the spot with nothing more to go to is the walk's own end: the engine puts a unit whose GOTO is used up into
+		-- SENTRY once within 20 px of its last point. Any other mode, or sentry elsewhere, is someone's order.)
+		local arrived = Owner.AIMode == Actor.AIMODE_SENTRY and Owner:GetWaypointListSize() == 0 and not SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height);
+		return not arrived;
+	end
+	return Owner:GetWaypointListSize() > 0 and SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Spot, false):MagnitudeIsGreaterThan(48);
 end
 
 -- Falling back: a badly hurt unit with no enemy in sight goes to the nearest friend (the brain for choice) and waits a while to be
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
 function SharedBehaviors.RetreatUpdate(AI, Owner)
+	-- The tag taken off by someone else (a sandbox order): the fall-back is over and the order it would have put back is gone too.
+	if AI.Retreat and not Owner:NumberValueExists("AIRetreat") then
+		SharedBehaviors.Trace(Owner, "retreat: called off by a new order");
+		AI.Retreat = nil;
+		return false;
+	end
+	-- Another order given meanwhile: the fall-back is over, and that order stands.
+	if AI.Retreat and SharedBehaviors.OrderChangedSince(Owner, AI.Retreat.Spot) then
+		SharedBehaviors.Trace(Owner, "retreat: called off by another order");
+		Owner:RemoveNumberValue("AIRetreat");
+		AI.Retreat = nil;
+		return false;
+	end
 	if AI.Retreat then
 		local done = false;
-		if Owner.Health >= Owner.MaxHealth * 0.6 then
-			done = true; -- Patched up.
+		local _, morale = SharedBehaviors.Suppression(AI, Owner);
+		if Owner.Health >= Owner.MaxHealth * 0.6 and morale >= 0.5 then
+			done = true; -- Patched up, and steady again.
 		elseif AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(25000) then
 			done = true; -- Nobody came; back to it.
 		elseif not AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(40000) then
 			done = true; -- Never got there.
-		elseif not AI.Retreat.Arrived and (not AI.GoToBehavior or SceneMan:ShortestDistance(Owner.Pos, AI.Retreat.Spot, false):MagnitudeIsLessThan(100)) then
+		elseif not AI.Retreat.Arrived and (SceneMan:ShortestDistance(Owner.Pos, AI.Retreat.Spot, false):MagnitudeIsLessThan(100) or SharedBehaviors.RetreatWalkOver(AI, Owner)) then
 			AI.Retreat.Arrived = true; -- The walk is over.
 			AI.Retreat.WaitTimer:Reset();
 		end
@@ -1901,14 +2275,19 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		end
 		return true;
 	end
-	if Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
+	-- (Hurt, with no enemy about; or shaken (morale under 0.3), which pulls a unit back whatever its health and in the middle of a fight.)
+	local shaken = SharedBehaviors.Shaken(AI, Owner);
+	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
-	if kind == "defend" or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("AIFlank") then
+	-- (A defender on its way back to its post too, which OrderKind calls a move: the sandbox sends it back to its post whatever it does.)
+	if kind == "defend" or Owner.OrderHasPost or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner.OrderHold or Owner:NumberValueExists("AIFlank") then
 		return false;
 	end
-	if not AI.RetreatCheckTimer then
+	if shaken then
+		AI.RetreatCheckTimer = nil; -- (No waiting to be clear of the enemy: it is the enemy it is getting away from.)
+	elseif not AI.RetreatCheckTimer then
 		AI.RetreatCheckTimer = Timer();
 	elseif not AI.RetreatCheckTimer:IsPastSimMS(2000) then
 		return false; -- Two seconds clear of enemies first.
@@ -1943,7 +2322,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	end
 	AI.Retreat = { Keep = SharedBehaviors.RememberOrder(AI, Owner), WaitTimer = Timer(), Arrived = false, Spot = Spot };
 	Owner:SetNumberValue("AIRetreat", 1);
-	Owner:RemoveNumberValue("SandboxAttack");
+	Owner.OrderAttack = false;
 	Owner:ClearAIWaypoints();
 	Owner:AddAISceneWaypoint(Spot);
 	Owner.AIMode = Actor.AIMODE_GOTO;
@@ -1957,7 +2336,21 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 	if not AI.Flank then
 		return;
 	end
-	local arrived = Owner.AIMode ~= Actor.AIMODE_GOTO or SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
+	-- (Likewise a flank called off by a new order: not put back.)
+	if not Owner:NumberValueExists("AIFlank") then
+		SharedBehaviors.Trace(Owner, "flank: called off by a new order");
+		AI.Flank = nil;
+		AI.FlankRestTimer = Timer();
+		return;
+	end
+	if SharedBehaviors.OrderChangedSince(Owner, AI.Flank.Spot) then
+		SharedBehaviors.Trace(Owner, "flank: called off by another order");
+		Owner:RemoveNumberValue("AIFlank");
+		AI.Flank = nil;
+		AI.FlankRestTimer = Timer();
+		return;
+	end
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
 	if arrived or AI.Flank.Timer:IsPastSimMS(15000) then
 		SharedBehaviors.Trace(Owner, "flank: " .. (arrived and "there" or "gave up"));
 		Owner:RemoveNumberValue("AIFlank");
@@ -2018,6 +2411,19 @@ function SharedBehaviors.WaypointOnGround(pos, height)
 		return Vector(pos.X, pos.Y);
 	end
 	return SceneMan:MovePointToGround(pos, height * 0.2, 4);
+end
+
+-- The step kinds the script's own mover knows (0 to 7): a leap (8) or a mantle (9), which only the engine's route-follower takes as such, is
+-- a jump to it. (Taken for a walk, a leap's gap was walked off the edge of, and the comparison runs with CCCP_LUA_MOVER=1 meant nothing.)
+-- A crouch (10) is a walk to it: the body ducks under the low part by itself (AHuman's auto-crouch). A scramble (11) is a jump to it.
+-- A swim (12) or a wade (13) is a walk to it: ActorWater strokes the body along with the move keys.
+function SharedBehaviors.ScriptStepKind(kind)
+	if kind == 8 or kind == 9 or kind == 11 then
+		return 2;
+	elseif kind == 10 or kind == 12 or kind == 13 then
+		return 0;
+	end
+	return kind;
 end
 
 function SharedBehaviors.GoToWpt(AI, Owner, Abort)
@@ -2140,7 +2546,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				-- What the pathfinder meant by this step (0 walk, 1 crawl, 2 jump, 3 fall, 4 dig, 5 door, 6 stairs), so it needn't be guessed from
 				-- the ground: a step off an edge is walked off, not hopped; a jump is jetted whatever the slope looks like; a crawl is gone prone
 				-- for; stairs are walked, steep as they look.
-				Waypoint.Kind = Owner.MovePathStepKind;
+				Waypoint.Kind = SharedBehaviors.ScriptStepKind(Owner.MovePathStepKind);
 				-- (A dig step for a unit with nothing to dig with is whatever the ground makes it: it mustn't keep the unit from a hop or a climb.)
 				if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
 					Waypoint.Kind = 0;
@@ -2316,7 +2722,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					AI.jump = false;
 					AI.refuel = true;
 					nextLatMove = Actor.LAT_STILL;
-				else
+				elseif StuckDirectionTimer:IsPastSimTimeLimit() then
+					-- The drift under the jet, picked afresh only when the last has had its moment (StuckDirectionTimer), as on the ground: rolled
+					-- every tick, it went left, still and right at random many times a second, the flicker the ground rules below were rid of.
 					local chance = PosRand();
 					if chance < 0.1 then
 						nextLatMove = Actor.LAT_LEFT;
@@ -2325,6 +2733,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					else
 						nextLatMove = Actor.LAT_STILL;
 					end
+					StuckDirectionTimer:Reset();
 				end
 			else
 				local updateInterval = SettingsMan.AIUpdateInterval;
@@ -2445,6 +2854,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
 											-- (And not held in the way of a door's piece: see InDoorSweep.)
 											local off = ToGoal.Largest > Owner.Height * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1 or SharedBehaviors.InDoorSweep(Owner);
+											local Exit = SharedBehaviors.DoorSweepExit(Owner, Goal);
+											if Exit then
+												Waypoint.Pos = Exit; -- (Out of the sweep, not back to the place in it.)
+												break;
+											end
 											if off and StraightTo() then
 												Waypoint.Pos = Goal;
 												break;
@@ -2651,7 +3065,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										PrevWptPos = Waypoint.Pos;
 										Owner:RemoveMovePathBeginning();
 										Waypoint.Pos = NextPos;
-										Waypoint.Kind = Owner.MovePathStepKind;
+										Waypoint.Kind = SharedBehaviors.ScriptStepKind(Owner.MovePathStepKind);
 										if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
 											Waypoint.Kind = 0;
 										end
@@ -2801,6 +3215,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								if Climb then
 									climbHandled = true;
 									AI.proneState = AHuman.NOTPRONE;
+									if doorHold or doorGoal then
+										-- Paused for a door: the climb's stage and rise clocks wait with it. (Left running, a second's wait at a hatch
+										-- was a second of "no rise", and the climb failed the moment it went on.)
+										Climb.stageTimer:Reset();
+										if Climb.progressTimer then
+											Climb.progressTimer:Reset();
+										end
+									end
 									if not doorHold and not doorGoal then
 										local status, lat, aim = SharedBehaviors.ClimbUpdate(AI, Owner, Climb);
 										nextLatMove = lat;

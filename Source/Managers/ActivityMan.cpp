@@ -503,6 +503,8 @@ int ActivityMan::StartActivity(Activity* activity) {
 	m_StartActivity.reset(activity);
 	m_Activity.reset(dynamic_cast<Activity*>(m_StartActivity->Clone()));
 
+	Sandbox::OnActivityStarted();
+
 	g_MusicMan.ResetMusicState();
 
 	m_Activity->SetupPlayers();

@@ -250,6 +250,7 @@ namespace RTE {
 		float WaterRefraction = 0.5F; //!< How much water's ripples bend what's seen through it, and how much it darkens with depth, 0 for none.
 		float WaterRipples = 1.0F; //!< How much the surface ripples tilt the light and the reflection, 0 for a flat mirror.
 		bool WaterMirrorSurface = true; //!< The reflection ripples with the surface above it, each column as one, so it reads as a mirror image on moving water and goes clean on still water. Off: each pixel's own ripple shifts it, as before. Strength is WaterRipples.
+		bool WaterSoftReflection = true; //!< The reflection is blurred more the deeper it is, fades out with depth and where the open air above the pool ends, and isn't clipped hard at the edge of the screen or other water. Off: sharp and cut off, as before.
 		bool DistinctLiquidLooks = true; //!< Liquids past water, lava and acid (oil, mud, slime, mercury and new ones) each have their own look. Off: they are all drawn as water. Water, lava and acid look the same either way.
 		bool WaterFlowSurface = true; //!< Water's surface follows how the water moves: still water goes glassy, a stream's ripples run downstream, the surface rings out where a pour lands and fast churn froths. Off: the same slow waves everywhere, as before.
 		float WaterFlowStrength = 1.0F; //!< How strongly, 0 (as off) to 1.

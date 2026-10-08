@@ -36,8 +36,8 @@ namespace {
 	}
 
 	/// The names and colours of the route's step kinds (PathStepKind's order), for the navigation overlays.
-	const char* const c_KindNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap"};
-	const ImU32 c_KindColors[] = {IM_COL32(80, 220, 90, 230), IM_COL32(240, 210, 60, 230), IM_COL32(120, 170, 255, 230), IM_COL32(170, 170, 170, 230), IM_COL32(200, 130, 70, 230), IM_COL32(255, 120, 200, 230), IM_COL32(220, 80, 220, 230), IM_COL32(255, 150, 40, 230), IM_COL32(140, 255, 200, 230)};
+	const char* const c_KindNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade"};
+	const ImU32 c_KindColors[] = {IM_COL32(80, 220, 90, 230), IM_COL32(240, 210, 60, 230), IM_COL32(120, 170, 255, 230), IM_COL32(170, 170, 170, 230), IM_COL32(200, 130, 70, 230), IM_COL32(255, 120, 200, 230), IM_COL32(220, 80, 220, 230), IM_COL32(255, 150, 40, 230), IM_COL32(140, 255, 200, 230), IM_COL32(255, 230, 150, 230), IM_COL32(170, 230, 70, 230), IM_COL32(190, 140, 90, 230), IM_COL32(60, 140, 255, 230), IM_COL32(110, 200, 230, 230)};
 
 	int KindIndex(PathStepKind kind) { return std::clamp(static_cast<int>(kind), 0, static_cast<int>(std::size(c_KindNames)) - 1); }
 

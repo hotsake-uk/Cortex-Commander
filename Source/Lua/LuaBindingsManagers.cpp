@@ -438,7 +438,6 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .def("IsDebugChannelOn", &SettingsMan::IsDebugChannelOn)
 	    .property("UnitInspector", &SettingsMan::UnitInspector, &SettingsMan::SetUnitInspector)
 	    .property("ShowSquadLinks", &SettingsMan::ShowSquadLinks, &SettingsMan::SetShowSquadLinks)
-	    .property("ShowSandboxLightningFromSky", &SettingsMan::ShowSandboxLightningFromSky, &SettingsMan::SetShowSandboxLightningFromSky)
 	    .property("ShowSandboxStrokeLog", &SettingsMan::ShowSandboxStrokeLog, &SettingsMan::SetShowSandboxStrokeLog)
 	    .property("ShowSandboxSpotReach", &SettingsMan::ShowSandboxSpotReach, &SettingsMan::SetShowSandboxSpotReach)
 	    .property("ShowLightsBySource", &SettingsMan::ShowLightsBySource, &SettingsMan::SetShowLightsBySource)

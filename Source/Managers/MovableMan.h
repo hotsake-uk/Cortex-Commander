@@ -146,6 +146,17 @@ namespace RTE {
 		/// actors is NOT transferred!
 		std::list<Actor*>* GetTeamRoster(int team = 0) { return &(m_ActorRoster[team]); }
 
+		/// Whether a team has any controllable actor in the scene (its roster isn't empty). Safe while scripts add actors on other threads.
+		/// @param team The team.
+		/// @return Whether it has one; false for a team that isn't one.
+		bool TeamHasActors(int team) {
+			if (team < Activity::TeamOne || team >= Activity::MaxTeamCount) {
+				return false;
+			}
+			std::lock_guard<std::mutex> lock(m_ActorRosterMutex);
+			return !m_ActorRoster[team].empty();
+		}
+
 		/// Get a pointer to the first Actor in the internal Actor list that is
 		/// of a specifc team, alternatively the first one AFTER a specific actor!
 		/// @param team Which team to try to get an Actor for. 0 means first team, 1 means 2nd. (default: 0)
@@ -482,6 +493,10 @@ namespace RTE {
 		// Forces MOID drawing to complete (should be done before any physics sim or collision detection etc)
 		void CompleteQueuedMOIDDrawings();
 
+		/// Blocks until every worker task MovableMan launched at the end of its last Update has finished: the actors' sight rays, the MOID and grid rebuild, and the Lua GC run.
+		/// These read (and the GC can delete) MOs, so this must be called before anything outside Update deletes MOs or takes them out of the owning lists.
+		void WaitForWorkerTasks();
+
 		/// Draws this MovableMan's current graphical representation to a BITMAP of choice.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the scene. (default: Vector())
@@ -601,6 +616,11 @@ namespace RTE {
 		std::unordered_set<const MovableObject*> m_ValidActors;
 		std::unordered_set<const MovableObject*> m_ValidItems;
 		std::unordered_set<const MovableObject*> m_ValidParticles;
+
+		/// Whether an object is already in the scene (in any of the lists, or added this update), for the adds to refuse a second add of it.
+		/// @param movableObject The object about to be added.
+		/// @return Whether it is already in; if so a warning is printed, once per kind of object.
+		bool AlreadyAdded(const MovableObject* movableObject);
 
 		// Mutexes to ensure MOs aren't being removed from separate threads at the same time
 		std::mutex m_ActorsMutex;

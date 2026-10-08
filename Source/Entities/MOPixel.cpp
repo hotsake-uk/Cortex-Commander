@@ -2,6 +2,7 @@
 #include "MOPixel.h"
 
 #include "Atom.h"
+#include "Actor.h"
 #include "PostProcessMan.h"
 #include "FrameMan.h"
 #include "Draw.h"
@@ -233,6 +234,9 @@ void MOPixel::Update() {
 			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness, LightSource::Tracers);
 		}
 	}
+
+	// A shot cracking past a unit pins it down a little (see Actor::ShotPassing).
+	Actor::ShotPassing(*this);
 
 	// A shot that passes through a lamp of the scenery smashes it.
 	if (m_Sharpness > 0 && m_Vel.MagnitudeIsGreaterThan(25.0F)) {

@@ -30,6 +30,9 @@ namespace RTE {
 		/// Gets whether the current game is the Sandbox game mode.
 		static bool IsGodMode();
 
+		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
+		static bool WantsWorldPaused();
+
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 
@@ -56,11 +59,15 @@ namespace RTE {
 		/// Applies what was queued from the window, keeps attacking units on a target and keeps the god view. Call once per sim update, from the main thread, before the fire, liquid and object updates.
 		static void Update();
 
+		/// Forgets the last game's sandbox state (orders, selection, effects, auto battle, colonies, the AI pause) and has the god view set up
+		/// afresh. Called by ActivityMan::StartActivity for every game it starts, before the game's own start-up.
+		static void OnActivityStarted();
+
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
 		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...) or "Orders" to order a whole side.
 		/// @param position Where to use it.
 		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
-		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing.
+		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold.
 		/// @param count Squad size for units, brush size for painting.
 		/// @param presetName What to spawn, for units, brains, items and structures.
 		/// @return Whether the tool and preset were found.

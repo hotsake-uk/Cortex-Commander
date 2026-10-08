@@ -56,8 +56,11 @@ function NativeHumanAI:Create(Owner)
 	Members.aimSkill = Owner:NumberValueExists("AIAimSkill") and Owner:GetNumberValue("AIAimSkill") or Members.aimSkill;
 	Members.skill = Owner:NumberValueExists("AISkill") and Owner:GetNumberValue("AISkill") or Members.skill;
 	
-	-- default to enhanced AI if AI skill has been set high enough
-	if Members.skill >= GameActivity.NUTSDIFFICULTY or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss") then
+	-- default to enhanced AI if AI skill has been set high enough (an AI skill, 1 to 100: Good or Unfair, not a difficulty constant)
+	-- (The engine's scan where the build has it: everyone looks the same way, keener units wider; see HumanBehaviors.ScanTargets.)
+	if SharedBehaviors.CanScan(Owner) then
+		Members.SpotTargets = HumanBehaviors.ScanTargets;
+	elseif Members.skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss") then
 		Members.SpotTargets = HumanBehaviors.CheckEnemyLOS;
 	else
 		Members.SpotTargets = HumanBehaviors.LookForTargets;
@@ -207,11 +210,17 @@ function NativeHumanAI:Update(Owner)
 		self.NextGoToName = nil;
 	end
 
+	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
+	SharedBehaviors.AttackOrderUpdate(self, Owner);
+
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or if we're told to go somewhere and aren't: after arriving the mode stays GOTO while the behaviour is Sentry, and a new order with new
 	-- waypoints then looked like no change at all, so the unit never set off until the mode was knocked out of GOTO and back.)
 	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and not self.GoToBehavior and not self.NextGoTo and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
-	if Owner.AIMode ~= self.lastAIMode or not(self.Behavior or self.GoToBehavior) or newOrder then
+	-- (And any order given since this AI's own last update, even one to the mode it is in: the order serial counts them, and the count is
+	-- taken again at the end of each update, so the AI's own waypoint and mode writes are not taken for orders.)
+	local ordered = self.orderSerial ~= nil and Owner.AIOrderSerial ~= self.orderSerial;
+	if Owner.AIMode ~= self.lastAIMode or not(self.Behavior or self.GoToBehavior) or newOrder or ordered then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
 			local msg, done = coroutine.resume(self.Behavior, self, Owner, true);
@@ -244,9 +253,17 @@ function NativeHumanAI:Update(Owner)
 		elseif Owner.AIMode == Actor.AIMODE_PATROL then
 			self:CreatePatrolBehavior(Owner);
 		else
-			if Owner.AIMode ~= self.lastAIMode and Owner.AIMode == Actor.AIMODE_SENTRY then
+			if (Owner.AIMode ~= self.lastAIMode or ordered) and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
 				self.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- store the pos on which we should be standing
+				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's own place and facing, not where it stopped.)
+				if self.ReturnPost and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
+					self.SentryPos = Vector(self.ReturnPost.Pos.X, self.ReturnPost.Pos.Y);
+					if self.ReturnPost.facing ~= nil then
+						self.SentryFacing = self.ReturnPost.facing;
+					end
+				end
+				self.ReturnPost = nil;
 			end
 
 			self:CreateSentryBehavior(Owner);
@@ -316,7 +333,15 @@ function NativeHumanAI:Update(Owner)
 			end
 
 			if FoundMO and FoundMO.Status < Actor.INACTIVE then
-				if self.Target then
+				if self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then
+					-- The same target, with no fight under way: a new order (a sandbox re-send hops SENTRY to GOTO) aborted the attack, and in
+					-- GOTO nothing made a new one while the target lived, so the unit held its fire for up to 5 s, until it lost sight of it.
+					self.TargetOffset = SceneMan:ShortestDistance(self.Target.Pos, HitPoint, false);
+					self.TargetLostTimer:Reset();
+					if not self.NextBehavior then
+						self:CreateAttackBehavior(Owner);
+					end
+				elseif self.Target then
 					-- check if this MO should be targeted instead
 					if SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(self.Target, Owner) + 0.5 then
 						self.OldTargetPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
@@ -407,10 +432,15 @@ function NativeHumanAI:Update(Owner)
 						local dist = SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest;
 						local radius = (Leader.Height + Owner.Height) * 0.5;
 						if dist < radius then
-							local copyControls = {Controller.MOVE_LEFT, Controller.MOVE_RIGHT, Controller.BODY_JUMPSTART, Controller.BODY_JUMP, Controller.BODY_PRONE};
-							for _, control in pairs(copyControls) do
-								local state = Leader:GetController():IsState(control);
-								self.Ctrl:SetState(control, state);
+							-- (The keys only for the script's own mover. On the engine's, this is a follower held on its place (FollowStep), which
+							-- is when engineMover is off: copied, the leader's jet lit the held follower's, AI.flying broke the hold, and the
+							-- route-follower took over mid-air; and the leader's prone or step moved it off its place.)
+							if not SharedBehaviors.UsesEngineMover(Owner) then
+								local copyControls = {Controller.MOVE_LEFT, Controller.MOVE_RIGHT, Controller.BODY_JUMPSTART, Controller.BODY_JUMP, Controller.BODY_PRONE};
+								for _, control in pairs(copyControls) do
+									local state = Leader:GetController():IsState(control);
+									self.Ctrl:SetState(control, state);
+								end
 							end
 							if Leader.EquippedItem then
 								local aimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
@@ -613,7 +643,8 @@ function NativeHumanAI:Update(Owner)
 					self.useMedikit = Owner:EquipNamedDevice("Medikit", true);
 				else
 					self.useMedikit = false;
-					if not self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY then
+					-- (Not a unit told to hold its position: a sandbox "Hold position" is a sentry that stays put.)
+					if not self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY and not Owner.OrderHold then
 						Owner.AIMode = Actor.AIMODE_PATROL;
 					end
 				end
@@ -714,7 +745,17 @@ function NativeHumanAI:Update(Owner)
 	if self.proneState == AHuman.GOPRONE then
 		self.proneState = AHuman.PRONE;
 	elseif self.proneState == AHuman.PRONE then
-		self.Ctrl:SetState(Controller.BODY_PRONE, true);
+		if SharedBehaviors.EngineMotor(Owner) then
+			-- The engine's motor holds the stance (and lets it go for a take-off). Kept up for the whole fight, as the script's prone was,
+			-- till a cleanup or a stand puts proneState back; but a unit on a move order gets up when the stance's while is out, to walk on.
+			if SharedBehaviors.OrderKind(Owner) ~= "move" then
+				Owner:SetAIStance(2, 500);
+			elseif Owner.AIStance ~= 2 then
+				self.proneState = AHuman.NOTPRONE;
+			end
+		else
+			self.Ctrl:SetState(Controller.BODY_PRONE, true);
+		end
 	end
 
 	-- Up or down a ladder (see SharedBehaviors.LadderAt): the base game's background ladders move a unit that aims up and presses up,
@@ -738,6 +779,8 @@ function NativeHumanAI:Update(Owner)
 	elseif self.lateralMoveState == Actor.LAT_RIGHT then
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);
 	end
+
+	self.orderSerial = Owner.AIOrderSerial;
 end
 
 function NativeHumanAI:Destroy(Owner)
@@ -840,6 +883,9 @@ function NativeHumanAI:CreateGoToBehavior(Owner)
 		AI.proneState = AHuman.NOTPRONE;
 		AI.jump = false;
 		AI.fire = false;
+		-- (Set by GoToRoute while the engine moves the unit, and cleared by it on its own way out; a GoTo that ended in an error left it
+		-- set for good, and the unit's run key, its own jump keys and the squad key copy stayed off from then on.)
+		AI.engineMover = false;
 	end
 	self.NextGoToName = "GoToWpt";
 end
@@ -912,6 +958,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		AI.ShotBlockedTimer = nil;
 		AI.deviceState = AHuman.STILL;
 		AI.proneState = AHuman.NOTPRONE;
+		HumanBehaviors.StopRangeStep(AI, Owner);
 		AI.TargetLostTimer:SetSimTimeLimitMS(2000);
 	end
 end

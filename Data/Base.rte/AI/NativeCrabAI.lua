@@ -84,6 +84,14 @@ function NativeCrabAI:Update(Owner)
 			self.UnseenTarget = nil;
 			self.OldTargetPos = nil;
 			self.fire = false;
+			-- The fighting rules' state goes too, as the human's does: a crab a player took over mid-retreat kept its retreating tag, and was a
+			-- "move" order to the rules (and left alone by the sandbox) ever after.
+			self.closingIn = false;
+			self.Cover = nil;
+			self.Flank = nil;
+			self.Retreat = nil;
+			Owner:RemoveNumberValue("AIRetreat");
+			Owner:RemoveNumberValue("AIFlank");
 			self.SentryFacing = Owner.HFlipped;
 			self.lastAIMode = Actor.AIMODE_NONE;
 		end
@@ -119,10 +127,15 @@ function NativeCrabAI:Update(Owner)
 		self.NextBehavior = nil;
 	end
 
+	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
+	SharedBehaviors.AttackOrderUpdate(self, Owner);
+
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or told to go somewhere while the behaviour left over from arriving is still running: see NativeHumanAI.)
 	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and self.BehaviorName ~= "GoToRoute" and self.NextBehaviorName ~= "GoToRoute" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
-	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder then
+	-- (And any order given since this AI's own last update: see NativeHumanAI.)
+	local ordered = self.orderSerial ~= nil and Owner.AIOrderSerial ~= self.orderSerial;
+	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder or ordered then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
 			local msg, done = coroutine.resume(self.Behavior, self, Owner, true);
@@ -137,14 +150,19 @@ function NativeCrabAI:Update(Owner)
 
 		-- select a new behavior based on AI mode
 		if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
-			self:CreateGoToBehavior();
+			self:CreateGoToBehavior(Owner);
 		elseif Owner.AIMode == Actor.AIMODE_PATROL then
 			self:CreatePatrolBehavior(Owner);
 		elseif Owner.AIMode == Actor.AIMODE_BRAINHUNT then
 			self:CreateBrainSearchBehavior(Owner);
 		else
-			if Owner.AIMode ~= self.lastAIMode and Owner.AIMode == Actor.AIMODE_SENTRY then
+			if (Owner.AIMode ~= self.lastAIMode or ordered) and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
+				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's facing, not the way it walked in.)
+				if self.ReturnPost and self.ReturnPost.facing ~= nil and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
+					self.SentryFacing = self.ReturnPost.facing;
+				end
+				self.ReturnPost = nil;
 			end
 
 			self:CreateSentryBehavior(Owner);
@@ -396,6 +414,8 @@ function NativeCrabAI:Update(Owner)
 			self.Ctrl.AnalogMove = Vector((self.jetLeanX or 0) * 0.27, -1);
 		end
 	end
+
+	self.orderSerial = Owner.AIOrderSerial;
 end
 
 function NativeCrabAI:Destroy(Owner)
@@ -444,8 +464,9 @@ function NativeCrabAI:CreateSuppressBehavior(Owner)
 		self.NextBehavior = coroutine.create(CrabBehaviors.ShootArea);
 		self.NextBehaviorName = "ShootArea";
 	else
-		if self.FirearmIsEmpty then
-			self:ReloadFirearms();
+		-- (The crab's, not the AI table's: read off the table, it was never set, and the reload never happened.)
+		if Owner.FirearmIsEmpty then
+			Owner:ReloadFirearms();
 		end
 		return;
 	end

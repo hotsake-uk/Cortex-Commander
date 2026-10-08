@@ -1,4 +1,7 @@
 #include "Actor.h"
+#include "ActorWater.h"
+#include "ActorFire.h"
+#include "FluidSim.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
@@ -11,6 +14,7 @@
 #include "GameActivity.h"
 #include "ACrab.h"
 #include "ACraft.h"
+#include "ADoor.h"
 #include "AtomGroup.h"
 #include "Controller.h"
 #include "RTETools.h"
@@ -26,6 +30,7 @@
 #include "PerformanceMan.h"
 #include "PostProcessMan.h"
 #include "PieMenu.h"
+#include "SmokeGrid.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -98,6 +103,7 @@ void Actor::Clear() {
 	m_LastAlarmPos.Reset();
 	m_SightDistance = 450.0F;
 	m_Perceptiveness = 0.5F;
+	m_LookRandomState = 0;
 	m_HeadlampBrightness = 1.0F;
 	m_HeadlampColor.SetRGB(255, 240, 215);
 	m_HeadlampHasColor = false;
@@ -116,6 +122,8 @@ void Actor::Clear() {
 	m_PassengerSlots = 1;
 
 	m_AIMode = AIMODE_NONE;
+	m_AIOrderSerial = 0;
+	m_StandingOrder = StandingOrder();
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -151,6 +159,23 @@ int Actor::Create() {
 
 	// Set MO Type.
 	m_MOType = MovableObject::TypeActor;
+
+	// A game saved before the standing order was typed keeps its orders as number values: they are taken over.
+	if (NumberValueExists("SandboxAttack") || NumberValueExists("SandboxTarget") || NumberValueExists("SandboxAutoTarget") || NumberValueExists("SandboxAttackX") || NumberValueExists("SandboxDefendX") || NumberValueExists("SandboxHold")) {
+		m_StandingOrder.Attack = GetNumberValue("SandboxAttack") > 0.0;
+		m_StandingOrder.TargetID = static_cast<long>(GetNumberValue("SandboxTarget"));
+		m_StandingOrder.AutoTargetID = static_cast<long>(GetNumberValue("SandboxAutoTarget"));
+		if (NumberValueExists("SandboxAttackX")) {
+			SetOrderAttackPlace(Vector(static_cast<float>(GetNumberValue("SandboxAttackX")), static_cast<float>(GetNumberValue("SandboxAttackY"))));
+		}
+		if (NumberValueExists("SandboxDefendX")) {
+			SetOrderPost(Vector(static_cast<float>(GetNumberValue("SandboxDefendX")), static_cast<float>(GetNumberValue("SandboxDefendY"))));
+		}
+		m_StandingOrder.Hold = NumberValueExists("SandboxHold");
+		for (const char* tag: {"SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX", "SandboxAttackY", "SandboxDefendX", "SandboxDefendY", "SandboxHold"}) {
+			RemoveNumberValue(tag);
+		}
+	}
 
 	// Default to an interesting AI controller mode
 	m_Controller.SetInputMode(Controller::CIM_AI);
@@ -221,6 +246,9 @@ int Actor::Create(const Actor& reference) {
 	m_CanRun = reference.m_CanRun;
 	m_CrouchWalkSpeedMultiplier = reference.m_CrouchWalkSpeedMultiplier;
 	m_GoldCarried = reference.m_GoldCarried;
+	m_Suppression = reference.m_Suppression;
+	m_Morale = reference.m_Morale;
+	m_MoraleLevel = reference.m_MoraleLevel;
 	m_AimState = reference.m_AimState;
 	m_AimRange = reference.m_AimRange;
 	m_AimAngle = reference.m_AimAngle;
@@ -284,6 +312,7 @@ int Actor::Create(const Actor& reference) {
 	m_PassengerSlots = reference.m_PassengerSlots;
 
 	m_AIMode = reference.m_AIMode;
+	m_StandingOrder = reference.m_StandingOrder;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -358,6 +387,8 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("CanRun", { reader >> m_CanRun; });
 	MatchProperty("CrouchWalkSpeedMultiplier", { reader >> m_CrouchWalkSpeedMultiplier; });
 	MatchProperty("GoldCarried", { reader >> m_GoldCarried; });
+	MatchProperty("Suppression", { reader >> m_Suppression; });
+	MatchProperty("Morale", { reader >> m_Morale; });
 	MatchProperty("AimAngle", { reader >> m_AimAngle; });
 	MatchProperty("AimRange", { reader >> m_AimRange; });
 	MatchProperty("AimDistance", { reader >> m_AimDistance; });
@@ -388,6 +419,18 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> mode;
 		m_AIMode = static_cast<AIMode>(mode);
 	});
+	MatchProperty("OrderAttack", { reader >> m_StandingOrder.Attack; });
+	MatchProperty("OrderTargetID", { reader >> m_StandingOrder.TargetID; });
+	MatchProperty("OrderAutoTargetID", { reader >> m_StandingOrder.AutoTargetID; });
+	MatchProperty("OrderAttackPlace", {
+		reader >> m_StandingOrder.AttackPlace;
+		m_StandingOrder.HasAttackPlace = true;
+	});
+	MatchProperty("OrderPost", {
+		reader >> m_StandingOrder.Post;
+		m_StandingOrder.HasPost = true;
+	});
+	MatchProperty("OrderHold", { reader >> m_StandingOrder.Hold; });
 	MatchProperty("SpecialBehaviour_AddAISceneWaypoint", {
 		Vector waypointToAdd;
 		reader >> waypointToAdd;
@@ -443,6 +486,8 @@ int Actor::Save(Writer& writer) const {
 	writer << m_CrouchWalkSpeedMultiplier;
 	writer.NewProperty("GoldCarried");
 	writer << m_GoldCarried;
+	writer.NewPropertyWithValue("Suppression", m_Suppression);
+	writer.NewPropertyWithValue("Morale", m_Morale);
 	writer.NewProperty("AimAngle");
 	writer << m_AimAngle;
 	writer.NewProperty("AimRange");
@@ -476,6 +521,25 @@ int Actor::Save(Writer& writer) const {
 	writer << m_MaxInventoryMass;
 	writer.NewProperty("AIMode");
 	writer << m_AIMode;
+	// The standing order, the parts it has.
+	if (m_StandingOrder.Attack) {
+		writer.NewPropertyWithValue("OrderAttack", m_StandingOrder.Attack);
+	}
+	if (m_StandingOrder.TargetID != 0) {
+		writer.NewPropertyWithValue("OrderTargetID", m_StandingOrder.TargetID);
+	}
+	if (m_StandingOrder.AutoTargetID != 0) {
+		writer.NewPropertyWithValue("OrderAutoTargetID", m_StandingOrder.AutoTargetID);
+	}
+	if (m_StandingOrder.HasAttackPlace) {
+		writer.NewPropertyWithValue("OrderAttackPlace", m_StandingOrder.AttackPlace);
+	}
+	if (m_StandingOrder.HasPost) {
+		writer.NewPropertyWithValue("OrderPost", m_StandingOrder.Post);
+	}
+	if (m_StandingOrder.Hold) {
+		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
+	}
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
 
@@ -603,6 +667,11 @@ void Actor::SetControllerMode(Controller::InputMode newMode, int newPlayer) {
 	m_Controller.SetInputMode(newMode);
 	m_Controller.SetPlayer(newPlayer);
 
+	// Whoever had it was steering it: the route-follower's timers and any flight in hand no longer describe what the body is doing.
+	if (newMode != previousControllerMode || newPlayer != previousControllingPlayer) {
+		ResetRouteMovement();
+	}
+
 	RunScriptedFunctionInAppropriateScripts("OnControllerInputModeChange", false, false, {}, {std::to_string(previousControllerMode), std::to_string(previousControllingPlayer)});
 
 	m_NewControlTmr.Reset();
@@ -612,6 +681,23 @@ Controller::InputMode Actor::SwapControllerModes(Controller::InputMode newMode, 
 	Controller::InputMode returnMode = m_Controller.GetInputMode();
 	SetControllerMode(newMode, newPlayer);
 	return returnMode;
+}
+
+float Actor::LookRandomNormalNum() const {
+	if (m_LookRandomState == 0) {
+		// SplitMix64 of the unique ID, so actors start on unrelated streams.
+		uint64_t seed = static_cast<uint64_t>(GetUniqueID()) + 0x9E3779B97F4A7C15ULL;
+		seed = (seed ^ (seed >> 30)) * 0xBF58476D1CE4E5B9ULL;
+		seed = (seed ^ (seed >> 27)) * 0x94D049BB133111EBULL;
+		m_LookRandomState = (seed ^ (seed >> 31)) | 1;
+	}
+	// Xorshift64*.
+	m_LookRandomState ^= m_LookRandomState >> 12;
+	m_LookRandomState ^= m_LookRandomState << 25;
+	m_LookRandomState ^= m_LookRandomState >> 27;
+	uint64_t bits = m_LookRandomState * 0x2545F4914F6CDD1DULL;
+	// Top 24 bits give an exact float in [0, 1), mapped to [-1, 1).
+	return static_cast<float>(bits >> 40) * (2.0F / 16777216.0F) - 1.0F;
 }
 
 bool Actor::Look(float FOVSpread, float range) {
@@ -639,12 +725,12 @@ bool Actor::Look(float FOVSpread, float range) {
 	// If there is no vel, just look in all directions
 	if (lookVector.GetLargest() < 0.01) {
 		lookVector.SetXY(range, 0);
-		lookVector.DegRotate(RandomNum(-180.0F, 180.0F));
+		lookVector.DegRotate(180.0F * LookRandomNormalNum());
 	} else {
 		// Set the distance in the look direction
 		lookVector.SetMagnitude(range);
 		// Add the spread from the directed look
-		lookVector.DegRotate(FOVSpread * RandomNormalNum());
+		lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 	}
 
 	// The smallest dimension of the fog block, divided by two, but always at least one, as the step for the casts
@@ -689,6 +775,7 @@ void Actor::AddAIMOWaypoint(const MovableObject* pMOWaypoint) {
 	if (g_MovableMan.ValidMO(pMOWaypoint) && (m_Waypoints.empty() || m_Waypoints.back().second != pMOWaypoint)) {
 		m_Waypoints.push_back(std::pair<Vector, const MovableObject*>(pMOWaypoint->GetPos(), pMOWaypoint));
 		m_WaitingAtDoor = false;
+		++m_AIOrderSerial;
 	}
 }
 
@@ -1124,12 +1211,45 @@ float Actor::EstimateDigStrength() const {
 	return m_AIBaseDigStrength;
 }
 
+float Actor::GetMaxSafeFallHeight() const {
+	float gravity = g_SceneMan.GetGlobalAcc().m_Y;
+	if (gravity <= 0.01F || m_TravelImpulseDamage <= 0.0F) {
+		return FLT_MAX;
+	}
+	// The impact is the mass times the speed lost on landing (AtomGroup::Travel's collision impulses), so the speed that reaches the threshold
+	// is the threshold over the mass; the height that speed is reached from is v^2 / 2g.
+	float speed = m_TravelImpulseDamage / std::max(GetMass(), 1.0F);
+	return std::max(speed * speed / (2.0F * gravity) * c_PPM, 96.0F);
+}
+
+int Actor::GetLiquidDepth() const {
+	return ActorWater::GetDepth(this);
+}
+
+float Actor::GetAirLeft() const {
+	return ActorWater::GetAir(this);
+}
+
+bool Actor::IsFloater() const {
+	return ActorWater::IsFloater(this);
+}
+
 PathAgent Actor::GetPathAgent() const {
 	PathAgent agent;
 	agent.JumpHeight = EstimateJumpHeight();
+	// With no jet to brake a fall (less than a node's lift), falls higher than the body lands from unhurt are not routed (LM-9).
+	if (agent.JumpHeight != FLT_MAX && agent.JumpHeight * c_PPM < 24.0F) {
+		agent.MaxSafeFall = GetMaxSafeFallHeight();
+	}
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
+	// In liquid (LM-4): whether it floats and swims, how long it holds its breath, and whether lava is any danger to it, as ActorWater and
+	// ActorFire have it (with them off, water is only waded and lava harms nothing). What doesn't breathe isn't flesh, and doesn't burn.
+	bool waterActs = ActorWater::IsEnabled() && FluidSim::IsEnabled();
+	agent.Floats = waterActs && IsFloater();
+	agent.BreathSeconds = waterActs ? ActorWater::GetBreathSeconds(this) : FLT_MAX;
+	agent.CrossesLava = !ActorFire::IsEnabled() || ActorWater::GetBreathSeconds(this) == FLT_MAX;
 	// CharHeight is about twice the sprite's height; the body stands about 0.45 of it tall and lies about a quarter of it.
 	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.42F);
 	agent.CrawlHeight = agent.StandHeight;
@@ -1190,9 +1310,11 @@ void Actor::OnNewMovePath() {
 			m_PrevPathTarget = m_MovePath.front();
 			popFront();
 		}
-	} else if (m_pMOMoveTarget) {
+	} else if (m_pMOMoveTarget && g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		m_MoveTarget = m_pMOMoveTarget->GetPos();
 	} else {
+		// The route was computed asynchronously, so the MO we were following may have been deleted since the request was made
+		m_pMOMoveTarget = nullptr;
 		// Nowhere to gooooo
 		m_MoveTarget = m_PrevPathTarget = m_Pos;
 	}
@@ -1235,6 +1357,15 @@ bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
 	return !head || !head->GetAtomGroup() || head->GetAtomGroup()->FitsAt(head->GetPos() + shift);
 }
 
+namespace {
+	/// Ground to hold or stand on: terrain that is neither air nor liquid. (Liquid is no lip: a swimmer pressing towards a bank caught the
+	/// water's own surface and was pulled up onto it.)
+	bool IsGroundAt(int x, int y) {
+		unsigned char id = g_SceneMan.GetTerrMatter(x, y);
+		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id);
+	}
+} // namespace
+
 bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 	if (m_Mantling || !g_SettingsMan.MantlingEnabled() || !m_pAtomGroup || m_Status == INACTIVE || m_Status == DYING || m_Status == DEAD || m_PinStrength > 0.0F) {
 		return false;
@@ -1269,7 +1400,7 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		Vector target = m_Pos + end;
 		bool supported = false;
 		for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-			supported = g_SceneMan.GetTerrMatter(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down) != MaterialColorKeys::g_MaterialAir;
+			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
 		}
 		if (!supported) {
 			continue;
@@ -1288,6 +1419,83 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		return true;
 	}
 	return false;
+}
+
+bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, float lipNearY) {
+	if (m_Mantling || !g_SettingsMan.MantlingEnabled() || !m_pAtomGroup || m_Status == INACTIVE || m_Status == DYING || m_Status == DEAD || m_PinStrength > 0.0F) {
+		return false;
+	}
+	float dir = wantDir;
+	if (dir == 0.0F) {
+		bool left = m_Controller.IsState(MOVE_LEFT);
+		bool right = m_Controller.IsState(MOVE_RIGHT);
+		if (left == right) {
+			return false;
+		}
+		dir = right ? 1.0F : -1.0F;
+	}
+	// In the air (free to drop a little), and slow enough for the hands to hold: falling past a lip from up to a storey or so, or at the
+	// top of a rise.
+	if (std::abs(m_Vel.m_Y) > 7.0F || !BodyFitsShifted(Vector(0.0F, 3.0F), head)) {
+		return false;
+	}
+	float height = std::max(m_CharHeight, 20.0F);
+	// (Not for an AI whose route goes down from here, as for the mantle: a unit dropping down a shaft caught every lip on the way.)
+	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
+		return false;
+	}
+	// The lip: the top of the ground just beside the body, within the hands' reach, from a little over the head down to the waist, with air
+	// over it up to there (ground all the way up is a wall, not a lip).
+	int handX = static_cast<int>(m_Pos.m_X + dir * (bodyWidth * 0.5F + 4.0F));
+	int fromY = static_cast<int>(m_Pos.m_Y - height * 0.45F);
+	int toY = static_cast<int>(m_Pos.m_Y + height * 0.1F);
+	int lipY = -1;
+	for (int y = fromY; y <= toY; ++y) {
+		if (IsGroundAt(handX, y)) {
+			lipY = y;
+			break;
+		}
+	}
+	if (lipY <= fromY || (lipNearY >= 0.0F && std::abs(static_cast<float>(lipY) - lipNearY) > height * 0.33F)) {
+		return false;
+	}
+	// Where the body ends: over the lip and a body's width onto it, standing on it, with room all the way (up to the lip's height, then
+	// across) and ground under it there.
+	float over = bodyWidth * 0.5F + 4.0F + std::max(8.0F, bodyWidth * 0.6F);
+	Vector end(dir * over, static_cast<float>(lipY) - height * 0.4F - m_Pos.m_Y);
+	Vector up(0.0F, std::min(end.m_Y, 0.0F));
+	if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(end.m_X * 0.5F, up.m_Y), head) || !BodyFitsShifted(end, head)) {
+		return false;
+	}
+	Vector target = m_Pos + end;
+	bool supported = false;
+	for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
+		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
+	}
+	if (!supported) {
+		return false;
+	}
+	// Caught: from the hang, the mantle's pull up and over (UpdateMantle puts the body where it should be each frame, so the fall stops at
+	// once), a little slower than a mantle from the ground, the moment of the hang in it.
+	m_Mantling = true;
+	m_MantleDir = dir;
+	m_MantleStart = m_Pos;
+	m_MantleUp = m_Pos + up;
+	m_MantleEnd = target;
+	m_MantleLip = Vector(static_cast<float>(handX), static_cast<float>(lipY));
+	m_MantleProgress = 0.0F;
+	m_MantleDurationMS = 300.0F + std::abs(up.m_Y) * 5.0F;
+	m_MantleTimer.Reset();
+	m_Vel.Reset();
+	if (IsAITraced()) {
+		g_ConsoleMan.PrintString("AITRACE caught the ledge at " + std::to_string(handX) + "," + std::to_string(lipY));
+	}
+	return true;
+}
+
+Vector Actor::GetMantleLip() const {
+	// Kept unwrapped, like the other key points; given on the body's side of the seam, where its arms are.
+	return m_Pos + g_SceneMan.ShortestDistance(m_Pos, m_MantleLip);
 }
 
 void Actor::UpdateMantle() {
@@ -1310,8 +1518,13 @@ void Actor::UpdateMantle() {
 	float c = eased * eased;
 	Vector target = m_MantleStart * a + m_MantleUp * b + m_MantleEnd * c;
 	float deltaTime = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
-	m_Vel = (target - m_Pos) * (c_MPP / deltaTime);
-	m_Pos = target;
+	// The key points are unwrapped (a ledge just past the X seam has its end past the scene's edge) and Travel wraps m_Pos every update, so the
+	// step is taken the short way and the position wrapped again: from the wrapped position to the unwrapped point the step was a scene width,
+	// a speed of thousands of m/s that fired the body through the terrain for a frame, with the impact damage that goes with it.
+	Vector step = g_SceneMan.ShortestDistance(m_Pos, target);
+	m_Vel = step * (c_MPP / deltaTime);
+	m_Pos += step;
+	g_SceneMan.WrapPosition(m_Pos);
 	m_AngularVel = 0.0F;
 	if (progress >= 1.0F) {
 		m_Mantling = false;
@@ -1446,6 +1659,264 @@ float Actor::GetNightSightScale() const {
 	// A headlamp keeps most of the view; without one, eyes only reach about half as far in the dark.
 	float floor = (settings.Headlamps && !IsDead()) ? 0.8F : 0.5F;
 	return (1.0F - night * (1.0F - floor)) * weather;
+}
+
+std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range, int budget) {
+	m_Sightings.clear();
+	if (budget <= 0 || range <= 0.0F) {
+		return m_Sightings;
+	}
+	const Vector eyes = GetEyePos();
+	// The aim and the facing, as directions on screen (angles are counter-clockwise with Y up).
+	const float aimAngle = GetAimAngle(true);
+	const Vector aimDirection(std::cos(aimAngle), -std::sin(aimAngle));
+	const Vector facing(m_HFlipped ? -1.0F : 1.0F, 0.0F);
+	const float halfField = std::clamp(fovDegrees, 10.0F, 360.0F) * 0.5F;
+	// Sharp aim: a narrow look down the aim (a fifth of the field, 4 degrees at least) that reaches half as far again, as down a scope.
+	const bool sharp = m_Controller.IsState(AIM_SHARP);
+	const float halfNarrow = std::max(4.0F, halfField * 0.2F);
+	const float sightScale = GetNightSightScale();
+	const float reach = range * sightScale;
+	const float narrowReach = sharp ? reach * 1.5F : reach;
+	auto degreesBetween = [](const Vector& a, const Vector& b) {
+		float cosine = std::clamp((a.m_X * b.m_X + a.m_Y * b.m_Y) / std::max(a.GetMagnitude() * b.GetMagnitude(), 0.0001F), -1.0F, 1.0F);
+		return std::acos(cosine) * 180.0F / c_PI;
+	};
+
+	struct Candidate {
+		Actor* actor;
+		Vector toTarget;
+		float distance;
+		float offAim; // Degrees off the aim.
+		float off; // Degrees off the field it is in (the aim's when sharp and inside it, else the facing's), as a fraction of that field's half.
+	};
+	std::vector<Candidate> candidates;
+	Box box(eyes - Vector(narrowReach, narrowReach), narrowReach * 2.0F, narrowReach * 2.0F);
+	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, m_Team, true)) {
+		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
+		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
+			continue;
+		}
+		if (std::any_of(candidates.begin(), candidates.end(), [actor](const Candidate& candidate) { return candidate.actor == actor; })) {
+			continue;
+		}
+		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		float distance = toTarget.GetMagnitude();
+		float offAim = degreesBetween(toTarget, aimDirection);
+		float offFacing = degreesBetween(toTarget, facing);
+		float off;
+		if (sharp && offAim <= halfNarrow && distance <= narrowReach) {
+			off = offAim / halfNarrow;
+		} else if (offFacing <= halfField && distance <= reach) {
+			off = offFacing / halfField;
+		} else {
+			continue;
+		}
+		candidates.push_back({actor, toTarget, distance, offAim, off});
+	}
+	// The likeliest first: nearest the aim, then nearest, so the budget goes where a person would look.
+	std::sort(candidates.begin(), candidates.end(), [narrowReach](const Candidate& a, const Candidate& b) { return a.offAim / 90.0F + a.distance / narrowReach < b.offAim / 90.0F + b.distance / narrowReach; });
+
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	const float night = (lighting.Enabled && lighting.NightAffectsAI) ? GetNightAmount() : 0.0F;
+	for (const Candidate& candidate: candidates) {
+		if (budget <= 0) {
+			break;
+		}
+		// The body, then the head when the body is hidden (over a wall, behind a crate).
+		bool seen = false;
+		bool head = false;
+		Vector hitPos;
+		for (int look = 0; look < 2 && budget > 0 && !seen; ++look) {
+			Vector target = look == 0 ? candidate.actor->GetPos() : candidate.actor->GetEyePos();
+			if (look == 1 && target == candidate.actor->GetPos()) {
+				break;
+			}
+			--budget;
+			Vector ray = g_SceneMan.ShortestDistance(eyes, target, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+			// (A little past the point, so a ray to a thin body's middle still lands on it.)
+			ray.SetMagnitude(ray.GetMagnitude() + 4.0F);
+			MOID hit = g_SceneMan.CastMORay(eyes, ray, m_MOID, IgnoresWhichTeam(), g_MaterialGrass, false, 5);
+			const MovableObject* hitMO = g_MovableMan.GetMOFromID(hit);
+			if (hitMO && hitMO->GetRootParent() == candidate.actor && !SmokeGrid::BlocksSight(eyes, target)) {
+				seen = true;
+				head = look == 1;
+				hitPos = g_SceneMan.GetLastRayHitPos();
+			}
+		}
+		if (!seen) {
+			continue;
+		}
+		// How plainly: off the middle of the field, far, in the dark (unless lit, by a lamp, its own headlamp or its gun going off), still,
+		// and small (lying down, crouched, only a head showing) each take some away. The script delays its notice by it.
+		float angle = 1.0F - 0.6F * std::clamp(candidate.off, 0.0F, 1.0F);
+		float far = 1.0F - 0.7F * std::clamp(candidate.distance / narrowReach, 0.0F, 1.0F);
+		float light = 1.0F;
+		if (night > 0.05F) {
+			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
+			if (candidate.actor->GetController()->IsState(WEAPON_FIRE)) {
+				lit = 1.0F;
+			}
+			light = std::max(1.0F - night * 0.7F, std::min(1.0F, lit * 1.5F));
+		}
+		float moving = candidate.actor->GetVel().MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
+		float profile = std::clamp(candidate.actor->GetSightProfile(), 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
+		float visibility = std::clamp(angle * far * light * moving * profile, 0.05F, 1.0F);
+		m_Sightings.push_back({candidate.actor, hitPos, visibility, candidate.distance, head});
+	}
+	std::sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
+	return m_Sightings;
+}
+
+bool Actor::FeelsFire() const {
+	if ((m_Mechanical && !m_Organic) || GetMetalness() >= 0.2F) {
+		return false;
+	}
+	return !dynamic_cast<const ADoor*>(this) && !dynamic_cast<const ACraft*>(this);
+}
+
+void Actor::AddSuppression(float amount) {
+	if (amount <= 0.0F || m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
+		return;
+	}
+	m_Suppression = std::clamp(m_Suppression + amount * g_SettingsMan.AISuppression(), 0.0F, 1.0F);
+}
+
+void Actor::ChangeMorale(float change) {
+	if (m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
+		return;
+	}
+	m_Morale = std::clamp(m_Morale + (change < 0.0F ? change * g_SettingsMan.AISuppression() : change), 0.0F, 1.0F);
+}
+
+void Actor::ShotPassing(const MovableObject& shot) {
+	if (!shot.HitsMOs() || shot.GetSharpness() <= 0.0F || !shot.GetVel().MagnitudeIsGreaterThan(25.0F) || g_SettingsMan.AISuppression() <= 0.0F) {
+		return;
+	}
+	// Only so many shots looked at a sim update: a minigun's stream pins a unit down as well with a few as with all of them.
+	static long long s_Update = -1;
+	static int s_Checks = 0;
+	long long update = g_TimerMan.GetSimUpdateCount();
+	if (update != s_Update) {
+		s_Update = update;
+		s_Checks = 0;
+	}
+	if (++s_Checks > 96) {
+		return;
+	}
+	// Within two body widths of its last step, about 30 px: close enough to hear the crack.
+	constexpr float c_Reach = 30.0F;
+	const Vector from = shot.GetPrevPos();
+	const Vector step = g_SceneMan.ShortestDistance(from, shot.GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+	Box box(Vector(std::min(from.m_X, from.m_X + step.m_X) - c_Reach, std::min(from.m_Y, from.m_Y + step.m_Y) - c_Reach), std::abs(step.m_X) + c_Reach * 2.0F, std::abs(step.m_Y) + c_Reach * 2.0F);
+	const float stepLengthSq = std::max(step.GetSqrMagnitude(), 0.0001F);
+	// The box finds every part of a body (head, torso, limbs, held gun); each unit counts once for this shot.
+	static thread_local std::vector<const Actor*> s_Counted;
+	s_Counted.clear();
+	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true)) {
+		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
+		if (!actor || (shot.GetTeam() != Activity::NoTeam && actor->GetTeam() == shot.GetTeam())) {
+			continue;
+		}
+		if (std::find(s_Counted.begin(), s_Counted.end(), actor) != s_Counted.end()) {
+			continue;
+		}
+		s_Counted.push_back(actor);
+		// The nearest point of the step to the body: a shot that is passing, not one that has hit (that is the hit's own business).
+		Vector toActor = g_SceneMan.ShortestDistance(from, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		float along = std::clamp((toActor.m_X * step.m_X + toActor.m_Y * step.m_Y) / stepLengthSq, 0.0F, 1.0F);
+		float distance = (toActor - step * along).GetMagnitude();
+		float bodyRadius = std::max(actor->GetRadius() * 0.5F, 6.0F);
+		if (distance <= bodyRadius || distance > bodyRadius + c_Reach) {
+			continue;
+		}
+		if (actor->m_NearMissUpdate != update) {
+			actor->m_NearMissUpdate = update;
+			actor->m_NearMissThisUpdate = 0.0F;
+		}
+		// (At most 0.15 an update from near misses, however many.)
+		float amount = std::min(0.02F + 0.06F * (1.0F - (distance - bodyRadius) / c_Reach), 0.15F - actor->m_NearMissThisUpdate);
+		if (amount > 0.0F) {
+			actor->m_NearMissThisUpdate += amount;
+			actor->AddSuppression(amount);
+		}
+	}
+}
+
+void Actor::UpdateSuppressionAndMorale() {
+	if (m_Status == DYING || m_Status == DEAD) {
+		// A friend dying in sight shakes the friends who saw it, the closer the more.
+		if (!m_DeathReported) {
+			m_DeathReported = true;
+			if (FeelsFire()) {
+				constexpr float c_SightOfDeath = 300.0F;
+				for (Actor* friendActor: g_MovableMan.GetActorList()) {
+					if (friendActor == this || friendActor->GetTeam() != m_Team || friendActor->GetStatus() == DYING || friendActor->GetStatus() == DEAD) {
+						continue;
+					}
+					Vector toFriend = g_SceneMan.ShortestDistance(m_Pos, friendActor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+					Vector notUsed;
+					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
+						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
+					}
+				}
+			}
+		}
+		return;
+	}
+	if (!FeelsFire()) {
+		m_Suppression = 0.0F;
+		m_Morale = 1.0F;
+		return;
+	}
+	const float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	// A better team gets over it quicker: 0.6 to 1.4 times as fast from the worst skill to the best.
+	const float skill = static_cast<float>(g_ActivityMan.GetActivity() ? g_ActivityMan.GetActivity()->GetTeamAISkill(m_Team) : Activity::DefaultSkill);
+	const float recovery = 0.6F + std::clamp(skill, 0.0F, 100.0F) / 125.0F;
+	// A hit pins it down and shakes it, by how much of its health it took.
+	if (float damage = m_PrevHealth - m_Health; damage > 0.0F) {
+		float share = damage / std::max(m_MaxHealth, 1.0F);
+		AddSuppression(0.1F + share * 2.0F);
+		ChangeMorale(-share * 0.8F);
+	}
+	m_Suppression = std::max(0.0F, m_Suppression - deltaTime * 0.25F * recovery);
+	// Being pinned down wears the nerve.
+	if (m_Suppression > 0.0F) {
+		ChangeMorale(-deltaTime * m_Suppression * 0.08F);
+	}
+	// What it comes back towards: with friends about (up to three within 200 px) and its brain near, steadier; hurt, less so. Worked out
+	// now and then, each actor on its own update so they don't all look at once.
+	if ((static_cast<long long>(GetUniqueID()) + g_TimerMan.GetSimUpdateCount()) % 30 == 0) {
+		int friends = 0;
+		bool brainNear = false;
+		for (const Actor* other: g_MovableMan.GetActorList()) {
+			if (other == this || other->GetTeam() != m_Team || other->GetStatus() == DYING || other->GetStatus() == DEAD) {
+				continue;
+			}
+			Vector toOther = g_SceneMan.ShortestDistance(m_Pos, other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+			if (other->IsInGroup("Brains")) {
+				brainNear = brainNear || toOther.MagnitudeIsLessThan(300.0F);
+			} else if (friends < 3 && toOther.MagnitudeIsLessThan(200.0F)) {
+				++friends;
+			}
+		}
+		m_MoraleLevel = std::clamp(0.55F + 0.1F * static_cast<float>(friends) + (brainNear ? 0.15F : 0.0F) - 0.3F * (1.0F - std::clamp(m_Health / std::max(m_MaxHealth, 1.0F), 0.0F, 1.0F)), 0.2F, 1.0F);
+	}
+	if (m_Morale < m_MoraleLevel) {
+		m_Morale = std::min(m_MoraleLevel, m_Morale + deltaTime * 0.04F * recovery);
+	} else {
+		m_Morale = std::max(m_MoraleLevel, m_Morale - deltaTime * 0.02F);
+	}
+}
+
+void Actor::PostUpdate() {
+	// The item in reach is kept from one update to the next. If it was flagged this update after this actor's own Update (picked up by someone
+	// else, settled, gibbed, the sandbox's erase tool) it is deleted at the end of this update, and the HUD and next update's reach test would
+	// read freed memory. Every flag is set by now and nothing is deleted yet.
+	if (m_pItemInReach && (!g_MovableMan.IsDevice(m_pItemInReach) || m_pItemInReach->ToDelete())) {
+		m_pItemInReach = nullptr;
+	}
+	MOSRotating::PostUpdate();
 }
 
 void Actor::Update() {
@@ -1610,6 +2081,8 @@ void Actor::Update() {
 	if (m_Status == DYING && m_DeathTmr.GetElapsedSimTimeMS() > 1000) {
 		m_Status = DEAD;
 	}
+
+	UpdateSuppressionAndMorale();
 
 	//////////////////////////////////////////////////////
 	// Save previous second's position so we can detect larger movement
@@ -2008,7 +2481,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());
-	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap"};
+	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade"};
 	auto stepName = [](int kind) { return kind >= 0 && kind < static_cast<int>(std::size(stepNames)) ? std::string(stepNames[kind]) : std::string("none"); };
 	fields.push_back({"step", stepName(GetMovePathStepKind()), true});
 	fields.push_back({"nextStep", stepName(GetMovePathNextStepKind()), true});

@@ -9,16 +9,22 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 	end
 
 	local HitPoint;
-	local FoundMO = Owner:LookForMOs(viewAngDeg, rte.grassID, false);
-	if FoundMO then
-		HitPoint = SceneMan:GetLastRayHitPos();
-		if AI.isPlayerOwned and SceneMan:IsUnseen(HitPoint.X, HitPoint.Y, Owner.Team) and SceneMan:IsUnseen(FoundMO.Pos.X, FoundMO.Pos.Y, Owner.Team) then -- AI-teams ignore the fog
-			FoundMO = nil; -- target hidden behind the fog
+	local FoundMO;
+	if SharedBehaviors.CanScan(Owner) then
+		-- The engine's scan (see SharedBehaviors.ScanForTargets), as the humans look: crabs and turrets a narrower view, the fog seen to.
+		FoundMO, HitPoint = SharedBehaviors.ScanForTargets(AI, Owner, AI.skill or select(3, SharedBehaviors.GetTeamShootingSkill(Owner.Team)), 100 * Owner.Perceptiveness, AI.Target and 3 or 2);
+	else
+		FoundMO = Owner:LookForMOs(viewAngDeg, rte.grassID, false);
+		if FoundMO then
+			HitPoint = SceneMan:GetLastRayHitPos();
+			if AI.isPlayerOwned and SceneMan:IsUnseen(HitPoint.X, HitPoint.Y, Owner.Team) and SceneMan:IsUnseen(FoundMO.Pos.X, FoundMO.Pos.Y, Owner.Team) then -- AI-teams ignore the fog
+				FoundMO = nil; -- target hidden behind the fog
+			end
 		end
 	end
 
 	if FoundMO then
-		if Owner.Behavior ~= nil and AI.Target and MovableMan:ValidMO(AI.Target) and FoundMO.ID == AI.Target.ID then	-- found the same target
+		if AI.Behavior ~= nil and AI.Target and MovableMan:ValidMO(AI.Target) and FoundMO.ID == AI.Target.ID then	-- found the same target
 			AI.TargetOffset = SceneMan:ShortestDistance(AI.Target.Pos, HitPoint, false);
 			AI.TargetLostTimer:Reset();
 			AI.ReloadTimer:Reset();
@@ -287,6 +293,14 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 		if Owner.FirearmIsReady then
 			AI.deviceState = ACrab.AIMING;
 			local Dist = SceneMan:ShortestDistance(Owner.EyePos, AimPoint, false);
+			-- Lead a moving target as the humans do, by the smoothed velocity (kept, but never used before).
+			local fireVel = ToHDFirearm(Owner.EquippedItem):GetAIFireVel();
+			if fireVel > 0 then
+				local timeToTarget = Dist.Magnitude / fireVel;
+				if timeToTarget * TargetAvgVel.Magnitude > 2 then
+					Dist = SceneMan:ShortestDistance(Owner.EyePos, AimPoint + TargetAvgVel * timeToTarget, false);
+				end
+			end
 
 			if Owner.HFlipped then
 				if Dist.X > 0 then

@@ -4,6 +4,7 @@
 // a stutter of the jet or a turn in the air. Flights are flown by AHuman::PilotFlight. The script keeps its hook: it calls this each
 // tick from a coroutine of its own (SharedBehaviors.GoToRoute), and a mod that replaces that keeps working.
 #include "AHuman.h"
+#include "ActorWater.h"
 #include "ADoor.h"
 #include "AEJetpack.h"
 #include "AtomGroup.h"
@@ -60,24 +61,37 @@ namespace {
 // it aims up and presses up, down likewise. The nodes are found among the scene's particles now and then and kept.
 std::vector<Vector> AHuman::s_LadderNodes;
 double AHuman::s_LadderNodesSimTimeMS = -1.0;
+std::shared_mutex AHuman::s_LadderNodesMutex;
 
-const Vector* AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
+std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
+	// (Called from the AI's threads, several units at once: the one that finds the nodes out of date finds them again under the lock while
+	// the rest wait, and the node found is handed back by value, not as a pointer into a list another thread may be refilling.)
 	double now = g_TimerMan.GetSimTimeMS();
-	if (s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0) {
-		s_LadderNodesSimTimeMS = now;
-		s_LadderNodes.clear();
-		for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
-			if (particle && particle->GetPresetName() == "Background Ladder Node" && particle->GetPinStrength() > 0.0F) {
-				s_LadderNodes.push_back(particle->GetPos());
+	auto outOfDate = [now]() { return s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0; };
+	bool refresh;
+	{
+		std::shared_lock lock(s_LadderNodesMutex);
+		refresh = outOfDate();
+	}
+	if (refresh) {
+		std::unique_lock lock(s_LadderNodesMutex);
+		if (outOfDate()) {
+			s_LadderNodesSimTimeMS = now;
+			s_LadderNodes.clear();
+			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+				if (particle && particle->GetPresetName() == "Background Ladder Node" && particle->GetPinStrength() > 0.0F) {
+					s_LadderNodes.push_back(particle->GetPos());
+				}
 			}
 		}
 	}
-	const Vector* best = nullptr;
+	std::shared_lock lock(s_LadderNodesMutex);
+	std::optional<Vector> best;
 	float bestDistance = std::numeric_limits<float>::max();
 	for (const Vector& node: s_LadderNodes) {
 		Vector off = Towards(point, node);
 		if (std::abs(off.m_X) <= reachX && std::abs(off.m_Y) <= reachY && off.GetMagnitude() < bestDistance) {
-			best = &node;
+			best = node;
 			bestDistance = off.GetMagnitude();
 		}
 	}
@@ -111,7 +125,17 @@ void AHuman::UpdateAIMotor() {
 	if (m_AIStance != 0 && m_AIStanceTimer.IsPastSimMS(m_AIStanceMS)) {
 		m_AIStance = 0;
 	}
-	if (m_AIStance == 2 && m_Status == STABLE && !m_Ladder.active) {
+	// A body lying down may not jet or leap: while the route-follower is taking off (settling, at a leap's take-off, or pressing the jet or
+	// the leap this frame), a prone stance gives way, and the jet and the leap wait the moment until the body is up. (Pressed prone every frame, a
+	// move-order unit given ShootTarget's 2.5 s prone stance lit its jet lying down, or stood at the edge of a gap the leap refused.)
+	bool takingOff = m_Mover.settling || (m_Mover.standUp && !m_Mover.standUpTimer.IsPastSimMS(250)) || ctrl.IsState(BODY_JUMPSTART) || ctrl.IsState(BODY_JUMP) || ctrl.IsState(BODY_LEAP);
+	if (takingOff && m_ProneState != NOTPRONE) {
+		ctrl.SetState(BODY_JUMPSTART, false);
+		ctrl.SetState(BODY_JUMP, false);
+		ctrl.SetState(BODY_LEAP, false);
+		ctrl.SetState(BODY_PRONE, false);
+	}
+	if (m_AIStance == 2 && m_Status == STABLE && !m_Ladder.active && !takingOff) {
 		ctrl.SetState(BODY_PRONE, true);
 	} else if (m_AIStance == 1 && m_Status == STABLE && !m_Ladder.active) {
 		ctrl.SetState(BODY_CROUCH, true);
@@ -149,8 +173,11 @@ void AHuman::UpdateAIMotor() {
 
 	// A fall braked, off a route's flight (the pilot brakes those): falling with the floor coming up inside the jet's stop, the jet lit
 	// straight up, leant against any drift. (The script did this, and lit the jet over the pilot's head on the route's flights too.)
+	// Not while the route-follower is flying the fall itself (in the air with no flight, PilotFlight for the point, since the last AI update
+	// or the one before): its safe-fall plan lets the body drop and lights the jet late, and this rewrote its jet key and lean every frame.
 	const bool standardJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
-	if (standardJet && !m_Mover.flight.active && !m_Ladder.active && m_Vel.m_Y > 6.0F && m_pJetpack->GetJetTimeLeft() > 0.0F) {
+	const bool fallPiloted = m_Mover.pilotedFallTick >= 0 && g_TimerMan.GetSimUpdateCount() - m_Mover.pilotedFallTick <= static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2);
+	if (standardJet && !fallPiloted && !m_Mover.flight.active && !m_Ladder.active && m_Vel.m_Y > 6.0F && m_pJetpack->GetJetTimeLeft() > 0.0F) {
 		float accel = JetAccelAtFuel(m_pJetpack->GetJetTimeLeft()) - g_SceneMan.GetGlobalAcc().m_Y * c_PPM;
 		float speed = m_Vel.m_Y * c_PPM;
 		float stop = accel > 1.0F ? speed * speed / (2.0F * accel) : h * 6.0F;
@@ -211,6 +238,12 @@ void AHuman::UpdateLeap() {
 	float rise = std::sqrt(2.0F * gravity * GetLegJumpHeight() * c_MPP);
 	float direction = ctrl.IsState(MOVE_RIGHT) ? 1.0F : (ctrl.IsState(MOVE_LEFT) ? -1.0F : 0.0F);
 	float across = direction != 0.0F ? direction * std::max(m_LegJumpSpeed, m_Vel.m_X * direction) : m_Vel.m_X;
+	// The AI leaps at the leap's own speed, the speed the path grid checked the arc at (PathFinder::LeapFits, PathAgent::LeapSpeed). At a
+	// run's speed, as the route-follower runs, it flew further than checked: into the wall at the back of a two-node ledge, or past a
+	// ledge one node wide. (A player's leap keeps its run-up.)
+	if (direction != 0.0F && m_Controller.GetInputMode() == Controller::CIM_AI) {
+		across = direction * m_LegJumpSpeed;
+	}
 	m_Vel.SetXY(across, std::min(m_Vel.m_Y, 0.0F) - rise);
 	m_Leaping = true;
 	m_LeapTimer.Reset();
@@ -351,7 +384,7 @@ bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float&
 		}
 	}
 	// A background ladder: no material, a node every 24 px that its script holds a body in front of.
-	if (const Vector* node = LadderNear(at, reachX, h * 0.5F)) {
+	if (const std::optional<Vector> node = LadderNear(at, reachX, h * 0.5F)) {
 		gripX = bodyX = node->m_X;
 		wallSide = 0;
 		material = false;
@@ -756,6 +789,38 @@ bool AHuman::InDoorSweep() const {
 	return false;
 }
 
+void AHuman::RememberStuckRemedy(const Vector& spot, int remedy, bool worked) {
+	const float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
+	// (One entry per remedy and spot: the newest outcome stands.)
+	for (auto entry = m_StuckRemedyMemory.begin(); entry != m_StuckRemedyMemory.end();) {
+		bool same = entry->Remedy == remedy && g_SceneMan.ShortestDistance(entry->Spot, spot, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(near);
+		entry = same || entry->Age.IsPastSimMS(120000) ? m_StuckRemedyMemory.erase(entry) : std::next(entry);
+	}
+	m_StuckRemedyMemory.push_back({spot, remedy, worked, Timer()});
+	while (m_StuckRemedyMemory.size() > 24) {
+		m_StuckRemedyMemory.pop_front();
+	}
+}
+
+int AHuman::PickStuckRemedy(const Vector& spot, const std::array<bool, static_cast<int>(StuckRemedy::Count)>& allowed, unsigned int tried) const {
+	const float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
+	std::array<int, static_cast<int>(StuckRemedy::Count)> known;
+	known.fill(0); // 0 nothing known here, 1 worked, -1 failed (in the last two minutes).
+	for (const StuckRemedyMemory& entry: m_StuckRemedyMemory) {
+		if (!entry.Age.IsPastSimMS(120000) && g_SceneMan.ShortestDistance(entry.Spot, spot, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(near)) {
+			known[entry.Remedy] = entry.Worked ? 1 : -1;
+		}
+	}
+	for (int pass = 0; pass < 2; ++pass) {
+		for (int remedy = 0; remedy < static_cast<int>(StuckRemedy::Count); ++remedy) {
+			if (allowed[remedy] && !(tried & (1U << remedy)) && known[remedy] == (pass == 0 ? 1 : 0)) {
+				return remedy;
+			}
+		}
+	}
+	return -1;
+}
+
 void AHuman::ResetRouteMovement() {
 	m_Mover = RouteMover();
 	m_Mover.lastProgressPos = m_Pos;
@@ -953,6 +1018,31 @@ bool AHuman::CanWalkTo(const Vector& landing, float landingFloorY) const {
 // The landing of the flight ahead on the route, if there is one: where the route leaves the ground (its points or the legs between them in
 // the air), the first point after with floor under it; or the furthest such that can be flown to straight, on one tank, so a route that
 // dives into a valley and climbs out is flown over instead. @return Whether there is one; the landing, its floor and how many route points it is.
+void AHuman::PopRouteToLanding(const Vector& landing, int pointsToLanding) {
+	// Up to and including the route's point nearest the landing, when one is near it: the route may have been replaced in the air (route
+	// checks run during flights, and an adopted one starts where the unit was), so the count of points to the landing the flight was
+	// planned with can belong to another route, and popping that many dropped the wrong points. The count is only the fallback.
+	const float reach = std::max(m_CharHeight * 0.75F, 24.0F);
+	int nearestIndex = -1;
+	float nearestDistance = reach;
+	int index = 0;
+	for (const Vector& point: m_MovePath) {
+		if (index >= 30) {
+			break;
+		}
+		float distance = Towards(point, landing).GetMagnitude();
+		if (distance < nearestDistance) {
+			nearestDistance = distance;
+			nearestIndex = index;
+		}
+		++index;
+	}
+	int toPop = nearestIndex >= 0 ? nearestIndex + 1 : pointsToLanding;
+	for (int k = 0; k < toPop && !m_MovePath.empty(); ++k) {
+		PopRoutePoint();
+	}
+}
+
 bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const {
 	Vector takeOff;
 	return FindLanding(landing, landingFloorY, pointsToLanding, takeOff);
@@ -977,12 +1067,13 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 		if (index > 30) {
 			break;
 		}
-		// (A leg up or down a ladder is climbed, and a leap is leapt: no flight, and where it ends is no landing for one.)
+		// (A leg up or down a ladder is climbed, a leap is leapt, a mantle pulled up onto and a scramble scrambled up: no flight, and where it
+		// ends is no landing for one.)
 		PathStepKind legKind = kindIt != m_MovePathKinds.end() ? *kindIt : PathStepKind::Walk;
 		if (kindIt != m_MovePathKinds.end()) {
 			++kindIt;
 		}
-		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap) {
+		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap || legKind == PathStepKind::Mantle || legKind == PathStepKind::Scramble) {
 			if (airborne) {
 				break;
 			}
@@ -1240,6 +1331,10 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	fields.push_back({"mover", mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : (mover.settling ? "settle" : "walk")), true});
 	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
 	number("stuckLevel", mover.stuckLevel);
+	{
+		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", false});
+	}
 	number("impossibleAnswers", mover.impossibleAnswers);
 	if (mover.fuelWaiting) {
 		number("fuelWaitMs", mover.fuelWaitTimer.GetElapsedSimTimeMS());
@@ -1255,6 +1350,21 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 
 int AHuman::MoveAlongRoute() {
 	RouteMover& mover = m_Mover;
+	// Not called for a while: whoever drives it held the unit (to fight, to look at an alarm, to follow someone near at hand). Its timers
+	// ran on through the hold, and the first call after a long fight would take the time for being stuck, mark the step it was on avoided
+	// and ask for a new route, so they start again here, whatever the caller remembers to do. A flight in hand is kept: it is flown on.
+	const long long tick = g_TimerMan.GetSimUpdateCount();
+	if (mover.lastCallTick >= 0 && tick - mover.lastCallTick > static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1) && !mover.flight.active) {
+		ResetRouteMovement();
+	}
+	mover.lastCallTick = tick;
+	// Pulling up onto a ledge (a mantle, or a ledge caught in the air, LM-6): the body is the mantle's until it is over. The flight in hand
+	// waits for it, so a catch under the landing ends on the landing (judged there, the route popped to it) rather than being taken for a
+	// flight out of fuel short of it while the hands pulled.
+	if (m_Mantling) {
+		mover.progressTimer.Reset();
+		return RouteMover::Moving;
+	}
 	if (g_SettingsMan.NavDebugOverlay() >= 2) {
 		RecordFlightDebug();
 		DrawMoverDebug();
@@ -1280,7 +1390,14 @@ int AHuman::MoveAlongRoute() {
 	if (floorHere < 0.0F && m_Vel.MagnitudeIsLessThan(0.3F) && m_Status == STABLE) {
 		floorHere = m_Pos.m_Y + feet;
 	}
-	const bool airborne = floorHere < 0.0F;
+	// In liquid with the body under (ActorWater's depth 2 or more, LM-4): swum, or the bottom walked by what sinks; not in the air, whatever
+	// is under it (FloorUnder sees through liquid to the bottom, and a swimmer with none within reach was flown by the pilot).
+	const int liquidDepth = GetLiquidDepth();
+	const bool inLiquid = liquidDepth >= 2;
+	if (!inLiquid) {
+		mover.swimming = false;
+	}
+	const bool airborne = floorHere < 0.0F && !inLiquid;
 	Controller& ctrl = m_Controller;
 
 	// Nothing to go to.
@@ -1297,6 +1414,21 @@ int AHuman::MoveAlongRoute() {
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;
 	}
+	// A leap of the route's, come down: short of the landing (in the gap, under the lip) or past it, the leap is marked failed for a while,
+	// as a flight is, so the next route crosses somewhere else or another way. (Leaps had no failure memory: one that kept falling short was
+	// planned the same way after every re-path, and only the 6 s stuck handling, marking the next point, got the unit out of it.)
+	if (mover.leapWatch && !m_Leaping && !airborne && mover.leapTimer.IsPastSimMS(400)) {
+		mover.leapWatch = false;
+		Vector toLanding = Towards(m_Pos, mover.leapTo);
+		if (std::abs(toLanding.m_X) > std::max(36.0F, h * 0.6F) || toLanding.m_Y < -h * 0.6F) {
+			MoverTrace("leap to " + std::to_string(static_cast<int>(mover.leapTo.m_X)) + "," + std::to_string(static_cast<int>(mover.leapTo.m_Y)) + " came down off it; a route another way");
+			AvoidPathLink(mover.leapFrom, mover.leapTo, 20000.0F);
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			RefreshRoute();
+			return RouteMover::Moving;
+		}
+	}
 
 	// The route: asked for when there is none, now and then anyway (the world changes), when the next point has been out of sight a while on
 	// the ground, and when stuck. A route check (the same answer, taken only if it is better) runs in the air.
@@ -1306,9 +1438,12 @@ int AHuman::MoveAlongRoute() {
 			return RouteMover::Impossible;
 		}
 		UpdateMovePath();
-		if (m_ImpossiblePaths > 0) {
+		// Each answer once: for three seconds after an impossible answer UpdateMovePath only waits, and counting every tick of that wait
+		// gave up on the goal in three ticks, before it had been asked again at all.
+		if (m_ImpossiblePaths > 0 && m_ImpossiblePaths != mover.impossibleSeen) {
 			++mover.impossibleAnswers;
 		}
+		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
 	if (IsWaitingOnNewMovePath()) {
@@ -1321,12 +1456,28 @@ int AHuman::MoveAlongRoute() {
 		return RouteMover::Moving;
 	}
 	mover.impossibleAnswers = 0;
+	mover.impossibleSeen = m_ImpossiblePaths;
 
 	// Arrived: the route walked out and the last waypoint, on its floor, within reach.
 	if (m_MovePath.empty() && !mover.flight.active) {
 		return RouteMover::Moving;
 	}
-	if (m_MovePath.size() <= 1 && !mover.flight.active && m_Waypoints.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+	// A leg done with more waypoints queued: the route to this one is dropped, so the next tick asks for the route to the next. (Arrival was
+	// only ever judged against the last waypoint queued, so a unit at the end of its first leg stood there, hopped at 2.5 s and at 6 s
+	// marked its own goal avoided for its whole team before the stuck handling's re-path loaded the next leg.)
+	if (m_MovePath.size() <= 1 && !mover.flight.active && !m_Waypoints.empty() && m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		Vector legGround = Solid(m_MovePathGoal.m_X, m_MovePathGoal.m_Y) ? m_MovePathGoal : g_SceneMan.MovePointToGround(m_MovePathGoal, static_cast<int>(h * 0.2F), 4);
+		if (Towards(m_Pos, legGround).MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne) {
+			MoverTrace("leg done; on to the next waypoint");
+			m_MovePath.clear();
+			m_MovePathKinds.clear();
+			m_HasMovePathGoal = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			return RouteMover::Moving;
+		}
+	}
+	if (m_MovePath.size() <= 1 && !mover.flight.active && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		Vector goal = GetLastAIWaypoint();
 		Vector goalGround = Solid(goal.m_X, goal.m_Y) ? goal : g_SceneMan.MovePointToGround(goal, static_cast<int>(h * 0.2F), 4);
 		Vector toGoal = Towards(m_Pos, goalGround);
@@ -1370,7 +1521,10 @@ int AHuman::MoveAlongRoute() {
 
 	// Progress: how far from where it last got nearer the route's point; none for a while is stuck.
 	if (!m_MovePath.empty()) {
-		float gap = Towards(m_Pos, m_MovePath.front()).GetMagnitude();
+		// (In liquid, across only: the route's points are on the surface, and a sinker walking the bottom under them, or a swimmer bobbing,
+		// gets no nearer in height whatever it does.)
+		Vector toFront = Towards(m_Pos, m_MovePath.front());
+		float gap = inLiquid ? std::abs(toFront.m_X) : toFront.GetMagnitude();
 		if (mover.bestGap < 0.0F || gap < mover.bestGap - 4.0F || mover.flight.active) {
 			mover.bestGap = gap;
 			mover.progressTimer.Reset();
@@ -1423,6 +1577,12 @@ int AHuman::MoveAlongRoute() {
 		mover.flight = RouteMover::Flight();
 		mover.bestGap = -1.0F;
 		mover.progressTimer.Reset();
+		// (A remedy still being tried when the re-path came didn't work: noted so, not taken for having worked when the timer starts again.)
+		if (mover.remedy >= 0) {
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, false);
+			mover.remedy = -1;
+		}
+		mover.remedyTried = 0;
 		return RouteMover::Moving;
 	}
 	// Now and then, or the next point out of sight on the ground for a second: a fresh route.
@@ -1435,7 +1595,8 @@ int AHuman::MoveAlongRoute() {
 		bool inSight = !g_SceneMan.CastStrengthRay(m_Pos, toPoint, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
 		// (A ladder's next point is often out of sight, over a lip or down a hatch: the climb goes to it, not a new route every second.)
 		bool ladderStep = !m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Ladder;
-		if (inSight || airborne || ladderStep || DoorAhead(m_MovePath.front())) {
+		// (Nor from under the water: the bank's point is over the lip from down there.)
+		if (inSight || airborne || inLiquid || ladderStep || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
@@ -1523,6 +1684,63 @@ int AHuman::MoveAlongRoute() {
 		return RouteMover::Moving;
 	}
 
+	// ---- In liquid (LM-4): swum for the point along the surface, or walked along the bottom by what sinks (the walk below), and out
+	// up the bank by the hands (pressing up and into it: Actor::TryCatchLedge and TryStartMantle pull the body out over the lip). ----
+	if (inLiquid && !m_MovePath.empty()) {
+		const Vector point = m_MovePath.front();
+		const Vector toPoint = Towards(m_Pos, point);
+		const PathStepKind kind = m_MovePathKinds.empty() ? PathStepKind::Walk : m_MovePathKinds.front();
+		// A flight that came down in the water is over: the route goes on from here.
+		if (mover.flight.active) {
+			MoverTrace("came down in the water; flight over");
+			mover.flight = RouteMover::Flight();
+			mover.fuelWaiting = false;
+		}
+		// Fallen in (knocked in, the floor gone, a flood) on a route that didn't mean to swim: a route from here, which takes the water in
+		// its own terms and makes for a bank. (Once each time in.)
+		if (!mover.swimming) {
+			mover.swimming = true;
+			if (kind != PathStepKind::Swim && kind != PathStepKind::Wade && !IsWaitingOnNewMovePath()) {
+				MoverTrace("fell in the water; new route");
+				mover.bestGap = -1.0F;
+				mover.progressTimer.Reset();
+				RefreshRoute();
+				return RouteMover::Moving;
+			}
+		}
+		// Out of air with the head under (four seconds of it left, for what breathes): whatever the route says, straight up for the
+		// surface, stroking and jumping. (The grid only routes a sinker across water its breath does, but a unit that stood, fought or was
+		// pushed about down there runs out all the same.)
+		const float breath = ActorWater::GetBreathSeconds(this);
+		if (breath < FLT_MAX && liquidDepth >= 3 && GetAirLeft() * breath < 4.0F) {
+			ctrl.SetState(MOVE_UP, true);
+			ctrl.SetState(BODY_JUMP, true);
+			if (std::abs(toPoint.m_X) > 3.0F) {
+				ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+			}
+			mover.progressTimer.Reset();
+			if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("out of air; surfacing");
+			}
+			return RouteMover::Moving;
+		}
+		// A sinker with the bottom under its feet walks it: the walk below, as on any floor.
+		if (!(floorHere >= 0.0F && !IsFloater())) {
+			if (std::abs(toPoint.m_X) > 3.0F) {
+				ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+			}
+			// Up for a point over the surface (the bank): the stroke up lifts the body to the lip, and the key into the bank pulls it out.
+			// Down for one well under (a dive the route means); otherwise left to the water, which holds a floater at the surface.
+			if (toPoint.m_Y < -h * 0.25F) {
+				ctrl.SetState(MOVE_UP, true);
+			} else if (toPoint.m_Y > h * 0.6F && kind != PathStepKind::Swim) {
+				ctrl.SetState(MOVE_DOWN, true);
+			}
+			return RouteMover::Moving;
+		}
+	}
+
 	// ---- The flight: planned take-off to touchdown, flown by the pilot. ----
 	if (mover.flight.active) {
 		RouteMover::Flight& flight = mover.flight;
@@ -1605,9 +1823,7 @@ int AHuman::MoveAlongRoute() {
 			}
 			if (onLanding) {
 				// The route's points up to the landing are done with.
-				for (int k = 0; k < flight.pointsToLanding && !m_MovePath.empty(); ++k) {
-					PopRoutePoint();
-				}
+				PopRouteToLanding(flight.landing, flight.pointsToLanding);
 				MoverTrace("landed");
 			}
 			// Down again short of a landing above: the climb failed (fallen back down the hatch, or onto the wrong lip). A new route from
@@ -1665,9 +1881,7 @@ int AHuman::MoveAlongRoute() {
 				float across = Towards(flight.viaPoint, m_Pos).m_X * side;
 				bool floorUnderFeet = FloorUnder(m_Pos + Vector(0.0F, feet - 2.0F), h * 0.3F) >= 0.0F;
 				if (floorUnderFeet && across >= std::min(std::abs(sideways), h * 0.25F)) {
-					for (int k = 0; k < flight.pointsToLanding && !m_MovePath.empty(); ++k) {
-						PopRoutePoint();
-					}
+					PopRouteToLanding(flight.landing, flight.pointsToLanding);
 					MoverTrace("stepped off onto the landing");
 					flight = RouteMover::Flight();
 					mover.bestGap = -1.0F;
@@ -1765,17 +1979,27 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 			Vector command = PilotFlight(point, pointFloor);
+			mover.pilotedFallTick = g_TimerMan.GetSimUpdateCount();
 			// (A drop onto the point's floor is left to gravity until the brake is wanted: the pilot's safe-fall rule asks for the jet only then.)
 			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 		} else {
-			ctrl.SetState(toPoint.m_X < -3.0F ? MOVE_LEFT : MOVE_RIGHT, std::abs(toPoint.m_X) > 3.0F);
+			// No jet: over a drop deeper than the body lands from unhurt (one the route didn't mean: knocked off, or the floor gone), held
+			// straight rather than steered for the point, so it lands square on its feet and doesn't clip a lip on the way down (LM-9).
+			float maxFall = GetMaxSafeFallHeight();
+			bool deepDrop = maxFall < FLT_MAX && FloorUnder(m_Pos, maxFall + h) < 0.0F;
+			if (!deepDrop) {
+				ctrl.SetState(toPoint.m_X < -3.0F ? MOVE_LEFT : MOVE_RIGHT, std::abs(toPoint.m_X) > 3.0F);
+			} else if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("falling further than is safe; held straight");
+			}
 		}
 		return RouteMover::Moving;
 	}
 
 	// ---- On the ground. ----
-	const Vector* ladder = LadderNear(m_Pos, h * 0.2F, h * 0.3F);
+	const std::optional<Vector> ladder = LadderNear(m_Pos, h * 0.2F, h * 0.3F);
 	const float above = -toPoint.m_Y;
 
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
@@ -1800,14 +2024,33 @@ int AHuman::MoveAlongRoute() {
 				ctrl.SetState(BODY_LEAP, true);
 				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 				mover.progressTimer.Reset();
+				mover.leapWatch = true;
+				mover.leapFrom = m_Pos;
+				mover.leapTo = point;
+				mover.leapTimer.Reset();
 				MoverTrace(std::string("leap ") + (edge ? "from the edge" : (lip ? "onto the lip" : "from here")) + " for " + std::to_string(static_cast<int>(point.m_X)) + "," + std::to_string(static_cast<int>(point.m_Y)));
 				return RouteMover::Moving;
+			}
+			if (m_ProneState != NOTPRONE) {
+				mover.standUp = true;
+				mover.standUpTimer.Reset();
 			}
 			if (edge) {
 				return RouteMover::Moving;
 			}
 		}
 		ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		return RouteMover::Moving;
+	}
+
+	// ---- A mantle: walked into the ledge with the move key held, which pulls the body up onto it (Actor::TryStartMantle starts the pull
+	// when the way on is blocked and there is room up and over). No jet. While pulling, the pull has the body. ----
+	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
+		if (!IsMantling()) {
+			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		} else {
+			mover.progressTimer.Reset();
+		}
 		return RouteMover::Moving;
 	}
 
@@ -1948,6 +2191,8 @@ int AHuman::MoveAlongRoute() {
 	} else {
 		mover.takeOffCommitted = false;
 		mover.noTakeOff = false;
+		// (No flight ahead any more: no fuel wait either. Left set, the wall sense and the stuck hop stayed off for the rest of the order.)
+		mover.fuelWaiting = false;
 	}
 	bool wantsClimb = above > h * 0.3F && (kind == PathStepKind::Jump || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y + h * 0.4F));
 	if (flightAhead && !CanWalkTo(landing, landingFloorY)) {
@@ -2052,7 +2297,11 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen || cornerVia;
-		if (canTakeOff) {
+		// (Timed only within a node of the take-off (or the half body the steps about it go): walking the last node or two to it, the way up can be blocked from where the unit is
+		// yet open on arrival, and a good take-off was given up on the approach.)
+		Vector toTakeOffNow = Towards(m_Pos, takeOff);
+		bool nearTakeOff = std::abs(toTakeOffNow.m_X) <= std::max(24.0F, h * 0.5F) && std::abs(toTakeOffNow.m_Y) <= h * 0.8F;
+		if (canTakeOff || !nearTakeOff) {
 			mover.noTakeOff = false;
 		} else if (!mover.noTakeOff) {
 			mover.noTakeOff = true;
@@ -2184,6 +2433,9 @@ int AHuman::MoveAlongRoute() {
 			}
 		} else if (canTakeOff) {
 			mover.progressTimer.Reset();
+			// (Settled, and now waiting on the tank: the settle starts afresh once there is fuel. Left set, its 1.5 s cap had already run out
+			// by then and the take-off went without settling at all.)
+			mover.settling = false;
 			if (mover.traceTimer.IsPastSimMS(1000)) {
 				mover.traceTimer.Reset();
 				MoverTrace("waiting for fuel: " + std::to_string(static_cast<int>(m_pJetpack->GetJetTimeLeft())) + " of " + std::to_string(static_cast<int>(needed)));
@@ -2229,7 +2481,7 @@ int AHuman::MoveAlongRoute() {
 	bool crawlNear = crawl && toPoint.MagnitudeIsLessThan(h * 0.65F);
 	// What is a short stride ahead, the body's whole outline looked at (see SenseAhead): the walk's own eyes, besides the route's.
 	Sensed sensed;
-	if (std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs) {
+	if (std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs && kind != PathStepKind::Scramble) {
 		sensed = SenseAhead(toPoint.m_X < 0.0F ? -1.0F : 1.0F, floorY, standing);
 	}
 	if (sensed.gapUnder) {
@@ -2239,10 +2491,30 @@ int AHuman::MoveAlongRoute() {
 	// so it stands, unless there is no room to stand right here (the mouth of a low tunnel: stood up for a point above, a unit put its head
 	// into the slab over it). Kept down a moment after the way looks clear, or a crawl through a slot was stood up in the middle of.
 	bool steep = std::abs(toPoint.m_Y) > std::abs(toPoint.m_X) * 0.577F;
+	// The crouch first (LM-1): a crouch step near, or too little room to stand here or a half-body ahead but room crouched (the same two
+	// rays at the crouched head's height, and the sense ahead for the crouched body), is walked ducking, not crawled. Only what a crouch
+	// doesn't fit under, or a crawl step, lays the body down.
+	const float crouched = GetCrouchHeight();
+	bool crouchStepNear = kind == PathStepKind::Crouch && toPoint.MagnitudeIsLessThan(h * 0.65F);
+	bool crouchFits = false;
+	Sensed sensedCrouched;
+	if (crouched < standing - 1.0F && !crawlNear && (crouchStepNear || noRoomHere || noRoomAhead)) {
+		float topCrouchedY = std::min(m_Pos.m_Y - 4.0F, floorY - crouched);
+		bool roomHere = !g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topCrouchedY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		if (!roomAhead && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+			roomAhead = true;
+		}
+		if (roomHere && roomAhead && std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs) {
+			sensedCrouched = SenseAhead(toPoint.m_X < 0.0F ? -1.0F : 1.0F, floorY, crouched);
+			roomAhead = !sensedCrouched.gapUnder && !(sensedCrouched.wall && sensedCrouched.rise < crouched - 2.0F);
+		}
+		crouchFits = roomHere && roomAhead;
+	}
 	bool prone = false;
 	if (steep && !(m_ProneState == PRONE && noRoomHere)) {
 		prone = false;
-	} else if (crawlNear || noRoomHere || noRoomAhead) {
+	} else if (crawlNear || ((noRoomHere || noRoomAhead) && !crouchFits)) {
 		prone = true;
 		mover.proneHoldTimer.Reset();
 	} else {
@@ -2251,12 +2523,38 @@ int AHuman::MoveAlongRoute() {
 	if (prone) {
 		ctrl.SetState(BODY_PRONE, true);
 	}
+	bool crouch = false;
+	if (!prone && kind == PathStepKind::Scramble) {
+		// Up a rough slope too steep for stairs (LM-10): walked at crouched, so the body leans into the face and the arms find holds and
+		// climb (AHuman's arm climbing on the walk), not jetted or hopped.
+		crouch = true;
+		mover.crouchHoldTimer.Reset();
+	} else if (!prone && !steep) {
+		if (crouchFits) {
+			crouch = true;
+			mover.crouchHoldTimer.Reset();
+		} else {
+			crouch = mover.crouching && !mover.crouchHoldTimer.IsPastSimMS(400);
+		}
+	}
+	mover.crouching = crouch;
+	if (crouch) {
+		ctrl.SetState(BODY_CROUCH, true);
+		// (The low thing ahead as the crouched body sees it: the beam being ducked under is no gap to crawl. What stands on the floor is
+		// left as the standing body saw it, a step or a low obstacle to hop, as before.)
+		if (sensed.gapUnder) {
+			sensed = sensedCrouched;
+		}
+	}
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+	} else if (kind == PathStepKind::Scramble && above > h * 0.1F) {
+		// (Under the top of a scramble, still on the face: on up it the way the body faces, which is the way the slope goes.)
+		ctrl.SetState(m_HFlipped ? MOVE_LEFT : MOVE_RIGHT, true);
 	}
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
-	if (!prone && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
+	if (!prone && !crouch && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
 		bool floorAllTheWay = true;
 		float stepDirection = toPoint.m_X > 0.0F ? 1.0F : -1.0F;
 		for (float ahead = 12.0F; ahead <= h * 1.5F && floorAllTheWay; ahead += 12.0F) {
@@ -2307,21 +2605,83 @@ int AHuman::MoveAlongRoute() {
 			lowObstacle = true;
 		}
 	}
-	// Stuck (no progress for 2.5 s, and a new route at 6): a hop. (A back-off the other way, as 8.0's random flips did, read as pacing, and
-	// lying down for a moment as lying down at random: neither.)
-	float stuckMS = static_cast<float>(mover.progressTimer.GetElapsedSimTimeMS());
-	bool layingDown = false;
-	if (!stuck) {
-		mover.stuckBackedOff = false;
-		mover.stuckLayDown = false;
-	} else if (!mover.fuelWaiting) {
-		// (No lying down when stuck: under a low ceiling the crawl rules lie it down; anywhere else it read as lying down at random.)
+	// Stuck (no progress for 2.5 s, and a new route at 6): the small things a player tries before the big one (LM-3), one at a time, each
+	// for a moment and judged by progress: duck, back off half a body and come on again, leap, hop with the jet, lie down and crawl, stand
+	// up. Each only when it can do something here (room to duck, floor behind, the legs to leap, a jet with head room, room to crawl, room
+	// to stand), none twice in one stuck spell, one that failed at this spot lately left out, and one that worked here tried first. (As
+	// unconditional moves, 8.0's back-offs read as pacing and its lying down as lying down at random, and a jetless unit had nothing.)
+	const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800};
+	if (!stuck || mover.fuelWaiting) {
+		if (mover.remedy >= 0 && !mover.fuelWaiting) {
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, true);
+			MoverTrace(std::string("stuck remedy worked: ") + remedyNames[mover.remedy]);
+		}
+		mover.remedy = -1;
+		mover.remedyTried = 0;
+	} else {
+		if (mover.remedy >= 0 && mover.remedyTimer.IsPastSimMS(remedyWindowMS[mover.remedy])) {
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, false);
+			MoverTrace(std::string("stuck remedy didn't work: ") + remedyNames[mover.remedy]);
+			mover.remedy = -1;
+		}
+		if (mover.remedy < 0) {
+			std::array<bool, static_cast<int>(StuckRemedy::Count)> allowed{};
+			allowed[static_cast<int>(StuckRemedy::Crouch)] = !prone && !crouch && m_ProneState == NOTPRONE && crouched < standing - 1.0F;
+			float floorBehind = FloorUnder(m_Pos + Vector(-direction * h * 0.5F, 0.0F), feet + h * 0.3F);
+			allowed[static_cast<int>(StuckRemedy::BackOff)] = !prone && m_ProneState == NOTPRONE && floorBehind >= 0.0F && std::abs(floorBehind - floorY) < h * 0.3F;
+			allowed[static_cast<int>(StuckRemedy::Leap)] = !prone && CanLeap();
+			allowed[static_cast<int>(StuckRemedy::Hop)] = standardJet && !prone && m_pJetpack->GetJetTimeLeft() > 300.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
+			const float crawlRoom = std::max(8.0F, h * 0.2F);
+			allowed[static_cast<int>(StuckRemedy::Prone)] = !prone && !steep && m_ProneState == NOTPRONE && !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - crawlRoom), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+			allowed[static_cast<int>(StuckRemedy::Stand)] = m_ProneState == PRONE && !noRoomHere && !noRoomAhead;
+			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
+			if (mover.remedy >= 0) {
+				mover.remedyTried |= 1U << mover.remedy;
+				mover.remedyTimer.Reset();
+				mover.remedySpot = m_Pos;
+				MoverTrace(std::string("stuck; ") + remedyNames[mover.remedy]);
+			}
+		}
+		switch (static_cast<StuckRemedy>(mover.remedy)) {
+			case StuckRemedy::Crouch:
+				ctrl.SetState(BODY_PRONE, false);
+				ctrl.SetState(BODY_CROUCH, true);
+				break;
+			case StuckRemedy::BackOff:
+				if (!mover.remedyTimer.IsPastSimMS(400)) {
+					ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, false);
+					ctrl.SetState(direction < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+					ctrl.SetState(MOVE_FAST, false);
+				}
+				break;
+			case StuckRemedy::Leap:
+				if (!mover.remedyTimer.IsPastSimMS(200)) {
+					ctrl.SetState(BODY_LEAP, true);
+				}
+				break;
+			case StuckRemedy::Prone:
+				ctrl.SetState(BODY_CROUCH, false);
+				ctrl.SetState(BODY_PRONE, true);
+				break;
+			case StuckRemedy::Stand:
+				ctrl.SetState(BODY_PRONE, false);
+				break;
+			default:
+				break;
+		}
+	}
+	// The stuck remedy's hop with the jet, at the start of its moment.
+	if (mover.remedy == static_cast<int>(StuckRemedy::Hop) && standardJet && !mover.remedyTimer.IsPastSimMS(350)) {
+		ctrl.SetState(BODY_JUMP, true);
+		SetAimAngle(above > h * 0.2F ? c_HalfPI * 0.7F : 0.2F);
 	}
 	// A wall, or a step up the legs don't take: a hop (the mantle takes most steps).
-	if ((stuck || wallAhead || lowObstacle) && standardJet && !prone && !layingDown && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
+	if ((wallAhead || lowObstacle) && standardJet && !prone && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
 		if (mover.hopTimer.IsPastSimMS(1200)) {
 			mover.hopTimer.Reset();
-			MoverTrace(stuck ? "stuck; hop" : (wallAhead ? "wall ahead; hop" : "low obstacle; hop"));
+			MoverTrace(wallAhead ? "wall ahead; hop" : "low obstacle; hop");
 		}
 		if (!mover.hopTimer.IsPastSimMS(350)) {
 			ctrl.SetState(BODY_JUMP, true);

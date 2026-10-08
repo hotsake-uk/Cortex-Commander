@@ -8,6 +8,7 @@
 #include "BS_thread_pool.hpp"
 
 #include <array>
+#include <atomic>
 
 #define g_LuaMan LuaMan::Instance()
 
@@ -432,6 +433,11 @@ namespace RTE {
 
 		/// Asynchronously enforces a GC run to occur.
 		void StartAsyncGarbageCollection();
+
+		/// Blocks until the asynchronous GC run started by StartAsyncGarbageCollection, if any, has finished.
+		/// The GC can run destructors of Lua-owned MOs, so anything that tears down or deletes MOs outside MovableMan::Update must wait for it first.
+		/// GC steps that have not yet taken their state's lock are skipped rather than waited for, so this is safe to call from inside a Lua call that holds a state's lock (e.g. a script calling RestartActivity).
+		void WaitForAsyncGarbageCollection();
 #pragma endregion
 
 		/// Clears Script Timings.
@@ -452,6 +458,7 @@ namespace RTE {
 		int m_LastAssignedLuaState = 0;
 
 		BS::multi_future<void> m_GarbageCollectionTask;
+		std::atomic<bool> m_CancelGarbageCollection = false; //!< Set by WaitForAsyncGarbageCollection so GC steps still waiting for their state's lock give up instead of being waited on.
 
 		/// Clears all the member variables of this LuaMan, effectively resetting the members of this abstraction level only.
 		void Clear();

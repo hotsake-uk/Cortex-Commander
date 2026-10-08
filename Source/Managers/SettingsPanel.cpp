@@ -216,6 +216,8 @@ void DebugMan::SettingsGUI() {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
+		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
+		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
 		Check("Ground dries place by place", &settings.WetnessMap);
 		Tip("Rain wets the ground and it dries after the rain, hard rock and concrete slower than earth, and long rain leaves puddles in the dips that reflect lamps and the sky. Off: all exposed ground is equally wet, as before. On from the Medium preset.");
@@ -434,6 +436,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How much the ripples bend what's seen through the water, and how much it darkens with depth. 0 for none.");
 			Slider("Ripples", &settings.WaterRipples, 0.0F, 2.0F);
 			Tip("How much the surface ripples tilt the reflection and the glints of light on the water. 0: a flat mirror.");
+			Check("Soft reflections", &settings.WaterSoftReflection);
+			Tip("The mirror image blurs and fades the deeper it goes and where the open air above the pool ends, and isn't cut off hard at the screen edge or beside other water. Off: sharp and cut off, as before.");
 			Check("Reflection ripples with the surface", &settings.WaterMirrorSurface);
 			Tip("The mirrored scene is moved by the surface above it, so it wobbles as one image where the water moves and goes clean where it's still. Off: each pixel's own ripple moves it, as before. How much is the Ripples slider.");
 		}
@@ -629,6 +633,13 @@ void DebugMan::SettingsGUI() {
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		{
+			float suppression = g_SettingsMan.AISuppression();
+			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAISuppression(suppression);
+			}
+			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
+		}
+		{
 			int paths = Actor::ShowAIPaths();
 			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
 				Actor::SetShowAIPaths(paths);
@@ -795,8 +806,6 @@ void DebugMan::SettingsGUI() {
 		Tip("One line over your sandbox character's head: whether you're in it, the updates left before you step in, flying and how hard it is pinned, its side and whether it's neutral (ignored by the AI), what it has out and that item's number key, and the AI mode it is left in while you're not in it.");
 		Toggle("Standing spots reachability", g_SettingsMan.ShowSandboxSpotReach(), [](bool on) { g_SettingsMan.SetShowSandboxSpotReach(on); });
 		Tip("In the move previews (the Command tool's Move and the Move order), every spot the order will look at with the first unit's path cost to it: green where a unit will be sent, red where it has no way there and the spot is passed over, grey where it wasn't needed. Each is a path search, so it is worked out again only as the pointer moves.");
-		Toggle("Lightning from the sky above", g_SettingsMan.ShowSandboxLightningFromSky(), [](bool on) { g_SettingsMan.SetShowSandboxLightningFromSky(on); });
-		Tip("The sandbox's lightning (the tool and storm cells) comes down from the open sky above where it strikes, wherever the cameras are. Off: the bolt starts at the top of the first player's view, as before, however far that is from the strike.");
 		Toggle("Stroke log", g_SettingsMan.ShowSandboxStrokeLog(), [](bool on) { g_SettingsMan.SetShowSandboxStrokeLog(on); });
 		Tip("The last 20 sandbox tool uses as they are applied, in the top right: the sim update, the tool, where, the side, the orders, and the choice and count. With the Sandbox lines ticked under Debug text in the console, each also goes to the console.");
 	};

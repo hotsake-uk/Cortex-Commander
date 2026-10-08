@@ -191,6 +191,9 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
+		/// How strongly fire pins units down and shakes them (Actor::GetSuppression and GetMorale): 0 for not at all, 1 as designed, 2 double.
+		float AISuppression() const { return m_AISuppression; }
+
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
 		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
 		/// 3 that and the node under the pointer: what the grid makes of it and every way out of it with its cost (see DebugOverlays::DrawNavNode).
@@ -261,12 +264,6 @@ namespace RTE {
 		/// Sets what the world simulation overlay shows; see WorldSimOverlay.
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
-
-		/// Gets whether the sandbox's lightning bolts come down from the sky above the strike rather than from the top of the first player's view.
-		bool ShowSandboxLightningFromSky() const { return m_SandboxLightningFromSky; }
-
-		/// Sets whether the sandbox's lightning bolts come down from the sky above the strike rather than from the top of the first player's view.
-		void SetShowSandboxLightningFromSky(bool show) { m_SandboxLightningFromSky = show; }
 
 		/// Gets whether the sandbox's stroke log is on.
 		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }
@@ -374,6 +371,9 @@ namespace RTE {
 
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
+
+		/// Sets how strongly fire pins units down and shakes them, 0 to 2.
+		void SetAISuppression(float scale) { m_AISuppression = std::clamp(scale, 0.0F, 2.0F); }
 
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
@@ -585,7 +585,6 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
-		bool m_SandboxLightningFromSky; //!< Lightning bolts start from the open sky above where they strike (up to 500 pixels). Off: from the top of the first player's view, as before.
 		bool m_SandboxStrokeLog; //!< Whether the sandbox's stroke log is on (see ShowSandboxStrokeLog).
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
@@ -606,6 +605,7 @@ namespace RTE {
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
+		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.
