@@ -1238,8 +1238,9 @@ void MovableMan::OpenAllDoors(bool open, int team) const {
 // It shouldn't belong to MovableMan, instead it probably ought to be on the pathfinder. On that note, pathfinders shouldn't be part of the scene!
 // AIMan? PathingMan? Something like that. Ideally, we completely tear out this hack, and allow for doors in a completely different way.
 void MovableMan::OverrideMaterialDoors(bool eraseDoorMaterial, int team) const {
-	for (std::deque<Actor*> actorDeque: {m_Actors, m_AddedActors}) {
-		for (Actor* actor: actorDeque) {
+	// (By pointer: a range-for over {m_Actors, m_AddedActors} by value copied both deques, and this runs twice per team per grid update.)
+	for (const std::deque<Actor*>* actorDeque: {&m_Actors, &m_AddedActors}) {
+		for (Actor* actor: *actorDeque) {
 			// (No one's doors too: they open for anyone who comes, so every team's grid has them open. Left in, a bunker's neutral doors were walls to
 			// every route, and units went the long way round.)
 			if (ADoor* actorAsDoor = dynamic_cast<ADoor*>(actor); actorAsDoor && (team == Activity::NoTeam || actorAsDoor->GetTeam() == team || actorAsDoor->GetTeam() == Activity::NoTeam)) {
