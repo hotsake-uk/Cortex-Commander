@@ -245,7 +245,7 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 	}
 	float now = GetSmoothSimTime();
 	for (const LightningBolt& bolt: bolts) {
-		float flash = LightningFlash(now - bolt.StartTime);
+		float flash = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.2F, 2.0F);
 		if (flash <= 0.01F) {
 			continue;
 		}
@@ -412,7 +412,7 @@ void PostProcessMan::GetLightningBolts(const Vector& boxPos, int boxWidth, int b
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
 	for (const LightningBolt& bolt: bolts) {
-		float brightness = LightningFlash(now - bolt.StartTime);
+		float brightness = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.2F, 2.0F);
 		if (brightness <= 0.01F) {
 			continue;
 		}

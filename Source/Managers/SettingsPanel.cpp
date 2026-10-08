@@ -266,6 +266,10 @@ void DebugMan::SettingsGUI() {
 		}
 		Check("Lightning bolts", &settings.LightningBolts);
 		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
+		if (settings.LightningBolts) {
+			Slider("Lightning brightness", &settings.LightningBrightness, 0.2F, 2.0F);
+			Tip("How bright the bolt and the light it throws on the ground and air are. 1: as first made.");
+		}
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
 		Slider("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
