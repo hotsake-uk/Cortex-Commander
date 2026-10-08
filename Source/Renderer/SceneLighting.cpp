@@ -628,6 +628,18 @@ void SceneLighting::UploadOccupancyRows(int firstRow, int endRow) {
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
+void SceneLighting::UploadOccupancyRect(int firstRow, int endRow, int firstColumn, int endColumn) {
+	if (endRow <= firstRow || endColumn <= firstColumn) {
+		return;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, m_GridWidth);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, firstRow, endColumn - firstColumn, endRow - firstRow, GL_RGBA, GL_UNSIGNED_BYTE, &m_Occupancy[(static_cast<size_t>(firstRow) * m_GridWidth + firstColumn) * 4]));
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
 void SceneLighting::PropagateSkyLight(int iterations) {
 	ZoneScoped;
 	TracyGpuZone("Sky Light Propagation");
@@ -1722,40 +1734,89 @@ void SceneLighting::Update() {
 	m_NextRefreshRow = (endRow >= m_GridHeight) ? 0 : endRow;
 	// Where terrain actually changed since the last frame (a piece falling, liquid moving, digging, a crater) is brought up to date at once, so shade and light
 	// follow it as it moves instead of catching up when the round-robin gets there.
-	bool terrainChanged = false;
-	glm::ivec4 terrainChangedArea(0); // Scene pixels: min x, min y, end x, end y.
-	std::optional<glm::ivec4> pendingDecalGround; // Where the scorch and stain maps' ground is worked out again, in scene pixels as they came: min x, min y, end x, end y.
-	if (int minX, minY, maxX, maxY; SLTerrain::TakeChangedArea(minX, minY, maxX, maxY)) {
-		int changedFirstRow = std::clamp(minY / m_CellSize - 1, 0, m_GridHeight);
-		int changedEndRow = std::clamp(maxY / m_CellSize + 2, 0, m_GridHeight);
-		// Changes either side of the seam of a wrapping scene, or outside it, take the whole width.
-		bool wholeWidth = minX < 0 || maxX >= m_SceneWidth;
-		int changedFirstColumn = wholeWidth ? 0 : std::clamp(minX / m_CellSize - 1, 0, m_GridWidth);
-		int changedEndColumn = wholeWidth ? m_GridWidth : std::clamp(maxX / m_CellSize + 2, 0, m_GridWidth);
-		pendingDecalGround = glm::ivec4(minX, minY, maxX + 1, maxY + 1);
-		if (changedEndRow > changedFirstRow) {
-			RefreshOccupancyRows(changedFirstRow, changedEndRow, changedFirstColumn, changedEndColumn);
-			UploadOccupancyRows(changedFirstRow, changedEndRow);
-			terrainChanged = true;
-			terrainChangedArea = glm::ivec4(changedFirstColumn * m_CellSize, changedFirstRow * m_CellSize, changedEndColumn * m_CellSize, changedEndRow * m_CellSize);
+	// The changes come as tiles (SLTerrain::TakeChangedTiles), so two far-apart changes refresh two small areas, not the scene between them.
+	int changedTiles = 0;
+	glm::ivec4 terrainChangedArea(0); // Scene pixels: min x, min y, end x, end y, of the cells refreshed.
+	std::optional<glm::ivec4> pendingDecalGround; // Where the scorch and stain maps' ground is worked out again, in scene pixels: min x, min y, end x, end y.
+	if (int tilesWide, tilesHigh; SLTerrain::TakeChangedTiles(m_ChangedTiles, tilesWide, tilesHigh)) {
+		const int tile = SLTerrain::c_ChangeTileSize;
+		// The cells refreshed, as one box, for the lamp cache below.
+		int changedFirstColumn = m_GridWidth;
+		int changedEndColumn = 0;
+		int changedFirstRow = m_GridHeight;
+		int changedEndRow = 0;
+		if (tilesWide != (m_SceneWidth + tile - 1) / tile || tilesHigh != (m_SceneHeight + tile - 1) / tile) {
+			// (A map of another size than this grid's scene: refresh it all rather than guess.)
+			RefreshOccupancyRows(0, m_GridHeight);
+			UploadOccupancyRows(0, m_GridHeight);
+			changedTiles = tilesWide * tilesHigh;
+			changedFirstColumn = 0;
+			changedEndColumn = m_GridWidth;
+			changedFirstRow = 0;
+			changedEndRow = m_GridHeight;
+			pendingDecalGround = glm::ivec4(0, 0, m_SceneWidth, m_SceneHeight);
+		} else {
+			auto changed = [this, tilesWide](int tileX, int tileY) {
+				size_t index = static_cast<size_t>(tileY) * tilesWide + tileX;
+				return (m_ChangedTiles[index / 64] >> (index % 64)) & 1;
+			};
+			for (int tileY = 0; tileY < tilesHigh; ++tileY) {
+				// Each run of changed tiles along the row is refreshed (a cell of margin round it, as before); the row's span of them is uploaded at once.
+				int firstRow = std::clamp((tileY * tile) / m_CellSize - 1, 0, m_GridHeight);
+				int endRow = std::clamp(((tileY + 1) * tile - 1) / m_CellSize + 2, 0, m_GridHeight);
+				int uploadFirstColumn = m_GridWidth;
+				int uploadEndColumn = 0;
+				for (int tileX = 0; tileX < tilesWide;) {
+					if (!changed(tileX, tileY)) {
+						++tileX;
+						continue;
+					}
+					int runStart = tileX;
+					while (tileX < tilesWide && changed(tileX, tileY)) {
+						++tileX;
+						++changedTiles;
+					}
+					// The decal ground over the changed tiles, as one box (a box across the seam takes the width between, which is only more work).
+					glm::ivec4 runPixels(runStart * tile, tileY * tile, std::min(tileX * tile, m_SceneWidth), std::min((tileY + 1) * tile, m_SceneHeight));
+					pendingDecalGround = pendingDecalGround ? glm::ivec4(std::min(pendingDecalGround->x, runPixels.x), std::min(pendingDecalGround->y, runPixels.y), std::max(pendingDecalGround->z, runPixels.z), std::max(pendingDecalGround->w, runPixels.w)) : runPixels;
+					int firstColumn = std::clamp((runStart * tile) / m_CellSize - 1, 0, m_GridWidth);
+					int endColumn = std::clamp((tileX * tile - 1) / m_CellSize + 2, 0, m_GridWidth);
+					if (endRow > firstRow && endColumn > firstColumn) {
+						RefreshOccupancyRows(firstRow, endRow, firstColumn, endColumn);
+						uploadFirstColumn = std::min(uploadFirstColumn, firstColumn);
+						uploadEndColumn = std::max(uploadEndColumn, endColumn);
+						changedFirstColumn = std::min(changedFirstColumn, firstColumn);
+						changedEndColumn = std::max(changedEndColumn, endColumn);
+						changedFirstRow = std::min(changedFirstRow, firstRow);
+						changedEndRow = std::max(changedEndRow, endRow);
+					}
+				}
+				if (uploadEndColumn > uploadFirstColumn) {
+					UploadOccupancyRect(firstRow, endRow, uploadFirstColumn, uploadEndColumn);
+				}
+			}
 		}
 		// The lamps around it are relit in the lamp cache, as far as the cells the shadows read were refreshed.
-		int changedMinX = changedFirstColumn * m_CellSize;
-		int changedEndX = changedEndColumn * m_CellSize;
-		int changedMinY = changedFirstRow * m_CellSize;
-		int changedEndY = changedEndRow * m_CellSize;
-		if (m_LampDirtyEndX > m_LampDirtyMinX && m_LampDirtyEndY > m_LampDirtyMinY) {
-			m_LampDirtyMinX = std::min(m_LampDirtyMinX, changedMinX);
-			m_LampDirtyMinY = std::min(m_LampDirtyMinY, changedMinY);
-			m_LampDirtyEndX = std::max(m_LampDirtyEndX, changedEndX);
-			m_LampDirtyEndY = std::max(m_LampDirtyEndY, changedEndY);
-		} else {
-			m_LampDirtyMinX = changedMinX;
-			m_LampDirtyMinY = changedMinY;
-			m_LampDirtyEndX = changedEndX;
-			m_LampDirtyEndY = changedEndY;
+		if (changedEndColumn > changedFirstColumn && changedEndRow > changedFirstRow) {
+			int changedMinX = changedFirstColumn * m_CellSize;
+			int changedEndX = changedEndColumn * m_CellSize;
+			int changedMinY = changedFirstRow * m_CellSize;
+			int changedEndY = changedEndRow * m_CellSize;
+			if (m_LampDirtyEndX > m_LampDirtyMinX && m_LampDirtyEndY > m_LampDirtyMinY) {
+				m_LampDirtyMinX = std::min(m_LampDirtyMinX, changedMinX);
+				m_LampDirtyMinY = std::min(m_LampDirtyMinY, changedMinY);
+				m_LampDirtyEndX = std::max(m_LampDirtyEndX, changedEndX);
+				m_LampDirtyEndY = std::max(m_LampDirtyEndY, changedEndY);
+			} else {
+				m_LampDirtyMinX = changedMinX;
+				m_LampDirtyMinY = changedMinY;
+				m_LampDirtyEndX = changedEndX;
+				m_LampDirtyEndY = changedEndY;
+			}
+			terrainChangedArea = glm::ivec4(changedMinX, changedMinY, changedEndX, changedEndY);
 		}
 	}
+	bool terrainChanged = changedTiles > 0;
 	RecomputeSkyline();
 	UpdateFlowField();
 	if (m_WallChangeEndColumn > m_WallChangeMinColumn && m_WallChangeEndRow > m_WallChangeMinRow) {
@@ -1768,8 +1829,13 @@ void SceneLighting::Update() {
 	GLint previousViewport[4];
 	glGetIntegerv(GL_VIEWPORT, previousViewport);
 	logStages.Next("Light grid: sky light spreading");
-	// Sky light spreads a cell a step, so it gets more steps while the ground is changing, to keep up with it.
-	PropagateSkyLight(m_Settings.PropagationIterationsPerFrame * (terrainChanged ? 3 : 1));
+	// Sky light spreads a cell a step, so it gets more steps while the ground is changing, to keep up with it: up to three times as many, by how much
+	// changed (16 tiles of 32 px or more get all of them; one small hole gets one more), so a trickle of liquid doesn't triple the passes every frame.
+	int iterations = m_Settings.PropagationIterationsPerFrame;
+	if (terrainChanged) {
+		iterations += std::min(2 * iterations, (2 * iterations * changedTiles + 15) / 16);
+	}
+	PropagateSkyLight(iterations);
 	logStages.Next("Light grid: scorch marks and stains");
 	if (UpdateDecalGroundMaterials()) {
 		// Which materials flow changed (a new scene's liquids, or settings): what counts as ground is worked out afresh, without wiping anything for it.

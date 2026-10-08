@@ -7,6 +7,8 @@
 #include "Color.h"
 
 #include <mutex>
+#include <vector>
+#include <memory>
 
 namespace RTE {
 
@@ -196,22 +198,20 @@ namespace RTE {
 		}
 
 		/// Records that the material pixels in a box changed, for terrain changed by drawing straight to the material bitmap rather than through SetMaterialPixel. Safe to call from any thread.
-		/// The box may be unwrapped (running past the scene's edges): whatever reads it takes that as a change on both sides of the seam.
+		/// The box may be unwrapped (running past the scene's edges): on a wrapping axis it is wrapped round, on the other the part outside is dropped.
 		/// @param minX, minY, maxX, maxY The box, in scene pixels, both ends included.
-		static void NoteMaterialChangeBox(int minX, int minY, int maxX, int maxY) {
-			NoteMaterialChange(minX, minY);
-			NoteMaterialChange(maxX, maxY);
-		}
+		static void NoteMaterialChangeBox(int minX, int minY, int maxX, int maxY);
 
-		/// Takes the box around every material pixel changed since this was last called, for whatever keeps its own picture of the terrain up to date (the lighting's grid).
-		/// @return False if nothing changed. Otherwise the box is in the arguments, in scene pixels, both ends included.
-		static bool TakeChangedArea(int& minX, int& minY, int& maxX, int& maxY) {
-			minX = s_ChangedMinX.exchange(INT_MAX, std::memory_order_relaxed);
-			minY = s_ChangedMinY.exchange(INT_MAX, std::memory_order_relaxed);
-			maxX = s_ChangedMaxX.exchange(INT_MIN, std::memory_order_relaxed);
-			maxY = s_ChangedMaxY.exchange(INT_MIN, std::memory_order_relaxed);
-			return maxX >= minX && maxY >= minY;
-		}
+		/// The size of a tile of the changed-terrain map, in scene pixels (see TakeChangedTiles).
+		static constexpr int c_ChangeTileSize = 32;
+
+		/// Takes the tiles of the changed-terrain map that had a material pixel changed since this was last called, for whatever keeps its own picture of the
+		/// terrain up to date (the lighting's grid), and clears them. Changes in separate places stay separate: two craters at either end of the map are two
+		/// tiles, not the scene between them.
+		/// @param tiles Filled with one bit per tile, row by row, 64 tiles a word, bit (index % 64) of word (index / 64) for tile index y * tilesWide + x.
+		/// @param tilesWide, tilesHigh Set to the map's size in tiles (c_ChangeTileSize pixels each); 0 when no terrain has been loaded.
+		/// @return Whether any tile had changed.
+		static bool TakeChangedTiles(std::vector<uint64_t>& tiles, int& tilesWide, int& tilesHigh);
 
 		/// Indicates whether a terrain pixel is of Air or Cavity material.
 		/// @param pixelX The X coordinate of the pixel to check.
@@ -336,17 +336,58 @@ namespace RTE {
 		SLTerrain(const SLTerrain& reference) = delete;
 		SLTerrain& operator=(const SLTerrain& rhs) = delete;
 	private:
-		/// Widens the box of changed material pixels to take in one more. Called from wherever terrain is changed, which may be several threads at once.
-		static void NoteMaterialChange(int x, int y) {
-			for (int seen = s_ChangedMinX.load(std::memory_order_relaxed); x < seen && !s_ChangedMinX.compare_exchange_weak(seen, x, std::memory_order_relaxed);) {}
-			for (int seen = s_ChangedMaxX.load(std::memory_order_relaxed); x > seen && !s_ChangedMaxX.compare_exchange_weak(seen, x, std::memory_order_relaxed);) {}
-			for (int seen = s_ChangedMinY.load(std::memory_order_relaxed); y < seen && !s_ChangedMinY.compare_exchange_weak(seen, y, std::memory_order_relaxed);) {}
-			for (int seen = s_ChangedMaxY.load(std::memory_order_relaxed); y > seen && !s_ChangedMaxY.compare_exchange_weak(seen, y, std::memory_order_relaxed);) {}
+		/// The changed-terrain map: one bit per c_ChangeTileSize square of the loaded scene, set by any thread that changes material, taken by the lighting.
+		struct ChangeTiles {
+			int SceneWidth = 0;
+			int SceneHeight = 0;
+			int TilesWide = 0;
+			int TilesHigh = 0;
+			bool WrapX = false;
+			bool WrapY = false;
+			size_t WordCount = 0;
+			std::unique_ptr<std::atomic<uint64_t>[]> Words;
+		};
+
+		/// Makes a new, empty changed-terrain map for a scene being loaded (main thread, nothing else running). The one it replaces is kept until the next
+		/// load, so a thread that had just looked it up still writes to live memory.
+		static void ResetChangeTiles(int sceneWidth, int sceneHeight, bool wrapX, bool wrapY);
+
+		/// Marks one tile of the map as changed, by its tile coordinates in the map (both in range).
+		static void MarkChangeTile(ChangeTiles& map, int tileX, int tileY) {
+			size_t index = static_cast<size_t>(tileY) * map.TilesWide + tileX;
+			std::atomic<uint64_t>& word = map.Words[index / 64];
+			uint64_t bit = uint64_t{1} << (index % 64);
+			// Mostly already set while the lighting hasn't taken it: a plain read then, no write to share between threads.
+			if ((word.load(std::memory_order_relaxed) & bit) == 0) {
+				word.fetch_or(bit, std::memory_order_relaxed);
+			}
 		}
 
-		static inline std::atomic<int> s_ChangedMinX{INT_MAX}; //!< The box around the material pixels changed since it was last taken.
-		static inline std::atomic<int> s_ChangedMinY{INT_MAX};
-		static inline std::atomic<int> s_ChangedMaxX{INT_MIN};
-		static inline std::atomic<int> s_ChangedMaxY{INT_MIN};
+		/// Marks the tile of one changed material pixel. Called from wherever terrain is changed, which may be several threads at once.
+		static void NoteMaterialChange(int x, int y) {
+			ChangeTiles* map = s_ChangeTiles.load(std::memory_order_acquire);
+			if (!map) {
+				return;
+			}
+			// The pixel is wrapped into the scene before it is tiled (not the tile into the map: the last tile is a partial one when the scene isn't
+			// a multiple of the tile size, so a wrapped tile index would name the wrong pixels). Off a non-wrapping edge there is nothing to mark.
+			if (x < 0 || x >= map->SceneWidth) {
+				if (!map->WrapX) {
+					return;
+				}
+				x = ((x % map->SceneWidth) + map->SceneWidth) % map->SceneWidth;
+			}
+			if (y < 0 || y >= map->SceneHeight) {
+				if (!map->WrapY) {
+					return;
+				}
+				y = ((y % map->SceneHeight) + map->SceneHeight) % map->SceneHeight;
+			}
+			MarkChangeTile(*map, x / c_ChangeTileSize, y / c_ChangeTileSize);
+		}
+
+		static inline std::atomic<ChangeTiles*> s_ChangeTiles{nullptr}; //!< The current changed-terrain map, or null before any terrain is loaded.
+		static inline std::unique_ptr<ChangeTiles> s_CurrentChangeTiles; //!< Owns the current map.
+		static inline std::unique_ptr<ChangeTiles> s_RetiredChangeTiles; //!< Owns the map before it, kept for one more load (see ResetChangeTiles).
 	};
 } // namespace RTE

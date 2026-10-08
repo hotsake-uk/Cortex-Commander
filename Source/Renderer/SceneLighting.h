@@ -154,6 +154,7 @@ namespace RTE {
 		int m_SceneWidth = 0;
 		int m_SceneHeight = 0;
 		int m_CellSize = 4; //!< Size of a world grid cell, in scene pixels.
+		std::vector<uint64_t> m_ChangedTiles; //!< The terrain tiles changed since the last frame, as SLTerrain::TakeChangedTiles gives them (kept to reuse its memory).
 		int m_GridWidth = 0;
 		int m_GridHeight = 0;
 		bool m_WrapX = false;
@@ -355,6 +356,8 @@ namespace RTE {
 		void RefreshOccupancyRows(int firstRow, int endRow, int firstColumn = 0, int endColumn = -1);
 		void RecomputeSkyline();
 		void UploadOccupancyRows(int firstRow, int endRow);
+		/// Uploads a rectangle of the occupancy grid (rows and columns, the ends not included) to its texture.
+		void UploadOccupancyRect(int firstRow, int endRow, int firstColumn, int endColumn);
 
 		/// Works out the terrain distance field (m_ShadowField) again around a rectangle of grid cells whose walls changed, and uploads what changed.
 		/// Every cell within c_ShadowFieldCells of the rectangle is rewritten, from the walls within twice that.
