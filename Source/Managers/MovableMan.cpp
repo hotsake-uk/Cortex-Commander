@@ -1459,7 +1459,7 @@ void MovableMan::Update() {
 
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
 		for (MovableObject* mo: g_LuaMan.GetMasterScriptState().GetRegisteredMOs()) {
-			if (ValidMO(mo->GetRootParent())) {
+			if (mo && ValidMO(mo->GetRootParent())) {
 				mo->RunScriptedFunctionInAppropriateScripts(threadedUpdate, false, false, {}, {}, {});
 			}
 		}
@@ -1473,7 +1473,7 @@ void MovableMan::Update() {
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
 
 			                                                     for (MovableObject* mo: luaState.GetRegisteredMOs()) {
-				                                                     if (ValidMO(mo->GetRootParent())) {
+				                                                     if (mo && ValidMO(mo->GetRootParent())) {
 					                                                     mo->RunScriptedFunctionInAppropriateScripts(threadedUpdate, false, false, {}, {}, {});
 				                                                     }
 			                                                     }
@@ -1490,7 +1490,7 @@ void MovableMan::Update() {
 
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
 		for (MovableObject* mo: g_LuaMan.GetMasterScriptState().GetRegisteredMOs()) {
-			if (ValidMO(mo->GetRootParent())) {
+			if (mo && ValidMO(mo->GetRootParent())) {
 				mo->RunScriptedFunctionInAppropriateScripts(syncedUpdate, false, false, {}, {}, {});
 			}
 		}
@@ -1500,7 +1500,7 @@ void MovableMan::Update() {
 			g_LuaMan.SetThreadLuaStateOverride(&luaState);
 
 			for (MovableObject* mo: luaState.GetRegisteredMOs()) {
-				if (mo->HasRequestedSyncedUpdate()) {
+				if (mo && mo->HasRequestedSyncedUpdate()) {
 					mo->RunScriptedFunctionInAppropriateScripts(syncedUpdate, false, false, {}, {}, {});
 					mo->ResetRequestedSyncedUpdateFlag();
 				}

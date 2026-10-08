@@ -323,7 +323,8 @@ void LuaAdaptersScene::CalculatePathAsync(Scene* luaSelfObject, const luabind::o
 	// As such, we need to store this function somewhere safely within our Lua state for us to access later when we need it
 	lua_State* luaState = mainthread(G(callback.interpreter())); // Get the main thread for the state, in case we're a temp lua thread
 
-	static int currentCallbackId = 0;
+	// (Atomic: threaded scripts' states ask from several threads at once.)
+	static std::atomic<int> currentCallbackId = 0;
 	int thisCallbackId = currentCallbackId++;
 	if (luabind::type(callback) == LUA_TFUNCTION && callback.is_valid()) {
 		luabind::call_function<void>(luaState, "_AddAsyncPathCallback", thisCallbackId, callback);
