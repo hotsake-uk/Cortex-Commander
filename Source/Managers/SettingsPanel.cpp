@@ -264,8 +264,6 @@ void DebugMan::SettingsGUI() {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
-		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
-		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
 		if (int strikes = static_cast<int>(WeatherLightning::GetStrikes()); Combo("Storm lightning", &strikes, "In the sky only\0Strikes the ground, starts fires\0Strikes the ground, fires and hurts units\0")) {
 			WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(strikes, 0, 2)));
@@ -482,7 +480,9 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
 		}
-		Toggle("Loose sand and snow slide", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Loose ground (sand, snow, gravel, glass) slides", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
+		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
 		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
@@ -874,7 +874,7 @@ void DebugMan::SettingsGUI() {
 			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0")) {
 				g_SettingsMan.SetWorldSimOverlay(world);
 			}
-			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid pixels on the move (blue). Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
+			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
 		}
 	};
 

@@ -55,6 +55,109 @@ namespace SandboxDetail {
 
 
 
+	std::vector<std::string> PourableNames() {
+		std::vector<std::string> names;
+		for (int id = 1; id < 256; ++id) {
+			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+			if (!material || material->GetIndex() != id) {
+				continue;
+			}
+			const std::string& name = material->GetPresetName();
+			// (The powder rule is FluidSim's own, BuildTables: Powder set, or unset and one of the stock powder names. Liquids it says itself.)
+			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			bool powderByName = name == "Sand" || name == "Snow" || name == "Earth Rubble" || name == "Ashes";
+			bool powder = FluidSim::PowdersEnabled() && !FluidSim::IsLiquid(id) && (behaviour.Powder >= 0 ? behaviour.Powder == 1 : powderByName);
+			if (FluidSim::IsLiquid(id) || powder) {
+				names.push_back(name);
+			}
+		}
+		std::sort(names.begin(), names.end());
+		names.erase(std::unique(names.begin(), names.end()), names.end());
+		return names;
+	}
+
+	bool PoursLiquid(Tool kind) {
+		switch (kind) {
+			case Tool::Water:
+			case Tool::Lava:
+			case Tool::Acid:
+			case Tool::Oil:
+			case Tool::Mud:
+			case Tool::Tar:
+			case Tool::Mercury:
+			case Tool::Fuel:
+			case Tool::Cryo:
+			case Tool::Blood:
+			case Tool::PourOther:
+			case Tool::WaterSpawner:
+			case Tool::BuildTank:
+				return true;
+			default:
+				return PoursPowder(kind);
+		}
+	}
+
+	bool PoursPowder(Tool kind) {
+		return kind == Tool::LooseSand || kind == Tool::LooseSnow || kind == Tool::Gravel || kind == Tool::GlassShards;
+	}
+
+	const char* ToolUnavailableReason(Tool kind) {
+		if (PoursLiquid(kind) && !FluidSim::IsEnabled()) {
+			return "Flowing liquids are off (World > Simulations, or F6 > Water): nothing is poured.";
+		}
+		if (PoursPowder(kind) && !FluidSim::PowdersEnabled()) {
+			return "Loose ground is off (World > Simulations, or F6 > Water): sand, snow, gravel and glass aren't poured.";
+		}
+		return nullptr;
+	}
+
+	const char* ToolTipText(Tool kind) {
+		switch (kind) {
+			case Tool::Fire:
+				return "Sets what burns alight: grass, wood, oil and fuel catch; rock doesn't.";
+			case Tool::Water:
+				return "Flows, pools and puts out fire. Freezes in snowy weather if that is on.";
+			case Tool::Lava:
+				return "Slow and heavy. Sets things alight, burns units and turns to stone where it meets water.";
+			case Tool::Acid:
+				return "Eats through soft ground and hurts units standing in it.";
+			case Tool::Oil:
+				return "A dark, glossy liquid that floats on water and burns.";
+			case Tool::Smoke:
+				return "Thick smoke that drifts with the wind and hides units from sight.";
+			case Tool::ToxicGas:
+				return "Poisonous gas that hurts units in it.";
+			case Tool::Mud:
+				return "Thick and slow; units wade through it sluggishly. Dries back to earth over time.";
+			case Tool::Tar:
+				return "Very sticky: units get stuck in it. Burns slowly.";
+			case Tool::Mercury:
+				return "Heavy and harmful: units float high on it and are hurt by it.";
+			case Tool::Fuel:
+				return "Runs like water and explodes when it burns.";
+			case Tool::Cryo:
+				return "Freezes water it touches, chills and frosts units, and boils off over time.";
+			case Tool::Blood:
+				return "Runs and pools, then soaks away. Turns on \"Spilt blood runs and pools\" (F6 > Water) if it is off.";
+			case Tool::PourOther:
+				return "Pours the liquid or powder chosen under \"More...\": every one the game has, mods' included (rubble, ash, ...).";
+			case Tool::WaterSpawner:
+				return "Click to place a spring that keeps pouring, as wide as the brush. What it pours and how fast are set under Springs.";
+			case Tool::LooseSand:
+				return "Falls and piles into slopes.";
+			case Tool::LooseSnow:
+				return "Falls and piles, a little sticky; melts to water.";
+			case Tool::Gravel:
+				return "Falls and piles like sand, heavier.";
+			case Tool::GlassShards:
+				return "Falls and piles, and cuts units walking through it.";
+			case Tool::BuildTank:
+				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
+			default:
+				return nullptr;
+		}
+	}
+
 	ToolLook LookOf(Tool kind) {
 		switch (kind) {
 			case Tool::None:
@@ -115,6 +218,10 @@ namespace SandboxDetail {
 				return {Icon::Drop, IM_COL32(220, 190, 60, 255)};
 			case Tool::Cryo:
 				return {Icon::Drop, IM_COL32(180, 235, 255, 255)};
+			case Tool::Blood:
+				return {Icon::Drop, IM_COL32(170, 20, 25, 255)};
+			case Tool::PourOther:
+				return {Icon::Grains, IM_COL32(200, 180, 150, 255)};
 			case Tool::WaterSpawner:
 				return {Icon::Down, IM_COL32(90, 170, 240, 255)};
 			case Tool::Smoke:
@@ -333,8 +440,13 @@ namespace SandboxDetail {
 			}
 			ImGui::PushID(index);
 			ImVec2 at = ImGui::GetCursorScreenPos();
+			// A tool its simulation is off for does nothing: shown greyed, with the reason (it can still be taken, to work once it's on).
+			const char* unavailable = ToolUnavailableReason(kind);
 			if (ImGui::InvisibleButton("##tool", ImVec2(width, height))) {
 				TookTool(index);
+			}
+			if (const char* tip = ToolTipText(kind); tip || unavailable) {
+				ImGui::SetItemTooltip("%s%s%s", tip ? tip : "", tip && unavailable ? "\n\n" : "", unavailable ? unavailable : "");
 			}
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
 				TogglePin(kind, "");
@@ -345,6 +457,9 @@ namespace SandboxDetail {
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
 			ToolLook look = LookOf(kind);
+			if (unavailable) {
+				look.Color = (look.Color & 0x00FFFFFF) | (static_cast<ImU32>(90) << IM_COL32_A_SHIFT);
+			}
 			DrawIcon(drawList, look.Art, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, look.Color);
 			if (FindPin(kind, "") >= 0) {
 				DrawPinMark(drawList, at, to);
@@ -353,7 +468,7 @@ namespace SandboxDetail {
 			float wrap = width - pad;
 			ImVec2 nameSize = ImGui::CalcTextSize(name, nullptr, false, wrap);
 			ImGui::PushClipRect(at, to, true);
-			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name, nullptr, wrap);
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : (unavailable ? ImGuiCol_TextDisabled : ImGuiCol_Text)), name, nullptr, wrap);
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}

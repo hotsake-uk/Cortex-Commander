@@ -633,7 +633,8 @@ void Sandbox::DrawGUI() {
 		} else if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			s_StrokeTimer -= io.DeltaTime;
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || s_StrokeTimer <= 0.0F) {
-				s_StrokeTimer = tool.Interval;
+				// (The Flow slider: the pouring brushes pour less often.)
+				s_StrokeTimer = PoursLiquid(tool.Kind) ? tool.Interval / std::clamp(s_Flow, 0.1F, 1.0F) : tool.Interval;
 				QueueStroke(tool.Kind, position);
 			}
 		}
@@ -975,19 +976,65 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
-				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo});
-				ImGui::SeparatorText("Water that keeps coming");
+				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther});
+				{
+					// Every other pourable (rubble, ash, mods' liquids), for the "Other" tool.
+					std::vector<std::string> pourables = PourableNames();
+					if (s_OtherPourable.empty() && !pourables.empty()) {
+						s_OtherPourable = std::find(pourables.begin(), pourables.end(), "Earth Rubble") != pourables.end() ? "Earth Rubble" : pourables.front();
+					}
+					if (ImGui::BeginCombo("More...", s_OtherPourable.empty() ? "(nothing pourable)" : s_OtherPourable.c_str())) {
+						for (const std::string& name: pourables) {
+							if (ImGui::Selectable(name.c_str(), name == s_OtherPourable)) {
+								s_OtherPourable = name;
+								TookTool(ToolIndex(Tool::PourOther));
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SetItemTooltip("Every liquid and powder the game pours, mods' included. Picking one takes the Other tool.");
+				}
+				ImGui::SliderFloat("Flow", &s_Flow, 0.1F, 1.0F, "%.2f");
+				ImGui::SetItemTooltip("How fast the liquid and loose-ground brushes pour while held. 1: as fast as they go.");
+				ImGui::SeparatorText("Springs");
 				ToolButtons({Tool::WaterSpawner});
-				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");
 				ImGui::SameLine();
 				ImGui::BeginDisabled(s_WaterSpawners.empty());
-				if (ToolUI::Button("Remove all water spawners")) {
+				if (ToolUI::Button("Remove all springs")) {
 					QueueSimChange(Tool::ClearWaterSpawners);
 				}
 				ImGui::EndDisabled();
-				if (!s_WaterSpawners.empty()) {
+				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str())) {
+					for (const std::string& name: PourableNames()) {
+						if (ImGui::Selectable(name.c_str(), name == s_SpringLiquid)) {
+							s_SpringLiquid = name;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::SetItemTooltip("What new springs pour, and what the Boom tab's tank is filled with.");
+				ImGui::SliderFloat("Spring rate", &s_SpringRate, 0.05F, 1.0F, "%.2f");
+				ImGui::SetItemTooltip("How much of the time new springs pour. 1: they keep the air around them full.");
+				// Each spring: what it pours, on or off, removed (as the overlay's Delete does, from the ImGui frame).
+				int removeSpring = -1;
+				for (size_t i = 0; i < s_WaterSpawners.size(); ++i) {
+					WaterSpawner& spring = s_WaterSpawners[i];
+					ImGui::PushID(static_cast<int>(i));
+					ToolUI::Checkbox("##on", &spring.On);
+					ImGui::SetItemTooltip("Pouring. Off, it stays put and pours nothing.");
 					ImGui::SameLine();
-					ImGui::TextDisabled("%d pouring", static_cast<int>(s_WaterSpawners.size()));
+					ImGui::Text("%s, %d px, at %d,%d", spring.Liquid.c_str(), spring.Radius, spring.Position.GetFloorIntX(), spring.Position.GetFloorIntY());
+					ImGui::SameLine();
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
+					ImGui::SliderFloat("##rate", &spring.Rate, 0.05F, 1.0F, "rate %.2f");
+					ImGui::SameLine();
+					if (ToolUI::Button("x")) {
+						removeSpring = static_cast<int>(i);
+					}
+					ImGui::PopID();
+				}
+				if (removeSpring >= 0) {
+					s_WaterSpawners.erase(s_WaterSpawners.begin() + removeSpring);
 				}
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
@@ -999,7 +1046,7 @@ void Sandbox::DrawGUI() {
 					QueueSimChange(Tool::UndoTerrain);
 				}
 				ImGui::EndDisabled();
-				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time.");
+				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time, up to about 8 million pixels in all: the oldest go first, and a stroke held for more than a few seconds is undone in parts.");
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
@@ -1095,6 +1142,33 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
+				// The world simulations the Paint tools need, here as well as in F6, so a brush that does nothing says why and can be fixed on the spot.
+				ImGui::SeparatorText("Simulations");
+				{
+					bool liquids = FluidSim::IsEnabled();
+					if (ToolUI::Checkbox("Flowing liquids", &liquids)) {
+						FluidSim::SetEnabled(liquids);
+					}
+					ImGui::SetItemTooltip("Off: liquids stay where they are and nothing more can be poured.");
+					ImGui::SameLine();
+					bool powders = FluidSim::PowdersEnabled();
+					if (ToolUI::Checkbox("Loose ground", &powders)) {
+						FluidSim::SetPowdersEnabled(powders);
+					}
+					ImGui::SetItemTooltip("Sand, snow, gravel and glass slide and pile. Off: they can't be poured.");
+					ImGui::SameLine();
+					bool blood = FluidSim::BloodFlows();
+					if (ToolUI::Checkbox("Blood flows", &blood)) {
+						FluidSim::SetBloodFlows(blood);
+					}
+					ImGui::SetItemTooltip("Spilt blood runs and pools, then soaks away. Off: it stays where it fell.");
+					ImGui::SameLine();
+					bool freezing = FluidSim::FreezingEnabled();
+					if (ToolUI::Checkbox("Freezing", &freezing)) {
+						FluidSim::SetFreezingEnabled(freezing);
+					}
+					ImGui::SetItemTooltip("Still water freezes over in snowy weather.");
+				}
 				ImGui::Text("%d burning, %d liquid pixels flowing", TerrainFire::GetCount(), FluidSim::GetActiveCount());
 				if (ToolUI::Button("Put out all fire")) {
 					TerrainFire::Clear();
@@ -1171,8 +1245,15 @@ void Sandbox::Update() {
 	UpdateMoveWatch();
 	UpdateIncoming();
 	UpdateEffects();
-	for (const WaterSpawner& spawner: s_WaterSpawners) {
-		FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), "Water");
+	for (WaterSpawner& spawner: s_WaterSpawners) {
+		if (!spawner.On) {
+			continue;
+		}
+		spawner.Due += std::clamp(spawner.Rate, 0.05F, 1.0F);
+		if (spawner.Due >= 1.0F) {
+			spawner.Due -= 1.0F;
+			FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), spawner.Liquid.c_str());
+		}
 	}
 	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and auto battle kept dropping waves,
 	// all on units held still. (Its wave clocks are held back as well, so the waves don't all come at once after.) Attackers pick their own

@@ -153,7 +153,7 @@ namespace {
 			bool hovered = pointedAt(at);
 			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(90, 170, 255, 230);
 			drawList->AddCircle(at, std::max(static_cast<float>(spawner.Radius) / scale, 4.0F), color, 0, 2.0F);
-			std::string text = "water " + std::to_string(spawner.Radius) + " px";
+			std::string text = spawner.Liquid + " " + std::to_string(spawner.Radius) + " px" + (spawner.On ? "" : " (off)");
 			if (hovered) {
 				text += "  (Delete: remove)";
 				if (removeKey && removeEffect < 0) {
