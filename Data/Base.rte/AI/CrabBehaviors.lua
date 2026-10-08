@@ -296,6 +296,7 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 	-- that can't reach or can't see its target for a second and a half works round to somewhere it can (a turret can't move).
 	local PrjDat;
 	local BlockedTimer;
+	local OutOfReachTimer; -- (A turret's: how long its target has been out of its reach.)
 
 	-- spin up asap
 	if Owner.FirearmActivationDelay > 0 then
@@ -332,6 +333,16 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 			local ballistic = Dist:MagnitudeIsLessThan(PrjDat.rng) and HumanBehaviors.GetAngleToHit(PrjDat, Dist) or nil;
 			if not ballistic and not AI.isTurret and BlockedTimer == nil then
 				BlockedTimer = Timer();
+			end
+			-- A turret can't go after a target out of its reach: after three seconds it lets it go, to take a nearer one.
+			if AI.isTurret and not ballistic then
+				OutOfReachTimer = OutOfReachTimer or Timer();
+				if OutOfReachTimer:IsPastSimMS(3000) then
+					AI.fire = false;
+					break;
+				end
+			else
+				OutOfReachTimer = nil;
 			end
 
 			-- add some filtered noise to the aim
