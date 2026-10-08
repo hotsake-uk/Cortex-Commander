@@ -93,7 +93,15 @@ void main() {
 		// The drop reaches where it is if the first solid point on its line is below it. Ground within a cell or so above it doesn't count, as with the march, which starts
 		// that far back so that the ground a drop is about to land on, blurred over its grid cell, doesn't shelter it.
 		float lead = (0.8 + seedA) * rteCellSize * direction.y;
-		reaches = head.y - lead <= ShelterFirst(head, (seedB - 0.5) * 2.0 * rteShelterSoftness) ? 1.0 : 0.0;
+		float nudge = (seedB - 0.5) * 2.0 * rteShelterSoftness;
+		float first = ShelterFirst(head, nudge);
+		if (head.y - lead > first) {
+			// Sheltered along the map's line, which is made for the weather's average fall. This drop falls at its own speed, so at the height of what sheltered
+			// it its own line has drifted sideways from the map's: look again from there, so slow snow and ash in a wind get in under an edge as far as they really do.
+			float ownSlope = -velocity.x / velocity.y;
+			first = ShelterFirst(head, nudge + (ownSlope - rteShelterSlope) * (head.y - first));
+		}
+		reaches = head.y - lead <= first ? 1.0 : 0.0;
 	} else {
 		reaches = Reaches(head, normalize(velocity + vec2((seedB - 0.5) * 60.0, 0.0)), seedA);
 	}
