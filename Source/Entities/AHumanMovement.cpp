@@ -1926,6 +1926,8 @@ int AHuman::MoveAlongRoute() {
 	} else {
 		mover.takeOffCommitted = false;
 		mover.noTakeOff = false;
+		// (No flight ahead any more: no fuel wait either. Left set, the wall sense and the stuck hop stayed off for the rest of the order.)
+		mover.fuelWaiting = false;
 	}
 	bool wantsClimb = above > h * 0.3F && (kind == PathStepKind::Jump || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y + h * 0.4F));
 	if (flightAhead && !CanWalkTo(landing, landingFloorY)) {
