@@ -239,6 +239,13 @@ namespace RTE {
 		/// @param team 0 to 3.
 		void SetDebugTeam(int team) { m_DebugTeam = std::clamp(team, 0, 3); }
 
+		/// Gets which units the unit inspector overlay labels with their AI state: 0 none, 1 the inspected ones (Ctrl+I, sandbox selection, the one a player controls), 2 every unit in view.
+		int UnitInspector() const { return m_UnitInspector; }
+
+		/// Sets which units the unit inspector labels; see UnitInspector.
+		/// @param which 0, 1 or 2.
+		void SetUnitInspector(int which) { m_UnitInspector = std::clamp(which, 0, 2); }
+
 		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
 		/// @param level 0, 1 or 2.
 		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 2); }
@@ -454,6 +461,7 @@ namespace RTE {
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
+		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).

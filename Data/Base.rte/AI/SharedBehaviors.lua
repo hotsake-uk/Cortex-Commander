@@ -1137,6 +1137,71 @@ function SharedBehaviors.ClimbPlan(AI, Owner, Top, NextPos)
 	return plan;
 end
 
+-- What the AI is doing, written into the unit's values for the engine's unit inspector (see Actor::GetDebugState and the "Unit inspector"
+-- option under AI debug): the behaviour, the climb stage, the target and whether it is in sight, the squad leader and slot, and the cover,
+-- flank and retreat spots. Written only while an overlay wants this unit's (Owner.DebugExport) and only when a value changes, and taken
+-- off again when the overlay stops wanting it, so normal play writes nothing.
+function SharedBehaviors.ExportDebugState(AI, Owner)
+	local Out = AI.debugExported;
+	if not Owner.DebugExport then
+		if Out then
+			for key, value in pairs(Out) do
+				if type(value) == "string" then
+					Owner:RemoveStringValue(key);
+				else
+					Owner:RemoveNumberValue(key);
+				end
+			end
+			AI.debugExported = nil;
+		end
+		AI.climbTick = nil;
+		return;
+	end
+	if not Out then
+		Out = {};
+		AI.debugExported = Out;
+	end
+	local function Put(key, value)
+		local old = Out[key];
+		if old == value then
+			return;
+		end
+		if old ~= nil and (value == nil or type(old) ~= type(value)) then
+			if type(old) == "string" then
+				Owner:RemoveStringValue(key);
+			else
+				Owner:RemoveNumberValue(key);
+			end
+		end
+		Out[key] = value;
+		if type(value) == "string" then
+			Owner:SetStringValue(key, value);
+		elseif value ~= nil then
+			Owner:SetNumberValue(key, value);
+		end
+	end
+	local function PutSpot(name, Spot)
+		Put(name .. "X", Spot and math.floor(Spot.X) or nil);
+		Put(name .. "Y", Spot and math.floor(Spot.Y) or nil);
+	end
+	Put("AI_Behavior", AI.BehaviorName);
+	-- (ClimbUpdate leaves its plan in AI.climbTick each tick it runs; taken here, so a climb dropped anywhere stops showing.)
+	Put("AI_ClimbStage", AI.climbTick and AI.climbTick.stage or nil);
+	AI.climbTick = nil;
+	local Target = AI.Target or AI.UnseenTarget;
+	if Target and not MovableMan:ValidMO(Target) then
+		Target = nil;
+	end
+	Put("AI_TargetID", Target and Target.UniqueID or nil);
+	Put("AI_TargetSeen", Target and (AI.Target and 1 or 0) or nil);
+	local inSquad = Owner.AIMode == Actor.AIMODE_SQUAD and AI.squadLeaderID ~= nil;
+	Put("AI_SquadLeaderID", inSquad and AI.squadLeaderID or nil);
+	Put("AI_SquadSlot", inSquad and AI.squadSlot or nil);
+	PutSpot("AI_Cover", AI.Cover and AI.Cover.Spot);
+	PutSpot("AI_Flank", AI.Flank and AI.Flank.Spot);
+	PutSpot("AI_Retreat", AI.Retreat and AI.Retreat.Spot);
+end
+
 -- One tick of a climb. Sets the jet on AI. @return status ("run", "done" or "fail"), the lateral move, the aim angle, and a reason
 -- when it failed.
 function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
@@ -1150,6 +1215,7 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 	local aim = math.pi * 0.5;
 	AI.jetLeanX = 0;
 	AI.jetSteady = false;
+	AI.climbTick = plan; -- For the unit inspector (see ExportDebugState).
 
 	local function Trace(text)
 		if Owner:IsAITracedOn("Climb") then
