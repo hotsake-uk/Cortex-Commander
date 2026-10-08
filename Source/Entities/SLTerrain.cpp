@@ -657,6 +657,7 @@ void SLTerrain::CleanAir() {
 			              }
 		              }
 	              });
+	NoteMaterialChangeBox(0, 0, m_MainBitmap->w - 1, m_MainBitmap->h - 1);
 }
 
 void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {
@@ -696,6 +697,7 @@ void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {
 			}
 		}
 	}
+	NoteMaterialChangeBox(box.m_Corner.GetFloorIntX(), box.m_Corner.GetFloorIntY(), static_cast<int>(box.m_Corner.GetX() + box.m_Width) - 1, static_cast<int>(box.m_Corner.GetY() + box.m_Height) - 1);
 }
 
 // TODO: OPTIMIZE THIS, IT'S A TIME HOG. MAYBE JSUT STAMP THE OUTLINE AND SAMPLE SOME RANDOM PARTICLES?
@@ -782,6 +784,8 @@ std::deque<MOPixel*> SLTerrain::EraseSilhouette(BITMAP* sprite, const Vector& po
 	}
 	// TODO: improve fit/tightness of box here.
 	m_UpdatedMaterialAreas.emplace_back(Box(pos - pivot, static_cast<float>(maxWidth), static_cast<float>(maxHeight)));
+	// The lighting's grid needs to know too: the erased area is the temp bitmap's square around pos, unwrapped.
+	NoteMaterialChangeBox(pos.GetFloorIntX() - tempBitmap->w / 2, pos.GetFloorIntY() - tempBitmap->h / 2, pos.GetFloorIntX() - tempBitmap->w / 2 + tempBitmap->w - 1, pos.GetFloorIntY() - tempBitmap->h / 2 + tempBitmap->h - 1);
 
 	return dislodgedMOPixels;
 }
