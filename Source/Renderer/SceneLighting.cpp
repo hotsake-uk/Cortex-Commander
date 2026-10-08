@@ -637,7 +637,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetBool("rteStainsEnabled", m_Settings.Stains);
 
 	// Hot spots: the most recent marks, cooling over HotSpotSeconds.
-	const std::vector<PostProcessMan::ScorchMark>& hotMarks = g_PostProcessMan.GetHotScorchMarks(std::max(m_Settings.HotSpotSeconds, 0.01F));
+	std::vector<PostProcessMan::ScorchMark> hotMarks = g_PostProcessMan.GetHotScorchMarks(std::max(m_Settings.HotSpotSeconds, 0.01F));
 	float now = PostProcessMan::GetSmoothSimTime();
 	std::array<glm::vec4, 16> hotSpots{};
 	int hotSpotCount = 0;
