@@ -439,6 +439,8 @@ Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) last
 
 Every kind of weather is a `Weather` preset, the built-in four included (`Base.rte/Weather/Weather.ini`). It says how the drops look and move and what the weather does to the sky and the ground; it is purely visual. What rain, snow and dust do to the game (damping fire, slowing walkers, cutting sight) goes by the built-in slots 1 to 4, whatever their presets look like.
 
+Besides the built-in four, the game has its own extra weather in `Base.rte/Weather/MoreWeather.ini` (shown with "More weather types" on): **Acid Rain** (glowing green rain that wobbles and fizzes, green splashes, a sickly light; its own drop shader), **Ember Storm** (glowing embers rising and swirling on a hot wind), **Spore Drift** (slow glowing spores that circle and breathe light), **Starfall** (a few long blazing streaks), **Static Storm** (crackling sparks that jump about, constant lightning), **Diamond Dust** (glittering ice crystals and a light frost) and **Void Rain** (violet rain that falls up, glowing at its edges; its own drop shader). They are good starting points for a mod's own.
+
 The weather menu, `WeatherType` and Lua number the types: 0 clear, 1 to 4 the presets named `Rain`, `Snow`, `Ash Fall` and `Dust Storm`, then every other Weather preset in the order the modules load. A mod **changes** a built-in type by defining a Weather with its name, and **adds** one with any other name. Scenes and Lua can also pick weather by name.
 
 ```ini
