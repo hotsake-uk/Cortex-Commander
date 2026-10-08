@@ -346,6 +346,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
+		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);
+		Tip("Oil is a dark, glossy sheet, mud a dull brown, slime a glowing bubbling green and mercury a silver mirror. Off: they are all drawn as water. Water, lava and acid look the same either way.");
 		Heading("Reflections");
 		Check("Water reflects and refracts", &settings.WaterReflections);
 		Tip("Pools mirror what's above them, the wall behind the water shows through bent by the ripples and darker with depth, and the rippled surface catches lamps and the sun. Off: water is drawn as before, flat and tinted. On from the Medium preset up.");

@@ -85,11 +85,33 @@ namespace RTE {
 		/// Returns the texture marking which palette colors glow (256x1, R = emissive strength), so indexed art can be emissive without new assets.
 		GLuint GetEmissivePaletteTexture() const { return m_EmissivePaletteTexture; }
 
-		/// Marks a palette color as a liquid (for the terrain shader's water, lava and acid looks) and optionally as emissive.
+		/// How the terrain shader draws one liquid look (Terrain.frag's rteLiquid* tables).
+		struct LiquidLook {
+			glm::vec4 Shallow; //!< RGB colour near the surface (molten: the cool colour; bubbling: the bubbles' colour), A opacity there.
+			glm::vec4 Deep; //!< RGB colour in the depths (molten: the hot colour), A opacity there.
+			glm::vec4 Surface; //!< x shine, y metalness, z how much the ripples tilt it, w how strongly light plays through it in lines.
+			glm::vec4 Style; //!< x 0 clear, 1 molten, 2 bubbling; y how much it froths when thin; z its own glow; w 1 if it reflects like water.
+			glm::vec4 Line; //!< RGB the colour of its surface line where it meets open air, A how strongly.
+		};
+		static constexpr int c_MaxLiquidLooks = 16; //!< Looks 0 (not a liquid) to 15. Must match Terrain.frag.
+
+		/// Marks a palette color as a liquid (for the terrain shader's liquid looks) and optionally as emissive.
 		/// @param paletteIndex The palette color.
-		/// @param liquidKind 0 none, 1 water, 2 lava, 3 acid.
+		/// @param liquidLook 0 none, 1 water, 2 lava, 3 acid, 4 oil, 5 mud, 6 slime, 7 mercury, 8 to 15 free (drawn as water until set with SetLiquidLook).
 		/// @param emissive How strongly the color glows, 0 to 255.
-		void SetLiquidPaletteColor(int paletteIndex, int liquidKind, int emissive);
+		void SetLiquidPaletteColor(int paletteIndex, int liquidLook, int emissive);
+
+		/// Sets how a liquid look is drawn, for new liquids. Looks 1 to 3 are the game's water, lava and acid.
+		/// @param look 1 to 15.
+		/// @param liquidLook The look.
+		void SetLiquidLook(int look, const LiquidLook& liquidLook) {
+			if (look > 0 && look < c_MaxLiquidLooks) {
+				m_LiquidLooks[look] = liquidLook;
+			}
+		}
+
+		/// Gets the liquid looks, by look number (0 unused).
+		const std::array<LiquidLook, c_MaxLiquidLooks>& GetLiquidLooks() const { return m_LiquidLooks; }
 
 		/// Makes a palette colour's glow pulse between two strengths (animated palette flags, LightingSettings::PaletteAnimation).
 		/// @param paletteIndex The colour, 1 to 255. @param low The glow at the bottom of the pulse, 0 to 1. @param high The glow at the top.
@@ -135,7 +157,26 @@ namespace RTE {
 		std::shared_ptr<BitmapTexture> m_ShapesTexture{nullptr};
 		std::shared_ptr<BitmapTexture> m_PaletteTexture{nullptr};
 		GLuint m_EmissivePaletteTexture{0};
-		std::array<unsigned char, 1024> m_EmissivePalette{}; //!< RGBA per palette color: R emissive, G vegetation, B liquid kind.
+		std::array<unsigned char, 1024> m_EmissivePalette{}; //!< RGBA per palette color: R emissive, G vegetation, B liquid look * 16.
+		std::array<LiquidLook, c_MaxLiquidLooks> m_LiquidLooks{MakeLiquidLooks()}; //!< How each liquid look is drawn.
+
+		/// The game's liquid looks. Water, lava and acid are exactly as they were drawn before the looks were a table.
+		static std::array<LiquidLook, c_MaxLiquidLooks> MakeLiquidLooks() {
+			const LiquidLook water{{0.27F, 0.6F, 0.8F, 0.6F}, {0.06F, 0.3F, 0.52F, 0.8F}, {0.9F, 0.0F, 1.0F, 1.0F}, {0.0F, 1.0F, 0.0F, 1.0F}, {0.82F, 0.94F, 1.0F, 1.0F}};
+			std::array<LiquidLook, c_MaxLiquidLooks> looks;
+			looks.fill(water);
+			looks[2] = {{0.75F, 0.15F, 0.02F, 1.0F}, {1.0F, 0.75F, 0.25F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+			looks[3] = {{0.85F, 1.0F, 0.45F, 1.0F}, {0.85F, 1.0F, 0.45F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {2.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+			// Oil: near black and nearly opaque, with an oily sheen and a faint violet line, reflecting a little.
+			looks[4] = {{0.10F, 0.08F, 0.06F, 0.92F}, {0.03F, 0.025F, 0.02F, 0.98F}, {0.95F, 0.0F, 0.5F, 0.15F}, {0.0F, 0.0F, 0.0F, 1.0F}, {0.35F, 0.3F, 0.4F, 0.5F}};
+			// Mud: brown, opaque and dull, barely rippling.
+			looks[5] = {{0.42F, 0.31F, 0.2F, 0.95F}, {0.25F, 0.18F, 0.11F, 1.0F}, {0.15F, 0.0F, 0.3F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {0.5F, 0.4F, 0.28F, 0.4F}};
+			// Slime: bubbling like acid, greener and glowing more.
+			looks[6] = {{0.55F, 1.0F, 0.35F, 1.0F}, {0.55F, 1.0F, 0.35F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {2.0F, 0.0F, 1.4F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+			// Mercury: a silver mirror, metal and glossy.
+			looks[7] = {{0.72F, 0.74F, 0.78F, 1.0F}, {0.55F, 0.57F, 0.62F, 1.0F}, {1.0F, 1.0F, 0.6F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}, {0.95F, 0.96F, 1.0F, 0.5F}};
+			return looks;
+		}
 
 		/// A palette colour whose glow pulses.
 		struct PalettePulse {

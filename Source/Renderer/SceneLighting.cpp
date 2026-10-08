@@ -618,6 +618,28 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
 	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
 	m_TerrainShader->SetFloat("rteWaterFoamBubbles", std::clamp(m_Settings.WaterFoamBubbles, 0.0F, 2.0F));
+	// The liquid looks. With distinct looks off, every look past acid is drawn as water, as all liquids but lava and acid were before.
+	{
+		std::array<RenderMan::LiquidLook, RenderMan::c_MaxLiquidLooks> looks = g_RenderMan.GetLiquidLooks();
+		if (!m_Settings.DistinctLiquidLooks) {
+			std::fill(looks.begin() + 4, looks.end(), looks[1]);
+		}
+		std::array<glm::vec4, RenderMan::c_MaxLiquidLooks> column;
+		auto upload = [&](const char* name, glm::vec4 RenderMan::LiquidLook::*part) {
+			for (int look = 0; look < RenderMan::c_MaxLiquidLooks; ++look) {
+				column[look] = looks[look].*part;
+			}
+			int32_t location = m_TerrainShader->GetUniformLocation(name);
+			if (location >= 0) {
+				glUniform4fv(location, RenderMan::c_MaxLiquidLooks, &column[0].x);
+			}
+		};
+		upload("rteLiquidShallow[0]", &RenderMan::LiquidLook::Shallow);
+		upload("rteLiquidDeep[0]", &RenderMan::LiquidLook::Deep);
+		upload("rteLiquidSurface[0]", &RenderMan::LiquidLook::Surface);
+		upload("rteLiquidStyle[0]", &RenderMan::LiquidLook::Style);
+		upload("rteLiquidLine[0]", &RenderMan::LiquidLook::Line);
+	}
 	m_TerrainShader->SetFloat("rteWaterRipples", (m_Settings.Enabled && m_Settings.WaterReflections) ? std::clamp(m_Settings.WaterRipples, 0.0F, 2.0F) : 0.0F);
 	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
 	{
