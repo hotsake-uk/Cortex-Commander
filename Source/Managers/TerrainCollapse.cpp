@@ -136,6 +136,7 @@ namespace {
 	std::vector<ChunkRequest> s_ChunkRequests;
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
+	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: the same scene restarted, or a new one at the old one's address, still counts as new (as in FluidSim).
 	int s_CollapsedCount = 0;
 	int s_DebrisThisUpdate = 0;
 	unsigned int s_Random = 0x51ED270Bu;
@@ -1751,9 +1752,12 @@ void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const cha
 }
 
 void TerrainCollapse::Update() {
-	if (g_SceneMan.GetScene() != s_Scene) {
+	if (g_SceneMan.GetScene() != s_Scene || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		Clear();
+		// (The pixel states of the last game are no guide to this one, even on a terrain of the same size.)
+		s_State.clear();
 		s_Scene = g_SceneMan.GetScene();
+		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_CollapsedCount = 0;
 		s_TablesBuilt = false;
 		s_Random = 0x51ED270Bu;
@@ -1762,6 +1766,8 @@ void TerrainCollapse::Update() {
 	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
 	if (!terrain || !s_Enabled) {
 		Clear();
+		// The byte per pixel is given back while there is nothing to collapse (the menus, or collapse switched off); it is made again when needed.
+		std::vector<unsigned char>().swap(s_State);
 		return;
 	}
 	if (!s_TablesBuilt) {
