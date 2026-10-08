@@ -1120,11 +1120,20 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 		}
 	}
 	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount)), 1, 80);
-	int columns = std::clamp(static_cast<int>(width / 4.0F), 1, std::min(total, 20));
-	for (int column = 0; column < columns; ++column) {
-		float across = columns > 1 ? static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F : 0.0F;
-		int here = total / columns + (column < total % columns ? 1 : 0);
-		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y), Vector(), 0.05F, here, rgb);
+	// Spread along the width in even slots, each puff anywhere within its slot and a little above or below the surface line: puffs at fixed
+	// columns on one row read as a string of beads. (Render only: its own random numbers, never the simulation's.)
+	static unsigned int s_VisualRandom = 0x2545F491u;
+	auto visualRandom = []() {
+		s_VisualRandom ^= s_VisualRandom << 13;
+		s_VisualRandom ^= s_VisualRandom >> 17;
+		s_VisualRandom ^= s_VisualRandom << 5;
+		return static_cast<float>(s_VisualRandom & 0xFFFFFF) / static_cast<float>(0x1000000);
+	};
+	float slot = 1.0F / static_cast<float>(total);
+	for (int puff = 0; puff < total; ++puff) {
+		float across = ((static_cast<float>(puff) + visualRandom()) * slot) * 2.0F - 1.0F;
+		float lift = (visualRandom() - 0.65F) * 4.0F;
+		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y + lift), Vector(), 0.2F, 1, rgb);
 	}
 }
 
