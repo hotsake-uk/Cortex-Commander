@@ -39,6 +39,20 @@ namespace RTE {
 		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos), m_NoLight(noLight) {}
 	};
 
+	/// What registered a scene light, for the lighting-by-source readout (SettingsMan::ShowLightsBySource).
+	enum class LightSource : unsigned char {
+		Other, //!< Not said.
+		Objects, //!< An object's own light (its LightRadius/LightIntensity), round or cone.
+		Hot, //!< The glow of an object's hot spots.
+		Headlamps, //!< Units' headlamp beams and the glow round the lamp.
+		Tracers, //!< Tracers and their trails.
+		Lamps, //!< Scenery lamps placed in the terrain.
+		Fire, //!< Burning ground and burning units.
+		Sandbox, //!< Effects put down in the sandbox.
+		Scripts, //!< Lua, through AddLight.
+		Count
+	};
+
 	/// Singleton manager responsible for all 32bpp post-process effect drawing.
 	/// A dynamic light in the scene, registered for the current frame by MovableObjects with light properties or from Lua.
 	struct SceneLight {
@@ -47,6 +61,7 @@ namespace RTE {
 		float m_Radius = 0.0F; //!< Radius in pixels, where the light reaches zero.
 		glm::vec2 m_Direction{1.0F, 0.0F}; //!< For cone lights (flashlights): the direction the cone points, screen space (Y down).
 		float m_ConeCos = -2.0F; //!< Cosine of the cone's half angle; below -1 is an ordinary all-round light.
+		LightSource m_Source = LightSource::Other; //!< What registered it.
 	};
 
 	/// A shockwave ring as seen by one player screen this frame.
@@ -181,16 +196,20 @@ namespace RTE {
 		/// @param color Light color in 0-255 gamma space, like palette and INI colors.
 		/// @param radius Radius in pixels, where the light reaches zero.
 		/// @param intensity Brightness multiplier.
-		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity);
+		/// @param source What is registering it, for the lighting-by-source readout.
+		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
 
 		/// Registers a cone light (flashlight, headlamp) for the current frame.
 		/// @param pos Where the light comes from, scene coordinates.
 		/// @param direction Direction the cone points (Y down), any length.
 		/// @param halfAngleDegrees Half the cone's width.
-		void RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity);
+		void RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
 
 		/// Registers a dynamic light for the current frame, from Lua. See RegisterLight.
-		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity); }
+		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity, LightSource::Scripts); }
+
+		/// Gets the scene lights registered for the frame about to be drawn, in scene coordinates, for the lighting-by-source readout. Main thread only.
+		const std::vector<SceneLight>& GetSceneLights() const { return m_SceneLights; }
 
 		/// Gets the scene lights that may affect a box, with positions relative to the box. Handles scene wrapping.
 		/// @param boxPos Scene position of the box's top left corner.

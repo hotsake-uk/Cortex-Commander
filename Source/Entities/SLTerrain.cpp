@@ -551,9 +551,9 @@ void SLTerrain::UpdateLights() {
 		glm::vec3 color = glm::vec3(light->m_Color.GetR(), light->m_Color.GetG(), light->m_Color.GetB()) * gel;
 		if (light->m_ConeAngle > 0.0F) {
 			float direction = light->m_ConeDirection * c_PI / 180.0F;
-			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness);
+			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness, LightSource::Lamps);
 		} else {
-			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness);
+			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps);
 		}
 		++light;
 	}
