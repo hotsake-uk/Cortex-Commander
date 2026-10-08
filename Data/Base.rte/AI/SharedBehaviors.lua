@@ -619,7 +619,7 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			elseif result == 2 then
 				-- No route to it: the order is dropped, as GoToWpt drops it.
 				AI.engineMover = false;
-				if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE GoToRoute: no route; standing down"); end
+				if Owner:IsAITracedOn("AI") then ConsoleMan:PrintString("AITRACE GoToRoute: no route; standing down"); end
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
 				Owner:DrawWaypoints(false);
@@ -864,7 +864,7 @@ function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
 		-- Out of fuel in the air, short of the landing: the plan is over. Flown on, it steered for a landing it could no longer reach while
 		-- the unit fell; from here the route is asked again from where it is coming down.
 		if AI.flying and Pack.JetTimeLeft < 60 and not onLanding then
-			if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE flight: out of fuel short of the landing, plan dropped"); end
+			if Owner:IsAITracedOn("Pilot") then ConsoleMan:PrintString("AITRACE flight: out of fuel short of the landing, plan dropped"); end
 			Owner:RequestRouteCheck();
 			return nil;
 		end
@@ -918,7 +918,7 @@ function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
 		local needed = (math.max(0, ToLanding.rise) / (4 * ppm) + math.abs(ToLanding.across) / (5 * ppm) * 0.5) * 1000 * 1.3 + 200;
 		needed = math.min(needed, Pack.JetTimeTotal * 0.98);
 		if Pack.JetTimeLeft < needed then
-			if Owner:NumberValueExists("AITrace") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: waiting for fuel, " .. math.floor(Pack.JetTimeLeft) .. " of " .. math.floor(needed)); end
+			if Owner:IsAITracedOn("Pilot") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: waiting for fuel, " .. math.floor(Pack.JetTimeLeft) .. " of " .. math.floor(needed)); end
 			return nil, true;
 		end
 	end
@@ -929,7 +929,7 @@ function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
 	if not SharedBehaviors.FlightWayClear(Owner, landing) then
 		return nil;
 	end
-	if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE flight: plan from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " to land at " .. math.floor(landing.pos.X) .. "," .. math.floor(landing.floorY)); end
+	if Owner:IsAITracedOn("Pilot") then ConsoleMan:PrintString("AITRACE flight: plan from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " to land at " .. math.floor(landing.pos.X) .. "," .. math.floor(landing.floorY)); end
 	return { landing = landing, state = {}, timer = Timer() };
 end
 
@@ -1137,7 +1137,7 @@ function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
 	AI.jetSteady = false;
 
 	local function Trace(text)
-		if Owner:NumberValueExists("AITrace") then
+		if Owner:IsAITracedOn("Climb") then
 			ConsoleMan:PrintString("AITRACE climb: " .. text);
 		end
 	end
@@ -1510,8 +1510,9 @@ function SharedBehaviors.OpenColumnNear(Owner, Up)
 	return nil;
 end
 
-function SharedBehaviors.Trace(Owner, text)
-	if Owner:NumberValueExists("AITrace") then
+-- A traced unit's line in the console. channel is the debug channel it belongs to ("Combat" unless said, or "Squad", "AI", ...): ticked in the settings, or switched on by CCCP_AI_LOG.
+function SharedBehaviors.Trace(Owner, text, channel)
+	if Owner:IsAITracedOn(channel or "Combat") then
 		ConsoleMan:PrintString("AITRACE [" .. Owner.PresetName .. " " .. Owner.Team .. " at " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. "] " .. text);
 	end
 end
@@ -2073,7 +2074,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
 					Waypoint.Kind = 0;
 				end
-				if Owner:NumberValueExists("AITrace") and Waypoint.Kind ~= LastTracedKind then
+				if Owner:IsAITracedOn("AI") and Waypoint.Kind ~= LastTracedKind then
 					LastTracedKind = Waypoint.Kind;
 					ConsoleMan:PrintString("AITRACE step kind " .. tostring(Waypoint.Kind) .. " to " .. math.floor(pos.X) .. "," .. math.floor(pos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " prone " .. tostring(AI.proneState == AHuman.PRONE));
 				end
@@ -2159,12 +2160,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					-- long way apart. Prone from 100 px out, a unit at the top of the tower lay at its start and never crawled to the hatch.)
 						local crawlStepNear = Waypoint.Kind == 1 and SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsLessThan(Owner.Height * 0.65);
 						if crawlStepNear or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
-							if Owner:NumberValueExists("AITrace") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
+							if Owner:IsAITracedOn("Climb") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
 							AI.proneState = AHuman.PRONE;
 							ProneHoldTimer:Reset();
 						elseif AI.proneState ~= AHuman.PRONE or ProneHoldTimer:IsPastSimTimeLimit() then
 							-- (Kept down a moment after the way looks clear: a crawl through a slot was stood up in the middle of.)
-							if Owner:NumberValueExists("AITrace") and AI.proneState == AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: standing up"); end
+							if Owner:IsAITracedOn("Climb") and AI.proneState == AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: standing up"); end
 							AI.proneState = AHuman.NOTPRONE;
 						end
 					end
@@ -2277,7 +2278,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 						AI.jump = true;
 						StuckJumped = true;
 						StuckJumpTimer:Reset();
-						if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE jet: stuck"); end
+						if Owner:IsAITracedOn("Pilot") then ConsoleMan:PrintString("AITRACE jet: stuck"); end
 					end
 				elseif StuckJumped and StuckJumpTimer:IsPastSimTimeLimit() then
 					AI.jump = false;
@@ -2575,7 +2576,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									local Blocked = Vector();
 									local inSight = passed and (SceneMan:CastObstacleRay(Owner.Pos, ToNext, Blocked, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 9) < 0 or SharedBehaviors.OurDoorAt(Owner, Blocked) ~= nil);
 									if inSight then
-										if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE pop: passed " .. math.floor(Waypoint.Pos.X) .. "," .. math.floor(Waypoint.Pos.Y) .. " for " .. math.floor(NextPos.X) .. "," .. math.floor(NextPos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
+										if Owner:IsAITracedOn("AI") then ConsoleMan:PrintString("AITRACE pop: passed " .. math.floor(Waypoint.Pos.X) .. "," .. math.floor(Waypoint.Pos.Y) .. " for " .. math.floor(NextPos.X) .. "," .. math.floor(NextPos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
 										PrevWptPos = Waypoint.Pos;
 										Owner:RemoveMovePathBeginning();
 										Waypoint.Pos = NextPos;
@@ -2645,7 +2646,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										AI.jetClimb = false;
 									end
 								else
-									if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE pop: reached " .. math.floor(Waypoint.Pos.X) .. "," .. math.floor(Waypoint.Pos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. ", " .. Owner.MovePathSize - 1 .. " left"); end
+									if Owner:IsAITracedOn("AI") then ConsoleMan:PrintString("AITRACE pop: reached " .. math.floor(Waypoint.Pos.X) .. "," .. math.floor(Waypoint.Pos.Y) .. " from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. ", " .. Owner.MovePathSize - 1 .. " left"); end
 									PrevWptPos = Waypoint.Pos;
 									Owner:RemoveMovePathBeginning();
 									Waypoint = nil;
@@ -2694,7 +2695,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												DoorWaitID = DoorAhead.UniqueID;
 												DoorWaitTimer:Reset();
 											elseif state == ADoor.CLOSED and DoorWaitTimer:IsPastSimMS(2000) then
-												if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE door: " .. DoorAhead.PresetName .. " didn't open in 2 s, walking into it"); end
+												if Owner:IsAITracedOn("AI") then ConsoleMan:PrintString("AITRACE door: " .. DoorAhead.PresetName .. " didn't open in 2 s, walking into it"); end
 												DoorIgnoreID = DoorAhead.UniqueID;
 												DoorIgnoreTimer:Reset();
 												DoorWaitID = nil;
@@ -2702,7 +2703,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												doorGoal = nil;
 											end
 										end
-										if (doorHold or doorGoal) and Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE door: " .. (doorHold and "in the doorway of " or "going to the doorway of ") .. DoorAhead.PresetName .. " (state " .. state .. ")"); end
+										if (doorHold or doorGoal) and Owner:IsAITracedOn("AI") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE door: " .. (doorHold and "in the doorway of " or "going to the doorway of ") .. DoorAhead.PresetName .. " (state " .. state .. ")"); end
 									end
 								end
 								-- An open door's piece is no place to stand: it closes a second and a half after its sensors last saw a body, on whatever
@@ -2724,7 +2725,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									end
 								end
 								if Climb and Climb.stage == "align" and Climb.stageTimer.ElapsedSimTimeMS < 1 then
-									if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: plan from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " up column " .. math.floor(Climb.colX) .. " to y " .. math.floor(Climb.riseToY) .. ", landing " .. math.floor(Climb.landing.X) .. "," .. math.floor(Climb.landing.Y) .. (Climb.blocked and ", no open column" or "")); end
+									if Owner:IsAITracedOn("Climb") then ConsoleMan:PrintString("AITRACE climb: plan from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y) .. " up column " .. math.floor(Climb.colX) .. " to y " .. math.floor(Climb.riseToY) .. ", landing " .. math.floor(Climb.landing.X) .. "," .. math.floor(Climb.landing.Y) .. (Climb.blocked and ", no open column" or "")); end
 								end
 								if Climb then
 									climbHandled = true;
@@ -2802,7 +2803,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											local up = (side < 0) and (Obstacles[Obst.L_UP] == true) or (side > 0 and Obstacles[Obst.R_UP] == true);
 											if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not up then
 												AI.jump = true;
-												if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE jet: wall ahead"); end
+												if Owner:IsAITracedOn("Pilot") then ConsoleMan:PrintString("AITRACE jet: wall ahead"); end
 											end
 										end
 									end
@@ -2880,7 +2881,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- step of them is a low obstacle, and a hop at each one is a flight of them jetted)
 												if nextLatMove == Actor.LAT_RIGHT and Obstacles[Obst.R_FRONT] and not Obstacles[Obst.R_UP] then
 														hopping = true;
-													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop right"); end
+													if Owner:IsAITracedOn("Pilot") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop right"); end
 													AI.jump = true;
 													-- Something high in front as well: straight up, not backwards. Backing off with the jet lit (the nozzle leans the way
 													-- we move) sent units flying back down the slope they had just climbed.
@@ -2889,7 +2890,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													end
 												elseif nextLatMove == Actor.LAT_LEFT and Obstacles[Obst.L_FRONT] and not Obstacles[Obst.L_UP] then
 														hopping = true;
-													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop left"); end
+													if Owner:IsAITracedOn("Pilot") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: hop left"); end
 													AI.jump = true;
 													if Obstacles[Obst.L_HIGH] then
 														nextLatMove = Actor.LAT_STILL;
@@ -2995,7 +2996,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													AI.climbClearY = nil;
 													AI.climbStartX = Owner.Pos.X;
 													ClimbTimer:Reset();
-													if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: wpt dx " .. math.floor(towardsX) .. " dy " .. math.floor(above)); end
+													if Owner:IsAITracedOn("Climb") then ConsoleMan:PrintString("AITRACE climb: wpt dx " .. math.floor(towardsX) .. " dy " .. math.floor(above)); end
 												else
 													climbRefused = true;
 												end
@@ -3013,7 +3014,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													end
 													if dx and math.abs(dx) > 2 then
 														nextLatMove = dx > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
-														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: " .. (stepToColumnDx and ("stepping " .. math.floor(dx) .. " under the open column first") or ("under a ceiling, stepping " .. math.floor(dx) .. " to an open column"))); end
+														if Owner:IsAITracedOn("Climb") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: " .. (stepToColumnDx and ("stepping " .. math.floor(dx) .. " under the open column first") or ("under a ceiling, stepping " .. math.floor(dx) .. " to an open column"))); end
 													end
 												end
 											elseif (climbing or (AI.jetClimb and wantsClimb)) and ClimbTimer.ElapsedSimTimeMS > 1500 and not AI.flying and Owner.Vel.Y > -0.5 and above < -Owner.Height * 0.2 then
@@ -3021,7 +3022,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- back down the hatch, or come down on the wrong lip), so it ends, and a new route is asked for from here rather than the
 												-- rest of the old one followed from where it was never meant to start. (With the climb left "on", the unit stood under
 												-- the floor it had fallen through for the rest of the minute, with a route of one point straight above it.)
-												if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE climb: down again, asking for a new route from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
+												if Owner:IsAITracedOn("Climb") then ConsoleMan:PrintString("AITRACE climb: down again, asking for a new route from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
 												AI.jetClimb = false;
 												AI.jump = false;
 												AI.climbClearY = nil;
@@ -3132,7 +3133,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														local pushX = openDx and (Owner.Pos.X + openDx) or (Owner.Pos.X + (CurrDist.X > 0 and -1 or 1) * Owner.Height * 0.3);
 														AI.climbClearX = math.max(startX - Owner.Height * 0.6, math.min(startX + Owner.Height * 0.6, pushX));
 														AI.climbClearY = Lip.Y;
-														if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling at " .. math.floor(Lip.Y) .. ", keeping out from under it"); end
+														if Owner:IsAITracedOn("Climb") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling at " .. math.floor(Lip.Y) .. ", keeping out from under it"); end
 													end
 													-- (Above it once the feet are: cleared at head height, the drift back for the waypoint took the unit straight back under
 													-- the lip, and the push out again cost the rest of the tank.)
@@ -3301,14 +3302,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												if underOverhang then
 													AI.jump = false;
 													nextLatMove = stepTo;
-													if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE overhang: stepping " .. (nextLatMove == Actor.LAT_LEFT and "left" or "right")); end
+													if Owner:IsAITracedOn("Pilot") then ConsoleMan:PrintString("AITRACE overhang: stepping " .. (nextLatMove == Actor.LAT_LEFT and "left" or "right")); end
 												elseif delta < 1 or aboveWaypoint or walkable or tooHigh or fastEnough then
-													if Owner:NumberValueExists("AITrace") and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.Height * 0.25 and not AI.flying and math.random() < 0.1 then
+													if Owner:IsAITracedOn("Pilot") and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.Height * 0.25 and not AI.flying and math.random() < 0.1 then
 														ConsoleMan:PrintString("AITRACE no jet: delta " .. math.floor(delta) .. " above " .. tostring(aboveWaypoint) .. " walkable " .. tostring(walkable) .. " tooHigh " .. tostring(tooHigh) .. " fast " .. tostring(fastEnough) .. " blocked " .. tostring(Facings[1].blocked) .. " range " .. math.floor(Facings[1].range) .. " wpt dx " .. math.floor(CurrDist.X) .. " dy " .. math.floor(CurrDist.Y) .. " lat " .. tostring(nextLatMove));
 													end
 													AI.jump = false;
 												elseif delta > deltaToJump then
-													if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: planner delta " .. math.floor(delta) .. " flying " .. tostring(AI.flying) .. " wpt dy " .. math.floor(Waypoint.Pos.Y - Owner.Pos.Y)); end
+													if Owner:IsAITracedOn("Pilot") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: planner delta " .. math.floor(delta) .. " flying " .. tostring(AI.flying) .. " wpt dy " .. math.floor(Waypoint.Pos.Y - Owner.Pos.Y)); end
 													AI.jump = true;
 													nextAimAngle = Owner:GetAimAngle(false) * 0.5 + Facings[1].aim * 0.5; -- adjust jetpack nozzle direction
 													nextLatMove = Actor.LAT_STILL;
@@ -3352,7 +3353,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			AI.lateralMoveState = Actor.LAT_STILL;
 
 			local Trace = SceneMan:ShortestDistance(Owner.Pos, Owner:GetLastAIWaypoint(), false);
-			if Owner:NumberValueExists("AITrace") then ConsoleMan:PrintString("AITRACE path: none to follow, asking again from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
+			if Owner:IsAITracedOn("AI") then ConsoleMan:PrintString("AITRACE path: none to follow, asking again from " .. math.floor(Owner.Pos.X) .. "," .. math.floor(Owner.Pos.Y)); end
 			-- A fresh path gets its time: the no-line-of-sight timer that asked for it was left run out, so the very next tick asked again, and
 			-- a unit whose first waypoint was out of sight (through a hatch under it) asked for the same path every frame and went nowhere.
 			NoLOSTimer:Reset();
@@ -3436,7 +3437,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				end
 				if holeSide then
 					nextLatMove = holeSide < 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
-					if Owner:NumberValueExists("AITrace") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE drop: floor under the feet, stepping " .. (holeSide < 0 and "left" or "right") .. " to the hole"); end
+					if Owner:IsAITracedOn("Pilot") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE drop: floor under the feet, stepping " .. (holeSide < 0 and "left" or "right") .. " to the hole"); end
 				end
 			end
 		end
@@ -3469,7 +3470,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			if fastSideways and (AI.flying or Owner.Vel.Y > 6 or AI.jump) then
 				-- The lean against the speed is set whether or not there's fuel for more: a jet already lit on the last of the tank was
 				-- still leaning forward, and took a unit to thirty metres a second.
-				if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: sideways brake at " .. math.floor(Owner.Vel.X * 10) / 10); end
+				if Owner:IsAITracedOn("Pilot") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: sideways brake at " .. math.floor(Owner.Vel.X * 10) / 10); end
 				nextAimAngle = 0;
 				nextLatMove = Owner.Vel.X > 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
 				AI.jetLeanX = Owner.Vel.X > 0 and -1 or 1; -- A crab's nozzle leans against the speed the same way.
@@ -3477,7 +3478,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					AI.jump = true;
 				end
 			elseif fallingOnGround and fuel then
-				if Owner:NumberValueExists("AITrace") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: landing brake at " .. math.floor(Owner.Vel.Y * 10) / 10); end
+				if Owner:IsAITracedOn("Pilot") and not AI.jump then ConsoleMan:PrintString("AITRACE jet: landing brake at " .. math.floor(Owner.Vel.Y * 10) / 10); end
 				AI.jump = true;
 				nextAimAngle = math.pi * 0.5;
 				-- Leant a little towards the landing when that is off to one side: the brake is the last of the jet before the ground, and a
@@ -3533,7 +3534,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			end
 			if walk then
 				AI.jump = false;
-				if Owner:NumberValueExists("AITrace") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: walkable, no jet"); end
+				if Owner:IsAITracedOn("Pilot") and math.random() < 0.05 then ConsoleMan:PrintString("AITRACE flight: walkable, no jet"); end
 			end
 		else
 			FlightPlan = nil;

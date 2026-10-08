@@ -2479,8 +2479,8 @@ void Scene::UpdatePathFinding() {
 		}
 	}
 
-	if (std::getenv("CCCP_PATH_LOG")) {
-		// Debug: what the grid updates cost, every few seconds.
+	if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Grid)) {
+		// Debug (the Grid channel): what the grid updates cost, every few seconds.
 		static Timer reportTimer;
 		static int calls = 0;
 		static int nodes = 0;

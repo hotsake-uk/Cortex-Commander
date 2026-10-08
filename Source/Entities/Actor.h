@@ -7,6 +7,7 @@
 /// Inclusions of header files
 #include "MOSRotating.h"
 #include "PathFinder.h"
+#include "SettingsMan.h"
 
 #include <array>
 
@@ -974,10 +975,15 @@ namespace RTE {
 		void AvoidPathPoint(const Vector& place, float milliseconds);
 		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long) its team.
 		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds);
-		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): with the game
-		/// launched with CCCP_AI_LOG set, every unit when it is "all", else the units being inspected (IsDebugInspected: pinned, selected in the sandbox, or given the AITrace value as the gyms' runners are).
+		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): every unit when
+		/// tracing all units is ticked (or CCCP_AI_LOG is "all"), else the units being inspected (IsDebugInspected: pinned, selected in the sandbox, or given the AITrace value as the gyms' runners are).
+		/// Which lines go is up to the debug channels (SettingsMan::DebugChannel), ticked in the settings or switched on by CCCP_AI_LOG.
+		/// @param channel The channel the line belongs to: AI for the mover and route lines, Pilot for flights, Climb, Combat, Squad.
 		/// @return Whether traced.
-		bool IsAITraced() const;
+		bool IsAITraced(SettingsMan::DebugChannel channel = SettingsMan::DebugChannel::AI) const;
+
+		/// For Lua: whether this unit's lines on the named debug channel ("AI", "Pilot", "Climb", "Combat", "Squad") are written.
+		bool IsAITracedOn(const std::string& channel) const { SettingsMan::DebugChannel which = SettingsMan::DebugChannelFromName(channel); return which != SettingsMan::DebugChannel::Count && IsAITraced(which); }
 
 		// Member variables
 		static Entity::ClassInfo m_sClass;
