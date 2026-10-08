@@ -15,6 +15,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <functional>
 #include <mutex>
