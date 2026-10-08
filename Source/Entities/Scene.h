@@ -744,9 +744,10 @@ namespace RTE {
 		/// @param newValue Whether this Scene is a saved game Scene copy.
 		void SetSavedGameInternal(bool newValue) { m_IsSavedGameInternal = newValue; }
 
-		/// Returns preview bitmap pointer for this scene.
-		/// @return Pointer to preview bitmap.
-		BITMAP* GetPreviewBitmap() const { return m_pPreviewBitmap; };
+		/// Returns preview bitmap pointer for this scene, decoding it from its file the first time it's asked for (not at load: every scene's preview
+		/// was decoded at boot, and only the scenario and lobby screens look at them).
+		/// @return Pointer to preview bitmap, or nullptr for none.
+		BITMAP* GetPreviewBitmap() const;
 
 		/// The unit the navigation debug overlays look at the grid as: the debug team's (SettingsMan::DebugTeam) inspected unit nearest the middle
 		/// of player 1's view, or else the team's unit nearest it; nullptr when the team has none.
@@ -830,8 +831,9 @@ namespace RTE {
 		std::map<std::string, const BunkerAssembly*> m_SelectedAssemblies;
 		// Amounts of limited assemblies
 		std::map<std::string, int> m_AssembliesCounts;
-		// Scene preview bitmap
-		BITMAP* m_pPreviewBitmap;
+		// Scene preview bitmap, decoded on first use (see GetPreviewBitmap)
+		mutable BITMAP* m_pPreviewBitmap;
+		mutable bool m_PreviewBitmapLoadTried = false; //!< Whether GetPreviewBitmap already tried the file, so a missing one isn't retried every frame.
 		// Scene preview source file
 		ContentFile m_PreviewBitmapFile;
 		// Name of a scene which can be replaced by this scene in MetaGame
