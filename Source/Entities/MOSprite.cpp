@@ -8,6 +8,7 @@
 #include "RenderMan.h"
 #include "PostProcessMan.h"
 #include "DebugMan.h"
+#include "ConsoleMan.h"
 
 using namespace RTE;
 
@@ -68,6 +69,20 @@ int MOSprite::Create() {
 	m_NormalMapFile.GetAsAnimation(m_NormalMaps, m_FrameCount, COLORCONV_8_TO_32);
 	m_EmissiveMaps.clear();
 	m_EmissiveMapFile.GetAsAnimation(m_EmissiveMaps, m_FrameCount, COLORCONV_8_TO_32);
+	// A map is read pixel for pixel against its frame, so one of another size would put its bumps and glows in the wrong places: it's left out, with a word in the console.
+	auto checkMaps = [this](std::vector<std::shared_ptr<BitmapTexture>>& maps, const ContentFile& file, const char* kind) {
+		for (size_t frame = 0; frame < maps.size(); ++frame) {
+			const BITMAP* map = maps[frame] ? maps[frame]->GetBitmap() : nullptr;
+			const BITMAP* sprite = frame < m_Sprites.size() && m_Sprites[frame] ? m_Sprites[frame]->GetBitmap() : nullptr;
+			if (map && sprite && (map->w != sprite->w || map->h != sprite->h)) {
+				g_ConsoleMan.PrintString("WARNING: " + GetPresetName() + ": " + kind + " " + file.GetDataPath() + " frame " + std::to_string(frame) + " is " + std::to_string(map->w) + "x" + std::to_string(map->h) +
+				                         ", its sprite frame " + std::to_string(sprite->w) + "x" + std::to_string(sprite->h) + "; the map is left out.");
+				maps[frame].reset();
+			}
+		}
+	};
+	checkMaps(m_NormalMaps, m_NormalMapFile, "NormalMapFile");
+	checkMaps(m_EmissiveMaps, m_EmissiveMapFile, "EmissiveMapFile");
 
 	if (!m_aSprite.empty() && m_aSprite[0]) {
 		// Set default sprite offset
