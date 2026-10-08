@@ -5896,6 +5896,28 @@ void Sandbox::Update() {
 			s_Flying = false;
 			g_DebugMan.OpenTools();
 			s_FreeCameraStarted = false;
+		} else if (s_Possessed && game && s_PlayerEnterPending == 0) {
+			// The unit the game says you control is the one you control. Its own next/previous actor keys stay live while you're in a unit,
+			// and switch among the activity's side (Red in the sandbox), which the sandbox never heard of: it went on watching the unit you
+			// left, Tab released whichever the game had, and the character kept flying under the AI's keys.
+			// A switch within the unit's own side is followed; one that crossed to another side is undone, back into the unit you were in.
+			Actor* controlled = game->GetControlledActor(Players::PlayerOne);
+			if (controlled != s_Possessed) {
+				if (controlled && g_MovableMan.IsActor(controlled) && controlled->GetTeam() == s_Possessed->GetTeam()) {
+					if (s_Possessed == GetRef(s_PlayerUnit)) {
+						StopFlying();
+					}
+					s_Possessed = controlled;
+				} else if (game->SwitchToActor(s_Possessed, Players::PlayerOne, s_Possessed->GetTeam())) {
+					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
+				} else {
+					// (Not to be had back: to the god view, as when it dies.)
+					StopFlying();
+					s_Possessed = nullptr;
+					g_DebugMan.OpenTools();
+					s_FreeCameraStarted = false;
+				}
+			}
 		}
 		UpdatePlayer();
 		if (game) {
