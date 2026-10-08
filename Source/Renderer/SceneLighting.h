@@ -244,6 +244,8 @@ namespace RTE {
 		GLTarget m_Scorch; //!< World space soot darkness, R; the stains' gloss, G while wet (it dries away) and B once dry.
 		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
+		GLTarget m_DecalGround; //!< Which cells of the scorch and stain maps hold any ground, R: 255 where a cell has a terrain pixel that isn't air. Soot and stains are only kept next to ground (RefreshDecalGround).
+		std::vector<unsigned char> m_DecalGroundRows; //!< Rows of m_DecalGround worked out on the way to being uploaded.
 		int m_CurrentSkyLight = 0;
 
 		int m_ScreenWidth = 0;
@@ -313,6 +315,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_ScorchShader;
 		std::unique_ptr<Shader> m_StainShader;
 		std::unique_ptr<Shader> m_DecalFadeShader;
+		std::unique_ptr<Shader> m_DecalClearShader;
 		std::unique_ptr<Shader> m_TerrainShader;
 		GLuint m_EmptyVAO = 0; //!< For draws that generate their vertices from gl_VertexID.
 
@@ -356,6 +359,16 @@ namespace RTE {
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
 		void StampStains();
+
+		/// Works out again which cells of the scorch and stain maps hold ground (m_DecalGround), over a box of the scene, and wipes the soot and stains off
+		/// the cells in it with no ground left beside them. A mark then goes with the ground it was on: when that ground is dug or blown away and something
+		/// else lands there later, the new ground comes in clean instead of showing the old blood, oil or soot.
+		/// @param minX, minY, endX, endY The box, in scene pixels, end not included. Anything outside the scene takes its whole width or height, for the seams of wrapping scenes.
+		/// @param wipeBare Whether to wipe the marks off cells left bare, or only work out the ground (when the maps are new and hold nothing).
+		void RefreshDecalGround(int minX, int minY, int endX, int endY, bool wipeBare = true);
+
+		/// Binds m_DecalGround to unit 1 for a stamping shader, which keeps its marks off cells with no ground beside them. The shader must be enabled.
+		void BindDecalGround(const Shader& shader) const;
 
 		/// Fades soot and stains away over time and washes them off in the rain, and dries wet stains (LightingSettings::DecalsFade).
 		/// @param seconds Game seconds since the last call.
