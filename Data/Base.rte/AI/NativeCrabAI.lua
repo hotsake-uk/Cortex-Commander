@@ -134,7 +134,7 @@ function NativeCrabAI:Update(Owner)
 
 		-- select a new behavior based on AI mode
 		if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
-			self:CreateGoToBehavior();
+			self:CreateGoToBehavior(Owner);
 		elseif Owner.AIMode == Actor.AIMODE_PATROL then
 			self:CreatePatrolBehavior(Owner);
 		elseif Owner.AIMode == Actor.AIMODE_BRAINHUNT then
