@@ -42,6 +42,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <thread>
 #include "PresetMan.h"
 #include "UInputMan.h"
 #include "PerformanceMan.h"
@@ -120,6 +121,9 @@ namespace {
 			}
 			g_ConsoleMan.PrintString("Start-up: loading screen frames drawn: " + std::to_string(LoadingScreen::GetProgressFramesDrawn()) + " (progress report " + (g_SettingsMan.GetLoadingScreenProgressReportDisabled() ? "off" : "on") +
 			                         ", frame cap " + std::to_string(g_WindowMan.GetFrameCap()) + ", vsync " + (g_WindowMan.GetVSyncEnabled() ? "on" : "off") + ", fullscreen " + (g_WindowMan.IsFullscreen() ? "yes" : "no") + ")");
+			// The Lua states are made one after another, each with every engine binding (one per hardware thread unless Settings.ini says otherwise),
+			// so how many there were says how much of the Lua step above that is.
+			g_ConsoleMan.PrintString("Start-up: Lua states made: " + std::to_string(g_LuaMan.GetThreadedScriptStates().size() + 1) + " (" + std::to_string(g_LuaMan.GetThreadedScriptStates().size()) + " threaded and the master; " + std::to_string(std::thread::hardware_concurrency()) + " hardware threads)");
 			g_ConsoleMan.PrintString("Start-up: total to " + lastStageName + ": " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Last - Start).count()) + " ms");
 		}
 	};
