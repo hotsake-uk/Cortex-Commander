@@ -1599,7 +1599,19 @@ void Actor::RequestRouteCheck() {
 	}
 }
 
+void Actor::TakeSightSnapshot() {
+	m_SightSnapshot.Pos = m_Pos;
+	m_SightSnapshot.EyePos = GetEyePos();
+	m_SightSnapshot.Firing = m_Controller.IsState(WEAPON_FIRE);
+	m_SightSnapshot.Moving = m_Vel.MagnitudeIsGreaterThan(1.0F);
+	m_SightSnapshot.Profile = GetSightProfile();
+	m_SightSnapshot.HeadlampBrightness = m_HeadlampBrightness;
+	m_SightSnapshot.Height = GetHeight();
+	m_SightSnapshot.Taken = true;
+}
+
 void Actor::PreControllerUpdate() {
+	TakeSightSnapshot();
 	// A route check's answer is taken only when the goal is reachable from here; otherwise the route being followed is kept, as it was.
 	if (m_PathRequest && m_PathRequest->complete && m_RouteCheck) {
 		m_RouteCheck = false;
@@ -1754,7 +1766,10 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
 			continue;
 		}
-		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), wraps);
+		if (!actor->GetSightSnapshot().Taken) {
+			continue;
+		}
+		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetSightSnapshot().Pos, wraps);
 		// (The square the grid search covered: no further than the longer reach either way.)
 		if (std::abs(toTarget.m_X) > narrowReach || std::abs(toTarget.m_Y) > narrowReach) {
 			continue;
@@ -1785,9 +1800,10 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		bool seen = false;
 		bool head = false;
 		Vector hitPos;
+		const SightSnapshot& sighted = candidate.actor->GetSightSnapshot();
 		for (int look = 0; look < 2 && budget > 0 && !seen; ++look) {
-			Vector target = look == 0 ? candidate.actor->GetPos() : candidate.actor->GetEyePos();
-			if (look == 1 && target == candidate.actor->GetPos()) {
+			Vector target = look == 0 ? sighted.Pos : sighted.EyePos;
+			if (look == 1 && target == sighted.Pos) {
 				break;
 			}
 			--budget;
@@ -1811,18 +1827,18 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float far = 1.0F - 0.7F * std::clamp(candidate.distance / narrowReach, 0.0F, 1.0F);
 		float light = 1.0F;
 		if (night > 0.05F) {
-			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
+			float lit = g_PostProcessMan.GetDynamicLightAt(sighted.Pos);
 			// A lit headlamp gives its wearer away whichever way it points (AC-11).
-			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || (lighting.Headlamps && candidate.actor->GetHeadlampBrightness() > 0.0F)) {
-				lit = std::max(lit, candidate.actor->GetController()->IsState(WEAPON_FIRE) ? 1.0F : 0.6F);
+			if (sighted.Firing || (lighting.Headlamps && sighted.HeadlampBrightness > 0.0F)) {
+				lit = std::max(lit, sighted.Firing ? 1.0F : 0.6F);
 			}
 			// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
 			Vector roof;
-			bool roofed = g_SceneMan.CastNotMaterialRay(candidate.actor->GetEyePos(), Vector(0.0F, -std::max(120.0F, candidate.actor->GetHeight() * 3.0F)), g_MaterialAir, roof);
+			bool roofed = g_SceneMan.CastNotMaterialRay(sighted.EyePos, Vector(0.0F, -std::max(120.0F, sighted.Height * 3.0F)), g_MaterialAir, roof);
 			light = std::max(1.0F - night * (roofed ? 0.88F : 0.7F), std::min(1.0F, lit * 1.5F));
 		}
-		float moving = candidate.actor->GetVel().MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
-		float profile = std::clamp(candidate.actor->GetSightProfile(), 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
+		float moving = sighted.Moving ? 1.0F : 0.75F;
+		float profile = std::clamp(sighted.Profile, 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
 		float visibility = std::clamp(angle * far * light * moving * profile, 0.05F, 1.0F);
 		m_Sightings.push_back({candidate.actor, hitPos, visibility, candidate.distance, head});
 	}
