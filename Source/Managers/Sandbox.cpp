@@ -1109,6 +1109,29 @@ namespace {
 		return Random01() < 0.25F ? speckleColor : color;
 	}
 
+	/// A change the paint helpers made to the terrain, kept for the paint audit overlay (only while it's on).
+	struct PaintRecord {
+		Box Area;
+		const char* Kind = "";
+		std::string Material;
+		bool ToldCollapse = false; //!< TerrainCollapse::BeginChange was called first.
+		bool ToldLiquid = false; //!< FluidSim::Disturb was called after.
+		bool Changed = false; //!< Any pixel changed (the pathfinder was given the area).
+		long long At = 0; //!< The sim update.
+	};
+	std::deque<PaintRecord> s_PaintRecords;
+
+	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed) {
+		if (!g_SettingsMan.ShowSandboxPaintAudit()) {
+			s_PaintRecords.clear();
+			return;
+		}
+		s_PaintRecords.push_back({area, kind, material ? material : "air", toldCollapse, toldLiquid, changed, g_TimerMan.GetSimUpdateCount()});
+		while (s_PaintRecords.size() > 24) {
+			s_PaintRecords.pop_front();
+		}
+	}
+
 	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
 	void PaintTerrain(const Vector& center, int radius, const char* materialName) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
@@ -1169,6 +1192,7 @@ namespace {
 			FluidSim::Disturb(center, static_cast<float>(radius + 2));
 
 		}
+		NotePaint(Box(Vector(static_cast<float>(centerX - radius), static_cast<float>(centerY - radius)), static_cast<float>(radius * 2 + 1), static_cast<float>(radius * 2 + 1)), materialName ? "paint" : "dig", materialName, !materialName, changed, changed);
 	}
 
 	/// Fills a box with a terrain material, where there's air (or everything, to build over what's there).
@@ -1206,6 +1230,7 @@ namespace {
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
 		// Liquid round it takes the new shape (as PaintTerrain's): a box built into a stream was dry, the water left standing where it had been.
 		FluidSim::Disturb(topLeft + Vector(static_cast<float>(boxWidth) * 0.5F, static_cast<float>(boxHeight) * 0.5F), static_cast<float>(std::max(boxWidth, boxHeight)) * 0.75F + 2.0F);
+		NotePaint(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)), "fill box", materialName, false, true, true);
 	}
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
@@ -1242,6 +1267,7 @@ namespace {
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
 		// Liquid above or beside the cleared box flows into it (as PaintTerrain's dig does); it stayed put until something else woke it.
 		FluidSim::Disturb(topLeft + Vector(static_cast<float>(boxWidth) * 0.5F, static_cast<float>(boxHeight) * 0.5F), static_cast<float>(std::max(boxWidth, boxHeight)) * 0.75F + 2.0F);
+		NotePaint(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)), "clear box", nullptr, true, true, true);
 	}
 
 	/// Things that can be put down and left running, for trying the lights, particles and shaders against: each is a light, a source of particles, or both.
@@ -6679,6 +6705,52 @@ namespace {
 		}
 	}
 
+	/// The terrain paint audit (SettingsMan::ShowSandboxPaintAudit): the last two dozen changes the paint helpers made, each as its box (dug
+	/// and cleared orange, painted and filled green, grey if nothing changed), fading over ten seconds, labelled with the material and whether
+	/// falling ground (TerrainCollapse::BeginChange) and liquid (FluidSim::Disturb) were told: a "no" in red is review S13's inconsistency.
+	void DrawPaintAudit() {
+		if (!g_SettingsMan.ShowSandboxPaintAudit() || s_PaintRecords.empty()) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		long long now = g_TimerMan.GetSimUpdateCount();
+		float lineHeight = ImGui::GetTextLineHeight();
+		for (size_t i = 0; i < s_PaintRecords.size(); ++i) {
+			const PaintRecord& record = s_PaintRecords[i];
+			float age = static_cast<float>(std::max(0LL, now - record.At)) / 600.0F;
+			if (age >= 1.0F) {
+				continue;
+			}
+			int alpha = static_cast<int>(230.0F * (1.0F - age * 0.7F));
+			bool removes = record.Material == "air";
+			ImU32 color = !record.Changed ? IM_COL32(160, 160, 160, alpha) : removes ? IM_COL32(255, 160, 60, alpha) : IM_COL32(120, 230, 120, alpha);
+			ImVec2 topLeft = ToScreen(record.Area.GetCorner());
+			ImVec2 bottomRight(topLeft.x + record.Area.GetWidth() / scale, topLeft.y + record.Area.GetHeight() / scale);
+			drawList->AddRect(topLeft, bottomRight, color, 0.0F, 0, 1.5F);
+			// Only the newest few are labelled, so a long brush stroke doesn't bury the picture in text.
+			if (i + 6 < s_PaintRecords.size()) {
+				continue;
+			}
+			std::string head = std::string(record.Kind) + " " + record.Material + (record.Changed ? "" : " (nothing changed)");
+			std::string collapse = std::string("falling ground told: ") + (record.ToldCollapse ? "yes" : "no");
+			std::string liquid = std::string("liquid told: ") + (record.ToldLiquid ? "yes" : "no");
+			ImVec2 at(bottomRight.x + 4.0F, topLeft.y);
+			const std::string* lines[] = {&head, &collapse, &liquid};
+			float width = 0.0F;
+			for (const std::string* line: lines) {
+				width = std::max(width, ImGui::CalcTextSize(line->c_str()).x);
+			}
+			drawList->AddRectFilled(ImVec2(at.x - 2.0F, at.y), ImVec2(at.x + width + 2.0F, at.y + lineHeight * 3.0F), IM_COL32(10, 12, 10, std::min(alpha, 180)));
+			drawList->AddText(at, color, head.c_str());
+			// Removing ground needs falling ground told; any change may need liquid told.
+			bool collapseMissing = removes && !record.ToldCollapse;
+			bool liquidMissing = record.Changed && !record.ToldLiquid;
+			drawList->AddText(ImVec2(at.x, at.y + lineHeight), collapseMissing ? IM_COL32(255, 90, 70, alpha) : IM_COL32(220, 220, 210, alpha), collapse.c_str());
+			drawList->AddText(ImVec2(at.x, at.y + lineHeight * 2.0F), liquidMissing ? IM_COL32(255, 90, 70, alpha) : IM_COL32(220, 220, 210, alpha), liquid.c_str());
+		}
+	}
+
 	void DrawOrdersOverlay() {
 		int which = g_SettingsMan.SandboxOrdersOverlay();
 		if (which == 0) {
@@ -6766,4 +6838,5 @@ void Sandbox::DrawDebug() {
 	DrawSimState();
 	DrawEffectsOverlay();
 	DrawSelectionCameraOverlay();
+	DrawPaintAudit();
 }
