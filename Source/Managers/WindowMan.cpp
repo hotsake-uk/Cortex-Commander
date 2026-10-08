@@ -577,6 +577,14 @@ void WindowMan::SetViewportLetterboxed() {
 		height = windowH;
 		width = (height * aspectRatio) + 0.5F;
 	}
+	// Whole-number scaling: the largest that fits, and the rest left as bars. A window too small for even one to one keeps the fitted picture.
+	if (m_IntegerScaling && m_ResX > 0 && m_ResY > 0) {
+		int scale = std::min(freeW / m_ResX, windowH / m_ResY);
+		if (scale >= 1) {
+			width = m_ResX * scale;
+			height = m_ResY * scale;
+		}
+	}
 
 	m_ResMultiplier = width / static_cast<float>(m_ResX);
 
@@ -584,6 +592,22 @@ void WindowMan::SetViewportLetterboxed() {
 	int offsetY = (windowH / 2) - (height / 2);
 	m_GameViewTop = offsetY;
 	m_PrimaryWindowViewport = std::make_unique<SDL_Rect>(offsetX, windowH - offsetY - height, width, height);
+}
+
+void WindowMan::SetIntegerScaling(bool integerScaling) {
+	if (integerScaling != m_IntegerScaling) {
+		m_IntegerScaling = integerScaling;
+		if (m_PrimaryWindow) {
+			SetViewportLetterboxed();
+		}
+	}
+}
+
+void WindowMan::SetUpscaleUniforms() const {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	m_ScreenUpscaleShader->SetFloat("rteScanlines", g_ActivityMan.IsInActivity() ? lighting.Scanlines : 0.0F);
+	m_ScreenUpscaleShader->SetInt("rteCRTStyle", std::clamp(lighting.CRTStyle, 0, 3));
+	m_ScreenUpscaleShader->SetFloat("rteSharpness", std::clamp(lighting.UpscaleSharpness, 0.0F, 1.0F));
 }
 
 void WindowMan::SetReservedSpace(int left, int right) {
@@ -1072,7 +1096,7 @@ void WindowMan::SaveWindowScreenshot() {
 void WindowMan::PresentWithTextOverlay(bool redrawLast) {
 	Texture* sceneTexture = g_PostProcessMan.GetPostProcessColorBuffer()->GetColorTexture().lock().get();
 	m_ScreenUpscaleShader->Begin();
-	m_ScreenUpscaleShader->SetFloat("rteScanlines", g_ActivityMan.IsInActivity() ? g_PostProcessMan.GetLightingSettings().Scanlines : 0.0F);
+	SetUpscaleUniforms();
 	m_ScreenUpscaleShader->End();
 	BlitTextureToPrimaryWindow(sceneTexture, m_ScreenUpscaleShader.get(), false);
 	int windowWidth = 0;
@@ -1101,10 +1125,12 @@ void WindowMan::BlitScreenBufferToWindows() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	m_ScreenUpscaleShader->Begin();
+	SetUpscaleUniforms();
 	if (m_MultiDisplayWindows.empty()) {
 		g_RenderMan.BeginFrame(nullptr);
 		// BeginFrame resets the shader.
 		m_ScreenUpscaleShader->Begin();
+		SetUpscaleUniforms();
 		GL_CHECK(glViewport(m_PrimaryWindowViewport->x, m_PrimaryWindowViewport->y, m_PrimaryWindowViewport->w, m_PrimaryWindowViewport->h));
 		Draw::DrawTexture(m_ScreenBuffer->GetColorTexture().lock().get(), {-1.0f, 1.0f, 2.0f, -2.0f});
 		g_RenderMan.DrawActiveBatch();

@@ -302,6 +302,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("GIBounce", { g_PostProcessMan.GetLightingSettings().GIBounce = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingIndirect", { g_PostProcessMan.GetLightingSettings().IndirectLight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostScanlines", { g_PostProcessMan.GetLightingSettings().Scanlines = std::stof(reader.ReadPropValue()); });
+	MatchProperty("CRTStyle", { g_PostProcessMan.GetLightingSettings().CRTStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 3); });
+	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
@@ -591,6 +594,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingMetals", lighting.Metals);
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);
+	writer.NewPropertyWithValue("CRTStyle", lighting.CRTStyle);
+	writer.NewPropertyWithValue("UpscaleSharpness", lighting.UpscaleSharpness);
+	writer.NewPropertyWithValue("IntegerScaling", g_WindowMan.GetIntegerScaling());
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
 	writer.NewPropertyWithValue("RadianceCascades", lighting.RadianceCascades);
 	writer.NewPropertyWithValue("GIStrength", lighting.GIStrength);

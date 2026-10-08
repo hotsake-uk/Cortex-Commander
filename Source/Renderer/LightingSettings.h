@@ -222,6 +222,8 @@ namespace RTE {
 		bool RadianceCascades = false; //!< Global illumination by radiance cascades: glows light their surroundings with soft occlusion, and light bounces off surfaces. Replaces the simpler indirect light.
 		float GIStrength = 1.0F; //!< Brightness of the radiance cascades light.
 		float GIBounce = 0.5F; //!< How much of the light reaching surfaces they pass on.
+		int CRTStyle = 0; //!< What the CRT effect (Scanlines sets how strong) looks like: 0 scanlines, as before; 1 an aperture grille; 2 a shadow mask; 3 scanlines that bright pixels bloom across.
+		float UpscaleSharpness = 1.0F; //!< How crisp the picture is when scaled up to the window: 1 even, sharp pixels as before, down to 0 plainly smoothed.
 		float Scanlines = 0.0F; //!< CRT style scanlines on the final image, 0 (off) to 1.
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
 		float Metals = 1.0F; //!< How strongly metallic surfaces mirror their surroundings (sky from above, ground from below) and glint in the sun, 0 for none.

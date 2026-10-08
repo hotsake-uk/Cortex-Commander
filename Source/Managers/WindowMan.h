@@ -121,6 +121,15 @@ namespace RTE {
 		/// Sets the most frames drawn per second, 0 for no limit. Saves power and heat when VSync is off or the display is very fast.
 		void SetFrameCap(int framesPerSecond) { m_FrameCap = framesPerSecond <= 0 ? 0 : std::clamp(framesPerSecond, 30, 1000); }
 
+		/// Gets whether the picture is scaled to the window by a whole number only, so every game pixel is exactly as many screen pixels wide and tall, with bars around it.
+		bool GetIntegerScaling() const { return m_IntegerScaling; }
+
+		/// Sets whether the picture is scaled by a whole number only. Off: it fills as much of the window as its shape allows, as before.
+		void SetIntegerScaling(bool integerScaling);
+
+		/// Hands the upscaler the player's CRT and sharpness settings. With its shader begun.
+		void SetUpscaleUniforms() const;
+
 		/// Sets whether VSync is enabled.
 		/// @param enable Whether to enable VSync.
 		void SetVSyncEnabled(bool enable);
@@ -290,6 +299,7 @@ namespace RTE {
 		bool m_Background = false; //!< Whether the game runs in the background; see IsBackground.
 
 		int m_FrameCap = 0; //!< The most frames drawn per second, 0 for no limit.
+		bool m_IntegerScaling = false; //!< The picture is scaled to the window by a whole number only (SetIntegerScaling).
 		long long m_LastPresentTicks = 0; //!< When the last frame was presented, for the frame cap.
 		bool m_EnableVSync; //!< Whether vertical synchronization is enabled.
 		bool m_UseMultiDisplays; //!< Whether the multi-display arrangement should be ignored and only the display the main window is currently positioned at should be used for fullscreen.
