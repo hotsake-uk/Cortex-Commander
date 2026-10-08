@@ -6500,6 +6500,102 @@ namespace {
 		}
 	}
 
+	/// The incoming and effects overlay (SettingsMan::ShowSandboxEffects): each thing on its way in from the sky as its line from where it
+	/// comes to where it's aimed, the point it will hit (the first ground on its line) with its crater, its preset and the updates it has
+	/// left; each effect put down with its name and its main light's reach as a ring (storm cells with their next flash); each water spring as
+	/// its pour. With the pointer over an effect or a spring, Delete removes that one (the window's buttons only take the last or all).
+	void DrawEffectsOverlay() {
+		if (!g_SettingsMan.ShowSandboxEffects()) {
+			return;
+		}
+		// The reach of each effect's main light, in EffectKind's order; 0 for those that make no light.
+		static const float lightReach[] = {320.0F, 560.0F, 280.0F, 240.0F, 220.0F, 460.0F, 640.0F, 340.0F, 320.0F, 165.0F, 62.0F, 240.0F, 150.0F, 18.0F, 200.0F, 80.0F, 0.0F, 0.0F, 0.0F, 90.0F, 0.0F, 0.0F, 130.0F, 0.0F, 0.0F};
+		static_assert(sizeof(lightReach) / sizeof(lightReach[0]) == static_cast<size_t>(EffectKind::Count), "a reach for each effect");
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		const ImVec2& mouse = ImGui::GetIO().MousePos;
+		auto label = [drawList](const ImVec2& at, const std::string& text, ImU32 color) {
+			ImVec2 size = ImGui::CalcTextSize(text.c_str());
+			ImVec2 corner(std::floor(at.x - size.x * 0.5F), std::floor(at.y));
+			drawList->AddRectFilled(ImVec2(corner.x - 2.0F, corner.y), ImVec2(corner.x + size.x + 2.0F, corner.y + size.y), IM_COL32(10, 12, 10, 170));
+			drawList->AddText(corner, color, text.c_str());
+		};
+		auto pointedAt = [&mouse](const ImVec2& at) { return std::abs(mouse.x - at.x) < 10.0F && std::abs(mouse.y - at.y) < 10.0F; };
+		bool removeKey = !ImGui::GetIO().WantCaptureKeyboard && ImGui::IsKeyPressed(ImGuiKey_Delete, false);
+		ImU32 incomingColor = IM_COL32(255, 150, 60, 230);
+		for (const Incoming& incoming: s_Incoming) {
+			Vector now = incoming.Id != 0 ? incoming.LastPos : incoming.From;
+			Vector line = g_SceneMan.ShortestDistance(incoming.From, incoming.Target, g_SceneMan.SceneWrapsX());
+			float length = line.GetMagnitude();
+			Vector direction = length > 0.01F ? line / length : Vector(0.0F, 1.0F);
+			// Where it will hit: the first ground on its line from here, looked for as far as its target (and no more than 1500 px ahead).
+			Vector impact = incoming.Target;
+			float left = std::min(g_SceneMan.ShortestDistance(now, incoming.Target, g_SceneMan.SceneWrapsX()).GetMagnitude(), 1500.0F);
+			for (float ahead = 0.0F; ahead <= left; ahead += 4.0F) {
+				Vector probe = now + direction * ahead;
+				if (probe.m_Y > 0.0F && g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != g_MaterialAir) {
+					impact = probe;
+					break;
+				}
+			}
+			ImVec2 from = ToScreen(incoming.From);
+			ImVec2 at = ToScreen(now);
+			ImVec2 hit = ToScreen(impact);
+			drawList->AddLine(from, at, IM_COL32(255, 150, 60, 110), 1.0F);
+			drawList->AddLine(at, hit, incomingColor, 1.5F);
+			drawList->AddCircle(hit, std::max(static_cast<float>(incoming.Crater) / scale, 4.0F), IM_COL32(255, 80, 50, 230), 0, 2.0F);
+			std::string text = incoming.Preset + (incoming.Delay > 0 ? "  in " + std::to_string(incoming.Delay) + " updates" : "  life " + std::to_string(incoming.Life)) + (incoming.Crater > 0 ? "  crater " + std::to_string(incoming.Crater) : "");
+			label(ImVec2(at.x, at.y + 8.0F), text, incomingColor);
+		}
+		int removeEffect = -1;
+		for (size_t i = 0; i < s_Effects.size(); ++i) {
+			const PlacedEffect& effect = s_Effects[i];
+			ImVec2 at = ToScreen(effect.Position);
+			int kind = std::clamp(static_cast<int>(effect.Kind), 0, static_cast<int>(EffectKind::Count) - 1);
+			bool hovered = pointedAt(at);
+			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 160, 255, 230);
+			if (lightReach[kind] > 0.0F) {
+				drawList->AddCircle(at, lightReach[kind] / scale, IM_COL32(200, 160, 255, 90), 48, 1.0F);
+			}
+			drawList->AddRect(ImVec2(at.x - 5.0F, at.y - 5.0F), ImVec2(at.x + 5.0F, at.y + 5.0F), color, 0.0F, 0, 2.0F);
+			std::string text = std::to_string(i + 1) + " " + c_Effects[kind].Name;
+			if (effect.Kind == EffectKind::StormCell) {
+				char wait[32];
+				std::snprintf(wait, sizeof(wait), "  next flash %.1fs", static_cast<float>(std::max(effect.Wait, 0)) / 60.0F);
+				text += wait;
+			}
+			if (hovered) {
+				text += "  (Delete: remove)";
+				if (removeKey) {
+					removeEffect = static_cast<int>(i);
+				}
+			}
+			label(ImVec2(at.x, at.y + 7.0F), text, color);
+		}
+		int removeSpawner = -1;
+		for (size_t i = 0; i < s_WaterSpawners.size(); ++i) {
+			const WaterSpawner& spawner = s_WaterSpawners[i];
+			ImVec2 at = ToScreen(spawner.Position);
+			bool hovered = pointedAt(at);
+			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(90, 170, 255, 230);
+			drawList->AddCircle(at, std::max(static_cast<float>(spawner.Radius) / scale, 4.0F), color, 0, 2.0F);
+			std::string text = "water " + std::to_string(spawner.Radius) + " px";
+			if (hovered) {
+				text += "  (Delete: remove)";
+				if (removeKey && removeEffect < 0) {
+					removeSpawner = static_cast<int>(i);
+				}
+			}
+			label(ImVec2(at.x, at.y + 7.0F), text, color);
+		}
+		// (Removed from the ImGui frame, as the window's own Remove buttons do.)
+		if (removeEffect >= 0) {
+			s_Effects.erase(s_Effects.begin() + removeEffect);
+		} else if (removeSpawner >= 0) {
+			s_WaterSpawners.erase(s_WaterSpawners.begin() + removeSpawner);
+		}
+	}
+
 	void DrawOrdersOverlay() {
 		int which = g_SettingsMan.SandboxOrdersOverlay();
 		if (which == 0) {
@@ -6585,4 +6681,5 @@ void Sandbox::DrawDebug() {
 	}
 	DrawOrdersOverlay();
 	DrawSimState();
+	DrawEffectsOverlay();
 }

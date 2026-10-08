@@ -623,6 +623,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Sim state", g_SettingsMan.ShowSandboxSimState(), [](bool on) { g_SettingsMan.SetShowSandboxSimState(on); });
 		Tip("A readout in the bottom right: whether the world is paused and by what (the sandbox's tools, photo mode, Freeze simulation, the game's pause), the AI pause, how many sim updates ran for this frame, the sandbox's tool uses queued and applied last update and the steps still wanted, and the time scale against the speed the simulation actually manages.");
+		Toggle("Incoming and effects", g_SettingsMan.ShowSandboxEffects(), [](bool on) { g_SettingsMan.SetShowSandboxEffects(on); });
+		Tip("Each rocket, shell, bomb or falling craft on its way in as its line, where it will hit with its crater, and the updates it has left; each effect put down, numbered, with its main light's reach as a ring and storm cells' next flash; each water spring as its pour. Point at an effect or a spring and press Delete to remove just that one.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
