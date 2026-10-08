@@ -1401,6 +1401,17 @@ namespace SandboxDetail {
 	void DrawIcon(ImDrawList* drawList, Icon icon, ImVec2 at, float pixel, ImU32 color);
 	void TookTool(int toolIndex);
 	ImGuiTabItemFlags TestTab(const char* name);
+
+	/// The sandbox window's tabs, in two rows of buttons (a tab bar doesn't wrap): the names of the tabs on offer now, in order.
+	std::vector<const char*> VisibleTabs();
+
+	/// Brings the tab asked for (from the bar, or a test run) to the front, then draws the rows of tab buttons, the one showing lit.
+	/// Returns whether there is a tab to draw.
+	bool DrawTabRows();
+
+	/// Whether a tab is the one showing, to be drawn with its page, and then closed with EndSandboxTab. (As ImGui::BeginTabItem and EndTabItem.)
+	bool SandboxTab(const char* name);
+	void EndSandboxTab();
 	int FindPin(Tool kind, const std::string& presetName);
 	void TogglePin(Tool kind, const std::string& presetName);
 	void SavePinsFile();

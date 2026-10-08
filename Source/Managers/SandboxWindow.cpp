@@ -242,6 +242,83 @@ namespace SandboxDetail {
 	}
 
 
+	std::vector<const char*> VisibleTabs() {
+		std::vector<const char*> tabs;
+		if (Sandbox::IsGodMode()) {
+			tabs.push_back("You");
+		}
+		tabs.push_back("Spawn");
+		if (c_ShowColonyTab) {
+			tabs.push_back("Colony");
+		}
+		tabs.push_back("Build");
+		tabs.push_back("Orders");
+		tabs.push_back("Battle");
+		if (Sandbox::IsGodMode()) {
+			tabs.push_back("Gym");
+		}
+		for (const char* name: {"Paint", "Boom", "Effects", "World", "Keys"}) {
+			tabs.push_back(name);
+		}
+		return tabs;
+	}
+
+	bool DrawTabRows() {
+		std::vector<const char*> tabs = VisibleTabs();
+		// (Asked for from the bar, or by a test run: TestTab says so for the tab named.)
+		for (const char* name: tabs) {
+			if (TestTab(name) & ImGuiTabItemFlags_SetSelected) {
+				s_CurrentTab = name;
+			}
+		}
+		if (std::none_of(tabs.begin(), tabs.end(), [](const char* name) { return s_CurrentTab == name; })) {
+			s_CurrentTab = tabs.front();
+		}
+		// Two rows, the first the longer by one when the count is odd. Each button takes an equal share of the width.
+		size_t perRow = (tabs.size() + 1) / 2;
+		float spacing = ImGui::GetStyle().ItemSpacing.x;
+		for (size_t row = 0; row < 2; ++row) {
+			size_t first = row * perRow;
+			size_t last = std::min(tabs.size(), first + perRow);
+			if (first >= last) {
+				break;
+			}
+			float width = (ImGui::GetContentRegionAvail().x - spacing * static_cast<float>(perRow - 1)) / static_cast<float>(perRow);
+			for (size_t i = first; i < last; ++i) {
+				if (i > first) {
+					ImGui::SameLine();
+				}
+				bool showing = s_CurrentTab == tabs[i];
+				if (showing) {
+					ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+					ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrab));
+				}
+				std::string label = std::string(tabs[i]) + "##tab";
+				if (ToolUI::Button(label.c_str(), ImVec2(width, 0.0F)) && !showing) {
+					s_CurrentTab = tabs[i];
+				}
+				if (showing) {
+					ImGui::PopStyleColor(2);
+				}
+			}
+		}
+		ImGui::Separator();
+		return true;
+	}
+
+	bool SandboxTab(const char* name) {
+		if (s_CurrentTab != name) {
+			return false;
+		}
+		ImGui::PushID(name);
+		return true;
+	}
+
+	void EndSandboxTab() {
+		ImGui::PopID();
+	}
+
+
 	int FindPin(Tool kind, const std::string& presetName) {
 		for (size_t i = 0; i < s_Pins.size(); ++i) {
 			if (s_Pins[i].Kind == kind && s_Pins[i].PresetName == presetName) {
