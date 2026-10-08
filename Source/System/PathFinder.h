@@ -37,7 +37,8 @@ namespace RTE {
 		Crouch, //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
 		Scramble, //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
 		Swim, //!< Along the surface of liquid too deep to wade, swum by a searcher that floats (PathAgent::Floats).
-		Wade //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
+		Wade, //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
+		StepOver //!< Over something low on the floor (a kerb, a sandbag, a body) to a floor level with this one, one or two nodes along, with room to stand over it: stepped, leapt or pulled over at a walk (LM-5).
 	};
 
 	/// What liquid fills a node's column under its surface (see PathNode::Liquid). Told by the material's name, the four FluidSim pours.

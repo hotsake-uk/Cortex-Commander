@@ -2478,7 +2478,7 @@ end
 function SharedBehaviors.ScriptStepKind(kind)
 	if kind == 8 or kind == 9 or kind == 11 then
 		return 2;
-	elseif kind == 10 or kind == 12 or kind == 13 then
+	elseif kind == 10 or kind == 12 or kind == 13 or kind == 14 then
 		return 0;
 	end
 	return kind;
