@@ -1,5 +1,10 @@
 """grid_rules.py -- the path grid's rules, mirroring Source/System/PathFinder.cpp (and PathFinder.h) function by function.
 
+OUT OF STEP (8.2): this mirrors PathFinder.cpp as it was at 1076 lines; the C++ is now about 1900 and has moved on. Not mirrored: the
+Grounded flag (this uses DownMaterial.integrity > 0), FallCost on walks and diagonals (taken out of the C++), and the ladder, anchor,
+step-over, mantle, leap, flight-link, air-start, avoid, graze and legOpen logic. Its routes are not the game's: don't use it to check a
+grid change before a push. Use the game's own AITRACE/PATHLOG lines or the gyms.
+
 RE-SYNC NOTE: every method below names the C++ function and the line range it mirrors (line numbers as of the PathFinder.cpp this
 was written against, 1076 lines). After editing the C++, re-read each named range and update the Python next to it. Nothing in
 here is "simplified": the rays, the offsets, the bands, the epsilon rule, the thread_local search parameters, the jump chains and

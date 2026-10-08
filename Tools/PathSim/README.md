@@ -26,8 +26,11 @@ boxes around them re-sampled).
 
 ## Keeping it true
 
-`grid_rules.py` mirrors `PathFinder.cpp` function by function; each method names the C++ function it follows. When the C++ changes,
-change the Python the same way, and check a course the game has logged still comes out the same. `scene.py` holds what the model
+**Out of step since 8.1.x.** `grid_rules.py` was written to mirror `PathFinder.cpp` function by function, but the C++ has since gained
+the Grounded flag, ladders, anchors, step-overs, mantles, leaps, flight links, air starts, avoid lists, graze costs and the leg checks,
+and dropped FallCost on walks and diagonals, none of which the Python has. Its routes are no longer the game's, so it is not a check on
+a grid change: use the game's `AITRACE`/`PATHLOG` lines or the gyms. To bring it back, re-read each named C++ function and update the
+Python next to it, then check a course the game has logged comes out the same. `scene.py` holds what the model
 needs of `SceneMan` (rays, wrapping, `MovePointToGround`, how the sandbox snaps a placed structure); `astar.py` is MicroPather's
 search order; `agent.py` the `PathAgent` and the jump-height estimate; `bunker.py` the layouts and courses of `AIBunker.lua`
 (`NEW_BUNKER_LAYOUT` is the one in the Lua now, and must be kept the same).
