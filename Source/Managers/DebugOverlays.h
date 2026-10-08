@@ -11,5 +11,9 @@ namespace RTE {
 
 		/// The combat AI overlay: for each inspected unit (or every unit in view), the line to its target coloured by whether it is in sight, the range it holds to, and its cover, flank and retreat spots with how long it has held them.
 		void DrawCombatOverlay();
+
+		/// The navigation overlay's node under the pointer (its top level): what the grid makes of the node (PathFinder::DescribeNodeAt), and
+		/// every way out of it as the inspected unit is offered them, drawn with its kind and cost, flights with their fuel.
+		void DrawNavNode();
 	} // namespace DebugOverlays
 } // namespace RTE
