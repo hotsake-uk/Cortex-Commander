@@ -1409,7 +1409,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 							AI.ShotBlockedTimer = Timer();
 						elseif AI.ShotBlockedTimer:IsPastSimMS(1500) then
 							AI.ShotBlockedTimer = nil;
-							if SharedBehaviors.StartFlank(AI, Owner, TargetPoint, PrjDat.rng) then
+							if SharedBehaviors.StartFlank(AI, Owner, TargetPoint, PrjDat and PrjDat.rng or 500) then
 								break;
 							end
 						end
@@ -1649,7 +1649,8 @@ function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
 		return;
 	end
 	AI.lateralMoveState = Actor.LAT_STILL;
-	if kind == "defend" or AI.flying or AI.proneState == AHuman.PRONE or AI.Cover then
+	-- (Nor with no projectile data: ShootTarget drops it on a reload or a new magazine, and gets it again once the weapon is ready.)
+	if kind == "defend" or AI.flying or AI.proneState == AHuman.PRONE or AI.Cover or not PrjDat then
 		AI.closingIn = false;
 		return;
 	end
