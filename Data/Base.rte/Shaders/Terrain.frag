@@ -47,7 +47,8 @@ const int c_MaxBlasts = 8;
 uniform int rteBlastCount;
 uniform vec4 rteBlasts[c_MaxBlasts]; // xy = world position, z = wavefront radius, w = strength.
 
-uniform sampler2D rteScorch; // World space, R = soot darkness.
+uniform sampler2D rteScorch; // World space, R = soot darkness, G = stains' gloss while wet, B = their gloss once dry.
+uniform float rteStainShine; // How much stains and soot change how glossy the ground is, 0 for not at all.
 uniform vec2 rteScorchWorldSize; // World size covered by the scorch map.
 uniform bool rteScorchEnabled;
 uniform sampler2D rteStains; // World space liquid stains, same cells as the scorch map: RGB color, A coverage.
@@ -429,12 +430,23 @@ void main() {
 		float brightness = dot(FragColor.rgb, vec3(0.299, 0.587, 0.114));
 		vec3 stained = stain.rgb * (0.55 + 0.9 * brightness);
 		FragColor.rgb = mix(FragColor.rgb, stained, clamp(stain.a, 0.0, 0.85));
+		if (rteStainShine > 0.0) {
+			// What the stain is: fresh blood shines a little and dries matte, oil stays glossy and catches lamps.
+			vec3 decal = texture(rteScorch, worldPos / rteScorchWorldSize).rgb;
+			float cover = clamp(stain.a * 1.4, 0.0, 1.0) * rteStainShine;
+			float stainGloss = max(decal.g, decal.b);
+			shine = mix(shine, stainGloss, cover);
+			gloss = mix(gloss, stainGloss, cover);
+		}
 	}
 
 	if (rteScorchEnabled) {
 		// Soot: darken towards a warm black, keeping a little of the original color so the texture still reads.
 		float scorch = texture(rteScorch, worldPos / rteScorchWorldSize).r;
 		FragColor.rgb = mix(FragColor.rgb, FragColor.rgb * vec3(0.22, 0.19, 0.17), scorch);
+		// Soot is dull.
+		shine *= 1.0 - 0.8 * scorch * rteStainShine;
+		gloss *= 1.0 - 0.8 * scorch * rteStainShine;
 
 		// Freshly blasted terrain glows and cools down, brightest at exposed edges.
 		float heat = 0.0;
