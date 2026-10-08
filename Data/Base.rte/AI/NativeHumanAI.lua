@@ -864,6 +864,9 @@ function NativeHumanAI:CreateGoToBehavior(Owner)
 		AI.proneState = AHuman.NOTPRONE;
 		AI.jump = false;
 		AI.fire = false;
+		-- (Set by GoToRoute while the engine moves the unit, and cleared by it on its own way out; a GoTo that ended in an error left it
+		-- set for good, and the unit's run key, its own jump keys and the squad key copy stayed off from then on.)
+		AI.engineMover = false;
 	end
 	self.NextGoToName = "GoToWpt";
 end
