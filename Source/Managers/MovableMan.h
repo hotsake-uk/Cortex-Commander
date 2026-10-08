@@ -146,6 +146,17 @@ namespace RTE {
 		/// actors is NOT transferred!
 		std::list<Actor*>* GetTeamRoster(int team = 0) { return &(m_ActorRoster[team]); }
 
+		/// Whether a team has any controllable actor in the scene (its roster isn't empty). Safe while scripts add actors on other threads.
+		/// @param team The team.
+		/// @return Whether it has one; false for a team that isn't one.
+		bool TeamHasActors(int team) {
+			if (team < Activity::TeamOne || team >= Activity::MaxTeamCount) {
+				return false;
+			}
+			std::lock_guard<std::mutex> lock(m_ActorRosterMutex);
+			return !m_ActorRoster[team].empty();
+		}
+
 		/// Get a pointer to the first Actor in the internal Actor list that is
 		/// of a specifc team, alternatively the first one AFTER a specific actor!
 		/// @param team Which team to try to get an Actor for. 0 means first team, 1 means 2nd. (default: 0)

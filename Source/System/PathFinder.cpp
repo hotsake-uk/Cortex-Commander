@@ -751,29 +751,39 @@ void PathFinder::RecalculateAllCosts() {
 	}
 
 	UpdateNodeList(pathNodesIdsVec);
+
+	// Every node was just sampled, so nothing is waiting any more.
+	m_WaitingNodes.clear();
+	m_NodeWaiting.assign(m_NodeGrid.size(), false);
 }
 
 std::vector<int> PathFinder::RecalculateAreaCosts(std::deque<Box>& boxList, size_t nodeUpdateLimit) {
 	ZoneScoped;
 
-	std::unordered_set<int> nodeIDsToUpdate;
-
-	while (!boxList.empty()) {
-		std::vector<int> nodesInside = GetNodeIdsInBox(boxList.front(), true);
-		for (int nodeId: nodesInside) {
-			nodeIDsToUpdate.insert(nodeId);
-		}
-
-		boxList.pop_front();
-		if (nodeIDsToUpdate.size() > nodeUpdateLimit) {
-			break;
-		}
+	if (m_NodeWaiting.size() != m_NodeGrid.size()) {
+		m_NodeWaiting.assign(m_NodeGrid.size(), false);
 	}
 
-	// Note - This copy is necessary because std::for_each with parallel execution doesn't appear to work with std::unordered_set -
-	// Using it will cause nodes to randomly fail to update. This should be rechecked when the codebase upgrades to C++20,
-	// and then UpdateNodeList can be refactored to take a pair of iterators instead of a vector.
-	std::vector<int> nodeVec(nodeIDsToUpdate.begin(), nodeIDsToUpdate.end());
+	// Every box goes into the waiting set at once, which only marks nodes: a burst of settling dust queues hundreds of boxes over the same few
+	// nodes, and each node waits once. (Taking boxes only until the limit was reached left such a backlog that past 1,000 boxes every waiting
+	// node was sampled in one call, a collapse or a flood in one frame.)
+	while (!boxList.empty()) {
+		for (int nodeId: GetNodeIdsInBox(boxList.front(), true)) {
+			if (!m_NodeWaiting[nodeId]) {
+				m_NodeWaiting[nodeId] = true;
+				m_WaitingNodes.push_back(nodeId);
+			}
+		}
+		boxList.pop_front();
+	}
+
+	// The oldest waiting nodes, up to the limit, are sampled now; the rest next call.
+	size_t count = std::min(nodeUpdateLimit, m_WaitingNodes.size());
+	std::vector<int> nodeVec(m_WaitingNodes.begin(), m_WaitingNodes.begin() + count);
+	m_WaitingNodes.erase(m_WaitingNodes.begin(), m_WaitingNodes.begin() + count);
+	for (int nodeId: nodeVec) {
+		m_NodeWaiting[nodeId] = false;
+	}
 
 	// If no PathNode costs were changed, clear the set of IDs to update, so it's empty when it's returned.
 	if (!UpdateNodeList(nodeVec)) {
