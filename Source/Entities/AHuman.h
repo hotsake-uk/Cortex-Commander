@@ -846,6 +846,8 @@ namespace RTE {
 			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
 			bool settling = false; //!< Waiting to settle before a take-off just now.
+			bool standUp = false; //!< At a leap's take-off lying down: the motor's prone stance gives way (see UpdateAIMotor), for a moment after.
+			Timer standUpTimer;
 			bool noTakeOff = false; //!< At a take-off that the flight can't begin from, just now.
 			Timer noTakeOffTimer; //!< Since then.
 			Timer settleWaitTimer; //!< Since the wait to settle began: it never lasts more than a second and a half.
