@@ -440,8 +440,10 @@ void main() {
 			// Wet ground glistens under lights.
 			shine = max(shine, wetHere * 0.85);
 			// Water standing in a dip after long rain: the top pixel or two of the ground there drawn as a puddle, a flat line of water that reflects.
+			// Only on solid ground: the surface of a pond or a pool of oil or lava is no puddle.
 			float puddle = clamp(mapWet - 1.0, 0.0, 1.0) * rtePuddles;
-			if (puddle > 0.02 && depth <= 1.0 + puddle && InDip(worldPos.x, worldPos.y - depth + 1.0)) {
+			int liquidHere = rteIndexed ? LiquidLook(texture(rteTexture, textureUV).r) : 0;
+			if (puddle > 0.02 && liquidHere == 0 && depth <= 1.0 + puddle && InDip(worldPos.x, worldPos.y - depth + 1.0)) {
 				vec3 water = mix(rteLiquidShallow[1].rgb, rteLiquidDeep[1].rgb, 0.6) * 0.55;
 				// Drops landing in it: a pixel flashes here and there.
 				float dropSeed = fract(sin(dot(vec2(floor(worldPos.x), floor(rteTime * 7.0)), vec2(12.9898, 78.233))) * 43758.5453);
