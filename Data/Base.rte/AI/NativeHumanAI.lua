@@ -56,11 +56,11 @@ function NativeHumanAI:Create(Owner)
 	Members.aimSkill = Owner:NumberValueExists("AIAimSkill") and Owner:GetNumberValue("AIAimSkill") or Members.aimSkill;
 	Members.skill = Owner:NumberValueExists("AISkill") and Owner:GetNumberValue("AISkill") or Members.skill;
 	
-	-- default to enhanced AI if AI skill has been set high enough
+	-- default to enhanced AI if AI skill has been set high enough (an AI skill, 1 to 100: Good or Unfair, not a difficulty constant)
 	-- (The engine's scan where the build has it: everyone looks the same way, keener units wider; see HumanBehaviors.ScanTargets.)
 	if SharedBehaviors.CanScan(Owner) then
 		Members.SpotTargets = HumanBehaviors.ScanTargets;
-	elseif Members.skill >= GameActivity.NUTSDIFFICULTY or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss") then
+	elseif Members.skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss") then
 		Members.SpotTargets = HumanBehaviors.CheckEnemyLOS;
 	else
 		Members.SpotTargets = HumanBehaviors.LookForTargets;
