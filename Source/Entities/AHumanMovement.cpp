@@ -172,8 +172,11 @@ void AHuman::UpdateAIMotor() {
 
 	// A fall braked, off a route's flight (the pilot brakes those): falling with the floor coming up inside the jet's stop, the jet lit
 	// straight up, leant against any drift. (The script did this, and lit the jet over the pilot's head on the route's flights too.)
+	// Not while the route-follower is flying the fall itself (in the air with no flight, PilotFlight for the point, since the last AI update
+	// or the one before): its safe-fall plan lets the body drop and lights the jet late, and this rewrote its jet key and lean every frame.
 	const bool standardJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
-	if (standardJet && !m_Mover.flight.active && !m_Ladder.active && m_Vel.m_Y > 6.0F && m_pJetpack->GetJetTimeLeft() > 0.0F) {
+	const bool fallPiloted = m_Mover.pilotedFallTick >= 0 && g_TimerMan.GetSimUpdateCount() - m_Mover.pilotedFallTick <= static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2);
+	if (standardJet && !fallPiloted && !m_Mover.flight.active && !m_Ladder.active && m_Vel.m_Y > 6.0F && m_pJetpack->GetJetTimeLeft() > 0.0F) {
 		float accel = JetAccelAtFuel(m_pJetpack->GetJetTimeLeft()) - g_SceneMan.GetGlobalAcc().m_Y * c_PPM;
 		float speed = m_Vel.m_Y * c_PPM;
 		float stop = accel > 1.0F ? speed * speed / (2.0F * accel) : h * 6.0F;
@@ -1782,6 +1785,7 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 			Vector command = PilotFlight(point, pointFloor);
+			mover.pilotedFallTick = g_TimerMan.GetSimUpdateCount();
 			// (A drop onto the point's floor is left to gravity until the brake is wanted: the pilot's safe-fall rule asks for the jet only then.)
 			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
