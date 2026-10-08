@@ -1762,25 +1762,36 @@ function HumanBehaviors.UseTheWorld(AI, Owner)
 	if Owner:NumberValueExists("OnFire") then
 		return; -- Burning itself: ActorFire's panic has it.
 	end
-	-- Out of the fire, to whichever side is clear.
+	-- Out of the fire, to whichever side is clear: a spot not burning, on much the same floor, with nothing solid between; the one tried last
+	-- (a wall the step ran into) left out the next time. Looked for four times a second.
 	local Feet = Owner.Pos + Vector(0, Owner.Height * 0.4);
 	if AI.FireStep then
 		if AI.FireStep.Timer:IsPastSimMS(1500) or not SharedBehaviors.StepTo(AI, Owner, AI.FireStep.Spot, 1500 - AI.FireStep.Timer.ElapsedSimTimeMS) then
+			AI.FireStepLast = AI.FireStep.dx;
 			AI.FireStep = nil;
 		end
-	elseif not AI.flying and SceneMan:IsBurningNear(Feet, 14) then
-		for _, dx in ipairs({48, -48, 96, -96}) do
-			local Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(dx, -Owner.Height * 0.2), math.floor(Owner.Height * 0.2), 4);
-			if not SceneMan:IsBurningNear(Spot, 20) and math.abs(SceneMan:ShortestDistance(Owner.Pos, Spot, false).Y) < Owner.Height * 0.5 then
-				AI.FireStep = { Spot = Spot, Timer = Timer() };
-				SharedBehaviors.Trace(Owner, "fire underfoot: stepping out");
-				SharedBehaviors.StepTo(AI, Owner, Spot, 1500);
-				break;
+	elseif not AI.flying and (not AI.FireCheckTimer or AI.FireCheckTimer:IsPastSimMS(250)) then
+		AI.FireCheckTimer = AI.FireCheckTimer or Timer();
+		AI.FireCheckTimer:Reset();
+		if SceneMan:IsBurningNear(Feet, 14) then
+			for _, dx in ipairs({48, -48, 96, -96}) do
+				local Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(dx, -Owner.Height * 0.2), math.floor(Owner.Height * 0.2), 4);
+				local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
+				if dx ~= AI.FireStepLast and not SceneMan:IsBurningNear(Spot, 20) and math.abs(Way.Y) < Owner.Height * 0.5
+					and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+					AI.FireStep = { Spot = Spot, Timer = Timer(), dx = dx };
+					SharedBehaviors.Trace(Owner, "fire underfoot: stepping out");
+					SharedBehaviors.StepTo(AI, Owner, Spot, 1500);
+					break;
+				end
 			end
+		else
+			AI.FireStepLast = nil;
 		end
 	end
 	-- A burning friend in reach of a water cannon.
-	if AI.Target or not (Owner:HasObject("Water Cannon")) then
+	-- (Not on a move order: "get there; don't stop for it".)
+	if AI.Target or SharedBehaviors.OrderKind(Owner) == "move" or not Owner:HasObject("Water Cannon") then
 		if AI.Dousing then
 			AI.Dousing = nil;
 			Owner:EquipFirearm(true);
