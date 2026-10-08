@@ -471,6 +471,16 @@ namespace {
 	/// @param liquid The liquid's material.
 	bool OpenTo(int spot, int liquid) { return spot == g_MaterialAir || (s_LetsLiquidsThrough[spot & 0xFF] && s_PassThrough[liquid & 0xFF] != PassThrough::Collide); }
 
+	/// Whether a liquid (or powder) can move into a spot, changing places with what's there: what it's open to (OpenTo), or a lighter liquid, which takes the
+	/// place it left. So a heavier liquid falls, runs and finds its level through a lighter one as through air (water under oil), and each comes to a flat surface.
+	bool Passable(int spot, int liquid) {
+		if (OpenTo(spot, liquid)) {
+			return true;
+		}
+		Liquid other = s_Kinds[spot & 0xFF];
+		return other != Liquid::None && other != Liquid::Powder && s_Props[spot & 0xFF].Weight < s_Props[liquid & 0xFF].Weight;
+	}
+
 	bool s_WrapsX = false; //!< Whether the scene wraps sideways. Looked up once an update: InWorld is called hundreds of thousands of times in a big flood.
 
 	bool InWorld(int& x, int& y, int width, int height) {
@@ -551,7 +561,7 @@ namespace {
 				int material = materialBitmap->line[y][x];
 				if (material == liquidMaterial) {
 					frontier.emplace_back(relativeX, relativeY);
-				} else if (relativeY >= 1 && OpenTo(material, liquidMaterial)) {
+				} else if (relativeY >= 1 && Passable(material, liquidMaterial)) {
 					// Lower than the pixel by at least a row, so moving there brings the two levels together rather than swapping them.
 					foundX = x;
 					foundY = y;
@@ -562,7 +572,7 @@ namespace {
 		return false;
 	}
 
-	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air (or what it flows through, see OpenTo) with the same below it.
+	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air (or what it flows through or sinks through, see Passable) with the same below it.
 	/// The look passes through those and through liquid of its own material.
 	/// @return How many pixels away the place is, or 0 if there's none within reach.
 	int FindRowDrop(BITMAP* materialBitmap, int x, int y, int side, int reach, int width, int height) {
@@ -577,8 +587,8 @@ namespace {
 				return 0;
 			}
 			int material = materialBitmap->line[y][lookX];
-			if (OpenTo(material, own)) {
-				if (OpenTo(materialBitmap->line[y + 1][lookX], own)) {
+			if (Passable(material, own)) {
+				if (Passable(materialBitmap->line[y + 1][lookX], own)) {
 					return step;
 				}
 			} else if (material != own) {
@@ -719,21 +729,21 @@ namespace {
 		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
 			// Nearly every pixel isn't liquid, so that's checked first and costs next to nothing.
 			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
-				// Air (or grass it flows through) right below, or below and to a side, means it has somewhere to go.
+				// Air (or grass it flows through, or a lighter liquid it sinks through) right below, or below and to a side, means it has somewhere to go.
 				const int swept = materialBitmap->line[y][x];
 				const unsigned char* below = materialBitmap->line[y + 1];
 				int left = x > 0 ? x - 1 : (s_WrapsX ? width - 1 : x);
 				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
-				if (OpenTo(below[x], swept) || OpenTo(below[left], swept) || OpenTo(below[right], swept)) {
+				if (Passable(below[x], swept) || Passable(below[left], swept) || Passable(below[right], swept)) {
 					Activate(x, y, width, height, terrain);
-				} else if ((OpenTo(materialBitmap->line[y][left], swept) || OpenTo(materialBitmap->line[y][right], swept)) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
+				} else if ((Passable(materialBitmap->line[y][left], swept) || Passable(materialBitmap->line[y][right], swept)) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
 					// The end of a layer on the surface, with somewhere lower along its row to go to. (One with nowhere to go is left asleep, or the top of every pool would stir for ever.)
 					Activate(x, y, width, height, terrain);
 				} else if (HasReactionPartner(materialBitmap, x, y, width, height, anyFire)) {
 					// Something beside it to react with (acid by soft ground, lava by wood or snow, a pool by a fire): woken, it reacts in the step, so an acid
 					// puddle on dirt eats at the sweep's pace (slowly) instead of stopping once it settles.
 					Activate(x, y, width, height, terrain);
-				} else if (y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && ((x * 7 + y * 13 + s_SweepPass) & 15) == 0) {
+				} else if (y > 0 && Passable(materialBitmap->line[y - 1][x], swept) && ((x * 7 + y * 13 + s_SweepPass) & 15) == 0) {
 					// Now and then a pixel of a resting surface is woken to look through the body it's part of for a lower place (see FindLowerSpot): this is what starts
 					// two pools joined below coming to one level. If it finds one, the pixels around it wake and follow; if not, it goes back to sleep. A different one in 16 each pass.
 					Activate(x, y, width, height, terrain);
@@ -755,7 +765,7 @@ namespace {
 						ChangePixel(terrain, x, y, freezesTo, s_ColorOfMaterial[freezesTo]);
 					}
 				}
-			} else if (sweptKind == Liquid::Powder && y + 1 < height && materialBitmap->line[y + 1][x] == g_MaterialAir && !s_Active.Contains(static_cast<int>(index))) {
+			} else if (sweptKind == Liquid::Powder && y + 1 < height && Passable(materialBitmap->line[y + 1][x], materialBitmap->line[y][x]) && !s_Active.Contains(static_cast<int>(index))) {
 				// A pile left hanging (L-3): what held it up went without a disturbance (wood burned away under sand, a script writing the
 				// terrain). Only straight down: a resting slope with air beside it below is left alone, or every pile would creep.
 				Activate(x, y, width, height, terrain);
@@ -1262,18 +1272,9 @@ void FluidSim::Update() {
 			continue;
 		}
 
-		// (Air, or grass and foliage it flows through: OpenTo.)
+		// (Air, grass and foliage it flows through, or a lighter liquid it changes places with: Passable.)
 		auto canMoveTo = [&](int tx, int ty) {
-			return InWorld(tx, ty, width, height) && OpenTo(materialBitmap->line[ty][tx], ownMaterial);
-		};
-		// Whether this pixel sinks through what's at a spot: a lighter liquid, which rises into its place.
-		auto sinksInto = [&](int tx, int ty) {
-			if (!InWorld(tx, ty, width, height)) {
-				return false;
-			}
-			int otherMaterial = materialBitmap->line[ty][tx];
-			Liquid other = s_Kinds[otherMaterial];
-			return other != Liquid::None && other != Liquid::Powder && s_Props[otherMaterial].Weight < properties.Weight;
+			return InWorld(tx, ty, width, height) && Passable(materialBitmap->line[ty][tx], ownMaterial);
 		};
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
@@ -1283,7 +1284,6 @@ void FluidSim::Update() {
 		int targetY = y;
 		bool moved = false;
 		bool gotLower = false;
-		bool swapped = false;
 		bool freeFall = false;
 		int shiftRun = 0; //!< For a surface move along a run of its own liquid (L-4): how far, so the colours along it shift one cell toward the drop.
 		if (canMoveTo(x, y + 1)) {
@@ -1303,13 +1303,20 @@ void FluidSim::Update() {
 			if (kind != Liquid::Powder && steps > 2 && Random01() < 0.3F) {
 				--steps;
 			}
+			// (Into a lighter liquid only a pixel a step, and only as the first: falling into a pool it stops at the surface, sinks at that pace, and never
+			// trades places with liquid on the far side of a gap it just fell through.)
+			auto openAt = [&](int tx, int ty) { return InWorld(tx, ty, width, height) && OpenTo(materialBitmap->line[ty][tx], ownMaterial); };
+			auto fallsInto = [&](int tx, int ty, int fall) { return fall == 0 ? canMoveTo(tx, ty) : openAt(tx, ty); };
 			for (int fall = 0; fall < steps; ++fall) {
-				if (drift != 0 && Random01() < 0.5F && canMoveTo(targetX + drift, targetY + 1)) {
+				if (drift != 0 && Random01() < 0.5F && fallsInto(targetX + drift, targetY + 1, fall)) {
 					targetX += drift;
-				} else if (!canMoveTo(targetX, targetY + 1)) {
+				} else if (!fallsInto(targetX, targetY + 1, fall)) {
 					break;
 				}
 				++targetY;
+				if (!openAt(targetX, targetY)) {
+					break;
+				}
 			}
 			moved = true;
 			gotLower = true;
@@ -1345,13 +1352,8 @@ void FluidSim::Update() {
 				velX += heading * velY / 2;
 			}
 			velY = 0;
-			if (sinksInto(x, y + 1)) {
-				// Heavier than the liquid below: they change places.
-				targetY = y + 1;
-				moved = true;
-				gotLower = true;
-				swapped = true;
-			} else if (kind == Liquid::Powder) {
+			// (Heavier than a liquid below, it falls through it above, the two changing places: Passable.)
+			if (kind == Liquid::Powder) {
 				// Powder only ever slides down a slope, and not every step, so it piles instead of levelling.
 				int material = materialBitmap->line[y][x];
 				if (Random01() < s_PowderSlide[material]) {
@@ -1419,7 +1421,7 @@ void FluidSim::Update() {
 								break;
 							}
 							int material = materialBitmap->line[lookY][lookX];
-							if (OpenTo(material, ownMaterial)) {
+							if (Passable(material, ownMaterial)) {
 								found = step;
 								break;
 							}
@@ -1474,7 +1476,7 @@ void FluidSim::Update() {
 		}
 		// Having slipped off an edge it keeps going down the face of the liquid it's part of, to the bottom if it can, in this same step.
 		// One row a step is far too slow: a heap would take the better part of a minute to drain, and looks as if it has set.
-		if (gotLower && !swapped && !freeFall && kind != Liquid::Powder) {
+		if (gotLower && !freeFall && kind != Liquid::Powder) {
 			int drops = 0;
 			for (int more = 0; more < properties.Flow * 4; ++more) {
 				if (canMoveTo(targetX, targetY + 1)) {
@@ -1545,23 +1547,25 @@ void FluidSim::Update() {
 				}
 				color = arriving;
 			}
-			// When it sinks through a lighter liquid, that liquid takes the place it left. Otherwise what it covered there (grass under water) comes back.
+			// When it moves into a lighter liquid (sinking, running or levelling through it), that liquid takes the place it left. Otherwise what it covered
+			// there (grass under water) comes back.
 			int leftMaterial = terrain->GetMaterialPixel(targetX, targetY);
 			int leftColor = terrain->GetFGColorPixel(targetX, targetY);
-			if (swapped) {
+			const bool displaces = s_Kinds[leftMaterial & 0xFF] != Liquid::None;
+			if (displaces) {
 				s_Active.Remove(target);
 				Cover(key, material, color, leftMaterial);
 			}
 			Cover(target, leftMaterial, leftColor, material);
 			ChangePixel(terrain, targetX, targetY, material, color);
-			if (swapped) {
+			if (displaces) {
 				ChangePixel(terrain, x, y, leftMaterial, leftColor);
 			} else {
 				Uncover(terrain, x, y, width);
 			}
 			// Burning fuel (oil) takes its fire with it, so a lit slick that flows keeps burning and a burning stream runs downhill (M-3). Only
 			// while something burns: a map lookup or two a move.
-			if (anyFire && (TerrainFire::IsFlammable(material) || (swapped && TerrainFire::IsFlammable(leftMaterial)))) {
+			if (anyFire && (TerrainFire::IsFlammable(material) || (displaces && TerrainFire::IsFlammable(leftMaterial)))) {
 				TerrainFire::MoveBurning(x, y, targetX, targetY);
 			}
 			s_Active.Remove(key);
@@ -1583,7 +1587,7 @@ void FluidSim::Update() {
 			s_Active.SetVel(key, velX, 0);
 			// Powder that can't slide goes to rest sooner: it has nowhere to level out to.
 			// (Never at the surface for what boils off: it would sit there for good instead of going in seconds.)
-			bool boilingOff = s_Evaporates[ownMaterial] > 0.0F && canMoveTo(x, y - 1);
+			bool boilingOff = s_Evaporates[ownMaterial] > 0.0F && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir;
 			bool countsStill = !waitingToSearch || ((simUpdate + key) & 3) == 0;
 			if (countsStill && s_Active.StillStep(key) >= (kind == Liquid::Powder ? 8 : c_RestSteps) && !boilingOff) {
 				settled.push_back(key);
