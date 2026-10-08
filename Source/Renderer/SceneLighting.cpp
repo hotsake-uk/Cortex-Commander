@@ -1850,6 +1850,29 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 
+	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the fire shader their sprites aren't drawn (MOSParticle::Draw) and they
+	// join the fire front's cells instead, so they burn in the same flames as the ground. A lone one stands about as big as its sprite did.
+	if (fireShader) {
+		std::vector<glm::vec4> flames;
+		EffectsParticles::GetFlames(origin, width, height, flames);
+		for (const glm::vec4& particle: flames) {
+			float size = particle.z;
+			float minX = particle.x - 3.0F * size;
+			float maxX = particle.x + 3.0F * size;
+			float minY = particle.y - 4.0F * size;
+			float maxY = particle.y + 2.0F * size;
+			long long cellX = static_cast<long long>(std::floor((particle.x + origin.x) / 24.0F));
+			long long cellY = static_cast<long long>(std::floor((particle.y + origin.y) / 24.0F));
+			FlameCell& flame = flameCells.try_emplace((cellY << 32) ^ (cellX & 0xFFFFFFFFLL), FlameCell{minX, maxX, minY, maxY, 0.0F, 0}).first->second;
+			flame.MinX = std::min(flame.MinX, minX);
+			flame.MaxX = std::max(flame.MaxX, maxX);
+			flame.MinY = std::min(flame.MinY, minY);
+			flame.MaxY = std::max(flame.MaxY, maxY);
+			flame.Heat += particle.w;
+			++flame.Count;
+		}
+	}
+
 	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
 	if (m_Settings.Embers > 0.0F) {
 		auto hash = [](float n) { return glm::fract(std::sin(n) * 43758.5453F); };

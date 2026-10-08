@@ -24,6 +24,7 @@ void MOSParticle::Clear() {
 	m_Atom = nullptr;
 	m_SpriteAnimMode = OVERLIFETIME;
 	m_PostEffectEnabled = true; // Default to true for backwards compatibility reasons
+	m_FlameSprite = false;
 }
 
 int MOSParticle::Create() {
@@ -33,6 +34,8 @@ int MOSParticle::Create() {
 	if (!m_Atom) {
 		m_Atom = new Atom();
 	}
+	// The game's flame particles (Flame 1, Flame 2 and every copy of them, like the sandbox fire brush's) all draw this one animation.
+	m_FlameSprite = m_SpriteFile.GetDataPath().find("Effects/Pyro/Flame/Flame.png") != std::string::npos;
 	return 0;
 }
 
@@ -41,6 +44,7 @@ int MOSParticle::Create(const MOSParticle& reference) {
 
 	m_Atom = new Atom(*(reference.m_Atom));
 	m_Atom->SetOwner(this);
+	m_FlameSprite = reference.m_FlameSprite;
 
 	return 0;
 }
@@ -233,6 +237,15 @@ void MOSParticle::Draw(const Camera& camera) const {
 		Draw::PixelsBatched(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
 	}
 	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
+		return;
+	}
+	// With the fire shader on, a flame is drawn by it, the same as the flames of burning ground, rather than as this sprite (its glow stays).
+	if (m_FlameSprite && g_PostProcessMan.GetLightingSettings().FireShader) {
+		float age = static_cast<float>(GetAge());
+		float size = std::clamp(age / 120.0F, 0.3F, 1.0F);
+		float heat = m_Lifetime > 0 ? std::clamp(1.0F - age / static_cast<float>(m_Lifetime), 0.35F, 1.0F) : 1.0F;
+		Vector foot = GetRenderPos();
+		EffectsParticles::RegisterFlame(this, glm::vec2(foot.m_X, foot.m_Y), size, heat);
 		return;
 	}
 	Vector spritePos((GetRenderPos() + m_SpriteOffset).GetFloored());
