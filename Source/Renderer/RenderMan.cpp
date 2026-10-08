@@ -1,6 +1,8 @@
 #include "RenderMan.h"
 #include "Constants.h"
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include "DrawCall.h"
 #include "allegro.h"
 #include "glad/gl.h"
@@ -69,13 +71,88 @@ void RenderMan::SetLiquidPaletteColor(int paletteIndex, int liquidKind, int emis
 	m_EmissivePalette[paletteIndex * 4] = std::max(m_EmissivePalette[paletteIndex * 4], static_cast<unsigned char>(std::clamp(emissive, 0, 255)));
 	// Liquids aren't vegetation, even if they're green.
 	m_EmissivePalette[paletteIndex * 4 + 1] = 0;
-	// Water and acid are glossy; lava glows instead.
+	// Water and acid are glossy; lava glows instead, and its glow breathes (animated palette flags), each colour a little out of step.
 	m_EmissivePalette[paletteIndex * 4 + 3] = static_cast<unsigned char>(emissive > 0 ? 0 : 230);
+	if (emissive > 0) {
+		float glow = static_cast<float>(m_EmissivePalette[paletteIndex * 4]) / 255.0F;
+		SetPalettePulse(paletteIndex, glow * 0.7F, glow, 2.6F, std::fmod(static_cast<float>(paletteIndex) * 0.37F, 1.0F), true);
+	}
 	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, m_EmissivePalette.data());
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void RenderMan::SetPalettePulse(int paletteIndex, float low, float high, float period, float phase, bool automatic) {
+	if (paletteIndex <= 0 || paletteIndex > 255) {
+		return;
+	}
+	m_PalettePulses.erase(std::remove_if(m_PalettePulses.begin(), m_PalettePulses.end(), [paletteIndex](const PalettePulse& pulse) { return pulse.Index == paletteIndex; }), m_PalettePulses.end());
+	if (period > 0.0F) {
+		m_PalettePulses.push_back({paletteIndex, std::clamp(low, 0.0F, 1.0F), std::clamp(high, 0.0F, 1.0F), std::max(period, 0.05F), phase, automatic});
+	}
+}
+
+void RenderMan::SetPaletteCycle(int from, int to, float period) {
+	from = std::clamp(from, 1, 255);
+	to = std::clamp(to, 1, 255);
+	if (to < from) {
+		std::swap(from, to);
+	}
+	m_PaletteCycles.erase(std::remove_if(m_PaletteCycles.begin(), m_PaletteCycles.end(), [from, to](const PaletteCycle& cycle) { return cycle.From == from && cycle.To == to; }), m_PaletteCycles.end());
+	if (period > 0.0F && to > from) {
+		m_PaletteCycles.push_back({from, to, std::max(period, 0.05F)});
+	}
+}
+
+void RenderMan::ClearPaletteAnimation() {
+	m_PalettePulses.erase(std::remove_if(m_PalettePulses.begin(), m_PalettePulses.end(), [](const PalettePulse& pulse) { return !pulse.Automatic; }), m_PalettePulses.end());
+	m_PaletteCycles.clear();
+}
+
+void RenderMan::UpdatePaletteAnimation(float time, bool enabled, float strength) {
+	bool animate = enabled && strength > 0.0F && (!m_PalettePulses.empty() || !m_PaletteCycles.empty());
+	if ((!animate && !m_PaletteAnimated) || !m_EmissivePaletteTexture || !m_PaletteTexture) {
+		return;
+	}
+	GLuint paletteTexture = m_PaletteTexture->GetTextureId();
+	if (!m_PaletteColorsRead) {
+		// The colours as the texture holds them, so cycling writes them back in the same layout.
+		glBindTexture(GL_TEXTURE_2D, paletteTexture);
+		glPixelStorei(GL_PACK_ALIGNMENT, 1);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_PaletteColors.data());
+		glPixelStorei(GL_PACK_ALIGNMENT, 4);
+		m_PaletteColorsRead = true;
+	}
+	std::array<unsigned char, 1024> glow = m_EmissivePalette;
+	std::array<unsigned char, 1024> colors = m_PaletteColors;
+	if (animate) {
+		float amount = std::min(strength, 1.0F);
+		for (const PalettePulse& pulse: m_PalettePulses) {
+			float wave = 0.5F + 0.5F * std::sin((time / pulse.Period + pulse.Phase) * 6.2831853F);
+			float own = static_cast<float>(glow[pulse.Index * 4]) / 255.0F;
+			float value = own + (pulse.Low + (pulse.High - pulse.Low) * wave - own) * amount;
+			glow[pulse.Index * 4] = static_cast<unsigned char>(std::clamp(value, 0.0F, 1.0F) * 255.0F + 0.5F);
+		}
+		for (const PaletteCycle& cycle: m_PaletteCycles) {
+			int length = cycle.To - cycle.From + 1;
+			int shift = static_cast<int>(std::floor(time / cycle.Period * static_cast<float>(length))) % length;
+			shift = shift < 0 ? shift + length : shift;
+			for (int i = 0; i < length; ++i) {
+				int source = cycle.From + (i + shift) % length;
+				std::copy_n(m_PaletteColors.begin() + source * 4, 4, colors.begin() + (cycle.From + i) * 4);
+			}
+		}
+	}
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glBindTexture(GL_TEXTURE_2D, m_EmissivePaletteTexture);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, glow.data());
+	glBindTexture(GL_TEXTURE_2D, paletteTexture);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, colors.data());
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	m_PaletteAnimated = animate;
 }
 
 void RenderMan::Destroy() {
