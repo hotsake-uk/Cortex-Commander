@@ -73,6 +73,9 @@ void MovableMan::Clear() {
 	m_AddedAlarmEvents.clear();
 	m_AlarmEvents.clear();
 	m_MOIDIndex.clear();
+	m_MOIDIndexNext.clear();
+	m_MOIDIndexNextReady = false;
+	m_MOIDsForgottenWhileBuilding.clear();
 	m_SplashRatio = 0.75;
 	m_MaxDroppedItems = 100;
 	m_SettlingEnabled = true;
@@ -251,6 +254,9 @@ void MovableMan::PurgeAllMOs() {
 	m_AddedAlarmEvents.clear();
 	m_AlarmEvents.clear();
 	m_MOIDIndex.clear();
+	m_MOIDIndexNext.clear();
+	m_MOIDIndexNextReady = false;
+	m_MOIDsForgottenWhileBuilding.clear();
 	// We want to keep known objects around, 'cause these can exist even when not in the simulation (they're here from creation till deletion, regardless of whether they are in sim)
 	// m_KnownObjects.clear();
 }
@@ -920,11 +926,15 @@ void MovableMan::ForgetMOIDsOf(MovableObject* object) {
 	// An object taken out of the scene keeps no ID: its slots in the table are emptied now, and it and its attachables are given no ID, so that
 	// when it is destroyed later (by whoever took it, often Lua's garbage collector on a worker thread) ForgetMOID has nothing to write while
 	// the table is being rebuilt on another worker. Until the next rebuild a lookup by its old ID finds nothing, as for a deleted object.
+	std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
 	for (MovableObject*& entry: m_MOIDIndex) {
 		if (entry && (entry == object || entry->GetRootParent() == object)) {
+			// (Kept by address only: the table being built may hold it too, and it may be freed before that one is swapped in.)
+			m_MOIDsForgottenWhileBuilding.push_back(entry);
 			entry = nullptr;
 		}
 	}
+	m_MOIDsForgottenWhileBuilding.push_back(object);
 	object->SetAsNoID();
 }
 
@@ -1802,6 +1812,11 @@ void MovableMan::Update() {
 	g_LuaMan.StartAsyncGarbageCollection();
 
 	// Draw the MO matter and IDs to their layers for next frame
+	{
+		// (What was taken out before this point isn't in the lists the build reads.)
+		std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
+		m_MOIDsForgottenWhileBuilding.clear();
+	}
 	m_DrawMOIDsTask = g_ThreadMan.GetPriorityThreadPool().submit([this]() {
 		PerformanceMan::LogScope logScope("Worker thread: MOID drawing");
 		UpdateDrawMOIDs();
@@ -1993,13 +2008,15 @@ void MovableMan::UpdateDrawMOIDs() {
 	// Clear the MOID layer before starting to delete stuff which may be in the MOIDIndex
 	g_SceneMan.ClearAllMOIDDrawings();
 
-	// Clear the index each frame and do it over because MO's get added and deleted between each frame.
-	m_MOIDIndex.clear();
+	// Clear the index each frame and do it over because MO's get added and deleted between each frame. It is built aside (m_MOIDIndexNext) and
+	// swapped in by CompleteQueuedMOIDDrawings, so lookups meanwhile see the last one whole.
+	std::vector<MovableObject*>& building = m_MOIDIndexNext;
+	building.clear();
 	m_ContiguousActorIDs.clear();
 
 	// Add a null and start counter at 1 because MOID == 0 means no MO.
 	// - Update: This isnt' true anymore, but still keep 0 free just to be safe
-	m_MOIDIndex.push_back(0);
+	building.push_back(0);
 
 	MOID currentMOID = 1;
 
@@ -2007,9 +2024,9 @@ void MovableMan::UpdateDrawMOIDs() {
 	for (Actor* actor: m_Actors) {
 		m_ContiguousActorIDs[actor] = actorID++;
 		if (!actor->IsSetToDelete()) {
-			actor->UpdateMOID(m_MOIDIndex);
+			actor->UpdateMOID(building);
 			actor->Draw(nullptr, Vector(), g_DrawMOID, true);
-			currentMOID = m_MOIDIndex.size();
+			currentMOID = building.size();
 		} else {
 			actor->SetAsNoID();
 		}
@@ -2017,9 +2034,9 @@ void MovableMan::UpdateDrawMOIDs() {
 
 	for (MovableObject* item: m_Items) {
 		if (!item->IsSetToDelete()) {
-			item->UpdateMOID(m_MOIDIndex);
+			item->UpdateMOID(building);
 			item->Draw(nullptr, Vector(), g_DrawMOID, true);
-			currentMOID = m_MOIDIndex.size();
+			currentMOID = building.size();
 		} else {
 			item->SetAsNoID();
 		}
@@ -2027,9 +2044,9 @@ void MovableMan::UpdateDrawMOIDs() {
 
 	for (MovableObject* particle: m_Particles) {
 		if (!particle->IsSetToDelete()) {
-			particle->UpdateMOID(m_MOIDIndex);
+			particle->UpdateMOID(building);
 			particle->Draw(nullptr, Vector(), g_DrawMOID, true);
-			currentMOID = m_MOIDIndex.size();
+			currentMOID = building.size();
 		} else {
 			particle->SetAsNoID();
 		}
@@ -2040,7 +2057,7 @@ void MovableMan::UpdateDrawMOIDs() {
 		m_TeamMOIDCount[team] = 0;
 	}
 
-	for (auto itr = m_MOIDIndex.begin(); itr != m_MOIDIndex.end(); ++itr) {
+	for (auto itr = building.begin(); itr != building.end(); ++itr) {
 		if (*itr) {
 			int team = (*itr)->GetTeam();
 			if (team > Activity::NoTeam && team < Activity::MaxTeamCount) {
@@ -2048,11 +2065,26 @@ void MovableMan::UpdateDrawMOIDs() {
 			}
 		}
 	}
+	m_MOIDIndexNextReady = true;
 }
 
 void MovableMan::CompleteQueuedMOIDDrawings() {
 	if (m_DrawMOIDsTask.valid()) {
 		m_DrawMOIDsTask.wait();
+	}
+	if (m_MOIDIndexNextReady) {
+		std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
+		m_MOIDIndex.swap(m_MOIDIndexNext);
+		m_MOIDIndexNextReady = false;
+		// What was taken out of the scene while it was built has no place in it (see ForgetMOIDsOf).
+		if (!m_MOIDsForgottenWhileBuilding.empty()) {
+			for (MovableObject*& entry: m_MOIDIndex) {
+				if (entry && std::find(m_MOIDsForgottenWhileBuilding.begin(), m_MOIDsForgottenWhileBuilding.end(), entry) != m_MOIDsForgottenWhileBuilding.end()) {
+					entry = nullptr;
+				}
+			}
+			m_MOIDsForgottenWhileBuilding.clear();
+		}
 	}
 }
 
