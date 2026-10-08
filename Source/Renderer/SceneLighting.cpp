@@ -466,11 +466,26 @@ void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow, int firstColu
 					m_WallChangeEndRow = std::max(m_WallChangeEndRow, row + 1);
 				}
 			}
+			unsigned char fullness = static_cast<unsigned char>((solidSamples * 255) / 4);
+			if (block != cell[0] || fullness != cell[3]) {
+				// Something the sun's or the weather's strip stops at came or went: the rays through here are marched again, however the change was found.
+				if (m_CoverChangeEndColumn <= m_CoverChangeMinColumn || m_CoverChangeEndRow <= m_CoverChangeMinRow) {
+					m_CoverChangeMinColumn = column;
+					m_CoverChangeMinRow = row;
+					m_CoverChangeEndColumn = column + 1;
+					m_CoverChangeEndRow = row + 1;
+				} else {
+					m_CoverChangeMinColumn = std::min(m_CoverChangeMinColumn, column);
+					m_CoverChangeMinRow = std::min(m_CoverChangeMinRow, row);
+					m_CoverChangeEndColumn = std::max(m_CoverChangeEndColumn, column + 1);
+					m_CoverChangeEndRow = std::max(m_CoverChangeEndRow, row + 1);
+				}
+			}
 			cell[0] = block;
 			// What the solid part of the cell is made of, so a thin metal plate isn't diluted by the air beside it.
 			cell[1] = static_cast<unsigned char>(solidSamples > 0 ? metalness / solidSamples : 0);
 			cell[2] = static_cast<unsigned char>(solidSamples > 0 ? gloss / solidSamples : 0);
-			cell[3] = static_cast<unsigned char>((solidSamples * 255) / 4);
+			cell[3] = fullness;
 		}
 	}
 }
@@ -1626,9 +1641,15 @@ void SceneLighting::Update() {
 	logStages.Next("Light grid: wetness");
 	UpdateWetMap(frameSeconds);
 	logStages.Next("Light grid: sun shadow map");
-	UpdateSunShadowMap(terrainChanged, terrainChangedArea);
+	// The strips go by the cells that really changed, whichever refresh found them: the flagged area above, or the round-robin catching a change nobody reported.
+	bool coverChanged = m_CoverChangeEndColumn > m_CoverChangeMinColumn && m_CoverChangeEndRow > m_CoverChangeMinRow;
+	// A cell further, all round, since the grid is read linearly filtered and a cell's change reaches half way into its neighbours.
+	// (Kept inside the grid, so a change by the seam of a wrapping scene doesn't remake the whole strip.)
+	glm::ivec4 coverChangedArea = glm::ivec4(std::max(m_CoverChangeMinColumn - 1, 0), std::max(m_CoverChangeMinRow - 1, 0), std::min(m_CoverChangeEndColumn + 1, m_GridWidth), std::min(m_CoverChangeEndRow + 1, m_GridHeight)) * m_CellSize;
+	m_CoverChangeEndColumn = m_CoverChangeMinColumn;
+	UpdateSunShadowMap(coverChanged, coverChangedArea);
 	logStages.Next("Light grid: weather shelter map");
-	UpdateShelterMap(terrainChanged, terrainChangedArea);
+	UpdateShelterMap(coverChanged, coverChangedArea);
 	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
