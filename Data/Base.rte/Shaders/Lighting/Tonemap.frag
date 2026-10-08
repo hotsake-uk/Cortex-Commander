@@ -31,6 +31,13 @@ uniform sampler2D rteAdaptedLuminance; // 1x1, the adapted average log luminance
 uniform float rteAutoExposure; // Strength, 0 off.
 uniform float rteAutoExposureLow; // Average luminance range where exposure stays put.
 uniform float rteAutoExposureHigh;
+uniform sampler2D rteOutlineRows; // Unit outlines: per pixel, the distance along its row to the nearest unit pixel and that unit's slot (see UnitOutlineRow.frag).
+uniform float rteOutlineWidth; // In pixels; 0 for no outlines.
+uniform int rteOutlineRadius; // How far the search reaches, in whole pixels, at most 12.
+uniform float rteOutlineOpacity;
+uniform bool rteOutlineTeamColor; // Each outline in its side's colour, else all in rteOutlineColor.
+uniform vec3 rteOutlineColor; // In display (gamma) space.
+uniform vec3 rteOutlineSideColors[5]; // By slot - 1: no team, then teams 1 to 4. In display space.
 
 vec3 Shoulder(vec3 color) {
 	if (rteShoulderStart >= 0.999) {
@@ -99,6 +106,39 @@ void main() {
 		float noise = fract(sin(dot(gl_FragCoord.xy + fract(rteTime * 13.17) * 100.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
 		float midtones = 1.0 - abs(dot(outputColor, vec3(0.333)) * 2.0 - 1.0);
 		outputColor += noise * rteFilmGrain * 0.12 * midtones;
+	}
+	if (rteOutlineWidth > 0.0 && rteDebugView == 0) {
+		// Unit outlines: finish UnitOutlineRow.frag's search down this column for the nearest unit pixel. Not on the unit itself (its distance
+		// is 0) and only where the stroke may go (B). Full strength out to the width, then fading over one pixel, which softens the corners.
+		ivec2 pixel = ivec2(gl_FragCoord.xy);
+		vec4 here = texelFetch(rteOutlineRows, pixel, 0);
+		if (here.b > 0.5 && here.r > 0.5 / 255.0) {
+			int rows = textureSize(rteOutlineRows, 0).y;
+			float nearest = 1.0e6;
+			int slot = 0;
+			for (int dy = -12; dy <= 12; ++dy) {
+				int y = pixel.y + dy;
+				if (abs(dy) > rteOutlineRadius || y < 0 || y >= rows) {
+					continue;
+				}
+				vec4 row = texelFetch(rteOutlineRows, ivec2(pixel.x, y), 0);
+				int rowSlot = int(row.g * 255.0 + 0.5);
+				if (rowSlot == 0) {
+					continue;
+				}
+				float dx = row.r * 255.0;
+				float squared = dx * dx + float(dy * dy);
+				if (squared < nearest) {
+					nearest = squared;
+					slot = rowSlot;
+				}
+			}
+			if (slot > 0) {
+				float coverage = 1.0 - smoothstep(rteOutlineWidth, rteOutlineWidth + 1.0, sqrt(nearest));
+				vec3 stroke = rteOutlineTeamColor ? rteOutlineSideColors[clamp(slot - 1, 0, 4)] : rteOutlineColor;
+				outputColor = mix(outputColor, stroke, coverage * rteOutlineOpacity);
+			}
+		}
 	}
 	FragColor = vec4(clamp(outputColor, 0.0, 1.0), 1.0);
 }
