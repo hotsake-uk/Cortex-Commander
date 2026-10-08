@@ -60,7 +60,8 @@ void main() {
 	float occupancy = texelFetch(rteOccupancy, cell, 0).r;
 
 	float skyline = texelFetch(rteSkyline, ivec2(cell.x, 0), 0).r * rteGridSize.y;
-	float seed = (!rteWrapY && float(cell.y) < skyline) ? 1.0 : 0.0;
+	// Open sky down to the first solid cell from the top. A scene that wraps vertically has no top for light to come in through, so it is treated as having sky above its top row all the same: otherwise it gets no sky light and no sun at all.
+	float seed = float(cell.y) < skyline ? 1.0 : 0.0;
 
 	float neighbours = max(max(SampleLight(cell + ivec2(1, 0)), SampleLight(cell + ivec2(-1, 0))), max(SampleLight(cell + ivec2(0, 1)), SampleLight(cell + ivec2(0, -1))));
 	// Diagonals carry slightly less so light spreads roughly circularly instead of in a diamond.
@@ -68,5 +69,10 @@ void main() {
 	float incoming = max(neighbours, diagonals * 0.96);
 
 	float falloff = mix(rteAirFalloff, rteSolidFalloff, occupancy);
-	FragColor = vec4(max(seed * (1.0 - occupancy), incoming * falloff), SampleSun(gl_FragCoord.xy + rteSunStep, occupancy), 0.0, 1.0);
+	float sun = SampleSun(gl_FragCoord.xy + rteSunStep, occupancy);
+	if (rteWrapY) {
+		// The sun never comes in from above a vertically wrapping scene (SampleSun wraps instead), so the open sky seeds it.
+		sun = max(sun, seed * (1.0 - occupancy));
+	}
+	FragColor = vec4(max(seed * (1.0 - occupancy), incoming * falloff), sun, 0.0, 1.0);
 }
