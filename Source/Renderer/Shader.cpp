@@ -86,6 +86,7 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 	bool linkFailed{false};
 
 	std::string error;
+	m_UniformLocationsByName.clear();
 	result = CompileShader(vertexShader, g_PresetMan.GetFullModulePath(vertexPath), error) && CompileShader(fragmentShader, g_PresetMan.GetFullModulePath(fragPath), error);
 	if (result) {
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::VERTEX, "rteVertexPosition"));
@@ -147,49 +148,59 @@ void Shader::End() const {
 
 GLint Shader::GetUniformLocation(const std::string& name) const { return glGetUniformLocation(m_ProgramID, name.c_str()); }
 
-void Shader::SetBool(const std::string& name, bool value) const { GL_CHECK(glUniform1i(glGetUniformLocation(m_ProgramID, name.c_str()), static_cast<int>(value))); }
+GLint Shader::CachedUniformLocation(std::string_view name) const {
+	if (auto found = m_UniformLocationsByName.find(name); found != m_UniformLocationsByName.end()) {
+		return found->second;
+	}
+	std::string key(name);
+	GLint location = glGetUniformLocation(m_ProgramID, key.c_str());
+	m_UniformLocationsByName.emplace(std::move(key), location);
+	return location;
+}
+
+void Shader::SetBool(std::string_view name, bool value) const { GL_CHECK(glUniform1i(CachedUniformLocation(name), static_cast<int>(value))); }
 
 template <>
 void BoolValue::Enable() {
 	GL_CHECK(glUniform1i(m_UniformLocation, m_Value));
 }
 
-void Shader::SetInt(const std::string& name, int value) const { GL_CHECK(glUniform1i(glGetUniformLocation(m_ProgramID, name.c_str()), value)); }
+void Shader::SetInt(std::string_view name, int value) const { GL_CHECK(glUniform1i(CachedUniformLocation(name), value)); }
 
 template <>
 void IntValue::Enable() {
 	GL_CHECK(glUniform1i(m_UniformLocation, m_Value));
 }
 
-void Shader::SetFloat(const std::string& name, float value) const { GL_CHECK(glUniform1f(glGetUniformLocation(m_ProgramID, name.c_str()), value)); }
+void Shader::SetFloat(std::string_view name, float value) const { GL_CHECK(glUniform1f(CachedUniformLocation(name), value)); }
 
 template <>
 void FloatValue::Enable() {
 	GL_CHECK(glUniform1f(m_UniformLocation, m_Value));
 }
 
-void Shader::SetMatrix4f(const std::string& name, const glm::mat4& value) const { GL_CHECK(glUniformMatrix4fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, GL_FALSE, glm::value_ptr(value))); }
+void Shader::SetMatrix4f(std::string_view name, const glm::mat4& value) const { GL_CHECK(glUniformMatrix4fv(CachedUniformLocation(name), 1, GL_FALSE, glm::value_ptr(value))); }
 
 template <>
 void Matrix4fValue::Enable() {
 	GL_CHECK(glUniformMatrix4fv(m_UniformLocation, 1, GL_FALSE, glm::value_ptr(m_Value)));
 }
 
-void Shader::SetVector2f(const std::string& name, const glm::vec2& value) const { GL_CHECK(glUniform2fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, glm::value_ptr(value))); }
+void Shader::SetVector2f(std::string_view name, const glm::vec2& value) const { GL_CHECK(glUniform2fv(CachedUniformLocation(name), 1, glm::value_ptr(value))); }
 
 template <>
 void Vector2fValue::Enable() {
 	GL_CHECK(glUniform2fv(m_UniformLocation, 1, glm::value_ptr(m_Value)));
 }
 
-void Shader::SetVector3f(const std::string& name, const glm::vec3& value) const { GL_CHECK(glUniform3fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, glm::value_ptr(value))); }
+void Shader::SetVector3f(std::string_view name, const glm::vec3& value) const { GL_CHECK(glUniform3fv(CachedUniformLocation(name), 1, glm::value_ptr(value))); }
 
 template <>
 void Vector3fValue::Enable() {
 	GL_CHECK(glUniform3fv(m_UniformLocation, 1, glm::value_ptr(m_Value)));
 }
 
-void Shader::SetVector4f(const std::string& name, const glm::vec4& value) const { GL_CHECK(glUniform4fv(glGetUniformLocation(m_ProgramID, name.c_str()), 1, glm::value_ptr(value))); }
+void Shader::SetVector4f(std::string_view name, const glm::vec4& value) const { GL_CHECK(glUniform4fv(CachedUniformLocation(name), 1, glm::value_ptr(value))); }
 
 template <>
 void Vector4fValue::Enable() {
