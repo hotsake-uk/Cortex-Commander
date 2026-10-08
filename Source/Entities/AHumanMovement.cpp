@@ -50,6 +50,13 @@ namespace {
 		return static_cast<unsigned char>(s_Ladder);
 	}
 
+	/// Whether terrain of a material is something a walking body goes through as it comes, as the path grid has it (PathFinder::Open and
+	/// WalkMaterialCost): grass, foliage, ash, at an integrity of 5 or under; not a liquid.
+	bool WalkedThrough(unsigned char id) {
+		const Material* material = g_SceneMan.GetMaterialFromID(id);
+		return material && material->GetIntegrity() <= 5.0F && material->GetBehaviour().Flows != 1;
+	}
+
 	/// Solid for a climber: terrain that isn't air nor the ladder's own rungs.
 	bool SolidNotLadder(float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
@@ -267,9 +274,10 @@ AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing)
 	const float halfWidth = std::clamp(bodyWidth * 0.5F + 1.0F, 5.0F, 16.0F);
 	const float reach = h * 0.35F;
 	const float crawl = std::max(12.0F, h * 0.24F);
+	// (A plant ahead is walked through, not a wall or a step: sensed as one, every bush got a hop of the jet, or a leap from short of it.)
 	auto blocks = [](float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor;
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor && !WalkedThrough(id);
 	};
 	for (float d = halfWidth; d <= halfWidth + reach; d += 2.0F) {
 		float x = m_Pos.m_X + direction * d;
@@ -811,9 +819,13 @@ int AHuman::PickStuckRemedy(const Vector& spot, const std::array<bool, static_ca
 			known[entry.Remedy] = entry.Worked ? 1 : -1;
 		}
 	}
+	// (A leap that worked here keeps its place in the order, after the duck and the back-off, and isn't tried first: it is for when the walk
+	// can't go, and a leap credited once, often for a stuck spell the walk would have cleared anyway, made the unit leap at once at that
+	// spot every time after.)
 	for (int pass = 0; pass < 2; ++pass) {
 		for (int remedy = 0; remedy < static_cast<int>(StuckRemedy::Count); ++remedy) {
-			if (allowed[remedy] && !(tried & (1U << remedy)) && known[remedy] == (pass == 0 ? 1 : 0)) {
+			int knownHere = remedy == static_cast<int>(StuckRemedy::Leap) && known[remedy] == 1 ? 0 : known[remedy];
+			if (allowed[remedy] && !(tried & (1U << remedy)) && knownHere == (pass == 0 ? 1 : 0)) {
 				return remedy;
 			}
 		}
