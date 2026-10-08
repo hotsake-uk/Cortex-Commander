@@ -2267,16 +2267,16 @@ namespace SandboxDetail {
 			drawList->PathLineTo(ImVec2(at.x - grow, at.y - grow + cut));
 		};
 		shape(pixel * 2.0F);
-		drawList->PathFillConvex(IM_COL32(14, 17, 12, 230));
+		drawList->PathFillConvex((ToolTheme::EdgeDark & 0x00FFFFFF) | (230u << IM_COL32_A_SHIFT));
 		shape(0.0F);
-		drawList->PathFillConvex(IM_COL32(44, 53, 37, 245));
+		drawList->PathFillConvex((ToolTheme::Panel & 0x00FFFFFF) | (245u << IM_COL32_A_SHIFT));
 		shape(pixel);
-		drawList->PathStroke(IM_COL32(170, 128, 48, 255), ImDrawFlags_Closed, pixel);
+		drawList->PathStroke(ToolTheme::Edge, ImDrawFlags_Closed, pixel);
 		// A faint lighter band along the top, as a lip.
-		drawList->AddRectFilled(ImVec2(at.x + cut, at.y + pixel), ImVec2(to.x - cut, at.y + pixel * 2.0F), IM_COL32(255, 240, 180, 30));
+		drawList->AddRectFilled(ImVec2(at.x + cut, at.y + pixel), ImVec2(to.x - cut, at.y + pixel * 2.0F), (ToolTheme::EdgeLight & 0x00FFFFFF) | (60u << IM_COL32_A_SHIFT));
 		// Studs in the corners.
 		for (ImVec2 corner: {ImVec2(at.x + cut, at.y + cut), ImVec2(to.x - cut, at.y + cut), ImVec2(at.x + cut, to.y - cut), ImVec2(to.x - cut, to.y - cut)}) {
-			drawList->AddRectFilled(ImVec2(corner.x - pixel, corner.y - pixel), ImVec2(corner.x + pixel, corner.y + pixel), IM_COL32(242, 182, 61, 160));
+			drawList->AddRectFilled(ImVec2(corner.x - pixel, corner.y - pixel), ImVec2(corner.x + pixel, corner.y + pixel), (ToolTheme::Gold & 0x00FFFFFF) | (160u << IM_COL32_A_SHIFT));
 		}
 	}
 
@@ -2552,7 +2552,7 @@ namespace SandboxDetail {
 			const char* Tip;
 		};
 		static const Part parts[] = {
-		    {"Spawn", Icon::Person, IM_COL32(232, 224, 190, 255), "Spawn: units, squads dropped from orbit, brains and items"},
+		    {"Spawn", Icon::Person, ToolTheme::Text, "Spawn: units, squads dropped from orbit, brains and items"},
 		    {"Build", Icon::Wall, IM_COL32(170, 170, 165, 255), "Build: bunker pieces, placed straight into the world"},
 		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Paint: fire, liquids, smoke, loose and solid ground"},
 		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Boom: blasts, strikes from the sky, and things to knock down"},
@@ -2576,7 +2576,7 @@ namespace SandboxDetail {
 			if (ContextRow()) {
 				ImVec2 at = ImGui::GetCursorScreenPos();
 				float width = ImGui::GetContentRegionAvail().x;
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), IM_COL32(170, 128, 48, 160));
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), (ToolTheme::Edge & 0x00FFFFFF) | (160u << IM_COL32_A_SHIFT));
 				ImGui::Dummy(ImVec2(width, pixel * 3.0F));
 			}
 			// What you've pinned, in a row of its own above the rest.
@@ -2637,7 +2637,7 @@ namespace SandboxDetail {
 				// A gold rule between the pins and the rest.
 				ImVec2 at = ImGui::GetCursorScreenPos();
 				float width = ImGui::GetContentRegionAvail().x;
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), IM_COL32(170, 128, 48, 160));
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), (ToolTheme::Edge & 0x00FFFFFF) | (160u << IM_COL32_A_SHIFT));
 				ImGui::Dummy(ImVec2(width, pixel * 3.0F));
 			}
 
@@ -2668,7 +2668,7 @@ namespace SandboxDetail {
 				if (BarTile("##side", tip.c_str(), false, [&](ImDrawList* drawList, ImVec2 at, float room) {
 					    float inset = room * 0.2F;
 					    drawList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), c_SideColors[s_Team]);
-					    drawList->AddRect(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), IM_COL32(20, 24, 16, 255), 0.0F, 0, pixel);
+					    drawList->AddRect(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), ToolTheme::EdgeDark, 0.0F, 0, pixel);
 				    }) == 1) {
 					s_Team = (s_Team + 1) % c_Sides;
 				}
