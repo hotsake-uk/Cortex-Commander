@@ -807,8 +807,8 @@ void Sandbox::DrawGUI() {
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
 			CommanderPanel();
 		}
-		if (ImGui::BeginTabBar("SandboxTabs")) {
-			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
+		if (DrawTabRows()) {
+			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
 				bool exists = GetRef(s_PlayerUnit) != nullptr;
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
@@ -819,7 +819,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("On: Tab puts the tools away and puts you in your character.\nOff: there is no character. Tab only hides and shows the tools, and you go on looking around from above.");
 				if (!s_Player.EnterOnClose) {
 					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
-					ImGui::EndTabItem();
+					EndSandboxTab();
 				} else {
 				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
 				if (ToolUI::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
@@ -906,10 +906,10 @@ void Sandbox::DrawGUI() {
 					s_Queue.push_back(stroke);
 				}
 				ImGui::EndDisabled();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 				}
 			}
-			if (ImGui::BeginTabItem("Spawn", nullptr, TestTab("Spawn"))) {
+			if (SandboxTab("Spawn")) {
 				s_CurrentTab = "Spawn";
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
@@ -941,15 +941,15 @@ void Sandbox::DrawGUI() {
 				} else if (kind == Tool::Structure) {
 					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
-			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony", nullptr, TestTab("Colony"))) {
+			if (c_ShowColonyTab && SandboxTab("Colony")) {
 				s_CurrentTab = "Colony";
 				ColonyTab();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Build", nullptr, TestTab("Build"))) {
+			if (SandboxTab("Build")) {
 				s_CurrentTab = "Build";
 				// Coming to this tab picks up the building tool.
 				static int shownLast = -10;
@@ -979,9 +979,9 @@ void Sandbox::DrawGUI() {
 					Sandbox::SetBuildMode(true);
 				}
 				ImGui::SetItemTooltip("Puts these tools away and opens the build menu the game uses before a battle: everything it offers, moved and placed with the game's own cursor.\nDone in its menu, or Tab, comes back here.");
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Orders", nullptr, TestTab("Orders"))) {
+			if (SandboxTab("Orders")) {
 				s_CurrentTab = "Orders";
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
@@ -1045,14 +1045,14 @@ void Sandbox::DrawGUI() {
 						QueueSimChange(Tool::AutoBattle, 0);
 					}
 				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (IsGodMode() && ImGui::BeginTabItem("Gym", nullptr, TestTab("Gym"))) {
+			if (IsGodMode() && SandboxTab("Gym")) {
 				s_CurrentTab = "Gym";
 				GymTab();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Paint", nullptr, TestTab("Paint"))) {
+			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
@@ -1081,9 +1081,9 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndDisabled();
 				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time.");
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
+			if (SandboxTab("Boom")) {
 				s_CurrentTab = "Boom";
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
@@ -1097,9 +1097,9 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Things to knock down");
 				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Effects", nullptr, TestTab("Effects"))) {
+			if (SandboxTab("Effects")) {
 				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
 				ImGui::SeparatorText("Lights");
@@ -1136,9 +1136,9 @@ void Sandbox::DrawGUI() {
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("World", nullptr, TestTab("World"))) {
+			if (SandboxTab("World")) {
 				s_CurrentTab = "World";
 				if (IsGodMode()) {
 					SideStatus();
@@ -1180,14 +1180,13 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Button("Put out all fire")) {
 					TerrainFire::Clear();
 				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Keys", nullptr, TestTab("Keys"))) {
+			if (SandboxTab("Keys")) {
 				s_CurrentTab = "Keys";
 				KeysPage();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			ImGui::EndTabBar();
 		}
 	}
 	g_DebugMan.EndPanel();
