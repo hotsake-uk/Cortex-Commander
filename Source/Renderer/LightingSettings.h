@@ -57,6 +57,8 @@ namespace RTE {
 			ApplyShadowPreset(quality);
 			// Water reflections: a few extra texture reads per water pixel, from Medium up.
 			WaterReflections = quality >= QualityMedium;
+			// Lights traced through the terrain distance field from Medium up; Low keeps the cheaper fixed march.
+			LightShadowField = quality >= QualityMedium;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -144,6 +146,8 @@ namespace RTE {
 		float GlowLightRadiusScale = 8.0F; //!< Radius of glow lights relative to the glow sprite's size.
 		int MaxScreenLights = 1024; //!< Most lights (glow lights and dynamic lights together) drawn on one player screen; past it the faintest dynamic lights are left out. Each costs a full-radius quad with a shadow march, twice for cone lights.
 		float ShadowStrength = 0.85F; //!< How much terrain blocks dynamic lights, 0 to 1.
+		bool LightShadowField = true; //!< Lights' terrain shadows are traced through a distance field of the terrain: thin walls stop light instead of leaking it, and shadows soften with distance from what casts them. Off: eleven evenly spaced samples of the light grid, as before.
+		float LightShadowSoftness = 1.0F; //!< How soft those shadows' edges are, 0 (sharp) to 2. Bigger lights soften more.
 		float UnitShadows = 0.85F; //!< How dark the shadows are that solid objects (units, devices, doors, wreckage) cast from lights and from the sun, 0 to 1. 0 turns them off.
 		float SunShadows = 0.55F; //!< Directional daylight: how much dimmer and cooler ground, walls and units are where the sun (or the moon at night) can't be seen, 0 to 1. 0 turns it off.
 		float ContactShading = 0.4F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.

@@ -147,6 +147,12 @@ namespace RTE {
 		int m_GridHeight = 0;
 		bool m_WrapX = false;
 		bool m_WrapY = false;
+		static constexpr int c_ShadowFieldCells = 16; //!< How far the terrain distance field reaches, in grid cells. Further is stored as this far.
+		static constexpr unsigned char c_ShadowWallBlock = 96; //!< A cell stopping at least this much light (occupancy R) is a wall to the distance field. Lighter ones (water, glass, a cell barely touched) only dim light, as density.
+		GLTarget m_ShadowFieldTexture; //!< R: distance from each grid cell to the nearest wall, in c_ShadowFieldCells, for tracing lights' terrain shadows (LightingSettings::LightShadowField).
+		std::vector<unsigned char> m_ShadowField; //!< One byte per grid cell, as m_ShadowFieldTexture.
+		std::vector<unsigned short> m_ShadowFieldScratch; //!< Chamfer distances for RefreshShadowField, in thirds of a cell.
+		int m_WallChangeMinColumn = 0, m_WallChangeMinRow = 0, m_WallChangeEndColumn = 0, m_WallChangeEndRow = 0; //!< The cells whose wall status RefreshOccupancyRows changed since the field was last refreshed; empty when the end is not past the start.
 		std::vector<unsigned char> m_Occupancy; //!< Four bytes per grid cell: terrain coverage (0 air .. 255 solid), then how metallic and how glossy the terrain there is (from its materials), then a spare.
 		std::array<unsigned char, 256> m_MaterialMetalness{}; //!< How metallic each terrain material looks, 0 to 255.
 		std::array<unsigned char, 256> m_MaterialGloss{}; //!< How glossy each terrain material looks, 0 to 255.
@@ -292,6 +298,13 @@ namespace RTE {
 		void RefreshOccupancyRows(int firstRow, int endRow, int firstColumn = 0, int endColumn = -1);
 		void RecomputeSkyline();
 		void UploadOccupancyRows(int firstRow, int endRow);
+
+		/// Works out the terrain distance field (m_ShadowField) again around a rectangle of grid cells whose walls changed, and uploads what changed.
+		/// Every cell within c_ShadowFieldCells of the rectangle is rewritten, from the walls within twice that.
+		void RefreshShadowField(int firstColumn, int firstRow, int endColumn, int endRow);
+
+		/// Sets the point light shader's terrain distance field uniforms and binds the field to unit 4. The shader must be enabled.
+		void SetShadowFieldUniforms() const;
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
 		void StampStains();
