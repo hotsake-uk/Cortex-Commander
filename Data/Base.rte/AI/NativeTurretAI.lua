@@ -13,7 +13,6 @@ function NativeTurretAI:Create(Owner)
 	Members.lastAIMode = Actor.AIMODE_NONE;
 	Members.SentryFacing = Owner.HFlipped;
 	Members.fire = false;
-	Members.isTurret = true; -- (It can't move: the shared crab shooting doesn't send it round a flank, AC-9.)
 
 	Members.ReloadTimer = Timer();
 	Members.TargetLostTimer = Timer();
