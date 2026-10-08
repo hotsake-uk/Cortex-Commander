@@ -856,7 +856,15 @@ namespace SandboxDetail {
 				SelectInBox(stroke.Position, stroke.Position2);
 				break;
 			case Tool::Command:
-				CommandSelected(at, stroke.Count);
+				if (stroke.Count == 10 || stroke.Count == 11) {
+					// Defend at (RC-4): the point, the way dragged to face, and 11 with Shift.
+					DefendAtSelected(at, stroke.Position2, stroke.Count == 11);
+				} else if (stroke.Count == 20 || stroke.Count == 21) {
+					// A patrol route (RC-4): 20 a loop, 21 back and forth.
+					PatrolSelected(stroke.Points, stroke.Count == 21);
+				} else {
+					CommandSelected(at, stroke.Count);
+				}
 				break;
 			case Tool::OrderSelected:
 				if (stroke.Count == 400) {

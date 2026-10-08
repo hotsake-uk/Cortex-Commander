@@ -633,6 +633,10 @@ namespace SandboxDetail {
 			case PlanKind::Defend:
 				HoldUnit(unit);
 				unit->SetOrderPost(unit->GetPos());
+				unit->SetOrderPostFacing(step.Facing);
+				break;
+			case PlanKind::Wait:
+				// (It stays where the step before left it: nothing to give.)
 				break;
 		}
 		s_FollowingPlan = false;
@@ -657,6 +661,8 @@ namespace SandboxDetail {
 				return !target || target->IsDead();
 			case PlanKind::Defend:
 				return false;
+			case PlanKind::Wait:
+				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
 		}
 		return false;
 	}
@@ -664,7 +670,7 @@ namespace SandboxDetail {
 	/// Adds a step to the plans of units (a shift-click, RC-3). A unit with nothing under way starts it at once; one carrying out an order
 	/// starts it once that order is over. Moves and attack-moves spread the units over standing spots round the place, as a move does; a
 	/// defend holds where the step before leaves the unit.
-	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target) {
+	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing) {
 		bool toPlace = kind == PlanKind::Move || kind == PlanKind::AttackMove;
 		std::vector<Vector> spots = toPlace ? StandingSpots(place, static_cast<int>(units.size())) : std::vector<Vector>();
 		if (toPlace) {
@@ -682,6 +688,7 @@ namespace SandboxDetail {
 			PlanStep step;
 			step.Kind = kind;
 			step.Target = MakeRef(target);
+			step.Facing = facing;
 			if (toPlace) {
 				step.Place = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
 			} else if (kind == PlanKind::Defend) {
@@ -705,6 +712,20 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// Adds a patrol's leg to a plan: on to the point, fighting what is met (an attack-move, so it closes in on what it sees and then carries
+	/// on), and a pause there.
+	void PatrolLeg(Plan& plan, const Vector& point) {
+		PlanStep move;
+		move.Kind = PlanKind::AttackMove;
+		move.Place = point;
+		plan.Steps.push_back(move);
+		PlanStep wait;
+		wait.Kind = PlanKind::Wait;
+		wait.Place = point;
+		wait.Updates = static_cast<int>(3.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F));
+		plan.Steps.push_back(wait);
+	}
+
 	/// Moves each unit with a plan on to its next step when the one it is on is over, and forgets the plans of units that are gone or have
 	/// finished. Once a sim update.
 	void UpdatePlans() {
@@ -719,6 +740,25 @@ namespace SandboxDetail {
 				++entry;
 				continue;
 			}
+			if (plan.Steps.empty() && !plan.Route.empty()) {
+				// A patrol: round its points again (RC-4). A loop goes from the last back to the first; back and forth turns at each end, the
+				// point it is at not walked to again.
+				size_t count = plan.Route.size();
+				std::vector<size_t> order;
+				if (!plan.BackAndForth) {
+					for (size_t i = 0; i < count; ++i) {
+						order.push_back(i);
+					}
+				} else {
+					plan.Forward = !plan.Forward;
+					for (size_t i = 1; i < count; ++i) {
+						order.push_back(plan.Forward ? i : count - 1 - i);
+					}
+				}
+				for (size_t i: order) {
+					PatrolLeg(plan, plan.Route[i]);
+				}
+			}
 			if (plan.Steps.empty()) {
 				entry = s_Plans.erase(entry);
 				continue;
@@ -727,6 +767,73 @@ namespace SandboxDetail {
 			plan.Steps.pop_front();
 			StartPlanStep(unit, plan, step);
 			++entry;
+		}
+	}
+
+	/// Posts the selected units round a point to hold it (RC-4), facing the way the button was dragged (to facingPoint) if it was dragged
+	/// far enough to tell. Each walks to its own spot round the point and holds ground there, and is sent back if moved off. With Shift,
+	/// going there and holding are the next steps of their plans.
+	void DefendAtSelected(const Vector& point, const Vector& facingPoint, bool shift) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		float across = g_SceneMan.ShortestDistance(point, facingPoint, g_SceneMan.SceneWrapsX()).m_X;
+		int facing = across > 12.0F ? 1 : (across < -12.0F ? -1 : 0);
+		if (shift) {
+			PlanStepFor(units, PlanKind::Move, point, nullptr);
+			PlanStepFor(units, PlanKind::Defend, point, nullptr, facing);
+		} else {
+			std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()));
+			std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
+				return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+			});
+			for (size_t i = 0; i < units.size(); ++i) {
+				Vector spot = spots.empty() ? point : spots[std::min(i, spots.size() - 1)];
+				// (Just over the ground under the spot, as for a move: see MoveUnitsTo.) Going there it's a move (OrderKind); there, a defend.
+				SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, "defend at");
+				units[i]->SetOrderPost(spot);
+				units[i]->SetOrderPostFacing(facing);
+			}
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
+	}
+
+	/// Sends the selected units on a patrol (RC-4): round the points in order, fighting what they meet and pausing at each, then round again,
+	/// as a loop or back and forth. Each unit has its own spot at each point, as a move gives it. A patrol is a plan that never runs out, so
+	/// any other order ends it.
+	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		if (points.empty() || units.empty()) {
+			return;
+		}
+		std::vector<std::vector<Vector>> spots;
+		for (const Vector& point: points) {
+			spots.push_back(StandingSpots(point, static_cast<int>(units.size())));
+		}
+		const Vector& first = points.front();
+		std::sort(units.begin(), units.end(), [&first](Actor* a, Actor* b) {
+			return g_SceneMan.ShortestDistance(first, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(first, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+		});
+		for (size_t i = 0; i < units.size(); ++i) {
+			Actor* unit = units[i];
+			if (unit->IsPlayerControlled()) {
+				continue;
+			}
+			HoldUnit(unit);
+			Plan& plan = s_Plans[unit->GetUniqueID()];
+			plan = Plan();
+			plan.Unit = MakeRef(unit);
+			plan.BackAndForth = backAndForth;
+			for (size_t p = 0; p < points.size(); ++p) {
+				plan.Route.push_back(spots[p].empty() ? points[p] : spots[p][std::min(i, spots[p].size() - 1)]);
+			}
+			for (const Vector& point: plan.Route) {
+				PatrolLeg(plan, point);
+			}
+			PlanStep step = plan.Steps.front();
+			plan.Steps.pop_front();
+			StartPlanStep(unit, plan, step);
+		}
+		for (const Vector& point: points) {
+			MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)]);
 		}
 	}
 

@@ -810,6 +810,15 @@ namespace SandboxDetail {
 				crosshair(point, orange, pixel * 6.0F);
 				reachMarks(units, point);
 				label = "Attack-move " + count + " here: they fight what they meet on the way";
+			} else if (s_CommandMode == CommandMode::DefendAt) {
+				// Defend at (RC-4): where each will stand to hold the place.
+				ImU32 amber = c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)];
+				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
+					flag(spot, amber);
+				}
+				label = "Defend here with " + count + "  (drag left or right to face that way)";
+			} else if (s_CommandMode == CommandMode::Patrol) {
+				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (s_CommandMode == CommandMode::Guard) {
 				ImU32 green = IM_COL32(120, 220, 120, 255);
 				if (underIsFriend) {
@@ -1077,7 +1086,11 @@ namespace SandboxDetail {
 			if (picked == -2) {
 				return;
 			}
-			if (picked >= 0 && picked < 6) {
+			if (picked == 1) {
+				// Patrol: a route of points clicked out, as the Patrol mode makes them (RC-4), rather than the game's own pacing to and fro.
+				s_CommandMode = CommandMode::Patrol;
+				s_PatrolDraft.clear();
+			} else if (picked >= 0 && picked < 6) {
 				Stroke stroke;
 				stroke.Kind = Tool::OrderSelected;
 				stroke.Position = s_RingScenePoint;
@@ -1289,6 +1302,20 @@ namespace SandboxDetail {
 				unit->SetSandboxSelected(true);
 				s_MarkedSelected.push_back(ref);
 			}
+		}
+		// The patrol route being clicked out (RC-4): its points joined up, and on to the pointer.
+		if (!s_PatrolDraft.empty() && s_CommandMode == CommandMode::Patrol && CurrentTool().Kind == Tool::Command) {
+			ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Patrol)];
+			ImVec2 from = ToScreen(s_PatrolDraft.front());
+			for (size_t i = 0; i < s_PatrolDraft.size(); ++i) {
+				ImVec2 at = ToScreen(s_PatrolDraft[i]);
+				if (i > 0) {
+					drawList->AddLine(from, at, color, 2.0F);
+				}
+				drawList->AddCircleFilled(at, 5.0F, color);
+				from = at;
+			}
+			drawList->AddLine(from, ImGui::GetIO().MousePos, (color & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), 1.5F);
 		}
 		// The plans of the selected units (RC-3): a line from each unit through the step it is on and those still to come, with a numbered
 		// marker at each queued step in its order's colour (a right click on one drops it).
@@ -1569,6 +1596,32 @@ namespace SandboxDetail {
 					s_CommandMode = static_cast<CommandMode>(current);
 				}
 				ImGui::PopStyleColor();
+			}
+			// The patrol route being clicked out (RC-4): started as a loop or back and forth once it has two points.
+			if (s_CommandMode == CommandMode::Patrol) {
+				ImGui::SameLine(0.0F, pixel * 6.0F);
+				ImGui::TextDisabled("%d points", static_cast<int>(s_PatrolDraft.size()));
+				for (int backAndForth = 0; backAndForth < 2; ++backAndForth) {
+					ImGui::SameLine();
+					ImGui::BeginDisabled(s_PatrolDraft.size() < 2 || s_Selected.empty());
+					if (ToolUI::SmallButton(backAndForth ? "Back and forth" : "Loop")) {
+						Stroke stroke;
+						stroke.Kind = Tool::Command;
+						stroke.Count = backAndForth ? 21 : 20;
+						stroke.Position = s_PatrolDraft.front();
+						stroke.Points = s_PatrolDraft;
+						s_Queue.push_back(stroke);
+						s_PatrolDraft.clear();
+					}
+					ImGui::EndDisabled();
+				}
+				ImGui::SetItemTooltip("Loop: round the points and back to the first, again and again.\nBack and forth: along the points to the last, then back the same way.\nThey stop a few seconds at each point and fight whatever they meet on the way.");
+				ImGui::SameLine();
+				ImGui::BeginDisabled(s_PatrolDraft.empty());
+				if (ToolUI::SmallButton("Clear##patrol")) {
+					s_PatrolDraft.clear();
+				}
+				ImGui::EndDisabled();
 			}
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			// What is selected, by kind.
