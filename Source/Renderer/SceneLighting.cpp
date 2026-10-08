@@ -1382,6 +1382,13 @@ void SceneLighting::Update() {
 	float wetTarget = m_Settings.WeatherType == 1 ? std::min(1.0F, m_Settings.WeatherIntensity * 1.3F) : 0.0F;
 	m_SnowCover += std::clamp(snowTarget - m_SnowCover, -frameSeconds / 90.0F, frameSeconds / 60.0F);
 	m_Wetness += std::clamp(wetTarget - m_Wetness, -frameSeconds / 60.0F, frameSeconds / 8.0F);
+	// Cloud cover gathers over about twenty seconds when rain, snow or ash sets in and breaks up over a minute and a half after.
+	{
+		float coverClear = std::clamp(m_Settings.CloudCover, 0.0F, 1.0F);
+		float weatherCloud = (m_Settings.WeatherType >= 1 && m_Settings.WeatherType <= 3) ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		float coverTarget = coverClear + (1.0F - coverClear) * std::min(weatherCloud * 1.4F, 1.0F);
+		m_CloudCover = m_CloudCover < 0.0F ? coverTarget : m_CloudCover + std::clamp(coverTarget - m_CloudCover, -frameSeconds / 90.0F, frameSeconds / 20.0F);
+	}
 	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
 	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor) * nightDim;
 	// The readability floor drops more at night than the interior ambient does, so night battles outdoors stay dark and moody.
@@ -2263,6 +2270,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CloudDrift = static_cast<float>(std::fmod(PostProcessMan::GetSmoothSimTimePrecise() * static_cast<double>(m_Settings.Wind * 0.35F + 6.0F), 65536.0));
 	m_CompositeShader->SetFloat("rteCloudShadows", m_Settings.Enabled ? m_Settings.CloudShadows * std::min(m_SunShadowStrength * 2.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetFloat("rteCloudDrift", m_CloudDrift);
+	// The cloud layer, and the cover its shadows share with it. Off, the shadows keep the spread they always had (a cover of 0.5).
+	bool cloudLayer = m_Settings.Enabled && m_Settings.CloudLayer && m_CloudCover >= 0.0F;
+	m_CompositeShader->SetFloat("rteCloudLayer", cloudLayer ? std::clamp(m_Settings.CloudOpacity, 0.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetFloat("rteCloudCover", cloudLayer ? m_CloudCover : 0.5F);
+	m_CompositeShader->SetFloat("rteCloudStorm", cloudLayer ? glm::smoothstep(0.6F, 1.0F, m_CloudCover) : 0.0F);
+	// On a wrapping scene the clouds repeat once around it, so neither the sky nor the shadows jump at the seam.
+	m_CompositeShader->SetFloat("rteCloudPeriod", (cloudLayer && m_WrapX) ? static_cast<float>(m_SceneWidth) : 0.0F);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);

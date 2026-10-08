@@ -49,7 +49,7 @@ At night, stars and a moon appear on the sky layers. These are the background la
   - Where the sun can't be seen (the far side of a hill, under an overhang, in the shadow of a unit), ground, walls and units are dimmer and cooler. In full sun under open sky nothing changes.
   - Where the sun gets into a cave or a bunker through an opening, it lights the walls it falls on, and the beam shows in the air (the `GodRays` setting).
   - Shadows fade out around sunrise and sunset, when the sun and moon swap, and under rain, snow, ash and dust.
-- **The sun and clouds:** by day the sun shows in the sky (`SunDisc`, 1), following the same arc the moon does at night and turning warm towards the horizon; weather hides it. Clouds drift across it with the wind and their shadows cross the ground, units and walls under open sky (`CloudShadows`, 0.5; needs sun shadows on).
+- **The sun and clouds:** by day the sun shows in the sky (`SunDisc`, 1), following the same arc the moon does at night and turning warm towards the horizon; weather hides it. Clouds drift across it with the wind and their shadows cross the ground, units and walls under open sky (`CloudShadows`, 0.5; needs sun shadows on). The clouds themselves are drawn in the sky (`CloudLayer`) and gather in bad weather.
 - **Contact shading** (`ContactShading`, 0.4, Medium and up): background walls darken slightly right next to units and objects and next to solid ground, so things look anchored to the scene.
 - An object can opt out with `CastsShadow = 0` in its INI (any `MOSRotating`: energy shields, holograms), or `object.CastsShadow = false` from Lua. Anything drawn see-through or with an additive or screen blend mode never casts.
 - The Graphics Lab's views include "Solid objects and distance to them" and "Where the sun is visible", for checking what casts and what is lit.
@@ -271,6 +271,7 @@ Press **F8** for **Photo Mode**:
 | `ContactShading` | 0.4 | How much background walls darken next to objects and solid ground. |
 | `SunDisc` | 1 | Brightness of the sun drawn in the sky by day. |
 | `CloudShadows` | 0.5 | How much drifting clouds shade the ground under open sky. |
+| `CloudLayer` / `CloudCover` / `CloudOpacity` | 1 / 0.5 / 1 | Clouds drawn in the sky, the same clouds whose shadows cross the ground (the shadow under the middle of the screen is the cloud over it). They gather over about twenty seconds in rain, snow and ash fall, darken underneath, and break up over a minute and a half after; they take the hour's light and glow around the sun at dawn and dusk. Cover is the clear-weather amount (0.5 is the spread shadows always had). Off: an empty sky and the old fixed shadows. On from Medium. |
 | `LightingEmissiveIntensity` | 1.4 | Brightness of glow sprites. |
 | `LightingEdgeLighting` | 1 | Strength of the automatic edge normals. |
 | `LightingSpecular` | 1 | Highlights that lights throw on glossy surfaces: metal, glass, rain-wet ground, water and acid. 0 turns them off. |

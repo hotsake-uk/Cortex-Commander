@@ -26,6 +26,10 @@ uniform vec2 rteSunPosition; // Where the sun is in the sky, in screen pixels as
 uniform vec3 rteSunDisc; // The sun's color and brightness, linear. Black when it's down or hidden by weather.
 uniform float rteCloudShadows; // How much drifting clouds shade the ground, 0 for none.
 uniform float rteCloudDrift; // How far the clouds have drifted, in scene pixels.
+uniform float rteCloudLayer; // How solid the clouds drawn in the sky are, 0 for none (then the shadows are as they always were).
+uniform float rteCloudCover; // How much of the sky is cloud, 0 to 1; 0.5 is the spread the shadows always had.
+uniform float rteCloudStorm; // 0 to 1, how much the clouds are heavy weather clouds, dark underneath.
+uniform float rteCloudPeriod; // Scene width on a wrapping scene with the cloud layer on, so the clouds repeat once around it; 0 otherwise.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
@@ -143,12 +147,73 @@ float CloudNoise(vec2 p) {
 	return mix(mix(CloudHash(cell), CloudHash(cell + vec2(1.0, 0.0)), f.x), mix(CloudHash(cell + vec2(0.0, 1.0)), CloudHash(cell + vec2(1.0, 1.0)), f.x), f.y);
 }
 
-// How much of the sun a drifting cloud hides above a point of the scene, 0 to 1. Clouds are wide soft patches a few hundred pixels across; the shadow falls along the sun's direction, so it leans with the time of day.
+// One octave of cloud noise along the clouds' x, cells about scale pixels wide, at the given row. On a wrapping scene the cells are fitted to repeat once around it.
+float CloudOctave(float along, float scale, float row) {
+	if (rteCloudPeriod <= 0.0) {
+		return CloudNoise(vec2(along / scale, row));
+	}
+	float cells = max(1.0, floor(rteCloudPeriod / scale + 0.5));
+	float x = along / (rteCloudPeriod / cells);
+	float cell = floor(x);
+	float f = x - cell;
+	f = f * f * (3.0 - 2.0 * f);
+	float rowCell = floor(row);
+	float g = row - rowCell;
+	g = g * g * (3.0 - 2.0 * g);
+	float first = mod(cell, cells);
+	float second = mod(cell + 1.0, cells);
+	return mix(mix(CloudHash(vec2(first, rowCell)), CloudHash(vec2(second, rowCell)), f), mix(CloudHash(vec2(first, rowCell + 1.0)), CloudHash(vec2(second, rowCell + 1.0)), f), g);
+}
+
+// How thick the cloud is over a column of the clouds' x: wide soft patches a few hundred pixels across. The sky's clouds and their shadows both come from this.
+float CloudColumn(float along) {
+	return 0.65 * CloudOctave(along, 420.0, 3.7) + 0.35 * CloudOctave(along, 150.0, 9.1);
+}
+
+// Where thickness becomes cloud, by how much of the sky is cloud.
+float CloudThreshold() {
+	return mix(0.65, 0.25, rteCloudCover);
+}
+
+// Where the sun's ray to a point crosses the height of the clouds, along their x: a column of ground shares a cloud, and the shadow leans with the time of day.
+float CloudAlong(vec2 worldPos) {
+	return worldPos.x + rteSunDirection.x / max(-rteSunDirection.y, 0.2) * worldPos.y - rteCloudDrift;
+}
+
+// How much of the sun a drifting cloud hides above a point of the scene, 0 to 1.
 float CloudShade(vec2 worldPos) {
-	// Where the sun's ray to this point crosses the height of the clouds: only the x matters, a column of ground shares a cloud.
-	float along = worldPos.x + rteSunDirection.x / max(-rteSunDirection.y, 0.2) * worldPos.y - rteCloudDrift;
-	float cloud = 0.65 * CloudNoise(vec2(along / 420.0, 3.7)) + 0.35 * CloudNoise(vec2(along / 150.0, 9.1));
-	return smoothstep(0.45, 0.65, cloud);
+	float threshold = CloudThreshold();
+	return smoothstep(threshold, threshold + 0.2, CloudColumn(CloudAlong(worldPos)));
+}
+
+// How far the cloud layer scrolls with the view compared to the battlefield: it is far off, like the sky art behind it.
+const float c_CloudParallax = 0.25;
+
+// The clouds in the sky at a pixel, and how much of it they cover. The column over the middle of the screen is the one whose shadow falls on the middle of the screen;
+// away from it, the far-off clouds are drawn smaller than the shadows they cast.
+vec4 SkyCloud(vec2 screenUV, vec3 skyLight) {
+	// The clouds sit in a band across the top of the sky.
+	float band = screenUV.y / 0.42; // Player screens are drawn top down: UV y 0 is the top.
+	if (band >= 1.0) {
+		return vec4(0.0);
+	}
+	vec2 middle = rteScreenOrigin + rteScreenSize * 0.5;
+	float along = CloudAlong(middle) + (gl_FragCoord.x - rteScreenSize.x * 0.5) / c_CloudParallax;
+	float row = (gl_FragCoord.y + rteScreenOrigin.y * c_CloudParallax) / 40.0;
+	// Puffy edges, and thinner towards the band's top and bottom.
+	float edge = abs(band * 2.0 - 1.0);
+	float thickness = CloudColumn(along) + 0.22 * (CloudOctave(along, 60.0, row) - 0.5) - 0.3 * edge * edge;
+	float threshold = CloudThreshold();
+	float amount = smoothstep(threshold, threshold + 0.2, thickness);
+	if (amount <= 0.0) {
+		return vec4(0.0);
+	}
+	// The hour's light on cloud, brighter on the tops, and the cores of thick clouds and storm clouds darker underneath.
+	float core = smoothstep(threshold, threshold + 0.45, thickness);
+	vec3 color = rteSkyCloud * skyLight * mix(1.05, 0.5, core * (0.35 + 0.65 * rteCloudStorm)) * (1.0 + 0.15 * (1.0 - band));
+	// Thin cloud around the sun is lit through, a silver edge that turns gold at dawn and dusk.
+	color += rteSunDisc * exp(-length(gl_FragCoord.xy - rteSunPosition) / 110.0) * (1.0 - core) * 0.9;
+	return vec4(color, amount);
 }
 
 // The sun: a bright disc with a wide soft glow. Linear, added on top of the sky.
@@ -440,15 +505,21 @@ void main() {
 		vec3 sky = mix(gradient, rteSkyCloud * (0.35 + brightness), cloud);
 		litColor = mix(litColor, sky, rteSkyRecolor * skyLayer);
 	}
+	float skyCloud = 0.0; // How much a cloud in the sky covers this pixel.
+	if (rteCloudLayer > 0.0 && skyLayer > 0.0 && rteDebugView == 0) {
+		vec4 cloud = SkyCloud(screenUV, mix(rteBackgroundLight, vec3(1.0), rteSkyOwnLight));
+		skyCloud = cloud.a * rteCloudLayer * skyLayer;
+		litColor = mix(litColor, cloud.rgb, skyCloud);
+	}
 	if (rteSunDisc != vec3(0.0) && sceneDepth > rteBackgroundDepth) {
 		// The sun shows on the sky itself: the furthest layers and where nothing is drawn, never on mountains or nearer scenery.
 		float distance = clamp((sceneDepth - rteBackgroundNearDepth) / (rteBackgroundFarDepth - rteBackgroundNearDepth), 0.0, 1.0);
-		litColor += SunDisc(gl_FragCoord.xy) * smoothstep(0.88, 0.95, distance);
+		litColor += SunDisc(gl_FragCoord.xy) * smoothstep(0.88, 0.95, distance) * (1.0 - 0.9 * skyCloud);
 	}
 	if (nightSkyAmount > 0.0) {
 		// Bright parts of the sky art (clouds, glowing horizons) hide the stars.
 		float skyBrightness = dot(litColor, vec3(0.2126, 0.7152, 0.0722));
-		litColor += NightSky(gl_FragCoord.xy) * nightSkyAmount * (1.0 - smoothstep(0.03, 0.12, skyBrightness));
+		litColor += NightSky(gl_FragCoord.xy) * nightSkyAmount * (1.0 - smoothstep(0.03, 0.12, skyBrightness)) * (1.0 - skyCloud);
 	}
 	// Highlights: white on most things, taking the surface's own color on metal (which is why gold glints gold and steel glints white).
 	litColor += highlights * mix(vec3(1.0), albedoLinear * 2.5 + 0.15, metalness) * (1.0 - haze);
