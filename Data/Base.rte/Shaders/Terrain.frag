@@ -27,6 +27,7 @@ uniform float rteWaterFoamBright; // How bright the froth is drawn.
 uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
 uniform float rteWaterFoamGlow; // How much light of its own the froth carries, so it shows in the dark.
 uniform float rteWaterFoam; // How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth. 0 for none.
+uniform float rteWaterRipples; // How much the surface ripples tilt water's normal, for the reflection and the glints on it. 0 for flat (as before).
 uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
 uniform vec2 rteGridWorldSize;
@@ -288,6 +289,14 @@ void main() {
 				}
 				// Water is glossy: lamps, fires and the sun glance off it.
 				shine = max(shine, 0.9);
+				if (rteWaterRipples > 0.0) {
+					// The ripples tilt the surface: the slope of the same slow waves the light plays on, so the glints of lamps and the sun and
+					// the composite's reflection wobble with them. Stronger near the top, calmer in the depths.
+					float phaseX = worldPos.x * 0.35 + rteTime * 2.3;
+					float phaseY = worldPos.y * 0.21 - rteTime * 1.7;
+					vec2 slope = vec2(0.35 * cos(phaseX) * sin(phaseY) + 0.055 * cos(worldPos.x * 0.11 - rteTime * 0.9), 0.21 * sin(phaseX) * cos(phaseY));
+					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * mix(1.0, 0.5, deep), 0.0));
+				}
 				glowsThrough = 0.25;
 				FragColor = vec4(water, mix(0.6, 0.8, deep));
 				// Thin, broken water is froth: white and bubbling instead of clear. (Checked only where there's air close by, which the middle of a pool never has.)

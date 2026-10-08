@@ -55,6 +55,8 @@ namespace RTE {
 			EffectsParticles = preset.Particles;
 			SmokeScattering = preset.Smoke;
 			ApplyShadowPreset(quality);
+			// Water reflections: a few extra texture reads per water pixel, from Medium up.
+			WaterReflections = quality >= QualityMedium;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -164,6 +166,10 @@ namespace RTE {
 		float WaterFoamGlow = 0.45F; //!< How much light of its own froth carries, so it shows at night. 0: lit only by what lights the scene.
 		float SoftSmoke = 1.0F; //!< How much soft, billowing smoke the game's smoke sprites trail, so smoke hangs and rolls instead of being a cluster of sprites. 0 for none. Visual only.
 		float WaterLightGlow = 0.22F; //!< How much the light of lamps, fires and blasts shows as a glow in water it passes through, in the light's own colour. 0: water is only lit like a surface.
+		bool WaterReflections = true; //!< Water mirrors what's above it, shows what's behind it bent by its ripples, and its rippled surface catches lamps and the sun. Off: water as it was, flat and tinted.
+		float WaterReflectionStrength = 0.5F; //!< How strongly water mirrors the scene above it, 0 for none.
+		float WaterRefraction = 0.5F; //!< How much water's ripples bend what's seen through it, and how much it darkens with depth, 0 for none.
+		float WaterRipples = 1.0F; //!< How much the surface ripples tilt the light and the reflection, 0 for a flat mirror.
 		float WaterFoamBubbles = 0.5F; //!< How much froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
 		float WaterMistSize = 0.45F; //!< How big each puff of spray is: 1 is about 3 to 6 pixels across at first.
 		float WaterMistLife = 1.0F; //!< How long each puff lasts: 1 is about half a second to a second.
