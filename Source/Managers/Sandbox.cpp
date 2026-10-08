@@ -1201,6 +1201,8 @@ namespace {
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+		// Liquid round it takes the new shape (as PaintTerrain's): a box built into a stream was dry, the water left standing where it had been.
+		FluidSim::Disturb(topLeft + Vector(static_cast<float>(boxWidth) * 0.5F, static_cast<float>(boxHeight) * 0.5F), static_cast<float>(std::max(boxWidth, boxHeight)) * 0.75F + 2.0F);
 	}
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
@@ -1235,6 +1237,8 @@ namespace {
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+		// Liquid above or beside the cleared box flows into it (as PaintTerrain's dig does); it stayed put until something else woke it.
+		FluidSim::Disturb(topLeft + Vector(static_cast<float>(boxWidth) * 0.5F, static_cast<float>(boxHeight) * 0.5F), static_cast<float>(std::max(boxWidth, boxHeight)) * 0.75F + 2.0F);
 	}
 
 	/// Things that can be put down and left running, for trying the lights, particles and shaders against: each is a light, a source of particles, or both.
@@ -2730,8 +2734,10 @@ namespace {
 				break;
 			case Tool::Fire:
 				TerrainFire::QueueIgniteArea(at, radius);
-				// Something to see even over rock, which doesn't burn.
+				// Something to see even over rock, which doesn't burn. (Only to see: a stroke of the brush is a dozen of these a second, and as
+				// they were they hit and hurt units the fire wasn't painted on. What burns is the fire itself.)
 				if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
+					flame->SetToHitMOs(false);
 					flame->SetPos(at + Vector((Random01() - 0.5F) * radius, (Random01() - 0.5F) * radius));
 					flame->SetVel(Vector((Random01() - 0.5F) * 1.5F, -1.0F - Random01()));
 					g_MovableMan.AddParticle(flame);
