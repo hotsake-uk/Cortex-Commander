@@ -499,6 +499,12 @@ namespace RTE {
 		/// @param to The floor it lands on.
 		bool GapBetween(const PathNode& from, const PathNode& to) const;
 
+		/// Whether a floor is the top of a face (a lip) seen from the way a leap comes: half a node short of it, no ground within half a node
+		/// under its floor. A slope up to it is walked.
+		/// @param to The floor.
+		/// @param direction -1 for a leap leftward, 1 rightward.
+		bool LipAt(const PathNode& to, float direction) const;
+
 		/// Whether door material at a place is a door this grid sees through: one of the grid's side, erased while its nodes were sampled
 		/// (Scene::UpdatePathFinding, OverrideMaterialDoors), so no edge of the node there, or of its neighbours into it, sampled a door.
 		bool DoorSeenThrough(const Vector& at) const;
