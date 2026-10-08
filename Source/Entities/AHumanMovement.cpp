@@ -4,6 +4,7 @@
 // a stutter of the jet or a turn in the air. Flights are flown by AHuman::PilotFlight. The script keeps its hook: it calls this each
 // tick from a coroutine of its own (SharedBehaviors.GoToRoute), and a mod that replaces that keeps working.
 #include "AHuman.h"
+#include "ActorWater.h"
 #include "ADoor.h"
 #include "AEJetpack.h"
 #include "AtomGroup.h"
@@ -1389,7 +1390,14 @@ int AHuman::MoveAlongRoute() {
 	if (floorHere < 0.0F && m_Vel.MagnitudeIsLessThan(0.3F) && m_Status == STABLE) {
 		floorHere = m_Pos.m_Y + feet;
 	}
-	const bool airborne = floorHere < 0.0F;
+	// In liquid with the body under (ActorWater's depth 2 or more, LM-4): swum, or the bottom walked by what sinks; not in the air, whatever
+	// is under it (FloorUnder sees through liquid to the bottom, and a swimmer with none within reach was flown by the pilot).
+	const int liquidDepth = GetLiquidDepth();
+	const bool inLiquid = liquidDepth >= 2;
+	if (!inLiquid) {
+		mover.swimming = false;
+	}
+	const bool airborne = floorHere < 0.0F && !inLiquid;
 	Controller& ctrl = m_Controller;
 
 	// Nothing to go to.
@@ -1513,7 +1521,10 @@ int AHuman::MoveAlongRoute() {
 
 	// Progress: how far from where it last got nearer the route's point; none for a while is stuck.
 	if (!m_MovePath.empty()) {
-		float gap = Towards(m_Pos, m_MovePath.front()).GetMagnitude();
+		// (In liquid, across only: the route's points are on the surface, and a sinker walking the bottom under them, or a swimmer bobbing,
+		// gets no nearer in height whatever it does.)
+		Vector toFront = Towards(m_Pos, m_MovePath.front());
+		float gap = inLiquid ? std::abs(toFront.m_X) : toFront.GetMagnitude();
 		if (mover.bestGap < 0.0F || gap < mover.bestGap - 4.0F || mover.flight.active) {
 			mover.bestGap = gap;
 			mover.progressTimer.Reset();
@@ -1584,7 +1595,8 @@ int AHuman::MoveAlongRoute() {
 		bool inSight = !g_SceneMan.CastStrengthRay(m_Pos, toPoint, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
 		// (A ladder's next point is often out of sight, over a lip or down a hatch: the climb goes to it, not a new route every second.)
 		bool ladderStep = !m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Ladder;
-		if (inSight || airborne || ladderStep || DoorAhead(m_MovePath.front())) {
+		// (Nor from under the water: the bank's point is over the lip from down there.)
+		if (inSight || airborne || inLiquid || ladderStep || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
@@ -1670,6 +1682,63 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 		return RouteMover::Moving;
+	}
+
+	// ---- In liquid (LM-4): swum for the point along the surface, or walked along the bottom by what sinks (the walk below), and out
+	// up the bank by the hands (pressing up and into it: Actor::TryCatchLedge and TryStartMantle pull the body out over the lip). ----
+	if (inLiquid && !m_MovePath.empty()) {
+		const Vector point = m_MovePath.front();
+		const Vector toPoint = Towards(m_Pos, point);
+		const PathStepKind kind = m_MovePathKinds.empty() ? PathStepKind::Walk : m_MovePathKinds.front();
+		// A flight that came down in the water is over: the route goes on from here.
+		if (mover.flight.active) {
+			MoverTrace("came down in the water; flight over");
+			mover.flight = RouteMover::Flight();
+			mover.fuelWaiting = false;
+		}
+		// Fallen in (knocked in, the floor gone, a flood) on a route that didn't mean to swim: a route from here, which takes the water in
+		// its own terms and makes for a bank. (Once each time in.)
+		if (!mover.swimming) {
+			mover.swimming = true;
+			if (kind != PathStepKind::Swim && kind != PathStepKind::Wade && !IsWaitingOnNewMovePath()) {
+				MoverTrace("fell in the water; new route");
+				mover.bestGap = -1.0F;
+				mover.progressTimer.Reset();
+				RefreshRoute();
+				return RouteMover::Moving;
+			}
+		}
+		// Out of air with the head under (four seconds of it left, for what breathes): whatever the route says, straight up for the
+		// surface, stroking and jumping. (The grid only routes a sinker across water its breath does, but a unit that stood, fought or was
+		// pushed about down there runs out all the same.)
+		const float breath = ActorWater::GetBreathSeconds(this);
+		if (breath < FLT_MAX && liquidDepth >= 3 && GetAirLeft() * breath < 4.0F) {
+			ctrl.SetState(MOVE_UP, true);
+			ctrl.SetState(BODY_JUMP, true);
+			if (std::abs(toPoint.m_X) > 3.0F) {
+				ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+			}
+			mover.progressTimer.Reset();
+			if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("out of air; surfacing");
+			}
+			return RouteMover::Moving;
+		}
+		// A sinker with the bottom under its feet walks it: the walk below, as on any floor.
+		if (!(floorHere >= 0.0F && !IsFloater())) {
+			if (std::abs(toPoint.m_X) > 3.0F) {
+				ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+			}
+			// Up for a point over the surface (the bank): the stroke up lifts the body to the lip, and the key into the bank pulls it out.
+			// Down for one well under (a dive the route means); otherwise left to the water, which holds a floater at the surface.
+			if (toPoint.m_Y < -h * 0.25F) {
+				ctrl.SetState(MOVE_UP, true);
+			} else if (toPoint.m_Y > h * 0.6F && kind != PathStepKind::Swim) {
+				ctrl.SetState(MOVE_DOWN, true);
+			}
+			return RouteMover::Moving;
+		}
 	}
 
 	// ---- The flight: planned take-off to touchdown, flown by the pilot. ----

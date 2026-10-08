@@ -1287,6 +1287,15 @@ bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
 	return !head || !head->GetAtomGroup() || head->GetAtomGroup()->FitsAt(head->GetPos() + shift);
 }
 
+namespace {
+	/// Ground to hold or stand on: terrain that is neither air nor liquid. (Liquid is no lip: a swimmer pressing towards a bank caught the
+	/// water's own surface and was pulled up onto it.)
+	bool IsGroundAt(int x, int y) {
+		unsigned char id = g_SceneMan.GetTerrMatter(x, y);
+		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id);
+	}
+} // namespace
+
 bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 	if (m_Mantling || !g_SettingsMan.MantlingEnabled() || !m_pAtomGroup || m_Status == INACTIVE || m_Status == DYING || m_Status == DEAD || m_PinStrength > 0.0F) {
 		return false;
@@ -1321,7 +1330,7 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		Vector target = m_Pos + end;
 		bool supported = false;
 		for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-			supported = g_SceneMan.GetTerrMatter(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down) != MaterialColorKeys::g_MaterialAir;
+			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
 		}
 		if (!supported) {
 			continue;
@@ -1372,7 +1381,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	int toY = static_cast<int>(m_Pos.m_Y + height * 0.1F);
 	int lipY = -1;
 	for (int y = fromY; y <= toY; ++y) {
-		if (g_SceneMan.GetTerrMatter(handX, y) != MaterialColorKeys::g_MaterialAir) {
+		if (IsGroundAt(handX, y)) {
 			lipY = y;
 			break;
 		}
@@ -1391,7 +1400,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	Vector target = m_Pos + end;
 	bool supported = false;
 	for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-		supported = g_SceneMan.GetTerrMatter(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down) != MaterialColorKeys::g_MaterialAir;
+		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
 	}
 	if (!supported) {
 		return false;
