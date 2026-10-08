@@ -199,6 +199,9 @@
     <ClInclude Include="Source\Managers\ThreatMemory.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\GasGrid.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\SmokeGrid.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -881,6 +884,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ThreatMemory.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\GasGrid.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SmokeGrid.cpp">

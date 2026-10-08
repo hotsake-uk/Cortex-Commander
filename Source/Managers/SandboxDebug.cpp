@@ -1,6 +1,8 @@
 // The sandbox's debug overlays (Sandbox::DrawDebug).
 
 #include "SandboxInternal.h"
+#include "DebugDraw.h"
+#include "GasGrid.h"
 
 namespace {
 	/// A dashed line between window positions, as the orders overlay draws an order waiting for the next update.
@@ -541,6 +543,63 @@ namespace {
 	}
 } // namespace
 
+namespace {
+	/// The gas overlay (SettingsMan::ShowSandboxGas): each cell of the gas grid in view tinted by its thickest gas, and the gas under the pointer by it.
+	void DrawGasOverlay() {
+		if (!g_SettingsMan.ShowSandboxGas() || !GasGrid::IsEnabled()) {
+			return;
+		}
+		static const ImU32 tints[GasGrid::KindCount] = {IM_COL32(150, 150, 150, 0), IM_COL32(120, 230, 60, 0), IM_COL32(255, 160, 60, 0), IM_COL32(240, 245, 255, 0)};
+		static const char* names[GasGrid::KindCount] = {"smoke", "toxic", "methane", "steam"};
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		constexpr float cell = 8.0F;
+		Box view = DebugDraw::ViewBox();
+		int across = static_cast<int>(view.GetWidth() / cell) + 2;
+		int down = static_cast<int>(view.GetHeight() / cell) + 2;
+		float startX = std::floor(view.GetCorner().m_X / cell) * cell;
+		float startY = std::floor(view.GetCorner().m_Y / cell) * cell;
+		// Far out, every other cell (or fewer) so the overlay costs little.
+		int step = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(across) * static_cast<float>(down) / 20000.0F))));
+		for (int row = 0; row < down; row += step) {
+			for (int column = 0; column < across; column += step) {
+				Vector at(startX + static_cast<float>(column) * cell, startY + static_cast<float>(row) * cell);
+				Vector middle = at + Vector(cell * 0.5F, cell * 0.5F);
+				int thickest = -1;
+				float most = 0.02F;
+				for (int kind = 0; kind < GasGrid::KindCount; ++kind) {
+					if (float thickness = GasGrid::Get(middle, static_cast<GasGrid::Kind>(kind)); thickness > most) {
+						most = thickness;
+						thickest = kind;
+					}
+				}
+				if (thickest < 0) {
+					continue;
+				}
+				ImU32 color = tints[thickest] | (static_cast<ImU32>(std::clamp(40.0F + most * 150.0F, 40.0F, 190.0F)) << IM_COL32_A_SHIFT);
+				ImVec2 corner = ToScreen(at);
+				float size = cell * static_cast<float>(step) / scale;
+				drawList->AddRectFilled(corner, ImVec2(corner.x + size, corner.y + size), color);
+			}
+		}
+		Vector pointer = DebugDraw::MouseScenePosition();
+		std::string text;
+		for (int kind = 0; kind < GasGrid::KindCount; ++kind) {
+			if (float thickness = GasGrid::Get(pointer, static_cast<GasGrid::Kind>(kind)); thickness >= 0.01F) {
+				char part[32];
+				std::snprintf(part, sizeof(part), "%s%s %.2f", text.empty() ? "" : "  ", names[kind], thickness);
+				text += part;
+			}
+		}
+		if (!text.empty()) {
+			const ImVec2& mouse = ImGui::GetIO().MousePos;
+			ImVec2 size = ImGui::CalcTextSize(text.c_str());
+			drawList->AddRectFilled(ImVec2(mouse.x + 14.0F, mouse.y + 30.0F), ImVec2(mouse.x + 18.0F + size.x, mouse.y + 30.0F + size.y), IM_COL32(10, 12, 10, 190));
+			drawList->AddText(ImVec2(mouse.x + 16.0F, mouse.y + 30.0F), IM_COL32(230, 230, 220, 255), text.c_str());
+		}
+	}
+} // namespace
+
 void Sandbox::DrawDebug() {
 	if (!g_ActivityMan.GetActivity() || !g_SceneMan.GetScene()) {
 		return;
@@ -548,6 +607,7 @@ void Sandbox::DrawDebug() {
 	DrawOrdersOverlay();
 	DrawSimState();
 	DrawEffectsOverlay();
+	DrawGasOverlay();
 	DrawSelectionCameraOverlay();
 	DrawPaintAudit();
 	DrawAutoBattleColony();

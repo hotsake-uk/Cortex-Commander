@@ -30,6 +30,7 @@ sources += files(
 'SmokeGrid.cpp',
 'ActorFire.cpp',
 'ThreatMemory.cpp',
+'GasGrid.cpp',
 'ActorWater.cpp',
 'UnitSpeech.cpp',
 'Sandbox.cpp',

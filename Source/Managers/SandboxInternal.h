@@ -181,7 +181,10 @@ namespace SandboxDetail {
 		TerrainOther, //!< Paints the terrain material chosen under "More terrain..." (Stroke::Material).
 		// Plants, drawn from the base game's own plant pictures (its "Plants", "Cacti" and "Small Cacti" terrain debris): appended, so the tools before keep their numbers.
 		Plants,
-		Cacti
+		Cacti,
+		// Gases that live in the gas grid (SB-6): appended, so the tools before keep their numbers.
+		Methane,
+		Steam
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -292,6 +295,8 @@ namespace SandboxDetail {
 	    {Tool::TerrainOther, "Other terrain", 0.03F, true},
 	    {Tool::Plants, "Plants", 0.03F, true},
 	    {Tool::Cacti, "Cacti", 0.03F, true},
+	    {Tool::Methane, "Methane", 0.06F, true},
+	    {Tool::Steam, "Steam", 0.06F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 

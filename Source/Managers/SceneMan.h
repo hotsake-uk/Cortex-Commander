@@ -700,6 +700,17 @@ namespace RTE {
 		/// Gets where a team last saw a unit a player controls (AC-2), or a zero vector if not within maxAgeMS sim milliseconds.
 		Vector GetPlayerLastSeenPos(int team, float maxAgeMS) const;
 
+		/// Lets gas out into the air at a point (SB-6). Thread safe; applied on the next sim update.
+		/// @param position Where, in scene coordinates.
+		/// @param kind 0 smoke, 1 toxic gas, 2 methane, 3 steam.
+		/// @param amount How much: 1 fills a cell (8 pixels a side) thick.
+		void AddGas(const Vector& position, int kind, float amount) const;
+
+		/// Gets how thick a gas is at a point (SB-6), 0 for none, 1 for a cell full.
+		/// @param position Where, in scene coordinates.
+		/// @param kind 0 smoke, 1 toxic gas, 2 methane, 3 steam.
+		float GetGas(const Vector& position, int kind) const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 

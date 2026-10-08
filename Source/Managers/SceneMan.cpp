@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
 #include "TerrainCollapse.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
@@ -1520,6 +1521,16 @@ Vector SceneMan::GetRememberedEnemyPos(int team, const Vector& near, float maxAg
 
 Vector SceneMan::GetPlayerLastSeenPos(int team, float maxAgeMS) const {
 	return ThreatMemory::GetPlayerLastSeen(team, maxAgeMS);
+}
+
+void SceneMan::AddGas(const Vector& position, int kind, float amount) const {
+	if (kind >= 0 && kind < GasGrid::KindCount) {
+		GasGrid::Add(position, static_cast<GasGrid::Kind>(kind), amount);
+	}
+}
+
+float SceneMan::GetGas(const Vector& position, int kind) const {
+	return kind >= 0 && kind < GasGrid::KindCount ? GasGrid::Get(position, static_cast<GasGrid::Kind>(kind)) : 0.0F;
 }
 
 int SceneMan::GetBurningUnitCount() const {
