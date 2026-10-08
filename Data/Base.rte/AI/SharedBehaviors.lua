@@ -1705,6 +1705,29 @@ function SharedBehaviors.SquadPoint(AI, Owner, Leader)
 	return From, LeaderGround;
 end
 
+-- The "Squad links and trails" overlay (AI debug in the settings panel): for a follower or leader being inspected, a line from the leader
+-- to the follower, the trail of ground points the follower measures back along, and its place in line as a ring with the slot number.
+function SharedBehaviors.DrawSquadDebug(AI, Owner, Leader, Point)
+	if not SettingsMan.ShowSquadLinks or not (Owner.IsInspected or Leader.IsInspected) then
+		return;
+	end
+	PrimitiveMan:DrawLinePrimitive(Leader.Pos, Owner.Pos, 147);
+	local trail = AI.squadTrail;
+	if trail then
+		for i = 1, #trail do
+			PrimitiveMan:DrawCirclePrimitive(trail[i], 1, 117);
+			if i > 1 then
+				PrimitiveMan:DrawLinePrimitive(trail[i - 1], trail[i], 117);
+			end
+		end
+	end
+	if Point then
+		PrimitiveMan:DrawCirclePrimitive(Point, 5, 254);
+		PrimitiveMan:DrawLinePrimitive(Owner.Pos, Point, 254);
+		PrimitiveMan:DrawTextPrimitive(Point + Vector(0, -14), tostring(AI.squadSlot or "?"), true, 1);
+	end
+end
+
 -- The follower's route ends at its place, not at the leader: the route is asked for to the leader, and here the nodes beyond the place
 -- (nearer the leader than the place is) come off its end and the place goes on. Every tick, so the end follows the place as it moves.
 function SharedBehaviors.SquadTrimPath(Owner, Point, LeaderGround)
