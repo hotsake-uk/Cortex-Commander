@@ -293,6 +293,8 @@ namespace RTE {
 		float ChromaticAberration = 0.0F; //!< Lens color fringing towards the screen edges, in pixels.
 		bool ModShaders = true; //!< Mods' own shaders: objects drawn with a Shader of their own, and a scene's or activity's post pass. Off: everything is drawn with the game's shaders, as before.
 		float ModShaderStrength = 1.0F; //!< How strongly mods' shaders apply, 0 to 1, handed to them as rteStrength (a mod's shader may ignore it).
+		bool SpriteMaps = true; //!< Sprites that come with authored normal and emissive maps (NormalMapFile, EmissiveMapFile) are lit and glow as drawn. Off: every sprite gets the automatic bevel and palette glow, as before.
+		float SpriteMapStrength = 1.0F; //!< How much the authored maps count over the automatic ones, 0 to 1.
 
 		int DebugView = 0; //!< Not persisted. 0 final image, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals, 5 distortion, 6 GI only, 7 solid objects and the distance to them, 8 where the sun is visible.
 	};

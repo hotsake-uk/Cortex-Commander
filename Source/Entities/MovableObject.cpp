@@ -997,6 +997,7 @@ Color MovableObject::ApplyRenderBlendMode() const {
 
 void MovableObject::RestoreRenderBlendMode() const {
 	g_RenderMan.SetCurrentSurface(glm::u8vec4(0));
+	g_RenderMan.EndObjectMaps();
 	g_RenderMan.EndObjectShader();
 	if (m_RenderBlendMode != 0 || m_RenderOpacity < 1.0F) {
 		g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));

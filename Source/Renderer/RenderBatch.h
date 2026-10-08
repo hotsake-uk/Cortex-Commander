@@ -51,6 +51,7 @@ namespace RTE {
 		std::vector<std::shared_ptr<UniformValueType>> m_ObjectUniforms{}; //!< Given to every new draw call while an object with its own shader is drawn (RenderMan::BeginObjectShader).
 		const Shader* m_ShaderBeforeObject{nullptr}; //!< The shader to go back to after that object.
 		bool m_InObjectShader{false};
+		std::vector<std::shared_ptr<UniformValueType>> m_ObjectMapUniforms{}; //!< Given to every new draw call while a sprite with authored maps is drawn (RenderMan::BeginObjectMaps).
 		glm::mat4 m_CurrentView{1.0f};
 		glm::mat4 m_CurrentProjection{1.0f};
 		const Camera* m_CurrentCamera{nullptr};

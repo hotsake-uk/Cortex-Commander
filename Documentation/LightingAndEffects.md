@@ -289,6 +289,7 @@ Press **F8** for **Photo Mode**:
 | `GradeShadowTint` / `GradeHighlightTint` | 1 1 1 / 1 1 1 | Split toning. |
 | `FilmGrain` / `ChromaticAberration` | 0 / 0 | Film grain (0–1) and lens fringing (pixels). |
 | `ModShaders` / `ModShaderStrength` | 1 / 1 | Mods' own object shaders and post passes (see "Mod shaders" below). Off draws everything with the game's shaders. The strength (0–1) is handed to mods' shaders as `rteStrength`. |
+| `SpriteMaps` / `SpriteMapStrength` | 1 / 1 | Sprites with authored normal and glow maps (`NormalMapFile`, `EmissiveMapFile`, see "Authored normal and glow maps") are lit and glow as drawn; strength 0–1. Off: every sprite gets the automatic bevel and palette glow. |
 | `DepthOfField` / `DepthOfFieldFocus` / `DepthOfFieldStrength` | 0 / 0 / 1 | Lens blur by distance from the focus (0 the battlefield, 1 the furthest background); strength 0–2. |
 | `TiltShift` / `TiltShiftLine` / `TiltShiftStrength` | 0 / 0.5 / 1 | Blurs the top and bottom of the screen around a sharp band (0 top to 1 bottom), for a diorama look; strength 0–2. |
 | `FocusEffectsInPhotoModeOnly` | 1 | Depth of field and tilt-shift only while photo mode (F8) is open. Both are also in photo mode's Look sliders. |
@@ -466,6 +467,30 @@ An object shader takes everything `Blit8.vert` and `Blit8.frag` take (start from
 | `float rteRelief` | How much sprites' own shading counts as relief, as `Blit8.frag` uses it. |
 
 The palette (`rtePalette`, unit 0), the drawn texture (`rteTexture`, unit 1) and the glow palette (`rteEmissivePalette`, unit 2) are bound as for the game's sprites, and `rteIndexed` says whether the texture holds palette indices.
+
+### Authored normal and glow maps
+
+New art can carry its own relief and glow instead of the automatic ones (the bevel at the outline, the relief read from the art's shading, and the palette's glowing colours):
+
+```ini
+AddDevice = HDFirearm
+	PresetName = Neon Rifle
+	SpriteFile = ContentFile
+		FilePath = MyMod.rte/Devices/NeonRifle.png
+	NormalMapFile = ContentFile
+		FilePath = MyMod.rte/Devices/NeonRifleNormal.png
+	EmissiveMapFile = ContentFile
+		FilePath = MyMod.rte/Devices/NeonRifleGlow.png
+	FrameCount = 2
+	...
+```
+
+Any MOSprite (particles, rotating objects, units, their parts) takes them. Each map has one image per frame, numbered like the sprite's (`NeonRifleNormal000.png`, `NeonRifleNormal001.png` for two frames), the size of the frame, in true colour.
+
+- **Normal map:** RGB is the normal (x right, y up the image, as most tools write them), alpha 0 leaves a pixel to the automatic normal. It is turned and flipped with the sprite, and as steep as the player's relief setting makes the art's own shading.
+- **Glow map:** the brightest of RGB times alpha is how much the pixel glows, in the sprite's own colour, on top of the palette's glow.
+
+The player can turn them off ("Authored sprite maps", `SpriteMaps`, with `SpriteMapStrength` 0–1); old art without maps is drawn as before. A mod's object shader gets them as `rteNormalMap` / `rteHasNormalMap` and `rteEmissiveMap` / `rteHasEmissiveMap` (units 12 and 13), with `rteMapUVRect` (where the frame sits in `rteTexture`, which differs when it's in the sprite atlas) and `rteMapStrength`; `Blit8.frag` shows how to read them.
 
 ### On the screen
 

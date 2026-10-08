@@ -6,6 +6,7 @@
 #include "FrameMan.h"
 #include "Draw.h"
 #include "RenderMan.h"
+#include "PostProcessMan.h"
 #include "DebugMan.h"
 
 using namespace RTE;
@@ -23,6 +24,10 @@ MOSprite::~MOSprite() {
 void MOSprite::Clear() {
 	m_SpriteFile.Reset();
 	m_aSprite.clear();
+	m_NormalMapFile.Reset();
+	m_EmissiveMapFile.Reset();
+	m_NormalMaps.clear();
+	m_EmissiveMaps.clear();
 	m_IconFile.Reset();
 	m_GraphicalIcon = nullptr;
 	m_FrameCount = 1;
@@ -58,6 +63,11 @@ int MOSprite::Create() {
 
 	m_Sprites.clear(); // Copies start with the copied preset's frames, which a SpriteFile of their own replaces.
 	m_SpriteFile.GetAsAnimation(m_Sprites, m_FrameCount);
+	// Authored maps, in true colour and numbered as the sprite's frames are.
+	m_NormalMaps.clear();
+	m_NormalMapFile.GetAsAnimation(m_NormalMaps, m_FrameCount, COLORCONV_8_TO_32);
+	m_EmissiveMaps.clear();
+	m_EmissiveMapFile.GetAsAnimation(m_EmissiveMaps, m_FrameCount, COLORCONV_8_TO_32);
 
 	if (!m_aSprite.empty() && m_aSprite[0]) {
 		// Set default sprite offset
@@ -120,6 +130,10 @@ int MOSprite::Create(const MOSprite& reference) {
 	m_Frame = reference.m_Frame;
 	m_aSprite = reference.m_aSprite;
 	m_Sprites = reference.m_Sprites;
+	m_NormalMapFile = reference.m_NormalMapFile;
+	m_EmissiveMapFile = reference.m_EmissiveMapFile;
+	m_NormalMaps = reference.m_NormalMaps;
+	m_EmissiveMaps = reference.m_EmissiveMaps;
 	m_SpriteOffset = reference.m_SpriteOffset;
 	m_SpriteAnimMode = reference.m_SpriteAnimMode;
 	m_SpriteAnimDuration = reference.m_SpriteAnimDuration;
@@ -148,6 +162,8 @@ int MOSprite::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return MovableObject::ReadProperty(propName, reader));
 
 	MatchProperty("SpriteFile", { reader >> m_SpriteFile; });
+	MatchProperty("NormalMapFile", { reader >> m_NormalMapFile; });
+	MatchProperty("EmissiveMapFile", { reader >> m_EmissiveMapFile; });
 	MatchProperty("IconFile", {
 		reader >> m_IconFile;
 		m_GraphicalIcon = m_IconFile.GetAsBitmap();
@@ -595,6 +611,7 @@ void MOSprite::Draw(const Camera& camera) const {
 	float spriteHeight = m_Sprites[m_Frame]->GetDimensions().h;
 
 	Color tint = ApplyRenderBlendMode();
+	ApplySpriteMaps();
 	if (!m_HFlipped) {
 		Draw::DrawTexture(m_Sprites[m_Frame].get(), renderPos + m_SpriteOffset, tint);
 	} else {
@@ -603,6 +620,20 @@ void MOSprite::Draw(const Camera& camera) const {
 		Draw::DrawTexture(m_Sprites[m_Frame].get(), FloatRect(spriteLeft + spriteWidth, renderPos.m_Y + m_SpriteOffset.m_Y, -spriteWidth, spriteHeight), tint);
 	}
 	RestoreRenderBlendMode();
+}
+
+void MOSprite::ApplySpriteMaps() const {
+	if (m_NormalMaps.empty() && m_EmissiveMaps.empty()) {
+		return;
+	}
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (!lighting.SpriteMaps || lighting.SpriteMapStrength <= 0.0F || m_Frame >= m_Sprites.size() || !m_Sprites[m_Frame]) {
+		return;
+	}
+	GLuint normalMap = m_Frame < m_NormalMaps.size() && m_NormalMaps[m_Frame] ? m_NormalMaps[m_Frame]->GetTextureId() : 0;
+	GLuint emissiveMap = m_Frame < m_EmissiveMaps.size() && m_EmissiveMaps[m_Frame] ? m_EmissiveMaps[m_Frame]->GetTextureId() : 0;
+	const FloatRect& spriteUV = m_Sprites[m_Frame]->GetUVRect();
+	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F));
 }
 
 void MOSprite::StoreRenderPreviousState() {

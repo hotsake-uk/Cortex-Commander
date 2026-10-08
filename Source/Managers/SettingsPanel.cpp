@@ -572,6 +572,11 @@ void DebugMan::SettingsGUI() {
 				ImGui::TextDisabled("Screen effect now: %s", postShader.empty() ? "none" : postShader.c_str());
 			}
 		}
+		Check("Authored sprite maps", &settings.SpriteMaps);
+		Tip("Sprites that come with their own normal and glow maps (mods' art, mostly) catch the light and glow the way the artist drew them. Off: every sprite gets the automatic bevel and palette glow.");
+		if (settings.SpriteMaps) {
+			Slider("Sprite map strength", &settings.SpriteMapStrength, 0.0F, 1.0F);
+		}
 	};
 
 	auto gameAndHUD = [&]() {

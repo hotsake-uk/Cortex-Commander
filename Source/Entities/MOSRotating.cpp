@@ -1956,6 +1956,7 @@ void MOSRotating::Draw(const Camera& camera) const {
 	}
 
 	Color tint = ApplyRenderBlendMode();
+	ApplySpriteMaps();
 	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale, tint);
 	RestoreRenderBlendMode();
 

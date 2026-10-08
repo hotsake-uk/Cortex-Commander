@@ -367,6 +367,13 @@ namespace RTE {
 		// Vector of pointers to BITMAPs representing the multiple frames of this sprite.
 		std::vector<BITMAP*> m_aSprite;
 		std::vector<std::shared_ptr<BitmapTexture>> m_Sprites;
+		ContentFile m_NormalMapFile; //!< Authored normal maps, frame for frame with the sprite (NormalMapFile). Empty for the automatic bevel.
+		ContentFile m_EmissiveMapFile; //!< Authored glow maps, frame for frame with the sprite (EmissiveMapFile). Empty for the palette's glow.
+		std::vector<std::shared_ptr<BitmapTexture>> m_NormalMaps; //!< Loaded from m_NormalMapFile, true colour.
+		std::vector<std::shared_ptr<BitmapTexture>> m_EmissiveMaps; //!< Loaded from m_EmissiveMapFile, true colour.
+
+		/// Hands the current frame's authored maps, if it has any, to the draws that follow, until RestoreRenderBlendMode. Call after ApplyRenderBlendMode.
+		void ApplySpriteMaps() const;
 		ContentFile m_IconFile; //!< The file containing the GUI icon.
 		BITMAP* m_GraphicalIcon; //!< The GUI representation of this MOSprite as a BITMAP.
 		// Number of frames, or elements in the m_aSprite array.
