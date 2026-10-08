@@ -224,6 +224,15 @@ const std::vector<PostProcessMan::ScorchMark>& PostProcessMan::GetHotScorchMarks
 	return m_HotScorchMarks;
 }
 
+void PostProcessMan::InvalidateSceneLighting() {
+	if (m_SceneLighting) {
+		m_SceneLighting->InvalidateWorld();
+	}
+	std::scoped_lock lock(m_ShockwaveMutex);
+	m_PendingScorchMarks.clear();
+	m_HotScorchMarks.clear();
+}
+
 void PostProcessMan::GetActiveShockwaves(std::vector<glm::vec4>& shockwaves) {
 	const float duration = 0.55F;
 	float now = GetSmoothSimTime();

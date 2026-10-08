@@ -125,6 +125,8 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 
 	g_MovableMan.PurgeAllMOs();
 	g_PostProcessMan.ClearScenePostEffects();
+	// The new scene may land at the old one's address, so tell the lighting outright that its world is gone.
+	g_PostProcessMan.InvalidateSceneLighting();
 
 	if (m_pCurrentScene) {
 		delete m_pCurrentScene;

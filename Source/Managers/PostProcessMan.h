@@ -233,6 +233,10 @@ namespace RTE {
 		/// @return The scene lighting.
 		SceneLighting* GetSceneLighting();
 
+		/// Makes the scene lighting rebuild its world grid (occupancy, sky light, scorch and stains) and forgets scorch marks not yet stamped, for when a new scene is loaded.
+		/// The new scene can be allocated where the old one was, so the lighting can't tell it apart by its pointer alone.
+		void InvalidateSceneLighting();
+
 #pragma region Atmosphere Lua Accessors
 		float GetTimeOfDay() const { return m_LightingSettings.TimeOfDay; }
 		void SetTimeOfDay(float hours) { m_LightingSettings.TimeOfDay = std::fmod(std::fmod(hours, 24.0F) + 24.0F, 24.0F); }
