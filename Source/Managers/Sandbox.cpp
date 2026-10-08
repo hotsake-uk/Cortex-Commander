@@ -374,7 +374,56 @@ bool Sandbox::WantsWheelZoom() {
 	return IsLookingAround() && !ImGui::GetIO().WantCaptureMouse;
 }
 
+void Sandbox::ToggleCommander() {
+	GameActivity* game = CurrentGame();
+	if (!game || !InGame() || IsGodMode()) {
+		s_Commander = false;
+		return;
+	}
+	if (!s_Commander) {
+		int team = game->GetTeamOfPlayer(Players::PlayerOne);
+		if (team < 0 || team >= c_Sides) {
+			return;
+		}
+		Actor* controlled = game->GetControlledActor(Players::PlayerOne);
+		s_CommanderReturnTo = controlled && g_MovableMan.IsActor(controlled) ? MakeRef(controlled) : UnitRef();
+		s_Commander = true;
+		s_CommanderTeam = team;
+		s_Team = team;
+		s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [team](const UnitRef& ref) { const Actor* unit = GetRef(ref); return !unit || unit->GetTeam() != team; }), s_Selected.end());
+		if (controlled) {
+			game->LoseControlOfActor(Players::PlayerOne);
+		}
+		game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
+		s_FreeCamera = true;
+		s_FreeCameraStarted = false;
+		s_FollowTarget = UnitRef();
+		s_ToolIndex = ToolIndex(Tool::Command);
+		s_Open = true;
+		return;
+	}
+	s_Commander = false;
+	s_FreeCamera = false;
+	// Back into the unit you left, or else your brain, or else whatever the game gives you next.
+	Actor* back = GetRef(s_CommanderReturnTo);
+	if (!back || back->GetTeam() != s_CommanderTeam) {
+		back = game->GetPlayerBrain(Players::PlayerOne);
+	}
+	if (back && g_MovableMan.IsActor(back) && game->SwitchToActor(back, Players::PlayerOne, s_CommanderTeam)) {
+		game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
+	} else {
+		game->SetViewState(Activity::ViewState::ActorSelect, Players::PlayerOne);
+	}
+}
+
+bool Sandbox::IsCommander() {
+	return s_Commander;
+}
+
 bool Sandbox::IsLookingAround() {
+	if (s_Commander) {
+		return CommanderLooking();
+	}
 	// Automated test runs (CCCP_HIDE_PANELS) place the camera themselves and want no pointer in their pictures.
 	static const bool testRun = std::getenv("CCCP_HIDE_PANELS") != nullptr;
 	const GameActivity* game = CurrentGame();
@@ -712,6 +761,7 @@ void Sandbox::DrawGUI() {
 			ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.  Wheel: zoom.");
 			ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
+			CommanderPanel();
 		}
 		if (ImGui::BeginTabBar("SandboxTabs")) {
 			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
@@ -1128,6 +1178,7 @@ void Sandbox::OnActivityStarted() {
 	s_AutoRunning = false;
 	s_AutoWinner = -2;
 	s_PendingOrders.clear();
+	s_Commander = false;
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
 	s_Queue.clear();
 	s_GodViewPending = true;
@@ -1139,6 +1190,7 @@ void Sandbox::Update() {
 	if (!InGame()) {
 		s_Possessed = nullptr;
 		s_Plans.clear();
+		s_Commander = false;
 		s_Paced.clear();
 		s_MoveWatch.clear();
 		s_NoRoutes.clear();
@@ -1154,6 +1206,7 @@ void Sandbox::Update() {
 	}
 	ClosePaintUndoStep(false);
 	UpdatePlans();
+	UpdateCommander();
 	UpdatePace();
 	UpdateMoveWatch();
 	UpdateIncoming();

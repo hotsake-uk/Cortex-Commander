@@ -373,6 +373,9 @@ void PollSDLEvents() {
 				}
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F8) {
 				g_DebugMan.TogglePhotoMode();
+			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F9 && !Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
+				// Commander view (RC-9): your side from above in any other game, and back into your unit.
+				Sandbox::ToggleCommander();
 			}
 		}
 		if (sdlEvent.type >= SDL_EVENT_WINDOW_FIRST && sdlEvent.type <= SDL_EVENT_WINDOW_LAST) {

@@ -679,6 +679,11 @@ namespace SandboxDetail {
 	};
 	inline std::vector<AttackPing> s_AttackPings;
 
+	/// Commander mode (RC-9): your side's units commanded from above in an ordinary game.
+	inline bool s_Commander = false;
+	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
+	inline UnitRef s_CommanderReturnTo; //!< The unit you were playing, to go back into.
+
 	/// Terrain painting's undo: each step is what one stroke of a paint or build tool changed (a drag of the brush is one step: changes
 	/// less than a quarter second apart run together), pixel by pixel as it was before, the first change to each pixel only. The last 20
 	/// steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke longer than a step
@@ -1267,6 +1272,10 @@ namespace SandboxDetail {
 	void UpdateMoveWatch();
 	void ReissueNoRoute(const Vector& destination);
 	void MapOrder(const Vector& point, bool shift);
+	bool HiddenFromCommander(const Actor* actor);
+	bool CommanderLooking();
+	void UpdateCommander();
+	void CommanderPanel();
 	void UpdatePace();
 	const Actor* FollowedBy(const Actor* unit);
 	void GuardUnit(Actor* unit, Actor* leader);

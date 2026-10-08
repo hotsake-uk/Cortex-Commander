@@ -31,7 +31,13 @@ namespace SandboxDetail {
 	/// Whether a unit can be selected and commanded: a combatant on a side, not a brain, not a craft (a ship is ordered by its own AI; sent off
 	/// with the squad, a dropship delivering hovered with its passengers inside).
 	bool IsSelectable(const Actor* actor) {
-		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor);
+		// (In commander mode, RC-9, only your own side's.)
+		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor) && (!s_Commander || actor->GetTeam() == s_CommanderTeam);
+	}
+
+	/// Whether an actor is hidden from you in commander mode (RC-9): another side's, where your side can't see. Orders can't be aimed at it.
+	bool HiddenFromCommander(const Actor* actor) {
+		return s_Commander && actor && actor->GetTeam() != s_CommanderTeam && g_SceneMan.IsUnseen(actor->GetPos().GetFloorIntX(), actor->GetPos().GetFloorIntY(), s_CommanderTeam);
 	}
 
 	/// The actor (or, failing that, loose item) closest to a point, within reach.
@@ -741,6 +747,10 @@ namespace SandboxDetail {
 	/// (select every unit of that kind in sight).
 	void CommandSelected(const Vector& position, int modifier) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
+		if (HiddenFromCommander(target)) {
+			// (What your side can't see isn't there to click on, RC-9.)
+			target = nullptr;
+		}
 		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
 		}
@@ -838,7 +848,7 @@ namespace SandboxDetail {
 		Actor* target = nullptr;
 		float nearest = 400.0F * 400.0F;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team) {
+			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || HiddenFromCommander(actor)) {
 				continue;
 			}
 			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
