@@ -55,6 +55,14 @@ namespace RTE {
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
 
+		/// Keeps the liquid at a pixel that something is about to be drawn over (a chip or a grain of dirt that came to rest at the bottom of a pool, a
+		/// stain): at the next step it is put back at the liquid's surface above that spot, instead of being lost. Call before the pixel is drawn over.
+		/// Thread safe.
+		/// @param x The pixel, in scene coordinates.
+		/// @param y The pixel, in scene coordinates.
+		/// @return Whether there was liquid there to keep (false with flowing liquids off: nothing to do).
+		static bool KeepLiquidAt(int x, int y);
+
 		/// Gets whether there is any liquid or loose powder near a point, from a few samples in a plus shape: for callers that would otherwise queue work on
 		/// dry, solid ground (a gib's disturbance and splash). Reads the terrain only.
 		static bool IsFlowingNear(const Vector& position, float radius);

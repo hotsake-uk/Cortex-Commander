@@ -339,6 +339,10 @@ namespace {
 		float Share, Speed;
 	};
 	std::vector<SplashRequest> s_Splashes;
+	struct KeptLiquid {
+		int X, Y, Material, Color;
+	};
+	std::vector<KeptLiquid> s_Kept; //!< Liquid something settled into, to go back at the surface above it (FluidSim::KeepLiquidAt).
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: a new scene at the old one's address, or the same one restarted, still counts as new (L-1).
@@ -1111,6 +1115,27 @@ void FluidSim::VisualSplash(const Vector& position, float width, float speed, in
 	EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength), 2, 60), mistRGB);
 }
 
+bool FluidSim::KeepLiquidAt(int x, int y) {
+	if (!s_Enabled || !s_TablesBuilt) {
+		return false;
+	}
+	const SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+	if (!terrain) {
+		return false;
+	}
+	int material = terrain->GetMaterialPixel(x, y);
+	if (!IsLiquid(material)) {
+		return false;
+	}
+	int color = terrain->GetFGColorPixel(x, y);
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Kept.size() >= 8192) {
+		return false;
+	}
+	s_Kept.push_back({x, y, material, color});
+	return true;
+}
+
 void FluidSim::Disturb(const Vector& position, float radius) {
 	if (!s_Enabled) {
 		return;
@@ -1208,6 +1233,7 @@ void FluidSim::Update() {
 		s_Pours.clear();
 		s_Disturbances.clear();
 		s_BloodSettled.clear();
+		s_Kept.clear();
 		s_Active.Clear();
 		return;
 	}
@@ -1227,8 +1253,10 @@ void FluidSim::Update() {
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
 	std::vector<SplashRequest> splashRequests;
 	std::vector<glm::ivec2> bloodSettled;
+	std::vector<KeptLiquid> kept;
 	{
 		std::scoped_lock lock(s_QueueMutex);
+		kept.swap(s_Kept);
 		pours.swap(s_Pours);
 		disturbances.swap(s_Disturbances);
 		splashRequests.swap(s_Splashes);
@@ -1242,6 +1270,34 @@ void FluidSim::Update() {
 		if (s_BloodMaterial != 0 && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == s_WaterMaterial && terrain->GetFGColorPixel(x, y) != s_PourColor[s_WaterMaterial] && ShownColor(y * width + x, -1) == -1) {
 			terrain->SetMaterialPixel(x, y, s_BloodMaterial);
 			Activate(x, y, width, height, terrain);
+		}
+	}
+	// Liquid that something came to rest in (a chip or a grain of dirt sunk to the bottom, a stain) goes back at the surface above where it was:
+	// up through the liquid over it to the first free pixel, or failing that up a column beside it. Drawn over and lost, a pool that a burst of
+	// dirt or a spray of chips fell into went down by a pixel for every one of them, and looked to be eaten away.
+	std::sort(kept.begin(), kept.end(), [](const KeptLiquid& a, const KeptLiquid& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : (a.Material != b.Material ? a.Material < b.Material : a.Color < b.Color)); });
+	for (const KeptLiquid& liquid: kept) {
+		int keptX = s_WrapsX ? ((liquid.X % width) + width) % width : liquid.X;
+		bool placed = false;
+		for (int side: {0, -1, 1, -2, 2}) {
+			for (int y = liquid.Y - 1; y >= 0 && liquid.Y - y <= 600 && !placed; --y) {
+				int x = keptX + side;
+				int row = y;
+				if (!InWorld(x, row, width, height)) {
+					break;
+				}
+				int material = terrain->GetMaterialPixel(x, row);
+				if (material == g_MaterialAir) {
+					ChangePixel(terrain, x, row, liquid.Material, liquid.Color);
+					Activate(x, row, width, height, terrain);
+					placed = true;
+				} else if (!IsLiquid(material)) {
+					break;
+				}
+			}
+			if (placed) {
+				break;
+			}
 		}
 	}
 	// Liquid thrown into the air by blasts and by things falling in. Each pixel thrown becomes a flying drop that joins the liquid again where it lands, so none is lost.
@@ -1842,6 +1898,7 @@ void FluidSim::Clear() {
 	s_Disturbances.clear();
 	s_Splashes.clear();
 	s_BloodSettled.clear();
+	s_Kept.clear();
 }
 
 void FluidSim::GetActivePixels(const Vector& corner, float width, float height, std::vector<Vector>& pixels, size_t limit) {

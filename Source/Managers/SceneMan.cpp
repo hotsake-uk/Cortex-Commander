@@ -646,7 +646,9 @@ bool SceneMan::TryPenetrate(int posX,
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F); TerrainCollapse::NoteDamage(posX, posY);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
-		else if (RandomNum() <= airRatio) {
+		// (Never liquid: past its first few pixels a shot through a pool erased about two in three of the rest with no drop to show for
+		// them, and the pool drained away under fire. It passes through, slowed, and the liquid stays.)
+		else if (!FluidSim::IsLiquid(materialID) && RandomNum() <= airRatio) {
 			m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
