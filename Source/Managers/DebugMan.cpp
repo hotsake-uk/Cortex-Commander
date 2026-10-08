@@ -1,4 +1,5 @@
 ﻿#include "DebugMan.h"
+#include "Weather.h"
 #include "DebugDraw.h"
 #include "DebugOverlays.h"
 #include <unordered_map>
@@ -604,7 +605,7 @@ void DebugMan::PhotoModeGUI() {
 				settings.ApplyLook(LightingSettings::LookNoir);
 			}
 			ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
-			ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
+			ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
 			ImGui::SliderFloat("Exposure", &settings.Exposure, 0.2F, 3.0F);
 			ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
 			ImGui::SliderFloat("Contrast", &settings.Contrast, 0.5F, 1.6F);

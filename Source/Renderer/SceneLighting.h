@@ -16,6 +16,7 @@ namespace RTE {
 
 	class RenderTarget;
 	class Shader;
+	class Weather;
 	class BitmapTexture;
 	struct PostEffect;
 	struct SceneLight;
@@ -414,6 +415,18 @@ namespace RTE {
 		/// Sets the shelter map's uniforms on a shader that reads it (Precipitation.vert, RainSplash.frag, Terrain.frag).
 		/// @param shader The shader, enabled. @param use Whether it should use the map. @param unit The texture unit the map is bound to.
 		void SetShelterUniforms(const Shader& shader, bool use, int unit) const;
+
+		/// Gets the weather now (Weather.h), or null for clear.
+		const Weather* CurrentWeather() const;
+
+		/// Gets how heavy the weather is, 0 to 1, 0 when clear.
+		float WeatherAmount() const;
+
+		/// Gets how much it's raining as far as the ground goes (Weather::Rain times the intensity), 0 to 1.
+		float WeatherRain() const;
+
+		/// Gets how overcast the weather makes the sky (Weather::Overcast times the intensity), 0 to 1.
+		float WeatherOvercast() const;
 
 		/// The way rain, snow or ash falls on average, in pixels per second (y down), for the shelter map and the ground's weather cover.
 		glm::vec2 WeatherFall() const;

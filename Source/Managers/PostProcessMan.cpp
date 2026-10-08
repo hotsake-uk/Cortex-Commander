@@ -1,5 +1,6 @@
 #include "PostProcessMan.h"
 #include "SceneLighting.h"
+#include "Weather.h"
 
 #include "CameraMan.h"
 #include "TimerMan.h"
@@ -153,6 +154,42 @@ void PostProcessMan::SetPaletteCycle(int from, int to, float period) {
 
 void PostProcessMan::ClearPaletteAnimation() {
 	g_RenderMan.ClearPaletteAnimation();
+}
+
+void PostProcessMan::SetWeatherType(int weatherType) {
+	m_LightingSettings.WeatherType = std::clamp(weatherType, 0, Weather::GetSlotCount() - 1);
+	m_LightingSettings.WeatherName.clear();
+}
+
+std::string PostProcessMan::GetWeatherName() const {
+	const Weather* weather = Weather::GetSlot(m_LightingSettings.WeatherType);
+	return weather ? weather->GetPresetName() : "Clear";
+}
+
+void PostProcessMan::SetWeatherName(const std::string& name) {
+	int slot = Weather::FindSlot(name);
+	if (slot < 0) {
+		g_ConsoleMan.PrintString("ERROR: there's no weather called \"" + name + "\" (an AddWeather = Weather preset); the weather stays as it is.");
+		return;
+	}
+	SetWeatherType(slot);
+}
+
+std::string PostProcessMan::GetWeatherSound() const {
+	const Weather* weather = Weather::GetSlot(m_LightingSettings.WeatherType, m_LightingSettings.CustomWeather);
+	return weather ? weather->GetParams().Sound : "";
+}
+
+void PostProcessMan::ResolveWeather() {
+	for (LightingSettings* settings: {&m_LightingSettings, &m_PlayerAtmosphere}) {
+		if (!settings->WeatherName.empty()) {
+			if (int slot = Weather::FindSlot(settings->WeatherName); slot >= 0) {
+				settings->WeatherType = slot;
+			}
+			settings->WeatherName.clear();
+		}
+		settings->WeatherType = std::clamp(settings->WeatherType, 0, Weather::GetSlotCount() - 1);
+	}
 }
 
 void PostProcessMan::SetPostShader(const std::string& shaderName) {
@@ -550,6 +587,7 @@ void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, in
 }
 
 void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
+	ResolveWeather();
 	if (!m_PlayerAtmosphereCaptured) {
 		m_PlayerAtmosphere = m_LightingSettings;
 		m_PlayerAtmosphereCaptured = true;
@@ -577,8 +615,11 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	if (atmosphere.DayLengthMinutes >= 0.0F) {
 		m_LightingSettings.DayLengthMinutes = atmosphere.DayLengthMinutes;
 	}
-	if (atmosphere.WeatherType >= 0) {
-		m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, 4);
+	if (!atmosphere.WeatherName.empty() && Weather::FindSlot(atmosphere.WeatherName) >= 0) {
+		// A custom weather goes by name, since its slot depends on the mods loaded.
+		m_LightingSettings.WeatherType = Weather::FindSlot(atmosphere.WeatherName);
+	} else if (atmosphere.WeatherType >= 0) {
+		m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, Weather::GetSlotCount() - 1);
 	}
 	if (atmosphere.WeatherIntensity >= 0.0F) {
 		m_LightingSettings.WeatherIntensity = std::clamp(atmosphere.WeatherIntensity, 0.0F, 1.0F);
@@ -595,7 +636,7 @@ void PostProcessMan::ApplyActivityAtmosphere() {
 		m_LightingSettings.DayLengthMinutes = 0.0F;
 	}
 	if (m_ActivityWeather >= 0) {
-		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, 4);
+		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, Weather::GetSlotCount() - 1);
 		if (m_LightingSettings.WeatherType > 0) {
 			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
 		}
