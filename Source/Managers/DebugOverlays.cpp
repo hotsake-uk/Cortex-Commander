@@ -6,6 +6,11 @@
 #include "PostProcessMan.h"
 #include "SceneLighting.h"
 #include "SLTerrain.h"
+#include "FluidSim.h"
+#include "SmokeGrid.h"
+#include "TerrainCollapse.h"
+#include "TerrainFire.h"
+#include "WeatherEffects.h"
 #include "PathFinder.h"
 #include "Scene.h"
 #include "SettingsMan.h"
@@ -426,4 +431,115 @@ void DebugOverlays::DrawSunDirection() {
 	char text[64];
 	std::snprintf(text, sizeof(text), "sun shadows %.2f", lighting->GetSunShadowStrength());
 	drawList->AddText(ImVec2(tip.x + 6.0F, tip.y - ImGui::GetTextLineHeight() * 0.5F), color, text);
+}
+
+void DebugOverlays::DrawWorldSim() {
+	int which = g_SettingsMan.WorldSimOverlay();
+	if (which == 0 || !g_SceneMan.GetScene()) {
+		return;
+	}
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float perPixel = DebugDraw::ScenePixelsPerWindowPixel();
+	Box view = DebugDraw::ViewBox();
+	// A scene pixel as a little square, at least a window pixel big.
+	float dot = std::max(1.0F, 1.0F / perPixel);
+	char text[128];
+	auto caption = [&](const char* line) {
+		ImVec2 origin = DebugDraw::ViewOrigin();
+		ImVec2 size = ImGui::CalcTextSize(line);
+		float top = origin.y + 8.0F + ImGui::GetTextLineHeight() * 1.5F;
+		drawList->AddRectFilled(ImVec2(origin.x + 4.0F, top - 2.0F), ImVec2(origin.x + 10.0F + size.x, top + size.y + 2.0F), IM_COL32(10, 12, 10, 190));
+		drawList->AddText(ImVec2(origin.x + 7.0F, top), IM_COL32(235, 235, 220, 255), line);
+	};
+	switch (which) {
+		case 1: {
+			std::vector<Vector> pixels;
+			const size_t limit = 40000;
+			FluidSim::GetActivePixels(view.GetCorner(), view.GetWidth(), view.GetHeight(), pixels, limit);
+			for (const Vector& pixel: pixels) {
+				ImVec2 at = DebugDraw::ToScreen(pixel);
+				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), IM_COL32(70, 160, 255, 170));
+			}
+			std::snprintf(text, sizeof(text), "moving liquid: %d pixels, %d in view%s, %.2f ms an update", FluidSim::GetActiveCount(), static_cast<int>(pixels.size()), pixels.size() >= limit ? "+" : "", FluidSim::GetLastUpdateMS());
+			caption(text);
+			break;
+		}
+		case 2: {
+			std::vector<glm::vec3> burning;
+			TerrainFire::GetBurning(glm::vec2(view.GetCorner().m_X, view.GetCorner().m_Y), static_cast<int>(view.GetWidth()), static_cast<int>(view.GetHeight()), burning);
+			ImVec2 origin = DebugDraw::ToScreen(view.GetCorner());
+			for (const glm::vec3& pixel: burning) {
+				// Yellow while fresh, to red as it burns out.
+				float heat = std::clamp(pixel.z, 0.0F, 1.0F);
+				ImU32 color = IM_COL32(255, static_cast<int>(60.0F + 180.0F * heat), 40, 200);
+				ImVec2 at(origin.x + pixel.x / perPixel, origin.y + pixel.y / perPixel);
+				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), color);
+			}
+			std::snprintf(text, sizeof(text), "burning ground: %d pixels, %d in view", TerrainFire::GetCount(), static_cast<int>(burning.size()));
+			caption(text);
+			break;
+		}
+		case 3: {
+			// The smoke grid's cells (16 px), sampled at their middles.
+			const float cell = 16.0F;
+			Vector corner(std::floor(view.GetCorner().m_X / cell) * cell, std::floor(view.GetCorner().m_Y / cell) * cell);
+			int cells = 0;
+			for (float y = corner.m_Y; y < view.GetCorner().m_Y + view.GetHeight(); y += cell) {
+				for (float x = corner.m_X; x < view.GetCorner().m_X + view.GetWidth(); x += cell) {
+					Vector middle(x + cell * 0.5F, y + cell * 0.5F);
+					g_SceneMan.WrapPosition(middle);
+					float density = SmokeGrid::GetDensity(middle);
+					if (density <= 0.01F) {
+						continue;
+					}
+					++cells;
+					ImVec2 at = DebugDraw::ToScreen(Vector(x, y));
+					ImVec2 to(at.x + cell / perPixel, at.y + cell / perPixel);
+					drawList->AddRectFilled(at, to, IM_COL32(200, 200, 210, static_cast<int>(std::clamp(density / 2.5F, 0.05F, 1.0F) * 150.0F)));
+					// (Thick enough on its own to hide what's behind a cell's width of it: SmokeGrid blocks sight at a summed 2.5.)
+					if (density >= 2.5F) {
+						drawList->AddRect(at, to, IM_COL32(255, 255, 255, 200));
+					}
+				}
+			}
+			std::snprintf(text, sizeof(text), "smoke: %d cells in view%s", cells, SmokeGrid::IsEnabled() ? "" : " (smoke doesn't block sight: switched off)");
+			caption(text);
+			break;
+		}
+		case 4: {
+			std::vector<TerrainCollapse::FallingPiece> pieces;
+			TerrainCollapse::GetFallingPieces(pieces);
+			for (const TerrainCollapse::FallingPiece& piece: pieces) {
+				ImVec2 at = DebugDraw::ToScreen(Vector(piece.X, piece.Y));
+				float reach = piece.Radius / perPixel;
+				if (!InView(at, reach)) {
+					continue;
+				}
+				drawList->AddCircle(at, reach, IM_COL32(230, 180, 90, 220), 20);
+				// Where it will be in a sixth of a second (ten updates) at this speed.
+				drawList->AddLine(at, ImVec2(at.x + piece.VelX * 10.0F / perPixel, at.y + piece.VelY * 10.0F / perPixel), IM_COL32(255, 230, 120, 230), 2.0F);
+			}
+			std::snprintf(text, sizeof(text), "falling pieces: %d moving, %d pixels collapsed in this scene", TerrainCollapse::GetFallingCount(), TerrainCollapse::GetCollapsedCount());
+			caption(text);
+			break;
+		}
+		case 5: {
+			GameViewRect rect = g_WindowMan.GetGameViewRect();
+			ImVec2 middle(rect.x + rect.w * 0.5F, rect.y + rect.h * 0.25F);
+			float wind = WeatherEffects::GetWind();
+			float length = rect.w * 0.2F * wind;
+			ImU32 color = IM_COL32(170, 220, 255, 230);
+			drawList->AddLine(ImVec2(middle.x - length * 0.5F, middle.y), ImVec2(middle.x + length * 0.5F, middle.y), color, 3.0F);
+			if (std::abs(length) > 1.0F) {
+				float head = length > 0.0F ? 10.0F : -10.0F;
+				ImVec2 tip(middle.x + length * 0.5F, middle.y);
+				drawList->AddTriangleFilled(ImVec2(tip.x + head, tip.y), ImVec2(tip.x, tip.y - 6.0F), ImVec2(tip.x, tip.y + 6.0F), color);
+			}
+			std::snprintf(text, sizeof(text), "wind %+.2f   rain %.2f   snow %.2f   dust %.2f   sight x%.2f   walking x%.2f", wind, WeatherEffects::GetRain(), WeatherEffects::GetSnow(), WeatherEffects::GetDust(), WeatherEffects::GetSightMultiplier(), WeatherEffects::GetWalkSpeedMultiplier());
+			caption(text);
+			break;
+		}
+		default:
+			break;
+	}
 }

@@ -1785,3 +1785,9 @@ int TerrainCollapse::GetCollapsedCount() {
 int TerrainCollapse::GetFallingCount() {
 	return static_cast<int>(s_Bodies.size());
 }
+
+void TerrainCollapse::GetFallingPieces(std::vector<FallingPiece>& pieces) {
+	for (const Body& body: s_Bodies) {
+		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y});
+	}
+}

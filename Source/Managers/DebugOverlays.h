@@ -38,5 +38,8 @@ namespace RTE {
 
 		/// The sun direction overlay: an arrow from the middle of the game's picture towards the sun or moon, with its shadow strength.
 		void DrawSunDirection();
+
+		/// The world simulation overlay: moving liquid, burning ground, smoke, falling pieces or the weather in view, as the setting says.
+		void DrawWorldSim();
 	} // namespace DebugOverlays
 } // namespace RTE
