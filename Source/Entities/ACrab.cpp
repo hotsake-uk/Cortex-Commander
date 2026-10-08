@@ -1744,11 +1744,19 @@ int ACrab::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 			return 0;
 		}
-		ctrl.SetState(BODY_JUMPSTART, true);
+		// The burst once, at the start of the climb: the body stays "on the ground" until it is most of a height clear of the floor, and a
+		// burst sent every tick until then (a base jetpack has no spacing between bursts) emptied the tank under the lip. Again only if a
+		// second on it is still standing here, the climb having come to nothing.
+		if (!mover.climbing || mover.climbTimer.IsPastSimMS(1000)) {
+			ctrl.SetState(BODY_JUMPSTART, true);
+			mover.climbing = true;
+			mover.climbTimer.Reset();
+		}
 		jetWith(std::clamp(toPoint.m_X / h, -1.0F, 1.0F));
 		mover.progressTimer.Reset();
 		return 0;
 	}
+	mover.climbing = false;
 	// The walk.
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
