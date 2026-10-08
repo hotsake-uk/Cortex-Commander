@@ -148,7 +148,7 @@ namespace RTE {
 		bool m_WrapX = false;
 		bool m_WrapY = false;
 		static constexpr int c_ShadowFieldCells = 16; //!< How far the terrain distance field reaches, in grid cells. Further is stored as this far.
-		static constexpr unsigned char c_ShadowWallBlock = 96; //!< A cell stopping at least this much light (occupancy R) is a wall to the distance field. Lighter ones (water, glass, a cell barely touched) only dim light, as density.
+		static constexpr unsigned char c_ShadowWallBlock = 128; //!< A cell stopping at least this much light (occupancy R) is a wall to the distance field. Lighter ones (water, glass, oil, a cell barely touched) only dim light, as density.
 		GLTarget m_ShadowFieldTexture; //!< R: distance from each grid cell to the nearest wall, in c_ShadowFieldCells, for tracing lights' terrain shadows (LightingSettings::LightShadowField).
 		std::vector<unsigned char> m_ShadowField; //!< One byte per grid cell, as m_ShadowFieldTexture.
 		std::vector<unsigned short> m_ShadowFieldScratch; //!< Chamfer distances for RefreshShadowField, in thirds of a cell.
