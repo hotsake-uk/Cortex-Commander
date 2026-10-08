@@ -85,6 +85,9 @@ namespace RTE {
 		void DrawToolWindowControls();
 
 		bool DrawSpriteBounds() { return m_DrawSpriteBounds; }
+
+		/// Gets whether "Draw camera bounds" on the Debug page is ticked (see DebugOverlays::DrawCameraBounds).
+		bool DrawCameraBounds() const { return m_DrawCameraBounds; }
 		constexpr bool DrawNoGravBoxes() { return false; }
 		bool DrawBigTextureBounds() { return false; }
 		bool DrawTilingBounds() { return false; }
@@ -133,7 +136,7 @@ namespace RTE {
 		/// Holds the simulation paused while "Freeze simulation" is ticked, letting through the updates the Step buttons ask for. Runs after the sandbox's own pause, so it wins.
 		void UpdateFreeze();
 
-		bool m_DrawCameraBounds{false};
+		bool m_DrawCameraBounds{false}; //!< "Draw camera bounds" on the Debug page: each player's view, where its camera is heading and the scene's edges.
 		bool m_DrawSpriteBounds{false};
 
 		/// The settings panel (F6): everything that can be tuned while the game runs, in categories, searchable, with presets. In SettingsPanel.cpp.

@@ -531,6 +531,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Terrain update boxes", g_SettingsMan.ShowTerrainUpdates(), [](bool on) { g_SettingsMan.SetShowTerrainUpdates(on); });
 		Tip("Where the terrain changed and the path grid has yet to catch up: the waiting areas in orange and the grid nodes re-sampled for them in red, each fading over a second. Not saved.");
 		Check("Draw camera bounds", &m_DrawCameraBounds);
+		Tip("Each player's view as an outline in its own colour (the inner one is yours), a cross where its camera is heading with a line from the middle of the view, its offset, target and how much of it the HUD covers, and the scene's edges in red where the scene doesn't wrap. Not saved.");
 		Check("Draw sprite frustum tests", &m_DrawSpriteBounds);
 		Check("ImGui demo window", &m_ImGuiDemoWindow);
 		Heading("Debug text in the console");

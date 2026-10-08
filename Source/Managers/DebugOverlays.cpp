@@ -1,6 +1,7 @@
 #include "DebugOverlays.h"
 
 #include "DebugDraw.h"
+#include "DebugMan.h"
 #include "Actor.h"
 #include "MovableMan.h"
 #include "PostProcessMan.h"
@@ -541,5 +542,54 @@ void DebugOverlays::DrawWorldSim() {
 		}
 		default:
 			break;
+	}
+}
+
+void DebugOverlays::DrawCameraBounds() {
+	if (!g_DebugMan.DrawCameraBounds() || !g_SceneMan.GetScene()) {
+		return;
+	}
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float perPixel = DebugDraw::ScenePixelsPerWindowPixel();
+	GameViewRect rect = g_WindowMan.GetGameViewRect();
+	const ImU32 screenColors[] = {IM_COL32(120, 200, 255, 230), IM_COL32(255, 170, 80, 230), IM_COL32(150, 240, 120, 230), IM_COL32(240, 120, 240, 230)};
+	// The scene's edges, where the camera stops; a wrapping side has none.
+	ImU32 edgeColor = IM_COL32(255, 70, 60, 230);
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth()) / perPixel;
+	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight()) / perPixel;
+	ImVec2 sceneCorner(DebugDraw::ViewOrigin().x - g_CameraMan.GetOffset(0).m_X / perPixel, DebugDraw::ViewOrigin().y - g_CameraMan.GetOffset(0).m_Y / perPixel);
+	if (!g_SceneMan.SceneWrapsX()) {
+		drawList->AddLine(ImVec2(sceneCorner.x, rect.y), ImVec2(sceneCorner.x, rect.y + rect.h), edgeColor, 2.0F);
+		drawList->AddLine(ImVec2(sceneCorner.x + sceneWidth, rect.y), ImVec2(sceneCorner.x + sceneWidth, rect.y + rect.h), edgeColor, 2.0F);
+	}
+	if (!g_SceneMan.SceneWrapsY()) {
+		drawList->AddLine(ImVec2(rect.x, sceneCorner.y), ImVec2(rect.x + rect.w, sceneCorner.y), edgeColor, 2.0F);
+		drawList->AddLine(ImVec2(rect.x, sceneCorner.y + sceneHeight), ImVec2(rect.x + rect.w, sceneCorner.y + sceneHeight), edgeColor, 2.0F);
+	}
+	char text[160];
+	int screens = std::clamp(g_FrameMan.GetScreenCount(), 1, static_cast<int>(std::size(screenColors)));
+	for (int screen = 0; screen < screens; ++screen) {
+		ImU32 color = screenColors[screen];
+		Vector offset = g_CameraMan.GetOffset(screen);
+		Vector size = g_CameraMan.GetFrameSize(screen);
+		// Player 1's view fills the picture, so its outline is drawn just inside the edge.
+		ImVec2 topLeft = screen == 0 ? ImVec2(rect.x + 2.0F, rect.y + 2.0F) : DebugDraw::ToScreen(offset);
+		ImVec2 bottomRight = screen == 0 ? ImVec2(rect.x + rect.w - 2.0F, rect.y + rect.h - 2.0F) : ImVec2(topLeft.x + size.m_X / perPixel, topLeft.y + size.m_Y / perPixel);
+		drawList->AddRect(topLeft, bottomRight, color, 0.0F, 0, 2.0F);
+		Vector& occlusion = g_CameraMan.GetScreenOcclusion(screen);
+		// Where the camera is heading, and how far behind it the view's middle is.
+		Vector target = g_CameraMan.GetScrollTarget(screen);
+		ImVec2 middle = DebugDraw::ToScreen(offset + size * 0.5F);
+		ImVec2 heading = DebugDraw::ToScreen(target);
+		drawList->AddLine(middle, heading, color, 1.5F);
+		drawList->AddLine(ImVec2(heading.x - 7.0F, heading.y), ImVec2(heading.x + 7.0F, heading.y), color, 2.0F);
+		drawList->AddLine(ImVec2(heading.x, heading.y - 7.0F), ImVec2(heading.x, heading.y + 7.0F), color, 2.0F);
+		drawList->AddCircle(middle, 3.0F, color);
+		std::snprintf(text, sizeof(text), "screen %d (team %d)  offset %.0f,%.0f  target %.0f,%.0f  HUD covers %.0f,%.0f", screen + 1, g_CameraMan.GetScreenTeam(screen) + 1, offset.m_X, offset.m_Y, target.m_X, target.m_Y, occlusion.m_X, occlusion.m_Y);
+		// Player 1's at the bottom, clear of the other overlays' captions along the top.
+		ImVec2 at = screen == 0 ? ImVec2(rect.x + 6.0F, rect.y + rect.h - ImGui::GetTextLineHeight() - 6.0F) : ImVec2(topLeft.x + 4.0F, topLeft.y + 4.0F);
+		ImVec2 textSize = ImGui::CalcTextSize(text);
+		drawList->AddRectFilled(ImVec2(at.x - 2.0F, at.y - 1.0F), ImVec2(at.x + textSize.x + 2.0F, at.y + textSize.y + 1.0F), IM_COL32(10, 12, 10, 180));
+		drawList->AddText(at, color, text);
 	}
 }
