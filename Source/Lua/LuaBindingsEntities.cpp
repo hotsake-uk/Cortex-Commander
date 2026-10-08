@@ -315,6 +315,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	                            luabind::value("CRAWL", Actor::MovementState::CRAWL),
 	                            luabind::value("ARMCRAWL", Actor::MovementState::ARMCRAWL),
 	                            luabind::value("CLIMB", Actor::MovementState::CLIMB),
+	                            luabind::value("WALKCROUCH", Actor::MovementState::WALKCROUCH),
 	                            luabind::value("MOVEMENTSTATECOUNT", Actor::MovementState::MOVEMENTSTATECOUNT)]
 	    .enum_("AIMode")[luabind::value("AIMODE_NONE", Actor::AIMode::AIMODE_NONE),
 	                     luabind::value("AIMODE_SENTRY", Actor::AIMode::AIMODE_SENTRY),
@@ -467,6 +468,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("FGFoot", &AHuman::GetFGFoot, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetFGFoot)
 	    .property("BGFoot", &AHuman::GetBGFoot, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetBGFoot)
 	    .property("MaxWalkPathCrouchShift", &AHuman::GetMaxWalkPathCrouchShift, &AHuman::SetMaxWalkPathCrouchShift)
+	    .property("CrouchHeightFraction", &AHuman::GetCrouchHeightFraction, &AHuman::SetCrouchHeightFraction)
+	    .property("CrouchHeight", &AHuman::GetCrouchHeight)
 	    .property("CrouchAmount", &AHuman::GetCrouchAmount)
 	    .property("CrouchAmountOverride", &AHuman::GetCrouchAmountOverride, &AHuman::SetCrouchAmountOverride)
 	    .property("StrideSound", &AHuman::GetStrideSound, &LuaAdaptersPropertyOwnershipSafetyFaker::AHumanSetStrideSound)

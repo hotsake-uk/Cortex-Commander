@@ -606,6 +606,23 @@ namespace RTE {
 		/// @param newValue The new value for this AHuman's max walkpath adjustment.
 		void SetMaxWalkPathCrouchShift(float newValue) { m_MaxWalkPathCrouchShift = newValue; }
 
+		/// Gets how tall this AHuman is crouched, as a fraction of its height (the standing body is 0.44 of it, see GetPathAgent).
+		/// @return The crouch height fraction.
+		float GetCrouchHeightFraction() const { return m_CrouchHeightFraction; }
+
+		/// Sets how tall this AHuman is crouched, as a fraction of its height.
+		/// @param newValue The new crouch height fraction.
+		void SetCrouchHeightFraction(float newValue) { m_CrouchHeightFraction = newValue; }
+
+		/// Gets the head room this AHuman needs crouched, in pixels: between its crawl and standing heights.
+		/// @return The crouched height, in pixels.
+		float GetCrouchHeight() const;
+
+		/// Gets how far this AHuman's walk path is shifted up when fully crouched, in pixels: from standing height down to crouched height, or
+		/// MaxWalkPathCrouchShift if that is more.
+		/// @return The full crouch's walk path shift, in pixels.
+		float GetCrouchShift() const;
+
 		/// Gets this AHuman's current crouch amount. 0.0 == fully standing, 1.0 == fully crouched.
 		/// @return This AHuman's current crouch amount.
 		float GetCrouchAmount() const { return m_CrouchAmount; }
@@ -692,6 +709,9 @@ namespace RTE {
 		Timer m_ProneTimer;
 		// The maximum amount our walkpath can be shifted upwards to crouch, whether manually or automatically.
 		float m_MaxWalkPathCrouchShift;
+		float m_CrouchHeightFraction; //!< How tall the body is crouched, as a fraction of its height: the full crouch lowers it from standing (0.44) to this.
+		bool m_CrouchWalking; //!< Whether it is striding on the crouched walk's leg paths (WALKCROUCH): more than half crouched while walking.
+		bool m_CrouchWalkFromWalk; //!< Whether the crouched walk's leg paths were made from the walk's (none given), so they follow its speed and push.
 		// The current crouching amount from 0.0 to 1.0, where 1.0 is applying maximum walk path shift.
 		float m_CrouchAmount;
 		// The script-set forced crouching amount. 0.0 == fully standing, 1.0 == fully crouched, -1 == no override.
