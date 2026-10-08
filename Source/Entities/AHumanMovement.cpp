@@ -19,6 +19,7 @@
 #include "PresetMan.h"
 #include "Activity.h"
 #include "PrimitiveMan.h"
+#include "FluidSim.h"
 
 using namespace RTE;
 
@@ -57,10 +58,11 @@ namespace {
 		return material && material->GetIntegrity() <= 5.0F && material->GetBehaviour().Flows != 1;
 	}
 
-	/// Solid for a climber: terrain that isn't air nor the ladder's own rungs.
+	/// Solid for a climber: terrain that isn't air, a liquid, nor the ladder's own rungs. (Liquid pooled over the rungs read as a wall beside
+	/// them or a floor under the feet, and the climb was refused or stopped in a flooded shaft.)
 	bool SolidNotLadder(float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID();
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && !FluidSim::IsLiquid(id);
 	}
 } // namespace
 
@@ -1709,7 +1711,10 @@ int AHuman::MoveAlongRoute() {
 	// up the bank by the hands (pressing up and into it: Actor::TryCatchLedge and TryStartMantle pull the body out over the lip). ----
 	// (A flight taken off from the surface is the flight's below while it climbs out, not a coming down in the water.)
 	const bool flyingOut = mover.flight.active && mover.flight.fromWater && !mover.flight.timer.IsPastSimMS(1500) && m_Vel.m_Y < 1.0F;
-	if (inLiquid && !m_MovePath.empty() && !flyingOut) {
+	// (Not for a ladder step: swum, the body stroked for the point and never pressed up or down the rungs. Every liquid holds bodies since
+	// L-5, so a ladder with its foot in any pool was out of use.)
+	const bool ladderStepHere = !m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Ladder;
+	if (inLiquid && !m_MovePath.empty() && !flyingOut && !ladderStepHere) {
 		const Vector point = m_MovePath.front();
 		const Vector toPoint = Towards(m_Pos, point);
 		const PathStepKind kind = m_MovePathKinds.empty() ? PathStepKind::Walk : m_MovePathKinds.front();
@@ -2158,6 +2163,13 @@ int AHuman::MoveAlongRoute() {
 		} else {
 			ctrl.SetState(toPoint.m_Y < 0.0F ? MOVE_UP : MOVE_DOWN, true);
 			SetAimAngle(toPoint.m_Y < 0.0F ? 0.9F : -0.6F);
+			// Lying down, it gets up for the ladder (the motor lets a prone stance go while standUp holds, see UpdateAIMotor): the climb
+			// refuses a prone body, and an AI renews its prone stance every tick for any order but a move, so an attack, patrol or guard
+			// unit that went prone once crawled to the ladder's foot and lay there pressing up.
+			if (m_ProneState != NOTPRONE || m_AIStance == 2) {
+				mover.standUp = true;
+				mover.standUpTimer.Reset();
+			}
 		}
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;
