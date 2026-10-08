@@ -94,9 +94,18 @@ void SpatialPartitionGrid::Add(const IntRect& rect, const MovableObject& mo) {
 }
 
 std::vector<MovableObject*> SpatialPartitionGrid::GetMOsInBox(const Box& box, int ignoreTeam, bool getsHitByMOsOnly) const {
-	RTEAssert(ignoreTeam >= Activity::NoTeam && ignoreTeam < Activity::MaxTeamCount, "Invalid ignoreTeam given to SpatialPartitioningGrid::GetMOsInBox()!");
+	std::vector<MovableObject*> MOList;
+	GetMOsInBox(box, ignoreTeam, getsHitByMOsOnly, MOList);
+	return MOList;
+}
 
-	std::unordered_set<MOID> potentialMOIDs;
+void SpatialPartitionGrid::GetMOsInBox(const Box& box, int ignoreTeam, bool getsHitByMOsOnly, std::vector<MovableObject*>& moList) const {
+	RTEAssert(ignoreTeam >= Activity::NoTeam && ignoreTeam < Activity::MaxTeamCount, "Invalid ignoreTeam given to SpatialPartitioningGrid::GetMOsInBox()!");
+	moList.clear();
+
+	// The candidate MOIDs, gathered then sorted and de-duplicated in a buffer each thread keeps, instead of a new hash set per query.
+	static thread_local std::vector<MOID> potentialMOIDs;
+	potentialMOIDs.clear();
 
 	Vector topLeft = box.GetCorner();
 	Vector bottomRight = topLeft + Vector(box.GetWidth(), box.GetHeight());
@@ -111,24 +120,21 @@ std::vector<MovableObject*> SpatialPartitionGrid::GetMOsInBox(const Box& box, in
 	for (int x = topLeftCellX; x <= bottomRightCellX; x++) {
 		for (int y = topLeftCellY; y <= bottomRightCellY; y++) {
 			const std::vector<MOID>& moidsInCell = cells[ignoreTeam + 1][GetCellIdForCellCoords(x, y)];
-			for (MOID moid: moidsInCell) {
-				potentialMOIDs.insert(moid);
-			}
+			potentialMOIDs.insert(potentialMOIDs.end(), moidsInCell.begin(), moidsInCell.end());
 		}
 	}
+	std::sort(potentialMOIDs.begin(), potentialMOIDs.end());
+	potentialMOIDs.erase(std::unique(potentialMOIDs.begin(), potentialMOIDs.end()), potentialMOIDs.end());
 
 	std::list<Box> wrappedBoxes;
 	g_SceneMan.WrapBox(box, wrappedBoxes);
 
-	std::vector<MovableObject*> MOList;
 	for (MOID moid: potentialMOIDs) {
 		MovableObject* mo = g_MovableMan.GetMOFromID(moid);
 		if (mo && std::any_of(wrappedBoxes.begin(), wrappedBoxes.end(), [&mo](const Box& wrappedBox) { return wrappedBox.IsWithinBox(mo->GetPos()); })) {
-			MOList.push_back(mo);
+			moList.push_back(mo);
 		}
 	}
-
-	return MOList;
 }
 
 std::vector<MovableObject*> SpatialPartitionGrid::GetMOsInRadius(const Vector& center, float radius, int ignoreTeam, bool getsHitByMOsOnly) const {
