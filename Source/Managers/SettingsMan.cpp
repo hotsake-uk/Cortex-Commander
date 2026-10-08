@@ -121,6 +121,7 @@ void SettingsMan::Clear() {
 	m_ShowSquadLinks = false;
 	m_CombatOverlay = 0;
 	m_ShowRecentSolves = false;
+	m_ShowTerrainUpdates = false;
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
