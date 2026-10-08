@@ -254,7 +254,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_ScreenHeight = height;
 	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	for (GLTarget& seeds: m_OccluderSeeds) {
-		seeds.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		seeds.Create(width, height, GL_RG32F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
 	m_RoundedNormals.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
