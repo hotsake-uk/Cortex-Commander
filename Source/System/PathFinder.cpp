@@ -172,16 +172,17 @@ void PathFinder::Destroy() {
 }
 
 MicroPather* PathFinder::GetPather() {
-	// TODO: cache a collection of pathers. For async pathfinding right now we create a new pather for every thread!
-	if (!s_Pather.m_Instance || s_Pather.m_Instance->GetGraph() != this) {
-		// First time this thread has asked for a pather, let's initialize it
-		delete s_Pather.m_Instance; // Might be reinitialized and Graph ptrs mismatch, in that case delete the old one
-
+	// One pather per thread, pointed at whichever team's grid asks. (A pather was built for one grid and rebuilt, its 4000 blocks and hash
+	// table freed and allocated again, whenever the thread's last search was on another team's grid: every search, for a worker serving
+	// both sides in a battle. Every solve resets the pather anyway, as costs differ by searcher, so nothing of one grid's carries over.)
+	if (!s_Pather.m_Instance) {
 		// TODO: test dynamically setting this. The code below sets it based on map area and block size, with a hefty upper limit.
 		// int sceneArea = m_GridWidth * m_GridHeight;
 		// unsigned int numberOfBlocksToAllocate = std::min(128000, sceneArea / (m_NodeDimension * m_NodeDimension));
 		unsigned int numberOfBlocksToAllocate = 4000;
 		s_Pather.m_Instance = new MicroPather(this, numberOfBlocksToAllocate, PathNode::c_MaxAdjacentNodeCount, false);
+	} else {
+		s_Pather.m_Instance->SetGraph(this);
 	}
 
 	return s_Pather.m_Instance;
