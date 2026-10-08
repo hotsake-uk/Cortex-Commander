@@ -474,6 +474,17 @@ namespace RTE {
 	};
 #pragma endregion
 
+#pragma region Timer Lua Adapters
+	struct LuaAdaptersTimer {
+		/// luabind has no converter for int64 (long long): a property of that type made it wrap the number as an unregistered class and crash on a
+		/// null class record (INC-CRASH-4). The Timer's start times go through these as doubles instead.
+		static double GetStartRealTimeMS(const Timer& timer);
+		static void SetStartRealTimeMS(Timer& timer, double newStartTime);
+		static double GetStartSimTimeMS(const Timer& timer);
+		static void SetStartSimTimeMS(Timer& timer, double newStartTime);
+	};
+#pragma endregion
+
 #pragma region TimerMan Lua Adapters
 	struct LuaAdaptersTimerMan {
 		/// Gets the current number of ticks that the simulation should be updating with. Lua can't handle int64 (or long long apparently) so we'll expose this specialized function.
@@ -483,6 +494,10 @@ namespace RTE {
 		/// Gets the number of ticks per second. Lua can't handle int64 (or long long apparently) so we'll expose this specialized function.
 		/// @return The number of ticks per second.
 		static double GetTicksPerSecond(const TimerMan& timerMan);
+
+		/// Gets the sim time since the game started, in ms: one clock every Lua state agrees on, for times scripts compare across units.
+		/// @return The sim time in ms.
+		static double GetSimTimeMS(const TimerMan& timerMan);
 	};
 #pragma endregion
 

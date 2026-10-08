@@ -142,10 +142,10 @@ LuaBindingRegisterFunctionDefinitionForType(SystemLuaBindings, Timer) {
 	    .def(luabind::constructor<double>())
 	    .def(luabind::constructor<double, double>())
 
-	    .property("StartRealTimeMS", &Timer::GetStartRealTimeMS, &Timer::SetStartRealTimeMS)
+	    .property("StartRealTimeMS", &LuaAdaptersTimer::GetStartRealTimeMS, &LuaAdaptersTimer::SetStartRealTimeMS)
 	    .property("ElapsedRealTimeS", &Timer::GetElapsedRealTimeS, &Timer::SetElapsedRealTimeS)
 	    .property("ElapsedRealTimeMS", &Timer::GetElapsedRealTimeMS, &Timer::SetElapsedRealTimeMS)
-	    .property("StartSimTimeMS", &Timer::GetStartSimTimeMS, &Timer::SetStartSimTimeMS)
+	    .property("StartSimTimeMS", &LuaAdaptersTimer::GetStartSimTimeMS, &LuaAdaptersTimer::SetStartSimTimeMS)
 	    .property("ElapsedSimTimeS", &Timer::GetElapsedSimTimeS, &Timer::SetElapsedSimTimeS)
 	    .property("ElapsedSimTimeMS", &Timer::GetElapsedSimTimeMS, &Timer::SetElapsedSimTimeMS)
 	    .property("RealTimeLimitProgress", &Timer::GetRealTimeLimitProgress, &Timer::SetRealTimeLimitProgress)
