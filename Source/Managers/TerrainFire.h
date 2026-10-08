@@ -36,6 +36,10 @@ namespace RTE {
 		/// Puts out the fire at a pixel, if it's burning. Call from the simulation (main thread).
 		static void Extinguish(int x, int y);
 
+		/// Carries the fire of a burning pixel to where the liquid simulation moved it (burning oil that flows), and the other way for what it
+		/// swapped places with. Call from the simulation (main thread).
+		static void MoveBurning(int fromX, int fromY, int toX, int toY);
+
 		/// Gets whether a material puts fire out where it splashes (water). Thread safe.
 		static bool IsDousing(int materialID);
 

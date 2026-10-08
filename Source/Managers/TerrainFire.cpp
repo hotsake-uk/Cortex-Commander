@@ -560,6 +560,41 @@ void TerrainFire::Update() {
 	RegisterLights();
 }
 
+void TerrainFire::MoveBurning(int fromX, int fromY, int toX, int toY) {
+	if (s_Burning.empty()) {
+		return;
+	}
+	SLTerrain* terrain = CurrentTerrain();
+	if (!terrain) {
+		return;
+	}
+	int width = terrain->GetBitmap()->w;
+	int height = terrain->GetBitmap()->h;
+	if (!WrapPixel(fromX, fromY, width, height) || !WrapPixel(toX, toY, width, height)) {
+		return;
+	}
+	int fromKey = fromY * width + fromX;
+	int toKey = toY * width + toX;
+	if (fromKey == toKey) {
+		return;
+	}
+	// (Re-keyed, not burned again: it keeps the ticks it has left.)
+	auto from = s_Burning.extract(fromKey);
+	auto to = s_Burning.extract(toKey);
+	if (!from.empty()) {
+		from.key() = toKey;
+		from.mapped().X = toX;
+		from.mapped().Y = toY;
+		s_Burning.insert(std::move(from));
+	}
+	if (!to.empty()) {
+		to.key() = fromKey;
+		to.mapped().X = fromX;
+		to.mapped().Y = fromY;
+		s_Burning.insert(std::move(to));
+	}
+}
+
 void TerrainFire::Extinguish(int x, int y) {
 	if (s_Burning.empty()) {
 		return;
