@@ -3339,15 +3339,15 @@ namespace {
 			picture.OffsetX = terrainObject->GetBitmapOffset().m_X;
 			picture.OffsetY = terrainObject->GetBitmapOffset().m_Y;
 		} else if (const Actor* actorPreset = dynamic_cast<const Actor*>(entity); actorPreset && !dynamic_cast<const ADoor*>(entity)) {
-			// A unit is many parts: a copy of it is stood up and drawn whole, the way the game's build menu shows the thing in hand, and the picture cut to fit.
+			// A unit is many parts: a copy of it is drawn whole, the way the game's build menu shows the thing in hand, and the picture cut to fit.
+			// The copy is never updated: an update during drawing would play its sounds, spawn particles and register lights at the picture's spot in the scene and use the sim's random numbers. Its parts are just put in place, as when a unit is added to the world.
 			const int room = 160;
 			portrait.reset(create_bitmap_ex(8, room, room));
 			clear_to_color(portrait.get(), ColorKeys::g_MaskColor);
 			if (Actor* copy = dynamic_cast<Actor*>(actorPreset->Clone())) {
 				copy->SetPos(Vector(static_cast<float>(room / 2), static_cast<float>(room / 2)));
 				copy->SetTeam(0);
-				copy->FullUpdate();
-				copy->SetPos(Vector(static_cast<float>(room / 2), static_cast<float>(room / 2)));
+				copy->CorrectAttachableAndWoundPositionsAndRotations();
 				copy->Draw(portrait.get(), Vector(), g_DrawColor, true);
 				delete copy;
 			}
