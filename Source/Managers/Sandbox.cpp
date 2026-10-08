@@ -483,7 +483,7 @@ void Sandbox::DrawGUI() {
 	{
 		bool wantPause = WantsWorldPaused() && !g_DebugMan.IsPhotoModeOpen();
 		if (wantPause) {
-			g_TimerMan.PauseSim(true);
+			g_TimerMan.PauseSim(true, TimerMan::SimPauseSandbox);
 			s_PausedByMenus = true;
 			// Painting (the brushes held down: terrain, liquids, fire, smoke) is put in the world here, without a step: it is terrain and
 			// liquid written in place, which needs no update to show. Let through an update each, as every stroke was, a held brush ran
@@ -500,11 +500,12 @@ void Sandbox::DrawGUI() {
 				g_TimerMan.StepSim(1);
 				s_StepsWanted = std::max(s_StepsWanted - 1, 0);
 			}
-		} else if (s_PausedByMenus) {
-			s_PausedByMenus = false;
-			s_StepsWanted = 0;
-			if (!g_DebugMan.IsPhotoModeOpen()) {
-				g_TimerMan.PauseSim(false);
+		} else {
+			// (Every frame, not only as the tools close: photo mode closing can set this pause for a frame; see DebugMan.)
+			g_TimerMan.PauseSim(false, TimerMan::SimPauseSandbox);
+			if (s_PausedByMenus) {
+				s_PausedByMenus = false;
+				s_StepsWanted = 0;
 			}
 		}
 	}

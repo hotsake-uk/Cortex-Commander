@@ -51,10 +51,37 @@ namespace RTE {
 		/// Gets whether the simulation is paused (PauseSim): no real time goes to it, only what StepSim lets through.
 		bool IsSimPaused() const { return m_SimPaused; }
 
+		/// Who holds the simulation paused (PauseSim with an owner): the world runs only when none does. (One flag shared by the debug freeze,
+		/// photo mode and the sandbox, each setting it every frame, let photo mode with its freeze off undo the debug freeze every frame, so the
+		/// "frozen" world ran an update a frame.)
+		enum SimPauseOwner : unsigned {
+			SimPauseSystem = 1, //!< The menus, between games.
+			SimPauseDebugFreeze = 2, //!< "Freeze simulation" on the Debug page.
+			SimPausePhotoMode = 4, //!< Photo mode's freeze.
+			SimPauseSandbox = 8 //!< The sandbox's tools while they're open.
+		};
+
+		/// Pauses the simulation for the menus, or unpauses it for every owner (as a game starts or the menus close: any owner still wanting
+		/// the world paused sets its own pause again).
 		void PauseSim(bool pause = false) {
-			m_SimPaused = pause;
-			if (pause)
-				m_SimAccumulator = 0.0F;
+			if (pause) {
+				PauseSim(true, SimPauseSystem);
+			} else {
+				m_SimPauseOwners = 0;
+				m_SimPaused = false;
+			}
+		}
+
+		/// Sets or clears one owner's pause; the simulation is paused while any owner holds it.
+		void PauseSim(bool pause, SimPauseOwner owner) {
+			unsigned owners = pause ? (m_SimPauseOwners | owner) : (m_SimPauseOwners & ~static_cast<unsigned>(owner));
+			// (Emptied as the world stops, so it doesn't run what was saved up; not every frame while it stays stopped, which threw away a step
+			// asked of it by another owner earlier in the frame.)
+			if (owners != 0 && m_SimPauseOwners == 0) {
+				m_SimAccumulator = 0;
+			}
+			m_SimPauseOwners = owners;
+			m_SimPaused = owners != 0;
 		}
 
 		/// Tells whether there is enough sim time accumulated to do at least one physics update.
@@ -182,6 +209,7 @@ namespace RTE {
 
 		long long m_HitStopTicks = 0; //!< Real time ticks left of a hit-stop, during which no time goes to the sim accumulator.
 		bool m_SimPaused; //!< Simulation paused; no real time ticks will go to the sim accumulator.
+		unsigned m_SimPauseOwners = 0; //!< The SimPauseOwner bits holding the simulation paused.
 
 	private:
 		/// Clears all the member variables of this TimerMan, effectively resetting the members of this abstraction level only.
