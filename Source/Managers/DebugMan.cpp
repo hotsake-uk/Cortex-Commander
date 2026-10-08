@@ -325,6 +325,7 @@ void DebugMan::DrawOverlays() {
 	DebugOverlays::DrawUnitInspector();
 	DebugOverlays::DrawCombatOverlay();
 	DebugOverlays::DrawNavNode();
+	DebugOverlays::DrawRecentSolves();
 }
 
 void DebugMan::DrawImGui() {
