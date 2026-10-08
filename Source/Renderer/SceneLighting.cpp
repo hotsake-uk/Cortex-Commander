@@ -102,6 +102,7 @@ void SceneLighting::LoadShaders() {
 	const std::string fullscreenVertex = "Base.rte/Shaders/Lighting/Fullscreen.vert";
 	m_PropagateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightPropagate.frag");
 	m_FogUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/FogUpdate.frag");
+	m_WetnessUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WetnessUpdate.frag");
 	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
 	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
 	m_OccluderJumpShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderJump.frag");
@@ -228,6 +229,10 @@ bool SceneLighting::EnsureWorldResources() {
 	for (GLTarget& fog: m_Fog) {
 		fog.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
 	}
+	for (GLTarget& wetMap: m_WetMap) {
+		wetMap.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
+	}
+	m_CurrentWetMap = 0;
 	m_CurrentFog = 0;
 	m_FogLive = false;
 	m_LastFogTime = -1.0;
@@ -274,6 +279,8 @@ void SceneLighting::DestroyWorldResources() {
 	m_ShadowField.clear();
 	m_Fog[0].Destroy();
 	m_Fog[1].Destroy();
+	m_WetMap[0].Destroy();
+	m_WetMap[1].Destroy();
 	m_Flow.clear();
 	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
@@ -741,6 +748,11 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	g_RenderMan.SetGlobalTexture(5, m_SkylineTexture.Texture);
 	g_RenderMan.SetGlobalTexture(6, m_OccupancyTexture.Texture);
 	g_RenderMan.SetGlobalTexture(7, m_FlowTexture.Texture);
+	g_RenderMan.SetGlobalTexture(8, m_WetMap[m_CurrentWetMap].Texture);
+	m_TerrainShader->SetInt("rteWetMap", 8);
+	m_TerrainShader->SetBool("rteWetMapOn", m_Settings.WetnessMap && m_WetMap[0].Texture);
+	m_TerrainShader->SetFloat("rtePuddles", m_Settings.Enabled ? std::clamp(m_Settings.Puddles, 0.0F, 1.0F) : 0.0F);
+	m_TerrainShader->SetFloat("rteRainNow", m_Settings.WeatherType == 1 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteFlowField", 7);
 	m_TerrainShader->SetFloat("rteFlowSurface", (m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled()) ? std::clamp(m_Settings.WaterFlowStrength, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteWorldGrid", 6);
@@ -898,6 +910,35 @@ void SceneLighting::UpdateFlowField() {
 	}
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+void SceneLighting::UpdateWetMap(float seconds) {
+	if (!m_Settings.WetnessMap || !m_WetMap[0].Framebuffer || seconds <= 0.0F) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Wetness");
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glViewport(0, 0, m_GridWidth, m_GridHeight);
+	const GLTarget& source = m_WetMap[m_CurrentWetMap];
+	const GLTarget& destination = m_WetMap[1 - m_CurrentWetMap];
+	glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+	m_WetnessUpdateShader->Enable();
+	m_WetnessUpdateShader->SetInt("rtePrevious", 0);
+	m_WetnessUpdateShader->SetInt("rteOccupancy", 1);
+	m_WetnessUpdateShader->SetFloat("rteRain", m_Settings.WeatherType == 1 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F);
+	m_WetnessUpdateShader->SetFloat("rteSeconds", seconds);
+	m_WetnessUpdateShader->SetFloat("rteDrySeconds", std::clamp(m_Settings.WetDrySeconds, 10.0F, 600.0F));
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, source.Texture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE0);
+	DrawFullscreen();
+	glBindVertexArray(0);
+	m_CurrentWetMap = 1 - m_CurrentWetMap;
 }
 
 void SceneLighting::UpdateFog() {
@@ -1153,6 +1194,8 @@ void SceneLighting::Update() {
 	StampStains();
 	logStages.Next("Light grid: mist and dust");
 	UpdateFog();
+	logStages.Next("Light grid: wetness");
+	UpdateWetMap(frameSeconds);
 	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);

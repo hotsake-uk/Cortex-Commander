@@ -212,6 +212,12 @@ void DebugMan::SettingsGUI() {
 		Tip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
+		Check("Ground dries place by place", &settings.WetnessMap);
+		Tip("Rain wets the ground and it dries after the rain, hard rock and concrete slower than earth, and long rain leaves puddles in the dips that reflect lamps and the sky. Off: all exposed ground is equally wet, as before. On from the Medium preset.");
+		if (settings.WetnessMap) {
+			Slider("Wet earth dries in (seconds)", &settings.WetDrySeconds, 10.0F, 600.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
+			Slider("Puddles", &settings.Puddles, 0.0F, 1.0F);
+		}
 		// Scene makers: keep the time and weather as the scene's own. It's written when the scene is saved from the scene editor.
 		if (Scene* scene = g_SceneMan.GetScene(); scene && Plain()) {
 			ImGui::SeparatorText("This scene's own time and weather");

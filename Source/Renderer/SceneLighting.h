@@ -202,6 +202,8 @@ namespace RTE {
 		std::vector<int> m_FlowTiles; //!< The tiles with moving liquid written into them last frame, to be cleared this frame.
 		GLTarget m_Fog[2]; //!< Ping-ponged fog volume, in the light grid's cells: R = how thick the mist or dust is, 0 to 1.
 		int m_CurrentFog = 0;
+		GLTarget m_WetMap[2]; //!< Ping-ponged wetness map (LightingSettings::WetnessMap), in the light grid's cells: R = how wet, 0 to 1, and past 1 water standing in dips.
+		int m_CurrentWetMap = 0;
 		bool m_FogLive = false; //!< The fog targets hold fog (cleared when the fog volume is turned off).
 		double m_LastFogTime = -1.0; //!< Game seconds of the last fog step.
 		std::vector<glm::vec4> m_PendingFogPuffs; //!< Puffs taken from PostProcessMan and not yet put in, a step holding only so many.
@@ -245,6 +247,7 @@ namespace RTE {
 
 		std::unique_ptr<Shader> m_PropagateShader;
 		std::unique_ptr<Shader> m_FogUpdateShader;
+		std::unique_ptr<Shader> m_WetnessUpdateShader;
 		std::unique_ptr<Shader> m_PointLightShader;
 		std::unique_ptr<Shader> m_OccluderSeedShader;
 		std::unique_ptr<Shader> m_OccluderJumpShader;
@@ -317,6 +320,10 @@ namespace RTE {
 
 		/// Steps the fog volume (LightingSettings::FogVolume) on by the game time since the last step: wind, spreading, clearing and its sources.
 		void UpdateFog();
+
+		/// Steps the wetness map (LightingSettings::WetnessMap) on by game time: rain wets the ground and fills dips, and it dries after, rock slower than earth.
+		/// @param seconds Game seconds since the last call.
+		void UpdateWetMap(float seconds);
 
 		/// Brings the flow field (m_FlowTexture) up to date with the liquid moving this frame, clearing and uploading only the tiles that had or have moving liquid in them.
 		void UpdateFlowField();

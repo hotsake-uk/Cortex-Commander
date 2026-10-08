@@ -30,6 +30,10 @@ uniform float rteTime; // Seconds.
 uniform float rteWind; // Pixels per second, negative blows left.
 uniform float rteSnowCover; // 0..1, how deep snow lies on exposed ground.
 uniform float rteWetness; // 0..1, how wet exposed ground is.
+uniform bool rteWetMapOn; // Wetness from the wetness map (LightingSettings::WetnessMap) instead of rteWetness everywhere.
+uniform sampler2D rteWetMap; // The light grid's cells: R = how wet, 0 to 1, and past 1 water standing in dips, up to 2.
+uniform float rtePuddles; // How much of that standing water is drawn as puddles, 0 for none.
+uniform float rteRainNow; // How hard it's raining, 0 to 1, for drops on puddles.
 uniform float rteWaterFoamStray; // How much of that froth a stray pixel or two of water gets, against a stream of them: 0 none (they stay bare pixels), 1 as much.
 uniform float rteWaterFoamBright; // How bright the froth is drawn.
 uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
@@ -142,6 +146,18 @@ bool WeatherReaches(vec2 world) {
 		p += back * (i < 20 ? 1.0 : (i < 40 ? 2.0 : 5.0));
 	}
 	return true;
+}
+
+// Whether ground whose surface is at this height lies in a dip: the open ground some way off on both sides (the skyline) stands higher.
+bool InDip(float x, float surfaceY) {
+	float leftRim = 1e9;
+	float rightRim = 1e9;
+	for (int i = 1; i <= 4; ++i) {
+		float reach = float(i) * 6.0;
+		leftRim = min(leftRim, texture(rteSkyline, vec2((x - reach) / rteGridWorldSize.x, 0.5)).r * rteGridWorldSize.y);
+		rightRim = min(rightRim, texture(rteSkyline, vec2((x + reach) / rteGridWorldSize.x, 0.5)).r * rteGridWorldSize.y);
+	}
+	return surfaceY > max(leftRim, rightRim) + 1.0;
 }
 
 // The slope of the slow surface waves at a place, for tilting liquid's normal.
@@ -397,7 +413,10 @@ void main() {
 		}
 	}
 
-	if (rteLivingWorld && (rteSnowCover > 0.01 || rteWetness > 0.01)) {
+	float mapWet = rteWetMapOn ? texture(rteWetMap, worldPos / rteGridWorldSize).r : 0.0;
+	float wetHere = rteWetMapOn ? min(mapWet, 1.0) : rteWetness;
+	bool puddled = false;
+	if (rteLivingWorld && (rteSnowCover > 0.01 || wetHere > 0.01)) {
 		// How deep below the surface this pixel is: snow lies a few pixels deep on top, rain wets the top layer.
 		float depth = 99.0;
 		for (int k = 1; k <= 5; ++k) {
@@ -416,10 +435,25 @@ void main() {
 			vec3 snow = vec3(0.86, 0.9, 0.98) * (0.85 + 0.25 * brightness);
 			FragColor.rgb = mix(FragColor.rgb, snow, depth <= snowDepth - 1.0 ? 0.95 : 0.6);
 			shine = 0.0;
-		} else if (depth <= 3.0 && rteWetness > 0.01) {
-			FragColor.rgb *= mix(vec3(1.0), vec3(0.68, 0.7, 0.78), rteWetness);
+		} else if (depth <= 3.0 && wetHere > 0.01) {
+			FragColor.rgb *= mix(vec3(1.0), vec3(0.68, 0.7, 0.78), wetHere);
 			// Wet ground glistens under lights.
-			shine = max(shine, rteWetness * 0.85);
+			shine = max(shine, wetHere * 0.85);
+			// Water standing in a dip after long rain: the top pixel or two of the ground there drawn as a puddle, a flat line of water that reflects.
+			float puddle = clamp(mapWet - 1.0, 0.0, 1.0) * rtePuddles;
+			if (puddle > 0.02 && depth <= 1.0 + puddle && InDip(worldPos.x, worldPos.y - depth + 1.0)) {
+				vec3 water = mix(rteLiquidShallow[1].rgb, rteLiquidDeep[1].rgb, 0.6) * 0.55;
+				// Drops landing in it: a pixel flashes here and there.
+				float dropSeed = fract(sin(dot(vec2(floor(worldPos.x), floor(rteTime * 7.0)), vec2(12.9898, 78.233))) * 43758.5453);
+				water += vec3(0.5, 0.55, 0.6) * step(0.985, dropSeed) * rteRainNow;
+				FragColor.rgb = mix(FragColor.rgb, water, clamp(puddle * 3.0, 0.0, 0.85));
+				shine = max(shine, 0.95);
+				gloss = max(gloss, 0.9);
+				metalness = 0.0;
+				normal = vec3(0.0, 0.0, 1.0);
+				glowsThrough = 0.25 * rteLiquidStyle[1].w;
+				puddled = true;
+			}
 		}
 	}
 
@@ -454,7 +488,7 @@ void main() {
 		}
 	}
 	// RG: normal x and y. B: 1 - shininess. Alpha: drawn, with emissive strength.
-	if (rteRelief > 0.0) {
+	if (rteRelief > 0.0 && !puddled) {
 		// Rough ground would glitter if every speck of its texture tilted it, so the smoother and shinier the material, the more its texture counts.
 		normal = normalize(normal + vec3(ReliefTilt(uvDx, uvDy) * rteRelief * mix(0.35, 1.0, max(shine, metalness)), 0.0));
 	}

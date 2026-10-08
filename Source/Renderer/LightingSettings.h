@@ -61,6 +61,8 @@ namespace RTE {
 			LightShadowField = quality >= QualityMedium;
 			// The fog volume: one pass over the light grid a frame, from Medium up.
 			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
+			// The wetness map: one small pass over the light grid a frame, from Medium up.
+			WetnessMap = quality >= QualityMedium;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -244,6 +246,9 @@ namespace RTE {
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
+		bool WetnessMap = true; //!< Rain wets the ground place by place and it dries after, hard rock and concrete slower than earth, with puddles in the dips after long rain. Off: all exposed ground is equally wet, as before.
+		float WetDrySeconds = 120.0F; //!< Game seconds for wet earth to dry once the rain stops, 10 to 600; rock takes up to three times as long.
+		float Puddles = 1.0F; //!< How much water standing in dips is drawn as reflecting puddles, 0 (none) to 1.
 		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
 		bool NightAffectsAI = false; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay; off by default so the AI isn't handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.

@@ -279,6 +279,7 @@ Press **F8** for **Photo Mode**:
 | `Embers` | 1 | Embers rising from fire and other warm glows. |
 | `DistortionEnabled` / `HeatHaze` / `ShockwaveStrength` | 1 / 1.5 / 1 | Heat haze above hot things, and refraction rings from explosions. |
 | `ScorchMarks` | 1 | Explosions leave soot on terrain, and the crater rim glows while it cools. |
+| `WetnessMap` / `WetDrySeconds` / `Puddles` | 1 / 120 / 1 | Rain wets the ground place by place; it dries after, rock and concrete up to three times slower than earth, and long rain leaves reflecting puddles in dips. Off: all exposed ground is equally wet. On from Medium. |
 | `BloomEnabled` / `BloomThreshold` / `BloomIntensity` | 1 / 0.9 / 0.5 | Bloom. |
 | `PostExposure` / `PostSaturation` / `PostVignette` | 1 / 1.05 / 0.15 | Final image. |
 | `GradeTemperature` / `GradeTint` / `GradeContrast` | 0 / 0 / 1 | White balance and contrast. |
