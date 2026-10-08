@@ -262,6 +262,12 @@ namespace RTE {
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
 
+		/// Gets whether the sandbox's lightning bolts come down from the sky above the strike rather than from the top of the first player's view.
+		bool ShowSandboxLightningFromSky() const { return m_SandboxLightningFromSky; }
+
+		/// Sets whether the sandbox's lightning bolts come down from the sky above the strike rather than from the top of the first player's view.
+		void SetShowSandboxLightningFromSky(bool show) { m_SandboxLightningFromSky = show; }
+
 		/// Gets whether the sandbox's stroke log is on.
 		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }
 
@@ -579,6 +585,7 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
+		bool m_SandboxLightningFromSky; //!< Lightning bolts start from the open sky above where they strike (up to 500 pixels). Off: from the top of the first player's view, as before.
 		bool m_SandboxStrokeLog; //!< Whether the sandbox's stroke log is on (see ShowSandboxStrokeLog).
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
