@@ -883,10 +883,20 @@ int LuaStateWrapper::RunScriptFileAndRetrieveFunctions(const std::string& filePa
 }
 
 void LuaStateWrapper::Update() {
+	if (m_RegisteredMOGaps > 0) {
+		m_RegisteredMOs.erase(std::remove(m_RegisteredMOs.begin(), m_RegisteredMOs.end(), nullptr), m_RegisteredMOs.end());
+		for (size_t i = 0; i < m_RegisteredMOs.size(); ++i) {
+			m_RegisteredMOIndex[m_RegisteredMOs[i]] = i;
+		}
+		m_RegisteredMOGaps = 0;
+	}
 	for (MovableObject* mo: m_AddedRegisteredMOs) {
-		m_RegisteredMOs.insert(mo);
+		if (m_RegisteredMOIndex.emplace(mo, m_RegisteredMOs.size()).second) {
+			m_RegisteredMOs.push_back(mo);
+		}
 	}
 	m_AddedRegisteredMOs.clear();
+	m_AddedRegisteredMOSet.clear();
 }
 
 void LuaStateWrapper::ClearScriptTimings() {
