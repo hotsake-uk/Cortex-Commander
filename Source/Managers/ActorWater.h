@@ -26,6 +26,18 @@ namespace RTE {
 		/// Gets how much air a unit has left, from 1 (full, or it doesn't breathe) to 0 (drowning).
 		static float GetAir(const Actor* actor);
 
+		/// Gets how many seconds of air a unit holds when its head goes under: 12 for flesh and blood, forever (FLT_MAX) for what doesn't breathe.
+		static float GetBreathSeconds(const Actor* actor);
+
+		/// Gets how hard liquid pushes a unit up against its weight: over 1 it floats, under 1 it sinks.
+		static float GetBuoyancy(const Actor* actor);
+
+		/// Gets whether a unit floats: it rises to the surface of deep liquid and swims along it, rather than walking the bottom.
+		static bool IsFloater(const Actor* actor) { return GetBuoyancy(actor) > 1.0F; }
+
+		/// How fast a unit swims, in metres a second.
+		static constexpr float c_SwimSpeed = 2.0F;
+
 	private:
 		static bool s_Enabled; //!< Whether units swim, float and drown.
 	};
