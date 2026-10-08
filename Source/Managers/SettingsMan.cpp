@@ -373,6 +373,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("WaterReflectionStrength", { g_PostProcessMan.GetLightingSettings().WaterReflectionStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterRefraction", { g_PostProcessMan.GetLightingSettings().WaterRefraction = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterRipples", { g_PostProcessMan.GetLightingSettings().WaterRipples = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterSoftReflection", { g_PostProcessMan.GetLightingSettings().WaterSoftReflection = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterMirrorSurface", { g_PostProcessMan.GetLightingSettings().WaterMirrorSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFoamBubbles", { g_PostProcessMan.GetLightingSettings().WaterFoamBubbles = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFlowSurface", { g_PostProcessMan.GetLightingSettings().WaterFlowSurface = std::stoi(reader.ReadPropValue()) != 0; });
@@ -672,6 +673,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterRefraction", lighting.WaterRefraction);
 	writer.NewPropertyWithValue("WaterRipples", lighting.WaterRipples);
 	writer.NewPropertyWithValue("WaterMirrorSurface", lighting.WaterMirrorSurface);
+	writer.NewPropertyWithValue("WaterSoftReflection", lighting.WaterSoftReflection);
 	writer.NewPropertyWithValue("SoftSmoke", lighting.SoftSmoke);
 	writer.NewPropertyWithValue("WaterMistSize", lighting.WaterMistSize);
 	writer.NewPropertyWithValue("WaterMistLife", lighting.WaterMistLife);
