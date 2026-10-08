@@ -329,6 +329,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LightingMaxScreenLights", { g_PostProcessMan.GetLightingSettings().MaxScreenLights = std::max(std::stoi(reader.ReadPropValue()), 0); });
 	MatchProperty("LightingShadowStrength", { g_PostProcessMan.GetLightingSettings().ShadowStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightShadowField", { g_PostProcessMan.GetLightingSettings().LightShadowField = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("SoftWallLight", { g_PostProcessMan.GetLightingSettings().SoftWallLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightShadowSoftness", { g_PostProcessMan.GetLightingSettings().LightShadowSoftness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
 	MatchProperty("RadianceCascades", { g_PostProcessMan.GetLightingSettings().RadianceCascades = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("GIStrength", { g_PostProcessMan.GetLightingSettings().GIStrength = std::stof(reader.ReadPropValue()); });
@@ -657,6 +658,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingMaxScreenLights", lighting.MaxScreenLights);
 	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
 	writer.NewPropertyWithValue("LightShadowField", lighting.LightShadowField);
+	writer.NewPropertyWithValue("SoftWallLight", lighting.SoftWallLight);
 	writer.NewPropertyWithValue("LightShadowSoftness", lighting.LightShadowSoftness);
 	writer.NewPropertyWithValue("UnitShadows", lighting.UnitShadows);
 	writer.NewPropertyWithValue("SunShadows", lighting.SunShadows);

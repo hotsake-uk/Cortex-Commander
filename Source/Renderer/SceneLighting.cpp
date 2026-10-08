@@ -635,6 +635,7 @@ void SceneLighting::SetShadowFieldUniforms() const {
 	m_PointLightShader->SetBool("rteShadowFieldOn", traced);
 	m_PointLightShader->SetInt("rteShadowField", 4);
 	m_PointLightShader->SetFloat("rteShadowFieldReach", static_cast<float>(c_ShadowFieldCells * m_CellSize));
+	m_PointLightShader->SetBool("rteSoftWallLight", m_Settings.SoftWallLight);
 	m_PointLightShader->SetFloat("rteShadowSoftness", std::clamp(m_Settings.LightShadowSoftness, 0.0F, 2.0F));
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_ShadowFieldTexture.Texture);
@@ -1221,6 +1222,7 @@ void SceneLighting::UpdateLampCache() {
 	hashIn(m_Settings.ShadowStrength);
 	hashIn(m_Settings.LightShadowField ? 1.0F : 0.0F);
 	hashIn(m_Settings.LightShadowSoftness);
+	hashIn(m_Settings.SoftWallLight ? 1.0F : 0.0F);
 	hashIn(static_cast<float>(lamps.size()));
 	if (signature != m_LampCacheSignature) {
 		relightAll = true;
