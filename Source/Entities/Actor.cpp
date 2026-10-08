@@ -2289,7 +2289,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());
-	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch"};
+	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble"};
 	auto stepName = [](int kind) { return kind >= 0 && kind < static_cast<int>(std::size(stepNames)) ? std::string(stepNames[kind]) : std::string("none"); };
 	fields.push_back({"step", stepName(GetMovePathStepKind()), true});
 	fields.push_back({"nextStep", stepName(GetMovePathNextStepKind()), true});

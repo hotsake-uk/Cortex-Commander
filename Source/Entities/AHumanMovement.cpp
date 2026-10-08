@@ -1066,12 +1066,13 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 		if (index > 30) {
 			break;
 		}
-		// (A leg up or down a ladder is climbed, a leap is leapt and a mantle pulled up onto: no flight, and where it ends is no landing for one.)
+		// (A leg up or down a ladder is climbed, a leap is leapt, a mantle pulled up onto and a scramble scrambled up: no flight, and where it
+		// ends is no landing for one.)
 		PathStepKind legKind = kindIt != m_MovePathKinds.end() ? *kindIt : PathStepKind::Walk;
 		if (kindIt != m_MovePathKinds.end()) {
 			++kindIt;
 		}
-		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap || legKind == PathStepKind::Mantle) {
+		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap || legKind == PathStepKind::Mantle || legKind == PathStepKind::Scramble) {
 			if (airborne) {
 				break;
 			}
@@ -2404,7 +2405,7 @@ int AHuman::MoveAlongRoute() {
 	bool crawlNear = crawl && toPoint.MagnitudeIsLessThan(h * 0.65F);
 	// What is a short stride ahead, the body's whole outline looked at (see SenseAhead): the walk's own eyes, besides the route's.
 	Sensed sensed;
-	if (std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs) {
+	if (std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs && kind != PathStepKind::Scramble) {
 		sensed = SenseAhead(toPoint.m_X < 0.0F ? -1.0F : 1.0F, floorY, standing);
 	}
 	if (sensed.gapUnder) {
@@ -2447,7 +2448,12 @@ int AHuman::MoveAlongRoute() {
 		ctrl.SetState(BODY_PRONE, true);
 	}
 	bool crouch = false;
-	if (!prone && !steep) {
+	if (!prone && kind == PathStepKind::Scramble) {
+		// Up a rough slope too steep for stairs (LM-10): walked at crouched, so the body leans into the face and the arms find holds and
+		// climb (AHuman's arm climbing on the walk), not jetted or hopped.
+		crouch = true;
+		mover.crouchHoldTimer.Reset();
+	} else if (!prone && !steep) {
 		if (crouchFits) {
 			crouch = true;
 			mover.crouchHoldTimer.Reset();
@@ -2466,6 +2472,9 @@ int AHuman::MoveAlongRoute() {
 	}
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+	} else if (kind == PathStepKind::Scramble && above > h * 0.1F) {
+		// (Under the top of a scramble, still on the face: on up it the way the body faces, which is the way the slope goes.)
+		ctrl.SetState(m_HFlipped ? MOVE_LEFT : MOVE_RIGHT, true);
 	}
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
