@@ -3,6 +3,7 @@
 #include "PresetMan.h"
 #include "ConsoleMan.h"
 
+#include <algorithm>
 #include <array>
 #include <list>
 #include <mutex>
@@ -78,6 +79,7 @@ namespace {
 				if (!weather) {
 					continue;
 				}
+				// Presets come module by module, each module's in the order its files define them (DataModule keeps its type lists in read order).
 				// A later module's preset of the same name replaces an earlier one, built-in or not.
 				auto builtIn = std::find(c_BuiltInNames.begin(), c_BuiltInNames.end(), weather->GetPresetName());
 				if (builtIn != c_BuiltInNames.end()) {
