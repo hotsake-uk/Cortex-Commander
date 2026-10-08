@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "TerrainCollapse.h"
 #include "ConsoleMan.h"
 #include "SmokeGrid.h"
 #include "WeatherEffects.h"
@@ -2443,6 +2444,11 @@ void AHuman::PreControllerUpdate() {
 					m_WalkAngle[BGROUND] = Matrix();
 				} else {
 					m_StrideFrame = true;
+					// A foot coming down on sand disturbs it, shoving it the way the unit is going.
+					if (AtomGroup* foot = (m_pFGLeg && m_pFGFootGroup) ? m_pFGFootGroup : m_pBGFootGroup; foot && std::abs(m_Vel.m_X) > 0.3F) {
+						Vector footPos = foot->GetLimbPos(m_HFlipped);
+						TerrainCollapse::NoteFootfall(static_cast<int>(footPos.m_X), static_cast<int>(footPos.m_Y), m_Vel.m_X < 0.0F ? -1 : 1, std::abs(m_Vel.m_X));
+					}
 					RunScriptedFunctionInAppropriateScripts("OnStride");
 				}
 			}

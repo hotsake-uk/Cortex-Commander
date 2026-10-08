@@ -180,6 +180,7 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BurnSpread", { reader >> m_Behaviour.BurnSpread; });
 	MatchProperty("LeavesAsh", { reader >> m_Behaviour.LeavesAsh; });
 	MatchProperty("BurnBlast", { reader >> m_Behaviour.BurnBlast; });
+	MatchProperty("Scuffs", { reader >> m_Behaviour.Scuffs; });
 	MatchProperty("Douses", { reader >> m_Behaviour.Douses; });
 	MatchProperty("FreezesTo", { reader >> m_Behaviour.FreezesTo; });
 	MatchProperty("MeltsTo", { reader >> m_Behaviour.MeltsTo; });
@@ -255,6 +256,7 @@ int Material::Save(Writer& writer) const {
 		number("LiquidWeight", b.LiquidWeight);
 		number("SlideChance", b.SlideChance);
 		number("Sticky", b.Sticky);
+		number("Scuffs", b.Scuffs);
 		text("Burns", b.Burns);
 		number("BurnMinTicks", b.BurnMinTicks);
 		number("BurnMaxTicks", b.BurnMaxTicks);

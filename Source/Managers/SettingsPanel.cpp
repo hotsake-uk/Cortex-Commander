@@ -585,6 +585,8 @@ void DebugMan::SettingsGUI() {
 		SliderI("Loose scraps it flattens (pixels)", &tuning.CrushPixels, 0, 300);
 		Tip("A falling piece goes through loose bits of ground up to this size instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
 		Slider("How hard a landing cracks a piece", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
+		Slider("Sand disturbed by walking", &tuning.ScuffStrength, 0.0F, 3.0F);
+		Tip("Units walking or running on sand and other loose ground knock a few surface pixels loose and shove them the way they go, so a slope slumps a little. 0: off. Mod materials opt in with Scuffs in their ini.");
 		Slider("Seconds still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();

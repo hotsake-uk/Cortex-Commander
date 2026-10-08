@@ -61,6 +61,7 @@ namespace {
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
+	std::array<float, 256> s_Scuff{}; //!< How readily walking on a material knocks it loose, 0 to 1.
 	int s_IceMaterial = 0;
 	int s_WaterMaterial = 0;
 	int s_WaterColor = 0;
@@ -74,6 +75,7 @@ namespace {
 		s_WaterMaterial = 0;
 		s_Density.fill(1.0F);
 		s_Toughness.fill(60.0F);
+		s_Scuff.fill(0.0F);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -81,6 +83,7 @@ namespace {
 			}
 			s_Density[id] = std::clamp(material->GetPixelDensity(), 0.05F, 50.0F);
 			s_Toughness[id] = std::clamp(material->GetIntegrity(), 1.0F, 600.0F);
+			s_Scuff[id] = std::clamp(material->GetBehaviour().Scuffs, 0.0F, 1.0F);
 			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
 			const std::string& name = material->GetPresetName();
 			if (name == "Ice") {
@@ -195,6 +198,14 @@ namespace {
 		float Reach, Push;
 	};
 	std::vector<BlastRequest> s_Blasts;
+
+	/// A foot coming down, queued from the units' updates.
+	struct Footfall {
+		int X, Y, Direction;
+		float Speed;
+	};
+	std::vector<Footfall> s_Footfalls;
+	constexpr size_t c_MaxFootfalls = 64;
 
 	/// What the checks know about each terrain pixel. A flat array, a byte per pixel: with hash sets a single check of a big crater took 20 to 40 ms, a visible hitch after every blast.
 	enum PixelState : unsigned char {
@@ -1705,7 +1716,59 @@ namespace {
 		Stamp(terrain, body);
 		s_Bodies.push_back(std::move(body));
 	}
+
+	/// A step on loose ground: the few surface pixels just ahead of the foot (in the way the unit is going) come loose and are pushed along, so a run down a sand slope slumps it a little.
+	void Scuff(SLTerrain* terrain, const Footfall& step) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int depth = tuning.ScuffStrength >= 1.5F ? 3 : 2;
+		std::vector<int> piece;
+		float scuffiness = 0.0F;
+		for (int column = 0; column < 3; ++column) {
+			int x = step.X + step.Direction * (column + 1);
+			if (!WrapInWorld(x, step.Y)) {
+				continue;
+			}
+			// The surface of this column near the foot: the first ground with air above it.
+			for (int y = std::max(step.Y - 3, 1); y < std::min(step.Y + 5, s_Height); ++y) {
+				int material = materialBitmap->line[y][x];
+				if (material == g_MaterialAir || materialBitmap->line[y - 1][x] != g_MaterialAir) {
+					continue;
+				}
+				for (int below = 0; below < depth && y + below < s_Height; ++below) {
+					int key = (y + below) * s_Width + x;
+					int belowMaterial = materialBitmap->line[y + below][x];
+					if (s_Scuff[belowMaterial] <= 0.0F || s_Fixed[belowMaterial] || (s_State[key] & c_Falling)) {
+						break;
+					}
+					scuffiness = std::max(scuffiness, s_Scuff[belowMaterial]);
+					piece.push_back(key);
+				}
+				break;
+			}
+		}
+		if (static_cast<int>(piece.size()) < c_MinBodyPixels || Random01() > std::min(1.0F, tuning.ScuffStrength * scuffiness * 0.6F)) {
+			return;
+		}
+		size_t before = s_Bodies.size();
+		LiftPiece(terrain, piece);
+		if (s_Bodies.size() > before) {
+			float push = std::clamp(tuning.ScuffStrength, 0.0F, 2.0F) * std::clamp(step.Speed, 0.4F, 1.5F);
+			s_Bodies.back().Vel += glm::vec2(static_cast<float>(step.Direction) * (0.35F + 0.25F * Random01()) * push, -0.25F * push);
+			s_Bodies.back().Still = 0;
+		}
+	}
 } // namespace
+
+void TerrainCollapse::NoteFootfall(int x, int y, int direction, float speed) {
+	if (!s_Enabled || s_Tuning.ScuffStrength <= 0.0F || x < 0 || y < 0 || direction == 0) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Footfalls.size() < c_MaxFootfalls) {
+		s_Footfalls.push_back({x, y, direction < 0 ? -1 : 1, speed});
+	}
+}
 
 void TerrainCollapse::QueueCheck(const Vector& position, float radius) {
 	if (!s_Enabled) {
@@ -1791,6 +1854,7 @@ void TerrainCollapse::Update() {
 	}
 	long long now = g_TimerMan.GetSimUpdateCount();
 	std::vector<ChunkRequest> chunks;
+	std::vector<Footfall> footfalls;
 	std::vector<Check> pending;
 	{
 		std::scoped_lock lock(s_QueueMutex);
@@ -1799,6 +1863,7 @@ void TerrainCollapse::Update() {
 		std::sort(s_Pending.begin(), s_Pending.end(), [](const Check& a, const Check& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 		pending.swap(s_Pending);
 		chunks.swap(s_ChunkRequests);
+		footfalls.swap(s_Footfalls);
 	}
 	for (const Check& check: pending) {
 		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
@@ -1808,6 +1873,11 @@ void TerrainCollapse::Update() {
 	}
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
+	}
+	// Steps on loose ground, in a fixed order, a few an update.
+	std::sort(footfalls.begin(), footfalls.end(), [](const Footfall& a, const Footfall& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Direction < b.Direction); });
+	for (size_t i = 0; i < footfalls.size() && i < 8; ++i) {
+		Scuff(terrain, footfalls[i]);
 	}
 	// Explosions throw loose pieces: the ones still moving, and ones lying where they came to rest in the last minute, which are lifted out of the ground again.
 	{
@@ -1962,6 +2032,7 @@ void TerrainCollapse::Clear() {
 	s_Pending.clear();
 	s_Scheduled.clear();
 	s_ChunkRequests.clear();
+	s_Footfalls.clear();
 }
 
 int TerrainCollapse::GetCollapsedCount() {
