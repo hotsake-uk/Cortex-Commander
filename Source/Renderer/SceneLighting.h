@@ -33,6 +33,13 @@ namespace RTE {
 		/// @param strength 0 to 1.
 		void AddBlastPulse(float strength) { m_BlastPulse = std::max(m_BlastPulse, strength); }
 
+		/// How badly the unit a player screen's player controls is hurt, 0 (fine) to 1 (nearly dead), for the grade to answer (LightingSettings::EventLooks). Every frame, before LightPlayerScreen.
+		void SetScreenHurt(int screenIndex, float hurt) {
+			if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
+				m_ScreenHurtTarget[screenIndex] = std::clamp(hurt, 0.0F, 1.0F);
+			}
+		}
+
 		/// Constructor.
 		/// @param settings The settings to use, not owned. Read every frame, so they can be changed live.
 		explicit SceneLighting(LightingSettings& settings);
@@ -185,6 +192,11 @@ namespace RTE {
 		float m_MoonHours = 0.0F; //!< Where the moon is along its path across the sky, in sun-path hours (6 rising, 18 setting).
 		float m_BlastPulse = 0.0F; //!< Lens smear from a big blast, fading out.
 		double m_BlastPulseLastTime = 0.0; //!< Real seconds when the pulse was last faded.
+		float m_ScreenHurtTarget[c_MaxScreens] = {}; //!< Per player screen, how hurt its player's unit is (SetScreenHurt).
+		float m_ScreenHurt[c_MaxScreens] = {}; //!< And how much the grade shows it, easing towards that.
+		float m_ScreenWarmthTarget[c_MaxScreens] = {}; //!< Per player screen, how much burning terrain there is around its middle, 0 to 1.
+		float m_ScreenWarmth[c_MaxScreens] = {}; //!< And how much the grade shows it, easing towards that.
+		double m_EventLookLastTime[c_MaxScreens] = {}; //!< Real seconds when each screen's event looks last eased.
 		float m_Lightning = 0.0F; //!< Current lightning flash brightness.
 		float m_LightningSecondsLeft = 0.0F; //!< Time left in the current flash.
 		float m_NextLightningSeconds = 8.0F; //!< Sim seconds until the next flash.

@@ -73,50 +73,108 @@ namespace RTE {
 			LookGritty,
 			LookVivid,
 			LookNoir,
-			LookCount
+			LookCount,
+			// Looks that events push the grade towards for a moment (LightingSettings::EventLooks); not offered as a look of their own.
+			LookHurt = LookCount, //!< Drained, dark at the edges, the shadows reddened: badly wounded.
+			LookFlash, //!< Washed out, warm and glowing: the moment after a huge blast.
+			LookWarm, //!< Warm and a little richer: standing by a fire.
+			LookAllCount
 		};
 
-		/// Sets the grading, grain, vignette and bloom to one of the ready-made looks. Natural is the defaults.
-		void ApplyLook(int look) {
-			Saturation = 1.05F;
-			Contrast = 1.0F;
-			Temperature = 0.0F;
-			Tint = 0.0F;
-			Vignette = 0.15F;
-			FilmGrain = 0.0F;
-			BloomIntensity = 0.5F;
-			ShadowTint = {1.0F, 1.0F, 1.0F};
-			HighlightTint = {1.0F, 1.0F, 1.0F};
+		/// The grade a look sets: the fields ApplyLook changes, on their own.
+		struct GradeLook {
+			float Saturation = 1.05F;
+			float Contrast = 1.0F;
+			float Temperature = 0.0F;
+			float Tint = 0.0F;
+			float Vignette = 0.15F;
+			float FilmGrain = 0.0F;
+			float BloomIntensity = 0.5F;
+			glm::vec3 ShadowTint = {1.0F, 1.0F, 1.0F};
+			glm::vec3 HighlightTint = {1.0F, 1.0F, 1.0F};
+		};
+
+		/// Gets the grade of one of the looks, ready-made or event (Natural for anything else).
+		static GradeLook LookGrade(int look) {
+			GradeLook grade;
 			switch (look) {
 				case LookGritty:
 					// Drained and hard, with cold shadows and a little grain.
-					Saturation = 0.78F;
-					Contrast = 1.16F;
-					Temperature = -0.08F;
-					Vignette = 0.32F;
-					FilmGrain = 0.22F;
-					ShadowTint = {0.9F, 0.97F, 1.08F};
-					HighlightTint = {1.05F, 1.0F, 0.94F};
+					grade.Saturation = 0.78F;
+					grade.Contrast = 1.16F;
+					grade.Temperature = -0.08F;
+					grade.Vignette = 0.32F;
+					grade.FilmGrain = 0.22F;
+					grade.ShadowTint = {0.9F, 0.97F, 1.08F};
+					grade.HighlightTint = {1.05F, 1.0F, 0.94F};
 					break;
 				case LookVivid:
 					// Rich colour and glowing lights.
-					Saturation = 1.32F;
-					Contrast = 1.07F;
-					Temperature = 0.06F;
-					Vignette = 0.1F;
-					BloomIntensity = 0.75F;
+					grade.Saturation = 1.32F;
+					grade.Contrast = 1.07F;
+					grade.Temperature = 0.06F;
+					grade.Vignette = 0.1F;
+					grade.BloomIntensity = 0.75F;
 					break;
 				case LookNoir:
 					// Black and white, deep contrast, heavy vignette and grain.
-					Saturation = 0.0F;
-					Contrast = 1.28F;
-					Vignette = 0.42F;
-					FilmGrain = 0.3F;
-					BloomIntensity = 0.6F;
+					grade.Saturation = 0.0F;
+					grade.Contrast = 1.28F;
+					grade.Vignette = 0.42F;
+					grade.FilmGrain = 0.3F;
+					grade.BloomIntensity = 0.6F;
+					break;
+				case LookHurt:
+					grade.Saturation = 0.35F;
+					grade.Contrast = 1.1F;
+					grade.Temperature = -0.03F;
+					grade.Vignette = 0.6F;
+					grade.FilmGrain = 0.15F;
+					grade.ShadowTint = {1.1F, 0.9F, 0.9F};
+					break;
+				case LookFlash:
+					grade.Saturation = 0.55F;
+					grade.Contrast = 0.85F;
+					grade.Temperature = 0.12F;
+					grade.Vignette = 0.0F;
+					grade.FilmGrain = 0.1F;
+					grade.BloomIntensity = 1.4F;
+					grade.ShadowTint = {1.1F, 1.05F, 0.95F};
+					grade.HighlightTint = {1.1F, 1.08F, 1.0F};
+					break;
+				case LookWarm:
+					grade.Saturation = 1.12F;
+					grade.Contrast = 1.02F;
+					grade.Temperature = 0.22F;
+					grade.Tint = 0.02F;
+					grade.Vignette = 0.18F;
+					grade.BloomIntensity = 0.62F;
+					grade.ShadowTint = {1.05F, 0.98F, 0.9F};
+					grade.HighlightTint = {1.06F, 1.0F, 0.92F};
 					break;
 				default:
 					break;
 			}
+			return grade;
+		}
+
+		/// Gets the grade these settings set now.
+		GradeLook CurrentGrade() const {
+			return {Saturation, Contrast, Temperature, Tint, Vignette, FilmGrain, BloomIntensity, ShadowTint, HighlightTint};
+		}
+
+		/// Sets the grading, grain, vignette and bloom to one of the ready-made looks. Natural is the defaults.
+		void ApplyLook(int look) {
+			GradeLook grade = LookGrade(look < LookCount ? look : LookNatural);
+			Saturation = grade.Saturation;
+			Contrast = grade.Contrast;
+			Temperature = grade.Temperature;
+			Tint = grade.Tint;
+			Vignette = grade.Vignette;
+			FilmGrain = grade.FilmGrain;
+			BloomIntensity = grade.BloomIntensity;
+			ShadowTint = grade.ShadowTint;
+			HighlightTint = grade.HighlightTint;
 		}
 
 		/// Sets only the shadow effects to a preset's values: directional daylight from Low up, shadows from solid objects and contact shading from Medium up.
@@ -217,6 +275,8 @@ namespace RTE {
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
+		bool EventLooks = true; //!< The grade answers what happens: it flashes with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire; scripts can pulse it and crossfade between looks. Off: the grade stays as set, as before.
+		float EventLookStrength = 1.0F; //!< How strongly events push the grade, 0 to 2.
 		bool DepthOfField = false; //!< Blur what's nearer or further than the focus by how far it is from it, like a camera lens. Off: everything is sharp as before.
 		float DepthOfFieldFocus = 0.0F; //!< Where the focus is: 0 the battlefield (units and terrain), 1 the furthest background.
 		float DepthOfFieldStrength = 1.0F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).

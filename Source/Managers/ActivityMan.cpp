@@ -527,6 +527,8 @@ int ActivityMan::StartActivity(Activity* activity) {
 	g_PostProcessMan.SetPostShader("");
 	// Focus effects a script asked for belong to its activity.
 	g_PostProcessMan.ClearScriptFocus();
+	// So do grade pulses and look blends.
+	g_PostProcessMan.ClearEventLooks();
 	g_FrameMan.ClearScreenText();
 
 	// Reset the mouse input to the center
