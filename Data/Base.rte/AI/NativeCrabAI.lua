@@ -84,6 +84,14 @@ function NativeCrabAI:Update(Owner)
 			self.UnseenTarget = nil;
 			self.OldTargetPos = nil;
 			self.fire = false;
+			-- The fighting rules' state goes too, as the human's does: a crab a player took over mid-retreat kept its retreating tag, and was a
+			-- "move" order to the rules (and left alone by the sandbox) ever after.
+			self.closingIn = false;
+			self.Cover = nil;
+			self.Flank = nil;
+			self.Retreat = nil;
+			Owner:RemoveNumberValue("AIRetreat");
+			Owner:RemoveNumberValue("AIFlank");
 			self.SentryFacing = Owner.HFlipped;
 			self.lastAIMode = Actor.AIMODE_NONE;
 		end
@@ -444,8 +452,9 @@ function NativeCrabAI:CreateSuppressBehavior(Owner)
 		self.NextBehavior = coroutine.create(CrabBehaviors.ShootArea);
 		self.NextBehaviorName = "ShootArea";
 	else
-		if self.FirearmIsEmpty then
-			self:ReloadFirearms();
+		-- (The crab's, not the AI table's: read off the table, it was never set, and the reload never happened.)
+		if Owner.FirearmIsEmpty then
+			Owner:ReloadFirearms();
 		end
 		return;
 	end
