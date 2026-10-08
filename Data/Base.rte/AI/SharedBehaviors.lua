@@ -2057,6 +2057,165 @@ function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 	end
 end
 
+-- An attack order's own targeting, run by the unit's AI (it was the sandbox's once-a-second RetargetAttackers poll, which re-sent units
+-- from outside and pulled them out of fights the AI had chosen). Called every tick by the human and crab AIs before they look for a new
+-- behaviour, so a redirect made here is taken up the same tick. It only steers a unit that has nothing to fight: one with a target in
+-- sight, falling back, flanking or burning is left to that. In order:
+--   an enemy the player picked (OrderTargetID) is kept after while it lives;
+--   one the unit is already going for, whoever picked it, is left alone;
+--   told to attack towards a place, it goes for the nearest enemy within 500 px of the place, else back to the place and stands ready;
+--   otherwise it goes for the nearest enemy it has a route to, by route length, trying the few nearest in a straight line. An enemy it
+--   was sent at and stood down from (no route) is skipped for 20 s. Brains only when nothing else is left; never craft.
+function SharedBehaviors.AttackOrderUpdate(AI, Owner)
+	if not Owner.OrderAttack then
+		AI.AttackOrder = nil;
+		return;
+	end
+	local state = AI.AttackOrder;
+	if not state then
+		state = { Timer = Timer(), GaveUpOn = {}, first = true };
+		AI.AttackOrder = state;
+	end
+	-- (Once a second, as the poll was, and at once when an order has been given since the AI's last update: GiveOrder leaves the first pick
+	-- to this. The AI's own writes don't count, as in its new-order check.)
+	if AI.orderSerial ~= nil and Owner.AIOrderSerial ~= AI.orderSerial then
+		state.first = true;
+	end
+	if not state.first and not state.Timer:IsPastSimMS(state.wait or 1000) then
+		return;
+	end
+	state.first = false;
+	state.wait = nil;
+	state.Timer:Reset();
+	if AI.Target or AI.Retreat or AI.Flank or Owner:NumberValueExists("OnFire") or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
+		return;
+	end
+
+	for id, Since in pairs(state.GaveUpOn) do
+		if Since:IsPastSimMS(20000) then
+			state.GaveUpOn[id] = nil;
+		end
+	end
+
+	-- Everyone on the other sides worth going for, and the picked enemies looked up, in one pass.
+	local chosen, autoPicked;
+	local Enemies = {};
+	for Act in MovableMan.Actors do
+		if Act.Team ~= Owner.Team and Act.Team >= 0 and Act.Team < 4 and Act.Status < Actor.DYING and Act.Health > 0 and Act.ClassName ~= "ADoor" then
+			if Owner.OrderTargetID ~= 0 and Act.UniqueID == Owner.OrderTargetID then
+				chosen = Act;
+			end
+			if Owner.OrderAutoTargetID ~= 0 and Act.UniqueID == Owner.OrderAutoTargetID then
+				autoPicked = Act;
+			end
+			if not Act.IgnoredByAI and not IsACraft(Act) then
+				table.insert(Enemies, Act);
+			end
+		end
+	end
+
+	local function goAfter(Enemy, why)
+		Owner:ClearAIWaypoints();
+		Owner:AddAIMOWaypoint(Enemy);
+		Owner.AIMode = Actor.AIMODE_GOTO;
+		SharedBehaviors.Trace(Owner, "attack order: after " .. Enemy.PresetName .. " (" .. why .. ")");
+	end
+
+	local Target = Owner.MOMoveTarget;
+	local chasing = Target and MovableMan:IsActor(Target) and Target.Team ~= Owner.Team and Target.Team >= 0;
+	-- (Waypoints not yet taken up: a waypoint is loaded as the move target only when its route is asked for, so a unit sent a moment ago
+	-- reads as after nothing; re-sent then, it restarted its walk every second.)
+	local sent = Owner.AIMode == Actor.AIMODE_GOTO and Owner:GetWaypointListSize() > 0;
+	if chosen then
+		if not sent and (not chasing or Target.UniqueID ~= chosen.UniqueID) then
+			goAfter(chosen, "its target");
+		end
+		return;
+	end
+	Owner.OrderTargetID = 0;
+	if chasing or sent then
+		return;
+	end
+
+	local function nearestTo(Point, reach)
+		local best, bestDist, bestIsBrain = nil, reach * reach, false;
+		for _, Act in ipairs(Enemies) do
+			local brain = Act:IsInGroup("Brains");
+			local dist = SceneMan:ShortestDistance(Point, Act.Pos, SceneMan.SceneWrapsX).SqrMagnitude;
+			if dist < reach * reach and (not best or (bestIsBrain and not brain) or (brain == bestIsBrain and dist < bestDist)) then
+				best, bestDist, bestIsBrain = Act, dist, brain;
+			end
+		end
+		return best;
+	end
+
+	if Owner.OrderHasAttackPlace then
+		local Place = Owner.OrderAttackPlace;
+		local Enemy = nearestTo(Place, 500);
+		if Enemy then
+			goAfter(Enemy, "near its place");
+		elseif SceneMan:ShortestDistance(Owner.Pos, Place, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(60) and Owner.AIMode ~= Actor.AIMODE_GOTO then
+			Owner:ClearAIWaypoints();
+			Owner:AddAISceneWaypoint(Place);
+			Owner.AIMode = Actor.AIMODE_GOTO;
+			SharedBehaviors.Trace(Owner, "attack order: back to its place");
+		end
+		return;
+	end
+
+	-- Not after anything. The enemy picked for it last time, still there, with no waypoint left, is one it had no route to (a stand-down
+	-- on an impossible route clears the waypoints), so it is given a rest from that one.
+	if autoPicked and Owner:GetWaypointListSize() == 0 then
+		state.GaveUpOn[autoPicked.UniqueID] = Timer();
+	end
+	Owner.OrderAutoTargetID = 0;
+
+	-- The few nearest in a straight line (brains after everyone else), then the shortest route among them.
+	local Candidates = {};
+	for _, Act in ipairs(Enemies) do
+		if not state.GaveUpOn[Act.UniqueID] then
+			table.insert(Candidates, { Act = Act, brain = Act:IsInGroup("Brains"), dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, SceneMan.SceneWrapsX).SqrMagnitude });
+		end
+	end
+	table.sort(Candidates, function(a, b)
+		if a.brain ~= b.brain then
+			return not a.brain;
+		end
+		return a.dist < b.dist;
+	end);
+	local best, bestLength, bestIsBrain = nil, math.huge, false;
+	for i = 1, math.min(#Candidates, 4) do
+		local c = Candidates[i];
+		-- (Once a non-brain with a route is found, brains further down the list can't beat it.)
+		if best and c.brain and not bestIsBrain then
+			break;
+		end
+		local length = SceneMan.Scene:CalculatePathForActor(Owner, Owner.Pos, c.Act.Pos, Owner.Team);
+		if length > 0 then
+			-- (A route cut short at an obstacle ends somewhere else: not a way to the enemy.)
+			local Last;
+			for Point in SceneMan.Scene:GetScenePath() do
+				Last = Point;
+			end
+			if Last and not SceneMan:ShortestDistance(Last, c.Act.Pos, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(Owner.Height + 40) and length < bestLength then
+				best, bestLength, bestIsBrain = c.Act, length, c.brain;
+			end
+		else
+			state.GaveUpOn[c.Act.UniqueID] = Timer();
+		end
+	end
+	if best then
+		goAfter(best, "nearest by route");
+		Owner.OrderAutoTargetID = best.UniqueID;
+	else
+		-- (Nothing it can get to: on guard where it is until something turns up, the order kept, and the searches spaced out.)
+		state.wait = 5000;
+		if Owner.AIMode == Actor.AIMODE_GOTO and Owner:GetWaypointListSize() == 0 and not Owner.MOMoveTarget then
+			Owner.AIMode = Actor.AIMODE_SENTRY;
+		end
+	end
+end
+
 -- Whether the walk of a fall-back is over (got there, or stood down with no route): nothing left of it, the waypoints, the path or
 -- one being worked out. (Not "no GoTo behaviour": that is swapped in a tick or two after the order, and crabs never set it, so a fall-back
 -- was "arrived" the tick after it began and its wait ran down wherever the unit was.) A second's grace first, for the order to be taken up.
