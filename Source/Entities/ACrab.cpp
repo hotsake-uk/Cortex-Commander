@@ -713,7 +713,7 @@ bool ACrab::Look(float FOVSpread, float range) {
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// The smallest dimension of the fog block, divided by two, but always at least one, as the step for the casts
 	int step = (int)g_SceneMan.GetUnseenResolution(m_Team).GetSmallest() / 2;
