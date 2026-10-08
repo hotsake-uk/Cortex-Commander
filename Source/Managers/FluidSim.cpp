@@ -742,7 +742,7 @@ void FluidSim::SetBloodFlows(bool enabled) {
 
 void FluidSim::Pour(const Vector& position, float radius, const char* liquidName) {
 	std::scoped_lock lock(s_QueueMutex);
-	s_Pours.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water"});
+	s_Pours.push_back({position.GetFloorIntX(), position.GetFloorIntY(), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water"});
 }
 
 void FluidSim::OnParticleSettled(const MovableObject* particle) {
@@ -809,7 +809,7 @@ void FluidSim::Splash(const Vector& position, float radius, float share, float s
 	}
 	std::scoped_lock lock(s_QueueMutex);
 	if (s_Splashes.size() < 64) {
-		s_Splashes.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), std::clamp(static_cast<int>(radius), 2, 80), std::clamp(share, 0.0F, 1.0F), std::clamp(speed, 1.0F, 30.0F)});
+		s_Splashes.push_back({position.GetFloorIntX(), position.GetFloorIntY(), std::clamp(static_cast<int>(radius), 2, 80), std::clamp(share, 0.0F, 1.0F), std::clamp(speed, 1.0F, 30.0F)});
 	}
 }
 
@@ -818,7 +818,7 @@ void FluidSim::Disturb(const Vector& position, float radius) {
 		return;
 	}
 	std::scoped_lock lock(s_QueueMutex);
-	s_Disturbances.emplace_back(glm::ivec2(static_cast<int>(position.m_X), static_cast<int>(position.m_Y)), static_cast<int>(radius));
+	s_Disturbances.emplace_back(glm::ivec2(position.GetFloorIntX(), position.GetFloorIntY()), static_cast<int>(radius));
 }
 
 namespace {
@@ -1478,7 +1478,10 @@ void FluidSim::Update() {
 			}
 			s_Active.Remove(key);
 			// Running along the level without getting any lower counts towards coming to rest, so ripples die down.
-			int newStill = gotLower ? 0 : (waitingToSearch ? still : still + 1);
+			// (One waiting for a level search counts toward rest a quarter as fast, not at all: with the search budget spent lower down every update, as
+			// in a map-wide flood, it held its count where it qualifies for ever and neither rested nor searched.)
+			bool countsStill = !waitingToSearch || ((simUpdate + key) & 3) == 0;
+			int newStill = gotLower ? 0 : (countsStill ? still + 1 : still);
 			// (What boils off stays awake at the surface until it has: see below.)
 			if (newStill < c_RestSteps || s_Evaporates[material] > 0.0F) {
 				// (Put, not Add: an entry still there from a pixel erased outside this step, by a bullet or a script, is taken over rather than
@@ -1493,7 +1496,8 @@ void FluidSim::Update() {
 			// Powder that can't slide goes to rest sooner: it has nowhere to level out to.
 			// (Never at the surface for what boils off: it would sit there for good instead of going in seconds.)
 			bool boilingOff = s_Evaporates[ownMaterial] > 0.0F && canMoveTo(x, y - 1);
-			if (!waitingToSearch && s_Active.StillStep(key) >= (kind == Liquid::Powder ? 8 : c_RestSteps) && !boilingOff) {
+			bool countsStill = !waitingToSearch || ((simUpdate + key) & 3) == 0;
+			if (countsStill && s_Active.StillStep(key) >= (kind == Liquid::Powder ? 8 : c_RestSteps) && !boilingOff) {
 				settled.push_back(key);
 			}
 		}
