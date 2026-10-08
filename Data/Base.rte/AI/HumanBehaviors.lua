@@ -1654,7 +1654,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 							if minThrowVel == 0 then
 								minThrowVel = maxThrowVel * 0.2;
 							end
-							aim = HumanBehaviors.GetGrenadeAngle(AimPoint, Vector(), Grenade.MuzzlePos, maxThrowVel);
+							aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, maxThrowVel);
 							if aim then
 								aim = aim - Owner.RotAngle;
 								ThrowTimer:Reset();
@@ -1662,7 +1662,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 								local maxAim = aim;
 
 								-- try again with an average throw vel
-								aim = HumanBehaviors.GetGrenadeAngle(AimPoint, Vector(), Grenade.MuzzlePos, (maxThrowVel + minThrowVel) * 0.5);
+								aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, (maxThrowVel + minThrowVel) * 0.5);
 								if aim then
 									aimTime = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
 								else

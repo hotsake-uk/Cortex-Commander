@@ -293,6 +293,14 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 		if Owner.FirearmIsReady then
 			AI.deviceState = ACrab.AIMING;
 			local Dist = SceneMan:ShortestDistance(Owner.EyePos, AimPoint, false);
+			-- Lead a moving target as the humans do, by the smoothed velocity (kept, but never used before).
+			local fireVel = ToHDFirearm(Owner.EquippedItem):GetAIFireVel();
+			if fireVel > 0 then
+				local timeToTarget = Dist.Magnitude / fireVel;
+				if timeToTarget * TargetAvgVel.Magnitude > 2 then
+					Dist = SceneMan:ShortestDistance(Owner.EyePos, AimPoint + TargetAvgVel * timeToTarget, false);
+				end
+			end
 
 			if Owner.HFlipped then
 				if Dist.X > 0 then
