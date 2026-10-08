@@ -227,6 +227,7 @@ namespace RTE {
 		float m_SunDiscStrength = 0.0F; //!< How bright the sun's disc is in the sky this frame: none at night, fading at the horizon and under weather.
 		float m_SunArc = 0.0F; //!< Where the sun is along its path, -1 rising to 1 setting.
 		float m_CloudDrift = 0.0F; //!< How far the clouds have drifted with the wind, in scene pixels.
+		float m_CloudCoverSetting = 0.0F; //!< LightingSettings::CloudCover as it was last frame, to tell the setting being moved from the weather changing.
 		float m_CloudCover = -1.0F; //!< How much of the sky is cloud now, 0 to 1: follows the weather, gathering faster than it breaks up. Below 0 until first set.
 		GLTarget m_FlowTexture; //!< The moving liquid, for the water surface (LightingSettings::WaterFlowSurface), in the light grid's cells: R sideways speed (128 none), G speed, B how lately it moved, A 255 where any moves.
 		std::vector<unsigned char> m_Flow; //!< Four bytes per grid cell, as m_FlowTexture.
