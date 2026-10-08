@@ -294,9 +294,14 @@ namespace RTE {
 
 		/// Recalculates the costs between all the PathNodes touching a deque of specific rectangular areas (which will be wrapped). Also resets the pather itself, if necessary.
 		/// @param boxList The deque of Boxes representing the updated areas.
-		/// @param nodeUpdateLimit The maximum number of PathNodes we'll try to update this frame. True PathNode update count can be higher if we received a big box, as we always do at least 1 box.
-		/// @return The set of PathNode ids that were updated.
+		/// Every box is taken off the deque and its nodes marked as waiting (a node waits once however many boxes touch it); then the oldest waiting
+		/// nodes, up to the limit, are sampled again. The rest wait for the next call.
+		/// @param nodeUpdateLimit The maximum number of PathNodes we'll update this call.
+		/// @return The ids of the PathNodes that were sampled again, or none if no cost changed.
 		std::vector<int> RecalculateAreaCosts(std::deque<Box>& boxList, size_t nodeUpdateLimit);
+
+		/// How many nodes are marked as changed and not yet sampled again (see RecalculateAreaCosts).
+		size_t GetWaitingNodeCount() const { return m_WaitingNodes.size(); }
 
 		/// Helper function for getting the PathNode ids in a Box.
 		/// @param box The Box of which all PathNodes it touches should be returned.
@@ -360,6 +365,8 @@ namespace RTE {
 
 		MicroPather* m_Pather; //!< The actual pathing object that does the pathfinding work. Owned.
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
+		std::deque<int> m_WaitingNodes; //!< Ids of nodes in changed areas not sampled again yet, oldest first (see RecalculateAreaCosts).
+		std::vector<bool> m_NodeWaiting; //!< Per node id, whether it is in m_WaitingNodes.
 		unsigned int m_NodeDimension; //!< The width and height of each PathNode, in pixels on the scene.
 		unsigned char m_LadderMaterial = 0; //!< The Ladder material's index (the bunkers' rungs), 0 when there is none; looked up once at creation.
 		std::array<unsigned char, 5> m_LiquidMaterials = {}; //!< The liquids' material indices, by PathLiquid (0 when the scene has none); looked up once at creation.

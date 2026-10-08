@@ -2398,6 +2398,7 @@ int Scene::SetOwnerOfAllDoors(int team, int player) {
 void Scene::ResetPathFinding() {
 	GetPathFinder(Activity::Teams::NoTeam).RecalculateAllCosts();
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+		m_TeamGridSkippedNodes[team].clear();
 		g_MovableMan.OverrideMaterialDoors(true, team);
 		GetPathFinder(static_cast<Activity::Teams>(team)).RecalculateAllCosts();
 		g_MovableMan.OverrideMaterialDoors(false, team);
@@ -2419,6 +2420,19 @@ void Scene::UpdatePathFinding() {
 	// ground that isn't. A hundred a call, as it was, took seconds to take in one blast or one built wall.
 	constexpr int nodeUpdatesPerCall = 2000;
 	constexpr int maxUnupdatedMaterialAreas = 1000;
+	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
+	// Whether a team's grid skipped nodes while the team had no part in the scene and now has one (see m_TeamGridSkippedNodes).
+	auto teamGridBehind = [this]() {
+		if (!g_ActivityMan.ActivityRunning()) {
+			return false;
+		}
+		for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+			if (!m_TeamGridSkippedNodes[team].empty() && (g_ActivityMan.GetActivity()->TeamActive(team) || g_MovableMan.TeamHasActors(team))) {
+				return true;
+			}
+		}
+		return false;
+	};
 
 	// The node costs can't change under a path that is being worked out, so wait for requests in flight; but not for ever: with units asking for paths
 	// every frame the grid never got updated at all, so after a moment the requests are waited out instead.
@@ -2430,17 +2444,18 @@ void Scene::UpdatePathFinding() {
 		};
 	}
 	if (requestsInFlight) {
-		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty()) || !starvedTimer.IsPastRealMS(300)) {
+		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty() && noTeamPathFinder.GetWaitingNodeCount() == 0 && !teamGridBehind()) || !starvedTimer.IsPastRealMS(300)) {
 			return;
 		}
 		BlockUntilAllPathingRequestsComplete();
 	}
 	starvedTimer.Reset();
 
-	int nodesToUpdate = nodeUpdatesPerCall / g_ActivityMan.GetActivity()->GetTeamCount();
-	if (m_pTerrain->GetUpdatedMaterialAreas().size() > maxUnupdatedMaterialAreas) {
-		// Our list of boxes is getting too big and a bit out of hand, so clear everything.
-		nodesToUpdate = std::numeric_limits<int>::max();
+	int nodesToUpdate = nodeUpdatesPerCall / std::max(1, g_ActivityMan.GetActivity()->GetTeamCount());
+	if (m_pTerrain->GetUpdatedMaterialAreas().size() > maxUnupdatedMaterialAreas || noTeamPathFinder.GetWaitingNodeCount() > static_cast<size_t>(nodesToUpdate) * 4) {
+		// A big backlog (a collapse, a flood, a demolition) catches up four times as fast, but over several calls: sampling all of it at once, as
+		// past 1,000 boxes it used to, stalled the frame for as long as it took. The boxes themselves are all taken in every call.
+		nodesToUpdate *= 4;
 	}
 
 	// (For the terrain update boxes overlay: the areas waiting, before this call takes some of them.)
@@ -2450,13 +2465,12 @@ void Scene::UpdatePathFinding() {
 	}
 
 	// Update our shared pathFinder
-	std::vector<int> updatedNodes = GetPathFinder(Activity::Teams::NoTeam).RecalculateAreaCosts(m_pTerrain->GetUpdatedMaterialAreas(), nodesToUpdate);
+	std::vector<int> updatedNodes = noTeamPathFinder.RecalculateAreaCosts(m_pTerrain->GetUpdatedMaterialAreas(), nodesToUpdate);
 
 	// Doors that changed hands change no material, so the NoTeam grid saw nothing there; the team grids still have to sample them again, the
 	// side that took a door no longer seeing it as a wall and the side that lost it seeing it as one.
 	if (!m_TeamGridUpdateAreas.empty()) {
 		std::unordered_set<int> nodeIds(updatedNodes.begin(), updatedNodes.end());
-		PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
 		for (const Box& area: m_TeamGridUpdateAreas) {
 			for (int nodeId: noTeamPathFinder.GetNodeIdsInBox(area, true)) {
 				nodeIds.insert(nodeId);
@@ -2475,20 +2489,35 @@ void Scene::UpdatePathFinding() {
 		DebugOverlays::NoteTerrainUpdate(waitingAreas, nodePositions);
 	}
 
-	if (!updatedNodes.empty()) {
+	if (g_ActivityMan.ActivityRunning()) {
 		// Update each team's pathFinder
 		for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
-			// Every team's grid, active in the activity or not: the sandbox's AI-run teams aren't the activity's, so their grids never took in
-			// a beam placed after the scene started, and their units pathed on the bare terrain under it (the combat gym's squad was given a
-			// route down through the valley to a leader standing 300 px along the same beam).
-			if (!g_ActivityMan.ActivityRunning()) {
+			// Every team with a part in the scene: in the activity, or with units in it. The sandbox's AI-run teams aren't the activity's, so
+			// their grids never took in a beam placed after the scene started, and their units pathed on the bare terrain under it (the combat
+			// gym's squad was given a route down through the valley to a leader standing 300 px along the same beam). A team with neither has
+			// nobody to path for, so its grid only notes the nodes it skipped and samples them once the team has a part (its first unit lands).
+			// Each changed node otherwise cost five samples, one per grid, where two teams play.
+			std::unordered_set<int>& skipped = m_TeamGridSkippedNodes[team];
+			if (!g_ActivityMan.GetActivity()->TeamActive(team) && !g_MovableMan.TeamHasActors(team)) {
+				skipped.insert(updatedNodes.begin(), updatedNodes.end());
+				continue;
+			}
+			std::vector<int> teamNodes;
+			if (skipped.empty()) {
+				teamNodes = updatedNodes;
+			} else {
+				skipped.insert(updatedNodes.begin(), updatedNodes.end());
+				teamNodes.assign(skipped.begin(), skipped.end());
+				skipped.clear();
+			}
+			if (teamNodes.empty()) {
 				continue;
 			}
 
 			// Remove the material representation of all doors of this team so we can navigate through them (they'll open for us).
 			g_MovableMan.OverrideMaterialDoors(true, team);
 
-			GetPathFinder(static_cast<Activity::Teams>(team)).UpdateNodeList(updatedNodes);
+			GetPathFinder(static_cast<Activity::Teams>(team)).UpdateNodeList(teamNodes);
 
 			// Place back the material representation of all doors of this team so they are as we found them.
 			g_MovableMan.OverrideMaterialDoors(false, team);
@@ -2508,7 +2537,7 @@ void Scene::UpdatePathFinding() {
 		totalMs += ms;
 		worstMs = std::max(worstMs, ms);
 		if (reportTimer.IsPastRealMS(5000)) {
-			g_ConsoleMan.PrintString("PATHLOG grid updates: " + std::to_string(calls) + " calls in 5 s, " + std::to_string(nodes) + " nodes, " + std::to_string(static_cast<int>(totalMs)) + " ms in all, worst " + std::to_string(static_cast<int>(worstMs)) + " ms, " + std::to_string(m_pTerrain->GetUpdatedMaterialAreas().size()) + " areas waiting");
+			g_ConsoleMan.PrintString("PATHLOG grid updates: " + std::to_string(calls) + " calls in 5 s, " + std::to_string(nodes) + " nodes, " + std::to_string(static_cast<int>(totalMs)) + " ms in all, worst " + std::to_string(static_cast<int>(worstMs)) + " ms, " + std::to_string(noTeamPathFinder.GetWaitingNodeCount()) + " nodes waiting");
 			reportTimer.Reset();
 			calls = 0;
 			nodes = 0;
