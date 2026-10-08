@@ -255,12 +255,46 @@ namespace {
 		DigGold,
 		MoveTo
 	};
-	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Dig for gold\0Move to a place\0";
-	// The orders a unit can be made with (a barracks' trainees, a script's units): all but "Move to a place", which needs a place clicked.
-	// (Offered all eight, a barracks told "Dig for gold" or "Move to a place" trained units that did nothing: the number was clamped to
-	// "Do nothing" on the way in.)
-	constexpr const char* c_UnitOrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Dig for gold\0";
-	constexpr int c_LastUnitOrder = static_cast<int>(Order::DigGold);
+	/// What the sandbox says about an order, by Order: one table for the names and for where each may be given, in place of name lists and
+	/// clamps kept in step by hand.
+	struct OrderInfo {
+		const char* Name;
+		bool ForUnit; //!< A unit can be made with it (placed, a barracks' trainees, a script's units). Not "Move to a place", which needs a place clicked.
+	};
+	constexpr OrderInfo c_Orders[] = {
+	    {"Hold position", true},
+	    {"Attack nearest enemy", true},
+	    {"Hunt brains", true},
+	    {"Patrol", true},
+	    {"Go to rally point", true},
+	    {"Do nothing", true},
+	    {"Dig for gold", true},
+	    {"Move to a place", false},
+	};
+	constexpr int c_OrderCount = static_cast<int>(sizeof(c_Orders) / sizeof(c_Orders[0]));
+	static_assert(c_OrderCount == static_cast<int>(Order::MoveTo) + 1, "c_Orders must have an entry for each Order, in its order.");
+	/// How many orders, from the first, a unit can be made with: the unit order lists offer these. (They come first, so a list's index is the order.)
+	constexpr int c_UnitOrderCount = [] {
+		int count = 0;
+		while (count < c_OrderCount && c_Orders[count].ForUnit) {
+			++count;
+		}
+		return count;
+	}();
+	static_assert([] {
+		for (int order = c_UnitOrderCount; order < c_OrderCount; ++order) {
+			if (c_Orders[order].ForUnit) {
+				return false;
+			}
+		}
+		return true;
+	}(), "The orders a unit can be made with must come first in c_Orders.");
+	const char* OrderName(void*, int order) { return c_Orders[order].Name; }
+	/// An order number from outside (a script, a saved barracks) as an order a unit can be made with: anything else holds its position.
+	/// (Offered all eight, a barracks told "Dig for gold" or "Move to a place" trained units that did nothing.)
+	Order UnitOrder(int order) {
+		return order >= 0 && order < c_OrderCount && c_Orders[order].ForUnit ? static_cast<Order>(order) : Order::Hold;
+	}
 	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
 	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
 	constexpr const char* c_AutoTargetTag = "SandboxAutoTarget"; //!< Number value on units told to attack the nearest enemy: the unique ID of the one picked for them, which isn't held to.
@@ -391,12 +425,12 @@ namespace {
 	int s_Team = 1;
 	int s_Order = static_cast<int>(Order::Hold); //!< Units placed hold their position, firing back, until told otherwise.
 
-	/// The order in hand, chosen from the orders a unit can be made with (c_UnitOrderNames), for the unit and barracks tools. The side orders share
+	/// The order in hand, chosen from the orders a unit can be made with (OrderInfo::ForUnit), for the unit and barracks tools. The side orders share
 	/// it: "Move to a place" chosen there shows here as "Hold position", which is what a unit placed with it does, and stays as it is unless a
 	/// choice is made here. (Offered all eight, "Move to a place" was there to pick and did nothing a hold doesn't.)
 	bool UnitOrderCombo(const char* label) {
-		int choice = s_Order > c_LastUnitOrder ? static_cast<int>(Order::Hold) : s_Order;
-		if (ImGui::Combo(label, &choice, c_UnitOrderNames)) {
+		int choice = static_cast<int>(UnitOrder(s_Order));
+		if (ImGui::Combo(label, &choice, OrderName, nullptr, c_UnitOrderCount)) {
 			s_Order = choice;
 			return true;
 		}
@@ -2843,7 +2877,7 @@ namespace {
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
 					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
-					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(stroke.Orders == Order::MoveTo ? Order::Hold : stroke.Orders), stroke.Count);
+					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count);
 				}
 				break;
 			case Tool::Extractor:
@@ -4959,8 +4993,8 @@ namespace {
 						}
 						ImGui::EndCombo();
 					}
-					building.Orders = std::clamp(building.Orders, 0, c_LastUnitOrder);
-					ImGui::Combo("Their orders", &building.Orders, c_UnitOrderNames);
+					building.Orders = static_cast<int>(UnitOrder(building.Orders));
+					ImGui::Combo("Their orders", &building.Orders, OrderName, nullptr, c_UnitOrderCount);
 					ImGui::SliderInt("Keeps this many alive", &building.KeepAlive, 1, 20);
 					ImGui::Text("%d alive, %d trained in all. One takes %.0f s%s.", static_cast<int>(building.Alive.size()), building.Produced, Colony::TrainingSeconds(std::max(Sandbox::UnitCost(building.Unit), 20.0F)),
 					            Colony::Free() ? "" : (" and " + std::to_string(static_cast<int>(std::max(Sandbox::UnitCost(building.Unit), 20.0F))) + " supply").c_str());
@@ -5535,7 +5569,7 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	Stroke stroke;
 	stroke.Position = position;
 	stroke.Team = std::clamp(team, 0, c_Sides - 1);
-	stroke.Orders = static_cast<Order>(std::clamp(order, 0, c_LastUnitOrder));
+	stroke.Orders = UnitOrder(order);
 	stroke.Count = std::max(count, 1);
 	stroke.Radius = std::max(count, 1);
 	if (ContainsIgnoringCase(toolName, "Orders") && toolName.size() == 6) {
@@ -5685,7 +5719,7 @@ Actor* Sandbox::SpawnUnit(const std::string& presetName, int team, const Vector&
 		BuildCatalogue();
 	}
 	const Preset* preset = FindPreset(s_Units, presetName);
-	Actor* actor = preset ? CreateUnit(*preset, team, 0, static_cast<Order>(std::clamp(order, 0, c_LastUnitOrder))) : nullptr;
+	Actor* actor = preset ? CreateUnit(*preset, team, 0, UnitOrder(order)) : nullptr;
 	if (!actor) {
 		return nullptr;
 	}
@@ -6330,7 +6364,8 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Orders";
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
-				ImGui::Combo("Orders", &s_Order, c_OrderNames);
+				s_Order = std::clamp(s_Order, 0, c_OrderCount - 1);
+				ImGui::Combo("Orders", &s_Order, OrderName, nullptr, c_OrderCount);
 				if (static_cast<Order>(s_Order) == Order::MoveTo) {
 					// Given by clicking the place: the pointer shows where each unit will stand first.
 					ToolButtons({Tool::OrderMove});
