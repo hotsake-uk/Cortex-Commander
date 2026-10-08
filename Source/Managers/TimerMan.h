@@ -48,6 +48,9 @@ namespace RTE {
 		/// @param updates How many updates.
 		void StepSim(int updates = 1) { m_SimAccumulator += m_DeltaTime * updates; }
 
+		/// Gets whether the simulation is paused (PauseSim): no real time goes to it, only what StepSim lets through.
+		bool IsSimPaused() const { return m_SimPaused; }
+
 		void PauseSim(bool pause = false) {
 			m_SimPaused = pause;
 			if (pause)

@@ -262,6 +262,12 @@ namespace RTE {
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
 
+		/// Gets whether the sandbox's sim state readout is on: what is pausing the world, the AI pause, sim updates per drawn frame, the sandbox's queued and applied tool uses and steps, and the time scale.
+		bool ShowSandboxSimState() const { return m_SandboxSimState; }
+
+		/// Sets gets whether the sandbox's sim state readout is on.
+		void SetShowSandboxSimState(bool show) { m_SandboxSimState = show; }
+
 		/// Gets which units the sandbox orders overlay draws for: 0 none, 1 the sandbox's selection (or inspected units), 2 every unit in view. It shows each unit's order waiting for the next update, its standing order, and a red flash when the standing orders send it again.
 		int SandboxOrdersOverlay() const { return m_SandboxOrdersOverlay; }
 
@@ -525,6 +531,7 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
+		bool m_SandboxSimState; //!< Whether the sandbox's sim state readout is on (see ShowSandboxSimState).
 		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
 		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).
 		bool m_ShowSunDirection; //!< Whether the sun direction overlay is on (see ShowSunDirection).

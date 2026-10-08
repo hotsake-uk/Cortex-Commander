@@ -621,6 +621,8 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("For the sandbox's selected (or inspected) units, or every unit in view: the order waiting for the next update as a dashed white line to where it goes; the standing order over the head (ATTACK #id, ATTACK@ a place, DEFEND, GUARD #leader, MOVE, HOLD) with a line back to the post or place when off it; why it was last sent, for two seconds; and a red flash each time the standing orders send it again on their own.");
 		}
+		Toggle("Sim state", g_SettingsMan.ShowSandboxSimState(), [](bool on) { g_SettingsMan.SetShowSandboxSimState(on); });
+		Tip("A readout in the bottom right: whether the world is paused and by what (the sandbox's tools, photo mode, Freeze simulation, the game's pause), the AI pause, how many sim updates ran for this frame, the sandbox's tool uses queued and applied last update and the steps still wanted, and the time scale against the speed the simulation actually manages.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {

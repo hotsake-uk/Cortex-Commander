@@ -44,6 +44,7 @@
 #include <fstream>
 #include <filesystem>
 #include <sstream>
+#include <cstdio>
 #include <cstdlib>
 #include <algorithm>
 #include <array>
@@ -417,6 +418,7 @@ namespace {
 	bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
 	int s_StepsWanted = 0; //!< Updates to let the paused world do.
+	size_t s_StrokesApplied = 0; //!< How many queued tool uses the last sim update applied, for the sim state readout.
 	unsigned long long s_GodStartUpdate = 0; //!< The simulation update the Sandbox game started on: it runs a moment before it first pauses.
 	float s_PlayHintSeconds = 0.0F; //!< How much longer the reminder of the keys shows after stepping into the character.
 	bool s_Flying = false;
@@ -5895,6 +5897,7 @@ void Sandbox::Update() {
 		return;
 	}
 	ApplyPendingOrders();
+	s_StrokesApplied = strokes.size();
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
@@ -6030,6 +6033,56 @@ namespace {
 	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
 	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
 	/// for two seconds after, and a red flash each time the standing orders send it again.
+	/// The sim state readout (SettingsMan::ShowSandboxSimState), in the bottom right of the picture: what holds the world still (the sandbox's
+	/// tools, photo mode, Freeze simulation, the game's own pause), the AI pause, how many sim updates ran for this drawn frame, the tool uses
+	/// queued, applied last update and steps still wanted, and the time scale against the speed the sim actually manages.
+	void DrawSimState() {
+		if (!g_SettingsMan.ShowSandboxSimState()) {
+			return;
+		}
+		static long long lastCount = -1;
+		long long count = g_TimerMan.GetSimUpdateCount();
+		long long thisFrame = lastCount < 0 ? 0 : count - lastCount;
+		lastCount = count;
+		std::string pausedBy;
+		auto because = [&pausedBy](const char* what) { pausedBy += pausedBy.empty() ? what : std::string(", ") + what; };
+		if (s_PausedByMenus) {
+			because("sandbox tools open");
+		}
+		if (g_DebugMan.IsPhotoModeOpen()) {
+			because("photo mode");
+		}
+		if (g_DebugMan.IsSimFrozen()) {
+			because("Freeze simulation");
+		}
+		if (g_ActivityMan.ActivityPaused()) {
+			because("game paused");
+		}
+		std::vector<std::string> lines;
+		lines.push_back(g_TimerMan.IsSimPaused() ? "world paused" + (pausedBy.empty() ? std::string() : " by " + pausedBy) : std::string("world running") + (pausedBy.empty() ? "" : " (asked to pause by " + pausedBy + ")"));
+		if (Controller::IsAIPaused()) {
+			lines.push_back("AI paused");
+		}
+		lines.push_back("sim updates this frame " + std::to_string(thisFrame) + ", update " + std::to_string(count));
+		lines.push_back("tool uses queued " + std::to_string(s_Queue.size()) + ", applied last update " + std::to_string(s_StrokesApplied) + ", steps wanted " + std::to_string(s_StepsWanted));
+		char speed[64];
+		std::snprintf(speed, sizeof(speed), "time scale x%.2f, sim running at x%.2f", g_TimerMan.GetTimeScale(), g_TimerMan.GetSimSpeed());
+		lines.push_back(speed);
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float lineHeight = ImGui::GetTextLineHeight();
+		float width = 0.0F;
+		for (const std::string& line: lines) {
+			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
+		}
+		ImVec2 corner(std::floor(view.x + view.w - width - 12.0F), std::floor(view.y + view.h - lineHeight * static_cast<float>(lines.size()) - 12.0F));
+		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
+		for (size_t i = 0; i < lines.size(); ++i) {
+			ImU32 color = i == 0 && g_TimerMan.IsSimPaused() ? IM_COL32(150, 210, 255, 255) : lines[i] == "AI paused" ? IM_COL32(255, 210, 80, 255) : IM_COL32(230, 230, 220, 255);
+			drawList->AddText(ImVec2(corner.x, corner.y + lineHeight * static_cast<float>(i)), color, lines[i].c_str());
+		}
+	}
+
 	void DrawOrdersOverlay() {
 		int which = g_SettingsMan.SandboxOrdersOverlay();
 		if (which == 0) {
@@ -6114,4 +6167,5 @@ void Sandbox::DrawDebug() {
 		return;
 	}
 	DrawOrdersOverlay();
+	DrawSimState();
 }
