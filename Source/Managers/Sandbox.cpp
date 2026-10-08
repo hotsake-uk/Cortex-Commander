@@ -1862,6 +1862,10 @@ namespace {
 			// Doors and other moving bunker parts belong to a side, and open for it.
 			object->SetTeam(stroke.Team);
 			ActivateSide(stroke.Team);
+			// Marked as placed, so the game mode's start-up (Sandbox.lua) leaves its side alone when a saved game is loaded.
+			if (Actor* placedActor = dynamic_cast<Actor*>(object)) {
+				placedActor->SetNumberValue("SandboxPlaced", 1.0);
+			}
 		}
 		g_SceneMan.AddSceneObject(object);
 	}
