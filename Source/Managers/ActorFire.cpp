@@ -183,7 +183,7 @@ void ActorFire::Update() {
 	// Lights every update, so they don't flicker between fire ticks.
 	for (const Burner& burner: s_Burners) {
 		if (g_MovableMan.ValidMO(burner.Object) && burner.Object->GetUniqueID() == burner.ID) {
-			g_PostProcessMan.AddLight(burner.Object->GetPos(), 70.0F, 255.0F, 140.0F, 50.0F, 0.9F);
+			g_PostProcessMan.RegisterLight(burner.Object->GetPos(), glm::vec3(255.0F, 140.0F, 50.0F), 70.0F, 0.9F, LightSource::Fire);
 		}
 	}
 	if (g_TimerMan.GetSimUpdateCount() % c_TickInterval != 0 && ignitions.empty() && douses.empty()) {

@@ -1373,8 +1373,8 @@ namespace {
 			auto every = [&](int updates) { return (update + static_cast<long long>(effect.Seed * 997.0F)) % updates == 0; };
 			switch (effect.Kind) {
 				case EffectKind::NuclearGlow:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(80.0F, 255.0F, 60.0F), 320.0F, 2.2F + 0.7F * std::sin(phase * 1.7F));
-					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 255.0F, 130.0F), 70.0F, 3.0F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(80.0F, 255.0F, 60.0F), 320.0F, 2.2F + 0.7F * std::sin(phase * 1.7F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 255.0F, 130.0F), 70.0F, 3.0F, LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at, 90.0F, 0.7F);
 					if (every(5)) {
 						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 90.0F, (Random01() - 0.5F) * 30.0F), Vector(0.0F, -1.0F), 1.0F, 1, 0x60FF40);
@@ -1389,39 +1389,39 @@ namespace {
 						}
 					}
 					effect.Flash *= 0.8F;
-					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -90.0F), glm::vec3(195.0F, 215.0F, 255.0F), 560.0F, 0.12F + effect.Flash * 7.0F);
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -90.0F), glm::vec3(195.0F, 215.0F, 255.0F), 560.0F, 0.12F + effect.Flash * 7.0F, LightSource::Sandbox);
 					break;
 				case EffectKind::RedAlarm: {
 					Vector direction(std::cos(phase * 4.0F), std::sin(phase * 4.0F));
 					g_PostProcessMan.RegisterConeLight(at, direction, 26.0F, glm::vec3(255.0F, 28.0F, 18.0F), 280.0F, 3.2F);
 					g_PostProcessMan.RegisterConeLight(at, direction * -1.0F, 26.0F, glm::vec3(255.0F, 28.0F, 18.0F), 280.0F, 3.2F);
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 40.0F, 25.0F), 26.0F, 1.5F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 40.0F, 25.0F), 26.0F, 1.5F, LightSource::Sandbox);
 					break;
 				}
 				case EffectKind::PoliceLights: {
 					bool red = std::fmod(phase * 3.0F, 1.0F) < 0.5F;
 					bool lit = std::fmod(phase * 12.0F, 1.0F) < 0.6F;
 					if (lit) {
-						g_PostProcessMan.RegisterLight(at + Vector(red ? -8.0F : 8.0F, 0.0F), red ? glm::vec3(255.0F, 25.0F, 20.0F) : glm::vec3(30.0F, 80.0F, 255.0F), 240.0F, 3.0F);
+						g_PostProcessMan.RegisterLight(at + Vector(red ? -8.0F : 8.0F, 0.0F), red ? glm::vec3(255.0F, 25.0F, 20.0F) : glm::vec3(30.0F, 80.0F, 255.0F), 240.0F, 3.0F, LightSource::Sandbox);
 					}
 					break;
 				}
 				case EffectKind::BlueBeacon:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(40.0F, 120.0F, 255.0F), 220.0F, 0.2F + 3.0F * std::pow(std::max(std::sin(phase * 2.6F), 0.0F), 4.0F));
+					g_PostProcessMan.RegisterLight(at, glm::vec3(40.0F, 120.0F, 255.0F), 220.0F, 0.2F + 3.0F * std::pow(std::max(std::sin(phase * 2.6F), 0.0F), 4.0F), LightSource::Sandbox);
 					break;
 				case EffectKind::Floodlight:
 					g_PostProcessMan.RegisterConeLight(at, Vector(0.0F, 1.0F), 36.0F, glm::vec3(255.0F, 244.0F, 222.0F), 460.0F, 3.2F);
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 244.0F, 222.0F), 22.0F, 1.6F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 244.0F, 222.0F), 22.0F, 1.6F, LightSource::Sandbox);
 					break;
 				case EffectKind::Searchlight: {
 					float angle = 1.5708F + 0.95F * std::sin(phase * 0.8F);
 					g_PostProcessMan.RegisterConeLight(at, Vector(std::cos(angle), std::sin(angle)), 8.0F, glm::vec3(225.0F, 238.0F, 255.0F), 640.0F, 4.5F);
-					g_PostProcessMan.RegisterLight(at, glm::vec3(225.0F, 238.0F, 255.0F), 20.0F, 1.5F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(225.0F, 238.0F, 255.0F), 20.0F, 1.5F, LightSource::Sandbox);
 					break;
 				}
 				case EffectKind::Strobe:
 					if (std::fmod(phase * 9.0F, 1.0F) < 0.22F) {
-						g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 255.0F, 255.0F), 340.0F, 4.0F);
+						g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 255.0F, 255.0F), 340.0F, 4.0F, LightSource::Sandbox);
 					}
 					break;
 				case EffectKind::Disco:
@@ -1429,11 +1429,11 @@ namespace {
 						float angle = phase * (1.3F + 0.4F * static_cast<float>(beam)) * (beam == 1 ? -1.0F : 1.0F) + static_cast<float>(beam) * 2.1F;
 						g_PostProcessMan.RegisterConeLight(at, Vector(std::cos(angle), std::sin(angle)), 14.0F, Hue(phase * 0.25F + static_cast<float>(beam) / 3.0F), 320.0F, 3.4F);
 					}
-					g_PostProcessMan.RegisterLight(at, Hue(phase * 0.5F), 30.0F, 1.6F);
+					g_PostProcessMan.RegisterLight(at, Hue(phase * 0.5F), 30.0F, 1.6F, LightSource::Sandbox);
 					break;
 				case EffectKind::Campfire: {
 					float flicker = 0.6F * std::sin(phase * 11.0F) + 0.4F * std::sin(phase * 23.0F + 1.3F);
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 150.0F, 60.0F), 160.0F + 10.0F * flicker, 1.7F + 0.45F * flicker);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 150.0F, 60.0F), 160.0F + 10.0F * flicker, 1.7F + 0.45F * flicker, LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -14.0F), 24.0F, 0.5F);
 					if (every(3)) {
 						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 10.0F, -2.0F), Vector(0.0F, -1.5F), 0.7F, 1, 0);
@@ -1447,10 +1447,10 @@ namespace {
 					break;
 				}
 				case EffectKind::Candle:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 180.0F, 95.0F), 62.0F, 1.0F + 0.2F * std::sin(phase * 9.0F) + 0.1F * std::sin(phase * 31.0F));
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 180.0F, 95.0F), 62.0F, 1.0F + 0.2F * std::sin(phase * 9.0F) + 0.1F * std::sin(phase * 31.0F), LightSource::Sandbox);
 					break;
 				case EffectKind::LavaGlow:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 85.0F, 18.0F), 240.0F, 1.7F + 0.35F * std::sin(phase * 0.9F));
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 85.0F, 18.0F), 240.0F, 1.7F + 0.35F * std::sin(phase * 0.9F), LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -20.0F), 60.0F, 0.6F);
 					if (every(8)) {
 						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 120.0F, 0.0F), Vector(0.0F, -1.0F), 1.0F, 1, 0);
@@ -1458,7 +1458,7 @@ namespace {
 					break;
 				case EffectKind::WeldingArc:
 					if (Random01() < 0.6F) {
-						g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 200.0F, 255.0F), 150.0F, 2.5F + Random01() * 3.5F);
+						g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 200.0F, 255.0F), 150.0F, 2.5F + Random01() * 3.5F, LightSource::Sandbox);
 						EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 6.0F, -2.0F - Random01() * 4.0F), 1.0F, 2, 0xCFE4FF);
 					}
 					break;
@@ -1468,12 +1468,12 @@ namespace {
 						Vector where = at + Vector(std::sin(phase * (0.5F + 0.13F * static_cast<float>(fly)) + own) * 60.0F, std::cos(phase * (0.37F + 0.09F * static_cast<float>(fly)) + own * 2.0F) * 34.0F);
 						float glow = std::pow(std::max(std::sin(phase * 2.3F + own * 3.0F), 0.0F), 2.0F);
 						if (glow > 0.05F) {
-							g_PostProcessMan.RegisterLight(where, glm::vec3(190.0F, 255.0F, 90.0F), 18.0F, 1.6F * glow);
+							g_PostProcessMan.RegisterLight(where, glm::vec3(190.0F, 255.0F, 90.0F), 18.0F, 1.6F * glow, LightSource::Sandbox);
 						}
 					}
 					break;
 				case EffectKind::Portal:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 60.0F, 255.0F), 200.0F, 1.8F + 0.8F * std::sin(phase * 3.1F));
+					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 60.0F, 255.0F), 200.0F, 1.8F + 0.8F * std::sin(phase * 3.1F), LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at, 46.0F, 1.2F);
 					if (every(2)) {
 						float angle = Random01() * 6.2832F;
@@ -1482,7 +1482,7 @@ namespace {
 					break;
 				case EffectKind::SparkFountain:
 					EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 2.0F, -9.0F), 0.4F, 3, 0);
-					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -10.0F), glm::vec3(255.0F, 205.0F, 130.0F), 80.0F, 1.3F);
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -10.0F), glm::vec3(255.0F, 205.0F, 130.0F), 80.0F, 1.3F, LightSource::Sandbox);
 					break;
 				case EffectKind::EmberVent:
 					if (every(2)) {
@@ -1498,7 +1498,7 @@ namespace {
 					EffectsParticles::Emit("Smoke", at + Vector(std::sin(phase * 5.0F) * 12.0F, -std::fmod(phase * 16.0F, 30.0F)), Vector(std::cos(phase * 5.0F) * 3.0F, -2.5F), 0.4F, 1, 0);
 					break;
 				case EffectKind::ToxicVent:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(120.0F, 255.0F, 70.0F), 90.0F, 0.9F);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(120.0F, 255.0F, 70.0F), 90.0F, 0.9F, LightSource::Sandbox);
 					if (every(22)) {
 						SpawnPuffs("Toxic Gas Ball", at, 4, 1);
 					}
@@ -1510,7 +1510,7 @@ namespace {
 					EffectsParticles::Emit("Dust", at + Vector(std::sin(phase * 6.0F) * 14.0F, -std::fmod(phase * 20.0F, 40.0F)), Vector(std::cos(phase * 6.0F) * 4.0F, -3.0F), 0.4F, 1, 0);
 					break;
 				case EffectKind::FireJet:
-					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -20.0F), glm::vec3(255.0F, 140.0F, 50.0F), 130.0F, 1.8F + 0.4F * std::sin(phase * 17.0F));
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -20.0F), glm::vec3(255.0F, 140.0F, 50.0F), 130.0F, 1.8F + 0.4F * std::sin(phase * 17.0F), LightSource::Sandbox);
 					if (every(2)) {
 						if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
 							flame->SetPos(at);
@@ -6886,6 +6886,44 @@ namespace {
 		drawList->AddText(corner, team >= 0 && team < c_Sides ? c_SideColors[team] : IM_COL32(230, 230, 220, 255), line.c_str());
 	}
 
+	/// The lighting-by-source readout (SettingsMan::ShowLightsBySource), in the bottom left of the picture: the lights registered for the frame
+	/// about to be drawn, counted by what registered them (cone lights apart), and how many sim updates ran since the last drawn one. The lights
+	/// are cleared each sim update, so whatever that count, it reads "1 x N": only the last update's lights reach the draw (review G1).
+	void DrawLightsBySource() {
+		if (!g_SettingsMan.ShowLightsBySource()) {
+			return;
+		}
+		static const char* const sourceNames[] = {"other", "objects", "hot spots", "headlamps", "tracers", "scenery lamps", "fire", "sandbox effects", "scripts"};
+		static_assert(std::size(sourceNames) == static_cast<size_t>(LightSource::Count));
+		std::array<int, static_cast<size_t>(LightSource::Count)> counts{};
+		std::array<int, static_cast<size_t>(LightSource::Count)> cones{};
+		const std::vector<SceneLight>& lights = g_PostProcessMan.GetSceneLights();
+		for (const SceneLight& light: lights) {
+			size_t source = std::min(static_cast<size_t>(light.m_Source), counts.size() - 1);
+			++counts[source];
+			cones[source] += light.m_ConeCos >= -1.0F ? 1 : 0;
+		}
+		std::vector<std::string> lines;
+		lines.push_back("Lights for this frame: 1 x " + std::to_string(lights.size()) + ", from the last sim update only (sim updates since drawn: " + std::to_string(g_TimerMan.SimUpdatesSinceDrawn()) + ")");
+		for (size_t source = 0; source < counts.size(); ++source) {
+			if (counts[source] > 0) {
+				lines.push_back("    " + std::string(sourceNames[source]) + " " + std::to_string(counts[source]) + (cones[source] > 0 ? " (" + std::to_string(cones[source]) + " cones)" : std::string()));
+			}
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float lineHeight = ImGui::GetTextLineHeight();
+		float width = 0.0F;
+		for (const std::string& line: lines) {
+			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
+		}
+		ImVec2 corner(std::floor(view.x + 12.0F), std::floor(view.y + view.h - lineHeight * static_cast<float>(lines.size()) - 12.0F));
+		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
+		for (size_t i = 0; i < lines.size(); ++i) {
+			drawList->AddText(ImVec2(corner.x, corner.y + lineHeight * static_cast<float>(i)), IM_COL32(230, 230, 220, 255), lines[i].c_str());
+		}
+	}
+
 	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
 	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
 	/// for two seconds after, and a red flash each time the standing orders send it again.
@@ -6979,4 +7017,5 @@ void Sandbox::DrawDebug() {
 	DrawPaintAudit();
 	DrawAutoBattleColony();
 	DrawCharacterState();
+	DrawLightsBySource();
 }

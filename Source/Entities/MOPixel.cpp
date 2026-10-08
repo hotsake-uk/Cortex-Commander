@@ -231,7 +231,7 @@ void MOPixel::Update() {
 				reach *= std::max(0.25F, 1.0F + randomness * ((own * 2.0F - 1.0F) * 0.8F + waver * 0.25F));
 				brightness *= std::max(0.1F, 1.0F + randomness * ((other * 2.0F - 1.0F) * 0.6F + waver * 0.3F));
 			}
-			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness);
+			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness, LightSource::Tracers);
 		}
 	}
 

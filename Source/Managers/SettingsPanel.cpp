@@ -638,6 +638,8 @@ void DebugMan::SettingsGUI() {
 	auto renderDebug = [&]() {
 		Toggle("Light sources", g_SettingsMan.ShowLightSources(), [](bool on) { g_SettingsMan.SetShowLightSources(on); });
 		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey), and counts by kind with the summed reach squared, about what the light pass costs.");
+		Toggle("Lights by source", g_SettingsMan.ShowLightsBySource(), [](bool on) { g_SettingsMan.SetShowLightsBySource(on); });
+		Tip("A readout in the bottom left: the lights registered for the frame about to be drawn, counted by what registered them (objects, hot spots, headlamps, tracers, scenery lamps, fire, sandbox effects, scripts), cone lights apart, and how many sim updates ran since the last drawn frame.");
 		Toggle("Sun direction and shadow strength", g_SettingsMan.ShowSunDirection(), [](bool on) { g_SettingsMan.SetShowSunDirection(on); });
 		Tip("An arrow from the middle of the screen towards the sun, or the moon at night, with how strong its shadows are right now after the time of day and the weather.");
 		{

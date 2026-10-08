@@ -97,7 +97,7 @@ namespace {
 	void RegisterLights() {
 		for (const FireLight& light: s_Lights) {
 			float flicker = 0.75F + 0.25F * Random01(s_LightFlicker);
-			g_PostProcessMan.AddLight(Vector(light.Position.x, light.Position.y), light.Radius, 255.0F, 130.0F, 45.0F, light.Intensity * flicker);
+			g_PostProcessMan.RegisterLight(Vector(light.Position.x, light.Position.y), glm::vec3(255.0F, 130.0F, 45.0F), light.Radius, light.Intensity * flicker, LightSource::Fire);
 		}
 	}
 

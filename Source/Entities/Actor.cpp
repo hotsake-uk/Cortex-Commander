@@ -1720,8 +1720,8 @@ void Actor::Update() {
 				static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
 				color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
 			}
-			g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * night);
-			g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * night);
+			g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * night, LightSource::Headlamps);
+			g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * night, LightSource::Headlamps);
 		}
 	}
 
