@@ -36,6 +36,7 @@
 #include "TDExplosive.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
+#include "WeatherLightning.h"
 #include "TerrainObject.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
@@ -535,7 +536,6 @@ namespace SandboxDetail {
 	inline bool s_GodViewPending = false; //!< A game has started since (see Sandbox::OnActivityStarted): set them up afresh.
 	constexpr unsigned int c_RandomSeed = 0x5A17B0Bu;
 	inline unsigned int s_Random = c_RandomSeed;
-	inline SoundContainer* s_Thunder = nullptr; //!< Never deleted: it would outlive the audio system at exit.
 
 	inline float Random01() {
 		s_Random ^= s_Random << 13;
