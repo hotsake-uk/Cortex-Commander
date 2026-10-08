@@ -264,7 +264,9 @@ void Temperature::Update() {
 					if (chance < std::min(0.5F, (temperature - c_Melts) / 30.0F)) {
 						FluidSim::ChangeMaterialAt(x, y, meltsTo);
 					}
-				} else if (int boilsTo = FluidSim::BoilsTo(material); boilsTo >= 0 && temperature > c_Boils && FluidSim::IsLiquid(material)) {
+				} else if (int boilsTo = FluidSim::BoilsTo(material); boilsTo != 0 && temperature > c_Boils && FluidSim::IsLiquid(material)) {
+					// (0 is "boils to nothing"; -1 is air, as FluidSim's own boil reaction reads it.)
+					boilsTo = std::max(boilsTo, static_cast<int>(g_MaterialAir));
 					if (chance < std::min(0.5F, (temperature - c_Boils) / 40.0F)) {
 						FluidSim::ChangeMaterialAt(x, y, boilsTo);
 						if (boilsTo == g_MaterialAir && chance < 0.25F) {

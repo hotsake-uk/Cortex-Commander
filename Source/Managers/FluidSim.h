@@ -52,7 +52,7 @@ namespace RTE {
 		/// What a solid melts into where it is warm enough (ice and snow: water), 0 for nothing.
 		static int MeltsTo(int materialID);
 
-		/// What a liquid boils into where it is hot enough (water: air, with steam), -1 for nothing.
+		/// What a liquid boils into where it is hot enough (water: air, with steam): 0 for nothing, -1 for air.
 		static int BoilsTo(int materialID);
 
 		/// What a liquid sets into where it cools (lava: stone), 0 for nothing.

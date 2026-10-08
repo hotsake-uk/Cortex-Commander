@@ -90,7 +90,7 @@ namespace {
 	std::array<LiquidProperties, 256> s_Props{}; //!< How each liquid or powder moves.
 	std::array<bool, 256> s_Douses{}; //!< Puts fire out, and quenches what settles in it (water).
 	std::array<int, 256> s_SettlesTo{}; //!< What it sets into where it meets something that douses it (lava: stone), 0 for nothing.
-	std::array<int, 256> s_BoilsTo{}; //!< What it boils into against something that settles (water: air, with steam), -1 for nothing.
+	std::array<int, 256> s_BoilsTo{}; //!< What it boils into against something that settles (water: air, with steam), 0 for nothing, -1 for air.
 	std::array<int, 256> s_MeltsTo{}; //!< What a solid melts into beside lava (ice and snow: water), 0 for nothing.
 	std::array<int, 256> s_FreezesTo{}; //!< What a liquid freezes into, still under snowfall (water: ice), 0 for nothing.
 	std::array<int, 256> s_DriesTo{}; //!< What a liquid dries into, still with air over it (mud: earth), 0 for nothing.
@@ -991,7 +991,7 @@ int FluidSim::MeltsTo(int materialID) {
 }
 
 int FluidSim::BoilsTo(int materialID) {
-	return s_TablesBuilt && materialID > 0 && materialID < 256 ? s_BoilsTo[materialID] : -1;
+	return s_TablesBuilt && materialID > 0 && materialID < 256 ? s_BoilsTo[materialID] : 0;
 }
 
 int FluidSim::SettlesTo(int materialID) {
