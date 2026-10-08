@@ -19,18 +19,20 @@ ConcreteClassInfo(MOSParticle, MovableObject, 1000);
 namespace {
 	/// The average colour of a sprite's drawn pixels, as 0xRRGGBB: what colour its smoke is. Worked out once per sprite frame.
 	unsigned int SpriteColor(const BitmapTexture* sprite) {
-		static std::unordered_map<const BitmapTexture*, unsigned int> cache;
+		// Kept with the bitmap it was worked out from, so a sprite freed and another made at the same address (a mod reload) is worked out again.
+		static std::unordered_map<const BitmapTexture*, std::pair<const BITMAP*, unsigned int>> cache;
 		static std::mutex cacheMutex;
 		if (!sprite) {
 			return 0xF2E6D9;
 		}
 		std::scoped_lock lock(cacheMutex);
+		BITMAP* bitmap = sprite->GetBitmap();
 		auto found = cache.find(sprite);
-		if (found != cache.end()) {
-			return found->second;
+		if (found != cache.end() && found->second.first == bitmap) {
+			return found->second.second;
 		}
 		unsigned int color = 0xF2E6D9;
-		if (BITMAP* bitmap = sprite->GetBitmap(); bitmap && bitmap_color_depth(bitmap) == 8) {
+		if (bitmap && bitmap_color_depth(bitmap) == 8) {
 			unsigned long red = 0;
 			unsigned long green = 0;
 			unsigned long blue = 0;
@@ -51,7 +53,7 @@ namespace {
 				color = static_cast<unsigned int>(((red / count) << 16) | ((green / count) << 8) | (blue / count));
 			}
 		}
-		cache.emplace(sprite, color);
+		cache[sprite] = {bitmap, color};
 		return color;
 	}
 } // namespace

@@ -307,6 +307,16 @@ void SceneLighting::DestroyWorldResources() {
 	m_SceneHeight = 0;
 }
 
+void SceneLighting::CreateSmokeDensity(int width, int height) {
+	// RGB: the smoke's colour times its density, A: its density (LightingSettings::SmokeShading); just R, the density, without, at a quarter of the memory.
+	m_SmokeDensityShaded = m_Settings.SmokeShading;
+	if (m_SmokeDensityShaded) {
+		m_SmokeDensity.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	} else {
+		m_SmokeDensity.Create(width, height, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+}
+
 void SceneLighting::EnsureScreenResources(int width, int height) {
 	if (width == m_ScreenWidth && height == m_ScreenHeight && m_HDRScene.Texture) {
 		return;
@@ -345,8 +355,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	int rcWidth = std::max(4, width / 2);
 	int rcHeight = std::max(4, height / 2);
 	m_RCScene.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
-	// RGB: the smoke's colour times its density, A: its density (LightingSettings::SmokeShading); just R, the density, without.
-	m_SmokeDensity.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	CreateSmokeDensity(rcWidth, rcHeight);
 	for (GLTarget& cascade: m_RCCascades) {
 		cascade.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
@@ -2613,6 +2622,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// Light scattered in smoke: splat the smoke's density, then add the light passing through it.
 	if (smokeCount > 0) {
 		TracyGpuZone("Smoke Scattering");
+		if (m_SmokeDensityShaded != m_Settings.SmokeShading) {
+			CreateSmokeDensity(m_SmokeDensity.Width, m_SmokeDensity.Height);
+		}
 		glBindFramebuffer(GL_FRAMEBUFFER, m_SmokeDensity.Framebuffer);
 		glViewport(0, 0, m_SmokeDensity.Width, m_SmokeDensity.Height);
 		glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
@@ -2650,6 +2662,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_SmokeScatterShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_SmokeScatterShader->SetVector2f("rteSunDirection", m_SunDirection);
 		m_SmokeScatterShader->SetVector3f("rteSunLight", m_EffectiveSky * m_SunShadowStrength);
+		// Where the sun reaches, from the sun's shadow map when it's in use (SH-5), so smoke in the open under an overhang's edge is lit as sharply as the ground.
+		m_SmokeScatterShader->SetBool("rteSunMapOn", m_SunMapReady);
+		m_SmokeScatterShader->SetInt("rteSunMap", 4);
+		m_SmokeScatterShader->SetFloat("rteSunMapSlope", m_SunMapSlope);
+		m_SmokeScatterShader->SetFloat("rteSunMapStart", m_SunMapStart);
+		m_SmokeScatterShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
 		if (m_Settings.SmokeShading) {
 			// The output's alpha is how much of the scene behind still shows (the scene's own alpha is left as it is).
 			glBlendFuncSeparate(GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE);
@@ -2662,6 +2680,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, m_RCIrradiance.Texture);
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, m_SunMap.Texture);
 		glActiveTexture(GL_TEXTURE0);
 		DrawFullscreen();
 		glBlendFunc(GL_ONE, GL_ONE);
