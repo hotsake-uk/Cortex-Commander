@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <map>
 #include <memory>
@@ -804,7 +805,8 @@ void FluidSim::Update() {
 		s_SweepPass = 0;
 		s_TablesBuilt = false;
 		if (!s_PendingLoadState.empty() && s_Scene) {
-			// Restore a saved game's moving liquid: the random state, then "x y stillSteps" per pixel.
+			// Restore a saved game's moving liquid: the random state, then "V2" and "x y stillSteps heading velX velY" per pixel, then "W", a count
+			// and "x y" for each pixel waiting for room. (Saves from before L-2 have "x y stillSteps" per pixel and nothing after.)
 			std::istringstream stream(s_PendingLoadState);
 			unsigned int random = 0;
 			stream >> random;
@@ -819,8 +821,35 @@ void FluidSim::Update() {
 			int x = 0;
 			int y = 0;
 			int still = 0;
-			while (loadedWidth > 0 && stream >> x >> y >> still && s_Active.Count < c_MaxActive) {
-				s_Active.Add(y * loadedWidth + x, still, ((x + y) & 1) != 0);
+			std::streampos afterRandom = stream.tellg();
+			std::string token;
+			if (stream >> token && token == "V2") {
+				int heading = 0;
+				int velX = 0;
+				int velY = 0;
+				while (loadedWidth > 0 && stream >> token && token != "W") {
+					x = std::atoi(token.c_str());
+					if (!(stream >> y >> still >> heading >> velX >> velY)) {
+						break;
+					}
+					if (s_Active.Count < c_MaxActive) {
+						s_Active.Add(y * loadedWidth + x, still, heading != 0, velX, velY);
+					}
+				}
+				size_t waiting = 0;
+				if (token == "W" && stream >> waiting) {
+					for (size_t i = 0; i < waiting && stream >> x >> y; ++i) {
+						if (s_Waiting.size() < 2000000) {
+							s_Waiting.push_back(y * loadedWidth + x);
+						}
+					}
+				}
+			} else {
+				stream.clear();
+				stream.seekg(afterRandom);
+				while (loadedWidth > 0 && stream >> x >> y >> still && s_Active.Count < c_MaxActive) {
+					s_Active.Add(y * loadedWidth + x, still, ((x + y) & 1) != 0);
+				}
 			}
 			g_ConsoleMan.PrintString("SYSTEM: Restored " + std::to_string(s_Active.Count) + " moving liquid pixels from the saved game.");
 		}
@@ -1432,8 +1461,15 @@ std::string FluidSim::GetSaveState() {
 		}
 		std::sort(keys.begin(), keys.end());
 		keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+		// Everything a pixel carries (L-2): a stream saved mid-fall comes back falling, heading the way it was.
+		stream << " V2";
 		for (int key: keys) {
-			stream << ' ' << key % width << ' ' << key / width << ' ' << s_Active.Still(key);
+			stream << ' ' << key % width << ' ' << key / width << ' ' << s_Active.Still(key) << ' ' << (s_Active.HeadingRight(key) ? 1 : 0) << ' ' << s_Active.VelXOf(key) << ' ' << s_Active.VelYOf(key);
+		}
+		// And the pixels waiting for room in the set, oldest first.
+		stream << " W " << s_Waiting.size();
+		for (int key: s_Waiting) {
+			stream << ' ' << key % width << ' ' << key / width;
 		}
 	}
 	return stream.str();
