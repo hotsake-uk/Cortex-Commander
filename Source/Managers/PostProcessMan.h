@@ -252,7 +252,7 @@ namespace RTE {
 		float GetDayLengthMinutes() const { return m_LightingSettings.DayLengthMinutes; }
 		void SetDayLengthMinutes(float minutes) { m_LightingSettings.DayLengthMinutes = std::max(minutes, 0.0F); }
 		int GetWeatherType() const { return m_LightingSettings.WeatherType; }
-		void SetWeatherType(int weatherType) { m_LightingSettings.WeatherType = std::clamp(weatherType, 0, 2); }
+		void SetWeatherType(int weatherType) { m_LightingSettings.WeatherType = std::clamp(weatherType, 0, 4); }
 		float GetWeatherIntensity() const { return m_LightingSettings.WeatherIntensity; }
 		void SetWeatherIntensity(float intensity) { m_LightingSettings.WeatherIntensity = std::clamp(intensity, 0.0F, 1.0F); }
 		float GetWind() const { return m_LightingSettings.Wind; }
