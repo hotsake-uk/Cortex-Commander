@@ -484,13 +484,13 @@ void SceneLighting::RefreshShadowField(int firstColumn, int firstRow, int endCol
 		return;
 	}
 	// A two pass chamfer distance (3 straight, 4 diagonal, so thirds of a cell), capped just past the reach.
-	const unsigned short far = static_cast<unsigned short>(reach * 3 + 4);
+	const unsigned short beyondReach = static_cast<unsigned short>(reach * 3 + 4);
 	m_ShadowFieldScratch.resize(static_cast<size_t>(width) * height);
 	unsigned short* distance = m_ShadowFieldScratch.data();
 	for (int y = 0; y < height; ++y) {
 		const unsigned char* occupancyRow = &m_Occupancy[(static_cast<size_t>(y0 + y) * m_GridWidth + x0) * 4];
 		for (int x = 0; x < width; ++x) {
-			distance[y * width + x] = occupancyRow[x * 4] >= c_ShadowWallBlock ? 0 : far;
+			distance[y * width + x] = occupancyRow[x * 4] >= c_ShadowWallBlock ? 0 : beyondReach;
 		}
 	}
 	auto relax = [](unsigned short& value, unsigned short from, unsigned short cost) {
@@ -923,6 +923,10 @@ void SceneLighting::UpdateFog() {
 	ZoneScoped;
 	TracyGpuZone("Fog Volume");
 	m_PendingFogPuffs.insert(m_PendingFogPuffs.end(), puffs.begin(), puffs.end());
+	// A step takes 16; under a long downpour of steam or dust the oldest past a backlog of 128 are dropped rather than queued for ever.
+	if (m_PendingFogPuffs.size() > 128) {
+		m_PendingFogPuffs.erase(m_PendingFogPuffs.begin(), m_PendingFogPuffs.end() - 128);
+	}
 	// In game time, so it holds while paused and keeps pace with slow motion. A step back (a new scene) counts as no time.
 	double now = PostProcessMan::GetSmoothSimTimePrecise();
 	float seconds = m_LastFogTime >= 0.0 ? static_cast<float>(std::clamp(now - m_LastFogTime, 0.0, 0.25)) : 0.0F;
