@@ -330,6 +330,10 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("StainSurface", { g_PostProcessMan.GetLightingSettings().StainSurface = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("StainShine", { g_PostProcessMan.GetLightingSettings().StainShine = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("DecalsFade", { g_PostProcessMan.GetLightingSettings().DecalsFade = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("DecalFadeMinutes", { g_PostProcessMan.GetLightingSettings().DecalFadeMinutes = std::clamp(std::stof(reader.ReadPropValue()), 0.5F, 60.0F); });
 	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
 	MatchProperty("BloomKnee", { g_PostProcessMan.GetLightingSettings().BloomKnee = std::clamp(std::stof(reader.ReadPropValue()), 0.01F, 1.0F); });
@@ -595,6 +599,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("SmokeScattering", lighting.SmokeScattering);
 	writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
 	writer.NewPropertyWithValue("Stains", lighting.Stains);
+	writer.NewPropertyWithValue("StainSurface", lighting.StainSurface);
+	writer.NewPropertyWithValue("StainShine", lighting.StainShine);
+	writer.NewPropertyWithValue("DecalsFade", lighting.DecalsFade);
+	writer.NewPropertyWithValue("DecalFadeMinutes", lighting.DecalFadeMinutes);
 	writer.NewPropertyWithValue("LivingWorld", lighting.LivingWorld);
 	writer.NewPropertyWithValue("Headlamps", lighting.Headlamps);
 	writer.NewPropertyWithValue("NightAffectsAI", lighting.NightAffectsAI);

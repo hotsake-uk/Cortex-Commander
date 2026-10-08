@@ -279,6 +279,8 @@ Press **F8** for **Photo Mode**:
 | `Embers` | 1 | Embers rising from fire and other warm glows. |
 | `DistortionEnabled` / `HeatHaze` / `ShockwaveStrength` | 1 / 1.5 / 1 | Heat haze above hot things, and refraction rings from explosions. |
 | `ScorchMarks` | 1 | Explosions leave soot on terrain, and the crater rim glows while it cools. |
+| `StainSurface` / `StainShine` | 1 / 1 | Stains change how the ground shines: fresh blood a little, drying matte over about a minute and a half; oil stays glossy; soot dulls. Off: they only tint. |
+| `DecalsFade` / `DecalFadeMinutes` | 1 / 10 | Soot weathers away over the set game minutes and stains over half as long again, several times faster in the rain. Off: they stay until the scene is rebuilt. |
 | `BloomEnabled` / `BloomThreshold` / `BloomIntensity` | 1 / 0.9 / 0.5 | Bloom. |
 | `PostExposure` / `PostSaturation` / `PostVignette` | 1 / 1.05 / 0.15 | Final image. |
 | `GradeTemperature` / `GradeTint` / `GradeContrast` | 0 / 0 / 1 | White balance and contrast. |

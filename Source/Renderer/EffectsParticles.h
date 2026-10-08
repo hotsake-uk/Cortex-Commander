@@ -101,13 +101,17 @@ namespace RTE {
 			glm::vec2 Position; //!< Scene pixels.
 			glm::vec3 Color; //!< 0..1, gamma space.
 			float Radius; //!< Pixels.
+			glm::vec2 Gloss; //!< How glossy it is wet (x, dries away) and dry (y, lasts until it fades), 0 to 1 (LightingSettings::StainSurface).
 		};
 
 		/// Gets whether drops of a material stain terrain: blood (any color) and oil. Cached per material.
 		static bool IsStainingMaterial(const Material* material);
 
+		/// Gets how glossy a staining material's stains are: x while wet, y once dry. Oil stays glossy; blood dries dark and matte.
+		static glm::vec2 StainGloss(const Material* material);
+
 		/// Queues a stain where blood or oil hit terrain. Thread safe and cheap; a per frame budget skips the excess.
-		static void SpawnStain(const Vector& position, int red, int green, int blue, float speed);
+		static void SpawnStain(const Vector& position, int red, int green, int blue, float speed, const glm::vec2& gloss = glm::vec2(0.25F, 0.05F));
 
 		/// Takes the stains queued since the last call.
 		static std::vector<Stain> TakeStains();

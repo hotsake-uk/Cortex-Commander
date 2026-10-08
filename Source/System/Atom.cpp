@@ -985,7 +985,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 					}
 					unsigned int stainRGB = EffectsParticles::ColorToRGB(stainColor);
 					if (stainRGB != 0) {
-						EffectsParticles::SpawnStain(Vector(static_cast<float>(intPos[X]), static_cast<float>(intPos[Y])), (stainRGB >> 16) & 0xFF, (stainRGB >> 8) & 0xFF, stainRGB & 0xFF, velocity.GetMagnitude());
+						EffectsParticles::SpawnStain(Vector(static_cast<float>(intPos[X]), static_cast<float>(intPos[Y])), (stainRGB >> 16) & 0xFF, (stainRGB >> 8) & 0xFF, stainRGB & 0xFF, velocity.GetMagnitude(), EffectsParticles::StainGloss(m_Material));
 					}
 				}
 
