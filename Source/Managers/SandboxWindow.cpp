@@ -828,6 +828,10 @@ namespace SandboxDetail {
 				reachMarks(units, point);
 				label = "Move " + count + " here";
 			}
+			// With Shift held, the order is a further step of their plans (RC-3), not one for now.
+			if (io.KeyShift && !units.empty() && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
+				label = "Then: " + label + "  (added to the plan)";
+			}
 		}
 		if (TakesSide(tool.Kind) && tool.Kind != Tool::Structure) {
 			// Whose it will be, in that side's colour, and how to change it.
@@ -990,12 +994,72 @@ namespace SandboxDetail {
 		return under;
 	}
 
+	/// A queued step of a selected unit's plan, where it is drawn (RC-3).
+	struct PlanMarker {
+		long UnitID;
+		int Step; //!< Its place in the plan's steps still to come.
+		Vector Place;
+		PlanKind Kind;
+	};
+
+	/// The queued steps of the selected units' plans, in order, each where it is drawn: its place, or for an attack or guard where the
+	/// enemy or friend is now.
+	std::vector<PlanMarker> PlanMarkers() {
+		std::vector<PlanMarker> markers;
+		for (const UnitRef& ref: s_Selected) {
+			const Actor* unit = GetRef(ref);
+			auto plan = unit ? s_Plans.find(unit->GetUniqueID()) : s_Plans.end();
+			if (plan == s_Plans.end()) {
+				continue;
+			}
+			for (size_t i = 0; i < plan->second.Steps.size(); ++i) {
+				const PlanStep& step = plan->second.Steps[i];
+				const Actor* target = GetRef(step.Target);
+				markers.push_back({unit->GetUniqueID(), static_cast<int>(i), target ? target->GetPos() : step.Place, step.Kind});
+			}
+		}
+		return markers;
+	}
+
+	/// The colour a step of a plan is drawn in: its command mode's.
+	ImU32 PlanColor(PlanKind kind) {
+		switch (kind) {
+			case PlanKind::AttackMove:
+				return c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)];
+			case PlanKind::Attack:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Attack)];
+			case PlanKind::Guard:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Guard)];
+			case PlanKind::Defend:
+				return IM_COL32(242, 182, 61, 255);
+			default:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
+		}
+	}
+
 	/// The rings the right button opens, by the tool in hand: the sides for anything made for a side, the commands for the command tool.
 	void DrawSideRing() {
 		ImGuiIO& io = ImGui::GetIO();
 		Tool kind = CurrentTool().Kind;
 		bool hasRing = TakesSide(kind) || kind == Tool::Command;
 		if (!s_RingOpen) {
+			// A right click on a numbered step of a selected unit's plan drops that step (RC-3) rather than opening the ring.
+			if (kind == Tool::Command && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse) {
+				for (const PlanMarker& marker: PlanMarkers()) {
+					ImVec2 at = ToScreen(marker.Place);
+					float dx = io.MousePos.x - at.x;
+					float dy = io.MousePos.y - at.y;
+					if (dx * dx + dy * dy <= 9.0F * 9.0F) {
+						Stroke stroke;
+						stroke.Kind = Tool::OrderSelected;
+						stroke.Count = 400;
+						stroke.UnitID = marker.UnitID;
+						stroke.Choice = marker.Step;
+						s_Queue.push_back(stroke);
+						return;
+					}
+				}
+			}
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing) {
 				s_RingOpen = true;
 				s_RingPage = 0;
@@ -1067,7 +1131,8 @@ namespace SandboxDetail {
 				Stroke stroke;
 				stroke.Kind = Tool::OrderSelected;
 				stroke.Position = s_RingScenePoint;
-				stroke.Count = 100 + (picked == 4 ? 3 : 2);
+				// (Defend with Shift held is the last step of their plans, RC-3.)
+				stroke.Count = 100 + (picked == 4 ? (ImGui::GetIO().KeyShift ? 13 : 3) : 2);
 				s_Queue.push_back(stroke);
 			} else if (picked == 6) {
 				s_Selected.clear();
@@ -1223,6 +1288,37 @@ namespace SandboxDetail {
 			if (Actor* unit = GetRef(ref)) {
 				unit->SetSandboxSelected(true);
 				s_MarkedSelected.push_back(ref);
+			}
+		}
+		// The plans of the selected units (RC-3): a line from each unit through the step it is on and those still to come, with a numbered
+		// marker at each queued step in its order's colour (a right click on one drops it).
+		for (const UnitRef& ref: s_Selected) {
+			const Actor* unit = GetRef(ref);
+			auto plan = unit ? s_Plans.find(unit->GetUniqueID()) : s_Plans.end();
+			if (plan == s_Plans.end() || plan->second.Steps.empty()) {
+				continue;
+			}
+			auto placeOf = [](const PlanStep& step) {
+				const Actor* target = GetRef(step.Target);
+				return target ? target->GetPos() : step.Place;
+			};
+			ImVec2 from = ToScreen(unit->GetPos());
+			if (plan->second.Running) {
+				ImVec2 to = ToScreen(placeOf(plan->second.Current));
+				drawList->AddLine(from, to, IM_COL32(255, 255, 255, 90), 1.5F);
+				from = to;
+			}
+			int number = 1;
+			for (const PlanStep& step: plan->second.Steps) {
+				ImVec2 to = ToScreen(placeOf(step));
+				ImU32 color = PlanColor(step.Kind);
+				drawList->AddLine(from, to, (color & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT), 1.5F);
+				drawList->AddCircleFilled(to, 8.0F, IM_COL32(0, 0, 0, 170));
+				drawList->AddCircle(to, 8.0F, color, 0, 1.5F);
+				std::string text = std::to_string(number++);
+				ImVec2 size = ImGui::CalcTextSize(text.c_str());
+				drawList->AddText(ImVec2(std::floor(to.x - size.x * 0.5F), std::floor(to.y - size.y * 0.5F)), IM_COL32(255, 255, 255, 255), text.c_str());
+				from = to;
 			}
 		}
 		// The engagement rules a selected unit has that aren't the usual (RC-1), in a small tag over it: HF hold fire, RF return fire, and
@@ -1498,6 +1594,17 @@ namespace SandboxDetail {
 				s_Selected.clear();
 			}
 			ImGui::EndDisabled();
+			// Their plans (RC-3), if any have steps still to come: cleared, each carrying on with the step it is on.
+			ImGui::SameLine();
+			ImGui::BeginDisabled(PlanMarkers().empty());
+			if (ToolUI::SmallButton("Clear plans")) {
+				Stroke stroke;
+				stroke.Kind = Tool::OrderSelected;
+				stroke.Count = 120;
+				s_Queue.push_back(stroke);
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Shift with any order adds it to the selected units' plans: they carry out each when the one before is over\n(a move when they get there, an attack when the enemy is dead). Defend with Shift held ends the plan holding ground.\nA right click on a numbered marker drops that step.");
 			// The engagement rules of what is selected (RC-1): the one they share, or "mixed"; a choice gives it to them all.
 			ImGui::BeginDisabled(alive == 0);
 			for (bool weapons: {true, false}) {
@@ -1544,7 +1651,7 @@ namespace SandboxDetail {
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			ImGui::SetNextItemWidth(field * 0.8F);
 			ImGui::SliderFloat("##spacing", &s_Spacing, 8.0F, 60.0F, "Spacing %.0f px");
-			ImGui::SetItemTooltip("How far apart units stand when sent somewhere together.\nDrag a box to select; Shift+click adds a unit, or on the ground queues another place to go on to; double click takes all of a kind in sight; Ctrl+A everyone on the side.\nCtrl+number keeps the selection, the number brings it back. Hold the right button over the world for the ring.");
+			ImGui::SetItemTooltip("How far apart units stand when sent somewhere together.\nDrag a box to select; Shift+click adds a unit, and Shift with any order adds it to their plans (RC-3); double click takes all of a kind in sight; Ctrl+A everyone on the side.\nCtrl+number keeps the selection, the number brings it back. Hold the right button over the world for the ring.");
 		}
 		return shown;
 	}

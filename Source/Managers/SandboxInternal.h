@@ -58,6 +58,7 @@
 #include <execution>
 #include <initializer_list>
 #include <list>
+#include <deque>
 #include <map>
 #include <unordered_map>
 #include <climits>
@@ -361,6 +362,7 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
+		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		Vector Position2; //!< Selection box: the other corner.
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
@@ -588,10 +590,37 @@ namespace SandboxDetail {
 		Actor* Target = nullptr; //!< An enemy to go for instead of a place.
 		long TargetID = 0;
 		bool Attack = false; //!< Keep attacking (a new target when this one dies).
-		std::vector<Vector> Then; //!< Further places to go on to, in order (shift-clicks).
 	};
 
 	inline std::vector<PendingOrder> s_PendingOrders;
+
+	/// What one step of a unit's plan is (RC-3).
+	enum class PlanKind {
+		Move, //!< Go to the place (also the order the unit was already carrying out when its first step was queued: done when it arrives).
+		AttackMove, //!< Go to the place fighting what is met (RC-2).
+		Attack, //!< Go after the enemy until it is dead.
+		Guard, //!< Stay with the friend; done only if the friend is gone.
+		Defend //!< Hold ground where it stands; never done, so it ends a plan.
+	};
+
+	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
+	struct PlanStep {
+		PlanKind Kind = PlanKind::Move;
+		Vector Place; //!< Where: the unit's own spot for a move, the post for a defend (where the step before leaves it), the target's place when queued otherwise.
+		UnitRef Target; //!< The enemy to attack or the friend to guard.
+	};
+
+	/// A unit's plan (RC-3): the step under way and the ones still to come, worked through one at a time. Any order given without Shift drops it.
+	struct Plan {
+		UnitRef Unit;
+		bool Running = false; //!< Whether Current is under way.
+		PlanStep Current;
+		long long Started = 0; //!< The sim update Current was started on.
+		std::deque<PlanStep> Steps;
+	};
+
+	inline std::map<long, Plan> s_Plans; //!< Units' plans by unique ID (a map, so they're stepped in a fixed order).
+	inline bool s_FollowingPlan = false; //!< Set while a plan's step is being given, so giving it doesn't drop the plan.
 
 	/// Why and when a unit was last sent somewhere, for the sandbox orders overlay: kept by unique ID, the dead pruned when the list grows.
 	struct SendNote {
@@ -1185,7 +1214,11 @@ namespace SandboxDetail {
 	int SelectionTeam();
 	void MarkOrder(const Vector& at, ImU32 color);
 	void CommandSelected(const Vector& position, int modifier);
-	void QueueWaypoint(std::vector<Actor*> units, const Vector& point);
+	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target);
+	void DropPlan(const Actor* unit);
+	void UpdatePlans();
+	void DropPlanStep(long unitID, int step);
+	Actor* EnemyNear(const Vector& point, int team);
 	void OrderSelectedUnits(int choice, const Vector& point);
 	int SelectedRule(bool weapons);
 	void QueueRule(bool weapons, int rule);
