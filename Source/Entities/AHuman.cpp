@@ -28,6 +28,7 @@
 #include "RenderMan.h"
 #include "Draw.h"
 
+#include "Sandbox.h"
 #include "tracy/Tracy.hpp"
 
 using namespace RTE;
@@ -3141,7 +3142,8 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 
 	// Only draw if the team viewing this is on the same team OR has seen the space where this is located.
 	int viewingTeam = g_ActivityMan.GetActivity()->GetTeamOfPlayer(g_ActivityMan.GetActivity()->PlayerOfScreen(whichScreen));
-	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && (!g_SettingsMan.ShowEnemyHUD() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
+	// (In the Sandbox game mode the side looked from is only who the tools are for: every side's is drawn.)
+	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && !Sandbox::IsGodMode() && (!g_SettingsMan.ShowEnemyHUD() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
 		return;
 	}
 

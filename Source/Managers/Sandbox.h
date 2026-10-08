@@ -122,7 +122,7 @@ namespace RTE {
 		/// Gets how your character in the Sandbox game mode is set up (its body, kit and abilities), as one line of text for the settings file.
 		static std::string GetCharacterSetup();
 
-		/// Gets the things pinned to the sandbox's bar, as one line of text for the settings file.
+		/// Gets the things pinned to the sandbox's bar, as one line of text (as kept in Userdata/SandboxPins.txt).
 		static std::string GetPins();
 
 		/// The things marked as favourites in the sandbox's lists, as a line of text for the settings file.
@@ -131,8 +131,12 @@ namespace RTE {
 		/// Sets the favourites from a line of text made by GetFavourites.
 		static void SetFavourites(const std::string& favourites);
 
-		/// Sets the things pinned to the sandbox's bar from a line of text made by GetPins.
+		/// Sets the things pinned to the sandbox's bar from a line of text made by GetPins, and keeps them in their file.
 		static void SetPins(const std::string& pins);
+
+		/// Reads the pins from their file, the first time only: they are the player's, the same in every game and save.
+		/// @param fromOldSave The pins an older saved game held, taken instead when there is no pins file yet.
+		static void LoadPins(const std::string& fromOldSave);
 
 		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
 		static void SetCharacterSetup(const std::string& setup);

@@ -130,7 +130,7 @@ namespace RTE {
 		/// @return Whether or not the saved game was successfully loaded.
 		bool LoadAndLaunchGame(const std::string& fileName);
 
-		static std::string s_PinsOfLoadedGame; //!< The sandbox pins read from a saved game, handed to the sandbox when that game starts.
+		static std::string s_PinsOfLoadedGame; //!< The sandbox pins an older saved game held, taken when there is no pins file yet.
 
 		/// Waits for the task that saves the game to complete.
 		void WaitForSaveGameTask() const {

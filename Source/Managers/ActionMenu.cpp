@@ -14,8 +14,10 @@ using namespace RTE;
 ActionMenu::MenuLayout::MenuLayout(float scale) :
     m_Scale(scale), m_Width(320.0F * scale), m_Pad(8.0F * scale), m_Gap(3.0F * scale), m_RowHeight(24.0F * scale), m_HeadingHeight(18.0F * scale), m_Y(8.0F * scale) {}
 
-void ActionMenu::MenuLayout::Heading(const std::string& text) {
+void ActionMenu::MenuLayout::Heading(const std::string& text, Kind kind) {
+	m_Kind = kind;
 	Cell cell;
+	cell.Section = kind;
 	cell.Min = ImVec2(m_Pad, m_Y);
 	cell.Max = ImVec2(m_Width - m_Pad, m_Y + m_HeadingHeight);
 	cell.Label = text;
@@ -45,6 +47,7 @@ void ActionMenu::MenuLayout::Choices(int action, const std::vector<std::string>&
 		cell.Chosen = i == chosen;
 		cell.Enabled = i < static_cast<int>(enabled.size()) ? enabled[i] : true;
 		cell.Data = i < static_cast<int>(data.size()) ? data[i] : nullptr;
+		cell.Section = m_Kind;
 		Cells.push_back(cell);
 	}
 	m_Y += m_RowHeight + m_Gap;
@@ -92,37 +95,95 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 	ImFont* font = ImGui::GetFont();
 	const float fontSize = 14.0F * scale;
 	const float rounding = 4.0F * scale;
-	// The game's own theme (DebugMan's): olive panels, gold for what is in use, parchment text.
+	const float line = std::max(1.0F, scale);
+	// The game's own theme (DebugMan's): olive panels, parchment text. Each kind of section has its own colour: blue for what is done now,
+	// green for the units' state, gold for your settings. A choice in use is filled with it, with dark text and a tick; the rest are sunk
+	// and dim, so the one in use stands out at a glance.
 	const ImU32 panel = IM_COL32(38, 46, 32, 238);
-	const ImU32 field = IM_COL32(57, 75, 42, 255);
-	const ImU32 fieldHover = IM_COL32(82, 104, 60, 255);
-	const ImU32 gold = IM_COL32(242, 182, 61, 255);
 	const ImU32 goldDim = IM_COL32(170, 128, 48, 255);
 	const ImU32 text = IM_COL32(232, 224, 190, 255);
 	const ImU32 textDim = IM_COL32(150, 146, 120, 255);
-	const ImU32 textOnGold = IM_COL32(34, 30, 18, 255);
+	const ImU32 textOnLit = IM_COL32(20, 18, 10, 255);
+	auto colourOf = [](Kind kind, int alpha) {
+		switch (kind) {
+			case Kind::Command:
+				return IM_COL32(120, 180, 245, alpha);
+			case Kind::State:
+				return IM_COL32(125, 215, 120, alpha);
+			default:
+				return IM_COL32(242, 182, 61, alpha);
+		}
+	};
+	auto tagOf = [](Kind kind) {
+		switch (kind) {
+			case Kind::Command:
+				return "DO NOW";
+			case Kind::State:
+				return "UNITS' STATE";
+			default:
+				return "SETTING";
+		}
+	};
 
 	drawList->AddRectFilled(ImVec2(menu.Min.x + 3.0F, menu.Min.y + 4.0F), ImVec2(menu.Max.x + 3.0F, menu.Max.y + 4.0F), IM_COL32(0, 0, 0, 90), rounding);
 	drawList->AddRectFilled(menu.Min, menu.Max, panel, rounding);
-	drawList->AddRect(menu.Min, menu.Max, goldDim, rounding, 0, std::max(1.0F, scale));
+	drawList->AddRect(menu.Min, menu.Max, goldDim, rounding, 0, line);
 	for (int i = 0; i < static_cast<int>(menu.Cells.size()); ++i) {
 		const Cell& cell = menu.Cells[i];
+		ImU32 colour = colourOf(cell.Section, 255);
 		if (cell.Action < 0) {
-			std::string label = FitLabel(font, fontSize * 0.85F, cell.Label, cell.Max.x - cell.Min.x);
-			drawList->AddText(font, fontSize * 0.85F, ImVec2(cell.Min.x + 2.0F, cell.Min.y + 2.0F * scale), gold, label.c_str());
+			// The heading, in its section's colour, with the kind of section as a tag on the right.
+			const float tagSize = fontSize * 0.78F;
+			const char* tag = tagOf(cell.Section);
+			ImVec2 tagExtent = font->CalcTextSizeA(tagSize, FLT_MAX, 0.0F, tag);
+			float tagLeft = std::floor(cell.Max.x - tagExtent.x - 4.0F * scale);
+			std::string label = FitLabel(font, fontSize * 0.85F, cell.Label, tagLeft - cell.Min.x - 8.0F * scale);
+			drawList->AddText(font, fontSize * 0.85F, ImVec2(cell.Min.x + 2.0F, cell.Min.y + 2.0F * scale), colour, label.c_str());
+			float tagTop = std::floor(cell.Min.y + 2.0F * scale + (fontSize * 0.85F - tagSize) * 0.5F);
+			drawList->AddRectFilled(ImVec2(tagLeft - 3.0F * scale, tagTop - 1.0F * scale), ImVec2(cell.Max.x, tagTop + tagExtent.y + 1.0F * scale), colourOf(cell.Section, 60), 2.0F * scale);
+			drawList->AddText(font, tagSize, ImVec2(tagLeft, tagTop), colour, tag);
 			float lineY = std::floor(cell.Max.y - 2.0F * scale);
-			drawList->AddLine(ImVec2(cell.Min.x, lineY), ImVec2(cell.Max.x, lineY), IM_COL32(170, 128, 48, 110), 1.0F);
+			drawList->AddLine(ImVec2(cell.Min.x, lineY), ImVec2(cell.Max.x, lineY), colourOf(cell.Section, 110), 1.0F);
 			continue;
 		}
 		bool hovered = i == hover;
-		drawList->AddRectFilled(cell.Min, cell.Max, cell.Chosen ? gold : (hovered ? fieldHover : field), rounding * 0.75F);
-		if (hovered) {
-			drawList->AddRect(cell.Min, cell.Max, gold, rounding * 0.75F, 0, std::max(1.0F, 1.5F * scale));
+		bool lit = cell.Chosen && cell.Section != Kind::Command;
+		ImU32 fill;
+		if (lit) {
+			fill = colour;
+		} else if (cell.Section == Kind::Command) {
+			// Buttons: raised, blue-grey.
+			fill = hovered ? IM_COL32(62, 88, 118, 255) : IM_COL32(44, 62, 84, 255);
+		} else {
+			// Choices not in use: sunk into the panel.
+			fill = hovered ? IM_COL32(64, 80, 50, 255) : IM_COL32(30, 37, 25, 255);
 		}
-		std::string label = FitLabel(font, fontSize, cell.Label, cell.Max.x - cell.Min.x - 8.0F * scale);
+		drawList->AddRectFilled(cell.Min, cell.Max, fill, rounding * 0.75F);
+		if (cell.Section == Kind::Command && !hovered) {
+			drawList->AddRect(cell.Min, cell.Max, colourOf(Kind::Command, 90), rounding * 0.75F, 0, 1.0F);
+		} else if (!lit && !hovered) {
+			drawList->AddRect(cell.Min, cell.Max, IM_COL32(70, 80, 58, 255), rounding * 0.75F, 0, 1.0F);
+		}
+		if (hovered) {
+			drawList->AddRect(cell.Min, cell.Max, lit ? IM_COL32(255, 250, 230, 255) : colour, rounding * 0.75F, 0, std::max(1.0F, 1.5F * scale));
+		}
+		// A tick before the label of the one in use.
+		float tickRoom = lit ? 12.0F * scale : 0.0F;
+		std::string label = FitLabel(font, fontSize, cell.Label, cell.Max.x - cell.Min.x - 8.0F * scale - tickRoom);
 		ImVec2 size = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0F, label.c_str());
-		ImVec2 at(std::floor((cell.Min.x + cell.Max.x - size.x) * 0.5F), std::floor((cell.Min.y + cell.Max.y - size.y) * 0.5F));
-		drawList->AddText(font, fontSize, at, cell.Chosen ? textOnGold : (cell.Enabled ? text : textDim), label.c_str());
+		ImVec2 at(std::floor((cell.Min.x + cell.Max.x - size.x + tickRoom) * 0.5F), std::floor((cell.Min.y + cell.Max.y - size.y) * 0.5F));
+		if (lit) {
+			float midY = (cell.Min.y + cell.Max.y) * 0.5F;
+			float x = at.x - tickRoom;
+			ImVec2 tick[] = {ImVec2(x + 1.0F * scale, midY), ImVec2(x + 4.0F * scale, midY + 3.0F * scale), ImVec2(x + 9.0F * scale, midY - 4.0F * scale)};
+			drawList->AddPolyline(tick, 3, textOnLit, ImDrawFlags_None, std::max(1.5F, 2.0F * scale));
+		}
+		ImU32 labelColour = lit ? textOnLit : (cell.Enabled ? text : textDim);
+		drawList->AddText(font, fontSize, at, labelColour, label.c_str());
+		if (lit) {
+			// Twice, a pixel apart: bold, so it reads on the fill.
+			drawList->AddText(font, fontSize, ImVec2(at.x + 1.0F, at.y), labelColour, label.c_str());
+		}
 	}
 }
 
@@ -170,22 +231,22 @@ namespace {
 	/// Lays out the unit's menu above where it opened.
 	void LayoutUnitMenu(const Actor* actor, const PieMenu* pieMenu) {
 		ActionMenu::MenuLayout menu(s_Scale);
-		menu.Heading("Orders");
+		menu.Heading("Orders", ActionMenu::Kind::Command);
 		AddSlices(menu, pieMenu->GetPieSlices());
 		for (const PieSlice* slice: pieMenu->GetPieSlices()) {
 			if (const PieMenu* subPieMenu = slice->GetSubPieMenu(); subPieMenu && !subPieMenu->GetPieSlices().empty()) {
-				menu.Heading(SliceLabel(slice));
+				menu.Heading(SliceLabel(slice), ActionMenu::Kind::Command);
 				AddSlices(menu, subPieMenu->GetPieSlices());
 			}
 		}
-		menu.Heading("Weapons");
+		menu.Heading("Weapons", ActionMenu::Kind::State);
 		menu.Choices(UnitAction::WeaponRule, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, actor->GetWeaponRule());
-		menu.Heading("Movement");
+		menu.Heading("Movement", ActionMenu::Kind::State);
 		menu.Choices(UnitAction::MovementRule, {std::begin(c_MovementRuleNames), std::end(c_MovementRuleNames)}, actor->GetMovementRule());
-		menu.Heading("Group orders");
+		menu.Heading("Group orders", ActionMenu::Kind::Setting);
 		menu.Choices(UnitAction::FormationChoice, {std::begin(c_FormationNames), std::end(c_FormationNames)}, static_cast<int>(s_Formation));
 		menu.Choices(UnitAction::KeepPace, {"Free", "Keep together"}, s_KeepPace ? 1 : 0);
-		menu.Heading("Order markers");
+		menu.Heading("Order markers", ActionMenu::Kind::Setting);
 		menu.Choices(UnitAction::Markers, {"Off", "Selected", "All"}, g_SettingsMan.SandboxOrdersOverlay());
 		menu.PlaceAbove(s_Anchor);
 		s_Menu = std::move(menu);

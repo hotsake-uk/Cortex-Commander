@@ -20,6 +20,13 @@ namespace RTE {
 	class ActionMenu {
 
 	public:
+		/// What a section of a list menu is, each drawn its own way so they can't be taken for each other.
+		enum class Kind {
+			Command, //!< Done the moment it is picked (an order, a slice of the wheel): buttons, in blue, never lit.
+			State, //!< How the units are now (their weapons and movement rules, their AI mode): the one they have lit, in green.
+			Setting //!< Yours, kept for every order to come (what clicks do, the formation, the markers): the one in use lit, in gold.
+		};
+
 		/// One cell of a list menu, in window pixels.
 		struct Cell {
 			ImVec2 Min;
@@ -30,6 +37,7 @@ namespace RTE {
 			const void* Data = nullptr; //!< Anything else its menu keeps with it (the PieSlice of a slice). Not owned.
 			bool Chosen = false; //!< The choice in use, lit in gold.
 			bool Enabled = true; //!< False for one shown greyed out.
+			Kind Section = Kind::Command; //!< The kind of section it is in (a heading: the kind it starts).
 		};
 
 		/// Lays out a list menu: headings across the panel, and rows of cells side by side under them. Fixed sizes, no text measured, so it
@@ -40,8 +48,9 @@ namespace RTE {
 			/// @param scale Sizes are for a 720 px high picture, times this.
 			explicit MenuLayout(float scale);
 
-			/// A heading across the panel.
-			void Heading(const std::string& text);
+			/// A heading across the panel, starting a section of a kind: the choices under it are drawn as that kind, and the heading is
+			/// tagged with it (DO NOW, UNITS' STATE, SETTING).
+			void Heading(const std::string& text, Kind kind);
 
 			/// Choices side by side, at most perRow to a row (all on one row with 0), the one at chosen lit (none with -1).
 			void Choices(int action, const std::vector<std::string>& labels, int chosen, int perRow = 0, const std::vector<bool>& enabled = {}, const std::vector<const void*>& data = {});
@@ -61,6 +70,7 @@ namespace RTE {
 			float m_RowHeight;
 			float m_HeadingHeight;
 			float m_Y;
+			Kind m_Kind = Kind::Command;
 		};
 
 		/// The cell that can be picked at a point, or -1.

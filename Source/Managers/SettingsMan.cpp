@@ -152,6 +152,7 @@ void SettingsMan::Clear() {
 	m_ShowFPSAndVersion = true;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
+	m_ShowUnitTags = true;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
@@ -544,6 +545,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
+	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
 	MatchProperty("ScrapCompactingHeight", { reader >> g_SceneMan.m_ScrapCompactingHeight; });
 	MatchProperty("AutomaticGoldDeposit", { reader >> m_AutomaticGoldDeposit; });
@@ -994,6 +996,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
+	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 	writer.NewPropertyWithValue("ScrapCompactingHeight", g_SceneMan.m_ScrapCompactingHeight);
 	writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);

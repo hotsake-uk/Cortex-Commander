@@ -1358,6 +1358,39 @@ namespace SandboxDetail {
 		return shared;
 	}
 
+	/// The AI mode the selected units share, as the command menu lists them (Sentry, Hunt brains, Dig for gold, Rally point, Do nothing):
+	/// its place, or -1 when they differ, have none of those (on their way somewhere) or none are selected.
+	int SelectedAIMode() {
+		int shared = -2;
+		for (const UnitRef& ref: s_Selected) {
+			if (const Actor* unit = GetRef(ref)) {
+				int mode = -1;
+				switch (unit->GetAIMode()) {
+					case Actor::AIMODE_SENTRY:
+						mode = 0;
+						break;
+					case Actor::AIMODE_BRAINHUNT:
+						mode = 1;
+						break;
+					case Actor::AIMODE_GOLDDIG:
+						mode = 2;
+						break;
+					case Actor::AIMODE_NONE:
+						mode = 4;
+						break;
+					default:
+						break;
+				}
+				if (shared == -2) {
+					shared = mode;
+				} else if (shared != mode) {
+					return -1;
+				}
+			}
+		}
+		return shared < 0 ? -1 : shared;
+	}
+
 	/// Gives the selected units an engagement rule (RC-1), on the next sim update like any order.
 	void QueueRule(bool weapons, int rule) {
 		Stroke stroke;
