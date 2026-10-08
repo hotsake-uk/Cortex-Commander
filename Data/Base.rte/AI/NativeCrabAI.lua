@@ -130,7 +130,9 @@ function NativeCrabAI:Update(Owner)
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or told to go somewhere while the behaviour left over from arriving is still running: see NativeHumanAI.)
 	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and self.BehaviorName ~= "GoToRoute" and self.NextBehaviorName ~= "GoToRoute" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
-	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder then
+	-- (And any order given since this AI's own last update: see NativeHumanAI.)
+	local ordered = self.orderSerial ~= nil and Owner.AIOrderSerial ~= self.orderSerial;
+	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder or ordered then
 		-- Tell the coroutines to abort to avoid memory leaks
 		if self.Behavior then
 			local msg, done = coroutine.resume(self.Behavior, self, Owner, true);
@@ -151,7 +153,7 @@ function NativeCrabAI:Update(Owner)
 		elseif Owner.AIMode == Actor.AIMODE_BRAINHUNT then
 			self:CreateBrainSearchBehavior(Owner);
 		else
-			if Owner.AIMode ~= self.lastAIMode and Owner.AIMode == Actor.AIMODE_SENTRY then
+			if (Owner.AIMode ~= self.lastAIMode or ordered) and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
 				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's facing, not the way it walked in.)
 				if self.ReturnPost and self.ReturnPost.facing ~= nil and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
@@ -409,6 +411,8 @@ function NativeCrabAI:Update(Owner)
 			self.Ctrl.AnalogMove = Vector((self.jetLeanX or 0) * 0.27, -1);
 		end
 	end
+
+	self.orderSerial = Owner.AIOrderSerial;
 end
 
 function NativeCrabAI:Destroy(Owner)

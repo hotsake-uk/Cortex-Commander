@@ -118,6 +118,7 @@ void Actor::Clear() {
 	m_PassengerSlots = 1;
 
 	m_AIMode = AIMODE_NONE;
+	m_AIOrderSerial = 0;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -703,6 +704,7 @@ void Actor::AddAIMOWaypoint(const MovableObject* pMOWaypoint) {
 	if (g_MovableMan.ValidMO(pMOWaypoint) && (m_Waypoints.empty() || m_Waypoints.back().second != pMOWaypoint)) {
 		m_Waypoints.push_back(std::pair<Vector, const MovableObject*>(pMOWaypoint->GetPos(), pMOWaypoint));
 		m_WaitingAtDoor = false;
+		++m_AIOrderSerial;
 	}
 }
 

@@ -781,8 +781,9 @@ namespace {
 		return found;
 	}
 
-	/// An order to a unit that is put into effect on the next update: the AI only looks at a new destination when its mode changes, so the unit is dropped out
-	/// of GOTO for one update and put back into it with the new waypoint. Orders given straight would be ignored by a unit already going somewhere.
+	/// An order to a unit that is put into effect on the next update, all at once (waypoints and mode), so later clicks before then (shift-clicks) join
+	/// it. The AI sees it by the unit's order serial (Actor::GetAIOrderSerial), so the unit is no longer dropped out of GOTO for an update first,
+	/// which stopped it dead for that update and ended whatever it was doing.
 	struct PendingOrder {
 		UnitRef Unit;
 		Vector Waypoint;
@@ -837,8 +838,6 @@ namespace {
 			unit->RemoveNumberValue(c_AttackXTag);
 			unit->RemoveNumberValue(c_AttackYTag);
 		}
-		unit->ClearAIWaypoints();
-		unit->SetAIMode(Actor::AIMODE_SENTRY);
 		// An earlier order still waiting is dropped.
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
