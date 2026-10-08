@@ -179,6 +179,7 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BurnMaxTicks", { reader >> m_Behaviour.BurnMaxTicks; });
 	MatchProperty("BurnSpread", { reader >> m_Behaviour.BurnSpread; });
 	MatchProperty("LeavesAsh", { reader >> m_Behaviour.LeavesAsh; });
+	MatchProperty("BurnBlast", { reader >> m_Behaviour.BurnBlast; });
 	MatchProperty("Douses", { reader >> m_Behaviour.Douses; });
 	MatchProperty("FreezesTo", { reader >> m_Behaviour.FreezesTo; });
 	MatchProperty("MeltsTo", { reader >> m_Behaviour.MeltsTo; });
@@ -186,6 +187,8 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SettlesTo", { reader >> m_Behaviour.SettlesTo; });
 	MatchProperty("DriesTo", { reader >> m_Behaviour.DriesTo; });
 	MatchProperty("DryChance", { reader >> m_Behaviour.DryChance; });
+	MatchProperty("Chills", { reader >> m_Behaviour.Chills; });
+	MatchProperty("Evaporates", { reader >> m_Behaviour.Evaporates; });
 	MatchProperty("Look", { reader >> m_Behaviour.Look; });
 	MatchProperty("Glow", { reader >> m_Behaviour.Glow; });
 	MatchForwards("StainsAs") MatchProperty("Stains", { reader >> m_Behaviour.Stains; });
@@ -252,6 +255,7 @@ int Material::Save(Writer& writer) const {
 		number("BurnMaxTicks", b.BurnMaxTicks);
 		number("BurnSpread", b.BurnSpread);
 		number("LeavesAsh", b.LeavesAsh);
+		number("BurnBlast", b.BurnBlast);
 		number("Douses", b.Douses);
 		text("FreezesTo", b.FreezesTo);
 		text("MeltsTo", b.MeltsTo);
@@ -259,6 +263,8 @@ int Material::Save(Writer& writer) const {
 		text("SettlesTo", b.SettlesTo);
 		text("DriesTo", b.DriesTo);
 		number("DryChance", b.DryChance);
+		number("Chills", b.Chills);
+		number("Evaporates", b.Evaporates);
 		number("Look", b.Look);
 		number("Glow", b.Glow);
 		number("Stains", b.Stains);

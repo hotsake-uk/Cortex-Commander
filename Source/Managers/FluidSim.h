@@ -27,6 +27,12 @@ namespace RTE {
 		/// Sets whether loose powders slide and pile.
 		static void SetPowdersEnabled(bool enabled);
 
+		/// Gets whether blood that settles on the ground runs and pools as a liquid of its own (Blood), rather than staying where it fell (a gameplay setting, off unless turned on).
+		static bool BloodFlows() { return s_BloodFlows; }
+
+		/// Sets whether settled blood runs and pools.
+		static void SetBloodFlows(bool enabled);
+
 		/// Gets whether still water freezes over in snowy weather (a gameplay setting, off unless turned on).
 		static bool FreezingEnabled() { return s_Freezing; }
 
@@ -95,5 +101,6 @@ namespace RTE {
 		static bool s_Enabled; //!< Whether flowing liquids are on.
 		static bool s_Powders; //!< Whether loose powders slide and pile.
 		static bool s_Freezing; //!< Whether still water freezes over in snowy weather.
+		static bool s_BloodFlows; //!< Whether settled blood runs and pools.
 	};
 } // namespace RTE
