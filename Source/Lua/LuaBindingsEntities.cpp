@@ -188,6 +188,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def(luabind::constructor<>())
 
 	    .property("PlayerControllable", &Actor::IsPlayerControllable, &Actor::SetPlayerControllable)
+	    .property("DebugInspected", &Actor::IsDebugPinned, &Actor::SetDebugInspected)
+	    .property("IsInspected", &Actor::IsDebugInspected)
 	    .property("IgnoredByAI", &Actor::IsIgnoredByAI, &Actor::SetIgnoredByAI)
 	    .property("BodyHitSound", &Actor::GetBodyHitSound, &LuaAdaptersPropertyOwnershipSafetyFaker::ActorSetBodyHitSound)
 	    .property("AlarmSound", &Actor::GetAlarmSound, &LuaAdaptersPropertyOwnershipSafetyFaker::ActorSetAlarmSound)
