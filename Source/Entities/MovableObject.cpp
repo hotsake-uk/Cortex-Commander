@@ -1358,10 +1358,11 @@ bool MovableObject::DrawToTerrain(SLTerrain* terrain) {
 		// Coming to rest in a liquid (a chip or a grain of dirt sunk to the bottom of a pool, a stain on it): the liquid there goes back at its
 		// surface (FluidSim::KeepLiquidAt) and this takes its place. Drawn over, the liquid was lost: a pool a burst of dirt fell into went down
 		// by a pixel for each grain. (A drop of liquid rises to the surface before it settles: MovableMan.)
-		// (Only where this would have taken the pixel's material, as below: what ranks under the liquid, blood or ash, only tints it, as before.)
+		// (Only where this would have taken the pixel's material, as below: what ranks under the liquid, blood or ash, only tints it, as before. With
+		// flowing liquids off the liquid is just terrain, and this is drawn as before.)
 		int ownMaterial = GetMaterial() ? GetMaterial()->GetIndex() : g_MaterialAir;
 		int liquidMaterial = terrain->GetMaterialPixel(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY());
-		if (!FluidSim::IsLiquid(ownMaterial) && FluidSim::IsLiquid(liquidMaterial) && GetMaterial()->GetPriority() > g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(liquidMaterial))->GetPriority()) {
+		if (FluidSim::IsEnabled() && !FluidSim::IsLiquid(ownMaterial) && FluidSim::IsLiquid(liquidMaterial) && GetMaterial()->GetPriority() > g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(liquidMaterial))->GetPriority()) {
 			if (!FluidSim::KeepLiquidAt(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY())) {
 				// (No room to keep the liquid: it stays, and this goes.)
 				return true;

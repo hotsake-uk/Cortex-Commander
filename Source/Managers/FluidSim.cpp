@@ -1149,7 +1149,8 @@ bool FluidSim::KeepLiquidAt(int x, int y) {
 	if (!IsLiquid(material)) {
 		return false;
 	}
-	int color = terrain->GetFGColorPixel(x, y);
+	// Its own colour, not a plant's it covers (LP-3): that stays behind.
+	int color = OwnColor(y * terrain->GetBitmap()->w + x, material, terrain->GetFGColorPixel(x, y));
 	std::scoped_lock lock(s_QueueMutex);
 	if (s_Kept.size() >= 8192) {
 		return false;

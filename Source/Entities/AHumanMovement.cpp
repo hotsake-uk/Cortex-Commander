@@ -1834,7 +1834,9 @@ int AHuman::MoveAlongRoute() {
 			RefreshRoute();
 			return RouteMover::Moving;
 		}
-		if (!airborne && flight.timer.IsPastSimMS(400) && (onLanding || flight.timer.IsPastSimMS(1200))) {
+		// (A take-off from the water is still in it, not airborne, for its first moments: it ends at its own 1.5 s, as flyingOut does, rather
+		// than at 1.2 s while still rising out of it, which with a weak jet began take-off after take-off.)
+		if (!airborne && flight.timer.IsPastSimMS(400) && (onLanding || flight.timer.IsPastSimMS(flight.fromWater ? 1500 : 1200))) {
 			ended = true;
 		} else if (airborne && standardJet && m_pJetpack->GetJetTimeLeft() < 60.0F && !onLanding && !flight.refuelling) {
 			// Under the landing with the tank dry: a climb in stages, as a player does up a tall shaft. The jet goes out, the tank fills as

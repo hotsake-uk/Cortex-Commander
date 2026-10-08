@@ -749,7 +749,9 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 
 	// A shot (a particle that hits MOs: bullets, tracers, shrapnel) goes on through liquid as far as the liquid lets it (FluidSim::ShotDepth), slowing, and
 	// is spent there, rather than striking the surface and digging into it. Drops of liquid themselves and fire don't: they meet it as before.
-	const bool passesLiquids = m_OwnerMO->m_HitsMOs && !m_OwnerMO->m_IgnoreTerrain && !FluidSim::IsLiquid(m_Material->GetIndex()) && !TerrainFire::IsFireSource(m_OwnerMO);
+	// Only something going in as fast as a shot (or already on its way through): a casing or a gib dropped in sinks and settles as before.
+	const bool passesLiquids = m_OwnerMO->m_HitsMOs && !m_OwnerMO->m_IgnoreTerrain && !FluidSim::IsLiquid(m_Material->GetIndex()) && !TerrainFire::IsFireSource(m_OwnerMO) &&
+	                           (m_LiquidTravelled > 0 || velocity.MagnitudeIsGreaterThan(25.0F));
 	int liquidDepth = 0;
 
 	// Bake in the Atom offset.
