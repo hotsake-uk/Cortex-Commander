@@ -1875,7 +1875,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
-	if kind == "defend" or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("AIFlank") then
+	if kind == "defend" or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("SandboxHold") or Owner:NumberValueExists("AIFlank") then
 		return false;
 	end
 	if not AI.RetreatCheckTimer then
