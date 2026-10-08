@@ -141,7 +141,9 @@ function SharedBehaviors.BrainSearch(AI, Owner, Abort)
 
 	local Brains = {};
 	for Act in MovableMan.Actors do
-		if Act.Team ~= Owner.Team and Act:HasObjectInGroup("Brains") then
+		-- (The unit's own groups only: HasObjectInGroup also walks the unit's inventory, which its own AI thread may be changing at the same
+		-- time. A brain carried in another's hold is found by the player-brain fallback below.)
+		if Act.Team ~= Owner.Team and Act:IsInGroup("Brains") then
 			table.insert(Brains, Act);
 		end
 	end
