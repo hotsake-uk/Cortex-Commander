@@ -110,6 +110,7 @@ namespace RTE {
 		void ReadAutoExposure(float& averageLuminance, float& autoExposure) const;
 
 	private:
+		static constexpr int c_MaxScreens = 4; //!< Player screens; sizes the per-screen arrays below, so it comes first.
 		/// A GL texture with an optional framebuffer.
 		struct GLTarget {
 			GLuint Texture = 0;
@@ -232,7 +233,6 @@ namespace RTE {
 		GLTarget m_GodRays; //!< Half resolution light shafts.
 		static constexpr int c_IndirectMipCount = 4;
 		GLTarget m_IndirectMips[c_IndirectMipCount]; //!< Downsample chain of the lit scene, the smallest is the next frame's indirect light.
-		static constexpr int c_MaxScreens = 4;
 		GLTarget m_IndirectHistory[c_MaxScreens]; //!< Per player screen, last frame's heavily blurred lit scene.
 		glm::vec2 m_IndirectHistoryOrigin[c_MaxScreens]; //!< Per player screen, the screen origin the history was made at, for reprojection.
 		bool m_IndirectHistoryValid[c_MaxScreens] = {};
