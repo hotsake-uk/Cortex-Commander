@@ -88,7 +88,8 @@ namespace RTE {
 		/// @param position Scene position of its centre.
 		/// @param radius Its radius in pixels.
 		/// @param density How thick it is, 0 to 1.
-		static void RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density);
+		/// @param color Its colour as 0xRRGGBB (what its sprite looks like), for the light it scatters to take (LightingSettings::SmokeShading).
+		static void RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density, unsigned int color = 0xF2E6D9);
 
 		/// Forgets the smoke recorded last frame. Call at the start of each frame's drawing.
 		static void BeginFrame();

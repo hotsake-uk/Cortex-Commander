@@ -343,7 +343,8 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	int rcWidth = std::max(4, width / 2);
 	int rcHeight = std::max(4, height / 2);
 	m_RCScene.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
-	m_SmokeDensity.Create(rcWidth, rcHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	// RGB: the smoke's colour times its density, A: its density (LightingSettings::SmokeShading); just R, the density, without.
+	m_SmokeDensity.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	for (GLTarget& cascade: m_RCCascades) {
 		cascade.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
@@ -1698,7 +1699,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	logStages.Next("Lighting: building quads (CPU)");
 	// Build light and emissive quads from the glow effects. Lights first, emissives after, so each can be drawn as one range.
 	m_QuadVertices.clear();
-	auto addQuad = [this](glm::vec2 center, glm::vec2 halfSize, float angle, glm::vec3 color, float radius) {
+	auto addQuad = [this](glm::vec2 center, glm::vec2 halfSize, float angle, glm::vec3 color, float radius, float alpha = 1.0F) {
 		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
 		float cosAngle = std::cos(angle);
 		float sinAngle = std::sin(angle);
@@ -1706,7 +1707,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			glm::vec2 local = corner * halfSize;
 			glm::vec2 rotated(local.x * cosAngle - local.y * sinAngle, local.x * sinAngle + local.y * cosAngle);
 			glm::vec2 position = center + rotated;
-			m_QuadVertices.push_back({position.x, position.y, 0.0F, (corner.x + 1.0F) * 0.5F, (corner.y + 1.0F) * 0.5F, color.r, color.g, color.b, 1.0F, center.x, center.y, radius, 1.0F, 0.0F, -2.0F});
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, (corner.x + 1.0F) * 0.5F, (corner.y + 1.0F) * 0.5F, color.r, color.g, color.b, alpha, center.x, center.y, radius, 1.0F, 0.0F, -2.0F});
 		}
 	};
 	size_t lightCount = 0;
@@ -2053,7 +2054,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		std::vector<EffectsParticles::Puff> smoke;
 		EffectsParticles::GetSmoke(origin, width, height, smoke);
 		for (const EffectsParticles::Puff& puff: smoke) {
-			addQuad(puff.Position * 0.5F, glm::vec2(puff.Size * 0.25F), 0.0F, glm::vec3(puff.Color.a), 0.0F);
+			if (m_Settings.SmokeShading) {
+				// Its colour times its density, and the density in alpha (the glow shader's heat alpha), so the scattered light takes the smoke's colour.
+				addQuad(puff.Position * 0.5F, glm::vec2(puff.Size * 0.25F), 0.0F, glm::vec3(puff.Color) * puff.Color.a, 0.0F, puff.Color.a);
+			} else {
+				addQuad(puff.Position * 0.5F, glm::vec2(puff.Size * 0.25F), 0.0F, glm::vec3(puff.Color.a), 0.0F);
+			}
 		}
 	}
 	size_t smokeCount = m_QuadVertices.size() / 4 - smokeStart;
@@ -2522,13 +2528,14 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_EmissiveShader->Enable();
 		m_EmissiveShader->SetInt("rteTexture", 0);
 		m_EmissiveShader->SetBool("rteUseAlpha", true);
-		m_EmissiveShader->SetBool("rteHeatAlpha", false);
+		m_EmissiveShader->SetBool("rteHeatAlpha", m_Settings.SmokeShading);
 		m_EmissiveShader->SetVector2f("rteScreenSize", glm::vec2(static_cast<float>(m_SmokeDensity.Width), static_cast<float>(m_SmokeDensity.Height)));
 		glActiveTexture(GL_TEXTURE0);
 		// The puff texture's alpha is its shape; its color is white, so the emissive shader outputs the density from the vertex color.
 		glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
 		DrawQuads(smokeStart, smokeCount);
 		m_EmissiveShader->SetBool("rteUseAlpha", false);
+		m_EmissiveShader->SetBool("rteHeatAlpha", false);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
 		glViewport(0, 0, width, height);
@@ -2540,14 +2547,29 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_SmokeScatterShader->SetVector2f("rteScreenSize", screenSize);
 		m_SmokeScatterShader->SetFloat("rteStrength", m_Settings.SmokeScattering * 0.35F);
 		m_SmokeScatterShader->SetVector3f("rteSmokeColor", glm::vec3(0.95F, 0.9F, 0.85F));
+		// Smoke that shadows itself, lit by the sun from its side and taking its own colour: then the far side from the light can also darken what's behind it.
+		m_SmokeScatterShader->SetBool("rteShading", m_Settings.SmokeShading);
+		m_SmokeScatterShader->SetFloat("rteShadingStrength", std::clamp(m_Settings.SmokeShadingStrength, 0.0F, 1.0F));
+		m_SmokeScatterShader->SetInt("rteSkyLight", 3);
+		m_SmokeScatterShader->SetVector2f("rteScreenOrigin", origin);
+		m_SmokeScatterShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_SmokeScatterShader->SetVector2f("rteSunDirection", m_SunDirection);
+		m_SmokeScatterShader->SetVector3f("rteSunLight", m_EffectiveSky * m_SunShadowStrength);
+		if (m_Settings.SmokeShading) {
+			// The output's alpha is how much of the scene behind still shows (the scene's own alpha is left as it is).
+			glBlendFuncSeparate(GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE);
+		}
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_SmokeDensity.Texture);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, m_RCIrradiance.Texture);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
 		glActiveTexture(GL_TEXTURE0);
 		DrawFullscreen();
+		glBlendFunc(GL_ONE, GL_ONE);
 		glDisable(GL_BLEND);
 	}
 

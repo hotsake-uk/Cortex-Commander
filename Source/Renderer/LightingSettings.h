@@ -323,6 +323,8 @@ namespace RTE {
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.
 		float EffectsParticles = 1.0F; //!< Amount of visual sparks, dust and debris from explosions and impacts, 0 to disable.
+		bool SmokeShading = true; //!< Smoke takes its own colour, shadows itself (dark on the side away from a fire or the sun, lit on the near side) and has its top painted by the sun. Off: one pale tint lit evenly through, as before.
+		float SmokeShadingStrength = 1.0F; //!< How strongly, 0 to 1.
 		float SmokeScattering = 1.0F; //!< How brightly smoke catches the light passing through it (fire, muzzle flashes, lamps), 0 to disable.
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
