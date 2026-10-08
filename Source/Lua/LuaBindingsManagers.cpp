@@ -192,6 +192,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) 
 
 	    .def("RegisterPostEffect", &PostProcessMan::RegisterPostEffect)
 	    .def("AddLight", &PostProcessMan::AddLight)
+	    .def("AddLightningBolt", &PostProcessMan::AddLightningBolt)
 	    .def("SetPalettePulse", &PostProcessMan::SetPalettePulse)
 	    .def("SetPaletteCycle", &PostProcessMan::SetPaletteCycle)
 	    .def("ClearPaletteAnimation", &PostProcessMan::ClearPaletteAnimation)

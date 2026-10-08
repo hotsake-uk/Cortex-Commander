@@ -278,6 +278,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DeepNightDarkness", { g_PostProcessMan.GetLightingSettings().DeepNightDarkness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SkyFollowsTime", { g_PostProcessMan.GetLightingSettings().SkyFollowsTime = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightningBolts", { g_PostProcessMan.GetLightingSettings().LightningBolts = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("GodRayDecay", { reader.ReadPropValue(); }); // In older settings files. Light shafts now follow where the sun reaches, so they have no decay to set.
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
@@ -530,6 +531,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
+	writer.NewPropertyWithValue("LightningBolts", lighting.LightningBolts);
 	writer.NewPropertyWithValue("SkyFollowsTime", lighting.SkyFollowsTime);
 	writer.NewPropertyWithValue("DeepNightDarkness", lighting.DeepNightDarkness);
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);

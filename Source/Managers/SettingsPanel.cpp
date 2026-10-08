@@ -255,6 +255,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		Slider("God rays", &settings.GodRays, 0.0F, 2.0F);
+		Check("Lightning bolts", &settings.LightningBolts);
+		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
 		Slider("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
