@@ -25,6 +25,7 @@ class Settings
 	public string Remote { get; set; } = "origin";
 	public string SettingsIni { get; set; } = "";
 	public string ModsDir { get; set; } = "";
+	public string PresetsDir { get; set; } = "";
 	public string LastRef { get; set; } = "";
 
 	static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "settings.json");
@@ -63,6 +64,7 @@ class MainForm : Form
 	readonly Button fetchBtn = new() { Text = "Refresh", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
+	readonly TextBox presetsBox = new() { Width = 420, PlaceholderText = "optional shared settings-presets folder, linked into every version" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
 	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
@@ -91,6 +93,7 @@ class MainForm : Form
 		repoBox.Text = settings.RepoPath;
 		iniBox.Text = settings.SettingsIni;
 		modsBox.Text = settings.ModsDir;
+		presetsBox.Text = settings.PresetsDir;
 
 		// Dead simple: branch, commit, settings, mods, then Build & Launch.
 		static Control Row(string label, Control field, params Control[] extra)
@@ -102,9 +105,11 @@ class MainForm : Form
 			return r;
 		}
 		branchBox.Dock = DockStyle.None; branchBox.Width = 420;
-		iniBox.Width = 420; modsBox.Width = 420;
+		iniBox.Width = 420; modsBox.Width = 420; presetsBox.Width = 420;
 		var iniBrowse = new Button { Text = "...", AutoSize = true };
 		iniBrowse.Click += (_, _) => { using var d = new OpenFileDialog { Filter = "Settings.ini|*.ini|All files|*.*", FileName = iniBox.Text }; if (d.ShowDialog() == DialogResult.OK) iniBox.Text = d.FileName; };
+		var presetsBrowse = new Button { Text = "...", AutoSize = true };
+		presetsBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = presetsBox.Text }; if (d.ShowDialog() == DialogResult.OK) presetsBox.Text = d.SelectedPath; };
 		var modsBrowse = new Button { Text = "...", AutoSize = true };
 		modsBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = modsBox.Text }; if (d.ShowDialog() == DialogResult.OK) modsBox.Text = d.SelectedPath; };
 		repoBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = repoBox.Text }; if (d.ShowDialog() == DialogResult.OK) repoBox.Text = d.SelectedPath; };
@@ -128,6 +133,7 @@ class MainForm : Form
 		Controls.Add(commitList);
 		Controls.Add(logPanel);
 		Controls.Add(actions);
+		Controls.Add(Row("Presets:", presetsBox, presetsBrowse));
 		Controls.Add(Row("Mods:", modsBox, modsBrowse));
 		Controls.Add(Row("Settings:", iniBox, iniBrowse));
 		Controls.Add(new Label { Text = "Commit (latest is selected; pick an older one if you want):", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(4, 8, 0, 2) });
@@ -150,6 +156,7 @@ class MainForm : Form
 		settings.Configuration = (string)configBox.SelectedItem!;
 		settings.SettingsIni = iniBox.Text.Trim();
 		settings.ModsDir = modsBox.Text.Trim();
+		settings.PresetsDir = presetsBox.Text.Trim();
 		settings.LastRef = branchBox.Text.Trim();
 		settings.Save();
 	}
@@ -404,6 +411,53 @@ class MainForm : Form
 	// Windows has already read and scanned instead of tens of thousands of fresh copies (that was most of a first start's minute and a half).
 	// Deleting a version only removes its links. A folder the version ships itself is left alone; ones the launcher made are marked and kept in sync with the source.
 	const string CopyMarker = ".launcher-copy";
+	// Userdata/Presets is the game's saved settings presets. A directory junction to one shared folder means every version sees the same list,
+	// and presets saved in any version land in the shared folder. A version's own presets are merged into the shared folder first, never lost.
+	void LinkPresets(CommitInfo c)
+	{
+		var shared = presetsBox.Text.Trim();
+		if (shared == "") return;
+		try
+		{
+			Directory.CreateDirectory(shared);
+			var userdata = Path.Combine(WorktreePath(c), "Userdata");
+			Directory.CreateDirectory(userdata);
+			var link = Path.Combine(userdata, "Presets");
+			if (Directory.Exists(link))
+			{
+				var info = new DirectoryInfo(link);
+				if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+				{
+					if (string.Equals(info.ResolveLinkTarget(false)?.FullName.TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(shared).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)) return;
+					info.Delete(); // points somewhere else; remove only the link
+				}
+				else
+				{
+					int n = MergeMissing(link, shared);
+					if (n > 0) Append($"Moved {n} presets from this version into {shared}");
+					Directory.Delete(link, true);
+				}
+			}
+			var psi = new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{Path.GetFullPath(shared)}\"") { CreateNoWindow = true, UseShellExecute = false };
+			using var p = Process.Start(psi)!; p.WaitForExit();
+			Append(p.ExitCode == 0 ? $"Presets linked to {shared}" : "Could not link the presets folder");
+		}
+		catch (Exception ex) { Append("Presets link failed: " + ex.Message); }
+	}
+
+	static int MergeMissing(string from, string to)
+	{
+		int n = 0;
+		Directory.CreateDirectory(to);
+		foreach (var f in Directory.GetFiles(from))
+		{
+			var t = Path.Combine(to, Path.GetFileName(f));
+			if (!File.Exists(t)) { File.Copy(f, t); n++; }
+		}
+		foreach (var d in Directory.GetDirectories(from)) n += MergeMissing(d, Path.Combine(to, Path.GetFileName(d)));
+		return n;
+	}
+
 	void LinkMods(CommitInfo c)
 	{
 		var src = modsBox.Text.Trim();
@@ -467,6 +521,7 @@ class MainForm : Form
 		var exe = ExePath(c);
 		if (!File.Exists(exe)) { Append($"Not built yet for this configuration: {exe}"); return; }
 		LinkMods(c);
+		LinkPresets(c);
 		var ini = iniBox.Text.Trim();
 		if (ini != "")
 		{

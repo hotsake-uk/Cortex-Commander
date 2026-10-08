@@ -23,6 +23,9 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 
 Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
+## Presets
+Set **Presets** to a shared folder (for example your main checkout's `Userdata\Presets`). Before each run the launcher makes the version's `Userdata\Presets` a directory junction to it, so every version sees the same saved settings presets and presets you save in any version land in the shared folder. Presets already in a version's own folder are moved into the shared folder first.
+
 ## Where things go
 Each commit is a `git worktree` in `<repo parent>\CortexVersions\<first 10 chars of sha>`. Built versions stay runnable without rebuilding, and your main checkout is never switched. Settings live in `%APPDATA%\CortexLauncher\settings.json` (`VersionsDir` can relocate the cache).
 
