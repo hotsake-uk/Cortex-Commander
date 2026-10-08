@@ -15,5 +15,9 @@ namespace RTE {
 		/// The navigation overlay's node under the pointer (its top level): what the grid makes of the node (PathFinder::DescribeNodeAt), and
 		/// every way out of it as the inspected unit is offered them, drawn with its kind and cost, flights with their fuel.
 		void DrawNavNode();
+
+		/// The recent path solves overlay: the debug team's last few routes found, faded by age, each step coloured by kind with its cost, and at
+		/// the goal the answer, total cost and solve time.
+		void DrawRecentSolves();
 	} // namespace DebugOverlays
 } // namespace RTE
