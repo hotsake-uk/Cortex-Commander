@@ -284,6 +284,9 @@ Press **F8** for **Photo Mode**:
 | `GradeTemperature` / `GradeTint` / `GradeContrast` | 0 / 0 / 1 | White balance and contrast. |
 | `GradeShadowTint` / `GradeHighlightTint` | 1 1 1 / 1 1 1 | Split toning. |
 | `FilmGrain` / `ChromaticAberration` | 0 / 0 | Film grain (0–1) and lens fringing (pixels). |
+| `DepthOfField` / `DepthOfFieldFocus` / `DepthOfFieldStrength` | 0 / 0 / 1 | Lens blur by distance from the focus (0 the battlefield, 1 the furthest background); strength 0–2. |
+| `TiltShift` / `TiltShiftLine` / `TiltShiftStrength` | 0 / 0.5 / 1 | Blurs the top and bottom of the screen around a sharp band (0 top to 1 bottom), for a diorama look; strength 0–2. |
+| `FocusEffectsInPhotoModeOnly` | 1 | Depth of field and tilt-shift only while photo mode (F8) is open. Both are also in photo mode's Look sliders. |
 
 ## Scene atmosphere (INI)
 
@@ -411,6 +414,8 @@ PostProcessMan:SetSkyColor(255, 250, 240)     -- 0-255, gamma space
 PostProcessMan:SetAmbientColor(90, 90, 110)
 PostProcessMan:SetColorGrade(-0.4, 0.0, 1.1)  -- temperature, tint, contrast
 PostProcessMan:SetSplitToning(0.85, 0.95, 1.15, 1.1, 1.0, 0.9)  -- shadow rgb, highlight rgb
+PostProcessMan:SetDepthOfField(0.0, 1.2)  -- focus (0 battlefield .. 1 far background), strength (0 off .. 2)
+PostProcessMan:SetTiltShift(0.55, 1.0)     -- sharp band (0 top .. 1 bottom), strength (0 off .. 2)
 ```
 
 Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) lasts until the next Scene loads. It is never saved over the player's own settings.

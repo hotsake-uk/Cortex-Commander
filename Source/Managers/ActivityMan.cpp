@@ -523,6 +523,8 @@ int ActivityMan::StartActivity(Activity* activity) {
 	m_InActivity = true;
 
 	g_PostProcessMan.ClearScenePostEffects();
+	// Focus effects a script asked for belong to its activity.
+	g_PostProcessMan.ClearScriptFocus();
 	g_FrameMan.ClearScreenText();
 
 	// Reset the mouse input to the center

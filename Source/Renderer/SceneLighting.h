@@ -226,6 +226,7 @@ namespace RTE {
 		glm::vec2 m_IndirectHistoryOrigin[c_MaxScreens]; //!< Per player screen, the screen origin the history was made at, for reprojection.
 		bool m_IndirectHistoryValid[c_MaxScreens] = {};
 		GLTarget m_HDRScene;
+		GLTarget m_FocusScene; //!< A copy of the lit scene for depth of field and tilt-shift to read. Made when they're first used.
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
 		static constexpr int c_RCCascadeCount = 5;
@@ -268,6 +269,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_PrecipitationShader;
 		std::unique_ptr<Shader> m_RainSplashShader;
 		std::unique_ptr<Shader> m_GodRaysShader;
+		std::unique_ptr<Shader> m_DepthOfFieldShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		std::unique_ptr<Shader> m_ScorchShader;
 		std::unique_ptr<Shader> m_StainShader;

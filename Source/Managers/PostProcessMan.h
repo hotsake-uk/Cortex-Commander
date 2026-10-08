@@ -340,6 +340,40 @@ namespace RTE {
 			m_LightingSettings.HighlightTint = glm::vec3(highlightR, highlightG, highlightB);
 		}
 
+		/// Focus effects a script asks for (for cinematics), on top of the player's: they apply outside photo mode and are never saved.
+		struct ScriptFocus {
+			float DepthFocus = 0.0F; //!< As LightingSettings::DepthOfFieldFocus.
+			float DepthStrength = 0.0F; //!< 0 for no depth of field.
+			float TiltLine = 0.5F; //!< As LightingSettings::TiltShiftLine.
+			float TiltStrength = 0.0F; //!< 0 for no tilt-shift.
+		};
+
+		/// Turns a script's depth of field on (strength above 0, up to 2) or off (0), from Lua. Lasts until the next activity starts. Safe from any thread.
+		void SetDepthOfField(float focus, float strength) {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			m_ScriptFocus.DepthFocus = std::clamp(focus, 0.0F, 1.0F);
+			m_ScriptFocus.DepthStrength = std::clamp(strength, 0.0F, 2.0F);
+		}
+
+		/// Turns a script's tilt-shift on (strength above 0, up to 2) or off (0), from Lua, with its sharp band at line (0 top to 1 bottom). Lasts until the next activity starts.
+		void SetTiltShift(float line, float strength) {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			m_ScriptFocus.TiltLine = std::clamp(line, 0.0F, 1.0F);
+			m_ScriptFocus.TiltStrength = std::clamp(strength, 0.0F, 2.0F);
+		}
+
+		/// Gets the focus effects scripts asked for.
+		ScriptFocus GetScriptFocus() const {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			return m_ScriptFocus;
+		}
+
+		/// Turns off the focus effects scripts asked for.
+		void ClearScriptFocus() {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			m_ScriptFocus = ScriptFocus();
+		}
+
 		/// Sets the ambient light color where no sky light reaches, 0-255 gamma space per channel.
 		void SetAmbientColor(float red, float green, float blue) { m_LightingSettings.Ambient = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
 #pragma endregion
@@ -439,6 +473,8 @@ namespace RTE {
 		static constexpr float c_LightningBoltSeconds = 0.45F; //!< How long a bolt shows, its echo included.
 		std::vector<LightningBolt> m_LightningBolts; //!< Guarded by m_LightningMutex.
 		mutable std::mutex m_LightningMutex;
+		ScriptFocus m_ScriptFocus; //!< Guarded by m_ScriptFocusMutex.
+		mutable std::mutex m_ScriptFocusMutex;
 
 		/// How bright a bolt is this long after it struck: a sharp first stroke and a weaker echo, as the sky's flash.
 		static float LightningFlash(float seconds) { return seconds < 0.0F || seconds > c_LightningBoltSeconds ? 0.0F : 1.6F * std::exp(-seconds * 18.0F) + 0.9F * std::exp(-std::abs(seconds - 0.2F) * 25.0F); }
