@@ -1008,6 +1008,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
 	m_TerrainShader->SetFloat("rteWaterFoam", m_Settings.Enabled ? m_Settings.WaterFoam : 0.0F);
 	m_TerrainShader->SetFloat("rteThinFlow", m_Settings.Enabled ? std::clamp(m_Settings.WaterThinFlow, 0.0F, 2.0F) : 0.0F);
+	m_TerrainShader->SetBool("rteWaterCaustics", m_Settings.WaterCaustics);
 	m_TerrainShader->SetFloat("rteWaterFoamStray", std::clamp(m_Settings.WaterFoamStray, 0.0F, 1.0F));
 	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
 	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
