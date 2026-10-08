@@ -640,14 +640,19 @@ bool EffectsParticles::IsStainingMaterial(const Material* material) {
 	return staining;
 }
 
-void EffectsParticles::SpawnStain(const Vector& position, int red, int green, int blue, float speed) {
+glm::vec2 EffectsParticles::StainGloss(const Material* material) {
+	// Oil is glossy and stays so; blood (any colour) shines a little wet and dries matte.
+	return material && material->GetPresetName().find("Oil") != std::string::npos ? glm::vec2(0.8F, 0.75F) : glm::vec2(0.25F, 0.05F);
+}
+
+void EffectsParticles::SpawnStain(const Vector& position, int red, int green, int blue, float speed, const glm::vec2& gloss) {
 	std::scoped_lock lock(s_StainMutex);
 	if (s_Stains.size() >= c_MaxStainsPerFrame) {
 		return;
 	}
 	// Faster drops splash wider.
 	float radius = std::clamp(1.0F + speed * 0.12F, 1.0F, 3.5F);
-	s_Stains.push_back({glm::vec2(position.m_X, position.m_Y), glm::vec3(red, green, blue) / 255.0F, radius});
+	s_Stains.push_back({glm::vec2(position.m_X, position.m_Y), glm::vec3(red, green, blue) / 255.0F, radius, gloss});
 }
 
 std::vector<EffectsParticles::Stain> EffectsParticles::TakeStains() {

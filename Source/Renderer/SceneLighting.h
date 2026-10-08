@@ -204,8 +204,9 @@ namespace RTE {
 		int m_CurrentFog = 0;
 		bool m_FogLive = false; //!< The fog targets hold fog (cleared when the fog volume is turned off).
 		double m_LastFogTime = -1.0; //!< Game seconds of the last fog step.
+		glm::vec3 m_DecalFadeDebt{0.0F}; //!< Fading the decal maps owes this many 1/255 steps not yet taken: x soot, y drying, z washing off.
 		std::vector<glm::vec4> m_PendingFogPuffs; //!< Puffs taken from PostProcessMan and not yet put in, a step holding only so many.
-		GLTarget m_Scorch; //!< World space soot darkness, R.
+		GLTarget m_Scorch; //!< World space soot darkness, R; the stains' gloss, G while wet (it dries away) and B once dry.
 		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
 		int m_CurrentSkyLight = 0;
@@ -271,6 +272,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		std::unique_ptr<Shader> m_ScorchShader;
 		std::unique_ptr<Shader> m_StainShader;
+		std::unique_ptr<Shader> m_DecalFadeShader;
 		std::unique_ptr<Shader> m_TerrainShader;
 		GLuint m_EmptyVAO = 0; //!< For draws that generate their vertices from gl_VertexID.
 
@@ -314,6 +316,10 @@ namespace RTE {
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
 		void StampStains();
+
+		/// Fades soot and stains away over time and washes them off in the rain, and dries wet stains (LightingSettings::DecalsFade).
+		/// @param seconds Game seconds since the last call.
+		void FadeDecals(float seconds);
 
 		/// Steps the fog volume (LightingSettings::FogVolume) on by the game time since the last step: wind, spreading, clearing and its sources.
 		void UpdateFog();

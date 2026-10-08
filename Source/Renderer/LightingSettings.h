@@ -244,6 +244,10 @@ namespace RTE {
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
+		bool StainSurface = true; //!< Stains change how the ground shines: fresh blood a little, drying matte, oil glossy; soot dulls it. Off: stains and soot only tint, as before.
+		float StainShine = 1.0F; //!< How much they change it, 0 to 1.
+		bool DecalsFade = true; //!< Soot and stains weather away over time and wash off in the rain. Off: they stay until the scene is rebuilt, as before.
+		float DecalFadeMinutes = 10.0F; //!< Game minutes for full soot to weather away (stains take half as long again), 0.5 to 60. Rain makes it much quicker.
 		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
 		bool NightAffectsAI = false; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay; off by default so the AI isn't handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.

@@ -345,6 +345,16 @@ void DebugMan::SettingsGUI() {
 		Check("Wet, sooty, snowy and hot surfaces", &settings.SurfaceStates);
 		Check("Scorch marks", &settings.ScorchMarks);
 		Check("Blood, oil and water stains", &settings.Stains);
+		Check("Stains and soot change the shine", &settings.StainSurface);
+		Tip("Fresh blood shines a little and dries dark and matte, oil stays glossy and catches lamps, and soot dulls the ground. Off: stains and soot only tint the ground, as before.");
+		if (settings.StainSurface) {
+			Slider("Stain shine strength", &settings.StainShine, 0.0F, 1.0F);
+		}
+		Check("Soot and stains fade", &settings.DecalsFade);
+		Tip("Scorch marks weather away and stains wash off over time, much faster in the rain, so a long battle doesn't end as one black smear. Off: they stay until the scene is rebuilt.");
+		if (settings.DecalsFade) {
+			Slider("Soot fades over (minutes)", &settings.DecalFadeMinutes, 0.5F, 60.0F, "%.1f", ImGuiSliderFlags_Logarithmic);
+		}
 		Slider("Hot metal cooling (seconds)", &settings.HotSpotSeconds, 0.0F, 10.0F, "%.1f");
 		Check("Animated palette colours", &settings.PaletteAnimation);
 		Tip("Glowing liquids like lava breathe, and colours listed in Base.rte/PaletteAnimation.ini or set by scripts pulse or cycle. Off, every colour stands still.");

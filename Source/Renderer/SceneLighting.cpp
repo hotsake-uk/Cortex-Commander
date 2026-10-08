@@ -127,6 +127,7 @@ void SceneLighting::LoadShaders() {
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
 	m_StainShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Stain.frag");
+	m_DecalFadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DecalFade.frag");
 	m_TerrainShader = std::make_unique<Shader>("Base.rte/Shaders/TerrainLayer.vert", "Base.rte/Shaders/Terrain.frag");
 }
 
@@ -223,7 +224,7 @@ bool SceneLighting::EnsureWorldResources() {
 	m_CurrentSkyLight = 0;
 
 	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
-	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	for (GLTarget& fog: m_Fog) {
 		fog.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
@@ -231,6 +232,7 @@ bool SceneLighting::EnsureWorldResources() {
 	m_CurrentFog = 0;
 	m_FogLive = false;
 	m_LastFogTime = -1.0;
+	m_DecalFadeDebt = glm::vec3(0.0F);
 	m_PendingFogPuffs.clear();
 	// The flow field starts with nothing moving anywhere.
 	m_FlowTexture.Create(m_GridWidth, m_GridHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
@@ -703,15 +705,20 @@ void SceneLighting::StampStains() {
 			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, color.r, color.g, color.b, 0.55F, center.x * cell, center.y * cell, radius, 1.0F, 0.0F, -2.0F});
 		}
 	};
-	for (const EffectsParticles::Stain& stain: stains) {
-		glm::vec2 center = stain.Position / cell;
-		float radius = std::max(1.0F, stain.Radius / cell);
-		addSplat(center, radius, stain.Color);
-		if (m_WrapX) {
-			addSplat(center + glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, stain.Color);
-			addSplat(center - glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, stain.Color);
+	// The colour splats first, then the same splats again carrying how glossy they are wet and dry, for the scorch map's G and B (LightingSettings::StainSurface).
+	for (int pass = 0; pass < 2; ++pass) {
+		for (const EffectsParticles::Stain& stain: stains) {
+			glm::vec2 center = stain.Position / cell;
+			float radius = std::max(1.0F, stain.Radius / cell);
+			glm::vec3 color = pass == 0 ? stain.Color : glm::vec3(0.0F, stain.Gloss.x, stain.Gloss.y);
+			addSplat(center, radius, color);
+			if (m_WrapX) {
+				addSplat(center + glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, color);
+				addSplat(center - glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, color);
+			}
 		}
 	}
+	size_t splatCount = m_QuadVertices.size() / 8;
 	UploadQuads();
 	glBindFramebuffer(GL_FRAMEBUFFER, m_Stains.Framebuffer);
 	glViewport(0, 0, m_Stains.Width, m_Stains.Height);
@@ -723,7 +730,53 @@ void SceneLighting::StampStains() {
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	m_StainShader->Enable();
 	m_StainShader->SetVector2f("rteScreenSize", glm::vec2(m_Stains.Width, m_Stains.Height));
-	DrawQuads(0, m_QuadVertices.size() / 4);
+	DrawQuads(0, splatCount);
+	// Their gloss, in the same cells of the scorch map, leaving its soot (R) alone.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Scorch.Framebuffer);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glColorMask(GL_FALSE, GL_TRUE, GL_TRUE, GL_FALSE);
+	DrawQuads(splatCount, splatCount);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
+void SceneLighting::FadeDecals(float seconds) {
+	if (!m_Settings.DecalsFade || !m_Scorch.Framebuffer || !m_Stains.Framebuffer || seconds <= 0.0F) {
+		m_DecalFadeDebt = glm::vec3(0.0F);
+		return;
+	}
+	// The maps hold 8 bit values, so they fade in whole steps of 1/255 when enough game time has gone by for one, linearly: soot weathers away and stains
+	// wash off over the set minutes (rain much faster), and wet stains dry over a minute and a half (slower in the wet).
+	float fadeSeconds = std::max(m_Settings.DecalFadeMinutes, 0.5F) * 60.0F;
+	m_DecalFadeDebt.x += seconds * 255.0F / fadeSeconds * (1.0F + 3.0F * m_Wetness);
+	m_DecalFadeDebt.y += seconds * 255.0F / 90.0F * (1.0F - 0.8F * m_Wetness);
+	m_DecalFadeDebt.z += seconds * 255.0F / (fadeSeconds * 1.5F) * (1.0F + 6.0F * m_Wetness);
+	glm::vec3 steps = glm::floor(m_DecalFadeDebt);
+	if (steps.x < 1.0F && steps.y < 1.0F && steps.z < 1.0F) {
+		return;
+	}
+	m_DecalFadeDebt -= steps;
+	ZoneScoped;
+	TracyGpuZone("Decal Fade");
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	// What's drawn is taken off what the map holds.
+	glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+	glBlendFunc(GL_ONE, GL_ONE);
+	m_DecalFadeShader->Enable();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Scorch.Framebuffer);
+	glViewport(0, 0, m_Scorch.Width, m_Scorch.Height);
+	m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(steps.x, steps.y, steps.z, 0.0F) / 255.0F);
+	DrawFullscreen();
+	if (steps.z >= 1.0F) {
+		glBindFramebuffer(GL_FRAMEBUFFER, m_Stains.Framebuffer);
+		glViewport(0, 0, m_Stains.Width, m_Stains.Height);
+		m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(0.0F, 0.0F, 0.0F, steps.z / 255.0F));
+		DrawFullscreen();
+	}
+	glBlendEquation(GL_FUNC_ADD);
 	glDisable(GL_BLEND);
 	glBindVertexArray(0);
 }
@@ -808,6 +861,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	}
 	m_TerrainShader->SetInt("rteStains", 4);
 	m_TerrainShader->SetBool("rteStainsEnabled", m_Settings.Stains);
+	m_TerrainShader->SetFloat("rteStainShine", m_Settings.StainSurface ? std::clamp(m_Settings.StainShine, 0.0F, 1.0F) : 0.0F);
 
 	// Hot spots: the most recent marks, cooling over HotSpotSeconds.
 	std::vector<PostProcessMan::ScorchMark> hotMarks = g_PostProcessMan.GetHotScorchMarks(std::max(m_Settings.HotSpotSeconds, 0.01F));
@@ -1151,6 +1205,7 @@ void SceneLighting::Update() {
 	logStages.Next("Light grid: scorch marks and stains");
 	StampScorchMarks();
 	StampStains();
+	FadeDecals(frameSeconds);
 	logStages.Next("Light grid: mist and dust");
 	UpdateFog();
 	logStages.Next(nullptr);
