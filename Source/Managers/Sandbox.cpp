@@ -49,11 +49,13 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <execution>
 #include <initializer_list>
 #include <list>
 #include <map>
 #include <unordered_map>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -2171,18 +2173,33 @@ namespace {
 			return;
 		}
 		// Spots no unit can get to (walled off, across a gap too wide) are passed over, so nobody is sent to stand at a wall.
+		// The searches run side by side, a batch of as many spots as there are units at a time, nearest first, till enough are found: one by
+		// one on the main thread, a move of twenty units was up to forty searches in a row, and the game hitched for each such order.
+		// (The grid isn't rebuilt under them: that happens on this thread, which waits here.)
 		if (Scene* scene = g_SceneMan.GetScene(); scene && !units.empty()) {
 			std::vector<Vector> reachable;
-			std::list<Vector> path;
-			for (const Vector& spot: spots) {
-				if (static_cast<int>(reachable.size()) >= static_cast<int>(units.size())) {
-					break;
-				}
-				// With the unit's own reach, as its AI will search: the same jump height, dig strength and breaching, on its team's grid.
-				Actor* leader = units.front();
-				float cost = scene->CalculatePath(leader->GetPos(), spot, path, leader->EstimateJumpHeight(), leader->EstimateDigStrength(), static_cast<Activity::Teams>(leader->GetTeam()), leader->EstimateBreachStrength());
-				if (cost >= 0.0F && cost < 100000.0F) {
-					reachable.push_back(spot);
+			// With the unit's own reach, as its AI will search: the same jump height, dig strength and breaching, on its team's grid.
+			const Actor* leader = units.front();
+			const Vector from = leader->GetPos();
+			const float jumpHeight = leader->EstimateJumpHeight();
+			const float digStrength = leader->EstimateDigStrength();
+			const float breachStrength = leader->EstimateBreachStrength();
+			const Activity::Teams team = static_cast<Activity::Teams>(leader->GetTeam());
+			size_t batch = std::max<size_t>(units.size(), 4);
+			for (size_t first = 0; first < spots.size() && reachable.size() < units.size(); first += batch) {
+				size_t count = std::min(batch, spots.size() - first);
+				std::vector<char> reaches(count, 0);
+				std::vector<size_t> indices(count);
+				std::iota(indices.begin(), indices.end(), size_t{0});
+				std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t i) {
+					std::list<Vector> path;
+					float cost = scene->CalculatePath(from, spots[first + i], path, jumpHeight, digStrength, team, breachStrength);
+					reaches[i] = cost >= 0.0F && cost < 100000.0F ? 1 : 0;
+				});
+				for (size_t i = 0; i < count && reachable.size() < units.size(); ++i) {
+					if (reaches[i]) {
+						reachable.push_back(spots[first + i]);
+					}
 				}
 			}
 			if (!reachable.empty()) {
