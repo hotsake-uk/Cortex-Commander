@@ -262,6 +262,12 @@ namespace RTE {
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
 
+		/// Gets whether the sandbox's character state line is on.
+		bool ShowSandboxCharacterState() const { return m_SandboxCharacterState; }
+
+		/// Sets whether the sandbox's character state line is on.
+		void SetShowSandboxCharacterState(bool show) { m_SandboxCharacterState = show; }
+
 		/// Gets whether the sandbox's auto battle and colony readout is on.
 		bool ShowSandboxAutoBattle() const { return m_SandboxAutoBattle; }
 
@@ -555,6 +561,7 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
+		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's auto battle and colony readout is on (see ShowSandboxAutoBattle).
 		bool m_SandboxPaintAudit; //!< Whether the sandbox's terrain paint audit is on (see ShowSandboxPaintAudit).
 		bool m_SandboxSelectionCamera; //!< Whether the sandbox's selection and camera overlay is on (see ShowSandboxSelectionCamera).
