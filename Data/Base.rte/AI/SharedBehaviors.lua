@@ -2165,6 +2165,34 @@ function SharedBehaviors.StepIsSafe(Owner, dir)
 end
 
 -- Whether a point can be seen from an eye: nothing much in the way for the ray. (The same measure the shooting rules use for a shot.)
+-- A fuel barrel (anything flammable left lying about) close enough to an enemy to catch it in the blast, that this unit can see and could
+-- shoot without its own side or itself being near it (AC-12). Looked for once a second per target. @return The barrel, or nil.
+function SharedBehaviors.BarrelNear(AI, Owner, Target)
+	local Barrel = AI.Barrel;
+	if AI.BarrelFor == Target.UniqueID and AI.BarrelTimer and not AI.BarrelTimer:IsPastSimMS(1000) then
+		if Barrel and MovableMan:ValidMO(Barrel) and Barrel.ID == Barrel.RootID then
+			return Barrel;
+		end
+		return nil;
+	end
+	AI.BarrelTimer = AI.BarrelTimer or Timer();
+	AI.BarrelTimer:Reset();
+	AI.BarrelFor = Target.UniqueID;
+	AI.Barrel = nil;
+	local best = 80; -- A barrel's fire reaches about this far.
+	for Item in MovableMan.Items do
+		if Item.ID == Item.RootID and Item:NumberValueExists("Flammable") and string.find(Item.PresetName, "Barrel") then
+			local toTarget = SceneMan:ShortestDistance(Item.Pos, Target.Pos, false).Magnitude;
+			if toTarget < best and SceneMan:ShortestDistance(Owner.Pos, Item.Pos, false):MagnitudeIsGreaterThan(160) and SharedBehaviors.CanSee(Owner.EyePos, Item.Pos)
+				and not MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Item.Pos, 120, Vector(), Owner) then
+				best = toTarget;
+				AI.Barrel = Item;
+			end
+		end
+	end
+	return AI.Barrel;
+end
+
 function SharedBehaviors.CanSee(EyePos, Point)
 	return SceneMan:CastStrengthSumRay(EyePos, Point, 6, rte.grassID) < 120;
 end
@@ -2203,7 +2231,8 @@ function SharedBehaviors.FindCover(Owner, FromPos, reach, wantLow)
 			local Spot = Owner.Pos + Vector(dir * step * 8, -Owner.Height * 0.2);
 			Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 4);
 			local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
-			if math.abs(Way.Y) < Owner.Height * 0.5 and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+			-- (Not into fire: AC-12.)
+			if math.abs(Way.Y) < Owner.Height * 0.5 and not SceneMan:IsBurningNear(Spot, 16) and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
 				local Ground = SceneMan:MovePointToGround(Spot, 0, 4);
 				local kind = SharedBehaviors.CoverAt(Owner, Ground, FromPos);
 				if kind and SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos) then

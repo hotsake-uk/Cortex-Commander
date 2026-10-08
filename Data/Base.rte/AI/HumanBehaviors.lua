@@ -1261,6 +1261,12 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 
 				-- TODO: make low skill AI lead worse
 				TargetAvgVel = TargetAvgVel * 0.8 + AI.Target.Vel * 0.2; -- smooth the target's velocity
+				-- A fuel barrel by the target is the better shot (AC-12): at it, with no lead.
+				local Barrel = SharedBehaviors.BarrelNear(AI, Owner, AI.Target);
+				if Barrel then
+					AimPoint = Barrel.Pos + ErrorOffset * 0.5;
+					TargetAvgVel:Reset();
+				end
 				Dist = SceneMan:ShortestDistance(Weapon.Pos, AimPoint, false);
 				local range = Dist.Magnitude;
 				if range < 100 then
@@ -1746,6 +1752,72 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 		AI.lateralMoveState = Actor.LAT_STILL;
 	end
 	return true;
+end
+
+-- Using the world (AC-12): out of burning ground it stands in, and with a water cannon, putting out a burning friend when there is no enemy
+-- to shoot. (Shooting fuel barrels by an enemy is ShootTarget's, SharedBehaviors.BarrelNear; cover is not taken in fire, FindCover.)
+-- Called every tick by the AI's update.
+function HumanBehaviors.UseTheWorld(AI, Owner)
+	AI.douse = false;
+	if Owner:NumberValueExists("OnFire") then
+		return; -- Burning itself: ActorFire's panic has it.
+	end
+	-- Out of the fire, to whichever side is clear.
+	local Feet = Owner.Pos + Vector(0, Owner.Height * 0.4);
+	if AI.FireStep then
+		if AI.FireStep.Timer:IsPastSimMS(1500) or not SharedBehaviors.StepTo(AI, Owner, AI.FireStep.Spot, 1500 - AI.FireStep.Timer.ElapsedSimTimeMS) then
+			AI.FireStep = nil;
+		end
+	elseif not AI.flying and SceneMan:IsBurningNear(Feet, 14) then
+		for _, dx in ipairs({48, -48, 96, -96}) do
+			local Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(dx, -Owner.Height * 0.2), math.floor(Owner.Height * 0.2), 4);
+			if not SceneMan:IsBurningNear(Spot, 20) and math.abs(SceneMan:ShortestDistance(Owner.Pos, Spot, false).Y) < Owner.Height * 0.5 then
+				AI.FireStep = { Spot = Spot, Timer = Timer() };
+				SharedBehaviors.Trace(Owner, "fire underfoot: stepping out");
+				SharedBehaviors.StepTo(AI, Owner, Spot, 1500);
+				break;
+			end
+		end
+	end
+	-- A burning friend in reach of a water cannon.
+	if AI.Target or not (Owner:HasObject("Water Cannon")) then
+		if AI.Dousing then
+			AI.Dousing = nil;
+			Owner:EquipFirearm(true);
+		end
+		return;
+	end
+	AI.DouseTimer = AI.DouseTimer or Timer();
+	if not AI.Dousing or AI.DouseTimer:IsPastSimMS(500) then
+		AI.DouseTimer:Reset();
+		local Friend;
+		for Act in MovableMan.Actors do
+			if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act:NumberValueExists("OnFire") and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(220) and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
+				Friend = Act;
+				break;
+			end
+		end
+		if Friend then
+			AI.Dousing = Friend;
+		elseif AI.Dousing then
+			AI.Dousing = nil;
+			Owner:EquipFirearm(true);
+		end
+	end
+	local Friend = AI.Dousing;
+	if Friend and MovableMan:ValidMO(Friend) then
+		if not (Owner.EquippedItem and Owner.EquippedItem.PresetName == "Water Cannon") then
+			Owner:EquipNamedDevice("Water Cannon", true);
+			return;
+		end
+		AI.deviceState = AHuman.AIMING;
+		AI.lateralMoveState = Actor.LAT_STILL;
+		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Friend.Pos, false).Normalized;
+		AI.douse = true;
+	elseif Friend then
+		AI.Dousing = nil;
+		Owner:EquipFirearm(true);
+	end
 end
 
 -- Shot from somewhere it can't see (AC-10): the hit's alarm point, a body's height back along the shot (Actor::ParticlePenetration), says
