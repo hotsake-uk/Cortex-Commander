@@ -726,6 +726,13 @@ namespace RTE {
 		/// @param json Whether to give JSON rather than a line.
 		std::string DescribeDebugState(bool json) const;
 
+		/// Whether a debug overlay wants this unit's AI scripts to write their state into its values (AI_Behavior, AI_TargetID and the rest; see SharedBehaviors.ExportDebugState).
+		/// Off unless an overlay that reads them is on, so the scripts write nothing in normal play.
+		bool WantsDebugExport() const {
+			int inspector = g_SettingsMan.UnitInspector();
+			return inspector == 2 || (inspector == 1 && IsDebugInspected());
+		}
+
 		/// Destroys this MOSRotating and creates its specified Gibs in its place with appropriate velocities.
 		/// Any Attachables are removed and also given appropriate velocities.
 		/// @param impactImpulse The impulse (kg * m/s) of the impact causing the gibbing to happen.

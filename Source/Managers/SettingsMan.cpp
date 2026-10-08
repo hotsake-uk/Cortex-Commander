@@ -117,6 +117,7 @@ void SettingsMan::Clear() {
 	m_EnableMantling = true;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
+	m_UnitInspector = 0;
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
@@ -385,6 +386,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
+	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
@@ -718,6 +720,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
+	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
 	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
 	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);

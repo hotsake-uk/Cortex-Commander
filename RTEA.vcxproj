@@ -864,6 +864,7 @@
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
     <ClInclude Include="Source\Managers\DebugDraw.h" />
+    <ClInclude Include="Source\Managers\DebugOverlays.h" />
     <ClInclude Include="Source\Managers\SmokeGrid.h" />
     <ClInclude Include="Source\Managers\ActorFire.h" />
     <ClInclude Include="Source\Managers\ActorWater.h" />
@@ -1033,6 +1034,7 @@
     </ClCompile>
     <ClCompile Include="Source\Managers\DebugMan.cpp" />
     <ClCompile Include="Source\Managers\SettingsPanel.cpp" />
+    <ClCompile Include="Source\Managers\DebugOverlays.cpp" />
     <ClCompile Include="Source\Managers\GLStateMan.cpp" />
     <ClCompile Include="Source\Managers\MusicMan.cpp" />
     <ClCompile Include="Source\Managers\LuaMan.cpp">

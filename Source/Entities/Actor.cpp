@@ -2008,6 +2008,14 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());
+	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap"};
+	auto stepName = [](int kind) { return kind >= 0 && kind < static_cast<int>(std::size(stepNames)) ? std::string(stepNames[kind]) : std::string("none"); };
+	fields.push_back({"step", stepName(GetMovePathStepKind()), true});
+	fields.push_back({"nextStep", stepName(GetMovePathNextStepKind()), true});
+	if (m_PathSizeAtAdoption > 0) {
+		number("routeCost", std::round(m_PathCostAtAdoption * 10.0F) / 10.0);
+		number("routePointsTaken", m_PathSizeAtAdoption);
+	}
 	if (!m_MovePath.empty()) {
 		number("nextX", std::floor(m_MovePath.front().m_X));
 		number("nextY", std::floor(m_MovePath.front().m_Y));

@@ -164,6 +164,9 @@ function NativeHumanAI:Update(Owner)
 		self.UnseenTarget = nil;
 	end
 
+	-- The AI's state for the unit inspector, when a debug overlay wants it (see SharedBehaviors.ExportDebugState).
+	SharedBehaviors.ExportDebugState(self, Owner);
+
 	-- switch to the next behavior, if available
 	if self.NextBehavior then
 		if self.BehaviorCleanup then

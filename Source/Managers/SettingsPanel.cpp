@@ -570,6 +570,17 @@ void DebugMan::SettingsGUI() {
 		FreeCamGUI();
 	};
 
+	// What the AI is thinking, drawn over the game: each overlay keys off the units being inspected (Ctrl+I over a unit, units selected in the sandbox, the one you control).
+	auto aiDebug = [&]() {
+		{
+			int inspector = g_SettingsMan.UnitInspector();
+			if (Combo("Unit inspector", &inspector, "Off\0Inspected units\0Every unit in view\0")) {
+				g_SettingsMan.SetUnitInspector(inspector);
+			}
+			Tip("A label over each unit: its AI mode, the kind of step it's on and the next, the route's cost, the engine mover's state (walk, flight, refuel, fuel wait, settle), how long since it last made progress, its stuck level and impossible-route count, and from its scripts the behaviour, climb stage, target (and whether it's in sight), squad leader and slot, and cover, flank and retreat spots.");
+		}
+	};
+
 	const std::pair<const char*, std::function<void()>> categories[] = {
 	    {"Time & weather", timeAndWeather},
 	    {"Sky & daylight", skyAndDaylight},
@@ -582,6 +593,7 @@ void DebugMan::SettingsGUI() {
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
 	    {"Debug", debug},
+	    {"AI debug", aiDebug},
 	};
 	const int categoryCount = static_cast<int>(std::size(categories));
 	m_SettingsCategory = std::clamp(m_SettingsCategory, 0, categoryCount - 1);

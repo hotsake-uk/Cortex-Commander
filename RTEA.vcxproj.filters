@@ -199,6 +199,9 @@
     <ClInclude Include="Source\Managers\DebugDraw.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\DebugOverlays.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\FluidSim.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -776,6 +779,9 @@
       <Filter>System\MicroPather</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SettingsPanel.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\DebugOverlays.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\DebugMan.cpp">
