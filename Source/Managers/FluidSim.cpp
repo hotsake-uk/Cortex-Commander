@@ -1122,8 +1122,7 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 	float density = std::clamp(settings.SplashFrothDensity, 0.1F, 6.0F);
 	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount * density)), 1, 240);
-	// Spread along the width in even slots, each puff anywhere within its slot and a little above or below the surface line: puffs at fixed
-	// columns on one row read as a string of beads. (Render only: its own random numbers, never the simulation's.)
+	// (Render only: its own random numbers, never the simulation's.)
 	static unsigned int s_VisualRandom = 0x2545F491u;
 	auto visualRandom = []() {
 		s_VisualRandom ^= s_VisualRandom << 13;
