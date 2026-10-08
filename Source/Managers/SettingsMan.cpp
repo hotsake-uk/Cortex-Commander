@@ -325,6 +325,10 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("WaterFoamGlow", { g_PostProcessMan.GetLightingSettings().WaterFoamGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SoftSmoke", { g_PostProcessMan.GetLightingSettings().SoftSmoke = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterLightGlow", { g_PostProcessMan.GetLightingSettings().WaterLightGlow = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterReflections", { g_PostProcessMan.GetLightingSettings().WaterReflections = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("WaterReflectionStrength", { g_PostProcessMan.GetLightingSettings().WaterReflectionStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterRefraction", { g_PostProcessMan.GetLightingSettings().WaterRefraction = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterRipples", { g_PostProcessMan.GetLightingSettings().WaterRipples = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFoamBubbles", { g_PostProcessMan.GetLightingSettings().WaterFoamBubbles = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistSize", { g_PostProcessMan.GetLightingSettings().WaterMistSize = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistLife", { g_PostProcessMan.GetLightingSettings().WaterMistLife = std::stof(reader.ReadPropValue()); });
@@ -553,6 +557,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterMist", lighting.WaterMist);
 	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
 	writer.NewPropertyWithValue("WaterLightGlow", lighting.WaterLightGlow);
+	writer.NewPropertyWithValue("WaterReflections", lighting.WaterReflections);
+	writer.NewPropertyWithValue("WaterReflectionStrength", lighting.WaterReflectionStrength);
+	writer.NewPropertyWithValue("WaterRefraction", lighting.WaterRefraction);
+	writer.NewPropertyWithValue("WaterRipples", lighting.WaterRipples);
 	writer.NewPropertyWithValue("SoftSmoke", lighting.SoftSmoke);
 	writer.NewPropertyWithValue("WaterMistSize", lighting.WaterMistSize);
 	writer.NewPropertyWithValue("WaterMistLife", lighting.WaterMistLife);

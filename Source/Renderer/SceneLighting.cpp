@@ -613,6 +613,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
 	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
 	m_TerrainShader->SetFloat("rteWaterFoamBubbles", std::clamp(m_Settings.WaterFoamBubbles, 0.0F, 2.0F));
+	m_TerrainShader->SetFloat("rteWaterRipples", (m_Settings.Enabled && m_Settings.WaterReflections) ? std::clamp(m_Settings.WaterRipples, 0.0F, 2.0F) : 0.0F);
 	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
 	{
 		glm::vec2 fall = m_Settings.WeatherType == 2 ? glm::vec2(m_Settings.Wind * 0.6F, 45.0F) : glm::vec2(m_Settings.Wind, 640.0F);
@@ -1446,6 +1447,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 	m_CompositeShader->SetFloat("rteSkyRecolor", m_Settings.Enabled ? m_SkyRecolor : 0.0F);
 	m_CompositeShader->SetFloat("rteWaterGlow", m_Settings.Enabled ? m_Settings.WaterLightGlow : 0.0F);
+	// Reflection and refraction find the water's surface in the surface buffer's water flag, so they need it.
+	bool waterReflections = m_Settings.Enabled && m_Settings.WaterReflections && surface;
+	m_CompositeShader->SetFloat("rteWaterReflection", waterReflections ? std::clamp(m_Settings.WaterReflectionStrength, 0.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetFloat("rteWaterRefraction", waterReflections ? std::clamp(m_Settings.WaterRefraction, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector3f("rteSkyDaylight", m_SkyDaylight);
 	m_CompositeShader->SetFloat("rteSkyOwnLight", m_Settings.Enabled ? std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);

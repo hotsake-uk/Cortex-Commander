@@ -343,6 +343,17 @@ void DebugMan::SettingsGUI() {
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
+		Heading("Reflections");
+		Check("Water reflects and refracts", &settings.WaterReflections);
+		Tip("Pools mirror what's above them, the wall behind the water shows through bent by the ripples and darker with depth, and the rippled surface catches lamps and the sun. Off: water is drawn as before, flat and tinted. On from the Medium preset up.");
+		if (settings.WaterReflections) {
+			Slider("Reflection", &settings.WaterReflectionStrength, 0.0F, 1.0F);
+			Tip("How strongly water mirrors the scene above it, strongest just under the surface. 0 for none.");
+			Slider("Refraction", &settings.WaterRefraction, 0.0F, 1.5F);
+			Tip("How much the ripples bend what's seen through the water, and how much it darkens with depth. 0 for none.");
+			Slider("Ripples", &settings.WaterRipples, 0.0F, 2.0F);
+			Tip("How much the surface ripples tilt the reflection and the glints of light on the water. 0: a flat mirror.");
+		}
 		Heading("Pouring water");
 		Slider("Froth", &settings.WaterFoam, 0.0F, 1.5F);
 		Tip("Thin, broken water (a stream off a ledge, the lip of a pour) is drawn as froth, and froth fills the air beside it. 0 for none.");

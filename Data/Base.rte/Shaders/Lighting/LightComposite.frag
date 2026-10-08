@@ -59,6 +59,35 @@ uniform vec3 rteSkyHorizon; // And at the horizon.
 uniform vec3 rteSkyCloud; // What the light of the hour makes of white cloud.
 uniform vec2 rteMoonPosition; // Screen pixels, as gl_FragCoord (y 0 is the top of the player screen).
 uniform float rteTime; // Seconds, for twinkling.
+uniform float rteWaterReflection; // How strongly water mirrors the scene above its surface, 0 for none.
+uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
+
+// Whether a pixel of the player screen is water: the terrain pass flags it with a quarter in the surface buffer's B.
+bool WaterAt(vec2 position) {
+	if (position.y < 0.0 || position.x < 0.0 || position.x >= rteScreenSize.x || position.y >= rteScreenSize.y) {
+		return false;
+	}
+	return abs(texelFetch(rteSurface, ivec2(position), 0).b - 0.25) < 0.08;
+}
+
+// How many pixels up from a water pixel the first pixel that isn't water is (y 0 is the top of the player screen), looked for in steps of four
+// and then pixel by pixel, up to 64. -1 when the water goes on further than that, where there's nothing near enough to mirror.
+float WaterSurfaceDistance(vec2 position) {
+	float last = 0.0;
+	for (int i = 1; i <= 16; ++i) {
+		float reach = float(i) * 4.0;
+		if (!WaterAt(position - vec2(0.0, reach))) {
+			for (float k = last + 1.0; k < reach; k += 1.0) {
+				if (!WaterAt(position - vec2(0.0, k))) {
+					return k;
+				}
+			}
+			return reach;
+		}
+		last = reach;
+	}
+	return -1.0;
+}
 
 // Distance in pixels from a point of the player screen to the nearest solid object. The map only reaches about 60 pixels, so it's capped.
 float OccluderDistance(vec2 position) {
@@ -167,6 +196,9 @@ void main() {
 	float metalness = 0.0;
 	float nightSkyAmount = 0.0;
 	vec3 waterGlow = vec3(0.0); // Light scattered in water at this pixel.
+	vec3 waterReflection = vec3(0.0); // What water mirrors at this pixel, linear and unlit, and how much (see rteWaterReflection).
+	float waterReflectionAmount = 0.0;
+	bool waterReflectionBackground = false; // The mirrored pixel is distant scenery, lit as the background is.
 	float skyLayer = 0.0; // How much this pixel is the sky itself: the furthest layers, or nothing drawn at all.
 	float sceneDepth = texture(rteSceneDepth, screenUV).r;
 	float haze = 0.0;
@@ -210,6 +242,35 @@ void main() {
 		if (normalSample.a > 0.25) {
 			float normalY = normalSample.y * 2.0 - 1.0;
 			sky *= mix(1.0, clamp(1.0 - normalY * 0.9, 0.35, 1.6), rteEdgeLighting);
+		}
+		if ((rteWaterReflection > 0.0 || rteWaterRefraction > 0.0) && normalSample.a > 0.25 && WaterAt(gl_FragCoord.xy)) {
+			// Water: what's behind it bent by the ripples and darker the deeper it is, and the scene above the surface mirrored in it.
+			vec2 tilt = normalSample.xy * 2.0 - 1.0;
+			float surfaceDistance = WaterSurfaceDistance(gl_FragCoord.xy);
+			float depth = surfaceDistance < 0.0 ? 64.0 : surfaceDistance;
+			if (rteWaterRefraction > 0.0) {
+				// Only bent towards more water, so the edge of a pool never pulls in the rock beside it.
+				vec2 bent = gl_FragCoord.xy + tilt * rteWaterRefraction * (3.0 + depth * 0.08);
+				if (WaterAt(bent)) {
+					albedo.rgb = texture(rteAlbedo, bent / rteScreenSize).rgb;
+				}
+				albedo.rgb *= 1.0 - 0.3 * min(rteWaterRefraction, 1.0) * smoothstep(4.0, 64.0, depth);
+			}
+			if (rteWaterReflection > 0.0 && surfaceDistance > 0.0) {
+				// Mirrored about the surface line (half a pixel above the topmost water pixel), shifted sideways by the ripples, more the deeper.
+				vec2 mirrored = vec2(gl_FragCoord.x + tilt.x * (2.0 + depth * 0.25), gl_FragCoord.y - 2.0 * surfaceDistance + 1.0);
+				// Faded out where the mirror point leaves the screen, and onto other water (nothing new to show).
+				float fade = smoothstep(0.0, 16.0, mirrored.y) * smoothstep(0.0, 16.0, mirrored.x) * smoothstep(0.0, 16.0, rteScreenSize.x - mirrored.x);
+				if (fade > 0.0 && !WaterAt(mirrored)) {
+					vec2 mirroredUV = mirrored / rteScreenSize;
+					waterReflection = pow(texture(rteAlbedo, mirroredUV).rgb, vec3(2.2));
+					// Lit as the scene around the water is, or as distant scenery where the mirror shows the background.
+					waterReflectionBackground = texture(rteSceneDepth, mirroredUV).r > rteBackgroundDepth;
+					// Fresnel, in two dimensions: strongest just under the surface and where the ripples tip the water towards the view of the sky.
+					float fresnel = mix(0.75, 0.2, smoothstep(0.0, 40.0, depth)) + 0.5 * clamp(length(tilt), 0.0, 0.5);
+					waterReflectionAmount = clamp(rteWaterReflection * fresnel * fade, 0.0, 0.85);
+				}
+			}
 		}
 		vec4 dynamicSample = texture(rteDynamicLight, screenUV);
 		vec3 dynamicLight = rteMaxDynamicLight * (1.0 - exp(-dynamicSample.rgb / rteMaxDynamicLight));
@@ -340,6 +401,10 @@ void main() {
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
 	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze) + waterGlow;
+	if (waterReflectionAmount > 0.0 && rteDebugView == 0) {
+		vec3 reflectedLight = waterReflectionBackground ? mix(rteBackgroundLight, mix(rteSkyDaylight, (rteSkyHorizon + rteSkyZenith) * 0.32, rteSkyRecolor), rteSkyOwnLight) : light;
+		litColor = mix(litColor, waterReflection * reflectedLight + waterGlow, waterReflectionAmount);
+	}
 	if (rteSkyOwnLight > 0.0 && skyLayer > 0.0) {
 		// The sky itself is as bright as the hour makes it. The sky light setting is for how much of it falls on the scene; turned down for moodier ground, it
 		// used to turn the midday sky navy as well.
