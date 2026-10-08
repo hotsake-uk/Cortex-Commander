@@ -7,7 +7,6 @@
 /// Inclusions of header files
 #include "Attachable.h"
 #include "Actor.h"
-#include "SoundContainer.h"
 
 #include <array>
 #include <unordered_map>

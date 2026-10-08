@@ -21,6 +21,7 @@
 #include "Atom.h"
 #include "Leg.h"
 #include "EffectsParticles.h"
+#include "SoundContainer.h"
 
 using namespace RTE;
 
