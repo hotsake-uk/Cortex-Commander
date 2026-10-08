@@ -960,6 +960,12 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 			if (actor != this && distance < sootReach) {
 				actor->SetSoot(actor->GetSoot() + 0.6F * (1.0F - distance / sootReach));
 			}
+			// And pins down and shakes the units within twice that, more the closer (see Actor::GetSuppression).
+			if (actor != this && distance < sootReach * 2.0F) {
+				float closeness = 1.0F - distance / (sootReach * 2.0F);
+				actor->AddSuppression(0.2F + 0.6F * closeness);
+				actor->ChangeMorale(-0.1F * closeness);
+			}
 		}
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));

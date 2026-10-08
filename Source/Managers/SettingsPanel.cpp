@@ -501,6 +501,13 @@ void DebugMan::SettingsGUI() {
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		{
+			float suppression = g_SettingsMan.AISuppression();
+			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAISuppression(suppression);
+			}
+			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
+		}
+		{
 			int paths = Actor::ShowAIPaths();
 			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
 				Actor::SetShowAIPaths(paths);

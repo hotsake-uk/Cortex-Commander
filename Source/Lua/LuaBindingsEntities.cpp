@@ -233,6 +233,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("MovePathSize", &Actor::GetMovePathSize)
 	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
 	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
+	    .property("Suppression", &Actor::GetSuppression)
+	    .property("Morale", &Actor::GetMorale)
 	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)
 	    .property("IsWaitingOnNewMovePath", &Actor::IsWaitingOnNewMovePath)

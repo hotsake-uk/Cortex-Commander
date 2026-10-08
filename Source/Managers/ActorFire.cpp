@@ -93,15 +93,12 @@ namespace {
 		return std::find_if(s_Burners.begin(), s_Burners.end(), [object](const Burner& burner) { return burner.Object == object; });
 	}
 
-	/// Sends a burning unit running in a random direction.
+	/// Burning shakes a unit: its morale drops and it is pinned down, and its AI pulls back or goes to ground by that (see Actor::GetMorale).
+	/// (It sent the unit off to a random point with a GOTO, which overwrote its orders and, put back to SENTRY when the fire went out, lost
+	/// them for good.)
 	void Panic(Actor* actor) {
-		if (actor->IsPlayerControlled()) {
-			return;
-		}
-		float distance = 80.0F + Random01() * 100.0F;
-		actor->ClearAIWaypoints();
-		actor->AddAISceneWaypoint(actor->GetPos() + Vector(Random01() < 0.5F ? -distance : distance, 0.0F));
-		actor->SetAIMode(Actor::AIMODE_GOTO);
+		actor->ChangeMorale(-0.25F);
+		actor->AddSuppression(0.3F);
 	}
 
 	void Ignite(MovableObject* object) {
@@ -131,11 +128,6 @@ namespace {
 	void PutOut(std::vector<Burner>::iterator burner, bool withSteam) {
 		if (g_MovableMan.ValidMO(burner->Object) && burner->Object->GetUniqueID() == burner->ID) {
 			burner->Object->RemoveNumberValue(c_OnFireTag);
-			if (Actor* actor = dynamic_cast<Actor*>(burner->Object); actor && !actor->IsPlayerControlled() && actor->GetAIMode() == Actor::AIMODE_GOTO && actor->GetNumberValue("SandboxAttack") <= 0.0) {
-				// Done panicking.
-				actor->ClearAIWaypoints();
-				actor->SetAIMode(Actor::AIMODE_SENTRY);
-			}
 			if (withSteam) {
 				TerrainFire::SpawnSteam(burner->Object->GetPos(), 2);
 			}
