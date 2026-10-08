@@ -244,7 +244,7 @@ namespace RTE {
 		bool CloudLayer = true; //!< Clouds are drawn in the sky, the same clouds whose shadows cross the ground; they gather in bad weather and break up after it. Off: no clouds in the sky and the shadows keep their fixed spread, as before.
 		float CloudCover = 0.5F; //!< How much of the sky is cloud in clear weather, 0 to 1 (0.5 is the spread the shadows always had). Rain, snow and ash fall add to it.
 		float CloudOpacity = 1.0F; //!< How solid the clouds in the sky are drawn, 0 to 1.
-		float CloudSize = 1.0F; //!< How big the clouds are, 0.4 to 2.5: the width of the patches (in the sky and their shadows alike), their puffs, and how deep the band they sit in is. 1 as before.
+		float CloudSize = 1.0F; //!< How big the clouds are, 0.4 to 2.5: the width of the patches (in the sky and their shadows alike), their puffs, and how deep the band they sit in is (with the square of the size, so small clouds stay long and shallow).
 		float CloudHeight = 1.0F; //!< How high in the sky the cloud band sits, 0 to 1: 1 along the top of the view as before, 0 starting halfway down it.
 		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.

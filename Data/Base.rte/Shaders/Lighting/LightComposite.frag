@@ -180,9 +180,14 @@ float CloudOctave(float along, float scale, float row) {
 	return mix(mix(CloudHash(vec2(first, rowCell)), CloudHash(vec2(second, rowCell)), f), mix(CloudHash(vec2(first, rowCell + 1.0)), CloudHash(vec2(second, rowCell + 1.0)), f), g);
 }
 
+// How thick the cloud is over a column of the clouds' x, with the patches widened by the given factor.
+float CloudColumnWide(float along, float widen) {
+	return 0.65 * CloudOctave(along, 420.0 * widen * rteCloudSize, 3.7) + 0.35 * CloudOctave(along, 150.0 * widen * rteCloudSize, 9.1);
+}
+
 // How thick the cloud is over a column of the clouds' x: wide soft patches a few hundred pixels across. The sky's clouds and their shadows both come from this.
 float CloudColumn(float along) {
-	return 0.65 * CloudOctave(along, 420.0 * rteCloudSize, 3.7) + 0.35 * CloudOctave(along, 150.0 * rteCloudSize, 9.1);
+	return CloudColumnWide(along, 1.0);
 }
 
 // Where thickness becomes cloud, by how much of the sky is cloud.
@@ -204,21 +209,27 @@ float CloudShade(vec2 worldPos) {
 // How far the cloud layer scrolls with the view compared to the battlefield: it is far off, like the sky art behind it.
 const float c_CloudParallax = 0.25;
 
-// The clouds in the sky at a pixel, and how much of it they cover. The column over the middle of the screen is the one whose shadow falls on the middle of the screen;
-// away from it, the far-off clouds are drawn smaller than the shadows they cast.
+// How much wider the clouds in the sky are drawn than the scroll alone would make them. The sky's x moves at the parallax, so on its own every patch and puff
+// came out a quarter as wide as its shadow while the band stayed deep, and clouds stood tall and thin. Widening the patches keeps the far-off scroll and the
+// wrap seam as they were; the sky's patches no longer copy the shadow pattern exactly, only its cover and storminess.
+const float c_SkyCloudWiden = 2.6;
+
+// The clouds in the sky at a pixel, and how much of it they cover. They scroll with the view at the parallax, far off behind the battlefield.
 vec4 SkyCloud(vec2 screenUV, vec3 skyLight) {
-	// The clouds sit in a band across the sky, along the top at the usual height, as deep as they are big.
+	// The clouds sit in a band across the sky, along the top at the usual height. The band's depth goes with the square of the size while the patches' width goes with the size,
+	// so smaller clouds come out long and shallow rather than tall and thin.
 	float bandTop = (1.0 - rteCloudHeight) * 0.5;
-	float band = (screenUV.y - bandTop) / min(0.42 * rteCloudSize, 0.85); // Player screens are drawn top down: UV y 0 is the top.
+	float band = (screenUV.y - bandTop) / min(0.42 * rteCloudSize * rteCloudSize, 0.85); // Player screens are drawn top down: UV y 0 is the top.
 	if (band < 0.0 || band >= 1.0) {
 		return vec4(0.0);
 	}
 	vec2 middle = rteScreenOrigin + rteScreenSize * 0.5;
 	float along = CloudAlong(middle) + (gl_FragCoord.x - rteScreenSize.x * 0.5) / c_CloudParallax;
-	float row = (gl_FragCoord.y + rteScreenOrigin.y * c_CloudParallax) / (40.0 * rteCloudSize);
+	// Puff rows are shallower than the puffs are wide.
+	float row = (gl_FragCoord.y + rteScreenOrigin.y * c_CloudParallax) / (16.0 * rteCloudSize);
 	// Puffy edges, and thinner towards the band's top and bottom.
 	float edge = abs(band * 2.0 - 1.0);
-	float thickness = CloudColumn(along) + 0.22 * (CloudOctave(along, 60.0 * rteCloudSize, row) - 0.5) - 0.3 * edge * edge;
+	float thickness = CloudColumnWide(along, c_SkyCloudWiden) + 0.22 * (CloudOctave(along, 60.0 * c_SkyCloudWiden * rteCloudSize, row) - 0.5) - 0.3 * edge * edge;
 	float threshold = CloudThreshold();
 	float amount = smoothstep(threshold, threshold + 0.2, thickness);
 	if (amount <= 0.0) {
