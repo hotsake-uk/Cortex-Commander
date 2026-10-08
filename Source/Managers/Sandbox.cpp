@@ -1577,7 +1577,9 @@ namespace {
 				continue;
 			}
 			MovableObject* object = g_MovableMan.FindObjectByUniqueID(incoming.Id);
-			bool arrived = object == nullptr || --incoming.Life <= 0;
+			// Gone before it got there: the game blew it up on the way (it hit something) or it was removed. Its blast, if any, has been.
+			const bool goneEarly = object == nullptr;
+			bool arrived = goneEarly || --incoming.Life <= 0;
 			Vector position = object ? object->GetPos() : incoming.LastPos;
 			if (object) {
 				incoming.LastPos = position;
@@ -1608,7 +1610,8 @@ namespace {
 			}
 			if (MOSRotating* explosive = dynamic_cast<MOSRotating*>(object)) {
 				explosive->GibThis();
-			} else if (incoming.ClassName == "TDExplosive") {
+			} else if (incoming.ClassName == "TDExplosive" && !goneEarly) {
+				// (Not again for one the game already set off: that was a second blast where the first had been.)
 				Detonate(incoming.Preset.c_str(), position);
 			}
 			if (incoming.ClassName != "TDExplosive") {
