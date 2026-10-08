@@ -6,6 +6,10 @@
 #include "UInputMan.h"
 #include "SettingsMan.h"
 #include "ConsoleMan.h"
+#include "SceneMan.h"
+#include "PresetMan.h"
+
+#include "Scene.h"
 
 #include "GameVersion.h"
 
@@ -32,6 +36,7 @@ void MainMenuGUI::Clear() {
 	m_UpdateResult = MainMenuUpdateResult::NoEvent;
 	m_MenuScreenChange = false;
 	m_MetaGameNoticeShown = false;
+	m_SandboxCurrentMapName.clear();
 
 	m_ResumeButtonBlinkTimer.Reset();
 	m_CreditsScrollTimer.Reset();
@@ -75,6 +80,7 @@ void MainMenuGUI::Create(AllegroScreen* guiScreen, GUIInputWrapper* guiInput) {
 	CreateMainScreen();
 	CreateMetaGameNoticeScreen();
 	CreateEditorsScreen();
+	CreateSandboxScreen();
 	CreateCreditsScreen();
 	CreateQuitScreen();
 
@@ -134,6 +140,15 @@ void MainMenuGUI::CreateEditorsScreen() {
 	m_MainMenuButtons[MenuButton::AssemblyEditorButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonAssemblyEditor"));
 	m_MainMenuButtons[MenuButton::GibEditorButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonGibPlacement"));
 	m_MainMenuButtons[MenuButton::ActorEditorButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonActorEditor"));
+}
+
+void MainMenuGUI::CreateSandboxScreen() {
+	m_MainMenuScreens[MenuScreen::SandboxScreen] = dynamic_cast<GUICollectionBox*>(m_SubMenuScreenGUIControlManager->GetControl("SandboxScreen"));
+	m_MainMenuScreens[MenuScreen::SandboxScreen]->CenterInParent(true, false);
+
+	m_MainMenuButtons[MenuButton::SandboxEmptyButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxEmpty"));
+	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxCurrentMap"));
+	m_MainMenuButtons[MenuButton::SandboxMapSelectButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxMapSelect"));
 }
 
 void MainMenuGUI::CreateCreditsScreen() {
@@ -240,6 +255,32 @@ void MainMenuGUI::ShowEditorsScreen() {
 	m_MenuScreenChange = false;
 }
 
+void MainMenuGUI::ShowSandboxScreen() {
+	m_MainMenuScreens[MenuScreen::SandboxScreen]->SetVisible(true);
+	m_MainMenuScreens[MenuScreen::SandboxScreen]->GUIPanel::AddChild(m_MainMenuButtons[MenuButton::BackToMainButton]);
+
+	m_MainMenuButtons[MenuButton::BackToMainButton]->SetVisible(true);
+	m_MainMenuButtons[MenuButton::BackToMainButton]->SetPositionRel((m_MainMenuScreens[MenuScreen::SandboxScreen]->GetWidth() - m_MainMenuButtons[MenuButton::BackToMainButton]->GetWidth()) / 2, 95);
+
+	// "Current map" is the map of the game in progress (or last played), if it's a real map that can be loaded again, else the Sandbox game mode's own map.
+	m_SandboxCurrentMapName.clear();
+	const Activity* activity = g_ActivityMan.GetActivity();
+	const Scene* scene = g_SceneMan.GetScene();
+	if (activity && scene && activity->GetActivityState() != Activity::NotStarted) {
+		const std::string& sceneName = scene->GetPresetName();
+		if (sceneName != "Null Scene" && sceneName != "Editor Scene" && g_PresetMan.GetEntityPreset("Scene", sceneName)) {
+			m_SandboxCurrentMapName = sceneName;
+		}
+	}
+	if (m_SandboxCurrentMapName.empty()) {
+		const Activity* sandbox = dynamic_cast<const Activity*>(g_PresetMan.GetEntityPreset("GAScripted", "Sandbox"));
+		m_SandboxCurrentMapName = (sandbox && !sandbox->GetSceneName().empty()) ? sandbox->GetSceneName() : "Ketanot Hills";
+	}
+	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]->SetText("Current Map: " + m_SandboxCurrentMapName);
+
+	m_MenuScreenChange = false;
+}
+
 void MainMenuGUI::ShowCreditsScreen() {
 	m_MainMenuScreens[MenuScreen::CreditsScreen]->SetVisible(true);
 	m_MainMenuScreens[MenuScreen::CreditsScreen]->GUIPanel::AddChild(m_MainMenuButtons[MenuButton::BackToMainButton]);
@@ -332,6 +373,12 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			}
 			backToMainMenu = HandleInputEvents();
 			break;
+		case MenuScreen::SandboxScreen:
+			if (m_MenuScreenChange) {
+				ShowSandboxScreen();
+			}
+			backToMainMenu = HandleInputEvents();
+			break;
 		case MenuScreen::CreditsScreen:
 			if (m_MenuScreenChange) {
 				ShowCreditsScreen();
@@ -400,6 +447,9 @@ bool MainMenuGUI::HandleInputEvents() {
 				case MenuScreen::EditorScreen:
 					HandleEditorsScreenInputEvents(guiEvent.GetControl());
 					break;
+				case MenuScreen::SandboxScreen:
+					HandleSandboxScreenInputEvents(guiEvent.GetControl());
+					break;
 				case MenuScreen::QuitScreen:
 					HandleQuitScreenInputEvents(guiEvent.GetControl());
 					break;
@@ -424,10 +474,7 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::ScenarioButton]) {
 		m_UpdateResult = MainMenuUpdateResult::ScenarioStarted;
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxButton]) {
-		// Straight into the Sandbox game mode on its own map, with no setup screen.
-		if (g_ActivityMan.SetStartSandboxActivity()) {
-			m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
-		}
+		SetActiveMenuScreen(MenuScreen::SandboxScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SaveOrLoadGameButton]) {
 		SetActiveMenuScreen(MenuScreen::SaveOrLoadGameScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SettingsButton]) {
@@ -454,6 +501,26 @@ void MainMenuGUI::HandleMetaGameNoticeScreenInputEvents(const GUIControl* guiEve
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::MetaGameContinueButton]) {
 		m_UpdateResult = MainMenuUpdateResult::MetaGameStarted;
 		SetActiveMenuScreen(MenuScreen::MainScreen);
+	}
+}
+
+void MainMenuGUI::HandleSandboxScreenInputEvents(const GUIControl* guiEventControl) {
+	// Empty and Current map go straight into the game with no setup screen; Map select is the scenario chooser with Sandbox picked.
+	if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxEmptyButton]) {
+		if (g_ActivityMan.SetStartSandboxActivity("Empty Sandbox")) {
+			m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
+			SetActiveMenuScreen(MenuScreen::MainScreen, false);
+			g_GUISound.ExitMenuSound()->Play();
+		}
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]) {
+		if (g_ActivityMan.SetStartSandboxActivity(m_SandboxCurrentMapName)) {
+			m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
+			SetActiveMenuScreen(MenuScreen::MainScreen, false);
+			g_GUISound.ExitMenuSound()->Play();
+		}
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxMapSelectButton]) {
+		m_UpdateResult = MainMenuUpdateResult::SandboxScenarioStarted;
+		SetActiveMenuScreen(MenuScreen::MainScreen, false);
 	}
 }
 
