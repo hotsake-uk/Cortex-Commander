@@ -720,6 +720,10 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 					AI.SentryFacing = Owner.HFlipped;
 					AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
 					AI:CreateSentryBehavior(Owner);
+					-- A sentry now, as the engine makes a player's unit on arriving: left in GOTO, the sandbox's "arrived" (not GOTO, no
+					-- waypoints) never came for an AI unit, and plans, patrols, shift Defend-at and keep-together all stalled at the first
+					-- step. (The AI's update takes the mode change for a sentry order and keeps a post put back by RestoreOrder.)
+					Owner.AIMode = Actor.AIMODE_SENTRY;
 				end
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
@@ -732,6 +736,11 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
 				Owner:DrawWaypoints(false);
+				-- Stood down as a sentry where it is, so the sandbox sees the move ended short and shows its "no route" marker (RC-7).
+				-- Not a fall-back or a flank, which time themselves out and put their own order back.
+				if Owner.AIMode == Actor.AIMODE_GOTO and not Owner:NumberValueExists("AIRetreat") and not Owner:NumberValueExists("AIFlank") then
+					Owner.AIMode = Actor.AIMODE_SENTRY;
+				end
 				return true;
 			end
 		end
@@ -2466,6 +2475,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				if Owner.AIMode == Actor.AIMODE_GOTO then
 					AI.SentryFacing = Owner.HFlipped; -- guard this direction
 					AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- guard this point
+					Owner.AIMode = Actor.AIMODE_SENTRY; -- (Arrived: a sentry, as in GoToRoute.)
 				end
 
 				return true;
@@ -2820,6 +2830,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							AI.SentryFacing = Owner.HFlipped; -- guard this direction
 							AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- guard this point
 							AI:CreateSentryBehavior(Owner);
+							Owner.AIMode = Actor.AIMODE_SENTRY; -- (Arrived: a sentry, as in GoToRoute.)
 						end
 
 						Owner:ClearAIWaypoints();
