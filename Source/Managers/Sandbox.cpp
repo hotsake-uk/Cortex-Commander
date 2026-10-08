@@ -522,7 +522,8 @@ void Sandbox::DrawGUI() {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
 		// opened again); the selection itself is kept for when it is.
 		UnmarkSelection();
-		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
+		static const bool hidePanels = std::getenv("CCCP_HIDE_PANELS") != nullptr;
+		if (s_FreeCameraStarted && IsGodMode() && hidePanels) {
 			// Automated test runs keep the window shut, but the camera they've placed has to stay where they put it.
 			UpdateFreeCamera();
 			return;
@@ -547,7 +548,8 @@ void Sandbox::DrawGUI() {
 		if (std::sscanf(testPointer, "%f,%f", &x, &y) == 2) {
 			io.MousePos = ImVec2(x, y);
 			io.WantCaptureMouse = false;
-			if (std::getenv("CCCP_TEST_RING") && !s_RingOpen) {
+			static const bool testRing = std::getenv("CCCP_TEST_RING") != nullptr;
+			if (testRing && !s_RingOpen) {
 				s_RingOpen = true;
 				s_RingCenter = ImVec2(x - 40.0F, y - 10.0F);
 			}
