@@ -16,6 +16,7 @@
 #include <array>
 #include <execution>
 #include <mutex>
+#include <set>
 
 using namespace RTE;
 
@@ -66,6 +67,10 @@ thread_local float s_LeapSpeed = 4.0F; // How fast a leap carries it forward, m/
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
+// The steps of this search whose cheapest edge was a leap (see AdjacentCost): only those are labelled Leap (StepKindBetween). Labelled by
+// the geometry alone, a flight link between two floors a leap also fits was called a leap, and flown as one with no fuel, if the flight
+// was ever the cheaper.
+thread_local std::set<std::pair<const RTE::PathNode*, const RTE::PathNode*>> s_LeapsTaken;
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -196,6 +201,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	float jumpHeight = agent.JumpHeight;
 	float digStrength = agent.DigStrength;
 	ApplyAgent(agent);
+	s_LeapsTaken.clear();
 
 	++m_CurrentPathingRequests;
 
@@ -672,6 +678,8 @@ float PathFinder::LeastCostEstimate(void* startState, void* endState) {
 void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacentList) {
 	const PathNode* node = static_cast<PathNode*>(state);
 	micropather::StateCost adjCost;
+	size_t leapsBegin = 0;
+	size_t leapsEnd = 0;
 
 	// We do a little trick here, where we radiate out a little percentage of our average cost in all directions.
 	// This encourages the AI to generally try to give hard surfaces some berth when pathing, so we don't get too close and get stuck.
@@ -977,7 +985,9 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 
 		// Leaps of the legs across a gap or onto a low ledge (see AddLeapLinks).
 		if (s_JumpHeight < FLT_MAX && s_LeapHeight > 0.0F && !isInNoGrav) {
+			leapsBegin = adjacentList->size();
 			AddLeapLinks(*node, adjacentList);
+			leapsEnd = adjacentList->size();
 		}
 
 		// Flights to other floors (see AddFlightLinks).
@@ -1088,6 +1098,24 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					adjacent.cost += 25.0F;
 				}
 			}
+		}
+	}
+	// Which edge the search takes to each leap's landing, all costs in: the cheapest, the first of equals (the search keeps the first it is
+	// given at a cost). A leap that is it is noted for the label.
+	for (size_t i = leapsBegin; i < leapsEnd; ++i) {
+		const micropather::StateCost& leap = (*adjacentList)[i];
+		bool taken = true;
+		for (size_t j = 0; j < adjacentList->size() && taken; ++j) {
+			const micropather::StateCost& other = (*adjacentList)[j];
+			if (j != i && other.state == leap.state && (j < i ? other.cost <= leap.cost : other.cost < leap.cost)) {
+				taken = false;
+			}
+		}
+		std::pair<const PathNode*, const PathNode*> key(node, static_cast<const PathNode*>(leap.state));
+		if (taken) {
+			s_LeapsTaken.insert(key);
+		} else {
+			s_LeapsTaken.erase(key);
 		}
 	}
 }
@@ -1262,8 +1290,8 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 			return PathStepKind::Stairs;
 		}
 	}
-	// A leap's two floors, two or more nodes apart, with a leap that fits between them (the search takes the leap there over a flight).
-	if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(dx) > nodeSize * 1.5F && LeapFits(*from, *to)) {
+	// A leap's two floors, two or more nodes apart, where the search's edge between them was the leap (see s_LeapsTaken).
+	if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(dx) > nodeSize * 1.5F && s_LeapsTaken.count({from, to}) > 0) {
 		return PathStepKind::Leap;
 	}
 	if (dy < -1.0F) {
