@@ -229,9 +229,9 @@ namespace RTE {
 		/// Takes the scorch marks registered since the last call, for stamping.
 		std::vector<ScorchMark> TakePendingScorchMarks();
 
-		/// Gets the recent scorch marks that are still hot, and forgets the cooled ones.
+		/// Gets a copy of the recent scorch marks that are still hot, and forgets the cooled ones. A copy, because gibbing can add marks from other threads while the caller reads them.
 		/// @param duration How long marks stay hot, in seconds.
-		const std::vector<ScorchMark>& GetHotScorchMarks(float duration);
+		std::vector<ScorchMark> GetHotScorchMarks(float duration);
 
 		/// Forgets the recent scorch marks, so the last scene's don't glow in a new one.
 		void ClearHotScorchMarks() {
