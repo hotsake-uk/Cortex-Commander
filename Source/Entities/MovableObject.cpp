@@ -325,7 +325,10 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_SimUpdatesSinceLastScriptedUpdate = reference.m_SimUpdatesSinceLastScriptedUpdate;
 
 	m_StringValueMap = reference.m_StringValueMap;
-	m_NumberValueMap = reference.m_NumberValueMap;
+	{
+		std::scoped_lock lock(NumberValueLock(&reference));
+		m_NumberValueMap = reference.m_NumberValueMap;
+	}
 	m_ObjectValueMap = reference.m_ObjectValueMap;
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
@@ -593,7 +596,12 @@ int MovableObject::Save(Writer& writer) const {
 	writer.NewProperty("SimUpdatesBetweenScriptedUpdates");
 	writer << m_SimUpdatesBetweenScriptedUpdates;
 
-	for (const auto& [key, value]: m_NumberValueMap) {
+	std::unordered_map<std::string, double> numberValues;
+	{
+		std::scoped_lock lock(NumberValueLock(this));
+		numberValues = m_NumberValueMap;
+	}
+	for (const auto& [key, value]: numberValues) {
 		writer.ObjectStart("AddCustomValue = NumberValue");
 		writer.NewPropertyWithValue(key, value);
 	}
