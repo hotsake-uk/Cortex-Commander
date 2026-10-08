@@ -153,6 +153,11 @@ function NativeCrabAI:Update(Owner)
 		else
 			if Owner.AIMode ~= self.lastAIMode and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
+				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's facing, not the way it walked in.)
+				if self.ReturnPost and self.ReturnPost.facing ~= nil and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
+					self.SentryFacing = self.ReturnPost.facing;
+				end
+				self.ReturnPost = nil;
 			end
 
 			self:CreateSentryBehavior(Owner);

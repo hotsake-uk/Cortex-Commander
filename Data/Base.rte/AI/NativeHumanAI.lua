@@ -247,6 +247,14 @@ function NativeHumanAI:Update(Owner)
 			if Owner.AIMode ~= self.lastAIMode and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
 				self.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- store the pos on which we should be standing
+				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's own place and facing, not where it stopped.)
+				if self.ReturnPost and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
+					self.SentryPos = Vector(self.ReturnPost.Pos.X, self.ReturnPost.Pos.Y);
+					if self.ReturnPost.facing ~= nil then
+						self.SentryFacing = self.ReturnPost.facing;
+					end
+				end
+				self.ReturnPost = nil;
 			end
 
 			self:CreateSentryBehavior(Owner);
