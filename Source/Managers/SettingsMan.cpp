@@ -119,6 +119,7 @@ void SettingsMan::Clear() {
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
 	m_ShowSquadLinks = false;
+	m_ShowOrderLabels = false;
 	m_CombatOverlay = 0;
 	m_ShowRecentSolves = false;
 	m_ShowTerrainUpdates = false;
@@ -395,6 +396,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
 	MatchProperty("ShowSquadLinks", { reader >> m_ShowSquadLinks; });
+	MatchProperty("ShowOrderLabels", { reader >> m_ShowOrderLabels; });
 	MatchProperty("CombatOverlay", { int which = 0; reader >> which; SetCombatOverlay(which); });
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
 	MatchProperty("ShowSunDirection", { reader >> m_ShowSunDirection; });
@@ -734,6 +736,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
 	writer.NewPropertyWithValue("ShowSquadLinks", m_ShowSquadLinks);
+	writer.NewPropertyWithValue("ShowOrderLabels", m_ShowOrderLabels);
 	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
 	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
 	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);

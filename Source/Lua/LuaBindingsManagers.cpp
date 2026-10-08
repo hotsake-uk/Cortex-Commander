@@ -426,6 +426,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .def("IsDebugChannelOn", &SettingsMan::IsDebugChannelOn)
 	    .property("UnitInspector", &SettingsMan::UnitInspector, &SettingsMan::SetUnitInspector)
 	    .property("ShowSquadLinks", &SettingsMan::ShowSquadLinks, &SettingsMan::SetShowSquadLinks)
+	    .property("ShowOrderLabels", &SettingsMan::ShowOrderLabels, &SettingsMan::SetShowOrderLabels)
 	    .property("CombatOverlay", &SettingsMan::CombatOverlay, &SettingsMan::SetCombatOverlay)
 	    .property("ShowEnemyHUD", &SettingsMan::ShowEnemyHUD)
 	    .property("AutomaticGoldDeposit", &SettingsMan::GetAutomaticGoldDeposit);

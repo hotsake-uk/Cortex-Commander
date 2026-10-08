@@ -592,6 +592,8 @@ void DebugMan::SettingsGUI() {
 		Tip("The last eight routes the pathfinder found for the team the debug overlays show (Game & HUD), newest brightest: each step coloured by its kind with its cost, and at the goal whether it was solved, its total cost and how long the search took. Not saved; costs a little time per search while it's on.");
 		Toggle("Squad links and trails", g_SettingsMan.ShowSquadLinks(), [](bool on) { g_SettingsMan.SetShowSquadLinks(on); });
 		Tip("For inspected units in a squad: a green line from the leader to each follower, the leader's trail (yellow) that followers measure back along, and each follower's place in line as a white ring with its slot number.");
+		Toggle("Order labels", g_SettingsMan.ShowOrderLabels(), [](bool on) { g_SettingsMan.SetShowOrderLabels(on); });
+		Tip("Under each unit in view, in its side's colour: the order the sandbox gave it (attack a unit, attack towards a place, attack the nearest enemy, defend a spot) or else its AI mode, whether it's falling back or flanking, its control group [number], and AI paused while the AI is paused. In the sandbox's World tab, each auto battle side's budget, what it has spent, units sent and when its next wave comes.");
 	};
 
 	// How the picture is lit, drawn over the game.
