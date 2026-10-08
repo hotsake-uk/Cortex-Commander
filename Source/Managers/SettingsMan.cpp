@@ -1,7 +1,6 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
-#include "UnitSpeech.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -15,6 +14,7 @@
 #include "SmokeGrid.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
+#include "UnitSpeech.h"
 #include "ModernHUD.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
