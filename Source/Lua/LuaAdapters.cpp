@@ -302,6 +302,19 @@ int LuaAdaptersScene::CalculatePathForActor(Scene* luaSelfObject, const Actor* a
 	return -1;
 }
 
+std::vector<Vector>* LuaAdaptersScene::CalculatePathPoints(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team) {
+	std::list<Vector> path;
+	luaSelfObject->CalculatePath(start, end, path, jumpHeight, digStrength, std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour));
+	return new std::vector<Vector>(path.begin(), path.end());
+}
+
+std::vector<Vector>* LuaAdaptersScene::CalculatePathPointsForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team) {
+	std::list<Vector> path;
+	PathAgent agent = actor ? actor->GetPathAgent() : PathAgent();
+	luaSelfObject->CalculatePath(start, end, path, agent, std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour));
+	return new std::vector<Vector>(path.begin(), path.end());
+}
+
 void LuaAdaptersScene::CalculatePathAsync(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team) {
 	team = std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour);
 
@@ -402,6 +415,17 @@ void LuaAdaptersMovableObject::SendMessage1(MovableObject* luaSelfObject, const 
 void LuaAdaptersMovableObject::SendMessage2(MovableObject* luaSelfObject, const std::string& message, luabind::object context) {
 	LuabindObjectWrapper wrapper(&context, "", false);
 	luaSelfObject->RunScriptedFunctionInAppropriateScripts("OnMessage", false, false, {}, {message}, {&wrapper});
+}
+
+Attachable* LuaAdaptersMOSRotating::RemoveAttachable(MOSRotating* luaSelfObject, Attachable* attachable, bool addToMovableMan, bool addBreakWounds) {
+	if (!attachable || !attachable->IsAttachedTo(luaSelfObject)) {
+		return nullptr;
+	}
+	return luaSelfObject->RemoveAttachable(attachable, addToMovableMan, addBreakWounds);
+}
+
+Attachable* LuaAdaptersMOSRotating::RemoveAttachableByID(MOSRotating* luaSelfObject, long uniqueID, bool addToMovableMan, bool addBreakWounds) {
+	return RemoveAttachable(luaSelfObject, dynamic_cast<Attachable*>(g_MovableMan.FindObjectByUniqueID(uniqueID)), addToMovableMan, addBreakWounds);
 }
 
 void LuaAdaptersMOSRotating::GibThis(MOSRotating* luaSelfObject) {

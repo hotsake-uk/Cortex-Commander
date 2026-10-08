@@ -119,6 +119,7 @@ PathFinder::~PathFinder() {
 
 void PathFinder::Clear() {
 	m_NodeGrid.clear();
+	m_DebugLeaps.clear();
 	m_NodeDimension = SCENEGRIDSIZE;
 	m_Offset = Vector();
 }
@@ -153,6 +154,7 @@ int PathFinder::Create(int nodeDimension) {
 
 	// Create and assign scene coordinate positions for all nodes.
 	Vector nodePos = Vector(static_cast<float>(nodeDimension) / 2.0F, static_cast<float>(nodeDimension) / 2.0F) + m_Offset;
+	m_DebugLeaps.clear();
 	m_NodeGrid.reserve(m_GridWidth * m_GridHeight);
 	for (int y = 0; y < m_GridHeight; ++y) {
 		// Make sure no cell centers are off the scene (since they can overlap the far edge of the scene).
@@ -716,14 +718,45 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 		    // (The count taken when it was queued, given back at the end, after the complete flag, or if the search or callback throws.)
 		    RequestCountRelease countRelease(m_CurrentPathingRequests);
 
-		    int status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
-
-		    request.status = status;
-		    request.cutAtDoor = s_LastCutAtDoor;
-		    request.pathLength = request.path.size();
+		    // A throw out of a pool task ended the game (push_task has no catch), and one caught past the complete flag left the asker waiting on
+		    // this request for ever; so a search that throws (out of memory, say) comes back as no route, and the asker is still told.
+		    auto noteThrow = [](const char* what, const char* where) {
+			    static std::atomic<int> s_Noted = 0;
+			    if (s_Noted.fetch_add(1) < 5) {
+				    g_ConsoleMan.PrintString(std::string("ERROR: a path search threw in ") + where + ": " + what + "; answered as no route.");
+			    }
+		    };
+		    bool searched = false;
+		    try {
+			    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
+			    request.cutAtDoor = s_LastCutAtDoor;
+			    request.pathLength = request.path.size();
+			    searched = true;
+		    } catch (const std::exception& exception) {
+			    noteThrow(exception.what(), "the search");
+		    } catch (...) {
+			    noteThrow("unknown exception", "the search");
+		    }
+		    if (!searched) {
+			    request.status = MicroPather::NO_SOLUTION;
+			    request.path.clear();
+			    request.kinds.clear();
+			    request.totalCost = 0.0F;
+			    request.pathLength = 0.0F;
+			    request.cutAtDoor = false;
+			    // The thread's pather may have been left mid-solve; the next search builds a new one.
+			    delete s_Pather.m_Instance;
+			    s_Pather.m_Instance = nullptr;
+		    }
 
 		    if (callback) {
-			    callback(volRequest);
+			    try {
+				    callback(volRequest);
+			    } catch (const std::exception& exception) {
+				    noteThrow(exception.what(), "its callback");
+			    } catch (...) {
+				    noteThrow("unknown exception", "its callback");
+			    }
 		    }
 
 		    // Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
@@ -1860,7 +1893,11 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 	SearcherState kept;
 	ApplyAgent(agent);
 	s_FlyingStart = nullptr;
-	std::vector<micropather::StateCost> leaps;
+	const double nowMS = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	if (std::array<float, 4> leapAgent{s_LeapHeight, s_LeapSpeed, s_StandHeight, s_MantleHeight}; leapAgent != m_DebugLeapsAgent || m_DebugLeaps.size() > 20000) {
+		m_DebugLeaps.clear();
+		m_DebugLeapsAgent = leapAgent;
+	}
 	int fromX = static_cast<int>(std::floor(area.GetCorner().m_X / static_cast<float>(m_NodeDimension)));
 	int fromY = static_cast<int>(std::floor(area.GetCorner().m_Y / static_cast<float>(m_NodeDimension)));
 	int toX = static_cast<int>(std::ceil((area.GetCorner().m_X + area.GetWidth()) / static_cast<float>(m_NodeDimension)));
@@ -1910,9 +1947,13 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 			if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && !g_SceneMan.IsPointInNoGravArea(node->Pos)) {
 				auto lip = [node](const PathNode* side) { return side && side->Surface >= 0.0F && side->Surface < node->Surface - 4.0F; };
 				if (IsFloorEdge(*node) || lip(node->Left) || lip(node->Right)) {
-					leaps.clear();
-					AddLeapLinks(*node, &leaps);
-					for (const micropather::StateCost& leap: leaps) {
+					DebugLeaps& leaps = m_DebugLeaps[node];
+					if (leaps.TimeMS <= 0.0 || nowMS - leaps.TimeMS > 500.0) {
+						leaps.TimeMS = nowMS;
+						leaps.Links.clear();
+						AddLeapLinks(*node, &leaps.Links);
+					}
+					for (const micropather::StateCost& leap: leaps.Links) {
 						const PathNode* target = static_cast<const PathNode*>(leap.state);
 						Vector landing(target->Anchor.m_X, target->Surface - 3.0F);
 						Vector apex = standing + g_SceneMan.ShortestDistance(standing, landing) * 0.5F - Vector(0.0F, s_LeapHeight * 0.6F);

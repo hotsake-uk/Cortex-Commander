@@ -314,6 +314,15 @@ namespace RTE {
 		}
 		static int CalculatePath(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
 
+		/// The path itself, as its own list for the caller to keep, where CalculatePath leaves it in GetScenePath: that list is the calling
+		/// thread's, so a script asking in ThreadedUpdate and reading it in Update read another thread's path. Empty for no route.
+		static std::vector<Vector>* CalculatePathPoints(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
+		static std::vector<Vector>* CalculatePathPoints1(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
+			return CalculatePathPoints(luaSelfObject, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
+		}
+		/// Likewise for CalculatePathForActor.
+		static std::vector<Vector>* CalculatePathPointsForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team);
+
 		static void CalculatePathAsync1(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
 			return CalculatePathAsync(luaSelfObject, callback, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
 		}
@@ -372,6 +381,14 @@ namespace RTE {
 		static std::vector<AEmitter*>* GetWounds2(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables);
 		// Need a seperate implementation function without the return so we can safely recurse.
 		static void GetWoundsImpl(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables, std::vector<AEmitter*>& wounds);
+
+		/// RemoveAttachable for scripts, which take ownership of what it returns: nil unless the Attachable was attached to this object. (The engine's
+		/// RemoveAttachable hands back an Attachable that isn't attached as it was given, and a script adopting one that was loose in the scene
+		/// freed it under MovableMan; one attached elsewhere hit an assert.)
+		static Attachable* RemoveAttachable(MOSRotating* luaSelfObject, Attachable* attachable, bool addToMovableMan, bool addBreakWounds);
+		static Attachable* RemoveAttachable1(MOSRotating* luaSelfObject, Attachable* attachable) { return RemoveAttachable(luaSelfObject, attachable, false, false); }
+		static Attachable* RemoveAttachableByID(MOSRotating* luaSelfObject, long uniqueID, bool addToMovableMan, bool addBreakWounds);
+		static Attachable* RemoveAttachableByID1(MOSRotating* luaSelfObject, long uniqueID) { return RemoveAttachableByID(luaSelfObject, uniqueID, false, false); }
 	};
 #pragma endregion
 
