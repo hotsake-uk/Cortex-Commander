@@ -363,6 +363,7 @@ namespace SandboxDetail {
 		int Count = 1;
 		bool LitGrenade = false;
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
+		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
@@ -502,11 +503,14 @@ namespace SandboxDetail {
 		Move, //!< Each selected unit to its own spot round the point; a click on an enemy attacks it, a click on a friend selects it.
 		Attack, //!< Go for the nearest enemy to the point, or the point itself with orders to fight.
 		Guard, //!< Follow the friendly unit clicked and stay with it.
-		AttackMove //!< Walk to the point, stopping to fight any enemy met on the way, then carry on to it (RC-2).
+		AttackMove, //!< Walk to the point, stopping to fight any enemy met on the way, then carry on to it (RC-2).
+		DefendAt, //!< Post the units round the point to hold it, facing the way the button was dragged (RC-4).
+		Patrol //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
 	};
 	inline CommandMode s_CommandMode = CommandMode::Move;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255)};
+	inline std::vector<Vector> s_PatrolDraft; //!< The points of the patrol route being clicked out (RC-4), in order.
 	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
 	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
@@ -600,7 +604,8 @@ namespace SandboxDetail {
 		AttackMove, //!< Go to the place fighting what is met (RC-2).
 		Attack, //!< Go after the enemy until it is dead.
 		Guard, //!< Stay with the friend; done only if the friend is gone.
-		Defend //!< Hold ground where it stands; never done, so it ends a plan.
+		Defend, //!< Hold ground where it stands; never done, so it ends a plan.
+		Wait //!< Stay a while where it is (a patrol's pause at each point, RC-4).
 	};
 
 	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
@@ -608,6 +613,8 @@ namespace SandboxDetail {
 		PlanKind Kind = PlanKind::Move;
 		Vector Place; //!< Where: the unit's own spot for a move, the post for a defend (where the step before leaves it), the target's place when queued otherwise.
 		UnitRef Target; //!< The enemy to attack or the friend to guard.
+		int Facing = 0; //!< A defend's way to face: -1 left, 1 right, 0 either (RC-4).
+		int Updates = 0; //!< A wait's length, in sim updates.
 	};
 
 	/// A unit's plan (RC-3): the step under way and the ones still to come, worked through one at a time. Any order given without Shift drops it.
@@ -617,6 +624,9 @@ namespace SandboxDetail {
 		PlanStep Current;
 		long long Started = 0; //!< The sim update Current was started on.
 		std::deque<PlanStep> Steps;
+		std::vector<Vector> Route; //!< A patrol's points (this unit's own spot at each, RC-4): the steps go round them again whenever they run out.
+		bool BackAndForth = false; //!< The patrol walks the route back the other way at each end, rather than from the last point to the first.
+		bool Forward = true; //!< Which way a back-and-forth patrol is going.
 	};
 
 	inline std::map<long, Plan> s_Plans; //!< Units' plans by unique ID (a map, so they're stepped in a fixed order).
@@ -1214,7 +1224,9 @@ namespace SandboxDetail {
 	int SelectionTeam();
 	void MarkOrder(const Vector& at, ImU32 color);
 	void CommandSelected(const Vector& position, int modifier);
-	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target);
+	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing = 0);
+	void DefendAtSelected(const Vector& point, const Vector& facingPoint, bool shift);
+	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth);
 	void DropPlan(const Actor* unit);
 	void UpdatePlans();
 	void DropPlanStep(long unitID, int step);

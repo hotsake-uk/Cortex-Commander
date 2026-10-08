@@ -128,6 +128,11 @@ function CrabBehaviors.Sentry(AI, Owner, Abort)
 		end
 	end
 
+	-- (Posted facing a way, RC-4: that is the way to watch. After the look for the likely way an enemy comes, which would otherwise
+	-- turn it to face that.)
+	if Owner.OrderHasPost and Owner.OrderPostFacing ~= 0 then
+		AI.SentryFacing = Owner.OrderPostFacing < 0;
+	end
 	while true do	-- start by looking forward
 		aim = Owner:GetAimAngle(false);
 

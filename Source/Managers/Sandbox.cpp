@@ -613,14 +613,38 @@ void Sandbox::DrawGUI() {
 	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
-		ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), IM_COL32(255, 255, 255, 200), 0.0F, 0, 1.5F);
+		// Defend at (RC-4) drags the way to face, drawn as an arrow; anything else drags a box to select.
+		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
+		if (defendAt) {
+			ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)];
+			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
+			float side = now.x >= s_DragStart.x ? 1.0F : -1.0F;
+			if (std::abs(now.x - s_DragStart.x) > 12.0F) {
+				ImGui::GetForegroundDrawList()->AddTriangleFilled(ImVec2(now.x + side * 8.0F, now.y), ImVec2(now.x, now.y - 6.0F), ImVec2(now.x, now.y + 6.0F), color);
+			}
+		} else {
+			ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), IM_COL32(255, 255, 255, 200), 0.0F, 0, 1.5F);
+		}
 		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			s_Dragging = false;
 			Stroke stroke;
 			float scale = ScenePixelsPerWindowPixel();
 			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * scale;
 			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x - ViewOrigin().x, now.y - ViewOrigin().y) * scale;
-			if (std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F) {
+			bool dragged = std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
+			bool give = true;
+			if (defendAt) {
+				stroke.Kind = Tool::Command;
+				stroke.Position = start;
+				g_SceneMan.WrapPosition(stroke.Position);
+				stroke.Position2 = end;
+				stroke.Count = io.KeyShift ? 11 : 10;
+			} else if (s_CommandMode == CommandMode::Patrol && CurrentTool().Kind == Tool::Command && !dragged) {
+				// A point of the patrol route being clicked out; the command row starts it.
+				g_SceneMan.WrapPosition(end);
+				s_PatrolDraft.push_back(end);
+				give = false;
+			} else if (dragged) {
 				stroke.Kind = Tool::Select;
 				stroke.Position = start;
 				stroke.Position2 = end;
@@ -630,7 +654,9 @@ void Sandbox::DrawGUI() {
 				g_SceneMan.WrapPosition(stroke.Position);
 				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
 			}
-			s_Queue.push_back(stroke);
+			if (give) {
+				s_Queue.push_back(stroke);
+			}
 		}
 	}
 	if (InGame()) {
