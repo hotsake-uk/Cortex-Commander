@@ -1736,7 +1736,8 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 	if not AI.Cover.There and math.abs(dx) > 6 and not AI.Cover.Timer:IsPastSimMS(3000) then
 		-- (Walked by the engine's motor: see SharedBehaviors.StepTo.)
 		SharedBehaviors.StepTo(AI, Owner, AI.Cover.Spot, 3000 - AI.Cover.Timer.ElapsedSimTimeMS);
-		SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 200);
+		-- (Shot at from out of sight, it goes to low cover bent double.)
+		SharedBehaviors.Stance(AI, Owner, (AI.Cover.Why == "shot" and AI.Cover.Low) and SharedBehaviors.CROUCHED or AHuman.NOTPRONE, 200);
 	else
 		if not AI.Cover.There then
 			AI.Cover.There = true;
@@ -1745,6 +1746,53 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 		AI.lateralMoveState = Actor.LAT_STILL;
 	end
 	return true;
+end
+
+-- Shot from somewhere it can't see (AC-10): the hit's alarm point, a body's height back along the shot (Actor::ParticlePenetration), says
+-- which way the shooter is. The unit gets out of the line into cover on that side (low cover if there is some, crouched on the way), looking
+-- that way as it goes, and once there aims along it for a while (PinArea); NativeHumanAI's hit-flank waits until it has got there. A unit
+-- with a target is the shooting rules' business, and one that can't find cover just faces the shot (FaceAlarm) as before. @param AlarmPoint
+-- The alarm point when the unit was hit this tick, else nil.
+function HumanBehaviors.ShotFromUnseen(AI, Owner, AlarmPoint)
+	if AlarmPoint and AlarmPoint.Largest > 0 and not AI.Target then
+		local Dir = SceneMan:ShortestDistance(Owner.Pos, AlarmPoint, false);
+		if Dir.Largest > 0 then
+			Dir:SetMagnitude(400);
+			local From = Owner.Pos + Dir;
+			SceneMan:WrapPosition(From);
+			if AI.ShotFrom then
+				AI.ShotFrom.Pos = From;
+				AI.ShotFrom.Timer:Reset();
+			else
+				AI.ShotFrom = { Pos = From, Timer = Timer(), Pinned = false };
+			end
+		end
+	end
+	local Shot = AI.ShotFrom;
+	if not Shot then
+		return;
+	end
+	if AI.Target or Shot.Timer:IsPastSimMS(4000) then
+		AI.ShotFrom = nil;
+		return;
+	end
+	-- Into cover from it, if not already behind some.
+	if (AI.Cover and AI.Cover.Why ~= "shot") or not HumanBehaviors.TakeCover(AI, Owner, Shot.Pos, "shot") then
+		return;
+	end
+	local Aim = SceneMan:ShortestDistance(Owner.EyePos, Shot.Pos, false);
+	if not AI.Cover.There then
+		AI.deviceState = AHuman.AIMING;
+		AI.Ctrl.AnalogAim = Aim.Normalized;
+	elseif not Shot.Pinned then
+		Shot.Pinned = true;
+		SharedBehaviors.Trace(Owner, "shot from out of sight: in cover, watching that way");
+		AI.OldTargetPos = AI.OldTargetPos or Vector(Shot.Pos.X, Shot.Pos.Y);
+		AI:CreatePinBehavior(Owner);
+	end
+	if AI.Cover.There and AI.Cover.Low then
+		SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
+	end
 end
 
 -- Out of cover again, back to where the unit was, once the reload is done or the moment's rest is over. Called every tick by the AI's
@@ -1765,6 +1813,10 @@ function HumanBehaviors.LeaveCover(AI, Owner)
 		-- Behind low cover with the enemy still about, the unit stays and fights from there, ducking and peeking (PeekUpdate), for up to
 		-- twelve seconds; then back out as from any cover.
 		if AI.Cover.Low and AI.Target and MovableMan:ValidMO(AI.Target) and not AI.Cover.Timer:IsPastSimMS(12000) then
+			return;
+		end
+		-- Shot at from out of sight, it stays put while the shots keep coming (ShotFromUnseen forgets them 4 s after the last).
+		if AI.Cover.Why == "shot" and AI.ShotFrom and not AI.Cover.Timer:IsPastSimMS(12000) then
 			return;
 		end
 		AI.Cover.Leaving = true;
