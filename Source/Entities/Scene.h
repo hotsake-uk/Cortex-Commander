@@ -656,6 +656,10 @@ namespace RTE {
 		/// @return Whether they all completed; false if a search was still running when a wait timed out.
 		bool BlockUntilAllPathingRequestsComplete();
 
+		/// Lets every grid take new async searches again and sends those held back while a grid waited to be rewritten (see UpdatePathFinding).
+		/// Anything that waits on the main thread for a search to finish calls this first: a held search would never start.
+		void ReleaseHeldPathRequests();
+
 		/// Recalculates only the areas of the pathfinding data that have been
 		/// marked as outdated.
 		void UpdatePathFinding();

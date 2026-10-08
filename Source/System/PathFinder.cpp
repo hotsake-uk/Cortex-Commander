@@ -712,60 +712,71 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 	// Counted from the moment it's queued, not from when a thread picks it up: the grid's cost updates wait for the count to be zero, and
 	// a request still in the queue when they ran was then solved on a grid being written under it (new requests are only queued from the
 	// main thread, which is the one doing the rebuild, so with nothing queued or running the rebuild has the grid to itself).
-	++m_CurrentPathingRequests;
-	g_ThreadMan.GetBackgroundThreadPool().push_task(
-	    [this, start, end, agent, callback](std::shared_ptr<volatile PathRequest> volRequest) {
-		    // Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
-		    PathRequest& request = const_cast<PathRequest&>(*volRequest);
-		    // (The count taken when it was queued, given back at the end, after the complete flag, or if the search or callback throws.)
-		    RequestCountRelease countRelease(m_CurrentPathingRequests);
+	auto send = [this, start, end, agent, callback, pathRequest]() {
+		++m_CurrentPathingRequests;
+		g_ThreadMan.GetBackgroundThreadPool().push_task(
+		    [this, start, end, agent, callback](std::shared_ptr<volatile PathRequest> volRequest) {
+			    // Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
+			    PathRequest& request = const_cast<PathRequest&>(*volRequest);
+			    // (The count taken when it was queued, given back at the end, after the complete flag, or if the search or callback throws.)
+			    RequestCountRelease countRelease(m_CurrentPathingRequests);
 
-		    // A throw out of a pool task ended the game (push_task has no catch), and one caught past the complete flag left the asker waiting on
-		    // this request for ever; so a search that throws (out of memory, say) comes back as no route, and the asker is still told.
-		    auto noteThrow = [](const char* what, const char* where) {
-			    static std::atomic<int> s_Noted = 0;
-			    if (s_Noted.fetch_add(1) < 5) {
-				    g_ConsoleMan.PrintString(std::string("ERROR: a path search threw in ") + where + ": " + what + "; answered as no route.");
-			    }
-		    };
-		    bool searched = false;
-		    try {
-			    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
-			    request.cutAtDoor = s_LastCutAtDoor;
-			    request.pathLength = request.path.size();
-			    searched = true;
-		    } catch (const std::exception& exception) {
-			    noteThrow(exception.what(), "the search");
-		    } catch (...) {
-			    noteThrow("unknown exception", "the search");
-		    }
-		    if (!searched) {
-			    request.status = MicroPather::NO_SOLUTION;
-			    request.path.clear();
-			    request.kinds.clear();
-			    request.totalCost = 0.0F;
-			    request.pathLength = 0.0F;
-			    request.cutAtDoor = false;
-			    // The thread's pather may have been left mid-solve; the next search builds a new one.
-			    delete s_Pather.m_Instance;
-			    s_Pather.m_Instance = nullptr;
-		    }
-
-		    if (callback) {
+			    // A throw out of a pool task ended the game (push_task has no catch), and one caught past the complete flag left the asker waiting on
+			    // this request for ever; so a search that throws (out of memory, say) comes back as no route, and the asker is still told.
+			    auto noteThrow = [](const char* what, const char* where) {
+				    static std::atomic<int> s_Noted = 0;
+				    if (s_Noted.fetch_add(1) < 5) {
+					    g_ConsoleMan.PrintString(std::string("ERROR: a path search threw in ") + where + ": " + what + "; answered as no route.");
+				    }
+			    };
+			    bool searched = false;
 			    try {
-				    callback(volRequest);
+				    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
+				    request.cutAtDoor = s_LastCutAtDoor;
+				    request.pathLength = request.path.size();
+				    searched = true;
 			    } catch (const std::exception& exception) {
-				    noteThrow(exception.what(), "its callback");
+				    noteThrow(exception.what(), "the search");
 			    } catch (...) {
-				    noteThrow("unknown exception", "its callback");
+				    noteThrow("unknown exception", "the search");
 			    }
-		    }
+			    if (!searched) {
+				    request.status = MicroPather::NO_SOLUTION;
+				    request.path.clear();
+				    request.kinds.clear();
+				    request.totalCost = 0.0F;
+				    request.pathLength = 0.0F;
+				    request.cutAtDoor = false;
+				    // The thread's pather may have been left mid-solve; the next search builds a new one.
+				    delete s_Pather.m_Instance;
+				    s_Pather.m_Instance = nullptr;
+			    }
 
-		    // Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
-		    // This has the awkward side-effect that the complete flag is actually false during the callback - but that's fine, if it's called we know it's complete anyways
-		    request.complete = true;
-	    },
-	    pathRequest);
+			    if (callback) {
+				    try {
+					    callback(volRequest);
+				    } catch (const std::exception& exception) {
+					    noteThrow(exception.what(), "its callback");
+				    } catch (...) {
+					    noteThrow("unknown exception", "its callback");
+				    }
+			    }
+
+			    // Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
+			    // This has the awkward side-effect that the complete flag is actually false during the callback - but that's fine, if it's called we know it's complete anyways
+			    request.complete = true;
+		    },
+		    pathRequest);
+	};
+	{
+		// Kept back while the grid waits to be rewritten (HoldNewRequests); counted under the lock otherwise, so a hold sees every search sent before it.
+		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
+		if (m_HoldingNewRequests) {
+			m_HeldRequests.push_back(std::move(send));
+			return pathRequest;
+		}
+		send();
+	}
 
 	return pathRequest;
 }
@@ -784,6 +795,24 @@ bool PathFinder::WaitForPathingRequests(int timeoutMS) {
 		std::this_thread::yield();
 	}
 	return true;
+}
+
+bool PathFinder::HoldNewRequests() {
+	std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
+	m_HoldingNewRequests = true;
+	return m_CurrentPathingRequests.load() == 0;
+}
+
+void PathFinder::ReleaseHeldRequests() {
+	std::vector<std::function<void()>> held;
+	{
+		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
+		m_HoldingNewRequests = false;
+		held.swap(m_HeldRequests);
+		for (std::function<void()>& send: held) {
+			send();
+		}
+	}
 }
 
 void PathFinder::RecalculateAllCosts() {
