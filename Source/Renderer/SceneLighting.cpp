@@ -176,6 +176,8 @@ bool SceneLighting::EnsureWorldResources() {
 	ZoneScopedN("Build World Light Grid");
 
 	DestroyWorldResources();
+	// Glow textures are cached by address. A new scene is where data can have been reloaded and a freed texture's address reused, so start the cache afresh.
+	m_GlowInfoCache.clear();
 	m_WorldScene = scene;
 	m_WorldSceneGeneration = sceneGeneration;
 	m_WorldMaterialBitmap = materialBitmap;
