@@ -1894,8 +1894,13 @@ void Actor::UpdateSuppressionAndMorale() {
 				continue;
 			}
 			Vector toOther = g_SceneMan.ShortestDistance(m_Pos, other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
-			if (other->IsInGroup("Brains")) {
-				brainNear = brainNear || toOther.MagnitudeIsLessThan(300.0F);
+			// (Nothing further than 300 px counts either way, so the group lookup, a string hash, is only made for those nearer.)
+			if (!toOther.MagnitudeIsLessThan(300.0F)) {
+				continue;
+			}
+			static const std::string c_BrainsGroup = "Brains";
+			if (other->IsInGroup(c_BrainsGroup)) {
+				brainNear = true;
 			} else if (friends < 3 && toOther.MagnitudeIsLessThan(200.0F)) {
 				++friends;
 			}
