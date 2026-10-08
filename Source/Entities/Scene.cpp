@@ -2464,6 +2464,10 @@ void Scene::UpdatePathFinding() {
 		// A big backlog (a collapse, a flood, a demolition) catches up four times as fast, but over several calls: sampling all of it at once, as
 		// past 1,000 boxes it used to, stalled the frame for as long as it took. The boxes themselves are all taken in every call.
 		nodesToUpdate *= 4;
+	} else if (noTeamPathFinder.GetWaitingNodeCount() <= static_cast<size_t>(nodesToUpdate) * 2) {
+		// A small backlog (a wall shot out, a door's box) is taken whole: left for the next call behind a flood's or a fire's steady trickle,
+		// a change by a route waited seconds to be seen, and units walked at ground the grid thought open, re-routing on contact.
+		nodesToUpdate = std::max(nodesToUpdate, static_cast<int>(noTeamPathFinder.GetWaitingNodeCount()));
 	}
 
 	// (For the terrain update boxes overlay: the areas waiting, before this call takes some of them.)
