@@ -265,25 +265,25 @@ namespace RTE {
 		/// Gets whether the sandbox's terrain paint audit is on: the last two dozen discs and boxes of terrain painted, dug, filled or cleared, with the material and whether falling ground and liquid were told of the change.
 		bool ShowSandboxPaintAudit() const { return m_SandboxPaintAudit; }
 
-		/// Sets gets whether the sandbox's terrain paint audit is on.
+		/// Sets whether the sandbox's terrain paint audit is on.
 		void SetShowSandboxPaintAudit(bool show) { m_SandboxPaintAudit = show; }
 
 		/// Gets whether the sandbox's selection and camera overlay is on: a drag box as the selection will actually use it (map wrapping included), the unit the game controls against the one the sandbox thinks you're in, the observation target and the free camera's centre, and the view's scale.
 		bool ShowSandboxSelectionCamera() const { return m_SandboxSelectionCamera; }
 
-		/// Sets gets whether the sandbox's selection and camera overlay is on.
+		/// Sets whether the sandbox's selection and camera overlay is on.
 		void SetShowSandboxSelectionCamera(bool show) { m_SandboxSelectionCamera = show; }
 
 		/// Gets whether the sandbox's incoming and effects overlay is on: each thing on its way in from the sky with its line, where it will land and its crater, each effect put down with its light's reach, each water spring, and the storm cells' next flash.
 		bool ShowSandboxEffects() const { return m_SandboxEffects; }
 
-		/// Sets gets whether the sandbox's incoming and effects overlay is on.
+		/// Sets whether the sandbox's incoming and effects overlay is on.
 		void SetShowSandboxEffects(bool show) { m_SandboxEffects = show; }
 
 		/// Gets whether the sandbox's sim state readout is on: what is pausing the world, the AI pause, sim updates per drawn frame, the sandbox's queued and applied tool uses and steps, and the time scale.
 		bool ShowSandboxSimState() const { return m_SandboxSimState; }
 
-		/// Sets gets whether the sandbox's sim state readout is on.
+		/// Sets whether the sandbox's sim state readout is on.
 		void SetShowSandboxSimState(bool show) { m_SandboxSimState = show; }
 
 		/// Gets which units the sandbox orders overlay draws for: 0 none, 1 the sandbox's selection (or inspected units), 2 every unit in view. It shows each unit's order waiting for the next update, its standing order, and a red flash when the standing orders send it again.

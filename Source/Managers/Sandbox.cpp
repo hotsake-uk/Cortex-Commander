@@ -6473,9 +6473,6 @@ namespace {
 		return at.x > view.x - margin && at.x < view.x + view.w + margin && at.y > view.y - margin && at.y < view.y + view.h + margin;
 	}
 
-	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
-	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
-	/// for two seconds after, and a red flash each time the standing orders send it again.
 	/// The sim state readout (SettingsMan::ShowSandboxSimState), in the bottom right of the picture: what holds the world still (the sandbox's
 	/// tools, photo mode, Freeze simulation, the game's own pause), the AI pause, how many sim updates ran for this drawn frame, the tool uses
 	/// queued, applied last update and steps still wanted, and the time scale against the speed the sim actually manages.
@@ -6751,6 +6748,9 @@ namespace {
 		}
 	}
 
+	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
+	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
+	/// for two seconds after, and a red flash each time the standing orders send it again.
 	void DrawOrdersOverlay() {
 		int which = g_SettingsMan.SandboxOrdersOverlay();
 		if (which == 0) {
