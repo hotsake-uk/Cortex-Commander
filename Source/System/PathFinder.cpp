@@ -660,21 +660,37 @@ std::vector<PathFinder::DebugEdge> PathFinder::DescribeEdgesAt(const Vector& sce
 	SearcherState kept;
 	ApplyAgent(agent);
 	s_FlyingStart = nullptr;
-	// The ways out as the searcher is offered them, its recent failures counted; and again without them, in the same order (the failures
-	// only add to costs), so a flight link can be told from a leap to the same floor by its own cost.
-	std::vector<micropather::StateCost> adjacent;
-	AdjacentCost(node, &adjacent);
+	// The ways out without the searcher's recent failures, so a flight link can be told from a leap to the same floor by its own cost; then
+	// as the searcher is offered them, failures counted. That pass goes last, so the leaps it notes as taken are the ones labelled.
+	s_LeapsTaken.clear();
+	const std::vector<Vector>* avoid = s_Avoid;
+	const std::vector<std::pair<Vector, Vector>>* avoidLinks = s_AvoidLinks;
 	std::vector<micropather::StateCost> plain;
 	s_Avoid = nullptr;
 	s_AvoidLinks = nullptr;
 	AdjacentCost(node, &plain);
+	s_Avoid = avoid;
+	s_AvoidLinks = avoidLinks;
+	std::vector<micropather::StateCost> adjacent;
+	AdjacentCost(node, &adjacent);
 	// The flight links among them, for their fuel: the same links AdjacentCost offered (see CollectFlightLinks).
 	std::vector<FlightLink> flights;
 	if (s_JumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !g_SceneMan.IsPointInNoGravArea(node->Pos)) {
 		CollectFlightLinks(*node, flights);
 	}
-	for (size_t i = 0; i < adjacent.size() && i < plain.size(); ++i) {
+	// Each way out matched to its plain twin by target and by which of that target's edges it is, not by position: an avoid that ever
+	// filtered an edge out would shift every later one onto the wrong twin.
+	std::vector<bool> plainUsed(plain.size(), false);
+	for (size_t i = 0; i < adjacent.size(); ++i) {
 		const PathNode* target = static_cast<const PathNode*>(adjacent[i].state);
+		float plainCost = adjacent[i].cost;
+		for (size_t j = 0; j < plain.size(); ++j) {
+			if (!plainUsed[j] && plain[j].state == adjacent[i].state) {
+				plainUsed[j] = true;
+				plainCost = plain[j].cost;
+				break;
+			}
+		}
 		if (!target || adjacent[i].cost >= 1000.0F) {
 			continue;
 		}
@@ -682,16 +698,18 @@ std::vector<PathFinder::DebugEdge> PathFinder::DescribeEdgesAt(const Vector& sce
 		edge.From = node->Surface >= 0.0F ? Vector(node->Anchor.m_X, node->Surface - 3.0F) : node->Anchor;
 		edge.To = target->Surface >= 0.0F ? Vector(target->Anchor.m_X, target->Surface - 3.0F) : target->Anchor;
 		edge.Cost = adjacent[i].cost;
-		edge.AvoidCost = adjacent[i].cost - plain[i].cost;
+		edge.AvoidCost = adjacent[i].cost - plainCost;
 		edge.Kind = StepKindBetween(node, target);
 		for (const FlightLink& flight: flights) {
-			if (flight.target == target && std::abs(flight.cost - plain[i].cost) < 0.001F) {
+			if (flight.target == target && std::abs(flight.cost - plainCost) < 0.001F) {
 				edge.Flight = true;
 				edge.FuelMS = flight.fuel;
 			}
 		}
 		edges.push_back(edge);
 	}
+	// The main thread runs no search that would clear these, so the overlay's leaps don't pile up between solves.
+	s_LeapsTaken.clear();
 	return edges;
 }
 
