@@ -249,6 +249,10 @@ namespace RTE {
 		/// Lets new async searches go again, and sends the ones kept back by HoldNewRequests, in the order they were asked for.
 		void ReleaseHeldRequests();
 
+		/// Answers the searches held back by HoldNewRequests as having no route, without searching: their callbacks are called (so a Lua
+		/// callback is taken out of its state's table) and they are marked complete. For when the grid goes away with searches held.
+		void FailHeldRequests();
+
 		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
 		/// green where the searcher stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs,
 		/// magenta for the stairs, pale green arcs for the searcher's leaps.
@@ -449,7 +453,12 @@ namespace RTE {
 		std::atomic<int> m_CurrentPathingRequests; //!< The number of active async pathing requests.
 		std::mutex m_HeldRequestsMutex; //!< Guards m_HoldingNewRequests, m_HeldRequests, and the count going up from zero when a search is sent.
 		bool m_HoldingNewRequests = false; //!< Whether new async searches are kept back (HoldNewRequests).
-		std::vector<std::function<void()>> m_HeldRequests; //!< The searches kept back, each the sending of one.
+		/// A search kept back by HoldNewRequests: how to send it, and how to answer it as no route if it never is.
+		struct HeldRequest {
+			std::function<void()> Send;
+			std::function<void()> Fail;
+		};
+		std::vector<HeldRequest> m_HeldRequests; //!< The searches kept back, in the order they were asked for.
 
 		/// Gets the pather for this thread. Lazily-initialized for each new thread that needs a pather.
 		/// @return The pather for this thread.

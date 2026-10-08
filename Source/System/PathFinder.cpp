@@ -205,6 +205,9 @@ int PathFinder::Create(int nodeDimension) {
 }
 
 void PathFinder::Destroy() {
+	// Searches still held when the grid goes (a scene unloaded while its grid waited to be rewritten) are answered as no route: dropped, their
+	// Lua callbacks stayed in their state's table for good, and anything waiting on one waited for ever.
+	FailHeldRequests();
 	Clear();
 }
 
@@ -772,7 +775,19 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 		// Kept back while the grid waits to be rewritten (HoldNewRequests); counted under the lock otherwise, so a hold sees every search sent before it.
 		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
 		if (m_HoldingNewRequests) {
-			m_HeldRequests.push_back(std::move(send));
+			auto fail = [callback, pathRequest]() {
+				PathRequest& request = const_cast<PathRequest&>(*pathRequest);
+				request.status = MicroPather::NO_SOLUTION;
+				request.path.clear();
+				request.kinds.clear();
+				request.totalCost = 0.0F;
+				request.pathLength = 0.0F;
+				if (callback) {
+					callback(pathRequest);
+				}
+				request.complete = true;
+			};
+			m_HeldRequests.push_back({std::move(send), std::move(fail)});
 			return pathRequest;
 		}
 		send();
@@ -804,14 +819,27 @@ bool PathFinder::HoldNewRequests() {
 }
 
 void PathFinder::ReleaseHeldRequests() {
-	std::vector<std::function<void()>> held;
+	std::vector<HeldRequest> held;
 	{
 		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
 		m_HoldingNewRequests = false;
 		held.swap(m_HeldRequests);
-		for (std::function<void()>& send: held) {
-			send();
+		for (HeldRequest& request: held) {
+			request.Send();
 		}
+	}
+}
+
+void PathFinder::FailHeldRequests() {
+	std::vector<HeldRequest> held;
+	{
+		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
+		m_HoldingNewRequests = false;
+		held.swap(m_HeldRequests);
+	}
+	// (Outside the lock: a callback may ask for another search, which takes it.)
+	for (HeldRequest& request: held) {
+		request.Fail();
 	}
 }
 
