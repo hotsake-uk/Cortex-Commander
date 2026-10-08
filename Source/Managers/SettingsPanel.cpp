@@ -331,6 +331,9 @@ void DebugMan::SettingsGUI() {
 		Check("Scorch marks", &settings.ScorchMarks);
 		Check("Blood, oil and water stains", &settings.Stains);
 		Slider("Hot metal cooling (seconds)", &settings.HotSpotSeconds, 0.0F, 10.0F, "%.1f");
+		Check("Animated palette colours", &settings.PaletteAnimation);
+		Tip("Glowing liquids like lava breathe, and colours listed in Base.rte/PaletteAnimation.ini or set by scripts pulse or cycle. Off, every colour stands still.");
+		Slider("Palette pulse strength", &settings.PaletteAnimationStrength, 0.0F, 1.0F);
 	};
 
 	auto water = [&]() {
