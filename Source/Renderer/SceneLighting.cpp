@@ -1234,11 +1234,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	size_t flameCount = 0;
 	if (fireShader && !flameCells.empty()) {
 		float time = PostProcessMan::GetEffectTime();
-		// Seconds since the flames were last drawn for the first screen, so embers come at the same pace at any frame rate.
-		float elapsed = m_LastFlameTime < 0.0F ? 0.0F : std::clamp(time - m_LastFlameTime, 0.0F, 0.1F);
-		if (screenIndex == 0) {
-			m_LastFlameTime = time;
-		}
+		// Seconds since the flames were last drawn on this screen, so embers come at the same pace at any frame rate and on every split screen.
+		float& lastFlameTime = m_LastFlameTime[screenIndex];
+		float elapsed = lastFlameTime < 0.0F ? 0.0F : std::clamp(time - lastFlameTime, 0.0F, 0.1F);
+		lastFlameTime = time;
 		float size = std::clamp(m_Settings.FireFlameSize, 0.2F, 3.0F);
 		float brightness = std::clamp(m_Settings.FireFlameBrightness, 0.2F, 2.0F);
 		for (const auto& [key, flame]: flameCells) {
@@ -1713,6 +1712,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_EmissiveShader->Enable();
 		m_EmissiveShader->SetInt("rteTexture", 0);
 		m_EmissiveShader->SetBool("rteUseAlpha", true);
+		m_EmissiveShader->SetBool("rteHeatAlpha", false);
 		m_EmissiveShader->SetVector2f("rteScreenSize", glm::vec2(static_cast<float>(m_SmokeDensity.Width), static_cast<float>(m_SmokeDensity.Height)));
 		glActiveTexture(GL_TEXTURE0);
 		// The puff texture's alpha is its shape; its color is white, so the emissive shader outputs the density from the vertex color.
