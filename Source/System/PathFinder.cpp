@@ -672,7 +672,11 @@ std::vector<int> PathFinder::RecalculateAreaCosts(std::deque<Box>& boxList, size
 float PathFinder::LeastCostEstimate(void* startState, void* endState) {
 	const PathNode* startNode = static_cast<PathNode*>(startState);
 	const PathNode* endNode = static_cast<PathNode*>(endState);
-	return g_SceneMan.ShortestDistance(startNode->Pos, endNode->Pos).GetMagnitude() / m_NodeDimension;
+	// Never more than the cheapest way can cost: some edges cost a little under their length in nodes (a diagonal 1.4 for 1.414, a flight
+	// straight down 5.66 for 6), and with the straight distance as it was the estimate overshot them, so the search, which never reopens a
+	// node it has closed, could settle on a dearer route and report a total under the sum of its steps (which Actor::UpdateMovePath compares).
+	// 0.94 is under the cheapest such ratio.
+	return g_SceneMan.ShortestDistance(startNode->Pos, endNode->Pos).GetMagnitude() / m_NodeDimension * 0.94F;
 }
 
 void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacentList) {
