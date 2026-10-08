@@ -209,6 +209,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) 
 	    .def("SetAmbientColor", &PostProcessMan::SetAmbientColor)
 	    .def("SetColorGrade", &PostProcessMan::SetColorGrade)
 	    .def("ApplyLook", &PostProcessMan::ApplyLook)
+	    .def("SetDepthOfField", &PostProcessMan::SetDepthOfField)
+	    .def("SetTiltShift", &PostProcessMan::SetTiltShift)
 	    .def("AddShimmer", &PostProcessMan::RegisterShimmer)
 	    .def("SetSplitToning", &PostProcessMan::SetSplitToning);
 }
