@@ -472,13 +472,21 @@ namespace SandboxDetail {
 	inline std::vector<Stroke> s_Queue;
 	inline std::array<Vector, c_Sides> s_RallyPoints;
 	inline std::array<bool, c_Sides> s_RallySet{};
-	inline Actor* s_Possessed = nullptr; //!< The unit you're controlling in the god mode, checked with IsActor and its unique ID before use.
-	inline long s_PossessedID = 0; //!< Its unique ID: a unit that died and a new one made at the same address passed the IsActor check alone.
+	inline long s_PossessedID = 0; //!< The unique ID of the unit you're controlling in the god mode, 0 for none. Kept by ID, not pointer: a unit that died and a new one made at the same address would pass for it.
 
-	inline void SetPossessed(Actor* actor) {
-		s_Possessed = actor;
-		s_PossessedID = actor ? static_cast<long>(actor->GetUniqueID()) : 0;
+	inline void SetPossessed(Actor* actor) { s_PossessedID = actor ? static_cast<long>(actor->GetUniqueID()) : 0; }
+
+	/// @return Whether you're controlling a unit, even one that has since died (Sandbox::Update notices that and takes you back above).
+	inline bool IsPossessing() { return s_PossessedID != 0; }
+
+	/// @return The unit you're controlling, or nullptr for none or one that's gone (or no longer among the scene's actors, as one in a craft).
+	inline Actor* GetPossessed() {
+		Actor* actor = s_PossessedID != 0 ? dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(s_PossessedID)) : nullptr;
+		return actor && g_MovableMan.IsActor(actor) ? actor : nullptr;
 	}
+
+	/// @return Whether an actor is the one you're controlling.
+	inline bool IsPossessed(const Actor* actor) { return actor && s_PossessedID != 0 && static_cast<long>(actor->GetUniqueID()) == s_PossessedID; }
 
 	/// Your character's own gib limits while it can't be hurt (0 is "never" for both), to put back when that is turned off.
 	struct SavedGibLimits {

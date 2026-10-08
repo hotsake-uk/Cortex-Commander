@@ -151,7 +151,7 @@ bool Sandbox::SetBuildMode(bool build) {
 	if (!game || !InGame()) {
 		return false;
 	}
-	if (build && s_Possessed) {
+	if (build && IsPossessing()) {
 		// Building is done from the god view.
 		ReleaseControl();
 	}
@@ -226,7 +226,7 @@ void Sandbox::FillBox(const Vector& topLeft, int width, int height, const std::s
 
 void Sandbox::OnToolsClosed(bool atPointer) {
 	GameActivity* game = CurrentGame();
-	if (!IsGodMode() || !game || game->IsFreeBuildMode() || s_Possessed) {
+	if (!IsGodMode() || !game || game->IsFreeBuildMode() || IsPossessing()) {
 		return;
 	}
 	// With a tool in hand, or no character, the tools are only hidden: you stay above, the tool goes on working on the world, and P steps into the character.
@@ -250,12 +250,12 @@ void Sandbox::TogglePlay(bool atPointer) {
 	if (!IsGodMode() || !game || game->IsFreeBuildMode()) {
 		return;
 	}
-	if (s_Possessed) {
+	if (IsPossessing()) {
 		// Back above, with the tools as they were (hidden) and whatever tool was in hand still in it.
 		Stroke release;
 		release.Kind = Tool::Release;
 		s_Queue.push_back(release);
-		s_Possessed = nullptr;
+		SetPossessed(nullptr);
 		s_FreeCameraStarted = false;
 		s_PlayHintSeconds = 8.0F;
 		return;
@@ -436,7 +436,7 @@ bool Sandbox::IsLookingAround() {
 	// Automated test runs (CCCP_HIDE_PANELS) place the camera themselves and want no pointer in their pictures.
 	static const bool testRun = std::getenv("CCCP_HIDE_PANELS") != nullptr;
 	const GameActivity* game = CurrentGame();
-	return IsGodMode() && game && !s_Possessed && s_PlayerEnterPending == 0 && !game->IsFreeBuildMode() && (!testRun || s_Open);
+	return IsGodMode() && game && !IsPossessing() && s_PlayerEnterPending == 0 && !game->IsFreeBuildMode() && (!testRun || s_Open);
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -456,7 +456,7 @@ void Sandbox::DrawGUI() {
 			s_FreeCamera = true;
 			s_FreeCameraStarted = false;
 			s_CameraWarmupFrames = 30;
-			s_Possessed = nullptr;
+			SetPossessed(nullptr);
 			s_PlayerUnit = UnitRef();
 			s_PlayerEnterPending = 0;
 			s_Flying = false;
@@ -479,12 +479,12 @@ void Sandbox::DrawGUI() {
 	if (GameActivity* game = CurrentGame(); s_Open && game && game->IsFreeBuildMode()) {
 		game->SetFreeBuildMode(false);
 	}
-	if (s_Open && s_Possessed) {
+	if (s_Open && IsPossessing()) {
 		// Back to the god view.
 		Stroke release;
 		release.Kind = Tool::Release;
 		s_Queue.push_back(release);
-		s_Possessed = nullptr;
+		SetPossessed(nullptr);
 		s_FreeCameraStarted = false;
 	}
 	// In the Sandbox game mode the world stands still while the tools are open, so things can be set up and tuned. What is done with a tool still happens:
@@ -530,11 +530,11 @@ void Sandbox::DrawGUI() {
 	if (s_PausedByMenus && InGame()) {
 		banner("WORLD PAUSED  -  Tab: play", 8.0F, IM_COL32(150, 210, 255, 255), 1.0F);
 	}
-	if (IsGodMode() && (s_Possessed || !s_Open) && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
+	if (IsGodMode() && (IsPossessing() || !s_Open) && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A reminder of the keys, for a few seconds after stepping in.
 		s_PlayHintSeconds -= ImGui::GetIO().DeltaTime;
 		std::string hint = "Tab: sandbox tools";
-		if (!s_Possessed) {
+		if (!IsPossessing()) {
 			if (s_Player.EnterOnClose) {
 				hint += "    P: play";
 			}
@@ -545,7 +545,7 @@ void Sandbox::DrawGUI() {
 		} else {
 			hint += "    P: back above";
 		}
-		if (s_Possessed && s_Possessed == GetRef(s_PlayerUnit)) {
+		if (IsPossessed(GetRef(s_PlayerUnit))) {
 			if (s_Player.FlyKey) {
 				hint += s_Flying ? "    N: stop flying" : "    N: fly";
 			}
@@ -572,7 +572,7 @@ void Sandbox::DrawGUI() {
 	// working. Only the window itself is left out.
 	bool hiddenButAbove = !s_Open && IsLookingAround();
 	// The bar is there whenever you're above the world and not playing a unit, whatever else is open or hidden.
-	if (IsGodMode() && InGame() && !s_Possessed && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
+	if (IsGodMode() && InGame() && !IsPossessing() && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		if (!s_CatalogueBuilt) {
 			BuildCatalogue();
 		}
@@ -623,7 +623,7 @@ void Sandbox::DrawGUI() {
 	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
 	// the keys. (Only while the pointer was over the world, as these were, they did nothing with it resting on the window.) Not while you
 	// play a unit: those keys are its own then (its weapons, and Ctrl+A as A).
-	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !s_Possessed) {
+	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !IsPossessing()) {
 		static int lastNumber = -1;
 		static double lastNumberTime = -10.0;
 		for (int number = 0; number < 10; ++number) {
@@ -1176,7 +1176,7 @@ void Sandbox::OnActivityStarted() {
 	s_ScriptAutoFavourites = false;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
 	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
-	s_Possessed = nullptr;
+	SetPossessed(nullptr);
 	s_PlayerUnit = UnitRef();
 	s_PlayerEnterPending = 0;
 	s_Flying = false;
@@ -1201,7 +1201,7 @@ void Sandbox::Update() {
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
 	if (!InGame()) {
-		s_Possessed = nullptr;
+		SetPossessed(nullptr);
 		s_Plans.clear();
 		s_GuardPosts.clear();
 		s_Commander = false;
@@ -1254,31 +1254,32 @@ void Sandbox::Update() {
 	}
 	if (IsGodMode()) {
 		GameActivity* game = CurrentGame();
-		if (s_Possessed && (!g_MovableMan.IsActor(s_Possessed) || static_cast<long>(s_Possessed->GetUniqueID()) != s_PossessedID)) {
+		Actor* possessed = GetPossessed();
+		if (IsPossessing() && !possessed) {
 			// The unit you were controlling died: back to the god view.
 			g_ConsoleMan.PrintString("SANDBOX: The unit you were controlling is gone; back to the god view.");
-			s_Possessed = nullptr;
+			SetPossessed(nullptr);
 			s_Flying = false;
 			g_DebugMan.OpenTools();
 			s_FreeCameraStarted = false;
-		} else if (s_Possessed && game && s_PlayerEnterPending == 0) {
+		} else if (possessed && game && s_PlayerEnterPending == 0) {
 			// The unit the game says you control is the one you control. Its own next/previous actor keys stay live while you're in a unit,
 			// and switch among the activity's side (Red in the sandbox), which the sandbox never heard of: it went on watching the unit you
 			// left, Tab released whichever the game had, and the character kept flying under the AI's keys.
 			// A switch within the unit's own side is followed; one that crossed to another side is undone, back into the unit you were in.
 			Actor* controlled = game->GetControlledActor(Players::PlayerOne);
-			if (controlled != s_Possessed) {
-				if (controlled && g_MovableMan.IsActor(controlled) && controlled->GetTeam() == s_Possessed->GetTeam()) {
-					if (s_Possessed == GetRef(s_PlayerUnit)) {
+			if (controlled != possessed) {
+				if (controlled && g_MovableMan.IsActor(controlled) && controlled->GetTeam() == possessed->GetTeam()) {
+					if (possessed == GetRef(s_PlayerUnit)) {
 						StopFlying();
 					}
 					SetPossessed(controlled);
-				} else if (game->SwitchToActor(s_Possessed, Players::PlayerOne, s_Possessed->GetTeam())) {
+				} else if (game->SwitchToActor(possessed, Players::PlayerOne, possessed->GetTeam())) {
 					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
 				} else {
 					// (Not to be had back: to the god view, as when it dies.)
 					StopFlying();
-					s_Possessed = nullptr;
+					SetPossessed(nullptr);
 					g_DebugMan.OpenTools();
 					s_FreeCameraStarted = false;
 				}
@@ -1293,7 +1294,7 @@ void Sandbox::Update() {
 			}
 		}
 		// The god doesn't get handed a unit: stay watching unless controlling one on purpose.
-		if (game && !s_Possessed && game->GetViewState(Players::PlayerOne) != Activity::ViewState::Observe) {
+		if (game && !IsPossessing() && game->GetViewState(Players::PlayerOne) != Activity::ViewState::Observe) {
 			if (game->GetControlledActor(Players::PlayerOne)) {
 				game->LoseControlOfActor(Players::PlayerOne);
 			}
