@@ -602,7 +602,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 		m_TerrainShader->Enable();
 	}
 	m_TerrainShader->SetBool("rteLivingWorld", m_Settings.LivingWorld);
-	m_TerrainShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+	m_TerrainShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	m_TerrainShader->SetFloat("rteWind", m_Settings.Wind);
 	m_TerrainShader->SetFloat("rteSnowCover", m_Settings.LivingWorld ? m_SnowCover : 0.0F);
 	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
@@ -1049,7 +1049,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		std::vector<glm::vec3> burning;
 		TerrainFire::GetBurning(origin, width, height, burning);
 		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
-		float time = PostProcessMan::GetSmoothSimTime();
+		float time = PostProcessMan::GetEffectTime();
 		for (const glm::vec3& pixel: burning) {
 			glm::vec2 position(pixel.x, pixel.y);
 			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F)) + std::floor(time * 14.0F) * 3.1F) * 43758.5453F);
@@ -1068,7 +1068,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
 	if (m_Settings.Embers > 0.0F) {
 		auto hash = [](float n) { return glm::fract(std::sin(n) * 43758.5453F); };
-		float time = PostProcessMan::GetSmoothSimTime();
+		float time = PostProcessMan::GetEffectTime();
 		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
 		for (const PostEffect& effect: screenEffects) {
 			if (!effect.m_Bitmap) {
@@ -1358,7 +1358,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteSkyHorizon", m_SkyHorizon);
 	m_CompositeShader->SetVector3f("rteSkyCloud", m_SkyCloud);
 	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(m_Settings.WeatherType > 0 ? m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
-	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	{
 		// The moon follows the same arc as the sun, high in the sky behind everything. Player screens are drawn top down, so y 0 is the top.
 		float arc = (m_MoonHours - 12.0F) / 6.0F;
@@ -1384,7 +1384,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector2f("rteSunPosition", glm::vec2((0.5F + m_SunArc * 0.38F) * screenSize.x, (0.34F - 0.14F * (1.0F - m_SunArc * m_SunArc)) * screenSize.y));
 	m_CompositeShader->SetVector3f("rteSunDisc", m_Settings.Enabled ? glm::mix(glm::vec3(1.0F, 0.97F, 0.88F), glm::vec3(1.0F, 0.6F, 0.3F), glm::smoothstep(0.55F, 1.0F, std::abs(m_SunArc))) * m_SunDiscStrength : glm::vec3(0.0F));
 	// Clouds only shade while there's direct sun to block, and they drift with the wind (slowly even in still air), in sim time.
-	m_CloudDrift = PostProcessMan::GetSmoothSimTime() * (m_Settings.Wind * 0.35F + 6.0F);
+	// (Worked out in double and wrapped far out, so the drift stays smooth after hours of play; the clouds jump once when it wraps, every few hours.)
+	m_CloudDrift = static_cast<float>(std::fmod(PostProcessMan::GetSmoothSimTimePrecise() * static_cast<double>(m_Settings.Wind * 0.35F + 6.0F), 65536.0));
 	m_CompositeShader->SetFloat("rteCloudShadows", m_Settings.Enabled ? m_Settings.CloudShadows * std::min(m_SunShadowStrength * 2.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetFloat("rteCloudDrift", m_CloudDrift);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
@@ -1562,7 +1563,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PrecipitationShader->Enable();
 		m_PrecipitationShader->SetVector2f("rteScreenSize", screenSize);
 		m_PrecipitationShader->SetVector2f("rteScreenOrigin", origin);
-		m_PrecipitationShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+		m_PrecipitationShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		m_PrecipitationShader->SetInt("rteType", m_Settings.WeatherType);
 		m_PrecipitationShader->SetFloat("rteWind", m_Settings.Wind);
 		m_PrecipitationShader->SetInt("rteOccupancy", 0);
@@ -1593,7 +1594,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			m_RainSplashShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
 			m_RainSplashShader->SetVector2f("rteScreenSize", screenSize);
 			m_RainSplashShader->SetVector2f("rteScreenOrigin", origin);
-			m_RainSplashShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+			m_RainSplashShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 			m_RainSplashShader->SetVector2f("rteFall", glm::normalize(glm::vec2(m_Settings.Wind, 640.0F)));
 			m_RainSplashShader->SetFloat("rteAmount", std::clamp(m_Settings.WeatherIntensity * m_Settings.RainSplashes * 0.45F, 0.0F, 1.0F));
 			m_RainSplashShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
@@ -1620,7 +1621,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_GodRaysShader->SetVector2f("rteScreenOrigin", origin);
 		m_GodRaysShader->SetVector2f("rteScreenSize", screenSize);
 		m_GodRaysShader->SetVector2f("rteGridWorldSize", gridWorldSize);
-		m_GodRaysShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+		m_GodRaysShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		m_GodRaysShader->SetVector2f("rteSunDirection", m_SunDirection);
 		m_GodRaysShader->SetVector3f("rteSunColor", m_EffectiveSky * shaftStrength);
 		m_GodRaysShader->SetVector2f("rteTargetSize", glm::vec2(m_GodRays.Width, m_GodRays.Height));
@@ -1642,7 +1643,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_GodRaysApplyShader->SetVector2f("rteScreenSize", screenSize);
 		m_GodRaysApplyShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
 		m_GodRaysApplyShader->SetVector2f("rteScreenOrigin", origin);
-		m_GodRaysApplyShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+		m_GodRaysApplyShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		m_GodRaysApplyShader->SetFloat("rteDustMotes", 1.0F);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_GodRays.Texture);
@@ -1752,7 +1753,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetInt("rteEmissive", 3);
 	m_TonemapShader->SetBool("rteDistortionEnabled", m_Settings.DistortionEnabled);
 	m_TonemapShader->SetFloat("rteHeatHaze", m_Settings.HeatHaze);
-	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetSmoothSimTime());
+	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	m_TonemapShader->SetInt("rteDebugView", m_Settings.DebugView);
 	m_TonemapShader->SetFloat("rteTemperature", m_Settings.Temperature);
 	m_TonemapShader->SetFloat("rteTint", m_Settings.Tint);

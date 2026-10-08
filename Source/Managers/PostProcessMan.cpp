@@ -177,7 +177,15 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 }
 
 float PostProcessMan::GetSmoothSimTime() {
-	return (static_cast<float>(g_TimerMan.GetSimUpdateCount()) + g_TimerMan.GetSimUpdateProportion()) * g_TimerMan.GetDeltaTimeSecs();
+	return static_cast<float>(GetSmoothSimTimePrecise());
+}
+
+double PostProcessMan::GetSmoothSimTimePrecise() {
+	return (static_cast<double>(g_TimerMan.GetSimUpdateCount()) + static_cast<double>(g_TimerMan.GetSimUpdateProportion())) * static_cast<double>(g_TimerMan.GetDeltaTimeSecs());
+}
+
+float PostProcessMan::GetEffectTime() {
+	return static_cast<float>(std::fmod(GetSmoothSimTimePrecise(), c_EffectTimePeriod));
 }
 
 void PostProcessMan::RegisterShockwave(const Vector& pos, float energy) {

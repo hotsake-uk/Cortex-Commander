@@ -242,6 +242,15 @@ namespace RTE {
 		/// Gets the current simulation time in seconds, including the fraction of the current sim update, for smooth time based effects that pause and slow down with the game.
 		static float GetSmoothSimTime();
 
+		/// Gets the smooth sim time in double precision, for time based effects that would lose precision as a float after a few hours of play.
+		static double GetSmoothSimTimePrecise();
+
+		/// Gets the smooth sim time for animating render-only effects (shaders, lamp pulse, flames, embers): wrapped to c_EffectTimePeriod seconds so it keeps sub-millisecond precision as a float however long the game runs.
+		/// Effects animated by it skip once every period, which is about an hour, rather than starting to step at the sim rate after a few hours.
+		static float GetEffectTime();
+
+		static constexpr double c_EffectTimePeriod = 4096.0; //!< The period GetEffectTime wraps at, in seconds.
+
 		/// Gets the scene lighting, creating it on first use (it needs a GL context).
 		/// @return The scene lighting.
 		SceneLighting* GetSceneLighting();
