@@ -27,6 +27,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace RTE;
@@ -125,9 +126,22 @@ namespace {
 				++Count;
 			}
 		}
+		/// Adds, or takes over an entry already there (one left by a pixel that is gone).
+		void Put(int key, int still, bool headingRight, int velX = 0, int velY = 0) {
+			if (Contains(key)) {
+				Grid[key] = static_cast<unsigned char>((std::min(still, 62) + 1) | (headingRight ? 0x80 : 0));
+				VelX[key] = static_cast<signed char>(std::clamp(velX, -120, 120));
+				VelY[key] = static_cast<signed char>(std::clamp(velY, 0, 120));
+			} else {
+				Add(key, still, headingRight, velX, velY);
+			}
+		}
 		void Remove(int key) {
 			if (Contains(key)) {
 				Grid[key] = 0;
+				// (So a cell taken again never starts with the old pixel's speed.)
+				VelX[key] = 0;
+				VelY[key] = 0;
 				--Count;
 			}
 		}
@@ -816,13 +830,21 @@ void FluidSim::Update() {
 	BITMAP* materialBitmap = terrain->GetBitmap();
 	// Water only needs to put fire out when something is burning.
 	bool anyFire = TerrainFire::GetCount() > 0;
+	// Where pixels moved to this update (M-1): a key there that is also further down the list was left by a pixel that went (erased, or
+	// moved off), and the newcomer has had its step.
+	std::unordered_set<int> movedInto;
+	movedInto.reserve(keys.size());
 	for (int key: keys) {
+		if (!s_Active.Contains(key) || movedInto.count(key) != 0) {
+			continue;
+		}
 		int x = key % width;
 		int y = key / width;
 		const int ownMaterial = materialBitmap->line[y][x];
 		Liquid kind = s_Kinds[ownMaterial];
 		if (kind == Liquid::None) {
-			settled.push_back(key);
+			// (Out of the set at once, not at the end: a pixel may flow into this spot later in the update and must be able to register.)
+			s_Active.Remove(key);
 			continue;
 		}
 		const LiquidProperties& properties = s_Props[ownMaterial];
@@ -871,6 +893,7 @@ void FluidSim::Update() {
 				if (boilsTo != 0) {
 					terrain->SetMaterialPixel(nx, ny, boilsTo > 0 ? boilsTo : static_cast<int>(g_MaterialAir));
 					terrain->SetFGColorPixel(nx, ny, boilsTo > 0 ? s_ColorOfMaterial[boilsTo] : static_cast<int>(ColorKeys::g_MaskColor));
+					s_Active.Remove(ny * width + nx);
 				}
 				ActivateAround(nx, ny, width, height, terrain);
 				EffectsParticles::SpawnExplosion(Vector(static_cast<float>(nx), static_cast<float>(ny)), 520.0F);
@@ -899,6 +922,7 @@ void FluidSim::Update() {
 				if (material->GetIntegrity() < 100.0F && Random01() < 0.02F) {
 					terrain->SetMaterialPixel(nx, ny, g_MaterialAir);
 					terrain->SetFGColorPixel(nx, ny, ColorKeys::g_MaskColor);
+					s_Active.Remove(ny * width + nx);
 					ActivateAround(nx, ny, width, height, terrain);
 					if (Random01() < 0.3F) {
 						terrain->SetMaterialPixel(x, y, g_MaterialAir);
@@ -914,7 +938,7 @@ void FluidSim::Update() {
 			TerrainFire::Extinguish(x, y);
 		}
 		if (reacted) {
-			settled.push_back(key);
+			s_Active.Remove(key);
 			continue;
 		}
 		if (kind == Liquid::Lava && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < 0.01F) {
@@ -929,7 +953,7 @@ void FluidSim::Update() {
 				--mistLeft;
 				EffectsParticles::Emit("Mist", Vector(static_cast<float>(x), static_cast<float>(y - 1)), Vector(0.0F, -1.5F), 0.6F, 1, 0);
 			}
-			settled.push_back(key);
+			s_Active.Remove(key);
 			continue;
 		}
 
@@ -1007,8 +1031,8 @@ void FluidSim::Update() {
 					MOPixel* drop = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(static_cast<float>(x), static_cast<float>(y - 1)), velocity, new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
 					drop->SetToHitMOs(false);
 					g_MovableMan.AddParticle(drop);
+					s_Active.Remove(key);
 					ActivateAround(x, y, width, height, terrain);
-					settled.push_back(key);
 					continue;
 				}
 				velX += heading * velY / 2;
@@ -1196,7 +1220,10 @@ void FluidSim::Update() {
 			int newStill = gotLower ? 0 : (waitingToSearch ? still : still + 1);
 			// (What boils off stays awake at the surface until it has: see below.)
 			if (newStill < c_RestSteps || s_Evaporates[material] > 0.0F) {
-				s_Active.Add(target, newStill, heading > 0, velX, velY);
+				// (Put, not Add: an entry still there from a pixel erased outside this step, by a bullet or a script, is taken over rather than
+				// keeping the newcomer out with the old pixel's count, heading and speed.)
+				s_Active.Put(target, newStill, heading > 0, velX, velY);
+				movedInto.insert(target);
 			}
 			// Whatever was resting around it may now flow into the gap.
 			ActivateAround(x, y, width, height, terrain);
@@ -1213,7 +1240,9 @@ void FluidSim::Update() {
 	}
 
 	for (int key: settled) {
-		s_Active.Remove(key);
+		if (movedInto.count(key) == 0) {
+			s_Active.Remove(key);
+		}
 	}
 	for (const glm::ivec2& spot: hurtSpots) {
 		if (MovableObject* flame = CreateEffect("MOPixel", "Flame Hurt Particle")) {
