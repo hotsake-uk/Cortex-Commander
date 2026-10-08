@@ -25,9 +25,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <regex>
 #include <string>
 #include <utility>
@@ -40,7 +42,9 @@ bool System::s_LogToCLI = false;
 bool System::s_ExternalModuleValidation = false;
 std::string System::s_ThisExePathAndName = "";
 std::string System::s_WorkingDirectory = ".";
-std::vector<size_t> System::s_WorkingTree;
+std::unordered_set<uint64_t> System::s_WorkingTree;
+std::vector<std::string> System::s_UnindexedDirectories;
+bool System::s_WorkingTreeBuilt = false;
 std::filesystem::file_time_type System::s_ProgramStartTime = std::filesystem::file_time_type::clock::now();
 bool System::s_CaseSensitive = true;
 const std::string System::s_DataDirectory = "Data/";
@@ -155,18 +159,68 @@ bool System::MakeDirectory(const std::string& pathToMake) {
 	return createResult;
 }
 
-bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
-	// Use Hash for compiler independent hashing.
-	if (s_CaseSensitive) {
-		if (s_WorkingTree.empty()) {
-			for (const std::filesystem::directory_entry& directoryEntry: std::filesystem::recursive_directory_iterator(s_WorkingDirectory, std::filesystem::directory_options::follow_directory_symlink)) {
-				s_WorkingTree.emplace_back(Hash(directoryEntry.path().generic_string().substr(s_WorkingDirectory.length())));
+namespace {
+	/// Whether a directory under the working directory is left out of the case check's index (see System::PathExistsCaseSensitive): what the
+	/// game reads its data from never is, but development and user clutter is. Hidden folders (.git and the like), the user's own folders
+	/// and the launcher's builds at the top, and anywhere another checkout, worktree or build tree sits.
+	bool LeftOutOfCaseIndex(const std::filesystem::path& directory, bool topLevel) {
+		std::string name = directory.filename().generic_string();
+		if (name.empty() || name.ends_with(".rte")) {
+			return false;
+		}
+		if (name.front() == '.') {
+			return true;
+		}
+		if (topLevel) {
+			std::string lower = name;
+			std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			static const std::array<std::string_view, 6> c_TopLevelLeftOut = {"userdata", "screenshots", "cortexversions", "logs", "subprojects", "_build"};
+			if (std::find(c_TopLevelLeftOut.begin(), c_TopLevelLeftOut.end(), lower) != c_TopLevelLeftOut.end() || lower.starts_with("build") || lower.starts_with("cmake-build")) {
+				return true;
 			}
 		}
-		if (std::find(s_WorkingTree.begin(), s_WorkingTree.end(), Hash(pathToCheck)) != s_WorkingTree.end()) {
+		std::error_code error;
+		return std::filesystem::exists(directory / ".git", error) || std::filesystem::exists(directory / "meson-private", error) || std::filesystem::exists(directory / "CMakeCache.txt", error);
+	}
+} // namespace
+
+bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
+	// Use Hash for compiler independent hashing.
+	// The working directory's file paths, hashed, are walked once and looked up after. (Kept in a vector and searched end to end for every file
+	// the game loaded, and walked through everything under the game's folder, a checkout's history, build trees and other clones beside it
+	// included, start-up slowed with every file that piled up there: minutes, on a working copy that had been cloned into a few times.)
+	if (s_CaseSensitive) {
+		// (Data is loaded from more than one thread: the index is built and grown under a lock.)
+		static std::mutex workingTreeMutex;
+		std::lock_guard<std::mutex> lock(workingTreeMutex);
+		if (!s_WorkingTreeBuilt) {
+			s_WorkingTreeBuilt = true;
+			std::error_code error;
+			std::filesystem::recursive_directory_iterator entry(s_WorkingDirectory, std::filesystem::directory_options::follow_directory_symlink | std::filesystem::directory_options::skip_permission_denied, error);
+			for (; !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error)) {
+				std::string relative = entry->path().generic_string().substr(s_WorkingDirectory.length());
+				std::error_code typeError;
+				if (entry->is_directory(typeError) && LeftOutOfCaseIndex(entry->path(), entry.depth() == 0)) {
+					s_UnindexedDirectories.emplace_back(relative + "/");
+					entry.disable_recursion_pending();
+					continue;
+				}
+				s_WorkingTree.insert(Hash(relative));
+			}
+		}
+		// (Asked about by its full path too, from the working directory's set-up; the index is of paths relative to it.)
+		std::string relative = pathToCheck.starts_with(s_WorkingDirectory) ? pathToCheck.substr(s_WorkingDirectory.length()) : pathToCheck;
+		if (s_WorkingTree.contains(Hash(relative))) {
 			return true;
-		} else if (std::filesystem::exists(pathToCheck) && std::filesystem::last_write_time(pathToCheck) > s_ProgramStartTime) {
-			s_WorkingTree.emplace_back(Hash(pathToCheck));
+		}
+		// In a folder left out of the index: asked of the file system as it is, case checked or not.
+		for (const std::string& directory: s_UnindexedDirectories) {
+			if (relative.starts_with(directory) || relative + "/" == directory) {
+				return std::filesystem::exists(pathToCheck);
+			}
+		}
+		if (std::filesystem::exists(pathToCheck) && std::filesystem::last_write_time(pathToCheck) > s_ProgramStartTime) {
+			s_WorkingTree.insert(Hash(relative));
 			return true;
 		}
 		return false;
