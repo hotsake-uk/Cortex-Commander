@@ -43,6 +43,13 @@ namespace RTE {
 		/// Gets whether you're looking around the Sandbox game mode from above, in no unit, with or without the tools showing. The mouse then moves the view.
 		static bool IsLookingAround();
 
+		/// Commander mode (RC-9, F9): in any game but the Sandbox game mode, leaves the unit you play for an overhead view of your side, under
+		/// its own fog of war and on its own funds, commanding its units with the sandbox's command tool; again goes back into the unit.
+		static void ToggleCommander();
+
+		/// Gets whether commander mode is on.
+		static bool IsCommander();
+
 		/// Gets whether the mouse wheel zooms the camera: the sandbox window is open in the god view and the mouse isn't over a debug window.
 		static bool WantsWheelZoom();
 

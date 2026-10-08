@@ -1,6 +1,7 @@
 // The player's own character and taking control of a unit.
 
 #include "SandboxInternal.h"
+#include "BuyMenuGUI.h"
 
 namespace SandboxDetail {
 	void TakeControl(const Vector& position) {
@@ -220,6 +221,72 @@ namespace SandboxDetail {
 			actor->SetVel(Vector());
 			actor->SetAngularVel(0.0F);
 			actor->SetRotAngle(0.0F);
+		}
+	}
+
+	/// Whether, in commander mode (RC-9), you are looking down on it all: not in the game's buy menu or picking where a delivery lands, which
+	/// take the mouse and keys for themselves.
+	bool CommanderLooking() {
+		GameActivity* game = CurrentGame();
+		if (!s_Commander || !game) {
+			return false;
+		}
+		const BuyMenuGUI* buy = game->GetBuyGUI(Players::PlayerOne);
+		return game->GetViewState(Players::PlayerOne) == Activity::ViewState::Observe && !(buy && buy->IsVisible());
+	}
+
+	/// Keeps commander mode (RC-9) looking down: whatever hands you a unit (the game after a delivery lands, or the brain's) is let go and the
+	/// view goes back over the field. The buy menu and picking a landing zone are left to run, as they are how you spend your funds. It ends
+	/// with the game, or in the Sandbox game mode.
+	void UpdateCommander() {
+		if (!s_Commander) {
+			return;
+		}
+		GameActivity* game = CurrentGame();
+		if (!game || !InGame() || Sandbox::IsGodMode() || game->GetActivityState() == Activity::ActivityState::Over) {
+			s_Commander = false;
+			s_FreeCamera = false;
+			return;
+		}
+		const BuyMenuGUI* buy = game->GetBuyGUI(Players::PlayerOne);
+		Activity::ViewState view = game->GetViewState(Players::PlayerOne);
+		if (view == Activity::ViewState::Observe || view == Activity::ViewState::LandingZoneSelect || (buy && buy->IsVisible())) {
+			return;
+		}
+		if (game->GetControlledActor(Players::PlayerOne)) {
+			game->LoseControlOfActor(Players::PlayerOne);
+		}
+		game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
+		s_FreeCameraStarted = false;
+	}
+
+	/// The commander mode's part of the sandbox window (RC-9): your side's funds, the game's buy menu, and the way back into your unit.
+	void CommanderPanel() {
+		GameActivity* game = CurrentGame();
+		if (!game || Sandbox::IsGodMode()) {
+			return;
+		}
+		if (!s_Commander) {
+			if (ToolUI::Button("Commander view (F9)")) {
+				Sandbox::ToggleCommander();
+			}
+			ImGui::SetItemTooltip("Leave your unit and command your side from above, under its own fog of war: select and order its units with\nthe command tool, the ring, the keys and the map, and spend its funds on deliveries with the game's buy menu.");
+			return;
+		}
+		ImGui::TextColored(ImVec4(0.55F, 0.8F, 1.0F, 1.0F), "Commander: %s", game->GetTeamName(s_CommanderTeam).c_str());
+		ImGui::SameLine();
+		ImGui::Text("  Funds %.0f oz", game->GetTeamFunds(s_CommanderTeam));
+		ImGui::SameLine();
+		BuyMenuGUI* buy = game->GetBuyGUI(Players::PlayerOne);
+		ImGui::BeginDisabled(!buy || buy->IsVisible() || game->GetViewState(Players::PlayerOne) == Activity::ViewState::LandingZoneSelect);
+		if (ToolUI::SmallButton("Buy...")) {
+			buy->SetEnabled(true);
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("The game's buy menu, on your side's funds: then pick where the delivery lands, as with the brain.");
+		ImGui::SameLine();
+		if (ToolUI::SmallButton("Back into my unit (F9)")) {
+			Sandbox::ToggleCommander();
 		}
 	}
 } // namespace SandboxDetail
