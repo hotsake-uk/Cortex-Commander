@@ -31,7 +31,8 @@ namespace RTE {
 		Stairs, //!< Up or down stairs, or a slope of about sixty degrees, on the legs: two nodes of height for one of width.
 		Ladder, //!< Up or down a ladder, hand over hand (see AHuman::UpdateLadder), or off its top or side onto a floor.
 		Leap, //!< Across a gap or up onto a low ledge on a leap of the legs (see AHuman::UpdateLeap): no jet.
-		Mantle //!< Up onto a ledge one or two nodes up and one across, pulled up onto by pressing into it (see Actor::TryStartMantle): no jet.
+		Mantle, //!< Up onto a ledge one or two nodes up and one across, pulled up onto by pressing into it (see Actor::TryStartMantle): no jet.
+		Crouch //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -41,6 +42,7 @@ namespace RTE {
 		float BreachStrength = -1.0F; //!< The strongest door it can get through; -1 for the dig strength.
 		float StandHeight = 40.0F; //!< Head room it needs to walk upright, in pixels.
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
+		float CrouchHeight = 0.0F; //!< Head room it needs to walk crouched (see AHuman::GetCrouchHeight); 0 for something that can't, which crawls under anything lower than it stands.
 		float HalfWidth = 6.0F; //!< Half its width, in pixels: room it needs either side to pass or to jump up through.
 		std::vector<Vector> Avoid; //!< Places this unit has failed a jump at lately: routes through them cost more (see PathFinder::AvoidCost).
 		std::vector<std::pair<Vector, Vector>> AvoidLinks; //!< Flights (take-off, landing) this unit or its team has failed lately: that take-off for that landing costs more, nothing else does.
