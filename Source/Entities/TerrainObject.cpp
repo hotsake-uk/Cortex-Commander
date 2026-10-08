@@ -196,9 +196,20 @@ bool TerrainObject::PlaceOnTerrain(SLTerrain* terrain) {
 	// Lamps that were where this now is are built over; this' own are put up.
 	Vector corner = (m_Pos + m_BitmapOffset).GetFloored();
 	auto drawnAt = [](BITMAP* bitmap, int x, int y) { return bitmap && x >= 0 && y >= 0 && x < bitmap->w && y < bitmap->h && _getpixel(bitmap, x, y) != ColorKeys::g_MaskColor; };
+	float sceneWidth = static_cast<float>(terrain->GetWidth());
+	float sceneHeight = static_cast<float>(terrain->GetHeight());
 	terrain->RemoveLights([&](const TerrainLight& light) {
-		int x = static_cast<int>(std::floor(light.m_Pos.m_X - corner.m_X));
-		int y = static_cast<int>(std::floor(light.m_Pos.m_Y - corner.m_Y));
+		float offsetX = light.m_Pos.m_X - corner.m_X;
+		float offsetY = light.m_Pos.m_Y - corner.m_Y;
+		// A piece placed across a wrapping seam covers lamps on the far side of it too.
+		if (terrain->WrapsX() && sceneWidth > 0.0F) {
+			offsetX = std::fmod(std::fmod(offsetX, sceneWidth) + sceneWidth, sceneWidth);
+		}
+		if (terrain->WrapsY() && sceneHeight > 0.0F) {
+			offsetY = std::fmod(std::fmod(offsetY, sceneHeight) + sceneHeight, sceneHeight);
+		}
+		int x = static_cast<int>(std::floor(offsetX));
+		int y = static_cast<int>(std::floor(offsetY));
 		return drawnAt(m_FGColorBitmap, x, y) || drawnAt(m_BGColorBitmap, x, y) || drawnAt(m_MaterialBitmap, x, y);
 	});
 	for (const TerrainLight& light: m_Lights) {

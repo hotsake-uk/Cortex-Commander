@@ -364,8 +364,9 @@ void SLTerrain::AddLight(const TerrainLight& light) {
 		newLight.m_Pos.m_X = std::fmod(std::fmod(newLight.m_Pos.m_X, static_cast<float>(m_MainBitmap->w)) + static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->w));
 	}
 	for (TerrainLight& existing: m_Lights) {
-		// One lamp to a spot: background pieces are painted with the glow of the lamp of the module they belong in, and both bring it.
-		if (std::abs(existing.m_Pos.m_X - newLight.m_Pos.m_X) < 10.0F && std::abs(existing.m_Pos.m_Y - newLight.m_Pos.m_Y) < 10.0F) {
+		// One lamp to a spot: background pieces are painted with the glow of the lamp of the module they belong in, and both bring it, and a procedural layer's pieces are saved both as lamps and as placed objects.
+		// Those copies land on the same pixel, so only a lamp within a few pixels counts as the same one: two small fixtures side by side both stay.
+		if (std::abs(existing.m_Pos.m_X - newLight.m_Pos.m_X) < 3.0F && std::abs(existing.m_Pos.m_Y - newLight.m_Pos.m_Y) < 3.0F) {
 			existing = newLight;
 			return;
 		}
