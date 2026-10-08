@@ -96,6 +96,21 @@ namespace {
 	std::array<float, 256> s_DryChance{}; //!< The chance a sweep pass of a still surface pixel of it drying.
 	std::array<bool, 256> s_Chills{}; //!< Freezes what it touches that freezes (cryogenic fluid).
 	std::array<float, 256> s_Evaporates{}; //!< The chance a step of a surface pixel of it boiling off into mist.
+	/// What a liquid does to what it may flow through (MaterialBehaviour::PassThrough).
+	enum class PassThrough : unsigned char {
+		Keep, //!< Flows through and leaves it there for when it has gone (water).
+		Destroy, //!< Flows through and does away with it (acid eats it, lava burns it).
+		Collide //!< Stops at it, as at anything solid (only a liquid set to; and every powder).
+	};
+	std::array<bool, 256> s_LetsLiquidsThrough{}; //!< Liquids flow through it as if it weren't there (grass, foliage): MaterialBehaviour::LiquidsPassThrough.
+	std::array<PassThrough, 256> s_PassThrough{}; //!< For each liquid, what it does to what lets liquids through.
+	/// What a liquid pixel covers where it flowed into something that lets liquids through and keeps it (a blade of grass under water), by key (y * width + x):
+	/// put back when the liquid leaves. An entry where no liquid is any more (erased by a blast, say) is stale, and is dropped when a liquid next arrives there.
+	struct Covered {
+		unsigned char Material;
+		int Color;
+	};
+	std::unordered_map<int, Covered> s_Covered;
 	int s_BloodMaterial = 0; //!< The Blood liquid, which settled blood becomes when it flows (FluidSim::BloodFlows), 0 if the scene has none.
 	int s_WaterMaterial = 0; //!< The material blood drops are made of (water, drawn red).
 	std::vector<glm::ivec2> s_BloodSettled; //!< Where blood drops settled since the last update, to become flowing blood.
@@ -355,6 +370,8 @@ namespace {
 		s_DryChance.fill(0.0F);
 		s_Chills.fill(false);
 		s_Evaporates.fill(0.0F);
+		s_LetsLiquidsThrough.fill(false);
+		s_PassThrough.fill(PassThrough::Collide);
 		s_BloodMaterial = 0;
 		s_WaterMaterial = 0;
 		s_ColorOfMaterial.fill(0);
@@ -394,6 +411,11 @@ namespace {
 				kind = Liquid::Powder;
 			}
 			if (kind == Liquid::None) {
+				// What liquids flow through (grass, foliage): set, or by the stock rule, plant names (as TerrainFire's for what burns like grass). Never
+				// anything that itself flows or piles.
+				auto nameHas = [&name](const char* part) { return name.find(part) != std::string::npos; };
+				bool plantByName = nameHas("Grass") || nameHas("Vegetation") || nameHas("Foliage") || nameHas("Leaf") || nameHas("Leaves") || nameHas("Plant");
+				s_LetsLiquidsThrough[id] = !powder && (behaviour.LiquidsPassThrough >= 0 ? behaviour.LiquidsPassThrough == 1 : plantByName);
 				continue;
 			}
 			s_Kinds[id] = kind;
@@ -418,6 +440,9 @@ namespace {
 				continue;
 			}
 			s_Douses[id] = behaviour.Douses >= 0 ? behaviour.Douses == 1 : kind == Liquid::Water;
+			// What it does to grass and foliage on the way through, as set; unset, it passes through and leaves it be. Only a liquid set to collide stops at it.
+			const std::string& passThrough = behaviour.PassThrough;
+			s_PassThrough[id] = passThrough == "Destroy" ? PassThrough::Destroy : (passThrough == "Collide" ? PassThrough::Collide : PassThrough::Keep);
 			s_SettlesTo[id] = std::max(0, turnsInto(behaviour.SettlesTo, kind == Liquid::Lava ? "Stone" : nullptr));
 			s_BoilsTo[id] = turnsInto(behaviour.BoilsTo, kind == Liquid::Water ? "Air" : nullptr);
 			s_FreezesTo[id] = std::max(0, turnsInto(behaviour.FreezesTo, kind == Liquid::Water ? "Ice" : nullptr));
@@ -440,6 +465,11 @@ namespace {
 
 	/// The liquid at a pixel. The coordinates must already be inside the world (see InWorld): this reads the material bitmap directly, without the layer's own wrapping and bounds checks, because it's called tens of thousands of times an update.
 	Liquid KindAt(const SLTerrain* terrain, int x, int y) { return s_Kinds[terrain->GetBitmap()->line[y][x]]; }
+
+	/// Whether a liquid can flow into a spot: air, or what lets liquids through (grass, foliage) unless the liquid is set to collide with it.
+	/// @param spot The material at the spot.
+	/// @param liquid The liquid's material.
+	bool OpenTo(int spot, int liquid) { return spot == g_MaterialAir || (s_LetsLiquidsThrough[spot & 0xFF] && s_PassThrough[liquid & 0xFF] != PassThrough::Collide); }
 
 	bool s_WrapsX = false; //!< Whether the scene wraps sideways. Looked up once an update: InWorld is called hundreds of thousands of times in a big flood.
 
@@ -521,7 +551,7 @@ namespace {
 				int material = materialBitmap->line[y][x];
 				if (material == liquidMaterial) {
 					frontier.emplace_back(relativeX, relativeY);
-				} else if (material == g_MaterialAir && relativeY >= 1) {
+				} else if (relativeY >= 1 && OpenTo(material, liquidMaterial)) {
 					// Lower than the pixel by at least a row, so moving there brings the two levels together rather than swapping them.
 					foundX = x;
 					foundY = y;
@@ -532,7 +562,8 @@ namespace {
 		return false;
 	}
 
-	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air with air below it. The look passes through air and through liquid of its own material.
+	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air (or what it flows through, see OpenTo) with the same below it.
+	/// The look passes through those and through liquid of its own material.
 	/// @return How many pixels away the place is, or 0 if there's none within reach.
 	int FindRowDrop(BITMAP* materialBitmap, int x, int y, int side, int reach, int width, int height) {
 		if (y + 1 >= height) {
@@ -546,8 +577,8 @@ namespace {
 				return 0;
 			}
 			int material = materialBitmap->line[y][lookX];
-			if (material == g_MaterialAir) {
-				if (materialBitmap->line[y + 1][lookX] == g_MaterialAir) {
+			if (OpenTo(material, own)) {
+				if (OpenTo(materialBitmap->line[y + 1][lookX], own)) {
 					return step;
 				}
 			} else if (material != own) {
@@ -599,11 +630,40 @@ namespace {
 
 	/// Sets a terrain pixel's material and colour, noting it for the pathfinder when that changes whether it can be passed.
 	void ChangePixel(SLTerrain* terrain, int x, int y, int material, int color) {
-		if (BlocksPassage(terrain->GetMaterialPixel(x, y)) != BlocksPassage(material)) {
-			s_SolidChanged.Add(x, y);
+		if (int was = terrain->GetMaterialPixel(x, y); BlocksPassage(was) != BlocksPassage(material)) {
+			// (Liquid running through grass changes it pixel by pixel all the way: told with where liquid settled, once a second, not every update.)
+			bool throughPlants = s_LetsLiquidsThrough[was & 0xFF] || (material > 0 && material < 256 && s_LetsLiquidsThrough[material]);
+			(throughPlants ? s_LiquidRested : s_SolidChanged).Add(x, y);
 		}
 		terrain->SetMaterialPixel(x, y, material);
 		terrain->SetFGColorPixel(x, y, color);
+	}
+
+	/// A liquid arriving at a spot: what it flows through there (grass) is kept under it to come back when it leaves, or is done away with, as the liquid
+	/// says (PassThrough). Call before the liquid is set there.
+	/// @param key The spot's key.
+	/// @param spot The material at the spot before the liquid arrives, and its colour.
+	/// @param liquid The arriving liquid's material.
+	void Cover(int key, int spot, int spotColor, int liquid) {
+		PassThrough passThrough = s_PassThrough[liquid & 0xFF];
+		if (s_LetsLiquidsThrough[spot & 0xFF] && passThrough == PassThrough::Keep) {
+			s_Covered[key] = {static_cast<unsigned char>(spot), spotColor};
+		} else if (!s_Covered.empty() && (spot == g_MaterialAir || s_LetsLiquidsThrough[spot & 0xFF] || passThrough == PassThrough::Destroy)) {
+			// Air there means what was noted is stale; a liquid that destroys does away with what another kept.
+			s_Covered.erase(key);
+		}
+	}
+
+	/// A liquid pixel leaving its spot: what it covered there comes back, or else air.
+	void Uncover(SLTerrain* terrain, int x, int y, int width) {
+		if (!s_Covered.empty()) {
+			if (auto covered = s_Covered.find(y * width + x); covered != s_Covered.end()) {
+				ChangePixel(terrain, x, y, covered->second.Material, covered->second.Color);
+				s_Covered.erase(covered);
+				return;
+			}
+		}
+		ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 	}
 
 	/// Whether a resting liquid pixel has something beside it to react with (M-2): acid by soft ground, lava (or what settles like it) by
@@ -659,13 +719,14 @@ namespace {
 		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
 			// Nearly every pixel isn't liquid, so that's checked first and costs next to nothing.
 			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
-				// Air right below, or below and to a side, means it has somewhere to go.
+				// Air (or grass it flows through) right below, or below and to a side, means it has somewhere to go.
+				const int swept = materialBitmap->line[y][x];
 				const unsigned char* below = materialBitmap->line[y + 1];
 				int left = x > 0 ? x - 1 : (s_WrapsX ? width - 1 : x);
 				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
-				if (below[x] == g_MaterialAir || below[left] == g_MaterialAir || below[right] == g_MaterialAir) {
+				if (OpenTo(below[x], swept) || OpenTo(below[left], swept) || OpenTo(below[right], swept)) {
 					Activate(x, y, width, height, terrain);
-				} else if ((materialBitmap->line[y][left] == g_MaterialAir || materialBitmap->line[y][right] == g_MaterialAir) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
+				} else if ((OpenTo(materialBitmap->line[y][left], swept) || OpenTo(materialBitmap->line[y][right], swept)) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
 					// The end of a layer on the surface, with somewhere lower along its row to go to. (One with nowhere to go is left asleep, or the top of every pool would stir for ever.)
 					Activate(x, y, width, height, terrain);
 				} else if (HasReactionPartner(materialBitmap, x, y, width, height, anyFire)) {
@@ -681,8 +742,10 @@ namespace {
 					// into, over it.
 					int above = materialBitmap->line[y - 1][x];
 					if ((above == g_MaterialAir || above == driesTo) && Random01() < s_DryChance[materialBitmap->line[y][x]]) {
-						ChangePixel(terrain, x, y, driesTo > 0 ? driesTo : static_cast<int>(g_MaterialAir), driesTo > 0 ? s_ColorOfMaterial[driesTo] : static_cast<int>(ColorKeys::g_MaskColor));
-						if (driesTo < 0) {
+						if (driesTo > 0) {
+							ChangePixel(terrain, x, y, driesTo, s_ColorOfMaterial[driesTo]);
+						} else {
+							Uncover(terrain, x, y, width);
 							ActivateAround(x, y, width, height, terrain);
 						}
 					}
@@ -846,7 +909,8 @@ void FluidSim::Update() {
 		s_TablesBuilt = false;
 		if (!s_PendingLoadState.empty() && s_Scene) {
 			// Restore a saved game's moving liquid: the random state, then "V2" and "x y stillSteps heading velX velY" per pixel, then "W", a count
-			// and "x y" for each pixel waiting for room. (Saves from before L-2 have "x y stillSteps" per pixel and nothing after.)
+			// and "x y" for each pixel waiting for room, then "H", a count and "x y material colour" for what liquid covers (grass under water).
+			// (Saves from before L-2 have "x y stillSteps" per pixel and nothing after; from before the H list, no H list.)
 			std::istringstream stream(s_PendingLoadState);
 			unsigned int random = 0;
 			stream >> random;
@@ -881,6 +945,16 @@ void FluidSim::Update() {
 					for (size_t i = 0; i < waiting && stream >> x >> y; ++i) {
 						if (s_Waiting.size() < 2000000) {
 							s_Waiting.push_back(y * loadedWidth + x);
+						}
+					}
+				}
+				size_t covered = 0;
+				if (stream >> token && token == "H" && stream >> covered) {
+					int material = 0;
+					int color = 0;
+					for (size_t i = 0; i < covered && stream >> x >> y >> material >> color; ++i) {
+						if (material > 0 && material < 256) {
+							s_Covered[y * loadedWidth + x] = {static_cast<unsigned char>(material), color};
 						}
 					}
 				}
@@ -973,7 +1047,7 @@ void FluidSim::Update() {
 				--dropsLeft;
 				Color color;
 				color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
-				ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
+				Uncover(terrain, x, y, width);
 				s_Active.Remove(y * width + x);
 				const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 				float outward = static_cast<float>(dx) / static_cast<float>(splash.Radius);
@@ -1113,7 +1187,7 @@ void FluidSim::Update() {
 				ChangePixel(terrain, nx, ny, freezesTo, s_ColorOfMaterial[freezesTo]);
 				s_Active.Remove(ny * width + nx);
 				if (Random01() < 0.5F) {
-					ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
+					Uncover(terrain, x, y, width);
 					ActivateAround(x, y, width, height, terrain);
 					reacted = true;
 					break;
@@ -1123,8 +1197,11 @@ void FluidSim::Update() {
 				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam (or to what it boils to).
 				ChangePixel(terrain, x, y, settlesTo, s_ColorOfMaterial[settlesTo]);
 				int boilsTo = s_BoilsTo[neighbourMaterial];
-				if (boilsTo != 0) {
-					ChangePixel(terrain, nx, ny, boilsTo > 0 ? boilsTo : static_cast<int>(g_MaterialAir), boilsTo > 0 ? s_ColorOfMaterial[boilsTo] : static_cast<int>(ColorKeys::g_MaskColor));
+				if (boilsTo > 0) {
+					ChangePixel(terrain, nx, ny, boilsTo, s_ColorOfMaterial[boilsTo]);
+					s_Active.Remove(ny * width + nx);
+				} else if (boilsTo < 0) {
+					Uncover(terrain, nx, ny, width);
 					s_Active.Remove(ny * width + nx);
 				}
 				ActivateAround(nx, ny, width, height, terrain);
@@ -1155,7 +1232,7 @@ void FluidSim::Update() {
 					s_Active.Remove(ny * width + nx);
 					ActivateAround(nx, ny, width, height, terrain);
 					if (Random01() < 0.3F) {
-						ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
+						Uncover(terrain, x, y, width);
 						ActivateAround(x, y, width, height, terrain);
 						reacted = true;
 						break;
@@ -1175,7 +1252,7 @@ void FluidSim::Update() {
 		}
 		// Boiling off (cryogenic fluid): a pixel at the surface goes up as mist now and then, and the one under it is next.
 		if (s_Evaporates[ownMaterial] > 0.0F && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < s_Evaporates[ownMaterial]) {
-			ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
+			Uncover(terrain, x, y, width);
 			ActivateAround(x, y, width, height, terrain);
 			if (mistLeft > 0) {
 				--mistLeft;
@@ -1185,8 +1262,9 @@ void FluidSim::Update() {
 			continue;
 		}
 
+		// (Air, or grass and foliage it flows through: OpenTo.)
 		auto canMoveTo = [&](int tx, int ty) {
-			return InWorld(tx, ty, width, height) && materialBitmap->line[ty][tx] == g_MaterialAir;
+			return InWorld(tx, ty, width, height) && OpenTo(materialBitmap->line[ty][tx], ownMaterial);
 		};
 		// Whether this pixel sinks through what's at a spot: a lighter liquid, which rises into its place.
 		auto sinksInto = [&](int tx, int ty) {
@@ -1247,12 +1325,13 @@ void FluidSim::Update() {
 			}
 			if (velY >= c_SplashSpeed && kind != Liquid::Powder) {
 				// Landed hard: now and then a drop is thrown up, flies and rejoins the pool where it comes down. The rest of the speed goes sideways.
-				if (splashes < c_MaxSplashesPerUpdate && canMoveTo(x, y - 1) && Random01() < 0.22F) {
+				// (Only into open air: a drop thrown up into grass would be inside the terrain.)
+				if (splashes < c_MaxSplashesPerUpdate && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < 0.22F) {
 					++splashes;
 					int material = materialBitmap->line[y][x];
 					Color color;
 					color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
-					ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
+					Uncover(terrain, x, y, width);
 					const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 					// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
 					Vector velocity((Random01() - 0.5F) * 9.0F, -(1.5F + Random01() * static_cast<float>(velY) * 0.3F));
@@ -1340,7 +1419,7 @@ void FluidSim::Update() {
 								break;
 							}
 							int material = materialBitmap->line[lookY][lookX];
-							if (material == g_MaterialAir) {
+							if (OpenTo(material, ownMaterial)) {
 								found = step;
 								break;
 							}
@@ -1466,14 +1545,20 @@ void FluidSim::Update() {
 				}
 				color = arriving;
 			}
-			// When it sinks through a lighter liquid, that liquid takes the place it left.
-			int leftMaterial = swapped ? terrain->GetMaterialPixel(targetX, targetY) : static_cast<int>(g_MaterialAir);
-			int leftColor = swapped ? terrain->GetFGColorPixel(targetX, targetY) : static_cast<int>(ColorKeys::g_MaskColor);
+			// When it sinks through a lighter liquid, that liquid takes the place it left. Otherwise what it covered there (grass under water) comes back.
+			int leftMaterial = terrain->GetMaterialPixel(targetX, targetY);
+			int leftColor = terrain->GetFGColorPixel(targetX, targetY);
 			if (swapped) {
 				s_Active.Remove(target);
+				Cover(key, material, color, leftMaterial);
 			}
+			Cover(target, leftMaterial, leftColor, material);
 			ChangePixel(terrain, targetX, targetY, material, color);
-			ChangePixel(terrain, x, y, leftMaterial, leftColor);
+			if (swapped) {
+				ChangePixel(terrain, x, y, leftMaterial, leftColor);
+			} else {
+				Uncover(terrain, x, y, width);
+			}
 			// Burning fuel (oil) takes its fire with it, so a lit slick that flows keeps burning and a burning stream runs downhill (M-3). Only
 			// while something burns: a map lookup or two a move.
 			if (anyFire && (TerrainFire::IsFlammable(material) || (swapped && TerrainFire::IsFlammable(leftMaterial)))) {
@@ -1548,6 +1633,13 @@ std::string FluidSim::GetSaveState() {
 		for (int key: s_Waiting) {
 			stream << ' ' << key % width << ' ' << key / width;
 		}
+		// And what liquid covers (grass under water), lowest key first, so it comes back when the liquid goes.
+		std::vector<std::pair<int, Covered>> covered(s_Covered.begin(), s_Covered.end());
+		std::sort(covered.begin(), covered.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		stream << " H " << covered.size();
+		for (const auto& [key, what]: covered) {
+			stream << ' ' << key % width << ' ' << key / width << ' ' << static_cast<int>(what.Material) << ' ' << what.Color;
+		}
 	}
 	return stream.str();
 }
@@ -1558,6 +1650,7 @@ void FluidSim::SetPendingLoadState(const std::string& state) {
 
 void FluidSim::Clear() {
 	s_Active.Clear();
+	s_Covered.clear();
 	s_SolidChanged.Reset();
 	s_LiquidRested.Reset();
 	s_Waiting.clear();
