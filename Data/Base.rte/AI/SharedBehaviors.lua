@@ -666,6 +666,123 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	return false;
 end
 
+-- Squad tactics (AC-6). Each unit tells its team, through number values on itself that every script can read, which enemy it is shooting
+-- at (AITargetID) and when it last had one (AIContactMS, in sim ms); once a second it looks at its teammates within 400 px and:
+-- * focus fire: switches to an enemy at least two of them are shooting at, if it can see it and it isn't much less of a threat than its own;
+-- * flanking pairs: when it and a teammate are on the same enemy and it has had no shot for two seconds, the one of the two with the
+--   higher unique ID goes round (StartFlank) while the other keeps it pinned;
+-- * spreading out: under fire, with a teammate within 24 px beside it, it steps away (not a defender at its post, nor from cover);
+-- * bounding overwatch: a squad follower, while the squad has been in a fight in the last five seconds and it has no enemy in sight itself,
+--   holds and watches toward the last enemy every other three seconds, by its place in line, while the other half moves (see GoToRoute).
+-- Not Unfair AI's business to be any different, and nothing for a unit a player controls. Called every tick by the AI's update.
+function SharedBehaviors.SquadTactics(AI, Owner)
+	AI.ClockTimer = AI.ClockTimer or Timer();
+	local now = AI.ClockTimer.StartSimTimeMS + AI.ClockTimer.ElapsedSimTimeMS;
+	local Target = AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target or nil;
+	if Target then
+		Owner:SetNumberValue("AITargetID", Target.UniqueID);
+		Owner:SetNumberValue("AIContactMS", now);
+		AI.noShotSince = AI.canHitTarget and nil or (AI.noShotSince or now);
+	elseif Owner:NumberValueExists("AITargetID") then
+		Owner:RemoveNumberValue("AITargetID");
+		AI.noShotSince = nil;
+	end
+	AI.overwatch = AI.overwatch and AI.overwatchUntil and now < AI.overwatchUntil and not Target;
+	AI.SquadTacticsTimer = AI.SquadTacticsTimer or Timer();
+	if not AI.SquadTacticsTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.SquadTacticsTimer:Reset();
+	local targetedBy = {};
+	local squadContact = Target ~= nil or (Owner:NumberValueExists("AIContactMS") and now - Owner:GetNumberValue("AIContactMS") < 5000);
+	local beside, besideDir, pairedWith;
+	for Mate in MovableMan.Actors do
+		if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled() then
+			local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
+			if Dist:MagnitudeIsLessThan(400) then
+				if Mate:NumberValueExists("AITargetID") then
+					local id = Mate:GetNumberValue("AITargetID");
+					targetedBy[id] = (targetedBy[id] or 0) + 1;
+					if Target and id == Target.UniqueID and (not pairedWith or Mate.UniqueID < pairedWith) then
+						pairedWith = Mate.UniqueID;
+					end
+				end
+				if Mate:NumberValueExists("AIContactMS") and now - Mate:GetNumberValue("AIContactMS") < 5000 then
+					squadContact = true;
+				end
+				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 then
+					beside, besideDir = Mate, Dist.X > 0 and -1 or 1;
+				end
+			end
+		end
+	end
+	-- Focus fire.
+	if Target and (AI.skill or 50) >= 40 then
+		local bestID, bestCount = nil, 1;
+		for id, count in pairs(targetedBy) do
+			if id ~= Target.UniqueID and count > bestCount then
+				bestID, bestCount = id, count;
+			end
+		end
+		local Focus = bestID and MovableMan:FindObjectByUniqueID(bestID);
+		if Focus and MovableMan:ValidMO(Focus) and IsActor(Focus) and Focus.Team ~= Owner.Team and SharedBehaviors.CanSee(Owner.EyePos, Focus.Pos) then
+			Focus = SharedBehaviors.ToActorClass(Focus);
+			if Focus and SharedBehaviors.CalculateThreatLevel(Focus, Owner) > SharedBehaviors.CalculateThreatLevel(Target, Owner) - 0.5 then
+				SharedBehaviors.Trace(Owner, "squad: focus fire with " .. bestCount);
+				AI.OldTargetPos = Vector(Target.Pos.X, Target.Pos.Y);
+				AI.Target = Focus;
+				AI.TargetOffset = Vector();
+				AI.TargetLostTimer:Reset();
+				AI:CreateAttackBehavior(Owner);
+				return;
+			end
+		end
+	end
+	-- Flanking pairs.
+	if Target and pairedWith and Owner.UniqueID > pairedWith and AI.noShotSince and now - AI.noShotSince > 2000 and SharedBehaviors.StartFlank(AI, Owner, Target.Pos, 500) then
+		SharedBehaviors.Trace(Owner, "squad: flanking while a mate pins it");
+		return;
+	end
+	-- Spreading out under fire.
+	local suppression = SharedBehaviors.Suppression(AI, Owner);
+	local underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
+		SharedBehaviors.Trace(Owner, "squad: spreading out");
+		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(besideDir * 40, 0), 800);
+	end
+	-- Bounding overwatch.
+	if Owner.AIMode == Actor.AIMODE_SQUAD and squadContact and not Target and Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) and IsActor(Owner.MOMoveTarget) then
+		local slot = SharedBehaviors.SquadSlot(AI, Owner, ToActor(Owner.MOMoveTarget));
+		local phase = math.floor(now / 3000) % 2;
+		if slot % 2 == phase then
+			if not AI.overwatch then
+				SharedBehaviors.Trace(Owner, "squad: overwatch");
+			end
+			AI.overwatch = true;
+			AI.overwatchUntil = (math.floor(now / 3000) + 1) * 3000;
+			if AI.LastEnemyPos then
+				Owner:SetAlarmPoint(AI.LastEnemyPos);
+			end
+		end
+	end
+end
+
+-- An actor as its own class, for the scripts that read its class's members (legs, doors): AHuman, ACrab, ACRocket, ACDropShip, ADoor, or Actor.
+function SharedBehaviors.ToActorClass(MO)
+	if MO.ClassName == "AHuman" then
+		return ToAHuman(MO);
+	elseif MO.ClassName == "ACrab" then
+		return ToACrab(MO);
+	elseif MO.ClassName == "ACRocket" then
+		return ToACRocket(MO);
+	elseif MO.ClassName == "ACDropShip" then
+		return ToACDropShip(MO);
+	elseif MO.ClassName == "ADoor" then
+		return ToADoor(MO);
+	end
+	return ToActor(MO);
+end
+
 -- The move behaviour on the engine's route-follower: a coroutine like GoToWpt, so the AI drives it the same way, but each tick is one
 -- call of AHuman::MoveAlongRoute, which sets the controls itself. The script keeps what is its own: fighting on the move, following a
 -- unit near at hand (SharedBehaviors.FollowStep), and what to do on arrival. (Gold digging keeps 8.0's GoToWpt: a digger's unit uses it.)
@@ -682,6 +799,9 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		if AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
 		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm") and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
+			holding = true;
+		elseif AI.overwatch then
+			-- Bounding overwatch (AC-6): this half of the squad holds and watches while the other moves.
 			holding = true;
 		end
 		AI.lateralMoveState = Actor.LAT_STILL;

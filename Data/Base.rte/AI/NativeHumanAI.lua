@@ -145,6 +145,8 @@ function NativeHumanAI:Update(Owner)
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
 			Owner:RemoveNumberValue("AIInvestigate");
+			Owner:RemoveNumberValue("AITargetID");
+			self.overwatch = false;
 
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;
@@ -680,6 +682,7 @@ function NativeHumanAI:Update(Owner)
 	HumanBehaviors.PeekUpdate(self, Owner);
 	HumanBehaviors.LobUpdate(self, Owner);
 	HumanBehaviors.SmokeUpdate(self, Owner);
+	SharedBehaviors.SquadTactics(self, Owner);
 	SharedBehaviors.FlankUpdate(self, Owner);
 	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
 		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);

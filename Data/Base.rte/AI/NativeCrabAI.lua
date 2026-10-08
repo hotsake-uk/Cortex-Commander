@@ -95,6 +95,8 @@ function NativeCrabAI:Update(Owner)
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
 			Owner:RemoveNumberValue("AIInvestigate");
+			Owner:RemoveNumberValue("AITargetID");
+			self.overwatch = false;
 			self.SentryFacing = Owner.HFlipped;
 			self.lastAIMode = Actor.AIMODE_NONE;
 		end
