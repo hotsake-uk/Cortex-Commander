@@ -232,6 +232,8 @@ namespace RTE {
 		std::unique_ptr<Shader> m_SurfaceRoundShader;
 		std::unique_ptr<Shader> m_CompositeShader;
 		std::unique_ptr<Shader> m_EmissiveShader;
+		std::unique_ptr<Shader> m_FireFlameShader; //!< The flames of burning ground, into the glow buffer (see LightingSettings::FireShader).
+		float m_LastFlameTime = -1.0F; //!< Effect time when the flames were last drawn for the first screen, for the embers' pace.
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;

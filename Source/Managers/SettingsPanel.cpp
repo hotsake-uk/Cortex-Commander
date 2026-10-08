@@ -380,6 +380,12 @@ void DebugMan::SettingsGUI() {
 		Tip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		Slider("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);
 		Slider("Embers", &settings.Embers, 0.0F, 3.0F);
+		Check("Flames on burning ground", &settings.FireShader);
+		Tip("Burning ground is drawn as flames: tongues that lick and flicker, a darker core at the base and embers lifting off the tips, grouped along the fire front. Off: a flickering dot and a short tongue per burning pixel, as before.");
+		if (settings.FireShader) {
+			Slider("Flame height", &settings.FireFlameSize, 0.2F, 3.0F);
+			Slider("Flame brightness", &settings.FireFlameBrightness, 0.2F, 2.0F);
+		}
 		Slider("Sparks, dust and debris", &settings.EffectsParticles, 0.0F, 3.0F);
 		if (Plain()) {
 			ImGui::TextDisabled("%d effects particles alive", EffectsParticles::GetCount());
@@ -387,6 +393,8 @@ void DebugMan::SettingsGUI() {
 		Heading("Heat and blast in the air");
 		Check("Distortion", &settings.DistortionEnabled);
 		Slider("Heat haze (px)", &settings.HeatHaze, 0.0F, 6.0F);
+		Check("Haze only from heat", &settings.HazeFromHeat);
+		Tip("Heat haze rises from fire, burning ground, blasts and warm glows only. Off: anything bright shimmers, lamps and screens included, as before.");
 		Slider("Shockwave strength", &settings.ShockwaveStrength, 0.0F, 3.0F);
 		float hitStop = g_CameraMan.GetHitStopStrength();
 		if (Slider("Hit-stop on big blasts", &hitStop, 0.0F, 2.0F)) {

@@ -199,6 +199,10 @@ namespace RTE {
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
 		float HeatHaze = 1.5F; //!< Heat haze shimmer, in pixels at full heat.
+		bool HazeFromHeat = true; //!< Heat haze rises from hot things (fire, burning ground, blasts, warm glows) only. Off: from anything bright, lamps included, as before.
+		bool FireShader = true; //!< Burning ground is drawn as flames with shape and motion, a dark core and embers off the tips. Off: a flickering dot and tongue per burning pixel, as before.
+		float FireFlameSize = 1.0F; //!< How tall the flames of burning ground stand.
+		float FireFlameBrightness = 1.0F; //!< How bright those flames are.
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
 
 		float DeepNightDarkness = 0.5F; //!< How much darker the scene is in the dead of night (eleven to two) than at nightfall: 0 not at all, 0.5 half the light, 0.9 a tenth. Lamps, fires and headlamps are not dimmed.

@@ -17,6 +17,7 @@ uniform sampler2D rteDistortion; // Screen space displacement in pixels (shockwa
 uniform sampler2D rteEmissive; // Glows in gamma space; hot areas shimmer.
 uniform bool rteDistortionEnabled;
 uniform float rteHeatHaze; // Shimmer in pixels at full heat.
+uniform bool rteHazeFromHeat; // The haze reads the glow buffer's heat (its alpha), so only hot things shimmer; else its brightness, so anything bright does.
 uniform float rteTime; // Seconds of sim time.
 uniform int rteDebugView; // 5 shows the distortion.
 uniform float rteTemperature;
@@ -48,7 +49,8 @@ void main() {
 		// Shockwaves push the scene outwards.
 		offsetPixels -= texture(rteDistortion, uv).xy;
 		// Heat haze: sample the glows a little below, so the shimmer rises above hot things.
-		float heat = dot(texture(rteEmissive, uv + vec2(0.0, 5.0) / rteScreenSize).rgb, vec3(0.3333));
+		vec4 glow = texture(rteEmissive, uv + vec2(0.0, 5.0) / rteScreenSize);
+		float heat = rteHazeFromHeat ? glow.a : dot(glow.rgb, vec3(0.3333));
 		if (heat > 0.01) {
 			vec2 p = gl_FragCoord.xy * vec2(0.21, 0.13) + vec2(0.0, rteTime * 4.0);
 			vec2 wobble = vec2(sin(p.y * 1.7 + sin(p.x * 0.9) * 2.0), cos(p.x * 1.3 + sin(p.y * 1.1 + rteTime) * 2.0));

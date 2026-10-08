@@ -105,6 +105,7 @@ void SceneLighting::LoadShaders() {
 	m_SurfaceRoundShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SurfaceRound.frag");
 	m_CompositeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightComposite.frag");
 	m_EmissiveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/Emissive.frag");
+	m_FireFlameShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/FireFlame.frag");
 	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
@@ -1099,11 +1100,18 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_LastLightCount = static_cast<int>(lightCount);
 	size_t emissiveStart = m_QuadVertices.size() / 4;
 	std::vector<GLuint> emissiveTextures;
+	// How hot each glow quad is, 0..1, for the heat haze (LightingSettings::HazeFromHeat): fire and warm glows, not lamps.
+	std::vector<float> emissiveHeat;
 	for (const PostEffect& effect: screenEffects) {
 		if (!effect.m_Bitmap) {
 			continue;
 		}
 		float strength = static_cast<float>(effect.m_Strength) / 255.0F;
+		{
+			// Warm glows (fire on burning things, muzzle flashes, molten bits) are hot; white, blue and green ones (lamps, screens, plasma) aren't.
+			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
+			emissiveHeat.push_back(glow.LightColor.r > glow.LightColor.b * 1.4F ? strength : 0.0F);
+		}
 		glm::vec2 halfSize(effect.m_Bitmap->GetDimensions().w * 0.5F, effect.m_Bitmap->GetDimensions().h * 0.5F);
 		// CC angles are counter-clockwise, screen space is Y down.
 		addQuad(glm::vec2(std::floor(effect.m_Pos.m_X), std::floor(effect.m_Pos.m_Y)), halfSize, -effect.m_Angle, glm::vec3(strength), 0.0F);
@@ -1124,6 +1132,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			float angle = std::atan2(spark.Direction.y, spark.Direction.x);
 			addQuad(spark.Position - spark.Direction * (spark.Length * 0.5F), glm::vec2(spark.Length * 0.5F + 0.5F, 0.6F), angle, glm::min(spark.Color, glm::vec3(1.0F)), 0.0F);
 			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
 		}
 	}
 
@@ -1135,10 +1144,18 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		for (const EffectsParticles::Puff& ball: fire) {
 			addQuad(ball.Position, glm::vec2(ball.Size * 0.5F), 0.0F, glm::min(glm::vec3(ball.Color), glm::vec3(1.0F)), 0.0F);
 			emissiveTextures.push_back(puffTexture);
+			emissiveHeat.push_back(1.0F);
 		}
 	}
 
 	// Burning terrain: each pixel flickers between yellow and deep orange as it burns down, and sometimes throws an ember.
+	// With the fire shader, the pixels only glow and the flames are drawn over them a stretch of the fire front at a time (see FireFlame.frag).
+	struct FlameCell {
+		float MinX, MaxX, MinY, MaxY, Heat;
+		int Count;
+	};
+	std::unordered_map<long long, FlameCell> flameCells;
+	const bool fireShader = m_Settings.FireShader && m_FireFlameShader;
 	{
 		std::vector<glm::vec3> burning;
 		TerrainFire::GetBurning(origin, width, height, burning);
@@ -1149,10 +1166,27 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F)) + std::floor(time * 14.0F) * 3.1F) * 43758.5453F);
 			float heat = pixel.z;
 			glm::vec3 color = glm::mix(glm::vec3(0.9F, 0.25F, 0.03F), glm::vec3(1.0F, 0.85F, 0.35F), std::clamp(heat * 0.7F + noise * 0.5F, 0.0F, 1.0F)) * (0.7F + 0.6F * noise);
+			if (fireShader) {
+				// The burning pixel itself glows, dimmer; its flame comes from its cell of the fire front (24 px of the scene, so cells stay put as the camera moves).
+				addQuad(position + glm::vec2(0.5F), glm::vec2(0.5F), 0.0F, glm::min(color * 0.6F, glm::vec3(1.0F)), 0.0F);
+				emissiveTextures.push_back(whiteTexture);
+				emissiveHeat.push_back(heat);
+				long long cellX = static_cast<long long>(std::floor((position.x + origin.x) / 24.0F));
+				long long cellY = static_cast<long long>(std::floor((position.y + origin.y) / 24.0F));
+				FlameCell& flame = flameCells.try_emplace((cellY << 32) ^ (cellX & 0xFFFFFFFFLL), FlameCell{position.x, position.x, position.y, position.y, 0.0F, 0}).first->second;
+				flame.MinX = std::min(flame.MinX, position.x);
+				flame.MaxX = std::max(flame.MaxX, position.x);
+				flame.MinY = std::min(flame.MinY, position.y);
+				flame.MaxY = std::max(flame.MaxY, position.y);
+				flame.Heat += heat;
+				++flame.Count;
+				continue;
+			}
 			// A flame tongue above the pixel, taller where it's hotter.
 			float flameHeight = 1.0F + std::floor(noise * 3.0F * (0.4F + heat));
 			addQuad(position + glm::vec2(0.5F, 0.5F - flameHeight * 0.5F), glm::vec2(0.5F, flameHeight * 0.5F + 0.5F), 0.0F, glm::min(color, glm::vec3(1.0F)), 0.0F);
 			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(heat);
 			if (noise > 0.995F) {
 				EffectsParticles::SpawnEmber(Vector(position.x + origin.x, position.y + origin.y - 2.0F));
 			}
@@ -1189,6 +1223,38 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				glm::vec2 screen = glm::floor(emberWorld - origin) + glm::vec2(0.5F);
 				addQuad(screen, glm::vec2(0.5F), 0.0F, emberColor, 0.0F);
 				emissiveTextures.push_back(whiteTexture);
+				emissiveHeat.push_back(0.3F * fade);
+			}
+		}
+	}
+	// The flames of burning ground, one quad per cell of the fire front, after every other glow (drawn with their own shader). Each stands on the
+	// cell's lowest burning pixel and rises by how much burns there and how hot; now and then one throws an ember off its tip.
+	size_t flameStart = m_QuadVertices.size() / 4;
+	size_t flameCount = 0;
+	if (fireShader && !flameCells.empty()) {
+		float time = PostProcessMan::GetEffectTime();
+		// Seconds since the flames were last drawn for the first screen, so embers come at the same pace at any frame rate.
+		float elapsed = m_LastFlameTime < 0.0F ? 0.0F : std::clamp(time - m_LastFlameTime, 0.0F, 0.1F);
+		if (screenIndex == 0) {
+			m_LastFlameTime = time;
+		}
+		float size = std::clamp(m_Settings.FireFlameSize, 0.2F, 3.0F);
+		float brightness = std::clamp(m_Settings.FireFlameBrightness, 0.2F, 2.0F);
+		for (const auto& [key, flame]: flameCells) {
+			float heat = std::clamp(flame.Heat / static_cast<float>(flame.Count), 0.0F, 1.0F);
+			float width = flame.MaxX - flame.MinX + 8.0F;
+			float height = std::clamp((flame.MaxY - flame.MinY) + (8.0F + 5.0F * std::sqrt(static_cast<float>(flame.Count)) * (0.5F + heat)) * size, 6.0F, 90.0F);
+			float base = flame.MaxY + 1.5F;
+			addQuad(glm::vec2((flame.MinX + flame.MaxX) * 0.5F + 0.5F, base - height * 0.5F), glm::vec2(width * 0.5F, height * 0.5F), 0.0F, glm::vec3(brightness), 0.0F);
+			for (size_t vertex = m_QuadVertices.size() - 4; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].A = heat;
+			}
+			++flameCount;
+			// Embers off the tips: about one a second from a busy cell, at a pace that doesn't depend on the frame rate.
+			float chance = std::min(0.02F * static_cast<float>(flame.Count) * (0.5F + heat), 1.0F) * elapsed;
+			float roll = glm::fract(std::sin(static_cast<float>(key % 100003) * 12.9898F + time * 78.233F) * 43758.5453F);
+			if (roll < chance) {
+				EffectsParticles::SpawnEmber(Vector(origin.x + flame.MinX + roll / std::max(chance, 0.0001F) * (flame.MaxX - flame.MinX), origin.y + base - height * 0.7F));
 			}
 		}
 	}
@@ -1229,6 +1295,15 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 	size_t smokeCount = m_QuadVertices.size() / 4 - smokeStart;
+	if (m_Settings.HazeFromHeat) {
+		// How hot each glow quad is goes in its vertex alpha, for the heat haze (the glows' shader writes it to the glow buffer's alpha). Nothing else
+		// in the glow pass reads that alpha.
+		for (size_t quad = 0; quad < emissiveHeat.size() && quad < emissiveTextures.size(); ++quad) {
+			for (size_t vertex = (emissiveStart + quad) * 4; vertex < (emissiveStart + quad + 1) * 4; ++vertex) {
+				m_QuadVertices[vertex].A = std::clamp(emissiveHeat[quad], 0.0F, 1.0F);
+			}
+		}
+	}
 	UploadQuads();
 	PerformanceMan::AddLogCount("# lights on screen", lightCount);
 	PerformanceMan::AddLogCount("# quads for lighting (lights, glows, sparks, fire, dust, smoke)", m_QuadVertices.size() / 4);
@@ -1324,6 +1399,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_EmissiveShader->Enable();
 		m_EmissiveShader->SetInt("rteTexture", 0);
 		m_EmissiveShader->SetVector2f("rteScreenSize", screenSize);
+		// The heat haze reads how hot each glow is from the buffer's alpha (the quads carry it in their vertex alpha, set before the upload).
+		m_EmissiveShader->SetBool("rteHeatAlpha", m_Settings.HazeFromHeat);
 		glActiveTexture(GL_TEXTURE0);
 		size_t runStart = 0;
 		for (size_t i = 1; i <= emissiveTextures.size(); ++i) {
@@ -1336,6 +1413,20 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			}
 		}
 		m_EmissiveShader->SetBool("rteUseAlpha", false);
+		m_EmissiveShader->SetBool("rteHeatAlpha", false);
+		glDisable(GL_BLEND);
+	}
+	if (flameCount > 0) {
+		// The flames of burning ground, screen blended over the other glows the same way.
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+		m_FireFlameShader->Enable();
+		m_FireFlameShader->SetVector2f("rteScreenSize", screenSize);
+		m_FireFlameShader->SetVector2f("rteScreenOrigin", origin);
+		m_FireFlameShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		m_FireFlameShader->SetBool("rteHeatAlpha", m_Settings.HazeFromHeat);
+		DrawQuads(flameStart, flameCount);
 		glDisable(GL_BLEND);
 	}
 
@@ -1847,6 +1938,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetInt("rteEmissive", 3);
 	m_TonemapShader->SetBool("rteDistortionEnabled", m_Settings.DistortionEnabled);
 	m_TonemapShader->SetFloat("rteHeatHaze", m_Settings.HeatHaze);
+	m_TonemapShader->SetBool("rteHazeFromHeat", m_Settings.HazeFromHeat);
 	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	m_TonemapShader->SetInt("rteDebugView", m_Settings.DebugView);
 	m_TonemapShader->SetFloat("rteTemperature", m_Settings.Temperature);
