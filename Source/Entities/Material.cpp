@@ -197,6 +197,8 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Breathable", { reader >> m_Behaviour.Breathable; });
 	MatchProperty("TouchDamage", { reader >> m_Behaviour.TouchDamage; });
 	MatchProperty("AddReaction", { m_Behaviour.Reactions.push_back(reader.ReadPropValue()); });
+	MatchProperty("SightDepth", { reader >> m_Behaviour.SightDepth; });
+	MatchProperty("ShotDepth", { reader >> m_Behaviour.ShotDepth; });
 	MatchProperty("Color", { reader >> m_Color; });
 	MatchProperty("UseOwnColor", { reader >> m_UseOwnColor; });
 	MatchProperty("FGTextureFile", {
@@ -278,6 +280,8 @@ int Material::Save(Writer& writer) const {
 		for (const std::string& reaction: b.Reactions) {
 			writer.NewPropertyWithValue("AddReaction", reaction);
 		}
+		number("SightDepth", b.SightDepth);
+		number("ShotDepth", b.ShotDepth);
 	}
 	return 0;
 }

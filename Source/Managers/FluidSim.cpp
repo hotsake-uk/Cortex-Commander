@@ -96,6 +96,9 @@ namespace {
 	std::array<float, 256> s_DryChance{}; //!< The chance a sweep pass of a still surface pixel of it drying.
 	std::array<bool, 256> s_Chills{}; //!< Freezes what it touches that freezes (cryogenic fluid).
 	std::array<float, 256> s_Evaporates{}; //!< The chance a step of a surface pixel of it boiling off into mist.
+	std::array<int, 256> s_SightDepth{}; //!< How many pixels of a liquid a look sees through (MaterialBehaviour::SightDepth).
+	std::array<int, 256> s_ShotDepth{}; //!< How many pixels of a liquid a shot goes on through (MaterialBehaviour::ShotDepth).
+	std::array<float, 256> s_ShotDrag{}; //!< A shot's speed is multiplied by this for each pixel of the liquid: half by the end of its shot depth.
 	/// What a liquid does to what it may flow through (MaterialBehaviour::PassThrough).
 	enum class PassThrough : unsigned char {
 		Keep, //!< Flows through and leaves it there for when it has gone (water).
@@ -400,6 +403,9 @@ namespace {
 		s_DryChance.fill(0.0F);
 		s_Chills.fill(false);
 		s_Evaporates.fill(0.0F);
+		s_SightDepth.fill(0);
+		s_ShotDepth.fill(0);
+		s_ShotDrag.fill(1.0F);
 		s_LetsLiquidsThrough.fill(false);
 		s_PassThrough.fill(PassThrough::Collide);
 		s_BloodMaterial = 0;
@@ -479,6 +485,10 @@ namespace {
 			s_DriesTo[id] = turnsInto(behaviour.DriesTo, nullptr);
 			s_Chills[id] = behaviour.Chills == 1;
 			s_Evaporates[id] = behaviour.Evaporates > 0.0F ? std::min(behaviour.Evaporates, 1.0F) : 0.0F;
+			// How far looks and shots go into it: set, or stock, clear water's for any liquid but oil (murky) and lava (molten rock).
+			s_SightDepth[id] = std::max(0, behaviour.SightDepth >= 0 ? behaviour.SightDepth : (kind == Liquid::Lava ? 0 : (kind == Liquid::Oil ? 6 : 200)));
+			s_ShotDepth[id] = std::max(0, behaviour.ShotDepth >= 0 ? behaviour.ShotDepth : (kind == Liquid::Lava ? 10 : (kind == Liquid::Oil ? 30 : 60)));
+			s_ShotDrag[id] = s_ShotDepth[id] > 0 ? std::pow(0.5F, 1.0F / static_cast<float>(s_ShotDepth[id])) : 1.0F;
 			s_DryChance[id] = s_DriesTo[id] != 0 ? std::clamp(behaviour.DryChance >= 0.0F ? behaviour.DryChance : 0.1F, 0.0F, 1.0F) : 0.0F;
 			// How it is drawn: water, lava and acid by their own looks, oil plain (its dark brown is shared with too many sprites to shimmer), a
 			// liquid of a mod's own as water; and lava glows.
@@ -983,6 +993,18 @@ namespace {
 
 bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
+}
+
+int FluidSim::SightDepth(int materialID) {
+	return IsLiquid(materialID) ? s_SightDepth[materialID] : 0;
+}
+
+int FluidSim::ShotDepth(int materialID) {
+	return IsLiquid(materialID) ? s_ShotDepth[materialID] : 0;
+}
+
+float FluidSim::ShotDrag(int materialID) {
+	return IsLiquid(materialID) ? s_ShotDrag[materialID] : 1.0F;
 }
 
 bool FluidSim::HoldsBodies(int materialID) {

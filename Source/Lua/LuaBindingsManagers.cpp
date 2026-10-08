@@ -379,6 +379,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("CastFindMORay", &SceneMan::CastFindMORay)
 	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay1)
 	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay2)
+	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay3)
+	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay4)
 	    .def("CastTerrainPenetrationRay", &SceneMan::CastTerrainPenetrationRay)
 	    .def("GetLastRayHitPos", &SceneMan::GetLastRayHitPos)
 	    .def("FindAltitude", (float(SceneMan::*)(const Vector&, int, int)) & SceneMan::FindAltitude)

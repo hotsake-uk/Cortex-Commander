@@ -654,6 +654,16 @@ float LuaAdaptersSceneMan::CastObstacleRay2(SceneMan& sceneMan, const Vector& st
 	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip);
 }
 
+float LuaAdaptersSceneMan::CastObstacleRay3(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid) {
+	std::vector<MOID> ignoreMOIDsVec = ConvertLuaTableToVectorOfType<MOID>(ignoreMOIDs);
+	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDsVec, ignoreTeam, ignoreMaterial, skip, seeThroughLiquid);
+}
+
+float LuaAdaptersSceneMan::CastObstacleRay4(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid) {
+	std::vector<MOID> ignoreMOIDs = {ignoreMOID};
+	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip, seeThroughLiquid);
+}
+
 const std::list<Box>* LuaAdaptersSceneMan::WrapBoxes(SceneMan& sceneMan, const Box& boxToWrap) {
 	std::list<Box>* wrappedBoxes = new std::list<Box>();
 	sceneMan.WrapBox(boxToWrap, *wrappedBoxes);

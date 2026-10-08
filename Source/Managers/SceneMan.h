@@ -14,6 +14,8 @@
 
 #include "ActivityMan.h"
 
+#include <algorithm>
+#include <optional>
 #include <map>
 #include <array>
 #include <list>
@@ -235,6 +237,30 @@ namespace RTE {
 			~LiquidsPassable() { --s_LiquidsPassableDepth; }
 			LiquidsPassable(const LiquidsPassable&) = delete;
 			LiquidsPassable& operator=(const LiquidsPassable&) = delete;
+		};
+
+		/// While one of these is alive on a thread, GetTerrMatter on that thread reports liquid in the terrain as air for as far into it as the liquid
+		/// lets a look (FluidSim::SightDepth) or a shot (FluidSim::ShotDepth) through, counted from the scope's start: so a ray cast under it sees, or
+		/// judges a shot, through water to what's in or beyond it, and stops at it past that depth. The look rays (CastMORay, CastFindMORay,
+		/// CastAllMOsRay, CastUnseenRay, and CastObstacleRay when asked to: sharp aim, the AI's line of fire) and the AI's shot check
+		/// (CastStrengthSumRay) cast under one each; rays for footing and paths don't.
+		struct LiquidsSeeThrough {
+			/// @param shots Count the liquids' shot depth rather than their sight depth.
+			/// @param stride How many pixels of the ray each terrain read stands for (a ray's skip + 1).
+			LiquidsSeeThrough(bool shots, int stride) : m_Outer(s_SeeThrough) { s_SeeThrough = {true, shots, std::max(stride, 1), 0}; }
+			~LiquidsSeeThrough() { s_SeeThrough = m_Outer; }
+			LiquidsSeeThrough(const LiquidsSeeThrough&) = delete;
+			LiquidsSeeThrough& operator=(const LiquidsSeeThrough&) = delete;
+
+		private:
+			struct State {
+				bool Active = false;
+				bool Shots = false;
+				int Stride = 1;
+				int Seen = 0; //!< Pixels of liquid looked through so far.
+			};
+			friend class SceneMan;
+			State m_Outer;
 		};
 
 		/// Gets a MOID from pixel coordinates in the Scene. LockScene() must be called before using this method.
@@ -720,7 +746,7 @@ namespace RTE {
 
 		/// Traces along a vector and returns MOID of the first non-ignored
 		/// non-NoMOID MO encountered. If a non-air terrain pixel is encountered
-		/// first, g_NoMOID will be returned.
+		/// first, g_NoMOID will be returned. Liquid is seen through as far as its SightDepth (FluidSim, LiquidsSeeThrough).
 		/// @param start The starting position.
 		/// @param ray The vector to trace along.
 		/// @param ignoreMOIDs A vector of MOIDs to ignore. Any child MOs of an MOID will also be ignored. (default: g_NoMOID)
@@ -735,7 +761,7 @@ namespace RTE {
 
 		/// Traces along a vector and returns MOID of the first non-ignored
 		/// non-NoMOID MO encountered. If a non-air terrain pixel is encountered
-		/// first, g_NoMOID will be returned.
+		/// first, g_NoMOID will be returned. Liquid is seen through as far as its SightDepth (FluidSim, LiquidsSeeThrough).
 		/// @param start The starting position.
 		/// @param ray The vector to trace along.
 		/// @param ignoreMOID An MOID to ignore. Any child MOs of this MOID will also be ignored. (default: g_NoMOID)
@@ -793,10 +819,11 @@ namespace RTE {
 		/// @param ignoreMaterial A specific material ID to ignore hits with. (default: 0)
 		/// @param skip For every pixel checked along the line, how many to skip between them (default: 0)
 		/// for optimization reasons. 0 = every pixel is checked.
+		/// @param seeThroughLiquid Whether liquid is passed through as far as units see through it (FluidSim::SightDepth, LiquidsSeeThrough), as for a line of sight or fire. (default: false)
 		/// @return How far along, in pixel units, the ray the pixel of any obstacle was
 		/// encountered. If no pixel of the right material was found, < 0 is returned.
 		/// If an obstacle on the starting position was encountered, 0 is returned.
-		float CastObstacleRay(const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const std::vector<MOID>& ignoreMOIDs = {g_NoMOID}, int ignoreTeam = Activity::NoTeam, unsigned char ignoreMaterial = 0, int skip = 0);
+		float CastObstacleRay(const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const std::vector<MOID>& ignoreMOIDs = {g_NoMOID}, int ignoreTeam = Activity::NoTeam, unsigned char ignoreMaterial = 0, int skip = 0, bool seeThroughLiquid = false);
 
 		/// Traces along a vector and returns the length of how far the trace went
 		/// without hitting any non-ignored terrain material or MOID at all.
@@ -817,9 +844,9 @@ namespace RTE {
 		/// @return How far along, in pixel units, the ray the pixel of any obstacle was
 		/// encountered. If no pixel of the right material was found, < 0 is returned.
 		/// If an obstacle on the starting position was encountered, 0 is returned.
-		float CastObstacleRay(const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID = g_NoMOID, int ignoreTeam = Activity::NoTeam, unsigned char ignoreMaterial = 0, int skip = 0) {
+		float CastObstacleRay(const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID = g_NoMOID, int ignoreTeam = Activity::NoTeam, unsigned char ignoreMaterial = 0, int skip = 0, bool seeThroughLiquid = false) {
 			std::vector<MOID> ignoreMOIDs = {ignoreMOID};
-			return CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip);
+			return CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip, seeThroughLiquid);
 		}
 		
 		/// Gets the abosulte pos of where the last cast ray hit somehting.
@@ -1083,6 +1110,7 @@ namespace RTE {
 
 		bool m_DrawRayCastVisualizations; //!< Whether to visibly draw RayCasts to the Scene debug Bitmap.
 		static thread_local int s_LiquidsPassableDepth; //!< How many LiquidsPassable scopes are alive on this thread.
+		static thread_local LiquidsSeeThrough::State s_SeeThrough; //!< The innermost LiquidsSeeThrough scope alive on this thread, if any.
 		bool m_DrawPixelCheckVisualizations; //!< Whether to visibly draw pixel checks (GetTerrMatter and GetMOIDPixel) to the Scene debug Bitmap.
 
 		// The last screen everything has been updated to
