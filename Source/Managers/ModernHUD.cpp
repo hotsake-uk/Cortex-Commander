@@ -68,7 +68,9 @@ namespace {
 	};
 	std::vector<DamageArc> s_DamageArcs;
 
-	const ImU32 c_TeamColors[] = {IM_COL32(90, 170, 255, 255), IM_COL32(255, 95, 80, 255), IM_COL32(110, 230, 110, 255), IM_COL32(255, 210, 70, 255)};
+	// The game's own team colours, in team order: red, green, blue, yellow (as the team icons and the sandbox's sides). Blue first, team 1's
+	// units showed blue on the minimap and in the feed, team 2's red.
+	const ImU32 c_TeamColors[] = {IM_COL32(249, 120, 100, 255), IM_COL32(170, 210, 100, 255), IM_COL32(110, 180, 250, 255), IM_COL32(248, 230, 100, 255)};
 
 	ImU32 TeamColor(int team) { return (team >= 0 && team < 4) ? c_TeamColors[team] : IM_COL32(200, 200, 200, 255); }
 
@@ -185,8 +187,13 @@ void ModernHUD::Draw() {
 		drawList->AddRect(toMap(viewTopLeft), toMap(viewBottomRight), IM_COL32(255, 255, 255, 140), 2.0F);
 		// Units.
 		Actor* controlled = activity->GetControlledActor(0);
+		int viewerTeam = activity->GetTeamOfPlayer(0);
 		for (const Actor* actor: g_MovableMan.m_Actors) {
 			if (!actor || actor->IsDead()) {
+				continue;
+			}
+			// Other sides' units only where the player's side can see: under the fog of war they gave every hidden enemy away.
+			if (actor->GetTeam() != viewerTeam && viewerTeam >= 0 && g_SceneMan.IsUnseen(actor->GetPos().GetFloorIntX(), actor->GetPos().GetFloorIntY(), viewerTeam)) {
 				continue;
 			}
 			ImVec2 point = toMap(actor->GetPos());
