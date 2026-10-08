@@ -1272,6 +1272,21 @@ void MovableMan::RegisterAlarmEvent(const AlarmEvent& newEvent) {
 	m_AddedAlarmEvents.push_back(new AlarmEvent(newEvent));
 }
 
+void MovableMan::GetMaterialDoorBoxes(int team, std::vector<Box>& boxes) const {
+	boxes.clear();
+	for (const std::deque<Actor*>* actorDeque: {&m_Actors, &m_AddedActors}) {
+		for (const Actor* actor: *actorDeque) {
+			// The same doors as OverrideMaterialDoors.
+			if (const ADoor* door = dynamic_cast<const ADoor*>(actor); door && (team == Activity::NoTeam || door->GetTeam() == team || door->GetTeam() == Activity::NoTeam)) {
+				Box box;
+				if (door->GetDoorMaterialBox(box)) {
+					boxes.push_back(box);
+				}
+			}
+		}
+	}
+}
+
 void callLuaFunctionOnMORecursive(MovableObject* mo, const std::string& functionName, const std::vector<const Entity*>& functionEntityArguments, const std::vector<std::string_view>& functionLiteralArguments, const std::vector<LuabindObjectWrapper*>& functionObjectArguments) {
 	if (MOSRotating* mosr = dynamic_cast<MOSRotating*>(mo)) {
 		for (auto attachablrItr = mosr->GetAttachableList().begin(); attachablrItr != mosr->GetAttachableList().end();) {

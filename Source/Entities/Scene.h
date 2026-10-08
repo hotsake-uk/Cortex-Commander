@@ -853,6 +853,12 @@ namespace RTE {
 		/// @param saveFullData Whether or not to save most data. Turned off for stuff like SceneEditor saves.
 		void SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave, bool isChildAttachable, bool saveFullData) const;
 
+		/// Brings a team's path grid up to the terrain at a set of nodes the NoTeam grid has just sampled: the nodes near the team's doors are
+		/// sampled with the doors opened, and the rest take the NoTeam grid's samples.
+		/// @param team The team.
+		/// @param nodeIds The nodes.
+		void UpdateTeamGridNodes(int team, const std::vector<int>& nodeIds);
+
 		/// Clears all the member variables of this Scene, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();
