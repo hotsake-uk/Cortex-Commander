@@ -2476,6 +2476,49 @@ function SharedBehaviors.OrderChangedSince(Owner, Spot)
 	return Owner:GetWaypointListSize() > 0 and SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Spot, false):MagnitudeIsGreaterThan(48);
 end
 
+-- Medics (AC-7). Whether a unit can patch up others: one carrying a medikit, or a medic drone (which heals all round it), still standing.
+function SharedBehaviors.IsMedic(Act)
+	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or Act:HasObject("Medikit"));
+end
+
+-- The nearest medic of the unit's team within range, not the unit itself and not one a player is steering (a player's medic goes where the
+-- player takes it). @return The medic, or nil.
+function SharedBehaviors.FindMedic(Owner, range)
+	local Best, bestDist = nil, range;
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and not Act:IsPlayerControlled() and SharedBehaviors.IsMedic(Act) then
+			local dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false).Magnitude;
+			if dist < bestDist then
+				Best, bestDist = Act, dist;
+			end
+		end
+	end
+	return Best;
+end
+
+-- A friend for a medic to see to: the worst hurt of its team within 400 px under 70% health (or within 1200 px when falling back to a medic,
+-- see RetreatUpdate), a body that can take a medikit (a person or a crab), and not one another medic is already seeing to. @return The friend, or nil.
+function SharedBehaviors.FindPatient(Owner)
+	local Best, bestShare = nil, 0.7;
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act.Status < Actor.DYING and Act.Health > 0 and Act.MaxHealth > 0
+			and (IsAHuman(Act) or IsACrab(Act)) then
+			local share = Act.Health / Act.MaxHealth;
+			if share < bestShare then
+				local range = Act:GetNumberValue("AIRetreat") == 2 and 1200 or 400;
+				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) then
+					local by = Act:NumberValueExists("AIMedicBy") and Act:GetNumberValue("AIMedicBy") or 0;
+					local Other = by ~= 0 and by ~= Owner.UniqueID and MovableMan:FindObjectByUniqueID(by) or nil;
+					if not (Other and IsActor(Other) and ToActor(Other):NumberValueExists("AIMedic")) then
+						Best, bestShare = Act, share;
+					end
+				end
+			end
+		end
+	end
+	return Best;
+end
+
 -- Falling back: a badly hurt unit with no enemy in sight goes to the nearest friend (the brain for choice) and waits a while to be
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
@@ -2532,18 +2575,31 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	elseif not AI.RetreatCheckTimer:IsPastSimMS(2000) then
 		return false; -- Two seconds clear of enemies first.
 	end
-	-- Somewhere to go: the brain, or the nearest friend that isn't right here; but never through the enemy last seen. With no friend
-	-- the right side of it, it's a way back from the enemy along the ground.
-	local Friend = MovableMan:GetClosestBrainActor(Owner.Team, Owner.Pos);
-	if not Friend or Friend.ID == Owner.ID then
-		Friend = MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Owner.Pos, 3000, Vector(), Owner);
-	end
-	if Friend and (Friend.ID == Owner.ID or SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false):MagnitudeIsLessThan(150)) then
-		Friend = nil;
-	end
-	local Spot;
+	-- Somewhere to go: a medic within 1500 px (AC-7), else the brain, or the nearest friend that isn't right here; but never through the
+	-- enemy last seen. With no friend the right side of it, it's a way back from the enemy along the ground. (A unit with a kit of its own
+	-- uses it where it stands, in the AI's update, and has no medic to look for.)
 	local enemyDx = AI.LastEnemyPos and SceneMan:ShortestDistance(Owner.Pos, AI.LastEnemyPos, false).X or 0;
-	if Friend then
+	local Spot;
+	local Medic = not Owner:HasObject("Medikit") and SharedBehaviors.FindMedic(Owner, 1500) or nil;
+	if Medic then
+		local medicDx = SceneMan:ShortestDistance(Owner.Pos, Medic.Pos, false).X;
+		if enemyDx * medicDx > 0 and math.abs(medicDx) > math.abs(enemyDx) - 100 then
+			Medic = nil; -- The medic is past the enemy.
+		else
+			Spot = SceneMan:MovePointToGround(Medic.Pos, math.floor(Owner.Height * 0.2), 4);
+		end
+	end
+	local Friend = Medic;
+	if not Friend then
+		Friend = MovableMan:GetClosestBrainActor(Owner.Team, Owner.Pos);
+		if not Friend or Friend.ID == Owner.ID then
+			Friend = MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Owner.Pos, 3000, Vector(), Owner);
+		end
+		if Friend and (Friend.ID == Owner.ID or SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false):MagnitudeIsLessThan(150)) then
+			Friend = nil;
+		end
+	end
+	if Friend and not Medic then
 		local friendDx = SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false).X;
 		if enemyDx * friendDx > 0 and math.abs(friendDx) > math.abs(enemyDx) - 100 then
 			Friend = nil; -- The friend is past the enemy.
@@ -2561,12 +2617,13 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		end
 	end
 	AI.Retreat = { Keep = SharedBehaviors.RememberOrder(AI, Owner), WaitTimer = Timer(), Arrived = false, Spot = Spot };
-	Owner:SetNumberValue("AIRetreat", 1);
+	-- (2: to a medic, who sees to a friend falling back to it from further off than to one that isn't; see FindPatient.)
+	Owner:SetNumberValue("AIRetreat", Medic and 2 or 1);
 	Owner.OrderAttack = false;
 	Owner:ClearAIWaypoints();
 	Owner:AddAISceneWaypoint(Spot);
 	Owner.AIMode = Actor.AIMODE_GOTO;
-	SharedBehaviors.Trace(Owner, "retreat: health " .. math.floor(Owner.Health) .. ", falling back to " .. (Friend and Friend.PresetName or "away from the enemy") .. " at " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
+	SharedBehaviors.Trace(Owner, "retreat: health " .. math.floor(Owner.Health) .. ", falling back to " .. (Medic and "the medic " or "") .. (Friend and Friend.PresetName or "away from the enemy") .. " at " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
 	return true;
 end
 
