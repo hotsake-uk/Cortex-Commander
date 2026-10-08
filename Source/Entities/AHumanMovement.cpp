@@ -2355,10 +2355,30 @@ int AHuman::MoveAlongRoute() {
 	// so it stands, unless there is no room to stand right here (the mouth of a low tunnel: stood up for a point above, a unit put its head
 	// into the slab over it). Kept down a moment after the way looks clear, or a crawl through a slot was stood up in the middle of.
 	bool steep = std::abs(toPoint.m_Y) > std::abs(toPoint.m_X) * 0.577F;
+	// The crouch first (LM-1): a crouch step near, or too little room to stand here or a half-body ahead but room crouched (the same two
+	// rays at the crouched head's height, and the sense ahead for the crouched body), is walked ducking, not crawled. Only what a crouch
+	// doesn't fit under, or a crawl step, lays the body down.
+	const float crouched = GetCrouchHeight();
+	bool crouchStepNear = kind == PathStepKind::Crouch && toPoint.MagnitudeIsLessThan(h * 0.65F);
+	bool crouchFits = false;
+	Sensed sensedCrouched;
+	if (crouched < standing - 1.0F && !crawlNear && (crouchStepNear || noRoomHere || noRoomAhead)) {
+		float topCrouchedY = std::min(m_Pos.m_Y - 4.0F, floorY - crouched);
+		bool roomHere = !g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topCrouchedY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		if (!roomAhead && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+			roomAhead = true;
+		}
+		if (roomHere && roomAhead && std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Stairs) {
+			sensedCrouched = SenseAhead(toPoint.m_X < 0.0F ? -1.0F : 1.0F, floorY, crouched);
+			roomAhead = !sensedCrouched.gapUnder && !(sensedCrouched.wall && sensedCrouched.rise < crouched - 2.0F);
+		}
+		crouchFits = roomHere && roomAhead;
+	}
 	bool prone = false;
 	if (steep && !(m_ProneState == PRONE && noRoomHere)) {
 		prone = false;
-	} else if (crawlNear || noRoomHere || noRoomAhead) {
+	} else if (crawlNear || ((noRoomHere || noRoomAhead) && !crouchFits)) {
 		prone = true;
 		mover.proneHoldTimer.Reset();
 	} else {
@@ -2367,12 +2387,30 @@ int AHuman::MoveAlongRoute() {
 	if (prone) {
 		ctrl.SetState(BODY_PRONE, true);
 	}
+	bool crouch = false;
+	if (!prone && !steep) {
+		if (crouchFits) {
+			crouch = true;
+			mover.crouchHoldTimer.Reset();
+		} else {
+			crouch = mover.crouching && !mover.crouchHoldTimer.IsPastSimMS(400);
+		}
+	}
+	mover.crouching = crouch;
+	if (crouch) {
+		ctrl.SetState(BODY_CROUCH, true);
+		// (The low thing ahead as the crouched body sees it: the beam being ducked under is no gap to crawl. What stands on the floor is
+		// left as the standing body saw it, a step or a low obstacle to hop, as before.)
+		if (sensed.gapUnder) {
+			sensed = sensedCrouched;
+		}
+	}
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 	}
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
-	if (!prone && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
+	if (!prone && !crouch && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
 		bool floorAllTheWay = true;
 		float stepDirection = toPoint.m_X > 0.0F ? 1.0F : -1.0F;
 		for (float ahead = 12.0F; ahead <= h * 1.5F && floorAllTheWay; ahead += 12.0F) {

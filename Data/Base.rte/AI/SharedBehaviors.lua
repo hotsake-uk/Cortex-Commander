@@ -478,14 +478,19 @@ function SharedBehaviors.EngineMotor(Owner)
 	return ok and value ~= nil;
 end
 
--- A stance for a while: AHuman.PRONE or AHuman.NOTPRONE. AI.proneState says so either way, for the rules that read it ("not while
--- prone": no strafe, no cover move, no jet, no second GoProne); with the engine's motor, the native AI keeps the engine's stance up while
--- it does (see NativeHumanAI:Update). (Left NOTPRONE, every one of those guards was dead, and a unit strafed sideways lying down.)
+-- The crouched stance for SharedBehaviors.Stance (the engine's stance 1): ducked behind low cover or made small, on its feet.
+SharedBehaviors.CROUCHED = "crouched";
+
+-- A stance for a while: AHuman.PRONE, AHuman.NOTPRONE or SharedBehaviors.CROUCHED. AI.proneState says whether it is prone, for the rules
+-- that read it ("not while prone": no strafe, no cover move, no jet, no second GoProne); a crouch is not prone. With the engine's motor,
+-- the native AI keeps the engine's stance up while it does (see NativeHumanAI:Update). (Left NOTPRONE, every one of those guards was dead,
+-- and a unit strafed sideways lying down.) The crouch is the engine motor's only: without it the stance is just not prone.
 function SharedBehaviors.Stance(AI, Owner, stance, milliseconds)
+	local crouched = stance == SharedBehaviors.CROUCHED;
 	if SharedBehaviors.EngineMotor(Owner) then
-		Owner:SetAIStance(stance == AHuman.PRONE and 2 or 0, milliseconds or 1000);
+		Owner:SetAIStance(stance == AHuman.PRONE and 2 or (crouched and 1 or 0), milliseconds or 1000);
 	end
-	AI.proneState = stance;
+	AI.proneState = crouched and AHuman.NOTPRONE or stance;
 end
 
 -- A short move on this floor to a place, for a while; the engine walks (or crawls) it. @return Whether it is still on its way.
