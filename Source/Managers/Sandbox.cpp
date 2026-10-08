@@ -1977,11 +1977,16 @@ namespace {
 		float right = std::max(cornerA.m_X, cornerB.m_X);
 		float top = std::min(cornerA.m_Y, cornerB.m_Y);
 		float bottom = std::max(cornerA.m_Y, cornerB.m_Y);
+		// Measured from the box's middle the short way round: the corners come from the camera unwrapped, and actors' positions are
+		// wrapped, so on a wrapping map a box across the seam (or drawn with the view past the right edge) took nothing on one side.
+		Vector middle((left + right) * 0.5F, (top + bottom) * 0.5F);
+		float halfWidth = (right - left) * 0.5F;
+		float halfHeight = (bottom - top) * 0.5F;
 		std::vector<Actor*> inBox;
 		std::array<int, c_Sides> perSide {};
 		for (Actor* actor: SandboxAccess::Actors()) {
-			const Vector& position = actor->GetPos();
-			if (IsSelectable(actor) && position.m_X >= left && position.m_X <= right && position.m_Y >= top && position.m_Y <= bottom) {
+			Vector offset = g_SceneMan.ShortestDistance(middle, actor->GetPos(), g_SceneMan.SceneWrapsX());
+			if (IsSelectable(actor) && std::abs(offset.m_X) <= halfWidth && std::abs(offset.m_Y) <= halfHeight) {
 				inBox.push_back(actor);
 				++perSide[actor->GetTeam()];
 			}
