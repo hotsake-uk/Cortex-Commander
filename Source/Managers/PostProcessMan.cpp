@@ -271,6 +271,25 @@ void PostProcessMan::RegisterShimmer(const Vector& pos, float radius, float stre
 	}
 }
 
+void PostProcessMan::RegisterFog(const Vector& pos, float radius, float amount) {
+	if (radius <= 0.0F || amount <= 0.0F || !m_LightingSettings.Enabled || m_LightingSettings.FogVolume <= 0.0F) {
+		return;
+	}
+	std::scoped_lock lock(m_ShockwaveMutex);
+	// A burst of a hundred steam puffs is still one thick patch; past this many in a frame the oldest are dropped.
+	if (m_FogPuffs.size() >= 64) {
+		m_FogPuffs.erase(m_FogPuffs.begin());
+	}
+	m_FogPuffs.emplace_back(pos.m_X, pos.m_Y, std::min(radius, 400.0F), std::min(amount, 1.0F));
+}
+
+std::vector<glm::vec4> PostProcessMan::TakeFogPuffs() {
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::vector<glm::vec4> puffs;
+	puffs.swap(m_FogPuffs);
+	return puffs;
+}
+
 void PostProcessMan::RegisterScorchMark(const Vector& pos, float energy) {
 	if (energy < 2000.0F || !m_LightingSettings.ScorchMarks) {
 		return;
