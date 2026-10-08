@@ -1869,6 +1869,8 @@ int ACrab::MoveAlongRoute() {
 			if (mover.doorWaitTimer.IsPastSimMS(2000)) {
 				mover.doorIgnoreID = door->GetUniqueID();
 				mover.doorIgnoreTimer.Reset();
+				// (A fresh wait the next time it is held for: left set, the stale timer gave the door up again at once.)
+				mover.doorWaitID = 0;
 			} else {
 				mover.progressTimer.Reset();
 				Vector sense = door->GetPos();
@@ -1970,12 +1972,17 @@ int ACrab::MoveAlongRoute() {
 				refresh();
 				return 0;
 			}
-		} else if (low && CanLeap()) {
+		} else if (low && kind != PathStepKind::Stairs && kind != PathStepKind::Scramble && CanLeap()) {
+			// (Over the legs' own step only, and not where the route itself climbs, a slope or stairs: the low ray meets any incline over
+			// about twelve degrees, and a crab bounded up every slope.)
 			float rise = 0.0F;
 			while (rise < h && g_SceneMan.GetTerrMatter(static_cast<int>(lowHit.m_X + direction * 2.0F), static_cast<int>(floorY - 2.0F - rise)) != MaterialColorKeys::g_MaterialAir) {
 				rise += 1.0F;
 			}
-			if (rise <= GetLegJumpHeight() + 2.0F && std::abs(CrabTowards(m_Pos, lowHit).m_X) < h * 0.5F + 6.0F) {
+			bool routeClimbs = above > rise * 0.5F && std::abs(toPoint.m_X) < h;
+			Vector roof;
+			bool headRoom = !g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, -(h * 0.5F + GetLegJumpHeight())), 5.0F, roof, 2, MaterialColorKeys::g_MaterialDoor);
+			if (rise > h * 0.15F && rise <= GetLegJumpHeight() + 2.0F && !routeClimbs && headRoom && std::abs(CrabTowards(m_Pos, lowHit).m_X) < h * 0.5F + 6.0F) {
 				ctrl.SetState(BODY_LEAP, true);
 			}
 		}
