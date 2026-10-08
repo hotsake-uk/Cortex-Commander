@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <unordered_set>
 #include <source_location>
 #include <filesystem> // only one use of std::filesystem::file_time_type
@@ -142,7 +143,9 @@ namespace RTE {
 		static bool s_ExternalModuleValidation; //!< Whether to run the program in a special mode where it will immediately quit without any messages after either successful loading of all modules or aborting during loading. For use by an external tool.
 		static std::string s_ThisExePathAndName; //!< String containing the absolute path to this executable. Used for relaunching via abort message.
 		static std::string s_WorkingDirectory; //!< String containing the absolute path to current working directory.
-		static std::vector<size_t> s_WorkingTree; //!< Vector of the hashes of all file paths in the working directory.
+		static std::unordered_set<uint64_t> s_WorkingTree; //!< The hashes of the file paths in the working directory, relative to it, for the case check (see PathExistsCaseSensitive).
+		static std::vector<std::string> s_UnindexedDirectories; //!< The directories of the working directory left out of s_WorkingTree, relative to it and ending in '/'.
+		static bool s_WorkingTreeBuilt; //!< Whether s_WorkingTree has been built.
 		static std::filesystem::file_time_type s_ProgramStartTime; //!< Low precision time point of program start for checking if a file was created after starting.
 
 		static bool s_CaseSensitive; //!< Whether case sensitivity is enforced when checking for file existence.
