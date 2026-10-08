@@ -652,8 +652,9 @@ namespace RTE {
 		/// do very rarely!
 		void ResetPathFinding();
 
-		/// Blocks this thread until all pathing requests are completed.
-		void BlockUntilAllPathingRequestsComplete();
+		/// Blocks this thread until all pathing requests are completed, or each grid's wait times out.
+		/// @return Whether they all completed; false if a search was still running when a wait timed out.
+		bool BlockUntilAllPathingRequestsComplete();
 
 		/// Recalculates only the areas of the pathfinding data that have been
 		/// marked as outdated.
@@ -852,6 +853,12 @@ namespace RTE {
 		/// @param isChildAttachable Convenience flag for whether or not this SceneObject is a child Attachable, and certain properties shouldn't be saved.
 		/// @param saveFullData Whether or not to save most data. Turned off for stuff like SceneEditor saves.
 		void SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave, bool isChildAttachable, bool saveFullData) const;
+
+		/// Brings a team's path grid up to the terrain at a set of nodes the NoTeam grid has just sampled: the nodes near the team's doors are
+		/// sampled with the doors opened, and the rest take the NoTeam grid's samples.
+		/// @param team The team.
+		/// @param nodeIds The nodes.
+		void UpdateTeamGridNodes(int team, const std::vector<int>& nodeIds);
 
 		/// Clears all the member variables of this Scene, effectively
 		/// resetting the members of this abstraction level only.
