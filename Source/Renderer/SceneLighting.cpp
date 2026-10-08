@@ -1451,6 +1451,18 @@ void SceneLighting::SetShelterUniforms(const Shader& shader, bool use, int unit)
 	shader.SetFloat("rteShelterSoftness", std::clamp(m_Settings.ShelterSoftness, 0.0F, 2.0F) * 4.0F);
 }
 
+void SceneLighting::ClearDecals() {
+	// After this frame's marks were stamped, so all made so far go.
+	for (const GLTarget* decals: {&m_Scorch, &m_Stains}) {
+		if (decals->Framebuffer) {
+			glBindFramebuffer(GL_FRAMEBUFFER, decals->Framebuffer);
+			glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+	}
+	m_DecalFadeDebt = glm::vec3(0.0F);
+}
+
 void SceneLighting::SetGroundWetness(bool soaked) {
 	m_Wetness = soaked ? 1.0F : 0.0F;
 	// 2 is the most a heavy downpour fills the dips to; the terrain shader keeps it to where the weather reaches.
@@ -1794,6 +1806,9 @@ void SceneLighting::Update() {
 	StampScorchMarks();
 	StampStains();
 	FadeDecals(frameSeconds);
+	if (g_PostProcessMan.TakeClearStainsRequest()) {
+		ClearDecals();
+	}
 	logStages.Next("Light grid: mist and dust");
 	UpdateFog();
 	logStages.Next("Light grid: lamp cache");

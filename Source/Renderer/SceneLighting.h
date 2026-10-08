@@ -386,6 +386,8 @@ namespace RTE {
 		/// Keeps the lamp cache (LightingSettings::LampCache) up to date: lights it in full when it's made or the steady lamps or the settings that shape them change,
 		/// and relights only around where the ground changed otherwise. Lets it go when the setting is off.
 		void UpdateLampCache();
+		/// Clears every scorch mark and stain off the decal maps at once (PostProcessMan::ClearStains).
+		void ClearDecals();
 		/// Soaks the ground at once, as after a long downpour, puddles in its dips included, or dries it and them (PostProcessMan::SoakGround and DryGround).
 		/// @param soaked True to soak, false to dry.
 		void SetGroundWetness(bool soaked);

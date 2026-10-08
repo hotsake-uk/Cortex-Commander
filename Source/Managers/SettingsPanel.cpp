@@ -446,6 +446,12 @@ void DebugMan::SettingsGUI() {
 		if (settings.DecalsFade) {
 			Slider("Soot fades over (minutes)", &settings.DecalFadeMinutes, 0.5F, 60.0F, "%.1f", ImGuiSliderFlags_Logarithmic);
 		}
+		if (Shown("Clear soot and stains")) {
+			if (ToolUI::Button("Clear soot and stains")) {
+				g_PostProcessMan.ClearStains();
+			}
+			Tip("Takes every scorch mark and blood, oil and water stain off the scene at once.");
+		}
 		Slider("Hot metal cooling (seconds)", &settings.HotSpotSeconds, 0.0F, 10.0F, "%.1f");
 		Check("Animated palette colours", &settings.PaletteAnimation);
 		Tip("Glowing liquids like lava breathe, and colours listed in Base.rte/PaletteAnimation.ini or set by scripts pulse or cycle. Off, every colour stands still.");
