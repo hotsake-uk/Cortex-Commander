@@ -307,13 +307,13 @@ class MainForm : Form
 		if (refName.StartsWith("tag: ")) refName = refName[5..];
 		else if (versionShas.TryGetValue(refName, out var vsha)) refName = vsha;
 		currentRef = refName;
-		var (code, output) = await Git($"log {refName} -n 60 --date-order --date=format:"%Y-%m-%d %H:%M" --format=%H%x09%cd%x09%an%x09%s --");
+		var (code, output) = await Git($"log {refName} -n 60 --date-order --date=iso --format=%H%x09%cd%x09%an%x09%s --");
 		commitList.Items.Clear();
 		if (code != 0) { Append($"git log failed for '{refName}': {output.Trim()}"); return; }
 		var commits = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
 			.Select(l => l.Split('\t', 4))
 			.Where(p => p.Length == 4)
-			.Select(p => new CommitInfo(p[0], p[1], p[2], p[3]))
+			.Select(p => new CommitInfo(p[0], p[1].Length > 16 ? p[1][..16] : p[1], p[2], p[3]))
 			.ToList();
 		foreach (var c in commits)
 		{
