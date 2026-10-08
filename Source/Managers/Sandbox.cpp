@@ -339,6 +339,10 @@ namespace {
 
 	UnitRef MakeRef(Actor* actor) { return {actor, actor ? actor->GetUniqueID() : 0}; }
 
+	/// Whether a reference is to this very unit: its address and its unique ID. (By address alone, a unit that died and a new one made at the
+	/// same address was taken for it: the new unit counted as selected, or had the dead one's pending order.)
+	bool RefersTo(const UnitRef& ref, const Actor* actor) { return actor && ref.Unit == actor && ref.ID == static_cast<long>(actor->GetUniqueID()); }
+
 
 	/// One side in an auto battle.
 	struct AutoSide {
@@ -791,7 +795,7 @@ namespace {
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
 		// An earlier order still waiting is dropped.
-		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; }), s_PendingOrders.end());
+		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
 	}
 
@@ -808,7 +812,7 @@ namespace {
 		unit->RemoveNumberValue(c_HoldTag);
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
-		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; }), s_PendingOrders.end());
+		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 	}
 
 	Actor* ActorWithID(long id) {
@@ -892,7 +896,7 @@ namespace {
 		// And the old order's way there, queued or still to be applied: a unit told to hold (or patrol, hunt or idle) kept its waypoints, and
 		// anything that later put a GOTO back (a fall-back's RestoreOrder, the AI's own new-order check) walked it off along them.
 		actor->ClearAIWaypoints();
-		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return pending.Unit.Unit == actor; }), s_PendingOrders.end());
+		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return RefersTo(pending.Unit, actor); }), s_PendingOrders.end());
 		switch (order) {
 			case Order::Attack:
 				// The nearest enemy is where it is sent, not one it has to keep after: on the way the AI fights whatever it meets, and the
@@ -970,7 +974,7 @@ namespace {
 				continue;
 			}
 			// (Nor one with an order about to take: between being sent and the order taking it is after nothing.)
-			if (std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& order) { return order.Unit.Unit == actor; })) {
+			if (std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& order) { return RefersTo(order.Unit, actor); })) {
 				continue;
 			}
 			const MovableObject* target = actor->GetMOMoveTarget();
@@ -2223,7 +2227,7 @@ namespace {
 			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
 		}
 		bool friendly = target && IsSelectable(target) && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
-		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
+		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return RefersTo(ref, target); });
 		if (s_CommandMode == CommandMode::Guard) {
 			// Follow the friend clicked; with nobody there, nothing happens.
 			if (friendly && !selected) {
@@ -2252,13 +2256,13 @@ namespace {
 				for (Actor* actor: SandboxAccess::Actors()) {
 					Vector onScreen = g_SceneMan.ShortestDistance(corner, actor->GetPos(), g_SceneMan.SceneWrapsX());
 					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
-					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return ref.Unit == actor; })) {
+					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 						s_Selected.push_back(MakeRef(actor));
 					}
 				}
 			} else if (modifier == 1) {
 				if (selected) {
-					s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; }), s_Selected.end());
+					s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return RefersTo(ref, target); }), s_Selected.end());
 				} else {
 					s_Selected.push_back(MakeRef(target));
 				}
@@ -2294,7 +2298,7 @@ namespace {
 		for (Actor* unit: units) {
 			// (Just over the ground under the point, as for a move: see MoveUnitsTo.)
 			Vector waypoint = (spots.empty() ? point : spots.front()) + Vector(0.0F, -4.0F);
-			auto pending = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return order.Unit.Unit == unit; });
+			auto pending = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
 			if (pending != s_PendingOrders.end()) {
 				pending->Then.push_back(waypoint);
 			} else if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
