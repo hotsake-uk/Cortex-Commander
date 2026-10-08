@@ -16,11 +16,11 @@ From a Developer PowerShell / any shell with `dotnet`:
 That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. Copy it anywhere and double-click it. (For development, `dotnet run` in this folder also works.)
 
 ## Using it
-1. Set **Repo** to your existing checkout (default `C:\Users\Liamn\Desktop\cortex\Cortex-Command-Community-Project`). It is only used for `git fetch` and as the worktree source; its working tree is never touched.
-2. The left list shows versions first (`ver: 8.2.N`, read from `[8.2.N]` commit titles or `Version 8.2.N` lines on the first-parent history of `origin/dev-8.2`, since cloud threads cannot push tags), then any real tags, then remote branches by recent activity. Use the filter box, or type any branch / tag / sha in the box next to the buttons and press **Go**.
-3. Pick a commit (each row shows the game version read from `GameVersion.h`) and press **Build & Run** (or double-click the row). **Build** and **Run** are also available separately.
-4. The configuration dropdown picks `Final`, `Debug Release`, `Debug Minimal` or `Debug Full`. Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln`, as in `.github/workflows/msbuild.yml`, after copying `fmod.dll` next to the exe as the README requires.
-5. **Delete cached** removes that commit's checkout and build. **Open folder** opens it in Explorer.
+1. Pick a **Branch** (or type any branch / tag / sha and press Enter). The latest commit is selected automatically.
+2. Pick the configuration and, optionally, a Settings.ini.
+3. Press **Build & Run**.
+
+To use an older commit, or to Build / Run separately, delete the cached build, open its folder or change the repo path, expand **Commits**. Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
 ## Settings.ini
 Set the **Settings.ini** box (or browse for a file) to have the launcher copy that file into the version's folder every time it runs a version, replacing whatever is there. The game rewrites its own copy on exit, so your chosen file is never modified. Clear the box to let each version use its own settings.

@@ -24,6 +24,7 @@ class Settings
 	public string Configuration { get; set; } = "Final";
 	public string Remote { get; set; } = "origin";
 	public string SettingsIni { get; set; } = "";
+	public string LastRef { get; set; } = "";
 
 	static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "settings.json");
 
@@ -52,12 +53,11 @@ record CommitInfo(string Sha, string Date, string Author, string Subject)
 class MainForm : Form
 {
 	readonly Settings settings = Settings.Load();
-	readonly TextBox repoBox = new() { Dock = DockStyle.Fill };
+	readonly TextBox repoBox = new() { Width = 360 };
 	readonly ComboBox configBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
-	readonly TextBox filterBox = new() { Dock = DockStyle.Top, PlaceholderText = "filter branches / tags" };
-	readonly ListBox refList = new() { Dock = DockStyle.Fill, IntegralHeight = false };
+	readonly ComboBox branchBox = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDown, AutoCompleteMode = AutoCompleteMode.SuggestAppend, AutoCompleteSource = AutoCompleteSource.ListItems, MaxDropDownItems = 25 };
+	readonly Button repoBrowse = new() { Text = "...", AutoSize = true };
 	readonly ListView commitList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
-	readonly TextBox customRef = new() { Width = 220, PlaceholderText = "or any branch / tag (v8.2.3) / sha" };
 	readonly TextBox log = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 9f), BackColor = Color.FromArgb(24, 24, 24), ForeColor = Color.Gainsboro };
 	readonly Button fetchBtn = new() { Text = "Fetch", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
@@ -97,23 +97,29 @@ class MainForm : Form
 		repoBox.Text = settings.RepoPath;
 		iniBox.Text = settings.SettingsIni;
 
-		var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 5, RowCount = 1 };
-		top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-		top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-		top.Controls.Add(new Label { Text = "Repo:", AutoSize = true, Padding = new Padding(4, 7, 0, 0) }, 0, 0);
-		top.Controls.Add(repoBox, 1, 0);
-		var browse = new Button { Text = "...", AutoSize = true };
-		browse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = repoBox.Text }; if (d.ShowDialog() == DialogResult.OK) { repoBox.Text = d.SelectedPath; } };
-		top.Controls.Add(browse, 2, 0);
-		top.Controls.Add(configBox, 3, 0);
-		top.Controls.Add(fetchBtn, 4, 0);
+		// Simple flow: pick a branch (or type any branch / tag / sha), then Build & Run. Everything else lives under "Commits".
+		var row1 = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 4, RowCount = 1 };
+		row1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+		row1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		row1.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		row1.Controls.Add(new Label { Text = "Branch:", AutoSize = true, Padding = new Padding(4, 7, 0, 0) }, 0, 0);
+		row1.Controls.Add(branchBox, 1, 0);
+		row1.Controls.Add(configBox, 2, 0);
+		row1.Controls.Add(fetchBtn, 3, 0);
 
-		var refsPanel = new Panel { Dock = DockStyle.Fill };
-		refsPanel.Controls.Add(refList);
-		refsPanel.Controls.Add(filterBox);
+		var iniBrowse = new Button { Text = "...", AutoSize = true };
+		iniBrowse.Click += (_, _) => { using var d = new OpenFileDialog { Filter = "Settings.ini|*.ini|All files|*.*", FileName = iniBox.Text }; if (d.ShowDialog() == DialogResult.OK) iniBox.Text = d.FileName; };
+		var iniClear = new Button { Text = "Clear", AutoSize = true };
+		iniClear.Click += (_, _) => iniBox.Text = "";
+		var row2 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+		row2.Controls.AddRange(new Control[] { new Label { Text = "Settings.ini:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, iniBox, iniBrowse, iniClear });
+
+		buildRunBtn.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
+		buildRunBtn.Padding = new Padding(16, 4, 16, 4);
+		var detailsBtn = new Button { Text = "Commits ▸", AutoSize = true };
+		var row3 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+		row3.Controls.AddRange(new Control[] { buildRunBtn, cancelBtn, detailsBtn, status });
 
 		commitList.Columns.Add("Commit", 90);
 		commitList.Columns.Add("Version", 70);
@@ -122,29 +128,14 @@ class MainForm : Form
 		commitList.Columns.Add("Message", 500);
 		commitList.Columns.Add("Cached", 60);
 
-		var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-		var iniBrowse = new Button { Text = "...", AutoSize = true };
-		iniBrowse.Click += (_, _) => { using var d = new OpenFileDialog { Filter = "Settings.ini|*.ini|All files|*.*", FileName = iniBox.Text }; if (d.ShowDialog() == DialogResult.OK) iniBox.Text = d.FileName; };
-		var iniClear = new Button { Text = "Clear", AutoSize = true };
-		iniClear.Click += (_, _) => iniBox.Text = "";
-		buttons.Controls.AddRange(new Control[] { new Label { Text = "Settings.ini:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, iniBox, iniBrowse, iniClear });
-		buttons.SetFlowBreak(iniClear, true);
-		buttons.Controls.AddRange(new Control[] { customRef, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, cancelBtn, status });
-		var customGo = new Button { Text = "Go", AutoSize = true };
-		customGo.Click += async (_, _) => { if (customRef.Text.Trim() != "") await LoadCommits(customRef.Text.Trim()); };
-		buttons.Controls.Add(customGo);
-		buttons.Controls.SetChildIndex(customGo, 1);
+		var advanced = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+		advanced.Controls.AddRange(new Control[] { new Label { Text = "Repo:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, repoBox, repoBrowse, buildBtn, runBtn, deleteBtn, openBtn });
+		repoBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = repoBox.Text }; if (d.ShowDialog() == DialogResult.OK) repoBox.Text = d.SelectedPath; };
+		var details = new Panel { Dock = DockStyle.Top, Height = 280, Visible = false };
+		details.Controls.Add(commitList);
+		details.Controls.Add(advanced);
+		detailsBtn.Click += (_, _) => { details.Visible = !details.Visible; detailsBtn.Text = details.Visible ? "Commits ▾" : "Commits ▸"; };
 
-		var right = new Panel { Dock = DockStyle.Fill };
-		right.Controls.Add(commitList);
-		right.Controls.Add(buttons);
-
-		var split = new SplitContainer { Dock = DockStyle.Fill, SplitterDistance = 300 };
-		split.Panel1.Controls.Add(refsPanel);
-		split.Panel2.Controls.Add(right);
-
-		var vsplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 430 };
-		vsplit.Panel1.Controls.Add(split);
 		var logTab = new TabPage("Log");
 		logTab.Controls.Add(log);
 		var feedTop = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
@@ -157,17 +148,19 @@ class MainForm : Form
 		feedList.Columns.Add("Message", 600);
 		feedTab.Controls.Add(feedList);
 		feedTab.Controls.Add(feedTop);
-		bottomTabs.TabPages.Add(feedTab);
 		bottomTabs.TabPages.Add(logTab);
+		bottomTabs.TabPages.Add(feedTab);
 		bottomTabs.SelectedIndexChanged += (_, _) => { if (bottomTabs.SelectedTab == feedTab) { unseen = 0; feedTab.Text = "Live feed"; } };
-		vsplit.Panel2.Controls.Add(bottomTabs);
 
-		Controls.Add(vsplit);
-		Controls.Add(top);
+		Controls.Add(bottomTabs);
+		Controls.Add(details);
+		Controls.Add(row3);
+		Controls.Add(row2);
+		Controls.Add(row1);
 
 		fetchBtn.Click += async (_, _) => await FetchAsync();
-		filterBox.TextChanged += (_, _) => ApplyFilter();
-		refList.SelectedIndexChanged += async (_, _) => { if (refList.SelectedItem is string r) await LoadCommits(r); };
+		branchBox.SelectionChangeCommitted += async (_, _) => { if (branchBox.SelectedItem is string r) await LoadCommits(r); };
+		branchBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter && branchBox.Text.Trim() != "") { e.SuppressKeyPress = true; await LoadCommits(branchBox.Text.Trim()); } };
 		commitList.DoubleClick += async (_, _) => await BuildAndRun(true);
 		buildBtn.Click += async (_, _) => await BuildAndRun(false, false);
 		runBtn.Click += (_, _) => RunSelected();
@@ -185,6 +178,7 @@ class MainForm : Form
 		settings.RepoPath = repoBox.Text.Trim();
 		settings.Configuration = (string)configBox.SelectedItem!;
 		settings.SettingsIni = iniBox.Text.Trim();
+		settings.LastRef = branchBox.Text.Trim();
 		settings.Save();
 	}
 
@@ -286,6 +280,11 @@ class MainForm : Form
 		lastRemote = await LsRemote();
 		ApplyFilter();
 		SetBusy(false, $"{allRefs.Count} refs");
+		if (branchBox.Text == "" && currentRef == "")
+		{
+			branchBox.Text = settings.LastRef != "" ? settings.LastRef : allRefs.FirstOrDefault(r => r.EndsWith("/" + IntegrationBranch)) ?? "";
+			if (branchBox.Text != "") await LoadCommits(branchBox.Text);
+		}
 	}
 
 	async Task RefreshRefs()
@@ -423,10 +422,12 @@ class MainForm : Form
 
 	void ApplyFilter()
 	{
-		var f = filterBox.Text.Trim();
-		refList.Items.Clear();
-		foreach (var r in allRefs)
-			if (f == "" || r.Contains(f, StringComparison.OrdinalIgnoreCase)) refList.Items.Add(r);
+		var t = branchBox.Text;
+		branchBox.BeginUpdate();
+		branchBox.Items.Clear();
+		branchBox.Items.AddRange(allRefs.Cast<object>().ToArray());
+		branchBox.EndUpdate();
+		branchBox.Text = t;
 	}
 
 	async Task LoadCommits(string refName)
