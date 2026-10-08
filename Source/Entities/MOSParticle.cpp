@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 
 #include "Atom.h"
+#include "Actor.h"
 #include "PostProcessMan.h"
 #include "Draw.h"
 #include "FrameMan.h"
@@ -150,6 +151,8 @@ void MOSParticle::Travel() {
 
 void MOSParticle::Update() {
 	MOSprite::Update();
+	// A shot cracking past a unit pins it down a little (see Actor::ShotPassing).
+	Actor::ShotPassing(*this);
 }
 
 void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {

@@ -115,6 +115,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_AISuppression = 1.0F;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -405,6 +406,10 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("AISuppression", {
+		reader >> m_AISuppression;
+		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
+	});
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -758,6 +763,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);

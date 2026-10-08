@@ -11,6 +11,7 @@
 #include "GameActivity.h"
 #include "ACrab.h"
 #include "ACraft.h"
+#include "ADoor.h"
 #include "AtomGroup.h"
 #include "Controller.h"
 #include "RTETools.h"
@@ -222,6 +223,9 @@ int Actor::Create(const Actor& reference) {
 	m_CanRun = reference.m_CanRun;
 	m_CrouchWalkSpeedMultiplier = reference.m_CrouchWalkSpeedMultiplier;
 	m_GoldCarried = reference.m_GoldCarried;
+	m_Suppression = reference.m_Suppression;
+	m_Morale = reference.m_Morale;
+	m_MoraleLevel = reference.m_MoraleLevel;
 	m_AimState = reference.m_AimState;
 	m_AimRange = reference.m_AimRange;
 	m_AimAngle = reference.m_AimAngle;
@@ -359,6 +363,8 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("CanRun", { reader >> m_CanRun; });
 	MatchProperty("CrouchWalkSpeedMultiplier", { reader >> m_CrouchWalkSpeedMultiplier; });
 	MatchProperty("GoldCarried", { reader >> m_GoldCarried; });
+	MatchProperty("Suppression", { reader >> m_Suppression; });
+	MatchProperty("Morale", { reader >> m_Morale; });
 	MatchProperty("AimAngle", { reader >> m_AimAngle; });
 	MatchProperty("AimRange", { reader >> m_AimRange; });
 	MatchProperty("AimDistance", { reader >> m_AimDistance; });
@@ -444,6 +450,8 @@ int Actor::Save(Writer& writer) const {
 	writer << m_CrouchWalkSpeedMultiplier;
 	writer.NewProperty("GoldCarried");
 	writer << m_GoldCarried;
+	writer.NewPropertyWithValue("Suppression", m_Suppression);
+	writer.NewPropertyWithValue("Morale", m_Morale);
 	writer.NewProperty("AimAngle");
 	writer << m_AimAngle;
 	writer.NewProperty("AimRange");
@@ -1561,6 +1569,140 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	return m_Sightings;
 }
 
+bool Actor::FeelsFire() const {
+	if ((m_Mechanical && !m_Organic) || GetMetalness() >= 0.2F) {
+		return false;
+	}
+	return !dynamic_cast<const ADoor*>(this) && !dynamic_cast<const ACraft*>(this);
+}
+
+void Actor::AddSuppression(float amount) {
+	if (amount <= 0.0F || m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
+		return;
+	}
+	m_Suppression = std::clamp(m_Suppression + amount * g_SettingsMan.AISuppression(), 0.0F, 1.0F);
+}
+
+void Actor::ChangeMorale(float change) {
+	if (m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
+		return;
+	}
+	m_Morale = std::clamp(m_Morale + (change < 0.0F ? change * g_SettingsMan.AISuppression() : change), 0.0F, 1.0F);
+}
+
+void Actor::ShotPassing(const MovableObject& shot) {
+	if (!shot.HitsMOs() || shot.GetSharpness() <= 0.0F || !shot.GetVel().MagnitudeIsGreaterThan(25.0F) || g_SettingsMan.AISuppression() <= 0.0F) {
+		return;
+	}
+	// Only so many shots looked at a sim update: a minigun's stream pins a unit down as well with a few as with all of them.
+	static long long s_Update = -1;
+	static int s_Checks = 0;
+	long long update = g_TimerMan.GetSimUpdateCount();
+	if (update != s_Update) {
+		s_Update = update;
+		s_Checks = 0;
+	}
+	if (++s_Checks > 96) {
+		return;
+	}
+	// Within two body widths of its last step, about 30 px: close enough to hear the crack.
+	constexpr float c_Reach = 30.0F;
+	const Vector from = shot.GetPrevPos();
+	const Vector step = g_SceneMan.ShortestDistance(from, shot.GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+	Box box(Vector(std::min(from.m_X, from.m_X + step.m_X) - c_Reach, std::min(from.m_Y, from.m_Y + step.m_Y) - c_Reach), std::abs(step.m_X) + c_Reach * 2.0F, std::abs(step.m_Y) + c_Reach * 2.0F);
+	const float stepLengthSq = std::max(step.GetSqrMagnitude(), 0.0001F);
+	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true)) {
+		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
+		if (!actor || (shot.GetTeam() != Activity::NoTeam && actor->GetTeam() == shot.GetTeam())) {
+			continue;
+		}
+		// The nearest point of the step to the body: a shot that is passing, not one that has hit (that is the hit's own business).
+		Vector toActor = g_SceneMan.ShortestDistance(from, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		float along = std::clamp((toActor.m_X * step.m_X + toActor.m_Y * step.m_Y) / stepLengthSq, 0.0F, 1.0F);
+		float distance = (toActor - step * along).GetMagnitude();
+		float bodyRadius = std::max(actor->GetRadius() * 0.5F, 6.0F);
+		if (distance <= bodyRadius || distance > bodyRadius + c_Reach) {
+			continue;
+		}
+		if (actor->m_NearMissUpdate != update) {
+			actor->m_NearMissUpdate = update;
+			actor->m_NearMissThisUpdate = 0.0F;
+		}
+		// (At most 0.15 an update from near misses, however many.)
+		float amount = std::min(0.02F + 0.06F * (1.0F - (distance - bodyRadius) / c_Reach), 0.15F - actor->m_NearMissThisUpdate);
+		if (amount > 0.0F) {
+			actor->m_NearMissThisUpdate += amount;
+			actor->AddSuppression(amount);
+		}
+	}
+}
+
+void Actor::UpdateSuppressionAndMorale() {
+	if (m_Status == DYING || m_Status == DEAD) {
+		// A friend dying in sight shakes the friends who saw it, the closer the more.
+		if (!m_DeathReported) {
+			m_DeathReported = true;
+			if (FeelsFire()) {
+				constexpr float c_SightOfDeath = 300.0F;
+				for (Actor* friendActor: g_MovableMan.GetActorList()) {
+					if (friendActor == this || friendActor->GetTeam() != m_Team || friendActor->GetStatus() == DYING || friendActor->GetStatus() == DEAD) {
+						continue;
+					}
+					Vector toFriend = g_SceneMan.ShortestDistance(m_Pos, friendActor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+					Vector notUsed;
+					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
+						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
+					}
+				}
+			}
+		}
+		return;
+	}
+	if (!FeelsFire()) {
+		m_Suppression = 0.0F;
+		m_Morale = 1.0F;
+		return;
+	}
+	const float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	// A better team gets over it quicker: 0.6 to 1.4 times as fast from the worst skill to the best.
+	const float skill = static_cast<float>(g_ActivityMan.GetActivity() ? g_ActivityMan.GetActivity()->GetTeamAISkill(m_Team) : Activity::DefaultSkill);
+	const float recovery = 0.6F + std::clamp(skill, 0.0F, 100.0F) / 125.0F;
+	// A hit pins it down and shakes it, by how much of its health it took.
+	if (float damage = m_PrevHealth - m_Health; damage > 0.0F) {
+		float share = damage / std::max(m_MaxHealth, 1.0F);
+		AddSuppression(0.1F + share * 2.0F);
+		ChangeMorale(-share * 0.8F);
+	}
+	m_Suppression = std::max(0.0F, m_Suppression - deltaTime * 0.25F * recovery);
+	// Being pinned down wears the nerve.
+	if (m_Suppression > 0.0F) {
+		ChangeMorale(-deltaTime * m_Suppression * 0.08F);
+	}
+	// What it comes back towards: with friends about (up to three within 200 px) and its brain near, steadier; hurt, less so. Worked out
+	// now and then, each actor on its own update so they don't all look at once.
+	if ((static_cast<long long>(GetUniqueID()) + g_TimerMan.GetSimUpdateCount()) % 30 == 0) {
+		int friends = 0;
+		bool brainNear = false;
+		for (const Actor* other: g_MovableMan.GetActorList()) {
+			if (other == this || other->GetTeam() != m_Team || other->GetStatus() == DYING || other->GetStatus() == DEAD) {
+				continue;
+			}
+			Vector toOther = g_SceneMan.ShortestDistance(m_Pos, other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+			if (other->IsInGroup("Brains")) {
+				brainNear = brainNear || toOther.MagnitudeIsLessThan(300.0F);
+			} else if (friends < 3 && toOther.MagnitudeIsLessThan(200.0F)) {
+				++friends;
+			}
+		}
+		m_MoraleLevel = std::clamp(0.55F + 0.1F * static_cast<float>(friends) + (brainNear ? 0.15F : 0.0F) - 0.3F * (1.0F - std::clamp(m_Health / std::max(m_MaxHealth, 1.0F), 0.0F, 1.0F)), 0.2F, 1.0F);
+	}
+	if (m_Morale < m_MoraleLevel) {
+		m_Morale = std::min(m_MoraleLevel, m_Morale + deltaTime * 0.04F * recovery);
+	} else {
+		m_Morale = std::max(m_MoraleLevel, m_Morale - deltaTime * 0.02F);
+	}
+}
+
 void Actor::Update() {
 	// Night: a headlamp lighting where the actor looks, plus a little glow around it. Render only.
 	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_HeadlampBrightness > 0.0F && m_Status != DEAD && m_Status != DYING) {
@@ -1723,6 +1865,8 @@ void Actor::Update() {
 	if (m_Status == DYING && m_DeathTmr.GetElapsedSimTimeMS() > 1000) {
 		m_Status = DEAD;
 	}
+
+	UpdateSuppressionAndMorale();
 
 	//////////////////////////////////////////////////////
 	// Save previous second's position so we can detect larger movement
