@@ -38,7 +38,7 @@ namespace SandboxDetail {
 			game->LoseControlOfActor(Players::PlayerOne);
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
 		}
-		s_Possessed = nullptr;
+		SetPossessed(nullptr);
 	}
 
 	const Preset* FindPreset(const std::vector<Preset>& list, const std::string& presetName) {
@@ -126,7 +126,7 @@ namespace SandboxDetail {
 		Actor* actor = GetRef(s_PlayerUnit);
 		if (s_PlayerEnterPending > 0 && game) {
 			if (actor) {
-				if (s_Possessed && s_Possessed != actor) {
+				if (IsPossessing() && !IsPossessed(actor)) {
 					ReleaseControl();
 				}
 				if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
@@ -147,7 +147,7 @@ namespace SandboxDetail {
 			s_Flying = false;
 			return;
 		}
-		bool playing = s_Possessed == actor;
+		bool playing = IsPossessed(actor);
 		actor->SetIgnoredByAI(s_Player.Neutral);
 		if (s_Player.Unkillable) {
 			actor->SetHealth(actor->GetMaxHealth());

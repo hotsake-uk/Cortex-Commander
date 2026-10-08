@@ -214,7 +214,7 @@ namespace {
 		}
 		GameActivity* game = CurrentGame();
 		const Actor* controlled = game ? game->GetControlledActor(Players::PlayerOne) : nullptr;
-		const Actor* possessed = s_Possessed && g_MovableMan.IsActor(s_Possessed) ? s_Possessed : nullptr;
+		const Actor* possessed = GetPossessed();
 		if (controlled) {
 			drawList->AddCircle(ToScreen(controlled->GetPos()), std::max(controlled->GetRadius() / scale, 10.0F) + 3.0F, IM_COL32(120, 230, 120, 230), 0, 2.0F);
 		}
@@ -222,7 +222,7 @@ namespace {
 			drawList->AddCircle(ToScreen(possessed->GetPos()), std::max(possessed->GetRadius() / scale, 10.0F) + 7.0F, IM_COL32(110, 180, 250, 230), 0, 2.0F);
 		}
 		lines.push_back("game controls: " + (controlled ? controlled->GetPresetName() + " #" + std::to_string(controlled->GetUniqueID()) : std::string("nobody")));
-		lines.push_back(std::string("sandbox thinks you're in: ") + (possessed ? possessed->GetPresetName() + " #" + std::to_string(possessed->GetUniqueID()) : s_Possessed ? std::string("a unit that's gone") : std::string("nobody")) + (s_Possessed != controlled && (s_Possessed || Sandbox::IsGodMode()) ? "  (they differ)" : ""));
+		lines.push_back(std::string("sandbox thinks you're in: ") + (possessed ? possessed->GetPresetName() + " #" + std::to_string(possessed->GetUniqueID()) : IsPossessing() ? std::string("a unit that's gone") : std::string("nobody")) + ((possessed != controlled || (IsPossessing() && !possessed)) && (IsPossessing() || Sandbox::IsGodMode()) ? "  (they differ)" : ""));
 		auto cross = [drawList](const ImVec2& at, ImU32 color) {
 			drawList->AddLine(ImVec2(at.x - 8.0F, at.y - 8.0F), ImVec2(at.x + 8.0F, at.y + 8.0F), color, 2.0F);
 			drawList->AddLine(ImVec2(at.x - 8.0F, at.y + 8.0F), ImVec2(at.x + 8.0F, at.y - 8.0F), color, 2.0F);
@@ -388,7 +388,7 @@ namespace {
 			return;
 		}
 		static const char* const modeNames[] = {"none", "sentry", "patrol", "go to", "hunt brains", "dig gold", "return", "stay", "scuttle", "deliver", "bomb", "squad"};
-		std::string line = s_Possessed == actor ? "you're in it" : "AI has it";
+		std::string line = IsPossessed(actor) ? "you're in it" : "AI has it";
 		if (s_PlayerEnterPending > 0) {
 			line += ", stepping in within " + std::to_string(s_PlayerEnterPending) + " updates";
 		}
