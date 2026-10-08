@@ -310,6 +310,9 @@ namespace RTE {
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		bool EventLooks = true; //!< The grade answers what happens: it flashes with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire; scripts can pulse it and crossfade between looks. Off: the grade stays as set, as before.
 		float EventLookStrength = 1.0F; //!< How strongly events push the grade, 0 to 2.
+		bool EventBlastFlash = true; //!< The washed-out flash after a huge blast (LookFlash, scripts' pulses of it too). Off for players bothered by flashing.
+		bool EventHurtLook = true; //!< The drain, dark edges and faint heartbeat when your unit is badly hurt (LookHurt).
+		bool EventFireWarmth = true; //!< The warmer grade standing by a fire (LookWarm).
 		bool DepthOfField = false; //!< Blur what's nearer or further than the focus by how far it is from it, like a camera lens. Off: everything is sharp as before.
 		float DepthOfFieldFocus = 0.0F; //!< Where the focus is: 0 the battlefield (units and terrain), 1 the furthest background.
 		float DepthOfFieldStrength = 1.0F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).
@@ -344,7 +347,8 @@ namespace RTE {
 		float FogMorningMist = 0.5F; //!< How much mist gathers low in open valleys around dawn (and a little at night and in rain), 0 to 1.
 		float FogClearSeconds = 25.0F; //!< About how long mist and dust take to clear, in game seconds.
 		bool LightningBolts = true; //!< Lightning is drawn as a jagged, forked bolt of light from the sky that lights up where it strikes. Off: the sandbox's bolt is a line of particles, as before.
-		float LightningBrightness = 1.0F; //!< How bright lightning bolts and the light they cast are, 0.2 to 2. 1: as first made.
+		float LightningBrightness = 1.0F; //!< How bright lightning bolts, the light they cast and storms' sky flashes are, 0 to 2. 1: as first made.
+		bool StormFlashes = true; //!< Storms (heavy rain, and weather with lightning in it) flash the whole sky now and then. Off for players bothered by flashing.
 		float GodRays = 0.7F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.

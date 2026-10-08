@@ -3348,6 +3348,17 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 			m_HUDStack -= 9;
 		}
 
+		// Air left while its head is under liquid (LM-4), so the player sees the unit is about to drown. It blinks in the last quarter.
+		if (float air = ActorWater::GetAir(this); air < 1.0F && m_Status != INACTIVE && !m_Controller.IsState(PIE_MENU_ACTIVE)) {
+			if (air > 0.25F || m_IconBlinkTimer.AlternateSim(200)) {
+				pSmallFont->DrawAligned(&allegroBitmap, drawPos.GetFloorIntX() - 2, drawPos.GetFloorIntY() + m_HUDStack + 3, "Air", GUIFont::Right);
+			}
+			rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1, drawPos.GetFloorIntY() + m_HUDStack + 7, drawPos.GetFloorIntX() + 15, drawPos.GetFloorIntY() + m_HUDStack + 8, 245);
+			int gaugeColor = air > 0.5F ? 149 : (air > 0.25F ? 77 : 13);
+			rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 6, drawPos.GetFloorIntX() + static_cast<int>(15.0F * air), drawPos.GetFloorIntY() + m_HUDStack + 7, gaugeColor);
+			m_HUDStack -= 9;
+		}
+
 		// Pickup GUI
 		if (!m_Controller.IsState(PIE_MENU_ACTIVE) && m_pItemInReach) {
 			std::snprintf(str, sizeof(str), " %c %s", -49, m_pItemInReach->GetPresetName().c_str());

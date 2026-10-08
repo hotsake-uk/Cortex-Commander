@@ -1047,9 +1047,26 @@ namespace SandboxDetail {
 			case Tool::Cryo:
 				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid");
 				break;
+			case Tool::Blood:
+				// Blood only flows with the setting on (it stays where it fell otherwise), so the brush turns it on.
+				if (!FluidSim::BloodFlows()) {
+					FluidSim::SetBloodFlows(true);
+				}
+				FluidSim::Pour(at, radius * 0.5F, "Blood");
+				break;
+			case Tool::PourOther:
+				if (!stroke.Material.empty()) {
+					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str());
+				}
+				break;
 			case Tool::WaterSpawner:
 				if (s_WaterSpawners.size() < 64) {
-					s_WaterSpawners.push_back({at, std::max(1, stroke.Radius / 2)});
+					WaterSpawner spring;
+					spring.Position = at;
+					spring.Radius = std::max(1, stroke.Radius / 2);
+					spring.Liquid = stroke.Material.empty() ? "Water" : stroke.Material;
+					spring.Rate = std::clamp(stroke.Rate, 0.05F, 1.0F);
+					s_WaterSpawners.push_back(spring);
 				}
 				break;
 			case Tool::LooseSand:
@@ -1195,13 +1212,13 @@ namespace SandboxDetail {
 				break;
 			}
 			case Tool::BuildTank:
-				// An open concrete tank, filled with water.
+				// An open concrete tank, filled with water, or what the springs pour (Paint > Springs).
 				PaintBox(at + Vector(-70.0F, 40.0F), 140, 8, "Concrete");
 				PaintBox(at + Vector(-70.0F, -48.0F), 8, 90, "Concrete");
 				PaintBox(at + Vector(62.0F, -48.0F), 8, 90, "Concrete");
 				for (float y = -30.0F; y <= 26.0F; y += 14.0F) {
 					for (float x = -48.0F; x <= 48.0F; x += 16.0F) {
-						FluidSim::Pour(at + Vector(x, y), 9.0F, "Water");
+						FluidSim::Pour(at + Vector(x, y), 9.0F, stroke.Material.empty() ? "Water" : stroke.Material.c_str());
 					}
 				}
 				break;
@@ -1258,6 +1275,12 @@ namespace SandboxDetail {
 		stroke.Craft = s_Craft;
 		stroke.Random = kind == Tool::Drop && s_DropRandom;
 		stroke.FavouritesOnly = s_DropFavourites;
+		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
+			stroke.Material = s_SpringLiquid;
+			stroke.Rate = s_SpringRate;
+		} else if (kind == Tool::PourOther) {
+			stroke.Material = s_OtherPourable;
+		}
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);

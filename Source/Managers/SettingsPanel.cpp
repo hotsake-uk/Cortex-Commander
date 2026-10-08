@@ -123,6 +123,38 @@ namespace {
 		}
 	}
 
+	/// The event looks one by one (G-11), each with a button that plays it once so it can be judged: the blast flash is the one most players
+	/// bothered by flashing want off.
+	void EventLookSwitches(LightingSettings& settings) {
+		struct EventLook {
+			const char* Label;
+			bool* On;
+			int Look;
+			const char* Tip;
+		};
+		const EventLook looks[] = {
+		    {"Blast flash", &settings.EventBlastFlash, LightingSettings::LookFlash, "The picture washes out white and warm for a moment after a huge blast. Off if flashing bothers you."},
+		    {"Hurt look", &settings.EventHurtLook, LightingSettings::LookHurt, "When your unit is badly hurt the picture drains, darkens at the edges and beats faintly like a pulse."},
+		    {"Fire warmth", &settings.EventFireWarmth, LightingSettings::LookWarm, "The picture warms a little standing by a fire."},
+		};
+		for (const EventLook& look: looks) {
+			Check(look.Label, look.On);
+			Tip(look.Tip);
+			if (!s_LastShown) {
+				continue;
+			}
+			ImGui::PushID(look.Label);
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!*look.On);
+			if (ToolUI::Button("Preview")) {
+				g_PostProcessMan.PulseGrade(look.Look, 1.0F, look.Look == LightingSettings::LookFlash ? 40.0F : 300.0F, look.Look == LightingSettings::LookFlash ? 1100.0F : 1800.0F);
+			}
+			ImGui::SetItemTooltip("Plays this look once, at the event grade strength.");
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+	}
+
 	void DrawPresets() {
 		if (!s_PresetsListed) {
 			s_Presets = g_SettingsMan.ListPresets();
@@ -233,8 +265,6 @@ void DebugMan::SettingsGUI() {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
-		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
-		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
 		if (int strikes = static_cast<int>(WeatherLightning::GetStrikes()); Combo("Storm lightning", &strikes, "In the sky only\0Strikes the ground, starts fires\0Strikes the ground, fires and hurts units\0")) {
 			WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(strikes, 0, 2)));
@@ -322,9 +352,11 @@ void DebugMan::SettingsGUI() {
 		}
 		Check("Lightning bolts", &settings.LightningBolts);
 		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
-		if (settings.LightningBolts) {
-			Slider("Lightning brightness", &settings.LightningBrightness, 0.2F, 2.0F);
-			Tip("How bright the bolt and the light it throws on the ground and air are. 1: as first made.");
+		Check("Storm flashes", &settings.StormFlashes);
+		Tip("Heavy rain, and weather with lightning in it, flashes the whole sky now and then. Turn it off if flashing light bothers you; bolts are drawn as the setting above has them.");
+		if (settings.LightningBolts || settings.StormFlashes) {
+			Slider("Lightning brightness", &settings.LightningBrightness, 0.0F, 2.0F);
+			Tip("How bright the bolt, the light it throws on the ground and air, and a storm's sky flash are. 1: as first made. 0: no flash at all.");
 		}
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
@@ -453,8 +485,11 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
 		}
-		Toggle("Loose sand and snow slide", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Loose ground (sand, snow, gravel, glass) slides", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
+		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
+		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);
@@ -652,6 +687,7 @@ void DebugMan::SettingsGUI() {
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {
 			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+			EventLookSwitches(settings);
 		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
@@ -867,7 +903,7 @@ void DebugMan::SettingsGUI() {
 			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0")) {
 				g_SettingsMan.SetWorldSimOverlay(world);
 			}
-			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid pixels on the move (blue). Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
+			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
 		}
 	};
 
