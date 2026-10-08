@@ -15,6 +15,7 @@
 #include "ContentFile.h"
 #include "SLTerrain.h"
 #include "PathFinder.h"
+#include "DebugOverlays.h"
 #include "MovableObject.h"
 #include "TerrainObject.h"
 #include "Deployment.h"
@@ -2441,8 +2442,22 @@ void Scene::UpdatePathFinding() {
 		nodesToUpdate = std::numeric_limits<int>::max();
 	}
 
+	// (For the terrain update boxes overlay: the areas waiting, before this call takes some of them.)
+	std::deque<Box> waitingAreas;
+	if (g_SettingsMan.ShowTerrainUpdates()) {
+		waitingAreas = m_pTerrain->GetUpdatedMaterialAreas();
+	}
+
 	// Update our shared pathFinder
 	std::vector<int> updatedNodes = GetPathFinder(Activity::Teams::NoTeam).RecalculateAreaCosts(m_pTerrain->GetUpdatedMaterialAreas(), nodesToUpdate);
+	if (g_SettingsMan.ShowTerrainUpdates() && (!waitingAreas.empty() || !updatedNodes.empty())) {
+		std::vector<Vector> nodePositions;
+		nodePositions.reserve(updatedNodes.size());
+		for (int id: updatedNodes) {
+			nodePositions.push_back(GetPathFinder(Activity::Teams::NoTeam).GetNodePos(id));
+		}
+		DebugOverlays::NoteTerrainUpdate(waitingAreas, nodePositions);
+	}
 	if (!updatedNodes.empty()) {
 		// Update each team's pathFinder
 		for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {

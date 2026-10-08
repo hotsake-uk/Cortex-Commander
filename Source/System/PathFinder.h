@@ -213,6 +213,11 @@ namespace RTE {
 			bool Cut = false; //!< Whether the route was cut short at something the searcher can't get through.
 		};
 
+		/// Gets the centre of the node with an id (as RecalculateAreaCosts returns them), for the terrain update boxes overlay.
+		/// @param id The node's id.
+		/// @return Its centre, or a zero vector for an id that isn't one.
+		Vector GetNodePos(int id) const { return id >= 0 && id < static_cast<int>(m_NodeGrid.size()) ? m_NodeGrid[id].Pos : Vector(); }
+
 		/// The last few searches this grid answered, oldest first, while the recent path solves overlay is on (none are kept while it's off).
 		/// @param solves Filled with them.
 		void GetRecentSolves(std::vector<DebugSolve>& solves) const;

@@ -254,6 +254,13 @@ namespace RTE {
 		/// @param which 0, 1 or 2.
 		void SetCombatOverlay(int which) { m_CombatOverlay = std::clamp(which, 0, 2); }
 
+		/// Gets whether the terrain update boxes overlay is on: the areas of changed terrain waiting for the path grid (orange) and the nodes
+		/// re-sampled for them (red), each shown for a moment after it happens. Not saved.
+		bool ShowTerrainUpdates() const { return m_ShowTerrainUpdates; }
+
+		/// Sets whether the terrain update boxes overlay is on.
+		void SetShowTerrainUpdates(bool show) { m_ShowTerrainUpdates = show; }
+
 		/// Gets whether the recent path solves overlay is on: the debug team's last few routes found, each step with its kind and cost. Not saved.
 		/// While it's on the path finder keeps those routes, which costs a little time per search.
 		bool ShowRecentSolves() const { return m_ShowRecentSolves; }
@@ -483,6 +490,7 @@ namespace RTE {
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
+		bool m_ShowTerrainUpdates; //!< Whether the terrain update boxes overlay is on (see ShowTerrainUpdates).
 		bool m_ShowRecentSolves; //!< Whether the recent path solves overlay is on (see ShowRecentSolves).
 		int m_CombatOverlay; //!< Which units the combat AI overlay draws for (see CombatOverlay).
 		bool m_ShowSquadLinks; //!< Whether the squad links and trails overlay is on (see ShowSquadLinks).

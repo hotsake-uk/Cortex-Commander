@@ -1,5 +1,10 @@
 #pragma once
 
+#include "Box.h"
+
+#include <deque>
+#include <vector>
+
 namespace RTE {
 
 	/// The debug overlays of the settings panel's AI debug and Render debug pages, drawn over the game's picture by DebugMan::DrawOverlays.
@@ -19,5 +24,12 @@ namespace RTE {
 		/// The recent path solves overlay: the debug team's last few routes found, faded by age, each step coloured by kind with its cost, and at
 		/// the goal the answer, total cost and solve time.
 		void DrawRecentSolves();
+
+		/// Keeps a path grid update for the terrain update boxes overlay: the areas of changed terrain that were waiting, and the nodes re-sampled.
+		/// Called by Scene::UpdatePathFinding while the overlay is on; safe from any thread.
+		void NoteTerrainUpdate(const std::deque<Box>& areas, const std::vector<Vector>& nodes);
+
+		/// The terrain update boxes overlay: the areas and nodes NoteTerrainUpdate kept, fading over a second.
+		void DrawTerrainUpdates();
 	} // namespace DebugOverlays
 } // namespace RTE
