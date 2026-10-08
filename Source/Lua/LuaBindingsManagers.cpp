@@ -486,6 +486,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, TimerMan) {
 	    .property("AIDeltaTimeMS", &TimerMan::GetAIDeltaTimeMS)
 
 	    .property("TicksPerSecond", &LuaAdaptersTimerMan::GetTicksPerSecond)
+	    .property("SimTimeMS", &LuaAdaptersTimerMan::GetSimTimeMS)
 
 	    .def("TimeForSimUpdate", &TimerMan::TimeForSimUpdate)
 	    .def("DrawnSimUpdate", &TimerMan::DrawnSimUpdate);

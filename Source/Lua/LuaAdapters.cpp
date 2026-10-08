@@ -628,6 +628,26 @@ double LuaAdaptersTimerMan::GetTicksPerSecond(const TimerMan& timerMan) {
 	return static_cast<double>(timerMan.GetTicksPerSecond());
 }
 
+double LuaAdaptersTimerMan::GetSimTimeMS(const TimerMan& timerMan) {
+	return static_cast<double>(timerMan.GetSimTimeMS());
+}
+
+double LuaAdaptersTimer::GetStartRealTimeMS(const Timer& timer) {
+	return static_cast<double>(timer.GetStartRealTimeMS());
+}
+
+void LuaAdaptersTimer::SetStartRealTimeMS(Timer& timer, double newStartTime) {
+	timer.SetStartRealTimeMS(static_cast<int64_t>(newStartTime));
+}
+
+double LuaAdaptersTimer::GetStartSimTimeMS(const Timer& timer) {
+	return static_cast<double>(timer.GetStartSimTimeMS());
+}
+
+void LuaAdaptersTimer::SetStartSimTimeMS(Timer& timer, double newStartTime) {
+	timer.SetStartSimTimeMS(static_cast<int64_t>(newStartTime));
+}
+
 bool LuaAdaptersUInputMan::MouseButtonHeld(const UInputMan& uinputMan, int whichButton) {
 	return uinputMan.MouseButtonHeld(whichButton, Players::PlayerOne);
 }
