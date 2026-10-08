@@ -125,7 +125,17 @@ void AHuman::UpdateAIMotor() {
 	if (m_AIStance != 0 && m_AIStanceTimer.IsPastSimMS(m_AIStanceMS)) {
 		m_AIStance = 0;
 	}
-	if (m_AIStance == 2 && m_Status == STABLE && !m_Ladder.active) {
+	// A body lying down may not jet or leap: while the route-follower is taking off (settling, at a leap's take-off, or pressing the jet or
+	// the leap this frame), a prone stance gives way, and the jet and the leap wait the moment until the body is up. (Pressed prone every frame, a
+	// move-order unit given ShootTarget's 2.5 s prone stance lit its jet lying down, or stood at the edge of a gap the leap refused.)
+	bool takingOff = m_Mover.settling || (m_Mover.standUp && !m_Mover.standUpTimer.IsPastSimMS(250)) || ctrl.IsState(BODY_JUMPSTART) || ctrl.IsState(BODY_JUMP) || ctrl.IsState(BODY_LEAP);
+	if (takingOff && m_ProneState != NOTPRONE) {
+		ctrl.SetState(BODY_JUMPSTART, false);
+		ctrl.SetState(BODY_JUMP, false);
+		ctrl.SetState(BODY_LEAP, false);
+		ctrl.SetState(BODY_PRONE, false);
+	}
+	if (m_AIStance == 2 && m_Status == STABLE && !m_Ladder.active && !takingOff) {
 		ctrl.SetState(BODY_PRONE, true);
 	} else if (m_AIStance == 1 && m_Status == STABLE && !m_Ladder.active) {
 		ctrl.SetState(BODY_CROUCH, true);
@@ -1769,6 +1779,10 @@ int AHuman::MoveAlongRoute() {
 				mover.progressTimer.Reset();
 				MoverTrace(std::string("leap ") + (edge ? "from the edge" : (lip ? "onto the lip" : "from here")) + " for " + std::to_string(static_cast<int>(point.m_X)) + "," + std::to_string(static_cast<int>(point.m_Y)));
 				return RouteMover::Moving;
+			}
+			if (m_ProneState != NOTPRONE) {
+				mover.standUp = true;
+				mover.standUpTimer.Reset();
 			}
 			if (edge) {
 				return RouteMover::Moving;
