@@ -45,7 +45,9 @@ void main() {
 			break;
 		}
 	}
-	// The stroke goes over the sky, the terrain background and other objects, never over foreground terrain.
-	bool open = texelFetch(rteSceneDepth, pixel, 0).r >= rteForegroundDepth || texelFetch(rteSurface, pixel, 0).b > 0.5;
+	// The stroke goes over the sky, the terrain background, other objects and water (surface 0.25, see LightComposite.frag's WaterAt), never
+	// over foreground terrain.
+	float surface = texelFetch(rteSurface, pixel, 0).b;
+	bool open = texelFetch(rteSceneDepth, pixel, 0).r >= rteForegroundDepth || surface > 0.5 || abs(surface - 0.25) < 0.08;
 	FragColor = vec4(float(nearest) / 255.0, float(slot) / 255.0, open ? 1.0 : 0.0, 1.0);
 }
