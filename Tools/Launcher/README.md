@@ -17,7 +17,7 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 
 ## Using it
 1. Set **Repo** to your existing checkout (default `C:\Users\Liamn\Desktop\cortex\Cortex-Command-Community-Project`). It is only used for `git fetch` and as the worktree source; its working tree is never touched.
-2. The left list shows tags first (newest version first, so `v8.2.N` is at the top), then remote branches by recent activity. Use the filter box, or type any branch / tag / sha in the box next to the buttons and press **Go**.
+2. The left list shows versions first (`ver: 8.2.N`, read from `[8.2.N]` commit titles or `Version 8.2.N` lines on the first-parent history of `origin/dev-8.2`, since cloud threads cannot push tags), then any real tags, then remote branches by recent activity. Use the filter box, or type any branch / tag / sha in the box next to the buttons and press **Go**.
 3. Pick a commit (each row shows the game version read from `GameVersion.h`) and press **Build & Run** (or double-click the row). **Build** and **Run** are also available separately.
 4. The configuration dropdown picks `Final`, `Debug Release`, `Debug Minimal` or `Debug Full`. Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln`, as in `.github/workflows/msbuild.yml`, after copying `fmod.dll` next to the exe as the README requires.
 5. **Delete cached** removes that commit's checkout and build. **Open folder** opens it in Explorer.

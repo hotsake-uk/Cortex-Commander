@@ -76,6 +76,8 @@ class MainForm : Form
 	readonly Label status = new() { AutoSize = true, Padding = new Padding(8, 6, 0, 0) };
 
 	List<string> allRefs = new();
+	readonly Dictionary<string, string> versionShas = new(); // "ver: 8.2.N" -> merge commit on the integration branch
+	const string IntegrationBranch = "dev-8.2";
 	string currentRef = "";
 	Process? running;
 	bool busy;
@@ -281,9 +283,32 @@ class MainForm : Form
 		// Tags first (newest version first, so v8.2.N lands at the top), then remote branches by recent activity.
 		var (_, tags) = await Git("for-each-ref --sort=-version:refname --format=%(refname:short) refs/tags");
 		var (_, branches) = await Git($"for-each-ref --sort=-committerdate --format=%(refname:short) refs/remotes/{settings.Remote}");
-		allRefs = tags.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(t => "tag: " + t.Trim())
+		await LoadVersions();
+		allRefs = versionShas.Keys.Concat(tags.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(t => "tag: " + t.Trim()))
 			.Concat(branches.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(b => b.Trim()).Where(b => !b.EndsWith("/HEAD") && b != settings.Remote))
 			.ToList();
+	}
+
+	// Cloud threads can't push tags, so versions are also read from the merge history of the integration branch:
+	// a commit whose title starts "[8.2.N]" or whose message has a "Version 8.2.N" line is version 8.2.N.
+	async Task LoadVersions()
+	{
+		versionShas.Clear();
+		var (code, o) = await Git($"log {settings.Remote}/{IntegrationBranch} --first-parent --format=%H%x1f%s%x1f%b%x1e --");
+		if (code != 0) return;
+		var subj = new Regex(@"^\[(\d+\.\d+\.\d+)\]");
+		var body = new Regex(@"^Version (\d+\.\d+\.\d+)\s*$", RegexOptions.Multiline);
+		var found = new Dictionary<string, string>();
+		foreach (var rec in o.Split('\x1e', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var f = rec.Trim('\n', '\r').Split('\x1f');
+			if (f.Length < 2) continue;
+			var m = subj.Match(f[1]);
+			var v = m.Success ? m.Groups[1].Value : f.Length > 2 && body.Match(f[2]) is { Success: true } b ? b.Groups[1].Value : null;
+			if (v != null && !found.ContainsKey(v)) found[v] = f[0]; // newest commit wins
+		}
+		foreach (var kv in found.OrderByDescending(k => Version.TryParse(k.Key, out var ver) ? ver : new Version(0, 0)))
+			versionShas["ver: " + kv.Key] = kv.Value;
 	}
 
 	// ---- Live feed: git has no push notifications for a plain remote, so poll ls-remote (cheap) and fetch only when refs moved.
@@ -396,7 +421,9 @@ class MainForm : Form
 
 	async Task LoadCommits(string refName)
 	{
+		var shown = refName;
 		if (refName.StartsWith("tag: ")) refName = refName[5..];
+		else if (versionShas.TryGetValue(refName, out var vsha)) refName = vsha;
 		currentRef = refName;
 		var (code, output) = await Git($"log {refName} -n 60 --date=short --format=%H%x09%ad%x09%an%x09%s --");
 		commitList.Items.Clear();
@@ -417,7 +444,7 @@ class MainForm : Form
 			commitList.Items.Add(item);
 		}
 		if (commitList.Items.Count > 0) commitList.Items[0].Selected = true;
-		status.Text = refName;
+		status.Text = shown;
 		_ = FillVersions(commits, refName);
 	}
 
