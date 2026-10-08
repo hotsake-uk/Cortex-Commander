@@ -44,6 +44,7 @@ void TerrainLight::Clear() {
 	m_ConeDirection = 90.0F;
 	m_Anchored = -1;
 	m_AnchorOffset.Reset();
+	m_AnchorSolid = 0;
 }
 
 int TerrainLight::ReadProperty(const std::string_view& propName, Reader& reader) {
@@ -60,6 +61,7 @@ int TerrainLight::ReadProperty(const std::string_view& propName, Reader& reader)
 	MatchProperty("ConeDirection", { reader >> m_ConeDirection; });
 	MatchProperty("Anchored", { reader >> m_Anchored; });
 	MatchProperty("AnchorOffset", { reader >> m_AnchorOffset; });
+	MatchProperty("AnchorSolid", { reader >> m_AnchorSolid; });
 
 	EndPropertyList;
 }
@@ -84,6 +86,9 @@ int TerrainLight::Save(Writer& writer) const {
 	if (m_Anchored >= 0) {
 		writer.NewPropertyWithValue("Anchored", m_Anchored);
 		writer.NewPropertyWithValue("AnchorOffset", m_AnchorOffset);
+		if (m_AnchorSolid > 0) {
+			writer.NewPropertyWithValue("AnchorSolid", m_AnchorSolid);
+		}
 	}
 	return 0;
 }
@@ -442,6 +447,17 @@ void SLTerrain::UpdateLights() {
 		return;
 	}
 	auto solidAt = [](const Vector& point) { return g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) > MaterialColorKeys::g_MaterialCavity; };
+	// A lamp's fixture is judged by the solid pixels around where it hangs, not by one pixel: a stray bullet through an intact fixture leaves it lit, a fixture mostly blown away puts it out.
+	auto fixtureSolidAt = [&solidAt](const Vector& anchor) {
+		constexpr int c_FixtureReach = 2;
+		int solid = 0;
+		for (int y = -c_FixtureReach; y <= c_FixtureReach; ++y) {
+			for (int x = -c_FixtureReach; x <= c_FixtureReach; ++x) {
+				solid += solidAt(anchor + Vector(static_cast<float>(x), static_cast<float>(y))) ? 1 : 0;
+			}
+		}
+		return solid;
+	};
 
 	// Lamps that were shot or blown up since the last update go out.
 	{
@@ -501,6 +517,7 @@ void SLTerrain::UpdateLights() {
 					if (solidAt(light->m_Pos + direction * static_cast<float>(distance))) {
 						light->m_Anchored = 1;
 						light->m_AnchorOffset = direction * static_cast<float>(distance);
+						light->m_AnchorSolid = fixtureSolidAt(light->m_Pos + light->m_AnchorOffset);
 						break;
 					}
 					if (distance == 0) {
@@ -508,8 +525,11 @@ void SLTerrain::UpdateLights() {
 					}
 				}
 			}
-		} else if (checkFixtures && light->m_Anchored == 1 && !solidAt(light->m_Pos + light->m_AnchorOffset)) {
-			// What it hung on has been shot or blown away: it goes out in a shower of sparks.
+		} else if (light->m_Anchored == 1 && light->m_AnchorSolid <= 0) {
+			// Anchored in a save from before fixtures were measured: measure it now.
+			light->m_AnchorSolid = fixtureSolidAt(light->m_Pos + light->m_AnchorOffset);
+		} else if (checkFixtures && light->m_Anchored == 1 && fixtureSolidAt(light->m_Pos + light->m_AnchorOffset) * 2 < light->m_AnchorSolid) {
+			// Most of what it hung on has been shot or blown away: it goes out in a shower of sparks.
 			EffectsParticles::Emit("Sparks", light->m_Pos, Vector(0.0F, 2.0F), 1.0F, 14, 0);
 			light = m_Lights.erase(light);
 			m_LightCellsStale = true;

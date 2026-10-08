@@ -38,6 +38,7 @@ namespace RTE {
 		float m_ConeDirection; //!< Which way the beam points, in degrees clockwise from pointing right (90 is straight down).
 		int m_Anchored; //!< Whether it hangs on something solid, and so goes out when that is destroyed. -1 until that's been looked up.
 		Vector m_AnchorOffset; //!< Where the solid thing it hangs on is, from the light.
+		int m_AnchorSolid; //!< How many solid pixels there were in the fixture around the anchor when it was looked up. The lamp goes out when fewer than half are left.
 
 	private:
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
