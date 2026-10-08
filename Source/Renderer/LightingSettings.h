@@ -271,6 +271,8 @@ namespace RTE {
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
 		float WaterThinFlow = 1.0F; //!< How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. 0 for not at all, up to 2. Visual only.
 		float SplashFroth = 1.0F; //!< How much froth a splash leaves on the surface, and the surface throws up where the level rises from something falling in. 0 for none, up to 3. Visual only.
+		float SplashFrothDensity = 1.0F; //!< How many puffs that froth is made of for the same splash: 1 as it is, up to 6 for a thick bank. Visual only.
+		float SplashFrothSpecks = 1.0F; //!< How many bright pixel-sized specks sit in front of the puffs: 0 for none, up to 3.
 		float SplashFrothSize = 1.0F; //!< How big each bubble of that froth is: 1 is about 4 to 9 pixels across.
 		float SplashFrothLife = 1.0F; //!< How long it lasts: 1 is about one and a half to three and a half seconds.
 		float SplashFrothOpacity = 0.6F; //!< How solid it is at first.

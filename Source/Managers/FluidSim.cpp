@@ -1119,7 +1119,9 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 			rgb = paler(16) | paler(8) | paler(0);
 		}
 	}
-	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount)), 1, 80);
+	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	float density = std::clamp(settings.SplashFrothDensity, 0.1F, 6.0F);
+	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount * density)), 1, 240);
 	// Spread along the width in even slots, each puff anywhere within its slot and a little above or below the surface line: puffs at fixed
 	// columns on one row read as a string of beads. (Render only: its own random numbers, never the simulation's.)
 	static unsigned int s_VisualRandom = 0x2545F491u;
@@ -1129,11 +1131,21 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 		s_VisualRandom ^= s_VisualRandom << 5;
 		return static_cast<float>(s_VisualRandom & 0xFFFFFF) / static_cast<float>(0x1000000);
 	};
+	// The row is not the same length every time, and not always centred on where it landed.
+	float rowWidth = width * (0.55F + visualRandom() * 0.75F);
+	float rowShift = (visualRandom() - 0.5F) * width * 0.3F;
 	float slot = 1.0F / static_cast<float>(total);
+	float specks = std::clamp(settings.SplashFrothSpecks, 0.0F, 3.0F);
 	for (int puff = 0; puff < total; ++puff) {
 		float across = ((static_cast<float>(puff) + visualRandom()) * slot) * 2.0F - 1.0F;
 		float lift = (visualRandom() - 0.65F) * 4.0F;
-		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y + lift), Vector(), 0.2F, 1, rgb);
+		float x = position.m_X + rowShift + across * rowWidth * 0.5F;
+		EffectsParticles::Emit("Froth", Vector(x, position.m_Y + lift), Vector(), 0.2F, 1, rgb);
+		// Pixel-sized specks in front of the puffs: a pale one or two hopping off the surface at each, now and then.
+		if (specks > 0.0F && visualRandom() < std::min(0.6F * specks, 1.0F)) {
+			Vector hop((visualRandom() - 0.5F) * 2.0F, -(0.5F + visualRandom() * 1.5F));
+			EffectsParticles::Emit("Droplets", Vector(x + (visualRandom() - 0.5F) * 3.0F, position.m_Y + lift - 1.0F), hop, 0.3F, 1 + (specks > 1.5F && visualRandom() < 0.5F ? 1 : 0), 0xE6F4FF);
+		}
 	}
 }
 
