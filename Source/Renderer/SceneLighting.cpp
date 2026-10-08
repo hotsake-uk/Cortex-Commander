@@ -1543,9 +1543,17 @@ void SceneLighting::Update() {
 	m_Wetness += std::clamp(wetTarget - m_Wetness, -frameSeconds / 60.0F, frameSeconds / 8.0F);
 	// Cloud cover gathers over about twenty seconds when rain, snow or ash sets in and breaks up over a minute and a half after.
 	{
-		float coverClear = std::clamp(m_Settings.CloudCover, 0.0F, 1.0F);
 		float weatherCloud = (m_Settings.WeatherType >= 1 && m_Settings.WeatherType <= 3) ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
-		float coverTarget = coverClear + (1.0F - coverClear) * std::min(weatherCloud * 1.4F, 1.0F);
+		auto targetFor = [weatherCloud](float clearCover) {
+			float coverClear = std::clamp(clearCover, 0.0F, 1.0F);
+			return coverClear + (1.0F - coverClear) * std::min(weatherCloud * 1.4F, 1.0F);
+		};
+		float coverTarget = targetFor(m_Settings.CloudCover);
+		if (m_CloudCover >= 0.0F && m_Settings.CloudCover != m_CloudCoverSetting) {
+			// The Cloud cover setting itself was moved: the sky follows it at once, by as much as it moved the target, and only the weather's part eases.
+			m_CloudCover = std::clamp(m_CloudCover + coverTarget - targetFor(m_CloudCoverSetting), 0.0F, 1.0F);
+		}
+		m_CloudCoverSetting = m_Settings.CloudCover;
 		m_CloudCover = m_CloudCover < 0.0F ? coverTarget : m_CloudCover + std::clamp(coverTarget - m_CloudCover, -frameSeconds / 90.0F, frameSeconds / 20.0F);
 	}
 	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
