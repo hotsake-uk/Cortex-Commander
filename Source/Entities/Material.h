@@ -52,6 +52,9 @@ namespace RTE {
 		/// Chance is per step a liquid pixel of either touches the other; Effects is any of Steam, Flash, Ignite, Explosion and Fizz joined with +.
 		/// They add to, or replace for the same pair, the stock reactions that come from the rest of the behaviour (FluidSim).
 		std::vector<std::string> Reactions;
+		int SightDepth = -1; //!< For a liquid, how many pixels of it a look sees through, to what's in it or beyond (stock: water 200, oil 6, lava none).
+		int ShotDepth = -1; //!< For a liquid, how many pixels of it a shot (a bullet, tracer, shrapnel) goes on through, slowing to half by the end, before
+		                    //!< it is spent (stock: water 60, oil 30, lava 10).
 	};
 
 	/// Represents a material and holds all the relevant data.

@@ -326,7 +326,9 @@ namespace {
 		constexpr int halfWidth = 512;
 		constexpr int halfHeight = 320;
 		constexpr int windowWidth = halfWidth * 2 + 1;
-		constexpr size_t c_MaxLiquidCells = 24000; //!< How much of the liquid one search may cross: a wide pool's surface for a big piece.
+		// How much of the liquid one search may cross: a wide pool's surface for a big piece, less for a few pixels (a piece sinking a pixel
+		// an update covers a row of them; each search was the full count, for every moving piece, every update).
+		const size_t maxLiquidCells = std::min<size_t>(24000, 2000 + displaced.size() * 100);
 		static std::vector<unsigned int> visited;
 		static unsigned int search = 0;
 		if (visited.empty() || ++search == 0) {
@@ -376,7 +378,7 @@ namespace {
 				visited[slot] = search;
 				freePlaces.push_back({x, y, across});
 				std::push_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
-			} else if (FluidSim::IsLiquid(material) && liquidSeen < c_MaxLiquidCells) {
+			} else if (FluidSim::IsLiquid(material) && liquidSeen < maxLiquidCells) {
 				visited[slot] = search;
 				++liquidSeen;
 				liquidCells.push_back({x, y, across});
@@ -398,6 +400,7 @@ namespace {
 			}
 		}
 		size_t placed = 0;
+		int frothed = 0;
 		while (placed < displaced.size() && !freePlaces.empty()) {
 			std::pop_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
 			Cell cell = freePlaces.back();
@@ -410,6 +413,11 @@ namespace {
 			terrain->SetFGColorPixel(cell.X, cell.Y, pixel.Color);
 			// It flows on from there if it can (over an edge, along a step).
 			FluidSim::Disturb(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 1.0F);
+			// Where it tops the liquid, the rising surface froths (for the eye; a few puffs, not one for every pixel).
+			if (placed % 4 == 1 && frothed < 24 && cell.Y > 0 && materialBitmap->line[cell.Y - 1][cell.X] == g_MaterialAir) {
+				FluidSim::Froth(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 4.0F, 1, pixel.Color);
+				++frothed;
+			}
 			// Its own edge is the liquid's edge now: the free places beside and above it are next.
 			for (const auto& side: sides) {
 				look(cell.X + side[0], cell.Y + side[1]);

@@ -377,6 +377,7 @@ BITMAP* SceneMan::GetDebugBitmap() const {
 }
 
 thread_local int SceneMan::s_LiquidsPassableDepth = 0;
+thread_local SceneMan::LiquidsSeeThrough::State SceneMan::s_SeeThrough;
 
 unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	RTEAssert(m_pCurrentScene, "Trying to get terrain matter before there is a scene or terrain!");
@@ -405,6 +406,14 @@ unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	// Bodies move through liquid, see LiquidsPassable.
 	if (s_LiquidsPassableDepth > 0 && material != g_MaterialAir && FluidSim::IsLiquid(material)) {
 		return g_MaterialAir;
+	}
+	// Looks and the AI's shot checks go into liquid as far as it lets them, see LiquidsSeeThrough.
+	if (s_SeeThrough.Active && material != g_MaterialAir) {
+		int depth = s_SeeThrough.Shots ? FluidSim::ShotDepth(material) : FluidSim::SightDepth(material);
+		if (depth > 0 && s_SeeThrough.Seen < depth) {
+			s_SeeThrough.Seen += s_SeeThrough.Stride;
+			return g_MaterialAir;
+		}
 	}
 	return material;
 }
@@ -646,7 +655,9 @@ bool SceneMan::TryPenetrate(int posX,
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F); TerrainCollapse::NoteDamage(posX, posY);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
-		else if (RandomNum() <= airRatio) {
+		// (Never liquid: past its first few pixels a shot through a pool erased about two in three of the rest with no drop to show for
+		// them, and the pool drained away under fire. It passes through, slowed, and the liquid stays.)
+		else if (!FluidSim::IsLiquid(materialID) && RandomNum() <= airRatio) {
 			m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
@@ -1168,6 +1179,7 @@ bool SceneMan::CastTerrainPenetrationRay(const Vector& start, const Vector& ray,
 
 // TODO Every raycast should use some shared line drawing method (or maybe something more efficient if it exists, that needs looking into) instead of having a ton of duplicated code.
 bool SceneMan::CastUnseenRay(int team, const Vector& start, const Vector& ray, Vector& endPos, int strengthLimit, int skip, bool reveal) {
+	LiquidsSeeThrough seeThrough(false, skip + 1); // Fog lifts through water as a look sees through it.
 	if (!m_pCurrentScene->GetUnseenLayer(team))
 		return false;
 
@@ -1493,6 +1505,7 @@ int SceneMan::GetFlowingLiquidPixelCount() const {
 }
 
 float SceneMan::CastStrengthSumRay(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial) {
+	LiquidsSeeThrough seeThrough(true, skip + 1); // The AI's shot check: shots go on through water (FluidSim::ShotDepth).
 	Vector ray = g_SceneMan.ShortestDistance(start, end);
 	float strengthSum = 0;
 
@@ -1845,6 +1858,7 @@ bool SceneMan::CastWeaknessRay(const Vector& start, const Vector& ray, float str
 }
 
 MOID SceneMan::CastMORay(const Vector& start, const Vector& ray, const std::vector<MOID>& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, bool ignoreAllTerrain, int skip) {
+	LiquidsSeeThrough seeThrough(false, skip + 1); // A look sees into and through water (FluidSim::SightDepth).
 	int error, dom, sub, domSteps, skipped = skip;
 	int intPos[2], delta[2], delta2[2], increment[2];
 	MOID hitMOID = g_NoMOID;
@@ -1946,6 +1960,7 @@ MOID SceneMan::CastMORay(const Vector& start, const Vector& ray, const std::vect
 }
 
 bool SceneMan::CastFindMORay(const Vector& start, const Vector& ray, MOID targetMOID, Vector& resultPos, unsigned char ignoreMaterial, bool ignoreAllTerrain, int skip, bool findChildMOIDs) {
+	LiquidsSeeThrough seeThrough(false, skip + 1); // A look sees into and through water (FluidSim::SightDepth).
 	int error, dom, sub, domSteps, skipped = skip;
 	int intPos[2], delta[2], delta2[2], increment[2];
 	MOID hitMOID = g_NoMOID;
@@ -2038,6 +2053,7 @@ bool SceneMan::CastFindMORay(const Vector& start, const Vector& ray, MOID target
 }
 
 const std::vector<MovableObject*>*  SceneMan::CastAllMOsRay(const Vector& start, const Vector& ray, const std::vector<MOID>& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, bool ignoreAllTerrain, int skip) const {
+	LiquidsSeeThrough seeThrough(false, skip + 1); // A look sees into and through water (FluidSim::SightDepth).
 	std::vector<MovableObject*>* vectorForLua = new std::vector<MovableObject*>();
 
 	const SpatialPartitionGrid& partitionGrid = GetMOIDGrid();
@@ -2139,7 +2155,11 @@ const std::vector<MovableObject*>*  SceneMan::CastAllMOsRay(const Vector& start,
 	return vectorForLua;
 }
 
-float SceneMan::CastObstacleRay(const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const std::vector<MOID>& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip) {
+float SceneMan::CastObstacleRay(const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const std::vector<MOID>& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid) {
+	std::optional<LiquidsSeeThrough> seeThrough; // A line of sight or fire sees into and through water (FluidSim::SightDepth), one for footing doesn't.
+	if (seeThroughLiquid) {
+		seeThrough.emplace(false, skip + 1);
+	}
 	int error, dom, sub, domSteps, skipped = skip;
 	int intPos[2], delta[2], delta2[2], increment[2];
 	bool hitObstacle = false;

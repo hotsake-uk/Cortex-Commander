@@ -46,6 +46,15 @@ namespace RTE {
 		/// each does to a body is its material's (weight, stickiness, touch damage).
 		static bool HoldsBodies(int materialID);
 
+		/// Gets how many pixels of a liquid a look sees through (MaterialBehaviour::SightDepth), 0 for what isn't a liquid or can't be seen through.
+		static int SightDepth(int materialID);
+
+		/// Gets how many pixels of a liquid a shot goes on through before it is spent (MaterialBehaviour::ShotDepth), 0 for what isn't a liquid.
+		static int ShotDepth(int materialID);
+
+		/// Gets what a shot's speed is multiplied by for each pixel of a liquid it goes through: down to half over its ShotDepth.
+		static float ShotDrag(int materialID);
+
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.
@@ -54,6 +63,14 @@ namespace RTE {
 
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
+
+		/// Keeps the liquid at a pixel that something is about to be drawn over (a chip or a grain of dirt that came to rest at the bottom of a pool, a
+		/// stain): at the next step it is put back at the liquid's surface above that spot, instead of being lost. Call before the pixel is drawn over.
+		/// Thread safe.
+		/// @param x The pixel, in scene coordinates.
+		/// @param y The pixel, in scene coordinates.
+		/// @return Whether there was liquid there to keep (false with flowing liquids off: nothing to do).
+		static bool KeepLiquidAt(int x, int y);
 
 		/// Gets whether there is any liquid or loose powder near a point, from a few samples in a plus shape: for callers that would otherwise queue work on
 		/// dry, solid ground (a gib's disturbance and splash). Reads the terrain only.
@@ -73,6 +90,14 @@ namespace RTE {
 		/// @param speed How fast it went in, in metres a second.
 		/// @param colorIndex Palette index of the liquid there, for the drops' colour.
 		static void VisualSplash(const Vector& position, float width, float speed, int colorIndex);
+
+		/// Leaves froth on a liquid's surface, only for the eye: pale bubbly puffs that sit on it and fade (the SplashFroth settings). For a splash, and
+		/// where the level rises from something falling in (TerrainCollapse). Thread safe.
+		/// @param position The middle of the stretch of surface, in scene coordinates.
+		/// @param width How wide a stretch, in pixels.
+		/// @param count How many puffs at the plain setting.
+		/// @param colorIndex Palette index of the liquid there; water and the mask colour give white froth, any other liquid a paler froth of its own colour.
+		static void Froth(const Vector& position, float width, int count, int colorIndex);
 
 		/// Lets a particle that just settled into the terrain join in: a drop of liquid in that liquid's own colour starts flowing (so blood, drawn in water, stays put),
 		/// and a burning particle sets the flammable pixel it became alight. Call after the particle is drawn into the terrain.

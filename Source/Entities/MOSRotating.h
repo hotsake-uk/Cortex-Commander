@@ -565,6 +565,7 @@ namespace RTE {
 		Vector m_SpriteCenter;
 		// How much to orient the rotation of this to match the velocity vector each frame 0 = none, 1.0 = immediately align with vel vector
 		float m_OrientToVel;
+		signed char m_InLiquid; //!< Whether its middle was in liquid at the last look, 1 or 0, for the splash going in; -1 before its first look.
 		// Whether the SpriteMO is currently pushed back by recoil or not.
 		bool m_Recoiled;
 		// The impulse force in kg * m/s that represents the recoil.
