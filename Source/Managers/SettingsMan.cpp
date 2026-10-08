@@ -328,6 +328,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("WetnessMap", { g_PostProcessMan.GetLightingSettings().WetnessMap = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("WetDrySeconds", { g_PostProcessMan.GetLightingSettings().WetDrySeconds = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 600.0F); });
+	MatchProperty("Puddles", { g_PostProcessMan.GetLightingSettings().Puddles = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("StainSurface", { g_PostProcessMan.GetLightingSettings().StainSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("StainShine", { g_PostProcessMan.GetLightingSettings().StainShine = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -601,6 +604,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("StainShine", lighting.StainShine);
 	writer.NewPropertyWithValue("DecalsFade", lighting.DecalsFade);
 	writer.NewPropertyWithValue("DecalFadeMinutes", lighting.DecalFadeMinutes);
+	writer.NewPropertyWithValue("WetnessMap", lighting.WetnessMap);
+	writer.NewPropertyWithValue("WetDrySeconds", lighting.WetDrySeconds);
+	writer.NewPropertyWithValue("Puddles", lighting.Puddles);
 	writer.NewPropertyWithValue("LivingWorld", lighting.LivingWorld);
 	writer.NewPropertyWithValue("Headlamps", lighting.Headlamps);
 	writer.NewPropertyWithValue("NightAffectsAI", lighting.NightAffectsAI);
