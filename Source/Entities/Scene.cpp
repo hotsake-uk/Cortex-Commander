@@ -2531,14 +2531,20 @@ const Actor* Scene::GetNavDebugActor() const {
 	const Actor* best = nullptr;
 	float bestDistance = 0.0F;
 	Vector middle = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), static_cast<float>(g_FrameMan.GetPlayerScreenHeight())) * 0.5F;
-	for (const Actor* actor: g_MovableMan.GetActorList()) {
-		if (actor->GetTeam() != g_SettingsMan.DebugTeam() || !actor->IsDebugInspected()) {
-			continue;
+	// An inspected unit first; else any of the team's.
+	for (bool inspectedOnly: {true, false}) {
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			if (actor->GetTeam() != g_SettingsMan.DebugTeam() || (inspectedOnly && !actor->IsDebugInspected())) {
+				continue;
+			}
+			float distance = g_SceneMan.ShortestDistance(middle, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
+			if (!best || distance < bestDistance) {
+				best = actor;
+				bestDistance = distance;
+			}
 		}
-		float distance = g_SceneMan.ShortestDistance(middle, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
-		if (!best || distance < bestDistance) {
-			best = actor;
-			bestDistance = distance;
+		if (best) {
+			break;
 		}
 	}
 	return best;
@@ -2553,7 +2559,7 @@ void Scene::Update() {
 	if (g_SettingsMan.NavDebugOverlay() > 0 && g_ActivityMan.ActivityRunning()) {
 		Vector corner = g_CameraMan.GetOffset(0);
 		Box view(corner, static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), static_cast<float>(g_FrameMan.GetPlayerScreenHeight()));
-		// Drawn for the inspected unit of that team nearest the view's middle (its sizes, its leaps), or else a soldier's.
+		// Drawn for that team's unit the overlays look through (see GetNavDebugActor: its sizes, its leaps), or else a soldier's.
 		PathAgent agent;
 		agent.StandHeight = 44.0F;
 		agent.CrawlHeight = 24.0F;
