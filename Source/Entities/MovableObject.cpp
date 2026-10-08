@@ -23,9 +23,20 @@
 #include "tracy/Tracy.hpp"
 
 #include <array>
+#include <mutex>
 #include "Texture.h"
 
 using namespace RTE;
+
+namespace {
+	/// Locks for the number values. The AI scripts run on worker threads, one per Lua state, and since AC-2 and AC-7 they read and write the
+	/// values of other units than their own (a medic marks the friend it is going to, and checks a friend falling back to one), so two
+	/// threads could change, or change and read, one unit's map at once and crash. One of a few locks, picked by the object's address.
+	std::array<std::mutex, 64> s_NumberValueLocks;
+	std::mutex& NumberValueLock(const void* object) {
+		return s_NumberValueLocks[(reinterpret_cast<uintptr_t>(object) >> 6) % s_NumberValueLocks.size()];
+	}
+} // namespace
 
 AbstractClassInfo(MovableObject, SceneObject);
 
@@ -314,7 +325,10 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_SimUpdatesSinceLastScriptedUpdate = reference.m_SimUpdatesSinceLastScriptedUpdate;
 
 	m_StringValueMap = reference.m_StringValueMap;
-	m_NumberValueMap = reference.m_NumberValueMap;
+	{
+		std::scoped_lock lock(NumberValueLock(&reference));
+		m_NumberValueMap = reference.m_NumberValueMap;
+	}
 	m_ObjectValueMap = reference.m_ObjectValueMap;
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
@@ -582,7 +596,12 @@ int MovableObject::Save(Writer& writer) const {
 	writer.NewProperty("SimUpdatesBetweenScriptedUpdates");
 	writer << m_SimUpdatesBetweenScriptedUpdates;
 
-	for (const auto& [key, value]: m_NumberValueMap) {
+	std::unordered_map<std::string, double> numberValues;
+	{
+		std::scoped_lock lock(NumberValueLock(this));
+		numberValues = m_NumberValueMap;
+	}
+	for (const auto& [key, value]: numberValues) {
 		writer.ObjectStart("AddCustomValue = NumberValue");
 		writer.NewPropertyWithValue(key, value);
 	}
@@ -1191,6 +1210,7 @@ std::string MovableObject::GetEncodedStringValue(const std::string& key) const {
 }
 
 double MovableObject::GetNumberValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_NumberValueMap.find(key);
 	if (itr == m_NumberValueMap.end()) {
 		return 0.0;
@@ -1217,6 +1237,7 @@ void MovableObject::SetEncodedStringValue(const std::string& key, const std::str
 }
 
 void MovableObject::SetNumberValue(const std::string& key, double value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_NumberValueMap[key] = value;
 }
 
@@ -1229,6 +1250,7 @@ void MovableObject::RemoveStringValue(const std::string& key) {
 }
 
 void MovableObject::RemoveNumberValue(const std::string& key) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_NumberValueMap.erase(key);
 }
 
@@ -1241,6 +1263,7 @@ bool MovableObject::StringValueExists(const std::string& key) const {
 }
 
 bool MovableObject::NumberValueExists(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	return m_NumberValueMap.find(key) != m_NumberValueMap.end();
 }
 

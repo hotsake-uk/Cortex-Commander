@@ -8,7 +8,9 @@ namespace RTE {
 	/// What each team knows of its enemies (AC-2): where each enemy was last seen, by whom and when. A unit that notices an enemy reports it;
 	/// the report reaches the team's other AI units close by, who turn to face it, and stays with the team, so units that lost sight of an
 	/// enemy, or never saw it, know where to look, and the AI team knows where the player's units were last seen.
-	/// Part of the simulation and deterministic: kept per team in order of the enemies' unique IDs, updated on the main thread.
+	/// Part of the simulation and deterministic: kept per team in order of the enemies' unique IDs, updated on the main thread. The AI scripts
+	/// that report sightings run on worker threads, so a report is queued and applied, in a fixed order, at the next Update; the reads only
+	/// happen while the AI runs, when nothing changes the memories.
 	class ThreatMemory {
 
 	public:
@@ -19,7 +21,7 @@ namespace RTE {
 		static void SetEnabled(bool enabled);
 
 		/// Reports that a unit noticed an enemy: the team remembers where, and the team's other AI units close by (within 500 px) are alerted to it,
-		/// unless the team already heard of that enemy within the last second.
+		/// unless the team already heard of that enemy within the last second. Safe from any thread: applied at the next Update.
 		/// @param reporter The unit that noticed it.
 		/// @param enemy The enemy noticed.
 		static void Report(const Actor* reporter, const Actor* enemy);
@@ -49,5 +51,8 @@ namespace RTE {
 
 	private:
 		static bool s_Enabled; //!< Whether units share and remember sightings.
+
+		/// Applies the reports queued since the last Update, on the main thread.
+		static void ApplyReports();
 	};
 } // namespace RTE
