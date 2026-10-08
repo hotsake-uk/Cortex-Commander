@@ -1,6 +1,7 @@
 require("Constants")
 require("AI/HumanBehaviors");
 require("AI/SharedBehaviors");
+require("AI/UnitSpeech");
 
 NativeHumanAI = {};
 
@@ -781,6 +782,8 @@ function NativeHumanAI:Update(Owner)
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);
 	end
 
+	-- What this update changed, said over the unit's head where it's worth a line (unit speech).
+	UnitSpeech.Update(self, Owner, ordered);
 	self.orderSerial = Owner.AIOrderSerial;
 end
 

@@ -24,6 +24,7 @@
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
 #include "TimerMan.h"
+#include "UnitSpeech.h"
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
@@ -691,6 +692,34 @@ void DebugMan::SettingsGUI() {
 		int frameCap = g_WindowMan.GetFrameCap();
 		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
+		}
+		Heading("Unit speech");
+		Toggle("Unit speech", UnitSpeech::IsEnabled(), [](bool on) { UnitSpeech::SetEnabled(on); });
+		Tip("Units say short lines over their heads when their AI does something: \"Take cover!\", \"Reloading!\", \"Got one!\". The lines are in Base.rte/Speech.ini, and mods can add their own.");
+		if (UnitSpeech::IsEnabled()) {
+			int chance = UnitSpeech::GetChance();
+			if (SliderI("Speech chance", &chance, 0, 100, "%d%%")) {
+				UnitSpeech::SetChance(chance);
+			}
+			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
+			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
+			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
+			for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
+				std::string label = "Speech: " + trigger.Name + "##Speech" + trigger.Key;
+				Toggle(label.c_str(), UnitSpeech::IsTriggerOn(trigger.Key), [&trigger](bool on) { UnitSpeech::SetTriggerOn(trigger.Key, on); });
+				std::string example = UnitSpeech::GetExampleLine(UnitSpeech::FindTrigger(trigger.Key));
+				std::string tip = trigger.Description.empty() ? trigger.Name : trigger.Description;
+				if (!example.empty()) {
+					tip += "\nFor example: \"" + example + "\"";
+				}
+				Tip(tip.c_str());
+			}
+			if (Plain() && ToolUI::Button("Reload speech lines")) {
+				UnitSpeech::Reload();
+			}
+			if (Plain()) {
+				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
+			}
 		}
 	};
 
