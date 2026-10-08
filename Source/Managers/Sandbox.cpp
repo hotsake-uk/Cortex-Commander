@@ -157,7 +157,8 @@ namespace {
 		GymRemove,
 		ClearWaterSpawners,
 		ClearEffects, //!< Count: 1 the last one only, else all.
-		UndoTerrain //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
+		UndoTerrain, //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
+		AutoBattle //!< Count: how many sides fight (0 stops a battle under way); Choice: each side's budget; Position and Radius: the view's middle and width.
 	};
 
 	struct ToolInfo {
@@ -361,6 +362,8 @@ namespace {
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
 		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
+		bool Random = false; //!< Drops and auto battles: random units from every faction rather than the one chosen.
+		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
 	};
 
 	struct CraftChoice {
@@ -411,6 +414,15 @@ namespace {
 	int s_AutoWinner = -2; //!< -2 no result yet, -1 a draw, otherwise the winning side.
 	Vector s_AutoCenter;
 	float s_AutoLaneWidth = 0.0F; //!< The view's width when the auto battle began: the lanes the waves land in are spaced by it.
+	bool s_AutoRandom = false; //!< The waves are random units from every faction (or the favourites), not each side's own faction's.
+	bool s_AutoFavourites = false; //!< With s_AutoRandom: only units marked as favourites.
+	// The window's choices for an auto battle and for a random drop (copied into the stroke at the click).
+	int s_AutoSideCount = 2;
+	int s_AutoBudget = 5000;
+	bool s_AutoRandomChoice = true;
+	bool s_AutoFavouritesChoice = false;
+	bool s_DropRandom = false;
+	bool s_DropFavourites = false;
 	std::vector<int> s_FactionModules;
 	std::vector<std::string> s_FactionNames;
 	int s_Radius = 6;
@@ -1969,14 +1981,41 @@ namespace {
 		}
 	}
 
+	int FindFavourite(Tool kind, const std::string& presetName);
+
+	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or only those marked as favourites in
+	/// the unit or drop lists. With no favourite units marked, every faction's, rather than nothing at all.
+	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly) {
+		std::vector<const Preset*> all;
+		std::vector<const Preset*> favourites;
+		for (const Preset& unit: s_Units) {
+			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
+			if (!entity || entity->IsInGroup("Actors - Turrets")) {
+				continue;
+			}
+			all.push_back(&unit);
+			if (favouritesOnly && (FindFavourite(Tool::Unit, unit.PresetName) >= 0 || FindFavourite(Tool::Drop, unit.PresetName) >= 0)) {
+				favourites.push_back(&unit);
+			}
+		}
+		return favourites.empty() ? all : favourites;
+	}
+
+	const Preset* RandomPick(const std::vector<const Preset*>& pool) {
+		return pool.empty() ? nullptr : pool[std::min(pool.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(pool.size())))];
+	}
+
 	void DropSquad(const Stroke& stroke) {
-		const Preset* preset = ChosenPreset(Tool::Unit, stroke.Choice);
-		if (!preset) {
+		// Random: each unit picked on its own from every faction's units, or from the favourites.
+		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly) : std::vector<const Preset*>();
+		const Preset* preset = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.Choice);
+		if (stroke.Random ? pool.empty() : !preset) {
 			return;
 		}
 		std::vector<Actor*> units;
 		for (int i = 0; i < stroke.Count; ++i) {
-			if (Actor* unit = CreateUnit(*preset, stroke.Team, stroke.Loadout, stroke.Orders)) {
+			const Preset* pick = stroke.Random ? RandomPick(pool) : preset;
+			if (Actor* unit = pick ? CreateUnit(*pick, stroke.Team, stroke.Loadout, stroke.Orders) : nullptr) {
 				units.push_back(unit);
 			}
 		}
@@ -2722,7 +2761,21 @@ namespace {
 				continue;
 			}
 			autoSide.NextWave = now + 900;
-			std::vector<const Preset*> choices = FactionUnits(s_FactionModules[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1)]);
+			std::vector<const Preset*> choices;
+			if (s_AutoRandom) {
+				// Random units from every faction (or the favourites): a few dozen of them, picked afresh each wave, are priced and bought
+				// from, not the whole catalogue (each pricing makes the unit and its loadout).
+				choices = RandomUnitPool(s_AutoFavourites);
+				for (size_t i = 0; i < choices.size() && i < 24; ++i) {
+					size_t other = i + std::min(choices.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(choices.size() - i)));
+					std::swap(choices[i], choices[other]);
+				}
+				if (choices.size() > 24) {
+					choices.resize(24);
+				}
+			} else {
+				choices = FactionUnits(s_FactionModules[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1)]);
+			}
 			float left = static_cast<float>(autoSide.Budget) - autoSide.Spent;
 			// What each of the faction's units costs as bought (with its loadout), and the cheapest. The wave's budget is at least the
 			// cheapest unit, and picks are made only from what still fits: a faction whose cheapest unit cost over 900 (heavy mechs, some
@@ -2797,6 +2850,27 @@ namespace {
 				g_ConsoleMan.PrintString("SANDBOX: Auto battle over. " + result);
 			}
 		}
+	}
+
+	/// Starts an auto battle between the active sides, the waves landing in lanes about a middle spaced by a width (the view's, taken when
+	/// it was asked for).
+	void BeginAutoBattle(const Vector& center, float laneWidth) {
+		if (!s_CatalogueBuilt) {
+			BuildCatalogue();
+		}
+		s_AutoCenter = center;
+		s_AutoLaneWidth = laneWidth;
+		long long now = g_TimerMan.GetSimUpdateCount();
+		for (int side = 0; side < c_Sides; ++side) {
+			AutoSide& autoSide = s_AutoSides[side];
+			autoSide.Spent = 0.0F;
+			autoSide.Sent = 0;
+			autoSide.Broke = false;
+			// Staggered, so the first ships don't all arrive at once.
+			autoSide.NextWave = now + side * 60;
+		}
+		s_AutoWinner = -2;
+		s_AutoRunning = true;
 	}
 
 	std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
@@ -2997,6 +3071,20 @@ namespace {
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();
+				break;
+			case Tool::AutoBattle:
+				if (stroke.Count <= 0) {
+					s_AutoRunning = false;
+					s_AutoWinner = -2;
+					break;
+				}
+				for (int side = 0; side < c_Sides; ++side) {
+					s_AutoSides[side].Active = side < stroke.Count;
+					s_AutoSides[side].Budget = std::max(stroke.Choice, 1);
+				}
+				s_AutoRandom = stroke.Random;
+				s_AutoFavourites = stroke.FavouritesOnly;
+				BeginAutoBattle(stroke.Position, static_cast<float>(stroke.Radius));
 				break;
 			case Tool::ClearEffects:
 				if (stroke.Count == 1) {
@@ -3247,6 +3335,8 @@ namespace {
 		}
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
+		stroke.Random = kind == Tool::Drop && s_DropRandom;
+		stroke.FavouritesOnly = s_DropFavourites;
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);
@@ -5247,7 +5337,7 @@ namespace {
 			ImGui::NewLine();
 		} else if (tool.Kind == Tool::Unit || tool.Kind == Tool::Drop) {
 			const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind));
-			start(preset ? preset->PresetName.c_str() : tool.Name);
+			start(tool.Kind == Tool::Drop && s_DropRandom ? (s_DropFavourites ? "Random favourites" : "Random units") : preset ? preset->PresetName.c_str() : tool.Name);
 			ImGui::SetNextItemWidth(field * 0.7F);
 			ImGui::SliderInt("##squad", &s_SquadSize, 1, 10, "Squad of %d");
 			ImGui::SameLine();
@@ -5659,22 +5749,10 @@ void Sandbox::StartAutoBattle() {
 	if (!InGame()) {
 		return;
 	}
-	if (!s_CatalogueBuilt) {
-		BuildCatalogue();
-	}
-	s_AutoCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
-	s_AutoLaneWidth = static_cast<float>(g_FrameMan.GetPlayerScreenWidth());
-	long long now = g_TimerMan.GetSimUpdateCount();
-	for (int side = 0; side < c_Sides; ++side) {
-		AutoSide& autoSide = s_AutoSides[side];
-		autoSide.Spent = 0.0F;
-		autoSide.Sent = 0;
-		autoSide.Broke = false;
-		// Staggered, so the first ships don't all arrive at once.
-		autoSide.NextWave = now + side * 60;
-	}
-	s_AutoWinner = -2;
-	s_AutoRunning = true;
+	// (A script's battle is between the factions it set up for each side.)
+	s_AutoRandom = false;
+	s_AutoFavourites = false;
+	BeginAutoBattle(g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F), static_cast<float>(g_FrameMan.GetPlayerScreenWidth()));
 }
 
 bool Sandbox::SetBuildMode(bool build) {
@@ -6315,6 +6393,13 @@ void Sandbox::DrawGUI() {
 				}
 				if (kind == Tool::Drop) {
 					ImGui::Combo("Craft", &s_Craft, "Dropship\0Rocket\0");
+					ToolUI::Checkbox("Random units", &s_DropRandom);
+					ImGui::SetItemTooltip("Each unit in the craft is picked at random from every faction's units, not the one chosen above.");
+					if (s_DropRandom) {
+						ImGui::SameLine();
+						ToolUI::Checkbox("Favourites only##drop", &s_DropFavourites);
+						ImGui::SetItemTooltip("Picks only from the units marked as favourites (Ctrl+click on a tile). With none marked, from every unit.");
+					}
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
@@ -6399,7 +6484,36 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::TextDisabled("Rally point: pick the tool above and click to place this side's flag.");
 
-				// Auto battles are still there for scripts (SandboxAutoBattleSide, SandboxStartAutoBattle); their controls were taken out of the window.
+				ImGui::SeparatorText("Auto battle");
+				ImGui::TextWrapped("Each side buys waves of units with its budget and drops them in to attack, until one side is left.");
+				ImGui::SliderInt("Sides", &s_AutoSideCount, 2, c_Sides);
+				ImGui::SetItemTooltip("Red and Green, then Blue, then Yellow.");
+				ImGui::SliderInt("Budget per side", &s_AutoBudget, 500, 50000, "%d oz", ImGuiSliderFlags_Logarithmic);
+				ToolUI::Checkbox("Random units", &s_AutoRandomChoice);
+				ImGui::SetItemTooltip("Every wave is random units from every faction. Off, each side buys from a faction of its own.");
+				if (s_AutoRandomChoice) {
+					ImGui::SameLine();
+					ToolUI::Checkbox("Favourites only##auto", &s_AutoFavouritesChoice);
+					ImGui::SetItemTooltip("Picks only from the units marked as favourites (Ctrl+click on a tile). With none marked, from every unit.");
+				}
+				if (ToolUI::Button(s_AutoRunning ? "Start again" : "Start auto battle", ImVec2(s_AutoRunning ? ImGui::GetContentRegionAvail().x * 0.5F : -1.0F, 0.0F))) {
+					Stroke stroke;
+					stroke.Kind = Tool::AutoBattle;
+					stroke.Count = s_AutoSideCount;
+					stroke.Choice = s_AutoBudget;
+					stroke.Random = s_AutoRandomChoice;
+					stroke.FavouritesOnly = s_AutoFavouritesChoice;
+					// (The view's middle and width now, so the sim doesn't read the camera: see S4.)
+					stroke.Position = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
+					stroke.Radius = g_FrameMan.GetPlayerScreenWidth();
+					s_Queue.push_back(stroke);
+				}
+				if (s_AutoRunning) {
+					ImGui::SameLine();
+					if (ToolUI::Button("Stop", ImVec2(-1.0F, 0.0F))) {
+						QueueSimChange(Tool::AutoBattle, 0);
+					}
+				}
 				ImGui::EndTabItem();
 			}
 			if (IsGodMode() && ImGui::BeginTabItem("Gym", nullptr, TestTab("Gym"))) {
