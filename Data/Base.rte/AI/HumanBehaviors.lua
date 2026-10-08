@@ -1749,11 +1749,16 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 end
 
 -- Shot from somewhere it can't see (AC-10): the hit's alarm point, a body's height back along the shot (Actor::ParticlePenetration), says
--- which way the shooter is. The unit gets out of the line into cover on that side (low cover if there is some, crouched on the way), looking
+-- which way the shooter is. The unit gets out of the line into cover on that side (full cover if there is some, else low, crouched on the way), looking
 -- that way as it goes, and once there aims along it for a while (PinArea); NativeHumanAI's hit-flank waits until it has got there. A unit
 -- with a target is the shooting rules' business, and one that can't find cover just faces the shot (FaceAlarm) as before. @param AlarmPoint
 -- The alarm point when the unit was hit this tick, else nil.
 function HumanBehaviors.ShotFromUnseen(AI, Owner, AlarmPoint)
+	-- (Not a unit on a move order or an aggressive one: "get there; don't stop for it". It faces the shot, FaceAlarm, as before.)
+	if Owner.aggressive or SharedBehaviors.OrderKind(Owner) == "move" then
+		AI.ShotFrom = nil;
+		return;
+	end
 	if AlarmPoint and AlarmPoint.Largest > 0 and not AI.Target then
 		local Dir = SceneMan:ShortestDistance(Owner.Pos, AlarmPoint, false);
 		if Dir.Largest > 0 then
