@@ -119,16 +119,8 @@ namespace RTE {
 #pragma endregion
 
 #pragma region Concrete Methods
-		/// Takes the current state of the 8bpp back-buffer, copies it, and adds post-processing effects on top like glows etc.
+		/// Takes the current state of the 8bpp back-buffer and copies it to the 32bpp post-processing buffer, and steps the palette animation. Glows are drawn by the scene lighting.
 		void PostProcess();
-
-		/// Adjusts the offsets of all effects relative to the specified player screen and adds them to the total screen effects list so they can be drawn in PostProcess().
-		/// @param playerScreen Player screen to adjust effect offsets for.
-		/// @param targetBitmap Bitmap representing the player screen.
-		/// @param targetBitmapOffset The position of the specified player's draw screen on the backbuffer.
-		/// @param screenRelativeEffectsList List of the specified player's accumulated post effects for this frame.
-		/// @param screenRelativeGlowBoxesList List of the specified player's accumulated glow boxes for this frame.
-		void AdjustEffectsPosToPlayerScreen(int playerScreen, BITMAP* targetBitmap, const Vector& targetBitmapOffset, std::list<PostEffect>& screenRelativeEffectsList, std::list<Box>& screenRelativeGlowBoxesList);
 #pragma endregion
 
 #pragma region Post Effect Handling
@@ -454,14 +446,6 @@ namespace RTE {
 		/// @param which Which of the dot glow colors to get, see the DotGlowColor enumerator.
 		/// @return The hash value of the requested glow dot BITMAP.
 		size_t GetDotGlowEffectHash(DotGlowColor whichColor) const;
-#pragma endregion
-
-#pragma region PostProcess Breakdown
-		/// Draws all the glow dot effects on pixels registered inside glow boxes for this frame. This is called from PostProcess().
-		void DrawDotGlowEffects();
-
-		/// Draws all the glow effects registered for this frame. This is called from PostProcess().
-		void DrawPostScreenEffects();
 #pragma endregion
 
 		/// Clears all the member variables of this PostProcessMan, effectively resetting the members of this abstraction level only.
