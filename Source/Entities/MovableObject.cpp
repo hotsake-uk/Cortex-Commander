@@ -94,6 +94,7 @@ void MovableObject::Clear() {
 	m_ThreadedLuaState = nullptr;
 	m_ForceIntoMasterLuaState = g_SettingsMan.EnableLuaDebugging();
 	m_ScriptObjectName.clear();
+	m_ScriptObjectKey.clear();
 	m_ScreenEffectFile.Reset();
 	m_pScreenEffect = 0;
 	m_EffectRotAngle = 0;
@@ -604,6 +605,7 @@ void MovableObject::DestroyScriptState() {
 			RunScriptedFunctionInAppropriateScripts("Destroy");
 			m_ThreadedLuaState->RunScriptString(m_ScriptObjectName + " = nil;");
 			m_ScriptObjectName.clear();
+			m_ScriptObjectKey.clear();
 		}
 
 		m_ThreadedLuaState->UnregisterMO(this);
@@ -706,7 +708,8 @@ int MovableObject::ReloadScripts() {
 
 int MovableObject::InitializeObjectScripts() {
 	std::lock_guard<std::recursive_mutex> lock(m_ThreadedLuaState->GetMutex());
-	m_ScriptObjectName = "_ScriptedObjects[\"" + std::to_string(m_UniqueID) + "\"]";
+	m_ScriptObjectKey = std::to_string(m_UniqueID);
+	m_ScriptObjectName = "_ScriptedObjects[\"" + m_ScriptObjectKey + "\"]";
 	m_ThreadedLuaState->RegisterMO(this);
 	m_ThreadedLuaState->SetTempEntity(this);
 	if (m_ThreadedLuaState->RunScriptString("_ScriptedObjects = _ScriptedObjects or {}; " + m_ScriptObjectName + " = To" + GetClassName() + "(LuaMan.TempEntity); ") < 0) {
@@ -775,7 +778,7 @@ int MovableObject::RunScriptedFunctionInAppropriateScripts(const std::string& fu
 			if (runOnDisabledScripts || luaFunction.m_ScriptIsEnabled) {
 				LuaStateWrapper& usedState = GetAndLockStateForScript(luabindObjectWrapper->GetFilePath(), &luaFunction);
 				std::lock_guard<std::recursive_mutex> lock(usedState.GetMutex(), std::adopt_lock);
-				status = usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", std::to_string(m_UniqueID), functionEntityArguments, functionLiteralArguments, functionObjectArguments);
+				status = usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", m_ScriptObjectKey, functionEntityArguments, functionLiteralArguments, functionObjectArguments);
 				if (status < 0 && stopOnError) {
 					return status;
 				}
@@ -795,7 +798,7 @@ int MovableObject::RunFunctionOfScript(const std::string& scriptPath, const std:
 
 	for (const LuaFunction& luaFunction: m_FunctionsAndScripts.at(functionName)) {
 		const LuabindObjectWrapper* luabindObjectWrapper = luaFunction.m_LuaFunction.get();
-		if (scriptPath == luabindObjectWrapper->GetFilePath() && usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", std::to_string(m_UniqueID), functionEntityArguments, functionLiteralArguments) < 0) {
+		if (scriptPath == luabindObjectWrapper->GetFilePath() && usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", m_ScriptObjectKey, functionEntityArguments, functionLiteralArguments) < 0) {
 			g_ConsoleMan.PrintString("ERROR: An error occured while trying to run the " + functionName + " function for script at path " + scriptPath);
 			return -2;
 		}

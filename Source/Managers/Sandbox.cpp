@@ -1150,6 +1150,7 @@ void Sandbox::Update() {
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
+	ClosePaintUndoStep(false);
 	UpdatePlans();
 	UpdatePace();
 	UpdateMoveWatch();
