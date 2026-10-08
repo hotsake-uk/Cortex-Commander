@@ -8,9 +8,11 @@
 #include "SettingsMan.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -29,6 +31,16 @@ namespace {
 	const ImU32 c_KindColors[] = {IM_COL32(80, 220, 90, 230), IM_COL32(240, 210, 60, 230), IM_COL32(120, 170, 255, 230), IM_COL32(170, 170, 170, 230), IM_COL32(200, 130, 70, 230), IM_COL32(255, 120, 200, 230), IM_COL32(220, 80, 220, 230), IM_COL32(255, 150, 40, 230), IM_COL32(140, 255, 200, 230)};
 
 	int KindIndex(PathStepKind kind) { return std::clamp(static_cast<int>(kind), 0, static_cast<int>(std::size(c_KindNames)) - 1); }
+
+	/// Path grid updates kept for the terrain update boxes overlay, with when they happened.
+	struct TerrainUpdate {
+		std::vector<Box> Areas;
+		std::vector<Vector> Nodes;
+		std::chrono::steady_clock::time_point At;
+	};
+	std::deque<TerrainUpdate> s_TerrainUpdates;
+	std::mutex s_TerrainUpdatesMutex;
+	constexpr double c_TerrainUpdateShownMS = 1000.0;
 
 	/// A colour with its opacity scaled.
 	ImU32 Faded(ImU32 color, float share) {
@@ -280,5 +292,42 @@ void DebugOverlays::DrawRecentSolves() {
 			drawList->AddLine(DebugDraw::ToScreen(solve.Start), goal, Faded(statusColor, share * 0.4F), thick);
 		}
 		drawList->AddText(ImVec2(goal.x + 7.0F, goal.y - ImGui::GetTextLineHeight()), Faded(statusColor, share), text);
+	}
+}
+
+void DebugOverlays::NoteTerrainUpdate(const std::deque<Box>& areas, const std::vector<Vector>& nodes) {
+	auto now = std::chrono::steady_clock::now();
+	std::lock_guard<std::mutex> lock(s_TerrainUpdatesMutex);
+	s_TerrainUpdates.push_back({std::vector<Box>(areas.begin(), areas.end()), nodes, now});
+	// (A second's worth at most, and a bound on it for a scene being torn apart every frame.)
+	while (!s_TerrainUpdates.empty() && (s_TerrainUpdates.size() > 120 || std::chrono::duration<double, std::milli>(now - s_TerrainUpdates.front().At).count() > c_TerrainUpdateShownMS)) {
+		s_TerrainUpdates.pop_front();
+	}
+}
+
+void DebugOverlays::DrawTerrainUpdates() {
+	std::lock_guard<std::mutex> lock(s_TerrainUpdatesMutex);
+	if (!g_SettingsMan.ShowTerrainUpdates()) {
+		s_TerrainUpdates.clear();
+		return;
+	}
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float perPixel = DebugDraw::ScenePixelsPerWindowPixel();
+	auto now = std::chrono::steady_clock::now();
+	for (const TerrainUpdate& update: s_TerrainUpdates) {
+		float age = static_cast<float>(std::chrono::duration<double, std::milli>(now - update.At).count() / c_TerrainUpdateShownMS);
+		if (age >= 1.0F) {
+			continue;
+		}
+		float share = 1.0F - age;
+		for (const Box& area: update.Areas) {
+			ImVec2 corner = DebugDraw::ToScreen(area.GetCorner());
+			ImVec2 farCorner(corner.x + area.GetWidth() / perPixel, corner.y + area.GetHeight() / perPixel);
+			drawList->AddRect(corner, farCorner, Faded(IM_COL32(255, 150, 40, 230), share));
+		}
+		for (const Vector& node: update.Nodes) {
+			ImVec2 at = DebugDraw::ToScreen(node);
+			drawList->AddRectFilled(ImVec2(at.x - 1.5F, at.y - 1.5F), ImVec2(at.x + 1.5F, at.y + 1.5F), Faded(IM_COL32(240, 60, 50, 230), share));
+		}
 	}
 }
