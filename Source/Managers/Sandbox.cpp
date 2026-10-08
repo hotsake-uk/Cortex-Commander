@@ -2892,11 +2892,8 @@ namespace {
 				break;
 			}
 		}
-		// The order's name, from the null-separated list the order combo shows.
-		const char* orderName = c_OrderNames;
-		for (int i = 0; i < static_cast<int>(stroke.Orders) && *orderName; ++i) {
-			orderName += std::strlen(orderName) + 1;
-		}
+		int order = static_cast<int>(stroke.Orders);
+		const char* orderName = order >= 0 && order < c_OrderCount ? c_Orders[order].Name : "";
 		char line[256];
 		std::snprintf(line, sizeof(line), "#%lld %s at %d,%d r%d, %s, %s, choice %d x%d", g_TimerMan.GetSimUpdateCount(), toolName, stroke.Position.GetFloorIntX(), stroke.Position.GetFloorIntY(), stroke.Radius,
 		              stroke.Team >= 0 && stroke.Team < c_Sides ? c_SideNames[stroke.Team] : "no side", *orderName ? orderName : "?", stroke.Choice, stroke.Count);
