@@ -37,6 +37,7 @@ void ConsoleMan::Clear() {
 	m_InputTextBox = nullptr;
 	m_ConsoleTextMaxNumLines = 10;
 	m_OutputLog.clear();
+	m_DroppedOutputLines = 0;
 	m_InputLog.clear();
 	m_InputLogPosition = m_InputLog.begin();
 	m_LastInputString.clear();
@@ -202,6 +203,7 @@ void ConsoleMan::ClearLog() {
 	m_InputLog.clear();
 	m_InputLogPosition = m_InputLog.begin();
 	m_OutputLog.clear();
+	m_DroppedOutputLines = 0;
 }
 
 void ConsoleMan::PrintString(const std::string& stringToPrint) {
@@ -209,6 +211,17 @@ void ConsoleMan::PrintString(const std::string& stringToPrint) {
 	std::scoped_lock<std::mutex> printStringLock(printStringMutex);
 
 	m_OutputLog.emplace_back("\n" + stringToPrint);
+	// The log is capped: a script that errors every update, or the Path debug channel, added tens to hundreds of MB an hour, all kept until exit
+	// (and written into a crash dump). The first lines (start-up) are always kept, then a line counting what was dropped, then the latest.
+	// CCCP_CONSOLE_LOG below still gets every line.
+	if (m_OutputLog.size() > c_MaxOutputLines) {
+		if (m_DroppedOutputLines == 0) {
+			m_OutputLog.insert(m_OutputLog.begin() + c_KeptFirstOutputLines, std::string());
+		}
+		m_OutputLog.erase(m_OutputLog.begin() + c_KeptFirstOutputLines + 1);
+		++m_DroppedOutputLines;
+		m_OutputLog[c_KeptFirstOutputLines] = "\n... " + std::to_string(m_DroppedOutputLines) + " older lines dropped (the console keeps the first " + std::to_string(c_KeptFirstOutputLines) + " and the latest) ...";
+	}
 	// With CCCP_CONSOLE_LOG set to a file name, every line also goes straight to that file, so script errors can be read while the game runs or after it's been killed.
 	static const char* liveLogPath = std::getenv("CCCP_CONSOLE_LOG");
 	if (liveLogPath) {
