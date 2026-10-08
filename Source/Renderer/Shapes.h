@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include "Vertex.h"
+#include "Rectangles.h"
 
 namespace RTE {
 	class DrawCall;
