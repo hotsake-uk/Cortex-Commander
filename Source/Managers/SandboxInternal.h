@@ -755,6 +755,8 @@ namespace SandboxDetail {
 		FireJet,
 		HeatShimmer,
 		ShockwavePulse,
+		FogBank,
+		DustCloud,
 		Count
 	};
 
@@ -789,6 +791,8 @@ namespace SandboxDetail {
 	    {"Fire jet", "A jet of flame. This one is real fire: it burns."},
 	    {"Heat shimmer", "The air shimmering, as over something hot. No light."},
 	    {"Shockwave pulse", "A blast wave rippling out every second and a half. No blast."},
+	    {"Fog bank", "A bank of mist hanging in the air, drifting with the wind and lit by the sky and lamps. Needs lighting on and Mist and dust above 0 (F6, Sky & daylight)."},
+	    {"Dust cloud", "Dust hanging in the air like the fog bank, with dust blowing through it."},
 	};
 
 	struct PlacedEffect {

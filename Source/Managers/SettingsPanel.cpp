@@ -11,7 +11,9 @@
 #include "FluidSim.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
+#include "PerformanceMan.h"
 #include "PostProcessMan.h"
+#include "RenderMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
 #include "Sandbox.h"
@@ -222,6 +224,157 @@ namespace {
 		if (!s_PresetMessage.empty()) {
 			ImGui::TextDisabled("%s", s_PresetMessage.c_str());
 		}
+	}
+
+	/// The frame profiler (UI-8): the performance log CCCP_PERF_LOG starts, started and stopped here, and its last five-second block as a tree,
+	/// its entries grouped by the part of the game before their colon.
+	void FrameProfiler() {
+		Heading("Frame profiler");
+		if (!Plain()) {
+			return;
+		}
+		static bool waitForGPU = false;
+		if (!PerformanceMan::IsLogging()) {
+			if (ToolUI::Button("Start profiler")) {
+				PerformanceMan::StartLog("LogPerformance.txt", waitForGPU);
+			}
+			ImGui::SetItemTooltip("Times about 64 parts of each frame and update (the sim's managers, the light grid, every lighting pass) and every five seconds writes their averages to LogPerformance.txt, and shows them below. The same log the CCCP_PERF_LOG environment variable starts.");
+			ImGui::SameLine();
+			ToolUI::Checkbox("Include GPU time", &waitForGPU);
+			ImGui::SetItemTooltip("The lighting passes wait for the GPU to finish, so their times include what their drawing costs there. That slows the game down, so the frame rate while it's on isn't the real one.");
+		} else {
+			if (ToolUI::Button("Stop profiler")) {
+				PerformanceMan::StopLog();
+			}
+			ImGui::SameLine();
+			ImGui::TextDisabled("Writing %s%s", PerformanceMan::GetLogPath().c_str(), PerformanceMan::IsLoggingGPU() ? " with GPU time" : "");
+		}
+		const PerformanceMan::LogBlock& block = PerformanceMan::GetLastLogBlock();
+		if (block.Zones.empty()) {
+			if (PerformanceMan::IsLogging()) {
+				ImGui::TextDisabled("The first five seconds' averages show here when they're written.");
+			}
+			return;
+		}
+		ImGui::Text("At %.0f s: %.1f frames a second, worst frame %.1f ms, %d over 16.7 ms, %d over 33 ms, %.1f sim updates a second", block.Seconds, block.FramesPerSecond, block.WorstFrameMs, block.SlowFrames, block.VerySlowFrames, block.UpdatesPerSecond);
+		// Grouped by the part before the colon ("Sim", "Lighting", "Light grid"...), the groups by their biggest entry's share. (Not summed:
+		// some entries hold others, "Sim: total" all of the sim's.)
+		struct Group {
+			std::string Name;
+			double Share = 0;
+			std::vector<const PerformanceMan::LogZone*> Zones;
+		};
+		std::vector<Group> groups;
+		std::vector<const PerformanceMan::LogZone*> counts;
+		for (const PerformanceMan::LogZone& zone: block.Zones) {
+			if (zone.IsCount) {
+				counts.push_back(&zone);
+				continue;
+			}
+			size_t colon = zone.Name.find(':');
+			std::string groupName = colon == std::string::npos ? "Other" : zone.Name.substr(0, colon);
+			auto group = std::find_if(groups.begin(), groups.end(), [&groupName](const Group& candidate) { return candidate.Name == groupName; });
+			if (group == groups.end()) {
+				groups.push_back({groupName});
+				group = groups.end() - 1;
+			}
+			group->Share = std::max(group->Share, zone.Share);
+			group->Zones.push_back(&zone);
+		}
+		std::sort(groups.begin(), groups.end(), [](const Group& left, const Group& right) { return left.Share > right.Share; });
+		const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
+		for (const Group& group: groups) {
+			std::string label = group.Name + " (" + std::to_string(group.Zones.size()) + ")##Profiler" + group.Name;
+			if (!ImGui::TreeNode(label.c_str())) {
+				continue;
+			}
+			if (ImGui::BeginTable("##Zones", 5, flags)) {
+				ImGui::TableSetupColumn("Part");
+				ImGui::TableSetupColumn("Share");
+				ImGui::TableSetupColumn("ms/frame");
+				ImGui::TableSetupColumn("Worst ms");
+				ImGui::TableSetupColumn("Calls");
+				ImGui::TableHeadersRow();
+				for (const PerformanceMan::LogZone* zone: group.Zones) {
+					size_t colon = zone->Name.find(':');
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::TextUnformatted(colon == std::string::npos ? zone->Name.c_str() : zone->Name.c_str() + std::min(colon + 2, zone->Name.size()));
+					ImGui::TableNextColumn();
+					ImGui::Text("%.1f%%", zone->Share);
+					ImGui::TableNextColumn();
+					ImGui::Text("%.3f", zone->MsPerFrame);
+					ImGui::TableNextColumn();
+					ImGui::Text("%.2f", zone->Worst);
+					ImGui::TableNextColumn();
+					ImGui::Text("%llu", static_cast<unsigned long long>(zone->Calls));
+				}
+				ImGui::EndTable();
+			}
+			ImGui::TreePop();
+		}
+		for (const PerformanceMan::LogZone* count: counts) {
+			ImGui::Text("%s: average %.1f, highest %.0f", count->Name.c_str() + 1, count->Average, count->Worst);
+		}
+	}
+
+	/// The texture viewer (UI-41, UI-42): one of the maps the lighting keeps (SceneLighting::GetDebugTextures), drawn as it is.
+	/// @param choice Which map, -1 for none.
+	void DebugTextureViewer(int& choice) {
+		SceneLighting* lighting = g_ActivityMan.IsInActivity() ? g_PostProcessMan.GetSceneLighting() : nullptr;
+		std::vector<SceneLighting::DebugTexture> textures;
+		if (lighting) {
+			textures = lighting->GetDebugTextures();
+		}
+		std::string items = "None";
+		items.push_back('\0');
+		for (const SceneLighting::DebugTexture& texture: textures) {
+			items += texture.Name;
+			items.push_back('\0');
+		}
+		int shown = choice + 1;
+		if (Combo("Lighting map viewer", &shown, items.c_str())) {
+			choice = shown - 1;
+		}
+		Tip("Shows one of the maps the lighting keeps, as it is: the terrain distance field light shadows are traced through, the glow (emissive) map, the mist and dust in the air, how wet the ground is, soot and stains, the lamp cache and the sky light. Single-channel maps show in red. Not saved.");
+		if (choice < 0 || choice >= static_cast<int>(textures.size()) || !Plain()) {
+			return;
+		}
+		const SceneLighting::DebugTexture& texture = textures[choice];
+		ImGui::TextWrapped("%s", texture.Tip);
+		if (texture.Texture == 0 || texture.Width <= 0 || texture.Height <= 0) {
+			ImGui::TextDisabled("Not made: the setting it belongs to is off, or nothing has needed it yet.");
+			return;
+		}
+		static bool flip = true;
+		ToolUI::Checkbox("Flip upside down", &flip);
+		ImGui::SameLine();
+		ImGui::TextDisabled("%d x %d", texture.Width, texture.Height);
+		float width = ImGui::GetContentRegionAvail().x;
+		float height = width * static_cast<float>(texture.Height) / static_cast<float>(texture.Width);
+		ImGui::Image(static_cast<ImTextureID>(texture.Texture), ImVec2(width, std::min(height, width * 2.0F)), ImVec2(0.0F, flip ? 1.0F : 0.0F), ImVec2(1.0F, flip ? 0.0F : 1.0F));
+	}
+
+	/// The palette viewer (UI-44): the 256 colours as the palette texture holds them this frame, animation included.
+	void PaletteViewer() {
+		GLuint palette = g_RenderMan.GetPaletteTexture();
+		float cell = std::floor(std::max(8.0F, (ImGui::GetContentRegionAvail().x - 16.0F * ImGui::GetStyle().ItemSpacing.x * 0.25F) / 16.0F));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(1.0F, 1.0F));
+		for (int index = 0; index < 256; ++index) {
+			if (index % 16 != 0) {
+				ImGui::SameLine();
+			}
+			float u = (static_cast<float>(index) + 0.5F) / 256.0F;
+			ImGui::Image(static_cast<ImTextureID>(palette), ImVec2(cell - 1.0F, cell - 1.0F), ImVec2(u, 0.0F), ImVec2(u, 1.0F));
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("Colour %d", index);
+			}
+		}
+		ImGui::PopStyleVar();
+		if (ToolUI::Button("Reload PaletteAnimation.ini")) {
+			g_PostProcessMan.ReloadPaletteAnimation();
+		}
+		ImGui::SetItemTooltip("Reads Base.rte/PaletteAnimation.ini again, for trying out pulses and cycles without restarting. Pulses and cycles scripts asked for stop too; glowing liquids keep theirs.");
 	}
 } // namespace
 
@@ -730,20 +883,6 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("The dotted yellow line from a unit to where it's been told to go, with each node marked. Never: only the unit you're controlling shows its path. Selected: the units picked with the sandbox's command tool.");
 		}
-		{
-			int nav = g_SettingsMan.NavDebugOverlay();
-			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
-				g_SettingsMan.SetNavDebugOverlay(nav);
-			}
-			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); light green where it must crouch; cyan lines for low obstacles it steps over, magenta for stairs and the steeper scrambles, pale green arcs for leaps; orange ticks on ladders and purple dots in shafts and hatches. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
-		}
-		{
-			int team = g_SettingsMan.DebugTeam();
-			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
-				g_SettingsMan.SetDebugTeam(team);
-			}
-			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
-		}
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
@@ -808,9 +947,27 @@ void DebugMan::SettingsGUI() {
 			}
 		}
 		Check("Performance statistics", &m_ShowPerformanceMan);
+		Check("Material under the pointer", &m_ShowMaterialUnderPointer);
+		Tip("Beside the pointer: the terrain material there, its kind (solid, liquid, powder, scrap), and what its behaviour sets of how it flows, burns, puts fire out, freezes, melts, boils, settles or dries, chills, evaporates, hurts what's in it, its liquid look and glow, stains and reactions. What it leaves unset follows the stock rules and isn't listed. Not saved.");
+		FrameProfiler();
+		Heading("Physics debug drawing");
+		Toggle("Atom groups", g_SettingsMan.DrawAtomGroupVisualizations(), [](bool on) { g_SettingsMan.SetDrawAtomGroupVisualizations(on); });
+		Tip("Each object's collision atoms, the points it touches the world with. Saved as DrawAtomGroupVisualizations.");
+		Toggle("Hands and feet", g_SettingsMan.DrawHandAndFootGroupVisualizations(), [](bool on) { g_SettingsMan.SetDrawHandAndFootGroupVisualizations(on); });
+		Tip("Units' hand and foot atom groups. Saved as DrawHandAndFootGroupVisualizations.");
+		Toggle("Limb paths", g_SettingsMan.DrawLimbPathVisualizations(), [](bool on) { g_SettingsMan.SetDrawLimbPathVisualizations(on); });
+		Tip("The paths units' arms and legs follow as they walk, crawl and climb. Saved as DrawLimbPathVisualizations.");
+		Toggle("Ray casts", g_SceneMan.DrawRayCastVisualizations(), [](bool on) { g_SceneMan.SetDrawRayCastVisualizations(on); });
+		Tip("Every ray the game casts through the scene, drawn where it went. Shows from the next scene loaded. Saved as DrawRaycastVisualizations.");
+		Toggle("Pixel checks", g_SceneMan.DrawPixelCheckVisualizations(), [](bool on) { g_SceneMan.SetDrawPixelCheckVisualizations(on); });
+		Tip("Every pixel the game looks up for its material or the object on it. Shows from the next scene loaded. Saved as DrawPixelCheckVisualizations.");
+		Check("No-gravity areas", &m_DrawNoGravBoxes);
+		Tip("The scene's NoGravityArea boxes in red. Not saved.");
+		Check("Background tiling", &m_DrawTilingBounds);
+		Tip("Where each repeating background layer's copies start (yellow) and where the area it must cover ends (red). Not saved.");
 		Check("Actor debug drawing", &m_ShowActorDebugGui);
 		Toggle("Terrain update boxes", g_SettingsMan.ShowTerrainUpdates(), [](bool on) { g_SettingsMan.SetShowTerrainUpdates(on); });
-		Tip("Where the terrain changed and the path grid has yet to catch up: the waiting areas in orange and the grid nodes re-sampled for them in red, each fading over a second. Not saved.");
+		Tip("Where the terrain changed and the path grid has yet to catch up: the waiting areas in orange and the grid nodes re-sampled for them in red, each fading over a second, and in the top left how many grid nodes are still waiting their turn. Not saved.");
 		Check("Draw camera bounds", &m_DrawCameraBounds);
 		Tip("Each player's view as an outline in its own colour (the inner one is yours), a cross where its camera is heading with a line from the middle of the view, its offset, target and how much of it the HUD covers, and the scene's edges in red where the scene doesn't wrap. Not saved.");
 		Check("Draw sprite frustum tests", &m_DrawSpriteBounds);
@@ -849,6 +1006,20 @@ void DebugMan::SettingsGUI() {
 			BitmapTexture::GetAtlasStats(atlasPages, atlasTextures);
 			ImGui::Text("Sprite atlas: %d sprites on %d pages", atlasTextures, atlasPages);
 		}
+		if (!m_StartupReport.empty() && ImGui::TreeNode("Start-up")) {
+			for (const std::string& line: m_StartupReport) {
+				ImGui::TextUnformatted(line.c_str());
+			}
+			if (ToolUI::Button("Copy")) {
+				std::string report;
+				for (const std::string& line: m_StartupReport) {
+					report += line + "\n";
+				}
+				ImGui::SetClipboardText(report.c_str());
+			}
+			ImGui::SetItemTooltip("The start-up timing report, as it went to the console, to the clipboard.");
+			ImGui::TreePop();
+		}
 		ImGui::SeparatorText("These windows");
 		DrawToolWindowControls();
 		FreeCamGUI();
@@ -856,6 +1027,20 @@ void DebugMan::SettingsGUI() {
 
 	// What the AI is thinking, drawn over the game: each overlay keys off the units being inspected (Ctrl+I over a unit, units selected in the sandbox, the one you control).
 	auto aiDebug = [&]() {
+		{
+			int nav = g_SettingsMan.NavDebugOverlay();
+			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
+				g_SettingsMan.SetNavDebugOverlay(nav);
+			}
+			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); light green where it must crouch; cyan lines for low obstacles it steps over, magenta for stairs and the steeper scrambles, pale green arcs for leaps; orange ticks on ladders and purple dots in shafts and hatches. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
+		}
+		{
+			int team = g_SettingsMan.DebugTeam();
+			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
+				g_SettingsMan.SetDebugTeam(team);
+			}
+			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
+		}
 		{
 			int inspector = g_SettingsMan.UnitInspector();
 			if (Combo("Unit inspector", &inspector, "Off\0Inspected units\0Every unit in view\0")) {
@@ -871,7 +1056,7 @@ void DebugMan::SettingsGUI() {
 			Tip("A line from each unit to its target, green while it can see it and grey while it only remembers where it was; the range it holds to as a ring; and the cover (cyan, with why it went there), flank (orange) and retreat (red, shaken or hurt) spots it's heading for, each with how long it's been at it. Under each unit, how pinned down it is (orange) and its morale (green, red once shaken), tagged \"pinned\" or \"shaken\"; a dashed line to the enemy an attack order picked for it.");
 		}
 		Toggle("Recent path solves", g_SettingsMan.ShowRecentSolves(), [](bool on) { g_SettingsMan.SetShowRecentSolves(on); });
-		Tip("The last eight routes the pathfinder found for the team the debug overlays show (Game & HUD), newest brightest: each step coloured by its kind with its cost, and at the goal whether it was solved, its total cost and how long the search took. Not saved; costs a little time per search while it's on.");
+		Tip("The last eight routes the pathfinder found for the team the debug overlays show (above), newest brightest: each step coloured by its kind with its cost, and at the goal whether it was solved, its total cost and how long the search took. Not saved; costs a little time per search while it's on.");
 		Toggle("Squad links and trails", g_SettingsMan.ShowSquadLinks(), [](bool on) { g_SettingsMan.SetShowSquadLinks(on); });
 		Tip("For inspected units in a squad: a green line from the leader to each follower, the leader's trail (yellow) that followers measure back along, and each follower's place in line as a white ring with its slot number.");
 		Toggle("Order labels", g_SettingsMan.ShowOrderLabels(), [](bool on) { g_SettingsMan.SetShowOrderLabels(on); });
@@ -881,7 +1066,7 @@ void DebugMan::SettingsGUI() {
 	// How the picture is lit, drawn over the game.
 	auto renderDebug = [&]() {
 		Toggle("Light sources", g_SettingsMan.ShowLightSources(), [](bool on) { g_SettingsMan.SetShowLightSources(on); });
-		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey), and counts by kind with the summed reach squared, about what the light pass costs.");
+		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey), and counts by kind with the summed reach squared, about what the light pass costs. The steady scenery lamps the lamp cache draws aren't in those counts, so the cache's own lamp count follows them.");
 		Toggle("Lights by source", g_SettingsMan.ShowLightsBySource(), [](bool on) { g_SettingsMan.SetShowLightsBySource(on); });
 		Tip("A readout in the bottom left: the lights registered for the frame about to be drawn, counted by what registered them (objects, hot spots, headlamps, tracers, scenery lamps, fire, sandbox effects, scripts), cone lights apart, and how many sim updates ran since the last drawn frame.");
 		Toggle("Sun direction and shadow strength", g_SettingsMan.ShowSunDirection(), [](bool on) { g_SettingsMan.SetShowSunDirection(on); });
@@ -892,6 +1077,12 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetWorldSimOverlay(world);
 			}
 			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
+		}
+		DebugTextureViewer(m_DebugTexture);
+		Check("Palette viewer", &m_ShowPaletteViewer);
+		Tip("The game's 256 colours as they are drawn this frame, pulses and cycles included (SH-3), each with its index. With a button to read Base.rte/PaletteAnimation.ini again.");
+		if (m_ShowPaletteViewer && Plain()) {
+			PaletteViewer();
 		}
 	};
 

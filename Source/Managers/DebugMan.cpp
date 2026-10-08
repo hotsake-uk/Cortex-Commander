@@ -283,6 +283,13 @@ void DebugMan::DrawToolWindowControls() {
 	}
 }
 
+void DebugMan::OnActivityStarted() {
+	// (UpdateFreeze lets go of the pause it holds on its next call.)
+	m_FreezeSim = false;
+	m_FreezeStepsWanted = 0;
+	g_TimerMan.SetTimeScale(1.0F);
+}
+
 void DebugMan::UpdateFreeze() {
 	if (m_FreezeSim && g_ActivityMan.IsInActivity()) {
 		g_TimerMan.PauseSim(true);
@@ -331,6 +338,7 @@ void DebugMan::DrawOverlays() {
 	DebugOverlays::DrawLightSources();
 	DebugOverlays::DrawSunDirection();
 	DebugOverlays::DrawWorldSim();
+	DebugOverlays::DrawMaterialUnderPointer();
 	Sandbox::DrawOrderLabels();
 	Sandbox::DrawDebug();
 	DebugOverlays::DrawCameraBounds();
@@ -581,6 +589,21 @@ void DebugMan::PhotoModeGUI() {
 		}
 		g_SceneMan.WrapPosition(m_PhotoCameraCenter);
 		g_CameraMan.SetScrollTarget(m_PhotoCameraCenter, 1.0F, 0);
+
+		// Click to focus: Ctrl + left click on the picture puts tilt-shift's sharp band at that height, and depth of field's focus on the
+		// battlefield where there is terrain or an object under the pointer, on the far background where there's only sky and backdrop.
+		if (!io.WantCaptureMouse && io.KeyCtrl && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			LightingSettings& focusSettings = g_PostProcessMan.GetLightingSettings();
+			GameViewRect view = g_WindowMan.GetGameViewRect();
+			if (view.h > 0.0F) {
+				focusSettings.TiltShiftLine = std::clamp((io.MousePos.y - view.y) / view.h, 0.0F, 1.0F);
+			}
+			Vector pointer = DebugDraw::MouseScenePosition();
+			int x = static_cast<int>(std::floor(pointer.m_X));
+			int y = static_cast<int>(std::floor(pointer.m_Y));
+			bool onBattlefield = g_SceneMan.GetTerrMatter(x, y) != g_MaterialAir || g_SceneMan.GetMOIDPixel(x, y) != g_NoMOID;
+			focusSettings.DepthOfFieldFocus = onBattlefield ? 0.0F : 1.0F;
+		}
 	}
 
 	ImGui::SetNextWindowSize(ImVec2(330.0F, 0.0F), ImGuiCond_FirstUseEver);
@@ -594,6 +617,7 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::SameLine();
 			ToolUI::Checkbox("Hide HUD", &m_PhotoHideHUD);
 			ImGui::TextDisabled("Camera: drag with right mouse, or arrow keys (Shift = faster)");
+			ImGui::TextDisabled("Zoom: Ctrl + mouse wheel. Focus: Ctrl + click");
 
 			ImGui::SeparatorText("Look");
 			if (ToolUI::Button("Natural##Look")) {
@@ -613,6 +637,16 @@ void DebugMan::PhotoModeGUI() {
 			}
 			ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.2f");
 			ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
+			ImGui::SliderFloat("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+			ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
+			ImGui::SliderFloat("Cloud cover", &settings.CloudCover, 0.0F, 1.0F);
+			if (settings.CloudLayer) {
+				ImGui::SliderFloat("Cloud opacity", &settings.CloudOpacity, 0.0F, 1.0F);
+			}
+			ImGui::SliderFloat("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
+			ImGui::SliderFloat("Sun disc", &settings.SunDisc, 0.0F, 2.0F);
+			ImGui::SliderFloat("Mist and dust", &settings.FogVolume, 0.0F, 1.5F);
+			ImGui::SliderFloat("Puddles", &settings.Puddles, 0.0F, 1.0F);
 			ImGui::SliderFloat("Exposure", &settings.Exposure, 0.2F, 3.0F);
 			ImGui::SliderFloat("Saturation", &settings.Saturation, 0.0F, 2.0F);
 			ImGui::SliderFloat("Contrast", &settings.Contrast, 0.5F, 1.6F);

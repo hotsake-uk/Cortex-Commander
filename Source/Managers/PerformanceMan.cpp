@@ -44,6 +44,7 @@ namespace {
 	int s_LogVerySlowFrames = 0; //!< Frames that took longer than 1/30 s.
 	int s_LogFrames = 0;
 	int s_LogUpdates = 0;
+	PerformanceMan::LogBlock s_LastLogBlock; //!< The last block written, for the F6 Debug page.
 } // namespace
 
 const std::array<std::string, PerformanceMan::PerformanceCounters::PerfCounterCount> PerformanceMan::m_PerfCounterNames = {"Total", "Act AI", "Act Travel", "Act Update", "Prt Travel", "Prt Update", "Activity", "Scripts"};
@@ -79,11 +80,7 @@ void PerformanceMan::Initialize() {
 	m_SimUpdateTimer = std::make_unique<Timer>();
 
 	if (const char* logPath = std::getenv("CCCP_PERF_LOG"); logPath && *logPath) {
-		s_LogPath = logPath;
-		s_Logging = true;
-		s_LogGPU = std::getenv("CCCP_PERF_LOG_GPU") != nullptr;
-		std::ofstream log(s_LogPath, std::ios::trunc);
-		log << "Performance log. Each block covers about five seconds. 'share' is of all the time in the block; 'worst' is the longest single call." << (s_LogGPU ? " GPU waits are on, so the frame rate is lower than in normal play." : "") << "\n";
+		StartLog(logPath, std::getenv("CCCP_PERF_LOG_GPU") != nullptr);
 	}
 
 	for (int counter = 0; counter < PerformanceCounters::PerfCounterCount; ++counter) {
@@ -92,6 +89,37 @@ void PerformanceMan::Initialize() {
 		}
 		m_PerfPercentages[counter].fill(0);
 	}
+}
+
+void PerformanceMan::StartLog(const std::string& path, bool waitForGPU) {
+	{
+		std::lock_guard<std::mutex> lock(s_LogMutex);
+		s_LogEntries.clear();
+	}
+	s_LogPath = path;
+	s_LogGPU = waitForGPU;
+	s_LogStart = 0;
+	s_LogWorstFrame = 0;
+	s_LogSlowFrames = 0;
+	s_LogVerySlowFrames = 0;
+	s_LogFrames = 0;
+	s_LogUpdates = 0;
+	s_LastLogBlock = LogBlock();
+	std::ofstream log(s_LogPath, std::ios::trunc);
+	log << "Performance log. Each block covers about five seconds. 'share' is of all the time in the block; 'worst' is the longest single call." << (s_LogGPU ? " GPU waits are on, so the frame rate is lower than in normal play." : "") << "\n";
+	s_Logging = true;
+}
+
+void PerformanceMan::StopLog() {
+	s_Logging = false;
+}
+
+const std::string& PerformanceMan::GetLogPath() {
+	return s_LogPath;
+}
+
+const PerformanceMan::LogBlock& PerformanceMan::GetLastLogBlock() {
+	return s_LastLogBlock;
 }
 
 void PerformanceMan::StartPerformanceMeasurement(PerformanceCounters counter) {
@@ -191,6 +219,28 @@ void PerformanceMan::UpdateLog() {
 	char line[256];
 	std::snprintf(line, sizeof(line), "\n== %.0f s | %.1f frames/s (%.2f ms each) | worst frame %.1f ms | %d frames over 16.7 ms, %d over 33 ms | %.1f sim updates/s\n", static_cast<double>(now - s_LogStart) / 1e6, frames * 1e6 / blockMicroseconds, blockMicroseconds / frames / 1000.0, static_cast<double>(s_LogWorstFrame) / 1000.0, s_LogSlowFrames, s_LogVerySlowFrames, static_cast<double>(s_LogUpdates) * 1e6 / blockMicroseconds);
 	log << line;
+	s_LastLogBlock = LogBlock();
+	s_LastLogBlock.Seconds = static_cast<double>(now - s_LogStart) / 1e6;
+	s_LastLogBlock.FramesPerSecond = frames * 1e6 / blockMicroseconds;
+	s_LastLogBlock.WorstFrameMs = static_cast<double>(s_LogWorstFrame) / 1000.0;
+	s_LastLogBlock.SlowFrames = s_LogSlowFrames;
+	s_LastLogBlock.VerySlowFrames = s_LogVerySlowFrames;
+	s_LastLogBlock.UpdatesPerSecond = static_cast<double>(s_LogUpdates) * 1e6 / blockMicroseconds;
+	for (const auto& [name, entry]: entries) {
+		LogZone& zone = s_LastLogBlock.Zones.emplace_back();
+		zone.Name = name;
+		zone.IsCount = !name.empty() && name[0] == '#';
+		zone.Calls = entry.Calls;
+		if (zone.IsCount) {
+			zone.Average = static_cast<double>(entry.Total) / static_cast<double>(std::max<uint64_t>(entry.Calls, 1));
+			zone.Worst = static_cast<double>(entry.Worst);
+		} else {
+			zone.Share = static_cast<double>(entry.Total) * 100.0 / blockMicroseconds;
+			zone.MsPerFrame = static_cast<double>(entry.Total) / frames / 1000.0;
+			zone.MsPerCall = static_cast<double>(entry.Total) / static_cast<double>(std::max<uint64_t>(entry.Calls, 1)) / 1000.0;
+			zone.Worst = static_cast<double>(entry.Worst) / 1000.0;
+		}
+	}
 	for (const auto& [name, entry]: entries) {
 		if (!name.empty() && name[0] == '#') {
 			continue;

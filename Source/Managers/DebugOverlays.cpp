@@ -370,6 +370,16 @@ void DebugOverlays::DrawTerrainUpdates() {
 			drawList->AddRectFilled(ImVec2(at.x - 1.5F, at.y - 1.5F), ImVec2(at.x + 1.5F, at.y + 1.5F), Faded(IM_COL32(240, 60, 50, 230), share));
 		}
 	}
+	// The path grid's backlog (PE-1a): nodes the bounded updates have yet to re-sample, in the top left of the picture.
+	if (Scene* scene = g_SceneMan.GetScene()) {
+		char text[96];
+		std::snprintf(text, sizeof(text), "path grid nodes waiting: %zu", scene->GetPathFinder(Activity::Teams::NoTeam).GetWaitingNodeCount());
+		ImVec2 origin = DebugDraw::ViewOrigin();
+		ImVec2 size = ImGui::CalcTextSize(text);
+		float top = origin.y + 8.0F + ImGui::GetTextLineHeight() * 1.5F;
+		drawList->AddRectFilled(ImVec2(origin.x + 4.0F, top - 2.0F), ImVec2(origin.x + 10.0F + size.x, top + 2.0F + size.y), IM_COL32(10, 12, 10, 190));
+		drawList->AddText(ImVec2(origin.x + 7.0F, top), IM_COL32(255, 170, 70, 255), text);
+	}
 }
 
 void DebugOverlays::DrawLightSources() {
@@ -441,8 +451,18 @@ void DebugOverlays::DrawLightSources() {
 	}
 	// The counts, in the top left of the picture.
 	const SceneLighting::DebugLightCounts& counts = lighting->GetDebugLightCounts();
-	char text[160];
-	std::snprintf(text, sizeof(text), "lights %d  cones %d  glows %d  merged %d  over the cap %d  reach^2 %.2f Mpx", counts.Lights, counts.Cones, counts.Glows, counts.Merged, counts.Dropped, counts.ReachSquared / 1000000.0F);
+	char text[256];
+	// The steady scenery lamps the lamp cache (G-6) draws are left out of the lights above, so its own count goes with them.
+	int cachedLamps = 0;
+	int cacheCell = 0;
+	bool cacheReady = lighting->GetLampCacheStats(cachedLamps, cacheCell);
+	char cache[96];
+	if (cacheCell > 0) {
+		std::snprintf(cache, sizeof(cache), "  lamp cache %d lamps (%d px texels, %s)", cachedLamps, cacheCell, cacheReady ? "drawn" : "relighting");
+	} else {
+		std::snprintf(cache, sizeof(cache), "  no lamp cache");
+	}
+	std::snprintf(text, sizeof(text), "lights %d  cones %d  glows %d  merged %d  over the cap %d  reach^2 %.2f Mpx%s", counts.Lights, counts.Cones, counts.Glows, counts.Merged, counts.Dropped, counts.ReachSquared / 1000000.0F, cache);
 	ImVec2 origin = DebugDraw::ViewOrigin();
 	ImVec2 size = ImGui::CalcTextSize(text);
 	drawList->AddRectFilled(ImVec2(origin.x + 4.0F, origin.y + 4.0F), ImVec2(origin.x + 10.0F + size.x, origin.y + 8.0F + size.y), IM_COL32(10, 12, 10, 190));
@@ -668,4 +688,93 @@ void DebugOverlays::DrawCameraBounds() {
 		drawList->AddRectFilled(ImVec2(at.x - 2.0F, at.y - 1.0F), ImVec2(at.x + textSize.x + 2.0F, at.y + textSize.y + 1.0F), IM_COL32(10, 12, 10, 180));
 		drawList->AddText(at, color, text);
 	}
+}
+
+void DebugOverlays::DrawMaterialUnderPointer() {
+	if (!g_DebugMan.ShowMaterialUnderPointer() || !g_SceneMan.GetScene()) {
+		return;
+	}
+	const ImGuiIO& io = ImGui::GetIO();
+	if (io.WantCaptureMouse || !InView(io.MousePos, 0.0F)) {
+		return;
+	}
+	Vector pointer = DebugDraw::MouseScenePosition();
+	int x = static_cast<int>(std::floor(pointer.m_X));
+	int y = static_cast<int>(std::floor(pointer.m_Y));
+	unsigned char id = g_SceneMan.GetTerrMatter(x, y);
+	const Material* material = g_SceneMan.GetMaterialFromID(id);
+	if (!material) {
+		return;
+	}
+	const MaterialBehaviour& behaviour = material->GetBehaviour();
+	std::vector<std::string> lines;
+	char line[160];
+	const char* kind = FluidSim::IsLiquid(id) ? "liquid" : behaviour.Powder == 1 ? "powder" : id == g_MaterialAir ? "air" : material->IsScrap() ? "scrap" : "solid";
+	std::snprintf(line, sizeof(line), "%s (#%d), %s", material->GetPresetName().c_str(), static_cast<int>(id), kind);
+	lines.emplace_back(line);
+	std::snprintf(line, sizeof(line), "integrity %.0f  friction %.2f  stickiness %.2f", material->GetIntegrity(), material->GetFriction(), material->GetStickiness());
+	lines.emplace_back(line);
+	// What the material's behaviour sets; what it leaves unset follows the stock rules (by its name and kind) and isn't listed.
+	if (behaviour.Flows == 1 || behaviour.Powder == 1) {
+		std::string flow = "flow:";
+		if (behaviour.FlowSpeed >= 0) {
+			flow += " runs " + std::to_string(behaviour.FlowSpeed) + " px";
+		}
+		if (behaviour.FallSpeed >= 0) {
+			flow += " falls " + std::to_string(behaviour.FallSpeed) + " px";
+		}
+		if (behaviour.MoveEvery >= 0) {
+			flow += " every " + std::to_string(behaviour.MoveEvery) + " updates";
+		}
+		if (behaviour.Viscosity >= 0) {
+			flow += " viscosity " + std::to_string(behaviour.Viscosity);
+		}
+		if (behaviour.LiquidWeight >= 0) {
+			flow += " weight " + std::to_string(behaviour.LiquidWeight);
+		}
+		lines.push_back(flow.size() > 5 ? flow : "flow: stock");
+	}
+	if (!behaviour.Burns.empty()) {
+		std::snprintf(line, sizeof(line), "burns: %s%s%s", behaviour.Burns.c_str(), behaviour.LeavesAsh == 1 ? ", leaves ash" : "", behaviour.BurnBlast > 0.0F ? ", can blow up" : "");
+		lines.emplace_back(line);
+	}
+	if (behaviour.Douses == 1) {
+		lines.emplace_back("puts fire out");
+	}
+	std::string turns;
+	for (auto [verb, product]: {std::pair<const char*, const std::string*>{"freezes to ", &behaviour.FreezesTo}, {"melts to ", &behaviour.MeltsTo}, {"boils to ", &behaviour.BoilsTo}, {"settles to ", &behaviour.SettlesTo}, {"dries to ", &behaviour.DriesTo}}) {
+		if (!product->empty()) {
+			turns += (turns.empty() ? "" : ", ") + std::string(verb) + *product;
+		}
+	}
+	if (!turns.empty()) {
+		lines.push_back(turns);
+	}
+	if (behaviour.Chills == 1) {
+		lines.emplace_back("chills what it touches");
+	}
+	if (behaviour.Evaporates > 0.0F) {
+		std::snprintf(line, sizeof(line), "evaporates (%.3f a step)", behaviour.Evaporates);
+		lines.emplace_back(line);
+	}
+	if (behaviour.TouchDamage > 0.0F) {
+		std::snprintf(line, sizeof(line), "touch damage %.1f a second a depth level", behaviour.TouchDamage);
+		lines.emplace_back(line);
+	}
+	if (behaviour.Look >= 0) {
+		lines.push_back("liquid look " + std::to_string(behaviour.Look));
+	}
+	if (behaviour.Glow >= 0) {
+		lines.push_back("glow " + std::to_string(behaviour.Glow));
+	}
+	if (behaviour.Stains == 1) {
+		lines.emplace_back("leaves stains");
+	}
+	if (!behaviour.PassThrough.empty()) {
+		lines.push_back("passing through: " + behaviour.PassThrough);
+	}
+	if (!behaviour.Reactions.empty()) {
+		lines.push_back(std::to_string(behaviour.Reactions.size()) + " reaction lines of its own");
+	}
+	DrawLabel(ImGui::GetForegroundDrawList(), ImVec2(io.MousePos.x, io.MousePos.y - 18.0F), lines, IM_COL32(240, 200, 120, 255));
 }

@@ -3,6 +3,8 @@
 #include "LightingSettings.h"
 #include "Vector.h"
 #include <memory>
+#include <string>
+#include <vector>
 
 struct ImFont;
 
@@ -91,9 +93,21 @@ namespace RTE {
 
 		/// Gets whether "Draw camera bounds" on the Debug page is ticked (see DebugOverlays::DrawCameraBounds).
 		bool DrawCameraBounds() const { return m_DrawCameraBounds; }
-		constexpr bool DrawNoGravBoxes() { return false; }
+		/// Gets whether "No-gravity areas" under Physics debug drawing is ticked: the scene's NoGravityArea boxes in red.
+		bool DrawNoGravBoxes() const { return m_DrawNoGravBoxes; }
 		bool DrawBigTextureBounds() { return false; }
-		bool DrawTilingBounds() { return false; }
+		/// Gets whether "Background tiling" under Physics debug drawing is ticked: where each repeating background layer's copies start and stop.
+		bool DrawTilingBounds() const { return m_DrawTilingBounds; }
+
+		/// Gets whether "Material under the pointer" on the Debug page is ticked (DebugOverlays::DrawMaterialUnderPointer).
+		bool ShowMaterialUnderPointer() const { return m_ShowMaterialUnderPointer; }
+
+		/// Keeps the start-up timing report (printed once to the console when start-up is over) for the Debug page's Numbers.
+		/// @param lines The report, a line each.
+		void SetStartupReport(std::vector<std::string> lines) { m_StartupReport = std::move(lines); }
+
+		/// A new game was started: Freeze simulation and the game speed are the last game's and are put back (UI-48). Called by Sandbox::OnActivityStarted.
+		void OnActivityStarted();
 
 		bool FreeCamEnabled() { return m_EnableFreeCam; }
 		float FreeCamZoom() { return m_FreeCamZoom; }
@@ -141,6 +155,12 @@ namespace RTE {
 
 		bool m_DrawCameraBounds{false}; //!< "Draw camera bounds" on the Debug page: each player's view, where its camera is heading and the scene's edges.
 		bool m_DrawSpriteBounds{false};
+		bool m_DrawNoGravBoxes{false}; //!< See DrawNoGravBoxes.
+		bool m_DrawTilingBounds{false}; //!< See DrawTilingBounds.
+		bool m_ShowMaterialUnderPointer{false}; //!< See ShowMaterialUnderPointer.
+		int m_DebugTexture{-1}; //!< Which of SceneLighting::GetDebugTextures the Render debug page's texture viewer shows, -1 for none.
+		bool m_ShowPaletteViewer{false}; //!< The Render debug page's palette viewer is open.
+		std::vector<std::string> m_StartupReport; //!< See SetStartupReport.
 
 		/// The settings panel (F6): everything that can be tuned while the game runs, in categories, searchable, with presets. In SettingsPanel.cpp.
 		void SettingsGUI();

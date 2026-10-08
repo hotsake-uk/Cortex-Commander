@@ -146,6 +146,46 @@ namespace RTE {
 
 		/// Counts a drawn frame for the performance log, and writes the log's next block when one is due.
 		void UpdateLog();
+
+		/// One entry of a written performance log block, as the F6 Debug page shows it.
+		struct LogZone {
+			std::string Name; //!< The entry's name, "Group: what" for most.
+			bool IsCount = false; //!< A reading (its name starts with '#') rather than a time.
+			double Share = 0; //!< Percent of all the time in the block.
+			double MsPerFrame = 0;
+			double MsPerCall = 0;
+			double Worst = 0; //!< The longest single call in ms, or the highest reading.
+			double Average = 0; //!< A reading's average.
+			uint64_t Calls = 0;
+		};
+
+		/// The last block the performance log wrote: its frame times and entries, the biggest share first.
+		struct LogBlock {
+			double Seconds = 0; //!< Since the log started.
+			double FramesPerSecond = 0;
+			double WorstFrameMs = 0;
+			int SlowFrames = 0; //!< Over 16.7 ms.
+			int VerySlowFrames = 0; //!< Over 33 ms.
+			double UpdatesPerSecond = 0;
+			std::vector<LogZone> Zones;
+		};
+
+		/// Starts the performance log, writing to the given file from scratch, as CCCP_PERF_LOG does at start-up.
+		/// @param path The file to write.
+		/// @param waitForGPU Whether scopes that ask for it wait for the GPU (see IsLogging), as CCCP_PERF_LOG_GPU does.
+		static void StartLog(const std::string& path, bool waitForGPU);
+
+		/// Stops the performance log. The file keeps what was written.
+		static void StopLog();
+
+		/// @return Whether the performance log waits for the GPU in the scopes that ask for it.
+		static bool IsLoggingGPU() { return s_LogGPU; }
+
+		/// @return The file the performance log writes, or last wrote.
+		static const std::string& GetLogPath();
+
+		/// @return The last block the performance log wrote, empty before the first.
+		static const LogBlock& GetLastLogBlock();
 #pragma endregion
 
 #pragma region Concrete Methods

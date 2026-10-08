@@ -250,6 +250,13 @@ namespace RTE {
 		/// @return The MOID currently at the specified pixel coordinates.
 		MOID GetMOIDPixel(int pixelX, int pixelY) { return GetMOIDPixel(pixelX, pixelY, Activity::NoTeam); }
 
+		/// Gets and sets whether ray casts and pixel checks (GetTerrMatter, GetMOIDPixel) are drawn to the scene's debug layer, as the ini's
+		/// DrawRaycastVisualizations and DrawPixelCheckVisualizations do. The layer is made as a scene loads, so turning them on shows from the next scene.
+		bool DrawRayCastVisualizations() const { return m_DrawRayCastVisualizations; }
+		void SetDrawRayCastVisualizations(bool draw) { m_DrawRayCastVisualizations = draw; }
+		bool DrawPixelCheckVisualizations() const { return m_DrawPixelCheckVisualizations; }
+		void SetDrawPixelCheckVisualizations(bool draw) { m_DrawPixelCheckVisualizations = draw; }
+
 		/// Gets this Scene's MOID SpatialPartitionGrid.
 		/// @return This Scene's MOID SpatialPartitionGrid.
 		const SpatialPartitionGrid& GetMOIDGrid() const { return m_MOIDsGrid; }

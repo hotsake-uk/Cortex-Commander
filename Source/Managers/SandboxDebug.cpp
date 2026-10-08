@@ -83,7 +83,7 @@ namespace {
 			return;
 		}
 		// The reach of each effect's main light, in EffectKind's order; 0 for those that make no light.
-		static const float lightReach[] = {320.0F, 560.0F, 280.0F, 240.0F, 220.0F, 460.0F, 640.0F, 340.0F, 320.0F, 165.0F, 62.0F, 240.0F, 150.0F, 18.0F, 200.0F, 80.0F, 0.0F, 0.0F, 0.0F, 90.0F, 0.0F, 0.0F, 130.0F, 0.0F, 0.0F};
+		static const float lightReach[] = {320.0F, 560.0F, 280.0F, 240.0F, 220.0F, 460.0F, 640.0F, 340.0F, 320.0F, 165.0F, 62.0F, 240.0F, 150.0F, 18.0F, 200.0F, 80.0F, 0.0F, 0.0F, 0.0F, 90.0F, 0.0F, 0.0F, 130.0F, 0.0F, 0.0F, 0.0F, 0.0F};
 		static_assert(sizeof(lightReach) / sizeof(lightReach[0]) == static_cast<size_t>(EffectKind::Count), "a reach for each effect");
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		float scale = ScenePixelsPerWindowPixel();

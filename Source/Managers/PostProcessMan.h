@@ -225,6 +225,12 @@ namespace RTE {
 		/// Stops every palette pulse and cycle asked for by scripts or PaletteAnimation.ini. Glowing liquids keep theirs.
 		void ClearPaletteAnimation();
 
+		/// Reads Base.rte/PaletteAnimation.ini again, for trying out pulses and cycles without restarting. Stops scripts' pulses and cycles too.
+		void ReloadPaletteAnimation() {
+			ClearPaletteAnimation();
+			m_PaletteAnimationLoaded = false;
+		}
+
 		/// Gives the screen a mod's post pass (LightingSettings::ModShaders), from Lua: a Shader preset that redraws the lit scene before bloom and
 		/// tonemapping, such as a scanner overlay or a sandstorm filter. Empty to go back to the activity's or scene's own (their PostShader key), or none.
 		/// Lasts until the next activity starts. Safe from any thread.

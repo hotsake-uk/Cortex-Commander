@@ -421,6 +421,20 @@ namespace SandboxDetail {
 				case EffectKind::MistVent:
 					EffectsParticles::Emit("Mist", at + Vector((Random01() - 0.5F) * 8.0F, 0.0F), Vector((Random01() - 0.5F) * 2.0F, -3.5F), 0.8F, 1, 0);
 					break;
+				case EffectKind::FogBank:
+					// The fog volume (G-3) thins as it drifts, so the bank is topped up a few times a second.
+					if (every(12)) {
+						g_PostProcessMan.RegisterFog(at + Vector((Random01() - 0.5F) * 120.0F, (Random01() - 0.5F) * 30.0F), 90.0F, 0.6F);
+					}
+					break;
+				case EffectKind::DustCloud:
+					if (every(12)) {
+						g_PostProcessMan.RegisterFog(at + Vector((Random01() - 0.5F) * 120.0F, (Random01() - 0.5F) * 30.0F), 90.0F, 0.5F);
+					}
+					if (every(3)) {
+						EffectsParticles::Emit("Dust", at + Vector((Random01() - 0.5F) * 140.0F, (Random01() - 0.5F) * 40.0F), Vector((Random01() - 0.5F) * 3.0F, -0.5F), 0.4F, 1, 0);
+					}
+					break;
 				case EffectKind::DustDevil:
 					EffectsParticles::Emit("Dust", at + Vector(std::sin(phase * 6.0F) * 14.0F, -std::fmod(phase * 20.0F, 40.0F)), Vector(std::cos(phase * 6.0F) * 4.0F, -3.0F), 0.4F, 1, 0);
 					break;

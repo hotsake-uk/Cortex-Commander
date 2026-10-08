@@ -117,6 +117,38 @@ namespace RTE {
 		/// @param autoExposure The exposure multiplier from auto exposure.
 		void ReadAutoExposure(float& averageLuminance, float& autoExposure) const;
 
+		/// A world or screen map the Render debug page's texture viewer can show.
+		struct DebugTexture {
+			const char* Name;
+			const char* Tip;
+			GLuint Texture;
+			int Width;
+			int Height;
+		};
+
+		/// Gets the maps the texture viewer can show, those not made yet with no texture. Read only.
+		std::vector<DebugTexture> GetDebugTextures() const {
+			return {
+			    {"Terrain distance field", "Light shadows' distance from each light grid cell to the nearest wall (G-1), brighter further out.", m_ShadowFieldTexture.Texture, m_ShadowFieldTexture.Width, m_ShadowFieldTexture.Height},
+			    {"Emissive (glow) map", "What glows on the last player screen drawn: sprites' palette glow and their authored glow maps (SH-2).", m_Emissive.Texture, m_Emissive.Width, m_Emissive.Height},
+			    {"Mist and dust", "How thick the mist and dust in the air is, in the light grid's cells (G-3).", m_Fog[0].Texture, m_Fog[0].Width, m_Fog[0].Height},
+			    {"Wet ground", "How wet the ground is from rain, in the light grid's cells; past full is water standing in dips (G-7).", m_WetMap[0].Texture, m_WetMap[0].Width, m_WetMap[0].Height},
+			    {"Soot", "Scorch marks' soot on the ground (G-5).", m_Scorch.Texture, m_Scorch.Width, m_Scorch.Height},
+			    {"Stains", "Liquid stains on the ground: blood, oil (G-5).", m_Stains.Texture, m_Stains.Width, m_Stains.Height},
+			    {"Lamp cache", "The light of the steady scenery lamps, lit once and kept (G-6).", m_LampCache.Texture, m_LampCache.Width, m_LampCache.Height},
+			    {"Sky light", "Sky light spreading into the terrain (R) and where the sun is visible (G).", m_SkyLight[0].Texture, m_SkyLight[0].Width, m_SkyLight[0].Height},
+			};
+		}
+
+		/// Gets the lamp cache's state (G-6), for the light sources overlay: the steady lamps in it, which the overlay's own counts leave out.
+		/// @param lamps Set to how many steady lamps the cache holds. @param cell Set to its scene pixels a texel, 0 with no cache.
+		/// @return Whether the cache is ready and drawn in place of those lamps.
+		bool GetLampCacheStats(int& lamps, int& cell) const {
+			lamps = m_LampCacheLamps;
+			cell = m_LampCacheCell;
+			return m_LampCacheReady;
+		}
+
 	private:
 		static constexpr int c_MaxScreens = 4; //!< Player screens; sizes the per-screen arrays below, so it comes first.
 		static constexpr float c_ShelterMaxSlope = 6.0F; //!< Pixels across per pixel down past which weather is too level for the shelter map, and is marched instead.

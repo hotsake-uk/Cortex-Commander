@@ -1089,7 +1089,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Lights with particles");
 				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
 				ImGui::SeparatorText("Particles and air");
-				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::FogBank, EffectKind::DustCloud, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
 				if (ToolUI::Button("Remove all effects")) {
@@ -1116,6 +1116,8 @@ void Sandbox::DrawGUI() {
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 				ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
 				ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.1f");
+				ImGui::SliderFloat("Cloud cover", &settings.CloudCover, 0.0F, 1.0F);
+				ImGui::SetItemTooltip("How much of the sky is cloud in clear weather; rain, snow and ash add to it, and the clouds' shadows follow. With Clouds in the sky off (F6, Sky & daylight) only the shadows show.");
 				for (auto [name, hour]: {std::pair{"Dawn", 6.5F}, std::pair{"Day", 12.0F}, std::pair{"Dusk", 19.0F}, std::pair{"Night", 23.0F}}) {
 					if (hour != 6.5F) {
 						ImGui::SameLine();
@@ -1190,6 +1192,8 @@ void Sandbox::OnActivityStarted() {
 	// (Called by ActivityMan::StartActivity for every game started, loaded or restarted, before its own start-up runs. A new game used to be
 	// told by the activity's address changing, in two places, which a new game allocated where the last one was would not have changed.)
 	Controller::SetAIPaused(false);
+	// The Debug page's Freeze simulation and the game speed don't carry into the next game either.
+	g_DebugMan.OnActivityStarted();
 	Colony::Clear();
 	// A new game: nothing is left pouring or on its way in from the last one.
 	s_WaterSpawners.clear();

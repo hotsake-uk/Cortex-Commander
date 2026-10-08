@@ -116,15 +116,21 @@ namespace {
 			}
 			Reported = true;
 			Mark(lastStageName);
-			g_ConsoleMan.PrintString("SYSTEM: Start-up timing (ms):");
+			// Kept for the Debug page's Numbers as well (UI-45), so it can be read and copied without the console.
+			std::vector<std::string> lines;
+			auto print = [&lines](const std::string& line) {
+				g_ConsoleMan.PrintString(line);
+				lines.push_back(line);
+			};
+			print("SYSTEM: Start-up timing (ms):");
 			for (const auto& [stageName, milliseconds]: Stages) {
-				g_ConsoleMan.PrintString("Start-up: " + stageName + ": " + std::to_string(milliseconds) + " ms");
+				print("Start-up: " + stageName + ": " + std::to_string(milliseconds) + " ms");
 			}
 			if (auto [files, indexMS] = System::GetCaseIndexStats(); indexMS >= 0) {
-				g_ConsoleMan.PrintString("Start-up: (of which the case check's file index: " + std::to_string(files) + " files in " + std::to_string(indexMS) + " ms)");
+				print("Start-up: (of which the case check's file index: " + std::to_string(files) + " files in " + std::to_string(indexMS) + " ms)");
 			}
-			g_ConsoleMan.PrintString("Start-up: loading screen frames drawn: " + std::to_string(LoadingScreen::GetProgressFramesDrawn()) + " (progress report " + (g_SettingsMan.GetLoadingScreenProgressReportDisabled() ? "off" : "on") +
-			                         ", frame cap " + std::to_string(g_WindowMan.GetFrameCap()) + ", vsync " + (g_WindowMan.GetVSyncEnabled() ? "on" : "off") + ", fullscreen " + (g_WindowMan.IsFullscreen() ? "yes" : "no") + ")");
+			print("Start-up: loading screen frames drawn: " + std::to_string(LoadingScreen::GetProgressFramesDrawn()) + " (progress report " + (g_SettingsMan.GetLoadingScreenProgressReportDisabled() ? "off" : "on") +
+			      ", frame cap " + std::to_string(g_WindowMan.GetFrameCap()) + ", vsync " + (g_WindowMan.GetVSyncEnabled() ? "on" : "off") + ", fullscreen " + (g_WindowMan.IsFullscreen() ? "yes" : "no") + ")");
 			// Where the data modules' time went: the slowest five, and how much was read and decoded in all.
 			std::vector<std::pair<std::string, long long>> moduleTimes = g_PresetMan.GetModuleLoadTimes();
 			std::sort(moduleTimes.begin(), moduleTimes.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
@@ -132,12 +138,13 @@ namespace {
 			for (size_t i = 0; i < std::min<size_t>(moduleTimes.size(), 5); ++i) {
 				slowest += (i ? ", " : "") + moduleTimes[i].first + " " + std::to_string(moduleTimes[i].second) + " ms";
 			}
-			g_ConsoleMan.PrintString("Start-up: slowest data modules: " + (slowest.empty() ? std::string("none") : slowest));
-			g_ConsoleMan.PrintString("Start-up: read " + std::to_string(Reader::GetLinesRead()) + " INI lines, decoded " + std::to_string(ContentFile::GetImagesDecoded()) + " images, compiled " + std::to_string(LuaStateWrapper::GetScriptFilesCompiled()) + " script files");
+			print("Start-up: slowest data modules: " + (slowest.empty() ? std::string("none") : slowest));
+			print("Start-up: read " + std::to_string(Reader::GetLinesRead()) + " INI lines, decoded " + std::to_string(ContentFile::GetImagesDecoded()) + " images, compiled " + std::to_string(LuaStateWrapper::GetScriptFilesCompiled()) + " script files");
 			// The Lua states are made one after another, each with every engine binding (one per hardware thread unless Settings.ini says otherwise),
 			// so how many there were says how much of the Lua step above that is.
-			g_ConsoleMan.PrintString("Start-up: Lua states made: " + std::to_string(g_LuaMan.GetThreadedScriptStates().size() + 1) + " (" + std::to_string(g_LuaMan.GetThreadedScriptStates().size()) + " threaded and the master; " + std::to_string(std::thread::hardware_concurrency()) + " hardware threads)");
-			g_ConsoleMan.PrintString("Start-up: total to " + lastStageName + ": " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Last - Start).count()) + " ms");
+			print("Start-up: Lua states made: " + std::to_string(g_LuaMan.GetThreadedScriptStates().size() + 1) + " (" + std::to_string(g_LuaMan.GetThreadedScriptStates().size()) + " threaded and the master; " + std::to_string(std::thread::hardware_concurrency()) + " hardware threads)");
+			print("Start-up: total to " + lastStageName + ": " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Last - Start).count()) + " ms");
+			g_DebugMan.SetStartupReport(std::move(lines));
 		}
 	};
 	StartupTiming s_StartupTiming;
