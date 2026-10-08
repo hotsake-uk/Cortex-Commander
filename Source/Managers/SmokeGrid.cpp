@@ -1,6 +1,5 @@
 #include "SmokeGrid.h"
 #include "Constants.h"
-#include "Atom.h"
 #include "MOSParticle.h"
 #include "Material.h"
 #include "MovableMan.h"
