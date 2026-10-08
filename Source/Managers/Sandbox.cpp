@@ -1089,6 +1089,7 @@ void Sandbox::Update() {
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
+	ClosePaintUndoStep(false);
 	UpdatePlans();
 	UpdateIncoming();
 	UpdateEffects();

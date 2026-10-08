@@ -633,12 +633,13 @@ namespace SandboxDetail {
 
 	/// Terrain painting's undo: each step is what one stroke of a paint or build tool changed (a drag of the brush is one step: changes
 	/// less than a quarter second apart run together), pixel by pixel as it was before, the first change to each pixel only. The last 20
-	/// steps are kept, and a new game forgets them.
+	/// steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke longer than a step
+	/// holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
 	struct PaintUndoPixel {
-		int X;
-		int Y;
-		int Material;
-		int Color;
+		unsigned short X; //!< (Scenes are well under 65536 px on a side.)
+		unsigned short Y;
+		unsigned char Material;
+		unsigned char Color; //!< The 8 bit foreground colour.
 	};
 
 	struct PaintUndoStep {
@@ -657,7 +658,9 @@ namespace SandboxDetail {
 
 	constexpr size_t c_PaintUndoSteps = 20;
 
-	constexpr size_t c_PaintUndoPixelsPerStep = 2000000;
+	constexpr size_t c_PaintUndoPixelsPerStep = 1000000; //!< About 3.5 s of the 40 px brush held down.
+
+	constexpr size_t c_PaintUndoPixels = 8000000; //!< All the steps together: 48 MB.
 
 	/// A change the paint helpers made to the terrain, kept for the paint audit overlay (only while it's on).
 	struct PaintRecord {
@@ -1172,6 +1175,7 @@ namespace SandboxDetail {
 	void SpawnPuffs(const char* presetName, const Vector& position, int radius, int count);
 	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor);
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y);
+	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName);
