@@ -2346,6 +2346,32 @@ namespace {
 					delete unit;
 				}
 			}
+			// Twelve random picks all over the budget: the cheapest unit, if that is in it. (Called broke on the random picks alone, a side
+			// that could still afford its cheapest unit stopped buying.)
+			if (wave.empty() && !choices.empty()) {
+				Actor* cheapest = nullptr;
+				float cheapestCost = 0.0F;
+				for (const Preset* choice: choices) {
+					Actor* unit = CreateUnit(*choice, side, 0, Order::Attack);
+					if (!unit) {
+						continue;
+					}
+					float cost = unit->GetTotalValue(unit->GetModuleID(), 1.0F);
+					if (!cheapest || cost < cheapestCost) {
+						delete cheapest;
+						cheapest = unit;
+						cheapestCost = cost;
+					} else {
+						delete unit;
+					}
+				}
+				if (cheapest && cheapestCost <= waveBudget) {
+					wave.push_back(cheapest);
+					waveCost = cheapestCost;
+				} else {
+					delete cheapest;
+				}
+			}
 			if (wave.empty()) {
 				autoSide.Broke = true;
 				continue;
@@ -5139,8 +5165,19 @@ bool Sandbox::SetBuildMode(bool build) {
 int Sandbox::CountUnits(int team) {
 	int count = 0;
 	for (const Actor* actor: SandboxAccess::Actors()) {
-		if (IsCombatant(actor) && actor->GetTeam() == team && !dynamic_cast<const ACraft*>(actor)) {
+		if (!IsCombatant(actor) || actor->GetTeam() != team) {
+			continue;
+		}
+		if (!dynamic_cast<const ACraft*>(actor)) {
 			++count;
+			continue;
+		}
+		// The passengers of a craft of the side's, still on the way in: inventory, not in the world. (Left out, a side whose last wave
+		// was in the air was "gone", and the auto battle was called for the other side.)
+		for (const MovableObject* item: *actor->GetInventory()) {
+			if (const Actor* passenger = dynamic_cast<const Actor*>(item); passenger && !passenger->IsDead() && passenger->GetHealth() > 0.0F) {
+				++count;
+			}
 		}
 	}
 	return count;
