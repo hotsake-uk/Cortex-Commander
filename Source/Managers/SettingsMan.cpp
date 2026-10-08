@@ -328,6 +328,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("AutoExposureLow", { g_PostProcessMan.GetLightingSettings().AutoExposureLow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AutoExposureHigh", { g_PostProcessMan.GetLightingSettings().AutoExposureHigh = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AutoExposure", { g_PostProcessMan.GetLightingSettings().AutoExposure = std::stof(reader.ReadPropValue()); });
+	MatchProperty("AutoExposureGameTime", { g_PostProcessMan.GetLightingSettings().AutoExposureGameTime = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("PostExposure", { g_PostProcessMan.GetLightingSettings().Exposure = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GradeTemperature", { g_PostProcessMan.GetLightingSettings().Temperature = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GradeTint", { g_PostProcessMan.GetLightingSettings().Tint = std::stof(reader.ReadPropValue()); });
@@ -584,6 +585,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("AutoExposure", lighting.AutoExposure);
 	writer.NewPropertyWithValue("AutoExposureLow", lighting.AutoExposureLow);
 	writer.NewPropertyWithValue("AutoExposureHigh", lighting.AutoExposureHigh);
+	writer.NewPropertyWithValue("AutoExposureGameTime", lighting.AutoExposureGameTime);
 	writer.NewPropertyWithValue("PostVignette", lighting.Vignette);
 	writer.NewPropertyWithValue("GradeTemperature", lighting.Temperature);
 	writer.NewPropertyWithValue("GradeTint", lighting.Tint);

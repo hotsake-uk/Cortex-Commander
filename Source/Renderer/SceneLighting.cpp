@@ -1979,7 +1979,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, m_Luminance.Texture);
 		glGenerateMipmap(GL_TEXTURE_2D);
 
-		double nowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		// Adapts in game time, as every other effect moves: it holds while the game is paused or in photo mode, and a capture comes out the same however long
+		// it took to render. (A step back, on a new scene, counts as no time.)
+		double nowSeconds = m_Settings.AutoExposureGameTime ? PostProcessMan::GetSmoothSimTimePrecise() : std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 		float deltaSeconds = m_AdaptedLuminanceValid[screenIndex] ? static_cast<float>(std::clamp(nowSeconds - m_LastAdaptSeconds[screenIndex], 0.0, 0.25)) : 0.0F;
 		m_LastAdaptSeconds[screenIndex] = nowSeconds;
 		int previous = m_AdaptedLuminanceCurrent[screenIndex];
