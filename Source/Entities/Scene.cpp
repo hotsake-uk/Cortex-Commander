@@ -9,6 +9,7 @@
 #include "ConsoleMan.h"
 
 #include <chrono>
+#include <unordered_set>
 #include "SettingsMan.h"
 #include "ThreadMan.h"
 #include "MetaMan.h"
@@ -2428,7 +2429,7 @@ void Scene::UpdatePathFinding() {
 		};
 	}
 	if (requestsInFlight) {
-		if (m_pTerrain->GetUpdatedMaterialAreas().empty() || !starvedTimer.IsPastRealMS(300)) {
+		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty()) || !starvedTimer.IsPastRealMS(300)) {
 			return;
 		}
 		BlockUntilAllPathingRequestsComplete();
@@ -2443,6 +2444,21 @@ void Scene::UpdatePathFinding() {
 
 	// Update our shared pathFinder
 	std::vector<int> updatedNodes = GetPathFinder(Activity::Teams::NoTeam).RecalculateAreaCosts(m_pTerrain->GetUpdatedMaterialAreas(), nodesToUpdate);
+
+	// Doors that changed hands change no material, so the NoTeam grid saw nothing there; the team grids still have to sample them again, the
+	// side that took a door no longer seeing it as a wall and the side that lost it seeing it as one.
+	if (!m_TeamGridUpdateAreas.empty()) {
+		std::unordered_set<int> nodeIds(updatedNodes.begin(), updatedNodes.end());
+		PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
+		for (const Box& area: m_TeamGridUpdateAreas) {
+			for (int nodeId: noTeamPathFinder.GetNodeIdsInBox(area)) {
+				nodeIds.insert(nodeId);
+			}
+		}
+		m_TeamGridUpdateAreas.clear();
+		updatedNodes.assign(nodeIds.begin(), nodeIds.end());
+	}
+
 	if (!updatedNodes.empty()) {
 		// Update each team's pathFinder
 		for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {

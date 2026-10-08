@@ -206,6 +206,11 @@ namespace RTE {
 		/// @return The set of PathNode ids that were updated.
 		std::vector<int> RecalculateAreaCosts(std::deque<Box>& boxList, size_t nodeUpdateLimit);
 
+		/// Helper function for getting the PathNode ids in a Box.
+		/// @param box The Box of which all PathNodes it touches should be returned.
+		/// @return A list of the PathNode ids inside the box.
+		std::vector<int> GetNodeIdsInBox(Box box);
+
 		/// Updates a set of PathNodes, adjusting their transitions.
 		/// This does NOT update the pather, which is required if PathNode costs changed.
 		/// @param nodeVec The set of PathNode IDs to update.
@@ -311,11 +316,6 @@ namespace RTE {
 		/// @param node The PathNode to update all costs of. It's safe to pass nullptr here. OWNERSHIP IS NOT TRANSFERRED!
 		/// @return Whether the PathNodes costs changed.
 		bool UpdateNodeCosts(PathNode* node) const;
-
-		/// Helper function for getting the PathNode ids in a Box.
-		/// @param box The Box of which all PathNodes it touches should be returned.
-		/// @return A list of the PathNode ids inside the box.
-		std::vector<int> GetNodeIdsInBox(Box box);
 
 		/// Helper function to determine if a node is on solid fround.
 		/// @param node The node we're checking.
