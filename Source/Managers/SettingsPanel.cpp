@@ -517,6 +517,14 @@ void DebugMan::SettingsGUI() {
 		Check("Draw camera bounds", &m_DrawCameraBounds);
 		Check("Draw sprite frustum tests", &m_DrawSpriteBounds);
 		Check("ImGui demo window", &m_ImGuiDemoWindow);
+		Heading("Debug text in the console");
+		for (int i = 0; i < static_cast<int>(SettingsMan::DebugChannel::Count); ++i) {
+			auto channel = static_cast<SettingsMan::DebugChannel>(i);
+			std::string label = std::string(SettingsMan::DebugChannelName(channel)) + " lines";
+			Toggle(label.c_str(), g_SettingsMan.DebugChannelTicked(channel), [channel](bool on) { g_SettingsMan.SetDebugChannel(channel, on); });
+		}
+		Tip("Lines written to the console and LogConsole.txt. AI, Pilot, Climb, Combat and Squad: the decisions of the units being inspected (Ctrl+I over a unit, units selected in the sandbox, the one you control). Path: each route found. Grid: what path grid updates cost. Sandbox: the sandbox's orders and tools. Perf: unit update times. The CCCP_*_LOG environment variables still switch them on for a run.");
+		Toggle("Trace every unit, not just inspected ones", g_SettingsMan.TraceAllUnits(), [](bool on) { g_SettingsMan.SetTraceAllUnits(on); });
 		if (!Plain()) {
 			return;
 		}

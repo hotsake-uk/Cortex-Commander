@@ -204,6 +204,33 @@ namespace RTE {
 		/// @param show Whether to show them.
 		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
 
+		/// The debug text channels: kinds of debug lines written to the console (and LogConsole.txt). Each keeps its line prefix (AITRACE, PATHLOG, SANDBOX, PERF), so log readers still match.
+		enum class DebugChannel { AI, Path, Pilot, Climb, Combat, Squad, Sandbox, Perf, Grid, Count };
+
+		/// Gets the name of a debug channel, as the settings panel and Lua know it.
+		static const char* DebugChannelName(DebugChannel channel);
+
+		/// Gets the debug channel with a name (any case), or DebugChannel::Count if there's none by that name.
+		static DebugChannel DebugChannelFromName(const std::string& name);
+
+		/// Gets whether a debug channel is on: ticked in the settings, or switched on for this run by its CCCP_* environment variable (CCCP_AI_LOG turns on AI, Pilot, Climb, Combat and Squad; CCCP_PATH_LOG, CCCP_SANDBOX_LOG and CCCP_PERF_LOG their own).
+		bool DebugChannelOn(DebugChannel channel) const;
+
+		/// Gets whether a debug channel is ticked in the settings (the environment aside).
+		bool DebugChannelTicked(DebugChannel channel) const { return (m_DebugChannels >> static_cast<int>(channel)) & 1; }
+
+		/// Ticks or unticks a debug channel in the settings.
+		void SetDebugChannel(DebugChannel channel, bool on) { m_DebugChannels = on ? (m_DebugChannels | (1u << static_cast<int>(channel))) : (m_DebugChannels & ~(1u << static_cast<int>(channel))); }
+
+		/// For Lua: whether the debug channel with this name is on.
+		bool IsDebugChannelOn(const std::string& name) const { DebugChannel channel = DebugChannelFromName(name); return channel != DebugChannel::Count && DebugChannelOn(channel); }
+
+		/// Gets whether the AI channels trace every unit, not just the inspected ones (ticked, or CCCP_AI_LOG=all).
+		bool TraceAllUnits() const;
+
+		/// Sets whether the AI channels trace every unit.
+		void SetTraceAllUnits(bool all) { m_TraceAllUnits = all; }
+
 		/// Gets the team whose view the debug overlays show (the navigation overlay's path grid, for one, differs by team at doors).
 		/// @return The team, 0 to 3.
 		int DebugTeam() const { return m_DebugTeam; }
@@ -427,6 +454,8 @@ namespace RTE {
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
+		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
+		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

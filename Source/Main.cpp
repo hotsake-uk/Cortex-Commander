@@ -499,9 +499,9 @@ void RunGameLoop() {
 			g_LuaMan.ClearScriptTimings();
 			{
 				PerformanceMan::LogScope logScope("Sim: MovableMan total");
-				// CCCP_PERF_LOG: the time the units' update (their scripts and AI included) takes, its average and worst over every 5 s, as
+				// The Perf debug channel (or CCCP_PERF_LOG): the time the units' update (their scripts and AI included) takes, its average and worst over every 5 s, as
 				// PERF lines in the console, for finding hitches.
-				static const bool perfLog = std::getenv("CCCP_PERF_LOG") != nullptr;
+				const bool perfLog = g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Perf);
 				auto updateStart = std::chrono::steady_clock::now();
 				g_MovableMan.Update();
 				if (perfLog) {

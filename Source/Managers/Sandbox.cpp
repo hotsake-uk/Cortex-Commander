@@ -784,7 +784,7 @@ namespace {
 				unit->AddAISceneWaypoint(then);
 			}
 			unit->SetAIMode(Actor::AIMODE_GOTO);
-			if (std::getenv("CCCP_SANDBOX_LOG")) {
+			if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 				g_ConsoleMan.PrintString("SANDBOX: " + unit->GetPresetName() + " sent to " + std::to_string(static_cast<int>(order.Waypoint.m_X)) + "," + std::to_string(static_cast<int>(order.Waypoint.m_Y)) + (order.Target ? " after " + order.Target->GetPresetName() : "") + " mode now " + std::to_string(unit->GetAIMode()));
 			}
 			if (order.Attack) {
@@ -1893,7 +1893,7 @@ namespace {
 				s_Selected.push_back(MakeRef(actor));
 			}
 		}
-		if (std::getenv("CCCP_SANDBOX_LOG")) {
+		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 			std::string where;
 			for (const Actor* actor: SandboxAccess::Actors()) {
 				where += " " + actor->GetPresetName() + "@" + std::to_string(static_cast<int>(actor->GetPos().m_X)) + "," + std::to_string(static_cast<int>(actor->GetPos().m_Y));
@@ -2041,7 +2041,7 @@ namespace {
 
 	void CommandSelected(const Vector& position, int modifier) {
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
-		if (std::getenv("CCCP_SANDBOX_LOG")) {
+		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
 		}
 		bool friendly = target && IsCombatant(target) && !target->IsInGroup("Brains") && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
@@ -4103,7 +4103,7 @@ namespace {
 		Vector to = GymSettle(course.To, unit->GetHeight());
 		unit->SetPos(from);
 		unit->SetNumberValue(c_GymUnitTag, 1.0);
-		if (std::getenv("CCCP_AI_LOG")) {
+		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::AI)) {
 			unit->SetNumberValue("AITrace", 1.0);
 		}
 		g_MovableMan.AddActor(unit);
