@@ -1363,7 +1363,7 @@ namespace RTE {
 		/// Gets which way the mantle goes, -1 or 1 (0 when not mantling).
 		float GetMantleDir() const { return m_Mantling ? m_MantleDir : 0.0F; }
 		/// Gets the lip the hands reach for while mantling.
-		const Vector& GetMantleLip() const { return m_MantleLip; }
+		Vector GetMantleLip() const;
 		float m_MantleDir = 0.0F; //!< -1 left, 1 right.
 		Vector m_MantleStart; //!< Where the body was.
 		Vector m_MantleUp; //!< Where it is lifted to first.

@@ -1493,6 +1493,11 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	return true;
 }
 
+Vector Actor::GetMantleLip() const {
+	// Kept unwrapped, like the other key points; given on the body's side of the seam, where its arms are.
+	return m_Pos + g_SceneMan.ShortestDistance(m_Pos, m_MantleLip);
+}
+
 void Actor::UpdateMantle() {
 	if (!m_Mantling) {
 		return;
@@ -1513,8 +1518,13 @@ void Actor::UpdateMantle() {
 	float c = eased * eased;
 	Vector target = m_MantleStart * a + m_MantleUp * b + m_MantleEnd * c;
 	float deltaTime = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
-	m_Vel = (target - m_Pos) * (c_MPP / deltaTime);
-	m_Pos = target;
+	// The key points are unwrapped (a ledge just past the X seam has its end past the scene's edge) and Travel wraps m_Pos every update, so the
+	// step is taken the short way and the position wrapped again: from the wrapped position to the unwrapped point the step was a scene width,
+	// a speed of thousands of m/s that fired the body through the terrain for a frame, with the impact damage that goes with it.
+	Vector step = g_SceneMan.ShortestDistance(m_Pos, target);
+	m_Vel = step * (c_MPP / deltaTime);
+	m_Pos += step;
+	g_SceneMan.WrapPosition(m_Pos);
 	m_AngularVel = 0.0F;
 	if (progress >= 1.0F) {
 		m_Mantling = false;
