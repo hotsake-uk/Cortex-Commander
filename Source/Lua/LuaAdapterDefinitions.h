@@ -327,6 +327,10 @@ namespace RTE {
 			return CalculatePathAsync(luaSelfObject, callback, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
 		}
 		static void CalculatePathAsync(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
+
+		/// CalculatePathForActor without the wait: the route, by the actor's own movement (its PathAgent), is worked out on the pathing threads and
+		/// handed to the callback as a PathRequest on the main thread. For AI scripts, which mustn't hold the frame up for a search.
+		static void CalculatePathAsyncForActor(Scene* luaSelfObject, const luabind::object& callback, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team);
 	};
 #pragma endregion
 
