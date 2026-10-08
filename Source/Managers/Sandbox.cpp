@@ -2391,8 +2391,10 @@ namespace {
 				if (stroke.Orders == Order::MoveTo) {
 					break;
 				}
+				// Not your character (an AI unit only while you're out of it: told to attack with the rest, it ran off to fight), nor craft
+				// (a dropship delivering was sent off with its squad still in it, and tagged to attack, yanked about every second after).
 				for (Actor* actor: SandboxAccess::Actors()) {
-					if (actor->GetTeam() == stroke.Team && IsCombatant(actor) && !actor->IsPlayerControlled()) {
+					if (actor->GetTeam() == stroke.Team && IsCombatant(actor) && !actor->IsPlayerControlled() && actor != GetRef(s_PlayerUnit) && !dynamic_cast<const ACraft*>(actor)) {
 						GiveOrder(actor, stroke.Orders);
 					}
 				}
@@ -2409,8 +2411,9 @@ namespace {
 				s_GymToSet = true;
 				break;
 			case Tool::RemoveSide:
+				// (Not your character: it's yours, not the side's.)
 				for (Actor* actor: SandboxAccess::Actors()) {
-					if (actor->GetTeam() == stroke.Team && !dynamic_cast<ADoor*>(actor)) {
+					if (actor->GetTeam() == stroke.Team && !dynamic_cast<ADoor*>(actor) && actor != GetRef(s_PlayerUnit)) {
 						actor->SetToDelete(true);
 					}
 				}
