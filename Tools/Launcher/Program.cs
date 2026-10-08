@@ -23,6 +23,7 @@ class Settings
 	public string VersionsDir { get; set; } = "";
 	public string Configuration { get; set; } = "Final";
 	public string Remote { get; set; } = "origin";
+	public string SettingsIni { get; set; } = "";
 
 	static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "settings.json");
 
@@ -60,6 +61,7 @@ class MainForm : Form
 	readonly TextBox log = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 9f), BackColor = Color.FromArgb(24, 24, 24), ForeColor = Color.Gainsboro };
 	readonly Button fetchBtn = new() { Text = "Fetch", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
+	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
@@ -93,6 +95,7 @@ class MainForm : Form
 		configBox.SelectedItem = settings.Configuration;
 		if (configBox.SelectedIndex < 0) configBox.SelectedIndex = 0;
 		repoBox.Text = settings.RepoPath;
+		iniBox.Text = settings.SettingsIni;
 
 		var top = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 5, RowCount = 1 };
 		top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -120,6 +123,12 @@ class MainForm : Form
 		commitList.Columns.Add("Cached", 60);
 
 		var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+		var iniBrowse = new Button { Text = "...", AutoSize = true };
+		iniBrowse.Click += (_, _) => { using var d = new OpenFileDialog { Filter = "Settings.ini|*.ini|All files|*.*", FileName = iniBox.Text }; if (d.ShowDialog() == DialogResult.OK) iniBox.Text = d.FileName; };
+		var iniClear = new Button { Text = "Clear", AutoSize = true };
+		iniClear.Click += (_, _) => iniBox.Text = "";
+		buttons.Controls.AddRange(new Control[] { new Label { Text = "Settings.ini:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, iniBox, iniBrowse, iniClear });
+		buttons.SetFlowBreak(iniClear, true);
 		buttons.Controls.AddRange(new Control[] { customRef, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, cancelBtn, status });
 		var customGo = new Button { Text = "Go", AutoSize = true };
 		customGo.Click += async (_, _) => { if (customRef.Text.Trim() != "") await LoadCommits(customRef.Text.Trim()); };
@@ -175,6 +184,7 @@ class MainForm : Form
 	{
 		settings.RepoPath = repoBox.Text.Trim();
 		settings.Configuration = (string)configBox.SelectedItem!;
+		settings.SettingsIni = iniBox.Text.Trim();
 		settings.Save();
 	}
 
@@ -533,6 +543,14 @@ class MainForm : Form
 	{
 		var exe = ExePath(c);
 		if (!File.Exists(exe)) { Append($"Not built yet for this configuration: {exe}"); return; }
+		var ini = iniBox.Text.Trim();
+		if (ini != "")
+		{
+			// The game reads (and rewrites) Settings.ini from its working directory, so give each launch a fresh copy of the chosen file.
+			if (!File.Exists(ini)) { Append($"Settings.ini not found: {ini}"); return; }
+			try { File.Copy(ini, Path.Combine(WorktreePath(c), "Settings.ini"), true); Append($"Using Settings.ini from {ini}"); }
+			catch (Exception ex) { Append("Could not copy Settings.ini: " + ex.Message); return; }
+		}
 		Append($"Launching {c.Short}");
 		Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = WorktreePath(c), UseShellExecute = true });
 	}
