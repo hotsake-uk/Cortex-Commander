@@ -1037,6 +1037,25 @@ namespace RTE {
 		/// @return Where it was heard, or a zero vector for nothing.
 		Vector HearFootsteps() const;
 
+		/// What others' ScanForEnemies read of this actor, taken in the serial part of each sim update (PreControllerUpdate). The scans run on
+		/// the script threads while this actor's own scripts write its controller and velocity; read live, they could see half a write.
+		struct SightSnapshot {
+			Vector Pos; //!< Where it is.
+			Vector EyePos; //!< Where its head is.
+			bool Firing = false; //!< Whether its gun was going off.
+			bool Moving = false; //!< Whether it was moving faster than a crawl (1 px a frame).
+			float Profile = 1.0F; //!< GetSightProfile.
+			float HeadlampBrightness = 0.0F; //!< GetHeadlampBrightness.
+			float Height = 0.0F; //!< GetHeight, for the roof check.
+			bool Taken = false; //!< Whether one has been taken yet (an actor added this update hasn't had one).
+		};
+
+		/// Takes this update's SightSnapshot. Called from PreControllerUpdate, which MovableMan runs over all actors serially.
+		void TakeSightSnapshot();
+
+		/// @return The SightSnapshot taken this update.
+		const SightSnapshot& GetSightSnapshot() const { return m_SightSnapshot; }
+
 		/// Description:		Sets actor's sight distance.
 		/// @param newValue New sight distance value.
 		void SetSightDistance(float newValue) { m_SightDistance = newValue; }
@@ -1413,6 +1432,7 @@ namespace RTE {
 		// What each step of that path is, kept alongside it.
 		std::list<PathStepKind> m_MovePathKinds;
 		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
+		SightSnapshot m_SightSnapshot; //!< What others' scans read of this actor this update (see TakeSightSnapshot).
 		float m_Suppression = 0.0F; //!< How pinned down by fire, 0 to 1 (see GetSuppression).
 		float m_Morale = 1.0F; //!< How steady its nerve is, 0 to 1 (see GetMorale).
 		float m_MoraleLevel = 0.7F; //!< What morale comes back towards: higher among friends and near the brain, lower when hurt.
