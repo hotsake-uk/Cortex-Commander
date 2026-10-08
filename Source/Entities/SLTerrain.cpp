@@ -561,8 +561,102 @@ void SLTerrain::UpdateLights() {
 	}
 }
 
+void SLTerrain::ResetChangeTiles(int sceneWidth, int sceneHeight, bool wrapX, bool wrapY) {
+	auto map = std::make_unique<ChangeTiles>();
+	map->SceneWidth = std::max(sceneWidth, 1);
+	map->SceneHeight = std::max(sceneHeight, 1);
+	map->TilesWide = (map->SceneWidth + c_ChangeTileSize - 1) / c_ChangeTileSize;
+	map->TilesHigh = (map->SceneHeight + c_ChangeTileSize - 1) / c_ChangeTileSize;
+	map->WrapX = wrapX;
+	map->WrapY = wrapY;
+	map->WordCount = (static_cast<size_t>(map->TilesWide) * map->TilesHigh + 63) / 64;
+	map->Words = std::make_unique<std::atomic<uint64_t>[]>(map->WordCount);
+	for (size_t i = 0; i < map->WordCount; ++i) {
+		map->Words[i].store(0, std::memory_order_relaxed);
+	}
+	s_RetiredChangeTiles = std::move(s_CurrentChangeTiles);
+	s_CurrentChangeTiles = std::move(map);
+	s_ChangeTiles.store(s_CurrentChangeTiles.get(), std::memory_order_release);
+}
+
+void SLTerrain::NoteMaterialChangeBox(int minX, int minY, int maxX, int maxY) {
+	ChangeTiles* map = s_ChangeTiles.load(std::memory_order_acquire);
+	if (!map || maxX < minX || maxY < minY) {
+		return;
+	}
+	// Per axis, the box's pixel span as up to two runs of tiles: wrapped into the scene first on a wrapping axis (split in two where it straddles
+	// the seam; the whole axis when it is as long as the scene), clipped to it on the other. Pixels are wrapped before they are tiled because the
+	// last tile is a partial one when the scene isn't a multiple of the tile size.
+	struct TileRuns {
+		int Count = 0;
+		int First[2] = {0, 0};
+		int Last[2] = {0, 0};
+	};
+	auto tileRuns = [](int from, int to, int size, bool wraps) {
+		TileRuns runs;
+		auto add = [&runs](int firstPixel, int lastPixel) {
+			runs.First[runs.Count] = firstPixel / c_ChangeTileSize;
+			runs.Last[runs.Count] = lastPixel / c_ChangeTileSize;
+			++runs.Count;
+		};
+		if (wraps) {
+			if (to - from + 1 >= size) {
+				add(0, size - 1);
+			} else {
+				int start = ((from % size) + size) % size;
+				int end = start + (to - from);
+				if (end < size) {
+					add(start, end);
+				} else {
+					add(start, size - 1);
+					add(0, end - size);
+				}
+			}
+		} else {
+			from = std::max(from, 0);
+			to = std::min(to, size - 1);
+			if (to >= from) {
+				add(from, to);
+			}
+		}
+		return runs;
+	};
+	TileRuns runsX = tileRuns(minX, maxX, map->SceneWidth, map->WrapX);
+	TileRuns runsY = tileRuns(minY, maxY, map->SceneHeight, map->WrapY);
+	for (int y = 0; y < runsY.Count; ++y) {
+		for (int tileY = runsY.First[y]; tileY <= runsY.Last[y]; ++tileY) {
+			for (int x = 0; x < runsX.Count; ++x) {
+				for (int tileX = runsX.First[x]; tileX <= runsX.Last[x]; ++tileX) {
+					MarkChangeTile(*map, tileX, tileY);
+				}
+			}
+		}
+	}
+}
+
+bool SLTerrain::TakeChangedTiles(std::vector<uint64_t>& tiles, int& tilesWide, int& tilesHigh) {
+	ChangeTiles* map = s_ChangeTiles.load(std::memory_order_acquire);
+	if (!map) {
+		tiles.clear();
+		tilesWide = tilesHigh = 0;
+		return false;
+	}
+	tilesWide = map->TilesWide;
+	tilesHigh = map->TilesHigh;
+	tiles.resize(map->WordCount);
+	bool any = false;
+	for (size_t i = 0; i < map->WordCount; ++i) {
+		// (A read first: most words are empty, and an exchange on each would write every word every frame.)
+		tiles[i] = map->Words[i].load(std::memory_order_relaxed) != 0 ? map->Words[i].exchange(0, std::memory_order_relaxed) : 0;
+		any = any || tiles[i] != 0;
+	}
+	return any;
+}
+
 int SLTerrain::LoadData() {
 	SceneLayer::LoadData();
+	// A new scene: a new, empty changed-terrain map of its size (everything drawn below marks it; the lighting refreshes its whole grid for a new scene anyway).
+	ResetChangeTiles(m_MainBitmap ? m_MainBitmap->w : 0, m_MainBitmap ? m_MainBitmap->h : 0, m_WrapX, m_WrapY);
 
 	RTEAssert(m_FGColorLayer.get(), "Terrain's foreground layer not instantiated before trying to load its data!");
 	RTEAssert(m_BGColorLayer.get(), "Terrain's background layer not instantiated before trying to load its data!");
