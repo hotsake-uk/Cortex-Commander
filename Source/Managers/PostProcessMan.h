@@ -73,6 +73,15 @@ namespace RTE {
 		float Brightness; //!< This frame's, 0 to about 1.6 (the first stroke is brightest).
 	};
 
+	/// An energy beam (a lightsaber's blade, a cutting beam) as seen by a player screen (PostProcessMan::GetEnergyBeams): a white-hot core in a halo of its colour.
+	struct EnergyBeamSegment {
+		glm::vec2 From; //!< Relative to the screen.
+		glm::vec2 To;
+		glm::vec3 Color; //!< The halo's colour, 0 to 1.
+		float Width; //!< The core's width, in pixels.
+		float Brightness; //!< 0 to about 2.
+	};
+
 	/// A shockwave ring as seen by one player screen this frame.
 	struct ScreenShockwave {
 		glm::vec2 m_Pos; //!< Position relative to the screen.
@@ -125,6 +134,7 @@ namespace RTE {
 			// (The finished update's set is kept for the AI's sight, GetDynamicLightAt: the new update's is being registered while it looks.)
 			m_LastSceneLights.swap(m_SceneLights);
 			m_SceneLights.clear();
+			m_EnergyBeams.clear();
 			IndexLastSceneLights();
 			std::scoped_lock lock(m_ShockwaveMutex);
 			m_Shimmers.clear();
@@ -212,6 +222,22 @@ namespace RTE {
 		/// @param direction Direction the cone points (Y down), any length.
 		/// @param halfAngleDegrees Half the cone's width.
 		void RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
+
+		/// Registers an energy beam for the current frame: a straight line of light such as a lightsaber's blade, drawn as a white-hot core in a halo of its
+		/// colour that blooms, and lighting what's around it along its whole length. Registered on every sim update like lights. Safe from any thread.
+		/// @param from One end, scene coordinates.
+		/// @param to The other end.
+		/// @param color The halo's and the light's colour in 0-255 gamma space, like INI colors.
+		/// @param width The core's width in pixels, about 1 to 4.
+		/// @param brightness 1 for a lightsaber.
+		/// @param lightRadius How far its light reaches from the beam, in pixels. 0 for no light, only the glow.
+		void RegisterEnergyBeam(const Vector& from, const Vector& to, const glm::vec3& color, float width, float brightness, float lightRadius);
+
+		/// Registers an energy beam for the current frame, from Lua. See RegisterEnergyBeam.
+		void AddEnergyBeam(const Vector& from, const Vector& to, float width, float red, float green, float blue, float brightness, float lightRadius) { RegisterEnergyBeam(from, to, glm::vec3(red, green, blue), width, brightness, lightRadius); }
+
+		/// Gets the energy beams registered for the frame about to be drawn that may show in a box, with positions relative to the box. Handles horizontal scene wrapping.
+		void GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const;
 
 		/// Registers a dynamic light for the current frame, from Lua. See RegisterLight.
 		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity, LightSource::Scripts); }
@@ -492,6 +518,15 @@ namespace RTE {
 		void LoadPaletteAnimation();
 		bool m_PlayerAtmosphereCaptured = false;
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
+		/// An energy beam registered for the current frame, in scene coordinates.
+		struct EnergyBeam {
+			glm::vec2 From;
+			glm::vec2 To;
+			glm::vec3 Color; //!< 0 to 1, gamma space.
+			float Width;
+			float Brightness;
+		};
+		std::vector<EnergyBeam> m_EnergyBeams; //!< Pushed to under m_SceneLightsMutex.
 		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.
 		std::vector<SceneLight> m_LastSceneLights; //!< The last finished sim update's lights, for GetDynamicLightAt: not written while a sim update runs.
 		static constexpr int c_LightCellSize = 128; //!< The size of a cell of m_LastLightCells, in pixels.

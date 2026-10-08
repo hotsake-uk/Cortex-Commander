@@ -114,40 +114,8 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	return true;
 }
 
-void Sandbox::SetAutoBattleSide(int team, const std::string& faction, int budget) {
-	if (!s_CatalogueBuilt && InGame()) {
-		BuildCatalogue();
-	}
-	if (team < 0 || team >= c_Sides) {
-		return;
-	}
-	AutoSide& autoSide = s_AutoSides[team];
-	autoSide.Active = budget > 0;
-	autoSide.Budget = budget;
-	for (size_t i = 0; i < s_FactionNames.size(); ++i) {
-		if (s_FactionNames[i] == faction || s_FactionNames[i] + ".rte" == faction) {
-			autoSide.Faction = static_cast<int>(i);
-		}
-	}
-}
-
 void Sandbox::SetAIPaused(bool paused) {
 	Controller::SetAIPaused(paused);
-}
-
-void Sandbox::SetAutoBattleRandom(bool random, bool favouritesOnly) {
-	s_ScriptAutoRandom = random;
-	s_ScriptAutoFavourites = random && favouritesOnly;
-}
-
-void Sandbox::StartAutoBattle() {
-	if (!InGame()) {
-		return;
-	}
-	// A script's battle is between the factions it set up for each side, unless it asked for random units (SandboxAutoBattleRandom).
-	s_AutoRandom = s_ScriptAutoRandom;
-	s_AutoFavourites = s_ScriptAutoFavourites;
-	BeginAutoBattle(g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F), static_cast<float>(g_FrameMan.GetPlayerScreenWidth()));
 }
 
 bool Sandbox::SetBuildMode(bool build) {
@@ -179,7 +147,7 @@ int Sandbox::CountUnits(int team) {
 			continue;
 		}
 		// The passengers of a craft of the side's, still on the way in: inventory, not in the world. (Left out, a side whose last wave
-		// was in the air was "gone", and the auto battle was called for the other side.)
+		// was in the air was "gone", and the old auto battle was called for the other side.)
 		for (const MovableObject* item: *actor->GetInventory()) {
 			if (const Actor* passenger = dynamic_cast<const Actor*>(item); passenger && !passenger->IsDead() && passenger->GetHealth() > 0.0F) {
 				++count;
@@ -491,8 +459,6 @@ void Sandbox::DrawGUI() {
 			s_RallySet.fill(false);
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
-			s_AutoRunning = false;
-			s_AutoWinner = -2;
 			s_ToolIndex = ToolIndex(Tool::Unit);
 		}
 	} else {
@@ -643,6 +609,7 @@ void Sandbox::DrawGUI() {
 	UpdateFreeCamera();
 	if (InGame()) {
 		DrawRallyPoints();
+		DrawBattleMarks();
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
@@ -723,6 +690,13 @@ void Sandbox::DrawGUI() {
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 			}
+		} else if (tool.Kind == Tool::BattleDropLine) {
+			// Drag along where the team's ships are to come in.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_Dragging = true;
+				s_DragStart = io.MousePos;
+				s_DoubleClick = false;
+			}
 		} else if (tool.Interval <= 0.0F) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				QueueStroke(tool.Kind, position);
@@ -748,7 +722,10 @@ void Sandbox::DrawGUI() {
 		// to select.
 		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
 		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
-		if (defendAt || facingMove) {
+		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
+		if (dropLine) {
+			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);
+		} else if (defendAt || facingMove) {
 			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
 			float side = now.x >= s_DragStart.x ? 1.0F : -1.0F;
@@ -766,7 +743,16 @@ void Sandbox::DrawGUI() {
 			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x - ViewOrigin().x, now.y - ViewOrigin().y) * scale;
 			bool dragged = std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
 			bool give = true;
-			if (defendAt) {
+			if (dropLine) {
+				// The team being set up on the Battle tab has its ships come in over this line from now on.
+				BattleSettings& setup = s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+				setup.LineA = start;
+				setup.LineB = dragged ? end : start;
+				setup.HasLine = true;
+				setup.DropOnLine = true;
+				SendBattleSettings(s_BattleEditTeam);
+				give = false;
+			} else if (defendAt) {
 				stroke.Kind = Tool::Command;
 				stroke.Position = start;
 				g_SceneMan.WrapPosition(stroke.Position);
@@ -825,8 +811,8 @@ void Sandbox::DrawGUI() {
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
 			CommanderPanel();
 		}
-		if (ImGui::BeginTabBar("SandboxTabs")) {
-			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
+		if (DrawTabRows()) {
+			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
 				bool exists = GetRef(s_PlayerUnit) != nullptr;
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
@@ -837,7 +823,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("On: Tab puts the tools away and puts you in your character.\nOff: there is no character. Tab only hides and shows the tools, and you go on looking around from above.");
 				if (!s_Player.EnterOnClose) {
 					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
-					ImGui::EndTabItem();
+					EndSandboxTab();
 				} else {
 				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
 				if (ToolUI::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
@@ -924,10 +910,10 @@ void Sandbox::DrawGUI() {
 					s_Queue.push_back(stroke);
 				}
 				ImGui::EndDisabled();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 				}
 			}
-			if (ImGui::BeginTabItem("Spawn", nullptr, TestTab("Spawn"))) {
+			if (SandboxTab("Spawn")) {
 				s_CurrentTab = "Spawn";
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
@@ -959,15 +945,15 @@ void Sandbox::DrawGUI() {
 				} else if (kind == Tool::Structure) {
 					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
-			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony", nullptr, TestTab("Colony"))) {
+			if (c_ShowColonyTab && SandboxTab("Colony")) {
 				s_CurrentTab = "Colony";
 				ColonyTab();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Build", nullptr, TestTab("Build"))) {
+			if (SandboxTab("Build")) {
 				s_CurrentTab = "Build";
 				// Coming to this tab picks up the building tool.
 				static int shownLast = -10;
@@ -997,9 +983,9 @@ void Sandbox::DrawGUI() {
 					Sandbox::SetBuildMode(true);
 				}
 				ImGui::SetItemTooltip("Puts these tools away and opens the build menu the game uses before a battle: everything it offers, moved and placed with the game's own cursor.\nDone in its menu, or Tab, comes back here.");
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Orders", nullptr, TestTab("Orders"))) {
+			if (SandboxTab("Orders")) {
 				s_CurrentTab = "Orders";
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
@@ -1032,45 +1018,19 @@ void Sandbox::DrawGUI() {
 					s_Queue.push_back(stroke);
 				}
 				ImGui::TextDisabled("Rally point: pick the tool above and click to place this side's flag.");
-
-				ImGui::SeparatorText("Auto battle");
-				ImGui::TextWrapped("Each side buys waves of units with its budget and drops them in to attack, until one side is left.");
-				ImGui::SliderInt("Sides", &s_AutoSideCount, 2, c_Sides);
-				ImGui::SetItemTooltip("Red and Green, then Blue, then Yellow.");
-				ImGui::SliderInt("Budget per side", &s_AutoBudget, 500, 50000, "%d oz", ImGuiSliderFlags_Logarithmic);
-				ToolUI::Checkbox("Random units", &s_AutoRandomChoice);
-				ImGui::SetItemTooltip("Every wave is random units from every faction. Off, each side buys from a faction of its own.");
-				if (s_AutoRandomChoice) {
-					ImGui::SameLine();
-					ToolUI::Checkbox("Favourites only##auto", &s_AutoFavouritesChoice);
-					ImGui::SetItemTooltip("Picks only from the units marked as favourites (Ctrl+click on a tile). With none marked, from every unit.");
-				}
-				if (ToolUI::Button(s_AutoRunning ? "Start again" : "Start auto battle", ImVec2(s_AutoRunning ? ImGui::GetContentRegionAvail().x * 0.5F : -1.0F, 0.0F))) {
-					Stroke stroke;
-					stroke.Kind = Tool::AutoBattle;
-					stroke.Count = s_AutoSideCount;
-					stroke.Choice = s_AutoBudget;
-					stroke.Random = s_AutoRandomChoice;
-					stroke.FavouritesOnly = s_AutoFavouritesChoice;
-					// (The view's middle and width now, so the sim doesn't read the camera: see S4.)
-					stroke.Position = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
-					stroke.Radius = g_FrameMan.GetPlayerScreenWidth();
-					s_Queue.push_back(stroke);
-				}
-				if (s_AutoRunning) {
-					ImGui::SameLine();
-					if (ToolUI::Button("Stop", ImVec2(-1.0F, 0.0F))) {
-						QueueSimChange(Tool::AutoBattle, 0);
-					}
-				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (IsGodMode() && ImGui::BeginTabItem("Gym", nullptr, TestTab("Gym"))) {
+			if (SandboxTab("Battle")) {
+				s_CurrentTab = "Battle";
+				BattleTab();
+				EndSandboxTab();
+			}
+			if (IsGodMode() && SandboxTab("Gym")) {
 				s_CurrentTab = "Gym";
 				GymTab();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Paint", nullptr, TestTab("Paint"))) {
+			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
@@ -1182,9 +1142,9 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndDisabled();
 				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time, up to about 8 million pixels in all: the oldest go first, and a stroke held for more than a few seconds is undone in parts.");
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
+			if (SandboxTab("Boom")) {
 				s_CurrentTab = "Boom";
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
@@ -1198,9 +1158,9 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Things to knock down");
 				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Effects", nullptr, TestTab("Effects"))) {
+			if (SandboxTab("Effects")) {
 				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
 				ImGui::SeparatorText("Lights");
@@ -1237,9 +1197,9 @@ void Sandbox::DrawGUI() {
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("World", nullptr, TestTab("World"))) {
+			if (SandboxTab("World")) {
 				s_CurrentTab = "World";
 				if (IsGodMode()) {
 					SideStatus();
@@ -1308,14 +1268,13 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Button("Put out all fire")) {
 					TerrainFire::Clear();
 				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Keys", nullptr, TestTab("Keys"))) {
+			if (SandboxTab("Keys")) {
 				s_CurrentTab = "Keys";
 				KeysPage();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			ImGui::EndTabBar();
 		}
 	}
 	g_DebugMan.EndPanel();
@@ -1335,9 +1294,6 @@ void Sandbox::OnActivityStarted() {
 	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
-	// A script's choice of random units for its auto battle is for that game only.
-	s_ScriptAutoRandom = false;
-	s_ScriptAutoFavourites = false;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
 	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
 	s_Possessed = nullptr;
@@ -1352,8 +1308,7 @@ void Sandbox::OnActivityStarted() {
 	}
 	s_OrderMarks.clear();
 	s_FollowTarget = UnitRef();
-	s_AutoRunning = false;
-	s_AutoWinner = -2;
+	ForgetBattle();
 	s_PendingOrders.clear();
 	s_Commander = false;
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
@@ -1399,7 +1354,7 @@ void Sandbox::Update() {
 			FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), spawner.Liquid.c_str());
 		}
 	}
-	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and auto battle kept dropping waves,
+	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and the battle kept dropping waves,
 	// all on units held still. (Its wave clocks are held back as well, so the waves don't all come at once after.) Attackers pick their own
 	// enemies in their AI (SharedBehaviors.AttackOrderUpdate), which the pause holds as it is.
 	const bool aiPaused = Controller::IsAIPaused();
@@ -1412,13 +1367,7 @@ void Sandbox::Update() {
 	GymUpdate();
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
 	// can't be had are the AI's own business now, and re-ordering a unit every three seconds only restarted whatever it was in the middle of.)
-	if (aiPaused) {
-		for (AutoSide& autoSide: s_AutoSides) {
-			++autoSide.NextWave;
-		}
-	} else {
-		UpdateAutoBattle();
-	}
+	UpdateBattle(aiPaused);
 	Colony::Update();
 	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
 		FindAction();

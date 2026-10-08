@@ -621,7 +621,8 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves. Returns what the units cost.
-	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft) {
+	/// @param invincible Whether the craft takes no harm, and is taken away once it has unloaded and left (KeepCraftWhole).
+	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible) {
 		const CraftChoice& choice = c_Crafts[std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)];
 		ACraft* ship = dynamic_cast<ACraft*>(CreateBaseObject(choice.ClassName, choice.PresetName));
 		float cost = 0.0F;
@@ -644,6 +645,9 @@ namespace SandboxDetail {
 		ship->SetControllerMode(Controller::CIM_AI);
 		ship->SetAIMode(Actor::AIMODE_DELIVER);
 		ship->ResetAllTimers();
+		if (invincible) {
+			KeepCraftWhole(ship);
+		}
 		g_MovableMan.AddActor(ship);
 		return cost;
 	}
@@ -977,19 +981,10 @@ namespace SandboxDetail {
 			case Tool::UndoTerrain:
 				UndoPaint();
 				break;
-			case Tool::AutoBattle:
-				if (stroke.Count <= 0) {
-					s_AutoRunning = false;
-					s_AutoWinner = -2;
-					break;
-				}
-				for (int side = 0; side < c_Sides; ++side) {
-					s_AutoSides[side].Active = side < stroke.Count;
-					s_AutoSides[side].Budget = std::max(stroke.Choice, 1);
-				}
-				s_AutoRandom = stroke.Random;
-				s_AutoFavourites = stroke.FavouritesOnly;
-				BeginAutoBattle(stroke.Position, static_cast<float>(stroke.Radius));
+			case Tool::BattleTeam:
+			case Tool::BattleDefendPoint:
+			case Tool::BattleDropLine:
+				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
 				if (stroke.Count == 1) {
@@ -1262,6 +1257,15 @@ namespace SandboxDetail {
 	}
 
 	void QueueStroke(Tool kind, const Vector& position) {
+		if (kind == Tool::BattleDefendPoint) {
+			// The team being set up on the Battle tab defends here from now on.
+			BattleSettings& setup = s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+			setup.DefendPos = position;
+			g_SceneMan.WrapPosition(setup.DefendPos);
+			setup.HasDefendPos = true;
+			SendBattleSettings(s_BattleEditTeam);
+			return;
+		}
 		Stroke stroke;
 		stroke.Kind = kind;
 		stroke.Position = position;

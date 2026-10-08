@@ -38,6 +38,7 @@ uniform bool rteWetMapOn; // Wetness from the wetness map (LightingSettings::Wet
 uniform sampler2D rteWetMap; // The light grid's cells: R = how wet, 0 to 1, and past 1 water standing in dips, up to 2.
 uniform float rtePuddles; // How much of that standing water is drawn as puddles, 0 for none.
 uniform float rteRainNow; // How hard it's raining, 0 to 1, for drops on puddles.
+uniform bool rteWaterCaustics; // The thin wavy lines of light through water. Off: none.
 uniform float rteWaterFoamStray; // How much of that froth a stray pixel or two of water gets, against a stream of them: 0 none (they stay bare pixels), 1 as much.
 uniform float rteWaterFoamBright; // How bright the froth is drawn.
 uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
@@ -243,6 +244,9 @@ float WaterAround(vec2 uv, vec2 texel) {
 
 // The thin bright lines of light that wander and cross through water. The same in still water and in the froth of a pour, so the two look like one thing.
 float WaterCaustic(vec2 world) {
+	if (!rteWaterCaustics) {
+		return 0.0;
+	}
 	float bandA = sin(world.x * 0.13 + rteTime * 0.9 + 2.0 * sin(world.y * 0.11 + rteTime * 0.6));
 	float bandB = sin(world.x * 0.07 - rteTime * 0.7 + 1.5 * sin(world.y * 0.17 - rteTime * 0.5));
 	return pow(max(0.0, 1.0 - abs(bandA + bandB) * 0.9), 6.0);
