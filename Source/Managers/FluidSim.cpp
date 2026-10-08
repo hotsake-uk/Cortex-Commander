@@ -1172,6 +1172,7 @@ void FluidSim::Update() {
 		bool gotLower = false;
 		bool swapped = false;
 		bool freeFall = false;
+		int shiftRun = 0; //!< For a surface move along a run of its own liquid (L-4): how far, so the colours along it shift one cell toward the drop.
 		if (canMoveTo(x, y + 1)) {
 			freeFall = true;
 			// Falling: faster the longer it falls, drifting the way it was already going, so it pours in an arc.
@@ -1335,6 +1336,19 @@ void FluidSim::Update() {
 							heading = side;
 							moved = true;
 							gotLower = true;
+							// (Through a run of its own liquid, the run's colours shift one cell toward the drop with it (L-4): the surface is seen to
+							// flow there instead of a pixel vanishing at one end and popping up at the other. The materials end up the same either way.)
+							if (found > 2) {
+								shiftRun = found;
+								for (int step = 1; step < found; ++step) {
+									int lookX = x + side * step;
+									int lookY = y;
+									if (!InWorld(lookX, lookY, width, height) || materialBitmap->line[lookY][lookX] != ownMaterial) {
+										shiftRun = 0;
+										break;
+									}
+								}
+							}
 							break;
 						}
 					}
@@ -1397,6 +1411,23 @@ void FluidSim::Update() {
 			int target = targetY * width + targetX;
 			int material = terrain->GetMaterialPixel(x, y);
 			int color = terrain->GetFGColorPixel(x, y);
+			if (shiftRun > 1) {
+				// What arrives at the drop is the colour from the far end of the run; each cell takes the one behind it, and the first takes this pixel's.
+				int lastX = x + heading * (shiftRun - 1);
+				int lastY = y;
+				InWorld(lastX, lastY, width, height);
+				int arriving = terrain->GetFGColorPixel(lastX, lastY);
+				for (int step = shiftRun - 1; step >= 1; --step) {
+					int toX = x + heading * step;
+					int toY = y;
+					int fromX = x + heading * (step - 1);
+					int fromY = y;
+					InWorld(toX, toY, width, height);
+					InWorld(fromX, fromY, width, height);
+					terrain->SetFGColorPixel(toX, toY, terrain->GetFGColorPixel(fromX, fromY));
+				}
+				color = arriving;
+			}
 			// When it sinks through a lighter liquid, that liquid takes the place it left.
 			int leftMaterial = swapped ? terrain->GetMaterialPixel(targetX, targetY) : static_cast<int>(g_MaterialAir);
 			int leftColor = swapped ? terrain->GetFGColorPixel(targetX, targetY) : static_cast<int>(ColorKeys::g_MaskColor);
