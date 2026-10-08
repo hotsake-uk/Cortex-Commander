@@ -16,8 +16,8 @@ From a Developer PowerShell / any shell with `dotnet`:
 That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. Copy it anywhere and double-click it. (For development, `dotnet run` in this folder also works.)
 
 ## Using it
-1. **Branch**: pick one from the list (or type any branch / tag / sha and press Enter). **Fetch** refreshes the list from the remote.
-2. **Commit**: the latest is selected for you; click an older one if you want it.
+1. **Branch**: pick one from the list (or type any branch / tag / sha and press Enter). **Refresh** fetches from the remote and reloads the commits.
+2. **Commit**: newest first by date and time; the latest is selected for you; click an older one if you want it.
 3. **Settings** and **Mods** (both optional): a Settings.ini file is copied to the version's `Userdata/Settings.ini`, and every `*.rte` folder in the mods folder is copied to its `Mods/` folder, changed files only. Your originals are never modified.
 4. **Build & Launch**.
 

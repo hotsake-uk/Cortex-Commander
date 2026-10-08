@@ -60,7 +60,7 @@ class MainForm : Form
 	readonly Button repoBrowse = new() { Text = "...", AutoSize = true };
 	readonly ListView commitList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
 	readonly TextBox log = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 9f), BackColor = Color.FromArgb(24, 24, 24), ForeColor = Color.Gainsboro };
-	readonly Button fetchBtn = new() { Text = "Fetch", AutoSize = true };
+	readonly Button fetchBtn = new() { Text = "Refresh", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
@@ -111,7 +111,7 @@ class MainForm : Form
 
 		commitList.Columns.Add("Commit", 90);
 		commitList.Columns.Add("Version", 70);
-		commitList.Columns.Add("Date", 90);
+		commitList.Columns.Add("Date", 130);
 		commitList.Columns.Add("Author", 110);
 		commitList.Columns.Add("Message", 600);
 		commitList.Columns.Add("Built", 50);
@@ -251,11 +251,9 @@ class MainForm : Form
 		await RefreshRefs();
 		ApplyFilter();
 		SetBusy(false, $"{allRefs.Count} refs");
-		if (branchBox.Text == "" && currentRef == "")
-		{
+		if (branchBox.Text == "")
 			branchBox.Text = settings.LastRef != "" ? settings.LastRef : allRefs.FirstOrDefault(r => r.EndsWith("/" + IntegrationBranch)) ?? "";
-			if (branchBox.Text != "") await LoadCommits(branchBox.Text);
-		}
+		if (branchBox.Text != "") await LoadCommits(branchBox.Text.Trim()); // always reload, so new commits show and the newest is selected
 	}
 
 	async Task RefreshRefs()
@@ -309,7 +307,7 @@ class MainForm : Form
 		if (refName.StartsWith("tag: ")) refName = refName[5..];
 		else if (versionShas.TryGetValue(refName, out var vsha)) refName = vsha;
 		currentRef = refName;
-		var (code, output) = await Git($"log {refName} -n 60 --date=short --format=%H%x09%ad%x09%an%x09%s --");
+		var (code, output) = await Git($"log {refName} -n 60 --date-order --date=format:"%Y-%m-%d %H:%M" --format=%H%x09%cd%x09%an%x09%s --");
 		commitList.Items.Clear();
 		if (code != 0) { Append($"git log failed for '{refName}': {output.Trim()}"); return; }
 		var commits = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
