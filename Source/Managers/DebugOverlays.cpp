@@ -3,6 +3,9 @@
 #include "DebugDraw.h"
 #include "Actor.h"
 #include "MovableMan.h"
+#include "PostProcessMan.h"
+#include "SceneLighting.h"
+#include "SLTerrain.h"
 #include "PathFinder.h"
 #include "Scene.h"
 #include "SettingsMan.h"
@@ -330,4 +333,97 @@ void DebugOverlays::DrawTerrainUpdates() {
 			drawList->AddRectFilled(ImVec2(at.x - 1.5F, at.y - 1.5F), ImVec2(at.x + 1.5F, at.y + 1.5F), Faded(IM_COL32(240, 60, 50, 230), share));
 		}
 	}
+}
+
+void DebugOverlays::DrawLightSources() {
+	SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
+	bool on = g_SettingsMan.ShowLightSources();
+	if (lighting) {
+		lighting->SetRecordDebugLights(on);
+	}
+	if (!on || !lighting) {
+		return;
+	}
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float perPixel = DebugDraw::ScenePixelsPerWindowPixel();
+	// A colour as a dot: the light's own hue at full brightness, so a dim light still shows what colour it is.
+	auto dotColor = [](const glm::vec3& color, int alpha) {
+		float peak = std::max({color.r, color.g, color.b, 0.0001F});
+		glm::vec3 shown = glm::clamp(color / peak, 0.0F, 1.0F) * 255.0F;
+		return IM_COL32(static_cast<int>(shown.r), static_cast<int>(shown.g), static_cast<int>(shown.b), alpha);
+	};
+	for (const SceneLighting::DebugLight& light: lighting->GetDebugLights()) {
+		ImVec2 at = DebugDraw::ToScreen(light.Pos);
+		float reach = light.Radius / perPixel;
+		if (!InView(at, reach)) {
+			continue;
+		}
+		ImU32 edge = light.Dropped ? IM_COL32(240, 60, 50, 160) : dotColor(light.Color, light.Glow ? 90 : 150);
+		if (light.ConeCos >= -1.0F) {
+			// The beam: a wedge out to its reach, its half angle either side of where it points.
+			float half = std::acos(std::clamp(light.ConeCos, -1.0F, 1.0F));
+			float facing = std::atan2(light.Direction.y, light.Direction.x);
+			drawList->PathLineTo(at);
+			drawList->PathArcTo(at, reach, facing - half, facing + half, 16);
+			drawList->PathStroke(edge, ImDrawFlags_Closed);
+		} else if (light.Glow) {
+			// (Dashed, by drawing every other segment: a glow's light is the glow's, not a light of its own.)
+			const int segments = 24;
+			for (int i = 0; i < segments; i += 2) {
+				float a0 = static_cast<float>(i) / static_cast<float>(segments) * 6.2831853F;
+				float a1 = static_cast<float>(i + 1) / static_cast<float>(segments) * 6.2831853F;
+				drawList->AddLine(ImVec2(at.x + std::cos(a0) * reach, at.y + std::sin(a0) * reach), ImVec2(at.x + std::cos(a1) * reach, at.y + std::sin(a1) * reach), edge);
+			}
+		} else {
+			drawList->AddCircle(at, reach, edge, 32);
+		}
+		drawList->AddCircleFilled(at, 2.5F, dotColor(light.Color, 255));
+	}
+	// The scenery lamps: what each hangs on, and so whether it goes out when that is destroyed.
+	if (Scene* scene = g_SceneMan.GetScene(); scene && scene->GetTerrain()) {
+		for (const TerrainLight& lamp: scene->GetTerrain()->GetLights()) {
+			ImVec2 at = DebugDraw::ToScreen(lamp.m_Pos);
+			if (!InView(at, 20.0F)) {
+				continue;
+			}
+			ImU32 state = lamp.m_Anchored > 0 ? IM_COL32(90, 230, 90, 255) : lamp.m_Anchored == 0 ? IM_COL32(240, 70, 60, 255) : IM_COL32(160, 160, 160, 255);
+			drawList->AddRect(ImVec2(at.x - 3.0F, at.y - 3.0F), ImVec2(at.x + 3.0F, at.y + 3.0F), state);
+			if (lamp.m_Anchored > 0) {
+				ImVec2 anchor = DebugDraw::ToScreen(lamp.m_Pos + lamp.m_AnchorOffset);
+				drawList->AddLine(at, anchor, state, 2.0F);
+				drawList->AddCircleFilled(anchor, 2.0F, state);
+			}
+		}
+	}
+	// The counts, in the top left of the picture.
+	const SceneLighting::DebugLightCounts& counts = lighting->GetDebugLightCounts();
+	char text[160];
+	std::snprintf(text, sizeof(text), "lights %d  cones %d  glows %d  merged %d  over the cap %d  reach^2 %.2f Mpx", counts.Lights, counts.Cones, counts.Glows, counts.Merged, counts.Dropped, counts.ReachSquared / 1000000.0F);
+	ImVec2 origin = DebugDraw::ViewOrigin();
+	ImVec2 size = ImGui::CalcTextSize(text);
+	drawList->AddRectFilled(ImVec2(origin.x + 4.0F, origin.y + 4.0F), ImVec2(origin.x + 10.0F + size.x, origin.y + 8.0F + size.y), IM_COL32(10, 12, 10, 190));
+	drawList->AddText(ImVec2(origin.x + 7.0F, origin.y + 6.0F), IM_COL32(235, 235, 220, 255), text);
+}
+
+void DebugOverlays::DrawSunDirection() {
+	SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
+	if (!g_SettingsMan.ShowSunDirection() || !lighting || !g_SceneMan.GetScene()) {
+		return;
+	}
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	GameViewRect view = g_WindowMan.GetGameViewRect();
+	ImVec2 middle(view.x + view.w * 0.5F, view.y + view.h * 0.5F);
+	glm::vec2 towards = lighting->GetSunDirection();
+	float length = std::min(view.w, view.h) * 0.2F;
+	ImVec2 tip(middle.x + towards.x * length, middle.y + towards.y * length);
+	ImU32 color = IM_COL32(255, 220, 90, 230);
+	drawList->AddLine(middle, tip, color, 3.0F);
+	// The arrowhead.
+	glm::vec2 side(-towards.y, towards.x);
+	float head = 12.0F;
+	drawList->AddTriangleFilled(tip, ImVec2(tip.x - towards.x * head + side.x * head * 0.5F, tip.y - towards.y * head + side.y * head * 0.5F), ImVec2(tip.x - towards.x * head - side.x * head * 0.5F, tip.y - towards.y * head - side.y * head * 0.5F), color);
+	drawList->AddCircle(middle, 4.0F, color);
+	char text[64];
+	std::snprintf(text, sizeof(text), "sun shadows %.2f", lighting->GetSunShadowStrength());
+	drawList->AddText(ImVec2(tip.x + 6.0F, tip.y - ImGui::GetTextLineHeight() * 0.5F), color, text);
 }

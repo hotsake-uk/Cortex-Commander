@@ -975,6 +975,29 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	};
 	size_t lightCount = 0;
 	size_t coneLightStart = SIZE_MAX; // The first cone light's quad; all lights before it shine all round.
+	// The light sources overlay's copy of the first screen's lights, in scene coordinates.
+	bool recordLights = m_RecordDebugLights && screenIndex == 0;
+	if (recordLights) {
+		m_DebugLights.clear();
+		m_DebugLightCounts = DebugLightCounts();
+	}
+	auto recordLight = [&](const Vector& pos, const glm::vec3& color, float radius, const glm::vec2& direction, float coneCos, bool glow, bool dropped) {
+		DebugLight light;
+		light.Pos = screenOrigin + pos;
+		light.Color = color;
+		light.Radius = radius;
+		light.Direction = direction;
+		light.ConeCos = coneCos;
+		light.Glow = glow;
+		light.Dropped = dropped;
+		m_DebugLights.push_back(light);
+		if (dropped) {
+			++m_DebugLightCounts.Dropped;
+			return;
+		}
+		++(glow ? m_DebugLightCounts.Glows : coneCos >= -1.0F ? m_DebugLightCounts.Cones : m_DebugLightCounts.Lights);
+		m_DebugLightCounts.ReachSquared += radius * radius;
+	};
 	if (m_Settings.Enabled) {
 		// Every lamp, glow, flash and fire light goes through the player's light color settings: how colorful light is, and a tint on all of it.
 		auto styled = [this](const glm::vec3& color) {
@@ -991,6 +1014,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			glm::vec2 center(effect.m_Pos.m_X, effect.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(radius), 0.0F, color, radius);
+			if (recordLights) {
+				recordLight(effect.m_Pos, color, radius, glm::vec2(1.0F, 0.0F), -2.0F, true, false);
+			}
 			// The point light shader wants local positions in -1..1 rather than 0..1 UVs.
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
@@ -1019,6 +1045,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 					SceneLight& into = mergedLights[found->second];
 					into.m_Color += light.m_Color;
 					into.m_Radius = std::max(into.m_Radius, light.m_Radius);
+					if (recordLights) {
+						++m_DebugLightCounts.Merged;
+					}
 				} else {
 					mergedLights.push_back(light);
 				}
@@ -1035,6 +1064,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		if (shownLights.size() > lightBudget) {
 			auto weight = [](const SceneLight* light) { return std::max({light->m_Color.r, light->m_Color.g, light->m_Color.b}) * light->m_Radius; };
 			std::nth_element(shownLights.begin(), shownLights.begin() + lightBudget, shownLights.end(), [&weight](const SceneLight* a, const SceneLight* b) { return weight(a) > weight(b); });
+			if (recordLights) {
+				for (size_t dropped = lightBudget; dropped < shownLights.size(); ++dropped) {
+					const SceneLight& light = *shownLights[dropped];
+					recordLight(light.m_Pos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, false, true);
+				}
+			}
 			shownLights.resize(lightBudget);
 		}
 		// All-round lights first, cone lights last, so the beam pass draws only the cone lights instead of rasterising every light to discard it.
@@ -1047,6 +1082,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
+			if (recordLights) {
+				recordLight(light.m_Pos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, false, false);
+			}
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
 				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
