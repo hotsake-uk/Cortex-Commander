@@ -1916,6 +1916,12 @@ function SharedBehaviors.RememberOrder(AI, Owner)
 		elseif Owner:GetWaypointListSize() > 0 then
 			keep.waypoint = Owner:GetLastAIWaypoint();
 		end
+	elseif Owner.AIMode == Actor.AIMODE_SENTRY then
+		-- (A sentry's post and the way it faced: kept as the mode only, a sentry came back from a fall-back and stood guard wherever the
+		-- fall-back had ended. A crab keeps no post of its own; where it stood is its post.)
+		local Post = AI.SentryPos or Owner.Pos;
+		keep.post = Vector(Post.X, Post.Y);
+		keep.facing = AI.SentryFacing;
 	end
 	return keep;
 end
@@ -1935,6 +1941,16 @@ function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 			Owner:AddAISceneWaypoint(keep.waypoint);
 		else
 			keep.mode = Actor.AIMODE_SENTRY;
+		end
+	elseif keep.mode == Actor.AIMODE_SENTRY and keep.post then
+		-- Back on guard at the post: walked back to it when away (the engine makes the unit a sentry again on arrival, and the AI's update
+		-- takes the post and facing from AI.ReturnPost then), else simply on guard there again.
+		AI.SentryPos = Vector(keep.post.X, keep.post.Y);
+		AI.SentryFacing = keep.facing;
+		AI.ReturnPost = { Pos = keep.post, facing = keep.facing };
+		if SceneMan:ShortestDistance(Owner.Pos, keep.post, false):MagnitudeIsGreaterThan(Owner.Height * 0.7) then
+			Owner:AddAISceneWaypoint(keep.post);
+			keep.mode = Actor.AIMODE_GOTO;
 		end
 	end
 	Owner.AIMode = keep.mode;
