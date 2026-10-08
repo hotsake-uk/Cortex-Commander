@@ -1,4 +1,5 @@
 ﻿#include "DebugMan.h"
+#include "DebugDraw.h"
 #include <unordered_map>
 #include "Actor.h"
 #include "WindowMan.h"
@@ -279,6 +280,13 @@ void DebugMan::DrawToolWindowControls() {
 	}
 }
 
+void DebugMan::DrawOverlays() {
+	if (!g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
+		return;
+	}
+	// Each overlay: a check of its setting and its draw call, drawn into ImGui::GetForegroundDrawList() with DebugDraw::ToScreen.
+}
+
 void DebugMan::DrawImGui() {
 	UpdateMouseOwnership();
 
@@ -317,9 +325,10 @@ void DebugMan::DrawImGui() {
 		g_WindowMan.SetReservedSpace(pushes && m_PanelsLastFrame[0] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Left)) : 0, pushes && m_PanelsLastFrame[1] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Right)) : 0);
 	}
 
-	// The modern HUD, unless photo mode is hiding the HUD.
+	// The modern HUD and the debug overlays, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {
 		ModernHUD::Draw();
+		DrawOverlays();
 	}
 
 	// The old separate windows are now parts of the one settings panel: asking for one opens it at that part.

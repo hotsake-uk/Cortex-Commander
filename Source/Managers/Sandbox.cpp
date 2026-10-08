@@ -1,5 +1,6 @@
 ﻿#include "WindowMan.h"
 #include "DebugMan.h"
+#include "DebugDraw.h"
 #include "Sandbox.h"
 #include "ACrab.h"
 #include "ACraft.h"
@@ -439,22 +440,10 @@ namespace {
 
 	GameActivity* CurrentGame() { return dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity()); }
 
-	/// How many scene pixels one window pixel covers (player 1's screen fills the window).
-	float ScenePixelsPerWindowPixel() { return static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) / std::max(1.0F, g_WindowMan.GetGameViewRect().w); }
-
-	/// The top left corner of the game's picture in the window. With tool panels docked at the sides it isn't the window's own corner.
-	ImVec2 ViewOrigin() {
-		GameViewRect view = g_WindowMan.GetGameViewRect();
-		return ImVec2(view.x, view.y);
-	}
-
-	Vector MouseScenePosition() {
-		const ImVec2& mouse = ImGui::GetIO().MousePos;
-		ImVec2 origin = ViewOrigin();
-		Vector position = g_CameraMan.GetOffset(0) + Vector(mouse.x - origin.x, mouse.y - origin.y) * ScenePixelsPerWindowPixel();
-		g_SceneMan.WrapPosition(position);
-		return position;
-	}
+	// Scene and window positions: shared with the debug overlays (DebugDraw.h), so they work outside the sandbox too.
+	float ScenePixelsPerWindowPixel() { return DebugDraw::ScenePixelsPerWindowPixel(); }
+	ImVec2 ViewOrigin() { return DebugDraw::ViewOrigin(); }
+	Vector MouseScenePosition() { return DebugDraw::MouseScenePosition(); }
 
 	bool ContainsIgnoringCase(const std::string& text, const char* filter) {
 		if (!filter[0]) {
@@ -3955,11 +3944,7 @@ namespace {
 		}
 	}
 
-	ImVec2 ToScreen(const Vector& scenePosition) {
-		Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), scenePosition, g_SceneMan.SceneWrapsX());
-		float scale = ScenePixelsPerWindowPixel();
-		return ImVec2(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
-	}
+	ImVec2 ToScreen(const Vector& scenePosition) { return DebugDraw::ToScreen(scenePosition); }
 
 #pragma region Gym
 	// The gym: courses for the AI on this map, made in play (a start and a goal clicked with the two gym tools, and a name) and kept in

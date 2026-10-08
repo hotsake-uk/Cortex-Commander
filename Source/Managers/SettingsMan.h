@@ -204,6 +204,14 @@ namespace RTE {
 		/// @param show Whether to show them.
 		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
 
+		/// Gets the team whose view the debug overlays show (the navigation overlay's path grid, for one, differs by team at doors).
+		/// @return The team, 0 to 3.
+		int DebugTeam() const { return m_DebugTeam; }
+
+		/// Sets the team whose view the debug overlays show.
+		/// @param team 0 to 3.
+		void SetDebugTeam(int team) { m_DebugTeam = std::clamp(team, 0, 3); }
+
 		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
 		/// @param level 0, 1 or 2.
 		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 2); }
@@ -418,6 +426,7 @@ namespace RTE {
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
+		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

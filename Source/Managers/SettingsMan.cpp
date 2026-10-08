@@ -66,6 +66,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_NavDebugOverlay = 0;
+	m_DebugTeam = 0;
 	m_ShowFPSAndVersion = true;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
@@ -330,6 +331,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
+	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
@@ -659,6 +661,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
+	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);

@@ -18,6 +18,10 @@ namespace RTE {
 		void Draw();
 		void DrawImGui();
 
+		/// Draws the debug overlays the settings ask for, over player 1's view of the game with ImGui's foreground list, in or out of the sandbox.
+		/// The one place every overlay is drawn from, so each is a settings check and a call here (see DebugDraw.h for the helpers they share).
+		void DrawOverlays();
+
 		/// Opens the settings panel at its debug part.
 		void ShowDebugOptions() { m_ShowDebugWindow = true; }
 
