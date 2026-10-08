@@ -119,6 +119,30 @@ namespace {
 	std::unordered_map<std::string, int> s_PourableByName; //!< Each liquid and powder by its preset name, for Pour.
 	bool s_TablesBuilt = false;
 
+	/// What a reaction makes happen besides changing the two pixels (SB-3), as bits.
+	enum ReactionEffect : unsigned char {
+		NoEffect = 0,
+		Steam = 1 << 0, //!< A puff of steam, half the time.
+		Flash = 1 << 1, //!< A flash and bang (lava quenched).
+		Ignite = 1 << 2, //!< Sets the two pixels alight, if they burn.
+		Explosion = 1 << 3, //!< A blast that sets fire around it (fuel on lava).
+		Fizz = 1 << 4 //!< Now and then a wisp of steam (acid on metal).
+	};
+	constexpr int c_Unchanged = -1; //!< A reaction product that leaves the pixel as it was.
+	/// What happens where a pixel of one material meets one of another (SB-3). Looked up for a liquid pixel's step against each neighbour.
+	struct Reaction {
+		float Chance = 0.0F; //!< The chance a step that it happens.
+		int Self = c_Unchanged; //!< What the stepping pixel becomes: a material, g_MaterialAir, or c_Unchanged.
+		int Other = c_Unchanged; //!< What the neighbour becomes.
+		unsigned char Effects = NoEffect; //!< ReactionEffect bits.
+		float SelfChance = 1.0F; //!< Once it happens, the chance the stepping pixel changes too (cryogenic fluid is used up half the time).
+		bool FromIni = false; //!< Written as an AddReaction line, which wins over a stock rule for the same pair.
+	};
+	std::vector<Reaction> s_Reactions; //!< The reactions; the first is a blank, so 0 in the index means none.
+	std::vector<unsigned short> s_ReactionIndex; //!< Per pair of materials (stepping * 256 + neighbour), the reaction in s_Reactions, 0 for none.
+	std::array<bool, 256> s_Reacts{}; //!< Whether a material has any reaction as the stepping pixel, so the rest skip the neighbour checks.
+	bool s_ReactionsKnowFire = false; //!< Whether the reactions were built with the terrain fire's flammability known (lava lights what burns).
+
 	/// The moving liquid pixels. A state byte per pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
 	/// Pixels are visited in descending key order (bottom to top), so the result is deterministic. The state is kept in 64 by 64 tiles made when a pixel in them first
 	/// moves and dropped when none in them is moving (M-5): a full plane cost three bytes a terrain pixel on every scene, 480 MB on the largest, liquid or not.
@@ -350,6 +374,8 @@ namespace {
 		return 0;
 	}
 
+	void BuildReactions();
+
 	/// The tables, per material, from each material's behaviour (MaterialBehaviour, SB-1), and where it sets nothing, the stock rule for its name:
 	/// "Water", "Lava", "Acid" and "Oil" flow, "Sand", "Snow", "Earth Rubble" and "Ashes" are powders, lava settles to "Stone" in water, which boils
 	/// off, ice and snow melt to water by lava, and water freezes to "Ice". So a mod's Materials.ini can add a liquid or change one with lines of
@@ -460,7 +486,126 @@ namespace {
 				g_RenderMan.SetMaterialLiquidLook(id, std::clamp(look, 1, 15));
 			}
 		}
+		BuildReactions();
 		s_TablesBuilt = true;
+	}
+
+	/// Splits a line of text at a character, trimming spaces round each piece.
+	std::vector<std::string> SplitTrimmed(const std::string& text, char separator) {
+		std::vector<std::string> pieces;
+		std::stringstream stream(text);
+		std::string piece;
+		while (std::getline(stream, piece, separator)) {
+			size_t first = piece.find_first_not_of(" \t");
+			size_t last = piece.find_last_not_of(" \t");
+			pieces.push_back(first == std::string::npos ? std::string() : piece.substr(first, last - first + 1));
+		}
+		return pieces;
+	}
+
+	/// Puts a reaction in the table for a pair of materials, unless one from an AddReaction line is there already and this one isn't.
+	void SetReaction(int stepping, int neighbour, const Reaction& reaction) {
+		unsigned short& slot = s_ReactionIndex[static_cast<size_t>(stepping) * 256 + static_cast<size_t>(neighbour)];
+		if (slot != 0) {
+			if (s_Reactions[slot].FromIni && !reaction.FromIni) {
+				return;
+			}
+			s_Reactions[slot] = reaction;
+		} else if (s_Reactions.size() < 65535) {
+			slot = static_cast<unsigned short>(s_Reactions.size());
+			s_Reactions.push_back(reaction);
+		}
+		s_Reacts[stepping] = true;
+	}
+
+	/// The reaction table (SB-3), after the per-material tables. Two kinds of entry, one per pair of materials:
+	/// - The stock rules, from each liquid's behaviour (SB-1): cryogenic fluid freezes what freezes and is used up half the time; what settles
+	///   (lava) sets where it meets what douses (water), which boils off with a flash; lava melts ice and snow and lights what burns; acid eats
+	///   soft ground and is used up a third of the time.
+	/// - AddReaction lines in materials' INI blocks, which win over a stock rule for the same pair. Each goes in both ways round, so a liquid
+	///   reacts with a solid that names it (Metal naming Acid), and either of two liquids that touch can start it.
+	void BuildReactions() {
+		s_Reactions.assign(1, Reaction());
+		s_ReactionIndex.assign(256 * 256, 0);
+		s_Reacts.fill(false);
+		s_ReactionsKnowFire = TerrainFire::FlammabilityKnown();
+		for (int own = 1; own < 256; ++own) {
+			Liquid kind = s_Kinds[own];
+			if (kind == Liquid::None || kind == Liquid::Powder) {
+				continue;
+			}
+			for (int neighbour = 1; neighbour < 256; ++neighbour) {
+				Reaction reaction;
+				if (s_Chills[own] && s_FreezesTo[neighbour] != 0) {
+					reaction = {0.3F, g_MaterialAir, s_FreezesTo[neighbour], NoEffect, 0.5F};
+				} else if (s_SettlesTo[own] != 0 && s_Douses[neighbour]) {
+					int boilsTo = s_BoilsTo[neighbour];
+					reaction = {1.0F, s_SettlesTo[own], boilsTo == 0 ? c_Unchanged : std::max(boilsTo, static_cast<int>(g_MaterialAir)), static_cast<unsigned char>(Flash | Steam), 1.0F};
+				} else if (kind == Liquid::Lava && s_MeltsTo[neighbour] != 0) {
+					reaction = {0.3F, c_Unchanged, s_MeltsTo[neighbour], NoEffect, 1.0F};
+				} else if (kind == Liquid::Lava && TerrainFire::IsFlammable(neighbour)) {
+					reaction = {0.2F, c_Unchanged, c_Unchanged, Ignite, 1.0F};
+				} else if (kind == Liquid::Acid && (s_Kinds[neighbour] == Liquid::None || s_Kinds[neighbour] == Liquid::Powder) && s_Soft[neighbour]) {
+					reaction = {0.02F, g_MaterialAir, g_MaterialAir, NoEffect, 0.3F};
+				} else {
+					continue;
+				}
+				SetReaction(own, neighbour, reaction);
+			}
+		}
+		for (int id = 1; id < 256; ++id) {
+			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+			if (!material || material->GetIndex() != id) {
+				continue;
+			}
+			for (const std::string& line: material->GetBehaviour().Reactions) {
+				std::vector<std::string> fields = SplitTrimmed(line, ',');
+				if (fields.size() < 4) {
+					g_ConsoleMan.PrintString("WARNING: " + material->GetPresetName() + " AddReaction needs Other, Chance, ThisBecomes, OtherBecomes: " + line);
+					continue;
+				}
+				// The products: Same, Air or a material.
+				auto product = [](const std::string& name) {
+					if (name == "Same" || name.empty()) {
+						return c_Unchanged;
+					}
+					int found = MaterialNamed(name);
+					return found < 0 ? static_cast<int>(g_MaterialAir) : (found == 0 ? c_Unchanged : found);
+				};
+				Reaction reaction;
+				reaction.Chance = std::clamp(static_cast<float>(std::atof(fields[1].c_str())), 0.0F, 1.0F);
+				reaction.Self = product(fields[2]);
+				reaction.Other = product(fields[3]);
+				reaction.FromIni = true;
+				if (fields.size() > 4) {
+					for (const std::string& effect: SplitTrimmed(fields[4], '+')) {
+						reaction.Effects |= effect == "Steam" ? Steam : (effect == "Flash" ? Flash : (effect == "Ignite" ? Ignite : (effect == "Explosion" ? Explosion : (effect == "Fizz" ? Fizz : NoEffect))));
+					}
+				}
+				Reaction turned = reaction;
+				std::swap(turned.Self, turned.Other);
+				// Which materials it meets: one by name, or a kind.
+				const std::string& other = fields[0];
+				int named = other.rfind("Any", 0) == 0 ? 0 : MaterialNamed(other);
+				if (named < 0) {
+					continue;
+				}
+				for (int neighbour = 1; neighbour < 256; ++neighbour) {
+					bool liquid = s_Kinds[neighbour] != Liquid::None && s_Kinds[neighbour] != Liquid::Powder;
+					bool meets = named > 0 ? neighbour == named : (other == "AnyLiquid" ? liquid : (other == "AnyFlammable" ? TerrainFire::IsFlammable(neighbour) : (other == "AnySoft" && !liquid && s_Soft[neighbour])));
+					if (!meets || neighbour == id) {
+						continue;
+					}
+					// Only a liquid steps, so the pair goes in for whichever of the two flows.
+					if (s_Kinds[id] != Liquid::None && s_Kinds[id] != Liquid::Powder) {
+						SetReaction(id, neighbour, reaction);
+					}
+					if (liquid) {
+						SetReaction(neighbour, id, turned);
+					}
+				}
+			}
+		}
 	}
 
 	/// The liquid at a pixel. The coordinates must already be inside the world (see InWorld): this reads the material bitmap directly, without the layer's own wrapping and bounds checks, because it's called tens of thousands of times an update.
@@ -689,17 +834,12 @@ namespace {
 		ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 	}
 
-	/// Whether a resting liquid pixel has something beside it to react with (M-2): acid by soft ground, lava (or what settles like it) by
-	/// what burns, melts or quenches it, cryogenic fluid by what freezes, and what douses by fire. The step only reacts while a pixel is
-	/// awake, so the sweep wakes one that has.
+	/// Whether a resting liquid pixel has something beside it to react with (M-2): a neighbour the reaction table pairs it with (SB-3), or a
+	/// fire for what douses. The step only reacts while a pixel is awake, so the sweep wakes one that has.
 	bool HasReactionPartner(BITMAP* materialBitmap, int x, int y, int width, int height, bool anyFire) {
 		int own = materialBitmap->line[y][x];
-		Liquid kind = s_Kinds[own];
-		bool acid = kind == Liquid::Acid;
-		bool lava = kind == Liquid::Lava || s_SettlesTo[own] != 0;
-		bool chills = s_Chills[own];
 		bool douses = s_Douses[own] && anyFire;
-		if (!acid && !lava && !chills && !douses) {
+		if (!s_Reacts[own] && !douses) {
 			return false;
 		}
 		static constexpr int neighbours[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
@@ -710,21 +850,56 @@ namespace {
 				continue;
 			}
 			int neighbour = materialBitmap->line[ny][nx];
-			if (neighbour == g_MaterialAir) {
-				continue;
-			}
-			Liquid neighbourKind = s_Kinds[neighbour];
-			if (acid && (neighbourKind == Liquid::None || neighbourKind == Liquid::Powder) && s_Soft[neighbour]) {
-				return true;
-			}
-			if (lava && (TerrainFire::IsFlammable(neighbour) || s_MeltsTo[neighbour] != 0 || s_Douses[neighbour])) {
-				return true;
-			}
-			if (chills && s_FreezesTo[neighbour] != 0) {
+			if (neighbour != g_MaterialAir && s_ReactionIndex[static_cast<size_t>(own) * 256 + static_cast<size_t>(neighbour)] != 0) {
 				return true;
 			}
 		}
 		return douses && TerrainFire::IsBurningNear(Vector(static_cast<float>(x), static_cast<float>(y)), 1);
+	}
+
+	/// Carries out a reaction between a stepping liquid pixel and a neighbour (SB-3): the neighbour changes, the effects happen there, and the
+	/// stepping pixel changes if the reaction says so.
+	/// @return Whether the stepping pixel changed, so its step ends.
+	bool ApplyReaction(SLTerrain* terrain, const Reaction& reaction, int x, int y, int nx, int ny, int width, int height) {
+		auto colorOf = [](int material) { return material == g_MaterialAir ? static_cast<int>(ColorKeys::g_MaskColor) : s_ColorOfMaterial[material]; };
+		// (A liquid that goes leaves behind what it flowed through there, grass say, as a liquid moving off does: Uncover.)
+		auto change = [&](int px, int py, int material) {
+			Liquid was = s_Kinds[terrain->GetBitmap()->line[py][px]];
+			if (material == g_MaterialAir && was != Liquid::None && was != Liquid::Powder) {
+				Uncover(terrain, px, py, width);
+			} else {
+				ChangePixel(terrain, px, py, material, colorOf(material));
+			}
+		};
+		if (reaction.Other != c_Unchanged) {
+			change(nx, ny, reaction.Other);
+			s_Active.Remove(ny * width + nx);
+			ActivateAround(nx, ny, width, height, terrain);
+		}
+		Vector at(static_cast<float>(nx), static_cast<float>(ny));
+		if (reaction.Effects & Flash) {
+			EffectsParticles::SpawnExplosion(at, 520.0F);
+		}
+		if ((reaction.Effects & Steam) && Random01() < 0.5F) {
+			TerrainFire::SpawnSteam(at, 1);
+		}
+		if ((reaction.Effects & Fizz) && Random01() < 0.3F) {
+			TerrainFire::SpawnSteam(at, 1);
+		}
+		if (reaction.Effects & Ignite) {
+			TerrainFire::QueueIgnite(nx, ny);
+			TerrainFire::QueueIgnite(x, y);
+		}
+		if (reaction.Effects & Explosion) {
+			EffectsParticles::SpawnExplosion(at, 900.0F);
+			TerrainFire::QueueIgniteArea(at, 8.0F);
+		}
+		if (reaction.Self == c_Unchanged || (reaction.SelfChance < 1.0F && Random01() >= reaction.SelfChance)) {
+			return false;
+		}
+		change(x, y, reaction.Self);
+		ActivateAround(x, y, width, height, terrain);
+		return true;
 	}
 
 	void Sweep(SLTerrain* terrain, int width, int height) {
@@ -1034,6 +1209,9 @@ void FluidSim::Update() {
 	}
 	if (!s_TablesBuilt) {
 		BuildTables();
+	} else if (!s_ReactionsKnowFire && TerrainFire::FlammabilityKnown()) {
+		// (Lava lighting what burns needs the terrain fire's table, made on its first update of the scene.)
+		BuildReactions();
 	}
 	int width = terrain->GetBitmap()->w;
 	int height = terrain->GetBitmap()->h;
@@ -1215,14 +1393,12 @@ void FluidSim::Update() {
 			continue;
 		}
 
-		// Reactions with neighbours. Only lava (and what settles like it), acid and what douses fire, when something is burning, react; for everything
-		// else there's nothing to check.
+		// Reactions with neighbours, from the reaction table (SB-3), and what douses putting fire out when something is burning. For a material
+		// with neither there's nothing to check.
 		static constexpr int neighbours[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
 		bool reacted = false;
 		const bool douses = s_Douses[ownMaterial];
-		const int settlesTo = s_SettlesTo[ownMaterial];
-		const bool chills = s_Chills[ownMaterial];
-		bool mayReact = kind == Liquid::Lava || settlesTo != 0 || kind == Liquid::Acid || chills || (douses && anyFire);
+		const bool mayReact = s_Reacts[ownMaterial] || (douses && anyFire);
 		for (const auto& offset: neighbours) {
 			if (!mayReact) {
 				break;
@@ -1233,64 +1409,14 @@ void FluidSim::Update() {
 				continue;
 			}
 			int neighbourMaterial = materialBitmap->line[ny][nx];
-			Liquid neighbourKind = s_Kinds[static_cast<unsigned char>(neighbourMaterial)];
-			if (chills && s_FreezesTo[neighbourMaterial] != 0 && Random01() < 0.3F) {
-				// Cryogenic fluid freezes the water (or mud) it touches, and is used up doing it, half the time.
-				int freezesTo = s_FreezesTo[neighbourMaterial];
-				ChangePixel(terrain, nx, ny, freezesTo, s_ColorOfMaterial[freezesTo]);
-				s_Active.Remove(ny * width + nx);
-				if (Random01() < 0.5F) {
-					Uncover(terrain, x, y, width);
-					ActivateAround(x, y, width, height, terrain);
+			if (unsigned short entry = s_ReactionIndex[static_cast<size_t>(ownMaterial) * 256 + static_cast<size_t>(neighbourMaterial)]; entry != 0 && Random01() < s_Reactions[entry].Chance) {
+				if (ApplyReaction(terrain, s_Reactions[entry], x, y, nx, ny, width, height)) {
 					reacted = true;
 					break;
 				}
 			}
-			if (settlesTo != 0 && s_Douses[neighbourMaterial]) {
-				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam (or to what it boils to).
-				ChangePixel(terrain, x, y, settlesTo, s_ColorOfMaterial[settlesTo]);
-				int boilsTo = s_BoilsTo[neighbourMaterial];
-				if (boilsTo > 0) {
-					ChangePixel(terrain, nx, ny, boilsTo, s_ColorOfMaterial[boilsTo]);
-					s_Active.Remove(ny * width + nx);
-				} else if (boilsTo < 0) {
-					Uncover(terrain, nx, ny, width);
-					s_Active.Remove(ny * width + nx);
-				}
-				ActivateAround(nx, ny, width, height, terrain);
-				EffectsParticles::SpawnExplosion(Vector(static_cast<float>(nx), static_cast<float>(ny)), 520.0F);
-				if (Random01() < 0.5F) {
-					TerrainFire::SpawnSteam(Vector(static_cast<float>(nx), static_cast<float>(ny)), 1);
-				}
-				reacted = true;
-				break;
-			}
-			if (kind == Liquid::Lava && neighbourMaterial != g_MaterialAir && s_MeltsTo[neighbourMaterial] != 0 && Random01() < 0.3F) {
-				// Lava melts ice and snow to water (which then quenches it to stone).
-				int meltsTo = s_MeltsTo[neighbourMaterial];
-				ChangePixel(terrain, nx, ny, meltsTo, s_ColorOfMaterial[meltsTo]);
-				Activate(nx, ny, width, height, terrain);
-			}
-			if (kind == Liquid::Lava && TerrainFire::IsFlammable(neighbourMaterial) && Random01() < 0.2F) {
-				TerrainFire::QueueIgnite(nx, ny);
-			}
 			if (douses && anyFire) {
 				TerrainFire::Extinguish(nx, ny);
-			}
-			if (kind == Liquid::Acid && (neighbourKind == Liquid::None || neighbourKind == Liquid::Powder) && neighbourMaterial != g_MaterialAir) {
-				// Acid slowly eats soft terrain, and is used up doing it.
-				const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(neighbourMaterial));
-				if (material->GetIntegrity() < 100.0F && Random01() < 0.02F) {
-					ChangePixel(terrain, nx, ny, g_MaterialAir, ColorKeys::g_MaskColor);
-					s_Active.Remove(ny * width + nx);
-					ActivateAround(nx, ny, width, height, terrain);
-					if (Random01() < 0.3F) {
-						Uncover(terrain, x, y, width);
-						ActivateAround(x, y, width, height, terrain);
-						reacted = true;
-						break;
-					}
-				}
 			}
 		}
 		if (douses && anyFire) {
@@ -1298,6 +1424,8 @@ void FluidSim::Update() {
 		}
 		if (reacted) {
 			s_Active.Remove(key);
+			// (What it became may flow in turn: acid diluted to water.)
+			Activate(x, y, width, height, terrain);
 			continue;
 		}
 		if (kind == Liquid::Lava && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < 0.01F) {
