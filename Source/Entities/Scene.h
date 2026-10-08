@@ -14,6 +14,7 @@
 #include <array>
 #include <deque>
 #include <map>
+#include <unordered_set>
 
 namespace RTE {
 
@@ -788,6 +789,9 @@ namespace RTE {
 		std::array<std::unique_ptr<PathFinder>, Activity::Teams::MaxTeamCount + 1> m_pPathFinders;
 		// Areas only the team grids need to take in again (doors changing hands); see AddTeamGridUpdateArea.
 		std::deque<Box> m_TeamGridUpdateAreas;
+		// Per team, the nodes the NoTeam grid sampled again while that team had no part in the scene (not in the activity, no units), so its own
+		// grid skipped them; they are sampled on that grid as soon as the team has a part. Index is the team (TeamOne to TeamFour).
+		std::array<std::unordered_set<int>, Activity::Teams::MaxTeamCount> m_TeamGridSkippedNodes;
 		// Is set to true on any frame the pathfinding data has been updated
 		bool m_PathfindingUpdated;
 		// Timer for when to do an update of the pathfinding data
