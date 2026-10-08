@@ -965,12 +965,12 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 		if (index > 30) {
 			break;
 		}
-		// (A leg up or down a ladder is climbed: no flight, and where it ends is no landing for one.)
+		// (A leg up or down a ladder is climbed, and a leap is leapt: no flight, and where it ends is no landing for one.)
 		PathStepKind legKind = kindIt != m_MovePathKinds.end() ? *kindIt : PathStepKind::Walk;
 		if (kindIt != m_MovePathKinds.end()) {
 			++kindIt;
 		}
-		if (legKind == PathStepKind::Ladder) {
+		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap) {
 			if (airborne) {
 				break;
 			}
@@ -1622,6 +1622,23 @@ int AHuman::MoveAlongRoute() {
 	const Vector toPoint = Towards(m_Pos, point);
 	const float pointFloor = FloorUnder(point, h * 0.8F);
 
+	// ---- In the air on a leap: the arc is the legs', steered for the point with the body's air control. The jet only to save a leap
+	// coming down short of a landing above (falling, the feet under its floor and well out from it): the pilot below has it then. ----
+	if (IsLeaping()) {
+		bool short_ = m_Vel.m_Y > 0.0F && pointFloor >= 0.0F && m_Pos.m_Y + feet > pointFloor + 4.0F && std::abs(toPoint.m_X) > h * 0.2F;
+		if (!(short_ && standardJet && m_pJetpack->GetJetTimeLeft() > 200.0F)) {
+			if (std::abs(toPoint.m_X) > 3.0F) {
+				ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+			}
+			mover.progressTimer.Reset();
+			return RouteMover::Moving;
+		}
+		if (mover.traceTimer.IsPastSimMS(1000)) {
+			mover.traceTimer.Reset();
+			MoverTrace("leap coming down short; the jet saves it");
+		}
+	}
+
 	// ---- In the air with no flight: the pilot flies for the point, braking for its floor. ----
 	if (airborne) {
 		if (standardJet) {
@@ -1661,6 +1678,34 @@ int AHuman::MoveAlongRoute() {
 
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
 	if (holdForDoor(point, false)) {
+		return RouteMover::Moving;
+	}
+
+	// ---- A leap: walked to the take-off, the edge of the gap or the foot of the lip, and leapt from there with the move key held (the
+	// push forward goes the way the key does). At the take-off and not yet able to leap (the legs gather a moment after a landing), it
+	// waits there rather than walking off the edge. Not getting nearer for a second short of the take-off, it leaps from where it is. ----
+	if (kind == PathStepKind::Leap && std::abs(toPoint.m_X) > 3.0F) {
+		const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		const float standing = std::max(16.0F, h * 0.44F);
+		const float floorY = std::min(floorHere, m_Pos.m_Y + feet);
+		float floorAhead = FloorUnder(m_Pos + Vector(direction * h * 0.25F, 0.0F), h * 0.9F);
+		bool edge = floorAhead < 0.0F || floorAhead > floorY + h * 0.3F;
+		Sensed sensed = SenseAhead(direction, floorY, standing);
+		bool lip = sensed.any && sensed.distance < h * 0.3F;
+		bool stalled = mover.progressTimer.IsPastSimMS(1000);
+		if (edge || lip || stalled) {
+			if (CanLeap()) {
+				ctrl.SetState(BODY_LEAP, true);
+				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				mover.progressTimer.Reset();
+				MoverTrace(std::string("leap ") + (edge ? "from the edge" : (lip ? "onto the lip" : "from here")) + " for " + std::to_string(static_cast<int>(point.m_X)) + "," + std::to_string(static_cast<int>(point.m_Y)));
+				return RouteMover::Moving;
+			}
+			if (edge) {
+				return RouteMover::Moving;
+			}
+		}
+		ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		return RouteMover::Moving;
 	}
 
