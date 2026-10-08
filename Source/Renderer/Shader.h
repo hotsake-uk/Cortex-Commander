@@ -7,6 +7,9 @@
 #include "raylib/rlgl.h"
 
 #include <array>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace RTE {
 	class UniformValueType {
@@ -101,49 +104,49 @@ namespace RTE {
 		/// The name of the uniform to set.
 		/// @param value
 		/// The boolean value to set the uniform to.
-		void SetBool(const std::string& name, bool value) const;
+		void SetBool(std::string_view name, bool value) const;
 
 		/// Set an integer uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
 		/// @param value
 		/// The integer value to set the uniform to.
-		void SetInt(const std::string& name, int value) const;
+		void SetInt(std::string_view name, int value) const;
 
 		/// Set a float uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
 		/// @param value
 		/// The float value to set the uniform to.
-		void SetFloat(const std::string& name, float value) const;
+		void SetFloat(std::string_view name, float value) const;
 
 		/// Set a float mat4 uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
 		/// @param value
 		/// The float mat4 value to set the uniform to.
-		void SetMatrix4f(const std::string& name, const glm::mat4& value) const;
+		void SetMatrix4f(std::string_view name, const glm::mat4& value) const;
 
 		/// Set a float vec2 uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
 		/// @param value
 		/// The float vec2 value to set the uniform to.
-		void SetVector2f(const std::string& name, const glm::vec2& value) const;
+		void SetVector2f(std::string_view name, const glm::vec2& value) const;
 
 		/// Set a float vec3 uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
 		/// @param value
 		/// The float vec3 value to set the uniform to.
-		void SetVector3f(const std::string& name, const glm::vec3& value) const;
+		void SetVector3f(std::string_view name, const glm::vec3& value) const;
 
 		/// Set a float vec4 uniform value in the active program by name.
 		/// @param name
 		/// The name of the uniform to set.
 		/// @param value
 		/// The float vec4 value to set the uniform to.
-		void SetVector4f(const std::string& name, const glm::vec4& value) const;
+		void SetVector4f(std::string_view name, const glm::vec4& value) const;
 
 		/// Set a boolean uniform value in the active program by location.
 		/// @param uniformLoc
@@ -285,6 +288,17 @@ namespace RTE {
 		void ApplyDefaultUniforms();
 
 		std::array<int, RL_SHADER_LOC_COUNT> m_Locations{};
+
+		/// The locations of uniforms set by name, looked up once per name: the by-name setters run a few hundred times a frame, and each one asked
+		/// the driver (and built a std::string) every time. Emptied when the program is compiled again.
+		struct UniformNameHash {
+			using is_transparent = void;
+			size_t operator()(std::string_view name) const { return std::hash<std::string_view>{}(name); }
+		};
+		mutable std::unordered_map<std::string, GLint, UniformNameHash, std::equal_to<>> m_UniformLocationsByName;
+
+		/// The location of a uniform by name, from m_UniformLocationsByName.
+		GLint CachedUniformLocation(std::string_view name) const;
 
 		GLint m_TextureUniform{-1}; //!< Location of the texture uniform (sampler2d rteTexture).
 		GLint m_PaletteUniform{-1};
