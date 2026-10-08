@@ -413,6 +413,10 @@ namespace RTE {
 		/// @return Whether the leap fits.
 		bool LeapFits(const PathNode& from, const PathNode& to) const;
 
+		/// Whether door material at a place is a door this grid sees through: one of the grid's side, erased while its nodes were sampled
+		/// (Scene::UpdatePathFinding, OverrideMaterialDoors), so no edge of the node there, or of its neighbours into it, sampled a door.
+		bool DoorSeenThrough(const Vector& at) const;
+
 		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list, priced a little over the walk of the same distance.
 		/// @param node The node.
 		/// @param adjacentList The list.

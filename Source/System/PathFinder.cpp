@@ -1377,11 +1377,37 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 			if (offset > 0.0F && (k == 1 || k == segments)) {
 				continue;
 			}
-			if (!Open(*StrongestMaterialAlongLine(last + Vector(0.0F, offset), point + Vector(0.0F, offset)))) {
+			// (A door of the grid's own side is open to the leap as it is to the walk: the arc is traced on the live terrain, where the side's
+			// doors are drawn, and a leap across one's own hatch standing open was refused.)
+			Vector a = last + Vector(0.0F, offset);
+			Vector b = point + Vector(0.0F, offset);
+			const Material* along = StrongestMaterialAlongLine(a, b);
+			if (!Open(*along) && !(along->GetIndex() == MaterialColorKeys::g_MaterialDoor && DoorSeenThrough(a) && DoorSeenThrough((a + b) * 0.5F) && DoorSeenThrough(b))) {
 				return false;
 			}
 		}
 		last = point;
+	}
+	return true;
+}
+
+bool PathFinder::DoorSeenThrough(const Vector& at) const {
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	int nodeId = ConvertCoordsToNodeId(static_cast<int>(std::floor(at.m_X / nodeSize)), static_cast<int>(std::floor(at.m_Y / nodeSize)));
+	const PathNode* node = nodeId != -1 ? &m_NodeGrid[nodeId] : nullptr;
+	if (!node) {
+		return false;
+	}
+	for (int i = 0; i < PathNode::c_MaxAdjacentNodeCount; ++i) {
+		const Material* mine = node->AdjacentNodeBlockingMaterials[i];
+		if (mine && mine->GetIndex() == MaterialColorKeys::g_MaterialDoor) {
+			return false;
+		}
+		const PathNode* neighbour = node->AdjacentNodes[i];
+		const Material* theirs = neighbour ? neighbour->AdjacentNodeBlockingMaterials[(i + 4) % PathNode::c_MaxAdjacentNodeCount] : nullptr;
+		if (theirs && theirs->GetIndex() == MaterialColorKeys::g_MaterialDoor) {
+			return false;
+		}
 	}
 	return true;
 }
