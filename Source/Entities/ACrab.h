@@ -392,6 +392,7 @@ namespace RTE {
 			Timer noSightTimer;
 			Timer hopTimer;
 			int impossibleAnswers = 0;
+			int impossibleSeen = 0; //!< The actor's impossible-answer count when last looked at: an answer is counted when it changes.
 			bool climbing = false; //!< In a climb begun from the ground for a point above.
 			Timer climbTimer; //!< Since the climb's burst.
 		};

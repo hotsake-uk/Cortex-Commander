@@ -1233,9 +1233,12 @@ int AHuman::MoveAlongRoute() {
 			return RouteMover::Impossible;
 		}
 		UpdateMovePath();
-		if (m_ImpossiblePaths > 0) {
+		// Each answer once: for three seconds after an impossible answer UpdateMovePath only waits, and counting every tick of that wait
+		// gave up on the goal in three ticks, before it had been asked again at all.
+		if (m_ImpossiblePaths > 0 && m_ImpossiblePaths != mover.impossibleSeen) {
 			++mover.impossibleAnswers;
 		}
+		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
 	if (IsWaitingOnNewMovePath()) {
@@ -1248,6 +1251,7 @@ int AHuman::MoveAlongRoute() {
 		return RouteMover::Moving;
 	}
 	mover.impossibleAnswers = 0;
+	mover.impossibleSeen = m_ImpossiblePaths;
 
 	// Arrived: the route walked out and the last waypoint, on its floor, within reach.
 	if (m_MovePath.empty() && !mover.flight.active) {

@@ -851,6 +851,7 @@ namespace RTE {
 			bool fuelWaiting = false; //!< Standing for the tank to fill before a flight, and since when.
 			Timer fuelWaitTimer;
 			int impossibleAnswers = 0;
+			int impossibleSeen = 0; //!< The actor's impossible-answer count when last looked at: an answer is counted when it changes.
 			double lastJetTime = -1.0;
 			Timer senseRerouteTimer; //!< Since the sense last asked for a route round a wall the grid didn't know.
 			bool digging = false; //!< Digging along the route (a Dig step), the digger out; put away again after.
