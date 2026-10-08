@@ -210,6 +210,9 @@ function NativeHumanAI:Update(Owner)
 		self.NextGoToName = nil;
 	end
 
+	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
+	SharedBehaviors.AttackOrderUpdate(self, Owner);
+
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or if we're told to go somewhere and aren't: after arriving the mode stays GOTO while the behaviour is Sentry, and a new order with new
 	-- waypoints then looked like no change at all, so the unit never set off until the mode was knocked out of GOTO and back.)
