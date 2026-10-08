@@ -550,6 +550,25 @@ end
 -- The crouched stance for SharedBehaviors.Stance (the engine's stance 1): ducked behind low cover or made small, on its feet.
 SharedBehaviors.CROUCHED = "crouched";
 
+-- How pinned down and how steady a unit is (Actor.Suppression and Actor.Morale, AC-3): 0 and 1 for Unfair AI, which ignores it, and for a
+-- build without them. @return suppression, morale.
+function SharedBehaviors.Suppression(AI, Owner)
+	if AI.ignoresSuppression == nil then
+		local ok, value = pcall(function() return Owner.Suppression; end);
+		AI.ignoresSuppression = not (ok and value ~= nil) or (AI.skill or Activity.DEFAULTSKILL) >= Activity.UNFAIRSKILL;
+	end
+	if AI.ignoresSuppression then
+		return 0, 1;
+	end
+	return Owner.Suppression, Owner.Morale;
+end
+
+-- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate).
+function SharedBehaviors.Shaken(AI, Owner)
+	local _, morale = SharedBehaviors.Suppression(AI, Owner);
+	return morale < 0.3;
+end
+
 -- A stance for a while: AHuman.PRONE, AHuman.NOTPRONE or SharedBehaviors.CROUCHED. AI.proneState says whether it is prone, for the rules
 -- that read it ("not while prone": no strafe, no cover move, no jet, no second GoProne); a crouch is not prone. With the engine's motor,
 -- the native AI keeps the engine's stance up while it does (see NativeHumanAI:Update). (Left NOTPRONE, every one of those guards was dead,
@@ -2072,8 +2091,9 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	end
 	if AI.Retreat then
 		local done = false;
-		if Owner.Health >= Owner.MaxHealth * 0.6 then
-			done = true; -- Patched up.
+		local _, morale = SharedBehaviors.Suppression(AI, Owner);
+		if Owner.Health >= Owner.MaxHealth * 0.6 and morale >= 0.5 then
+			done = true; -- Patched up, and steady again.
 		elseif AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(25000) then
 			done = true; -- Nobody came; back to it.
 		elseif not AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(40000) then
@@ -2091,7 +2111,9 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		end
 		return true;
 	end
-	if Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
+	-- (Hurt, with no enemy about; or shaken (morale under 0.3), which pulls a unit back whatever its health and in the middle of a fight.)
+	local shaken = SharedBehaviors.Shaken(AI, Owner);
+	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
@@ -2099,7 +2121,9 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	if kind == "defend" or Owner:NumberValueExists("SandboxDefendX") or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("SandboxHold") or Owner:NumberValueExists("AIFlank") then
 		return false;
 	end
-	if not AI.RetreatCheckTimer then
+	if shaken then
+		AI.RetreatCheckTimer = nil; -- (No waiting to be clear of the enemy: it is the enemy it is getting away from.)
+	elseif not AI.RetreatCheckTimer then
 		AI.RetreatCheckTimer = Timer();
 	elseif not AI.RetreatCheckTimer:IsPastSimMS(2000) then
 		return false; -- Two seconds clear of enemies first.
