@@ -232,6 +232,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("MaxInventoryMass", &Actor::GetMaxInventoryMass)
 	    .property("MovePathSize", &Actor::GetMovePathSize)
 	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
+	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
 	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)
 	    .property("IsWaitingOnNewMovePath", &Actor::IsWaitingOnNewMovePath)
@@ -353,6 +354,16 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .enum_("ActorHotkeyType")[luabind::value("PRIMARYHOTKEY", Actor::ActorHotkeyType::PRIMARYHOTKEY),
 	                              luabind::value("AUXILIARYHOTKEY", Actor::ActorHotkeyType::AUXILIARYHOTKEY),
 	                              luabind::value("ACTORHOTKEYTYPECOUNT", Actor::ActorHotkeyType::ACTORHOTKEYTYPECOUNT)];
+}
+
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ActorSighting) {
+	return luabind::class_<ActorSighting>("ActorSighting")
+
+	    .def_readonly("Target", &ActorSighting::Target)
+	    .def_readonly("HitPos", &ActorSighting::HitPos)
+	    .def_readonly("Visibility", &ActorSighting::Visibility)
+	    .def_readonly("Distance", &ActorSighting::Distance)
+	    .def_readonly("Head", &ActorSighting::Head);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {

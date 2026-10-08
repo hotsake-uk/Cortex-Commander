@@ -20,8 +20,18 @@ namespace RTE {
 
 	class AtomGroup;
 	class HeldDevice;
+	class Actor;
 	struct PathRequest;
 	enum class PieSliceType : int;
+
+	/// An enemy an actor's scan saw (see Actor::ScanForEnemies): who, where the look landed on it, and how plainly.
+	struct ActorSighting {
+		Actor* Target = nullptr; //!< The enemy seen.
+		Vector HitPos; //!< Where the look landed on it (its body, or its head when the body was hidden).
+		float Visibility = 0.0F; //!< How plainly it was seen, 0 to 1: off the aim, far, dark, still and lying down all make it less.
+		float Distance = 0.0F; //!< From the eyes, in pixels.
+		bool Head = false; //!< Only its head was seen.
+	};
 
 #define AILINEDOTSPACING 16
 
@@ -837,6 +847,18 @@ namespace RTE {
 		/// Gets how far this actor can see relative to daylight: less at night, unless it has a headlamp on (night gameplay).
 		float GetNightSightScale() const;
 
+		/// Looks for enemies the way a person would, for the AI's scripts: the enemy actors within range inside a wide field of view about the
+		/// facing (and a narrow, longer one about the aim when sharp-aiming), the likeliest first (nearest the aim, then nearest), looked at
+		/// with at most budget rays (body, then head), through terrain, other bodies and thick smoke. Nothing behind it is seen.
+		/// @param fovDegrees The field of view about the facing, in degrees.
+		/// @param range How far it sees in daylight, in pixels; less at night and in dust (GetNightSightScale).
+		/// @param budget How many rays it may cast.
+		/// @return What was seen this call, most visible first: valid until the next call.
+		std::vector<ActorSighting>& ScanForEnemies(float fovDegrees, float range, int budget);
+
+		/// How much of a target this actor's body makes, for the sight of others (see ScanForEnemies): 1 standing.
+		virtual float GetSightProfile() const { return 1.0F; }
+
 		/// Description:		Sets actor's sight distance.
 		/// @param newValue New sight distance value.
 		void SetSightDistance(float newValue) { m_SightDistance = newValue; }
@@ -1199,6 +1221,7 @@ namespace RTE {
 		std::list<Vector> m_MovePath;
 		// What each step of that path is, kept alongside it.
 		std::list<PathStepKind> m_MovePathKinds;
+		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
 		// The current pathfinding request
 		std::shared_ptr<volatile PathRequest> m_PathRequest;
 		// Whether it's time to update the path
