@@ -17,11 +17,18 @@ function SandboxActivity:StartActivity(isNewGame)
 			CameraMan:SetScrollTarget(look, 1, self:ScreenOfPlayer(player));
 		end
 	end
-	-- Doors already in the scene open for everyone.
-	for actor in MovableMan.AddedActors do
-		if IsADoor(actor) then
+	-- Doors already in the scene open for everyone. (In the world already as well as just added: a saved game loaded mid-play has its doors
+	-- in the world, and they came back with the scene's teams. Not the doors placed with the Structure tool, which belong to their side.)
+	local function Neutral(actor)
+		if IsADoor(actor) and not actor:NumberValueExists("SandboxPlaced") then
 			actor.Team = Activity.NOTEAM;
 		end
+	end
+	for actor in MovableMan.AddedActors do
+		Neutral(actor);
+	end
+	for actor in MovableMan.Actors do
+		Neutral(actor);
 	end
 end
 
