@@ -118,6 +118,9 @@ namespace RTE {
 		/// Gets whether the game is in the middle of a free build.
 		bool IsFreeBuildMode() const { return m_FreeBuildMode; }
 
+		/// Gets where a player's view goes while it controls no unit (see SetObservationTarget).
+		Vector GetObservationTarget(int player = 0) const { return (player >= Players::PlayerOne && player < Players::MaxPlayerCount) ? m_ObservationTarget[player] : Vector(); }
+
 		void SetObservationTarget(const Vector& newTarget, int player = 0) {
 			if (player >= Players::PlayerOne && player < Players::MaxPlayerCount)
 				m_ObservationTarget[player] = newTarget;

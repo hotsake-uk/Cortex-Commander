@@ -262,6 +262,12 @@ namespace RTE {
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
 
+		/// Gets whether the sandbox's selection and camera overlay is on: a drag box as the selection will actually use it (map wrapping included), the unit the game controls against the one the sandbox thinks you're in, the observation target and the free camera's centre, and the view's scale.
+		bool ShowSandboxSelectionCamera() const { return m_SandboxSelectionCamera; }
+
+		/// Sets gets whether the sandbox's selection and camera overlay is on.
+		void SetShowSandboxSelectionCamera(bool show) { m_SandboxSelectionCamera = show; }
+
 		/// Gets whether the sandbox's incoming and effects overlay is on: each thing on its way in from the sky with its line, where it will land and its crater, each effect put down with its light's reach, each water spring, and the storm cells' next flash.
 		bool ShowSandboxEffects() const { return m_SandboxEffects; }
 
@@ -537,6 +543,7 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
+		bool m_SandboxSelectionCamera; //!< Whether the sandbox's selection and camera overlay is on (see ShowSandboxSelectionCamera).
 		bool m_SandboxEffects; //!< Whether the sandbox's incoming and effects overlay is on (see ShowSandboxEffects).
 		bool m_SandboxSimState; //!< Whether the sandbox's sim state readout is on (see ShowSandboxSimState).
 		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
