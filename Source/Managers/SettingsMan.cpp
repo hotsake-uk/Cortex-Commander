@@ -333,7 +333,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeatHaze", { g_PostProcessMan.GetLightingSettings().HeatHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HazeFromHeat", { g_PostProcessMan.GetLightingSettings().HazeFromHeat = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireShader = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("FireStyle", { g_PostProcessMan.GetLightingSettings().FireStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
+	// Before FireStyle: the shader's flames on (now both, which is what was asked for) or off (pixel fire only).
+	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireStyle = std::stoi(reader.ReadPropValue()) != 0 ? LightingSettings::FireBoth : LightingSettings::FirePixel; });
 	MatchProperty("FireFlameSize", { g_PostProcessMan.GetLightingSettings().FireFlameSize = std::stof(reader.ReadPropValue()); });
 	MatchProperty("UnitOutline", { g_PostProcessMan.GetLightingSettings().UnitOutline = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineWidth", { g_PostProcessMan.GetLightingSettings().UnitOutlineWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 4.0F); });
@@ -635,7 +637,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
 	writer.NewPropertyWithValue("HeatHaze", lighting.HeatHaze);
 	writer.NewPropertyWithValue("HazeFromHeat", lighting.HazeFromHeat);
-	writer.NewPropertyWithValue("FireShader", lighting.FireShader);
+	writer.NewPropertyWithValue("FireStyle", lighting.FireStyle);
 	writer.NewPropertyWithValue("FireFlameSize", lighting.FireFlameSize);
 	writer.NewPropertyWithValue("UnitOutline", lighting.UnitOutline);
 	writer.NewPropertyWithValue("UnitOutlineWidth", lighting.UnitOutlineWidth);
