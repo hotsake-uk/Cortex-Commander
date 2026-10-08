@@ -91,6 +91,12 @@ thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullpt
 // the geometry alone, a flight link between two floors a leap also fits was called a leap, and flown as one with no fuel, if the flight
 // was ever the cheaper.
 thread_local std::set<std::pair<const RTE::PathNode*, const RTE::PathNode*>> s_LeapsTaken;
+// Within one CalculatePath, the leap and flight links found from each node (see AddLeapLinks, AddFlightLinks): its retries from neighbouring
+// starts and its check for a cut walk the same nodes again, and each node's links cost hundreds of ray casts. They depend only on the terrain
+// and the searcher's numbers (ApplyAgent), which hold for the call. Off outside a CalculatePath (the debug drawing calls these too).
+thread_local bool s_KeepLinks = false;
+thread_local std::unordered_map<const RTE::PathNode*, std::vector<micropather::StateCost>> s_LeapLinksKept;
+thread_local std::unordered_map<const RTE::PathNode*, std::vector<micropather::StateCost>> s_FlightLinksKept;
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -232,6 +238,14 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	float digStrength = agent.DigStrength;
 	ApplyAgent(agent);
 	s_LeapsTaken.clear();
+	struct KeptLinks {
+		KeptLinks() { s_KeepLinks = true; }
+		~KeptLinks() {
+			s_KeepLinks = false;
+			s_LeapLinksKept.clear();
+			s_FlightLinksKept.clear();
+		}
+	} keptLinks;
 
 	++m_CurrentPathingRequests;
 	RequestCountRelease countRelease(m_CurrentPathingRequests);
@@ -437,7 +451,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		// PathNode::Anchor) puts a leg through something solid (a ledge's corner between two anchors moved off their walls), the point goes back
 		// to its node's centre, and the one before it too if that isn't enough. (The search knows only the centres; a route drawn through a
 		// ledge's corner sent units up into the ledge's underside instead of round its lip.)
-		auto legOpen = [&](const Vector& a, const Vector& b) { return Open(*StrongestMaterialAlongLine(a, b)); };
+		auto legOpen = [&](const Vector& a, const Vector& b) { return LineOpen(a, b); };
 		for (size_t i = 1; i < steps.size(); ++i) {
 			if (legOpen(steps[i - 1].Pos, steps[i].Pos)) {
 				continue;
@@ -832,7 +846,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					continue;
 				}
 				PathNode* target = GetPathNodeAtGridCoords(gridX + dx, gridY + dy);
-				if (!target || !target->m_Navigable || !Open(*StrongestMaterialAlongLine(node->Pos, target->Pos))) {
+				if (!target || !target->m_Navigable || !LineOpen(node->Pos, target->Pos)) {
 					continue;
 				}
 				// Somewhere a body fits, and if it stands there, somewhere it can stand up.
@@ -1405,7 +1419,7 @@ float PathFinder::FallCost(const PathNode& to) const {
 }
 
 bool PathFinder::Open(const Material& material) const {
-	return material.GetIntegrity() <= 5.0F;
+	return material.GetIntegrity() <= c_OpenIntegrity;
 }
 
 PathLiquid PathFinder::LiquidOf(unsigned char id) const {
@@ -1635,6 +1649,7 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 	// across at the leap's speed is when it is over the landing; the arc is followed to then.
 	float direction = dx < 0.0F ? -1.0F : 1.0F;
 	float arcTime = across / speed;
+	const float doorIntegrity = g_SceneMan.GetMaterialFromID(MaterialColorKeys::g_MaterialDoor)->GetIntegrity();
 	Vector start(from.Pos.m_X, from.Surface - s_StandHeight * 0.5F);
 	const int segments = 6;
 	Vector last = start;
@@ -1654,7 +1669,8 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 			// doors are drawn, and a leap across one's own hatch standing open was refused.)
 			Vector a = last + Vector(0.0F, offset);
 			Vector b = point + Vector(0.0F, offset);
-			const Material* along = StrongestMaterialAlongLine(a, b);
+			// (Anything stronger than a door ends the cast: it fails the leap whatever else is on the line, as the strongest would.)
+			const Material* along = StrongestMaterialAlongLine(a, b, std::max(c_OpenIntegrity, doorIntegrity));
 			if (!Open(*along) && !(along->GetIndex() == MaterialColorKeys::g_MaterialDoor && DoorSeenThrough(a) && DoorSeenThrough((a + b) * 0.5F) && DoorSeenThrough(b))) {
 				return false;
 			}
@@ -1766,6 +1782,13 @@ void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::Sta
 	if (node.Surface < 0.0F || !NodeIsOnSolidGround(node) || static_cast<float>(node.FreeHeight) < s_StandHeight) {
 		return;
 	}
+	if (s_KeepLinks) {
+		if (auto kept = s_LeapLinksKept.find(&node); kept != s_LeapLinksKept.end()) {
+			adjacentList->insert(adjacentList->end(), kept->second.begin(), kept->second.end());
+			return;
+		}
+	}
+	const size_t firstAdded = adjacentList->size();
 	const float nodeSize = static_cast<float>(m_NodeDimension);
 	const int gridX = static_cast<int>(std::floor(node.Pos.m_X / nodeSize));
 	const int gridY = static_cast<int>(std::floor(node.Pos.m_Y / nodeSize));
@@ -1792,6 +1815,9 @@ void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::Sta
 			adjCost.state = const_cast<PathNode*>(target);
 			adjacentList->push_back(adjCost);
 		}
+	}
+	if (s_KeepLinks) {
+		s_LeapLinksKept.emplace(&node, std::vector<micropather::StateCost>(adjacentList->begin() + firstAdded, adjacentList->end()));
 	}
 }
 
@@ -1942,13 +1968,13 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 			Vector cruiseHere(node.Pos.m_X, cruiseY);
 			Vector cruiseThere(target->Pos.m_X, cruiseY);
 			Vector there(target->Pos.m_X, target->Surface - 4.0F);
-			if (cruiseY < standY - 2.0F && !Open(*StrongestMaterialAlongLine(here, cruiseHere))) {
+			if (cruiseY < standY - 2.0F && !LineOpen(here, cruiseHere)) {
 				continue;
 			}
-			if (!Open(*StrongestMaterialAlongLine(cruiseHere, cruiseThere)) || !Open(*StrongestMaterialAlongLine(cruiseHere + Vector(0.0F, -s_StandHeight * 0.5F), cruiseThere + Vector(0.0F, -s_StandHeight * 0.5F)))) {
+			if (!LineOpen(cruiseHere, cruiseThere) || !LineOpen(cruiseHere + Vector(0.0F, -s_StandHeight * 0.5F), cruiseThere + Vector(0.0F, -s_StandHeight * 0.5F))) {
 				continue;
 			}
-			if (!Open(*StrongestMaterialAlongLine(cruiseThere, there))) {
+			if (!LineOpen(cruiseThere, there)) {
 				continue;
 			}
 			// The cost: the flight's time against a walk's (a node of walk is about half a second), the take-off and landing, and the fuel.
@@ -1985,6 +2011,13 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 }
 
 void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {
+	if (s_KeepLinks) {
+		if (auto kept = s_FlightLinksKept.find(&node); kept != s_FlightLinksKept.end()) {
+			adjacentList->insert(adjacentList->end(), kept->second.begin(), kept->second.end());
+			return;
+		}
+	}
+	const size_t firstAdded = adjacentList->size();
 	std::vector<FlightLink> links;
 	CollectFlightLinks(node, links);
 	micropather::StateCost adjCost;
@@ -1996,6 +2029,9 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 		adjCost.cost = link.cost;
 		adjCost.state = const_cast<PathNode*>(link.target);
 		adjacentList->push_back(adjCost);
+	}
+	if (s_KeepLinks) {
+		s_FlightLinksKept.emplace(&node, std::vector<micropather::StateCost>(adjacentList->begin() + firstAdded, adjacentList->end()));
 	}
 }
 
@@ -2043,8 +2079,8 @@ float PathFinder::WalkMaterialCost(const Material& material) const {
 	return GetMaterialTransitionCost(material);
 }
 
-const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end) const {
-	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir, m_LadderMaterial);
+const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end, float stopAbove) const {
+	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir, m_LadderMaterial, stopAbove);
 }
 
 unsigned char PathFinder::TerrNav(int x, int y) const {
@@ -2348,7 +2384,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			}
 			Vector here(node->Pos.m_X, node->Surface);
 			Vector there(target->Pos.m_X, targetSurface);
-			return Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -10.0F), there + Vector(0.0F, -10.0F))) && Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -18.0F), there + Vector(0.0F, -18.0F)));
+			return LineOpen(here + Vector(0.0F, -10.0F), there + Vector(0.0F, -10.0F)) && LineOpen(here + Vector(0.0F, -18.0F), there + Vector(0.0F, -18.0F));
 		};
 		node->StairsUpRight = stairsTo(node->Up ? node->Up->UpRight : nullptr);
 		node->StairsUpLeft = stairsTo(node->Up ? node->Up->LeftUp : nullptr);
@@ -2394,7 +2430,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			if (!holds(faceMaterial) || !holds(topMaterial)) {
 				return false;
 			}
-			return Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -14.0F), there + Vector(0.0F, -14.0F))) && Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -24.0F), there + Vector(0.0F, -24.0F)));
+			return LineOpen(here + Vector(0.0F, -14.0F), there + Vector(0.0F, -14.0F)) && LineOpen(here + Vector(0.0F, -24.0F), there + Vector(0.0F, -24.0F));
 		};
 		const PathNode* twoUp = node->Up ? node->Up->Up : nullptr;
 		node->ScrambleUpRight = scrambleTo(twoUp ? twoUp->UpRight : nullptr, 1.0F);
