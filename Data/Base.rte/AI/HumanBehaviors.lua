@@ -1468,6 +1468,11 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
+	-- Pinned down already behind low cover (PeekUpdate's): it holds there, ducking and peeking; the Aim loop's own crouch and prone would
+	-- fight the peeking's stances.
+	if not AI.Cover and why == "suppressed" and AI.peekCover then
+		return true;
+	end
 	if not AI.Cover then
 		if AI.CoverRestTimer and not AI.CoverRestTimer:IsPastSimMS(why == "hurt" and 6000 or 1500) then
 			return false;
@@ -1554,6 +1559,10 @@ function HumanBehaviors.PeekUpdate(AI, Owner)
 	if AI.peekCover == nil or AI.PeekCheckTimer:IsPastSimMS(500) then
 		AI.PeekCheckTimer:Reset();
 		AI.peekCover = SharedBehaviors.CoverAt(Owner, SceneMan:MovePointToGround(Owner.Pos, 0, 4), Target.Pos) == "low";
+		if not AI.ducked and SharedBehaviors.CanSee(Owner.EyePos, Target.Pos) then
+			AI.PeekSeenTimer = AI.PeekSeenTimer or Timer();
+			AI.PeekSeenTimer:Reset();
+		end
 	end
 	if not AI.peekCover then
 		AI.Peek = nil;
@@ -1575,8 +1584,9 @@ function HumanBehaviors.PeekUpdate(AI, Owner)
 	else
 		SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
 		AI.ducked = true;
-		-- (Out of its sight while down is the point, not losing it: the target is kept, as it is where it was.)
-		if AI.TargetLostTimer then
+		-- (Out of its sight while down is the point, not losing it: the target is kept, as it is where it was. But only while it was seen
+		-- from up in the last four seconds: one that has gone is let go, low cover or no.)
+		if AI.TargetLostTimer and AI.PeekSeenTimer and not AI.PeekSeenTimer:IsPastSimMS(4000) then
 			AI.TargetLostTimer:Reset();
 		end
 	end
