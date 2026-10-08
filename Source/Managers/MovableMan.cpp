@@ -174,7 +174,7 @@ void MovableMan::RegisterObject(MovableObject* mo) {
 		return;
 	}
 
-	std::lock_guard<std::mutex> guard(m_ObjectRegisteredMutex);
+	std::lock_guard<std::shared_mutex> guard(m_ObjectRegisteredMutex);
 	m_KnownObjects[mo->GetUniqueID()] = mo;
 }
 
@@ -183,7 +183,7 @@ void MovableMan::UnregisterObject(MovableObject* mo) {
 		return;
 	}
 
-	std::lock_guard<std::mutex> guard(m_ObjectRegisteredMutex);
+	std::lock_guard<std::shared_mutex> guard(m_ObjectRegisteredMutex);
 	m_KnownObjects.erase(mo->GetUniqueID());
 }
 
