@@ -1284,6 +1284,21 @@ int AHuman::MoveAlongRoute() {
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;
 	}
+	// A leap of the route's, come down: short of the landing (in the gap, under the lip) or past it, the leap is marked failed for a while,
+	// as a flight is, so the next route crosses somewhere else or another way. (Leaps had no failure memory: one that kept falling short was
+	// planned the same way after every re-path, and only the 6 s stuck handling, marking the next point, got the unit out of it.)
+	if (mover.leapWatch && !m_Leaping && !airborne && mover.leapTimer.IsPastSimMS(400)) {
+		mover.leapWatch = false;
+		Vector toLanding = Towards(m_Pos, mover.leapTo);
+		if (std::abs(toLanding.m_X) > std::max(36.0F, h * 0.6F) || toLanding.m_Y < -h * 0.6F) {
+			MoverTrace("leap to " + std::to_string(static_cast<int>(mover.leapTo.m_X)) + "," + std::to_string(static_cast<int>(mover.leapTo.m_Y)) + " came down off it; a route another way");
+			AvoidPathLink(mover.leapFrom, mover.leapTo, 20000.0F);
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			RefreshRoute();
+			return RouteMover::Moving;
+		}
+	}
 
 	// The route: asked for when there is none, now and then anyway (the world changes), when the next point has been out of sight a while on
 	// the ground, and when stuck. A route check (the same answer, taken only if it is better) runs in the air.
@@ -1802,6 +1817,10 @@ int AHuman::MoveAlongRoute() {
 				ctrl.SetState(BODY_LEAP, true);
 				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 				mover.progressTimer.Reset();
+				mover.leapWatch = true;
+				mover.leapFrom = m_Pos;
+				mover.leapTo = point;
+				mover.leapTimer.Reset();
 				MoverTrace(std::string("leap ") + (edge ? "from the edge" : (lip ? "onto the lip" : "from here")) + " for " + std::to_string(static_cast<int>(point.m_X)) + "," + std::to_string(static_cast<int>(point.m_Y)));
 				return RouteMover::Moving;
 			}
