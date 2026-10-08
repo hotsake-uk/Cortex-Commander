@@ -55,6 +55,7 @@
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "ThreatMemory.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
 #include "ActionMenu.h"
@@ -558,6 +559,8 @@ void RunGameLoop() {
 				PerformanceMan::LogStages logStages;
 				logStages.Next("Sim: sandbox");
 				Sandbox::Update();
+				logStages.Next("Sim: threat memory");
+				ThreatMemory::Update();
 				logStages.Next("Sim: smoke grid");
 				SmokeGrid::Update();
 				logStages.Next("Sim: lightning");

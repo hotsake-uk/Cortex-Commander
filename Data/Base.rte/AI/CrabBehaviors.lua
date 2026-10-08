@@ -25,6 +25,7 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 
 	if FoundMO then
 		if AI.Behavior ~= nil and AI.Target and MovableMan:ValidMO(AI.Target) and FoundMO.ID == AI.Target.ID then	-- found the same target
+			SharedBehaviors.ReportEnemy(Owner, AI.Target);
 			AI.TargetOffset = SceneMan:ShortestDistance(AI.Target.Pos, HitPoint, false);
 			AI.TargetLostTimer:Reset();
 			AI.ReloadTimer:Reset();
@@ -46,6 +47,8 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 			end
 
 			if FoundMO then
+				-- The team hears of it (AC-2).
+				SharedBehaviors.ReportEnemy(Owner, FoundMO);
 				if AI.Target then
 					-- check if this MO should be targeted instead
 					if SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(AI.Target, Owner) + 0.2 then

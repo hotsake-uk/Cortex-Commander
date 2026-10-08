@@ -141,8 +141,10 @@ function NativeHumanAI:Update(Owner)
 			self.Cover = nil;
 			self.Flank = nil;
 			self.Retreat = nil;
+			self.Investigate = nil;
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
+			Owner:RemoveNumberValue("AIInvestigate");
 
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;
@@ -312,6 +314,7 @@ function NativeHumanAI:Update(Owner)
 	if FoundMO then
 		--TODO: decide whether to attack based on the material strength of found MO
 		if self.Behavior ~= nil and self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then	-- found the same target
+			SharedBehaviors.ReportEnemy(Owner, self.Target);
 			self.OldTargetPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 			self.TargetOffset = SceneMan:ShortestDistance(self.Target.Pos, HitPoint, false);
 			self.TargetLostTimer:Reset();
@@ -334,6 +337,8 @@ function NativeHumanAI:Update(Owner)
 			end
 
 			if FoundMO and FoundMO.Status < Actor.INACTIVE then
+				-- The team hears of it (AC-2).
+				SharedBehaviors.ReportEnemy(Owner, FoundMO);
 				if self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then
 					-- The same target, with no fight under way: a new order (a sandbox re-send hops SENTRY to GOTO) aborted the attack, and in
 					-- GOTO nothing made a new one while the target lived, so the unit held its fire for up to 5 s, until it lost sight of it.
@@ -677,6 +682,7 @@ function NativeHumanAI:Update(Owner)
 		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 	end
 	SharedBehaviors.RetreatUpdate(self, Owner);
+	SharedBehaviors.RememberUpdate(self, Owner);
 
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then

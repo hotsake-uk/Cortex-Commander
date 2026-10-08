@@ -2418,6 +2418,86 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 	end
 end
 
+-- Whether the engine's team memory (AC-2: SceneMan.ReportEnemy and the rest) is there, for a build without it (an older exe).
+function SharedBehaviors.CanRemember()
+	if SharedBehaviors.canRemember == nil then
+		local ok, value = pcall(function() return SceneMan.ReportEnemy; end);
+		SharedBehaviors.canRemember = ok and value ~= nil;
+	end
+	return SharedBehaviors.canRemember;
+end
+
+-- Tells the team of an enemy this unit has noticed (AC-2): the team remembers where it was, and the AI teammates close by turn to face it.
+-- Called each time the unit sees it, so the team's memory follows it; the engine tells the teammates at most once a second.
+function SharedBehaviors.ReportEnemy(Owner, Enemy)
+	if Enemy and IsActor(Enemy) and Enemy.Team ~= Owner.Team and SharedBehaviors.CanRemember() then
+		SceneMan:ReportEnemy(Owner, ToActor(Enemy));
+	end
+end
+
+-- What the team remembers (AC-2), for a unit with no enemy in sight, every two seconds: it keeps watch toward the nearest enemy the team
+-- saw in the last ten seconds within 700 px (turning to face it, as an alarm makes it); and an AI team's unit out on patrol or hunting goes
+-- to check the last place the team saw a player's unit within 1500 px, then takes up its order again (see InvestigateUpdate). Not a unit a
+-- player owns (it is only turned to look), not one told to hold, and not while falling back or flanking.
+function SharedBehaviors.RememberUpdate(AI, Owner)
+	SharedBehaviors.InvestigateUpdate(AI, Owner);
+	if AI.Target or AI.UnseenTarget or AI.Flank or AI.Retreat or AI.Investigate or not SharedBehaviors.CanRemember() then
+		return;
+	end
+	AI.RememberTimer = AI.RememberTimer or Timer();
+	if not AI.RememberTimer:IsPastSimMS(2000) then
+		return;
+	end
+	AI.RememberTimer:Reset();
+	local Seen = SceneMan:GetRememberedEnemyPos(Owner.Team, Owner.Pos, 10000, 700);
+	if Seen.Largest > 0 then
+		local ToSeen = SceneMan:ShortestDistance(Owner.Pos, Seen, false);
+		if (Owner.HFlipped and ToSeen.X > 0) or (not Owner.HFlipped and ToSeen.X < 0) then
+			Owner:SetAlarmPoint(Seen);
+		end
+	end
+	if AI.isPlayerOwned or Owner.OrderHold or not (Owner.AIMode == Actor.AIMODE_PATROL or Owner.AIMode == Actor.AIMODE_BRAINHUNT) then
+		return;
+	end
+	local Last = SceneMan:GetPlayerLastSeenPos(Owner.Team, 20000);
+	if Last.Largest == 0 then
+		return;
+	end
+	local distance = SceneMan:ShortestDistance(Owner.Pos, Last, false).Magnitude;
+	-- (Not a place it just checked: once there it has seen what there is to see.)
+	if distance < 150 or distance > 1500 or (AI.InvestigatedPos and SceneMan:ShortestDistance(AI.InvestigatedPos, Last, false):MagnitudeIsLessThan(150)) then
+		return;
+	end
+	AI.Investigate = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Vector(Last.X, Last.Y), Timer = Timer() };
+	Owner:SetNumberValue("AIInvestigate", 1);
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(AI.Investigate.Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "investigate: to " .. math.floor(Last.X) .. "," .. math.floor(Last.Y));
+end
+
+-- Checking where a player's unit was last seen: over on arrival, after 20 seconds, on meeting an enemy (the fight takes over and the order
+-- comes back after), or on another order.
+function SharedBehaviors.InvestigateUpdate(AI, Owner)
+	if not AI.Investigate then
+		return;
+	end
+	if not Owner:NumberValueExists("AIInvestigate") or SharedBehaviors.OrderChangedSince(Owner, AI.Investigate.Spot) then
+		SharedBehaviors.Trace(Owner, "investigate: called off by another order");
+		Owner:RemoveNumberValue("AIInvestigate");
+		AI.Investigate = nil;
+		return;
+	end
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Investigate.Spot, false):MagnitudeIsLessThan(Owner.Height);
+	if arrived or AI.Target or AI.Investigate.Timer:IsPastSimMS(20000) then
+		SharedBehaviors.Trace(Owner, "investigate: " .. (arrived and "there" or (AI.Target and "found an enemy" or "gave up")));
+		AI.InvestigatedPos = AI.Investigate.Spot;
+		Owner:RemoveNumberValue("AIInvestigate");
+		SharedBehaviors.RestoreOrder(AI, Owner, AI.Investigate.Keep);
+		AI.Investigate = nil;
+	end
+end
+
 -- Starts a flank towards a spot with a line of sight to a target that can't be shot from here. @return Whether one was started.
 function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
 	if AI.Flank or AI.Retreat or not SharedBehaviors.MayClose(AI, Owner) or AI.skill < 40 then

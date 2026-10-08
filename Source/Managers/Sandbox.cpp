@@ -1330,6 +1330,8 @@ void Sandbox::DrawOrderLabels() {
 				order += ", falling back";
 			} else if (actor->NumberValueExists("AIFlank")) {
 				order += ", flanking";
+			} else if (actor->NumberValueExists("AIInvestigate")) {
+				order += ", checking where an enemy was seen";
 			}
 		}
 		for (size_t group = 0; group < s_Groups.size(); ++group) {
