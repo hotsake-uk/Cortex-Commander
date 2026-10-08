@@ -57,6 +57,7 @@
 #include "FluidSim.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
+#include "ActionMenu.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "PostProcessMan.h"
@@ -633,6 +634,7 @@ void RunGameLoop() {
 			g_PresetMan.ClearReloadEntityPresetCalledThisUpdate();
 
 			g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::SimTotal);
+			ActionMenu::Update(); // (Before the update's input is let go of: its clicks and the right button's release are this update's.)
 			g_UInputMan.EndFrame();
 
 			if (!g_ActivityMan.IsInActivity()) {

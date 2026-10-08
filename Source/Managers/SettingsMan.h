@@ -168,6 +168,13 @@ namespace RTE {
 		/// @param newSubPieMenuHoverOpenDelay The number of MS a PieSlice with a sb-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		void SetSubPieMenuHoverOpenDelay(int newSubPieMenuHoverOpenDelay) { m_SubPieMenuHoverOpenDelay = newSubPieMenuHoverOpenDelay; }
 
+		/// Gets whether a unit's right-click menu is the classic pie wheel rather than the action menu (RC-12): a list over the pointer with
+		/// every order and the unit's engagement rules on one layer.
+		bool ClassicPieWheel() const { return m_ClassicPieWheel; }
+
+		/// Sets ClassicPieWheel; see there.
+		void SetClassicPieWheel(bool classic) { m_ClassicPieWheel = classic; }
+
 		/// Whether red and white flashes appear when brain is damaged.
 		/// @return Whether red and white flashes appear when brain is damaged.
 		bool FlashOnBrainDamage() const { return m_FlashOnBrainDamage; }
@@ -603,6 +610,7 @@ namespace RTE {
 		float m_UnheldItemsHUDDisplayRange; //!< Range in which devices on Scene will show the pick-up HUD, in pixels. 0 means HUDs are hidden, -1 means unlimited range.
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
+		bool m_ClassicPieWheel; //!< Whether a unit's right-click menu is the classic pie wheel rather than the action menu (see ClassicPieWheel).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).

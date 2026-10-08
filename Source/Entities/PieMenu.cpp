@@ -87,6 +87,7 @@ void PieMenu::Clear() {
 	m_HoveredPieSlice = nullptr;
 	m_ActivatedPieSlice = nullptr;
 	m_AlreadyActivatedPieSlice = nullptr;
+	m_QueuedPieSlice = nullptr;
 	m_CurrentPieSlices.clear();
 
 	m_ActiveSubPieMenu = nullptr;
@@ -553,6 +554,16 @@ void PieMenu::Update() {
 		return;
 	}
 
+	if (m_QueuedPieSlice) {
+		ActivateQueuedPieSlice();
+	}
+	// (The action menu's list picks the slices, RC-12: the wheel opens and closes with the button but takes no input of its own.)
+	const bool replacedByActionMenu = IsReplacedByActionMenu();
+	if (replacedByActionMenu) {
+		m_HoveredPieSlice = nullptr;
+		m_ActiveSubPieMenu = nullptr;
+	}
+
 	if (m_AffectedObject && !g_MovableMan.ValidMO(m_AffectedObject)) {
 		m_AffectedObject = nullptr;
 	}
@@ -605,7 +616,7 @@ void PieMenu::Update() {
 				}
 			}
 
-			if (!m_ActiveSubPieMenu && !skipInputBecauseActiveSubPieMenuWasJustDisabled) {
+			if (!m_ActiveSubPieMenu && !skipInputBecauseActiveSubPieMenuWasJustDisabled && !replacedByActionMenu) {
 				if (controller->IsState(PIE_MENU_ACTIVE_ANALOG)) {
 					anyInput = HandleAnalogInput(controller->GetAnalogCursor());
 				} else if (controller->IsState(PIE_MENU_ACTIVE_DIGITAL)) {
@@ -834,6 +845,62 @@ bool PieMenu::HandleDigitalInput() {
 	}
 
 	return false;
+}
+
+bool PieMenu::IsReplacedByActionMenu() const {
+	if (g_SettingsMan.ClassicPieWheel() || !m_Owner || m_MenuController || IsSubPieMenu()) {
+		return false;
+	}
+	const Controller* controller = m_Owner->GetController();
+	return controller && controller->GetPlayer() == Players::PlayerOne && controller->IsMouseControlled();
+}
+
+void PieMenu::ActivateQueuedPieSlice() {
+	const PieSlice* queued = m_QueuedPieSlice;
+	m_QueuedPieSlice = nullptr;
+	// Still one of this menu's, or of one of its slices' sub-menus: slices come and go while the menu is open (the activity takes the buy
+	// menu's off, scripts add theirs), and the list it was picked from was drawn after the last update.
+	const PieSlice* parentSlice = nullptr;
+	bool found = false;
+	for (const PieSlice* pieSlice: m_CurrentPieSlices) {
+		if (pieSlice == queued) {
+			found = true;
+			break;
+		}
+		if (const PieMenu* subPieMenu = pieSlice->GetSubPieMenu()) {
+			const std::vector<PieSlice*>& subPieSlices = subPieMenu->GetPieSlices();
+			if (std::find(subPieSlices.begin(), subPieSlices.end(), queued) != subPieSlices.end()) {
+				parentSlice = pieSlice;
+				found = true;
+				break;
+			}
+		}
+	}
+	if (!found || queued->GetSubPieMenu()) {
+		return;
+	}
+	if (!queued->IsEnabled()) {
+		g_GUISound.DisabledPickedSound()->Play();
+		return;
+	}
+	g_GUISound.SlicePickedSound()->Play();
+	// (As the wheel has it: the command for the activity is this menu's activated slice, read in the activity's next update; a sub-menu's
+	// script function gets the sub-menu it belongs to, made ready and owned by the unit as when the wheel opens it.)
+	m_ActivatedPieSlice = queued;
+	m_AlreadyActivatedPieSlice = queued;
+	PieMenu* scriptMenu = this;
+	if (parentSlice) {
+		PreparePieSliceSubPieMenuForUse(parentSlice);
+		scriptMenu = parentSlice->GetSubPieMenu();
+		if (m_Owner) {
+			scriptMenu->SetOwner(m_Owner);
+		}
+	}
+	if (queued->GetLuabindFunctionObjectWrapper() && queued->GetLuabindFunctionObjectWrapper()->GetLuabindObject()) {
+		if (const MovableObject* scriptTarget = m_Owner ? m_Owner : m_AffectedObject) {
+			g_LuaMan.GetMasterScriptState().RunScriptFunctionObject(queued->GetLuabindFunctionObjectWrapper(), "", "", {scriptTarget, scriptMenu, queued});
+		}
+	}
 }
 
 void PieMenu::UpdateSliceActivation() {
