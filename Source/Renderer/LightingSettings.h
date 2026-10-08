@@ -59,6 +59,8 @@ namespace RTE {
 			WaterReflections = quality >= QualityMedium;
 			// Lights traced through the terrain distance field from Medium up; Low keeps the cheaper fixed march.
 			LightShadowField = quality >= QualityMedium;
+			// The fog volume: one pass over the light grid a frame, from Medium up.
+			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -230,6 +232,9 @@ namespace RTE {
 
 		float DeepNightDarkness = 0.5F; //!< How much darker the scene is in the dead of night (eleven to two) than at nightfall: 0 not at all, 0.5 half the light, 0.9 a tenth. Lamps, fires and headlamps are not dimmed.
 		float SkyFollowsTime = 1.0F; //!< How far the sky art (painted as a blue day) takes the colours of the hour away from midday: a dark night sky, a red dawn and dusk, grey in bad weather. 0 only darkens the art, as before.
+		float FogVolume = 0.6F; //!< How thick mist and dust in the air are drawn: dawn mist in valleys, steam off water on lava, dust after a collapse, mist from scripts. It drifts with the wind, is lit by the sky and lamps and clears with time. 0: none, as before.
+		float FogMorningMist = 0.5F; //!< How much mist gathers low in open valleys around dawn (and a little at night and in rain), 0 to 1.
+		float FogClearSeconds = 25.0F; //!< About how long mist and dust take to clear, in game seconds.
 		float GodRays = 0.7F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.

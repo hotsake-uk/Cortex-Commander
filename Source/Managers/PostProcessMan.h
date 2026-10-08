@@ -238,6 +238,19 @@ namespace RTE {
 		/// @param strength How strongly it bends, around 1.
 		void RegisterShimmer(const Vector& pos, float radius, float strength);
 
+		/// Puts mist or dust into the air (the fog volume, LightingSettings::FogVolume): it drifts with the wind, is lit by the sky and lamps, and clears over time.
+		/// Safe from any thread. Ignored with the fog volume off.
+		/// @param pos Scene position of its centre.
+		/// @param radius How far it spreads, in pixels.
+		/// @param amount How thick, 0 to 1 (1 hides what's behind at full fog strength).
+		void RegisterFog(const Vector& pos, float radius, float amount);
+
+		/// Puts mist into the air, from Lua. See RegisterFog.
+		void AddFog(const Vector& pos, float radius, float amount) { RegisterFog(pos, radius, amount); }
+
+		/// Takes the mist and dust put into the air since the last call: x, y (scene pixels), radius (pixels), amount.
+		std::vector<glm::vec4> TakeFogPuffs();
+
 		/// Registers a scorch mark: soot stamped into the terrain that glows hot for a few seconds. Size and darkness scale with the energy released.
 		/// @param pos Scene position of the explosion.
 		/// @param energy Energy released, as computed for gib screen shake.
@@ -405,6 +418,7 @@ namespace RTE {
 		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.
 		std::vector<ScorchMark> m_PendingScorchMarks; //!< Scorch marks not stamped yet. Guarded by m_ShockwaveMutex.
 		std::vector<ScorchMark> m_HotScorchMarks; //!< Recent scorch marks, for the cooling glow. Guarded by m_ShockwaveMutex.
+		std::vector<glm::vec4> m_FogPuffs; //!< Mist and dust put into the air and not yet taken by the fog volume. Guarded by m_ShockwaveMutex.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.

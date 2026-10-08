@@ -60,6 +60,8 @@ uniform vec3 rteSkyCloud; // What the light of the hour makes of white cloud.
 uniform vec2 rteMoonPosition; // Screen pixels, as gl_FragCoord (y 0 is the top of the player screen).
 uniform float rteTime; // Seconds, for twinkling.
 uniform float rteWaterReflection; // How strongly water mirrors the scene above its surface, 0 for none.
+uniform sampler2D rteFog; // World grid, R = how thick mist or dust hangs in the air there (FogUpdate.frag).
+uniform float rteFogStrength; // How thick the fog volume is drawn, 0 for none.
 uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
 uniform bool rteWaterMirrorSurface; // The reflection is wobbled by the tilt of the surface above each pixel (the terrain pass's normal there, which follows the flow), the whole column together. Off: by the pixel's own tilt, as before.
 
@@ -450,6 +452,18 @@ void main() {
 	}
 	// Highlights: white on most things, taking the surface's own color on metal (which is why gold glints gold and steel glints white).
 	litColor += highlights * mix(vec3(1.0), albedoLinear * 2.5 + 0.15, metalness) * (1.0 - haze);
+	if (rteFogStrength > 0.0 && rteDebugView == 0) {
+		// Mist and dust in the air in front of whatever is here, lit as the air here is: by the sky where it reaches, the ambient where it doesn't, and the
+		// lamps and fires around. Glows still shine through it.
+		vec2 fogWorld = rteScreenOrigin + gl_FragCoord.xy;
+		float fog = texture(rteFog, fogWorld / rteGridWorldSize).r;
+		if (fog > 0.002) {
+			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * 0.85;
+			float fogSky = smoothstep(0.0, 1.0, texture(rteSkyLight, fogWorld / rteGridWorldSize).r);
+			vec3 fogLamps = rteMaxDynamicLight * (1.0 - exp(-texture(rteDynamicLight, screenUV).rgb / rteMaxDynamicLight));
+			litColor = mix(litColor, vec3(0.82, 0.85, 0.9) * (mix(rteAmbient, rteSkyColor, fogSky) + fogLamps), amount);
+		}
+	}
 	vec3 result = litColor + emissive;
 	FragColor = vec4(any(isnan(result)) || any(isinf(result)) ? vec3(0.0) : result, 1.0);
 }

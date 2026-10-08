@@ -257,6 +257,13 @@ void DebugMan::SettingsGUI() {
 		Slider("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		Slider("God rays", &settings.GodRays, 0.0F, 2.0F);
+		Slider("Mist and dust", &settings.FogVolume, 0.0F, 1.5F);
+		Tip("Mist and dust hanging in the air: low in open valleys around dawn, steam off water meeting lava, dust after ground collapses, and mist from scripts. It drifts with the wind, is lit by the sky, lamps and fires, and clears over time. 0: none, as before. On from the Medium preset up.");
+		if (settings.FogVolume > 0.0F) {
+			Slider("Dawn mist", &settings.FogMorningMist, 0.0F, 1.0F);
+			Tip("How much mist gathers low in open ground around dawn, a little at night and more in rain.");
+			Slider("Mist clears after (seconds)", &settings.FogClearSeconds, 3.0F, 120.0F, "%.0f");
+		}
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
 		Slider("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
