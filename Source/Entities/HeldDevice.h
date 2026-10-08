@@ -329,6 +329,105 @@ namespace RTE {
 		virtual bool IsEmpty() const { return false; }
 
 		/// Updates this MovableObject. Supposed to be done every frame.
+#pragma region Melee
+		/// Gets whether this has a blade (BladeStart and BladeEnd apart): it cuts what it's swept through, by how fast the blade moves, as a melee weapon.
+		bool HasBlade() const { return m_BladeEnd != m_BladeStart; }
+
+		/// Gets whether this' blade is an energy blade (a lightsaber): massless, it burns through what it touches even held still, cuts terrain, glows and lights its surroundings.
+		bool IsBladeEnergy() const { return m_BladeEnergy; }
+
+		/// Sets whether this' blade is an energy blade.
+		void SetBladeEnergy(bool energy) { m_BladeEnergy = energy; }
+
+		/// Gets the blade's base, relative to this' position, unflipped and unrotated like MuzzleOffset.
+		Vector GetBladeStart() const { return m_BladeStart; }
+
+		/// Sets the blade's base.
+		void SetBladeStart(const Vector& start) { m_BladeStart = start; }
+
+		/// Gets the blade's tip, relative to this' position, unflipped and unrotated like MuzzleOffset.
+		Vector GetBladeEnd() const { return m_BladeEnd; }
+
+		/// Sets the blade's tip.
+		void SetBladeEnd(const Vector& end) { m_BladeEnd = end; }
+
+		/// Gets the scene position of the blade's base, as it is now (an energy blade's grows from it as it ignites).
+		Vector GetBladeStartPos() const { return m_Pos + RotateOffset(m_BladeStart); }
+
+		/// Gets the scene position of the blade's tip, as it is now: short of BladeEnd while an energy blade ignites or goes out.
+		Vector GetBladeEndPos() const { return m_Pos + RotateOffset(m_BladeStart + (m_BladeEnd - m_BladeStart) * m_BladeExtension); }
+
+		/// Gets the blade's colour: an energy blade's glow and light.
+		Color GetBladeColor() const { return m_BladeColor; }
+
+		/// Sets the blade's colour.
+		void SetBladeColor(const Color& color) { m_BladeColor = color; }
+
+		/// Gets how far an energy blade's light reaches, in pixels. 0 for none.
+		float GetBladeLightRadius() const { return m_BladeLightRadius >= 0.0F ? m_BladeLightRadius : (m_BladeEnergy ? 60.0F : 0.0F); }
+
+		/// Sets how far an energy blade's light reaches, in pixels.
+		void SetBladeLightRadius(float radius) { m_BladeLightRadius = radius; }
+
+		/// Gets how bright an energy blade's glow and light are, 1 for a lightsaber.
+		float GetBladeBrightness() const { return m_BladeBrightness; }
+
+		/// Sets how bright an energy blade's glow and light are.
+		void SetBladeBrightness(float brightness) { m_BladeBrightness = brightness; }
+
+		/// Gets whether the blade is lit (an energy blade) or drawn (any): an energy blade that isn't neither glows nor cuts.
+		bool IsBladeLit() const { return m_BladeLit; }
+
+		/// Lights or puts out an energy blade. It grows or shrinks over BladeIgniteTime.
+		void SetBladeLit(bool lit) { m_BladeLit = lit; }
+
+		/// Gets how far out an energy blade is, 0 (out) to 1 (fully lit).
+		float GetBladeExtension() const { return m_BladeExtension; }
+
+		/// Gets how sharp the blade is: how well its cuts get through armour, like a particle's Sharpness.
+		float GetBladeSharpness() const { return m_BladeSharpness >= 0.0F ? m_BladeSharpness : (m_BladeEnergy ? 80.0F : 8.0F); }
+
+		/// Sets how sharp the blade is.
+		void SetBladeSharpness(float sharpness) { m_BladeSharpness = sharpness; }
+
+		/// Gets the mass the blade strikes with, in kg: with the blade's speed, how hard its cuts and blows land.
+		float GetBladeMass() const { return m_BladeMass >= 0.0F ? m_BladeMass : (m_BladeEnergy ? 1.0F : std::max(0.2F, m_Mass * 0.5F)); }
+
+		/// Sets the mass the blade strikes with.
+		void SetBladeMass(float mass) { m_BladeMass = mass; }
+
+		/// Gets how strong a terrain material the blade cuts through (its structural integrity), 0 for none.
+		float GetBladeCutsTerrain() const { return m_BladeCutsTerrain >= 0.0F ? m_BladeCutsTerrain : (m_BladeEnergy ? 70.0F : 0.0F); }
+
+		/// Sets how strong a terrain material the blade cuts through.
+		void SetBladeCutsTerrain(float strength) { m_BladeCutsTerrain = strength; }
+
+		/// Gets the arc, in degrees, the engine swings this through when it's activated (0: no swing; the blade still cuts as it's moved, by a script or the arm).
+		float GetMeleeSwingArc() const { return m_MeleeSwingArc; }
+
+		/// Sets the arc the engine swings this through when it's activated.
+		void SetMeleeSwingArc(float arc) { m_MeleeSwingArc = arc; }
+
+		/// Gets the angle the engine's swing has this turned by now, in radians, for the holding arm.
+		float GetMeleeSwingAngle() const { return m_MeleeSwingAngle; }
+
+		/// Gets whether a swing is under way.
+		bool IsSwinging() const { return m_MeleeSwingPhase != MeleeSwingPhase::Idle; }
+
+		/// Starts a swing now, if this has a swing and isn't swinging already. Activating it does the same.
+		void StartMeleeSwing();
+
+		/// Gets whether the blade struck another blade in the last moment (a parry), for scripts.
+		bool BladeJustClashed() const { return m_BladeClashTimer.GetElapsedSimTimeMS() < 120.0; }
+
+		/// Gets the time since the blade last cut something, in sim ms.
+		double GetTimeSinceBladeHit() const { return m_BladeHitTimer.GetElapsedSimTimeMS(); }
+
+		/// Moves the blade on for this sim update after everything has moved: sweeps it from where it was to where it is now, cutting what it went
+		/// through, clashing with other blades, deflecting shots, cutting terrain, and drawing and lighting an energy blade.
+		void PostUpdate() override;
+#pragma endregion
+
 		void Update() override;
 
 		/// Draws this HeldDevice's current graphical representation to a
@@ -424,11 +523,91 @@ namespace RTE {
 		/// The multiplier for visual recoil
 		float m_VisualRecoilMultiplier;
 
+		/// Where the engine's swing is (see m_MeleeSwingArc).
+		enum class MeleeSwingPhase : unsigned char {
+			Idle,
+			WindUp, //!< Drawing back.
+			Strike, //!< Coming through the arc.
+			Recover //!< Going back to the stance, after the strike or after bouncing off something hard.
+		};
+
+		Vector m_BladeStart; //!< The blade's base, relative to this' position, unflipped and unrotated.
+		Vector m_BladeEnd; //!< The blade's tip. The same as m_BladeStart for no blade.
+		bool m_BladeEnergy; //!< An energy blade (lightsaber): see IsBladeEnergy.
+		Color m_BladeColor; //!< An energy blade's glow and light colour.
+		float m_BladeWidth; //!< An energy blade's core width, in pixels.
+		float m_BladeBrightness; //!< An energy blade's glow and light brightness.
+		float m_BladeLightRadius; //!< How far an energy blade's light reaches, pixels. Below 0 until set: 60 for an energy blade.
+		float m_BladeSharpness; //!< Like a particle's Sharpness, for the blade's cuts. Below 0 until set.
+		float m_BladeMass; //!< The mass the blade strikes with, kg. Below 0 until set: an energy blade's 1, a physical blade's half of this' mass.
+		float m_BladeMinSpeed; //!< The least speed a cut lands with, m/s: an energy blade burns through what it's held against. Below 0 until set.
+		float m_BladeHitInterval; //!< The least time between two cuts on the same thing, sim ms.
+		float m_BladeCutsTerrain; //!< The strongest terrain material the blade cuts through while attacking. Below 0 until set: 70 for an energy blade, none for a physical one.
+		bool m_BladeSevers; //!< Fast cuts through limbs take them off. An energy blade's by default.
+		int m_BladeSeversSet; //!< -1 until BladeSevers is read, so the default can follow BladeEnergy.
+		bool m_BladeDeflects; //!< Shots that cross the blade bounce off it. An energy blade's by default.
+		int m_BladeDeflectsSet; //!< -1 until BladeDeflects is read.
+		float m_BladeIgniteTime; //!< How long an energy blade takes to grow or shrink, sim ms.
+		bool m_BladeLit; //!< See IsBladeLit.
+		float m_BladeExtension; //!< See GetBladeExtension.
+		SoundContainer* m_BladeHitSound; //!< Played where the blade cuts something.
+		SoundContainer* m_BladeClashSound; //!< Played where the blade strikes another blade, or bounces off something it can't cut.
+		SoundContainer* m_BladeSwingSound; //!< Played as a swing comes through.
+		SoundContainer* m_BladeHumSound; //!< Looped while an energy blade is lit and held.
+		SoundContainer* m_BladeIgniteSound; //!< Played as an energy blade lights.
+		float m_MeleeSwingArc; //!< The arc the engine swings this through on activation, degrees. 0 for none.
+		float m_MeleeSwingTime; //!< How long the wind-up and strike take, sim ms.
+		float m_MeleeRecoverTime; //!< How long getting back to the stance takes, sim ms.
+		MeleeSwingPhase m_MeleeSwingPhase; //!< Where the swing is.
+		float m_MeleeSwingAngle; //!< The angle the swing has this turned by now, radians, positive up when facing right.
+		float m_MeleeSwingRecoverFrom; //!< The angle the recovery started from.
+		Timer m_MeleeSwingTimer; //!< Times the swing's current phase.
+		bool m_BladePreviousValid; //!< Whether m_BladePrevious... hold the blade's place last sim update.
+		Vector m_BladePreviousStart; //!< The blade's base in the scene last sim update.
+		Vector m_BladePreviousEnd; //!< The blade's tip in the scene last sim update.
+		long m_BladePreviousRootID; //!< The unique ID of what held this last sim update: a blade that changes hands, or is dropped, doesn't sweep from where it was.
+		std::unordered_map<long, double> m_BladeLastCut; //!< When the blade last cut each thing (by its root's unique ID), sim ms.
+		Timer m_BladeClashTimer; //!< Since the blade last clashed with another.
+		Timer m_BladeHitTimer; //!< Since the blade last cut something.
+		Timer m_BladeTerrainTimer; //!< Since the blade last bounced off or melted terrain, for the effects' pace.
+
+		/// Sets this' parent, and when it's let go of (dropped, or put away), puts an energy blade out and stops its hum, and ends a swing.
+		/// @param newParent The new parent, nullptr for none. Ownership is NOT transferred!
+		void SetParent(MOSRotating* newParent) override;
+
 		/// Private member variable and method declarations
 	private:
 		/// Clears all the member variables of this HeldDevice, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();
+
+		/// The blade properties left unset (below 0) follow whether it's an energy or a physical blade.
+		float GetBladeMinSpeed() const { return m_BladeMinSpeed >= 0.0F ? m_BladeMinSpeed : (m_BladeEnergy ? 18.0F : 0.0F); }
+		float GetBladeHitInterval() const { return m_BladeHitInterval >= 0.0F ? m_BladeHitInterval : (m_BladeEnergy ? 90.0F : 160.0F); }
+		float GetBladeIgniteTime() const { return m_BladeIgniteTime >= 0.0F ? m_BladeIgniteTime : (m_BladeEnergy ? 250.0F : 0.0F); }
+		bool BladeSevers() const { return m_BladeSeversSet >= 0 ? m_BladeSevers : m_BladeEnergy; }
+		bool BladeDeflects() const { return m_BladeDeflectsSet >= 0 ? m_BladeDeflects : m_BladeEnergy; }
+
+		/// Moves the engine's swing on, and lights or puts out an energy blade. Done in Update.
+		void UpdateMeleeSwingAndBlade();
+
+		/// Cuts what the blade went through: sends a heavy, sharp particle into it at the blade's speed, so it's hurt, wounded and knocked like by any hit.
+		/// @param hitMOID What the blade struck.
+		/// @param hitPos Where.
+		/// @param bladeVel How fast that part of the blade was moving, m/s.
+		/// @param holder What holds this (this, when dropped).
+		/// @param attacking Whether this is being swung or used, which lets an energy blade sever limbs.
+		/// @return Whether it was cut (not cut again too soon, nor moving too slowly to cut).
+		bool CutWithBlade(MOID hitMOID, const Vector& hitPos, const Vector& bladeVel, MovableObject* holder, bool attacking);
+
+		/// The blade strikes something it doesn't cut through: another blade, or hard ground. Sparks, sound and light, a knock back through the arm, and a swing cut short.
+		/// @param where Where.
+		/// @param push The impulse on this, Ns.
+		/// @param clash Whether it was another blade.
+		void BladeStruck(const Vector& where, const Vector& push, bool clash);
+
+		/// Bounces shots off the blade that crossed it this sim update or will next.
+		void DeflectShots(const Vector& start, const Vector& end, MovableObject* holder);
 
 		// Disallow the use of some implicit methods.
 		HeldDevice(const HeldDevice& reference) = delete;

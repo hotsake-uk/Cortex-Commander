@@ -27,6 +27,7 @@
 
 namespace RTE {
 
+	class Camera;
 	class Scene;
 	class SceneLayer;
 	class SceneLayerTracked;

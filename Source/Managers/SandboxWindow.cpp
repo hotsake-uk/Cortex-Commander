@@ -641,9 +641,9 @@ namespace SandboxDetail {
 			// Only the ones on screen have their pictures made.
 			if (ImGui::IsItemVisible()) {
 				bool selected = i == choice;
-				// In the colours of the game's own menus: olive cells, the picked one brighter with a gold edge.
-				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(85, 96, 68, 255) : hovered ? IM_COL32(57, 75, 42, 255) : IM_COL32(24, 29, 21, 255));
-				drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(242, 182, 61, 255) : IM_COL32(60, 70, 48, 255), 0.0F, 0, selected ? 2.0F : 1.0F);
+				// In the colours of the game's own menu skin: navy cells, the picked one lit with a gold edge.
+				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well);
+				drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), selected ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, selected ? 2.0F : 1.0F);
 				const PiecePicture& picture = PictureOf(preset);
 				if (picture.Width > 0) {
 					// As big as fits, by whole pixels when it can be so the art stays crisp.
@@ -659,7 +659,7 @@ namespace SandboxDetail {
 				}
 				ImGui::PushClipRect(ImVec2(at.x + 2.0F, at.y + cell), ImVec2(at.x + size.x - 2.0F, at.y + size.y), true);
 				ImVec2 nameSize = ImGui::CalcTextSize(preset.PresetName.c_str(), nullptr, false, cell - 4.0F);
-				drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(at.x + std::max((cell - nameSize.x) * 0.5F, 2.0F), at.y + cell), IM_COL32(230, 232, 238, 255), preset.PresetName.c_str(), nullptr, cell - 4.0F);
+				drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(at.x + std::max((cell - nameSize.x) * 0.5F, 2.0F), at.y + cell), ToolTheme::Text, preset.PresetName.c_str(), nullptr, cell - 4.0F);
 				ImGui::PopClipRect();
 			}
 			if (hovered) {

@@ -281,6 +281,52 @@ void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& directio
 	}
 }
 
+void PostProcessMan::RegisterEnergyBeam(const Vector& from, const Vector& to, const glm::vec3& color, float width, float brightness, float lightRadius) {
+	if (brightness <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return;
+	}
+	glm::vec3 clamped = glm::clamp(color, glm::vec3(0.0F), glm::vec3(255.0F)) / 255.0F;
+	{
+		std::scoped_lock lock(m_SceneLightsMutex);
+		if (m_EnergyBeams.size() >= 256) {
+			return;
+		}
+		m_EnergyBeams.push_back({glm::vec2(from.m_X, from.m_Y), glm::vec2(to.m_X, to.m_Y), clamped, std::clamp(width, 0.5F, 12.0F), std::min(brightness, 4.0F)});
+	}
+	if (lightRadius <= 0.0F) {
+		return;
+	}
+	// The light comes from the whole length: a row of lights along it, a few pixels in from each end, sharing the beam's brightness.
+	Vector along = to - from;
+	float length = along.GetMagnitude();
+	int count = std::clamp(static_cast<int>(std::ceil(length / 12.0F)), 1, 6);
+	float each = brightness * 1.4F / std::sqrt(static_cast<float>(count));
+	for (int light = 0; light < count; ++light) {
+		float place = count == 1 ? 0.5F : (0.1F + 0.8F * static_cast<float>(light) / static_cast<float>(count - 1));
+		RegisterLight(from + along * place, color, lightRadius, each, LightSource::Objects);
+	}
+}
+
+void PostProcessMan::GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
+	for (const EnergyBeam& beam: m_EnergyBeams) {
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			glm::vec2 shift(static_cast<float>(wrapX) * sceneWidth, 0.0F);
+			glm::vec2 from = beam.From + shift - box;
+			glm::vec2 to = beam.To + shift - box;
+			float margin = beam.Width * 4.0F + 4.0F;
+			if (std::max(from.x, to.x) + margin < 0.0F || std::min(from.x, to.x) - margin > static_cast<float>(boxWidth) || std::max(from.y, to.y) + margin < 0.0F || std::min(from.y, to.y) - margin > static_cast<float>(boxHeight)) {
+				continue;
+			}
+			segments.push_back({from, to, beam.Color, beam.Width, beam.Brightness});
+		}
+	}
+}
+
 bool PostProcessMan::MakeSceneLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, SceneLight& light) const {
 	if (radius <= 0.0F || intensity <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
 		return false;

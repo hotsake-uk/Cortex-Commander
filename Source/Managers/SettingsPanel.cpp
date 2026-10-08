@@ -474,6 +474,8 @@ void DebugMan::SettingsGUI() {
 			Check("Reflection ripples with the surface", &settings.WaterMirrorSurface);
 			Tip("The mirrored scene is moved by the surface above it, so it wobbles as one image where the water moves and goes clean where it's still. Off: each pixel's own ripple moves it, as before. How much is the Ripples slider.");
 		}
+		Check("Wavy lines of light", &settings.WaterCaustics);
+		Tip("The thin bright wavy lines that wander and cross through water. Off: water is smooth, without them.");
 		Heading("Moving water");
 		Check("Surface follows the flow", &settings.WaterFlowSurface);
 		Tip("Still water goes glassy, a stream's ripples run downstream, the surface rings out where a pour lands and fast water froths through. Off: the same slow waves everywhere, as before. Needs flowing liquids on.");
