@@ -999,12 +999,24 @@ namespace {
 		}
 	}
 
+	/// The foreground colour painted ground gets at a scene pixel: the material's own terrain texture, tiled across the scene the way generated terrain is, so painted ground matches the real thing. A material without a texture gets its flat colour with a darker speckle.
+	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor) {
+		if (BITMAP* texture = material ? material->GetFGTexture() : nullptr; texture && texture->w > 0 && texture->h > 0 && bitmap_color_depth(texture) == 8) {
+			int texel = _getpixel(texture, x % texture->w, y % texture->h);
+			if (texel != ColorKeys::g_MaskColor) {
+				return texel;
+			}
+		}
+		return Random01() < 0.25F ? speckleColor : color;
+	}
+
 	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
 	void PaintTerrain(const Vector& center, int radius, const char* materialName) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
 		int material = g_MaterialAir;
+		const Material* paintMaterial = nullptr;
 		int color = ColorKeys::g_MaskColor;
 		int speckleColor = color;
 		if (materialName) {
@@ -1013,6 +1025,7 @@ namespace {
 				return;
 			}
 			material = found->GetIndex();
+			paintMaterial = found;
 			Color materialColor = found->GetColor();
 			materialColor.RecalculateIndex();
 			color = materialColor.GetIndex();
@@ -1047,8 +1060,7 @@ namespace {
 					continue;
 				}
 				terrain->SetMaterialPixel(x, y, material);
-				// A little speckle, so painted ground isn't one flat colour.
-				terrain->SetFGColorPixel(x, y, (materialName && Random01() < 0.25F) ? speckleColor : color);
+				terrain->SetFGColorPixel(x, y, materialName ? PaintedColor(paintMaterial, x, y, color, speckleColor) : color);
 				changed = true;
 			}
 		}
@@ -1089,7 +1101,7 @@ namespace {
 					continue;
 				}
 				terrain->SetMaterialPixel(x, y, found->GetIndex());
-				terrain->SetFGColorPixel(x, y, Random01() < 0.25F ? speckleColor : color);
+				terrain->SetFGColorPixel(x, y, PaintedColor(found, x, y, color, speckleColor));
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
