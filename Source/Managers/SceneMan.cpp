@@ -1575,7 +1575,7 @@ float SceneMan::CastMaxStrengthRay(const Vector& start, const Vector& end, int s
 	return CastMaxStrengthRayMaterial(start, end, skip, ignoreMaterial)->GetIntegrity();
 }
 
-const Material* SceneMan::CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial, unsigned char alsoIgnore) {
+const Material* SceneMan::CastMaxStrengthRayMaterial(const Vector& start, const Vector& end, int skip, unsigned char ignoreMaterial, unsigned char alsoIgnore, float stopAbove) {
 	Vector ray = g_SceneMan.ShortestDistance(start, end);
 	const Material* strongestMaterial = GetMaterialFromID(MaterialColorKeys::g_MaterialAir);
 
@@ -1643,6 +1643,9 @@ const Material* SceneMan::CastMaxStrengthRayMaterial(const Vector& start, const 
 				const Material* foundMaterial = GetMaterialFromID(materialID);
 				if (foundMaterial->GetIntegrity() > strongestMaterial->GetIntegrity()) {
 					strongestMaterial = foundMaterial;
+					if (strongestMaterial->GetIntegrity() > stopAbove) {
+						return strongestMaterial;
+					}
 				}
 			}
 

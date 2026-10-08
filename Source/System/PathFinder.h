@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <limits>
 #include <deque>
 #include <list>
 #include <memory>
@@ -362,6 +363,7 @@ namespace RTE {
 		static constexpr int c_FallCostReach = 24; //!< How far down a fall is measured for its cost; past this it is as dear as it gets.
 		static constexpr float c_FallCostPerNode = 2.5F; //!< The extra cost of each node of a fall that is still more than the safe drop above the ground: about what a rung of a jump costs, since the jetpack brakes the fall with fuel at the bottom.
 		static constexpr float c_NodeCostChangeEpsilon = 5.0F; //!< The minimum change in a PathNodes's cost for the pathfinder to recognize a change and reset itself. This is so minor changes (e.g. blood particles) don't force constant pathfinder resets.
+		static constexpr float c_OpenIntegrity = 5.0F; //!< The strongest material a body passes as open air (see Open).
 
 		MicroPather* m_Pather; //!< The actual pathing object that does the pathfinding work. Owned.
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
@@ -424,8 +426,12 @@ namespace RTE {
 		/// Helper function for getting the strongest material we need to path though between PathNodes.
 		/// @param start Origin point.
 		/// @param end Destination point.
+		/// @param stopAbove Stop at the first material stronger than this (see SceneMan::CastMaxStrengthRayMaterial).
 		/// @return The strongest material.
-		const Material* StrongestMaterialAlongLine(const Vector& start, const Vector& end) const;
+		const Material* StrongestMaterialAlongLine(const Vector& start, const Vector& end, float stopAbove = std::numeric_limits<float>::max()) const;
+
+		/// Whether the line between two points is open (see Open), stopping at the first pixel that isn't.
+		bool LineOpen(const Vector& start, const Vector& end) const { return Open(*StrongestMaterialAlongLine(start, end, c_OpenIntegrity)); }
 
 		/// Helper function for updating all the values of cost edges going out from a specific PathNodes.
 		/// This does NOT update the pather, which is required before solving more paths after calling this.

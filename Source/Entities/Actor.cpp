@@ -1734,16 +1734,19 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float off; // Degrees off the field it is in (the aim's when sharp and inside it, else the facing's), as a fraction of that field's half.
 	};
 	std::vector<Candidate> candidates;
-	Box box(eyes - Vector(narrowReach, narrowReach), narrowReach * 2.0F, narrowReach * 2.0F);
-	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, m_Team, true)) {
-		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
+	// The candidates come from the actor list (tens of entries), not the MOID grid: a box this size covers thousands of grid cells, and in a
+	// firefight the grid hashed every bullet, gib and speck of dust in them for each scanning unit, to find the few actors among them. (Scripts
+	// in ThreadedUpdate already walk the same list, as MovableMan.Actors; new actors are queued and joined in MovableMan::Update's serial part.)
+	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
+	for (Actor* actor: g_MovableMan.GetActorList()) {
 		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
 			continue;
 		}
-		if (std::any_of(candidates.begin(), candidates.end(), [actor](const Candidate& candidate) { return candidate.actor == actor; })) {
+		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), wraps);
+		// (The square the grid search covered: no further than the longer reach either way.)
+		if (std::abs(toTarget.m_X) > narrowReach || std::abs(toTarget.m_Y) > narrowReach) {
 			continue;
 		}
-		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
 		float distance = toTarget.GetMagnitude();
 		float offAim = degreesBetween(toTarget, aimDirection);
 		float offFacing = degreesBetween(toTarget, facing);
@@ -1870,7 +1873,10 @@ void Actor::ShotPassing(const MovableObject& shot) {
 	// The box finds every part of a body (head, torso, limbs, held gun); each unit counts once for this shot.
 	static thread_local std::vector<const Actor*> s_Counted;
 	s_Counted.clear();
-	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true)) {
+	// Up to 96 of these queries an update while anyone shoots: the found list is a buffer kept between calls, so the query allocates nothing.
+	static thread_local std::vector<MovableObject*> s_Found;
+	g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true, s_Found);
+	for (MovableObject* found: s_Found) {
 		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
 		if (!actor || (shot.GetTeam() != Activity::NoTeam && actor->GetTeam() == shot.GetTeam())) {
 			continue;

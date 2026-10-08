@@ -122,6 +122,10 @@ namespace {
 		std::shared_ptr<Before> Was;
 	};
 	std::map<std::pair<int, int>, Watch> s_Watches; //!< By square (row, column): ordered, so they are always gone through in the same order.
+	/// Squares newly being worn, waiting for their first look (LookBefore, a scan of some 23 k pixels with flood fills): only a few are looked at
+	/// an update, so a crash that chips fifty squares at once doesn't do all fifty in the update already paying for the gibs. First worn, first looked at.
+	std::deque<std::pair<int, int>> s_WatchesWaiting;
+	std::map<std::pair<int, int>, long long> s_WatchWaitingDamage; //!< The waiting squares, with when each last lost a pixel.
 	std::vector<int> s_Damage; //!< Pixels knocked out since the last update, x and y by turns. Filled from (possibly parallel) collision code.
 	std::mutex s_DamageMutex;
 	std::vector<Check> s_Scheduled;
@@ -1860,17 +1864,27 @@ void TerrainCollapse::Update() {
 		}
 		for (size_t i = 0; i + 1 < damage.size(); i += 2) {
 			std::pair<int, int> square(damage[i + 1] / c_WatchCell, damage[i] / c_WatchCell);
-			auto found = s_Watches.find(square);
-			if (found == s_Watches.end()) {
-				Watch watch;
-				watch.LastDamage = now;
-				watch.NextCheck = now + 30;
-				// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing.
-				watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr});
-				s_Watches.emplace(square, std::move(watch));
-			} else {
+			if (auto found = s_Watches.find(square); found != s_Watches.end()) {
 				found->second.LastDamage = now;
+			} else if (auto waiting = s_WatchWaitingDamage.find(square); waiting != s_WatchWaitingDamage.end()) {
+				waiting->second = now;
+			} else {
+				s_WatchWaitingDamage.emplace(square, now);
+				s_WatchesWaiting.push_back(square);
 			}
+		}
+		// A few new squares an update, more when many are waiting so the wait stays short.
+		constexpr int c_NewWatchesPerUpdate = 4;
+		for (size_t looks = std::max<size_t>(c_NewWatchesPerUpdate, s_WatchesWaiting.size() / 4); looks > 0 && !s_WatchesWaiting.empty(); --looks) {
+			std::pair<int, int> square = s_WatchesWaiting.front();
+			s_WatchesWaiting.pop_front();
+			Watch watch;
+			watch.LastDamage = s_WatchWaitingDamage[square];
+			watch.NextCheck = now + 30;
+			s_WatchWaitingDamage.erase(square);
+			// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing.
+			watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr});
+			s_Watches.emplace(square, std::move(watch));
 		}
 		int checksLeft = 3;
 		for (auto watch = s_Watches.begin(); watch != s_Watches.end();) {
@@ -1887,12 +1901,31 @@ void TerrainCollapse::Update() {
 		}
 	}
 	UpdateBodies(terrain);
-	for (const Check& check: s_Scheduled) {
-		if (check.DueUpdate <= now) {
-			RunCheck(terrain, check);
+	// The checks come due: a few an update (more when many are due, so the wait stays short), the longest due first, the rest carried over. A place
+	// and size already checked this update isn't checked again (a crater queued twice, or a check's second look come due while its first waited).
+	constexpr int c_ChecksPerUpdate = 4;
+	std::stable_sort(s_Scheduled.begin(), s_Scheduled.end(), [](const Check& a, const Check& b) { return a.DueUpdate < b.DueUpdate; });
+	size_t due = std::count_if(s_Scheduled.begin(), s_Scheduled.end(), [now](const Check& check) { return check.DueUpdate <= now; });
+	size_t checksLeft = std::max<size_t>(c_ChecksPerUpdate, due / 4);
+	std::vector<Check> ran;
+	std::vector<Check> kept;
+	for (Check& check: s_Scheduled) {
+		if (check.DueUpdate > now) {
+			kept.push_back(std::move(check));
+			continue;
 		}
+		if (std::any_of(ran.begin(), ran.end(), [&check](const Check& done) { return done.X == check.X && done.Y == check.Y && done.Radius == check.Radius; })) {
+			continue;
+		}
+		if (checksLeft == 0) {
+			kept.push_back(std::move(check));
+			continue;
+		}
+		--checksLeft;
+		RunCheck(terrain, check);
+		ran.push_back(std::move(check));
 	}
-	s_Scheduled.erase(std::remove_if(s_Scheduled.begin(), s_Scheduled.end(), [now](const Check& check) { return check.DueUpdate <= now; }), s_Scheduled.end());
+	s_Scheduled.swap(kept);
 }
 
 void TerrainCollapse::Clear() {
@@ -1903,6 +1936,8 @@ void TerrainCollapse::Clear() {
 	s_Bodies.clear();
 	s_NewBodies.clear();
 	s_Watches.clear();
+	s_WatchesWaiting.clear();
+	s_WatchWaitingDamage.clear();
 	s_Rested.clear();
 	s_Blasts.clear();
 	{

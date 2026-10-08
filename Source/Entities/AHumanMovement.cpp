@@ -768,9 +768,8 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 	float bestDistance = std::numeric_limits<float>::max();
 	Vector along = Towards(m_Pos, toPoint);
 	float length = along.GetMagnitude();
-	for (Actor* actor: g_MovableMan.GetActorList()) {
-		ADoor* door = dynamic_cast<ADoor*>(actor);
-		if (!door || (door->GetTeam() != m_Team && door->GetTeam() != Activity::NoTeam) || !door->GetDoor() || !door->GetDoor()->IsAttached()) {
+	for (ADoor* door: g_MovableMan.GetDoorList()) {
+		if ((door->GetTeam() != m_Team && door->GetTeam() != Activity::NoTeam) || !door->GetDoor() || !door->GetDoor()->IsAttached()) {
 			continue;
 		}
 		Vector toLeaf = Towards(m_Pos, door->GetDoor()->GetPos());
@@ -788,9 +787,8 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 }
 
 bool AHuman::InDoorSweep() const {
-	for (Actor* actor: g_MovableMan.GetActorList()) {
-		ADoor* door = dynamic_cast<ADoor*>(actor);
-		if (door && (door->GetTeam() == m_Team || door->GetTeam() == Activity::NoTeam) && door->GetDoor() && door->GetDoorState() != ADoor::CLOSED && Towards(m_Pos, door->GetPos()).MagnitudeIsLessThan(m_CharHeight * 1.2F) && door->SweepContains(m_Pos, m_CharHeight * 0.3F)) {
+	for (ADoor* door: g_MovableMan.GetDoorList()) {
+		if ((door->GetTeam() == m_Team || door->GetTeam() == Activity::NoTeam) && door->GetDoor() && door->GetDoorState() != ADoor::CLOSED && Towards(m_Pos, door->GetPos()).MagnitudeIsLessThan(m_CharHeight * 1.2F) && door->SweepContains(m_Pos, m_CharHeight * 0.3F)) {
 			return true;
 		}
 	}
