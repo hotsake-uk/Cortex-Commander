@@ -385,6 +385,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CloudLayer", { g_PostProcessMan.GetLightingSettings().CloudLayer = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CloudCover", { g_PostProcessMan.GetLightingSettings().CloudCover = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudOpacity", { g_PostProcessMan.GetLightingSettings().CloudOpacity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("CloudSize", { g_PostProcessMan.GetLightingSettings().CloudSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("CloudHeight", { g_PostProcessMan.GetLightingSettings().CloudHeight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SurfaceStates", { g_PostProcessMan.GetLightingSettings().SurfaceStates = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("TracerLights", { g_PostProcessMan.GetLightingSettings().TracerLights = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFoam", { g_PostProcessMan.GetLightingSettings().WaterFoam = std::stof(reader.ReadPropValue()); });
@@ -688,6 +690,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CloudLayer", lighting.CloudLayer);
 	writer.NewPropertyWithValue("CloudCover", lighting.CloudCover);
 	writer.NewPropertyWithValue("CloudOpacity", lighting.CloudOpacity);
+	writer.NewPropertyWithValue("CloudSize", lighting.CloudSize);
+	writer.NewPropertyWithValue("CloudHeight", lighting.CloudHeight);
 	writer.NewPropertyWithValue("SurfaceStates", lighting.SurfaceStates);
 	writer.NewPropertyWithValue("TracerLights", lighting.TracerLights);
 	writer.NewPropertyWithValue("WeatherLight", lighting.WeatherLight);
