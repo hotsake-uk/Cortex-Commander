@@ -1140,9 +1140,24 @@ float Actor::EstimateDigStrength() const {
 	return m_AIBaseDigStrength;
 }
 
+float Actor::GetMaxSafeFallHeight() const {
+	float gravity = g_SceneMan.GetGlobalAcc().m_Y;
+	if (gravity <= 0.01F || m_TravelImpulseDamage <= 0.0F) {
+		return FLT_MAX;
+	}
+	// The impact is the mass times the speed lost on landing (AtomGroup::Travel's collision impulses), so the speed that reaches the threshold
+	// is the threshold over the mass; the height that speed is reached from is v^2 / 2g.
+	float speed = m_TravelImpulseDamage / std::max(GetMass(), 1.0F);
+	return std::max(speed * speed / (2.0F * gravity) * c_PPM, 96.0F);
+}
+
 PathAgent Actor::GetPathAgent() const {
 	PathAgent agent;
 	agent.JumpHeight = EstimateJumpHeight();
+	// With no jet to brake a fall (less than a node's lift), falls higher than the body lands from unhurt are not routed (LM-9).
+	if (agent.JumpHeight != FLT_MAX && agent.JumpHeight * c_PPM < 24.0F) {
+		agent.MaxSafeFall = GetMaxSafeFallHeight();
+	}
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
