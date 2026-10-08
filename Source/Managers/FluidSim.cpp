@@ -1099,6 +1099,26 @@ void FluidSim::Clear() {
 	s_Splashes.clear();
 }
 
+void FluidSim::GetActivePixels(const Vector& corner, float width, float height, std::vector<Vector>& pixels, size_t limit) {
+	if (s_Width <= 0) {
+		return;
+	}
+	for (int key: s_Active.Keys) {
+		if (pixels.size() >= limit) {
+			break;
+		}
+		// (Keys can be stale until the next update drops them.)
+		if (key < 0 || static_cast<size_t>(key) >= s_Active.Grid.size() || s_Active.Grid[key] == 0) {
+			continue;
+		}
+		Vector pixel(static_cast<float>(key % s_Width), static_cast<float>(key / s_Width));
+		Vector fromCorner = g_SceneMan.ShortestDistance(corner, pixel, g_SceneMan.SceneWrapsX());
+		if (fromCorner.m_X >= 0.0F && fromCorner.m_Y >= 0.0F && fromCorner.m_X < width && fromCorner.m_Y < height) {
+			pixels.push_back(pixel);
+		}
+	}
+}
+
 int FluidSim::GetActiveCount() {
 	return static_cast<int>(s_Active.Count);
 }

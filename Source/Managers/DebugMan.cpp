@@ -329,6 +329,7 @@ void DebugMan::DrawOverlays() {
 	DebugOverlays::DrawTerrainUpdates();
 	DebugOverlays::DrawLightSources();
 	DebugOverlays::DrawSunDirection();
+	DebugOverlays::DrawWorldSim();
 }
 
 void DebugMan::DrawImGui() {

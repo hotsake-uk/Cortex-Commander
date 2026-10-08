@@ -124,6 +124,7 @@ void SettingsMan::Clear() {
 	m_ShowTerrainUpdates = false;
 	m_ShowLightSources = false;
 	m_ShowSunDirection = false;
+	m_WorldSimOverlay = 0;
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
@@ -397,6 +398,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CombatOverlay", { int which = 0; reader >> which; SetCombatOverlay(which); });
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
 	MatchProperty("ShowSunDirection", { reader >> m_ShowSunDirection; });
+	MatchProperty("WorldSimOverlay", { int which = 0; reader >> which; SetWorldSimOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
@@ -735,6 +737,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
 	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
 	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
+	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
 	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
 	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
