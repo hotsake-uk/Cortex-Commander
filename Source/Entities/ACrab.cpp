@@ -1746,6 +1746,15 @@ int ACrab::MoveAlongRoute() {
 	}
 
 	// ---- On the ground. ----
+	// A mantle: walked into the ledge, which pulls the crab up onto it (Actor::TryStartMantle); no jet.
+	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
+		if (!IsMantling()) {
+			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		} else {
+			mover.progressTimer.Reset();
+		}
+		return 0;
+	}
 	// A climb the legs don't take (the route's jump, or the point well above): off from a stand under the way up, with fuel for it.
 	if (standardJet && netUp > 1.0F && (kind == PathStepKind::Jump || above > h * 0.45F) && std::abs(toPoint.m_X) < h * 1.5F && above > h * 0.2F) {
 		if (std::abs(m_Vel.m_X) > 0.6F) {
