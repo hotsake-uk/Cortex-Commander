@@ -48,6 +48,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <cctype>
 #include <cmath>
 #include <execution>
@@ -2683,7 +2684,46 @@ namespace {
 		}
 	}
 
+	std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
+
+	/// Notes a tool use as it is applied, for the stroke log and, with the Sandbox debug channel on, the console: the update, the tool, where,
+	/// the side and orders, and the choice and count it was made with.
+	void LogStroke(const Stroke& stroke) {
+		bool toConsole = g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox);
+		if (!g_SettingsMan.ShowSandboxStrokeLog()) {
+			s_StrokeLog.clear();
+			if (!toConsole) {
+				return;
+			}
+		}
+		const char* toolName = "?";
+		for (const ToolInfo& tool: c_Tools) {
+			if (tool.Kind == stroke.Kind) {
+				toolName = tool.Name;
+				break;
+			}
+		}
+		// The order's name, from the null-separated list the order combo shows.
+		const char* orderName = c_OrderNames;
+		for (int i = 0; i < static_cast<int>(stroke.Orders) && *orderName; ++i) {
+			orderName += std::strlen(orderName) + 1;
+		}
+		char line[256];
+		std::snprintf(line, sizeof(line), "#%lld %s at %d,%d r%d, %s, %s, choice %d x%d", g_TimerMan.GetSimUpdateCount(), toolName, stroke.Position.GetFloorIntX(), stroke.Position.GetFloorIntY(), stroke.Radius,
+		              stroke.Team >= 0 && stroke.Team < c_Sides ? c_SideNames[stroke.Team] : "no side", *orderName ? orderName : "?", stroke.Choice, stroke.Count);
+		if (toConsole) {
+			g_ConsoleMan.PrintString(std::string("SANDBOX: ") + line);
+		}
+		if (g_SettingsMan.ShowSandboxStrokeLog()) {
+			s_StrokeLog.emplace_back(line);
+			while (s_StrokeLog.size() > 20) {
+				s_StrokeLog.pop_front();
+			}
+		}
+	}
+
 	void Apply(const Stroke& stroke) {
+		LogStroke(stroke);
 		const Vector& at = stroke.Position;
 		float radius = static_cast<float>(stroke.Radius);
 		switch (stroke.Kind) {
@@ -6993,6 +7033,28 @@ namespace {
 		}
 	}
 
+	/// The stroke log (SettingsMan::ShowSandboxStrokeLog), in the top right of the picture: the last 20 tool uses applied, newest at the bottom.
+	void DrawStrokeLog() {
+		if (!g_SettingsMan.ShowSandboxStrokeLog()) {
+			return;
+		}
+		std::vector<std::string> lines;
+		lines.emplace_back(s_StrokeLog.empty() ? "Stroke log: no tool used yet" : "Stroke log (update, tool, where, side, orders, choice x count)");
+		lines.insert(lines.end(), s_StrokeLog.begin(), s_StrokeLog.end());
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float lineHeight = ImGui::GetTextLineHeight();
+		float width = 0.0F;
+		for (const std::string& line: lines) {
+			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
+		}
+		ImVec2 corner(std::floor(view.x + view.w - width - 12.0F), std::floor(view.y + view.h * 0.08F));
+		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
+		for (size_t i = 0; i < lines.size(); ++i) {
+			drawList->AddText(ImVec2(corner.x, corner.y + lineHeight * static_cast<float>(i)), i == 0 ? IM_COL32(180, 180, 170, 255) : IM_COL32(230, 230, 220, 255), lines[i].c_str());
+		}
+	}
+
 	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
 	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
 	/// for two seconds after, and a red flash each time the standing orders send it again.
@@ -7087,4 +7149,5 @@ void Sandbox::DrawDebug() {
 	DrawAutoBattleColony();
 	DrawCharacterState();
 	DrawLightsBySource();
+	DrawStrokeLog();
 }
