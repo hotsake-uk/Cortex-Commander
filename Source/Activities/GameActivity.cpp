@@ -1633,15 +1633,10 @@ void GameActivity::Update() {
 			}
 
 			if (PieSliceType command = controlledActorPieMenu->GetPieCommand(); command != PieSliceType::NoType) {
-				// AI mode commands that need extra points set in special view modes here
-				// TODO I don't think these viewstates are actually used?!
-				if (command == PieSliceType::Sentry) {
-					m_ViewState[player] = ViewState::AISentryPoint;
-				} else if (command == PieSliceType::Patrol) {
-					m_ViewState[player] = ViewState::AIPatrolPoints;
-				} else if (command == PieSliceType::GoldDig) {
-					m_ViewState[player] = ViewState::AIGoldDigPoint;
-				} else if (command == PieSliceType::GoTo) {
+				// AI mode commands that need a point picked in a view mode of their own (go-to). Sentry, Patrol and Gold Dig need none:
+				// AHuman::HandlePieCommand sets the mode, and the view states they used to set had no update branch, so the view left Normal
+				// and stopped tracking the unit until the player switched actors. (The states stay in the enum for scripts.)
+				if (command == PieSliceType::GoTo) {
 					m_ViewState[player] = ViewState::AIGoToPoint;
 					m_ControlledActor[player]->ClearAIWaypoints();
 					m_ActorCursor[player] = m_ControlledActor[player]->GetPos();
