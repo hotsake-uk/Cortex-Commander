@@ -1510,6 +1510,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ThrownDevice) {
 	    .property("MaxThrowVel", &ThrownDevice::GetMaxThrowVel, &ThrownDevice::SetMaxThrowVel)
 	    .property("StartThrowOffset", &ThrownDevice::GetStartThrowOffset, &ThrownDevice::SetStartThrowOffset)
 	    .property("EndThrowOffset", &ThrownDevice::GetEndThrowOffset, &ThrownDevice::SetEndThrowOffset)
+	    .property("TriggerDelay", &ThrownDevice::GetTriggerDelay)
+	    .property("ActivatesWhenReleased", &ThrownDevice::ActivatesWhenReleased)
 
 	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength);
 }

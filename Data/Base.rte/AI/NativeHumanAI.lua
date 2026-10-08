@@ -678,6 +678,8 @@ function NativeHumanAI:Update(Owner)
 	end
 	HumanBehaviors.LeaveCover(self, Owner);
 	HumanBehaviors.PeekUpdate(self, Owner);
+	HumanBehaviors.LobUpdate(self, Owner);
+	HumanBehaviors.SmokeUpdate(self, Owner);
 	SharedBehaviors.FlankUpdate(self, Owner);
 	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
 		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);

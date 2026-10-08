@@ -141,6 +141,242 @@ function HumanBehaviors.GetGrenadeAngle(AimPoint, TargetVel, StartPos, muzVel)
 	return Dist.AbsRadAngle;
 end
 
+-- A grenade's arc to a point (AC-5): the angle to throw at and how long it flies, for the throw speed in m/s, the flat arc or (high) the
+-- lob, under the same underestimated gravity as GetGrenadeAngle. @return angle (radians, for Vector(1,0):RadRotate) and seconds, or nil.
+function HumanBehaviors.GrenadeArc(StartPos, AimPoint, speed, high)
+	local Dist = SceneMan:ShortestDistance(StartPos, AimPoint, false) / GetPPM();
+	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	local velSqr = speed * speed;
+	local disc = velSqr * velSqr - gravity * (gravity * Dist.X * Dist.X + 2 * -Dist.Y * velSqr);
+	if disc < 0 or math.abs(Dist.X) < 0.1 or speed <= 0 then
+		return nil;
+	end
+	local root = math.sqrt(disc);
+	local angle = math.atan2(high and (velSqr + root) or (velSqr - root), gravity * Dist.X);
+	local seconds = Dist.X / (speed * math.cos(angle));
+	if seconds ~= seconds or seconds <= 0 or seconds > 6 then
+		return nil;
+	end
+	return angle, seconds;
+end
+
+-- Whether a grenade thrown on an arc gets to its end without hitting the ground on the way: the arc in short straight pieces, each checked
+-- against the terrain (not units). The last eighth is not checked: the grenade landing there is the point.
+function HumanBehaviors.ArcIsClear(StartPos, angle, speed, seconds)
+	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	local ppm = GetPPM();
+	local vx = speed * math.cos(angle);
+	local vy = -speed * math.sin(angle);
+	local steps = math.max(6, math.min(40, math.ceil(seconds / 0.05)));
+	local From = Vector(StartPos.X, StartPos.Y);
+	for i = 1, math.floor(steps * 7 / 8) do
+		local t = seconds * i / steps;
+		local To = StartPos + Vector(vx * t, vy * t + 0.5 * gravity * t * t) * ppm;
+		if SceneMan:CastStrengthSumRay(From, To, 2, rte.grassID) > 30 then
+			return false;
+		end
+		From = To;
+	end
+	return true;
+end
+
+-- How to throw a grenade at a point (AC-5): the flat arc where it is clear, else the lob over what is in the way (overCover: the lob first),
+-- at full or at middling strength, led onto a moving target by its flight time. @return angle, the throw speed, seconds of flight and
+-- whether it takes full strength; or nil where no arc gets there.
+function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover)
+	local maxVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
+	local minVel = Grenade.MinThrowVel;
+	if minVel == 0 then
+		minVel = maxVel * 0.2;
+	end
+	local Start = Grenade.MuzzlePos;
+	local arcs = overCover and {true, false} or {false, true};
+	for _, high in ipairs(arcs) do
+		for _, speed in ipairs({(maxVel + minVel) * 0.5, maxVel}) do
+			local angle, seconds = HumanBehaviors.GrenadeArc(Start, AimPoint, speed, high);
+			-- Led onto a runner: where it will be when the grenade gets there (twice over, as the flight time changes with the point).
+			if angle and TargetVel and TargetVel.Magnitude > 1 then
+				for _ = 1, 2 do
+					local Lead = AimPoint + TargetVel * GetPPM() * seconds * 0.8;
+					local leadAngle, leadSeconds = HumanBehaviors.GrenadeArc(Start, Lead, speed, high);
+					if not leadAngle then
+						break;
+					end
+					angle, seconds = leadAngle, leadSeconds;
+				end
+			end
+			if angle and HumanBehaviors.ArcIsClear(Start, angle, speed, seconds) then
+				return angle, speed, seconds, speed >= maxVel;
+			end
+		end
+	end
+	return nil;
+end
+
+-- How long to hold a grenade before letting go (AC-5): the arm's wind-up, and for a fused grenade thrown at full strength by a good
+-- enough AI, "cooked": held so it goes off about as it gets there, in the air over the target, never closer than 350 ms to going off in hand.
+function HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, fullStrength)
+	local prep = Owner.ThrowPrepTime;
+	if not fullStrength then
+		return prep * RangeRand(0.45, 0.55);
+	end
+	local hold = prep * RangeRand(0.9, 1.1);
+	local fuse = Grenade.TriggerDelay or 0;
+	if fuse > 0 and not Grenade.ActivatesWhenReleased and (AI.skill or 50) >= 50 and math.random() * 100 < AI.skill then
+		local cooked = fuse - seconds * 1000 - 120;
+		if cooked > hold then
+			hold = math.min(cooked, fuse - 350);
+			SharedBehaviors.Trace(Owner, "grenade: cooked " .. math.floor(hold) .. " ms");
+		end
+	end
+	return hold;
+end
+
+-- Lobbing a grenade where an enemy was last seen behind cover (AC-5): up over the wall or ridge onto the spot (AI.LobPos), then back to the
+-- gun. Started by the AI's update for a unit that has lost sight of its enemy (see LobUpdate).
+function HumanBehaviors.LobAt(AI, Owner, Abort)
+	local Spot = AI.LobPos;
+	AI.LobPos = nil;
+	if not Spot or not Owner:EquipDeviceInGroup("Bombs - Grenades", true) then
+		return true;
+	end
+	local Timer0 = Timer();
+	local aim, hold;
+	while true do
+		if not Owner.ThrowableIsReady or Timer0:IsPastSimMS(3000) then
+			break;
+		end
+		if not aim then
+			local Grenade = ToThrownDevice(Owner.EquippedItem);
+			local _, seconds, full;
+			aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, Spot, nil, true);
+			if not aim then
+				SharedBehaviors.Trace(Owner, "grenade: no lob over to it");
+				break;
+			end
+			aim = aim - Owner.RotAngle;
+			hold = HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, full);
+			Timer0:Reset();
+			SharedBehaviors.Trace(Owner, "grenade: lob over cover");
+		end
+		AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim);
+		if not Timer0:IsPastSimMS(hold) then
+			AI.fire = true;
+		else
+			AI.fire = false;
+			local _ai, _ownr, _abrt = coroutine.yield();
+			if _abrt then return true end
+			break;
+		end
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	AI.fire = false;
+	Owner:EquipFirearm(true);
+	return true;
+end
+
+-- Smoke to cross open ground (AC-5): a unit on the move under fire that carries a smoke grenade throws it between itself and the enemy,
+-- then goes on. Started by the AI's update (see SmokeUpdate).
+function HumanBehaviors.ThrowSmoke(AI, Owner, Abort)
+	local Spot = AI.SmokePos;
+	AI.SmokePos = nil;
+	if not Spot or not Owner:EquipNamedDevice("Smoke Grenade", true) then
+		return true;
+	end
+	local Timer0 = Timer();
+	local aim, hold;
+	while true do
+		if not Owner.ThrowableIsReady or Timer0:IsPastSimMS(3000) then
+			break;
+		end
+		if not aim then
+			local Grenade = ToThrownDevice(Owner.EquippedItem);
+			aim = HumanBehaviors.PlanThrow(Grenade, Spot, nil, false);
+			if not aim then
+				break;
+			end
+			aim = aim - Owner.RotAngle;
+			hold = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
+			Timer0:Reset();
+			SharedBehaviors.Trace(Owner, "grenade: smoke for the crossing");
+		end
+		AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim);
+		if not Timer0:IsPastSimMS(hold) then
+			AI.fire = true;
+		else
+			AI.fire = false;
+			local _ai, _ownr, _abrt = coroutine.yield();
+			if _abrt then return true end
+			break;
+		end
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	AI.fire = false;
+	Owner:EquipFirearm(true);
+	return true;
+end
+
+-- When to lob a grenade over cover (AC-5), every second: an AI that lost sight of its enemy in the last four seconds, where it was is
+-- 80 to 500 px off and out of sight, and the unit has a grenade; at most every eight seconds. Better AI does it more often.
+function HumanBehaviors.LobUpdate(AI, Owner)
+	if AI.Target or AI.NextBehavior or not AI.OldTargetPos or AI.flying or Owner.AIMode == Actor.AIMODE_SQUAD then
+		return;
+	end
+	AI.LobCheckTimer = AI.LobCheckTimer or Timer();
+	if not AI.LobCheckTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.LobCheckTimer:Reset();
+	if (AI.LobRestTimer and not AI.LobRestTimer:IsPastSimMS(8000)) or not AI.TargetLostTimer or AI.TargetLostTimer:IsPastSimMS(4000) then
+		return;
+	end
+	if not Owner:HasObjectInGroup("Bombs - Grenades") or math.random() * 100 > (AI.skill or 50) then
+		return;
+	end
+	local Dist = SceneMan:ShortestDistance(Owner.EyePos, AI.OldTargetPos, false);
+	if Dist:MagnitudeIsLessThan(80) or Dist:MagnitudeIsGreaterThan(500) or SharedBehaviors.CanSee(Owner.EyePos, AI.OldTargetPos) then
+		return;
+	end
+	AI.LobRestTimer = Timer();
+	AI.LobPos = Vector(AI.OldTargetPos.X, AI.OldTargetPos.Y);
+	AI.NextBehavior = coroutine.create(HumanBehaviors.LobAt);
+	AI.NextCleanup = nil;
+	AI.NextBehaviorName = "LobAt";
+end
+
+-- When to throw smoke (AC-5), every second: on a move order, pinned (suppression over 0.3) or hit in the last two seconds, with a smoke
+-- grenade and an enemy seen in the last few seconds 100 to 700 px off; at most every twenty seconds. The smoke goes a third of the way to it.
+function HumanBehaviors.SmokeUpdate(AI, Owner)
+	if AI.NextBehavior or AI.flying or SharedBehaviors.OrderKind(Owner) ~= "move" then
+		return;
+	end
+	AI.SmokeCheckTimer = AI.SmokeCheckTimer or Timer();
+	if not AI.SmokeCheckTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.SmokeCheckTimer:Reset();
+	if AI.SmokeRestTimer and not AI.SmokeRestTimer:IsPastSimMS(20000) then
+		return;
+	end
+	local suppression = SharedBehaviors.Suppression(AI, Owner);
+	local underFire = suppression > 0.3 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	local Enemy = AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target.Pos or AI.LastEnemyPos;
+	if not underFire or not Enemy or not Owner:HasObject("Smoke Grenade") then
+		return;
+	end
+	local Dist = SceneMan:ShortestDistance(Owner.Pos, Enemy, false);
+	if Dist:MagnitudeIsLessThan(100) or Dist:MagnitudeIsGreaterThan(700) then
+		return;
+	end
+	AI.SmokeRestTimer = Timer();
+	AI.SmokePos = SceneMan:MovePointToGround(Owner.Pos + Dist / 3, 10, 4);
+	AI.NextBehavior = coroutine.create(HumanBehaviors.ThrowSmoke);
+	AI.NextCleanup = nil;
+	AI.NextBehaviorName = "ThrowSmoke";
+end
+
 -- deprecated since B30. make sure we equip our preferred device if we have one. return true if we must run this function again to be sure
 function HumanBehaviors.EquipPreferredWeapon(AI, Owner)
 	if AI.squadShoot == false then
@@ -1711,31 +1947,19 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 					miss = 0;
 					LOS = true; -- we have line of sight to the target
 
-					-- first try to reach the target with an the max throw vel
+					-- The arc (AC-5): flat where clear, else lobbed over what is in the way, led onto a runner by its flight time, and
+					-- cooked by a good AI so it bursts over the target.
 					if Owner.ThrowableIsReady then
 						local Grenade = ToThrownDevice(Owner.EquippedItem);
 						if Grenade then
-							local maxThrowVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
-							local minThrowVel = Grenade.MinThrowVel;
-							if minThrowVel == 0 then
-								minThrowVel = maxThrowVel * 0.2;
-							end
-							aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, maxThrowVel);
+							local _, seconds, full;
+							aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, AimPoint, AI.Target.Vel, false);
 							if aim then
 								aim = aim - Owner.RotAngle;
 								ThrowTimer:Reset();
-								aimTime = Owner.ThrowPrepTime * RangeRand(0.9, 1.1);
-								local maxAim = aim;
-
-								-- try again with an average throw vel
-								aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, (maxThrowVel + minThrowVel) * 0.5);
-								if aim then
-									aimTime = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
-								else
-									aim = maxAim;
-								end
+								aimTime = HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, full);
 							else
-								break; -- target out of range
+								break; -- target out of range, or no arc gets there
 							end
 						else
 							break;
