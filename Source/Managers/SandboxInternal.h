@@ -655,6 +655,29 @@ namespace SandboxDetail {
 
 	inline std::unordered_map<long, SendNote> s_SendNotes;
 
+	/// Where a unit was sent (RC-7), watched till it gets there, so a move the game drops on the way (no route, or given up) is shown.
+	struct MoveWatch {
+		Vector Destination;
+		long long Issued = 0; //!< The sim update it was sent on.
+	};
+	inline std::unordered_map<long, MoveWatch> s_MoveWatch; //!< By unit unique ID.
+
+	/// A place units were sent to and couldn't get to (RC-7): marked there till it fades, or a click on it sends them again.
+	struct NoRoute {
+		Vector Destination;
+		std::vector<UnitRef> Units;
+		long long At = 0; //!< The sim update it was last added to.
+	};
+	inline std::vector<NoRoute> s_NoRoutes;
+	constexpr long long c_NoRouteUpdates = 60 * 10; //!< How long a "no route" marker stays, in sim updates.
+
+	/// A unit of the selection's side coming under fire (RC-7), pinged where it was: in view a ring, out of view an arrow at the edge.
+	struct AttackPing {
+		Vector Position;
+		double Time = 0.0; //!< When, in ImGui time (it is only drawn).
+	};
+	inline std::vector<AttackPing> s_AttackPings;
+
 	/// Terrain painting's undo: each step is what one stroke of a paint or build tool changed (a drag of the brush is one step: changes
 	/// less than a quarter second apart run together), pixel by pixel as it was before, the first change to each pixel only. The last 20
 	/// steps are kept, and a new game forgets them.
@@ -1235,6 +1258,9 @@ namespace SandboxDetail {
 	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly);
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false, int facing = 0);
 	void FacingMoveSelected(const Vector& point, const Vector& facingPoint, bool shift);
+	void AddNoRoute(Actor* unit, const Vector& destination);
+	void UpdateMoveWatch();
+	void ReissueNoRoute(const Vector& destination);
 	void UpdatePace();
 	const Actor* FollowedBy(const Actor* unit);
 	void GuardUnit(Actor* unit, Actor* leader);
@@ -1282,6 +1308,8 @@ namespace SandboxDetail {
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
 	void PictureGrid(Tool kind, const char* group);
 	void FormationCombo(const char* id);
+	void DrawOrderFeedback();
+	const NoRoute* NoRouteAt(const ImVec2& mouse);
 	void LookAtUnits(const std::vector<UnitRef>& units);
 	void CommandHotkeys();
 	void KeysPage();

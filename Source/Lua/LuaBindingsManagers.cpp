@@ -443,6 +443,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("ShowSandboxStrokeLog", &SettingsMan::ShowSandboxStrokeLog, &SettingsMan::SetShowSandboxStrokeLog)
 	    .property("ShowSandboxSpotReach", &SettingsMan::ShowSandboxSpotReach, &SettingsMan::SetShowSandboxSpotReach)
 	    .property("ShowSandboxGroupBadges", &SettingsMan::ShowSandboxGroupBadges, &SettingsMan::SetShowSandboxGroupBadges)
+	    .property("SandboxOrderGlyphs", &SettingsMan::SandboxOrderGlyphs, &SettingsMan::SetSandboxOrderGlyphs)
+	    .property("ShowSandboxAttackPings", &SettingsMan::ShowSandboxAttackPings, &SettingsMan::SetShowSandboxAttackPings)
 	    .property("ShowLightsBySource", &SettingsMan::ShowLightsBySource, &SettingsMan::SetShowLightsBySource)
 	    .property("ShowSandboxCharacterState", &SettingsMan::ShowSandboxCharacterState, &SettingsMan::SetShowSandboxCharacterState)
 	    .property("ShowSandboxAutoBattle", &SettingsMan::ShowSandboxAutoBattle, &SettingsMan::SetShowSandboxAutoBattle)

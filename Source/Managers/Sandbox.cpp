@@ -598,8 +598,15 @@ void Sandbox::DrawGUI() {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
 		if (tool.Kind == Tool::Command) {
-			// Drag a box to select units; click the ground to send them there, or an enemy to attack it.
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			// Drag a box to select units; click the ground to send them there, or an enemy to attack it. A click on a "no route" marker
+			// (RC-7) sends its units there again instead.
+			if (const NoRoute* marker = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? NoRouteAt(io.MousePos) : nullptr) {
+				Stroke stroke;
+				stroke.Kind = Tool::Command;
+				stroke.Position = marker->Destination;
+				stroke.Count = 40;
+				s_Queue.push_back(stroke);
+			} else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
@@ -1130,6 +1137,8 @@ void Sandbox::Update() {
 		s_Possessed = nullptr;
 		s_Plans.clear();
 		s_Paced.clear();
+		s_MoveWatch.clear();
+		s_NoRoutes.clear();
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
 		s_Effects.clear();
@@ -1142,6 +1151,7 @@ void Sandbox::Update() {
 	}
 	UpdatePlans();
 	UpdatePace();
+	UpdateMoveWatch();
 	UpdateIncoming();
 	UpdateEffects();
 	for (const WaterSpawner& spawner: s_WaterSpawners) {
