@@ -76,7 +76,7 @@ namespace RTE {
 		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
 		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold.
 		/// @param count Squad size for units, brush size for painting.
-		/// @param presetName What to spawn, for units, brains, items and structures.
+		/// @param presetName What to spawn, for units, brains, items and structures. For "Drop squad", "Random units" or "Random favourites" drops random units.
 		/// @return Whether the tool and preset were found.
 		static bool Do(const std::string& toolName, const Vector& position, int team, int order, int count, const std::string& presetName);
 
@@ -95,6 +95,11 @@ namespace RTE {
 		/// @param faction The faction's module name, like "Coalition" or "Browncoats.rte".
 		/// @param budget How much the side can spend, 0 to leave it out.
 		static void SetAutoBattleSide(int team, const std::string& faction, int budget);
+
+		/// Sets whether the next auto battle a script starts buys random units rather than each side's faction (Lua: SandboxAutoBattleRandom).
+		/// @param random Whether the waves are random units from every faction.
+		/// @param favouritesOnly With random: only units marked as favourites (any, when none are).
+		static void SetAutoBattleRandom(bool random, bool favouritesOnly);
 
 		/// Starts an auto battle between the sides set up for it (Lua: SandboxStartAutoBattle).
 		static void StartAutoBattle();

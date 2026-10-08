@@ -425,6 +425,8 @@ namespace SandboxDetail {
 	inline float s_AutoLaneWidth = 0.0F; //!< The view's width when the auto battle began: the lanes the waves land in are spaced by it.
 	inline bool s_AutoRandom = false; //!< The waves are random units from every faction (or the favourites), not each side's own faction's.
 	inline bool s_AutoFavourites = false; //!< With s_AutoRandom: only units marked as favourites.
+	inline bool s_ScriptAutoRandom = false; //!< A script's auto battle (SandboxStartAutoBattle) is random units (SandboxAutoBattleRandom).
+	inline bool s_ScriptAutoFavourites = false; //!< With s_ScriptAutoRandom: only units marked as favourites.
 	// The window's choices for an auto battle and for a random drop (copied into the stroke at the click).
 	inline int s_AutoSideCount = 2;
 	inline int s_AutoBudget = 5000;
