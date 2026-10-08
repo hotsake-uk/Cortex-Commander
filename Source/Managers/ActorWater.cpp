@@ -11,6 +11,7 @@
 #include "WeatherEffects.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <string>
 
 using namespace RTE;
@@ -156,9 +157,29 @@ void ActorWater::Update() {
 			// The liquid drags, and pushes up: light units bob to the top, heavy ones sink slowly.
 			Vector velocity = actor->GetVel();
 			velocity *= std::max(1.0F - 2.2F * deltaTime, 0.0F);
-			// A lightly loaded soldier is about 145 kg all in and just floats; heavy armour and big guns sink.
-			float buoyancy = std::clamp(1.7F - (actor->GetMass() - 110.0F) / 70.0F, 0.3F, 1.7F);
+			float buoyancy = GetBuoyancy(actor);
 			velocity.m_Y -= gravity * buoyancy * deltaTime * (depth == 3 ? 1.0F : 0.6F);
+			// Swimming (LM-4): with a move key, a stroke that way, up to the swimming speed; up (or jump) strokes up, down dives. A floater with
+			// its head out holds at the surface rather than bobbing, unless it dives. (Lava is ActorFire's: nobody swims in it.)
+			const Controller* controller = actor->GetController();
+			bool left = controller->IsState(MOVE_LEFT);
+			bool right = controller->IsState(MOVE_RIGHT);
+			bool up = controller->IsState(MOVE_UP) || controller->IsState(BODY_JUMP);
+			bool down = controller->IsState(MOVE_DOWN) || controller->IsState(BODY_CROUCH);
+			const float stroke = 6.0F * deltaTime; // About a third of a second to the swimming speed.
+			if (left != right) {
+				float wanted = right ? c_SwimSpeed : -c_SwimSpeed;
+				if (velocity.m_X * (right ? 1.0F : -1.0F) < c_SwimSpeed) {
+					velocity.m_X = right ? std::min(velocity.m_X + stroke, wanted) : std::max(velocity.m_X - stroke, wanted);
+				}
+			}
+			if (up && !down && velocity.m_Y > -c_SwimSpeed) {
+				velocity.m_Y = std::max(velocity.m_Y - stroke, -c_SwimSpeed);
+			} else if (down && !up && velocity.m_Y < c_SwimSpeed) {
+				velocity.m_Y = std::min(velocity.m_Y + stroke + gravity * buoyancy * deltaTime * 0.5F, c_SwimSpeed);
+			} else if (depth == 2 && buoyancy > 1.0F) {
+				velocity.m_Y *= std::max(1.0F - 6.0F * deltaTime, 0.0F);
+			}
 			actor->SetVel(velocity);
 		}
 
@@ -194,6 +215,15 @@ int ActorWater::GetDepth(const Actor* actor) {
 float ActorWater::GetWalkSpeedMultiplier(const Actor* actor) {
 	static constexpr float multipliers[4] = {1.0F, 0.8F, 0.55F, 0.45F};
 	return multipliers[std::clamp(GetDepth(actor), 0, 3)];
+}
+
+float ActorWater::GetBreathSeconds(const Actor* actor) {
+	return actor && Breathes(actor) ? c_AirSeconds : FLT_MAX;
+}
+
+float ActorWater::GetBuoyancy(const Actor* actor) {
+	// A lightly loaded soldier is about 145 kg all in and just floats; heavy armour and big guns sink.
+	return actor ? std::clamp(1.7F - (actor->GetMass() - 110.0F) / 70.0F, 0.3F, 1.7F) : 1.0F;
 }
 
 float ActorWater::GetAir(const Actor* actor) {

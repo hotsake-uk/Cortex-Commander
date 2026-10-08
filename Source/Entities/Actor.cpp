@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include "ActorWater.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
@@ -1149,6 +1150,18 @@ float Actor::GetMaxSafeFallHeight() const {
 	// is the threshold over the mass; the height that speed is reached from is v^2 / 2g.
 	float speed = m_TravelImpulseDamage / std::max(GetMass(), 1.0F);
 	return std::max(speed * speed / (2.0F * gravity) * c_PPM, 96.0F);
+}
+
+int Actor::GetLiquidDepth() const {
+	return ActorWater::GetDepth(this);
+}
+
+float Actor::GetAirLeft() const {
+	return ActorWater::GetAir(this);
+}
+
+bool Actor::IsFloater() const {
+	return ActorWater::IsFloater(this);
 }
 
 PathAgent Actor::GetPathAgent() const {
