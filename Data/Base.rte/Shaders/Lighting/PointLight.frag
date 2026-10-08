@@ -46,7 +46,9 @@ float ObjectShadow(vec2 from, vec2 to, bool fromSolid) {
 	vec2 delta = to - from;
 	float range = length(delta);
 	// A light sits on or in whatever carries it (a headlamp, a muzzle, an engine): don't let the carrier's own skin block it.
-	float end = range - (OccluderDistance(to) < 1.5 ? 22.0 : 5.0);
+	// Soft: the trim eases from 22 to 5 pixels as the light moves off the carrier, instead of jumping, so a lit band doesn't appear on objects (falling terrain) passing the light.
+	float carried = OccluderDistance(to);
+	float end = range - (rteSoftWallLight ? mix(22.0, 5.0, smoothstep(1.0, 8.0, carried)) : (carried < 1.5 ? 22.0 : 5.0));
 	if (end <= 2.0) {
 		return 1.0;
 	}
