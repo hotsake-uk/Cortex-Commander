@@ -16,6 +16,7 @@
 #include <atomic>
 #include <fstream>
 #include <mutex>
+#include <thread>
 #include <exception>
 #include <regex>
 #include <utility>
@@ -46,6 +47,7 @@ bool RTEError::s_LoadingMod = false;
 bool RTEError::s_IgnoreAllAsserts = false;
 std::string RTEError::s_LastIgnoredAssertDescription = "";
 std::source_location RTEError::s_LastIgnoredAssertLocation = {};
+std::thread::id RTEError::s_MainThreadID = {};
 
 #if (defined(__linux__) || (defined(__APPLE__) && defined(__MACH__)))
 backward::SignalHandling sh;
@@ -179,6 +181,9 @@ static LONG WINAPI RTEWindowsExceptionHandler([[maybe_unused]] EXCEPTION_POINTER
 #endif
 
 void RTEError::SetExceptionHandlers() {
+	// Set from the static initialiser in Main.cpp, so this is the main thread. A crash on a worker thread must not make GL textures or read the framebuffer from there.
+	s_MainThreadID = std::this_thread::get_id();
+
 	// Basic handling for C++ exceptions. Doesn't give us much meaningful information.
 	[[maybe_unused]] static const std::terminate_handler terminateHandler = []() {
 		std::exception_ptr currentException = std::current_exception();
@@ -333,11 +338,17 @@ void RTEError::UnhandledExceptionFunc(const std::string& description, const std:
 		}
 	}
 
-	if (DumpAbortSave()) {
-		exceptionMessage += "\nThe game has saved to 'AbortSave'.";
-	}
-	if (DumpAbortScreen()) {
-		exceptionMessage += "\nThe last frame has been dumped to 'AbortScreen.png'.";
+	if (std::this_thread::get_id() != s_MainThreadID) {
+		// Saving clones the Scene, which makes GL textures, and the screen dump reads the framebuffer: both need the main thread's GL context.
+		// Done from a worker thread they crashed inside the driver before AbortLog.txt was written, and the real crash was lost (INC-CRASH-1).
+		exceptionMessage += "\nThe crash was on a worker thread, so there is no 'AbortSave' or 'AbortScreen.png'.";
+	} else {
+		if (DumpAbortSave()) {
+			exceptionMessage += "\nThe game has saved to 'AbortSave'.";
+		}
+		if (DumpAbortScreen()) {
+			exceptionMessage += "\nThe last frame has been dumped to 'AbortScreen.png'.";
+		}
 	}
 
 	g_ConsoleMan.PrintString(exceptionMessage);
@@ -604,6 +615,9 @@ void RTEError::DumpHardwareInfo() {
 }
 
 bool RTEError::DumpAbortScreen() {
+	if (std::this_thread::get_id() != s_MainThreadID) {
+		return false;
+	}
 	int success = -1;
 	if (g_WindowMan.GetGLContext()) {
 		int w, h;
@@ -632,6 +646,9 @@ bool RTEError::DumpAbortScreen() {
 }
 
 bool RTEError::DumpAbortSave() {
+	if (std::this_thread::get_id() != s_MainThreadID) {
+		return false;
+	}
 	bool success = false;
 	if (g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->CanBeUserSaved()) {
 		success = g_ActivityMan.SaveCurrentGame("AbortSave");
