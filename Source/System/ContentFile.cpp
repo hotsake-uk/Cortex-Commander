@@ -451,6 +451,7 @@ SDL_Palette* ContentFile::DefaultPaletteToSDL(bool preMask) {
 
 SDL_Surface* ContentFile::LoadImageAsSurface(int conversionMode, const std::string& dataPathToLoad) {
 	SDL_Surface* image = IMG_Load(dataPathToLoad.c_str());
+	s_ImagesDecoded.fetch_add(1, std::memory_order_relaxed);
 	bool convert8To32 = conversionMode & COLORCONV_8_TO_32;
 	bool convertTo8 = conversionMode & COLORCONV_REDUCE_TO_256;
 	int bitDepth = SDL_GetPixelFormatDetails(image->format)->bits_per_pixel;
