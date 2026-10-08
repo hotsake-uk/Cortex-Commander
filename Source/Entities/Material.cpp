@@ -189,6 +189,8 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("DryChance", { reader >> m_Behaviour.DryChance; });
 	MatchProperty("Chills", { reader >> m_Behaviour.Chills; });
 	MatchProperty("Evaporates", { reader >> m_Behaviour.Evaporates; });
+	MatchProperty("LiquidsPassThrough", { reader >> m_Behaviour.LiquidsPassThrough; });
+	MatchProperty("PassThrough", { reader >> m_Behaviour.PassThrough; });
 	MatchProperty("Look", { reader >> m_Behaviour.Look; });
 	MatchProperty("Glow", { reader >> m_Behaviour.Glow; });
 	MatchForwards("StainsAs") MatchProperty("Stains", { reader >> m_Behaviour.Stains; });
@@ -265,6 +267,8 @@ int Material::Save(Writer& writer) const {
 		number("DryChance", b.DryChance);
 		number("Chills", b.Chills);
 		number("Evaporates", b.Evaporates);
+		number("LiquidsPassThrough", b.LiquidsPassThrough);
+		text("PassThrough", b.PassThrough);
 		number("Look", b.Look);
 		number("Glow", b.Glow);
 		number("Stains", b.Stains);
