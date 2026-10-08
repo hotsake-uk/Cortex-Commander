@@ -224,6 +224,9 @@ bool SceneLighting::EnsureWorldResources() {
 		}
 	}
 	m_Skyline.assign(m_GridWidth, 0.0F);
+	m_SkylineRows.assign(m_GridWidth, m_GridHeight);
+	m_SkylineDirtyFirstColumn = 0;
+	m_SkylineDirtyEndColumn = m_GridWidth;
 
 	GLint wrapS = m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE;
 	GLint wrapT = m_WrapY ? GL_REPEAT : GL_CLAMP_TO_EDGE;
@@ -505,24 +508,44 @@ void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow, int firstColu
 			// What the solid part of the cell is made of, so a thin metal plate isn't diluted by the air beside it.
 			cell[1] = static_cast<unsigned char>(solidSamples > 0 ? metalness / solidSamples : 0);
 			cell[2] = static_cast<unsigned char>(solidSamples > 0 ? gloss / solidSamples : 0);
+			// (The skyline is the first cell at least half full from the top: a cell crossing that line below it can't move it.)
+			if ((fullness >= 128) != (cell[3] >= 128) && row <= m_SkylineRows[column]) {
+				if (m_SkylineDirtyEndColumn <= m_SkylineDirtyFirstColumn) {
+					m_SkylineDirtyFirstColumn = column;
+					m_SkylineDirtyEndColumn = column + 1;
+				} else {
+					m_SkylineDirtyFirstColumn = std::min(m_SkylineDirtyFirstColumn, column);
+					m_SkylineDirtyEndColumn = std::max(m_SkylineDirtyEndColumn, column + 1);
+				}
+			}
 			cell[3] = fullness;
 		}
 	}
 }
 
 void SceneLighting::RecomputeSkyline() {
+	// Only the columns where a cell at or above the skyline filled or emptied past half (see RefreshOccupancyRows): every column was walked
+	// down to its surface every frame, about a million cell reads on an open 2048 column map, and uploaded, whether anything changed or not.
+	int firstColumn = std::max(m_SkylineDirtyFirstColumn, 0);
+	int endColumn = std::min(m_SkylineDirtyEndColumn, m_GridWidth);
+	m_SkylineDirtyFirstColumn = 0;
+	m_SkylineDirtyEndColumn = 0;
+	if (endColumn <= firstColumn) {
+		return;
+	}
 	ZoneScoped;
-	for (int column = 0; column < m_GridWidth; ++column) {
+	for (int column = firstColumn; column < endColumn; ++column) {
 		int row = 0;
 		// (By how full the cell is, so the open sky stops at the surface of water and light dims with depth below it.)
 		while (row < m_GridHeight && m_Occupancy[(static_cast<size_t>(row) * m_GridWidth + column) * 4 + 3] < 128) {
 			++row;
 		}
+		m_SkylineRows[column] = row;
 		m_Skyline[column] = static_cast<float>(row) / static_cast<float>(m_GridHeight);
 	}
 	glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_GridWidth, 1, GL_RED, GL_FLOAT, m_Skyline.data()));
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, 0, endColumn - firstColumn, 1, GL_RED, GL_FLOAT, m_Skyline.data() + firstColumn));
 }
 
 void SceneLighting::RefreshShadowField(int firstColumn, int firstRow, int endColumn, int endRow) {
