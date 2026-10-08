@@ -24,6 +24,7 @@ class Settings
 	public string Configuration { get; set; } = "Final";
 	public string Remote { get; set; } = "origin";
 	public string SettingsIni { get; set; } = "";
+	public string ModsDir { get; set; } = "";
 	public string LastRef { get; set; } = "";
 
 	static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "settings.json");
@@ -62,6 +63,8 @@ class MainForm : Form
 	readonly Button fetchBtn = new() { Text = "Fetch", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
+	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to link into each version's Data folder" };
+	readonly Button runLatestBtn = new() { Text = "Run latest", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
@@ -96,6 +99,7 @@ class MainForm : Form
 		if (configBox.SelectedIndex < 0) configBox.SelectedIndex = 0;
 		repoBox.Text = settings.RepoPath;
 		iniBox.Text = settings.SettingsIni;
+		modsBox.Text = settings.ModsDir;
 
 		// Simple flow: pick a branch (or type any branch / tag / sha), then Build & Run. Everything else lives under "Commits".
 		var row1 = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 4, RowCount = 1 };
@@ -114,12 +118,18 @@ class MainForm : Form
 		iniClear.Click += (_, _) => iniBox.Text = "";
 		var row2 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
 		row2.Controls.AddRange(new Control[] { new Label { Text = "Settings.ini:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, iniBox, iniBrowse, iniClear });
+		var modsBrowse = new Button { Text = "...", AutoSize = true };
+		modsBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = modsBox.Text }; if (d.ShowDialog() == DialogResult.OK) modsBox.Text = d.SelectedPath; };
+		var modsClear = new Button { Text = "Clear", AutoSize = true };
+		modsClear.Click += (_, _) => modsBox.Text = "";
+		var row2b = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+		row2b.Controls.AddRange(new Control[] { new Label { Text = "Mods folder:", AutoSize = true, Padding = new Padding(4, 6, 0, 0) }, modsBox, modsBrowse, modsClear });
 
 		buildRunBtn.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
 		buildRunBtn.Padding = new Padding(16, 4, 16, 4);
 		var detailsBtn = new Button { Text = "Commits ▸", AutoSize = true };
 		var row3 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-		row3.Controls.AddRange(new Control[] { buildRunBtn, cancelBtn, detailsBtn, status });
+		row3.Controls.AddRange(new Control[] { buildRunBtn, runLatestBtn, cancelBtn, detailsBtn, status });
 
 		commitList.Columns.Add("Commit", 90);
 		commitList.Columns.Add("Version", 70);
@@ -155,6 +165,7 @@ class MainForm : Form
 		Controls.Add(bottomTabs);
 		Controls.Add(details);
 		Controls.Add(row3);
+		Controls.Add(row2b);
 		Controls.Add(row2);
 		Controls.Add(row1);
 
@@ -164,6 +175,7 @@ class MainForm : Form
 		commitList.DoubleClick += async (_, _) => await BuildAndRun(true);
 		buildBtn.Click += async (_, _) => await BuildAndRun(false, false);
 		runBtn.Click += (_, _) => RunSelected();
+		runLatestBtn.Click += async (_, _) => await RunLatest();
 		buildRunBtn.Click += async (_, _) => await BuildAndRun(true);
 		deleteBtn.Click += async (_, _) => await DeleteSelected();
 		openBtn.Click += (_, _) => { var c = Selected(); if (c != null) Process.Start("explorer.exe", WorktreePath(c)); };
@@ -178,6 +190,7 @@ class MainForm : Form
 		settings.RepoPath = repoBox.Text.Trim();
 		settings.Configuration = (string)configBox.SelectedItem!;
 		settings.SettingsIni = iniBox.Text.Trim();
+		settings.ModsDir = modsBox.Text.Trim();
 		settings.LastRef = branchBox.Text.Trim();
 		settings.Save();
 	}
@@ -209,7 +222,7 @@ class MainForm : Form
 	void SetBusy(bool b, string text = "")
 	{
 		busy = b;
-		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, configBox, repoBox })
+		foreach (var x in new Control[] { runLatestBtn, fetchBtn, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, configBox, repoBox })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
 		status.Text = text;
@@ -528,6 +541,49 @@ class MainForm : Form
 		finally { SetBusy(false, currentRef); }
 	}
 
+	// Fetches, jumps to the newest commit of the chosen branch, then runs it (building only if that commit has not been built yet).
+	async Task RunLatest()
+	{
+		if (busy) return;
+		if (branchBox.Text.Trim() == "") { Append("Pick a branch first."); return; }
+		SetBusy(true, "Fetching...");
+		cts = new CancellationTokenSource();
+		var code = await Exec("git", $"fetch {settings.Remote} --tags --prune --force", Repo, cts.Token);
+		SetBusy(false, "");
+		if (code != 0) { Append("Fetch failed; using what is already local."); }
+		else { lastRemote = await LsRemote(); await RefreshRefs(); ApplyFilter(); }
+		await LoadCommits(branchBox.Text.Trim());
+		if (commitList.Items.Count == 0) return;
+		commitList.Items[0].Selected = true;
+		var c = (CommitInfo)commitList.Items[0].Tag!;
+		if (File.Exists(ExePath(c)) && Directory.Exists(WorktreePath(c))) { Append($"Latest is {c.Short}, already built."); Launch(c); }
+		else await BuildAndRun(true);
+	}
+
+	// Junctions every *.rte folder of the mods folder into the version's Data folder, so one set of mods serves every version.
+	void LinkMods(CommitInfo c)
+	{
+		var src = modsBox.Text.Trim();
+		if (src == "") return;
+		if (!Directory.Exists(src)) { Append($"Mods folder not found: {src}"); return; }
+		var data = Path.Combine(WorktreePath(c), "Data");
+		if (!Directory.Exists(data)) return;
+		var dirs = Directory.GetDirectories(src, "*.rte");
+		if (dirs.Length == 0 && src.EndsWith(".rte", StringComparison.OrdinalIgnoreCase)) dirs = new[] { src };
+		foreach (var d in dirs)
+		{
+			var link = Path.Combine(data, Path.GetFileName(d));
+			if (Directory.Exists(link) || File.Exists(link)) continue; // already linked, or the version ships its own
+			try
+			{
+				var psi = new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{d}\"") { CreateNoWindow = true, UseShellExecute = false };
+				using var p = Process.Start(psi)!; p.WaitForExit();
+				Append(p.ExitCode == 0 ? $"Linked mod {Path.GetFileName(d)}" : $"Could not link {Path.GetFileName(d)}");
+			}
+			catch (Exception ex) { Append("Mod link failed: " + ex.Message); }
+		}
+	}
+
 	void MarkCached(CommitInfo c)
 	{
 		foreach (ListViewItem it in commitList.Items)
@@ -544,6 +600,7 @@ class MainForm : Form
 	{
 		var exe = ExePath(c);
 		if (!File.Exists(exe)) { Append($"Not built yet for this configuration: {exe}"); return; }
+		LinkMods(c);
 		var ini = iniBox.Text.Trim();
 		if (ini != "")
 		{

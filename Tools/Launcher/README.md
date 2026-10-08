@@ -22,6 +22,11 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 
 To use an older commit, or to Build / Run separately, delete the cached build, open its folder or change the repo path, expand **Commits**. Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
+**Run latest** fetches, moves to the newest commit of the chosen branch, and runs it, building only if that commit has not been built yet.
+
+## Mods folder
+Set **Mods folder** to a folder containing `*.rte` mods (or a single `.rte` folder). Before each run the launcher creates a directory junction for each one inside the version's `Data` folder, skipping any the version already has. Nothing is copied, so every version sees the same mods.
+
 ## Settings.ini
 Set the **Settings.ini** box (or browse for a file) to have the launcher copy that file into the version's folder every time it runs a version, replacing whatever is there. The game rewrites its own copy on exit, so your chosen file is never modified. Clear the box to let each version use its own settings.
 
