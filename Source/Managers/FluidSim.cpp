@@ -96,6 +96,7 @@ namespace {
 	int s_WaterMaterial = 0; //!< The material blood drops are made of (water, drawn red).
 	std::vector<glm::ivec2> s_BloodSettled; //!< Where blood drops settled since the last update, to become flowing blood.
 	std::array<int, 256> s_ColorOfMaterial{}; //!< Palette index each material is drawn with, for pixels changed into it.
+	std::array<bool, 256> s_Soft{}; //!< Soft enough for acid to eat (integrity under 100).
 	bool s_TablesBuilt = false;
 
 	/// The moving liquid pixels. A grid byte per terrain pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
@@ -277,6 +278,7 @@ namespace {
 		s_BloodMaterial = 0;
 		s_WaterMaterial = 0;
 		s_ColorOfMaterial.fill(0);
+		s_Soft.fill(false);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -287,6 +289,7 @@ namespace {
 			Color color = material->GetColor();
 			color.RecalculateIndex();
 			s_ColorOfMaterial[id] = color.GetIndex();
+			s_Soft[id] = material->GetIntegrity() < 100.0F;
 			if (name == "Blood") {
 				s_BloodMaterial = id;
 			} else if (name == "Water") {
@@ -467,6 +470,44 @@ namespace {
 
 	/// Checks a stretch of the terrain for liquid that should be moving but isn't being simulated: left hanging over a gap when ground was removed without a wake-up, or loaded from a scene.
 	/// A little each update, working through the whole terrain every few seconds.
+	/// Whether a resting liquid pixel has something beside it to react with (M-2): acid by soft ground, lava (or what settles like it) by
+	/// what burns, melts or quenches it, cryogenic fluid by what freezes, and what douses by fire. The step only reacts while a pixel is
+	/// awake, so the sweep wakes one that has.
+	bool HasReactionPartner(BITMAP* materialBitmap, int x, int y, int width, int height, bool anyFire) {
+		int own = materialBitmap->line[y][x];
+		Liquid kind = s_Kinds[own];
+		bool acid = kind == Liquid::Acid;
+		bool lava = kind == Liquid::Lava || s_SettlesTo[own] != 0;
+		bool chills = s_Chills[own];
+		bool douses = s_Douses[own] && anyFire;
+		if (!acid && !lava && !chills && !douses) {
+			return false;
+		}
+		static constexpr int neighbours[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
+		for (const auto& offset: neighbours) {
+			int nx = x + offset[0];
+			int ny = y + offset[1];
+			if (!InWorld(nx, ny, width, height)) {
+				continue;
+			}
+			int neighbour = materialBitmap->line[ny][nx];
+			if (neighbour == g_MaterialAir) {
+				continue;
+			}
+			Liquid neighbourKind = s_Kinds[neighbour];
+			if (acid && (neighbourKind == Liquid::None || neighbourKind == Liquid::Powder) && s_Soft[neighbour]) {
+				return true;
+			}
+			if (lava && (TerrainFire::IsFlammable(neighbour) || s_MeltsTo[neighbour] != 0 || s_Douses[neighbour])) {
+				return true;
+			}
+			if (chills && s_FreezesTo[neighbour] != 0) {
+				return true;
+			}
+		}
+		return douses && TerrainFire::IsBurningNear(Vector(static_cast<float>(x), static_cast<float>(y)), 1);
+	}
+
 	void Sweep(SLTerrain* terrain, int width, int height) {
 		// In snowy weather still water slowly freezes over from the top.
 		float freezing = FluidSim::FreezingEnabled() ? WeatherEffects::GetSnow() : 0.0F;
@@ -475,6 +516,7 @@ namespace {
 			return;
 		}
 		BITMAP* materialBitmap = terrain->GetBitmap();
+		bool anyFire = TerrainFire::GetCount() > 0;
 		size_t index = s_SweepCursor < total ? s_SweepCursor : 0;
 		int x = static_cast<int>(index % static_cast<size_t>(width));
 		int y = static_cast<int>(index / static_cast<size_t>(width));
@@ -489,6 +531,10 @@ namespace {
 					Activate(x, y, width, height, terrain);
 				} else if ((materialBitmap->line[y][left] == g_MaterialAir || materialBitmap->line[y][right] == g_MaterialAir) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
 					// The end of a layer on the surface, with somewhere lower along its row to go to. (One with nowhere to go is left asleep, or the top of every pool would stir for ever.)
+					Activate(x, y, width, height, terrain);
+				} else if (HasReactionPartner(materialBitmap, x, y, width, height, anyFire)) {
+					// Something beside it to react with (acid by soft ground, lava by wood or snow, a pool by a fire): woken, it reacts in the step, so an acid
+					// puddle on dirt eats at the sweep's pace (slowly) instead of stopping once it settles.
 					Activate(x, y, width, height, terrain);
 				} else if (y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && ((x * 7 + y * 13 + s_SweepPass) & 15) == 0) {
 					// Now and then a pixel of a resting surface is woken to look through the body it's part of for a lower place (see FindLowerSpot): this is what starts
