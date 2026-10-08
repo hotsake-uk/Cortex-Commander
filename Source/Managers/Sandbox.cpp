@@ -2024,6 +2024,59 @@ namespace {
 		return spots;
 	}
 
+	/// One place a move order looks at, for the standing-spot reachability preview (SettingsMan::ShowSandboxSpotReach).
+	struct SpotReach {
+		Vector Spot;
+		float Cost = -2.0F; //!< The leader's path cost to it; -1 no path, -2 not looked at (enough were reachable before it).
+		bool Chosen = false; //!< A unit will be sent here.
+	};
+
+	/// What MoveUnitsTo will make of a move to a point, step for step: twice as many spots as units, each tried with the first unit's reach until
+	/// there are enough it can get to, those taken (or, if none can be reached, the nearest spots regardless). Worked out again only when the
+	/// point, the units or the first unit change, or half a second of frames on, since each try is a path search.
+	const std::vector<SpotReach>& SpotReachPreview(const std::vector<Actor*>& units, const Vector& point) {
+		static std::vector<SpotReach> preview;
+		static Vector lastPoint;
+		static size_t lastCount = 0;
+		static long lastLeader = -1;
+		static int lastFrame = -1000;
+		long leaderID = units.empty() ? -1 : static_cast<long>(units.front()->GetUniqueID());
+		int frame = ImGui::GetFrameCount();
+		if (units.size() == lastCount && leaderID == lastLeader && frame - lastFrame < 30 && g_SceneMan.ShortestDistance(point, lastPoint, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(3.0F)) {
+			return preview;
+		}
+		lastPoint = point;
+		lastCount = units.size();
+		lastLeader = leaderID;
+		lastFrame = frame;
+		preview.clear();
+		for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()) * 2)) {
+			preview.push_back({spot});
+		}
+		Scene* scene = g_SceneMan.GetScene();
+		size_t reachable = 0;
+		if (scene && !units.empty()) {
+			std::list<Vector> path;
+			const Actor* leader = units.front();
+			for (SpotReach& entry: preview) {
+				if (reachable >= units.size()) {
+					break;
+				}
+				float cost = scene->CalculatePath(leader->GetPos(), entry.Spot, path, leader->EstimateJumpHeight(), leader->EstimateDigStrength(), static_cast<Activity::Teams>(leader->GetTeam()), leader->EstimateBreachStrength());
+				entry.Cost = cost >= 0.0F && cost < 100000.0F ? cost : -1.0F;
+				reachable += entry.Cost >= 0.0F ? 1 : 0;
+			}
+		}
+		size_t chosen = 0;
+		for (SpotReach& entry: preview) {
+			if (chosen < units.size() && (reachable == 0 || entry.Cost >= 0.0F)) {
+				entry.Chosen = true;
+				++chosen;
+			}
+		}
+		return preview;
+	}
+
 	/// The units a move order from a point goes to: a side's, or the selected ones.
 	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly) {
 		std::vector<Actor*> units;
@@ -3702,9 +3755,24 @@ namespace {
 			drawList->AddLine(ImVec2(at.x, at.y - reach * 1.4F), ImVec2(at.x, at.y - reach * 0.5F), color, pixel);
 			drawList->AddLine(ImVec2(at.x, at.y + reach * 0.5F), ImVec2(at.x, at.y + reach * 1.4F), color, pixel);
 		};
+		// With the reachability preview on: each spot the order will look at, ringed green where a unit goes, red where the first unit has no path,
+		// grey where it wasn't needed, with the path cost.
+		auto reachMarks = [&](const std::vector<Actor*>& units, const Vector& point) {
+			if (!g_SettingsMan.ShowSandboxSpotReach() || units.empty()) {
+				return;
+			}
+			for (const SpotReach& entry: SpotReachPreview(units, point)) {
+				ImVec2 at = ToScreen(entry.Spot - Vector(0.0F, 4.0F));
+				ImU32 color = entry.Cost == -1.0F ? IM_COL32(239, 90, 80, 255) : entry.Chosen ? IM_COL32(120, 230, 110, 255) : IM_COL32(150, 150, 140, 200);
+				drawList->AddCircle(at, pixel * 7.0F, color, 0, entry.Chosen ? pixel * 1.5F : pixel);
+				std::string cost = entry.Cost == -2.0F ? "not tried" : entry.Cost < 0.0F ? "no path" : std::to_string(static_cast<int>(entry.Cost + 0.5F));
+				drawList->AddText(ImVec2(at.x + pixel * 9.0F, at.y - ImGui::GetTextLineHeight() * 0.5F), color, cost.c_str());
+			}
+		};
 		if (tool.Kind == Tool::OrderMove) {
 			// Where each unit will stand: a marker on the ground for every one, so the order can be seen before it is given.
 			std::vector<Actor*> units = UnitsToMove(s_Team, false);
+			reachMarks(units, MouseScenePosition());
 			for (const Vector& spot: StandingSpots(MouseScenePosition(), static_cast<int>(units.size()))) {
 				flag(spot, c_SideColors[s_Team]);
 			}
@@ -3769,6 +3837,7 @@ namespace {
 				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
 					flag(spot, IM_COL32(110, 180, 250, 255));
 				}
+				reachMarks(units, point);
 				label = "Move " + count + " here";
 			}
 		}
