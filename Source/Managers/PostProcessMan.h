@@ -89,7 +89,14 @@ namespace RTE {
 		void ClearScenePostEffects() {
 			m_PostSceneEffects.clear();
 			m_GlowAreas.clear();
+			ClearSceneLights();
+		}
+
+		/// Clears the lights and shimmers registered so far. They're registered on every sim update and the light pass adds them up, so only the
+		/// last update's set may reach the draw: a frame that runs several sim updates would otherwise draw every light that many times over.
+		void ClearSceneLights() {
 			m_SceneLights.clear();
+			std::scoped_lock lock(m_ShockwaveMutex);
 			m_Shimmers.clear();
 		}
 #pragma endregion

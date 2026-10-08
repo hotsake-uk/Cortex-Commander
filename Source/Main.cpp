@@ -438,8 +438,11 @@ void RunGameLoop() {
 			g_TimerMan.UpdateSim();
 
 			// If this is the first sim update since a drawn one, clear the scene post effects and lights before anything (activities and their global scripts included) registers new ones.
+			// Lights and shimmers are registered on every sim update, so they're cleared on every one, leaving the drawn frame only the last update's.
 			if (g_TimerMan.SimUpdatesSinceDrawn() == 0) {
 				g_PostProcessMan.ClearScenePostEffects();
+			} else {
+				g_PostProcessMan.ClearSceneLights();
 			}
 
 			g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::SimTotal);
