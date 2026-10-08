@@ -528,6 +528,7 @@ namespace SandboxDetail {
 	inline bool s_KeepPace = false; //!< Units sent together walk at the slowest one's pace till they get there (RC-5).
 	inline std::vector<UnitRef> s_Paced; //!< The units held to a group's pace, cleared as each arrives or is given another order.
 	inline std::array<std::vector<UnitRef>, 10> s_Groups; //!< Control groups: Ctrl+number keeps the selection, the number alone brings it back.
+	inline long s_LastIdleID = -1; //!< The idle unit the idle keys last went to (RC-6), so the next press goes on to the next.
 
 	/// A mark left where an order was given, fading over a moment.
 	struct OrderMark {
@@ -1281,6 +1282,9 @@ namespace SandboxDetail {
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
 	void PictureGrid(Tool kind, const char* group);
 	void FormationCombo(const char* id);
+	void LookAtUnits(const std::vector<UnitRef>& units);
+	void CommandHotkeys();
+	void KeysPage();
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false);
