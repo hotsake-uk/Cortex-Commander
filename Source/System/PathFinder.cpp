@@ -1932,14 +1932,23 @@ unsigned char PathFinder::TerrNav(int x, int y) const {
 	return (m_LadderMaterial != 0 && id == m_LadderMaterial) ? static_cast<unsigned char>(MaterialColorKeys::g_MaterialAir) : id;
 }
 
-void PathFinder::AddTeamAvoid(const Vector& place, double untilMS) {
+void PathFinder::AddTeamAvoid(const Vector& place, double untilMS, double nowMS) {
 	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
+	// Expired places go, and the oldest past the cap: they were kept for the whole game, and every path request copies the live ones under
+	// this lock, so a long battle with units getting stuck made every request slower.
+	std::erase_if(m_TeamAvoid, [nowMS](const std::pair<Vector, double>& avoid) { return avoid.second <= nowMS; });
+	if (m_TeamAvoid.size() >= c_TeamAvoidKept) {
+		m_TeamAvoid.erase(m_TeamAvoid.begin(), m_TeamAvoid.begin() + (m_TeamAvoid.size() - c_TeamAvoidKept + 1));
+	}
 	m_TeamAvoid.emplace_back(place, untilMS);
 }
 
-void PathFinder::AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS) {
+void PathFinder::AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS, double nowMS) {
 	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
-	std::erase_if(m_TeamAvoidLinks, [untilMS](const AvoidLink& link) { return link.until < untilMS - 600000.0; });
+	std::erase_if(m_TeamAvoidLinks, [nowMS](const AvoidLink& link) { return link.until <= nowMS; });
+	if (m_TeamAvoidLinks.size() >= c_TeamAvoidKept) {
+		m_TeamAvoidLinks.erase(m_TeamAvoidLinks.begin(), m_TeamAvoidLinks.begin() + (m_TeamAvoidLinks.size() - c_TeamAvoidKept + 1));
+	}
 	m_TeamAvoidLinks.push_back({from, to, untilMS});
 }
 
