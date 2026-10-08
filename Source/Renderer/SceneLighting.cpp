@@ -911,7 +911,14 @@ void SceneLighting::UploadQuads() {
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
 	}
 	glBindBuffer(GL_ARRAY_BUFFER, m_QuadVBO);
-	glBufferData(GL_ARRAY_BUFFER, m_QuadVertices.size() * sizeof(QuadVertex), m_QuadVertices.data(), GL_STREAM_DRAW);
+	// Keep the buffer's size, growing it only when needed: orphan it at the same size (the driver hands back fresh storage without a stall) and fill what's used, instead of a new allocation of a new size every upload.
+	if (m_QuadVertices.size() > m_QuadVertexCapacity) {
+		m_QuadVertexCapacity = std::max(m_QuadVertices.size() + m_QuadVertices.size() / 2, static_cast<size_t>(4 * 256));
+	}
+	glBufferData(GL_ARRAY_BUFFER, m_QuadVertexCapacity * sizeof(QuadVertex), nullptr, GL_STREAM_DRAW);
+	if (!m_QuadVertices.empty()) {
+		glBufferSubData(GL_ARRAY_BUFFER, 0, m_QuadVertices.size() * sizeof(QuadVertex), m_QuadVertices.data());
+	}
 }
 
 void SceneLighting::DrawQuads(size_t firstQuad, size_t quadCount) {
@@ -965,6 +972,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	};
 	size_t lightCount = 0;
+	size_t coneLightStart = SIZE_MAX; // The first cone light's quad; all lights before it shine all round.
 	if (m_Settings.Enabled) {
 		// Every lamp, glow, flash and fire light goes through the player's light color settings: how colorful light is, and a tint on all of it.
 		auto styled = [this](const glm::vec3& color) {
@@ -988,7 +996,26 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			}
 			++lightCount;
 		}
+		// Past the cap, keep the lights that matter most (brightest over the widest area) and leave out the faintest.
+		std::vector<const SceneLight*> shownLights;
+		shownLights.reserve(screenLights.size());
 		for (const SceneLight& light: screenLights) {
+			shownLights.push_back(&light);
+		}
+		size_t lightBudget = static_cast<size_t>(std::max(m_Settings.MaxScreenLights, 0));
+		lightBudget = lightBudget > lightCount ? lightBudget - lightCount : 0;
+		if (shownLights.size() > lightBudget) {
+			auto weight = [](const SceneLight* light) { return std::max({light->m_Color.r, light->m_Color.g, light->m_Color.b}) * light->m_Radius; };
+			std::nth_element(shownLights.begin(), shownLights.begin() + lightBudget, shownLights.end(), [&weight](const SceneLight* a, const SceneLight* b) { return weight(a) > weight(b); });
+			shownLights.resize(lightBudget);
+		}
+		// All-round lights first, cone lights last, so the beam pass draws only the cone lights instead of rasterising every light to discard it.
+		std::stable_partition(shownLights.begin(), shownLights.end(), [](const SceneLight* light) { return light->m_ConeCos < -1.0F; });
+		for (const SceneLight* shownLight: shownLights) {
+			const SceneLight& light = *shownLight;
+			if (light.m_ConeCos >= -1.0F && coneLightStart == SIZE_MAX) {
+				coneLightStart = lightCount;
+			}
 			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
@@ -1002,6 +1029,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			++lightCount;
 		}
 	}
+	coneLightStart = std::min(coneLightStart, lightCount);
 	m_LastLightCount = static_cast<int>(lightCount);
 	size_t emissiveStart = m_QuadVertices.size() / 4;
 	std::vector<GLuint> emissiveTextures;
@@ -1480,8 +1508,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
-	// Flashlight beams visible in the air, as light catching dust. Only cone lights draw anything here.
-	if (lightCount > 0 && m_Settings.Enabled) {
+	// Flashlight beams visible in the air, as light catching dust. Only cone lights draw anything here, and they're the last of the lights.
+	if (lightCount > coneLightStart && m_Settings.Enabled) {
 		TracyGpuZone("Light Beams");
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
 		glViewport(0, 0, width, height);
@@ -1504,7 +1532,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
-		DrawQuads(0, lightCount);
+		DrawQuads(coneLightStart, lightCount - coneLightStart);
 		m_PointLightShader->SetBool("rteBeamMode", false);
 		glDisable(GL_BLEND);
 	}
