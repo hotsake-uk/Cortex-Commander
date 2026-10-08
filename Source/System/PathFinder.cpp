@@ -1581,6 +1581,21 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 			return PathStepKind::Mantle;
 		}
 	}
+	// Over something low on the floor to a floor level with this one, one or two nodes along (the step-over edges in AdjacentCost), with room
+	// to stand over it (LM-5): a kind of its own, so the follower steps, leaps or pulls itself over it at a walk. (Labelled by the line, the
+	// one-node step was a walk or a dig through the lump, and the two-node one a flight, flown with the jet or not at all.) A leap the search
+	// took instead is the leap's.
+	if (s_JumpHeight < FLT_MAX && std::abs(dy) < 1.0F && from->Surface >= 0.0F && to->Surface >= 0.0F && std::abs(dx) > nodeSize * 0.5F && std::abs(dx) < nodeSize * 2.5F && s_LeapsTaken.count({from, to}) == 0) {
+		int k = std::abs(dx) > nodeSize * 1.5F ? 1 : 0;
+		bool leftward = dx < 0.0F;
+		float riseHere = leftward ? from->StepOverRiseLeft[k] : from->StepOverRise[k];
+		float riseThere = leftward ? to->StepOverRise[k] : to->StepOverRiseLeft[k];
+		float rise = std::max(riseHere, riseThere);
+		int room = riseHere >= riseThere ? (leftward ? from->StepOverRoomLeft[k] : from->StepOverRoom[k]) : (leftward ? to->StepOverRoom[k] : to->StepOverRoomLeft[k]);
+		if (rise > s_StandHeight * 0.15F && rise <= s_StandHeight * 0.6F && static_cast<float>(room) >= s_StandHeight) {
+			return PathStepKind::StepOver;
+		}
+	}
 	// A diagonal step up or down an incline the legs walk (SurfaceWalkable): a walk, whatever the line between the centres clips. (Every step
 	// up was labelled a jump, and up a hillside the follower jumped or jetted node by node.)
 	if (s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - nodeSize) < 1.0F && SurfaceWalkable(*from, *to)) {

@@ -2656,6 +2656,7 @@ int AHuman::MoveAlongRoute() {
 	// three heights of the body's middle line.)
 	bool wallAhead = false;
 	bool lowObstacle = false;
+	bool leapOver = false;
 	if (sensed.any && !prone && kind != PathStepKind::Fall && !mover.fuelWaiting && !DoorAhead(point)) {
 		const float stepUp = h * 0.15F;
 		const float mantle = g_SettingsMan.MantlingEnabled() ? std::max(h, 20.0F) * 0.3F : 0.0F;
@@ -2672,8 +2673,16 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 			wallAhead = !pointBeyond && above > -h * 0.2F && canHop;
-		} else if (!sensed.gapUnder && sensed.rise > std::max(stepUp, mantle + 2.0F) && above > -h * 0.2F && canHop) {
-			lowObstacle = true;
+		} else if (!sensed.gapUnder && sensed.rise > stepUp && above > -h * 0.2F) {
+			// Something low on the floor, a step-over (LM-5) whether the route said so or not: leapt on the legs when the leap clears it, at its
+			// edge; pulled over by the mantle (pressing into it) when that reaches; only higher than both, hopped with the jet. (Every lump the
+			// legs didn't step was the jet's, and a unit with no jet stood at it till the stuck handling came.)
+			const float bodyHalf = std::clamp(static_cast<float>(GetSpriteWidth()) * 0.5F + 1.0F, 5.0F, 16.0F);
+			if (sensed.rise <= GetLegJumpHeight() + 2.0F && CanLeap()) {
+				leapOver = sensed.distance <= bodyHalf + 8.0F;
+			} else if (sensed.rise > mantle + 2.0F && canHop) {
+				lowObstacle = true;
+			}
 		}
 	}
 	// Stuck (no progress for 2.5 s, and a new route at 6): the small things a player tries before the big one (LM-3), one at a time, each
@@ -2748,6 +2757,14 @@ int AHuman::MoveAlongRoute() {
 	if (mover.remedy == static_cast<int>(StuckRemedy::Hop) && standardJet && !mover.remedyTimer.IsPastSimMS(350)) {
 		ctrl.SetState(BODY_JUMP, true);
 		SetAimAngle(above > h * 0.2F ? c_HalfPI * 0.7F : 0.2F);
+	}
+	// Over something low on the legs, at its edge.
+	if (leapOver && mover.remedy < 0) {
+		if (mover.hopTimer.IsPastSimMS(800)) {
+			mover.hopTimer.Reset();
+			MoverTrace("low obstacle; leap over");
+		}
+		ctrl.SetState(BODY_LEAP, true);
 	}
 	// A wall, or a step up the legs don't take: a hop (the mantle takes most steps).
 	if ((wallAhead || lowObstacle) && standardJet && !prone && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
