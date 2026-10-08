@@ -859,6 +859,11 @@ namespace SandboxDetail {
 				CommandSelected(at, stroke.Count);
 				break;
 			case Tool::OrderSelected:
+				if (stroke.Count == 400) {
+					// A step dropped from a unit's plan (RC-3).
+					DropPlanStep(stroke.UnitID, stroke.Choice);
+					break;
+				}
 				if (stroke.Count >= 200) {
 					// From the ring or the command row: an engagement rule for the selected units (RC-1), 200 + a weapons rule, 300 + a movement rule.
 					for (const UnitRef& ref: s_Selected) {
