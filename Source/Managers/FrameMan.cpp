@@ -941,16 +941,9 @@ void FrameMan::Draw() {
 		for (const Camera& camera: g_CameraMan.GetPlayerCameras(playerScreen)) {
 			// Update the scene view to line up with a specific screen and then draw it onto the intermediate screen
 
+			// Scene position of the screen's top left pixel, where the camera draws the scene from. A view larger than a non-wrapping scene isn't centred on it:
+			// the camera offset is kept at the scene's far edge (CameraMan::CheckOffset), so glows and effects go by that same offset.
 			Vector targetPos = g_CameraMan.GetOffset(playerScreen);
-
-			// Adjust the drawing position on the target screen for if the target screen is larger than the scene in non-wrapping dimension.
-			// Scene needs to be displayed centered on the target bitmap then, and that has to be adjusted for when drawing to the screen
-			if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
-				targetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
-			}
-			if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
-				targetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
-			}
 
 			// Draw the scene
 			// g_SceneMan.Draw(drawScreen, drawScreenGUI, targetPos);
@@ -991,14 +984,9 @@ void FrameMan::Draw() {
 		RenderBatch* sceneBatch = g_RenderMan.GetActiveBatch();
 		g_RenderMan.SetActiveBatch(m_ScreenSpaceBatch.get());
 		g_RenderMan.BeginFrame(&screenSpaceCamera);
-		// Scene position of this player screen's top left pixel.
+		// Scene position of this player screen's top left pixel: the camera's, as the scene was drawn with it, so the lights and HUD sit on what they belong to
+		// even when the view is larger than the scene.
 		Vector screenTargetPos = g_CameraMan.GetOffset(playerScreen);
-		if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
-			screenTargetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
-		}
-		if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
-			screenTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
-		}
 		if (!IsHudDisabled(playerScreen) && pActivity) {
 			PerformanceMan::LogScope logScope("Draw: HUD (software)");
 			const Vector& hudTargetPos = screenTargetPos;
