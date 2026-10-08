@@ -229,7 +229,9 @@ vec4 SkyCloud(vec2 screenUV, vec3 skyLight) {
 	float row = (gl_FragCoord.y + rteScreenOrigin.y * c_CloudParallax) / (16.0 * rteCloudSize);
 	// Puffy edges, and thinner towards the band's top and bottom.
 	float edge = abs(band * 2.0 - 1.0);
-	float thickness = CloudColumnWide(along, c_SkyCloudWiden) + 0.22 * (CloudOctave(along, 60.0 * c_SkyCloudWiden * rteCloudSize, row) - 0.5) - 0.3 * edge * edge;
+	// On a small wrapping scene the widening is held back so the big patches still fit at least twice around it; one would leave the sky flat across.
+	float widen = rteCloudPeriod > 0.0 ? clamp(rteCloudPeriod / (840.0 * rteCloudSize), 1.0, c_SkyCloudWiden) : c_SkyCloudWiden;
+	float thickness = CloudColumnWide(along, widen) + 0.22 * (CloudOctave(along, 60.0 * widen * rteCloudSize, row) - 0.5) - 0.3 * edge * edge;
 	float threshold = CloudThreshold();
 	float amount = smoothstep(threshold, threshold + 0.2, thickness);
 	if (amount <= 0.0) {

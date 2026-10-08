@@ -241,7 +241,7 @@ namespace RTE {
 		float Relief = 0.6F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
 		float SunDisc = 1.0F; //!< Brightness of the sun drawn in the sky by day, 0 for none.
 		float CloudShadows = 0.5F; //!< How much drifting clouds shade the ground under open sky, 0 for none. Needs SunShadows.
-		bool CloudLayer = true; //!< Clouds are drawn in the sky, the same clouds whose shadows cross the ground; they gather in bad weather and break up after it. Off: no clouds in the sky and the shadows keep their fixed spread, as before.
+		bool CloudLayer = true; //!< Clouds are drawn in the sky, as thick and as stormy as the shadows crossing the ground; they gather in bad weather and break up after it. Off: no clouds in the sky and the shadows keep their fixed spread, as before.
 		float CloudCover = 0.5F; //!< How much of the sky is cloud in clear weather, 0 to 1 (0.5 is the spread the shadows always had). Rain, snow and ash fall add to it.
 		float CloudOpacity = 1.0F; //!< How solid the clouds in the sky are drawn, 0 to 1.
 		float CloudSize = 1.0F; //!< How big the clouds are, 0.4 to 2.5: the width of the patches (in the sky and their shadows alike), their puffs, and how deep the band they sit in is (with the square of the size, so small clouds stay long and shallow).
