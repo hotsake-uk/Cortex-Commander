@@ -2747,12 +2747,15 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 end
 
 -- Whether the engine's team memory (AC-2: SceneMan.ReportEnemy and the rest) is there, for a build without it (an older exe).
+-- (A local, not a field: SharedBehaviors is read-only once loaded, and caching the answer in it raised an error on every sighting,
+-- which ended the unit's AI update, so units stood still and never fired.)
+local CanRememberCached = nil;
 function SharedBehaviors.CanRemember()
-	if SharedBehaviors.canRemember == nil then
+	if CanRememberCached == nil then
 		local ok, value = pcall(function() return SceneMan.ReportEnemy; end);
-		SharedBehaviors.canRemember = ok and value ~= nil;
+		CanRememberCached = ok and value ~= nil;
 	end
-	return SharedBehaviors.canRemember;
+	return CanRememberCached;
 end
 
 -- Tells the team of an enemy this unit has noticed (AC-2): the team remembers where it was, and the AI teammates close by turn to face it.
