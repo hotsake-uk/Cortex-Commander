@@ -157,7 +157,7 @@ namespace RTE {
 		int m_ScreenWidth = 0;
 		int m_ScreenHeight = 0;
 		GLTarget m_DynamicLight;
-		GLTarget m_OccluderSeeds[2]; //!< Ping-ponged jump flood buffers: RG = position of the nearest pixel of a solid object.
+		GLTarget m_OccluderSeeds[2]; //!< Ping-ponged jump flood buffers: RG = position of the nearest pixel of a solid object, in full floats: half floats step by 1 px past 1024 and 2 px past 2048, too coarse for the sub-pixel tests that read it.
 		GLTarget m_RoundedNormals; //!< The player screen's normals with metallic and glossy objects rounded off (see SurfaceRound.frag).
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
