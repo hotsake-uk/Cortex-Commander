@@ -306,7 +306,9 @@ first built was not a fair test: Hub A is open on all four sides, so stacked hub
 An offline Python model of the path grid, `PathFinder.cpp` mirrored function by function, run on the sky bunker built from the
 modules' material bitmaps. It gives the game's routes node for node (checked against the `AITRACE nodes:` lines) and is how the new
 layout was designed and how the grid changes above were checked before a push: `python3 -I Tools/PathSim/pathsim.py sky --layout new`.
-Keep `grid_rules.py` in step with the C++. It models the grid only; whether a unit can follow a route is the gym's business.
+It models the grid only; whether a unit can follow a route is the gym's business. **No longer a gate (8.2):** `grid_rules.py` mirrors
+the C++ of 1076 lines and has none of the ladder, anchor, step-over, mantle, leap, flight-link, air-start, avoid or graze logic since
+added, so its routes are not the game's; see `Tools/PathSim/README.md`.
 
 ### Where the numbers stand (Results/1f2f3d6, three runs each)
 
