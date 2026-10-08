@@ -918,13 +918,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	}
 
 	if (node->RightDown && node->RightDown->m_Navigable && allowDiagonal) {
-		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->RightDownMaterial) * 1.4F) + radiatedCost + FallCost(*node->RightDown);
+		adjCost.cost = 1.4F + (WalkMaterialCost(*node->RightDownMaterial) * 1.4F) + radiatedCost + FallCost(*node->RightDown);
 		adjCost.state = static_cast<void*>(node->RightDown);
 		adjacentList->push_back(adjCost);
 	}
 
 	if (node->DownLeft && node->DownLeft->m_Navigable && allowDiagonal) {
-		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->DownLeftMaterial) * 1.4F) + radiatedCost + FallCost(*node->DownLeft);
+		adjCost.cost = 1.4F + (WalkMaterialCost(*node->DownLeftMaterial) * 1.4F) + radiatedCost + FallCost(*node->DownLeft);
 		adjCost.state = static_cast<void*>(node->DownLeft);
 		adjacentList->push_back(adjCost);
 	}
@@ -933,19 +933,22 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Cost to discourage us from going up. At 3 a hill was worth a long walk round, which is what units did; at half that they go over.
 		const float extraUpCost = 1.5F;
 
+		// (A walk's steps pay nothing for a plant or anything else a walking body goes through as it comes (WalkMaterialCost). At its
+		// integrity, a node of foliage cost four of air and a grassy slope's step up four more, and a leap over them, which paid nothing for
+		// what its arc passes through, was the cheaper way: units leapt every bush and grassy rise.)
 		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards. The head room along the way says
 		// whether it's a walk, a crawl (slower), or no way through at all for this searcher.
 		// (The room only matters where the way is open: through ground, a digger makes its own.)
 		// (A sideways step into the air over a drop is the start of a fall too, and pays like the rest of it: FallCost on the node stepped
 		// into, as the steps down pay. Without it, stepping off a ledge's side was the one way into a fall that skipped its first node's cost.)
 		if (node->Left && node->Left->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F) + FallCost(*node->Left);
+			adjCost.cost = (1.0F + WalkMaterialCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F) + FallCost(*node->Left);
 			adjCost.state = static_cast<void*>(node->Left);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->Right && node->Right->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
+			adjCost.cost = (1.0F + WalkMaterialCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
 		}
@@ -1198,13 +1201,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Add cost for digging at 45 degrees and for digging upwards. (A step up a slope wants the head room a walk does: a crawl's worth at
 		// the least, and dearer under a low ceiling.)
 		if (node->UpRight && node->UpRight->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->UpRight);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->LeftUp && node->LeftUp->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
 		}
@@ -1634,6 +1637,36 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 	return true;
 }
 
+bool PathFinder::GapBetween(const PathNode& from, const PathNode& to) const {
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
+	float direction = dx < 0.0F ? -1.0F : 1.0F;
+	// From the top of the higher floor down to a node under the lower: anything solid there is a floor the walk takes, over a bump or down
+	// into a dip and out. A liquid is no floor (a pool's surface is where a body sinks); a shallow one has its bed within the reach.
+	int top = static_cast<int>(std::min(from.Surface, to.Surface)) - 2;
+	int bottom = static_cast<int>(std::max(from.Surface, to.Surface) + nodeSize);
+	auto floored = [&](int x) {
+		for (int y = top; y <= bottom; ++y) {
+			unsigned char id = TerrNav(x, y);
+			if (id != MaterialColorKeys::g_MaterialAir && LiquidOf(id) == PathLiquid::None && g_SceneMan.GetMaterialFromID(id)->GetBehaviour().Flows != 1) {
+				return true;
+			}
+		}
+		return false;
+	};
+	// (Every 2 px between the two node centres; a gap narrower than half a node is stepped across.)
+	const int widest = static_cast<int>(nodeSize * 0.5F);
+	int run = 0;
+	for (int d = 2; d < static_cast<int>(std::abs(dx)) - 1; d += 2) {
+		if (floored(static_cast<int>(from.Pos.m_X + direction * static_cast<float>(d)))) {
+			run = 0;
+		} else if ((run += 2) >= widest) {
+			return true;
+		}
+	}
+	return false;
+}
+
 bool PathFinder::DoorSeenThrough(const Vector& at) const {
 	const float nodeSize = static_cast<float>(m_NodeDimension);
 	int nodeId = ConvertCoordsToNodeId(static_cast<int>(std::floor(at.m_X / nodeSize)), static_cast<int>(std::floor(at.m_Y / nodeSize)));
@@ -1672,10 +1705,16 @@ void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::Sta
 			if (!target || !LeapFits(node, *target)) {
 				continue;
 			}
-			// A little over the walk of the same distance (a node of walk is 1), and a little more for a leap up (the landing has to be
-			// right): so a walk wins where there is one, and the leap where there is a gap or a lip, well under any flight.
+			// Only where the walk can't go: over a gap in the floor, or up onto a lip higher than the searcher mantles. (Offered between any two
+			// floors the arc fitted, at a little over the walk, a leap beat every walk that paid a little extra on the way: over a bush, a
+			// grassy hump, a lump a step would have taken; units leapt along whole stretches of open ground.)
 			float rise = node.Surface - target->Surface;
-			adjCost.cost = static_cast<float>(std::abs(dx)) + 1.2F + (rise > 4.0F ? rise / nodeSize : 0.0F);
+			if (!(rise > s_MantleHeight && rise > nodeSize * 0.5F) && !GapBetween(node, *target)) {
+				continue;
+			}
+			// Over the walk of the same distance (a node of walk is 1) by two, and more for a leap up (the landing has to be right): so a walk
+			// down into a shallow dip and out again still wins, and the leap takes the gap, well under any flight.
+			adjCost.cost = static_cast<float>(std::abs(dx)) + 2.0F + (rise > 4.0F ? rise / nodeSize : 0.0F);
 			adjCost.state = const_cast<PathNode*>(target);
 			adjacentList->push_back(adjCost);
 		}
@@ -1921,6 +1960,13 @@ float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	}
 
 	return strength;
+}
+
+float PathFinder::WalkMaterialCost(const Material& material) const {
+	if (Open(material) && material.GetBehaviour().Flows != 1 && LiquidOf(static_cast<unsigned char>(material.GetIndex())) == PathLiquid::None) {
+		return 0.0F;
+	}
+	return GetMaterialTransitionCost(material);
 }
 
 const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end) const {

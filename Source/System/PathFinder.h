@@ -474,6 +474,11 @@ namespace RTE {
 		/// @return The transition cost for the Material.
 		float GetMaterialTransitionCost(const Material& material) const;
 
+		/// What a walk's step pays for the material along it: nothing for what a walking body goes through as it comes (Open: grass,
+		/// foliage, ash), except a liquid, which LiquidCost prices; otherwise the transition cost (GetMaterialTransitionCost).
+		/// @param material The strongest material along the step.
+		float WalkMaterialCost(const Material& material) const;
+
 		/// What a rung of a jetpack climb up a column costs over its height, for how hard it is to fly: hugging a wall with open air on the
 		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
 		/// @param node The node the rung rises into.
@@ -487,11 +492,19 @@ namespace RTE {
 		/// @return Whether the leap fits.
 		bool LeapFits(const PathNode& from, const PathNode& to) const;
 
+		/// Whether the ground between two floors a leap fits has a gap in it that the walk can't step across: a stretch at least half a
+		/// node wide with no floor within a node under the lower of the two (a liquid there is no floor). Bumps, plants and lumps are
+		/// floor: a walk goes over or through them.
+		/// @param from The floor it leaps from.
+		/// @param to The floor it lands on.
+		bool GapBetween(const PathNode& from, const PathNode& to) const;
+
 		/// Whether door material at a place is a door this grid sees through: one of the grid's side, erased while its nodes were sampled
 		/// (Scene::UpdatePathFinding, OverrideMaterialDoors), so no edge of the node there, or of its neighbours into it, sampled a door.
 		bool DoorSeenThrough(const Vector& at) const;
 
-		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list, priced a little over the walk of the same distance.
+		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list: only over a gap the walk can't cross (GapBetween), or onto a lip
+		/// higher than the searcher mantles, and priced over the walk of the same distance.
 		/// @param node The node.
 		/// @param adjacentList The list.
 		void AddLeapLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList);
