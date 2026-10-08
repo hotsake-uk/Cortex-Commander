@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
+#include <stdexcept>
 using namespace RTE;
 
 namespace {
@@ -221,6 +222,18 @@ void SettingsMan::UpdateSettingsFile() const {
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {
+	// The values are mostly read with std::stoi and std::stof, which throw on a value that isn't a number ("1,5" in a European locale, an empty
+	// value, a file from another build). Nothing above caught it, so the game ended at start-up with nothing in the log. Now the property keeps
+	// its default and the console log says which one it was.
+	try {
+		return ReadPropertyUnchecked(propName, reader);
+	} catch (const std::logic_error&) {
+		g_ConsoleMan.PrintString("ERROR: Settings.ini: the value of " + std::string(propName) + " isn't a number this version can read; the default is kept.");
+		return 0;
+	}
+}
+
+int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return Serializable::ReadProperty(propName, reader));
 
 	MatchProperty("PaletteFile", { reader >> g_FrameMan.m_PaletteFile; });
