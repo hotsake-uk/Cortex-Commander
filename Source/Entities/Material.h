@@ -45,6 +45,18 @@ namespace RTE {
 		int Look = -1; //!< The liquid look it's drawn with (RenderMan::SetLiquidPaletteColor: 1 water, 2 lava, 3 acid, 4 oil...), 0 for plain.
 		int Glow = -1; //!< How brightly a liquid of it glows, 0 to 255 (lava 230).
 		int Stains = -1; //!< 1 if drops of it leave stains where they land (blood, oil).
+		float StainGlossWet = -1.0F; //!< How glossy its stains are while fresh, 0 to 1 (stock: 0.8 for oil, 0.25 for the rest).
+		float StainGlossDry = -1.0F; //!< How glossy its stains stay once dry, 0 to 1 (stock: 0.75 for oil, 0.05 for the rest).
+		/// Its own liquid look (UI-50), each four numbers, any left out as the look it starts from (its Look number, or water): LookShallow and LookDeep
+		/// are a colour near the surface and in the depths, 0 to 1, and how opaque; LookSurface is shine, metalness, how much the ripples tilt it and
+		/// how strongly light plays through it in lines; LookStyle is 0 clear, 1 molten or 2 bubbling, how much it froths when thin, its own glow, and
+		/// 1 if it reflects; LookLine is the colour of its surface line and how strongly. With any of them set it gets a look slot of its own (8 to 15),
+		/// unless its Look is already one of those.
+		std::string LookShallow;
+		std::string LookDeep;
+		std::string LookSurface;
+		std::string LookStyle;
+		std::string LookLine;
 		int Breathable = -1; //!< 1 if a body can breathe in it; liquids aren't.
 		float TouchDamage = -1.0F; //!< Health a second it takes from a body in it, for each level of depth (acid 5).
 		/// What happens where it meets another material (SB-3), one AddReaction line each: "Other, Chance, ThisBecomes, OtherBecomes[, Effects]".

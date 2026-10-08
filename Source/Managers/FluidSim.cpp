@@ -413,6 +413,7 @@ namespace {
 		s_ColorOfMaterial.fill(0);
 		s_Soft.fill(false);
 		s_PourableByName.clear();
+		int nextOwnLook = 8; // The look slots handed to liquids with a look of their own (UI-50), in material order.
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -494,6 +495,25 @@ namespace {
 			// liquid of a mod's own as water; and lava glows.
 			int look = behaviour.Look >= 0 ? behaviour.Look : (kind == Liquid::Oil ? 0 : (kind == Liquid::Other ? 1 : static_cast<int>(kind)));
 			int glow = behaviour.Glow >= 0 ? std::clamp(behaviour.Glow, 0, 255) : (kind == Liquid::Lava ? 230 : 0);
+			// A look of its own, from its behaviour's Look* values over the look it starts from: in its own slot, so the stock looks it borrows from
+			// are left as they are (a slot it names, 8 to 15, or the next free one; none left: it keeps the look it has).
+			if (!behaviour.LookShallow.empty() || !behaviour.LookDeep.empty() || !behaviour.LookSurface.empty() || !behaviour.LookStyle.empty() || !behaviour.LookLine.empty()) {
+				int slot = look >= 8 && look < RenderMan::c_MaxLiquidLooks ? look : (nextOwnLook < RenderMan::c_MaxLiquidLooks ? nextOwnLook++ : 0);
+				if (slot != 0) {
+					RenderMan::LiquidLook own = RenderMan::StockLiquidLook(look > 0 && look < 8 ? look : 1);
+					auto apply = [](const std::string& text, glm::vec4& values) {
+						std::istringstream numbers(text);
+						for (int i = 0; i < 4 && numbers >> values[i]; ++i) {}
+					};
+					apply(behaviour.LookShallow, own.Shallow);
+					apply(behaviour.LookDeep, own.Deep);
+					apply(behaviour.LookSurface, own.Surface);
+					apply(behaviour.LookStyle, own.Style);
+					apply(behaviour.LookLine, own.Line);
+					g_RenderMan.SetLiquidLook(slot, own);
+					look = slot;
+				}
+			}
 			if (look > 0) {
 				g_RenderMan.SetLiquidPaletteColor(color.GetIndex(), std::clamp(look, 1, 15), glow);
 				// The material too: the terrain shader draws only pixels of the material as the liquid, not terrain that shares its colour.
@@ -1988,4 +2008,13 @@ void FluidSim::VisitMovingPixels(const std::function<void(int x, int y, int velX
 
 int FluidSim::GetActiveCount() {
 	return static_cast<int>(s_Active.Count);
+}
+
+void FluidSim::GetTileCounts(int& allocated, int& total) {
+	allocated = static_cast<int>(std::count_if(s_Active.Tiles.begin(), s_Active.Tiles.end(), [](const auto& tile) { return tile != nullptr; }));
+	total = static_cast<int>(s_Active.Tiles.size());
+}
+
+int FluidSim::GetWaitingCount() {
+	return static_cast<int>(s_Waiting.size());
 }

@@ -725,8 +725,19 @@ bool EffectsParticles::IsStainingMaterial(const Material* material) {
 }
 
 glm::vec2 EffectsParticles::StainGloss(const Material* material) {
-	// Oil is glossy and stays so; blood (any colour) shines a little wet and dries matte.
-	return material && material->GetPresetName().find("Oil") != std::string::npos ? glm::vec2(0.8F, 0.75F) : glm::vec2(0.25F, 0.05F);
+	// As the material says (StainGlossWet, StainGlossDry), else: oil is glossy and stays so; blood (any colour) shines a little wet and dries matte.
+	bool oily = material && material->GetPresetName().find("Oil") != std::string::npos;
+	glm::vec2 gloss = oily ? glm::vec2(0.8F, 0.75F) : glm::vec2(0.25F, 0.05F);
+	if (material) {
+		const MaterialBehaviour& behaviour = material->GetBehaviour();
+		if (behaviour.StainGlossWet >= 0.0F) {
+			gloss.x = std::min(behaviour.StainGlossWet, 1.0F);
+		}
+		if (behaviour.StainGlossDry >= 0.0F) {
+			gloss.y = std::min(behaviour.StainGlossDry, 1.0F);
+		}
+	}
+	return gloss;
 }
 
 void EffectsParticles::SpawnStain(const Vector& position, int red, int green, int blue, float speed, const glm::vec2& gloss) {

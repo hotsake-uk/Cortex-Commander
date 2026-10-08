@@ -133,7 +133,8 @@ namespace RTE {
 		/// @param emissive How strongly the color glows, 0 to 255.
 		void SetLiquidPaletteColor(int paletteIndex, int liquidLook, int emissive);
 
-		/// Sets how a liquid look is drawn, for new liquids. Looks 1 to 3 are the game's water, lava and acid.
+		/// Sets how a liquid look is drawn, for new liquids (Lua SceneMan:SetLiquidLook, or a material's own look, MaterialBehaviour Look*). Looks 1 to 7
+		/// are the game's own (water, lava, acid, oil, mud, slime, mercury).
 		/// @param look 1 to 15.
 		/// @param liquidLook The look.
 		void SetLiquidLook(int look, const LiquidLook& liquidLook) {
@@ -141,6 +142,10 @@ namespace RTE {
 				m_LiquidLooks[look] = liquidLook;
 			}
 		}
+
+		/// Gets one of the game's own liquid looks, as it is before anything sets it: what a look of a liquid's own starts from (MaterialBehaviour Look*).
+		/// @param look 1 to 15; 8 to 15 are water's.
+		static LiquidLook StockLiquidLook(int look) { return MakeLiquidLooks()[static_cast<size_t>(std::clamp(look, 1, c_MaxLiquidLooks - 1))]; }
 
 		/// Gets the liquid looks, by look number (0 unused).
 		const std::array<LiquidLook, c_MaxLiquidLooks>& GetLiquidLooks() const { return m_LiquidLooks; }

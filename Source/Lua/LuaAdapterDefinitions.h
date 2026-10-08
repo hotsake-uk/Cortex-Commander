@@ -537,6 +537,12 @@ namespace RTE {
 
 #pragma region SceneMan Lua Adapters
 	struct LuaAdaptersSceneMan {
+		/// Sets how a liquid look is drawn (RenderMan::SetLiquidLook): for a mod's liquids, whose materials then name the look (Look = 8 to 15).
+		/// @param look 1 to 15; 1 to 7 are the game's own (water, lava, acid, oil, mud, slime, mercury) and changing them changes those liquids.
+		/// @param parts A table with any of Shallow, Deep, Surface, Style and Line, each a table of four numbers as a material's LookShallow and so
+		/// on (Material.h, MaterialBehaviour); what's left out stays as the look has it.
+		static void SetLiquidLook(SceneMan& sceneMan, int look, const luabind::object& parts);
+
 		/// Traces along a vector and returns MOID of the first non-ignored
 		/// non-NoMOID MO encountered. If a non-air terrain pixel is encountered
 		/// first, g_NoMOID will be returned.

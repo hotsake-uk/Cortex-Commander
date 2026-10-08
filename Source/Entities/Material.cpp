@@ -195,6 +195,13 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Glow", { reader >> m_Behaviour.Glow; });
 	MatchForwards("StainsAs") MatchProperty("Stains", { reader >> m_Behaviour.Stains; });
 	MatchProperty("Breathable", { reader >> m_Behaviour.Breathable; });
+	MatchProperty("StainGlossWet", { reader >> m_Behaviour.StainGlossWet; });
+	MatchProperty("StainGlossDry", { reader >> m_Behaviour.StainGlossDry; });
+	MatchProperty("LookShallow", { m_Behaviour.LookShallow = reader.ReadPropValue(); });
+	MatchProperty("LookDeep", { m_Behaviour.LookDeep = reader.ReadPropValue(); });
+	MatchProperty("LookSurface", { m_Behaviour.LookSurface = reader.ReadPropValue(); });
+	MatchProperty("LookStyle", { m_Behaviour.LookStyle = reader.ReadPropValue(); });
+	MatchProperty("LookLine", { m_Behaviour.LookLine = reader.ReadPropValue(); });
 	MatchProperty("TouchDamage", { reader >> m_Behaviour.TouchDamage; });
 	MatchProperty("AddReaction", { m_Behaviour.Reactions.push_back(reader.ReadPropValue()); });
 	MatchProperty("SightDepth", { reader >> m_Behaviour.SightDepth; });
@@ -276,6 +283,13 @@ int Material::Save(Writer& writer) const {
 		number("Glow", b.Glow);
 		number("Stains", b.Stains);
 		number("Breathable", b.Breathable);
+		number("StainGlossWet", b.StainGlossWet);
+		number("StainGlossDry", b.StainGlossDry);
+		text("LookShallow", b.LookShallow);
+		text("LookDeep", b.LookDeep);
+		text("LookSurface", b.LookSurface);
+		text("LookStyle", b.LookStyle);
+		text("LookLine", b.LookLine);
 		number("TouchDamage", b.TouchDamage);
 		for (const std::string& reaction: b.Reactions) {
 			writer.NewPropertyWithValue("AddReaction", reaction);

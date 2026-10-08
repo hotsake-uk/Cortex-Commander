@@ -454,7 +454,7 @@ void DebugOverlays::DrawWorldSim() {
 	Box view = DebugDraw::ViewBox();
 	// A scene pixel as a little square, at least a window pixel big.
 	float dot = std::max(1.0F, 1.0F / perPixel);
-	char text[128];
+	char text[256];
 	auto caption = [&](const char* line) {
 		ImVec2 origin = DebugDraw::ViewOrigin();
 		ImVec2 size = ImGui::CalcTextSize(line);
@@ -471,7 +471,11 @@ void DebugOverlays::DrawWorldSim() {
 				ImVec2 at = DebugDraw::ToScreen(pixel);
 				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), IM_COL32(70, 160, 255, 170));
 			}
-			std::snprintf(text, sizeof(text), "moving liquid: %d pixels, %d in view%s, %.2f ms an update", FluidSim::GetActiveCount(), static_cast<int>(pixels.size()), pixels.size() >= limit ? "+" : "", FluidSim::GetLastUpdateMS());
+			int tiles = 0;
+			int tileRoom = 0;
+			FluidSim::GetTileCounts(tiles, tileRoom);
+			std::snprintf(text, sizeof(text), "moving liquid: %d pixels, %d in view%s, %.2f ms an update; %d of %d tiles held, %d waiting", FluidSim::GetActiveCount(), static_cast<int>(pixels.size()),
+			              pixels.size() >= limit ? "+" : "", FluidSim::GetLastUpdateMS(), tiles, tileRoom, FluidSim::GetWaitingCount());
 			caption(text);
 			break;
 		}

@@ -119,6 +119,14 @@ namespace RTE {
 		/// Gets how many liquid pixels are moving, for statistics.
 		static int GetActiveCount();
 
+		/// Gets how many of the moving pixels' 64 by 64 tiles are held just now (M-5: a tile is made where a pixel first moves and dropped when none
+		/// in it is), for statistics. Call from the main thread, between sim updates.
+		/// @param allocated Filled with how many are held. @param total Filled with how many the scene has room for.
+		static void GetTileCounts(int& allocated, int& total);
+
+		/// Gets how many pixels are waiting their turn to move because the most that may move at once (80,000) already are, for statistics.
+		static int GetWaitingCount();
+
 		/// Gets how long the last update took, in milliseconds, for statistics.
 		static float GetLastUpdateMS();
 

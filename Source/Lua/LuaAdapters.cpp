@@ -3,6 +3,7 @@
 #include "LuaAdapterDefinitions.h"
 #include "LuabindObjectWrapper.h"
 #include "LuaMan.h"
+#include "RenderMan.h"
 
 #include "lj_obj.h"
 
@@ -667,6 +668,26 @@ MOID LuaAdaptersSceneMan::CastMORay2(SceneMan& sceneMan, const Vector& start, co
 const std::vector<MovableObject*>* LuaAdaptersSceneMan::CastAllMOsRay(SceneMan& sceneMan, const Vector& start, const Vector& ray, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, bool ignoreAllTerrain, int skip) {
 	std::vector<MOID> ignoreMOIDsVec = ConvertLuaTableToVectorOfType<MOID>(ignoreMOIDs);
 	return sceneMan.CastAllMOsRay(start, ray, ignoreMOIDsVec, ignoreTeam, ignoreMaterial, ignoreAllTerrain, skip);
+}
+
+void LuaAdaptersSceneMan::SetLiquidLook(SceneMan& sceneMan, int look, const luabind::object& parts) {
+	if (look < 1 || look >= RenderMan::c_MaxLiquidLooks || !parts.is_valid() || luabind::type(parts) != LUA_TTABLE) {
+		return;
+	}
+	RenderMan::LiquidLook liquidLook = g_RenderMan.GetLiquidLooks()[static_cast<size_t>(look)];
+	auto apply = [&parts](const char* name, glm::vec4& values) {
+		luabind::object part = parts[name];
+		std::vector<float> numbers = ConvertLuaTableToVectorOfType<float>(part);
+		for (size_t i = 0; i < numbers.size() && i < 4; ++i) {
+			values[static_cast<int>(i)] = numbers[i];
+		}
+	};
+	apply("Shallow", liquidLook.Shallow);
+	apply("Deep", liquidLook.Deep);
+	apply("Surface", liquidLook.Surface);
+	apply("Style", liquidLook.Style);
+	apply("Line", liquidLook.Line);
+	g_RenderMan.SetLiquidLook(look, liquidLook);
 }
 
 float LuaAdaptersSceneMan::CastObstacleRay1(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip) {
