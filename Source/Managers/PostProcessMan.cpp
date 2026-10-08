@@ -604,6 +604,8 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	m_LightingSettings.Contrast = m_PlayerAtmosphere.Contrast;
 	m_LightingSettings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
 	m_LightingSettings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
+	m_SceneCloudCover.Restore(m_LightingSettings.CloudCover);
+	m_SceneMist.Restore(m_LightingSettings.FogMorningMist);
 	if (!scene) {
 		ApplyActivityAtmosphere();
 		return;
@@ -626,6 +628,12 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	}
 	if (atmosphere.Wind > -10000.0F) {
 		m_LightingSettings.Wind = atmosphere.Wind;
+	}
+	if (atmosphere.CloudCover >= 0.0F) {
+		m_SceneCloudCover.Apply(m_LightingSettings.CloudCover, std::clamp(atmosphere.CloudCover, 0.0F, 1.0F));
+	}
+	if (atmosphere.Mist >= 0.0F) {
+		m_SceneMist.Apply(m_LightingSettings.FogMorningMist, std::clamp(atmosphere.Mist, 0.0F, 1.0F));
 	}
 	ApplyActivityAtmosphere();
 }
@@ -740,6 +748,8 @@ LightingSettings PostProcessMan::GetLightingSettingsToSave() const {
 		settings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
 		settings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
 	}
+	settings.CloudCover = m_SceneCloudCover.ToSave(settings.CloudCover);
+	settings.FogMorningMist = m_SceneMist.ToSave(settings.FogMorningMist);
 	return settings;
 }
 

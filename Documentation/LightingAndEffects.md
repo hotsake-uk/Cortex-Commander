@@ -313,8 +313,12 @@ AddScene = Scene
 	// or by name, which any weather type has: Weather = Acid Rain
 	WeatherIntensity = 0.7
 	Wind = -90
+	CloudCover = 0.8        // Of the sky in clear weather, 0 to 1. Weather adds to it.
+	Mist = 1                // How much mist gathers low around dawn, at night and in rain, 0 to 1.
 	...
 ```
+
+`CloudCover` and `Mist` stand in for the player's "Cloud cover" and "Dawn mist" settings while the Scene is loaded. If the player moves either setting in the menus meanwhile, their choice stays theirs after the Scene, and it's what gets saved.
 
 **From the scene editor:** set the time and weather you want in the settings panel (F6, Time & weather), press "Use what is set now" under "This scene's own time and weather", then save the scene. The keys above are written into it.
 

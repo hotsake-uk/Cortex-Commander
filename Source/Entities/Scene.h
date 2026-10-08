@@ -553,6 +553,8 @@ namespace RTE {
 			std::string WeatherName; //!< A Weather preset's name, which beats WeatherType (a custom weather's slot depends on the mods loaded). Empty for none.
 			float WeatherIntensity = -1.0F;
 			float Wind = -100000.0F; //!< Not set below -10000.
+			float CloudCover = -1.0F; //!< How much of the sky is cloud in clear weather, 0 to 1 (LightingSettings::CloudCover). Not set below 0.
+			float Mist = -1.0F; //!< How much mist gathers low around dawn, at night and in rain, 0 to 1 (LightingSettings::FogMorningMist). Not set below 0.
 			std::string PostShader; //!< A mod post pass for this Scene, a Shader preset's name (LightingSettings::ModShaders). Empty for none.
 		};
 

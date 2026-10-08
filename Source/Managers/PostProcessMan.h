@@ -486,6 +486,33 @@ namespace RTE {
 		/// Reads the animated palette colours in Base.rte/PaletteAnimation.ini, once: lines "Pulse = index, low, high, period, phase" and "Cycle = from, to, period".
 		void LoadPaletteAnimation();
 		bool m_PlayerAtmosphereCaptured = false;
+
+		/// A setting a Scene can set for itself and the player can still change in the menus at any time: the player's own value is kept aside while the Scene's
+		/// is in use, and comes back with the next Scene unless the player changed the setting meanwhile (which then stays theirs).
+		struct SceneOverride {
+			float Player = 0.0F; //!< The player's own value, while the Scene's is in use.
+			float Set = -1.0F; //!< The Scene's value put in place, or below 0 for none.
+
+			/// Gives the player's value back, unless they changed the setting since the Scene's was put in place.
+			void Restore(float& setting) {
+				if (Set >= 0.0F && setting == Set) {
+					setting = Player;
+				}
+				Set = -1.0F;
+			}
+
+			/// Puts a Scene's value in place, keeping the player's aside.
+			void Apply(float& setting, float sceneValue) {
+				Player = setting;
+				setting = sceneValue;
+				Set = sceneValue;
+			}
+
+			/// The value to save as the player's own.
+			float ToSave(float setting) const { return Set >= 0.0F && setting == Set ? Player : setting; }
+		};
+		SceneOverride m_SceneCloudCover; //!< Scene::Atmosphere::CloudCover over LightingSettings::CloudCover.
+		SceneOverride m_SceneMist; //!< Scene::Atmosphere::Mist over LightingSettings::FogMorningMist.
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
 		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.
 		std::vector<SceneLight> m_LastSceneLights; //!< The last finished sim update's lights, for GetDynamicLightAt: not written while a sim update runs.

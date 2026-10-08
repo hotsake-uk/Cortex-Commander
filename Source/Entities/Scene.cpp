@@ -1079,6 +1079,8 @@ int Scene::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Weather", { m_Atmosphere.WeatherName = reader.ReadPropValue(); });
 	MatchProperty("WeatherIntensity", { reader >> m_Atmosphere.WeatherIntensity; });
 	MatchProperty("Wind", { reader >> m_Atmosphere.Wind; });
+	MatchProperty("CloudCover", { reader >> m_Atmosphere.CloudCover; });
+	MatchProperty("Mist", { reader >> m_Atmosphere.Mist; });
 	MatchProperty("PostShader", { m_Atmosphere.PostShader = reader.ReadPropValue(); });
 
 	EndPropertyList;
@@ -1218,6 +1220,12 @@ int Scene::Save(Writer& writer) const {
 	}
 	if (m_Atmosphere.Wind > -10000.0F) {
 		writer.NewPropertyWithValue("Wind", m_Atmosphere.Wind);
+	}
+	if (m_Atmosphere.CloudCover >= 0.0F) {
+		writer.NewPropertyWithValue("CloudCover", m_Atmosphere.CloudCover);
+	}
+	if (m_Atmosphere.Mist >= 0.0F) {
+		writer.NewPropertyWithValue("Mist", m_Atmosphere.Mist);
 	}
 	if (!m_Atmosphere.PostShader.empty()) {
 		writer.NewPropertyWithValue("PostShader", m_Atmosphere.PostShader);

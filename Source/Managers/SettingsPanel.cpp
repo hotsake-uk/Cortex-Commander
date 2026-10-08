@@ -248,10 +248,14 @@ void DebugMan::SettingsGUI() {
 		if (Scene* scene = g_SceneMan.GetScene(); scene && Plain()) {
 			ImGui::SeparatorText("This scene's own time and weather");
 			const Scene::Atmosphere& own = scene->GetAtmosphere();
-			if (own.TimeOfDay >= 0.0F || own.WeatherType >= 0 || !own.WeatherName.empty()) {
+			if (own.TimeOfDay >= 0.0F || own.WeatherType >= 0 || !own.WeatherName.empty() || own.CloudCover >= 0.0F || own.Mist >= 0.0F) {
 				std::vector<std::string> weatherNames = Weather::GetSlotNames();
 				std::string weatherName = !own.WeatherName.empty() ? own.WeatherName : (own.WeatherType >= 0 && own.WeatherType < static_cast<int>(weatherNames.size()) ? weatherNames[own.WeatherType] : "default weather");
 				ImGui::Text("Set: %.1f h, %s", own.TimeOfDay, weatherName.c_str());
+				if (own.CloudCover >= 0.0F || own.Mist >= 0.0F) {
+					auto percent = [](float value) { return value >= 0.0F ? std::to_string(static_cast<int>(value * 100.0F + 0.5F)) + "%" : std::string("the player's"); };
+					ImGui::Text("Cloud cover %s, mist %s", percent(own.CloudCover).c_str(), percent(own.Mist).c_str());
+				}
 			} else {
 				ImGui::TextDisabled("Not set (uses the player's settings)");
 			}
@@ -265,6 +269,8 @@ void DebugMan::SettingsGUI() {
 				atmosphere.WeatherName = weather ? weather->GetPresetName() : "";
 				atmosphere.WeatherIntensity = settings.WeatherIntensity;
 				atmosphere.Wind = settings.Wind;
+				atmosphere.CloudCover = settings.CloudCover;
+				atmosphere.Mist = settings.FogMorningMist;
 				atmosphere.PostShader = own.PostShader;
 				scene->SetAtmosphere(atmosphere);
 			}
