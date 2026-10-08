@@ -908,6 +908,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		AI.ShotBlockedTimer = nil;
 		AI.deviceState = AHuman.STILL;
 		AI.proneState = AHuman.NOTPRONE;
+		HumanBehaviors.StopRangeStep(AI, Owner);
 		AI.TargetLostTimer:SetSimTimeLimitMS(2000);
 	end
 end
