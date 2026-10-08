@@ -174,6 +174,10 @@ bool MenuMan::UpdateMainMenu() const {
 		case MainMenuGUI::MainMenuUpdateResult::ScenarioStarted:
 			m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MainMenuToScenario);
 			break;
+		case MainMenuGUI::MainMenuUpdateResult::SandboxScenarioStarted:
+			m_ScenarioMenu->SetActivityToSelect("Sandbox");
+			m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MainMenuToScenario);
+			break;
 		case MainMenuGUI::MainMenuUpdateResult::EnterCreditsScreen:
 			m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MainMenuToCredits);
 			break;

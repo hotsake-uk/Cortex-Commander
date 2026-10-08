@@ -34,6 +34,7 @@ void ScenarioGUI::Clear() {
 
 	m_ScenarioActivities.clear();
 	m_SelectedActivity = nullptr;
+	m_ActivityToSelect.clear();
 
 	m_ActivityScenes = nullptr;
 	m_SelectedScene = nullptr;
@@ -239,13 +240,17 @@ void ScenarioGUI::FetchActivitiesAndScenesLists() {
 			// Add to the activity selection ComboBox and attach the activity pointer, not passing in ownership.
 			m_ActivitySelectComboBox->AddItem(presetActivity->GetPresetName(), "", nullptr, presetActivity);
 
-			if (prevSelectedActivityIndex < 0 && presetActivity->GetClassName() == "GATutorial") {
+			if (!m_ActivityToSelect.empty() && presetActivity->GetPresetName() == m_ActivityToSelect) {
+				prevSelectedActivityIndex = index;
+				prevSelectedScene = nullptr;
+			} else if (prevSelectedActivityIndex < 0 && presetActivity->GetClassName() == "GATutorial") {
 				prevSelectedActivityIndex = index;
 				prevSelectedScene = nullptr;
 			}
 			index++;
 		}
 	}
+	m_ActivityToSelect.clear();
 	if (prevSelectedActivityIndex >= 0) {
 		m_ActivitySelectComboBox->SetSelectedIndex(prevSelectedActivityIndex);
 		SetSelectedActivity(dynamic_cast<const Activity*>(m_ActivitySelectComboBox->GetSelectedItem()->m_pEntity));
