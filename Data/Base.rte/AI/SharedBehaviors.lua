@@ -1653,6 +1653,10 @@ end
 
 -- Whether a unit may leave its spot to go after a target it can't hit from where it is.
 function SharedBehaviors.MayClose(AI, Owner)
+	-- (Told to hold position in the sandbox: it fights from where it stands, and does not walk after a target it cannot hit from there.)
+	if Owner:NumberValueExists("SandboxHold") then
+		return false;
+	end
 	local kind = SharedBehaviors.OrderKind(Owner);
 	if kind == "attack" then
 		return true;
