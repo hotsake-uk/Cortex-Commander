@@ -246,6 +246,12 @@ namespace RTE {
 		/// @param which 0, 1 or 2.
 		void SetUnitInspector(int which) { m_UnitInspector = std::clamp(which, 0, 2); }
 
+		/// Gets whether the squad links and trails overlay is on: for inspected squad units, the leader-to-follower line, the leader's trail and each follower's place in line (drawn by the AI scripts).
+		bool ShowSquadLinks() const { return m_ShowSquadLinks; }
+
+		/// Sets whether the squad links and trails overlay is on.
+		void SetShowSquadLinks(bool show) { m_ShowSquadLinks = show; }
+
 		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
 		/// @param level 0, 1 or 2.
 		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 2); }
@@ -462,6 +468,7 @@ namespace RTE {
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
+		bool m_ShowSquadLinks; //!< Whether the squad links and trails overlay is on (see ShowSquadLinks).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
