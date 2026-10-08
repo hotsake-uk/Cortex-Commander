@@ -149,6 +149,8 @@ namespace {
 					current.TeamCooldownMS = std::max(0, std::stoi(value));
 				} else if (key == "Urgent") {
 					current.Urgent = std::stoi(value) != 0;
+				} else if (key == "Order") {
+					current.Order = std::stoi(value) != 0;
 				} else {
 					g_ConsoleMan.PrintString("WARNING: " + path + " line " + std::to_string(lineNumber) + ": unknown property \"" + key + "\"; passed over.");
 				}
@@ -243,7 +245,12 @@ void UnitSpeech::LoadAll() {
 	RebuildTriggerOn();
 }
 
-bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey) {
+bool UnitSpeech::SayOrder(Actor& actor, const std::string& triggerKey) {
+	actor.GetSpeech().OrderAnsweredMS = std::max(g_TimerMan.GetSimTimeMS(), 1LL);
+	return Say(actor, triggerKey, true);
+}
+
+bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answeringOrder) {
 	if (!s_Enabled || s_ChancePercent <= 0 || actor.GetStatus() >= Actor::DYING) {
 		return false;
 	}
@@ -258,6 +265,10 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey) {
 	// (A time ahead of now is from before the sim clock was last reset: taken as long ago.)
 	auto recently = [now](long long then, int windowMS) { return then > 0 && then <= now && now - then < windowMS; };
 
+	// An order a command has just answered (or chosen not to) isn't answered again by the AI's guess at it.
+	if (definition.Order && !answeringOrder && recently(state.OrderAnsweredMS, 1500)) {
+		return false;
+	}
 	// Still saying something (and a moment's pause after it), unless this can't wait.
 	if (!state.Text.empty() && recently(state.StartMS, state.DurationMS + 400) && !definition.Urgent) {
 		return false;

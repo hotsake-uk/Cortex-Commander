@@ -647,6 +647,7 @@ namespace SandboxDetail {
 	};
 
 	inline std::map<long, Plan> s_Plans; //!< Units' plans by unique ID (a map, so they're stepped in a fixed order).
+	inline const char* s_MoveAnswer = nullptr; //!< While a group move is sent: the trigger its units answer with in place of a plain move's (unit speech).
 	inline bool s_FollowingPlan = false; //!< Set while a plan's step is being given, so giving it doesn't drop the plan.
 
 	/// Why and when a unit was last sent somewhere, for the sandbox orders overlay: kept by unique ID, the dead pruned when the list grows.
@@ -1233,6 +1234,8 @@ namespace SandboxDetail {
 	void HoldUnit(Actor* unit);
 	void ApplyPendingOrders();
 	void GiveOrder(Actor* actor, Order order);
+	void AnswerOrder(Actor* unit, const char* trigger);
+	const char* OrderTrigger(Order order);
 	void ReturnDefenders();
 	void ActivateSide(int team);
 	void Detonate(const char* presetName, const Vector& position);
