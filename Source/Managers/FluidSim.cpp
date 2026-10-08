@@ -1261,6 +1261,11 @@ void FluidSim::Update() {
 			terrain->SetFGColorPixel(targetX, targetY, color);
 			terrain->SetMaterialPixel(x, y, leftMaterial);
 			terrain->SetFGColorPixel(x, y, leftColor);
+			// Burning fuel (oil) takes its fire with it, so a lit slick that flows keeps burning and a burning stream runs downhill (M-3). Only
+			// while something burns: a map lookup or two a move.
+			if (anyFire && (TerrainFire::IsFlammable(material) || (swapped && TerrainFire::IsFlammable(leftMaterial)))) {
+				TerrainFire::MoveBurning(x, y, targetX, targetY);
+			}
 			s_Active.Remove(key);
 			// Running along the level without getting any lower counts towards coming to rest, so ripples die down.
 			int newStill = gotLower ? 0 : (waitingToSearch ? still : still + 1);
