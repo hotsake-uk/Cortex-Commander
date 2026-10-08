@@ -95,7 +95,7 @@ namespace RTE {
 		Vector Anchor;
 		bool Ladder = false; //!< Rungs of the Ladder material in or beside this cell: a way up and down for a climber (the anchor is where its body climbs).
 
-		bool m_Navigable; //!< Whether this node can be navigated through.
+		bool m_Navigable = true; //!< Whether this node can be navigated through.
 
 		float Surface = -1.0F; //!< The ground surface in this node's column within its cell, or -1 for none (the node is in the air, or buried).
 		int FreeHeight = 0; //!< Air above the surface (or above the centre, for a node in the air) in the node's column, up to c_ClearanceReach.
