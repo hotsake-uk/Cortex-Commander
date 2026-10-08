@@ -118,6 +118,7 @@ namespace RTE {
 
 	private:
 		static constexpr int c_MaxScreens = 4; //!< Player screens; sizes the per-screen arrays below, so it comes first.
+		static constexpr float c_ShelterMaxSlope = 6.0F; //!< Pixels across per pixel down past which weather is too level for the shelter map, and is marched instead.
 		/// A GL texture with an optional framebuffer.
 		struct GLTarget {
 			GLuint Texture = 0;
@@ -206,6 +207,16 @@ namespace RTE {
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
+		GLTarget m_SunMap; //!< The sun's shadow map (LightingSettings::SunShadowMap): 1 row, R32F, for each ray from the sun the scene y of the first solid point on it.
+		float m_SunMapSlope = 0.0F; //!< How far a ray moves in x per pixel down, as the map was last made.
+		float m_SunMapStart = 0.0F; //!< Where its first ray crosses the top of the scene.
+		float m_SunMapTexel = 1.0F; //!< Scene pixels between its rays.
+		bool m_SunMapReady = false; //!< It's been made for this scene and is in use.
+		GLTarget m_ShelterMap; //!< The weather's shelter map (LightingSettings::ShelterMask): the same kind of strip as the sun's, its rays coming down the way rain or snow falls and stopping at anything solid.
+		float m_ShelterMapSlope = 0.0F; //!< How far a ray moves in x per pixel down, as the map was last made.
+		float m_ShelterMapStart = 0.0F; //!< Where its first ray crosses the top of the scene.
+		float m_ShelterMapTexel = 1.0F; //!< Scene pixels between its rays.
+		bool m_ShelterMapReady = false; //!< It's been made for this scene and the weather and is in use.
 		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers. R = sky light, G = how much of the sun (or moon) is visible.
 		bool m_RecordDebugLights = false; //!< Whether LightPlayerScreen keeps the first screen's lights for the light sources overlay.
 		std::vector<DebugLight> m_DebugLights; //!< The first screen's lights from the last frame recorded.
@@ -272,6 +283,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_PropagateShader;
 		std::unique_ptr<Shader> m_FogUpdateShader;
 		std::unique_ptr<Shader> m_WetnessUpdateShader;
+		std::unique_ptr<Shader> m_SunShadowMapShader;
 		std::unique_ptr<Shader> m_PointLightShader;
 		std::unique_ptr<Shader> m_LampCacheApplyShader;
 		std::unique_ptr<Shader> m_OccluderSeedShader;
@@ -358,6 +370,31 @@ namespace RTE {
 		/// Steps the wetness map (LightingSettings::WetnessMap) on by game time: rain wets the ground and fills dips, and it dries after, rock slower than earth.
 		/// @param seconds Game seconds since the last call.
 		void UpdateWetMap(float seconds);
+
+		/// Keeps the sun's shadow map (LightingSettings::SunShadowMap) up to date: remakes it when the ground changed or the sun has moved enough to shift a shadow at the
+		/// bottom of the scene by a couple of pixels. Lets it go when it's off or can't be used (a scene that wraps vertically has no top for the sun to come in from).
+		/// @param terrainChanged Whether the light grid's terrain changed this frame. @param changedArea Where, in scene pixels: min x, min y, end x, end y.
+		void UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& changedArea);
+
+		/// Keeps the weather's shelter map (LightingSettings::ShelterMask) up to date, the same way as the sun's: remade when the ground changed or the wind or the weather has
+		/// turned the way it falls enough to move a shelter's edge. Made while rain, snow or ash is falling or wetness or snow is left on the ground, and only for weather falling
+		/// no flatter than c_ShelterMaxSlope; otherwise what uses it marches the light grid as before.
+		/// @param terrainChanged Whether the ground changed this frame. @param changedArea The scene area it changed in, x y to z w.
+		void UpdateShelterMap(bool terrainChanged, const glm::ivec4& changedArea);
+
+		/// Marches the rays of a strip like the sun's shadow map through the light grid: the whole strip when it's new or its slope has moved, or else just the rays through
+		/// the area where the ground changed.
+		/// @param map The strip. @param mapSlope, mapStart, mapTexel, ready Its layout as last made, and whether it's in use: updated here.
+		/// @param slope How far its rays move in x per pixel down. @param channel Which channel of the light grid stops them. @param threshold From how full a cell they stop.
+		/// @param terrainChanged Whether the ground changed this frame. @param changedArea The scene area it changed in, x y to z w.
+		void MarchCoverStrip(GLTarget& map, float& mapSlope, float& mapStart, float& mapTexel, bool& ready, float slope, int channel, float threshold, bool terrainChanged, const glm::ivec4& changedArea);
+
+		/// Sets the shelter map's uniforms on a shader that reads it (Precipitation.vert, RainSplash.frag, Terrain.frag).
+		/// @param shader The shader, enabled. @param use Whether it should use the map. @param unit The texture unit the map is bound to.
+		void SetShelterUniforms(const Shader& shader, bool use, int unit) const;
+
+		/// The way rain, snow or ash falls on average, in pixels per second (y down), for the shelter map and the ground's weather cover.
+		glm::vec2 WeatherFall() const;
 
 		/// Brings the flow field (m_FlowTexture) up to date with the liquid moving this frame, clearing and uploading only the tiles that had or have moving liquid in them.
 		void UpdateFlowField();

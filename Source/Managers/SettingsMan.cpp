@@ -258,6 +258,10 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	});
 	MatchProperty("UnitShadows", { g_PostProcessMan.GetLightingSettings().UnitShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadows", { g_PostProcessMan.GetLightingSettings().SunShadows = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SunShadowMap", { g_PostProcessMan.GetLightingSettings().SunShadowMap = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ShelterMask", { g_PostProcessMan.GetLightingSettings().ShelterMask = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ShelterSoftness", { g_PostProcessMan.GetLightingSettings().ShelterSoftness = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SunShadowSoftness", { g_PostProcessMan.GetLightingSettings().SunShadowSoftness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ContactShading", { g_PostProcessMan.GetLightingSettings().ContactShading = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingAmbient", {
@@ -303,6 +307,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("GIBounce", { g_PostProcessMan.GetLightingSettings().GIBounce = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingIndirect", { g_PostProcessMan.GetLightingSettings().IndirectLight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostScanlines", { g_PostProcessMan.GetLightingSettings().Scanlines = std::stof(reader.ReadPropValue()); });
+	MatchProperty("CRTStyle", { g_PostProcessMan.GetLightingSettings().CRTStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 3); });
+	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
@@ -323,6 +330,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("FireFlameBrightness", { g_PostProcessMan.GetLightingSettings().FireFlameBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ShockwaveStrength", { g_PostProcessMan.GetLightingSettings().ShockwaveStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SmokeShading", { g_PostProcessMan.GetLightingSettings().SmokeShading = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("SmokeShadingStrength", { g_PostProcessMan.GetLightingSettings().SmokeShadingStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EffectsParticles", { g_PostProcessMan.GetLightingSettings().EffectsParticles = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Headlamps", { g_PostProcessMan.GetLightingSettings().Headlamps = std::stoi(reader.ReadPropValue()) != 0; });
@@ -589,6 +598,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightShadowSoftness", lighting.LightShadowSoftness);
 	writer.NewPropertyWithValue("UnitShadows", lighting.UnitShadows);
 	writer.NewPropertyWithValue("SunShadows", lighting.SunShadows);
+	writer.NewPropertyWithValue("SunShadowMap", lighting.SunShadowMap);
+	writer.NewPropertyWithValue("SunShadowSoftness", lighting.SunShadowSoftness);
+	writer.NewPropertyWithValue("ShelterMask", lighting.ShelterMask);
+	writer.NewPropertyWithValue("ShelterSoftness", lighting.ShelterSoftness);
 	writer.NewPropertyWithValue("ContactShading", lighting.ContactShading);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
@@ -596,6 +609,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingMetals", lighting.Metals);
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);
+	writer.NewPropertyWithValue("CRTStyle", lighting.CRTStyle);
+	writer.NewPropertyWithValue("UpscaleSharpness", lighting.UpscaleSharpness);
+	writer.NewPropertyWithValue("IntegerScaling", g_WindowMan.GetIntegerScaling());
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
 	writer.NewPropertyWithValue("RadianceCascades", lighting.RadianceCascades);
 	writer.NewPropertyWithValue("GIStrength", lighting.GIStrength);
@@ -617,6 +633,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("Embers", lighting.Embers);
 	writer.NewPropertyWithValue("EffectsParticles", lighting.EffectsParticles);
 	writer.NewPropertyWithValue("SmokeScattering", lighting.SmokeScattering);
+	writer.NewPropertyWithValue("SmokeShading", lighting.SmokeShading);
+	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);
 	writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
 	writer.NewPropertyWithValue("Stains", lighting.Stains);
 	writer.NewPropertyWithValue("StainSurface", lighting.StainSurface);

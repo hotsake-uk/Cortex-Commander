@@ -5,12 +5,56 @@
 #include "Actor.h"
 #include "PostProcessMan.h"
 #include "Draw.h"
+#include "Texture.h"
+#include "allegro.h"
 #include "FrameMan.h"
 #include <array>
+#include <mutex>
+#include <unordered_map>
 
 using namespace RTE;
 
 ConcreteClassInfo(MOSParticle, MovableObject, 1000);
+
+namespace {
+	/// The average colour of a sprite's drawn pixels, as 0xRRGGBB: what colour its smoke is. Worked out once per sprite frame.
+	unsigned int SpriteColor(const BitmapTexture* sprite) {
+		static std::unordered_map<const BitmapTexture*, unsigned int> cache;
+		static std::mutex cacheMutex;
+		if (!sprite) {
+			return 0xF2E6D9;
+		}
+		std::scoped_lock lock(cacheMutex);
+		auto found = cache.find(sprite);
+		if (found != cache.end()) {
+			return found->second;
+		}
+		unsigned int color = 0xF2E6D9;
+		if (BITMAP* bitmap = sprite->GetBitmap(); bitmap && bitmap_color_depth(bitmap) == 8) {
+			unsigned long red = 0;
+			unsigned long green = 0;
+			unsigned long blue = 0;
+			unsigned long count = 0;
+			for (int y = 0; y < bitmap->h; ++y) {
+				for (int x = 0; x < bitmap->w; ++x) {
+					int index = _getpixel(bitmap, x, y);
+					if (index != 0) {
+						unsigned int rgb = EffectsParticles::ColorToRGB(Color(index));
+						red += (rgb >> 16) & 0xFF;
+						green += (rgb >> 8) & 0xFF;
+						blue += rgb & 0xFF;
+						++count;
+					}
+				}
+			}
+			if (count > 0) {
+				color = static_cast<unsigned int>(((red / count) << 16) | ((green / count) << 8) | (blue / count));
+			}
+		}
+		cache.emplace(sprite, color);
+		return color;
+	}
+} // namespace
 
 MOSParticle::MOSParticle() {
 	Clear();
@@ -257,6 +301,6 @@ void MOSParticle::Draw(const Camera& camera) const {
 	if (m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir) {
 		float density = m_Lifetime > 0 ? std::clamp(1.0F - static_cast<float>(GetAge()) / static_cast<float>(m_Lifetime), 0.0F, 1.0F) : 1.0F;
 		Vector center = GetRenderPos();
-		EffectsParticles::RegisterSmoke(this, glm::vec2(center.m_X, center.m_Y), m_SpriteRadius, density);
+		EffectsParticles::RegisterSmoke(this, glm::vec2(center.m_X, center.m_Y), m_SpriteRadius, density, SpriteColor(m_Sprites[m_Frame].get()));
 	}
 }

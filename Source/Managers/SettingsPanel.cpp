@@ -210,6 +210,11 @@ void DebugMan::SettingsGUI() {
 		Tip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
 		Slider("Rain splashes", &settings.RainSplashes, 0.0F, 2.0F);
 		Tip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
+		Check("Exact shelter from the weather", &settings.ShelterMask);
+		Tip("Rain, snow and ash stay out from under overhangs, roofs and caves right to the edge, however high up the shelter is, and slant in on the windward side. Off: drops look a few hundred pixels up for shelter and miss anything higher, as before.");
+		if (settings.ShelterMask) {
+			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
+		}
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
 		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
 		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
@@ -265,6 +270,11 @@ void DebugMan::SettingsGUI() {
 		Tip("How much less light there is on the scene from eleven to two than at nightfall. 0.5 is half. Lamps, fires and headlamps aren't dimmed.");
 		Slider("Sun in the sky", &settings.SunDisc, 0.0F, 2.0F);
 		Slider("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
+		Check("Crisp sun shadows", &settings.SunShadowMap);
+		Tip("Shadows of hills, bunkers and overhangs are sharp right next to them and softer further off, and they follow the sun as it moves. Off: softer, blockier shadows from the light grid that catch up with the sun over a few frames. On from the Low preset up.");
+		if (settings.SunShadowMap) {
+			Slider("Sun shadow softness", &settings.SunShadowSoftness, 0.0F, 2.0F);
+		}
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		Check("Clouds in the sky", &settings.CloudLayer);
 		Tip("Clouds drift across the sky with the wind, the same clouds whose shadows cross the ground. They gather and darken in rain, snow and ash fall, break up again after, and catch the colours of dawn and dusk. Off: an empty sky, as before. On from the Medium preset up.");
@@ -474,6 +484,13 @@ void DebugMan::SettingsGUI() {
 		Slider("Soft smoke", &settings.SoftSmoke, 0.0F, 3.0F);
 		Tip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		Slider("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);
+		if (settings.SmokeScattering > 0.0F) {
+			Check("Smoke shades itself", &settings.SmokeShading);
+			Tip("Smoke takes its own colour, is lit on the side towards a fire, lamp or the sun and dark on the far side, and the sun paints its top. Off: one pale tint lit evenly through, as before.");
+			if (settings.SmokeShading) {
+				Slider("Smoke shading strength", &settings.SmokeShadingStrength, 0.0F, 1.0F);
+			}
+		}
 		Slider("Embers", &settings.Embers, 0.0F, 3.0F);
 		Check("Flames on burning ground", &settings.FireShader);
 		Tip("Burning ground is drawn as flames: tongues that lick and flicker, a darker core at the base and embers lifting off the tips, grouped along the fire front. Off: a flickering dot and a short tongue per burning pixel, as before.");
@@ -572,6 +589,14 @@ void DebugMan::SettingsGUI() {
 		Slider("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 		Slider("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 		Slider("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
+		if (settings.Scanlines > 0.0F) {
+			Combo("CRT style", &settings.CRTStyle, "Scanlines\0Aperture grille\0Shadow mask\0Scanlines with bloom\0");
+			Tip("What the CRT effect looks like: dark lines between rows (as before), the vertical colour stripes of a Trinitron-style tube, the dot triads of a shadow-mask tube, or scanlines that bright pixels bloom across.");
+		}
+		Slider("Upscale sharpness", &settings.UpscaleSharpness, 0.0F, 1.0F);
+		Tip("How crisp the picture is when it's scaled up to the window. 1: every game pixel an even, sharp block (as before). 0: plainly smoothed.");
+		Toggle("Whole-number scaling", g_WindowMan.GetIntegerScaling(), [](bool on) { g_WindowMan.SetIntegerScaling(on); });
+		Tip("Scale the picture to the window by a whole number only, so every game pixel is exactly as many screen pixels, with bars around it. Off: fill as much of the window as fits.");
 		Check("Grade answers events", &settings.EventLooks);
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {

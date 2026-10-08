@@ -63,6 +63,8 @@ namespace RTE {
 			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
 			// Low lights its steady scenery lamps once into a map instead of every frame.
 			LampCache = quality == QualityLow;
+			// The sun's shadow map: remade only when the ground changes or the sun moves, from Low up (Potato has no sun shadows).
+			SunShadowMap = quality >= QualityLow;
 			// The wetness map: one small pass over the light grid a frame, from Medium up.
 			WetnessMap = quality >= QualityMedium;
 			// The cloud layer: a few noise reads per sky pixel, from Medium up.
@@ -215,6 +217,8 @@ namespace RTE {
 		bool LightShadowField = true; //!< Lights' terrain shadows are traced through a distance field of the terrain: thin walls stop light instead of leaking it, and shadows soften with distance from what casts them. Off: eleven evenly spaced samples of the light grid, as before.
 		float LightShadowSoftness = 1.0F; //!< How soft those shadows' edges are, 0 (sharp) to 2. Bigger lights soften more.
 		float UnitShadows = 0.85F; //!< How dark the shadows are that solid objects (units, devices, doors, wreckage) cast from lights and from the sun, 0 to 1. 0 turns them off.
+		bool SunShadowMap = true; //!< Sun (and moon) shadows from a shadow map of the scene: pixel-sharp next to what casts them and softer further off, and they follow the sun at once. Off: from the light grid, 4 px cells that catch up with the sun over a few frames, as before.
+		float SunShadowSoftness = 1.0F; //!< How soft those shadows grow with distance from what casts them, 0 (sharp) to 2.
 		float SunShadows = 0.55F; //!< Directional daylight: how much dimmer and cooler ground, walls and units are where the sun (or the moon at night) can't be seen, 0 to 1. 0 turns it off.
 		float ContactShading = 0.4F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
@@ -222,6 +226,8 @@ namespace RTE {
 		bool RadianceCascades = false; //!< Global illumination by radiance cascades: glows light their surroundings with soft occlusion, and light bounces off surfaces. Replaces the simpler indirect light.
 		float GIStrength = 1.0F; //!< Brightness of the radiance cascades light.
 		float GIBounce = 0.5F; //!< How much of the light reaching surfaces they pass on.
+		int CRTStyle = 0; //!< What the CRT effect (Scanlines sets how strong) looks like: 0 scanlines, as before; 1 an aperture grille; 2 a shadow mask; 3 scanlines that bright pixels bloom across.
+		float UpscaleSharpness = 1.0F; //!< How crisp the picture is when scaled up to the window: 1 even, sharp pixels as before, down to 0 plainly smoothed.
 		float Scanlines = 0.0F; //!< CRT style scanlines on the final image, 0 (off) to 1.
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
 		float Metals = 1.0F; //!< How strongly metallic surfaces mirror their surroundings (sky from above, ground from below) and glint in the sun, 0 for none.
@@ -256,6 +262,8 @@ namespace RTE {
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
 		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.
+		bool ShelterMask = true; //!< Where rain, snow and ash can't reach, from a shelter map of the scene made the way the weather falls: overhangs, roofs and caves keep drops, splashes, wetness and snow out right to the edge, however far up the shelter is. Off: each drop and each patch of ground marches up the light grid to look for shelter, as before, which gives up a few hundred pixels up.
+		float ShelterSoftness = 1.0F; //!< How soft the edge of a shelter is for drops and splashes, 0 (ruled) to 2 (spread up to eight pixels either way).
 		float RainSplashes = 1.0F; //!< How many little splashes rain makes where it lands on ground, water, roofs and units. 0 for none. Visual only.
 		float WeatherLight = 0.35F; //!< The least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it. 0 leaves it to the sky and lamps.
 		float TracerGlow = 0.8F; //!< How strongly tracers and their trails shine in their own color (and so bloom), 0 for none.
@@ -320,6 +328,8 @@ namespace RTE {
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.
 		float EffectsParticles = 1.0F; //!< Amount of visual sparks, dust and debris from explosions and impacts, 0 to disable.
+		bool SmokeShading = true; //!< Smoke takes its own colour, shadows itself (dark on the side away from a fire or the sun, lit on the near side) and has its top painted by the sun. Off: one pale tint lit evenly through, as before.
+		float SmokeShadingStrength = 1.0F; //!< How strongly, 0 to 1.
 		float SmokeScattering = 1.0F; //!< How brightly smoke catches the light passing through it (fire, muzzle flashes, lamps), 0 to disable.
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.

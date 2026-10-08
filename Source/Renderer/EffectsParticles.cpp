@@ -69,6 +69,7 @@ namespace {
 		glm::vec2 Position;
 		float Radius;
 		float Density;
+		unsigned int Color; //!< 0xRRGGBB.
 	};
 	std::vector<SmokeEntry> s_Smoke;
 	std::unordered_set<const void*> s_SmokeSeen;
@@ -569,12 +570,12 @@ unsigned int EffectsParticles::GetPuffTexture() {
 	return GetPuffTexture_();
 }
 
-void EffectsParticles::RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density) {
+void EffectsParticles::RegisterSmoke(const void* object, const glm::vec2& position, float radius, float density, unsigned int color) {
 	bool puff = false;
 	{
 		std::scoped_lock lock(s_SmokeMutex);
 		if (s_SmokeSeen.insert(object).second) {
-			s_Smoke.push_back({position, radius, density});
+			s_Smoke.push_back({position, radius, density, color});
 			// Every puff of the game's smoke (a little drawn sprite) trails soft smoke of this kind as well, so smoke billows and hangs instead of being a cluster of sprites.
 			// One soft puff from each sprite every so many frames, each sprite on its own beat.
 			float amount = g_PostProcessMan.GetLightingSettings().SoftSmoke;
@@ -658,7 +659,8 @@ void EffectsParticles::GetSmoke(const glm::vec2& screenOrigin, int width, int he
 		if (position.x < -size || position.y < -size || position.x > static_cast<float>(width) + size || position.y > static_cast<float>(height) + size) {
 			continue;
 		}
-		smoke.push_back({position, size, glm::vec4(1.0F, 1.0F, 1.0F, entry.Density)});
+		glm::vec3 color(static_cast<float>((entry.Color >> 16) & 0xFF), static_cast<float>((entry.Color >> 8) & 0xFF), static_cast<float>(entry.Color & 0xFF));
+		smoke.push_back({position, size, glm::vec4(color / 255.0F, entry.Density)});
 	}
 }
 
