@@ -324,7 +324,7 @@ void PerformanceMan::Draw(BITMAP* bitmapToDrawTo) {
 
 		float fps = 1.0F / (m_MSPFAverage / 1000.0F);
 		float ups = 1.0F / (m_MSPSUAverage / 1000.0F);
-		std::snprintf(str, sizeof(str), "FPS: %.0f | UPS: %.0f", fps, ups);
+		std::snprintf(str, sizeof(str), "FPS: %.0f | UPS: %.0f   (F6, Debug: the same as a window, and the frame profiler)", fps, ups);
 		guiFont->DrawAligned(&drawBitmap, c_StatsOffsetX, c_StatsHeight, str, GUIFont::Left);
 
 		std::snprintf(str, sizeof(str), "Frame: %.1fms | Update: %.1fms | Draw: %.1fms", m_MSPFAverage, m_MSPUAverage, m_MSPDAverage);
@@ -433,6 +433,7 @@ void PerformanceMan::ImGui() {
 		float fps = 1.0F / (m_MSPFAverage / 1000.0F);
 		float ups = 1.0F / (m_MSPSUAverage / 1000.0F);
 		ImGui::Text("FPS: %.0f UPS: %.0f", fps, ups);
+		ImGui::TextDisabled("RAlt + P draws this over the game. F6, Debug: the frame profiler, part by part.");
 		ImGui::Text("Frame: %.2f | Update: %.1f | Draw: %.1f", m_MSPFAverage, m_MSPUAverage, m_MSPDAverage);
 		float timeScale = g_TimerMan.GetTimeScale();
 		ImGui::Text("TimeScale: "); ImGui::SameLine();

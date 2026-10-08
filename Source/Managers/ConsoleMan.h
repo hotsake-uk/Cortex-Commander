@@ -5,6 +5,7 @@
 #include <deque>
 #include <unordered_set>
 #include <string>
+#include <vector>
 
 #define g_ConsoleMan ConsoleMan::Instance()
 
@@ -105,8 +106,17 @@ namespace RTE {
 		/// @param stringToPrint The string to print.
 		void PrintString(const std::string& stringToPrint);
 
-		/// Opens the console and prints the shortcut help text.
+		/// Opens the console and prints the shortcut help text (GetShortcuts).
 		void ShowShortcuts();
+
+		/// One line of the shortcut list: the keys and what they do, or a heading when Keys is null.
+		struct Shortcut {
+			const char* Keys;
+			const char* What;
+		};
+
+		/// Gets the game's keyboard shortcuts outside the controls a player sets: the list F1 prints and F6's Debug page shows under Keys.
+		static const std::vector<Shortcut>& GetShortcuts();
 
 		/// Updates the state of this ConsoleMan. Supposed to be done every frame before drawing.
 		void Update();

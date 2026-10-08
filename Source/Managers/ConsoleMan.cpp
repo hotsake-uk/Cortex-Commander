@@ -237,37 +237,56 @@ void ConsoleMan::PrintString(const std::string& stringToPrint) {
 	}
 }
 
+const std::vector<ConsoleMan::Shortcut>& ConsoleMan::GetShortcuts() {
+	// (Each checked against where the key is handled: UInputMan::HandleSpecialInput, ConsoleMan::Update, the event loop in Main.cpp, DebugMan.)
+	static const std::vector<Shortcut> shortcuts = {
+	    {nullptr, "Console"},
+	    {"~", "Open or close the console (Esc closes it too)"},
+	    {"RAlt + ~", "The console in read-only mode, leaving the keyboard to the game"},
+	    {"Ctrl + Up / Down", "Make the open console smaller or bigger"},
+	    {"F1", "This list"},
+	    {"F3", "Save the console's text (Console.dump.log)"},
+	    {"F4", "Save what was typed into the console (Console.input.log)"},
+	    {"F10", "Clear the console"},
+	    {nullptr, "Tool windows"},
+	    {"F6", "Settings: everything that can be tuned while the game runs, presets, and the debug pages"},
+	    {"F7", "The sandbox window (in the Sandbox game mode: its tools, or back into your character)"},
+	    {"F8", "Photo mode: frozen time, a free camera, look controls and big screenshots"},
+	    {"Tab", "In a game, hide or bring back every tool window (Sandbox game mode: into your character; Shift + Tab puts it where the mouse points)"},
+	    {"P", "Sandbox game mode: into your character and back above (Shift + P: where the mouse points)"},
+	    {"Ctrl + I", "Inspect the unit under the pointer for the AI debug overlays and tracing, or stop"},
+	    {nullptr, "In a game"},
+	    {"Ctrl + mouse wheel", "Zoom (the wheel alone in the sandbox's god view)"},
+	    {"Esc", "Pause menu (Shift + Esc: straight to the scenario or conquest menu)"},
+	    {"RAlt + R", "Restart the activity (a controller's Back button too)"},
+	    {"F5", "Quick save"},
+	    {"F9", "Load the latest quick save (RAlt + F9: the latest auto save)"},
+	    {nullptr, "Screenshots"},
+	    {"F12", "A screenshot"},
+	    {"RAlt + S", "Screenshots for as long as the keys are held"},
+	    {"RAlt + W", "The whole level as one image (Alt + W: a small preview of it)"},
+	    {nullptr, "Display and performance"},
+	    {"Alt + Enter", "Fullscreen on or off"},
+	    {"RAlt + M", "Draw the scene as normal, by material, or by object"},
+	    {"RAlt + P", "Performance stats over the game (Alt + P: their graphs; 1 / 2 slower or faster, 5 / 6 the update step, RAlt + 1 / 5 back to normal). F6, Debug: the same as a window, and the frame profiler"},
+	    {nullptr, "Modding"},
+	    {"F2", "Reload all Lua scripts"},
+	    {"Alt + F2", "Reload all sprites"},
+	    {"RAlt + F2", "Reload the preset last reloaded with PresetMan:ReloadEntityPreset"},
+	};
+	return shortcuts;
+}
+
 void ConsoleMan::ShowShortcuts() {
 	if (!IsEnabled()) {
 		SetEnabled();
 	}
 
-	PrintString(
-	    "\n--- SHORTCUTS ---\n"
-	    "RALT + ~ - Console in read-only mode without input capture\n"
-	    "RALT + DOWN / UP - Increase/decrease console size (Only while console is open)\n"
-	    "RALT + S - Make continuous screenshots while the keys are held\n"
-	    "RALT + W - Make a screenshot of the entire level\n"
-	    "ALT  + W - Make a miniature preview image of the entire level\n"
-	    "RALT + P - Show performance stats\n"
-	    "ALT  + P - Show advanced performance stats (Only while performance stats are visible)\n"
-	    "RALT + R - Reset activity\n"
-	    "RALT + M - Switch display mode: Draw -> Material -> MO\n"
-	    "RALT + O - Toggle one sim update per frame\n"
-	    "SHIFT + ESC - Skip pause menu when pausing activity (straight to scenario/conquest menu)\n"
-	    "----------------\n"
-	    "F2 - Reload all Lua scripts\n"
-	    "ALT  + F2 - Reload all sprites\n"
-	    "RALT + F2 - Quick reload Entity preset previously reloaded with PresetMan:ReloadEntityPreset\n"
-	    "F3 - Save console log\n"
-	    "F4 - Save console user input log\n"
-	    "F5 - Quick save\n"
-	    "F6 - World Debug window (time of day, weather, lighting, game speed)\n"
-	    "F8 - Photo mode (frozen time, free camera, look controls, screenshots)\n"
-	    "F9 - Load latest quick-save\n"
-	    "RALT + F9 - Load latest auto-save\n"
-	    "F10 - Clear Console log\n"
-	    "F12 - Make a single screenshot");
+	std::string text = "\n--- SHORTCUTS ---";
+	for (const Shortcut& shortcut: GetShortcuts()) {
+		text += shortcut.Keys ? std::string("\n") + shortcut.Keys + " - " + shortcut.What : std::string("\n-- ") + shortcut.What + " --";
+	}
+	PrintString(text);
 }
 
 void ConsoleMan::Update() {

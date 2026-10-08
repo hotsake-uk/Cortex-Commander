@@ -491,6 +491,9 @@ void Sandbox::DrawGUI() {
 			hint += "    Right drag / WASD: move    Wheel: zoom";
 		} else {
 			hint += "    P: back above";
+			if (g_SettingsMan.MantlingEnabled()) {
+				hint += "    Press towards a ledge as you fall past it: grab it";
+			}
 		}
 		if (s_Possessed && s_Possessed == GetRef(s_PlayerUnit)) {
 			if (s_Player.FlyKey) {

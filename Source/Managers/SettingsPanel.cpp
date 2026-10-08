@@ -7,6 +7,7 @@
 #include "ActorWater.h"
 #include "CameraMan.h"
 #include "Controller.h"
+#include "ConsoleMan.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "FrameMan.h"
@@ -911,7 +912,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
 		Check("Night limits AI sight", &settings.NightAffectsAI);
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
-		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right. And in the air: falling past a ledge, or rising beside one as the jet gives out, a unit pressing towards it grabs it and climbs up, if it's going slowly enough.");
 		{
 			float suppression = g_SettingsMan.AISuppression();
 			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
@@ -990,6 +991,7 @@ void DebugMan::SettingsGUI() {
 			}
 		}
 		Check("Performance statistics", &m_ShowPerformanceMan);
+		Tip("A window with the frame, update and draw times, the time scale and update step, the counts of units, particles and objects, the slowest scripts and a graph per counter. RAlt + P draws the same over the game. For where each frame's time goes part by part, the Frame profiler below.");
 		Check("Material under the pointer", &m_ShowMaterialUnderPointer);
 		Tip("Beside the pointer: the terrain material there, its kind (solid, liquid, powder, scrap), and what its behaviour sets of how it flows, burns, puts fire out, freezes, melts, boils, settles or dries, chills, evaporates, hurts what's in it, its liquid look and glow, stains and reactions. What it leaves unset follows the stock rules and isn't listed. Not saved.");
 		FrameProfiler();
@@ -1033,6 +1035,19 @@ void DebugMan::SettingsGUI() {
 			ImGui::SetClipboardText(state.c_str());
 		}
 		Tip("Each inspected unit's state (Ctrl+I over a unit, units selected in the sandbox, the one you control) as one line, to the clipboard. The control link's 'inspect' command gives it as JSON.");
+		// The keyboard shortcuts (UI-60), the same list F1 prints: folded away here, and each one found by the search.
+		if (s_Searching || ImGui::CollapsingHeader("Keys")) {
+			for (const ConsoleMan::Shortcut& shortcut: ConsoleMan::GetShortcuts()) {
+				if (!shortcut.Keys) {
+					Heading(shortcut.What);
+					continue;
+				}
+				std::string line = std::string(shortcut.Keys) + ": " + shortcut.What;
+				if (Shown(line.c_str())) {
+					ImGui::TextWrapped("%s", line.c_str());
+				}
+			}
+		}
 		if (!Plain()) {
 			return;
 		}
