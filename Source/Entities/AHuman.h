@@ -320,7 +320,7 @@ namespace RTE {
 		int MoveAlongRoute();
 
 		/// Forgets the route-follower's state (a new order, or another behaviour taking over).
-		void ResetRouteMovement();
+		void ResetRouteMovement() override;
 
 		/// Gets whether this is getting up from having been knocked over (see UpdateGetUp).
 		/// @return Whether it is getting up.
