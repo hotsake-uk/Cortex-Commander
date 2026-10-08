@@ -1357,6 +1357,13 @@ int AHuman::MoveAlongRoute() {
 		ResetRouteMovement();
 	}
 	mover.lastCallTick = tick;
+	// Pulling up onto a ledge (a mantle, or a ledge caught in the air, LM-6): the body is the mantle's until it is over. The flight in hand
+	// waits for it, so a catch under the landing ends on the landing (judged there, the route popped to it) rather than being taken for a
+	// flight out of fuel short of it while the hands pulled.
+	if (m_Mantling) {
+		mover.progressTimer.Reset();
+		return RouteMover::Moving;
+	}
 	if (g_SettingsMan.NavDebugOverlay() >= 2) {
 		RecordFlightDebug();
 		DrawMoverDebug();

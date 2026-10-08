@@ -2774,6 +2774,21 @@ void AHuman::Update() {
 			bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
 		}
 		TryStartMantle(m_pHead, rising, bodyWidth);
+		// Or a ledge caught in the air (LM-6): on the side pressed; and for the route-follower with the jet giving out under a flight's
+		// landing beside it, that landing's lip, whatever is pressed (the catch before the flight is judged failed).
+		if (!m_Mantling) {
+			float catchDir = 0.0F;
+			float lipNearY = -1.0F;
+			const RouteMover::Flight& flight = m_Mover.flight;
+			if (!m_Controller.IsPlayerControlled() && flight.active && !flight.step && m_pJetpack && (flight.refuelling || m_pJetpack->GetJetTimeLeft() < 60.0F)) {
+				float toLanding = g_SceneMan.ShortestDistance(m_Pos, flight.landing).m_X;
+				if (std::abs(toLanding) < m_CharHeight) {
+					catchDir = toLanding < 0.0F ? -1.0F : 1.0F;
+					lipNearY = flight.floorY;
+				}
+			}
+			TryCatchLedge(m_pHead, bodyWidth, catchDir, lipNearY);
+		}
 	}
 	if (m_Mantling) {
 		UpdateMantle();
