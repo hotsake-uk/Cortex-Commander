@@ -650,6 +650,9 @@ namespace RTE {
 		std::unordered_map<std::string, bool> m_EnabledGlobalScripts; //!< Map of the global script names we enabled.
 
 	private:
+		/// Reads one property, letting std::stoi and std::stof throw on a bad value (ReadProperty catches it).
+		int ReadPropertyUnchecked(const std::string_view& propName, Reader& reader);
+
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
 
 		std::string m_SettingsPath; //!< String containing the Path to the Settings.ini file.
