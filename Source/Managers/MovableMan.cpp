@@ -1620,6 +1620,7 @@ void MovableMan::Update() {
 						(*iIt)->SetRestThreshold(500);
 					}
 					m_Particles.push_back(*iIt);
+					m_ValidParticles.insert(*iIt);
 					m_ValidItems.erase(*iIt);
 					iIt++;
 				}
