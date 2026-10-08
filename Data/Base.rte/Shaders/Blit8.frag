@@ -18,6 +18,13 @@ uniform vec4 rteColor;
 uniform bool rteReplaceColor;
 uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows.
 uniform float rteRelief; // How much the sprite's own shading counts as relief for the lighting, 0 for none.
+// A sprite's authored maps (MOSprite's NormalMapFile and EmissiveMapFile), true colour, one image per frame, the size of the frame.
+uniform bool rteHasNormalMap; // RGB = normal * 0.5 + 0.5, x to the right and y up the image, as most tools write them. Alpha 0 leaves a pixel to the automatic normal.
+uniform sampler2D rteNormalMap;
+uniform bool rteHasEmissiveMap; // How much each pixel glows, in its own colour: the brightest of RGB, times alpha.
+uniform sampler2D rteEmissiveMap;
+uniform vec4 rteMapUVRect; // Where the frame sits in rteTexture (xy corner, zw size, in UV): the sprite atlas puts it anywhere, the maps are the frame alone.
+uniform float rteMapStrength; // How much the authored maps count over the automatic ones, 0 to 1.
 
 vec4 textureAA(sampler2D tex, vec2 uv) {
 	vec2 texsize = vec2(textureSize(tex, 0));
@@ -85,6 +92,13 @@ vec2 ReliefTilt(vec2 uvDx, vec2 uvDy) {
 	return -(transpose(uvPerPixel) * gradient) * 2.2;
 }
 
+// The frame's pixel in its authored maps.
+ivec2 MapTexel(sampler2D map) {
+	ivec2 size = textureSize(map, 0);
+	vec2 frameUV = (textureUV - rteMapUVRect.xy) / max(rteMapUVRect.zw, vec2(1e-6));
+	return clamp(ivec2(floor(frameUV * vec2(size))), ivec2(0), size - 1);
+}
+
 void main() {
 	// Derivatives must be taken in uniform control flow, before any discard.
 	vec2 uvDx = dFdx(textureUV);
@@ -131,6 +145,21 @@ void main() {
 		emissive = max(emissive, heat * 0.85);
 	}
 	vec3 normal = normalize(EdgeNormal(uvDx, uvDy) + vec3(relief, 0.0));
+	if (rteHasNormalMap) {
+		// The artist's normal, brought from the image's axes onto the screen the same way the automatic tilt is (which handles turning, flipping and scaling),
+		// and as steep as the relief setting makes the art's own shading.
+		vec4 authored = texelFetch(rteNormalMap, MapTexel(rteNormalMap), 0);
+		vec2 tilt = vec2(authored.r, 1.0 - authored.g) * 2.0 - 1.0; // Image y up becomes texture y down.
+		vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+		vec2 screenTilt = transpose(mat2(uvDx / texel, uvDy / texel)) * tilt;
+		screenTilt = dot(screenTilt, screenTilt) > 1e-8 ? normalize(screenTilt) * length(tilt) : vec2(0.0);
+		vec3 drawn = normalize(vec3(screenTilt * clamp(rteRelief / 0.6, 0.0, 2.0), max(authored.b * 2.0 - 1.0, 0.05)));
+		normal = normalize(mix(normal, drawn, rteMapStrength * authored.a));
+	}
+	if (rteHasEmissiveMap) {
+		vec4 glow = texelFetch(rteEmissiveMap, MapTexel(rteEmissiveMap), 0);
+		emissive = max(emissive, max(glow.r, max(glow.g, glow.b)) * glow.a * rteMapStrength);
+	}
 	// An object that says what it's made of is as glossy as that; the palette's guess (greys are metal or concrete) only counts in full for things that don't say, like particles.
 	bool hasSurface = vertexSurface.r + vertexSurface.g > 0.0;
 	if (hasSurface) {

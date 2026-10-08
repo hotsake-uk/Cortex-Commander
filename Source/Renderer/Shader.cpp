@@ -71,6 +71,7 @@ int Shader::Create(const Shader& ref) {
 	m_HealthUniform = ref.m_HealthUniform;
 	m_StrengthUniform = ref.m_StrengthUniform;
 	m_ReliefUniform = ref.m_ReliefUniform;
+	m_SpriteMapUniforms = ref.m_SpriteMapUniforms;
 	m_Valid = ref.m_Valid;
 	m_AbortOnError = ref.m_AbortOnError;
 	std::copy(ref.m_Locations.begin(), ref.m_Locations.end(), m_Locations.begin());
@@ -106,6 +107,7 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 			m_HealthUniform = GetUniformLocation("rteHealth");
 			m_StrengthUniform = GetUniformLocation("rteStrength");
 			m_ReliefUniform = GetUniformLocation("rteRelief");
+			m_SpriteMapUniforms = {GetUniformLocation("rteNormalMap"), GetUniformLocation("rteHasNormalMap"), GetUniformLocation("rteEmissiveMap"), GetUniformLocation("rteHasEmissiveMap"), GetUniformLocation("rteMapUVRect"), GetUniformLocation("rteMapStrength")};
 			result = true;
 		} else {
 			result = false;

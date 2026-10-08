@@ -84,6 +84,7 @@ void RenderBatch::BeginFrame() {
 	m_ObjectUniforms.clear();
 	m_ShaderBeforeObject = nullptr;
 	m_InObjectShader = false;
+	m_ObjectMapUniforms.clear();
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 	RecycleDrawCalls();
@@ -218,6 +219,9 @@ void RenderBatch::Render() {
 		}
 
 		GL_CHECK(glDrawElements(drawCall->m_DrawMode, static_cast<GLsizei>(indexCount), GL_UNSIGNED_INT, (GLvoid*)(indexOffset * sizeof(GLuint))));
+		for (auto& uniform: drawCall->m_UniformValues) {
+			uniform->Reset();
+		}
 		indexOffset += static_cast<GLuint>(indexCount);
 		drawIndex = nextIndex;
 	}

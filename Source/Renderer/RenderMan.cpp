@@ -191,6 +191,9 @@ std::shared_ptr<DrawCall> RenderMan::BeginDraw() {
 	if (m_ActiveBatch->m_InObjectShader) {
 		drawCall->m_UniformValues = m_ActiveBatch->m_ObjectUniforms;
 	}
+	if (!m_ActiveBatch->m_ObjectMapUniforms.empty()) {
+		drawCall->m_UniformValues.insert(drawCall->m_UniformValues.end(), m_ActiveBatch->m_ObjectMapUniforms.begin(), m_ActiveBatch->m_ObjectMapUniforms.end());
+	}
 	m_ActiveBatch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
 	return drawCall;
 }
@@ -211,6 +214,60 @@ void RenderMan::BeginObjectShader(const Shader* shader, float time, float object
 		if (location >= 0) {
 			uniforms.push_back(std::make_shared<FloatValue>(location, value));
 		}
+	}
+}
+
+namespace {
+	/// A sprite's authored maps for one draw: binds them on their units and says they're there, and says they're gone again after the draw, since the next draws share the program.
+	class SpriteMapsValue : public UniformValueType {
+	public:
+		SpriteMapsValue(const Shader::SpriteMapUniforms& uniforms, GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength) :
+		    UniformValueType(uniforms.HasNormalMap), m_Uniforms(uniforms), m_NormalMap(normalMap), m_EmissiveMap(emissiveMap), m_SpriteUV(spriteUV), m_Strength(strength) {}
+
+		void Enable() override {
+			static constexpr GLint c_NormalUnit = 12;
+			static constexpr GLint c_EmissiveUnit = 13;
+			if (m_NormalMap && m_Uniforms.NormalMap >= 0) {
+				glActiveTexture(GL_TEXTURE0 + c_NormalUnit);
+				glBindTexture(GL_TEXTURE_2D, m_NormalMap);
+				glUniform1i(m_Uniforms.NormalMap, c_NormalUnit);
+				glUniform1i(m_Uniforms.HasNormalMap, 1);
+			}
+			if (m_EmissiveMap && m_Uniforms.EmissiveMap >= 0) {
+				glActiveTexture(GL_TEXTURE0 + c_EmissiveUnit);
+				glBindTexture(GL_TEXTURE_2D, m_EmissiveMap);
+				glUniform1i(m_Uniforms.EmissiveMap, c_EmissiveUnit);
+				glUniform1i(m_Uniforms.HasEmissiveMap, 1);
+			}
+			// Draw call textures are bound to unit 1, which the batch expects to find active.
+			glActiveTexture(GL_TEXTURE1);
+			glUniform4f(m_Uniforms.UVRect, m_SpriteUV.x, m_SpriteUV.y, m_SpriteUV.z, m_SpriteUV.w);
+			glUniform1f(m_Uniforms.Strength, m_Strength);
+		}
+
+		void Reset() override {
+			glUniform1i(m_Uniforms.HasNormalMap, 0);
+			glUniform1i(m_Uniforms.HasEmissiveMap, 0);
+		}
+
+	private:
+		Shader::SpriteMapUniforms m_Uniforms;
+		GLuint m_NormalMap;
+		GLuint m_EmissiveMap;
+		glm::vec4 m_SpriteUV;
+		float m_Strength;
+	};
+} // namespace
+
+void RenderMan::BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength) {
+	m_ActiveBatch->m_ObjectMapUniforms.clear();
+	const Shader* shader = m_ActiveBatch->m_CurrentShader;
+	if (!shader || (!normalMap && !emissiveMap)) {
+		return;
+	}
+	const Shader::SpriteMapUniforms& uniforms = shader->GetSpriteMapUniforms();
+	if ((normalMap && uniforms.HasNormalMap >= 0) || (emissiveMap && uniforms.HasEmissiveMap >= 0)) {
+		m_ActiveBatch->m_ObjectMapUniforms.push_back(std::make_shared<SpriteMapsValue>(uniforms, normalMap, emissiveMap, spriteUV, strength));
 	}
 }
 

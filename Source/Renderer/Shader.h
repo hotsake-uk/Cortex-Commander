@@ -14,6 +14,8 @@ namespace RTE {
 		UniformValueType(GLint uniformLocation): m_UniformLocation(uniformLocation) {}
 		virtual ~UniformValueType() = default;
 		virtual void Enable() = 0;
+		/// Undoes what Enable set that mustn't carry over to the draws after this one, which share the shader program. Most values are set again by whoever needs them, and do nothing.
+		virtual void Reset() {}
 	protected:
 		GLint m_UniformLocation{0};
 	};
@@ -235,6 +237,18 @@ namespace RTE {
 		int GetStrengthUniform() const { return m_StrengthUniform; }
 		int GetReliefUniform() const { return m_ReliefUniform; }
 
+		/// Where a shader reads a sprite's authored maps (MOSprite's NormalMapFile and EmissiveMapFile): the samplers, whether each is there, where the sprite sits in its
+		/// GL texture (xy corner, zw size, in UV), and the player's strength for them. -1 where the shader doesn't use one.
+		struct SpriteMapUniforms {
+			GLint NormalMap{-1};
+			GLint HasNormalMap{-1};
+			GLint EmissiveMap{-1};
+			GLint HasEmissiveMap{-1};
+			GLint UVRect{-1};
+			GLint Strength{-1};
+		};
+		const SpriteMapUniforms& GetSpriteMapUniforms() const { return m_SpriteMapUniforms; }
+
 #pragma endregion
 
 		/// Whether this compiled and linked. A mod's shader that doesn't is reported in the console and left unused, and the mod loads without it.
@@ -284,6 +298,7 @@ namespace RTE {
 		GLint m_HealthUniform{-1}; //!< float rteHealth.
 		GLint m_StrengthUniform{-1}; //!< float rteStrength.
 		GLint m_ReliefUniform{-1}; //!< float rteRelief.
+		SpriteMapUniforms m_SpriteMapUniforms; //!< rteNormalMap, rteHasNormalMap, rteEmissiveMap, rteHasEmissiveMap, rteMapUVRect, rteMapStrength.
 		bool m_Valid{false}; //!< Compiled and linked.
 		bool m_AbortOnError{true}; //!< The game's own shaders can't do without: a failure stops the game. Mods' shaders are reported and skipped.
 	};

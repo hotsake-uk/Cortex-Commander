@@ -81,6 +81,16 @@ namespace RTE {
 		/// Goes back to the shader that was drawing before BeginObjectShader. Does nothing if no object shader is on.
 		void EndObjectShader();
 
+		/// Draws what follows with a sprite's authored normal and emissive maps (MOSprite's NormalMapFile and EmissiveMapFile), until EndObjectMaps. Call after BeginObjectShader, if any,
+		/// so the maps go to the shader that draws. The maps are bound on texture units 12 and 13.
+		/// @param normalMap GL texture of the frame's normal map, or 0. @param emissiveMap Of its emissive map, or 0.
+		/// @param spriteUV Where the frame sits in its GL texture (xy corner, zw size, in UV), which differs from the maps when it's in the sprite atlas.
+		/// @param strength The player's strength for authored maps, 0 to 1.
+		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength);
+
+		/// Stops drawing with a sprite's maps. Does nothing if none are on.
+		void EndObjectMaps() { m_ActiveBatch->m_ObjectMapUniforms.clear(); }
+
 		/// Schedules a new draw call on the current batch, initialized with the current shader, uniforms and camera.
 		std::shared_ptr<DrawCall> BeginDraw();
 

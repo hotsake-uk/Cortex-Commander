@@ -234,6 +234,7 @@ void MOSParticle::Draw(const Camera& camera) const {
 	}
 	Vector spritePos((GetRenderPos() + m_SpriteOffset).GetFloored());
 	Color tint = ApplyRenderBlendMode();
+	ApplySpriteMaps();
 	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, tint);
 	RestoreRenderBlendMode();
 	// Smoke (weightless air particles that float up) scatters the light passing through it.
