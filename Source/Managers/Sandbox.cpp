@@ -1500,7 +1500,17 @@ namespace {
 		for (int i = 0; i < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) == g_MaterialAir && ground.m_Y < static_cast<float>(g_SceneMan.GetSceneHeight() - 1); ++i) {
 			ground.m_Y += 1.0F;
 		}
+		// The bolt comes down from the open sky above the strike: up through the air from the point to the first rock overhead, the top of the scene or
+		// 500 pixels, whichever is nearest. It used to start at the top of the first player's view, which put a strike off that view, or on another
+		// player's screen, a long way from its bolt (and made the bolt's particles depend on where a camera was).
 		float top = std::max(g_CameraMan.GetOffset(0).m_Y - 20.0F, 0.0F);
+		if (g_SettingsMan.ShowSandboxLightningFromSky()) {
+			Vector sky(target.m_X, std::min(target.m_Y, ground.m_Y - 1.0F));
+			for (int i = 0; i < 500 && sky.m_Y > 0.0F && g_SceneMan.GetTerrMatter(sky.GetFloorIntX(), sky.GetFloorIntY() - 1) == g_MaterialAir; ++i) {
+				sky.m_Y -= 1.0F;
+			}
+			top = std::max(sky.m_Y, 0.0F);
+		}
 		auto boltDot = [](const Vector& at) {
 			if (MovableObject* spark = CreateBaseObject("MOPixel", "Lightning Bolt Particle")) {
 				spark->SetPos(at);
