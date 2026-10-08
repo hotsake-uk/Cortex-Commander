@@ -2164,6 +2164,9 @@ int AHuman::MoveAlongRoute() {
 			}
 		} else if (canTakeOff) {
 			mover.progressTimer.Reset();
+			// (Settled, and now waiting on the tank: the settle starts afresh once there is fuel. Left set, its 1.5 s cap had already run out
+			// by then and the take-off went without settling at all.)
+			mover.settling = false;
 			if (mover.traceTimer.IsPastSimMS(1000)) {
 				mover.traceTimer.Reset();
 				MoverTrace("waiting for fuel: " + std::to_string(static_cast<int>(m_pJetpack->GetJetTimeLeft())) + " of " + std::to_string(static_cast<int>(needed)));
