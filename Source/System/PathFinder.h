@@ -98,6 +98,8 @@ namespace RTE {
 		std::array<float, 2> StepOverRiseLeft = {-1.0F, -1.0F};
 		std::array<int, 2> StepOverRoomLeft = {0, 0};
 		static constexpr int c_ClearanceReach = 96; //!< How far up the free height is measured.
+		static constexpr int c_SamplingReachUpNodes = 6; //!< How many rows up a node's measures look: a step-over's room, up to 48 px over its floor and c_ClearanceReach more.
+		static constexpr int c_SamplingReachSideNodes = 2; //!< How many columns either side a node's measures look: the clearances and the step-overs.
 
 		/// Pointers to all adjacent PathNodes, in clockwise order with top first. These are not owned, and may be 0 if adjacent to non-wrapping scene border.
 		std::array<PathNode*, c_MaxAdjacentNodeCount> AdjacentNodes;
@@ -208,8 +210,9 @@ namespace RTE {
 
 		/// Helper function for getting the PathNode ids in a Box.
 		/// @param box The Box of which all PathNodes it touches should be returned.
+		/// @param samplingReach Whether to take in too every node whose measures look into the box, for re-sampling after a terrain change.
 		/// @return A list of the PathNode ids inside the box.
-		std::vector<int> GetNodeIdsInBox(Box box);
+		std::vector<int> GetNodeIdsInBox(Box box, bool samplingReach = false);
 
 		/// Updates a set of PathNodes, adjusting their transitions.
 		/// This does NOT update the pather, which is required if PathNode costs changed.
