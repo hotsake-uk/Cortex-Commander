@@ -146,7 +146,11 @@ namespace {
 		RemoveSide,
 		Release,
 		Select,
-		OrderSelected
+		OrderSelected,
+		GymRun, //!< Count: the course to run, or -1 for all of them.
+		GymRemove,
+		ClearWaterSpawners,
+		ClearEffects //!< Count: 1 the last one only, else all.
 	};
 
 	struct ToolInfo {
@@ -1230,6 +1234,19 @@ namespace {
 	std::vector<PlacedEffect> s_Effects;
 
 	void StrikeLightning(const Vector& target);
+	bool GymRunCourse(int index);
+	bool GymRunAll();
+	void GymRemoveUnits();
+
+	/// Queues a change the window asks for, to be made in the next simulation update like a click on the world. (Made from the window
+	/// directly, gym units appeared with no sim step and their timers started on the spot, and the effect and spring lists were cleared
+	/// under the update that walks them.)
+	void QueueSimChange(Tool kind, int count = 0) {
+		Stroke stroke;
+		stroke.Kind = kind;
+		stroke.Count = count;
+		s_Queue.push_back(stroke);
+	}
 
 	glm::vec3 Hue(float turn) {
 		turn -= std::floor(turn);
@@ -2535,6 +2552,28 @@ namespace {
 			case Tool::GymGoal:
 				s_GymTo = at;
 				s_GymToSet = true;
+				break;
+			case Tool::GymRun:
+				if (stroke.Count < 0) {
+					GymRunAll();
+				} else {
+					GymRunCourse(stroke.Count);
+				}
+				break;
+			case Tool::GymRemove:
+				GymRemoveUnits();
+				break;
+			case Tool::ClearWaterSpawners:
+				s_WaterSpawners.clear();
+				break;
+			case Tool::ClearEffects:
+				if (stroke.Count == 1) {
+					if (!s_Effects.empty()) {
+						s_Effects.pop_back();
+					}
+				} else {
+					s_Effects.clear();
+				}
 				break;
 			case Tool::RemoveSide:
 				// (Not your character: it's yours, not the side's.)
@@ -4384,11 +4423,11 @@ namespace {
 		}
 		ImGui::Separator();
 		if (ToolUI::Button("Run all", ImVec2(ImGui::GetContentRegionAvail().x * 0.5F - ImGui::GetStyle().ItemSpacing.x * 0.5F, 0.0F))) {
-			GymRunAll();
+			QueueSimChange(Tool::GymRun, -1);
 		}
 		ImGui::SameLine();
 		if (ToolUI::Button("Remove gym units", ImVec2(-1.0F, 0.0F))) {
-			GymRemoveUnits();
+			QueueSimChange(Tool::GymRemove);
 		}
 		int remove = -1;
 		for (int i = 0; i < static_cast<int>(s_GymCourses.size()); ++i) {
@@ -4398,7 +4437,7 @@ namespace {
 			ImGui::Text("%s", course.Name.c_str());
 			ImGui::SameLine();
 			if (ImGui::SmallButton("Run")) {
-				GymRunCourse(i);
+				QueueSimChange(Tool::GymRun, i);
 			}
 			ImGui::SameLine();
 			if (ImGui::SmallButton("X")) {
@@ -5892,7 +5931,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SameLine();
 				ImGui::BeginDisabled(s_WaterSpawners.empty());
 				if (ToolUI::Button("Remove all water spawners")) {
-					s_WaterSpawners.clear();
+					QueueSimChange(Tool::ClearWaterSpawners);
 				}
 				ImGui::EndDisabled();
 				if (!s_WaterSpawners.empty()) {
@@ -5950,11 +5989,11 @@ void Sandbox::DrawGUI() {
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
 				if (ToolUI::Button("Remove all effects")) {
-					s_Effects.clear();
+					QueueSimChange(Tool::ClearEffects);
 				}
 				ImGui::SameLine();
 				if (ToolUI::Button("Remove the last one")) {
-					s_Effects.pop_back();
+					QueueSimChange(Tool::ClearEffects, 1);
 				}
 				ImGui::EndDisabled();
 				ImGui::SameLine();
