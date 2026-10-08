@@ -668,6 +668,8 @@ void DebugMan::SettingsGUI() {
 		Tip("The last two dozen discs and boxes of terrain the sandbox painted, dug, filled or cleared, fading over ten seconds: dug and cleared in orange, painted and filled in green, grey where nothing changed. The newest are labelled with the material and whether falling ground and liquid were told of the change, a missing one in red. For the areas the path grid has yet to catch up on, turn on Terrain update boxes on the Debug page.");
 		Toggle("Auto battle and colony", g_SettingsMan.ShowSandboxAutoBattle(), [](bool on) { g_SettingsMan.SetShowSandboxAutoBattle(on); });
 		Tip("A readout in the top left: for each side in the auto battle, what it has spent of its budget, its next wave and whether it is broke; its units on the ground against those still in its craft; and its cheapest unit against what a wave may spend (in red when it can't buy any). Then each colony building: what it is doing, its training, and its units alive with those dead or dying counted apart.");
+		Toggle("Character state", g_SettingsMan.ShowSandboxCharacterState(), [](bool on) { g_SettingsMan.SetShowSandboxCharacterState(on); });
+		Tip("One line over your sandbox character's head: whether you're in it, the updates left before you step in, flying and how hard it is pinned, its side and whether it's neutral (ignored by the AI), what it has out and that item's number key, and the AI mode it is left in while you're not in it.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
