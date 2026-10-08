@@ -26,6 +26,7 @@ namespace {
 	constexpr float c_AirSeconds = 12.0F; //!< How long a unit can hold its breath.
 
 	const void* s_Scene = nullptr;
+	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up (L-1: not the address alone).
 	// Per material (SB-1): whether it holds bodies (FluidSim::HoldsBodies), whether they can breathe in it, and the health a second it takes
 	// for each level of depth (MaterialBehaviour::TouchDamage; stock, acid's 5).
 	std::array<bool, 256> s_HoldsBodies{};
@@ -151,8 +152,9 @@ namespace {
 } // namespace
 
 void ActorWater::Update() {
-	if (g_SceneMan.GetScene() != s_Scene) {
+	if (g_SceneMan.GetScene() != s_Scene || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		s_Scene = g_SceneMan.GetScene();
+		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_TablesBuilt = false;
 	}
 	if (s_Scene) {

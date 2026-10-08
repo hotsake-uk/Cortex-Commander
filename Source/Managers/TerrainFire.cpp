@@ -81,6 +81,7 @@ namespace {
 	std::mutex s_FireSourceMutex;
 
 	const void* s_Scene = nullptr;
+	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up (L-1: not the address alone).
 	std::string s_PendingLoadState; //!< Saved fire to restore when the loaded scene starts.
 	const void* s_MaterialBitmap = nullptr;
 	long long s_LastTickUpdate = -1;
@@ -321,11 +322,12 @@ void TerrainFire::QueueIgniteArea(const Vector& position, float radius) {
 void TerrainFire::Update() {
 	SLTerrain* terrain = CurrentTerrain();
 	const void* materialBitmap = terrain ? terrain->GetMaterialBitmap() : nullptr;
-	if (g_SceneMan.GetScene() != s_Scene || materialBitmap != s_MaterialBitmap) {
+	if (g_SceneMan.GetScene() != s_Scene || materialBitmap != s_MaterialBitmap || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		// New scene: start over, deterministically.
 		Clear();
 		s_Scene = g_SceneMan.GetScene();
 		s_MaterialBitmap = materialBitmap;
+		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_Random = 0x2545F491u;
 		s_FuelTableBuilt = false;
 		if (!s_PendingLoadState.empty() && s_Scene) {
