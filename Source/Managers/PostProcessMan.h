@@ -92,6 +92,9 @@ namespace RTE {
 			m_SceneLights.clear();
 			m_Shimmers.clear();
 		}
+
+		/// Clears the registered scene lights only. Lights are registered on every sim update and the light pass is additive, so they are cleared before each one and only the last update's lights reach the drawn frame.
+		void ClearSceneLights() { m_SceneLights.clear(); }
 #pragma endregion
 
 #pragma region Concrete Methods
