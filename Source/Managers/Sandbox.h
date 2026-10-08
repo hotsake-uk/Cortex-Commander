@@ -30,6 +30,9 @@ namespace RTE {
 		/// Gets whether the current game is the Sandbox game mode.
 		static bool IsGodMode();
 
+		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
+		static bool WantsWorldPaused();
+
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 

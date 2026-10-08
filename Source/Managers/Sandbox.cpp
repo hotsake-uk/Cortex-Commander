@@ -5247,6 +5247,10 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 }
 
+bool Sandbox::WantsWorldPaused() {
+	return IsGodMode() && s_Open && s_PauseInMenus && g_TimerMan.GetSimUpdateCount() > s_GodStartUpdate + 90;
+}
+
 bool Sandbox::IsGodMode() {
 	const Activity* activity = g_ActivityMan.GetActivity();
 	return activity && InGame() && activity->GetPresetName() == "Sandbox";
@@ -5309,10 +5313,21 @@ void Sandbox::DrawGUI() {
 	// In the Sandbox game mode the world stands still while the tools are open, so things can be set up and tuned. What is done with a tool still happens:
 	// the world is let through one update for it, a sixtieth of a second.
 	{
-		bool wantPause = IsGodMode() && s_Open && s_PauseInMenus && !g_DebugMan.IsPhotoModeOpen() && g_TimerMan.GetSimUpdateCount() > s_GodStartUpdate + 90;
+		bool wantPause = WantsWorldPaused() && !g_DebugMan.IsPhotoModeOpen();
 		if (wantPause) {
 			g_TimerMan.PauseSim(true);
 			s_PausedByMenus = true;
+			// Painting (the brushes held down: terrain, liquids, fire, smoke) is put in the world here, without a step: it is terrain and
+			// liquid written in place, which needs no update to show. Let through an update each, as every stroke was, a held brush ran
+			// the world at the frame rate under the "paused" banner, water flowing and fire spreading while it was held.
+			if (InGame()) {
+				auto paint = std::stable_partition(s_Queue.begin(), s_Queue.end(), [](const Stroke& stroke) { return c_Tools[ToolIndex(stroke.Kind)].Interval <= 0.0F; });
+				std::vector<Stroke> painted(std::make_move_iterator(paint), std::make_move_iterator(s_Queue.end()));
+				s_Queue.erase(paint, s_Queue.end());
+				for (const Stroke& stroke: painted) {
+					Apply(stroke);
+				}
+			}
 			if (s_StepsWanted > 0 || !s_Queue.empty() || s_PlayerEnterPending > 0) {
 				g_TimerMan.StepSim(1);
 				s_StepsWanted = std::max(s_StepsWanted - 1, 0);

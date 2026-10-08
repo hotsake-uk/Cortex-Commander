@@ -473,7 +473,11 @@ void DebugMan::EndPhotoMode() {
 		// Keep the time of day and weather the player had; photo mode's look changes were for the photo.
 		g_PostProcessMan.GetLightingSettings() = m_PhotoSavedSettings;
 	}
-	g_TimerMan.PauseSim(false);
+	// (Not when the sandbox holds the world still: it would pause it again only on its next draw, and the frame between ran every sim update
+	// the paused time had saved up, a jump as photo mode closed.)
+	if (!Sandbox::WantsWorldPaused()) {
+		g_TimerMan.PauseSim(false);
+	}
 	g_FrameMan.SetHudDisabled(m_PhotoPreviousHUDDisabled, 0);
 	m_PhotoModeActive = false;
 }
