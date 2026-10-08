@@ -664,6 +664,19 @@ namespace {
 		}
 	}
 
+	/// The colour a liquid pixel is drawn with at a spot: the plant's where it covers one, so the terrain shader draws the plant under the liquid's look; else its own.
+	int ShownColor(int key, int liquidColor) {
+		if (!s_Covered.empty()) {
+			if (auto covered = s_Covered.find(key); covered != s_Covered.end()) {
+				return covered->second.Color;
+			}
+		}
+		return liquidColor;
+	}
+
+	/// A liquid pixel's own colour, to take with it when it moves: where it covers a plant the colour there is the plant's (ShownColor), so its pour colour.
+	int OwnColor(int key, int material, int colorThere) { return !s_Covered.empty() && s_Covered.count(key) != 0 ? s_PourColor[material & 0xFF] : colorThere; }
+
 	/// A liquid pixel leaving its spot: what it covered there comes back, or else air.
 	void Uncover(SLTerrain* terrain, int x, int y, int width) {
 		if (!s_Covered.empty()) {
@@ -1056,7 +1069,7 @@ void FluidSim::Update() {
 				}
 				--dropsLeft;
 				Color color;
-				color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
+				color.SetRGBWithIndex(OwnColor(y * width + x, material, terrain->GetFGColorPixel(x, y)));
 				Uncover(terrain, x, y, width);
 				s_Active.Remove(y * width + x);
 				const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
@@ -1337,7 +1350,7 @@ void FluidSim::Update() {
 					++splashes;
 					int material = materialBitmap->line[y][x];
 					Color color;
-					color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
+					color.SetRGBWithIndex(OwnColor(key, material, terrain->GetFGColorPixel(x, y)));
 					Uncover(terrain, x, y, width);
 					const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 					// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
@@ -1462,7 +1475,8 @@ void FluidSim::Update() {
 								for (int step = 1; step < found; ++step) {
 									int lookX = x + side * step;
 									int lookY = y;
-									if (!InWorld(lookX, lookY, width, height) || materialBitmap->line[lookY][lookX] != ownMaterial) {
+									// (Nor where a plant shows through it: the plant's colour stays where the plant is.)
+									if (!InWorld(lookX, lookY, width, height) || materialBitmap->line[lookY][lookX] != ownMaterial || (!s_Covered.empty() && (s_Covered.count(lookY * width + lookX) != 0 || s_Covered.count(key) != 0))) {
 										shiftRun = 0;
 										break;
 									}
@@ -1529,7 +1543,7 @@ void FluidSim::Update() {
 			InWorld(targetX, targetY, width, height);
 			int target = targetY * width + targetX;
 			int material = terrain->GetMaterialPixel(x, y);
-			int color = terrain->GetFGColorPixel(x, y);
+			int color = OwnColor(key, material, terrain->GetFGColorPixel(x, y));
 			if (shiftRun > 1) {
 				// What arrives at the drop is the colour from the far end of the run; each cell takes the one behind it, and the first takes this pixel's.
 				int lastX = x + heading * (shiftRun - 1);
@@ -1549,6 +1563,7 @@ void FluidSim::Update() {
 			}
 			// When it moves into a lighter liquid (sinking, running or levelling through it), that liquid takes the place it left. Otherwise what it covered
 			// there (grass under water) comes back.
+			// (Each liquid takes its own colour, and shows a plant's where it covers one: see ShownColor.)
 			int leftMaterial = terrain->GetMaterialPixel(targetX, targetY);
 			int leftColor = terrain->GetFGColorPixel(targetX, targetY);
 			const bool displaces = s_Kinds[leftMaterial & 0xFF] != Liquid::None;
@@ -1556,10 +1571,11 @@ void FluidSim::Update() {
 				s_Active.Remove(target);
 				Cover(key, material, color, leftMaterial);
 			}
+			int leftOwnColor = OwnColor(target, leftMaterial, leftColor);
 			Cover(target, leftMaterial, leftColor, material);
-			ChangePixel(terrain, targetX, targetY, material, color);
+			ChangePixel(terrain, targetX, targetY, material, ShownColor(target, color));
 			if (displaces) {
-				ChangePixel(terrain, x, y, leftMaterial, leftColor);
+				ChangePixel(terrain, x, y, leftMaterial, ShownColor(key, leftOwnColor));
 			} else {
 				Uncover(terrain, x, y, width);
 			}
