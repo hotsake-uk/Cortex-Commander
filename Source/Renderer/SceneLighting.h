@@ -102,6 +102,7 @@ namespace RTE {
 		LightingSettings& m_Settings;
 
 		const void* m_WorldScene = nullptr; //!< The scene the world grid was built for.
+		unsigned int m_WorldSceneGeneration = 0; //!< The scene load generation the world grid was built for. A new scene can be allocated where the old one was, so the pointer alone can't tell.
 		const void* m_WorldMaterialBitmap = nullptr; //!< The terrain material bitmap the world grid was built from.
 		int m_SceneWidth = 0;
 		int m_SceneHeight = 0;
@@ -156,7 +157,7 @@ namespace RTE {
 		int m_ScreenWidth = 0;
 		int m_ScreenHeight = 0;
 		GLTarget m_DynamicLight;
-		GLTarget m_OccluderSeeds[2]; //!< Ping-ponged jump flood buffers: RG = position of the nearest pixel of a solid object.
+		GLTarget m_OccluderSeeds[2]; //!< Ping-ponged jump flood buffers: RG = position of the nearest pixel of a solid object, in full floats: half floats step by 1 px past 1024 and 2 px past 2048, too coarse for the sub-pixel tests that read it.
 		GLTarget m_RoundedNormals; //!< The player screen's normals with metallic and glossy objects rounded off (see SurfaceRound.frag).
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.

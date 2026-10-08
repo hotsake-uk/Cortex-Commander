@@ -14,6 +14,7 @@ namespace RTE {
 	class TerrainFrosting;
 	class TerrainObject;
 	class TerrainDebris;
+	class Camera;
 
 	/// A light that is part of the scenery: a lamp on a bunker wall, a floodlight, a warning light. It stays where it is and shines until what holds it is destroyed.
 	/// On a TerrainObject its position is an offset from the top left corner of the object's bitmaps; on the terrain it's a scene position.

@@ -155,6 +155,11 @@ namespace RTE {
 		/// @return The scene, ownership IS NOT TRANSFERRED!
 		Scene* GetScene() const { return m_pCurrentScene; }
 
+		/// Gets a number that changes every time a scene is loaded, so things built for one scene can tell when it was replaced, even by a new
+		/// one at the same address.
+		/// @return The scene load generation.
+		unsigned int GetSceneGeneration() const { return m_SceneGeneration; }
+
 		/// Gets the total dimensions (width and height) of the scene, in pixels.
 		/// @return A Vector describing the scene dimensions.
 		Vector GetSceneDim() const;
@@ -1048,6 +1053,7 @@ namespace RTE {
 
 		// Current scene being used
 		Scene* m_pCurrentScene;
+		unsigned int m_SceneGeneration = 0; //!< Goes up every time a scene is loaded. See GetSceneGeneration().
 		// Color MO layer
 		SceneLayerTracked* m_pMOColorLayer;
 		// A spatial partitioning grid of MOIDs, used to optimize collision and distance queries

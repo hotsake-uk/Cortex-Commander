@@ -89,7 +89,14 @@ namespace RTE {
 		void ClearScenePostEffects() {
 			m_PostSceneEffects.clear();
 			m_GlowAreas.clear();
+			ClearSceneLights();
+		}
+
+		/// Clears the lights and shimmers registered so far. They're registered on every sim update and the light pass adds them up, so only the
+		/// last update's set may reach the draw: a frame that runs several sim updates would otherwise draw every light that many times over.
+		void ClearSceneLights() {
 			m_SceneLights.clear();
+			std::scoped_lock lock(m_ShockwaveMutex);
 			m_Shimmers.clear();
 		}
 #pragma endregion
@@ -225,6 +232,12 @@ namespace RTE {
 		/// Gets the recent scorch marks that are still hot, and forgets the cooled ones.
 		/// @param duration How long marks stay hot, in seconds.
 		const std::vector<ScorchMark>& GetHotScorchMarks(float duration);
+
+		/// Forgets the recent scorch marks, so the last scene's don't glow in a new one.
+		void ClearHotScorchMarks() {
+			std::scoped_lock lock(m_ShockwaveMutex);
+			m_HotScorchMarks.clear();
+		}
 
 		/// Gets the current simulation time in seconds, including the fraction of the current sim update, for smooth time based effects that pause and slow down with the game.
 		static float GetSmoothSimTime();

@@ -169,13 +169,15 @@ bool SceneLighting::EnsureWorldResources() {
 	if (!materialBitmap) {
 		return false;
 	}
-	if (scene == m_WorldScene && materialBitmap == m_WorldMaterialBitmap && materialBitmap->w == m_SceneWidth && materialBitmap->h == m_SceneHeight) {
+	unsigned int sceneGeneration = g_SceneMan.GetSceneGeneration();
+	if (scene == m_WorldScene && sceneGeneration == m_WorldSceneGeneration && materialBitmap == m_WorldMaterialBitmap && materialBitmap->w == m_SceneWidth && materialBitmap->h == m_SceneHeight) {
 		return true;
 	}
 	ZoneScopedN("Build World Light Grid");
 
 	DestroyWorldResources();
 	m_WorldScene = scene;
+	m_WorldSceneGeneration = sceneGeneration;
 	m_WorldMaterialBitmap = materialBitmap;
 	m_SceneWidth = materialBitmap->w;
 	m_SceneHeight = materialBitmap->h;
@@ -216,7 +218,9 @@ bool SceneLighting::EnsureWorldResources() {
 	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
 	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	// Scorch marks from before the grid was built belong to the last scene.
 	g_PostProcessMan.TakePendingScorchMarks();
+	g_PostProcessMan.ClearHotScorchMarks();
 
 	RefreshOccupancyRows(0, m_GridHeight);
 	UploadOccupancyRows(0, m_GridHeight);
@@ -250,7 +254,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_ScreenHeight = height;
 	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	for (GLTarget& seeds: m_OccluderSeeds) {
-		seeds.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		seeds.Create(width, height, GL_RG32F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	}
 	m_RoundedNormals.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);

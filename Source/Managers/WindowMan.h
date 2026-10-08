@@ -5,6 +5,7 @@
 #include "glad/gl.h"
 
 #include <memory>
+#include <algorithm>
 #include <vector>
 
 #define g_WindowMan WindowMan::Instance()
@@ -19,6 +20,7 @@ union SDL_Event;
 }
 
 namespace RTE {
+	class Texture;
 
 	/// A rectangle in the window, in window pixels from its top left corner.
 	struct GameViewRect {

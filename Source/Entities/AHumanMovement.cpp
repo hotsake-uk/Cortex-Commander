@@ -3,6 +3,7 @@
 // script it replaces (SharedBehaviors.GoToWpt) had grown into a dozen controllers handing the unit between them, and every hand-over was
 // a stutter of the jet or a turn in the air. Flights are flown by AHuman::PilotFlight. The script keeps its hook: it calls this each
 // tick from a coroutine of its own (SharedBehaviors.GoToRoute), and a mod that replaces that keeps working.
+#include "SoundContainer.h"
 #include "AHuman.h"
 #include "ADoor.h"
 #include "AEJetpack.h"
