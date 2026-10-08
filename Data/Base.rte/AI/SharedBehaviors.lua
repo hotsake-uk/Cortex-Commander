@@ -1449,8 +1449,10 @@ end
 -- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
+	-- (A defender on its way back to its post is moving, not standing its ground: told "defend" while the mode said "go there", the
+	-- fighting rules held it still wherever it had been shoved to.)
 	if Owner:NumberValueExists("SandboxDefendX") then
-		return "defend";
+		return Owner.AIMode == Actor.AIMODE_GOTO and "move" or "defend";
 	end
 	if Owner:NumberValueExists("AIRetreat") then
 		return "move";
@@ -1902,7 +1904,8 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
-	if kind == "defend" or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("SandboxHold") or Owner:NumberValueExists("AIFlank") then
+	-- (A defender on its way back to its post too, which OrderKind calls a move: the sandbox sends it back to its post whatever it does.)
+	if kind == "defend" or Owner:NumberValueExists("SandboxDefendX") or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("SandboxHold") or Owner:NumberValueExists("AIFlank") then
 		return false;
 	end
 	if not AI.RetreatCheckTimer then
