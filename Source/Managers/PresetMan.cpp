@@ -19,6 +19,7 @@
 #include "System.h"
 
 #include <array>
+#include <chrono>
 
 using namespace RTE;
 
@@ -87,6 +88,14 @@ bool PresetMan::LoadDataModule(const std::string& moduleName, bool official, boo
 		}
 	}
 
+	// How long this module took (INI, images, scripts and sounds it loads), kept for the start-up timing report whichever way this returns.
+	struct ModuleTimer {
+		std::vector<std::pair<std::string, long long>>& Times;
+		const std::string& Name;
+		std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
+		~ModuleTimer() { Times.emplace_back(Name, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - Start).count()); }
+	} moduleTimer{m_ModuleLoadTimes, moduleName};
+
 	// Only instantiate it here, because it needs to be in the lists of this before being created.
 	DataModule* newModule = new DataModule();
 
@@ -154,6 +163,7 @@ bool PresetMan::LoadAllDataModules() {
 
 	// Destroy any possible loaded modules
 	Destroy();
+	m_ModuleLoadTimes.clear();
 
 	FindAndExtractZippedModules();
 

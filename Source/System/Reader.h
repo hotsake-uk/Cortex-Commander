@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <string>
 #include <memory>
@@ -14,6 +15,9 @@ namespace RTE {
 	class Reader {
 
 	public:
+		/// How many lines every Reader has read so far (for the start-up timing report).
+		static int GetLinesRead() { return s_LinesRead.load(std::memory_order_relaxed); }
+
 #pragma region Creation
 		/// Constructor method used to instantiate a Reader object in system memory. Create() should be called before using the object.
 		Reader() { Clear(); }
@@ -246,6 +250,7 @@ namespace RTE {
 		std::string m_ReportTabs; //!< String containing the proper amount of tabs for the report.
 
 		int m_CurrentLine; //!< The line number the stream is on.
+		static inline std::atomic<int> s_LinesRead{0}; //!< Lines read by every Reader (see GetLinesRead).
 		bool m_OverwriteExisting; //!< Whether object instances read from this should overwrite any already existing ones with the same names.
 		bool m_SkipIncludes; //!< Indicates whether reader should skip included files.
 		bool m_CanFail; //!< Whether it's ok for the Reader to fail reading a file and fail silently instead of aborting.

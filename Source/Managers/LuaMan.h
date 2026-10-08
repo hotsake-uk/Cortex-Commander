@@ -22,6 +22,9 @@ namespace RTE {
 	/// A single lua state. Multiple of these can exist at once for multithreaded scripting.
 	class LuaStateWrapper {
 	public:
+		/// How many script files have been compiled so far, by every state (for the start-up timing report).
+		static int GetScriptFilesCompiled() { return s_ScriptFilesCompiled.load(std::memory_order_relaxed); }
+
 #pragma region Creation
 		/// Constructor method used to instantiate a LuaStateWrapper object in system memory. Initialize() should be called before using the object.
 		LuaStateWrapper();
@@ -206,6 +209,7 @@ namespace RTE {
 #pragma endregion
 
 	private:
+		static inline std::atomic<int> s_ScriptFilesCompiled{0}; //!< Script files compiled by every state (see GetScriptFilesCompiled).
 		/// Gets a random integer between minInclusive and maxInclusive.
 		/// @return A random integer between minInclusive and maxInclusive.
 		int SelectRand(int minInclusive, int maxInclusive);

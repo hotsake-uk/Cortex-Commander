@@ -248,6 +248,7 @@ bool Reader::DiscardEmptySpace() {
 			// So we don't count lines twice when there are both newline and carriage return at the end of lines
 			if (peek == '\n') {
 				m_CurrentLine++;
+				s_LinesRead.fetch_add(1, std::memory_order_relaxed);
 				// Only report every few lines
 				if (m_ReportProgress && (m_CurrentLine % g_SettingsMan.LoadingScreenProgressReportPrecision() == 0)) {
 					m_ReportProgress(m_ReportTabs + m_FileName + " reading line " + std::to_string(m_CurrentLine), false);

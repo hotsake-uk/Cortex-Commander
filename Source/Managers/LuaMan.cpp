@@ -772,6 +772,7 @@ int LuaStateWrapper::RunScriptFile(const std::string& filePath, bool consoleErro
 	SetLuaPath(fullScriptPath);
 
 	// Load the script file's contents onto the stack
+	s_ScriptFilesCompiled.fetch_add(1, std::memory_order_relaxed);
 	if (luaL_loadfile(m_State, fullScriptPath.c_str())) {
 		m_LastError = lua_tostring(m_State, -1);
 		lua_pop(m_State, 1);

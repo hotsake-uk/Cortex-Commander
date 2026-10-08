@@ -43,7 +43,10 @@
 #include <utility>
 #include <vector>
 #include <thread>
+#include <algorithm>
 #include "PresetMan.h"
+#include "Reader.h"
+#include "ContentFile.h"
 #include "UInputMan.h"
 #include "PerformanceMan.h"
 #include "FrameMan.h"
@@ -122,6 +125,15 @@ namespace {
 			}
 			g_ConsoleMan.PrintString("Start-up: loading screen frames drawn: " + std::to_string(LoadingScreen::GetProgressFramesDrawn()) + " (progress report " + (g_SettingsMan.GetLoadingScreenProgressReportDisabled() ? "off" : "on") +
 			                         ", frame cap " + std::to_string(g_WindowMan.GetFrameCap()) + ", vsync " + (g_WindowMan.GetVSyncEnabled() ? "on" : "off") + ", fullscreen " + (g_WindowMan.IsFullscreen() ? "yes" : "no") + ")");
+			// Where the data modules' time went: the slowest five, and how much was read and decoded in all.
+			std::vector<std::pair<std::string, long long>> moduleTimes = g_PresetMan.GetModuleLoadTimes();
+			std::sort(moduleTimes.begin(), moduleTimes.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+			std::string slowest;
+			for (size_t i = 0; i < std::min<size_t>(moduleTimes.size(), 5); ++i) {
+				slowest += (i ? ", " : "") + moduleTimes[i].first + " " + std::to_string(moduleTimes[i].second) + " ms";
+			}
+			g_ConsoleMan.PrintString("Start-up: slowest data modules: " + (slowest.empty() ? std::string("none") : slowest));
+			g_ConsoleMan.PrintString("Start-up: read " + std::to_string(Reader::GetLinesRead()) + " INI lines, decoded " + std::to_string(ContentFile::GetImagesDecoded()) + " images, compiled " + std::to_string(LuaStateWrapper::GetScriptFilesCompiled()) + " script files");
 			// The Lua states are made one after another, each with every engine binding (one per hardware thread unless Settings.ini says otherwise),
 			// so how many there were says how much of the Lua step above that is.
 			g_ConsoleMan.PrintString("Start-up: Lua states made: " + std::to_string(g_LuaMan.GetThreadedScriptStates().size() + 1) + " (" + std::to_string(g_LuaMan.GetThreadedScriptStates().size()) + " threaded and the master; " + std::to_string(std::thread::hardware_concurrency()) + " hardware threads)");
