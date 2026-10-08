@@ -55,6 +55,10 @@ namespace RTE {
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
 
+		/// Gets whether there is any liquid or loose powder near a point, from a few samples in a plus shape: for callers that would otherwise queue work on
+		/// dry, solid ground (a gib's disturbance and splash). Reads the terrain only.
+		static bool IsFlowingNear(const Vector& position, float radius);
+
 		/// Throws some of the liquid near a point into the air as drops, which fly and rejoin it where they land: for explosions and things falling in. Thread safe.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius How far around it liquid is thrown from.
