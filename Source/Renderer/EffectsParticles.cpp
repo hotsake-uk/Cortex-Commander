@@ -44,6 +44,8 @@ namespace {
 		float Size;
 		glm::u8vec3 Color;
 		Kind Type;
+		float Angle = 0.0F; //!< How a puff's soft shape is turned, and whether it is mirrored: each one its own, so no two look alike.
+		bool Mirrored = false;
 	};
 
 	struct SpawnRequest {
@@ -118,6 +120,8 @@ namespace {
 	void Add(const Particle& particle) {
 		if (s_Particles.size() < c_MaxParticles) {
 			s_Particles.push_back(particle);
+			s_Particles.back().Angle = Random01() * c_TwoPI;
+			s_Particles.back().Mirrored = Random01() < 0.5F;
 		}
 	}
 
@@ -551,10 +555,10 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		float fadeIn = std::clamp(particle.Age * (particle.Type == Kind::Smoke ? 2.5F : 6.0F), 0.0F, 1.0F);
 		if (particle.Type == Kind::Mist) {
 			// A colour above 1 tells the particle shader this one keeps a little light of its own (see LitParticle.frag).
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F))});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored});
 			continue;
 		}
-		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn)});
+		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored});
 	}
 }
 

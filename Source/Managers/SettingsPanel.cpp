@@ -488,6 +488,7 @@ void DebugMan::SettingsGUI() {
 		Tip("How much light of its own froth carries. 0: it is as dark as the scene around it at night.");
 		Heading("Splashes");
 		Slider("Splash size", &settings.WaterSplash, 0.0F, 4.0F);
+		Check("Turn each froth and spray puff randomly", &settings.PuffVariety);
 		Tip("How big the splash is when falling ground or a broken-off piece drops into water (or any liquid): drops and spray thrown up, by how fast and how wide it went in. Only for the eye: the water it pushes aside raises the level. 0 for none.");
 		Heading("Mist");
 		Slider("Mist", &settings.WaterMist, 0.0F, 2.0F);

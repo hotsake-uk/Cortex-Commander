@@ -2334,7 +2334,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		EffectsParticles::GetPuffs(origin, width, height, puffs);
 		for (const EffectsParticles::Puff& puff: puffs) {
 			size_t firstVertex = m_QuadVertices.size();
-			addQuad(puff.Position, glm::vec2(puff.Size * 0.5F), 0.0F, glm::vec3(puff.Color), 0.0F);
+			// Each turned and maybe mirrored its own way (from when it was made), so puffs of spray and dust don't all show the same shape (PuffVariety).
+			bool varied = m_Settings.PuffVariety;
+			addQuad(puff.Position, glm::vec2(puff.Size * 0.5F * (varied && puff.Mirrored ? -1.0F : 1.0F), puff.Size * 0.5F), varied ? puff.Angle : 0.0F, glm::vec3(puff.Color), 0.0F);
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].A = puff.Color.a;
 			}
