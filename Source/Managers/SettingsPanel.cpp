@@ -9,6 +9,7 @@
 #include "Controller.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "AirPressure.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -511,6 +512,10 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
+		Toggle("Blast waves", AirPressure::IsEnabled(), [](bool on) { AirPressure::SetEnabled(on); });
+		Tip("An explosion sends a wave of air out that bounces off walls: it carries far down a corridor and fades fast in the open, pushes smoke, loose things and (a little) units, and throws up the water in a flooded room.");
+		Toggle("Wind carries smoke", AirPressure::WindMovesSmoke(), [](bool on) { AirPressure::SetWindMovesSmoke(on); });
+		Tip("The weather's wind carries smoke and fine spray along, and they eddy in the lee of walls and ridges.");
 		Slider("Soft smoke", &settings.SoftSmoke, 0.0F, 3.0F);
 		Tip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		Slider("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);

@@ -365,6 +365,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("SmokeBlocksSight", &SceneMan::SmokeBlocksSight)
 	    .def("GetBurningPixelCount", &SceneMan::GetBurningPixelCount)
 	    .def("IsBurningNear", &SceneMan::IsBurningNear)
+	    .def("GetAirFlow", &SceneMan::GetAirFlow)
+	    .def("AddAirBlast", &SceneMan::AddAirBlast)
 	    .def("GetBurningUnitCount", &SceneMan::GetBurningUnitCount)
 	    .def("GetFlowingLiquidPixelCount", &SceneMan::GetFlowingLiquidPixelCount)
 	    .def("GetLiquidUpdateMS", &SceneMan::GetLiquidUpdateMS)
