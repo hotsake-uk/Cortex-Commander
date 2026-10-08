@@ -27,6 +27,7 @@ uniform vec4 rteLiquidLine[c_MaxLiquidLooks]; // RGB the colour of its surface l
 uniform sampler2D rteMaterialMap; // The terrain's material bitmap, a material index per pixel, the same size as this layer's texture (SLTerrain::GetMaterialTextureId).
 uniform bool rteMaterialMapOn; // Off where there's no map (a scene too big for one texture): liquids then go by palette colour alone, as before.
 uniform vec4 rteMaterialLooks[64]; // Each material's liquid look (RenderMan::SetMaterialLiquidLook), four materials to a vec4, 0 for none.
+uniform bool rteForegroundLayer; // Drawing the foreground layer, the one the material map is of (SceneMan::Draw): only its pixels can be a plant under a liquid.
 
 uniform bool rteLivingWorld;
 uniform float rteTime; // Seconds.
@@ -191,17 +192,37 @@ int LiquidLook(float colorIndex) {
 	return clamp(int(texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b * 255.0 / 16.0 + 0.5), 0, c_MaxLiquidLooks - 1);
 }
 
-// The liquid look of the terrain pixel at a place in this layer's texture, 0 for none. A pixel is drawn as a liquid where its colour is a liquid's and it's
-// made of a liquid, with that material's look: terrain sharing a liquid's palette colour (dirt with mud's, bunker metal with mercury's) stays as it is.
-int LiquidLookAt(vec2 uv) {
-	int colorLook = LiquidLook(texture(rteTexture, uv).r);
+// The liquid look of the material of the terrain pixel at a place in this layer's texture, 0 for none (or no material map).
+int MaterialLookAt(vec2 uv) {
 	ivec2 size = textureSize(rteTexture, 0);
-	if (colorLook == 0 || !rteMaterialMapOn || textureSize(rteMaterialMap, 0) != size) {
-		return colorLook;
+	if (!rteMaterialMapOn || textureSize(rteMaterialMap, 0) != size) {
+		return 0;
 	}
 	ivec2 pixel = clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1);
 	int material = int(texelFetch(rteMaterialMap, pixel, 0).r * 255.0 + 0.5);
 	return clamp(int(rteMaterialLooks[material >> 2][material & 3] + 0.5), 0, c_MaxLiquidLooks - 1);
+}
+
+// Whether the foreground pixel at a place is a plant under a liquid: a liquid that flows through grass and foliage keeps the plant's colour where it covers
+// one (FluidSim), so it's drawn with the liquid's look over the plant (see main).
+bool PlantUnderLiquidAt(vec2 uv) {
+	return rteForegroundLayer && IsVegetation(texture(rteTexture, uv).r) && MaterialLookAt(uv) > 0;
+}
+
+// The liquid look of the terrain pixel at a place in this layer's texture, 0 for none. A pixel is drawn as a liquid where its colour is a liquid's and it's
+// made of a liquid, with that material's look: terrain sharing a liquid's palette colour (dirt with mud's, bunker metal with mercury's) stays as it is.
+// And where it's a plant under a liquid (PlantUnderLiquidAt), drawn with the liquid's look over it.
+int LiquidLookAt(vec2 uv) {
+	float colorIndex = texture(rteTexture, uv).r;
+	int colorLook = LiquidLook(colorIndex);
+	if (colorLook == 0) {
+		return rteForegroundLayer && IsVegetation(colorIndex) ? MaterialLookAt(uv) : 0;
+	}
+	ivec2 size = textureSize(rteTexture, 0);
+	if (!rteMaterialMapOn || textureSize(rteMaterialMap, 0) != size) {
+		return colorLook;
+	}
+	return MaterialLookAt(uv);
 }
 
 // 1 where the terrain pixel at a place is a liquid that froths (water), 0 otherwise.
@@ -244,7 +265,8 @@ void main() {
 	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
-		if (rteLivingWorld) {
+		// (Not under a liquid, which holds plants still: a blade swaying away there would leave a hole in the water.)
+		if (rteLivingWorld && !(IsVegetation(colorIndex) && PlantUnderLiquidAt(textureUV))) {
 			// Vegetation sways: count how far up a stalk this pixel is, lean the stalk that much, and draw whatever vegetation lands here.
 			float height = 0.0;
 			for (int k = 1; k <= 6; ++k) {
@@ -399,7 +421,12 @@ void main() {
 					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * calm * mix(1.0, 0.5, deep) + lean * rteWaterRipples * lookSurface.z, 0.0));
 				}
 				glowsThrough = 0.25 * lookStyle.w;
-				FragColor = vec4(water, mix(lookShallow.a, lookDeep.a, deep));
+				if (LiquidLook(colorIndex) == 0) {
+					// A plant under the liquid (PlantUnderLiquidAt): seen through it, more faintly the deeper it lies.
+					FragColor = vec4(mix(FragColor.rgb, water, mix(0.45, 0.75, deep)), 1.0);
+				} else {
+					FragColor = vec4(water, mix(lookShallow.a, lookDeep.a, deep));
+				}
 				// Fast, fresh churn (where a pour lands, a rapid) froths through the body of the water, not only where it's thin.
 				if (churn > 0.0 && rteWaterFoam > 0.0 && lookStyle.y > 0.0) {
 					float churned = clamp(churn * min(rteWaterFoam, 1.5) * lookStyle.y, 0.0, 1.0);
