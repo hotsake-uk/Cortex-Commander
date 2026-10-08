@@ -112,7 +112,7 @@ namespace RTE {
 		/// Gets the liquid looks, by look number (0 unused).
 		const std::array<LiquidLook, c_MaxLiquidLooks>& GetLiquidLooks() const { return m_LiquidLooks; }
 
-		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 5.
+		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 7.
 		void SetGlobalTexture(int unit, GLuint texture) {
 			if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) {
 				m_GlobalTextures[unit - 3] = texture;
@@ -120,7 +120,7 @@ namespace RTE {
 		}
 
 		/// Gets the textures to bind to units 3 and up for every batch render.
-		const std::array<GLuint, 4>& GetGlobalTextures() const { return m_GlobalTextures; }
+		const std::array<GLuint, 5>& GetGlobalTextures() const { return m_GlobalTextures; }
 
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
@@ -160,7 +160,7 @@ namespace RTE {
 			looks[7] = {{0.72F, 0.74F, 0.78F, 1.0F}, {0.55F, 0.57F, 0.62F, 1.0F}, {1.0F, 1.0F, 0.6F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}, {0.95F, 0.96F, 1.0F, 0.5F}};
 			return looks;
 		}
-		std::array<GLuint, 4> m_GlobalTextures{};
+		std::array<GLuint, 5> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};

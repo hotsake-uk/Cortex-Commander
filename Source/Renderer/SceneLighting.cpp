@@ -1,6 +1,7 @@
 #include "SceneLighting.h"
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
+#include "FluidSim.h"
 
 #include "PostProcessMan.h"
 #include "PerformanceMan.h"
@@ -223,6 +224,18 @@ bool SceneLighting::EnsureWorldResources() {
 	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
 	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	// The flow field starts with nothing moving anywhere.
+	m_FlowTexture.Create(m_GridWidth, m_GridHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
+	m_Flow.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight * 4, 0);
+	for (size_t cell = 0; cell < m_Flow.size(); cell += 4) {
+		m_Flow[cell] = 128;
+	}
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_GridWidth, m_GridHeight, GL_RGBA, GL_UNSIGNED_BYTE, m_Flow.data()));
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	m_FlowTileColumns = (m_GridWidth + c_FlowTileCells - 1) / c_FlowTileCells;
+	m_FlowTileMarks.assign(static_cast<size_t>(m_FlowTileColumns) * ((m_GridHeight + c_FlowTileCells - 1) / c_FlowTileCells), 0);
+	m_FlowTiles.clear();
 	// Scorch marks from before the grid was built belong to the last scene.
 	g_PostProcessMan.TakePendingScorchMarks();
 	g_PostProcessMan.ClearHotScorchMarks();
@@ -244,6 +257,9 @@ void SceneLighting::DestroyWorldResources() {
 	m_SkyLight[1].Destroy();
 	m_Scorch.Destroy();
 	m_Stains.Destroy();
+	m_FlowTexture.Destroy();
+	m_Flow.clear();
+	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
 	m_WorldMaterialBitmap = nullptr;
 	m_SceneWidth = 0;
@@ -600,6 +616,9 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	g_RenderMan.SetGlobalTexture(4, m_Stains.Texture);
 	g_RenderMan.SetGlobalTexture(5, m_SkylineTexture.Texture);
 	g_RenderMan.SetGlobalTexture(6, m_OccupancyTexture.Texture);
+	g_RenderMan.SetGlobalTexture(7, m_FlowTexture.Texture);
+	m_TerrainShader->SetInt("rteFlowField", 7);
+	m_TerrainShader->SetFloat("rteFlowSurface", (m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled()) ? std::clamp(m_Settings.WaterFlowStrength, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteWorldGrid", 6);
 	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
 	// The sprite shader reads sprites' own shading as relief too.
@@ -684,6 +703,77 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 		glUniform4fv(m_TerrainShader->GetUniformLocation("rteHotSpots"), hotSpotCount, &hotSpots[0].x);
 	}
 	return m_TerrainShader.get();
+}
+
+void SceneLighting::UpdateFlowField() {
+	if (!m_FlowTexture.Texture) {
+		return;
+	}
+	bool on = m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled();
+	if (!on && m_FlowTiles.empty()) {
+		return;
+	}
+	ZoneScoped;
+	auto tileCells = [this](int tile, int& firstColumn, int& firstRow, int& endColumn, int& endRow) {
+		firstColumn = (tile % m_FlowTileColumns) * c_FlowTileCells;
+		firstRow = (tile / m_FlowTileColumns) * c_FlowTileCells;
+		endColumn = std::min(firstColumn + c_FlowTileCells, m_GridWidth);
+		endRow = std::min(firstRow + c_FlowTileCells, m_GridHeight);
+	};
+	// Last frame's moving liquid is cleared away; those tiles are uploaded again whether or not anything moves in them now.
+	std::vector<int> uploads;
+	uploads.swap(m_FlowTiles);
+	for (int tile: uploads) {
+		int firstColumn, firstRow, endColumn, endRow;
+		tileCells(tile, firstColumn, firstRow, endColumn, endRow);
+		for (int row = firstRow; row < endRow; ++row) {
+			for (int column = firstColumn; column < endColumn; ++column) {
+				unsigned char* cell = &m_Flow[(static_cast<size_t>(row) * m_GridWidth + column) * 4];
+				cell[0] = 128;
+				cell[1] = cell[2] = cell[3] = 0;
+			}
+		}
+		m_FlowTileMarks[tile] = 1;
+	}
+	if (on) {
+		FluidSim::VisitMovingPixels([this, &uploads](int x, int y, int velX, int velY, int still) {
+			int column = x / m_CellSize;
+			int row = y / m_CellSize;
+			if (x < 0 || y < 0 || column >= m_GridWidth || row >= m_GridHeight) {
+				return;
+			}
+			unsigned char* cell = &m_Flow[(static_cast<size_t>(row) * m_GridWidth + column) * 4];
+			// Each cell keeps the strongest of what moves in it: the fastest sideways run, the fastest speed and the most recent movement.
+			int sideways = 128 + std::clamp(velX * 2, -127, 127);
+			if (std::abs(sideways - 128) > std::abs(cell[0] - 128)) {
+				cell[0] = static_cast<unsigned char>(sideways);
+			}
+			int speed = std::min(static_cast<int>(std::sqrt(static_cast<float>(velX * velX + velY * velY)) * 4.0F), 255);
+			cell[1] = std::max(cell[1], static_cast<unsigned char>(speed));
+			// A pixel stops being simulated after 20 steps without getting lower, so that's settled.
+			cell[2] = std::max(cell[2], static_cast<unsigned char>(255 * (20 - std::min(still, 20)) / 20));
+			cell[3] = 255;
+			int tile = (row / c_FlowTileCells) * m_FlowTileColumns + column / c_FlowTileCells;
+			if (!(m_FlowTileMarks[tile] & 2)) {
+				if (!(m_FlowTileMarks[tile] & 1)) {
+					uploads.push_back(tile);
+				}
+				m_FlowTileMarks[tile] |= 3;
+				m_FlowTiles.push_back(tile);
+			}
+		});
+	}
+	glBindTexture(GL_TEXTURE_2D, m_FlowTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, m_GridWidth);
+	for (int tile: uploads) {
+		int firstColumn, firstRow, endColumn, endRow;
+		tileCells(tile, firstColumn, firstRow, endColumn, endRow);
+		GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, firstRow, endColumn - firstColumn, endRow - firstRow, GL_RGBA, GL_UNSIGNED_BYTE, &m_Flow[(static_cast<size_t>(firstRow) * m_GridWidth + firstColumn) * 4]));
+		m_FlowTileMarks[tile] = 0;
+	}
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
 void SceneLighting::Update() {
@@ -838,6 +928,7 @@ void SceneLighting::Update() {
 		}
 	}
 	RecomputeSkyline();
+	UpdateFlowField();
 
 	GLint previousFramebuffer = 0;
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);

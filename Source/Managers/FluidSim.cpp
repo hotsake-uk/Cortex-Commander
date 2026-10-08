@@ -1119,6 +1119,18 @@ void FluidSim::GetActivePixels(const Vector& corner, float width, float height, 
 	}
 }
 
+void FluidSim::VisitMovingPixels(const std::function<void(int x, int y, int velX, int velY, int still)>& visit) {
+	if (s_Width <= 0) {
+		return;
+	}
+	for (int key: s_Active.Keys) {
+		// (Keys can be stale, or repeated, until the next update drops them. A repeat only visits the same pixel twice.)
+		if (s_Active.Contains(key)) {
+			visit(key % s_Width, key / s_Width, s_Active.VelX[key], s_Active.VelY[key], s_Active.Still(key));
+		}
+	}
+}
+
 int FluidSim::GetActiveCount() {
 	return static_cast<int>(s_Active.Count);
 }
