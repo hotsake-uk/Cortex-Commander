@@ -52,6 +52,7 @@ MovableMan::~MovableMan() {
 
 void MovableMan::Clear() {
 	m_Actors.clear();
+	m_Doors.clear();
 	m_ContiguousActorIDs.clear();
 	m_Items.clear();
 	m_Particles.clear();
@@ -230,6 +231,7 @@ void MovableMan::PurgeAllMOs() {
 	}
 
 	m_Actors.clear();
+	m_Doors.clear();
 	m_Items.clear();
 	m_Particles.clear();
 	m_AddedActors.clear();
@@ -820,6 +822,10 @@ Actor* MovableMan::RemoveActor(MovableObject* pActorToRem) {
 				removed = *itr;
 				m_ValidActors.erase(*itr);
 				m_Actors.erase(itr);
+				// A door handed to a script here may be freed before the next update rebuilds the list.
+				if (ADoor* door = dynamic_cast<ADoor*>(removed)) {
+					m_Doors.erase(std::remove(m_Doors.begin(), m_Doors.end(), door), m_Doors.end());
+				}
 				break;
 			}
 		}
@@ -1119,6 +1125,7 @@ int MovableMan::GetAllActors(bool transferOwnership, std::list<SceneObject*>& ac
 	if (transferOwnership) {
 		// Clear the internal Actor lists; we transferred the ownership of them
 		m_Actors.clear();
+		m_Doors.clear();
 		m_AddedActors.clear();
 		m_ValidActors.clear();
 
@@ -1757,6 +1764,8 @@ void MovableMan::Update() {
 		}
 	}
 
+	RebuildDoorList();
+
 	// Run seeing rays for all actors
 	m_ActorsSeeFuture = g_ThreadMan.GetPriorityThreadPool().parallelize_loop(m_Actors.size(),
 	                                                                         [&](int start, int end) {
@@ -1783,6 +1792,15 @@ void MovableMan::Update() {
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
 		if (m_SortTeamRoster[Activity::TeamOne]) {
 			m_ActorRoster[team].sort(MOXPosComparison());
+		}
+	}
+}
+
+void MovableMan::RebuildDoorList() {
+	m_Doors.clear();
+	for (Actor* actor: m_Actors) {
+		if (ADoor* door = dynamic_cast<ADoor*>(actor)) {
+			m_Doors.push_back(door);
 		}
 	}
 }

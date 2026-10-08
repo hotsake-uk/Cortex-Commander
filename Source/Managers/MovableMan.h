@@ -26,6 +26,7 @@ namespace RTE {
 	class MOPixel;
 	class MOSprite;
 	class AHuman;
+	class ADoor;
 	class SceneLayer;
 	class SceneObject;
 	class Box;
@@ -276,6 +277,9 @@ namespace RTE {
 
 		/// Gets every Actor currently in the scene, to look through. Not for keeping.
 		const std::deque<Actor*>& GetActorList() const { return m_Actors; }
+
+		/// Gets the doors among GetActorList, rebuilt at the end of each update and when a door is removed. Not for keeping.
+		const std::vector<ADoor*>& GetDoorList() const { return m_Doors; }
 
 		/// Gets the particles in the scene (not the ones added this frame).
 		/// @return The particles.
@@ -597,6 +601,10 @@ namespace RTE {
 	protected:
 		// All actors in the scene
 		std::deque<Actor*> m_Actors;
+		// The doors in m_Actors, so movement code that looks for doors doesn't cast every actor (RebuildDoorList).
+		std::vector<ADoor*> m_Doors;
+		/// Refills m_Doors from m_Actors.
+		void RebuildDoorList();
 		// A map to give a unique contiguous identifier per-actor. This is re-created per frame.
 		std::unordered_map<const Actor*, int> m_ContiguousActorIDs;
 		// List of items that are pickup-able by actors
