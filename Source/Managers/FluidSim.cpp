@@ -470,6 +470,53 @@ namespace {
 
 	/// Checks a stretch of the terrain for liquid that should be moving but isn't being simulated: left hanging over a gap when ground was removed without a wake-up, or loaded from a scene.
 	/// A little each update, working through the whole terrain every few seconds.
+	/// The box the liquids changed what can be walked through this update (to or from something solid: stone set from lava, ice, a hole eaten
+	/// by acid, sand sliding), told to the pathfinder at the end of the update (M-4), as TerrainFire does.
+	struct ChangedBox {
+		int MinX = 0, MinY = 0, MaxX = -1, MaxY = -1;
+		void Add(int x, int y) {
+			if (MaxX < 0) {
+				MinX = MaxX = x;
+				MinY = MaxY = y;
+				return;
+			}
+			MinX = std::min(MinX, x);
+			MinY = std::min(MinY, y);
+			MaxX = std::max(MaxX, x);
+			MaxY = std::max(MaxY, y);
+		}
+		bool Empty() const { return MaxX < 0; }
+		void Reset() { MaxX = MaxY = -1; }
+	};
+	ChangedBox s_SolidChanged;
+	ChangedBox s_LiquidRested; //!< Where liquid came to rest since it was last told (the path grid weighs liquid: LM-4), told once a second.
+
+	/// Tells the pathfinder what changed (M-4): what can be walked through at once, where liquid settled once a second.
+	void TellPathfinder(SLTerrain* terrain, long long simUpdate) {
+		auto tell = [terrain](ChangedBox& box) {
+			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(box.MinX), static_cast<float>(box.MinY)), static_cast<float>(box.MaxX - box.MinX + 1), static_cast<float>(box.MaxY - box.MinY + 1)));
+			box.Reset();
+		};
+		if (!s_SolidChanged.Empty()) {
+			tell(s_SolidChanged);
+		}
+		if (!s_LiquidRested.Empty() && simUpdate % 60 == 0) {
+			tell(s_LiquidRested);
+		}
+	}
+
+	/// Whether a material is something to stand on or bump into, not air or a liquid (powder is: a sand pile is ground).
+	bool BlocksPassage(int material) { return material != g_MaterialAir && (material <= 0 || material >= 256 || s_Kinds[material] == Liquid::None || s_Kinds[material] == Liquid::Powder); }
+
+	/// Sets a terrain pixel's material and colour, noting it for the pathfinder when that changes whether it can be passed.
+	void ChangePixel(SLTerrain* terrain, int x, int y, int material, int color) {
+		if (BlocksPassage(terrain->GetMaterialPixel(x, y)) != BlocksPassage(material)) {
+			s_SolidChanged.Add(x, y);
+		}
+		terrain->SetMaterialPixel(x, y, material);
+		terrain->SetFGColorPixel(x, y, color);
+	}
+
 	/// Whether a resting liquid pixel has something beside it to react with (M-2): acid by soft ground, lava (or what settles like it) by
 	/// what burns, melts or quenches it, cryogenic fluid by what freezes, and what douses by fire. The step only reacts while a pixel is
 	/// awake, so the sweep wakes one that has.
@@ -545,8 +592,7 @@ namespace {
 					// into, over it.
 					int above = materialBitmap->line[y - 1][x];
 					if ((above == g_MaterialAir || above == driesTo) && Random01() < s_DryChance[materialBitmap->line[y][x]]) {
-						terrain->SetMaterialPixel(x, y, driesTo > 0 ? driesTo : static_cast<int>(g_MaterialAir));
-						terrain->SetFGColorPixel(x, y, driesTo > 0 ? s_ColorOfMaterial[driesTo] : static_cast<int>(ColorKeys::g_MaskColor));
+						ChangePixel(terrain, x, y, driesTo > 0 ? driesTo : static_cast<int>(g_MaterialAir), driesTo > 0 ? s_ColorOfMaterial[driesTo] : static_cast<int>(ColorKeys::g_MaskColor));
 						if (driesTo < 0) {
 							ActivateAround(x, y, width, height, terrain);
 						}
@@ -554,8 +600,7 @@ namespace {
 				} else if (int freezesTo = s_FreezesTo[materialBitmap->line[y][x]]; freezing > 0.05F && freezesTo != 0 && y > 0) {
 					int above = materialBitmap->line[y - 1][x];
 					if ((above == g_MaterialAir || (above == freezesTo && Random01() < 0.25F)) && Random01() < freezing * 0.04F) {
-						terrain->SetMaterialPixel(x, y, freezesTo);
-						terrain->SetFGColorPixel(x, y, s_ColorOfMaterial[freezesTo]);
+						ChangePixel(terrain, x, y, freezesTo, s_ColorOfMaterial[freezesTo]);
 					}
 				}
 			}
@@ -780,8 +825,7 @@ void FluidSim::Update() {
 				--dropsLeft;
 				Color color;
 				color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
-				terrain->SetMaterialPixel(x, y, g_MaterialAir);
-				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 				s_Active.Remove(y * width + x);
 				const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 				float outward = static_cast<float>(dx) / static_cast<float>(splash.Radius);
@@ -811,8 +855,7 @@ void FluidSim::Update() {
 				int x = pourX + dx;
 				int y = pour.Y + dy;
 				if (dx * dx + dy * dy <= pour.Radius * pour.Radius && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == g_MaterialAir) {
-					terrain->SetMaterialPixel(x, y, material);
-					terrain->SetFGColorPixel(x, y, s_PourColor[material]);
+					ChangePixel(terrain, x, y, material, s_PourColor[material]);
 					Activate(x, y, width, height, terrain);
 				}
 			}
@@ -838,12 +881,14 @@ void FluidSim::Update() {
 		s_Waiting.erase(s_Waiting.begin(), s_Waiting.begin() + static_cast<std::ptrdiff_t>(taken));
 	}
 	Sweep(terrain, width, height);
+	long long simUpdate = g_TimerMan.GetSimUpdateCount();
 	if (s_Active.Empty()) {
 		s_Active.Keys.clear();
+		// (What the sweep froze or dried still counts.)
+		TellPathfinder(terrain, simUpdate);
 		return;
 	}
 
-	long long simUpdate = g_TimerMan.GetSimUpdateCount();
 	// Bottom to top, so a column of liquid falls together instead of one pixel per step.
 	// A copy, because pixels woken during the step are added to the set and take their turn next step.
 	s_Active.Tidy();
@@ -920,12 +965,10 @@ void FluidSim::Update() {
 			if (chills && s_FreezesTo[neighbourMaterial] != 0 && Random01() < 0.3F) {
 				// Cryogenic fluid freezes the water (or mud) it touches, and is used up doing it, half the time.
 				int freezesTo = s_FreezesTo[neighbourMaterial];
-				terrain->SetMaterialPixel(nx, ny, freezesTo);
-				terrain->SetFGColorPixel(nx, ny, s_ColorOfMaterial[freezesTo]);
+				ChangePixel(terrain, nx, ny, freezesTo, s_ColorOfMaterial[freezesTo]);
 				s_Active.Remove(ny * width + nx);
 				if (Random01() < 0.5F) {
-					terrain->SetMaterialPixel(x, y, g_MaterialAir);
-					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+					ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 					ActivateAround(x, y, width, height, terrain);
 					reacted = true;
 					break;
@@ -933,12 +976,10 @@ void FluidSim::Update() {
 			}
 			if (settlesTo != 0 && s_Douses[neighbourMaterial]) {
 				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam (or to what it boils to).
-				terrain->SetMaterialPixel(x, y, settlesTo);
-				terrain->SetFGColorPixel(x, y, s_ColorOfMaterial[settlesTo]);
+				ChangePixel(terrain, x, y, settlesTo, s_ColorOfMaterial[settlesTo]);
 				int boilsTo = s_BoilsTo[neighbourMaterial];
 				if (boilsTo != 0) {
-					terrain->SetMaterialPixel(nx, ny, boilsTo > 0 ? boilsTo : static_cast<int>(g_MaterialAir));
-					terrain->SetFGColorPixel(nx, ny, boilsTo > 0 ? s_ColorOfMaterial[boilsTo] : static_cast<int>(ColorKeys::g_MaskColor));
+					ChangePixel(terrain, nx, ny, boilsTo > 0 ? boilsTo : static_cast<int>(g_MaterialAir), boilsTo > 0 ? s_ColorOfMaterial[boilsTo] : static_cast<int>(ColorKeys::g_MaskColor));
 					s_Active.Remove(ny * width + nx);
 				}
 				ActivateAround(nx, ny, width, height, terrain);
@@ -952,8 +993,7 @@ void FluidSim::Update() {
 			if (kind == Liquid::Lava && neighbourMaterial != g_MaterialAir && s_MeltsTo[neighbourMaterial] != 0 && Random01() < 0.3F) {
 				// Lava melts ice and snow to water (which then quenches it to stone).
 				int meltsTo = s_MeltsTo[neighbourMaterial];
-				terrain->SetMaterialPixel(nx, ny, meltsTo);
-				terrain->SetFGColorPixel(nx, ny, s_ColorOfMaterial[meltsTo]);
+				ChangePixel(terrain, nx, ny, meltsTo, s_ColorOfMaterial[meltsTo]);
 				Activate(nx, ny, width, height, terrain);
 			}
 			if (kind == Liquid::Lava && TerrainFire::IsFlammable(neighbourMaterial) && Random01() < 0.2F) {
@@ -966,13 +1006,11 @@ void FluidSim::Update() {
 				// Acid slowly eats soft terrain, and is used up doing it.
 				const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(neighbourMaterial));
 				if (material->GetIntegrity() < 100.0F && Random01() < 0.02F) {
-					terrain->SetMaterialPixel(nx, ny, g_MaterialAir);
-					terrain->SetFGColorPixel(nx, ny, ColorKeys::g_MaskColor);
+					ChangePixel(terrain, nx, ny, g_MaterialAir, ColorKeys::g_MaskColor);
 					s_Active.Remove(ny * width + nx);
 					ActivateAround(nx, ny, width, height, terrain);
 					if (Random01() < 0.3F) {
-						terrain->SetMaterialPixel(x, y, g_MaterialAir);
-						terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+						ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 						ActivateAround(x, y, width, height, terrain);
 						reacted = true;
 						break;
@@ -992,8 +1030,7 @@ void FluidSim::Update() {
 		}
 		// Boiling off (cryogenic fluid): a pixel at the surface goes up as mist now and then, and the one under it is next.
 		if (s_Evaporates[ownMaterial] > 0.0F && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < s_Evaporates[ownMaterial]) {
-			terrain->SetMaterialPixel(x, y, g_MaterialAir);
-			terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+			ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 			ActivateAround(x, y, width, height, terrain);
 			if (mistLeft > 0) {
 				--mistLeft;
@@ -1069,8 +1106,7 @@ void FluidSim::Update() {
 					int material = materialBitmap->line[y][x];
 					Color color;
 					color.SetRGBWithIndex(terrain->GetFGColorPixel(x, y));
-					terrain->SetMaterialPixel(x, y, g_MaterialAir);
-					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+					ChangePixel(terrain, x, y, g_MaterialAir, ColorKeys::g_MaskColor);
 					const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 					// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
 					Vector velocity((Random01() - 0.5F) * 9.0F, -(1.5F + Random01() * static_cast<float>(velY) * 0.3F));
@@ -1257,10 +1293,8 @@ void FluidSim::Update() {
 			if (swapped) {
 				s_Active.Remove(target);
 			}
-			terrain->SetMaterialPixel(targetX, targetY, material);
-			terrain->SetFGColorPixel(targetX, targetY, color);
-			terrain->SetMaterialPixel(x, y, leftMaterial);
-			terrain->SetFGColorPixel(x, y, leftColor);
+			ChangePixel(terrain, targetX, targetY, material, color);
+			ChangePixel(terrain, x, y, leftMaterial, leftColor);
 			// Burning fuel (oil) takes its fire with it, so a lit slick that flows keeps burning and a burning stream runs downhill (M-3). Only
 			// while something burns: a map lookup or two a move.
 			if (anyFire && (TerrainFire::IsFlammable(material) || (swapped && TerrainFire::IsFlammable(leftMaterial)))) {
@@ -1293,6 +1327,7 @@ void FluidSim::Update() {
 	for (int key: settled) {
 		if (movedInto.count(key) == 0) {
 			s_Active.Remove(key);
+			s_LiquidRested.Add(key % width, key / width);
 		}
 	}
 	for (const glm::ivec2& spot: hurtSpots) {
@@ -1302,6 +1337,7 @@ void FluidSim::Update() {
 			g_MovableMan.AddParticle(flame);
 		}
 	}
+	TellPathfinder(terrain, simUpdate);
 }
 
 std::string FluidSim::GetSaveState() {
@@ -1333,6 +1369,8 @@ void FluidSim::SetPendingLoadState(const std::string& state) {
 
 void FluidSim::Clear() {
 	s_Active.Clear();
+	s_SolidChanged.Reset();
+	s_LiquidRested.Reset();
 	s_Waiting.clear();
 	s_SweepCursor = 0;
 	std::scoped_lock lock(s_QueueMutex);
