@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 
 #include "ActivityMan.h"
+#include "Actor.h"
 #include "Activity.h"
 #include "ConsoleMan.h"
 #include "FrameMan.h"
@@ -16,6 +17,7 @@
 #include "TimerMan.h"
 
 #include <atomic>
+#include <cstdlib>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -308,6 +310,24 @@ std::string ControlLink::Execute(const std::string& commandLine) {
 		g_SettingsMan.Save(writer);
 		writer.EndWrite();
 		return "ok";
+	}
+	if (verb == "inspect") {
+		// A unit's debug state as JSON, by its unique id; with no id, every inspected unit's (pinned, selected in the sandbox, or player controlled).
+		if (!g_ActivityMan.IsInActivity()) {
+			return "err not in a game";
+		}
+		if (!rest.empty()) {
+			long id = std::strtol(rest.c_str(), nullptr, 10);
+			const Actor* actor = dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(id));
+			return actor ? "ok " + actor->DescribeDebugState(true) : "err no unit with id " + rest;
+		}
+		std::string list;
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			if (actor->IsDebugInspected()) {
+				list += (list.empty() ? "" : ", ") + actor->DescribeDebugState(true);
+			}
+		}
+		return "ok [" + list + "]";
 	}
 	if (verb == "lua") {
 		LuaStateWrapper& lua = g_LuaMan.GetMasterScriptState();

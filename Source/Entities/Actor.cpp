@@ -31,6 +31,9 @@
 #include "AllegroBitmap.h"
 
 #include "tracy/Tracy.hpp"
+#include <algorithm>
+#include <cmath>
+#include <sstream>
 
 using namespace RTE;
 
@@ -1987,3 +1990,77 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 }
 
 void Actor::DrawHUD(const Camera& camera) {}
+
+void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
+	static const char* const modeNames[] = {"none", "sentry", "patrol", "goto", "brainhunt", "gold dig", "return", "stay", "scuttle", "deliver", "bomb", "squad", "count"};
+	auto number = [&fields](const std::string& name, double value) {
+		std::ostringstream text;
+		text << value;
+		fields.push_back({name, text.str(), false});
+	};
+	auto flag = [&fields](const std::string& name, bool value) { fields.push_back({name, value ? "true" : "false", false}); };
+	fields.push_back({"preset", GetPresetName(), true});
+	number("id", static_cast<double>(GetUniqueID()));
+	number("team", m_Team);
+	number("x", std::floor(m_Pos.m_X));
+	number("y", std::floor(m_Pos.m_Y));
+	number("vx", std::round(m_Vel.m_X * 10.0F) / 10.0);
+	number("vy", std::round(m_Vel.m_Y * 10.0F) / 10.0);
+	number("health", std::round(m_Health));
+	number("status", m_Status);
+	fields.push_back({"aiMode", m_AIMode >= 0 && m_AIMode < static_cast<int>(std::size(modeNames)) ? modeNames[m_AIMode] : std::to_string(m_AIMode), true});
+	flag("playerControlled", IsPlayerControlled());
+	number("routePoints", static_cast<double>(m_MovePath.size()));
+	number("waypoints", static_cast<double>(m_Waypoints.size()));
+	flag("routeAsked", IsWaitingOnNewMovePath());
+	if (!m_MovePath.empty()) {
+		number("nextX", std::floor(m_MovePath.front().m_X));
+		number("nextY", std::floor(m_MovePath.front().m_Y));
+	}
+	// What the scripts have told the engine (AIRetreat, AIFlank, AI_StuckForTime, SandboxAttack and the like), in name order so the line reads the same each time.
+	std::vector<std::pair<std::string, std::string>> scriptValues;
+	for (const auto& [key, value]: GetNumberValueMap()) {
+		if (key.rfind("AI", 0) == 0 || key.rfind("Sandbox", 0) == 0) {
+			std::ostringstream text;
+			text << value;
+			scriptValues.emplace_back(key, text.str());
+		}
+	}
+	size_t numbers = scriptValues.size();
+	for (const auto& [key, value]: GetStringValueMap()) {
+		if (key.rfind("AI", 0) == 0 || key.rfind("Sandbox", 0) == 0) {
+			scriptValues.emplace_back(key, value);
+		}
+	}
+	std::sort(scriptValues.begin(), scriptValues.begin() + numbers);
+	std::sort(scriptValues.begin() + numbers, scriptValues.end());
+	for (size_t i = 0; i < scriptValues.size(); ++i) {
+		fields.push_back({scriptValues[i].first, scriptValues[i].second, i >= numbers});
+	}
+}
+
+std::string Actor::DescribeDebugState(bool json) const {
+	std::vector<DebugStateField> fields;
+	GetDebugState(fields);
+	std::string out = json ? "{" : "";
+	for (size_t i = 0; i < fields.size(); ++i) {
+		const DebugStateField& field = fields[i];
+		if (json) {
+			std::string value = field.Value;
+			if (field.Text) {
+				std::string escaped = "\"";
+				for (char c: value) {
+					if (c == '"' || c == '\\') {
+						escaped += '\\';
+					}
+					escaped += (c == '\n' || c == '\r') ? ' ' : c;
+				}
+				value = escaped + "\"";
+			}
+			out += (i > 0 ? ", \"" : "\"") + field.Name + "\": " + value;
+		} else {
+			out += (i > 0 ? ", " : "") + field.Name + " " + field.Value;
+		}
+	}
+	return json ? out + "}" : out;
+}
