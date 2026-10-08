@@ -10,6 +10,7 @@ struct ImFont;
 
 namespace RTE {
 	class RenderTarget;
+	class Camera;
 	struct GameViewRect;
 	class DebugMan : public Singleton<DebugMan> {
 		friend class SettingsMan;
