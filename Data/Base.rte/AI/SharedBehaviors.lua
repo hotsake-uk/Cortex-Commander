@@ -506,8 +506,8 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 	local range = Owner.AimDistance + FrameMan.PlayerScreenWidth * 0.51;
 	-- How fast noticing fills, per second at full visibility: about 0.3 s for the best units, about 1.2 s for the worst; skill 0 to 100.
 	local rate = (0.8 + (skill or 50) / 40) * Owner.Perceptiveness;
-	local noticed, noticedHit, noticedVisibility;
-	local current, currentHit;
+	local noticed, noticedHit, noticedVisibility, noticedID;
+	local current, currentHit, currentID;
 	for Sighting in Owner:ScanForEnemies(fovDegrees, range, budget) do
 		local Target = Sighting.Target;
 		local HitPos = Sighting.HitPos;
@@ -522,14 +522,14 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 			-- (A target already being fought is known: no delay to keep it.)
 			if AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target.UniqueID == id then
 				entry.progress = 1;
-				current, currentHit = Target, Vector(HitPos.X, HitPos.Y);
+				current, currentHit, currentID = Target, Vector(HitPos.X, HitPos.Y), id;
 			else
 				-- (At least a tick's worth, for the first scan.)
 				entry.progress = entry.progress + Sighting.Visibility * rate * math.max(elapsed, TimerMan.DeltaTimeSecs);
 			end
 			entry.seenMS = now;
 			if entry.progress >= 1 and (not noticed or Sighting.Visibility > noticedVisibility) then
-				noticed, noticedHit, noticedVisibility = Target, Vector(HitPos.X, HitPos.Y), Sighting.Visibility;
+				noticed, noticedHit, noticedVisibility, noticedID = Target, Vector(HitPos.X, HitPos.Y), Sighting.Visibility, id;
 			end
 		end
 	end
@@ -540,8 +540,9 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 		end
 	end
 	-- The enemy being fought, while in view, is what is answered (so the fight keeps it, TargetLostTimer and all), but every fourth scan
-	-- the plainest other one noticed, so a worse threat can take its place, as the old look's stray rays let it.
-	if current and (not noticed or noticed == current or AI.scanTick % 4 ~= 0) then
+	-- the plainest other one noticed, so a worse threat can take its place, as the old look's stray rays let it. (By UniqueID: luabind has no == for two Actor
+	-- userdata, and threw "No such operator defined" here.)
+	if current and (not noticed or noticedID == currentID or AI.scanTick % 4 ~= 0) then
 		return current, currentHit;
 	end
 	return noticed, noticedHit;
