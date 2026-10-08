@@ -298,6 +298,7 @@ namespace {
 	std::vector<SplashRequest> s_Splashes;
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
+	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: a new scene at the old one's address, or the same one restarted, still counts as new (L-1).
 	std::string s_PendingLoadState; //!< Saved moving liquid to restore when the loaded scene starts.
 	int s_Width = 0; //!< Width of the terrain the active pixels' keys refer to.
 	unsigned int s_Random = 0x6C8E9CF5u;
@@ -795,10 +796,12 @@ void FluidSim::Update() {
 		std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
 		~UpdateTimer() { s_LastUpdateMS = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - Start).count(); }
 	} updateTimer;
-	if (g_SceneMan.GetScene() != s_Scene) {
+	if (g_SceneMan.GetScene() != s_Scene || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		Clear();
 		s_Scene = g_SceneMan.GetScene();
+		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_Random = 0x6C8E9CF5u;
+		s_SweepPass = 0;
 		s_TablesBuilt = false;
 		if (!s_PendingLoadState.empty() && s_Scene) {
 			// Restore a saved game's moving liquid: the random state, then "x y stillSteps" per pixel.
