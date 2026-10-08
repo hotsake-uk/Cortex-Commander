@@ -2605,9 +2605,22 @@ function SharedBehaviors.OrderChangedSince(Owner, Spot)
 end
 
 -- Medics (AC-7). Whether a unit can patch up others: one carrying a medikit, or a medic drone (which heals all round it), still standing.
+-- (Another unit's inventory is not looked through: each AI runs on a worker thread of its own and changes its own inventory as it goes, so
+-- a unit with a kit says so in a number value of its own, see AdvertiseMedikit, and number values are safe to read across threads.)
 function SharedBehaviors.IsMedic(Act)
 	-- (People and crabs only: a craft carrying a kit in its hold is no medic.)
-	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and Act:HasObject("Medikit")));
+	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and Act:GetNumberValue("AIHasMedikit") == 1));
+end
+
+-- Says, on the unit itself, whether it carries a medikit (see IsMedic), once a second.
+function SharedBehaviors.AdvertiseMedikit(AI, Owner)
+	AI.MedikitTimer = AI.MedikitTimer or Timer();
+	if AI.medikitChecked and not AI.MedikitTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.medikitChecked = true;
+	AI.MedikitTimer:Reset();
+	Owner:SetNumberValue("AIHasMedikit", Owner:HasObject("Medikit") and 1 or 0);
 end
 
 -- The nearest medic of the unit's team within range, not the unit itself and not one a player is steering (a player's medic goes where the

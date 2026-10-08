@@ -702,6 +702,7 @@ function NativeHumanAI:Update(Owner)
 	end
 	SharedBehaviors.RetreatUpdate(self, Owner);
 	SharedBehaviors.RememberUpdate(self, Owner);
+	SharedBehaviors.AdvertiseMedikit(self, Owner);
 	HumanBehaviors.MedicUpdate(self, Owner);
 	HumanBehaviors.ReloadInLull(self, Owner);
 
