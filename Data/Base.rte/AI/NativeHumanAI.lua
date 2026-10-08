@@ -678,7 +678,8 @@ function NativeHumanAI:Update(Owner)
 
 	-- The fighting rules that outlast any one behaviour: hits taken (for the cover rules), coming out of cover, a flank seen through, and
 	-- falling back when badly hurt. An enemy that can't be seen any more but was shooting at us from somewhere known is flanked too.
-	if self.LastHealth and Owner.Health < self.LastHealth then
+	local hit = self.LastHealth and Owner.Health < self.LastHealth;
+	if hit then
 		self.HitTimer = self.HitTimer or Timer();
 		self.HitTimer:Reset();
 	end
@@ -692,7 +693,10 @@ function NativeHumanAI:Update(Owner)
 	HumanBehaviors.SmokeUpdate(self, Owner);
 	SharedBehaviors.SquadTactics(self, Owner);
 	SharedBehaviors.FlankUpdate(self, Owner);
-	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
+	HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
+	-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
+	local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
+	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
 		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 	end
 	SharedBehaviors.RetreatUpdate(self, Owner);
