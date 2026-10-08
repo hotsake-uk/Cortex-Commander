@@ -733,7 +733,7 @@ namespace RTE {
 		/// Whether a debug overlay wants this unit's AI scripts to write their state into its values (AI_Behavior, AI_TargetID and the rest; see SharedBehaviors.ExportDebugState).
 		/// Off unless an overlay that reads them is on, so the scripts write nothing in normal play.
 		bool WantsDebugExport() const {
-			int inspector = g_SettingsMan.UnitInspector();
+			int inspector = std::max(g_SettingsMan.UnitInspector(), g_SettingsMan.CombatOverlay());
 			return inspector == 2 || (inspector == 1 && IsDebugInspected());
 		}
 

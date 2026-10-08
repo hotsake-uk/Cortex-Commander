@@ -1368,6 +1368,7 @@ function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
 		holdRange = math.max(PrjDat.blast * 2.5, PrjDat.rng * 0.5);
 	end
 	holdRange = math.max(120, math.min(holdRange, FrameMan.PlayerScreenWidth * 0.6));
+	AI.holdRangeTick = holdRange; -- For the combat overlay (see SharedBehaviors.ExportDebugState).
 	local towards = Dist.X > 0 and 1 or -1;
 	if range > holdRange * 1.3 and SharedBehaviors.MayClose(AI, Owner) then
 		-- Too far for a good shot: closing in by the path, firing on the way (the move behaviour keeps the legs going while closingIn is set).

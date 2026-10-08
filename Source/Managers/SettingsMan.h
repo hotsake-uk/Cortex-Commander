@@ -246,6 +246,13 @@ namespace RTE {
 		/// @param which 0, 1 or 2.
 		void SetUnitInspector(int which) { m_UnitInspector = std::clamp(which, 0, 2); }
 
+		/// Gets which units the combat AI overlay draws for: 0 none, 1 the inspected ones, 2 every unit in view. It shows the line to the target, the range held, and the cover, flank and retreat spots.
+		int CombatOverlay() const { return m_CombatOverlay; }
+
+		/// Sets which units the combat AI overlay draws for; see CombatOverlay.
+		/// @param which 0, 1 or 2.
+		void SetCombatOverlay(int which) { m_CombatOverlay = std::clamp(which, 0, 2); }
+
 		/// Gets whether the squad links and trails overlay is on: for inspected squad units, the leader-to-follower line, the leader's trail and each follower's place in line (drawn by the AI scripts).
 		bool ShowSquadLinks() const { return m_ShowSquadLinks; }
 
@@ -468,6 +475,7 @@ namespace RTE {
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
+		int m_CombatOverlay; //!< Which units the combat AI overlay draws for (see CombatOverlay).
 		bool m_ShowSquadLinks; //!< Whether the squad links and trails overlay is on (see ShowSquadLinks).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
