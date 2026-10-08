@@ -1769,7 +1769,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetInt("rteAdaptedLuminance", 4);
 	m_TonemapShader->SetFloat("rteAutoExposure", useAutoExposure ? m_Settings.AutoExposure : 0.0F);
 	// The dead of night is meant to be dark: auto exposure mustn't brighten it back up, so the level it lifts dark scenes towards drops with the light.
-	m_TonemapShader->SetFloat("rteAutoExposureLow", m_Settings.AutoExposureLow * m_NightDim);
+	// The same order the exposure update enforces: GLSL's clamp() is undefined when low is over high, which the settings allow.
+	m_TonemapShader->SetFloat("rteAutoExposureLow", std::min(m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh));
 	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][m_AdaptedLuminanceCurrent[screenIndex]].Texture);
