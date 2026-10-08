@@ -868,6 +868,7 @@
     <ClInclude Include="Source\Managers\DebugOverlays.h" />
     <ClInclude Include="Source\Managers\SmokeGrid.h" />
     <ClInclude Include="Source\Managers\ActorFire.h" />
+    <ClInclude Include="Source\Managers\Temperature.h" />
     <ClInclude Include="Source\Managers\ActorWater.h" />
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
@@ -1425,6 +1426,7 @@
     <ClCompile Include="Source\Managers\ModernHUD.cpp" />
     <ClCompile Include="Source\Managers\SmokeGrid.cpp" />
     <ClCompile Include="Source\Managers\ActorFire.cpp" />
+    <ClCompile Include="Source\Managers\Temperature.cpp" />
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
     <ClCompile Include="Source\Managers\SandboxCatalogue.cpp" />

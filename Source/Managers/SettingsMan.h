@@ -313,6 +313,12 @@ namespace RTE {
 		/// Sets whether the sandbox's incoming and effects overlay is on.
 		void SetShowSandboxEffects(bool show) { m_SandboxEffects = show; }
 
+		/// Gets whether the sandbox's temperature overlay is on: each cell of the temperature field (SB-4) in view, tinted from blue (cold) to red (hot).
+		bool ShowSandboxTemperature() const { return m_SandboxTemperature; }
+
+		/// Sets whether the sandbox's temperature overlay is on.
+		void SetShowSandboxTemperature(bool show) { m_SandboxTemperature = show; }
+
 		/// Gets whether the sandbox's sim state readout is on: what is pausing the world, the AI pause, sim updates per drawn frame, the sandbox's queued and applied tool uses and steps, and the time scale.
 		bool ShowSandboxSimState() const { return m_SandboxSimState; }
 
@@ -593,6 +599,7 @@ namespace RTE {
 		bool m_SandboxPaintAudit; //!< Whether the sandbox's terrain paint audit is on (see ShowSandboxPaintAudit).
 		bool m_SandboxSelectionCamera; //!< Whether the sandbox's selection and camera overlay is on (see ShowSandboxSelectionCamera).
 		bool m_SandboxEffects; //!< Whether the sandbox's incoming and effects overlay is on (see ShowSandboxEffects).
+		bool m_SandboxTemperature; //!< Whether the sandbox's temperature overlay is on (see ShowSandboxTemperature).
 		bool m_SandboxSimState; //!< Whether the sandbox's sim state readout is on (see ShowSandboxSimState).
 		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
 		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).

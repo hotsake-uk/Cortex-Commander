@@ -1,6 +1,7 @@
 #pragma once
 
 #include "glm/glm.hpp"
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,9 @@ namespace RTE {
 		/// @param position The centre.
 		/// @param radius Half the square's side, in pixels.
 		static bool IsBurningNear(const Vector& position, int radius);
+
+		/// Visits every burning pixel, in a fixed order, for the temperature field (SB-4). Only reads. Call from the main thread, between fire updates.
+		static void VisitBurning(const std::function<void(int x, int y)>& visit);
 
 		/// Puffs of steam (where water meets fire or lava), which rise, fade and block sight like smoke. Main thread only.
 		/// @param position Where.

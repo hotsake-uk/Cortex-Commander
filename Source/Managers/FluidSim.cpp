@@ -12,6 +12,7 @@
 #include "SceneMan.h"
 #include "SLTerrain.h"
 #include "Scene.h"
+#include "Temperature.h"
 #include "TerrainFire.h"
 #include "TimerMan.h"
 #include "WeatherEffects.h"
@@ -903,8 +904,8 @@ namespace {
 	}
 
 	void Sweep(SLTerrain* terrain, int width, int height) {
-		// In snowy weather still water slowly freezes over from the top.
-		float freezing = FluidSim::FreezingEnabled() ? WeatherEffects::GetSnow() : 0.0F;
+		// In snowy weather still water slowly freezes over from the top. (With the temperature field on, it freezes by the cold there instead: Temperature.)
+		float freezing = FluidSim::FreezingEnabled() && !Temperature::IsEnabled() ? WeatherEffects::GetSnow() : 0.0F;
 		size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
 		if (total == 0) {
 			return;
@@ -979,6 +980,56 @@ namespace {
 
 bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
+}
+
+int FluidSim::FreezesTo(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 ? s_FreezesTo[materialID] : 0;
+}
+
+int FluidSim::MeltsTo(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 ? s_MeltsTo[materialID] : 0;
+}
+
+int FluidSim::BoilsTo(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 ? s_BoilsTo[materialID] : -1;
+}
+
+int FluidSim::SettlesTo(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 ? s_SettlesTo[materialID] : 0;
+}
+
+bool FluidSim::IsLava(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] == Liquid::Lava;
+}
+
+bool FluidSim::Chills(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Chills[materialID];
+}
+
+void FluidSim::ChangeMaterialAt(int x, int y, int materialID) {
+	Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
+	if (!terrain || !s_TablesBuilt || scene != s_Scene || materialID < 0 || materialID >= 256) {
+		return;
+	}
+	int width = terrain->GetBitmap()->w;
+	int height = terrain->GetBitmap()->h;
+	if (!InWorld(x, y, width, height)) {
+		return;
+	}
+	int was = terrain->GetBitmap()->line[y][x];
+	if (was == materialID) {
+		return;
+	}
+	if (materialID == g_MaterialAir && s_Kinds[was] != Liquid::None && s_Kinds[was] != Liquid::Powder) {
+		Uncover(terrain, x, y, width);
+	} else {
+		ChangePixel(terrain, x, y, materialID, materialID == g_MaterialAir ? static_cast<int>(ColorKeys::g_MaskColor) : s_ColorOfMaterial[materialID]);
+	}
+	if (s_Enabled && s_Width == width) {
+		s_Active.Remove(y * width + x);
+		ActivateAround(x, y, width, height, terrain);
+	}
 }
 
 bool FluidSim::HoldsBodies(int materialID) {

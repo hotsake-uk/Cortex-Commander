@@ -46,6 +46,28 @@ namespace RTE {
 		/// each does to a body is its material's (weight, stickiness, touch damage).
 		static bool HoldsBodies(int materialID);
 
+		/// What a material freezes into where it is cold enough (water: ice), 0 for nothing. For the temperature field (SB-4).
+		static int FreezesTo(int materialID);
+
+		/// What a solid melts into where it is warm enough (ice and snow: water), 0 for nothing.
+		static int MeltsTo(int materialID);
+
+		/// What a liquid boils into where it is hot enough (water: air, with steam), -1 for nothing.
+		static int BoilsTo(int materialID);
+
+		/// What a liquid sets into where it cools (lava: stone), 0 for nothing.
+		static int SettlesTo(int materialID);
+
+		/// Gets whether a material is lava, which heats what is around it.
+		static bool IsLava(int materialID);
+
+		/// Gets whether a material chills what it touches (cryogenic fluid).
+		static bool Chills(int materialID);
+
+		/// Changes a terrain pixel to another material (air included), drawn in that material's colour, and wakes the liquid around it. For the
+		/// temperature field's phase changes. Call from the simulation (main thread), after this update.
+		static void ChangeMaterialAt(int x, int y, int materialID);
+
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.

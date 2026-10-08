@@ -1,6 +1,7 @@
 #include "SceneMan.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "Temperature.h"
 #include "TerrainCollapse.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
@@ -1473,6 +1474,14 @@ bool SceneMan::SmokeBlocksSight(const Vector& start, const Vector& end) const {
 
 bool SceneMan::IsBurningNear(const Vector& position, int radius) const {
 	return TerrainFire::IsBurningNear(position, radius);
+}
+
+float SceneMan::GetTemperature(const Vector& position) const {
+	return Temperature::GetTemperature(position);
+}
+
+void SceneMan::AddHeat(const Vector& position, float degrees) const {
+	Temperature::AddHeat(position, degrees);
 }
 
 int SceneMan::GetBurningUnitCount() const {

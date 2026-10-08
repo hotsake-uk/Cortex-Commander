@@ -8,6 +8,7 @@
 #include "Controller.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "Temperature.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -216,7 +217,14 @@ void DebugMan::SettingsGUI() {
 		if (settings.ShelterMask) {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
-		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
+		Toggle("Temperature", Temperature::IsEnabled(), [](bool on) { Temperature::SetEnabled(on); });
+		Tip("Heat from fire and lava and cold from snow spread through the world: water freezes where it is cold, ice and snow melt by fire, water boils by lava, lava crusts over in the cold, and great heat sets what burns alight. Off: none of that, and the toggle below freezes water in snow instead.");
+		if (Temperature::IsEnabled()) {
+			Toggle("Great heat and cold hurt units", Temperature::HurtsUnits(), [](bool on) { Temperature::SetHurtsUnits(on); });
+			Tip("Units take burns by fire and lava, and frostbite in hard frost. Cold slows their walk either way.");
+		} else {
+			Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
+		}
 		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
 		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
@@ -808,6 +816,8 @@ void DebugMan::SettingsGUI() {
 		Tip("A readout in the bottom right: whether the world is paused and by what (the sandbox's tools, photo mode, Freeze simulation, the game's pause), the AI pause, how many sim updates ran for this frame, the sandbox's tool uses queued and applied last update and the steps still wanted, and the time scale against the speed the simulation actually manages.");
 		Toggle("Incoming and effects", g_SettingsMan.ShowSandboxEffects(), [](bool on) { g_SettingsMan.SetShowSandboxEffects(on); });
 		Tip("Each rocket, shell, bomb or falling craft on its way in as its line, where it will hit with its crater, and the updates it has left; each effect put down, numbered, with its main light's reach as a ring and storm cells' next flash; each water spring as its pour. Point at an effect or a spring and press Delete to remove just that one.");
+		Toggle("Temperature", g_SettingsMan.ShowSandboxTemperature(), [](bool on) { g_SettingsMan.SetShowSandboxTemperature(on); });
+		Tip("The temperature field in view, a cell every 8 pixels: blue where it is below freezing, clear near the weather's own temperature, orange to red where it is hot (water boils past 100, what burns catches past 115). The temperature under the pointer is written by it. Nothing shows while the Temperature setting is off.");
 		Toggle("Selection and camera", g_SettingsMan.ShowSandboxSelectionCamera(), [](bool on) { g_SettingsMan.SetShowSandboxSelectionCamera(on); });
 		Tip("While dragging a selection box: the box as the selection will really use it, with a ring on each unit it will take and in red any part past the scene's seam, which takes nobody. Always: the unit the game says you control (green) against the one the sandbox thinks you're in (blue), the observation target (yellow cross), the free camera's centre (cyan cross), and the view's scale.");
 		Toggle("Terrain paint audit", g_SettingsMan.ShowSandboxPaintAudit(), [](bool on) { g_SettingsMan.SetShowSandboxPaintAudit(on); });

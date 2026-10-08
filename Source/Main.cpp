@@ -52,6 +52,7 @@
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "Temperature.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
 #include "ActorFire.h"
@@ -545,6 +546,8 @@ void RunGameLoop() {
 				TerrainCollapse::Update();
 				logStages.Next("Sim: liquids");
 				FluidSim::Update();
+				logStages.Next("Sim: temperature");
+				Temperature::Update();
 				logStages.Next("Sim: units in water");
 				ActorWater::Update();
 			}

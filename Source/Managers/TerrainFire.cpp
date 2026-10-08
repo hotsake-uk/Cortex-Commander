@@ -272,6 +272,12 @@ bool TerrainFire::IsBurningNear(const Vector& position, int radius) {
 	return false;
 }
 
+void TerrainFire::VisitBurning(const std::function<void(int x, int y)>& visit) {
+	for (const auto& [key, burning]: s_Burning) {
+		visit(burning.X, burning.Y);
+	}
+}
+
 void TerrainFire::SpawnSteam(const Vector& position, int count) {
 	// The steam also hangs in the air a while after the puffs are gone (the fog volume; render only).
 	g_PostProcessMan.RegisterFog(position + Vector(0.0F, -6.0F), 10.0F + 3.0F * static_cast<float>(count), 0.08F * static_cast<float>(count));

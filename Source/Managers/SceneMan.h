@@ -649,6 +649,15 @@ namespace RTE {
 		/// @param radius How far to look, in pixels.
 		bool IsBurningNear(const Vector& position, int radius) const;
 
+		/// Gets the temperature at a point, in degrees Celsius (SB-4): the weather's own where the temperature setting is off.
+		/// @param position Where, in scene coordinates.
+		float GetTemperature(const Vector& position) const;
+
+		/// Warms the world around a point, or with a negative amount cools it (SB-4). Thread safe; applied on the next sim update.
+		/// @param position Where, in scene coordinates.
+		/// @param degrees How much warmer it gets there, in degrees Celsius.
+		void AddHeat(const Vector& position, float degrees) const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 
