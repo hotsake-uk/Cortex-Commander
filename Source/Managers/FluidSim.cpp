@@ -1967,7 +1967,9 @@ void FluidSim::GetActivePixels(const Vector& corner, float width, float height, 
 			continue;
 		}
 		Vector pixel(static_cast<float>(key % s_Width), static_cast<float>(key / s_Width));
-		Vector fromCorner = g_SceneMan.ShortestDistance(corner, pixel, g_SceneMan.SceneWrapsX());
+		// The copy round a wrapping scene nearest the view, so pixels on the right of a view wider than half the scene still count.
+		Vector fromCorner = pixel - corner;
+		fromCorner += g_SceneMan.GetWrapToScreen(fromCorner, static_cast<int>(width), static_cast<int>(height));
 		if (fromCorner.m_X >= 0.0F && fromCorner.m_Y >= 0.0F && fromCorner.m_X < width && fromCorner.m_Y < height) {
 			pixels.push_back(pixel);
 		}

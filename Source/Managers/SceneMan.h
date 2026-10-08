@@ -199,6 +199,14 @@ namespace RTE {
 		/// @return Whether the scene wraps around the Y axis or not.
 		bool SceneWrapsY() const;
 
+		/// Gets how far to move a scene position, already made relative to a screen (position minus the screen's top left in the scene), so it lands on
+		/// the copy of it nearest the middle of the screen across a wrapping scene's seams. Right however much of the scene the screen shows, so zoomed far out too.
+		/// @param relativePos The position relative to the screen's top left.
+		/// @param screenWidth The screen's width, in scene pixels.
+		/// @param screenHeight The screen's height, in scene pixels.
+		/// @return What to add to relativePos (and to anything drawn with it): whole scene widths and heights, or zero.
+		Vector GetWrapToScreen(const Vector& relativePos, int screenWidth, int screenHeight) const;
+
 		/// Gets the orbit direction for the current scene.
 		/// @return The orbit direction for the current scene.
 		Directions GetSceneOrbitDirection() const;

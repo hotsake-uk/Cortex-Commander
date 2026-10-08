@@ -2340,29 +2340,9 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 	// If we have something to draw, adjust the draw position to work if drawn to a target screen bitmap that is straddling a scene seam
 	if ((m_HUDVisible || m_PieMenu->IsVisible()) && !targetPos.IsZero()) {
-		// Spans vertical scene seam
-		int sceneWidth = g_SceneMan.GetSceneWidth();
-		if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-			if ((targetPos.m_X < 0) && (m_Pos.m_X > (sceneWidth - pTargetBitmap->w))) {
-				drawPos.m_X -= sceneWidth;
-				cpuPos.m_X -= sceneWidth;
-			} else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (m_Pos.m_X < pTargetBitmap->w)) {
-				drawPos.m_X += sceneWidth;
-				cpuPos.m_X += sceneWidth;
-			}
-		}
-
-		// Spans horizontal scene seam
-		int sceneHeight = g_SceneMan.GetSceneHeight();
-		if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-			if ((targetPos.m_Y < 0) && (m_Pos.m_Y > (sceneHeight - pTargetBitmap->h))) {
-				drawPos.m_Y -= sceneHeight;
-				cpuPos.m_Y -= sceneHeight;
-			} else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (m_Pos.m_Y < pTargetBitmap->h)) {
-				drawPos.m_Y += sceneHeight;
-				cpuPos.m_Y += sceneHeight;
-			}
-		}
+		Vector wrap = g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+		drawPos += wrap;
+		cpuPos += wrap;
 	}
 
 	int actorScreen = g_ActivityMan.GetActivity() ? g_ActivityMan.GetActivity()->ScreenOfPlayer(m_Controller.GetPlayer()) : -1;
@@ -2627,24 +2607,8 @@ void Actor::DrawSpeech(BITMAP* targetBitmap, const Vector& targetPos, int whichS
 		return;
 	}
 	Vector drawPos = m_Pos - targetPos;
-	// Across a wrapping scene's seam, as DrawHUD.
 	if (!targetPos.IsZero()) {
-		int sceneWidth = g_SceneMan.GetSceneWidth();
-		if (g_SceneMan.SceneWrapsX() && targetBitmap->w < sceneWidth) {
-			if (targetPos.m_X < 0 && m_Pos.m_X > sceneWidth - targetBitmap->w) {
-				drawPos.m_X -= sceneWidth;
-			} else if (targetPos.m_X + targetBitmap->w > sceneWidth && m_Pos.m_X < targetBitmap->w) {
-				drawPos.m_X += sceneWidth;
-			}
-		}
-		int sceneHeight = g_SceneMan.GetSceneHeight();
-		if (g_SceneMan.SceneWrapsY() && targetBitmap->h < sceneHeight) {
-			if (targetPos.m_Y < 0 && m_Pos.m_Y > sceneHeight - targetBitmap->h) {
-				drawPos.m_Y -= sceneHeight;
-			} else if (targetPos.m_Y + targetBitmap->h > sceneHeight && m_Pos.m_Y < targetBitmap->h) {
-				drawPos.m_Y += sceneHeight;
-			}
-		}
+		drawPos += g_SceneMan.GetWrapToScreen(drawPos, targetBitmap->w, targetBitmap->h);
 	}
 	// Over the top of what the HUD drew for it on this screen (DrawHUD leaves m_HUDStack there), or over its head.
 	int top = std::min(m_HUDStack, static_cast<int>(-m_CharHeight / 2.0F)) - 2;

@@ -5,6 +5,7 @@
 #include "FrameMan.h"
 #include "PresetMan.h"
 #include "TimerMan.h"
+#include "TextOverlay.h"
 #include "GUI.h"
 #include "AllegroBitmap.h"
 
@@ -14,6 +15,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <functional>
 #include <mutex>
@@ -341,8 +343,10 @@ void UnitSpeech::DrawBubble(BITMAP* targetBitmap, int x, int y, const State& sta
 		return;
 	}
 	const long long age = g_TimerMan.GetSimTimeMS() - state.StartMS;
-	const int textWidth = font->CalculateWidth(state.Text);
-	const int textHeight = font->GetFontHeight();
+	// Zoomed far out the text comes out bigger than its spot in the view (TextOverlay keeps it readable), so the bubble grows to hold it.
+	const float growth = TextOverlay::GetTextGrowth(targetBitmap);
+	const int textWidth = static_cast<int>(std::ceil(static_cast<float>(font->CalculateWidth(state.Text)) * growth));
+	const int textHeight = static_cast<int>(std::ceil(static_cast<float>(font->GetFontHeight()) * growth));
 	const int padX = 4;
 	const int padY = 2;
 	const int tail = 3;
