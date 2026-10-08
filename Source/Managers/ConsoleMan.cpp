@@ -260,6 +260,7 @@ void ConsoleMan::ShowShortcuts() {
 	    "F5 - Quick save\n"
 	    "F6 - World Debug window (time of day, weather, lighting, game speed)\n"
 	    "F8 - Photo mode (frozen time, free camera, look controls, screenshots)\n"
+	    "U - Sandbox game mode, from above: hide or show the bar along the bottom\n"
 	    "F9 - Load latest quick-save\n"
 	    "RALT + F9 - Load latest auto-save\n"
 	    "F10 - Clear Console log\n"
