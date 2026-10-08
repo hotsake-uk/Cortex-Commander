@@ -206,6 +206,9 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) 
 	    .property("WeatherSound", &PostProcessMan::GetWeatherSound)
 	    .property("WeatherIntensity", &PostProcessMan::GetWeatherIntensity, &PostProcessMan::SetWeatherIntensity)
 	    .property("Wind", &PostProcessMan::GetWind, &PostProcessMan::SetWind)
+	    .property("CloudCover", &PostProcessMan::GetCloudCover, &PostProcessMan::SetCloudCover)
+	    .property("MistAndDust", &PostProcessMan::GetFogVolume, &PostProcessMan::SetFogVolume)
+	    .def("ReloadPaletteAnimation", &PostProcessMan::ReloadPaletteAnimation)
 	    .property("LightingEnabled", &PostProcessMan::GetLightingEnabled, &PostProcessMan::SetLightingEnabled)
 	    .def("SetSkyColor", &PostProcessMan::SetSkyColor)
 	    .def("SetAmbientColor", &PostProcessMan::SetAmbientColor)
@@ -217,7 +220,16 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PostProcessMan) 
 	    .def("SetDepthOfField", &PostProcessMan::SetDepthOfField)
 	    .def("SetTiltShift", &PostProcessMan::SetTiltShift)
 	    .def("AddShimmer", &PostProcessMan::RegisterShimmer)
-	    .def("SetSplitToning", &PostProcessMan::SetSplitToning);
+	    .def("SetSplitToning", &PostProcessMan::SetSplitToning)
+
+	    // The looks (ApplyLook, BlendLook) and event looks (PulseGrade) by name: PostProcessManager.LOOK_GRITTY rather than 1.
+	    .enum_("Look")[luabind::value("LOOK_NATURAL", LightingSettings::LookNatural),
+	                   luabind::value("LOOK_GRITTY", LightingSettings::LookGritty),
+	                   luabind::value("LOOK_VIVID", LightingSettings::LookVivid),
+	                   luabind::value("LOOK_NOIR", LightingSettings::LookNoir),
+	                   luabind::value("LOOK_HURT", LightingSettings::LookHurt),
+	                   luabind::value("LOOK_FLASH", LightingSettings::LookFlash),
+	                   luabind::value("LOOK_WARM", LightingSettings::LookWarm)];
 }
 
 LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, PresetMan) {
@@ -432,6 +444,9 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .def("SavePreset", &SettingsMan::SavePreset)
 	    .def("LoadPreset", &SettingsMan::LoadPreset)
 	    .def("DeletePreset", &SettingsMan::DeletePreset)
+	    .def("Set", (bool(SettingsMan::*)(const std::string&, const std::string&)) & SettingsMan::Set)
+	    .def("Set", (bool(SettingsMan::*)(const std::string&, double)) & SettingsMan::Set)
+	    .def("Set", (bool(SettingsMan::*)(const std::string&, bool)) & SettingsMan::Set)
 
 	    .property("PrintDebugInfo", &SettingsMan::PrintDebugInfo, &SettingsMan::SetPrintDebugInfo)
 	    .property("RecommendedMOIDCount", &SettingsMan::RecommendedMOIDCount)

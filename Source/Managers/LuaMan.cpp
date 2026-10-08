@@ -1,5 +1,6 @@
 #include "LuaMan.h"
 #include "Sandbox.h"
+#include "FluidSim.h"
 #include "EffectsParticles.h"
 
 #include "LuabindObjectWrapper.h"
@@ -116,6 +117,10 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxPauseAI", &Sandbox::SetAIPaused),
 	                         luabind::def("SandboxTogglePlay", &Sandbox::TogglePlay),
 	                         luabind::def("SandboxSetPins", &Sandbox::SetPins),
+	                         luabind::def("SandboxFlowingLiquids", &FluidSim::SetEnabled),
+	                         luabind::def("SandboxLoosePowders", &FluidSim::SetPowdersEnabled),
+	                         luabind::def("SandboxFreezing", &FluidSim::SetFreezingEnabled),
+	                         luabind::def("SandboxBloodFlows", &FluidSim::SetBloodFlows),
 	                         luabind::def("EmitVisualParticles", &EffectsParticles::Emit),
 	                         luabind::def("EaseIn", &EaseIn),
 	                         luabind::def("EaseOut", &EaseOut),

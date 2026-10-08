@@ -222,6 +222,32 @@ int SettingsMan::Initialize() {
 	return failureCode;
 }
 
+int SettingsMan::SetFromLines(const std::string& lines) {
+	std::string text = "SettingsMan\n";
+	std::istringstream lineStream(lines);
+	std::string line;
+	int count = 0;
+	while (std::getline(lineStream, line)) {
+		size_t first = line.find_first_not_of(" \t");
+		if (first == std::string::npos || line.find('=') == std::string::npos) {
+			continue;
+		}
+		text += "\t" + line.substr(first) + "\n";
+		++count;
+	}
+	if (count > 0) {
+		Reader reader(std::make_unique<std::istringstream>(text), "a script or the control link", false, nullptr, true);
+		static_cast<Serializable&>(*this).Create(reader, true, false);
+	}
+	return count;
+}
+
+bool SettingsMan::Set(const std::string& key, double value) {
+	std::ostringstream text;
+	text << value;
+	return Set(key, text.str());
+}
+
 void SettingsMan::UpdateSettingsFile() const {
 	Writer settingsWriter(m_SettingsPath);
 	g_SettingsMan.Save(settingsWriter);

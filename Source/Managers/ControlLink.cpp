@@ -278,23 +278,10 @@ std::string ControlLink::Execute(const std::string& commandLine) {
 	}
 	if (verb == "set") {
 		// The same reader that reads Settings.ini, given the lines as though they were the file. Unknown keys are passed over.
-		std::string text = "SettingsMan\n";
-		std::istringstream lines(Unescape(rest));
-		std::string line;
-		int count = 0;
-		while (std::getline(lines, line)) {
-			size_t first = line.find_first_not_of(" \t");
-			if (first == std::string::npos || line.find('=') == std::string::npos) {
-				continue;
-			}
-			text += "\t" + line.substr(first) + "\n";
-			++count;
-		}
+		int count = g_SettingsMan.SetFromLines(Unescape(rest));
 		if (count == 0) {
 			return "err nothing to set: give Key = Value";
 		}
-		Reader reader(std::make_unique<std::istringstream>(text), "the control link", false, nullptr, true);
-		static_cast<Serializable&>(g_SettingsMan).Create(reader, true, false);
 		return "ok " + std::to_string(count);
 	}
 	if (verb == "dump") {

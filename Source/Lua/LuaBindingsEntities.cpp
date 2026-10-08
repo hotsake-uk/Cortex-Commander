@@ -2,6 +2,7 @@
 
 #include "LuaBindingRegisterDefinitions.h"
 
+#include "FluidSim.h"
 #include "PieSlice.h"
 #include "SoundSet.h"
 
@@ -17,6 +18,15 @@ namespace {
 	void LegacySetLimbPathSpeedAHuman(AHuman& human, int speedPreset, float speed) { human.SetLimbPathTravelSpeed(LegacySpeedPresetToMovementState(speedPreset), speed); }
 	float LegacyGetLimbPathSpeedACrab(ACrab& crab, int speedPreset) { return crab.GetLimbPathTravelSpeed(speedPreset >= 2 ? Actor::RUN : Actor::WALK); }
 	void LegacySetLimbPathSpeedACrab(ACrab& crab, int speedPreset, float speed) { crab.SetLimbPathTravelSpeed(speedPreset >= 2 ? Actor::RUN : Actor::WALK, speed); }
+
+	// A material's behaviour (SB-1) field by field, read only, as its INI gives it: -1 or "" where the INI leaves it to the stock rules.
+	template <auto Field> auto MaterialBehaviourField(const Material& material) { return material.GetBehaviour().*Field; }
+	bool MaterialIsLiquid(const Material& material) { return FluidSim::IsLiquid(material.GetIndex()); }
+	int MaterialReactionCount(const Material& material) { return static_cast<int>(material.GetBehaviour().Reactions.size()); }
+	std::string MaterialReaction(const Material& material, int index) {
+		const std::vector<std::string>& reactions = material.GetBehaviour().Reactions;
+		return index >= 0 && index < static_cast<int>(reactions.size()) ? reactions[index] : std::string();
+	}
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Entity) {
@@ -189,6 +199,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 
 	    .property("PlayerControllable", &Actor::IsPlayerControllable, &Actor::SetPlayerControllable)
 	    .property("DebugInspected", &Actor::IsDebugPinned, &Actor::SetDebugInspected)
+	    .property("IsMantling", &Actor::IsMantling)
+	    .def("GetMaxSafeFallHeight", &Actor::GetMaxSafeFallHeight)
 	    .property("IsInspected", &Actor::IsDebugInspected)
 	    .def("IsAITracedOn", &Actor::IsAITracedOn)
 	    .property("DebugExport", &Actor::WantsDebugExport)
@@ -873,6 +885,43 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Material) {
 	    .property("SpawnMaterial", &Material::GetSpawnMaterial)
 	    .property("TransformsInto", &Material::GetSpawnMaterial)
 	    .property("IsScrap", &Material::IsScrap)
+	    .property("IsLiquid", &MaterialIsLiquid)
+
+	    // Its behaviour (UI-51), read only, -1 or "" where the INI leaves it to the stock rules.
+	    .property("Flows", &MaterialBehaviourField<&MaterialBehaviour::Flows>)
+	    .property("Powder", &MaterialBehaviourField<&MaterialBehaviour::Powder>)
+	    .property("FlowSpeed", &MaterialBehaviourField<&MaterialBehaviour::FlowSpeed>)
+	    .property("FallSpeed", &MaterialBehaviourField<&MaterialBehaviour::FallSpeed>)
+	    .property("MoveEvery", &MaterialBehaviourField<&MaterialBehaviour::MoveEvery>)
+	    .property("Gravity", &MaterialBehaviourField<&MaterialBehaviour::Gravity>)
+	    .property("Viscosity", &MaterialBehaviourField<&MaterialBehaviour::Viscosity>)
+	    .property("LiquidWeight", &MaterialBehaviourField<&MaterialBehaviour::LiquidWeight>)
+	    .property("SlideChance", &MaterialBehaviourField<&MaterialBehaviour::SlideChance>)
+	    .property("Sticky", &MaterialBehaviourField<&MaterialBehaviour::Sticky>)
+	    .property("Burns", &MaterialBehaviourField<&MaterialBehaviour::Burns>)
+	    .property("BurnMinTicks", &MaterialBehaviourField<&MaterialBehaviour::BurnMinTicks>)
+	    .property("BurnMaxTicks", &MaterialBehaviourField<&MaterialBehaviour::BurnMaxTicks>)
+	    .property("BurnSpread", &MaterialBehaviourField<&MaterialBehaviour::BurnSpread>)
+	    .property("LeavesAsh", &MaterialBehaviourField<&MaterialBehaviour::LeavesAsh>)
+	    .property("BurnBlast", &MaterialBehaviourField<&MaterialBehaviour::BurnBlast>)
+	    .property("Douses", &MaterialBehaviourField<&MaterialBehaviour::Douses>)
+	    .property("FreezesTo", &MaterialBehaviourField<&MaterialBehaviour::FreezesTo>)
+	    .property("MeltsTo", &MaterialBehaviourField<&MaterialBehaviour::MeltsTo>)
+	    .property("BoilsTo", &MaterialBehaviourField<&MaterialBehaviour::BoilsTo>)
+	    .property("SettlesTo", &MaterialBehaviourField<&MaterialBehaviour::SettlesTo>)
+	    .property("DriesTo", &MaterialBehaviourField<&MaterialBehaviour::DriesTo>)
+	    .property("DryChance", &MaterialBehaviourField<&MaterialBehaviour::DryChance>)
+	    .property("Chills", &MaterialBehaviourField<&MaterialBehaviour::Chills>)
+	    .property("Evaporates", &MaterialBehaviourField<&MaterialBehaviour::Evaporates>)
+	    .property("LiquidsPassThrough", &MaterialBehaviourField<&MaterialBehaviour::LiquidsPassThrough>)
+	    .property("PassThrough", &MaterialBehaviourField<&MaterialBehaviour::PassThrough>)
+	    .property("LiquidLook", &MaterialBehaviourField<&MaterialBehaviour::Look>)
+	    .property("Glow", &MaterialBehaviourField<&MaterialBehaviour::Glow>)
+	    .property("Stains", &MaterialBehaviourField<&MaterialBehaviour::Stains>)
+	    .property("Breathable", &MaterialBehaviourField<&MaterialBehaviour::Breathable>)
+	    .property("TouchDamage", &MaterialBehaviourField<&MaterialBehaviour::TouchDamage>)
+	    .property("ReactionCount", &MaterialReactionCount)
+	    .def("GetReaction", &MaterialReaction)
 
 	    .def("GetColorIndex", &Material::GetColorIndex);
 }

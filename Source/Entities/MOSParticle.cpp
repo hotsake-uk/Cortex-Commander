@@ -71,6 +71,7 @@ void MOSParticle::Clear() {
 	m_SpriteAnimMode = OVERLIFETIME;
 	m_PostEffectEnabled = true; // Default to true for backwards compatibility reasons
 	m_FlameSprite = false;
+	m_DrawAsFlame = -1;
 }
 
 int MOSParticle::Create() {
@@ -80,8 +81,9 @@ int MOSParticle::Create() {
 	if (!m_Atom) {
 		m_Atom = new Atom();
 	}
-	// The game's flame particles (Flame 1, Flame 2 and every copy of them, like the sandbox fire brush's) all draw this one animation.
-	m_FlameSprite = m_SpriteFile.GetDataPath().find("Effects/Pyro/Flame/Flame.png") != std::string::npos;
+	// The game's flame particles (Flame 1, Flame 2 and every copy of them, like the sandbox fire brush's) all draw this one animation. A mod's
+	// particle opts in or out with DrawAsFlame.
+	m_FlameSprite = m_DrawAsFlame >= 0 ? m_DrawAsFlame == 1 : m_SpriteFile.GetDataPath().find("Effects/Pyro/Flame/Flame.png") != std::string::npos;
 	return 0;
 }
 
@@ -91,6 +93,7 @@ int MOSParticle::Create(const MOSParticle& reference) {
 	m_Atom = new Atom(*(reference.m_Atom));
 	m_Atom->SetOwner(this);
 	m_FlameSprite = reference.m_FlameSprite;
+	m_DrawAsFlame = reference.m_DrawAsFlame;
 
 	return 0;
 }
@@ -104,6 +107,11 @@ int MOSParticle::ReadProperty(const std::string_view& propName, Reader& reader) 
 		}
 		reader >> *m_Atom;
 		m_Atom->SetOwner(this);
+	});
+	MatchProperty("DrawAsFlame", {
+		bool drawAsFlame = false;
+		reader >> drawAsFlame;
+		m_DrawAsFlame = drawAsFlame ? 1 : 0;
 	});
 
 	EndPropertyList;

@@ -13,6 +13,8 @@
 #include "ModernHUD.h"
 #include "PerformanceMan.h"
 #include "PostProcessMan.h"
+#include "PresetMan.h"
+#include "Shader.h"
 #include "RenderMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
@@ -37,6 +39,7 @@
 #include <cctype>
 #include <cstring>
 #include <functional>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -374,7 +377,46 @@ namespace {
 		if (ToolUI::Button("Reload PaletteAnimation.ini")) {
 			g_PostProcessMan.ReloadPaletteAnimation();
 		}
-		ImGui::SetItemTooltip("Reads Base.rte/PaletteAnimation.ini again, for trying out pulses and cycles without restarting. Pulses and cycles scripts asked for stop too; glowing liquids keep theirs.");
+		ImGui::SetItemTooltip("Reads PaletteAnimation.ini again, Base.rte's and any mod's, for trying out pulses and cycles without restarting. Pulses and cycles scripts asked for stop too; glowing liquids keep theirs.");
+	}
+
+	/// The mods' shaders (UI-29): every Shader preset loaded, whether it compiled, and any of them tried as the screen effect.
+	void ModShaderList() {
+		std::list<Entity*> shaders;
+		g_PresetMan.GetAllOfType(shaders, "Shader");
+		if (!ImGui::TreeNode("Loaded shaders")) {
+			ImGui::SetItemTooltip("Every Shader preset the data modules define, with its module, and those that failed to compile or link in red (the console has the error). One can be tried as the screen effect.");
+			return;
+		}
+		if (shaders.empty()) {
+			ImGui::TextDisabled("No module defines a Shader preset.");
+		}
+		std::string requested = g_PostProcessMan.GetPostShader();
+		for (const Entity* entity: shaders) {
+			const Shader* shader = dynamic_cast<const Shader*>(entity);
+			if (!shader) {
+				continue;
+			}
+			ImGui::PushID(entity);
+			bool valid = shader->IsValid();
+			if (!valid) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.4F, 0.35F, 1.0F));
+			}
+			ImGui::Text("%s (%s)%s", entity->GetPresetName().c_str(), entity->GetModuleName().c_str(), valid ? "" : ": failed to compile");
+			if (!valid) {
+				ImGui::PopStyleColor();
+			}
+			if (valid) {
+				ImGui::SameLine();
+				bool tried = requested == entity->GetPresetName();
+				if (ToolUI::SmallButton(tried ? "Stop trying" : "Try as screen effect")) {
+					g_PostProcessMan.SetPostShader(tried ? std::string() : entity->GetPresetName());
+				}
+				ImGui::SetItemTooltip("Draws the lit picture through this shader before bloom and tonemapping, as a scene's or activity's PostShader does. Only a shader written as a screen effect looks right; an object shader shows what it does to a whole screen.");
+			}
+			ImGui::PopID();
+		}
+		ImGui::TreePop();
 	}
 } // namespace
 
@@ -638,7 +680,7 @@ void DebugMan::SettingsGUI() {
 		}
 		Slider("Hot metal cooling (seconds)", &settings.HotSpotSeconds, 0.0F, 10.0F, "%.1f");
 		Check("Animated palette colours", &settings.PaletteAnimation);
-		Tip("Glowing liquids like lava breathe, and colours listed in Base.rte/PaletteAnimation.ini or set by scripts pulse or cycle. Off, every colour stands still.");
+		Tip("Glowing liquids like lava breathe, and colours listed in a PaletteAnimation.ini (Base.rte's or a mod's) or set by scripts pulse or cycle. Off, every colour stands still.");
 		Slider("Palette pulse strength", &settings.PaletteAnimationStrength, 0.0F, 1.0F);
 	};
 
@@ -848,6 +890,7 @@ void DebugMan::SettingsGUI() {
 			if (Plain()) {
 				const std::string& postShader = g_PostProcessMan.GetActivePostShaderName();
 				ImGui::TextDisabled("Screen effect now: %s", postShader.empty() ? "none" : postShader.c_str());
+				ModShaderList();
 			}
 		}
 		Check("Authored sprite maps", &settings.SpriteMaps);
@@ -1080,7 +1123,7 @@ void DebugMan::SettingsGUI() {
 		}
 		DebugTextureViewer(m_DebugTexture);
 		Check("Palette viewer", &m_ShowPaletteViewer);
-		Tip("The game's 256 colours as they are drawn this frame, pulses and cycles included (SH-3), each with its index. With a button to read Base.rte/PaletteAnimation.ini again.");
+		Tip("The game's 256 colours as they are drawn this frame, pulses and cycles included (SH-3), each with its index. With a button to read the PaletteAnimation.ini files again.");
 		if (m_ShowPaletteViewer && Plain()) {
 			PaletteViewer();
 		}

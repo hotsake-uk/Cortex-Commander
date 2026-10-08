@@ -30,6 +30,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Effects.clear();
 		return true;
 	}
+	if (toolName == "Undo terrain") {
+		// The last paint or build stroke's terrain put back, as Ctrl+Z does.
+		QueueSimChange(Tool::UndoTerrain);
+		return true;
+	}
 	if (toolName == "Effect") {
 		// The preset name is the effect's name.
 		for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {

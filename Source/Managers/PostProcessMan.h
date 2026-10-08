@@ -225,7 +225,7 @@ namespace RTE {
 		/// Stops every palette pulse and cycle asked for by scripts or PaletteAnimation.ini. Glowing liquids keep theirs.
 		void ClearPaletteAnimation();
 
-		/// Reads Base.rte/PaletteAnimation.ini again, for trying out pulses and cycles without restarting. Stops scripts' pulses and cycles too.
+		/// Reads every module's PaletteAnimation.ini again, for trying out pulses and cycles without restarting. Stops scripts' pulses and cycles too.
 		void ReloadPaletteAnimation() {
 			ClearPaletteAnimation();
 			m_PaletteAnimationLoaded = false;
@@ -364,6 +364,14 @@ namespace RTE {
 		void SetWeatherIntensity(float intensity) { m_LightingSettings.WeatherIntensity = std::clamp(intensity, 0.0F, 1.0F); }
 		float GetWind() const { return m_LightingSettings.Wind; }
 		void SetWind(float wind) { m_LightingSettings.Wind = wind; }
+
+		/// Gets or sets how much of the sky is cloud in clear weather, 0 to 1 (LightingSettings::CloudCover). From Lua.
+		float GetCloudCover() const { return m_LightingSettings.CloudCover; }
+		void SetCloudCover(float cover) { m_LightingSettings.CloudCover = std::clamp(cover, 0.0F, 1.0F); }
+
+		/// Gets or sets how thick mist and dust in the air are drawn, 0 to 1.5 (LightingSettings::FogVolume). From Lua.
+		float GetFogVolume() const { return m_LightingSettings.FogVolume; }
+		void SetFogVolume(float thickness) { m_LightingSettings.FogVolume = std::clamp(thickness, 0.0F, 1.5F); }
 		bool GetLightingEnabled() const { return m_LightingSettings.Enabled; }
 		void SetLightingEnabled(bool enabled) { m_LightingSettings.Enabled = enabled; }
 		/// Sets the sky light color, 0-255 gamma space per channel. Values above 255 brighten.
@@ -494,8 +502,12 @@ namespace RTE {
 		LightingSettings m_PlayerAtmosphere; //!< The player's own atmosphere settings, captured when the first Scene loads.
 		bool m_PaletteAnimationLoaded = false; //!< Base.rte/PaletteAnimation.ini has been read.
 
-		/// Reads the animated palette colours in Base.rte/PaletteAnimation.ini, once: lines "Pulse = index, low, high, period, phase" and "Cycle = from, to, period".
+		/// Reads the animated palette colours in Base.rte/PaletteAnimation.ini and any loaded mod's own, once (and again after ReloadPaletteAnimation): lines "Pulse = index, low, high, period, phase" and "Cycle = from, to, period".
 		void LoadPaletteAnimation();
+
+		/// Reads one PaletteAnimation.ini, if it's there (see LoadPaletteAnimation).
+		/// @param path The file's full path.
+		void LoadPaletteAnimationFile(const std::string& path);
 		bool m_PlayerAtmosphereCaptured = false;
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
 		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.

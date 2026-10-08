@@ -45,6 +45,18 @@ namespace RTE {
 		/// Overwrites the settings file to save changes made from within the game.
 		void UpdateSettingsFile() const;
 
+		/// Applies settings given as Settings.ini lines ("Key = Value", one a line), through the same reader as the file, so every key it
+		/// knows can be set while the game runs (the control link's set command, Lua's Set). Unknown keys are passed over. Main thread.
+		/// @param lines The lines.
+		/// @return How many "Key = Value" lines there were.
+		int SetFromLines(const std::string& lines);
+
+		/// Sets one setting by its Settings.ini key, from Lua: SettingsMan:Set("AISuppression", 0.5). See SetFromLines.
+		/// @return Whether a line was given (not whether the key is a known one).
+		bool Set(const std::string& key, const std::string& value) { return SetFromLines(key + " = " + value) > 0; }
+		bool Set(const std::string& key, double value);
+		bool Set(const std::string& key, bool value) { return Set(key, std::string(value ? "1" : "0")); }
+
 		/// Saves every setting that can be tuned while the game runs (the look, time and weather, water, fire, falling ground) as a named preset, a file in Userdata/Presets.
 		/// @param name The name. Characters that can't be in a file's name are dropped.
 		/// @return The name it was saved under, or nothing if it couldn't be.

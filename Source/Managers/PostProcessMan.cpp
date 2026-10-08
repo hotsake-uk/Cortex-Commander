@@ -14,6 +14,7 @@
 #include "RenderMan.h"
 
 #include "PresetMan.h"
+#include "DataModule.h"
 #include "ActivityMan.h"
 #include "Activity.h"
 #include "ConsoleMan.h"
@@ -227,7 +228,16 @@ const Shader* PostProcessMan::GetActivePostShader() {
 
 void PostProcessMan::LoadPaletteAnimation() {
 	m_PaletteAnimationLoaded = true;
-	std::ifstream file(g_PresetMan.GetFullModulePath("Base.rte/PaletteAnimation.ini"));
+	// Base.rte's, then any loaded mod's own PaletteAnimation.ini in its folder, in load order: a later pulse or cycle on the same colours replaces an earlier one.
+	for (int module = 0; module < g_PresetMan.GetTotalModuleCount(); ++module) {
+		if (const DataModule* dataModule = g_PresetMan.GetDataModule(module)) {
+			LoadPaletteAnimationFile(g_PresetMan.GetFullModulePath(dataModule->GetFileName() + "/PaletteAnimation.ini"));
+		}
+	}
+}
+
+void PostProcessMan::LoadPaletteAnimationFile(const std::string& path) {
+	std::ifstream file(path);
 	std::string line;
 	while (std::getline(file, line)) {
 		size_t comment = line.find("//");
