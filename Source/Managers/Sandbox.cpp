@@ -6179,6 +6179,89 @@ namespace {
 		}
 	}
 
+	/// The selection and camera overlay (SettingsMan::ShowSandboxSelectionCamera): while a box is dragged, the box as SelectInBox will take it
+	/// (scene coordinates as worked out from the view, unwrapped: any part past the scene's seam picks nobody, review S6) with a ring on each
+	/// unit it would take; the unit the game controls against the one the sandbox thinks you're in (review S1); the observation target and
+	/// the free camera's centre as two crosses; and the view's scale.
+	void DrawSelectionCameraOverlay() {
+		if (!g_SettingsMan.ShowSandboxSelectionCamera()) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		const ImGuiIO& io = ImGui::GetIO();
+		float scale = ScenePixelsPerWindowPixel();
+		ImVec2 origin = ViewOrigin();
+		Vector offset = g_CameraMan.GetOffset(0);
+		// Scene to window without wrapping, so the box shows where its scene coordinates really are.
+		auto unwrapped = [&](const Vector& scene) { return ImVec2(origin.x + (scene.m_X - offset.m_X) / scale, origin.y + (scene.m_Y - offset.m_Y) / scale); };
+		std::vector<std::string> lines;
+		if (s_Dragging) {
+			Vector start = offset + Vector(s_DragStart.x - origin.x, s_DragStart.y - origin.y) * scale;
+			Vector end = offset + Vector(io.MousePos.x - origin.x, io.MousePos.y - origin.y) * scale;
+			float left = std::min(start.m_X, end.m_X);
+			float right = std::max(start.m_X, end.m_X);
+			float top = std::min(start.m_Y, end.m_Y);
+			float bottom = std::max(start.m_Y, end.m_Y);
+			float width = static_cast<float>(g_SceneMan.GetSceneWidth());
+			drawList->AddRect(unwrapped(Vector(left, top)), unwrapped(Vector(right, bottom)), IM_COL32(120, 255, 160, 220), 0.0F, 0, 1.0F);
+			if (g_SceneMan.SceneWrapsX() && (left < 0.0F || right > width)) {
+				// The part of the box off the scene's x range: units there sit at the other end of the scene's coordinates, so it takes none.
+				float from = left < 0.0F ? left : std::max(left, width);
+				float to = left < 0.0F ? std::min(right, 0.0F) : right;
+				drawList->AddRectFilled(unwrapped(Vector(from, top)), unwrapped(Vector(to, bottom)), IM_COL32(255, 60, 50, 60));
+				lines.push_back("box crosses the scene's seam: the red part selects nobody");
+			}
+			int taken = 0;
+			for (const Actor* actor: SandboxAccess::Actors()) {
+				const Vector& position = actor->GetPos();
+				if (IsCombatant(actor) && !actor->IsInGroup("Brains") && position.m_X >= left && position.m_X <= right && position.m_Y >= top && position.m_Y <= bottom) {
+					drawList->AddCircle(ToScreen(position), std::max(actor->GetRadius() / scale, 8.0F), IM_COL32(120, 255, 160, 230), 0, 1.5F);
+					++taken;
+				}
+			}
+			lines.push_back("box " + std::to_string(static_cast<int>(left)) + "," + std::to_string(static_cast<int>(top)) + " to " + std::to_string(static_cast<int>(right)) + "," + std::to_string(static_cast<int>(bottom)) + " takes " + std::to_string(taken));
+		}
+		GameActivity* game = CurrentGame();
+		const Actor* controlled = game ? game->GetControlledActor(Players::PlayerOne) : nullptr;
+		const Actor* possessed = s_Possessed && g_MovableMan.IsActor(s_Possessed) ? s_Possessed : nullptr;
+		if (controlled) {
+			drawList->AddCircle(ToScreen(controlled->GetPos()), std::max(controlled->GetRadius() / scale, 10.0F) + 3.0F, IM_COL32(120, 230, 120, 230), 0, 2.0F);
+		}
+		if (possessed && possessed != controlled) {
+			drawList->AddCircle(ToScreen(possessed->GetPos()), std::max(possessed->GetRadius() / scale, 10.0F) + 7.0F, IM_COL32(110, 180, 250, 230), 0, 2.0F);
+		}
+		lines.push_back("game controls: " + (controlled ? controlled->GetPresetName() + " #" + std::to_string(controlled->GetUniqueID()) : std::string("nobody")));
+		lines.push_back(std::string("sandbox thinks you're in: ") + (possessed ? possessed->GetPresetName() + " #" + std::to_string(possessed->GetUniqueID()) : s_Possessed ? std::string("a unit that's gone") : std::string("nobody")) + (s_Possessed != controlled && (s_Possessed || Sandbox::IsGodMode()) ? "  (they differ)" : ""));
+		auto cross = [drawList](const ImVec2& at, ImU32 color) {
+			drawList->AddLine(ImVec2(at.x - 8.0F, at.y - 8.0F), ImVec2(at.x + 8.0F, at.y + 8.0F), color, 2.0F);
+			drawList->AddLine(ImVec2(at.x - 8.0F, at.y + 8.0F), ImVec2(at.x + 8.0F, at.y - 8.0F), color, 2.0F);
+		};
+		if (game) {
+			Vector observing = game->GetObservationTarget(Players::PlayerOne);
+			cross(ToScreen(observing), IM_COL32(255, 220, 80, 230));
+			lines.push_back("observation target (yellow) " + std::to_string(observing.GetFloorIntX()) + "," + std::to_string(observing.GetFloorIntY()));
+		}
+		if (Sandbox::IsGodMode()) {
+			cross(ToScreen(s_CameraCenter), IM_COL32(90, 230, 255, 230));
+			lines.push_back("free camera centre (cyan) " + std::to_string(s_CameraCenter.GetFloorIntX()) + "," + std::to_string(s_CameraCenter.GetFloorIntY()));
+		}
+		char text[64];
+		std::snprintf(text, sizeof(text), "scene pixels per window pixel %.3f", scale);
+		lines.push_back(text);
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float lineHeight = ImGui::GetTextLineHeight();
+		float width = 0.0F;
+		for (const std::string& line: lines) {
+			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
+		}
+		ImVec2 corner(std::floor(view.x + 8.0F), std::floor(view.y + view.h * 0.35F));
+		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
+		for (size_t i = 0; i < lines.size(); ++i) {
+			bool warn = lines[i].find("seam") != std::string::npos || lines[i].find("(they differ)") != std::string::npos;
+			drawList->AddText(ImVec2(corner.x, corner.y + lineHeight * static_cast<float>(i)), warn ? IM_COL32(255, 120, 100, 255) : IM_COL32(230, 230, 220, 255), lines[i].c_str());
+		}
+	}
+
 	void DrawOrdersOverlay() {
 		int which = g_SettingsMan.SandboxOrdersOverlay();
 		if (which == 0) {
@@ -6265,4 +6348,5 @@ void Sandbox::DrawDebug() {
 	DrawOrdersOverlay();
 	DrawSimState();
 	DrawEffectsOverlay();
+	DrawSelectionCameraOverlay();
 }

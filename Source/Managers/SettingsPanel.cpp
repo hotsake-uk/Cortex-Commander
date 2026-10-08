@@ -644,6 +644,8 @@ void DebugMan::SettingsGUI() {
 		Tip("A readout in the bottom right: whether the world is paused and by what (the sandbox's tools, photo mode, Freeze simulation, the game's pause), the AI pause, how many sim updates ran for this frame, the sandbox's tool uses queued and applied last update and the steps still wanted, and the time scale against the speed the simulation actually manages.");
 		Toggle("Incoming and effects", g_SettingsMan.ShowSandboxEffects(), [](bool on) { g_SettingsMan.SetShowSandboxEffects(on); });
 		Tip("Each rocket, shell, bomb or falling craft on its way in as its line, where it will hit with its crater, and the updates it has left; each effect put down, numbered, with its main light's reach as a ring and storm cells' next flash; each water spring as its pour. Point at an effect or a spring and press Delete to remove just that one.");
+		Toggle("Selection and camera", g_SettingsMan.ShowSandboxSelectionCamera(), [](bool on) { g_SettingsMan.SetShowSandboxSelectionCamera(on); });
+		Tip("While dragging a selection box: the box as the selection will really use it, with a ring on each unit it will take and in red any part past the scene's seam, which takes nobody. Always: the unit the game says you control (green) against the one the sandbox thinks you're in (blue), the observation target (yellow cross), the free camera's centre (cyan cross), and the view's scale.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
