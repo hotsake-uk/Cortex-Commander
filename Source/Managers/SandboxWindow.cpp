@@ -253,6 +253,13 @@ namespace SandboxDetail {
 		} else if (s_Pins.size() < 24) {
 			s_Pins.push_back({kind, presetName});
 		}
+		SavePinsFile();
+	}
+
+	void SavePinsFile() {
+		if (std::ofstream file(c_PinsFile, std::ios::trunc); file) {
+			file << Sandbox::GetPins() << '\n';
+		}
 	}
 
 
@@ -1082,7 +1089,7 @@ namespace SandboxDetail {
 			const char* Keys;
 			const char* What;
 		};
-		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint"}};
+		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"},
 		                              {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"},
 		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
@@ -1529,8 +1536,8 @@ namespace SandboxDetail {
 
 	/// The command tool's right-click menu (RC-12), in place of its rings unless the classic wheel is asked for: every command on one layer,
 	/// a list above the pointer in the action menu's style (ActionMenu). Held, letting go over a row picks it; a quick click leaves it up
-	/// for a click. The settings in it (the selected units' weapons and movement rules, the formation, keeping together, the order markers)
-	/// stay up for more; a command or a mode for the clicks to come ends it.
+	/// for a click. The units' state and the settings in it (the selected units' AI mode, weapons and movement rules, the formation, keeping
+	/// together, the order markers) stay up for more; a command or a mode for the clicks to come ends it.
 	void DrawCommandMenu() {
 		ImGuiIO& io = ImGui::GetIO();
 		static int lastFrame = -10;
@@ -1547,20 +1554,23 @@ namespace SandboxDetail {
 		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick };
 		float scale = std::clamp(g_WindowMan.GetGameViewRect().h / 720.0F, 0.9F, 2.2F);
 		ActionMenu::MenuLayout menu(scale);
-		menu.Heading("Clicks on the world");
-		menu.Choices(ClickMode, {std::begin(c_CommandModeNames), std::end(c_CommandModeNames)}, static_cast<int>(s_CommandMode), 3);
-		menu.Heading("Selected units");
+		// In three parts, each drawn its own way (ActionMenu::Kind): what is done to the selected units now, how they are set now, and your own
+		// settings for the orders to come.
+		using Kind = ActionMenu::Kind;
+		menu.Heading("Selected units", Kind::Command);
 		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect"}, -1);
-		menu.Heading("AI mode");
-		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, -1, 3);
-		menu.Heading("Weapons");
+		menu.Heading("AI mode", Kind::State);
+		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
+		menu.Heading("Weapons", Kind::State);
 		menu.Choices(Weapons, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, SelectedRule(true));
-		menu.Heading("Movement");
+		menu.Heading("Movement", Kind::State);
 		menu.Choices(Movement, {std::begin(c_MovementRuleNames), std::end(c_MovementRuleNames)}, SelectedRule(false), 2);
-		menu.Heading("Group orders");
+		menu.Heading("What your clicks do", Kind::Setting);
+		menu.Choices(ClickMode, {std::begin(c_CommandModeNames), std::end(c_CommandModeNames)}, static_cast<int>(s_CommandMode), 3);
+		menu.Heading("Group orders", Kind::Setting);
 		menu.Choices(FormationPick, {std::begin(c_FormationNames), std::end(c_FormationNames)}, static_cast<int>(s_Formation));
 		menu.Choices(KeepPacePick, {"Free", "Keep together"}, s_KeepPace ? 1 : 0);
-		menu.Heading("Order markers");
+		menu.Heading("Order markers", Kind::Setting);
 		menu.Choices(MarkersPick, {"Off", "Selected", "All"}, g_SettingsMan.SandboxOrdersOverlay());
 		menu.PlaceAbove(s_RingCenter);
 
@@ -1603,8 +1613,7 @@ namespace SandboxDetail {
 					stroke.Position = s_RingScenePoint;
 					stroke.Orders = orders[std::clamp(cell.Value, 0, 4)];
 					s_Queue.push_back(stroke);
-					g_GUISound.SlicePickedSound()->Play();
-					return false;
+					break;
 				}
 				case Weapons:
 				case Movement:
@@ -2266,6 +2275,7 @@ namespace SandboxDetail {
 			}
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
+			float rowStart = ImGui::GetCursorPosX();
 			// The mode of the clicks, in its colours.
 			for (int mode = 0; mode < static_cast<int>(std::size(c_CommandModeNames)); ++mode) {
 				if (mode > 0) {
@@ -2317,60 +2327,6 @@ namespace SandboxDetail {
 				ImGui::SetItemTooltip("On: units sent together walk at the pace of the slowest of them till they get there, so the fast ones don't arrive alone.");
 			}
 			ImGui::SameLine(0.0F, pixel * 6.0F);
-			// What is selected, by kind.
-			std::map<std::string, int> kinds;
-			int alive = 0;
-			for (const UnitRef& ref: s_Selected) {
-				if (const Actor* unit = GetRef(ref)) {
-					++kinds[unit->GetPresetName()];
-					++alive;
-				}
-			}
-			std::string what = alive == 0 ? "Nothing selected" : std::to_string(alive) + " selected:";
-			for (const auto& [name, number]: kinds) {
-				what += " " + std::to_string(number) + " " + name + ",";
-			}
-			if (!kinds.empty()) {
-				what.pop_back();
-			}
-			ImGui::TextDisabled("%s", what.c_str());
-			ImGui::SameLine();
-			ImGui::BeginDisabled(alive == 0);
-			if (ToolUI::SmallButton("Deselect")) {
-				s_Selected.clear();
-			}
-			ImGui::EndDisabled();
-			// Their plans (RC-3), if any have steps still to come: cleared, each carrying on with the step it is on.
-			ImGui::SameLine();
-			ImGui::BeginDisabled(PlanMarkers().empty());
-			if (ToolUI::SmallButton("Clear plans")) {
-				Stroke stroke;
-				stroke.Kind = Tool::OrderSelected;
-				stroke.Count = 120;
-				s_Queue.push_back(stroke);
-			}
-			ImGui::EndDisabled();
-			ImGui::SetItemTooltip("Shift with any order adds it to the selected units' plans: they carry out each when the one before is over\n(a move when they get there, an attack when the enemy is dead). Defend with Shift held ends the plan holding ground.\nA right click on a numbered marker drops that step.");
-			// The engagement rules of what is selected (RC-1): the one they share, or "mixed"; a choice gives it to them all.
-			ImGui::BeginDisabled(alive == 0);
-			for (bool weapons: {true, false}) {
-				ImGui::SameLine(0.0F, pixel * 6.0F);
-				int rule = SelectedRule(weapons);
-				const char* const* names = weapons ? c_WeaponRuleNames : c_MovementRuleNames;
-				int ruleCount = weapons ? static_cast<int>(std::size(c_WeaponRuleNames)) : static_cast<int>(std::size(c_MovementRuleNames));
-				ImGui::SetNextItemWidth(field * 0.75F);
-				if (ImGui::BeginCombo(weapons ? "##weaponRule" : "##movementRule", rule == -1 ? "Mixed" : (rule < 0 ? (weapons ? "Weapons" : "Movement") : names[rule]))) {
-					for (int choice = 0; choice < ruleCount; ++choice) {
-						if (ImGui::Selectable(names[choice], choice == rule)) {
-							QueueRule(weapons, choice);
-						}
-					}
-					ImGui::EndCombo();
-				}
-				ImGui::SetItemTooltip("%s", weapons ? "What the selected units may shoot at.\nFire at will: any enemy they see. Return fire: only while they are being shot at. Hold fire: never; they aim, and open up the moment this changes.\nKept until changed." : "How the selected units move when they meet an enemy.\nAs ordered: a move keeps walking, an attack closes in, a post is held. Engage: stop and fight, closing in. Move only: keep going, firing on the way. Hold ground: fight from where they stand.\nEach new order goes back to As ordered.");
-			}
-			ImGui::EndDisabled();
-			ImGui::SameLine(0.0F, pixel * 6.0F);
 			// What is drawn of orders as they play out (RC-7) and of control groups (RC-6), kept in the settings.
 			if (ToolUI::SmallButton("Show...")) {
 				ImGui::OpenPopup("##commandShow");
@@ -2394,6 +2350,11 @@ namespace SandboxDetail {
 					g_SettingsMan.SetShowSandboxAttackPings(pings);
 				}
 				ImGui::SetItemTooltip("When a unit of the selection's side is hurt: a ring where it is, or an arrow at the edge of the picture pointing the way.");
+				bool tags = g_SettingsMan.ShowUnitTags();
+				if (ToolUI::Checkbox("Side and health", &tags)) {
+					g_SettingsMan.SetShowUnitTags(tags);
+				}
+				ImGui::SetItemTooltip("Each unit's team icon and health number beside it, for every side.");
 				bool badges = g_SettingsMan.ShowSandboxGroupBadges();
 				if (ToolUI::Checkbox("Group numbers", &badges)) {
 					g_SettingsMan.SetShowSandboxGroupBadges(badges);
@@ -2406,6 +2367,69 @@ namespace SandboxDetail {
 				ImGui::TextDisabled("A \"no route\" cross shows where units couldn't get to; click it to send them again.");
 				ImGui::EndPopup();
 			}
+			// A second row for the selected units, so the bar doesn't stretch across the picture: who they are, and what can be done
+			// with them and how they are set.
+			// What is selected, by kind.
+			std::map<std::string, int> kinds;
+			int alive = 0;
+			for (const UnitRef& ref: s_Selected) {
+				if (const Actor* unit = GetRef(ref)) {
+					++kinds[unit->GetPresetName()];
+					++alive;
+				}
+			}
+			std::string what = alive == 0 ? "Nothing selected" : std::to_string(alive) + " selected:";
+			for (const auto& [name, number]: kinds) {
+				what += " " + std::to_string(number) + " " + name + ",";
+			}
+			if (!kinds.empty()) {
+				what.pop_back();
+			}
+			ImGui::SetCursorPosX(rowStart);
+			ImGui::TextDisabled("%s", what.c_str());
+			ImGui::SameLine();
+			ImGui::BeginDisabled(alive == 0);
+			if (ToolUI::SmallButton("Deselect")) {
+				s_Selected.clear();
+			}
+			ImGui::EndDisabled();
+			// Their plans (RC-3), if any have steps still to come: cleared, each carrying on with the step it is on.
+			ImGui::SameLine();
+			ImGui::BeginDisabled(PlanMarkers().empty());
+			if (ToolUI::SmallButton("Clear plans")) {
+				Stroke stroke;
+				stroke.Kind = Tool::OrderSelected;
+				stroke.Count = 120;
+				s_Queue.push_back(stroke);
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Shift with any order adds it to the selected units' plans: they carry out each when the one before is over\n(a move when they get there, an attack when the enemy is dead). Defend with Shift held ends the plan holding ground.\nA right click on a numbered marker drops that step.");
+			ImGui::SameLine();
+			ImGui::BeginDisabled(alive == 0);
+			if (ToolUI::SmallButton("Follow")) {
+				s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
+				s_FollowAction = false;
+			}
+			ImGui::EndDisabled();
+			// The engagement rules of what is selected (RC-1): the one they share, or "mixed"; a choice gives it to them all.
+			ImGui::BeginDisabled(alive == 0);
+			for (bool weapons: {true, false}) {
+				ImGui::SameLine(0.0F, pixel * 6.0F);
+				int rule = SelectedRule(weapons);
+				const char* const* names = weapons ? c_WeaponRuleNames : c_MovementRuleNames;
+				int ruleCount = weapons ? static_cast<int>(std::size(c_WeaponRuleNames)) : static_cast<int>(std::size(c_MovementRuleNames));
+				ImGui::SetNextItemWidth(field * 0.75F);
+				if (ImGui::BeginCombo(weapons ? "##weaponRule" : "##movementRule", rule == -1 ? "Mixed" : (rule < 0 ? (weapons ? "Weapons" : "Movement") : names[rule]))) {
+					for (int choice = 0; choice < ruleCount; ++choice) {
+						if (ImGui::Selectable(names[choice], choice == rule)) {
+							QueueRule(weapons, choice);
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::SetItemTooltip("%s", weapons ? "What the selected units may shoot at.\nFire at will: any enemy they see. Return fire: only while they are being shot at. Hold fire: never; they aim, and open up the moment this changes.\nKept until changed." : "How the selected units move when they meet an enemy.\nAs ordered: a move keeps walking, an attack closes in, a post is held. Engage: stop and fight, closing in. Move only: keep going, firing on the way. Hold ground: fight from where they stand.\nEach new order goes back to As ordered.");
+			}
+			ImGui::EndDisabled();
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			// Whose routes are drawn: the game's own AI path drawing, as the settings have it.
 			ImGui::TextDisabled("Routes");
@@ -2423,13 +2447,6 @@ namespace SandboxDetail {
 					}
 				}
 			}
-			ImGui::BeginDisabled(alive == 0);
-			ImGui::SameLine();
-			if (ToolUI::SmallButton("Follow")) {
-				s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
-				s_FollowAction = false;
-			}
-			ImGui::EndDisabled();
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			ImGui::SetNextItemWidth(field * 0.8F);
 			ImGui::SliderFloat("##spacing", &s_Spacing, 8.0F, 60.0F, "Spacing %.0f px");
@@ -2530,6 +2547,7 @@ namespace SandboxDetail {
 			}
 			if (unpin >= 0) {
 				s_Pins.erase(s_Pins.begin() + unpin);
+				SavePinsFile();
 			}
 			if (!s_Pins.empty()) {
 				// A gold rule between the pins and the rest.

@@ -323,23 +323,45 @@ std::string Sandbox::GetPins() {
 	return pins;
 }
 
-void Sandbox::SetPins(const std::string& pins) {
-	s_Pins.clear();
-	for (size_t at = 0; at < pins.size();) {
-		size_t end = pins.find(';', at);
-		end = end == std::string::npos ? pins.size() : end;
-		std::string one = pins.substr(at, end - at);
-		size_t equals = one.find('=');
-		if (equals != std::string::npos) {
-			std::string toolName = one.substr(0, equals);
-			for (int i = 0; i < c_ToolCount; ++i) {
-				if (toolName == c_Tools[i].Name && s_Pins.size() < 24) {
-					s_Pins.push_back({c_Tools[i].Kind, one.substr(equals + 1)});
-					break;
+namespace {
+	void ReadPins(const std::string& pins) {
+		s_Pins.clear();
+		for (size_t at = 0; at < pins.size();) {
+			size_t end = pins.find(';', at);
+			end = end == std::string::npos ? pins.size() : end;
+			std::string one = pins.substr(at, end - at);
+			size_t equals = one.find('=');
+			if (equals != std::string::npos) {
+				std::string toolName = one.substr(0, equals);
+				for (int i = 0; i < c_ToolCount; ++i) {
+					if (toolName == c_Tools[i].Name && s_Pins.size() < 24) {
+						s_Pins.push_back({c_Tools[i].Kind, one.substr(equals + 1)});
+						break;
+					}
 				}
 			}
+			at = end + 1;
 		}
-		at = end + 1;
+	}
+} // namespace
+
+void Sandbox::SetPins(const std::string& pins) {
+	ReadPins(pins);
+	SavePinsFile();
+}
+
+void Sandbox::LoadPins(const std::string& fromOldSave) {
+	static bool loaded = false;
+	if (loaded) {
+		return;
+	}
+	loaded = true;
+	if (std::ifstream file(c_PinsFile); file) {
+		std::string line;
+		std::getline(file, line);
+		ReadPins(line);
+	} else if (!fromOldSave.empty()) {
+		SetPins(fromOldSave);
 	}
 }
 
@@ -549,6 +571,7 @@ void Sandbox::DrawGUI() {
 				hint += std::string("    In hand: ") + CurrentTool().Name;
 			}
 			hint += "    Right drag / WASD: move    Wheel: zoom";
+			hint += s_BarShown ? "    U: hide the bar" : "    U: show the bar";
 		} else {
 			hint += "    P: back above";
 		}
@@ -578,8 +601,8 @@ void Sandbox::DrawGUI() {
 	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
 	// working. Only the window itself is left out.
 	bool hiddenButAbove = !s_Open && IsLookingAround();
-	// The bar is there whenever you're above the world and not playing a unit, whatever else is open or hidden.
-	if (IsGodMode() && InGame() && !s_Possessed && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
+	// The bar is there whenever you're above the world and not playing a unit, whatever else is open or hidden, unless put away with U.
+	if (s_BarShown && IsGodMode() && InGame() && !s_Possessed && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		if (!s_CatalogueBuilt) {
 			BuildCatalogue();
 		}
@@ -621,6 +644,10 @@ void Sandbox::DrawGUI() {
 				s_RingCenter = ImVec2(x - 40.0F, y - 10.0F);
 			}
 		}
+	}
+	// U: the bar along the bottom hidden or shown again, in the god view, so long as no text box has the keys.
+	if (IsGodMode() && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_U, false)) {
+		s_BarShown = !s_BarShown;
 	}
 	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
