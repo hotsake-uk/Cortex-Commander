@@ -2409,10 +2409,14 @@ void Scene::ResetPathFinding() {
 	}
 }
 
-void Scene::BlockUntilAllPathingRequestsComplete() {
+bool Scene::BlockUntilAllPathingRequestsComplete() {
+	bool allComplete = true;
 	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
-		GetPathFinder(static_cast<Activity::Teams>(team)).WaitForPathingRequests();
+		if (!GetPathFinder(static_cast<Activity::Teams>(team)).WaitForPathingRequests()) {
+			allComplete = false;
+		}
 	}
+	return allComplete;
 }
 
 void Scene::UpdatePathFinding() {
@@ -2451,7 +2455,12 @@ void Scene::UpdatePathFinding() {
 		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty() && noTeamPathFinder.GetWaitingNodeCount() == 0 && !teamGridBehind()) || !starvedTimer.IsPastRealMS(300)) {
 			return;
 		}
-		BlockUntilAllPathingRequestsComplete();
+		if (!BlockUntilAllPathingRequestsComplete()) {
+			// A search still running after the wait's timeout would read node costs written under it, so the grid is left as it is this time
+			// and the changes wait for a later call (they stay queued); the timer makes that call wait its turn again.
+			starvedTimer.Reset();
+			return;
+		}
 	}
 	starvedTimer.Reset();
 
@@ -2652,18 +2661,30 @@ void Scene::Update() {
 	if (m_NavigableAreasUpToDate == false) {
 		// Need to block until all current pathfinding requests are finished. Ugh, if only we had a better way (interrupt/cancel a path request to start a new one?)
 		// TODO: Make the PathRequest struct more capable and maybe we can delay starting or cancel mid-request?
-		BlockUntilAllPathingRequestsComplete();
+		// (Not under a search still running after the wait's timeout: the areas are marked on a later update instead, a second on, so a search
+		// that never ends costs a wait a second rather than one every update.)
+		static Timer navigableRetryTimer;
+		static bool navigableWaitTimedOut = false;
+		bool marked = false;
+		if (!navigableWaitTimedOut || navigableRetryTimer.IsPastRealMS(1000)) {
+			navigableWaitTimedOut = !BlockUntilAllPathingRequestsComplete();
+			if (navigableWaitTimedOut) {
+				navigableRetryTimer.Reset();
+			}
+			marked = !navigableWaitTimedOut;
+		}
+		if (marked) {
+			m_NavigableAreasUpToDate = true;
+			for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
+				PathFinder& pathFinder = GetPathFinder(static_cast<Activity::Teams>(team));
 
-		m_NavigableAreasUpToDate = true;
-		for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
-			PathFinder& pathFinder = GetPathFinder(static_cast<Activity::Teams>(team));
+				pathFinder.MarkAllNodesNavigable(m_NavigableAreas.empty());
 
-			pathFinder.MarkAllNodesNavigable(m_NavigableAreas.empty());
-
-			for (const std::string& navigableArea: m_NavigableAreas) {
-				if (HasArea(navigableArea)) {
-					for (const Box* navigableBox: GetArea(navigableArea)->GetBoxes()) {
-						pathFinder.MarkBoxNavigable(*navigableBox, true);
+				for (const std::string& navigableArea: m_NavigableAreas) {
+					if (HasArea(navigableArea)) {
+						for (const Box* navigableBox: GetArea(navigableArea)->GetBoxes()) {
+							pathFinder.MarkBoxNavigable(*navigableBox, true);
+						}
 					}
 				}
 			}
