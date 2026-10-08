@@ -208,6 +208,15 @@ bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
 			const auto indexStart = std::chrono::steady_clock::now();
 			std::error_code error;
 			std::filesystem::recursive_directory_iterator entry(s_WorkingDirectory, std::filesystem::directory_options::follow_directory_symlink | std::filesystem::directory_options::skip_permission_denied, error);
+			// Linked folders are followed (a mod can be a link to its own checkout), but not into one already on the way down: a link to a
+			// folder above it walked round the loop until the iterator gave up on the path's length, and the index ended there.
+			auto isUnder = [](const std::filesystem::path& path, const std::filesystem::path& folder) {
+				auto mismatch = std::mismatch(folder.begin(), folder.end(), path.begin(), path.end());
+				return mismatch.first == folder.end();
+			};
+			std::vector<std::pair<std::filesystem::path, std::filesystem::path>> linksDown; // Each link walked into, and where it goes.
+			std::error_code rootError;
+			linksDown.emplace_back(std::filesystem::path(s_WorkingDirectory), std::filesystem::weakly_canonical(s_WorkingDirectory, rootError));
 			for (; !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error)) {
 				std::string relative = entry->path().generic_string().substr(s_WorkingDirectory.length());
 				std::error_code typeError;
@@ -215,6 +224,24 @@ bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
 					s_UnindexedDirectories.emplace_back(relative + "/");
 					entry.disable_recursion_pending();
 					continue;
+				}
+				if (entry->is_symlink(typeError) && entry->is_directory(typeError)) {
+					while (linksDown.size() > 1 && !isUnder(entry->path(), linksDown.back().first)) {
+						linksDown.pop_back();
+					}
+					std::error_code linkError;
+					std::filesystem::path target = std::filesystem::weakly_canonical(entry->path(), linkError);
+					std::filesystem::path above = std::filesystem::weakly_canonical(entry->path().parent_path(), linkError);
+					bool loops = linkError || isUnder(above, target);
+					for (const auto& [link, down]: linksDown) {
+						loops = loops || target == down;
+					}
+					if (loops) {
+						s_WorkingTree.insert(Hash(relative));
+						entry.disable_recursion_pending();
+						continue;
+					}
+					linksDown.emplace_back(entry->path(), target);
 				}
 				s_WorkingTree.insert(Hash(relative));
 			}
@@ -231,7 +258,8 @@ bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
 				return std::filesystem::exists(pathToCheck);
 			}
 		}
-		if (std::filesystem::exists(pathToCheck) && std::filesystem::last_write_time(pathToCheck) > s_ProgramStartTime) {
+		// (One stat, not two: the write time errors for a file that isn't there.)
+		if (std::error_code missing; std::filesystem::last_write_time(pathToCheck, missing) > s_ProgramStartTime && !missing) {
 			s_WorkingTree.insert(Hash(relative));
 			return true;
 		}
