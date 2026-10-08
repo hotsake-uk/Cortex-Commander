@@ -36,6 +36,10 @@ namespace RTE {
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
+		/// Gets whether a flowing liquid holds up and drags at bodies in it (ActorWater): water, acid and the liquids of a mod's own; not lava
+		/// (ActorFire's) or oil.
+		static bool HoldsBodies(int materialID);
+
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.

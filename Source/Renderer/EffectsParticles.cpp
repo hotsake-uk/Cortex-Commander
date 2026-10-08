@@ -634,8 +634,10 @@ bool EffectsParticles::IsStainingMaterial(const Material* material) {
 	if (found != cache.end()) {
 		return found->second;
 	}
+	// As the material's behaviour says (MaterialBehaviour::Stains, SB-1), else by its name.
 	const std::string& name = material->GetPresetName();
-	bool staining = name.find("Blood") != std::string::npos || name.find("Oil") != std::string::npos;
+	int stains = material->GetBehaviour().Stains;
+	bool staining = stains >= 0 ? stains == 1 : (name.find("Blood") != std::string::npos || name.find("Oil") != std::string::npos);
 	cache.emplace(material, staining);
 	return staining;
 }
