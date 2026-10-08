@@ -279,6 +279,12 @@ void DebugMan::SettingsGUI() {
 		SliderI("Light spreading steps a frame", &settings.PropagationIterationsPerFrame, 1, 32);
 		Heading("Shadows");
 		Slider("Shadow strength", &settings.ShadowStrength, 0.0F, 1.0F);
+		Check("Traced terrain shadows", &settings.LightShadowField);
+		Tip("Lamps, flashes and fires find the terrain between them and what they light through a map of distances to it, so thin walls and plating stop light instead of leaking it, and shadows are sharp near what casts them and soften further off. Off: the light is sampled at eleven evenly spaced places on its way, as before (cheaper; the Low preset). On from the Medium preset up.");
+		if (settings.LightShadowField) {
+			Slider("Shadow softness", &settings.LightShadowSoftness, 0.0F, 2.0F);
+			Tip("How soft the edges of those shadows are. 0: sharp. Bigger lights are always softer than small ones.");
+		}
 		Slider("Shadows of units and objects", &settings.UnitShadows, 0.0F, 1.0F);
 		Slider("Contact shading", &settings.ContactShading, 0.0F, 1.0F);
 		Heading("Bounced light");

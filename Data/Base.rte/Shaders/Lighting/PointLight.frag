@@ -24,6 +24,10 @@ uniform bool rteBeamMode; // Drawing the visible beam of cone lights over the li
 uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest pixel of a solid object.
 uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
+uniform bool rteShadowFieldOn; // Trace terrain shadows through the distance field (LightingSettings::LightShadowField), instead of the fixed march.
+uniform sampler2D rteShadowField; // World grid, R = distance to the nearest wall cell, as a fraction of rteShadowFieldReach, linearly filtered.
+uniform float rteShadowFieldReach; // How far the field reaches, in pixels.
+uniform float rteShadowSoftness; // How soft terrain shadows' edges are, 0 sharp to 2.
 
 const int c_ShadowSteps = 12;
 
@@ -78,6 +82,68 @@ float ObjectShadow(vec2 from, vec2 to, bool fromSolid) {
 	return clamp(visibility, 0.0, 1.0);
 }
 
+// How much light gets past the terrain from one world position to another, 0 to 1, the old way: eleven evenly spaced samples of the light grid.
+// Skips the ends so lit terrain surfaces and lights embedded in terrain still work.
+float TerrainShadowMarch(vec2 fromWorld, vec2 toWorld) {
+	float transmittance = 1.0;
+	for (int i = 1; i < c_ShadowSteps; ++i) {
+		float t = (float(i) / float(c_ShadowSteps)) * 0.9 + 0.05;
+		vec2 sampleWorld = mix(fromWorld, toWorld, t);
+		// Lights sitting on or in the ground (flares, lamps on walls) shouldn't be shadowed by the terrain right around them.
+		if (distance(sampleWorld, toWorld) < 8.0) {
+			continue;
+		}
+		float occupancy = texture(rteOccupancy, sampleWorld / rteGridWorldSize).r;
+		transmittance *= 1.0 - occupancy * rteShadowStrength;
+	}
+	return transmittance;
+}
+
+// The same, traced through the terrain distance field: each step goes as far as the nearest wall allows, so open air is crossed in a few steps and walls,
+// even a cell thin, are never stepped over. Walls block outright, with a soft edge that widens away from them; lighter cells (water, glass, a wall's
+// fringe) dim the light by how much of the way they fill.
+float TerrainShadowTraced(vec2 fromWorld, vec2 toWorld) {
+	vec2 delta = toWorld - fromWorld;
+	float range = length(delta);
+	if (range < 2.0) {
+		return 1.0;
+	}
+	vec2 direction = delta / range;
+	float cell = rteGridWorldSize.x / float(textureSize(rteShadowField, 0).x);
+	float lightSize = clamp(lightRadius * 0.04, 4.0, 12.0) * rteShadowSoftness;
+	float t = 0.05 * range;
+	// Lights sitting on or in the ground (flares, lamps on walls) aren't shadowed by the terrain right around them.
+	float end = range - max(0.05 * range, 8.0);
+	// A lit terrain surface sits in or beside its own wall: step out of it first, so it doesn't shadow itself. Two cells at most; past that the pixel
+	// is facing away through rock and the trace goes on through it.
+	float leave = t + 2.0 * cell;
+	while (t < leave && t < end && texture(rteShadowField, (fromWorld + direction * t) / rteGridWorldSize).r * rteShadowFieldReach < cell) {
+		t += 0.5 * cell;
+	}
+	// Likewise a lamp set into a wall shines out of it rather than being buried: the trace stops short of the wall around the light, two cells at most.
+	float stop = end - 2.0 * cell;
+	while (end > stop && end > t && texture(rteShadowField, (fromWorld + direction * end) / rteGridWorldSize).r * rteShadowFieldReach < cell) {
+		end -= 0.5 * cell;
+	}
+	float start = t;
+	float transmittance = 1.0;
+	float visibility = 1.0;
+	for (int i = 0; i < 28 && t < end; ++i) {
+		vec2 position = (fromWorld + direction * t) / rteGridWorldSize;
+		// Distances are stored for cell centres; half a cell off finds the wall's edge.
+		float clearance = texture(rteShadowField, position).r * rteShadowFieldReach - 0.5 * cell;
+		float advance = clamp(clearance, 0.5 * cell, end - t + 0.5 * cell);
+		transmittance *= pow(max(1.0 - texture(rteOccupancy, position).r * rteShadowStrength, 0.0), advance / (1.5 * cell));
+		// The light has a size, so a wall that only just clears the line still hides part of it, more the further the pixel is behind the wall.
+		visibility = min(visibility, lightSize > 0.0 ? max(clearance, 0.0) * range / (lightSize * (t - start + 1.0)) : (clearance > 0.0 ? 1.0 : 0.0));
+		if (transmittance < 0.01) {
+			break;
+		}
+		t += advance;
+	}
+	return transmittance * mix(1.0, clamp(visibility, 0.0, 1.0), rteShadowStrength);
+}
+
 void main() {
 	if (rteBeamMode && lightCone.z < -1.5) {
 		discard;
@@ -101,20 +167,10 @@ void main() {
 		}
 	}
 
-	// Soft shadow: march from this pixel to the light through the occupancy grid. Skip the ends so lit terrain surfaces and lights embedded in terrain still work.
+	// Soft shadow from the terrain between this pixel and the light.
 	vec2 fromWorld = rteScreenOrigin + gl_FragCoord.xy;
 	vec2 toWorld = rteScreenOrigin + lightCenter;
-	float transmittance = 1.0;
-	for (int i = 1; i < c_ShadowSteps; ++i) {
-		float t = (float(i) / float(c_ShadowSteps)) * 0.9 + 0.05;
-		vec2 sampleWorld = mix(fromWorld, toWorld, t);
-		// Lights sitting on or in the ground (flares, lamps on walls) shouldn't be shadowed by the terrain right around them.
-		if (distance(sampleWorld, toWorld) < 8.0) {
-			continue;
-		}
-		float occupancy = texture(rteOccupancy, sampleWorld / rteGridWorldSize).r;
-		transmittance *= 1.0 - occupancy * rteShadowStrength;
-	}
+	float transmittance = rteShadowFieldOn ? TerrainShadowTraced(fromWorld, toWorld) : TerrainShadowMarch(fromWorld, toWorld);
 
 	if (rteUnitShadows > 0.0) {
 		bool fromSolid = !rteBeamMode && texture(rteSurface, gl_FragCoord.xy / rteScreenSize).b > 0.5;
