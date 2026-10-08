@@ -15,7 +15,15 @@ uniform sampler2D rtePalette;
 uniform bool rteIndexed;
 uniform vec4 rteColor;
 uniform bool rteReplaceColor;
-uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows, G = whether it's a vegetation color.
+uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows, G = whether it's a vegetation color, B = its liquid look * 16 (0 not a liquid).
+
+// The liquid looks (RenderMan::LiquidLook), by look number: 1 water, 2 lava, 3 acid, 4 oil, 5 mud, 6 slime, 7 mercury, the rest free for new liquids.
+const int c_MaxLiquidLooks = 16;
+uniform vec4 rteLiquidShallow[c_MaxLiquidLooks]; // RGB colour near the surface (molten: the cool colour; bubbling: the bubbles' colour), A opacity there.
+uniform vec4 rteLiquidDeep[c_MaxLiquidLooks]; // RGB colour in the depths (molten: the hot colour), A opacity there.
+uniform vec4 rteLiquidSurface[c_MaxLiquidLooks]; // x shine, y metalness, z how much the ripples tilt it, w how strongly light plays through it in lines.
+uniform vec4 rteLiquidStyle[c_MaxLiquidLooks]; // x 0 clear, 1 molten, 2 bubbling; y how much it froths when thin; z its own glow; w 1 if it reflects (the composite's water reflection).
+uniform vec4 rteLiquidLine[c_MaxLiquidLooks]; // RGB the colour of its surface line where it meets open air, A how strongly.
 
 uniform bool rteLivingWorld;
 uniform float rteTime; // Seconds.
@@ -134,10 +142,15 @@ bool WeatherReaches(vec2 world) {
 	return true;
 }
 
-// 1 where the terrain pixel at a place is water, 0 otherwise.
+// The liquid look of a palette colour, 0 for none.
+int LiquidLook(float colorIndex) {
+	return clamp(int(texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b * 255.0 / 16.0 + 0.5), 0, c_MaxLiquidLooks - 1);
+}
+
+// 1 where the terrain pixel at a place is a liquid that froths (water), 0 otherwise.
 float WaterAt(vec2 uv) {
-	float kind = texture(rteEmissivePalette, vec2(texture(rteTexture, uv).r, 0.0)).b;
-	return (kind > 0.1 && kind < 0.45) ? 1.0 : 0.0;
+	int look = LiquidLook(texture(rteTexture, uv).r);
+	return (look > 0 && rteLiquidStyle[look].x < 0.5 && rteLiquidStyle[look].y > 0.0) ? 1.0 : 0.0;
 }
 
 // How much of the neighbourhood of a pixel is water, 0 to 1: twelve places within two pixels of it.
@@ -247,62 +260,67 @@ void main() {
 	float gloss = 0.0;
 	float glowsThrough = 0.0; // Set for water: light inside it shows as a glow in the water itself (see the surface buffer's B channel).
 
-	// Liquids (water, lava, acid), flagged in the emissive palette's B channel.
+	// Liquids, flagged in the emissive palette's B channel with their look.
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
 		shine = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).a;
-		float liquid = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b;
+		int look = LiquidLook(colorIndex);
 		// Solid terrain looks like what it's made of: steel plating is metal, concrete has a dull sheen, earth has none. The palette's guess (greys shine) is kept for
 		// background walls, which have no material, at a lower strength, and for liquids.
 		vec4 grid = texture(rteWorldGrid, worldPos / rteGridWorldSize);
-		if (grid.r > 0.3 && liquid < 0.1) {
+		if (grid.r > 0.3 && look == 0) {
 			metalness = grid.g;
 			gloss = grid.b;
 			shine = gloss;
-		} else if (liquid < 0.1) {
+		} else if (look == 0) {
 			shine *= 0.6;
 		}
-		if (liquid > 0.1) {
-			bool surface = texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r, 0.0)).b < 0.1;
+		if (look > 0) {
+			vec4 lookShallow = rteLiquidShallow[look];
+			vec4 lookDeep = rteLiquidDeep[look];
+			vec4 lookSurface = rteLiquidSurface[look];
+			vec4 lookStyle = rteLiquidStyle[look];
+			bool surface = LiquidLook(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r) == 0;
 			float wave = sin(worldPos.x * 0.35 + rteTime * 2.3) * sin(worldPos.y * 0.21 - rteTime * 1.7) + 0.5 * sin(worldPos.x * 0.11 - rteTime * 0.9);
-			if (liquid < 0.45) {
-				// Water: translucent, deepening in colour with depth, with slow ripples of light and a bright line where it meets the air.
+			if (lookStyle.x < 0.5) {
+				// Clear liquids (water, oil, mud, mercury): deepening in colour with depth, with slow ripples of light and a line where they meet the air.
 				float depth = 7.0;
 				for (int k = 1; k <= 6; ++k) {
-					if (texture(rteEmissivePalette, vec2(texture(rteTexture, textureUV - vec2(0.0, texel.y * float(k))).r, 0.0)).b < 0.1) {
+					if (LiquidLook(texture(rteTexture, textureUV - vec2(0.0, texel.y * float(k))).r) == 0) {
 						depth = float(k);
 						break;
 					}
 				}
 				float deep = smoothstep(1.0, 7.0, depth);
 				float ripple = 0.5 + 0.5 * sin(worldPos.x * 0.09 + worldPos.y * 0.05 + rteTime * 1.3 + 1.7 * sin(worldPos.y * 0.07 - rteTime * 0.8));
-				vec3 water = mix(vec3(0.27, 0.6, 0.8), vec3(0.06, 0.3, 0.52), deep) * (0.93 + 0.12 * ripple);
+				vec3 water = mix(lookShallow.rgb, lookDeep.rgb, deep) * (0.93 + 0.12 * ripple);
 				// Light playing through it: thin bright lines that wander and cross, stronger in the depths.
 				float caustic = WaterCaustic(worldPos);
-				water += vec3(0.22, 0.36, 0.4) * caustic * (0.3 + 0.5 * deep);
+				water += vec3(0.22, 0.36, 0.4) * caustic * (0.3 + 0.5 * deep) * lookSurface.w;
 				// Glints: here and there near the surface a pixel flashes white for an instant, each at its own pace.
 				vec2 glintCell = floor(worldPos / 2.0);
 				float glintSeed = fract(sin(dot(glintCell, vec2(12.9898, 78.233))) * 43758.5453);
 				float glint = pow(max(0.0, sin(rteTime * (2.0 + glintSeed * 4.0) + glintSeed * 60.0)), 24.0) * step(0.88, glintSeed);
-				if (depth <= 3.0) {
+				if (depth <= 3.0 && lookSurface.x >= 0.5) {
 					water += vec3(0.9, 0.97, 1.0) * glint * (depth <= 1.0 ? 1.0 : 0.5);
 				}
-				// Water is glossy: lamps, fires and the sun glance off it.
-				shine = max(shine, 0.9);
-				if (rteWaterRipples > 0.0) {
+				// Glossy liquids: lamps, fires and the sun glance off them. Mercury is metal too.
+				shine = max(shine, lookSurface.x);
+				metalness = lookSurface.y;
+				if (rteWaterRipples > 0.0 && lookSurface.z > 0.0) {
 					// The ripples tilt the surface: the slope of the same slow waves the light plays on, so the glints of lamps and the sun and
 					// the composite's reflection wobble with them. Stronger near the top, calmer in the depths.
 					float phaseX = worldPos.x * 0.35 + rteTime * 2.3;
 					float phaseY = worldPos.y * 0.21 - rteTime * 1.7;
 					vec2 slope = vec2(0.35 * cos(phaseX) * sin(phaseY) + 0.055 * cos(worldPos.x * 0.11 - rteTime * 0.9), 0.21 * sin(phaseX) * cos(phaseY));
-					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * mix(1.0, 0.5, deep), 0.0));
+					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * mix(1.0, 0.5, deep), 0.0));
 				}
-				glowsThrough = 0.25;
-				FragColor = vec4(water, mix(0.6, 0.8, deep));
+				glowsThrough = 0.25 * lookStyle.w;
+				FragColor = vec4(water, mix(lookShallow.a, lookDeep.a, deep));
 				// Thin, broken water is froth: white and bubbling instead of clear. (Checked only where there's air close by, which the middle of a pool never has.)
-				if (rteWaterFoam > 0.0 && WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) * WaterAt(textureUV - vec2(0.0, 3.0 * texel.y)) < 0.5) {
+				if (rteWaterFoam > 0.0 && lookStyle.y > 0.0 && WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) * WaterAt(textureUV - vec2(0.0, 3.0 * texel.y)) < 0.5) {
 					float waterNear = WaterAround(textureUV, texel);
-					float thin = (1.0 - smoothstep(0.35, 0.75, waterNear)) * min(rteWaterFoam, 1.5);
+					float thin = (1.0 - smoothstep(0.35, 0.75, waterNear)) * min(rteWaterFoam, 1.5) * lookStyle.y;
 					// A stray pixel thrown clear of the rest is frothed less than a stream, by the same setting as the froth around it.
 					thin *= mix(rteWaterFoamStray, 1.0, smoothstep(0.0, 0.2, waterNear));
 					if (thin > 0.0) {
@@ -318,21 +336,21 @@ void main() {
 				}
 				// Open to the air above (not under a ceiling of rock): the surface catches the light and laps a little.
 				if (surface && Coverage(textureUV - vec2(0.0, texel.y)) < 0.5) {
-					FragColor = vec4(mix(water, vec3(0.82, 0.94, 1.0), 0.6 + 0.2 * wave), 0.92);
+					FragColor = vec4(mix(water, rteLiquidLine[look].rgb, (0.6 + 0.2 * wave) * rteLiquidLine[look].a), mix(FragColor.a, 0.92, rteLiquidLine[look].a));
 				}
-			} else if (liquid < 0.8) {
-				// Lava: slow bright currents, crusting darker at the surface.
+			} else if (lookStyle.x < 1.5) {
+				// Molten (lava): slow bright currents, crusting darker at the surface.
 				float flow = 0.5 + 0.5 * sin(worldPos.x * 0.18 + worldPos.y * 0.07 + rteTime * 1.1 + wave);
-				FragColor.rgb = mix(vec3(0.75, 0.15, 0.02), vec3(1.0, 0.75, 0.25), flow);
+				FragColor.rgb = mix(lookShallow.rgb, lookDeep.rgb, flow);
 				if (surface) {
 					FragColor.rgb *= 0.55;
 				}
-				emissive = max(emissive, 0.6 + 0.4 * flow);
+				emissive = max(emissive, lookStyle.z * (0.6 + 0.4 * flow));
 			} else {
-				// Acid: a sickly glow with drifting bubbles.
+				// Bubbling (acid, slime): a sickly glow with drifting bubbles.
 				float bubble = step(0.985, fract(sin(dot(floor(worldPos + vec2(0.0, rteTime * 8.0)), vec2(41.3, 289.1))) * 7593.1));
-				FragColor.rgb = mix(FragColor.rgb, vec3(0.85, 1.0, 0.45), bubble * 0.8 + (surface ? 0.35 : 0.0));
-				emissive = max(emissive, 0.25 + bubble * 0.5);
+				FragColor.rgb = mix(FragColor.rgb, lookShallow.rgb, bubble * 0.8 + (surface ? 0.35 : 0.0));
+				emissive = max(emissive, lookStyle.z * (0.25 + bubble * 0.5));
 			}
 		}
 	}

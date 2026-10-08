@@ -61,11 +61,11 @@ void RenderMan::Initialize() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
-void RenderMan::SetLiquidPaletteColor(int paletteIndex, int liquidKind, int emissive) {
+void RenderMan::SetLiquidPaletteColor(int paletteIndex, int liquidLook, int emissive) {
 	if (paletteIndex <= 0 || paletteIndex > 255 || !m_EmissivePaletteTexture) {
 		return;
 	}
-	m_EmissivePalette[paletteIndex * 4 + 2] = static_cast<unsigned char>(std::clamp(liquidKind, 0, 3) * 85);
+	m_EmissivePalette[paletteIndex * 4 + 2] = static_cast<unsigned char>(std::clamp(liquidLook, 0, c_MaxLiquidLooks - 1) * 16);
 	m_EmissivePalette[paletteIndex * 4] = std::max(m_EmissivePalette[paletteIndex * 4], static_cast<unsigned char>(std::clamp(emissive, 0, 255)));
 	// Liquids aren't vegetation, even if they're green.
 	m_EmissivePalette[paletteIndex * 4 + 1] = 0;
