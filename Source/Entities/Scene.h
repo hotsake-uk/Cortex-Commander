@@ -652,8 +652,9 @@ namespace RTE {
 		/// do very rarely!
 		void ResetPathFinding();
 
-		/// Blocks this thread until all pathing requests are completed.
-		void BlockUntilAllPathingRequestsComplete();
+		/// Blocks this thread until all pathing requests are completed, or each grid's wait times out.
+		/// @return Whether they all completed; false if a search was still running when a wait timed out.
+		bool BlockUntilAllPathingRequestsComplete();
 
 		/// Recalculates only the areas of the pathfinding data that have been
 		/// marked as outdated.
