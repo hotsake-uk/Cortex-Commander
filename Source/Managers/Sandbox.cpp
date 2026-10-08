@@ -831,7 +831,15 @@ namespace {
 			return;
 		}
 		CancelRetreatAndFlank(actor);
+		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
+		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->RemoveNumberValue(c_AttackTag);
+		actor->RemoveNumberValue(c_TargetTag);
+		actor->RemoveNumberValue(c_AutoTargetTag);
+		actor->RemoveNumberValue(c_AttackXTag);
+		actor->RemoveNumberValue(c_AttackYTag);
+		actor->RemoveNumberValue(c_DefendXTag);
+		actor->RemoveNumberValue(c_DefendYTag);
 		switch (order) {
 			case Order::Attack:
 				// The nearest enemy is where it is sent, not one it has to keep after: on the way the AI fights whatever it meets, and the
