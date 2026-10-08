@@ -1813,7 +1813,10 @@ void Actor::ShotPassing(const MovableObject& shot) {
 	// The box finds every part of a body (head, torso, limbs, held gun); each unit counts once for this shot.
 	static thread_local std::vector<const Actor*> s_Counted;
 	s_Counted.clear();
-	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true)) {
+	// Up to 96 of these queries an update while anyone shoots: the found list is a buffer kept between calls, so the query allocates nothing.
+	static thread_local std::vector<MovableObject*> s_Found;
+	g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true, s_Found);
+	for (MovableObject* found: s_Found) {
 		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
 		if (!actor || (shot.GetTeam() != Activity::NoTeam && actor->GetTeam() == shot.GetTeam())) {
 			continue;
