@@ -1002,6 +1002,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				if (rise <= 4.0F || rise > s_MantleHeight || static_cast<float>(target->FreeHeight) < s_StandHeight || static_cast<float>(node->FreeHeight) < s_StandHeight + rise * 0.5F) {
 					continue;
 				}
+				// (Only onto the top of a face: up a slope, the walk's diagonal steps go, and as a mantle every incline was pulled up step by step.)
+				if (!LipAt(*target, target == oneUp->Left || (twoUp && target == twoUp->Left) ? -1.0F : 1.0F)) {
+					continue;
+				}
 				adjCost.cost = 1.5F + rise / static_cast<float>(m_NodeDimension) + radiatedCost;
 				adjCost.state = const_cast<PathNode*>(target);
 				adjacentList->push_back(adjCost);
@@ -1210,6 +1214,23 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
+		}
+
+		// Up or down a rough incline the legs walk (SurfaceWalkable): the diagonal between the two node centres clips the ground on any slope
+		// that isn't smooth, so that step was a dig to everything that doesn't dig, and the way up a hillside was a jump up the column and a
+		// landing beside it, or a string of mantles. Priced as the walk's diagonal through open air.
+		if (allowDiagonal && s_JumpHeight < FLT_MAX && node->Surface >= 0.0F) {
+			auto slopeWalk = [&](const PathNode* to, const Material* along, bool up) {
+				if (to && to->m_Navigable && !Open(*along) && SurfaceWalkable(*node, *to)) {
+					adjCost.cost = (up ? 1.4F + extraUpCost * 1.4F : 1.4F) + radiatedCost;
+					adjCost.state = const_cast<PathNode*>(to);
+					adjacentList->push_back(adjCost);
+				}
+			};
+			slopeWalk(node->UpRight, node->UpRightMaterial, true);
+			slopeWalk(node->LeftUp, node->LeftUpMaterial, true);
+			slopeWalk(node->RightDown, node->RightDownMaterial, false);
+			slopeWalk(node->DownLeft, node->DownLeftMaterial, false);
 		}
 	}
 
@@ -1502,9 +1523,15 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	// 40 px over the landing and flown as a jet climb, with the climb's fuel and arrival checks, and a unit with no jet couldn't follow it.
 	if (s_MantleHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && dy < -1.0F && dy >= -2.0F * nodeSize - 1.0F && from->Surface >= 0.0F && to->Surface >= 0.0F) {
 		float rise = from->Surface - to->Surface;
-		if (rise > 4.0F && rise <= s_MantleHeight && static_cast<float>(to->FreeHeight) >= s_StandHeight && static_cast<float>(from->FreeHeight) >= s_StandHeight + rise * 0.5F) {
+		if (rise > 4.0F && rise <= s_MantleHeight && static_cast<float>(to->FreeHeight) >= s_StandHeight && static_cast<float>(from->FreeHeight) >= s_StandHeight + rise * 0.5F && LipAt(*to, dx < 0.0F ? -1.0F : 1.0F)) {
 			return PathStepKind::Mantle;
 		}
+	}
+	// A diagonal step up or down an incline the legs walk (SurfaceWalkable): a walk, whatever the line between the centres clips. (Every step
+	// up was labelled a jump, and up a hillside the follower jumped or jetted node by node.)
+	if (s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - nodeSize) < 1.0F && SurfaceWalkable(*from, *to)) {
+		int headRoom = std::min(from->FreeHeight, to->FreeHeight);
+		return static_cast<float>(headRoom) < s_CrouchHeight ? PathStepKind::Crawl : (static_cast<float>(headRoom) < s_StandHeight ? PathStepKind::Crouch : PathStepKind::Walk);
 	}
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
 	// line at all but up the column and over onto a ledge (the landing edges), which is a jump. (Read as a dig, a step up onto a 24 px
@@ -1647,6 +1674,41 @@ bool PathFinder::LipAt(const PathNode& to, float direction) const {
 		}
 	}
 	return true;
+}
+
+bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const {
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	if (from.Surface < 0.0F || to.Surface < 0.0F || std::abs(from.Surface - to.Surface) > nodeSize * 1.5F) {
+		return false;
+	}
+	// Room to walk it, at the least crouched, at both ends and over the middle of the way.
+	if (static_cast<float>(std::min(from.FreeHeight, to.FreeHeight)) < s_CrouchHeight) {
+		return false;
+	}
+	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
+	float direction = dx < 0.0F ? -1.0F : 1.0F;
+	float waist = std::min(s_CrouchHeight, s_StandHeight) * 0.5F;
+	if (!Open(*StrongestMaterialAlongLine(Vector(from.Pos.m_X, from.Surface - waist), Vector(to.Pos.m_X, to.Surface - waist)))) {
+		return false;
+	}
+	// The ground's top every 2 px across, from a step over the higher floor to a step under the lower: no rise or drop from one to the next
+	// a step's worth or more (half a node, where a face is a lip: see LipAt, and the mantle), and no stretch without ground (a gap).
+	const float step = nodeSize * 0.5F;
+	int top = static_cast<int>(std::min(from.Surface, to.Surface) - step);
+	int bottom = static_cast<int>(std::max(from.Surface, to.Surface) + step);
+	float last = from.Surface;
+	for (int d = 2; d <= static_cast<int>(std::abs(dx)); d += 2) {
+		int x = static_cast<int>(from.Pos.m_X + direction * static_cast<float>(d));
+		int y = top;
+		while (y <= bottom && (TerrNav(x, y) == MaterialColorKeys::g_MaterialAir || LiquidOf(TerrNav(x, y)) != PathLiquid::None)) {
+			++y;
+		}
+		if (y > bottom || y == top || std::abs(static_cast<float>(y) - last) >= step) {
+			return false;
+		}
+		last = static_cast<float>(y);
+	}
+	return std::abs(last - to.Surface) < step;
 }
 
 bool PathFinder::GapBetween(const PathNode& from, const PathNode& to) const {
