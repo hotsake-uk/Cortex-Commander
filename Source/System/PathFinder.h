@@ -52,9 +52,24 @@ namespace RTE {
 		float LeapSpeed = 4.0F; //!< How fast a leap carries it forward, in m/s.
 	};
 
+	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
+	/// Release on the write and acquire on the read, so the results are all there to be read once it says so (a plain bool worked on x86's
+	/// strong ordering, by luck; elsewhere the asker could copy a half-built path). Copies take the value, so a request can still be copied.
+	struct PathRequestDoneFlag {
+		std::atomic<bool> Value{false};
+		PathRequestDoneFlag() = default;
+		PathRequestDoneFlag(const PathRequestDoneFlag& other) : Value(other.Value.load(std::memory_order_acquire)) {}
+		PathRequestDoneFlag& operator=(const PathRequestDoneFlag& other) {
+			Value.store(other.Value.load(std::memory_order_acquire), std::memory_order_release);
+			return *this;
+		}
+		operator bool() const volatile { return Value.load(std::memory_order_acquire); }
+		void operator=(bool done) volatile { Value.store(done, std::memory_order_release); }
+	};
+
 	/// Information required to make an async pathing request.
 	struct PathRequest {
-		bool complete = false;
+		PathRequestDoneFlag complete;
 		int status = MicroPather::NO_SOLUTION;
 		std::list<Vector> path;
 		std::list<PathStepKind> kinds; //!< What each step of the path is, one per point of path after the first.
