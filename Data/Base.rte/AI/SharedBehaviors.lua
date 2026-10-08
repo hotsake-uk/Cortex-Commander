@@ -1834,9 +1834,9 @@ function SharedBehaviors.BurstPattern(Weapon, range, targetRadius, suppression)
 	elseif range > 150 then
 		on, off = 500, 250;
 	end
-	-- (ShakeRange and ParticleSpreadRange are whole cones in degrees: half of each either side of the aim. Sharp aim's shake, as the
-	-- AI aims sharp when it can hit.)
-	local spread = math.rad(math.max(Weapon.SharpShakeRange, 0) + math.max(Weapon.ParticleSpreadRange, 0)) * 0.5;
+	-- (The half-cones either side of the aim, in degrees: the getters return the stored halves of the ini's whole ranges. Sharp aim's
+	-- shake, as the AI aims sharp when it can hit.)
+	local spread = math.rad(math.max(Weapon.SharpShakeRange, 0) + math.max(Weapon.ParticleSpreadRange, 0));
 	if spread > 0.001 and range > 60 then
 		local share = math.atan(math.max(targetRadius, 4) / range) / spread;
 		if share < 0.35 then
