@@ -676,6 +676,21 @@ namespace RTE {
 		/// @param radius How far to look, in pixels.
 		bool IsBurningNear(const Vector& position, int radius) const;
 
+		/// Reports that a unit noticed an enemy (AC-2): its team remembers where, and its AI teammates close by turn to face it.
+		/// @param reporter The unit that noticed it.
+		/// @param enemy The enemy.
+		void ReportEnemy(const Actor* reporter, const Actor* enemy) const;
+
+		/// Gets where the closest enemy a team remembers was last seen (AC-2), or a zero vector for none.
+		/// @param team The team that remembers.
+		/// @param near The point to measure from.
+		/// @param maxAgeMS How long ago at most it was seen, in sim milliseconds.
+		/// @param maxDistance How far from near at most, in pixels.
+		Vector GetRememberedEnemyPos(int team, const Vector& near, float maxAgeMS, float maxDistance) const;
+
+		/// Gets where a team last saw a unit a player controls (AC-2), or a zero vector if not within maxAgeMS sim milliseconds.
+		Vector GetPlayerLastSeenPos(int team, float maxAgeMS) const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 

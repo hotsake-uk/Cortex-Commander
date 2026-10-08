@@ -310,11 +310,13 @@ namespace SandboxDetail {
 	// to attack towards, a post to defend, hold. Once six number values under string keys here and in the AI scripts.)
 	constexpr const char* c_RetreatTag = "AIRetreat"; //!< Number values the Lua AI keeps on a unit falling back or working round a flank; taken off
 	constexpr const char* c_FlankTag = "AIFlank";     //!< by a new order, which tells the AI the order it would put back after is gone.
+	constexpr const char* c_MedicTag = "AIMedic";     //!< Likewise a medic on its way to see to a hurt friend (AC-7).
 
 	/// A new order ends a fall-back or a flank under way: the AI drops it without putting the old order back.
 	inline void CancelRetreatAndFlank(Actor* unit) {
 		unit->RemoveNumberValue(c_RetreatTag);
 		unit->RemoveNumberValue(c_FlankTag);
+		unit->RemoveNumberValue(c_MedicTag);
 	}
 
 	/// A preset the sandbox can spawn.

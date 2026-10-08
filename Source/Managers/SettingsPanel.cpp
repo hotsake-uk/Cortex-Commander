@@ -9,6 +9,7 @@
 #include "Controller.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "ThreatMemory.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -671,7 +672,10 @@ void DebugMan::SettingsGUI() {
 			g_TimerMan.SetTimeScale(1.0F);
 		}
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
-		Check("Night limits AI sight", &settings.NightAffectsAI);
+		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
+		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
+		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
+		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		{

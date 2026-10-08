@@ -1,6 +1,7 @@
 #include "SceneMan.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "ThreatMemory.h"
 #include "TerrainCollapse.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
@@ -1486,6 +1487,18 @@ bool SceneMan::SmokeBlocksSight(const Vector& start, const Vector& end) const {
 
 bool SceneMan::IsBurningNear(const Vector& position, int radius) const {
 	return TerrainFire::IsBurningNear(position, radius);
+}
+
+void SceneMan::ReportEnemy(const Actor* reporter, const Actor* enemy) const {
+	ThreatMemory::Report(reporter, enemy);
+}
+
+Vector SceneMan::GetRememberedEnemyPos(int team, const Vector& near, float maxAgeMS, float maxDistance) const {
+	return ThreatMemory::GetNearestRemembered(team, near, maxAgeMS, maxDistance);
+}
+
+Vector SceneMan::GetPlayerLastSeenPos(int team, float maxAgeMS) const {
+	return ThreatMemory::GetPlayerLastSeen(team, maxAgeMS);
 }
 
 int SceneMan::GetBurningUnitCount() const {

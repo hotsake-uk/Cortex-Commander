@@ -1327,9 +1327,13 @@ void Sandbox::DrawOrderLabels() {
 		}
 		if (!actor->IsPlayerControlled()) {
 			if (actor->NumberValueExists("AIRetreat")) {
-				order += ", falling back";
+				order += actor->GetNumberValue("AIRetreat") == 2 ? ", falling back to a medic" : ", falling back";
 			} else if (actor->NumberValueExists("AIFlank")) {
 				order += ", flanking";
+			} else if (actor->NumberValueExists("AIInvestigate")) {
+				order += ", checking where an enemy was seen";
+			} else if (actor->NumberValueExists("AIMedic")) {
+				order += ", seeing to a wounded friend";
 			}
 		}
 		for (size_t group = 0; group < s_Groups.size(); ++group) {
