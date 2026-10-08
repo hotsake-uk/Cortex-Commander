@@ -553,7 +553,7 @@ void SLTerrain::UpdateLights() {
 			float direction = light->m_ConeDirection * c_PI / 180.0F;
 			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness, LightSource::Lamps);
 		} else {
-			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps);
+			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps, light->m_Flicker <= 0.0F && light->m_Pulse <= 0.0F);
 		}
 		++light;
 	}

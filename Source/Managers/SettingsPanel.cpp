@@ -316,6 +316,11 @@ void DebugMan::SettingsGUI() {
 		Slider("Lamp brightness", &settings.LampBrightness, 0.0F, 4.0F);
 		Slider("Lamp reach", &settings.LampReach, 0.25F, 3.0F);
 		Tint("Lamp tint", &settings.LampTint.x);
+		Check("Light steady lamps once (faster)", &settings.LampCache);
+		Tip("Scenery lamps that don't flicker are lit once into a map of the world, and only relit where the ground around them changes, so bases full of lamps cost about as much as one. Units cast no shadows from those lamps, and the lamps' shadows are softer. Off: every lamp is drawn every frame. On in the Low preset.");
+		if (settings.LampCache) {
+			Combo("Lamp map detail", &settings.LampCacheDetail, "Coarse (8 px)\0Medium (4 px)\0Fine (2 px)\0");
+		}
 		Heading("Headlamps");
 		Check("Headlamps at night", &settings.Headlamps);
 		Check("Headlamps by day as well", &settings.HeadlampsByDay);

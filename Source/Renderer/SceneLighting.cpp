@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 
 using namespace RTE;
@@ -103,6 +104,7 @@ void SceneLighting::LoadShaders() {
 	m_PropagateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightPropagate.frag");
 	m_FogUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/FogUpdate.frag");
 	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
+	m_LampCacheApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LampCacheApply.frag");
 	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
 	m_OccluderJumpShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderJump.frag");
 	m_SurfaceRoundShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SurfaceRound.frag");
@@ -274,6 +276,12 @@ void SceneLighting::DestroyWorldResources() {
 	m_ShadowField.clear();
 	m_Fog[0].Destroy();
 	m_Fog[1].Destroy();
+	m_LampCache.Destroy();
+	m_LampDirection.Destroy();
+	m_LampCacheCell = 0;
+	m_LampCacheReady = false;
+	m_LampCacheLamps = 0;
+	m_LampDirtyEndX = m_LampDirtyMinX;
 	m_Flow.clear();
 	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
@@ -900,6 +908,182 @@ void SceneLighting::UpdateFlowField() {
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
+void SceneLighting::UpdateLampCache() {
+	if (!m_Settings.Enabled || !m_Settings.LampCache || m_SceneWidth <= 0 || m_SceneHeight <= 0) {
+		if (m_LampCache.Texture) {
+			m_LampCache.Destroy();
+			m_LampDirection.Destroy();
+		}
+		m_LampCacheCell = 0;
+		m_LampCacheReady = false;
+		m_LampCacheLamps = 0;
+		m_LampDirtyEndX = m_LampDirtyMinX;
+		return;
+	}
+	// The map's texel: the player's detail, made coarser on big scenes so it stays under about 8 million texels (64 MB with its direction map).
+	static constexpr int c_LampCacheCells[3] = {8, 4, 2};
+	int cell = c_LampCacheCells[std::clamp(m_Settings.LampCacheDetail, 0, 2)];
+	while (cell < 32 && static_cast<long long>((m_SceneWidth + cell - 1) / cell) * ((m_SceneHeight + cell - 1) / cell) > 8'000'000LL) {
+		cell *= 2;
+	}
+	int width = (m_SceneWidth + cell - 1) / cell;
+	int height = (m_SceneHeight + cell - 1) / cell;
+	bool relightAll = false;
+	if (!m_LampCache.Framebuffer || cell != m_LampCacheCell || m_LampCache.Width != width || m_LampCache.Height != height) {
+		GLint wrapS = m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+		m_LampCache.Create(width, height, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT, GL_LINEAR, wrapS, GL_CLAMP_TO_EDGE, true);
+		m_LampDirection.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, wrapS, GL_CLAMP_TO_EDGE, false);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_LampCache.Framebuffer);
+		GL_CHECK(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, m_LampDirection.Texture, 0));
+		const GLenum drawBuffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+		glDrawBuffers(2, drawBuffers);
+		m_LampCacheCell = cell;
+		relightAll = true;
+	}
+
+	// The steady lamps as the screens would draw them, and what shapes their light: any change relights the whole map.
+	auto styled = [this](const glm::vec3& color) {
+		float grey = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+		return glm::max(glm::mix(glm::vec3(grey), color, m_Settings.LightSaturation), glm::vec3(0.0F)) * m_Settings.LightTint;
+	};
+	std::vector<SceneLight> lamps;
+	uint64_t signature = 1469598103934665603ULL;
+	auto hashIn = [&signature](float value) {
+		uint32_t bits;
+		std::memcpy(&bits, &value, sizeof(bits));
+		signature = (signature ^ bits) * 1099511628211ULL;
+	};
+	for (const SceneLight& light: g_PostProcessMan.GetSceneLights()) {
+		if (light.m_Steady && light.m_ConeCos < -1.0F) {
+			lamps.push_back(light);
+			lamps.back().m_Color = styled(light.m_Color);
+			hashIn(light.m_Pos.m_X);
+			hashIn(light.m_Pos.m_Y);
+			hashIn(light.m_Radius);
+			hashIn(lamps.back().m_Color.r);
+			hashIn(lamps.back().m_Color.g);
+			hashIn(lamps.back().m_Color.b);
+		}
+	}
+	hashIn(m_Settings.ShadowStrength);
+	hashIn(m_Settings.LightShadowField ? 1.0F : 0.0F);
+	hashIn(m_Settings.LightShadowSoftness);
+	hashIn(static_cast<float>(lamps.size()));
+	if (signature != m_LampCacheSignature) {
+		relightAll = true;
+	}
+	m_LampCacheSignature = signature;
+	m_LampCacheLamps = static_cast<int>(lamps.size());
+	m_LampCacheReady = true;
+
+	// What to relight: everything, or the lamps that reach where the ground changed and everything those lamps reach.
+	float sceneWidth = static_cast<float>(m_SceneWidth);
+	int areaMinX = 0;
+	int areaMinY = 0;
+	int areaEndX = m_SceneWidth;
+	int areaEndY = m_SceneHeight;
+	bool changed = m_LampDirtyEndX > m_LampDirtyMinX && m_LampDirtyEndY > m_LampDirtyMinY;
+	if (!relightAll) {
+		if (!changed) {
+			return;
+		}
+		areaMinX = m_LampDirtyMinX;
+		areaMinY = m_LampDirtyMinY;
+		areaEndX = m_LampDirtyEndX;
+		areaEndY = m_LampDirtyEndY;
+		bool any = false;
+		for (const SceneLight& lamp: lamps) {
+			for (int wrap = -1; wrap <= 1; ++wrap) {
+				if (wrap != 0 && !m_WrapX) {
+					continue;
+				}
+				float x = lamp.m_Pos.m_X + static_cast<float>(wrap) * sceneWidth;
+				float y = lamp.m_Pos.m_Y;
+				if (x + lamp.m_Radius >= static_cast<float>(m_LampDirtyMinX) && x - lamp.m_Radius <= static_cast<float>(m_LampDirtyEndX) && y + lamp.m_Radius >= static_cast<float>(m_LampDirtyMinY) && y - lamp.m_Radius <= static_cast<float>(m_LampDirtyEndY)) {
+					areaMinX = std::min(areaMinX, static_cast<int>(std::floor(x - lamp.m_Radius)));
+					areaEndX = std::max(areaEndX, static_cast<int>(std::ceil(x + lamp.m_Radius)));
+					areaMinY = std::min(areaMinY, static_cast<int>(std::floor(y - lamp.m_Radius)));
+					areaEndY = std::max(areaEndY, static_cast<int>(std::ceil(y + lamp.m_Radius)));
+					any = true;
+				}
+			}
+		}
+		m_LampDirtyEndX = m_LampDirtyMinX;
+		if (!any) {
+			return;
+		}
+		// Across the seam of a wrapping scene the area would need two pieces: relight it all.
+		if (m_WrapX && (areaMinX < 0 || areaEndX > m_SceneWidth)) {
+			areaMinX = 0;
+			areaEndX = m_SceneWidth;
+		}
+	}
+	m_LampDirtyEndX = m_LampDirtyMinX;
+	int firstColumn = std::clamp(areaMinX / cell - 1, 0, width);
+	int endColumn = std::clamp((areaEndX + cell - 1) / cell + 1, 0, width);
+	int firstRow = std::clamp(areaMinY / cell - 1, 0, height);
+	int endRow = std::clamp((areaEndY + cell - 1) / cell + 1, 0, height);
+	if (endColumn <= firstColumn || endRow <= firstRow) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Lamp Cache");
+
+	// The lamps that reach the area, with their copies across the seam, in texels; their radius stays in pixels for the shadows' softness.
+	m_QuadVertices.clear();
+	glm::vec2 areaMin(static_cast<float>(firstColumn * cell), static_cast<float>(firstRow * cell));
+	glm::vec2 areaEnd(static_cast<float>(endColumn * cell), static_cast<float>(endRow * cell));
+	float texel = 1.0F / static_cast<float>(cell);
+	for (const SceneLight& lamp: lamps) {
+		for (int wrap = -1; wrap <= 1; ++wrap) {
+			if (wrap != 0 && !m_WrapX) {
+				continue;
+			}
+			glm::vec2 center(lamp.m_Pos.m_X + static_cast<float>(wrap) * sceneWidth, lamp.m_Pos.m_Y);
+			if (center.x + lamp.m_Radius < areaMin.x || center.x - lamp.m_Radius > areaEnd.x || center.y + lamp.m_Radius < areaMin.y || center.y - lamp.m_Radius > areaEnd.y) {
+				continue;
+			}
+			const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
+			for (const glm::vec2& corner: corners) {
+				glm::vec2 position = (center + corner * lamp.m_Radius) * texel;
+				m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, lamp.m_Color.r, lamp.m_Color.g, lamp.m_Color.b, 1.0F, center.x * texel, center.y * texel, lamp.m_Radius, 1.0F, 0.0F, -2.0F});
+			}
+		}
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, m_LampCache.Framebuffer);
+	glViewport(0, 0, width, height);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(firstColumn, firstRow, endColumn - firstColumn, endRow - firstRow);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if (!m_QuadVertices.empty()) {
+		UploadQuads();
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		glm::vec2 gridWorldSize(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize));
+		m_PointLightShader->Enable();
+		m_PointLightShader->SetBool("rteCacheMode", true);
+		m_PointLightShader->SetFloat("rteCacheCell", static_cast<float>(cell));
+		m_PointLightShader->SetBool("rteBeamMode", false);
+		m_PointLightShader->SetFloat("rteUnitShadows", 0.0F);
+		m_PointLightShader->SetInt("rteOccupancy", 0);
+		m_PointLightShader->SetVector2f("rteScreenSize", glm::vec2(static_cast<float>(width), static_cast<float>(height)));
+		m_PointLightShader->SetVector2f("rteScreenOrigin", glm::vec2(0.0F));
+		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
+		SetShadowFieldUniforms();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		DrawQuads(0, m_QuadVertices.size() / 4);
+		m_PointLightShader->SetBool("rteCacheMode", false);
+		glDisable(GL_BLEND);
+		glBindVertexArray(0);
+	}
+	glDisable(GL_SCISSOR_TEST);
+}
+
 void SceneLighting::UpdateFog() {
 	if (!m_Fog[0].Texture) {
 		return;
@@ -1133,6 +1317,22 @@ void SceneLighting::Update() {
 			UploadOccupancyRows(changedFirstRow, changedEndRow);
 			terrainChanged = true;
 		}
+		// The lamps around it are relit in the lamp cache, as far as the cells the shadows read were refreshed.
+		int changedMinX = changedFirstColumn * m_CellSize;
+		int changedEndX = changedEndColumn * m_CellSize;
+		int changedMinY = changedFirstRow * m_CellSize;
+		int changedEndY = changedEndRow * m_CellSize;
+		if (m_LampDirtyEndX > m_LampDirtyMinX && m_LampDirtyEndY > m_LampDirtyMinY) {
+			m_LampDirtyMinX = std::min(m_LampDirtyMinX, changedMinX);
+			m_LampDirtyMinY = std::min(m_LampDirtyMinY, changedMinY);
+			m_LampDirtyEndX = std::max(m_LampDirtyEndX, changedEndX);
+			m_LampDirtyEndY = std::max(m_LampDirtyEndY, changedEndY);
+		} else {
+			m_LampDirtyMinX = changedMinX;
+			m_LampDirtyMinY = changedMinY;
+			m_LampDirtyEndX = changedEndX;
+			m_LampDirtyEndY = changedEndY;
+		}
 	}
 	RecomputeSkyline();
 	UpdateFlowField();
@@ -1153,6 +1353,8 @@ void SceneLighting::Update() {
 	StampStains();
 	logStages.Next("Light grid: mist and dust");
 	UpdateFog();
+	logStages.Next("Light grid: lamp cache");
+	UpdateLampCache();
 	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -1364,6 +1566,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			std::unordered_map<uint64_t, size_t> mergedAt;
 			mergedAt.reserve(screenLights.size());
 			for (const SceneLight& light: screenLights) {
+				// Steady scenery lamps come from the lamp cache instead.
+				if (m_LampCacheReady && light.m_Steady && light.m_ConeCos < -1.0F) {
+					continue;
+				}
 				if (light.m_ConeCos >= -1.0F) {
 					mergedLights.push_back(light);
 					continue;
@@ -1733,6 +1939,32 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		DrawQuads(0, lightCount);
+		glDisable(GL_BLEND);
+	}
+	if (m_LampCacheReady && m_LampCacheLamps > 0 && m_Settings.Enabled) {
+		// The steady scenery lamps, from the lamp cache, shaded on this screen's surfaces.
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_LampCacheApplyShader->Enable();
+		m_LampCacheApplyShader->SetInt("rteLampCache", 0);
+		m_LampCacheApplyShader->SetInt("rteLampDirection", 1);
+		m_LampCacheApplyShader->SetInt("rteNormals", 2);
+		m_LampCacheApplyShader->SetInt("rteSurface", 3);
+		m_LampCacheApplyShader->SetVector2f("rteScreenOrigin", origin);
+		m_LampCacheApplyShader->SetVector2f("rteScreenSize", screenSize);
+		m_LampCacheApplyShader->SetVector2f("rteCacheWorldSize", glm::vec2(static_cast<float>(m_LampCache.Width * m_LampCacheCell), static_cast<float>(m_LampCache.Height * m_LampCacheCell)));
+		m_LampCacheApplyShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
+		m_LampCacheApplyShader->SetFloat("rteSpecular", m_Settings.Specular);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_LampDirection.Texture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, normalTexture);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_LampCache.Texture);
+		DrawFullscreen();
 		glDisable(GL_BLEND);
 	}
 

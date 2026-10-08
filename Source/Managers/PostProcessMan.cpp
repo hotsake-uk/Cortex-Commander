@@ -184,10 +184,11 @@ void PostProcessMan::LoadPaletteAnimation() {
 	}
 }
 
-void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source) {
+void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source, bool steady) {
 	SceneLight light;
 	if (MakeSceneLight(pos, color, radius, intensity, light)) {
 		light.m_Source = source;
+		light.m_Steady = steady;
 		std::scoped_lock lock(m_SceneLightsMutex);
 		m_SceneLights.push_back(light);
 	}
@@ -232,7 +233,7 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 				}
 				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
 				if (relativePos.m_X + light.m_Radius >= 0 && relativePos.m_Y + light.m_Radius >= 0 && relativePos.m_X - light.m_Radius <= boxWidth && relativePos.m_Y - light.m_Radius <= boxHeight) {
-					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source});
+					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source, light.m_Steady});
 				}
 			}
 		}

@@ -6,6 +6,7 @@
 #include "glm/glm.hpp"
 
 #include <array>
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <unordered_map>
@@ -153,6 +154,13 @@ namespace RTE {
 		std::vector<unsigned char> m_ShadowField; //!< One byte per grid cell, as m_ShadowFieldTexture.
 		std::vector<unsigned short> m_ShadowFieldScratch; //!< Chamfer distances for RefreshShadowField, in thirds of a cell.
 		int m_WallChangeMinColumn = 0, m_WallChangeMinRow = 0, m_WallChangeEndColumn = 0, m_WallChangeEndRow = 0; //!< The cells whose wall status RefreshOccupancyRows changed since the field was last refreshed; empty when the end is not past the start.
+		GLTarget m_LampCache; //!< World lamp cache (LightingSettings::LampCache): RGB light from the steady scenery lamps, m_LampCacheCell pixels a texel. Its framebuffer writes m_LampDirection too.
+		GLTarget m_LampDirection; //!< RG: which way the steady lamps' light comes from, as the xy of a unit vector, times its brightness, added up.
+		int m_LampCacheCell = 0; //!< Pixels a lamp cache texel, 0 while there's no cache.
+		uint64_t m_LampCacheSignature = 0; //!< The steady lamps and settings the cache was lit with.
+		int m_LampCacheLamps = 0; //!< How many steady lamps are in it.
+		bool m_LampCacheReady = false; //!< The cache holds the steady lamps, so the screens draw it instead of them.
+		int m_LampDirtyMinX = 0, m_LampDirtyMinY = 0, m_LampDirtyEndX = 0, m_LampDirtyEndY = 0; //!< Scene pixels where the ground changed since the cache was last relit; empty when the end is not past the start.
 		std::vector<unsigned char> m_Occupancy; //!< Four bytes per grid cell: terrain coverage (0 air .. 255 solid), then how metallic and how glossy the terrain there is (from its materials), then a spare.
 		std::array<unsigned char, 256> m_MaterialMetalness{}; //!< How metallic each terrain material looks, 0 to 255.
 		std::array<unsigned char, 256> m_MaterialGloss{}; //!< How glossy each terrain material looks, 0 to 255.
@@ -246,6 +254,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_PropagateShader;
 		std::unique_ptr<Shader> m_FogUpdateShader;
 		std::unique_ptr<Shader> m_PointLightShader;
+		std::unique_ptr<Shader> m_LampCacheApplyShader;
 		std::unique_ptr<Shader> m_OccluderSeedShader;
 		std::unique_ptr<Shader> m_OccluderJumpShader;
 		std::unique_ptr<Shader> m_SurfaceRoundShader;
@@ -317,6 +326,10 @@ namespace RTE {
 
 		/// Steps the fog volume (LightingSettings::FogVolume) on by the game time since the last step: wind, spreading, clearing and its sources.
 		void UpdateFog();
+
+		/// Keeps the lamp cache (LightingSettings::LampCache) up to date: lights it in full when it's made or the steady lamps or the settings that shape them change,
+		/// and relights only around where the ground changed otherwise. Lets it go when the setting is off.
+		void UpdateLampCache();
 
 		/// Brings the flow field (m_FlowTexture) up to date with the liquid moving this frame, clearing and uploading only the tiles that had or have moving liquid in them.
 		void UpdateFlowField();
