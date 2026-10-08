@@ -856,6 +856,24 @@ namespace RTE {
 		/// @return What was seen this call, most visible first: valid until the next call.
 		std::vector<ActorSighting>& ScanForEnemies(float fovDegrees, float range, int budget);
 
+		/// How pinned down this actor is by fire, 0 to 1: raised by shots passing close, blasts near it and hits, and wearing off over a few
+		/// seconds (quicker for a better team). Machines feel none. Read by the AI's scripts (more aim error, ducking, cover).
+		float GetSuppression() const { return m_Suppression; }
+
+		/// How steady this actor's nerve is, 0 to 1: worn down by being pinned down, wounds, friends dying in sight and burning, and coming
+		/// back towards a level that is higher among friends and near its brain and lower when hurt. Under 0.3 the AI pulls back.
+		float GetMorale() const { return m_Morale; }
+
+		/// Adds to how pinned down this actor is (by the AISuppression setting; nothing for a machine).
+		void AddSuppression(float amount);
+
+		/// Changes this actor's morale; a loss is scaled by the AISuppression setting, and nothing changes for a machine.
+		void ChangeMorale(float change);
+
+		/// A shot (a fast, sharp particle that hits bodies) passing along its last step: the actors it went close by and missed are pinned
+		/// down a little. Called by MOPixel and MOSParticle; only so many checks a sim update.
+		static void ShotPassing(const MovableObject& shot);
+
 		/// How much of a target this actor's body makes, for the sight of others (see ScanForEnemies): 1 standing.
 		virtual float GetSightProfile() const { return 1.0F; }
 
@@ -1222,6 +1240,16 @@ namespace RTE {
 		// What each step of that path is, kept alongside it.
 		std::list<PathStepKind> m_MovePathKinds;
 		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
+		float m_Suppression = 0.0F; //!< How pinned down by fire, 0 to 1 (see GetSuppression).
+		float m_Morale = 1.0F; //!< How steady its nerve is, 0 to 1 (see GetMorale).
+		float m_MoraleLevel = 0.7F; //!< What morale comes back towards: higher among friends and near the brain, lower when hurt.
+		long long m_NearMissUpdate = -1; //!< The sim update of the last near miss, and how much they have pinned it down in it (capped).
+		float m_NearMissThisUpdate = 0.0F;
+		bool m_DeathReported = false; //!< Whether friends in sight have been shaken by its death.
+		/// Suppression wearing off, morale's ups and downs, and a death's effect on the friends who saw it; once a sim update.
+		void UpdateSuppressionAndMorale();
+		/// Whether this actor feels fire at all: not a machine (mechanical and not organic, or metal), a door or a craft.
+		bool FeelsFire() const;
 		// The current pathfinding request
 		std::shared_ptr<volatile PathRequest> m_PathRequest;
 		// Whether it's time to update the path
