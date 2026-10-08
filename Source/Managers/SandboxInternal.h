@@ -1407,15 +1407,15 @@ namespace SandboxDetail {
 		bool hovered = ImGui::IsItemHovered();
 		ImVec2 to(at.x + size.x, at.y + size.y);
 		// A sunken socket; the one in use sits raised and gold-edged, the one under the pointer lightens.
-		ImU32 well = selected ? IM_COL32(105, 121, 71, 255) : hovered ? IM_COL32(68, 82, 54, 255) : IM_COL32(30, 37, 26, 255);
+		ImU32 well = selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well;
 		drawList->AddRectFilled(at, to, well);
 		if (selected) {
-			drawList->AddRect(at, to, IM_COL32(242, 182, 61, 255), 0.0F, 0, pixel);
-			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), IM_COL32(255, 240, 180, 90));
+			drawList->AddRect(at, to, ToolTheme::Gold, 0.0F, 0, pixel);
+			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), (ToolTheme::EdgeLight & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT));
 		} else {
-			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), IM_COL32(0, 0, 0, 110));
-			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), IM_COL32(0, 0, 0, 110));
-			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, IM_COL32(255, 240, 180, 24));
+			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), ToolTheme::EdgeDark);
+			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), ToolTheme::EdgeDark);
+			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, (ToolTheme::Edge & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT));
 		}
 		drawPicture(drawList, ImVec2(at.x + pad, at.y + pad), picture);
 		if (hovered && tip && *tip) {

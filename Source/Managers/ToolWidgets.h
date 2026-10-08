@@ -7,6 +7,26 @@
 #include <cmath>
 
 namespace RTE {
+	/// The colours of the tool windows, taken from the game's own menu skin (Base.rte/GUIs/Skins/Menus/SkinBlue.png and its lettering): navy wells with a
+	/// periwinkle edge, slate panels and the gold of the menu text. Everything the Sandbox and settings panel draw by hand takes them from here.
+	namespace ToolTheme {
+		constexpr ImU32 Panel = IM_COL32(59, 65, 83, 255);
+		constexpr ImU32 Well = IM_COL32(12, 20, 39, 255);
+		constexpr ImU32 WellHover = IM_COL32(27, 37, 58, 255);
+		constexpr ImU32 WellPressed = IM_COL32(12, 12, 28, 255);
+		constexpr ImU32 Edge = IM_COL32(108, 118, 168, 255);
+		constexpr ImU32 EdgeLight = IM_COL32(193, 172, 198, 255);
+		constexpr ImU32 EdgeDark = IM_COL32(24, 28, 55, 255);
+		constexpr ImU32 Gold = IM_COL32(252, 209, 19, 255);
+		constexpr ImU32 GoldShadow = IM_COL32(72, 40, 10, 255);
+		constexpr ImU32 Text = IM_COL32(255, 255, 255, 255);
+		inline ImVec4 Vec(ImU32 color, float alpha = 1.0F) {
+			ImVec4 out = ImGui::ColorConvertU32ToFloat4(color);
+			out.w = alpha;
+			return out;
+		}
+	} // namespace ToolTheme
+
 	/// The controls of the tool windows (the Sandbox, the settings panel), drawn in the manner of the game's own menus: square, hard-edged, a pixel at a time.
 	/// Each stands in for the ImGui control of the same name and is used the same way.
 	namespace ToolUI {
@@ -20,8 +40,8 @@ namespace RTE {
 			ImVec2 to = ImGui::GetItemRectMax();
 			float pixel = Pixel();
 			float alpha = ImGui::GetStyle().Alpha;
-			ImU32 light = IM_COL32(255, 255, 220, static_cast<int>((pressed ? 0.0F : 46.0F) * alpha));
-			ImU32 dark = IM_COL32(0, 0, 0, static_cast<int>(120.0F * alpha));
+			ImU32 light = (ToolTheme::EdgeLight & 0x00FFFFFF) | (static_cast<ImU32>((pressed ? 0.0F : 150.0F) * alpha) << IM_COL32_A_SHIFT);
+			ImU32 dark = (ToolTheme::EdgeDark & 0x00FFFFFF) | (static_cast<ImU32>(220.0F * alpha) << IM_COL32_A_SHIFT);
 			drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), pressed ? dark : light);
 			drawList->AddRectFilled(from, ImVec2(from.x + pixel, to.y), pressed ? dark : light);
 			if (!pressed) {
