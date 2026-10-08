@@ -401,6 +401,26 @@ namespace RTE {
 			m_ScriptFocus = ScriptFocus();
 		}
 
+		/// Pushes the grade towards a look for a moment (LightingSettings::EventLooks): up to full strength (0 to 2) over attackMS, back over releaseMS, in real time so it plays
+		/// through a hit-stop. Any look, ready-made or event (LightingSettings::LookHurt and on). From the engine's events and from Lua. Safe from any thread.
+		void PulseGrade(int look, float strength, float attackMS, float releaseMS);
+
+		/// Crossfades the grade between two looks, t 0 (from) to 1 (to), in place of the player's own grade, from Lua (a scene or activity's mood). Never saved;
+		/// lasts until ClearLookBlend or the next activity. Safe from any thread.
+		void BlendLook(int fromLook, int toLook, float t);
+
+		/// Gives the grade back to the player after BlendLook.
+		void ClearLookBlend();
+
+		/// Ends every grade pulse and look blend. At the start of each activity.
+		void ClearEventLooks();
+
+		/// Gets the grade to draw with: the player's (or a script's look blend), with the pulses playing now on top, each scaled by strength.
+		/// @param playerGrade The grade the player set.
+		/// @param strength LightingSettings::EventLookStrength.
+		/// @param extra Further looks to push towards with their weights (0 to 1), such as being hurt or the warmth of a fire.
+		LightingSettings::GradeLook GetEventGrade(const LightingSettings::GradeLook& playerGrade, float strength, const std::vector<std::pair<int, float>>& extra);
+
 		/// Sets the ambient light color where no sky light reaches, 0-255 gamma space per channel.
 		void SetAmbientColor(float red, float green, float blue) { m_LightingSettings.Ambient = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
 #pragma endregion
@@ -507,6 +527,20 @@ namespace RTE {
 		const Shader* m_ActivePostShader = nullptr;
 		ScriptFocus m_ScriptFocus; //!< Guarded by m_ScriptFocusMutex.
 		mutable std::mutex m_ScriptFocusMutex;
+		/// A grade pulse playing (PulseGrade).
+		struct GradePulse {
+			int Look;
+			float Strength;
+			float AttackSeconds;
+			float ReleaseSeconds;
+			double StartSeconds; //!< Real seconds.
+		};
+		std::vector<GradePulse> m_GradePulses; //!< Guarded by m_EventLookMutex.
+		bool m_LookBlendOn = false; //!< A script's look blend (BlendLook). Guarded by m_EventLookMutex.
+		int m_LookBlendFrom = 0;
+		int m_LookBlendTo = 0;
+		float m_LookBlendT = 0.0F;
+		std::mutex m_EventLookMutex;
 
 		/// How bright a bolt is this long after it struck: a sharp first stroke and a weaker echo, as the sky's flash.
 		static float LightningFlash(float seconds) { return seconds < 0.0F || seconds > c_LightningBoltSeconds ? 0.0F : 1.6F * std::exp(-seconds * 18.0F) + 0.9F * std::exp(-std::abs(seconds - 0.2F) * 25.0F); }

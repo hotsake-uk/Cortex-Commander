@@ -29,6 +29,8 @@ function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalS
 		if (-not $Overrides.ContainsKey('CloudShadows')) { $Overrides.CloudShadows = 0 }
 		if (-not $Overrides.ContainsKey('CloudLayer')) { $Overrides.CloudLayer = 0 }
 		# Golden scenarios use the built-in lighting defaults, so the player's own tweaks (time of day, quality, weather) can't change the baselines.
+		# The grade's answers to blasts, wounds and fire depend on the run, so they're off too.
+		if (-not $Overrides.ContainsKey('EventLooks')) { $Overrides.EventLooks = 0 }
 		$inLighting = $false
 		$lines = foreach ($line in $lines) {
 			if ($line -match '^// Lighting and Post-Processing') { $inLighting = $true; continue }

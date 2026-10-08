@@ -2,6 +2,7 @@
 #include "SceneLighting.h"
 
 #include "CameraMan.h"
+#include "TimerMan.h"
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "Scene.h"
@@ -599,6 +600,87 @@ void PostProcessMan::ApplyActivityAtmosphere() {
 			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
 		}
 	}
+}
+
+void PostProcessMan::PulseGrade(int look, float strength, float attackMS, float releaseMS) {
+	if (look < 0 || look >= LightingSettings::LookAllCount || strength <= 0.0F) {
+		return;
+	}
+	double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	std::scoped_lock lock(m_EventLookMutex);
+	// A handful at once is plenty; the oldest makes way.
+	if (m_GradePulses.size() >= 8) {
+		m_GradePulses.erase(m_GradePulses.begin());
+	}
+	m_GradePulses.push_back({look, std::min(strength, 2.0F), std::clamp(attackMS, 0.0F, 10000.0F) * 0.001F, std::clamp(releaseMS, 1.0F, 30000.0F) * 0.001F, now});
+}
+
+void PostProcessMan::BlendLook(int fromLook, int toLook, float t) {
+	std::scoped_lock lock(m_EventLookMutex);
+	m_LookBlendOn = true;
+	m_LookBlendFrom = std::clamp(fromLook, 0, LightingSettings::LookAllCount - 1);
+	m_LookBlendTo = std::clamp(toLook, 0, LightingSettings::LookAllCount - 1);
+	m_LookBlendT = std::clamp(t, 0.0F, 1.0F);
+}
+
+void PostProcessMan::ClearLookBlend() {
+	std::scoped_lock lock(m_EventLookMutex);
+	m_LookBlendOn = false;
+}
+
+void PostProcessMan::ClearEventLooks() {
+	std::scoped_lock lock(m_EventLookMutex);
+	m_GradePulses.clear();
+	m_LookBlendOn = false;
+}
+
+LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings::GradeLook& playerGrade, float strength, const std::vector<std::pair<int, float>>& extra) {
+	using GradeLook = LightingSettings::GradeLook;
+	auto mixGrade = [](const GradeLook& a, const GradeLook& b, float t) {
+		return GradeLook{glm::mix(a.Saturation, b.Saturation, t), glm::mix(a.Contrast, b.Contrast, t), glm::mix(a.Temperature, b.Temperature, t), glm::mix(a.Tint, b.Tint, t), glm::mix(a.Vignette, b.Vignette, t), glm::mix(a.FilmGrain, b.FilmGrain, t), glm::mix(a.BloomIntensity, b.BloomIntensity, t), glm::mix(a.ShadowTint, b.ShadowTint, t), glm::mix(a.HighlightTint, b.HighlightTint, t)};
+	};
+	// Events push the grade by how far their look is from Natural, so they show over whatever grade the player chose.
+	const GradeLook natural = LightingSettings::LookGrade(LightingSettings::LookNatural);
+	auto push = [&natural](GradeLook& grade, int look, float weight) {
+		GradeLook target = LightingSettings::LookGrade(look);
+		grade.Saturation += (target.Saturation - natural.Saturation) * weight;
+		grade.Contrast += (target.Contrast - natural.Contrast) * weight;
+		grade.Temperature += (target.Temperature - natural.Temperature) * weight;
+		grade.Tint += (target.Tint - natural.Tint) * weight;
+		grade.Vignette += (target.Vignette - natural.Vignette) * weight;
+		grade.FilmGrain += (target.FilmGrain - natural.FilmGrain) * weight;
+		grade.BloomIntensity += (target.BloomIntensity - natural.BloomIntensity) * weight;
+		grade.ShadowTint += (target.ShadowTint - natural.ShadowTint) * weight;
+		grade.HighlightTint += (target.HighlightTint - natural.HighlightTint) * weight;
+	};
+	GradeLook grade = playerGrade;
+	double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	{
+		std::scoped_lock lock(m_EventLookMutex);
+		if (m_LookBlendOn) {
+			grade = mixGrade(LightingSettings::LookGrade(m_LookBlendFrom), LightingSettings::LookGrade(m_LookBlendTo), m_LookBlendT);
+		}
+		std::erase_if(m_GradePulses, [now](const GradePulse& pulse) { return now - pulse.StartSeconds > static_cast<double>(pulse.AttackSeconds + pulse.ReleaseSeconds); });
+		for (const GradePulse& pulse: m_GradePulses) {
+			float age = static_cast<float>(now - pulse.StartSeconds);
+			float weight = age < pulse.AttackSeconds ? age / std::max(pulse.AttackSeconds, 0.001F) : 1.0F - (age - pulse.AttackSeconds) / pulse.ReleaseSeconds;
+			weight = std::clamp(weight, 0.0F, 1.0F);
+			push(grade, pulse.Look, weight * weight * pulse.Strength * strength);
+		}
+	}
+	for (const auto& [look, weight]: extra) {
+		if (weight > 0.0F) {
+			push(grade, look, weight * strength);
+		}
+	}
+	grade.Saturation = std::max(grade.Saturation, 0.0F);
+	grade.Contrast = std::max(grade.Contrast, 0.1F);
+	grade.Vignette = std::clamp(grade.Vignette, 0.0F, 1.0F);
+	grade.FilmGrain = std::clamp(grade.FilmGrain, 0.0F, 1.0F);
+	grade.BloomIntensity = std::max(grade.BloomIntensity, 0.0F);
+	grade.ShadowTint = glm::max(grade.ShadowTint, glm::vec3(0.0F));
+	grade.HighlightTint = glm::max(grade.HighlightTint, glm::vec3(0.0F));
+	return grade;
 }
 
 LightingSettings PostProcessMan::GetLightingSettingsToSave() const {

@@ -354,6 +354,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("GradeShadowTint", { g_PostProcessMan.GetLightingSettings().ShadowTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().ShadowTint); });
 	MatchProperty("GradeHighlightTint", { g_PostProcessMan.GetLightingSettings().HighlightTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().HighlightTint); });
 	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EventLooks", { g_PostProcessMan.GetLightingSettings().EventLooks = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("EventLookStrength", { g_PostProcessMan.GetLightingSettings().EventLookStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunDisc", { g_PostProcessMan.GetLightingSettings().SunDisc = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudShadows", { g_PostProcessMan.GetLightingSettings().CloudShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudLayer", { g_PostProcessMan.GetLightingSettings().CloudLayer = std::stoi(reader.ReadPropValue()) != 0; });
@@ -642,6 +644,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("GradeShadowTint", WriteVec3(lighting.ShadowTint));
 	writer.NewPropertyWithValue("GradeHighlightTint", WriteVec3(lighting.HighlightTint));
 	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
+	writer.NewPropertyWithValue("EventLooks", lighting.EventLooks);
+	writer.NewPropertyWithValue("EventLookStrength", lighting.EventLookStrength);
 	writer.NewPropertyWithValue("SunDisc", lighting.SunDisc);
 	writer.NewPropertyWithValue("CloudShadows", lighting.CloudShadows);
 	writer.NewPropertyWithValue("CloudLayer", lighting.CloudLayer);

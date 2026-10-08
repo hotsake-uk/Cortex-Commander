@@ -249,11 +249,15 @@ void CameraMan::Update(int screenId) {
 		float blast = m_BlastOnScreen / maxShake;
 		m_BlastOnScreen = 0.0F;
 		double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
-		if (blast > 0.45F && m_HitStopStrength > 0.0F && now - m_LastHitStopTime > 0.6 && g_ActivityMan.GetActivity()->GetActivityState() == Activity::ActivityState::Running) {
+		if (blast > 0.45F && now - m_LastHitStopTime > 0.6 && g_ActivityMan.GetActivity()->GetActivityState() == Activity::ActivityState::Running) {
 			m_LastHitStopTime = now;
 			float strength = std::min(blast, 1.5F) / 1.5F;
-			g_TimerMan.HitStop((25.0F + 45.0F * strength) * std::min(m_HitStopStrength, 2.0F));
-			g_PostProcessMan.GetSceneLighting()->AddBlastPulse(strength * std::min(m_HitStopStrength, 2.0F));
+			if (m_HitStopStrength > 0.0F) {
+				g_TimerMan.HitStop((25.0F + 45.0F * strength) * std::min(m_HitStopStrength, 2.0F));
+				g_PostProcessMan.GetSceneLighting()->AddBlastPulse(strength * std::min(m_HitStopStrength, 2.0F));
+			}
+			// The grade flashes with it: washed out and warm at once, settling over a second (LightingSettings::EventLooks).
+			g_PostProcessMan.PulseGrade(LightingSettings::LookFlash, 0.4F + 0.6F * strength, 40.0F, 1100.0F);
 		}
 	}
 

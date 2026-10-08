@@ -1,5 +1,7 @@
 #include "FrameMan.h"
 #include "GameActivity.h"
+#include "Actor.h"
+#include "MovableMan.h"
 #include "TextOverlay.h"
 #include "EffectsParticles.h"
 #include "SceneLighting.h"
@@ -1025,6 +1027,20 @@ void FrameMan::Draw() {
 		g_PostProcessMan.GetLightsWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenLights);
 		std::vector<ScreenShockwave> screenShockwaves;
 		g_PostProcessMan.GetShockwavesWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenShockwaves);
+		// How badly this screen's player's unit is hurt, for the grade to answer (LightingSettings::EventLooks): nothing above 40% health, fully below 12%.
+		{
+			float hurt = 0.0F;
+			if (Activity* activity = g_ActivityMan.GetActivity()) {
+				int player = activity->PlayerOfScreen(playerScreen);
+				Actor* controlled = player >= Players::PlayerOne ? activity->GetControlledActor(player) : nullptr;
+				// The unit may have been deleted in the sim update just before this frame, so make sure it's still in the game before reading it.
+				if (controlled && g_MovableMan.IsActor(controlled) && !controlled->IsDead()) {
+					float health = controlled->GetHealth() / std::max(controlled->GetMaxHealth(), 1.0F);
+					hurt = 1.0F - glm::smoothstep(0.12F, 0.4F, health);
+				}
+			}
+			sceneLighting->SetScreenHurt(playerScreen, hurt);
+		}
 		{
 			PerformanceMan::LogScope logScope("Draw: lighting total", true);
 			PerformanceMan::AddLogCount("# glow effects on screen", screenRelativeEffects.size());
