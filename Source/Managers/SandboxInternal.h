@@ -160,7 +160,10 @@ namespace SandboxDetail {
 		Gravel,
 		GlassShards,
 		Fuel,
-		Cryo
+		Cryo,
+		// Gases that live in the gas grid (SB-6).
+		Methane,
+		Steam
 	};
 
 	struct ToolInfo {
@@ -238,6 +241,8 @@ namespace SandboxDetail {
 	    {Tool::GlassShards, "Glass shards", 0.03F, true},
 	    {Tool::Fuel, "Fuel", 0.03F, true},
 	    {Tool::Cryo, "Cryogenic fluid", 0.03F, true},
+	    {Tool::Methane, "Methane", 0.06F, true},
+	    {Tool::Steam, "Steam", 0.06F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 

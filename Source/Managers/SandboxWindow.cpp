@@ -121,6 +121,10 @@ namespace SandboxDetail {
 				return {Icon::Cloud, IM_COL32(190, 190, 190, 255)};
 			case Tool::ToxicGas:
 				return {Icon::Cloud, IM_COL32(150, 220, 80, 255)};
+			case Tool::Methane:
+				return {Icon::Cloud, IM_COL32(240, 170, 90, 255)};
+			case Tool::Steam:
+				return {Icon::Cloud, IM_COL32(235, 240, 245, 255)};
 			case Tool::LooseSand:
 				return {Icon::Grains, IM_COL32(222, 190, 120, 255)};
 			case Tool::LooseSnow:

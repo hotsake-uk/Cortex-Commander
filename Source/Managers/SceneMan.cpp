@@ -1,6 +1,7 @@
 #include "SceneMan.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "GasGrid.h"
 #include "TerrainCollapse.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
@@ -1473,6 +1474,16 @@ bool SceneMan::SmokeBlocksSight(const Vector& start, const Vector& end) const {
 
 bool SceneMan::IsBurningNear(const Vector& position, int radius) const {
 	return TerrainFire::IsBurningNear(position, radius);
+}
+
+void SceneMan::AddGas(const Vector& position, int kind, float amount) const {
+	if (kind >= 0 && kind < GasGrid::KindCount) {
+		GasGrid::Add(position, static_cast<GasGrid::Kind>(kind), amount);
+	}
+}
+
+float SceneMan::GetGas(const Vector& position, int kind) const {
+	return kind >= 0 && kind < GasGrid::KindCount ? GasGrid::Get(position, static_cast<GasGrid::Kind>(kind)) : 0.0F;
 }
 
 int SceneMan::GetBurningUnitCount() const {

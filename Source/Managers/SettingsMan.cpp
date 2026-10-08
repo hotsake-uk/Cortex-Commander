@@ -11,6 +11,7 @@
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "GasGrid.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
@@ -138,6 +139,7 @@ void SettingsMan::Clear() {
 	m_SandboxPaintAudit = false;
 	m_SandboxSelectionCamera = false;
 	m_SandboxEffects = false;
+	m_SandboxGas = false;
 	m_SandboxSimState = false;
 	m_SandboxOrdersOverlay = 0;
 	m_DebugChannels = 0;
@@ -259,6 +261,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
+	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("GasShown", { GasGrid::SetShown(std::stof(reader.ReadPropValue())); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -514,6 +518,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxPaintAudit", { reader >> m_SandboxPaintAudit; });
 	MatchProperty("SandboxSelectionCamera", { reader >> m_SandboxSelectionCamera; });
 	MatchProperty("SandboxEffects", { reader >> m_SandboxEffects; });
+	MatchProperty("SandboxGas", { reader >> m_SandboxGas; });
 	MatchProperty("SandboxSimState", { reader >> m_SandboxSimState; });
 	MatchProperty("SandboxOrdersOverlay", { int which = 0; reader >> which; SetSandboxOrdersOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
@@ -788,6 +793,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
+	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
+	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 }
@@ -946,6 +953,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
 	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
 	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
+	writer.NewPropertyWithValue("SandboxGas", m_SandboxGas);
 	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
 	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
 	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);

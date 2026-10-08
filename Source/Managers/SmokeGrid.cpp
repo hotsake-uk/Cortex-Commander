@@ -1,4 +1,5 @@
 #include "SmokeGrid.h"
+#include "GasGrid.h"
 #include "Constants.h"
 #include "MOSParticle.h"
 #include "Material.h"
@@ -77,6 +78,16 @@ void SmokeGrid::Update() {
 			}
 		}
 	}
+	// Gas thick enough to hide things (SB-6): smoke that has built up in a room, toxic gas, steam.
+	GasGrid::VisitObscuring([](int x, int y, float amount) {
+		int cellX = x / c_CellSize;
+		int cellY = y / c_CellSize;
+		if (cellX >= 0 && cellY >= 0 && cellX < s_Width && cellY < s_Height) {
+			// (A smoke-map cell holds four of the gas's: each adds its quarter.)
+			s_Density[static_cast<size_t>(cellY) * s_Width + cellX] += amount * 0.25F;
+			s_HasSmoke = true;
+		}
+	});
 }
 
 float SmokeGrid::GetDensity(const Vector& position) {

@@ -908,6 +908,8 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
 				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo});
+				ToolButtons({Tool::Methane, Tool::Steam});
+				ImGui::SetItemTooltip("Gases fill the air they are let into and stay in a closed room. Toxic gas sinks and hurts whoever breathes it; methane rises, can't be seen, and goes up in a chain of blasts where it meets fire; steam rises, scalds and condenses away. Turn on the Gas overlay (Settings, sandbox overlays) to see where it is.");
 				ImGui::SeparatorText("Water that keeps coming");
 				ToolButtons({Tool::WaterSpawner});
 				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");

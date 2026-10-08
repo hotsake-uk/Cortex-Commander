@@ -13,6 +13,7 @@
 #include "SLTerrain.h"
 #include "Scene.h"
 #include "TerrainFire.h"
+#include "GasGrid.h"
 #include "TimerMan.h"
 #include "WeatherEffects.h"
 #include "Vector.h"
@@ -885,6 +886,8 @@ namespace {
 		}
 		if ((reaction.Effects & Fizz) && Random01() < 0.3F) {
 			TerrainFire::SpawnSteam(at, 1);
+			// Acid eating metal gives off fumes (SB-6).
+			GasGrid::Add(at, GasGrid::Toxic, 0.03F);
 		}
 		if (reaction.Effects & Ignite) {
 			TerrainFire::QueueIgnite(nx, ny);
