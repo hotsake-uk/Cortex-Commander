@@ -88,6 +88,7 @@ void RenderMan::SetPalettePulse(int paletteIndex, float low, float high, float p
 	if (paletteIndex <= 0 || paletteIndex > 255) {
 		return;
 	}
+	std::scoped_lock lock(m_PaletteAnimationMutex);
 	m_PalettePulses.erase(std::remove_if(m_PalettePulses.begin(), m_PalettePulses.end(), [paletteIndex](const PalettePulse& pulse) { return pulse.Index == paletteIndex; }), m_PalettePulses.end());
 	if (period > 0.0F) {
 		m_PalettePulses.push_back({paletteIndex, std::clamp(low, 0.0F, 1.0F), std::clamp(high, 0.0F, 1.0F), std::max(period, 0.05F), phase, automatic});
@@ -100,6 +101,7 @@ void RenderMan::SetPaletteCycle(int from, int to, float period) {
 	if (to < from) {
 		std::swap(from, to);
 	}
+	std::scoped_lock lock(m_PaletteAnimationMutex);
 	m_PaletteCycles.erase(std::remove_if(m_PaletteCycles.begin(), m_PaletteCycles.end(), [from, to](const PaletteCycle& cycle) { return cycle.From == from && cycle.To == to; }), m_PaletteCycles.end());
 	if (period > 0.0F && to > from) {
 		m_PaletteCycles.push_back({from, to, std::max(period, 0.05F)});
@@ -107,12 +109,20 @@ void RenderMan::SetPaletteCycle(int from, int to, float period) {
 }
 
 void RenderMan::ClearPaletteAnimation() {
+	std::scoped_lock lock(m_PaletteAnimationMutex);
 	m_PalettePulses.erase(std::remove_if(m_PalettePulses.begin(), m_PalettePulses.end(), [](const PalettePulse& pulse) { return !pulse.Automatic; }), m_PalettePulses.end());
 	m_PaletteCycles.clear();
 }
 
 void RenderMan::UpdatePaletteAnimation(float time, bool enabled, float strength) {
-	bool animate = enabled && strength > 0.0F && (!m_PalettePulses.empty() || !m_PaletteCycles.empty());
+	std::vector<PalettePulse> pulses;
+	std::vector<PaletteCycle> cycles;
+	{
+		std::scoped_lock lock(m_PaletteAnimationMutex);
+		pulses = m_PalettePulses;
+		cycles = m_PaletteCycles;
+	}
+	bool animate = enabled && strength > 0.0F && (!pulses.empty() || !cycles.empty());
 	if ((!animate && !m_PaletteAnimated) || !m_EmissivePaletteTexture || !m_PaletteTexture) {
 		return;
 	}
@@ -129,13 +139,13 @@ void RenderMan::UpdatePaletteAnimation(float time, bool enabled, float strength)
 	std::array<unsigned char, 1024> colors = m_PaletteColors;
 	if (animate) {
 		float amount = std::min(strength, 1.0F);
-		for (const PalettePulse& pulse: m_PalettePulses) {
+		for (const PalettePulse& pulse: pulses) {
 			float wave = 0.5F + 0.5F * std::sin((time / pulse.Period + pulse.Phase) * 6.2831853F);
 			float own = static_cast<float>(glow[pulse.Index * 4]) / 255.0F;
 			float value = own + (pulse.Low + (pulse.High - pulse.Low) * wave - own) * amount;
 			glow[pulse.Index * 4] = static_cast<unsigned char>(std::clamp(value, 0.0F, 1.0F) * 255.0F + 0.5F);
 		}
-		for (const PaletteCycle& cycle: m_PaletteCycles) {
+		for (const PaletteCycle& cycle: cycles) {
 			int length = cycle.To - cycle.From + 1;
 			int shift = static_cast<int>(std::floor(time / cycle.Period * static_cast<float>(length))) % length;
 			shift = shift < 0 ? shift + length : shift;
