@@ -1623,13 +1623,13 @@ end
 function SharedBehaviors.OrderKind(Owner)
 	-- (A defender on its way back to its post is moving, not standing its ground: told "defend" while the mode said "go there", the
 	-- fighting rules held it still wherever it had been shoved to.)
-	if Owner:NumberValueExists("SandboxDefendX") then
+	if Owner.OrderHasPost then
 		return Owner.AIMode == Actor.AIMODE_GOTO and "move" or "defend";
 	end
 	if Owner:NumberValueExists("AIRetreat") then
 		return "move";
 	end
-	if Owner:GetNumberValue("SandboxAttack") > 0 or Owner.AIMode == Actor.AIMODE_BRAINHUNT then
+	if Owner.OrderAttack or Owner.AIMode == Actor.AIMODE_BRAINHUNT then
 		return "attack";
 	end
 	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
@@ -1654,7 +1654,7 @@ end
 -- Whether a unit may leave its spot to go after a target it can't hit from where it is.
 function SharedBehaviors.MayClose(AI, Owner)
 	-- (Told to hold position in the sandbox: it fights from where it stands, and does not walk after a target it cannot hit from there.)
-	if Owner:NumberValueExists("SandboxHold") then
+	if Owner.OrderHold then
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
@@ -2006,7 +2006,7 @@ end
 
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
 function SharedBehaviors.RememberOrder(AI, Owner)
-	local keep = { mode = Owner.AIMode, attack = Owner:GetNumberValue("SandboxAttack") };
+	local keep = { mode = Owner.AIMode, attack = Owner.OrderAttack };
 	-- (A squad follower's leader too: cleared with the waypoints, a follower came back from a fall-back with no one to follow.)
 	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
 		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
@@ -2052,8 +2052,8 @@ function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 		end
 	end
 	Owner.AIMode = keep.mode;
-	if keep.attack > 0 then
-		Owner:SetNumberValue("SandboxAttack", keep.attack);
+	if keep.attack then
+		Owner.OrderAttack = true;
 	end
 end
 
@@ -2123,7 +2123,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
 	-- (A defender on its way back to its post too, which OrderKind calls a move: the sandbox sends it back to its post whatever it does.)
-	if kind == "defend" or Owner:NumberValueExists("SandboxDefendX") or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner:NumberValueExists("SandboxHold") or Owner:NumberValueExists("AIFlank") then
+	if kind == "defend" or Owner.OrderHasPost or (AI.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) or Owner.OrderHold or Owner:NumberValueExists("AIFlank") then
 		return false;
 	end
 	if shaken then
@@ -2163,7 +2163,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	end
 	AI.Retreat = { Keep = SharedBehaviors.RememberOrder(AI, Owner), WaitTimer = Timer(), Arrived = false, Spot = Spot };
 	Owner:SetNumberValue("AIRetreat", 1);
-	Owner:RemoveNumberValue("SandboxAttack");
+	Owner.OrderAttack = false;
 	Owner:ClearAIWaypoints();
 	Owner:AddAISceneWaypoint(Spot);
 	Owner.AIMode = Actor.AIMODE_GOTO;
