@@ -2147,7 +2147,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		int Count;
 	};
 	std::unordered_map<long long, FlameCell> flameCells;
-	const bool fireShader = m_Settings.FireShader && m_FireFlameShader;
+	// Fire style (LightingSettings::FireStyle): the pixel fire (per-pixel tongues on burning ground, the flame sprites of flame particles), the
+	// shader's flames, or both, the shader's over the pixels.
+	const bool fireShader = m_Settings.FireStyle != LightingSettings::FirePixel && m_FireFlameShader;
+	const bool firePixels = !fireShader || m_Settings.FireStyle != LightingSettings::FireShaderOnly;
 	{
 		std::vector<glm::vec3> burning;
 		TerrainFire::GetBurning(origin, width, height, burning);
@@ -2164,10 +2167,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			warmth += heat * nearMiddle * nearMiddle;
 			glm::vec3 color = glm::mix(glm::vec3(0.9F, 0.25F, 0.03F), glm::vec3(1.0F, 0.85F, 0.35F), std::clamp(heat * 0.7F + noise * 0.5F, 0.0F, 1.0F)) * (0.7F + 0.6F * noise);
 			if (fireShader) {
-				// The burning pixel itself glows, dimmer; its flame comes from its cell of the fire front (24 px of the scene, so cells stay put as the camera moves).
-				addQuad(position + glm::vec2(0.5F), glm::vec2(0.5F), 0.0F, glm::min(color * 0.6F, glm::vec3(1.0F)), 0.0F);
-				emissiveTextures.push_back(whiteTexture);
-				emissiveHeat.push_back(heat);
+				// The shader's flame comes from the pixel's cell of the fire front (24 px of the scene, so cells stay put as the camera moves). Shader
+				// only: the burning pixel itself just glows, dimmer.
+				if (!firePixels) {
+					addQuad(position + glm::vec2(0.5F), glm::vec2(0.5F), 0.0F, glm::min(color * 0.6F, glm::vec3(1.0F)), 0.0F);
+					emissiveTextures.push_back(whiteTexture);
+					emissiveHeat.push_back(heat);
+				}
 				long long cellX = static_cast<long long>(std::floor((position.x + origin.x) / 24.0F));
 				long long cellY = static_cast<long long>(std::floor((position.y + origin.y) / 24.0F));
 				FlameCell& flame = flameCells.try_emplace((cellY << 32) ^ (cellX & 0xFFFFFFFFLL), FlameCell{position.x, position.x, position.y, position.y, 0.0F, 0}).first->second;
@@ -2177,7 +2183,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				flame.MaxY = std::max(flame.MaxY, position.y);
 				flame.Heat += heat;
 				++flame.Count;
-				continue;
+				if (!firePixels) {
+					continue;
+				}
 			}
 			// A flame tongue above the pixel, taller where it's hotter.
 			float flameHeight = 1.0F + std::floor(noise * 3.0F * (0.4F + heat));
@@ -2191,8 +2199,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
 	}
 
-	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the fire shader their sprites aren't drawn (MOSParticle::Draw) and they
-	// join the fire front's cells instead, so they burn in the same flames as the ground. A lone one stands about as big as its sprite did.
+	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the shader's flames they join the fire front's
+	// cells, so the same flames as the ground's burn over them (and their sprites are drawn under, unless the style is shader only). A lone one's flame stands about as big as its sprite.
 	if (fireShader) {
 		std::vector<glm::vec4> flames;
 		EffectsParticles::GetFlames(origin, width, height, flames);

@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace RTE {
 
@@ -46,6 +47,11 @@ namespace RTE {
 		int Stains = -1; //!< 1 if drops of it leave stains where they land (blood, oil).
 		int Breathable = -1; //!< 1 if a body can breathe in it; liquids aren't.
 		float TouchDamage = -1.0F; //!< Health a second it takes from a body in it, for each level of depth (acid 5).
+		/// What happens where it meets another material (SB-3), one AddReaction line each: "Other, Chance, ThisBecomes, OtherBecomes[, Effects]".
+		/// Other is a material's name, or AnyLiquid, AnyFlammable or AnySoft; the products are a material's name, Air, or Same for unchanged;
+		/// Chance is per step a liquid pixel of either touches the other; Effects is any of Steam, Flash, Ignite, Explosion and Fizz joined with +.
+		/// They add to, or replace for the same pair, the stock reactions that come from the rest of the behaviour (FluidSim).
+		std::vector<std::string> Reactions;
 	};
 
 	/// Represents a material and holds all the relevant data.

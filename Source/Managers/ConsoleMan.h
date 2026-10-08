@@ -138,7 +138,10 @@ namespace RTE {
 
 		int m_ConsoleTextMaxNumLines; //!< Maximum number of lines to display in the console text label.
 
-		std::deque<std::string> m_OutputLog; //!< Log of all strings outputted by the console.
+		std::deque<std::string> m_OutputLog; //!< Log of the strings outputted by the console: the first c_KeptFirstOutputLines, then the latest (see PrintString).
+		static constexpr size_t c_MaxOutputLines = 20000; //!< How many lines m_OutputLog keeps at most (plus the line counting the dropped ones).
+		static constexpr size_t c_KeptFirstOutputLines = 200; //!< How many of the first lines (start-up) are never dropped.
+		size_t m_DroppedOutputLines = 0; //!< How many lines were dropped from the middle of m_OutputLog.
 		std::deque<std::string> m_InputLog; //!< Log of previously entered input strings.
 		std::deque<std::string>::iterator m_InputLogPosition; //!< Iterator to the current position in the log.
 		std::unordered_set<std::string> m_LoadWarningLog; //!< Log for non-fatal errors produced during loading (e.g. used .bmp file extension to load a .png file).

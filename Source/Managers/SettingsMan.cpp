@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
+#include <stdexcept>
 using namespace RTE;
 
 namespace {
@@ -222,6 +223,18 @@ void SettingsMan::UpdateSettingsFile() const {
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {
+	// The values are mostly read with std::stoi and std::stof, which throw on a value that isn't a number ("1,5" in a European locale, an empty
+	// value, a file from another build). Nothing above caught it, so the game ended at start-up with nothing in the log. Now the property keeps
+	// its default and the console log says which one it was.
+	try {
+		return ReadPropertyUnchecked(propName, reader);
+	} catch (const std::logic_error&) {
+		g_ConsoleMan.PrintString("ERROR: Settings.ini: the value of " + std::string(propName) + " isn't a number this version can read; the default is kept.");
+		return 0;
+	}
+}
+
+int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return Serializable::ReadProperty(propName, reader));
 
 	MatchProperty("PaletteFile", { reader >> g_FrameMan.m_PaletteFile; });
@@ -324,7 +337,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeatHaze", { g_PostProcessMan.GetLightingSettings().HeatHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HazeFromHeat", { g_PostProcessMan.GetLightingSettings().HazeFromHeat = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireShader = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("FireStyle", { g_PostProcessMan.GetLightingSettings().FireStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
+	// Before FireStyle: the shader's flames on (now both, which is what was asked for) or off (pixel fire only).
+	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireStyle = std::stoi(reader.ReadPropValue()) != 0 ? LightingSettings::FireBoth : LightingSettings::FirePixel; });
 	MatchProperty("FireFlameSize", { g_PostProcessMan.GetLightingSettings().FireFlameSize = std::stof(reader.ReadPropValue()); });
 	MatchProperty("UnitOutline", { g_PostProcessMan.GetLightingSettings().UnitOutline = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineWidth", { g_PostProcessMan.GetLightingSettings().UnitOutlineWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 4.0F); });
@@ -639,7 +654,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
 	writer.NewPropertyWithValue("HeatHaze", lighting.HeatHaze);
 	writer.NewPropertyWithValue("HazeFromHeat", lighting.HazeFromHeat);
-	writer.NewPropertyWithValue("FireShader", lighting.FireShader);
+	writer.NewPropertyWithValue("FireStyle", lighting.FireStyle);
 	writer.NewPropertyWithValue("FireFlameSize", lighting.FireFlameSize);
 	writer.NewPropertyWithValue("UnitOutline", lighting.UnitOutline);
 	writer.NewPropertyWithValue("UnitOutlineWidth", lighting.UnitOutlineWidth);

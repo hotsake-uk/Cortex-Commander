@@ -1793,15 +1793,29 @@ void Actor::ShotPassing(const MovableObject& shot) {
 	if (!shot.HitsMOs() || shot.GetSharpness() <= 0.0F || !shot.GetVel().MagnitudeIsGreaterThan(25.0F) || g_SettingsMan.AISuppression() <= 0.0F) {
 		return;
 	}
-	// Only so many shots looked at a sim update: a minigun's stream pins a unit down as well with a few as with all of them.
+	// Only so many shots looked at a sim update: a minigun's stream pins a unit down as well with a few as with all of them. Which ones turns over
+	// from update to update: the particle loop calls this in list order, oldest first, and a first-come budget went every update to the
+	// long-lived shrapnel and ricochets at the front, so in a big firefight the shots just fired, at the back, were never looked at. The window
+	// of shots looked at starts c_Budget further along the last update's count each update, so every shot gets its turn.
+	constexpr int c_Budget = 96;
 	static long long s_Update = -1;
-	static int s_Checks = 0;
+	static int s_Seen = 0; // Shots that got this far this update, in call order.
+	static int s_LastSeen = 0; // And last update.
+	static int s_Start = 0; // Where this update's window starts in that order.
+	static int s_Checks = 0; // Shots looked at this update.
 	long long update = g_TimerMan.GetSimUpdateCount();
 	if (update != s_Update) {
 		s_Update = update;
+		s_LastSeen = s_Seen;
+		s_Start = s_LastSeen > c_Budget ? (s_Start + c_Budget) % s_LastSeen : 0;
+		s_Seen = 0;
 		s_Checks = 0;
 	}
-	if (++s_Checks > 96) {
+	int index = s_Seen++;
+	if (s_LastSeen > c_Budget && ((index - s_Start) % s_LastSeen + s_LastSeen) % s_LastSeen >= c_Budget) {
+		return;
+	}
+	if (++s_Checks > c_Budget) {
 		return;
 	}
 	// Within two body widths of its last step, about 30 px: close enough to hear the crack.
