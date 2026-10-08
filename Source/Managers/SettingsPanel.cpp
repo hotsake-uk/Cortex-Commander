@@ -266,6 +266,13 @@ void DebugMan::SettingsGUI() {
 		Slider("Sun in the sky", &settings.SunDisc, 0.0F, 2.0F);
 		Slider("Sun and moon shadows", &settings.SunShadows, 0.0F, 1.0F);
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
+		Check("Clouds in the sky", &settings.CloudLayer);
+		Tip("Clouds drift across the sky with the wind, the same clouds whose shadows cross the ground. They gather and darken in rain, snow and ash fall, break up again after, and catch the colours of dawn and dusk. Off: an empty sky, as before. On from the Medium preset up.");
+		if (settings.CloudLayer) {
+			Slider("Cloud cover", &settings.CloudCover, 0.0F, 1.0F);
+			Tip("How much of the sky is cloud in clear weather. 0.5 is the spread cloud shadows always had.");
+			Slider("Cloud opacity", &settings.CloudOpacity, 0.0F, 1.0F);
+		}
 		Slider("God rays", &settings.GodRays, 0.0F, 2.0F);
 		Slider("Mist and dust", &settings.FogVolume, 0.0F, 1.5F);
 		Tip("Mist and dust hanging in the air: low in open valleys around dawn, steam off water meeting lava, dust after ground collapses, and mist from scripts. It drifts with the wind, is lit by the sky, lamps and fires, and clears over time. 0: none, as before. On from the Medium preset up.");

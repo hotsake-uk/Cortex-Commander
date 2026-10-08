@@ -65,6 +65,8 @@ namespace RTE {
 			LampCache = quality == QualityLow;
 			// The wetness map: one small pass over the light grid a frame, from Medium up.
 			WetnessMap = quality >= QualityMedium;
+			// The cloud layer: a few noise reads per sky pixel, from Medium up.
+			CloudLayer = quality >= QualityMedium;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -168,6 +170,9 @@ namespace RTE {
 		float Relief = 0.6F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
 		float SunDisc = 1.0F; //!< Brightness of the sun drawn in the sky by day, 0 for none.
 		float CloudShadows = 0.5F; //!< How much drifting clouds shade the ground under open sky, 0 for none. Needs SunShadows.
+		bool CloudLayer = true; //!< Clouds are drawn in the sky, the same clouds whose shadows cross the ground; they gather in bad weather and break up after it. Off: no clouds in the sky and the shadows keep their fixed spread, as before.
+		float CloudCover = 0.5F; //!< How much of the sky is cloud in clear weather, 0 to 1 (0.5 is the spread the shadows always had). Rain, snow and ash fall add to it.
+		float CloudOpacity = 1.0F; //!< How solid the clouds in the sky are drawn, 0 to 1.
 		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
 		float WaterFoam = 1.0F; //!< How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth, with froth filling the air beside it. 0 for none. Visual only.

@@ -25,8 +25,9 @@ function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalS
 	if ($env:CCCP_BACKGROUND) { $Overrides.MuteMaster = 1 }
 	$lines = Get-Content $baseSettings | Where-Object { $_ -notmatch '^\s*EnableGlobalScript\s*=' }
 	if ($DefaultLighting) {
-		# Cloud shadows drift, so a golden scene would differ from run to run with them on.
+		# Cloud shadows and the clouds in the sky drift, so a golden scene would differ from run to run with them on.
 		if (-not $Overrides.ContainsKey('CloudShadows')) { $Overrides.CloudShadows = 0 }
+		if (-not $Overrides.ContainsKey('CloudLayer')) { $Overrides.CloudLayer = 0 }
 		# Golden scenarios use the built-in lighting defaults, so the player's own tweaks (time of day, quality, weather) can't change the baselines.
 		$inLighting = $false
 		$lines = foreach ($line in $lines) {
@@ -182,7 +183,7 @@ Write-Scenario "LookGritty" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0.78;
 Write-Scenario "LookNoir" ($bunker + @{ TimeOfDay = 17; PostSaturation = 0; GradeContrast = 1.28; PostVignette = 0.42; FilmGrain = 0.3 }) @("Render Test FX")
 # The sky: the sun in clear weather, and cloud shadows drifting over the hills (with them off for comparison).
 Write-Scenario "Sky" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120 }) @()
-Write-Scenario "SkyOff" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120; CloudShadows = 0; SunDisc = 0 }) @()
+Write-Scenario "SkyOff" ($play + @{ TimeOfDay = 14; WeatherType = 0; Wind = 120; CloudShadows = 0; CloudLayer = 0; SunDisc = 0 }) @()
 Write-Scenario "SkyGrey" ($shadowBunker + @{ TimeOfDay = 14; WeatherType = 0; Wind = 200; CloudShadows = 1; LightingDebugView = 1; ModernHUD = 0 }) @("Render Test Shadows")
 # Surface states: units that are wet, sooty, snowed on and glowing hot, by night with a lamp and by day, and with the states switched off.
 Write-Scenario "SurfacesNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Surfaces")
