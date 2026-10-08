@@ -773,7 +773,8 @@ function NativeHumanAI:Update(Owner)
 
 	-- (While the engine's route-follower drives, a behaviour's step (a crawl in, a step to cover) only when the follower pressed no side
 	-- key itself this tick: with both keys at once, the unit stood or went the wrong way.)
-	local engineSide = self.engineMover and (self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT));
+	-- (Nor while it presses up or down: at a ladder, a side key from a behaviour on the same tick refused the grab or let go of the rungs.)
+	local engineSide = self.engineMover and (self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT) or self.Ctrl:IsState(Controller.MOVE_UP) or self.Ctrl:IsState(Controller.MOVE_DOWN));
 	if engineSide then
 		-- (The follower's key stands.)
 	elseif self.lateralMoveState == Actor.LAT_LEFT then

@@ -296,7 +296,9 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY), start);
 	// A searcher with a jetpack asking from the air (a re-path or a route check part way through a jump) flies on from where it is; see
 	// AdjacentCost.
-	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
+	// (Only with a jet to fly on, and not on a ladder the searcher climbs: a re-path part way up a ladder was offered plain-sight flights
+	// off the rung, cheaper than the rungs, and a unit with no jet let go and fell.)
+	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !(s_ClimbsLadders && startNode->Ladder) && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
 	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY), end);
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
@@ -1433,6 +1435,11 @@ float PathFinder::FallCost(const PathNode& to) const {
 	// node of the fall costs about what a rung of a jump does: the jetpack brakes a long fall with fuel at the bottom, and a body without
 	// one takes the fall. (The height is measured by walking down the column to the first node that stands on something.)
 	if (s_JumpHeight == FLT_MAX || g_SceneMan.IsPointInNoGravArea(to.Pos)) {
+		return 0.0F;
+	}
+	// Onto a ladder it climbs: held by the rungs, no fall. (Priced as the shaft's drop, the step from the floor onto the top of a deep
+	// laddered shaft cost a jetless unit 1000, and any way round won.)
+	if (s_ClimbsLadders && to.Ladder) {
 		return 0.0F;
 	}
 	int drop = DropNodes(to);

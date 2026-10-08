@@ -381,7 +381,10 @@ function NativeCrabAI:Update(Owner)
 		self.Ctrl:SetState(Controller.AIM_SHARP, true);
 	end
 
-	if self.lateralMoveState == Actor.LAT_LEFT then
+	-- (Not over a side key the engine's route-follower pressed this tick, as for humans: both keys at once and the crab stood or turned.)
+	if self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT) then
+		-- (The follower's key stands.)
+	elseif self.lateralMoveState == Actor.LAT_LEFT then
 		self.Ctrl:SetState(Controller.MOVE_LEFT, true);
 	elseif self.lateralMoveState == Actor.LAT_RIGHT then
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);
