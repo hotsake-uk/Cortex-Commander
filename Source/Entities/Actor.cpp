@@ -1,5 +1,7 @@
 #include "Actor.h"
 #include "ActorWater.h"
+#include "ActorFire.h"
+#include "FluidSim.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
@@ -1174,6 +1176,12 @@ PathAgent Actor::GetPathAgent() const {
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
+	// In liquid (LM-4): whether it floats and swims, how long it holds its breath, and whether lava is any danger to it, as ActorWater and
+	// ActorFire have it (with them off, water is only waded and lava harms nothing). What doesn't breathe isn't flesh, and doesn't burn.
+	bool waterActs = ActorWater::IsEnabled() && FluidSim::IsEnabled();
+	agent.Floats = waterActs && IsFloater();
+	agent.BreathSeconds = waterActs ? ActorWater::GetBreathSeconds(this) : FLT_MAX;
+	agent.CrossesLava = !ActorFire::IsEnabled() || ActorWater::GetBreathSeconds(this) == FLT_MAX;
 	// CharHeight is about twice the sprite's height; the body stands about 0.45 of it tall and lies about a quarter of it.
 	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.42F);
 	agent.CrawlHeight = agent.StandHeight;
@@ -2374,7 +2382,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());
-	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble"};
+	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade"};
 	auto stepName = [](int kind) { return kind >= 0 && kind < static_cast<int>(std::size(stepNames)) ? std::string(stepNames[kind]) : std::string("none"); };
 	fields.push_back({"step", stepName(GetMovePathStepKind()), true});
 	fields.push_back({"nextStep", stepName(GetMovePathNextStepKind()), true});
