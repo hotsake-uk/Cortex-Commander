@@ -182,7 +182,35 @@ void DebugOverlays::DrawCombatOverlay() {
 			ImVec2 to = DebugDraw::ToScreen(where);
 			drawList->AddTriangleFilled(ImVec2(to.x, to.y + 6.0F), ImVec2(to.x - 6.0F, to.y - 5.0F), ImVec2(to.x + 6.0F, to.y - 5.0F), IM_COL32(235, 70, 60, 220));
 			drawList->AddLine(at, to, IM_COL32(235, 70, 60, 120), thick);
-			drawList->AddText(ImVec2(to.x + 9.0F, to.y - ImGui::GetTextLineHeight() * 0.5F), IM_COL32(235, 70, 60, 255), ("retreat" + seconds(actor, "AI_RetreatMs")).c_str());
+			// (Why: shaken, morale under 0.3, pulls a unit back in the middle of a fight; otherwise it is hurt with no enemy about.)
+			drawList->AddText(ImVec2(to.x + 9.0F, to.y - ImGui::GetTextLineHeight() * 0.5F), IM_COL32(235, 70, 60, 255), ("retreat (" + std::string(actor->GetMorale() < 0.3F ? "shaken" : "hurt") + ")" + seconds(actor, "AI_RetreatMs")).c_str());
+		}
+		// The enemy an attack order picked for it (AI6-3), dashed, apart from the target the AI is fighting.
+		if (long autoTarget = actor->GetOrderAutoTargetID(); actor->GetOrderAttack() && autoTarget != 0) {
+			if (const MovableObject* target = g_MovableMan.FindObjectByUniqueID(autoTarget)) {
+				ImVec2 to = DebugDraw::ToScreen(target->GetPos());
+				float length = std::hypot(to.x - at.x, to.y - at.y);
+				int dashes = std::clamp(static_cast<int>(length / 10.0F), 1, 200);
+				for (int i = 0; i < dashes; i += 2) {
+					float a = static_cast<float>(i) / static_cast<float>(dashes);
+					float b = static_cast<float>(i + 1) / static_cast<float>(dashes);
+					drawList->AddLine(ImVec2(at.x + (to.x - at.x) * a, at.y + (to.y - at.y) * a), ImVec2(at.x + (to.x - at.x) * b, at.y + (to.y - at.y) * b), IM_COL32(255, 120, 90, 200), thick);
+				}
+				drawList->AddText(ImVec2(to.x + 8.0F, to.y + 4.0F), IM_COL32(255, 120, 90, 255), "attack order's pick");
+			}
+		}
+		// Suppression (orange) and morale (green, red when shaken) as two thin bars under the unit, with "pinned" or "shaken" (AC-3).
+		{
+			float suppression = std::clamp(actor->GetSuppression(), 0.0F, 1.0F);
+			float morale = std::clamp(actor->GetMorale(), 0.0F, 1.0F);
+			float width = std::max(24.0F, actor->GetRadius() / perPixel);
+			ImVec2 bar(at.x - width * 0.5F, at.y + actor->GetRadius() / perPixel + 4.0F);
+			drawList->AddRectFilled(bar, ImVec2(bar.x + width, bar.y + 7.0F), IM_COL32(10, 12, 10, 170));
+			drawList->AddRectFilled(ImVec2(bar.x, bar.y + 1.0F), ImVec2(bar.x + width * suppression, bar.y + 3.0F), IM_COL32(255, 160, 40, 230));
+			drawList->AddRectFilled(ImVec2(bar.x, bar.y + 4.0F), ImVec2(bar.x + width * morale, bar.y + 6.0F), morale < 0.3F ? IM_COL32(235, 70, 60, 230) : IM_COL32(90, 220, 110, 230));
+			if (const char* tag = morale < 0.3F ? "shaken" : (suppression > 0.5F ? "pinned" : nullptr)) {
+				drawList->AddText(ImVec2(bar.x + width + 4.0F, bar.y - 3.0F), morale < 0.3F ? IM_COL32(235, 70, 60, 255) : IM_COL32(255, 160, 40, 255), tag);
+			}
 		}
 	}
 }

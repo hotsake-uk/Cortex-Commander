@@ -1357,6 +1357,19 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
+	// What it remembers of its stuck remedies (LM-3): which worked or failed where, newest last.
+	if (!m_StuckRemedyMemory.empty()) {
+		const char* const memoryNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+		std::string remembered;
+		for (const StuckRemedyMemory& memory: m_StuckRemedyMemory) {
+			if (!remembered.empty()) {
+				remembered += "; ";
+			}
+			remembered += std::string(memory.Remedy >= 0 && memory.Remedy < static_cast<int>(StuckRemedy::Count) ? memoryNames[memory.Remedy] : "?") + (memory.Worked ? " worked at " : " failed at ") + std::to_string(memory.Spot.GetFloorIntX()) + "," + std::to_string(memory.Spot.GetFloorIntY());
+		}
+		fields.push_back({"remedyMemory", remembered, true});
+	}
+	number("crouchPercent", m_CrouchAmount * 100.0F);
 	if (mover.fuelWaiting) {
 		number("fuelWaitMs", mover.fuelWaitTimer.GetElapsedSimTimeMS());
 	}

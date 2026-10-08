@@ -2610,6 +2610,31 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	static const char* const movementRuleNames[] = {"follow order", "engage", "move only", "hold ground"};
 	fields.push_back({"weaponRule", m_WeaponRule >= 0 && m_WeaponRule < static_cast<int>(std::size(weaponRuleNames)) ? weaponRuleNames[m_WeaponRule] : std::to_string(m_WeaponRule), true});
 	fields.push_back({"movementRule", order.Movement >= 0 && order.Movement < static_cast<int>(std::size(movementRuleNames)) ? movementRuleNames[order.Movement] : std::to_string(order.Movement), true});
+	// Under fire and nerve (AC-3): how pinned down and how steady, "pinned" over 0.5 suppression (as the unit's speech has it), "shaken" under
+	// 0.3 morale (when its AI pulls back whatever its health, SharedBehaviors.Shaken), and why it is retreating when it is.
+	number("suppression", std::round(m_Suppression * 100.0F) / 100.0);
+	number("morale", std::round(m_Morale * 100.0F) / 100.0);
+	fields.push_back({"nerve", m_Morale < 0.3F ? "shaken" : (m_Suppression > 0.5F ? "pinned" : "steady"), true});
+	if (NumberValueExists("AIRetreat")) {
+		fields.push_back({"retreatCause", m_Morale < 0.3F ? "shaken" : "hurt", true});
+	}
+	// In liquid (LM-4, L-5): how deep, which liquid, air left, how sticky, and the highest drop it lands from unhurt (LM-9).
+	if (int depth = ActorWater::GetDepth(this); depth > 0) {
+		static const char* const depthNames[] = {"dry", "feet", "body", "head under"};
+		fields.push_back({"liquidDepth", depthNames[std::clamp(depth, 0, 3)], true});
+		const Material* liquid = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY() + static_cast<int>(GetHeight() * 0.2F)));
+		fields.push_back({"liquid", liquid ? liquid->GetPresetName() : "?", true});
+		flag("swimming", depth >= 2);
+		if (NumberValueExists("LiquidStick")) {
+			number("stickiness", std::round(GetNumberValue("LiquidStick") * 100.0) / 100.0);
+		}
+	}
+	if (float air = ActorWater::GetAir(this); air < 1.0F) {
+		number("air", std::round(air * 100.0F) / 100.0);
+	}
+	if (float safeFall = GetMaxSafeFallHeight(); safeFall < FLT_MAX) {
+		number("maxSafeFall", std::floor(safeFall));
+	}
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());

@@ -718,7 +718,7 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
 				g_SettingsMan.SetNavDebugOverlay(nav);
 			}
-			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs, pale green arcs for leaps. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
+			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); light green where it must crouch; cyan lines for low obstacles it steps over, magenta for stairs and the steeper scrambles, pale green arcs for leaps; orange ticks on ladders and purple dots in shafts and hatches. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
 		}
 		{
 			int team = g_SettingsMan.DebugTeam();
@@ -851,7 +851,7 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Combat AI overlay", &combat, "Off\0Inspected units\0Every unit in view\0")) {
 				g_SettingsMan.SetCombatOverlay(combat);
 			}
-			Tip("A line from each unit to its target, green while it can see it and grey while it only remembers where it was; the range it holds to as a ring; and the cover (cyan, with why it went there), flank (orange) and retreat (red) spots it's heading for, each with how long it's been at it.");
+			Tip("A line from each unit to its target, green while it can see it and grey while it only remembers where it was; the range it holds to as a ring; and the cover (cyan, with why it went there), flank (orange) and retreat (red, shaken or hurt) spots it's heading for, each with how long it's been at it. Under each unit, how pinned down it is (orange) and its morale (green, red once shaken), tagged \"pinned\" or \"shaken\"; a dashed line to the enemy an attack order picked for it.");
 		}
 		Toggle("Recent path solves", g_SettingsMan.ShowRecentSolves(), [](bool on) { g_SettingsMan.SetShowRecentSolves(on); });
 		Tip("The last eight routes the pathfinder found for the team the debug overlays show (Game & HUD), newest brightest: each step coloured by its kind with its cost, and at the goal whether it was solved, its total cost and how long the search took. Not saved; costs a little time per search while it's on.");
