@@ -1,4 +1,6 @@
 #include "ACrab.h"
+#include "ADoor.h"
+#include "MovableMan.h"
 #include "SmokeGrid.h"
 
 #include "AtomGroup.h"
@@ -66,6 +68,10 @@ void ACrab::Clear() {
 	m_AimRangeUpperLimit = -1;
 	m_AimRangeLowerLimit = -1;
 	m_LockMouseAimInput = false;
+	m_LegJumpHeight = -1.0F;
+	m_LegJumpSpeed = 3.5F;
+	m_Leaping = false;
+	m_LeapTimer.Reset();
 }
 
 int ACrab::Create() {
@@ -218,6 +224,8 @@ int ACrab::Create(const ACrab& reference) {
 	m_AimRangeUpperLimit = reference.m_AimRangeUpperLimit;
 	m_AimRangeLowerLimit = reference.m_AimRangeLowerLimit;
 	m_LockMouseAimInput = reference.m_LockMouseAimInput;
+	m_LegJumpHeight = reference.m_LegJumpHeight;
+	m_LegJumpSpeed = reference.m_LegJumpSpeed;
 
 	return 0;
 }
@@ -333,6 +341,8 @@ int ACrab::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("AimRangeUpperLimit", { reader >> m_AimRangeUpperLimit; });
 	MatchProperty("AimRangeLowerLimit", { reader >> m_AimRangeLowerLimit; });
 	MatchProperty("LockMouseAimInput", { reader >> m_LockMouseAimInput; });
+	MatchProperty("LegJumpHeight", { reader >> m_LegJumpHeight; });
+	MatchProperty("LegJumpSpeed", { reader >> m_LegJumpSpeed; });
 
 	EndPropertyList;
 }
@@ -382,6 +392,10 @@ int ACrab::Save(Writer& writer) const {
 	writer << m_AimRangeLowerLimit;
 	writer.NewProperty("LockMouseAimInput");
 	writer << m_LockMouseAimInput;
+	writer.NewProperty("LegJumpHeight");
+	writer << m_LegJumpHeight;
+	writer.NewProperty("LegJumpSpeed");
+	writer << m_LegJumpSpeed;
 
 	return 0;
 }
@@ -778,7 +792,59 @@ PathAgent ACrab::GetPathAgent() const {
 	agent.WalksStairs = true;
 	// Ledges it pulls itself up onto (Actor::TryStartMantle), when the setting is on.
 	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
+	// Gaps and lips it leaps on its legs (LM-8).
+	agent.LeapHeight = GetLegJumpHeight();
+	agent.LeapSpeed = m_LegJumpSpeed;
 	return agent;
+}
+
+float ACrab::GetLegJumpHeight() const {
+	if (!m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg) {
+		return 0.0F;
+	}
+	if (m_LegJumpHeight >= 0.0F) {
+		return m_LegJumpHeight;
+	}
+	// A third of the body, halved: a crab clears a kerb or a node-wide gap, not a human's knee-high crate.
+	return std::max(16.0F, m_CharHeight * 0.33F) * 0.5F;
+}
+
+bool ACrab::CanLeap() const {
+	if (m_Status != STABLE || m_Leaping || IsMantling() || GetLegJumpHeight() <= 0.0F || !m_LeapTimer.IsPastSimMS(300)) {
+		return false;
+	}
+	Vector hit;
+	return std::abs(m_Vel.m_Y) < 2.5F && g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, std::max(m_CharHeight, 30.0F) * 0.9F), 5.0F, hit, 2);
+}
+
+void ACrab::UpdateLeap() {
+	if (m_Leaping) {
+		Vector hit;
+		bool landed = m_LeapTimer.IsPastSimMS(150) && m_Vel.m_Y >= -0.5F && g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, std::max(m_CharHeight, 30.0F) * 0.75F), 5.0F, hit, 2);
+		if (landed || m_Status != STABLE || IsMantling()) {
+			m_Leaping = false;
+			m_LeapTimer.Reset();
+			if (m_MovementState == JUMP && !(m_pJetpack && m_pJetpack->IsEmitting())) {
+				m_MovementState = STAND;
+			}
+		} else {
+			m_MovementState = JUMP;
+		}
+		return;
+	}
+	if (!m_Controller.IsState(BODY_LEAP) || !CanLeap()) {
+		return;
+	}
+	float gravity = std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y);
+	float rise = std::sqrt(2.0F * gravity * GetLegJumpHeight() * c_MPP);
+	float direction = m_Controller.IsState(MOVE_RIGHT) ? 1.0F : (m_Controller.IsState(MOVE_LEFT) ? -1.0F : 0.0F);
+	// (The AI at the leap's own speed, the one the grid checked the arc at; see AHuman::UpdateLeap.)
+	float across = direction != 0.0F ? direction * (m_Controller.GetInputMode() == Controller::CIM_AI ? m_LegJumpSpeed : std::max(m_LegJumpSpeed, m_Vel.m_X * direction)) : m_Vel.m_X;
+	m_Vel.SetXY(across, std::min(m_Vel.m_Y, 0.0F) - rise);
+	m_Leaping = true;
+	m_LeapTimer.Reset();
+	m_MovementState = JUMP;
+	ForceDeepCheck();
 }
 
 float ACrab::EstimateJumpHeight() const {
@@ -832,8 +898,13 @@ void ACrab::PreControllerUpdate() {
 		}
 	}
 
+	UpdateLeap();
 	if (m_pJetpack && m_pJetpack->IsAttached()) {
 		m_pJetpack->UpdateBurstState(*this);
+		// (The jetpack's idle puts a jump's movement state back to standing; a leap holds it while in the air.)
+		if (m_Leaping) {
+			m_MovementState = JUMP;
+		}
 	}
 
 	////////////////////////////////////
@@ -1763,6 +1834,86 @@ int ACrab::MoveAlongRoute() {
 	}
 
 	// ---- On the ground. ----
+	const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+	const float floorY = floorHere;
+	// A door of ours (or no one's) across the way, not open: held short of it, at its nearest sensor, as the human's follower does (LM-8);
+	// given up on after 2 s (walked into) for 5 s. (The crab walked into every closed door and stood against it till the stuck hop.)
+	if (mover.doorIgnoreID != 0 && mover.doorIgnoreTimer.IsPastSimMS(5000)) {
+		mover.doorIgnoreID = 0;
+	}
+	{
+		ADoor* door = nullptr;
+		float length = toPoint.GetMagnitude();
+		float bestDistance = std::numeric_limits<float>::max();
+		for (ADoor* candidate: g_MovableMan.GetDoorList()) {
+			if ((candidate->GetTeam() != m_Team && candidate->GetTeam() != Activity::NoTeam) || !candidate->GetDoor() || !candidate->GetDoor()->IsAttached()) {
+				continue;
+			}
+			Vector toLeaf = CrabTowards(m_Pos, candidate->GetDoor()->GetPos());
+			if (toLeaf.MagnitudeIsGreaterThan(h * 1.5F)) {
+				continue;
+			}
+			float t = length > 1.0F ? std::clamp(toLeaf.Dot(toPoint) / (length * length), 0.0F, 1.0F) : 0.0F;
+			float distance = (toLeaf - toPoint * t).GetMagnitude();
+			if (distance < h * 0.6F && distance < bestDistance) {
+				door = candidate;
+				bestDistance = distance;
+			}
+		}
+		ADoor::DoorState state = door ? door->GetDoorState() : ADoor::OPEN;
+		if (door && state != ADoor::OPEN && state != ADoor::OPENING && door->GetUniqueID() != mover.doorIgnoreID) {
+			if (door->GetUniqueID() != mover.doorWaitID) {
+				mover.doorWaitID = door->GetUniqueID();
+				mover.doorWaitTimer.Reset();
+			}
+			if (mover.doorWaitTimer.IsPastSimMS(2000)) {
+				mover.doorIgnoreID = door->GetUniqueID();
+				mover.doorIgnoreTimer.Reset();
+			} else {
+				mover.progressTimer.Reset();
+				Vector sense = door->GetPos();
+				float nearest = std::numeric_limits<float>::max();
+				for (const ADSensor& sensor: door->GetSensors()) {
+					Vector start = door->GetPos() + sensor.GetStartOffset().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+					Vector end = start + sensor.GetSensorRay().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+					Vector mid = (start + end) * 0.5F;
+					float distance = CrabTowards(m_Pos, mid).GetMagnitude();
+					if (distance < nearest) {
+						nearest = distance;
+						sense = mid;
+					}
+				}
+				float dx = CrabTowards(m_Pos, sense).m_X;
+				if (std::abs(dx) > 6.0F) {
+					ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				}
+				return 0;
+			}
+		} else if (!door || state == ADoor::OPEN || state == ADoor::OPENING) {
+			mover.doorWaitID = 0;
+		}
+	}
+	// A leap (LM-8): walked to the take-off, the edge of the gap or the foot of the lip, and leapt from there with the move key held; at the
+	// edge and not yet able to (the legs gather after a landing), it waits rather than walking off. Stalled a second short of it, from here.
+	if (kind == PathStepKind::Leap && std::abs(toPoint.m_X) > 3.0F) {
+		float floorAhead = CrabFloorUnder(m_Pos + Vector(direction * h * 0.4F, 0.0F), h * 0.9F);
+		bool edge = floorAhead < 0.0F || floorAhead > floorY + h * 0.3F;
+		Vector hit;
+		bool lip = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - 4.0F), Vector(direction * h * 0.6F, 0.0F), 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
+		if (edge || lip || mover.progressTimer.IsPastSimMS(1000)) {
+			if (CanLeap()) {
+				ctrl.SetState(BODY_LEAP, true);
+				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				mover.progressTimer.Reset();
+				return 0;
+			}
+			if (edge) {
+				return 0;
+			}
+		}
+		ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		return 0;
+	}
 	// A mantle: walked into the ledge, which pulls the crab up onto it (Actor::TryStartMantle); no jet.
 	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
 		if (!IsMantling()) {
@@ -1802,13 +1953,63 @@ int ACrab::MoveAlongRoute() {
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 	}
-	// Stuck on something the legs don't take: a hop, now and then.
-	if (stuck && standardJet && m_pJetpack->GetJetTimeLeft() > 300.0F) {
-		if (mover.hopTimer.IsPastSimMS(1200)) {
-			mover.hopTimer.Reset();
+	// What is ahead (LM-8, the human's sense in short): low and high rays a little over half a body out. Both blocked with the route's point
+	// level and beyond is something the grid didn't know: the place marked for a while and a route round it asked for. Low only is a lump on
+	// the floor: leapt at its edge when the leap clears it.
+	if (std::abs(toPoint.m_X) > 3.0F && kind != PathStepKind::Fall) {
+		Vector lowHit;
+		Vector highHit;
+		const Vector reach(direction * h * 0.6F, 0.0F);
+		bool low = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - 4.0F), reach, 5.0F, lowHit, 2, MaterialColorKeys::g_MaterialDoor);
+		bool high = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - h * 0.8F), reach, 5.0F, highHit, 2, MaterialColorKeys::g_MaterialDoor);
+		if (low && high) {
+			float wallAt = std::abs(CrabTowards(m_Pos, lowHit).m_X);
+			if (toPoint.m_X * direction > wallAt + 4.0F && std::abs(toPoint.m_Y) < h * 0.3F && kind != PathStepKind::Jump && mover.senseRerouteTimer.IsPastSimMS(2000)) {
+				mover.senseRerouteTimer.Reset();
+				AvoidPathPoint(Vector(lowHit.m_X + direction * 6.0F, floorY - h * 0.5F), 15000.0F);
+				refresh();
+				return 0;
+			}
+		} else if (low && CanLeap()) {
+			float rise = 0.0F;
+			while (rise < h && g_SceneMan.GetTerrMatter(static_cast<int>(lowHit.m_X + direction * 2.0F), static_cast<int>(floorY - 2.0F - rise)) != MaterialColorKeys::g_MaterialAir) {
+				rise += 1.0F;
+			}
+			if (rise <= GetLegJumpHeight() + 2.0F && std::abs(CrabTowards(m_Pos, lowHit).m_X) < h * 0.5F + 6.0F) {
+				ctrl.SetState(BODY_LEAP, true);
+			}
 		}
-		if (!mover.hopTimer.IsPastSimMS(350)) {
-			jetWith(std::clamp(toPoint.m_X / h, -1.0F, 1.0F));
+	}
+	// Stuck on something the legs don't take: the small things first, in turn, one every 1.2 s (LM-8; the human's ladder of remedies in
+	// short): back off half a body and come on again, leap, and hop with the jet. (It only ever hopped, and a crab with no jet had nothing.)
+	if (stuck) {
+		if (mover.remedyTimer.IsPastSimMS(1200)) {
+			mover.remedyTimer.Reset();
+			for (int tries = 0; tries < 3; ++tries) {
+				mover.remedy = (mover.remedy + 1) % 3;
+				bool usable = mover.remedy == 0 ? CrabFloorUnder(m_Pos - Vector(direction * h * 0.5F, 0.0F), h * 0.9F) >= 0.0F : (mover.remedy == 1 ? CanLeap() : standardJet && m_pJetpack->GetJetTimeLeft() > 300.0F);
+				if (usable) {
+					break;
+				}
+			}
+		}
+		switch (mover.remedy) {
+			case 0:
+				if (!mover.remedyTimer.IsPastSimMS(500)) {
+					ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, false);
+					ctrl.SetState(direction < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+				}
+				break;
+			case 1:
+				if (!mover.remedyTimer.IsPastSimMS(200)) {
+					ctrl.SetState(BODY_LEAP, true);
+				}
+				break;
+			default:
+				if (standardJet && m_pJetpack->GetJetTimeLeft() > 300.0F && !mover.remedyTimer.IsPastSimMS(350)) {
+					jetWith(std::clamp(toPoint.m_X / h, -1.0F, 1.0F));
+				}
+				break;
 		}
 	}
 	return 0;
