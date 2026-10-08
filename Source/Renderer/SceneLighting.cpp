@@ -2167,8 +2167,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
 	}
 
-	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the fire shader their sprites aren't drawn (MOSParticle::Draw) and they
-	// join the fire front's cells instead, so they burn in the same flames as the ground. A lone one stands about as big as its sprite did.
+	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the fire shader their sprites are still drawn and they also
+	// join the fire front's cells, so the same flames as the ground's burn over them. A lone one's flame stands about as big as its sprite.
 	if (fireShader) {
 		std::vector<glm::vec4> flames;
 		EffectsParticles::GetFlames(origin, width, height, flames);

@@ -114,7 +114,7 @@ namespace RTE {
 
 		Atom* m_Atom; //!< The Atom that will be the physical representation of this MOSParticle.
 		float m_TimeRest; //!< Accumulated time in seconds that did not cause a frame change.
-		bool m_FlameSprite; //!< Whether the sprite is the game's drawn flame, which the fire shader draws instead when it's on (LightingSettings::FireShader).
+		bool m_FlameSprite; //!< Whether the sprite is the game's drawn flame, which the fire shader layers its flames over when it's on (LightingSettings::FireShader).
 
 	private:
 		/// Clears all the member variables of this MOSParticle, effectively resetting the members of this abstraction level only.

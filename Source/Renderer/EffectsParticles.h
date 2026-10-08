@@ -97,7 +97,7 @@ namespace RTE {
 		/// Gets the smoke visible in a screen area, as puffs (A = density).
 		static void GetSmoke(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& smoke);
 
-		/// Records a flame sprite particle drawn this frame, whose flame the fire shader draws instead of its sprite (see LightingSettings::FireShader).
+		/// Records a flame sprite particle drawn this frame, whose flame the fire shader draws over its sprite (see LightingSettings::FireShader).
 		/// Duplicate calls for the same object (several cameras) are ignored.
 		/// @param object Identifies the flame particle.
 		/// @param position Scene position of the foot of the flame.

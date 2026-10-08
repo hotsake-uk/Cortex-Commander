@@ -285,14 +285,13 @@ void MOSParticle::Draw(const Camera& camera) const {
 	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
 		return;
 	}
-	// With the fire shader on, a flame is drawn by it, the same as the flames of burning ground, rather than as this sprite (its glow stays).
+	// With the fire shader on, a flame also gets the shader's flames, the same as burning ground, drawn over this sprite in the glow pass.
 	if (m_FlameSprite && g_PostProcessMan.GetLightingSettings().FireShader) {
 		float age = static_cast<float>(GetAge());
 		float size = std::clamp(age / 120.0F, 0.3F, 1.0F);
 		float heat = m_Lifetime > 0 ? std::clamp(1.0F - age / static_cast<float>(m_Lifetime), 0.35F, 1.0F) : 1.0F;
 		Vector foot = GetRenderPos();
 		EffectsParticles::RegisterFlame(this, glm::vec2(foot.m_X, foot.m_Y), size, heat);
-		return;
 	}
 	Vector spritePos((GetRenderPos() + m_SpriteOffset).GetFloored());
 	Color tint = ApplyRenderBlendMode();
