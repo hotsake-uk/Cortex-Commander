@@ -1662,7 +1662,8 @@ void SceneLighting::Update() {
 			m_LightningSecondsLeft = 0.45F;
 			// Heavier storms flash more often, and weather with more lightning in it (Weather::Lightning, 1 as rain) more often still.
 			float storm = (m_Settings.WeatherIntensity - 0.5F) * 2.0F;
-			m_NextLightningSeconds = (6.0F + nextRandom() * 16.0F) * (1.2F - 0.6F * storm) / lightningRate;
+			// Never closer than 3 s apart, however much lightning a weather asks for: whole-sky flashes any faster are hard on the eyes. Rain's (3.6 s at the least) is untouched.
+			m_NextLightningSeconds = std::max((6.0F + nextRandom() * 16.0F) * (1.2F - 0.6F * storm) / lightningRate, 3.0F);
 		}
 	}
 	if (m_LightningSecondsLeft > 0.0F) {
