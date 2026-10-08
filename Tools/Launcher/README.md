@@ -18,7 +18,7 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 ## Using it
 1. **Branch**: pick one from the list (or type any branch / tag / sha and press Enter). **Refresh** fetches from the remote and reloads the commits.
 2. **Commit**: newest first by date and time; the latest is selected for you; click an older one if you want it.
-3. **Settings** and **Mods** (both optional): a Settings.ini file is copied to the version's `Userdata/Settings.ini`, and every `*.rte` folder in the mods folder is copied to its `Mods/` folder, changed files only. Your originals are never modified.
+3. **Settings** and **Mods** (both optional): a Settings.ini file is copied to the version's `Userdata/Settings.ini`, and every `*.rte` folder in the mods folder is put in its `Mods/` folder, changed files only, as hard links to your files (copies when the mods folder is on another drive). A hard link is the same file, so a new version's first start doesn't read and virus-scan every mod afresh. The Settings.ini is never modified. A mod that rewrites one of its own files while the game runs (some keep saves in their folder) changes your original too; deleting a version only removes its links.
 4. **Build & Launch**.
 
 Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.

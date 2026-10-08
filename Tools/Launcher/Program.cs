@@ -399,8 +399,10 @@ class MainForm : Form
 		finally { SetBusy(false, currentRef); }
 	}
 
-	// Copies every *.rte folder of the mods folder into the version's Mods folder (only files that changed), so each version runs with its own copy.
-	// A folder the version ships itself is left alone; ones the launcher copied are marked and kept in sync with the source.
+	// Puts every *.rte folder of the mods folder into the version's Mods folder (only files that changed), each file as a hard link to the source
+	// where it can be (a copy where it can't, as across drives). A hard link is the same file on disk, so a new version's first start reads mods
+	// Windows has already read and scanned instead of tens of thousands of fresh copies (that was most of a first start's minute and a half).
+	// Deleting a version only removes its links. A folder the version ships itself is left alone; ones the launcher made are marked and kept in sync with the source.
 	const string CopyMarker = ".launcher-copy";
 	void LinkMods(CommitInfo c)
 	{
@@ -424,11 +426,14 @@ class MainForm : Form
 			{
 				int n = SyncDir(d, dest);
 				File.WriteAllText(Path.Combine(dest, CopyMarker), "");
-				Append(n > 0 ? $"Copied mod {Path.GetFileName(d)} ({n} files)" : $"Mod {Path.GetFileName(d)} up to date");
+				Append(n > 0 ? $"Linked mod {Path.GetFileName(d)} ({n} files)" : $"Mod {Path.GetFileName(d)} up to date");
 			}
 			catch (Exception ex) { Append($"Mod copy failed for {Path.GetFileName(d)}: " + ex.Message); }
 		}
 	}
+
+	[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+	static extern bool CreateHardLink(string lpFileName, string lpExistingFileName, IntPtr lpSecurityAttributes);
 
 	static int SyncDir(string src, string dest)
 	{
@@ -439,7 +444,9 @@ class MainForm : Form
 			var t = Path.Combine(dest, Path.GetFileName(f));
 			var fi = new FileInfo(f);
 			if (File.Exists(t) && new FileInfo(t).Length == fi.Length && File.GetLastWriteTimeUtc(t) == fi.LastWriteTimeUtc) continue;
-			File.Copy(f, t, true); File.SetLastWriteTimeUtc(t, fi.LastWriteTimeUtc); n++;
+			if (File.Exists(t)) File.Delete(t);
+			if (!CreateHardLink(t, f, IntPtr.Zero)) { File.Copy(f, t, true); File.SetLastWriteTimeUtc(t, fi.LastWriteTimeUtc); }
+			n++;
 		}
 		foreach (var d in Directory.GetDirectories(src)) n += SyncDir(d, Path.Combine(dest, Path.GetFileName(d)));
 		foreach (var f in Directory.GetFiles(dest))
