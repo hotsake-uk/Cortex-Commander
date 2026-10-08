@@ -15,6 +15,12 @@ uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform float rteTime;
 uniform vec2 rteFall; // Which way the rain is falling, a unit vector (y down).
+uniform bool rteShelterOn; // Shelter from the weather's shelter map (SunShadowMap.frag made for the weather) rather than marching the grid.
+uniform sampler2D rteShelterMap; // 1 row: for each line the weather falls down, the scene y of the first solid point on it.
+uniform float rteShelterSlope; // How far a line moves in x per pixel down, as the map was made.
+uniform float rteShelterStart; // Where the map's first line crosses the top of the scene.
+uniform float rteShelterTexel; // Scene pixels between its lines.
+uniform float rteShelterSoftness; // How far splashes' lines are spread sideways to soften the edge of a shelter, in pixels either way.
 uniform float rteAmount; // 0..1, how many of the places a splash can be have one at a time.
 uniform vec3 rteSkyLight;
 uniform float rteOwnLight;
@@ -25,6 +31,12 @@ float Hash(vec2 p) {
 
 bool Foreground(vec2 fragment) {
 	return texture(rteSceneDepth, fragment / rteScreenSize).r < rteForegroundDepth;
+}
+
+// The scene y of the first solid point on the line the weather falls down through a point, from the shelter map; offset moves the line sideways.
+float ShelterFirst(vec2 at, float offset) {
+	float line = (at.x + rteShelterSlope * at.y + offset - rteShelterStart) / rteShelterTexel;
+	return textureLod(rteShelterMap, vec2(line / float(textureSize(rteShelterMap, 0).x), 0.5), 0.0).r;
 }
 
 // Whether rain reaches a point: back along the way it falls until out of the top of the world, or blocked by ground.
@@ -83,7 +95,16 @@ void main() {
 		float ripple = (above == 1.0 ? 1.0 : 0.0) * step(abs(across), apart + 0.5) * (1.0 - life) * 0.8;
 		alpha = max(alpha, max(max(droplet, inner), max(spike, ripple)));
 	}
-	if (alpha <= 0.0 || Reaches(world, rteFall) < 0.5) {
+	if (alpha <= 0.0) {
+		discard;
+	}
+	if (rteShelterOn) {
+		// Each place a splash can be has its own line, nudged a little so the edge of a shelter is soft. Ground within a cell or so above doesn't count, as with the march.
+		float nudge = (Hash(vec2(floor(world.x / 6.0), band + 0.5)) - 0.5) * 2.0 * rteShelterSoftness;
+		if (world.y - 1.2 * rteCellSize * rteFall.y > ShelterFirst(world, nudge)) {
+			discard;
+		}
+	} else if (Reaches(world, rteFall) < 0.5) {
 		discard;
 	}
 	vec3 light = max(rteSkyLight, vec3(rteOwnLight)) + texture(rteDynamicLight, fragment / rteScreenSize).rgb * 1.5;

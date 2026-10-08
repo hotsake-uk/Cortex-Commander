@@ -43,6 +43,11 @@ uniform float rteWaterRipples; // How much the surface ripples tilt water's norm
 uniform sampler2D rteFlowField; // The moving liquid (FluidSim), in the light grid's cells: R sideways speed (0.5 none), G speed, B how lately it moved (1 just now, 0 settled), A whether any moves there.
 uniform float rteFlowSurface; // How much liquid's surface follows how it moves: 0 the slow waves alone (as before), 1 fully.
 uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
+uniform bool rteShelterOn; // Shelter from the weather's shelter map (SunShadowMap.frag made for the weather) rather than marching the grid.
+uniform sampler2D rteShelterMap; // 1 row: for each line the weather falls down, the scene y of the first solid point on it.
+uniform float rteShelterSlope; // How far a line moves in x per pixel down, as the map was made.
+uniform float rteShelterStart; // Where the map's first line crosses the top of the scene.
+uniform float rteShelterTexel; // Scene pixels between its lines.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
 uniform vec2 rteGridWorldSize;
 uniform sampler2D rteWorldGrid; // The light grid's terrain map: R = how solid each cell is, G = how metallic its material, B = how glossy.
@@ -132,9 +137,19 @@ float Lean(vec2 world) {
 	return lean;
 }
 
+// The scene y of the first solid point on the line the weather falls down through a point, from the shelter map; offset moves the line sideways.
+float ShelterFirst(vec2 at, float offset) {
+	float line = (at.x + rteShelterSlope * at.y + offset - rteShelterStart) / rteShelterTexel;
+	return textureLod(rteShelterMap, vec2(line / float(textureSize(rteShelterMap, 0).x), 0.5), 0.0).r;
+}
+
 // Whether rain or snow reaches a point: follows the line it falls down back upwind through the world's grid of solid ground, until it is out of the top of the
 // world (it reaches) or meets ground (the point is sheltered). The same test the falling drops use, with fewer and longer steps since it runs for every pixel of exposed ground.
 bool WeatherReaches(vec2 world) {
+	if (rteShelterOn) {
+		// From the shelter map: the first solid point on the line through here is below it. Ground within a cell and a half above doesn't count, as with the march.
+		return world.y - 1.5 * (rteGridWorldSize.x / float(textureSize(rteWorldGrid, 0).x)) * rteWeatherFall.y <= ShelterFirst(world, 0.0);
+	}
 	vec2 back = -rteWeatherFall * (rteGridWorldSize.x / float(textureSize(rteWorldGrid, 0).x));
 	vec2 p = world + back * 1.5;
 	for (int i = 0; i < 56; ++i) {

@@ -297,6 +297,8 @@ void SceneLighting::DestroyWorldResources() {
 	m_WetMap[1].Destroy();
 	m_SunMap.Destroy();
 	m_SunMapReady = false;
+	m_ShelterMap.Destroy();
+	m_ShelterMapReady = false;
 	m_Flow.clear();
 	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
@@ -871,6 +873,11 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 		glm::vec2 fall = m_Settings.WeatherType == 2 ? glm::vec2(m_Settings.Wind * 0.6F, 45.0F) : glm::vec2(m_Settings.Wind, 640.0F);
 		fall.x = std::clamp(fall.x, -fall.y * 2.0F, fall.y * 2.0F);
 		m_TerrainShader->SetVector2f("rteWeatherFall", glm::normalize(fall));
+		// The shelter map is made for the falling weather; the ground uses it when it was made for the way the ground's cover goes by (as close as the map is kept),
+		// and otherwise marches as before (snow slanted past the cap above, or wetness left under falling ash).
+		bool shelterFits = m_ShelterMapReady && std::abs(-fall.x / fall.y - m_ShelterMapSlope) * static_cast<float>(m_SceneHeight) <= 2.0F;
+		g_RenderMan.SetGlobalTexture(10, shelterFits ? m_ShelterMap.Texture : 0);
+		SetShelterUniforms(*m_TerrainShader, shelterFits, 10);
 	}
 	m_TerrainShader->SetInt("rteSkyline", 5);
 	m_TerrainShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
@@ -1167,8 +1174,48 @@ void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& ch
 		m_SunMapReady = false;
 		return;
 	}
-	// The rays come down along the sun's direction, as steep as the cloud shadows take it (no flatter than five across for one down).
+	// The rays come down along the sun's direction, as steep as the cloud shadows take it (no flatter than five across for one down). They stop at what stops light (R).
 	float slope = m_SunDirection.x / std::max(-m_SunDirection.y, 0.2F);
+	ZoneScoped;
+	TracyGpuZone("Sun Shadow Map");
+	MarchCoverStrip(m_SunMap, m_SunMapSlope, m_SunMapStart, m_SunMapTexel, m_SunMapReady, slope, 0, 0.5F, terrainChanged, changedArea);
+}
+
+glm::vec2 SceneLighting::WeatherFall() const {
+	switch (m_Settings.WeatherType) {
+		case 2:
+			// Snow: the flakes' fall speeds average 45 px/s, and the wind carries them at 0.6 of its speed.
+			return glm::vec2(m_Settings.Wind * 0.6F, 45.0F);
+		case 3:
+			// Ash: slower still, 24 px/s on average.
+			return glm::vec2(m_Settings.Wind * 0.6F, 24.0F);
+		default:
+			// Rain, and what the ground goes by when there's no weather or a dust storm (wetness and snow that are left).
+			return glm::vec2(m_Settings.Wind, 640.0F);
+	}
+}
+
+void SceneLighting::UpdateShelterMap(bool terrainChanged, const glm::ivec4& changedArea) {
+	glm::vec2 fall = WeatherFall();
+	// The rays come down the way the weather falls: x moves the other way to the wind for each pixel down, as the strip counts it.
+	float slope = -fall.x / fall.y;
+	bool falling = m_Settings.WeatherType >= 1 && m_Settings.WeatherType <= 3 && m_Settings.WeatherIntensity > 0.0F;
+	bool coverLeft = m_Settings.LivingWorld && (m_SnowCover > 0.01F || m_Wetness > 0.01F);
+	// Weather driven flatter than six across for one down is marched as before: the strip would be far wider than the scene for little gain.
+	if (!m_Settings.ShelterMask || !(falling || coverLeft) || std::abs(slope) > c_ShelterMaxSlope || m_WrapY || m_SceneWidth <= 0 || m_SceneHeight <= 0 || !m_OccupancyTexture.Texture) {
+		if (m_ShelterMap.Texture) {
+			m_ShelterMap.Destroy();
+		}
+		m_ShelterMapReady = false;
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Shelter Map");
+	// They stop at anything solid, water included (A), as the falling drops always have.
+	MarchCoverStrip(m_ShelterMap, m_ShelterMapSlope, m_ShelterMapStart, m_ShelterMapTexel, m_ShelterMapReady, slope, 3, 0.55F, terrainChanged, changedArea);
+}
+
+void SceneLighting::MarchCoverStrip(GLTarget& map, float& mapSlope, float& mapStart, float& mapTexel, bool& ready, float slope, int channel, float threshold, bool terrainChanged, const glm::ivec4& changedArea) {
 	float sceneWidth = static_cast<float>(m_SceneWidth);
 	float sceneHeight = static_cast<float>(m_SceneHeight);
 	// The rays that reach the scene: across its width on a wrapping scene (they repeat around it), and with the extra that comes in slanting from one side otherwise.
@@ -1182,15 +1229,15 @@ void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& ch
 		count = std::max(1, static_cast<int>(std::round(range / texel)));
 		texel = range / static_cast<float>(count);
 	}
-	bool remakeAll = !m_SunMapReady || std::abs(slope - m_SunMapSlope) * sceneHeight > 2.0F;
-	if (m_SunMap.Width != count || !m_SunMap.Framebuffer) {
-		m_SunMap.Create(count, 1, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR, m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	bool remakeAll = !ready || std::abs(slope - mapSlope) * sceneHeight > 2.0F;
+	if (map.Width != count || !map.Framebuffer) {
+		map.Create(count, 1, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR, m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 		remakeAll = true;
 	}
 	if (remakeAll) {
-		m_SunMapSlope = slope;
-		m_SunMapStart = start;
-		m_SunMapTexel = texel;
+		mapSlope = slope;
+		mapStart = start;
+		mapTexel = texel;
 	} else if (!terrainChanged) {
 		return;
 	}
@@ -1203,11 +1250,11 @@ void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& ch
 		for (int corner = 0; corner < 4; ++corner) {
 			float x = static_cast<float>(corner & 1 ? changedArea.z : changedArea.x);
 			float y = static_cast<float>(corner & 2 ? changedArea.w : changedArea.y);
-			lowest = std::min(lowest, x + m_SunMapSlope * y);
-			highest = std::max(highest, x + m_SunMapSlope * y);
+			lowest = std::min(lowest, x + mapSlope * y);
+			highest = std::max(highest, x + mapSlope * y);
 		}
-		firstTexel = static_cast<int>(std::floor((lowest - m_SunMapStart) / m_SunMapTexel)) - 1;
-		endTexel = static_cast<int>(std::ceil((highest - m_SunMapStart) / m_SunMapTexel)) + 2;
+		firstTexel = static_cast<int>(std::floor((lowest - mapStart) / mapTexel)) - 1;
+		endTexel = static_cast<int>(std::ceil((highest - mapStart) / mapTexel)) + 2;
 		if (m_WrapX && (firstTexel < 0 || endTexel > count)) {
 			// Across the seam of a wrapping scene the rays would be in two pieces: march them all.
 			firstTexel = 0;
@@ -1219,12 +1266,10 @@ void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& ch
 			return;
 		}
 	}
-	ZoneScoped;
-	TracyGpuZone("Sun Shadow Map");
-	m_SunMapReady = true;
+	ready = true;
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
-	glBindFramebuffer(GL_FRAMEBUFFER, m_SunMap.Framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, map.Framebuffer);
 	glViewport(0, 0, count, 1);
 	glEnable(GL_SCISSOR_TEST);
 	glScissor(firstTexel, 0, endTexel - firstTexel, 1);
@@ -1233,15 +1278,27 @@ void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& ch
 	m_SunShadowMapShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
 	m_SunShadowMapShader->SetVector2f("rteSceneSize", glm::vec2(sceneWidth, sceneHeight));
 	m_SunShadowMapShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
-	m_SunShadowMapShader->SetFloat("rteSlope", m_SunMapSlope);
-	m_SunShadowMapShader->SetFloat("rteStripStart", m_SunMapStart);
-	m_SunShadowMapShader->SetFloat("rteStripTexel", m_SunMapTexel);
+	m_SunShadowMapShader->SetFloat("rteSlope", mapSlope);
+	m_SunShadowMapShader->SetFloat("rteStripStart", mapStart);
+	m_SunShadowMapShader->SetFloat("rteStripTexel", mapTexel);
 	m_SunShadowMapShader->SetBool("rteWrapX", m_WrapX);
+	m_SunShadowMapShader->SetInt("rteCoverChannel", channel);
+	m_SunShadowMapShader->SetFloat("rteCoverThreshold", threshold);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	DrawFullscreen();
 	glBindVertexArray(0);
 	glDisable(GL_SCISSOR_TEST);
+}
+
+void SceneLighting::SetShelterUniforms(const Shader& shader, bool use, int unit) const {
+	shader.SetBool("rteShelterOn", use && m_ShelterMap.Texture);
+	shader.SetInt("rteShelterMap", unit);
+	shader.SetFloat("rteShelterSlope", m_ShelterMapSlope);
+	shader.SetFloat("rteShelterStart", m_ShelterMapStart);
+	shader.SetFloat("rteShelterTexel", m_ShelterMapTexel);
+	// Lines spread up to four pixels either way at 1.
+	shader.SetFloat("rteShelterSoftness", std::clamp(m_Settings.ShelterSoftness, 0.0F, 2.0F) * 4.0F);
 }
 
 void SceneLighting::UpdateWetMap(float seconds) {
@@ -1558,6 +1615,8 @@ void SceneLighting::Update() {
 	UpdateWetMap(frameSeconds);
 	logStages.Next("Light grid: sun shadow map");
 	UpdateSunShadowMap(terrainChanged, terrainChangedArea);
+	logStages.Next("Light grid: weather shelter map");
+	UpdateShelterMap(terrainChanged, terrainChangedArea);
 	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -2595,6 +2654,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PrecipitationShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
 		m_PrecipitationShader->SetInt("rteDynamicLight", 1);
 		m_PrecipitationShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
+		SetShelterUniforms(*m_PrecipitationShader, m_ShelterMapReady && m_Settings.WeatherType != 4, 3);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, m_ShelterMap.Texture);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);
@@ -2621,6 +2683,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			m_RainSplashShader->SetFloat("rteAmount", std::clamp(m_Settings.WeatherIntensity * m_Settings.RainSplashes * 0.45F, 0.0F, 1.0F));
 			m_RainSplashShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 			m_RainSplashShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
+			SetShelterUniforms(*m_RainSplashShader, m_ShelterMapReady, 3);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, splashDepth->GetTextureId());
 			glActiveTexture(GL_TEXTURE0);

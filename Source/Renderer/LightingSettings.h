@@ -261,6 +261,8 @@ namespace RTE {
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
 		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.
+		bool ShelterMask = true; //!< Where rain, snow and ash can't reach, from a shelter map of the scene made the way the weather falls: overhangs, roofs and caves keep drops, splashes, wetness and snow out right to the edge, however far up the shelter is. Off: each drop and each patch of ground marches up the light grid to look for shelter, as before, which gives up a few hundred pixels up.
+		float ShelterSoftness = 1.0F; //!< How soft the edge of a shelter is for drops and splashes, 0 (ruled) to 2 (spread up to eight pixels either way).
 		float RainSplashes = 1.0F; //!< How many little splashes rain makes where it lands on ground, water, roofs and units. 0 for none. Visual only.
 		float WeatherLight = 0.35F; //!< The least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it. 0 leaves it to the sky and lamps.
 		float TracerGlow = 0.8F; //!< How strongly tracers and their trails shine in their own color (and so bloom), 0 for none.
