@@ -820,15 +820,16 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards. The head room along the way says
 		// whether it's a walk, a crawl (slower), or no way through at all for this searcher.
 		// (The room only matters where the way is open: through ground, a digger makes its own.)
-		// (A sideways step into the air over a drop is the start of a fall too, and pays like the rest of it.)
+		// (A sideways step into the air over a drop is the start of a fall too, and pays like the rest of it: FallCost on the node stepped
+		// into, as the steps down pay. Without it, stepping off a ledge's side was the one way into a fall that skipped its first node's cost.)
 		if (node->Left && node->Left->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F);
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F) + FallCost(*node->Left);
 			adjCost.state = static_cast<void*>(node->Left);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->Right && node->Right->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F);
+			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
 		}
