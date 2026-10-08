@@ -690,8 +690,8 @@ end
 --   holds and watches toward the last enemy every other three seconds, by its place in line, while the other half moves (see GoToRoute).
 -- Not Unfair AI's business to be any different, and nothing for a unit a player controls. Called every tick by the AI's update.
 function SharedBehaviors.SquadTactics(AI, Owner)
-	AI.ClockTimer = AI.ClockTimer or Timer();
-	local now = AI.ClockTimer.StartSimTimeMS + AI.ClockTimer.ElapsedSimTimeMS;
+	-- One sim clock for every unit, since teammates compare their AIContactMS times with it (a Timer's start was in ticks and differed per unit).
+	local now = TimerMan.SimTimeMS;
 	local Target = AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target or nil;
 	if Target then
 		Owner:SetNumberValue("AITargetID", Target.UniqueID);
