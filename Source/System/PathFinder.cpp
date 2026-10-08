@@ -1770,14 +1770,20 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// in it, and with the rays cast at the node centres the only way along a flat beam was to hop up a node and drop back at every
 		// column, and a gentle slope was a wall. Cells without ground get a band just above the centre.
 		// (The band sits a few pixels up: a pixel over the surface read every bump of a bushy hillside as something to push through.)
+		// (Each end on its own: a node in the air beside a ledge goes from its centre to the ledge's surface, as the diagonals go to where a
+		// body stands. Both at the centres, as they were unless both had ground, a ledge whose top was in the upper part of its cell put the
+		// lower line's end inside the ledge, and a rung beside it had no step onto it: no route onto a plain ledge, depending on where the
+		// ledge's top fell in its cell.)
 		Vector upper(0.0F, -10.0F);
 		Vector lower(0.0F, -4.0F);
 		Vector here = node->Pos;
 		Vector there = node->Right->Pos;
 		float groundHere = SurfaceUnder(*node);
 		float groundThere = SurfaceUnder(*node->Right);
-		if (groundHere >= 0.0F && groundThere >= 0.0F) {
+		if (groundHere >= 0.0F) {
 			here.m_Y = groundHere;
+		}
+		if (groundThere >= 0.0F) {
 			there.m_Y = groundThere;
 		}
 		node->RightMaterial = getStrongerMaterial(StrongestMaterialAlongLine(here + upper, there + upper), StrongestMaterialAlongLine(here + lower, there + lower));
