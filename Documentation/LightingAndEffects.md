@@ -213,13 +213,13 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Pause AI** (top of the sandbox window, also in F6): every AI-run unit stands still and holds fire, so you can set up armies, bunkers and traps, then untick it to let them loose. Physics, fire and liquids carry on. Craft keep flying, units you control still move, and a banner shows while it's paused. A new game starts with the AI running. Lua: `SandboxPauseAI(true/false)`.
 - **Drop squad:** a squad arrives by dropship or rocket over the point you click, then the craft flies off.
 - **Command and Follow:** with Command, drag a box to select units, then click the ground to send them there or an enemy to attack it. Follow locks the camera onto a unit; "Follow the action" (World tab) keeps the camera on the closest fighting. Moving the camera yourself stops following.
-- **Auto battle (Orders tab):** give sides a faction and a budget. Each buys waves of its faction's units and drops them in to attack until one side is left, and the winner is announced. Lua: `SandboxAutoBattleSide(side, faction, budget)`, `SandboxStartAutoBattle()`.
+- **Auto battle (Orders tab):** give sides a faction and a budget. Each buys waves of its faction's units and drops them in to attack until one side is left, and the winner is announced. Lua: `SandboxAutoBattleSide(side, faction, budget)`, `SandboxStartAutoBattle()`. Call `SandboxAutoBattleRandom(true, favouritesOnly)` first for waves of random units, as the window's "Random units" box does.
 - **Take control:** click a unit to play it yourself. F7 (or the unit dying) puts you back in the god view.
 - **Paint and Boom:** fire, water, lava, acid, oil, smoke and toxic gas; dig, or add earth, sand, grass, wood or concrete; grenade blasts, big bombs, napalm and lightning strikes.
 - **World tab:** weather, wind, time of day, slow motion, a free camera toggle, and putting out all fire.
 - **In other games:** F7 opens the same tools as a debug panel.
 - **Lua:**
-  - `SandboxDo(tool, position, side, order, count, presetName)` uses any tool from a script. For example, `SandboxDo("Units", pos, 1, 1, 4, "Soldier Light")` spawns four Red soldiers told to attack.
+  - `SandboxDo(tool, position, side, order, count, presetName)` uses any tool from a script. For example, `SandboxDo("Units", pos, 1, 1, 4, "Soldier Light")` spawns four Red soldiers told to attack. A "Drop squad" with the preset name `"Random units"` or `"Random favourites"` drops random units.
   - `SandboxCountUnits(side)` counts a side's units, and `SandboxBuildMode(true/false)` opens or closes the build menu.
 
 **Modern HUD** (`ModernHUD`, in Video settings and F6) is drawn crisply at window resolution on top of the classic HUD. It is off by default. It adds:

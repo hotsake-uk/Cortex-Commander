@@ -83,7 +83,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		g_CameraMan.SetScroll(position, 0);
 		return true;
 	}
-	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
+	if (stroke.Kind == Tool::Drop && (presetName == "Random units" || presetName == "Random favourites")) {
+		// A drop of random units, as the window's "Random units" box: each one picked from every faction's units, or from the favourites.
+		stroke.Random = true;
+		stroke.FavouritesOnly = presetName == "Random favourites";
+	} else if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
 		if (found == list.end()) {
@@ -127,13 +131,18 @@ void Sandbox::SetAIPaused(bool paused) {
 	Controller::SetAIPaused(paused);
 }
 
+void Sandbox::SetAutoBattleRandom(bool random, bool favouritesOnly) {
+	s_ScriptAutoRandom = random;
+	s_ScriptAutoFavourites = random && favouritesOnly;
+}
+
 void Sandbox::StartAutoBattle() {
 	if (!InGame()) {
 		return;
 	}
-	// (A script's battle is between the factions it set up for each side.)
-	s_AutoRandom = false;
-	s_AutoFavourites = false;
+	// A script's battle is between the factions it set up for each side, unless it asked for random units (SandboxAutoBattleRandom).
+	s_AutoRandom = s_ScriptAutoRandom;
+	s_AutoFavourites = s_ScriptAutoFavourites;
 	BeginAutoBattle(g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F), static_cast<float>(g_FrameMan.GetPlayerScreenWidth()));
 }
 
@@ -1162,6 +1171,9 @@ void Sandbox::OnActivityStarted() {
 	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
+	// A script's choice of random units for its auto battle is for that game only.
+	s_ScriptAutoRandom = false;
+	s_ScriptAutoFavourites = false;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
 	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
 	s_Possessed = nullptr;
