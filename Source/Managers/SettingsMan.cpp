@@ -132,6 +132,7 @@ void SettingsMan::Clear() {
 	m_WorldSimOverlay = 0;
 	m_SandboxStrokeLog = false;
 	m_SandboxSpotReach = false;
+	m_SandboxGroupBadges = true;
 	m_LightsBySource = false;
 	m_SandboxCharacterState = false;
 	m_SandboxAutoBattle = false;
@@ -508,6 +509,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WorldSimOverlay", { int which = 0; reader >> which; SetWorldSimOverlay(which); });
 	MatchProperty("SandboxStrokeLog", { reader >> m_SandboxStrokeLog; });
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
+	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
 	MatchProperty("SandboxCharacterState", { reader >> m_SandboxCharacterState; });
 	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
@@ -940,6 +942,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
 	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
 	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
+	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
 	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
 	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);

@@ -558,18 +558,29 @@ void Sandbox::DrawGUI() {
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
 		QueueSimChange(Tool::UndoTerrain);
 	}
-	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back; Ctrl+A takes the whole side. With the
-	// command tool in hand, wherever the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as
-	// these were, they did nothing with it resting on the window.)
-	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput) {
+	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
+	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
+	// the keys. (Only while the pointer was over the world, as these were, they did nothing with it resting on the window.) Not while you
+	// play a unit: those keys are its own then (its weapons, and Ctrl+A as A).
+	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !s_Possessed) {
+		static int lastNumber = -1;
+		static double lastNumberTime = -10.0;
 		for (int number = 0; number < 10; ++number) {
 			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
 				if (io.KeyCtrl) {
 					s_Groups[number] = s_Selected;
 				} else if (!s_Groups[number].empty()) {
 					s_Selected = s_Groups[number];
+					if (number == lastNumber && ImGui::GetTime() - lastNumberTime < 0.4) {
+						LookAtUnits(s_Selected);
+					}
+					lastNumber = number;
+					lastNumberTime = ImGui::GetTime();
 				}
 			}
+		}
+		if (!io.KeyCtrl && !io.KeyAlt) {
+			CommandHotkeys();
 		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
 			// Everyone on the selection's side.
@@ -1065,6 +1076,11 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Button("Put out all fire")) {
 					TerrainFire::Clear();
 				}
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Keys", nullptr, TestTab("Keys"))) {
+				s_CurrentTab = "Keys";
+				KeysPage();
 				ImGui::EndTabItem();
 			}
 			ImGui::EndTabBar();

@@ -689,6 +689,193 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("How units sent somewhere together stand there: %s\nAlt+drag with a move or attack-move faces them the way dragged; column and wedge then line up back from the front.", c_FormationTips[current]);
 	}
 
+	/// Puts the free camera over the middle of some units (RC-6: a control group's number pressed twice, or the idle-unit keys).
+	void LookAtUnits(const std::vector<UnitRef>& units) {
+		Vector sum;
+		const Actor* first = nullptr;
+		int count = 0;
+		for (const UnitRef& ref: units) {
+			if (const Actor* unit = GetRef(ref)) {
+				first = first ? first : unit;
+				// (Measured from the first, so a group across the scene's seam is looked at where it is, not halfway round the scene.)
+				sum += g_SceneMan.ShortestDistance(first->GetPos(), unit->GetPos(), g_SceneMan.SceneWrapsX());
+				++count;
+			}
+		}
+		if (!first) {
+			return;
+		}
+		Vector middle = first->GetPos() + sum / static_cast<float>(count);
+		g_SceneMan.WrapPosition(middle);
+		s_FreeCamera = true;
+		s_FollowTarget = UnitRef();
+		s_FollowAction = false;
+		s_CameraCenter = middle;
+	}
+
+	/// Whether a unit is idle (RC-6): on no order, going nowhere, with no plan or order still to be given.
+	bool IsIdle(Actor* unit) {
+		if (!IsSelectable(unit) || unit->IsPlayerControlled() || unit->GetWaypointsSize() > 0 || s_Plans.count(unit->GetUniqueID())) {
+			return false;
+		}
+		if (std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); })) {
+			return false;
+		}
+		int mode = unit->GetAIMode();
+		return (mode == Actor::AIMODE_SENTRY || mode == Actor::AIMODE_NONE) && !unit->GetOrderHasPost() && !unit->GetOrderHold();
+	}
+
+	/// The next (or previous) idle unit of the selection's side after the one last gone to, by unique ID, selected and looked at; with Shift
+	/// added to the selection instead.
+	void CycleIdle(bool forward, bool add) {
+		int team = SelectionTeam();
+		std::vector<Actor*> idle;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (actor->GetTeam() == team && IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && IsIdle(actor)) {
+				idle.push_back(actor);
+			}
+		}
+		if (idle.empty()) {
+			MarkOrder(MouseScenePosition(), IM_COL32(150, 150, 140, 255));
+			return;
+		}
+		std::sort(idle.begin(), idle.end(), [](const Actor* a, const Actor* b) { return a->GetUniqueID() < b->GetUniqueID(); });
+		Actor* next = nullptr;
+		if (forward) {
+			auto after = std::find_if(idle.begin(), idle.end(), [](const Actor* actor) { return static_cast<long>(actor->GetUniqueID()) > s_LastIdleID; });
+			next = after != idle.end() ? *after : idle.front();
+		} else {
+			auto before = std::find_if(idle.rbegin(), idle.rend(), [](const Actor* actor) { return static_cast<long>(actor->GetUniqueID()) < s_LastIdleID; });
+			next = before != idle.rend() ? *before : idle.back();
+		}
+		s_LastIdleID = static_cast<long>(next->GetUniqueID());
+		if (!add) {
+			s_Selected.clear();
+		}
+		if (std::none_of(s_Selected.begin(), s_Selected.end(), [next](const UnitRef& ref) { return RefersTo(ref, next); })) {
+			s_Selected.push_back(MakeRef(next));
+		}
+		LookAtUnits({MakeRef(next)});
+	}
+
+	/// Every unit in the view of the kinds already selected (RC-6), as a double click on one does for its kind.
+	void SelectKindsInView() {
+		std::unordered_set<std::string> kinds;
+		int team = SelectionTeam();
+		for (const UnitRef& ref: s_Selected) {
+			if (const Actor* unit = GetRef(ref)) {
+				kinds.insert(unit->GetPresetName());
+			}
+		}
+		if (kinds.empty()) {
+			return;
+		}
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float scale = ScenePixelsPerWindowPixel();
+		Vector corner = g_CameraMan.GetOffset(0);
+		for (Actor* actor: SandboxAccess::Actors()) {
+			Vector onScreen = g_SceneMan.ShortestDistance(corner, actor->GetPos(), g_SceneMan.SceneWrapsX());
+			if (IsSelectable(actor) && actor->GetTeam() == team && kinds.count(actor->GetPresetName()) && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= view.w * scale && onScreen.m_Y <= view.h * scale &&
+			    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
+				s_Selected.push_back(MakeRef(actor));
+			}
+		}
+	}
+
+	/// The order keys of the command tool (RC-6), each listed on the Keys page. None of them is WASD or the arrows, which move the view, and
+	/// none is read while you play a unit or with Ctrl or Alt held (the caller sees to that).
+	void CommandHotkeys() {
+		const ImGuiIO& io = ImGui::GetIO();
+		auto pressed = [](ImGuiKey key) { return ImGui::IsKeyPressed(key, false); };
+		auto mode = [](CommandMode to) {
+			s_CommandMode = to;
+			if (to == CommandMode::Patrol) {
+				s_PatrolDraft.clear();
+			}
+		};
+		if (pressed(ImGuiKey_M)) {
+			mode(CommandMode::Move);
+		} else if (pressed(ImGuiKey_T)) {
+			mode(CommandMode::Attack);
+		} else if (pressed(ImGuiKey_F)) {
+			mode(CommandMode::AttackMove);
+		} else if (pressed(ImGuiKey_G)) {
+			mode(CommandMode::Guard);
+		} else if (pressed(ImGuiKey_B)) {
+			mode(CommandMode::DefendAt);
+		} else if (pressed(ImGuiKey_R)) {
+			mode(CommandMode::Patrol);
+		}
+		if (!s_Selected.empty() && (pressed(ImGuiKey_H) || pressed(ImGuiKey_C))) {
+			// Defend where they stand (with Shift, the last step of their plans), or cancel their orders: as the ring's slices.
+			Stroke stroke;
+			stroke.Kind = Tool::OrderSelected;
+			stroke.Position = MouseScenePosition();
+			stroke.Count = 100 + (ImGui::IsKeyPressed(ImGuiKey_H, false) ? (io.KeyShift ? 13 : 3) : 2);
+			s_Queue.push_back(stroke);
+		}
+		if (!s_Selected.empty() && pressed(ImGuiKey_V)) {
+			// The next weapons rule (from mixed, the first).
+			QueueRule(true, (std::max(SelectedRule(true), -1) + 1) % static_cast<int>(Actor::WEAPONRULECOUNT));
+		}
+		if (!s_Selected.empty() && pressed(ImGuiKey_Y)) {
+			QueueRule(false, (std::max(SelectedRule(false), -1) + 1) % static_cast<int>(Actor::MOVEMENTRULECOUNT));
+		}
+		if (pressed(ImGuiKey_L)) {
+			s_Formation = static_cast<Formation>((static_cast<int>(s_Formation) + 1) % static_cast<int>(Formation::Count));
+		}
+		if (pressed(ImGuiKey_K)) {
+			s_KeepPace = !s_KeepPace;
+		}
+		if (pressed(ImGuiKey_Period)) {
+			CycleIdle(true, io.KeyShift);
+		} else if (pressed(ImGuiKey_Comma)) {
+			CycleIdle(false, io.KeyShift);
+		}
+		if (pressed(ImGuiKey_Q)) {
+			SelectKindsInView();
+		}
+	}
+
+	/// The Keys page of the sandbox window (RC-6): every key the sandbox's tools answer to, and the group badges.
+	void KeysPage() {
+		static ImGuiTextFilter filter;
+		filter.Draw("Search##keys", ImGui::GetContentRegionAvail().x * 0.6F);
+		struct Key {
+			const char* Keys;
+			const char* What;
+		};
+		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"Ctrl+Z", "Undo the last paint"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"},
+		                              {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"},
+		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		auto table = [](const char* id, const Key* keys, size_t count) {
+			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+				for (size_t i = 0; i < count; ++i) {
+					if (!filter.PassFilter(keys[i].Keys) && !filter.PassFilter(keys[i].What)) {
+						continue;
+					}
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::TextUnformatted(keys[i].Keys);
+					ImGui::TableNextColumn();
+					ImGui::TextWrapped("%s", keys[i].What);
+				}
+				ImGui::EndTable();
+			}
+		};
+		ImGui::SeparatorText("View");
+		table("##keysView", camera, std::size(camera));
+		ImGui::SeparatorText("Command tool");
+		ImGui::TextDisabled("Not while you play a unit: its keys are its own then.");
+		table("##keysCommand", command, std::size(command));
+		bool badges = g_SettingsMan.ShowSandboxGroupBadges();
+		if (ToolUI::Checkbox("Group numbers over units", &badges)) {
+			g_SettingsMan.SetShowSandboxGroupBadges(badges);
+		}
+		ImGui::SetItemTooltip("A unit kept in a control group (Ctrl+number) shows the group's number by its feet.");
+	}
+
 	void DrawCursor() {
 		ImGuiIO& io = ImGui::GetIO();
 		const ToolInfo& tool = CurrentTool();
@@ -1421,6 +1608,32 @@ namespace SandboxDetail {
 			drawList->AddRectFilled(ImVec2(corner.x - 2.0F, corner.y - 1.0F), ImVec2(corner.x + size.x + 2.0F, corner.y + size.y + 1.0F), IM_COL32(0, 0, 0, 150), 2.0F);
 			drawList->AddText(corner, unit->GetWeaponRule() == Actor::WEAPONS_HOLD ? IM_COL32(170, 170, 160, 255) : IM_COL32(242, 182, 61, 255), tag.c_str());
 		}
+		// The control groups a unit is in (RC-6), as small numbers by its feet, in view only and with the command tool in hand.
+		if (g_SettingsMan.ShowSandboxGroupBadges() && CurrentTool().Kind == Tool::Command) {
+			std::unordered_map<long, std::string> badges;
+			for (int number = 1; number <= 10; ++number) {
+				for (const UnitRef& ref: s_Groups[number % 10]) {
+					if (GetRef(ref)) {
+						std::string& badge = badges[ref.ID];
+						badge += badge.empty() ? std::to_string(number % 10) : "," + std::to_string(number % 10);
+					}
+				}
+			}
+			GameViewRect view = g_WindowMan.GetGameViewRect();
+			for (const Actor* unit: SandboxAccess::Actors()) {
+				auto badge = badges.find(static_cast<long>(unit->GetUniqueID()));
+				if (badge == badges.end()) {
+					continue;
+				}
+				ImVec2 at = ToScreen(unit->GetPos() + Vector(unit->GetRadius() * 0.6F, unit->GetRadius() * 0.5F));
+				if (at.x < view.x || at.y < view.y || at.x > view.x + view.w || at.y > view.y + view.h) {
+					continue;
+				}
+				ImVec2 size = ImGui::CalcTextSize(badge->second.c_str());
+				drawList->AddRectFilled(ImVec2(at.x - 2.0F, at.y - 1.0F), ImVec2(at.x + size.x + 2.0F, at.y + size.y + 1.0F), IM_COL32(0, 0, 0, 160), 2.0F);
+				drawList->AddText(at, c_SideColors[std::clamp(unit->GetTeam(), 0, c_Sides - 1)], badge->second.c_str());
+			}
+		}
 		// (No line from each unit to where it is going: the game draws the route itself, as Routes on the command row has it.)
 		// The marks of orders just given, fading.
 		float seconds = ImGui::GetIO().DeltaTime;
@@ -1649,6 +1862,9 @@ namespace SandboxDetail {
 					s_CommandMode = static_cast<CommandMode>(current);
 				}
 				ImGui::PopStyleColor();
+				// (Its key, RC-6; all of them are on the Keys page.)
+				static const char* keys[] = {"M", "T", "G", "F", "B", "R"};
+				ImGui::SetItemTooltip("Key: %s", keys[std::min<size_t>(static_cast<size_t>(mode), std::size(keys) - 1)]);
 			}
 			// The patrol route being clicked out (RC-4): started as a loop or back and forth once it has two points.
 			if (s_CommandMode == CommandMode::Patrol) {
