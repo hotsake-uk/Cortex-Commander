@@ -1883,7 +1883,16 @@ int AHuman::MoveAlongRoute() {
 		// the walk's speed let die before the jet is lit, as a player does. Taken off mid-stride, the step's speed went into the flight, often
 		// the wrong way, and the pilot spent the jump fighting it: a unit took a step, threw itself off the ledge, and did it again.
 		bool hop = levelHop && edgeAhead;
-		if (canTakeOff && !hop && (std::abs(m_Vel.m_X) > 0.6F || m_Status != STABLE)) {
+		// The longer the flight, the longer it settles first, as a player lines up a long jump: standing still (sideways and up and down)
+		// and upright for up to most of a second, by how far the landing is past three bodies off. A small error at take-off is a big one
+		// at the end of a long flight, and long flights were the ones missed and flown again.
+		float flightLength = toLanding.GetMagnitude();
+		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F);
+		bool still = std::abs(m_Vel.m_X) <= (settleMS > 0.0F ? 0.3F : 0.6F) && (settleMS <= 0.0F || (std::abs(m_Vel.m_Y) <= 0.5F && std::abs(GetRotAngle()) < 0.15F));
+		if (!still || m_Status != STABLE) {
+			mover.steadyTimer.Reset();
+		}
+		if (canTakeOff && !hop && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)))) {
 			mover.progressTimer.Reset();
 			mover.hopTimer.Reset();
 			if (mover.traceTimer.IsPastSimMS(1000)) {
