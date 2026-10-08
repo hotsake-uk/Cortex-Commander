@@ -26,6 +26,7 @@ foreach ($run in 1..$Repeat) {
 			"Tower" { $env:CCCP_BUNKER_TOWER = "1"; & "$rt\AIBunker.ps1" -Scenario AIBunker -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)'; Remove-Item Env:\CCCP_BUNKER_TOWER }
 			"AIBywater" { & "$rt\AIBunker.ps1" -Scenario AIBywater -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'AIBUNKER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 			"Recover" { & "$rt\AIBunker.ps1" -Scenario AIRecover -Wait 30 -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'RECOVER (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
+			"Move" { & "$rt\AIBunker.ps1" -Scenario AIMoveGym -Wait 45 -Speed $Speed | Out-Null; $log = "$rt\Output\aibunker_1.txt"; $pattern = 'MOVEGYM (.+?): (arrived in ([\d\.]+) s|GAVE UP|died)' }
 			"Flight" {
 				# Both batches of the flight gym (FlightGym.lua), one game each, their logs joined.
 				$log = "$rt\Output\flight_joined.txt"

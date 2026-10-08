@@ -226,6 +226,7 @@ $sandboxHemslock = $sandbox.Clone(); $sandboxHemslock.DefaultSceneName = "Hemslo
 Write-Scenario "AIOrders" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test AI Bunker", "Render Test Order") # Run with CCCP_BUNKER_ONLY=99; see OrderTest.lua.
 $sandboxSpaceport = $sandbox.Clone(); $sandboxSpaceport.DefaultSceneName = "Neverending Spaceport"; Write-Scenario "OrdersSpaceport" ($sandboxSpaceport + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1 }) @("Render Test Order") # With CCCP_ORDER_PROBE; see OrderTest.lua.
 Write-Scenario "AIRecover" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test Recover Gym") # See RecoverGym.lua.
+Write-Scenario "AIMoveGym" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test Move Gym") # See MoveGym.lua (LM-12).
 Write-Scenario "AIFlight" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; ShowAIPaths = 1; TerrainCollapse = 0 }) @("Render Test Flight Gym") # Concrete pads in the sky; see FlightGym.lua.
 Write-Scenario "AICombat" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0; TerrainCollapse = 0 }) @("Render Test AI Combat")
 $sandboxOutpost = $sandbox.Clone(); $sandboxOutpost.DefaultSceneName = "Zekarra Mining Outpost"; Write-Scenario "AIMap" ($sandboxOutpost + @{ TimeOfDay = 12; WeatherType = 0; DayLengthMinutes = 0 }) @("Render Test AI Map")
