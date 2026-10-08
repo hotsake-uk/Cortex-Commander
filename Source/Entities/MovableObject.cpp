@@ -1065,7 +1065,7 @@ void MovableObject::Update() {
 			spot.Heat -= cooling;
 			if (spot.Heat > 0.03F) {
 				glm::vec3 color = glm::mix(glm::vec3(255.0F, 45.0F, 8.0F), glm::vec3(255.0F, 190.0F, 80.0F), std::clamp(spot.Heat, 0.0F, 1.0F));
-				g_PostProcessMan.RegisterLight(m_Pos + RotateOffset(spot.Offset), color, spot.Radius * 2.4F + 5.0F, std::min(spot.Heat * 2.2F, 2.4F));
+				g_PostProcessMan.RegisterLight(m_Pos + RotateOffset(spot.Offset), color, spot.Radius * 2.4F + 5.0F, std::min(spot.Heat * 2.2F, 2.4F), LightSource::Hot);
 			}
 		}
 		m_HotSpots.erase(std::remove_if(m_HotSpots.begin(), m_HotSpots.end(), [](const HotSpot& spot) { return spot.Heat <= 0.03F; }), m_HotSpots.end());
@@ -1085,9 +1085,9 @@ void MovableObject::Update() {
 		if (m_LightConeAngle > 0.0F) {
 			// A beam pointing the way this faces, turned by the cone direction.
 			Vector direction = Vector(1.0F, 0.0F).GetRadRotatedCopy(-m_LightConeDirection * c_PI / 180.0F).GetXFlipped(IsHFlipped()) * GetRotMatrix();
-			g_PostProcessMan.RegisterConeLight(m_Pos + lightOffset, direction, m_LightConeAngle, lightColor, m_LightRadius, m_LightIntensity * flicker);
+			g_PostProcessMan.RegisterConeLight(m_Pos + lightOffset, direction, m_LightConeAngle, lightColor, m_LightRadius, m_LightIntensity * flicker, LightSource::Objects);
 		} else {
-			g_PostProcessMan.RegisterLight(m_Pos + lightOffset, lightColor, m_LightRadius, m_LightIntensity * flicker);
+			g_PostProcessMan.RegisterLight(m_Pos + lightOffset, lightColor, m_LightRadius, m_LightIntensity * flicker, LightSource::Objects);
 		}
 	}
 }

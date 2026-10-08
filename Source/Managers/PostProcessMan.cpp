@@ -135,17 +135,19 @@ void PostProcessMan::UpdatePalette() {
 	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 }
 
-void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity) {
+void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source) {
 	SceneLight light;
 	if (MakeSceneLight(pos, color, radius, intensity, light)) {
+		light.m_Source = source;
 		std::scoped_lock lock(m_SceneLightsMutex);
 		m_SceneLights.push_back(light);
 	}
 }
 
-void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity) {
+void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity, LightSource source) {
 	SceneLight light;
 	if (MakeSceneLight(pos, color, radius, intensity, light)) {
+		light.m_Source = source;
 		glm::vec2 dir(direction.m_X, direction.m_Y);
 		float length = glm::length(dir);
 		light.m_Direction = length > 0.0001F ? dir / length : glm::vec2(1.0F, 0.0F);
@@ -181,7 +183,7 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 				}
 				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
 				if (relativePos.m_X + light.m_Radius >= 0 && relativePos.m_Y + light.m_Radius >= 0 && relativePos.m_X - light.m_Radius <= boxWidth && relativePos.m_Y - light.m_Radius <= boxHeight) {
-					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos});
+					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source});
 				}
 			}
 		}
