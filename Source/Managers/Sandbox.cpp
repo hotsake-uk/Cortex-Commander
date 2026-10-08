@@ -1198,6 +1198,8 @@ void Sandbox::OnActivityStarted() {
 	// told by the activity's address changing, in two places, which a new game allocated where the last one was would not have changed.)
 	Controller::SetAIPaused(false);
 	Colony::Clear();
+	// The bar is up at the start of every game, even if U put it away in the last one.
+	s_BarShown = true;
 	// A new game: nothing is left pouring or on its way in from the last one.
 	s_WaterSpawners.clear();
 	s_Incoming.clear();

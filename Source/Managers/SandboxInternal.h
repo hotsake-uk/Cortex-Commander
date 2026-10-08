@@ -1139,7 +1139,7 @@ namespace SandboxDetail {
 
 	inline std::vector<Pin> s_Pins;
 
-	inline bool s_BarShown = true; //!< Whether the bar along the bottom is up (U hides and shows it); up at every start.
+	inline bool s_BarShown = true; //!< Whether the bar along the bottom is up (U hides and shows it); up at the start of every game.
 
 	/// Things marked as favourites (Ctrl+click on a tile): a star on the tile, and a filter to list only them.
 	inline std::vector<Pin> s_Favourites;
