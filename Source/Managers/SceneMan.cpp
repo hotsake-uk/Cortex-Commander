@@ -2604,7 +2604,8 @@ void SceneMan::AddTerrainLight(const Vector& pos, float red, float green, float 
 		light.m_Color.SetRGB(static_cast<int>(red), static_cast<int>(green), static_cast<int>(blue));
 		light.m_Radius = radius;
 		light.m_Intensity = intensity;
-		terrain->AddLight(light);
+		// Lua calls this, possibly from ThreadedUpdate, so the light is added on the main thread's next light update.
+		terrain->QueueLight(light);
 	}
 }
 
