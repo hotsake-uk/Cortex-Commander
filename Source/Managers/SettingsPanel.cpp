@@ -207,7 +207,10 @@ void DebugMan::SettingsGUI() {
 		{
 			// Every Weather preset: the built-in four, then the others (Base.rte's own and mods'), unless those are turned off.
 			std::string weatherItems = Weather::GetComboItems(settings.CustomWeather);
-			Combo("Precipitation", &settings.WeatherType, weatherItems.c_str());
+			if (Combo("Precipitation", &settings.WeatherType, weatherItems.c_str())) {
+				// A pick made here wins over a saved custom weather still waiting for its preset to load.
+				settings.WeatherName.clear();
+			}
 		}
 		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
@@ -240,7 +243,7 @@ void DebugMan::SettingsGUI() {
 		if (Scene* scene = g_SceneMan.GetScene(); scene && Plain()) {
 			ImGui::SeparatorText("This scene's own time and weather");
 			const Scene::Atmosphere& own = scene->GetAtmosphere();
-			if (own.TimeOfDay >= 0.0F || own.WeatherType >= 0) {
+			if (own.TimeOfDay >= 0.0F || own.WeatherType >= 0 || !own.WeatherName.empty()) {
 				std::vector<std::string> weatherNames = Weather::GetSlotNames();
 				std::string weatherName = !own.WeatherName.empty() ? own.WeatherName : (own.WeatherType >= 0 && own.WeatherType < static_cast<int>(weatherNames.size()) ? weatherNames[own.WeatherType] : "default weather");
 				ImGui::Text("Set: %.1f h, %s", own.TimeOfDay, weatherName.c_str());

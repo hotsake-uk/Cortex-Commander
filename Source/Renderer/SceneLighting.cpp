@@ -1002,6 +1002,10 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	{
 		const Weather* weather = CurrentWeather();
 		glm::vec2 fall = (weather && weather->GetParams().SnowCover > 0.0F) ? weather->GetMeanFall(m_Settings.Wind) : glm::vec2(m_Settings.Wind, 640.0F);
+		// Cover from rising or hovering weather has no way down to slant along, so it settles as plain falling weather would.
+		if (fall.y <= 0.0F) {
+			fall = glm::vec2(m_Settings.Wind, 640.0F);
+		}
 		fall.x = std::clamp(fall.x, -fall.y * 2.0F, fall.y * 2.0F);
 		m_TerrainShader->SetVector2f("rteWeatherFall", glm::normalize(fall));
 		// The shelter map is made for the falling weather; the ground uses it when it was made for the way the ground's cover goes by (as close as the map is kept),
