@@ -379,6 +379,7 @@ void Scene::Clear() {
 	m_SelectedAssemblies.clear();
 	m_AssembliesCounts.clear();
 	m_pPreviewBitmap = 0;
+	m_PreviewBitmapLoadTried = false;
 	m_MetasceneParent.clear();
 	m_IsMetagameInternal = false;
 	m_IsSavedGameInternal = false;
@@ -458,6 +459,9 @@ int Scene::Create(const Scene& reference) {
 
 		// Copy!
 		blit(pCopyFrom, m_pPreviewBitmap, 0, 0, 0, 0, pCopyFrom->w, pCopyFrom->h);
+	} else {
+		// Not decoded yet: this copy decodes its own from the same file when it's first asked for.
+		m_PreviewBitmapFile = reference.m_PreviewBitmapFile;
 	}
 
 	m_MetasceneParent = reference.m_MetasceneParent;
@@ -1009,7 +1013,10 @@ int Scene::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("TotalInvestment", { reader >> m_TotalInvestment; });
 	MatchProperty("PreviewBitmapFile",
 	              reader >> m_PreviewBitmapFile;
-	              m_pPreviewBitmap = m_PreviewBitmapFile.GetAsBitmap(COLORCONV_NONE, false););
+	              // Decoded when first shown (see GetPreviewBitmap).
+	              if (m_pPreviewBitmap) { destroy_bitmap(m_pPreviewBitmap); }
+	              m_pPreviewBitmap = nullptr;
+	              m_PreviewBitmapLoadTried = false;);
 	MatchProperty("Terrain",
 	              delete m_pTerrain;
 	              m_pTerrain = new SLTerrain();
@@ -1475,6 +1482,14 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 		}
 	}
 	writer.ObjectEnd();
+}
+
+BITMAP* Scene::GetPreviewBitmap() const {
+	if (!m_pPreviewBitmap && !m_PreviewBitmapLoadTried && !m_PreviewBitmapFile.GetDataPath().empty()) {
+		m_PreviewBitmapLoadTried = true;
+		m_pPreviewBitmap = const_cast<ContentFile&>(m_PreviewBitmapFile).GetAsBitmap(COLORCONV_NONE, false);
+	}
+	return m_pPreviewBitmap;
 }
 
 void Scene::Destroy(bool notInherited) {
