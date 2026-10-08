@@ -519,9 +519,9 @@ void DebugMan::SettingsGUI() {
 			}
 		}
 		Slider("Embers", &settings.Embers, 0.0F, 3.0F);
-		Check("Flames on burning ground", &settings.FireShader);
-		Tip("Burning ground is drawn as flames: tongues that lick and flicker, a darker core at the base and embers lifting off the tips, grouped along the fire front. Off: a flickering dot and a short tongue per burning pixel, as before.");
-		if (settings.FireShader) {
+		Combo("Fire style", &settings.FireStyle, "Pixel and shader\0Pixel only\0Shader only\0");
+		Tip("How all fire is drawn, on burning ground and in the air. Pixel: a flickering dot and short tongue per burning pixel, and the drawn flame sprites, as before. Shader: flames with shape and motion, a darker core at the base and embers lifting off the tips, grouped along the fire front. Pixel and shader: the shader's flames over the pixel fire.");
+		if (settings.FireStyle != LightingSettings::FirePixel) {
 			Slider("Flame height", &settings.FireFlameSize, 0.2F, 3.0F);
 			Slider("Flame brightness", &settings.FireFlameBrightness, 0.2F, 2.0F);
 		}
