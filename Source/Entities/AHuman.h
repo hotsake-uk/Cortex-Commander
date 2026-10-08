@@ -902,6 +902,7 @@ namespace RTE {
 			Timer remedyTimer; //!< Since it began.
 			Vector remedySpot; //!< Where the unit was stuck when it began.
 			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
+			bool swimming = false; //!< In liquid with the body under (LM-4), since the follower last looked: for the re-route on falling in.
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
