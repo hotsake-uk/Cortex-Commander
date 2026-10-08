@@ -704,6 +704,16 @@ namespace RTE {
 		bool IsSandboxSelected() const { return m_SandboxSelected; }
 		void SetSandboxSelected(bool selected) { m_SandboxSelected = selected; }
 
+		/// Whether the debug overlays and AI tracing look at this unit: it was pinned for inspection (the inspect key, or DebugInspected from Lua), it's selected in the sandbox, or a player is controlling it.
+		/// This, not the AITrace number value, is what decides it now; AITrace still counts, for the gym scripts that set it.
+		bool IsDebugInspected() const { return m_DebugInspected || m_SandboxSelected || NumberValueExists("AITrace") || IsPlayerControlled(); }
+
+		/// Whether this unit was pinned for inspection, by the inspect key or from Lua (Lua's DebugInspected; IsInspected reads IsDebugInspected).
+		bool IsDebugPinned() const { return m_DebugInspected; }
+
+		/// Pins or unpins this unit for inspection by the debug overlays and AI tracing.
+		void SetDebugInspected(bool inspected) { m_DebugInspected = inspected; }
+
 		/// Destroys this MOSRotating and creates its specified Gibs in its place with appropriate velocities.
 		/// Any Attachables are removed and also given appropriate velocities.
 		/// @param impactImpulse The impulse (kg * m/s) of the impact causing the gibbing to happen.
@@ -965,7 +975,7 @@ namespace RTE {
 		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long) its team.
 		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds);
 		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): with the game
-		/// launched with CCCP_AI_LOG set, every unit when it is "all", else the units given the AITrace value (the gyms' runners).
+		/// launched with CCCP_AI_LOG set, every unit when it is "all", else the units being inspected (IsDebugInspected: pinned, selected in the sandbox, or given the AITrace value as the gyms' runners are).
 		/// @return Whether traced.
 		bool IsAITraced() const;
 
@@ -1145,6 +1155,7 @@ namespace RTE {
 		bool m_DrawWaypoints;
 		static int s_ShowAIPaths; //!< How the paths of units moving under AI are drawn: 0 never, 1 always, 2 for the units selected in the sandbox.
 		bool m_SandboxSelected = false; //!< Selected in the sandbox: carries the selection arrow, and its path when paths are shown for the selection.
+		bool m_DebugInspected = false; //!< Pinned for inspection by the debug overlays and AI tracing (see IsDebugInspected).
 		// Absolute target to move to on the scene; this is usually the point at the front of the movepath list
 		Vector m_MoveTarget;
 		// The MO we're currently following, if any. If still valid, this' position will update the MoveTarget each UpdateAI.

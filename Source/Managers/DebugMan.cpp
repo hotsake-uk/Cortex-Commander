@@ -12,6 +12,7 @@
 #include "RenderBatch.h"
 #include "RenderMan.h"
 #include "MovableMan.h"
+#include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "FrameMan.h"
 #include "SceneMan.h"
@@ -283,6 +284,23 @@ void DebugMan::DrawToolWindowControls() {
 void DebugMan::DrawOverlays() {
 	if (!g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
 		return;
+	}
+	// The inspect key, Ctrl+I: pins the unit under the pointer for the overlays and AI tracing, or unpins it. (Units selected in the sandbox and the one a player controls are inspected anyway.)
+	if (ImGuiIO& io = ImGui::GetIO(); !io.WantCaptureKeyboard && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_I, false)) {
+		Vector pointer = DebugDraw::MouseScenePosition();
+		Actor* nearest = nullptr;
+		float nearestDistance = 40.0F * DebugDraw::ScenePixelsPerWindowPixel();
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			float distance = g_SceneMan.ShortestDistance(pointer, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
+			if (distance < nearestDistance) {
+				nearest = actor;
+				nearestDistance = distance;
+			}
+		}
+		if (nearest) {
+			nearest->SetDebugInspected(!nearest->IsDebugPinned());
+			g_ConsoleMan.PrintString(std::string(nearest->IsDebugPinned() ? "Inspecting " : "No longer inspecting ") + nearest->GetPresetName() + " #" + std::to_string(nearest->GetUniqueID()));
+		}
 	}
 	// Each overlay: a check of its setting and its draw call, drawn into ImGui::GetForegroundDrawList() with DebugDraw::ToScreen.
 }

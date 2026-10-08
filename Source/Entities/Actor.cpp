@@ -1224,7 +1224,7 @@ bool Actor::IsAITraced() const {
 		return false;
 	}
 	static const bool s_All = std::string(s_Log) == "all";
-	return s_All || NumberValueExists("AITrace");
+	return s_All || IsDebugInspected();
 }
 
 void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds) {
