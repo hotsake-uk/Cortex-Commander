@@ -290,6 +290,8 @@ void DebugMan::SettingsGUI() {
 	auto lampsAndLights = [&]() {
 		Slider("Glow light intensity", &settings.GlowLightIntensity, 0.0F, 8.0F);
 		Slider("Glow light radius", &settings.GlowLightRadiusScale, 0.5F, 10.0F);
+		SliderI("Most lights on screen", &settings.MaxScreenLights, 64, 4096);
+		Tip("Past this many lights on one screen the faintest are left out. Lower it if big fights with lots of tracers and fire slow the game down.");
 		Slider("Emissive intensity", &settings.EmissiveIntensity, 0.0F, 4.0F);
 		Slider("Light colour strength", &settings.LightSaturation, 0.0F, 2.5F);
 		Tip("How colourful the light of lamps, glows, flashes and fire is. 0 makes all light white.");

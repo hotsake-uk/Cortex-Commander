@@ -219,6 +219,7 @@ namespace RTE {
 		GLuint m_QuadVBO = 0;
 		GLuint m_QuadIBO = 0;
 		size_t m_QuadIndexCapacity = 0;
+		size_t m_QuadVertexCapacity = 0; //!< How many vertices the quad vertex buffer has room for.
 		std::vector<QuadVertex> m_QuadVertices;
 
 		std::unordered_map<const BitmapTexture*, GlowInfo> m_GlowInfoCache;
