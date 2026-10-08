@@ -60,24 +60,37 @@ namespace {
 // it aims up and presses up, down likewise. The nodes are found among the scene's particles now and then and kept.
 std::vector<Vector> AHuman::s_LadderNodes;
 double AHuman::s_LadderNodesSimTimeMS = -1.0;
+std::shared_mutex AHuman::s_LadderNodesMutex;
 
-const Vector* AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
+std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
+	// (Called from the AI's threads, several units at once: the one that finds the nodes out of date finds them again under the lock while
+	// the rest wait, and the node found is handed back by value, not as a pointer into a list another thread may be refilling.)
 	double now = g_TimerMan.GetSimTimeMS();
-	if (s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0) {
-		s_LadderNodesSimTimeMS = now;
-		s_LadderNodes.clear();
-		for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
-			if (particle && particle->GetPresetName() == "Background Ladder Node" && particle->GetPinStrength() > 0.0F) {
-				s_LadderNodes.push_back(particle->GetPos());
+	auto outOfDate = [now]() { return s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0; };
+	bool refresh;
+	{
+		std::shared_lock lock(s_LadderNodesMutex);
+		refresh = outOfDate();
+	}
+	if (refresh) {
+		std::unique_lock lock(s_LadderNodesMutex);
+		if (outOfDate()) {
+			s_LadderNodesSimTimeMS = now;
+			s_LadderNodes.clear();
+			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+				if (particle && particle->GetPresetName() == "Background Ladder Node" && particle->GetPinStrength() > 0.0F) {
+					s_LadderNodes.push_back(particle->GetPos());
+				}
 			}
 		}
 	}
-	const Vector* best = nullptr;
+	std::shared_lock lock(s_LadderNodesMutex);
+	std::optional<Vector> best;
 	float bestDistance = std::numeric_limits<float>::max();
 	for (const Vector& node: s_LadderNodes) {
 		Vector off = Towards(point, node);
 		if (std::abs(off.m_X) <= reachX && std::abs(off.m_Y) <= reachY && off.GetMagnitude() < bestDistance) {
-			best = &node;
+			best = node;
 			bestDistance = off.GetMagnitude();
 		}
 	}
@@ -351,7 +364,7 @@ bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float&
 		}
 	}
 	// A background ladder: no material, a node every 24 px that its script holds a body in front of.
-	if (const Vector* node = LadderNear(at, reachX, h * 0.5F)) {
+	if (const std::optional<Vector> node = LadderNear(at, reachX, h * 0.5F)) {
 		gripX = bodyX = node->m_X;
 		wallSide = 0;
 		material = false;
@@ -1688,7 +1701,7 @@ int AHuman::MoveAlongRoute() {
 	}
 
 	// ---- On the ground. ----
-	const Vector* ladder = LadderNear(m_Pos, h * 0.2F, h * 0.3F);
+	const std::optional<Vector> ladder = LadderNear(m_Pos, h * 0.2F, h * 0.3F);
 	const float above = -toPoint.m_Y;
 
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
