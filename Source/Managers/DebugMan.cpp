@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include "Actor.h"
 #include "WindowMan.h"
+#include "MenuMan.h"
 #include "PerformanceMan.h"
 #include "imgui/imgui.h"
 #include "ToolWidgets.h"
@@ -507,7 +508,8 @@ void DebugMan::ToggleTools(bool atPointer) {
 
 void DebugMan::UpdateMouseOwnership() {
 	// Looking around the Sandbox game mode from above uses the pointer too, even with every tool window hidden.
-	bool wantMouse = AnyToolWindowOpen() || Sandbox::IsLookingAround();
+	// Not in the pause menu (T-14): the menu has the pointer there, or with tools open or the sandbox's view from above its buttons couldn't be clicked.
+	bool wantMouse = !g_MenuMan.GetIsInMenuScreen() && (AnyToolWindowOpen() || Sandbox::IsLookingAround());
 	if (wantMouse) {
 		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while tool windows are open.
 		// Checked every frame, not only when a window opens: coming back from another program hands the mouse to the game again, which with tool windows open

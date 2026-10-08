@@ -308,16 +308,20 @@ void PollSDLEvents() {
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
 		// Function keys (debug window toggles, quicksave and so on) always reach the game, so a focused debug window can still be closed with its key.
 		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12;
+		// In the game's own menus (the pause menu over a game) the menu has every click and key: the tool windows aren't drawn there, and
+		// what they wanted is from the last game frame. (A sandbox tool left in hand, or a tool window that had the keyboard, took the pause
+		// menu's clicks for the world under it, so it could only be used from a unit, T-14.)
+		bool inMenus = g_MenuMan.GetIsInMenuScreen();
 		// While a sandbox tool is picked, left clicks on the world paint instead of firing.
-		bool sandboxTakesClick = Sandbox::CapturesWorldClicks() && sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN && sdlEvent.button.button == SDL_BUTTON_LEFT;
-		bool imGuiTakesEvent = !functionKey && (sandboxTakesClick || (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
+		bool sandboxTakesClick = !inMenus && Sandbox::CapturesWorldClicks() && sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN && sdlEvent.button.button == SDL_BUTTON_LEFT;
+		bool imGuiTakesEvent = !functionKey && !inMenus && (sandboxTakesClick || (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
 		                                        (imGuiIO.WantCaptureKeyboard && (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_TEXT_INPUT)));
 		if (imGuiTakesEvent) {
 			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
 			continue;
 		}
 		// Camera zoom: Ctrl + mouse wheel in any game, or the wheel alone in the sandbox's god view (where it isn't needed for switching weapons).
-		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
+		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && !inMenus && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
 			g_FrameMan.StepCameraZoom(sdlEvent.wheel.y > 0.0F);
 			continue;
 		}
@@ -406,6 +410,11 @@ void RunMenuLoop() {
 	g_MenuMan.SetIsInMenuScreen(true);
 	g_UInputMan.DisableKeys(false);
 	g_UInputMan.TrapMousePos(false);
+	// The tool windows (or looking around the sandbox from above) may have had the mouse, released from the game, which leaves the game's
+	// pointer where it was: the menu needs it back, moving (T-14). The windows take it again when the game goes on, if they're still open.
+	if (g_UInputMan.IsMouseReleased()) {
+		g_UInputMan.GiveMouseBackNow();
+	}
 
 	while (!System::IsSetToQuit()) {
 		g_WindowMan.ClearBackbuffer();
