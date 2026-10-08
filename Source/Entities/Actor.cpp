@@ -1242,9 +1242,11 @@ void Actor::OnNewMovePath() {
 			m_PrevPathTarget = m_MovePath.front();
 			popFront();
 		}
-	} else if (m_pMOMoveTarget) {
+	} else if (m_pMOMoveTarget && g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		m_MoveTarget = m_pMOMoveTarget->GetPos();
 	} else {
+		// The route was computed asynchronously, so the MO we were following may have been deleted since the request was made
+		m_pMOMoveTarget = nullptr;
 		// Nowhere to gooooo
 		m_MoveTarget = m_PrevPathTarget = m_Pos;
 	}
