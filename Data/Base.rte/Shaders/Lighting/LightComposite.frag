@@ -376,7 +376,7 @@ void main() {
 						}
 						openness = smoothstep(0.2, 0.9, openness / 7.0);
 						float fade = smoothstep(0.0, 40.0, mirrored.y) * smoothstep(0.0, 16.0, mirrored.x) * smoothstep(0.0, 16.0, rteScreenSize.x - mirrored.x);
-						fade *= smoothstep(0.0, 1.0, weightSum / 16.0) * openness * (1.0 - smoothstep(30.0, 64.0, depth));
+						fade *= smoothstep(0.0, 1.0, weightSum / 16.0) * openness * (1.0 - smoothstep(14.0, 56.0, depth));
 						waterReflection = sum / weightSum;
 						waterReflectionBackground = backgroundWeight > 0.5 * weightSum;
 						float fresnel = mix(0.75, 0.2, smoothstep(0.0, 40.0, depth)) + 0.5 * clamp(length(mirrorTilt), 0.0, 0.5);
