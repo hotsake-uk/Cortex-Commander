@@ -7,8 +7,11 @@
 #include "SceneMan.h"
 #include "TimerMan.h"
 
+#include <algorithm>
 #include <array>
 #include <map>
+#include <mutex>
+#include <vector>
 
 using namespace RTE;
 
@@ -26,6 +29,20 @@ namespace {
 		bool PlayerControlled = false; //!< Whether a player controlled it when it was seen.
 	};
 	std::array<std::map<long, Memory>, Activity::MaxTeamCount> s_Memories; //!< Per team, by the enemy's unique ID (so in a fixed order).
+
+	/// A sighting reported by a unit's AI, waiting for the main thread. (The AI scripts run on worker threads, one per Lua state, so a report
+	/// is only queued there; changing the memories or alarming teammates from them crashed the game as soon as two threads reported at once.)
+	struct PendingReport {
+		long ReporterID; //!< The reporting unit's unique ID.
+		long EnemyID; //!< The enemy's unique ID.
+		int Team; //!< The reporting unit's team.
+		Vector ReporterPos; //!< Where the reporting unit was.
+		Vector EnemyPos; //!< Where the enemy was seen.
+		bool PlayerControlled; //!< Whether a player controlled the enemy.
+		long long Update; //!< The sim update it was seen on.
+	};
+	std::mutex s_PendingMutex;
+	std::vector<PendingReport> s_Pending;
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0;
 
@@ -50,24 +67,43 @@ void ThreatMemory::Report(const Actor* reporter, const Actor* enemy) {
 	if (team < 0 || team >= Activity::MaxTeamCount || enemy->GetTeam() == team || dynamic_cast<const ADoor*>(enemy)) {
 		return;
 	}
-	long long now = g_TimerMan.GetSimUpdateCount();
-	Memory& memory = s_Memories[team][enemy->GetUniqueID()];
-	memory.Pos = enemy->GetPos();
-	memory.SeenUpdate = now;
-	memory.PlayerControlled = enemy->IsPlayerControlled();
-	if (now - memory.SharedUpdate < c_ShareEveryUpdates) {
+	// Called from the AI scripts, on worker threads: queued, and applied on the main thread by Update.
+	std::scoped_lock lock(s_PendingMutex);
+	s_Pending.push_back({reporter->GetUniqueID(), enemy->GetUniqueID(), team, reporter->GetPos(), enemy->GetPos(), enemy->IsPlayerControlled(), g_TimerMan.GetSimUpdateCount()});
+}
+
+void ThreatMemory::ApplyReports() {
+	std::vector<PendingReport> reports;
+	{
+		std::scoped_lock lock(s_PendingMutex);
+		reports.swap(s_Pending);
+	}
+	if (!s_Enabled || reports.empty()) {
 		return;
 	}
-	memory.SharedUpdate = now;
-	// The others close by hear of it and turn to face it (the alarm the AI scripts already answer). Not units a player controls: they have
-	// a player's eyes.
-	for (Actor* mate: g_MovableMan.GetActorList()) {
-		// (Fighting units only: not doors, and not craft, which have no use for an alarm.)
-		if (mate == reporter || mate->GetTeam() != team || mate->IsDead() || mate->IsPlayerControlled() || dynamic_cast<const ADoor*>(mate) || dynamic_cast<const ACraft*>(mate)) {
+	// In a fixed order, whichever thread reported first, so the game plays out the same.
+	std::sort(reports.begin(), reports.end(), [](const PendingReport& a, const PendingReport& b) {
+		return a.Update != b.Update ? a.Update < b.Update : a.ReporterID != b.ReporterID ? a.ReporterID < b.ReporterID : a.EnemyID < b.EnemyID;
+	});
+	for (const PendingReport& report: reports) {
+		Memory& memory = s_Memories[report.Team][report.EnemyID];
+		memory.Pos = report.EnemyPos;
+		memory.SeenUpdate = report.Update;
+		memory.PlayerControlled = report.PlayerControlled;
+		if (report.Update - memory.SharedUpdate < c_ShareEveryUpdates) {
 			continue;
 		}
-		if (g_SceneMan.ShortestDistance(reporter->GetPos(), mate->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(c_ShareRange)) {
-			mate->AlarmPoint(memory.Pos);
+		memory.SharedUpdate = report.Update;
+		// The others close by hear of it and turn to face it (the alarm the AI scripts already answer). Not units a player controls: they
+		// have a player's eyes.
+		for (Actor* mate: g_MovableMan.GetActorList()) {
+			// (Fighting units only: not doors, and not craft, which have no use for an alarm.)
+			if (!mate || mate->GetUniqueID() == report.ReporterID || mate->GetTeam() != report.Team || mate->IsDead() || mate->IsPlayerControlled() || dynamic_cast<const ADoor*>(mate) || dynamic_cast<const ACraft*>(mate)) {
+				continue;
+			}
+			if (g_SceneMan.ShortestDistance(report.ReporterPos, mate->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(c_ShareRange)) {
+				mate->AlarmPoint(memory.Pos);
+			}
 		}
 	}
 }
@@ -120,6 +156,7 @@ void ThreatMemory::Update() {
 		s_Scene = g_SceneMan.GetScene();
 		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 	}
+	ApplyReports();
 	long long now = g_TimerMan.GetSimUpdateCount();
 	if (!s_Enabled || now % 30 != 0) {
 		return;
@@ -138,6 +175,10 @@ void ThreatMemory::Update() {
 }
 
 void ThreatMemory::Clear() {
+	{
+		std::scoped_lock lock(s_PendingMutex);
+		s_Pending.clear();
+	}
 	for (std::map<long, Memory>& memories: s_Memories) {
 		memories.clear();
 	}
