@@ -26,6 +26,9 @@ Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copy
 ## Presets
 Set **Presets** to a shared folder (for example your main checkout's `Userdata\Presets`). Before each run the launcher makes the version's `Userdata\Presets` a directory junction to it, so every version sees the same saved settings presets and presets you save in any version land in the shared folder. Presets already in a version's own folder are moved into the shared folder first.
 
+## Defaults and clearing builds
+`Defaults\` in this folder holds the default `Settings.ini` and settings presets. They are embedded in the exe, unpacked to `%APPDATA%\CortexLauncher\Defaults` on first run (existing files there are kept), and used as the starting values of the **Settings** and **Presets** boxes. Distributing the launcher therefore distributes these defaults. **Clear all builds** deletes every cached checkout and build and leaves the defaults, your presets and your mods alone.
+
 ## Where things go
 Each commit is a `git worktree` in `<repo parent>\CortexVersions\<first 10 chars of sha>`. Built versions stay runnable without rebuilding, and your main checkout is never switched. Settings live in `%APPDATA%\CortexLauncher\settings.json` (`VersionsDir` can relocate the cache).
 

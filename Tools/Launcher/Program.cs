@@ -17,6 +17,29 @@ static class Program
 	}
 }
 
+static class Defaults
+{
+	public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "Defaults");
+	public static string Ini => Path.Combine(Dir, "Settings.ini");
+	public static string Presets => Path.Combine(Dir, "Presets");
+
+	// Unpacks the embedded defaults next to the launcher's settings; files already there are kept, so presets saved in the game and edits survive.
+	public static void Extract()
+	{
+		var asm = typeof(Defaults).Assembly;
+		foreach (var name in asm.GetManifestResourceNames())
+		{
+			if (!name.StartsWith("Defaults/")) continue;
+			var dest = Path.Combine(Dir, name["Defaults/".Length..].Replace('/', Path.DirectorySeparatorChar));
+			if (File.Exists(dest)) continue;
+			Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+			using var src = asm.GetManifestResourceStream(name)!;
+			using var dst = File.Create(dest);
+			src.CopyTo(dst);
+		}
+	}
+}
+
 class Settings
 {
 	public string RepoPath { get; set; } = @"C:\Users\Liamn\Desktop\cortex\Cortex-Command-Community-Project";
@@ -66,6 +89,7 @@ class MainForm : Form
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly TextBox presetsBox = new() { Width = 420, PlaceholderText = "optional shared settings-presets folder, linked into every version" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
+	readonly Button clearAllBtn = new() { Text = "Clear all builds", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Launch only", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
@@ -91,9 +115,12 @@ class MainForm : Form
 		configBox.SelectedItem = settings.Configuration;
 		if (configBox.SelectedIndex < 0) configBox.SelectedIndex = 0;
 		repoBox.Text = settings.RepoPath;
-		iniBox.Text = settings.SettingsIni;
+		try { Defaults.Extract(); } catch (Exception ex) { Append("Could not unpack default settings: " + ex.Message); }
+		// Empty, or still pointing at the main checkout's Userdata, means "use the defaults that ship with the launcher".
+		static bool OldPath(string p) => p == "" || (p.Contains("Community-Project", StringComparison.OrdinalIgnoreCase) && p.Contains("Userdata", StringComparison.OrdinalIgnoreCase));
+		iniBox.Text = OldPath(settings.SettingsIni) ? Defaults.Ini : settings.SettingsIni;
 		modsBox.Text = settings.ModsDir;
-		presetsBox.Text = settings.PresetsDir;
+		presetsBox.Text = OldPath(settings.PresetsDir) ? Defaults.Presets : settings.PresetsDir;
 
 		// Dead simple: branch, commit, settings, mods, then Build & Launch.
 		static Control Row(string label, Control field, params Control[] extra)
@@ -125,7 +152,7 @@ class MainForm : Form
 		buildRunBtn.Font = new Font(Font.FontFamily, 12f, FontStyle.Bold);
 		buildRunBtn.Padding = new Padding(20, 6, 20, 6);
 		var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 6) };
-		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
+		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, clearAllBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
 
 		var logPanel = new Panel { Dock = DockStyle.Bottom, Height = 170 };
 		logPanel.Controls.Add(log);
@@ -144,6 +171,7 @@ class MainForm : Form
 		branchBox.SelectionChangeCommitted += async (_, _) => { if (branchBox.SelectedItem is string r) await LoadCommits(r); };
 		branchBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter && branchBox.Text.Trim() != "") { e.SuppressKeyPress = true; await LoadCommits(branchBox.Text.Trim()); } };
 		commitList.DoubleClick += async (_, _) => await BuildAndRun(true);
+		clearAllBtn.Click += async (_, _) => await ClearAllBuilds();
 		runBtn.Click += async (_, _) => await BuildAndRun(true, false);
 		buildRunBtn.Click += async (_, _) => await BuildAndRun(true);
 		cancelBtn.Click += (_, _) => { cts?.Cancel(); try { running?.Kill(true); } catch { } };
@@ -189,7 +217,7 @@ class MainForm : Form
 	void SetBusy(bool b, string text = "")
 	{
 		busy = b;
-		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, deleteBtn, openBtn, configBox, repoBox })
+		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
 		status.Text = text;
@@ -533,6 +561,35 @@ class MainForm : Form
 		}
 		Append($"Launching {c.Short}");
 		Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = WorktreePath(c), UseShellExecute = true });
+	}
+
+	// Removes every cached checkout and build. The default Settings.ini and presets live in the launcher's own folder, and the presets link inside each
+	// version is unlinked (not followed) first, so nothing shared is touched.
+	async Task ClearAllBuilds()
+	{
+		var root = settings.EffectiveVersionsDir;
+		var dirs = Directory.Exists(root) ? Directory.GetDirectories(root) : Array.Empty<string>();
+		if (dirs.Length == 0) { Append("No builds to clear."); return; }
+		if (MessageBox.Show($"Delete all {dirs.Length} cached builds in\n{root}?\n\nYour Settings.ini, presets and mods are kept.", "Clear all builds", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+		SetBusy(true, "Clearing builds...");
+		foreach (var d in dirs)
+		{
+			try
+			{
+				var link = Path.Combine(d, "Userdata", "Presets");
+				if (Directory.Exists(link) && new DirectoryInfo(link).Attributes.HasFlag(FileAttributes.ReparsePoint)) Directory.Delete(link, false);
+			}
+			catch (Exception ex) { Append($"Could not unlink presets in {Path.GetFileName(d)}, skipping it: {ex.Message}"); continue; }
+			await Exec("git", $"worktree remove --force \"{d}\"", Repo, default, false);
+			if (Directory.Exists(d))
+			{
+				try { Directory.Delete(d, true); } catch (Exception ex) { Append($"Could not fully delete {Path.GetFileName(d)}: {ex.Message}"); }
+			}
+		}
+		await Exec("git", "worktree prune", Repo, default, false);
+		foreach (ListViewItem it in commitList.Items) it.SubItems[5].Text = "";
+		Append("All builds cleared. Settings and presets kept.");
+		SetBusy(false, currentRef);
 	}
 
 	async Task DeleteSelected()
