@@ -5,6 +5,7 @@
 #include "DrawCall.h"
 #include "Texture.h"
 #include <memory>
+#include <algorithm>
 #include <array>
 #include <vector>
 #include <mutex>
@@ -132,6 +133,21 @@ namespace RTE {
 		/// Gets the liquid looks, by look number (0 unused).
 		const std::array<LiquidLook, c_MaxLiquidLooks>& GetLiquidLooks() const { return m_LiquidLooks; }
 
+		/// Gives a terrain material a liquid look (Terrain.frag's rteMaterialLooks). The terrain shader draws a pixel as a liquid only where it is made of a
+		/// material with a look as well as coloured as a liquid (SetLiquidPaletteColor), so terrain that shares a liquid's palette colour stays as it is.
+		/// @param materialID The material, 1 to 255. @param liquidLook The look, 0 for none to 15.
+		void SetMaterialLiquidLook(int materialID, int liquidLook) {
+			if (materialID > 0 && materialID < 256) {
+				m_MaterialLiquidLooks[materialID] = static_cast<float>(std::clamp(liquidLook, 0, c_MaxLiquidLooks - 1));
+			}
+		}
+
+		/// Takes the liquid look off every material, for a new set of materials.
+		void ClearMaterialLiquidLooks() { m_MaterialLiquidLooks.fill(0.0F); }
+
+		/// Gets each material's liquid look, by material ID, 0 for none: the shader's rteMaterialLooks, four to a vec4.
+		const std::array<float, 256>& GetMaterialLiquidLooks() const { return m_MaterialLiquidLooks; }
+
 		/// Makes a palette colour's glow pulse between two strengths (animated palette flags, LightingSettings::PaletteAnimation).
 		/// @param paletteIndex The colour, 1 to 255. @param low The glow at the bottom of the pulse, 0 to 1. @param high The glow at the top.
 		/// @param period Seconds per pulse; 0 or less removes the colour's pulse. @param phase Where in the pulse it starts, 0 to 1.
@@ -148,7 +164,7 @@ namespace RTE {
 		/// @param time Seconds, for the pulses and cycles. @param enabled Whether palette animation is on. @param strength 0 to 1, how far pulses swing from the colour's own glow.
 		void UpdatePaletteAnimation(float time, bool enabled, float strength);
 
-		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 8.
+		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 9.
 		void SetGlobalTexture(int unit, GLuint texture) {
 			if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) {
 				m_GlobalTextures[unit - 3] = texture;
@@ -156,7 +172,7 @@ namespace RTE {
 		}
 
 		/// Gets the textures to bind to units 3 and up for every batch render.
-		const std::array<GLuint, 6>& GetGlobalTextures() const { return m_GlobalTextures; }
+		const std::array<GLuint, 7>& GetGlobalTextures() const { return m_GlobalTextures; }
 
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
@@ -178,6 +194,7 @@ namespace RTE {
 		GLuint m_EmissivePaletteTexture{0};
 		std::array<unsigned char, 1024> m_EmissivePalette{}; //!< RGBA per palette color: R emissive, G vegetation, B liquid look * 16.
 		std::array<LiquidLook, c_MaxLiquidLooks> m_LiquidLooks{MakeLiquidLooks()}; //!< How each liquid look is drawn.
+		std::array<float, 256> m_MaterialLiquidLooks{}; //!< Each material's liquid look, 0 for none (SetMaterialLiquidLook).
 
 		/// The game's liquid looks. Water, lava and acid are exactly as they were drawn before the looks were a table.
 		static std::array<LiquidLook, c_MaxLiquidLooks> MakeLiquidLooks() {
@@ -220,7 +237,7 @@ namespace RTE {
 		bool m_PaletteAnimated = false; //!< The textures hold animated values, to be put back when animation stops.
 
 		void SetPalettePulse(int paletteIndex, float low, float high, float period, float phase, bool automatic);
-		std::array<GLuint, 6> m_GlobalTextures{};
+		std::array<GLuint, 7> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};

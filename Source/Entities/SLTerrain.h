@@ -151,6 +151,11 @@ namespace RTE {
 		/// @return A pointer to the material bitmap.
 		BITMAP* GetMaterialBitmap() { return m_MainBitmap; }
 
+		/// Gets the GPU copy of the material bitmap, for the terrain shader to tell what each pixel is made of (Terrain.frag's rteMaterialMap).
+		/// Kept current for what's on screen while the colour layers are drawn.
+		/// @return The texture, or 0 if there's none or the scene is too big for it to be a single texture.
+		unsigned int GetMaterialTextureId() const;
+
 		/// Gets a specific pixel from the foreground color bitmap of this.
 		/// @param pixelX The X coordinate of the pixel to get.
 		/// @param pixelY The Y coordinate of the pixel to get.
