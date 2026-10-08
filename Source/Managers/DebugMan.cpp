@@ -284,7 +284,7 @@ void DebugMan::DrawToolWindowControls() {
 
 void DebugMan::UpdateFreeze() {
 	if (m_FreezeSim && g_ActivityMan.IsInActivity()) {
-		g_TimerMan.PauseSim(true);
+		g_TimerMan.PauseSim(true, TimerMan::SimPauseDebugFreeze);
 		m_FrozeSim = true;
 		if (m_FreezeStepsWanted > 0) {
 			g_TimerMan.StepSim(1);
@@ -293,10 +293,8 @@ void DebugMan::UpdateFreeze() {
 	} else if (m_FrozeSim) {
 		m_FrozeSim = false;
 		m_FreezeStepsWanted = 0;
-		// Unpaused unless photo mode or the sandbox's open window wants the world still; they set their own pause again each frame they want it.
-		if (!IsPhotoModeOpen()) {
-			g_TimerMan.PauseSim(false);
-		}
+		// Only the freeze's own pause: photo mode and the sandbox hold theirs.
+		g_TimerMan.PauseSim(false, TimerMan::SimPauseDebugFreeze);
 	}
 }
 
@@ -531,10 +529,11 @@ void DebugMan::EndPhotoMode() {
 		// Keep the time of day and weather the player had; photo mode's look changes were for the photo.
 		g_PostProcessMan.GetLightingSettings() = m_PhotoSavedSettings;
 	}
-	// (Not when the sandbox holds the world still: it would pause it again only on its next draw, and the frame between ran every sim update
-	// the paused time had saved up, a jump as photo mode closed.)
-	if (!Sandbox::WantsWorldPaused()) {
-		g_TimerMan.PauseSim(false);
+	// Only photo mode's own pause. The sandbox lets go of the world while photo mode is open, so where it wants it still its pause is set
+	// here too: on its next draw would leave a frame between that ran every sim update the paused time had saved up, a jump as photo mode closed.
+	g_TimerMan.PauseSim(false, TimerMan::SimPausePhotoMode);
+	if (Sandbox::WantsWorldPaused()) {
+		g_TimerMan.PauseSim(true, TimerMan::SimPauseSandbox);
 	}
 	g_FrameMan.SetHudDisabled(m_PhotoPreviousHUDDisabled, 0);
 	m_PhotoModeActive = false;
@@ -549,7 +548,7 @@ void DebugMan::PhotoModeGUI() {
 		m_PhotoCameraCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
 	}
 	if (m_PhotoModeActive) {
-		g_TimerMan.PauseSim(m_PhotoFreeze);
+		g_TimerMan.PauseSim(m_PhotoFreeze, TimerMan::SimPausePhotoMode);
 		g_FrameMan.SetHudDisabled(m_PhotoHideHUD, 0);
 
 		// Free camera: drag with the right mouse button anywhere outside the window, or the arrow keys.
