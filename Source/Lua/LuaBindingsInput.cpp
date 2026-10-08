@@ -49,6 +49,7 @@ LuaBindingRegisterFunctionDefinitionForType(InputLuaBindings, InputElements) {
 	                            luabind::value("INPUT_PREV", InputElements::INPUT_PREV),
 	                            luabind::value("INPUT_START", InputElements::INPUT_START),
 	                            luabind::value("INPUT_BACK", InputElements::INPUT_BACK),
+	                            luabind::value("INPUT_LEAP", InputElements::INPUT_LEAP),
 	                            luabind::value("INPUT_COUNT", InputElements::INPUT_COUNT)];
 }
 

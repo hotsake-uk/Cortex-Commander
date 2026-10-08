@@ -161,6 +161,67 @@ void AHuman::UpdateAIMotor() {
 	}
 }
 
+// ---------------------------------------------------------------- The leap
+
+float AHuman::GetLegJumpHeight() const {
+	if (m_LegJumpHeight >= 0.0F) {
+		return m_LegJumpHeight;
+	}
+	// A little over half the standing body (0.44 of the character height): a soldier clears a knee-high crate or a node-wide gap at a run.
+	return std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+}
+
+bool AHuman::CanLeap() const {
+	if (m_Status != STABLE || m_Leaping || m_Mantling || m_GettingUp || m_Ladder.active || m_ProneState != NOTPRONE || (!m_pFGLeg && !m_pBGLeg) || GetLegJumpHeight() <= 0.0F) {
+		return false;
+	}
+	// (A moment after landing before the next: the legs gather.)
+	if (!m_LeapTimer.IsPastSimMS(250)) {
+		return false;
+	}
+	const float h = m_CharHeight;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	return std::abs(m_Vel.m_Y) < 2.5F && FloorUnder(m_Pos, feet + 6.0F) >= 0.0F;
+}
+
+void AHuman::UpdateLeap() {
+	Controller& ctrl = m_Controller;
+	const float h = m_CharHeight;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	if (m_Leaping) {
+		// Down again (on the floor and no longer rising, after the push has had a moment), or knocked over, climbing, mantling: done.
+		bool landed = m_LeapTimer.IsPastSimMS(150) && m_Vel.m_Y >= -0.5F && FloorUnder(m_Pos, feet + 4.0F) >= 0.0F;
+		if (landed || m_Status != STABLE || m_Ladder.active || m_Mantling) {
+			m_Leaping = false;
+			m_LeapTimer.Reset();
+			if (m_MovementState == JUMP && !(m_pJetpack && m_pJetpack->IsEmitting())) {
+				m_MovementState = STAND;
+			}
+		} else {
+			m_MovementState = JUMP;
+		}
+		return;
+	}
+	if (!ctrl.IsState(BODY_LEAP) || !CanLeap()) {
+		return;
+	}
+	// The push: up at the speed that rises the leap's height against gravity, and forward with a move key held (at least the leap's
+	// speed, more if already running), else the speed it had. Momentum, not a scripted path: the body flies, lands and collides as ever.
+	float gravity = std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y);
+	float rise = std::sqrt(2.0F * gravity * GetLegJumpHeight() * c_MPP);
+	float direction = ctrl.IsState(MOVE_RIGHT) ? 1.0F : (ctrl.IsState(MOVE_LEFT) ? -1.0F : 0.0F);
+	float across = direction != 0.0F ? direction * std::max(m_LegJumpSpeed, m_Vel.m_X * direction) : m_Vel.m_X;
+	m_Vel.SetXY(across, std::min(m_Vel.m_Y, 0.0F) - rise);
+	m_Leaping = true;
+	m_LeapTimer.Reset();
+	m_MovementState = JUMP;
+	m_Paths[FGROUND][JUMP].Restart();
+	m_Paths[BGROUND][JUMP].Restart();
+	// (Off the floor cleanly: the deep check the jet's burst asks for too, so the feet don't catch on the ground they leave.)
+	ForceDeepCheck();
+	MoverTrace("leap");
+}
+
 // ---------------------------------------------------------------- The walk's sense of what is ahead
 
 AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing) const {

@@ -75,6 +75,8 @@ namespace RTE {
 		SCROLL_UP,
 		SCROLL_DOWN,
 		DEBUG_ONE,
+		// A leap on the legs (see AHuman::UpdateLeap): pressed this frame. Its own control, apart from the jet's.
+		BODY_LEAP,
 		CONTROLSTATECOUNT
 	};
 

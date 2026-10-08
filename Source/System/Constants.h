@@ -243,6 +243,7 @@ namespace RTE {
 		INPUT_R_DOWN,
 		INPUT_R_LEFT,
 		INPUT_R_RIGHT,
+		INPUT_LEAP,
 		INPUT_COUNT
 	};
 
@@ -280,7 +281,8 @@ namespace RTE {
 	    "Analog Aim Up", // INPUT_R_UP
 	    "Analog Aim Down", // INPUT_R_DOWN
 	    "Analog Aim Left", // INPUT_R_LEFT
-	    "Analog Aim Right" // INPUT_R_RIGHT
+	    "Analog Aim Right", // INPUT_R_RIGHT
+	    "Leap" // INPUT_LEAP
 	};
 
 	/// Enumeration for mouse button types.

@@ -51,6 +51,7 @@ int InputScheme::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("PieMenuAnalog", { reader >> m_InputMappings[InputElements::INPUT_PIEMENU_ANALOG]; });
 	MatchProperty("PieMenuDigital", { reader >> m_InputMappings[InputElements::INPUT_PIEMENU_DIGITAL]; });
 	MatchProperty("Jump", { reader >> m_InputMappings[InputElements::INPUT_JUMP]; });
+	MatchProperty("Leap", { reader >> m_InputMappings[InputElements::INPUT_LEAP]; });
 	MatchProperty("Crouch", { reader >> m_InputMappings[InputElements::INPUT_CROUCH]; });
 	MatchProperty("Prone", { reader >> m_InputMappings[InputElements::INPUT_PRONE]; });
 	MatchProperty("Next", { reader >> m_InputMappings[InputElements::INPUT_NEXT]; });
@@ -99,6 +100,7 @@ int InputScheme::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("PieMenuAnalog", m_InputMappings[InputElements::INPUT_PIEMENU_ANALOG]);
 		writer.NewPropertyWithValue("PieMenuDigital", m_InputMappings[InputElements::INPUT_PIEMENU_DIGITAL]);
 		writer.NewPropertyWithValue("Jump", m_InputMappings[InputElements::INPUT_JUMP]);
+		writer.NewPropertyWithValue("Leap", m_InputMappings[InputElements::INPUT_LEAP]);
 		writer.NewPropertyWithValue("Crouch", m_InputMappings[InputElements::INPUT_CROUCH]);
 		writer.NewPropertyWithValue("Prone", m_InputMappings[InputElements::INPUT_PRONE]);
 		writer.NewPropertyWithValue("Next", m_InputMappings[InputElements::INPUT_NEXT]);
@@ -170,7 +172,7 @@ void InputScheme::SetDevice(InputDevice activeDevice) {
 }
 
 void InputScheme::ResetDeviceID() {
-	switch(m_ActiveDevice) {
+	switch (m_ActiveDevice) {
 		case DEVICE_KEYB_ONLY:
 			m_DeviceID.keyboard = 0;
 			break;
@@ -210,6 +212,7 @@ void InputScheme::SetPreset(InputPreset schemePreset) {
 			m_InputMappings[InputElements::INPUT_AIM_DOWN].SetKey(SDL_SCANCODE_DOWN);
 			m_InputMappings[InputElements::INPUT_PIEMENU_DIGITAL].SetKey(SDL_SCANCODE_KP_3);
 			m_InputMappings[InputElements::INPUT_JUMP].SetKey(SDL_SCANCODE_KP_ENTER);
+			m_InputMappings[InputElements::INPUT_LEAP].SetKey(SDL_SCANCODE_KP_PLUS);
 			m_InputMappings[InputElements::INPUT_CROUCH].SetKey(SDL_SCANCODE_RSHIFT);
 			m_InputMappings[InputElements::INPUT_PRONE].SetKey(SDL_SCANCODE_KP_0);
 			m_InputMappings[InputElements::INPUT_NEXT].SetKey(SDL_SCANCODE_KP_5);
@@ -232,6 +235,7 @@ void InputScheme::SetPreset(InputPreset schemePreset) {
 			m_InputMappings[InputElements::INPUT_AIM_DOWN].SetKey(SDL_SCANCODE_S);
 			m_InputMappings[InputElements::INPUT_PIEMENU_DIGITAL].SetKey(SDL_SCANCODE_K);
 			m_InputMappings[InputElements::INPUT_JUMP].SetKey(SDL_SCANCODE_L);
+			m_InputMappings[InputElements::INPUT_LEAP].SetKey(SDL_SCANCODE_SPACE);
 			m_InputMappings[InputElements::INPUT_CROUCH].SetKey(SDL_SCANCODE_LCTRL);
 			m_InputMappings[InputElements::INPUT_PRONE].SetKey(SDL_SCANCODE_C);
 			m_InputMappings[InputElements::INPUT_NEXT].SetKey(SDL_SCANCODE_U);
@@ -256,6 +260,7 @@ void InputScheme::SetPreset(InputPreset schemePreset) {
 			m_InputMappings[InputElements::INPUT_AIM_RIGHT].SetPresetDescription("Mouse Move");
 			m_InputMappings[InputElements::INPUT_PIEMENU_ANALOG].SetMouseButton(MouseButtons::MOUSE_RIGHT);
 			m_InputMappings[InputElements::INPUT_JUMP].SetKey(SDL_SCANCODE_W);
+			m_InputMappings[InputElements::INPUT_LEAP].SetKey(SDL_SCANCODE_SPACE);
 			m_InputMappings[InputElements::INPUT_CROUCH].SetKey(SDL_SCANCODE_LCTRL);
 			m_InputMappings[InputElements::INPUT_PRONE].SetKey(SDL_SCANCODE_S);
 			m_InputMappings[InputElements::INPUT_NEXT].SetKey(SDL_SCANCODE_E);

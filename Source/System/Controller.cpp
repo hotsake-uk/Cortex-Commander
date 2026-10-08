@@ -301,6 +301,7 @@ void Controller::UpdatePlayerPieMenuInput(std::array<bool, ControlState::CONTROL
 		m_ControlStates[ControlState::AIM_SHARP] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_AIM);
 		m_ControlStates[ControlState::BODY_JUMPSTART] = g_UInputMan.ElementPressed(m_Player, InputElements::INPUT_JUMP);
 		m_ControlStates[ControlState::BODY_JUMP] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_JUMP);
+		m_ControlStates[ControlState::BODY_LEAP] = g_UInputMan.ElementPressed(m_Player, InputElements::INPUT_LEAP);
 		m_ControlStates[ControlState::BODY_CROUCH] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_CROUCH);
 		m_ControlStates[ControlState::BODY_PRONE] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_PRONE);
 
@@ -374,7 +375,7 @@ void Controller::UpdatePlayerPieMenuInput(std::array<bool, ControlState::CONTROL
 		m_ControlStates[ControlState::WEAPON_AUXILIARY_HOTKEYSTART] = g_UInputMan.ElementPressed(m_Player, InputElements::INPUT_WEAPON_AUXILIARY_HOTKEY);
 		m_ControlStates[ControlState::ACTOR_PRIMARY_HOTKEYSTART] = g_UInputMan.ElementPressed(m_Player, InputElements::INPUT_ACTOR_PRIMARY_HOTKEY);
 		m_ControlStates[ControlState::ACTOR_AUXILIARY_HOTKEYSTART] = g_UInputMan.ElementPressed(m_Player, InputElements::INPUT_ACTOR_AUXILIARY_HOTKEY);
-		
+
 		m_ControlStates[ControlState::WEAPON_PRIMARY_HOTKEY] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_WEAPON_PRIMARY_HOTKEY);
 		m_ControlStates[ControlState::WEAPON_AUXILIARY_HOTKEY] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_WEAPON_AUXILIARY_HOTKEY);
 		m_ControlStates[ControlState::ACTOR_PRIMARY_HOTKEY] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_ACTOR_PRIMARY_HOTKEY);
@@ -404,6 +405,7 @@ void Controller::UpdatePlayerPieMenuInput(std::array<bool, ControlState::CONTROL
 			m_ControlStates[ControlState::MOVE_DOWN] = false;
 			m_ControlStates[ControlState::BODY_JUMP] = false;
 			m_ControlStates[ControlState::BODY_JUMPSTART] = false;
+			m_ControlStates[ControlState::BODY_LEAP] = false;
 			m_ControlStates[ControlState::BODY_CROUCH] = false;
 			m_ControlStates[ControlState::BODY_PRONE] = false;
 		}

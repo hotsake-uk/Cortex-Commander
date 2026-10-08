@@ -332,6 +332,26 @@ namespace RTE {
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
+		/// How high a leap on the legs lifts this (the body's centre, in pixels): set in the preset (LegJumpHeight), or by default a little
+		/// over half the standing body's height, which every humanoid has, mods' included.
+		/// @return The leap's height.
+		float GetLegJumpHeight() const;
+		/// Sets how high a leap lifts this, in pixels; below zero for the default, zero for no leap.
+		/// @param height The height.
+		void SetLegJumpHeight(float height) { m_LegJumpHeight = height; }
+		/// How fast a leap carries this forward when a move key is held (m/s): set in the preset (LegJumpSpeed), by default 4.
+		/// @return The speed.
+		float GetLegJumpSpeed() const { return m_LegJumpSpeed; }
+		/// Sets how fast a leap carries this forward, in m/s.
+		/// @param speed The speed.
+		void SetLegJumpSpeed(float speed) { m_LegJumpSpeed = speed; }
+		/// Whether this is in the air on a leap of its legs just now.
+		/// @return Whether leaping.
+		bool IsLeaping() const { return m_Leaping; }
+		/// Whether a leap could begin now: on its feet on the floor, with a leg, not lying down, climbing, mantling or just landed.
+		/// @return Whether it can leap.
+		bool CanLeap() const;
+
 		/// The AI's motor (see UpdateAIMotor): what an AI script asks of the body, done by the engine. A script decides where to go and how to
 		/// hold itself; the engine walks, crawls, climbs and flies. (A script may still press the controls itself, as a mod's may.)
 		/// Holds a stance for a while: 0 none (as the movement has it), 1 crouched, 2 prone (crawling, when it also moves).
@@ -748,6 +768,13 @@ namespace RTE {
 		double m_JetLastLitSimMS = -1.0; //!< When the jet was last lit (sim ms), for passing the ladders' rungs while flying (see LearnFlight).
 		Timer m_FightAimTimer; //!< Since the unit last fired or aimed sharp: an AI unit's aim holds its facing (walking backwards) only in a fight.
 		const Attachable* m_HeadRimFor = nullptr; //!< The head given its soft rim (see Update), so a new head gets one too.
+		float m_LegJumpHeight = -1.0F; //!< How high a leap lifts the body, px (see GetLegJumpHeight); below zero for the default.
+		float m_LegJumpSpeed = 4.0F; //!< How fast a leap carries the body forward with a move key held, m/s.
+		bool m_Leaping = false; //!< In the air on a leap just now.
+		Timer m_LeapTimer; //!< Since the leap began, or since it landed (for the pause before the next).
+		/// The leap on the legs (BODY_LEAP): begun from the floor with a push of the body's speed, the jump pose held while in the air, ended
+		/// on landing. Called before the jetpack's update each frame.
+		void UpdateLeap();
 		bool m_JetFlying = false; //!< Flying on the jet just now: lit, or lit in the last 0.4 s (see LearnFlight).
 		float m_FeetBelowPos = -1.0F; //!< How far under Pos the floor is when this stands, learned standing; below zero until seen.
 		int m_PilotLastChoice = -1;

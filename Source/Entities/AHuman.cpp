@@ -172,6 +172,8 @@ int AHuman::Create(const AHuman& reference) {
 	}
 
 	m_LookToAimRatio = reference.m_LookToAimRatio;
+	m_LegJumpHeight = reference.m_LegJumpHeight;
+	m_LegJumpSpeed = reference.m_LegJumpSpeed;
 
 	m_ThrowPrepTime = reference.m_ThrowPrepTime;
 	m_WaitingToReloadOffhand = reference.m_WaitingToReloadOffhand;
@@ -241,6 +243,8 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("ThrowPrepTime", { reader >> m_ThrowPrepTime; });
 	MatchProperty("Head", { SetHead(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("LookToAimRatio", { reader >> m_LookToAimRatio; });
+	MatchProperty("LegJumpHeight", { reader >> m_LegJumpHeight; });
+	MatchProperty("LegJumpSpeed", { reader >> m_LegJumpSpeed; });
 	MatchProperty("Jetpack", { SetJetpack(AEJetpack::FromReadPreset(g_PresetMan.ReadReflectedPreset(reader))); });
 	// Older mods set how the jetpack flies on the unit itself. Those settings live on the jetpack now, so they're passed on to it.
 	MatchProperty("JumpTime", {
@@ -334,6 +338,10 @@ int AHuman::Save(Writer& writer) const {
 	writer << m_pHead;
 	writer.NewProperty("LookToAimRatio");
 	writer << m_LookToAimRatio;
+	writer.NewProperty("LegJumpHeight");
+	writer << m_LegJumpHeight;
+	writer.NewProperty("LegJumpSpeed");
+	writer << m_LegJumpSpeed;
 	writer.NewProperty("Jetpack");
 	writer << m_pJetpack;
 	writer.NewProperty("FGArmFlailScalar");
@@ -1716,9 +1724,14 @@ void AHuman::PreControllerUpdate() {
 	// The AI's motor (its stance, a tactical move, a fall braked), then a ladder taken hold of or let go of, before the jet reads its key.
 	UpdateAIMotor();
 	UpdateLadderInput();
+	UpdateLeap();
 
 	if (m_pJetpack && m_pJetpack->IsAttached()) {
 		m_pJetpack->UpdateBurstState(*this);
+		// (The jetpack's idle puts a jump's movement state back to standing; a leap holds it while in the air.)
+		if (m_Leaping) {
+			m_MovementState = JUMP;
+		}
 
 		if (m_Controller.IsState(BODY_JUMP) && !m_pJetpack->IsOutOfFuel() && m_Status != INACTIVE) {
 			m_Paths[FGROUND][JUMP].Restart();

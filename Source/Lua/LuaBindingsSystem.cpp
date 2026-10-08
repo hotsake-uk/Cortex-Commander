@@ -112,6 +112,7 @@ LuaBindingRegisterFunctionDefinitionForType(SystemLuaBindings, Controller) {
 	                           luabind::value("SCROLL_UP", ControlState::SCROLL_UP),
 	                           luabind::value("SCROLL_DOWN", ControlState::SCROLL_DOWN),
 	                           luabind::value("DEBUG_ONE", ControlState::DEBUG_ONE),
+	                           luabind::value("BODY_LEAP", ControlState::BODY_LEAP),
 	                           luabind::value("CONTROLSTATECOUNT", ControlState::CONTROLSTATECOUNT)]
 	    .enum_("InputMode")[luabind::value("CIM_DISABLED", Controller::InputMode::CIM_DISABLED),
 	                        luabind::value("CIM_PLAYER", Controller::InputMode::CIM_PLAYER),
