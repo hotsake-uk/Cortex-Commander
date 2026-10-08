@@ -22,6 +22,7 @@ namespace RTE {
 			float BreakStrength = 1.0F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
 			float BlastPush = 0.5F; //!< How hard explosions throw loose pieces: 0 not at all, 1 hard, 3 very hard. Lower also means fewer pieces lying at rest are picked up again.
 			int CrushPixels = 24; //!< A falling piece goes through loose bits of ground of up to this many pixels (leftover scraps, nuggets, a few grains) and flattens them, instead of being held up by them. Never more than a quarter of its own size. 0 turns this off.
+			float ScuffStrength = 1.0F; //!< How much loose ground (sand and the like, per its Scuffs material property) is knocked loose and shoved along by units walking or running on it: 1 a few pixels a step, 2 more, 0 none.
 			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
 		};
 
@@ -39,6 +40,13 @@ namespace RTE {
 		/// @param x The pixel, in scene coordinates.
 		/// @param y The pixel, in scene coordinates.
 		static void NoteDamage(int x, int y);
+
+		/// Tells the system a unit's foot came down at a point, so loose ground under it (a material with Scuffs) is knocked loose and shoved the way the unit travels. Thread safe.
+		/// @param x The foot, in scene coordinates.
+		/// @param y The foot, in scene coordinates.
+		/// @param direction Which way the unit is going: -1 left, 1 right.
+		/// @param speed How fast it is going, in pixels per update.
+		static void NoteFootfall(int x, int y, int direction, float speed);
 
 		/// Tells the system that terrain around a point is about to be removed by something other than an explosion (a digging tool), then checks for loose pieces afterwards.
 		/// Call it before the terrain changes, from the main thread: it notes what was already hanging in the air there, so only what the change cuts loose falls.

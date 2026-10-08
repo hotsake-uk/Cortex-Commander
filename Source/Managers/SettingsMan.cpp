@@ -264,6 +264,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseBreakStrength", { TerrainCollapse::GetTuning().BreakStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 10.0F); });
 	MatchProperty("CollapseBlastPush", { TerrainCollapse::GetTuning().BlastPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
+	MatchProperty("CollapseScuffStrength", { TerrainCollapse::GetTuning().ScuffStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
@@ -821,6 +822,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
 	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
+	writer.NewPropertyWithValue("CollapseScuffStrength", TerrainCollapse::GetTuning().ScuffStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
