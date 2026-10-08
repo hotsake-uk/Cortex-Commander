@@ -2111,6 +2111,10 @@ void MovableMan::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whi
 
 	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
 		(*aIt)->DrawHUD(pTargetBitmap, targetPos, which);
+
+	// What units are saying (unit speech), over every HUD.
+	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
+		(*aIt)->DrawSpeech(pTargetBitmap, targetPos, which);
 }
 
 void MovableMan::DrawHUD(const Camera& camera) {

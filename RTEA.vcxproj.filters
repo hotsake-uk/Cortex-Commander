@@ -190,6 +190,9 @@
     <ClInclude Include="Source\Managers\ActorWater.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\UnitSpeech.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\ActorFire.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -857,6 +860,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ActorWater.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\UnitSpeech.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ActorFire.cpp">

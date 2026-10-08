@@ -2654,6 +2654,7 @@ int AHuman::MoveAlongRoute() {
 				mover.remedyTimer.Reset();
 				mover.remedySpot = m_Pos;
 				MoverTrace(std::string("stuck; ") + remedyNames[mover.remedy]);
+				Say("Stuck");
 			}
 		}
 		switch (static_cast<StuckRemedy>(mover.remedy)) {

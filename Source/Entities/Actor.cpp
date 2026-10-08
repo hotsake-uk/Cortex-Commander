@@ -107,6 +107,8 @@ void Actor::Clear() {
 	m_HeadlampBrightness = 1.0F;
 	m_HeadlampColor.SetRGB(255, 240, 215);
 	m_HeadlampHasColor = false;
+	m_SpeechSet.clear();
+	m_Speech = UnitSpeech::State();
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
 	m_CharHeight = 0;
@@ -262,6 +264,7 @@ int Actor::Create(const Actor& reference) {
 	m_SightDistance = reference.m_SightDistance;
 	m_Perceptiveness = reference.m_Perceptiveness;
 	m_HeadlampBrightness = reference.m_HeadlampBrightness;
+	m_SpeechSet = reference.m_SpeechSet;
 	m_HeadlampColor = reference.m_HeadlampColor;
 	m_HeadlampHasColor = reference.m_HeadlampHasColor;
 	m_PainThreshold = reference.m_PainThreshold;
@@ -399,6 +402,7 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SightDistance", { reader >> m_SightDistance; });
 	MatchProperty("Perceptiveness", { reader >> m_Perceptiveness; });
 	MatchProperty("HeadlampBrightness", { reader >> m_HeadlampBrightness; });
+	MatchProperty("SpeechSet", { m_SpeechSet = reader.ReadPropValue(); });
 	MatchProperty("HeadlampColor", {
 		reader >> m_HeadlampColor;
 		m_HeadlampHasColor = true;
@@ -517,6 +521,9 @@ int Actor::Save(Writer& writer) const {
 	writer.NewProperty("SightDistance");
 	writer << m_SightDistance;
 	writer.NewPropertyWithValue("HeadlampBrightness", m_HeadlampBrightness);
+	if (!m_SpeechSet.empty()) {
+		writer.NewPropertyWithValue("SpeechSet", m_SpeechSet);
+	}
 	if (m_HeadlampHasColor) {
 		writer.NewPropertyWithValue("HeadlampColor", m_HeadlampColor);
 	}
@@ -1908,6 +1915,7 @@ void Actor::UpdateSuppressionAndMorale() {
 					Vector notUsed;
 					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
 						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
+						friendActor->Say("ManDown");
 					}
 				}
 			}
@@ -2508,6 +2516,44 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 }
 
 void Actor::DrawHUD(const Camera& camera) {}
+
+void Actor::DrawSpeech(BITMAP* targetBitmap, const Vector& targetPos, int whichScreen) {
+	if (!UnitSpeech::IsEnabled() || m_Speech.Text.empty() || m_Status >= DYING || m_Team < 0 || !g_ActivityMan.GetActivity()) {
+		return;
+	}
+	const long long age = g_TimerMan.GetSimTimeMS() - m_Speech.StartMS;
+	if (age < 0 || age > m_Speech.DurationMS) {
+		return;
+	}
+	// Heard by its own side; by the others only where they can see it, as the HUD.
+	int viewingTeam = g_ActivityMan.GetActivity()->GetTeamOfPlayer(g_ActivityMan.GetActivity()->PlayerOfScreen(whichScreen));
+	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && (!UnitSpeech::ShowsEnemies() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
+		return;
+	}
+	Vector drawPos = m_Pos - targetPos;
+	// Across a wrapping scene's seam, as DrawHUD.
+	if (!targetPos.IsZero()) {
+		int sceneWidth = g_SceneMan.GetSceneWidth();
+		if (g_SceneMan.SceneWrapsX() && targetBitmap->w < sceneWidth) {
+			if (targetPos.m_X < 0 && m_Pos.m_X > sceneWidth - targetBitmap->w) {
+				drawPos.m_X -= sceneWidth;
+			} else if (targetPos.m_X + targetBitmap->w > sceneWidth && m_Pos.m_X < targetBitmap->w) {
+				drawPos.m_X += sceneWidth;
+			}
+		}
+		int sceneHeight = g_SceneMan.GetSceneHeight();
+		if (g_SceneMan.SceneWrapsY() && targetBitmap->h < sceneHeight) {
+			if (targetPos.m_Y < 0 && m_Pos.m_Y > sceneHeight - targetBitmap->h) {
+				drawPos.m_Y -= sceneHeight;
+			} else if (targetPos.m_Y + targetBitmap->h > sceneHeight && m_Pos.m_Y < targetBitmap->h) {
+				drawPos.m_Y += sceneHeight;
+			}
+		}
+	}
+	// Over the top of what the HUD drew for it on this screen (DrawHUD leaves m_HUDStack there), or over its head.
+	int top = std::min(m_HUDStack, static_cast<int>(-m_CharHeight / 2.0F)) - 2;
+	UnitSpeech::DrawBubble(targetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + top, m_Speech, m_Team);
+}
 
 void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	static const char* const modeNames[] = {"none", "sentry", "patrol", "goto", "brainhunt", "gold dig", "return", "stay", "scuttle", "deliver", "bomb", "squad", "count"};

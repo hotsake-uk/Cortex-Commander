@@ -29,6 +29,7 @@ sources += files(
 'SmokeGrid.cpp',
 'ActorFire.cpp',
 'ActorWater.cpp',
+'UnitSpeech.cpp',
 'Sandbox.cpp',
 'SandboxCatalogue.cpp',
 'SandboxOrders.cpp',

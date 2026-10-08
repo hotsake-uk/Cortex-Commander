@@ -8,6 +8,7 @@
 #include "MOSRotating.h"
 #include "PathFinder.h"
 #include "SettingsMan.h"
+#include "UnitSpeech.h"
 
 #include <algorithm>
 #include <array>
@@ -669,6 +670,31 @@ namespace RTE {
 		float GetHeadlampBrightness() const { return m_HeadlampBrightness; }
 		void SetHeadlampBrightness(float brightness) { m_HeadlampBrightness = std::max(brightness, 0.0F); }
 
+		/// Has this unit say one of a trigger's lines over its head (unit speech, see UnitSpeech::Say), on the settings' chance.
+		/// @param trigger The trigger, as Speech.ini names it ("TakeCover").
+		/// @return Whether a line was said.
+		bool Say(const std::string& trigger) { return UnitSpeech::Say(*this, trigger); }
+
+		/// Has this unit say the given words over its head, whatever the chance (unit speech must be on). For scripts.
+		/// @param text What it says.
+		/// @param durationMS How long it shows; 0 for as long as a line that long usually does.
+		void SayText(const std::string& text, int durationMS) { UnitSpeech::SayText(*this, text, durationMS); }
+
+		/// Gets what this unit is saying and said lately.
+		UnitSpeech::State& GetSpeech() { return m_Speech; }
+
+		/// Gets the set of lines this unit speaks from (Speech.ini's "Set = Name"), empty for the default set.
+		const std::string& GetSpeechSet() const { return m_SpeechSet; }
+
+		/// Sets the set of lines this unit speaks from; empty for the default set.
+		void SetSpeechSet(const std::string& setName) { m_SpeechSet = setName; }
+
+		/// Draws what this unit is saying, if anything, above its HUD. Called after every actor's DrawHUD on the same screen.
+		/// @param targetBitmap The 8-bit HUD bitmap to draw to.
+		/// @param targetPos The scene position of the bitmap's upper left corner.
+		/// @param whichScreen Which player's screen this is drawn to.
+		void DrawSpeech(BITMAP* targetBitmap, const Vector& targetPos, int whichScreen);
+
 		/// Gives this unit's headlamp a color of its own, 0-255, in place of the player's setting.
 		void SetHeadlampColor(int red, int green, int blue) {
 			m_HeadlampColor.SetRGB(red, green, blue);
@@ -1276,6 +1302,8 @@ namespace RTE {
 		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
 		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
 		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.
+		std::string m_SpeechSet; //!< The set of lines this unit speaks from, empty for the default (see GetSpeechSet).
+		UnitSpeech::State m_Speech; //!< What this unit is saying and said lately (see UnitSpeech).
 		/// Damage value above which this will play PainSound
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking

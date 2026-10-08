@@ -1,6 +1,7 @@
 require("Constants")
 require("AI/CrabBehaviors");
 require("AI/SharedBehaviors");
+require("AI/UnitSpeech");
 
 NativeCrabAI = {};
 
@@ -415,6 +416,8 @@ function NativeCrabAI:Update(Owner)
 		end
 	end
 
+	-- What this update changed, said over the unit's head where it's worth a line (unit speech).
+	UnitSpeech.Update(self, Owner, ordered);
 	self.orderSerial = Owner.AIOrderSerial;
 end
 
