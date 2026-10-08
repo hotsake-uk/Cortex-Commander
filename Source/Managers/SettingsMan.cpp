@@ -116,6 +116,7 @@ void SettingsMan::Clear() {
 	m_UnheldItemsHUDDisplayRange = 25 * c_PPM;
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
+	m_ClassicPieWheel = false;
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -500,6 +501,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnheldItemsHUDDisplayRange", { SetUnheldItemsHUDDisplayRange(std::stof(reader.ReadPropValue())); });
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
+	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
@@ -950,6 +952,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
 	writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
 	writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
+	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);

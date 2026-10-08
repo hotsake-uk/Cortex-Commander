@@ -26,6 +26,7 @@ sources += files(
 'TerrainCollapse.cpp',
 'FluidSim.cpp',
 'ModernHUD.cpp',
+'ActionMenu.cpp',
 'SmokeGrid.cpp',
 'ActorFire.cpp',
 'ActorWater.cpp',
