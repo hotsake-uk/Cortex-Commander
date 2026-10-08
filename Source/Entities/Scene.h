@@ -710,6 +710,8 @@ namespace RTE {
 
 		int GetScenePathSize() const;
 
+		/// (The list is the calling thread's: a script reading it in another phase of its update than the one that asked can get another
+		/// thread's path. Scripts can use CalculatePathPoints instead, which hands the path back.)
 		std::list<Vector>& GetScenePath();
 
 		/// Returns whether two position represent the same path nodes.
