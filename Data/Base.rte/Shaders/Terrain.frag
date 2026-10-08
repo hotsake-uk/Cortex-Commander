@@ -315,7 +315,8 @@ void main() {
 			gloss = grid.b;
 			shine = gloss;
 		} else if (look == 0) {
-			shine *= 0.6;
+			// A liquid's colour keeps a liquid's shine in the palette: on terrain that only shares the colour, that's not this pixel's own.
+			shine = LiquidLook(colorIndex) != 0 ? 0.0 : shine * 0.6;
 		}
 		if (look > 0) {
 			vec4 lookShallow = rteLiquidShallow[look];
