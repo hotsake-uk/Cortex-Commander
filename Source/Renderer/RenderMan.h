@@ -7,6 +7,7 @@
 #include <memory>
 #include <array>
 #include <vector>
+#include <mutex>
 
 #define g_RenderMan RenderMan::Instance()
 
@@ -195,6 +196,7 @@ namespace RTE {
 		};
 		std::vector<PalettePulse> m_PalettePulses;
 		std::vector<PaletteCycle> m_PaletteCycles;
+		std::mutex m_PaletteAnimationMutex; //!< Guards the pulses and cycles: Lua scripts can ask for them from their threaded update while the frame is drawn.
 		std::array<unsigned char, 1024> m_PaletteColors{}; //!< The palette texture's own colours, RGBA, read back once, for cycling from and putting back.
 		bool m_PaletteColorsRead = false;
 		bool m_PaletteAnimated = false; //!< The textures hold animated values, to be put back when animation stops.
