@@ -79,6 +79,7 @@ thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s
 thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathAgent::JetTimeMS).
 thread_local float s_LeapHeight = 0.0F; // How high a leap of the searcher's legs lifts it, px (PathAgent::LeapHeight).
 thread_local float s_LeapSpeed = 4.0F; // How fast a leap carries it forward, m/s (PathAgent::LeapSpeed).
+thread_local float s_MaxSafeFall = FLT_MAX; // The highest drop a searcher with no jet lands from unhurt, px (PathAgent::MaxSafeFall).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
@@ -529,6 +530,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_JetClimbMSPerPx = agent.JetClimbMSPerPx;
 	s_LeapHeight = agent.LeapHeight;
 	s_LeapSpeed = agent.LeapSpeed;
+	s_MaxSafeFall = agent.MaxSafeFall;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
@@ -572,6 +574,7 @@ namespace {
 		float JetTimeMS = s_JetTimeMS;
 		float LeapHeight = s_LeapHeight;
 		float LeapSpeed = s_LeapSpeed;
+		float MaxSafeFall = s_MaxSafeFall;
 		float JetClimbMSPerPx = s_JetClimbMSPerPx;
 		const RTE::PathNode* FlyingStart = s_FlyingStart;
 		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
@@ -594,6 +597,7 @@ namespace {
 			s_JetTimeMS = JetTimeMS;
 			s_LeapHeight = LeapHeight;
 			s_LeapSpeed = LeapSpeed;
+			s_MaxSafeFall = MaxSafeFall;
 			s_JetClimbMSPerPx = JetClimbMSPerPx;
 			s_FlyingStart = FlyingStart;
 			s_AvoidLinks = AvoidLinks;
@@ -1295,7 +1299,13 @@ float PathFinder::FallCost(const PathNode& to) const {
 	if (s_JumpHeight == FLT_MAX || g_SceneMan.IsPointInNoGravArea(to.Pos)) {
 		return 0.0F;
 	}
-	return DropNodes(to) > c_SafeFallNodes ? c_FallCostPerNode : 0.0F;
+	int drop = DropNodes(to);
+	// A drop the searcher wouldn't land from unhurt, with no jet to brake it (LM-9): not routed. (Priced, not cut: a unit already falling
+	// still gets a route, the least bad one.)
+	if (s_MaxSafeFall < FLT_MAX && static_cast<float>(drop * m_NodeDimension) > s_MaxSafeFall) {
+		return 1000.0F;
+	}
+	return drop > c_SafeFallNodes ? c_FallCostPerNode : 0.0F;
 }
 
 bool PathFinder::Open(const Material& material) const {

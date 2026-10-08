@@ -1907,7 +1907,16 @@ int AHuman::MoveAlongRoute() {
 			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 		} else {
-			ctrl.SetState(toPoint.m_X < -3.0F ? MOVE_LEFT : MOVE_RIGHT, std::abs(toPoint.m_X) > 3.0F);
+			// No jet: over a drop deeper than the body lands from unhurt (one the route didn't mean: knocked off, or the floor gone), held
+			// straight rather than steered for the point, so it lands square on its feet and doesn't clip a lip on the way down (LM-9).
+			float maxFall = GetMaxSafeFallHeight();
+			bool deepDrop = maxFall < FLT_MAX && FloorUnder(m_Pos, maxFall + h) < 0.0F;
+			if (!deepDrop) {
+				ctrl.SetState(toPoint.m_X < -3.0F ? MOVE_LEFT : MOVE_RIGHT, std::abs(toPoint.m_X) > 3.0F);
+			} else if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("falling further than is safe; held straight");
+			}
 		}
 		return RouteMover::Moving;
 	}

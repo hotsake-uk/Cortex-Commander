@@ -810,6 +810,11 @@ namespace RTE {
 		/// @return The actor's jump height.
 		virtual float EstimateJumpHeight() const;
 
+		/// Gets the highest drop this actor lands from unhurt with no jet to brake it: the landing speed at which the impact reaches its
+		/// ImpulseDamageThreshold (Update's travel damage starts there), as a height in gravity, never under a storey (96 px, what a hatch
+		/// drops). @return The height, in pixels; FLT_MAX in no gravity or with no threshold.
+		float GetMaxSafeFallHeight() const;
+
 		/// Gets this Actor's base dig strength, or the strength of terrain they can expect to walk through without tools.
 		/// @return The actors base dig strength.
 		float GetAIBaseDigStrength() const { return m_AIBaseDigStrength; }
