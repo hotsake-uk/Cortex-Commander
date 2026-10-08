@@ -1707,7 +1707,9 @@ int AHuman::MoveAlongRoute() {
 
 	// ---- In liquid (LM-4): swum for the point along the surface, or walked along the bottom by what sinks (the walk below), and out
 	// up the bank by the hands (pressing up and into it: Actor::TryCatchLedge and TryStartMantle pull the body out over the lip). ----
-	if (inLiquid && !m_MovePath.empty()) {
+	// (A flight taken off from the surface is the flight's below while it climbs out, not a coming down in the water.)
+	const bool flyingOut = mover.flight.active && mover.flight.fromWater && !mover.flight.timer.IsPastSimMS(1500) && m_Vel.m_Y < 1.0F;
+	if (inLiquid && !m_MovePath.empty() && !flyingOut) {
 		const Vector point = m_MovePath.front();
 		const Vector toPoint = Towards(m_Pos, point);
 		const PathStepKind kind = m_MovePathKinds.empty() ? PathStepKind::Walk : m_MovePathKinds.front();
@@ -1745,6 +1747,40 @@ int AHuman::MoveAlongRoute() {
 				MoverTrace("out of air; surfacing");
 			}
 			return RouteMover::Moving;
+		}
+		// At the surface with a jet, and the route going up out of the water close by (a bank higher than the hands reach, a ledge or a deck over
+		// the water): flown out from here, as off a floor. (Only a bank low enough to climb got a unit out before: in open water under a cliff
+		// it swam to the wall and pressed up against it.)
+		if (liquidDepth == 2 && standardJet && m_pJetpack->GetJetTimeLeft() > JetRelightFuel()) {
+			Vector landing;
+			float landingFloorY = 0.0F;
+			int pointsToLanding = 0;
+			if (FindLanding(landing, landingFloorY, pointsToLanding)) {
+				Vector toLanding = Towards(m_Pos, landing);
+				if (toLanding.m_Y < -h * 0.5F && std::abs(toLanding.m_X) <= h * 2.5F && FlightWayClear(landing, landingFloorY)) {
+					mover.flight = RouteMover::Flight();
+					mover.flight.active = true;
+					mover.flight.fromWater = true;
+					mover.flight.landing = landing;
+					mover.flight.floorY = landingFloorY;
+					mover.flight.pointsToLanding = pointsToLanding;
+					mover.flight.timer.Reset();
+					mover.flight.totalTimer.Reset();
+					mover.flight.riseTimer.Reset();
+					mover.flight.startY = m_Pos.m_Y;
+					mover.flight.bestY = m_Pos.m_Y;
+					mover.flight.takeOff = m_Pos;
+					mover.fuelWaiting = false;
+					mover.settling = false;
+					MoverTrace("out of the water on the jet for " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)));
+					Vector command = PilotFlight(landing, landingFloorY);
+					ctrl.SetState(BODY_JUMPSTART, true);
+					ctrl.SetState(BODY_JUMP, true);
+					ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
+					mover.progressTimer.Reset();
+					return RouteMover::Moving;
+				}
+			}
 		}
 		// A sinker with the bottom under its feet walks it: the walk below, as on any floor.
 		if (!(floorHere >= 0.0F && !IsFloater())) {
