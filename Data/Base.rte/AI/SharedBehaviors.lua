@@ -1792,6 +1792,13 @@ function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 	end
 end
 
+-- Whether the walk of a fall-back is over (got there, or stood down with no route): nothing left of it, the waypoints, the path or
+-- one being worked out. (Not "no GoTo behaviour": that is swapped in a tick or two after the order, and crabs never set it, so a fall-back
+-- was "arrived" the tick after it began and its wait ran down wherever the unit was.) A second's grace first, for the order to be taken up.
+function SharedBehaviors.RetreatWalkOver(AI, Owner)
+	return AI.Retreat.WaitTimer:IsPastSimMS(1000) and Owner:GetWaypointListSize() == 0 and Owner.MovePathSize == 0 and not Owner.IsWaitingOnNewMovePath;
+end
+
 -- Falling back: a badly hurt unit with no enemy in sight goes to the nearest friend (the brain for choice) and waits a while to be
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
@@ -1810,7 +1817,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 			done = true; -- Nobody came; back to it.
 		elseif not AI.Retreat.Arrived and AI.Retreat.WaitTimer:IsPastSimMS(40000) then
 			done = true; -- Never got there.
-		elseif not AI.Retreat.Arrived and (not AI.GoToBehavior or SceneMan:ShortestDistance(Owner.Pos, AI.Retreat.Spot, false):MagnitudeIsLessThan(100)) then
+		elseif not AI.Retreat.Arrived and (SceneMan:ShortestDistance(Owner.Pos, AI.Retreat.Spot, false):MagnitudeIsLessThan(100) or SharedBehaviors.RetreatWalkOver(AI, Owner)) then
 			AI.Retreat.Arrived = true; -- The walk is over.
 			AI.Retreat.WaitTimer:Reset();
 		end
