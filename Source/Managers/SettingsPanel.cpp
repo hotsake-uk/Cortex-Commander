@@ -287,6 +287,10 @@ void DebugMan::SettingsGUI() {
 			Slider("Cloud cover", &settings.CloudCover, 0.0F, 1.0F);
 			Tip("How much of the sky is cloud in clear weather. 0.5 is the spread cloud shadows always had.");
 			Slider("Cloud opacity", &settings.CloudOpacity, 0.0F, 1.0F);
+			Slider("Cloud size", &settings.CloudSize, 0.4F, 2.5F);
+			Tip("How big the clouds are: wider patches with bigger puffs, in a deeper band, and wider shadows on the ground to match. 1 is the usual size.");
+			Slider("Cloud height", &settings.CloudHeight, 0.0F, 1.0F);
+			Tip("How high in the sky the clouds sit. 1 is along the top of the view, as usual; lower brings the band down towards the horizon. Clouds stay behind the terrain.");
 		}
 		Slider("God rays", &settings.GodRays, 0.0F, 2.0F);
 		Slider("Mist and dust", &settings.FogVolume, 0.0F, 1.5F);

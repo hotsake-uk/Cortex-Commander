@@ -2622,6 +2622,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteCloudStorm", cloudLayer ? glm::smoothstep(0.6F, 1.0F, m_CloudCover) : 0.0F);
 	// On a wrapping scene the clouds repeat once around it, so neither the sky nor the shadows jump at the seam.
 	m_CompositeShader->SetFloat("rteCloudPeriod", (cloudLayer && m_WrapX) ? static_cast<float>(m_SceneWidth) : 0.0F);
+	// How big the clouds are (the shadows' patches too, so they keep matching the sky) and how high their band sits.
+	m_CompositeShader->SetFloat("rteCloudSize", cloudLayer ? std::clamp(m_Settings.CloudSize, 0.4F, 2.5F) : 1.0F);
+	m_CompositeShader->SetFloat("rteCloudHeight", cloudLayer ? std::clamp(m_Settings.CloudHeight, 0.0F, 1.0F) : 1.0F);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
