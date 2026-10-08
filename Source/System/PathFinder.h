@@ -54,6 +54,7 @@ namespace RTE {
 		bool ClimbsLadders = false; //!< Whether it climbs ladders hand over hand (a humanoid with an arm): ladders are a way up and down for it, jet or none.
 		float LeapHeight = 0.0F; //!< How high a leap of its legs lifts it, in pixels (see AHuman::GetLegJumpHeight); 0 for none.
 		float LeapSpeed = 4.0F; //!< How fast a leap carries it forward, in m/s.
+		float MaxSafeFall = FLT_MAX; //!< For a searcher with no jet to brake a fall, the highest drop it lands from unhurt, in pixels (see Actor::GetMaxSafeFallHeight): falls higher are not routed. FLT_MAX for no limit.
 	};
 
 	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
