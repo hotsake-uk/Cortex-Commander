@@ -207,6 +207,12 @@ namespace RTE {
 		/// @return How many pathfinding requests are currently active.
 		int GetCurrentPathingRequests() const { return m_CurrentPathingRequests.load(); }
 
+		/// Waits for this grid's path searches in flight to finish, yielding the thread meanwhile, but not for ever: after the time given it
+		/// says so in the console and gives up, so a search that never ends can't freeze the game.
+		/// @param timeoutMS How long to wait at most, in real milliseconds.
+		/// @return Whether no searches were in flight when it returned.
+		bool WaitForPathingRequests(int timeoutMS = 10000);
+
 		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
 		/// green where the searcher stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs,
 		/// magenta for the stairs, pale green arcs for the searcher's leaps.

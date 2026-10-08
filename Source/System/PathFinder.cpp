@@ -17,8 +17,22 @@
 #include <execution>
 #include <mutex>
 #include <set>
+#include <thread>
 
 using namespace RTE;
+
+namespace {
+	/// Gives back one count of a grid's path searches in flight when it goes out of scope, however the search ends (a throw included): a count
+	/// left up made every wait for the grid to be free spin for ever.
+	struct RequestCountRelease {
+		explicit RequestCountRelease(std::atomic<int>& count) :
+		    m_Count(count) {}
+		~RequestCountRelease() { --m_Count; }
+		RequestCountRelease(const RequestCountRelease&) = delete;
+		RequestCountRelease& operator=(const RequestCountRelease&) = delete;
+		std::atomic<int>& m_Count;
+	};
+} // namespace
 
 // One pathfinder per thread, lazily initialized. Shouldn't access this directly, use GetPather() instead.
 struct MicroPatherWrapper {
@@ -205,6 +219,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_LeapsTaken.clear();
 
 	++m_CurrentPathingRequests;
+	RequestCountRelease countRelease(m_CurrentPathingRequests);
 
 	// Make sure start and end are within scene bounds.
 	g_SceneMan.ForceBounds(start);
@@ -458,8 +473,6 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		}
 	}
 
-	--m_CurrentPathingRequests;
-
 	// TODO: Clean up the path, remove series of nodes in the same direction etc?
 	return result;
 }
@@ -653,6 +666,8 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 	    [this, start, end, agent, callback](std::shared_ptr<volatile PathRequest> volRequest) {
 		    // Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
 		    PathRequest& request = const_cast<PathRequest&>(*volRequest);
+		    // (The count taken when it was queued, given back at the end, after the complete flag, or if the search or callback throws.)
+		    RequestCountRelease countRelease(m_CurrentPathingRequests);
 
 		    int status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
 
@@ -667,18 +682,33 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 		    // Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
 		    // This has the awkward side-effect that the complete flag is actually false during the callback - but that's fine, if it's called we know it's complete anyways
 		    request.complete = true;
-		    --m_CurrentPathingRequests;
 	    },
 	    pathRequest);
 
 	return pathRequest;
 }
 
+bool PathFinder::WaitForPathingRequests(int timeoutMS) {
+	// (Spun on with no yield, the main thread took a core from the very searches it waited on; and a count that never came down hung the game.)
+	if (m_CurrentPathingRequests.load() == 0) {
+		return true;
+	}
+	auto waitStart = std::chrono::steady_clock::now();
+	while (m_CurrentPathingRequests.load() != 0) {
+		if (std::chrono::steady_clock::now() - waitStart > std::chrono::milliseconds(timeoutMS)) {
+			g_ConsoleMan.PrintString("ERROR: " + std::to_string(m_CurrentPathingRequests.load()) + " path searches still running after " + std::to_string(timeoutMS / 1000) + " s; going on without them.");
+			return false;
+		}
+		std::this_thread::yield();
+	}
+	return true;
+}
+
 void PathFinder::RecalculateAllCosts() {
 	RTEAssert(g_SceneMan.GetScene(), "Scene doesn't exist or isn't loaded when recalculating PathFinder!");
 
-	// Deadlock until all path requests are complete
-	while (m_CurrentPathingRequests.load() != 0) {};
+	// Wait until all path requests are complete.
+	WaitForPathingRequests();
 
 	// I hate this copy, but fuck it.
 	std::vector<int> pathNodesIdsVec;
