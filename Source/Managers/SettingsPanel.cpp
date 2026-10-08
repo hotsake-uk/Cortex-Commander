@@ -470,6 +470,13 @@ void DebugMan::SettingsGUI() {
 		Slider("Soft smoke", &settings.SoftSmoke, 0.0F, 3.0F);
 		Tip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		Slider("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);
+		if (settings.SmokeScattering > 0.0F) {
+			Check("Smoke shades itself", &settings.SmokeShading);
+			Tip("Smoke takes its own colour, is lit on the side towards a fire, lamp or the sun and dark on the far side, and the sun paints its top. Off: one pale tint lit evenly through, as before.");
+			if (settings.SmokeShading) {
+				Slider("Smoke shading strength", &settings.SmokeShadingStrength, 0.0F, 1.0F);
+			}
+		}
 		Slider("Embers", &settings.Embers, 0.0F, 3.0F);
 		Check("Flames on burning ground", &settings.FireShader);
 		Tip("Burning ground is drawn as flames: tongues that lick and flicker, a darker core at the base and embers lifting off the tips, grouped along the fire front. Off: a flickering dot and a short tongue per burning pixel, as before.");
