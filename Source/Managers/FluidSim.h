@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -81,6 +82,10 @@ namespace RTE {
 		/// @param pixels Filled with the pixels, as scene positions.
 		/// @param limit The most to give.
 		static void GetActivePixels(const Vector& corner, float width, float height, std::vector<Vector>& pixels, size_t limit);
+
+		/// Visits every moving liquid pixel, for the renderer's water surface (SceneLighting's flow field). Only reads; the simulation is untouched. Call from the main thread, between sim updates.
+		/// @param visit Called with the pixel's scene position, its sideways and falling speed (quarter pixels per step, sideways negative to the left) and how many of its steps it hasn't got lower.
+		static void VisitMovingPixels(const std::function<void(int x, int y, int velX, int velY, int still)>& visit);
 
 	private:
 		static bool s_Enabled; //!< Whether flowing liquids are on.

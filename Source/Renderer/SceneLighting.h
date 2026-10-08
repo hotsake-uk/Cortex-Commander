@@ -188,6 +188,12 @@ namespace RTE {
 		float m_SunDiscStrength = 0.0F; //!< How bright the sun's disc is in the sky this frame: none at night, fading at the horizon and under weather.
 		float m_SunArc = 0.0F; //!< Where the sun is along its path, -1 rising to 1 setting.
 		float m_CloudDrift = 0.0F; //!< How far the clouds have drifted with the wind, in scene pixels.
+		GLTarget m_FlowTexture; //!< The moving liquid, for the water surface (LightingSettings::WaterFlowSurface), in the light grid's cells: R sideways speed (128 none), G speed, B how lately it moved, A 255 where any moves.
+		std::vector<unsigned char> m_Flow; //!< Four bytes per grid cell, as m_FlowTexture.
+		static constexpr int c_FlowTileCells = 32; //!< The flow field is cleared and uploaded in square tiles of this many cells a side.
+		int m_FlowTileColumns = 0;
+		std::vector<unsigned char> m_FlowTileMarks; //!< Per tile: 1 to be uploaded this frame, 2 written this frame (either or both).
+		std::vector<int> m_FlowTiles; //!< The tiles with moving liquid written into them last frame, to be cleared this frame.
 		GLTarget m_Scorch; //!< World space soot darkness, R.
 		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
@@ -289,6 +295,9 @@ namespace RTE {
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
 		void StampStains();
+
+		/// Brings the flow field (m_FlowTexture) up to date with the liquid moving this frame, clearing and uploading only the tiles that had or have moving liquid in them.
+		void UpdateFlowField();
 
 		const GlowInfo& GetGlowInfo(const BitmapTexture* glowTexture);
 
