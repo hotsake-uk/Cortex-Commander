@@ -323,6 +323,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("BloomThreshold", { g_PostProcessMan.GetLightingSettings().BloomThreshold = std::stof(reader.ReadPropValue()); });
+	MatchProperty("BloomKnee", { g_PostProcessMan.GetLightingSettings().BloomKnee = std::clamp(std::stof(reader.ReadPropValue()), 0.01F, 1.0F); });
+	MatchProperty("ShoulderStart", { g_PostProcessMan.GetLightingSettings().ShoulderStart = std::clamp(std::stof(reader.ReadPropValue()), 0.3F, 1.0F); });
+	MatchProperty("HotSpotSeconds", { g_PostProcessMan.GetLightingSettings().HotSpotSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
 	MatchProperty("BloomIntensity", { g_PostProcessMan.GetLightingSettings().BloomIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AutoExposureLow", { g_PostProcessMan.GetLightingSettings().AutoExposureLow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AutoExposureHigh", { g_PostProcessMan.GetLightingSettings().AutoExposureHigh = std::stof(reader.ReadPropValue()); });
@@ -575,6 +578,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("NightAffectsAI", lighting.NightAffectsAI);
 	writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
 	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
+	writer.NewPropertyWithValue("BloomKnee", lighting.BloomKnee);
+	writer.NewPropertyWithValue("ShoulderStart", lighting.ShoulderStart);
+	writer.NewPropertyWithValue("HotSpotSeconds", lighting.HotSpotSeconds);
 	writer.NewPropertyWithValue("BloomIntensity", lighting.BloomIntensity);
 	writer.NewPropertyWithValue("PostExposure", lighting.Exposure);
 	writer.NewPropertyWithValue("AutoExposure", lighting.AutoExposure);
