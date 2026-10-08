@@ -1078,6 +1078,7 @@ void Sandbox::Update() {
 	strokes.swap(s_Queue);
 	if (!InGame()) {
 		s_Possessed = nullptr;
+		s_Plans.clear();
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
 		s_Effects.clear();
@@ -1088,6 +1089,7 @@ void Sandbox::Update() {
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
+	UpdatePlans();
 	UpdateIncoming();
 	UpdateEffects();
 	for (const WaterSpawner& spawner: s_WaterSpawners) {

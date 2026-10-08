@@ -88,9 +88,11 @@ namespace SandboxDetail {
 		standing.AutoTargetID = 0;
 		standing.Hold = false;
 		standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
-		// (A new order goes back to its own movement rule, RC-1; one the standing orders resend keeps what the player set.)
+		// (A new order goes back to its own movement rule, RC-1; one the standing orders resend keeps what the player set. And a new order the
+		// player gives drops the unit's plan, RC-3.)
 		if (!resend) {
 			standing.Movement = Actor::MOVE_FOLLOW_ORDER;
+			DropPlan(unit);
 		}
 		if (!attack) {
 			standing.HasAttackPlace = false;
@@ -102,6 +104,7 @@ namespace SandboxDetail {
 
 	/// Holds a unit where it is, forgetting every order it had.
 	void HoldUnit(Actor* unit) {
+		DropPlan(unit);
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
 		unit->ClearAIWaypoints();
@@ -123,9 +126,6 @@ namespace SandboxDetail {
 			} else {
 				unit->AddAISceneWaypoint(order.Waypoint);
 			}
-			for (const Vector& then: order.Then) {
-				unit->AddAISceneWaypoint(then);
-			}
 			unit->SetAIMode(Actor::AIMODE_GOTO);
 			if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 				g_ConsoleMan.PrintString("SANDBOX: " + unit->GetPresetName() + " sent to " + std::to_string(static_cast<int>(order.Waypoint.m_X)) + "," + std::to_string(static_cast<int>(order.Waypoint.m_Y)) + (order.Target ? " after " + order.Target->GetPresetName() : "") + " mode now " + std::to_string(unit->GetAIMode()));
@@ -141,6 +141,7 @@ namespace SandboxDetail {
 			return;
 		}
 		CancelRetreatAndFlank(actor);
+		DropPlan(actor);
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->ClearStandingOrder();
@@ -498,9 +499,14 @@ namespace SandboxDetail {
 		if (s_CommandMode == CommandMode::Guard) {
 			// Follow the friend clicked; with nobody there, nothing happens.
 			if (friendly && !selected) {
-				for (const UnitRef& ref: s_Selected) {
-					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit != target) {
-						GuardUnit(unit, target);
+				if (modifier == 1) {
+					// Shift: a step of the plan (RC-3).
+					PlanStepFor(UnitsToMove(0, true), PlanKind::Guard, target->GetPos(), target);
+				} else {
+					for (const UnitRef& ref: s_Selected) {
+						if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit != target) {
+							GuardUnit(unit, target);
+						}
 					}
 				}
 				MarkOrder(target->GetPos(), IM_COL32(120, 220, 120, 255));
@@ -508,11 +514,22 @@ namespace SandboxDetail {
 			return;
 		}
 		if (s_CommandMode == CommandMode::Attack) {
+			if (modifier == 1) {
+				if (Actor* enemy = EnemyNear(position, SelectionTeam())) {
+					PlanStepFor(UnitsToMove(0, true), PlanKind::Attack, enemy->GetPos(), enemy);
+					MarkOrder(enemy->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Attack)]);
+				}
+				return;
+			}
 			OrderSelectedUnits(1, position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {
-			MoveUnitsTo(UnitsToMove(0, true), position, true);
+			if (modifier == 1) {
+				PlanStepFor(UnitsToMove(0, true), PlanKind::AttackMove, position, nullptr);
+			} else {
+				MoveUnitsTo(UnitsToMove(0, true), position, true);
+			}
 			MarkOrder(position, c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)]);
 			return;
 		}
@@ -544,7 +561,11 @@ namespace SandboxDetail {
 			return;
 		}
 		bool attack = target && IsCombatant(target) && !selected && !friendly;
-		if (attack) {
+		if (attack && modifier == 1) {
+			// Shift: attacking it is a step of the plan (RC-3).
+			PlanStepFor(UnitsToMove(0, true), PlanKind::Attack, target->GetPos(), target);
+			MarkOrder(target->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Attack)]);
+		} else if (attack) {
 			for (const UnitRef& ref: s_Selected) {
 				// (Never at one of its own side, whatever the selection holds.)
 				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit->GetTeam() != target->GetTeam()) {
@@ -553,8 +574,8 @@ namespace SandboxDetail {
 			}
 			MarkOrder(target->GetPos(), IM_COL32(239, 106, 91, 255));
 		} else if (modifier == 1) {
-			// Shift: on to here after where they're going.
-			QueueWaypoint(UnitsToMove(0, true), position);
+			// Shift: on to here after what they're doing, a step of the plan (RC-3).
+			PlanStepFor(UnitsToMove(0, true), PlanKind::Move, position, nullptr);
 			MarkOrder(position, IM_COL32(110, 180, 250, 255));
 		} else {
 			MoveUnitsTo(UnitsToMove(0, true), position);
@@ -562,25 +583,155 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// A further place for the selected units to go on to after where they're going (a shift-click): the route is then the player's own, leg by leg.
-	/// A unit going nowhere is simply sent there.
-	void QueueWaypoint(std::vector<Actor*> units, const Vector& point) {
-		std::vector<Vector> spots = StandingSpots(point, 1);
-		for (Actor* unit: units) {
-			// (Just over the ground under the point, as for a move: see MoveUnitsTo.)
-			Vector waypoint = (spots.empty() ? point : spots.front()) + Vector(0.0F, -4.0F);
-			auto pending = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
-			if (pending != s_PendingOrders.end()) {
-				pending->Then.push_back(waypoint);
-			} else if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
-				unit->AddAISceneWaypoint(waypoint);
+	/// The nearest enemy of a side to a point, within 400 px: what Attack goes for at a click near it. Null for none.
+	Actor* EnemyNear(const Vector& point, int team) {
+		Actor* target = nullptr;
+		float nearest = 400.0F * 400.0F;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team) {
+				continue;
+			}
+			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+			if (distance < nearest) {
+				nearest = distance;
+				target = actor;
+			}
+		}
+		return target;
+	}
+
+	/// Forgets a unit's plan (RC-3): any order given to it other than by its plan.
+	void DropPlan(const Actor* unit) {
+		if (!s_FollowingPlan && unit) {
+			s_Plans.erase(unit->GetUniqueID());
+		}
+	}
+
+	/// Gives a unit a step of its plan now.
+	void StartPlanStep(Actor* unit, Plan& plan, const PlanStep& step) {
+		s_FollowingPlan = true;
+		Actor* target = GetRef(step.Target);
+		switch (step.Kind) {
+			case PlanKind::Move:
+			case PlanKind::AttackMove:
+				// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
+				SendUnit(unit, step.Place + Vector(0.0F, -4.0F), nullptr, false, step.Kind == PlanKind::Move ? "move (plan)" : "attack-move (plan)");
+				if (step.Kind == PlanKind::AttackMove) {
+					unit->SetMovementRule(Actor::MOVE_ENGAGE);
+				}
+				break;
+			case PlanKind::Attack:
+				if (target) {
+					SendUnit(unit, target->GetPos(), target, true, "attack (plan)", true);
+				}
+				break;
+			case PlanKind::Guard:
+				if (target && target != unit) {
+					GuardUnit(unit, target);
+				}
+				break;
+			case PlanKind::Defend:
+				HoldUnit(unit);
+				unit->SetOrderPost(unit->GetPos());
+				break;
+		}
+		s_FollowingPlan = false;
+		plan.Current = step;
+		plan.Running = true;
+		plan.Started = g_TimerMan.GetSimUpdateCount();
+	}
+
+	/// Whether the step a unit is on is over, so the next can start: a move when it has arrived (no longer going anywhere), an attack when
+	/// the enemy is dead, a guard when the friend is gone; a defend never is. Half a second's grace first, for the order to be taken up.
+	bool PlanStepDone(Actor* unit, const Plan& plan) {
+		if (g_TimerMan.GetSimUpdateCount() - plan.Started < 30 || std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); })) {
+			return false;
+		}
+		const Actor* target = GetRef(plan.Current.Target);
+		switch (plan.Current.Kind) {
+			case PlanKind::Move:
+			case PlanKind::AttackMove:
+				return unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			case PlanKind::Attack:
+			case PlanKind::Guard:
+				return !target || target->IsDead();
+			case PlanKind::Defend:
+				return false;
+		}
+		return false;
+	}
+
+	/// Adds a step to the plans of units (a shift-click, RC-3). A unit with nothing under way starts it at once; one carrying out an order
+	/// starts it once that order is over. Moves and attack-moves spread the units over standing spots round the place, as a move does; a
+	/// defend holds where the step before leaves the unit.
+	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target) {
+		bool toPlace = kind == PlanKind::Move || kind == PlanKind::AttackMove;
+		std::vector<Vector> spots = toPlace ? StandingSpots(place, static_cast<int>(units.size())) : std::vector<Vector>();
+		if (toPlace) {
+			std::sort(units.begin(), units.end(), [&place](Actor* a, Actor* b) {
+				return g_SceneMan.ShortestDistance(place, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(place, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+			});
+		}
+		for (size_t i = 0; i < units.size(); ++i) {
+			Actor* unit = units[i];
+			if (unit->IsPlayerControlled() || (target && (kind == PlanKind::Attack ? target->GetTeam() == unit->GetTeam() : target == unit))) {
+				continue;
+			}
+			Plan& plan = s_Plans[unit->GetUniqueID()];
+			plan.Unit = MakeRef(unit);
+			PlanStep step;
+			step.Kind = kind;
+			step.Target = MakeRef(target);
+			if (toPlace) {
+				step.Place = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
+			} else if (kind == PlanKind::Defend) {
+				step.Place = !plan.Steps.empty() ? plan.Steps.back().Place : (plan.Running ? plan.Current.Place : unit->GetPos());
 			} else {
-				SendUnit(unit, waypoint, nullptr, false, "move (queued)");
+				step.Place = target ? target->GetPos() : place;
+			}
+			bool busy = unit->GetAIMode() == Actor::AIMODE_GOTO || unit->GetAIMode() == Actor::AIMODE_SQUAD || std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
+			if (!plan.Running && plan.Steps.empty() && busy) {
+				// What it is doing now is the plan's first step, done when it gets there.
+				plan.Running = true;
+				plan.Current = PlanStep();
+				plan.Current.Place = unit->GetLastAIWaypoint();
+				plan.Started = g_TimerMan.GetSimUpdateCount();
+			}
+			if (!plan.Running && plan.Steps.empty()) {
+				StartPlanStep(unit, plan, step);
+			} else {
+				plan.Steps.push_back(step);
 			}
 		}
 	}
 
-	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they are.
+	/// Moves each unit with a plan on to its next step when the one it is on is over, and forgets the plans of units that are gone or have
+	/// finished. Once a sim update.
+	void UpdatePlans() {
+		for (auto entry = s_Plans.begin(); entry != s_Plans.end();) {
+			Plan& plan = entry->second;
+			Actor* unit = GetRef(plan.Unit);
+			if (!unit || unit->IsDead()) {
+				entry = s_Plans.erase(entry);
+				continue;
+			}
+			if (plan.Running && !PlanStepDone(unit, plan)) {
+				++entry;
+				continue;
+			}
+			if (plan.Steps.empty()) {
+				entry = s_Plans.erase(entry);
+				continue;
+			}
+			PlanStep step = plan.Steps.front();
+			plan.Steps.pop_front();
+			StartPlanStep(unit, plan, step);
+			++entry;
+		}
+	}
+
+	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
+	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3).
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -588,18 +739,7 @@ namespace SandboxDetail {
 		} else if (choice == 1) {
 			// The nearest enemy to the point, if there is one close: the player's pick, kept after while it lives. With none near, nothing (RC-2:
 			// fighting towards a place is Attack-move's).
-			Actor* target = nullptr;
-			float nearest = 400.0F * 400.0F;
-			for (Actor* actor: SandboxAccess::Actors()) {
-				if (!IsCombatant(actor) || actor->IsIgnoredByAI() || units.empty() || actor->GetTeam() == units.front()->GetTeam()) {
-					continue;
-				}
-				float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-				if (distance < nearest) {
-					nearest = distance;
-					target = actor;
-				}
-			}
+			Actor* target = units.empty() ? nullptr : EnemyNear(point, units.front()->GetTeam());
 			if (!target) {
 				return;
 			}
@@ -623,6 +763,23 @@ namespace SandboxDetail {
 				unit->SetOrderPost(unit->GetPos());
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
+		} else if (choice == 13) {
+			// Defend with Shift: holding ground where the plan leaves them, as its last step (RC-3).
+			PlanStepFor(units, PlanKind::Defend, point, nullptr);
+		} else if (choice == 20) {
+			// The plans of the units picked, cleared (they carry on with the step they're on).
+			for (Actor* unit: units) {
+				if (auto plan = s_Plans.find(unit->GetUniqueID()); plan != s_Plans.end()) {
+					plan->second.Steps.clear();
+				}
+			}
+		}
+	}
+
+	/// Drops one step from a unit's plan (a right click on its marker, RC-3).
+	void DropPlanStep(long unitID, int step) {
+		if (auto plan = s_Plans.find(unitID); plan != s_Plans.end() && step >= 0 && static_cast<size_t>(step) < plan->second.Steps.size()) {
+			plan->second.Steps.erase(plan->second.Steps.begin() + step);
 		}
 	}
 
