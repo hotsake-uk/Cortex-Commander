@@ -2317,7 +2317,8 @@ void AHuman::PreControllerUpdate() {
 	}
 
 	// Item currently set to be within reach has expired or is now out of range
-	if (m_pItemInReach && (m_pItemInReach->ToDelete() || !m_pItemInReach->IsPickupableBy(this) || !g_MovableMan.IsDevice(m_pItemInReach) || g_SceneMan.ShortestDistance(reachPoint, m_pItemInReach->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(reach + m_pItemInReach->GetRadius()))) {
+	// (Whether it is still a device in the scene first: only then is the pointer known to be live.)
+	if (m_pItemInReach && (!g_MovableMan.IsDevice(m_pItemInReach) || m_pItemInReach->ToDelete() || !m_pItemInReach->IsPickupableBy(this) || g_SceneMan.ShortestDistance(reachPoint, m_pItemInReach->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(reach + m_pItemInReach->GetRadius()))) {
 		m_pItemInReach = nullptr;
 	}
 
