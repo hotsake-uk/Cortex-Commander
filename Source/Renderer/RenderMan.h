@@ -73,6 +73,14 @@ namespace RTE {
 		/// Clears active uniforms.
 		void ClearUniforms() { m_ActiveBatch->m_CurrentUniforms.clear(); }
 
+		/// Draws what follows with a mod's object shader (MovableObject's Shader), handing it the hook uniforms, until EndObjectShader.
+		/// @param shader The shader, which must be valid. @param time Seconds of effect time. @param objectSeed 0 to 1, the same for the object every frame.
+		/// @param health Its unit's health, 0 to 1. @param strength The player's strength setting for mod shaders. @param relief How much sprites' shading counts as relief.
+		void BeginObjectShader(const Shader* shader, float time, float objectSeed, float health, float strength, float relief);
+
+		/// Goes back to the shader that was drawing before BeginObjectShader. Does nothing if no object shader is on.
+		void EndObjectShader();
+
 		/// Schedules a new draw call on the current batch, initialized with the current shader, uniforms and camera.
 		std::shared_ptr<DrawCall> BeginDraw();
 

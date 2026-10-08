@@ -229,11 +229,15 @@ void DebugMan::SettingsGUI() {
 				atmosphere.WeatherType = settings.WeatherType;
 				atmosphere.WeatherIntensity = settings.WeatherIntensity;
 				atmosphere.Wind = settings.Wind;
+				atmosphere.PostShader = own.PostShader;
 				scene->SetAtmosphere(atmosphere);
 			}
 			ImGui::SameLine();
 			if (ToolUI::Button("Clear")) {
-				scene->SetAtmosphere(Scene::Atmosphere());
+				// Time and weather only: the scene's mod post pass stays.
+				Scene::Atmosphere atmosphere;
+				atmosphere.PostShader = own.PostShader;
+				scene->SetAtmosphere(atmosphere);
 			}
 			ImGui::TextDisabled("Saved when the scene is saved in the scene editor.");
 		}
@@ -517,6 +521,17 @@ void DebugMan::SettingsGUI() {
 		Slider("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 		Slider("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 		Slider("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
+		Heading("Mods");
+		Check("Mod shaders", &settings.ModShaders);
+		Tip("Lets mods draw their objects with their own shaders (a cloaking field, a hologram) and give a scene or activity its own screen effect (a scanner overlay, a sandstorm filter). Off: everything is drawn with the game's own shaders.");
+		if (settings.ModShaders) {
+			Slider("Mod shader strength", &settings.ModShaderStrength, 0.0F, 1.0F);
+			Tip("How strongly mods' shaders apply. A mod's shader decides what it does with this, and may ignore it.");
+			if (Plain()) {
+				const std::string& postShader = g_PostProcessMan.GetActivePostShaderName();
+				ImGui::TextDisabled("Screen effect now: %s", postShader.empty() ? "none" : postShader.c_str());
+			}
+		}
 	};
 
 	auto gameAndHUD = [&]() {

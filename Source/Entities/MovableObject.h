@@ -27,6 +27,7 @@ namespace RTE {
 	class SLTerrain;
 	class LuaStateWrapper;
 	class Texture;
+	class Shader;
 
 	/// A movable object with mass.
 	class MovableObject : public SceneObject {
@@ -900,6 +901,11 @@ namespace RTE {
 		/// Sets how glossy this looks under the lighting, 0 to 1, or below 0 to leave it to what it's part of and what it's made of.
 		void SetGloss(float gloss) { m_Gloss = std::min(gloss, 1.0F); }
 
+		/// Gets the name of the mod shader this is drawn with (a Shader preset), or empty for the game's own sprite shader. Parts without one are drawn with their unit's or object's.
+		const std::string& GetShaderName() const { return m_ShaderName; }
+		/// Sets the mod shader this is drawn with, by Shader preset name; empty for the game's own. An unknown name is reported in the console and ignored.
+		void SetShaderName(const std::string& shaderName);
+
 		/// Gets how the lighting should treat this when it's drawn: R how metallic, G how glossy, B whether it's a solid object that casts shadows (0 or 255).
 		/// Particles and effects are unmarked; MOSRotatings (units, their parts, devices, doors, wreckage) mark themselves.
 		/// @return The surface values.
@@ -1415,6 +1421,8 @@ namespace RTE {
 		float m_RenderOpacity; //!< Opacity this is drawn with, 0 to 1.
 		float m_Metalness; //!< How metallic this looks under the lighting, 0 to 1. Below 0 when not set.
 		float m_Gloss; //!< How glossy this looks under the lighting, 0 to 1. Below 0 when not set.
+		std::string m_ShaderName; //!< The mod shader this is drawn with (LightingSettings::ModShaders), a Shader preset's name. Empty for the game's own.
+		const Shader* m_Shader; //!< That shader, null when none or when it didn't compile. Not owned.
 		Vector m_LightOffset; //!< Offset of the light from this' position, rotated and flipped with this.
 		// The effect's rotation angle
 		float m_EffectRotAngle;

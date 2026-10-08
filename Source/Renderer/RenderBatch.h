@@ -48,6 +48,9 @@ namespace RTE {
 		const DrawCall* m_OpenPixelDraw{nullptr}; //!< The last draw call, if it is a run of single pixels that the next pixel can join (see Draw::PixelBatched). Any other draw closes it.
 		const Shader* m_CurrentShader{nullptr};
 		std::vector<std::shared_ptr<UniformValueType>> m_CurrentUniforms{};
+		std::vector<std::shared_ptr<UniformValueType>> m_ObjectUniforms{}; //!< Given to every new draw call while an object with its own shader is drawn (RenderMan::BeginObjectShader).
+		const Shader* m_ShaderBeforeObject{nullptr}; //!< The shader to go back to after that object.
+		bool m_InObjectShader{false};
 		glm::mat4 m_CurrentView{1.0f};
 		glm::mat4 m_CurrentProjection{1.0f};
 		const Camera* m_CurrentCamera{nullptr};

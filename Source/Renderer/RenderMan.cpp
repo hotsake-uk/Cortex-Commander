@@ -188,8 +188,40 @@ std::shared_ptr<DrawCall> RenderMan::BeginDraw() {
 	drawCall->m_Shader = m_ActiveBatch->m_CurrentShader;
 	drawCall->m_TextureId = m_ShapesTexture->GetTextureId();
 	drawCall->m_BlendMode = m_ActiveBatch->m_CurrentBlendMode;
+	if (m_ActiveBatch->m_InObjectShader) {
+		drawCall->m_UniformValues = m_ActiveBatch->m_ObjectUniforms;
+	}
 	m_ActiveBatch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
 	return drawCall;
+}
+
+void RenderMan::BeginObjectShader(const Shader* shader, float time, float objectSeed, float health, float strength, float relief) {
+	if (!shader) {
+		return;
+	}
+	if (!m_ActiveBatch->m_InObjectShader) {
+		m_ActiveBatch->m_ShaderBeforeObject = m_ActiveBatch->m_CurrentShader;
+	}
+	m_ActiveBatch->m_InObjectShader = true;
+	m_ActiveBatch->m_CurrentShader = shader;
+	std::vector<std::shared_ptr<UniformValueType>>& uniforms = m_ActiveBatch->m_ObjectUniforms;
+	uniforms.clear();
+	const std::pair<int, float> values[] = {{shader->GetTimeUniform(), time}, {shader->GetObjectSeedUniform(), objectSeed}, {shader->GetHealthUniform(), health}, {shader->GetStrengthUniform(), strength}, {shader->GetReliefUniform(), relief}};
+	for (const auto& [location, value]: values) {
+		if (location >= 0) {
+			uniforms.push_back(std::make_shared<FloatValue>(location, value));
+		}
+	}
+}
+
+void RenderMan::EndObjectShader() {
+	if (!m_ActiveBatch->m_InObjectShader) {
+		return;
+	}
+	m_ActiveBatch->m_CurrentShader = m_ActiveBatch->m_ShaderBeforeObject;
+	m_ActiveBatch->m_ShaderBeforeObject = nullptr;
+	m_ActiveBatch->m_ObjectUniforms.clear();
+	m_ActiveBatch->m_InObjectShader = false;
 }
 
 void RenderMan::BeginFrame(const Camera* camera) {

@@ -113,6 +113,9 @@ namespace RTE {
 			m_PostSceneEffects.clear();
 			m_GlowAreas.clear();
 			ClearSceneLights();
+			// Look the mod post pass up again, for a new scene or reloaded presets.
+			m_ActivePostShaderName.clear();
+			m_ActivePostShader = nullptr;
 		}
 
 		/// Clears the lights and shimmers registered so far. They're registered on every sim update and the light pass adds them up, so only the
@@ -216,6 +219,20 @@ namespace RTE {
 
 		/// Stops every palette pulse and cycle asked for by scripts or PaletteAnimation.ini. Glowing liquids keep theirs.
 		void ClearPaletteAnimation();
+
+		/// Gives the screen a mod's post pass (LightingSettings::ModShaders), from Lua: a Shader preset that redraws the lit scene before bloom and
+		/// tonemapping, such as a scanner overlay or a sandstorm filter. Empty to go back to the activity's or scene's own (their PostShader key), or none.
+		/// Lasts until the next activity starts. Safe from any thread.
+		void SetPostShader(const std::string& shaderName);
+
+		/// Gets the post pass asked for from Lua, empty for none.
+		std::string GetPostShader() const;
+
+		/// Gets the mod post pass to draw now: the one asked for from Lua, else the activity's, else the scene's. Null for none or one that didn't compile. Main thread only.
+		const Shader* GetActivePostShader();
+
+		/// Gets the name of the post pass found by the last GetActivePostShader, empty for none.
+		const std::string& GetActivePostShaderName() const { return m_ActivePostShaderName; }
 
 		/// Gets the scene lights registered for the frame about to be drawn, in scene coordinates, for the lighting-by-source readout. Main thread only.
 		const std::vector<SceneLight>& GetSceneLights() const { return m_SceneLights; }
@@ -439,6 +456,10 @@ namespace RTE {
 		static constexpr float c_LightningBoltSeconds = 0.45F; //!< How long a bolt shows, its echo included.
 		std::vector<LightningBolt> m_LightningBolts; //!< Guarded by m_LightningMutex.
 		mutable std::mutex m_LightningMutex;
+		std::string m_PostShaderName; //!< The mod post pass asked for from Lua. Guarded by m_PostShaderMutex.
+		mutable std::mutex m_PostShaderMutex;
+		std::string m_ActivePostShaderName; //!< The post pass last looked up, and what it found (null if nothing usable). Main thread.
+		const Shader* m_ActivePostShader = nullptr;
 
 		/// How bright a bolt is this long after it struck: a sharp first stroke and a weaker echo, as the sky's flash.
 		static float LightningFlash(float seconds) { return seconds < 0.0F || seconds > c_LightningBoltSeconds ? 0.0F : 1.6F * std::exp(-seconds * 18.0F) + 0.9F * std::exp(-std::abs(seconds - 0.2F) * 25.0F); }

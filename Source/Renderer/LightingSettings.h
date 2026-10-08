@@ -270,6 +270,8 @@ namespace RTE {
 		glm::vec3 HighlightTint = {1.0F, 1.0F, 1.0F}; //!< Color multiplier for the highlights.
 		float FilmGrain = 0.0F; //!< Film grain strength, 0 to 1.
 		float ChromaticAberration = 0.0F; //!< Lens color fringing towards the screen edges, in pixels.
+		bool ModShaders = true; //!< Mods' own shaders: objects drawn with a Shader of their own, and a scene's or activity's post pass. Off: everything is drawn with the game's shaders, as before.
+		float ModShaderStrength = 1.0F; //!< How strongly mods' shaders apply, 0 to 1, handed to them as rteStrength (a mod's shader may ignore it).
 
 		int DebugView = 0; //!< Not persisted. 0 final image, 1 lighting on grey, 2 sky light only, 3 dynamic light only, 4 normals, 5 distortion, 6 GI only, 7 solid objects and the distance to them, 8 where the sun is visible.
 	};
