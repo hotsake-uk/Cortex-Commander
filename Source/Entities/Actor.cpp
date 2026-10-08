@@ -1611,11 +1611,18 @@ void Actor::ShotPassing(const MovableObject& shot) {
 	const Vector step = g_SceneMan.ShortestDistance(from, shot.GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
 	Box box(Vector(std::min(from.m_X, from.m_X + step.m_X) - c_Reach, std::min(from.m_Y, from.m_Y + step.m_Y) - c_Reach), std::abs(step.m_X) + c_Reach * 2.0F, std::abs(step.m_Y) + c_Reach * 2.0F);
 	const float stepLengthSq = std::max(step.GetSqrMagnitude(), 0.0001F);
+	// The box finds every part of a body (head, torso, limbs, held gun); each unit counts once for this shot.
+	static thread_local std::vector<const Actor*> s_Counted;
+	s_Counted.clear();
 	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true)) {
 		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
 		if (!actor || (shot.GetTeam() != Activity::NoTeam && actor->GetTeam() == shot.GetTeam())) {
 			continue;
 		}
+		if (std::find(s_Counted.begin(), s_Counted.end(), actor) != s_Counted.end()) {
+			continue;
+		}
+		s_Counted.push_back(actor);
 		// The nearest point of the step to the body: a shot that is passing, not one that has hit (that is the hit's own business).
 		Vector toActor = g_SceneMan.ShortestDistance(from, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
 		float along = std::clamp((toActor.m_X * step.m_X + toActor.m_Y * step.m_Y) / stepLengthSq, 0.0F, 1.0F);
