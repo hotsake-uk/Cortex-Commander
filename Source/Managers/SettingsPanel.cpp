@@ -358,6 +358,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How much the ripples bend what's seen through the water, and how much it darkens with depth. 0 for none.");
 			Slider("Ripples", &settings.WaterRipples, 0.0F, 2.0F);
 			Tip("How much the surface ripples tilt the reflection and the glints of light on the water. 0: a flat mirror.");
+			Check("Reflection ripples with the surface", &settings.WaterMirrorSurface);
+			Tip("The mirrored scene is moved by the surface above it, so it wobbles as one image where the water moves and goes clean where it's still. Off: each pixel's own ripple moves it, as before. How much is the Ripples slider.");
 		}
 		Heading("Moving water");
 		Check("Surface follows the flow", &settings.WaterFlowSurface);
