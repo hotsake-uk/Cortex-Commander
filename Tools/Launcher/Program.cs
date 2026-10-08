@@ -65,6 +65,14 @@ class MainForm : Form
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
 	readonly Button openBtn = new() { Text = "Open folder", AutoSize = true };
 	readonly Button cancelBtn = new() { Text = "Cancel", AutoSize = true, Enabled = false };
+	readonly ListView feedList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
+	readonly CheckBox liveBox = new() { Text = "Live", Checked = true, AutoSize = true, Padding = new Padding(8, 3, 0, 0) };
+	readonly NumericUpDown intervalBox = new() { Minimum = 3, Maximum = 600, Value = 10, Width = 50 };
+	readonly Label liveStatus = new() { AutoSize = true, Padding = new Padding(8, 6, 0, 0) };
+	readonly TabPage feedTab = new("Live feed");
+	readonly TabControl bottomTabs = new() { Dock = DockStyle.Fill };
+	Dictionary<string, string>? lastRemote;
+	int unseen;
 	readonly Label status = new() { AutoSize = true, Padding = new Padding(8, 6, 0, 0) };
 
 	List<string> allRefs = new();
@@ -126,7 +134,22 @@ class MainForm : Form
 
 		var vsplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 430 };
 		vsplit.Panel1.Controls.Add(split);
-		vsplit.Panel2.Controls.Add(log);
+		var logTab = new TabPage("Log");
+		logTab.Controls.Add(log);
+		var feedTop = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
+		feedTop.Controls.AddRange(new Control[] { liveBox, new Label { Text = "poll every", AutoSize = true, Padding = new Padding(8, 6, 0, 0) }, intervalBox, new Label { Text = "s", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, liveStatus });
+		feedList.Columns.Add("Time", 70);
+		feedList.Columns.Add("Branch / tag", 200);
+		feedList.Columns.Add("Commit", 90);
+		feedList.Columns.Add("Version", 70);
+		feedList.Columns.Add("Author", 110);
+		feedList.Columns.Add("Message", 600);
+		feedTab.Controls.Add(feedList);
+		feedTab.Controls.Add(feedTop);
+		bottomTabs.TabPages.Add(feedTab);
+		bottomTabs.TabPages.Add(logTab);
+		bottomTabs.SelectedIndexChanged += (_, _) => { if (bottomTabs.SelectedTab == feedTab) { unseen = 0; feedTab.Text = "Live feed"; } };
+		vsplit.Panel2.Controls.Add(bottomTabs);
 
 		Controls.Add(vsplit);
 		Controls.Add(top);
@@ -142,7 +165,8 @@ class MainForm : Form
 		openBtn.Click += (_, _) => { var c = Selected(); if (c != null) Process.Start("explorer.exe", WorktreePath(c)); };
 		cancelBtn.Click += (_, _) => { cts?.Cancel(); try { running?.Kill(true); } catch { } };
 		FormClosing += (_, _) => { SaveSettings(); };
-		Shown += async (_, _) => await FetchAsync();
+		feedList.DoubleClick += async (_, _) => await OpenFeedItem();
+		Shown += async (_, _) => { await FetchAsync(); _ = PollLoop(); };
 	}
 
 	void SaveSettings()
@@ -246,14 +270,120 @@ class MainForm : Form
 		SetBusy(true, "Fetching...");
 		cts = new CancellationTokenSource();
 		await Exec("git", $"fetch {settings.Remote} --tags --prune", Repo, cts.Token);
+		await RefreshRefs();
+		lastRemote = await LsRemote();
+		ApplyFilter();
+		SetBusy(false, $"{allRefs.Count} refs");
+	}
+
+	async Task RefreshRefs()
+	{
 		// Tags first (newest version first, so v8.2.N lands at the top), then remote branches by recent activity.
 		var (_, tags) = await Git("for-each-ref --sort=-version:refname --format=%(refname:short) refs/tags");
 		var (_, branches) = await Git($"for-each-ref --sort=-committerdate --format=%(refname:short) refs/remotes/{settings.Remote}");
 		allRefs = tags.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(t => "tag: " + t.Trim())
 			.Concat(branches.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(b => b.Trim()).Where(b => !b.EndsWith("/HEAD") && b != settings.Remote))
 			.ToList();
-		ApplyFilter();
-		SetBusy(false, $"{allRefs.Count} refs");
+	}
+
+	// ---- Live feed: git has no push notifications for a plain remote, so poll ls-remote (cheap) and fetch only when refs moved.
+
+	async Task<Dictionary<string, string>?> LsRemote()
+	{
+		var (code, o) = await Git($"ls-remote --heads --tags {settings.Remote}");
+		if (code != 0) return null;
+		var d = new Dictionary<string, string>();
+		foreach (var line in o.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var p = line.Split('\t');
+			if (p.Length != 2) continue;
+			var name = p[1].Trim();
+			if (name.EndsWith("^{}")) d[name[..^3]] = p[0]; // annotated tag: use the commit it points at
+			else if (!d.ContainsKey(name) || !name.StartsWith("refs/tags/")) d[name] = p[0];
+		}
+		return d;
+	}
+
+	async Task PollLoop()
+	{
+		while (!IsDisposed)
+		{
+			await Task.Delay((int)intervalBox.Value * 1000);
+			if (IsDisposed || !liveBox.Checked || lastRemote == null) { if (lastRemote == null && !busy && liveBox.Checked) lastRemote = await LsRemote(); continue; }
+			try
+			{
+				var now = await LsRemote();
+				if (now == null) { liveStatus.Text = "remote unreachable"; continue; }
+				var changed = now.Where(kv => !lastRemote.TryGetValue(kv.Key, out var old) || old != kv.Value).ToList();
+				liveStatus.Text = $"checked {DateTime.Now:HH:mm:ss}";
+				if (changed.Count == 0) continue;
+				var before = lastRemote;
+				var (fcode, fout) = await Git($"fetch {settings.Remote} --tags --prune --force");
+				if (fcode != 0) { Append("live fetch failed: " + fout.Trim()); continue; }
+				lastRemote = now;
+				await AnnounceChanges(before, changed);
+				await RefreshRefs();
+				ApplyFilter();
+				if (!string.IsNullOrEmpty(currentRef) && changed.Any(c => c.Key.EndsWith("/" + currentRef.Replace(settings.Remote + "/", "")))) await LoadCommits(currentRef);
+			}
+			catch (Exception ex) { Append("live poll error: " + ex.Message); }
+		}
+	}
+
+	async Task AnnounceChanges(Dictionary<string, string> before, List<KeyValuePair<string, string>> changed)
+	{
+		var re = new Regex("c_VersionString\\s*=\\s*\"([^\"]+)\"");
+		foreach (var (refName, sha) in changed.OrderBy(c => c.Key))
+		{
+			bool isTag = refName.StartsWith("refs/tags/");
+			var label = isTag ? "tag " + refName["refs/tags/".Length..] : refName["refs/heads/".Length..];
+			var tip = isTag ? sha : $"{settings.Remote}/{label}";
+			string range;
+			if (isTag) range = $"-n 1 {sha}";
+			else if (before.TryGetValue(refName, out var old))
+			{
+				var (anc, _) = await Git($"merge-base --is-ancestor {old} {sha}");
+				range = anc == 0 ? $"{old}..{sha} -n 30" : $"-n 5 {sha}"; // force-push: show the new tip
+				if (anc != 0) label += " (force-pushed)";
+			}
+			else
+			{
+				// brand new branch: only show commits not already on another known branch
+				var others = string.Join(" ", before.Where(kv => kv.Key.StartsWith("refs/heads/")).Select(kv => "^" + kv.Value).Distinct());
+				range = $"{sha} {others} -n 10";
+				label += " (new branch)";
+			}
+			var (code, o) = await Git($"log {range} --date=short --format=%H%x09%ad%x09%an%x09%s --");
+			if (code != 0) continue;
+			var commits = o.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Split('\t', 4)).Where(x => x.Length == 4)
+				.Select(x => new CommitInfo(x[0], x[1], x[2], x[3])).Reverse().ToList(); // oldest first, so the newest ends on top
+			foreach (var c in commits)
+			{
+				var (vc, vt) = await Git($"show {c.Sha}:Source/System/GameVersion.h");
+				var m = vc == 0 ? re.Match(vt) : null;
+				var item = new ListViewItem(DateTime.Now.ToString("HH:mm:ss")) { Tag = (isTag ? refName["refs/tags/".Length..] : $"{settings.Remote}/{refName["refs/heads/".Length..]}", c) };
+				item.SubItems.Add(label);
+				item.SubItems.Add(c.Short);
+				item.SubItems.Add(m is { Success: true } ? m.Groups[1].Value : "?");
+				item.SubItems.Add(c.Author);
+				item.SubItems.Add(c.Subject);
+				feedList.Items.Insert(0, item);
+				Append($"[live] {label}: {c.Short} {c.Author}: {c.Subject}");
+				unseen++;
+			}
+		}
+		if (bottomTabs.SelectedTab != feedTab) feedTab.Text = $"Live feed ({unseen} new)";
+		else unseen = 0;
+		System.Media.SystemSounds.Asterisk.Play();
+	}
+
+	async Task OpenFeedItem()
+	{
+		if (feedList.SelectedItems.Count == 0) return;
+		var (r, c) = ((string, CommitInfo))feedList.SelectedItems[0].Tag!;
+		await LoadCommits(r);
+		foreach (ListViewItem it in commitList.Items)
+			if (((CommitInfo)it.Tag!).Sha == c.Sha) { it.Selected = true; it.EnsureVisible(); break; }
 	}
 
 	void ApplyFilter()
