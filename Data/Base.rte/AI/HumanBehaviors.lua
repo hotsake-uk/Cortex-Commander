@@ -1473,12 +1473,13 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 			return false;
 		end
 		AI.CoverRestTimer = Timer();
-		local Spot = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.Height * 0.5 or Owner.Height * 1.5);
+		-- Pinned down, a unit wants cover it can duck behind and peek out of to shoot back (AC-4); to reload or recover, cover it is hidden behind standing.
+		local Spot, coverKind = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.Height * 0.5 or Owner.Height * 1.5, why == "suppressed");
 		if not Spot then
 			return false;
 		end
-		AI.Cover = { Spot = Spot, Return = Vector(Owner.Pos.X, Owner.Pos.Y), Timer = Timer(), Why = why, There = false, Leaving = false };
-		SharedBehaviors.Trace(Owner, "cover: " .. why .. ", " .. math.floor(SceneMan:ShortestDistance(Owner.Pos, Spot, false).X) .. " px over");
+		AI.Cover = { Spot = Spot, Return = Vector(Owner.Pos.X, Owner.Pos.Y), Timer = Timer(), Why = why, There = false, Leaving = false, Low = coverKind == "low" };
+		SharedBehaviors.Trace(Owner, "cover: " .. why .. ", " .. (coverKind or "?") .. ", " .. math.floor(SceneMan:ShortestDistance(Owner.Pos, Spot, false).X) .. " px over");
 	end
 	if AI.Cover.Leaving then
 		return false;
@@ -1513,6 +1514,11 @@ function HumanBehaviors.LeaveCover(AI, Owner)
 		if reloading or not rested then
 			return;
 		end
+		-- Behind low cover with the enemy still about, the unit stays and fights from there, ducking and peeking (PeekUpdate), for up to
+		-- twelve seconds; then back out as from any cover.
+		if AI.Cover.Low and AI.Target and MovableMan:ValidMO(AI.Target) and not AI.Cover.Timer:IsPastSimMS(12000) then
+			return;
+		end
 		AI.Cover.Leaving = true;
 		AI.Cover.Timer:Reset();
 	end
@@ -1529,6 +1535,50 @@ function HumanBehaviors.LeaveCover(AI, Owner)
 		SharedBehaviors.Trace(Owner, "cover: out again");
 		AI.Cover = nil;
 		AI.CoverRestTimer = Timer();
+	end
+end
+
+-- Fighting from behind low cover (AC-4): with an enemy in sight, standing still and a sandbag, low wall or ridge between, so crouched the
+-- unit is hidden and standing it can shoot over, it ducks down and comes up to fire in turn: up a second or so to shoot (longer the better
+-- the AI), down a moment, and down for good while reloading. Holds its fire while down (MayFire), the gun being behind the cover then.
+-- Not on the move, flying, lying down, aggressive, or without the engine's motor (the crouch is the motor's). Called every tick by the AI's update.
+function HumanBehaviors.PeekUpdate(AI, Owner)
+	AI.ducked = false;
+	local Target = AI.Target;
+	local moving = AI.lateralMoveState ~= Actor.LAT_STILL and not (AI.Cover and AI.Cover.There);
+	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
+		AI.Peek = nil;
+		return;
+	end
+	AI.PeekCheckTimer = AI.PeekCheckTimer or Timer();
+	if AI.peekCover == nil or AI.PeekCheckTimer:IsPastSimMS(500) then
+		AI.PeekCheckTimer:Reset();
+		AI.peekCover = SharedBehaviors.CoverAt(Owner, SceneMan:MovePointToGround(Owner.Pos, 0, 4), Target.Pos) == "low";
+	end
+	if not AI.peekCover then
+		AI.Peek = nil;
+		return;
+	end
+	if not AI.Peek then
+		AI.Peek = { Up = true, Timer = Timer(), For = 800 };
+		SharedBehaviors.Trace(Owner, "cover: low, peeking");
+	end
+	if AI.Peek.Timer:IsPastSimMS(AI.Peek.For) then
+		AI.Peek.Up = not AI.Peek.Up;
+		AI.Peek.Timer:Reset();
+		local skill = (AI.skill or 50) / 100;
+		AI.Peek.For = AI.Peek.Up and math.random(800, 1400) * (0.7 + skill * 0.6) or math.random(500, 1100) * (1.3 - skill * 0.6);
+	end
+	local reloading = Owner.EquippedItem and IsHeldDevice(Owner.EquippedItem) and ToHeldDevice(Owner.EquippedItem):IsReloading();
+	if AI.Peek.Up and not reloading then
+		SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 300);
+	else
+		SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
+		AI.ducked = true;
+		-- (Out of its sight while down is the point, not losing it: the target is kept, as it is where it was.)
+		if AI.TargetLostTimer then
+			AI.TargetLostTimer:Reset();
+		end
 	end
 end
 

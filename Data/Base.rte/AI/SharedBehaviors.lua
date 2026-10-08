@@ -1669,6 +1669,10 @@ end
 -- Whether the unit's weapons rule (RC-1) lets it pull the trigger now: always at will, never on hold fire, and on return fire only while
 -- it is being shot at, hurt or pinned down by near misses in the last four seconds. Call once an update (it keeps the health it last saw).
 function SharedBehaviors.MayFire(AI, Owner)
+	-- Ducked down behind low cover (AC-4): the gun is behind it too.
+	if AI.ducked then
+		return false;
+	end
 	local rule = Owner.WeaponRule;
 	if rule == Actor.WEAPONS_RETURN_FIRE then
 		if (AI.ruleLastHealth and Owner.Health < AI.ruleLastHealth) or Owner.Suppression > 0.1 then
@@ -1997,27 +2001,74 @@ function SharedBehaviors.CanSee(EyePos, Point)
 	return SceneMan:CastStrengthSumRay(EyePos, Point, 6, rte.grassID) < 120;
 end
 
--- A spot near the unit, on the ground, that can't be seen from a point: cover to reload or recover behind. Looked for a step at a time
--- out to reach either side, nearest first, along ground a walk away (no climb or drop of more than half a body, no wall between).
--- @return The spot, or nil.
-function SharedBehaviors.FindCover(Owner, FromPos, reach)
-	local eyeUp = Owner.Height * 0.3;
-	if not SharedBehaviors.CanSee(Owner.Pos + Vector(0, -eyeUp), FromPos) then
+-- How a unit standing at a spot is covered from a point (AC-4): "full" where even its standing eye can't be seen from there, "low" where
+-- something low is in the way, so crouched it is hidden and standing it can see over to shoot (a sandbag, a low wall, a ridge), nil
+-- where it is in plain sight. Only a body that can crouch (a human) has low cover. @param Ground The spot on the ground.
+function SharedBehaviors.CoverAt(Owner, Ground, FromPos)
+	local Standing = Ground + Vector(0, -Owner.Height * 0.8);
+	if not SharedBehaviors.CanSee(Standing, FromPos) then
+		return "full";
+	end
+	if IsAHuman(Owner) then
+		local crouched = ToAHuman(Owner).CrouchHeight;
+		if crouched and crouched > 0 and crouched < Owner.Height * 0.9 and not SharedBehaviors.CanSee(Ground + Vector(0, -crouched * 0.8), FromPos) then
+			return "low";
+		end
+	end
+	return nil;
+end
+
+-- A spot near the unit, on the ground, that is covered from a point: to reload or recover behind, or to fight from. Looked for a step at a
+-- time out to reach either side, nearest first, along ground a walk away (no climb or drop of more than half a body, no wall between).
+-- Cover facing the threat (AC-4): the cover must be on the threat's side of the spot, close in front (within a body's height), not
+-- somewhere off behind the unit's back. With wantLow, a spot behind low cover (see CoverAt) is taken first, to duck and peek out from,
+-- and full cover only failing that; without it the other way about. @return The spot and its kind ("full" or "low"), or nil.
+function SharedBehaviors.FindCover(Owner, FromPos, reach, wantLow)
+	local Here = SceneMan:MovePointToGround(Owner.Pos, 0, 4);
+	local hereCover = SharedBehaviors.CoverAt(Owner, Here, FromPos);
+	if hereCover == "full" or (wantLow and hereCover == "low") then
 		return nil; -- Already out of its sight: nowhere better to be.
 	end
+	local fallback, fallbackKind;
 	for step = 1, math.floor(reach / 8) do
 		for _, dir in ipairs({1, -1}) do
 			local Spot = Owner.Pos + Vector(dir * step * 8, -Owner.Height * 0.2);
 			Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 4);
 			local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
 			if math.abs(Way.Y) < Owner.Height * 0.5 and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
-				if not SharedBehaviors.CanSee(Spot + Vector(0, -eyeUp), FromPos) then
-					return Spot;
+				local Ground = SceneMan:MovePointToGround(Spot, 0, 4);
+				local kind = SharedBehaviors.CoverAt(Owner, Ground, FromPos);
+				if kind and SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos) then
+					if (kind == "low") == (wantLow == true) then
+						return Spot, kind;
+					elseif not fallback then
+						fallback, fallbackKind = Spot, kind;
+					end
 				end
 			end
 		end
 	end
-	return nil;
+	return fallback, fallbackKind;
+end
+
+-- Whether what hides a spot from a point is in front of it, toward the point, within a body's height: a wall or a lump to crouch behind,
+-- not a hill far off or the edge of a cave that happens to block the line.
+function SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos)
+	local Eye = Ground + Vector(0, -Owner.Height * 0.5);
+	local Toward = SceneMan:ShortestDistance(Eye, FromPos, false);
+	local reach = math.min(Toward.Magnitude, Owner.Height * 1.2);
+	if reach < 1 then
+		return false;
+	end
+	local Look = Toward:SetMagnitude(reach);
+	-- From the waist and from just above the ground: either one stopped close in front is cover between the unit and the threat.
+	for _, up in ipairs({0, Owner.Height * 0.35}) do
+		local From = Ground + Vector(0, -Owner.Height * 0.15 - up);
+		if SceneMan:CastStrengthSumRay(From, From + Look, 4, rte.grassID) >= 120 then
+			return true;
+		end
+	end
+	return false;
 end
 
 -- A place from which a dug-in target can be shot: above it or to one side, with a line of sight to it, that the pather can reach in

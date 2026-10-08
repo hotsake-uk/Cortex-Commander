@@ -677,6 +677,7 @@ function NativeHumanAI:Update(Owner)
 		self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 	end
 	HumanBehaviors.LeaveCover(self, Owner);
+	HumanBehaviors.PeekUpdate(self, Owner);
 	SharedBehaviors.FlankUpdate(self, Owner);
 	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
 		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
