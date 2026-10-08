@@ -91,8 +91,10 @@ function NativeCrabAI:Update(Owner)
 			self.Cover = nil;
 			self.Flank = nil;
 			self.Retreat = nil;
+			self.Investigate = nil;
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
+			Owner:RemoveNumberValue("AIInvestigate");
 			self.SentryFacing = Owner.HFlipped;
 			self.lastAIMode = Actor.AIMODE_NONE;
 		end
@@ -321,6 +323,7 @@ function NativeCrabAI:Update(Owner)
 		end
 		SharedBehaviors.FlankUpdate(self, Owner);
 		SharedBehaviors.RetreatUpdate(self, Owner);
+		SharedBehaviors.RememberUpdate(self, Owner);
 
 		if self.teamBlockState == Actor.IGNORINGBLOCK then
 			if self.BlockedTimer:IsPastSimMS(20000) then
