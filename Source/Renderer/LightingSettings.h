@@ -61,6 +61,8 @@ namespace RTE {
 			LightShadowField = quality >= QualityMedium;
 			// The fog volume: one pass over the light grid a frame, from Medium up.
 			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
+			// Low lights its steady scenery lamps once into a map instead of every frame.
+			LampCache = quality == QualityLow;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -201,6 +203,8 @@ namespace RTE {
 		float LampBrightness = 1.0F; //!< Multiplier for the lamps of bunker pieces and other scenery.
 		float LampReach = 1.0F; //!< Multiplier for how far scenery lamps reach.
 		glm::vec3 LampTint = {1.0F, 1.0F, 1.0F}; //!< A color scenery lamps are multiplied by.
+		bool LampCache = false; //!< Steady scenery lamps are lit once into a map of the world and only relit where the ground around them changes, instead of every frame: lamp-filled bases cost about the same as one lamp, and lamps no longer count against MaxScreenLights. Units cast no shadows from them, and their shadows are as coarse as the map. Off: every lamp is drawn every frame, as before.
+		int LampCacheDetail = 1; //!< How fine that map is: 0 coarse (8 px a texel), 1 (4 px), 2 fine (2 px). Large scenes get coarser so the map stays under about 64 MB.
 
 		float HeadlampBrightness = 1.4F; //!< Brightness of soldiers' headlamp beams.
 		float HeadlampReach = 210.0F; //!< How far the beams reach, in pixels.
