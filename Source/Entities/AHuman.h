@@ -865,6 +865,8 @@ namespace RTE {
 			long doorWaitID = 0;
 			long doorIgnoreID = 0;
 			Timer proneHoldTimer;
+			bool crouching = false; //!< The walk is ducking under something low (see MoveAlongRoute's walk): kept up 400 ms after the room returns.
+			Timer crouchHoldTimer;
 			Timer hopTimer;
 			Vector stuckSpot; //!< Where the step it was last long stuck on led (its landing, or the route's next point).
 			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
