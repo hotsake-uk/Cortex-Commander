@@ -242,6 +242,10 @@ bool SceneLighting::EnsureWorldResources() {
 
 	RefreshOccupancyRows(0, m_GridHeight);
 	UploadOccupancyRows(0, m_GridHeight);
+	m_ShadowFieldTexture.Create(m_GridWidth, m_GridHeight, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
+	m_ShadowField.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight, 255);
+	RefreshShadowField(0, 0, m_GridWidth, m_GridHeight);
+	m_WallChangeEndColumn = m_WallChangeMinColumn;
 	RecomputeSkyline();
 	m_NextRefreshRow = 0;
 
@@ -258,6 +262,8 @@ void SceneLighting::DestroyWorldResources() {
 	m_Scorch.Destroy();
 	m_Stains.Destroy();
 	m_FlowTexture.Destroy();
+	m_ShadowFieldTexture.Destroy();
+	m_ShadowField.clear();
 	m_Flow.clear();
 	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
@@ -407,7 +413,22 @@ void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow, int firstColu
 			}
 			unsigned char* cell = occupancyRow + column * 4;
 			// R is how much the cell stops light; A is how much of it is filled with anything at all (what rain and snow can't fall through).
-			cell[0] = static_cast<unsigned char>(lightBlock / 4);
+			unsigned char block = static_cast<unsigned char>(lightBlock / 4);
+			if ((block >= c_ShadowWallBlock) != (cell[0] >= c_ShadowWallBlock)) {
+				// A wall came or went: the terrain distance field needs working out again here.
+				if (m_WallChangeEndColumn <= m_WallChangeMinColumn || m_WallChangeEndRow <= m_WallChangeMinRow) {
+					m_WallChangeMinColumn = column;
+					m_WallChangeMinRow = row;
+					m_WallChangeEndColumn = column + 1;
+					m_WallChangeEndRow = row + 1;
+				} else {
+					m_WallChangeMinColumn = std::min(m_WallChangeMinColumn, column);
+					m_WallChangeMinRow = std::min(m_WallChangeMinRow, row);
+					m_WallChangeEndColumn = std::max(m_WallChangeEndColumn, column + 1);
+					m_WallChangeEndRow = std::max(m_WallChangeEndRow, row + 1);
+				}
+			}
+			cell[0] = block;
 			// What the solid part of the cell is made of, so a thin metal plate isn't diluted by the air beside it.
 			cell[1] = static_cast<unsigned char>(solidSamples > 0 ? metalness / solidSamples : 0);
 			cell[2] = static_cast<unsigned char>(solidSamples > 0 ? gloss / solidSamples : 0);
@@ -429,6 +450,99 @@ void SceneLighting::RecomputeSkyline() {
 	glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_GridWidth, 1, GL_RED, GL_FLOAT, m_Skyline.data()));
+}
+
+void SceneLighting::RefreshShadowField(int firstColumn, int firstRow, int endColumn, int endRow) {
+	if (!m_ShadowFieldTexture.Texture || m_ShadowField.empty()) {
+		return;
+	}
+	ZoneScoped;
+	constexpr int reach = c_ShadowFieldCells;
+	// Rewritten: everything within reach of the change. Read: the walls within reach of that, so every rewritten cell sees every wall that can matter to it.
+	// (Across a wrapping scene's seam walls aren't seen; near it shadows fall back on the density alone.)
+	int writeX0 = std::max(firstColumn - reach, 0);
+	int writeY0 = std::max(firstRow - reach, 0);
+	int writeX1 = std::min(endColumn + reach, m_GridWidth);
+	int writeY1 = std::min(endRow + reach, m_GridHeight);
+	int x0 = std::max(writeX0 - reach, 0);
+	int y0 = std::max(writeY0 - reach, 0);
+	int x1 = std::min(writeX1 + reach, m_GridWidth);
+	int y1 = std::min(writeY1 + reach, m_GridHeight);
+	int width = x1 - x0;
+	int height = y1 - y0;
+	if (width <= 0 || height <= 0) {
+		return;
+	}
+	// A two pass chamfer distance (3 straight, 4 diagonal, so thirds of a cell), capped just past the reach.
+	const unsigned short far = static_cast<unsigned short>(reach * 3 + 4);
+	m_ShadowFieldScratch.resize(static_cast<size_t>(width) * height);
+	unsigned short* distance = m_ShadowFieldScratch.data();
+	for (int y = 0; y < height; ++y) {
+		const unsigned char* occupancyRow = &m_Occupancy[(static_cast<size_t>(y0 + y) * m_GridWidth + x0) * 4];
+		for (int x = 0; x < width; ++x) {
+			distance[y * width + x] = occupancyRow[x * 4] >= c_ShadowWallBlock ? 0 : far;
+		}
+	}
+	auto relax = [](unsigned short& value, unsigned short from, unsigned short cost) {
+		value = std::min<unsigned short>(value, static_cast<unsigned short>(from + cost));
+	};
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			unsigned short& value = distance[y * width + x];
+			if (x > 0) {
+				relax(value, distance[y * width + x - 1], 3);
+			}
+			if (y > 0) {
+				relax(value, distance[(y - 1) * width + x], 3);
+				if (x > 0) {
+					relax(value, distance[(y - 1) * width + x - 1], 4);
+				}
+				if (x < width - 1) {
+					relax(value, distance[(y - 1) * width + x + 1], 4);
+				}
+			}
+		}
+	}
+	for (int y = height - 1; y >= 0; --y) {
+		for (int x = width - 1; x >= 0; --x) {
+			unsigned short& value = distance[y * width + x];
+			if (x < width - 1) {
+				relax(value, distance[y * width + x + 1], 3);
+			}
+			if (y < height - 1) {
+				relax(value, distance[(y + 1) * width + x], 3);
+				if (x < width - 1) {
+					relax(value, distance[(y + 1) * width + x + 1], 4);
+				}
+				if (x > 0) {
+					relax(value, distance[(y + 1) * width + x - 1], 4);
+				}
+			}
+		}
+	}
+	for (int y = writeY0; y < writeY1; ++y) {
+		for (int x = writeX0; x < writeX1; ++x) {
+			int units = std::min<int>(distance[(y - y0) * width + (x - x0)], reach * 3);
+			m_ShadowField[static_cast<size_t>(y) * m_GridWidth + x] = static_cast<unsigned char>((units * 255 + reach * 3 / 2) / (reach * 3));
+		}
+	}
+	glBindTexture(GL_TEXTURE_2D, m_ShadowFieldTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, m_GridWidth);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, writeX0, writeY0, writeX1 - writeX0, writeY1 - writeY0, GL_RED, GL_UNSIGNED_BYTE, &m_ShadowField[static_cast<size_t>(writeY0) * m_GridWidth + writeX0]));
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+void SceneLighting::SetShadowFieldUniforms() const {
+	bool traced = m_Settings.LightShadowField && m_ShadowFieldTexture.Texture;
+	m_PointLightShader->SetBool("rteShadowFieldOn", traced);
+	m_PointLightShader->SetInt("rteShadowField", 4);
+	m_PointLightShader->SetFloat("rteShadowFieldReach", static_cast<float>(c_ShadowFieldCells * m_CellSize));
+	m_PointLightShader->SetFloat("rteShadowSoftness", std::clamp(m_Settings.LightShadowSoftness, 0.0F, 2.0F));
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_ShadowFieldTexture.Texture);
+	glActiveTexture(GL_TEXTURE0);
 }
 
 void SceneLighting::UploadOccupancyRows(int firstRow, int endRow) {
@@ -929,6 +1043,10 @@ void SceneLighting::Update() {
 	}
 	RecomputeSkyline();
 	UpdateFlowField();
+	if (m_WallChangeEndColumn > m_WallChangeMinColumn && m_WallChangeEndRow > m_WallChangeMinRow) {
+		RefreshShadowField(m_WallChangeMinColumn, m_WallChangeMinRow, m_WallChangeEndColumn, m_WallChangeEndRow);
+		m_WallChangeEndColumn = m_WallChangeMinColumn;
+	}
 
 	GLint previousFramebuffer = 0;
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
@@ -1491,6 +1609,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetInt("rteOccluders", 2);
 		m_PointLightShader->SetInt("rteSurface", 3);
 		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
+		SetShadowFieldUniforms();
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 		glActiveTexture(GL_TEXTURE1);
@@ -1806,6 +1925,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetInt("rteOccluders", 2);
 		m_PointLightShader->SetInt("rteSurface", 3);
 		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
+		SetShadowFieldUniforms();
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, occluders);
 		glActiveTexture(GL_TEXTURE3);
