@@ -593,6 +593,12 @@ void RunGameLoop() {
 				g_MusicMan.Update();
 			}
 
+			// The MOID table and grid are rebuilt on a worker from the end of MovableMan::Update; global scripts' LateUpdate looks objects up by ID
+			// and in boxes, so it waits for the rebuild instead of reading a table another thread is clearing and refilling.
+			{
+				PerformanceMan::LogScope logScope("Sim: waiting for MOID drawing");
+				g_MovableMan.CompleteQueuedMOIDDrawings();
+			}
 			g_ActivityMan.LateUpdateGlobalScripts();
 
 			// This is to support hot reloading entities in SceneEditorGUI. It's a bit hacky to put it in Main like this, but PresetMan has no update in which to clear the value, and I didn't want to set up a listener for the job.

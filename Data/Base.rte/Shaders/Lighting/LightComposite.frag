@@ -370,10 +370,12 @@ void main() {
 				albedo.rgb *= 1.0 - 0.3 * min(rteWaterRefraction, 1.0) * smoothstep(4.0, 64.0, depth);
 			}
 			// Only a real surface mirrors: open to air (or a unit) above it. Water filling a tunnel up to its rock roof has no surface to mirror in,
-			// only the refracted wall behind it.
+			// only the refracted wall behind it (with Soft reflections, a weak short mirror of the rock near the surface).
 			vec2 aboveSurface = gl_FragCoord.xy - vec2(0.0, surfaceDistance);
 			bool openAbove = surfaceDistance > 0.0 && OpenAirAt(aboveSurface);
-			if (rteWaterReflection > 0.0 && openAbove) {
+			// Soft reflections also mirror under rock the water touches (a weak, short image of the terrain at the surface), so the reflection
+			// fades out beside it instead of stopping at a vertical edge.
+			if (rteWaterReflection > 0.0 && (openAbove || (rteWaterSoftReflection && surfaceDistance > 0.0))) {
 				// What a mirror shows is bent by the surface itself, so the tilt is read where the surface is: the topmost water pixel of this column. The whole
 				// column then moves together, an image rippling as the surface does (glassy where the water is still, rippling where it flows).
 				vec2 mirrorTilt = tilt;
@@ -408,13 +410,18 @@ void main() {
 					}
 					if (weightSum > 0.0) {
 						float openness = 0.0;
-						for (int i = -3; i <= 3; ++i) {
-							vec2 side = aboveSurface + vec2(float(i) * 3.0, 0.0);
-							openness += (side.x < 0.0 || side.x >= rteScreenSize.x || OpenAirAt(side)) ? 1.0 : 0.0;
+						if (openAbove) {
+							for (int i = -3; i <= 3; ++i) {
+								vec2 side = aboveSurface + vec2(float(i) * 3.0, 0.0);
+								openness += (side.x < 0.0 || side.x >= rteScreenSize.x || OpenAirAt(side)) ? 1.0 : 0.0;
+							}
 						}
 						openness = smoothstep(0.2, 0.9, openness / 7.0);
+						// Open air above mirrors fully; terrain touching the water mirrors weakly and only near the surface.
+						float reach = openAbove ? openness : 0.0;
+						openness = mix(0.35, 1.0, reach);
 						float fade = smoothstep(0.0, 40.0, mirrored.y) * smoothstep(0.0, 16.0, mirrored.x) * smoothstep(0.0, 16.0, rteScreenSize.x - mirrored.x);
-						fade *= smoothstep(0.0, 1.0, weightSum / 16.0) * openness * (1.0 - smoothstep(14.0, 56.0, depth));
+						fade *= smoothstep(0.0, 1.0, weightSum / 16.0) * openness * (1.0 - smoothstep(mix(3.0, 14.0, reach), mix(20.0, 56.0, reach), depth));
 						waterReflection = sum / weightSum;
 						waterReflectionBackground = backgroundWeight > 0.5 * weightSum;
 						float fresnel = mix(0.75, 0.2, smoothstep(0.0, 40.0, depth)) + 0.5 * clamp(length(mirrorTilt), 0.0, 0.5);
