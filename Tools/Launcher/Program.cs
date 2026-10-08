@@ -66,7 +66,7 @@ class MainForm : Form
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly TextBox presetsBox = new() { Width = 420, PlaceholderText = "optional shared settings-presets folder, linked into every version" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
-	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
+	readonly Button runBtn = new() { Text = "Launch only", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
 	readonly Button openBtn = new() { Text = "Open folder", AutoSize = true };
@@ -125,7 +125,7 @@ class MainForm : Form
 		buildRunBtn.Font = new Font(Font.FontFamily, 12f, FontStyle.Bold);
 		buildRunBtn.Padding = new Padding(20, 6, 20, 6);
 		var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 6) };
-		actions.Controls.AddRange(new Control[] { buildRunBtn, cancelBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
+		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
 
 		var logPanel = new Panel { Dock = DockStyle.Bottom, Height = 170 };
 		logPanel.Controls.Add(log);
@@ -144,6 +144,7 @@ class MainForm : Form
 		branchBox.SelectionChangeCommitted += async (_, _) => { if (branchBox.SelectedItem is string r) await LoadCommits(r); };
 		branchBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter && branchBox.Text.Trim() != "") { e.SuppressKeyPress = true; await LoadCommits(branchBox.Text.Trim()); } };
 		commitList.DoubleClick += async (_, _) => await BuildAndRun(true);
+		runBtn.Click += async (_, _) => await BuildAndRun(true, false);
 		buildRunBtn.Click += async (_, _) => await BuildAndRun(true);
 		cancelBtn.Click += (_, _) => { cts?.Cancel(); try { running?.Kill(true); } catch { } };
 		FormClosing += (_, _) => { SaveSettings(); };
