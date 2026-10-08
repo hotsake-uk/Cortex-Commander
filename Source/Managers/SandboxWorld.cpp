@@ -859,6 +859,19 @@ namespace SandboxDetail {
 				CommandSelected(at, stroke.Count);
 				break;
 			case Tool::OrderSelected:
+				if (stroke.Count >= 200) {
+					// From the ring or the command row: an engagement rule for the selected units (RC-1), 200 + a weapons rule, 300 + a movement rule.
+					for (const UnitRef& ref: s_Selected) {
+						if (Actor* unit = GetRef(ref)) {
+							if (stroke.Count >= 300) {
+								unit->SetMovementRule(stroke.Count - 300);
+							} else {
+								unit->SetWeaponRule(stroke.Count - 200);
+							}
+						}
+					}
+					break;
+				}
 				if (stroke.Count >= 100) {
 					// From the command ring: move, attack or hold, about a point.
 					OrderSelectedUnits(stroke.Count - 100, at);

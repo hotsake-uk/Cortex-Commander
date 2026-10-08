@@ -373,8 +373,8 @@ function NativeCrabAI:Update(Owner)
 		end
 	end
 
-	-- controller states
-	self.Ctrl:SetState(Controller.WEAPON_FIRE, self.fire or self.squadShoot);
+	-- controller states (the trigger only as the weapons rule allows, RC-1)
+	self.Ctrl:SetState(Controller.WEAPON_FIRE, SharedBehaviors.MayFire(self, Owner) and (self.fire or self.squadShoot));
 
 	if self.deviceState == ACrab.AIMING then
 		self.Ctrl:SetState(Controller.AIM_SHARP, true);

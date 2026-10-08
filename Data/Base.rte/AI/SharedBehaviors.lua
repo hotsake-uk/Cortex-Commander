@@ -1621,6 +1621,17 @@ end
 -- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
+	-- (The movement rule the player set for this order (RC-1) wins over what the order says, except for a fall-back.)
+	local rule = Owner.MovementRule;
+	if rule ~= Actor.MOVE_FOLLOW_ORDER and not Owner:NumberValueExists("AIRetreat") then
+		if rule == Actor.MOVE_ENGAGE then
+			return "attack";
+		elseif rule == Actor.MOVE_ONLY then
+			return "move";
+		elseif rule == Actor.MOVE_HOLD_GROUND then
+			return "defend";
+		end
+	end
 	-- (A defender on its way back to its post is moving, not standing its ground: told "defend" while the mode said "go there", the
 	-- fighting rules held it still wherever it had been shoved to.)
 	if Owner.OrderHasPost then
@@ -1636,6 +1647,22 @@ function SharedBehaviors.OrderKind(Owner)
 		return "move";
 	end
 	return "guard";
+end
+
+-- Whether the unit's weapons rule (RC-1) lets it pull the trigger now: always at will, never on hold fire, and on return fire only while
+-- it is being shot at, hurt or pinned down by near misses in the last four seconds. Call once an update (it keeps the health it last saw).
+function SharedBehaviors.MayFire(AI, Owner)
+	local rule = Owner.WeaponRule;
+	if rule == Actor.WEAPONS_RETURN_FIRE then
+		if (AI.ruleLastHealth and Owner.Health < AI.ruleLastHealth) or Owner.Suppression > 0.1 then
+			AI.UnderFireTimer = AI.UnderFireTimer or Timer();
+			AI.UnderFireTimer:Reset();
+		end
+		AI.ruleLastHealth = Owner.Health;
+		return AI.UnderFireTimer ~= nil and not AI.UnderFireTimer:IsPastSimMS(4000);
+	end
+	AI.ruleLastHealth = Owner.Health;
+	return rule ~= Actor.WEAPONS_HOLD;
 end
 
 -- Whether a unit with a target in sight keeps going for its waypoint: on a move order, or when its script marks it aggressive (the Ronin

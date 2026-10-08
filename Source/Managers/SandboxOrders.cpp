@@ -88,6 +88,10 @@ namespace SandboxDetail {
 		standing.AutoTargetID = 0;
 		standing.Hold = false;
 		standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
+		// (A new order goes back to its own movement rule, RC-1; one the standing orders resend keeps what the player set.)
+		if (!resend) {
+			standing.Movement = Actor::MOVE_FOLLOW_ORDER;
+		}
 		if (!attack) {
 			standing.HasAttackPlace = false;
 		}
@@ -607,6 +611,30 @@ namespace SandboxDetail {
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
 		}
+	}
+
+	/// The engagement rule the selected units share (RC-1), the weapons rule or the movement rule: its value, -1 when they differ, -2 with none selected.
+	int SelectedRule(bool weapons) {
+		int shared = -2;
+		for (const UnitRef& ref: s_Selected) {
+			if (const Actor* unit = GetRef(ref)) {
+				int rule = weapons ? unit->GetWeaponRule() : unit->GetMovementRule();
+				if (shared == -2) {
+					shared = rule;
+				} else if (shared != rule) {
+					return -1;
+				}
+			}
+		}
+		return shared;
+	}
+
+	/// Gives the selected units an engagement rule (RC-1), on the next sim update like any order.
+	void QueueRule(bool weapons, int rule) {
+		Stroke stroke;
+		stroke.Kind = Tool::OrderSelected;
+		stroke.Count = (weapons ? 200 : 300) + rule;
+		s_Queue.push_back(stroke);
 	}
 
 	/// The closest pair of enemies anywhere: where the fighting is.

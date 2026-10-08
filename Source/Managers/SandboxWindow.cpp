@@ -1016,8 +1016,36 @@ namespace SandboxDetail {
 			}
 			return;
 		}
+		if (kind == Tool::Command && (s_RingPage == 3 || s_RingPage == 4)) {
+			// The engagement rules (RC-1) for the units picked: what they may shoot at (3), and how they move when they meet an enemy (4).
+			// The one they all have is lit; up until a click.
+			bool weapons = s_RingPage == 3;
+			static const std::vector<RingItem> weaponRules = {{c_WeaponRuleNames[0], IM_COL32(239, 106, 91, 255), "Death"}, {c_WeaponRuleNames[1], IM_COL32(242, 182, 61, 255), "Reorient"}, {c_WeaponRuleNames[2], IM_COL32(150, 150, 140, 255), "Cancel"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
+			static const std::vector<RingItem> movementRules = {{c_MovementRuleNames[0], IM_COL32(200, 200, 200, 255), "Cycle"}, {c_MovementRuleNames[1], IM_COL32(239, 106, 91, 255), "Move"}, {c_MovementRuleNames[2], IM_COL32(110, 180, 250, 255), "GoTo"}, {c_MovementRuleNames[3], IM_COL32(242, 182, 61, 255), "Flag"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
+			const std::vector<RingItem>& rules = weapons ? weaponRules : movementRules;
+			int picked = DrawRing(rules, SelectedRule(weapons), true);
+			if (picked == -2) {
+				return;
+			}
+			int count = static_cast<int>(rules.size());
+			if (picked >= 0 && picked < count - 1) {
+				QueueRule(weapons, picked);
+			} else if (picked == count - 1) {
+				s_RingOpen = true;
+				s_RingPage = 2;
+			}
+			return;
+		}
 		if (kind == Tool::Command) {
-			static const std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
+			// (The two rules show what the units picked have, or "mixed".)
+			auto ruleLabel = [](bool weapons) {
+				static std::string labels[2];
+				int rule = SelectedRule(weapons);
+				std::string& label = labels[weapons ? 0 : 1];
+				label = std::string(weapons ? "Weapons: " : "Movement: ") + (rule == -1 ? "mixed" : (rule < 0 ? "..." : (weapons ? c_WeaponRuleNames[rule] : c_MovementRuleNames[rule])));
+				return label.c_str();
+			};
+			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
 			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
@@ -1034,7 +1062,10 @@ namespace SandboxDetail {
 				s_Queue.push_back(stroke);
 			} else if (picked == 5) {
 				s_Selected.clear();
-			} else if (picked == 6) {
+			} else if (picked == 6 || picked == 7) {
+				s_RingOpen = true;
+				s_RingPage = picked == 6 ? 3 : 4;
+			} else if (picked == 8) {
 				s_RingOpen = true;
 				s_RingPage = 1;
 			}
@@ -1184,6 +1215,26 @@ namespace SandboxDetail {
 				unit->SetSandboxSelected(true);
 				s_MarkedSelected.push_back(ref);
 			}
+		}
+		// The engagement rules a selected unit has that aren't the usual (RC-1), in a small tag over it: HF hold fire, RF return fire, and
+		// EN engage, MO move only, HG hold ground.
+		for (const UnitRef& ref: s_Selected) {
+			const Actor* unit = GetRef(ref);
+			if (!unit || (unit->GetWeaponRule() == Actor::WEAPONS_AT_WILL && unit->GetMovementRule() == Actor::MOVE_FOLLOW_ORDER)) {
+				continue;
+			}
+			static const char* weaponTags[] = {"", "RF", "HF"};
+			static const char* movementTags[] = {"", "EN", "MO", "HG"};
+			std::string tag = weaponTags[std::clamp(unit->GetWeaponRule(), 0, 2)];
+			const char* movementTag = movementTags[std::clamp(unit->GetMovementRule(), 0, 3)];
+			if (*movementTag) {
+				tag += tag.empty() ? movementTag : std::string(" ") + movementTag;
+			}
+			ImVec2 size = ImGui::CalcTextSize(tag.c_str());
+			ImVec2 at = ToScreen(unit->GetPos() - Vector(0.0F, unit->GetRadius() + 4.0F));
+			ImVec2 corner(std::floor(at.x - size.x * 0.5F), std::floor(at.y - size.y));
+			drawList->AddRectFilled(ImVec2(corner.x - 2.0F, corner.y - 1.0F), ImVec2(corner.x + size.x + 2.0F, corner.y + size.y + 1.0F), IM_COL32(0, 0, 0, 150), 2.0F);
+			drawList->AddText(corner, unit->GetWeaponRule() == Actor::WEAPONS_HOLD ? IM_COL32(170, 170, 160, 255) : IM_COL32(242, 182, 61, 255), tag.c_str());
 		}
 		// (No line from each unit to where it is going: the game draws the route itself, as Routes on the command row has it.)
 		// The marks of orders just given, fading.
@@ -1437,6 +1488,25 @@ namespace SandboxDetail {
 			ImGui::BeginDisabled(alive == 0);
 			if (ToolUI::SmallButton("Deselect")) {
 				s_Selected.clear();
+			}
+			ImGui::EndDisabled();
+			// The engagement rules of what is selected (RC-1): the one they share, or "mixed"; a choice gives it to them all.
+			ImGui::BeginDisabled(alive == 0);
+			for (bool weapons: {true, false}) {
+				ImGui::SameLine(0.0F, pixel * 6.0F);
+				int rule = SelectedRule(weapons);
+				const char* const* names = weapons ? c_WeaponRuleNames : c_MovementRuleNames;
+				int ruleCount = weapons ? static_cast<int>(std::size(c_WeaponRuleNames)) : static_cast<int>(std::size(c_MovementRuleNames));
+				ImGui::SetNextItemWidth(field * 0.75F);
+				if (ImGui::BeginCombo(weapons ? "##weaponRule" : "##movementRule", rule == -1 ? "Mixed" : (rule < 0 ? (weapons ? "Weapons" : "Movement") : names[rule]))) {
+					for (int choice = 0; choice < ruleCount; ++choice) {
+						if (ImGui::Selectable(names[choice], choice == rule)) {
+							QueueRule(weapons, choice);
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::SetItemTooltip("%s", weapons ? "What the selected units may shoot at.\nFire at will: any enemy they see. Return fire: only while they are being shot at. Hold fire: never; they aim, and open up the moment this changes.\nKept until changed." : "How the selected units move when they meet an enemy.\nAs ordered: a move keeps walking, an attack closes in, a post is held. Engage: stop and fight, closing in. Move only: keep going, firing on the way. Hold ground: fight from where they stand.\nEach new order goes back to As ordered.");
 			}
 			ImGui::EndDisabled();
 			ImGui::SameLine(0.0F, pixel * 6.0F);

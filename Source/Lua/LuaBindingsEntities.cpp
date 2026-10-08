@@ -232,6 +232,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderHasPost", &Actor::GetOrderHasPost)
 	    .property("OrderPost", &Actor::GetOrderPost, &Actor::SetOrderPost)
 	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
+	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
+	    .property("MovementRule", &Actor::GetMovementRule, &Actor::SetMovementRule)
 	    .property("DeploymentID", &Actor::GetDeploymentID)
 	    .property("PassengerSlots", &Actor::GetPassengerSlots, &Actor::SetPassengerSlots)
 	    .property("Perceptiveness", &Actor::GetPerceptiveness, &Actor::SetPerceptiveness)
@@ -348,6 +350,13 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	                     luabind::value("AIMODE_BOMB", Actor::AIMode::AIMODE_BOMB),
 	                     luabind::value("AIMODE_SQUAD", Actor::AIMode::AIMODE_SQUAD),
 	                     luabind::value("AIMODE_COUNT", Actor::AIMode::AIMODE_COUNT)]
+	    .enum_("WeaponRule")[luabind::value("WEAPONS_AT_WILL", Actor::WeaponRule::WEAPONS_AT_WILL),
+	                         luabind::value("WEAPONS_RETURN_FIRE", Actor::WeaponRule::WEAPONS_RETURN_FIRE),
+	                         luabind::value("WEAPONS_HOLD", Actor::WeaponRule::WEAPONS_HOLD)]
+	    .enum_("MovementRule")[luabind::value("MOVE_FOLLOW_ORDER", Actor::MovementRule::MOVE_FOLLOW_ORDER),
+	                           luabind::value("MOVE_ENGAGE", Actor::MovementRule::MOVE_ENGAGE),
+	                           luabind::value("MOVE_ONLY", Actor::MovementRule::MOVE_ONLY),
+	                           luabind::value("MOVE_HOLD_GROUND", Actor::MovementRule::MOVE_HOLD_GROUND)]
 	    .enum_("ActionState")[luabind::value("MOVING", Actor::ActionState::MOVING),
 	                          luabind::value("MOVING_FAST", Actor::ActionState::MOVING_FAST),
 	                          luabind::value("FIRING", Actor::ActionState::FIRING),

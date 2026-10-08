@@ -173,8 +173,8 @@ function NativeTurretAI:Update(Owner)
 		end
 	end
 
-	-- controller states
-	if self.fire then
+	-- controller states (the trigger only as the weapons rule allows, RC-1)
+	if SharedBehaviors.MayFire(self, Owner) and self.fire then
 		self.Ctrl:SetState(Controller.WEAPON_FIRE, true);
 	end
 

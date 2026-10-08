@@ -692,11 +692,12 @@ function NativeHumanAI:Update(Owner)
 		self.BlockedTimer:Reset();
 	end
 
-	-- controller states
+	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used)
+	local mayFire = SharedBehaviors.MayFire(self, Owner);
 	if self.squadShoot then
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (self.fire or self.squadShoot));
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, mayFire and (self.fire or self.squadShoot));
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (self.fire or self.useMedikit));
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit);
 	end
 
 	if self.deviceState == AHuman.AIMING then
