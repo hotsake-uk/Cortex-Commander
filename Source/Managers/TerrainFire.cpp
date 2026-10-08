@@ -14,6 +14,7 @@
 #include "TimerMan.h"
 #include "Vector.h"
 #include "EffectsParticles.h"
+#include "FluidSim.h"
 #include "WeatherEffects.h"
 
 #include <algorithm>
@@ -205,6 +206,15 @@ namespace {
 		const FuelProperties& fuel = s_FuelProps[material];
 		short ticks = static_cast<short>(fuel.MinTicks + static_cast<int>(Random01(s_Random) * static_cast<float>(fuel.MaxTicks - fuel.MinTicks + 1)));
 		s_Burning.emplace(key, BurningPixel{x, y, ticks, ticks, kind});
+		// A pool resting beside it wakes, so it can put the fire out (M-2: liquids only react while awake). Only when there is one: most fire is nowhere near water.
+		for (const auto& [dx, dy]: {std::pair{0, -1}, std::pair{-1, 0}, std::pair{1, 0}, std::pair{0, 1}}) {
+			int nx = x + dx;
+			int ny = y + dy;
+			if (WrapPixel(nx, ny, width, height) && FluidSim::IsLiquid(terrain->GetMaterialPixel(nx, ny))) {
+				FluidSim::Disturb(Vector(static_cast<float>(x), static_cast<float>(y)), 1.0F);
+				break;
+			}
+		}
 		// Fuel goes up with a bang now and then.
 		if (s_BlastChance[material] > 0.0F && Random01(s_Random) < s_BlastChance[material]) {
 			s_Blasts.emplace_back(x, y);
