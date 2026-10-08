@@ -21,6 +21,11 @@ uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform vec2 rteGridWorldSize;
 uniform vec2 rteSunDirection; // Towards the sun, in screen pixels (y down, as the screen is drawn).
 uniform vec3 rteSunLight; // The sun's light on the scene, linear, 0 when it's down or there are no sun shadows.
+uniform bool rteSunMapOn; // Where the sun reaches from the sun's shadow map (SunShadowMap.frag) rather than the sky light grid.
+uniform sampler2D rteSunMap; // 1 row: for each ray from the sun, the scene y of the first solid point on it.
+uniform float rteSunMapSlope;
+uniform float rteSunMapStart;
+uniform float rteSunMapTexel;
 
 float Luminance(vec3 color) {
 	return dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -45,7 +50,8 @@ void main() {
 	}
 	vec2 densityTexel = 1.0 / vec2(textureSize(rteDensity, 0));
 	// The smoke's own colour (what its sprites look like), brightened a little since scattering lights it through.
-	vec3 tint = mix(rteSmokeColor, min(smoke.rgb / density * 1.25, vec3(1.0)), rteShadingStrength);
+	// The colour is averaged from the sprites' sRGB palette colours, so it's made linear to match the light.
+	vec3 tint = mix(rteSmokeColor, min(pow(smoke.rgb / density, vec3(2.2)) * 1.25, vec3(1.0)), rteShadingStrength);
 	// Towards the brightest light around (uphill in the light buffer): smoke between here and it shades this side.
 	vec2 step = 4.0 / rteScreenSize;
 	vec2 uphill = vec2(Luminance(texture(rteDynamicLight, uv + vec2(step.x, 0.0)).rgb) - Luminance(texture(rteDynamicLight, uv - vec2(step.x, 0.0)).rgb),
@@ -56,7 +62,15 @@ void main() {
 	}
 	// The sun, where it reaches: it lights the side of the smoke towards it, and the far side is in the smoke's own shadow.
 	vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
-	float sunVisible = texture(rteSkyLight, worldPos / rteGridWorldSize).g;
+	float sunVisible;
+	if (rteSunMapOn) {
+		// In the sun above the first solid point on its ray, fading over a few pixels below it, as soft as smoke is.
+		float ray = (worldPos.x + rteSunMapSlope * worldPos.y - rteSunMapStart) / rteSunMapTexel;
+		float first = texture(rteSunMap, vec2(ray / float(textureSize(rteSunMap, 0).x), 0.5)).r;
+		sunVisible = 1.0 - smoothstep(0.0, 6.0, worldPos.y - first);
+	} else {
+		sunVisible = texture(rteSkyLight, worldPos / rteGridWorldSize).g;
+	}
 	float sunPassing = exp(-texture(rteDensity, uv + normalize(rteSunDirection) * densityTexel * 6.0).a * 1.4);
 	vec3 sun = rteSunLight * sunVisible * sunPassing * 0.6;
 	vec3 scattered = (min(light, vec3(4.0)) * mix(1.0, lightPassing, rteShadingStrength) + sun * rteShadingStrength) * tint * coverage * rteStrength;

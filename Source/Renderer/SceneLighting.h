@@ -267,6 +267,7 @@ namespace RTE {
 		GLTarget m_BloomMips[c_BloomMipCount];
 		static constexpr int c_RCCascadeCount = 5;
 		GLTarget m_SmokeDensity; //!< Half resolution smoke density, for light scattering in smoke.
+		bool m_SmokeDensityShaded = false; //!< m_SmokeDensity was made RGBA16F for smoke shading; R16F, just the density, otherwise.
 		GLTarget m_RCScene; //!< Half resolution radiance cascades input: light and occluders.
 		GLTarget m_RCCascades[2]; //!< Ping-ponged cascades, the last one written is cascade 0.
 		GLTarget m_RCIrradiance; //!< Quarter resolution light from radiance cascades.
@@ -375,6 +376,10 @@ namespace RTE {
 		/// bottom of the scene by a couple of pixels. Lets it go when it's off or can't be used (a scene that wraps vertically has no top for the sun to come in from).
 		/// @param terrainChanged Whether the light grid's terrain changed this frame. @param changedArea Where, in scene pixels: min x, min y, end x, end y.
 		void UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& changedArea);
+
+		/// (Re)makes the half resolution smoke density target in the format smoke shading needs: RGBA16F with it on, R16F without.
+		/// @param width, height Its size.
+		void CreateSmokeDensity(int width, int height);
 
 		/// Keeps the weather's shelter map (LightingSettings::ShelterMask) up to date, the same way as the sun's: remade when the ground changed or the wind or the weather has
 		/// turned the way it falls enough to move a shelter's edge. Made while rain, snow or ash is falling or wetness or snow is left on the ground, and only for weather falling
