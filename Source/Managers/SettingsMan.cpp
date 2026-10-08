@@ -426,6 +426,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ChromaticAberration", { g_PostProcessMan.GetLightingSettings().ChromaticAberration = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ModShaders", { g_PostProcessMan.GetLightingSettings().ModShaders = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ModShaderStrength", { g_PostProcessMan.GetLightingSettings().ModShaderStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("SpriteMaps", { g_PostProcessMan.GetLightingSettings().SpriteMaps = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("SpriteMapStrength", { g_PostProcessMan.GetLightingSettings().SpriteMapStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("PostVignette", { g_PostProcessMan.GetLightingSettings().Vignette = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostSaturation", { g_PostProcessMan.GetLightingSettings().Saturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("MasterVolume", { g_AudioMan.SetMasterVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
@@ -708,6 +710,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
 	writer.NewPropertyWithValue("ModShaders", lighting.ModShaders);
 	writer.NewPropertyWithValue("ModShaderStrength", lighting.ModShaderStrength);
+	writer.NewPropertyWithValue("SpriteMaps", lighting.SpriteMaps);
+	writer.NewPropertyWithValue("SpriteMapStrength", lighting.SpriteMapStrength);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
