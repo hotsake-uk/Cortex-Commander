@@ -162,6 +162,7 @@ namespace RTE {
 		GLTarget m_ShadowFieldTexture; //!< R: distance from each grid cell to the nearest wall, in c_ShadowFieldCells, for tracing lights' terrain shadows (LightingSettings::LightShadowField).
 		std::vector<unsigned char> m_ShadowField; //!< One byte per grid cell, as m_ShadowFieldTexture.
 		std::vector<unsigned short> m_ShadowFieldScratch; //!< Chamfer distances for RefreshShadowField, in thirds of a cell.
+		int m_CoverChangeMinColumn = 0, m_CoverChangeMinRow = 0, m_CoverChangeEndColumn = 0, m_CoverChangeEndRow = 0; //!< The cells whose light block (R) or fullness (A) RefreshOccupancyRows changed this frame, for the sun's and the weather's strips; empty when the end is not past the start.
 		int m_WallChangeMinColumn = 0, m_WallChangeMinRow = 0, m_WallChangeEndColumn = 0, m_WallChangeEndRow = 0; //!< The cells whose wall status RefreshOccupancyRows changed since the field was last refreshed; empty when the end is not past the start.
 		GLTarget m_LampCache; //!< World lamp cache (LightingSettings::LampCache): RGB light from the steady scenery lamps, m_LampCacheCell pixels a texel. Its framebuffer writes m_LampDirection too.
 		GLTarget m_LampDirection; //!< RG: which way the steady lamps' light comes from, as the xy of a unit vector, times its brightness, added up.
