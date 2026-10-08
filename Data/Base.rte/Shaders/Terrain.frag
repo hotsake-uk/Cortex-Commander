@@ -24,6 +24,9 @@ uniform vec4 rteLiquidDeep[c_MaxLiquidLooks]; // RGB colour in the depths (molte
 uniform vec4 rteLiquidSurface[c_MaxLiquidLooks]; // x shine, y metalness, z how much the ripples tilt it, w how strongly light plays through it in lines.
 uniform vec4 rteLiquidStyle[c_MaxLiquidLooks]; // x 0 clear, 1 molten, 2 bubbling; y how much it froths when thin; z its own glow; w 1 if it reflects (the composite's water reflection).
 uniform vec4 rteLiquidLine[c_MaxLiquidLooks]; // RGB the colour of its surface line where it meets open air, A how strongly.
+uniform sampler2D rteMaterialMap; // The terrain's material bitmap, a material index per pixel, the same size as this layer's texture (SLTerrain::GetMaterialTextureId).
+uniform bool rteMaterialMapOn; // Off where there's no map (a scene too big for one texture): liquids then go by palette colour alone, as before.
+uniform vec4 rteMaterialLooks[64]; // Each material's liquid look (RenderMan::SetMaterialLiquidLook), four materials to a vec4, 0 for none.
 
 uniform bool rteLivingWorld;
 uniform float rteTime; // Seconds.
@@ -173,9 +176,22 @@ int LiquidLook(float colorIndex) {
 	return clamp(int(texture(rteEmissivePalette, vec2(colorIndex, 0.0)).b * 255.0 / 16.0 + 0.5), 0, c_MaxLiquidLooks - 1);
 }
 
+// The liquid look of the terrain pixel at a place in this layer's texture, 0 for none. A pixel is drawn as a liquid where its colour is a liquid's and it's
+// made of a liquid, with that material's look: terrain sharing a liquid's palette colour (dirt with mud's, bunker metal with mercury's) stays as it is.
+int LiquidLookAt(vec2 uv) {
+	int colorLook = LiquidLook(texture(rteTexture, uv).r);
+	ivec2 size = textureSize(rteTexture, 0);
+	if (colorLook == 0 || !rteMaterialMapOn || textureSize(rteMaterialMap, 0) != size) {
+		return colorLook;
+	}
+	ivec2 pixel = clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1);
+	int material = int(texelFetch(rteMaterialMap, pixel, 0).r * 255.0 + 0.5);
+	return clamp(int(rteMaterialLooks[material >> 2][material & 3] + 0.5), 0, c_MaxLiquidLooks - 1);
+}
+
 // 1 where the terrain pixel at a place is a liquid that froths (water), 0 otherwise.
 float WaterAt(vec2 uv) {
-	int look = LiquidLook(texture(rteTexture, uv).r);
+	int look = LiquidLookAt(uv);
 	return (look > 0 && rteLiquidStyle[look].x < 0.5 && rteLiquidStyle[look].y > 0.0) ? 1.0 : 0.0;
 }
 
@@ -286,11 +302,11 @@ void main() {
 	float gloss = 0.0;
 	float glowsThrough = 0.0; // Set for water: light inside it shows as a glow in the water itself (see the surface buffer's B channel).
 
-	// Liquids, flagged in the emissive palette's B channel with their look.
+	// Liquids: flagged in the emissive palette's B channel by colour, and made of a liquid's material (LiquidLookAt).
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
 		shine = texture(rteEmissivePalette, vec2(colorIndex, 0.0)).a;
-		int look = LiquidLook(colorIndex);
+		int look = LiquidLookAt(textureUV);
 		// Solid terrain looks like what it's made of: steel plating is metal, concrete has a dull sheen, earth has none. The palette's guess (greys shine) is kept for
 		// background walls, which have no material, at a lower strength, and for liquids.
 		vec4 grid = texture(rteWorldGrid, worldPos / rteGridWorldSize);
@@ -306,13 +322,13 @@ void main() {
 			vec4 lookDeep = rteLiquidDeep[look];
 			vec4 lookSurface = rteLiquidSurface[look];
 			vec4 lookStyle = rteLiquidStyle[look];
-			bool surface = LiquidLook(texture(rteTexture, textureUV - vec2(0.0, texel.y)).r) == 0;
+			bool surface = LiquidLookAt(textureUV - vec2(0.0, texel.y)) == 0;
 			float wave = sin(worldPos.x * 0.35 + rteTime * 2.3) * sin(worldPos.y * 0.21 - rteTime * 1.7) + 0.5 * sin(worldPos.x * 0.11 - rteTime * 0.9);
 			if (lookStyle.x < 0.5) {
 				// Clear liquids (water, oil, mud, mercury): deepening in colour with depth, with slow ripples of light and a line where they meet the air.
 				float depth = 7.0;
 				for (int k = 1; k <= 6; ++k) {
-					if (LiquidLook(texture(rteTexture, textureUV - vec2(0.0, texel.y * float(k))).r) == 0) {
+					if (LiquidLookAt(textureUV - vec2(0.0, texel.y * float(k))) == 0) {
 						depth = float(k);
 						break;
 					}
@@ -443,7 +459,7 @@ void main() {
 			// Water standing in a dip after long rain: the top pixel or two of the ground there drawn as a puddle, a flat line of water that reflects.
 			// Only on solid ground: the surface of a pond or a pool of oil or lava is no puddle.
 			float puddle = clamp(mapWet - 1.0, 0.0, 1.0) * rtePuddles;
-			int liquidHere = rteIndexed ? LiquidLook(texture(rteTexture, textureUV).r) : 0;
+			int liquidHere = rteIndexed ? LiquidLookAt(textureUV) : 0;
 			if (puddle > 0.02 && liquidHere == 0 && depth <= 1.0 + puddle && InDip(worldPos.x, worldPos.y - depth + 1.0)) {
 				vec3 water = mix(rteLiquidShallow[1].rgb, rteLiquidDeep[1].rgb, 0.6) * 0.55;
 				// Drops landing in it: a pixel flashes here and there.

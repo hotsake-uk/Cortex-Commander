@@ -341,6 +341,7 @@ namespace {
 	/// its own, and a mod that sets nothing behaves as before.
 	void BuildTables() {
 		s_Kinds.fill(Liquid::None);
+		g_RenderMan.ClearMaterialLiquidLooks();
 		s_PowderSlide.fill(0.0F);
 		s_PowderSticky.fill(false);
 		s_PourColor.fill(0);
@@ -430,6 +431,8 @@ namespace {
 			int glow = behaviour.Glow >= 0 ? std::clamp(behaviour.Glow, 0, 255) : (kind == Liquid::Lava ? 230 : 0);
 			if (look > 0) {
 				g_RenderMan.SetLiquidPaletteColor(color.GetIndex(), std::clamp(look, 1, 15), glow);
+				// The material too: the terrain shader draws only pixels of the material as the liquid, not terrain that shares its colour.
+				g_RenderMan.SetMaterialLiquidLook(id, std::clamp(look, 1, 15));
 			}
 		}
 		s_TablesBuilt = true;

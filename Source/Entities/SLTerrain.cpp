@@ -14,6 +14,8 @@
 #include "DataModule.h"
 #include "PresetMan.h"
 #include "Draw.h"
+#include "BigTexture.h"
+#include "Texture.h"
 #include "tracy/Tracy.hpp"
 
 #include <array>
@@ -814,6 +816,10 @@ void SLTerrain::Draw(const Box& targetDimensions, Box& targetBox, bool offsetNee
 	}
 }
 
+unsigned int SLTerrain::GetMaterialTextureId() const {
+	return (m_MainStreamTexture && m_MainStreamTexture->m_Textures.size() == 1) ? m_MainStreamTexture->m_Textures[0]->GetTextureId() : 0;
+}
+
 void SLTerrain::Draw(const Camera& camera) {
 	ZoneScoped;
 	switch (m_LayerToDraw) {
@@ -821,9 +827,16 @@ void SLTerrain::Draw(const Camera& camera) {
 			SceneLayer::Draw(camera);
 			break;
 		case LayerType::ForegroundLayer:
+			// The terrain shader reads the materials on screen (GetMaterialTextureId): bring them up to date first. Only what changed is uploaded.
+			if (m_MainStreamTexture && m_MainBitmapOwned) {
+				UpdateTargetRegion(camera.GetViewport());
+			}
 			m_FGColorLayer->Draw(camera);
 			break;
 		case LayerType::BackgroundLayer:
+			if (m_MainStreamTexture && m_MainBitmapOwned) {
+				UpdateTargetRegion(camera.GetViewport());
+			}
 			m_BGColorLayer->Draw(camera);
 			break;
 		default:

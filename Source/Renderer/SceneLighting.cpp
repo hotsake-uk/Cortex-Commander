@@ -821,6 +821,18 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetInt("rteFlowField", 7);
 	m_TerrainShader->SetFloat("rteFlowSurface", (m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled()) ? std::clamp(m_Settings.WaterFlowStrength, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteWorldGrid", 6);
+	// What each terrain pixel is made of, so only pixels of a liquid's material are drawn as it, not terrain that happens to share its palette colour.
+	{
+		SLTerrain* terrain = g_SceneMan.GetTerrain();
+		GLuint materialMap = terrain ? terrain->GetMaterialTextureId() : 0;
+		g_RenderMan.SetGlobalTexture(9, materialMap);
+		m_TerrainShader->SetInt("rteMaterialMap", 9);
+		m_TerrainShader->SetBool("rteMaterialMapOn", materialMap != 0);
+		int32_t location = m_TerrainShader->GetUniformLocation("rteMaterialLooks[0]");
+		if (location >= 0) {
+			glUniform4fv(location, 64, g_RenderMan.GetMaterialLiquidLooks().data());
+		}
+	}
 	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
 	// The sprite shader reads sprites' own shading as relief too.
 	if (const Shader* spriteShader = g_RenderMan.GetDefaultShader()) {
