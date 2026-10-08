@@ -181,8 +181,9 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 		pBitmap = nullptr;
 	}
 
-	// Finally draw the ID:s of the MO:s to the MOID layers for the first time
+	// Finally draw the ID:s of the MO:s to the MOID layers for the first time, and put the table of them in use.
 	g_MovableMan.UpdateDrawMOIDs();
+	g_MovableMan.CompleteQueuedMOIDDrawings();
 
 	return 0;
 }
