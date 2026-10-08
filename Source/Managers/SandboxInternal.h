@@ -499,10 +499,12 @@ namespace SandboxDetail {
 	enum class CommandMode {
 		Move, //!< Each selected unit to its own spot round the point; a click on an enemy attacks it, a click on a friend selects it.
 		Attack, //!< Go for the nearest enemy to the point, or the point itself with orders to fight.
-		Guard //!< Follow the friendly unit clicked and stay with it.
+		Guard, //!< Follow the friendly unit clicked and stay with it.
+		AttackMove //!< Walk to the point, stopping to fight any enemy met on the way, then carry on to it (RC-2).
 	};
 	inline CommandMode s_CommandMode = CommandMode::Move;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard"};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255)};
 	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
 	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
@@ -1177,7 +1179,7 @@ namespace SandboxDetail {
 	std::vector<Vector> StandingSpots(const Vector& around, int count);
 	const std::vector<SpotReach>& SpotReachPreview(const std::vector<Actor*>& units, const Vector& point);
 	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly);
-	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point);
+	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false);
 	const Actor* FollowedBy(const Actor* unit);
 	void GuardUnit(Actor* unit, Actor* leader);
 	int SelectionTeam();
