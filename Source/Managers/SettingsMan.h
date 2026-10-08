@@ -262,6 +262,12 @@ namespace RTE {
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
 
+		/// Gets whether the sandbox's stroke log is on.
+		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }
+
+		/// Sets whether the sandbox's stroke log is on.
+		void SetShowSandboxStrokeLog(bool show) { m_SandboxStrokeLog = show; }
+
 		/// Gets whether move previews show whether each standing spot can be reached.
 		bool ShowSandboxSpotReach() const { return m_SandboxSpotReach; }
 
@@ -573,6 +579,7 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
+		bool m_SandboxStrokeLog; //!< Whether the sandbox's stroke log is on (see ShowSandboxStrokeLog).
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
