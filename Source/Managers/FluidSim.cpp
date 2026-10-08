@@ -23,6 +23,7 @@
 #include <chrono>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -99,70 +100,143 @@ namespace {
 	std::array<bool, 256> s_Soft{}; //!< Soft enough for acid to eat (integrity under 100).
 	bool s_TablesBuilt = false;
 
-	/// The moving liquid pixels. A grid byte per terrain pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
-	/// Pixels are visited in descending key order (bottom to top), so the result is deterministic. A flat grid and a list are many times faster than an ordered map for floods of tens of thousands of pixels.
+	/// The moving liquid pixels. A state byte per pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
+	/// Pixels are visited in descending key order (bottom to top), so the result is deterministic. The state is kept in 64 by 64 tiles made when a pixel in them first
+	/// moves and dropped when none in them is moving (M-5): a full plane cost three bytes a terrain pixel on every scene, 480 MB on the largest, liquid or not.
 	struct ActiveSet {
-		std::vector<unsigned char> Grid; //!< 0 = not active. Otherwise the low 6 bits are steps without getting lower + 1, and the top bit is the way the pixel is heading (set = right).
+		static constexpr int c_TileShift = 6;
+		static constexpr int c_TileSize = 1 << c_TileShift;
+		static constexpr int c_TileMask = c_TileSize - 1;
+		struct Tile {
+			std::array<unsigned char, c_TileSize * c_TileSize> Grid{}; //!< 0 = not active. Otherwise the low 6 bits are steps without getting lower + 1, and the top bit is the way the pixel is heading (set = right).
+			std::array<signed char, c_TileSize * c_TileSize> VelX{}; //!< Sideways speed of each active pixel, in quarter pixels per step.
+			std::array<signed char, c_TileSize * c_TileSize> VelY{}; //!< Falling speed.
+			int Count = 0; //!< Active pixels in the tile.
+		};
+		std::vector<std::unique_ptr<Tile>> Tiles; //!< Row by row, null where nothing moves.
+		int Width = 0;
+		int Height = 0;
+		int TilesX = 0;
 		std::vector<int> Keys; //!< Keys of active pixels, plus stale ones (no longer active) that are dropped at the next update.
-		std::vector<signed char> VelX; //!< Sideways speed of each active pixel, in quarter pixels per step.
-		std::vector<signed char> VelY; //!< Falling speed.
 		size_t Count = 0;
 
-		void Resize(size_t pixels) {
-			if (Grid.size() != pixels) {
-				Grid.assign(pixels, 0);
-				VelX.assign(pixels, 0);
-				VelY.assign(pixels, 0);
+		void Resize(int width, int height) {
+			if (width != Width || height != Height) {
+				Width = std::max(width, 0);
+				Height = std::max(height, 0);
+				TilesX = (Width + c_TileMask) >> c_TileShift;
+				Tiles.clear();
+				Tiles.resize(static_cast<size_t>(TilesX) * static_cast<size_t>((Height + c_TileMask) >> c_TileShift));
 				Keys.clear();
 				Count = 0;
 			}
 		}
-		bool Contains(int key) const { return key >= 0 && static_cast<size_t>(key) < Grid.size() && Grid[key] != 0; }
+		/// The tile a key falls in (null if none is made, or the key is out of the terrain), and its cell in it.
+		Tile* TileOf(int key, int& cell) const {
+			if (key < 0 || Width <= 0 || static_cast<size_t>(key) >= static_cast<size_t>(Width) * static_cast<size_t>(Height)) {
+				return nullptr;
+			}
+			int x = key % Width;
+			int y = key / Width;
+			cell = ((y & c_TileMask) << c_TileShift) | (x & c_TileMask);
+			return Tiles[static_cast<size_t>(y >> c_TileShift) * static_cast<size_t>(TilesX) + static_cast<size_t>(x >> c_TileShift)].get();
+		}
+		bool Contains(int key) const {
+			int cell = 0;
+			const Tile* tile = TileOf(key, cell);
+			return tile && tile->Grid[cell] != 0;
+		}
 		void Add(int key, int still, bool headingRight, int velX = 0, int velY = 0) {
-			if (key >= 0 && static_cast<size_t>(key) < Grid.size() && Grid[key] == 0) {
-				Grid[key] = static_cast<unsigned char>((std::min(still, 62) + 1) | (headingRight ? 0x80 : 0));
-				VelX[key] = static_cast<signed char>(std::clamp(velX, -120, 120));
-				VelY[key] = static_cast<signed char>(std::clamp(velY, 0, 120));
+			if (key < 0 || Width <= 0 || static_cast<size_t>(key) >= static_cast<size_t>(Width) * static_cast<size_t>(Height)) {
+				return;
+			}
+			int x = key % Width;
+			int y = key / Width;
+			int cell = ((y & c_TileMask) << c_TileShift) | (x & c_TileMask);
+			std::unique_ptr<Tile>& tile = Tiles[static_cast<size_t>(y >> c_TileShift) * static_cast<size_t>(TilesX) + static_cast<size_t>(x >> c_TileShift)];
+			if (!tile) {
+				tile = std::make_unique<Tile>();
+			}
+			if (tile->Grid[cell] == 0) {
+				tile->Grid[cell] = static_cast<unsigned char>((std::min(still, 62) + 1) | (headingRight ? 0x80 : 0));
+				tile->VelX[cell] = static_cast<signed char>(std::clamp(velX, -120, 120));
+				tile->VelY[cell] = static_cast<signed char>(std::clamp(velY, 0, 120));
+				++tile->Count;
 				Keys.push_back(key);
 				++Count;
 			}
 		}
 		/// Adds, or takes over an entry already there (one left by a pixel that is gone).
 		void Put(int key, int still, bool headingRight, int velX = 0, int velY = 0) {
-			if (Contains(key)) {
-				Grid[key] = static_cast<unsigned char>((std::min(still, 62) + 1) | (headingRight ? 0x80 : 0));
-				VelX[key] = static_cast<signed char>(std::clamp(velX, -120, 120));
-				VelY[key] = static_cast<signed char>(std::clamp(velY, 0, 120));
+			int cell = 0;
+			if (Tile* tile = TileOf(key, cell); tile && tile->Grid[cell] != 0) {
+				tile->Grid[cell] = static_cast<unsigned char>((std::min(still, 62) + 1) | (headingRight ? 0x80 : 0));
+				tile->VelX[cell] = static_cast<signed char>(std::clamp(velX, -120, 120));
+				tile->VelY[cell] = static_cast<signed char>(std::clamp(velY, 0, 120));
 			} else {
 				Add(key, still, headingRight, velX, velY);
 			}
 		}
 		void Remove(int key) {
-			if (Contains(key)) {
-				Grid[key] = 0;
+			int cell = 0;
+			if (Tile* tile = TileOf(key, cell); tile && tile->Grid[cell] != 0) {
+				tile->Grid[cell] = 0;
 				// (So a cell taken again never starts with the old pixel's speed.)
-				VelX[key] = 0;
-				VelY[key] = 0;
+				tile->VelX[cell] = 0;
+				tile->VelY[cell] = 0;
+				--tile->Count;
 				--Count;
 			}
 		}
 		/// Counts another still step, returning how many that makes.
 		int StillStep(int key) {
-			if (!Contains(key)) {
+			int cell = 0;
+			Tile* tile = TileOf(key, cell);
+			if (!tile || tile->Grid[cell] == 0) {
 				return 0;
 			}
-			if ((Grid[key] & 0x3F) < 63) {
-				++Grid[key];
+			if ((tile->Grid[cell] & 0x3F) < 63) {
+				++tile->Grid[cell];
 			}
-			return (Grid[key] & 0x3F) - 1;
+			return (tile->Grid[cell] & 0x3F) - 1;
 		}
-		int Still(int key) const { return Contains(key) ? (Grid[key] & 0x3F) - 1 : 0; }
-		bool HeadingRight(int key) const { return Contains(key) && (Grid[key] & 0x80) != 0; }
-		/// Drops stale and repeated keys and sorts the rest, highest first.
+		int Still(int key) const {
+			int cell = 0;
+			const Tile* tile = TileOf(key, cell);
+			return tile && tile->Grid[cell] != 0 ? (tile->Grid[cell] & 0x3F) - 1 : 0;
+		}
+		bool HeadingRight(int key) const {
+			int cell = 0;
+			const Tile* tile = TileOf(key, cell);
+			return tile && (tile->Grid[cell] & 0x80) != 0;
+		}
+		int VelXOf(int key) const {
+			int cell = 0;
+			const Tile* tile = TileOf(key, cell);
+			return tile ? tile->VelX[cell] : 0;
+		}
+		int VelYOf(int key) const {
+			int cell = 0;
+			const Tile* tile = TileOf(key, cell);
+			return tile ? tile->VelY[cell] : 0;
+		}
+		void SetVel(int key, int velX, int velY) {
+			int cell = 0;
+			if (Tile* tile = TileOf(key, cell); tile && tile->Grid[cell] != 0) {
+				tile->VelX[cell] = static_cast<signed char>(std::clamp(velX, -120, 120));
+				tile->VelY[cell] = static_cast<signed char>(std::clamp(velY, 0, 120));
+			}
+		}
+		/// Drops stale and repeated keys and sorts the rest, highest first; and the tiles nothing moves in any more.
 		void Tidy() {
-			Keys.erase(std::remove_if(Keys.begin(), Keys.end(), [this](int key) { return Grid[key] == 0; }), Keys.end());
+			Keys.erase(std::remove_if(Keys.begin(), Keys.end(), [this](int key) { return !Contains(key); }), Keys.end());
 			SortHighestFirst();
 			Keys.erase(std::unique(Keys.begin(), Keys.end()), Keys.end());
+			for (std::unique_ptr<Tile>& tile: Tiles) {
+				if (tile && tile->Count == 0) {
+					tile.reset();
+				}
+			}
 		}
 		/// Sorts the keys, highest first. A big flood has hundreds of thousands of them to sort every update, which a radix sort does several times faster than a comparison sort.
 		void SortHighestFirst() {
@@ -199,8 +273,8 @@ namespace {
 			}
 		}
 		void Clear() {
-			for (int key: Keys) {
-				Grid[key] = 0;
+			for (std::unique_ptr<Tile>& tile: Tiles) {
+				tile.reset();
 			}
 			Keys.clear();
 			Count = 0;
@@ -569,7 +643,7 @@ namespace {
 		int y = static_cast<int>(index / static_cast<size_t>(width));
 		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
 			// Nearly every pixel isn't liquid, so that's checked first and costs next to nothing.
-			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && s_Active.Grid[index] == 0) {
+			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
 				// Air right below, or below and to a side, means it has somewhere to go.
 				const unsigned char* below = materialBitmap->line[y + 1];
 				int left = x > 0 ? x - 1 : (s_WrapsX ? width - 1 : x);
@@ -737,7 +811,7 @@ void FluidSim::Update() {
 			Scene* loadedScene = g_SceneMan.GetScene();
 			int loadedWidth = loadedScene && loadedScene->GetTerrain() ? loadedScene->GetTerrain()->GetBitmap()->w : 0;
 			if (loadedWidth > 0) {
-				s_Active.Resize(static_cast<size_t>(loadedWidth) * static_cast<size_t>(loadedScene->GetTerrain()->GetBitmap()->h));
+				s_Active.Resize(loadedWidth, loadedScene->GetTerrain()->GetBitmap()->h);
 			}
 			int x = 0;
 			int y = 0;
@@ -766,7 +840,7 @@ void FluidSim::Update() {
 	int height = terrain->GetBitmap()->h;
 	s_Width = width;
 	s_WrapsX = g_SceneMan.SceneWrapsX();
-	s_Active.Resize(static_cast<size_t>(width) * static_cast<size_t>(height));
+	s_Active.Resize(width, height);
 
 	std::vector<PourRequest> pours;
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
@@ -1054,8 +1128,8 @@ void FluidSim::Update() {
 		};
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
-		int velX = s_Active.VelX[key];
-		int velY = s_Active.VelY[key];
+		int velX = s_Active.VelXOf(key);
+		int velY = s_Active.VelYOf(key);
 		int targetX = x;
 		int targetY = y;
 		bool moved = false;
@@ -1313,8 +1387,7 @@ void FluidSim::Update() {
 			// Whatever was resting around it may now flow into the gap.
 			ActivateAround(x, y, width, height, terrain);
 		} else {
-			s_Active.VelX[key] = static_cast<signed char>(std::clamp(velX, -120, 120));
-			s_Active.VelY[key] = 0;
+			s_Active.SetVel(key, velX, 0);
 			// Powder that can't slide goes to rest sooner: it has nowhere to level out to.
 			// (Never at the surface for what boils off: it would sit there for good instead of going in seconds.)
 			bool boilingOff = s_Evaporates[ownMaterial] > 0.0F && canMoveTo(x, y - 1);
@@ -1389,7 +1462,7 @@ void FluidSim::GetActivePixels(const Vector& corner, float width, float height, 
 			break;
 		}
 		// (Keys can be stale until the next update drops them.)
-		if (key < 0 || static_cast<size_t>(key) >= s_Active.Grid.size() || s_Active.Grid[key] == 0) {
+		if (!s_Active.Contains(key)) {
 			continue;
 		}
 		Vector pixel(static_cast<float>(key % s_Width), static_cast<float>(key / s_Width));
@@ -1407,7 +1480,7 @@ void FluidSim::VisitMovingPixels(const std::function<void(int x, int y, int velX
 	for (int key: s_Active.Keys) {
 		// (Keys can be stale, or repeated, until the next update drops them. A repeat only visits the same pixel twice.)
 		if (s_Active.Contains(key)) {
-			visit(key % s_Width, key / s_Width, s_Active.VelX[key], s_Active.VelY[key], s_Active.Still(key));
+			visit(key % s_Width, key / s_Width, s_Active.VelXOf(key), s_Active.VelYOf(key), s_Active.Still(key));
 		}
 	}
 }
