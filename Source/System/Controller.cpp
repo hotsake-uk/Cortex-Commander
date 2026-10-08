@@ -206,6 +206,7 @@ void Controller::GetInputFromPlayer() {
 bool Controller::s_AIPaused = false;
 
 bool Controller::IsHeldByPausedAI() const {
+	// (Not craft: held, a craft's controls go slack and it drops out of the sky, delivery and passengers with it.)
 	return s_AIPaused && m_InputMode == InputMode::CIM_AI && !dynamic_cast<const ACraft*>(m_ControlledActor);
 }
 
