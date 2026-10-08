@@ -1257,7 +1257,10 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 		return PathStepKind::Door;
 	}
 	// Up or down a ladder (either end on one, straight up or down), or off one onto a floor beside or over its top: climbed, not flown.
-	if (s_ClimbsLadders && (from->Ladder || to->Ladder) && std::abs(dx) <= nodeSize + 1.0F && std::abs(dy) <= nodeSize + 1.0F && (std::abs(dx) < 1.0F || from->Ladder)) {
+	// (Not a level step between two floors: the walk across a ladder's foot, from or onto it, is a walk. Labelled a ladder, the unit
+	// beside a ladder took hold of it to cross the floor.)
+	bool floorWalk = std::abs(dy) < 1.0F && HasFloor(*from) && HasFloor(*to);
+	if (s_ClimbsLadders && (from->Ladder || to->Ladder) && !floorWalk && std::abs(dx) <= nodeSize + 1.0F && std::abs(dy) <= nodeSize + 1.0F && (std::abs(dx) < 1.0F || from->Ladder)) {
 		return PathStepKind::Ladder;
 	}
 	// (Reached up to from a floor: a ladder's foot one or two nodes over it.)
