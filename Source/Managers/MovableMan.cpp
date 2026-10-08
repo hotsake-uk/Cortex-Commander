@@ -677,7 +677,46 @@ bool MovableMan::AddMO(MovableObject* movableObjectToAdd) {
 	return true;
 }
 
+bool MovableMan::AlreadyAdded(const MovableObject* movableObject) {
+	// Added twice (a script adding something that is already in the scene), an object was deleted once and then read again when it was
+	// deleted the second time, which crashed the game: a dropped gun added twice went when a blast destroyed it. The second add is refused,
+	// and said so once per kind of object. (Each list's lock is taken on its own, never two at once.)
+	if (!movableObject) {
+		return false;
+	}
+	bool already;
+	{
+		std::lock_guard<std::mutex> actorLock(m_AddedActorsMutex);
+		already = m_ValidActors.find(movableObject) != m_ValidActors.end();
+	}
+	if (!already) {
+		std::lock_guard<std::mutex> itemLock(m_AddedItemsMutex);
+		already = m_ValidItems.find(movableObject) != m_ValidItems.end();
+	}
+	if (!already) {
+		std::lock_guard<std::mutex> particleLock(m_AddedParticlesMutex);
+		already = m_ValidParticles.find(movableObject) != m_ValidParticles.end();
+	}
+	if (already) {
+		static std::mutex reportedMutex;
+		static std::unordered_set<std::string> reported;
+		std::string name = movableObject->GetModuleAndPresetName();
+		bool first;
+		{
+			std::lock_guard<std::mutex> reportedLock(reportedMutex);
+			first = reported.insert(name).second;
+		}
+		if (first) {
+			g_ConsoleMan.PrintString("WARNING: " + name + " was added to the scene while already in it; the second add was ignored (a script adds it twice?).");
+		}
+	}
+	return already;
+}
+
 void MovableMan::AddActor(Actor* actorToAdd) {
+	if (AlreadyAdded(actorToAdd)) {
+		return;
+	}
 	if (actorToAdd && g_ActivityMan.GetActivity()) {
 		actorToAdd->SetAsAddedToMovableMan();
 		actorToAdd->CorrectAttachableAndWoundPositionsAndRotations();
@@ -708,6 +747,9 @@ void MovableMan::AddActor(Actor* actorToAdd) {
 }
 
 void MovableMan::AddItem(HeldDevice* itemToAdd) {
+	if (AlreadyAdded(itemToAdd)) {
+		return;
+	}
 	if (itemToAdd && g_ActivityMan.GetActivity()) {
 		g_ActivityMan.GetActivity()->ForceSetTeamAsActive(itemToAdd->GetTeam());
 
@@ -732,26 +774,8 @@ void MovableMan::AddItem(HeldDevice* itemToAdd) {
 }
 
 void MovableMan::AddParticle(MovableObject* particleToAdd) {
-	// Added twice (a script adding something that is already in the scene), a particle was deleted once and then read again where the
-	// particles settle, which crashed the game. The second add is refused, and said so once per kind of object.
-	if (particleToAdd) {
-		bool already;
-		{
-			std::lock_guard<std::mutex> particleLock(m_AddedParticlesMutex);
-			already = m_ValidParticles.find(particleToAdd) != m_ValidParticles.end();
-		}
-		if (!already) {
-			std::lock_guard<std::mutex> itemLock(m_AddedItemsMutex);
-			already = m_ValidItems.find(particleToAdd) != m_ValidItems.end();
-		}
-		if (already) {
-			static std::unordered_set<std::string> reported;
-			std::string name = particleToAdd->GetModuleAndPresetName();
-			if (reported.insert(name).second) {
-				g_ConsoleMan.PrintString("WARNING: " + name + " was added to the scene while already in it; the second add was ignored (a script adds it twice?).");
-			}
-			return;
-		}
+	if (AlreadyAdded(particleToAdd)) {
+		return;
 	}
 	if (particleToAdd && g_ActivityMan.GetActivity()) {
 		g_ActivityMan.GetActivity()->ForceSetTeamAsActive(particleToAdd->GetTeam());
