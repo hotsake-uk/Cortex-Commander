@@ -247,6 +247,7 @@ namespace RTE {
 		float Exposure = 1.0F;
 		float AutoExposure = 0.6F; //!< How strongly exposure adapts when the scene is much brighter or darker than usual (flashes, pitch black caves), 0 to disable.
 		float AutoExposureLow = 0.01F; //!< Average scene luminance below which exposure starts to brighten. Ordinary scenes, night included, stay above it.
+		bool AutoExposureGameTime = true; //!< Exposure adapts in game time, so it holds while paused and captures are repeatable. Off: in real time, as before, still adapting while paused.
 		float AutoExposureHigh = 0.3F; //!< Average scene luminance above which exposure starts to darken, e.g. a big explosion filling the screen.
 		float ShoulderStart = 0.75F; //!< Linear brightness above which highlights are softly compressed.
 		float Vignette = 0.15F;

@@ -476,6 +476,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Auto exposure", &settings.AutoExposure, 0.0F, 1.0F);
 		Slider("Adapt below", &settings.AutoExposureLow, 0.001F, 0.2F, "%.3f", ImGuiSliderFlags_Logarithmic);
 		Slider("Adapt above", &settings.AutoExposureHigh, 0.05F, 2.0F, "%.3f", ImGuiSliderFlags_Logarithmic);
+		Check("Adapt in game time", &settings.AutoExposureGameTime);
+		Tip("Exposure adapts as the game runs, so it holds while paused or in photo mode, and slows with slow motion. Off: it adapts in real time, as before.");
 		if (SceneLighting* lighting = g_PostProcessMan.GetSceneLighting(); lighting && settings.Enabled && settings.AutoExposure > 0.0F && Plain()) {
 			float averageLuminance = 0.0F;
 			float autoExposure = 1.0F;
