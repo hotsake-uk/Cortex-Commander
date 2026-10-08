@@ -1,5 +1,6 @@
 ﻿#include "DebugMan.h"
 #include "DebugDraw.h"
+#include "DebugOverlays.h"
 #include <unordered_map>
 #include "Actor.h"
 #include "WindowMan.h"
@@ -321,6 +322,7 @@ void DebugMan::DrawOverlays() {
 		}
 	}
 	// Each overlay: a check of its setting and its draw call, drawn into ImGui::GetForegroundDrawList() with DebugDraw::ToScreen.
+	DebugOverlays::DrawUnitInspector();
 }
 
 void DebugMan::DrawImGui() {
