@@ -610,6 +610,68 @@ namespace SandboxDetail {
 		MarkOrder(destination, IM_COL32(110, 180, 250, 255));
 	}
 
+	/// The selected units' order at a place clicked on the map (RC-8), as the command mode says, but for the place alone: on the map a click
+	/// can't pick out one unit, so an attack goes for the nearest enemy to it, a guard for the nearest friend not selected, and a move is
+	/// a move whatever is there. With Shift, a step of their plans.
+	void MapOrder(const Vector& point, bool shift) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		if (units.empty()) {
+			return;
+		}
+		int team = SelectionTeam();
+		switch (s_CommandMode) {
+			case CommandMode::Attack:
+				if (Actor* enemy = EnemyNear(point, team)) {
+					if (shift) {
+						PlanStepFor(units, PlanKind::Attack, enemy->GetPos(), enemy);
+					} else {
+						for (Actor* unit: units) {
+							SendUnit(unit, enemy->GetPos(), enemy, true, "attack (map)", true);
+						}
+					}
+					MarkOrder(enemy->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Attack)]);
+				}
+				return;
+			case CommandMode::Guard: {
+				Actor* friendNear = nullptr;
+				float nearest = 120.0F * 120.0F;
+				for (Actor* actor: SandboxAccess::Actors()) {
+					if (actor->GetTeam() != team || !IsSelectable(actor) || std::find(units.begin(), units.end(), actor) != units.end()) {
+						continue;
+					}
+					if (float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude(); distance < nearest) {
+						nearest = distance;
+						friendNear = actor;
+					}
+				}
+				if (friendNear) {
+					if (shift) {
+						PlanStepFor(units, PlanKind::Guard, friendNear->GetPos(), friendNear);
+					} else {
+						for (Actor* unit: units) {
+							GuardUnit(unit, friendNear);
+						}
+					}
+					MarkOrder(friendNear->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
+				}
+				return;
+			}
+			case CommandMode::DefendAt:
+				DefendAtSelected(point, point, shift);
+				return;
+			default: {
+				bool attackMove = s_CommandMode == CommandMode::AttackMove;
+				if (shift) {
+					PlanStepFor(units, attackMove ? PlanKind::AttackMove : PlanKind::Move, point, nullptr);
+				} else {
+					MoveUnitsTo(units, point, attackMove);
+				}
+				MarkOrder(point, c_CommandModeColors[static_cast<int>(attackMove ? CommandMode::AttackMove : CommandMode::Move)]);
+				return;
+			}
+		}
+	}
+
 	/// Lets each unit kept to a group's pace (RC-5) walk at its own again once it has got there, been given another order, or been taken over.
 	void UpdatePace() {
 		s_Paced.erase(std::remove_if(s_Paced.begin(), s_Paced.end(), [](const UnitRef& ref) {

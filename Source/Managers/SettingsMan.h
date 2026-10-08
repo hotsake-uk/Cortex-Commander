@@ -295,6 +295,12 @@ namespace RTE {
 		/// Sets whether the sandbox pings where units of the selection's side come under fire.
 		void SetShowSandboxAttackPings(bool show) { m_SandboxAttackPings = show; }
 
+		/// Whether the sandbox's map window is shown (RC-8).
+		bool ShowSandboxMinimap() const { return m_SandboxMinimap; }
+
+		/// Sets whether the sandbox's map window is shown.
+		void SetShowSandboxMinimap(bool show) { m_SandboxMinimap = show; }
+
 		/// Gets whether the lighting-by-source readout is on.
 		bool ShowLightsBySource() const { return m_LightsBySource; }
 
@@ -608,6 +614,7 @@ namespace RTE {
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
+		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's auto battle and colony readout is on (see ShowSandboxAutoBattle).
