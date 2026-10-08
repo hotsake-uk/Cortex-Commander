@@ -1027,7 +1027,7 @@ void FluidSim::Update() {
 	for (glm::ivec2 spot: bloodSettled) {
 		int x = s_WrapsX ? ((spot.x % width) + width) % width : spot.x;
 		int y = spot.y;
-		if (s_BloodMaterial != 0 && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == s_WaterMaterial && terrain->GetFGColorPixel(x, y) != s_PourColor[s_WaterMaterial]) {
+		if (s_BloodMaterial != 0 && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == s_WaterMaterial && terrain->GetFGColorPixel(x, y) != s_PourColor[s_WaterMaterial] && ShownColor(y * width + x, -1) == -1) {
 			terrain->SetMaterialPixel(x, y, s_BloodMaterial);
 			Activate(x, y, width, height, terrain);
 		}
