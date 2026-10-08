@@ -172,15 +172,20 @@ void ActorWater::Update() {
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
 	float gravity = g_SceneMan.GetGlobalAcc().m_Y;
 	for (Actor* actor: g_MovableMan.m_Actors) {
-		if (actor->IsDead() || dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
 			continue;
 		}
+		// (A body dying but not yet gone still floats or sinks and is dragged; only breath, swimming and harm are for the living.)
+		bool alive = !actor->IsDead();
 		const Vector& position = actor->GetPos();
-		float reach = actor->GetRadius() * 0.55F;
-		Vector feet = position + Vector(0.0F, reach);
-		Vector head = position - Vector(0.0F, reach);
+		// Head and feet from the body's height, not its radius: the radius takes in what it carries, so a long rifle read as a head under water (L-5).
+		float height = actor->GetHeight();
+		float headReach = height > 0.0F ? height * 0.24F : actor->GetRadius() * 0.55F;
+		float feetReach = height > 0.0F ? height * 0.2F : actor->GetRadius() * 0.55F;
+		Vector feet = position + Vector(0.0F, feetReach);
+		Vector head = position - Vector(0.0F, headReach);
 		// Walking through something sharp (glass shards): cut, the more the faster it goes.
-		if (float cut = s_CutDamage[static_cast<unsigned char>(MaterialAt(feet + Vector(0.0F, 2.0F)))]; cut > 0.0F && actor->GetVel().MagnitudeIsGreaterThan(0.5F)) {
+		if (float cut = s_CutDamage[static_cast<unsigned char>(MaterialAt(feet + Vector(0.0F, 2.0F)))]; alive && cut > 0.0F && actor->GetVel().MagnitudeIsGreaterThan(0.5F)) {
 			actor->SetHealth(actor->GetHealth() - cut * std::min(actor->GetVel().GetMagnitude() * 0.5F, 2.0F) * deltaTime);
 		}
 		int depth = InLiquid(head) ? 3 : (InLiquid(position) ? 2 : (InLiquid(feet) || InLiquid(feet + Vector(0.0F, 3.0F)) ? 1 : 0));
@@ -206,8 +211,8 @@ void ActorWater::Update() {
 			}
 			continue;
 		}
-		if (!actor->NumberValueExists(c_DepthTag) && actor->GetVel().GetMagnitude() > 4.0F) {
-			// Dropping or running in throws up a splash.
+		if (depth > GetDepth(actor) && actor->GetVel().GetMagnitude() > 4.0F) {
+			// Dropping or running in throws up a splash: going in, or deeper in (one already wading that jumps in from a ledge above splashes too).
 			FluidSim::Splash(feet, actor->GetRadius() * 0.6F + 3.0F, 0.3F, std::min(actor->GetVel().GetMagnitude() * 0.55F, 10.0F));
 		}
 		actor->SetNumberValue(c_DepthTag, static_cast<double>(depth));
@@ -220,12 +225,12 @@ void ActorWater::Update() {
 			float buoyancy = GetBuoyancy(actor) * s_Heaviness[static_cast<unsigned char>(MaterialAt(position))];
 			velocity.m_Y -= gravity * buoyancy * deltaTime * (depth == 3 ? 1.0F : 0.6F);
 			// Swimming (LM-4): with a move key, a stroke that way, up to the swimming speed; up (or jump) strokes up, down dives. A floater with
-			// its head out holds at the surface rather than bobbing, unless it dives. (Lava is ActorFire's: nobody swims in it.)
+			// its head out holds at the surface rather than bobbing, unless it dives. (Lava floats a body high, being heavy, and burns it: ActorFire sets it alight, TouchDamage eats it.)
 			const Controller* controller = actor->GetController();
-			bool left = controller->IsState(MOVE_LEFT);
-			bool right = controller->IsState(MOVE_RIGHT);
-			bool up = controller->IsState(MOVE_UP) || controller->IsState(BODY_JUMP);
-			bool down = controller->IsState(MOVE_DOWN) || controller->IsState(BODY_CROUCH);
+			bool left = alive && controller->IsState(MOVE_LEFT);
+			bool right = alive && controller->IsState(MOVE_RIGHT);
+			bool up = alive && (controller->IsState(MOVE_UP) || controller->IsState(BODY_JUMP));
+			bool down = alive && (controller->IsState(MOVE_DOWN) || controller->IsState(BODY_CROUCH));
 			const float stroke = 6.0F * deltaTime * (1.0F - 0.8F * stickiness); // About a third of a second to the swimming speed (much longer in tar).
 			if (left != right) {
 				float wanted = right ? c_SwimSpeed : -c_SwimSpeed;
@@ -245,12 +250,12 @@ void ActorWater::Update() {
 
 		// What eats at bodies in it (acid): the worst of the liquid at the feet, a little under them and at the middle.
 		float touchDamage = std::max({s_TouchDamage[static_cast<unsigned char>(MaterialAt(feet))], s_TouchDamage[static_cast<unsigned char>(MaterialAt(position))], s_TouchDamage[static_cast<unsigned char>(MaterialAt(feet + Vector(0.0F, 3.0F)))]});
-		if (touchDamage > 0.0F) {
+		if (alive && touchDamage > 0.0F) {
 			actor->SetHealth(actor->GetHealth() - touchDamage * static_cast<float>(depth) * deltaTime);
 		}
 
 		// (Not in a liquid a body can breathe in: none of the stock ones.)
-		if (Breathes(actor) && !(depth == 3 && s_Breathable[static_cast<unsigned char>(MaterialAt(head))])) {
+		if (alive && Breathes(actor) && !(depth == 3 && s_Breathable[static_cast<unsigned char>(MaterialAt(head))])) {
 			float air = actor->NumberValueExists(c_AirTag) ? static_cast<float>(actor->GetNumberValue(c_AirTag)) : c_AirSeconds;
 			if (depth == 3) {
 				air = std::max(air - deltaTime, 0.0F);
