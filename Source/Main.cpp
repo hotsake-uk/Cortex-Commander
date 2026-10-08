@@ -39,6 +39,9 @@
 #include "ConsoleMan.h"
 #include "SettingsMan.h"
 #include <chrono>
+#include <string>
+#include <utility>
+#include <vector>
 #include "PresetMan.h"
 #include "UInputMan.h"
 #include "PerformanceMan.h"
@@ -85,6 +88,44 @@ FILE __iob_func[3] = {*stdin, *stdout, *stderr};
 
 using namespace RTE;
 
+namespace {
+	/// How long each step of start-up took, from main() to the first menu frame (or the first activity, when launching straight into one).
+	/// Printed to the console, and so LogConsole.txt, once start-up is over, so a slow start says which step the time went to.
+	struct StartupTiming {
+		std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
+		std::chrono::steady_clock::time_point Last = Start;
+		std::vector<std::pair<std::string, long long>> Stages;
+		bool Reported = false;
+
+		/// Ends the step that ran since the last mark, under this name.
+		void Mark(const std::string& stageName) {
+			auto now = std::chrono::steady_clock::now();
+			Stages.emplace_back(stageName, std::chrono::duration_cast<std::chrono::milliseconds>(now - Last).count());
+			Last = now;
+		}
+
+		/// Ends the last step and prints them all, with the total. Only the first call prints.
+		void Report(const std::string& lastStageName) {
+			if (Reported) {
+				return;
+			}
+			Reported = true;
+			Mark(lastStageName);
+			g_ConsoleMan.PrintString("SYSTEM: Start-up timing (ms):");
+			for (const auto& [stageName, milliseconds]: Stages) {
+				g_ConsoleMan.PrintString("Start-up: " + stageName + ": " + std::to_string(milliseconds) + " ms");
+			}
+			if (auto [files, indexMS] = System::GetCaseIndexStats(); indexMS >= 0) {
+				g_ConsoleMan.PrintString("Start-up: (of which the case check's file index: " + std::to_string(files) + " files in " + std::to_string(indexMS) + " ms)");
+			}
+			g_ConsoleMan.PrintString("Start-up: loading screen frames drawn: " + std::to_string(LoadingScreen::GetProgressFramesDrawn()) + " (progress report " + (g_SettingsMan.GetLoadingScreenProgressReportDisabled() ? "off" : "on") +
+			                         ", frame cap " + std::to_string(g_WindowMan.GetFrameCap()) + ", vsync " + (g_WindowMan.GetVSyncEnabled() ? "on" : "off") + ", fullscreen " + (g_WindowMan.IsFullscreen() ? "yes" : "no") + ")");
+			g_ConsoleMan.PrintString("Start-up: total to " + lastStageName + ": " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Last - Start).count()) + " ms");
+		}
+	};
+	StartupTiming s_StartupTiming;
+} // namespace
+
 /// <summary>
 /// Initializes all the essential managers.
 /// </summary>
@@ -114,36 +155,51 @@ void InitializeManagers() {
 	CameraMan::Construct();
 	ActivityMan::Construct();
 	LoadingScreen::Construct();
+	s_StartupTiming.Mark("constructing the managers");
 
 	g_ThreadMan.Initialize();
+	s_StartupTiming.Mark("ThreadMan");
 	g_SettingsMan.Initialize();
+	s_StartupTiming.Mark("SettingsMan (Settings.ini)");
 	g_WindowMan.Initialize();
+	s_StartupTiming.Mark("WindowMan (window and GL context)");
 	g_GLStateMan.Initialize();
+	s_StartupTiming.Mark("GLStateMan");
 
 	g_LuaMan.Initialize();
+	s_StartupTiming.Mark("LuaMan (Lua states)");
 	g_TimerMan.Initialize();
 	g_FrameMan.Initialize();
+	s_StartupTiming.Mark("FrameMan");
 	g_RenderMan.Initialize();
+	s_StartupTiming.Mark("RenderMan (shaders)");
 	g_PostProcessMan.Initialize();
+	s_StartupTiming.Mark("PostProcessMan (shaders)");
 	g_PerformanceMan.Initialize();
 
 	if (g_AudioMan.Initialize()) {
 		g_GUISound.Initialize();
 		g_MusicMan.Initialize();
 	}
+	s_StartupTiming.Mark("AudioMan, GUISound and MusicMan");
 
 	g_UInputMan.Initialize();
+	s_StartupTiming.Mark("UInputMan (input devices)");
 	g_ConsoleMan.Initialize();
+	s_StartupTiming.Mark("ConsoleMan");
 	g_SceneMan.Initialize();
 	g_MovableMan.Initialize();
 	g_MetaMan.Initialize();
+	s_StartupTiming.Mark("SceneMan, MovableMan and MetaMan");
 	g_MenuMan.Initialize();
+	s_StartupTiming.Mark("MenuMan (loading screen and menus)");
 
 	// Overwrite Settings.ini after all the managers are created to fully populate the file. Up until this moment Settings.ini is populated only with minimal required properties to run.
 	// If Settings.ini already exists and is fully populated, this will deal with overwriting it to apply any overrides performed by the managers at boot (e.g resolution validation).
 	if (g_SettingsMan.SettingsNeedOverwrite()) {
 		g_SettingsMan.UpdateSettingsFile();
 	}
+	s_StartupTiming.Mark("writing Settings.ini");
 }
 
 /// <summary>
@@ -368,6 +424,7 @@ void RunMenuLoop() {
 		g_ConsoleMan.Draw(g_FrameMan.GetBackBuffer32());
 		g_WindowMan.GetScreenBuffer()->End();
 		g_WindowMan.UploadFrame();
+		s_StartupTiming.Report("the first menu frame");
 	}
 
 	g_MenuMan.SetIsInMenuScreen(false);
@@ -402,7 +459,9 @@ void RunGameLoop() {
 	if (g_ActivityMan.ActivitySetToRestart()) {
 		g_LoadingScreen.DrawLoadingSplash();
 		g_WindowMan.UploadFrame();
-		if (!g_ActivityMan.RestartActivity()) {
+		bool restarted = g_ActivityMan.RestartActivity();
+		s_StartupTiming.Report("the first activity");
+		if (!restarted) {
 			// This doesn't work.
 			// Somewhat related to https://github.com/cortex-command-community/Cortex-Command-Community-Project-Source/issues/472
 			// Deal with later.
@@ -603,6 +662,8 @@ int main(int argc, char** argv) {
 	// Automated test runs set CCCP_NO_GAMEPAD so a controller in use elsewhere on the machine can't steer them.
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | (std::getenv("CCCP_NO_GAMEPAD") ? 0 : SDL_INIT_GAMEPAD));
 
+	s_StartupTiming.Mark("SDL");
+
 	SDL_SetHint(SDL_HINT_MOUSE_AUTO_CAPTURE, "0");
 	SDL_SetHint("SDL_ALLOW_TOPMOST", "0");
 	// SDL_HideCursor();
@@ -624,18 +685,22 @@ int main(int argc, char** argv) {
 	// Just use it anyway until some dumb edge case pops up and it becomes a problem.
 	System::Initialize(argv[0]);
 	SeedRNG();
+	s_StartupTiming.Mark("RenderDoc, gamepad mappings and System (working folder set-up)");
 
 	InitializeManagers();
 
 	HandleMainArgs(argc, argv);
 
 	g_PresetMan.LoadAllDataModules();
+	s_StartupTiming.Mark("loading the data modules (Data, Mods, Userdata)");
 
 	ControlLink::Start();
+	s_StartupTiming.Mark("control link");
 
 	if (!System::IsInExternalModuleValidationMode()) {
 		// Load the different input device icons. This can't be done during UInputMan::Create() because the icon presets don't exist so we need to do this after modules are loaded.
 		g_UInputMan.LoadDeviceIcons();
+		s_StartupTiming.Mark("input device icons");
 
 		if (g_ConsoleMan.LoadWarningsExist()) {
 			g_ConsoleMan.PrintString("WARNING: Encountered non-fatal errors during module loading!\nSee \"LogLoadingWarning.txt\" for information.");
@@ -649,7 +714,10 @@ int main(int argc, char** argv) {
 			}
 		}
 
+		s_StartupTiming.Mark("loading warnings log");
+
 		if (!g_ActivityMan.Initialize()) {
+			s_StartupTiming.Mark("ActivityMan");
 			RunMenuLoop();
 		}
 
