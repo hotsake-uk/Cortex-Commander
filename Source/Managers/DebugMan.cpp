@@ -3,6 +3,7 @@
 #include "DebugDraw.h"
 #include "DebugOverlays.h"
 #include <unordered_map>
+#include <unordered_set>
 #include "Actor.h"
 #include "WindowMan.h"
 #include "MenuMan.h"
@@ -700,7 +701,8 @@ void DebugMan::ActorDrawDebugGUI() {
 	ZoneScoped;
 	static std::shared_ptr<RenderBatch> batch = std::make_unique<RenderBatch>();
 	if (BeginPanel("Actor draw###ActorDraw", &m_ShowActorDebugGui, PanelSide::Right)) {
-		static std::map<MovableObject*, std::unique_ptr<Texture>> MOTargets;
+		// By unique ID, not address: an actor freed and another made at its address took its texture, of the wrong size.
+		static std::map<long, std::unique_ptr<Texture>> MOTargets;
 		static int playerScreen = -1;
 		ImGui::InputInt("Test Draw for Screen (-1 full world):", &playerScreen);
 		ImGui::SliderInt("Screen", &playerScreen, -1, c_MaxScreenCount);
@@ -722,23 +724,30 @@ void DebugMan::ActorDrawDebugGUI() {
 			batch->EndFrame();
 			{
 				ZoneScopedN("ActorList::List");
+				// The textures of actors that are gone are let go (they were kept for the session).
+				std::unordered_set<long> liveIDs;
+				for (const Actor* actor: g_MovableMan.m_Actors) {
+					liveIDs.insert(actor->GetUniqueID());
+				}
+				std::erase_if(MOTargets, [&liveIDs](const auto& entry) { return !liveIDs.contains(entry.first); });
 				for (auto actor: g_MovableMan.m_Actors) {
 					if (ImGui::TreeNode(actor->GetPresetNameAndUniqueID().c_str())) {
 						ZoneScopedN("ActorList::List::Node");
-						if (!MOTargets[actor]) {
-							MOTargets[actor] = std::make_unique<Texture>(FloatRect{0.0f, 0.0f, actor->GetRadius() * 2.0f, 2.f * actor->GetRadius()});
+						std::unique_ptr<Texture>& target = MOTargets[actor->GetUniqueID()];
+						if (!target || target->GetDimensions().w != actor->GetRadius() * 2.0f) {
+							target = std::make_unique<Texture>(FloatRect{0.0f, 0.0f, actor->GetRadius() * 2.0f, 2.f * actor->GetRadius()});
 						}
 						if (!m_DebugDrawTarget) {
 							m_DebugDrawTarget = std::make_unique<RenderTarget>(false);
 						}
 						m_DebugDrawTarget->Begin(true, false);
-						glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, MOTargets[actor]->GetTextureId(), 0);
+						glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target->GetTextureId(), 0);
 						glViewport(0, 0, 2 * actor->GetRadius(), 2 * actor->GetRadius());
 						Camera camera(actor->GetPos() - Vector(actor->GetRadius(), actor->GetRadius()), Box({0.0f, 0.0f}, actor->GetRadius() * 2, actor->GetRadius() * 2.0f));
 						batch->m_CurrentCamera = &camera;
 						batch->Render();
 						glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-						ImGui::ImageWithBg(MOTargets[actor]->GetTextureId(), ImVec2(MOTargets[actor]->GetDimensions().w, MOTargets[actor]->GetDimensions().h));
+						ImGui::ImageWithBg(target->GetTextureId(), ImVec2(target->GetDimensions().w, target->GetDimensions().h));
 						ImGui::TreePop();
 					}
 				}
