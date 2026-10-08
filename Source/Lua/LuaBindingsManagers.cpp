@@ -371,6 +371,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("GetPlayerLastSeenPos", &SceneMan::GetPlayerLastSeenPos)
 	    .def("AddGas", &SceneMan::AddGas)
 	    .def("GetGas", &SceneMan::GetGas)
+	    .def("GetAirFlow", &SceneMan::GetAirFlow)
+	    .def("AddAirBlast", &SceneMan::AddAirBlast)
 	    .def("GetBurningUnitCount", &SceneMan::GetBurningUnitCount)
 	    .def("GetFlowingLiquidPixelCount", &SceneMan::GetFlowingLiquidPixelCount)
 	    .def("GetLiquidUpdateMS", &SceneMan::GetLiquidUpdateMS)

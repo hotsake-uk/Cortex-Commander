@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
+#include "AirPressure.h"
 #include "FluidSim.h"
 
 #include "CameraMan.h"
@@ -974,6 +975,8 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
 		TerrainCollapse::Blast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
+		// And sends a wave of pressure through the air, down corridors and up through water (SB-5).
+		AirPressure::Blast(m_Pos, gibEnergy);
 		// Liquid and loose powder are woken, and a blast in or beside liquid throws it into the air: only where there is some (L-6). Most gibs are on dry land, and each queued splash
 		// scans its whole disc, with only 64 a step, so a big gib event starved the splashes of units landing and of pours.
 		if (float liquidReach = std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F); FluidSim::IsFlowingNear(m_Pos, liquidReach)) {

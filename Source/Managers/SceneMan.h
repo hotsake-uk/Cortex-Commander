@@ -711,6 +711,15 @@ namespace RTE {
 		/// @param kind 0 smoke, 1 toxic gas, 2 methane, 3 steam.
 		float GetGas(const Vector& position, int kind) const;
 
+		/// Gets how a passing blast wave moves the air at a point (SB-5), as the push it gives a weightless thing each update; zero in still air.
+		/// @param position Where, in scene coordinates.
+		Vector GetAirFlow(const Vector& position) const;
+
+		/// Sends a wave of pressure through the air from a point, as an explosion does (SB-5). Thread safe; applied on the next sim update.
+		/// @param position Where, in scene coordinates.
+		/// @param energy How big a blast, as an explosion's gib energy (a grenade is a few thousand).
+		void AddAirBlast(const Vector& position, float energy) const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 

@@ -3,6 +3,7 @@
 #include "FluidSim.h"
 #include "ThreatMemory.h"
 #include "GasGrid.h"
+#include "AirPressure.h"
 #include "TerrainCollapse.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
@@ -1531,6 +1532,14 @@ void SceneMan::AddGas(const Vector& position, int kind, float amount) const {
 
 float SceneMan::GetGas(const Vector& position, int kind) const {
 	return kind >= 0 && kind < GasGrid::KindCount ? GasGrid::Get(position, static_cast<GasGrid::Kind>(kind)) : 0.0F;
+}
+
+Vector SceneMan::GetAirFlow(const Vector& position) const {
+	return AirPressure::GetFlow(position);
+}
+
+void SceneMan::AddAirBlast(const Vector& position, float energy) const {
+	AirPressure::Blast(position, energy);
 }
 
 int SceneMan::GetBurningUnitCount() const {

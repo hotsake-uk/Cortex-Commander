@@ -13,6 +13,7 @@
 #include "FluidSim.h"
 #include "ThreatMemory.h"
 #include "GasGrid.h"
+#include "AirPressure.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
@@ -290,6 +291,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("GasShown", { GasGrid::SetShown(std::stof(reader.ReadPropValue())); });
+	MatchProperty("BlastWaves", { AirPressure::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("WindMovesSmoke", { AirPressure::SetWindMovesSmoke(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
@@ -954,6 +957,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
 	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
+	writer.NewPropertyWithValue("BlastWaves", AirPressure::IsEnabled());
+	writer.NewPropertyWithValue("WindMovesSmoke", AirPressure::WindMovesSmoke());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
