@@ -80,7 +80,11 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	end
 	-- (Not the same fight picked up again: an enemy seen again within a few seconds of the last one isn't news.)
 	if Now.Seen and not Last.Seen and Last.TargetTimer:IsPastSimMS(5000) then
-		say("EnemySpotted");
+		say(Owner.WeaponRule == Actor.WEAPONS_HOLD and "SpottedHoldingFire" or "EnemySpotted");
+	end
+	-- (On return fire only, opening up means it was shot at: RC-1.)
+	if Now.Firing and not Last.Firing and Owner.WeaponRule == Actor.WEAPONS_RETURN_FIRE then
+		say("ReturningFire");
 	end
 	if Now.Target or Now.UnseenTarget then
 		Now.TargetTimer:Reset();
@@ -141,5 +145,6 @@ function UnitSpeech.Snapshot(AI, Owner)
 		Health = Owner.Health,
 		Suppression = SharedBehaviors.Suppression(AI, Owner) or 0,
 		Mode = Owner.AIMode,
+		Firing = AI.fire == true,
 	};
 end

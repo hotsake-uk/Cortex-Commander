@@ -26,6 +26,7 @@ namespace RTE {
 			int CooldownMS = 6000; //!< How long before the same unit says this again.
 			int TeamCooldownMS = 1500; //!< How long before anyone on the same side says this again, so a squad doesn't shout it in chorus.
 			bool Urgent = false; //!< Cuts in over a line still showing (a grenade), where others wait for it.
+			bool Order = false; //!< An answer to an order. Said by the commands themselves (SayOrder); the AI's own guess at an order (Say) is left out while one has just been answered.
 		};
 
 		/// What a unit is saying, and what it said lately. Kept on the actor (Actor::GetSpeech); only that actor's own updates write it.
@@ -36,6 +37,7 @@ namespace RTE {
 			int Trigger = -1; //!< The trigger it was said for, -1 for a line a script gave.
 			int Line = -1; //!< Which of the trigger's lines, so the next time picks another.
 			std::vector<long long> LastSaidMS; //!< When each trigger was last said by this unit, by trigger index.
+			long long OrderAnsweredMS = 0; //!< Sim time a command last asked this unit to answer an order (SayOrder), said or not.
 		};
 
 #pragma region Settings
@@ -87,7 +89,15 @@ namespace RTE {
 		/// @param actor Who says it.
 		/// @param triggerKey The trigger, as Speech.ini names it.
 		/// @return Whether a line was said.
-		static bool Say(Actor& actor, const std::string& triggerKey);
+		static bool Say(Actor& actor, const std::string& triggerKey) { return Say(actor, triggerKey, false); }
+
+		/// Has an actor answer an order the player just gave it ("Moving!", "Holding fire."), as Say. Called by the commands that give the order,
+		/// which know what it was; for a moment after, the AI's own answer to an order (UnitSpeech.lua, which only sees that some order came) is
+		/// left out, so the unit doesn't answer twice.
+		/// @param actor Who answers.
+		/// @param triggerKey The trigger, as Speech.ini names it.
+		/// @return Whether a line was said.
+		static bool SayOrder(Actor& actor, const std::string& triggerKey);
 
 		/// Has an actor say the given words, whatever the chance and the triggers (unit speech must be on). For scripts.
 		/// @param actor Who says it.
@@ -108,6 +118,9 @@ namespace RTE {
 		static bool s_Enabled; //!< Whether units say anything at all.
 		static int s_ChancePercent; //!< The chance a trigger is said, 0 to 100.
 		static bool s_ShowEnemies; //!< Whether the other sides' units are heard too.
+
+		/// Say, from a command answering an order or not.
+		static bool Say(Actor& actor, const std::string& triggerKey, bool answeringOrder);
 
 		/// Reads the Speech.ini files if they haven't been yet. Safe from any thread.
 		static void EnsureLoaded();
