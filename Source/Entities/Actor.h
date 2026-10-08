@@ -278,6 +278,10 @@ namespace RTE {
 		/// @param newPlayer The player which will control this if the input mode was set to player. (default: -1)
 		void SetControllerMode(Controller::InputMode newMode, int newPlayer = -1);
 
+		/// Forgets the engine route-follower's state, for the actor types that have one (AHuman, ACrab). Called on a change of controller,
+		/// so a player who takes over mid-flight and hands back later doesn't leave a stale flight to be judged failed.
+		virtual void ResetRouteMovement() {}
+
 		/// Sets this Actor's Controller mode and gives back what it used to be.
 		/// @param newMode The new mode to set to.
 		/// @param newPlayer The player which will control this if the input mode was set to player. (default: -1)

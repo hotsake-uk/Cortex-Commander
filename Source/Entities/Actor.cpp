@@ -600,6 +600,11 @@ void Actor::SetControllerMode(Controller::InputMode newMode, int newPlayer) {
 	m_Controller.SetInputMode(newMode);
 	m_Controller.SetPlayer(newPlayer);
 
+	// Whoever had it was steering it: the route-follower's timers and any flight in hand no longer describe what the body is doing.
+	if (newMode != previousControllerMode || newPlayer != previousControllingPlayer) {
+		ResetRouteMovement();
+	}
+
 	RunScriptedFunctionInAppropriateScripts("OnControllerInputModeChange", false, false, {}, {std::to_string(previousControllerMode), std::to_string(previousControllingPlayer)});
 
 	m_NewControlTmr.Reset();

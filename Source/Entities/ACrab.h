@@ -282,7 +282,7 @@ namespace RTE {
 		/// @return 0 on its way, 1 arrived, 2 no route to it (as AHuman::MoveAlongRoute).
 		int MoveAlongRoute();
 		/// Forgets the follower's state (a new order).
-		void ResetRouteMovement();
+		void ResetRouteMovement() override;
 
 		/// Protected member variable and method declarations
 	protected:
