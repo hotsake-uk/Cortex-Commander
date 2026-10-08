@@ -380,7 +380,7 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units to stand round a point, each to its own spot, the nearest unit to the nearest spot.
-	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point) {
+	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove) {
 		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()) * 2);
 		if (spots.empty()) {
 			return;
@@ -429,7 +429,12 @@ namespace SandboxDetail {
 			// The waypoint just over the ground where the feet go (the AI puts it at its own standing height from there). Half the unit's height up,
 			// as it was, was inside the ceiling of a low corridor, and a waypoint inside a thin slab is taken to be on top of it: a unit sent a few
 			// steps along a bunker corridor went out and round to the roof over it.
-			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, "move");
+			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, attackMove ? "attack-move" : "move");
+			if (attackMove) {
+				// Attack-move (RC-2): a move whose movement rule is Engage, so the unit's own sight picks what it fights on the way (no target is
+				// chosen for it), and once nothing is left its route takes it on to the spot.
+				unit->SetMovementRule(Actor::MOVE_ENGAGE);
+			}
 		}
 	}
 
@@ -504,7 +509,11 @@ namespace SandboxDetail {
 		}
 		if (s_CommandMode == CommandMode::Attack) {
 			OrderSelectedUnits(1, position);
-			MarkOrder(position, IM_COL32(239, 106, 91, 255));
+			return;
+		}
+		if (s_CommandMode == CommandMode::AttackMove) {
+			MoveUnitsTo(UnitsToMove(0, true), position, true);
+			MarkOrder(position, c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)]);
 			return;
 		}
 		// Move: a friend is picked up into the selection, an enemy attacked, the ground gone to.
@@ -571,13 +580,14 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack there, 2 hold where they are.
+	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they are.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
 			MoveUnitsTo(units, point);
 		} else if (choice == 1) {
-			// The nearest enemy to the point, if there is one close, else the place itself with orders to fight whatever is met.
+			// The nearest enemy to the point, if there is one close: the player's pick, kept after while it lives. With none near, nothing (RC-2:
+			// fighting towards a place is Attack-move's).
 			Actor* target = nullptr;
 			float nearest = 400.0F * 400.0F;
 			for (Actor* actor: SandboxAccess::Actors()) {
@@ -590,10 +600,13 @@ namespace SandboxDetail {
 					target = actor;
 				}
 			}
-			for (Actor* unit: units) {
-				SendUnit(unit, point, target, true, "attack there");
-				unit->SetOrderAttackPlace(point);
+			if (!target) {
+				return;
 			}
+			for (Actor* unit: units) {
+				SendUnit(unit, target->GetPos(), target, true, "attack", true);
+			}
+			MarkOrder(target->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Attack)]);
 		} else if (choice == 2) {
 			// Cancel: every order forgotten, and the side's standing orders apply.
 			for (Actor* unit: units) {
