@@ -115,6 +115,48 @@ namespace SandboxDetail {
 		} else {
 			s_MoveWatch.erase(unit->GetUniqueID());
 		}
+		// The unit answers the player's order (unit speech): not one the standing orders resend, nor a plan's next step (UpdatePlans has its own).
+		if (!resend && !s_FollowingPlan) {
+			std::string_view why = reason ? reason : "";
+			const char* trigger = nullptr;
+			if (why == "move" || why == "to the rally point" || why == "sent again (no route)") {
+				trigger = s_MoveAnswer ? s_MoveAnswer : "OrderMove";
+			} else if (why == "attack-move") {
+				trigger = "OrderAttackMove";
+			} else if (why == "attack" || why == "attack (map)") {
+				trigger = "OrderAttack";
+			} else if (why == "guard") {
+				trigger = "OrderGuard";
+			} else if (why == "defend at") {
+				trigger = "OrderDefend";
+			}
+			AnswerOrder(unit, trigger);
+		}
+	}
+
+	/// A unit answers an order the player gave it (unit speech, US-2): one of the trigger's lines over its head, on the speech settings'
+	/// chance. Not the unit the player is in, which is the player.
+	void AnswerOrder(Actor* unit, const char* trigger) {
+		if (unit && trigger && !unit->IsPlayerControlled()) {
+			unit->SayOrder(trigger);
+		}
+	}
+
+	/// The trigger a unit answers one of the side's orders with (unit speech), null for none.
+	const char* OrderTrigger(Order order) {
+		switch (order) {
+			case Order::Hold:
+				return "OrderHold";
+			case Order::Attack:
+			case Order::HuntBrains:
+				return "OrderAttack";
+			case Order::Patrol:
+				return "OrderPatrol";
+			case Order::DigGold:
+				return "OrderDig";
+			default:
+				return nullptr;
+		}
 	}
 
 	/// Holds a unit where it is, forgetting every order it had.
@@ -529,7 +571,10 @@ namespace SandboxDetail {
 			// The waypoint just over the ground where the feet go (the AI puts it at its own standing height from there). Half the unit's height up,
 			// as it was, was inside the ceiling of a low corridor, and a waypoint inside a thin slab is taken to be on top of it: a unit sent a few
 			// steps along a bunker corridor went out and round to the roof over it.
+			// (Sent as a group kept together, they answer as one: unit speech.)
+			s_MoveAnswer = pace > 0.0F ? "OrderKeepTogether" : nullptr;
 			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, attackMove ? "attack-move" : "move");
+			s_MoveAnswer = nullptr;
 			if (attackMove) {
 				// Attack-move (RC-2): a move whose movement rule is Engage, so the unit's own sight picks what it fights on the way (no target is
 				// chosen for it), and once nothing is left its route takes it on to the spot.
@@ -568,6 +613,10 @@ namespace SandboxDetail {
 		near->At = now;
 		if (std::none_of(near->Units.begin(), near->Units.end(), [unit](const UnitRef& ref) { return RefersTo(ref, unit); })) {
 			near->Units.push_back(MakeRef(unit));
+			// It says it can't get there (unit speech).
+			if (!unit->IsPlayerControlled()) {
+				unit->Say("NoRoute");
+			}
 		}
 	}
 
@@ -836,6 +885,9 @@ namespace SandboxDetail {
 		unit->SetAIMode(Actor::AIMODE_SQUAD);
 		unit->AddAIMOWaypoint(leader);
 		unit->SetMovePathToUpdate();
+		if (!s_FollowingPlan) {
+			AnswerOrder(unit, "OrderGuard");
+		}
 	}
 
 
@@ -1093,8 +1145,13 @@ namespace SandboxDetail {
 			}
 			if (!plan.Running && plan.Steps.empty()) {
 				StartPlanStep(unit, plan, step);
+				// (Given now, it's answered as the order it is; the step's own sending is a plan's, which doesn't answer.)
+				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr};
+				int kindIndex = static_cast<int>(step.Kind);
+				AnswerOrder(unit, kindIndex >= 0 && kindIndex < static_cast<int>(std::size(answers)) ? answers[kindIndex] : nullptr);
 			} else {
 				plan.Steps.push_back(step);
+				AnswerOrder(unit, "OrderQueued");
 			}
 		}
 	}
@@ -1152,7 +1209,12 @@ namespace SandboxDetail {
 			}
 			PlanStep step = plan.Steps.front();
 			plan.Steps.pop_front();
+			// On to the next step of a plan the player gave (unit speech): not a patrol's legs, which go round for ever, nor a pause.
+			bool next = plan.Running && plan.Route.empty() && step.Kind != PlanKind::Wait;
 			StartPlanStep(unit, plan, step);
+			if (next && !unit->IsPlayerControlled()) {
+				unit->Say("PlanNext");
+			}
 			++entry;
 		}
 	}
@@ -1218,6 +1280,7 @@ namespace SandboxDetail {
 			PlanStep step = plan.Steps.front();
 			plan.Steps.pop_front();
 			StartPlanStep(unit, plan, step);
+			AnswerOrder(unit, "OrderPatrol");
 		}
 		for (const Vector& point: points) {
 			MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)]);
@@ -1248,6 +1311,7 @@ namespace SandboxDetail {
 				if (static_cast<Order>(s_Order) != Order::MoveTo) {
 					GiveOrder(unit, static_cast<Order>(s_Order));
 				}
+				AnswerOrder(unit, "OrderCancel");
 				MarkOrder(unit->GetPos(), IM_COL32(200, 160, 120, 255));
 			}
 		} else if (choice == 3) {
@@ -1255,6 +1319,7 @@ namespace SandboxDetail {
 			for (Actor* unit: units) {
 				HoldUnit(unit);
 				unit->SetOrderPost(unit->GetPos());
+				AnswerOrder(unit, "OrderDefend");
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
 		} else if (choice == 13) {

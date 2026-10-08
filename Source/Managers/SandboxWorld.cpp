@@ -901,8 +901,14 @@ namespace SandboxDetail {
 						if (Actor* unit = GetRef(ref)) {
 							if (stroke.Count >= 300) {
 								unit->SetMovementRule(stroke.Count - 300);
+								const char* const answers[] = {nullptr, "RuleEngage", "RuleMoveOnly", "RuleHoldGround"};
+								int rule = stroke.Count - 300;
+								AnswerOrder(unit, rule >= 0 && rule < static_cast<int>(std::size(answers)) ? answers[rule] : nullptr);
 							} else {
 								unit->SetWeaponRule(stroke.Count - 200);
+								const char* const answers[] = {"RuleFireAtWill", "RuleReturnFire", "RuleHoldFire"};
+								int rule = stroke.Count - 200;
+								AnswerOrder(unit, rule >= 0 && rule < static_cast<int>(std::size(answers)) ? answers[rule] : nullptr);
 							}
 						}
 					}
@@ -916,6 +922,7 @@ namespace SandboxDetail {
 				for (const UnitRef& ref: s_Selected) {
 					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
 						GiveOrder(unit, stroke.Orders);
+						AnswerOrder(unit, OrderTrigger(stroke.Orders));
 					}
 				}
 				break;

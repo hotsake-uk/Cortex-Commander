@@ -675,6 +675,11 @@ namespace RTE {
 		/// @return Whether a line was said.
 		bool Say(const std::string& trigger) { return UnitSpeech::Say(*this, trigger); }
 
+		/// Has this unit answer an order the player just gave it, as Say (see UnitSpeech::SayOrder). For the commands that give orders.
+		/// @param trigger The trigger, as Speech.ini names it ("OrderMove").
+		/// @return Whether a line was said.
+		bool SayOrder(const std::string& trigger) { return UnitSpeech::SayOrder(*this, trigger); }
+
 		/// Has this unit say the given words over its head, whatever the chance (unit speech must be on). For scripts.
 		/// @param text What it says.
 		/// @param durationMS How long it shows; 0 for as long as a line that long usually does.
