@@ -6761,6 +6761,86 @@ namespace {
 		}
 	}
 
+	/// The auto battle and colony readout (SettingsMan::ShowSandboxAutoBattle), in the top left of the picture: for each side in the auto
+	/// battle, what it has spent of its budget, the updates to its next wave and whether it is broke; its units on the ground (as CountUnits
+	/// counts them, which decides who is left) against those still riding in its craft (review R9); and the cheapest unit on its list against
+	/// what a wave may spend (review S7). Then each colony building with what it is doing, its training progress and its units alive, those
+	/// dead or dying but not yet gone counted apart (review R8).
+	void DrawAutoBattleColony() {
+		if (!g_SettingsMan.ShowSandboxAutoBattle()) {
+			return;
+		}
+		const ImU32 plain = IM_COL32(230, 230, 220, 255);
+		const ImU32 warn = IM_COL32(255, 120, 100, 255);
+		std::vector<std::pair<std::string, ImU32>> lines;
+		long long now = g_TimerMan.GetSimUpdateCount();
+		char text[256];
+		for (int side = 0; side < c_Sides; ++side) {
+			const AutoSide& autoSide = s_AutoSides[side];
+			if (!autoSide.Active) {
+				continue;
+			}
+			if (lines.empty()) {
+				lines.emplace_back(s_AutoRunning ? std::string("Auto battle running") : s_AutoWinner == -2 ? std::string("Auto battle not running") : s_AutoWinner == -1 ? std::string("Auto battle over: a draw") : std::string("Auto battle over: ") + c_SideNames[s_AutoWinner] + " won", plain);
+			}
+			int faction = s_FactionModules.empty() ? -1 : std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1);
+			const char* factionName = faction >= 0 && faction < static_cast<int>(s_FactionNames.size()) ? s_FactionNames[faction].c_str() : "?";
+			long long nextWave = std::max(autoSide.NextWave - now, 0LL);
+			std::snprintf(text, sizeof(text), "%s (%s): spent %.0f of %d, %d sent, next wave in %lld updates%s", c_SideNames[side], factionName, autoSide.Spent, autoSide.Budget, autoSide.Sent, nextWave, autoSide.Broke ? ", BROKE" : "");
+			lines.emplace_back(text, c_SideColors[side]);
+			int inCraft = 0;
+			for (const Actor* actor: SandboxAccess::Actors()) {
+				if (actor->GetTeam() == side && dynamic_cast<const ACraft*>(actor)) {
+					for (const MovableObject* item: *actor->GetInventory()) {
+						inCraft += item && item->IsActor() ? 1 : 0;
+					}
+				}
+			}
+			// The list price of the cheapest unit it may pick (without the kit it is given, which the wave also pays for), against what one wave may spend.
+			float cheapest = -1.0F;
+			if (faction >= 0) {
+				for (const Preset* unit: FactionUnits(s_FactionModules[faction])) {
+					const SceneObject* object = dynamic_cast<const SceneObject*>(g_PresetMan.GetEntityPreset(unit->ClassName, unit->PresetName, unit->ModuleID));
+					float cost = object ? object->GetGoldValue(unit->ModuleID, 1.0F, 1.0F) : 0.0F;
+					cheapest = cheapest < 0.0F ? cost : std::min(cheapest, cost);
+				}
+			}
+			float waveBudget = std::min(static_cast<float>(autoSide.Budget) - autoSide.Spent, 900.0F);
+			std::snprintf(text, sizeof(text), "    %d on the ground, %d in craft; cheapest unit %.0f, a wave may spend %.0f", Sandbox::CountUnits(side), inCraft, std::max(cheapest, 0.0F), std::max(waveBudget, 0.0F));
+			lines.emplace_back(text, cheapest < 0.0F || cheapest > waveBudget ? warn : plain);
+		}
+		for (const Colony::Building& building: Colony::Buildings()) {
+			const Colony::Type& type = Colony::GetType(building.What);
+			std::string line = std::string(type.Name) + " #" + std::to_string(building.ID) + ": " + (building.Paused ? "paused, " : "") + building.Status;
+			if (building.What == Colony::Kind::Barracks) {
+				int dying = 0;
+				for (const auto& [unit, uniqueID]: building.Alive) {
+					if (g_MovableMan.IsActor(unit) && static_cast<long>(unit->GetUniqueID()) == uniqueID && unit->GetStatus() >= Actor::DYING) {
+						++dying;
+					}
+				}
+				std::snprintf(text, sizeof(text), "; %s %.0f%%; %d of %d alive (%d dead or dying, not yet gone); %d trained", building.Paid ? "training" : "waiting to pay", building.Progress * 100.0F, static_cast<int>(building.Alive.size()), building.KeepAlive, dying, building.Produced);
+				line += text;
+			}
+			lines.emplace_back(line, building.Team >= 0 && building.Team < c_Sides ? c_SideColors[building.Team] : plain);
+		}
+		if (lines.empty()) {
+			lines.emplace_back("No auto battle sides and no colony buildings", plain);
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		float lineHeight = ImGui::GetTextLineHeight();
+		float width = 0.0F;
+		for (const auto& [line, color]: lines) {
+			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
+		}
+		ImVec2 corner(std::floor(view.x + 12.0F), std::floor(view.y + view.h * 0.08F));
+		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
+		for (size_t i = 0; i < lines.size(); ++i) {
+			drawList->AddText(ImVec2(corner.x, corner.y + lineHeight * static_cast<float>(i)), lines[i].second, lines[i].first.c_str());
+		}
+	}
+
 	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
 	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
 	/// for two seconds after, and a red flash each time the standing orders send it again.
@@ -6852,4 +6932,5 @@ void Sandbox::DrawDebug() {
 	DrawEffectsOverlay();
 	DrawSelectionCameraOverlay();
 	DrawPaintAudit();
+	DrawAutoBattleColony();
 }
