@@ -1303,13 +1303,20 @@ void FluidSim::Update() {
 			if (kind != Liquid::Powder && steps > 2 && Random01() < 0.3F) {
 				--steps;
 			}
+			// (Into a lighter liquid only a pixel a step, and only as the first: falling into a pool it stops at the surface, sinks at that pace, and never
+			// trades places with liquid on the far side of a gap it just fell through.)
+			auto openAt = [&](int tx, int ty) { return InWorld(tx, ty, width, height) && OpenTo(materialBitmap->line[ty][tx], ownMaterial); };
+			auto fallsInto = [&](int tx, int ty, int fall) { return fall == 0 ? canMoveTo(tx, ty) : openAt(tx, ty); };
 			for (int fall = 0; fall < steps; ++fall) {
-				if (drift != 0 && Random01() < 0.5F && canMoveTo(targetX + drift, targetY + 1)) {
+				if (drift != 0 && Random01() < 0.5F && fallsInto(targetX + drift, targetY + 1, fall)) {
 					targetX += drift;
-				} else if (!canMoveTo(targetX, targetY + 1)) {
+				} else if (!fallsInto(targetX, targetY + 1, fall)) {
 					break;
 				}
 				++targetY;
+				if (!openAt(targetX, targetY)) {
+					break;
+				}
 			}
 			moved = true;
 			gotLower = true;
