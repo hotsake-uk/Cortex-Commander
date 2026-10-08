@@ -540,7 +540,7 @@ std::vector<int> PathFinder::RecalculateAreaCosts(std::deque<Box>& boxList, size
 	std::unordered_set<int> nodeIDsToUpdate;
 
 	while (!boxList.empty()) {
-		std::vector<int> nodesInside = GetNodeIdsInBox(boxList.front());
+		std::vector<int> nodesInside = GetNodeIdsInBox(boxList.front(), true);
 		for (int nodeId: nodesInside) {
 			nodeIDsToUpdate.insert(nodeId);
 		}
@@ -1536,6 +1536,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	std::array<float, 2> oldStepOverRise = node->StepOverRise;
 	std::array<int, 2> oldStepOverRoom = node->StepOverRoom;
 	std::array<float, 2> oldStepOverRiseLeft = node->StepOverRiseLeft;
+	std::array<int, 2> oldStepOverRoomLeft = node->StepOverRoomLeft;
 
 	auto getStrongerMaterial = [](const Material* first, const Material* second) {
 		return first->GetIntegrity() > second->GetIntegrity() ? first : second;
@@ -1843,7 +1844,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->Ladder != oldLadder) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder) {
 		return true;
 	}
 
@@ -1857,16 +1858,22 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	return false;
 }
 
-std::vector<int> PathFinder::GetNodeIdsInBox(Box box) {
+std::vector<int> PathFinder::GetNodeIdsInBox(Box box, bool samplingReach) {
 	std::vector<int> result;
 
 	box.Unflip();
 
 	// Get the extents of the box's potential influence on PathNodes and their connecting edges.
-	int firstX = static_cast<int>(std::floor((box.m_Corner.m_X / static_cast<float>(m_NodeDimension)) + 0.5F) - 1);
-	int lastX = static_cast<int>(std::floor(((box.m_Corner.m_X + box.m_Width) / static_cast<float>(m_NodeDimension)) + 0.5F) + 1);
+	// With the sampling reach, also every node whose measures look into the box (see UpdateNodeCosts): the clearances and the step-overs
+	// two nodes either side, and from below, the head room 96 px up and a step-over's room up to 48 px over its floor and 96 px more, six
+	// rows. (Padded by one node, as it was when the grid only cast lines to its neighbours, a slab placed 60 px over a corridor left the
+	// floor under it with full head room, and a wall built on a stair's landing left the stair leading into it.)
+	const int padSide = samplingReach ? 1 + PathNode::c_SamplingReachSideNodes : 1;
+	const int padBelow = samplingReach ? 1 + PathNode::c_SamplingReachUpNodes : 1;
+	int firstX = static_cast<int>(std::floor((box.m_Corner.m_X / static_cast<float>(m_NodeDimension)) + 0.5F) - padSide);
+	int lastX = static_cast<int>(std::floor(((box.m_Corner.m_X + box.m_Width) / static_cast<float>(m_NodeDimension)) + 0.5F) + padSide);
 	int firstY = static_cast<int>(std::floor((box.m_Corner.m_Y / static_cast<float>(m_NodeDimension)) + 0.5F) - 1);
-	int lastY = static_cast<int>(std::floor(((box.m_Corner.m_Y + box.m_Height) / static_cast<float>(m_NodeDimension)) + 0.5F) + 1);
+	int lastY = static_cast<int>(std::floor(((box.m_Corner.m_Y + box.m_Height) / static_cast<float>(m_NodeDimension)) + 0.5F) + padBelow);
 
 	// Only iterate through the grid where the box overlaps any edges.
 	for (int nodeX = firstX; nodeX <= lastX; ++nodeX) {

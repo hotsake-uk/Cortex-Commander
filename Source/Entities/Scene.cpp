@@ -2451,7 +2451,7 @@ void Scene::UpdatePathFinding() {
 		std::unordered_set<int> nodeIds(updatedNodes.begin(), updatedNodes.end());
 		PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
 		for (const Box& area: m_TeamGridUpdateAreas) {
-			for (int nodeId: noTeamPathFinder.GetNodeIdsInBox(area)) {
+			for (int nodeId: noTeamPathFinder.GetNodeIdsInBox(area, true)) {
 				nodeIds.insert(nodeId);
 			}
 		}
