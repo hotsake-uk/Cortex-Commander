@@ -16,9 +16,21 @@ uniform float rteWind; // Horizontal speed, pixels per second.
 uniform sampler2D rteOccupancy; // The world's grid of solid ground: A = how full each cell is (R is how much it stops light, which water barely does).
 uniform vec2 rteGridWorldSize;
 uniform float rteCellSize; // World pixels per grid cell.
+uniform bool rteShelterOn; // Shelter from the weather's shelter map (SunShadowMap.frag made for the weather) rather than marching the grid.
+uniform sampler2D rteShelterMap; // 1 row: for each line the weather falls down, the scene y of the first solid point on it.
+uniform float rteShelterSlope; // How far a line moves in x per pixel down, as the map was made.
+uniform float rteShelterStart; // Where the map's first line crosses the top of the scene.
+uniform float rteShelterTexel; // Scene pixels between its lines.
+uniform float rteShelterSoftness; // How far drops' lines are spread sideways to soften the edge of a shelter, in pixels either way.
 
 float Hash(float n) {
 	return fract(sin(n * 12.9898) * 43758.5453);
+}
+
+// The scene y of the first solid point on the line the weather falls down through a point, from the shelter map; offset moves the line sideways.
+float ShelterFirst(vec2 at, float offset) {
+	float line = (at.x + rteShelterSlope * at.y + offset - rteShelterStart) / rteShelterTexel;
+	return textureLod(rteShelterMap, vec2(line / float(textureSize(rteShelterMap, 0).x), 0.5), 0.0).r;
 }
 
 // Whether weather coming down a line reaches a point: follows the line back the way the weather came, through the world's grid of solid ground, until it is
@@ -75,7 +87,16 @@ void main() {
 
 	// Shelter is worked out for the drop as a whole, along the line it is falling down: rain driven by wind gets in under an overhang on the windward side
 	// and leaves a dry strip beyond a wall on the lee side. Each drop's line is nudged a little so the edge of the shelter is soft, not ruled.
-	reaches = textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).a > 0.9 ? 0.0 : Reaches(head, normalize(velocity + vec2((seedB - 0.5) * 60.0, 0.0)), seedA);
+	if (textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).a > 0.9) {
+		reaches = 0.0;
+	} else if (rteShelterOn && !dust) {
+		// The drop reaches where it is if the first solid point on its line is below it. Ground within a cell or so above it doesn't count, as with the march, which starts
+		// that far back so that the ground a drop is about to land on, blurred over its grid cell, doesn't shelter it.
+		float lead = (0.8 + seedA) * rteCellSize * direction.y;
+		reaches = head.y - lead <= ShelterFirst(head, (seedB - 0.5) * 2.0 * rteShelterSoftness) ? 1.0 : 0.0;
+	} else {
+		reaches = Reaches(head, normalize(velocity + vec2((seedB - 0.5) * 60.0, 0.0)), seedA);
+	}
 	worldPos = position;
 	quadPos = cornerPos;
 	dropAlpha = rteType == 3 ? mix(0.75, 1.0, seedA) : snow ? mix(0.55, 0.9, seedA) : (dust ? mix(0.15, 0.4, seedA) : mix(0.25, 0.5, seedA));

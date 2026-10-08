@@ -148,7 +148,7 @@ namespace RTE {
 		/// @param time Seconds, for the pulses and cycles. @param enabled Whether palette animation is on. @param strength 0 to 1, how far pulses swing from the colour's own glow.
 		void UpdatePaletteAnimation(float time, bool enabled, float strength);
 
-		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 8.
+		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 10.
 		void SetGlobalTexture(int unit, GLuint texture) {
 			if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) {
 				m_GlobalTextures[unit - 3] = texture;
@@ -156,7 +156,7 @@ namespace RTE {
 		}
 
 		/// Gets the textures to bind to units 3 and up for every batch render.
-		const std::array<GLuint, 6>& GetGlobalTextures() const { return m_GlobalTextures; }
+		const std::array<GLuint, 8>& GetGlobalTextures() const { return m_GlobalTextures; }
 
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
@@ -220,7 +220,7 @@ namespace RTE {
 		bool m_PaletteAnimated = false; //!< The textures hold animated values, to be put back when animation stops.
 
 		void SetPalettePulse(int paletteIndex, float low, float high, float period, float phase, bool automatic);
-		std::array<GLuint, 6> m_GlobalTextures{};
+		std::array<GLuint, 8> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};
