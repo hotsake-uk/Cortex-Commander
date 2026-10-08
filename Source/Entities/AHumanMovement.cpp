@@ -465,6 +465,18 @@ void AHuman::UpdateLadderInput() {
 	// Up wants rungs above the chest; down wants rungs under the feet (taking hold from the top of it).
 	bool rungsAbove = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y < m_Pos.m_Y - h * 0.15F; });
 	bool rungsBelow = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y > m_Pos.m_Y + feet + 2.0F; });
+	// (Nor down onto a floor: a ladder that goes on behind the floor stood on is no way down through it. Taken hold of, the climb found the
+	// floor under the feet and ended at once, and a unit whose route went down from there took hold and let go hundreds of times.)
+	bool floorUnderFeet = false;
+	for (float dx: {-4.0F, 0.0F, 4.0F}) {
+		for (float dy = 1.0F; dy <= 3.0F; dy += 1.0F) {
+			floorUnderFeet = floorUnderFeet || SolidNotLadder(m_Pos.m_X + dx, m_Pos.m_Y + feet + dy);
+		}
+	}
+	if (down && !up && floorUnderFeet) {
+		refused("a floor under the feet");
+		return;
+	}
 	if ((up && !rungsAbove) || (down && !up && !rungsBelow)) {
 		refused(std::string(up ? "no rungs above" : "no rungs below") + " (" + std::to_string(rungs.size()) + " rungs, grip x " + std::to_string(static_cast<int>(gripX)) + ")");
 		return;
@@ -2097,7 +2109,12 @@ int AHuman::MoveAlongRoute() {
 		}
 	}
 	// Down a ladder: the point well below, nearly straight down, and a ladder here.
-	if (ladder && toPoint.m_Y > h * 0.3F && std::abs(toPoint.m_X) < h * 0.4F) {
+	// (Not through a floor under the feet: see UpdateLadderInput.)
+	bool floorUnderFeet = false;
+	for (float dx: {-4.0F, 0.0F, 4.0F}) {
+		floorUnderFeet = floorUnderFeet || SolidNotLadder(m_Pos.m_X + dx, m_Pos.m_Y + feet + 2.0F);
+	}
+	if (ladder && !floorUnderFeet && toPoint.m_Y > h * 0.3F && std::abs(toPoint.m_X) < h * 0.4F) {
 		ctrl.SetState(MOVE_DOWN, true);
 		SetAimAngle(-c_HalfPI);
 		mover.progressTimer.Reset();
