@@ -237,6 +237,32 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 			}
 		}
 	}
+	// Lightning lights up where it strikes and the air along it, for as long as the bolt shows.
+	std::vector<LightningBolt> bolts;
+	{
+		std::scoped_lock lock(m_LightningMutex);
+		bolts = m_LightningBolts;
+	}
+	float now = GetSmoothSimTime();
+	for (const LightningBolt& bolt: bolts) {
+		float flash = LightningFlash(now - bolt.StartTime);
+		if (flash <= 0.01F) {
+			continue;
+		}
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			const glm::vec2 places[2] = {bolt.To, (bolt.From + bolt.To) * 0.5F};
+			for (int place = 0; place < 2; ++place) {
+				float radius = place == 0 ? 460.0F : 300.0F;
+				Vector relativePos = Vector(places[place].x + static_cast<float>(wrapX) * sceneWidth, places[place].y) - boxPos;
+				if (relativePos.m_X + radius >= 0 && relativePos.m_Y + radius >= 0 && relativePos.m_X - radius <= boxWidth && relativePos.m_Y - radius <= boxHeight) {
+					lights.push_back({relativePos, glm::vec3(0.62F, 0.68F, 1.0F) * flash * (place == 0 ? 5.0F : 2.5F), radius, glm::vec2(1.0F, 0.0F), -2.0F, LightSource::Other});
+				}
+			}
+		}
+	}
 }
 
 float PostProcessMan::GetSmoothSimTime() {
@@ -288,6 +314,101 @@ std::vector<glm::vec4> PostProcessMan::TakeFogPuffs() {
 	std::vector<glm::vec4> puffs;
 	puffs.swap(m_FogPuffs);
 	return puffs;
+}
+
+void PostProcessMan::RegisterLightningBolt(const Vector& from, const Vector& to, unsigned int seed) {
+	if (!m_LightingSettings.LightningBolts) {
+		return;
+	}
+	float now = GetSmoothSimTime();
+	{
+		std::scoped_lock lock(m_LightningMutex);
+		m_LightningBolts.erase(std::remove_if(m_LightningBolts.begin(), m_LightningBolts.end(), [now](const LightningBolt& bolt) { return now - bolt.StartTime > c_LightningBoltSeconds || now < bolt.StartTime; }), m_LightningBolts.end());
+		if (m_LightningBolts.size() < 16) {
+			m_LightningBolts.push_back({glm::vec2(from.m_X, from.m_Y), glm::vec2(to.m_X, to.m_Y), seed, now});
+		}
+	}
+	if (m_SceneLighting) {
+		m_SceneLighting->TriggerLightning();
+	}
+}
+
+namespace {
+	/// Builds a lightning bolt's jagged line from one point to another by splitting each piece at a displaced midpoint, five times over, with a few
+	/// dimmer forks. The shape depends on the seed alone.
+	void BuildLightningBolt(glm::vec2 from, glm::vec2 to, unsigned int& random, float width, float brightness, int levels, int forks, std::vector<RTE::LightningBoltSegment>& segments) {
+		auto next = [&random]() {
+			random = random * 1664525u + 1013904223u;
+			return static_cast<float>(random >> 8) / static_cast<float>(1u << 24);
+		};
+		std::vector<glm::vec2> points{from, to};
+		std::vector<glm::vec2> split;
+		struct Fork {
+			glm::vec2 From, To;
+		};
+		std::vector<Fork> forkList;
+		for (int level = 0; level < levels; ++level) {
+			split.clear();
+			for (size_t i = 0; i + 1 < points.size(); ++i) {
+				glm::vec2 a = points[i];
+				glm::vec2 b = points[i + 1];
+				glm::vec2 along = b - a;
+				float length = glm::length(along);
+				glm::vec2 across = length > 0.001F ? glm::vec2(-along.y, along.x) / length : glm::vec2(1.0F, 0.0F);
+				glm::vec2 middle = (a + b) * 0.5F + across * (next() - 0.5F) * length * 0.4F;
+				split.push_back(a);
+				split.push_back(middle);
+				// Forks leave from the coarser bends, angled off downwards.
+				if (level >= 1 && level <= 2 && static_cast<int>(forkList.size()) < forks && next() < 0.35F) {
+					float turn = (next() < 0.5F ? -1.0F : 1.0F) * (0.4F + next() * 0.5F);
+					glm::vec2 direction = length > 0.001F ? along / length : glm::vec2(0.0F, 1.0F);
+					glm::vec2 turned(direction.x * std::cos(turn) - direction.y * std::sin(turn), direction.x * std::sin(turn) + direction.y * std::cos(turn));
+					forkList.push_back({middle, middle + turned * length * (0.7F + next() * 0.6F)});
+				}
+			}
+			split.push_back(points.back());
+			points.swap(split);
+		}
+		for (size_t i = 0; i + 1 < points.size(); ++i) {
+			segments.push_back({points[i], points[i + 1], width, brightness});
+		}
+		for (const Fork& fork: forkList) {
+			BuildLightningBolt(fork.From, fork.To, random, width * 0.55F, brightness * 0.55F, 3, 0, segments);
+		}
+	}
+}
+
+void PostProcessMan::GetLightningBolts(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<LightningBoltSegment>& segments) const {
+	std::vector<LightningBolt> bolts;
+	{
+		std::scoped_lock lock(m_LightningMutex);
+		bolts = m_LightningBolts;
+	}
+	float now = GetSmoothSimTime();
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
+	for (const LightningBolt& bolt: bolts) {
+		float brightness = LightningFlash(now - bolt.StartTime);
+		if (brightness <= 0.01F) {
+			continue;
+		}
+		// The copy of the bolt nearest the box, on a wrapping scene.
+		glm::vec2 shift(0.0F);
+		if (g_SceneMan.SceneWrapsX() && sceneWidth > 0.0F) {
+			float centre = (bolt.From.x + bolt.To.x) * 0.5F - (box.x + static_cast<float>(boxWidth) * 0.5F);
+			shift.x = -std::round(centre / sceneWidth) * sceneWidth;
+		}
+		float left = std::min(bolt.From.x, bolt.To.x) + shift.x - box.x;
+		float right = std::max(bolt.From.x, bolt.To.x) + shift.x - box.x;
+		float top = std::min(bolt.From.y, bolt.To.y) - box.y;
+		float bottom = std::max(bolt.From.y, bolt.To.y) - box.y;
+		float margin = glm::distance(bolt.From, bolt.To) * 0.5F;
+		if (right + margin < 0.0F || left - margin > static_cast<float>(boxWidth) || bottom + margin < 0.0F || top - margin > static_cast<float>(boxHeight)) {
+			continue;
+		}
+		unsigned int random = bolt.Seed * 2654435761u + 12345u;
+		BuildLightningBolt(bolt.From + shift - box, bolt.To + shift - box, random, 1.4F, brightness, 5, 4, segments);
+	}
 }
 
 void PostProcessMan::RegisterScorchMark(const Vector& pos, float energy) {

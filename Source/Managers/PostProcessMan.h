@@ -64,6 +64,14 @@ namespace RTE {
 		LightSource m_Source = LightSource::Other; //!< What registered it.
 	};
 
+	/// One straight piece of a lightning bolt as seen by a player screen (PostProcessMan::GetLightningBolts).
+	struct LightningBoltSegment {
+		glm::vec2 From; //!< Relative to the screen.
+		glm::vec2 To;
+		float Width; //!< In pixels.
+		float Brightness; //!< This frame's, 0 to about 1.6 (the first stroke is brightest).
+	};
+
 	/// A shockwave ring as seen by one player screen this frame.
 	struct ScreenShockwave {
 		glm::vec2 m_Pos; //!< Position relative to the screen.
@@ -243,6 +251,20 @@ namespace RTE {
 		/// Takes the mist and dust put into the air since the last call: x, y (scene pixels), radius (pixels), amount.
 		std::vector<glm::vec4> TakeFogPuffs();
 
+		/// Draws a lightning bolt for a moment (LightingSettings::LightningBolts): a jagged, branching line of light from the sky to the strike, a flash of
+		/// light where it lands and across the sky, flickering twice and gone in under half a second. Render only: what it strikes is the caller's business.
+		/// The bolt's shape comes from the seed alone, so the same seed draws the same bolt. Safe from any thread.
+		/// @param from Where it starts, scene coordinates (up in the sky).
+		/// @param to Where it strikes.
+		/// @param seed Its shape.
+		void RegisterLightningBolt(const Vector& from, const Vector& to, unsigned int seed);
+
+		/// Draws a lightning bolt for a moment, from Lua. See RegisterLightningBolt.
+		void AddLightningBolt(const Vector& from, const Vector& to, int seed) { RegisterLightningBolt(from, to, static_cast<unsigned int>(seed)); }
+
+		/// Gets the lightning bolts showing now, as straight pieces relative to a box, with this frame's brightness. Handles horizontal scene wrapping.
+		void GetLightningBolts(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<LightningBoltSegment>& segments) const;
+
 		/// Registers a scorch mark: soot stamped into the terrain that glows hot for a few seconds. Size and darkness scale with the energy released.
 		/// @param pos Scene position of the explosion.
 		/// @param energy Energy released, as computed for gib screen shake.
@@ -407,6 +429,19 @@ namespace RTE {
 
 	private:
 		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.
+		/// A lightning bolt being drawn.
+		struct LightningBolt {
+			glm::vec2 From;
+			glm::vec2 To;
+			unsigned int Seed;
+			float StartTime; //!< Smooth sim seconds.
+		};
+		static constexpr float c_LightningBoltSeconds = 0.45F; //!< How long a bolt shows, its echo included.
+		std::vector<LightningBolt> m_LightningBolts; //!< Guarded by m_LightningMutex.
+		mutable std::mutex m_LightningMutex;
+
+		/// How bright a bolt is this long after it struck: a sharp first stroke and a weaker echo, as the sky's flash.
+		static float LightningFlash(float seconds) { return seconds < 0.0F || seconds > c_LightningBoltSeconds ? 0.0F : 1.6F * std::exp(-seconds * 18.0F) + 0.9F * std::exp(-std::abs(seconds - 0.2F) * 25.0F); }
 		std::vector<ScorchMark> m_PendingScorchMarks; //!< Scorch marks not stamped yet. Guarded by m_ShockwaveMutex.
 		std::vector<ScorchMark> m_HotScorchMarks; //!< Recent scorch marks, for the cooling glow. Guarded by m_ShockwaveMutex.
 		std::vector<glm::vec4> m_FogPuffs; //!< Mist and dust put into the air and not yet taken by the fog volume. Guarded by m_ShockwaveMutex.

@@ -1465,6 +1465,24 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			emissiveTextures.push_back(whiteTexture);
 			emissiveHeat.push_back(0.0F);
 		}
+		// Lightning bolts: each straight piece a white-hot core in a wider blue halo.
+		std::vector<LightningBoltSegment> bolts;
+		g_PostProcessMan.GetLightningBolts(Vector(origin.x, origin.y), width, height, bolts);
+		for (const LightningBoltSegment& segment: bolts) {
+			glm::vec2 along = segment.To - segment.From;
+			float length = glm::length(along);
+			if (length < 0.01F) {
+				continue;
+			}
+			float angle = std::atan2(along.y, along.x);
+			glm::vec2 middle = (segment.From + segment.To) * 0.5F;
+			addQuad(middle, glm::vec2(length * 0.5F + 2.0F, segment.Width * 2.5F + 1.5F), angle, glm::min(glm::vec3(0.3F, 0.38F, 0.7F) * segment.Brightness, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+			addQuad(middle, glm::vec2(length * 0.5F + 0.5F, segment.Width * 0.5F + 0.2F), angle, glm::min(glm::vec3(0.9F, 0.94F, 1.0F) * segment.Brightness * 1.2F, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+		}
 	}
 
 	// The fire of explosions: soft glowing balls, drawn into the glow buffer with the puff's round shape.

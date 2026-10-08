@@ -1511,7 +1511,13 @@ namespace {
 			}
 			top = std::max(sky.m_Y, 0.0F);
 		}
-		auto boltDot = [](const Vector& at) {
+		// Drawn as a bolt of light (LightingSettings::LightningBolts), or as before as a line of particles. The particle path is still worked out either way,
+		// so the simulation's random numbers are used the same whichever way it's drawn.
+		bool drawnAsLight = g_PostProcessMan.GetLightingSettings().LightningBolts;
+		auto boltDot = [drawnAsLight](const Vector& at) {
+			if (drawnAsLight) {
+				return;
+			}
 			if (MovableObject* spark = CreateBaseObject("MOPixel", "Lightning Bolt Particle")) {
 				spark->SetPos(at);
 				g_MovableMan.AddParticle(spark);
@@ -1519,6 +1525,11 @@ namespace {
 		};
 		// The bolt: a few jagged segments, with a short side branch.
 		Vector from(ground.m_X + (Random01() - 0.5F) * 60.0F, top);
+		if (drawnAsLight) {
+			// Its shape from where and when it struck, not from the simulation's random numbers.
+			unsigned int seed = static_cast<unsigned int>(ground.GetFloorIntX()) * 73856093u ^ static_cast<unsigned int>(ground.GetFloorIntY()) * 19349663u ^ static_cast<unsigned int>(g_TimerMan.GetSimUpdateCount()) * 83492791u;
+			g_PostProcessMan.RegisterLightningBolt(from, ground, seed);
+		}
 		constexpr int segments = 9;
 		for (int segment = 1; segment <= segments; ++segment) {
 			float t = static_cast<float>(segment) / static_cast<float>(segments);
