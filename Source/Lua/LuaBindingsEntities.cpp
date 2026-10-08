@@ -249,6 +249,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("MovePathSize", &Actor::GetMovePathSize)
 	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
 	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
+	    .property("FootstepNoise", &Actor::GetFootstepNoise)
+	    .def("HearFootsteps", &Actor::HearFootsteps)
 	    .property("Suppression", &Actor::GetSuppression)
 	    .property("Morale", &Actor::GetMorale)
 	    .def("Say", &Actor::Say)
@@ -1513,6 +1515,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ThrownDevice) {
 	    .property("MaxThrowVel", &ThrownDevice::GetMaxThrowVel, &ThrownDevice::SetMaxThrowVel)
 	    .property("StartThrowOffset", &ThrownDevice::GetStartThrowOffset, &ThrownDevice::SetStartThrowOffset)
 	    .property("EndThrowOffset", &ThrownDevice::GetEndThrowOffset, &ThrownDevice::SetEndThrowOffset)
+	    .property("TriggerDelay", &ThrownDevice::GetTriggerDelay)
+	    .property("ActivatesWhenReleased", &ThrownDevice::ActivatesWhenReleased)
 
 	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength);
 }

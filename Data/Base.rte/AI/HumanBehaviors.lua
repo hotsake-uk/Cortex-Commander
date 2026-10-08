@@ -141,6 +141,242 @@ function HumanBehaviors.GetGrenadeAngle(AimPoint, TargetVel, StartPos, muzVel)
 	return Dist.AbsRadAngle;
 end
 
+-- A grenade's arc to a point (AC-5): the angle to throw at and how long it flies, for the throw speed in m/s, the flat arc or (high) the
+-- lob, under the same underestimated gravity as GetGrenadeAngle. @return angle (radians, for Vector(1,0):RadRotate) and seconds, or nil.
+function HumanBehaviors.GrenadeArc(StartPos, AimPoint, speed, high)
+	local Dist = SceneMan:ShortestDistance(StartPos, AimPoint, false) / GetPPM();
+	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	local velSqr = speed * speed;
+	local disc = velSqr * velSqr - gravity * (gravity * Dist.X * Dist.X + 2 * -Dist.Y * velSqr);
+	if disc < 0 or math.abs(Dist.X) < 0.1 or speed <= 0 then
+		return nil;
+	end
+	local root = math.sqrt(disc);
+	local angle = math.atan2(high and (velSqr + root) or (velSqr - root), gravity * Dist.X);
+	local seconds = Dist.X / (speed * math.cos(angle));
+	if seconds ~= seconds or seconds <= 0 or seconds > 6 then
+		return nil;
+	end
+	return angle, seconds;
+end
+
+-- Whether a grenade thrown on an arc gets to its end without hitting the ground on the way: the arc in short straight pieces, each checked
+-- against the terrain (not units). The last eighth is not checked: the grenade landing there is the point.
+function HumanBehaviors.ArcIsClear(StartPos, angle, speed, seconds)
+	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	local ppm = GetPPM();
+	local vx = speed * math.cos(angle);
+	local vy = -speed * math.sin(angle);
+	local steps = math.max(6, math.min(40, math.ceil(seconds / 0.05)));
+	local From = Vector(StartPos.X, StartPos.Y);
+	for i = 1, math.floor(steps * 7 / 8) do
+		local t = seconds * i / steps;
+		local To = StartPos + Vector(vx * t, vy * t + 0.5 * gravity * t * t) * ppm;
+		if SceneMan:CastStrengthSumRay(From, To, 2, rte.grassID) > 30 then
+			return false;
+		end
+		From = To;
+	end
+	return true;
+end
+
+-- How to throw a grenade at a point (AC-5): the flat arc where it is clear, else the lob over what is in the way (overCover: the lob first),
+-- at full or at middling strength, led onto a moving target by its flight time. @return angle, the throw speed, seconds of flight and
+-- whether it takes full strength; or nil where no arc gets there.
+function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover)
+	local maxVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
+	local minVel = Grenade.MinThrowVel;
+	if minVel == 0 then
+		minVel = maxVel * 0.2;
+	end
+	local Start = Grenade.MuzzlePos;
+	local arcs = overCover and {true, false} or {false, true};
+	for _, high in ipairs(arcs) do
+		for _, speed in ipairs({(maxVel + minVel) * 0.5, maxVel}) do
+			local angle, seconds = HumanBehaviors.GrenadeArc(Start, AimPoint, speed, high);
+			-- Led onto a runner: where it will be when the grenade gets there (twice over, as the flight time changes with the point).
+			if angle and TargetVel and TargetVel.Magnitude > 1 then
+				for _ = 1, 2 do
+					local Lead = AimPoint + TargetVel * GetPPM() * seconds * 0.8;
+					local leadAngle, leadSeconds = HumanBehaviors.GrenadeArc(Start, Lead, speed, high);
+					if not leadAngle then
+						break;
+					end
+					angle, seconds = leadAngle, leadSeconds;
+				end
+			end
+			if angle and HumanBehaviors.ArcIsClear(Start, angle, speed, seconds) then
+				return angle, speed, seconds, speed >= maxVel;
+			end
+		end
+	end
+	return nil;
+end
+
+-- How long to hold a grenade before letting go (AC-5): the arm's wind-up, and for a fused grenade thrown at full strength by a good
+-- enough AI, "cooked": held so it goes off about as it gets there, in the air over the target, never closer than 350 ms to going off in hand.
+function HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, fullStrength)
+	local prep = Owner.ThrowPrepTime;
+	if not fullStrength then
+		return prep * RangeRand(0.45, 0.55);
+	end
+	local hold = prep * RangeRand(0.9, 1.1);
+	local fuse = Grenade.TriggerDelay or 0;
+	if fuse > 0 and not Grenade.ActivatesWhenReleased and (AI.skill or 50) >= 50 and math.random() * 100 < AI.skill then
+		local cooked = fuse - seconds * 1000 - 120;
+		if cooked > hold then
+			hold = math.min(cooked, fuse - 350);
+			SharedBehaviors.Trace(Owner, "grenade: cooked " .. math.floor(hold) .. " ms");
+		end
+	end
+	return hold;
+end
+
+-- Lobbing a grenade where an enemy was last seen behind cover (AC-5): up over the wall or ridge onto the spot (AI.LobPos), then back to the
+-- gun. Started by the AI's update for a unit that has lost sight of its enemy (see LobUpdate).
+function HumanBehaviors.LobAt(AI, Owner, Abort)
+	local Spot = AI.LobPos;
+	AI.LobPos = nil;
+	if not Spot or not Owner:EquipDeviceInGroup("Bombs - Grenades", true) then
+		return true;
+	end
+	local Timer0 = Timer();
+	local aim, hold;
+	while true do
+		if not Owner.ThrowableIsReady or Timer0:IsPastSimMS(3000) then
+			break;
+		end
+		if not aim then
+			local Grenade = ToThrownDevice(Owner.EquippedItem);
+			local _, seconds, full;
+			aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, Spot, nil, true);
+			if not aim then
+				SharedBehaviors.Trace(Owner, "grenade: no lob over to it");
+				break;
+			end
+			aim = aim - Owner.RotAngle;
+			hold = HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, full);
+			Timer0:Reset();
+			SharedBehaviors.Trace(Owner, "grenade: lob over cover");
+		end
+		AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim);
+		if not Timer0:IsPastSimMS(hold) then
+			AI.fire = true;
+		else
+			AI.fire = false;
+			local _ai, _ownr, _abrt = coroutine.yield();
+			if _abrt then return true end
+			break;
+		end
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	AI.fire = false;
+	Owner:EquipFirearm(true);
+	return true;
+end
+
+-- Smoke to cross open ground (AC-5): a unit on the move under fire that carries a smoke grenade throws it between itself and the enemy,
+-- then goes on. Started by the AI's update (see SmokeUpdate).
+function HumanBehaviors.ThrowSmoke(AI, Owner, Abort)
+	local Spot = AI.SmokePos;
+	AI.SmokePos = nil;
+	if not Spot or not Owner:EquipNamedDevice("Smoke Grenade", true) then
+		return true;
+	end
+	local Timer0 = Timer();
+	local aim, hold;
+	while true do
+		if not Owner.ThrowableIsReady or Timer0:IsPastSimMS(3000) then
+			break;
+		end
+		if not aim then
+			local Grenade = ToThrownDevice(Owner.EquippedItem);
+			aim = HumanBehaviors.PlanThrow(Grenade, Spot, nil, false);
+			if not aim then
+				break;
+			end
+			aim = aim - Owner.RotAngle;
+			hold = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
+			Timer0:Reset();
+			SharedBehaviors.Trace(Owner, "grenade: smoke for the crossing");
+		end
+		AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim);
+		if not Timer0:IsPastSimMS(hold) then
+			AI.fire = true;
+		else
+			AI.fire = false;
+			local _ai, _ownr, _abrt = coroutine.yield();
+			if _abrt then return true end
+			break;
+		end
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	AI.fire = false;
+	Owner:EquipFirearm(true);
+	return true;
+end
+
+-- When to lob a grenade over cover (AC-5), every second: an AI that lost sight of its enemy in the last four seconds, where it was is
+-- 80 to 500 px off and out of sight, and the unit has a grenade; at most every eight seconds. Better AI does it more often.
+function HumanBehaviors.LobUpdate(AI, Owner)
+	if AI.Target or AI.NextBehavior or not AI.OldTargetPos or AI.flying or Owner.AIMode == Actor.AIMODE_SQUAD or not SharedBehaviors.RuleLetsFire(AI, Owner) then
+		return;
+	end
+	AI.LobCheckTimer = AI.LobCheckTimer or Timer();
+	if not AI.LobCheckTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.LobCheckTimer:Reset();
+	if (AI.LobRestTimer and not AI.LobRestTimer:IsPastSimMS(8000)) or not AI.TargetLostTimer or AI.TargetLostTimer:IsPastSimMS(4000) then
+		return;
+	end
+	if not Owner:HasObjectInGroup("Bombs - Grenades") or math.random() * 100 > (AI.skill or 50) then
+		return;
+	end
+	local Dist = SceneMan:ShortestDistance(Owner.EyePos, AI.OldTargetPos, false);
+	if Dist:MagnitudeIsLessThan(80) or Dist:MagnitudeIsGreaterThan(500) or SharedBehaviors.CanSee(Owner.EyePos, AI.OldTargetPos) then
+		return;
+	end
+	AI.LobRestTimer = Timer();
+	AI.LobPos = Vector(AI.OldTargetPos.X, AI.OldTargetPos.Y);
+	AI.NextBehavior = coroutine.create(HumanBehaviors.LobAt);
+	AI.NextCleanup = nil;
+	AI.NextBehaviorName = "LobAt";
+end
+
+-- When to throw smoke (AC-5), every second: on a move order, pinned (suppression over 0.3) or hit in the last two seconds, with a smoke
+-- grenade and an enemy seen in the last few seconds 100 to 700 px off; at most every twenty seconds. The smoke goes a third of the way to it.
+function HumanBehaviors.SmokeUpdate(AI, Owner)
+	if AI.NextBehavior or AI.flying or SharedBehaviors.OrderKind(Owner) ~= "move" or not SharedBehaviors.RuleLetsFire(AI, Owner) then
+		return;
+	end
+	AI.SmokeCheckTimer = AI.SmokeCheckTimer or Timer();
+	if not AI.SmokeCheckTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.SmokeCheckTimer:Reset();
+	if AI.SmokeRestTimer and not AI.SmokeRestTimer:IsPastSimMS(20000) then
+		return;
+	end
+	local suppression = SharedBehaviors.Suppression(AI, Owner);
+	local underFire = suppression > 0.3 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	local Enemy = AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target.Pos or AI.LastEnemyPos;
+	if not underFire or not Enemy or not Owner:HasObject("Smoke Grenade") then
+		return;
+	end
+	local Dist = SceneMan:ShortestDistance(Owner.Pos, Enemy, false);
+	if Dist:MagnitudeIsLessThan(100) or Dist:MagnitudeIsGreaterThan(700) then
+		return;
+	end
+	AI.SmokeRestTimer = Timer();
+	AI.SmokePos = SceneMan:MovePointToGround(Owner.Pos + Dist / 3, 10, 4);
+	AI.NextBehavior = coroutine.create(HumanBehaviors.ThrowSmoke);
+	AI.NextCleanup = nil;
+	AI.NextBehaviorName = "ThrowSmoke";
+end
+
 -- deprecated since B30. make sure we equip our preferred device if we have one. return true if we must run this function again to be sure
 function HumanBehaviors.EquipPreferredWeapon(AI, Owner)
 	if AI.squadShoot == false then
@@ -1025,6 +1261,12 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 
 				-- TODO: make low skill AI lead worse
 				TargetAvgVel = TargetAvgVel * 0.8 + AI.Target.Vel * 0.2; -- smooth the target's velocity
+				-- A fuel barrel by the target is the better shot (AC-12): at it, with no lead.
+				local Barrel = SharedBehaviors.BarrelNear(AI, Owner, AI.Target);
+				if Barrel then
+					AimPoint = Barrel.Pos + ErrorOffset * 0.5;
+					TargetAvgVel:Reset();
+				end
 				Dist = SceneMan:ShortestDistance(Weapon.Pos, AimPoint, false);
 				local range = Dist.Magnitude;
 				if range < 100 then
@@ -1267,9 +1509,14 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					openFire = 0;
 				end
 
-				-- (Pinned down, an automatic fires in short bursts: 350 ms on, 400 ms off.)
-				if openFire > 0 and suppression > 0.5 and Weapon and Weapon.FullAuto and BurstTimer:IsPastSimMS(350) then
-					if BurstTimer:IsPastSimMS(750) then
+				-- Bursts that fit the range (AC-8, see SharedBehaviors.BurstPattern): held down close in, shorter further out, single
+				-- taps where the weapon's spread is far wider than the target, and short bursts when pinned down.
+				local burstOn, burstOff;
+				if Weapon and Weapon.FullAuto then
+					burstOn, burstOff = SharedBehaviors.BurstPattern(Weapon, range, AI.Target.Radius, suppression);
+				end
+				if openFire > 0 and burstOn and BurstTimer:IsPastSimMS(burstOn) then
+					if BurstTimer:IsPastSimMS(burstOn + burstOff) then
 						BurstTimer:Reset();
 					else
 						openFire = 0;
@@ -1308,8 +1555,10 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						if Owner:EquipLoadedFirearmInGroup("Weapons - Primary", "None", true) then
 							PrjDat = nil;
 						else
-							-- select a secondary instead of reloading if the target is within half a screen
-							if Dist.Largest < (FrameMan.PlayerScreenWidth * 0.5 + AI.Target.Radius + Owner.AimDistance) then
+							-- select a secondary instead of reloading if the target is within half a screen; being shot at (AC-8), within
+							-- most of a screen: a pistol now beats a rifle after a reload in the open
+							local reach = SharedBehaviors.UnderFire(AI, Owner) and 0.8 or 0.5;
+							if Dist.Largest < (FrameMan.PlayerScreenWidth * reach + AI.Target.Radius + Owner.AimDistance) then
 								-- select a primary if we have an empty secondary equipped
 								if Owner:EquipLoadedFirearmInGroup("Weapons - Secondary", "None", true) then
 									PrjDat = nil;
@@ -1468,17 +1717,23 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
+	-- Pinned down already behind low cover (PeekUpdate's): it holds there, ducking and peeking; the Aim loop's own crouch and prone would
+	-- fight the peeking's stances.
+	if not AI.Cover and why == "suppressed" and AI.Peek then
+		return true;
+	end
 	if not AI.Cover then
 		if AI.CoverRestTimer and not AI.CoverRestTimer:IsPastSimMS(why == "hurt" and 6000 or 1500) then
 			return false;
 		end
 		AI.CoverRestTimer = Timer();
-		local Spot = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.Height * 0.5 or Owner.Height * 1.5);
+		-- Pinned down, a unit wants cover it can duck behind and peek out of to shoot back (AC-4); to reload or recover, cover it is hidden behind standing.
+		local Spot, coverKind = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.Height * 0.5 or Owner.Height * 1.5, why == "suppressed");
 		if not Spot then
 			return false;
 		end
-		AI.Cover = { Spot = Spot, Return = Vector(Owner.Pos.X, Owner.Pos.Y), Timer = Timer(), Why = why, There = false, Leaving = false };
-		SharedBehaviors.Trace(Owner, "cover: " .. why .. ", " .. math.floor(SceneMan:ShortestDistance(Owner.Pos, Spot, false).X) .. " px over");
+		AI.Cover = { Spot = Spot, Return = Vector(Owner.Pos.X, Owner.Pos.Y), Timer = Timer(), Why = why, There = false, Leaving = false, Low = coverKind == "low" };
+		SharedBehaviors.Trace(Owner, "cover: " .. why .. ", " .. (coverKind or "?") .. ", " .. math.floor(SceneMan:ShortestDistance(Owner.Pos, Spot, false).X) .. " px over");
 	end
 	if AI.Cover.Leaving then
 		return false;
@@ -1487,7 +1742,8 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 	if not AI.Cover.There and math.abs(dx) > 6 and not AI.Cover.Timer:IsPastSimMS(3000) then
 		-- (Walked by the engine's motor: see SharedBehaviors.StepTo.)
 		SharedBehaviors.StepTo(AI, Owner, AI.Cover.Spot, 3000 - AI.Cover.Timer.ElapsedSimTimeMS);
-		SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 200);
+		-- (Shot at from out of sight, it goes to low cover bent double.)
+		SharedBehaviors.Stance(AI, Owner, (AI.Cover.Why == "shot" and AI.Cover.Low) and SharedBehaviors.CROUCHED or AHuman.NOTPRONE, 200);
 	else
 		if not AI.Cover.There then
 			AI.Cover.There = true;
@@ -1496,6 +1752,135 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 		AI.lateralMoveState = Actor.LAT_STILL;
 	end
 	return true;
+end
+
+-- Using the world (AC-12): out of burning ground it stands in, and with a water cannon, putting out a burning friend when there is no enemy
+-- to shoot. (Shooting fuel barrels by an enemy is ShootTarget's, SharedBehaviors.BarrelNear; cover is not taken in fire, FindCover.)
+-- Called every tick by the AI's update.
+function HumanBehaviors.UseTheWorld(AI, Owner)
+	AI.douse = false;
+	if Owner:NumberValueExists("OnFire") then
+		return; -- Burning itself: ActorFire's panic has it.
+	end
+	-- Out of the fire, to whichever side is clear: a spot not burning, on much the same floor, with nothing solid between; the one tried last
+	-- (a wall the step ran into) left out the next time. Looked for four times a second.
+	local Feet = Owner.Pos + Vector(0, Owner.Height * 0.4);
+	if AI.FireStep then
+		if AI.FireStep.Timer:IsPastSimMS(1500) or not SharedBehaviors.StepTo(AI, Owner, AI.FireStep.Spot, 1500 - AI.FireStep.Timer.ElapsedSimTimeMS) then
+			AI.FireStepLast = AI.FireStep.dx;
+			AI.FireStep = nil;
+		end
+	elseif not AI.flying and (not AI.FireCheckTimer or AI.FireCheckTimer:IsPastSimMS(250)) then
+		AI.FireCheckTimer = AI.FireCheckTimer or Timer();
+		AI.FireCheckTimer:Reset();
+		if SceneMan:IsBurningNear(Feet, 14) then
+			for _, dx in ipairs({48, -48, 96, -96}) do
+				local Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(dx, -Owner.Height * 0.2), math.floor(Owner.Height * 0.2), 4);
+				local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
+				if dx ~= AI.FireStepLast and not SceneMan:IsBurningNear(Spot, 20) and math.abs(Way.Y) < Owner.Height * 0.5
+					and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+					AI.FireStep = { Spot = Spot, Timer = Timer(), dx = dx };
+					SharedBehaviors.Trace(Owner, "fire underfoot: stepping out");
+					SharedBehaviors.StepTo(AI, Owner, Spot, 1500);
+					break;
+				end
+			end
+		else
+			AI.FireStepLast = nil;
+		end
+	end
+	-- A burning friend in reach of a water cannon.
+	-- (Not on a move order: "get there; don't stop for it".)
+	if AI.Target or SharedBehaviors.OrderKind(Owner) == "move" or not Owner:HasObject("Water Cannon") then
+		if AI.Dousing then
+			AI.Dousing = nil;
+			Owner:EquipFirearm(true);
+		end
+		return;
+	end
+	AI.DouseTimer = AI.DouseTimer or Timer();
+	if not AI.Dousing or AI.DouseTimer:IsPastSimMS(500) then
+		AI.DouseTimer:Reset();
+		local Friend;
+		for Act in MovableMan.Actors do
+			if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act:NumberValueExists("OnFire") and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(220) and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
+				Friend = Act;
+				break;
+			end
+		end
+		if Friend then
+			AI.Dousing = Friend;
+		elseif AI.Dousing then
+			AI.Dousing = nil;
+			Owner:EquipFirearm(true);
+		end
+	end
+	local Friend = AI.Dousing;
+	if Friend and MovableMan:ValidMO(Friend) then
+		if not (Owner.EquippedItem and Owner.EquippedItem.PresetName == "Water Cannon") then
+			Owner:EquipNamedDevice("Water Cannon", true);
+			return;
+		end
+		AI.deviceState = AHuman.AIMING;
+		AI.lateralMoveState = Actor.LAT_STILL;
+		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Friend.Pos, false).Normalized;
+		AI.douse = true;
+	elseif Friend then
+		AI.Dousing = nil;
+		Owner:EquipFirearm(true);
+	end
+end
+
+-- Shot from somewhere it can't see (AC-10): the hit's alarm point, a body's height back along the shot (Actor::ParticlePenetration), says
+-- which way the shooter is. The unit gets out of the line into cover on that side (full cover if there is some, else low, crouched on the way), looking
+-- that way as it goes, and once there aims along it for a while (PinArea); NativeHumanAI's hit-flank waits until it has got there. A unit
+-- with a target is the shooting rules' business, and one that can't find cover just faces the shot (FaceAlarm) as before. @param AlarmPoint
+-- The alarm point when the unit was hit this tick, else nil.
+function HumanBehaviors.ShotFromUnseen(AI, Owner, AlarmPoint)
+	-- (Not a unit on a move order or an aggressive one: "get there; don't stop for it". It faces the shot, FaceAlarm, as before.)
+	if Owner.aggressive or SharedBehaviors.OrderKind(Owner) == "move" then
+		AI.ShotFrom = nil;
+		return;
+	end
+	if AlarmPoint and AlarmPoint.Largest > 0 and not AI.Target then
+		local Dir = SceneMan:ShortestDistance(Owner.Pos, AlarmPoint, false);
+		if Dir.Largest > 0 then
+			Dir:SetMagnitude(400);
+			local From = Owner.Pos + Dir;
+			SceneMan:WrapPosition(From);
+			if AI.ShotFrom then
+				AI.ShotFrom.Pos = From;
+				AI.ShotFrom.Timer:Reset();
+			else
+				AI.ShotFrom = { Pos = From, Timer = Timer(), Pinned = false };
+			end
+		end
+	end
+	local Shot = AI.ShotFrom;
+	if not Shot then
+		return;
+	end
+	if AI.Target or Shot.Timer:IsPastSimMS(4000) then
+		AI.ShotFrom = nil;
+		return;
+	end
+	-- Into cover from it, if not already behind some.
+	if (AI.Cover and AI.Cover.Why ~= "shot") or not HumanBehaviors.TakeCover(AI, Owner, Shot.Pos, "shot") then
+		return;
+	end
+	local Aim = SceneMan:ShortestDistance(Owner.EyePos, Shot.Pos, false);
+	if not AI.Cover.There then
+		AI.deviceState = AHuman.AIMING;
+		AI.Ctrl.AnalogAim = Aim.Normalized;
+	elseif not Shot.Pinned then
+		Shot.Pinned = true;
+		SharedBehaviors.Trace(Owner, "shot from out of sight: in cover, watching that way");
+		AI.OldTargetPos = AI.OldTargetPos or Vector(Shot.Pos.X, Shot.Pos.Y);
+		AI:CreatePinBehavior(Owner);
+	end
+	if AI.Cover.There and AI.Cover.Low then
+		SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
+	end
 end
 
 -- Out of cover again, back to where the unit was, once the reload is done or the moment's rest is over. Called every tick by the AI's
@@ -1511,6 +1896,15 @@ function HumanBehaviors.LeaveCover(AI, Owner)
 		local reloading = Owner.EquippedItem and ToHeldDevice(Owner.EquippedItem):IsReloading();
 		local rested = AI.Cover.Timer:IsPastSimMS(AI.Cover.Why == "hurt" and 1500 or 300);
 		if reloading or not rested then
+			return;
+		end
+		-- Behind low cover with the enemy still about, the unit stays and fights from there, ducking and peeking (PeekUpdate), for up to
+		-- twelve seconds; then back out as from any cover.
+		if AI.Cover.Low and AI.Target and MovableMan:ValidMO(AI.Target) and not AI.Cover.Timer:IsPastSimMS(12000) then
+			return;
+		end
+		-- Shot at from out of sight, it stays put while the shots keep coming (ShotFromUnseen forgets them 4 s after the last).
+		if AI.Cover.Why == "shot" and AI.ShotFrom and not AI.Cover.Timer:IsPastSimMS(12000) then
 			return;
 		end
 		AI.Cover.Leaving = true;
@@ -1532,9 +1926,63 @@ function HumanBehaviors.LeaveCover(AI, Owner)
 	end
 end
 
+-- Fighting from behind low cover (AC-4): with an enemy in sight, standing still and a sandbag, low wall or ridge between, so crouched the
+-- unit is hidden and standing it can shoot over, it ducks down and comes up to fire in turn: up a second or so to shoot (longer the better
+-- the AI), down a moment, and down for good while reloading. Holds its fire while down (MayFire), the gun being behind the cover then.
+-- Not on the move, flying, lying down, aggressive, or without the engine's motor (the crouch is the motor's). Called every tick by the AI's update.
+function HumanBehaviors.PeekUpdate(AI, Owner)
+	AI.ducked = false;
+	local Target = AI.Target;
+	local moving = AI.lateralMoveState ~= Actor.LAT_STILL and not (AI.Cover and AI.Cover.There);
+	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
+		AI.Peek = nil;
+		AI.peekCover = nil;
+		return;
+	end
+	AI.PeekCheckTimer = AI.PeekCheckTimer or Timer();
+	if AI.peekCover == nil or AI.PeekCheckTimer:IsPastSimMS(500) then
+		AI.PeekCheckTimer:Reset();
+		AI.peekCover = SharedBehaviors.CoverAt(Owner, SceneMan:MovePointToGround(Owner.Pos, 0, 4), Target.Pos) == "low";
+		if SharedBehaviors.CanSee(Owner.EyePos, Target.Pos) then
+			AI.PeekSeenTimer = AI.PeekSeenTimer or Timer();
+			AI.PeekSeenTimer:Reset();
+		end
+	end
+	if not AI.peekCover then
+		AI.Peek = nil;
+		return;
+	end
+	if not AI.Peek then
+		AI.Peek = { Up = true, Timer = Timer(), For = 800 };
+		SharedBehaviors.Trace(Owner, "cover: low, peeking");
+	end
+	if AI.Peek.Timer:IsPastSimMS(AI.Peek.For) then
+		AI.Peek.Up = not AI.Peek.Up;
+		AI.Peek.Timer:Reset();
+		local skill = (AI.skill or 50) / 100;
+		AI.Peek.For = AI.Peek.Up and math.random(800, 1400) * (0.7 + skill * 0.6) or math.random(500, 1100) * (1.3 - skill * 0.6);
+	end
+	local reloading = Owner.EquippedItem and IsHeldDevice(Owner.EquippedItem) and ToHeldDevice(Owner.EquippedItem):IsReloading();
+	if AI.Peek.Up and not reloading then
+		SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 300);
+	else
+		SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
+		AI.ducked = true;
+		-- (Out of its sight while down is the point, not losing it: the target is kept, as it is where it was. But only while it was seen
+		-- from up in the last four seconds: one that has gone is let go, low cover or no.)
+		if AI.TargetLostTimer and AI.PeekSeenTimer and not AI.PeekSeenTimer:IsPastSimMS(4000) then
+			AI.TargetLostTimer:Reset();
+		end
+	end
+end
+
 -- throw a grenade at the selected target
 --TODO: This behavior should effectively have the actor close in on the target if out of range!
 function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
+	-- (Not against the weapons rule, RC-1: a grenade is a weapon, and a trigger the rule let go of mid-throw threw it short.)
+	if not SharedBehaviors.RuleLetsFire(AI, Owner) then
+		return true;
+	end
 	local ThrowTimer = Timer();
 	local aimTime = Owner.ThrowPrepTime;
 	local scan = 0;
@@ -1650,31 +2098,27 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 					miss = 0;
 					LOS = true; -- we have line of sight to the target
 
-					-- first try to reach the target with an the max throw vel
+					-- The arc (AC-5): flat where clear, else lobbed over what is in the way, led onto a runner by its flight time, and
+					-- cooked by a good AI so it bursts over the target.
 					if Owner.ThrowableIsReady then
 						local Grenade = ToThrownDevice(Owner.EquippedItem);
 						if Grenade then
-							local maxThrowVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
-							local minThrowVel = Grenade.MinThrowVel;
-							if minThrowVel == 0 then
-								minThrowVel = maxThrowVel * 0.2;
-							end
-							aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, maxThrowVel);
+							local _, seconds, full;
+							aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, AimPoint, AI.Target.Vel, false);
 							if aim then
 								aim = aim - Owner.RotAngle;
 								ThrowTimer:Reset();
-								aimTime = Owner.ThrowPrepTime * RangeRand(0.9, 1.1);
-								local maxAim = aim;
-
-								-- try again with an average throw vel
-								aim = HumanBehaviors.GetGrenadeAngle(AimPoint, AI.Target.Vel, Grenade.MuzzlePos, (maxThrowVel + minThrowVel) * 0.5);
-								if aim then
-									aimTime = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
-								else
-									aim = maxAim;
+								aimTime = HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, full);
+								-- (The runner moves while the grenade is held too: led on by the hold as well, once the hold is known.)
+								local Vel = AI.Target.Vel;
+								if Vel.Magnitude > 1 and aimTime > 200 then
+									local heldAim = HumanBehaviors.PlanThrow(Grenade, AimPoint + Vel * GetPPM() * aimTime * 0.001, Vel, false);
+									if heldAim then
+										aim = heldAim - Owner.RotAngle;
+									end
 								end
 							else
-								break; -- target out of range
+								break; -- target out of range, or no arc gets there
 							end
 						else
 							break;
@@ -1916,8 +2360,17 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 			AI.deviceState = AHuman.AIMING;
 			AI.Ctrl.AnalogAim = Vector(1,0):RadRotate(aim+aimError+RangeRand(-0.02, 0.02)*AI.aimSkill);
 			if ShootTimer:IsPastRealMS(aimTime) then
+				-- Fire at a place, not a target (AC-8): not the whole magazine sprayed at it. A third is kept for whoever comes out, and
+				-- an automatic fires 300 ms bursts with 400 ms between.
+				if Weapon.RoundInMagCapacity > 0 and Weapon.RoundInMagCount <= Weapon.RoundInMagCapacity * 0.34 then
+					AI.fire = false;
+					Owner:ReloadFirearms(); -- (Topped up while the enemy is out of sight, not when it shows itself.)
+					break;
+				end
 				if Weapon.FullAuto then
-					AI.fire = true;
+					AI.BurstClock = AI.BurstClock or Timer();
+					local phase = AI.BurstClock.ElapsedSimTimeMS % 700;
+					AI.fire = phase < 300;
 				else
 					ShootTimer:Reset();
 					aimTime = 120 * AI.aimSkill;
@@ -1966,6 +2419,156 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 		end
 	end
 	return true
+end
+
+-- Medics (AC-7): a unit carrying a medikit, with no enemy to deal with, goes to a badly hurt friend near by, puts the kit to it and patches
+-- it up, then takes its own order up again. A friend falling back to a medic (SharedBehaviors.RetreatUpdate) is seen to from further off.
+-- Not a unit told to hold its position or defend a spot, which stays where it was put. Called every tick by the AI's update.
+-- @return Whether the unit is seeing to a friend.
+function HumanBehaviors.MedicUpdate(AI, Owner)
+	-- The tag taken off by someone else (a sandbox order): that order stands, and the one this would have put back is gone.
+	if AI.Medic and not Owner:NumberValueExists("AIMedic") then
+		SharedBehaviors.Trace(Owner, "medic: called off by a new order");
+		HumanBehaviors.MedicEnd(AI, Owner, nil);
+		return false;
+	end
+	if AI.Medic then
+		local M = AI.Medic;
+		local Patient = M.Patient;
+		local over;
+		if AI.Target or AI.UnseenTarget then
+			over = "an enemy about";
+		elseif not MovableMan:ValidMO(Patient) or Patient.Status >= Actor.DYING or Patient.Health <= 0 then
+			over = "the friend is gone";
+		elseif Patient.Health >= Patient.MaxHealth * 0.9 and Patient.WoundCount == 0 then
+			over = "patched up";
+		elseif not Owner:HasObject("Medikit") then
+			over = "the kit is used up";
+		elseif M.Timer:IsPastSimMS(20000) then
+			over = "couldn't get to the friend";
+		elseif SharedBehaviors.OrderChangedSince(Owner, M.Spot) then
+			-- Another order given meanwhile (the walk's own end, as a sentry at the spot, isn't one): that order stands.
+			SharedBehaviors.Trace(Owner, "medic: called off by another order");
+			HumanBehaviors.MedicEnd(AI, Owner, nil);
+			return false;
+		end
+		if over then
+			SharedBehaviors.Trace(Owner, "medic: done, " .. over);
+			HumanBehaviors.MedicEnd(AI, Owner, M.Keep);
+			return false;
+		end
+		local ToPatient = SceneMan:ShortestDistance(Owner.Pos, Patient.Pos, false);
+		if math.abs(ToPatient.X) < 24 + Patient.Radius * 0.3 and math.abs(ToPatient.Y) < Owner.Height * 0.6 then
+			-- Close enough: the kit out, pointed at the friend, and pressed once a second (it is a single-shot device). The aim sweeps up
+			-- and down the friend a little so a press that missed (and found nobody hurt, which costs nothing) catches it the next time.
+			if not M.Close then
+				M.Close = true;
+				M.ShotTimer = Timer();
+				SharedBehaviors.Trace(Owner, "medic: seeing to " .. Patient.PresetName);
+			end
+			-- (The kit in hand every tick, not only on arriving: the AI's own self-heal puts a gun back in hand once the medic is over half
+			-- health again, and the trigger then fired the gun at the friend.)
+			local kitInHand = Owner.EquippedItem ~= nil and Owner.EquippedItem.PresetName == "Medikit";
+			if not kitInHand then
+				Owner:EquipNamedDevice("Medikit", true);
+				kitInHand = Owner.EquippedItem ~= nil and Owner.EquippedItem.PresetName == "Medikit";
+			end
+			local sweep = math.sin(M.Timer.ElapsedSimTimeMS * 0.004) * Patient.Height * 0.2;
+			local Aim = SceneMan:ShortestDistance(Owner.EyePos, Patient.Pos + Vector(0, sweep), false);
+			if Aim:MagnitudeIsGreaterThan(1) then
+				AI.Ctrl.AnalogAim = Aim.Normalized;
+			end
+			AI.lateralMoveState = Actor.LAT_STILL;
+			AI.medicHeal = false;
+			if kitInHand and M.ShotTimer:IsPastSimMS(1100) then
+				M.ShotTimer:Reset();
+				AI.medicHeal = true;
+			end
+		else
+			AI.medicHeal = false;
+			if M.Close then
+				M.Close = false;
+			end
+			-- The friend moved on: the walk follows it.
+			if SceneMan:ShortestDistance(M.Spot, Patient.Pos, false):MagnitudeIsGreaterThan(60) then
+				M.Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
+				Owner:ClearAIWaypoints();
+				Owner:AddAISceneWaypoint(M.Spot);
+				Owner.AIMode = Actor.AIMODE_GOTO;
+			end
+		end
+		return true;
+	end
+
+	-- Looking for someone to see to, once a second.
+	if AI.Target or AI.UnseenTarget or AI.Retreat or AI.Flank or AI.useMedikit or Owner:IsPlayerControlled() then
+		return false;
+	end
+	if AI.MedicLookTimer and not AI.MedicLookTimer:IsPastSimMS(1000) then
+		return false;
+	end
+	AI.MedicLookTimer = AI.MedicLookTimer or Timer();
+	AI.MedicLookTimer:Reset();
+	if not Owner:HasObject("Medikit") or Owner.OrderHold or Owner.OrderHasPost or SharedBehaviors.OrderKind(Owner) == "defend"
+		or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
+		return false;
+	end
+	local Patient = SharedBehaviors.FindPatient(Owner);
+	if not Patient then
+		return false;
+	end
+	local Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
+	AI.Medic = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Patient = Patient, Spot = Spot, Timer = Timer() };
+	Owner:SetNumberValue("AIMedic", 1);
+	Patient:SetNumberValue("AIMedicBy", Owner.UniqueID);
+	Owner.OrderAttack = false;
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "medic: going to " .. Patient.PresetName .. ", health " .. math.floor(Patient.Health));
+	return true;
+end
+
+-- Ends a medic's errand: the kit put away for a gun, the friend free for another medic, and the order kept from before put back (nil when
+-- a new order has taken its place).
+function HumanBehaviors.MedicEnd(AI, Owner, keep)
+	local M = AI.Medic;
+	AI.Medic = nil;
+	AI.medicHeal = false;
+	Owner:RemoveNumberValue("AIMedic");
+	if M and MovableMan:ValidMO(M.Patient) and M.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
+		M.Patient:RemoveNumberValue("AIMedicBy");
+	end
+	if Owner.EquippedItem and Owner.EquippedItem.PresetName == "Medikit" then
+		Owner:EquipFirearm(true);
+	end
+	if keep then
+		SharedBehaviors.RestoreOrder(AI, Owner, keep);
+	end
+	AI.MedicLookTimer = Timer(); -- (A second's pause before the next friend.)
+end
+
+-- Saving the last magazine (AC-8): with no enemy in sight or heard for a second and a half, a weapon under half full is reloaded, so the
+-- next fight doesn't start with a few rounds and a reload in the open. Weapons only (a medikit is a firearm too, and isn't to be refilled).
+-- Called every tick by the AI's update.
+function HumanBehaviors.ReloadInLull(AI, Owner)
+	AI.LullTimer = AI.LullTimer or Timer();
+	if AI.Target or AI.UnseenTarget or Owner:IsPlayerControlled() then
+		AI.LullTimer:Reset();
+		return;
+	end
+	if not AI.LullTimer:IsPastSimMS(1500) then
+		return;
+	end
+	AI.LullTimer:Reset();
+	local Item = Owner.EquippedItem;
+	if Item and IsHDFirearm(Item) and Item:HasObjectInGroup("Weapons") then
+		local Gun = ToHDFirearm(Item);
+		if not Gun:IsReloading() and Gun.RoundInMagCapacity > 0 and Gun.RoundInMagCount >= 0 and Gun.RoundInMagCount < Gun.RoundInMagCapacity * 0.5 then
+			SharedBehaviors.Trace(Owner, "reload: in a lull, " .. Gun.RoundInMagCount .. " of " .. Gun.RoundInMagCapacity .. " left");
+			Owner:ReloadFirearms();
+		end
+	end
 end
 
 -- stop the user from inadvertently modifying the storage table

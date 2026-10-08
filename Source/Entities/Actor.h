@@ -1023,6 +1023,15 @@ namespace RTE {
 		/// How much of a target this actor's body makes, for the sight of others (see ScanForEnemies): 1 standing.
 		virtual float GetSightProfile() const { return 1.0F; }
 
+		/// How loud this actor's moving is, for the hearing of others (see HearFootsteps), as an alarm event's range: nothing standing still,
+		/// a little crawling, more walking and more again running, quieter bent double and louder on metal.
+		virtual float GetFootstepNoise() const;
+
+		/// Listens for enemy footsteps (AC-11), when the "Night, light and noise affect AI" setting is on: the loudest enemy whose moving
+		/// (GetFootstepNoise) carries this far, by this actor's perceptiveness. Walls are the script's to judge.
+		/// @return Where it was heard, or a zero vector for nothing.
+		Vector HearFootsteps() const;
+
 		/// Description:		Sets actor's sight distance.
 		/// @param newValue New sight distance value.
 		void SetSightDistance(float newValue) { m_SightDistance = newValue; }

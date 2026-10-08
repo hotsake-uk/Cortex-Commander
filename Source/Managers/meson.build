@@ -29,6 +29,7 @@ sources += files(
 'ActionMenu.cpp',
 'SmokeGrid.cpp',
 'ActorFire.cpp',
+'ThreatMemory.cpp',
 'ActorWater.cpp',
 'UnitSpeech.cpp',
 'Sandbox.cpp',
