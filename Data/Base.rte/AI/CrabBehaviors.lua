@@ -18,7 +18,7 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 	end
 
 	if FoundMO then
-		if Owner.Behavior ~= nil and AI.Target and MovableMan:ValidMO(AI.Target) and FoundMO.ID == AI.Target.ID then	-- found the same target
+		if AI.Behavior ~= nil and AI.Target and MovableMan:ValidMO(AI.Target) and FoundMO.ID == AI.Target.ID then	-- found the same target
 			AI.TargetOffset = SceneMan:ShortestDistance(AI.Target.Pos, HitPoint, false);
 			AI.TargetLostTimer:Reset();
 			AI.ReloadTimer:Reset();
