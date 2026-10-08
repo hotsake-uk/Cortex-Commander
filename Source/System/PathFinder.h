@@ -505,6 +505,13 @@ namespace RTE {
 		/// @param direction -1 for a leap leftward, 1 rightward.
 		bool LipAt(const PathNode& to, float direction) const;
 
+		/// Whether the legs walk from one floor node to its diagonal neighbour up or down an incline: the ground's top between them rises or
+		/// falls by less than half a node from one 2 px column to the next (a face that size is a lip), with no gap, and the body's middle
+		/// clear over the way. However the straight line between the node centres meets the ground.
+		/// @param from The floor walked from.
+		/// @param to The floor walked to, a node across and a node up or down.
+		bool SurfaceWalkable(const PathNode& from, const PathNode& to) const;
+
 		/// Whether door material at a place is a door this grid sees through: one of the grid's side, erased while its nodes were sampled
 		/// (Scene::UpdatePathFinding, OverrideMaterialDoors), so no edge of the node there, or of its neighbours into it, sampled a door.
 		bool DoorSeenThrough(const Vector& at) const;

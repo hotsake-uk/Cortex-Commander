@@ -1381,6 +1381,15 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		return false;
 	}
 	float height = std::max(m_CharHeight, 20.0F);
+	// Nor against a slope or a bump the walk goes up: free to move on with the body a little higher (a step's worth over 3 px), the legs
+	// take it. (Anything at all ahead blocked the shifted body, the uphill ground of any incline included, so units pulled themselves up
+	// every hill in a string of mantles instead of walking it.)
+	const int walkStep = static_cast<int>(std::max(6.0F, height * 0.08F));
+	for (int lift = 2; lift <= walkStep; lift += 2) {
+		if (BodyFitsShifted(Vector(dir * 3.0F, static_cast<float>(-lift)), head)) {
+			return false;
+		}
+	}
 	// Not for an AI whose route goes down from here: pressing towards the wall of a hatch it was dropping through, a unit was pulled back
 	// up onto the ledge beside it, walked back to the hole, and did it again for twenty seconds.
 	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
