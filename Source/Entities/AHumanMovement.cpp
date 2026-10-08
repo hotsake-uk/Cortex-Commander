@@ -967,6 +967,31 @@ bool AHuman::CanWalkTo(const Vector& landing, float landingFloorY) const {
 // The landing of the flight ahead on the route, if there is one: where the route leaves the ground (its points or the legs between them in
 // the air), the first point after with floor under it; or the furthest such that can be flown to straight, on one tank, so a route that
 // dives into a valley and climbs out is flown over instead. @return Whether there is one; the landing, its floor and how many route points it is.
+void AHuman::PopRouteToLanding(const Vector& landing, int pointsToLanding) {
+	// Up to and including the route's point nearest the landing, when one is near it: the route may have been replaced in the air (route
+	// checks run during flights, and an adopted one starts where the unit was), so the count of points to the landing the flight was
+	// planned with can belong to another route, and popping that many dropped the wrong points. The count is only the fallback.
+	const float reach = std::max(m_CharHeight * 0.75F, 24.0F);
+	int nearestIndex = -1;
+	float nearestDistance = reach;
+	int index = 0;
+	for (const Vector& point: m_MovePath) {
+		if (index >= 30) {
+			break;
+		}
+		float distance = Towards(point, landing).GetMagnitude();
+		if (distance < nearestDistance) {
+			nearestDistance = distance;
+			nearestIndex = index;
+		}
+		++index;
+	}
+	int toPop = nearestIndex >= 0 ? nearestIndex + 1 : pointsToLanding;
+	for (int k = 0; k < toPop && !m_MovePath.empty(); ++k) {
+		PopRoutePoint();
+	}
+}
+
 bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const {
 	Vector takeOff;
 	return FindLanding(landing, landingFloorY, pointsToLanding, takeOff);
@@ -1551,9 +1576,7 @@ int AHuman::MoveAlongRoute() {
 			}
 			if (onLanding) {
 				// The route's points up to the landing are done with.
-				for (int k = 0; k < flight.pointsToLanding && !m_MovePath.empty(); ++k) {
-					PopRoutePoint();
-				}
+				PopRouteToLanding(flight.landing, flight.pointsToLanding);
 				MoverTrace("landed");
 			}
 			// Down again short of a landing above: the climb failed (fallen back down the hatch, or onto the wrong lip). A new route from
@@ -1611,9 +1634,7 @@ int AHuman::MoveAlongRoute() {
 				float across = Towards(flight.viaPoint, m_Pos).m_X * side;
 				bool floorUnderFeet = FloorUnder(m_Pos + Vector(0.0F, feet - 2.0F), h * 0.3F) >= 0.0F;
 				if (floorUnderFeet && across >= std::min(std::abs(sideways), h * 0.25F)) {
-					for (int k = 0; k < flight.pointsToLanding && !m_MovePath.empty(); ++k) {
-						PopRoutePoint();
-					}
+					PopRouteToLanding(flight.landing, flight.pointsToLanding);
 					MoverTrace("stepped off onto the landing");
 					flight = RouteMover::Flight();
 					mover.bestGap = -1.0F;
