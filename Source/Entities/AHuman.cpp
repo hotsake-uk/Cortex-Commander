@@ -1739,7 +1739,10 @@ void AHuman::PreControllerUpdate() {
 	if (isSharpAiming || m_Controller.IsState(WEAPON_FIRE)) {
 		m_FightAimTimer.Reset();
 	}
-	const bool aiNotFighting = m_Controller.GetInputMode() == Controller::CIM_AI && m_FightAimTimer.IsPastSimMS(1500);
+	// (Nor while it goes prone or crawls: a body lies down and crawls the way it faces, and an AI unit that had fired one way and was routed
+	// under something low the other way crouched there walking backwards, never getting down, until its fight's aim wore off.)
+	const bool aiCrawling = m_Controller.GetInputMode() == Controller::CIM_AI && (m_Controller.IsState(BODY_PRONE) || m_ProneState != NOTPRONE) && (m_Controller.IsState(MOVE_LEFT) || m_Controller.IsState(MOVE_RIGHT));
+	const bool aiNotFighting = m_Controller.GetInputMode() == Controller::CIM_AI && (m_FightAimTimer.IsPastSimMS(1500) || aiCrawling);
 	const bool aimHoldsFacing = (!analogAim.IsZero() || isSharpAiming) && !aiNotFighting;
 
 	// If the pie menu is on, try to preserve whatever move state we had before it going into effect.
