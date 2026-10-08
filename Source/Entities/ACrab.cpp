@@ -1505,22 +1505,7 @@ void ACrab::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 		// Adjust the draw position to work if drawn to a target screen bitmap that is straddling a scene seam
 		if (!targetPos.IsZero()) {
-			// Spans vertical scene seam
-			int sceneWidth = g_SceneMan.GetSceneWidth();
-			if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-				if ((targetPos.m_X < 0) && (m_Pos.m_X > (sceneWidth - pTargetBitmap->w)))
-					drawPos.m_X -= sceneWidth;
-				else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (m_Pos.m_X < pTargetBitmap->w))
-					drawPos.m_X += sceneWidth;
-			}
-			// Spans horizontal scene seam
-			int sceneHeight = g_SceneMan.GetSceneHeight();
-			if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-				if ((targetPos.m_Y < 0) && (m_Pos.m_Y > (sceneHeight - pTargetBitmap->h)))
-					drawPos.m_Y -= sceneHeight;
-				else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (m_Pos.m_Y < pTargetBitmap->h))
-					drawPos.m_Y += sceneHeight;
-			}
+			drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
 		}
 
 		// Held-related GUI stuff
