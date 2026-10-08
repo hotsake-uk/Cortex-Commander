@@ -889,6 +889,10 @@ namespace {
 		actor->RemoveNumberValue(c_DefendXTag);
 		actor->RemoveNumberValue(c_DefendYTag);
 		actor->RemoveNumberValue(c_HoldTag);
+		// And the old order's way there, queued or still to be applied: a unit told to hold (or patrol, hunt or idle) kept its waypoints, and
+		// anything that later put a GOTO back (a fall-back's RestoreOrder, the AI's own new-order check) walked it off along them.
+		actor->ClearAIWaypoints();
+		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return pending.Unit.Unit == actor; }), s_PendingOrders.end());
 		switch (order) {
 			case Order::Attack:
 				// The nearest enemy is where it is sent, not one it has to keep after: on the way the AI fights whatever it meets, and the
