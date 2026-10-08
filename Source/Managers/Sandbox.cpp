@@ -741,6 +741,11 @@ namespace {
 	/// @param lock Whether the unit keeps after this enemy while it lives (an enemy picked by the player), rather than being free to fight
 	/// what it meets on the way (one picked for it).
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, bool lock = false) {
+		// (Never a craft: set to GOTO, a dropship delivering stopped its unload, which only runs in STAY or DELIVER, and hovered with the
+		// squad inside.)
+		if (dynamic_cast<const ACraft*>(unit)) {
+			return;
+		}
 		CancelRetreatAndFlank(unit);
 		unit->RemoveNumberValue(c_AttackTag);
 		unit->RemoveNumberValue(c_DefendXTag);
@@ -836,7 +841,7 @@ namespace {
 	}
 
 	void GiveOrder(Actor* actor, Order order) {
-		if (!actor || dynamic_cast<ADoor*>(actor) || actor->IsInGroup("Brains")) {
+		if (!actor || dynamic_cast<ADoor*>(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 			return;
 		}
 		CancelRetreatAndFlank(actor);
@@ -2064,13 +2069,13 @@ namespace {
 		std::vector<Actor*> units;
 		if (selectedOnly) {
 			for (const UnitRef& ref: s_Selected) {
-				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && !dynamic_cast<const ACraft*>(unit)) {
 					units.push_back(unit);
 				}
 			}
 		} else {
 			for (Actor* actor: SandboxAccess::Actors()) {
-				if (actor->GetTeam() == team && IsCombatant(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains")) {
+				if (actor->GetTeam() == team && IsCombatant(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor)) {
 					units.push_back(actor);
 				}
 			}
