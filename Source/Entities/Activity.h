@@ -9,6 +9,7 @@ namespace RTE {
 
 	class Scene;
 	class ACraft;
+	class Camera;
 
 	/// Base class for all Activities, including game modes and editors.
 	class Activity : public Entity {

@@ -1,5 +1,7 @@
 #pragma once
 #include "glm/fwd.hpp"
+#include <algorithm>
+#include "Vector.h"
 namespace RTE {
 	/// A simple rectangle from 2 points.
 	template <typename T>
