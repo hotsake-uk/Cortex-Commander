@@ -384,7 +384,21 @@ namespace {
 	std::vector<Stroke> s_Queue;
 	std::array<Vector, c_Sides> s_RallyPoints;
 	std::array<bool, c_Sides> s_RallySet{};
-	Actor* s_Possessed = nullptr; //!< The unit you're controlling in the god mode, checked with IsActor before use.
+	Actor* s_Possessed = nullptr; //!< The unit you're controlling in the god mode, checked with IsActor and its unique ID before use.
+	long s_PossessedID = 0; //!< Its unique ID: a unit that died and a new one made at the same address passed the IsActor check alone.
+
+	void SetPossessed(Actor* actor) {
+		s_Possessed = actor;
+		s_PossessedID = actor ? static_cast<long>(actor->GetUniqueID()) : 0;
+	}
+
+	/// Your character's own gib limits while it can't be hurt (0 is "never" for both), to put back when that is turned off.
+	struct SavedGibLimits {
+		long ID = 0;
+		float Impulse = 0.0F;
+		int Wounds = 0;
+	};
+	SavedGibLimits s_PlayerGibLimits;
 
 	/// Your own character in the Sandbox game mode: what it is, what it carries and what it can do.
 	struct PlayerSetup {
@@ -1801,11 +1815,14 @@ namespace {
 		}
 		if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
 			game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
-			s_Possessed = actor;
+			SetPossessed(actor);
 			s_PlayHintSeconds = 9.0F;
 			// Every tool window goes away, not only the sandbox's: any left open would keep the mouse from the unit.
 			g_DebugMan.CloseTools();
 			g_ConsoleMan.PrintString("SANDBOX: You're controlling " + actor->GetPresetName() + ". Press Tab to go back to the god view.");
+		} else {
+			// (The game refuses a unit another player controls, or another player's brain, with only its error sound.)
+			g_ConsoleMan.PrintString("SANDBOX: " + actor->GetPresetName() + " can't be taken over: another player has it, or it is their brain.");
 		}
 	}
 
@@ -1917,7 +1934,7 @@ namespace {
 				}
 				if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
 					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
-					s_Possessed = actor;
+					SetPossessed(actor);
 					s_PlayHintSeconds = 9.0F;
 					if (AHuman* human = dynamic_cast<AHuman*>(actor); human && !human->GetEquippedItem()) {
 						human->EquipFirearm(true);
@@ -1940,6 +1957,16 @@ namespace {
 			if (int wounds = actor->GetWoundCount(); wounds > 0) {
 				actor->RemoveWounds(wounds);
 			}
+			// Nor blown apart: health and wounds put right each update don't stop a gib from one big hit or many wounds at once.
+			if (s_PlayerGibLimits.ID != static_cast<long>(actor->GetUniqueID())) {
+				s_PlayerGibLimits = {static_cast<long>(actor->GetUniqueID()), actor->GetGibImpulseLimit(), actor->GetGibWoundLimit()};
+				actor->SetGibImpulseLimit(0.0F);
+				actor->SetGibWoundLimit(0);
+			}
+		} else if (s_PlayerGibLimits.ID == static_cast<long>(actor->GetUniqueID())) {
+			actor->SetGibImpulseLimit(s_PlayerGibLimits.Impulse);
+			actor->SetGibWoundLimit(s_PlayerGibLimits.Wounds);
+			s_PlayerGibLimits = SavedGibLimits();
 		}
 		AHuman* human = dynamic_cast<AHuman*>(actor);
 		if (s_Player.EndlessJetpack) {
@@ -2484,6 +2511,11 @@ namespace {
 				break;
 			case Tool::Remove:
 				if (MovableObject* object = ObjectUnder(at, false)) {
+					// (Not your character while it can't be hurt: it vanished, and the god view came back with nothing said.)
+					if (s_Player.Unkillable && object->GetRootParent() == GetRef(s_PlayerUnit)) {
+						g_ConsoleMan.PrintString("SANDBOX: Your character can't be removed while it can't be hurt; turn that off first, or use Remove it on the You tab.");
+						break;
+					}
 					object->SetToDelete(true);
 				}
 				break;
@@ -6093,8 +6125,9 @@ void Sandbox::Update() {
 	}
 	if (IsGodMode()) {
 		GameActivity* game = CurrentGame();
-		if (s_Possessed && !g_MovableMan.IsActor(s_Possessed)) {
+		if (s_Possessed && (!g_MovableMan.IsActor(s_Possessed) || static_cast<long>(s_Possessed->GetUniqueID()) != s_PossessedID)) {
 			// The unit you were controlling died: back to the god view.
+			g_ConsoleMan.PrintString("SANDBOX: The unit you were controlling is gone; back to the god view.");
 			s_Possessed = nullptr;
 			s_Flying = false;
 			g_DebugMan.OpenTools();
@@ -6110,7 +6143,7 @@ void Sandbox::Update() {
 					if (s_Possessed == GetRef(s_PlayerUnit)) {
 						StopFlying();
 					}
-					s_Possessed = controlled;
+					SetPossessed(controlled);
 				} else if (game->SwitchToActor(s_Possessed, Players::PlayerOne, s_Possessed->GetTeam())) {
 					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
 				} else {
