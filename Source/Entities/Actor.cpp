@@ -123,6 +123,7 @@ void Actor::Clear() {
 
 	m_AIMode = AIMODE_NONE;
 	m_AIOrderSerial = 0;
+	m_StandingOrder = StandingOrder();
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -158,6 +159,23 @@ int Actor::Create() {
 
 	// Set MO Type.
 	m_MOType = MovableObject::TypeActor;
+
+	// A game saved before the standing order was typed keeps its orders as number values: they are taken over.
+	if (NumberValueExists("SandboxAttack") || NumberValueExists("SandboxTarget") || NumberValueExists("SandboxAutoTarget") || NumberValueExists("SandboxAttackX") || NumberValueExists("SandboxDefendX") || NumberValueExists("SandboxHold")) {
+		m_StandingOrder.Attack = GetNumberValue("SandboxAttack") > 0.0;
+		m_StandingOrder.TargetID = static_cast<long>(GetNumberValue("SandboxTarget"));
+		m_StandingOrder.AutoTargetID = static_cast<long>(GetNumberValue("SandboxAutoTarget"));
+		if (NumberValueExists("SandboxAttackX")) {
+			SetOrderAttackPlace(Vector(static_cast<float>(GetNumberValue("SandboxAttackX")), static_cast<float>(GetNumberValue("SandboxAttackY"))));
+		}
+		if (NumberValueExists("SandboxDefendX")) {
+			SetOrderPost(Vector(static_cast<float>(GetNumberValue("SandboxDefendX")), static_cast<float>(GetNumberValue("SandboxDefendY"))));
+		}
+		m_StandingOrder.Hold = NumberValueExists("SandboxHold");
+		for (const char* tag: {"SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX", "SandboxAttackY", "SandboxDefendX", "SandboxDefendY", "SandboxHold"}) {
+			RemoveNumberValue(tag);
+		}
+	}
 
 	// Default to an interesting AI controller mode
 	m_Controller.SetInputMode(Controller::CIM_AI);
@@ -294,6 +312,7 @@ int Actor::Create(const Actor& reference) {
 	m_PassengerSlots = reference.m_PassengerSlots;
 
 	m_AIMode = reference.m_AIMode;
+	m_StandingOrder = reference.m_StandingOrder;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -400,6 +419,18 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> mode;
 		m_AIMode = static_cast<AIMode>(mode);
 	});
+	MatchProperty("OrderAttack", { reader >> m_StandingOrder.Attack; });
+	MatchProperty("OrderTargetID", { reader >> m_StandingOrder.TargetID; });
+	MatchProperty("OrderAutoTargetID", { reader >> m_StandingOrder.AutoTargetID; });
+	MatchProperty("OrderAttackPlace", {
+		reader >> m_StandingOrder.AttackPlace;
+		m_StandingOrder.HasAttackPlace = true;
+	});
+	MatchProperty("OrderPost", {
+		reader >> m_StandingOrder.Post;
+		m_StandingOrder.HasPost = true;
+	});
+	MatchProperty("OrderHold", { reader >> m_StandingOrder.Hold; });
 	MatchProperty("SpecialBehaviour_AddAISceneWaypoint", {
 		Vector waypointToAdd;
 		reader >> waypointToAdd;
@@ -490,6 +521,25 @@ int Actor::Save(Writer& writer) const {
 	writer << m_MaxInventoryMass;
 	writer.NewProperty("AIMode");
 	writer << m_AIMode;
+	// The standing order, the parts it has.
+	if (m_StandingOrder.Attack) {
+		writer.NewPropertyWithValue("OrderAttack", m_StandingOrder.Attack);
+	}
+	if (m_StandingOrder.TargetID != 0) {
+		writer.NewPropertyWithValue("OrderTargetID", m_StandingOrder.TargetID);
+	}
+	if (m_StandingOrder.AutoTargetID != 0) {
+		writer.NewPropertyWithValue("OrderAutoTargetID", m_StandingOrder.AutoTargetID);
+	}
+	if (m_StandingOrder.HasAttackPlace) {
+		writer.NewPropertyWithValue("OrderAttackPlace", m_StandingOrder.AttackPlace);
+	}
+	if (m_StandingOrder.HasPost) {
+		writer.NewPropertyWithValue("OrderPost", m_StandingOrder.Post);
+	}
+	if (m_StandingOrder.Hold) {
+		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
+	}
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
 

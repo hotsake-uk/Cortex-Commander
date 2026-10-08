@@ -641,7 +641,7 @@ function NativeHumanAI:Update(Owner)
 				else
 					self.useMedikit = false;
 					-- (Not a unit told to hold its position: a sandbox "Hold position" is a sentry that stays put.)
-					if not self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY and not Owner:NumberValueExists("SandboxHold") then
+					if not self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY and not Owner.OrderHold then
 						Owner.AIMode = Actor.AIMODE_PATROL;
 					end
 				end

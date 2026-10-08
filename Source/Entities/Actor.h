@@ -395,6 +395,55 @@ namespace RTE {
 		/// @return The current AI mode.
 		int GetAIMode() const { return m_AIMode; }
 
+		/// A unit's standing order (AI review section 6 item 2): what it was told to do, one typed record that the sandbox, the AI scripts, the HUD and saves all read, where
+		/// before it was six number values under string keys ("SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX/Y", "SandboxDefendX/Y",
+		/// "SandboxHold") that C++ and Lua each spelled out. The parts are independent, as the number values were.
+		struct StandingOrder {
+			bool Attack = false; //!< Told to attack: it gets a new target when its own is gone.
+			long TargetID = 0; //!< The unique ID of an enemy it was told to keep after while it lives, 0 for none.
+			long AutoTargetID = 0; //!< The unique ID of the enemy picked for it last when told to attack the nearest, 0 for none.
+			bool HasAttackPlace = false; //!< Whether it was told to attack towards a place (AttackPlace): it fights what is near it, and holds there otherwise.
+			Vector AttackPlace; //!< That place.
+			bool HasPost = false; //!< Whether it was told to defend a spot (Post): it fights from it and goes back to it when moved off.
+			Vector Post; //!< That spot.
+			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
+		};
+
+		/// Gets this' standing order, to read or change.
+		/// @return The standing order of this.
+		StandingOrder& GetStandingOrder() { return m_StandingOrder; }
+
+		/// Gets this' standing order.
+		/// @return The standing order of this.
+		const StandingOrder& GetStandingOrder() const { return m_StandingOrder; }
+
+		/// Forgets every part of this' standing order.
+		void ClearStandingOrder() { m_StandingOrder = StandingOrder(); }
+
+		/// The standing order's parts one by one, for Lua.
+		bool GetOrderAttack() const { return m_StandingOrder.Attack; }
+		void SetOrderAttack(bool attack) { m_StandingOrder.Attack = attack; }
+		long GetOrderTargetID() const { return m_StandingOrder.TargetID; }
+		void SetOrderTargetID(long id) { m_StandingOrder.TargetID = id; }
+		long GetOrderAutoTargetID() const { return m_StandingOrder.AutoTargetID; }
+		void SetOrderAutoTargetID(long id) { m_StandingOrder.AutoTargetID = id; }
+		bool GetOrderHasAttackPlace() const { return m_StandingOrder.HasAttackPlace; }
+		const Vector& GetOrderAttackPlace() const { return m_StandingOrder.AttackPlace; }
+		void SetOrderAttackPlace(const Vector& place) {
+			m_StandingOrder.AttackPlace = place;
+			m_StandingOrder.HasAttackPlace = true;
+		}
+		void ClearOrderAttackPlace() { m_StandingOrder.HasAttackPlace = false; }
+		bool GetOrderHasPost() const { return m_StandingOrder.HasPost; }
+		const Vector& GetOrderPost() const { return m_StandingOrder.Post; }
+		void SetOrderPost(const Vector& post) {
+			m_StandingOrder.Post = post;
+			m_StandingOrder.HasPost = true;
+		}
+		void ClearOrderPost() { m_StandingOrder.HasPost = false; }
+		bool GetOrderHold() const { return m_StandingOrder.Hold; }
+		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
+
 		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
 		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
 		/// mode it is already in, is seen as new without dropping the unit out of its mode for an update first.
@@ -1253,6 +1302,7 @@ namespace RTE {
 		// The current mode the AI is set to perform as
 		AIMode m_AIMode;
 		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
+		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;

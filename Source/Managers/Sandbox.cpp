@@ -296,14 +296,8 @@ namespace {
 	Order UnitOrder(int order) {
 		return order >= 0 && order < c_OrderCount && c_Orders[order].ForUnit ? static_cast<Order>(order) : Order::Hold;
 	}
-	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
-	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
-	constexpr const char* c_AutoTargetTag = "SandboxAutoTarget"; //!< Number value on units told to attack the nearest enemy: the unique ID of the one picked for them, which isn't held to.
-	constexpr const char* c_AttackXTag = "SandboxAttackX"; //!< Number values on units told to attack towards a place: they fight what is near it, and hold there otherwise.
-	constexpr const char* c_AttackYTag = "SandboxAttackY";
-	constexpr const char* c_DefendXTag = "SandboxDefendX"; //!< Number values on units told to defend a spot: they fight from it and go back to it when moved off.
-	constexpr const char* c_DefendYTag = "SandboxDefendY";
-	constexpr const char* c_HoldTag = "SandboxHold"; //!< Number value on units told to hold position: the AI neither wanders off (a hurt sentry patrols) nor falls back.
+	// (What a unit was told to do is its standing order, Actor::GetStandingOrder: attack, a target to keep after, the enemy picked for it, a place
+	// to attack towards, a post to defend, hold. Once six number values under string keys here and in the AI scripts.)
 	constexpr const char* c_RetreatTag = "AIRetreat"; //!< Number values the Lua AI keeps on a unit falling back or working round a flank; taken off
 	constexpr const char* c_FlankTag = "AIFlank";     //!< by a new order, which tells the AI the order it would put back after is gone.
 
@@ -870,19 +864,14 @@ namespace {
 		}
 		s_SendNotes[unit->GetUniqueID()] = {reason, resend, g_TimerMan.GetSimUpdateCount()};
 		CancelRetreatAndFlank(unit);
-		unit->RemoveNumberValue(c_AttackTag);
-		unit->RemoveNumberValue(c_DefendXTag);
-		unit->RemoveNumberValue(c_DefendYTag);
-		unit->RemoveNumberValue(c_AutoTargetTag);
-		unit->RemoveNumberValue(c_HoldTag);
-		if (attack && target && lock) {
-			unit->SetNumberValue(c_TargetTag, static_cast<double>(target->GetUniqueID()));
-		} else {
-			unit->RemoveNumberValue(c_TargetTag);
-		}
+		Actor::StandingOrder& standing = unit->GetStandingOrder();
+		standing.Attack = false;
+		standing.HasPost = false;
+		standing.AutoTargetID = 0;
+		standing.Hold = false;
+		standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
 		if (!attack) {
-			unit->RemoveNumberValue(c_AttackXTag);
-			unit->RemoveNumberValue(c_AttackYTag);
+			standing.HasAttackPlace = false;
 		}
 		// An earlier order still waiting is dropped.
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
@@ -892,14 +881,7 @@ namespace {
 	/// Holds a unit where it is, forgetting every order it had.
 	void HoldUnit(Actor* unit) {
 		CancelRetreatAndFlank(unit);
-		unit->RemoveNumberValue(c_AttackTag);
-		unit->RemoveNumberValue(c_TargetTag);
-		unit->RemoveNumberValue(c_AutoTargetTag);
-		unit->RemoveNumberValue(c_AttackXTag);
-		unit->RemoveNumberValue(c_AttackYTag);
-		unit->RemoveNumberValue(c_DefendXTag);
-		unit->RemoveNumberValue(c_DefendYTag);
-		unit->RemoveNumberValue(c_HoldTag);
+		unit->ClearStandingOrder();
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
@@ -963,7 +945,7 @@ namespace {
 				g_ConsoleMan.PrintString("SANDBOX: " + unit->GetPresetName() + " sent to " + std::to_string(static_cast<int>(order.Waypoint.m_X)) + "," + std::to_string(static_cast<int>(order.Waypoint.m_Y)) + (order.Target ? " after " + order.Target->GetPresetName() : "") + " mode now " + std::to_string(unit->GetAIMode()));
 			}
 			if (order.Attack) {
-				unit->SetNumberValue(c_AttackTag, 1.0);
+				unit->SetOrderAttack(true);
 			}
 		}
 	}
@@ -975,14 +957,7 @@ namespace {
 		CancelRetreatAndFlank(actor);
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
-		actor->RemoveNumberValue(c_AttackTag);
-		actor->RemoveNumberValue(c_TargetTag);
-		actor->RemoveNumberValue(c_AutoTargetTag);
-		actor->RemoveNumberValue(c_AttackXTag);
-		actor->RemoveNumberValue(c_AttackYTag);
-		actor->RemoveNumberValue(c_DefendXTag);
-		actor->RemoveNumberValue(c_DefendYTag);
-		actor->RemoveNumberValue(c_HoldTag);
+		actor->ClearStandingOrder();
 		// And the old order's way there, queued or still to be applied: a unit told to hold (or patrol, hunt or idle) kept its waypoints, and
 		// anything that later put a GOTO back (a fall-back's RestoreOrder, the AI's own new-order check) walked it off along them.
 		actor->ClearAIWaypoints();
@@ -994,9 +969,9 @@ namespace {
 				// second from whatever it had stopped to fight, which ended that fight each time.)
 				if (Actor* enemy = NearestEnemy(actor)) {
 					SendUnit(actor, enemy->GetPos(), enemy, true, "attack order");
-					actor->SetNumberValue(c_AutoTargetTag, static_cast<double>(enemy->GetUniqueID()));
+					actor->SetOrderAutoTargetID(static_cast<long>(enemy->GetUniqueID()));
 				} else {
-					actor->SetNumberValue(c_AttackTag, 1.0);
+					actor->SetOrderAttack(true);
 					actor->ClearAIWaypoints();
 					actor->SetAIMode(Actor::AIMODE_SENTRY);
 				}
@@ -1024,7 +999,7 @@ namespace {
 				break;
 			case Order::Hold:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
-				actor->SetNumberValue(c_HoldTag, 1.0);
+				actor->SetOrderHold(true);
 				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
@@ -1035,10 +1010,10 @@ namespace {
 	/// Units told to defend a spot go back to it when they've been moved off it (shoved, blown, or drawn after an enemy), and stand guard there again.
 	void ReturnDefenders() {
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (!actor->NumberValueExists(c_DefendXTag) || actor->IsPlayerControlled() || !IsCombatant(actor)) {
+			if (!actor->GetOrderHasPost() || actor->IsPlayerControlled() || !IsCombatant(actor)) {
 				continue;
 			}
-			Vector post(static_cast<float>(actor->GetNumberValue(c_DefendXTag)), static_cast<float>(actor->GetNumberValue(c_DefendYTag)));
+			Vector post = actor->GetOrderPost();
 			float off = g_SceneMan.ShortestDistance(actor->GetPos(), post, g_SceneMan.SceneWrapsX()).GetMagnitude();
 			if (actor->GetAIMode() == Actor::AIMODE_GOTO) {
 				// On the way back: once there, guard again.
@@ -1047,11 +1022,8 @@ namespace {
 					actor->SetAIMode(Actor::AIMODE_SENTRY);
 				}
 			} else if (off > 60.0F) {
-				double x = post.m_X;
-				double y = post.m_Y;
 				SendUnit(actor, post, nullptr, false, "back to its post", false, true);
-				actor->SetNumberValue(c_DefendXTag, x);
-				actor->SetNumberValue(c_DefendYTag, y);
+				actor->SetOrderPost(post);
 			}
 		}
 	}
@@ -1060,7 +1032,7 @@ namespace {
 	void RetargetAttackers() {
 		for (Actor* actor: SandboxAccess::Actors()) {
 			// (A unit falling back hurt or working round a flank is left to it; the AI puts its order back after.)
-			if (actor->GetNumberValue(c_AttackTag) <= 0.0 || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire") || actor->NumberValueExists("AIRetreat") || actor->NumberValueExists("AIFlank")) {
+			if (!actor->GetOrderAttack() || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire") || actor->NumberValueExists("AIRetreat") || actor->NumberValueExists("AIFlank")) {
 				continue;
 			}
 			// (Nor one with an order about to take: between being sent and the order taking it is after nothing.)
@@ -1072,28 +1044,20 @@ namespace {
 			// (Any enemy: the one it was sent at, or one the AI went after itself, in whatever mode its attack runs.)
 			bool chasingEnemy = targetActor && IsCombatant(targetActor) && targetActor->GetTeam() != actor->GetTeam();
 			// An enemy chosen for it is kept after while it lives, whatever else is about.
-			if (Actor* chosen = ActorWithID(static_cast<long>(actor->GetNumberValue(c_TargetTag))); chosen && IsCombatant(chosen) && chosen->GetTeam() != actor->GetTeam()) {
+			if (Actor* chosen = ActorWithID(actor->GetOrderTargetID()); chosen && IsCombatant(chosen) && chosen->GetTeam() != actor->GetTeam()) {
 				if (!chasingEnemy || targetActor != chosen) {
-					bool towardsPlace = actor->NumberValueExists(c_AttackXTag);
-					double x = actor->GetNumberValue(c_AttackXTag);
-					double y = actor->GetNumberValue(c_AttackYTag);
+					// (SendUnit keeps an attack's place.)
 					SendUnit(actor, chosen->GetPos(), chosen, true, "after its target", true, true);
-					if (towardsPlace) {
-						actor->SetNumberValue(c_AttackXTag, x);
-						actor->SetNumberValue(c_AttackYTag, y);
-					}
 				}
 				continue;
 			}
-			actor->RemoveNumberValue(c_TargetTag);
+			actor->SetOrderTargetID(0);
 			if (chasingEnemy) {
 				continue;
 			}
 			// Told to attack towards a place: the nearest enemy to it, else go there and stand ready.
-			if (actor->NumberValueExists(c_AttackXTag)) {
-				Vector place(static_cast<float>(actor->GetNumberValue(c_AttackXTag)), static_cast<float>(actor->GetNumberValue(c_AttackYTag)));
-				double x = place.m_X;
-				double y = place.m_Y;
+			if (actor->GetOrderHasAttackPlace()) {
+				Vector place = actor->GetOrderAttackPlace();
 				if (Actor* enemy = NearestEnemyTo(place, actor->GetTeam(), 500.0F)) {
 					SendUnit(actor, enemy->GetPos(), enemy, true, "enemy near its place", false, true);
 				} else if (!g_SceneMan.ShortestDistance(actor->GetPos(), place, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(60.0F) && actor->GetAIMode() != Actor::AIMODE_GOTO) {
@@ -1101,8 +1065,7 @@ namespace {
 				} else {
 					continue;
 				}
-				actor->SetNumberValue(c_AttackXTag, x);
-				actor->SetNumberValue(c_AttackYTag, y);
+				actor->SetOrderAttackPlace(place);
 				continue;
 			}
 			// Not after anything: the enemy picked for it last time, still there, is one it had no way to (its route came back impossible and
@@ -1110,7 +1073,7 @@ namespace {
 			// (Only with no waypoint left: an order applied this same update has its MO waypoint queued but not yet loaded as the move
 			// target, so a unit just sent reads as after nothing. A stand-down on an impossible route clears the waypoints, whatever the
 			// mode is left at.)
-			if (Actor* picked = ActorWithID(static_cast<long>(actor->GetNumberValue(c_AutoTargetTag))); picked && IsCombatant(picked) && actor->GetWaypointsSize() == 0) {
+			if (Actor* picked = ActorWithID(actor->GetOrderAutoTargetID()); picked && IsCombatant(picked) && actor->GetWaypointsSize() == 0) {
 				s_GaveUpOn[static_cast<long>(actor->GetUniqueID())] = {static_cast<long>(picked->GetUniqueID()), g_TimerMan.GetSimTimeMS()};
 			}
 			GiveOrder(actor, Order::Attack);
@@ -1896,7 +1859,7 @@ namespace {
 		switch (order) {
 			case Order::Attack:
 				// Gets its target once it's out among the enemy.
-				actor->SetNumberValue(c_AttackTag, 1.0);
+				actor->SetOrderAttack(true);
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
 			case Order::HuntBrains:
@@ -2679,8 +2642,7 @@ namespace {
 			}
 			for (Actor* unit: units) {
 				SendUnit(unit, point, target, true, "attack there");
-				unit->SetNumberValue(c_AttackXTag, point.m_X);
-				unit->SetNumberValue(c_AttackYTag, point.m_Y);
+				unit->SetOrderAttackPlace(point);
 			}
 		} else if (choice == 2) {
 			// Cancel: every order forgotten, and the side's standing orders apply.
@@ -2695,8 +2657,7 @@ namespace {
 			// Defend: stand this ground and fight from it, moving as little as can be; a unit shoved or drawn off its post is sent back.
 			for (Actor* unit: units) {
 				HoldUnit(unit);
-				unit->SetNumberValue(c_DefendXTag, unit->GetPos().m_X);
-				unit->SetNumberValue(c_DefendYTag, unit->GetPos().m_Y);
+				unit->SetOrderPost(unit->GetPos());
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
 		}
@@ -6801,13 +6762,13 @@ void Sandbox::DrawOrderLabels() {
 		std::string order;
 		if (actor->IsPlayerControlled()) {
 			order = "player";
-		} else if (actor->NumberValueExists(c_TargetTag)) {
-			order = "attack #" + std::to_string(static_cast<long long>(actor->GetNumberValue(c_TargetTag)));
-		} else if (actor->NumberValueExists(c_AttackXTag)) {
+		} else if (actor->GetOrderTargetID() != 0) {
+			order = "attack #" + std::to_string(static_cast<long long>(actor->GetOrderTargetID()));
+		} else if (actor->GetOrderHasAttackPlace()) {
 			order = "attack towards a place";
-		} else if (actor->NumberValueExists(c_AttackTag)) {
+		} else if (actor->GetOrderAttack()) {
 			order = "attack nearest";
-		} else if (actor->NumberValueExists(c_DefendXTag)) {
+		} else if (actor->GetOrderHasPost()) {
 			order = "defend a spot";
 		} else {
 			int mode = actor->GetAIMode();
@@ -7355,16 +7316,16 @@ namespace {
 			std::string tag;
 			bool hasPost = false;
 			Vector post;
-			if (actor->NumberValueExists(c_TargetTag)) {
-				tag = "ATTACK #" + std::to_string(static_cast<long long>(actor->GetNumberValue(c_TargetTag)));
-			} else if (actor->NumberValueExists(c_AttackXTag)) {
-				post.SetXY(static_cast<float>(actor->GetNumberValue(c_AttackXTag)), static_cast<float>(actor->GetNumberValue(c_AttackYTag)));
+			if (actor->GetOrderTargetID() != 0) {
+				tag = "ATTACK #" + std::to_string(static_cast<long long>(actor->GetOrderTargetID()));
+			} else if (actor->GetOrderHasAttackPlace()) {
+				post = actor->GetOrderAttackPlace();
 				hasPost = true;
 				tag = "ATTACK@ " + std::to_string(post.GetFloorIntX()) + "," + std::to_string(post.GetFloorIntY());
-			} else if (actor->NumberValueExists(c_AttackTag)) {
+			} else if (actor->GetOrderAttack()) {
 				tag = "ATTACK";
-			} else if (actor->NumberValueExists(c_DefendXTag)) {
-				post.SetXY(static_cast<float>(actor->GetNumberValue(c_DefendXTag)), static_cast<float>(actor->GetNumberValue(c_DefendYTag)));
+			} else if (actor->GetOrderHasPost()) {
+				post = actor->GetOrderPost();
 				hasPost = true;
 				tag = "DEFEND";
 			} else if (actor->GetAIMode() == Actor::AIMODE_GOTO) {
