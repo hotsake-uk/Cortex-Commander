@@ -63,6 +63,8 @@ namespace RTE {
 			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
 			// Low lights its steady scenery lamps once into a map instead of every frame.
 			LampCache = quality == QualityLow;
+			// The wetness map: one small pass over the light grid a frame, from Medium up.
+			WetnessMap = quality >= QualityMedium;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -253,6 +255,9 @@ namespace RTE {
 		float StainShine = 1.0F; //!< How much they change it, 0 to 1.
 		bool DecalsFade = true; //!< Soot and stains weather away over time and wash off in the rain. Off: they stay until the scene is rebuilt, as before.
 		float DecalFadeMinutes = 10.0F; //!< Game minutes for full soot to weather away (stains take half as long again), 0.5 to 60. Rain makes it much quicker.
+		bool WetnessMap = true; //!< Rain wets the ground place by place and it dries after, hard rock and concrete slower than earth, with puddles in the dips after long rain. Off: all exposed ground is equally wet, as before.
+		float WetDrySeconds = 120.0F; //!< Game seconds for wet earth to dry once the rain stops, 10 to 600; rock takes up to three times as long.
+		float Puddles = 1.0F; //!< How much water standing in dips is drawn as reflecting puddles, 0 (none) to 1.
 		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
 		bool NightAffectsAI = false; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay; off by default so the AI isn't handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
