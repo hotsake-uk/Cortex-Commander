@@ -211,7 +211,7 @@ void DebugMan::SettingsGUI() {
 		Slider("Rain splashes", &settings.RainSplashes, 0.0F, 2.0F);
 		Tip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
 		Check("Exact shelter from the weather", &settings.ShelterMask);
-		Tip("Rain, snow and ash stay out from under overhangs, roofs and caves right to the edge, however high up the shelter is, and slant in on the windward side. Off: drops look a few hundred pixels up for shelter and miss anything higher, as before.");
+		Tip("Rain, snow and ash stay out from under overhangs, roofs and caves right to the edge, however high up the shelter is, and slant in on the windward side. Off: drops look a few hundred pixels up for shelter and miss anything higher, as before. On from the Low preset up.");
 		if (settings.ShelterMask) {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
