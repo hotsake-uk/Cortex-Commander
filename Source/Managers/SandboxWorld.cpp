@@ -862,6 +862,9 @@ namespace SandboxDetail {
 				} else if (stroke.Count == 20 || stroke.Count == 21) {
 					// A patrol route (RC-4): 20 a loop, 21 back and forth.
 					PatrolSelected(stroke.Points, stroke.Count == 21);
+				} else if (stroke.Count == 40) {
+					// A "no route" marker clicked (RC-7): its units sent there again.
+					ReissueNoRoute(stroke.Position);
 				} else if (stroke.Count == 30 || stroke.Count == 31) {
 					// A move or attack-move facing the way dragged (RC-5), 31 with Shift.
 					FacingMoveSelected(at, stroke.Position2, stroke.Count == 31);
