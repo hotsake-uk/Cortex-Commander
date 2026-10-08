@@ -1806,7 +1806,8 @@ end
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
 function SharedBehaviors.RememberOrder(AI, Owner)
 	local keep = { mode = Owner.AIMode, attack = Owner:GetNumberValue("SandboxAttack") };
-	if Owner.AIMode == Actor.AIMODE_GOTO then
+	-- (A squad follower's leader too: cleared with the waypoints, a follower came back from a fall-back with no one to follow.)
+	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
 		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
 			keep.target = Owner.MOMoveTarget;
 		elseif Owner:GetWaypointListSize() > 0 then
@@ -1818,7 +1819,13 @@ end
 
 function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 	Owner:ClearAIWaypoints();
-	if keep.mode == Actor.AIMODE_GOTO then
+	if keep.mode == Actor.AIMODE_SQUAD then
+		if keep.target and MovableMan:ValidMO(keep.target) then
+			Owner:AddAIMOWaypoint(keep.target);
+		else
+			keep.mode = Actor.AIMODE_SENTRY;
+		end
+	elseif keep.mode == Actor.AIMODE_GOTO then
 		if keep.target and MovableMan:ValidMO(keep.target) then
 			Owner:AddAIMOWaypoint(keep.target);
 		elseif keep.waypoint then
@@ -1840,6 +1847,19 @@ function SharedBehaviors.RetreatWalkOver(AI, Owner)
 	return AI.Retreat.WaitTimer:IsPastSimMS(1000) and Owner:GetWaypointListSize() == 0 and Owner.MovePathSize == 0 and not Owner.IsWaitingOnNewMovePath;
 end
 
+-- Whether the unit has been given another order since a fall-back or a flank sent it to a spot: another mode, or a waypoint queued last
+-- that isn't the spot. (Put back unconditionally, a pie-menu order given meanwhile was wiped up to 25 s later.) Not something to follow:
+-- the AI's own detours (to a weapon to pick up, closing on a target) set that and queue the spot again after it.
+function SharedBehaviors.OrderChangedSince(Owner, Spot)
+	if Owner.AIMode ~= Actor.AIMODE_GOTO then
+		-- (Sentry at the spot with nothing more to go to is the walk's own end: the engine puts a unit whose GOTO is used up into
+		-- SENTRY once within 20 px of its last point. Any other mode, or sentry elsewhere, is someone's order.)
+		local arrived = Owner.AIMode == Actor.AIMODE_SENTRY and Owner:GetWaypointListSize() == 0 and not SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height);
+		return not arrived;
+	end
+	return Owner:GetWaypointListSize() > 0 and SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Spot, false):MagnitudeIsGreaterThan(48);
+end
+
 -- Falling back: a badly hurt unit with no enemy in sight goes to the nearest friend (the brain for choice) and waits a while to be
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
@@ -1847,6 +1867,13 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	-- The tag taken off by someone else (a sandbox order): the fall-back is over and the order it would have put back is gone too.
 	if AI.Retreat and not Owner:NumberValueExists("AIRetreat") then
 		SharedBehaviors.Trace(Owner, "retreat: called off by a new order");
+		AI.Retreat = nil;
+		return false;
+	end
+	-- Another order given meanwhile: the fall-back is over, and that order stands.
+	if AI.Retreat and SharedBehaviors.OrderChangedSince(Owner, AI.Retreat.Spot) then
+		SharedBehaviors.Trace(Owner, "retreat: called off by another order");
+		Owner:RemoveNumberValue("AIRetreat");
 		AI.Retreat = nil;
 		return false;
 	end
@@ -1934,7 +1961,14 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 		AI.FlankRestTimer = Timer();
 		return;
 	end
-	local arrived = Owner.AIMode ~= Actor.AIMODE_GOTO or SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
+	if SharedBehaviors.OrderChangedSince(Owner, AI.Flank.Spot) then
+		SharedBehaviors.Trace(Owner, "flank: called off by another order");
+		Owner:RemoveNumberValue("AIFlank");
+		AI.Flank = nil;
+		AI.FlankRestTimer = Timer();
+		return;
+	end
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
 	if arrived or AI.Flank.Timer:IsPastSimMS(15000) then
 		SharedBehaviors.Trace(Owner, "flank: " .. (arrived and "there" or "gave up"));
 		Owner:RemoveNumberValue("AIFlank");
