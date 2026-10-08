@@ -488,6 +488,15 @@ namespace micropather
 
 		Graph* GetGraph() { return graph; }
 
+		/// Points this pather at another graph, forgetting what it held of the old one (see Reset). Keeps its memory, so one pather can serve
+		/// several graphs in turn without being rebuilt.
+		void SetGraph( Graph* _graph ) {
+			if ( graph != _graph ) {
+				graph = _graph;
+				Reset();
+			}
+		}
+
 	  private:
 		MicroPather( const MicroPather& );	// undefined and unsupported
 		void operator=( const MicroPather ); // undefined and unsupported
