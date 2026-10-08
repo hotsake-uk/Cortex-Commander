@@ -316,6 +316,15 @@ void ADoor::SetDoorMoveEndSound(SoundContainer* newSound) {
 	m_DoorMoveEndSound.reset(newSound);
 }
 
+bool ADoor::GetDoorMaterialBox(Box& box) const {
+	if (!m_Door || !m_DoorMaterialDrawn) {
+		return false;
+	}
+	box = m_Door->GetBoundingBox();
+	box.m_Corner += m_LastDoorMaterialPos - m_Door->GetPos();
+	return true;
+}
+
 void ADoor::TempEraseOrRedrawDoorMaterial(bool erase) {
 	if (!g_SceneMan.GetTerrain() || !g_SceneMan.GetTerrain()->GetMaterialBitmap()) {
 		return;

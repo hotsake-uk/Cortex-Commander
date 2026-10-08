@@ -457,6 +457,12 @@ namespace RTE {
 		/// @param team Which team to do this for, NoTeam means all teams.
 		void OverrideMaterialDoors(bool eraseDoorMaterial, int team = Activity::NoTeam) const;
 
+		/// Gets where the doors OverrideMaterialDoors erases for a team have their material drawn: the only places where that team's path grid
+		/// can differ from the NoTeam grid.
+		/// @param team Which team's doors, as OverrideMaterialDoors takes them.
+		/// @param boxes Filled with one box per such door whose material is drawn; cleared first.
+		void GetMaterialDoorBoxes(int team, std::vector<Box>& boxes) const;
+
 		/// Registers an AlarmEvent to notify things around that somehting alarming
 		/// like a gunshot or explosion just happened.
 		/// @param newEvent The AlarmEvent to register.

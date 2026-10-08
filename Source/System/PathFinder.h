@@ -303,6 +303,9 @@ namespace RTE {
 		/// How many nodes are marked as changed and not yet sampled again (see RecalculateAreaCosts).
 		size_t GetWaitingNodeCount() const { return m_WaitingNodes.size(); }
 
+		/// How many nodes the grid has; their ids are 0 up to this.
+		size_t GetNodeCount() const { return m_NodeGrid.size(); }
+
 		/// Helper function for getting the PathNode ids in a Box.
 		/// @param box The Box of which all PathNodes it touches should be returned.
 		/// @param samplingReach Whether to take in too every node whose measures look into the box, for re-sampling after a terrain change.
@@ -314,6 +317,15 @@ namespace RTE {
 		/// @param nodeVec The set of PathNode IDs to update.
 		/// @return Whether any PathNode costs changed.
 		bool UpdateNodeList(const std::vector<int>& nodeVec);
+
+		/// Takes a set of PathNodes' samples from another grid of the same scene and size, as UpdateNodeList would have measured them where the
+		/// material is the same in both: what each node measures itself (its surface, room, stairs, liquid, step-overs and the materials to its
+		/// right and down), and the matching materials of its neighbours. For the team grids, which differ from the NoTeam grid only around doors.
+		/// This does NOT update the pather either.
+		/// @param from The grid to take the samples from.
+		/// @param nodeVec The set of PathNode IDs to take.
+		/// @return Whether the grids are the same size, so the samples were taken; nothing is changed otherwise.
+		bool CopyNodeSamples(const PathFinder& from, const std::vector<int>& nodeVec);
 
 		/// Implementation of the abstract interface of Graph.
 		/// Gets the least possible cost to get from PathNode A to B, if it all was air.

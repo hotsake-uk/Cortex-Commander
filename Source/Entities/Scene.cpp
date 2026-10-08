@@ -9,6 +9,7 @@
 #include "ConsoleMan.h"
 
 #include <chrono>
+#include <numeric>
 #include <unordered_set>
 #include "SettingsMan.h"
 #include "ThreadMan.h"
@@ -2400,12 +2401,14 @@ int Scene::SetOwnerOfAllDoors(int team, int player) {
 }
 
 void Scene::ResetPathFinding() {
-	GetPathFinder(Activity::Teams::NoTeam).RecalculateAllCosts();
+	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
+	noTeamPathFinder.RecalculateAllCosts();
+	std::vector<int> allNodes(noTeamPathFinder.GetNodeCount());
+	std::iota(allNodes.begin(), allNodes.end(), 0);
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
 		m_TeamGridSkippedNodes[team].clear();
-		g_MovableMan.OverrideMaterialDoors(true, team);
-		GetPathFinder(static_cast<Activity::Teams>(team)).RecalculateAllCosts();
-		g_MovableMan.OverrideMaterialDoors(false, team);
+		GetPathFinder(static_cast<Activity::Teams>(team)).WaitForPathingRequests();
+		UpdateTeamGridNodes(team, allNodes);
 	}
 }
 
@@ -2518,13 +2521,7 @@ void Scene::UpdatePathFinding() {
 				continue;
 			}
 
-			// Remove the material representation of all doors of this team so we can navigate through them (they'll open for us).
-			g_MovableMan.OverrideMaterialDoors(true, team);
-
-			GetPathFinder(static_cast<Activity::Teams>(team)).UpdateNodeList(teamNodes);
-
-			// Place back the material representation of all doors of this team so they are as we found them.
-			g_MovableMan.OverrideMaterialDoors(false, team);
+			UpdateTeamGridNodes(team, teamNodes);
 		}
 	}
 
@@ -2552,6 +2549,50 @@ void Scene::UpdatePathFinding() {
 
 	m_PartialPathUpdateTimer.Reset();
 	m_PathfindingUpdated = true;
+}
+
+void Scene::UpdateTeamGridNodes(int team, const std::vector<int>& nodeIds) {
+	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
+	PathFinder& teamPathFinder = GetPathFinder(static_cast<Activity::Teams>(team));
+
+	// A team's grid differs from the NoTeam grid only where its doors (and no one's) are opened for it, and the NoTeam grid has just sampled the
+	// same nodes from the same terrain; so the nodes whose measures reach no such door take the NoTeam samples, and only the ones around the
+	// doors are sampled again with the doors opened. (Every node was sampled once per grid: five times where two teams play, at a reset of a
+	// big scene seconds of the load.)
+	std::vector<Box> doorBoxes;
+	g_MovableMan.GetMaterialDoorBoxes(team, doorBoxes);
+	std::vector<int> doorNodes;
+	std::vector<int> otherNodes;
+	if (teamPathFinder.GetNodeCount() != noTeamPathFinder.GetNodeCount()) {
+		// (Grids of different sizes can't share samples: every node is sampled, as before.)
+		doorNodes = nodeIds;
+	} else if (doorBoxes.empty()) {
+		otherNodes = nodeIds;
+	} else {
+		std::vector<bool> nearDoor(teamPathFinder.GetNodeCount(), false);
+		for (const Box& box: doorBoxes) {
+			for (int nodeId: teamPathFinder.GetNodeIdsInBox(box, true)) {
+				nearDoor[nodeId] = true;
+			}
+		}
+		for (int nodeId: nodeIds) {
+			(nearDoor[nodeId] ? doorNodes : otherNodes).push_back(nodeId);
+		}
+	}
+	if (!teamPathFinder.CopyNodeSamples(noTeamPathFinder, otherNodes)) {
+		doorNodes = nodeIds;
+	}
+	if (doorNodes.empty()) {
+		return;
+	}
+
+	// Remove the material representation of all doors of this team so we can navigate through them (they'll open for us).
+	g_MovableMan.OverrideMaterialDoors(true, team);
+
+	teamPathFinder.UpdateNodeList(doorNodes);
+
+	// Place back the material representation of all doors of this team so they are as we found them.
+	g_MovableMan.OverrideMaterialDoors(false, team);
 }
 
 float Scene::CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight, float digStrength, Activity::Teams team, float breachStrength) {

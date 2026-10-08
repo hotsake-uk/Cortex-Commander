@@ -94,6 +94,11 @@ namespace RTE {
 		/// @return Whether or not this ADoor's door material has been drawn.
 		bool GetDoorMaterialDrawn() const { return m_DoorMaterialDrawn; }
 
+		/// Gets the area this ADoor's door material is drawn over in the terrain, if it is drawn.
+		/// @param box Set to the area: the door's bounding box where its material was drawn.
+		/// @return Whether the door material is drawn; the box is left as it was if not.
+		bool GetDoorMaterialBox(Box& box) const;
+
 		/// Gets this ADoor's door move start sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this ADoor's door move start sound.
 		SoundContainer* GetDoorMoveStartSound() const { return m_DoorMoveStartSound.get(); }
