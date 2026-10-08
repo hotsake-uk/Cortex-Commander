@@ -1451,6 +1451,19 @@ void SceneLighting::SetShelterUniforms(const Shader& shader, bool use, int unit)
 	shader.SetFloat("rteShelterSoftness", std::clamp(m_Settings.ShelterSoftness, 0.0F, 2.0F) * 4.0F);
 }
 
+void SceneLighting::SetGroundWetness(bool soaked) {
+	m_Wetness = soaked ? 1.0F : 0.0F;
+	// 2 is the most a heavy downpour fills the dips to; the terrain shader keeps it to where the weather reaches.
+	for (const GLTarget& wetMap: m_WetMap) {
+		if (wetMap.Framebuffer) {
+			glBindFramebuffer(GL_FRAMEBUFFER, wetMap.Framebuffer);
+			glClearColor(soaked ? 2.0F : 0.0F, 0.0F, 0.0F, 1.0F);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+	}
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+}
+
 void SceneLighting::UpdateWetMap(float seconds) {
 	if (!m_Settings.WetnessMap || !m_WetMap[0].Framebuffer || seconds <= 0.0F) {
 		return;
@@ -1786,6 +1799,9 @@ void SceneLighting::Update() {
 	logStages.Next("Light grid: lamp cache");
 	UpdateLampCache();
 	logStages.Next("Light grid: wetness");
+	if (int request = g_PostProcessMan.TakeGroundWetnessRequest(); request != 0) {
+		SetGroundWetness(request == 1);
+	}
 	UpdateWetMap(frameSeconds);
 	logStages.Next("Light grid: sun shadow map");
 	// The strips go by the cells that really changed, whichever refresh found them: the flagged area above, or the round-robin catching a change nobody reported.

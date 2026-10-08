@@ -278,6 +278,16 @@ namespace RTE {
 		/// Takes the mist and dust put into the air since the last call: x, y (scene pixels), radius (pixels), amount.
 		std::vector<glm::vec4> TakeFogPuffs();
 
+		/// Soaks the ground at once, as after a long downpour, puddles in its dips included (LightingSettings::WetnessMap); it dries as usual after.
+		/// Taken by the lighting on its next frame.
+		void SoakGround() { m_GroundWetnessRequest = 1; }
+
+		/// Dries the ground and its puddles at once. Taken by the lighting on its next frame.
+		void DryGround() { m_GroundWetnessRequest = 2; }
+
+		/// Takes the last SoakGround or DryGround asked for since the last call. @return 1 soak, 2 dry, 0 neither.
+		int TakeGroundWetnessRequest() { return m_GroundWetnessRequest.exchange(0); }
+
 		/// Draws a lightning bolt for a moment (LightingSettings::LightningBolts): a jagged, branching line of light from the sky to the strike, a flash of
 		/// light where it lands and across the sky, flickering twice and gone in under half a second. Render only: what it strikes is the caller's business.
 		/// The bolt's shape comes from the seed alone, so the same seed draws the same bolt. Safe from any thread.
@@ -556,6 +566,7 @@ namespace RTE {
 		std::vector<ScorchMark> m_PendingScorchMarks; //!< Scorch marks not stamped yet. Guarded by m_ShockwaveMutex.
 		std::vector<ScorchMark> m_HotScorchMarks; //!< Recent scorch marks, for the cooling glow. Guarded by m_ShockwaveMutex.
 		std::vector<glm::vec4> m_FogPuffs; //!< Mist and dust put into the air and not yet taken by the fog volume. Guarded by m_ShockwaveMutex.
+		std::atomic<int> m_GroundWetnessRequest = 0; //!< SoakGround (1) or DryGround (2) not yet taken by the lighting, or 0.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.

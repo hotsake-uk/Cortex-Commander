@@ -287,7 +287,7 @@ Press **F8** for **Photo Mode**:
 | `ScorchMarks` | 1 | Explosions leave soot on terrain, and the crater rim glows while it cools. |
 | `StainSurface` / `StainShine` | 1 / 1 | Stains change how the ground shines: fresh blood a little, drying matte over about a minute and a half; oil stays glossy; soot dulls. Off: they only tint. |
 | `DecalsFade` / `DecalFadeMinutes` | 1 / 10 | Soot weathers away over the set game minutes and stains over half as long again, several times faster in the rain. Off: they stay until the scene is rebuilt. |
-| `WetnessMap` / `WetDrySeconds` / `Puddles` | 1 / 120 / 1 | Rain wets the ground place by place; it dries after, rock and concrete up to three times slower than earth, and long rain leaves reflecting puddles in dips. Off: all exposed ground is equally wet. On from Medium. |
+| `WetnessMap` / `WetDrySeconds` / `Puddles` | 1 / 120 / 1 | Rain wets the ground place by place; it dries after, rock and concrete up to three times slower than earth, and long rain leaves reflecting puddles in dips. Off: all exposed ground is equally wet. On from Medium. The settings' "Soak the ground" and "Dry the ground" buttons, and Lua `PostProcessMan:SoakGround()` / `DryGround()`, wet the ground as after a long downpour or dry it at once. |
 | `BloomEnabled` / `BloomThreshold` / `BloomIntensity` | 1 / 0.9 / 0.5 | Bloom. |
 | `PostExposure` / `PostSaturation` / `PostVignette` | 1 / 1.05 / 0.15 | Final image. |
 | `GradeTemperature` / `GradeTint` / `GradeContrast` | 0 / 0 / 1 | White balance and contrast. |

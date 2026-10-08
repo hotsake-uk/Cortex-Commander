@@ -386,6 +386,9 @@ namespace RTE {
 		/// Keeps the lamp cache (LightingSettings::LampCache) up to date: lights it in full when it's made or the steady lamps or the settings that shape them change,
 		/// and relights only around where the ground changed otherwise. Lets it go when the setting is off.
 		void UpdateLampCache();
+		/// Soaks the ground at once, as after a long downpour, puddles in its dips included, or dries it and them (PostProcessMan::SoakGround and DryGround).
+		/// @param soaked True to soak, false to dry.
+		void SetGroundWetness(bool soaked);
 		/// Steps the wetness map (LightingSettings::WetnessMap) on by game time: rain wets the ground and fills dips, and it dries after, rock slower than earth.
 		/// @param seconds Game seconds since the last call.
 		void UpdateWetMap(float seconds);

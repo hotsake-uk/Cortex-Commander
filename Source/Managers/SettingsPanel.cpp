@@ -244,6 +244,17 @@ void DebugMan::SettingsGUI() {
 			Slider("Wet earth dries in (seconds)", &settings.WetDrySeconds, 10.0F, 600.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
 			Slider("Puddles", &settings.Puddles, 0.0F, 1.0F);
 		}
+		if (Shown("Soak the ground")) {
+			if (ToolUI::Button("Soak the ground")) {
+				g_PostProcessMan.SoakGround();
+			}
+			Tip("Wets the ground at once, as after a long downpour, with water standing in the dips; it dries as usual after. To see the wet look and puddles without waiting for rain.");
+			ImGui::SameLine();
+			if (ToolUI::Button("Dry the ground")) {
+				g_PostProcessMan.DryGround();
+			}
+			Tip("Dries the ground and its puddles at once.");
+		}
 		// Scene makers: keep the time and weather as the scene's own. It's written when the scene is saved from the scene editor.
 		if (Scene* scene = g_SceneMan.GetScene(); scene && Plain()) {
 			ImGui::SeparatorText("This scene's own time and weather");
