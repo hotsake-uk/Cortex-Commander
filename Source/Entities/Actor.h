@@ -887,6 +887,9 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// After every object has updated, before the deletions: lets go of the item in reach if it is going (see m_pItemInReach).
+		void PostUpdate() override;
+
 		/// Cast see rays for this actor.
 		void CastSeeRays();
 

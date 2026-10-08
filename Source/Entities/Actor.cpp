@@ -1909,6 +1909,16 @@ void Actor::UpdateSuppressionAndMorale() {
 	}
 }
 
+void Actor::PostUpdate() {
+	// The item in reach is kept from one update to the next. If it was flagged this update after this actor's own Update (picked up by someone
+	// else, settled, gibbed, the sandbox's erase tool) it is deleted at the end of this update, and the HUD and next update's reach test would
+	// read freed memory. Every flag is set by now and nothing is deleted yet.
+	if (m_pItemInReach && (!g_MovableMan.IsDevice(m_pItemInReach) || m_pItemInReach->ToDelete())) {
+		m_pItemInReach = nullptr;
+	}
+	MOSRotating::PostUpdate();
+}
+
 void Actor::Update() {
 	// Night: a headlamp lighting where the actor looks, plus a little glow around it. Render only.
 	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_HeadlampBrightness > 0.0F && m_Status != DEAD && m_Status != DYING) {
