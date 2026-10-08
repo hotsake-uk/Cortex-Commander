@@ -262,6 +262,13 @@ namespace RTE {
 		/// @param which 0 to 5.
 		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
 
+		/// Gets which units the sandbox orders overlay draws for: 0 none, 1 the sandbox's selection (or inspected units), 2 every unit in view. It shows each unit's order waiting for the next update, its standing order, and a red flash when the standing orders send it again.
+		int SandboxOrdersOverlay() const { return m_SandboxOrdersOverlay; }
+
+		/// Sets SandboxOrdersOverlay; see there.
+		/// @param which 0 to 2.
+		void SetSandboxOrdersOverlay(int which) { m_SandboxOrdersOverlay = std::clamp(which, 0, 2); }
+
 		/// Gets whether the light sources overlay is on: every light on player 1's screen as a reach circle and colour dot (cones as wedges),
 		/// the scenery lamps with what they hang on, and counts by kind with the fill cost.
 		bool ShowLightSources() const { return m_ShowLightSources; }
@@ -518,6 +525,7 @@ namespace RTE {
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
+		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
 		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).
 		bool m_ShowSunDirection; //!< Whether the sun direction overlay is on (see ShowSunDirection).
 		bool m_ShowTerrainUpdates; //!< Whether the terrain update boxes overlay is on (see ShowTerrainUpdates).
