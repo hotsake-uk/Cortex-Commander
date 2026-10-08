@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -45,6 +46,7 @@ std::string System::s_WorkingDirectory = ".";
 std::unordered_set<uint64_t> System::s_WorkingTree;
 std::vector<std::string> System::s_UnindexedDirectories;
 bool System::s_WorkingTreeBuilt = false;
+int System::s_WorkingTreeIndexMS = -1;
 std::filesystem::file_time_type System::s_ProgramStartTime = std::filesystem::file_time_type::clock::now();
 bool System::s_CaseSensitive = true;
 const std::string System::s_DataDirectory = "Data/";
@@ -171,11 +173,19 @@ namespace {
 		if (name.front() == '.') {
 			return true;
 		}
+		// At the top, only the data and the mods are indexed: they are what the game loads by path, and so what the case check is for.
+		// Anything else (userdata, saves, a build tree, a vcpkg or external folder, a copy of the game, whatever a working folder gathers)
+		// is asked of the file system as it is. (A list of what to leave out missed whatever wasn't on it: Liam's start was still slow
+		// with the fix in.)
 		if (topLevel) {
-			std::string lower = name;
-			std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			static const std::array<std::string_view, 6> c_TopLevelLeftOut = {"userdata", "screenshots", "cortexversions", "logs", "subprojects", "_build"};
-			if (std::find(c_TopLevelLeftOut.begin(), c_TopLevelLeftOut.end(), lower) != c_TopLevelLeftOut.end() || lower.starts_with("build") || lower.starts_with("cmake-build")) {
+			auto sameName = [](std::string_view a, std::string_view b) {
+				return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
+			};
+			std::string_view data = System::GetDataDirectory();
+			std::string_view mods = System::GetModDirectory();
+			data = data.substr(0, data.find_last_not_of('/') + 1);
+			mods = mods.substr(0, mods.find_last_not_of('/') + 1);
+			if (!sameName(name, data) && !sameName(name, mods)) {
 				return true;
 			}
 		}
@@ -195,6 +205,7 @@ bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
 		std::lock_guard<std::mutex> lock(workingTreeMutex);
 		if (!s_WorkingTreeBuilt) {
 			s_WorkingTreeBuilt = true;
+			const auto indexStart = std::chrono::steady_clock::now();
 			std::error_code error;
 			std::filesystem::recursive_directory_iterator entry(s_WorkingDirectory, std::filesystem::directory_options::follow_directory_symlink | std::filesystem::directory_options::skip_permission_denied, error);
 			for (; !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error)) {
@@ -207,6 +218,7 @@ bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
 				}
 				s_WorkingTree.insert(Hash(relative));
 			}
+			s_WorkingTreeIndexMS = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - indexStart).count());
 		}
 		// (Asked about by its full path too, from the working directory's set-up; the index is of paths relative to it.)
 		std::string relative = pathToCheck.starts_with(s_WorkingDirectory) ? pathToCheck.substr(s_WorkingDirectory.length()) : pathToCheck;
