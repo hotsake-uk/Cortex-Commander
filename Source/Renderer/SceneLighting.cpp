@@ -14,6 +14,7 @@
 #include "Constants.h"
 #include "TimerMan.h"
 #include "RenderMan.h"
+#include "FrameMan.h"
 #include <array>
 
 #include "allegro.h"
@@ -109,6 +110,7 @@ void SceneLighting::LoadShaders() {
 	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
+	m_UnitOutlineRowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/UnitOutlineRow.frag");
 	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
 	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
 	m_LitParticleShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/LitParticle.frag");
@@ -262,6 +264,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_RoundedNormals.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_OutlineRows.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int indirectWidth = width;
 	int indirectHeight = height;
@@ -316,6 +319,7 @@ void SceneLighting::DestroyScreenResources() {
 	m_RoundedNormals.Destroy();
 	m_Emissive.Destroy();
 	m_Distortion.Destroy();
+	m_OutlineRows.Destroy();
 	m_GodRays.Destroy();
 	for (GLTarget& mip: m_IndirectMips) {
 		mip.Destroy();
@@ -1925,6 +1929,30 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glViewport(0, 0, width, height);
 	}
 
+	// Unit outlines, first half: the nearest unit pixel along each row (Tonemap.frag searches the columns and draws the stroke).
+	// Width in the game's pixels at normal zoom; zoomed out the view holds more of them per screen pixel, so the stroke is widened to match.
+	logStages.Next("Lighting: unit outlines");
+	float outlineWidth = 0.0F;
+	int outlineRadius = 0;
+	if (m_Settings.UnitOutline && surface && m_Settings.UnitOutlineOpacity > 0.0F) {
+		float zoom = std::max(g_FrameMan.GetCurrentCameraZoom(), 0.1F);
+		outlineWidth = std::min(std::clamp(m_Settings.UnitOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F);
+		outlineRadius = static_cast<int>(std::ceil(outlineWidth + 1.0F)) - 1;
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_OutlineRows.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_UnitOutlineRowShader->Enable();
+		m_UnitOutlineRowShader->SetInt("rteSurface", 0);
+		m_UnitOutlineRowShader->SetInt("rteSceneDepth", 1);
+		m_UnitOutlineRowShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		m_UnitOutlineRowShader->SetInt("rteRadius", outlineRadius);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+		DrawFullscreen();
+	}
+
 	logStages.Next("Lighting: tonemap");
 	// Tonemap back into the player screen.
 	playerScreen->Bind();
@@ -1963,6 +1991,17 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// The same order the exposure update enforces: GLSL's clamp() is undefined when low is over high, which the settings allow.
 	m_TonemapShader->SetFloat("rteAutoExposureLow", std::min(m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh));
 	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
+	m_TonemapShader->SetInt("rteOutlineRows", 5);
+	m_TonemapShader->SetFloat("rteOutlineWidth", outlineWidth);
+	m_TonemapShader->SetInt("rteOutlineRadius", outlineRadius);
+	m_TonemapShader->SetFloat("rteOutlineOpacity", std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
+	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor);
+	m_TonemapShader->SetVector3f("rteOutlineColor", glm::clamp(m_Settings.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F)));
+	// The sides' colours, as the headlamps use them (Actor.cpp), and white for no side.
+	static const glm::vec3 outlineSideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
+	for (int slot = 0; slot < 5; ++slot) {
+		m_TonemapShader->SetVector3f("rteOutlineSideColors[" + std::to_string(slot) + "]", outlineSideColors[slot]);
+	}
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][m_AdaptedLuminanceCurrent[screenIndex]].Texture);
 	glActiveTexture(GL_TEXTURE0);
@@ -1973,6 +2012,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glBindTexture(GL_TEXTURE_2D, m_Distortion.Texture);
 	glActiveTexture(GL_TEXTURE3);
 	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+	glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, m_OutlineRows.Texture);
 	DrawFullscreen();
 
 	glActiveTexture(GL_TEXTURE0);

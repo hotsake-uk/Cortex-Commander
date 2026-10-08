@@ -300,6 +300,11 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("HazeFromHeat", { g_PostProcessMan.GetLightingSettings().HazeFromHeat = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireShader = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("FireFlameSize", { g_PostProcessMan.GetLightingSettings().FireFlameSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("UnitOutline", { g_PostProcessMan.GetLightingSettings().UnitOutline = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitOutlineWidth", { g_PostProcessMan.GetLightingSettings().UnitOutlineWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 4.0F); });
+	MatchProperty("UnitOutlineTeamColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineTeamColor = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitOutlineColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineColor = glm::clamp(ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().UnitOutlineColor), glm::vec3(0.0F), glm::vec3(1.0F)); });
+	MatchProperty("UnitOutlineOpacity", { g_PostProcessMan.GetLightingSettings().UnitOutlineOpacity = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("FireFlameBrightness", { g_PostProcessMan.GetLightingSettings().FireFlameBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ShockwaveStrength", { g_PostProcessMan.GetLightingSettings().ShockwaveStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
@@ -539,6 +544,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("HazeFromHeat", lighting.HazeFromHeat);
 	writer.NewPropertyWithValue("FireShader", lighting.FireShader);
 	writer.NewPropertyWithValue("FireFlameSize", lighting.FireFlameSize);
+	writer.NewPropertyWithValue("UnitOutline", lighting.UnitOutline);
+	writer.NewPropertyWithValue("UnitOutlineWidth", lighting.UnitOutlineWidth);
+	writer.NewPropertyWithValue("UnitOutlineTeamColor", lighting.UnitOutlineTeamColor);
+	writer.NewPropertyWithValue("UnitOutlineColor", WriteVec3(lighting.UnitOutlineColor));
+	writer.NewPropertyWithValue("UnitOutlineOpacity", lighting.UnitOutlineOpacity);
 	writer.NewPropertyWithValue("FireFlameBrightness", lighting.FireFlameBrightness);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
 	writer.NewPropertyWithValue("Embers", lighting.Embers);
