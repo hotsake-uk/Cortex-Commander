@@ -310,6 +310,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("UnitOutlineTeamColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineTeamColor = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineColor = glm::clamp(ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().UnitOutlineColor), glm::vec3(0.0F), glm::vec3(1.0F)); });
 	MatchProperty("UnitOutlineOpacity", { g_PostProcessMan.GetLightingSettings().UnitOutlineOpacity = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("PaletteAnimation", { g_PostProcessMan.GetLightingSettings().PaletteAnimation = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("PaletteAnimationStrength", { g_PostProcessMan.GetLightingSettings().PaletteAnimationStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("FireFlameBrightness", { g_PostProcessMan.GetLightingSettings().FireFlameBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ShockwaveStrength", { g_PostProcessMan.GetLightingSettings().ShockwaveStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
@@ -559,6 +561,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("UnitOutlineTeamColor", lighting.UnitOutlineTeamColor);
 	writer.NewPropertyWithValue("UnitOutlineColor", WriteVec3(lighting.UnitOutlineColor));
 	writer.NewPropertyWithValue("UnitOutlineOpacity", lighting.UnitOutlineOpacity);
+	writer.NewPropertyWithValue("PaletteAnimation", lighting.PaletteAnimation);
+	writer.NewPropertyWithValue("PaletteAnimationStrength", lighting.PaletteAnimationStrength);
 	writer.NewPropertyWithValue("FireFlameBrightness", lighting.FireFlameBrightness);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
 	writer.NewPropertyWithValue("Embers", lighting.Embers);

@@ -210,6 +210,15 @@ namespace RTE {
 		/// Registers a dynamic light for the current frame, from Lua. See RegisterLight.
 		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity, LightSource::Scripts); }
 
+		/// Makes a palette colour's glow pulse, from Lua (animated palette flags; see RenderMan::SetPalettePulse). A period of 0 stops it.
+		void SetPalettePulse(int paletteIndex, float low, float high, float period, float phase);
+
+		/// Rotates a run of palette colours through each other, from Lua (see RenderMan::SetPaletteCycle). A period of 0 stops it.
+		void SetPaletteCycle(int from, int to, float period);
+
+		/// Stops every palette pulse and cycle asked for by scripts or PaletteAnimation.ini. Glowing liquids keep theirs.
+		void ClearPaletteAnimation();
+
 		/// Gets the scene lights registered for the frame about to be drawn, in scene coordinates, for the lighting-by-source readout. Main thread only.
 		const std::vector<SceneLight>& GetSceneLights() const { return m_SceneLights; }
 
@@ -363,6 +372,10 @@ namespace RTE {
 		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
 		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
 		LightingSettings m_PlayerAtmosphere; //!< The player's own atmosphere settings, captured when the first Scene loads.
+		bool m_PaletteAnimationLoaded = false; //!< Base.rte/PaletteAnimation.ini has been read.
+
+		/// Reads the animated palette colours in Base.rte/PaletteAnimation.ini, once: lines "Pulse = index, low, high, period, phase" and "Cycle = from, to, period".
+		void LoadPaletteAnimation();
 		bool m_PlayerAtmosphereCaptured = false;
 		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
 		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.

@@ -22,6 +22,10 @@
 #include "glm/gtc/type_ptr.hpp"
 
 #include "tracy/Tracy.hpp"
+#include <fstream>
+#include <cctype>
+#include <algorithm>
+#include <sstream>
 #include "tracy/TracyOpenGL.hpp"
 #include "raylib/raylib.h"
 
@@ -133,6 +137,51 @@ void PostProcessMan::UpdatePalette() {
 	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, c_PaletteEntriesNumber, 1, GL_RGBA, GL_UNSIGNED_BYTE, palette.data()));
 	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
 	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+}
+
+void PostProcessMan::SetPalettePulse(int paletteIndex, float low, float high, float period, float phase) {
+	g_RenderMan.SetPalettePulse(paletteIndex, low, high, period, phase);
+}
+
+void PostProcessMan::SetPaletteCycle(int from, int to, float period) {
+	g_RenderMan.SetPaletteCycle(from, to, period);
+}
+
+void PostProcessMan::ClearPaletteAnimation() {
+	g_RenderMan.ClearPaletteAnimation();
+}
+
+void PostProcessMan::LoadPaletteAnimation() {
+	m_PaletteAnimationLoaded = true;
+	std::ifstream file(g_PresetMan.GetFullModulePath("Base.rte/PaletteAnimation.ini"));
+	std::string line;
+	while (std::getline(file, line)) {
+		size_t comment = line.find("//");
+		line = line.substr(0, comment);
+		size_t equals = line.find('=');
+		if (equals == std::string::npos) {
+			continue;
+		}
+		std::string key = line.substr(0, equals);
+		key.erase(std::remove_if(key.begin(), key.end(), [](unsigned char c) { return std::isspace(c); }), key.end());
+		std::string values = line.substr(equals + 1);
+		std::replace(values.begin(), values.end(), ',', ' ');
+		std::istringstream numbers(values);
+		if (key == "Pulse") {
+			int index = 0;
+			float low = 0.0F, high = 0.0F, period = 0.0F, phase = 0.0F;
+			if (numbers >> index >> low >> high >> period) {
+				numbers >> phase;
+				g_RenderMan.SetPalettePulse(index, low, high, period, phase);
+			}
+		} else if (key == "Cycle") {
+			int from = 0, to = 0;
+			float period = 0.0F;
+			if (numbers >> from >> to >> period) {
+				g_RenderMan.SetPaletteCycle(from, to, period);
+			}
+		}
+	}
 }
 
 void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source) {
@@ -601,6 +650,11 @@ void PostProcessMan::PostProcess() {
 	ZoneScoped;
 	TracyGpuZone("PostProcess");
 	UpdatePalette();
+	// Animated palette flags: pulsing glows and cycling colours, for the next frame's sprites and terrain.
+	if (!m_PaletteAnimationLoaded) {
+		LoadPaletteAnimation();
+	}
+	g_RenderMan.UpdatePaletteAnimation(GetEffectTime(), m_LightingSettings.PaletteAnimation, m_LightingSettings.PaletteAnimationStrength);
 
 	// First copy the current 8bpp backbuffer to the 32bpp buffer; we'll add effects to it
 	m_PostProcessFramebuffer->Begin(true);
