@@ -2159,6 +2159,15 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 	end
 
 	local function goAfter(Enemy, why)
+		-- (Not again for five seconds after the last send for the same enemy: one it has no route to, locked on or near its attack place,
+		-- was sent once a second, the route came back empty and the waypoints were cleared, and the unit stepped, stopped and stepped in
+		-- place, a twitch at the rate of the update.)
+		state.SentAfter = state.SentAfter or {};
+		local last = state.SentAfter[Enemy.UniqueID];
+		if last and not last:IsPastSimMS(5000) then
+			return;
+		end
+		state.SentAfter[Enemy.UniqueID] = Timer();
 		Owner:ClearAIWaypoints();
 		Owner:AddAIMOWaypoint(Enemy);
 		Owner.AIMode = Actor.AIMODE_GOTO;
