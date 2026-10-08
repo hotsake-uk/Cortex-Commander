@@ -3351,6 +3351,12 @@ void AHuman::LearnFlight() {
 			m_JetLastLitSimMS = now;
 		}
 		m_JetFlying = m_Status != INACTIVE && m_Status != DEAD && m_JetLastLitSimMS >= 0.0 && now - m_JetLastLitSimMS < 400.0;
+		// (And an AI unit all through a flight the route-follower is flying, coasts and refuelling falls too: it is using its jetpack, and
+		// caught by a ladder it passed in a gap between the pilot's pulses, it hung there with the flight undone. Anyone else not on its jet,
+		// falling included, takes hold of a ladder as ever.)
+		if (!m_Controller.IsPlayerControlled() && m_Mover.flight.active && m_Status != INACTIVE && m_Status != DEAD) {
+			m_JetFlying = true;
+		}
 		// (Walked through too: a ladder's rungs stood in a corridor, and a unit coming at a ladder from its open side walked into them. A
 		// living soldier passes rungs whatever it is doing; a limp body lands on them; the climb takes hold of them by its hands.)
 		bool alive = m_Status != INACTIVE && m_Status != DEAD && m_Status != DYING;
