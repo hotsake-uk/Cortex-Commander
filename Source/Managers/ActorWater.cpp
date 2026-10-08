@@ -11,6 +11,7 @@
 #include "WeatherEffects.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <string>
 
@@ -24,14 +25,37 @@ namespace {
 	constexpr float c_AirSeconds = 12.0F; //!< How long a unit can hold its breath.
 
 	const void* s_Scene = nullptr;
-	int s_WaterMaterial = -1;
-	int s_AcidMaterial = -1;
+	// Per material (SB-1): whether it holds bodies (FluidSim::HoldsBodies), whether they can breathe in it, and the health a second it takes
+	// for each level of depth (MaterialBehaviour::TouchDamage; stock, acid's 5).
+	std::array<bool, 256> s_HoldsBodies{};
+	std::array<bool, 256> s_Breathable{};
+	std::array<float, 256> s_TouchDamage{};
+	bool s_AnyLiquid = false;
+	bool s_TablesBuilt = false;
 
 	int MaterialAt(const Vector& position) { return g_SceneMan.GetTerrMatter(position.GetFloorIntX(), position.GetFloorIntY()); }
 
-	bool InLiquid(const Vector& position) {
-		int material = MaterialAt(position);
-		return material == s_WaterMaterial || material == s_AcidMaterial;
+	bool InLiquid(const Vector& position) { return s_HoldsBodies[static_cast<unsigned char>(MaterialAt(position))]; }
+
+	/// The tables, from FluidSim's liquids (built first, in the liquids' update) and each material's behaviour.
+	void BuildTables() {
+		s_HoldsBodies.fill(false);
+		s_Breathable.fill(false);
+		s_TouchDamage.fill(0.0F);
+		s_AnyLiquid = false;
+		for (int id = 1; id < 256; ++id) {
+			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+			if (!material || material->GetIndex() != id || !FluidSim::HoldsBodies(id)) {
+				continue;
+			}
+			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			s_HoldsBodies[id] = true;
+			s_Breathable[id] = behaviour.Breathable == 1;
+			s_TouchDamage[id] = behaviour.TouchDamage >= 0.0F ? behaviour.TouchDamage : (material->GetPresetName() == "Acid" ? 5.0F : 0.0F);
+			s_AnyLiquid = true;
+		}
+		// (Looked at again next update until there is some: the liquids' own tables may not be built yet.)
+		s_TablesBuilt = s_AnyLiquid;
 	}
 
 	/// Whether there's nothing solid above a point for a good way up, so rain and snow reach it.
@@ -106,19 +130,18 @@ namespace {
 void ActorWater::Update() {
 	if (g_SceneMan.GetScene() != s_Scene) {
 		s_Scene = g_SceneMan.GetScene();
-		s_WaterMaterial = -1;
-		s_AcidMaterial = -1;
-		if (s_Scene) {
-			const Material* water = g_SceneMan.GetMaterial("Water");
-			const Material* acid = g_SceneMan.GetMaterial("Acid");
-			s_WaterMaterial = water && water->GetIndex() != g_MaterialAir ? water->GetIndex() : -1;
-			s_AcidMaterial = acid && acid->GetIndex() != g_MaterialAir ? acid->GetIndex() : -1;
-		}
+		s_TablesBuilt = false;
 	}
 	if (s_Scene) {
 		UpdateSurfaceStates();
 	}
-	if (!s_Enabled || !FluidSim::IsEnabled() || !s_Scene || (s_WaterMaterial < 0 && s_AcidMaterial < 0)) {
+	if (!s_Enabled || !FluidSim::IsEnabled() || !s_Scene) {
+		return;
+	}
+	if (!s_TablesBuilt) {
+		BuildTables();
+	}
+	if (!s_AnyLiquid) {
 		return;
 	}
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
@@ -183,12 +206,14 @@ void ActorWater::Update() {
 			actor->SetVel(velocity);
 		}
 
-		bool acid = s_AcidMaterial >= 0 && (MaterialAt(feet) == s_AcidMaterial || MaterialAt(position) == s_AcidMaterial || MaterialAt(feet + Vector(0.0F, 3.0F)) == s_AcidMaterial);
-		if (acid) {
-			actor->SetHealth(actor->GetHealth() - 5.0F * static_cast<float>(depth) * deltaTime);
+		// What eats at bodies in it (acid): the worst of the liquid at the feet, a little under them and at the middle.
+		float touchDamage = std::max({s_TouchDamage[static_cast<unsigned char>(MaterialAt(feet))], s_TouchDamage[static_cast<unsigned char>(MaterialAt(position))], s_TouchDamage[static_cast<unsigned char>(MaterialAt(feet + Vector(0.0F, 3.0F)))]});
+		if (touchDamage > 0.0F) {
+			actor->SetHealth(actor->GetHealth() - touchDamage * static_cast<float>(depth) * deltaTime);
 		}
 
-		if (Breathes(actor)) {
+		// (Not in a liquid a body can breathe in: none of the stock ones.)
+		if (Breathes(actor) && !(depth == 3 && s_Breathable[static_cast<unsigned char>(MaterialAt(head))])) {
 			float air = actor->NumberValueExists(c_AirTag) ? static_cast<float>(actor->GetNumberValue(c_AirTag)) : c_AirSeconds;
 			if (depth == 3) {
 				air = std::max(air - deltaTime, 0.0F);

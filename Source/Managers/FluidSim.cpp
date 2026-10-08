@@ -42,9 +42,10 @@ namespace {
 		Lava,
 		Acid,
 		Oil,
-		Powder //!< Sand, snow and the like: falls and slides down slopes but doesn't flow level. Not a liquid to the rest of the game.
+		Powder, //!< Sand, snow and the like: falls and slides down slopes but doesn't flow level. Not a liquid to the rest of the game.
+		Other //!< A liquid a material's own INI says flows (MaterialBehaviour::Flows) under a name the stock reactions don't know: it flows by its own numbers and reacts only as its behaviour says.
 	};
-	constexpr int c_LiquidKinds = 6;
+	constexpr int c_LiquidKinds = 7;
 
 	/// Speeds are kept in quarter pixels per step, in a byte per moving pixel.
 	struct LiquidProperties {
@@ -62,7 +63,9 @@ namespace {
 	    {9, 8, 1, 4, 12, 3}, // Acid
 	    {5, 5, 1, 3, 6, 1}, // Oil
 	    {0, 5, 1, 2, 0, 5}, // Powder
+	    {12, 8, 1, 4, 16, 2}, // Other: as water, unless its INI says otherwise.
 	};
+	static_assert(std::size(c_Liquids) == c_LiquidKinds, "A row of properties for each kind of liquid");
 	constexpr int c_SplashSpeed = 14; //!< Liquid landing at least this fast may throw a drop.
 	constexpr int c_MaxSplashesPerUpdate = 30;
 
@@ -73,16 +76,17 @@ namespace {
 	constexpr int c_LevelSearchCells = 14000; //!< How many liquid pixels such a search may cross: enough for a pit, a tunnel and the pit beyond.
 
 	std::array<Liquid, 256> s_Kinds{};
-	std::array<int, c_LiquidKinds> s_MaterialOf{}; //!< Material ID of each liquid kind, 0 if the scene's materials don't have it.
-	std::array<int, c_LiquidKinds> s_ColorOf{}; //!< Palette index each liquid is drawn with.
 	std::array<float, 256> s_PowderSlide{}; //!< For powders: the chance per step of sliding down a slope.
 	std::array<bool, 256> s_PowderSticky{}; //!< For powders: only slides off a drop two deep, so it stands steeper.
 	std::array<int, 256> s_PourColor{}; //!< Palette index a poured pixel of each flowing material gets.
-	int s_StoneMaterial = 0;
-	int s_StoneColor = 0;
-	int s_IceMaterial = 0;
-	int s_IceColor = 0;
-	int s_SnowMaterial = 0;
+	// Per material, from its behaviour (MaterialBehaviour, SB-1) or the stock rule for its name: how it moves, and what it turns into.
+	std::array<LiquidProperties, 256> s_Props{}; //!< How each liquid or powder moves.
+	std::array<bool, 256> s_Douses{}; //!< Puts fire out, and quenches what settles in it (water).
+	std::array<int, 256> s_SettlesTo{}; //!< What it sets into where it meets something that douses it (lava: stone), 0 for nothing.
+	std::array<int, 256> s_BoilsTo{}; //!< What it boils into against something that settles (water: air, with steam), -1 for nothing.
+	std::array<int, 256> s_MeltsTo{}; //!< What a solid melts into beside lava (ice and snow: water), 0 for nothing.
+	std::array<int, 256> s_FreezesTo{}; //!< What a liquid freezes into, still under snowfall (water: ice), 0 for nothing.
+	std::array<int, 256> s_ColorOfMaterial{}; //!< Palette index each material is drawn with, for pixels changed into it.
 	bool s_TablesBuilt = false;
 
 	/// The moving liquid pixels. A grid byte per terrain pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
@@ -212,53 +216,95 @@ namespace {
 		return name == "Water" ? Liquid::Water : (name == "Lava" ? Liquid::Lava : (name == "Acid" ? Liquid::Acid : (name == "Oil" ? Liquid::Oil : otherwise)));
 	}
 
+	/// The material of a name, for a behaviour that names one (SettlesTo and the like): its index, 0 for none, or -1 for "Air" itself.
+	int MaterialNamed(const std::string& name) {
+		if (name.empty()) {
+			return 0;
+		}
+		if (name == "Air") {
+			return -1;
+		}
+		for (int id = 1; id < 256; ++id) {
+			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+			if (material && material->GetIndex() == id && material->GetPresetName() == name) {
+				return id;
+			}
+		}
+		return 0;
+	}
+
+	/// The tables, per material, from each material's behaviour (MaterialBehaviour, SB-1), and where it sets nothing, the stock rule for its name:
+	/// "Water", "Lava", "Acid" and "Oil" flow, "Sand", "Snow", "Earth Rubble" and "Ashes" are powders, lava settles to "Stone" in water, which boils
+	/// off, ice and snow melt to water by lava, and water freezes to "Ice". So a mod's Materials.ini can add a liquid or change one with lines of
+	/// its own, and a mod that sets nothing behaves as before.
 	void BuildTables() {
 		s_Kinds.fill(Liquid::None);
-		s_MaterialOf.fill(0);
 		s_PowderSlide.fill(0.0F);
 		s_PowderSticky.fill(false);
 		s_PourColor.fill(0);
-		s_StoneMaterial = 0;
-		s_IceMaterial = 0;
-		s_SnowMaterial = 0;
+		s_Props.fill(c_Liquids[0]);
+		s_Douses.fill(false);
+		s_SettlesTo.fill(0);
+		s_BoilsTo.fill(0);
+		s_MeltsTo.fill(0);
+		s_FreezesTo.fill(0);
+		s_ColorOfMaterial.fill(0);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
 				continue;
 			}
 			const std::string& name = material->GetPresetName();
-			Liquid kind = LiquidFromName(name, Liquid::None);
-			if (name == "Ice") {
-				s_IceMaterial = id;
-				Color color = material->GetColor();
-				color.RecalculateIndex();
-				s_IceColor = color.GetIndex();
-			} else if (name == "Snow") {
-				s_SnowMaterial = id;
+			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			Color color = material->GetColor();
+			color.RecalculateIndex();
+			s_ColorOfMaterial[id] = color.GetIndex();
+			Liquid named = LiquidFromName(name, Liquid::None);
+			bool flows = behaviour.Flows >= 0 ? behaviour.Flows == 1 : named != Liquid::None;
+			bool powderByName = name == "Sand" || name == "Snow" || name == "Earth Rubble" || name == "Ashes";
+			bool powder = !flows && (behaviour.Powder >= 0 ? behaviour.Powder == 1 : powderByName);
+			// What it turns into, set or stock.
+			auto turnsInto = [](const std::string& set, const char* stock) { return MaterialNamed(set.empty() ? std::string(stock ? stock : "") : set); };
+			s_MeltsTo[id] = std::max(0, turnsInto(behaviour.MeltsTo, name == "Ice" || name == "Snow" ? "Water" : nullptr));
+			Liquid kind = Liquid::None;
+			if (flows) {
+				kind = named != Liquid::None ? named : Liquid::Other;
+			} else if (powder && FluidSim::PowdersEnabled()) {
+				kind = Liquid::Powder;
 			}
-			if (kind != Liquid::None) {
-				s_Kinds[id] = kind;
-				s_MaterialOf[static_cast<int>(kind)] = id;
-				Color color = material->GetColor();
-				color.RecalculateIndex();
-				s_ColorOf[static_cast<int>(kind)] = color.GetIndex();
-				s_PourColor[id] = color.GetIndex();
-				// Oil is drawn plain: its dark brown is shared with too many sprites to shimmer.
-				if (kind != Liquid::Oil) {
-					g_RenderMan.SetLiquidPaletteColor(color.GetIndex(), static_cast<int>(kind), kind == Liquid::Lava ? 230 : 0);
+			if (kind == Liquid::None) {
+				continue;
+			}
+			s_Kinds[id] = kind;
+			s_PourColor[id] = color.GetIndex();
+			LiquidProperties properties = c_Liquids[static_cast<int>(kind)];
+			auto setIf = [](int& value, int set, int low) {
+				if (set >= 0) {
+					value = std::max(set, low);
 				}
-			} else if (FluidSim::PowdersEnabled() && (name == "Sand" || name == "Snow" || name == "Earth Rubble" || name == "Ashes")) {
-				s_Kinds[id] = Liquid::Powder;
-				s_PowderSlide[id] = name == "Sand" ? 0.7F : (name == "Snow" ? 0.4F : 0.55F);
-				s_PowderSticky[id] = name == "Snow";
-				Color color = material->GetColor();
-				color.RecalculateIndex();
-				s_PourColor[id] = color.GetIndex();
-			} else if (name == "Stone") {
-				s_StoneMaterial = id;
-				Color color = material->GetColor();
-				color.RecalculateIndex();
-				s_StoneColor = color.GetIndex();
+			};
+			setIf(properties.Flow, behaviour.FlowSpeed, 0);
+			setIf(properties.Fall, behaviour.FallSpeed, 1);
+			setIf(properties.MoveEvery, behaviour.MoveEvery, 1);
+			setIf(properties.Gravity, behaviour.Gravity, 1);
+			setIf(properties.FlowGain, behaviour.Viscosity, 0);
+			setIf(properties.Weight, behaviour.LiquidWeight, 0);
+			s_Props[id] = properties;
+			if (kind == Liquid::Powder) {
+				s_PowderSlide[id] = behaviour.SlideChance >= 0.0F ? std::clamp(behaviour.SlideChance, 0.0F, 1.0F) : (name == "Sand" ? 0.7F : (name == "Snow" ? 0.4F : 0.55F));
+				s_PowderSticky[id] = behaviour.Sticky >= 0 ? behaviour.Sticky == 1 : name == "Snow";
+				continue;
+			}
+			s_Douses[id] = behaviour.Douses >= 0 ? behaviour.Douses == 1 : kind == Liquid::Water;
+			s_SettlesTo[id] = std::max(0, turnsInto(behaviour.SettlesTo, kind == Liquid::Lava ? "Stone" : nullptr));
+			s_BoilsTo[id] = turnsInto(behaviour.BoilsTo, kind == Liquid::Water ? "Air" : nullptr);
+			s_FreezesTo[id] = std::max(0, turnsInto(behaviour.FreezesTo, kind == Liquid::Water ? "Ice" : nullptr));
+			// How it is drawn: water, lava and acid by their own looks, oil plain (its dark brown is shared with too many sprites to shimmer), a
+			// liquid of a mod's own as water; and lava glows.
+			int look = behaviour.Look >= 0 ? behaviour.Look : (kind == Liquid::Oil ? 0 : (kind == Liquid::Other ? 1 : static_cast<int>(kind)));
+			int glow = behaviour.Glow >= 0 ? std::clamp(behaviour.Glow, 0, 255) : (kind == Liquid::Lava ? 230 : 0);
+			if (look > 0) {
+				g_RenderMan.SetLiquidPaletteColor(color.GetIndex(), std::clamp(look, 1, 15), glow);
 			}
 		}
 		s_TablesBuilt = true;
@@ -353,13 +399,13 @@ namespace {
 		return false;
 	}
 
-	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air with air below it. The look passes through air and through liquid of its own kind.
+	/// Looks along a liquid pixel's own row, one way, for the nearest place it could drop into: air with air below it. The look passes through air and through liquid of its own material.
 	/// @return How many pixels away the place is, or 0 if there's none within reach.
 	int FindRowDrop(BITMAP* materialBitmap, int x, int y, int side, int reach, int width, int height) {
 		if (y + 1 >= height) {
 			return 0;
 		}
-		Liquid kind = s_Kinds[materialBitmap->line[y][x]];
+		int own = materialBitmap->line[y][x];
 		for (int step = 1; step <= reach; ++step) {
 			int lookX = x + side * step;
 			int lookY = y;
@@ -371,7 +417,7 @@ namespace {
 				if (materialBitmap->line[y + 1][lookX] == g_MaterialAir) {
 					return step;
 				}
-			} else if (s_Kinds[material] != kind) {
+			} else if (material != own) {
 				return 0;
 			}
 		}
@@ -382,7 +428,7 @@ namespace {
 	/// A little each update, working through the whole terrain every few seconds.
 	void Sweep(SLTerrain* terrain, int width, int height) {
 		// In snowy weather still water slowly freezes over from the top.
-		float freezing = s_IceMaterial && FluidSim::FreezingEnabled() ? WeatherEffects::GetSnow() : 0.0F;
+		float freezing = FluidSim::FreezingEnabled() ? WeatherEffects::GetSnow() : 0.0F;
 		size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
 		if (total == 0) {
 			return;
@@ -407,11 +453,11 @@ namespace {
 					// Now and then a pixel of a resting surface is woken to look through the body it's part of for a lower place (see FindLowerSpot): this is what starts
 					// two pools joined below coming to one level. If it finds one, the pixels around it wake and follow; if not, it goes back to sleep. A different one in 16 each pass.
 					Activate(x, y, width, height, terrain);
-				} else if (freezing > 0.05F && sweptKind == Liquid::Water && y > 0) {
+				} else if (int freezesTo = s_FreezesTo[materialBitmap->line[y][x]]; freezing > 0.05F && freezesTo != 0 && y > 0) {
 					int above = materialBitmap->line[y - 1][x];
-					if ((above == g_MaterialAir || (above == s_IceMaterial && Random01() < 0.25F)) && Random01() < freezing * 0.04F) {
-						terrain->SetMaterialPixel(x, y, s_IceMaterial);
-						terrain->SetFGColorPixel(x, y, s_IceColor);
+					if ((above == g_MaterialAir || (above == freezesTo && Random01() < 0.25F)) && Random01() < freezing * 0.04F) {
+						terrain->SetMaterialPixel(x, y, freezesTo);
+						terrain->SetFGColorPixel(x, y, s_ColorOfMaterial[freezesTo]);
 					}
 				}
 			}
@@ -436,6 +482,14 @@ namespace {
 
 bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
+}
+
+bool FluidSim::HoldsBodies(int materialID) {
+	if (!IsLiquid(materialID)) {
+		return false;
+	}
+	Liquid kind = s_Kinds[materialID];
+	return kind == Liquid::Water || kind == Liquid::Acid || kind == Liquid::Other;
 }
 
 void FluidSim::SetPowdersEnabled(bool enabled) {
@@ -469,7 +523,7 @@ void FluidSim::OnParticleSettled(const MovableObject* particle) {
 		return;
 	}
 	const MOPixel* pixel = dynamic_cast<const MOPixel*>(particle);
-	if (pixel && pixel->GetColor().GetIndex() == s_ColorOf[static_cast<int>(s_Kinds[material])]) {
+	if (pixel && pixel->GetColor().GetIndex() == s_PourColor[material]) {
 		std::scoped_lock lock(s_QueueMutex);
 		s_Disturbances.emplace_back(glm::ivec2(position.GetFloorIntX(), position.GetFloorIntY()), 1);
 	}
@@ -696,20 +750,24 @@ void FluidSim::Update() {
 	for (int key: keys) {
 		int x = key % width;
 		int y = key / width;
-		Liquid kind = KindAt(terrain, x, y);
+		const int ownMaterial = materialBitmap->line[y][x];
+		Liquid kind = s_Kinds[ownMaterial];
 		if (kind == Liquid::None) {
 			settled.push_back(key);
 			continue;
 		}
-		const LiquidProperties& properties = c_Liquids[static_cast<int>(kind)];
+		const LiquidProperties& properties = s_Props[ownMaterial];
 		if (simUpdate % properties.MoveEvery != 0) {
 			continue;
 		}
 
-		// Reactions with neighbours. Only lava and acid react, and water only has fire to put out when something is burning; for everything else there's nothing to check.
+		// Reactions with neighbours. Only lava (and what settles like it), acid and what douses fire, when something is burning, react; for everything
+		// else there's nothing to check.
 		static constexpr int neighbours[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
 		bool reacted = false;
-		bool mayReact = kind == Liquid::Lava || kind == Liquid::Acid || (kind == Liquid::Water && anyFire);
+		const bool douses = s_Douses[ownMaterial];
+		const int settlesTo = s_SettlesTo[ownMaterial];
+		bool mayReact = kind == Liquid::Lava || settlesTo != 0 || kind == Liquid::Acid || (douses && anyFire);
 		for (const auto& offset: neighbours) {
 			if (!mayReact) {
 				break;
@@ -721,12 +779,15 @@ void FluidSim::Update() {
 			}
 			int neighbourMaterial = materialBitmap->line[ny][nx];
 			Liquid neighbourKind = s_Kinds[static_cast<unsigned char>(neighbourMaterial)];
-			if (kind == Liquid::Lava && neighbourKind == Liquid::Water && s_StoneMaterial) {
-				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam.
-				terrain->SetMaterialPixel(x, y, s_StoneMaterial);
-				terrain->SetFGColorPixel(x, y, s_StoneColor);
-				terrain->SetMaterialPixel(nx, ny, g_MaterialAir);
-				terrain->SetFGColorPixel(nx, ny, ColorKeys::g_MaskColor);
+			if (settlesTo != 0 && s_Douses[neighbourMaterial]) {
+				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam (or to what it boils to).
+				terrain->SetMaterialPixel(x, y, settlesTo);
+				terrain->SetFGColorPixel(x, y, s_ColorOfMaterial[settlesTo]);
+				int boilsTo = s_BoilsTo[neighbourMaterial];
+				if (boilsTo != 0) {
+					terrain->SetMaterialPixel(nx, ny, boilsTo > 0 ? boilsTo : static_cast<int>(g_MaterialAir));
+					terrain->SetFGColorPixel(nx, ny, boilsTo > 0 ? s_ColorOfMaterial[boilsTo] : static_cast<int>(ColorKeys::g_MaskColor));
+				}
 				ActivateAround(nx, ny, width, height, terrain);
 				EffectsParticles::SpawnExplosion(Vector(static_cast<float>(nx), static_cast<float>(ny)), 520.0F);
 				if (Random01() < 0.5F) {
@@ -735,16 +796,17 @@ void FluidSim::Update() {
 				reacted = true;
 				break;
 			}
-			if (kind == Liquid::Lava && neighbourMaterial != g_MaterialAir && (neighbourMaterial == s_IceMaterial || neighbourMaterial == s_SnowMaterial) && s_MaterialOf[static_cast<int>(Liquid::Water)] && Random01() < 0.3F) {
+			if (kind == Liquid::Lava && neighbourMaterial != g_MaterialAir && s_MeltsTo[neighbourMaterial] != 0 && Random01() < 0.3F) {
 				// Lava melts ice and snow to water (which then quenches it to stone).
-				terrain->SetMaterialPixel(nx, ny, s_MaterialOf[static_cast<int>(Liquid::Water)]);
-				terrain->SetFGColorPixel(nx, ny, s_ColorOf[static_cast<int>(Liquid::Water)]);
+				int meltsTo = s_MeltsTo[neighbourMaterial];
+				terrain->SetMaterialPixel(nx, ny, meltsTo);
+				terrain->SetFGColorPixel(nx, ny, s_ColorOfMaterial[meltsTo]);
 				Activate(nx, ny, width, height, terrain);
 			}
 			if (kind == Liquid::Lava && TerrainFire::IsFlammable(neighbourMaterial) && Random01() < 0.2F) {
 				TerrainFire::QueueIgnite(nx, ny);
 			}
-			if (kind == Liquid::Water && anyFire) {
+			if (douses && anyFire) {
 				TerrainFire::Extinguish(nx, ny);
 			}
 			if (kind == Liquid::Acid && (neighbourKind == Liquid::None || neighbourKind == Liquid::Powder) && neighbourMaterial != g_MaterialAir) {
@@ -764,7 +826,7 @@ void FluidSim::Update() {
 				}
 			}
 		}
-		if (kind == Liquid::Water && anyFire) {
+		if (douses && anyFire) {
 			TerrainFire::Extinguish(x, y);
 		}
 		if (reacted) {
@@ -783,8 +845,9 @@ void FluidSim::Update() {
 			if (!InWorld(tx, ty, width, height)) {
 				return false;
 			}
-			Liquid other = s_Kinds[materialBitmap->line[ty][tx]];
-			return other != Liquid::None && other != Liquid::Powder && c_Liquids[static_cast<int>(other)].Weight < properties.Weight;
+			int otherMaterial = materialBitmap->line[ty][tx];
+			Liquid other = s_Kinds[otherMaterial];
+			return other != Liquid::None && other != Liquid::Powder && s_Props[otherMaterial].Weight < properties.Weight;
 		};
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
@@ -917,7 +980,7 @@ void FluidSim::Update() {
 				}
 				bool atSurface = canMoveTo(x, y - 1);
 				bool atFront = canMoveTo(x - 1, y) || canMoveTo(x + 1, y);
-				if (!gotLower && !atSurface && !atFront && (still & 1) == 0 && y > 0 && s_Kinds[materialBitmap->line[y - 1][x]] == kind) {
+				if (!gotLower && !atSurface && !atFront && (still & 1) == 0 && y > 0 && materialBitmap->line[y - 1][x] == ownMaterial) {
 					// Inside the liquid with more of it pressing down from above: if there's an opening along its row within a short way (a hole in a tank's wall,
 					// the mouth of a pipe), it goes out through it. This is what makes liquid under a head of liquid pour out of a hole instead of seeping.
 					for (int side: {heading, -heading}) {
@@ -933,7 +996,7 @@ void FluidSim::Update() {
 								found = step;
 								break;
 							}
-							if (s_Kinds[material] != kind) {
+							if (material != ownMaterial) {
 								break;
 							}
 						}

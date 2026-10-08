@@ -60,6 +60,7 @@ namespace {
 	};
 
 	std::array<Fuel, 256> s_FuelTable{};
+	std::array<FuelProperties, 256> s_FuelProps{}; //!< How each material burns: its fuel's stock row, with what its behaviour sets (MaterialBehaviour, SB-1).
 	bool s_FuelTableBuilt = false;
 	int s_AshMaterial = -1;
 	int s_AshColor = 0;
@@ -105,6 +106,7 @@ namespace {
 
 	void BuildFuelTable() {
 		s_FuelTable.fill(Fuel::None);
+		s_FuelProps.fill(c_Fuels[0]);
 		s_DousingTable.fill(false);
 		s_AshMaterial = -1;
 		for (int id = 1; id < 256; ++id) {
@@ -113,7 +115,9 @@ namespace {
 				continue;
 			}
 			const std::string& name = material->GetPresetName();
-			s_DousingTable[id] = name == "Water";
+			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			// What puts fire out and how things burn: as the material's behaviour says (SB-1), and where it says nothing, by its name, as before.
+			s_DousingTable[id] = behaviour.Douses >= 0 ? behaviour.Douses == 1 : name == "Water";
 			if (name == "Water") {
 				Color waterColor = material->GetColor();
 				waterColor.RecalculateIndex();
@@ -131,6 +135,18 @@ namespace {
 			} else if (Contains(name, "Wood") || Contains(name, "Cloth") || Contains(name, "Rubber") || Contains(name, "Timber")) {
 				s_FuelTable[id] = Fuel::Wood;
 			}
+			if (!behaviour.Burns.empty()) {
+				const std::string& burns = behaviour.Burns;
+				s_FuelTable[id] = burns == "Grass" ? Fuel::Grass : (burns == "Wood" ? Fuel::Wood : (burns == "Oil" ? Fuel::Oil : Fuel::None));
+			}
+			FuelProperties fuel = c_Fuels[static_cast<int>(s_FuelTable[id])];
+			if (s_FuelTable[id] != Fuel::None) {
+				fuel.MinTicks = behaviour.BurnMinTicks >= 0 ? std::max(behaviour.BurnMinTicks, 1) : fuel.MinTicks;
+				fuel.MaxTicks = behaviour.BurnMaxTicks >= 0 ? std::max(behaviour.BurnMaxTicks, fuel.MinTicks) : std::max(fuel.MaxTicks, fuel.MinTicks);
+				fuel.Spread = behaviour.BurnSpread >= 0.0F ? std::clamp(behaviour.BurnSpread, 0.0F, 1.0F) : fuel.Spread;
+				fuel.LeavesAsh = behaviour.LeavesAsh >= 0 ? behaviour.LeavesAsh == 1 : fuel.LeavesAsh;
+			}
+			s_FuelProps[id] = fuel;
 		}
 		s_FuelTableBuilt = true;
 	}
@@ -175,11 +191,12 @@ namespace {
 		if (s_Burning.count(key)) {
 			return;
 		}
-		Fuel kind = s_FuelTable[static_cast<unsigned char>(terrain->GetMaterialPixel(x, y))];
+		unsigned char material = static_cast<unsigned char>(terrain->GetMaterialPixel(x, y));
+		Fuel kind = s_FuelTable[material];
 		if (kind == Fuel::None || !IsExposed(terrain, x, y, width, height)) {
 			return;
 		}
-		const FuelProperties& fuel = c_Fuels[static_cast<int>(kind)];
+		const FuelProperties& fuel = s_FuelProps[material];
 		short ticks = static_cast<short>(fuel.MinTicks + static_cast<int>(Random01(s_Random) * static_cast<float>(fuel.MaxTicks - fuel.MinTicks + 1)));
 		s_Burning.emplace(key, BurningPixel{x, y, ticks, ticks, kind});
 	}
@@ -404,12 +421,13 @@ void TerrainFire::Update() {
 	std::vector<int> burntOut;
 	std::vector<int> goneOut;
 	for (auto& [key, pixel]: s_Burning) {
-		if (s_FuelTable[static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y))] == Fuel::None) {
+		unsigned char burningMaterial = static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y));
+		if (s_FuelTable[burningMaterial] == Fuel::None) {
 			// The fuel flowed or was blown away.
 			goneOut.push_back(key);
 			continue;
 		}
-		const FuelProperties& fuel = c_Fuels[static_cast<int>(pixel.Kind)];
+		const FuelProperties& fuel = s_FuelProps[burningMaterial];
 		for (int i = 0; i < 4; ++i) {
 			if (Random01(s_Random) < fuel.Spread * directionScale[i] * damping) {
 				spreadTo.emplace_back(pixel.X + neighbours[i][0], pixel.Y + neighbours[i][1]);
@@ -438,7 +456,8 @@ void TerrainFire::Update() {
 	int maxY = -1;
 	for (int key: burntOut) {
 		const BurningPixel& pixel = s_Burning[key];
-		bool ash = c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh && s_AshMaterial > 0;
+		unsigned char burntMaterial = static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y));
+		bool ash = (s_FuelTable[burntMaterial] != Fuel::None ? s_FuelProps[burntMaterial].LeavesAsh : c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh) && s_AshMaterial > 0;
 		terrain->SetMaterialPixel(pixel.X, pixel.Y, ash ? s_AshMaterial : g_MaterialAir);
 		terrain->SetFGColorPixel(pixel.X, pixel.Y, ash ? s_AshColor : ColorKeys::g_MaskColor);
 		minX = std::min(minX, pixel.X);
