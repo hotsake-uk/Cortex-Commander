@@ -687,6 +687,7 @@ void Sandbox::DrawGUI() {
 	}
 	if (InGame()) {
 		DrawSelection();
+		DrawMinimap();
 	}
 
 	if (hiddenButAbove) {

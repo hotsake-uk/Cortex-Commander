@@ -1024,6 +1024,9 @@ namespace SandboxDetail {
 		if (pressed(ImGuiKey_Q)) {
 			SelectKindsInView();
 		}
+		if (pressed(ImGuiKey_N)) {
+			g_SettingsMan.SetShowSandboxMinimap(!g_SettingsMan.ShowSandboxMinimap());
+		}
 	}
 
 	/// The Keys page of the sandbox window (RC-6): every key the sandbox's tools answer to, and the group badges.
@@ -1037,7 +1040,7 @@ namespace SandboxDetail {
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"Ctrl+Z", "Undo the last paint"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"},
 		                              {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"},
-		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
 				for (size_t i = 0; i < count; ++i) {
@@ -2150,7 +2153,7 @@ namespace SandboxDetail {
 			if (ToolUI::SmallButton("Show...")) {
 				ImGui::OpenPopup("##commandShow");
 			}
-			ImGui::SetItemTooltip("Order marks over units, \"no route\" markers, under-fire pings and group numbers.");
+			ImGui::SetItemTooltip("Order marks over units, \"no route\" markers, under-fire pings, group numbers and the map.");
 			if (ImGui::BeginPopup("##commandShow")) {
 				ImGui::TextDisabled("Order marks over units");
 				int glyphs = g_SettingsMan.SandboxOrderGlyphs();
@@ -2173,6 +2176,11 @@ namespace SandboxDetail {
 				if (ToolUI::Checkbox("Group numbers", &badges)) {
 					g_SettingsMan.SetShowSandboxGroupBadges(badges);
 				}
+				bool map = g_SettingsMan.ShowSandboxMinimap();
+				if (ToolUI::Checkbox("Map  (N)", &map)) {
+					g_SettingsMan.SetShowSandboxMinimap(map);
+				}
+				ImGui::SetItemTooltip("The whole scene small, with every unit, the view, pings and \"no route\" crosses.\nClick: look there. Drag: select. Right click: the selected units' order there, as the mode says (Shift: add it to their plans).");
 				ImGui::TextDisabled("A \"no route\" cross shows where units couldn't get to; click it to send them again.");
 				ImGui::EndPopup();
 			}

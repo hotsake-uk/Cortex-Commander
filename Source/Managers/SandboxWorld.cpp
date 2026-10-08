@@ -862,6 +862,9 @@ namespace SandboxDetail {
 				} else if (stroke.Count == 20 || stroke.Count == 21) {
 					// A patrol route (RC-4): 20 a loop, 21 back and forth.
 					PatrolSelected(stroke.Points, stroke.Count == 21);
+				} else if (stroke.Count == 41 || stroke.Count == 42) {
+					// A right click on the map (RC-8): the mode's order at the place, 42 with Shift.
+					MapOrder(at, stroke.Count == 42);
 				} else if (stroke.Count == 40) {
 					// A "no route" marker clicked (RC-7): its units sent there again.
 					ReissueNoRoute(stroke.Position);

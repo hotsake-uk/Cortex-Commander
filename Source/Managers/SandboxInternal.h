@@ -1261,6 +1261,7 @@ namespace SandboxDetail {
 	void AddNoRoute(Actor* unit, const Vector& destination);
 	void UpdateMoveWatch();
 	void ReissueNoRoute(const Vector& destination);
+	void MapOrder(const Vector& point, bool shift);
 	void UpdatePace();
 	const Actor* FollowedBy(const Actor* unit);
 	void GuardUnit(Actor* unit, Actor* leader);
@@ -1309,6 +1310,7 @@ namespace SandboxDetail {
 	void PictureGrid(Tool kind, const char* group);
 	void FormationCombo(const char* id);
 	void DrawOrderFeedback();
+	void DrawMinimap();
 	const NoRoute* NoRouteAt(const ImVec2& mouse);
 	void LookAtUnits(const std::vector<UnitRef>& units);
 	void CommandHotkeys();

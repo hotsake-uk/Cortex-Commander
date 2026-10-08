@@ -135,6 +135,7 @@ void SettingsMan::Clear() {
 	m_SandboxGroupBadges = true;
 	m_SandboxOrderGlyphs = 1;
 	m_SandboxAttackPings = true;
+	m_SandboxMinimap = false;
 	m_LightsBySource = false;
 	m_SandboxCharacterState = false;
 	m_SandboxAutoBattle = false;
@@ -514,6 +515,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
+	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
 	MatchProperty("SandboxCharacterState", { reader >> m_SandboxCharacterState; });
 	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
@@ -949,6 +951,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
 	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
 	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
