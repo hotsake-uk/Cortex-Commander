@@ -264,6 +264,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How much mist gathers low in open ground around dawn, a little at night and more in rain.");
 			Slider("Mist clears after (seconds)", &settings.FogClearSeconds, 3.0F, 120.0F, "%.0f");
 		}
+		Check("Lightning bolts", &settings.LightningBolts);
+		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
 		Slider("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
