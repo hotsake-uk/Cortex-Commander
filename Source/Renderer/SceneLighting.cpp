@@ -1658,6 +1658,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	bool waterReflections = m_Settings.Enabled && m_Settings.WaterReflections && surface;
 	m_CompositeShader->SetFloat("rteWaterReflection", waterReflections ? std::clamp(m_Settings.WaterReflectionStrength, 0.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetFloat("rteWaterRefraction", waterReflections ? std::clamp(m_Settings.WaterRefraction, 0.0F, 1.5F) : 0.0F);
+	m_CompositeShader->SetBool("rteWaterMirrorSurface", m_Settings.WaterMirrorSurface);
 	m_CompositeShader->SetVector3f("rteSkyDaylight", m_SkyDaylight);
 	m_CompositeShader->SetFloat("rteSkyOwnLight", m_Settings.Enabled ? std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);
