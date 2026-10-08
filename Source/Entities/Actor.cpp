@@ -26,6 +26,7 @@
 #include "PerformanceMan.h"
 #include "PostProcessMan.h"
 #include "PieMenu.h"
+#include "SmokeGrid.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -1451,6 +1452,113 @@ float Actor::GetNightSightScale() const {
 	// A headlamp keeps most of the view; without one, eyes only reach about half as far in the dark.
 	float floor = (settings.Headlamps && !IsDead()) ? 0.8F : 0.5F;
 	return (1.0F - night * (1.0F - floor)) * weather;
+}
+
+std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range, int budget) {
+	m_Sightings.clear();
+	if (budget <= 0 || range <= 0.0F) {
+		return m_Sightings;
+	}
+	const Vector eyes = GetEyePos();
+	// The aim and the facing, as directions on screen (angles are counter-clockwise with Y up).
+	const float aimAngle = GetAimAngle(true);
+	const Vector aimDirection(std::cos(aimAngle), -std::sin(aimAngle));
+	const Vector facing(m_HFlipped ? -1.0F : 1.0F, 0.0F);
+	const float halfField = std::clamp(fovDegrees, 10.0F, 360.0F) * 0.5F;
+	// Sharp aim: a narrow look down the aim (a fifth of the field, 4 degrees at least) that reaches half as far again, as down a scope.
+	const bool sharp = m_Controller.IsState(AIM_SHARP);
+	const float halfNarrow = std::max(4.0F, halfField * 0.2F);
+	const float sightScale = GetNightSightScale();
+	const float reach = range * sightScale;
+	const float narrowReach = sharp ? reach * 1.5F : reach;
+	auto degreesBetween = [](const Vector& a, const Vector& b) {
+		float cosine = std::clamp((a.m_X * b.m_X + a.m_Y * b.m_Y) / std::max(a.GetMagnitude() * b.GetMagnitude(), 0.0001F), -1.0F, 1.0F);
+		return std::acos(cosine) * 180.0F / c_PI;
+	};
+
+	struct Candidate {
+		Actor* actor;
+		Vector toTarget;
+		float distance;
+		float offAim; // Degrees off the aim.
+		float off; // Degrees off the field it is in (the aim's when sharp and inside it, else the facing's), as a fraction of that field's half.
+	};
+	std::vector<Candidate> candidates;
+	Box box(eyes - Vector(narrowReach, narrowReach), narrowReach * 2.0F, narrowReach * 2.0F);
+	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, m_Team, true)) {
+		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
+		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
+			continue;
+		}
+		if (std::any_of(candidates.begin(), candidates.end(), [actor](const Candidate& candidate) { return candidate.actor == actor; })) {
+			continue;
+		}
+		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		float distance = toTarget.GetMagnitude();
+		float offAim = degreesBetween(toTarget, aimDirection);
+		float offFacing = degreesBetween(toTarget, facing);
+		float off;
+		if (sharp && offAim <= halfNarrow && distance <= narrowReach) {
+			off = offAim / halfNarrow;
+		} else if (offFacing <= halfField && distance <= reach) {
+			off = offFacing / halfField;
+		} else {
+			continue;
+		}
+		candidates.push_back({actor, toTarget, distance, offAim, off});
+	}
+	// The likeliest first: nearest the aim, then nearest, so the budget goes where a person would look.
+	std::sort(candidates.begin(), candidates.end(), [narrowReach](const Candidate& a, const Candidate& b) { return a.offAim / 90.0F + a.distance / narrowReach < b.offAim / 90.0F + b.distance / narrowReach; });
+
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	const float night = (lighting.Enabled && lighting.NightAffectsAI) ? GetNightAmount() : 0.0F;
+	for (const Candidate& candidate: candidates) {
+		if (budget <= 0) {
+			break;
+		}
+		// The body, then the head when the body is hidden (over a wall, behind a crate).
+		bool seen = false;
+		bool head = false;
+		Vector hitPos;
+		for (int look = 0; look < 2 && budget > 0 && !seen; ++look) {
+			Vector target = look == 0 ? candidate.actor->GetPos() : candidate.actor->GetEyePos();
+			if (look == 1 && target == candidate.actor->GetPos()) {
+				break;
+			}
+			--budget;
+			Vector ray = g_SceneMan.ShortestDistance(eyes, target, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+			// (A little past the point, so a ray to a thin body's middle still lands on it.)
+			ray.SetMagnitude(ray.GetMagnitude() + 4.0F);
+			MOID hit = g_SceneMan.CastMORay(eyes, ray, m_MOID, IgnoresWhichTeam(), g_MaterialGrass, false, 5);
+			const MovableObject* hitMO = g_MovableMan.GetMOFromID(hit);
+			if (hitMO && hitMO->GetRootParent() == candidate.actor && !SmokeGrid::BlocksSight(eyes, target)) {
+				seen = true;
+				head = look == 1;
+				hitPos = g_SceneMan.GetLastRayHitPos();
+			}
+		}
+		if (!seen) {
+			continue;
+		}
+		// How plainly: off the middle of the field, far, in the dark (unless lit, by a lamp, its own headlamp or its gun going off), still,
+		// and small (lying down, crouched, only a head showing) each take some away. The script delays its notice by it.
+		float angle = 1.0F - 0.6F * std::clamp(candidate.off, 0.0F, 1.0F);
+		float far = 1.0F - 0.7F * std::clamp(candidate.distance / narrowReach, 0.0F, 1.0F);
+		float light = 1.0F;
+		if (night > 0.05F) {
+			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
+			if (candidate.actor->GetController()->IsState(WEAPON_FIRE)) {
+				lit = 1.0F;
+			}
+			light = std::max(1.0F - night * 0.7F, std::min(1.0F, lit * 1.5F));
+		}
+		float moving = candidate.actor->GetVel().MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
+		float profile = std::clamp(candidate.actor->GetSightProfile(), 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
+		float visibility = std::clamp(angle * far * light * moving * profile, 0.05F, 1.0F);
+		m_Sightings.push_back({candidate.actor, hitPos, visibility, candidate.distance, head});
+	}
+	std::sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
+	return m_Sightings;
 }
 
 void Actor::Update() {

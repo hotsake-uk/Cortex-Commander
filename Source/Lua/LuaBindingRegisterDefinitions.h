@@ -214,6 +214,7 @@ namespace RTE {
 		LuaBindingRegisterFunctionDeclarationForType(ACraft);
 		LuaBindingRegisterFunctionDeclarationForType(ACRocket);
 		LuaBindingRegisterFunctionDeclarationForType(Actor);
+		LuaBindingRegisterFunctionDeclarationForType(ActorSighting);
 		LuaBindingRegisterFunctionDeclarationForType(ADoor);
 		LuaBindingRegisterFunctionDeclarationForType(AEmitter);
 		LuaBindingRegisterFunctionDeclarationForType(AEJetpack);
