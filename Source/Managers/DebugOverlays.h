@@ -31,5 +31,12 @@ namespace RTE {
 
 		/// The terrain update boxes overlay: the areas and nodes NoteTerrainUpdate kept, fading over a second.
 		void DrawTerrainUpdates();
+
+		/// The light sources overlay: player 1's lights from the last frame (SceneLighting::GetDebugLights) as reach circles, colour dots and cone
+		/// wedges, the scenery lamps with their anchors, and the counts.
+		void DrawLightSources();
+
+		/// The sun direction overlay: an arrow from the middle of the game's picture towards the sun or moon, with its shadow strength.
+		void DrawSunDirection();
 	} // namespace DebugOverlays
 } // namespace RTE

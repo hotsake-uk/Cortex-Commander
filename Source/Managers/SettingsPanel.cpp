@@ -594,6 +594,14 @@ void DebugMan::SettingsGUI() {
 		Tip("For inspected units in a squad: a green line from the leader to each follower, the leader's trail (yellow) that followers measure back along, and each follower's place in line as a white ring with its slot number.");
 	};
 
+	// How the picture is lit, drawn over the game.
+	auto renderDebug = [&]() {
+		Toggle("Light sources", g_SettingsMan.ShowLightSources(), [](bool on) { g_SettingsMan.SetShowLightSources(on); });
+		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey), and counts by kind with the summed reach squared, about what the light pass costs.");
+		Toggle("Sun direction and shadow strength", g_SettingsMan.ShowSunDirection(), [](bool on) { g_SettingsMan.SetShowSunDirection(on); });
+		Tip("An arrow from the middle of the screen towards the sun, or the moon at night, with how strong its shadows are right now after the time of day and the weather.");
+	};
+
 	const std::pair<const char*, std::function<void()>> categories[] = {
 	    {"Time & weather", timeAndWeather},
 	    {"Sky & daylight", skyAndDaylight},
@@ -607,6 +615,7 @@ void DebugMan::SettingsGUI() {
 	    {"Game & HUD", gameAndHUD},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
+	    {"Render debug", renderDebug},
 	};
 	const int categoryCount = static_cast<int>(std::size(categories));
 	m_SettingsCategory = std::clamp(m_SettingsCategory, 0, categoryCount - 1);

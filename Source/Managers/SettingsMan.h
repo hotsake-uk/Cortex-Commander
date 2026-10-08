@@ -254,6 +254,19 @@ namespace RTE {
 		/// @param which 0, 1 or 2.
 		void SetCombatOverlay(int which) { m_CombatOverlay = std::clamp(which, 0, 2); }
 
+		/// Gets whether the light sources overlay is on: every light on player 1's screen as a reach circle and colour dot (cones as wedges),
+		/// the scenery lamps with what they hang on, and counts by kind with the fill cost.
+		bool ShowLightSources() const { return m_ShowLightSources; }
+
+		/// Sets whether the light sources overlay is on.
+		void SetShowLightSources(bool show) { m_ShowLightSources = show; }
+
+		/// Gets whether the sun direction overlay is on: an arrow from the middle of the screen towards the sun (or moon), with its shadow strength.
+		bool ShowSunDirection() const { return m_ShowSunDirection; }
+
+		/// Sets whether the sun direction overlay is on.
+		void SetShowSunDirection(bool show) { m_ShowSunDirection = show; }
+
 		/// Gets whether the terrain update boxes overlay is on: the areas of changed terrain waiting for the path grid (orange) and the nodes
 		/// re-sampled for them (red), each shown for a moment after it happens. Not saved.
 		bool ShowTerrainUpdates() const { return m_ShowTerrainUpdates; }
@@ -490,6 +503,8 @@ namespace RTE {
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
+		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).
+		bool m_ShowSunDirection; //!< Whether the sun direction overlay is on (see ShowSunDirection).
 		bool m_ShowTerrainUpdates; //!< Whether the terrain update boxes overlay is on (see ShowTerrainUpdates).
 		bool m_ShowRecentSolves; //!< Whether the recent path solves overlay is on (see ShowRecentSolves).
 		int m_CombatOverlay; //!< Which units the combat AI overlay draws for (see CombatOverlay).
