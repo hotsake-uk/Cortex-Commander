@@ -1081,6 +1081,8 @@ PathAgent AHuman::GetPathAgent() const {
 	// The leap of its legs (see UpdateLeap), for anything with a leg.
 	agent.LeapHeight = (m_pFGLeg || m_pBGLeg) ? GetLegJumpHeight() : 0.0F;
 	agent.LeapSpeed = m_LegJumpSpeed;
+	// Rough slopes too steep for stairs, on the legs and arms (LM-10): for anything with an arm to climb with as well as the legs.
+	agent.Scrambles = (m_pFGLeg || m_pBGLeg) && (m_pFGArm || m_pBGArm);
 	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
 	// burns more of the tank for the same shaft).
 	if (agent.JetTimeMS > 0.0F) {

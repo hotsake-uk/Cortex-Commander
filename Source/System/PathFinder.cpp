@@ -80,6 +80,7 @@ thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathA
 thread_local float s_LeapHeight = 0.0F; // How high a leap of the searcher's legs lifts it, px (PathAgent::LeapHeight).
 thread_local float s_LeapSpeed = 4.0F; // How fast a leap carries it forward, m/s (PathAgent::LeapSpeed).
 thread_local float s_MaxSafeFall = FLT_MAX; // The highest drop a searcher with no jet lands from unhurt, px (PathAgent::MaxSafeFall).
+thread_local bool s_Scrambles = false; // Whether the searcher scrambles up rough slopes (PathAgent::Scrambles).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
@@ -531,6 +532,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_LeapHeight = agent.LeapHeight;
 	s_LeapSpeed = agent.LeapSpeed;
 	s_MaxSafeFall = agent.MaxSafeFall;
+	s_Scrambles = agent.Scrambles;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
@@ -575,6 +577,7 @@ namespace {
 		float LeapHeight = s_LeapHeight;
 		float LeapSpeed = s_LeapSpeed;
 		float MaxSafeFall = s_MaxSafeFall;
+		bool Scrambles = s_Scrambles;
 		float JetClimbMSPerPx = s_JetClimbMSPerPx;
 		const RTE::PathNode* FlyingStart = s_FlyingStart;
 		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
@@ -598,6 +601,7 @@ namespace {
 			s_LeapHeight = LeapHeight;
 			s_LeapSpeed = LeapSpeed;
 			s_MaxSafeFall = MaxSafeFall;
+			s_Scrambles = Scrambles;
 			s_JetClimbMSPerPx = JetClimbMSPerPx;
 			s_FlyingStart = FlyingStart;
 			s_AvoidLinks = AvoidLinks;
@@ -1002,6 +1006,24 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			}
 		}
 
+		// A scramble up a rough slope too steep for stairs, on the legs and arms (see UpdateNodeCosts for what counts): three times a walk of
+		// its length (the 3.16 nodes of three up and one over), and up only; down it is the fall it always was. (Without it a jetless unit
+		// had no way up a rubble hillside at all: it was a jump it couldn't take.)
+		if (s_Scrambles && s_JumpHeight < FLT_MAX) {
+			const PathNode* upRight = node->Up && node->Up->Up ? node->Up->Up->UpRight : nullptr;
+			if (node->ScrambleUpRight && upRight && upRight->m_Navigable) {
+				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upRight);
+				adjCost.state = const_cast<PathNode*>(upRight);
+				adjacentList->push_back(adjCost);
+			}
+			const PathNode* upLeft = node->Up && node->Up->Up ? node->Up->Up->LeftUp : nullptr;
+			if (node->ScrambleUpLeft && upLeft && upLeft->m_Navigable) {
+				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft);
+				adjCost.state = const_cast<PathNode*>(upLeft);
+				adjacentList->push_back(adjCost);
+			}
+		}
+
 		// Jumping vertically
 		if (s_JumpHeight < FLT_MAX) {
 			// How high up we can jump from this node
@@ -1262,6 +1284,8 @@ std::string PathFinder::DescribeNodeAt(const Vector& scenePos) {
 	text += std::string(" grounded ") + (node->Grounded ? "yes" : "no");
 	text += node->StairsUpRight ? " stairs-upright" : "";
 	text += node->StairsUpLeft ? " stairs-upleft" : "";
+	text += node->ScrambleUpRight ? " scramble-upright" : "";
+	text += node->ScrambleUpLeft ? " scramble-upleft" : "";
 	text += node->Ladder ? " ladder" : "";
 	text += " anchor " + std::to_string(static_cast<int>(node->Anchor.m_X)) + "," + std::to_string(static_cast<int>(node->Anchor.m_Y));
 	return text;
@@ -1396,6 +1420,10 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 		if (rightwards ? lower->StairsUpRight : lower->StairsUpLeft) {
 			return PathStepKind::Stairs;
 		}
+	}
+	// A scramble up: three nodes of height for one of width, with the lower node's scramble flag set towards the upper.
+	if (s_Scrambles && dy < 0.0F && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(dy + 3.0F * nodeSize) < 1.0F && (dx > 0.0F ? from->ScrambleUpRight : from->ScrambleUpLeft)) {
+		return PathStepKind::Scramble;
 	}
 	// A leap's two floors, two or more nodes apart, where the search's edge between them was the leap (see s_LeapsTaken).
 	if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(dx) > nodeSize * 1.5F && s_LeapsTaken.count({from, to}) > 0) {
@@ -1626,6 +1654,13 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 			if (node->StairsUpLeft && node->Up && node->Up->LeftUp) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->LeftUp->Pos, stairsColor);
 			}
+			// (Scrambles in the stairs' colour too: a steeper way up on the legs.)
+			if (node->ScrambleUpRight && node->Up && node->Up->Up && node->Up->Up->UpRight) {
+				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->Up->UpRight->Pos, stairsColor);
+			}
+			if (node->ScrambleUpLeft && node->Up && node->Up->Up && node->Up->Up->LeftUp) {
+				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->Up->LeftUp->Pos, stairsColor);
+			}
 			// Leap links (see AddLeapLinks), as an arc of two lines over the gap or up onto the lip, from the floors they can start from: the
 			// edge of a floor, or under a lip a node to either side. (None in no-gravity areas, as the search offers none there.)
 			if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && !g_SceneMan.IsPointInNoGravArea(node->Pos)) {
@@ -1834,6 +1869,8 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	bool oldStairsUpRight = node->StairsUpRight;
 	bool oldGrounded = node->Grounded;
 	bool oldStairsUpLeft = node->StairsUpLeft;
+	bool oldScrambleUpRight = node->ScrambleUpRight;
+	bool oldScrambleUpLeft = node->ScrambleUpLeft;
 	std::array<float, 2> oldStepOverRise = node->StepOverRise;
 	std::array<int, 2> oldStepOverRoom = node->StepOverRoom;
 	std::array<float, 2> oldStepOverRiseLeft = node->StepOverRiseLeft;
@@ -2064,6 +2101,53 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		node->StairsUpLeft = stairsTo(node->Up ? node->Up->LeftUp : nullptr);
 	}
 
+	// A scramble (LM-10): a rise of 60 to 80 px over the 24 of width (about 70 to 75 degrees, too steep for stairs) up a face that is rough,
+	// not a wall: two level looks into it from the lower floor, a third and two thirds of the way up, meet it at different distances, as
+	// they do on a slope and don't on a wall; the ground is loose or diggable (rubble, soil, sand: what a body's hands and feet find holds in);
+	// and the way up a little over the face is clear, as for stairs.
+	{
+		auto scrambleTo = [&](const PathNode* target, float side) -> bool {
+			if (!target || node->Surface < 0.0F) {
+				return false;
+			}
+			float targetSurface = SurfaceUnder(*target);
+			if (targetSurface < 0.0F) {
+				return false;
+			}
+			float rise = node->Surface - targetSurface;
+			if (rise <= 60.0F || rise > 80.0F) {
+				return false;
+			}
+			// How far across the face is met at a height over the lower floor, looking from the lower node's middle (-1 for not met).
+			auto faceAt = [&](float height) -> float {
+				int y = static_cast<int>(node->Surface - height);
+				for (int d = 0; d <= static_cast<int>(m_NodeDimension) + 12; ++d) {
+					if (g_SceneMan.GetTerrMatter(static_cast<int>(node->Pos.m_X + side * static_cast<float>(d)), y) != MaterialColorKeys::g_MaterialAir) {
+						return static_cast<float>(d);
+					}
+				}
+				return -1.0F;
+			};
+			float lowFace = faceAt(rise / 3.0F);
+			float highFace = faceAt(rise * 2.0F / 3.0F);
+			if (lowFace >= 0.0F && highFace >= 0.0F && highFace - lowFace < 4.0F) {
+				return false;
+			}
+			Vector here(node->Pos.m_X, node->Surface);
+			Vector there(target->Pos.m_X, targetSurface);
+			const Material* faceMaterial = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(static_cast<int>((here.m_X + there.m_X) * 0.5F + side * 4.0F), static_cast<int>((here.m_Y + there.m_Y) * 0.5F)));
+			const Material* topMaterial = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(static_cast<int>(there.m_X), static_cast<int>(there.m_Y) + 2));
+			auto holds = [](const Material* material) { return !material || material->GetIndex() == MaterialColorKeys::g_MaterialAir || material->GetIntegrity() <= c_PathFindingDefaultDigStrength; };
+			if (!holds(faceMaterial) || !holds(topMaterial)) {
+				return false;
+			}
+			return Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -14.0F), there + Vector(0.0F, -14.0F))) && Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -24.0F), there + Vector(0.0F, -24.0F)));
+		};
+		const PathNode* twoUp = node->Up ? node->Up->Up : nullptr;
+		node->ScrambleUpRight = scrambleTo(twoUp ? twoUp->UpRight : nullptr, 1.0F);
+		node->ScrambleUpLeft = scrambleTo(twoUp ? twoUp->LeftUp : nullptr, -1.0F);
+	}
+
 	// Look at each existing adjacent node and calculate the cost for each. Start and end are offset to cover more terrain.
 	// Note that we only calculate transitions to one side (down and right), because for the other side we can pull our up-and-left transition data from the other node's down-and-right.
 	if (node->Right) {
@@ -2145,7 +2229,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder) {
 		return true;
 	}
 
