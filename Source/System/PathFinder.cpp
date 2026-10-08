@@ -310,7 +310,15 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				const PathNode* toNode = static_cast<const PathNode*>(statePath[i + 1]);
 				const Material* blocking = StrongestMaterialAlongLine(fromNode->Pos, toNode->Pos);
 				s_LastCutAtDoor = blocking && blocking->GetIndex() == MaterialColorKeys::g_MaterialDoor;
-				statePath.resize(std::max<size_t>(2, i + 1));
+				// Up to the near side of that edge. (With the edge first, the path was kept two nodes long, so its end was the node past
+				// the obstacle, and the unit was sent at the far side of a wall it couldn't pass. With nothing before it, the route is the
+				// start node alone, given twice for a step to stand on.)
+				if (i == 0) {
+					statePath.resize(1);
+					statePath.push_back(statePath.front());
+				} else {
+					statePath.resize(i + 1);
+				}
 				cut = true;
 				break;
 			}
