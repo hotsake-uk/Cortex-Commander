@@ -684,6 +684,10 @@ namespace RTE {
 	private:
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this object.
 
+		/// Empties the MOID table's slots of an object taken out of the scene (it and its attachables) and gives them no ID (see RemoveActor).
+		/// @param object The object just removed.
+		void ForgetMOIDsOf(MovableObject* object);
+
 		/// Clears all the member variables of this MovableMan, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();

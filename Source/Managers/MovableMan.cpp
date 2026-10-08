@@ -837,6 +837,9 @@ Actor* MovableMan::RemoveActor(MovableObject* pActorToRem) {
 		}
 		RemoveActorFromTeamRoster(dynamic_cast<Actor*>(pActorToRem));
 		pActorToRem->SetAsAddedToMovableMan(false);
+		if (removed) {
+			ForgetMOIDsOf(removed);
+		}
 	}
 	return removed;
 }
@@ -867,6 +870,9 @@ MovableObject* MovableMan::RemoveItem(MovableObject* pItemToRem) {
 			}
 		}
 		pItemToRem->SetAsAddedToMovableMan(false);
+		if (removed) {
+			ForgetMOIDsOf(removed);
+		}
 	}
 	return removed;
 }
@@ -897,8 +903,23 @@ MovableObject* MovableMan::RemoveParticle(MovableObject* pMOToRem) {
 			}
 		}
 		pMOToRem->SetAsAddedToMovableMan(false);
+		if (removed) {
+			ForgetMOIDsOf(removed);
+		}
 	}
 	return removed;
+}
+
+void MovableMan::ForgetMOIDsOf(MovableObject* object) {
+	// An object taken out of the scene keeps no ID: its slots in the table are emptied now, and it and its attachables are given no ID, so that
+	// when it is destroyed later (by whoever took it, often Lua's garbage collector on a worker thread) ForgetMOID has nothing to write while
+	// the table is being rebuilt on another worker. Until the next rebuild a lookup by its old ID finds nothing, as for a deleted object.
+	for (MovableObject*& entry: m_MOIDIndex) {
+		if (entry && (entry == object || entry->GetRootParent() == object)) {
+			entry = nullptr;
+		}
+	}
+	object->SetAsNoID();
 }
 
 void MovableMan::AddActorToTeamRoster(Actor* pActorToAdd) {
