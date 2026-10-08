@@ -74,6 +74,9 @@ namespace {
 	std::unordered_set<const void*> s_SmokeSeen;
 	int s_SmokeFrame = 0; //!< Frames drawn, for spacing out the soft smoke each smoke sprite trails.
 	std::mutex s_SmokeMutex;
+	std::vector<glm::vec4> s_Flames; //!< Flame particles drawn this frame by the fire shader: scene position, size, heat.
+	std::unordered_set<const void*> s_FlamesSeen;
+	std::mutex s_FlameMutex;
 	std::vector<EffectsParticles::Stain> s_Stains;
 	std::mutex s_StainMutex;
 	constexpr size_t c_MaxStainsPerFrame = 400;
@@ -599,10 +602,43 @@ void EffectsParticles::RegisterSmoke(const void* object, const glm::vec2& positi
 }
 
 void EffectsParticles::BeginFrame() {
-	std::scoped_lock lock(s_SmokeMutex);
-	++s_SmokeFrame;
-	s_Smoke.clear();
-	s_SmokeSeen.clear();
+	{
+		std::scoped_lock lock(s_SmokeMutex);
+		++s_SmokeFrame;
+		s_Smoke.clear();
+		s_SmokeSeen.clear();
+	}
+	std::scoped_lock lock(s_FlameMutex);
+	s_Flames.clear();
+	s_FlamesSeen.clear();
+}
+
+void EffectsParticles::RegisterFlame(const void* object, const glm::vec2& position, float size, float heat) {
+	std::scoped_lock lock(s_FlameMutex);
+	if (s_FlamesSeen.insert(object).second) {
+		s_Flames.emplace_back(position, size, heat);
+	}
+}
+
+void EffectsParticles::GetFlames(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec4>& flames) {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	bool wraps = g_SceneMan.SceneWrapsX();
+	constexpr float margin = 48.0F;
+	std::scoped_lock lock(s_FlameMutex);
+	for (const glm::vec4& flame: s_Flames) {
+		glm::vec2 position = glm::vec2(flame) - screenOrigin;
+		if (wraps) {
+			if (position.x < (static_cast<float>(width) - sceneWidth) * 0.5F) {
+				position.x += sceneWidth;
+			} else if (position.x > (static_cast<float>(width) + sceneWidth) * 0.5F) {
+				position.x -= sceneWidth;
+			}
+		}
+		if (position.x < -margin || position.y < -margin || position.x > static_cast<float>(width) + margin || position.y > static_cast<float>(height) + margin) {
+			continue;
+		}
+		flames.emplace_back(position, flame.z, flame.w);
+	}
 }
 
 void EffectsParticles::GetSmoke(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& smoke) {
