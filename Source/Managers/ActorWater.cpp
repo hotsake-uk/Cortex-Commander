@@ -6,6 +6,7 @@
 #include "Material.h"
 #include "MovableMan.h"
 #include "SceneMan.h"
+#include "SLTerrain.h"
 #include "TimerMan.h"
 #include "PostProcessMan.h"
 #include "WeatherEffects.h"
@@ -213,7 +214,15 @@ void ActorWater::Update() {
 		}
 		if (depth > GetDepth(actor) && actor->GetVel().GetMagnitude() > 4.0F) {
 			// Dropping or running in throws up a splash: going in, or deeper in (one already wading that jumps in from a ledge above splashes too).
-			FluidSim::Splash(feet, actor->GetRadius() * 0.6F + 3.0F, 0.3F, std::min(actor->GetVel().GetMagnitude() * 0.55F, 10.0F));
+			// For the eye only, from the surface over its feet (it threw real water before, which came down on the unit; a body doesn't displace
+			// liquid). Units are splashed here, by depth, not by MOSRotating's look at their middle, so a unit landing in the shallows splashes too.
+			int x = feet.GetFloorIntX();
+			int surfaceY = feet.GetFloorIntY();
+			for (int up = 1; up <= static_cast<int>(actor->GetRadius()) * 2 + 12 && InLiquid(Vector(static_cast<float>(x), static_cast<float>(surfaceY - 1))); ++up) {
+				--surfaceY;
+			}
+			const SLTerrain* terrain = g_SceneMan.GetTerrain();
+			FluidSim::VisualSplash(Vector(static_cast<float>(x), static_cast<float>(surfaceY)), actor->GetRadius() * 1.2F, actor->GetVel().GetMagnitude(), terrain ? terrain->GetFGColorPixel(x, surfaceY) : 0);
 		}
 		actor->SetNumberValue(c_DepthTag, static_cast<double>(depth));
 

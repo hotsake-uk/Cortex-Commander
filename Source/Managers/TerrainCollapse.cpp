@@ -326,7 +326,9 @@ namespace {
 		constexpr int halfWidth = 512;
 		constexpr int halfHeight = 320;
 		constexpr int windowWidth = halfWidth * 2 + 1;
-		constexpr size_t c_MaxLiquidCells = 24000; //!< How much of the liquid one search may cross: a wide pool's surface for a big piece.
+		// How much of the liquid one search may cross: a wide pool's surface for a big piece, less for a few pixels (a piece sinking a pixel
+		// an update covers a row of them; each search was the full count, for every moving piece, every update).
+		const size_t maxLiquidCells = std::min<size_t>(24000, 2000 + displaced.size() * 100);
 		static std::vector<unsigned int> visited;
 		static unsigned int search = 0;
 		if (visited.empty() || ++search == 0) {
@@ -376,7 +378,7 @@ namespace {
 				visited[slot] = search;
 				freePlaces.push_back({x, y, across});
 				std::push_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
-			} else if (FluidSim::IsLiquid(material) && liquidSeen < c_MaxLiquidCells) {
+			} else if (FluidSim::IsLiquid(material) && liquidSeen < maxLiquidCells) {
 				visited[slot] = search;
 				++liquidSeen;
 				liquidCells.push_back({x, y, across});
