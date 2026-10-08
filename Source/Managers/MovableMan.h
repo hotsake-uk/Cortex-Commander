@@ -482,6 +482,10 @@ namespace RTE {
 		// Forces MOID drawing to complete (should be done before any physics sim or collision detection etc)
 		void CompleteQueuedMOIDDrawings();
 
+		/// Blocks until every worker task MovableMan launched at the end of its last Update has finished: the actors' sight rays, the MOID and grid rebuild, and the Lua GC run.
+		/// These read (and the GC can delete) MOs, so this must be called before anything outside Update deletes MOs or takes them out of the owning lists.
+		void WaitForWorkerTasks();
+
 		/// Draws this MovableMan's current graphical representation to a BITMAP of choice.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the scene. (default: Vector())

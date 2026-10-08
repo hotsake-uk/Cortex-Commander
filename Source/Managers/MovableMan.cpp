@@ -206,6 +206,9 @@ const std::vector<MovableObject*>* MovableMan::GetMOsAtPosition(int pixelX, int 
 }
 
 void MovableMan::PurgeAllMOs() {
+	// A restart or scene load can be requested mid-update, while the sight-ray, MOID and Lua GC tasks launched at the end of the last Update are still running on these objects.
+	WaitForWorkerTasks();
+
 	for (std::deque<Actor*>::iterator itr = m_Actors.begin(); itr != m_Actors.end(); ++itr) {
 		(*itr)->DestroyScriptState();
 	}
@@ -1082,6 +1085,9 @@ int MovableMan::KillAllEnemyActors(int teamNotToKill) const {
 }
 
 int MovableMan::GetAllActors(bool transferOwnership, std::list<SceneObject*>& actorList, int onlyTeam, bool noBrains) {
+	if (transferOwnership) {
+		WaitForWorkerTasks();
+	}
 	int addedCount = 0;
 
 	// Add all regular Actors
@@ -1124,6 +1130,9 @@ int MovableMan::GetAllActors(bool transferOwnership, std::list<SceneObject*>& ac
 }
 
 int MovableMan::GetAllItems(bool transferOwnership, std::list<SceneObject*>& itemList) {
+	if (transferOwnership) {
+		WaitForWorkerTasks();
+	}
 	int addedCount = 0;
 
 	// Add all regular Items
@@ -1149,6 +1158,9 @@ int MovableMan::GetAllItems(bool transferOwnership, std::list<SceneObject*>& ite
 }
 
 int MovableMan::GetAllParticles(bool transferOwnership, std::list<SceneObject*>& particleList) {
+	if (transferOwnership) {
+		WaitForWorkerTasks();
+	}
 	int addedCount = 0;
 
 	// Add all regular particles
@@ -2000,6 +2012,12 @@ void MovableMan::CompleteQueuedMOIDDrawings() {
 	if (m_DrawMOIDsTask.valid()) {
 		m_DrawMOIDsTask.wait();
 	}
+}
+
+void MovableMan::WaitForWorkerTasks() {
+	m_ActorsSeeFuture.wait();
+	CompleteQueuedMOIDDrawings();
+	g_LuaMan.WaitForAsyncGarbageCollection();
 }
 
 void MovableMan::Draw(BITMAP* pTargetBitmap, const Vector& targetPos) {
