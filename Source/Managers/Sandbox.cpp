@@ -382,6 +382,18 @@ namespace {
 	char s_Filter[64] = "";
 	int s_Team = 1;
 	int s_Order = static_cast<int>(Order::Hold); //!< Units placed hold their position, firing back, until told otherwise.
+
+	/// The order in hand, chosen from the orders a unit can be made with (c_UnitOrderNames), for the unit and barracks tools. The side orders share
+	/// it: "Move to a place" chosen there shows here as "Hold position", which is what a unit placed with it does, and stays as it is unless a
+	/// choice is made here. (Offered all eight, "Move to a place" was there to pick and did nothing a hold doesn't.)
+	bool UnitOrderCombo(const char* label) {
+		int choice = s_Order > c_LastUnitOrder ? static_cast<int>(Order::Hold) : s_Order;
+		if (ImGui::Combo(label, &choice, c_UnitOrderNames)) {
+			s_Order = choice;
+			return true;
+		}
+		return false;
+	}
 	int s_Loadout = 0;
 	int s_SquadSize = 1;
 	bool s_LitGrenade = false;
@@ -4620,7 +4632,7 @@ namespace {
 		if (kind == Tool::Barracks) {
 			ImGui::TextDisabled("It trains:");
 			PresetList(Tool::Unit);
-			ImGui::Combo("Their orders", &s_Order, c_OrderNames);
+			UnitOrderCombo("Their orders");
 			ImGui::SliderInt("Keeps this many alive", &s_ColonyKeep, 1, 20);
 		}
 		ImGui::SeparatorText("Standing");
@@ -4899,7 +4911,7 @@ namespace {
 			ImGui::SliderInt("##squad", &s_SquadSize, 1, 10, "Squad of %d");
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(field);
-			ImGui::Combo("##orders", &s_Order, c_OrderNames);
+			UnitOrderCombo("##orders");
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(field);
 			LoadoutChooser("##loadout");
@@ -4922,7 +4934,7 @@ namespace {
 			ImGui::SliderInt("##keep", &s_ColonyKeep, 1, 20, "Keeps %d alive");
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(field);
-			ImGui::Combo("##orders", &s_Order, c_OrderNames);
+			UnitOrderCombo("##orders");
 		} else if (tool.Kind == Tool::Effect) {
 			start(tool.Name);
 			ImGui::SetNextItemWidth(field * 1.4F);
@@ -5951,7 +5963,7 @@ void Sandbox::DrawGUI() {
 				if (kind == Tool::Unit || kind == Tool::Drop) {
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
-					ImGui::Combo("Orders", &s_Order, c_OrderNames);
+					UnitOrderCombo("Orders");
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {
