@@ -1175,6 +1175,11 @@ namespace {
 		}
 		long long update = g_TimerMan.GetSimUpdateCount();
 		if (s_PaintUndo.empty() || update - s_PaintUndo.back().LastUpdate > 15) {
+			// The step before is closed: what it saw is only needed while it records, and is most of what a big step holds.
+			if (!s_PaintUndo.empty()) {
+				std::unordered_set<long long>().swap(s_PaintUndo.back().Seen);
+				s_PaintUndo.back().Pixels.shrink_to_fit();
+			}
 			s_PaintUndo.emplace_back();
 			while (s_PaintUndo.size() > c_PaintUndoSteps) {
 				s_PaintUndo.pop_front();
