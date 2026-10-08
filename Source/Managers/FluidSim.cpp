@@ -679,6 +679,10 @@ namespace {
 						ChangePixel(terrain, x, y, freezesTo, s_ColorOfMaterial[freezesTo]);
 					}
 				}
+			} else if (sweptKind == Liquid::Powder && y + 1 < height && materialBitmap->line[y + 1][x] == g_MaterialAir && !s_Active.Contains(static_cast<int>(index))) {
+				// A pile left hanging (L-3): what held it up went without a disturbance (wood burned away under sand, a script writing the
+				// terrain). Only straight down: a resting slope with air beside it below is left alone, or every pile would creep.
+				Activate(x, y, width, height, terrain);
 			}
 			++index;
 			if (++x == width) {
