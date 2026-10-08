@@ -393,6 +393,7 @@ namespace RTE {
 			Timer hopTimer;
 			int impossibleAnswers = 0;
 			bool climbing = false; //!< In a climb begun from the ground for a point above.
+			Timer climbTimer; //!< Since the climb's burst.
 		};
 		CrabMover m_CrabMover;
 
