@@ -478,6 +478,75 @@ function SharedBehaviors.EngineMotor(Owner)
 	return ok and value ~= nil;
 end
 
+-- Whether the engine's scan (Actor.ScanForEnemies) is there, for a build without it (an older exe), where the scripts look with one
+-- random ray a tick as they did.
+function SharedBehaviors.CanScan(Owner)
+	local ok, value = pcall(function() return Owner.ScanForEnemies; end);
+	return ok and value ~= nil;
+end
+
+-- Spotting by the engine's scan (AC-1): a person's look, not a random ray. The scan says which enemies are in view and how plainly
+-- (Actor.ScanForEnemies); noticing one takes a moment that is shorter the plainer it is and the better the unit, so a poor unit is slow
+-- to react, not blind, and a crawling enemy at the edge of the view can get close. Run every update while fighting, every third while
+-- not, which keeps the rays near the one a tick the old look cast. @return The enemy noticed (the plainest), and where the look landed on
+-- it; or nothing.
+-- @param fovDegrees The field of view about the facing. @param budget The rays a scan may cast.
+function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
+	local fighting = AI.Target ~= nil;
+	AI.scanTick = (AI.scanTick or 0) + 1;
+	if not fighting and AI.scanTick % 3 ~= 0 then
+		return nil;
+	end
+	AI.ScanClock = AI.ScanClock or Timer();
+	AI.Noticing = AI.Noticing or {};
+	local now = AI.ScanClock.ElapsedSimTimeMS;
+	local elapsed = math.min((now - (AI.lastScanMS or now)) / 1000, 0.5);
+	AI.lastScanMS = now;
+	-- (As far as the old look reached: the aim distance and half a screen.)
+	local range = Owner.AimDistance + FrameMan.PlayerScreenWidth * 0.51;
+	-- How fast noticing fills, per second at full visibility: about 0.3 s for the best units, about 1.2 s for the worst; skill 0 to 100.
+	local rate = (0.8 + (skill or 50) / 40) * Owner.Perceptiveness;
+	local noticed, noticedHit, noticedVisibility;
+	local current, currentHit;
+	for Sighting in Owner:ScanForEnemies(fovDegrees, range, budget) do
+		local Target = Sighting.Target;
+		local HitPos = Sighting.HitPos;
+		-- AI-teams ignore the fog
+		if Target and (not AI.isPlayerOwned or not SceneMan:IsUnseen(HitPos.X, HitPos.Y, Owner.Team) or not SceneMan:IsUnseen(Target.Pos.X, Target.Pos.Y, Owner.Team)) then
+			local id = Target.UniqueID;
+			local entry = AI.Noticing[id];
+			if not entry then
+				entry = {progress = 0};
+				AI.Noticing[id] = entry;
+			end
+			-- (A target already being fought is known: no delay to keep it.)
+			if AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target.UniqueID == id then
+				entry.progress = 1;
+				current, currentHit = Target, Vector(HitPos.X, HitPos.Y);
+			else
+				-- (At least a tick's worth, for the first scan.)
+				entry.progress = entry.progress + Sighting.Visibility * rate * math.max(elapsed, TimerMan.DeltaTimeSecs);
+			end
+			entry.seenMS = now;
+			if entry.progress >= 1 and (not noticed or Sighting.Visibility > noticedVisibility) then
+				noticed, noticedHit, noticedVisibility = Target, Vector(HitPos.X, HitPos.Y), Sighting.Visibility;
+			end
+		end
+	end
+	-- Out of view for a second and a half: what was half-noticed is forgotten.
+	for id, entry in pairs(AI.Noticing) do
+		if now - entry.seenMS > 1500 then
+			AI.Noticing[id] = nil;
+		end
+	end
+	-- The enemy being fought, while in view, is what is answered (so the fight keeps it, TargetLostTimer and all), but every fourth scan
+	-- the plainest other one noticed, so a worse threat can take its place, as the old look's stray rays let it.
+	if current and (not noticed or noticed == current or AI.scanTick % 4 ~= 0) then
+		return current, currentHit;
+	end
+	return noticed, noticedHit;
+end
+
 -- The crouched stance for SharedBehaviors.Stance (the engine's stance 1): ducked behind low cover or made small, on its feet.
 SharedBehaviors.CROUCHED = "crouched";
 
