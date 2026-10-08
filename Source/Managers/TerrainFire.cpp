@@ -5,6 +5,7 @@
 #include "MovableMan.h"
 #include "MovableObject.h"
 #include "MOPixel.h"
+#include "MOSRotating.h"
 #include "PostProcessMan.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
@@ -61,6 +62,9 @@ namespace {
 
 	std::array<Fuel, 256> s_FuelTable{};
 	std::array<FuelProperties, 256> s_FuelProps{}; //!< How each material burns: its fuel's stock row, with what its behaviour sets (MaterialBehaviour, SB-1).
+	std::array<float, 256> s_BlastChance{}; //!< The chance a pixel of each material going up sets off a blast (fuel; MaterialBehaviour::BurnBlast).
+	std::vector<std::pair<int, int>> s_Blasts; //!< Blasts set off this tick, to go off on the main thread at the end of it.
+	double s_LastBlastMS = -1.0e9; //!< When the last blast went off: one every quarter second at most, however much fuel goes up.
 	bool s_FuelTableBuilt = false;
 	int s_AshMaterial = -1;
 	int s_AshColor = 0;
@@ -107,6 +111,7 @@ namespace {
 	void BuildFuelTable() {
 		s_FuelTable.fill(Fuel::None);
 		s_FuelProps.fill(c_Fuels[0]);
+		s_BlastChance.fill(0.0F);
 		s_DousingTable.fill(false);
 		s_AshMaterial = -1;
 		for (int id = 1; id < 256; ++id) {
@@ -147,6 +152,7 @@ namespace {
 				fuel.LeavesAsh = behaviour.LeavesAsh >= 0 ? behaviour.LeavesAsh == 1 : fuel.LeavesAsh;
 			}
 			s_FuelProps[id] = fuel;
+			s_BlastChance[id] = s_FuelTable[id] != Fuel::None && behaviour.BurnBlast > 0.0F ? std::min(behaviour.BurnBlast, 1.0F) : 0.0F;
 		}
 		s_FuelTableBuilt = true;
 	}
@@ -199,6 +205,10 @@ namespace {
 		const FuelProperties& fuel = s_FuelProps[material];
 		short ticks = static_cast<short>(fuel.MinTicks + static_cast<int>(Random01(s_Random) * static_cast<float>(fuel.MaxTicks - fuel.MinTicks + 1)));
 		s_Burning.emplace(key, BurningPixel{x, y, ticks, ticks, kind});
+		// Fuel goes up with a bang now and then.
+		if (s_BlastChance[material] > 0.0F && Random01(s_Random) < s_BlastChance[material]) {
+			s_Blasts.emplace_back(x, y);
+		}
 	}
 
 	MovableObject* CreateEffect(const char* className, const char* presetName) {
@@ -404,6 +414,7 @@ void TerrainFire::Update() {
 	}
 	if (s_Burning.empty()) {
 		s_Lights.clear();
+		s_Blasts.clear();
 		return;
 	}
 
@@ -520,6 +531,22 @@ void TerrainFire::Update() {
 			s_Lights.push_back({glm::vec2(static_cast<float>(position.x), static_cast<float>(position.y - 4)), std::min(40.0F + static_cast<float>(count) * 2.0F, 130.0F), std::min(0.6F + static_cast<float>(count) * 0.05F, 1.6F)});
 		}
 	}
+	// Fuel blasts set off this tick (TryIgnite): one at the first of them, at most one every quarter second of sim time, the rest just burn.
+	if (!s_Blasts.empty()) {
+		double nowMS = static_cast<double>(g_TimerMan.GetSimTimeMS());
+		if (nowMS - s_LastBlastMS >= 250.0) {
+			s_LastBlastMS = nowMS;
+			if (MovableObject* blast = CreateEffect("TDExplosive", "Fuel Barrel")) {
+				blast->SetPos(Vector(static_cast<float>(s_Blasts.front().first), static_cast<float>(s_Blasts.front().second)));
+				MOSRotating* explosive = dynamic_cast<MOSRotating*>(blast);
+				g_MovableMan.AddMO(blast);
+				if (explosive) {
+					explosive->GibThis();
+				}
+			}
+		}
+		s_Blasts.clear();
+	}
 	RegisterLights();
 }
 
@@ -573,6 +600,8 @@ void TerrainFire::SetPendingLoadState(const std::string& state) {
 
 void TerrainFire::Clear() {
 	s_Burning.clear();
+	s_Blasts.clear();
+	s_LastBlastMS = -1.0e9;
 	s_Lights.clear();
 	s_LastTickUpdate = -1;
 	std::scoped_lock lock(s_QueueMutex);

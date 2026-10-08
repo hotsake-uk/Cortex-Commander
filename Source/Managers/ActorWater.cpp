@@ -34,6 +34,7 @@ namespace {
 	std::array<float, 256> s_Stickiness{}; //!< How much a liquid holds a body back (Material::GetStickiness: tar 0.9, mud 0.4).
 	std::array<float, 256> s_Heaviness{}; //!< How hard a liquid pushes a body up against water's push: its density over water's, 1 to 3 (mercury the most).
 	std::array<float, 256> s_CutDamage{}; //!< For what isn't a liquid (glass shards): the health a second it takes from a body walking through it.
+	std::array<float, 256> s_Chill{}; //!< How cold a liquid is (MaterialBehaviour::Chills; cryogenic fluid): frosts a body over while it is in it.
 	bool s_AnyLiquid = false;
 	bool s_TablesBuilt = false;
 
@@ -49,6 +50,7 @@ namespace {
 		s_Stickiness.fill(0.0F);
 		s_Heaviness.fill(1.0F);
 		s_CutDamage.fill(0.0F);
+		s_Chill.fill(0.0F);
 		s_AnyLiquid = false;
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
@@ -68,6 +70,7 @@ namespace {
 			// (Only for the really heavy ones, mud and mercury: water and acid, at 1 and 1.2, push as they always did.)
 			s_Heaviness[id] = material->GetVolumeDensity() > 1.5F ? std::clamp(material->GetVolumeDensity(), 1.0F, 3.0F) : 1.0F;
 			s_HoldsBodies[id] = true;
+			s_Chill[id] = behaviour.Chills > 0.0F ? behaviour.Chills : 0.0F;
 			s_Breathable[id] = behaviour.Breathable == 1;
 			s_TouchDamage[id] = behaviour.TouchDamage >= 0.0F ? behaviour.TouchDamage : (material->GetPresetName() == "Acid" ? 5.0F : 0.0F);
 			s_AnyLiquid = true;
@@ -107,7 +110,9 @@ namespace {
 				// Soaked at once, and the water takes the soot and snow with it.
 				wetness = 1.0F;
 				soot = std::max(soot - deltaTime * 0.5F, 0.0F);
-				snowCover = 0.0F;
+				// (Unless it is freezing cold, cryogenic fluid: that frosts a body over instead, deeper in it faster, and the frost melts off as snow does once out.)
+				float chill = std::max(s_Chill[static_cast<unsigned char>(MaterialAt(actor->GetPos()))], s_Chill[static_cast<unsigned char>(MaterialAt(actor->GetPos() + Vector(0.0F, 12.0F)))]);
+				snowCover = chill > 0.0F ? std::min(snowCover + chill * static_cast<float>(actor->GetNumberValue(c_DepthTag)) * 0.5F * deltaTime, 1.0F) : 0.0F;
 			} else if (weather && rain > 0.0F) {
 				wetness = std::min(wetness + deltaTime * 0.12F * rain, 0.4F + 0.5F * rain);
 				soot = std::max(soot - deltaTime * 0.03F * rain, 0.0F);
@@ -118,7 +123,7 @@ namespace {
 			if (weather && snow > 0.0F && !inLiquid && actor->GetVel().MagnitudeIsLessThan(1.5F)) {
 				// Snow settles on whoever stands still: fully covered in about twenty seconds of heavy snow.
 				snowCover = std::min(snowCover + deltaTime * 0.05F * snow, 1.0F);
-			} else if (snowCover > 0.0F) {
+			} else if (snowCover > 0.0F && !inLiquid) {
 				// Moving shakes it off; out of the snowfall it melts.
 				snowCover = std::max(snowCover - deltaTime * (actor->GetVel().MagnitudeIsGreaterThan(3.0F) ? 0.5F : 0.04F), 0.0F);
 			}
