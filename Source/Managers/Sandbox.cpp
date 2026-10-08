@@ -309,6 +309,8 @@ namespace {
 		bool LitGrenade = false;
 		Vector Position2; //!< Selection box: the other corner.
 		int Craft = 0; //!< Drops: index into c_Crafts.
+		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
+		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
 	};
 
 	struct CraftChoice {
@@ -354,6 +356,7 @@ namespace {
 	bool s_AutoRunning = false;
 	int s_AutoWinner = -2; //!< -2 no result yet, -1 a draw, otherwise the winning side.
 	Vector s_AutoCenter;
+	float s_AutoLaneWidth = 0.0F; //!< The view's width when the auto battle began: the lanes the waves land in are spaced by it.
 	std::vector<int> s_FactionModules;
 	std::vector<std::string> s_FactionNames;
 	int s_Radius = 6;
@@ -431,7 +434,8 @@ namespace {
 	bool s_Flying = false;
 	int s_KitKeyPending = -1; //!< A kit number pressed last update, taken out this one (after the game's own weapon keys have had their say).
 	const Activity* s_GodActivity = nullptr; //!< The Sandbox game the window was last set up for.
-	unsigned int s_Random = 0x5A17B0Bu;
+	constexpr unsigned int c_RandomSeed = 0x5A17B0Bu;
+	unsigned int s_Random = c_RandomSeed;
 	SoundContainer* s_Thunder = nullptr; //!< Never deleted: it would outlive the audio system at exit.
 
 	float Random01() {
@@ -1528,7 +1532,13 @@ namespace {
 		for (int i = 0; i < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) == g_MaterialAir && ground.m_Y < static_cast<float>(g_SceneMan.GetSceneHeight() - 1); ++i) {
 			ground.m_Y += 1.0F;
 		}
-		float top = std::max(g_CameraMan.GetOffset(0).m_Y - 20.0F, 0.0F);
+		// From the open sky over the point, at most 480 px above the ground: up through the air from the point, not from the top of the
+		// view. (From the view, the bolt's particles, their number and places, went by where the camera was, so a storm ran differently
+		// in a replay; and zoomed in or underground the bolt started inside the earth.)
+		float top = target.m_Y;
+		while (top > 0.0F && top > ground.m_Y - 480.0F && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), static_cast<int>(top) - 1) == g_MaterialAir) {
+			top -= 1.0F;
+		}
 		auto boltDot = [](const Vector& at) {
 			if (MovableObject* spark = CreateBaseObject("MOPixel", "Lightning Bolt Particle")) {
 				spark->SetPos(at);
@@ -1696,7 +1706,9 @@ namespace {
 			actor->SetPos(stroke.Position + Vector(spread, 0.0F));
 			actor->SetTeam(stroke.Team);
 			actor->SetControllerMode(Controller::CIM_AI);
-			actor->SetHFlipped(stroke.Position.m_X > g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F);
+			// (Facing the middle of the view as it was at the click: read from the camera here, in the sim, a replay faced them by
+			// wherever the view happened to be.)
+			actor->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
 			g_MovableMan.AddActor(actor);
 			GiveOrder(actor, brain ? Order::Hold : stroke.Orders);
 		}
@@ -2318,7 +2330,8 @@ namespace {
 			return s_RallyPoints[side].m_X;
 		}
 		static constexpr float lanes[c_Sides] = {-0.7F, 0.7F, -0.35F, 0.35F};
-		Vector lane = s_AutoCenter + Vector(lanes[side] * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), 0.0F);
+		// (Spaced by the view's width at the start, not now: zooming during the battle moved where the waves landed.)
+		Vector lane = s_AutoCenter + Vector(lanes[side] * s_AutoLaneWidth, 0.0F);
 		g_SceneMan.WrapPosition(lane);
 		return lane.m_X;
 	}
@@ -2761,6 +2774,8 @@ namespace {
 		}
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
+		stroke.HasView = true;
+		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);
 	}
 #pragma endregion
@@ -5139,6 +5154,7 @@ void Sandbox::StartAutoBattle() {
 		BuildCatalogue();
 	}
 	s_AutoCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
+	s_AutoLaneWidth = static_cast<float>(g_FrameMan.GetPlayerScreenWidth());
 	long long now = g_TimerMan.GetSimUpdateCount();
 	for (int side = 0; side < c_Sides; ++side) {
 		AutoSide& autoSide = s_AutoSides[side];
@@ -6003,6 +6019,8 @@ void Sandbox::Update() {
 		s_WaterSpawners.clear();
 		s_Incoming.clear();
 		s_Effects.clear();
+		// The same random stream from the start of every game, so the same inputs give the same game.
+		s_Random = c_RandomSeed;
 	}
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
