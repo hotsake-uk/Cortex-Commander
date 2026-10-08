@@ -386,6 +386,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EventLooks", { g_PostProcessMan.GetLightingSettings().EventLooks = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("EventLookStrength", { g_PostProcessMan.GetLightingSettings().EventLookStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SceneLooks", { g_PostProcessMan.GetLightingSettings().SceneLooks = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("SceneLookStrength", { g_PostProcessMan.GetLightingSettings().SceneLookStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunDisc", { g_PostProcessMan.GetLightingSettings().SunDisc = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudShadows", { g_PostProcessMan.GetLightingSettings().CloudShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudLayer", { g_PostProcessMan.GetLightingSettings().CloudLayer = std::stoi(reader.ReadPropValue()) != 0; });
@@ -702,6 +704,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
 	writer.NewPropertyWithValue("EventLooks", lighting.EventLooks);
 	writer.NewPropertyWithValue("EventLookStrength", lighting.EventLookStrength);
+	writer.NewPropertyWithValue("SceneLooks", lighting.SceneLooks);
+	writer.NewPropertyWithValue("SceneLookStrength", lighting.SceneLookStrength);
 	writer.NewPropertyWithValue("SunDisc", lighting.SunDisc);
 	writer.NewPropertyWithValue("CloudShadows", lighting.CloudShadows);
 	writer.NewPropertyWithValue("CloudLayer", lighting.CloudLayer);

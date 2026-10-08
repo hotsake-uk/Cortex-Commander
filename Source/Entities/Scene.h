@@ -556,6 +556,7 @@ namespace RTE {
 			float CloudCover = -1.0F; //!< How much of the sky is cloud in clear weather, 0 to 1 (LightingSettings::CloudCover). Not set below 0.
 			float Mist = -1.0F; //!< How much mist gathers low around dawn, at night and in rain, 0 to 1 (LightingSettings::FogMorningMist). Not set below 0.
 			std::string PostShader; //!< A mod post pass for this Scene, a Shader preset's name (LightingSettings::ModShaders). Empty for none.
+			std::string Look; //!< A look to grade this Scene with in place of the player's own grade (LightingSettings::SceneLooks): Natural, Gritty, Vivid, Noir, Hurt, Flash or Warm, or its number. Empty for none.
 		};
 
 		/// Gets the atmosphere this Scene asks for.

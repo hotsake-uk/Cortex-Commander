@@ -225,6 +225,16 @@ const Shader* PostProcessMan::GetActivePostShader() {
 	return m_ActivePostShader;
 }
 
+int PostProcessMan::GetSceneLook() const {
+	if (const Activity* activity = g_ActivityMan.GetActivity(); activity && !activity->GetLook().empty()) {
+		return LightingSettings::FindLook(activity->GetLook());
+	}
+	if (const Scene* scene = g_SceneMan.GetScene(); scene && !scene->GetAtmosphere().Look.empty()) {
+		return LightingSettings::FindLook(scene->GetAtmosphere().Look);
+	}
+	return -1;
+}
+
 void PostProcessMan::LoadPaletteAnimation() {
 	m_PaletteAnimationLoaded = true;
 	std::ifstream file(g_PresetMan.GetFullModulePath("Base.rte/PaletteAnimation.ini"));

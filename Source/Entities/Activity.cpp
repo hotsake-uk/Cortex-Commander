@@ -16,6 +16,8 @@
 #include "AllegroBitmap.h"
 
 #include "RTETools.h"
+#include "ConsoleMan.h"
+#include "LightingSettings.h"
 
 using namespace RTE;
 
@@ -35,6 +37,7 @@ void Activity::Clear() {
 	m_AllowsUserSaving = false;
 	m_Description.clear();
 	m_PostShader.clear();
+	m_Look.clear();
 	m_SceneName.clear();
 	m_MaxPlayerSupport = Players::MaxPlayerCount;
 	m_MinTeamsRequired = 2;
@@ -95,6 +98,7 @@ int Activity::Create(const Activity& reference) {
 	m_AllowsUserSaving = reference.m_AllowsUserSaving;
 	m_Description = reference.m_Description;
 	m_PostShader = reference.m_PostShader;
+	m_Look = reference.m_Look;
 	m_MaxPlayerSupport = reference.m_MaxPlayerSupport;
 	m_MinTeamsRequired = reference.m_MinTeamsRequired;
 	m_Difficulty = reference.m_Difficulty;
@@ -140,6 +144,12 @@ int Activity::ReadProperty(const std::string_view& propName, Reader& reader) {
 
 	MatchProperty("Description", { reader >> m_Description; });
 	MatchProperty("PostShader", { m_PostShader = reader.ReadPropValue(); });
+	MatchProperty("Look", {
+		m_Look = reader.ReadPropValue();
+		if (LightingSettings::FindLook(m_Look) < 0) {
+			g_ConsoleMan.PrintString("ERROR: \"" + m_Look + "\" in " + reader.GetCurrentFilePath() + " isn't a look (Natural, Gritty, Vivid, Noir, Hurt, Flash or Warm, or 0 to 6); the player's own grade is used.");
+		}
+	});
 	MatchProperty("SceneName", { reader >> m_SceneName; });
 	MatchProperty("MaxPlayerSupport", { reader >> m_MaxPlayerSupport; });
 	MatchProperty("MinTeamsRequired", { reader >> m_MinTeamsRequired; });
@@ -238,6 +248,9 @@ int Activity::Save(Writer& writer) const {
 	writer << m_Description;
 	if (!m_PostShader.empty()) {
 		writer.NewPropertyWithValue("PostShader", m_PostShader);
+	}
+	if (!m_Look.empty()) {
+		writer.NewPropertyWithValue("Look", m_Look);
 	}
 	writer.NewProperty("SceneName");
 	writer << m_SceneName;

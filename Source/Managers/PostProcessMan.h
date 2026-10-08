@@ -235,6 +235,10 @@ namespace RTE {
 		/// Gets the mod post pass to draw now: the one asked for from Lua, else the activity's, else the scene's. Null for none or one that didn't compile. Main thread only.
 		const Shader* GetActivePostShader();
 
+		/// Gets the look the playing Activity or, failing that, the Scene names with its Look key (LightingSettings::SceneLooks). Main thread.
+		/// @return The look, or -1 for none.
+		int GetSceneLook() const;
+
 		/// Gets the name of the post pass found by the last GetActivePostShader, empty for none.
 		const std::string& GetActivePostShaderName() const { return m_ActivePostShaderName; }
 

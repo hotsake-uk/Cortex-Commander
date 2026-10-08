@@ -2,6 +2,10 @@
 
 #include "glm/glm.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstring>
 #include <string>
 
 namespace RTE {
@@ -89,6 +93,19 @@ namespace RTE {
 			LookAllCount
 		};
 
+		/// Finds a look by its name (Natural, Gritty, Vivid, Noir, Hurt, Flash or Warm, in any case) or its number.
+		/// @return The look, or -1 for none of them.
+		static int FindLook(const std::string& name) {
+			static const std::array<const char*, LookAllCount> names = {"Natural", "Gritty", "Vivid", "Noir", "Hurt", "Flash", "Warm"};
+			for (int look = 0; look < LookAllCount; ++look) {
+				const char* candidate = names[look];
+				if (name.size() == std::strlen(candidate) && std::equal(name.begin(), name.end(), candidate, [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+					return look;
+				}
+			}
+			return (name.size() == 1 && name[0] >= '0' && name[0] < '0' + LookAllCount) ? name[0] - '0' : -1;
+		}
+
 		/// The grade a look sets: the fields ApplyLook changes, on their own.
 		struct GradeLook {
 			float Saturation = 1.05F;
@@ -101,6 +118,11 @@ namespace RTE {
 			glm::vec3 ShadowTint = {1.0F, 1.0F, 1.0F};
 			glm::vec3 HighlightTint = {1.0F, 1.0F, 1.0F};
 		};
+
+		/// Mixes two grades, t 0 (a) to 1 (b).
+		static GradeLook MixGrade(const GradeLook& a, const GradeLook& b, float t) {
+			return GradeLook{glm::mix(a.Saturation, b.Saturation, t), glm::mix(a.Contrast, b.Contrast, t), glm::mix(a.Temperature, b.Temperature, t), glm::mix(a.Tint, b.Tint, t), glm::mix(a.Vignette, b.Vignette, t), glm::mix(a.FilmGrain, b.FilmGrain, t), glm::mix(a.BloomIntensity, b.BloomIntensity, t), glm::mix(a.ShadowTint, b.ShadowTint, t), glm::mix(a.HighlightTint, b.HighlightTint, t)};
+		}
 
 		/// Gets the grade of one of the looks, ready-made or event (Natural for anything else).
 		static GradeLook LookGrade(int look) {
@@ -301,6 +323,8 @@ namespace RTE {
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		bool EventLooks = true; //!< The grade answers what happens: it flashes with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire; scripts can pulse it and crossfade between looks. Off: the grade stays as set, as before.
 		float EventLookStrength = 1.0F; //!< How strongly events push the grade, 0 to 2.
+		bool SceneLooks = true; //!< A Scene or Activity that names a look (its Look key) is graded with it in place of the player's own grade while it plays. Off: the player's grade always, as before.
+		float SceneLookStrength = 1.0F; //!< How far the grade goes from the player's own to a Scene's or Activity's look, 0 to 1.
 		bool DepthOfField = false; //!< Blur what's nearer or further than the focus by how far it is from it, like a camera lens. Off: everything is sharp as before.
 		float DepthOfFieldFocus = 0.0F; //!< Where the focus is: 0 the battlefield (units and terrain), 1 the furthest background.
 		float DepthOfFieldStrength = 1.0F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).

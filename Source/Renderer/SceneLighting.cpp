@@ -3188,6 +3188,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// The grade: the player's, pushed by what's happening (LightingSettings::EventLooks), in real time so it plays through a hit-stop.
 	double pulseNow = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
 	LightingSettings::GradeLook grade = m_Settings.CurrentGrade();
+	// A Scene's or Activity's own look (its Look key) in place of the player's grade; a script's BlendLook still beats it.
+	if (int sceneLook = m_Settings.SceneLooks ? g_PostProcessMan.GetSceneLook() : -1; sceneLook >= 0) {
+		grade = LightingSettings::MixGrade(grade, LightingSettings::LookGrade(sceneLook), std::clamp(m_Settings.SceneLookStrength, 0.0F, 1.0F));
+	}
 	{
 		float easeSeconds = static_cast<float>(std::clamp(pulseNow - m_EventLookLastTime[screenIndex], 0.0, 0.1));
 		m_EventLookLastTime[screenIndex] = pulseNow;

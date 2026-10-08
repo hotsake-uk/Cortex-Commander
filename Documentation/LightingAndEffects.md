@@ -294,6 +294,7 @@ Press **F8** for **Photo Mode**:
 | `GradeShadowTint` / `GradeHighlightTint` | 1 1 1 / 1 1 1 | Split toning. |
 | `FilmGrain` / `ChromaticAberration` | 0 / 0 | Film grain (0–1) and lens fringing (pixels). |
 | `EventLooks` / `EventLookStrength` | 1 / 1 | The grade answers blasts, a badly hurt unit and nearby fire (see "Looks that answer events"); strength 0–2. Off: the grade stays as set. |
+| `SceneLooks` / `SceneLookStrength` | 1 / 1 | A Scene or Activity that names a look (its `Look` key) is graded with it while it plays, in place of the player's grade; strength 0–1 is how far from the player's grade. Off: the player's grade always. |
 | `ModShaders` / `ModShaderStrength` | 1 / 1 | Mods' own object shaders and post passes (see "Mod shaders" below). Off draws everything with the game's shaders. The strength (0–1) is handed to mods' shaders as `rteStrength`. |
 | `SpriteMaps` / `SpriteMapStrength` | 1 / 1 | Sprites with authored normal and glow maps (`NormalMapFile`, `EmissiveMapFile`, see "Authored normal and glow maps") are lit and glow as drawn; strength 0–1. Off: every sprite gets the automatic bevel and palette glow. |
 | `DepthOfField` / `DepthOfFieldFocus` / `DepthOfFieldStrength` | 0 / 0 / 1 | Lens blur by distance from the focus (0 the battlefield, 1 the furthest background); strength 0–2. |
@@ -315,8 +316,11 @@ AddScene = Scene
 	Wind = -90
 	CloudCover = 0.8        // Of the sky in clear weather, 0 to 1. Weather adds to it.
 	Mist = 1                // How much mist gathers low around dawn, at night and in rain, 0 to 1.
+	Look = Gritty           // Graded with this look in place of the player's grade: Natural, Gritty, Vivid, Noir, Hurt, Flash or Warm (or 0 to 6).
 	...
 ```
+
+An Activity can name a `Look` the same way (`Look = Noir` in its INI), and it beats the Scene's. A script's `PostProcessMan:BlendLook` beats both. Players can turn scene looks off or weaken them with "Scenes' own looks" and "Scene look strength" (F6 › Camera & image); a name that isn't a look is reported in the console and ignored.
 
 `CloudCover` and `Mist` stand in for the player's "Cloud cover" and "Dawn mist" settings while the Scene is loaded. If the player moves either setting in the menus meanwhile, their choice stays theirs after the Scene, and it's what gets saved.
 

@@ -272,13 +272,15 @@ void DebugMan::SettingsGUI() {
 				atmosphere.CloudCover = settings.CloudCover;
 				atmosphere.Mist = settings.FogMorningMist;
 				atmosphere.PostShader = own.PostShader;
+				atmosphere.Look = own.Look;
 				scene->SetAtmosphere(atmosphere);
 			}
 			ImGui::SameLine();
 			if (ToolUI::Button("Clear")) {
-				// Time and weather only: the scene's mod post pass stays.
+				// Time and weather only: the scene's mod post pass and look stay.
 				Scene::Atmosphere atmosphere;
 				atmosphere.PostShader = own.PostShader;
+				atmosphere.Look = own.Look;
 				scene->SetAtmosphere(atmosphere);
 			}
 			ImGui::TextDisabled("Saved when the scene is saved in the scene editor.");
@@ -588,6 +590,12 @@ void DebugMan::SettingsGUI() {
 					settings.ApplyLook(look);
 				}
 			}
+		}
+		Check("Scenes' own looks", &settings.SceneLooks);
+		Tip("A scene or activity that names a look (Look = Noir in its INI) is graded with it while it plays, in place of your own grade. Off: your grade always, as before.");
+		if (settings.SceneLooks) {
+			Slider("Scene look strength", &settings.SceneLookStrength, 0.0F, 1.0F);
+			Tip("How far the grade goes from your own to the scene's look.");
 		}
 		float cameraZoom = g_FrameMan.GetCameraZoom();
 		if (Slider("Camera zoom", &cameraZoom, FrameMan::c_MinCameraZoom, FrameMan::c_MaxCameraZoom, "%.2fx")) {

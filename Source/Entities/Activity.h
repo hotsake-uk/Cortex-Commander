@@ -137,6 +137,12 @@ namespace RTE {
 		/// Sets the mod post pass this Activity asks for, empty for none.
 		void SetPostShader(const std::string& postShader) { m_PostShader = postShader; }
 
+		/// Gets the look this Activity is graded with in place of the player's own grade (LightingSettings::SceneLooks), by name or number; empty for none. Beats the Scene's.
+		const std::string& GetLook() const { return m_Look; }
+
+		/// Sets the look this Activity is graded with, empty for none.
+		void SetLook(const std::string& look) { m_Look = look; }
+
 		/// Gets the max number of players supported by this Activity.
 		/// @return The max number of players supported by this Activity.
 		int GetMaxPlayerSupport() const { return m_MaxPlayerSupport; }
@@ -581,6 +587,7 @@ namespace RTE {
 
 		std::string m_Description; //!< User-friendly description of what this Activity is all about.
 		std::string m_PostShader; //!< The mod post pass this Activity asks for, a Shader preset's name. Empty for none.
+		std::string m_Look; //!< The look this Activity is graded with, by name or number. Empty for none.
 		std::string m_SceneName; //!< The name of the Scene in which this Activity takes place.
 
 		int m_MaxPlayerSupport; //!< How many separate players this Activity can support at the same time.

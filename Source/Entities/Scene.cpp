@@ -7,6 +7,7 @@
 #include "PerformanceMan.h"
 #include "FrameMan.h"
 #include "ConsoleMan.h"
+#include "LightingSettings.h"
 
 #include <chrono>
 #include <unordered_set>
@@ -1082,6 +1083,12 @@ int Scene::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("CloudCover", { reader >> m_Atmosphere.CloudCover; });
 	MatchProperty("Mist", { reader >> m_Atmosphere.Mist; });
 	MatchProperty("PostShader", { m_Atmosphere.PostShader = reader.ReadPropValue(); });
+	MatchProperty("Look", {
+		m_Atmosphere.Look = reader.ReadPropValue();
+		if (LightingSettings::FindLook(m_Atmosphere.Look) < 0) {
+			g_ConsoleMan.PrintString("ERROR: \"" + m_Atmosphere.Look + "\" in " + reader.GetCurrentFilePath() + " isn't a look (Natural, Gritty, Vivid, Noir, Hurt, Flash or Warm, or 0 to 6); the player's own grade is used.");
+		}
+	});
 
 	EndPropertyList;
 }
@@ -1229,6 +1236,9 @@ int Scene::Save(Writer& writer) const {
 	}
 	if (!m_Atmosphere.PostShader.empty()) {
 		writer.NewPropertyWithValue("PostShader", m_Atmosphere.PostShader);
+	}
+	if (!m_Atmosphere.Look.empty()) {
+		writer.NewPropertyWithValue("Look", m_Atmosphere.Look);
 	}
 
 	return 0;
