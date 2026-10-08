@@ -192,7 +192,8 @@ namespace RTE {
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
-		/// step-overs and stairs between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug).
+		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
+		/// 3 that and the node under the pointer: what the grid makes of it and every way out of it with its cost (see DebugOverlays::DrawNavNode).
 		/// @return The level.
 		int NavDebugOverlay() const { return m_NavDebugOverlay; }
 
@@ -260,8 +261,8 @@ namespace RTE {
 		void SetShowSquadLinks(bool show) { m_ShowSquadLinks = show; }
 
 		/// Sets what the navigation debug overlay shows; see NavDebugOverlay.
-		/// @param level 0, 1 or 2.
-		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 2); }
+		/// @param level 0 to 3.
+		void SetNavDebugOverlay(int level) { m_NavDebugOverlay = std::clamp(level, 0, 3); }
 
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }

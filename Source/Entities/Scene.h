@@ -18,6 +18,7 @@
 namespace RTE {
 
 	class ContentFile;
+	class Actor;
 	class MovableObject;
 	class PathFinder;
 	class SLBackground;
@@ -740,6 +741,10 @@ namespace RTE {
 		/// Returns preview bitmap pointer for this scene.
 		/// @return Pointer to preview bitmap.
 		BITMAP* GetPreviewBitmap() const { return m_pPreviewBitmap; };
+
+		/// The unit the navigation debug overlays look at the grid as: of the debug team (SettingsMan::DebugTeam), being inspected, and nearest
+		/// the middle of player 1's view; nullptr when there is none.
+		const Actor* GetNavDebugActor() const;
 
 		/// Gets the pathfinder for a given team.
 		/// @param team The team to get the pathfinder for. NoTeam is valid, and will give a shared pathfinder.

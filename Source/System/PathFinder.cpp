@@ -195,20 +195,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	float jumpHeight = agent.JumpHeight;
 	float digStrength = agent.DigStrength;
-	float breachStrength = agent.BreachStrength;
-	s_StandHeight = agent.StandHeight;
-	s_CrawlHeight = agent.CrawlHeight;
-	s_HalfWidth = agent.HalfWidth;
-	s_WalksStairs = agent.WalksStairs;
-	s_ClimbsLadders = agent.ClimbsLadders;
-	s_MantleHeight = agent.MantleHeight;
-	s_Velocity = agent.Velocity;
-	s_JetTimeMS = agent.JetTimeMS;
-	s_JetClimbMSPerPx = agent.JetClimbMSPerPx;
-	s_LeapHeight = agent.LeapHeight;
-	s_LeapSpeed = agent.LeapSpeed;
-	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
-	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
+	ApplyAgent(agent);
 
 	++m_CurrentPathingRequests;
 
@@ -228,24 +215,6 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	// Due to different actors having different dig strengths, node costs aren't consistent, so reset on every path.
 	GetPather()->Reset();
-
-	// Actors capable of jumping/jetpacking can jump upwards.
-	s_JumpHeight = jumpHeight;
-
-	// How high up we can jump from this node.
-	if (jumpHeight == FLT_MAX) {
-		// Probably quite high.
-		s_JumpHeightVertical = INT_MAX;
-		s_JumpHeightDiagonal = INT_MAX;
-	} else {
-		// Assume at least 1 so automovers work a bit better
-		s_JumpHeightVertical = std::max(1, static_cast<int>(jumpHeight / (m_NodeDimension * c_MPP)));
-		s_JumpHeightDiagonal = std::max(1, static_cast<int>((jumpHeight * 0.7F) / (m_NodeDimension * c_MPP)));
-	}
-
-	// Actors capable of digging can use s_DigStrength to modify the node adjacency cost.
-	s_DigStrength = digStrength;
-	s_BreachStrength = breachStrength < 0.0F ? digStrength : breachStrength;
 
 	// Do the actual pathfinding, fetch out the list of states that comprise the best path.
 	int result = MicroPather::NO_SOLUTION;
@@ -474,6 +443,135 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	// TODO: Clean up the path, remove series of nodes in the same direction etc?
 	return result;
+}
+
+void PathFinder::ApplyAgent(const PathAgent& agent) {
+	s_StandHeight = agent.StandHeight;
+	s_CrawlHeight = agent.CrawlHeight;
+	s_HalfWidth = agent.HalfWidth;
+	s_WalksStairs = agent.WalksStairs;
+	s_ClimbsLadders = agent.ClimbsLadders;
+	s_MantleHeight = agent.MantleHeight;
+	s_Velocity = agent.Velocity;
+	s_JetTimeMS = agent.JetTimeMS;
+	s_JetClimbMSPerPx = agent.JetClimbMSPerPx;
+	s_LeapHeight = agent.LeapHeight;
+	s_LeapSpeed = agent.LeapSpeed;
+	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
+	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
+
+	// Actors capable of jumping/jetpacking can jump upwards.
+	float jumpHeight = agent.JumpHeight;
+	s_JumpHeight = jumpHeight;
+
+	// How high up we can jump from this node.
+	if (jumpHeight == FLT_MAX) {
+		// Probably quite high.
+		s_JumpHeightVertical = INT_MAX;
+		s_JumpHeightDiagonal = INT_MAX;
+	} else {
+		// Assume at least 1 so automovers work a bit better
+		s_JumpHeightVertical = std::max(1, static_cast<int>(jumpHeight / (m_NodeDimension * c_MPP)));
+		s_JumpHeightDiagonal = std::max(1, static_cast<int>((jumpHeight * 0.7F) / (m_NodeDimension * c_MPP)));
+	}
+
+	// Actors capable of digging can use s_DigStrength to modify the node adjacency cost.
+	s_DigStrength = agent.DigStrength;
+	s_BreachStrength = agent.BreachStrength < 0.0F ? agent.DigStrength : agent.BreachStrength;
+}
+
+namespace {
+	/// This thread's searcher (the s_ values a search reads), kept while a debug overlay borrows the thread to look at the grid as another
+	/// searcher would, and put back afterwards: the main thread also runs searches of its own (CalculatePath from Lua).
+	struct SearcherState {
+		float JumpHeight = s_JumpHeight;
+		int JumpHeightVertical = s_JumpHeightVertical;
+		int JumpHeightDiagonal = s_JumpHeightDiagonal;
+		float DigStrength = s_DigStrength;
+		float BreachStrength = s_BreachStrength;
+		float StandHeight = s_StandHeight;
+		float CrawlHeight = s_CrawlHeight;
+		float HalfWidth = s_HalfWidth;
+		bool WalksStairs = s_WalksStairs;
+		bool ClimbsLadders = s_ClimbsLadders;
+		float MantleHeight = s_MantleHeight;
+		Vector Velocity = s_Velocity;
+		float JetTimeMS = s_JetTimeMS;
+		float LeapHeight = s_LeapHeight;
+		float LeapSpeed = s_LeapSpeed;
+		float JetClimbMSPerPx = s_JetClimbMSPerPx;
+		const RTE::PathNode* FlyingStart = s_FlyingStart;
+		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
+		const std::vector<Vector>* Avoid = s_Avoid;
+
+		~SearcherState() {
+			s_JumpHeight = JumpHeight;
+			s_JumpHeightVertical = JumpHeightVertical;
+			s_JumpHeightDiagonal = JumpHeightDiagonal;
+			s_DigStrength = DigStrength;
+			s_BreachStrength = BreachStrength;
+			s_StandHeight = StandHeight;
+			s_CrawlHeight = CrawlHeight;
+			s_HalfWidth = HalfWidth;
+			s_WalksStairs = WalksStairs;
+			s_ClimbsLadders = ClimbsLadders;
+			s_MantleHeight = MantleHeight;
+			s_Velocity = Velocity;
+			s_JetTimeMS = JetTimeMS;
+			s_LeapHeight = LeapHeight;
+			s_LeapSpeed = LeapSpeed;
+			s_JetClimbMSPerPx = JetClimbMSPerPx;
+			s_FlyingStart = FlyingStart;
+			s_AvoidLinks = AvoidLinks;
+			s_Avoid = Avoid;
+		}
+	};
+} // namespace
+
+std::vector<PathFinder::DebugEdge> PathFinder::DescribeEdgesAt(const Vector& scenePos, const PathAgent& agent) {
+	std::vector<DebugEdge> edges;
+	int gridX = static_cast<int>(std::floor(scenePos.m_X / static_cast<float>(m_NodeDimension)));
+	int gridY = static_cast<int>(std::floor(scenePos.m_Y / static_cast<float>(m_NodeDimension)));
+	PathNode* node = GetPathNodeAtGridCoords(gridX, gridY);
+	if (!node || !node->m_Navigable) {
+		return edges;
+	}
+	SearcherState kept;
+	ApplyAgent(agent);
+	s_FlyingStart = nullptr;
+	// The ways out as the searcher is offered them, its recent failures counted; and again without them, in the same order (the failures
+	// only add to costs), so a flight link can be told from a leap to the same floor by its own cost.
+	std::vector<micropather::StateCost> adjacent;
+	AdjacentCost(node, &adjacent);
+	std::vector<micropather::StateCost> plain;
+	s_Avoid = nullptr;
+	s_AvoidLinks = nullptr;
+	AdjacentCost(node, &plain);
+	// The flight links among them, for their fuel: the same links AdjacentCost offered (see CollectFlightLinks).
+	std::vector<FlightLink> flights;
+	if (s_JumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !g_SceneMan.IsPointInNoGravArea(node->Pos)) {
+		CollectFlightLinks(*node, flights);
+	}
+	for (size_t i = 0; i < adjacent.size() && i < plain.size(); ++i) {
+		const PathNode* target = static_cast<const PathNode*>(adjacent[i].state);
+		if (!target || adjacent[i].cost >= 1000.0F) {
+			continue;
+		}
+		DebugEdge edge;
+		edge.From = node->Surface >= 0.0F ? Vector(node->Anchor.m_X, node->Surface - 3.0F) : node->Anchor;
+		edge.To = target->Surface >= 0.0F ? Vector(target->Anchor.m_X, target->Surface - 3.0F) : target->Anchor;
+		edge.Cost = adjacent[i].cost;
+		edge.AvoidCost = adjacent[i].cost - plain[i].cost;
+		edge.Kind = StepKindBetween(node, target);
+		for (const FlightLink& flight: flights) {
+			if (flight.target == target && std::abs(flight.cost - plain[i].cost) < 0.001F) {
+				edge.Flight = true;
+				edge.FuelMS = flight.fuel;
+			}
+		}
+		edges.push_back(edge);
+	}
+	return edges;
 }
 
 std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector start, Vector end, float jumpHeight, float digStrength, PathCompleteCallback callback, float breachStrength) {
@@ -1038,6 +1136,11 @@ std::string PathFinder::DescribeNodeAt(const Vector& scenePos) {
 			text += " stepleft" + std::to_string(k + 1) + " " + std::to_string(static_cast<int>(node->StepOverRiseLeft[k])) + "/" + std::to_string(node->StepOverRoomLeft[k]);
 		}
 	}
+	text += std::string(" grounded ") + (node->Grounded ? "yes" : "no");
+	text += node->StairsUpRight ? " stairs-upright" : "";
+	text += node->StairsUpLeft ? " stairs-upleft" : "";
+	text += node->Ladder ? " ladder" : "";
+	text += " anchor " + std::to_string(static_cast<int>(node->Anchor.m_X)) + "," + std::to_string(static_cast<int>(node->Anchor.m_Y));
 	return text;
 }
 
@@ -1303,7 +1406,7 @@ float PathFinder::ColumnGrazeCost(float x, float fromY, float toY) const {
 	return leftTouches != rightTouches ? 2.0F : 0.0F;
 }
 
-void PathFinder::DrawDebug(const Box& area) {
+void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 	static const unsigned char standColor = static_cast<unsigned char>(Color(80, 220, 90).GetIndex());
 	static const unsigned char crawlColor = static_cast<unsigned char>(Color(240, 210, 60).GetIndex());
 	static const unsigned char noRoomColor = static_cast<unsigned char>(Color(230, 60, 50).GetIndex());
@@ -1311,9 +1414,15 @@ void PathFinder::DrawDebug(const Box& area) {
 	static const unsigned char stairsColor = static_cast<unsigned char>(Color(220, 80, 220).GetIndex());
 	static const unsigned char channelColor = static_cast<unsigned char>(Color(150, 120, 255).GetIndex());
 	static const unsigned char ladderColor = static_cast<unsigned char>(Color(255, 150, 40).GetIndex());
-	// A soldier's sizes (Soldier Light, height 100): the grid is the same for every searcher; what fits is the searcher's.
-	const float stand = 44.0F;
-	const float crawl = 24.0F;
+	static const unsigned char leapColor = static_cast<unsigned char>(Color(140, 255, 200).GetIndex());
+	// The grid is the same for every searcher; what fits is the searcher's: the inspected unit's sizes (see Scene::Update), or a soldier's.
+	const float stand = agent.StandHeight;
+	const float crawl = agent.CrawlHeight;
+	// The leaps are the searcher's too (its legs' height and speed), so the overlay looks at the grid as it would.
+	SearcherState kept;
+	ApplyAgent(agent);
+	s_FlyingStart = nullptr;
+	std::vector<micropather::StateCost> leaps;
 	int fromX = static_cast<int>(std::floor(area.GetCorner().m_X / static_cast<float>(m_NodeDimension)));
 	int fromY = static_cast<int>(std::floor(area.GetCorner().m_Y / static_cast<float>(m_NodeDimension)));
 	int toX = static_cast<int>(std::ceil((area.GetCorner().m_X + area.GetWidth()) / static_cast<float>(m_NodeDimension)));
@@ -1351,6 +1460,22 @@ void PathFinder::DrawDebug(const Box& area) {
 			if (node->StairsUpLeft && node->Up && node->Up->LeftUp) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->LeftUp->Pos, stairsColor);
 			}
+			// Leap links (see AddLeapLinks), as an arc of two lines over the gap or up onto the lip, from the floors they can start from: the
+			// edge of a floor, or under a lip a node to either side.
+			if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX) {
+				auto lip = [node](const PathNode* side) { return side && side->Surface >= 0.0F && side->Surface < node->Surface - 4.0F; };
+				if (IsFloorEdge(*node) || lip(node->Left) || lip(node->Right)) {
+					leaps.clear();
+					AddLeapLinks(*node, &leaps);
+					for (const micropather::StateCost& leap: leaps) {
+						const PathNode* target = static_cast<const PathNode*>(leap.state);
+						Vector landing(target->Anchor.m_X, target->Surface - 3.0F);
+						Vector apex = standing + g_SceneMan.ShortestDistance(standing, landing) * 0.5F - Vector(0.0F, s_LeapHeight * 0.6F);
+						g_PrimitiveMan.DrawLinePrimitive(standing, apex, leapColor);
+						g_PrimitiveMan.DrawLinePrimitive(apex, landing, leapColor);
+					}
+				}
+			}
 		}
 	}
 }
@@ -1362,7 +1487,7 @@ bool PathFinder::IsFloorEdge(const PathNode& node) const {
 	return (node.Left && !NodeIsOnSolidGround(*node.Left)) || (node.Right && !NodeIsOnSolidGround(*node.Right));
 }
 
-void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {
+void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink>& links) {
 	if (!IsFloorEdge(node)) {
 		return;
 	}
@@ -1371,11 +1496,6 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 	const int gridX = static_cast<int>(std::floor(node.Pos.m_X / nodeSize));
 	const int gridY = static_cast<int>(std::floor(node.Pos.m_Y / nodeSize));
 	const float standY = node.Surface - s_StandHeight * 0.5F;
-	struct Link {
-		const PathNode* target;
-		float cost;
-	};
-	std::vector<Link> links;
 	for (int dy = -12; dy <= 6; ++dy) {
 		for (int dx = -8; dx <= 8; ++dx) {
 			if (std::abs(dx) <= 1 && std::abs(dy) <= 1) {
@@ -1438,14 +1558,19 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 				risk += ColumnGrazeCost(node.Pos.m_X, standY, cruiseY);
 			}
 			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target) + risk;
-			links.push_back({target, cost});
+			links.push_back({target, cost, fuel});
 		}
 	}
-	// The cheapest few: a wide window offers many near-alike landings.
-	std::sort(links.begin(), links.end(), [](const Link& a, const Link& b) { return a.cost < b.cost; });
+	// Cheapest first: a wide window offers many near-alike landings, and AddFlightLinks takes the first few.
+	std::sort(links.begin(), links.end(), [](const FlightLink& a, const FlightLink& b) { return a.cost < b.cost; });
+}
+
+void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {
+	std::vector<FlightLink> links;
+	CollectFlightLinks(node, links);
 	micropather::StateCost adjCost;
 	int added = 0;
-	for (const Link& link: links) {
+	for (const FlightLink& link: links) {
 		if (added++ >= 8) {
 			break;
 		}
