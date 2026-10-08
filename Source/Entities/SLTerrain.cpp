@@ -99,6 +99,7 @@ void SLTerrain::Clear() {
 	m_TerrainDebris.clear();
 	m_TerrainObjects.clear();
 	m_Lights.clear();
+	m_QueuedLights.clear();
 	m_LightCheckCounter = 0;
 	m_LightCells.clear();
 	m_LightCellColumns = 0;
@@ -373,6 +374,11 @@ void SLTerrain::AddLight(const TerrainLight& light) {
 	m_Lights.emplace_back(newLight);
 }
 
+void SLTerrain::QueueLight(const TerrainLight& light) {
+	std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+	m_QueuedLights.emplace_back(light);
+}
+
 int SLTerrain::RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove) {
 	size_t before = m_Lights.size();
 	std::erase_if(m_Lights, shouldRemove);
@@ -421,6 +427,17 @@ void SLTerrain::ShootLightsAlong(const Vector& from, const Vector& to) {
 }
 
 void SLTerrain::UpdateLights() {
+	// Lights scripts added since the last update.
+	{
+		std::vector<TerrainLight> queued;
+		{
+			std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+			queued.swap(m_QueuedLights);
+		}
+		for (const TerrainLight& light: queued) {
+			AddLight(light);
+		}
+	}
 	if (m_Lights.empty()) {
 		return;
 	}
