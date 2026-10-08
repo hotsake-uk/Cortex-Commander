@@ -1486,8 +1486,10 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	// Really in the air: no ground within the legs' reach under the body's middle or either side of it. (The torso fits 3 px lower with the
 	// legs standing on the ground, so a body walking up stairs or a slope found the ground beside its hand inside the lip window and was
 	// caught every frame: stopped, pulled up, dropped, caught again, which read as vibrating against the terrain.)
+	// (In a pool the hands still take the bank: wading, the floor under the water is within reach, and the way out is up over the side.)
+	const bool wading = FluidSim::IsLiquid(g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X), static_cast<int>(m_Pos.m_Y)));
 	for (float side: {0.0F, -bodyWidth * 0.3F, bodyWidth * 0.3F}) {
-		for (int down = 0; down <= static_cast<int>(height * 0.6F); down += 2) {
+		for (int down = 0; !wading && down <= static_cast<int>(height * 0.6F); down += 2) {
 			if (IsGroundAt(static_cast<int>(m_Pos.m_X + side), static_cast<int>(m_Pos.m_Y) + down)) {
 				return false;
 			}

@@ -2167,6 +2167,11 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 		if last and not last:IsPastSimMS(5000) then
 			return;
 		end
+		for id, sentTimer in pairs(state.SentAfter) do
+			if sentTimer:IsPastSimMS(5000) then
+				state.SentAfter[id] = nil;
+			end
+		end
 		state.SentAfter[Enemy.UniqueID] = Timer();
 		Owner:ClearAIWaypoints();
 		Owner:AddAIMOWaypoint(Enemy);
