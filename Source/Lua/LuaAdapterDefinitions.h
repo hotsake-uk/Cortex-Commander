@@ -603,6 +603,10 @@ namespace RTE {
 		/// encountered. If no pixel of the right material was found, < 0 is returned.
 		/// If an obstacle on the starting position was encountered, 0 is returned.
 		static float CastObstacleRay2(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID = g_NoMOID, int ignoreTeam = Activity::NoTeam, unsigned char ignoreMaterial = 0, int skip = 0);
+
+		/// As CastObstacleRay1 and 2, with whether the ray sees through liquid as far as units do (FluidSim::SightDepth), for a line of sight or fire.
+		static float CastObstacleRay3(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid);
+		static float CastObstacleRay4(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid);
 		
 		/// Takes a Box and returns a list of Boxes that describe the Box, wrapped appropriately for the current Scene.
 		/// @param boxToWrap The Box to wrap.

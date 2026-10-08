@@ -885,12 +885,12 @@ function HumanBehaviors.GoProne(AI, Owner, TargetPos, targetID)
 
 	-- check LOS from the prone position
 	--if not SceneMan:CastFindMORay(PronePos, Dist, targetID, Hit, rte.grassID, false, 8) then
-	if SceneMan:CastObstacleRay(PronePos, Dist, Vector(), Vector(), targetID, Owner.IgnoresWhichTeam, rte.grassID, 9) > -1 then
+	if SceneMan:CastObstacleRay(PronePos, Dist, Vector(), Vector(), targetID, Owner.IgnoresWhichTeam, rte.grassID, 9, true) > -1 then
 		return false;
 	else
 		-- check for obstacles more more carefully
 		Dist:CapMagnitude(60);
-		if SceneMan:CastObstacleRay(PronePos, Dist, Vector(), Vector(), 0, Owner.IgnoresWhichTeam, rte.grassID, 1) > -1 then
+		if SceneMan:CastObstacleRay(PronePos, Dist, Vector(), Vector(), 0, Owner.IgnoresWhichTeam, rte.grassID, 1, true) > -1 then
 			return false;
 		end
 	end
@@ -1879,7 +1879,7 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 
 		-- check if we can fire at the AimPoint
 		local Trace = SceneMan:ShortestDistance(Owner.EyePos, AimPoint, false);
-		local rayLength = SceneMan:CastObstacleRay(Owner.EyePos, Trace, Vector(), Vector(), rte.NoMOID, Owner.IgnoresWhichTeam, rte.grassID, 11);
+		local rayLength = SceneMan:CastObstacleRay(Owner.EyePos, Trace, Vector(), Vector(), rte.NoMOID, Owner.IgnoresWhichTeam, rte.grassID, 11, true); -- (sees through water as far as units do)
 		if Trace:MagnitudeIsLessThan(rayLength * 1.5) then
 			break; -- the AimPoint is close enough to the target, start shooting
 		end
