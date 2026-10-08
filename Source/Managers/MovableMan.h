@@ -12,6 +12,7 @@
 #include "BS_thread_pool.hpp"
 
 #include <mutex>
+#include <shared_mutex>
 #include <map>
 #include <future>
 #include <unordered_set>
@@ -526,15 +527,21 @@ namespace RTE {
 		/// @param id Unique Id to look for.
 		/// @return Object found or 0 if not found any.
 		MovableObject* FindObjectByUniqueID(long int id) {
-			if (m_KnownObjects.count(id) > 0)
-				return m_KnownObjects[id];
+			// Under the lock the registering takes: every Create and Destroy writes this map, from scripts on worker threads and Lua's garbage
+			// collector too, and AI scripts and the debug overlay read it at the same time. (find, not operator[], which inserts.)
+			std::shared_lock<std::shared_mutex> guard(m_ObjectRegisteredMutex);
+			if (auto found = m_KnownObjects.find(id); found != m_KnownObjects.end())
+				return found->second;
 			else
 				return 0;
 		}
 
 		/// Returns the size of the object registry collection
 		/// @return Size of the objects registry.
-		unsigned int GetKnownObjectsCount() { return m_KnownObjects.size(); }
+		unsigned int GetKnownObjectsCount() {
+			std::shared_lock<std::shared_mutex> guard(m_ObjectRegisteredMutex);
+			return m_KnownObjects.size();
+		}
 
 		/// Returns the current sim update frame number
 		/// @return Current sim update frame number.
@@ -633,7 +640,7 @@ namespace RTE {
 		std::mutex m_AddedParticlesMutex;
 
 		// Mutex to ensure objects aren't registered/deregistered from separate threads at the same time
-		std::mutex m_ObjectRegisteredMutex;
+		std::shared_mutex m_ObjectRegisteredMutex; //!< Guards m_KnownObjects: shared to look up, exclusive to register and unregister.
 
 		// Mutex to ensure actors don't change team roster from seperate threads at the same time
 		std::mutex m_ActorRosterMutex;
