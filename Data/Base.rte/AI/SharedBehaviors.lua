@@ -478,13 +478,14 @@ function SharedBehaviors.EngineMotor(Owner)
 	return ok and value ~= nil;
 end
 
--- A stance for a while: AHuman.PRONE or AHuman.NOTPRONE.
+-- A stance for a while: AHuman.PRONE or AHuman.NOTPRONE. AI.proneState says so either way, for the rules that read it ("not while
+-- prone": no strafe, no cover move, no jet, no second GoProne); with the engine's motor, the native AI keeps the engine's stance up while
+-- it does (see NativeHumanAI:Update). (Left NOTPRONE, every one of those guards was dead, and a unit strafed sideways lying down.)
 function SharedBehaviors.Stance(AI, Owner, stance, milliseconds)
 	if SharedBehaviors.EngineMotor(Owner) then
 		Owner:SetAIStance(stance == AHuman.PRONE and 2 or 0, milliseconds or 1000);
-	else
-		AI.proneState = stance;
 	end
+	AI.proneState = stance;
 end
 
 -- A short move on this floor to a place, for a while; the engine walks (or crawls) it. @return Whether it is still on its way.
