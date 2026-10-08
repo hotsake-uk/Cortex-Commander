@@ -1900,7 +1900,17 @@ glm::u8vec4 MOSRotating::GetRenderSurface() const {
 		int snow = static_cast<int>(std::clamp(snowCover, 0.0F, 1.0F) * 15.0F + 0.5F);
 		packedStates = heat * 16 + snow;
 	}
-	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), castsShadow ? 255 : 0, static_cast<unsigned char>(packedStates));
+	unsigned char solid = castsShadow ? 255 : 0;
+	// With unit outlines on, a unit and everything on it carries its side in the solid flag, for the outline pass (UnitOutlineRow.frag): just under
+	// full for shadow casters, so they still read as solid, and just over none for the rest. Slot 1 is no side, 2 to 5 teams 1 to 4. Doors are left out.
+	if (g_PostProcessMan.GetLightingSettings().UnitOutline && m_RenderBlendMode == 0) {
+		const MovableObject* root = GetRootParent();
+		if (root->IsActor() && root->GetClassName() != "ADoor") {
+			int slot = std::clamp(root->GetTeam(), -1, 3) + 2;
+			solid = static_cast<unsigned char>(castsShadow ? 255 - 8 * slot : 8 * slot);
+		}
+	}
+	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), solid, static_cast<unsigned char>(packedStates));
 }
 
 void MOSRotating::GetDefaultSurface(float& metalness, float& gloss) const {

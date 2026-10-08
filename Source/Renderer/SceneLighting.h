@@ -200,6 +200,7 @@ namespace RTE {
 		GLTarget m_RoundedNormals; //!< The player screen's normals with metallic and glossy objects rounded off (see SurfaceRound.frag).
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
+		GLTarget m_OutlineRows; //!< Unit outlines: per pixel, the distance along its row to the nearest unit pixel, its side, and whether a stroke may go there (see UnitOutlineRow.frag).
 		GLTarget m_GodRays; //!< Half resolution light shafts.
 		static constexpr int c_IndirectMipCount = 4;
 		GLTarget m_IndirectMips[c_IndirectMipCount]; //!< Downsample chain of the lit scene, the smallest is the next frame's indirect light.
@@ -237,6 +238,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_BloomDownsampleShader;
 		std::unique_ptr<Shader> m_BloomUpsampleShader;
 		std::unique_ptr<Shader> m_TonemapShader;
+		std::unique_ptr<Shader> m_UnitOutlineRowShader; //!< The first half of the unit outlines' search (see LightingSettings::UnitOutline).
 		std::unique_ptr<Shader> m_LitParticleShader;
 		std::unique_ptr<Shader> m_SmokeScatterShader;
 		std::unique_ptr<Shader> m_RCSceneShader;

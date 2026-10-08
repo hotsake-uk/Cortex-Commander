@@ -521,6 +521,17 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
 		}
+		Heading("Unit outlines");
+		Check("Outline units", &settings.UnitOutline);
+		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
+		Slider("Outline width (px)", &settings.UnitOutlineWidth, 1.0F, 4.0F, "%.1f");
+		Tip("In the game's pixels. Zoomed out, the stroke is thickened to keep its size on screen.");
+		Check("Outline in team colour", &settings.UnitOutlineTeamColor);
+		Tip("Red, green, blue or yellow by side, white for units of no side. Unticked, every outline takes the colour below.");
+		if (!settings.UnitOutlineTeamColor) {
+			Tint("Outline colour", &settings.UnitOutlineColor.x);
+		}
+		Slider("Outline opacity", &settings.UnitOutlineOpacity, 0.0F, 1.0F);
 		Heading("HUD");
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
