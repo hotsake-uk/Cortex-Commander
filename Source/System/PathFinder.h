@@ -32,7 +32,8 @@ namespace RTE {
 		Ladder, //!< Up or down a ladder, hand over hand (see AHuman::UpdateLadder), or off its top or side onto a floor.
 		Leap, //!< Across a gap or up onto a low ledge on a leap of the legs (see AHuman::UpdateLeap): no jet.
 		Mantle, //!< Up onto a ledge one or two nodes up and one across, pulled up onto by pressing into it (see Actor::TryStartMantle): no jet.
-		Crouch //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
+		Crouch, //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
+		Scramble //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -55,6 +56,7 @@ namespace RTE {
 		float LeapHeight = 0.0F; //!< How high a leap of its legs lifts it, in pixels (see AHuman::GetLegJumpHeight); 0 for none.
 		float LeapSpeed = 4.0F; //!< How fast a leap carries it forward, in m/s.
 		float MaxSafeFall = FLT_MAX; //!< For a searcher with no jet to brake a fall, the highest drop it lands from unhurt, in pixels (see Actor::GetMaxSafeFallHeight): falls higher are not routed. FLT_MAX for no limit.
+		bool Scrambles = false; //!< Whether it scrambles up rough slopes too steep for stairs on its legs and arms (a humanoid with an arm).
 	};
 
 	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
@@ -109,6 +111,8 @@ namespace RTE {
 		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
 		bool Grounded = false; //!< Whether a body here stands on something: any of the lines down across the cell meets ground (see UpdateNodeCosts).
 		bool StairsUpLeft = false; //!< Likewise up to the left.
+		bool ScrambleUpRight = false; //!< Whether a rough slope of loose or diggable ground, too steep for stairs, leads from this node's floor up to the floor of the node three up and one to the right (see UpdateNodeCosts).
+		bool ScrambleUpLeft = false; //!< Likewise up to the left.
 		/// Stepping over something low between this node's floor and a floor level with it one node (index 0) or two nodes (index 1) to the right:
 		/// how high the thing is over the floor, or -1 when there is nothing to step over (or no such floor, or it is too high), and the air over it.
 		std::array<float, 2> StepOverRise = {-1.0F, -1.0F};
