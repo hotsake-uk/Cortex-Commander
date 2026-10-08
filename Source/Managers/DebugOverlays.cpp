@@ -342,11 +342,18 @@ void DebugOverlays::DrawTerrainUpdates() {
 }
 
 void DebugOverlays::DrawLightSources() {
-	SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
+	// GetSceneLighting makes the lighting (and loads its shaders) when there is none yet, so it's only asked for while the overlay is on,
+	// and once more after, to turn the recording off.
+	static bool recording = false;
 	bool on = g_SettingsMan.ShowLightSources();
+	if (!on && !recording) {
+		return;
+	}
+	SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
 	if (lighting) {
 		lighting->SetRecordDebugLights(on);
 	}
+	recording = on && lighting;
 	if (!on || !lighting) {
 		return;
 	}
@@ -412,8 +419,11 @@ void DebugOverlays::DrawLightSources() {
 }
 
 void DebugOverlays::DrawSunDirection() {
+	if (!g_SettingsMan.ShowSunDirection() || !g_SceneMan.GetScene()) {
+		return;
+	}
 	SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
-	if (!g_SettingsMan.ShowSunDirection() || !lighting || !g_SceneMan.GetScene()) {
+	if (!lighting) {
 		return;
 	}
 	ImDrawList* drawList = ImGui::GetForegroundDrawList();
