@@ -2337,11 +2337,34 @@ namespace {
 			autoSide.NextWave = now + 900;
 			std::vector<const Preset*> choices = FactionUnits(s_FactionModules[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1)]);
 			float left = static_cast<float>(autoSide.Budget) - autoSide.Spent;
-			float waveBudget = std::min(left, 900.0F);
+			// What each of the faction's units costs as bought (with its loadout), and the cheapest. The wave's budget is at least the
+			// cheapest unit, and picks are made only from what still fits: a faction whose cheapest unit cost over 900 (heavy mechs, some
+			// mods) never filled a wave and was called broke before buying anything, and twelve random picks over budget did the same to
+			// a side that could still afford its cheapest.
+			std::vector<std::pair<const Preset*, float>> priced;
+			float cheapest = -1.0F;
+			for (const Preset* choice: choices) {
+				if (Actor* unit = CreateUnit(*choice, side, 0, Order::Attack)) {
+					float cost = unit->GetTotalValue(unit->GetModuleID(), 1.0F);
+					delete unit;
+					priced.emplace_back(choice, cost);
+					cheapest = cheapest < 0.0F ? cost : std::min(cheapest, cost);
+				}
+			}
+			float waveBudget = std::min(left, std::max(900.0F, cheapest));
 			std::vector<Actor*> wave;
 			float waveCost = 0.0F;
-			for (int attempt = 0; attempt < 12 && wave.size() < 5 && !choices.empty(); ++attempt) {
-				const Preset* pick = choices[std::min(choices.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(choices.size())))];
+			for (int attempt = 0; attempt < 12 && wave.size() < 5; ++attempt) {
+				std::vector<const Preset*> affordable;
+				for (const auto& [choice, cost]: priced) {
+					if (waveCost + cost <= waveBudget) {
+						affordable.push_back(choice);
+					}
+				}
+				if (affordable.empty()) {
+					break;
+				}
+				const Preset* pick = affordable[std::min(affordable.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(affordable.size())))];
 				Actor* unit = CreateUnit(*pick, side, 0, Order::Attack);
 				float cost = unit ? unit->GetTotalValue(unit->GetModuleID(), 1.0F) : 0.0F;
 				if (unit && waveCost + cost <= waveBudget) {
@@ -2351,38 +2374,17 @@ namespace {
 					delete unit;
 				}
 			}
-			// Twelve random picks all over the budget: the cheapest unit, if that is in it. (Called broke on the random picks alone, a side
-			// that could still afford its cheapest unit stopped buying.)
-			if (wave.empty() && !choices.empty()) {
-				Actor* cheapest = nullptr;
-				float cheapestCost = 0.0F;
-				for (const Preset* choice: choices) {
-					Actor* unit = CreateUnit(*choice, side, 0, Order::Attack);
-					if (!unit) {
-						continue;
-					}
-					float cost = unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-					if (!cheapest || cost < cheapestCost) {
-						delete cheapest;
-						cheapest = unit;
-						cheapestCost = cost;
-					} else {
-						delete unit;
-					}
-				}
-				if (cheapest && cheapestCost <= waveBudget) {
-					wave.push_back(cheapest);
-					waveCost = cheapestCost;
-				} else {
-					delete cheapest;
-				}
-			}
 			if (wave.empty()) {
 				autoSide.Broke = true;
 				continue;
 			}
-			autoSide.Sent += static_cast<int>(wave.size());
-			autoSide.Spent += DropUnits(wave, side, AutoLaneX(side), 0);
+			// (Counted as sent only once a craft took them: with no craft to be had, DropUnits deletes the units and returns nothing.)
+			int waveSize = static_cast<int>(wave.size());
+			float paid = DropUnits(wave, side, AutoLaneX(side), 0);
+			if (paid > 0.0F) {
+				autoSide.Sent += waveSize;
+				autoSide.Spent += paid;
+			}
 		}
 		// One side left standing wins.
 		if (now % 60 == 0) {
