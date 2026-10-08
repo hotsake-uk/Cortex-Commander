@@ -92,6 +92,18 @@ namespace RTE {
 		/// Stops drawing with a sprite's maps. Does nothing if none are on.
 		void EndObjectMaps() { m_ActiveBatch->m_ObjectMapUniforms.clear(); }
 
+		/// Gives the draws that follow a value for one of their shader's uniforms, until EndLayerUniforms: for one shader drawing several layers that differ only in
+		/// that (the terrain's background and foreground). Uniforms set straight on the shader would only hold their last value by the time the batch is drawn.
+		/// @param value The uniform and its value; nothing is given if its location is below 0 (not in the shader).
+		void BeginLayerUniform(std::shared_ptr<UniformValueType> value, GLint location) {
+			if (location >= 0) {
+				m_ActiveBatch->m_LayerUniforms.push_back(std::move(value));
+			}
+		}
+
+		/// Stops giving the draws that follow the values from BeginLayerUniform.
+		void EndLayerUniforms() { m_ActiveBatch->m_LayerUniforms.clear(); }
+
 		/// Schedules a new draw call on the current batch, initialized with the current shader, uniforms and camera.
 		std::shared_ptr<DrawCall> BeginDraw();
 
