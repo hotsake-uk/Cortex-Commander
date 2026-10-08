@@ -32,7 +32,8 @@ namespace {
 		Ember,
 		Fire, //!< A ball of an explosion's fire: glows, swells and rises, and is gone in about a second.
 		Smoke, //!< What the fire leaves: dark, rising, lingering for seconds. Lit like dust.
-		Mist //!< Spray off falling water: a soft pale puff that drifts down a little, swells and is gone in under a second. Never quite dark, so it shows at night.
+		Mist, //!< Spray off falling water: a soft pale puff that drifts down a little, swells and is gone in under a second. Never quite dark, so it shows at night.
+		Droplet //!< A drop of a splash: a pixel in the liquid's colour that flies, falls and is gone where it lands, in the liquid or on the ground. Nothing joins the liquid.
 	};
 
 	struct Particle {
@@ -151,6 +152,9 @@ namespace {
 						     RandomRange(1.5F, 3.2F) * std::max(mist.WaterMistSize, 0.05F), request.MaterialColor ? color : glm::u8vec3(190, 228, 255), Kind::Mist});
 						break;
 					}
+					case Kind::Droplet:
+						Add({request.Position, velocity, 0.0F, RandomRange(1.2F, 2.4F), 1.0F, request.MaterialColor ? color : glm::u8vec3(150, 190, 230), Kind::Droplet});
+						break;
 					default:
 						Add({request.Position, velocity, 0.0F, RandomRange(1.0F, 2.5F), 1.0F, request.MaterialColor ? color : glm::u8vec3(120, 110, 100), Kind::Debris});
 						break;
@@ -342,6 +346,8 @@ bool EffectsParticles::Emit(const std::string& kind, const Vector& position, con
 		which = Kind::Mist;
 	} else if (kind == "Smoke") {
 		which = Kind::Smoke;
+	} else if (kind == "Droplets" || kind == "Droplet") {
+		which = Kind::Droplet;
 	} else {
 		return false;
 	}
@@ -436,6 +442,18 @@ void EffectsParticles::Update(float amount) {
 			particle.Position += particle.Velocity * seconds;
 			continue;
 		}
+		if (particle.Type == Kind::Droplet) {
+			// A splash's drop falls back and is gone where it comes down: into the liquid it came from, or onto the ground. (It only ever
+			// looked like the liquid: what the body pushed aside went into the level.)
+			particle.Velocity.y += gravity * seconds;
+			particle.Velocity *= 1.0F - std::min(1.0F, seconds * 0.4F);
+			glm::vec2 next = particle.Position + particle.Velocity * seconds;
+			if (particle.Velocity.y > 0.0F && IsSolid(next.x, next.y)) {
+				particle.Age = particle.Life;
+			}
+			particle.Position = next;
+			continue;
+		}
 		particle.Velocity.y += gravity * seconds * (particle.Type == Kind::Spark ? 0.6F : 1.0F);
 		particle.Velocity *= 1.0F - std::min(1.0F, seconds * (particle.Type == Kind::Spark ? 0.8F : 0.3F));
 		glm::vec2 next = particle.Position + particle.Velocity * seconds;
@@ -467,7 +485,7 @@ void EffectsParticles::Update(float amount) {
 
 void EffectsParticles::Draw(const Camera& camera) {
 	for (const Particle& particle: s_Particles) {
-		if (particle.Type != Kind::Debris) {
+		if (particle.Type != Kind::Debris && particle.Type != Kind::Droplet) {
 			continue;
 		}
 		float remaining = 1.0F - particle.Age / particle.Life;

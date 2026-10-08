@@ -889,6 +889,36 @@ void FluidSim::Splash(const Vector& position, float radius, float share, float s
 	}
 }
 
+void FluidSim::VisualSplash(const Vector& position, float width, float speed, int colorIndex) {
+	float strength = std::clamp(g_PostProcessMan.GetLightingSettings().WaterSplash, 0.0F, 4.0F);
+	if (strength <= 0.0F || speed < 1.0F) {
+		return;
+	}
+	speed = std::min(speed, 24.0F);
+	width = std::clamp(width, 4.0F, 200.0F);
+	Color color;
+	color.SetRGBWithIndex(colorIndex);
+	unsigned int rgb = EffectsParticles::ColorToRGB(color);
+	// The spray a little paler than the liquid, as it is against the light.
+	unsigned int mistRGB = 0;
+	if (rgb != 0) {
+		auto paler = [rgb](int shift) { return static_cast<unsigned int>(((rgb >> shift) & 0xFF) + (255 - ((rgb >> shift) & 0xFF)) / 2) << shift; };
+		mistRGB = paler(16) | paler(8) | paler(0);
+	}
+	// A crown: drops thrown up and out from across the width that went in, highest from the middle, flattest and furthest from the edges; the
+	// stronger the setting, the more of them and the higher. (Render only: the effects' own random numbers, nothing the simulation reads.)
+	float lift = std::sqrt(strength);
+	int columns = std::clamp(static_cast<int>(width / 5.0F), 3, 24);
+	int perColumn = std::clamp(static_cast<int>(std::round(speed * 0.35F * strength)), 1, 14);
+	for (int column = 0; column < columns; ++column) {
+		float across = static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F;
+		Vector at(position.m_X + across * width * 0.55F, position.m_Y - 1.0F);
+		Vector velocity(across * speed * 0.3F * lift, -speed * (0.75F - 0.35F * std::abs(across)) * lift);
+		EffectsParticles::Emit("Droplets", at, velocity, 0.18F, perColumn, rgb);
+	}
+	EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength), 2, 60), mistRGB);
+}
+
 void FluidSim::Disturb(const Vector& position, float radius) {
 	if (!s_Enabled) {
 		return;

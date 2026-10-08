@@ -66,6 +66,14 @@ namespace RTE {
 		/// @param speed How hard it's thrown, in metres a second.
 		static void Splash(const Vector& position, float radius, float share, float speed);
 
+		/// Throws up a splash that is only for the eye: drops in the liquid's colour and spray, which fly and are gone where they land. Nothing is taken
+		/// from the liquid or added to it (what a falling body pushes aside goes into the level: TerrainCollapse). As big as the WaterSplash setting. Thread safe.
+		/// @param position Where the body meets the surface, in scene coordinates.
+		/// @param width How wide the body is there, in pixels.
+		/// @param speed How fast it went in, in metres a second.
+		/// @param colorIndex Palette index of the liquid there, for the drops' colour.
+		static void VisualSplash(const Vector& position, float width, float speed, int colorIndex);
+
 		/// Lets a particle that just settled into the terrain join in: a drop of liquid in that liquid's own colour starts flowing (so blood, drawn in water, stays put),
 		/// and a burning particle sets the flammable pixel it became alight. Call after the particle is drawn into the terrain.
 		/// @param particle The settled particle.
