@@ -1686,6 +1686,16 @@ function SharedBehaviors.MayFire(AI, Owner)
 	return rule ~= Actor.WEAPONS_HOLD;
 end
 
+-- What MayFire last said, without its side effects (it keeps the health it last saw, and is called once an update): for starting a throw,
+-- which takes a second or two of the trigger held. (Grenades and smoke under the weapons rule too, AC-5.)
+function SharedBehaviors.RuleLetsFire(AI, Owner)
+	local rule = Owner.WeaponRule;
+	if rule == Actor.WEAPONS_RETURN_FIRE then
+		return AI.UnderFireTimer ~= nil and not AI.UnderFireTimer:IsPastSimMS(4000);
+	end
+	return rule ~= Actor.WEAPONS_HOLD;
+end
+
 -- Whether a unit with a target in sight keeps going for its waypoint: on a move order, or when its script marks it aggressive (the Ronin
 -- do when hurt), or when it's closing in on a target it can't hit from here.
 function SharedBehaviors.FightsOnTheMove(AI, Owner)

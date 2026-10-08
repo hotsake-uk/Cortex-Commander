@@ -321,7 +321,7 @@ end
 -- When to lob a grenade over cover (AC-5), every second: an AI that lost sight of its enemy in the last four seconds, where it was is
 -- 80 to 500 px off and out of sight, and the unit has a grenade; at most every eight seconds. Better AI does it more often.
 function HumanBehaviors.LobUpdate(AI, Owner)
-	if AI.Target or AI.NextBehavior or not AI.OldTargetPos or AI.flying or Owner.AIMode == Actor.AIMODE_SQUAD then
+	if AI.Target or AI.NextBehavior or not AI.OldTargetPos or AI.flying or Owner.AIMode == Actor.AIMODE_SQUAD or not SharedBehaviors.RuleLetsFire(AI, Owner) then
 		return;
 	end
 	AI.LobCheckTimer = AI.LobCheckTimer or Timer();
@@ -349,7 +349,7 @@ end
 -- When to throw smoke (AC-5), every second: on a move order, pinned (suppression over 0.3) or hit in the last two seconds, with a smoke
 -- grenade and an enemy seen in the last few seconds 100 to 700 px off; at most every twenty seconds. The smoke goes a third of the way to it.
 function HumanBehaviors.SmokeUpdate(AI, Owner)
-	if AI.NextBehavior or AI.flying or SharedBehaviors.OrderKind(Owner) ~= "move" then
+	if AI.NextBehavior or AI.flying or SharedBehaviors.OrderKind(Owner) ~= "move" or not SharedBehaviors.RuleLetsFire(AI, Owner) then
 		return;
 	end
 	AI.SmokeCheckTimer = AI.SmokeCheckTimer or Timer();
@@ -1832,6 +1832,10 @@ end
 -- throw a grenade at the selected target
 --TODO: This behavior should effectively have the actor close in on the target if out of range!
 function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
+	-- (Not against the weapons rule, RC-1: a grenade is a weapon, and a trigger the rule let go of mid-throw threw it short.)
+	if not SharedBehaviors.RuleLetsFire(AI, Owner) then
+		return true;
+	end
 	local ThrowTimer = Timer();
 	local aimTime = Owner.ThrowPrepTime;
 	local scan = 0;
@@ -1958,6 +1962,14 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 								aim = aim - Owner.RotAngle;
 								ThrowTimer:Reset();
 								aimTime = HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, full);
+								-- (The runner moves while the grenade is held too: led on by the hold as well, once the hold is known.)
+								local Vel = AI.Target.Vel;
+								if Vel.Magnitude > 1 and aimTime > 200 then
+									local heldAim = HumanBehaviors.PlanThrow(Grenade, AimPoint + Vel * GetPPM() * aimTime * 0.001, Vel, false);
+									if heldAim then
+										aim = heldAim - Owner.RotAngle;
+									end
+								end
 							else
 								break; -- target out of range, or no arc gets there
 							end
