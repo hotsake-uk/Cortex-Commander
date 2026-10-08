@@ -1637,6 +1637,18 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 	return true;
 }
 
+bool PathFinder::LipAt(const PathNode& to, float direction) const {
+	// Half a node short of the landing, nothing within half a node under its floor: a face to get up, not a slope a walk goes up.
+	int x = static_cast<int>(to.Pos.m_X - direction * static_cast<float>(m_NodeDimension) * 0.5F);
+	int top = static_cast<int>(to.Surface) - 2;
+	for (int y = top; y <= top + 2 + m_NodeDimension / 2; ++y) {
+		if (TerrNav(x, y) != MaterialColorKeys::g_MaterialAir) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool PathFinder::GapBetween(const PathNode& from, const PathNode& to) const {
 	const float nodeSize = static_cast<float>(m_NodeDimension);
 	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
@@ -1709,7 +1721,7 @@ void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::Sta
 			// floors the arc fitted, at a little over the walk, a leap beat every walk that paid a little extra on the way: over a bush, a
 			// grassy hump, a lump a step would have taken; units leapt along whole stretches of open ground.)
 			float rise = node.Surface - target->Surface;
-			if (!(rise > s_MantleHeight && rise > nodeSize * 0.5F) && !GapBetween(node, *target)) {
+			if (!(rise > s_MantleHeight && rise > nodeSize * 0.5F && LipAt(*target, dx < 0 ? -1.0F : 1.0F)) && !GapBetween(node, *target)) {
 				continue;
 			}
 			// Over the walk of the same distance (a node of walk is 1) by two, and more for a leap up (the landing has to be right): so a walk
