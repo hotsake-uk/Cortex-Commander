@@ -503,6 +503,8 @@ namespace SandboxDetail {
 	};
 	inline CommandMode s_CommandMode = CommandMode::Move;
 	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard"};
+	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
+	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
 	inline std::array<std::vector<UnitRef>, 10> s_Groups; //!< Control groups: Ctrl+number keeps the selection, the number alone brings it back.
 
@@ -520,7 +522,7 @@ namespace SandboxDetail {
 	inline bool s_GymToSet = false;
 
 	inline bool s_RingOpen = false; //!< A ring of choices is up, round where the right button went down.
-	inline int s_RingPage = 0; //!< Which ring the command tool shows: 0 the basic commands while the button is held, 1 the native AI modes ("More"), 2 the basic ring held up until a click.
+	inline int s_RingPage = 0; //!< Which ring the command tool shows: 0 the basic commands while the button is held, 1 the native AI modes ("More"), 2 the basic ring held up until a click, 3 the weapons rules and 4 the movement rules (RC-1).
 	inline ImVec2 s_RingCenter;
 	inline Vector s_RingScenePoint; //!< Where in the world the right button went down, which the choice is about.
 	inline int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
@@ -1183,6 +1185,8 @@ namespace SandboxDetail {
 	void CommandSelected(const Vector& position, int modifier);
 	void QueueWaypoint(std::vector<Actor*> units, const Vector& point);
 	void OrderSelectedUnits(int choice, const Vector& point);
+	int SelectedRule(bool weapons);
+	void QueueRule(bool weapons, int rule);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
 	float AutoLaneX(int side);
