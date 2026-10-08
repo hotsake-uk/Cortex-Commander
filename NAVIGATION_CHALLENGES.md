@@ -172,3 +172,26 @@ $env:CCCP_AI_LOG = "all"; Set-Location "C:\Users\Liamn\Desktop\cortex\Cortex-Com
 4. **Leaps for crabs,** and failure memory for leaps.
 5. **Ladders for every unit** once the follower handles every way ladders meet the rest of a route.
 6. **Gym courses for the spaceport cases:** a ledge straight overhead, an overhang wider than a body, a background ladder behind a floor.
+
+## How the movement items (LM-1 to LM-12) meet these
+
+The movement items in the new-features deep dive build on the follower above. This section notes which open problems each one touches,
+so they don't drift apart.
+
+- **New step kinds before the route carries shapes (open problem 2).** LM-1 added Crouch, LM-4 added Swim and Wade, LM-10 added
+  Scramble and LM-5 added StepOver. Each is one more kind the follower rebuilds from geometry, because the route still carries a kind
+  and a point, not the move's shape. Crouch and StepOver are safe that way, since each shape is one number (the head room, or the
+  rise) that the follower can sense again where it stands. Swim and Wade are the ones that would gain most once the route carries
+  each step's take-off, landing and checked arc. When problem 2 is taken up, those kinds should write their shape into it from the
+  start.
+- **Crab leaps (open problem 4).** LM-8 gives crabs a leap of their legs (LegJumpHeight, LegJumpSpeed), leap edges in the grid and
+  the human's way of taking a Leap step. Failure memory for leaps is still the shared `AvoidPathLink` the human leap uses; there is
+  nothing crab-specific yet.
+- **Body-shaped checks (open problem 3).** LM-2's unit sense and LM-5's step-over sense look ahead with the body's own heights and
+  widths, but only in the follower. The grid still prices step-overs and crouches from its node samples.
+- **Going round vertically and the take-off (open problem 1).** Nothing in LM-1 to LM-12 changes take-offs. LM-6 (catching a ledge)
+  turns a short flight that falls back under its landing into a catch attempt, which hides some of that problem but does not solve it.
+- **Ladders for every unit (open problem 5).** Not touched. Crabs still don't climb.
+- **Gym courses (open problem 6).** LM-12 adds courses for the movement items. The spaceport cases are still to do.
+- **Lifts and moving platforms (LM-11).** These need the route to carry a wait at a stop, which is open problem 2's structure. LM-11
+  should wait for it rather than adding another kind the follower has to rebuild.
