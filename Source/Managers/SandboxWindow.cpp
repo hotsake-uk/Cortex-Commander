@@ -57,6 +57,47 @@ namespace SandboxDetail {
 
 
 
+	std::string RandomSourceName(bool favouritesOnly, int faction) {
+		if (favouritesOnly) {
+			return "Random favourites";
+		}
+		if (faction >= 0 && faction < static_cast<int>(s_FactionNames.size())) {
+			return "Random " + s_FactionNames[faction];
+		}
+		return "Random units";
+	}
+
+	bool RandomSourceCombo(const char* label, bool& favouritesOnly, int& faction) {
+		bool changed = false;
+		if (faction >= static_cast<int>(s_FactionNames.size())) {
+			faction = -1;
+		}
+		std::string shown = favouritesOnly ? "Favourites" : faction >= 0 ? s_FactionNames[faction] : "All factions";
+		if (ImGui::BeginCombo(label, shown.c_str(), ImGuiComboFlags_HeightLarge)) {
+			if (ImGui::Selectable("All factions", !favouritesOnly && faction < 0)) {
+				favouritesOnly = false;
+				faction = -1;
+				changed = true;
+			}
+			if (ImGui::Selectable("Favourites", favouritesOnly)) {
+				favouritesOnly = true;
+				faction = -1;
+				changed = true;
+			}
+			ImGui::Separator();
+			for (size_t i = 0; i < s_FactionNames.size(); ++i) {
+				if (ImGui::Selectable(s_FactionNames[i].c_str(), !favouritesOnly && faction == static_cast<int>(i))) {
+					favouritesOnly = false;
+					faction = static_cast<int>(i);
+					changed = true;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::SetItemTooltip("Where random units come from: every faction, only the units marked as favourites (Ctrl+click on a tile; with none marked, every unit), or one faction.");
+		return changed;
+	}
+
 	ToolLook LookOf(Tool kind) {
 		switch (kind) {
 			case Tool::None:
@@ -2223,7 +2264,8 @@ namespace SandboxDetail {
 			ImGui::NewLine();
 		} else if (tool.Kind == Tool::Unit || tool.Kind == Tool::Drop) {
 			const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind));
-			start(tool.Kind == Tool::Drop && s_DropRandom ? (s_DropFavourites ? "Random favourites" : "Random units") : preset ? preset->PresetName.c_str() : tool.Name);
+			std::string randomName = RandomSourceName(s_RandomFavourites, s_RandomFaction);
+			start(s_RandomUnits ? randomName.c_str() : preset ? preset->PresetName.c_str() : tool.Name);
 			ImGui::SetNextItemWidth(field * 0.7F);
 			ImGui::SliderInt("##squad", &s_SquadSize, 1, 10, "Squad of %d");
 			ImGui::SameLine();

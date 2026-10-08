@@ -84,10 +84,21 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		g_CameraMan.SetScroll(position, 0);
 		return true;
 	}
-	if (stroke.Kind == Tool::Drop && (presetName == "Random units" || presetName == "Random favourites")) {
-		// A drop of random units, as the window's "Random units" box: each one picked from every faction's units, or from the favourites.
+	int randomFaction = -1;
+	if (presetName.rfind("Random ", 0) == 0) {
+		// "Random <faction>" as the window's box gives: the faction by name, as SandboxAutoBattleSide takes it.
+		std::string name = presetName.substr(7);
+		for (size_t i = 0; i < s_FactionNames.size(); ++i) {
+			if (s_FactionNames[i] == name || s_FactionNames[i] + ".rte" == name) {
+				randomFaction = static_cast<int>(i);
+			}
+		}
+	}
+	if ((stroke.Kind == Tool::Drop || stroke.Kind == Tool::Unit) && (presetName == "Random units" || presetName == "Random favourites" || randomFaction >= 0)) {
+		// Random units, as the window's "Random units" box: each one picked from every faction's units, from the favourites or from one faction.
 		stroke.Random = true;
 		stroke.FavouritesOnly = presetName == "Random favourites";
+		stroke.RandomFaction = randomFaction;
 	} else if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
@@ -924,12 +935,14 @@ void Sandbox::DrawGUI() {
 				}
 				if (kind == Tool::Drop) {
 					ImGui::Combo("Craft", &s_Craft, "Dropship\0Rocket\0");
-					ToolUI::Checkbox("Random units", &s_DropRandom);
-					ImGui::SetItemTooltip("Each unit in the craft is picked at random from every faction's units, not the one chosen above.");
-					if (s_DropRandom) {
+				}
+				if (kind == Tool::Unit || kind == Tool::Drop) {
+					ToolUI::Checkbox("Random units", &s_RandomUnits);
+					ImGui::SetItemTooltip(kind == Tool::Drop ? "Each unit in the craft is picked at random, not the one chosen above." : "Each unit in the squad is picked at random, not the one chosen above. Squad size is how many.");
+					if (s_RandomUnits) {
 						ImGui::SameLine();
-						ToolUI::Checkbox("Favourites only##drop", &s_DropFavourites);
-						ImGui::SetItemTooltip("Picks only from the units marked as favourites (Ctrl+click on a tile). With none marked, from every unit.");
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6F);
+						RandomSourceCombo("From##random", s_RandomFavourites, s_RandomFaction);
 					}
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {

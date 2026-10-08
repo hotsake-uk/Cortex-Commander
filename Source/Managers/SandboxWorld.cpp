@@ -649,14 +649,18 @@ namespace SandboxDetail {
 	}
 
 	void SpawnUnits(const Stroke& stroke, bool brain) {
-		const Preset* preset = ChosenPreset(brain ? Tool::Brain : Tool::Unit, stroke.Choice);
-		if (!preset) {
+		// Random (units only): each one picked on its own from the pool, the squad spread as for a chosen unit.
+		bool random = stroke.Random && !brain;
+		std::vector<const Preset*> pool = random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
+		const Preset* chosen = random ? nullptr : ChosenPreset(brain ? Tool::Brain : Tool::Unit, stroke.Choice);
+		if (random ? pool.empty() : !chosen) {
 			return;
 		}
 		ActivateSide(stroke.Team);
 		int count = brain ? 1 : stroke.Count;
 		for (int i = 0; i < count; ++i) {
-			Actor* actor = dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID));
+			const Preset* preset = random ? RandomPick(pool) : chosen;
+			Actor* actor = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
 			if (!actor) {
 				return;
 			}
@@ -677,12 +681,17 @@ namespace SandboxDetail {
 	}
 
 
-	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or only those marked as favourites in
-	/// the unit or drop lists. With no favourite units marked, every faction's, rather than nothing at all.
-	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly) {
+	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or one faction's (an index into
+	/// s_FactionModules, -1 for all), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
+	/// marked, all of the faction's, rather than nothing at all.
+	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly, int faction) {
 		std::vector<const Preset*> all;
 		std::vector<const Preset*> favourites;
+		int moduleID = faction >= 0 && faction < static_cast<int>(s_FactionModules.size()) ? s_FactionModules[faction] : -1;
 		for (const Preset& unit: s_Units) {
+			if (moduleID >= 0 && unit.ModuleID != moduleID) {
+				continue;
+			}
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
 			if (!entity || entity->IsInGroup("Actors - Turrets")) {
 				continue;
@@ -701,7 +710,7 @@ namespace SandboxDetail {
 
 	void DropSquad(const Stroke& stroke) {
 		// Random: each unit picked on its own from every faction's units, or from the favourites.
-		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly) : std::vector<const Preset*>();
+		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
 		const Preset* preset = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.Choice);
 		if (stroke.Random ? pool.empty() : !preset) {
 			return;
@@ -1256,8 +1265,9 @@ namespace SandboxDetail {
 		}
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
-		stroke.Random = kind == Tool::Drop && s_DropRandom;
-		stroke.FavouritesOnly = s_DropFavourites;
+		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;
+		stroke.FavouritesOnly = s_RandomFavourites;
+		stroke.RandomFaction = s_RandomFaction;
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);
