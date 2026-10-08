@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <cmath>
 
 using namespace RTE;
@@ -105,6 +106,7 @@ void SceneLighting::LoadShaders() {
 	m_PropagateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightPropagate.frag");
 	m_FogUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/FogUpdate.frag");
 	m_WetnessUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WetnessUpdate.frag");
+	m_SunShadowMapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SunShadowMap.frag");
 	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
 	m_LampCacheApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LampCacheApply.frag");
 	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
@@ -293,6 +295,8 @@ void SceneLighting::DestroyWorldResources() {
 	m_LampDirtyEndX = m_LampDirtyMinX;
 	m_WetMap[0].Destroy();
 	m_WetMap[1].Destroy();
+	m_SunMap.Destroy();
+	m_SunMapReady = false;
 	m_Flow.clear();
 	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
@@ -1154,6 +1158,91 @@ void SceneLighting::UpdateLampCache() {
 	glDisable(GL_SCISSOR_TEST);
 }
 
+void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& changedArea) {
+	if (!m_Settings.Enabled || !m_Settings.SunShadowMap || m_Settings.SunShadows <= 0.0F || m_WrapY || m_SceneWidth <= 0 || m_SceneHeight <= 0 || !m_OccupancyTexture.Texture) {
+		if (m_SunMap.Texture) {
+			m_SunMap.Destroy();
+		}
+		m_SunMapReady = false;
+		return;
+	}
+	// The rays come down along the sun's direction, as steep as the cloud shadows take it (no flatter than five across for one down).
+	float slope = m_SunDirection.x / std::max(-m_SunDirection.y, 0.2F);
+	float sceneWidth = static_cast<float>(m_SceneWidth);
+	float sceneHeight = static_cast<float>(m_SceneHeight);
+	// The rays that reach the scene: across its width on a wrapping scene (they repeat around it), and with the extra that comes in slanting from one side otherwise.
+	// Two pixels apart, or wider on huge scenes so the map stays at most 8192 texels.
+	float start = m_WrapX ? 0.0F : std::min(0.0F, slope * sceneHeight);
+	float range = m_WrapX ? sceneWidth : sceneWidth + std::abs(slope) * sceneHeight;
+	float texel = std::max(2.0F, std::ceil(range / 8192.0F));
+	int count = std::max(1, static_cast<int>(std::ceil(range / texel)));
+	if (m_WrapX) {
+		// A whole number of rays around the scene, so the map wraps with it.
+		count = std::max(1, static_cast<int>(std::round(range / texel)));
+		texel = range / static_cast<float>(count);
+	}
+	bool remakeAll = !m_SunMapReady || std::abs(slope - m_SunMapSlope) * sceneHeight > 2.0F;
+	if (m_SunMap.Width != count || !m_SunMap.Framebuffer) {
+		m_SunMap.Create(count, 1, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR, m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		remakeAll = true;
+	}
+	if (remakeAll) {
+		m_SunMapSlope = slope;
+		m_SunMapStart = start;
+		m_SunMapTexel = texel;
+	} else if (!terrainChanged) {
+		return;
+	}
+	// Where only the ground changed, just the rays through the changed area are marched again (with the map as it was made, so they line up with the rest).
+	int firstTexel = 0;
+	int endTexel = count;
+	if (!remakeAll) {
+		float lowest = std::numeric_limits<float>::max();
+		float highest = std::numeric_limits<float>::lowest();
+		for (int corner = 0; corner < 4; ++corner) {
+			float x = static_cast<float>(corner & 1 ? changedArea.z : changedArea.x);
+			float y = static_cast<float>(corner & 2 ? changedArea.w : changedArea.y);
+			lowest = std::min(lowest, x + m_SunMapSlope * y);
+			highest = std::max(highest, x + m_SunMapSlope * y);
+		}
+		firstTexel = static_cast<int>(std::floor((lowest - m_SunMapStart) / m_SunMapTexel)) - 1;
+		endTexel = static_cast<int>(std::ceil((highest - m_SunMapStart) / m_SunMapTexel)) + 2;
+		if (m_WrapX && (firstTexel < 0 || endTexel > count)) {
+			// Across the seam of a wrapping scene the rays would be in two pieces: march them all.
+			firstTexel = 0;
+			endTexel = count;
+		}
+		firstTexel = std::clamp(firstTexel, 0, count);
+		endTexel = std::clamp(endTexel, 0, count);
+		if (endTexel <= firstTexel) {
+			return;
+		}
+	}
+	ZoneScoped;
+	TracyGpuZone("Sun Shadow Map");
+	m_SunMapReady = true;
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glBindFramebuffer(GL_FRAMEBUFFER, m_SunMap.Framebuffer);
+	glViewport(0, 0, count, 1);
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(firstTexel, 0, endTexel - firstTexel, 1);
+	m_SunShadowMapShader->Enable();
+	m_SunShadowMapShader->SetInt("rteOccupancy", 0);
+	m_SunShadowMapShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
+	m_SunShadowMapShader->SetVector2f("rteSceneSize", glm::vec2(sceneWidth, sceneHeight));
+	m_SunShadowMapShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
+	m_SunShadowMapShader->SetFloat("rteSlope", m_SunMapSlope);
+	m_SunShadowMapShader->SetFloat("rteStripStart", m_SunMapStart);
+	m_SunShadowMapShader->SetFloat("rteStripTexel", m_SunMapTexel);
+	m_SunShadowMapShader->SetBool("rteWrapX", m_WrapX);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	DrawFullscreen();
+	glBindVertexArray(0);
+	glDisable(GL_SCISSOR_TEST);
+}
+
 void SceneLighting::UpdateWetMap(float seconds) {
 	if (!m_Settings.WetnessMap || !m_WetMap[0].Framebuffer || seconds <= 0.0F) {
 		return;
@@ -1404,6 +1493,7 @@ void SceneLighting::Update() {
 	// Where terrain actually changed since the last frame (a piece falling, liquid moving, digging, a crater) is brought up to date at once, so shade and light
 	// follow it as it moves instead of catching up when the round-robin gets there.
 	bool terrainChanged = false;
+	glm::ivec4 terrainChangedArea(0); // Scene pixels: min x, min y, end x, end y.
 	if (int minX, minY, maxX, maxY; SLTerrain::TakeChangedArea(minX, minY, maxX, maxY)) {
 		int changedFirstRow = std::clamp(minY / m_CellSize - 1, 0, m_GridHeight);
 		int changedEndRow = std::clamp(maxY / m_CellSize + 2, 0, m_GridHeight);
@@ -1415,6 +1505,7 @@ void SceneLighting::Update() {
 			RefreshOccupancyRows(changedFirstRow, changedEndRow, changedFirstColumn, changedEndColumn);
 			UploadOccupancyRows(changedFirstRow, changedEndRow);
 			terrainChanged = true;
+			terrainChangedArea = glm::ivec4(changedFirstColumn * m_CellSize, changedFirstRow * m_CellSize, changedEndColumn * m_CellSize, changedEndRow * m_CellSize);
 		}
 		// The lamps around it are relit in the lamp cache, as far as the cells the shadows read were refreshed.
 		int changedMinX = changedFirstColumn * m_CellSize;
@@ -1457,6 +1548,8 @@ void SceneLighting::Update() {
 	UpdateLampCache();
 	logStages.Next("Light grid: wetness");
 	UpdateWetMap(frameSeconds);
+	logStages.Next("Light grid: sun shadow map");
+	UpdateSunShadowMap(terrainChanged, terrainChangedArea);
 	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -2247,6 +2340,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetInt("rteOccluders", 9);
 	m_CompositeShader->SetInt("rteSurface", 10);
 	m_CompositeShader->SetInt("rteFog", 11);
+	m_CompositeShader->SetInt("rteSunMap", 12);
+	m_CompositeShader->SetBool("rteSunMapOn", m_SunMapReady);
+	m_CompositeShader->SetFloat("rteSunMapSlope", m_SunMapSlope);
+	m_CompositeShader->SetFloat("rteSunMapStart", m_SunMapStart);
+	m_CompositeShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
+	m_CompositeShader->SetFloat("rteSunMapSoftness", std::clamp(m_Settings.SunShadowSoftness, 0.0F, 2.0F));
 	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
@@ -2272,6 +2371,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE11);
 	glBindTexture(GL_TEXTURE_2D, m_Fog[m_CurrentFog].Texture);
+	glActiveTexture(GL_TEXTURE12);
+	glBindTexture(GL_TEXTURE_2D, m_SunMap.Texture);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, albedo ? albedo->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE1);

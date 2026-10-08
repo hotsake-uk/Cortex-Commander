@@ -193,6 +193,11 @@ namespace RTE {
 
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
+		GLTarget m_SunMap; //!< The sun's shadow map (LightingSettings::SunShadowMap): 1 row, R32F, for each ray from the sun the scene y of the first solid point on it.
+		float m_SunMapSlope = 0.0F; //!< How far a ray moves in x per pixel down, as the map was last made.
+		float m_SunMapStart = 0.0F; //!< Where its first ray crosses the top of the scene.
+		float m_SunMapTexel = 1.0F; //!< Scene pixels between its rays.
+		bool m_SunMapReady = false; //!< It's been made for this scene and is in use.
 		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers. R = sky light, G = how much of the sun (or moon) is visible.
 		bool m_RecordDebugLights = false; //!< Whether LightPlayerScreen keeps the first screen's lights for the light sources overlay.
 		std::vector<DebugLight> m_DebugLights; //!< The first screen's lights from the last frame recorded.
@@ -259,6 +264,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_PropagateShader;
 		std::unique_ptr<Shader> m_FogUpdateShader;
 		std::unique_ptr<Shader> m_WetnessUpdateShader;
+		std::unique_ptr<Shader> m_SunShadowMapShader;
 		std::unique_ptr<Shader> m_PointLightShader;
 		std::unique_ptr<Shader> m_LampCacheApplyShader;
 		std::unique_ptr<Shader> m_OccluderSeedShader;
@@ -345,6 +351,11 @@ namespace RTE {
 		/// Steps the wetness map (LightingSettings::WetnessMap) on by game time: rain wets the ground and fills dips, and it dries after, rock slower than earth.
 		/// @param seconds Game seconds since the last call.
 		void UpdateWetMap(float seconds);
+
+		/// Keeps the sun's shadow map (LightingSettings::SunShadowMap) up to date: remakes it when the ground changed or the sun has moved enough to shift a shadow at the
+		/// bottom of the scene by a couple of pixels. Lets it go when it's off or can't be used (a scene that wraps vertically has no top for the sun to come in from).
+		/// @param terrainChanged Whether the light grid's terrain changed this frame. @param changedArea Where, in scene pixels: min x, min y, end x, end y.
+		void UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& changedArea);
 
 		/// Brings the flow field (m_FlowTexture) up to date with the liquid moving this frame, clearing and uploading only the tiles that had or have moving liquid in them.
 		void UpdateFlowField();
