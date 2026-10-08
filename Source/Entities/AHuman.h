@@ -361,6 +361,18 @@ namespace RTE {
 		/// @return Whether it can leap.
 		bool CanLeap() const;
 
+		/// Asks the next leap to rise only this high (px), for a small gap or a low lip; the legs' full height (GetLegJumpHeight) at the most.
+		/// Used once, by the next leap. A player's leap is sized by how long the key is held instead (see UpdateLeap).
+		/// @param height How high, in pixels; zero or less for the full height.
+		void SetNextLeapHeight(float height) { m_NextLeapHeight = height; }
+
+		/// The lowest leap (px) whose arc, at the leap's speed, carries the body from here onto a floor point and clears the terrain on the
+		/// way, of a few heights from half the full one up; the full height when none lower does.
+		/// @param landing The floor point to come down on.
+		/// @param floorY The floor's height here.
+		/// @return The leap's height.
+		float LeapHeightFor(const Vector& landing, float floorY) const;
+
 		/// The AI's motor (see UpdateAIMotor): what an AI script asks of the body, done by the engine. A script decides where to go and how to
 		/// hold itself; the engine walks, crawls, climbs and flies. (A script may still press the controls itself, as a mod's may.)
 		/// Holds a stance for a while: 0 none (as the movement has it), 1 crouched, 2 prone (crawling, when it also moves).
@@ -805,6 +817,8 @@ namespace RTE {
 		float m_LegJumpSpeed = 4.0F; //!< How fast a leap carries the body forward with a move key held, m/s.
 		bool m_Leaping = false; //!< In the air on a leap just now.
 		Timer m_LeapTimer; //!< Since the leap began, or since it landed (for the pause before the next).
+		float m_NextLeapHeight = -1.0F; //!< How high the next leap rises (SetNextLeapHeight), px; below or at zero for the full height.
+		bool m_LeapCut = false; //!< A player's leap whose key was let go while rising has been cut short already.
 		/// The leap on the legs (BODY_LEAP): begun from the floor with a push of the body's speed, the jump pose held while in the air, ended
 		/// on landing. Called before the jetpack's update each frame.
 		void UpdateLeap();

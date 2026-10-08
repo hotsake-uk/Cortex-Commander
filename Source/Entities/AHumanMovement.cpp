@@ -19,6 +19,7 @@
 #include "PresetMan.h"
 #include "Activity.h"
 #include "PrimitiveMan.h"
+#include "UInputMan.h"
 
 using namespace RTE;
 
@@ -218,6 +219,52 @@ bool AHuman::CanLeap() const {
 	return std::abs(m_Vel.m_Y) < 2.5F && FloorUnder(m_Pos, feet + 6.0F) >= 0.0F;
 }
 
+float AHuman::LeapHeightFor(const Vector& landing, float floorY) const {
+	const float full = GetLegJumpHeight();
+	const float h = m_CharHeight;
+	const float standing = std::max(16.0F, h * 0.44F);
+	Vector to = Towards(m_Pos, landing);
+	float across = std::abs(to.m_X);
+	float direction = to.m_X < 0.0F ? -1.0F : 1.0F;
+	float rise = floorY - landing.m_Y; // Up is positive.
+	float gravity = std::max(1.0F, g_SceneMan.GetGlobalAcc().m_Y * c_PPM);
+	float speed = std::max(1.0F, m_LegJumpSpeed * c_PPM);
+	// (Ground a walking body doesn't go through: not a plant.)
+	auto blocked = [](float x, float y) {
+		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && !WalkedThrough(id);
+	};
+	for (float part: {0.5F, 0.65F, 0.8F}) {
+		float height = full * part;
+		// High enough to come down on the landing (its rise and a little over), and in the air long enough to get across to it.
+		if (height < rise + 4.0F) {
+			continue;
+		}
+		float up = std::sqrt(2.0F * gravity * height);
+		float under = up * up - 2.0F * gravity * std::max(0.0F, rise);
+		float flightTime = (up + std::sqrt(under + 2.0F * gravity * std::max(0.0F, -rise))) / gravity;
+		if (across > speed * flightTime * 0.85F) {
+			continue;
+		}
+		// The body's feet and middle along the arc to over the landing, clear.
+		float arcTime = across / speed;
+		bool clear = true;
+		for (int k = 1; k <= 8 && clear; ++k) {
+			float t = arcTime * static_cast<float>(k) / 8.0F;
+			float x = m_Pos.m_X + direction * speed * t;
+			float feetY = floorY - 3.0F - up * t + 0.5F * gravity * t * t;
+			if (k == 8) {
+				feetY = std::min(feetY, landing.m_Y - 3.0F);
+			}
+			clear = !blocked(x, feetY) && !blocked(x, feetY - standing * 0.5F) && !blocked(x, feetY - standing);
+		}
+		if (clear) {
+			return height;
+		}
+	}
+	return full;
+}
+
 void AHuman::UpdateLeap() {
 	Controller& ctrl = m_Controller;
 	const float h = m_CharHeight;
@@ -233,16 +280,26 @@ void AHuman::UpdateLeap() {
 			}
 		} else {
 			m_MovementState = JUMP;
+			// A player's leap is as high as the key is held: let go while still rising, early on, and the rise is cut to half its speed (a
+			// quarter of the height left), once. A tap is a hop over a kerb; held, the full leap.
+			if (!m_LeapCut && m_Controller.IsPlayerControlled() && m_Vel.m_Y < 0.0F && !m_LeapTimer.IsPastSimMS(300) && !g_UInputMan.ElementHeld(m_Controller.GetPlayer(), InputElements::INPUT_LEAP)) {
+				m_Vel.m_Y *= 0.5F;
+				m_LeapCut = true;
+			}
 		}
 		return;
 	}
 	if (!ctrl.IsState(BODY_LEAP) || !CanLeap()) {
 		return;
 	}
+	// As high as asked for the next leap (an AI's leap sized to its gap or lip: LeapHeightFor), the legs' full height at the most.
+	float leapHeight = m_NextLeapHeight > 0.0F ? std::min(m_NextLeapHeight, GetLegJumpHeight()) : GetLegJumpHeight();
+	m_NextLeapHeight = -1.0F;
+	m_LeapCut = false;
 	// The push: up at the speed that rises the leap's height against gravity, and forward with a move key held (at least the leap's
 	// speed, more if already running), else the speed it had. Momentum, not a scripted path: the body flies, lands and collides as ever.
 	float gravity = std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y);
-	float rise = std::sqrt(2.0F * gravity * GetLegJumpHeight() * c_MPP);
+	float rise = std::sqrt(2.0F * gravity * leapHeight * c_MPP);
 	float direction = ctrl.IsState(MOVE_RIGHT) ? 1.0F : (ctrl.IsState(MOVE_LEFT) ? -1.0F : 0.0F);
 	float across = direction != 0.0F ? direction * std::max(m_LegJumpSpeed, m_Vel.m_X * direction) : m_Vel.m_X;
 	// The AI leaps at the leap's own speed, the speed the path grid checked the arc at (PathFinder::LeapFits, PathAgent::LeapSpeed). At a
@@ -2034,6 +2091,7 @@ int AHuman::MoveAlongRoute() {
 		if (edge || lip || stalled) {
 			if (CanLeap()) {
 				ctrl.SetState(BODY_LEAP, true);
+				SetNextLeapHeight(LeapHeightFor(point, floorY));
 				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 				mover.progressTimer.Reset();
 				mover.leapWatch = true;
@@ -2597,6 +2655,7 @@ int AHuman::MoveAlongRoute() {
 	// three heights of the body's middle line.)
 	bool wallAhead = false;
 	bool lowObstacle = false;
+	float obstacleRise = 0.0F;
 	if (sensed.any && !prone && kind != PathStepKind::Fall && !mover.fuelWaiting && !DoorAhead(point)) {
 		const float stepUp = h * 0.15F;
 		const float mantle = g_SettingsMan.MantlingEnabled() ? std::max(h, 20.0F) * 0.3F : 0.0F;
@@ -2615,6 +2674,7 @@ int AHuman::MoveAlongRoute() {
 			wallAhead = !pointBeyond && above > -h * 0.2F && canHop;
 		} else if (!sensed.gapUnder && sensed.rise > std::max(stepUp, mantle + 2.0F) && above > -h * 0.2F && canHop) {
 			lowObstacle = true;
+			obstacleRise = sensed.rise;
 		}
 	}
 	// Stuck (no progress for 2.5 s, and a new route at 6): the small things a player tries before the big one (LM-3), one at a time, each
@@ -2695,7 +2755,10 @@ int AHuman::MoveAlongRoute() {
 			mover.hopTimer.Reset();
 			MoverTrace(wallAhead ? "wall ahead; hop" : "low obstacle; hop");
 		}
-		if (!mover.hopTimer.IsPastSimMS(350)) {
+		// (Over something low, a burst sized to it: from about half the wall's 350 ms for a knee-high lump up to the whole for one near the
+		// body's height. The same hop for everything sent a unit a body's height over a kerb.)
+		const float hopMS = lowObstacle && !wallAhead ? std::clamp(350.0F * (obstacleRise + h * 0.1F) / std::max(standing, 1.0F), 180.0F, 350.0F) : 350.0F;
+		if (!mover.hopTimer.IsPastSimMS(static_cast<double>(hopMS))) {
 			ctrl.SetState(BODY_JUMP, true);
 			SetAimAngle(above > h * 0.2F ? c_HalfPI * 0.7F : 0.2F);
 		}
