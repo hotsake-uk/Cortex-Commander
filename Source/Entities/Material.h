@@ -46,6 +46,9 @@ namespace RTE {
 		int Stains = -1; //!< 1 if drops of it leave stains where they land (blood, oil).
 		int Breathable = -1; //!< 1 if a body can breathe in it; liquids aren't.
 		float TouchDamage = -1.0F; //!< Health a second it takes from a body in it, for each level of depth (acid 5).
+		int SightDepth = -1; //!< For a liquid, how many pixels of it a look sees through, to what's in it or beyond (stock: water 200, oil 6, lava none).
+		int ShotDepth = -1; //!< For a liquid, how many pixels of it a shot (a bullet, tracer, shrapnel) goes on through, slowing to half by the end, before
+		                    //!< it is spent (stock: water 60, oil 30, lava 10).
 	};
 
 	/// Represents a material and holds all the relevant data.

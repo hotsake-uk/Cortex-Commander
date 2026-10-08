@@ -196,6 +196,8 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchForwards("StainsAs") MatchProperty("Stains", { reader >> m_Behaviour.Stains; });
 	MatchProperty("Breathable", { reader >> m_Behaviour.Breathable; });
 	MatchProperty("TouchDamage", { reader >> m_Behaviour.TouchDamage; });
+	MatchProperty("SightDepth", { reader >> m_Behaviour.SightDepth; });
+	MatchProperty("ShotDepth", { reader >> m_Behaviour.ShotDepth; });
 	MatchProperty("Color", { reader >> m_Color; });
 	MatchProperty("UseOwnColor", { reader >> m_UseOwnColor; });
 	MatchProperty("FGTextureFile", {
@@ -274,6 +276,8 @@ int Material::Save(Writer& writer) const {
 		number("Stains", b.Stains);
 		number("Breathable", b.Breathable);
 		number("TouchDamage", b.TouchDamage);
+		number("SightDepth", b.SightDepth);
+		number("ShotDepth", b.ShotDepth);
 	}
 	return 0;
 }

@@ -46,6 +46,15 @@ namespace RTE {
 		/// each does to a body is its material's (weight, stickiness, touch damage).
 		static bool HoldsBodies(int materialID);
 
+		/// Gets how many pixels of a liquid a look sees through (MaterialBehaviour::SightDepth), 0 for what isn't a liquid or can't be seen through.
+		static int SightDepth(int materialID);
+
+		/// Gets how many pixels of a liquid a shot goes on through before it is spent (MaterialBehaviour::ShotDepth), 0 for what isn't a liquid.
+		static int ShotDepth(int materialID);
+
+		/// Gets what a shot's speed is multiplied by for each pixel of a liquid it goes through: down to half over its ShotDepth.
+		static float ShotDrag(int materialID);
+
 		/// Fills air in a circle with a liquid. Thread safe; applied on the next sim step.
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.

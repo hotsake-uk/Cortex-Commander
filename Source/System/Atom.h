@@ -384,6 +384,7 @@ namespace RTE {
 		unsigned char m_TerrainMatHit; //!< The terrain material, if any, this Atom hit on the last step.
 
 		int m_NumPenetrations; //!< Counts consecutive penetrations in a row. Resets to 0 as soon as penetration streak ends.
+		int m_LiquidTravelled; //!< How many pixels of liquid this, as a shot, has gone through (FluidSim::ShotDepth).
 
 		/*
 		Vector m_HitVel; //!< The velocity at which this atom last hit something.

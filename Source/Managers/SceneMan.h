@@ -13,6 +13,7 @@
 
 #include "ActivityMan.h"
 
+#include <algorithm>
 #include <map>
 #include <array>
 #include <list>
@@ -234,6 +235,29 @@ namespace RTE {
 			~LiquidsPassable() { --s_LiquidsPassableDepth; }
 			LiquidsPassable(const LiquidsPassable&) = delete;
 			LiquidsPassable& operator=(const LiquidsPassable&) = delete;
+		};
+
+		/// While one of these is alive on a thread, GetTerrMatter on that thread reports liquid in the terrain as air for as far into it as the liquid
+		/// lets a look (FluidSim::SightDepth) or a shot (FluidSim::ShotDepth) through, counted from the scope's start: so a ray cast under it sees, or
+		/// judges a shot, through water to what's in or beyond it, and stops at it past that depth. The look rays (CastMORay, CastFindMORay,
+		/// CastAllMOsRay, CastUnseenRay) and the AI's shot check (CastStrengthSumRay) cast under one each; rays for footing and paths don't.
+		struct LiquidsSeeThrough {
+			/// @param shots Count the liquids' shot depth rather than their sight depth.
+			/// @param stride How many pixels of the ray each terrain read stands for (a ray's skip + 1).
+			LiquidsSeeThrough(bool shots, int stride) : m_Outer(s_SeeThrough) { s_SeeThrough = {true, shots, std::max(stride, 1), 0}; }
+			~LiquidsSeeThrough() { s_SeeThrough = m_Outer; }
+			LiquidsSeeThrough(const LiquidsSeeThrough&) = delete;
+			LiquidsSeeThrough& operator=(const LiquidsSeeThrough&) = delete;
+
+		private:
+			struct State {
+				bool Active = false;
+				bool Shots = false;
+				int Stride = 1;
+				int Seen = 0; //!< Pixels of liquid looked through so far.
+			};
+			friend class SceneMan;
+			State m_Outer;
 		};
 
 		/// Gets a MOID from pixel coordinates in the Scene. LockScene() must be called before using this method.
@@ -1080,6 +1104,7 @@ namespace RTE {
 
 		bool m_DrawRayCastVisualizations; //!< Whether to visibly draw RayCasts to the Scene debug Bitmap.
 		static thread_local int s_LiquidsPassableDepth; //!< How many LiquidsPassable scopes are alive on this thread.
+		static thread_local LiquidsSeeThrough::State s_SeeThrough; //!< The innermost LiquidsSeeThrough scope alive on this thread, if any.
 		bool m_DrawPixelCheckVisualizations; //!< Whether to visibly draw pixel checks (GetTerrMatter and GetMOIDPixel) to the Scene debug Bitmap.
 
 		// The last screen everything has been updated to

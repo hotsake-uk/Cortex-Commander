@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
 #include "ActorFire.h"
+#include "FluidSim.h"
 
 #include "SLTerrain.h"
 #include "MovableMan.h"
@@ -142,6 +143,7 @@ void Atom::Clear() {
 	m_TrailLength = 0;
 	m_TrailLengthVariation = 0.0F;
 	m_NumPenetrations = 0;
+	m_LiquidTravelled = 0;
 	m_ChangedDir = true;
 	m_ResultWrapped = false;
 	m_PrevError = 0;
@@ -745,6 +747,11 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 	int removeOrphansMaxArea = m_OwnerMO->m_RemoveOrphanTerrainMaxArea;
 	float removeOrphansRate = m_OwnerMO->m_RemoveOrphanTerrainRate;
 
+	// A shot (a particle that hits MOs: bullets, tracers, shrapnel) goes on through liquid as far as the liquid lets it (FluidSim::ShotDepth), slowing, and
+	// is spent there, rather than striking the surface and digging into it. Drops of liquid themselves and fire don't: they meet it as before.
+	const bool passesLiquids = m_OwnerMO->m_HitsMOs && !m_OwnerMO->m_IgnoreTerrain && !FluidSim::IsLiquid(m_Material->GetIndex()) && !TerrainFire::IsFireSource(m_OwnerMO);
+	int liquidDepth = 0;
+
 	// Bake in the Atom offset.
 	position += m_Offset;
 
@@ -818,7 +825,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 		// Bresenham's line drawing algorithm execution
 		for (domSteps = 0; domSteps < delta[dom] && !(hit[X] || hit[Y]); ++domSteps) {
 			// Check for the special case if the Atom is starting out embedded in terrain. This can happen if something large gets copied to the terrain and embeds some Atoms.
-			if (!m_OwnerMO->m_IgnoreTerrain && domSteps == 0 && TerrFor(m_OwnerMO, intPos[X], intPos[Y]) != g_MaterialAir) {
+			if (!m_OwnerMO->m_IgnoreTerrain && domSteps == 0 && TerrFor(m_OwnerMO, intPos[X], intPos[Y]) != g_MaterialAir && !(passesLiquids && FluidSim::ShotDepth(g_SceneMan.GetTerrMatter(intPos[X], intPos[Y])) > 0)) {
 				++hitCount;
 				hit[X] = hit[Y] = true;
 				if (g_SceneMan.TryPenetrate(intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.5F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {
@@ -950,6 +957,20 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 				m_LastHit.RootBody[HITEE]->OnMOHit(m_LastHit);
 				// Fire sets what it hits alight, and water puts it out.
 				ActorFire::OnHit(m_OwnerMO, m_LastHit.RootBody[HITEE], m_Material);
+			}
+
+			// A shot in liquid goes on through it, slowing, until it has gone as deep as the liquid lets it, and is spent there (see passesLiquids).
+			else if (passesLiquids && (liquidDepth = FluidSim::ShotDepth(g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]))) > 0) {
+				if (++m_LiquidTravelled > liquidDepth) {
+					m_OwnerMO->SetToDelete(true);
+					// This is to break out of the do-while and the function properly.
+					m_LastHit.Terminate[HITOR] = hit[dom] = hit[sub] = true;
+					break;
+				}
+				velocity *= FluidSim::ShotDrag(g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]));
+				if (m_TrailLength) {
+					trailPoints.push_back({intPos[X], intPos[Y]});
+				}
 			}
 
 			///////////////////////////////////////////////////////////////////////////////////////////////////
