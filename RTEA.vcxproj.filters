@@ -196,6 +196,9 @@
     <ClInclude Include="Source\Managers\ModernHUD.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\DebugDraw.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\FluidSim.h">
       <Filter>Managers</Filter>
     </ClInclude>
