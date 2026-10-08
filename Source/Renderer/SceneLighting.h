@@ -177,6 +177,9 @@ namespace RTE {
 		std::array<unsigned char, 256> m_MaterialGloss{}; //!< How glossy each terrain material looks, 0 to 255.
 		std::array<unsigned char, 256> m_MaterialLightBlock{}; //!< How much each terrain material stops light, 0 (none, like air) to 255 (all of it, like rock). Water lets most through.
 		std::vector<float> m_Skyline; //!< Per grid column, the row of the first mostly solid cell, normalized by grid height.
+		std::vector<int> m_SkylineRows; //!< The same, as the row itself (m_GridHeight for a column with none).
+		int m_SkylineDirtyFirstColumn = 0; //!< The columns whose skyline may have moved since RecomputeSkyline last ran: a cell at or above a column's skyline row crossed half full.
+		int m_SkylineDirtyEndColumn = 0;
 		int m_NextRefreshRow = 0; //!< Row the round-robin terrain refresh continues from.
 		int m_FrameCounter = 0;
 		int m_LastLightCount = 0;
