@@ -1139,12 +1139,17 @@ namespace SandboxDetail {
 
 	inline std::vector<Pin> s_Pins;
 
+	inline bool s_BarShown = true; //!< Whether the bar along the bottom is up (U hides and shows it); up at every start.
+
 	/// Things marked as favourites (Ctrl+click on a tile): a star on the tile, and a filter to list only them.
 	inline std::vector<Pin> s_Favourites;
 
 	/// Favourites are the player's, whatever game is played, and are kept in their own file the moment they change (the settings file is
 	/// only written when asked to be, and favourites marked in a game were lost at the next start).
 	constexpr const char* c_FavouritesFile = "Userdata/SandboxFavourites.txt";
+
+	/// The bar's pins are the player's too, the same in every game and save, and kept in their own file the moment they change.
+	constexpr const char* c_PinsFile = "Userdata/SandboxPins.txt";
 
 	/// A bunker piece as a picture ImGui can draw: its background and foreground art put together.
 	struct PiecePicture {
@@ -1312,6 +1317,7 @@ namespace SandboxDetail {
 	Actor* EnemyNear(const Vector& point, int team);
 	void OrderSelectedUnits(int choice, const Vector& point);
 	int SelectedRule(bool weapons);
+	int SelectedAIMode();
 	void QueueRule(bool weapons, int rule);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
@@ -1328,6 +1334,7 @@ namespace SandboxDetail {
 	ImGuiTabItemFlags TestTab(const char* name);
 	int FindPin(Tool kind, const std::string& presetName);
 	void TogglePin(Tool kind, const std::string& presetName);
+	void SavePinsFile();
 	int FindFavourite(Tool kind, const std::string& presetName);
 	void SaveFavouritesFile();
 	void LoadFavouritesFile();

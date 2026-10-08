@@ -426,6 +426,13 @@ namespace RTE {
 		/// @param showHUD Whether the HUD of enemy Actors should be visible to the player or not.
 		void SetShowEnemyHUD(bool showHUD) { m_ShowEnemyHUD = showHUD; }
 
+		/// Whether each unit's side (its team icon) and health are drawn beside it. In the Sandbox game mode every side's are, the side you
+		/// look from being only who the tools are for; elsewhere other sides' follow ShowEnemyHUD and what your side has seen.
+		bool ShowUnitTags() const { return m_ShowUnitTags; }
+
+		/// Sets whether each unit's side and health are drawn beside it.
+		void SetShowUnitTags(bool show) { m_ShowUnitTags = show; }
+
 		/// Gets whether smart BuyMenu navigation is enabled, meaning swapping to equipment mode and back will change active tabs in the BuyMenu.
 		/// @return Whether smart BuyMenu navigation is enabled or not.
 		bool SmartBuyMenuNavigationEnabled() const { return m_EnableSmartBuyMenuNavigation; }
@@ -645,6 +652,7 @@ namespace RTE {
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.
+		bool m_ShowUnitTags; //!< Whether each unit's side and health are drawn beside it.
 		bool m_EnableSmartBuyMenuNavigation; //!< Whether swapping to equipment mode and back should change active tabs in the BuyMenu.
 		bool m_AutomaticGoldDeposit; //!< Whether gold gathered by Actors is automatically added into team funds. False means that gold needs to be manually transported into orbit via Craft.
 

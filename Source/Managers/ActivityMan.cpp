@@ -169,10 +169,6 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	// Fire still burning and liquid still flowing, so they carry on after loading. The terrain itself is saved in the scene layers.
 	writer->NewPropertyWithValue("TerrainFireState", TerrainFire::GetSaveState());
 	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
-	// What the sandbox's bar has pinned belongs to this game.
-	if (!Sandbox::GetPins().empty()) {
-		writer->NewPropertyWithValue("SandboxPins", Sandbox::GetPins());
-	}
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
 	std::unique_ptr<std::stringstream> indexStream = std::make_unique<std::stringstream>();
@@ -501,8 +497,9 @@ bool ActivityMan::SetStartEditorActivitySetToLaunchInto() {
 int ActivityMan::StartActivity(Activity* activity) {
 	RTEAssert(activity, "Trying to start a null activity!");
 
-	// The sandbox's pinned bar belongs to the game: a loaded game brings its own, a new game starts with none.
-	Sandbox::SetPins(s_PinsOfLoadedGame);
+	// The sandbox's pinned bar is the player's, the same in every game (Userdata/SandboxPins.txt). A save from before that held its own pins,
+	// which are taken the first time only, when there is no pins file yet.
+	Sandbox::LoadPins(s_PinsOfLoadedGame);
 	s_PinsOfLoadedGame.clear();
 
 	g_ThreadMan.GetPriorityThreadPool().wait_for_tasks();

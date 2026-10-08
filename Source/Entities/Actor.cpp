@@ -35,6 +35,7 @@
 #include "GUI.h"
 #include "AllegroBitmap.h"
 
+#include "Sandbox.h"
 #include "tracy/Tracy.hpp"
 #include <algorithm>
 #include <cmath>
@@ -2326,7 +2327,8 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 	// Only draw if the team viewing this is on the same team OR has seen the space where this is located.
 	int viewingTeam = g_ActivityMan.GetActivity()->GetTeamOfPlayer(g_ActivityMan.GetActivity()->PlayerOfScreen(whichScreen));
-	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && (!g_SettingsMan.ShowEnemyHUD() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
+	// (In the Sandbox game mode the side looked from is only who the tools are for: every side's is drawn.)
+	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && !Sandbox::IsGodMode() && (!g_SettingsMan.ShowEnemyHUD() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
 		return;
 	}
 
@@ -2379,8 +2381,10 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 		AllegroBitmap bitmapInt(pTargetBitmap);
 
 		if (!m_Controller.IsState(PIE_MENU_ACTIVE) || actorScreen != whichScreen) {
+			// The unit's side and health (the setting turns them off).
+			bool tags = g_SettingsMan.ShowUnitTags();
 			// If we're still alive, show the team colors
-			if (m_Health > 0) {
+			if (tags && m_Health > 0) {
 
 				// Get the Icon bitmaps of this Actor's team, if any
 				std::vector<BITMAP*> apIconBitmaps;
@@ -2400,17 +2404,19 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 					f = MIN(f, m_pTeamIcon ? m_pTeamIcon->GetFrameCount() - 1 : 1);
 					masked_blit(apIconBitmaps.at(f), pTargetBitmap, 0, 0, drawPos.m_X - apIconBitmaps.at(f)->w - 2, drawPos.m_Y + m_HUDStack - (apIconBitmaps.at(f)->h / 2) + 8, apIconBitmaps.at(f)->w, apIconBitmaps.at(f)->h);
 				}
-			} else {
+			} else if (tags) {
 				// Draw death icon
 				str[0] = -39;
 				str[1] = 0;
 				pSymbolFont->DrawAligned(&bitmapInt, drawPos.m_X - 10, drawPos.m_Y + m_HUDStack, str, GUIFont::Left);
 			}
 
-			std::snprintf(str, sizeof(str), "%.0f", std::ceil(m_Health));
-			pSymbolFont->DrawAligned(&bitmapInt, drawPos.m_X - 0, drawPos.m_Y + m_HUDStack, str, GUIFont::Left);
+			if (tags) {
+				std::snprintf(str, sizeof(str), "%.0f", std::ceil(m_Health));
+				pSymbolFont->DrawAligned(&bitmapInt, drawPos.m_X - 0, drawPos.m_Y + m_HUDStack, str, GUIFont::Left);
 
-			m_HUDStack += -12;
+				m_HUDStack += -12;
+			}
 
 			if (IsPlayerControlled()) {
 				if (GetGoldCarried() > 0) {
