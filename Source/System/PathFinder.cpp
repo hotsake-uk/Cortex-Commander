@@ -60,6 +60,8 @@ thread_local bool s_ClimbsLadders = false; // Whether the searcher climbs ladder
 thread_local float s_MantleHeight = 0.0F; // How high a ledge the searcher mantles onto (PathAgent::MantleHeight).
 thread_local Vector s_Velocity; // The searcher's velocity when it asked, in m/s (PathAgent::Velocity).
 thread_local float s_JetTimeMS = 0.0F; // The searcher's full tank, in ms (PathAgent::JetTimeMS).
+thread_local float s_LeapHeight = 0.0F; // How high a leap of the searcher's legs lifts it, px (PathAgent::LeapHeight).
+thread_local float s_LeapSpeed = 4.0F; // How fast a leap carries it forward, m/s (PathAgent::LeapSpeed).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
@@ -202,6 +204,8 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_Velocity = agent.Velocity;
 	s_JetTimeMS = agent.JetTimeMS;
 	s_JetClimbMSPerPx = agent.JetClimbMSPerPx;
+	s_LeapHeight = agent.LeapHeight;
+	s_LeapSpeed = agent.LeapSpeed;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
@@ -872,6 +876,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjacentList->push_back(adjCost);
 		}
 
+		// Leaps of the legs across a gap or onto a low ledge (see AddLeapLinks).
+		if (s_JumpHeight < FLT_MAX && s_LeapHeight > 0.0F && !isInNoGrav) {
+			AddLeapLinks(*node, adjacentList);
+		}
+
 		// Flights to other floors (see AddFlightLinks).
 		if (s_JumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !isInNoGrav) {
 			AddFlightLinks(*node, adjacentList);
@@ -1140,6 +1149,10 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 			return PathStepKind::Stairs;
 		}
 	}
+	// A leap's two floors, two or more nodes apart, with a leap that fits between them (the search takes the leap there over a flight).
+	if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(dx) > nodeSize * 1.5F && LeapFits(*from, *to)) {
+		return PathStepKind::Leap;
+	}
 	if (dy < -1.0F) {
 		return PathStepKind::Jump;
 	}
@@ -1174,6 +1187,89 @@ float PathFinder::ClimbMarginCost(const PathNode& node) const {
 		cost += 1.0F;
 	}
 	return cost;
+}
+
+bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
+	if (s_LeapHeight <= 0.0F || from.Surface < 0.0F || to.Surface < 0.0F || !NodeIsOnSolidGround(from) || !NodeIsOnSolidGround(to) || !to.m_Navigable) {
+		return false;
+	}
+	if (static_cast<float>(from.FreeHeight) < s_StandHeight || static_cast<float>(to.FreeHeight) < s_StandHeight) {
+		return false;
+	}
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
+	float across = std::abs(dx);
+	float rise = from.Surface - to.Surface; // Up is positive.
+	// (Most of the leap's height at the most: the feet have to clear the lip, and a little to spare.)
+	if (across < nodeSize * 1.5F || rise > s_LeapHeight * 0.75F || rise < -nodeSize * 2.0F) {
+		return false;
+	}
+	// The arc under gravity: up at the speed that rises the leap's height, across at the leap's speed; where it comes down to the landing's
+	// height, with a margin for a take-off a little short of the edge.
+	float gravity = std::max(1.0F, g_SceneMan.GetGlobalAcc().m_Y * c_PPM);
+	float up = std::sqrt(2.0F * gravity * s_LeapHeight);
+	float speed = s_LeapSpeed * c_PPM;
+	float under = up * up - 2.0F * gravity * std::max(0.0F, rise);
+	if (under < 0.0F) {
+		return false;
+	}
+	float flightTime = (up + std::sqrt(under + 2.0F * gravity * std::max(0.0F, -rise))) / gravity;
+	if (across > speed * flightTime * 0.85F) {
+		return false;
+	}
+	// The body along that arc (its middle, head and feet), from standing at the take-off to standing at the landing, in open air. The time
+	// across at the leap's speed is when it is over the landing; the arc is followed to then.
+	float direction = dx < 0.0F ? -1.0F : 1.0F;
+	float arcTime = across / speed;
+	Vector start(from.Pos.m_X, from.Surface - s_StandHeight * 0.5F);
+	const int segments = 6;
+	Vector last = start;
+	for (int k = 1; k <= segments; ++k) {
+		float t = arcTime * static_cast<float>(k) / static_cast<float>(segments);
+		Vector point(start.m_X + direction * speed * t, start.m_Y - up * t + 0.5F * gravity * t * t);
+		// (Not below the landing's standing height at the end: the last piece comes down onto the floor there.)
+		if (k == segments) {
+			point.m_Y = std::min(point.m_Y, to.Surface - s_StandHeight * 0.5F);
+		}
+		for (float offset: {0.0F, -s_StandHeight * 0.45F, s_StandHeight * 0.45F - 3.0F}) {
+			// (The feet only in the middle of the arc: at either end they are on the floor.)
+			if (offset > 0.0F && (k == 1 || k == segments)) {
+				continue;
+			}
+			if (!Open(*StrongestMaterialAlongLine(last + Vector(0.0F, offset), point + Vector(0.0F, offset)))) {
+				return false;
+			}
+		}
+		last = point;
+	}
+	return true;
+}
+
+void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {
+	if (node.Surface < 0.0F || !NodeIsOnSolidGround(node) || static_cast<float>(node.FreeHeight) < s_StandHeight) {
+		return;
+	}
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	const int gridX = static_cast<int>(std::floor(node.Pos.m_X / nodeSize));
+	const int gridY = static_cast<int>(std::floor(node.Pos.m_Y / nodeSize));
+	micropather::StateCost adjCost;
+	for (int dx = -5; dx <= 5; ++dx) {
+		if (std::abs(dx) < 2) {
+			continue;
+		}
+		for (int dy = -1; dy <= 2; ++dy) {
+			const PathNode* target = GetPathNodeAtGridCoords(gridX + dx, gridY + dy);
+			if (!target || !LeapFits(node, *target)) {
+				continue;
+			}
+			// A little over the walk of the same distance (a node of walk is 1), and a little more for a leap up (the landing has to be
+			// right): so a walk wins where there is one, and the leap where there is a gap or a lip, well under any flight.
+			float rise = node.Surface - target->Surface;
+			adjCost.cost = static_cast<float>(std::abs(dx)) + 1.2F + (rise > 4.0F ? rise / nodeSize : 0.0F);
+			adjCost.state = const_cast<PathNode*>(target);
+			adjacentList->push_back(adjCost);
+		}
+	}
 }
 
 float PathFinder::ColumnGrazeCost(float x, float fromY, float toY) const {

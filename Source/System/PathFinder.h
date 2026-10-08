@@ -28,7 +28,8 @@ namespace RTE {
 		Dig, //!< Through ground the searcher can dig.
 		Door, //!< Through a door the searcher can open or breach.
 		Stairs, //!< Up or down stairs, or a slope of about sixty degrees, on the legs: two nodes of height for one of width.
-		Ladder //!< Up or down a ladder, hand over hand (see AHuman::UpdateLadder), or off its top or side onto a floor.
+		Ladder, //!< Up or down a ladder, hand over hand (see AHuman::UpdateLadder), or off its top or side onto a floor.
+		Leap //!< Across a gap or up onto a low ledge on a leap of the legs (see AHuman::UpdateLeap): no jet.
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -47,6 +48,8 @@ namespace RTE {
 		Vector Velocity; //!< Its velocity when it asks, in m/s: a search started in the air charges for going against it (see AdjacentCost).
 		bool WalksStairs = false; //!< Whether its legs take stairs and slopes of about sixty degrees (a soldier walks the base game's steep stairs unaided; nothing is known of a crab's).
 		bool ClimbsLadders = false; //!< Whether it climbs ladders hand over hand (a humanoid with an arm): ladders are a way up and down for it, jet or none.
+		float LeapHeight = 0.0F; //!< How high a leap of its legs lifts it, in pixels (see AHuman::GetLegJumpHeight); 0 for none.
+		float LeapSpeed = 4.0F; //!< How fast a leap carries it forward, in m/s.
 	};
 
 	/// Information required to make an async pathing request.
@@ -362,6 +365,19 @@ namespace RTE {
 		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
 		/// @param node The node the rung rises into.
 		float ClimbMarginCost(const PathNode& node) const;
+
+		/// Whether a leap of the searcher's legs (PathAgent::LeapHeight and LeapSpeed) takes it from one floor node to another: within its
+		/// reach under gravity, landing no higher than most of the leap's height and no more than two nodes lower, with the body's head,
+		/// middle and feet clear all along the arc.
+		/// @param from The floor it leaps from.
+		/// @param to The floor it lands on.
+		/// @return Whether the leap fits.
+		bool LeapFits(const PathNode& from, const PathNode& to) const;
+
+		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list, priced a little over the walk of the same distance.
+		/// @param node The node.
+		/// @param adjacentList The list.
+		void AddLeapLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList);
 
 		/// What it costs to fly straight up (or down) a column, from one height to another, for how close its sides pass to something solid:
 		/// the body's edges (a half-width and a little each side of the column) traced the whole way, not only at the nodes' centre rows.

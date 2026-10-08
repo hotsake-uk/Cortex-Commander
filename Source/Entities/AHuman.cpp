@@ -1047,6 +1047,9 @@ PathAgent AHuman::GetPathAgent() const {
 	// on a map full of them, Bywater, took over the routes there before the follower handles every way they meet the rest: a route that
 	// stepped down a laddered hatch to climb back up it stood a unit still for the minute. A player climbs any ladder regardless.)
 	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F);
+	// The leap of its legs (see UpdateLeap), for anything with a leg.
+	agent.LeapHeight = (m_pFGLeg || m_pBGLeg) ? GetLegJumpHeight() : 0.0F;
+	agent.LeapSpeed = m_LegJumpSpeed;
 	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
 	// burns more of the tank for the same shaft).
 	if (agent.JetTimeMS > 0.0F) {
