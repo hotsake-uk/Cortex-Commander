@@ -551,6 +551,7 @@ namespace RTE {
 			int WeatherType = -1;
 			float WeatherIntensity = -1.0F;
 			float Wind = -100000.0F; //!< Not set below -10000.
+			std::string PostShader; //!< A mod post pass for this Scene, a Shader preset's name (LightingSettings::ModShaders). Empty for none.
 		};
 
 		/// Gets the atmosphere this Scene asks for.

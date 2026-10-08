@@ -12,6 +12,7 @@
 
 #include "raylib/rlgl.h"
 
+#include <algorithm>
 #include <fstream>
 
 using namespace RTE;
@@ -46,6 +47,8 @@ int Shader::Create() {
 	if (m_FragmentPath.empty() || m_VertexPath.empty()) {
 		return -1;
 	}
+	// Base.rte's shaders are the game's own; any other module's are a mod's, which may fail on some drivers without stopping the game.
+	m_AbortOnError = GetModuleID() <= 0;
 	m_ProgramID = g_GLStateMan.MakeGLProgram();
 	Compile(m_VertexPath, m_FragmentPath);
 	return 0;
@@ -57,10 +60,19 @@ int Shader::Create(const Shader& ref) {
 	m_FragmentPath = ref.m_FragmentPath;
 	m_ProgramID = ref.m_ProgramID;
 	m_TextureUniform = ref.m_TextureUniform;
+	m_PaletteUniform = ref.m_PaletteUniform;
 	m_ColorUniform = ref.m_ColorUniform;
 	m_TransformUniform = ref.m_TransformUniform;
+	m_ViewUniform = ref.m_ViewUniform;
 	m_UVTransformUniform = ref.m_UVTransformUniform;
 	m_ProjectionUniform = ref.m_ProjectionUniform;
+	m_TimeUniform = ref.m_TimeUniform;
+	m_ObjectSeedUniform = ref.m_ObjectSeedUniform;
+	m_HealthUniform = ref.m_HealthUniform;
+	m_StrengthUniform = ref.m_StrengthUniform;
+	m_ReliefUniform = ref.m_ReliefUniform;
+	m_Valid = ref.m_Valid;
+	m_AbortOnError = ref.m_AbortOnError;
 	std::copy(ref.m_Locations.begin(), ref.m_Locations.end(), m_Locations.begin());
 	return 0;
 }
@@ -70,6 +82,7 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	bool result{false};
+	bool linkFailed{false};
 
 	std::string error;
 	result = CompileShader(vertexShader, g_PresetMan.GetFullModulePath(vertexPath), error) && CompileShader(fragmentShader, g_PresetMan.GetFullModulePath(fragPath), error);
@@ -80,7 +93,7 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::COLOR, "rteVertexColor"));
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::LIGHTCONE, "rteLightCone"));
 		GL_CHECK(glBindAttribLocation(m_ProgramID, VertexAttribLocation::SURFACE, "rteVertexSurface"));
-		if (Link(vertexShader, fragmentShader)) {
+		if (Link(vertexShader, fragmentShader, error)) {
 			m_TextureUniform = GetUniformLocation("rteTexture");
 			m_PaletteUniform = GetUniformLocation("rtePalette");
 			m_ColorUniform = GetUniformLocation("rteColor");
@@ -88,15 +101,30 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 			m_ViewUniform = GetUniformLocation("rteView");
 			m_UVTransformUniform = GetUniformLocation("rteUVTransform");
 			m_ProjectionUniform = GetUniformLocation("rteProjection");
+			m_TimeUniform = GetUniformLocation("rteTime");
+			m_ObjectSeedUniform = GetUniformLocation("rteObjectSeed");
+			m_HealthUniform = GetUniformLocation("rteHealth");
+			m_StrengthUniform = GetUniformLocation("rteStrength");
+			m_ReliefUniform = GetUniformLocation("rteRelief");
+			result = true;
 		} else {
+			result = false;
+			linkFailed = true;
 		}
 	} else {
 		GL_CHECK(glDeleteShader(vertexShader));
 		GL_CHECK(glDeleteShader(fragmentShader));
-
-		RTEAbort("ERROR: Failed to compile shaders:\n" + error);
+	}
+	if (!result) {
+		m_Valid = false;
+		if (m_AbortOnError && !linkFailed) {
+			RTEAbort("ERROR: Failed to compile shaders:\n" + error);
+		}
+		// A game shader that compiles but doesn't link carries on as it always did, now with the reason in the console.
+		g_ConsoleMan.PrintString("ERROR: Shader \"" + (GetPresetName().empty() ? fragPath : GetPresetName()) + "\" failed to compile and won't be used:" + error);
 		return false;
 	}
+	m_Valid = true;
 
 	ApplyDefaultUniforms();
 
@@ -213,7 +241,7 @@ bool Shader::CompileShader(GLuint shaderID, const std::string& filename, std::st
 	return true;
 }
 
-bool Shader::Link(GLuint vtxShader, GLuint fragShader) {
+bool Shader::Link(GLuint vtxShader, GLuint fragShader, std::string& error) {
 	assert(glLinkProgram);
 	assert(vtxShader);
 	assert(fragShader);
@@ -227,6 +255,19 @@ bool Shader::Link(GLuint vtxShader, GLuint fragShader) {
 	GL_CHECK(glDeleteShader(vtxShader));
 	GL_CHECK(glDeleteShader(fragShader));
 
+	GLint linked = GL_FALSE;
+	GL_CHECK(glGetProgramiv(m_ProgramID, GL_LINK_STATUS, &linked));
+	if (linked == GL_FALSE) {
+		GLint infoLength = 0;
+		GL_CHECK(glGetProgramiv(m_ProgramID, GL_INFO_LOG_LENGTH, &infoLength));
+		error += "\nFailed to link " + m_VertexPath + " with " + m_FragmentPath + ":\n";
+		size_t errorPrevLen = error.size();
+		error.resize(errorPrevLen + std::max(infoLength, 0));
+		if (infoLength > 0) {
+			GL_CHECK(glGetProgramInfoLog(m_ProgramID, infoLength, &infoLength, error.data() + errorPrevLen));
+		}
+		return false;
+	}
 	return true;
 }
 

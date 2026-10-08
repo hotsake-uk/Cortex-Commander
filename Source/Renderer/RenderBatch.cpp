@@ -81,6 +81,9 @@ void RenderBatch::BeginFrame() {
 	m_CurrentSurface = glm::u8vec4(0);
 	m_ShadowCasting = true;
 	m_OpenPixelDraw = nullptr;
+	m_ObjectUniforms.clear();
+	m_ShaderBeforeObject = nullptr;
+	m_InObjectShader = false;
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 	RecycleDrawCalls();

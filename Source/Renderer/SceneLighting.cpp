@@ -361,6 +361,7 @@ void SceneLighting::DestroyScreenResources() {
 		m_IndirectHistoryValid[screen] = false;
 	}
 	m_HDRScene.Destroy();
+	m_ModPostScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
 	}
@@ -2197,6 +2198,34 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		DrawFullscreen();
 		glDisable(GL_BLEND);
+	}
+
+	logStages.Next("Lighting: mod post pass");
+	// A mod's post pass (a scene's, an activity's or a script's PostShader): it redraws the lit scene from a copy, before exposure, bloom and tonemapping see it.
+	if (const Shader* postShader = m_Settings.ModShaders && m_Settings.ModShaderStrength > 0.0F ? g_PostProcessMan.GetActivePostShader() : nullptr) {
+		TracyGpuZone("Mod Post Pass");
+		if (m_ModPostScene.Width != width || m_ModPostScene.Height != height || !m_ModPostScene.Texture) {
+			m_ModPostScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		}
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_ModPostScene.Framebuffer);
+		glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		postShader->Enable();
+		postShader->SetInt("rteScene", 0);
+		postShader->SetInt("rteSceneDepth", 1);
+		postShader->SetVector2f("rteScreenSize", screenSize);
+		postShader->SetVector2f("rteScreenOrigin", origin);
+		postShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		postShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		postShader->SetFloat("rteStrength", std::clamp(m_Settings.ModShaderStrength, 0.0F, 1.0F));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_ModPostScene.Texture);
+		DrawFullscreen();
 	}
 
 	logStages.Next("Lighting: auto exposure");

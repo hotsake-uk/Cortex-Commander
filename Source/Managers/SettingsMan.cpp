@@ -403,6 +403,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("PanelWidth", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 240.0F, 700.0F); });
 	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ChromaticAberration", { g_PostProcessMan.GetLightingSettings().ChromaticAberration = std::stof(reader.ReadPropValue()); });
+	MatchProperty("ModShaders", { g_PostProcessMan.GetLightingSettings().ModShaders = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ModShaderStrength", { g_PostProcessMan.GetLightingSettings().ModShaderStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("PostVignette", { g_PostProcessMan.GetLightingSettings().Vignette = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostSaturation", { g_PostProcessMan.GetLightingSettings().Saturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("MasterVolume", { g_AudioMan.SetMasterVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
@@ -662,6 +664,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
 	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
+	writer.NewPropertyWithValue("ModShaders", lighting.ModShaders);
+	writer.NewPropertyWithValue("ModShaderStrength", lighting.ModShaderStrength);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());

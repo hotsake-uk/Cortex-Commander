@@ -34,6 +34,7 @@ void Activity::Clear() {
 	m_Paused = false;
 	m_AllowsUserSaving = false;
 	m_Description.clear();
+	m_PostShader.clear();
 	m_SceneName.clear();
 	m_MaxPlayerSupport = Players::MaxPlayerCount;
 	m_MinTeamsRequired = 2;
@@ -93,6 +94,7 @@ int Activity::Create(const Activity& reference) {
 	m_Paused = reference.m_Paused;
 	m_AllowsUserSaving = reference.m_AllowsUserSaving;
 	m_Description = reference.m_Description;
+	m_PostShader = reference.m_PostShader;
 	m_MaxPlayerSupport = reference.m_MaxPlayerSupport;
 	m_MinTeamsRequired = reference.m_MinTeamsRequired;
 	m_Difficulty = reference.m_Difficulty;
@@ -137,6 +139,7 @@ int Activity::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return Entity::ReadProperty(propName, reader));
 
 	MatchProperty("Description", { reader >> m_Description; });
+	MatchProperty("PostShader", { m_PostShader = reader.ReadPropValue(); });
 	MatchProperty("SceneName", { reader >> m_SceneName; });
 	MatchProperty("MaxPlayerSupport", { reader >> m_MaxPlayerSupport; });
 	MatchProperty("MinTeamsRequired", { reader >> m_MinTeamsRequired; });
@@ -233,6 +236,9 @@ int Activity::Save(Writer& writer) const {
 
 	writer.NewProperty("Description");
 	writer << m_Description;
+	if (!m_PostShader.empty()) {
+		writer.NewPropertyWithValue("PostShader", m_PostShader);
+	}
 	writer.NewProperty("SceneName");
 	writer << m_SceneName;
 	writer.NewProperty("MaxPlayerSupport");
