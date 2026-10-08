@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -29,6 +30,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -99,6 +101,7 @@ namespace {
 	std::vector<glm::ivec2> s_BloodSettled; //!< Where blood drops settled since the last update, to become flowing blood.
 	std::array<int, 256> s_ColorOfMaterial{}; //!< Palette index each material is drawn with, for pixels changed into it.
 	std::array<bool, 256> s_Soft{}; //!< Soft enough for acid to eat (integrity under 100).
+	std::unordered_map<std::string, int> s_PourableByName; //!< Each liquid and powder by its preset name, for Pour.
 	bool s_TablesBuilt = false;
 
 	/// The moving liquid pixels. A state byte per pixel says whether it's active and for how many steps it's been still; a list of keys (y * width + x) says which to visit.
@@ -355,6 +358,7 @@ namespace {
 		s_WaterMaterial = 0;
 		s_ColorOfMaterial.fill(0);
 		s_Soft.fill(false);
+		s_PourableByName.clear();
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -392,6 +396,7 @@ namespace {
 				continue;
 			}
 			s_Kinds[id] = kind;
+			s_PourableByName.emplace(name, id);
 			s_PourColor[id] = color.GetIndex();
 			LiquidProperties properties = c_Liquids[static_cast<int>(kind)];
 			auto setIf = [](int& value, int set, int low) {
@@ -473,15 +478,20 @@ namespace {
 		constexpr int halfHeight = 200;
 		constexpr int windowWidth = halfWidth * 2 + 1;
 		constexpr int windowHeight = halfHeight * 2 + 1;
-		static std::vector<unsigned char> visited;
+		// (Marked with a search number instead of cleared: clearing the 321 KB window each call was up to 10 MB of memset an update in a flood, L-6.)
+		static std::vector<unsigned int> visited;
+		static unsigned int search = 0;
 		static std::vector<glm::ivec2> frontier;
-		visited.assign(static_cast<size_t>(windowWidth) * windowHeight, 0);
+		if (visited.empty() || ++search == 0) {
+			visited.assign(static_cast<size_t>(windowWidth) * windowHeight, 0);
+			search = 1;
+		}
 		frontier.clear();
 		BITMAP* materialBitmap = terrain->GetBitmap();
 		bool wraps = g_SceneMan.SceneWrapsX();
 		int liquidMaterial = materialBitmap->line[startY][startX];
 		frontier.emplace_back(0, 0);
-		visited[static_cast<size_t>(halfHeight) * windowWidth + halfWidth] = 1;
+		visited[static_cast<size_t>(halfHeight) * windowWidth + halfWidth] = search;
 		// Down first, then sideways, then up: the lowest spots are found first.
 		static constexpr int offsets[4][2] = {{0, 1}, {-1, 0}, {1, 0}, {0, -1}};
 		for (size_t next = 0; next < frontier.size() && next < static_cast<size_t>(c_LevelSearchCells); ++next) {
@@ -493,10 +503,10 @@ namespace {
 					continue;
 				}
 				size_t index = static_cast<size_t>(relativeY + halfHeight) * windowWidth + (relativeX + halfWidth);
-				if (visited[index]) {
+				if (visited[index] == search) {
 					continue;
 				}
-				visited[index] = 1;
+				visited[index] = search;
 				int x = startX + relativeX;
 				int y = startY + relativeY;
 				if (wraps) {
@@ -771,6 +781,28 @@ void FluidSim::OnParticleSettled(const MovableObject* particle) {
 	}
 }
 
+bool FluidSim::IsFlowingNear(const Vector& position, float radius) {
+	if (!s_Enabled || !s_TablesBuilt) {
+		return false;
+	}
+	// A plus shape, every quarter of the radius out each way: a pool big enough to matter is found, and a dry spot costs 17 lookups.
+	int centerX = position.GetFloorIntX();
+	int centerY = position.GetFloorIntY();
+	int step = std::max(static_cast<int>(radius) / 4, 1);
+	for (int out = 0; out <= 4; ++out) {
+		int distance = out * step;
+		for (const auto& [dx, dy]: {std::pair{distance, 0}, std::pair{-distance, 0}, std::pair{0, distance}, std::pair{0, -distance}}) {
+			if (int material = g_SceneMan.GetTerrMatter(centerX + dx, centerY + dy); material > 0 && material < 256 && s_Kinds[material] != Liquid::None) {
+				return true;
+			}
+			if (out == 0) {
+				break;
+			}
+		}
+	}
+	return false;
+}
+
 void FluidSim::Splash(const Vector& position, float radius, float share, float speed) {
 	if (!s_Enabled) {
 		return;
@@ -907,10 +939,12 @@ void FluidSim::Update() {
 		BITMAP* splashBitmap = terrain->GetBitmap();
 		int splashX = s_WrapsX ? ((splash.X % width) + width) % width : splash.X;
 		for (int dy = -splash.Radius; dy <= splash.Radius && dropsLeft > 0; ++dy) {
-			for (int dx = -splash.Radius; dx <= splash.Radius && dropsLeft > 0; ++dx) {
+			// (Each row of the disc from its own ends, not the whole square tested cell by cell: L-6.)
+			int halfRow = static_cast<int>(std::sqrt(static_cast<float>(splash.Radius * splash.Radius - dy * dy)));
+			for (int dx = -halfRow; dx <= halfRow && dropsLeft > 0; ++dx) {
 				int x = splashX + dx;
 				int y = splash.Y + dy;
-				if (dx * dx + dy * dy > splash.Radius * splash.Radius || !InWorld(x, y, width, height)) {
+				if (!InWorld(x, y, width, height)) {
 					continue;
 				}
 				int material = splashBitmap->line[y][x];
@@ -950,12 +984,9 @@ void FluidSim::Update() {
 	}
 	std::sort(pours.begin(), pours.end(), [](const PourRequest& a, const PourRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 	for (const PourRequest& pour: pours) {
-		int material = 0;
-		for (int id = 1; id < 256 && !material; ++id) {
-			if (s_Kinds[id] != Liquid::None && g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id))->GetPresetName() == pour.Name) {
-				material = id;
-			}
-		}
+		// (Looked up in the table built with the kinds, not by comparing every material's name per pour: L-6.)
+		auto byName = s_PourableByName.find(pour.Name);
+		int material = byName != s_PourableByName.end() ? byName->second : 0;
 		if (material == 0) {
 			continue;
 		}
@@ -1331,7 +1362,10 @@ void FluidSim::Update() {
 					// The look passes through liquid as well as air, since liquid in the way would be pushed along: this is what makes a body of liquid press outwards
 					// and come level in a second or two. A pixel with nowhere lower to go stays where it is; left to wander, the top of a pool never comes to rest.
 					for (int side: {heading, -heading}) {
-						if (int found = FindRowDrop(materialBitmap, x, y, side, properties.Flow * 60, width, height)) {
+						// (A pixel that has gone a while without getting lower looks only as far as the sweep does: on a long flat pool most of the set is
+						// such pixels, each looking 720 px both ways every step, L-6.)
+						int reach = still >= 8 ? std::min(properties.Flow * 60, 300) : properties.Flow * 60;
+						if (int found = FindRowDrop(materialBitmap, x, y, side, reach, width, height)) {
 							targetX = x + side * found;
 							targetY = y + 1;
 							heading = side;
