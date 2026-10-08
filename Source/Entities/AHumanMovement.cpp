@@ -1312,6 +1312,14 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 
 int AHuman::MoveAlongRoute() {
 	RouteMover& mover = m_Mover;
+	// Not called for a while: whoever drives it held the unit (to fight, to look at an alarm, to follow someone near at hand). Its timers
+	// ran on through the hold, and the first call after a long fight would take the time for being stuck, mark the step it was on avoided
+	// and ask for a new route, so they start again here, whatever the caller remembers to do. A flight in hand is kept: it is flown on.
+	const long long tick = g_TimerMan.GetSimUpdateCount();
+	if (mover.lastCallTick >= 0 && tick - mover.lastCallTick > static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1) && !mover.flight.active) {
+		ResetRouteMovement();
+	}
+	mover.lastCallTick = tick;
 	if (g_SettingsMan.NavDebugOverlay() >= 2) {
 		RecordFlightDebug();
 		DrawMoverDebug();

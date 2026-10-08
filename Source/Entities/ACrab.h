@@ -386,6 +386,7 @@ namespace RTE {
 		/// The crab route-follower's state (see MoveAlongRoute).
 		struct CrabMover {
 			bool begun = false;
+			long long lastCallTick = -1; //!< The sim update the follower was last called on, to tell a hold (see AHuman::MoveAlongRoute).
 			Timer progressTimer; //!< Since it last got nearer the route's point.
 			float bestGap = -1.0F;
 			Timer repathTimer;

@@ -857,6 +857,7 @@ namespace RTE {
 				Timer stepTimer;
 			};
 			bool begun = false;
+			long long lastCallTick = -1; //!< The sim update the follower was last called on, to tell a hold by whoever drives it (see MoveAlongRoute).
 			Flight flight;
 			Timer progressTimer; //!< Since the unit last got nearer the route's point.
 			float bestGap = -1.0F;

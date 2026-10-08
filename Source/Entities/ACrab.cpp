@@ -1580,6 +1580,12 @@ void ACrab::ResetRouteMovement() {
 
 int ACrab::MoveAlongRoute() {
 	CrabMover& mover = m_CrabMover;
+	// Not called for a while (held by its script): the timers start again (see AHuman::MoveAlongRoute).
+	const long long tick = g_TimerMan.GetSimUpdateCount();
+	if (mover.lastCallTick >= 0 && tick - mover.lastCallTick > static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1)) {
+		ResetRouteMovement();
+	}
+	mover.lastCallTick = tick;
 	if (!mover.begun) {
 		mover.begun = true;
 		mover.progressTimer.Reset();
