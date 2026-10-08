@@ -576,6 +576,12 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		AI.jump = false;
 		AI.pilotFlight = true; -- (The engine holds the jet as it means to: no hold timer of the native AI's over it.)
 		-- Following a unit near at hand: walked or held here, not routed (the route-follower never "arrives" at a unit, and shoved for its spot).
+		-- A flight under way is flown on to its landing whatever turns up: held mid-air, the jet went out under the unit, and when the
+		-- route-follower was called again it judged the flight "down again under the landing" and marked a good take-off failed for 20 s
+		-- (for its team 10). (Humans only: the crab follower plans no flights.)
+		if holding and Owner.ClassName == "AHuman" and Owner.FlyingRoute then
+			holding = false;
+		end
 		local following = not holding and SharedBehaviors.FollowStep(AI, Owner);
 		if following then
 			holding = true;
