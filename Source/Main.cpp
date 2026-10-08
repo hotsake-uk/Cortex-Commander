@@ -49,6 +49,7 @@
 #include "FrameMan.h"
 #include "DebugMan.h"
 #include "TerrainFire.h"
+#include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "SmokeGrid.h"
@@ -534,6 +535,8 @@ void RunGameLoop() {
 				Sandbox::Update();
 				logStages.Next("Sim: smoke grid");
 				SmokeGrid::Update();
+				logStages.Next("Sim: lightning");
+				WeatherLightning::Update();
 				logStages.Next("Sim: terrain fire");
 				TerrainFire::Update();
 				logStages.Next("Sim: burning units");

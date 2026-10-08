@@ -21,6 +21,7 @@
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
+#include "WeatherLightning.h"
 #include "TextOverlay.h"
 #include "TimerMan.h"
 #include "WindowMan.h"
@@ -219,6 +220,10 @@ void DebugMan::SettingsGUI() {
 		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
 		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
+		if (int strikes = static_cast<int>(WeatherLightning::GetStrikes()); Combo("Storm lightning", &strikes, "In the sky only\0Strikes the ground, starts fires\0Strikes the ground, fires and hurts units\0")) {
+			WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(strikes, 0, 2)));
+		}
+		Tip("In heavy rain, now and then a bolt hits a real spot, half the time near someone, and can set grass and wood alight. The same in a replay. In the sky only: flashes, as before.");
 		Check("Ground dries place by place", &settings.WetnessMap);
 		Tip("Rain wets the ground and it dries after the rain, hard rock and concrete slower than earth, and long rain leaves puddles in the dips that reflect lamps and the sky. Off: all exposed ground is equally wet, as before. On from the Medium preset.");
 		if (settings.WetnessMap) {
@@ -282,6 +287,10 @@ void DebugMan::SettingsGUI() {
 			Slider("Cloud cover", &settings.CloudCover, 0.0F, 1.0F);
 			Tip("How much of the sky is cloud in clear weather. 0.5 is the spread cloud shadows always had.");
 			Slider("Cloud opacity", &settings.CloudOpacity, 0.0F, 1.0F);
+			Slider("Cloud size", &settings.CloudSize, 0.4F, 2.5F);
+			Tip("How big the clouds are: wider patches with bigger puffs, in a deeper band, and wider shadows on the ground to match. 1 is the usual size.");
+			Slider("Cloud height", &settings.CloudHeight, 0.0F, 1.0F);
+			Tip("How high in the sky the clouds sit. 1 is along the top of the view, as usual; lower brings the band down towards the horizon. Clouds stay behind the terrain.");
 		}
 		Slider("God rays", &settings.GodRays, 0.0F, 2.0F);
 		Slider("Mist and dust", &settings.FogVolume, 0.0F, 1.5F);
@@ -458,6 +467,9 @@ void DebugMan::SettingsGUI() {
 		Slider("Froth brightness", &settings.WaterFoamBrightness, 0.2F, 2.0F);
 		Slider("Froth glow in the dark", &settings.WaterFoamGlow, 0.0F, 1.0F);
 		Tip("How much light of its own froth carries. 0: it is as dark as the scene around it at night.");
+		Heading("Splashes");
+		Slider("Splash size", &settings.WaterSplash, 0.0F, 4.0F);
+		Tip("How big the splash is when falling ground or a broken-off piece drops into water (or any liquid): drops and spray thrown up, by how fast and how wide it went in. Only for the eye: the water it pushes aside raises the level. 0 for none.");
 		Heading("Mist");
 		Slider("Mist", &settings.WaterMist, 0.0F, 2.0F);
 		Tip("Soft spray thrown off water that is falling fast or landing. 0 for none.");

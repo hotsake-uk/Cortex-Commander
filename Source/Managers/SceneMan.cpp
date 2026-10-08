@@ -2759,9 +2759,13 @@ void SceneMan::Draw(const Camera& camera) {
 	const Shader* sceneShader = g_RenderMan.GetCurrentShader();
 	const Shader* terrainShader = g_PostProcessMan.GetSceneLighting()->PrepareTerrainShader();
 
+	// The terrain shader is told which layer it draws: only the foreground's pixels are the material map's (a plant under water is drawn under the water's look).
+	GLint foregroundUniform = terrainShader ? terrainShader->GetUniformLocation("rteForegroundLayer") : -1;
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::BackgroundLayer);
 	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
+	g_RenderMan.BeginLayerUniform(std::make_shared<BoolValue>(foregroundUniform, false), foregroundUniform);
 	terrainLayer->Draw(camera);
+	g_RenderMan.EndLayerUniforms();
 	g_RenderMan.SetCurrentShader(sceneShader);
 
 	logStages.Next("Scene draw: objects");
@@ -2770,7 +2774,9 @@ void SceneMan::Draw(const Camera& camera) {
 	logStages.Next("Scene draw: terrain (and its uploads)");
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
 	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
+	g_RenderMan.BeginLayerUniform(std::make_shared<BoolValue>(foregroundUniform, true), foregroundUniform);
 	terrainLayer->Draw(camera);
+	g_RenderMan.EndLayerUniforms();
 	g_RenderMan.SetCurrentShader(sceneShader);
 
 	logStages.Next("Scene draw: fog of war and HUD");

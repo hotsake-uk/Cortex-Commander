@@ -194,6 +194,9 @@ std::shared_ptr<DrawCall> RenderMan::BeginDraw() {
 	if (!m_ActiveBatch->m_ObjectMapUniforms.empty()) {
 		drawCall->m_UniformValues.insert(drawCall->m_UniformValues.end(), m_ActiveBatch->m_ObjectMapUniforms.begin(), m_ActiveBatch->m_ObjectMapUniforms.end());
 	}
+	if (!m_ActiveBatch->m_LayerUniforms.empty()) {
+		drawCall->m_UniformValues.insert(drawCall->m_UniformValues.end(), m_ActiveBatch->m_LayerUniforms.begin(), m_ActiveBatch->m_LayerUniforms.end());
+	}
 	m_ActiveBatch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
 	return drawCall;
 }

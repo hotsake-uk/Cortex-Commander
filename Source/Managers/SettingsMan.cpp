@@ -7,6 +7,7 @@
 #include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "Sandbox.h"
@@ -243,6 +244,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -370,6 +372,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CloudLayer", { g_PostProcessMan.GetLightingSettings().CloudLayer = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CloudCover", { g_PostProcessMan.GetLightingSettings().CloudCover = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudOpacity", { g_PostProcessMan.GetLightingSettings().CloudOpacity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("CloudSize", { g_PostProcessMan.GetLightingSettings().CloudSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("CloudHeight", { g_PostProcessMan.GetLightingSettings().CloudHeight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SurfaceStates", { g_PostProcessMan.GetLightingSettings().SurfaceStates = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("TracerLights", { g_PostProcessMan.GetLightingSettings().TracerLights = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFoam", { g_PostProcessMan.GetLightingSettings().WaterFoam = std::stof(reader.ReadPropValue()); });
@@ -393,6 +397,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("WaterMistOpacity", { g_PostProcessMan.GetLightingSettings().WaterMistOpacity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistSpread", { g_PostProcessMan.GetLightingSettings().WaterMistSpread = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMist", { g_PostProcessMan.GetLightingSettings().WaterMist = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterSplash", { g_PostProcessMan.GetLightingSettings().WaterSplash = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistBrightness", { g_PostProcessMan.GetLightingSettings().WaterMistBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistGlow", { g_PostProcessMan.GetLightingSettings().WaterMistGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("RainSplashes", { g_PostProcessMan.GetLightingSettings().RainSplashes = std::stof(reader.ReadPropValue()); });
@@ -672,6 +677,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CloudLayer", lighting.CloudLayer);
 	writer.NewPropertyWithValue("CloudCover", lighting.CloudCover);
 	writer.NewPropertyWithValue("CloudOpacity", lighting.CloudOpacity);
+	writer.NewPropertyWithValue("CloudSize", lighting.CloudSize);
+	writer.NewPropertyWithValue("CloudHeight", lighting.CloudHeight);
 	writer.NewPropertyWithValue("SurfaceStates", lighting.SurfaceStates);
 	writer.NewPropertyWithValue("TracerLights", lighting.TracerLights);
 	writer.NewPropertyWithValue("WeatherLight", lighting.WeatherLight);
@@ -681,6 +688,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterFoamBrightness", lighting.WaterFoamBrightness);
 	writer.NewPropertyWithValue("WaterFoamGlow", lighting.WaterFoamGlow);
 	writer.NewPropertyWithValue("WaterMist", lighting.WaterMist);
+	writer.NewPropertyWithValue("WaterSplash", lighting.WaterSplash);
 	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
 	writer.NewPropertyWithValue("DistinctLiquidLooks", lighting.DistinctLiquidLooks);
 	writer.NewPropertyWithValue("WaterFlowSurface", lighting.WaterFlowSurface);
@@ -738,6 +746,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
 	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
+	writer.NewPropertyWithValue("LightningStrikes", static_cast<int>(WeatherLightning::GetStrikes()));
 	writer.NewPropertyWithValue("BloodFlows", FluidSim::BloodFlows());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);

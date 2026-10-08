@@ -239,6 +239,8 @@ namespace RTE {
 		bool CloudLayer = true; //!< Clouds are drawn in the sky, the same clouds whose shadows cross the ground; they gather in bad weather and break up after it. Off: no clouds in the sky and the shadows keep their fixed spread, as before.
 		float CloudCover = 0.5F; //!< How much of the sky is cloud in clear weather, 0 to 1 (0.5 is the spread the shadows always had). Rain, snow and ash fall add to it.
 		float CloudOpacity = 1.0F; //!< How solid the clouds in the sky are drawn, 0 to 1.
+		float CloudSize = 1.0F; //!< How big the clouds are, 0.4 to 2.5: the width of the patches (in the sky and their shadows alike), their puffs, and how deep the band they sit in is. 1 as before.
+		float CloudHeight = 1.0F; //!< How high in the sky the cloud band sits, 0 to 1: 1 along the top of the view as before, 0 starting halfway down it.
 		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
 		float WaterFoam = 1.0F; //!< How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth, with froth filling the air beside it. 0 for none. Visual only.
@@ -262,6 +264,7 @@ namespace RTE {
 		float WaterMistOpacity = 0.42F; //!< How solid each puff is at its start.
 		float WaterMistSpread = 1.0F; //!< How much each puff swells as it thins.
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
+		float WaterSplash = 1.5F; //!< How big the splash is when something heavy falls into a liquid (falling ground, a broken-off piece): drops and spray, 1 the plain size, up to 4. 0 for none. Visual only: the liquid a body pushes aside goes into the level.
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
 		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.
 		bool ShelterMask = true; //!< Where rain, snow and ash can't reach, from a shelter map of the scene made the way the weather falls: overhangs, roofs and caves keep drops, splashes, wetness and snow out right to the edge, however far up the shelter is. Off: each drop and each patch of ground marches up the light grid to look for shelter, as before, which gives up a few hundred pixels up. On from the Low preset up.

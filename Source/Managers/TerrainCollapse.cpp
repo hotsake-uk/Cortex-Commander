@@ -305,7 +305,115 @@ namespace {
 		body.Stamped.clear();
 	}
 
-	/// Draws a body into the terrain where it is. Liquid in its way is moved up out of it rather than lost.
+	/// A pixel of liquid a body has just covered, to be put back elsewhere (see PlaceDisplaced).
+	struct Displaced {
+		int X, Y, Material, Color;
+	};
+
+	/// Puts the liquid a body pushed aside back into the liquid it came from: in the lowest free places at that liquid's edge (the gap the body
+	/// left behind it as it sinks, then the surface), nearest the body first, so the level all round rises by what went in. The places are
+	/// found by a search through the liquid only, never through the body: the old way went straight up through the body to the first air,
+	/// and the water a piece fell into appeared on top of it.
+	/// @return How many it couldn't place (nowhere reachable: a body filling a closed tank); those are the last ones in the list.
+	size_t PlaceDisplaced(SLTerrain* terrain, const Body& body, std::vector<Displaced>& displaced) {
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		// The search is in a window round the body, its cells marked with a search number rather than cleared (as FluidSim's level search).
+		constexpr int halfWidth = 512;
+		constexpr int halfHeight = 320;
+		constexpr int windowWidth = halfWidth * 2 + 1;
+		constexpr size_t c_MaxLiquidCells = 24000; //!< How much of the liquid one search may cross: a wide pool's surface for a big piece.
+		static std::vector<unsigned int> visited;
+		static unsigned int search = 0;
+		if (visited.empty() || ++search == 0) {
+			visited.assign(static_cast<size_t>(windowWidth) * (halfHeight * 2 + 1), 0);
+			search = 1;
+		}
+		int originX = static_cast<int>(std::floor(body.Pos.x));
+		int originY = static_cast<int>(std::floor(body.Pos.y));
+		// Where a scene cell is in the window, and how far across from the body (the shorter way round a wrapping scene); false outside it.
+		auto inWindow = [&](int x, int y, size_t& slot, int& across) {
+			int dx = x - originX;
+			if (s_WrapX && s_Width > 0) {
+				dx = ((dx % s_Width) + s_Width + s_Width / 2) % s_Width - s_Width / 2;
+			}
+			int dy = y - originY;
+			if (dx < -halfWidth || dx > halfWidth || dy < -halfHeight || dy > halfHeight) {
+				return false;
+			}
+			slot = static_cast<size_t>(dy + halfHeight) * windowWidth + static_cast<size_t>(dx + halfWidth);
+			across = dx;
+			return true;
+		};
+		struct Cell {
+			int X, Y, Across;
+		};
+		// The liquid is searched upwards first, so the surface over a deep piece is reached before the cells run out; free places are taken
+		// lowest first, then nearest the body, so the gap behind a sinking piece closes before the surface rises, and the surface rises
+		// outwards from the piece as a swell rather than all over in specks.
+		auto liquidOrder = [](const Cell& a, const Cell& b) { return a.Y != b.Y ? a.Y > b.Y : (std::abs(a.Across) != std::abs(b.Across) ? std::abs(a.Across) > std::abs(b.Across) : a.Across > b.Across); };
+		auto freeOrder = [](const Cell& a, const Cell& b) { return a.Y != b.Y ? a.Y < b.Y : (std::abs(a.Across) != std::abs(b.Across) ? std::abs(a.Across) > std::abs(b.Across) : a.Across > b.Across); };
+		static std::vector<Cell> liquidCells;
+		static std::vector<Cell> freePlaces;
+		liquidCells.clear();
+		freePlaces.clear();
+		size_t liquidSeen = 0;
+		auto look = [&](int x, int y) {
+			if (!WrapInWorld(x, y)) {
+				return;
+			}
+			size_t slot = 0;
+			int across = 0;
+			if (!inWindow(x, y, slot, across) || visited[slot] == search) {
+				return;
+			}
+			int material = materialBitmap->line[y][x];
+			if (material == g_MaterialAir) {
+				visited[slot] = search;
+				freePlaces.push_back({x, y, across});
+				std::push_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
+			} else if (FluidSim::IsLiquid(material) && liquidSeen < c_MaxLiquidCells) {
+				visited[slot] = search;
+				++liquidSeen;
+				liquidCells.push_back({x, y, across});
+				std::push_heap(liquidCells.begin(), liquidCells.end(), liquidOrder);
+			}
+		};
+		static constexpr int sides[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
+		for (const Displaced& pixel: displaced) {
+			for (const auto& side: sides) {
+				look(pixel.X + side[0], pixel.Y + side[1]);
+			}
+		}
+		while (!liquidCells.empty()) {
+			std::pop_heap(liquidCells.begin(), liquidCells.end(), liquidOrder);
+			Cell cell = liquidCells.back();
+			liquidCells.pop_back();
+			for (const auto& side: sides) {
+				look(cell.X + side[0], cell.Y + side[1]);
+			}
+		}
+		size_t placed = 0;
+		while (placed < displaced.size() && !freePlaces.empty()) {
+			std::pop_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
+			Cell cell = freePlaces.back();
+			freePlaces.pop_back();
+			if (materialBitmap->line[cell.Y][cell.X] != g_MaterialAir) {
+				continue;
+			}
+			const Displaced& pixel = displaced[placed++];
+			terrain->SetMaterialPixel(cell.X, cell.Y, pixel.Material);
+			terrain->SetFGColorPixel(cell.X, cell.Y, pixel.Color);
+			// It flows on from there if it can (over an edge, along a step).
+			FluidSim::Disturb(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 1.0F);
+			// Its own edge is the liquid's edge now: the free places beside and above it are next.
+			for (const auto& side: sides) {
+				look(cell.X + side[0], cell.Y + side[1]);
+			}
+		}
+		return displaced.size() - placed;
+	}
+
+	/// Draws a body into the terrain where it is. Liquid in its way is pushed aside into the rest of that liquid (PlaceDisplaced) rather than lost.
 	void Stamp(SLTerrain* terrain, Body& body) {
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		float c = std::cos(body.Angle);
@@ -313,9 +421,6 @@ namespace {
 		int reach = static_cast<int>(std::ceil(body.Radius)) + 1;
 		int centerX = static_cast<int>(std::floor(body.Pos.x));
 		int centerY = static_cast<int>(std::floor(body.Pos.y));
-		struct Displaced {
-			int X, Y, Material, Color;
-		};
 		static std::vector<Displaced> displaced;
 		displaced.clear();
 		for (int wy = std::max(0, centerY - reach); wy <= std::min(s_Height - 1, centerY + reach); ++wy) {
@@ -357,9 +462,14 @@ namespace {
 				body.Stamped.emplace_back(key, local);
 			}
 		}
-		// Each pixel of liquid the piece now covers goes to the nearest free place: up through the piece and the liquid above it to the surface,
-		// or, under a ceiling, sideways along the highest row it can reach. None is lost, so the level rises around what falls in.
-		for (const Displaced& liquid: displaced) {
+		if (displaced.empty()) {
+			return;
+		}
+		size_t unplaced = PlaceDisplaced(terrain, body, displaced);
+		// Only with nowhere in the liquid to go (a piece filling a closed tank): up through the piece and the liquid above it to the first free
+		// place, or, under a ceiling, sideways along the highest row it can reach, as before. None is lost.
+		for (size_t i = displaced.size() - unplaced; i < displaced.size(); ++i) {
+			const Displaced& liquid = displaced[i];
 			auto passable = [&](int x, int y) {
 				int material = materialBitmap->line[y][x];
 				return FluidSim::IsLiquid(material) || (s_State[y * s_Width + x] & c_Falling);
@@ -399,9 +509,7 @@ namespace {
 				}
 			}
 		}
-		if (!displaced.empty()) {
-			FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), body.Radius + 6.0F);
-		}
+		FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), body.Radius + 6.0F);
 	}
 
 	/// Throws a pixel of a body off as a loose particle.
@@ -749,8 +857,28 @@ namespace {
 				++inLiquid;
 			}
 		}
-		if (inLiquid > 0 && !body.Wet && glm::length(body.Vel) > 1.5F) {
-			FluidSim::Splash(Vector(body.Pos.x, body.Pos.y + body.Radius * 0.5F), body.Radius + 4.0F, 0.35F, glm::length(body.Vel) * 1.6F);
+		if (inLiquid > 0 && !body.Wet && glm::length(body.Vel) > 1.0F) {
+			// Going in: a splash for the eye only, from the surface where it went in. (It threw real liquid before, which came down on the piece
+			// and stayed there; what the piece pushes aside goes into the level instead, see Stamp.)
+			int surfaceX = static_cast<int>(std::floor(body.Pos.x));
+			int surfaceY = -1;
+			for (int y = std::max(0, static_cast<int>(body.Pos.y - body.Radius) - 4); y <= std::min(s_Height - 1, static_cast<int>(body.Pos.y + body.Radius) + 4); ++y) {
+				int x = surfaceX;
+				if (WrapInWorld(x, y) && FluidSim::IsLiquid(materialBitmap->line[y][x])) {
+					surfaceX = x;
+					surfaceY = y;
+					break;
+				}
+			}
+			if (surfaceY < 0) {
+				surfaceY = static_cast<int>(std::floor(body.Pos.y + body.Radius * 0.5F));
+				int x = surfaceX;
+				WrapInWorld(x, surfaceY);
+				surfaceX = x;
+			}
+			int colorIndex = (surfaceY >= 0 && surfaceY < s_Height && surfaceX >= 0 && surfaceX < s_Width) ? terrain->GetFGColorPixel(surfaceX, surfaceY) : 0;
+			// (Pixels an update into metres a second: 60 updates a second, 20 pixels to the metre.)
+			FluidSim::VisualSplash(Vector(static_cast<float>(surfaceX), static_cast<float>(surfaceY)), body.Radius * 2.0F, glm::length(body.Vel) * 3.0F, colorIndex);
 		}
 		body.Wet = inLiquid > 0;
 		if (inLiquid > 0) {
