@@ -1,6 +1,7 @@
 #include "ADoor.h"
 #include "AtomGroup.h"
 #include "SceneMan.h"
+#include "Scene.h"
 #include "Attachable.h"
 #include "Matrix.h"
 #include "SLTerrain.h"
@@ -357,8 +358,9 @@ void ADoor::SetTeam(int team) {
 	// The grids sample the door's material where it was drawn, each team's with its own doors taken out, so a door that changes hands
 	// has to be sampled again by all of them. (A gym that handed a map's doors to the unit's team found the unit's grid still had them
 	// as walls, and it stood under a hatch of its own it was told it couldn't pass.)
-	if (changed && m_Door && m_DoorMaterialDrawn && g_SceneMan.GetTerrain()) {
-		g_SceneMan.GetTerrain()->AddUpdatedMaterialArea(m_Door->GetBoundingBox());
+	// The NoTeam grid sees no change there (no material changed), so the box goes to the team grids directly.
+	if (changed && m_Door && m_DoorMaterialDrawn && g_SceneMan.GetScene()) {
+		g_SceneMan.GetScene()->AddTeamGridUpdateArea(m_Door->GetBoundingBox());
 	}
 }
 
