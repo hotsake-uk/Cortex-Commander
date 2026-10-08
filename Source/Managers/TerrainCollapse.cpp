@@ -122,6 +122,10 @@ namespace {
 		std::shared_ptr<Before> Was;
 	};
 	std::map<std::pair<int, int>, Watch> s_Watches; //!< By square (row, column): ordered, so they are always gone through in the same order.
+	/// Squares newly being worn, waiting for their first look (LookBefore, a scan of some 23 k pixels with flood fills): only a few are looked at
+	/// an update, so a crash that chips fifty squares at once doesn't do all fifty in the update already paying for the gibs. First worn, first looked at.
+	std::deque<std::pair<int, int>> s_WatchesWaiting;
+	std::map<std::pair<int, int>, long long> s_WatchWaitingDamage; //!< The waiting squares, with when each last lost a pixel.
 	std::vector<int> s_Damage; //!< Pixels knocked out since the last update, x and y by turns. Filled from (possibly parallel) collision code.
 	std::mutex s_DamageMutex;
 	std::vector<Check> s_Scheduled;
@@ -132,6 +136,7 @@ namespace {
 	std::vector<ChunkRequest> s_ChunkRequests;
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
+	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: the same scene restarted, or a new one at the old one's address, still counts as new (as in FluidSim).
 	int s_CollapsedCount = 0;
 	int s_DebrisThisUpdate = 0;
 	unsigned int s_Random = 0x51ED270Bu;
@@ -321,7 +326,9 @@ namespace {
 		constexpr int halfWidth = 512;
 		constexpr int halfHeight = 320;
 		constexpr int windowWidth = halfWidth * 2 + 1;
-		constexpr size_t c_MaxLiquidCells = 24000; //!< How much of the liquid one search may cross: a wide pool's surface for a big piece.
+		// How much of the liquid one search may cross: a wide pool's surface for a big piece, less for a few pixels (a piece sinking a pixel
+		// an update covers a row of them; each search was the full count, for every moving piece, every update).
+		const size_t maxLiquidCells = std::min<size_t>(24000, 2000 + displaced.size() * 100);
 		static std::vector<unsigned int> visited;
 		static unsigned int search = 0;
 		if (visited.empty() || ++search == 0) {
@@ -371,7 +378,7 @@ namespace {
 				visited[slot] = search;
 				freePlaces.push_back({x, y, across});
 				std::push_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
-			} else if (FluidSim::IsLiquid(material) && liquidSeen < c_MaxLiquidCells) {
+			} else if (FluidSim::IsLiquid(material) && liquidSeen < maxLiquidCells) {
 				visited[slot] = search;
 				++liquidSeen;
 				liquidCells.push_back({x, y, across});
@@ -393,6 +400,7 @@ namespace {
 			}
 		}
 		size_t placed = 0;
+		int frothed = 0;
 		while (placed < displaced.size() && !freePlaces.empty()) {
 			std::pop_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
 			Cell cell = freePlaces.back();
@@ -405,6 +413,11 @@ namespace {
 			terrain->SetFGColorPixel(cell.X, cell.Y, pixel.Color);
 			// It flows on from there if it can (over an edge, along a step).
 			FluidSim::Disturb(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 1.0F);
+			// Where it tops the liquid, the rising surface froths (for the eye; a few puffs, not one for every pixel).
+			if (placed % 4 == 1 && frothed < 24 && cell.Y > 0 && materialBitmap->line[cell.Y - 1][cell.X] == g_MaterialAir) {
+				FluidSim::Froth(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 4.0F, 1, pixel.Color);
+				++frothed;
+			}
 			// Its own edge is the liquid's edge now: the free places beside and above it are next.
 			for (const auto& side: sides) {
 				look(cell.X + side[0], cell.Y + side[1]);
@@ -849,11 +862,17 @@ namespace {
 		body.Vel.y += c_Gravity;
 		// In liquid it sinks slowly instead of dropping.
 		int inLiquid = 0;
+		int touchedX = -1;
+		int touchedY = -1;
 		for (size_t i = 0; i < body.Outline.size(); i += 4) {
 			glm::vec2 at = ToWorld(body, body.Outline[i], body.Pos, body.Angle);
 			int x = static_cast<int>(std::floor(at.x));
 			int y = static_cast<int>(std::floor(at.y));
 			if (WrapInWorld(x, y) && FluidSim::IsLiquid(materialBitmap->line[y][x])) {
+				if (inLiquid == 0) {
+					touchedX = x;
+					touchedY = y;
+				}
 				++inLiquid;
 			}
 		}
@@ -871,12 +890,12 @@ namespace {
 				}
 			}
 			if (surfaceY < 0) {
-				surfaceY = static_cast<int>(std::floor(body.Pos.y + body.Radius * 0.5F));
-				int x = surfaceX;
-				WrapInWorld(x, surfaceY);
-				surfaceX = x;
+				// No liquid straight under the middle (the piece only clipped some at its edge): splash from the liquid it touched. The colour is
+				// always a liquid pixel's, never air's: air's is the mask colour, which showed as a spray of magenta drops.
+				surfaceX = touchedX;
+				surfaceY = touchedY;
 			}
-			int colorIndex = (surfaceY >= 0 && surfaceY < s_Height && surfaceX >= 0 && surfaceX < s_Width) ? terrain->GetFGColorPixel(surfaceX, surfaceY) : 0;
+			int colorIndex = terrain->GetFGColorPixel(surfaceX, surfaceY);
 			// (Pixels an update into metres a second: 60 updates a second, 20 pixels to the metre.)
 			FluidSim::VisualSplash(Vector(static_cast<float>(surfaceX), static_cast<float>(surfaceY)), body.Radius * 2.0F, glm::length(body.Vel) * 3.0F, colorIndex);
 		}
@@ -1741,9 +1760,12 @@ void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const cha
 }
 
 void TerrainCollapse::Update() {
-	if (g_SceneMan.GetScene() != s_Scene) {
+	if (g_SceneMan.GetScene() != s_Scene || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		Clear();
+		// (The pixel states of the last game are no guide to this one, even on a terrain of the same size.)
+		s_State.clear();
 		s_Scene = g_SceneMan.GetScene();
+		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_CollapsedCount = 0;
 		s_TablesBuilt = false;
 		s_Random = 0x51ED270Bu;
@@ -1752,6 +1774,8 @@ void TerrainCollapse::Update() {
 	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
 	if (!terrain || !s_Enabled) {
 		Clear();
+		// The byte per pixel is given back while there is nothing to collapse (the menus, or collapse switched off); it is made again when needed.
+		std::vector<unsigned char>().swap(s_State);
 		return;
 	}
 	if (!s_TablesBuilt) {
@@ -1854,17 +1878,27 @@ void TerrainCollapse::Update() {
 		}
 		for (size_t i = 0; i + 1 < damage.size(); i += 2) {
 			std::pair<int, int> square(damage[i + 1] / c_WatchCell, damage[i] / c_WatchCell);
-			auto found = s_Watches.find(square);
-			if (found == s_Watches.end()) {
-				Watch watch;
-				watch.LastDamage = now;
-				watch.NextCheck = now + 30;
-				// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing.
-				watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr});
-				s_Watches.emplace(square, std::move(watch));
-			} else {
+			if (auto found = s_Watches.find(square); found != s_Watches.end()) {
 				found->second.LastDamage = now;
+			} else if (auto waiting = s_WatchWaitingDamage.find(square); waiting != s_WatchWaitingDamage.end()) {
+				waiting->second = now;
+			} else {
+				s_WatchWaitingDamage.emplace(square, now);
+				s_WatchesWaiting.push_back(square);
 			}
+		}
+		// A few new squares an update, more when many are waiting so the wait stays short.
+		constexpr int c_NewWatchesPerUpdate = 4;
+		for (size_t looks = std::max<size_t>(c_NewWatchesPerUpdate, s_WatchesWaiting.size() / 4); looks > 0 && !s_WatchesWaiting.empty(); --looks) {
+			std::pair<int, int> square = s_WatchesWaiting.front();
+			s_WatchesWaiting.pop_front();
+			Watch watch;
+			watch.LastDamage = s_WatchWaitingDamage[square];
+			watch.NextCheck = now + 30;
+			s_WatchWaitingDamage.erase(square);
+			// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing.
+			watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr});
+			s_Watches.emplace(square, std::move(watch));
 		}
 		int checksLeft = 3;
 		for (auto watch = s_Watches.begin(); watch != s_Watches.end();) {
@@ -1881,12 +1915,31 @@ void TerrainCollapse::Update() {
 		}
 	}
 	UpdateBodies(terrain);
-	for (const Check& check: s_Scheduled) {
-		if (check.DueUpdate <= now) {
-			RunCheck(terrain, check);
+	// The checks come due: a few an update (more when many are due, so the wait stays short), the longest due first, the rest carried over. A place
+	// and size already checked this update isn't checked again (a crater queued twice, or a check's second look come due while its first waited).
+	constexpr int c_ChecksPerUpdate = 4;
+	std::stable_sort(s_Scheduled.begin(), s_Scheduled.end(), [](const Check& a, const Check& b) { return a.DueUpdate < b.DueUpdate; });
+	size_t due = std::count_if(s_Scheduled.begin(), s_Scheduled.end(), [now](const Check& check) { return check.DueUpdate <= now; });
+	size_t checksLeft = std::max<size_t>(c_ChecksPerUpdate, due / 4);
+	std::vector<Check> ran;
+	std::vector<Check> kept;
+	for (Check& check: s_Scheduled) {
+		if (check.DueUpdate > now) {
+			kept.push_back(std::move(check));
+			continue;
 		}
+		if (std::any_of(ran.begin(), ran.end(), [&check](const Check& done) { return done.X == check.X && done.Y == check.Y && done.Radius == check.Radius; })) {
+			continue;
+		}
+		if (checksLeft == 0) {
+			kept.push_back(std::move(check));
+			continue;
+		}
+		--checksLeft;
+		RunCheck(terrain, check);
+		ran.push_back(std::move(check));
 	}
-	s_Scheduled.erase(std::remove_if(s_Scheduled.begin(), s_Scheduled.end(), [now](const Check& check) { return check.DueUpdate <= now; }), s_Scheduled.end());
+	s_Scheduled.swap(kept);
 }
 
 void TerrainCollapse::Clear() {
@@ -1897,6 +1950,8 @@ void TerrainCollapse::Clear() {
 	s_Bodies.clear();
 	s_NewBodies.clear();
 	s_Watches.clear();
+	s_WatchesWaiting.clear();
+	s_WatchWaitingDamage.clear();
 	s_Rested.clear();
 	s_Blasts.clear();
 	{

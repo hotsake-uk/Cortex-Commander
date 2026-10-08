@@ -113,7 +113,7 @@ namespace RTE {
 		float GetToolScale() const;
 		bool m_PixelFont{true}; //!< The tool windows use the game's own pixel font, not the smooth one.
 		bool m_PixelFontInUse{false}; //!< Whether a pixel font is the one being drawn with this frame.
-		int m_PixelFontTries{0}; //!< Frames waited so far for the game's font art to be loadable.
+		int m_PixelFontTries{0}; //!< Presents waited so far for the game's font art to be loadable (it is tried at the fifth, then every 60th, up to the 600th).
 		::ImFont* m_PixelFonts[4]{}; //!< The game's small font at 1x to 4x, each baked at its own size so no pixel is ever blurred.
 		int m_PanelKind{0}; //!< What the BeginPanel in progress began, for EndPanel: 0 a floating window, 1 a tab that isn't the one showing, 2 the tab showing.
 		unsigned m_RememberedTools{0}; //!< The tool windows that were open when they were last closed together, as bits.

@@ -273,8 +273,10 @@ namespace micropather
 		PathNodePool( unsigned allocate, unsigned typicalAdjacent );
 		~PathNodePool();
 
-		// Free all the memory except the first block. Resets all memory.
+		// Resets all memory, keeping every block allocated so far for the next use.
 		void Clear();
+		// Frees every block (with the pool).
+		void FreeBlocks();
 
 		// Essentially:
 		// pNode = Find();

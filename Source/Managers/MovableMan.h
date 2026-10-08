@@ -27,6 +27,7 @@ namespace RTE {
 	class MOPixel;
 	class MOSprite;
 	class AHuman;
+	class ADoor;
 	class SceneLayer;
 	class SceneObject;
 	class Box;
@@ -100,7 +101,10 @@ namespace RTE {
 
 		/// Takes an object that is being destroyed out of the table of objects by ID, so nothing can look it up after it's gone.
 		/// @param object The object, and the ID it had.
+		/// (Called from Lua's garbage collector on a worker thread too: it takes the lock the table's swap takes. The table being rebuilt is a
+		/// separate one, which this never touches; see UpdateDrawMOIDs.)
 		void ForgetMOID(const MovableObject* object, MOID id) {
+			std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
 			if (id != g_NoMOID && id < m_MOIDIndex.size() && m_MOIDIndex[id] == object) {
 				m_MOIDIndex[id] = nullptr;
 			}
@@ -277,6 +281,9 @@ namespace RTE {
 
 		/// Gets every Actor currently in the scene, to look through. Not for keeping.
 		const std::deque<Actor*>& GetActorList() const { return m_Actors; }
+
+		/// Gets the doors among GetActorList, rebuilt at the end of each update and when a door is removed. Not for keeping.
+		const std::vector<ADoor*>& GetDoorList() const { return m_Doors; }
 
 		/// Gets the particles in the scene (not the ones added this frame).
 		/// @return The particles.
@@ -458,6 +465,12 @@ namespace RTE {
 		/// @param team Which team to do this for, NoTeam means all teams.
 		void OverrideMaterialDoors(bool eraseDoorMaterial, int team = Activity::NoTeam) const;
 
+		/// Gets where the doors OverrideMaterialDoors erases for a team have their material drawn: the only places where that team's path grid
+		/// can differ from the NoTeam grid.
+		/// @param team Which team's doors, as OverrideMaterialDoors takes them.
+		/// @param boxes Filled with one box per such door whose material is drawn; cleared first.
+		void GetMaterialDoorBoxes(int team, std::vector<Box>& boxes) const;
+
 		/// Registers an AlarmEvent to notify things around that somehting alarming
 		/// like a gunshot or explosion just happened.
 		/// @param newEvent The AlarmEvent to register.
@@ -488,10 +501,10 @@ namespace RTE {
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the scene.
 		void DrawMatter(BITMAP* pTargetBitmap, Vector& targetPos);
 
-		/// Updates the MOIDs of all current MOs.
+		/// Updates the MOIDs of all current MOs. The table of objects by ID is built aside and takes over from the one in use at CompleteQueuedMOIDDrawings.
 		void UpdateDrawMOIDs();
 
-		// Forces MOID drawing to complete (should be done before any physics sim or collision detection etc)
+		// Forces MOID drawing to complete (should be done before any physics sim or collision detection etc), and puts the table it built in use.
 		void CompleteQueuedMOIDDrawings();
 
 		/// Blocks until every worker task MovableMan launched at the end of its last Update has finished: the actors' sight rays, the MOID and grid rebuild, and the Lua GC run.
@@ -604,6 +617,10 @@ namespace RTE {
 	protected:
 		// All actors in the scene
 		std::deque<Actor*> m_Actors;
+		// The doors in m_Actors, so movement code that looks for doors doesn't cast every actor (RebuildDoorList).
+		std::vector<ADoor*> m_Doors;
+		/// Refills m_Doors from m_Actors.
+		void RebuildDoorList();
 		// A map to give a unique contiguous identifier per-actor. This is re-created per frame.
 		std::unordered_map<const Actor*, int> m_ContiguousActorIDs;
 		// List of items that are pickup-able by actors
@@ -670,6 +687,12 @@ namespace RTE {
 
 		// The list created each frame to register all the current MO's
 		std::vector<MovableObject*> m_MOIDIndex;
+		// The next one, built by UpdateDrawMOIDs on a worker while m_MOIDIndex stays as it was for lookups, and swapped in by CompleteQueuedMOIDDrawings.
+		// (It used to be m_MOIDIndex itself, cleared and refilled while the main thread's late scripts and the Lua collector still read and wrote it.)
+		std::vector<MovableObject*> m_MOIDIndexNext;
+		bool m_MOIDIndexNextReady = false; //!< Whether m_MOIDIndexNext holds a finished build not yet swapped in.
+		std::mutex m_MOIDIndexMutex; //!< Taken to swap the tables and to empty a slot of m_MOIDIndex (ForgetMOID, ForgetMOIDsOf). Lookups don't take it: they happen on the thread that swaps.
+		std::vector<const MovableObject*> m_MOIDsForgottenWhileBuilding; //!< Objects taken out of the scene (ForgetMOIDsOf) since the build in progress began: emptied from the table it makes when it is swapped in.
 
 		// The ration of terrain pixels to be converted into MOPixel:s upon
 		// deep impact of MO.

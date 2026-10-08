@@ -58,6 +58,7 @@
 #include <execution>
 #include <initializer_list>
 #include <list>
+#include <deque>
 #include <map>
 #include <unordered_map>
 #include <climits>
@@ -309,11 +310,13 @@ namespace SandboxDetail {
 	// to attack towards, a post to defend, hold. Once six number values under string keys here and in the AI scripts.)
 	constexpr const char* c_RetreatTag = "AIRetreat"; //!< Number values the Lua AI keeps on a unit falling back or working round a flank; taken off
 	constexpr const char* c_FlankTag = "AIFlank";     //!< by a new order, which tells the AI the order it would put back after is gone.
+	constexpr const char* c_MedicTag = "AIMedic";     //!< Likewise a medic on its way to see to a hurt friend (AC-7).
 
 	/// A new order ends a fall-back or a flank under way: the AI drops it without putting the old order back.
 	inline void CancelRetreatAndFlank(Actor* unit) {
 		unit->RemoveNumberValue(c_RetreatTag);
 		unit->RemoveNumberValue(c_FlankTag);
+		unit->RemoveNumberValue(c_MedicTag);
 	}
 
 	/// A preset the sandbox can spawn.
@@ -330,6 +333,7 @@ namespace SandboxDetail {
 		int Height = 0;
 		float OffsetX = 0.0F;
 		float OffsetY = 0.0F;
+		mutable std::string PictureKey; //!< "ClassName/Module/PresetName", made the first time its picture is asked for (PictureOf), not each frame it is drawn.
 	};
 
 	/// Weapons a faction hands its units by default.
@@ -361,6 +365,8 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
+		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
+		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
@@ -419,6 +425,8 @@ namespace SandboxDetail {
 	inline float s_AutoLaneWidth = 0.0F; //!< The view's width when the auto battle began: the lanes the waves land in are spaced by it.
 	inline bool s_AutoRandom = false; //!< The waves are random units from every faction (or the favourites), not each side's own faction's.
 	inline bool s_AutoFavourites = false; //!< With s_AutoRandom: only units marked as favourites.
+	inline bool s_ScriptAutoRandom = false; //!< A script's auto battle (SandboxStartAutoBattle) is random units (SandboxAutoBattleRandom).
+	inline bool s_ScriptAutoFavourites = false; //!< With s_ScriptAutoRandom: only units marked as favourites.
 	// The window's choices for an auto battle and for a random drop (copied into the stroke at the click).
 	inline int s_AutoSideCount = 2;
 	inline int s_AutoBudget = 5000;
@@ -499,12 +507,33 @@ namespace SandboxDetail {
 	enum class CommandMode {
 		Move, //!< Each selected unit to its own spot round the point; a click on an enemy attacks it, a click on a friend selects it.
 		Attack, //!< Go for the nearest enemy to the point, or the point itself with orders to fight.
-		Guard //!< Follow the friendly unit clicked and stay with it.
+		Guard, //!< Follow the friendly unit clicked and stay with it.
+		AttackMove, //!< Walk to the point, stopping to fight any enemy met on the way, then carry on to it (RC-2).
+		DefendAt, //!< Post the units round the point to hold it, facing the way the button was dragged (RC-4).
+		Patrol //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
 	};
 	inline CommandMode s_CommandMode = CommandMode::Move;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard"};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255)};
+	inline std::vector<Vector> s_PatrolDraft; //!< The points of the patrol route being clicked out (RC-4), in order.
+	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
+	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
+	/// How units sent somewhere together stand there (RC-5). Side on, a formation is an order along the ground: who is in front and how close.
+	enum class Formation {
+		Line, //!< Abreast round the point at the spacing, the nearest unit in the middle: as moves always were.
+		Column, //!< Single file back from the point, the nearest unit on it, at the spacing.
+		Spread, //!< Round the point at twice the spacing, so one blast catches fewer.
+		Wedge, //!< The toughest unit on the point, the rest close behind it, toughest first.
+		Count
+	};
+	inline Formation s_Formation = Formation::Line;
+	constexpr const char* c_FormationNames[] = {"Line", "Column", "Spread", "Wedge"};
+	constexpr const char* c_FormationTips[] = {"Abreast round the point at the spacing, the nearest unit in the middle.", "Single file back from the point, the nearest unit on it.", "Round the point at twice the spacing, so one blast catches fewer.", "The toughest unit on the point, the rest close behind it, toughest first."};
+	inline bool s_KeepPace = false; //!< Units sent together walk at the slowest one's pace till they get there (RC-5).
+	inline std::vector<UnitRef> s_Paced; //!< The units held to a group's pace, cleared as each arrives or is given another order.
 	inline std::array<std::vector<UnitRef>, 10> s_Groups; //!< Control groups: Ctrl+number keeps the selection, the number alone brings it back.
+	inline long s_LastIdleID = -1; //!< The idle unit the idle keys last went to (RC-6), so the next press goes on to the next.
 
 	/// A mark left where an order was given, fading over a moment.
 	struct OrderMark {
@@ -520,7 +549,7 @@ namespace SandboxDetail {
 	inline bool s_GymToSet = false;
 
 	inline bool s_RingOpen = false; //!< A ring of choices is up, round where the right button went down.
-	inline int s_RingPage = 0; //!< Which ring the command tool shows: 0 the basic commands while the button is held, 1 the native AI modes ("More"), 2 the basic ring held up until a click.
+	inline int s_RingPage = 0; //!< Which ring the command tool shows: 0 the basic commands while the button is held, 1 the native AI modes ("More"), 2 the basic ring held up until a click, 3 the weapons rules and 4 the movement rules (RC-1).
 	inline ImVec2 s_RingCenter;
 	inline Vector s_RingScenePoint; //!< Where in the world the right button went down, which the choice is about.
 	inline int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
@@ -556,6 +585,7 @@ namespace SandboxDetail {
 	// Scene and window positions: shared with the debug overlays (DebugDraw.h), so they work outside the sandbox too.
 	inline float ScenePixelsPerWindowPixel() { return DebugDraw::ScenePixelsPerWindowPixel(); }
 	inline ImVec2 ViewOrigin() { return DebugDraw::ViewOrigin(); }
+	inline Vector FromCamera(const Vector& scenePosition) { return DebugDraw::FromCamera(scenePosition); }
 	inline Vector MouseScenePosition() { return DebugDraw::MouseScenePosition(); }
 
 	inline bool ContainsIgnoringCase(const std::string& text, const char* filter) {
@@ -584,10 +614,44 @@ namespace SandboxDetail {
 		Actor* Target = nullptr; //!< An enemy to go for instead of a place.
 		long TargetID = 0;
 		bool Attack = false; //!< Keep attacking (a new target when this one dies).
-		std::vector<Vector> Then; //!< Further places to go on to, in order (shift-clicks).
 	};
 
 	inline std::vector<PendingOrder> s_PendingOrders;
+
+	/// What one step of a unit's plan is (RC-3).
+	enum class PlanKind {
+		Move, //!< Go to the place (also the order the unit was already carrying out when its first step was queued: done when it arrives).
+		AttackMove, //!< Go to the place fighting what is met (RC-2).
+		Attack, //!< Go after the enemy until it is dead.
+		Guard, //!< Stay with the friend; done only if the friend is gone.
+		Defend, //!< Hold ground where it stands; never done, so it ends a plan.
+		Wait //!< Stay a while where it is (a patrol's pause at each point, RC-4).
+	};
+
+	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
+	struct PlanStep {
+		PlanKind Kind = PlanKind::Move;
+		Vector Place; //!< Where: the unit's own spot for a move, the post for a defend (where the step before leaves it), the target's place when queued otherwise.
+		UnitRef Target; //!< The enemy to attack or the friend to guard.
+		int Facing = 0; //!< A defend's way to face: -1 left, 1 right, 0 either (RC-4).
+		int Updates = 0; //!< A wait's length, in sim updates.
+	};
+
+	/// A unit's plan (RC-3): the step under way and the ones still to come, worked through one at a time. Any order given without Shift drops it.
+	struct Plan {
+		UnitRef Unit;
+		bool Running = false; //!< Whether Current is under way.
+		PlanStep Current;
+		long long Started = 0; //!< The sim update Current was started on.
+		std::deque<PlanStep> Steps;
+		std::vector<Vector> Route; //!< A patrol's points (this unit's own spot at each, RC-4): the steps go round them again whenever they run out.
+		bool BackAndForth = false; //!< The patrol walks the route back the other way at each end, rather than from the last point to the first.
+		bool Forward = true; //!< Which way a back-and-forth patrol is going.
+	};
+
+	inline std::map<long, Plan> s_Plans; //!< Units' plans by unique ID (a map, so they're stepped in a fixed order).
+	inline const char* s_MoveAnswer = nullptr; //!< While a group move is sent: the trigger its units answer with in place of a plain move's (unit speech).
+	inline bool s_FollowingPlan = false; //!< Set while a plan's step is being given, so giving it doesn't drop the plan.
 
 	/// Why and when a unit was last sent somewhere, for the sandbox orders overlay: kept by unique ID, the dead pruned when the list grows.
 	struct SendNote {
@@ -598,14 +662,52 @@ namespace SandboxDetail {
 
 	inline std::unordered_map<long, SendNote> s_SendNotes;
 
+	/// Where a unit was sent (RC-7), watched till it gets there, so a move the game drops on the way (no route, or given up) is shown.
+	struct MoveWatch {
+		Vector Destination;
+		long long Issued = 0; //!< The sim update it was sent on.
+	};
+	inline std::unordered_map<long, MoveWatch> s_MoveWatch; //!< By unit unique ID.
+
+	/// A place units were sent to and couldn't get to (RC-7): marked there till it fades, or a click on it sends them again.
+	struct NoRoute {
+		Vector Destination;
+		std::vector<UnitRef> Units;
+		long long At = 0; //!< The sim update it was last added to.
+	};
+	inline std::vector<NoRoute> s_NoRoutes;
+	constexpr long long c_NoRouteUpdates = 60 * 10; //!< How long a "no route" marker stays, in sim updates.
+
+	/// A unit of the selection's side coming under fire (RC-7), pinged where it was: in view a ring, out of view an arrow at the edge.
+	struct AttackPing {
+		Vector Position;
+		double Time = 0.0; //!< When, in ImGui time (it is only drawn).
+	};
+	inline std::vector<AttackPing> s_AttackPings;
+
+	/// What a unit is guarding that isn't a unit (RC-10): a craft, a crate or other loose object, or a colony building. The unit holds a post
+	/// by it, moved along when the thing moves; once it is gone the unit holds where it is.
+	struct GuardPost {
+		long ObjectID = 0; //!< The craft's or object's unique ID, or 0 for a building.
+		int BuildingID = 0; //!< The colony building's ID, or 0 for an object.
+		Vector Place; //!< Where the thing was when the post was last set.
+	};
+	inline std::unordered_map<long, GuardPost> s_GuardPosts; //!< By the guarding unit's unique ID.
+
+	/// Commander mode (RC-9): your side's units commanded from above in an ordinary game.
+	inline bool s_Commander = false;
+	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
+	inline UnitRef s_CommanderReturnTo; //!< The unit you were playing, to go back into.
+
 	/// Terrain painting's undo: each step is what one stroke of a paint or build tool changed (a drag of the brush is one step: changes
 	/// less than a quarter second apart run together), pixel by pixel as it was before, the first change to each pixel only. The last 20
-	/// steps are kept, and a new game forgets them.
+	/// steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke longer than a step
+	/// holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
 	struct PaintUndoPixel {
-		int X;
-		int Y;
-		int Material;
-		int Color;
+		unsigned short X; //!< (Scenes are well under 65536 px on a side.)
+		unsigned short Y;
+		unsigned char Material;
+		unsigned char Color; //!< The 8 bit foreground colour.
 	};
 
 	struct PaintUndoStep {
@@ -624,7 +726,9 @@ namespace SandboxDetail {
 
 	constexpr size_t c_PaintUndoSteps = 20;
 
-	constexpr size_t c_PaintUndoPixelsPerStep = 2000000;
+	constexpr size_t c_PaintUndoPixelsPerStep = 1000000; //!< About 3.5 s of the 40 px brush held down.
+
+	constexpr size_t c_PaintUndoPixels = 8000000; //!< All the steps together: 48 MB.
 
 	/// A change the paint helpers made to the terrain, kept for the paint audit overlay (only while it's on).
 	struct PaintRecord {
@@ -1133,12 +1237,15 @@ namespace SandboxDetail {
 	void HoldUnit(Actor* unit);
 	void ApplyPendingOrders();
 	void GiveOrder(Actor* actor, Order order);
+	void AnswerOrder(Actor* unit, const char* trigger);
+	const char* OrderTrigger(Order order);
 	void ReturnDefenders();
 	void ActivateSide(int team);
 	void Detonate(const char* presetName, const Vector& position);
 	void SpawnPuffs(const char* presetName, const Vector& position, int radius, int count);
 	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor);
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y);
+	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName);
@@ -1172,17 +1279,40 @@ namespace SandboxDetail {
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
-	std::vector<Vector> StandingSpots(const Vector& around, int count);
+	std::vector<Vector> StandingSpots(const Vector& around, int count, float stride = 0.0F);
+	std::vector<Vector> FormationSpots(const std::vector<Actor*>& units, const Vector& point, int count, int facing = 0);
 	const std::vector<SpotReach>& SpotReachPreview(const std::vector<Actor*>& units, const Vector& point);
 	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly);
-	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point);
+	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false, int facing = 0);
+	void FacingMoveSelected(const Vector& point, const Vector& facingPoint, bool shift);
+	void AddNoRoute(Actor* unit, const Vector& destination);
+	void UpdateMoveWatch();
+	void ReissueNoRoute(const Vector& destination);
+	void MapOrder(const Vector& point, bool shift);
+	bool HiddenFromCommander(const Actor* actor);
+	MovableObject* GuardableObjectAt(const Vector& position, int team);
+	const Colony::Building* BuildingAt(const Vector& position);
+	void GuardObject(const std::vector<Actor*>& units, MovableObject* object, const Colony::Building* building);
+	void UpdateGuards();
+	bool CommanderLooking();
+	void UpdateCommander();
+	void CommanderPanel();
+	void UpdatePace();
 	const Actor* FollowedBy(const Actor* unit);
 	void GuardUnit(Actor* unit, Actor* leader);
 	int SelectionTeam();
 	void MarkOrder(const Vector& at, ImU32 color);
 	void CommandSelected(const Vector& position, int modifier);
-	void QueueWaypoint(std::vector<Actor*> units, const Vector& point);
+	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing = 0);
+	void DefendAtSelected(const Vector& point, const Vector& facingPoint, bool shift);
+	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth);
+	void DropPlan(const Actor* unit);
+	void UpdatePlans();
+	void DropPlanStep(long unitID, int step);
+	Actor* EnemyNear(const Vector& point, int team);
 	void OrderSelectedUnits(int choice, const Vector& point);
+	int SelectedRule(bool weapons);
+	void QueueRule(bool weapons, int rule);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
 	float AutoLaneX(int side);
@@ -1213,6 +1343,13 @@ namespace SandboxDetail {
 	const PiecePicture& PictureOf(const Preset& preset);
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
 	void PictureGrid(Tool kind, const char* group);
+	void FormationCombo(const char* id);
+	void DrawOrderFeedback();
+	void DrawMinimap();
+	const NoRoute* NoRouteAt(const ImVec2& mouse);
+	void LookAtUnits(const std::vector<UnitRef>& units);
+	void CommandHotkeys();
+	void KeysPage();
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false);

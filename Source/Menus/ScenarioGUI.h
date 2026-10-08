@@ -48,6 +48,10 @@ namespace RTE {
 		/// @param center The absolute screen coordinates of the planet's center.
 		/// @param radius The radius, in screen pixel units, of the planet.
 		void SetEnabled(const Vector& center, float radius);
+
+		/// Sets the Activity to have selected the next time this menu is enabled, in place of the one selected before.
+		/// @param activityPresetName The preset name of the Activity to select.
+		void SetActivityToSelect(const std::string& activityPresetName) { m_ActivityToSelect = activityPresetName; }
 #pragma endregion
 
 #pragma region Concrete Methods
@@ -67,6 +71,7 @@ namespace RTE {
 
 		std::map<Activity*, std::vector<Scene*>> m_ScenarioActivities; //!< The map of Activities and the Scenes compatible with each, neither of which are owned here.
 		const Activity* m_SelectedActivity; //!< The currently selected Activity. Not owned.
+		std::string m_ActivityToSelect; //!< The preset name of the Activity to select the next time this menu is opened, in place of the one selected before. Empty for none.
 
 		std::vector<Scene*>* m_ActivityScenes; //!< Pointer to the current set of Scenes being displayed. Not owned, and neither are the Scenes.
 		Scene* m_SelectedScene; //!< The scene preset currently selected. Not owned.

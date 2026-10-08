@@ -51,6 +51,11 @@ namespace RTE {
 		/// @return Whether the text was captured. If not, the caller draws it normally.
 		static bool Capture(const BITMAP* target, int x, int y, const std::string& text, Align align, int lineHeight, unsigned int fillRGB, unsigned int outlineRGB, bool shadow, int bitmapWidth);
 
+		/// Gets how much bigger on screen than its spot in a bitmap text drawn into it comes out: above 1 on a view zoomed out past where captured text stops
+		/// shrinking with the view (it stays readable), 1 otherwise. Whatever is drawn round text in the bitmap, such as a speech bubble, is sized by it so the text fits.
+		/// @param target The bitmap the text goes into.
+		static float GetTextGrowth(const BITMAP* target);
+
 		/// Pauses capturing while GUI controls draw: their text sits among other controls in the same layer and must keep its place in the drawing order.
 		static void SuspendCapture() { ++s_Suspended; }
 

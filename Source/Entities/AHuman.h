@@ -627,6 +627,9 @@ namespace RTE {
 		/// four fifths.
 		float GetSightProfile() const override { return m_ProneState != NOTPRONE ? 0.55F : 1.0F - 0.2F * m_CrouchAmount; }
 
+		/// Actor's footsteps, or a lit jetpack's roar if louder.
+		float GetFootstepNoise() const override;
+
 		/// Gets this AHuman's current crouch amount. 0.0 == fully standing, 1.0 == fully crouched.
 		/// @return This AHuman's current crouch amount.
 		float GetCrouchAmount() const { return m_CrouchAmount; }
@@ -855,6 +858,7 @@ namespace RTE {
 				bool step = false; //!< Out of a shaft with the landing to one side: holding the height and stepping across onto it.
 				float holdY = 0.0F; //!< The height held while stepping across (raised a pixel at a time until the feet clear the lip).
 				Timer stepTimer;
+				bool fromWater = false; //!< Taken off from the surface of a liquid (LM-4): still in it for the first moments of the climb, which is no coming down in it.
 			};
 			bool begun = false;
 			long long lastCallTick = -1; //!< The sim update the follower was last called on, to tell a hold by whoever drives it (see MoveAlongRoute).
@@ -903,6 +907,15 @@ namespace RTE {
 			Vector remedySpot; //!< Where the unit was stuck when it began.
 			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
 			bool swimming = false; //!< In liquid with the body under (LM-4), since the follower last looked: for the re-route on falling in.
+			long blocker = 0; //!< The unit of our side in the way just now (LM-2), by unique ID, or 0.
+			Timer blockTimer; //!< Since that unit got in the way (kept through gaps under a second).
+			Timer blockSeenTimer; //!< Since that unit was last seen in the way.
+			Timer blockActionTimer; //!< Since the last leap or hop over it began.
+			bool blockRepathed = false; //!< A route round it was asked for while behind it.
+			long blockIgnoreID = 0; //!< A unit given up on steering round: the ordinary walk, wall sense and stuck handling have it for a while.
+			Timer blockIgnoreTimer;
+			long yieldTo = 0; //!< The unit this one is giving way to, head on, by unique ID, or 0.
+			Timer yieldTimer; //!< Since it began giving way.
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
@@ -1015,6 +1028,10 @@ namespace RTE {
 		/// Drops the route's points up to a flight's landing: up to the one nearest the landing, or the planned count if none is near it.
 		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
 		ADoor* DoorAhead(const Vector& toPoint) const;
+		/// The nearest unit of this side standing in the walk's way (LM-2): within half a body and a little ahead on the side it walks to (and
+		/// no further than reach) and about level; not a door, a craft or a unit with no legs (a turret). @param direction -1 walking left, 1
+		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
+		Actor* UnitAhead(float direction, float reach) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.

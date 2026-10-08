@@ -23,9 +23,16 @@ namespace RTE {
 			return ImVec2(view.x, view.y);
 		}
 
-		/// Where a scene position is in the window, taking the shortest way round a wrapping scene from the camera.
+		/// Where a scene position is relative to player 1's camera corner, in scene pixels, taking whichever copy round a wrapping scene lands nearest the view.
+		/// Measuring the shortest way from the corner instead put things on the right of a view wider than half the scene a whole scene width off to the left.
+		inline Vector FromCamera(const Vector& scenePosition) {
+			Vector onScreen = scenePosition - g_CameraMan.GetOffset(0);
+			return onScreen + g_SceneMan.GetWrapToScreen(onScreen, g_FrameMan.GetPlayerScreenWidth(), g_FrameMan.GetPlayerScreenHeight());
+		}
+
+		/// Where a scene position is in the window.
 		inline ImVec2 ToScreen(const Vector& scenePosition) {
-			Vector onScreen = g_SceneMan.ShortestDistance(g_CameraMan.GetOffset(0), scenePosition, g_SceneMan.SceneWrapsX());
+			Vector onScreen = FromCamera(scenePosition);
 			float scale = ScenePixelsPerWindowPixel();
 			ImVec2 origin = ViewOrigin();
 			return ImVec2(origin.x + onScreen.m_X / scale, origin.y + onScreen.m_Y / scale);

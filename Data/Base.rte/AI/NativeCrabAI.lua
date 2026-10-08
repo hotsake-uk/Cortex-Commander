@@ -1,6 +1,7 @@
 require("Constants")
 require("AI/CrabBehaviors");
 require("AI/SharedBehaviors");
+require("AI/UnitSpeech");
 
 NativeCrabAI = {};
 
@@ -90,8 +91,12 @@ function NativeCrabAI:Update(Owner)
 			self.Cover = nil;
 			self.Flank = nil;
 			self.Retreat = nil;
+			self.Investigate = nil;
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
+			Owner:RemoveNumberValue("AIInvestigate");
+			Owner:RemoveNumberValue("AITargetID");
+			self.overwatch = false;
 			self.SentryFacing = Owner.HFlipped;
 			self.lastAIMode = Actor.AIMODE_NONE;
 		end
@@ -318,8 +323,18 @@ function NativeCrabAI:Update(Owner)
 		if self.Target and MovableMan:ValidMO(self.Target) then
 			self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 		end
+		-- (And as the humans do, AC-9: shot by an enemy it has just lost sight of, it works round to where it can shoot back.)
+		if self.LastHealth and Owner.Health < self.LastHealth then
+			self.HitTimer = self.HitTimer or Timer();
+			self.HitTimer:Reset();
+		end
+		self.LastHealth = Owner.Health;
 		SharedBehaviors.FlankUpdate(self, Owner);
+		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
+			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+		end
 		SharedBehaviors.RetreatUpdate(self, Owner);
+		SharedBehaviors.RememberUpdate(self, Owner);
 
 		if self.teamBlockState == Actor.IGNORINGBLOCK then
 			if self.BlockedTimer:IsPastSimMS(20000) then
@@ -373,14 +388,17 @@ function NativeCrabAI:Update(Owner)
 		end
 	end
 
-	-- controller states
-	self.Ctrl:SetState(Controller.WEAPON_FIRE, self.fire or self.squadShoot);
+	-- controller states (the trigger only as the weapons rule allows, RC-1)
+	self.Ctrl:SetState(Controller.WEAPON_FIRE, SharedBehaviors.MayFire(self, Owner) and (self.fire or self.squadShoot));
 
 	if self.deviceState == ACrab.AIMING then
 		self.Ctrl:SetState(Controller.AIM_SHARP, true);
 	end
 
-	if self.lateralMoveState == Actor.LAT_LEFT then
+	-- (Not over a side key the engine's route-follower pressed this tick, as for humans: both keys at once and the crab stood or turned.)
+	if self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT) then
+		-- (The follower's key stands.)
+	elseif self.lateralMoveState == Actor.LAT_LEFT then
 		self.Ctrl:SetState(Controller.MOVE_LEFT, true);
 	elseif self.lateralMoveState == Actor.LAT_RIGHT then
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);
@@ -415,6 +433,8 @@ function NativeCrabAI:Update(Owner)
 		end
 	end
 
+	-- What this update changed, said over the unit's head where it's worth a line (unit speech).
+	UnitSpeech.Update(self, Owner, ordered);
 	self.orderSerial = Owner.AIOrderSerial;
 end
 

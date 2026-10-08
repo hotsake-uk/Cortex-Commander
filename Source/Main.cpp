@@ -43,7 +43,10 @@
 #include <utility>
 #include <vector>
 #include <thread>
+#include <algorithm>
 #include "PresetMan.h"
+#include "Reader.h"
+#include "ContentFile.h"
 #include "UInputMan.h"
 #include "PerformanceMan.h"
 #include "FrameMan.h"
@@ -52,8 +55,10 @@
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "ThreatMemory.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
+#include "ActionMenu.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "PostProcessMan.h"
@@ -122,6 +127,15 @@ namespace {
 			}
 			g_ConsoleMan.PrintString("Start-up: loading screen frames drawn: " + std::to_string(LoadingScreen::GetProgressFramesDrawn()) + " (progress report " + (g_SettingsMan.GetLoadingScreenProgressReportDisabled() ? "off" : "on") +
 			                         ", frame cap " + std::to_string(g_WindowMan.GetFrameCap()) + ", vsync " + (g_WindowMan.GetVSyncEnabled() ? "on" : "off") + ", fullscreen " + (g_WindowMan.IsFullscreen() ? "yes" : "no") + ")");
+			// Where the data modules' time went: the slowest five, and how much was read and decoded in all.
+			std::vector<std::pair<std::string, long long>> moduleTimes = g_PresetMan.GetModuleLoadTimes();
+			std::sort(moduleTimes.begin(), moduleTimes.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+			std::string slowest;
+			for (size_t i = 0; i < std::min<size_t>(moduleTimes.size(), 5); ++i) {
+				slowest += (i ? ", " : "") + moduleTimes[i].first + " " + std::to_string(moduleTimes[i].second) + " ms";
+			}
+			g_ConsoleMan.PrintString("Start-up: slowest data modules: " + (slowest.empty() ? std::string("none") : slowest));
+			g_ConsoleMan.PrintString("Start-up: read " + std::to_string(Reader::GetLinesRead()) + " INI lines, decoded " + std::to_string(ContentFile::GetImagesDecoded()) + " images, compiled " + std::to_string(LuaStateWrapper::GetScriptFilesCompiled()) + " script files");
 			// The Lua states are made one after another, each with every engine binding (one per hardware thread unless Settings.ini says otherwise),
 			// so how many there were says how much of the Lua step above that is.
 			g_ConsoleMan.PrintString("Start-up: Lua states made: " + std::to_string(g_LuaMan.GetThreadedScriptStates().size() + 1) + " (" + std::to_string(g_LuaMan.GetThreadedScriptStates().size()) + " threaded and the master; " + std::to_string(std::thread::hardware_concurrency()) + " hardware threads)");
@@ -296,16 +310,20 @@ void PollSDLEvents() {
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
 		// Function keys (debug window toggles, quicksave and so on) always reach the game, so a focused debug window can still be closed with its key.
 		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12;
+		// In the game's own menus (the pause menu over a game) the menu has every click and key: the tool windows aren't drawn there, and
+		// what they wanted is from the last game frame. (A sandbox tool left in hand, or a tool window that had the keyboard, took the pause
+		// menu's clicks for the world under it, so it could only be used from a unit, T-14.)
+		bool inMenus = g_MenuMan.GetIsInMenuScreen();
 		// While a sandbox tool is picked, left clicks on the world paint instead of firing.
-		bool sandboxTakesClick = Sandbox::CapturesWorldClicks() && sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN && sdlEvent.button.button == SDL_BUTTON_LEFT;
-		bool imGuiTakesEvent = !functionKey && (sandboxTakesClick || (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
+		bool sandboxTakesClick = !inMenus && Sandbox::CapturesWorldClicks() && sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN && sdlEvent.button.button == SDL_BUTTON_LEFT;
+		bool imGuiTakesEvent = !functionKey && !inMenus && (sandboxTakesClick || (imGuiIO.WantCaptureMouse && (sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN || sdlEvent.type == SDL_EVENT_MOUSE_WHEEL)) ||
 		                                        (imGuiIO.WantCaptureKeyboard && (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_TEXT_INPUT)));
 		if (imGuiTakesEvent) {
 			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
 			continue;
 		}
 		// Camera zoom: Ctrl + mouse wheel in any game, or the wheel alone in the sandbox's god view (where it isn't needed for switching weapons).
-		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
+		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && !inMenus && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
 			g_FrameMan.StepCameraZoom(sdlEvent.wheel.y > 0.0F);
 			continue;
 		}
@@ -361,6 +379,9 @@ void PollSDLEvents() {
 				}
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F8) {
 				g_DebugMan.TogglePhotoMode();
+			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F9 && !Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
+				// Commander view (RC-9): your side from above in any other game, and back into your unit.
+				Sandbox::ToggleCommander();
 			}
 		}
 		if (sdlEvent.type >= SDL_EVENT_WINDOW_FIRST && sdlEvent.type <= SDL_EVENT_WINDOW_LAST) {
@@ -394,6 +415,11 @@ void RunMenuLoop() {
 	g_MenuMan.SetIsInMenuScreen(true);
 	g_UInputMan.DisableKeys(false);
 	g_UInputMan.TrapMousePos(false);
+	// The tool windows (or looking around the sandbox from above) may have had the mouse, released from the game, which leaves the game's
+	// pointer where it was: the menu needs it back, moving (T-14). The windows take it again when the game goes on, if they're still open.
+	if (g_UInputMan.IsMouseReleased()) {
+		g_UInputMan.GiveMouseBackNow();
+	}
 
 	while (!System::IsSetToQuit()) {
 		g_WindowMan.ClearBackbuffer();
@@ -533,6 +559,8 @@ void RunGameLoop() {
 				PerformanceMan::LogStages logStages;
 				logStages.Next("Sim: sandbox");
 				Sandbox::Update();
+				logStages.Next("Sim: threat memory");
+				ThreatMemory::Update();
 				logStages.Next("Sim: smoke grid");
 				SmokeGrid::Update();
 				logStages.Next("Sim: lightning");
@@ -609,6 +637,7 @@ void RunGameLoop() {
 			g_PresetMan.ClearReloadEntityPresetCalledThisUpdate();
 
 			g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::SimTotal);
+			ActionMenu::Update(); // (Before the update's input is let go of: its clicks and the right button's release are this update's.)
 			g_UInputMan.EndFrame();
 
 			if (!g_ActivityMan.IsInActivity()) {

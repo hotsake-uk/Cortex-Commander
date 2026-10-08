@@ -3,6 +3,7 @@
 #include "Serializable.h"
 
 #include <array>
+#include <atomic>
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -22,6 +23,9 @@ namespace RTE {
 	public:
 		SerializableClassNameGetter;
 		SerializableOverrideMethods;
+
+		/// How many image files have been decoded so far (for the start-up timing report).
+		static int GetImagesDecoded() { return s_ImagesDecoded.load(std::memory_order_relaxed); }
 
 #pragma region Creation
 		/// Constructor method used to instantiate a ContentFile object in system memory. Create() should be called before using the object.
@@ -169,6 +173,7 @@ namespace RTE {
 		static SDL_Palette* DefaultPaletteToSDL(bool preMask = false);
 
 	private:
+		static inline std::atomic<int> s_ImagesDecoded{0}; //!< Image files decoded (see GetImagesDecoded).
 		/// Enumeration for loading BITMAPs by bit depth. NOTE: This can't be lower down because s_LoadedBitmaps relies on this definition.
 		enum BitDepths {
 			Eight = 0,

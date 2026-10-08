@@ -1760,6 +1760,13 @@ void AHuman::UpdateLimbPathSpeed() {
 		travelSpeedMultiplier *= WeatherEffects::GetWalkSpeedMultiplier();
 		// Wading is slower still
 		travelSpeedMultiplier *= ActorWater::GetWalkSpeedMultiplier(this);
+		// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
+		if (m_PaceLimit > 0.0F) {
+			const float fullSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;
+			if (fullSpeed > m_PaceLimit) {
+				travelSpeedMultiplier *= m_PaceLimit / fullSpeed;
+			}
+		}
 
 		// If we're moving slowly horizontally, move at reduced speed (otherwise our legs kick about wildly as we're not yet up to speed)
 		// Calculate a min multiplier that is based on the total walkpath speed (so a fast walkpath has a smaller multipler). This is so a slow walkpath gets up to speed faster
@@ -2745,6 +2752,14 @@ void AHuman::PreControllerUpdate() {
 	}
 }
 
+float AHuman::GetFootstepNoise() const {
+	float noise = Actor::GetFootstepNoise();
+	if (m_pJetpack && m_pJetpack->IsEmitting() && m_Status != DYING && m_Status != DEAD) {
+		noise = std::max(noise, 0.45F);
+	}
+	return noise;
+}
+
 void AHuman::Update() {
 	ZoneScoped;
 
@@ -2869,6 +2884,7 @@ void AHuman::Update() {
 			Vector sharpAimVector(maxLength, 0);
 			sharpAimVector *= aimMatrix;
 
+			SceneMan::LiquidsSeeThrough seeThrough(false, 6); // Aiming down the sights looks into water too.
 			// See how far along the sharp aim vector there is opaque air
 			float result = g_SceneMan.CastObstacleRay(heldDevice->GetMuzzlePos(), sharpAimVector, notUsed, notUsed, GetRootID(), IgnoresWhichTeam(), g_MaterialAir, 5);
 			// If we didn't find anything but air before the sharpdistance, then don't alter the sharp distance
@@ -3196,22 +3212,7 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 
 		// Adjust the draw position to work if drawn to a target screen bitmap that is straddling a scene seam
 		if (!targetPos.IsZero()) {
-			// Spans vertical scene seam
-			int sceneWidth = g_SceneMan.GetSceneWidth();
-			if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-				if ((targetPos.m_X < 0) && (m_Pos.m_X > (sceneWidth - pTargetBitmap->w)))
-					drawPos.m_X -= sceneWidth;
-				else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (m_Pos.m_X < pTargetBitmap->w))
-					drawPos.m_X += sceneWidth;
-			}
-			// Spans horizontal scene seam
-			int sceneHeight = g_SceneMan.GetSceneHeight();
-			if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-				if ((targetPos.m_Y < 0) && (m_Pos.m_Y > (sceneHeight - pTargetBitmap->h)))
-					drawPos.m_Y -= sceneHeight;
-				else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (m_Pos.m_Y < pTargetBitmap->h))
-					drawPos.m_Y += sceneHeight;
-			}
+			drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
 		}
 
 		if (m_pFGArm || m_pBGArm) {

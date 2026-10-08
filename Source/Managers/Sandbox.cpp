@@ -83,7 +83,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		g_CameraMan.SetScroll(position, 0);
 		return true;
 	}
-	if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
+	if (stroke.Kind == Tool::Drop && (presetName == "Random units" || presetName == "Random favourites")) {
+		// A drop of random units, as the window's "Random units" box: each one picked from every faction's units, or from the favourites.
+		stroke.Random = true;
+		stroke.FavouritesOnly = presetName == "Random favourites";
+	} else if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
 		if (found == list.end()) {
@@ -127,13 +131,18 @@ void Sandbox::SetAIPaused(bool paused) {
 	Controller::SetAIPaused(paused);
 }
 
+void Sandbox::SetAutoBattleRandom(bool random, bool favouritesOnly) {
+	s_ScriptAutoRandom = random;
+	s_ScriptAutoFavourites = random && favouritesOnly;
+}
+
 void Sandbox::StartAutoBattle() {
 	if (!InGame()) {
 		return;
 	}
-	// (A script's battle is between the factions it set up for each side.)
-	s_AutoRandom = false;
-	s_AutoFavourites = false;
+	// A script's battle is between the factions it set up for each side, unless it asked for random units (SandboxAutoBattleRandom).
+	s_AutoRandom = s_ScriptAutoRandom;
+	s_AutoFavourites = s_ScriptAutoFavourites;
 	BeginAutoBattle(g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F), static_cast<float>(g_FrameMan.GetPlayerScreenWidth()));
 }
 
@@ -374,7 +383,56 @@ bool Sandbox::WantsWheelZoom() {
 	return IsLookingAround() && !ImGui::GetIO().WantCaptureMouse;
 }
 
+void Sandbox::ToggleCommander() {
+	GameActivity* game = CurrentGame();
+	if (!game || !InGame() || IsGodMode()) {
+		s_Commander = false;
+		return;
+	}
+	if (!s_Commander) {
+		int team = game->GetTeamOfPlayer(Players::PlayerOne);
+		if (team < 0 || team >= c_Sides) {
+			return;
+		}
+		Actor* controlled = game->GetControlledActor(Players::PlayerOne);
+		s_CommanderReturnTo = controlled && g_MovableMan.IsActor(controlled) ? MakeRef(controlled) : UnitRef();
+		s_Commander = true;
+		s_CommanderTeam = team;
+		s_Team = team;
+		s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [team](const UnitRef& ref) { const Actor* unit = GetRef(ref); return !unit || unit->GetTeam() != team; }), s_Selected.end());
+		if (controlled) {
+			game->LoseControlOfActor(Players::PlayerOne);
+		}
+		game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
+		s_FreeCamera = true;
+		s_FreeCameraStarted = false;
+		s_FollowTarget = UnitRef();
+		s_ToolIndex = ToolIndex(Tool::Command);
+		s_Open = true;
+		return;
+	}
+	s_Commander = false;
+	s_FreeCamera = false;
+	// Back into the unit you left, or else your brain, or else whatever the game gives you next.
+	Actor* back = GetRef(s_CommanderReturnTo);
+	if (!back || back->GetTeam() != s_CommanderTeam) {
+		back = game->GetPlayerBrain(Players::PlayerOne);
+	}
+	if (back && g_MovableMan.IsActor(back) && game->SwitchToActor(back, Players::PlayerOne, s_CommanderTeam)) {
+		game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
+	} else {
+		game->SetViewState(Activity::ViewState::ActorSelect, Players::PlayerOne);
+	}
+}
+
+bool Sandbox::IsCommander() {
+	return s_Commander;
+}
+
 bool Sandbox::IsLookingAround() {
+	if (s_Commander) {
+		return CommanderLooking();
+	}
 	// Automated test runs (CCCP_HIDE_PANELS) place the camera themselves and want no pointer in their pictures.
 	static const bool testRun = std::getenv("CCCP_HIDE_PANELS") != nullptr;
 	const GameActivity* game = CurrentGame();
@@ -434,7 +492,7 @@ void Sandbox::DrawGUI() {
 	{
 		bool wantPause = WantsWorldPaused() && !g_DebugMan.IsPhotoModeOpen();
 		if (wantPause) {
-			g_TimerMan.PauseSim(true);
+			g_TimerMan.PauseSim(true, TimerMan::SimPauseSandbox);
 			s_PausedByMenus = true;
 			// Painting (the brushes held down: terrain, liquids, fire, smoke) is put in the world here, without a step: it is terrain and
 			// liquid written in place, which needs no update to show. Let through an update each, as every stroke was, a held brush ran
@@ -451,11 +509,12 @@ void Sandbox::DrawGUI() {
 				g_TimerMan.StepSim(1);
 				s_StepsWanted = std::max(s_StepsWanted - 1, 0);
 			}
-		} else if (s_PausedByMenus) {
-			s_PausedByMenus = false;
-			s_StepsWanted = 0;
-			if (!g_DebugMan.IsPhotoModeOpen()) {
-				g_TimerMan.PauseSim(false);
+		} else {
+			// (Every frame, not only as the tools close: photo mode closing can set this pause for a frame; see DebugMan.)
+			g_TimerMan.PauseSim(false, TimerMan::SimPauseSandbox);
+			if (s_PausedByMenus) {
+				s_PausedByMenus = false;
+				s_StepsWanted = 0;
 			}
 		}
 	}
@@ -523,7 +582,8 @@ void Sandbox::DrawGUI() {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
 		// opened again); the selection itself is kept for when it is.
 		UnmarkSelection();
-		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
+		static const bool hidePanels = std::getenv("CCCP_HIDE_PANELS") != nullptr;
+		if (s_FreeCameraStarted && IsGodMode() && hidePanels) {
 			// Automated test runs keep the window shut, but the camera they've placed has to stay where they put it.
 			UpdateFreeCamera();
 			return;
@@ -548,7 +608,8 @@ void Sandbox::DrawGUI() {
 		if (std::sscanf(testPointer, "%f,%f", &x, &y) == 2) {
 			io.MousePos = ImVec2(x, y);
 			io.WantCaptureMouse = false;
-			if (std::getenv("CCCP_TEST_RING") && !s_RingOpen) {
+			static const bool testRing = std::getenv("CCCP_TEST_RING") != nullptr;
+			if (testRing && !s_RingOpen) {
 				s_RingOpen = true;
 				s_RingCenter = ImVec2(x - 40.0F, y - 10.0F);
 			}
@@ -558,18 +619,29 @@ void Sandbox::DrawGUI() {
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
 		QueueSimChange(Tool::UndoTerrain);
 	}
-	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back; Ctrl+A takes the whole side. With the
-	// command tool in hand, wherever the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as
-	// these were, they did nothing with it resting on the window.)
-	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput) {
+	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
+	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
+	// the keys. (Only while the pointer was over the world, as these were, they did nothing with it resting on the window.) Not while you
+	// play a unit: those keys are its own then (its weapons, and Ctrl+A as A).
+	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !s_Possessed) {
+		static int lastNumber = -1;
+		static double lastNumberTime = -10.0;
 		for (int number = 0; number < 10; ++number) {
 			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
 				if (io.KeyCtrl) {
 					s_Groups[number] = s_Selected;
 				} else if (!s_Groups[number].empty()) {
 					s_Selected = s_Groups[number];
+					if (number == lastNumber && ImGui::GetTime() - lastNumberTime < 0.4) {
+						LookAtUnits(s_Selected);
+					}
+					lastNumber = number;
+					lastNumberTime = ImGui::GetTime();
 				}
 			}
+		}
+		if (!io.KeyCtrl && !io.KeyAlt) {
+			CommandHotkeys();
 		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
 			// Everyone on the selection's side.
@@ -587,8 +659,15 @@ void Sandbox::DrawGUI() {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
 		if (tool.Kind == Tool::Command) {
-			// Drag a box to select units; click the ground to send them there, or an enemy to attack it.
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			// Drag a box to select units; click the ground to send them there, or an enemy to attack it. A click on a "no route" marker
+			// (RC-7) sends its units there again instead.
+			if (const NoRoute* marker = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? NoRouteAt(io.MousePos) : nullptr) {
+				Stroke stroke;
+				stroke.Kind = Tool::Command;
+				stroke.Position = marker->Destination;
+				stroke.Count = 40;
+				s_Queue.push_back(stroke);
+			} else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
@@ -613,14 +692,46 @@ void Sandbox::DrawGUI() {
 	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
-		ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), IM_COL32(255, 255, 255, 200), 0.0F, 0, 1.5F);
+		// Defend at (RC-4), and a move or attack-move with Alt held (RC-5), drag the way to face, drawn as an arrow; anything else drags a box
+		// to select.
+		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
+		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
+		if (defendAt || facingMove) {
+			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
+			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
+			float side = now.x >= s_DragStart.x ? 1.0F : -1.0F;
+			if (std::abs(now.x - s_DragStart.x) > 12.0F) {
+				ImGui::GetForegroundDrawList()->AddTriangleFilled(ImVec2(now.x + side * 8.0F, now.y), ImVec2(now.x, now.y - 6.0F), ImVec2(now.x, now.y + 6.0F), color);
+			}
+		} else {
+			ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), IM_COL32(255, 255, 255, 200), 0.0F, 0, 1.5F);
+		}
 		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			s_Dragging = false;
 			Stroke stroke;
 			float scale = ScenePixelsPerWindowPixel();
 			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * scale;
 			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x - ViewOrigin().x, now.y - ViewOrigin().y) * scale;
-			if (std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F) {
+			bool dragged = std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
+			bool give = true;
+			if (defendAt) {
+				stroke.Kind = Tool::Command;
+				stroke.Position = start;
+				g_SceneMan.WrapPosition(stroke.Position);
+				stroke.Position2 = end;
+				stroke.Count = io.KeyShift ? 11 : 10;
+			} else if (facingMove) {
+				stroke.Kind = Tool::Command;
+				stroke.Position = start;
+				g_SceneMan.WrapPosition(stroke.Position);
+				stroke.Position2 = end;
+				stroke.Count = io.KeyShift ? 31 : 30;
+			} else if (s_CommandMode == CommandMode::Patrol && CurrentTool().Kind == Tool::Command && !dragged) {
+				// A point of the patrol route being clicked out; the command row starts it.
+				g_SceneMan.WrapPosition(end);
+				s_PatrolDraft.push_back(end);
+				give = false;
+			} else if (dragged) {
 				stroke.Kind = Tool::Select;
 				stroke.Position = start;
 				stroke.Position2 = end;
@@ -630,11 +741,14 @@ void Sandbox::DrawGUI() {
 				g_SceneMan.WrapPosition(stroke.Position);
 				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
 			}
-			s_Queue.push_back(stroke);
+			if (give) {
+				s_Queue.push_back(stroke);
+			}
 		}
 	}
 	if (InGame()) {
 		DrawSelection();
+		DrawMinimap();
 	}
 
 	if (hiddenButAbove) {
@@ -657,6 +771,7 @@ void Sandbox::DrawGUI() {
 			ImGui::TextDisabled("Left click: use tool.  Right drag / WASD: move camera.  Wheel: zoom.");
 			ToolButtons({Tool::None, Tool::Command, Tool::Follow, Tool::Possess});
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
+			CommanderPanel();
 		}
 		if (ImGui::BeginTabBar("SandboxTabs")) {
 			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
@@ -1033,6 +1148,11 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::EndTabItem();
 			}
+			if (ImGui::BeginTabItem("Keys", nullptr, TestTab("Keys"))) {
+				s_CurrentTab = "Keys";
+				KeysPage();
+				ImGui::EndTabItem();
+			}
 			ImGui::EndTabBar();
 		}
 	}
@@ -1051,6 +1171,9 @@ void Sandbox::OnActivityStarted() {
 	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
+	// A script's choice of random units for its auto battle is for that game only.
+	s_ScriptAutoRandom = false;
+	s_ScriptAutoFavourites = false;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
 	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
 	s_Possessed = nullptr;
@@ -1068,6 +1191,7 @@ void Sandbox::OnActivityStarted() {
 	s_AutoRunning = false;
 	s_AutoWinner = -2;
 	s_PendingOrders.clear();
+	s_Commander = false;
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
 	s_Queue.clear();
 	s_GodViewPending = true;
@@ -1078,6 +1202,12 @@ void Sandbox::Update() {
 	strokes.swap(s_Queue);
 	if (!InGame()) {
 		s_Possessed = nullptr;
+		s_Plans.clear();
+		s_GuardPosts.clear();
+		s_Commander = false;
+		s_Paced.clear();
+		s_MoveWatch.clear();
+		s_NoRoutes.clear();
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
 		s_Effects.clear();
@@ -1088,6 +1218,11 @@ void Sandbox::Update() {
 	for (const Stroke& stroke: strokes) {
 		Apply(stroke);
 	}
+	ClosePaintUndoStep(false);
+	UpdatePlans();
+	UpdateCommander();
+	UpdatePace();
+	UpdateMoveWatch();
 	UpdateIncoming();
 	UpdateEffects();
 	for (const WaterSpawner& spawner: s_WaterSpawners) {
@@ -1099,6 +1234,9 @@ void Sandbox::Update() {
 	const bool aiPaused = Controller::IsAIPaused();
 	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		ReturnDefenders();
+	}
+	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
+		UpdateGuards();
 	}
 	GymUpdate();
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
@@ -1201,9 +1339,13 @@ void Sandbox::DrawOrderLabels() {
 		}
 		if (!actor->IsPlayerControlled()) {
 			if (actor->NumberValueExists("AIRetreat")) {
-				order += ", falling back";
+				order += actor->GetNumberValue("AIRetreat") == 2 ? ", falling back to a medic" : ", falling back";
 			} else if (actor->NumberValueExists("AIFlank")) {
 				order += ", flanking";
+			} else if (actor->NumberValueExists("AIInvestigate")) {
+				order += ", checking where an enemy was seen";
+			} else if (actor->NumberValueExists("AIMedic")) {
+				order += ", seeing to a wounded friend";
 			}
 		}
 		for (size_t group = 0; group < s_Groups.size(); ++group) {

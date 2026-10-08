@@ -1979,7 +1979,8 @@ void GameActivity::DrawGUI(BITMAP* pTargetBitmap, const Vector& targetPos, int w
 	float halfScreenWidth = pTargetBitmap->w / 2;
 	float halfScreenHeight = pTargetBitmap->h / 2;
 	// THis is the max distance that is possible between a point inside the scene, but outside the screen box, and the screen box's outer edge closest to the point (taking wrapping into account)
-	float maxOffScreenSceneWidth = g_SceneMan.SceneWrapsX() ? ((sceneWidth / 2) - halfScreenWidth) : (sceneWidth - pTargetBitmap->w);
+	// (Kept above zero: zoomed far out the screen can show half the scene or more, and the arrows' easing divides by it.)
+	float maxOffScreenSceneWidth = std::max(g_SceneMan.SceneWrapsX() ? ((sceneWidth / 2) - halfScreenWidth) : (sceneWidth - pTargetBitmap->w), 1.0F);
 	// These handle arranging the left and right stacks of arrows, so they don't pile up on top of each other
 	cursor = team;
 	float leftStackY = halfScreenHeight - m_aObjCursor[cursor][frame]->h * 2;
@@ -2120,42 +2121,12 @@ void GameActivity::DrawGUI(BITMAP* pTargetBitmap, const Vector& targetPos, int w
 
 			// Fix cursor coordinates
 			if (!targetPos.IsZero()) {
-				// Spans vertical scene seam
-				int sceneWidth = g_SceneMan.GetSceneWidth();
-				if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-					if ((targetPos.m_X < 0) && (m_ActorCursor[PoS].m_X > (sceneWidth - pTargetBitmap->w)))
-						cursorDrawPos.m_X -= sceneWidth;
-					else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (m_ActorCursor[PoS].m_X < pTargetBitmap->w))
-						cursorDrawPos.m_X += sceneWidth;
-				}
-				// Spans horizontal scene seam
-				int sceneHeight = g_SceneMan.GetSceneHeight();
-				if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-					if ((targetPos.m_Y < 0) && (m_ActorCursor[PoS].m_Y > (sceneHeight - pTargetBitmap->h)))
-						cursorDrawPos.m_Y -= sceneHeight;
-					else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (m_ActorCursor[PoS].m_Y < pTargetBitmap->h))
-						cursorDrawPos.m_Y += sceneHeight;
-				}
+				cursorDrawPos += g_SceneMan.GetWrapToScreen(cursorDrawPos, pTargetBitmap->w, pTargetBitmap->h);
 			}
 
 			// Fix circle center coordinates
 			if (!targetPos.IsZero()) {
-				// Spans vertical scene seam
-				int sceneWidth = g_SceneMan.GetSceneWidth();
-				if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-					if ((targetPos.m_X < 0) && (actorPos.m_X > (sceneWidth - pTargetBitmap->w)))
-						drawPos.m_X -= sceneWidth;
-					else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (actorPos.m_X < pTargetBitmap->w))
-						drawPos.m_X += sceneWidth;
-				}
-				// Spans horizontal scene seam
-				int sceneHeight = g_SceneMan.GetSceneHeight();
-				if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-					if ((targetPos.m_Y < 0) && (actorPos.m_Y > (sceneHeight - pTargetBitmap->h)))
-						drawPos.m_Y -= sceneHeight;
-					else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (actorPos.m_Y < pTargetBitmap->h))
-						drawPos.m_Y += sceneHeight;
-				}
+				drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
 			}
 
 			float radius = g_SceneMan.ShortestDistance(m_ActorCursor[PoS], m_ControlledActor[PoS]->GetPos(), true).GetMagnitude();
@@ -2193,27 +2164,10 @@ void GameActivity::DrawGUI(BITMAP* pTargetBitmap, const Vector& targetPos, int w
 				Vector dotDrawPos = dotPos - targetPos;
 
 				if (!targetPos.IsZero()) {
-					// Spans vertical scene seam
-					if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-						if ((targetPos.m_X < 0) && (dotPos.m_X > (sceneWidth - pTargetBitmap->w))) {
-							dotDrawPos.m_X -= sceneWidth;
-						} else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (actorPos.m_X < pTargetBitmap->w)) {
-							dotDrawPos.m_X += sceneWidth;
-						}
-					}
-					// Spans horizontal scene seam
-					int sceneHeight = g_SceneMan.GetSceneHeight();
-					if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-						if ((targetPos.m_Y < 0) && (dotPos.m_Y > (sceneHeight - pTargetBitmap->h))) {
-							dotDrawPos.m_Y -= sceneHeight;
-						} else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (actorPos.m_Y < pTargetBitmap->h)) {
-							dotDrawPos.m_Y += sceneHeight;
-						}
-					}
-
-					circlefill(pTargetBitmap, dotDrawPos.m_X, dotDrawPos.m_Y, 1, g_YellowGlowColor);
-					g_PostProcessMan.RegisterGlowArea(dotPos, 3);
+					dotDrawPos += g_SceneMan.GetWrapToScreen(dotDrawPos, pTargetBitmap->w, pTargetBitmap->h);
 				}
+				circlefill(pTargetBitmap, dotDrawPos.m_X, dotDrawPos.m_Y, 1, g_YellowGlowColor);
+				g_PostProcessMan.RegisterGlowArea(dotPos, 3);
 			}
 		} else {
 			// Cancel squad selection

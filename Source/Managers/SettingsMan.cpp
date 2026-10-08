@@ -11,10 +11,12 @@
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
+#include "ThreatMemory.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
+#include "UnitSpeech.h"
 #include "ModernHUD.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
@@ -115,6 +117,7 @@ void SettingsMan::Clear() {
 	m_UnheldItemsHUDDisplayRange = 25 * c_PPM;
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
+	m_ClassicPieWheel = false;
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -132,6 +135,10 @@ void SettingsMan::Clear() {
 	m_WorldSimOverlay = 0;
 	m_SandboxStrokeLog = false;
 	m_SandboxSpotReach = false;
+	m_SandboxGroupBadges = true;
+	m_SandboxOrderGlyphs = 1;
+	m_SandboxAttackPings = true;
+	m_SandboxMinimap = false;
 	m_LightsBySource = false;
 	m_SandboxCharacterState = false;
 	m_SandboxAutoBattle = false;
@@ -259,6 +266,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
+	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -416,6 +424,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterMistOpacity", { g_PostProcessMan.GetLightingSettings().WaterMistOpacity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistSpread", { g_PostProcessMan.GetLightingSettings().WaterMistSpread = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMist", { g_PostProcessMan.GetLightingSettings().WaterMist = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterThinFlow", { g_PostProcessMan.GetLightingSettings().WaterThinFlow = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFroth", { g_PostProcessMan.GetLightingSettings().SplashFroth = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothSize", { g_PostProcessMan.GetLightingSettings().SplashFrothSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothLife", { g_PostProcessMan.GetLightingSettings().SplashFrothLife = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothOpacity", { g_PostProcessMan.GetLightingSettings().SplashFrothOpacity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("PuffVariety", { g_PostProcessMan.GetLightingSettings().PuffVariety = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterSplash", { g_PostProcessMan.GetLightingSettings().WaterSplash = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistBrightness", { g_PostProcessMan.GetLightingSettings().WaterMistBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistGlow", { g_PostProcessMan.GetLightingSettings().WaterMistGlow = std::stof(reader.ReadPropValue()); });
@@ -489,10 +503,15 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnheldItemsHUDDisplayRange", { SetUnheldItemsHUDDisplayRange(std::stof(reader.ReadPropValue())); });
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
+	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
+	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
+	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
+	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -508,6 +527,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WorldSimOverlay", { int which = 0; reader >> which; SetWorldSimOverlay(which); });
 	MatchProperty("SandboxStrokeLog", { reader >> m_SandboxStrokeLog; });
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
+	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
+	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
+	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
+	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
 	MatchProperty("SandboxCharacterState", { reader >> m_SandboxCharacterState; });
 	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
@@ -719,6 +742,12 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterFoamGlow", lighting.WaterFoamGlow);
 	writer.NewPropertyWithValue("WaterMist", lighting.WaterMist);
 	writer.NewPropertyWithValue("WaterSplash", lighting.WaterSplash);
+	writer.NewPropertyWithValue("PuffVariety", lighting.PuffVariety);
+	writer.NewPropertyWithValue("SplashFroth", lighting.SplashFroth);
+	writer.NewPropertyWithValue("SplashFrothSize", lighting.SplashFrothSize);
+	writer.NewPropertyWithValue("SplashFrothLife", lighting.SplashFrothLife);
+	writer.NewPropertyWithValue("SplashFrothOpacity", lighting.SplashFrothOpacity);
+	writer.NewPropertyWithValue("WaterThinFlow", lighting.WaterThinFlow);
 	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
 	writer.NewPropertyWithValue("DistinctLiquidLooks", lighting.DistinctLiquidLooks);
 	writer.NewPropertyWithValue("WaterFlowSurface", lighting.WaterFlowSurface);
@@ -788,6 +817,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
+	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 }
@@ -925,9 +955,16 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
 	writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
 	writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
+	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
+	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
+	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
+		writer.NewPropertyWithValue("UnitSpeechOff", off);
+	}
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
@@ -940,6 +977,10 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
 	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
 	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
+	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
 	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
 	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);

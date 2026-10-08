@@ -314,6 +314,15 @@ namespace RTE {
 		}
 		static int CalculatePath(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
 
+		/// The path itself, as its own list for the caller to keep, where CalculatePath leaves it in GetScenePath: that list is the calling
+		/// thread's, so a script asking in ThreadedUpdate and reading it in Update read another thread's path. Empty for no route.
+		static std::vector<Vector>* CalculatePathPoints(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
+		static std::vector<Vector>* CalculatePathPoints1(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
+			return CalculatePathPoints(luaSelfObject, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
+		}
+		/// Likewise for CalculatePathForActor.
+		static std::vector<Vector>* CalculatePathPointsForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team);
+
 		static void CalculatePathAsync1(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
 			return CalculatePathAsync(luaSelfObject, callback, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
 		}
@@ -372,6 +381,14 @@ namespace RTE {
 		static std::vector<AEmitter*>* GetWounds2(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables);
 		// Need a seperate implementation function without the return so we can safely recurse.
 		static void GetWoundsImpl(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables, std::vector<AEmitter*>& wounds);
+
+		/// RemoveAttachable for scripts, which take ownership of what it returns: nil unless the Attachable was attached to this object. (The engine's
+		/// RemoveAttachable hands back an Attachable that isn't attached as it was given, and a script adopting one that was loose in the scene
+		/// freed it under MovableMan; one attached elsewhere hit an assert.)
+		static Attachable* RemoveAttachable(MOSRotating* luaSelfObject, Attachable* attachable, bool addToMovableMan, bool addBreakWounds);
+		static Attachable* RemoveAttachable1(MOSRotating* luaSelfObject, Attachable* attachable) { return RemoveAttachable(luaSelfObject, attachable, false, false); }
+		static Attachable* RemoveAttachableByID(MOSRotating* luaSelfObject, long uniqueID, bool addToMovableMan, bool addBreakWounds);
+		static Attachable* RemoveAttachableByID1(MOSRotating* luaSelfObject, long uniqueID) { return RemoveAttachableByID(luaSelfObject, uniqueID, false, false); }
 	};
 #pragma endregion
 
@@ -457,6 +474,17 @@ namespace RTE {
 	};
 #pragma endregion
 
+#pragma region Timer Lua Adapters
+	struct LuaAdaptersTimer {
+		/// luabind has no converter for int64 (long long): a property of that type made it wrap the number as an unregistered class and crash on a
+		/// null class record (INC-CRASH-4). The Timer's start times go through these as doubles instead.
+		static double GetStartRealTimeMS(const Timer& timer);
+		static void SetStartRealTimeMS(Timer& timer, double newStartTime);
+		static double GetStartSimTimeMS(const Timer& timer);
+		static void SetStartSimTimeMS(Timer& timer, double newStartTime);
+	};
+#pragma endregion
+
 #pragma region TimerMan Lua Adapters
 	struct LuaAdaptersTimerMan {
 		/// Gets the current number of ticks that the simulation should be updating with. Lua can't handle int64 (or long long apparently) so we'll expose this specialized function.
@@ -466,6 +494,10 @@ namespace RTE {
 		/// Gets the number of ticks per second. Lua can't handle int64 (or long long apparently) so we'll expose this specialized function.
 		/// @return The number of ticks per second.
 		static double GetTicksPerSecond(const TimerMan& timerMan);
+
+		/// Gets the sim time since the game started, in ms: one clock every Lua state agrees on, for times scripts compare across units.
+		/// @return The sim time in ms.
+		static double GetSimTimeMS(const TimerMan& timerMan);
 	};
 #pragma endregion
 
@@ -603,6 +635,10 @@ namespace RTE {
 		/// encountered. If no pixel of the right material was found, < 0 is returned.
 		/// If an obstacle on the starting position was encountered, 0 is returned.
 		static float CastObstacleRay2(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID = g_NoMOID, int ignoreTeam = Activity::NoTeam, unsigned char ignoreMaterial = 0, int skip = 0);
+
+		/// As CastObstacleRay1 and 2, with whether the ray sees through liquid as far as units do (FluidSim::SightDepth), for a line of sight or fire.
+		static float CastObstacleRay3(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid);
+		static float CastObstacleRay4(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid);
 		
 		/// Takes a Box and returns a list of Boxes that describe the Box, wrapped appropriately for the current Scene.
 		/// @param boxToWrap The Box to wrap.

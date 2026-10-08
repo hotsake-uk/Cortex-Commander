@@ -3,8 +3,10 @@
 #include "DebugDraw.h"
 #include "DebugOverlays.h"
 #include <unordered_map>
+#include <unordered_set>
 #include "Actor.h"
 #include "WindowMan.h"
+#include "MenuMan.h"
 #include "PerformanceMan.h"
 #include "imgui/imgui.h"
 #include "ToolWidgets.h"
@@ -32,6 +34,7 @@
 #include "Controller.h"
 #include "Sandbox.h"
 #include "ModernHUD.h"
+#include "ActionMenu.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -125,7 +128,9 @@ void DebugMan::PrepareFonts() {
 	if (m_PixelFonts[0] || m_PixelFontTries > 600) {
 		return;
 	}
-	if (++m_PixelFontTries < 5) {
+	// (First at the fifth present, which is when it normally works; if the sheet can't be had yet, again every 60 presents rather than every
+	// one, so a sheet that never loads is decoded ten times in the 600 presents tried, not nearly 600.)
+	if (++m_PixelFontTries < 5 || (m_PixelFontTries - 5) % 60 != 0) {
 		return;
 	}
 	std::string path = "Base.rte/GUIs/Skins/FontSmall.png";
@@ -285,7 +290,7 @@ void DebugMan::DrawToolWindowControls() {
 
 void DebugMan::UpdateFreeze() {
 	if (m_FreezeSim && g_ActivityMan.IsInActivity()) {
-		g_TimerMan.PauseSim(true);
+		g_TimerMan.PauseSim(true, TimerMan::SimPauseDebugFreeze);
 		m_FrozeSim = true;
 		if (m_FreezeStepsWanted > 0) {
 			g_TimerMan.StepSim(1);
@@ -294,10 +299,8 @@ void DebugMan::UpdateFreeze() {
 	} else if (m_FrozeSim) {
 		m_FrozeSim = false;
 		m_FreezeStepsWanted = 0;
-		// Unpaused unless photo mode or the sandbox's open window wants the world still; they set their own pause again each frame they want it.
-		if (!IsPhotoModeOpen()) {
-			g_TimerMan.PauseSim(false);
-		}
+		// Only the freeze's own pause: photo mode and the sandbox hold theirs.
+		g_TimerMan.PauseSim(false, TimerMan::SimPauseDebugFreeze);
 	}
 }
 
@@ -377,6 +380,7 @@ void DebugMan::DrawImGui() {
 	// The modern HUD and the debug overlays, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {
 		ModernHUD::Draw();
+		ActionMenu::Draw();
 		DrawOverlays();
 	}
 
@@ -507,7 +511,8 @@ void DebugMan::ToggleTools(bool atPointer) {
 
 void DebugMan::UpdateMouseOwnership() {
 	// Looking around the Sandbox game mode from above uses the pointer too, even with every tool window hidden.
-	bool wantMouse = AnyToolWindowOpen() || Sandbox::IsLookingAround();
+	// Not in the pause menu (T-14): the menu has the pointer there, or with tools open or the sandbox's view from above its buttons couldn't be clicked.
+	bool wantMouse = !g_MenuMan.GetIsInMenuScreen() && (AnyToolWindowOpen() || Sandbox::IsLookingAround());
 	if (wantMouse) {
 		// In game the mouse is trapped in relative mode for aiming, which ImGui can't use; release it while tool windows are open.
 		// Checked every frame, not only when a window opens: coming back from another program hands the mouse to the game again, which with tool windows open
@@ -532,10 +537,11 @@ void DebugMan::EndPhotoMode() {
 		// Keep the time of day and weather the player had; photo mode's look changes were for the photo.
 		g_PostProcessMan.GetLightingSettings() = m_PhotoSavedSettings;
 	}
-	// (Not when the sandbox holds the world still: it would pause it again only on its next draw, and the frame between ran every sim update
-	// the paused time had saved up, a jump as photo mode closed.)
-	if (!Sandbox::WantsWorldPaused()) {
-		g_TimerMan.PauseSim(false);
+	// Only photo mode's own pause. The sandbox lets go of the world while photo mode is open, so where it wants it still its pause is set
+	// here too: on its next draw would leave a frame between that ran every sim update the paused time had saved up, a jump as photo mode closed.
+	g_TimerMan.PauseSim(false, TimerMan::SimPausePhotoMode);
+	if (Sandbox::WantsWorldPaused()) {
+		g_TimerMan.PauseSim(true, TimerMan::SimPauseSandbox);
 	}
 	g_FrameMan.SetHudDisabled(m_PhotoPreviousHUDDisabled, 0);
 	m_PhotoModeActive = false;
@@ -550,7 +556,7 @@ void DebugMan::PhotoModeGUI() {
 		m_PhotoCameraCenter = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
 	}
 	if (m_PhotoModeActive) {
-		g_TimerMan.PauseSim(m_PhotoFreeze);
+		g_TimerMan.PauseSim(m_PhotoFreeze, TimerMan::SimPausePhotoMode);
 		g_FrameMan.SetHudDisabled(m_PhotoHideHUD, 0);
 
 		// Free camera: drag with the right mouse button anywhere outside the window, or the arrow keys.
@@ -695,7 +701,8 @@ void DebugMan::ActorDrawDebugGUI() {
 	ZoneScoped;
 	static std::shared_ptr<RenderBatch> batch = std::make_unique<RenderBatch>();
 	if (BeginPanel("Actor draw###ActorDraw", &m_ShowActorDebugGui, PanelSide::Right)) {
-		static std::map<MovableObject*, std::unique_ptr<Texture>> MOTargets;
+		// By unique ID, not address: an actor freed and another made at its address took its texture, of the wrong size.
+		static std::map<long, std::unique_ptr<Texture>> MOTargets;
 		static int playerScreen = -1;
 		ImGui::InputInt("Test Draw for Screen (-1 full world):", &playerScreen);
 		ImGui::SliderInt("Screen", &playerScreen, -1, c_MaxScreenCount);
@@ -717,23 +724,30 @@ void DebugMan::ActorDrawDebugGUI() {
 			batch->EndFrame();
 			{
 				ZoneScopedN("ActorList::List");
+				// The textures of actors that are gone are let go (they were kept for the session).
+				std::unordered_set<long> liveIDs;
+				for (const Actor* actor: g_MovableMan.m_Actors) {
+					liveIDs.insert(actor->GetUniqueID());
+				}
+				std::erase_if(MOTargets, [&liveIDs](const auto& entry) { return !liveIDs.contains(entry.first); });
 				for (auto actor: g_MovableMan.m_Actors) {
 					if (ImGui::TreeNode(actor->GetPresetNameAndUniqueID().c_str())) {
 						ZoneScopedN("ActorList::List::Node");
-						if (!MOTargets[actor]) {
-							MOTargets[actor] = std::make_unique<Texture>(FloatRect{0.0f, 0.0f, actor->GetRadius() * 2.0f, 2.f * actor->GetRadius()});
+						std::unique_ptr<Texture>& target = MOTargets[actor->GetUniqueID()];
+						if (!target || target->GetDimensions().w != actor->GetRadius() * 2.0f) {
+							target = std::make_unique<Texture>(FloatRect{0.0f, 0.0f, actor->GetRadius() * 2.0f, 2.f * actor->GetRadius()});
 						}
 						if (!m_DebugDrawTarget) {
 							m_DebugDrawTarget = std::make_unique<RenderTarget>(false);
 						}
 						m_DebugDrawTarget->Begin(true, false);
-						glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, MOTargets[actor]->GetTextureId(), 0);
+						glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target->GetTextureId(), 0);
 						glViewport(0, 0, 2 * actor->GetRadius(), 2 * actor->GetRadius());
 						Camera camera(actor->GetPos() - Vector(actor->GetRadius(), actor->GetRadius()), Box({0.0f, 0.0f}, actor->GetRadius() * 2, actor->GetRadius() * 2.0f));
 						batch->m_CurrentCamera = &camera;
 						batch->Render();
 						glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-						ImGui::ImageWithBg(MOTargets[actor]->GetTextureId(), ImVec2(MOTargets[actor]->GetDimensions().w, MOTargets[actor]->GetDimensions().h));
+						ImGui::ImageWithBg(target->GetTextureId(), ImVec2(target->GetDimensions().w, target->GetDimensions().h));
 						ImGui::TreePop();
 					}
 				}

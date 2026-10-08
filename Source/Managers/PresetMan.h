@@ -13,6 +13,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <utility>
 
 #define g_PresetMan PresetMan::Instance()
 
@@ -56,6 +57,9 @@ namespace RTE {
 		/// @param progressCallback A function pointer to a function that will be called and sent a string with information about the progress of this DataModule's creation.
 		/// @return Whether the DataModule was read and added correctly.
 		bool LoadDataModule(const std::string& moduleName, bool official, bool userdata = false, const ProgressCallback& progressCallback = nullptr);
+
+		/// How long each data module took to load, in load order, in milliseconds (for the start-up timing report).
+		const std::vector<std::pair<std::string, long long>>& GetModuleLoadTimes() const { return m_ModuleLoadTimes; }
 
 		/// Reads an entire DataModule and adds it to this. NOTE that official modules can't be loaded after any non-official ones!
 		/// @param moduleName The module name to read, e.g. "Base.rte".
@@ -353,6 +357,7 @@ namespace RTE {
 	protected:
 		// Owned and loaded DataModule:s
 		std::vector<DataModule*> m_pDataModules;
+		std::vector<std::pair<std::string, long long>> m_ModuleLoadTimes; //!< How long each module took to load, in milliseconds (see GetModuleLoadTimes).
 		std::vector<DataModule*> m_FailedModules; //!< What was read of mods that failed to load. Not listed anywhere, but kept so anything that already points into them stays valid.
 		std::map<std::string, std::string> m_FailedMods; //!< The mods that failed to load, with what went wrong.
 

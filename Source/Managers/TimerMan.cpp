@@ -24,6 +24,7 @@ void TimerMan::Clear() {
 	m_SimSpeed = 1.0F;
 	m_TimeScale = 1.0F;
 	m_SimPaused = false;
+	m_SimPauseOwners = 0;
 }
 
 void TimerMan::Initialize() {

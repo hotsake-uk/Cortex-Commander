@@ -365,6 +365,9 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("SmokeBlocksSight", &SceneMan::SmokeBlocksSight)
 	    .def("GetBurningPixelCount", &SceneMan::GetBurningPixelCount)
 	    .def("IsBurningNear", &SceneMan::IsBurningNear)
+	    .def("ReportEnemy", &SceneMan::ReportEnemy)
+	    .def("GetRememberedEnemyPos", &SceneMan::GetRememberedEnemyPos)
+	    .def("GetPlayerLastSeenPos", &SceneMan::GetPlayerLastSeenPos)
 	    .def("GetBurningUnitCount", &SceneMan::GetBurningUnitCount)
 	    .def("GetFlowingLiquidPixelCount", &SceneMan::GetFlowingLiquidPixelCount)
 	    .def("GetLiquidUpdateMS", &SceneMan::GetLiquidUpdateMS)
@@ -379,6 +382,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("CastFindMORay", &SceneMan::CastFindMORay)
 	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay1)
 	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay2)
+	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay3)
+	    .def("CastObstacleRay", &LuaAdaptersSceneMan::CastObstacleRay4)
 	    .def("CastTerrainPenetrationRay", &SceneMan::CastTerrainPenetrationRay)
 	    .def("GetLastRayHitPos", &SceneMan::GetLastRayHitPos)
 	    .def("FindAltitude", (float(SceneMan::*)(const Vector&, int, int)) & SceneMan::FindAltitude)
@@ -442,6 +447,10 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("ShowSquadLinks", &SettingsMan::ShowSquadLinks, &SettingsMan::SetShowSquadLinks)
 	    .property("ShowSandboxStrokeLog", &SettingsMan::ShowSandboxStrokeLog, &SettingsMan::SetShowSandboxStrokeLog)
 	    .property("ShowSandboxSpotReach", &SettingsMan::ShowSandboxSpotReach, &SettingsMan::SetShowSandboxSpotReach)
+	    .property("ShowSandboxGroupBadges", &SettingsMan::ShowSandboxGroupBadges, &SettingsMan::SetShowSandboxGroupBadges)
+	    .property("SandboxOrderGlyphs", &SettingsMan::SandboxOrderGlyphs, &SettingsMan::SetSandboxOrderGlyphs)
+	    .property("ShowSandboxAttackPings", &SettingsMan::ShowSandboxAttackPings, &SettingsMan::SetShowSandboxAttackPings)
+	    .property("ShowSandboxMinimap", &SettingsMan::ShowSandboxMinimap, &SettingsMan::SetShowSandboxMinimap)
 	    .property("ShowLightsBySource", &SettingsMan::ShowLightsBySource, &SettingsMan::SetShowLightsBySource)
 	    .property("ShowSandboxCharacterState", &SettingsMan::ShowSandboxCharacterState, &SettingsMan::SetShowSandboxCharacterState)
 	    .property("ShowSandboxAutoBattle", &SettingsMan::ShowSandboxAutoBattle, &SettingsMan::SetShowSandboxAutoBattle)
@@ -477,6 +486,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, TimerMan) {
 	    .property("AIDeltaTimeMS", &TimerMan::GetAIDeltaTimeMS)
 
 	    .property("TicksPerSecond", &LuaAdaptersTimerMan::GetTicksPerSecond)
+	    .property("SimTimeMS", &LuaAdaptersTimerMan::GetSimTimeMS)
 
 	    .def("TimeForSimUpdate", &TimerMan::TimeForSimUpdate)
 	    .def("DrawnSimUpdate", &TimerMan::DrawnSimUpdate);

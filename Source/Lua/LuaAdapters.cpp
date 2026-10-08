@@ -302,6 +302,19 @@ int LuaAdaptersScene::CalculatePathForActor(Scene* luaSelfObject, const Actor* a
 	return -1;
 }
 
+std::vector<Vector>* LuaAdaptersScene::CalculatePathPoints(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team) {
+	std::list<Vector> path;
+	luaSelfObject->CalculatePath(start, end, path, jumpHeight, digStrength, std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour));
+	return new std::vector<Vector>(path.begin(), path.end());
+}
+
+std::vector<Vector>* LuaAdaptersScene::CalculatePathPointsForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team) {
+	std::list<Vector> path;
+	PathAgent agent = actor ? actor->GetPathAgent() : PathAgent();
+	luaSelfObject->CalculatePath(start, end, path, agent, std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour));
+	return new std::vector<Vector>(path.begin(), path.end());
+}
+
 void LuaAdaptersScene::CalculatePathAsync(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team) {
 	team = std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour);
 
@@ -310,7 +323,8 @@ void LuaAdaptersScene::CalculatePathAsync(Scene* luaSelfObject, const luabind::o
 	// As such, we need to store this function somewhere safely within our Lua state for us to access later when we need it
 	lua_State* luaState = mainthread(G(callback.interpreter())); // Get the main thread for the state, in case we're a temp lua thread
 
-	static int currentCallbackId = 0;
+	// (Atomic: threaded scripts' states ask from several threads at once.)
+	static std::atomic<int> currentCallbackId = 0;
 	int thisCallbackId = currentCallbackId++;
 	if (luabind::type(callback) == LUA_TFUNCTION && callback.is_valid()) {
 		luabind::call_function<void>(luaState, "_AddAsyncPathCallback", thisCallbackId, callback);
@@ -402,6 +416,17 @@ void LuaAdaptersMovableObject::SendMessage1(MovableObject* luaSelfObject, const 
 void LuaAdaptersMovableObject::SendMessage2(MovableObject* luaSelfObject, const std::string& message, luabind::object context) {
 	LuabindObjectWrapper wrapper(&context, "", false);
 	luaSelfObject->RunScriptedFunctionInAppropriateScripts("OnMessage", false, false, {}, {message}, {&wrapper});
+}
+
+Attachable* LuaAdaptersMOSRotating::RemoveAttachable(MOSRotating* luaSelfObject, Attachable* attachable, bool addToMovableMan, bool addBreakWounds) {
+	if (!attachable || !attachable->IsAttachedTo(luaSelfObject)) {
+		return nullptr;
+	}
+	return luaSelfObject->RemoveAttachable(attachable, addToMovableMan, addBreakWounds);
+}
+
+Attachable* LuaAdaptersMOSRotating::RemoveAttachableByID(MOSRotating* luaSelfObject, long uniqueID, bool addToMovableMan, bool addBreakWounds) {
+	return RemoveAttachable(luaSelfObject, dynamic_cast<Attachable*>(g_MovableMan.FindObjectByUniqueID(uniqueID)), addToMovableMan, addBreakWounds);
 }
 
 void LuaAdaptersMOSRotating::GibThis(MOSRotating* luaSelfObject) {
@@ -603,6 +628,26 @@ double LuaAdaptersTimerMan::GetTicksPerSecond(const TimerMan& timerMan) {
 	return static_cast<double>(timerMan.GetTicksPerSecond());
 }
 
+double LuaAdaptersTimerMan::GetSimTimeMS(const TimerMan& timerMan) {
+	return static_cast<double>(timerMan.GetSimTimeMS());
+}
+
+double LuaAdaptersTimer::GetStartRealTimeMS(const Timer& timer) {
+	return static_cast<double>(timer.GetStartRealTimeMS());
+}
+
+void LuaAdaptersTimer::SetStartRealTimeMS(Timer& timer, double newStartTime) {
+	timer.SetStartRealTimeMS(static_cast<int64_t>(newStartTime));
+}
+
+double LuaAdaptersTimer::GetStartSimTimeMS(const Timer& timer) {
+	return static_cast<double>(timer.GetStartSimTimeMS());
+}
+
+void LuaAdaptersTimer::SetStartSimTimeMS(Timer& timer, double newStartTime) {
+	timer.SetStartSimTimeMS(static_cast<int64_t>(newStartTime));
+}
+
 bool LuaAdaptersUInputMan::MouseButtonHeld(const UInputMan& uinputMan, int whichButton) {
 	return uinputMan.MouseButtonHeld(whichButton, Players::PlayerOne);
 }
@@ -652,6 +697,16 @@ float LuaAdaptersSceneMan::CastObstacleRay1(SceneMan& sceneMan, const Vector& st
 float LuaAdaptersSceneMan::CastObstacleRay2(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip) {
 	std::vector<MOID> ignoreMOIDs = {ignoreMOID};
 	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip);
+}
+
+float LuaAdaptersSceneMan::CastObstacleRay3(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid) {
+	std::vector<MOID> ignoreMOIDsVec = ConvertLuaTableToVectorOfType<MOID>(ignoreMOIDs);
+	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDsVec, ignoreTeam, ignoreMaterial, skip, seeThroughLiquid);
+}
+
+float LuaAdaptersSceneMan::CastObstacleRay4(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid) {
+	std::vector<MOID> ignoreMOIDs = {ignoreMOID};
+	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip, seeThroughLiquid);
 }
 
 const std::list<Box>* LuaAdaptersSceneMan::WrapBoxes(SceneMan& sceneMan, const Box& boxToWrap) {

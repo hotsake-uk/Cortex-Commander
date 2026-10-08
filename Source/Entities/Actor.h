@@ -8,7 +8,9 @@
 #include "MOSRotating.h"
 #include "PathFinder.h"
 #include "SettingsMan.h"
+#include "UnitSpeech.h"
 
+#include <algorithm>
 #include <array>
 
 namespace RTE {
@@ -395,6 +397,23 @@ namespace RTE {
 		/// @return The current AI mode.
 		int GetAIMode() const { return m_AIMode; }
 
+		/// What a unit may shoot at (RC-1). The player sets it; orders leave it as it is.
+		enum WeaponRule {
+			WEAPONS_AT_WILL = 0, //!< Fires at any enemy it sees (the game's own behaviour).
+			WEAPONS_RETURN_FIRE, //!< Fires only while it is being shot at: hurt, or pinned by near misses, in the last few seconds.
+			WEAPONS_HOLD, //!< Never fires; it still aims, so it opens up the moment the rule changes.
+			WEAPONRULECOUNT
+		};
+
+		/// How a unit moves when it meets an enemy (RC-1). Each order sets it back to following the order; the player can then change it.
+		enum MovementRule {
+			MOVE_FOLLOW_ORDER = 0, //!< As the order has it: a move keeps walking, an attack closes in, a post is held.
+			MOVE_ENGAGE, //!< Stops and fights what it sees, closing in on what it can't hit from where it is.
+			MOVE_ONLY, //!< Keeps going, firing on the way if its weapons rule lets it, never stopping or chasing.
+			MOVE_HOLD_GROUND, //!< Fights from where it stands, never leaving the spot to chase.
+			MOVEMENTRULECOUNT
+		};
+
 		/// A unit's standing order (AI review section 6 item 2): what it was told to do, one typed record that the sandbox, the AI scripts, the HUD and saves all read, where
 		/// before it was six number values under string keys ("SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX/Y", "SandboxDefendX/Y",
 		/// "SandboxHold") that C++ and Lua each spelled out. The parts are independent, as the number values were.
@@ -407,6 +426,8 @@ namespace RTE {
 			bool HasPost = false; //!< Whether it was told to defend a spot (Post): it fights from it and goes back to it when moved off.
 			Vector Post; //!< That spot.
 			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
+			int Movement = MOVE_FOLLOW_ORDER; //!< The movement rule (MovementRule) the player set for this order, MOVE_FOLLOW_ORDER for the order's own.
+			int PostFacing = 0; //!< Which way to face at the post (RC-4): -1 left, 1 right, 0 either.
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -441,8 +462,28 @@ namespace RTE {
 			m_StandingOrder.HasPost = true;
 		}
 		void ClearOrderPost() { m_StandingOrder.HasPost = false; }
+		int GetOrderPostFacing() const { return m_StandingOrder.PostFacing; }
+		void SetOrderPostFacing(int facing) { m_StandingOrder.PostFacing = facing < 0 ? -1 : (facing > 0 ? 1 : 0); }
 		bool GetOrderHold() const { return m_StandingOrder.Hold; }
 		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
+
+		/// Gets the weapons rule (WeaponRule): what this may shoot at.
+		int GetWeaponRule() const { return m_WeaponRule; }
+
+		/// Sets the weapons rule (WeaponRule).
+		void SetWeaponRule(int rule) { m_WeaponRule = std::clamp(rule, 0, static_cast<int>(WEAPONRULECOUNT) - 1); }
+
+		/// Gets the movement rule (MovementRule) of the standing order: how this moves when it meets an enemy.
+		int GetMovementRule() const { return m_StandingOrder.Movement; }
+
+		/// Sets the movement rule (MovementRule) of the standing order, until the next order.
+		void SetMovementRule(int rule) { m_StandingOrder.Movement = std::clamp(rule, 0, static_cast<int>(MOVEMENTRULECOUNT) - 1); }
+
+		/// Gets the pace this walks no faster than (m/s), or 0 for none: set to keep a group together at its slowest member's pace (RC-5).
+		float GetPaceLimit() const { return m_PaceLimit; }
+
+		/// Sets the pace this walks no faster than (m/s); 0 or less for none. Not saved: whoever sets it clears it when the march is over.
+		void SetPaceLimit(float pace) { m_PaceLimit = std::max(pace, 0.0F); }
 
 		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
 		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
@@ -628,6 +669,36 @@ namespace RTE {
 		/// How bright this unit's own headlamp is next to others': 1 is the usual, 0 means it has none (a drone with no lamp, a creature).
 		float GetHeadlampBrightness() const { return m_HeadlampBrightness; }
 		void SetHeadlampBrightness(float brightness) { m_HeadlampBrightness = std::max(brightness, 0.0F); }
+
+		/// Has this unit say one of a trigger's lines over its head (unit speech, see UnitSpeech::Say), on the settings' chance.
+		/// @param trigger The trigger, as Speech.ini names it ("TakeCover").
+		/// @return Whether a line was said.
+		bool Say(const std::string& trigger) { return UnitSpeech::Say(*this, trigger); }
+
+		/// Has this unit answer an order the player just gave it, as Say (see UnitSpeech::SayOrder). For the commands that give orders.
+		/// @param trigger The trigger, as Speech.ini names it ("OrderMove").
+		/// @return Whether a line was said.
+		bool SayOrder(const std::string& trigger) { return UnitSpeech::SayOrder(*this, trigger); }
+
+		/// Has this unit say the given words over its head, whatever the chance (unit speech must be on). For scripts.
+		/// @param text What it says.
+		/// @param durationMS How long it shows; 0 for as long as a line that long usually does.
+		void SayText(const std::string& text, int durationMS) { UnitSpeech::SayText(*this, text, durationMS); }
+
+		/// Gets what this unit is saying and said lately.
+		UnitSpeech::State& GetSpeech() { return m_Speech; }
+
+		/// Gets the set of lines this unit speaks from (Speech.ini's "Set = Name"), empty for the default set.
+		const std::string& GetSpeechSet() const { return m_SpeechSet; }
+
+		/// Sets the set of lines this unit speaks from; empty for the default set.
+		void SetSpeechSet(const std::string& setName) { m_SpeechSet = setName; }
+
+		/// Draws what this unit is saying, if anything, above its HUD. Called after every actor's DrawHUD on the same screen.
+		/// @param targetBitmap The 8-bit HUD bitmap to draw to.
+		/// @param targetPos The scene position of the bitmap's upper left corner.
+		/// @param whichScreen Which player's screen this is drawn to.
+		void DrawSpeech(BITMAP* targetBitmap, const Vector& targetPos, int whichScreen);
 
 		/// Gives this unit's headlamp a color of its own, 0-255, in place of the player's setting.
 		void SetHeadlampColor(int red, int green, int blue) {
@@ -957,6 +1028,15 @@ namespace RTE {
 		/// How much of a target this actor's body makes, for the sight of others (see ScanForEnemies): 1 standing.
 		virtual float GetSightProfile() const { return 1.0F; }
 
+		/// How loud this actor's moving is, for the hearing of others (see HearFootsteps), as an alarm event's range: nothing standing still,
+		/// a little crawling, more walking and more again running, quieter bent double and louder on metal.
+		virtual float GetFootstepNoise() const;
+
+		/// Listens for enemy footsteps (AC-11), when the "Night, light and noise affect AI" setting is on: the loudest enemy whose moving
+		/// (GetFootstepNoise) carries this far, by this actor's perceptiveness. Walls are the script's to judge.
+		/// @return Where it was heard, or a zero vector for nothing.
+		Vector HearFootsteps() const;
+
 		/// Description:		Sets actor's sight distance.
 		/// @param newValue New sight distance value.
 		void SetSightDistance(float newValue) { m_SightDistance = newValue; }
@@ -1236,6 +1316,8 @@ namespace RTE {
 		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
 		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
 		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.
+		std::string m_SpeechSet; //!< The set of lines this unit speaks from, empty for the default (see GetSpeechSet).
+		UnitSpeech::State m_Speech; //!< What this unit is saying and said lately (see UnitSpeech).
 		/// Damage value above which this will play PainSound
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking
@@ -1306,6 +1388,8 @@ namespace RTE {
 		AIMode m_AIMode;
 		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
 		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
+		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
+		float m_PaceLimit; //!< The walking pace this keeps to, m/s, or 0 for its own (see GetPaceLimit).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;

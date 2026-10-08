@@ -1,11 +1,15 @@
 #include "ActorWater.h"
 #include "ACraft.h"
+#include "ACrab.h"
+#include "AEJetpack.h"
+#include "AHuman.h"
 #include "ADoor.h"
 #include "Actor.h"
 #include "FluidSim.h"
 #include "Material.h"
 #include "MovableMan.h"
 #include "SceneMan.h"
+#include "SLTerrain.h"
 #include "TimerMan.h"
 #include "PostProcessMan.h"
 #include "WeatherEffects.h"
@@ -40,6 +44,17 @@ namespace {
 	bool s_TablesBuilt = false;
 
 	int MaterialAt(const Vector& position) { return g_SceneMan.GetTerrMatter(position.GetFloorIntX(), position.GetFloorIntY()); }
+
+	/// Whether a unit's jetpack is firing.
+	bool Jetting(const Actor* actor) {
+		const AEJetpack* jetpack = nullptr;
+		if (const AHuman* human = dynamic_cast<const AHuman*>(actor)) {
+			jetpack = human->GetJetpack();
+		} else if (const ACrab* crab = dynamic_cast<const ACrab*>(actor)) {
+			jetpack = crab->GetJetpack();
+		}
+		return jetpack && jetpack->IsAttached() && jetpack->IsEmitting();
+	}
 
 	bool InLiquid(const Vector& position) { return s_HoldsBodies[static_cast<unsigned char>(MaterialAt(position))]; }
 
@@ -213,7 +228,15 @@ void ActorWater::Update() {
 		}
 		if (depth > GetDepth(actor) && actor->GetVel().GetMagnitude() > 4.0F) {
 			// Dropping or running in throws up a splash: going in, or deeper in (one already wading that jumps in from a ledge above splashes too).
-			FluidSim::Splash(feet, actor->GetRadius() * 0.6F + 3.0F, 0.3F, std::min(actor->GetVel().GetMagnitude() * 0.55F, 10.0F));
+			// For the eye only, from the surface over its feet (it threw real water before, which came down on the unit; a body doesn't displace
+			// liquid). Units are splashed here, by depth, not by MOSRotating's look at their middle, so a unit landing in the shallows splashes too.
+			int x = feet.GetFloorIntX();
+			int surfaceY = feet.GetFloorIntY();
+			for (int up = 1; up <= static_cast<int>(actor->GetRadius()) * 2 + 12 && InLiquid(Vector(static_cast<float>(x), static_cast<float>(surfaceY - 1))); ++up) {
+				--surfaceY;
+			}
+			const SLTerrain* terrain = g_SceneMan.GetTerrain();
+			FluidSim::VisualSplash(Vector(static_cast<float>(x), static_cast<float>(surfaceY)), actor->GetRadius() * 1.2F, actor->GetVel().GetMagnitude(), terrain ? terrain->GetFGColorPixel(x, surfaceY) : 0);
 		}
 		actor->SetNumberValue(c_DepthTag, static_cast<double>(depth));
 
@@ -221,7 +244,15 @@ void ActorWater::Update() {
 			// The liquid drags, and pushes up: light units bob to the top, heavy ones sink slowly.
 			// (A sticky liquid drags harder, and a heavy one pushes harder: a soldier floats high on mercury.)
 			Vector velocity = actor->GetVel();
-			velocity *= std::max(1.0F - (2.2F + 8.0F * stickiness) * deltaTime, 0.0F);
+			float drag = std::max(1.0F - (2.2F + 8.0F * stickiness) * deltaTime, 0.0F);
+			// At the surface (the head out) with the jet lit, the liquid doesn't hold the body back from rising: it flies out on its jet as off the
+			// ground. Sideways, and any sinking, are dragged as ever. (Dragged like the rest, the jet only lifted it at about a swimming pace, and a
+			// unit in open water had no way out but to swim for a bank and climb it.)
+			bool jettingOut = alive && depth == 2 && velocity.m_Y < 0.0F && Jetting(actor);
+			velocity.m_X *= drag;
+			if (!jettingOut) {
+				velocity.m_Y *= drag;
+			}
 			float buoyancy = GetBuoyancy(actor) * s_Heaviness[static_cast<unsigned char>(MaterialAt(position))];
 			velocity.m_Y -= gravity * buoyancy * deltaTime * (depth == 3 ? 1.0F : 0.6F);
 			// Swimming (LM-4): with a move key, a stroke that way, up to the swimming speed; up (or jump) strokes up, down dives. A floater with

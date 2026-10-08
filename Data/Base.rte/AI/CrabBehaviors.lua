@@ -1,5 +1,6 @@
 
 CrabBehaviors = {};
+require("AI/HumanBehaviors"); -- (For the ballistic aim, HumanBehaviors.GetAngleToHit, AC-9.)
 
 function CrabBehaviors.LookForTargets(AI, Owner)
 	local viewAngDeg = RangeRand(35, 85) * Owner.Perceptiveness;
@@ -25,6 +26,7 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 
 	if FoundMO then
 		if AI.Behavior ~= nil and AI.Target and MovableMan:ValidMO(AI.Target) and FoundMO.ID == AI.Target.ID then	-- found the same target
+			SharedBehaviors.ReportEnemy(Owner, AI.Target);
 			AI.TargetOffset = SceneMan:ShortestDistance(AI.Target.Pos, HitPoint, false);
 			AI.TargetLostTimer:Reset();
 			AI.ReloadTimer:Reset();
@@ -46,6 +48,8 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 			end
 
 			if FoundMO then
+				-- The team hears of it (AC-2).
+				SharedBehaviors.ReportEnemy(Owner, FoundMO);
 				if AI.Target then
 					-- check if this MO should be targeted instead
 					if SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(AI.Target, Owner) + 0.2 then
@@ -128,6 +132,11 @@ function CrabBehaviors.Sentry(AI, Owner, Abort)
 		end
 	end
 
+	-- (Posted facing a way, RC-4, or sent somewhere facing a way, RC-5: that is the way to watch. After the look for the likely way an
+	-- enemy comes, which would otherwise turn it to face that.)
+	if Owner.OrderPostFacing ~= 0 then
+		AI.SentryFacing = Owner.OrderPostFacing < 0;
+	end
 	while true do	-- start by looking forward
 		aim = Owner:GetAimAngle(false);
 
@@ -283,6 +292,11 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 	local AimPoint = Vector(AI.Target.Pos.X, AI.Target.Pos.Y);
 	local f1, f2 = 0.5, 0.5; -- aim noise filter
 	local openFire = 0;
+	-- The weapon's reach and drop (AC-9), as the humans have them: aimed over the drop, and not fired at a target out of reach. A crab
+	-- that can't reach or can't see its target for a second and a half works round to somewhere it can (a turret can't move).
+	local PrjDat;
+	local BlockedTimer;
+	local OutOfReachTimer; -- (A turret's: how long its target has been out of its reach.)
 
 	-- spin up asap
 	if Owner.FirearmActivationDelay > 0 then
@@ -293,8 +307,13 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 		if Owner.FirearmIsReady then
 			AI.deviceState = ACrab.AIMING;
 			local Dist = SceneMan:ShortestDistance(Owner.EyePos, AimPoint, false);
+			local Weapon = ToHDFirearm(Owner.EquippedItem);
+			local magName = Weapon.Magazine and Weapon.Magazine.PresetName or "";
+			if not PrjDat or PrjDat.MagazineName ~= magName then
+				PrjDat = SharedBehaviors.GetProjectileData(Owner);
+			end
 			-- Lead a moving target as the humans do, by the smoothed velocity (kept, but never used before).
-			local fireVel = ToHDFirearm(Owner.EquippedItem):GetAIFireVel();
+			local fireVel = Weapon:GetAIFireVel();
 			if fireVel > 0 then
 				local timeToTarget = Dist.Magnitude / fireVel;
 				if timeToTarget * TargetAvgVel.Magnitude > 2 then
@@ -310,9 +329,25 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 				Owner.HFlipped = true;
 			end
 
+			-- Over the drop where the weapon has one; nil when the target is out of reach (too far, or no arc gets there).
+			local ballistic = Dist:MagnitudeIsLessThan(PrjDat.rng) and HumanBehaviors.GetAngleToHit(PrjDat, Dist) or nil;
+			if not ballistic and not AI.isTurret and BlockedTimer == nil then
+				BlockedTimer = Timer();
+			end
+			-- A turret can't go after a target out of its reach: after three seconds it lets it go, to take a nearer one.
+			if AI.isTurret and not ballistic then
+				OutOfReachTimer = OutOfReachTimer or Timer();
+				if OutOfReachTimer:IsPastSimMS(3000) then
+					AI.fire = false;
+					break;
+				end
+			else
+				OutOfReachTimer = nil;
+			end
+
 			-- add some filtered noise to the aim
 			local aim = Owner:GetAimAngle(true);
-			local aimTarget = Dist.AbsRadAngle + aimError;
+			local aimTarget = (ballistic or Dist.AbsRadAngle) + aimError;
 			local noise = RangeRand(-40, 40) * AI.aimSpeed;
 			f1, f2 = 0.9*f1+noise*0.1, 0.7*f2+noise*0.3;
 			noise = f1 + f2 + noise * 0.1;
@@ -331,7 +366,9 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 			end
 			AI.Ctrl.AnalogAim = Vector(1,0):RadRotate(aim-angChange);
 
-			if ShootTimer:IsPastSimMS(aimTime) then
+			if not ballistic then
+				openFire = 0; -- (Out of reach: not a round wasted on it.)
+			elseif ShootTimer:IsPastSimMS(aimTime) then
 				aimError = aimError * RangeRand(0.96, 0.99);
 
 				-- open fire if our aim overlap the target
@@ -372,7 +409,19 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 					local ID = SceneMan:CastMORay(Owner.EyePos, Dist, Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, false, 9);
 					if ID ~= rte.NoMOID and (ID == AI.Target.ID or (MovableMan:GetMOFromID(ID)).RootID == AI.Target.ID) then
 						AI.TargetLostTimer:Reset(); -- we can see the target
+						if PrjDat and Dist:MagnitudeIsLessThan(PrjDat.rng) then
+							BlockedTimer = nil;
+						end
+					elseif not AI.isTurret and BlockedTimer == nil then
+						BlockedTimer = Timer();
 					end
+				end
+			end
+			-- Out of reach or out of sight for a second and a half: somewhere else to shoot it from (AC-9).
+			if BlockedTimer and BlockedTimer:IsPastSimMS(1500) then
+				BlockedTimer = nil;
+				if SharedBehaviors.StartFlank(AI, Owner, AI.Target.Pos, PrjDat and PrjDat.rng < 2000 and PrjDat.rng or 500) then
+					break;
 				end
 			end
 		end
@@ -461,7 +510,7 @@ function CrabBehaviors.ShootArea(AI, Owner, Abort)
 
 		-- check if we can fire at the AimPoint
 		local Trace = SceneMan:ShortestDistance(Owner.EyePos, AimPoint, false);
-		local rayLength = SceneMan:CastObstacleRay(Owner.EyePos, Trace, Vector(), Vector(), rte.NoMOID, Owner.IgnoresWhichTeam, rte.grassID, 11);
+		local rayLength = SceneMan:CastObstacleRay(Owner.EyePos, Trace, Vector(), Vector(), rte.NoMOID, Owner.IgnoresWhichTeam, rte.grassID, 11, true); -- (sees through water as far as units do)
 		if Trace:MagnitudeIsLessThan(rayLength * 1.5)  then
 			break; -- the AimPoint is close enough to the target, start shooting
 		end

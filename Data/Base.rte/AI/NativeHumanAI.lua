@@ -1,6 +1,7 @@
 require("Constants")
 require("AI/HumanBehaviors");
 require("AI/SharedBehaviors");
+require("AI/UnitSpeech");
 
 NativeHumanAI = {};
 
@@ -25,6 +26,7 @@ function NativeHumanAI:Create(Owner)
 
 	Members.squadShoot = false;
 	Members.useMedikit = false;
+	Members.medicHeal = false;
 
 	-- timers
 	Members.AirTimer = Timer();
@@ -140,8 +142,19 @@ function NativeHumanAI:Update(Owner)
 			self.Cover = nil;
 			self.Flank = nil;
 			self.Retreat = nil;
+			self.Investigate = nil;
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
+			Owner:RemoveNumberValue("AIInvestigate");
+			Owner:RemoveNumberValue("AITargetID");
+			self.overwatch = false;
+			-- (And a medic's errand, AC-7: the friend it was going to is free for another medic.)
+			if self.Medic and MovableMan:ValidMO(self.Medic.Patient) and self.Medic.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
+				self.Medic.Patient:RemoveNumberValue("AIMedicBy");
+			end
+			self.Medic = nil;
+			self.medicHeal = false;
+			Owner:RemoveNumberValue("AIMedic");
 
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;
@@ -311,6 +324,7 @@ function NativeHumanAI:Update(Owner)
 	if FoundMO then
 		--TODO: decide whether to attack based on the material strength of found MO
 		if self.Behavior ~= nil and self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then	-- found the same target
+			SharedBehaviors.ReportEnemy(Owner, self.Target);
 			self.OldTargetPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 			self.TargetOffset = SceneMan:ShortestDistance(self.Target.Pos, HitPoint, false);
 			self.TargetLostTimer:Reset();
@@ -333,6 +347,8 @@ function NativeHumanAI:Update(Owner)
 			end
 
 			if FoundMO and FoundMO.Status < Actor.INACTIVE then
+				-- The team hears of it (AC-2).
+				SharedBehaviors.ReportEnemy(Owner, FoundMO);
 				if self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then
 					-- The same target, with no fight under way: a new order (a sandbox re-send hops SENTRY to GOTO) aborted the attack, and in
 					-- GOTO nothing made a new one while the target lived, so the unit held its fire for up to 5 s, until it lost sight of it.
@@ -662,7 +678,8 @@ function NativeHumanAI:Update(Owner)
 
 	-- The fighting rules that outlast any one behaviour: hits taken (for the cover rules), coming out of cover, a flank seen through, and
 	-- falling back when badly hurt. An enemy that can't be seen any more but was shooting at us from somewhere known is flanked too.
-	if self.LastHealth and Owner.Health < self.LastHealth then
+	local hit = self.LastHealth and Owner.Health < self.LastHealth;
+	if hit then
 		self.HitTimer = self.HitTimer or Timer();
 		self.HitTimer:Reset();
 	end
@@ -671,11 +688,22 @@ function NativeHumanAI:Update(Owner)
 		self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 	end
 	HumanBehaviors.LeaveCover(self, Owner);
+	HumanBehaviors.PeekUpdate(self, Owner);
+	HumanBehaviors.LobUpdate(self, Owner);
+	HumanBehaviors.SmokeUpdate(self, Owner);
+	SharedBehaviors.SquadTactics(self, Owner);
 	SharedBehaviors.FlankUpdate(self, Owner);
-	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
+	HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
+	HumanBehaviors.UseTheWorld(self, Owner);
+	-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
+	local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
+	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
 		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 	end
 	SharedBehaviors.RetreatUpdate(self, Owner);
+	SharedBehaviors.RememberUpdate(self, Owner);
+	HumanBehaviors.MedicUpdate(self, Owner);
+	HumanBehaviors.ReloadInLull(self, Owner);
 
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then
@@ -692,11 +720,12 @@ function NativeHumanAI:Update(Owner)
 		self.BlockedTimer:Reset();
 	end
 
-	-- controller states
+	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used)
+	local mayFire = SharedBehaviors.MayFire(self, Owner);
 	if self.squadShoot then
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (self.fire or self.squadShoot));
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, mayFire and (self.fire or self.squadShoot));
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (self.fire or self.useMedikit));
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse);
 	end
 
 	if self.deviceState == AHuman.AIMING then
@@ -771,7 +800,8 @@ function NativeHumanAI:Update(Owner)
 
 	-- (While the engine's route-follower drives, a behaviour's step (a crawl in, a step to cover) only when the follower pressed no side
 	-- key itself this tick: with both keys at once, the unit stood or went the wrong way.)
-	local engineSide = self.engineMover and (self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT));
+	-- (Nor while it presses up or down: at a ladder, a side key from a behaviour on the same tick refused the grab or let go of the rungs.)
+	local engineSide = self.engineMover and (self.Ctrl:IsState(Controller.MOVE_LEFT) or self.Ctrl:IsState(Controller.MOVE_RIGHT) or self.Ctrl:IsState(Controller.MOVE_UP) or self.Ctrl:IsState(Controller.MOVE_DOWN));
 	if engineSide then
 		-- (The follower's key stands.)
 	elseif self.lateralMoveState == Actor.LAT_LEFT then
@@ -780,6 +810,8 @@ function NativeHumanAI:Update(Owner)
 		self.Ctrl:SetState(Controller.MOVE_RIGHT, true);
 	end
 
+	-- What this update changed, said over the unit's head where it's worth a line (unit speech).
+	UnitSpeech.Update(self, Owner, ordered);
 	self.orderSerial = Owner.AIOrderSerial;
 end
 

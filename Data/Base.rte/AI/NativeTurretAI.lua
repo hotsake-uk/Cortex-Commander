@@ -13,6 +13,7 @@ function NativeTurretAI:Create(Owner)
 	Members.lastAIMode = Actor.AIMODE_NONE;
 	Members.SentryFacing = Owner.HFlipped;
 	Members.fire = false;
+	Members.isTurret = true; -- (It can't move: the shared crab shooting doesn't send it round a flank, AC-9.)
 
 	Members.ReloadTimer = Timer();
 	Members.TargetLostTimer = Timer();
@@ -173,8 +174,8 @@ function NativeTurretAI:Update(Owner)
 		end
 	end
 
-	-- controller states
-	if self.fire then
+	-- controller states (the trigger only as the weapons rule allows, RC-1)
+	if SharedBehaviors.MayFire(self, Owner) and self.fire then
 		self.Ctrl:SetState(Controller.WEAPON_FIRE, true);
 	end
 

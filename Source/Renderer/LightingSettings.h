@@ -269,6 +269,12 @@ namespace RTE {
 		float WaterMistOpacity = 0.42F; //!< How solid each puff is at its start.
 		float WaterMistSpread = 1.0F; //!< How much each puff swells as it thins.
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
+		float WaterThinFlow = 1.0F; //!< How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. 0 for not at all, up to 2. Visual only.
+		float SplashFroth = 1.0F; //!< How much froth a splash leaves on the surface, and the surface throws up where the level rises from something falling in. 0 for none, up to 3. Visual only.
+		float SplashFrothSize = 1.0F; //!< How big each bubble of that froth is: 1 is about 4 to 9 pixels across.
+		float SplashFrothLife = 1.0F; //!< How long it lasts: 1 is about one and a half to three and a half seconds.
+		float SplashFrothOpacity = 0.6F; //!< How solid it is at first.
+		bool PuffVariety = true; //!< Each puff of spray, froth mist, dust and smoke is turned and mirrored its own way, so they don't all show the same shape. Off: all the same way up, as before.
 		float WaterSplash = 1.5F; //!< How big the splash is when something heavy falls into a liquid (falling ground, a broken-off piece): drops and spray, 1 the plain size, up to 4. 0 for none. Visual only: the liquid a body pushes aside goes into the level.
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
 		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.
@@ -353,7 +359,7 @@ namespace RTE {
 		float WetDrySeconds = 120.0F; //!< Game seconds for wet earth to dry once the rain stops, 10 to 600; rock takes up to three times as long.
 		float Puddles = 1.0F; //!< How much water standing in dips is drawn as reflecting puddles, 0 (none) to 1.
 		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
-		bool NightAffectsAI = false; //!< At night, AI sees less far unless it has a headlamp on. Changes gameplay; off by default so the AI isn't handicapped.
+		bool NightAffectsAI = false; //!< Stealth (AC-11): at night the AI sees less far and less in the dark, under a roof or away from lights, a lit headlamp gives its wearer away, and footsteps are heard (Actor::HearFootsteps). Changes gameplay; off by default so the AI is not handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
 

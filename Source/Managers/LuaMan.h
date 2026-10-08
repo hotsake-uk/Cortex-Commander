@@ -8,7 +8,9 @@
 #include "BS_thread_pool.hpp"
 
 #include <array>
+#include <algorithm>
 #include <atomic>
+#include <unordered_map>
 
 #define g_LuaMan LuaMan::Instance()
 
@@ -22,6 +24,9 @@ namespace RTE {
 	/// A single lua state. Multiple of these can exist at once for multithreaded scripting.
 	class LuaStateWrapper {
 	public:
+		/// How many script files have been compiled so far, by every state (for the start-up timing report).
+		static int GetScriptFilesCompiled() { return s_ScriptFilesCompiled.load(std::memory_order_relaxed); }
+
 #pragma region Creation
 		/// Constructor method used to instantiate a LuaStateWrapper object in system memory. Initialize() should be called before using the object.
 		LuaStateWrapper();
@@ -75,18 +80,30 @@ namespace RTE {
 #pragma region Script Responsibility Handling
 		/// Registers an MO as using us.
 		/// @param moToRegister The MO to register with us. Ownership is NOT transferred!
-		void RegisterMO(MovableObject* moToRegister) { m_AddedRegisteredMOs.insert(moToRegister); }
+		void RegisterMO(MovableObject* moToRegister) {
+			if (moToRegister && !m_RegisteredMOIndex.contains(moToRegister) && m_AddedRegisteredMOSet.insert(moToRegister).second) {
+				m_AddedRegisteredMOs.push_back(moToRegister);
+			}
+		}
 
 		/// Unregisters an MO as using us.
 		/// @param moToUnregister The MO to unregister as using us. Ownership is NOT transferred!
 		void UnregisterMO(MovableObject* moToUnregister) {
-			m_RegisteredMOs.erase(moToUnregister);
-			m_AddedRegisteredMOs.erase(moToUnregister);
+			if (auto found = m_RegisteredMOIndex.find(moToUnregister); found != m_RegisteredMOIndex.end()) {
+				// Left as a gap, closed up in Update, so a list being walked doesn't move under the walker.
+				m_RegisteredMOs[found->second] = nullptr;
+				m_RegisteredMOIndex.erase(found);
+				++m_RegisteredMOGaps;
+			}
+			if (m_AddedRegisteredMOSet.erase(moToUnregister) != 0) {
+				m_AddedRegisteredMOs.erase(std::remove(m_AddedRegisteredMOs.begin(), m_AddedRegisteredMOs.end(), moToUnregister), m_AddedRegisteredMOs.end());
+			}
 		}
 
-		/// Gets a list of the MOs registed as using us.
+		/// Gets a list of the MOs registed as using us, in the order they were registered. Unregistered ones leave a nullptr until the next Update.
+		/// (In registration order so scripts run in the same order every run: a set of pointers ran them in address order, which differs run to run.)
 		/// @return The MOs registed as using us.
-		const std::unordered_set<MovableObject*>& GetRegisteredMOs() const { return m_RegisteredMOs; }
+		const std::vector<MovableObject*>& GetRegisteredMOs() const { return m_RegisteredMOs; }
 #pragma endregion
 
 #pragma region Script Execution Handling
@@ -206,6 +223,7 @@ namespace RTE {
 #pragma endregion
 
 	private:
+		static inline std::atomic<int> s_ScriptFilesCompiled{0}; //!< Script files compiled by every state (see GetScriptFilesCompiled).
 		/// Gets a random integer between minInclusive and maxInclusive.
 		/// @return A random integer between minInclusive and maxInclusive.
 		int SelectRand(int minInclusive, int maxInclusive);
@@ -249,8 +267,11 @@ namespace RTE {
 		/// Clears all the member variables of this LuaStateWrapper, effectively resetting the members of this abstraction level only.
 		void Clear();
 
-		std::unordered_set<MovableObject*> m_RegisteredMOs; //!< The objects using our lua state.
-		std::unordered_set<MovableObject*> m_AddedRegisteredMOs; //!< The objects using our lua state that were recently added.
+		std::vector<MovableObject*> m_RegisteredMOs; //!< The objects using our lua state, in registration order; nullptr where one was unregistered since the last Update.
+		std::unordered_map<MovableObject*, size_t> m_RegisteredMOIndex; //!< Where each object is in m_RegisteredMOs.
+		size_t m_RegisteredMOGaps = 0; //!< How many nullptrs m_RegisteredMOs has.
+		std::vector<MovableObject*> m_AddedRegisteredMOs; //!< The objects using our lua state that were recently added, in order.
+		std::unordered_set<MovableObject*> m_AddedRegisteredMOSet; //!< The same, to find one in (a scene load registers hundreds at once).
 
 		lua_State* m_State;
 		Entity* m_TempEntity; //!< Temporary holder for an Entity object that we want to pass into the Lua state without fuss. Lets you export objects to lua easily.

@@ -9,6 +9,7 @@
 #include "ConsoleMan.h"
 
 #include <chrono>
+#include <numeric>
 #include <unordered_set>
 #include "SettingsMan.h"
 #include "ThreadMan.h"
@@ -2404,19 +2405,25 @@ int Scene::SetOwnerOfAllDoors(int team, int player) {
 }
 
 void Scene::ResetPathFinding() {
-	GetPathFinder(Activity::Teams::NoTeam).RecalculateAllCosts();
+	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
+	noTeamPathFinder.RecalculateAllCosts();
+	std::vector<int> allNodes(noTeamPathFinder.GetNodeCount());
+	std::iota(allNodes.begin(), allNodes.end(), 0);
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
 		m_TeamGridSkippedNodes[team].clear();
-		g_MovableMan.OverrideMaterialDoors(true, team);
-		GetPathFinder(static_cast<Activity::Teams>(team)).RecalculateAllCosts();
-		g_MovableMan.OverrideMaterialDoors(false, team);
+		GetPathFinder(static_cast<Activity::Teams>(team)).WaitForPathingRequests();
+		UpdateTeamGridNodes(team, allNodes);
 	}
 }
 
-void Scene::BlockUntilAllPathingRequestsComplete() {
+bool Scene::BlockUntilAllPathingRequestsComplete() {
+	bool allComplete = true;
 	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
-		GetPathFinder(static_cast<Activity::Teams>(team)).WaitForPathingRequests();
+		if (!GetPathFinder(static_cast<Activity::Teams>(team)).WaitForPathingRequests()) {
+			allComplete = false;
+		}
 	}
+	return allComplete;
 }
 
 void Scene::UpdatePathFinding() {
@@ -2455,7 +2462,12 @@ void Scene::UpdatePathFinding() {
 		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty() && noTeamPathFinder.GetWaitingNodeCount() == 0 && !teamGridBehind()) || !starvedTimer.IsPastRealMS(300)) {
 			return;
 		}
-		BlockUntilAllPathingRequestsComplete();
+		if (!BlockUntilAllPathingRequestsComplete()) {
+			// A search still running after the wait's timeout would read node costs written under it, so the grid is left as it is this time
+			// and the changes wait for a later call (they stay queued); the timer makes that call wait its turn again.
+			starvedTimer.Reset();
+			return;
+		}
 	}
 	starvedTimer.Reset();
 
@@ -2464,6 +2476,10 @@ void Scene::UpdatePathFinding() {
 		// A big backlog (a collapse, a flood, a demolition) catches up four times as fast, but over several calls: sampling all of it at once, as
 		// past 1,000 boxes it used to, stalled the frame for as long as it took. The boxes themselves are all taken in every call.
 		nodesToUpdate *= 4;
+	} else if (noTeamPathFinder.GetWaitingNodeCount() <= static_cast<size_t>(nodesToUpdate) * 2) {
+		// A small backlog (a wall shot out, a door's box) is taken whole: left for the next call behind a flood's or a fire's steady trickle,
+		// a change by a route waited seconds to be seen, and units walked at ground the grid thought open, re-routing on contact.
+		nodesToUpdate = std::max(nodesToUpdate, static_cast<int>(noTeamPathFinder.GetWaitingNodeCount()));
 	}
 
 	// (For the terrain update boxes overlay: the areas waiting, before this call takes some of them.)
@@ -2522,13 +2538,7 @@ void Scene::UpdatePathFinding() {
 				continue;
 			}
 
-			// Remove the material representation of all doors of this team so we can navigate through them (they'll open for us).
-			g_MovableMan.OverrideMaterialDoors(true, team);
-
-			GetPathFinder(static_cast<Activity::Teams>(team)).UpdateNodeList(teamNodes);
-
-			// Place back the material representation of all doors of this team so they are as we found them.
-			g_MovableMan.OverrideMaterialDoors(false, team);
+			UpdateTeamGridNodes(team, teamNodes);
 		}
 	}
 
@@ -2556,6 +2566,50 @@ void Scene::UpdatePathFinding() {
 
 	m_PartialPathUpdateTimer.Reset();
 	m_PathfindingUpdated = true;
+}
+
+void Scene::UpdateTeamGridNodes(int team, const std::vector<int>& nodeIds) {
+	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
+	PathFinder& teamPathFinder = GetPathFinder(static_cast<Activity::Teams>(team));
+
+	// A team's grid differs from the NoTeam grid only where its doors (and no one's) are opened for it, and the NoTeam grid has just sampled the
+	// same nodes from the same terrain; so the nodes whose measures reach no such door take the NoTeam samples, and only the ones around the
+	// doors are sampled again with the doors opened. (Every node was sampled once per grid: five times where two teams play, at a reset of a
+	// big scene seconds of the load.)
+	std::vector<Box> doorBoxes;
+	g_MovableMan.GetMaterialDoorBoxes(team, doorBoxes);
+	std::vector<int> doorNodes;
+	std::vector<int> otherNodes;
+	if (teamPathFinder.GetNodeCount() != noTeamPathFinder.GetNodeCount()) {
+		// (Grids of different sizes can't share samples: every node is sampled, as before.)
+		doorNodes = nodeIds;
+	} else if (doorBoxes.empty()) {
+		otherNodes = nodeIds;
+	} else {
+		std::vector<bool> nearDoor(teamPathFinder.GetNodeCount(), false);
+		for (const Box& box: doorBoxes) {
+			for (int nodeId: teamPathFinder.GetNodeIdsInBox(box, true)) {
+				nearDoor[nodeId] = true;
+			}
+		}
+		for (int nodeId: nodeIds) {
+			(nearDoor[nodeId] ? doorNodes : otherNodes).push_back(nodeId);
+		}
+	}
+	if (!teamPathFinder.CopyNodeSamples(noTeamPathFinder, otherNodes)) {
+		doorNodes = nodeIds;
+	}
+	if (doorNodes.empty()) {
+		return;
+	}
+
+	// Remove the material representation of all doors of this team so we can navigate through them (they'll open for us).
+	g_MovableMan.OverrideMaterialDoors(true, team);
+
+	teamPathFinder.UpdateNodeList(doorNodes);
+
+	// Place back the material representation of all doors of this team so they are as we found them.
+	g_MovableMan.OverrideMaterialDoors(false, team);
 }
 
 float Scene::CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, float jumpHeight, float digStrength, Activity::Teams team, float breachStrength) {
@@ -2656,18 +2710,30 @@ void Scene::Update() {
 	if (m_NavigableAreasUpToDate == false) {
 		// Need to block until all current pathfinding requests are finished. Ugh, if only we had a better way (interrupt/cancel a path request to start a new one?)
 		// TODO: Make the PathRequest struct more capable and maybe we can delay starting or cancel mid-request?
-		BlockUntilAllPathingRequestsComplete();
+		// (Not under a search still running after the wait's timeout: the areas are marked on a later update instead, a second on, so a search
+		// that never ends costs a wait a second rather than one every update.)
+		static Timer navigableRetryTimer;
+		static bool navigableWaitTimedOut = false;
+		bool marked = false;
+		if (!navigableWaitTimedOut || navigableRetryTimer.IsPastRealMS(1000)) {
+			navigableWaitTimedOut = !BlockUntilAllPathingRequestsComplete();
+			if (navigableWaitTimedOut) {
+				navigableRetryTimer.Reset();
+			}
+			marked = !navigableWaitTimedOut;
+		}
+		if (marked) {
+			m_NavigableAreasUpToDate = true;
+			for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
+				PathFinder& pathFinder = GetPathFinder(static_cast<Activity::Teams>(team));
 
-		m_NavigableAreasUpToDate = true;
-		for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
-			PathFinder& pathFinder = GetPathFinder(static_cast<Activity::Teams>(team));
+				pathFinder.MarkAllNodesNavigable(m_NavigableAreas.empty());
 
-			pathFinder.MarkAllNodesNavigable(m_NavigableAreas.empty());
-
-			for (const std::string& navigableArea: m_NavigableAreas) {
-				if (HasArea(navigableArea)) {
-					for (const Box* navigableBox: GetArea(navigableArea)->GetBoxes()) {
-						pathFinder.MarkBoxNavigable(*navigableBox, true);
+				for (const std::string& navigableArea: m_NavigableAreas) {
+					if (HasArea(navigableArea)) {
+						for (const Box* navigableBox: GetArea(navigableArea)->GetBoxes()) {
+							pathFinder.MarkBoxNavigable(*navigableBox, true);
+						}
 					}
 				}
 			}

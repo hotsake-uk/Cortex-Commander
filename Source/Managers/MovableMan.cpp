@@ -52,6 +52,7 @@ MovableMan::~MovableMan() {
 
 void MovableMan::Clear() {
 	m_Actors.clear();
+	m_Doors.clear();
 	m_ContiguousActorIDs.clear();
 	m_Items.clear();
 	m_Particles.clear();
@@ -72,6 +73,9 @@ void MovableMan::Clear() {
 	m_AddedAlarmEvents.clear();
 	m_AlarmEvents.clear();
 	m_MOIDIndex.clear();
+	m_MOIDIndexNext.clear();
+	m_MOIDIndexNextReady = false;
+	m_MOIDsForgottenWhileBuilding.clear();
 	m_SplashRatio = 0.75;
 	m_MaxDroppedItems = 100;
 	m_SettlingEnabled = true;
@@ -230,6 +234,7 @@ void MovableMan::PurgeAllMOs() {
 	}
 
 	m_Actors.clear();
+	m_Doors.clear();
 	m_Items.clear();
 	m_Particles.clear();
 	m_AddedActors.clear();
@@ -249,6 +254,9 @@ void MovableMan::PurgeAllMOs() {
 	m_AddedAlarmEvents.clear();
 	m_AlarmEvents.clear();
 	m_MOIDIndex.clear();
+	m_MOIDIndexNext.clear();
+	m_MOIDIndexNextReady = false;
+	m_MOIDsForgottenWhileBuilding.clear();
 	// We want to keep known objects around, 'cause these can exist even when not in the simulation (they're here from creation till deletion, regardless of whether they are in sim)
 	// m_KnownObjects.clear();
 }
@@ -820,6 +828,10 @@ Actor* MovableMan::RemoveActor(MovableObject* pActorToRem) {
 				removed = *itr;
 				m_ValidActors.erase(*itr);
 				m_Actors.erase(itr);
+				// A door handed to a script here may be freed before the next update rebuilds the list.
+				if (ADoor* door = dynamic_cast<ADoor*>(removed)) {
+					m_Doors.erase(std::remove(m_Doors.begin(), m_Doors.end(), door), m_Doors.end());
+				}
 				break;
 			}
 		}
@@ -914,11 +926,15 @@ void MovableMan::ForgetMOIDsOf(MovableObject* object) {
 	// An object taken out of the scene keeps no ID: its slots in the table are emptied now, and it and its attachables are given no ID, so that
 	// when it is destroyed later (by whoever took it, often Lua's garbage collector on a worker thread) ForgetMOID has nothing to write while
 	// the table is being rebuilt on another worker. Until the next rebuild a lookup by its old ID finds nothing, as for a deleted object.
+	std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
 	for (MovableObject*& entry: m_MOIDIndex) {
 		if (entry && (entry == object || entry->GetRootParent() == object)) {
+			// (Kept by address only: the table being built may hold it too, and it may be freed before that one is swapped in.)
+			m_MOIDsForgottenWhileBuilding.push_back(entry);
 			entry = nullptr;
 		}
 	}
+	m_MOIDsForgottenWhileBuilding.push_back(object);
 	object->SetAsNoID();
 }
 
@@ -1140,6 +1156,7 @@ int MovableMan::GetAllActors(bool transferOwnership, std::list<SceneObject*>& ac
 	if (transferOwnership) {
 		// Clear the internal Actor lists; we transferred the ownership of them
 		m_Actors.clear();
+		m_Doors.clear();
 		m_AddedActors.clear();
 		m_ValidActors.clear();
 
@@ -1238,8 +1255,9 @@ void MovableMan::OpenAllDoors(bool open, int team) const {
 // It shouldn't belong to MovableMan, instead it probably ought to be on the pathfinder. On that note, pathfinders shouldn't be part of the scene!
 // AIMan? PathingMan? Something like that. Ideally, we completely tear out this hack, and allow for doors in a completely different way.
 void MovableMan::OverrideMaterialDoors(bool eraseDoorMaterial, int team) const {
-	for (std::deque<Actor*> actorDeque: {m_Actors, m_AddedActors}) {
-		for (Actor* actor: actorDeque) {
+	// (By pointer: a range-for over {m_Actors, m_AddedActors} by value copied both deques, and this runs twice per team per grid update.)
+	for (const std::deque<Actor*>* actorDeque: {&m_Actors, &m_AddedActors}) {
+		for (Actor* actor: *actorDeque) {
 			// (No one's doors too: they open for anyone who comes, so every team's grid has them open. Left in, a bunker's neutral doors were walls to
 			// every route, and units went the long way round.)
 			if (ADoor* actorAsDoor = dynamic_cast<ADoor*>(actor); actorAsDoor && (team == Activity::NoTeam || actorAsDoor->GetTeam() == team || actorAsDoor->GetTeam() == Activity::NoTeam)) {
@@ -1252,6 +1270,21 @@ void MovableMan::OverrideMaterialDoors(bool eraseDoorMaterial, int team) const {
 void MovableMan::RegisterAlarmEvent(const AlarmEvent& newEvent) {
 	std::lock_guard<std::mutex> lock(m_AddedAlarmEventsMutex);
 	m_AddedAlarmEvents.push_back(new AlarmEvent(newEvent));
+}
+
+void MovableMan::GetMaterialDoorBoxes(int team, std::vector<Box>& boxes) const {
+	boxes.clear();
+	for (const std::deque<Actor*>* actorDeque: {&m_Actors, &m_AddedActors}) {
+		for (const Actor* actor: *actorDeque) {
+			// The same doors as OverrideMaterialDoors.
+			if (const ADoor* door = dynamic_cast<const ADoor*>(actor); door && (team == Activity::NoTeam || door->GetTeam() == team || door->GetTeam() == Activity::NoTeam)) {
+				Box box;
+				if (door->GetDoorMaterialBox(box)) {
+					boxes.push_back(box);
+				}
+			}
+		}
+	}
 }
 
 void callLuaFunctionOnMORecursive(MovableObject* mo, const std::string& functionName, const std::vector<const Entity*>& functionEntityArguments, const std::vector<std::string_view>& functionLiteralArguments, const std::vector<LuabindObjectWrapper*>& functionObjectArguments) {
@@ -1426,7 +1459,7 @@ void MovableMan::Update() {
 
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
 		for (MovableObject* mo: g_LuaMan.GetMasterScriptState().GetRegisteredMOs()) {
-			if (ValidMO(mo->GetRootParent())) {
+			if (mo && ValidMO(mo->GetRootParent())) {
 				mo->RunScriptedFunctionInAppropriateScripts(threadedUpdate, false, false, {}, {}, {});
 			}
 		}
@@ -1440,7 +1473,7 @@ void MovableMan::Update() {
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
 
 			                                                     for (MovableObject* mo: luaState.GetRegisteredMOs()) {
-				                                                     if (ValidMO(mo->GetRootParent())) {
+				                                                     if (mo && ValidMO(mo->GetRootParent())) {
 					                                                     mo->RunScriptedFunctionInAppropriateScripts(threadedUpdate, false, false, {}, {}, {});
 				                                                     }
 			                                                     }
@@ -1457,7 +1490,7 @@ void MovableMan::Update() {
 
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
 		for (MovableObject* mo: g_LuaMan.GetMasterScriptState().GetRegisteredMOs()) {
-			if (ValidMO(mo->GetRootParent())) {
+			if (mo && ValidMO(mo->GetRootParent())) {
 				mo->RunScriptedFunctionInAppropriateScripts(syncedUpdate, false, false, {}, {}, {});
 			}
 		}
@@ -1467,7 +1500,7 @@ void MovableMan::Update() {
 			g_LuaMan.SetThreadLuaStateOverride(&luaState);
 
 			for (MovableObject* mo: luaState.GetRegisteredMOs()) {
-				if (mo->HasRequestedSyncedUpdate()) {
+				if (mo && mo->HasRequestedSyncedUpdate()) {
 					mo->RunScriptedFunctionInAppropriateScripts(syncedUpdate, false, false, {}, {}, {});
 					mo->ResetRequestedSyncedUpdateFlag();
 				}
@@ -1778,6 +1811,8 @@ void MovableMan::Update() {
 		}
 	}
 
+	RebuildDoorList();
+
 	// Run seeing rays for all actors
 	m_ActorsSeeFuture = g_ThreadMan.GetPriorityThreadPool().parallelize_loop(m_Actors.size(),
 	                                                                         [&](int start, int end) {
@@ -1792,6 +1827,11 @@ void MovableMan::Update() {
 	g_LuaMan.StartAsyncGarbageCollection();
 
 	// Draw the MO matter and IDs to their layers for next frame
+	{
+		// (What was taken out before this point isn't in the lists the build reads.)
+		std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
+		m_MOIDsForgottenWhileBuilding.clear();
+	}
 	m_DrawMOIDsTask = g_ThreadMan.GetPriorityThreadPool().submit([this]() {
 		PerformanceMan::LogScope logScope("Worker thread: MOID drawing");
 		UpdateDrawMOIDs();
@@ -1804,6 +1844,15 @@ void MovableMan::Update() {
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
 		if (m_SortTeamRoster[Activity::TeamOne]) {
 			m_ActorRoster[team].sort(MOXPosComparison());
+		}
+	}
+}
+
+void MovableMan::RebuildDoorList() {
+	m_Doors.clear();
+	for (Actor* actor: m_Actors) {
+		if (ADoor* door = dynamic_cast<ADoor*>(actor)) {
+			m_Doors.push_back(door);
 		}
 	}
 }
@@ -1974,13 +2023,15 @@ void MovableMan::UpdateDrawMOIDs() {
 	// Clear the MOID layer before starting to delete stuff which may be in the MOIDIndex
 	g_SceneMan.ClearAllMOIDDrawings();
 
-	// Clear the index each frame and do it over because MO's get added and deleted between each frame.
-	m_MOIDIndex.clear();
+	// Clear the index each frame and do it over because MO's get added and deleted between each frame. It is built aside (m_MOIDIndexNext) and
+	// swapped in by CompleteQueuedMOIDDrawings, so lookups meanwhile see the last one whole.
+	std::vector<MovableObject*>& building = m_MOIDIndexNext;
+	building.clear();
 	m_ContiguousActorIDs.clear();
 
 	// Add a null and start counter at 1 because MOID == 0 means no MO.
 	// - Update: This isnt' true anymore, but still keep 0 free just to be safe
-	m_MOIDIndex.push_back(0);
+	building.push_back(0);
 
 	MOID currentMOID = 1;
 
@@ -1988,9 +2039,9 @@ void MovableMan::UpdateDrawMOIDs() {
 	for (Actor* actor: m_Actors) {
 		m_ContiguousActorIDs[actor] = actorID++;
 		if (!actor->IsSetToDelete()) {
-			actor->UpdateMOID(m_MOIDIndex);
+			actor->UpdateMOID(building);
 			actor->Draw(nullptr, Vector(), g_DrawMOID, true);
-			currentMOID = m_MOIDIndex.size();
+			currentMOID = building.size();
 		} else {
 			actor->SetAsNoID();
 		}
@@ -1998,9 +2049,9 @@ void MovableMan::UpdateDrawMOIDs() {
 
 	for (MovableObject* item: m_Items) {
 		if (!item->IsSetToDelete()) {
-			item->UpdateMOID(m_MOIDIndex);
+			item->UpdateMOID(building);
 			item->Draw(nullptr, Vector(), g_DrawMOID, true);
-			currentMOID = m_MOIDIndex.size();
+			currentMOID = building.size();
 		} else {
 			item->SetAsNoID();
 		}
@@ -2008,9 +2059,9 @@ void MovableMan::UpdateDrawMOIDs() {
 
 	for (MovableObject* particle: m_Particles) {
 		if (!particle->IsSetToDelete()) {
-			particle->UpdateMOID(m_MOIDIndex);
+			particle->UpdateMOID(building);
 			particle->Draw(nullptr, Vector(), g_DrawMOID, true);
-			currentMOID = m_MOIDIndex.size();
+			currentMOID = building.size();
 		} else {
 			particle->SetAsNoID();
 		}
@@ -2021,7 +2072,7 @@ void MovableMan::UpdateDrawMOIDs() {
 		m_TeamMOIDCount[team] = 0;
 	}
 
-	for (auto itr = m_MOIDIndex.begin(); itr != m_MOIDIndex.end(); ++itr) {
+	for (auto itr = building.begin(); itr != building.end(); ++itr) {
 		if (*itr) {
 			int team = (*itr)->GetTeam();
 			if (team > Activity::NoTeam && team < Activity::MaxTeamCount) {
@@ -2029,11 +2080,26 @@ void MovableMan::UpdateDrawMOIDs() {
 			}
 		}
 	}
+	m_MOIDIndexNextReady = true;
 }
 
 void MovableMan::CompleteQueuedMOIDDrawings() {
 	if (m_DrawMOIDsTask.valid()) {
 		m_DrawMOIDsTask.wait();
+	}
+	if (m_MOIDIndexNextReady) {
+		std::lock_guard<std::mutex> lock(m_MOIDIndexMutex);
+		m_MOIDIndex.swap(m_MOIDIndexNext);
+		m_MOIDIndexNextReady = false;
+		// What was taken out of the scene while it was built has no place in it (see ForgetMOIDsOf).
+		if (!m_MOIDsForgottenWhileBuilding.empty()) {
+			for (MovableObject*& entry: m_MOIDIndex) {
+				if (entry && std::find(m_MOIDsForgottenWhileBuilding.begin(), m_MOIDsForgottenWhileBuilding.end(), entry) != m_MOIDsForgottenWhileBuilding.end()) {
+					entry = nullptr;
+				}
+			}
+			m_MOIDsForgottenWhileBuilding.clear();
+		}
 	}
 }
 
@@ -2110,6 +2176,10 @@ void MovableMan::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whi
 
 	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
 		(*aIt)->DrawHUD(pTargetBitmap, targetPos, which);
+
+	// What units are saying (unit speech), over every HUD.
+	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
+		(*aIt)->DrawSpeech(pTargetBitmap, targetPos, which);
 }
 
 void MovableMan::DrawHUD(const Camera& camera) {

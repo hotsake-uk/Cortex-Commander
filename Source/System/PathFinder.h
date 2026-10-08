@@ -7,11 +7,13 @@
 
 #include <array>
 #include <atomic>
+#include <limits>
 #include <deque>
 #include <list>
 #include <memory>
 #include <functional>
 #include <vector>
+#include <unordered_map>
 
 using namespace micropather;
 
@@ -35,7 +37,8 @@ namespace RTE {
 		Crouch, //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
 		Scramble, //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
 		Swim, //!< Along the surface of liquid too deep to wade, swum by a searcher that floats (PathAgent::Floats).
-		Wade //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
+		Wade, //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
+		StepOver //!< Over something low on the floor (a kerb, a sandbag, a body) to a floor level with this one, one or two nodes along, with room to stand over it: stepped, leapt or pulled over at a walk (LM-5).
 	};
 
 	/// What liquid fills a node's column under its surface (see PathNode::Liquid). Told by the material's name, the four FluidSim pours.
@@ -303,6 +306,9 @@ namespace RTE {
 		/// How many nodes are marked as changed and not yet sampled again (see RecalculateAreaCosts).
 		size_t GetWaitingNodeCount() const { return m_WaitingNodes.size(); }
 
+		/// How many nodes the grid has; their ids are 0 up to this.
+		size_t GetNodeCount() const { return m_NodeGrid.size(); }
+
 		/// Helper function for getting the PathNode ids in a Box.
 		/// @param box The Box of which all PathNodes it touches should be returned.
 		/// @param samplingReach Whether to take in too every node whose measures look into the box, for re-sampling after a terrain change.
@@ -314,6 +320,15 @@ namespace RTE {
 		/// @param nodeVec The set of PathNode IDs to update.
 		/// @return Whether any PathNode costs changed.
 		bool UpdateNodeList(const std::vector<int>& nodeVec);
+
+		/// Takes a set of PathNodes' samples from another grid of the same scene and size, as UpdateNodeList would have measured them where the
+		/// material is the same in both: what each node measures itself (its surface, room, stairs, liquid, step-overs and the materials to its
+		/// right and down), and the matching materials of its neighbours. For the team grids, which differ from the NoTeam grid only around doors.
+		/// This does NOT update the pather either.
+		/// @param from The grid to take the samples from.
+		/// @param nodeVec The set of PathNode IDs to take.
+		/// @return Whether the grids are the same size, so the samples were taken; nothing is changed otherwise.
+		bool CopyNodeSamples(const PathFinder& from, const std::vector<int>& nodeVec);
 
 		/// Implementation of the abstract interface of Graph.
 		/// Gets the least possible cost to get from PathNode A to B, if it all was air.
@@ -362,6 +377,7 @@ namespace RTE {
 		static constexpr int c_FallCostReach = 24; //!< How far down a fall is measured for its cost; past this it is as dear as it gets.
 		static constexpr float c_FallCostPerNode = 2.5F; //!< The extra cost of each node of a fall that is still more than the safe drop above the ground: about what a rung of a jump costs, since the jetpack brakes the fall with fuel at the bottom.
 		static constexpr float c_NodeCostChangeEpsilon = 5.0F; //!< The minimum change in a PathNodes's cost for the pathfinder to recognize a change and reset itself. This is so minor changes (e.g. blood particles) don't force constant pathfinder resets.
+		static constexpr float c_OpenIntegrity = 5.0F; //!< The strongest material a body passes as open air (see Open).
 
 		MicroPather* m_Pather; //!< The actual pathing object that does the pathfinding work. Owned.
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
@@ -388,7 +404,16 @@ namespace RTE {
 		};
 		std::vector<AvoidLink> m_TeamAvoidLinks; //!< Flights this team's units have failed lately: from where, for where, until when.
 		mutable std::mutex m_TeamAvoidMutex;
+		static constexpr size_t c_TeamAvoidKept = 256; //!< How many team avoid places, and how many team avoid flights, are kept at most.
 		std::deque<DebugSolve> m_RecentSolves; //!< The last few searches, for the recent path solves overlay (see GetRecentSolves).
+		/// The nav overlay's leap links, per floor node, kept for half a second (DrawDebug): worked out afresh every sim update for every node in
+		/// view they were 100 k+ ray casts an update on the main thread. Forgotten when the searcher's leap changes, or when the view has moved on far enough to fill it.
+		struct DebugLeaps {
+			double TimeMS = 0.0;
+			std::vector<micropather::StateCost> Links;
+		};
+		std::unordered_map<const PathNode*, DebugLeaps> m_DebugLeaps;
+		std::array<float, 4> m_DebugLeapsAgent{}; //!< The leap height, leap speed, standing height and mantle height the kept links were found for.
 		mutable std::mutex m_RecentSolvesMutex;
 		static constexpr size_t c_RecentSolvesKept = 8;
 
@@ -397,11 +422,13 @@ namespace RTE {
 
 	public:
 		/// Remembers a place a unit of this grid's team failed at, for every unit of the team to route around for a while.
-		void AddTeamAvoid(const Vector& place, double untilMS);
+		/// Drops the ones expired by nowMS, and the oldest past c_TeamAvoidKept.
+		void AddTeamAvoid(const Vector& place, double untilMS, double nowMS);
 		/// The team's remembered failures still in force, added to a list.
 		void GetTeamAvoid(std::vector<Vector>& places, double nowMS) const;
 		/// Remembers a flight a unit of this grid's team failed: from that take-off for that landing, dearer for the whole team for a while.
-		void AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS);
+		/// Drops the ones expired by nowMS, and the oldest past c_TeamAvoidKept.
+		void AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS, double nowMS);
 		/// The team's failed flights still in force, added to a list.
 		void GetTeamAvoidLinks(std::vector<std::pair<Vector, Vector>>& links, double nowMS) const;
 
@@ -421,8 +448,12 @@ namespace RTE {
 		/// Helper function for getting the strongest material we need to path though between PathNodes.
 		/// @param start Origin point.
 		/// @param end Destination point.
+		/// @param stopAbove Stop at the first material stronger than this (see SceneMan::CastMaxStrengthRayMaterial).
 		/// @return The strongest material.
-		const Material* StrongestMaterialAlongLine(const Vector& start, const Vector& end) const;
+		const Material* StrongestMaterialAlongLine(const Vector& start, const Vector& end, float stopAbove = std::numeric_limits<float>::max()) const;
+
+		/// Whether the line between two points is open (see Open), stopping at the first pixel that isn't.
+		bool LineOpen(const Vector& start, const Vector& end) const { return Open(*StrongestMaterialAlongLine(start, end, c_OpenIntegrity)); }
 
 		/// Helper function for updating all the values of cost edges going out from a specific PathNodes.
 		/// This does NOT update the pather, which is required before solving more paths after calling this.
@@ -474,6 +505,11 @@ namespace RTE {
 		/// @return The transition cost for the Material.
 		float GetMaterialTransitionCost(const Material& material) const;
 
+		/// What a walk's step pays for the material along it: nothing for what a walking body goes through as it comes (Open: grass,
+		/// foliage, ash), except a liquid, which LiquidCost prices; otherwise the transition cost (GetMaterialTransitionCost).
+		/// @param material The strongest material along the step.
+		float WalkMaterialCost(const Material& material) const;
+
 		/// What a rung of a jetpack climb up a column costs over its height, for how hard it is to fly: hugging a wall with open air on the
 		/// other side, or a gap barely wider than the body. A shaft, tight both sides, costs nothing extra.
 		/// @param node The node the rung rises into.
@@ -487,11 +523,32 @@ namespace RTE {
 		/// @return Whether the leap fits.
 		bool LeapFits(const PathNode& from, const PathNode& to) const;
 
+		/// Whether the ground between two floors a leap fits has a gap in it that the walk can't step across: a stretch at least half a
+		/// node wide with no floor within a node under the lower of the two (a liquid there is no floor). Bumps, plants and lumps are
+		/// floor: a walk goes over or through them.
+		/// @param from The floor it leaps from.
+		/// @param to The floor it lands on.
+		bool GapBetween(const PathNode& from, const PathNode& to) const;
+
+		/// Whether a floor is the top of a face (a lip) seen from the way a leap or a mantle comes: within a node back from its middle, the
+		/// ground's top drops half a node or more between two 2 px columns. A slope up to it is walked.
+		/// @param to The floor.
+		/// @param direction -1 for a leap leftward, 1 rightward.
+		bool LipAt(const PathNode& to, float direction) const;
+
+		/// Whether the legs walk from one floor node to its diagonal neighbour up or down an incline no steeper than 40 degrees: the ground's top between them rises or
+		/// falls by less than half a node from one 2 px column to the next (a face that size is a lip), with no gap, and the body's middle
+		/// clear over the way. However the straight line between the node centres meets the ground.
+		/// @param from The floor walked from.
+		/// @param to The floor walked to, a node across and a node up or down.
+		bool SurfaceWalkable(const PathNode& from, const PathNode& to) const;
+
 		/// Whether door material at a place is a door this grid sees through: one of the grid's side, erased while its nodes were sampled
 		/// (Scene::UpdatePathFinding, OverrideMaterialDoors), so no edge of the node there, or of its neighbours into it, sampled a door.
 		bool DoorSeenThrough(const Vector& at) const;
 
-		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list, priced a little over the walk of the same distance.
+		/// Adds the leaps from a floor node (see LeapFits) to its adjacent list: only over a gap the walk can't cross (GapBetween), or onto a lip
+		/// higher than the searcher mantles, and priced over the walk of the same distance.
 		/// @param node The node.
 		/// @param adjacentList The list.
 		void AddLeapLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList);

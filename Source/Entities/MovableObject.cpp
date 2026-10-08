@@ -12,6 +12,7 @@
 #include "Atom.h"
 #include "Actor.h"
 #include "SLTerrain.h"
+#include "FluidSim.h"
 #include "PieMenu.h"
 #include "Serializable.h"
 #include "System.h"
@@ -22,9 +23,20 @@
 #include "tracy/Tracy.hpp"
 
 #include <array>
+#include <mutex>
 #include "Texture.h"
 
 using namespace RTE;
+
+namespace {
+	/// Locks for the number, string and object values. The AI scripts run on worker threads, one per Lua state, and since AC-2 and AC-7 they read and write the
+	/// values of other units than their own (a medic marks the friend it is going to, and checks a friend falling back to one), so two
+	/// threads could change, or change and read, one unit's map at once and crash. One of a few locks, picked by the object's address.
+	std::array<std::mutex, 64> s_NumberValueLocks;
+	std::mutex& NumberValueLock(const void* object) {
+		return s_NumberValueLocks[(reinterpret_cast<uintptr_t>(object) >> 6) % s_NumberValueLocks.size()];
+	}
+} // namespace
 
 AbstractClassInfo(MovableObject, SceneObject);
 
@@ -94,6 +106,7 @@ void MovableObject::Clear() {
 	m_ThreadedLuaState = nullptr;
 	m_ForceIntoMasterLuaState = g_SettingsMan.EnableLuaDebugging();
 	m_ScriptObjectName.clear();
+	m_ScriptObjectKey.clear();
 	m_ScreenEffectFile.Reset();
 	m_pScreenEffect = 0;
 	m_EffectRotAngle = 0;
@@ -311,9 +324,12 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_SimUpdatesBetweenScriptedUpdates = reference.m_SimUpdatesBetweenScriptedUpdates;
 	m_SimUpdatesSinceLastScriptedUpdate = reference.m_SimUpdatesSinceLastScriptedUpdate;
 
-	m_StringValueMap = reference.m_StringValueMap;
-	m_NumberValueMap = reference.m_NumberValueMap;
-	m_ObjectValueMap = reference.m_ObjectValueMap;
+	{
+		std::scoped_lock lock(NumberValueLock(&reference));
+		m_StringValueMap = reference.m_StringValueMap;
+		m_NumberValueMap = reference.m_NumberValueMap;
+		m_ObjectValueMap = reference.m_ObjectValueMap;
+	}
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
 	g_MovableMan.RegisterObject(this);
@@ -580,12 +596,22 @@ int MovableObject::Save(Writer& writer) const {
 	writer.NewProperty("SimUpdatesBetweenScriptedUpdates");
 	writer << m_SimUpdatesBetweenScriptedUpdates;
 
-	for (const auto& [key, value]: m_NumberValueMap) {
+	std::unordered_map<std::string, double> numberValues;
+	{
+		std::scoped_lock lock(NumberValueLock(this));
+		numberValues = m_NumberValueMap;
+	}
+	for (const auto& [key, value]: numberValues) {
 		writer.ObjectStart("AddCustomValue = NumberValue");
 		writer.NewPropertyWithValue(key, value);
 	}
 
-	for (const auto& [key, value]: m_StringValueMap) {
+	std::unordered_map<std::string, std::string> stringValues;
+	{
+		std::scoped_lock lock(NumberValueLock(this));
+		stringValues = m_StringValueMap;
+	}
+	for (const auto& [key, value]: stringValues) {
 		writer.ObjectStart("AddCustomValue = StringValue");
 		writer.NewPropertyWithValue(key, value);
 	}
@@ -604,6 +630,7 @@ void MovableObject::DestroyScriptState() {
 			RunScriptedFunctionInAppropriateScripts("Destroy");
 			m_ThreadedLuaState->RunScriptString(m_ScriptObjectName + " = nil;");
 			m_ScriptObjectName.clear();
+			m_ScriptObjectKey.clear();
 		}
 
 		m_ThreadedLuaState->UnregisterMO(this);
@@ -706,7 +733,8 @@ int MovableObject::ReloadScripts() {
 
 int MovableObject::InitializeObjectScripts() {
 	std::lock_guard<std::recursive_mutex> lock(m_ThreadedLuaState->GetMutex());
-	m_ScriptObjectName = "_ScriptedObjects[\"" + std::to_string(m_UniqueID) + "\"]";
+	m_ScriptObjectKey = std::to_string(m_UniqueID);
+	m_ScriptObjectName = "_ScriptedObjects[\"" + m_ScriptObjectKey + "\"]";
 	m_ThreadedLuaState->RegisterMO(this);
 	m_ThreadedLuaState->SetTempEntity(this);
 	if (m_ThreadedLuaState->RunScriptString("_ScriptedObjects = _ScriptedObjects or {}; " + m_ScriptObjectName + " = To" + GetClassName() + "(LuaMan.TempEntity); ") < 0) {
@@ -775,7 +803,7 @@ int MovableObject::RunScriptedFunctionInAppropriateScripts(const std::string& fu
 			if (runOnDisabledScripts || luaFunction.m_ScriptIsEnabled) {
 				LuaStateWrapper& usedState = GetAndLockStateForScript(luabindObjectWrapper->GetFilePath(), &luaFunction);
 				std::lock_guard<std::recursive_mutex> lock(usedState.GetMutex(), std::adopt_lock);
-				status = usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", std::to_string(m_UniqueID), functionEntityArguments, functionLiteralArguments, functionObjectArguments);
+				status = usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", m_ScriptObjectKey, functionEntityArguments, functionLiteralArguments, functionObjectArguments);
 				if (status < 0 && stopOnError) {
 					return status;
 				}
@@ -795,7 +823,7 @@ int MovableObject::RunFunctionOfScript(const std::string& scriptPath, const std:
 
 	for (const LuaFunction& luaFunction: m_FunctionsAndScripts.at(functionName)) {
 		const LuabindObjectWrapper* luabindObjectWrapper = luaFunction.m_LuaFunction.get();
-		if (scriptPath == luabindObjectWrapper->GetFilePath() && usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", std::to_string(m_UniqueID), functionEntityArguments, functionLiteralArguments) < 0) {
+		if (scriptPath == luabindObjectWrapper->GetFilePath() && usedState.RunScriptFunctionObject(luabindObjectWrapper, "_ScriptedObjects", m_ScriptObjectKey, functionEntityArguments, functionLiteralArguments) < 0) {
 			g_ConsoleMan.PrintString("ERROR: An error occured while trying to run the " + functionName + " function for script at path " + scriptPath);
 			return -2;
 		}
@@ -1168,7 +1196,8 @@ int MovableObject::UpdateScripts() {
 	return status;
 }
 
-const std::string& MovableObject::GetStringValue(const std::string& key) const {
+std::string MovableObject::GetStringValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_StringValueMap.find(key);
 	if (itr == m_StringValueMap.end()) {
 		return ms_EmptyString;
@@ -1178,6 +1207,7 @@ const std::string& MovableObject::GetStringValue(const std::string& key) const {
 }
 
 std::string MovableObject::GetEncodedStringValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_StringValueMap.find(key);
 	if (itr == m_StringValueMap.end()) {
 		return ms_EmptyString;
@@ -1187,6 +1217,7 @@ std::string MovableObject::GetEncodedStringValue(const std::string& key) const {
 }
 
 double MovableObject::GetNumberValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_NumberValueMap.find(key);
 	if (itr == m_NumberValueMap.end()) {
 		return 0.0;
@@ -1196,6 +1227,7 @@ double MovableObject::GetNumberValue(const std::string& key) const {
 }
 
 Entity* MovableObject::GetObjectValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_ObjectValueMap.find(key);
 	if (itr == m_ObjectValueMap.end()) {
 		return nullptr;
@@ -1205,42 +1237,52 @@ Entity* MovableObject::GetObjectValue(const std::string& key) const {
 }
 
 void MovableObject::SetStringValue(const std::string& key, const std::string& value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap[key] = value;
 }
 
 void MovableObject::SetEncodedStringValue(const std::string& key, const std::string& value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap[key] = base64_encode(value, true);
 }
 
 void MovableObject::SetNumberValue(const std::string& key, double value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_NumberValueMap[key] = value;
 }
 
 void MovableObject::SetObjectValue(const std::string& key, Entity* value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_ObjectValueMap[key] = value;
 }
 
 void MovableObject::RemoveStringValue(const std::string& key) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap.erase(key);
 }
 
 void MovableObject::RemoveNumberValue(const std::string& key) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_NumberValueMap.erase(key);
 }
 
 void MovableObject::RemoveObjectValue(const std::string& key) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_ObjectValueMap.erase(key);
 }
 
 bool MovableObject::StringValueExists(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	return m_StringValueMap.find(key) != m_StringValueMap.end();
 }
 
 bool MovableObject::NumberValueExists(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	return m_NumberValueMap.find(key) != m_NumberValueMap.end();
 }
 
 bool MovableObject::ObjectValueExists(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	return m_ObjectValueMap.find(key) != m_ObjectValueMap.end();
 }
 
@@ -1351,6 +1393,22 @@ bool MovableObject::DrawToTerrain(SLTerrain* terrain) {
 
 		terrain->AddUpdatedMaterialArea(Box(tempBitmapPos, static_cast<float>(tempBitmap->w), static_cast<float>(tempBitmap->h)));
 	} else {
+		// Coming to rest in a liquid (a chip or a grain of dirt sunk to the bottom of a pool, a stain on it): the liquid there goes back at its
+		// surface (FluidSim::KeepLiquidAt) and this takes its place. Drawn over, the liquid was lost: a pool a burst of dirt fell into went down
+		// by a pixel for each grain. (A drop of liquid rises to the surface before it settles: MovableMan.)
+		// (Only where this would have taken the pixel's material, as below: what ranks under the liquid, blood or ash, only tints it, as before. With
+		// flowing liquids off the liquid is just terrain, and this is drawn as before.)
+		int ownMaterial = GetMaterial() ? GetMaterial()->GetIndex() : g_MaterialAir;
+		int liquidMaterial = terrain->GetMaterialPixel(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY());
+		if (FluidSim::IsEnabled() && !FluidSim::IsLiquid(ownMaterial) && FluidSim::IsLiquid(liquidMaterial) && GetMaterial()->GetPriority() > g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(liquidMaterial))->GetPriority()) {
+			if (!FluidSim::KeepLiquidAt(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY())) {
+				// (No room to keep the liquid: it stays, and this goes.)
+				return true;
+			}
+			Draw(terrain->GetFGColorBitmap(), Vector(), DrawMode::g_DrawColor, true);
+			Draw(terrain->GetMaterialBitmap(), Vector(), DrawMode::g_DrawMaterial, true);
+			return true;
+		}
 		Draw(terrain->GetFGColorBitmap(), Vector(), DrawMode::g_DrawColor, true);
 		Material const* terrMat = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrain()->GetMaterialPixel(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY()));
 		if (GetMaterial()->GetPriority() > terrMat->GetPriority()) {

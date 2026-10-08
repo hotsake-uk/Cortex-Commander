@@ -9,6 +9,7 @@
 #include "Controller.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "ThreatMemory.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -25,6 +26,7 @@
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
 #include "TimerMan.h"
+#include "UnitSpeech.h"
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
@@ -488,6 +490,17 @@ void DebugMan::SettingsGUI() {
 		Heading("Splashes");
 		Slider("Splash size", &settings.WaterSplash, 0.0F, 4.0F);
 		Tip("How big the splash is when falling ground or a broken-off piece drops into water (or any liquid): drops and spray thrown up, by how fast and how wide it went in. Only for the eye: the water it pushes aside raises the level. 0 for none.");
+		Check("Turn each froth and spray puff randomly", &settings.PuffVariety);
+		Tip("Each puff of spray, froth mist, dust and smoke is turned and mirrored its own way when it appears, so they don't all show the same shape. Off: all the same way up.");
+		Slider("Thin streams shown", &settings.WaterThinFlow, 0.0F, 2.0F);
+		Tip("How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. Only for the eye. 0 for not at all.");
+		Heading("Splash froth");
+		Slider("Splash froth", &settings.SplashFroth, 0.0F, 3.0F);
+		Tip("How much froth a splash leaves sitting on the surface, and how much the surface froths where the level rises because something fell in. Only for the eye. 0 for none.");
+		Slider("Splash froth bubble size", &settings.SplashFrothSize, 0.2F, 3.0F);
+		Slider("Splash froth life", &settings.SplashFrothLife, 0.2F, 4.0F);
+		Tip("How long the froth stays on the surface before it fades: 1 is a couple of seconds.");
+		Slider("Splash froth opacity", &settings.SplashFrothOpacity, 0.0F, 1.0F);
 		Heading("Mist");
 		Slider("Mist", &settings.WaterMist, 0.0F, 2.0F);
 		Tip("Soft spray thrown off water that is falling fast or landing. 0 for none.");
@@ -659,7 +672,10 @@ void DebugMan::SettingsGUI() {
 			g_TimerMan.SetTimeScale(1.0F);
 		}
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
-		Check("Night limits AI sight", &settings.NightAffectsAI);
+		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
+		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
+		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
+		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		{
@@ -705,10 +721,40 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });
+		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the action menu: a list above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
 		int frameCap = g_WindowMan.GetFrameCap();
 		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
+		}
+		Heading("Unit speech");
+		Toggle("Unit speech", UnitSpeech::IsEnabled(), [](bool on) { UnitSpeech::SetEnabled(on); });
+		Tip("Units say short lines over their heads when their AI does something: \"Take cover!\", \"Reloading!\", \"Got one!\". The lines are in Base.rte/Speech.ini, and mods can add their own.");
+		if (UnitSpeech::IsEnabled()) {
+			int chance = UnitSpeech::GetChance();
+			if (SliderI("Speech chance", &chance, 0, 100, "%d%%")) {
+				UnitSpeech::SetChance(chance);
+			}
+			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
+			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
+			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
+			for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
+				std::string label = "Speech: " + trigger.Name + "##Speech" + trigger.Key;
+				Toggle(label.c_str(), UnitSpeech::IsTriggerOn(trigger.Key), [&trigger](bool on) { UnitSpeech::SetTriggerOn(trigger.Key, on); });
+				std::string example = UnitSpeech::GetExampleLine(UnitSpeech::FindTrigger(trigger.Key));
+				std::string tip = trigger.Description.empty() ? trigger.Name : trigger.Description;
+				if (!example.empty()) {
+					tip += "\nFor example: \"" + example + "\"";
+				}
+				Tip(tip.c_str());
+			}
+			if (Plain() && ToolUI::Button("Reload speech lines")) {
+				UnitSpeech::Reload();
+			}
+			if (Plain()) {
+				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
+			}
 		}
 	};
 

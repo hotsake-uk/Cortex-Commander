@@ -91,6 +91,12 @@ thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullpt
 // the geometry alone, a flight link between two floors a leap also fits was called a leap, and flown as one with no fuel, if the flight
 // was ever the cheaper.
 thread_local std::set<std::pair<const RTE::PathNode*, const RTE::PathNode*>> s_LeapsTaken;
+// Within one CalculatePath, the leap and flight links found from each node (see AddLeapLinks, AddFlightLinks): its retries from neighbouring
+// starts and its check for a cut walk the same nodes again, and each node's links cost hundreds of ray casts. They depend only on the terrain
+// and the searcher's numbers (ApplyAgent), which hold for the call. Off outside a CalculatePath (the debug drawing calls these too).
+thread_local bool s_KeepLinks = false;
+thread_local std::unordered_map<const RTE::PathNode*, std::vector<micropather::StateCost>> s_LeapLinksKept;
+thread_local std::unordered_map<const RTE::PathNode*, std::vector<micropather::StateCost>> s_FlightLinksKept;
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -113,6 +119,7 @@ PathFinder::~PathFinder() {
 
 void PathFinder::Clear() {
 	m_NodeGrid.clear();
+	m_DebugLeaps.clear();
 	m_NodeDimension = SCENEGRIDSIZE;
 	m_Offset = Vector();
 }
@@ -147,6 +154,7 @@ int PathFinder::Create(int nodeDimension) {
 
 	// Create and assign scene coordinate positions for all nodes.
 	Vector nodePos = Vector(static_cast<float>(nodeDimension) / 2.0F, static_cast<float>(nodeDimension) / 2.0F) + m_Offset;
+	m_DebugLeaps.clear();
 	m_NodeGrid.reserve(m_GridWidth * m_GridHeight);
 	for (int y = 0; y < m_GridHeight; ++y) {
 		// Make sure no cell centers are off the scene (since they can overlap the far edge of the scene).
@@ -232,6 +240,14 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	float digStrength = agent.DigStrength;
 	ApplyAgent(agent);
 	s_LeapsTaken.clear();
+	struct KeptLinks {
+		KeptLinks() { s_KeepLinks = true; }
+		~KeptLinks() {
+			s_KeepLinks = false;
+			s_LeapLinksKept.clear();
+			s_FlightLinksKept.clear();
+		}
+	} keptLinks;
 
 	++m_CurrentPathingRequests;
 	RequestCountRelease countRelease(m_CurrentPathingRequests);
@@ -280,7 +296,9 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY), start);
 	// A searcher with a jetpack asking from the air (a re-path or a route check part way through a jump) flies on from where it is; see
 	// AdjacentCost.
-	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
+	// (Only with a jet to fly on, and not on a ladder the searcher climbs: a re-path part way up a ladder was offered plain-sight flights
+	// off the rung, cheaper than the rungs, and a unit with no jet let go and fell.)
+	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !(s_ClimbsLadders && startNode->Ladder) && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
 	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY), end);
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
@@ -437,7 +455,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		// PathNode::Anchor) puts a leg through something solid (a ledge's corner between two anchors moved off their walls), the point goes back
 		// to its node's centre, and the one before it too if that isn't enough. (The search knows only the centres; a route drawn through a
 		// ledge's corner sent units up into the ledge's underside instead of round its lip.)
-		auto legOpen = [&](const Vector& a, const Vector& b) { return Open(*StrongestMaterialAlongLine(a, b)); };
+		auto legOpen = [&](const Vector& a, const Vector& b) { return LineOpen(a, b); };
 		for (size_t i = 1; i < steps.size(); ++i) {
 			if (legOpen(steps[i - 1].Pos, steps[i].Pos)) {
 				continue;
@@ -702,14 +720,45 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 		    // (The count taken when it was queued, given back at the end, after the complete flag, or if the search or callback throws.)
 		    RequestCountRelease countRelease(m_CurrentPathingRequests);
 
-		    int status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
-
-		    request.status = status;
-		    request.cutAtDoor = s_LastCutAtDoor;
-		    request.pathLength = request.path.size();
+		    // A throw out of a pool task ended the game (push_task has no catch), and one caught past the complete flag left the asker waiting on
+		    // this request for ever; so a search that throws (out of memory, say) comes back as no route, and the asker is still told.
+		    auto noteThrow = [](const char* what, const char* where) {
+			    static std::atomic<int> s_Noted = 0;
+			    if (s_Noted.fetch_add(1) < 5) {
+				    g_ConsoleMan.PrintString(std::string("ERROR: a path search threw in ") + where + ": " + what + "; answered as no route.");
+			    }
+		    };
+		    bool searched = false;
+		    try {
+			    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
+			    request.cutAtDoor = s_LastCutAtDoor;
+			    request.pathLength = request.path.size();
+			    searched = true;
+		    } catch (const std::exception& exception) {
+			    noteThrow(exception.what(), "the search");
+		    } catch (...) {
+			    noteThrow("unknown exception", "the search");
+		    }
+		    if (!searched) {
+			    request.status = MicroPather::NO_SOLUTION;
+			    request.path.clear();
+			    request.kinds.clear();
+			    request.totalCost = 0.0F;
+			    request.pathLength = 0.0F;
+			    request.cutAtDoor = false;
+			    // The thread's pather may have been left mid-solve; the next search builds a new one.
+			    delete s_Pather.m_Instance;
+			    s_Pather.m_Instance = nullptr;
+		    }
 
 		    if (callback) {
-			    callback(volRequest);
+			    try {
+				    callback(volRequest);
+			    } catch (const std::exception& exception) {
+				    noteThrow(exception.what(), "its callback");
+			    } catch (...) {
+				    noteThrow("unknown exception", "its callback");
+			    }
 		    }
 
 		    // Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
@@ -832,7 +881,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 					continue;
 				}
 				PathNode* target = GetPathNodeAtGridCoords(gridX + dx, gridY + dy);
-				if (!target || !target->m_Navigable || !Open(*StrongestMaterialAlongLine(node->Pos, target->Pos))) {
+				if (!target || !target->m_Navigable || !LineOpen(node->Pos, target->Pos)) {
 					continue;
 				}
 				// Somewhere a body fits, and if it stands there, somewhere it can stand up.
@@ -918,13 +967,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	}
 
 	if (node->RightDown && node->RightDown->m_Navigable && allowDiagonal) {
-		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->RightDownMaterial) * 1.4F) + radiatedCost + FallCost(*node->RightDown);
+		adjCost.cost = 1.4F + (WalkMaterialCost(*node->RightDownMaterial) * 1.4F) + radiatedCost + FallCost(*node->RightDown);
 		adjCost.state = static_cast<void*>(node->RightDown);
 		adjacentList->push_back(adjCost);
 	}
 
 	if (node->DownLeft && node->DownLeft->m_Navigable && allowDiagonal) {
-		adjCost.cost = 1.4F + (GetMaterialTransitionCost(*node->DownLeftMaterial) * 1.4F) + radiatedCost + FallCost(*node->DownLeft);
+		adjCost.cost = 1.4F + (WalkMaterialCost(*node->DownLeftMaterial) * 1.4F) + radiatedCost + FallCost(*node->DownLeft);
 		adjCost.state = static_cast<void*>(node->DownLeft);
 		adjacentList->push_back(adjCost);
 	}
@@ -933,19 +982,22 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Cost to discourage us from going up. At 3 a hill was worth a long walk round, which is what units did; at half that they go over.
 		const float extraUpCost = 1.5F;
 
+		// (A walk's steps pay nothing for a plant or anything else a walking body goes through as it comes (WalkMaterialCost). At its
+		// integrity, a node of foliage cost four of air and a grassy slope's step up four more, and a leap over them, which paid nothing for
+		// what its arc passes through, was the cheaper way: units leapt every bush and grassy rise.)
 		// We can only go straight left or right if we're on solid ground, otherwise we need to go downwards. The head room along the way says
 		// whether it's a walk, a crawl (slower), or no way through at all for this searcher.
 		// (The room only matters where the way is open: through ground, a digger makes its own.)
 		// (A sideways step into the air over a drop is the start of a fall too, and pays like the rest of it: FallCost on the node stepped
 		// into, as the steps down pay. Without it, stepping off a ledge's side was the one way into a fall that skipped its first node's cost.)
 		if (node->Left && node->Left->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F) + FallCost(*node->Left);
+			adjCost.cost = (1.0F + WalkMaterialCost(*node->LeftMaterial) + radiatedCost) * (Open(*node->LeftMaterial) ? HeadRoomFactor(*node, *node->Left) : 1.0F) + FallCost(*node->Left);
 			adjCost.state = static_cast<void*>(node->Left);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->Right && node->Right->m_Navigable) {
-			adjCost.cost = (1.0F + GetMaterialTransitionCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
+			adjCost.cost = (1.0F + WalkMaterialCost(*node->RightMaterial) + radiatedCost) * (Open(*node->RightMaterial) ? HeadRoomFactor(*node, *node->Right) : 1.0F) + FallCost(*node->Right);
 			adjCost.state = static_cast<void*>(node->Right);
 			adjacentList->push_back(adjCost);
 		}
@@ -997,6 +1049,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 				float rise = node->Surface - target->Surface;
 				if (rise <= 4.0F || rise > s_MantleHeight || static_cast<float>(target->FreeHeight) < s_StandHeight || static_cast<float>(node->FreeHeight) < s_StandHeight + rise * 0.5F) {
+					continue;
+				}
+				// (Only onto the top of a face: up a slope, the walk's diagonal steps go, and as a mantle every incline was pulled up step by step.)
+				if (!LipAt(*target, target == oneUp->Left || (twoUp && target == twoUp->Left) ? -1.0F : 1.0F)) {
 					continue;
 				}
 				adjCost.cost = 1.5F + rise / static_cast<float>(m_NodeDimension) + radiatedCost;
@@ -1198,15 +1254,32 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Add cost for digging at 45 degrees and for digging upwards. (A step up a slope wants the head room a walk does: a crawl's worth at
 		// the least, and dearer under a low ceiling.)
 		if (node->UpRight && node->UpRight->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->UpRight);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->LeftUp && node->LeftUp->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (GetMaterialTransitionCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
+		}
+
+		// Up or down a rough incline the legs walk (SurfaceWalkable): the diagonal between the two node centres clips the ground on any slope
+		// that isn't smooth, so that step was a dig to everything that doesn't dig, and the way up a hillside was a jump up the column and a
+		// landing beside it, or a string of mantles. Priced as the walk's diagonal through open air.
+		if (allowDiagonal && s_JumpHeight < FLT_MAX && node->Surface >= 0.0F) {
+			auto slopeWalk = [&](const PathNode* to, const Material* along, bool up) {
+				if (to && to->m_Navigable && !Open(*along) && SurfaceWalkable(*node, *to)) {
+					adjCost.cost = ((up ? 1.4F + extraUpCost * 1.4F : 1.4F) + radiatedCost) * HeadRoomFactor(*node, *to);
+					adjCost.state = const_cast<PathNode*>(to);
+					adjacentList->push_back(adjCost);
+				}
+			};
+			slopeWalk(node->UpRight, node->UpRightMaterial, true);
+			slopeWalk(node->LeftUp, node->LeftUpMaterial, true);
+			slopeWalk(node->RightDown, node->RightDownMaterial, false);
+			slopeWalk(node->DownLeft, node->DownLeftMaterial, false);
 		}
 	}
 
@@ -1364,6 +1437,11 @@ float PathFinder::FallCost(const PathNode& to) const {
 	if (s_JumpHeight == FLT_MAX || g_SceneMan.IsPointInNoGravArea(to.Pos)) {
 		return 0.0F;
 	}
+	// Onto a ladder it climbs: held by the rungs, no fall. (Priced as the shaft's drop, the step from the floor onto the top of a deep
+	// laddered shaft cost a jetless unit 1000, and any way round won.)
+	if (s_ClimbsLadders && to.Ladder) {
+		return 0.0F;
+	}
 	int drop = DropNodes(to);
 	// A drop the searcher wouldn't land from unhurt, with no jet to brake it (LM-9): not routed. (Priced, not cut: a unit already falling
 	// still gets a route, the least bad one.) Unless it lands in water deep enough to take the fall (LM-4): a dive is no fall to the bottom.
@@ -1381,7 +1459,7 @@ float PathFinder::FallCost(const PathNode& to) const {
 }
 
 bool PathFinder::Open(const Material& material) const {
-	return material.GetIntegrity() <= 5.0F;
+	return material.GetIntegrity() <= c_OpenIntegrity;
 }
 
 PathLiquid PathFinder::LiquidOf(unsigned char id) const {
@@ -1499,9 +1577,30 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	// 40 px over the landing and flown as a jet climb, with the climb's fuel and arrival checks, and a unit with no jet couldn't follow it.
 	if (s_MantleHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && dy < -1.0F && dy >= -2.0F * nodeSize - 1.0F && from->Surface >= 0.0F && to->Surface >= 0.0F) {
 		float rise = from->Surface - to->Surface;
-		if (rise > 4.0F && rise <= s_MantleHeight && static_cast<float>(to->FreeHeight) >= s_StandHeight && static_cast<float>(from->FreeHeight) >= s_StandHeight + rise * 0.5F) {
+		if (rise > 4.0F && rise <= s_MantleHeight && static_cast<float>(to->FreeHeight) >= s_StandHeight && static_cast<float>(from->FreeHeight) >= s_StandHeight + rise * 0.5F && LipAt(*to, dx < 0.0F ? -1.0F : 1.0F)) {
 			return PathStepKind::Mantle;
 		}
+	}
+	// Over something low on the floor to a floor level with this one, one or two nodes along (the step-over edges in AdjacentCost), with room
+	// to stand over it (LM-5): a kind of its own, so the follower steps, leaps or pulls itself over it at a walk. (Labelled by the line, the
+	// one-node step was a walk or a dig through the lump, and the two-node one a flight, flown with the jet or not at all.) A leap the search
+	// took instead is the leap's.
+	if (s_JumpHeight < FLT_MAX && std::abs(dy) < 1.0F && from->Surface >= 0.0F && to->Surface >= 0.0F && std::abs(dx) > nodeSize * 0.5F && std::abs(dx) < nodeSize * 2.5F && s_LeapsTaken.count({from, to}) == 0) {
+		int k = std::abs(dx) > nodeSize * 1.5F ? 1 : 0;
+		bool leftward = dx < 0.0F;
+		float riseHere = leftward ? from->StepOverRiseLeft[k] : from->StepOverRise[k];
+		float riseThere = leftward ? to->StepOverRise[k] : to->StepOverRiseLeft[k];
+		float rise = std::max(riseHere, riseThere);
+		int room = riseHere >= riseThere ? (leftward ? from->StepOverRoomLeft[k] : from->StepOverRoom[k]) : (leftward ? to->StepOverRoom[k] : to->StepOverRoomLeft[k]);
+		if (rise > s_StandHeight * 0.15F && rise <= s_StandHeight * 0.6F && static_cast<float>(room) >= s_StandHeight) {
+			return PathStepKind::StepOver;
+		}
+	}
+	// A diagonal step up or down an incline the legs walk (SurfaceWalkable): a walk, whatever the line between the centres clips. (Every step
+	// up was labelled a jump, and up a hillside the follower jumped or jetted node by node.)
+	if (s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - nodeSize) < 1.0F && SurfaceWalkable(*from, *to)) {
+		int headRoom = std::min(from->FreeHeight, to->FreeHeight);
+		return static_cast<float>(headRoom) < s_CrouchHeight ? PathStepKind::Crawl : (static_cast<float>(headRoom) < s_StandHeight ? PathStepKind::Crouch : PathStepKind::Walk);
 	}
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
 	// line at all but up the column and over onto a ledge (the landing edges), which is a jump. (Read as a dig, a step up onto a 24 px
@@ -1605,6 +1704,7 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 	// across at the leap's speed is when it is over the landing; the arc is followed to then.
 	float direction = dx < 0.0F ? -1.0F : 1.0F;
 	float arcTime = across / speed;
+	const float doorIntegrity = g_SceneMan.GetMaterialFromID(MaterialColorKeys::g_MaterialDoor)->GetIntegrity();
 	Vector start(from.Pos.m_X, from.Surface - s_StandHeight * 0.5F);
 	const int segments = 6;
 	Vector last = start;
@@ -1624,7 +1724,8 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 			// doors are drawn, and a leap across one's own hatch standing open was refused.)
 			Vector a = last + Vector(0.0F, offset);
 			Vector b = point + Vector(0.0F, offset);
-			const Material* along = StrongestMaterialAlongLine(a, b);
+			// (Anything stronger than a door ends the cast: it fails the leap whatever else is on the line, as the strongest would.)
+			const Material* along = StrongestMaterialAlongLine(a, b, std::max(c_OpenIntegrity, doorIntegrity));
 			if (!Open(*along) && !(along->GetIndex() == MaterialColorKeys::g_MaterialDoor && DoorSeenThrough(a) && DoorSeenThrough((a + b) * 0.5F) && DoorSeenThrough(b))) {
 				return false;
 			}
@@ -1632,6 +1733,96 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 		last = point;
 	}
 	return true;
+}
+
+bool PathFinder::LipAt(const PathNode& to, float direction) const {
+	// Back from the landing's middle towards the take-off, a node's worth, every 2 px: the ground's top dropping by half a node or more
+	// from one column to the next (or no ground within a node and a half under the floor) is the face to get up; ground that falls away
+	// gradually is a slope a walk goes up. (One column half a node short saw only a face in the near half of the landing's cell, and about
+	// half of real ledges, their face in the cell before, lost their mantle to a jump.)
+	const int nodeSize = m_NodeDimension;
+	const int top = static_cast<int>(to.Surface) - 2;
+	const int bottom = static_cast<int>(to.Surface) + nodeSize + nodeSize / 2;
+	float last = to.Surface;
+	for (int d = 2; d <= nodeSize; d += 2) {
+		int x = static_cast<int>(to.Pos.m_X - direction * static_cast<float>(d));
+		int y = top;
+		while (y <= bottom && (TerrNav(x, y) == MaterialColorKeys::g_MaterialAir || LiquidOf(TerrNav(x, y)) != PathLiquid::None)) {
+			++y;
+		}
+		if (y > bottom || static_cast<float>(y) - last >= static_cast<float>(nodeSize) * 0.5F) {
+			return true;
+		}
+		last = static_cast<float>(y);
+	}
+	return false;
+}
+
+bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const {
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	// (No steeper than the legs walk, 40 degrees (AHuman's walk angle): at a node and a half over one, slopes to 56 degrees were routed as
+	// walks, and the unit pressed into a face its legs couldn't take. Steeper is stairs, a scramble, a mantle or a jump.)
+	if (from.Surface < 0.0F || to.Surface < 0.0F || std::abs(from.Surface - to.Surface) > nodeSize * 0.84F) {
+		return false;
+	}
+	// Room to walk it, at the least crouched, at both ends and over the middle of the way.
+	if (static_cast<float>(std::min(from.FreeHeight, to.FreeHeight)) < s_CrouchHeight) {
+		return false;
+	}
+	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
+	float direction = dx < 0.0F ? -1.0F : 1.0F;
+	float waist = std::min(s_CrouchHeight, s_StandHeight) * 0.5F;
+	if (!Open(*StrongestMaterialAlongLine(Vector(from.Pos.m_X, from.Surface - waist), Vector(from.Pos.m_X + dx, to.Surface - waist)))) {
+		return false;
+	}
+	// The ground's top every 2 px across, from a step over the higher floor to a step under the lower: no rise or drop from one to the next
+	// a step's worth or more (half a node, where a face is a lip: see LipAt, and the mantle), and no stretch without ground (a gap).
+	const float step = nodeSize * 0.5F;
+	int top = static_cast<int>(std::min(from.Surface, to.Surface) - step);
+	int bottom = static_cast<int>(std::max(from.Surface, to.Surface) + step);
+	float last = from.Surface;
+	for (int d = 2; d <= static_cast<int>(std::abs(dx)); d += 2) {
+		int x = static_cast<int>(from.Pos.m_X + direction * static_cast<float>(d));
+		int y = top;
+		while (y <= bottom && (TerrNav(x, y) == MaterialColorKeys::g_MaterialAir || LiquidOf(TerrNav(x, y)) != PathLiquid::None)) {
+			++y;
+		}
+		if (y > bottom || y == top || std::abs(static_cast<float>(y) - last) >= step) {
+			return false;
+		}
+		last = static_cast<float>(y);
+	}
+	return std::abs(last - to.Surface) < step;
+}
+
+bool PathFinder::GapBetween(const PathNode& from, const PathNode& to) const {
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
+	float direction = dx < 0.0F ? -1.0F : 1.0F;
+	// From the top of the higher floor down to a node under the lower: anything solid there is a floor the walk takes, over a bump or down
+	// into a dip and out. A liquid is no floor (a pool's surface is where a body sinks); a shallow one has its bed within the reach.
+	int top = static_cast<int>(std::min(from.Surface, to.Surface)) - 2;
+	int bottom = static_cast<int>(std::max(from.Surface, to.Surface) + nodeSize);
+	auto floored = [&](int x) {
+		for (int y = top; y <= bottom; ++y) {
+			unsigned char id = TerrNav(x, y);
+			if (id != MaterialColorKeys::g_MaterialAir && LiquidOf(id) == PathLiquid::None && g_SceneMan.GetMaterialFromID(id)->GetBehaviour().Flows != 1) {
+				return true;
+			}
+		}
+		return false;
+	};
+	// (Every 2 px between the two node centres; a gap narrower than half a node is stepped across.)
+	const int widest = static_cast<int>(nodeSize * 0.5F);
+	int run = 0;
+	for (int d = 2; d < static_cast<int>(std::abs(dx)) - 1; d += 2) {
+		if (floored(static_cast<int>(from.Pos.m_X + direction * static_cast<float>(d)))) {
+			run = 0;
+		} else if ((run += 2) >= widest) {
+			return true;
+		}
+	}
+	return false;
 }
 
 bool PathFinder::DoorSeenThrough(const Vector& at) const {
@@ -1659,6 +1850,13 @@ void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::Sta
 	if (node.Surface < 0.0F || !NodeIsOnSolidGround(node) || static_cast<float>(node.FreeHeight) < s_StandHeight) {
 		return;
 	}
+	if (s_KeepLinks) {
+		if (auto kept = s_LeapLinksKept.find(&node); kept != s_LeapLinksKept.end()) {
+			adjacentList->insert(adjacentList->end(), kept->second.begin(), kept->second.end());
+			return;
+		}
+	}
+	const size_t firstAdded = adjacentList->size();
 	const float nodeSize = static_cast<float>(m_NodeDimension);
 	const int gridX = static_cast<int>(std::floor(node.Pos.m_X / nodeSize));
 	const int gridY = static_cast<int>(std::floor(node.Pos.m_Y / nodeSize));
@@ -1672,13 +1870,22 @@ void PathFinder::AddLeapLinks(const PathNode& node, std::vector<micropather::Sta
 			if (!target || !LeapFits(node, *target)) {
 				continue;
 			}
-			// A little over the walk of the same distance (a node of walk is 1), and a little more for a leap up (the landing has to be
-			// right): so a walk wins where there is one, and the leap where there is a gap or a lip, well under any flight.
+			// Only where the walk can't go: over a gap in the floor, or up onto a lip higher than the searcher mantles. (Offered between any two
+			// floors the arc fitted, at a little over the walk, a leap beat every walk that paid a little extra on the way: over a bush, a
+			// grassy hump, a lump a step would have taken; units leapt along whole stretches of open ground.)
 			float rise = node.Surface - target->Surface;
-			adjCost.cost = static_cast<float>(std::abs(dx)) + 1.2F + (rise > 4.0F ? rise / nodeSize : 0.0F);
+			if (!(rise > s_MantleHeight && rise > nodeSize * 0.5F && LipAt(*target, dx < 0 ? -1.0F : 1.0F)) && !GapBetween(node, *target)) {
+				continue;
+			}
+			// Over the walk of the same distance (a node of walk is 1) by two, and more for a leap up (the landing has to be right): so a walk
+			// down into a shallow dip and out again still wins, and the leap takes the gap, well under any flight.
+			adjCost.cost = static_cast<float>(std::abs(dx)) + 2.0F + (rise > 4.0F ? rise / nodeSize : 0.0F);
 			adjCost.state = const_cast<PathNode*>(target);
 			adjacentList->push_back(adjCost);
 		}
+	}
+	if (s_KeepLinks) {
+		s_LeapLinksKept.emplace(&node, std::vector<micropather::StateCost>(adjacentList->begin() + firstAdded, adjacentList->end()));
 	}
 }
 
@@ -1721,7 +1928,11 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 	SearcherState kept;
 	ApplyAgent(agent);
 	s_FlyingStart = nullptr;
-	std::vector<micropather::StateCost> leaps;
+	const double nowMS = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	if (std::array<float, 4> leapAgent{s_LeapHeight, s_LeapSpeed, s_StandHeight, s_MantleHeight}; leapAgent != m_DebugLeapsAgent || m_DebugLeaps.size() > 20000) {
+		m_DebugLeaps.clear();
+		m_DebugLeapsAgent = leapAgent;
+	}
 	int fromX = static_cast<int>(std::floor(area.GetCorner().m_X / static_cast<float>(m_NodeDimension)));
 	int fromY = static_cast<int>(std::floor(area.GetCorner().m_Y / static_cast<float>(m_NodeDimension)));
 	int toX = static_cast<int>(std::ceil((area.GetCorner().m_X + area.GetWidth()) / static_cast<float>(m_NodeDimension)));
@@ -1771,9 +1982,13 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 			if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && !g_SceneMan.IsPointInNoGravArea(node->Pos)) {
 				auto lip = [node](const PathNode* side) { return side && side->Surface >= 0.0F && side->Surface < node->Surface - 4.0F; };
 				if (IsFloorEdge(*node) || lip(node->Left) || lip(node->Right)) {
-					leaps.clear();
-					AddLeapLinks(*node, &leaps);
-					for (const micropather::StateCost& leap: leaps) {
+					DebugLeaps& leaps = m_DebugLeaps[node];
+					if (leaps.TimeMS <= 0.0 || nowMS - leaps.TimeMS > 500.0) {
+						leaps.TimeMS = nowMS;
+						leaps.Links.clear();
+						AddLeapLinks(*node, &leaps.Links);
+					}
+					for (const micropather::StateCost& leap: leaps.Links) {
 						const PathNode* target = static_cast<const PathNode*>(leap.state);
 						Vector landing(target->Anchor.m_X, target->Surface - 3.0F);
 						Vector apex = standing + g_SceneMan.ShortestDistance(standing, landing) * 0.5F - Vector(0.0F, s_LeapHeight * 0.6F);
@@ -1829,13 +2044,13 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 			Vector cruiseHere(node.Pos.m_X, cruiseY);
 			Vector cruiseThere(target->Pos.m_X, cruiseY);
 			Vector there(target->Pos.m_X, target->Surface - 4.0F);
-			if (cruiseY < standY - 2.0F && !Open(*StrongestMaterialAlongLine(here, cruiseHere))) {
+			if (cruiseY < standY - 2.0F && !LineOpen(here, cruiseHere)) {
 				continue;
 			}
-			if (!Open(*StrongestMaterialAlongLine(cruiseHere, cruiseThere)) || !Open(*StrongestMaterialAlongLine(cruiseHere + Vector(0.0F, -s_StandHeight * 0.5F), cruiseThere + Vector(0.0F, -s_StandHeight * 0.5F)))) {
+			if (!LineOpen(cruiseHere, cruiseThere) || !LineOpen(cruiseHere + Vector(0.0F, -s_StandHeight * 0.5F), cruiseThere + Vector(0.0F, -s_StandHeight * 0.5F))) {
 				continue;
 			}
-			if (!Open(*StrongestMaterialAlongLine(cruiseThere, there))) {
+			if (!LineOpen(cruiseThere, there)) {
 				continue;
 			}
 			// The cost: the flight's time against a walk's (a node of walk is about half a second), the take-off and landing, and the fuel.
@@ -1872,6 +2087,13 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 }
 
 void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {
+	if (s_KeepLinks) {
+		if (auto kept = s_FlightLinksKept.find(&node); kept != s_FlightLinksKept.end()) {
+			adjacentList->insert(adjacentList->end(), kept->second.begin(), kept->second.end());
+			return;
+		}
+	}
+	const size_t firstAdded = adjacentList->size();
 	std::vector<FlightLink> links;
 	CollectFlightLinks(node, links);
 	micropather::StateCost adjCost;
@@ -1883,6 +2105,9 @@ void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::S
 		adjCost.cost = link.cost;
 		adjCost.state = const_cast<PathNode*>(link.target);
 		adjacentList->push_back(adjCost);
+	}
+	if (s_KeepLinks) {
+		s_FlightLinksKept.emplace(&node, std::vector<micropather::StateCost>(adjacentList->begin() + firstAdded, adjacentList->end()));
 	}
 }
 
@@ -1923,8 +2148,15 @@ float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	return strength;
 }
 
-const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end) const {
-	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir, m_LadderMaterial);
+float PathFinder::WalkMaterialCost(const Material& material) const {
+	if (Open(material) && material.GetBehaviour().Flows != 1 && LiquidOf(static_cast<unsigned char>(material.GetIndex())) == PathLiquid::None) {
+		return 0.0F;
+	}
+	return GetMaterialTransitionCost(material);
+}
+
+const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end, float stopAbove) const {
+	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir, m_LadderMaterial, stopAbove);
 }
 
 unsigned char PathFinder::TerrNav(int x, int y) const {
@@ -1932,14 +2164,23 @@ unsigned char PathFinder::TerrNav(int x, int y) const {
 	return (m_LadderMaterial != 0 && id == m_LadderMaterial) ? static_cast<unsigned char>(MaterialColorKeys::g_MaterialAir) : id;
 }
 
-void PathFinder::AddTeamAvoid(const Vector& place, double untilMS) {
+void PathFinder::AddTeamAvoid(const Vector& place, double untilMS, double nowMS) {
 	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
+	// Expired places go, and the oldest past the cap: they were kept for the whole game, and every path request copies the live ones under
+	// this lock, so a long battle with units getting stuck made every request slower.
+	std::erase_if(m_TeamAvoid, [nowMS](const std::pair<Vector, double>& avoid) { return avoid.second <= nowMS; });
+	if (m_TeamAvoid.size() >= c_TeamAvoidKept) {
+		m_TeamAvoid.erase(m_TeamAvoid.begin(), m_TeamAvoid.begin() + (m_TeamAvoid.size() - c_TeamAvoidKept + 1));
+	}
 	m_TeamAvoid.emplace_back(place, untilMS);
 }
 
-void PathFinder::AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS) {
+void PathFinder::AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS, double nowMS) {
 	std::lock_guard<std::mutex> lock(m_TeamAvoidMutex);
-	std::erase_if(m_TeamAvoidLinks, [untilMS](const AvoidLink& link) { return link.until < untilMS - 600000.0; });
+	std::erase_if(m_TeamAvoidLinks, [nowMS](const AvoidLink& link) { return link.until <= nowMS; });
+	if (m_TeamAvoidLinks.size() >= c_TeamAvoidKept) {
+		m_TeamAvoidLinks.erase(m_TeamAvoidLinks.begin(), m_TeamAvoidLinks.begin() + (m_TeamAvoidLinks.size() - c_TeamAvoidKept + 1));
+	}
 	m_TeamAvoidLinks.push_back({from, to, untilMS});
 }
 
@@ -2219,7 +2460,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			}
 			Vector here(node->Pos.m_X, node->Surface);
 			Vector there(target->Pos.m_X, targetSurface);
-			return Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -10.0F), there + Vector(0.0F, -10.0F))) && Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -18.0F), there + Vector(0.0F, -18.0F)));
+			return LineOpen(here + Vector(0.0F, -10.0F), there + Vector(0.0F, -10.0F)) && LineOpen(here + Vector(0.0F, -18.0F), there + Vector(0.0F, -18.0F));
 		};
 		node->StairsUpRight = stairsTo(node->Up ? node->Up->UpRight : nullptr);
 		node->StairsUpLeft = stairsTo(node->Up ? node->Up->LeftUp : nullptr);
@@ -2265,7 +2506,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			if (!holds(faceMaterial) || !holds(topMaterial)) {
 				return false;
 			}
-			return Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -14.0F), there + Vector(0.0F, -14.0F))) && Open(*StrongestMaterialAlongLine(here + Vector(0.0F, -24.0F), there + Vector(0.0F, -24.0F)));
+			return LineOpen(here + Vector(0.0F, -14.0F), there + Vector(0.0F, -14.0F)) && LineOpen(here + Vector(0.0F, -24.0F), there + Vector(0.0F, -24.0F));
 		};
 		const PathNode* twoUp = node->Up ? node->Up->Up : nullptr;
 		node->ScrambleUpRight = scrambleTo(twoUp ? twoUp->UpRight : nullptr, 1.0F);
@@ -2458,6 +2699,68 @@ bool PathFinder::UpdateNodeList(const std::vector<int>& nodeVec) {
 	}
 
 	return anyChange;
+}
+
+bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>& nodeVec) {
+	ZoneScoped;
+
+	if (&from == this || from.m_NodeGrid.size() != m_NodeGrid.size() || from.m_NodeDimension != m_NodeDimension) {
+		return false;
+	}
+
+	// The fields UpdateNodeCosts writes for its own node; m_Navigable and the links between nodes belong to each grid.
+	std::for_each(
+	    std::execution::par_unseq,
+	    nodeVec.begin(),
+	    nodeVec.end(),
+	    [this, &from](int nodeId) {
+		    const PathNode& source = from.m_NodeGrid[nodeId];
+		    PathNode& node = m_NodeGrid[nodeId];
+		    node.Anchor = source.Anchor;
+		    node.Ladder = source.Ladder;
+		    node.Surface = source.Surface;
+		    node.FreeHeight = source.FreeHeight;
+		    node.ClearLeft = source.ClearLeft;
+		    node.ClearRight = source.ClearRight;
+		    node.StairsUpRight = source.StairsUpRight;
+		    node.Grounded = source.Grounded;
+		    node.StairsUpLeft = source.StairsUpLeft;
+		    node.ScrambleUpRight = source.ScrambleUpRight;
+		    node.ScrambleUpLeft = source.ScrambleUpLeft;
+		    node.Liquid = source.Liquid;
+		    node.LiquidDepth = source.LiquidDepth;
+		    node.StepOverRise = source.StepOverRise;
+		    node.StepOverRoom = source.StepOverRoom;
+		    node.StepOverRiseLeft = source.StepOverRiseLeft;
+		    node.StepOverRoomLeft = source.StepOverRoomLeft;
+		    node.RightMaterial = source.RightMaterial;
+		    node.DownMaterial = source.DownMaterial;
+		    node.UpRightMaterial = source.UpRightMaterial;
+		    node.RightDownMaterial = source.RightDownMaterial;
+	    });
+
+	// And the neighbours' side of those, as UpdateNodeList's second pass does.
+	std::for_each(
+	    std::execution::par_unseq,
+	    nodeVec.begin(),
+	    nodeVec.end(),
+	    [this](int nodeId) {
+		    PathNode* node = &m_NodeGrid[nodeId];
+		    if (node->Right) {
+			    node->Right->LeftMaterial = node->RightMaterial;
+		    }
+		    if (node->Down) {
+			    node->Down->UpMaterial = node->DownMaterial;
+		    }
+		    if (node->UpRight) {
+			    node->UpRight->DownLeftMaterial = node->UpRightMaterial;
+		    }
+		    if (node->RightDown) {
+			    node->RightDown->LeftUpMaterial = node->RightDownMaterial;
+		    }
+	    });
+
+	return true;
 }
 
 void PathFinder::MarkBoxNavigable(Box box, bool navigable) {

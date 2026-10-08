@@ -232,6 +232,10 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderHasPost", &Actor::GetOrderHasPost)
 	    .property("OrderPost", &Actor::GetOrderPost, &Actor::SetOrderPost)
 	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
+	    .property("OrderPostFacing", &Actor::GetOrderPostFacing, &Actor::SetOrderPostFacing)
+	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
+	    .property("PaceLimit", &Actor::GetPaceLimit, &Actor::SetPaceLimit)
+	    .property("MovementRule", &Actor::GetMovementRule, &Actor::SetMovementRule)
 	    .property("DeploymentID", &Actor::GetDeploymentID)
 	    .property("PassengerSlots", &Actor::GetPassengerSlots, &Actor::SetPassengerSlots)
 	    .property("Perceptiveness", &Actor::GetPerceptiveness, &Actor::SetPerceptiveness)
@@ -245,8 +249,13 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("MovePathSize", &Actor::GetMovePathSize)
 	    .property("MovePathStepKind", &Actor::GetMovePathStepKind)
 	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
+	    .property("FootstepNoise", &Actor::GetFootstepNoise)
+	    .def("HearFootsteps", &Actor::HearFootsteps)
 	    .property("Suppression", &Actor::GetSuppression)
 	    .property("Morale", &Actor::GetMorale)
+	    .def("Say", &Actor::Say)
+	    .def("SayText", &Actor::SayText)
+	    .property("SpeechSet", &Actor::GetSpeechSet, &Actor::SetSpeechSet)
 	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)
 	    .property("IsWaitingOnNewMovePath", &Actor::IsWaitingOnNewMovePath)
@@ -348,6 +357,13 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	                     luabind::value("AIMODE_BOMB", Actor::AIMode::AIMODE_BOMB),
 	                     luabind::value("AIMODE_SQUAD", Actor::AIMode::AIMODE_SQUAD),
 	                     luabind::value("AIMODE_COUNT", Actor::AIMode::AIMODE_COUNT)]
+	    .enum_("WeaponRule")[luabind::value("WEAPONS_AT_WILL", Actor::WeaponRule::WEAPONS_AT_WILL),
+	                         luabind::value("WEAPONS_RETURN_FIRE", Actor::WeaponRule::WEAPONS_RETURN_FIRE),
+	                         luabind::value("WEAPONS_HOLD", Actor::WeaponRule::WEAPONS_HOLD)]
+	    .enum_("MovementRule")[luabind::value("MOVE_FOLLOW_ORDER", Actor::MovementRule::MOVE_FOLLOW_ORDER),
+	                           luabind::value("MOVE_ENGAGE", Actor::MovementRule::MOVE_ENGAGE),
+	                           luabind::value("MOVE_ONLY", Actor::MovementRule::MOVE_ONLY),
+	                           luabind::value("MOVE_HOLD_GROUND", Actor::MovementRule::MOVE_HOLD_GROUND)]
 	    .enum_("ActionState")[luabind::value("MOVING", Actor::ActionState::MOVING),
 	                          luabind::value("MOVING_FAST", Actor::ActionState::MOVING_FAST),
 	                          luabind::value("FIRING", Actor::ActionState::FIRING),
@@ -986,16 +1002,16 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MOSRotating) {
 	    .def("EraseFromTerrain", &MOSRotating::EraseFromTerrain)
 	    .def("AddAttachable", (void(MOSRotating::*)(Attachable * attachableToAdd)) & MOSRotating::AddAttachable, luabind::adopt(_2))
 	    .def("AddAttachable", (void(MOSRotating::*)(Attachable * attachableToAdd, const Vector& parentOffset)) & MOSRotating::AddAttachable, luabind::adopt(_2))
-	    .def("RemoveAttachable", (Attachable * (MOSRotating::*)(long uniqueIDOfAttachableToRemove)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
-	    .def("RemoveAttachable", (Attachable * (MOSRotating::*)(long uniqueIDOfAttachableToRemove, bool addToMovableMan, bool addBreakWounds)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
-	    .def("RemoveAttachable", (Attachable * (MOSRotating::*)(Attachable * attachableToRemove)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
-	    .def("RemoveAttachable", (Attachable * (MOSRotating::*)(Attachable * attachableToRemove, bool addToMovableMan, bool addBreakWounds)) & MOSRotating::RemoveAttachable)
+	    .def("RemoveAttachable", &LuaAdaptersMOSRotating::RemoveAttachableByID1, luabind::adopt(luabind::return_value))
+	    .def("RemoveAttachable", &LuaAdaptersMOSRotating::RemoveAttachableByID, luabind::adopt(luabind::return_value))
+	    .def("RemoveAttachable", &LuaAdaptersMOSRotating::RemoveAttachable1, luabind::adopt(luabind::return_value))
+	    .def("RemoveAttachable", &LuaAdaptersMOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
 	    .def("AddEmitter", (void(MOSRotating::*)(Attachable * attachableToAdd)) & MOSRotating::AddAttachable, luabind::adopt(_2))
 	    .def("AddEmitter", (void(MOSRotating::*)(Attachable * attachableToAdd, const Vector& parentOffset)) & MOSRotating::AddAttachable, luabind::adopt(_2))
-	    .def("RemoveEmitter", (Attachable * (MOSRotating::*)(long uniqueIDOfAttachableToRemove)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
-	    .def("RemoveEmitter", (Attachable * (MOSRotating::*)(long uniqueIDOfAttachableToRemove, bool addToMovableMan, bool addBreakWounds)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
-	    .def("RemoveEmitter", (Attachable * (MOSRotating::*)(Attachable * attachableToRemove)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
-	    .def("RemoveEmitter", (Attachable * (MOSRotating::*)(Attachable * attachableToRemove, bool addToMovableMan, bool addBreakWounds)) & MOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
+	    .def("RemoveEmitter", &LuaAdaptersMOSRotating::RemoveAttachableByID1, luabind::adopt(luabind::return_value))
+	    .def("RemoveEmitter", &LuaAdaptersMOSRotating::RemoveAttachableByID, luabind::adopt(luabind::return_value))
+	    .def("RemoveEmitter", &LuaAdaptersMOSRotating::RemoveAttachable1, luabind::adopt(luabind::return_value))
+	    .def("RemoveEmitter", &LuaAdaptersMOSRotating::RemoveAttachable, luabind::adopt(luabind::return_value))
 
 	    .def("GibThis", &LuaAdaptersMOSRotating::GibThis);
 }
@@ -1323,6 +1339,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Scene) {
 	    .def("CalculatePath", &LuaAdaptersScene::CalculatePath)
 	    .def("CalculatePath", &LuaAdaptersScene::CalculatePath1)
 	    .def("CalculatePathForActor", &LuaAdaptersScene::CalculatePathForActor)
+	    .def("CalculatePathPoints", &LuaAdaptersScene::CalculatePathPoints, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .def("CalculatePathPoints", &LuaAdaptersScene::CalculatePathPoints1, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .def("CalculatePathPointsForActor", &LuaAdaptersScene::CalculatePathPointsForActor, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("GetScenePathStepKinds", &Scene::GetScenePathStepKinds, luabind::return_stl_iterator)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync1)
@@ -1496,6 +1515,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ThrownDevice) {
 	    .property("MaxThrowVel", &ThrownDevice::GetMaxThrowVel, &ThrownDevice::SetMaxThrowVel)
 	    .property("StartThrowOffset", &ThrownDevice::GetStartThrowOffset, &ThrownDevice::SetStartThrowOffset)
 	    .property("EndThrowOffset", &ThrownDevice::GetEndThrowOffset, &ThrownDevice::SetEndThrowOffset)
+	    .property("TriggerDelay", &ThrownDevice::GetTriggerDelay)
+	    .property("ActivatesWhenReleased", &ThrownDevice::ActivatesWhenReleased)
 
 	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength);
 }

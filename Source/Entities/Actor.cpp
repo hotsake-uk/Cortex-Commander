@@ -107,6 +107,8 @@ void Actor::Clear() {
 	m_HeadlampBrightness = 1.0F;
 	m_HeadlampColor.SetRGB(255, 240, 215);
 	m_HeadlampHasColor = false;
+	m_SpeechSet.clear();
+	m_Speech = UnitSpeech::State();
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
 	m_CharHeight = 0;
@@ -124,6 +126,8 @@ void Actor::Clear() {
 	m_AIMode = AIMODE_NONE;
 	m_AIOrderSerial = 0;
 	m_StandingOrder = StandingOrder();
+	m_WeaponRule = WEAPONS_AT_WILL;
+	m_PaceLimit = 0.0F;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -260,6 +264,7 @@ int Actor::Create(const Actor& reference) {
 	m_SightDistance = reference.m_SightDistance;
 	m_Perceptiveness = reference.m_Perceptiveness;
 	m_HeadlampBrightness = reference.m_HeadlampBrightness;
+	m_SpeechSet = reference.m_SpeechSet;
 	m_HeadlampColor = reference.m_HeadlampColor;
 	m_HeadlampHasColor = reference.m_HeadlampHasColor;
 	m_PainThreshold = reference.m_PainThreshold;
@@ -313,6 +318,7 @@ int Actor::Create(const Actor& reference) {
 
 	m_AIMode = reference.m_AIMode;
 	m_StandingOrder = reference.m_StandingOrder;
+	m_WeaponRule = reference.m_WeaponRule;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -396,6 +402,7 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SightDistance", { reader >> m_SightDistance; });
 	MatchProperty("Perceptiveness", { reader >> m_Perceptiveness; });
 	MatchProperty("HeadlampBrightness", { reader >> m_HeadlampBrightness; });
+	MatchProperty("SpeechSet", { m_SpeechSet = reader.ReadPropValue(); });
 	MatchProperty("HeadlampColor", {
 		reader >> m_HeadlampColor;
 		m_HeadlampHasColor = true;
@@ -431,6 +438,21 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_StandingOrder.HasPost = true;
 	});
 	MatchProperty("OrderHold", { reader >> m_StandingOrder.Hold; });
+	MatchProperty("OrderPostFacing", {
+		int facing = 0;
+		reader >> facing;
+		SetOrderPostFacing(facing);
+	});
+	MatchProperty("OrderMovement", {
+		int rule = 0;
+		reader >> rule;
+		SetMovementRule(rule);
+	});
+	MatchProperty("WeaponRule", {
+		int rule = 0;
+		reader >> rule;
+		SetWeaponRule(rule);
+	});
 	MatchProperty("SpecialBehaviour_AddAISceneWaypoint", {
 		Vector waypointToAdd;
 		reader >> waypointToAdd;
@@ -499,6 +521,9 @@ int Actor::Save(Writer& writer) const {
 	writer.NewProperty("SightDistance");
 	writer << m_SightDistance;
 	writer.NewPropertyWithValue("HeadlampBrightness", m_HeadlampBrightness);
+	if (!m_SpeechSet.empty()) {
+		writer.NewPropertyWithValue("SpeechSet", m_SpeechSet);
+	}
 	if (m_HeadlampHasColor) {
 		writer.NewPropertyWithValue("HeadlampColor", m_HeadlampColor);
 	}
@@ -539,6 +564,15 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_StandingOrder.Hold) {
 		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
+	}
+	if (m_StandingOrder.PostFacing != 0) {
+		writer.NewPropertyWithValue("OrderPostFacing", m_StandingOrder.PostFacing);
+	}
+	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
+		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);
+	}
+	if (m_WeaponRule != WEAPONS_AT_WILL) {
+		writer.NewPropertyWithValue("WeaponRule", m_WeaponRule);
 	}
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
@@ -1333,7 +1367,7 @@ void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
 	m_AvoidPoints.emplace_back(place, now + static_cast<double>(milliseconds));
 	// And for the whole team, for half as long: the next unit to come that way pays for the place too, rather than finding out the same way.
 	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
-		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoid(place, now + static_cast<double>(milliseconds) * 0.5);
+		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoid(place, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
 }
 
@@ -1346,7 +1380,7 @@ void Actor::AvoidPathLink(const Vector& from, const Vector& to, float millisecon
 	std::erase_if(m_AvoidLinks, [now](const FailedLink& link) { return link.until <= now; });
 	m_AvoidLinks.push_back({from, to, now + static_cast<double>(milliseconds)});
 	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
-		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoidLink(from, to, now + static_cast<double>(milliseconds) * 0.5);
+		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoidLink(from, to, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
 }
 
@@ -1381,6 +1415,15 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		return false;
 	}
 	float height = std::max(m_CharHeight, 20.0F);
+	// Nor against a slope or a bump the walk goes up: free to move on with the body a little higher (a step's worth over 3 px), the legs
+	// take it. (Anything at all ahead blocked the shifted body, the uphill ground of any incline included, so units pulled themselves up
+	// every hill in a string of mantles instead of walking it.)
+	const int walkStep = static_cast<int>(std::max(6.0F, height * 0.08F));
+	for (int lift = 2; lift <= walkStep; lift += 2) {
+		if (BodyFitsShifted(Vector(dir * 3.0F, static_cast<float>(-lift)), head)) {
+			return false;
+		}
+	}
 	// Not for an AI whose route goes down from here: pressing towards the wall of a hatch it was dropping through, a unit was pulled back
 	// up onto the ledge beside it, walked back to the hole, and did it again for twenty seconds.
 	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
@@ -1440,6 +1483,18 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 		return false;
 	}
 	float height = std::max(m_CharHeight, 20.0F);
+	// Really in the air: no ground within the legs' reach under the body's middle or either side of it. (The torso fits 3 px lower with the
+	// legs standing on the ground, so a body walking up stairs or a slope found the ground beside its hand inside the lip window and was
+	// caught every frame: stopped, pulled up, dropped, caught again, which read as vibrating against the terrain.)
+	// (In a pool the hands still take the bank: wading, the floor under the water is within reach, and the way out is up over the side.)
+	const bool wading = FluidSim::IsLiquid(g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X), static_cast<int>(m_Pos.m_Y)));
+	for (float side: {0.0F, -bodyWidth * 0.3F, bodyWidth * 0.3F}) {
+		for (int down = 0; !wading && down <= static_cast<int>(height * 0.6F); down += 2) {
+			if (IsGroundAt(static_cast<int>(m_Pos.m_X + side), static_cast<int>(m_Pos.m_Y) + down)) {
+				return false;
+			}
+		}
+	}
 	// (Not for an AI whose route goes down from here, as for the mantle: a unit dropping down a shaft caught every lip on the way.)
 	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
 		return false;
@@ -1691,16 +1746,19 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float off; // Degrees off the field it is in (the aim's when sharp and inside it, else the facing's), as a fraction of that field's half.
 	};
 	std::vector<Candidate> candidates;
-	Box box(eyes - Vector(narrowReach, narrowReach), narrowReach * 2.0F, narrowReach * 2.0F);
-	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, m_Team, true)) {
-		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
+	// The candidates come from the actor list (tens of entries), not the MOID grid: a box this size covers thousands of grid cells, and in a
+	// firefight the grid hashed every bullet, gib and speck of dust in them for each scanning unit, to find the few actors among them. (Scripts
+	// in ThreadedUpdate already walk the same list, as MovableMan.Actors; new actors are queued and joined in MovableMan::Update's serial part.)
+	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
+	for (Actor* actor: g_MovableMan.GetActorList()) {
 		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
 			continue;
 		}
-		if (std::any_of(candidates.begin(), candidates.end(), [actor](const Candidate& candidate) { return candidate.actor == actor; })) {
+		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), wraps);
+		// (The square the grid search covered: no further than the longer reach either way.)
+		if (std::abs(toTarget.m_X) > narrowReach || std::abs(toTarget.m_Y) > narrowReach) {
 			continue;
 		}
-		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
 		float distance = toTarget.GetMagnitude();
 		float offAim = degreesBetween(toTarget, aimDirection);
 		float offFacing = degreesBetween(toTarget, facing);
@@ -1754,10 +1812,14 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float light = 1.0F;
 		if (night > 0.05F) {
 			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
-			if (candidate.actor->GetController()->IsState(WEAPON_FIRE)) {
-				lit = 1.0F;
+			// A lit headlamp gives its wearer away whichever way it points (AC-11).
+			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || (lighting.Headlamps && candidate.actor->GetHeadlampBrightness() > 0.0F)) {
+				lit = std::max(lit, candidate.actor->GetController()->IsState(WEAPON_FIRE) ? 1.0F : 0.6F);
 			}
-			light = std::max(1.0F - night * 0.7F, std::min(1.0F, lit * 1.5F));
+			// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
+			Vector roof;
+			bool roofed = g_SceneMan.CastNotMaterialRay(candidate.actor->GetEyePos(), Vector(0.0F, -std::max(120.0F, candidate.actor->GetHeight() * 3.0F)), g_MaterialAir, roof);
+			light = std::max(1.0F - night * (roofed ? 0.88F : 0.7F), std::min(1.0F, lit * 1.5F));
 		}
 		float moving = candidate.actor->GetVel().MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
 		float profile = std::clamp(candidate.actor->GetSightProfile(), 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
@@ -1766,6 +1828,74 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	}
 	std::sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
 	return m_Sightings;
+}
+
+float Actor::GetFootstepNoise() const {
+	if (m_Status == DYING || m_Status == DEAD || m_Status == INACTIVE) {
+		return 0.0F;
+	}
+	float speed = m_Vel.GetMagnitude();
+	if (speed < 0.5F) {
+		return 0.0F;
+	}
+	float noise = 0.0F;
+	switch (m_MovementState) {
+		case WALK:
+		case RUN:
+		case CLIMB:
+			noise = std::min(0.45F, 0.12F + 0.04F * speed);
+			break;
+		case CRAWL:
+		case ARMCRAWL:
+			noise = 0.04F;
+			break;
+		default:
+			return 0.0F;
+	}
+	// Bent double, softer steps (the profile is 1 standing, 0.8 crouched, under it lying down).
+	noise *= std::clamp(GetSightProfile(), 0.5F, 1.0F);
+	// Ringing on metal underfoot.
+	Vector underfoot;
+	if (g_SceneMan.CastNotMaterialRay(m_Pos, Vector(0.0F, m_CharHeight * 0.6F + 8.0F), g_MaterialAir, underfoot)) {
+		const Material* floor = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(underfoot.GetFloorIntX(), underfoot.GetFloorIntY()));
+		if (floor && floor->GetPresetName().find("Metal") != std::string::npos) {
+			noise *= 1.5F;
+		}
+	}
+	return noise;
+}
+
+Vector Actor::HearFootsteps() const {
+	if (!g_PostProcessMan.GetLightingSettings().NightAffectsAI || m_Perceptiveness <= 0.0F) {
+		return Vector();
+	}
+	// (An alarm event's range is so much of a screen's width; see AlarmEvent. The loudest footsteps, a run on metal, are 0.675.)
+	const float scale = m_Perceptiveness * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.51F;
+	const float farthest = 0.7F * scale;
+	const Vector ears = GetEyePos();
+	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
+	float loudest = 0.0F;
+	Vector heard;
+	for (const Actor* actor: g_MovableMan.GetActorList()) {
+		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI()) {
+			continue;
+		}
+		Vector toActor = g_SceneMan.ShortestDistance(ears, actor->GetPos(), wraps);
+		if (std::abs(toActor.m_X) > farthest || std::abs(toActor.m_Y) > farthest) {
+			continue;
+		}
+		float range = actor->GetFootstepNoise() * scale;
+		float distance = toActor.GetMagnitude();
+		if (range <= 0.0F || distance >= range) {
+			continue;
+		}
+		float loudness = 1.0F - distance / range;
+		if (loudness > loudest) {
+			loudest = loudness;
+			heard = actor->GetPos();
+		}
+	}
+	return heard;
 }
 
 bool Actor::FeelsFire() const {
@@ -1827,7 +1957,10 @@ void Actor::ShotPassing(const MovableObject& shot) {
 	// The box finds every part of a body (head, torso, limbs, held gun); each unit counts once for this shot.
 	static thread_local std::vector<const Actor*> s_Counted;
 	s_Counted.clear();
-	for (MovableObject* found: g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true)) {
+	// Up to 96 of these queries an update while anyone shoots: the found list is a buffer kept between calls, so the query allocates nothing.
+	static thread_local std::vector<MovableObject*> s_Found;
+	g_SceneMan.GetMOIDGrid().GetMOsInBox(box, shot.GetTeam(), true, s_Found);
+	for (MovableObject* found: s_Found) {
 		Actor* actor = dynamic_cast<Actor*>(found ? found->GetRootParent() : nullptr);
 		if (!actor || (shot.GetTeam() != Activity::NoTeam && actor->GetTeam() == shot.GetTeam())) {
 			continue;
@@ -1872,6 +2005,7 @@ void Actor::UpdateSuppressionAndMorale() {
 					Vector notUsed;
 					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
 						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
+						friendActor->Say("ManDown");
 					}
 				}
 			}
@@ -1908,8 +2042,13 @@ void Actor::UpdateSuppressionAndMorale() {
 				continue;
 			}
 			Vector toOther = g_SceneMan.ShortestDistance(m_Pos, other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
-			if (other->IsInGroup("Brains")) {
-				brainNear = brainNear || toOther.MagnitudeIsLessThan(300.0F);
+			// (Nothing further than 300 px counts either way, so the group lookup, a string hash, is only made for those nearer.)
+			if (!toOther.MagnitudeIsLessThan(300.0F)) {
+				continue;
+			}
+			static const std::string c_BrainsGroup = "Brains";
+			if (other->IsInGroup(c_BrainsGroup)) {
+				brainNear = true;
 			} else if (friends < 3 && toOther.MagnitudeIsLessThan(200.0F)) {
 				++friends;
 			}
@@ -2201,34 +2340,15 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 	// If we have something to draw, adjust the draw position to work if drawn to a target screen bitmap that is straddling a scene seam
 	if ((m_HUDVisible || m_PieMenu->IsVisible()) && !targetPos.IsZero()) {
-		// Spans vertical scene seam
-		int sceneWidth = g_SceneMan.GetSceneWidth();
-		if (g_SceneMan.SceneWrapsX() && pTargetBitmap->w < sceneWidth) {
-			if ((targetPos.m_X < 0) && (m_Pos.m_X > (sceneWidth - pTargetBitmap->w))) {
-				drawPos.m_X -= sceneWidth;
-				cpuPos.m_X -= sceneWidth;
-			} else if (((targetPos.m_X + pTargetBitmap->w) > sceneWidth) && (m_Pos.m_X < pTargetBitmap->w)) {
-				drawPos.m_X += sceneWidth;
-				cpuPos.m_X += sceneWidth;
-			}
-		}
-
-		// Spans horizontal scene seam
-		int sceneHeight = g_SceneMan.GetSceneHeight();
-		if (g_SceneMan.SceneWrapsY() && pTargetBitmap->h < sceneHeight) {
-			if ((targetPos.m_Y < 0) && (m_Pos.m_Y > (sceneHeight - pTargetBitmap->h))) {
-				drawPos.m_Y -= sceneHeight;
-				cpuPos.m_Y -= sceneHeight;
-			} else if (((targetPos.m_Y + pTargetBitmap->h) > sceneHeight) && (m_Pos.m_Y < pTargetBitmap->h)) {
-				drawPos.m_Y += sceneHeight;
-				cpuPos.m_Y += sceneHeight;
-			}
-		}
+		Vector wrap = g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+		drawPos += wrap;
+		cpuPos += wrap;
 	}
 
 	int actorScreen = g_ActivityMan.GetActivity() ? g_ActivityMan.GetActivity()->ScreenOfPlayer(m_Controller.GetPlayer()) : -1;
 	bool screenTeamIsSameAsActorTeam = g_ActivityMan.GetActivity() ? g_ActivityMan.GetActivity()->GetTeamOfPlayer(g_ActivityMan.GetActivity()->PlayerOfScreen(whichScreen)) == m_Team : true;
-	if (m_PieMenu->IsVisible() && screenTeamIsSameAsActorTeam && (!m_PieMenu->IsInNormalAnimationMode() || (actorScreen == whichScreen))) {
+	// (Not the wheel where the action menu stands in for it, RC-12: that is drawn over the game, in ActionMenu.)
+	if (m_PieMenu->IsVisible() && screenTeamIsSameAsActorTeam && (!m_PieMenu->IsInNormalAnimationMode() || (actorScreen == whichScreen)) && !m_PieMenu->IsReplacedByActionMenu()) {
 		m_PieMenu->Draw(pTargetBitmap, targetPos);
 	}
 
@@ -2473,6 +2593,28 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 
 void Actor::DrawHUD(const Camera& camera) {}
 
+void Actor::DrawSpeech(BITMAP* targetBitmap, const Vector& targetPos, int whichScreen) {
+	if (!UnitSpeech::IsEnabled() || m_Speech.Text.empty() || m_Status >= DYING || m_Team < 0 || !g_ActivityMan.GetActivity()) {
+		return;
+	}
+	const long long age = g_TimerMan.GetSimTimeMS() - m_Speech.StartMS;
+	if (age < 0 || age > m_Speech.DurationMS) {
+		return;
+	}
+	// Heard by its own side; by the others only where they can see it, as the HUD.
+	int viewingTeam = g_ActivityMan.GetActivity()->GetTeamOfPlayer(g_ActivityMan.GetActivity()->PlayerOfScreen(whichScreen));
+	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && (!UnitSpeech::ShowsEnemies() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
+		return;
+	}
+	Vector drawPos = m_Pos - targetPos;
+	if (!targetPos.IsZero()) {
+		drawPos += g_SceneMan.GetWrapToScreen(drawPos, targetBitmap->w, targetBitmap->h);
+	}
+	// Over the top of what the HUD drew for it on this screen (DrawHUD leaves m_HUDStack there), or over its head.
+	int top = std::min(m_HUDStack, static_cast<int>(-m_CharHeight / 2.0F)) - 2;
+	UnitSpeech::DrawBubble(targetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + top, m_Speech, m_Team);
+}
+
 void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	static const char* const modeNames[] = {"none", "sentry", "patrol", "goto", "brainhunt", "gold dig", "return", "stay", "scuttle", "deliver", "bomb", "squad", "count"};
 	auto number = [&fields](const std::string& name, double value) {
@@ -2495,7 +2637,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());
-	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade"};
+	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade", "step over"};
 	auto stepName = [](int kind) { return kind >= 0 && kind < static_cast<int>(std::size(stepNames)) ? std::string(stepNames[kind]) : std::string("none"); };
 	fields.push_back({"step", stepName(GetMovePathStepKind()), true});
 	fields.push_back({"nextStep", stepName(GetMovePathNextStepKind()), true});

@@ -96,6 +96,9 @@ namespace {
 	std::array<float, 256> s_DryChance{}; //!< The chance a sweep pass of a still surface pixel of it drying.
 	std::array<bool, 256> s_Chills{}; //!< Freezes what it touches that freezes (cryogenic fluid).
 	std::array<float, 256> s_Evaporates{}; //!< The chance a step of a surface pixel of it boiling off into mist.
+	std::array<int, 256> s_SightDepth{}; //!< How many pixels of a liquid a look sees through (MaterialBehaviour::SightDepth).
+	std::array<int, 256> s_ShotDepth{}; //!< How many pixels of a liquid a shot goes on through (MaterialBehaviour::ShotDepth).
+	std::array<float, 256> s_ShotDrag{}; //!< A shot's speed is multiplied by this for each pixel of the liquid: half by the end of its shot depth.
 	/// What a liquid does to what it may flow through (MaterialBehaviour::PassThrough).
 	enum class PassThrough : unsigned char {
 		Keep, //!< Flows through and leaves it there for when it has gone (water).
@@ -339,6 +342,10 @@ namespace {
 		float Share, Speed;
 	};
 	std::vector<SplashRequest> s_Splashes;
+	struct KeptLiquid {
+		int X, Y, Material, Color;
+	};
+	std::vector<KeptLiquid> s_Kept; //!< Liquid something settled into, to go back at the surface above it (FluidSim::KeepLiquidAt).
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: a new scene at the old one's address, or the same one restarted, still counts as new (L-1).
@@ -396,6 +403,9 @@ namespace {
 		s_DryChance.fill(0.0F);
 		s_Chills.fill(false);
 		s_Evaporates.fill(0.0F);
+		s_SightDepth.fill(0);
+		s_ShotDepth.fill(0);
+		s_ShotDrag.fill(1.0F);
 		s_LetsLiquidsThrough.fill(false);
 		s_PassThrough.fill(PassThrough::Collide);
 		s_BloodMaterial = 0;
@@ -475,6 +485,10 @@ namespace {
 			s_DriesTo[id] = turnsInto(behaviour.DriesTo, nullptr);
 			s_Chills[id] = behaviour.Chills == 1;
 			s_Evaporates[id] = behaviour.Evaporates > 0.0F ? std::min(behaviour.Evaporates, 1.0F) : 0.0F;
+			// How far looks and shots go into it: set, or stock, clear water's for any liquid but oil (murky) and lava (molten rock).
+			s_SightDepth[id] = std::max(0, behaviour.SightDepth >= 0 ? behaviour.SightDepth : (kind == Liquid::Lava ? 0 : (kind == Liquid::Oil ? 6 : 200)));
+			s_ShotDepth[id] = std::max(0, behaviour.ShotDepth >= 0 ? behaviour.ShotDepth : (kind == Liquid::Lava ? 10 : (kind == Liquid::Oil ? 30 : 60)));
+			s_ShotDrag[id] = s_ShotDepth[id] > 0 ? std::pow(0.5F, 1.0F / static_cast<float>(s_ShotDepth[id])) : 1.0F;
 			s_DryChance[id] = s_DriesTo[id] != 0 ? std::clamp(behaviour.DryChance >= 0.0F ? behaviour.DryChance : 0.1F, 0.0F, 1.0F) : 0.0F;
 			// How it is drawn: water, lava and acid by their own looks, oil plain (its dark brown is shared with too many sprites to shimmer), a
 			// liquid of a mod's own as water; and lava glows.
@@ -981,6 +995,18 @@ bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
 }
 
+int FluidSim::SightDepth(int materialID) {
+	return IsLiquid(materialID) ? s_SightDepth[materialID] : 0;
+}
+
+int FluidSim::ShotDepth(int materialID) {
+	return IsLiquid(materialID) ? s_ShotDepth[materialID] : 0;
+}
+
+float FluidSim::ShotDrag(int materialID) {
+	return IsLiquid(materialID) ? s_ShotDrag[materialID] : 1.0F;
+}
+
 bool FluidSim::HoldsBodies(int materialID) {
 	if (!IsLiquid(materialID)) {
 		return false;
@@ -1077,16 +1103,50 @@ void FluidSim::Splash(const Vector& position, float radius, float share, float s
 	}
 }
 
+void FluidSim::Froth(const Vector& position, float width, int count, int colorIndex) {
+	float amount = std::clamp(g_PostProcessMan.GetLightingSettings().SplashFroth, 0.0F, 3.0F);
+	if (amount <= 0.0F || count <= 0) {
+		return;
+	}
+	// White over water (and where the colour is the mask's, magenta in the palette); over another liquid, its own colour much paler.
+	unsigned int rgb = 0;
+	if (colorIndex != ColorKeys::g_MaskColor && !(s_WaterMaterial != 0 && colorIndex == s_ColorOfMaterial[s_WaterMaterial])) {
+		Color color;
+		color.SetRGBWithIndex(colorIndex);
+		unsigned int liquid = EffectsParticles::ColorToRGB(color);
+		if (liquid != 0) {
+			auto paler = [liquid](int shift) { return static_cast<unsigned int>(((liquid >> shift) & 0xFF) + (255 - ((liquid >> shift) & 0xFF)) * 3 / 4) << shift; };
+			rgb = paler(16) | paler(8) | paler(0);
+		}
+	}
+	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount)), 1, 80);
+	int columns = std::clamp(static_cast<int>(width / 4.0F), 1, std::min(total, 20));
+	for (int column = 0; column < columns; ++column) {
+		float across = columns > 1 ? static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F : 0.0F;
+		int here = total / columns + (column < total % columns ? 1 : 0);
+		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y), Vector(), 0.05F, here, rgb);
+	}
+}
+
 void FluidSim::VisualSplash(const Vector& position, float width, float speed, int colorIndex) {
+	if (speed < 1.0F) {
+		return;
+	}
+	// Froth left on the surface, by its own settings (even with the splash itself off): more the wider and harder it went in.
+	Froth(position, std::clamp(width * 1.3F, 4.0F, 260.0F), static_cast<int>(std::clamp(width * 0.2F * std::sqrt(std::min(speed, 24.0F)), 2.0F, 50.0F)), colorIndex);
 	float strength = std::clamp(g_PostProcessMan.GetLightingSettings().WaterSplash, 0.0F, 4.0F);
-	if (strength <= 0.0F || speed < 1.0F) {
+	if (strength <= 0.0F) {
 		return;
 	}
 	speed = std::min(speed, 24.0F);
 	width = std::clamp(width, 4.0F, 200.0F);
-	Color color;
-	color.SetRGBWithIndex(colorIndex);
-	unsigned int rgb = EffectsParticles::ColorToRGB(color);
+	// The mask colour is no liquid's (it is magenta in the palette): the drops then take the default water colour.
+	unsigned int rgb = 0;
+	if (colorIndex != ColorKeys::g_MaskColor) {
+		Color color;
+		color.SetRGBWithIndex(colorIndex);
+		rgb = EffectsParticles::ColorToRGB(color);
+	}
 	// The spray a little paler than the liquid, as it is against the light.
 	unsigned int mistRGB = 0;
 	if (rgb != 0) {
@@ -1105,6 +1165,28 @@ void FluidSim::VisualSplash(const Vector& position, float width, float speed, in
 		EffectsParticles::Emit("Droplets", at, velocity, 0.18F, perColumn, rgb);
 	}
 	EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength), 2, 60), mistRGB);
+}
+
+bool FluidSim::KeepLiquidAt(int x, int y) {
+	if (!s_Enabled || !s_TablesBuilt) {
+		return false;
+	}
+	const SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+	if (!terrain) {
+		return false;
+	}
+	int material = terrain->GetMaterialPixel(x, y);
+	if (!IsLiquid(material)) {
+		return false;
+	}
+	// Its own colour, not a plant's it covers (LP-3): that stays behind.
+	int color = OwnColor(y * terrain->GetBitmap()->w + x, material, terrain->GetFGColorPixel(x, y));
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Kept.size() >= 8192) {
+		return false;
+	}
+	s_Kept.push_back({x, y, material, color});
+	return true;
 }
 
 void FluidSim::Disturb(const Vector& position, float radius) {
@@ -1204,6 +1286,7 @@ void FluidSim::Update() {
 		s_Pours.clear();
 		s_Disturbances.clear();
 		s_BloodSettled.clear();
+		s_Kept.clear();
 		s_Active.Clear();
 		return;
 	}
@@ -1223,8 +1306,10 @@ void FluidSim::Update() {
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
 	std::vector<SplashRequest> splashRequests;
 	std::vector<glm::ivec2> bloodSettled;
+	std::vector<KeptLiquid> kept;
 	{
 		std::scoped_lock lock(s_QueueMutex);
+		kept.swap(s_Kept);
 		pours.swap(s_Pours);
 		disturbances.swap(s_Disturbances);
 		splashRequests.swap(s_Splashes);
@@ -1238,6 +1323,34 @@ void FluidSim::Update() {
 		if (s_BloodMaterial != 0 && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == s_WaterMaterial && terrain->GetFGColorPixel(x, y) != s_PourColor[s_WaterMaterial] && ShownColor(y * width + x, -1) == -1) {
 			terrain->SetMaterialPixel(x, y, s_BloodMaterial);
 			Activate(x, y, width, height, terrain);
+		}
+	}
+	// Liquid that something came to rest in (a chip or a grain of dirt sunk to the bottom, a stain) goes back at the surface above where it was:
+	// up through the liquid over it to the first free pixel, or failing that up a column beside it. Drawn over and lost, a pool that a burst of
+	// dirt or a spray of chips fell into went down by a pixel for every one of them, and looked to be eaten away.
+	std::sort(kept.begin(), kept.end(), [](const KeptLiquid& a, const KeptLiquid& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : (a.Material != b.Material ? a.Material < b.Material : a.Color < b.Color)); });
+	for (const KeptLiquid& liquid: kept) {
+		int keptX = s_WrapsX ? ((liquid.X % width) + width) % width : liquid.X;
+		bool placed = false;
+		for (int side: {0, -1, 1, -2, 2}) {
+			for (int y = liquid.Y - 1; y >= 0 && liquid.Y - y <= 600 && !placed; --y) {
+				int x = keptX + side;
+				int row = y;
+				if (!InWorld(x, row, width, height)) {
+					break;
+				}
+				int material = terrain->GetMaterialPixel(x, row);
+				if (material == g_MaterialAir) {
+					ChangePixel(terrain, x, row, liquid.Material, liquid.Color);
+					Activate(x, row, width, height, terrain);
+					placed = true;
+				} else if (!IsLiquid(material)) {
+					break;
+				}
+			}
+			if (placed) {
+				break;
+			}
 		}
 	}
 	// Liquid thrown into the air by blasts and by things falling in. Each pixel thrown becomes a flying drop that joins the liquid again where it lands, so none is lost.
@@ -1838,6 +1951,7 @@ void FluidSim::Clear() {
 	s_Disturbances.clear();
 	s_Splashes.clear();
 	s_BloodSettled.clear();
+	s_Kept.clear();
 }
 
 void FluidSim::GetActivePixels(const Vector& corner, float width, float height, std::vector<Vector>& pixels, size_t limit) {
@@ -1853,7 +1967,9 @@ void FluidSim::GetActivePixels(const Vector& corner, float width, float height, 
 			continue;
 		}
 		Vector pixel(static_cast<float>(key % s_Width), static_cast<float>(key / s_Width));
-		Vector fromCorner = g_SceneMan.ShortestDistance(corner, pixel, g_SceneMan.SceneWrapsX());
+		// The copy round a wrapping scene nearest the view, so pixels on the right of a view wider than half the scene still count.
+		Vector fromCorner = pixel - corner;
+		fromCorner += g_SceneMan.GetWrapToScreen(fromCorner, static_cast<int>(width), static_cast<int>(height));
 		if (fromCorner.m_X >= 0.0F && fromCorner.m_Y >= 0.0F && fromCorner.m_X < width && fromCorner.m_Y < height) {
 			pixels.push_back(pixel);
 		}

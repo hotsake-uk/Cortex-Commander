@@ -9,6 +9,9 @@
 #include "PresetMan.h"
 #include "AtomGroup.h"
 #include "SLTerrain.h"
+#include "ACraft.h"
+#include "ADoor.h"
+#include "ActorWater.h"
 #include "MOPixel.h"
 #include "MOSParticle.h"
 #include "AEmitter.h"
@@ -59,6 +62,7 @@ void MOSRotating::Clear() {
 	m_DeepCheck = false;
 	m_ForceDeepCheck = false;
 	m_DeepHardness = 0;
+	m_InLiquid = -1;
 	m_TravelImpulse.Reset();
 	m_SpriteCenter.Reset();
 	m_OrientToVel = 0;
@@ -1456,6 +1460,29 @@ void MOSRotating::PostTravel() {
 	// TODO: don't hardcode the MOPixel limits!
 	if (g_MovableMan.IsMOSubtractionEnabled() && (m_ForceDeepCheck || m_DeepCheck))
 		DeepCheck(true, 8, 50);
+
+	// Going into a liquid at speed (a unit jumping in, a body or a crate falling in, a rocket): a splash, for the eye only. Bodies pass through
+	// liquid and don't displace it; only falling ground does (TerrainCollapse). Once for the whole object, not for each of its parts.
+	// (Units in liquid are splashed by ActorWater, by how deep their feet go, but not craft and doors, which it leaves alone.)
+	if (!GetParent() && g_SceneMan.GetTerrain()) {
+		SLTerrain* terrain = g_SceneMan.GetTerrain();
+		int x = m_Pos.GetFloorIntX();
+		int y = m_Pos.GetFloorIntY();
+		bool inLiquid = FluidSim::IsLiquid(terrain->GetMaterialPixel(x, y));
+		// (Not on its first look: something made already in liquid, a gib under water or a crate spawned in a pool, didn't go in.)
+		if (inLiquid && m_InLiquid == 0 && m_Vel.MagnitudeIsGreaterThan(3.0F) && GetRadius() >= 2.0F) {
+			bool splashedByActorWater = ActorWater::IsEnabled() && FluidSim::IsEnabled() && dynamic_cast<const Actor*>(this) && !dynamic_cast<const ACraft*>(this) && !dynamic_cast<const ADoor*>(this);
+			// The surface it went in at: up from its middle through the liquid. None near (it came in from the side, deep down): no splash.
+			int surfaceY = y;
+			for (int up = 1; up <= static_cast<int>(GetRadius()) + 12 && FluidSim::IsLiquid(terrain->GetMaterialPixel(x, y - up)); ++up) {
+				surfaceY = y - up;
+			}
+			if (!splashedByActorWater && !FluidSim::IsLiquid(terrain->GetMaterialPixel(x, surfaceY - 1))) {
+				FluidSim::VisualSplash(Vector(static_cast<float>(x), static_cast<float>(surfaceY)), GetRadius() * 1.2F, m_Vel.GetMagnitude(), terrain->GetFGColorPixel(x, surfaceY));
+			}
+		}
+		m_InLiquid = inLiquid ? 1 : 0;
+	}
 
 	Attachable* attachable;
 	for (auto attachableIterator = m_Attachables.begin(); attachableIterator != m_Attachables.end();) {

@@ -112,6 +112,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxCountUnits", &Sandbox::CountUnits),
 	                         luabind::def("SandboxBuildMode", &Sandbox::SetBuildMode),
 	                         luabind::def("SandboxAutoBattleSide", &Sandbox::SetAutoBattleSide),
+	                         luabind::def("SandboxAutoBattleRandom", &Sandbox::SetAutoBattleRandom),
 	                         luabind::def("SandboxStartAutoBattle", &Sandbox::StartAutoBattle),
 	                         luabind::def("SandboxPauseAI", &Sandbox::SetAIPaused),
 	                         luabind::def("SandboxTogglePlay", &Sandbox::TogglePlay),
@@ -714,6 +715,13 @@ int LuaStateWrapper::RunScriptConditionalTestFunctionObject(const LuabindObjectW
 	}
 
 	const std::string& path = functionObject->GetFilePath();
+
+	// As in RunScriptFunctionObject: the timings entry is found once, now, as the function object (and `path`) may be gone after the call.
+	PerformanceMan::ScriptTiming* timing = nullptr;
+	if (&g_LuaMan.GetMasterScriptState() == this) {
+		timing = &m_ScriptTimings[path];
+	}
+
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	{
 		ZoneScoped;
@@ -733,9 +741,9 @@ int LuaStateWrapper::RunScriptConditionalTestFunctionObject(const LuabindObjectW
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
 	// only track time in non-MT scripts, for now
-	if (&g_LuaMan.GetMasterScriptState() == this) {
-		m_ScriptTimings[path].m_Time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-		m_ScriptTimings[path].m_CallCount++;
+	if (timing) {
+		timing->m_Time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+		timing->m_CallCount++;
 	}
 
 	lua_pop(m_State, 1);
@@ -772,6 +780,7 @@ int LuaStateWrapper::RunScriptFile(const std::string& filePath, bool consoleErro
 	SetLuaPath(fullScriptPath);
 
 	// Load the script file's contents onto the stack
+	s_ScriptFilesCompiled.fetch_add(1, std::memory_order_relaxed);
 	if (luaL_loadfile(m_State, fullScriptPath.c_str())) {
 		m_LastError = lua_tostring(m_State, -1);
 		lua_pop(m_State, 1);
@@ -883,10 +892,20 @@ int LuaStateWrapper::RunScriptFileAndRetrieveFunctions(const std::string& filePa
 }
 
 void LuaStateWrapper::Update() {
+	if (m_RegisteredMOGaps > 0) {
+		m_RegisteredMOs.erase(std::remove(m_RegisteredMOs.begin(), m_RegisteredMOs.end(), nullptr), m_RegisteredMOs.end());
+		for (size_t i = 0; i < m_RegisteredMOs.size(); ++i) {
+			m_RegisteredMOIndex[m_RegisteredMOs[i]] = i;
+		}
+		m_RegisteredMOGaps = 0;
+	}
 	for (MovableObject* mo: m_AddedRegisteredMOs) {
-		m_RegisteredMOs.insert(mo);
+		if (m_RegisteredMOIndex.emplace(mo, m_RegisteredMOs.size()).second) {
+			m_RegisteredMOs.push_back(mo);
+		}
 	}
 	m_AddedRegisteredMOs.clear();
+	m_AddedRegisteredMOSet.clear();
 }
 
 void LuaStateWrapper::ClearScriptTimings() {

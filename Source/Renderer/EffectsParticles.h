@@ -29,6 +29,8 @@ namespace RTE {
 			glm::vec2 Position; //!< Screen pixels, centre.
 			float Size; //!< Diameter in pixels.
 			glm::vec4 Color; //!< RGB albedo 0..1 in gamma space, A opacity.
+			float Angle = 0.0F; //!< How its soft shape is turned, in radians.
+			bool Mirrored = false; //!< Whether its soft shape is mirrored.
 		};
 
 		/// Gets a color as 0xRRGGBB: its RGB if set, otherwise its palette index looked up in the palette. 0 if it has neither (index 0 is the mask color).

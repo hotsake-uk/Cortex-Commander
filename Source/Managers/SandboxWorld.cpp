@@ -36,29 +36,43 @@ namespace SandboxDetail {
 	}
 
 
+	/// Closes the open undo step once its stroke has paused (or always): what it saw is only needed while it records, and is most of what a
+	/// big step holds. Called each sandbox update, so the last stroke's set doesn't stay until the next stroke begins.
+	void ClosePaintUndoStep(bool always) {
+		if (s_PaintUndo.empty() || s_PaintUndo.back().Seen.empty()) {
+			return;
+		}
+		if (always || g_TimerMan.GetSimUpdateCount() - s_PaintUndo.back().LastUpdate > 15) {
+			std::unordered_set<long long>().swap(s_PaintUndo.back().Seen);
+			s_PaintUndo.back().Pixels.shrink_to_fit();
+		}
+	}
+
 	/// Keeps a pixel as it is, before a paint or build stroke changes it, for the undo.
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y) {
-		if (!s_RecordPaint) {
+		if (!s_RecordPaint || x < 0 || y < 0 || x > 0xFFFF || y > 0xFFFF) {
 			return;
 		}
 		long long update = g_TimerMan.GetSimUpdateCount();
-		if (s_PaintUndo.empty() || update - s_PaintUndo.back().LastUpdate > 15) {
-			// The step before is closed: what it saw is only needed while it records, and is most of what a big step holds.
-			if (!s_PaintUndo.empty()) {
-				std::unordered_set<long long>().swap(s_PaintUndo.back().Seen);
-				s_PaintUndo.back().Pixels.shrink_to_fit();
-			}
+		// A new step for a new stroke, or when this stroke's step is full.
+		if (s_PaintUndo.empty() || update - s_PaintUndo.back().LastUpdate > 15 || s_PaintUndo.back().Pixels.size() >= c_PaintUndoPixelsPerStep) {
+			ClosePaintUndoStep(true);
 			s_PaintUndo.emplace_back();
-			while (s_PaintUndo.size() > c_PaintUndoSteps) {
+			size_t pixelsKept = 0;
+			for (const PaintUndoStep& kept: s_PaintUndo) {
+				pixelsKept += kept.Pixels.size();
+			}
+			while (s_PaintUndo.size() > 1 && (s_PaintUndo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
+				pixelsKept -= s_PaintUndo.front().Pixels.size();
 				s_PaintUndo.pop_front();
 			}
 		}
 		PaintUndoStep& step = s_PaintUndo.back();
 		step.LastUpdate = update;
-		if (step.Pixels.size() >= c_PaintUndoPixelsPerStep || !step.Seen.insert((static_cast<long long>(y) << 32) | static_cast<unsigned int>(x)).second) {
+		if (!step.Seen.insert((static_cast<long long>(y) << 32) | static_cast<unsigned int>(x)).second) {
 			return;
 		}
-		step.Pixels.push_back({x, y, terrain->GetMaterialPixel(x, y), terrain->GetFGColorPixel(x, y)});
+		step.Pixels.push_back({static_cast<unsigned short>(x), static_cast<unsigned short>(y), static_cast<unsigned char>(terrain->GetMaterialPixel(x, y)), static_cast<unsigned char>(terrain->GetFGColorPixel(x, y))});
 		step.Left = std::min(step.Left, x);
 		step.Top = std::min(step.Top, y);
 		step.Right = std::max(step.Right, x);
@@ -856,9 +870,50 @@ namespace SandboxDetail {
 				SelectInBox(stroke.Position, stroke.Position2);
 				break;
 			case Tool::Command:
-				CommandSelected(at, stroke.Count);
+				if (stroke.Count == 10 || stroke.Count == 11) {
+					// Defend at (RC-4): the point, the way dragged to face, and 11 with Shift.
+					DefendAtSelected(at, stroke.Position2, stroke.Count == 11);
+				} else if (stroke.Count == 20 || stroke.Count == 21) {
+					// A patrol route (RC-4): 20 a loop, 21 back and forth.
+					PatrolSelected(stroke.Points, stroke.Count == 21);
+				} else if (stroke.Count == 41 || stroke.Count == 42) {
+					// A right click on the map (RC-8): the mode's order at the place, 42 with Shift.
+					MapOrder(at, stroke.Count == 42);
+				} else if (stroke.Count == 40) {
+					// A "no route" marker clicked (RC-7): its units sent there again.
+					ReissueNoRoute(stroke.Position);
+				} else if (stroke.Count == 30 || stroke.Count == 31) {
+					// A move or attack-move facing the way dragged (RC-5), 31 with Shift.
+					FacingMoveSelected(at, stroke.Position2, stroke.Count == 31);
+				} else {
+					CommandSelected(at, stroke.Count);
+				}
 				break;
 			case Tool::OrderSelected:
+				if (stroke.Count == 400) {
+					// A step dropped from a unit's plan (RC-3).
+					DropPlanStep(stroke.UnitID, stroke.Choice);
+					break;
+				}
+				if (stroke.Count >= 200) {
+					// From the ring or the command row: an engagement rule for the selected units (RC-1), 200 + a weapons rule, 300 + a movement rule.
+					for (const UnitRef& ref: s_Selected) {
+						if (Actor* unit = GetRef(ref)) {
+							if (stroke.Count >= 300) {
+								unit->SetMovementRule(stroke.Count - 300);
+								const char* const answers[] = {nullptr, "RuleEngage", "RuleMoveOnly", "RuleHoldGround"};
+								int rule = stroke.Count - 300;
+								AnswerOrder(unit, rule >= 0 && rule < static_cast<int>(std::size(answers)) ? answers[rule] : nullptr);
+							} else {
+								unit->SetWeaponRule(stroke.Count - 200);
+								const char* const answers[] = {"RuleFireAtWill", "RuleReturnFire", "RuleHoldFire"};
+								int rule = stroke.Count - 200;
+								AnswerOrder(unit, rule >= 0 && rule < static_cast<int>(std::size(answers)) ? answers[rule] : nullptr);
+							}
+						}
+					}
+					break;
+				}
 				if (stroke.Count >= 100) {
 					// From the command ring: move, attack or hold, about a point.
 					OrderSelectedUnits(stroke.Count - 100, at);
@@ -867,6 +922,7 @@ namespace SandboxDetail {
 				for (const UnitRef& ref: s_Selected) {
 					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
 						GiveOrder(unit, stroke.Orders);
+						AnswerOrder(unit, OrderTrigger(stroke.Orders));
 					}
 				}
 				break;

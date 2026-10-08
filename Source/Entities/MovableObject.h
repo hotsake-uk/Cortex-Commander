@@ -1019,7 +1019,7 @@ namespace RTE {
 		/// Returns the string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
 		/// @return The value associated with the key.
-		const std::string& GetStringValue(const std::string& key) const;
+		std::string GetStringValue(const std::string& key) const;
 
 		/// Returns an encoded string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
@@ -1366,6 +1366,7 @@ namespace RTE {
 		};
 
 		std::string m_ScriptObjectName; //!< The name of this object for script usage.
+		std::string m_ScriptObjectKey; //!< This object's key in _ScriptedObjects (its unique ID as a string), kept so a scripted call doesn't format it each time.
 		std::vector<std::string> m_AllLoadedScripts; //!< A vector of script for scripts applied to this object, in order of insertion.
 		std::unordered_map<std::string, bool> m_EnabledScripts; //!< A map of script paths to the enabled state of the given script.
 		std::unordered_map<std::string, std::vector<LuaFunction>> m_FunctionsAndScripts; //!< A map of function names to vectors of Lua functions. Used to maintain script execution order and avoid extraneous Lua calls.

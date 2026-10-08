@@ -84,6 +84,10 @@ namespace RTE {
 		/// @return The max throw vel to use.
 		float GetCalculatedMaxThrowVelIncludingArmThrowStrength();
 
+		/// Gets the time from this being activated to its going off (its fuse), in milliseconds; 0 for none.
+		/// @return The trigger delay, in ms.
+		long GetTriggerDelay() const { return m_TriggerDelay; }
+
 		/// If true then the explosive will not activate until it's released.
 		/// @return Whether this ThrownDevice is supposed to only activate when it's released.
 		bool ActivatesWhenReleased() const { return m_ActivatesWhenReleased; }

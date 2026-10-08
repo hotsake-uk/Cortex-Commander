@@ -99,6 +99,20 @@ function SharedBehaviors.ProcessAlarmEvent(AI, Owner)
 			end
 		end
 	end
+
+	-- Footsteps (AC-11, with the "Night, light and noise affect AI" setting): an enemy running nearby is heard, one walking only closer
+	-- and one crawling hardly at all. Not through much rock, the same test as a close alarm's.
+	local Heard = Owner:HearFootsteps();
+	if Heard.Largest > 0 then
+		local HeardVec = SceneMan:ShortestDistance(Owner.EyePos, Heard, false);
+		if (not AI.LastAlarmVec or SceneMan:ShortestDistance(AI.LastAlarmVec, HeardVec, false):MagnitudeIsGreaterThan(25)) and SceneMan:CastStrengthSumRay(Owner.EyePos, Heard, 4, rte.grassID) < 100 then
+			AI.LastAlarmVec = HeardVec;
+			AI.AlarmPos = Vector(Heard.X, Heard.Y);
+			Owner:SetAlarmPoint(AI.AlarmPos);
+			AI:CreateFaceAlarmBehavior(Owner);
+			return true;
+		end
+	end
 end
 
 -- look at the alarm event
@@ -666,6 +680,130 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	return false;
 end
 
+-- Squad tactics (AC-6). Each unit tells its team, through number values on itself that every script can read, which enemy it is shooting
+-- at (AITargetID) and when it last had one (AIContactMS, in sim ms); once a second it looks at its teammates within 400 px and:
+-- * focus fire: switches to an enemy at least two of them are shooting at, if it can see it and it isn't much less of a threat than its own;
+-- * flanking pairs: when it and a teammate are on the same enemy and it has had no shot for two seconds, the one of the two with the
+--   higher unique ID goes round (StartFlank) while the other keeps it pinned;
+-- * spreading out: under fire, with a teammate within 24 px beside it, it steps away (not a defender at its post, nor from cover);
+-- * bounding overwatch: a squad follower, while the squad has been in a fight in the last five seconds and it has no enemy in sight itself,
+--   holds and watches toward the last enemy every other three seconds, by its place in line, while the other half moves (see GoToRoute).
+-- Not Unfair AI's business to be any different, and nothing for a unit a player controls. Called every tick by the AI's update.
+function SharedBehaviors.SquadTactics(AI, Owner)
+	-- One sim clock for every unit, since teammates compare their AIContactMS times with it (a Timer's start was in ticks and differed per unit).
+	local now = TimerMan.SimTimeMS;
+	local Target = AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target or nil;
+	if Target then
+		Owner:SetNumberValue("AITargetID", Target.UniqueID);
+		Owner:SetNumberValue("AIContactMS", now);
+		-- (Spelt out: "canHit and nil or x" is always x in Lua, and the time with no shot was never reset.)
+		if AI.canHitTarget then
+			AI.noShotSince = nil;
+		else
+			AI.noShotSince = AI.noShotSince or now;
+		end
+	elseif Owner:NumberValueExists("AITargetID") then
+		Owner:RemoveNumberValue("AITargetID");
+		AI.noShotSince = nil;
+	end
+	AI.overwatch = AI.overwatch and AI.overwatchUntil and now < AI.overwatchUntil and not Target;
+	AI.SquadTacticsTimer = AI.SquadTacticsTimer or Timer();
+	if not AI.SquadTacticsTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.SquadTacticsTimer:Reset();
+	local targetedBy = {};
+	local squadContact = Target ~= nil or (Owner:NumberValueExists("AIContactMS") and now - Owner:GetNumberValue("AIContactMS") < 5000);
+	local beside, besideDir, besideDx, pairedWith;
+	for Mate in MovableMan.Actors do
+		-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
+		if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled()
+			and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
+			local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
+			if Dist:MagnitudeIsLessThan(400) then
+				if Mate:NumberValueExists("AITargetID") then
+					local id = Mate:GetNumberValue("AITargetID");
+					targetedBy[id] = (targetedBy[id] or 0) + 1;
+					if Target and id == Target.UniqueID and (not pairedWith or Mate.UniqueID < pairedWith) then
+						pairedWith = Mate.UniqueID;
+					end
+				end
+				if Mate:NumberValueExists("AIContactMS") and now - Mate:GetNumberValue("AIContactMS") < 5000 then
+					squadContact = true;
+				end
+				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
+					beside, besideDir, besideDx = Mate, Dist.X > 0 and -1 or 1, math.abs(Dist.X);
+				end
+			end
+		end
+	end
+	-- Focus fire.
+	if Target and (AI.skill or 50) >= 40 then
+		local bestID, bestCount = nil, 1;
+		for id, count in pairs(targetedBy) do
+			if id ~= Target.UniqueID and count > bestCount then
+				bestID, bestCount = id, count;
+			end
+		end
+		local Focus = bestID and MovableMan:FindObjectByUniqueID(bestID);
+		if Focus and MovableMan:ValidMO(Focus) and IsActor(Focus) and Focus.Team ~= Owner.Team and SharedBehaviors.CanSee(Owner.EyePos, Focus.Pos) then
+			Focus = SharedBehaviors.ToActorClass(Focus);
+			if Focus and SharedBehaviors.CalculateThreatLevel(Focus, Owner) > SharedBehaviors.CalculateThreatLevel(Target, Owner) - 0.5 then
+				SharedBehaviors.Trace(Owner, "squad: focus fire with " .. bestCount);
+				AI.OldTargetPos = Vector(Target.Pos.X, Target.Pos.Y);
+				AI.Target = Focus;
+				AI.TargetOffset = Vector();
+				AI.TargetLostTimer:Reset();
+				AI:CreateAttackBehavior(Owner);
+				return;
+			end
+		end
+	end
+	-- Flanking pairs.
+	if Target and pairedWith and Owner.UniqueID > pairedWith and AI.noShotSince and now - AI.noShotSince > 2000 and SharedBehaviors.StartFlank(AI, Owner, Target.Pos, 500) then
+		SharedBehaviors.Trace(Owner, "squad: flanking while a mate pins it");
+		return;
+	end
+	-- Spreading out under fire.
+	local suppression = SharedBehaviors.Suppression(AI, Owner);
+	local underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
+		SharedBehaviors.Trace(Owner, "squad: spreading out");
+		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(besideDir * 40, 0), 800);
+	end
+	-- Bounding overwatch.
+	if Owner.AIMode == Actor.AIMODE_SQUAD and squadContact and not Target and Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) and IsActor(Owner.MOMoveTarget) then
+		local slot = SharedBehaviors.SquadSlot(AI, Owner, ToActor(Owner.MOMoveTarget));
+		local phase = math.floor(now / 3000) % 2;
+		if slot % 2 == phase then
+			if not AI.overwatch then
+				SharedBehaviors.Trace(Owner, "squad: overwatch");
+			end
+			AI.overwatch = true;
+			AI.overwatchUntil = (math.floor(now / 3000) + 1) * 3000;
+			if AI.LastEnemyPos then
+				Owner:SetAlarmPoint(AI.LastEnemyPos);
+			end
+		end
+	end
+end
+
+-- An actor as its own class, for the scripts that read its class's members (legs, doors): AHuman, ACrab, ACRocket, ACDropShip, ADoor, or Actor.
+function SharedBehaviors.ToActorClass(MO)
+	if MO.ClassName == "AHuman" then
+		return ToAHuman(MO);
+	elseif MO.ClassName == "ACrab" then
+		return ToACrab(MO);
+	elseif MO.ClassName == "ACRocket" then
+		return ToACRocket(MO);
+	elseif MO.ClassName == "ACDropShip" then
+		return ToACDropShip(MO);
+	elseif MO.ClassName == "ADoor" then
+		return ToADoor(MO);
+	end
+	return ToActor(MO);
+end
+
 -- The move behaviour on the engine's route-follower: a coroutine like GoToWpt, so the AI drives it the same way, but each tick is one
 -- call of AHuman::MoveAlongRoute, which sets the controls itself. The script keeps what is its own: fighting on the move, following a
 -- unit near at hand (SharedBehaviors.FollowStep), and what to do on arrival. (Gold digging keeps 8.0's GoToWpt: a digger's unit uses it.)
@@ -674,11 +812,17 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 	AI.routeHeld = false;
 	AI.jetClimb = false;
 	Owner:RemoveNumberValue("AI_StuckForTime");
+	-- Whether it was sent anywhere: a unit put in GOTO with nothing to go to "arrives" at once, and stays GOTO for the activities that send
+	-- raiders out that way and hand them a target later (Siege, BrainVsBrain, MetaFight look for GOTO units with no target).
+	local hadGoal = false;
 	while true do
 		local holding = false;
 		if AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
 		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm") and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
+			holding = true;
+		elseif AI.overwatch then
+			-- Bounding overwatch (AC-6): this half of the squad holds and watches while the other moves.
 			holding = true;
 		end
 		AI.lateralMoveState = Actor.LAT_STILL;
@@ -712,6 +856,9 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			Owner:ResetRouteMovement();
 		end
 		if not holding then
+			if Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget then
+				hadGoal = true;
+			end
 			local result = Owner:MoveAlongRoute();
 			if result == 1 then
 				-- Arrived.
@@ -720,6 +867,12 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 					AI.SentryFacing = Owner.HFlipped;
 					AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
 					AI:CreateSentryBehavior(Owner);
+					-- A sentry now, as the engine makes a player's unit on arriving: left in GOTO, the sandbox's "arrived" (not GOTO, no
+					-- waypoints) never came for an AI unit, and plans, patrols, shift Defend-at and keep-together all stalled at the first
+					-- step. (The AI's update takes the mode change for a sentry order and keeps a post put back by RestoreOrder.)
+					if hadGoal then
+						Owner.AIMode = Actor.AIMODE_SENTRY;
+					end
 				end
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
@@ -732,6 +885,11 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
 				Owner:DrawWaypoints(false);
+				-- Stood down as a sentry where it is, so the sandbox sees the move ended short and shows its "no route" marker (RC-7).
+				-- Not a fall-back or a flank, which time themselves out and put their own order back.
+				if hadGoal and Owner.AIMode == Actor.AIMODE_GOTO and not Owner:NumberValueExists("AIRetreat") and not Owner:NumberValueExists("AIFlank") then
+					Owner.AIMode = Actor.AIMODE_SENTRY;
+				end
 				return true;
 			end
 		end
@@ -1621,6 +1779,17 @@ end
 -- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
+	-- (The movement rule the player set for this order (RC-1) wins over what the order says, except for a fall-back.)
+	local rule = Owner.MovementRule;
+	if rule ~= Actor.MOVE_FOLLOW_ORDER and not Owner:NumberValueExists("AIRetreat") then
+		if rule == Actor.MOVE_ENGAGE then
+			return "attack";
+		elseif rule == Actor.MOVE_ONLY then
+			return "move";
+		elseif rule == Actor.MOVE_HOLD_GROUND then
+			return "defend";
+		end
+	end
 	-- (A defender on its way back to its post is moving, not standing its ground: told "defend" while the mode said "go there", the
 	-- fighting rules held it still wherever it had been shoved to.)
 	if Owner.OrderHasPost then
@@ -1636,6 +1805,67 @@ function SharedBehaviors.OrderKind(Owner)
 		return "move";
 	end
 	return "guard";
+end
+
+-- Whether the unit's weapons rule (RC-1) lets it pull the trigger now: always at will, never on hold fire, and on return fire only while
+-- it is being shot at, hurt or pinned down by near misses in the last four seconds. Call once an update (it keeps the health it last saw).
+function SharedBehaviors.MayFire(AI, Owner)
+	-- Ducked down behind low cover (AC-4): the gun is behind it too.
+	if AI.ducked then
+		return false;
+	end
+	local rule = Owner.WeaponRule;
+	if rule == Actor.WEAPONS_RETURN_FIRE then
+		if (AI.ruleLastHealth and Owner.Health < AI.ruleLastHealth) or Owner.Suppression > 0.1 then
+			AI.UnderFireTimer = AI.UnderFireTimer or Timer();
+			AI.UnderFireTimer:Reset();
+		end
+		AI.ruleLastHealth = Owner.Health;
+		return AI.UnderFireTimer ~= nil and not AI.UnderFireTimer:IsPastSimMS(4000);
+	end
+	AI.ruleLastHealth = Owner.Health;
+	return rule ~= Actor.WEAPONS_HOLD;
+end
+
+-- What MayFire last said, without its side effects (it keeps the health it last saw, and is called once an update): for starting a throw,
+-- which takes a second or two of the trigger held. (Grenades and smoke under the weapons rule too, AC-5.)
+function SharedBehaviors.RuleLetsFire(AI, Owner)
+	local rule = Owner.WeaponRule;
+	if rule == Actor.WEAPONS_RETURN_FIRE then
+		return AI.UnderFireTimer ~= nil and not AI.UnderFireTimer:IsPastSimMS(4000);
+	end
+	return rule ~= Actor.WEAPONS_HOLD;
+end
+
+-- Fire discipline (AC-8): how an automatic is fired at a target this far off. @return ms on and ms off for a burst, or nil to hold the
+-- trigger down. Close in, the trigger is held; further out the bursts get shorter, so the shake of a long burst doesn't throw rounds
+-- wide of the mark; a weapon whose spread is far wider than the target looks (a mark much smaller than the cone at that range) taps
+-- single rounds rather than spraying; and a unit pinned down (suppression over 0.5) fires short bursts whatever the range.
+function SharedBehaviors.BurstPattern(Weapon, range, targetRadius, suppression)
+	local on, off;
+	if range > 400 then
+		on, off = 250, 450;
+	elseif range > 150 then
+		on, off = 500, 250;
+	end
+	-- (The half-cones either side of the aim, in degrees: the getters return the stored halves of the ini's whole ranges. Sharp aim's
+	-- shake, as the AI aims sharp when it can hit.)
+	local spread = math.rad(math.max(Weapon.SharpShakeRange, 0) + math.max(Weapon.ParticleSpreadRange, 0));
+	if spread > 0.001 and range > 60 then
+		local share = math.atan(math.max(targetRadius, 4) / range) / spread;
+		if share < 0.35 then
+			on, off = 120, share < 0.15 and 900 or 500;
+		end
+	end
+	if suppression > 0.5 then
+		on, off = math.min(on or 350, 350), math.max(off or 400, 400);
+	end
+	return on, off;
+end
+
+-- Whether the unit is being shot at: pinned (suppression over 0.1) or hurt in the last two seconds.
+function SharedBehaviors.UnderFire(AI, Owner)
+	return SharedBehaviors.Suppression(AI, Owner) > 0.1 or (AI.HitTimer ~= nil and not AI.HitTimer:IsPastSimMS(2000));
 end
 
 -- Whether a unit with a target in sight keeps going for its waypoint: on a move order, or when its script marks it aggressive (the Ronin
@@ -1949,31 +2179,107 @@ function SharedBehaviors.StepIsSafe(Owner, dir)
 end
 
 -- Whether a point can be seen from an eye: nothing much in the way for the ray. (The same measure the shooting rules use for a shot.)
+-- A fuel barrel (anything flammable left lying about) close enough to an enemy to catch it in the blast, that this unit can see and could
+-- shoot without its own side or itself being near it (AC-12). Looked for once a second per target. @return The barrel, or nil.
+function SharedBehaviors.BarrelNear(AI, Owner, Target)
+	local Barrel = AI.Barrel;
+	if AI.BarrelFor == Target.UniqueID and AI.BarrelTimer and not AI.BarrelTimer:IsPastSimMS(1000) then
+		if Barrel and MovableMan:ValidMO(Barrel) and Barrel.ID == Barrel.RootID then
+			return Barrel;
+		end
+		return nil;
+	end
+	AI.BarrelTimer = AI.BarrelTimer or Timer();
+	AI.BarrelTimer:Reset();
+	AI.BarrelFor = Target.UniqueID;
+	AI.Barrel = nil;
+	local best = 80; -- A barrel's fire reaches about this far.
+	for Item in MovableMan.Items do
+		if Item.ID == Item.RootID and Item:NumberValueExists("Flammable") and string.find(Item.PresetName, "Barrel") then
+			local toTarget = SceneMan:ShortestDistance(Item.Pos, Target.Pos, false).Magnitude;
+			if toTarget < best and SceneMan:ShortestDistance(Owner.Pos, Item.Pos, false):MagnitudeIsGreaterThan(160) and SharedBehaviors.CanSee(Owner.EyePos, Item.Pos)
+				and not MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Item.Pos, 120, Vector(), Owner) then
+				best = toTarget;
+				AI.Barrel = Item;
+			end
+		end
+	end
+	return AI.Barrel;
+end
+
 function SharedBehaviors.CanSee(EyePos, Point)
 	return SceneMan:CastStrengthSumRay(EyePos, Point, 6, rte.grassID) < 120;
 end
 
--- A spot near the unit, on the ground, that can't be seen from a point: cover to reload or recover behind. Looked for a step at a time
--- out to reach either side, nearest first, along ground a walk away (no climb or drop of more than half a body, no wall between).
--- @return The spot, or nil.
-function SharedBehaviors.FindCover(Owner, FromPos, reach)
-	local eyeUp = Owner.Height * 0.3;
-	if not SharedBehaviors.CanSee(Owner.Pos + Vector(0, -eyeUp), FromPos) then
+-- How a unit standing at a spot is covered from a point (AC-4): "full" where even its standing eye can't be seen from there, "low" where
+-- something low is in the way, so crouched it is hidden and standing it can see over to shoot (a sandbag, a low wall, a ridge), nil
+-- where it is in plain sight. Only a body that can crouch (a human) has low cover. @param Ground The spot on the ground.
+function SharedBehaviors.CoverAt(Owner, Ground, FromPos)
+	local Standing = Ground + Vector(0, -Owner.Height * 0.8);
+	if not SharedBehaviors.CanSee(Standing, FromPos) then
+		return "full";
+	end
+	if IsAHuman(Owner) then
+		local crouched = ToAHuman(Owner).CrouchHeight;
+		if crouched and crouched > 0 and crouched < Owner.Height * 0.9 and not SharedBehaviors.CanSee(Ground + Vector(0, -crouched * 0.8), FromPos) then
+			return "low";
+		end
+	end
+	return nil;
+end
+
+-- A spot near the unit, on the ground, that is covered from a point: to reload or recover behind, or to fight from. Looked for a step at a
+-- time out to reach either side, nearest first, along ground a walk away (no climb or drop of more than half a body, no wall between).
+-- Cover facing the threat (AC-4): the cover must be on the threat's side of the spot, close in front (within a body's height), not
+-- somewhere off behind the unit's back. With wantLow, a spot behind low cover (see CoverAt) is taken first, to duck and peek out from,
+-- and full cover only failing that; without it the other way about. @return The spot and its kind ("full" or "low"), or nil.
+function SharedBehaviors.FindCover(Owner, FromPos, reach, wantLow)
+	local Here = SceneMan:MovePointToGround(Owner.Pos, 0, 4);
+	local hereCover = SharedBehaviors.CoverAt(Owner, Here, FromPos);
+	if hereCover == "full" or (wantLow and hereCover == "low") then
 		return nil; -- Already out of its sight: nowhere better to be.
 	end
+	local fallback, fallbackKind;
 	for step = 1, math.floor(reach / 8) do
 		for _, dir in ipairs({1, -1}) do
 			local Spot = Owner.Pos + Vector(dir * step * 8, -Owner.Height * 0.2);
 			Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 4);
 			local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
-			if math.abs(Way.Y) < Owner.Height * 0.5 and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
-				if not SharedBehaviors.CanSee(Spot + Vector(0, -eyeUp), FromPos) then
-					return Spot;
+			-- (Not into fire: AC-12.)
+			if math.abs(Way.Y) < Owner.Height * 0.5 and not SceneMan:IsBurningNear(Spot, 16) and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+				local Ground = SceneMan:MovePointToGround(Spot, 0, 4);
+				local kind = SharedBehaviors.CoverAt(Owner, Ground, FromPos);
+				if kind and SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos) then
+					if (kind == "low") == (wantLow == true) then
+						return Spot, kind;
+					elseif not fallback then
+						fallback, fallbackKind = Spot, kind;
+					end
 				end
 			end
 		end
 	end
-	return nil;
+	return fallback, fallbackKind;
+end
+
+-- Whether what hides a spot from a point is in front of it, toward the point, within a body's height: a wall or a lump to crouch behind,
+-- not a hill far off or the edge of a cave that happens to block the line.
+function SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos)
+	local Eye = Ground + Vector(0, -Owner.Height * 0.5);
+	local Toward = SceneMan:ShortestDistance(Eye, FromPos, false);
+	local reach = math.min(Toward.Magnitude, Owner.Height * 1.2);
+	if reach < 1 then
+		return false;
+	end
+	local Look = Toward:SetMagnitude(reach);
+	-- From the waist and from just above the ground: either one stopped close in front is cover between the unit and the threat.
+	for _, up in ipairs({0, Owner.Height * 0.35}) do
+		local From = Ground + Vector(0, -Owner.Height * 0.15 - up);
+		if SceneMan:CastStrengthSumRay(From, From + Look, 4, rte.grassID) >= 120 then
+			return true;
+		end
+	end
+	return false;
 end
 
 -- A place from which a dug-in target can be shot: above it or to one side, with a line of sight to it, that the pather can reach in
@@ -2006,6 +2312,14 @@ end
 
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
 function SharedBehaviors.RememberOrder(AI, Owner)
+	-- (A fall-back or a flank that starts while an enemy's last place is being checked keeps the order from before the check, and the check
+	-- is over: kept as it stood, the unit came back from a fall-back to the checked spot and stayed there as a sentry, its patrol lost.)
+	if AI.Investigate then
+		local keep = AI.Investigate.Keep;
+		AI.Investigate = nil;
+		Owner:RemoveNumberValue("AIInvestigate");
+		return keep;
+	end
 	local keep = { mode = Owner.AIMode, attack = Owner.OrderAttack };
 	-- (A squad follower's leader too: cleared with the waypoints, a follower came back from a fall-back with no one to follow.)
 	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
@@ -2115,6 +2429,20 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 	end
 
 	local function goAfter(Enemy, why)
+		-- (Not again for five seconds after the last send for the same enemy: one it has no route to, locked on or near its attack place,
+		-- was sent once a second, the route came back empty and the waypoints were cleared, and the unit stepped, stopped and stepped in
+		-- place, a twitch at the rate of the update.)
+		state.SentAfter = state.SentAfter or {};
+		local last = state.SentAfter[Enemy.UniqueID];
+		if last and not last:IsPastSimMS(5000) then
+			return;
+		end
+		for id, sentTimer in pairs(state.SentAfter) do
+			if sentTimer:IsPastSimMS(5000) then
+				state.SentAfter[id] = nil;
+			end
+		end
+		state.SentAfter[Enemy.UniqueID] = Timer();
 		Owner:ClearAIWaypoints();
 		Owner:AddAIMOWaypoint(Enemy);
 		Owner.AIMode = Actor.AIMODE_GOTO;
@@ -2236,6 +2564,50 @@ function SharedBehaviors.OrderChangedSince(Owner, Spot)
 	return Owner:GetWaypointListSize() > 0 and SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Spot, false):MagnitudeIsGreaterThan(48);
 end
 
+-- Medics (AC-7). Whether a unit can patch up others: one carrying a medikit, or a medic drone (which heals all round it), still standing.
+function SharedBehaviors.IsMedic(Act)
+	-- (People and crabs only: a craft carrying a kit in its hold is no medic.)
+	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and Act:HasObject("Medikit")));
+end
+
+-- The nearest medic of the unit's team within range, not the unit itself and not one a player is steering (a player's medic goes where the
+-- player takes it). @return The medic, or nil.
+function SharedBehaviors.FindMedic(Owner, range)
+	local Best, bestDist = nil, range;
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and not Act:IsPlayerControlled() and SharedBehaviors.IsMedic(Act) then
+			local dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false).Magnitude;
+			if dist < bestDist then
+				Best, bestDist = Act, dist;
+			end
+		end
+	end
+	return Best;
+end
+
+-- A friend for a medic to see to: the worst hurt of its team within 400 px under 70% health (or within 1200 px when falling back to a medic,
+-- see RetreatUpdate), a body that can take a medikit (a person or a crab), and not one another medic is already seeing to. @return The friend, or nil.
+function SharedBehaviors.FindPatient(Owner)
+	local Best, bestShare = nil, 0.7;
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act.Status < Actor.DYING and Act.Health > 0 and Act.MaxHealth > 0
+			and (IsAHuman(Act) or IsACrab(Act)) then
+			local share = Act.Health / Act.MaxHealth;
+			if share < bestShare then
+				local range = Act:GetNumberValue("AIRetreat") == 2 and 1200 or 400;
+				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) then
+					local by = Act:NumberValueExists("AIMedicBy") and Act:GetNumberValue("AIMedicBy") or 0;
+					local Other = by ~= 0 and by ~= Owner.UniqueID and MovableMan:FindObjectByUniqueID(by) or nil;
+					if not (Other and IsActor(Other) and ToActor(Other):NumberValueExists("AIMedic")) then
+						Best, bestShare = Act, share;
+					end
+				end
+			end
+		end
+	end
+	return Best;
+end
+
 -- Falling back: a badly hurt unit with no enemy in sight goes to the nearest friend (the brain for choice) and waits a while to be
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
@@ -2292,18 +2664,31 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	elseif not AI.RetreatCheckTimer:IsPastSimMS(2000) then
 		return false; -- Two seconds clear of enemies first.
 	end
-	-- Somewhere to go: the brain, or the nearest friend that isn't right here; but never through the enemy last seen. With no friend
-	-- the right side of it, it's a way back from the enemy along the ground.
-	local Friend = MovableMan:GetClosestBrainActor(Owner.Team, Owner.Pos);
-	if not Friend or Friend.ID == Owner.ID then
-		Friend = MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Owner.Pos, 3000, Vector(), Owner);
-	end
-	if Friend and (Friend.ID == Owner.ID or SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false):MagnitudeIsLessThan(150)) then
-		Friend = nil;
-	end
-	local Spot;
+	-- Somewhere to go: a medic within 1500 px (AC-7), else the brain, or the nearest friend that isn't right here; but never through the
+	-- enemy last seen. With no friend the right side of it, it's a way back from the enemy along the ground. (A unit with a kit of its own
+	-- uses it where it stands, in the AI's update, and has no medic to look for.)
 	local enemyDx = AI.LastEnemyPos and SceneMan:ShortestDistance(Owner.Pos, AI.LastEnemyPos, false).X or 0;
-	if Friend then
+	local Spot;
+	local Medic = not Owner:HasObject("Medikit") and SharedBehaviors.FindMedic(Owner, 1500) or nil;
+	if Medic then
+		local medicDx = SceneMan:ShortestDistance(Owner.Pos, Medic.Pos, false).X;
+		if enemyDx * medicDx > 0 and math.abs(medicDx) > math.abs(enemyDx) - 100 then
+			Medic = nil; -- The medic is past the enemy.
+		else
+			Spot = SceneMan:MovePointToGround(Medic.Pos, math.floor(Owner.Height * 0.2), 4);
+		end
+	end
+	local Friend = Medic;
+	if not Friend then
+		Friend = MovableMan:GetClosestBrainActor(Owner.Team, Owner.Pos);
+		if not Friend or Friend.ID == Owner.ID then
+			Friend = MovableMan:GetClosestTeamActor(Owner.Team, Activity.PLAYER_NONE, Owner.Pos, 3000, Vector(), Owner);
+		end
+		if Friend and (Friend.ID == Owner.ID or SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false):MagnitudeIsLessThan(150)) then
+			Friend = nil;
+		end
+	end
+	if Friend and not Medic then
 		local friendDx = SceneMan:ShortestDistance(Owner.Pos, Friend.Pos, false).X;
 		if enemyDx * friendDx > 0 and math.abs(friendDx) > math.abs(enemyDx) - 100 then
 			Friend = nil; -- The friend is past the enemy.
@@ -2321,12 +2706,13 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		end
 	end
 	AI.Retreat = { Keep = SharedBehaviors.RememberOrder(AI, Owner), WaitTimer = Timer(), Arrived = false, Spot = Spot };
-	Owner:SetNumberValue("AIRetreat", 1);
+	-- (2: to a medic, who sees to a friend falling back to it from further off than to one that isn't; see FindPatient.)
+	Owner:SetNumberValue("AIRetreat", Medic and 2 or 1);
 	Owner.OrderAttack = false;
 	Owner:ClearAIWaypoints();
 	Owner:AddAISceneWaypoint(Spot);
 	Owner.AIMode = Actor.AIMODE_GOTO;
-	SharedBehaviors.Trace(Owner, "retreat: health " .. math.floor(Owner.Health) .. ", falling back to " .. (Friend and Friend.PresetName or "away from the enemy") .. " at " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
+	SharedBehaviors.Trace(Owner, "retreat: health " .. math.floor(Owner.Health) .. ", falling back to " .. (Medic and "the medic " or "") .. (Friend and Friend.PresetName or "away from the enemy") .. " at " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
 	return true;
 end
 
@@ -2357,6 +2743,89 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 		SharedBehaviors.RestoreOrder(AI, Owner, AI.Flank.Keep);
 		AI.Flank = nil;
 		AI.FlankRestTimer = Timer();
+	end
+end
+
+-- Whether the engine's team memory (AC-2: SceneMan.ReportEnemy and the rest) is there, for a build without it (an older exe).
+-- (A local, not a field: SharedBehaviors is read-only once loaded, and caching the answer in it raised an error on every sighting,
+-- which ended the unit's AI update, so units stood still and never fired.)
+local CanRememberCached = nil;
+function SharedBehaviors.CanRemember()
+	if CanRememberCached == nil then
+		local ok, value = pcall(function() return SceneMan.ReportEnemy; end);
+		CanRememberCached = ok and value ~= nil;
+	end
+	return CanRememberCached;
+end
+
+-- Tells the team of an enemy this unit has noticed (AC-2): the team remembers where it was, and the AI teammates close by turn to face it.
+-- Called each time the unit sees it, so the team's memory follows it; the engine tells the teammates at most once a second.
+function SharedBehaviors.ReportEnemy(Owner, Enemy)
+	if Enemy and IsActor(Enemy) and Enemy.Team ~= Owner.Team and SharedBehaviors.CanRemember() then
+		SceneMan:ReportEnemy(Owner, ToActor(Enemy));
+	end
+end
+
+-- What the team remembers (AC-2), for a unit with no enemy in sight, every two seconds: it keeps watch toward the nearest enemy the team
+-- saw in the last ten seconds within 700 px (turning to face it, as an alarm makes it); and an AI team's unit out on patrol or hunting goes
+-- to check the last place the team saw a player's unit within 1500 px, then takes up its order again (see InvestigateUpdate). Not a unit a
+-- player owns (it is only turned to look), not one told to hold, and not while falling back or flanking.
+function SharedBehaviors.RememberUpdate(AI, Owner)
+	SharedBehaviors.InvestigateUpdate(AI, Owner);
+	if AI.Target or AI.UnseenTarget or AI.Flank or AI.Retreat or AI.Investigate or not SharedBehaviors.CanRemember() then
+		return;
+	end
+	AI.RememberTimer = AI.RememberTimer or Timer();
+	if not AI.RememberTimer:IsPastSimMS(2000) then
+		return;
+	end
+	AI.RememberTimer:Reset();
+	local Seen = SceneMan:GetRememberedEnemyPos(Owner.Team, Owner.Pos, 10000, 700);
+	if Seen.Largest > 0 then
+		local ToSeen = SceneMan:ShortestDistance(Owner.Pos, Seen, false);
+		if (Owner.HFlipped and ToSeen.X > 0) or (not Owner.HFlipped and ToSeen.X < 0) then
+			Owner:SetAlarmPoint(Seen);
+		end
+	end
+	if AI.isPlayerOwned or Owner.OrderHold or not (Owner.AIMode == Actor.AIMODE_PATROL or Owner.AIMode == Actor.AIMODE_BRAINHUNT) then
+		return;
+	end
+	local Last = SceneMan:GetPlayerLastSeenPos(Owner.Team, 20000);
+	if Last.Largest == 0 then
+		return;
+	end
+	local distance = SceneMan:ShortestDistance(Owner.Pos, Last, false).Magnitude;
+	-- (Not a place it just checked: once there it has seen what there is to see.)
+	if distance < 150 or distance > 1500 or (AI.InvestigatedPos and SceneMan:ShortestDistance(AI.InvestigatedPos, Last, false):MagnitudeIsLessThan(150)) then
+		return;
+	end
+	AI.Investigate = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Vector(Last.X, Last.Y), Timer = Timer() };
+	Owner:SetNumberValue("AIInvestigate", 1);
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(AI.Investigate.Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "investigate: to " .. math.floor(Last.X) .. "," .. math.floor(Last.Y));
+end
+
+-- Checking where a player's unit was last seen: over on arrival, after 20 seconds, on meeting an enemy (the fight takes over and the order
+-- comes back after), or on another order.
+function SharedBehaviors.InvestigateUpdate(AI, Owner)
+	if not AI.Investigate then
+		return;
+	end
+	if not Owner:NumberValueExists("AIInvestigate") or SharedBehaviors.OrderChangedSince(Owner, AI.Investigate.Spot) then
+		SharedBehaviors.Trace(Owner, "investigate: called off by another order");
+		Owner:RemoveNumberValue("AIInvestigate");
+		AI.Investigate = nil;
+		return;
+	end
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Investigate.Spot, false):MagnitudeIsLessThan(Owner.Height);
+	if arrived or AI.Target or AI.Investigate.Timer:IsPastSimMS(20000) then
+		SharedBehaviors.Trace(Owner, "investigate: " .. (arrived and "there" or (AI.Target and "found an enemy" or "gave up")));
+		AI.InvestigatedPos = AI.Investigate.Spot;
+		Owner:RemoveNumberValue("AIInvestigate");
+		SharedBehaviors.RestoreOrder(AI, Owner, AI.Investigate.Keep);
+		AI.Investigate = nil;
 	end
 end
 
@@ -2420,7 +2889,7 @@ end
 function SharedBehaviors.ScriptStepKind(kind)
 	if kind == 8 or kind == 9 or kind == 11 then
 		return 2;
-	elseif kind == 10 or kind == 12 or kind == 13 then
+	elseif kind == 10 or kind == 12 or kind == 13 or kind == 14 then
 		return 0;
 	end
 	return kind;
@@ -2793,6 +3262,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							AI.SentryFacing = Owner.HFlipped; -- guard this direction
 							AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- guard this point
 							AI:CreateSentryBehavior(Owner);
+							-- (Arrived somewhere it was sent: a sentry, as in GoToRoute. Its waypoint is cleared just below.)
+							if Owner:GetWaypointListSize() > 0 then
+								Owner.AIMode = Actor.AIMODE_SENTRY;
+							end
 						end
 
 						Owner:ClearAIWaypoints();

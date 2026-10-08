@@ -43,6 +43,7 @@ uniform float rteWaterFoamBright; // How bright the froth is drawn.
 uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
 uniform float rteWaterFoamGlow; // How much light of its own the froth carries, so it shows in the dark.
 uniform float rteWaterFoam; // How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth. 0 for none.
+uniform float rteThinFlow; // How much a sheet of water only a pixel or two deep running over the ground is shown up, with spray skipping along it. 0 for not at all.
 uniform float rteWaterRipples; // How much the surface ripples tilt water's normal, for the reflection and the glints on it. 0 for flat (as before).
 uniform sampler2D rteFlowField; // The moving liquid (FluidSim), in the light grid's cells: R sideways speed (0.5 none), G speed, B how lately it moved (1 just now, 0 settled), A whether any moves there.
 uniform float rteFlowSurface; // How much liquid's surface follows how it moves: 0 the slow waves alone (as before), 1 fully.
@@ -258,6 +259,61 @@ float FrothFlicker(vec2 world) {
 	return fract(sin(dot(floor(world) + floor(rteTime * 9.0) * vec2(3.1, 7.7), vec2(12.9898, 78.233))) * 43758.5453);
 }
 
+// How lively the moving water is at a place (FluidSim, through the flow field), 0 to 1, and in y which way it runs (-1 left, 1 right). Without the
+// flow field, a middling liveliness and no way.
+vec2 FlowHere(vec2 world) {
+	if (rteFlowSurface <= 0.0) {
+		return vec2(0.5, 0.0);
+	}
+	vec4 flow = texture(rteFlowField, world / rteGridWorldSize);
+	return vec2(flow.a * clamp(max(flow.b, flow.g * 1.5), 0.0, 1.0), (flow.r * 255.0 - 128.0) / 127.0);
+}
+
+// Whether the water pixel at a place, with air straight over it, is a thin sheet running over the ground: no more than two pixels of water, then
+// something solid. (A body of water, or drops in the air, aren't.)
+bool ThinSheetAt(vec2 uv, vec2 texel) {
+	if (WaterAt(uv) < 0.5) {
+		return false;
+	}
+	vec2 under = uv + vec2(0.0, texel.y);
+	if (WaterAt(under) > 0.5) {
+		under += vec2(0.0, texel.y);
+	}
+	return Coverage(under) > 0.5 && LiquidLookAt(under) == 0;
+}
+
+// Spray over a thin sheet of running water (ThinSheetAt), for the air pixel at uv: specks that skip along it downstream, more often just over it
+// than higher up, and a faint pale veil right over it, so water running a pixel or two deep over a floor or down a slope can be seen. Visual only.
+// Transparent where there's no such sheet within three pixels below.
+vec4 ThinSheetSpray(vec2 uv, vec2 texel) {
+	for (int h = 1; h <= 3; ++h) {
+		vec2 at = uv + vec2(0.0, texel.y * float(h));
+		if (Coverage(at) < 0.5) {
+			continue;
+		}
+		if (!ThinSheetAt(at, texel)) {
+			return vec4(0.0);
+		}
+		vec2 flow = FlowHere(worldPos);
+		float lively = flow.x * min(rteThinFlow, 2.0);
+		if (lively < 0.03) {
+			return vec4(0.0);
+		}
+		// A speck is a column of the sheet carried downstream with it, lit for a moment now and then, each column on its own beat.
+		float column = floor(worldPos.x - flow.y * rteTime * 36.0);
+		float columnSeed = fract(sin(column * 12.9898) * 43758.5453);
+		float beat = floor(rteTime * 9.0 + columnSeed * 9.0);
+		float seed = fract(sin(dot(vec2(column, beat + float(h) * 17.0), vec2(12.9898, 78.233))) * 43758.5453);
+		float chance = lively * (h == 1 ? 0.45 : (h == 2 ? 0.2 : 0.08));
+		vec3 froth = vec3(0.82, 0.94, 1.0) * rteWaterFoamBright;
+		if (seed < chance) {
+			return vec4(froth, clamp(0.9 - 0.2 * float(h - 1), 0.0, 1.0));
+		}
+		return h == 1 ? vec4(mix(vec3(0.27, 0.6, 0.8), froth, 0.5), clamp(0.3 * lively, 0.0, 0.45)) : vec4(0.0);
+	}
+	return vec4(0.0);
+}
+
 void main() {
 	vec2 uvDx = dFdx(textureUV);
 	vec2 uvDy = dFdy(textureUV);
@@ -292,6 +348,15 @@ void main() {
 		FragColor = texture(rteTexture, textureUV) * vertexColor;
 	}
 	if (FragColor.a == 0.0) {
+		if (rteIndexed && rteThinFlow > 0.0) {
+			vec4 spray = ThinSheetSpray(textureUV, texel);
+			if (spray.a > 0.02) {
+				FragColor = spray;
+				NormalOut = vec4(0.5, 0.5, 0.6, 0.5 + 0.5 * clamp(rteWaterFoamGlow, 0.0, 1.0));
+				SurfaceOut = vec4(0.0, 0.0, 0.0, 1.0);
+				return;
+			}
+		}
 		if (rteIndexed && rteWaterFoam > 0.0) {
 			// Air around thin, broken water is drawn as part of it, so a few pixels of water read as a body of flowing, frothing water and not as pixels:
 			// close in, the blue of the water itself; further out and up and down its fall, white froth. Not the air over a pool: that has water right across beneath it.
@@ -455,6 +520,14 @@ void main() {
 				// Open to the air above (not under a ceiling of rock): the surface catches the light and laps a little.
 				if (surface && Coverage(textureUV - vec2(0.0, texel.y)) < 0.5) {
 					FragColor = vec4(mix(water, rteLiquidLine[look].rgb, (0.6 + 0.2 * wave) * rteLiquidLine[look].a), mix(FragColor.a, 0.92, rteLiquidLine[look].a));
+				}
+				// A thin sheet running over the ground (ThinSheetAt, from the top of it): pale, bubbling and solid enough to see, not a faint film.
+				if (rteThinFlow > 0.0 && lookStyle.y > 0.0 && depth <= 2.0 && ThinSheetAt(textureUV - vec2(0.0, texel.y * (depth - 1.0)), texel)) {
+					float lively = clamp(FlowHere(worldPos).x * rteThinFlow, 0.0, 1.0);
+					float flicker = FrothFlicker(worldPos);
+					FragColor.rgb = mix(FragColor.rgb, vec3(0.82, 0.94, 1.0) * rteWaterFoamBright, clamp(lively * (0.45 + 0.35 * (flicker - 0.5)), 0.0, 0.85));
+					FragColor.a = mix(FragColor.a, 0.96, lively);
+					emissive = max(emissive, rteWaterFoamGlow * lively * 0.5);
 				}
 			} else if (lookStyle.x < 1.5) {
 				// Molten (lava): slow bright currents, crusting darker at the surface.
