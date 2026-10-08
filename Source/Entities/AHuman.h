@@ -849,6 +849,10 @@ namespace RTE {
 			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
 			bool settling = false; //!< Waiting to settle before a take-off just now.
+			bool leapWatch = false; //!< A leap of the route's is under way: where from and to, to judge it by when it comes down.
+			Vector leapFrom;
+			Vector leapTo;
+			Timer leapTimer;
 			bool standUp = false; //!< At a leap's take-off lying down: the motor's prone stance gives way (see UpdateAIMotor), for a moment after.
 			Timer standUpTimer;
 			bool noTakeOff = false; //!< At a take-off that the flight can't begin from, just now.
