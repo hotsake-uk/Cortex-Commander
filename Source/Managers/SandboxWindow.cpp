@@ -1,6 +1,8 @@
 // The sandbox window, bar, rings and cursor.
 
 #include "SandboxInternal.h"
+#include "ActionMenu.h"
+#include "GUISound.h"
 
 namespace SandboxDetail {
 	void UpdateFreeCamera() {
@@ -1526,6 +1528,146 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// The command tool's right-click menu (RC-12), in place of its rings unless the classic wheel is asked for: every command on one layer,
+	/// a list above the pointer in the action menu's style (ActionMenu). Held, letting go over a row picks it; a quick click leaves it up
+	/// for a click. The settings in it (the selected units' weapons and movement rules, the formation, keeping together, the order markers)
+	/// stay up for more; a command or a mode for the clicks to come ends it.
+	void DrawCommandMenu() {
+		ImGuiIO& io = ImGui::GetIO();
+		static int lastFrame = -10;
+		static double openedAt = 0.0;
+		static bool sticky = false;
+		int frame = ImGui::GetFrameCount();
+		if (frame != lastFrame + 1) {
+			// Just opened (the ring flag was set by the right click this frame).
+			openedAt = ImGui::GetTime();
+			sticky = false;
+		}
+		lastFrame = frame;
+
+		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick };
+		float scale = std::clamp(g_WindowMan.GetGameViewRect().h / 720.0F, 0.9F, 2.2F);
+		ActionMenu::MenuLayout menu(scale);
+		menu.Heading("Clicks on the world");
+		menu.Choices(ClickMode, {std::begin(c_CommandModeNames), std::end(c_CommandModeNames)}, static_cast<int>(s_CommandMode), 3);
+		menu.Heading("Selected units");
+		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect"}, -1);
+		menu.Heading("AI mode");
+		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, -1, 3);
+		menu.Heading("Weapons");
+		menu.Choices(Weapons, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, SelectedRule(true));
+		menu.Heading("Movement");
+		menu.Choices(Movement, {std::begin(c_MovementRuleNames), std::end(c_MovementRuleNames)}, SelectedRule(false), 2);
+		menu.Heading("Group orders");
+		menu.Choices(FormationPick, {std::begin(c_FormationNames), std::end(c_FormationNames)}, static_cast<int>(s_Formation));
+		menu.Choices(KeepPacePick, {"Free", "Keep together"}, s_KeepPace ? 1 : 0);
+		menu.Heading("Order markers");
+		menu.Choices(MarkersPick, {"Off", "Selected", "All"}, g_SettingsMan.SandboxOrdersOverlay());
+		menu.PlaceAbove(s_RingCenter);
+
+		// An empty window over the panel, so the clicks on it are the menu's and not the world's.
+		ImGui::SetNextWindowPos(menu.Min);
+		ImGui::SetNextWindowSize(ImVec2(menu.Max.x - menu.Min.x, menu.Max.y - menu.Min.y));
+		ImGui::Begin("##CommandMenu", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
+		ImGui::End();
+		int hover = ActionMenu::CellAt(menu.Cells, io.MousePos);
+		ActionMenu::DrawMenu(menu, hover, scale);
+		bool inside = io.MousePos.x >= menu.Min.x && io.MousePos.x < menu.Max.x && io.MousePos.y >= menu.Min.y && io.MousePos.y < menu.Max.y;
+
+		// @return Whether the menu stays up: true for a setting.
+		auto pick = [&](const ActionMenu::Cell& cell) {
+			switch (cell.Action) {
+				case ClickMode:
+					s_CommandMode = static_cast<CommandMode>(cell.Value);
+					if (s_CommandMode == CommandMode::Patrol) {
+						s_PatrolDraft.clear(); // (A route of points clicked out, RC-4.)
+					}
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
+				case Now:
+					if (cell.Value == 2) {
+						s_Selected.clear();
+					} else {
+						// Defend where they stand (Shift: as the last step of their plans, RC-3), or cancel their orders.
+						Stroke stroke;
+						stroke.Kind = Tool::OrderSelected;
+						stroke.Position = s_RingScenePoint;
+						stroke.Count = 100 + (cell.Value == 0 ? (io.KeyShift ? 13 : 3) : 2);
+						s_Queue.push_back(stroke);
+					}
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
+				case AIMode: {
+					static const Order orders[] = {Order::Hold, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Position = s_RingScenePoint;
+					stroke.Orders = orders[std::clamp(cell.Value, 0, 4)];
+					s_Queue.push_back(stroke);
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
+				}
+				case Weapons:
+				case Movement:
+					QueueRule(cell.Action == Weapons, cell.Value);
+					break;
+				case FormationPick:
+					s_Formation = static_cast<Formation>(cell.Value);
+					// (A formation also puts the clicks to moving, as on the ring.)
+					if (s_CommandMode != CommandMode::AttackMove) {
+						s_CommandMode = CommandMode::Move;
+					}
+					break;
+				case KeepPacePick:
+					s_KeepPace = cell.Value != 0;
+					break;
+				case MarkersPick:
+					g_SettingsMan.SetSandboxOrdersOverlay(cell.Value);
+					break;
+				default:
+					return true;
+			}
+			if (!cell.Chosen) {
+				g_GUISound.SelectionChangeSound()->Play();
+			}
+			return true;
+		};
+
+		if (!sticky) {
+			// Held: a left click picks (a setting leaves it up); letting go picks what it is over and ends it, except a quick click, which
+			// leaves it up.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hover >= 0) {
+				if (!pick(menu.Cells[hover])) {
+					s_RingOpen = false;
+				}
+				return;
+			}
+			if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+				if (hover >= 0) {
+					pick(menu.Cells[hover]);
+					s_RingOpen = false;
+				} else if (ImGui::GetTime() - openedAt < 0.3) {
+					sticky = true;
+				} else {
+					s_RingOpen = false;
+				}
+			}
+			return;
+		}
+		// Left up: a click on a row picks it; a click off the menu, a right click off it or Escape puts it away.
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (hover >= 0) {
+				if (!pick(menu.Cells[hover])) {
+					s_RingOpen = false;
+				}
+			} else if (!inside) {
+				s_RingOpen = false;
+			}
+		} else if ((ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !inside) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			s_RingOpen = false;
+		}
+	}
+
 	/// The rings the right button opens, by the tool in hand: the sides for anything made for a side, the commands for the command tool.
 	void DrawSideRing() {
 		ImGuiIO& io = ImGui::GetIO();
@@ -1555,6 +1697,11 @@ namespace SandboxDetail {
 				s_RingCenter = io.MousePos;
 				s_RingScenePoint = MouseScenePosition();
 			}
+			return;
+		}
+		// The command tool's list in place of its rings (RC-12), unless the classic wheel is asked for.
+		if (kind == Tool::Command && !g_SettingsMan.ClassicPieWheel()) {
+			DrawCommandMenu();
 			return;
 		}
 		if (kind == Tool::Command && s_RingPage == 1) {

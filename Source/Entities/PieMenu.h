@@ -85,6 +85,17 @@ namespace RTE {
 		/// @param affectedObject The new MovableObject affected by this PieMenu. Ownership is NOT transferred!
 		void SetAffectedObject(MovableObject* affectedObject) { m_AffectedObject = affectedObject; }
 
+		/// Gets whether the in-game action menu (RC-12, ActionMenu) stands in for this wheel: a unit's own top-level menu, for the first player
+		/// on mouse and keyboard, unless the classic wheel is asked for in the settings. The wheel then still opens and closes with the button
+		/// (scripts and the activity read that), but takes no input of its own and isn't drawn; slices are picked from the action menu's list.
+		/// @return Whether the action menu stands in for this PieMenu.
+		bool IsReplacedByActionMenu() const;
+
+		/// Queues a PieSlice of this PieMenu, or of one of its PieSlices' sub-PieMenus, to be activated at the start of the next Update, just as
+		/// a pick on the wheel would be: its command for the activity and its script function. A slice gone by then is let be. Ownership is NOT transferred!
+		/// @param pieSlice The PieSlice to activate.
+		void QueueSliceActivation(const PieSlice* pieSlice) { m_QueuedPieSlice = pieSlice; }
+
 		/// Gets whether this PieMenu is a sub-PieMenu, i.e. it's owned by a PieSlice.
 		/// @return Whether or not this PieMenu is a sub-PieMenu.
 		bool IsSubPieMenu() const { return m_DirectionIfSubPieMenu != Directions::None; }
@@ -359,6 +370,7 @@ namespace RTE {
 		const PieSlice* m_HoveredPieSlice; //!< The PieSlice currently being hovered over.
 		const PieSlice* m_ActivatedPieSlice; //!< The currently activated PieSlice, if there is one, or 0 if there's not.
 		const PieSlice* m_AlreadyActivatedPieSlice; //!< The PieSlice that was most recently activated by pressing primary. Used to avoid duplicate activation when disabling.
+		const PieSlice* m_QueuedPieSlice; //!< A PieSlice picked from the action menu's list, activated at the start of the next Update (see QueueSliceActivation).
 		std::vector<PieSlice*> m_CurrentPieSlices; //!< All the PieSlices in this PieMenu in INI order. Not owned here, just pointing to the ones above.
 
 		PieMenu* m_ActiveSubPieMenu; //!< The currently active sub-PieMenu, if any.
@@ -393,6 +405,9 @@ namespace RTE {
 
 		/// Handles the slice activation part of Update.
 		void UpdateSliceActivation();
+
+		/// Activates the PieSlice queued by QueueSliceActivation, if it is still one of this menu's or of its sub-PieMenus'.
+		void ActivateQueuedPieSlice();
 
 		/// Redraws the pre-drawn background bitmap so it's up-to-date.
 		void UpdatePredrawnMenuBackgroundBitmap();

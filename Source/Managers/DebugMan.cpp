@@ -33,6 +33,7 @@
 #include "Controller.h"
 #include "Sandbox.h"
 #include "ModernHUD.h"
+#include "ActionMenu.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
@@ -378,6 +379,7 @@ void DebugMan::DrawImGui() {
 	// The modern HUD and the debug overlays, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {
 		ModernHUD::Draw();
+		ActionMenu::Draw();
 		DrawOverlays();
 	}
 

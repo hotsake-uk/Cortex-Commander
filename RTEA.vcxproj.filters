@@ -202,6 +202,9 @@
     <ClInclude Include="Source\Managers\ModernHUD.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\ActionMenu.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\DebugDraw.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -872,6 +875,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ModernHUD.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\ActionMenu.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\FluidSim.cpp">
