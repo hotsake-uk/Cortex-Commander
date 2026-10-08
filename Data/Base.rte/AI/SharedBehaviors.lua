@@ -2440,7 +2440,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					AI.jump = false;
 					AI.refuel = true;
 					nextLatMove = Actor.LAT_STILL;
-				else
+				elseif StuckDirectionTimer:IsPastSimTimeLimit() then
+					-- The drift under the jet, picked afresh only when the last has had its moment (StuckDirectionTimer), as on the ground: rolled
+					-- every tick, it went left, still and right at random many times a second, the flicker the ground rules below were rid of.
 					local chance = PosRand();
 					if chance < 0.1 then
 						nextLatMove = Actor.LAT_LEFT;
@@ -2449,6 +2451,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					else
 						nextLatMove = Actor.LAT_STILL;
 					end
+					StuckDirectionTimer:Reset();
 				end
 			else
 				local updateInterval = SettingsMan.AIUpdateInterval;
