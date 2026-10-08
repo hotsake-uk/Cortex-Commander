@@ -314,6 +314,15 @@ namespace RTE {
 		}
 		static int CalculatePath(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
 
+		/// The path itself, as its own list for the caller to keep, where CalculatePath leaves it in GetScenePath: that list is the calling
+		/// thread's, so a script asking in ThreadedUpdate and reading it in Update read another thread's path. Empty for no route.
+		static std::vector<Vector>* CalculatePathPoints(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength, Activity::Teams team);
+		static std::vector<Vector>* CalculatePathPoints1(Scene* luaSelfObject, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
+			return CalculatePathPoints(luaSelfObject, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
+		}
+		/// Likewise for CalculatePathForActor.
+		static std::vector<Vector>* CalculatePathPointsForActor(Scene* luaSelfObject, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team);
+
 		static void CalculatePathAsync1(Scene* luaSelfObject, const luabind::object& callback, const Vector& start, const Vector& end, float jumpHeight, float digStrength) {
 			return CalculatePathAsync(luaSelfObject, callback, start, end, jumpHeight, digStrength, Activity::Teams::NoTeam);
 		}
