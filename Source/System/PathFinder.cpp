@@ -81,6 +81,9 @@ thread_local float s_LeapHeight = 0.0F; // How high a leap of the searcher's leg
 thread_local float s_LeapSpeed = 4.0F; // How fast a leap carries it forward, m/s (PathAgent::LeapSpeed).
 thread_local float s_MaxSafeFall = FLT_MAX; // The highest drop a searcher with no jet lands from unhurt, px (PathAgent::MaxSafeFall).
 thread_local bool s_Scrambles = false; // Whether the searcher scrambles up rough slopes (PathAgent::Scrambles).
+thread_local bool s_Floats = false; // Whether the searcher floats and swims in deep water (PathAgent::Floats).
+thread_local float s_BreathSeconds = FLT_MAX; // How long it holds its breath under water, s (PathAgent::BreathSeconds).
+thread_local bool s_CrossesLava = false; // Whether it may be routed through lava (PathAgent::CrossesLava).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
@@ -122,6 +125,13 @@ int PathFinder::Create(int nodeDimension) {
 	{
 		const Material* ladder = g_SceneMan.GetMaterial("Ladder");
 		m_LadderMaterial = ladder ? static_cast<unsigned char>(ladder->GetIndex()) : 0;
+		// The liquids (LM-4), by PathLiquid's order, the names FluidSim pours.
+		m_LiquidMaterials = {};
+		const char* const liquidNames[] = {"Water", "Oil", "Acid", "Lava"};
+		for (int i = 0; i < 4; ++i) {
+			const Material* liquid = g_SceneMan.GetMaterial(liquidNames[i]);
+			m_LiquidMaterials[i + 1] = liquid && liquid->GetIndex() != MaterialColorKeys::g_MaterialAir ? static_cast<unsigned char>(liquid->GetIndex()) : 0;
+		}
 	}
 	int sceneWidth = g_SceneMan.GetSceneWidth();
 	int sceneHeight = g_SceneMan.GetSceneHeight();
@@ -533,6 +543,9 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_LeapSpeed = agent.LeapSpeed;
 	s_MaxSafeFall = agent.MaxSafeFall;
 	s_Scrambles = agent.Scrambles;
+	s_Floats = agent.Floats;
+	s_BreathSeconds = agent.BreathSeconds;
+	s_CrossesLava = agent.CrossesLava;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
@@ -578,6 +591,9 @@ namespace {
 		float LeapSpeed = s_LeapSpeed;
 		float MaxSafeFall = s_MaxSafeFall;
 		bool Scrambles = s_Scrambles;
+		bool Floats = s_Floats;
+		float BreathSeconds = s_BreathSeconds;
+		bool CrossesLava = s_CrossesLava;
 		float JetClimbMSPerPx = s_JetClimbMSPerPx;
 		const RTE::PathNode* FlyingStart = s_FlyingStart;
 		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
@@ -602,6 +618,9 @@ namespace {
 			s_LeapSpeed = LeapSpeed;
 			s_MaxSafeFall = MaxSafeFall;
 			s_Scrambles = Scrambles;
+			s_Floats = Floats;
+			s_BreathSeconds = BreathSeconds;
+			s_CrossesLava = CrossesLava;
 			s_JetClimbMSPerPx = JetClimbMSPerPx;
 			s_FlyingStart = FlyingStart;
 			s_AvoidLinks = AvoidLinks;
@@ -1179,6 +1198,12 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		}
 	}
 
+	// Liquid under where a step goes (LM-4): waded, swum, walked along the bottom or kept out of, by what the searcher is (see LiquidCost).
+	// On every edge into such a node, whatever brought it there: a walk along the surface, a fall into it, a flight's landing on it.
+	for (micropather::StateCost& adjacent: *adjacentList) {
+		adjacent.cost += LiquidCost(*static_cast<const PathNode*>(adjacent.state));
+	}
+
 	// From a start in the air, a step against the way the searcher is moving costs for the speed it has to undo: a person in mid-jump goes on
 	// to somewhere ahead before turning back for somewhere behind. Free of it, a route asked mid-air at the top of a climb went back down the
 	// wall and up again, and the unit, at speed, turned round in the air for it.
@@ -1287,6 +1312,10 @@ std::string PathFinder::DescribeNodeAt(const Vector& scenePos) {
 	text += node->ScrambleUpRight ? " scramble-upright" : "";
 	text += node->ScrambleUpLeft ? " scramble-upleft" : "";
 	text += node->Ladder ? " ladder" : "";
+	if (node->Liquid != PathLiquid::None) {
+		static const char* const liquidNames[] = {"none", "water", "oil", "acid", "lava"};
+		text += std::string(" liquid ") + liquidNames[static_cast<int>(node->Liquid)] + " " + std::to_string(node->LiquidDepth);
+	}
 	text += " anchor " + std::to_string(static_cast<int>(node->Anchor.m_X)) + "," + std::to_string(static_cast<int>(node->Anchor.m_Y));
 	return text;
 }
@@ -1325,15 +1354,73 @@ float PathFinder::FallCost(const PathNode& to) const {
 	}
 	int drop = DropNodes(to);
 	// A drop the searcher wouldn't land from unhurt, with no jet to brake it (LM-9): not routed. (Priced, not cut: a unit already falling
-	// still gets a route, the least bad one.)
+	// still gets a route, the least bad one.) Unless it lands in water deep enough to take the fall (LM-4): a dive is no fall to the bottom.
 	if (s_MaxSafeFall < FLT_MAX && static_cast<float>(drop * m_NodeDimension) > s_MaxSafeFall) {
-		return 1000.0F;
+		const PathNode* landing = &to;
+		for (int i = 0; i < drop && landing; ++i) {
+			landing = landing->Down;
+		}
+		bool intoWater = landing && landing->Liquid == PathLiquid::Water && static_cast<float>(landing->LiquidDepth) >= std::max(s_StandHeight, 32.0F);
+		if (!intoWater) {
+			return 1000.0F;
+		}
 	}
 	return drop > c_SafeFallNodes ? c_FallCostPerNode : 0.0F;
 }
 
 bool PathFinder::Open(const Material& material) const {
 	return material.GetIntegrity() <= 5.0F;
+}
+
+PathLiquid PathFinder::LiquidOf(unsigned char id) const {
+	if (id == MaterialColorKeys::g_MaterialAir) {
+		return PathLiquid::None;
+	}
+	for (int i = 1; i < static_cast<int>(m_LiquidMaterials.size()); ++i) {
+		if (m_LiquidMaterials[i] != 0 && m_LiquidMaterials[i] == id) {
+			return static_cast<PathLiquid>(i);
+		}
+	}
+	return PathLiquid::None;
+}
+
+float PathFinder::LiquidCost(const PathNode& to) const {
+	// Nothing for a flier: it goes over. (The grid reads a liquid's surface as a floor, so to everything else a pool was a free floor.)
+	if (to.Liquid == PathLiquid::None || s_JumpHeight == FLT_MAX) {
+		return 0.0F;
+	}
+	// Acid eats everything in it, and lava sets flesh alight: kept out of, priced and not cut, so a unit already in it still gets the
+	// least bad way out.
+	if (to.Liquid == PathLiquid::Acid || (to.Liquid == PathLiquid::Lava && !s_CrossesLava)) {
+		return 1000.0F;
+	}
+	float depth = static_cast<float>(to.LiquidDepth);
+	// Waded with the head out: about half again a walk up to the waist, a walk again more past it (ActorWater slows a wader to 0.8 and
+	// then 0.55). Oil and lava are waded at any depth: nothing swims or drowns in them (ActorWater leaves them alone).
+	float wade = depth < s_StandHeight * 0.5F ? 0.5F : 1.0F;
+	if (to.Liquid != PathLiquid::Water || depth < s_StandHeight) {
+		return wade;
+	}
+	// Over its head: a floater swims along the surface, at about half a walk's pace.
+	if (s_Floats) {
+		return 1.0F;
+	}
+	// A sinker walks the bottom, slower; what doesn't breathe, as far as it likes.
+	if (s_BreathSeconds == FLT_MAX) {
+		return 1.5F;
+	}
+	// What breathes and sinks, only as far as its breath goes: across water whose deep part along this row (the surface's row, so the width
+	// of the pool) it walks the bottom of in three quarters of its breath, at a node and a half a second, which leaves it the rest to come
+	// up in. Wider is not routed: priced, not cut, as above.
+	int run = 1;
+	for (bool leftward: {false, true}) {
+		const PathNode* next = leftward ? to.Left : to.Right;
+		while (next && run < 64 && next->Liquid == PathLiquid::Water && static_cast<float>(next->LiquidDepth) >= s_StandHeight) {
+			++run;
+			next = leftward ? next->Left : next->Right;
+		}
+	}
+	return static_cast<float>(run) > s_BreathSeconds * 0.75F * 1.5F ? 1000.0F : 2.0F;
 }
 
 bool PathFinder::RoomToPass(const PathNode& node, float widths) const {
@@ -1412,6 +1499,12 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 			return PathStepKind::Dig;
 		}
 		return dy < -1.0F ? PathStepKind::Jump : PathStepKind::Walk;
+	}
+	// Along liquid (LM-4): a level step onto a node with liquid under it, along the surface or in off a bank level with it. Swum by a floater
+	// over its head in water, waded otherwise (the bottom, for what sinks). (Walked as a floor, the follower ran at the water's surface.)
+	if (to->Liquid != PathLiquid::None && s_JumpHeight < FLT_MAX && std::abs(dy) < 1.0F && std::abs(dx) <= nodeSize + 1.0F) {
+		bool swim = s_Floats && to->Liquid == PathLiquid::Water && static_cast<float>(to->LiquidDepth) >= s_StandHeight;
+		return swim ? PathStepKind::Swim : PathStepKind::Wade;
 	}
 	// Stairs, up or down (see UpdateNodeCosts): two nodes of height for one of width, with the lower node's stairs flag set towards the upper.
 	if (std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - 2.0F * nodeSize) < 1.0F) {
@@ -1871,6 +1964,8 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	bool oldStairsUpLeft = node->StairsUpLeft;
 	bool oldScrambleUpRight = node->ScrambleUpRight;
 	bool oldScrambleUpLeft = node->ScrambleUpLeft;
+	PathLiquid oldLiquid = node->Liquid;
+	int oldLiquidDepth = node->LiquidDepth;
 	std::array<float, 2> oldStepOverRise = node->StepOverRise;
 	std::array<int, 2> oldStepOverRoom = node->StepOverRoom;
 	std::array<float, 2> oldStepOverRiseLeft = node->StepOverRiseLeft;
@@ -1884,6 +1979,19 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	{
 		int x = static_cast<int>(node->Pos.m_X);
 		node->Surface = SurfaceUnder(*node);
+		// Liquid under the surface (LM-4): which, and how deep down the centre column to the bottom (or c_ClearanceReach).
+		node->Liquid = PathLiquid::None;
+		node->LiquidDepth = 0;
+		if (node->Surface >= 0.0F) {
+			int surfaceY = static_cast<int>(node->Surface);
+			node->Liquid = LiquidOf(g_SceneMan.GetTerrMatter(x, surfaceY));
+			if (node->Liquid != PathLiquid::None) {
+				unsigned char liquidID = m_LiquidMaterials[static_cast<int>(node->Liquid)];
+				while (node->LiquidDepth < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, surfaceY + node->LiquidDepth) == liquidID) {
+					++node->LiquidDepth;
+				}
+			}
+		}
 		// The floor a body at this node stands on: the first solid pixel from the centre down to a node below it (a floor just past the cell's
 		// edge is still what the node stands on; measured from the centre instead, a crawl-high tunnel read as no room at all).
 		// (The surface in the cell is the floor whether the centre is over it or a few pixels under it: a centre just under a slope read
@@ -2230,6 +2338,11 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 
 	// Stairs appearing or going count as a change.
 	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder) {
+		return true;
+	}
+
+	// Liquid coming or going, or its depth changing enough to matter to a body (a flood, a drained pool), likewise.
+	if (node->Liquid != oldLiquid || std::abs(node->LiquidDepth - oldLiquidDepth) >= 4) {
 		return true;
 	}
 

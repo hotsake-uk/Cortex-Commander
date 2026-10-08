@@ -33,7 +33,18 @@ namespace RTE {
 		Leap, //!< Across a gap or up onto a low ledge on a leap of the legs (see AHuman::UpdateLeap): no jet.
 		Mantle, //!< Up onto a ledge one or two nodes up and one across, pulled up onto by pressing into it (see Actor::TryStartMantle): no jet.
 		Crouch, //!< Along the ground with room to walk crouched but not upright (PathAgent::CrouchHeight): walked ducking, not crawled.
-		Scramble //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
+		Scramble, //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
+		Swim, //!< Along the surface of liquid too deep to wade, swum by a searcher that floats (PathAgent::Floats).
+		Wade //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
+	};
+
+	/// What liquid fills a node's column under its surface (see PathNode::Liquid). Told by the material's name, the four FluidSim pours.
+	enum class PathLiquid : unsigned char {
+		None = 0,
+		Water, //!< Swum or waded; drowns what breathes with its head under for long.
+		Oil, //!< Waded: nothing swims or drowns in it (ActorWater leaves it alone).
+		Acid, //!< Eats anything in it (ActorWater): never routed through but as a last resort.
+		Lava //!< Sets flesh alight (ActorFire): routed through only by what doesn't burn (PathAgent::CrossesLava).
 	};
 
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
@@ -57,6 +68,9 @@ namespace RTE {
 		float LeapSpeed = 4.0F; //!< How fast a leap carries it forward, in m/s.
 		float MaxSafeFall = FLT_MAX; //!< For a searcher with no jet to brake a fall, the highest drop it lands from unhurt, in pixels (see Actor::GetMaxSafeFallHeight): falls higher are not routed. FLT_MAX for no limit.
 		bool Scrambles = false; //!< Whether it scrambles up rough slopes too steep for stairs on its legs and arms (a humanoid with an arm).
+		bool Floats = false; //!< Whether it floats in deep water (ActorWater::IsFloater) and swims along the surface, rather than walking the bottom.
+		float BreathSeconds = FLT_MAX; //!< How long it holds its breath with its head under, in seconds (ActorWater::GetBreathSeconds); FLT_MAX for what doesn't breathe.
+		bool CrossesLava = false; //!< Whether it may be routed through lava: what doesn't burn (machines).
 	};
 
 	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
@@ -113,6 +127,10 @@ namespace RTE {
 		bool StairsUpLeft = false; //!< Likewise up to the left.
 		bool ScrambleUpRight = false; //!< Whether a rough slope of loose or diggable ground, too steep for stairs, leads from this node's floor up to the floor of the node three up and one to the right (see UpdateNodeCosts).
 		bool ScrambleUpLeft = false; //!< Likewise up to the left.
+		/// Liquid under this node's surface (LM-4): the surface is then the liquid's, and LiquidDepth is how far down its centre column the
+		/// liquid goes before the bottom, up to c_ClearanceReach. None and 0 for a dry node.
+		PathLiquid Liquid = PathLiquid::None;
+		int LiquidDepth = 0;
 		/// Stepping over something low between this node's floor and a floor level with it one node (index 0) or two nodes (index 1) to the right:
 		/// how high the thing is over the floor, or -1 when there is nothing to step over (or no such floor, or it is too high), and the air over it.
 		std::array<float, 2> StepOverRise = {-1.0F, -1.0F};
@@ -344,6 +362,13 @@ namespace RTE {
 		std::vector<PathNode> m_NodeGrid; //!< The array of PathNodes representing the grid on the scene.
 		unsigned int m_NodeDimension; //!< The width and height of each PathNode, in pixels on the scene.
 		unsigned char m_LadderMaterial = 0; //!< The Ladder material's index (the bunkers' rungs), 0 when there is none; looked up once at creation.
+		std::array<unsigned char, 5> m_LiquidMaterials = {}; //!< The liquids' material indices, by PathLiquid (0 when the scene has none); looked up once at creation.
+
+		/// Which liquid a material index is, or None.
+		PathLiquid LiquidOf(unsigned char id) const;
+
+		/// The extra cost of a step into a node with liquid under it, for this searcher (see AdjacentCost); 0 for a dry node.
+		float LiquidCost(const PathNode& to) const;
 
 		/// The terrain at a point as a body meets it: air for the ladders' rungs, which a soldier passes (see AHuman::LearnFlight).
 		unsigned char TerrNav(int x, int y) const;

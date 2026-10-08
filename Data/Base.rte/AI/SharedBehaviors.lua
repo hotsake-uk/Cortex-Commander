@@ -2252,10 +2252,11 @@ end
 -- The step kinds the script's own mover knows (0 to 7): a leap (8) or a mantle (9), which only the engine's route-follower takes as such, is
 -- a jump to it. (Taken for a walk, a leap's gap was walked off the edge of, and the comparison runs with CCCP_LUA_MOVER=1 meant nothing.)
 -- A crouch (10) is a walk to it: the body ducks under the low part by itself (AHuman's auto-crouch). A scramble (11) is a jump to it.
+-- A swim (12) or a wade (13) is a walk to it: ActorWater strokes the body along with the move keys.
 function SharedBehaviors.ScriptStepKind(kind)
 	if kind == 8 or kind == 9 or kind == 11 then
 		return 2;
-	elseif kind == 10 then
+	elseif kind == 10 or kind == 12 or kind == 13 then
 		return 0;
 	end
 	return kind;
