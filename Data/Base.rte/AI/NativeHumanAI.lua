@@ -313,7 +313,15 @@ function NativeHumanAI:Update(Owner)
 			end
 
 			if FoundMO and FoundMO.Status < Actor.INACTIVE then
-				if self.Target then
+				if self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then
+					-- The same target, with no fight under way: a new order (a sandbox re-send hops SENTRY to GOTO) aborted the attack, and in
+					-- GOTO nothing made a new one while the target lived, so the unit held its fire for up to 5 s, until it lost sight of it.
+					self.TargetOffset = SceneMan:ShortestDistance(self.Target.Pos, HitPoint, false);
+					self.TargetLostTimer:Reset();
+					if not self.NextBehavior then
+						self:CreateAttackBehavior(Owner);
+					end
+				elseif self.Target then
 					-- check if this MO should be targeted instead
 					if SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(self.Target, Owner) + 0.5 then
 						self.OldTargetPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
