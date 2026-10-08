@@ -6,6 +6,7 @@
 #include "AHuman.h"
 #include "ActorWater.h"
 #include "ADoor.h"
+#include "ACraft.h"
 #include "AEJetpack.h"
 #include "AtomGroup.h"
 #include "Arm.h"
@@ -797,6 +798,25 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 		}
 	}
 	return best;
+}
+
+Actor* AHuman::UnitAhead(float direction) const {
+	const float h = m_CharHeight;
+	Actor* nearest = nullptr;
+	float nearestAhead = h * 0.5F + 10.0F;
+	for (Actor* actor: g_MovableMan.GetActorList()) {
+		if (!actor || actor == this || actor->GetTeam() != m_Team || actor->GetStatus() == DYING || actor->GetStatus() == DEAD || dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+			continue;
+		}
+		Vector to = Towards(m_Pos, actor->GetPos());
+		float ahead = to.m_X * direction;
+		if (ahead <= 0.0F || ahead >= nearestAhead || std::abs(to.m_Y) > h * 0.6F) {
+			continue;
+		}
+		nearest = actor;
+		nearestAhead = ahead;
+	}
+	return nearest;
 }
 
 bool AHuman::InDoorSweep() const {
@@ -2642,6 +2662,91 @@ int AHuman::MoveAlongRoute() {
 	if (!ctrl.IsState(MOVE_LEFT) && !ctrl.IsState(MOVE_RIGHT) && InDoorSweep()) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		mover.progressTimer.Reset();
+	}
+	// A unit of our own side in the way (LM-2). The bodies of a side collide, and the walk pushed into one until the stuck handling blamed
+	// the ground there and marked it impassable for the whole team. Now: one going our way is followed at its pace; one lying down (or a
+	// low crab) is leapt over, or hopped with the jet; two coming at each other, the one with the lower ID backs off half a body and lets
+	// the other come on; one standing in the way is hopped over when there is a jet and room, else waited for. Behind the same unit for 3 s,
+	// the route is asked again with that step avoided for 5 s, so a way round it wins if there is one. (Not in a door's sweep, which goes on.)
+	if (!prone && !mover.flight.active && kind != PathStepKind::Fall && std::abs(toPoint.m_X) > 3.0F && !InDoorSweep()) {
+		const float way = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		const Actor* blocker = UnitAhead(way);
+		if (!blocker) {
+			mover.blocker = 0;
+		} else {
+			if (mover.blocker != blocker->GetUniqueID()) {
+				mover.blocker = blocker->GetUniqueID();
+				mover.blockTimer.Reset();
+				mover.blockActionTimer.SetElapsedSimTimeMS(10000.0);
+				MoverTrace("a unit of ours in the way (" + blocker->GetPresetName() + ")");
+			}
+			// (Not stuck on the ground for it: the terrain is not to blame.)
+			mover.progressTimer.Reset();
+			if (mover.blockTimer.IsPastSimMS(3000) && !m_MovePath.empty()) {
+				MoverTrace("behind the same unit for 3 s; new route round it");
+				AvoidPathLink(m_Pos, m_MovePath.front(), 5000.0F);
+				RefreshRoute();
+				mover.blockTimer.Reset();
+				return RouteMover::Moving;
+			}
+			const AHuman* human = dynamic_cast<const AHuman*>(blocker);
+			const bool low = (human && human->GetProneState() == PRONE) || blocker->GetHeight() < h * 0.55F;
+			const float along = blocker->GetVel().m_X * way;
+			const bool jetReady = standardJet && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 150.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.6F);
+			auto release = [&ctrl]() {
+				ctrl.SetState(MOVE_LEFT, false);
+				ctrl.SetState(MOVE_RIGHT, false);
+				ctrl.SetState(MOVE_FAST, false);
+			};
+			if (low) {
+				if (CanLeap()) {
+					if (mover.blockActionTimer.IsPastSimMS(1000)) {
+						mover.blockActionTimer.Reset();
+						MoverTrace("a unit lying in the way; leap over");
+					}
+					if (!mover.blockActionTimer.IsPastSimMS(200)) {
+						ctrl.SetState(BODY_LEAP, true);
+					}
+				} else if (jetReady) {
+					if (mover.blockActionTimer.IsPastSimMS(1200)) {
+						mover.blockActionTimer.Reset();
+						MoverTrace("a unit lying in the way; hop over");
+					}
+					if (!mover.blockActionTimer.IsPastSimMS(350)) {
+						ctrl.SetState(BODY_JUMP, true);
+						SetAimAngle(0.2F);
+					}
+				} else {
+					release();
+				}
+			} else if (along > 0.5F) {
+				// Going our way: behind it, at its pace.
+				release();
+			} else if (along < -0.5F && GetUniqueID() < blocker->GetUniqueID()) {
+				// Head on, and ours to give way: back half a body, then wait for it to come by.
+				if (mover.blockActionTimer.IsPastSimMS(1500)) {
+					mover.blockActionTimer.Reset();
+					MoverTrace("head on with a unit of ours; giving way");
+				}
+				release();
+				if (!mover.blockActionTimer.IsPastSimMS(500)) {
+					ctrl.SetState(way < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+				}
+			} else if (jetReady && mover.blockTimer.IsPastSimMS(600)) {
+				// Standing in the way: over it with the jet.
+				if (mover.blockActionTimer.IsPastSimMS(1500)) {
+					mover.blockActionTimer.Reset();
+					MoverTrace("a unit standing in the way; hop over");
+				}
+				if (!mover.blockActionTimer.IsPastSimMS(500)) {
+					ctrl.SetState(BODY_JUMP, true);
+					SetAimAngle(c_HalfPI * 0.5F);
+				}
+			} else {
+				release();
+			}
+			return RouteMover::Moving;
+		}
 	}
 	// A wall ahead on the way (8.0's chest and head rays, a little under a body ahead, terrain only so other units and our doors aren't
 	// walls): both blocked at much the same distance is a face higher than the body, hopped at once when there is head room and fuel,

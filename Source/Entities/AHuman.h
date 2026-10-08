@@ -904,6 +904,9 @@ namespace RTE {
 			Vector remedySpot; //!< Where the unit was stuck when it began.
 			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
 			bool swimming = false; //!< In liquid with the body under (LM-4), since the follower last looked: for the re-route on falling in.
+			long blocker = 0; //!< The unit of our side in the way just now (LM-2), by unique ID, or 0.
+			Timer blockTimer; //!< Since that unit got in the way.
+			Timer blockActionTimer; //!< Since the last leap, hop or back-off round it began.
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
@@ -1016,6 +1019,9 @@ namespace RTE {
 		/// Drops the route's points up to a flight's landing: up to the one nearest the landing, or the planned count if none is near it.
 		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
 		ADoor* DoorAhead(const Vector& toPoint) const;
+		/// The nearest unit of this side standing in the walk's way (LM-2): within half a body and a little ahead on the side it walks to and
+		/// about level, not a door or a craft. @param direction -1 walking left, 1 right. @return The unit, or nullptr.
+		Actor* UnitAhead(float direction) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.
