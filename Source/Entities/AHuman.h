@@ -11,6 +11,8 @@
 #include "LimbPath.h"
 
 #include <array>
+#include <optional>
+#include <shared_mutex>
 
 struct BITMAP;
 
@@ -920,10 +922,12 @@ namespace RTE {
 		void UpdateLadderLimbs();
 		void LetGoOfLadder(const Vector& velocity);
 		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
+		static std::shared_mutex s_LadderNodesMutex; //!< The AI's route-following runs on several threads at once: one refreshes the nodes
+		                                             //!< while the others read them.
 		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it
 		                                      //!< reads, and crashed the game before its window opened.)
-		static const Vector* LadderNear(const Vector& point, float reachX, float reachY);
+		static std::optional<Vector> LadderNear(const Vector& point, float reachX, float reachY);
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
