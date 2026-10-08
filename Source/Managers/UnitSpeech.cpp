@@ -90,7 +90,9 @@ namespace {
 		std::string line;
 		while (std::getline(file, line)) {
 			++lineNumber;
-			if (size_t comment = line.find("//"); comment != std::string::npos) {
+			// (Not in a Line, whose words may have a "//" in them; a comment there goes on a line of its own.)
+			bool isLine = Trim(line.substr(0, line.find('='))) == "Line";
+			if (size_t comment = line.find("//"); comment != std::string::npos && !isLine) {
 				line.erase(comment);
 			}
 			size_t equals = line.find('=');
@@ -272,18 +274,6 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey) {
 	if (std::uniform_real_distribution<float>(0.0F, 1.0F)(Random()) >= chance) {
 		return false;
 	}
-	// A friend just said it: left to them. The side's slot is taken only by one who does say it.
-	int team = actor.GetTeam();
-	if (team >= 0 && team < 4 && trigger < c_TeamTriggerSlots) {
-		std::atomic<long long>& teamSlot = s_TeamLastSaidMS[team][trigger];
-		long long last = teamSlot.load(std::memory_order_relaxed);
-		do {
-			if (recently(last, definition.TeamCooldownMS)) {
-				return false;
-			}
-		} while (!teamSlot.compare_exchange_weak(last, std::max(now, 1LL), std::memory_order_relaxed));
-	}
-
 	// The unit's own set's lines for this, else the default set's.
 	const std::vector<std::string>* lines = nullptr;
 	if (const std::string& setName = actor.GetSpeechSet(); !setName.empty()) {
@@ -297,6 +287,18 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey) {
 	if (!lines) {
 		return false;
 	}
+	// A friend just said it: left to them. The side's slot is taken only by one who does say it.
+	int team = actor.GetTeam();
+	if (team >= 0 && team < 4 && trigger < c_TeamTriggerSlots) {
+		std::atomic<long long>& teamSlot = s_TeamLastSaidMS[team][trigger];
+		long long last = teamSlot.load(std::memory_order_relaxed);
+		do {
+			if (recently(last, definition.TeamCooldownMS)) {
+				return false;
+			}
+		} while (!teamSlot.compare_exchange_weak(last, std::max(now, 1LL), std::memory_order_relaxed));
+	}
+
 	int count = static_cast<int>(lines->size());
 	int pick = std::uniform_int_distribution<int>(0, count - 1)(Random());
 	// Not the same line twice running for the same thing.
