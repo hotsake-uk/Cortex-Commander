@@ -14,6 +14,7 @@
 #include "FluidSim.h"
 
 #include "glm/glm.hpp"
+#include "PostProcessMan.h"
 
 #include <algorithm>
 #include <array>
@@ -434,6 +435,8 @@ namespace {
 			}
 		}
 		if (amount > 0) {
+			// And a cloud of it that hangs in the air and drifts off (the fog volume; render only).
+			g_PostProcessMan.RegisterFog(Vector(point.x, point.y - 4.0F), 12.0F + static_cast<float>(amount), std::min(0.04F * static_cast<float>(amount), 0.6F));
 			EffectsParticles::Emit("Dust", Vector(point.x, point.y), Vector(0.0F, -1.5F), 1.0F, amount, rgb);
 			EffectsParticles::Emit("Debris", Vector(point.x, point.y), Vector(0.0F, -3.0F), 1.0F, std::max(amount / 3, 1), rgb);
 		}

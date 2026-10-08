@@ -200,6 +200,11 @@ namespace RTE {
 		int m_FlowTileColumns = 0;
 		std::vector<unsigned char> m_FlowTileMarks; //!< Per tile: 1 to be uploaded this frame, 2 written this frame (either or both).
 		std::vector<int> m_FlowTiles; //!< The tiles with moving liquid written into them last frame, to be cleared this frame.
+		GLTarget m_Fog[2]; //!< Ping-ponged fog volume, in the light grid's cells: R = how thick the mist or dust is, 0 to 1.
+		int m_CurrentFog = 0;
+		bool m_FogLive = false; //!< The fog targets hold fog (cleared when the fog volume is turned off).
+		double m_LastFogTime = -1.0; //!< Game seconds of the last fog step.
+		std::vector<glm::vec4> m_PendingFogPuffs; //!< Puffs taken from PostProcessMan and not yet put in, a step holding only so many.
 		GLTarget m_Scorch; //!< World space soot darkness, R.
 		GLTarget m_Stains; //!< World space liquid stains, RGB color and A coverage, same cells as m_Scorch.
 		int m_ScorchCellSize = 2; //!< Size of a scorch map texel, in scene pixels.
@@ -239,6 +244,7 @@ namespace RTE {
 		double m_LastAdaptSeconds[c_MaxScreens] = {};
 
 		std::unique_ptr<Shader> m_PropagateShader;
+		std::unique_ptr<Shader> m_FogUpdateShader;
 		std::unique_ptr<Shader> m_PointLightShader;
 		std::unique_ptr<Shader> m_OccluderSeedShader;
 		std::unique_ptr<Shader> m_OccluderJumpShader;
@@ -308,6 +314,9 @@ namespace RTE {
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
 		void StampStains();
+
+		/// Steps the fog volume (LightingSettings::FogVolume) on by the game time since the last step: wind, spreading, clearing and its sources.
+		void UpdateFog();
 
 		/// Brings the flow field (m_FlowTexture) up to date with the liquid moving this frame, clearing and uploading only the tiles that had or have moving liquid in them.
 		void UpdateFlowField();

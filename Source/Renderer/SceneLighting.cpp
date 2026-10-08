@@ -101,6 +101,7 @@ SceneLighting::~SceneLighting() {
 void SceneLighting::LoadShaders() {
 	const std::string fullscreenVertex = "Base.rte/Shaders/Lighting/Fullscreen.vert";
 	m_PropagateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightPropagate.frag");
+	m_FogUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/FogUpdate.frag");
 	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
 	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
 	m_OccluderJumpShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderJump.frag");
@@ -224,6 +225,13 @@ bool SceneLighting::EnsureWorldResources() {
 	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
 	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
 	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	for (GLTarget& fog: m_Fog) {
+		fog.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
+	}
+	m_CurrentFog = 0;
+	m_FogLive = false;
+	m_LastFogTime = -1.0;
+	m_PendingFogPuffs.clear();
 	// The flow field starts with nothing moving anywhere.
 	m_FlowTexture.Create(m_GridWidth, m_GridHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
 	m_Flow.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight * 4, 0);
@@ -264,6 +272,8 @@ void SceneLighting::DestroyWorldResources() {
 	m_FlowTexture.Destroy();
 	m_ShadowFieldTexture.Destroy();
 	m_ShadowField.clear();
+	m_Fog[0].Destroy();
+	m_Fog[1].Destroy();
 	m_Flow.clear();
 	m_FlowTiles.clear();
 	m_WorldScene = nullptr;
@@ -890,6 +900,85 @@ void SceneLighting::UpdateFlowField() {
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
+void SceneLighting::UpdateFog() {
+	if (!m_Fog[0].Texture) {
+		return;
+	}
+	bool on = m_Settings.Enabled && m_Settings.FogVolume > 0.0F;
+	std::vector<glm::vec4> puffs = g_PostProcessMan.TakeFogPuffs();
+	if (!on) {
+		if (m_FogLive) {
+			// Turned off: the next time it's turned on starts from clear air.
+			for (const GLTarget& fog: m_Fog) {
+				glBindFramebuffer(GL_FRAMEBUFFER, fog.Framebuffer);
+				glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+				glClear(GL_COLOR_BUFFER_BIT);
+			}
+			m_FogLive = false;
+		}
+		m_PendingFogPuffs.clear();
+		m_LastFogTime = -1.0;
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Fog Volume");
+	m_PendingFogPuffs.insert(m_PendingFogPuffs.end(), puffs.begin(), puffs.end());
+	// In game time, so it holds while paused and keeps pace with slow motion. A step back (a new scene) counts as no time.
+	double now = PostProcessMan::GetSmoothSimTimePrecise();
+	float seconds = m_LastFogTime >= 0.0 ? static_cast<float>(std::clamp(now - m_LastFogTime, 0.0, 0.25)) : 0.0F;
+	m_LastFogTime = now;
+	if (seconds <= 0.0F && m_PendingFogPuffs.empty()) {
+		return;
+	}
+	float cell = static_cast<float>(m_CellSize);
+	// Dawn mist: thickest from five to seven, a little through the night, more in rain.
+	float hour = m_Settings.TimeOfDay;
+	float dawn = glm::smoothstep(3.5F, 5.5F, hour) * (1.0F - glm::smoothstep(6.5F, 9.0F, hour));
+	float night = (hour >= 21.0F || hour < 3.5F) ? 0.25F : 0.0F;
+	float rain = m_Settings.WeatherType == 1 ? 0.35F * m_Settings.WeatherIntensity : 0.0F;
+	float mist = std::clamp(m_Settings.FogMorningMist, 0.0F, 1.0F) * std::max(dawn, std::max(night, rain)) * seconds * 0.15F;
+
+	constexpr int maxPuffs = 16;
+	std::array<glm::vec4, maxPuffs> stepPuffs{};
+	int puffCount = 0;
+	for (; puffCount < maxPuffs && puffCount < static_cast<int>(m_PendingFogPuffs.size()); ++puffCount) {
+		const glm::vec4& puff = m_PendingFogPuffs[puffCount];
+		stepPuffs[puffCount] = glm::vec4(puff.x / cell, puff.y / cell, puff.z / cell, puff.w);
+	}
+	m_PendingFogPuffs.erase(m_PendingFogPuffs.begin(), m_PendingFogPuffs.begin() + puffCount);
+
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glViewport(0, 0, m_GridWidth, m_GridHeight);
+	const GLTarget& source = m_Fog[m_CurrentFog];
+	const GLTarget& destination = m_Fog[1 - m_CurrentFog];
+	glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+	m_FogUpdateShader->Enable();
+	m_FogUpdateShader->SetInt("rtePrevious", 0);
+	m_FogUpdateShader->SetInt("rteOccupancy", 1);
+	m_FogUpdateShader->SetInt("rteSkyLight", 2);
+	m_FogUpdateShader->SetVector2f("rteGridSize", glm::vec2(m_GridWidth, m_GridHeight));
+	// Mist drifts at a fraction of the wind (pixels per second), and a little even in still air.
+	m_FogUpdateShader->SetVector2f("rteDrift", glm::vec2((m_Settings.Wind * 0.5F + 2.0F) * seconds / cell, 0.0F));
+	m_FogUpdateShader->SetFloat("rteKeep", std::exp(-seconds / std::max(m_Settings.FogClearSeconds, 1.0F)));
+	m_FogUpdateShader->SetFloat("rteMist", mist);
+	m_FogUpdateShader->SetInt("rtePuffCount", puffCount);
+	if (puffCount > 0) {
+		glUniform4fv(m_FogUpdateShader->GetUniformLocation("rtePuffs[0]"), puffCount, &stepPuffs[0].x);
+	}
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, source.Texture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+	glActiveTexture(GL_TEXTURE0);
+	DrawFullscreen();
+	m_CurrentFog = 1 - m_CurrentFog;
+	m_FogLive = true;
+}
+
 void SceneLighting::Update() {
 	ZoneScoped;
 
@@ -1058,6 +1147,8 @@ void SceneLighting::Update() {
 	logStages.Next("Light grid: scorch marks and stains");
 	StampScorchMarks();
 	StampStains();
+	logStages.Next("Light grid: mist and dust");
+	UpdateFog();
 	logStages.Next(nullptr);
 	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
 	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -1799,6 +1890,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetInt("rteOccupancy", 8);
 	m_CompositeShader->SetInt("rteOccluders", 9);
 	m_CompositeShader->SetInt("rteSurface", 10);
+	m_CompositeShader->SetInt("rteFog", 11);
+	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
 	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));
@@ -1821,6 +1914,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glBindTexture(GL_TEXTURE_2D, occluders);
 	glActiveTexture(GL_TEXTURE10);
 	glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE11);
+	glBindTexture(GL_TEXTURE_2D, m_Fog[m_CurrentFog].Texture);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, albedo ? albedo->GetTextureId() : 0);
 	glActiveTexture(GL_TEXTURE1);
