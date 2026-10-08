@@ -12,7 +12,6 @@ namespace RTE {
 	class MovableObject;
 	class GUIFont;
 	class Actor;
-	class Camera;
 
 	/// A PieMenu for managing interactions with objects and Actors.
 	class PieMenu : public Entity {

@@ -1,12 +1,10 @@
 #pragma once
 #include "Rectangles.h"
-#include <memory>
 #include "glad/gl.h"
 #include "raylib/raylib.h"
 namespace RTE {
 	class Shader;
 	class Texture;
-	class BitmapTexture;
 	class DepthTexture;
 	class RenderTarget {
 	public:

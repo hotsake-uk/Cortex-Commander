@@ -40,7 +40,6 @@
 #include "ToolWidgets.h"
 #include "glad/gl.h"
 
-#include <cstring>
 #include <fstream>
 #include <filesystem>
 #include <sstream>
