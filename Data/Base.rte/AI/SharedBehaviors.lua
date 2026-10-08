@@ -674,6 +674,9 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 	AI.routeHeld = false;
 	AI.jetClimb = false;
 	Owner:RemoveNumberValue("AI_StuckForTime");
+	-- Whether it was sent anywhere: a unit put in GOTO with nothing to go to "arrives" at once, and stays GOTO for the activities that send
+	-- raiders out that way and hand them a target later (Siege, BrainVsBrain, MetaFight look for GOTO units with no target).
+	local hadGoal = false;
 	while true do
 		local holding = false;
 		if AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
@@ -712,6 +715,9 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			Owner:ResetRouteMovement();
 		end
 		if not holding then
+			if Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget then
+				hadGoal = true;
+			end
 			local result = Owner:MoveAlongRoute();
 			if result == 1 then
 				-- Arrived.
@@ -720,6 +726,12 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 					AI.SentryFacing = Owner.HFlipped;
 					AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
 					AI:CreateSentryBehavior(Owner);
+					-- A sentry now, as the engine makes a player's unit on arriving: left in GOTO, the sandbox's "arrived" (not GOTO, no
+					-- waypoints) never came for an AI unit, and plans, patrols, shift Defend-at and keep-together all stalled at the first
+					-- step. (The AI's update takes the mode change for a sentry order and keeps a post put back by RestoreOrder.)
+					if hadGoal then
+						Owner.AIMode = Actor.AIMODE_SENTRY;
+					end
 				end
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
@@ -732,6 +744,11 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
 				Owner:DrawWaypoints(false);
+				-- Stood down as a sentry where it is, so the sandbox sees the move ended short and shows its "no route" marker (RC-7).
+				-- Not a fall-back or a flank, which time themselves out and put their own order back.
+				if hadGoal and Owner.AIMode == Actor.AIMODE_GOTO and not Owner:NumberValueExists("AIRetreat") and not Owner:NumberValueExists("AIFlank") then
+					Owner.AIMode = Actor.AIMODE_SENTRY;
+				end
 				return true;
 			end
 		end
@@ -2820,6 +2837,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							AI.SentryFacing = Owner.HFlipped; -- guard this direction
 							AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- guard this point
 							AI:CreateSentryBehavior(Owner);
+							-- (Arrived somewhere it was sent: a sentry, as in GoToRoute. Its waypoint is cleared just below.)
+							if Owner:GetWaypointListSize() > 0 then
+								Owner.AIMode = Actor.AIMODE_SENTRY;
+							end
 						end
 
 						Owner:ClearAIWaypoints();
