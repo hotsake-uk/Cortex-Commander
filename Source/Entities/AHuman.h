@@ -841,6 +841,8 @@ namespace RTE {
 			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
 			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
+			bool settling = false; //!< Waiting to settle before a take-off just now.
+			Timer settleWaitTimer; //!< Since the wait to settle began: it never lasts more than a second and a half.
 			Timer traceTimer;
 			bool fuelWaiting = false; //!< Standing for the tank to fill before a flight, and since when.
 			Timer fuelWaitTimer;

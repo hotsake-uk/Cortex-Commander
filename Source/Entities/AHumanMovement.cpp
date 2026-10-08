@@ -1998,11 +1998,26 @@ int AHuman::MoveAlongRoute() {
 		// at the end of a long flight, and long flights were the ones missed and flown again.
 		float flightLength = toLanding.GetMagnitude();
 		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F);
-		bool still = std::abs(m_Vel.m_X) <= (settleMS > 0.0F ? 0.3F : 0.6F) && (settleMS <= 0.0F || (std::abs(m_Vel.m_Y) <= 0.5F && std::abs(GetRotAngle()) < 0.15F));
+		// (Upright against its own standing pose, which leans for some bodies: measured against straight up, a soldier whose stance leans
+		// more than the tolerance never counted as settled, and stood at the foot of the ledge for good.)
+		float uprightError = std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND]));
+		bool still = std::abs(m_Vel.m_X) <= (settleMS > 0.0F ? 0.3F : 0.6F) && (settleMS <= 0.0F || (std::abs(m_Vel.m_Y) <= 0.5F && uprightError < 0.2F && std::abs(m_AngularVel) < 0.6F));
 		if (!still || m_Status != STABLE) {
 			mover.steadyTimer.Reset();
 		}
-		if (canTakeOff && !hop && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)))) {
+		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
+		// never quite settled stood at its take-off with nothing to move it on.)
+		bool wantsSettle = canTakeOff && !hop && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		if (wantsSettle && !mover.settling) {
+			mover.settling = true;
+			mover.settleWaitTimer.Reset();
+		} else if (!wantsSettle) {
+			mover.settling = false;
+		}
+		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500)) {
+			wantsSettle = false;
+		}
+		if (wantsSettle) {
 			mover.progressTimer.Reset();
 			mover.hopTimer.Reset();
 			if (mover.traceTimer.IsPastSimMS(1000)) {
@@ -2016,6 +2031,7 @@ int AHuman::MoveAlongRoute() {
 			{
 				mover.flight = RouteMover::Flight();
 				mover.flight.active = true;
+				mover.settling = false;
 				mover.flight.landing = landing;
 				mover.flight.floorY = landingFloorY;
 				mover.flight.pointsToLanding = pointsToLanding;
