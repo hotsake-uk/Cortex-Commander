@@ -6257,7 +6257,7 @@ namespace {
 			drawList->AddCircle(ToScreen(possessed->GetPos()), std::max(possessed->GetRadius() / scale, 10.0F) + 7.0F, IM_COL32(110, 180, 250, 230), 0, 2.0F);
 		}
 		lines.push_back("game controls: " + (controlled ? controlled->GetPresetName() + " #" + std::to_string(controlled->GetUniqueID()) : std::string("nobody")));
-		lines.push_back(std::string("sandbox thinks you're in: ") + (possessed ? possessed->GetPresetName() + " #" + std::to_string(possessed->GetUniqueID()) : s_Possessed ? std::string("a unit that's gone") : std::string("nobody")) + (s_Possessed != controlled && (s_Possessed || IsGodMode()) ? "  (they differ)" : ""));
+		lines.push_back(std::string("sandbox thinks you're in: ") + (possessed ? possessed->GetPresetName() + " #" + std::to_string(possessed->GetUniqueID()) : s_Possessed ? std::string("a unit that's gone") : std::string("nobody")) + (s_Possessed != controlled && (s_Possessed || Sandbox::IsGodMode()) ? "  (they differ)" : ""));
 		auto cross = [drawList](const ImVec2& at, ImU32 color) {
 			drawList->AddLine(ImVec2(at.x - 8.0F, at.y - 8.0F), ImVec2(at.x + 8.0F, at.y + 8.0F), color, 2.0F);
 			drawList->AddLine(ImVec2(at.x - 8.0F, at.y + 8.0F), ImVec2(at.x + 8.0F, at.y - 8.0F), color, 2.0F);
@@ -6267,7 +6267,7 @@ namespace {
 			cross(ToScreen(observing), IM_COL32(255, 220, 80, 230));
 			lines.push_back("observation target (yellow) " + std::to_string(observing.GetFloorIntX()) + "," + std::to_string(observing.GetFloorIntY()));
 		}
-		if (IsGodMode()) {
+		if (Sandbox::IsGodMode()) {
 			cross(ToScreen(s_CameraCenter), IM_COL32(90, 230, 255, 230));
 			lines.push_back("free camera centre (cyan) " + std::to_string(s_CameraCenter.GetFloorIntX()) + "," + std::to_string(s_CameraCenter.GetFloorIntY()));
 		}
