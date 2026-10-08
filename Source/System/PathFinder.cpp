@@ -189,7 +189,9 @@ int PathFinder::Create(int nodeDimension) {
 		}
 	}
 
-	RecalculateAllCosts();
+	// No costs are worked out here: the only creator, Scene::LoadData (with initPathfinding), builds all five grids and then calls
+	// Scene::ResetPathFinding, which samples each grid once with the doors of its team taken out. Sampling here as well measured every node of
+	// every grid twice on each scene load.
 
 	return 0;
 }
