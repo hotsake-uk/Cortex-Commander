@@ -426,6 +426,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .def("IsDebugChannelOn", &SettingsMan::IsDebugChannelOn)
 	    .property("UnitInspector", &SettingsMan::UnitInspector, &SettingsMan::SetUnitInspector)
 	    .property("ShowSquadLinks", &SettingsMan::ShowSquadLinks, &SettingsMan::SetShowSquadLinks)
+	    .property("ShowSandboxPaintAudit", &SettingsMan::ShowSandboxPaintAudit, &SettingsMan::SetShowSandboxPaintAudit)
 	    .property("ShowSandboxSelectionCamera", &SettingsMan::ShowSandboxSelectionCamera, &SettingsMan::SetShowSandboxSelectionCamera)
 	    .property("ShowSandboxEffects", &SettingsMan::ShowSandboxEffects, &SettingsMan::SetShowSandboxEffects)
 	    .property("ShowSandboxSimState", &SettingsMan::ShowSandboxSimState, &SettingsMan::SetShowSandboxSimState)
