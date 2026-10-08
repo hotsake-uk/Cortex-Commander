@@ -3377,9 +3377,32 @@ namespace {
 		float OffsetY = 0.0F;
 	};
 
+	std::map<std::string, PiecePicture> s_PresetPictures; //!< Pictures made by PictureOf, by preset.
+	std::map<std::string, PiecePicture> s_FilePictures; //!< Pictures made by PictureOfFile, by file.
+
+	/// Frees every picture's texture, for when the sandbox is left: they're made again as they're next needed.
+	void ForgetPictures() {
+		for (std::map<std::string, PiecePicture>* pictures: {&s_PresetPictures, &s_FilePictures}) {
+			for (const auto& [key, picture]: *pictures) {
+				if (picture.Texture != 0) {
+					GLuint texture = picture.Texture;
+					glDeleteTextures(1, &texture);
+				}
+			}
+			pictures->clear();
+		}
+	}
+
+	/// The colour the game shows for a palette index, as 8-bit RGB: the same conversion the renderer uploads the palette with (Allegro palettes are 6 bits a channel).
+	void PaletteColor(int index, unsigned char* rgb) {
+		rgb[0] = static_cast<unsigned char>(getr8(index));
+		rgb[1] = static_cast<unsigned char>(getg8(index));
+		rgb[2] = static_cast<unsigned char>(getb8(index));
+	}
+
 	/// Gets the picture of a bunker piece, making it the first time it is asked for. A piece with no art of its own gets an empty picture.
 	const PiecePicture& PictureOf(const Preset& preset) {
-		static std::map<std::string, PiecePicture> pictures;
+		std::map<std::string, PiecePicture>& pictures = s_PresetPictures;
 		std::string key = preset.ClassName + "/" + preset.Module + "/" + preset.PresetName;
 		if (auto found = pictures.find(key); found != pictures.end()) {
 			return found->second;
@@ -3439,14 +3462,6 @@ namespace {
 			picture.Width = picture.Height = 0;
 			return picture;
 		}
-		PALETTE palette;
-		get_palette(palette);
-		// Palettes come with channels up to 63 or up to 255, depending on who made them.
-		int brightest = 1;
-		for (int i = 0; i < 256; ++i) {
-			brightest = std::max({brightest, static_cast<int>(palette[i].r), static_cast<int>(palette[i].g), static_cast<int>(palette[i].b)});
-		}
-		int scale = brightest <= 63 ? 4 : 1;
 		std::vector<unsigned char> pixels(static_cast<size_t>(picture.Width) * picture.Height * 4, 0);
 		for (const BITMAP* layer: layers) {
 			if (!layer || bitmap_color_depth(const_cast<BITMAP*>(layer)) != 8) {
@@ -3459,9 +3474,7 @@ namespace {
 						continue;
 					}
 					unsigned char* pixel = &pixels[(static_cast<size_t>(y) * picture.Width + x) * 4];
-					pixel[0] = static_cast<unsigned char>(std::min(palette[index].r * scale, 255));
-					pixel[1] = static_cast<unsigned char>(std::min(palette[index].g * scale, 255));
-					pixel[2] = static_cast<unsigned char>(std::min(palette[index].b * scale, 255));
+					PaletteColor(index, pixel);
 					pixel[3] = 255;
 				}
 			}
@@ -3786,7 +3799,7 @@ namespace {
 
 	/// A picture made from one of the game's own 8-bit image files, the first time it is asked for: the pie menu's icons and cursor.
 	const PiecePicture& PictureOfFile(const std::string& path) {
-		static std::map<std::string, PiecePicture> pictures;
+		std::map<std::string, PiecePicture>& pictures = s_FilePictures;
 		if (auto found = pictures.find(path); found != pictures.end()) {
 			return found->second;
 		}
@@ -3797,13 +3810,6 @@ namespace {
 		}
 		picture.Width = bitmap->w;
 		picture.Height = bitmap->h;
-		PALETTE palette;
-		get_palette(palette);
-		int brightest = 1;
-		for (int i = 0; i < 256; ++i) {
-			brightest = std::max({brightest, static_cast<int>(palette[i].r), static_cast<int>(palette[i].g), static_cast<int>(palette[i].b)});
-		}
-		int scale = brightest <= 63 ? 4 : 1;
 		std::vector<unsigned char> pixels(static_cast<size_t>(picture.Width) * picture.Height * 4, 0);
 		for (int y = 0; y < picture.Height; ++y) {
 			for (int x = 0; x < picture.Width; ++x) {
@@ -3812,9 +3818,7 @@ namespace {
 					continue;
 				}
 				unsigned char* pixel = &pixels[(static_cast<size_t>(y) * picture.Width + x) * 4];
-				pixel[0] = static_cast<unsigned char>(std::min(palette[index].r * scale, 255));
-				pixel[1] = static_cast<unsigned char>(std::min(palette[index].g * scale, 255));
-				pixel[2] = static_cast<unsigned char>(std::min(palette[index].b * scale, 255));
+				PaletteColor(index, pixel);
 				pixel[3] = 255;
 			}
 		}
@@ -5338,6 +5342,10 @@ void Sandbox::DrawGUI() {
 			s_ToolIndex = ToolIndex(Tool::Unit);
 		}
 	} else {
+		if (s_GodActivity) {
+			// Left the sandbox: its pictures aren't needed until it's next opened.
+			ForgetPictures();
+		}
 		s_GodActivity = nullptr;
 	}
 	if (GameActivity* game = CurrentGame(); s_Open && game && game->IsFreeBuildMode()) {
