@@ -22,6 +22,18 @@ namespace {
 		return at.x > view.x - margin && at.x < view.x + view.w + margin && at.y > view.y - margin && at.y < view.y + view.h + margin;
 	}
 
+	/// The names and colours of the route's step kinds (PathStepKind's order), for the navigation overlays.
+	const char* const c_KindNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap"};
+	const ImU32 c_KindColors[] = {IM_COL32(80, 220, 90, 230), IM_COL32(240, 210, 60, 230), IM_COL32(120, 170, 255, 230), IM_COL32(170, 170, 170, 230), IM_COL32(200, 130, 70, 230), IM_COL32(255, 120, 200, 230), IM_COL32(220, 80, 220, 230), IM_COL32(255, 150, 40, 230), IM_COL32(140, 255, 200, 230)};
+
+	int KindIndex(PathStepKind kind) { return std::clamp(static_cast<int>(kind), 0, static_cast<int>(std::size(c_KindNames)) - 1); }
+
+	/// A colour with its opacity scaled.
+	ImU32 Faded(ImU32 color, float share) {
+		unsigned alpha = static_cast<unsigned>(static_cast<float>((color >> IM_COL32_A_SHIFT) & 0xFF) * std::clamp(share, 0.0F, 1.0F));
+		return (color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+	}
+
 	/// A box of lines of text, its bottom middle at a window position, on a dark backing so it reads over any scene.
 	void DrawLabel(ImDrawList* drawList, const ImVec2& bottomMiddle, const std::vector<std::string>& lines, ImU32 headColor) {
 		float lineHeight = ImGui::GetTextLineHeight();
@@ -183,11 +195,9 @@ void DebugOverlays::DrawNavNode() {
 
 	ImDrawList* drawList = ImGui::GetForegroundDrawList();
 	float thick = std::max(1.0F, std::floor(1.5F / DebugDraw::ScenePixelsPerWindowPixel()));
-	static const char* const kindNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap"};
-	static const ImU32 kindColors[] = {IM_COL32(80, 220, 90, 230), IM_COL32(240, 210, 60, 230), IM_COL32(120, 170, 255, 230), IM_COL32(170, 170, 170, 230), IM_COL32(200, 130, 70, 230), IM_COL32(255, 120, 200, 230), IM_COL32(220, 80, 220, 230), IM_COL32(255, 150, 40, 230), IM_COL32(140, 255, 200, 230)};
 	for (const PathFinder::DebugEdge& edge: edges) {
-		int kind = std::clamp(static_cast<int>(edge.Kind), 0, static_cast<int>(std::size(kindNames)) - 1);
-		ImU32 color = edge.Flight ? IM_COL32(255, 255, 255, 230) : kindColors[kind];
+		int kind = KindIndex(edge.Kind);
+		ImU32 color = edge.Flight ? IM_COL32(255, 255, 255, 230) : c_KindColors[kind];
 		ImVec2 from = DebugDraw::ToScreen(edge.From);
 		ImVec2 to = DebugDraw::ToScreen(edge.To);
 		drawList->AddLine(from, to, color, thick);
@@ -199,7 +209,7 @@ void DebugOverlays::DrawNavNode() {
 		if (edge.Flight) {
 			std::snprintf(text, sizeof(text), "flight %.1f fuel %.1fs", edge.Cost, edge.FuelMS / 1000.0F);
 		} else {
-			std::snprintf(text, sizeof(text), "%s %.1f", kindNames[kind], edge.Cost);
+			std::snprintf(text, sizeof(text), "%s %.1f", c_KindNames[kind], edge.Cost);
 		}
 		std::string label = text;
 		if (edge.AvoidCost > 0.01F) {
@@ -233,4 +243,50 @@ void DebugOverlays::DrawNavNode() {
 	}
 	lines.push_back(std::to_string(edges.size()) + " ways out");
 	DrawLabel(drawList, ImVec2(io.MousePos.x, io.MousePos.y - 24.0F), lines, IM_COL32(150, 200, 255, 255));
+}
+
+void DebugOverlays::DrawRecentSolves() {
+	Scene* scene = g_SceneMan.GetScene();
+	if (!g_SettingsMan.ShowRecentSolves() || !scene) {
+		return;
+	}
+	std::vector<PathFinder::DebugSolve> solves;
+	scene->GetPathFinder(static_cast<Activity::Teams>(g_SettingsMan.DebugTeam())).GetRecentSolves(solves);
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float thick = std::max(1.0F, std::floor(1.5F / DebugDraw::ScenePixelsPerWindowPixel()));
+	char text[96];
+	for (size_t s = 0; s < solves.size(); ++s) {
+		const PathFinder::DebugSolve& solve = solves[s];
+		// Newest brightest; the oldest of eight at a quarter.
+		float share = 0.25F + 0.75F * static_cast<float>(s + 1) / static_cast<float>(solves.size());
+		bool newest = s + 1 == solves.size();
+		for (size_t i = 0; i + 1 < solve.Points.size(); ++i) {
+			ImU32 color = Faded(c_KindColors[KindIndex(solve.Kinds[i])], share);
+			ImVec2 from = DebugDraw::ToScreen(solve.Points[i]);
+			ImVec2 to = DebugDraw::ToScreen(solve.Points[i + 1]);
+			drawList->AddLine(from, to, color, newest ? thick * 2.0F : thick);
+			drawList->AddCircleFilled(to, newest ? 2.5F : 1.5F, color);
+			// The step's cost beside it, where it is more than a plain walk's (most steps are 1 to 1.4, and labelled they hid the route).
+			if (solve.StepCosts[i] > 1.5F || solve.StepCosts[i] < 0.0F) {
+				std::snprintf(text, sizeof(text), "%.1f", solve.StepCosts[i]);
+				drawList->AddText(ImVec2((from.x + to.x) * 0.5F + 3.0F, (from.y + to.y) * 0.5F - 3.0F), Faded(IM_COL32(235, 235, 220, 255), share), text);
+			}
+		}
+		ImVec2 goal = DebugDraw::ToScreen(solve.End);
+		ImU32 statusColor;
+		if (solve.Status == MicroPather::SOLVED) {
+			statusColor = solve.Cut ? IM_COL32(255, 170, 60, 255) : IM_COL32(120, 230, 120, 255);
+			std::snprintf(text, sizeof(text), "%s %.1f in %.1f ms", solve.Cut ? "cut short" : "solved", solve.TotalCost, solve.SolveMS);
+		} else if (solve.Status == MicroPather::START_END_SAME) {
+			statusColor = IM_COL32(180, 180, 180, 255);
+			std::snprintf(text, sizeof(text), "already there");
+		} else {
+			statusColor = IM_COL32(240, 80, 70, 255);
+			std::snprintf(text, sizeof(text), "no route (%.1f ms)", solve.SolveMS);
+			drawList->AddLine(ImVec2(goal.x - 5.0F, goal.y - 5.0F), ImVec2(goal.x + 5.0F, goal.y + 5.0F), Faded(statusColor, share), thick);
+			drawList->AddLine(ImVec2(goal.x - 5.0F, goal.y + 5.0F), ImVec2(goal.x + 5.0F, goal.y - 5.0F), Faded(statusColor, share), thick);
+			drawList->AddLine(DebugDraw::ToScreen(solve.Start), goal, Faded(statusColor, share * 0.4F), thick);
+		}
+		drawList->AddText(ImVec2(goal.x + 7.0F, goal.y - ImGui::GetTextLineHeight()), Faded(statusColor, share), text);
+	}
 }

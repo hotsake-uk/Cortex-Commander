@@ -345,6 +345,10 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		g_ConsoleMan.PrintString(line);
 	}
 
+	if (g_SettingsMan.ShowRecentSolves()) {
+		RecordSolve(start, end, statePath, result, totalCostResult, cut);
+	}
+
 	if (!statePath.empty()) {
 		// The points of the path and what each step to them is, from the nodes they go between. The approximate first point is the exact
 		// start and the last the exact end.
@@ -457,6 +461,44 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 	// TODO: Clean up the path, remove series of nodes in the same direction etc?
 	return result;
+}
+
+void PathFinder::RecordSolve(const Vector& start, const Vector& end, const std::vector<void*>& statePath, int status, float totalCost, bool cut) {
+	DebugSolve solve;
+	solve.Start = start;
+	solve.End = end;
+	solve.Status = status;
+	solve.TotalCost = totalCost;
+	solve.SolveMS = s_LastSolveMS;
+	solve.Cut = cut;
+	std::vector<micropather::StateCost> adjacent;
+	for (size_t i = 0; i < statePath.size(); ++i) {
+		const PathNode* node = static_cast<const PathNode*>(statePath[i]);
+		solve.Points.push_back(node->Surface >= 0.0F ? Vector(node->Anchor.m_X, node->Surface - 3.0F) : node->Anchor);
+		if (i + 1 < statePath.size()) {
+			// (The step's cost as the search was offered it: this thread's searcher is still the one that asked.)
+			adjacent.clear();
+			AdjacentCost(statePath[i], &adjacent);
+			float stepCost = -1.0F;
+			for (const micropather::StateCost& adj: adjacent) {
+				if (adj.state == statePath[i + 1] && (stepCost < 0.0F || adj.cost < stepCost)) {
+					stepCost = adj.cost;
+				}
+			}
+			solve.StepCosts.push_back(stepCost);
+			solve.Kinds.push_back(StepKindBetween(node, static_cast<const PathNode*>(statePath[i + 1])));
+		}
+	}
+	std::lock_guard<std::mutex> lock(m_RecentSolvesMutex);
+	m_RecentSolves.push_back(std::move(solve));
+	while (m_RecentSolves.size() > c_RecentSolvesKept) {
+		m_RecentSolves.pop_front();
+	}
+}
+
+void PathFinder::GetRecentSolves(std::vector<DebugSolve>& solves) const {
+	std::lock_guard<std::mutex> lock(m_RecentSolvesMutex);
+	solves.assign(m_RecentSolves.begin(), m_RecentSolves.end());
 }
 
 void PathFinder::ApplyAgent(const PathAgent& agent) {

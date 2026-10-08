@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <deque>
 #include <list>
 #include <memory>
 #include <functional>
@@ -217,6 +218,23 @@ namespace RTE {
 		/// its step-overs, stairs and ladder, and its anchor).
 		std::string DescribeNodeAt(const Vector& scenePos);
 
+		/// A search this grid answered, kept for the recent path solves overlay (SettingsMan::ShowRecentSolves).
+		struct DebugSolve {
+			Vector Start; //!< Where the search was asked from.
+			Vector End; //!< Where it was asked to.
+			std::vector<Vector> Points; //!< The nodes of the answer, as the search took them (before the route's points are thinned and moved).
+			std::vector<float> StepCosts; //!< What each step between them cost, one fewer than Points.
+			std::vector<PathStepKind> Kinds; //!< What each step is, one fewer than Points.
+			int Status = 0; //!< MicroPather's answer: SOLVED, NO_SOLUTION or START_END_SAME.
+			float TotalCost = 0.0F;
+			double SolveMS = 0.0; //!< How long the search took.
+			bool Cut = false; //!< Whether the route was cut short at something the searcher can't get through.
+		};
+
+		/// The last few searches this grid answered, oldest first, while the recent path solves overlay is on (none are kept while it's off).
+		/// @param solves Filled with them.
+		void GetRecentSolves(std::vector<DebugSolve>& solves) const;
+
 		/// One way out of a node, for the navigation overlay's node under the pointer (see DescribeEdgesAt).
 		struct DebugEdge {
 			Vector From; //!< Where the step starts: the node's standing point (or its anchor, in the air).
@@ -320,6 +338,12 @@ namespace RTE {
 		};
 		std::vector<AvoidLink> m_TeamAvoidLinks; //!< Flights this team's units have failed lately: from where, for where, until when.
 		mutable std::mutex m_TeamAvoidMutex;
+		std::deque<DebugSolve> m_RecentSolves; //!< The last few searches, for the recent path solves overlay (see GetRecentSolves).
+		mutable std::mutex m_RecentSolvesMutex;
+		static constexpr size_t c_RecentSolvesKept = 8;
+
+		/// Keeps a search's answer for the recent path solves overlay, with each step's cost and kind as this thread's searcher sees them.
+		void RecordSolve(const Vector& start, const Vector& end, const std::vector<void*>& statePath, int status, float totalCost, bool cut);
 
 	public:
 		/// Remembers a place a unit of this grid's team failed at, for every unit of the team to route around for a while.

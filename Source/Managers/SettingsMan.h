@@ -254,6 +254,13 @@ namespace RTE {
 		/// @param which 0, 1 or 2.
 		void SetCombatOverlay(int which) { m_CombatOverlay = std::clamp(which, 0, 2); }
 
+		/// Gets whether the recent path solves overlay is on: the debug team's last few routes found, each step with its kind and cost. Not saved.
+		/// While it's on the path finder keeps those routes, which costs a little time per search.
+		bool ShowRecentSolves() const { return m_ShowRecentSolves; }
+
+		/// Sets whether the recent path solves overlay is on.
+		void SetShowRecentSolves(bool show) { m_ShowRecentSolves = show; }
+
 		/// Gets whether the squad links and trails overlay is on: for inspected squad units, the leader-to-follower line, the leader's trail and each follower's place in line (drawn by the AI scripts).
 		bool ShowSquadLinks() const { return m_ShowSquadLinks; }
 
@@ -476,6 +483,7 @@ namespace RTE {
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
+		bool m_ShowRecentSolves; //!< Whether the recent path solves overlay is on (see ShowRecentSolves).
 		int m_CombatOverlay; //!< Which units the combat AI overlay draws for (see CombatOverlay).
 		bool m_ShowSquadLinks; //!< Whether the squad links and trails overlay is on (see ShowSquadLinks).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
