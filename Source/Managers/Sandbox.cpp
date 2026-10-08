@@ -662,6 +662,12 @@ namespace {
 		return actor && actor->GetTeam() >= 0 && actor->GetTeam() < c_Sides && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F;
 	}
 
+	/// Whether a unit can be selected and commanded: a combatant on a side, not a brain, not a craft (a ship is ordered by its own AI; sent off
+	/// with the squad, a dropship delivering hovered with its passengers inside).
+	bool IsSelectable(const Actor* actor) {
+		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor);
+	}
+
 	/// Enemies a unit sent at the nearest one gave up on (no way to them): the unit's unique ID to the enemy's and when, so the next pick is
 	/// another for a while, not the same one again every second.
 	std::unordered_map<long, std::pair<long, double>> s_GaveUpOn;
@@ -1966,9 +1972,20 @@ namespace {
 		float right = std::max(cornerA.m_X, cornerB.m_X);
 		float top = std::min(cornerA.m_Y, cornerB.m_Y);
 		float bottom = std::max(cornerA.m_Y, cornerB.m_Y);
+		std::vector<Actor*> inBox;
+		std::array<int, c_Sides> perSide {};
 		for (Actor* actor: SandboxAccess::Actors()) {
 			const Vector& position = actor->GetPos();
-			if (IsCombatant(actor) && !actor->IsInGroup("Brains") && position.m_X >= left && position.m_X <= right && position.m_Y >= top && position.m_Y <= bottom) {
+			if (IsSelectable(actor) && position.m_X >= left && position.m_X <= right && position.m_Y >= top && position.m_Y <= bottom) {
+				inBox.push_back(actor);
+				++perSide[actor->GetTeam()];
+			}
+		}
+		// One side only: the side picked in the panel when it has units in the box, else the side with the most there. (Every side's units
+		// were taken, and the command went by the first one's side: a click on a soldier of one side sent the other side's at it.)
+		int side = s_Team >= 0 && s_Team < c_Sides && perSide[s_Team] > 0 ? s_Team : static_cast<int>(std::max_element(perSide.begin(), perSide.end()) - perSide.begin());
+		for (Actor* actor: inBox) {
+			if (actor->GetTeam() == side) {
 				s_Selected.push_back(MakeRef(actor));
 			}
 		}
@@ -2123,7 +2140,7 @@ namespace {
 		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
 		}
-		bool friendly = target && IsCombatant(target) && !target->IsInGroup("Brains") && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
+		bool friendly = target && IsSelectable(target) && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
 		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return ref.Unit == target; });
 		if (s_CommandMode == CommandMode::Guard) {
 			// Follow the friend clicked; with nobody there, nothing happens.
@@ -2152,7 +2169,7 @@ namespace {
 				Vector far = corner + Vector(view.w * scale, view.h * scale);
 				for (Actor* actor: SandboxAccess::Actors()) {
 					Vector onScreen = g_SceneMan.ShortestDistance(corner, actor->GetPos(), g_SceneMan.SceneWrapsX());
-					if (IsCombatant(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
+					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
 					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return ref.Unit == actor; })) {
 						s_Selected.push_back(MakeRef(actor));
 					}
@@ -2172,7 +2189,8 @@ namespace {
 		bool attack = target && IsCombatant(target) && !selected && !friendly;
 		if (attack) {
 			for (const UnitRef& ref: s_Selected) {
-				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+				// (Never at one of its own side, whatever the selection holds.)
+				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit->GetTeam() != target->GetTeam()) {
 					SendUnit(unit, target->GetPos(), target, true, true);
 				}
 			}
@@ -5520,7 +5538,7 @@ void Sandbox::DrawGUI() {
 					int team = SelectionTeam();
 					s_Selected.clear();
 					for (Actor* actor: SandboxAccess::Actors()) {
-						if (IsCombatant(actor) && actor->GetTeam() == team && !actor->IsInGroup("Brains")) {
+						if (IsSelectable(actor) && actor->GetTeam() == team) {
 							s_Selected.push_back(MakeRef(actor));
 						}
 					}
