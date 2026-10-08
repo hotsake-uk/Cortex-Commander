@@ -2,12 +2,12 @@
 HumanBehaviors = {};
 
 -- spot targets with the engine's scan (see SharedBehaviors.ScanForTargets): a wide view about the facing, and down the aim when aiming.
--- Brains, snipers, bosses and NUTS units no longer see every enemy on a screen: they look wider and with more rays.
+-- Brains, snipers, bosses and top-skill (Good or Unfair) units no longer see every enemy on a screen: they look wider and with more rays.
 function HumanBehaviors.ScanTargets(AI, Owner, Skill)
 	if AI.deviceState == AHuman.AIMING then
 		AI.Ctrl:SetState(Controller.AIM_SHARP, true); -- the scan's long, narrow look down the aim
 	end
-	local keen = Skill >= GameActivity.NUTSDIFFICULTY or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
+	local keen = Skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
 	local fov = (keen and 180 or 120) * (0.6 + Skill / 250);
 	local budget = (keen and 4 or 2) + (AI.Target and 1 or 0);
 	return SharedBehaviors.ScanForTargets(AI, Owner, Skill, fov, budget);
