@@ -1054,6 +1054,8 @@ PathAgent AHuman::GetPathAgent() const {
 	// head room by the same fraction (SharedBehaviors.StandingHeight), so the grid and the script agree about every corridor.
 	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.44F);
 	agent.CrawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
+	// And crouched (see GetCrouchHeight): a low beam or a half-shut hatch with this much room under it is walked ducking, not crawled.
+	agent.CrouchHeight = GetCrouchHeight();
 	// The width from the body, not from the radius: the radius reaches to the farthest point of anything attached, so a soldier was as
 	// wide as the gun held out in its hand, 16 half-widths with a long one, and a 48 px hatch (three half-widths wanted for a jet column)
 	// was shut to it; and the radius moves with the arm, so the answer changed between one path and the next. 14 px for a soldier.
