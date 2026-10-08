@@ -100,6 +100,7 @@ namespace SandboxDetail {
 			standing.Movement = Actor::MOVE_FOLLOW_ORDER;
 			standing.PostFacing = 0;
 			unit->SetPaceLimit(0.0F);
+			s_GuardPosts.erase(unit->GetUniqueID());
 			DropPlan(unit);
 		}
 		if (!attack) {
@@ -120,6 +121,7 @@ namespace SandboxDetail {
 	void HoldUnit(Actor* unit) {
 		DropPlan(unit);
 		s_MoveWatch.erase(unit->GetUniqueID());
+		s_GuardPosts.erase(unit->GetUniqueID());
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
 		unit->SetPaceLimit(0.0F);
@@ -159,6 +161,7 @@ namespace SandboxDetail {
 		CancelRetreatAndFlank(actor);
 		DropPlan(actor);
 		s_MoveWatch.erase(actor->GetUniqueID());
+		s_GuardPosts.erase(actor->GetUniqueID());
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->ClearStandingOrder();
@@ -678,6 +681,112 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// What can be guarded at a point other than a unit (RC-10): your side's craft, or a loose object (a crate, a dropped weapon), the nearest within reach.
+	MovableObject* GuardableObjectAt(const Vector& position, int team) {
+		MovableObject* found = nullptr;
+		float nearest = 30.0F * 30.0F;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (const ACraft* craft = dynamic_cast<const ACraft*>(actor); craft && actor->GetTeam() == team) {
+				float reach = std::max(actor->GetRadius(), 30.0F);
+				if (float distance = g_SceneMan.ShortestDistance(position, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude(); distance < reach * reach && (!found || distance < nearest)) {
+					found = actor;
+					nearest = distance;
+				}
+			}
+		}
+		if (found) {
+			return found;
+		}
+		for (MovableObject* item: SandboxAccess::Items()) {
+			if (float distance = g_SceneMan.ShortestDistance(position, item->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude(); distance < nearest) {
+				found = item;
+				nearest = distance;
+			}
+		}
+		return found;
+	}
+
+	/// The colony building whose plot a point is on (RC-10), if any.
+	const Colony::Building* BuildingAt(const Vector& position) {
+		for (const Colony::Building& building: Colony::Buildings()) {
+			const Colony::Type& type = Colony::GetType(building.What);
+			Vector off = g_SceneMan.ShortestDistance(building.Ground, position, g_SceneMan.SceneWrapsX());
+			if (std::abs(off.m_X) <= static_cast<float>(type.Width) * 0.5F && off.m_Y <= 4.0F && off.m_Y >= -static_cast<float>(type.Height) - 8.0F) {
+				return &building;
+			}
+		}
+		return nullptr;
+	}
+
+	/// Sets units to guard a craft, an object or a building (RC-10): each holds a post round it, as a defend does, fighting from there; the
+	/// posts follow the thing when it moves (UpdateGuards).
+	void GuardObject(const std::vector<Actor*>& units, MovableObject* object, const Colony::Building* building) {
+		if (units.empty() || (!object && !building)) {
+			return;
+		}
+		Vector place = object ? object->GetPos() : building->Ground;
+		std::vector<Vector> spots = StandingSpots(place, static_cast<int>(units.size()));
+		for (size_t i = 0; i < units.size(); ++i) {
+			Actor* unit = units[i];
+			if (unit == object) {
+				continue;
+			}
+			Vector spot = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
+			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, "guard");
+			unit->SetOrderPost(spot);
+			s_GuardPosts[unit->GetUniqueID()] = {object ? static_cast<long>(object->GetUniqueID()) : 0, building ? building->ID : 0, place};
+		}
+	}
+
+	/// Keeps guards by what they guard (RC-10), every half second: a post moved along when the thing has moved a way, and the guard let go
+	/// (holding where it is) when the thing is gone or the unit was given another order.
+	void UpdateGuards() {
+		for (auto guard = s_GuardPosts.begin(); guard != s_GuardPosts.end();) {
+			Actor* unit = nullptr;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (static_cast<long>(actor->GetUniqueID()) == guard->first) {
+					unit = actor;
+					break;
+				}
+			}
+			if (!unit || !unit->GetOrderHasPost()) {
+				guard = s_GuardPosts.erase(guard);
+				continue;
+			}
+			bool gone = true;
+			Vector now;
+			if (guard->second.ObjectID != 0) {
+				if (const MovableObject* object = g_MovableMan.FindObjectByUniqueID(guard->second.ObjectID)) {
+					now = object->GetPos();
+					gone = false;
+				}
+			} else {
+				for (const Colony::Building& building: Colony::Buildings()) {
+					if (building.ID == guard->second.BuildingID) {
+						now = building.Ground;
+						gone = false;
+						break;
+					}
+				}
+			}
+			if (gone) {
+				guard = s_GuardPosts.erase(guard);
+				continue;
+			}
+			if (g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(40.0F)) {
+				// Its post moves with it, the same way off it as before.
+				Vector post = unit->GetOrderPost() + g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX());
+				g_SceneMan.WrapPosition(post);
+				std::vector<Vector> spot = StandingSpots(post, 1);
+				post = spot.empty() ? post : spot.front();
+				SendUnit(unit, post + Vector(0.0F, -4.0F), nullptr, false, "guard (moved)", false, true);
+				unit->SetOrderPost(post);
+				guard->second.Place = now;
+			}
+			++guard;
+		}
+	}
+
 	/// Lets each unit kept to a group's pace (RC-5) walk at its own again once it has got there, been given another order, or been taken over.
 	void UpdatePace() {
 		s_Paced.erase(std::remove_if(s_Paced.begin(), s_Paced.end(), [](const UnitRef& ref) {
@@ -757,7 +866,24 @@ namespace SandboxDetail {
 		bool friendly = target && IsSelectable(target) && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
 		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return RefersTo(ref, target); });
 		if (s_CommandMode == CommandMode::Guard) {
-			// Follow the friend clicked; with nobody there, nothing happens.
+			// Follow the friend clicked, or (RC-10) your side's brain; or stand guard by a craft, a crate or a colony building. With nothing
+			// there, nothing happens.
+			const Colony::Building* building = target ? nullptr : BuildingAt(position);
+			MovableObject* object = !target || dynamic_cast<const ACraft*>(target) ? GuardableObjectAt(position, SelectionTeam()) : nullptr;
+			if (target && target->IsInGroup("Brains") && target->GetTeam() == SelectionTeam() && !dynamic_cast<const ACraft*>(target)) {
+				for (const UnitRef& ref: s_Selected) {
+					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit != target) {
+						GuardUnit(unit, target);
+					}
+				}
+				MarkOrder(target->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
+				return;
+			}
+			if (!(friendly && !selected) && (object || building)) {
+				GuardObject(UnitsToMove(0, true), object, building);
+				MarkOrder(object ? object->GetPos() : building->Ground, c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
+				return;
+			}
 			if (friendly && !selected) {
 				if (modifier == 1) {
 					// Shift: a step of the plan (RC-3).

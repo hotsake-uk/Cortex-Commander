@@ -679,6 +679,15 @@ namespace SandboxDetail {
 	};
 	inline std::vector<AttackPing> s_AttackPings;
 
+	/// What a unit is guarding that isn't a unit (RC-10): a craft, a crate or other loose object, or a colony building. The unit holds a post
+	/// by it, moved along when the thing moves; once it is gone the unit holds where it is.
+	struct GuardPost {
+		long ObjectID = 0; //!< The craft's or object's unique ID, or 0 for a building.
+		int BuildingID = 0; //!< The colony building's ID, or 0 for an object.
+		Vector Place; //!< Where the thing was when the post was last set.
+	};
+	inline std::unordered_map<long, GuardPost> s_GuardPosts; //!< By the guarding unit's unique ID.
+
 	/// Commander mode (RC-9): your side's units commanded from above in an ordinary game.
 	inline bool s_Commander = false;
 	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
@@ -1273,6 +1282,10 @@ namespace SandboxDetail {
 	void ReissueNoRoute(const Vector& destination);
 	void MapOrder(const Vector& point, bool shift);
 	bool HiddenFromCommander(const Actor* actor);
+	MovableObject* GuardableObjectAt(const Vector& position, int team);
+	const Colony::Building* BuildingAt(const Vector& position);
+	void GuardObject(const std::vector<Actor*>& units, MovableObject* object, const Colony::Building* building);
+	void UpdateGuards();
 	bool CommanderLooking();
 	void UpdateCommander();
 	void CommanderPanel();

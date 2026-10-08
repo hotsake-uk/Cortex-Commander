@@ -1190,6 +1190,7 @@ void Sandbox::Update() {
 	if (!InGame()) {
 		s_Possessed = nullptr;
 		s_Plans.clear();
+		s_GuardPosts.clear();
 		s_Commander = false;
 		s_Paced.clear();
 		s_MoveWatch.clear();
@@ -1220,6 +1221,9 @@ void Sandbox::Update() {
 	const bool aiPaused = Controller::IsAIPaused();
 	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		ReturnDefenders();
+	}
+	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
+		UpdateGuards();
 	}
 	GymUpdate();
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
