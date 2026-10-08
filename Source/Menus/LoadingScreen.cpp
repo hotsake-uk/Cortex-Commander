@@ -20,6 +20,8 @@
 using namespace RTE;
 
 int LoadingScreen::s_ProgressFramesDrawn = 0;
+bool LoadingScreen::s_ProgressUnshown = false;
+std::chrono::steady_clock::time_point LoadingScreen::s_LastProgressPresent;
 
 LoadingScreen::LoadingScreen()  { Clear(); }
 void LoadingScreen::Clear() {
@@ -143,16 +145,33 @@ void LoadingScreen::LoadingSplashProgressReport(const std::string& reportString,
 		vline(g_LoadingScreen.m_ProgressListboxBitmap, g_LoadingScreen.m_ProgressListboxBitmap->w - 2, g_LoadingScreen.m_ProgressListboxBitmap->h - 12, g_LoadingScreen.m_ProgressListboxBitmap->h - 2, 33);
 		vline(g_LoadingScreen.m_ProgressListboxBitmap, g_LoadingScreen.m_ProgressListboxBitmap->w - 1, g_LoadingScreen.m_ProgressListboxBitmap->h - 12, g_LoadingScreen.m_ProgressListboxBitmap->h - 2, 33);
 
-		blit(g_LoadingScreen.m_ProgressListboxBitmap, g_FrameMan.GetBackBuffer32(), 0, 0, g_LoadingScreen.m_ProgressListboxPosX, g_LoadingScreen.m_ProgressListboxPosY, g_LoadingScreen.m_ProgressListboxBitmap->w, g_LoadingScreen.m_ProgressListboxBitmap->h);
-
-		Box loadingSplashTargetBox(Vector(0, static_cast<float>((g_WindowMan.GetResY() - g_LoadingScreen.m_LoadingBackground->GetBitmap()->h) / 2)), static_cast<float>(g_WindowMan.GetResX()), static_cast<float>(g_LoadingScreen.m_LoadingBackground->GetBitmap()->h));
-
-		g_WindowMan.ClearBackbuffer(false);
-		g_WindowMan.GetScreenBuffer()->Begin();
-		g_LoadingScreen.m_LoadingBackground->Draw(loadingSplashTargetBox, loadingSplashTargetBox);
-		g_WindowMan.UploadFrame();
-		++s_ProgressFramesDrawn;
+		// Every line goes into the box, but the screen is presented at most every 33 ms: each present is a whole frame (and waits for vsync where it
+		// is honoured), and one per line was about 2,400 a boot, some 40 s at 60 Hz. FlushProgressReport shows the last lines at the end.
+		s_ProgressUnshown = true;
+		if (std::chrono::steady_clock::now() - s_LastProgressPresent >= std::chrono::milliseconds(33)) {
+			PresentProgress();
+		}
 	}
+}
+
+void LoadingScreen::FlushProgressReport() {
+	if (s_ProgressUnshown && g_LoadingScreen.m_ProgressListboxBitmap) {
+		PresentProgress();
+	}
+}
+
+void LoadingScreen::PresentProgress() {
+	blit(g_LoadingScreen.m_ProgressListboxBitmap, g_FrameMan.GetBackBuffer32(), 0, 0, g_LoadingScreen.m_ProgressListboxPosX, g_LoadingScreen.m_ProgressListboxPosY, g_LoadingScreen.m_ProgressListboxBitmap->w, g_LoadingScreen.m_ProgressListboxBitmap->h);
+
+	Box loadingSplashTargetBox(Vector(0, static_cast<float>((g_WindowMan.GetResY() - g_LoadingScreen.m_LoadingBackground->GetBitmap()->h) / 2)), static_cast<float>(g_WindowMan.GetResX()), static_cast<float>(g_LoadingScreen.m_LoadingBackground->GetBitmap()->h));
+
+	g_WindowMan.ClearBackbuffer(false);
+	g_WindowMan.GetScreenBuffer()->Begin();
+	g_LoadingScreen.m_LoadingBackground->Draw(loadingSplashTargetBox, loadingSplashTargetBox);
+	g_WindowMan.UploadFrame();
+	++s_ProgressFramesDrawn;
+	s_ProgressUnshown = false;
+	s_LastProgressPresent = std::chrono::steady_clock::now();
 }
 
 void LoadingScreen::DrawLoadingSplash() {
