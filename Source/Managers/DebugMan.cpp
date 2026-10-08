@@ -323,6 +323,7 @@ void DebugMan::DrawOverlays() {
 	}
 	// Each overlay: a check of its setting and its draw call, drawn into ImGui::GetForegroundDrawList() with DebugDraw::ToScreen.
 	DebugOverlays::DrawUnitInspector();
+	DebugOverlays::DrawCombatOverlay();
 }
 
 void DebugMan::DrawImGui() {
