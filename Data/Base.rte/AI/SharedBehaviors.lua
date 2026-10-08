@@ -2135,6 +2135,15 @@ function SharedBehaviors.WaypointOnGround(pos, height)
 	return SceneMan:MovePointToGround(pos, height * 0.2, 4);
 end
 
+-- The step kinds the script's own mover knows (0 to 7): a leap (8) or a mantle (9), which only the engine's route-follower takes as such, is
+-- a jump to it. (Taken for a walk, a leap's gap was walked off the edge of, and the comparison runs with CCCP_LUA_MOVER=1 meant nothing.)
+function SharedBehaviors.ScriptStepKind(kind)
+	if kind == 8 or kind == 9 then
+		return 2;
+	end
+	return kind;
+end
+
 function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	-- check if we have arrived
 	if not (Owner.AIMode == Actor.AIMODE_SQUAD or Owner:GetWaypointListSize() > 0) then
@@ -2255,7 +2264,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				-- What the pathfinder meant by this step (0 walk, 1 crawl, 2 jump, 3 fall, 4 dig, 5 door, 6 stairs), so it needn't be guessed from
 				-- the ground: a step off an edge is walked off, not hopped; a jump is jetted whatever the slope looks like; a crawl is gone prone
 				-- for; stairs are walked, steep as they look.
-				Waypoint.Kind = Owner.MovePathStepKind;
+				Waypoint.Kind = SharedBehaviors.ScriptStepKind(Owner.MovePathStepKind);
 				-- (A dig step for a unit with nothing to dig with is whatever the ground makes it: it mustn't keep the unit from a hop or a climb.)
 				if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
 					Waypoint.Kind = 0;
@@ -2771,7 +2780,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										PrevWptPos = Waypoint.Pos;
 										Owner:RemoveMovePathBeginning();
 										Waypoint.Pos = NextPos;
-										Waypoint.Kind = Owner.MovePathStepKind;
+										Waypoint.Kind = SharedBehaviors.ScriptStepKind(Owner.MovePathStepKind);
 										if Waypoint.Kind == 4 and not Owner:HasObjectInGroup("Tools - Diggers") then
 											Waypoint.Kind = 0;
 										end
