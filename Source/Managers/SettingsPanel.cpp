@@ -488,8 +488,11 @@ void DebugMan::SettingsGUI() {
 		Tip("How much light of its own froth carries. 0: it is as dark as the scene around it at night.");
 		Heading("Splashes");
 		Slider("Splash size", &settings.WaterSplash, 0.0F, 4.0F);
-		Check("Turn each froth and spray puff randomly", &settings.PuffVariety);
 		Tip("How big the splash is when falling ground or a broken-off piece drops into water (or any liquid): drops and spray thrown up, by how fast and how wide it went in. Only for the eye: the water it pushes aside raises the level. 0 for none.");
+		Check("Turn each froth and spray puff randomly", &settings.PuffVariety);
+		Tip("Each puff of spray, froth mist, dust and smoke is turned and mirrored its own way when it appears, so they don't all show the same shape. Off: all the same way up.");
+		Slider("Thin streams shown", &settings.WaterThinFlow, 0.0F, 2.0F);
+		Tip("How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. Only for the eye. 0 for not at all.");
 		Heading("Mist");
 		Slider("Mist", &settings.WaterMist, 0.0F, 2.0F);
 		Tip("Soft spray thrown off water that is falling fast or landing. 0 for none.");

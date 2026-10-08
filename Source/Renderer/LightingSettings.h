@@ -269,6 +269,7 @@ namespace RTE {
 		float WaterMistOpacity = 0.42F; //!< How solid each puff is at its start.
 		float WaterMistSpread = 1.0F; //!< How much each puff swells as it thins.
 		float WaterMist = 0.4F; //!< How much soft spray falling and landing water throws off. 0 for none. Visual only.
+		float WaterThinFlow = 1.0F; //!< How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. 0 for not at all, up to 2. Visual only.
 		bool PuffVariety = true; //!< Each puff of spray, froth mist, dust and smoke is turned and mirrored its own way, so they don't all show the same shape. Off: all the same way up, as before.
 		float WaterSplash = 1.5F; //!< How big the splash is when something heavy falls into a liquid (falling ground, a broken-off piece): drops and spray, 1 the plain size, up to 4. 0 for none. Visual only: the liquid a body pushes aside goes into the level.
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
