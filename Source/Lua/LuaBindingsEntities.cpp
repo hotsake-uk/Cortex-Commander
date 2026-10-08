@@ -441,6 +441,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .def("ResetRouteMovement", &AHuman::ResetRouteMovement)
 	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
 	    .property("JetFlying", &AHuman::IsJetFlying)
+	    .property("FlyingRoute", &AHuman::IsFlyingRoute)
 	    .property("ClimbingLadder", &AHuman::IsClimbingLadder)
 	    .property("LegJumpHeight", &AHuman::GetLegJumpHeight, &AHuman::SetLegJumpHeight)
 	    .property("LegJumpSpeed", &AHuman::GetLegJumpSpeed, &AHuman::SetLegJumpSpeed)
