@@ -215,6 +215,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingGlowIntensity", { g_PostProcessMan.GetLightingSettings().GlowLightIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingGlowRadiusScale", { g_PostProcessMan.GetLightingSettings().GlowLightRadiusScale = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LightingMaxScreenLights", { g_PostProcessMan.GetLightingSettings().MaxScreenLights = std::max(std::stoi(reader.ReadPropValue()), 0); });
 	MatchProperty("LightingShadowStrength", { g_PostProcessMan.GetLightingSettings().ShadowStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("RadianceCascades", { g_PostProcessMan.GetLightingSettings().RadianceCascades = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("GIStrength", { g_PostProcessMan.GetLightingSettings().GIStrength = std::stof(reader.ReadPropValue()); });
@@ -423,6 +424,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
 	writer.NewPropertyWithValue("LightingGlowIntensity", lighting.GlowLightIntensity);
 	writer.NewPropertyWithValue("LightingGlowRadiusScale", lighting.GlowLightRadiusScale);
+	writer.NewPropertyWithValue("LightingMaxScreenLights", lighting.MaxScreenLights);
 	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
 	writer.NewPropertyWithValue("UnitShadows", lighting.UnitShadows);
 	writer.NewPropertyWithValue("SunShadows", lighting.SunShadows);
