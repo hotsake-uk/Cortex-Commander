@@ -46,6 +46,9 @@ namespace RTE {
 		/// Draws the sandbox window, the brush outline and the free camera. Call from the ImGui frame.
 		static void DrawGUI();
 
+		/// The order labels debug overlay (SettingsMan::ShowOrderLabels): under each unit in view, its sandbox order or AI mode, its control group and the AI's pause. Call from the ImGui frame.
+		static void DrawOrderLabels();
+
 		/// Applies what was queued from the window, keeps attacking units on a target and keeps the god view. Call once per sim update, from the main thread, before the fire, liquid and object updates.
 		static void Update();
 

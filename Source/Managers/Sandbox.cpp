@@ -4457,6 +4457,18 @@ namespace {
 			}
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s %d", c_SideNames[side], counts[side]);
 		}
+		// The order labels overlay adds how each auto battle side stands.
+		if (g_SettingsMan.ShowOrderLabels() && s_AutoRunning) {
+			long long now = g_TimerMan.GetSimUpdateCount();
+			for (int side = 0; side < c_Sides; ++side) {
+				const AutoSide& autoSide = s_AutoSides[side];
+				if (!autoSide.Active) {
+					continue;
+				}
+				std::string wave = autoSide.Broke ? std::string("broke") : "next wave " + std::to_string(std::max(0LL, autoSide.NextWave - now) / 60) + "s";
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s: budget %d, spent %.0f, sent %d, %s", c_SideNames[side], autoSide.Budget, autoSide.Spent, autoSide.Sent, wave.c_str());
+			}
+		}
 	}
 	/// How fast time runs, the AI's pause, and in the Sandbox game mode whether the world stands still while the window is open.
 	void TimeControls() {
@@ -5904,6 +5916,69 @@ void Sandbox::Update() {
 				game->LoseControlOfActor(Players::PlayerOne);
 			}
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
+		}
+	}
+}
+
+void Sandbox::DrawOrderLabels() {
+	if (!g_SettingsMan.ShowOrderLabels() || !g_ActivityMan.GetActivity()) {
+		return;
+	}
+	// The AI modes (Actor::AIMode's order) in the words of the sandbox's orders.
+	static const char* const modeOrders[] = {"do nothing", "hold", "patrol", "move", "hunt brains", "dig gold", "go back", "stay", "scuttle", "deliver", "bomb", "squad"};
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	GameViewRect view = g_WindowMan.GetGameViewRect();
+	bool aiPaused = Controller::IsAIPaused();
+	float lineHeight = ImGui::GetTextLineHeight();
+	float pad = std::max(2.0F, lineHeight * 0.2F);
+	for (const Actor* actor: SandboxAccess::Actors()) {
+		if (!IsCombatant(actor)) {
+			continue;
+		}
+		// Under the feet: a little below the unit's middle, by its size.
+		ImVec2 at = ToScreen(actor->GetPos() + Vector(0.0F, actor->GetRadius() * 0.8F));
+		if (at.x < view.x - 100.0F || at.x > view.x + view.w + 100.0F || at.y < view.y - 40.0F || at.y > view.y + view.h + 40.0F) {
+			continue;
+		}
+		std::string order;
+		if (actor->IsPlayerControlled()) {
+			order = "player";
+		} else if (actor->NumberValueExists(c_TargetTag)) {
+			order = "attack #" + std::to_string(static_cast<long long>(actor->GetNumberValue(c_TargetTag)));
+		} else if (actor->NumberValueExists(c_AttackXTag)) {
+			order = "attack towards a place";
+		} else if (actor->NumberValueExists(c_AttackTag)) {
+			order = "attack nearest";
+		} else if (actor->NumberValueExists(c_DefendXTag)) {
+			order = "defend a spot";
+		} else {
+			int mode = actor->GetAIMode();
+			order = mode >= 0 && mode < static_cast<int>(std::size(modeOrders)) ? modeOrders[mode] : "mode " + std::to_string(mode);
+		}
+		if (!actor->IsPlayerControlled()) {
+			if (actor->NumberValueExists("AIRetreat")) {
+				order += ", falling back";
+			} else if (actor->NumberValueExists("AIFlank")) {
+				order += ", flanking";
+			}
+		}
+		for (size_t group = 0; group < s_Groups.size(); ++group) {
+			if (std::any_of(s_Groups[group].begin(), s_Groups[group].end(), [actor](const UnitRef& ref) { return GetRef(ref) == actor; })) {
+				order += "  [" + std::to_string(group) + "]";
+				break;
+			}
+		}
+		bool paused = aiPaused && !actor->IsPlayerControlled();
+		const char* badge = "AI paused";
+		ImVec2 size = ImGui::CalcTextSize(order.c_str());
+		float width = std::max(size.x, paused ? ImGui::CalcTextSize(badge).x : 0.0F);
+		float height = lineHeight * (paused ? 2.0F : 1.0F);
+		ImVec2 topLeft(std::floor(at.x - width * 0.5F - pad), std::floor(at.y));
+		ImVec2 bottomRight(topLeft.x + width + pad * 2.0F, topLeft.y + height + pad * 2.0F);
+		drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(10, 12, 10, 170));
+		drawList->AddText(ImVec2(topLeft.x + pad, topLeft.y + pad), c_SideColors[actor->GetTeam()], order.c_str());
+		if (paused) {
+			drawList->AddText(ImVec2(topLeft.x + pad, topLeft.y + pad + lineHeight), IM_COL32(255, 210, 80, 255), badge);
 		}
 	}
 }

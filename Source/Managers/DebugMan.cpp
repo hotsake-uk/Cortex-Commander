@@ -330,6 +330,7 @@ void DebugMan::DrawOverlays() {
 	DebugOverlays::DrawLightSources();
 	DebugOverlays::DrawSunDirection();
 	DebugOverlays::DrawWorldSim();
+	Sandbox::DrawOrderLabels();
 }
 
 void DebugMan::DrawImGui() {
