@@ -497,6 +497,8 @@ void DebugMan::SettingsGUI() {
 		Heading("Splash froth");
 		Slider("Splash froth", &settings.SplashFroth, 0.0F, 3.0F);
 		Tip("How much froth a splash leaves sitting on the surface, and how much the surface froths where the level rises because something fell in. Only for the eye. 0 for none.");
+		Slider("Splash froth density", &settings.SplashFrothDensity, 0.2F, 6.0F);
+		Slider("Splash froth specks", &settings.SplashFrothSpecks, 0.0F, 3.0F);
 		Slider("Splash froth bubble size", &settings.SplashFrothSize, 0.2F, 3.0F);
 		Slider("Splash froth life", &settings.SplashFrothLife, 0.2F, 4.0F);
 		Tip("How long the froth stays on the surface before it fades: 1 is a couple of seconds.");
