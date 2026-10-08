@@ -410,6 +410,13 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ToolScale", { g_DebugMan.m_ToolScale = std::clamp(std::stof(reader.ReadPropValue()), 0.4F, 1.5F); });
 	MatchProperty("PanelWidth", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 240.0F, 700.0F); });
 	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
+	MatchProperty("DepthOfField", { g_PostProcessMan.GetLightingSettings().DepthOfField = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("DepthOfFieldFocus", { g_PostProcessMan.GetLightingSettings().DepthOfFieldFocus = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("DepthOfFieldStrength", { g_PostProcessMan.GetLightingSettings().DepthOfFieldStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("TiltShift", { g_PostProcessMan.GetLightingSettings().TiltShift = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("TiltShiftLine", { g_PostProcessMan.GetLightingSettings().TiltShiftLine = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("TiltShiftStrength", { g_PostProcessMan.GetLightingSettings().TiltShiftStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("FocusEffectsInPhotoModeOnly", { g_PostProcessMan.GetLightingSettings().FocusEffectsInPhotoModeOnly = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ChromaticAberration", { g_PostProcessMan.GetLightingSettings().ChromaticAberration = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ModShaders", { g_PostProcessMan.GetLightingSettings().ModShaders = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ModShaderStrength", { g_PostProcessMan.GetLightingSettings().ModShaderStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -677,6 +684,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
+	writer.NewPropertyWithValue("DepthOfField", lighting.DepthOfField);
+	writer.NewPropertyWithValue("DepthOfFieldFocus", lighting.DepthOfFieldFocus);
+	writer.NewPropertyWithValue("DepthOfFieldStrength", lighting.DepthOfFieldStrength);
+	writer.NewPropertyWithValue("TiltShift", lighting.TiltShift);
+	writer.NewPropertyWithValue("TiltShiftLine", lighting.TiltShiftLine);
+	writer.NewPropertyWithValue("TiltShiftStrength", lighting.TiltShiftStrength);
+	writer.NewPropertyWithValue("FocusEffectsInPhotoModeOnly", lighting.FocusEffectsInPhotoModeOnly);
 	writer.NewPropertyWithValue("ChromaticAberration", lighting.ChromaticAberration);
 	writer.NewPropertyWithValue("ModShaders", lighting.ModShaders);
 	writer.NewPropertyWithValue("ModShaderStrength", lighting.ModShaderStrength);

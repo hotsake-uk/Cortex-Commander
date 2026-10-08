@@ -16,6 +16,7 @@
 #include "TimerMan.h"
 #include "RenderMan.h"
 #include "FrameMan.h"
+#include "DebugMan.h"
 #include <array>
 
 #include "allegro.h"
@@ -126,6 +127,7 @@ void SceneLighting::LoadShaders() {
 	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
 	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
 	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
+	m_DepthOfFieldShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DepthOfField.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
@@ -379,6 +381,7 @@ void SceneLighting::DestroyScreenResources() {
 	}
 	m_HDRScene.Destroy();
 	m_ModPostScene.Destroy();
+	m_FocusScene.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
 	}
@@ -2556,6 +2559,54 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_ModPostScene.Texture);
 		DrawFullscreen();
+	}
+
+	logStages.Next("Lighting: depth of field");
+	// Depth of field and tilt-shift: the player's (in photo mode only, unless they said otherwise) or a script's, whichever blurs more.
+	{
+		PostProcessMan::ScriptFocus scriptFocus = g_PostProcessMan.GetScriptFocus();
+		bool playerFocus = !m_Settings.FocusEffectsInPhotoModeOnly || g_DebugMan.IsPhotoModeOpen();
+		float depthStrength = scriptFocus.DepthStrength;
+		float depthFocus = scriptFocus.DepthFocus;
+		if (playerFocus && m_Settings.DepthOfField && m_Settings.DepthOfFieldStrength > depthStrength) {
+			depthStrength = m_Settings.DepthOfFieldStrength;
+			depthFocus = m_Settings.DepthOfFieldFocus;
+		}
+		float tiltStrength = scriptFocus.TiltStrength;
+		float tiltLine = scriptFocus.TiltLine;
+		if (playerFocus && m_Settings.TiltShift && m_Settings.TiltShiftStrength > tiltStrength) {
+			tiltStrength = m_Settings.TiltShiftStrength;
+			tiltLine = m_Settings.TiltShiftLine;
+		}
+		if ((depthStrength > 0.0F && sceneDepth) || tiltStrength > 0.0F) {
+			TracyGpuZone("Depth Of Field");
+			if (m_FocusScene.Width != width || m_FocusScene.Height != height || !m_FocusScene.Texture) {
+				m_FocusScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+			}
+			glDisable(GL_BLEND);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_FocusScene.Framebuffer);
+			glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+			glViewport(0, 0, width, height);
+			// Layers' depth is linear in their z: the battlefield at 0, the far backgrounds out to c_BackgroundDepth plus its range.
+			auto depthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
+			float farZ = c_BackgroundDepth + c_BackgroundDepthRange;
+			m_DepthOfFieldShader->Enable();
+			m_DepthOfFieldShader->SetInt("rteScene", 0);
+			m_DepthOfFieldShader->SetInt("rteSceneDepth", 1);
+			m_DepthOfFieldShader->SetVector2f("rteScreenSize", screenSize);
+			m_DepthOfFieldShader->SetFloat("rteFocusDepth", depthForZ(depthFocus * farZ));
+			m_DepthOfFieldShader->SetFloat("rteDepthRange", depthForZ(c_BackgroundDepth) - depthForZ(0.0F));
+			m_DepthOfFieldShader->SetFloat("rteDepthBlur", sceneDepth ? depthStrength * 8.0F : 0.0F);
+			m_DepthOfFieldShader->SetFloat("rteTiltLine", tiltLine);
+			m_DepthOfFieldShader->SetFloat("rteTiltBlur", tiltStrength * 8.0F);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_FocusScene.Texture);
+			DrawFullscreen();
+		}
 	}
 
 	logStages.Next("Lighting: auto exposure");

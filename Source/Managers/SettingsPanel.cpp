@@ -281,6 +281,21 @@ void DebugMan::SettingsGUI() {
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
 		Slider("Far background blur", &settings.BackgroundBlur, 0.0F, 1.5F);
+		Check("Depth of field", &settings.DepthOfField);
+		Tip("Blurs what's nearer or further than the focus, like a camera lens: with the focus on the battlefield, the far backgrounds go soft. Off: everything is sharp.");
+		if (settings.DepthOfField) {
+			Slider("Focus (battlefield to far background)", &settings.DepthOfFieldFocus, 0.0F, 1.0F);
+			Slider("Depth of field strength", &settings.DepthOfFieldStrength, 0.0F, 2.0F);
+		}
+		Check("Tilt-shift", &settings.TiltShift);
+		Tip("Blurs the top and bottom of the screen and keeps a band sharp, so the battlefield looks like a model diorama.");
+		if (settings.TiltShift) {
+			Slider("Sharp band (top to bottom)", &settings.TiltShiftLine, 0.0F, 1.0F);
+			Slider("Tilt-shift strength", &settings.TiltShiftStrength, 0.0F, 2.0F);
+		}
+		if (settings.DepthOfField || settings.TiltShift) {
+			Check("Only in photo mode", &settings.FocusEffectsInPhotoModeOnly);
+		}
 	};
 
 	auto interiorsAndShadows = [&]() {

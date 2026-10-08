@@ -525,6 +525,8 @@ int ActivityMan::StartActivity(Activity* activity) {
 	g_PostProcessMan.ClearScenePostEffects();
 	// A post pass a script asked for belongs to its activity.
 	g_PostProcessMan.SetPostShader("");
+	// Focus effects a script asked for belong to its activity.
+	g_PostProcessMan.ClearScriptFocus();
 	g_FrameMan.ClearScreenText();
 
 	// Reset the mouse input to the center

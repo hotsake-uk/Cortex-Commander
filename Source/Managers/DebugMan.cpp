@@ -612,6 +612,16 @@ void DebugMan::PhotoModeGUI() {
 			ImGui::SliderFloat("God rays", &settings.GodRays, 0.0F, 2.0F);
 			ImGui::SliderFloat("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 			ImGui::SliderFloat("Chromatic aberration", &settings.ChromaticAberration, 0.0F, 4.0F);
+			ToolUI::Checkbox("Depth of field", &settings.DepthOfField);
+			if (settings.DepthOfField) {
+				ImGui::SliderFloat("Focus", &settings.DepthOfFieldFocus, 0.0F, 1.0F);
+				ImGui::SliderFloat("Blur", &settings.DepthOfFieldStrength, 0.0F, 2.0F);
+			}
+			ToolUI::Checkbox("Tilt-shift", &settings.TiltShift);
+			if (settings.TiltShift) {
+				ImGui::SliderFloat("Sharp band", &settings.TiltShiftLine, 0.0F, 1.0F);
+				ImGui::SliderFloat("Tilt-shift blur", &settings.TiltShiftStrength, 0.0F, 2.0F);
+			}
 			if (ToolUI::Button("Reset look")) {
 				settings = m_PhotoSavedSettings;
 			}

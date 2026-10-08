@@ -217,6 +217,13 @@ namespace RTE {
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
+		bool DepthOfField = false; //!< Blur what's nearer or further than the focus by how far it is from it, like a camera lens. Off: everything is sharp as before.
+		float DepthOfFieldFocus = 0.0F; //!< Where the focus is: 0 the battlefield (units and terrain), 1 the furthest background.
+		float DepthOfFieldStrength = 1.0F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).
+		bool TiltShift = false; //!< Blur the top and bottom of the screen and keep a band sharp, so the battlefield reads as a model diorama. Off: as before.
+		float TiltShiftLine = 0.5F; //!< Where the sharp band is, 0 the top of the screen to 1 the bottom.
+		float TiltShiftStrength = 1.0F; //!< How strong its blur gets, 0 to 2.
+		bool FocusEffectsInPhotoModeOnly = true; //!< Depth of field and tilt-shift only while photo mode (F8) is open. Scripts' own focus effects apply regardless.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
