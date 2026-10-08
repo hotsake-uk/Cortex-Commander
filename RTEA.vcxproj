@@ -1431,6 +1431,7 @@
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
     <ClCompile Include="Source\Managers\SandboxCatalogue.cpp" />
     <ClCompile Include="Source\Managers\SandboxOrders.cpp" />
+    <ClCompile Include="Source\Managers\SandboxMinimap.cpp" />
     <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />
     <ClCompile Include="Source\Managers\SandboxWindow.cpp" />

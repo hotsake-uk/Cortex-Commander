@@ -37,6 +37,7 @@ sources += files(
 'SandboxWindow.cpp',
 'SandboxGym.cpp',
 'SandboxDebug.cpp',
+'SandboxMinimap.cpp',
 'Colony.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',

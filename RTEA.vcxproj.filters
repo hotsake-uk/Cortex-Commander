@@ -835,6 +835,9 @@
     <ClCompile Include="Source\Managers\SandboxOrders.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxMinimap.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\SandboxWorld.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
