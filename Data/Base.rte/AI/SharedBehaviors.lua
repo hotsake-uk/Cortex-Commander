@@ -682,7 +682,12 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	if Target then
 		Owner:SetNumberValue("AITargetID", Target.UniqueID);
 		Owner:SetNumberValue("AIContactMS", now);
-		AI.noShotSince = AI.canHitTarget and nil or (AI.noShotSince or now);
+		-- (Spelt out: "canHit and nil or x" is always x in Lua, and the time with no shot was never reset.)
+		if AI.canHitTarget then
+			AI.noShotSince = nil;
+		else
+			AI.noShotSince = AI.noShotSince or now;
+		end
 	elseif Owner:NumberValueExists("AITargetID") then
 		Owner:RemoveNumberValue("AITargetID");
 		AI.noShotSince = nil;
@@ -695,9 +700,11 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	AI.SquadTacticsTimer:Reset();
 	local targetedBy = {};
 	local squadContact = Target ~= nil or (Owner:NumberValueExists("AIContactMS") and now - Owner:GetNumberValue("AIContactMS") < 5000);
-	local beside, besideDir, pairedWith;
+	local beside, besideDir, besideDx, pairedWith;
 	for Mate in MovableMan.Actors do
-		if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled() then
+		-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
+		if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled()
+			and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
 			local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
 			if Dist:MagnitudeIsLessThan(400) then
 				if Mate:NumberValueExists("AITargetID") then
@@ -710,8 +717,8 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 				if Mate:NumberValueExists("AIContactMS") and now - Mate:GetNumberValue("AIContactMS") < 5000 then
 					squadContact = true;
 				end
-				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 then
-					beside, besideDir = Mate, Dist.X > 0 and -1 or 1;
+				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
+					beside, besideDir, besideDx = Mate, Dist.X > 0 and -1 or 1, math.abs(Dist.X);
 				end
 			end
 		end
