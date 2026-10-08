@@ -1019,7 +1019,7 @@ namespace RTE {
 		/// Returns the string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
 		/// @return The value associated with the key.
-		const std::string& GetStringValue(const std::string& key) const;
+		std::string GetStringValue(const std::string& key) const;
 
 		/// Returns an encoded string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.

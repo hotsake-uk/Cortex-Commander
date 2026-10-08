@@ -29,7 +29,7 @@
 using namespace RTE;
 
 namespace {
-	/// Locks for the number values. The AI scripts run on worker threads, one per Lua state, and since AC-2 and AC-7 they read and write the
+	/// Locks for the number, string and object values. The AI scripts run on worker threads, one per Lua state, and since AC-2 and AC-7 they read and write the
 	/// values of other units than their own (a medic marks the friend it is going to, and checks a friend falling back to one), so two
 	/// threads could change, or change and read, one unit's map at once and crash. One of a few locks, picked by the object's address.
 	std::array<std::mutex, 64> s_NumberValueLocks;
@@ -324,12 +324,12 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_SimUpdatesBetweenScriptedUpdates = reference.m_SimUpdatesBetweenScriptedUpdates;
 	m_SimUpdatesSinceLastScriptedUpdate = reference.m_SimUpdatesSinceLastScriptedUpdate;
 
-	m_StringValueMap = reference.m_StringValueMap;
 	{
 		std::scoped_lock lock(NumberValueLock(&reference));
+		m_StringValueMap = reference.m_StringValueMap;
 		m_NumberValueMap = reference.m_NumberValueMap;
+		m_ObjectValueMap = reference.m_ObjectValueMap;
 	}
-	m_ObjectValueMap = reference.m_ObjectValueMap;
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
 	g_MovableMan.RegisterObject(this);
@@ -606,7 +606,12 @@ int MovableObject::Save(Writer& writer) const {
 		writer.NewPropertyWithValue(key, value);
 	}
 
-	for (const auto& [key, value]: m_StringValueMap) {
+	std::unordered_map<std::string, std::string> stringValues;
+	{
+		std::scoped_lock lock(NumberValueLock(this));
+		stringValues = m_StringValueMap;
+	}
+	for (const auto& [key, value]: stringValues) {
 		writer.ObjectStart("AddCustomValue = StringValue");
 		writer.NewPropertyWithValue(key, value);
 	}
@@ -1191,7 +1196,8 @@ int MovableObject::UpdateScripts() {
 	return status;
 }
 
-const std::string& MovableObject::GetStringValue(const std::string& key) const {
+std::string MovableObject::GetStringValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_StringValueMap.find(key);
 	if (itr == m_StringValueMap.end()) {
 		return ms_EmptyString;
@@ -1201,6 +1207,7 @@ const std::string& MovableObject::GetStringValue(const std::string& key) const {
 }
 
 std::string MovableObject::GetEncodedStringValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_StringValueMap.find(key);
 	if (itr == m_StringValueMap.end()) {
 		return ms_EmptyString;
@@ -1220,6 +1227,7 @@ double MovableObject::GetNumberValue(const std::string& key) const {
 }
 
 Entity* MovableObject::GetObjectValue(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_ObjectValueMap.find(key);
 	if (itr == m_ObjectValueMap.end()) {
 		return nullptr;
@@ -1229,10 +1237,12 @@ Entity* MovableObject::GetObjectValue(const std::string& key) const {
 }
 
 void MovableObject::SetStringValue(const std::string& key, const std::string& value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap[key] = value;
 }
 
 void MovableObject::SetEncodedStringValue(const std::string& key, const std::string& value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap[key] = base64_encode(value, true);
 }
 
@@ -1242,10 +1252,12 @@ void MovableObject::SetNumberValue(const std::string& key, double value) {
 }
 
 void MovableObject::SetObjectValue(const std::string& key, Entity* value) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_ObjectValueMap[key] = value;
 }
 
 void MovableObject::RemoveStringValue(const std::string& key) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap.erase(key);
 }
 
@@ -1255,10 +1267,12 @@ void MovableObject::RemoveNumberValue(const std::string& key) {
 }
 
 void MovableObject::RemoveObjectValue(const std::string& key) {
+	std::scoped_lock lock(NumberValueLock(this));
 	m_ObjectValueMap.erase(key);
 }
 
 bool MovableObject::StringValueExists(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	return m_StringValueMap.find(key) != m_StringValueMap.end();
 }
 
@@ -1268,6 +1282,7 @@ bool MovableObject::NumberValueExists(const std::string& key) const {
 }
 
 bool MovableObject::ObjectValueExists(const std::string& key) const {
+	std::scoped_lock lock(NumberValueLock(this));
 	return m_ObjectValueMap.find(key) != m_ObjectValueMap.end();
 }
 
