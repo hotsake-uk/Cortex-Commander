@@ -250,6 +250,14 @@ namespace {
 	constexpr const char* c_AttackYTag = "SandboxAttackY";
 	constexpr const char* c_DefendXTag = "SandboxDefendX"; //!< Number values on units told to defend a spot: they fight from it and go back to it when moved off.
 	constexpr const char* c_DefendYTag = "SandboxDefendY";
+	constexpr const char* c_RetreatTag = "AIRetreat"; //!< Number values the Lua AI keeps on a unit falling back or working round a flank; taken off
+	constexpr const char* c_FlankTag = "AIFlank";     //!< by a new order, which tells the AI the order it would put back after is gone.
+
+	/// A new order ends a fall-back or a flank under way: the AI drops it without putting the old order back.
+	void CancelRetreatAndFlank(Actor* unit) {
+		unit->RemoveNumberValue(c_RetreatTag);
+		unit->RemoveNumberValue(c_FlankTag);
+	}
 
 	/// A preset the sandbox can spawn.
 	struct Preset {
@@ -716,6 +724,7 @@ namespace {
 	std::vector<PendingOrder> s_PendingOrders;
 
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack) {
+		CancelRetreatAndFlank(unit);
 		unit->RemoveNumberValue(c_AttackTag);
 		unit->RemoveNumberValue(c_DefendXTag);
 		unit->RemoveNumberValue(c_DefendYTag);
@@ -737,6 +746,7 @@ namespace {
 
 	/// Holds a unit where it is, forgetting every order it had.
 	void HoldUnit(Actor* unit) {
+		CancelRetreatAndFlank(unit);
 		unit->RemoveNumberValue(c_AttackTag);
 		unit->RemoveNumberValue(c_TargetTag);
 		unit->RemoveNumberValue(c_AttackXTag);
@@ -808,6 +818,7 @@ namespace {
 		if (!actor || dynamic_cast<ADoor*>(actor) || actor->IsInGroup("Brains")) {
 			return;
 		}
+		CancelRetreatAndFlank(actor);
 		actor->RemoveNumberValue(c_AttackTag);
 		switch (order) {
 			case Order::Attack:

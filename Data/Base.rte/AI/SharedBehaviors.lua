@@ -1789,6 +1789,12 @@ end
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
 function SharedBehaviors.RetreatUpdate(AI, Owner)
+	-- The tag taken off by someone else (a sandbox order): the fall-back is over and the order it would have put back is gone too.
+	if AI.Retreat and not Owner:NumberValueExists("AIRetreat") then
+		SharedBehaviors.Trace(Owner, "retreat: called off by a new order");
+		AI.Retreat = nil;
+		return false;
+	end
 	if AI.Retreat then
 		local done = false;
 		if Owner.Health >= Owner.MaxHealth * 0.6 then
@@ -1864,6 +1870,13 @@ end
 -- Called every tick by the AI's update.
 function SharedBehaviors.FlankUpdate(AI, Owner)
 	if not AI.Flank then
+		return;
+	end
+	-- (Likewise a flank called off by a new order: not put back.)
+	if not Owner:NumberValueExists("AIFlank") then
+		SharedBehaviors.Trace(Owner, "flank: called off by a new order");
+		AI.Flank = nil;
+		AI.FlankRestTimer = Timer();
 		return;
 	end
 	local arrived = Owner.AIMode ~= Actor.AIMODE_GOTO or SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
