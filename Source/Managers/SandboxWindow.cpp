@@ -1780,7 +1780,8 @@ namespace SandboxDetail {
 					}
 				}
 			}
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing) {
+			// Not while you play a unit: the right button is its own then.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing && !s_Possessed) {
 				s_RingOpen = true;
 				s_RingPage = 0;
 				s_RingCenter = io.MousePos;
