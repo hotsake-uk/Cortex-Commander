@@ -3618,7 +3618,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	float slew = 6.0F * g_TimerMan.GetDeltaTimeSecs() * static_cast<float>(std::max(1, g_SettingsMan.GetAIUpdateInterval()));
 	m_PilotLean += std::clamp(leanChosen - m_PilotLean, -slew, slew);
 	// Traced (CCCP_AI_LOG and the AITrace value): what it chose and why, four times a second.
-	if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace") && m_PilotTraceTimer.IsPastSimMS(250)) {
+	if (IsAITraced() && m_PilotTraceTimer.IsPastSimMS(250)) {
 		m_PilotTraceTimer.Reset();
 		Vector want = wanted(m_Pos, m_Vel * ppm) / ppm;
 		g_ConsoleMan.PrintString("AITRACE pilot at " + std::to_string(m_Pos.GetFloorIntX()) + "," + std::to_string(m_Pos.GetFloorIntY()) + " vel " + std::to_string(static_cast<int>(m_Vel.m_X * 10.0F)) + "," + std::to_string(static_cast<int>(m_Vel.m_Y * 10.0F)) +

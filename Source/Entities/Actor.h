@@ -960,6 +960,10 @@ namespace RTE {
 		void AvoidPathPoint(const Vector& place, float milliseconds);
 		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long) its team.
 		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds);
+		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): with the game
+		/// launched with CCCP_AI_LOG set, every unit when it is "all", else the units given the AITrace value (the gyms' runners).
+		/// @return Whether traced.
+		bool IsAITraced() const;
 
 		// Member variables
 		static Entity::ClassInfo m_sClass;

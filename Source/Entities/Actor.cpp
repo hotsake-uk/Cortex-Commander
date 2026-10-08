@@ -1212,6 +1212,16 @@ void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
 	}
 }
 
+bool Actor::IsAITraced() const {
+	// (Read once: the environment doesn't change while the game runs.)
+	static const char* s_Log = std::getenv("CCCP_AI_LOG");
+	if (!s_Log) {
+		return false;
+	}
+	static const bool s_All = std::string(s_Log) == "all";
+	return s_All || NumberValueExists("AITrace");
+}
+
 void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds) {
 	double now = g_TimerMan.GetSimTimeMS();
 	std::erase_if(m_AvoidLinks, [now](const FailedLink& link) { return link.until <= now; });
@@ -1330,7 +1340,7 @@ void Actor::PreControllerUpdate() {
 		m_RouteCheck = false;
 		bool reachable = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost <= 100000.0F && !const_cast<std::list<Vector>&>(m_PathRequest->path).empty();
 		if (!reachable && !m_MovePath.empty()) {
-			if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+			if (IsAITraced()) {
 				g_ConsoleMan.PrintString("AITRACE route check: not reachable from " + std::to_string(static_cast<int>(m_Pos.m_X)) + "," + std::to_string(static_cast<int>(m_Pos.m_Y)) + ", keeping the route");
 			}
 			m_PathRequest.reset();
@@ -1347,7 +1357,7 @@ void Actor::PreControllerUpdate() {
 			if (oldGoesOn && heading.MagnitudeIsGreaterThan(1.0F) && heading.Dot(m_Vel) < 0.0F && m_PathCostAtAdoption > 0.0F && m_PathSizeAtAdoption > 0) {
 				float left = m_PathCostAtAdoption * static_cast<float>(m_MovePath.size()) / static_cast<float>(m_PathSizeAtAdoption);
 				if (m_PathRequest->totalCost > left * 0.8F) {
-					if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+					if (IsAITraced()) {
 						g_ConsoleMan.PrintString("AITRACE route check: turns back at speed for " + std::to_string(m_PathRequest->totalCost) + " against " + std::to_string(left) + " left, keeping the route");
 					}
 					m_PathRequest.reset();
@@ -1360,7 +1370,7 @@ void Actor::PreControllerUpdate() {
 		m_PathCostAtAdoption = m_PathRequest->totalCost;
 		m_PathSizeAtAdoption = static_cast<int>(m_MovePath.size());
 		m_MovePathKinds = const_cast<std::list<PathStepKind>&>(m_PathRequest->kinds);
-		if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+		if (IsAITraced()) {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
 			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));
 			// (Each point after the first with the kind of the step that reaches it.)

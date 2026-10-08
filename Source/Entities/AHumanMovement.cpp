@@ -1116,7 +1116,7 @@ void AHuman::PopRoutePoint() {
 }
 
 void AHuman::MoverTrace(const std::string& text) const {
-	if (std::getenv("CCCP_AI_LOG") && NumberValueExists("AITrace")) {
+	if (IsAITraced()) {
 		g_ConsoleMan.PrintString("AITRACE mover: " + text + " at " + std::to_string(m_Pos.GetFloorIntX()) + "," + std::to_string(m_Pos.GetFloorIntY()));
 	}
 }
