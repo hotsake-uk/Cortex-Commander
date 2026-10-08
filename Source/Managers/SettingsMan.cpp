@@ -422,6 +422,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterMistSpread", { g_PostProcessMan.GetLightingSettings().WaterMistSpread = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMist", { g_PostProcessMan.GetLightingSettings().WaterMist = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterThinFlow", { g_PostProcessMan.GetLightingSettings().WaterThinFlow = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFroth", { g_PostProcessMan.GetLightingSettings().SplashFroth = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothSize", { g_PostProcessMan.GetLightingSettings().SplashFrothSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothLife", { g_PostProcessMan.GetLightingSettings().SplashFrothLife = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothOpacity", { g_PostProcessMan.GetLightingSettings().SplashFrothOpacity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PuffVariety", { g_PostProcessMan.GetLightingSettings().PuffVariety = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterSplash", { g_PostProcessMan.GetLightingSettings().WaterSplash = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistBrightness", { g_PostProcessMan.GetLightingSettings().WaterMistBrightness = std::stof(reader.ReadPropValue()); });
@@ -735,6 +739,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterMist", lighting.WaterMist);
 	writer.NewPropertyWithValue("WaterSplash", lighting.WaterSplash);
 	writer.NewPropertyWithValue("PuffVariety", lighting.PuffVariety);
+	writer.NewPropertyWithValue("SplashFroth", lighting.SplashFroth);
+	writer.NewPropertyWithValue("SplashFrothSize", lighting.SplashFrothSize);
+	writer.NewPropertyWithValue("SplashFrothLife", lighting.SplashFrothLife);
+	writer.NewPropertyWithValue("SplashFrothOpacity", lighting.SplashFrothOpacity);
 	writer.NewPropertyWithValue("WaterThinFlow", lighting.WaterThinFlow);
 	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
 	writer.NewPropertyWithValue("DistinctLiquidLooks", lighting.DistinctLiquidLooks);

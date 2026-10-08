@@ -33,7 +33,8 @@ namespace {
 		Fire, //!< A ball of an explosion's fire: glows, swells and rises, and is gone in about a second.
 		Smoke, //!< What the fire leaves: dark, rising, lingering for seconds. Lit like dust.
 		Mist, //!< Spray off falling water: a soft pale puff that drifts down a little, swells and is gone in under a second. Never quite dark, so it shows at night.
-		Droplet //!< A drop of a splash: a pixel in the liquid's colour that flies, falls and is gone where it lands, in the liquid or on the ground. Nothing joins the liquid.
+		Droplet, //!< A drop of a splash: a pixel in the liquid's colour that flies, falls and is gone where it lands, in the liquid or on the ground. Nothing joins the liquid.
+		Froth //!< Froth on a liquid's surface where something splashed in or the level rose: a pale bubbly puff that sits on it, swells a little and fades over seconds.
 	};
 
 	struct Particle {
@@ -154,6 +155,12 @@ namespace {
 						const LightingSettings& mist = g_PostProcessMan.GetLightingSettings();
 						Add({request.Position + RandomDirection() * RandomRange(0.0F, 2.0F) * std::min(mist.WaterMistSize, 1.0F), velocity, 0.0F, RandomRange(0.4F, 0.9F) * std::max(mist.WaterMistLife, 0.05F),
 						     RandomRange(1.5F, 3.2F) * std::max(mist.WaterMistSize, 0.05F), request.MaterialColor ? color : glm::u8vec3(190, 228, 255), Kind::Mist});
+						break;
+					}
+					case Kind::Froth: {
+						const LightingSettings& froth = g_PostProcessMan.GetLightingSettings();
+						Add({request.Position + glm::vec2(RandomRange(-2.0F, 2.0F), RandomRange(-1.0F, 0.5F)), velocity, 0.0F, RandomRange(1.5F, 3.5F) * std::max(froth.SplashFrothLife, 0.05F),
+						     RandomRange(2.0F, 4.5F) * std::max(froth.SplashFrothSize, 0.05F), request.MaterialColor ? color : glm::u8vec3(215, 238, 250), Kind::Froth});
 						break;
 					}
 					case Kind::Droplet:
@@ -352,6 +359,8 @@ bool EffectsParticles::Emit(const std::string& kind, const Vector& position, con
 		which = Kind::Smoke;
 	} else if (kind == "Droplets" || kind == "Droplet") {
 		which = Kind::Droplet;
+	} else if (kind == "Froth") {
+		which = Kind::Froth;
 	} else {
 		return false;
 	}
@@ -436,6 +445,13 @@ void EffectsParticles::Update(float amount) {
 			// Spray hangs and sinks slowly, spreading as it thins, and leans with the wind.
 			particle.Velocity += (glm::vec2(wind * 0.3F, 14.0F) - particle.Velocity) * std::min(1.0F, seconds * 3.0F);
 			particle.Size += seconds * 4.0F * g_PostProcessMan.GetLightingSettings().WaterMistSize * g_PostProcessMan.GetLightingSettings().WaterMistSpread;
+			particle.Position += particle.Velocity * seconds;
+			continue;
+		}
+		if (particle.Type == Kind::Froth) {
+			// Froth sits on the surface: what it was thrown with dies away at once, then it only drifts a little with the wind, swelling as it thins.
+			particle.Velocity += (glm::vec2(wind * 0.08F, 0.0F) - particle.Velocity) * std::min(1.0F, seconds * 5.0F);
+			particle.Size += seconds * 1.2F * g_PostProcessMan.GetLightingSettings().SplashFrothSize;
 			particle.Position += particle.Velocity * seconds;
 			continue;
 		}
@@ -535,7 +551,7 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
-		if ((particle.Type != Kind::Dust && particle.Type != Kind::Smoke && particle.Type != Kind::Mist) || particle.Age < 0.0F) {
+		if ((particle.Type != Kind::Dust && particle.Type != Kind::Smoke && particle.Type != Kind::Mist && particle.Type != Kind::Froth) || particle.Age < 0.0F) {
 			continue;
 		}
 		glm::vec2 position = particle.Position - screenOrigin;
@@ -556,6 +572,12 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		if (particle.Type == Kind::Mist) {
 			// A colour above 1 tells the particle shader this one keeps a little light of its own (see LitParticle.frag).
 			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored});
+			continue;
+		}
+		if (particle.Type == Kind::Froth) {
+			// Like spray, it keeps a little light of its own (a colour above 1); in quickly, out slowly.
+			float opacity = std::clamp(g_PostProcessMan.GetLightingSettings().SplashFrothOpacity, 0.0F, 1.0F) * std::sqrt(std::max(remaining, 0.0F)) * std::clamp(particle.Age * 8.0F, 0.0F, 1.0F);
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored});
 			continue;
 		}
 		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored});

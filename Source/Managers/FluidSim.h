@@ -91,6 +91,14 @@ namespace RTE {
 		/// @param colorIndex Palette index of the liquid there, for the drops' colour.
 		static void VisualSplash(const Vector& position, float width, float speed, int colorIndex);
 
+		/// Leaves froth on a liquid's surface, only for the eye: pale bubbly puffs that sit on it and fade (the SplashFroth settings). For a splash, and
+		/// where the level rises from something falling in (TerrainCollapse). Thread safe.
+		/// @param position The middle of the stretch of surface, in scene coordinates.
+		/// @param width How wide a stretch, in pixels.
+		/// @param count How many puffs at the plain setting.
+		/// @param colorIndex Palette index of the liquid there; water and the mask colour give white froth, any other liquid a paler froth of its own colour.
+		static void Froth(const Vector& position, float width, int count, int colorIndex);
+
 		/// Lets a particle that just settled into the terrain join in: a drop of liquid in that liquid's own colour starts flowing (so blood, drawn in water, stays put),
 		/// and a burning particle sets the flammable pixel it became alight. Call after the particle is drawn into the terrain.
 		/// @param particle The settled particle.

@@ -400,6 +400,7 @@ namespace {
 			}
 		}
 		size_t placed = 0;
+		int frothed = 0;
 		while (placed < displaced.size() && !freePlaces.empty()) {
 			std::pop_heap(freePlaces.begin(), freePlaces.end(), freeOrder);
 			Cell cell = freePlaces.back();
@@ -412,6 +413,11 @@ namespace {
 			terrain->SetFGColorPixel(cell.X, cell.Y, pixel.Color);
 			// It flows on from there if it can (over an edge, along a step).
 			FluidSim::Disturb(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 1.0F);
+			// Where it tops the liquid, the rising surface froths (for the eye; a few puffs, not one for every pixel).
+			if (placed % 4 == 1 && frothed < 24 && cell.Y > 0 && materialBitmap->line[cell.Y - 1][cell.X] == g_MaterialAir) {
+				FluidSim::Froth(Vector(static_cast<float>(cell.X), static_cast<float>(cell.Y)), 4.0F, 1, pixel.Color);
+				++frothed;
+			}
 			// Its own edge is the liquid's edge now: the free places beside and above it are next.
 			for (const auto& side: sides) {
 				look(cell.X + side[0], cell.Y + side[1]);

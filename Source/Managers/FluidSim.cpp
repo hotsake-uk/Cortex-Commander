@@ -1103,9 +1103,39 @@ void FluidSim::Splash(const Vector& position, float radius, float share, float s
 	}
 }
 
+void FluidSim::Froth(const Vector& position, float width, int count, int colorIndex) {
+	float amount = std::clamp(g_PostProcessMan.GetLightingSettings().SplashFroth, 0.0F, 3.0F);
+	if (amount <= 0.0F || count <= 0) {
+		return;
+	}
+	// White over water (and where the colour is the mask's, magenta in the palette); over another liquid, its own colour much paler.
+	unsigned int rgb = 0;
+	if (colorIndex != ColorKeys::g_MaskColor && !(s_WaterMaterial != 0 && colorIndex == s_ColorOfMaterial[s_WaterMaterial])) {
+		Color color;
+		color.SetRGBWithIndex(colorIndex);
+		unsigned int liquid = EffectsParticles::ColorToRGB(color);
+		if (liquid != 0) {
+			auto paler = [liquid](int shift) { return static_cast<unsigned int>(((liquid >> shift) & 0xFF) + (255 - ((liquid >> shift) & 0xFF)) * 3 / 4) << shift; };
+			rgb = paler(16) | paler(8) | paler(0);
+		}
+	}
+	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount)), 1, 80);
+	int columns = std::clamp(static_cast<int>(width / 4.0F), 1, std::min(total, 20));
+	for (int column = 0; column < columns; ++column) {
+		float across = columns > 1 ? static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F : 0.0F;
+		int here = total / columns + (column < total % columns ? 1 : 0);
+		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y), Vector(), 0.05F, here, rgb);
+	}
+}
+
 void FluidSim::VisualSplash(const Vector& position, float width, float speed, int colorIndex) {
+	if (speed < 1.0F) {
+		return;
+	}
+	// Froth left on the surface, by its own settings (even with the splash itself off): more the wider and harder it went in.
+	Froth(position, std::clamp(width * 1.3F, 4.0F, 260.0F), static_cast<int>(std::clamp(width * 0.2F * std::sqrt(std::min(speed, 24.0F)), 2.0F, 50.0F)), colorIndex);
 	float strength = std::clamp(g_PostProcessMan.GetLightingSettings().WaterSplash, 0.0F, 4.0F);
-	if (strength <= 0.0F || speed < 1.0F) {
+	if (strength <= 0.0F) {
 		return;
 	}
 	speed = std::min(speed, 24.0F);

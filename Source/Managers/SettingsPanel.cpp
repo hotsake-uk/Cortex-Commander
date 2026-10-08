@@ -493,6 +493,13 @@ void DebugMan::SettingsGUI() {
 		Tip("Each puff of spray, froth mist, dust and smoke is turned and mirrored its own way when it appears, so they don't all show the same shape. Off: all the same way up.");
 		Slider("Thin streams shown", &settings.WaterThinFlow, 0.0F, 2.0F);
 		Tip("How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. Only for the eye. 0 for not at all.");
+		Heading("Splash froth");
+		Slider("Splash froth", &settings.SplashFroth, 0.0F, 3.0F);
+		Tip("How much froth a splash leaves sitting on the surface, and how much the surface froths where the level rises because something fell in. Only for the eye. 0 for none.");
+		Slider("Splash froth bubble size", &settings.SplashFrothSize, 0.2F, 3.0F);
+		Slider("Splash froth life", &settings.SplashFrothLife, 0.2F, 4.0F);
+		Tip("How long the froth stays on the surface before it fades: 1 is a couple of seconds.");
+		Slider("Splash froth opacity", &settings.SplashFrothOpacity, 0.0F, 1.0F);
 		Heading("Mist");
 		Slider("Mist", &settings.WaterMist, 0.0F, 2.0F);
 		Tip("Soft spray thrown off water that is falling fast or landing. 0 for none.");
