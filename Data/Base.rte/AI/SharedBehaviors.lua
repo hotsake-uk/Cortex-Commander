@@ -2478,7 +2478,8 @@ end
 
 -- Medics (AC-7). Whether a unit can patch up others: one carrying a medikit, or a medic drone (which heals all round it), still standing.
 function SharedBehaviors.IsMedic(Act)
-	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or Act:HasObject("Medikit"));
+	-- (People and crabs only: a craft carrying a kit in its hold is no medic.)
+	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and Act:HasObject("Medikit")));
 end
 
 -- The nearest medic of the unit's team within range, not the unit itself and not one a player is steering (a player's medic goes where the

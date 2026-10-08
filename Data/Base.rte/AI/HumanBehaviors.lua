@@ -2308,8 +2308,14 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 			if not M.Close then
 				M.Close = true;
 				M.ShotTimer = Timer();
-				Owner:EquipNamedDevice("Medikit", true);
 				SharedBehaviors.Trace(Owner, "medic: seeing to " .. Patient.PresetName);
+			end
+			-- (The kit in hand every tick, not only on arriving: the AI's own self-heal puts a gun back in hand once the medic is over half
+			-- health again, and the trigger then fired the gun at the friend.)
+			local kitInHand = Owner.EquippedItem ~= nil and Owner.EquippedItem.PresetName == "Medikit";
+			if not kitInHand then
+				Owner:EquipNamedDevice("Medikit", true);
+				kitInHand = Owner.EquippedItem ~= nil and Owner.EquippedItem.PresetName == "Medikit";
 			end
 			local sweep = math.sin(M.Timer.ElapsedSimTimeMS * 0.004) * Patient.Height * 0.2;
 			local Aim = SceneMan:ShortestDistance(Owner.EyePos, Patient.Pos + Vector(0, sweep), false);
@@ -2318,7 +2324,7 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 			end
 			AI.lateralMoveState = Actor.LAT_STILL;
 			AI.medicHeal = false;
-			if M.ShotTimer:IsPastSimMS(1100) then
+			if kitInHand and M.ShotTimer:IsPastSimMS(1100) then
 				M.ShotTimer:Reset();
 				AI.medicHeal = true;
 			end
