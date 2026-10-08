@@ -2220,6 +2220,40 @@ namespace {
 		}
 	}
 
+	/// Who a unit is following, if anyone: the actor it is to go to, loaded (its move target) or still queued as its last waypoint.
+	const Actor* FollowedBy(const Actor* unit) {
+		if (const Actor* leader = dynamic_cast<const Actor*>(unit->GetMOMoveTarget()); leader && g_MovableMan.IsActor(leader)) {
+			return leader;
+		}
+		const auto& waypoints = unit->GetWaypointList();
+		if (!waypoints.empty()) {
+			if (const Actor* leader = dynamic_cast<const Actor*>(waypoints.back().second); leader && g_MovableMan.IsActor(leader)) {
+				return leader;
+			}
+		}
+		return nullptr;
+	}
+
+	/// Sets a unit to guard another: a squad follower of it, as the game's own squads are (AIMODE_SQUAD and the leader as its MO waypoint), so
+	/// it gets the trail, its place in the formation and the dead-leader handling. (A GOTO to the leader, as it was, took the old shoving path
+	/// squads were fixed away from.) A follow that would close a loop (the leader following this unit, or one that does) is broken there: the
+	/// one in the loop who followed this unit holds where it is instead, or the two walked into each other for ever.
+	void GuardUnit(Actor* unit, Actor* leader) {
+		const Actor* along = leader;
+		for (int i = 0; along && i < 16; ++i) {
+			const Actor* next = FollowedBy(along);
+			if (next == unit) {
+				HoldUnit(const_cast<Actor*>(along));
+				break;
+			}
+			along = next;
+		}
+		HoldUnit(unit);
+		unit->SetAIMode(Actor::AIMODE_SQUAD);
+		unit->AddAIMOWaypoint(leader);
+		unit->SetMovePathToUpdate();
+	}
+
 	void OrderSelectedUnits(int choice, const Vector& point);
 
 	/// The side the selection belongs to: the first selected unit's, else the side in hand.
@@ -2250,7 +2284,7 @@ namespace {
 			if (friendly && !selected) {
 				for (const UnitRef& ref: s_Selected) {
 					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit != target) {
-						SendUnit(unit, target->GetPos(), target, false);
+						GuardUnit(unit, target);
 					}
 				}
 				MarkOrder(target->GetPos(), IM_COL32(120, 220, 120, 255));
