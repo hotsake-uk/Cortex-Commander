@@ -22,6 +22,7 @@ bool ActorWater::s_Enabled = true;
 namespace {
 	constexpr const char* c_DepthTag = "LiquidDepth"; //!< Number value on units in liquid: 1 feet in, 2 body in, 3 head under.
 	constexpr const char* c_AirTag = "AirLeft"; //!< Number value on units holding their breath, seconds of air left.
+	constexpr const char* c_StickTag = "LiquidStick"; //!< Number value on units in a sticky liquid (tar, mud): its stickiness, 0 to 1.
 	constexpr float c_AirSeconds = 12.0F; //!< How long a unit can hold its breath.
 
 	const void* s_Scene = nullptr;
@@ -30,6 +31,9 @@ namespace {
 	std::array<bool, 256> s_HoldsBodies{};
 	std::array<bool, 256> s_Breathable{};
 	std::array<float, 256> s_TouchDamage{};
+	std::array<float, 256> s_Stickiness{}; //!< How much a liquid holds a body back (Material::GetStickiness: tar 0.9, mud 0.4).
+	std::array<float, 256> s_Heaviness{}; //!< How hard a liquid pushes a body up against water's push: its density over water's, 1 to 3 (mercury the most).
+	std::array<float, 256> s_CutDamage{}; //!< For what isn't a liquid (glass shards): the health a second it takes from a body walking through it.
 	bool s_AnyLiquid = false;
 	bool s_TablesBuilt = false;
 
@@ -42,13 +46,27 @@ namespace {
 		s_HoldsBodies.fill(false);
 		s_Breathable.fill(false);
 		s_TouchDamage.fill(0.0F);
+		s_Stickiness.fill(0.0F);
+		s_Heaviness.fill(1.0F);
+		s_CutDamage.fill(0.0F);
 		s_AnyLiquid = false;
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
-			if (!material || material->GetIndex() != id || !FluidSim::HoldsBodies(id)) {
+			if (!material || material->GetIndex() != id) {
 				continue;
 			}
 			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			if (!FluidSim::HoldsBodies(id)) {
+				// Sharp loose stuff underfoot (SB-2's glass shards) cuts whoever walks through it.
+				if (behaviour.TouchDamage > 0.0F && !FluidSim::IsLiquid(id)) {
+					s_CutDamage[id] = behaviour.TouchDamage;
+					s_AnyLiquid = true;
+				}
+				continue;
+			}
+			s_Stickiness[id] = std::clamp(material->GetStickiness(), 0.0F, 1.0F);
+			// (Only for the really heavy ones, mud and mercury: water and acid, at 1 and 1.2, push as they always did.)
+			s_Heaviness[id] = material->GetVolumeDensity() > 1.5F ? std::clamp(material->GetVolumeDensity(), 1.0F, 3.0F) : 1.0F;
 			s_HoldsBodies[id] = true;
 			s_Breathable[id] = behaviour.Breathable == 1;
 			s_TouchDamage[id] = behaviour.TouchDamage >= 0.0F ? behaviour.TouchDamage : (material->GetPresetName() == "Acid" ? 5.0F : 0.0F);
@@ -154,7 +172,18 @@ void ActorWater::Update() {
 		float reach = actor->GetRadius() * 0.55F;
 		Vector feet = position + Vector(0.0F, reach);
 		Vector head = position - Vector(0.0F, reach);
+		// Walking through something sharp (glass shards): cut, the more the faster it goes.
+		if (float cut = s_CutDamage[static_cast<unsigned char>(MaterialAt(feet + Vector(0.0F, 2.0F)))]; cut > 0.0F && actor->GetVel().MagnitudeIsGreaterThan(0.5F)) {
+			actor->SetHealth(actor->GetHealth() - cut * std::min(actor->GetVel().GetMagnitude() * 0.5F, 2.0F) * deltaTime);
+		}
 		int depth = InLiquid(head) ? 3 : (InLiquid(position) ? 2 : (InLiquid(feet) || InLiquid(feet + Vector(0.0F, 3.0F)) ? 1 : 0));
+		// How sticky what it stands or swims in is (tar, mud): it walks and swims slower for it (GetWalkSpeedMultiplier).
+		float stickiness = depth == 0 ? 0.0F : std::max(s_Stickiness[static_cast<unsigned char>(MaterialAt(feet))], s_Stickiness[static_cast<unsigned char>(MaterialAt(position))]);
+		if (stickiness > 0.0F) {
+			actor->SetNumberValue(c_StickTag, static_cast<double>(stickiness));
+		} else if (actor->NumberValueExists(c_StickTag)) {
+			actor->RemoveNumberValue(c_StickTag);
+		}
 		if (depth == 0) {
 			if (actor->NumberValueExists(c_DepthTag)) {
 				actor->RemoveNumberValue(c_DepthTag);
@@ -178,9 +207,10 @@ void ActorWater::Update() {
 
 		if (depth >= 2) {
 			// The liquid drags, and pushes up: light units bob to the top, heavy ones sink slowly.
+			// (A sticky liquid drags harder, and a heavy one pushes harder: a soldier floats high on mercury.)
 			Vector velocity = actor->GetVel();
-			velocity *= std::max(1.0F - 2.2F * deltaTime, 0.0F);
-			float buoyancy = GetBuoyancy(actor);
+			velocity *= std::max(1.0F - (2.2F + 8.0F * stickiness) * deltaTime, 0.0F);
+			float buoyancy = GetBuoyancy(actor) * s_Heaviness[static_cast<unsigned char>(MaterialAt(position))];
 			velocity.m_Y -= gravity * buoyancy * deltaTime * (depth == 3 ? 1.0F : 0.6F);
 			// Swimming (LM-4): with a move key, a stroke that way, up to the swimming speed; up (or jump) strokes up, down dives. A floater with
 			// its head out holds at the surface rather than bobbing, unless it dives. (Lava is ActorFire's: nobody swims in it.)
@@ -189,7 +219,7 @@ void ActorWater::Update() {
 			bool right = controller->IsState(MOVE_RIGHT);
 			bool up = controller->IsState(MOVE_UP) || controller->IsState(BODY_JUMP);
 			bool down = controller->IsState(MOVE_DOWN) || controller->IsState(BODY_CROUCH);
-			const float stroke = 6.0F * deltaTime; // About a third of a second to the swimming speed.
+			const float stroke = 6.0F * deltaTime * (1.0F - 0.8F * stickiness); // About a third of a second to the swimming speed (much longer in tar).
 			if (left != right) {
 				float wanted = right ? c_SwimSpeed : -c_SwimSpeed;
 				if (velocity.m_X * (right ? 1.0F : -1.0F) < c_SwimSpeed) {
@@ -239,7 +269,9 @@ int ActorWater::GetDepth(const Actor* actor) {
 
 float ActorWater::GetWalkSpeedMultiplier(const Actor* actor) {
 	static constexpr float multipliers[4] = {1.0F, 0.8F, 0.55F, 0.45F};
-	return multipliers[std::clamp(GetDepth(actor), 0, 3)];
+	// And slower again in something sticky: tar holds the legs to a crawl, mud to half.
+	float stickiness = actor && actor->NumberValueExists(c_StickTag) ? static_cast<float>(actor->GetNumberValue(c_StickTag)) : 0.0F;
+	return multipliers[std::clamp(GetDepth(actor), 0, 3)] * (1.0F - 0.75F * std::clamp(stickiness, 0.0F, 1.0F));
 }
 
 float ActorWater::GetBreathSeconds(const Actor* actor) {

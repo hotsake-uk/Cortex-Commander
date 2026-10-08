@@ -86,6 +86,8 @@ namespace {
 	std::array<int, 256> s_BoilsTo{}; //!< What it boils into against something that settles (water: air, with steam), -1 for nothing.
 	std::array<int, 256> s_MeltsTo{}; //!< What a solid melts into beside lava (ice and snow: water), 0 for nothing.
 	std::array<int, 256> s_FreezesTo{}; //!< What a liquid freezes into, still under snowfall (water: ice), 0 for nothing.
+	std::array<int, 256> s_DriesTo{}; //!< What a liquid dries into, still with air over it (mud: earth), 0 for nothing.
+	std::array<float, 256> s_DryChance{}; //!< The chance a sweep pass of a still surface pixel of it drying.
 	std::array<int, 256> s_ColorOfMaterial{}; //!< Palette index each material is drawn with, for pixels changed into it.
 	bool s_TablesBuilt = false;
 
@@ -248,6 +250,8 @@ namespace {
 		s_BoilsTo.fill(0);
 		s_MeltsTo.fill(0);
 		s_FreezesTo.fill(0);
+		s_DriesTo.fill(0);
+		s_DryChance.fill(0.0F);
 		s_ColorOfMaterial.fill(0);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
@@ -299,6 +303,8 @@ namespace {
 			s_SettlesTo[id] = std::max(0, turnsInto(behaviour.SettlesTo, kind == Liquid::Lava ? "Stone" : nullptr));
 			s_BoilsTo[id] = turnsInto(behaviour.BoilsTo, kind == Liquid::Water ? "Air" : nullptr);
 			s_FreezesTo[id] = std::max(0, turnsInto(behaviour.FreezesTo, kind == Liquid::Water ? "Ice" : nullptr));
+			s_DriesTo[id] = std::max(0, turnsInto(behaviour.DriesTo, nullptr));
+			s_DryChance[id] = s_DriesTo[id] != 0 ? std::clamp(behaviour.DryChance >= 0.0F ? behaviour.DryChance : 0.1F, 0.0F, 1.0F) : 0.0F;
 			// How it is drawn: water, lava and acid by their own looks, oil plain (its dark brown is shared with too many sprites to shimmer), a
 			// liquid of a mod's own as water; and lava glows.
 			int look = behaviour.Look >= 0 ? behaviour.Look : (kind == Liquid::Oil ? 0 : (kind == Liquid::Other ? 1 : static_cast<int>(kind)));
@@ -453,6 +459,13 @@ namespace {
 					// Now and then a pixel of a resting surface is woken to look through the body it's part of for a lower place (see FindLowerSpot): this is what starts
 					// two pools joined below coming to one level. If it finds one, the pixels around it wake and follow; if not, it goes back to sleep. A different one in 16 each pass.
 					Activate(x, y, width, height, terrain);
+				} else if (int driesTo = s_DriesTo[materialBitmap->line[y][x]]; driesTo != 0 && y > 0) {
+					// A liquid that dries (mud): from the top down, where it lies still with air, or what it dried into, over it.
+					int above = materialBitmap->line[y - 1][x];
+					if ((above == g_MaterialAir || above == driesTo) && Random01() < s_DryChance[materialBitmap->line[y][x]]) {
+						terrain->SetMaterialPixel(x, y, driesTo);
+						terrain->SetFGColorPixel(x, y, s_ColorOfMaterial[driesTo]);
+					}
 				} else if (int freezesTo = s_FreezesTo[materialBitmap->line[y][x]]; freezing > 0.05F && freezesTo != 0 && y > 0) {
 					int above = materialBitmap->line[y - 1][x];
 					if ((above == g_MaterialAir || (above == freezesTo && Random01() < 0.25F)) && Random01() < freezing * 0.04F) {
