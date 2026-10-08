@@ -211,6 +211,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Rain splashes", &settings.RainSplashes, 0.0F, 2.0F);
 		Tip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
+		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
+		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
 		// Scene makers: keep the time and weather as the scene's own. It's written when the scene is saved from the scene editor.
 		if (Scene* scene = g_SceneMan.GetScene(); scene && Plain()) {

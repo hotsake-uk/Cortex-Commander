@@ -34,6 +34,7 @@ using namespace RTE;
 bool FluidSim::s_Enabled = true;
 bool FluidSim::s_Powders = true;
 bool FluidSim::s_Freezing = false;
+bool FluidSim::s_BloodFlows = false;
 
 namespace {
 	enum class Liquid : unsigned char {
@@ -88,6 +89,11 @@ namespace {
 	std::array<int, 256> s_FreezesTo{}; //!< What a liquid freezes into, still under snowfall (water: ice), 0 for nothing.
 	std::array<int, 256> s_DriesTo{}; //!< What a liquid dries into, still with air over it (mud: earth), 0 for nothing.
 	std::array<float, 256> s_DryChance{}; //!< The chance a sweep pass of a still surface pixel of it drying.
+	std::array<bool, 256> s_Chills{}; //!< Freezes what it touches that freezes (cryogenic fluid).
+	std::array<float, 256> s_Evaporates{}; //!< The chance a step of a surface pixel of it boiling off into mist.
+	int s_BloodMaterial = 0; //!< The Blood liquid, which settled blood becomes when it flows (FluidSim::BloodFlows), 0 if the scene has none.
+	int s_WaterMaterial = 0; //!< The material blood drops are made of (water, drawn red).
+	std::vector<glm::ivec2> s_BloodSettled; //!< Where blood drops settled since the last update, to become flowing blood.
 	std::array<int, 256> s_ColorOfMaterial{}; //!< Palette index each material is drawn with, for pixels changed into it.
 	bool s_TablesBuilt = false;
 
@@ -252,6 +258,10 @@ namespace {
 		s_FreezesTo.fill(0);
 		s_DriesTo.fill(0);
 		s_DryChance.fill(0.0F);
+		s_Chills.fill(false);
+		s_Evaporates.fill(0.0F);
+		s_BloodMaterial = 0;
+		s_WaterMaterial = 0;
 		s_ColorOfMaterial.fill(0);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
@@ -263,8 +273,17 @@ namespace {
 			Color color = material->GetColor();
 			color.RecalculateIndex();
 			s_ColorOfMaterial[id] = color.GetIndex();
+			if (name == "Blood") {
+				s_BloodMaterial = id;
+			} else if (name == "Water") {
+				s_WaterMaterial = id;
+			}
 			Liquid named = LiquidFromName(name, Liquid::None);
 			bool flows = behaviour.Flows >= 0 ? behaviour.Flows == 1 : named != Liquid::None;
+			// (Blood runs only with the setting on: otherwise it stays where it fell, as it always did.)
+			if (id == s_BloodMaterial && !s_BloodFlows) {
+				flows = false;
+			}
 			bool powderByName = name == "Sand" || name == "Snow" || name == "Earth Rubble" || name == "Ashes";
 			bool powder = !flows && (behaviour.Powder >= 0 ? behaviour.Powder == 1 : powderByName);
 			// What it turns into, set or stock.
@@ -303,7 +322,9 @@ namespace {
 			s_SettlesTo[id] = std::max(0, turnsInto(behaviour.SettlesTo, kind == Liquid::Lava ? "Stone" : nullptr));
 			s_BoilsTo[id] = turnsInto(behaviour.BoilsTo, kind == Liquid::Water ? "Air" : nullptr);
 			s_FreezesTo[id] = std::max(0, turnsInto(behaviour.FreezesTo, kind == Liquid::Water ? "Ice" : nullptr));
-			s_DriesTo[id] = std::max(0, turnsInto(behaviour.DriesTo, nullptr));
+			s_DriesTo[id] = turnsInto(behaviour.DriesTo, nullptr);
+			s_Chills[id] = behaviour.Chills == 1;
+			s_Evaporates[id] = behaviour.Evaporates > 0.0F ? std::min(behaviour.Evaporates, 1.0F) : 0.0F;
 			s_DryChance[id] = s_DriesTo[id] != 0 ? std::clamp(behaviour.DryChance >= 0.0F ? behaviour.DryChance : 0.1F, 0.0F, 1.0F) : 0.0F;
 			// How it is drawn: water, lava and acid by their own looks, oil plain (its dark brown is shared with too many sprites to shimmer), a
 			// liquid of a mod's own as water; and lava glows.
@@ -460,11 +481,15 @@ namespace {
 					// two pools joined below coming to one level. If it finds one, the pixels around it wake and follow; if not, it goes back to sleep. A different one in 16 each pass.
 					Activate(x, y, width, height, terrain);
 				} else if (int driesTo = s_DriesTo[materialBitmap->line[y][x]]; driesTo != 0 && y > 0) {
-					// A liquid that dries (mud): from the top down, where it lies still with air, or what it dried into, over it.
+					// A liquid that dries (mud to earth, blood away to nothing): from the top down, where it lies still with air, or what it dried
+					// into, over it.
 					int above = materialBitmap->line[y - 1][x];
 					if ((above == g_MaterialAir || above == driesTo) && Random01() < s_DryChance[materialBitmap->line[y][x]]) {
-						terrain->SetMaterialPixel(x, y, driesTo);
-						terrain->SetFGColorPixel(x, y, s_ColorOfMaterial[driesTo]);
+						terrain->SetMaterialPixel(x, y, driesTo > 0 ? driesTo : static_cast<int>(g_MaterialAir));
+						terrain->SetFGColorPixel(x, y, driesTo > 0 ? s_ColorOfMaterial[driesTo] : static_cast<int>(ColorKeys::g_MaskColor));
+						if (driesTo < 0) {
+							ActivateAround(x, y, width, height, terrain);
+						}
 					}
 				} else if (int freezesTo = s_FreezesTo[materialBitmap->line[y][x]]; freezing > 0.05F && freezesTo != 0 && y > 0) {
 					int above = materialBitmap->line[y - 1][x];
@@ -512,6 +537,13 @@ void FluidSim::SetPowdersEnabled(bool enabled) {
 	}
 }
 
+void FluidSim::SetBloodFlows(bool enabled) {
+	if (s_BloodFlows != enabled) {
+		s_BloodFlows = enabled;
+		s_TablesBuilt = false;
+	}
+}
+
 void FluidSim::Pour(const Vector& position, float radius, const char* liquidName) {
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pours.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water"});
@@ -536,6 +568,17 @@ void FluidSim::OnParticleSettled(const MovableObject* particle) {
 		return;
 	}
 	const MOPixel* pixel = dynamic_cast<const MOPixel*>(particle);
+	// Blood (water drawn red) that settles runs as blood, when that's on: turned into the Blood liquid at the next update.
+	if (pixel && s_BloodFlows && s_BloodMaterial != 0 && material == s_WaterMaterial && pixel->GetColor().GetIndex() != s_PourColor[material]) {
+		const Color& color = pixel->GetColor();
+		if (color.GetR() > color.GetG() * 2 && color.GetR() > color.GetB() * 2) {
+			std::scoped_lock lock(s_QueueMutex);
+			if (s_BloodSettled.size() < 4096) {
+				s_BloodSettled.emplace_back(position.GetFloorIntX(), position.GetFloorIntY());
+			}
+			return;
+		}
+	}
 	if (pixel && pixel->GetColor().GetIndex() == s_PourColor[material]) {
 		std::scoped_lock lock(s_QueueMutex);
 		s_Disturbances.emplace_back(glm::ivec2(position.GetFloorIntX(), position.GetFloorIntY()), 1);
@@ -607,6 +650,7 @@ void FluidSim::Update() {
 		std::scoped_lock lock(s_QueueMutex);
 		s_Pours.clear();
 		s_Disturbances.clear();
+		s_BloodSettled.clear();
 		s_Active.Clear();
 		return;
 	}
@@ -622,11 +666,23 @@ void FluidSim::Update() {
 	std::vector<PourRequest> pours;
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
 	std::vector<SplashRequest> splashRequests;
+	std::vector<glm::ivec2> bloodSettled;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		pours.swap(s_Pours);
 		disturbances.swap(s_Disturbances);
 		splashRequests.swap(s_Splashes);
+		bloodSettled.swap(s_BloodSettled);
+	}
+	// Blood that settled runs as blood (FluidSim::BloodFlows): the water pixel it became, still red, turns to the Blood liquid and wakes.
+	std::sort(bloodSettled.begin(), bloodSettled.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
+	for (glm::ivec2 spot: bloodSettled) {
+		int x = s_WrapsX ? ((spot.x % width) + width) % width : spot.x;
+		int y = spot.y;
+		if (s_BloodMaterial != 0 && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == s_WaterMaterial && terrain->GetFGColorPixel(x, y) != s_PourColor[s_WaterMaterial]) {
+			terrain->SetMaterialPixel(x, y, s_BloodMaterial);
+			Activate(x, y, width, height, terrain);
+		}
 	}
 	// Liquid thrown into the air by blasts and by things falling in. Each pixel thrown becomes a flying drop that joins the liquid again where it lands, so none is lost.
 	std::sort(splashRequests.begin(), splashRequests.end(), [](const SplashRequest& a, const SplashRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
@@ -780,7 +836,8 @@ void FluidSim::Update() {
 		bool reacted = false;
 		const bool douses = s_Douses[ownMaterial];
 		const int settlesTo = s_SettlesTo[ownMaterial];
-		bool mayReact = kind == Liquid::Lava || settlesTo != 0 || kind == Liquid::Acid || (douses && anyFire);
+		const bool chills = s_Chills[ownMaterial];
+		bool mayReact = kind == Liquid::Lava || settlesTo != 0 || kind == Liquid::Acid || chills || (douses && anyFire);
 		for (const auto& offset: neighbours) {
 			if (!mayReact) {
 				break;
@@ -792,6 +849,20 @@ void FluidSim::Update() {
 			}
 			int neighbourMaterial = materialBitmap->line[ny][nx];
 			Liquid neighbourKind = s_Kinds[static_cast<unsigned char>(neighbourMaterial)];
+			if (chills && s_FreezesTo[neighbourMaterial] != 0 && Random01() < 0.3F) {
+				// Cryogenic fluid freezes the water (or mud) it touches, and is used up doing it, half the time.
+				int freezesTo = s_FreezesTo[neighbourMaterial];
+				terrain->SetMaterialPixel(nx, ny, freezesTo);
+				terrain->SetFGColorPixel(nx, ny, s_ColorOfMaterial[freezesTo]);
+				s_Active.Remove(ny * width + nx);
+				if (Random01() < 0.5F) {
+					terrain->SetMaterialPixel(x, y, g_MaterialAir);
+					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+					ActivateAround(x, y, width, height, terrain);
+					reacted = true;
+					break;
+				}
+			}
 			if (settlesTo != 0 && s_Douses[neighbourMaterial]) {
 				// Lava meeting water: the lava sets to stone and the water boils off in a puff of steam (or to what it boils to).
 				terrain->SetMaterialPixel(x, y, settlesTo);
@@ -848,6 +919,18 @@ void FluidSim::Update() {
 		}
 		if (kind == Liquid::Lava && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < 0.01F) {
 			hurtSpots.emplace_back(x, y - 1);
+		}
+		// Boiling off (cryogenic fluid): a pixel at the surface goes up as mist now and then, and the one under it is next.
+		if (s_Evaporates[ownMaterial] > 0.0F && y > 0 && materialBitmap->line[y - 1][x] == g_MaterialAir && Random01() < s_Evaporates[ownMaterial]) {
+			terrain->SetMaterialPixel(x, y, g_MaterialAir);
+			terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+			ActivateAround(x, y, width, height, terrain);
+			if (mistLeft > 0) {
+				--mistLeft;
+				EffectsParticles::Emit("Mist", Vector(static_cast<float>(x), static_cast<float>(y - 1)), Vector(0.0F, -1.5F), 0.6F, 1, 0);
+			}
+			settled.push_back(key);
+			continue;
 		}
 
 		auto canMoveTo = [&](int tx, int ty) {
@@ -1111,7 +1194,8 @@ void FluidSim::Update() {
 			s_Active.Remove(key);
 			// Running along the level without getting any lower counts towards coming to rest, so ripples die down.
 			int newStill = gotLower ? 0 : (waitingToSearch ? still : still + 1);
-			if (newStill < c_RestSteps) {
+			// (What boils off stays awake at the surface until it has: see below.)
+			if (newStill < c_RestSteps || s_Evaporates[material] > 0.0F) {
 				s_Active.Add(target, newStill, heading > 0, velX, velY);
 			}
 			// Whatever was resting around it may now flow into the gap.
@@ -1120,7 +1204,9 @@ void FluidSim::Update() {
 			s_Active.VelX[key] = static_cast<signed char>(std::clamp(velX, -120, 120));
 			s_Active.VelY[key] = 0;
 			// Powder that can't slide goes to rest sooner: it has nowhere to level out to.
-			if (!waitingToSearch && s_Active.StillStep(key) >= (kind == Liquid::Powder ? 8 : c_RestSteps)) {
+			// (Never at the surface for what boils off: it would sit there for good instead of going in seconds.)
+			bool boilingOff = s_Evaporates[ownMaterial] > 0.0F && canMoveTo(x, y - 1);
+			if (!waitingToSearch && s_Active.StillStep(key) >= (kind == Liquid::Powder ? 8 : c_RestSteps) && !boilingOff) {
 				settled.push_back(key);
 			}
 		}
@@ -1173,6 +1259,7 @@ void FluidSim::Clear() {
 	s_Pours.clear();
 	s_Disturbances.clear();
 	s_Splashes.clear();
+	s_BloodSettled.clear();
 }
 
 void FluidSim::GetActivePixels(const Vector& corner, float width, float height, std::vector<Vector>& pixels, size_t limit) {

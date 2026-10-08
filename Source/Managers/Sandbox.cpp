@@ -164,7 +164,9 @@ namespace {
 		Tar,
 		Mercury,
 		Gravel,
-		GlassShards
+		GlassShards,
+		Fuel,
+		Cryo
 	};
 
 	struct ToolInfo {
@@ -240,6 +242,8 @@ namespace {
 	    {Tool::Mercury, "Mercury", 0.03F, true},
 	    {Tool::Gravel, "Gravel", 0.03F, true},
 	    {Tool::GlassShards, "Glass shards", 0.03F, true},
+	    {Tool::Fuel, "Fuel", 0.03F, true},
+	    {Tool::Cryo, "Cryogenic fluid", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -3110,6 +3114,12 @@ namespace {
 			case Tool::GlassShards:
 				FluidSim::Pour(at, radius * 0.5F, "Glass Shards");
 				break;
+			case Tool::Fuel:
+				FluidSim::Pour(at, radius * 0.5F, "Fuel");
+				break;
+			case Tool::Cryo:
+				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid");
+				break;
 			case Tool::WaterSpawner:
 				if (s_WaterSpawners.size() < 64) {
 					s_WaterSpawners.push_back({at, std::max(1, stroke.Radius / 2)});
@@ -3704,6 +3714,10 @@ namespace {
 				return {Icon::Drop, IM_COL32(70, 60, 55, 255)};
 			case Tool::Mercury:
 				return {Icon::Drop, IM_COL32(200, 205, 215, 255)};
+			case Tool::Fuel:
+				return {Icon::Drop, IM_COL32(220, 190, 60, 255)};
+			case Tool::Cryo:
+				return {Icon::Drop, IM_COL32(180, 235, 255, 255)};
 			case Tool::WaterSpawner:
 				return {Icon::Down, IM_COL32(90, 170, 240, 255)};
 			case Tool::Smoke:
@@ -6519,7 +6533,7 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
-				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury});
+				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo});
 				ImGui::SeparatorText("Water that keeps coming");
 				ToolButtons({Tool::WaterSpawner});
 				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");
