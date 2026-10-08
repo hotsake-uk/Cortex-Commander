@@ -2159,8 +2159,12 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			int highest = floorY; // The top of the highest thing between, as the first air over it.
 			int room = PathNode::c_ClearanceReach;
 			bool passable = true;
-			int fromX = static_cast<int>(std::min(node->Pos.m_X, target->Pos.m_X));
-			int toX = static_cast<int>(std::max(node->Pos.m_X, target->Pos.m_X));
+			// The span between the two, measured the short way: at the X seam of a wrapping scene the Right of the last column is column 0, and
+			// the min and max of the two positions spanned half the scene (tens of millions of pixel reads per rebuild, and no step-over there
+			// as soon as a wall stood anywhere along it). TerrNav wraps the columns that run past the edge.
+			int span = static_cast<int>(std::abs(g_SceneMan.ShortestDistance(node->Pos, target->Pos).m_X));
+			int fromX = static_cast<int>(node->Pos.m_X) - (leftward ? span : 0);
+			int toX = fromX + span;
 			for (int x = fromX + 2; x < toX - 1 && passable; x += 2) {
 				// The top of what stands here: the last solid pixel under a clear run of 8. (Not the first air going up: bunker blocks have
 				// pockets of air in their material, and a 24 px metal block read as having 1 px of room over it, from inside itself.)
