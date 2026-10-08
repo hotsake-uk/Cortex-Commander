@@ -477,7 +477,8 @@ namespace {
 	float s_PlayHintSeconds = 0.0F; //!< How much longer the reminder of the keys shows after stepping into the character.
 	bool s_Flying = false;
 	int s_KitKeyPending = -1; //!< A kit number pressed last update, taken out this one (after the game's own weapon keys have had their say).
-	const Activity* s_GodActivity = nullptr; //!< The Sandbox game the window was last set up for.
+	bool s_GodViewSetUp = false; //!< Whether the god view's window and camera are set up for the Sandbox game under way.
+	bool s_GodViewPending = false; //!< A game has started since (see Sandbox::OnActivityStarted): set them up afresh.
 	constexpr unsigned int c_RandomSeed = 0x5A17B0Bu;
 	unsigned int s_Random = c_RandomSeed;
 	SoundContainer* s_Thunder = nullptr; //!< Never deleted: it would outlive the audio system at exit.
@@ -5608,8 +5609,9 @@ bool Sandbox::CapturesWorldClicks() {
 void Sandbox::DrawGUI() {
 	// A new Sandbox game opens the god view: the window and the free camera.
 	if (IsGodMode()) {
-		if (s_GodActivity != g_ActivityMan.GetActivity()) {
-			s_GodActivity = g_ActivityMan.GetActivity();
+		if (s_GodViewPending || !s_GodViewSetUp) {
+			s_GodViewPending = false;
+			s_GodViewSetUp = true;
 			// Automated test runs set CCCP_HIDE_PANELS, so the window (wherever the player last left it) doesn't cover what they capture.
 			s_Open = std::getenv("CCCP_HIDE_PANELS") == nullptr;
 			s_FreeCamera = true;
@@ -5629,11 +5631,11 @@ void Sandbox::DrawGUI() {
 			s_ToolIndex = ToolIndex(Tool::Unit);
 		}
 	} else {
-		if (s_GodActivity) {
+		if (s_GodViewSetUp) {
 			// Left the sandbox: its pictures aren't needed until it's next opened.
 			ForgetPictures();
 		}
-		s_GodActivity = nullptr;
+		s_GodViewSetUp = false;
 	}
 	if (GameActivity* game = CurrentGame(); s_Open && game && game->IsFreeBuildMode()) {
 		game->SetFreeBuildMode(false);
@@ -6201,35 +6203,40 @@ void Sandbox::DrawGUI() {
 	g_DebugMan.EndPanel();
 }
 
-void Sandbox::Update() {
-	static const Activity* lastActivity = nullptr;
-	if (g_ActivityMan.GetActivity() != lastActivity) {
-		lastActivity = g_ActivityMan.GetActivity();
-		Controller::SetAIPaused(false);
-		Colony::Clear();
-		// A new game: nothing is left pouring or on its way in from the last one.
-		s_WaterSpawners.clear();
-		s_Incoming.clear();
-		s_Effects.clear();
-		// The same random stream from the start of every game, so the same inputs give the same game.
-		s_Random = c_RandomSeed;
-		// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
-		// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
-		s_Possessed = nullptr;
-		s_PlayerUnit = UnitRef();
-		s_PlayerEnterPending = 0;
-		s_Flying = false;
-		s_StepsWanted = 0;
-		s_RallySet.fill(false);
-		s_Selected.clear();
-		for (std::vector<UnitRef>& group: s_Groups) {
-			group.clear();
-		}
-		s_OrderMarks.clear();
-		s_FollowTarget = UnitRef();
-		s_AutoRunning = false;
-		s_AutoWinner = -2;
+void Sandbox::OnActivityStarted() {
+	// (Called by ActivityMan::StartActivity for every game started, loaded or restarted, before its own start-up runs. A new game used to be
+	// told by the activity's address changing, in two places, which a new game allocated where the last one was would not have changed.)
+	Controller::SetAIPaused(false);
+	Colony::Clear();
+	// A new game: nothing is left pouring or on its way in from the last one.
+	s_WaterSpawners.clear();
+	s_Incoming.clear();
+	s_Effects.clear();
+	// The same random stream from the start of every game, so the same inputs give the same game.
+	s_Random = c_RandomSeed;
+	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
+	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
+	s_Possessed = nullptr;
+	s_PlayerUnit = UnitRef();
+	s_PlayerEnterPending = 0;
+	s_Flying = false;
+	s_StepsWanted = 0;
+	s_RallySet.fill(false);
+	s_Selected.clear();
+	for (std::vector<UnitRef>& group: s_Groups) {
+		group.clear();
 	}
+	s_OrderMarks.clear();
+	s_FollowTarget = UnitRef();
+	s_AutoRunning = false;
+	s_AutoWinner = -2;
+	s_PendingOrders.clear();
+	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
+	s_Queue.clear();
+	s_GodViewPending = true;
+}
+
+void Sandbox::Update() {
 	std::vector<Stroke> strokes;
 	strokes.swap(s_Queue);
 	if (!InGame()) {

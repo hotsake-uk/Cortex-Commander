@@ -59,6 +59,10 @@ namespace RTE {
 		/// Applies what was queued from the window, keeps attacking units on a target and keeps the god view. Call once per sim update, from the main thread, before the fire, liquid and object updates.
 		static void Update();
 
+		/// Forgets the last game's sandbox state (orders, selection, effects, auto battle, colonies, the AI pause) and has the god view set up
+		/// afresh. Called by ActivityMan::StartActivity for every game it starts, before the game's own start-up.
+		static void OnActivityStarted();
+
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
 		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...) or "Orders" to order a whole side.
 		/// @param position Where to use it.
