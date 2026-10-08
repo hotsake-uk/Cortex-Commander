@@ -74,15 +74,26 @@ std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, floa
 		refresh = outOfDate();
 	}
 	if (refresh) {
-		std::unique_lock lock(s_LadderNodesMutex);
-		if (outOfDate()) {
-			s_LadderNodesSimTimeMS = now;
-			s_LadderNodes.clear();
+		// The one that claims the refresh walks the particles outside the lock, and the rest go on with the nodes as they were meanwhile (they
+		// waited on the walk before: a millisecond in a big battle). Pinned first, as most particles aren't, then the name.
+		bool claimed = false;
+		{
+			std::unique_lock lock(s_LadderNodesMutex);
+			if (outOfDate()) {
+				s_LadderNodesSimTimeMS = now;
+				claimed = true;
+			}
+		}
+		if (claimed) {
+			static const std::string c_LadderNodeName = "Background Ladder Node";
+			std::vector<Vector> nodes;
 			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
-				if (particle && particle->GetPresetName() == "Background Ladder Node" && particle->GetPinStrength() > 0.0F) {
-					s_LadderNodes.push_back(particle->GetPos());
+				if (particle && particle->GetPinStrength() > 0.0F && particle->GetPresetName() == c_LadderNodeName) {
+					nodes.push_back(particle->GetPos());
 				}
 			}
+			std::unique_lock lock(s_LadderNodesMutex);
+			s_LadderNodes.swap(nodes);
 		}
 	}
 	std::shared_lock lock(s_LadderNodesMutex);
