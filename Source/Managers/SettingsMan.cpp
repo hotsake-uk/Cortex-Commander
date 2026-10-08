@@ -1,6 +1,10 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
@@ -52,6 +56,52 @@ namespace {
 
 const std::string SettingsMan::c_ClassName = "SettingsMan";
 
+const char* SettingsMan::DebugChannelName(DebugChannel channel) {
+	static const char* const names[] = {"AI", "Path", "Pilot", "Climb", "Combat", "Squad", "Sandbox", "Perf", "Grid"};
+	static_assert(std::size(names) == static_cast<size_t>(DebugChannel::Count));
+	return channel < DebugChannel::Count ? names[static_cast<int>(channel)] : "";
+}
+
+SettingsMan::DebugChannel SettingsMan::DebugChannelFromName(const std::string& name) {
+	for (int i = 0; i < static_cast<int>(DebugChannel::Count); ++i) {
+		const char* channelName = DebugChannelName(static_cast<DebugChannel>(i));
+		if (name.size() == std::strlen(channelName) && std::equal(name.begin(), name.end(), channelName, [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+			return static_cast<DebugChannel>(i);
+		}
+	}
+	return DebugChannel::Count;
+}
+
+bool SettingsMan::DebugChannelOn(DebugChannel channel) const {
+	// The environment variables the test harness (Gym.ps1 and friends) sets, read once: they switch channels on for the run whatever the settings say.
+	static const unsigned s_FromEnvironment = []() {
+		unsigned bits = 0;
+		auto set = [&bits](DebugChannel which) { bits |= 1u << static_cast<int>(which); };
+		if (std::getenv("CCCP_AI_LOG")) {
+			for (DebugChannel which: {DebugChannel::AI, DebugChannel::Pilot, DebugChannel::Climb, DebugChannel::Combat, DebugChannel::Squad}) {
+				set(which);
+			}
+		}
+		if (std::getenv("CCCP_PATH_LOG")) {
+			set(DebugChannel::Path);
+			set(DebugChannel::Grid);
+		}
+		if (std::getenv("CCCP_SANDBOX_LOG")) {
+			set(DebugChannel::Sandbox);
+		}
+		if (std::getenv("CCCP_PERF_LOG")) {
+			set(DebugChannel::Perf);
+		}
+		return bits;
+	}();
+	return ((m_DebugChannels | s_FromEnvironment) >> static_cast<int>(channel)) & 1;
+}
+
+bool SettingsMan::TraceAllUnits() const {
+	static const bool s_AllFromEnvironment = []() { const char* log = std::getenv("CCCP_AI_LOG"); return log && std::string(log) == "all"; }();
+	return m_TraceAllUnits || s_AllFromEnvironment;
+}
+
 void SettingsMan::Clear() {
 	m_SettingsPath = System::GetUserdataDirectory() + "Settings.ini";
 	m_SettingsNeedOverwrite = false;
@@ -67,6 +117,8 @@ void SettingsMan::Clear() {
 	m_EnableMantling = true;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
+	m_DebugChannels = 0;
+	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
@@ -333,6 +385,8 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
+	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
+	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
@@ -664,6 +718,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
+	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
+	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);

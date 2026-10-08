@@ -1,4 +1,5 @@
 #include "PathFinder.h"
+#include "SettingsMan.h"
 #include <algorithm>
 #include "PrimitiveMan.h"
 #include "Color.h"
@@ -341,8 +342,8 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		}
 	}
 
-	if (std::getenv("CCCP_PATH_LOG")) {
-		// Debug: the cost of each step along the found path, so the grid's view of the terrain can be checked against the scene.
+	if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Path)) {
+		// Debug (the Path channel): the cost of each step along the found path, so the grid's view of the terrain can be checked against the scene.
 		std::string line = "PATHLOG " + std::to_string(static_cast<int>(start.m_X)) + "," + std::to_string(static_cast<int>(start.m_Y)) + " -> " + std::to_string(static_cast<int>(end.m_X)) + "," + std::to_string(static_cast<int>(end.m_Y)) + " dig " + std::to_string(static_cast<int>(digStrength)) + " result " + std::to_string(result) + " cost " + std::to_string(totalCostResult) + " in " + std::to_string(static_cast<int>(s_LastSolveMS)) + " ms:";
 		for (size_t i = 0; i + 1 < statePath.size(); ++i) {
 			std::vector<micropather::StateCost> adjacent;

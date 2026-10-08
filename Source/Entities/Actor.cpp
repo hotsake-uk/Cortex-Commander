@@ -1212,14 +1212,8 @@ void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
 	}
 }
 
-bool Actor::IsAITraced() const {
-	// (Read once: the environment doesn't change while the game runs.)
-	static const char* s_Log = std::getenv("CCCP_AI_LOG");
-	if (!s_Log) {
-		return false;
-	}
-	static const bool s_All = std::string(s_Log) == "all";
-	return s_All || IsDebugInspected();
+bool Actor::IsAITraced(SettingsMan::DebugChannel channel) const {
+	return g_SettingsMan.DebugChannelOn(channel) && (g_SettingsMan.TraceAllUnits() || IsDebugInspected());
 }
 
 void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds) {
