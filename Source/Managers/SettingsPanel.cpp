@@ -494,6 +494,13 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow).");
 		}
+		{
+			int team = g_SettingsMan.DebugTeam();
+			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
+				g_SettingsMan.SetDebugTeam(team);
+			}
+			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
+		}
 		Heading("HUD");
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");

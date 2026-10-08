@@ -863,6 +863,7 @@
     <ClInclude Include="Source\Managers\TerrainCollapse.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
+    <ClInclude Include="Source\Managers\DebugDraw.h" />
     <ClInclude Include="Source\Managers\SmokeGrid.h" />
     <ClInclude Include="Source\Managers\ActorFire.h" />
     <ClInclude Include="Source\Managers\ActorWater.h" />

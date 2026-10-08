@@ -2548,11 +2548,11 @@ void Scene::Update() {
 
 	m_PathfindingUpdated = false;
 
-	// The navigation debug overlay (SettingsMan::NavDebugOverlay): the grid in the first screen's view, as the first team sees it.
+	// The navigation debug overlay (SettingsMan::NavDebugOverlay): the grid in the first screen's view, as the debug team (SettingsMan::DebugTeam) sees it.
 	if (g_SettingsMan.NavDebugOverlay() > 0 && g_ActivityMan.ActivityRunning()) {
 		Vector corner = g_CameraMan.GetOffset(0);
 		Box view(corner, static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), static_cast<float>(g_FrameMan.GetPlayerScreenHeight()));
-		GetPathFinder(Activity::Teams::TeamOne).DrawDebug(view);
+		GetPathFinder(static_cast<Activity::Teams>(g_SettingsMan.DebugTeam())).DrawDebug(view);
 	}
 
 	if (m_pTerrain) {
