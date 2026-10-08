@@ -437,27 +437,6 @@ void PostProcessMan::Destroy() {
 	Clear();
 }
 
-void PostProcessMan::AdjustEffectsPosToPlayerScreen(int playerScreen, BITMAP* targetBitmap, const Vector& targetBitmapOffset, std::list<PostEffect>& screenRelativeEffectsList, std::list<Box>& screenRelativeGlowBoxesList) {
-	int screenOcclusionOffsetX = g_CameraMan.GetScreenOcclusion(playerScreen).GetFloorIntX();
-	int screenOcclusionOffsetY = g_CameraMan.GetScreenOcclusion(playerScreen).GetFloorIntY();
-	int occludedOffsetX = targetBitmap->w + screenOcclusionOffsetX;
-	int occludedOffsetY = targetBitmap->h + screenOcclusionOffsetY;
-
-	// Adjust for the player screen's position on the final buffer
-	for (const PostEffect& postEffect: screenRelativeEffectsList) {
-		// Make sure we won't be adding any effects to a part of the screen that is occluded by menus and such
-		if (postEffect.m_Pos.GetFloorIntX() > screenOcclusionOffsetX && postEffect.m_Pos.GetFloorIntY() > screenOcclusionOffsetY && postEffect.m_Pos.GetFloorIntX() < occludedOffsetX && postEffect.m_Pos.GetFloorIntY() < occludedOffsetY) {
-			m_PostScreenEffects.emplace_back(postEffect.m_Pos, postEffect.m_Bitmap, postEffect.m_BitmapHash, postEffect.m_Strength, postEffect.m_Angle, postEffect.m_NoLight);
-		}
-	}
-	// Adjust glow areas for the player screen's position on the final buffer
-	for (const Box& glowBox: screenRelativeGlowBoxesList) {
-		m_PostScreenGlowBoxes.push_back(glowBox);
-		// Adjust each added glow area for the player screen's position on the final buffer
-		m_PostScreenGlowBoxes.back().m_Corner += targetBitmapOffset;
-	}
-}
-
 void PostProcessMan::RegisterPostEffect(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength, float angle) {
 	// These effects get applied when there's a drawn frame that followed one or more sim updates.
 	// They are not only registered on drawn sim updates; flashes and stuff could be missed otherwise if they occur on undrawn sim updates.
@@ -632,87 +611,12 @@ void PostProcessMan::PostProcess() {
 	}
 	g_RenderMan.UpdatePaletteAnimation(GetEffectTime(), m_LightingSettings.PaletteAnimation, m_LightingSettings.PaletteAnimationStrength);
 
-	// First copy the current 8bpp backbuffer to the 32bpp buffer; we'll add effects to it
+	// Copy the current 8bpp backbuffer to the 32bpp buffer.
 	m_PostProcessFramebuffer->Begin(true);
 	g_RenderMan.BeginFrame(nullptr);
 	Draw::DrawTexture(g_FrameMan.GetBackBuffer()->GetColorTexture().lock().get(), {-1.0f, -1.0f, 2.0f, 2.0f})->m_Indexed = false;
 	m_PostProcessFramebuffer->End();
-
-	// Set the screen blender mode for glows
-	m_PostProcessFramebuffer->Begin(false, false);
-
-	g_RenderMan.BeginFrame(nullptr);
-	g_RenderMan.SetActiveBlendMode(Blend::SCREEN);
-
-	DrawDotGlowEffects();
-	DrawPostScreenEffects();
-
-	// Clear the effects list for this frame
+	// Glows are drawn once, as emitted light in the scene lighting (SceneLighting::LightPlayerScreen). The old second pass that screened them over the
+	// finished frame, HUD and all, is gone.
 	m_PostScreenEffects.clear();
-	m_PostProcessFramebuffer->End();
-}
-
-void PostProcessMan::DrawDotGlowEffects() {
-	int startX = 0;
-	int startY = 0;
-	int endX = 0;
-	int endY = 0;
-	int testpixel = 0;
-
-	// Randomly sample the entire backbuffer, looking for pixels to put a glow on.
-	for (const Box& glowBox: m_PostScreenGlowBoxes) {
-		startX = glowBox.m_Corner.GetFloorIntX();
-		startY = glowBox.m_Corner.GetFloorIntY();
-		endX = startX + static_cast<int>(glowBox.m_Width);
-		endY = startY + static_cast<int>(glowBox.m_Height);
-
-		// Sanity check a little at least
-		if (startX < 0 || startX >= g_FrameMan.GetBackBuffer8()->w || startY < 0 || startY >= g_FrameMan.GetBackBuffer8()->h ||
-		    endX < 0 || endX >= g_FrameMan.GetBackBuffer8()->w || endY < 0 || endY >= g_FrameMan.GetBackBuffer8()->h) {
-			continue;
-		}
-
-#ifdef DEBUG_BUILD
-		// Draw a rectangle around the glow box so we see it's position and size
-		rect(g_FrameMan.GetBackBuffer32(), startX, startY, endX, endY, g_RedColor);
-#endif
-
-		for (int y = startY; y < endY; ++y) {
-			for (int x = startX; x < endX; ++x) {
-				testpixel = _getpixel(g_FrameMan.GetBackBuffer8(), x, y);
-
-				// YELLOW
-				if ((testpixel == g_YellowGlowColor && RandomNum() < 0.9F) || testpixel == 98 || (testpixel == 120 && RandomNum() < 0.7F)) {
-					Draw::DrawTexture(m_YellowGlow.get(),  std::floor(x -m_YellowGlow->GetDimensions().w / 2.0f), std::floor(y - m_YellowGlow->GetDimensions().h / 2.0f));
-				}
-				// TODO: Enable and add more colors once we actually have something that needs these.
-				// RED
-				/*
-				if (testpixel == 13) {
-				    draw_trans_sprite(m_BackBuffer32, m_RedGlow, x - 2, y - 2);
-				}
-				// BLUE
-				if (testpixel == 166) {
-				    draw_trans_sprite(g_FrameMan.GetBackBuffer32(), m_BlueGlow, x - 2, y - 2);
-				}
-				*/
-			}
-		}
-	}
-}
-
-void PostProcessMan::DrawPostScreenEffects() {
-	int effectPosX = 0;
-	int effectPosY = 0;
-	unsigned char effectStrength = 0;
-
-	for (const PostEffect& postEffect: m_PostScreenEffects) {
-		if (postEffect.m_Bitmap) {
-			effectStrength = postEffect.m_Strength;
-			effectPosX = postEffect.m_Pos.GetFloorIntX();
-			effectPosY = postEffect.m_Pos.GetFloorIntY();
-			glm::vec2 effectDims(postEffect.m_Bitmap->GetDimensions().w, postEffect.m_Bitmap->GetDimensions().h);
-			Draw::DrawTexture(postEffect.m_Bitmap.get(), glm::vec2(effectPosX, effectPosY), -effectDims / 2.0F, -postEffect.m_Angle, glm::vec2(1.0F), {effectStrength, effectStrength, effectStrength, 255})->m_Indexed = false;
-		}
-	}
 }
