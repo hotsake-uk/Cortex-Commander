@@ -778,40 +778,6 @@ namespace {
 		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor);
 	}
 
-	/// Enemies a unit sent at the nearest one gave up on (no way to them): the unit's unique ID to the enemy's and when, so the next pick is
-	/// another for a while, not the same one again every second.
-	std::unordered_map<long, std::pair<long, double>> s_GaveUpOn;
-	constexpr double c_GaveUpOnMS = 20000.0;
-
-	/// The nearest enemy to send a unit told to attack at: not craft (a ship overhead is no place to walk to), and a brain only when nothing
-	/// else is left (one in a sealed bunker drew every unit to the bunker's wall), nor one the unit lately had no way to.
-	Actor* NearestEnemy(const Actor* of) {
-		long gaveUpOn = 0;
-		if (auto it = s_GaveUpOn.find(static_cast<long>(of->GetUniqueID())); it != s_GaveUpOn.end()) {
-			if (g_TimerMan.GetSimTimeMS() - it->second.second < c_GaveUpOnMS) {
-				gaveUpOn = it->second.first;
-			} else {
-				s_GaveUpOn.erase(it);
-			}
-		}
-		Actor* nearest = nullptr;
-		float nearestDistance = 0.0F;
-		bool nearestIsBrain = false;
-		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor == of || !IsCombatant(actor) || actor->GetTeam() == of->GetTeam() || actor->IsIgnoredByAI() || dynamic_cast<const ACraft*>(actor) || (gaveUpOn != 0 && static_cast<long>(actor->GetUniqueID()) == gaveUpOn)) {
-				continue;
-			}
-			bool brain = actor->IsInGroup("Brains");
-			float distance = g_SceneMan.ShortestDistance(of->GetPos(), actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-			if (!nearest || (nearestIsBrain && !brain) || (brain == nearestIsBrain && distance < nearestDistance)) {
-				nearest = actor;
-				nearestDistance = distance;
-				nearestIsBrain = brain;
-			}
-		}
-		return nearest;
-	}
-
 	/// The actor (or, failing that, loose item) closest to a point, within reach.
 	MovableObject* ObjectUnder(const Vector& position, bool actorsOnly) {
 		MovableObject* found = nullptr;
@@ -852,7 +818,7 @@ namespace {
 	/// Why and when a unit was last sent somewhere, for the sandbox orders overlay: kept by unique ID, the dead pruned when the list grows.
 	struct SendNote {
 		const char* Reason = "";
-		bool Resend = false; //!< Sent again by the standing orders (ReturnDefenders, RetargetAttackers), not by anyone's click.
+		bool Resend = false; //!< Sent again by the standing orders (ReturnDefenders), not by anyone's click.
 		long long At = 0; //!< The sim update it was sent on.
 	};
 	std::unordered_map<long, SendNote> s_SendNotes;
@@ -902,42 +868,6 @@ namespace {
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 	}
 
-	Actor* ActorWithID(long id) {
-		if (id == 0) {
-			return nullptr;
-		}
-		for (Actor* actor: SandboxAccess::Actors()) {
-			if (static_cast<long>(actor->GetUniqueID()) == id) {
-				return actor;
-			}
-		}
-		return nullptr;
-	}
-
-	/// The nearest enemy of a side to a point within a reach, or none: a brain there only when nothing else of the enemy's is, as NearestEnemy.
-	/// (Brains were left out altogether, so an attack ordered on an enemy brain's bunker walked up to it and stood there.)
-	Actor* NearestEnemyTo(const Vector& point, int team, float reach) {
-		Actor* nearest = nullptr;
-		float best = reach * reach;
-		bool nearestIsBrain = false;
-		for (Actor* actor: SandboxAccess::Actors()) {
-			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team) {
-				continue;
-			}
-			bool brain = actor->IsInGroup("Brains");
-			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-			if (distance >= reach * reach) {
-				continue;
-			}
-			if (!nearest || (nearestIsBrain && !brain) || (brain == nearestIsBrain && distance < best)) {
-				best = distance;
-				nearest = actor;
-				nearestIsBrain = brain;
-			}
-		}
-		return nearest;
-	}
-
 	void ApplyPendingOrders() {
 		std::vector<PendingOrder> orders;
 		orders.swap(s_PendingOrders);
@@ -979,17 +909,12 @@ namespace {
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return RefersTo(pending.Unit, actor); }), s_PendingOrders.end());
 		switch (order) {
 			case Order::Attack:
-				// The nearest enemy is where it is sent, not one it has to keep after: on the way the AI fights whatever it meets, and the
-				// unit is only sent again when it has nothing to go for. (Held to the pick, as it was, the unit was pulled back to it every
-				// second from whatever it had stopped to fight, which ended that fight each time.)
-				if (Actor* enemy = NearestEnemy(actor)) {
-					SendUnit(actor, enemy->GetPos(), enemy, true, "attack order");
-					actor->SetOrderAutoTargetID(static_cast<long>(enemy->GetUniqueID()));
-				} else {
-					actor->SetOrderAttack(true);
-					actor->ClearAIWaypoints();
-					actor->SetAIMode(Actor::AIMODE_SENTRY);
-				}
+				// Which enemy to go for is the unit's AI's to pick (SharedBehaviors.AttackOrderUpdate): the nearest it has a route to, on its
+				// next update, and again whenever it has nothing left to go for. It fights whatever it meets on the way, and is never pulled out
+				// of a fight to be re-sent from here, as the sandbox's once-a-second retarget pass did.
+				s_SendNotes[actor->GetUniqueID()] = {"attack order", false, g_TimerMan.GetSimUpdateCount()};
+				actor->SetOrderAttack(true);
+				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
 			case Order::HuntBrains:
 				actor->SetAIMode(Actor::AIMODE_BRAINHUNT);
@@ -1044,57 +969,6 @@ namespace {
 	}
 
 	/// Units told to attack get a new target when theirs is gone, and go on guard when no enemies are left.
-	void RetargetAttackers() {
-		for (Actor* actor: SandboxAccess::Actors()) {
-			// (A unit falling back hurt or working round a flank is left to it; the AI puts its order back after.)
-			if (!actor->GetOrderAttack() || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire") || actor->NumberValueExists("AIRetreat") || actor->NumberValueExists("AIFlank")) {
-				continue;
-			}
-			// (Nor one with an order about to take: between being sent and the order taking it is after nothing.)
-			if (std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& order) { return RefersTo(order.Unit, actor); })) {
-				continue;
-			}
-			const MovableObject* target = actor->GetMOMoveTarget();
-			const Actor* targetActor = target && g_MovableMan.ValidMO(target) ? dynamic_cast<const Actor*>(target) : nullptr;
-			// (Any enemy: the one it was sent at, or one the AI went after itself, in whatever mode its attack runs.)
-			bool chasingEnemy = targetActor && IsCombatant(targetActor) && targetActor->GetTeam() != actor->GetTeam();
-			// An enemy chosen for it is kept after while it lives, whatever else is about.
-			if (Actor* chosen = ActorWithID(actor->GetOrderTargetID()); chosen && IsCombatant(chosen) && chosen->GetTeam() != actor->GetTeam()) {
-				if (!chasingEnemy || targetActor != chosen) {
-					// (SendUnit keeps an attack's place.)
-					SendUnit(actor, chosen->GetPos(), chosen, true, "after its target", true, true);
-				}
-				continue;
-			}
-			actor->SetOrderTargetID(0);
-			if (chasingEnemy) {
-				continue;
-			}
-			// Told to attack towards a place: the nearest enemy to it, else go there and stand ready.
-			if (actor->GetOrderHasAttackPlace()) {
-				Vector place = actor->GetOrderAttackPlace();
-				if (Actor* enemy = NearestEnemyTo(place, actor->GetTeam(), 500.0F)) {
-					SendUnit(actor, enemy->GetPos(), enemy, true, "enemy near its place", false, true);
-				} else if (!g_SceneMan.ShortestDistance(actor->GetPos(), place, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(60.0F) && actor->GetAIMode() != Actor::AIMODE_GOTO) {
-					SendUnit(actor, place, nullptr, true, "back to its place", false, true);
-				} else {
-					continue;
-				}
-				actor->SetOrderAttackPlace(place);
-				continue;
-			}
-			// Not after anything: the enemy picked for it last time, still there, is one it had no way to (its route came back impossible and
-			// the order was dropped), so it is given a rest from that one.
-			// (Only with no waypoint left: an order applied this same update has its MO waypoint queued but not yet loaded as the move
-			// target, so a unit just sent reads as after nothing. A stand-down on an impossible route clears the waypoints, whatever the
-			// mode is left at.)
-			if (Actor* picked = ActorWithID(actor->GetOrderAutoTargetID()); picked && IsCombatant(picked) && actor->GetWaypointsSize() == 0) {
-				s_GaveUpOn[static_cast<long>(actor->GetUniqueID())] = {static_cast<long>(picked->GetUniqueID()), g_TimerMan.GetSimTimeMS()};
-			}
-			GiveOrder(actor, Order::Attack);
-		}
-	}
-
 	void ActivateSide(int team) {
 		if (Activity* activity = g_ActivityMan.GetActivity(); activity && team >= 0 && team < c_Sides) {
 			activity->ForceSetTeamAsActive(team);
@@ -6730,11 +6604,11 @@ void Sandbox::Update() {
 	for (const WaterSpawner& spawner: s_WaterSpawners) {
 		FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), "Water");
 	}
-	// With the AI paused, the sandbox's own passes wait too: they re-sent attackers and walked defenders home once a second, and auto battle
-	// kept dropping waves, all on units held still. (Its wave clocks are held back as well, so the waves don't all come at once after.)
+	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and auto battle kept dropping waves,
+	// all on units held still. (Its wave clocks are held back as well, so the waves don't all come at once after.) Attackers pick their own
+	// enemies in their AI (SharedBehaviors.AttackOrderUpdate), which the pause holds as it is.
 	const bool aiPaused = Controller::IsAIPaused();
 	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 60 == 0) {
-		RetargetAttackers();
 		ReturnDefenders();
 	}
 	GymUpdate();

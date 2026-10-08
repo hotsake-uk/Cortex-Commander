@@ -127,6 +127,9 @@ function NativeCrabAI:Update(Owner)
 		self.NextBehavior = nil;
 	end
 
+	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
+	SharedBehaviors.AttackOrderUpdate(self, Owner);
+
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or told to go somewhere while the behaviour left over from arriving is still running: see NativeHumanAI.)
 	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and self.BehaviorName ~= "GoToRoute" and self.NextBehaviorName ~= "GoToRoute" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
