@@ -102,6 +102,7 @@ namespace RTE {
 		LightingSettings& m_Settings;
 
 		const void* m_WorldScene = nullptr; //!< The scene the world grid was built for.
+		unsigned int m_WorldSceneGeneration = 0; //!< The scene load generation the world grid was built for. A new scene can be allocated where the old one was, so the pointer alone can't tell.
 		const void* m_WorldMaterialBitmap = nullptr; //!< The terrain material bitmap the world grid was built from.
 		int m_SceneWidth = 0;
 		int m_SceneHeight = 0;

@@ -233,6 +233,12 @@ namespace RTE {
 		/// @param duration How long marks stay hot, in seconds.
 		const std::vector<ScorchMark>& GetHotScorchMarks(float duration);
 
+		/// Forgets the recent scorch marks, so the last scene's don't glow in a new one.
+		void ClearHotScorchMarks() {
+			std::scoped_lock lock(m_ShockwaveMutex);
+			m_HotScorchMarks.clear();
+		}
+
 		/// Gets the current simulation time in seconds, including the fraction of the current sim update, for smooth time based effects that pause and slow down with the game.
 		static float GetSmoothSimTime();
 
