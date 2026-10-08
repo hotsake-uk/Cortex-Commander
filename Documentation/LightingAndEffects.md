@@ -89,6 +89,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **Shimmer:** any object can bend the scene around it in a wobbling ring, for energy shields, cloaks and hot things: `Shimmer = 1` in INI, `object.Shimmer = 1` from Lua, or `PostProcessMan:AddShimmer(pos, radius, strength)` each update. Needs Distortion on.
 - **Depth** (`BackgroundBlur`, 0.6): the far background layers are softened a little, more the further away they are.
 - **Looks:** ready-made grades in the Graphics Lab and Photo Mode (F8): Natural, Gritty, Vivid, Noir. They set saturation, contrast, tints, vignette, grain and bloom, which can then be adjusted as before. Lua: `PostProcessMan:ApplyLook(0..3)`.
+- **Looks that answer events** (`EventLooks`, on; `EventLookStrength`, 1, 0–2): the grade flashes washed-out and warm with a huge blast (when the hit-stop would fire), drains, reddens its shadows and closes in at the edges as your unit drops below 40% health (fully below 12%, with a faint heartbeat), and warms by burning ground near the middle of the screen. Events push the grade by how far their look is from Natural, so they show over any grade. Off: the grade stays as set. Lua: `PostProcessMan:PulseGrade(look, strength, attackMs, releaseMs)` pushes towards a look for a moment (looks 0–3 as above, 4 hurt, 5 flash, 6 warm; strength up to 2); `PostProcessMan:BlendLook(from, to, t)` crossfades between two looks in place of the player's grade (never saved) until `PostProcessMan:ClearLookBlend()` or the next activity.
 
 **Spreading fire** (`TerrainFire` in the gameplay settings, also in F6):
 - **What lights it:** explosions and fire, flame and napalm particles light flammable terrain.
@@ -289,6 +290,7 @@ Press **F8** for **Photo Mode**:
 | `GradeTemperature` / `GradeTint` / `GradeContrast` | 0 / 0 / 1 | White balance and contrast. |
 | `GradeShadowTint` / `GradeHighlightTint` | 1 1 1 / 1 1 1 | Split toning. |
 | `FilmGrain` / `ChromaticAberration` | 0 / 0 | Film grain (0–1) and lens fringing (pixels). |
+| `EventLooks` / `EventLookStrength` | 1 / 1 | The grade answers blasts, a badly hurt unit and nearby fire (see "Looks that answer events"); strength 0–2. Off: the grade stays as set. |
 | `ModShaders` / `ModShaderStrength` | 1 / 1 | Mods' own object shaders and post passes (see "Mod shaders" below). Off draws everything with the game's shaders. The strength (0–1) is handed to mods' shaders as `rteStrength`. |
 | `DepthOfField` / `DepthOfFieldFocus` / `DepthOfFieldStrength` | 0 / 0 / 1 | Lens blur by distance from the focus (0 the battlefield, 1 the furthest background); strength 0–2. |
 | `TiltShift` / `TiltShiftLine` / `TiltShiftStrength` | 0 / 0.5 / 1 | Blurs the top and bottom of the screen around a sharp band (0 top to 1 bottom), for a diorama look; strength 0–2. |

@@ -568,6 +568,11 @@ void DebugMan::SettingsGUI() {
 		Slider("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 		Slider("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 		Slider("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
+		Check("Grade answers events", &settings.EventLooks);
+		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
+		if (settings.EventLooks) {
+			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
 		Tip("Lets mods draw their objects with their own shaders (a cloaking field, a hologram) and give a scene or activity its own screen effect (a scanner overlay, a sandstorm filter). Off: everything is drawn with the game's own shaders.");

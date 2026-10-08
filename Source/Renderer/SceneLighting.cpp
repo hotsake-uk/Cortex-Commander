@@ -1825,10 +1825,15 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		TerrainFire::GetBurning(origin, width, height, burning);
 		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
 		float time = PostProcessMan::GetEffectTime();
+		// How much fire burns around the middle of the screen, where the player's unit usually is, for the grade to warm by (LightingSettings::EventLooks).
+		float warmth = 0.0F;
+		float warmthReach = 0.5F * static_cast<float>(std::max(std::min(width, height), 1));
 		for (const glm::vec3& pixel: burning) {
 			glm::vec2 position(pixel.x, pixel.y);
 			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F)) + std::floor(time * 14.0F) * 3.1F) * 43758.5453F);
 			float heat = pixel.z;
+			float nearMiddle = std::max(1.0F - glm::length(position - screenSize * 0.5F) / warmthReach, 0.0F);
+			warmth += heat * nearMiddle * nearMiddle;
 			glm::vec3 color = glm::mix(glm::vec3(0.9F, 0.25F, 0.03F), glm::vec3(1.0F, 0.85F, 0.35F), std::clamp(heat * 0.7F + noise * 0.5F, 0.0F, 1.0F)) * (0.7F + 0.6F * noise);
 			if (fireShader) {
 				// The burning pixel itself glows, dimmer; its flame comes from its cell of the fire front (24 px of the scene, so cells stay put as the camera moves).
@@ -1855,6 +1860,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				EffectsParticles::SpawnEmber(Vector(position.x + origin.x, position.y + origin.y - 2.0F));
 			}
 		}
+		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
 	}
 
 	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
@@ -2738,12 +2744,27 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetInt("rteScene", 0);
 	m_TonemapShader->SetInt("rteBloom", 1);
 	m_TonemapShader->SetVector2f("rteScreenSize", screenSize);
-	m_TonemapShader->SetFloat("rteBloomIntensity", m_Settings.BloomEnabled ? m_Settings.BloomIntensity : 0.0F);
+	// The grade: the player's, pushed by what's happening (LightingSettings::EventLooks), in real time so it plays through a hit-stop.
+	double pulseNow = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	LightingSettings::GradeLook grade = m_Settings.CurrentGrade();
+	{
+		float easeSeconds = static_cast<float>(std::clamp(pulseNow - m_EventLookLastTime[screenIndex], 0.0, 0.1));
+		m_EventLookLastTime[screenIndex] = pulseNow;
+		m_ScreenHurt[screenIndex] += (m_ScreenHurtTarget[screenIndex] - m_ScreenHurt[screenIndex]) * (1.0F - std::exp(-easeSeconds * 3.0F));
+		m_ScreenWarmth[screenIndex] += (m_ScreenWarmthTarget[screenIndex] - m_ScreenWarmth[screenIndex]) * (1.0F - std::exp(-easeSeconds * 1.0F));
+		if (m_Settings.EventLooks) {
+			// Badly hurt, the grade drains and closes in, beating faintly like a pulse; by a fire, it warms.
+			float heartbeat = 0.88F + 0.12F * static_cast<float>(std::sin(pulseNow * 6.5));
+			std::vector<std::pair<int, float>> extra = {{LightingSettings::LookHurt, m_ScreenHurt[screenIndex] * heartbeat}, {LightingSettings::LookWarm, m_ScreenWarmth[screenIndex] * 0.8F}};
+			grade = g_PostProcessMan.GetEventGrade(grade, std::clamp(m_Settings.EventLookStrength, 0.0F, 2.0F), extra);
+		}
+	}
+	m_TonemapShader->SetFloat("rteBloomIntensity", m_Settings.BloomEnabled ? grade.BloomIntensity : 0.0F);
 	// With lighting off, the image should be the classic one: no exposure, highlight compression, saturation or vignette (the player's own grade still applies).
 	m_TonemapShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
 	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.Enabled ? m_Settings.ShoulderStart : 1.0F);
-	m_TonemapShader->SetFloat("rteVignette", m_Settings.Enabled ? m_Settings.Vignette : 0.0F);
-	m_TonemapShader->SetFloat("rteSaturation", m_Settings.Enabled ? m_Settings.Saturation : 1.0F);
+	m_TonemapShader->SetFloat("rteVignette", m_Settings.Enabled ? grade.Vignette : 0.0F);
+	m_TonemapShader->SetFloat("rteSaturation", m_Settings.Enabled ? grade.Saturation : 1.0F);
 	m_TonemapShader->SetInt("rteDistortion", 2);
 	m_TonemapShader->SetInt("rteEmissive", 3);
 	m_TonemapShader->SetBool("rteDistortionEnabled", m_Settings.DistortionEnabled);
@@ -2751,14 +2772,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetBool("rteHazeFromHeat", m_Settings.HazeFromHeat);
 	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	m_TonemapShader->SetInt("rteDebugView", m_Settings.DebugView);
-	m_TonemapShader->SetFloat("rteTemperature", m_Settings.Temperature);
-	m_TonemapShader->SetFloat("rteTint", m_Settings.Tint);
-	m_TonemapShader->SetFloat("rteContrast", m_Settings.Contrast);
-	m_TonemapShader->SetVector3f("rteShadowTint", m_Settings.ShadowTint);
-	m_TonemapShader->SetVector3f("rteHighlightTint", m_Settings.HighlightTint);
-	m_TonemapShader->SetFloat("rteFilmGrain", m_Settings.FilmGrain);
+	m_TonemapShader->SetFloat("rteTemperature", grade.Temperature);
+	m_TonemapShader->SetFloat("rteTint", grade.Tint);
+	m_TonemapShader->SetFloat("rteContrast", grade.Contrast);
+	m_TonemapShader->SetVector3f("rteShadowTint", grade.ShadowTint);
+	m_TonemapShader->SetVector3f("rteHighlightTint", grade.HighlightTint);
+	m_TonemapShader->SetFloat("rteFilmGrain", grade.FilmGrain);
 	// The blast pulse fades in real time, so it also fades during the hit-stop that comes with it.
-	double pulseNow = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
 	m_BlastPulse *= std::exp(-static_cast<float>(std::clamp(pulseNow - m_BlastPulseLastTime, 0.0, 0.1)) * 9.0F);
 	m_BlastPulseLastTime = pulseNow;
 	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration + (m_Settings.DistortionEnabled ? m_BlastPulse * 2.2F : 0.0F));
