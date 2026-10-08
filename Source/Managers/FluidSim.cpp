@@ -1084,9 +1084,13 @@ void FluidSim::VisualSplash(const Vector& position, float width, float speed, in
 	}
 	speed = std::min(speed, 24.0F);
 	width = std::clamp(width, 4.0F, 200.0F);
-	Color color;
-	color.SetRGBWithIndex(colorIndex);
-	unsigned int rgb = EffectsParticles::ColorToRGB(color);
+	// The mask colour is no liquid's (it is magenta in the palette): the drops then take the default water colour.
+	unsigned int rgb = 0;
+	if (colorIndex != ColorKeys::g_MaskColor) {
+		Color color;
+		color.SetRGBWithIndex(colorIndex);
+		rgb = EffectsParticles::ColorToRGB(color);
+	}
 	// The spray a little paler than the liquid, as it is against the light.
 	unsigned int mistRGB = 0;
 	if (rgb != 0) {

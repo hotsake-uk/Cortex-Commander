@@ -36,6 +36,8 @@ uniform float rteCloudLayer; // How solid the clouds drawn in the sky are, 0 for
 uniform float rteCloudCover; // How much of the sky is cloud, 0 to 1; 0.5 is the spread the shadows always had.
 uniform float rteCloudStorm; // 0 to 1, how much the clouds are heavy weather clouds, dark underneath.
 uniform float rteCloudPeriod; // Scene width on a wrapping scene with the cloud layer on, so the clouds repeat once around it; 0 otherwise.
+uniform float rteCloudSize; // How big the clouds are, 1 as usual: scales the patches (sky and shadows alike), the puffs and the depth of the band.
+uniform float rteCloudHeight; // How high the cloud band sits, 1 along the top of the view as usual, 0 starting halfway down it.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
@@ -180,7 +182,7 @@ float CloudOctave(float along, float scale, float row) {
 
 // How thick the cloud is over a column of the clouds' x: wide soft patches a few hundred pixels across. The sky's clouds and their shadows both come from this.
 float CloudColumn(float along) {
-	return 0.65 * CloudOctave(along, 420.0, 3.7) + 0.35 * CloudOctave(along, 150.0, 9.1);
+	return 0.65 * CloudOctave(along, 420.0 * rteCloudSize, 3.7) + 0.35 * CloudOctave(along, 150.0 * rteCloudSize, 9.1);
 }
 
 // Where thickness becomes cloud, by how much of the sky is cloud.
@@ -205,17 +207,18 @@ const float c_CloudParallax = 0.25;
 // The clouds in the sky at a pixel, and how much of it they cover. The column over the middle of the screen is the one whose shadow falls on the middle of the screen;
 // away from it, the far-off clouds are drawn smaller than the shadows they cast.
 vec4 SkyCloud(vec2 screenUV, vec3 skyLight) {
-	// The clouds sit in a band across the top of the sky.
-	float band = screenUV.y / 0.42; // Player screens are drawn top down: UV y 0 is the top.
-	if (band >= 1.0) {
+	// The clouds sit in a band across the sky, along the top at the usual height, as deep as they are big.
+	float bandTop = (1.0 - rteCloudHeight) * 0.5;
+	float band = (screenUV.y - bandTop) / min(0.42 * rteCloudSize, 0.85); // Player screens are drawn top down: UV y 0 is the top.
+	if (band < 0.0 || band >= 1.0) {
 		return vec4(0.0);
 	}
 	vec2 middle = rteScreenOrigin + rteScreenSize * 0.5;
 	float along = CloudAlong(middle) + (gl_FragCoord.x - rteScreenSize.x * 0.5) / c_CloudParallax;
-	float row = (gl_FragCoord.y + rteScreenOrigin.y * c_CloudParallax) / 40.0;
+	float row = (gl_FragCoord.y + rteScreenOrigin.y * c_CloudParallax) / (40.0 * rteCloudSize);
 	// Puffy edges, and thinner towards the band's top and bottom.
 	float edge = abs(band * 2.0 - 1.0);
-	float thickness = CloudColumn(along) + 0.22 * (CloudOctave(along, 60.0, row) - 0.5) - 0.3 * edge * edge;
+	float thickness = CloudColumn(along) + 0.22 * (CloudOctave(along, 60.0 * rteCloudSize, row) - 0.5) - 0.3 * edge * edge;
 	float threshold = CloudThreshold();
 	float amount = smoothstep(threshold, threshold + 0.2, thickness);
 	if (amount <= 0.0) {
