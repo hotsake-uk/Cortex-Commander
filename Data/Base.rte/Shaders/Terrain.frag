@@ -36,6 +36,8 @@ uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers light
 uniform float rteWaterFoamGlow; // How much light of its own the froth carries, so it shows in the dark.
 uniform float rteWaterFoam; // How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth. 0 for none.
 uniform float rteWaterRipples; // How much the surface ripples tilt water's normal, for the reflection and the glints on it. 0 for flat (as before).
+uniform sampler2D rteFlowField; // The moving liquid (FluidSim), in the light grid's cells: R sideways speed (0.5 none), G speed, B how lately it moved (1 just now, 0 settled), A whether any moves there.
+uniform float rteFlowSurface; // How much liquid's surface follows how it moves: 0 the slow waves alone (as before), 1 fully.
 uniform vec2 rteWeatherFall; // Which way rain or snow is falling, a unit vector (y down): wind slants it.
 uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in each column, normalized by grid height.
 uniform vec2 rteGridWorldSize;
@@ -140,6 +142,13 @@ bool WeatherReaches(vec2 world) {
 		p += back * (i < 20 ? 1.0 : (i < 40 ? 2.0 : 5.0));
 	}
 	return true;
+}
+
+// The slope of the slow surface waves at a place, for tilting liquid's normal.
+vec2 RippleSlope(vec2 pos) {
+	float phaseX = pos.x * 0.35 + rteTime * 2.3;
+	float phaseY = pos.y * 0.21 - rteTime * 1.7;
+	return vec2(0.35 * cos(phaseX) * sin(phaseY) + 0.055 * cos(pos.x * 0.11 - rteTime * 0.9), 0.21 * sin(phaseX) * cos(phaseY));
 }
 
 // The liquid look of a palette colour, 0 for none.
@@ -292,6 +301,17 @@ void main() {
 					}
 				}
 				float deep = smoothstep(1.0, 7.0, depth);
+				// How the liquid here moves (FluidSim's moving pixels, a light grid cell at a time). Still water goes glassy, moving water ripples harder with
+				// its waves carried downstream, and fast, fresh churn froths.
+				vec4 flow = vec4(128.0 / 255.0, 0.0, 0.0, 0.0);
+				float flowAmount = 0.0;
+				if (rteFlowSurface > 0.0 && lookSurface.z > 0.0) {
+					flow = texture(rteFlowField, worldPos / rteGridWorldSize);
+					flowAmount = min(rteFlowSurface, 1.0);
+				}
+				float moving = flow.a;
+				float sideways = (flow.r * 255.0 - 128.0) / 127.0;
+				float churn = smoothstep(0.3, 0.8, flow.g) * flow.b * moving * flowAmount;
 				float ripple = 0.5 + 0.5 * sin(worldPos.x * 0.09 + worldPos.y * 0.05 + rteTime * 1.3 + 1.7 * sin(worldPos.y * 0.07 - rteTime * 0.8));
 				vec3 water = mix(lookShallow.rgb, lookDeep.rgb, deep) * (0.93 + 0.12 * ripple);
 				// Light playing through it: thin bright lines that wander and cross, stronger in the depths.
@@ -310,13 +330,35 @@ void main() {
 				if (rteWaterRipples > 0.0 && lookSurface.z > 0.0) {
 					// The ripples tilt the surface: the slope of the same slow waves the light plays on, so the glints of lamps and the sun and
 					// the composite's reflection wobble with them. Stronger near the top, calmer in the depths.
-					float phaseX = worldPos.x * 0.35 + rteTime * 2.3;
-					float phaseY = worldPos.y * 0.21 - rteTime * 1.7;
-					vec2 slope = vec2(0.35 * cos(phaseX) * sin(phaseY) + 0.055 * cos(worldPos.x * 0.11 - rteTime * 0.9), 0.21 * sin(phaseX) * cos(phaseY));
-					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * mix(1.0, 0.5, deep), 0.0));
+					vec2 slope = RippleSlope(worldPos);
+					vec2 lean = vec2(0.0);
+					float calm = 1.0;
+					if (flowAmount > 0.0) {
+						if (moving > 0.01) {
+							// Carried downstream: two copies of the waves drift with the flow, each faded out while it jumps back, so they never stretch.
+							float phase = fract(rteTime * 0.5);
+							vec2 drift = vec2(sideways * 14.0 * moving * flowAmount, 0.0);
+							slope = mix(RippleSlope(worldPos - drift * phase), RippleSlope(worldPos - drift * fract(phase + 0.5)), abs(phase * 2.0 - 1.0));
+						}
+						// Still water goes glassy; moving water ripples harder, the faster the more.
+						calm = mix(1.0, mix(0.3, 1.0 + flow.g, moving), flowAmount);
+						// The surface leans off where the water moves fastest: rings round where a pour lands, a ridge along a stream.
+						vec2 cellStep = rteGridWorldSize / vec2(textureSize(rteFlowField, 0));
+						lean = vec2(texture(rteFlowField, (worldPos + vec2(cellStep.x, 0.0)) / rteGridWorldSize).g - texture(rteFlowField, (worldPos - vec2(cellStep.x, 0.0)) / rteGridWorldSize).g,
+						            texture(rteFlowField, (worldPos + vec2(0.0, cellStep.y)) / rteGridWorldSize).g - texture(rteFlowField, (worldPos - vec2(0.0, cellStep.y)) / rteGridWorldSize).g) * 0.6 * flowAmount;
+					}
+					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * calm * mix(1.0, 0.5, deep) + lean * rteWaterRipples * lookSurface.z, 0.0));
 				}
 				glowsThrough = 0.25 * lookStyle.w;
 				FragColor = vec4(water, mix(lookShallow.a, lookDeep.a, deep));
+				// Fast, fresh churn (where a pour lands, a rapid) froths through the body of the water, not only where it's thin.
+				if (churn > 0.0 && rteWaterFoam > 0.0 && lookStyle.y > 0.0) {
+					float churned = clamp(churn * min(rteWaterFoam, 1.5) * lookStyle.y, 0.0, 1.0);
+					float flicker = FrothFlicker(worldPos);
+					FragColor.rgb = mix(FragColor.rgb, vec3(0.82, 0.94, 1.0) * rteWaterFoamBright, clamp(churned * (0.3 + 0.3 * (flicker - 0.5) * rteWaterFoamBubbles), 0.0, 1.0));
+					emissive = max(emissive, rteWaterFoamGlow * churned * 0.5);
+					shine = mix(shine, 0.4, churned);
+				}
 				// Thin, broken water is froth: white and bubbling instead of clear. (Checked only where there's air close by, which the middle of a pool never has.)
 				if (rteWaterFoam > 0.0 && lookStyle.y > 0.0 && WaterAt(textureUV + vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV - vec2(2.0 * texel.x, 0.0)) * WaterAt(textureUV + vec2(0.0, 3.0 * texel.y)) * WaterAt(textureUV - vec2(0.0, 3.0 * texel.y)) < 0.5) {
 					float waterNear = WaterAround(textureUV, texel);

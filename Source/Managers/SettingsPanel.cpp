@@ -359,6 +359,13 @@ void DebugMan::SettingsGUI() {
 			Slider("Ripples", &settings.WaterRipples, 0.0F, 2.0F);
 			Tip("How much the surface ripples tilt the reflection and the glints of light on the water. 0: a flat mirror.");
 		}
+		Heading("Moving water");
+		Check("Surface follows the flow", &settings.WaterFlowSurface);
+		Tip("Still water goes glassy, a stream's ripples run downstream, the surface rings out where a pour lands and fast water froths through. Off: the same slow waves everywhere, as before. Needs flowing liquids on.");
+		if (settings.WaterFlowSurface) {
+			Slider("Follows the flow", &settings.WaterFlowStrength, 0.0F, 1.0F);
+			Tip("How strongly. 0 is the same as off.");
+		}
 		Heading("Pouring water");
 		Slider("Froth", &settings.WaterFoam, 0.0F, 1.5F);
 		Tip("Thin, broken water (a stream off a ledge, the lip of a pour) is drawn as froth, and froth fills the air beside it. 0 for none.");
