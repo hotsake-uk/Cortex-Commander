@@ -1714,20 +1714,33 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 }
 
 bool PathFinder::LipAt(const PathNode& to, float direction) const {
-	// Half a node short of the landing, nothing within half a node under its floor: a face to get up, not a slope a walk goes up.
-	int x = static_cast<int>(to.Pos.m_X - direction * static_cast<float>(m_NodeDimension) * 0.5F);
-	int top = static_cast<int>(to.Surface) - 2;
-	for (int y = top; y <= top + 2 + m_NodeDimension / 2; ++y) {
-		if (TerrNav(x, y) != MaterialColorKeys::g_MaterialAir) {
-			return false;
+	// Back from the landing's middle towards the take-off, a node's worth, every 2 px: the ground's top dropping by half a node or more
+	// from one column to the next (or no ground within a node and a half under the floor) is the face to get up; ground that falls away
+	// gradually is a slope a walk goes up. (One column half a node short saw only a face in the near half of the landing's cell, and about
+	// half of real ledges, their face in the cell before, lost their mantle to a jump.)
+	const int nodeSize = m_NodeDimension;
+	const int top = static_cast<int>(to.Surface) - 2;
+	const int bottom = static_cast<int>(to.Surface) + nodeSize + nodeSize / 2;
+	float last = to.Surface;
+	for (int d = 2; d <= nodeSize; d += 2) {
+		int x = static_cast<int>(to.Pos.m_X - direction * static_cast<float>(d));
+		int y = top;
+		while (y <= bottom && (TerrNav(x, y) == MaterialColorKeys::g_MaterialAir || LiquidOf(TerrNav(x, y)) != PathLiquid::None)) {
+			++y;
 		}
+		if (y > bottom || static_cast<float>(y) - last >= static_cast<float>(nodeSize) * 0.5F) {
+			return true;
+		}
+		last = static_cast<float>(y);
 	}
-	return true;
+	return false;
 }
 
 bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const {
 	const float nodeSize = static_cast<float>(m_NodeDimension);
-	if (from.Surface < 0.0F || to.Surface < 0.0F || std::abs(from.Surface - to.Surface) > nodeSize * 1.5F) {
+	// (No steeper than the legs walk, 40 degrees (AHuman's walk angle): at a node and a half over one, slopes to 56 degrees were routed as
+	// walks, and the unit pressed into a face its legs couldn't take. Steeper is stairs, a scramble, a mantle or a jump.)
+	if (from.Surface < 0.0F || to.Surface < 0.0F || std::abs(from.Surface - to.Surface) > nodeSize * 0.84F) {
 		return false;
 	}
 	// Room to walk it, at the least crouched, at both ends and over the middle of the way.
