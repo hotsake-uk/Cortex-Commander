@@ -433,6 +433,11 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_StandingOrder.HasPost = true;
 	});
 	MatchProperty("OrderHold", { reader >> m_StandingOrder.Hold; });
+	MatchProperty("OrderPostFacing", {
+		int facing = 0;
+		reader >> facing;
+		SetOrderPostFacing(facing);
+	});
 	MatchProperty("OrderMovement", {
 		int rule = 0;
 		reader >> rule;
@@ -551,6 +556,9 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_StandingOrder.Hold) {
 		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
+	}
+	if (m_StandingOrder.PostFacing != 0) {
+		writer.NewPropertyWithValue("OrderPostFacing", m_StandingOrder.PostFacing);
 	}
 	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
 		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);

@@ -426,6 +426,7 @@ namespace RTE {
 			Vector Post; //!< That spot.
 			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
 			int Movement = MOVE_FOLLOW_ORDER; //!< The movement rule (MovementRule) the player set for this order, MOVE_FOLLOW_ORDER for the order's own.
+			int PostFacing = 0; //!< Which way to face at the post (RC-4): -1 left, 1 right, 0 either.
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -460,6 +461,8 @@ namespace RTE {
 			m_StandingOrder.HasPost = true;
 		}
 		void ClearOrderPost() { m_StandingOrder.HasPost = false; }
+		int GetOrderPostFacing() const { return m_StandingOrder.PostFacing; }
+		void SetOrderPostFacing(int facing) { m_StandingOrder.PostFacing = facing < 0 ? -1 : (facing > 0 ? 1 : 0); }
 		bool GetOrderHold() const { return m_StandingOrder.Hold; }
 		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
 

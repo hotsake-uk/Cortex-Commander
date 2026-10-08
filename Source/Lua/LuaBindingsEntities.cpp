@@ -232,6 +232,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderHasPost", &Actor::GetOrderHasPost)
 	    .property("OrderPost", &Actor::GetOrderPost, &Actor::SetOrderPost)
 	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
+	    .property("OrderPostFacing", &Actor::GetOrderPostFacing, &Actor::SetOrderPostFacing)
 	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
 	    .property("MovementRule", &Actor::GetMovementRule, &Actor::SetMovementRule)
 	    .property("DeploymentID", &Actor::GetDeploymentID)
