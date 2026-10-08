@@ -381,7 +381,10 @@ namespace {
 	int s_BrainChoice = 0;
 	int s_ItemChoice = 0;
 	int s_StructureChoice = 0;
-	char s_Filter[64] = "";
+	/// The search boxes' text, one for each list: by the tool it lists for, a picture grid's apart from a plain list's. (One shared box filtered
+	/// the Spawn, Build and Colony lists alike, so a search typed in one emptied the others.)
+	std::map<int, std::array<char, 64>> s_Filters;
+	char* FilterFor(Tool kind, bool pictures) { return s_Filters[static_cast<int>(kind) * 2 + (pictures ? 1 : 0)].data(); }
 	int s_Team = 1;
 	int s_Order = static_cast<int>(Order::Hold); //!< Units placed hold their position, firing back, until told otherwise.
 
@@ -3612,11 +3615,12 @@ namespace {
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F) {
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
+		char* filter = FilterFor(kind, false);
 		ImGui::SetNextItemWidth(-1.0F);
-		ImGui::InputTextWithHint("##filter", "Search...", s_Filter, sizeof(s_Filter));
+		ImGui::InputTextWithHint("##filter", "Search...", filter, 64);
 		if (ImGui::BeginListBox("##presets", ImVec2(-1.0F, ImGui::GetTextLineHeightWithSpacing() * rows))) {
 			for (int i = 0; i < static_cast<int>(list.size()); ++i) {
-				if (!ContainsIgnoringCase(list[i].Label, s_Filter) || (group && list[i].Group != group)) {
+				if (!ContainsIgnoringCase(list[i].Label, filter) || (group && list[i].Group != group)) {
 					continue;
 				}
 				if (ImGui::Selectable(list[i].Label.c_str(), i == choice)) {
@@ -3804,8 +3808,9 @@ namespace {
 		LoadFavouritesFile();
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
+		char* filter = FilterFor(kind, true);
 		ImGui::SetNextItemWidth(-1.0F);
-		ImGui::InputTextWithHint("##filter", "Search...", s_Filter, sizeof(s_Filter));
+		ImGui::InputTextWithHint("##filter", "Search...", filter, 64);
 		// Narrowing the list: by subcategory (not for structures, whose own Kind combo does that), by mod, and whether mods are listed at all.
 		{
 			std::vector<std::string> kinds;
@@ -3857,7 +3862,7 @@ namespace {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		for (int i = 0; i < static_cast<int>(list.size()); ++i) {
 			const Preset& preset = list[i];
-			if (!ContainsIgnoringCase(preset.Label, s_Filter) || (group && preset.Group != group)) {
+			if (!ContainsIgnoringCase(preset.Label, filter) || (group && preset.Group != group)) {
 				continue;
 			}
 			if ((!s_ShowModded && preset.Modded) || (!s_KindFilter[kind].empty() && preset.Kind != s_KindFilter[kind]) || (!s_ModFilter[kind].empty() && preset.Module != s_ModFilter[kind])) {
@@ -4732,14 +4737,19 @@ namespace {
 
 	/// Selected units are marked by the game's own selection arrow (drawn by the unit's HUD, with a glow), and the followed one by a marker.
 	std::vector<UnitRef> s_MarkedSelected; //!< The units carrying the arrow last time, so it can be taken off them.
-	void DrawSelection() {
-		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+	/// Takes the selection arrow off the units that carry it.
+	void UnmarkSelection() {
 		for (const UnitRef& ref: s_MarkedSelected) {
 			if (Actor* unit = GetRef(ref)) {
 				unit->SetSandboxSelected(false);
 			}
 		}
 		s_MarkedSelected.clear();
+	}
+
+	void DrawSelection() {
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		UnmarkSelection();
 		for (const UnitRef& ref: s_Selected) {
 			if (Actor* unit = GetRef(ref)) {
 				unit->SetSandboxSelected(true);
@@ -4781,11 +4791,11 @@ namespace {
 	}
 
 	void SideStatus() {
+		// The fighting units each side has, as the auto battle counts them (Sandbox::CountUnits): not brains or craft, but a craft's passengers.
+		// ("Red 7" was one brain, one dropship and five soldiers.)
 		std::array<int, c_Sides> counts{};
-		for (const Actor* actor: SandboxAccess::Actors()) {
-			if (IsCombatant(actor)) {
-				counts[actor->GetTeam()]++;
-			}
+		for (int side = 0; side < c_Sides; ++side) {
+			counts[side] = Sandbox::CountUnits(side);
 		}
 		for (int side = 0; side < c_Sides; ++side) {
 			if (side > 0) {
@@ -5394,7 +5404,8 @@ bool Sandbox::SetBuildMode(bool build) {
 int Sandbox::CountUnits(int team) {
 	int count = 0;
 	for (const Actor* actor: SandboxAccess::Actors()) {
-		if (!IsCombatant(actor) || actor->GetTeam() != team) {
+		// (Not a brain: it doesn't fight, and a side down to its brain is out of the battle.)
+		if (!IsCombatant(actor) || actor->GetTeam() != team || actor->IsInGroup("Brains")) {
 			continue;
 		}
 		if (!dynamic_cast<const ACraft*>(actor)) {
@@ -5431,6 +5442,10 @@ Actor* Sandbox::SpawnUnit(const std::string& presetName, int team, const Vector&
 }
 
 float Sandbox::UnitCost(const std::string& presetName) {
+	// (The catalogue is built when the window is first drawn; a barracks a script placed before that trained at the 20 supply floor.)
+	if (!s_CatalogueBuilt) {
+		BuildCatalogue();
+	}
 	const Preset* preset = FindPreset(s_Units, presetName);
 	const SceneObject* object = preset ? dynamic_cast<const SceneObject*>(g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
 	return object ? object->GetGoldValue(preset->ModuleID, 1.0F, 1.0F) : 0.0F;
@@ -5752,6 +5767,9 @@ void Sandbox::DrawGUI() {
 		DrawBar();
 	}
 	if (!s_Open && !hiddenButAbove) {
+		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
+		// opened again); the selection itself is kept for when it is.
+		UnmarkSelection();
 		if (s_FreeCameraStarted && IsGodMode() && std::getenv("CCCP_HIDE_PANELS") != nullptr) {
 			// Automated test runs keep the window shut, but the camera they've placed has to stay where they put it.
 			UpdateFreeCamera();
@@ -5783,6 +5801,30 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back; Ctrl+A takes the whole side. With the
+	// command tool in hand, wherever the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as
+	// these were, they did nothing with it resting on the window.)
+	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput) {
+		for (int number = 0; number < 10; ++number) {
+			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
+				if (io.KeyCtrl) {
+					s_Groups[number] = s_Selected;
+				} else if (!s_Groups[number].empty()) {
+					s_Selected = s_Groups[number];
+				}
+			}
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+			// Everyone on the selection's side.
+			int team = SelectionTeam();
+			s_Selected.clear();
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (IsSelectable(actor) && actor->GetTeam() == team) {
+					s_Selected.push_back(MakeRef(actor));
+				}
+			}
+		}
+	}
 	// Paint or spawn with the left mouse button on the world.
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
@@ -5793,28 +5835,6 @@ void Sandbox::DrawGUI() {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
-			}
-			// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back.
-			if (!io.WantCaptureKeyboard) {
-				for (int number = 0; number < 10; ++number) {
-					if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
-						if (io.KeyCtrl) {
-							s_Groups[number] = s_Selected;
-						} else if (!s_Groups[number].empty()) {
-							s_Selected = s_Groups[number];
-						}
-					}
-				}
-				if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
-					// Everyone on the selection's side.
-					int team = SelectionTeam();
-					s_Selected.clear();
-					for (Actor* actor: SandboxAccess::Actors()) {
-						if (IsSelectable(actor) && actor->GetTeam() == team) {
-							s_Selected.push_back(MakeRef(actor));
-						}
-					}
-				}
 			}
 		} else if (tool.Interval <= 0.0F) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -6201,6 +6221,8 @@ void Sandbox::DrawGUI() {
 				ImGui::SameLine();
 				ToolUI::Checkbox("Follow the action", &s_FollowAction);
 				ImGui::SameLine();
+				// (Ticked whenever time runs slow, however it was set: set from the speed slider, the box read unticked at 0.25x.)
+				s_SlowMotion = g_TimerMan.GetTimeScale() < 0.99F;
 				if (ToolUI::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
