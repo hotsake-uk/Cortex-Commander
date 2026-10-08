@@ -823,18 +823,25 @@ namespace {
 		return nullptr;
 	}
 
-	/// The nearest enemy of a side to a point within a reach, or none.
+	/// The nearest enemy of a side to a point within a reach, or none: a brain there only when nothing else of the enemy's is, as NearestEnemy.
+	/// (Brains were left out altogether, so an attack ordered on an enemy brain's bunker walked up to it and stood there.)
 	Actor* NearestEnemyTo(const Vector& point, int team, float reach) {
 		Actor* nearest = nullptr;
 		float best = reach * reach;
+		bool nearestIsBrain = false;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || actor->IsInGroup("Brains")) {
+			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team) {
 				continue;
 			}
+			bool brain = actor->IsInGroup("Brains");
 			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-			if (distance < best) {
+			if (distance >= reach * reach) {
+				continue;
+			}
+			if (!nearest || (nearestIsBrain && !brain) || (brain == nearestIsBrain && distance < best)) {
 				best = distance;
 				nearest = actor;
+				nearestIsBrain = brain;
 			}
 		}
 		return nearest;
