@@ -17,6 +17,7 @@
 #include "loadpng.h" //FIXME: Evil
 
 #include <source_location>
+#include <thread>
 #include <string>
 
 namespace RTE {
@@ -35,6 +36,7 @@ namespace RTE {
 		static bool s_IgnoreAllAsserts; //!< Whether to skip the assert dialog and just let everything burn at whatever point that happens.
 		static std::string s_LastIgnoredAssertDescription; //!< The last ignored assert message.
 		static std::source_location s_LastIgnoredAssertLocation; //!< The last ignored assert call site.
+		static std::thread::id s_MainThreadID; //!< The thread SetExceptionHandlers ran on, the main thread: the only one that may touch the graphics context when dumping an abort save or screen.
 
 		/// Sets custom handlers for C++ and platform specific exceptions.
 		static void SetExceptionHandlers();
