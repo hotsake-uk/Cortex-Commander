@@ -73,6 +73,15 @@ namespace RTE {
 			WetnessMap = quality >= QualityMedium;
 			// The cloud layer: a few noise reads per sky pixel, from Medium up.
 			CloudLayer = quality >= QualityMedium;
+			// Potato is the classic look: none of the newer looks either (pixel fire only, a grade that stays put, a still palette, haze from
+			// anything bright, sandbox bolts as particles, soot and stains that stay). The other presets put them back.
+			const bool classic = quality == QualityPotato;
+			FireStyle = classic ? FirePixel : FireBoth;
+			EventLooks = !classic;
+			PaletteAnimation = !classic;
+			HazeFromHeat = !classic;
+			LightningBolts = !classic;
+			DecalsFade = !classic;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -318,6 +327,7 @@ namespace RTE {
 		bool HazeFromHeat = true; //!< Heat haze rises from hot things (fire, burning ground, blasts, warm glows) only. Off: from anything bright, lamps included, as before.
 		enum FireStyles { FireBoth = 0, FirePixel = 1, FireShaderOnly = 2 };
 		int FireStyle = FireBoth; //!< How fire is drawn (FireStyles): the pixel fire (a flickering dot and tongue per burning pixel, the flame sprites of flame particles), the shader's flames (shape and motion, a dark core, embers off the tips) or both, the shader's over the pixels.
+		bool FlameParticlesAsFlames = true; //!< Flame particles (the flame sprites in the air) are drawn in the fire style too. Off: they keep their sprites whatever the fire style, and only burning ground follows it.
 		float FireFlameSize = 1.0F; //!< How tall the flames of burning ground stand.
 		float FireFlameBrightness = 1.0F; //!< How bright those flames are.
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.

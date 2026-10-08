@@ -10,6 +10,8 @@
 #include "GUISlider.h"
 #include "GUILabel.h"
 
+#include <cmath>
+
 using namespace RTE;
 
 SettingsGameplayGUI::SettingsGameplayGUI(GUIControlManager* parentControlManager) :
@@ -73,6 +75,31 @@ SettingsGameplayGUI::SettingsGameplayGUI(GUIControlManager* parentControlManager
 	}
 	m_ScreenShakeStrengthLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelScreenShakeStrengthValue"));
 	UpdateScreenShakeStrength();
+
+	m_MantlingCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxMantling"));
+	m_AISuppressionSlider = dynamic_cast<GUISlider*>(m_GUIControlManager->GetControl("SliderAISuppression"));
+	m_AISuppressionLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelAISuppressionValue"));
+	m_HitStopSlider = dynamic_cast<GUISlider*>(m_GUIControlManager->GetControl("SliderHitStop"));
+	m_HitStopLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelHitStopValue"));
+	ShowF6GameplaySettings();
+}
+
+void SettingsGameplayGUI::ShowF6GameplaySettings() {
+	if (m_MantlingCheckbox) {
+		m_MantlingCheckbox->SetCheck(g_SettingsMan.MantlingEnabled());
+	}
+	if (m_AISuppressionSlider) {
+		m_AISuppressionSlider->SetValue(static_cast<int>(std::round(g_SettingsMan.AISuppression() * 100.0F)));
+	}
+	if (m_AISuppressionLabel) {
+		m_AISuppressionLabel->SetText(std::to_string(static_cast<int>(std::round(g_SettingsMan.AISuppression() * 100.0F))) + "%");
+	}
+	if (m_HitStopSlider) {
+		m_HitStopSlider->SetValue(static_cast<int>(std::round(g_CameraMan.GetHitStopStrength() * 100.0F)));
+	}
+	if (m_HitStopLabel) {
+		m_HitStopLabel->SetText(std::to_string(static_cast<int>(std::round(g_CameraMan.GetHitStopStrength() * 100.0F))) + "%");
+	}
 }
 
 void SettingsGameplayGUI::SetEnabled(bool enable) {
@@ -82,6 +109,7 @@ void SettingsGameplayGUI::SetEnabled(bool enable) {
 	if (enable) {
 		UpdateMaxUnheldItemsTextbox();
 		UpdateCrabBombThresholdTextbox();
+		ShowF6GameplaySettings();
 	}
 }
 
@@ -148,6 +176,14 @@ void SettingsGameplayGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			UpdateUnheldItemsHUDDisplayRange();
 		} else if (guiEvent.GetControl() == m_ScreenShakeStrengthSlider) {
 			UpdateScreenShakeStrength();
+		} else if (m_MantlingCheckbox && guiEvent.GetControl() == m_MantlingCheckbox) {
+			g_SettingsMan.SetMantlingEnabled(m_MantlingCheckbox->GetCheck());
+		} else if (m_AISuppressionSlider && guiEvent.GetControl() == m_AISuppressionSlider) {
+			g_SettingsMan.SetAISuppression(static_cast<float>(m_AISuppressionSlider->GetValue()) / 100.0F);
+			ShowF6GameplaySettings();
+		} else if (m_HitStopSlider && guiEvent.GetControl() == m_HitStopSlider) {
+			g_CameraMan.SetHitStopStrength(static_cast<float>(m_HitStopSlider->GetValue()) / 100.0F);
+			ShowF6GameplaySettings();
 		} else if (guiEvent.GetControl() == m_AlwaysDisplayUnheldItemsInStrategicModeCheckbox) {
 			g_SettingsMan.SetAlwaysDisplayUnheldItemsInStrategicMode(m_AlwaysDisplayUnheldItemsInStrategicModeCheckbox->GetCheck());
 			// Update both textboxes when clicking the main CollectionBox, otherwise clicking off focused textboxes does not remove their focus or update the setting values and they will still capture keyboard input.

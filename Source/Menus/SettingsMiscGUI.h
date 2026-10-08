@@ -44,10 +44,26 @@ namespace RTE {
 		GUICheckbox* m_DisableFactionBuyMenuThemeCursorsCheckbox;
 		GUILabel* m_SceneBackgroundAutoScaleLabel;
 		GUISlider* m_SceneBackgroundAutoScaleSlider;
+		GUICheckbox* m_SpreadingFireCheckbox; //!< World simulation switches, the same ones as F6's World section (UI-31).
+		GUICheckbox* m_TerrainCollapseCheckbox;
+		GUICheckbox* m_FlowingLiquidsCheckbox;
+		GUICheckbox* m_LoosePowdersCheckbox;
+		GUICheckbox* m_SwimmingCheckbox;
+		GUICheckbox* m_UnitsBurnCheckbox;
+		GUICheckbox* m_SmokeSightCheckbox;
+		GUICheckbox* m_ConsoleLogToFileCheckbox;
+		GUISlider* m_ScriptThreadsSlider;
+		GUILabel* m_ScriptThreadsLabel;
 
 #pragma region Misc Settings Handling
 		/// Updates the Scene background auto-scale label according to the setting.
 		void UpdateSceneBackgroundAutoScaleLabel();
+
+		/// Shows the world simulation switches as they are now, since F6 can change them while this page is hidden.
+		void ShowWorldSimulationSettings() const;
+
+		/// Updates the script threads label according to the setting.
+		void UpdateScriptThreadsLabel() const;
 #pragma endregion
 
 		// Disallow the use of some implicit methods.

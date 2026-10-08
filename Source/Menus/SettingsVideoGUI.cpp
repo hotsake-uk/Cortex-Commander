@@ -5,6 +5,7 @@
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "ActivityMan.h"
+#include "SettingsMan.h"
 
 #include "GUIInputWrapper.h"
 #include "GUI.h"
@@ -26,6 +27,11 @@
 #include <set>
 
 using namespace RTE;
+
+namespace {
+	/// The frame caps the Video page offers, 0 for none.
+	constexpr int c_FrameCapChoices[] = {0, 30, 60, 120, 144, 240};
+} // namespace
 
 std::string SettingsVideoGUI::PresetResolutionRecord::GetDisplayString() const {
 #if __cpp_lib_format >= 201907L && !(defined(__APPLE__) && defined(__GNUC__)) //FIXME: macOS CI borken without this.
@@ -72,6 +78,21 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 	m_SmoothHUDTextCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxSmoothHUDText"));
 	if (m_SmoothHUDTextCheckbox) {
 		m_SmoothHUDTextCheckbox->SetCheck(TextOverlay::IsEnabled());
+	}
+	m_ShowFPSCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxShowFPS"));
+	if (m_ShowFPSCheckbox) {
+		m_ShowFPSCheckbox->SetCheck(g_SettingsMan.ShowFPSAndVersion());
+	}
+	m_IntegerScalingCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxIntegerScaling"));
+	if (m_IntegerScalingCheckbox) {
+		m_IntegerScalingCheckbox->SetCheck(g_WindowMan.GetIntegerScaling());
+	}
+	m_FrameCapComboBox = dynamic_cast<GUIComboBox*>(m_GUIControlManager->GetControl("ComboFrameCap"));
+	if (m_FrameCapComboBox) {
+		for (int cap: c_FrameCapChoices) {
+			m_FrameCapComboBox->AddItem(cap == 0 ? "No frame cap" : std::to_string(cap) + " FPS cap");
+		}
+		ShowFrameCap();
 	}
 
 	m_FullscreenCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxFullscreen"));
@@ -152,6 +173,15 @@ void SettingsVideoGUI::SetEnabled(bool enable) const {
 	m_VideoSettingsBox->SetEnabled(enable);
 
 	if (enable) {
+		// F6 can change these while this page is hidden.
+		UpdateVisualEffectControls();
+		ShowFrameCap();
+		if (m_ShowFPSCheckbox) {
+			m_ShowFPSCheckbox->SetCheck(g_SettingsMan.ShowFPSAndVersion());
+		}
+		if (m_IntegerScalingCheckbox) {
+			m_IntegerScalingCheckbox->SetCheck(g_WindowMan.GetIntegerScaling());
+		}
 		m_CustomResolutionWidthTextBox->SetText(std::to_string(static_cast<int>(g_WindowMan.GetResX())));
 		m_CustomResolutionHeightTextBox->SetText(std::to_string(static_cast<int>(g_WindowMan.GetResY())));
 #if __cpp_lib_format >= 201907L && !(defined(__APPLE__) && defined(__GNUC__))
@@ -184,7 +214,22 @@ bool SettingsVideoGUI::IsSupportedResolution(int width, int height) const {
 	return false;
 }
 
-void SettingsVideoGUI::UpdateVisualEffectControls() {
+void SettingsVideoGUI::ShowFrameCap() const {
+	if (!m_FrameCapComboBox) {
+		return;
+	}
+	// A cap set in Settings.ini or F6 that isn't one of the choices shows as the nearest one below it.
+	int frameCap = g_WindowMan.GetFrameCap();
+	int shown = 0;
+	for (int i = 0; i < static_cast<int>(std::size(c_FrameCapChoices)); ++i) {
+		if (c_FrameCapChoices[i] != 0 && c_FrameCapChoices[i] <= frameCap) {
+			shown = i;
+		}
+	}
+	m_FrameCapComboBox->SetSelectedIndex(shown);
+}
+
+void SettingsVideoGUI::UpdateVisualEffectControls() const {
 	const LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
 	if (m_LightingCheckbox) {
 		m_LightingCheckbox->SetCheck(lightingSettings.Enabled);
@@ -442,6 +487,13 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			}
 		}
 
+		if (m_FrameCapComboBox && guiEvent.GetControl() == m_FrameCapComboBox && guiEvent.GetMsg() == GUIComboBox::Closed) {
+			int choice = m_FrameCapComboBox->GetSelectedIndex();
+			if (choice >= 0 && choice < static_cast<int>(std::size(c_FrameCapChoices))) {
+				g_WindowMan.SetFrameCap(c_FrameCapChoices[choice]);
+			}
+		}
+
 		if (guiEvent.GetMsg() == GUICheckbox::Changed && (guiEvent.GetControl() == m_LightingCheckbox || guiEvent.GetControl() == m_BloomCheckbox || guiEvent.GetControl() == m_DistortionCheckbox)) {
 			// Picking individual effects no longer matches a preset.
 			g_PostProcessMan.GetLightingSettings().GraphicsQuality = LightingSettings::QualityCustom;
@@ -467,10 +519,21 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				lightingSettings.LivingWorld = enabled;
 				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
 				lightingSettings.EffectsParticles = enabled ? std::max(lightingSettings.EffectsParticles, 1.0F) : 0.0F;
+				// And the newer looks the classic preset leaves out (UI-26): flame fire, event looks, palette animation, heat haze, bolts and fading decals.
+				lightingSettings.FireStyle = enabled ? LightingSettings::FireBoth : LightingSettings::FirePixel;
+				lightingSettings.EventLooks = enabled;
+				lightingSettings.PaletteAnimation = enabled;
+				lightingSettings.HazeFromHeat = enabled;
+				lightingSettings.LightningBolts = enabled;
+				lightingSettings.DecalsFade = enabled;
 			} else if (m_ModernHUDCheckbox && guiEvent.GetControl() == m_ModernHUDCheckbox) {
 				ModernHUD::SetEnabled(m_ModernHUDCheckbox->GetCheck());
 			} else if (m_SmoothHUDTextCheckbox && guiEvent.GetControl() == m_SmoothHUDTextCheckbox) {
 				TextOverlay::SetEnabled(m_SmoothHUDTextCheckbox->GetCheck());
+			} else if (m_ShowFPSCheckbox && guiEvent.GetControl() == m_ShowFPSCheckbox) {
+				g_SettingsMan.SetShowFPSAndVersion(m_ShowFPSCheckbox->GetCheck());
+			} else if (m_IntegerScalingCheckbox && guiEvent.GetControl() == m_IntegerScalingCheckbox) {
+				g_WindowMan.SetIntegerScaling(m_IntegerScalingCheckbox->GetCheck());
 			} else if (guiEvent.GetControl() == m_UseMultiDisplaysCheckbox) {
 				g_WindowMan.SetUseMultiDisplays(m_UseMultiDisplaysCheckbox->GetCheck());
 				UpdateCustomResolutionLimits();

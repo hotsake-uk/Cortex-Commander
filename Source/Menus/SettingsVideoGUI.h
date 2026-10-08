@@ -104,6 +104,9 @@ namespace RTE {
 		GUIComboBox* m_GraphicsQualityComboBox; //!< Picks a graphics quality preset.
 		GUICheckbox* m_SmoothHUDTextCheckbox; //!< Toggles high resolution HUD text.
 		GUICheckbox* m_ModernHUDCheckbox; //!< Toggles the modern HUD (minimap, bars, loss feed).
+		GUICheckbox* m_ShowFPSCheckbox; //!< Toggles the frame rate and version in the top right.
+		GUICheckbox* m_IntegerScalingCheckbox; //!< Scales the picture to the window by whole numbers only.
+		GUIComboBox* m_FrameCapComboBox; //!< Picks the most frames drawn per second.
 		GUICheckbox* m_FullscreenCheckbox;
 		GUICheckbox* m_UseMultiDisplaysCheckbox;
 		GUIRadioButton* m_PresetResolutionRadioButton;
@@ -142,7 +145,10 @@ namespace RTE {
 		void PopulateResolutionsComboBox();
 
 		/// Updates the visual effect checkboxes and quality preset list from the current lighting settings.
-		void UpdateVisualEffectControls();
+		void UpdateVisualEffectControls() const;
+
+		/// Shows the current frame cap in the frame cap combo box.
+		void ShowFrameCap() const;
 
 		/// Creates Resolution multipliers down to c_DefaultRes.
 		void PopulateResMultplierComboBox();

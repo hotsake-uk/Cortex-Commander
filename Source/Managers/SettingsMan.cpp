@@ -349,6 +349,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("HeatHaze", { g_PostProcessMan.GetLightingSettings().HeatHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("HazeFromHeat", { g_PostProcessMan.GetLightingSettings().HazeFromHeat = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("FireStyle", { g_PostProcessMan.GetLightingSettings().FireStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
+	MatchProperty("FlameParticlesAsFlames", { g_PostProcessMan.GetLightingSettings().FlameParticlesAsFlames = std::stoi(reader.ReadPropValue()) != 0; });
 	// Before FireStyle: the shader's flames on (now both, which is what was asked for) or off (pixel fire only).
 	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireStyle = std::stoi(reader.ReadPropValue()) != 0 ? LightingSettings::FireBoth : LightingSettings::FirePixel; });
 	MatchProperty("FireFlameSize", { g_PostProcessMan.GetLightingSettings().FireFlameSize = std::stof(reader.ReadPropValue()); });
@@ -541,6 +542,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
+	MatchProperty("ConsoleLogToFile", { reader >> m_ConsoleLogToFile; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
@@ -679,6 +681,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("HeatHaze", lighting.HeatHaze);
 	writer.NewPropertyWithValue("HazeFromHeat", lighting.HazeFromHeat);
 	writer.NewPropertyWithValue("FireStyle", lighting.FireStyle);
+	writer.NewPropertyWithValue("FlameParticlesAsFlames", lighting.FlameParticlesAsFlames);
 	writer.NewPropertyWithValue("FireFlameSize", lighting.FireFlameSize);
 	writer.NewPropertyWithValue("UnitOutline", lighting.UnitOutline);
 	writer.NewPropertyWithValue("UnitOutlineWidth", lighting.UnitOutlineWidth);
@@ -783,7 +786,6 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("HeadlampTeamTint", lighting.HeadlampTeamTint);
 	writer.NewPropertyWithValue("HeadlampsByDay", lighting.HeadlampsByDay);
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
-	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
 	writer.NewPropertyWithValue("DepthOfField", lighting.DepthOfField);
 	writer.NewPropertyWithValue("DepthOfFieldFocus", lighting.DepthOfFieldFocus);
@@ -817,6 +819,20 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
+	// Game & HUD, so a preset holds every setting in the F6 panel but its debug pages (UI-27).
+	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
+	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
+	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
+	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
+	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
+	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
+	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
+		writer.NewPropertyWithValue("UnitSpeechOff", off);
+	}
 }
 
 namespace {
@@ -903,8 +919,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
-	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
-	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
@@ -954,14 +968,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
-	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
-	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
-	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
-	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
-	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
-		writer.NewPropertyWithValue("UnitSpeechOff", off);
-	}
-	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
+	writer.NewPropertyWithValue("ConsoleLogToFile", m_ConsoleLogToFile);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
@@ -987,7 +995,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
 	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
 	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
-	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
@@ -999,8 +1006,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLineString("// Screen Shake Settings", false);
 	writer.NewLine(false);
 	writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
-	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
-	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
 	writer.NewPropertyWithValue("ScreenShakeDecay", g_CameraMan.m_ScreenShakeDecay);
 	writer.NewPropertyWithValue("MaxScreenShakeTime", g_CameraMan.m_MaxScreenShakeTime);
 	writer.NewPropertyWithValue("DefaultShakePerUnitOfGibEnergy", g_CameraMan.m_DefaultShakePerUnitOfGibEnergy);

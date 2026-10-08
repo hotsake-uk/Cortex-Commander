@@ -53,6 +53,16 @@ namespace RTE {
 		GUISlider* m_ScreenShakeStrengthSlider;
 		GUILabel* m_ScreenShakeStrengthLabel;
 
+		// Mantling, AI suppression and hit-stop, which were in F6 only (UI-32). Null with a layout that hasn't got them.
+		GUICheckbox* m_MantlingCheckbox = nullptr;
+		GUISlider* m_AISuppressionSlider = nullptr;
+		GUILabel* m_AISuppressionLabel = nullptr;
+		GUISlider* m_HitStopSlider = nullptr;
+		GUILabel* m_HitStopLabel = nullptr;
+
+		/// Sets the mantling, AI suppression and hit-stop controls from the settings as they are (they can be changed in F6 too).
+		void ShowF6GameplaySettings();
+
 #pragma region Gameplay Settings Handling
 		/// Updates the MaxUnheldItems textbox to override any invalid input, applies the setting value and removes its focus.
 		void UpdateMaxUnheldItemsTextbox();

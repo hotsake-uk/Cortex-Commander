@@ -204,6 +204,15 @@ namespace RTE {
 		/// @return Whether they are shown.
 		bool ShowFPSAndVersion() const { return m_ShowFPSAndVersion; }
 
+		/// Gets whether every console line also goes to LogConsoleLive.txt as it is printed, as the CCCP_CONSOLE_LOG environment variable does (from the next start).
+		bool ConsoleLogToFile() const { return m_ConsoleLogToFile; }
+
+		/// Sets whether every console line also goes to LogConsoleLive.txt; it takes effect from the next start.
+		void SetConsoleLogToFile(bool enable) { m_ConsoleLogToFile = enable; }
+
+		/// Sets how many threaded Lua states are used, -1 for one per hardware thread; it takes effect from the next start.
+		void SetNumberOfLuaStatesOverride(int count) { m_NumberOfLuaStatesOverride = count < 0 ? -1 : count; }
+
 		/// Sets whether the frame rate and the game's version are shown in the top right of the window.
 		/// @param show Whether to show them.
 		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
@@ -633,6 +642,7 @@ namespace RTE {
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
+		bool m_ConsoleLogToFile = false; //!< Whether console lines also go to LogConsoleLive.txt (see ConsoleLogToFile).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

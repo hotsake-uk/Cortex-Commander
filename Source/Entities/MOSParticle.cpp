@@ -286,7 +286,7 @@ void MOSParticle::Draw(const Camera& camera) const {
 		return;
 	}
 	// A flame gets the fire shader's flames, the same as burning ground, drawn over this sprite in the glow pass, and with the shader only, no sprite.
-	int fireStyle = m_FlameSprite ? g_PostProcessMan.GetLightingSettings().FireStyle : LightingSettings::FirePixel;
+	int fireStyle = m_FlameSprite && g_PostProcessMan.GetLightingSettings().FlameParticlesAsFlames ? g_PostProcessMan.GetLightingSettings().FireStyle : LightingSettings::FirePixel;
 	if (fireStyle != LightingSettings::FirePixel) {
 		float age = static_cast<float>(GetAge());
 		float size = std::clamp(age / 120.0F, 0.3F, 1.0F);

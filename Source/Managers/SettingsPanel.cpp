@@ -172,7 +172,7 @@ namespace {
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("A preset holds every setting in this panel: the look, the time and weather, water, fire, and how the ground falls.\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SetItemTooltip("A preset holds every setting in this panel but the debug pages: the look, the time and weather, water, fire, how the ground falls, and Game & HUD.\nThey are files in Userdata/Presets, so they can be copied and shared.");
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
 		ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName));
 		ImGui::SameLine();
@@ -194,9 +194,24 @@ namespace {
 		if (ToolUI::Button("Usual settings")) {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
+			// The world simulations and the game's feel too, as the game comes (UI-27); the HUD and frame cap are the player's own and stay.
+			TerrainFire::SetEnabled(true);
+			TerrainCollapse::SetEnabled(true);
+			TerrainCollapse::SetBuildingsFall(true);
+			FluidSim::SetEnabled(true);
+			FluidSim::SetPowdersEnabled(true);
+			FluidSim::SetFreezingEnabled(false);
+			FluidSim::SetBloodFlows(false);
+			ActorFire::SetEnabled(true);
+			ActorWater::SetEnabled(true);
+			SmokeGrid::SetEnabled(true);
+			WeatherLightning::SetStrikes(WeatherLightning::Strikes::Fires);
+			g_CameraMan.SetHitStopStrength(1.0F);
+			g_SettingsMan.SetMantlingEnabled(true);
+			g_SettingsMan.SetAISuppression(1.0F);
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
-		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
+		ImGui::SetItemTooltip("Puts every setting here back to how the game comes: the look, weather, the world simulations, hit-stop, mantling and AI suppression. The HUD and frame cap stay as you have them.");
 		ImGui::SameLine();
 		if (ToolUI::Button("Keep for next time")) {
 			g_PostProcessMan.AdoptAtmosphereAsPlayers();
@@ -488,7 +503,7 @@ void DebugMan::SettingsGUI() {
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);
-		Tip("Oil is a dark, glossy sheet, mud a dull brown, slime a glowing bubbling green and mercury a silver mirror. Off: they are all drawn as water. Water, lava and acid look the same either way.");
+		Tip("Oil, tar and fuel are dark, glossy sheets, mud a dull brown and mercury a silver mirror; cryogenic fluid looks like water for now. Off: they are all drawn as water. Water, lava and acid look the same either way.");
 		Heading("Reflections");
 		Check("Water reflects and refracts", &settings.WaterReflections);
 		Tip("Pools mirror what's above them, the wall behind the water shows through bent by the ripples and darker with depth, and the rippled surface catches lamps and the sun. Off: water is drawn as before, flat and tinted. On from the Medium preset up.");
@@ -561,6 +576,8 @@ void DebugMan::SettingsGUI() {
 		Combo("Fire style", &settings.FireStyle, "Pixel and shader\0Pixel only\0Shader only\0");
 		Tip("How all fire is drawn, on burning ground and in the air. Pixel: a flickering dot and short tongue per burning pixel, and the drawn flame sprites, as before. Shader: flames with shape and motion, a darker core at the base and embers lifting off the tips, grouped along the fire front. Pixel and shader: the shader's flames over the pixel fire.");
 		if (settings.FireStyle != LightingSettings::FirePixel) {
+			Check("Flame particles drawn as flames", &settings.FlameParticlesAsFlames);
+			Tip("Flame particles in the air (flamethrowers, napalm, burning debris) are drawn in the fire style too. Off: they keep their drawn flame sprites, and only burning ground uses the shader.");
 			Slider("Flame height", &settings.FireFlameSize, 0.2F, 3.0F);
 			Slider("Flame brightness", &settings.FireFlameBrightness, 0.2F, 2.0F);
 		}

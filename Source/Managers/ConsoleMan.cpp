@@ -1,4 +1,5 @@
 #include "ConsoleMan.h"
+#include "SettingsMan.h"
 
 #include "LuaMan.h"
 #include "UInputMan.h"
@@ -223,7 +224,10 @@ void ConsoleMan::PrintString(const std::string& stringToPrint) {
 		m_OutputLog[c_KeptFirstOutputLines] = "\n... " + std::to_string(m_DroppedOutputLines) + " older lines dropped (the console keeps the first " + std::to_string(c_KeptFirstOutputLines) + " and the latest) ...";
 	}
 	// With CCCP_CONSOLE_LOG set to a file name, every line also goes straight to that file, so script errors can be read while the game runs or after it's been killed.
-	static const char* liveLogPath = std::getenv("CCCP_CONSOLE_LOG");
+	// (Or, with Misc > "Console log to file" ticked, to LogConsoleLive.txt; read once, at the first line, so it takes effect from the next start.)
+	// Looked up on every line, so turning the setting on in the Options menu starts the file straight away; the file opens on its first line.
+	const char* envLogPath = std::getenv("CCCP_CONSOLE_LOG");
+	const char* liveLogPath = envLogPath ? envLogPath : (g_SettingsMan.ConsoleLogToFile() ? "LogConsoleLive.txt" : nullptr);
 	if (liveLogPath) {
 		static std::ofstream liveLog(liveLogPath, std::ios::trunc);
 		liveLog << stringToPrint << std::endl;
