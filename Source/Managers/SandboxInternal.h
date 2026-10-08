@@ -153,7 +153,7 @@ namespace SandboxDetail {
 		ClearWaterSpawners,
 		ClearEffects, //!< Count: 1 the last one only, else all.
 		UndoTerrain, //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
-		AutoBattle, //!< Count: how many sides fight (0 stops a battle under way); Choice: each side's budget; Position and Radius: the view's middle and width.
+		BattleTeam, //!< The Battle Director: Team's settings (Battle) set, and Count a BattleCommand. (Was the auto battle's, AutoBattle: renamed, so the tools after keep their numbers.)
 		// The new liquids and loose materials (SB-2), poured like water: appended, so the tools before keep their numbers.
 		Mud,
 		Tar,
@@ -161,7 +161,9 @@ namespace SandboxDetail {
 		Gravel,
 		GlassShards,
 		Fuel,
-		Cryo
+		Cryo,
+		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
+		BattleDropLine //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
 	};
 
 	struct ToolInfo {
@@ -239,6 +241,8 @@ namespace SandboxDetail {
 	    {Tool::GlassShards, "Glass shards", 0.03F, true},
 	    {Tool::Fuel, "Fuel", 0.03F, true},
 	    {Tool::Cryo, "Cryogenic fluid", 0.03F, true},
+	    {Tool::BattleDefendPoint, "Defence point", 0.0F, false},
+	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -354,6 +358,51 @@ namespace SandboxDetail {
 	inline std::vector<const Preset*> s_Weapons; //!< Guns among the items, for loadouts.
 	inline bool s_CatalogueBuilt = false;
 
+	/// How a Battle Director team fights (BattleSettings::Style). All but Defend are the unit orders of the same names.
+	enum class BattleStyle {
+		Attack,
+		HuntBrains,
+		Defend,
+		Patrol,
+		Hold,
+		Count
+	};
+	constexpr const char* c_BattleStyleNames[] = {"Attack nearest enemy", "Hunt brains", "Defend a place", "Patrol", "Hold position"};
+	static_assert(std::size(c_BattleStyleNames) == static_cast<size_t>(BattleStyle::Count), "c_BattleStyleNames must name each BattleStyle.");
+
+	/// What the Battle tab's card for one team says: which units it buys, how it fights, and how its ships come in. The window keeps its own
+	/// copy (s_BattleSetup) and sends it to the sim in a stroke (Tool::BattleTeam) whenever it changes, as every other choice is sent.
+	struct BattleSettings {
+		bool Active = false; //!< Takes part: started by "Start battle".
+		std::vector<int> Factions; //!< The module IDs of the factions its units come from; none for any faction.
+		bool FavouritesOnly = false; //!< Only units marked as favourites (of those factions); any, when none are.
+		BattleStyle Style = BattleStyle::Attack;
+		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
+		int Budget = 5000; //!< What it may spend in all, in oz.
+		int WaveSize = 5; //!< Units in each ship.
+		int Craft = 0; //!< Index into c_Crafts.
+		bool DropOnLine = false; //!< Ships come in over the drop line, not anywhere across the scene.
+		bool HasLine = false;
+		Vector LineA; //!< The drop line's ends: only its span across counts, as ships come in from the top (or the bottom).
+		Vector LineB;
+		int ShipsPerBurst = 1; //!< Ships that set off together, each with a wave of its own.
+		int EverySeconds = 30; //!< Seconds of game time between bursts.
+		bool Invincible = false; //!< Its ships take no harm, and are taken away once they've unloaded and left.
+		bool HasDefendPos = false;
+		Vector DefendPos; //!< Defend: the middle of the place its units hold.
+		int DefendRadius = 150; //!< Defend: how far round DefendPos its units stand and fight.
+		int ChaseDistance = 300; //!< Defend: how far past the radius they go after an enemy before giving up and going back.
+	};
+
+	/// What a Tool::BattleTeam stroke does, by its Count, besides setting Team's settings.
+	enum BattleCommand {
+		BattleSet = 0, //!< Only the settings.
+		BattleStartTeam, //!< Team starts (or carries on, if it ran before) sending waves.
+		BattleStopTeam, //!< Team stops sending waves. Its units already in stay.
+		BattleStartAll, //!< Every active team starts afresh: spent and sent back to nothing.
+		BattleStopAll //!< Every team stops.
+	};
+
 	/// One queued action, with the settings it was made with.
 	struct Stroke {
 		Tool Kind;
@@ -371,8 +420,9 @@ namespace SandboxDetail {
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
 		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
-		bool Random = false; //!< Drops and auto battles: random units from every faction rather than the one chosen.
+		bool Random = false; //!< Drops: random units from every faction rather than the one chosen.
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
+		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 	};
 
 	struct CraftChoice {
@@ -397,15 +447,31 @@ namespace SandboxDetail {
 	inline bool RefersTo(const UnitRef& ref, const Actor* actor) { return actor && ref.Unit == actor && ref.ID == static_cast<long>(actor->GetUniqueID()); }
 
 
-	/// One side in an auto battle.
-	struct AutoSide {
-		bool Active = false;
-		int Faction = 0; //!< Index into s_FactionModules.
-		int Budget = 5000;
+	/// One team in the Battle Director, as the sim runs it: the settings last sent from the window, and how it is getting on.
+	struct BattleTeam {
+		BattleSettings Settings;
+		bool Running = false; //!< Sending waves.
 		float Spent = 0.0F;
 		int Sent = 0;
-		long long NextWave = 0;
+		long long NextWave = 0; //!< The sim update its next burst of ships sets off on.
 		bool Broke = false; //!< Can't afford another unit.
+	};
+
+	/// A Battle Director unit told to defend a place: it holds a post there and goes after enemies near it, but only so far (UpdateBattleDefenders).
+	struct BattleDefender {
+		Vector Center; //!< The place it defends.
+		float Radius = 150.0F;
+		float Chase = 300.0F; //!< How far past Radius from Center it may go after an enemy.
+		Vector Post; //!< Where it stands when there's nothing to chase.
+		long ChasingID = 0; //!< The enemy it was sent after, 0 when at (or on its way back to) its post.
+		bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
+		long long Made = 0; //!< The sim update it was made on.
+	};
+
+	/// A Battle Director ship that can't be hurt, kept whole until it has delivered and left (UpdateBattleCraft).
+	struct BattleCraft {
+		UnitRef Ship;
+		long long Emptied = -1; //!< The sim update it was first seen empty after delivering, -1 until then.
 	};
 
 	inline int s_ToolIndex = 0;
@@ -418,20 +484,18 @@ namespace SandboxDetail {
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
 	inline ImVec2 s_DragStart;
-	inline std::array<AutoSide, 4> s_AutoSides;
-	inline bool s_AutoRunning = false;
-	inline int s_AutoWinner = -2; //!< -2 no result yet, -1 a draw, otherwise the winning side.
-	inline Vector s_AutoCenter;
-	inline float s_AutoLaneWidth = 0.0F; //!< The view's width when the auto battle began: the lanes the waves land in are spaced by it.
-	inline bool s_AutoRandom = false; //!< The waves are random units from every faction (or the favourites), not each side's own faction's.
-	inline bool s_AutoFavourites = false; //!< With s_AutoRandom: only units marked as favourites.
-	inline bool s_ScriptAutoRandom = false; //!< A script's auto battle (SandboxStartAutoBattle) is random units (SandboxAutoBattleRandom).
-	inline bool s_ScriptAutoFavourites = false; //!< With s_ScriptAutoRandom: only units marked as favourites.
-	// The window's choices for an auto battle and for a random drop (copied into the stroke at the click).
-	inline int s_AutoSideCount = 2;
-	inline int s_AutoBudget = 5000;
-	inline bool s_AutoRandomChoice = true;
-	inline bool s_AutoFavouritesChoice = false;
+	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
+	inline std::array<BattleSettings, c_Sides> s_BattleSetup = [] { //!< The Battle tab's cards, the window's copy (sent to the sim as each changes).
+		std::array<BattleSettings, c_Sides> setup;
+		// Red against Green to start with.
+		setup[0].Active = true;
+		setup[1].Active = true;
+		return setup;
+	}();
+	inline int s_BattleEditTeam = 0; //!< The team the defence point and drop line tools set.
+	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
+	inline std::vector<BattleCraft> s_BattleCraft;
+	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;
 	inline std::vector<int> s_FactionModules;
@@ -1265,7 +1329,8 @@ namespace SandboxDetail {
 	void StrikeLightning(const Vector& target);
 	void GiveLoadout(Actor* actor, const Preset& unit, int loadout);
 	Actor* CreateUnit(const Preset& preset, int team, int loadout, Order order);
-	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft);
+	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible = false);
+	void KeepCraftWhole(ACraft* ship);
 	void SpawnUnits(const Stroke& stroke, bool brain);
 	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly);
 	const Preset* RandomPick(const std::vector<const Preset*>& pool);
@@ -1321,9 +1386,13 @@ namespace SandboxDetail {
 	void QueueRule(bool weapons, int rule);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
-	float AutoLaneX(int side);
-	void UpdateAutoBattle();
-	void BeginAutoBattle(const Vector& center, float laneWidth);
+	void UpdateBattle(bool aiPaused);
+	void ApplyBattleStroke(const Stroke& stroke);
+	void SendBattleSettings(int team, int command = BattleSet);
+	void ForgetBattle();
+	void UpdateBattleDefenders();
+	void BattleTab();
+	void DrawBattleMarks();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
 	void QueueStroke(Tool kind, const Vector& position);

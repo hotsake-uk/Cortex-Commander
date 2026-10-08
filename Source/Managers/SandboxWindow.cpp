@@ -93,6 +93,10 @@ namespace SandboxDetail {
 				return {Icon::Person, IM_COL32(120, 220, 120, 255)};
 			case Tool::GymGoal:
 				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
+			case Tool::BattleDefendPoint:
+				return {Icon::Flag, IM_COL32(120, 200, 220, 255)};
+			case Tool::BattleDropLine:
+				return {Icon::Down, IM_COL32(120, 200, 220, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:
@@ -2093,7 +2097,7 @@ namespace SandboxDetail {
 	}
 
 	void SideStatus() {
-		// The fighting units each side has, as the auto battle counts them (Sandbox::CountUnits): not brains or craft, but a craft's passengers.
+		// The fighting units each side has, as the Battle Director counts them (Sandbox::CountUnits): not brains or craft, but a craft's passengers.
 		// ("Red 7" was one brain, one dropship and five soldiers.)
 		std::array<int, c_Sides> counts{};
 		for (int side = 0; side < c_Sides; ++side) {
@@ -2105,16 +2109,17 @@ namespace SandboxDetail {
 			}
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s %d", c_SideNames[side], counts[side]);
 		}
-		// The order labels overlay adds how each auto battle side stands.
-		if (g_SettingsMan.ShowOrderLabels() && s_AutoRunning) {
+		// The order labels overlay adds how each Battle Director team stands.
+		if (g_SettingsMan.ShowOrderLabels()) {
 			long long now = g_TimerMan.GetSimUpdateCount();
+			float perSecond = 1.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 			for (int side = 0; side < c_Sides; ++side) {
-				const AutoSide& autoSide = s_AutoSides[side];
-				if (!autoSide.Active) {
+				const BattleTeam& team = s_BattleTeams[side];
+				if (!team.Running) {
 					continue;
 				}
-				std::string wave = autoSide.Broke ? std::string("broke") : "next wave " + std::to_string(std::max(0LL, autoSide.NextWave - now) / 60) + "s";
-				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s: budget %d, spent %.0f, sent %d, %s", c_SideNames[side], autoSide.Budget, autoSide.Spent, autoSide.Sent, wave.c_str());
+				std::string wave = team.Broke ? std::string("broke") : "next ships " + std::to_string(static_cast<int>(static_cast<float>(std::max(0LL, team.NextWave - now)) / perSecond)) + "s";
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s: spent %.0f, sent %d, %s", c_SideNames[side], team.Spent, team.Sent, wave.c_str());
 			}
 		}
 	}
@@ -2474,7 +2479,8 @@ namespace SandboxDetail {
 		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Paint: fire, liquids, smoke, loose and solid ground"},
 		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Boom: blasts, strikes from the sky, and things to knock down"},
 		    {"Effects", Icon::Star, IM_COL32(255, 220, 120, 255), "Effects: lights and particle effects to put down"},
-		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders: orders for whole sides, and auto battles"},
+		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders: orders for whole sides"},
+		    {"Battle", Icon::Rocket, IM_COL32(239, 106, 91, 255), "Battle: teams that keep dropping in waves to fight, attack or defend"},
 		    {"World", Icon::Cloud, IM_COL32(190, 190, 190, 255), "World: time, weather, the speed of the world, the camera"},
 		    {"You", Icon::Person, IM_COL32(130, 220, 120, 255), "You: your own character, what it is, carries and can do"},
 		};
@@ -2609,7 +2615,7 @@ namespace SandboxDetail {
 						s_WantedTab = part.Name;
 						s_CurrentTab = part.Name;
 						// Whatever was last picked on that part comes back to hand with it; the first time, the part's first tool.
-						static const std::map<std::string, Tool> firstTools = {{"Spawn", Tool::Unit}, {"Build", Tool::Structure}, {"Paint", Tool::Fire}, {"Boom", Tool::Grenade}, {"Effects", Tool::Effect}, {"Orders", Tool::Command}, {"You", Tool::PlayCharacter}};
+						static const std::map<std::string, Tool> firstTools = {{"Spawn", Tool::Unit}, {"Build", Tool::Structure}, {"Paint", Tool::Fire}, {"Boom", Tool::Grenade}, {"Effects", Tool::Effect}, {"Orders", Tool::Command}, {"Battle", Tool::None}, {"You", Tool::PlayCharacter}};
 						if (auto remembered = s_LastToolOfTab.find(part.Name); remembered != s_LastToolOfTab.end()) {
 							s_ToolIndex = remembered->second;
 						} else if (auto first = firstTools.find(part.Name); first != firstTools.end()) {
