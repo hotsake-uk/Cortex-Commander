@@ -435,7 +435,10 @@ namespace SandboxDetail {
 	/// Gets the picture of a bunker piece, making it the first time it is asked for. A piece with no art of its own gets an empty picture.
 	const PiecePicture& PictureOf(const Preset& preset) {
 		std::map<std::string, PiecePicture>& pictures = s_PresetPictures;
-		std::string key = preset.ClassName + "/" + preset.Module + "/" + preset.PresetName;
+		if (preset.PictureKey.empty()) {
+			preset.PictureKey = preset.ClassName + "/" + preset.Module + "/" + preset.PresetName;
+		}
+		const std::string& key = preset.PictureKey;
 		if (auto found = pictures.find(key); found != pictures.end()) {
 			return found->second;
 		}
@@ -1350,7 +1353,16 @@ namespace SandboxDetail {
 		for (int i = 0; i < count; ++i) {
 			float middle = -1.5708F + slice * static_cast<float>(i);
 			ImVec2 at(s_RingCenter.x + std::cos(middle) * (inner + thickness * 0.5F), s_RingCenter.y + std::sin(middle) * (inner + thickness * 0.5F));
-			const PiecePicture* picture = items[i].Icon ? &PictureOfFile(std::string("Base.rte/GUIs/PieMenus/PieIcons/") + items[i].Icon + "000.png") : nullptr;
+			// (Each icon's path made once, not per item per frame.)
+			static std::unordered_map<const char*, std::string> s_RingIconPaths;
+			const PiecePicture* picture = nullptr;
+			if (items[i].Icon) {
+				auto [path, added] = s_RingIconPaths.try_emplace(items[i].Icon);
+				if (added) {
+					path->second = std::string("Base.rte/GUIs/PieMenus/PieIcons/") + items[i].Icon + "000.png";
+				}
+				picture = &PictureOfFile(path->second);
+			}
 			if (picture && picture->Texture) {
 				float w = static_cast<float>(picture->Width) * pixel * 2.0F;
 				float h = static_cast<float>(picture->Height) * pixel * 2.0F;

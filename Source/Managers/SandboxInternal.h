@@ -331,6 +331,7 @@ namespace SandboxDetail {
 		int Height = 0;
 		float OffsetX = 0.0F;
 		float OffsetY = 0.0F;
+		mutable std::string PictureKey; //!< "ClassName/Module/PresetName", made the first time its picture is asked for (PictureOf), not each frame it is drawn.
 	};
 
 	/// Weapons a faction hands its units by default.
