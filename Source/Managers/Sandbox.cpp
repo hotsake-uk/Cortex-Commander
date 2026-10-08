@@ -6111,14 +6111,23 @@ void Sandbox::Update() {
 	for (const WaterSpawner& spawner: s_WaterSpawners) {
 		FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), "Water");
 	}
-	if (g_TimerMan.GetSimUpdateCount() % 60 == 0) {
+	// With the AI paused, the sandbox's own passes wait too: they re-sent attackers and walked defenders home once a second, and auto battle
+	// kept dropping waves, all on units held still. (Its wave clocks are held back as well, so the waves don't all come at once after.)
+	const bool aiPaused = Controller::IsAIPaused();
+	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 60 == 0) {
 		RetargetAttackers();
 		ReturnDefenders();
 	}
 	GymUpdate();
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
 	// can't be had are the AI's own business now, and re-ordering a unit every three seconds only restarted whatever it was in the middle of.)
-	UpdateAutoBattle();
+	if (aiPaused) {
+		for (AutoSide& autoSide: s_AutoSides) {
+			++autoSide.NextWave;
+		}
+	} else {
+		UpdateAutoBattle();
+	}
 	Colony::Update();
 	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
 		FindAction();
