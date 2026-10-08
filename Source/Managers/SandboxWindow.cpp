@@ -749,6 +749,11 @@ namespace SandboxDetail {
 						goal = target->second->GetPos();
 						hasGoal = true;
 					}
+				} else if (auto guard = s_GuardPosts.find(unit->GetUniqueID()); guard != s_GuardPosts.end()) {
+					// Guarding a thing (RC-10): a guard, with its line to the thing.
+					kind = CommandMode::Guard;
+					goal = guard->second.Place;
+					hasGoal = true;
 				} else if (unit->GetOrderHasPost()) {
 					kind = CommandMode::DefendAt;
 					goal = unit->GetOrderPost();
@@ -800,6 +805,42 @@ namespace SandboxDetail {
 					drawList->AddCircle(mark, r, color, 0, 1.5F);
 					drawList->AddTriangleFilled(ImVec2(mark.x + r, mark.y - 3.0F), ImVec2(mark.x + r + 3.0F, mark.y + 1.0F), ImVec2(mark.x + r - 3.0F, mark.y + 1.0F), color);
 				}
+			}
+		}
+
+		// What is guarded that isn't a unit (RC-10): a green ring round it (or its plot) with how many guard it, with the command tool in hand.
+		if (CurrentTool().Kind == Tool::Command && !s_GuardPosts.empty()) {
+			std::map<std::pair<long, int>, int> guarded;
+			for (const auto& [unitID, post]: s_GuardPosts) {
+				++guarded[{post.ObjectID, post.BuildingID}];
+			}
+			ImU32 green = c_CommandModeColors[static_cast<int>(CommandMode::Guard)];
+			for (const auto& [what, guards]: guarded) {
+				ImVec2 labelAt;
+				if (what.first != 0) {
+					const MovableObject* object = g_MovableMan.FindObjectByUniqueID(what.first);
+					if (!object) {
+						continue;
+					}
+					float radius = std::max(object->GetRadius(), 10.0F) / scale + 4.0F;
+					ImVec2 at = ToScreen(object->GetPos());
+					drawList->AddCircle(at, radius, fade(green, 200), 0, 1.5F);
+					labelAt = ImVec2(at.x + radius + 3.0F, at.y - radius);
+				} else {
+					auto building = std::find_if(Colony::Buildings().begin(), Colony::Buildings().end(), [&what](const Colony::Building& each) { return each.ID == what.second; });
+					if (building == Colony::Buildings().end()) {
+						continue;
+					}
+					const Colony::Type& type = Colony::GetType(building->What);
+					ImVec2 corner = ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height)));
+					drawList->AddRect(corner, ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), fade(green, 200), 0.0F, 0, 1.5F);
+					labelAt = ImVec2(corner.x, corner.y - ImGui::GetTextLineHeight() - 2.0F);
+				}
+				if (!inView(labelAt, 40.0F)) {
+					continue;
+				}
+				std::string text = std::to_string(guards) + (guards == 1 ? " guard" : " guards");
+				drawList->AddText(labelAt, fade(green, 230), text.c_str());
 			}
 		}
 
@@ -1231,14 +1272,34 @@ namespace SandboxDetail {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (s_CommandMode == CommandMode::Guard) {
 				ImU32 green = IM_COL32(120, 220, 120, 255);
-				if (underIsFriend) {
-					ImVec2 at = ToScreen(under->GetPos());
-					float reach = std::max(under->GetRadius() / scale, 8.0F) + pixel * 3.0F;
+				auto guardRing = [&](const Vector& where, float sceneRadius) {
+					ImVec2 at = ToScreen(where);
+					float reach = std::max(sceneRadius / scale, 8.0F) + pixel * 3.0F;
 					drawList->AddCircle(at, reach, green, 0, pixel * 1.5F);
 					drawList->AddCircle(at, reach + pixel * 3.0F, (green & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT), 0, pixel);
+				};
+				// (Besides a friend to follow, RC-10: your brain, your craft, a crate or other loose object, or a colony building.)
+				bool brain = under && under->IsInGroup("Brains") && under->GetTeam() == SelectionTeam() && !dynamic_cast<const ACraft*>(under);
+				const Colony::Building* building = under ? nullptr : BuildingAt(point);
+				MovableObject* object = !under || dynamic_cast<const ACraft*>(under) ? GuardableObjectAt(point, SelectionTeam()) : nullptr;
+				if (underIsFriend || brain) {
+					guardRing(under->GetPos(), under->GetRadius());
 					label = count + " guard " + under->GetPresetName();
+				} else if (object) {
+					guardRing(object->GetPos(), std::max(object->GetRadius(), 10.0F));
+					for (const Vector& spot: StandingSpots(object->GetPos(), static_cast<int>(units.size()))) {
+						flag(spot, green);
+					}
+					label = count + " guard " + object->GetPresetName() + ", holding posts round it";
+				} else if (building) {
+					const Colony::Type& type = Colony::GetType(building->What);
+					drawList->AddRect(ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height))), ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), green, 0.0F, 0, pixel * 1.5F);
+					for (const Vector& spot: StandingSpots(building->Ground, static_cast<int>(units.size()))) {
+						flag(spot, green);
+					}
+					label = count + " guard the " + type.Name + ", holding posts round it";
 				} else {
-					label = "Guard: point at a friendly unit for " + count + " to stay with";
+					label = "Guard: point at a friendly unit, your brain or craft, a crate or a colony building for " + count + " to stay with";
 				}
 			} else {
 				for (const Vector& spot: FormationSpots(units, formationPoint, static_cast<int>(units.size()), formationFacing)) {
