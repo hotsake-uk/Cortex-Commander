@@ -102,11 +102,18 @@ namespace SandboxDetail {
 		// An earlier order still waiting is dropped.
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
+		// A move to a place is watched till it gets there (RC-7); anything else isn't.
+		if (!attack && !target) {
+			s_MoveWatch[unit->GetUniqueID()] = {waypoint, g_TimerMan.GetSimUpdateCount()};
+		} else {
+			s_MoveWatch.erase(unit->GetUniqueID());
+		}
 	}
 
 	/// Holds a unit where it is, forgetting every order it had.
 	void HoldUnit(Actor* unit) {
 		DropPlan(unit);
+		s_MoveWatch.erase(unit->GetUniqueID());
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
 		unit->SetPaceLimit(0.0F);
@@ -145,6 +152,7 @@ namespace SandboxDetail {
 		}
 		CancelRetreatAndFlank(actor);
 		DropPlan(actor);
+		s_MoveWatch.erase(actor->GetUniqueID());
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->ClearStandingOrder();
@@ -488,6 +496,11 @@ namespace SandboxDetail {
 			}
 			if (!reachable.empty()) {
 				spots = reachable;
+			} else {
+				// Nowhere there they can get to (RC-7): sent to the nearest spots all the same, as before, and marked as having no route.
+				for (Actor* unit: units) {
+					AddNoRoute(unit, point);
+				}
 			}
 		}
 		spots.resize(std::min(spots.size(), units.size()));
@@ -533,6 +546,68 @@ namespace SandboxDetail {
 			MoveUnitsTo(UnitsToMove(0, true), point, attackMove, facing);
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(attackMove ? CommandMode::AttackMove : CommandMode::Move)]);
+	}
+
+	/// Marks a place a unit can't get to (RC-7), with any other marker near it, so a group sent there has one marker.
+	void AddNoRoute(Actor* unit, const Vector& destination) {
+		long long now = g_TimerMan.GetSimUpdateCount();
+		auto near = std::find_if(s_NoRoutes.begin(), s_NoRoutes.end(), [&destination](const NoRoute& marker) { return g_SceneMan.ShortestDistance(marker.Destination, destination, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(40.0F); });
+		if (near == s_NoRoutes.end()) {
+			s_NoRoutes.push_back({destination, {}, now});
+			near = std::prev(s_NoRoutes.end());
+		}
+		near->At = now;
+		if (std::none_of(near->Units.begin(), near->Units.end(), [unit](const UnitRef& ref) { return RefersTo(ref, unit); })) {
+			near->Units.push_back(MakeRef(unit));
+		}
+	}
+
+	/// Each unit sent somewhere (RC-7): forgotten once it gets there, and marked "no route" if it has stopped going (on no route, with
+	/// nothing left to walk) well short of it a second or more after the order. Old markers fade.
+	void UpdateMoveWatch() {
+		long long now = g_TimerMan.GetSimUpdateCount();
+		for (auto watch = s_MoveWatch.begin(); watch != s_MoveWatch.end();) {
+			Actor* unit = nullptr;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (static_cast<long>(actor->GetUniqueID()) == watch->first) {
+					unit = actor;
+					break;
+				}
+			}
+			if (!unit) {
+				watch = s_MoveWatch.erase(watch);
+				continue;
+			}
+			float distance = g_SceneMan.ShortestDistance(unit->GetPos(), watch->second.Destination, g_SceneMan.SceneWrapsX()).GetMagnitude();
+			bool pending = std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
+			bool stopped = !pending && now - watch->second.Issued > 60 && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			if (distance < 60.0F || unit->IsPlayerControlled()) {
+				watch = s_MoveWatch.erase(watch);
+			} else if (stopped) {
+				AddNoRoute(unit, watch->second.Destination);
+				watch = s_MoveWatch.erase(watch);
+			} else {
+				++watch;
+			}
+		}
+		s_NoRoutes.erase(std::remove_if(s_NoRoutes.begin(), s_NoRoutes.end(), [now](const NoRoute& marker) { return now - marker.At > c_NoRouteUpdates || std::none_of(marker.Units.begin(), marker.Units.end(), [](const UnitRef& ref) { return GetRef(ref) != nullptr; }); }), s_NoRoutes.end());
+	}
+
+	/// Sends the units of the "no route" marker at a place (RC-7) there again (the ground may have changed, or a door opened), and drops
+	/// the marker; they are watched again as any move is.
+	void ReissueNoRoute(const Vector& destination) {
+		auto marker = std::find_if(s_NoRoutes.begin(), s_NoRoutes.end(), [&destination](const NoRoute& each) { return g_SceneMan.ShortestDistance(each.Destination, destination, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(4.0F); });
+		if (marker == s_NoRoutes.end()) {
+			return;
+		}
+		std::vector<UnitRef> units = marker->Units;
+		s_NoRoutes.erase(marker);
+		for (const UnitRef& ref: units) {
+			if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
+				SendUnit(unit, destination, nullptr, false, "sent again (no route)");
+			}
+		}
+		MarkOrder(destination, IM_COL32(110, 180, 250, 255));
 	}
 
 	/// Lets each unit kept to a group's pace (RC-5) walk at its own again once it has got there, been given another order, or been taken over.

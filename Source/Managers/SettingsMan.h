@@ -283,6 +283,18 @@ namespace RTE {
 		/// Sets whether units in a sandbox control group show the group's number by them.
 		void SetShowSandboxGroupBadges(bool show) { m_SandboxGroupBadges = show; }
 
+		/// Which units in the sandbox show their order as a mark over them (RC-7): 0 none, 1 the selected ones, 2 all.
+		int SandboxOrderGlyphs() const { return m_SandboxOrderGlyphs; }
+
+		/// Sets SandboxOrderGlyphs; see there.
+		void SetSandboxOrderGlyphs(int which) { m_SandboxOrderGlyphs = std::clamp(which, 0, 2); }
+
+		/// Whether the sandbox pings where units of the selection's side come under fire (RC-7).
+		bool ShowSandboxAttackPings() const { return m_SandboxAttackPings; }
+
+		/// Sets whether the sandbox pings where units of the selection's side come under fire.
+		void SetShowSandboxAttackPings(bool show) { m_SandboxAttackPings = show; }
+
 		/// Gets whether the lighting-by-source readout is on.
 		bool ShowLightsBySource() const { return m_LightsBySource; }
 
@@ -594,6 +606,8 @@ namespace RTE {
 		bool m_SandboxStrokeLog; //!< Whether the sandbox's stroke log is on (see ShowSandboxStrokeLog).
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
+		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
+		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's auto battle and colony readout is on (see ShowSandboxAutoBattle).
