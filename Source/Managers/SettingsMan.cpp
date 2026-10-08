@@ -7,6 +7,7 @@
 #include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "Sandbox.h"
@@ -243,6 +244,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -738,6 +740,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
 	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
+	writer.NewPropertyWithValue("LightningStrikes", static_cast<int>(WeatherLightning::GetStrikes()));
 	writer.NewPropertyWithValue("BloodFlows", FluidSim::BloodFlows());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
