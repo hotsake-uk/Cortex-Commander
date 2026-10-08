@@ -507,7 +507,7 @@ void SLTerrain::UpdateLights() {
 	if (checkFixtures) {
 		m_LightCheckCounter = 0;
 	}
-	float time = PostProcessMan::GetSmoothSimTime();
+	float time = PostProcessMan::GetEffectTime();
 	for (auto light = m_Lights.begin(); light != m_Lights.end();) {
 		if (light->m_Anchored < 0) {
 			// What does it hang on? Something solid right at it, else the nearest solid thing within a few pixels: above first, as lamps mostly hang from ceilings.
