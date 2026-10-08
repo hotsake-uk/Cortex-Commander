@@ -463,6 +463,9 @@ void DebugMan::SettingsGUI() {
 		Slider("Froth brightness", &settings.WaterFoamBrightness, 0.2F, 2.0F);
 		Slider("Froth glow in the dark", &settings.WaterFoamGlow, 0.0F, 1.0F);
 		Tip("How much light of its own froth carries. 0: it is as dark as the scene around it at night.");
+		Heading("Splashes");
+		Slider("Splash size", &settings.WaterSplash, 0.0F, 4.0F);
+		Tip("How big the splash is when falling ground or a broken-off piece drops into water (or any liquid): drops and spray thrown up, by how fast and how wide it went in. Only for the eye: the water it pushes aside raises the level. 0 for none.");
 		Heading("Mist");
 		Slider("Mist", &settings.WaterMist, 0.0F, 2.0F);
 		Tip("Soft spray thrown off water that is falling fast or landing. 0 for none.");
