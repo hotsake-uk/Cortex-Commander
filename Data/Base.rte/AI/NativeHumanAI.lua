@@ -698,6 +698,7 @@ function NativeHumanAI:Update(Owner)
 	SharedBehaviors.RetreatUpdate(self, Owner);
 	SharedBehaviors.RememberUpdate(self, Owner);
 	HumanBehaviors.MedicUpdate(self, Owner);
+	HumanBehaviors.ReloadInLull(self, Owner);
 
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then

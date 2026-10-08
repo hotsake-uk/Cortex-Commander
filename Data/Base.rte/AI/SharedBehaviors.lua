@@ -1823,6 +1823,37 @@ function SharedBehaviors.RuleLetsFire(AI, Owner)
 	return rule ~= Actor.WEAPONS_HOLD;
 end
 
+-- Fire discipline (AC-8): how an automatic is fired at a target this far off. @return ms on and ms off for a burst, or nil to hold the
+-- trigger down. Close in, the trigger is held; further out the bursts get shorter, so the shake of a long burst doesn't throw rounds
+-- wide of the mark; a weapon whose spread is far wider than the target looks (a mark much smaller than the cone at that range) taps
+-- single rounds rather than spraying; and a unit pinned down (suppression over 0.5) fires short bursts whatever the range.
+function SharedBehaviors.BurstPattern(Weapon, range, targetRadius, suppression)
+	local on, off;
+	if range > 400 then
+		on, off = 250, 450;
+	elseif range > 150 then
+		on, off = 500, 250;
+	end
+	-- (ShakeRange and ParticleSpreadRange are whole cones in degrees: half of each either side of the aim. Sharp aim's shake, as the
+	-- AI aims sharp when it can hit.)
+	local spread = math.rad(math.max(Weapon.SharpShakeRange, 0) + math.max(Weapon.ParticleSpreadRange, 0)) * 0.5;
+	if spread > 0.001 and range > 60 then
+		local share = math.atan(math.max(targetRadius, 4) / range) / spread;
+		if share < 0.35 then
+			on, off = 120, share < 0.15 and 900 or 500;
+		end
+	end
+	if suppression > 0.5 then
+		on, off = math.min(on or 350, 350), math.max(off or 400, 400);
+	end
+	return on, off;
+end
+
+-- Whether the unit is being shot at: pinned (suppression over 0.1) or hurt in the last two seconds.
+function SharedBehaviors.UnderFire(AI, Owner)
+	return SharedBehaviors.Suppression(AI, Owner) > 0.1 or (AI.HitTimer ~= nil and not AI.HitTimer:IsPastSimMS(2000));
+end
+
 -- Whether a unit with a target in sight keeps going for its waypoint: on a move order, or when its script marks it aggressive (the Ronin
 -- do when hurt), or when it's closing in on a target it can't hit from here.
 function SharedBehaviors.FightsOnTheMove(AI, Owner)

@@ -1503,9 +1503,14 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					openFire = 0;
 				end
 
-				-- (Pinned down, an automatic fires in short bursts: 350 ms on, 400 ms off.)
-				if openFire > 0 and suppression > 0.5 and Weapon and Weapon.FullAuto and BurstTimer:IsPastSimMS(350) then
-					if BurstTimer:IsPastSimMS(750) then
+				-- Bursts that fit the range (AC-8, see SharedBehaviors.BurstPattern): held down close in, shorter further out, single
+				-- taps where the weapon's spread is far wider than the target, and short bursts when pinned down.
+				local burstOn, burstOff;
+				if Weapon and Weapon.FullAuto then
+					burstOn, burstOff = SharedBehaviors.BurstPattern(Weapon, range, AI.Target.Radius, suppression);
+				end
+				if openFire > 0 and burstOn and BurstTimer:IsPastSimMS(burstOn) then
+					if BurstTimer:IsPastSimMS(burstOn + burstOff) then
 						BurstTimer:Reset();
 					else
 						openFire = 0;
@@ -1544,8 +1549,10 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						if Owner:EquipLoadedFirearmInGroup("Weapons - Primary", "None", true) then
 							PrjDat = nil;
 						else
-							-- select a secondary instead of reloading if the target is within half a screen
-							if Dist.Largest < (FrameMan.PlayerScreenWidth * 0.5 + AI.Target.Radius + Owner.AimDistance) then
+							-- select a secondary instead of reloading if the target is within half a screen; being shot at (AC-8), within
+							-- most of a screen: a pistol now beats a rifle after a reload in the open
+							local reach = SharedBehaviors.UnderFire(AI, Owner) and 0.8 or 0.5;
+							if Dist.Largest < (FrameMan.PlayerScreenWidth * reach + AI.Target.Radius + Owner.AimDistance) then
 								-- select a primary if we have an empty secondary equipped
 								if Owner:EquipLoadedFirearmInGroup("Weapons - Secondary", "None", true) then
 									PrjDat = nil;
@@ -2213,8 +2220,17 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 			AI.deviceState = AHuman.AIMING;
 			AI.Ctrl.AnalogAim = Vector(1,0):RadRotate(aim+aimError+RangeRand(-0.02, 0.02)*AI.aimSkill);
 			if ShootTimer:IsPastRealMS(aimTime) then
+				-- Fire at a place, not a target (AC-8): not the whole magazine sprayed at it. A third is kept for whoever comes out, and
+				-- an automatic fires 300 ms bursts with 400 ms between.
+				if Weapon.RoundInMagCapacity > 0 and Weapon.RoundInMagCount <= Weapon.RoundInMagCapacity * 0.34 then
+					AI.fire = false;
+					Owner:ReloadFirearms(); -- (Topped up while the enemy is out of sight, not when it shows itself.)
+					break;
+				end
 				if Weapon.FullAuto then
-					AI.fire = true;
+					AI.BurstClock = AI.BurstClock or Timer();
+					local phase = AI.BurstClock.ElapsedSimTimeMS % 700;
+					AI.fire = phase < 300;
 				else
 					ShootTimer:Reset();
 					aimTime = 120 * AI.aimSkill;
@@ -2390,6 +2406,29 @@ function HumanBehaviors.MedicEnd(AI, Owner, keep)
 		SharedBehaviors.RestoreOrder(AI, Owner, keep);
 	end
 	AI.MedicLookTimer = Timer(); -- (A second's pause before the next friend.)
+end
+
+-- Saving the last magazine (AC-8): with no enemy in sight or heard for a second and a half, a weapon under half full is reloaded, so the
+-- next fight doesn't start with a few rounds and a reload in the open. Weapons only (a medikit is a firearm too, and isn't to be refilled).
+-- Called every tick by the AI's update.
+function HumanBehaviors.ReloadInLull(AI, Owner)
+	AI.LullTimer = AI.LullTimer or Timer();
+	if AI.Target or AI.UnseenTarget or Owner:IsPlayerControlled() then
+		AI.LullTimer:Reset();
+		return;
+	end
+	if not AI.LullTimer:IsPastSimMS(1500) then
+		return;
+	end
+	AI.LullTimer:Reset();
+	local Item = Owner.EquippedItem;
+	if Item and IsHDFirearm(Item) and Item:HasObjectInGroup("Weapons") then
+		local Gun = ToHDFirearm(Item);
+		if not Gun:IsReloading() and Gun.RoundInMagCapacity > 0 and Gun.RoundInMagCount >= 0 and Gun.RoundInMagCount < Gun.RoundInMagCapacity * 0.5 then
+			SharedBehaviors.Trace(Owner, "reload: in a lull, " .. Gun.RoundInMagCount .. " of " .. Gun.RoundInMagCapacity .. " left");
+			Owner:ReloadFirearms();
+		end
+	end
 end
 
 -- stop the user from inadvertently modifying the storage table
