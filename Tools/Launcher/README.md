@@ -25,10 +25,10 @@ To use an older commit, or to Build / Run separately, delete the cached build, o
 **Run latest** fetches, moves to the newest commit of the chosen branch, and runs it, building only if that commit has not been built yet.
 
 ## Mods folder
-Set **Mods folder** to a folder containing `*.rte` mods (or a single `.rte` folder). Before each run the launcher copies each one into the version's `Data` folder, transferring only files that changed and removing files you deleted from the source. A mod folder the version ships itself is never touched.
+Set **Mods folder** to a folder containing `*.rte` mods (or a single `.rte` folder). Before each run the launcher copies each one into the version's `Mods` folder, transferring only files that changed and removing files you deleted from the source. A mod folder the version ships itself is never touched.
 
 ## Settings.ini
-Set the **Settings.ini** box (or browse for a file) to have the launcher copy that file into the version's folder every time it runs a version, replacing whatever is there. The game rewrites its own copy on exit, so your chosen file is never modified. Clear the box to let each version use its own settings.
+Set the **Settings.ini** box (or browse for a file) to have the launcher copy that file into the version's `Userdata` folder every time it runs a version, replacing whatever is there. The game rewrites its own copy on exit, so your chosen file is never modified. Clear the box to let each version use its own settings.
 
 ## Live feed
 The **Live feed** tab polls the remote (`git ls-remote`, every 10s by default; adjustable, or untick Live). When a branch or tag moves it fetches and adds a row per new commit: time, branch or tag, sha, game version, author and message, newest on top, with a chime and an "(N new)" badge on the tab. New branches show their own commits, force-pushes show the new tip, and new tags (e.g. `v8.2.4`) appear as they are created. Double-click a row to jump to that commit in the main list, then Build & Run.

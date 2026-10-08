@@ -63,7 +63,7 @@ class MainForm : Form
 	readonly Button fetchBtn = new() { Text = "Fetch", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
-	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Data folder" };
+	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
 	readonly Button runLatestBtn = new() { Text = "Run latest", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
@@ -560,7 +560,7 @@ class MainForm : Form
 		else await BuildAndRun(true);
 	}
 
-	// Copies every *.rte folder of the mods folder into the version's Data folder (only files that changed), so each version runs with its own copy.
+	// Copies every *.rte folder of the mods folder into the version's Mods folder (only files that changed), so each version runs with its own copy.
 	// A folder the version ships itself is left alone; ones the launcher copied are marked and kept in sync with the source.
 	const string CopyMarker = ".launcher-copy";
 	void LinkMods(CommitInfo c)
@@ -568,8 +568,13 @@ class MainForm : Form
 		var src = modsBox.Text.Trim();
 		if (src == "") return;
 		if (!Directory.Exists(src)) { Append($"Mods folder not found: {src}"); return; }
-		var data = Path.Combine(WorktreePath(c), "Data");
-		if (!Directory.Exists(data)) return;
+		var data = Path.Combine(WorktreePath(c), "Mods"); // the game loads user mods from Mods/, official ones from Data/
+		Directory.CreateDirectory(data);
+		// An earlier launcher build copied mods into Data/; tidy those marked copies away.
+		var oldData = Path.Combine(WorktreePath(c), "Data");
+		if (Directory.Exists(oldData))
+			foreach (var od in Directory.GetDirectories(oldData))
+				if (File.Exists(Path.Combine(od, CopyMarker))) try { Directory.Delete(od, true); } catch { }
 		var dirs = Directory.GetDirectories(src, "*.rte");
 		if (dirs.Length == 0 && src.EndsWith(".rte", StringComparison.OrdinalIgnoreCase)) dirs = new[] { src };
 		foreach (var d in dirs)
@@ -627,7 +632,7 @@ class MainForm : Form
 		{
 			// The game reads (and rewrites) Settings.ini from its working directory, so give each launch a fresh copy of the chosen file.
 			if (!File.Exists(ini)) { Append($"Settings.ini not found: {ini}"); return; }
-			try { File.Copy(ini, Path.Combine(WorktreePath(c), "Settings.ini"), true); Append($"Using Settings.ini from {ini}"); }
+			try { Directory.CreateDirectory(Path.Combine(WorktreePath(c), "Userdata")); File.Copy(ini, Path.Combine(WorktreePath(c), "Userdata", "Settings.ini"), true); Append($"Using Settings.ini from {ini}"); }
 			catch (Exception ex) { Append("Could not copy Settings.ini: " + ex.Message); return; }
 		}
 		Append($"Launching {c.Short}");
