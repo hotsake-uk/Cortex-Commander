@@ -1321,6 +1321,78 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 	return false;
 }
 
+bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, float lipNearY) {
+	if (m_Mantling || !g_SettingsMan.MantlingEnabled() || !m_pAtomGroup || m_Status == INACTIVE || m_Status == DYING || m_Status == DEAD || m_PinStrength > 0.0F) {
+		return false;
+	}
+	float dir = wantDir;
+	if (dir == 0.0F) {
+		bool left = m_Controller.IsState(MOVE_LEFT);
+		bool right = m_Controller.IsState(MOVE_RIGHT);
+		if (left == right) {
+			return false;
+		}
+		dir = right ? 1.0F : -1.0F;
+	}
+	// In the air (free to drop a little), and slow enough for the hands to hold: falling past a lip from up to a storey or so, or at the
+	// top of a rise.
+	if (std::abs(m_Vel.m_Y) > 7.0F || !BodyFitsShifted(Vector(0.0F, 3.0F), head)) {
+		return false;
+	}
+	float height = std::max(m_CharHeight, 20.0F);
+	// (Not for an AI whose route goes down from here, as for the mantle: a unit dropping down a shaft caught every lip on the way.)
+	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
+		return false;
+	}
+	// The lip: the top of the ground just beside the body, within the hands' reach, from a little over the head down to the waist, with air
+	// over it up to there (ground all the way up is a wall, not a lip).
+	int handX = static_cast<int>(m_Pos.m_X + dir * (bodyWidth * 0.5F + 4.0F));
+	int fromY = static_cast<int>(m_Pos.m_Y - height * 0.45F);
+	int toY = static_cast<int>(m_Pos.m_Y + height * 0.1F);
+	int lipY = -1;
+	for (int y = fromY; y <= toY; ++y) {
+		if (g_SceneMan.GetTerrMatter(handX, y) != MaterialColorKeys::g_MaterialAir) {
+			lipY = y;
+			break;
+		}
+	}
+	if (lipY <= fromY || (lipNearY >= 0.0F && std::abs(static_cast<float>(lipY) - lipNearY) > height * 0.33F)) {
+		return false;
+	}
+	// Where the body ends: over the lip and a body's width onto it, standing on it, with room all the way (up to the lip's height, then
+	// across) and ground under it there.
+	float over = bodyWidth * 0.5F + 4.0F + std::max(8.0F, bodyWidth * 0.6F);
+	Vector end(dir * over, static_cast<float>(lipY) - height * 0.4F - m_Pos.m_Y);
+	Vector up(0.0F, std::min(end.m_Y, 0.0F));
+	if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(end.m_X * 0.5F, up.m_Y), head) || !BodyFitsShifted(end, head)) {
+		return false;
+	}
+	Vector target = m_Pos + end;
+	bool supported = false;
+	for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
+		supported = g_SceneMan.GetTerrMatter(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down) != MaterialColorKeys::g_MaterialAir;
+	}
+	if (!supported) {
+		return false;
+	}
+	// Caught: from the hang, the mantle's pull up and over (UpdateMantle puts the body where it should be each frame, so the fall stops at
+	// once), a little slower than a mantle from the ground, the moment of the hang in it.
+	m_Mantling = true;
+	m_MantleDir = dir;
+	m_MantleStart = m_Pos;
+	m_MantleUp = m_Pos + up;
+	m_MantleEnd = target;
+	m_MantleLip = Vector(static_cast<float>(handX), static_cast<float>(lipY));
+	m_MantleProgress = 0.0F;
+	m_MantleDurationMS = 300.0F + std::abs(up.m_Y) * 5.0F;
+	m_MantleTimer.Reset();
+	m_Vel.Reset();
+	if (IsAITraced()) {
+		g_ConsoleMan.PrintString("AITRACE caught the ledge at " + std::to_string(handX) + "," + std::to_string(lipY));
+	}
+	return true;
+}
+
 void Actor::UpdateMantle() {
 	if (!m_Mantling) {
 		return;

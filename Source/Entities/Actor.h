@@ -1317,6 +1317,16 @@ namespace RTE {
 		/// @return Whether a mantle started.
 		bool TryStartMantle(MOSRotating* head, bool rising, float bodyWidth);
 
+		/// Catches a ledge in the air (LM-6): falling past a lip, or rising beside one with the jet giving out, slowly enough to grab it, with
+		/// a lip at the hands' reach on the side pressed (or asked for) and room to stand over it, the hands take it and the body is pulled
+		/// up onto it by the mantle's move from where it hangs.
+		/// @param head The head, if the body has one, so it fits too.
+		/// @param bodyWidth How wide the body is.
+		/// @param wantDir The side to catch on, -1 or 1, or 0 for the side the move keys press.
+		/// @param lipNearY Only a lip within a third of the body of this height, or any lip when negative.
+		/// @return Whether a catch began (as a mantle).
+		bool TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir = 0.0F, float lipNearY = -1.0F);
+
 		/// Moves a mantle on: up, then over, then done.
 		void UpdateMantle();
 
