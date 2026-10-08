@@ -711,6 +711,21 @@ namespace RTE {
 		/// Pins or unpins this unit for inspection by the debug overlays and AI tracing.
 		void SetDebugInspected(bool inspected) { m_DebugInspected = inspected; }
 
+		/// One name and value of a unit's debug state, for DescribeDebugState.
+		struct DebugStateField {
+			std::string Name;
+			std::string Value;
+			bool Text = false; //!< Whether the value is text (quoted in JSON) rather than a number or true/false.
+		};
+
+		/// Gets this unit's debug state, the unit inspector's fields: who and where it is, its AI mode, its route, and the AI values its scripts have written (those named AI... or Sandbox...). Derived units add their own (a human's route-follower).
+		/// @param fields Appended to.
+		virtual void GetDebugState(std::vector<DebugStateField>& fields) const;
+
+		/// Gets this unit's debug state as one line ("name value, ..."), or as a JSON object, for the gym's stall lines, the control link's inspect command and the Copy state button.
+		/// @param json Whether to give JSON rather than a line.
+		std::string DescribeDebugState(bool json) const;
+
 		/// Destroys this MOSRotating and creates its specified Gibs in its place with appropriate velocities.
 		/// Any Attachables are removed and also given appropriate velocities.
 		/// @param impactImpulse The impulse (kg * m/s) of the impact causing the gibbing to happen.
@@ -980,21 +995,6 @@ namespace RTE {
 
 		/// For Lua: whether this unit's lines on the named debug channel ("AI", "Pilot", "Climb", "Combat", "Squad") are written.
 		bool IsAITracedOn(const std::string& channel) const { SettingsMan::DebugChannel which = SettingsMan::DebugChannelFromName(channel); return which != SettingsMan::DebugChannel::Count && IsAITraced(which); }
-
-		/// One name and value of a unit's debug state, for DescribeDebugState.
-		struct DebugStateField {
-			std::string Name;
-			std::string Value;
-			bool Text = false; //!< Whether the value is text (quoted in JSON) rather than a number or true/false.
-		};
-
-		/// Gets this unit's debug state, the unit inspector's fields: who and where it is, its AI mode, its route, and the AI values its scripts have written (those named AI... or Sandbox...). Derived units add their own (a human's route-follower).
-		/// @param fields Appended to.
-		virtual void GetDebugState(std::vector<DebugStateField>& fields) const;
-
-		/// Gets this unit's debug state as one line ("name value, ..."), or as a JSON object, for the gym's stall lines, the control link's inspect command and the Copy state button.
-		/// @param json Whether to give JSON rather than a line.
-		std::string DescribeDebugState(bool json) const;
 
 		// Member variables
 		static Entity::ClassInfo m_sClass;
