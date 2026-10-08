@@ -12,6 +12,7 @@
 #include "SceneLayer.h"
 
 #include <array>
+#include <deque>
 #include <map>
 
 namespace RTE {
@@ -654,6 +655,11 @@ namespace RTE {
 		/// marked as outdated.
 		void UpdatePathFinding();
 
+		/// Marks an area whose team grids must be sampled again though its material didn't change, such as a door that changed hands: each team's
+		/// grid takes its own doors out, so the NoTeam grid sees nothing new there and wouldn't pass the change on.
+		/// @param area The area to re-sample in every team's grid. Unwrapped, as the terrain's updated areas are.
+		void AddTeamGridUpdateArea(const Box& area) { m_TeamGridUpdateAreas.emplace_back(area); }
+
 		/// Tells whether the pathfinding data has been updated in the last frame.
 		/// @return Whether the pathfinding data was recalculated fully or partially.
 		bool PathFindingUpdated() { return m_PathfindingUpdated; }
@@ -774,6 +780,8 @@ namespace RTE {
 		// Pathfinding graph and logic. Owned by this
 		// The array of PathFinders for each team. Because we also have a shared pathfinder using index 0, we need to use MaxTeamCount + 1 to handle all the Teams' PathFinders.
 		std::array<std::unique_ptr<PathFinder>, Activity::Teams::MaxTeamCount + 1> m_pPathFinders;
+		// Areas only the team grids need to take in again (doors changing hands); see AddTeamGridUpdateArea.
+		std::deque<Box> m_TeamGridUpdateAreas;
 		// Is set to true on any frame the pathfinding data has been updated
 		bool m_PathfindingUpdated;
 		// Timer for when to do an update of the pathfinding data
