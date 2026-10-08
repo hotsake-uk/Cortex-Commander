@@ -154,6 +154,7 @@ void LuaStateWrapper::Initialize() {
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, AEJetpack),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, PEmitter),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Actor),
+	                         RegisterLuaBindingsOfType(EntityLuaBindings, ActorSighting),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, ADoor),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Arm),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Leg),

@@ -623,6 +623,10 @@ namespace RTE {
 		/// @return The full crouch's walk path shift, in pixels.
 		float GetCrouchShift() const;
 
+		/// How much of a target this body makes, for the sight of others (see Actor::ScanForEnemies): lying down a little over half, crouched
+		/// four fifths.
+		float GetSightProfile() const override { return m_ProneState != NOTPRONE ? 0.55F : 1.0F - 0.2F * m_CrouchAmount; }
+
 		/// Gets this AHuman's current crouch amount. 0.0 == fully standing, 1.0 == fully crouched.
 		/// @return This AHuman's current crouch amount.
 		float GetCrouchAmount() const { return m_CrouchAmount; }
