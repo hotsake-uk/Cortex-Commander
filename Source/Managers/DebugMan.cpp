@@ -634,6 +634,16 @@ void DebugMan::PhotoModeGUI() {
 				ImGui::SliderFloat("Sharp band", &settings.TiltShiftLine, 0.0F, 1.0F);
 				ImGui::SliderFloat("Tilt-shift blur", &settings.TiltShiftStrength, 0.0F, 2.0F);
 			}
+			// The event looks (G-11): off, or one by one, so a shot isn't taken through a blast's flash or the hurt look.
+			ToolUI::Checkbox("Grade answers events", &settings.EventLooks);
+			if (settings.EventLooks) {
+				ImGui::SliderFloat("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+				ToolUI::Checkbox("Blast flash", &settings.EventBlastFlash);
+				ImGui::SameLine();
+				ToolUI::Checkbox("Hurt look", &settings.EventHurtLook);
+				ImGui::SameLine();
+				ToolUI::Checkbox("Fire warmth", &settings.EventFireWarmth);
+			}
 			if (ToolUI::Button("Reset look")) {
 				settings = m_PhotoSavedSettings;
 			}

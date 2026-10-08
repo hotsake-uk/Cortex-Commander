@@ -122,6 +122,38 @@ namespace {
 		}
 	}
 
+	/// The event looks one by one (G-11), each with a button that plays it once so it can be judged: the blast flash is the one most players
+	/// bothered by flashing want off.
+	void EventLookSwitches(LightingSettings& settings) {
+		struct EventLook {
+			const char* Label;
+			bool* On;
+			int Look;
+			const char* Tip;
+		};
+		const EventLook looks[] = {
+		    {"Blast flash", &settings.EventBlastFlash, LightingSettings::LookFlash, "The picture washes out white and warm for a moment after a huge blast. Off if flashing bothers you."},
+		    {"Hurt look", &settings.EventHurtLook, LightingSettings::LookHurt, "When your unit is badly hurt the picture drains, darkens at the edges and beats faintly like a pulse."},
+		    {"Fire warmth", &settings.EventFireWarmth, LightingSettings::LookWarm, "The picture warms a little standing by a fire."},
+		};
+		for (const EventLook& look: looks) {
+			Check(look.Label, look.On);
+			Tip(look.Tip);
+			if (!s_LastShown) {
+				continue;
+			}
+			ImGui::PushID(look.Label);
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!*look.On);
+			if (ToolUI::Button("Preview")) {
+				g_PostProcessMan.PulseGrade(look.Look, 1.0F, look.Look == LightingSettings::LookFlash ? 40.0F : 300.0F, look.Look == LightingSettings::LookFlash ? 1100.0F : 1800.0F);
+			}
+			ImGui::SetItemTooltip("Plays this look once, at the event grade strength.");
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+	}
+
 	void DrawPresets() {
 		if (!s_PresetsListed) {
 			s_Presets = g_SettingsMan.ListPresets();
@@ -321,9 +353,11 @@ void DebugMan::SettingsGUI() {
 		}
 		Check("Lightning bolts", &settings.LightningBolts);
 		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
-		if (settings.LightningBolts) {
-			Slider("Lightning brightness", &settings.LightningBrightness, 0.2F, 2.0F);
-			Tip("How bright the bolt and the light it throws on the ground and air are. 1: as first made.");
+		Check("Storm flashes", &settings.StormFlashes);
+		Tip("Heavy rain, and weather with lightning in it, flashes the whole sky now and then. Turn it off if flashing light bothers you; bolts are drawn as the setting above has them.");
+		if (settings.LightningBolts || settings.StormFlashes) {
+			Slider("Lightning brightness", &settings.LightningBrightness, 0.0F, 2.0F);
+			Tip("How bright the bolt, the light it throws on the ground and air, and a storm's sky flash are. 1: as first made. 0: no flash at all.");
 		}
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
@@ -633,6 +667,7 @@ void DebugMan::SettingsGUI() {
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {
 			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+			EventLookSwitches(settings);
 		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
