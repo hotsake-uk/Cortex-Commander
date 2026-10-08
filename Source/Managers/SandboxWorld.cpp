@@ -967,7 +967,12 @@ namespace SandboxDetail {
 				GymRemoveUnits();
 				break;
 			case Tool::ClearWaterSpawners:
-				s_WaterSpawners.clear();
+				// All of them, or only those that pour the material named.
+				if (stroke.Material.empty()) {
+					s_WaterSpawners.clear();
+				} else {
+					s_WaterSpawners.erase(std::remove_if(s_WaterSpawners.begin(), s_WaterSpawners.end(), [&stroke](const WaterSpawner& spring) { return spring.Liquid == stroke.Material; }), s_WaterSpawners.end());
+				}
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();

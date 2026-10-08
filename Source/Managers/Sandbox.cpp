@@ -65,9 +65,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return true;
 	}
 	int toolIndex = -1;
+	// (The spring tool's old name, still taken from scripts.)
+	const std::string lookedFor = ContainsIgnoringCase("Water spawner", toolName.c_str()) && toolName.size() == 13 ? std::string("Spring") : toolName;
 	for (int i = 0; i < c_ToolCount; ++i) {
 		std::string name = c_Tools[i].Name;
-		if (name.size() == toolName.size() && ContainsIgnoringCase(name, toolName.c_str())) {
+		if (name.size() == lookedFor.size() && ContainsIgnoringCase(name, lookedFor.c_str())) {
 			toolIndex = i;
 		}
 	}
@@ -1100,6 +1102,35 @@ void Sandbox::DrawGUI() {
 					QueueSimChange(Tool::ClearWaterSpawners);
 				}
 				ImGui::EndDisabled();
+				{
+					// Remove all of one kind: the kinds placed, each with how many.
+					static std::string removeKind;
+					std::vector<std::pair<std::string, int>> kinds = SpringCounts();
+					auto chosen = std::find_if(kinds.begin(), kinds.end(), [](const auto& kind) { return kind.first == removeKind; });
+					if (chosen == kinds.end() && !kinds.empty()) {
+						removeKind = kinds.front().first;
+						chosen = kinds.begin();
+					}
+					ImGui::BeginDisabled(kinds.empty());
+					std::string shown = chosen != kinds.end() ? chosen->first + " " + std::to_string(chosen->second) : "(none placed)";
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+					if (ImGui::BeginCombo("##removeKind", shown.c_str())) {
+						for (const auto& [name, count]: kinds) {
+							if (ImGui::Selectable((name + " " + std::to_string(count)).c_str(), name == removeKind)) {
+								removeKind = name;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SameLine();
+					if (ToolUI::Button(("Remove all " + (chosen != kinds.end() ? removeKind : std::string("of one kind"))).c_str())) {
+						Stroke stroke;
+						stroke.Kind = Tool::ClearWaterSpawners;
+						stroke.Material = removeKind;
+						s_Queue.push_back(stroke);
+					}
+					ImGui::EndDisabled();
+				}
 				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str())) {
 					for (const std::string& name: PourableNames()) {
 						if (ImGui::Selectable(name.c_str(), name == s_SpringLiquid)) {
@@ -1119,6 +1150,14 @@ void Sandbox::DrawGUI() {
 					ToolUI::Checkbox("##on", &spring.On);
 					ImGui::SetItemTooltip("Pouring. Off, it stays put and pours nothing.");
 					ImGui::SameLine();
+					{
+						// (A swatch in the colour of what it pours, as on the map.)
+						float side = ImGui::GetTextLineHeight() * 0.7F;
+						ImVec2 at = ImGui::GetCursorScreenPos();
+						ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + side * 0.2F), ImVec2(at.x + side, at.y + side * 1.2F), MaterialMarkColor(spring.Liquid, spring.On ? 255 : 110));
+						ImGui::Dummy(ImVec2(side, 0.0F));
+						ImGui::SameLine();
+					}
 					ImGui::Text("%s, %d px, at %d,%d", spring.Liquid.c_str(), spring.Radius, spring.Position.GetFloorIntX(), spring.Position.GetFloorIntY());
 					ImGui::SameLine();
 					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);

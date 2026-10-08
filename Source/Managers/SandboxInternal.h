@@ -190,7 +190,7 @@ namespace SandboxDetail {
 	    {Tool::Lava, "Lava", 0.03F, true},
 	    {Tool::Acid, "Acid", 0.03F, true},
 	    {Tool::Oil, "Oil", 0.03F, true},
-	    {Tool::WaterSpawner, "Water spawner", 0.0F, true},
+	    {Tool::WaterSpawner, "Spring", 0.0F, true},
 	    {Tool::LooseSand, "Loose sand", 0.03F, true},
 	    {Tool::LooseSnow, "Loose snow", 0.03F, true},
 	    {Tool::Boulder, "Boulder", 0.0F, true},
@@ -841,6 +841,13 @@ namespace SandboxDetail {
 	/// The preset names of every material FluidSim pours with the simulations as they are now (liquids, and powders while they slide), mods'
 	/// included, sorted. Read from the materials' behaviour as FluidSim sorts them (IsLiquid; Powder, or the stock powder names).
 	std::vector<std::string> PourableNames();
+
+	/// A liquid's or powder's colour (its terrain colour, brightened a little so dark ones like tar and oil still show), by preset name: the
+	/// marker of a spring that pours it. A blue for a name that is not a material.
+	ImU32 MaterialMarkColor(const std::string& name, int alpha = 230);
+
+	/// The springs placed, by what they pour, sorted by name: for the "remove all" choice.
+	std::vector<std::pair<std::string, int>> SpringCounts();
 
 	/// Whether a tool pours a liquid or powder (FluidSim), and then whether it needs loose powders on to do anything.
 	bool PoursLiquid(Tool kind);

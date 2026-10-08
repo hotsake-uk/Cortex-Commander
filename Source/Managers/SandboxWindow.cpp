@@ -78,6 +78,22 @@ namespace SandboxDetail {
 		return names;
 	}
 
+	ImU32 MaterialMarkColor(const std::string& name, int alpha) {
+		const Material* material = g_SceneMan.GetMaterial(name);
+		if (!material || material->GetColor().GetIndex() <= 0) {
+			return IM_COL32(70, 160, 255, alpha);
+		}
+		return IM_COL32(std::min(material->GetColor().GetR() + 50, 255), std::min(material->GetColor().GetG() + 50, 255), std::min(material->GetColor().GetB() + 50, 255), alpha);
+	}
+
+	std::vector<std::pair<std::string, int>> SpringCounts() {
+		std::map<std::string, int> counts;
+		for (const WaterSpawner& spring: s_WaterSpawners) {
+			++counts[spring.Liquid];
+		}
+		return std::vector<std::pair<std::string, int>>(counts.begin(), counts.end());
+	}
+
 	bool PoursLiquid(Tool kind) {
 		switch (kind) {
 			case Tool::Water:
