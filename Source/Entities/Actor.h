@@ -9,6 +9,7 @@
 #include "PathFinder.h"
 #include "SettingsMan.h"
 
+#include <algorithm>
 #include <array>
 
 namespace RTE {
@@ -395,6 +396,23 @@ namespace RTE {
 		/// @return The current AI mode.
 		int GetAIMode() const { return m_AIMode; }
 
+		/// What a unit may shoot at (RC-1). The player sets it; orders leave it as it is.
+		enum WeaponRule {
+			WEAPONS_AT_WILL = 0, //!< Fires at any enemy it sees (the game's own behaviour).
+			WEAPONS_RETURN_FIRE, //!< Fires only while it is being shot at: hurt, or pinned by near misses, in the last few seconds.
+			WEAPONS_HOLD, //!< Never fires; it still aims, so it opens up the moment the rule changes.
+			WEAPONRULECOUNT
+		};
+
+		/// How a unit moves when it meets an enemy (RC-1). Each order sets it back to following the order; the player can then change it.
+		enum MovementRule {
+			MOVE_FOLLOW_ORDER = 0, //!< As the order has it: a move keeps walking, an attack closes in, a post is held.
+			MOVE_ENGAGE, //!< Stops and fights what it sees, closing in on what it can't hit from where it is.
+			MOVE_ONLY, //!< Keeps going, firing on the way if its weapons rule lets it, never stopping or chasing.
+			MOVE_HOLD_GROUND, //!< Fights from where it stands, never leaving the spot to chase.
+			MOVEMENTRULECOUNT
+		};
+
 		/// A unit's standing order (AI review section 6 item 2): what it was told to do, one typed record that the sandbox, the AI scripts, the HUD and saves all read, where
 		/// before it was six number values under string keys ("SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX/Y", "SandboxDefendX/Y",
 		/// "SandboxHold") that C++ and Lua each spelled out. The parts are independent, as the number values were.
@@ -407,6 +425,7 @@ namespace RTE {
 			bool HasPost = false; //!< Whether it was told to defend a spot (Post): it fights from it and goes back to it when moved off.
 			Vector Post; //!< That spot.
 			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
+			int Movement = MOVE_FOLLOW_ORDER; //!< The movement rule (MovementRule) the player set for this order, MOVE_FOLLOW_ORDER for the order's own.
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -443,6 +462,18 @@ namespace RTE {
 		void ClearOrderPost() { m_StandingOrder.HasPost = false; }
 		bool GetOrderHold() const { return m_StandingOrder.Hold; }
 		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
+
+		/// Gets the weapons rule (WeaponRule): what this may shoot at.
+		int GetWeaponRule() const { return m_WeaponRule; }
+
+		/// Sets the weapons rule (WeaponRule).
+		void SetWeaponRule(int rule) { m_WeaponRule = std::clamp(rule, 0, static_cast<int>(WEAPONRULECOUNT) - 1); }
+
+		/// Gets the movement rule (MovementRule) of the standing order: how this moves when it meets an enemy.
+		int GetMovementRule() const { return m_StandingOrder.Movement; }
+
+		/// Sets the movement rule (MovementRule) of the standing order, until the next order.
+		void SetMovementRule(int rule) { m_StandingOrder.Movement = std::clamp(rule, 0, static_cast<int>(MOVEMENTRULECOUNT) - 1); }
 
 		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
 		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
@@ -1306,6 +1337,7 @@ namespace RTE {
 		AIMode m_AIMode;
 		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
 		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
+		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;

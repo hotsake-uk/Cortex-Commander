@@ -124,6 +124,7 @@ void Actor::Clear() {
 	m_AIMode = AIMODE_NONE;
 	m_AIOrderSerial = 0;
 	m_StandingOrder = StandingOrder();
+	m_WeaponRule = WEAPONS_AT_WILL;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -313,6 +314,7 @@ int Actor::Create(const Actor& reference) {
 
 	m_AIMode = reference.m_AIMode;
 	m_StandingOrder = reference.m_StandingOrder;
+	m_WeaponRule = reference.m_WeaponRule;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -431,6 +433,16 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_StandingOrder.HasPost = true;
 	});
 	MatchProperty("OrderHold", { reader >> m_StandingOrder.Hold; });
+	MatchProperty("OrderMovement", {
+		int rule = 0;
+		reader >> rule;
+		SetMovementRule(rule);
+	});
+	MatchProperty("WeaponRule", {
+		int rule = 0;
+		reader >> rule;
+		SetWeaponRule(rule);
+	});
 	MatchProperty("SpecialBehaviour_AddAISceneWaypoint", {
 		Vector waypointToAdd;
 		reader >> waypointToAdd;
@@ -539,6 +551,12 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_StandingOrder.Hold) {
 		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
+	}
+	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
+		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);
+	}
+	if (m_WeaponRule != WEAPONS_AT_WILL) {
+		writer.NewPropertyWithValue("WeaponRule", m_WeaponRule);
 	}
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
