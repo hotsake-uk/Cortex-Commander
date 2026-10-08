@@ -331,6 +331,8 @@ namespace RTE {
 		float GetJetAccelRatio() const { return m_JetAccelRatio; }
 		/// Whether the body is flying on its jet just now (lit, or lit in the last 0.4 s): it passes the ladders' rungs, and a ladder lets it go.
 		bool IsJetFlying() const { return m_JetFlying && !m_Ladder.active; }
+		/// Whether the route-follower is flying a planned flight just now (take-off to landing; see MoveAlongRoute).
+		bool IsFlyingRoute() const { return m_Mover.flight.active; }
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
