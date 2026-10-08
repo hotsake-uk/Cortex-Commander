@@ -417,6 +417,17 @@ void LuaAdaptersMovableObject::SendMessage2(MovableObject* luaSelfObject, const 
 	luaSelfObject->RunScriptedFunctionInAppropriateScripts("OnMessage", false, false, {}, {message}, {&wrapper});
 }
 
+Attachable* LuaAdaptersMOSRotating::RemoveAttachable(MOSRotating* luaSelfObject, Attachable* attachable, bool addToMovableMan, bool addBreakWounds) {
+	if (!attachable || !attachable->IsAttachedTo(luaSelfObject)) {
+		return nullptr;
+	}
+	return luaSelfObject->RemoveAttachable(attachable, addToMovableMan, addBreakWounds);
+}
+
+Attachable* LuaAdaptersMOSRotating::RemoveAttachableByID(MOSRotating* luaSelfObject, long uniqueID, bool addToMovableMan, bool addBreakWounds) {
+	return RemoveAttachable(luaSelfObject, dynamic_cast<Attachable*>(g_MovableMan.FindObjectByUniqueID(uniqueID)), addToMovableMan, addBreakWounds);
+}
+
 void LuaAdaptersMOSRotating::GibThis(MOSRotating* luaSelfObject) {
 	luaSelfObject->GibThis();
 }

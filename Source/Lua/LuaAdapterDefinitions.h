@@ -381,6 +381,14 @@ namespace RTE {
 		static std::vector<AEmitter*>* GetWounds2(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables);
 		// Need a seperate implementation function without the return so we can safely recurse.
 		static void GetWoundsImpl(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables, std::vector<AEmitter*>& wounds);
+
+		/// RemoveAttachable for scripts, which take ownership of what it returns: nil unless the Attachable was attached to this object. (The engine's
+		/// RemoveAttachable hands back an Attachable that isn't attached as it was given, and a script adopting one that was loose in the scene
+		/// freed it under MovableMan; one attached elsewhere hit an assert.)
+		static Attachable* RemoveAttachable(MOSRotating* luaSelfObject, Attachable* attachable, bool addToMovableMan, bool addBreakWounds);
+		static Attachable* RemoveAttachable1(MOSRotating* luaSelfObject, Attachable* attachable) { return RemoveAttachable(luaSelfObject, attachable, false, false); }
+		static Attachable* RemoveAttachableByID(MOSRotating* luaSelfObject, long uniqueID, bool addToMovableMan, bool addBreakWounds);
+		static Attachable* RemoveAttachableByID1(MOSRotating* luaSelfObject, long uniqueID) { return RemoveAttachableByID(luaSelfObject, uniqueID, false, false); }
 	};
 #pragma endregion
 
