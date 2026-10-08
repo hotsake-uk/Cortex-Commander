@@ -432,16 +432,24 @@ void ActivityMan::SetStartTutorialActivity() {
 	g_SceneMan.SetSceneToLoad("Tutorial Bunker");
 }
 
-bool ActivityMan::SetStartSandboxActivity() {
+bool ActivityMan::SetStartSandboxActivity(const std::string& sceneName) {
 	const Entity* preset = g_PresetMan.GetEntityPreset("GAScripted", "Sandbox");
 	Activity* sandbox = preset ? dynamic_cast<Activity*>(preset->Clone()) : nullptr;
 	if (!sandbox) {
 		g_ConsoleMan.PrintString("ERROR: The Sandbox game mode isn't defined, so it can't be started.");
 		return false;
 	}
-	std::string sceneName = sandbox->GetSceneName().empty() ? "Ketanot Hills" : sandbox->GetSceneName();
+	std::string sceneToLoad = !sceneName.empty() ? sceneName : (sandbox->GetSceneName().empty() ? "Ketanot Hills" : sandbox->GetSceneName());
+	if (g_SceneMan.SetSceneToLoad(sceneToLoad) < 0) {
+		delete sandbox;
+		return false;
+	}
+	// Started straight from the main menu there's no setup screen, so every side's AI plays at its hardest.
+	sandbox->SetDifficulty(Activity::DifficultySetting::MaxDifficulty);
+	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+		sandbox->SetTeamAISkill(team, Activity::AISkillSetting::UnfairSkill);
+	}
 	SetStartActivity(sandbox);
-	g_SceneMan.SetSceneToLoad(sceneName);
 	return true;
 }
 

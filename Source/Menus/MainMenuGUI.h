@@ -27,6 +27,7 @@ namespace RTE {
 			NoEvent,
 			MetaGameStarted,
 			ScenarioStarted,
+			SandboxScenarioStarted,
 			EnterCreditsScreen,
 			BackToMainFromCredits,
 			ActivityStarted,
@@ -67,6 +68,7 @@ namespace RTE {
 			SettingsScreen,
 			ModManagerScreen,
 			EditorScreen,
+			SandboxScreen,
 			CreditsScreen,
 			QuitScreen,
 			ScreenCount
@@ -94,6 +96,9 @@ namespace RTE {
 			AssemblyEditorButton,
 			GibEditorButton,
 			ActorEditorButton,
+			SandboxEmptyButton,
+			SandboxCurrentMapButton,
+			SandboxMapSelectButton,
 			ButtonCount
 		};
 
@@ -108,6 +113,7 @@ namespace RTE {
 		MainMenuUpdateResult m_UpdateResult; //!< The result of the MainMenuGUI update. See MainMenuUpdateResult enumeration.
 		bool m_MenuScreenChange; //!< Whether the active menu screen was changed and a different one needs to be shown.
 		bool m_MetaGameNoticeShown; //!< Whether the MetaGame notice and tutorial offer have been shown to the player.
+		std::string m_SandboxCurrentMapName; //!< The map the sandbox screen's "Current map" button starts on: the map of the game in progress, else the Sandbox game mode's own.
 
 		Timer m_ResumeButtonBlinkTimer; //!< Activity resume button blink timer.
 		Timer m_CreditsScrollTimer; //!< Credits scrolling timer.
@@ -140,6 +146,9 @@ namespace RTE {
 		/// Creates all the elements that compose the editor selection menu screen.
 		void CreateEditorsScreen();
 
+		/// Creates all the elements that compose the sandbox start menu screen.
+		void CreateSandboxScreen();
+
 		/// Creates all the elements that compose the credits menu screen.
 		void CreateCreditsScreen();
 
@@ -164,6 +173,9 @@ namespace RTE {
 
 		/// Makes the editor selection menu screen visible to be interacted with by the player.
 		void ShowEditorsScreen();
+
+		/// Makes the sandbox start menu screen visible to be interacted with by the player, naming the map "Current map" would start on.
+		void ShowSandboxScreen();
 
 		/// Makes the credits menu screen visible to be interacted with by the player and resets the scrolling timer for the credits.
 		void ShowCreditsScreen();
@@ -199,6 +211,10 @@ namespace RTE {
 		/// Handles the player interaction with the editor selection screen GUI elements.
 		/// @param guiEventControl Pointer to the GUI element that the player interacted with.
 		void HandleEditorsScreenInputEvents(const GUIControl* guiEventControl);
+
+		/// Handles the player interaction with the sandbox start menu screen GUI elements.
+		/// @param guiEventControl Pointer to the GUI element that the player interacted with.
+		void HandleSandboxScreenInputEvents(const GUIControl* guiEventControl);
 
 		/// Handles the player interaction with the quit screen GUI elements.
 		/// @param guiEventControl Pointer to the GUI element that the player interacted with.
