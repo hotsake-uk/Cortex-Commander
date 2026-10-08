@@ -54,6 +54,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace RTE;
@@ -703,7 +705,27 @@ namespace {
 	};
 	std::vector<PendingOrder> s_PendingOrders;
 
-	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack) {
+	/// Why and when a unit was last sent somewhere, for the sandbox orders overlay: kept by unique ID, the dead pruned when the list grows.
+	struct SendNote {
+		const char* Reason = "";
+		bool Resend = false; //!< Sent again by the standing orders (ReturnDefenders, RetargetAttackers), not by anyone's click.
+		long long At = 0; //!< The sim update it was sent on.
+	};
+	std::unordered_map<long, SendNote> s_SendNotes;
+
+	/// Sends a unit to a place, or after a unit, from the next update (see PendingOrder).
+	/// @param reason Why, in a few words, for the orders overlay. @param resend Whether the standing orders are sending it again.
+	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, const char* reason, bool resend = false) {
+		if (s_SendNotes.size() > 512) {
+			std::unordered_set<long> alive;
+			for (const Actor* actor: SandboxAccess::Actors()) {
+				alive.insert(actor->GetUniqueID());
+			}
+			for (auto note = s_SendNotes.begin(); note != s_SendNotes.end();) {
+				note = alive.count(note->first) ? std::next(note) : s_SendNotes.erase(note);
+			}
+		}
+		s_SendNotes[unit->GetUniqueID()] = {reason, resend, g_TimerMan.GetSimUpdateCount()};
 		unit->RemoveNumberValue(c_AttackTag);
 		unit->RemoveNumberValue(c_DefendXTag);
 		unit->RemoveNumberValue(c_DefendYTag);
@@ -800,7 +822,7 @@ namespace {
 		switch (order) {
 			case Order::Attack:
 				if (Actor* enemy = NearestEnemy(actor)) {
-					SendUnit(actor, enemy->GetPos(), enemy, true);
+					SendUnit(actor, enemy->GetPos(), enemy, true, "attack order");
 				} else {
 					actor->SetNumberValue(c_AttackTag, 1.0);
 					actor->ClearAIWaypoints();
@@ -815,7 +837,7 @@ namespace {
 				break;
 			case Order::Rally:
 				if (int team = actor->GetTeam(); team >= 0 && team < c_Sides && s_RallySet[team]) {
-					SendUnit(actor, s_RallyPoints[team], nullptr, false);
+					SendUnit(actor, s_RallyPoints[team], nullptr, false, "to the rally point");
 				} else {
 					actor->ClearAIWaypoints();
 					actor->SetAIMode(Actor::AIMODE_SENTRY);
@@ -851,7 +873,7 @@ namespace {
 			} else if (off > 60.0F) {
 				double x = post.m_X;
 				double y = post.m_Y;
-				SendUnit(actor, post, nullptr, false);
+				SendUnit(actor, post, nullptr, false, "back to its post", true);
 				actor->SetNumberValue(c_DefendXTag, x);
 				actor->SetNumberValue(c_DefendYTag, y);
 			}
@@ -874,7 +896,7 @@ namespace {
 					bool towardsPlace = actor->NumberValueExists(c_AttackXTag);
 					double x = actor->GetNumberValue(c_AttackXTag);
 					double y = actor->GetNumberValue(c_AttackYTag);
-					SendUnit(actor, chosen->GetPos(), chosen, true);
+					SendUnit(actor, chosen->GetPos(), chosen, true, "after its target", true);
 					if (towardsPlace) {
 						actor->SetNumberValue(c_AttackXTag, x);
 						actor->SetNumberValue(c_AttackYTag, y);
@@ -892,9 +914,9 @@ namespace {
 				double x = place.m_X;
 				double y = place.m_Y;
 				if (Actor* enemy = NearestEnemyTo(place, actor->GetTeam(), 500.0F)) {
-					SendUnit(actor, enemy->GetPos(), enemy, true);
+					SendUnit(actor, enemy->GetPos(), enemy, true, "enemy near its place", true);
 				} else if (!g_SceneMan.ShortestDistance(actor->GetPos(), place, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(60.0F) && actor->GetAIMode() != Actor::AIMODE_GOTO) {
-					SendUnit(actor, place, nullptr, true);
+					SendUnit(actor, place, nullptr, true, "back to its place", true);
 				} else {
 					continue;
 				}
@@ -2028,7 +2050,7 @@ namespace {
 			// The waypoint just over the ground where the feet go (the AI puts it at its own standing height from there). Half the unit's height up,
 			// as it was, was inside the ceiling of a low corridor, and a waypoint inside a thin slab is taken to be on top of it: a unit sent a few
 			// steps along a bunker corridor went out and round to the roof over it.
-			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false);
+			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, "move");
 		}
 	}
 
@@ -2062,7 +2084,7 @@ namespace {
 			if (friendly && !selected) {
 				for (const UnitRef& ref: s_Selected) {
 					if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && unit != target) {
-						SendUnit(unit, target->GetPos(), target, false);
+						SendUnit(unit, target->GetPos(), target, false, "guard");
 					}
 				}
 				MarkOrder(target->GetPos(), IM_COL32(120, 220, 120, 255));
@@ -2105,7 +2127,7 @@ namespace {
 		if (attack) {
 			for (const UnitRef& ref: s_Selected) {
 				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
-					SendUnit(unit, target->GetPos(), target, true);
+					SendUnit(unit, target->GetPos(), target, true, "attack");
 				}
 			}
 			MarkOrder(target->GetPos(), IM_COL32(239, 106, 91, 255));
@@ -2132,7 +2154,7 @@ namespace {
 			} else if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
 				unit->AddAISceneWaypoint(waypoint);
 			} else {
-				SendUnit(unit, waypoint, nullptr, false);
+				SendUnit(unit, waypoint, nullptr, false, "move (queued)");
 			}
 		}
 	}
@@ -2157,7 +2179,7 @@ namespace {
 				}
 			}
 			for (Actor* unit: units) {
-				SendUnit(unit, point, target, true);
+				SendUnit(unit, point, target, true, "attack there");
 				unit->SetNumberValue(c_AttackXTag, point.m_X);
 				unit->SetNumberValue(c_AttackYTag, point.m_Y);
 			}
@@ -5981,4 +6003,115 @@ void Sandbox::DrawOrderLabels() {
 			drawList->AddText(ImVec2(topLeft.x + pad, topLeft.y + pad + lineHeight), IM_COL32(255, 210, 80, 255), badge);
 		}
 	}
+}
+
+namespace {
+	/// A dashed line between window positions, as the orders overlay draws an order waiting for the next update.
+	void DashedLine(ImDrawList* drawList, const ImVec2& from, const ImVec2& to, ImU32 color, float thickness) {
+		float dx = to.x - from.x;
+		float dy = to.y - from.y;
+		float length = std::sqrt(dx * dx + dy * dy);
+		if (length < 1.0F || length > 6000.0F) {
+			drawList->AddLine(from, to, color, thickness);
+			return;
+		}
+		for (float t = 0.0F; t < length; t += 12.0F) {
+			float end = std::min(t + 6.0F, length);
+			drawList->AddLine(ImVec2(from.x + dx * t / length, from.y + dy * t / length), ImVec2(from.x + dx * end / length, from.y + dy * end / length), color, thickness);
+		}
+	}
+
+	/// Whether a window position is on the game's picture, give or take a margin.
+	bool OnPicture(const ImVec2& at, float margin) {
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		return at.x > view.x - margin && at.x < view.x + view.w + margin && at.y > view.y - margin && at.y < view.y + view.h + margin;
+	}
+
+	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
+	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
+	/// for two seconds after, and a red flash each time the standing orders send it again.
+	void DrawOrdersOverlay() {
+		int which = g_SettingsMan.SandboxOrdersOverlay();
+		if (which == 0) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		float lineHeight = ImGui::GetTextLineHeight();
+		long long now = g_TimerMan.GetSimUpdateCount();
+		for (const Actor* actor: SandboxAccess::Actors()) {
+			if (!IsCombatant(actor)) {
+				continue;
+			}
+			if (which == 1 && !actor->IsDebugInspected() && std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return GetRef(ref) == actor; })) {
+				continue;
+			}
+			ImVec2 at = ToScreen(actor->GetPos());
+			if (!OnPicture(at, 150.0F)) {
+				continue;
+			}
+			ImU32 side = c_SideColors[actor->GetTeam()];
+			for (const PendingOrder& order: s_PendingOrders) {
+				if (order.Unit.Unit == actor) {
+					DashedLine(drawList, at, ToScreen(order.Waypoint), IM_COL32(255, 255, 255, 220), 1.5F);
+				}
+			}
+			std::string tag;
+			bool hasPost = false;
+			Vector post;
+			if (actor->NumberValueExists(c_TargetTag)) {
+				tag = "ATTACK #" + std::to_string(static_cast<long long>(actor->GetNumberValue(c_TargetTag)));
+			} else if (actor->NumberValueExists(c_AttackXTag)) {
+				post.SetXY(static_cast<float>(actor->GetNumberValue(c_AttackXTag)), static_cast<float>(actor->GetNumberValue(c_AttackYTag)));
+				hasPost = true;
+				tag = "ATTACK@ " + std::to_string(post.GetFloorIntX()) + "," + std::to_string(post.GetFloorIntY());
+			} else if (actor->NumberValueExists(c_AttackTag)) {
+				tag = "ATTACK";
+			} else if (actor->NumberValueExists(c_DefendXTag)) {
+				post.SetXY(static_cast<float>(actor->GetNumberValue(c_DefendXTag)), static_cast<float>(actor->GetNumberValue(c_DefendYTag)));
+				hasPost = true;
+				tag = "DEFEND";
+			} else if (actor->GetAIMode() == Actor::AIMODE_GOTO) {
+				const MovableObject* target = actor->GetMOMoveTarget();
+				const Actor* leader = target && g_MovableMan.ValidMO(target) ? dynamic_cast<const Actor*>(target) : nullptr;
+				tag = leader && leader->GetTeam() == actor->GetTeam() ? "GUARD #" + std::to_string(leader->GetUniqueID()) : std::string("MOVE");
+			} else if (actor->GetAIMode() == Actor::AIMODE_SENTRY) {
+				tag = "HOLD";
+			}
+			if (hasPost && g_SceneMan.ShortestDistance(actor->GetPos(), post, g_SceneMan.SceneWrapsX()).GetMagnitude() > 30.0F) {
+				ImVec2 postAt = ToScreen(post);
+				drawList->AddLine(at, postAt, side, 1.5F);
+				drawList->AddCircle(postAt, 5.0F, side, 0, 2.0F);
+			}
+			std::string why;
+			if (auto note = s_SendNotes.find(actor->GetUniqueID()); note != s_SendNotes.end()) {
+				long long ago = now - note->second.At;
+				if (ago >= 0 && ago < 120) {
+					why = std::string(note->second.Resend ? "sent again: " : "sent: ") + note->second.Reason;
+				}
+				if (note->second.Resend && ago >= 0 && ago < 20) {
+					int alpha = static_cast<int>(230.0F * (1.0F - static_cast<float>(ago) / 20.0F));
+					drawList->AddCircle(at, std::max(actor->GetRadius() / scale, 10.0F) + 4.0F, IM_COL32(255, 60, 50, alpha), 0, 3.0F);
+				}
+			}
+			float top = at.y - std::max(actor->GetRadius() / scale, 10.0F) - 6.0F;
+			for (const std::string* line: {&why, &tag}) {
+				if (line->empty()) {
+					continue;
+				}
+				top -= lineHeight;
+				ImVec2 size = ImGui::CalcTextSize(line->c_str());
+				ImVec2 corner(std::floor(at.x - size.x * 0.5F), std::floor(top));
+				drawList->AddRectFilled(ImVec2(corner.x - 2.0F, corner.y), ImVec2(corner.x + size.x + 2.0F, corner.y + size.y), IM_COL32(10, 12, 10, 170));
+				drawList->AddText(corner, line == &tag ? side : IM_COL32(230, 230, 220, 255), line->c_str());
+			}
+		}
+	}
+} // namespace
+
+void Sandbox::DrawDebug() {
+	if (!g_ActivityMan.GetActivity() || !g_SceneMan.GetScene()) {
+		return;
+	}
+	DrawOrdersOverlay();
 }

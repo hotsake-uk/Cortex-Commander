@@ -612,6 +612,17 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	// The sandbox's own overlays: its orders, tools and effects, drawn over the game whether or not its window is open.
+	auto sandboxDebug = [&]() {
+		{
+			int orders = g_SettingsMan.SandboxOrdersOverlay();
+			if (Combo("Sandbox orders", &orders, "Off\0Selected units\0Every unit in view\0")) {
+				g_SettingsMan.SetSandboxOrdersOverlay(orders);
+			}
+			Tip("For the sandbox's selected (or inspected) units, or every unit in view: the order waiting for the next update as a dashed white line to where it goes; the standing order over the head (ATTACK #id, ATTACK@ a place, DEFEND, GUARD #leader, MOVE, HOLD) with a line back to the post or place when off it; why it was last sent, for two seconds; and a red flash each time the standing orders send it again on their own.");
+		}
+	};
+
 	const std::pair<const char*, std::function<void()>> categories[] = {
 	    {"Time & weather", timeAndWeather},
 	    {"Sky & daylight", skyAndDaylight},
@@ -626,6 +637,7 @@ void DebugMan::SettingsGUI() {
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
 	    {"Render debug", renderDebug},
+	    {"Sandbox debug", sandboxDebug},
 	};
 	const int categoryCount = static_cast<int>(std::size(categories));
 	m_SettingsCategory = std::clamp(m_SettingsCategory, 0, categoryCount - 1);
