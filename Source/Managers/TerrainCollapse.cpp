@@ -849,11 +849,17 @@ namespace {
 		body.Vel.y += c_Gravity;
 		// In liquid it sinks slowly instead of dropping.
 		int inLiquid = 0;
+		int touchedX = -1;
+		int touchedY = -1;
 		for (size_t i = 0; i < body.Outline.size(); i += 4) {
 			glm::vec2 at = ToWorld(body, body.Outline[i], body.Pos, body.Angle);
 			int x = static_cast<int>(std::floor(at.x));
 			int y = static_cast<int>(std::floor(at.y));
 			if (WrapInWorld(x, y) && FluidSim::IsLiquid(materialBitmap->line[y][x])) {
+				if (inLiquid == 0) {
+					touchedX = x;
+					touchedY = y;
+				}
 				++inLiquid;
 			}
 		}
@@ -871,12 +877,12 @@ namespace {
 				}
 			}
 			if (surfaceY < 0) {
-				surfaceY = static_cast<int>(std::floor(body.Pos.y + body.Radius * 0.5F));
-				int x = surfaceX;
-				WrapInWorld(x, surfaceY);
-				surfaceX = x;
+				// No liquid straight under the middle (the piece only clipped some at its edge): splash from the liquid it touched. The colour is
+				// always a liquid pixel's, never air's: air's is the mask colour, which showed as a spray of magenta drops.
+				surfaceX = touchedX;
+				surfaceY = touchedY;
 			}
-			int colorIndex = (surfaceY >= 0 && surfaceY < s_Height && surfaceX >= 0 && surfaceX < s_Width) ? terrain->GetFGColorPixel(surfaceX, surfaceY) : 0;
+			int colorIndex = terrain->GetFGColorPixel(surfaceX, surfaceY);
 			// (Pixels an update into metres a second: 60 updates a second, 20 pixels to the metre.)
 			FluidSim::VisualSplash(Vector(static_cast<float>(surfaceX), static_cast<float>(surfaceY)), body.Radius * 2.0F, glm::length(body.Vel) * 3.0F, colorIndex);
 		}
