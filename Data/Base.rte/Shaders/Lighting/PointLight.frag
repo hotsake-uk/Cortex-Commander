@@ -29,6 +29,7 @@ uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (o
 uniform bool rteShadowFieldOn; // Trace terrain shadows through the distance field (LightingSettings::LightShadowField), instead of the fixed march.
 uniform sampler2D rteShadowField; // World grid, R = distance to the nearest wall cell, as a fraction of rteShadowFieldReach, linearly filtered.
 uniform float rteShadowFieldReach; // How far the field reaches, in pixels.
+uniform bool rteSoftWallLight; // Feather the lit edge on walls by tracing from three points across the light.
 uniform float rteShadowSoftness; // How soft terrain shadows' edges are, 0 sharp to 2.
 uniform bool rteCacheMode; // Drawing into the world lamp cache: positions are in its texels, each rteCacheCell pixels across, from the world's corner.
 uniform float rteCacheCell;
@@ -45,7 +46,9 @@ float ObjectShadow(vec2 from, vec2 to, bool fromSolid) {
 	vec2 delta = to - from;
 	float range = length(delta);
 	// A light sits on or in whatever carries it (a headlamp, a muzzle, an engine): don't let the carrier's own skin block it.
-	float end = range - (OccluderDistance(to) < 1.5 ? 22.0 : 5.0);
+	// Soft: the trim eases from 22 to 5 pixels as the light moves off the carrier, instead of jumping, so a lit band doesn't appear on objects (falling terrain) passing the light.
+	float carried = OccluderDistance(to);
+	float end = range - (rteSoftWallLight ? mix(22.0, 5.0, smoothstep(1.0, 8.0, carried)) : (carried < 1.5 ? 22.0 : 5.0));
 	if (end <= 2.0) {
 		return 1.0;
 	}
@@ -148,6 +151,21 @@ float TerrainShadowTraced(vec2 fromWorld, vec2 toWorld) {
 	return transmittance * mix(1.0, clamp(visibility, 0.0, 1.0), rteShadowStrength);
 }
 
+// The trace, feathered when asked: a light that touches a wall gets a hard lit/shadowed edge there, since each pixel's trace is trimmed to the wall by whole steps.
+// Tracing to three points across the light (and averaging) turns that edge into a short fade.
+float TerrainShadowSoft(vec2 fromWorld, vec2 toWorld) {
+	if (!rteSoftWallLight) {
+		return TerrainShadowTraced(fromWorld, toWorld);
+	}
+	vec2 delta = toWorld - fromWorld;
+	float range = length(delta);
+	if (range < 2.0) {
+		return 1.0;
+	}
+	vec2 across = vec2(-delta.y, delta.x) / range * clamp(lightRadius * 0.04, 4.0, 12.0) * 0.6;
+	return 0.5 * TerrainShadowTraced(fromWorld, toWorld) + 0.25 * (TerrainShadowTraced(fromWorld, toWorld + across) + TerrainShadowTraced(fromWorld, toWorld - across));
+}
+
 void main() {
 	if (rteBeamMode && lightCone.z < -1.5) {
 		discard;
@@ -175,7 +193,7 @@ void main() {
 	float cell = rteCacheMode ? rteCacheCell : 1.0;
 	vec2 fromWorld = rteScreenOrigin + gl_FragCoord.xy * cell;
 	vec2 toWorld = rteScreenOrigin + lightCenter * cell;
-	float transmittance = rteShadowFieldOn ? TerrainShadowTraced(fromWorld, toWorld) : TerrainShadowMarch(fromWorld, toWorld);
+	float transmittance = rteShadowFieldOn ? TerrainShadowSoft(fromWorld, toWorld) : TerrainShadowMarch(fromWorld, toWorld);
 
 	if (rteCacheMode) {
 		vec3 arriving = lightColor.rgb * falloff * transmittance;

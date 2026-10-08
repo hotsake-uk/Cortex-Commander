@@ -371,6 +371,10 @@ void DebugMan::SettingsGUI() {
 			Slider("Shadow softness", &settings.LightShadowSoftness, 0.0F, 2.0F);
 			Tip("How soft the edges of those shadows are. 0: sharp. Bigger lights are always softer than small ones.");
 		}
+		if (settings.LightShadowField) {
+			Check("Soft light edge on walls", &settings.SoftWallLight);
+			Tip("Where a light touches a wall, the lit patch on the wall fades out at its edge. Off (hard): the edge is sharp, as before.");
+		}
 		Slider("Shadows of units and objects", &settings.UnitShadows, 0.0F, 1.0F);
 		Slider("Contact shading", &settings.ContactShading, 0.0F, 1.0F);
 		Heading("Bounced light");
