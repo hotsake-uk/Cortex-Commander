@@ -1212,7 +1212,7 @@ namespace SandboxDetail {
 			// On to the next step of a plan the player gave (unit speech): not a patrol's legs, which go round for ever, nor a pause.
 			bool next = plan.Running && plan.Route.empty() && step.Kind != PlanKind::Wait;
 			StartPlanStep(unit, plan, step);
-			if (next) {
+			if (next && !unit->IsPlayerControlled()) {
 				unit->Say("PlanNext");
 			}
 			++entry;
