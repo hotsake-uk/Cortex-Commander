@@ -11,6 +11,8 @@
 #include "LimbPath.h"
 
 #include <array>
+#include <deque>
+#include <vector>
 
 struct BITMAP;
 
@@ -864,6 +866,21 @@ namespace RTE {
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
 			Vector takeOffCommit;
 			Timer takeOffCommitTimer;
+			/// The last flight as the navigation overlay shows it (level 2): the way it was planned against the way it went, and the fuel it
+			/// was expected to take against what it burned. Kept only while the overlay is on (see RecordFlightDebug); nothing reads it but the overlay.
+			struct FlightRecord {
+				bool recording = false;
+				Vector takeOff; //!< The flight's take-off and landing, to tell one flight from the next.
+				Vector landing;
+				std::vector<Vector> planned; //!< Take-off, the point over a shaft's mouth when there is one, and the landing, where the body is meant to be.
+				std::deque<Vector> trail; //!< Where the body went, a point every few pixels, the oldest dropped past 240.
+				float fuelPredicted = 0.0F; //!< FlightFuelNeeded as the flight began, ms of jet.
+				float fuelUsed = 0.0F; //!< What the tank lost over the flight, refills not counted back, ms of jet.
+				float lastFuel = 0.0F;
+				float tank = 0.0F; //!< The jet's full tank, ms.
+				Timer sinceEnd; //!< Since it landed or gave up, so the record still shows for a few seconds after.
+			};
+			FlightRecord debugFlight;
 		};
 		RouteMover m_Mover;
 
@@ -961,6 +978,10 @@ namespace RTE {
 		/// The navigation debug overlay's view of the route-follower (level 2): the route ahead, the point in hand, and a flight's take-off,
 		/// shaft point and landing.
 		void DrawMoverDebug() const;
+
+		/// Keeps the flight record the navigation overlay draws beside the flight (RouteMover::debugFlight): the plan as the flight began, the
+		/// trail it has flown and the fuel it has burned. Called each update while the overlay is at level 2 or more, before DrawMoverDebug.
+		void RecordFlightDebug();
 
 		/// Learns the jet's real push and the standing height, each frame (see PilotFlight).
 		void LearnFlight();
