@@ -736,8 +736,8 @@ namespace RTE {
 		/// @return Pointer to preview bitmap.
 		BITMAP* GetPreviewBitmap() const { return m_pPreviewBitmap; };
 
-		/// The unit the navigation debug overlays look at the grid as: of the debug team (SettingsMan::DebugTeam), being inspected, and nearest
-		/// the middle of player 1's view; nullptr when there is none.
+		/// The unit the navigation debug overlays look at the grid as: the debug team's (SettingsMan::DebugTeam) inspected unit nearest the middle
+		/// of player 1's view, or else the team's unit nearest it; nullptr when the team has none.
 		const Actor* GetNavDebugActor() const;
 
 		/// Gets the pathfinder for a given team.

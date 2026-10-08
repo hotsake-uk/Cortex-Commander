@@ -7,8 +7,10 @@
 #include "Scene.h"
 #include "SettingsMan.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -171,19 +173,9 @@ void DebugOverlays::DrawNavNode() {
 		return;
 	}
 	Vector pointer = DebugDraw::MouseScenePosition();
-	// The grid as the inspected unit sees it (see Scene::GetNavDebugActor), or else as the debug team's unit nearest the pointer does.
+	// The grid as the same unit sees it that the drawn grid is for (see Scene::GetNavDebugActor), so the two agree.
 	int team = g_SettingsMan.DebugTeam();
 	const Actor* searcher = scene->GetNavDebugActor();
-	if (!searcher) {
-		float nearest = 0.0F;
-		for (const Actor* actor: g_MovableMan.GetActorList()) {
-			float distance = g_SceneMan.ShortestDistance(pointer, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
-			if (actor->GetTeam() == team && (!searcher || distance < nearest)) {
-				searcher = actor;
-				nearest = distance;
-			}
-		}
-	}
 	PathAgent agent;
 	agent.StandHeight = 44.0F;
 	agent.CrawlHeight = 24.0F;
