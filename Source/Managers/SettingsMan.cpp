@@ -126,6 +126,7 @@ void SettingsMan::Clear() {
 	m_ShowLightSources = false;
 	m_ShowSunDirection = false;
 	m_WorldSimOverlay = 0;
+	m_SandboxAutoBattle = false;
 	m_SandboxPaintAudit = false;
 	m_SandboxSelectionCamera = false;
 	m_SandboxEffects = false;
@@ -419,6 +420,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
 	MatchProperty("ShowSunDirection", { reader >> m_ShowSunDirection; });
 	MatchProperty("WorldSimOverlay", { int which = 0; reader >> which; SetWorldSimOverlay(which); });
+	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
 	MatchProperty("SandboxPaintAudit", { reader >> m_SandboxPaintAudit; });
 	MatchProperty("SandboxSelectionCamera", { reader >> m_SandboxSelectionCamera; });
 	MatchProperty("SandboxEffects", { reader >> m_SandboxEffects; });
@@ -777,6 +779,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
 	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
 	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
+	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
 	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
 	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
 	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
