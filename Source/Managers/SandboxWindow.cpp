@@ -48,7 +48,7 @@ namespace SandboxDetail {
 		g_SceneMan.ForceBounds(s_CameraCenter);
 		g_CameraMan.SetScrollTarget(s_CameraCenter, 1.0F, 0);
 		// The god view's own camera follows along, so the two don't fight.
-		if (GameActivity* game = CurrentGame(); game && Sandbox::IsGodMode()) {
+		if (GameActivity* game = CurrentGame(); game && (Sandbox::IsGodMode() || s_Commander)) {
 			game->SetObservationTarget(s_CameraCenter, Players::PlayerOne);
 		}
 	}
@@ -722,7 +722,7 @@ namespace SandboxDetail {
 				byID[static_cast<long>(actor->GetUniqueID())] = actor;
 			}
 			for (Actor* unit: SandboxAccess::Actors()) {
-				if (!IsCombatant(unit) || unit->IsPlayerControlled()) {
+				if (!IsCombatant(unit) || unit->IsPlayerControlled() || (s_Commander && unit->GetTeam() != s_CommanderTeam)) {
 					continue;
 				}
 				bool isSelected = selected(unit);
@@ -1040,7 +1040,7 @@ namespace SandboxDetail {
 			const char* Keys;
 			const char* What;
 		};
-		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"Ctrl+Z", "Undo the last paint"}};
+		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"},
 		                              {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"},
 		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
@@ -1157,6 +1157,9 @@ namespace SandboxDetail {
 			// What the click will do, in the mode's own colour and marks.
 			Vector point = MouseScenePosition();
 			Actor* under = dynamic_cast<Actor*>(ObjectUnder(point, true));
+			if (HiddenFromCommander(under)) {
+				under = nullptr;
+			}
 			bool underIsUnit = under && IsCombatant(under) && !under->IsInGroup("Brains");
 			bool underIsFriend = underIsUnit && (s_Selected.empty() || under->GetTeam() == SelectionTeam());
 			std::vector<Actor*> units = UnitsToMove(0, true);
@@ -1183,7 +1186,7 @@ namespace SandboxDetail {
 				Actor* target = (underIsUnit && !underIsFriend) ? under : nullptr;
 				float nearest = 400.0F * 400.0F;
 				for (Actor* actor: SandboxAccess::Actors()) {
-					if (target || !IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == SelectionTeam()) {
+					if (target || !IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == SelectionTeam() || HiddenFromCommander(actor)) {
 						continue;
 					}
 					float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -1195,7 +1198,7 @@ namespace SandboxDetail {
 				if (target && !(underIsUnit && !underIsFriend)) {
 					// Found near the point rather than under the pointer.
 					for (Actor* actor: SandboxAccess::Actors()) {
-						if (IsCombatant(actor) && !actor->IsIgnoredByAI() && actor->GetTeam() != SelectionTeam() && g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() <= nearest) {
+						if (IsCombatant(actor) && !actor->IsIgnoredByAI() && actor->GetTeam() != SelectionTeam() && !HiddenFromCommander(actor) && g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() <= nearest) {
 							target = actor;
 						}
 					}
