@@ -126,9 +126,6 @@ namespace SandboxDetail {
 				s_FactionNames.push_back(unit.Module.substr(0, unit.Module.find(".rte")));
 			}
 		}
-		for (size_t side = 0; side < s_AutoSides.size(); ++side) {
-			s_AutoSides[side].Faction = std::min(static_cast<int>(side), static_cast<int>(s_FactionModules.size()) - 1);
-		}
 		s_UnitChoice = preferredIndex(s_Units, "Soldier Light");
 		s_BrainChoice = preferredIndex(s_Brains, "Brain Case");
 		s_ItemChoice = preferredIndex(s_Items, "Frag Grenade");
