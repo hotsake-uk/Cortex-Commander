@@ -26,6 +26,7 @@ function NativeHumanAI:Create(Owner)
 
 	Members.squadShoot = false;
 	Members.useMedikit = false;
+	Members.medicHeal = false;
 
 	-- timers
 	Members.AirTimer = Timer();
@@ -147,6 +148,13 @@ function NativeHumanAI:Update(Owner)
 			Owner:RemoveNumberValue("AIInvestigate");
 			Owner:RemoveNumberValue("AITargetID");
 			self.overwatch = false;
+			-- (And a medic's errand, AC-7: the friend it was going to is free for another medic.)
+			if self.Medic and MovableMan:ValidMO(self.Medic.Patient) and self.Medic.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
+				self.Medic.Patient:RemoveNumberValue("AIMedicBy");
+			end
+			self.Medic = nil;
+			self.medicHeal = false;
+			Owner:RemoveNumberValue("AIMedic");
 
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;
@@ -689,6 +697,7 @@ function NativeHumanAI:Update(Owner)
 	end
 	SharedBehaviors.RetreatUpdate(self, Owner);
 	SharedBehaviors.RememberUpdate(self, Owner);
+	HumanBehaviors.MedicUpdate(self, Owner);
 
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then
@@ -710,7 +719,7 @@ function NativeHumanAI:Update(Owner)
 	if self.squadShoot then
 		self.Ctrl:SetState(Controller.WEAPON_FIRE, mayFire and (self.fire or self.squadShoot));
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal);
 	end
 
 	if self.deviceState == AHuman.AIMING then

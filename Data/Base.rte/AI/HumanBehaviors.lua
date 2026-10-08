@@ -2265,6 +2265,127 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 	return true
 end
 
+-- Medics (AC-7): a unit carrying a medikit, with no enemy to deal with, goes to a badly hurt friend near by, puts the kit to it and patches
+-- it up, then takes its own order up again. A friend falling back to a medic (SharedBehaviors.RetreatUpdate) is seen to from further off.
+-- Not a unit told to hold its position or defend a spot, which stays where it was put. Called every tick by the AI's update.
+-- @return Whether the unit is seeing to a friend.
+function HumanBehaviors.MedicUpdate(AI, Owner)
+	-- The tag taken off by someone else (a sandbox order): that order stands, and the one this would have put back is gone.
+	if AI.Medic and not Owner:NumberValueExists("AIMedic") then
+		SharedBehaviors.Trace(Owner, "medic: called off by a new order");
+		HumanBehaviors.MedicEnd(AI, Owner, nil);
+		return false;
+	end
+	if AI.Medic then
+		local M = AI.Medic;
+		local Patient = M.Patient;
+		local over;
+		if AI.Target or AI.UnseenTarget then
+			over = "an enemy about";
+		elseif not MovableMan:ValidMO(Patient) or Patient.Status >= Actor.DYING or Patient.Health <= 0 then
+			over = "the friend is gone";
+		elseif Patient.Health >= Patient.MaxHealth * 0.9 and Patient.WoundCount == 0 then
+			over = "patched up";
+		elseif not Owner:HasObject("Medikit") then
+			over = "the kit is used up";
+		elseif M.Timer:IsPastSimMS(20000) then
+			over = "couldn't get to the friend";
+		elseif SharedBehaviors.OrderChangedSince(Owner, M.Spot) then
+			-- Another order given meanwhile (the walk's own end, as a sentry at the spot, isn't one): that order stands.
+			SharedBehaviors.Trace(Owner, "medic: called off by another order");
+			HumanBehaviors.MedicEnd(AI, Owner, nil);
+			return false;
+		end
+		if over then
+			SharedBehaviors.Trace(Owner, "medic: done, " .. over);
+			HumanBehaviors.MedicEnd(AI, Owner, M.Keep);
+			return false;
+		end
+		local ToPatient = SceneMan:ShortestDistance(Owner.Pos, Patient.Pos, false);
+		if math.abs(ToPatient.X) < 24 + Patient.Radius * 0.3 and math.abs(ToPatient.Y) < Owner.Height * 0.6 then
+			-- Close enough: the kit out, pointed at the friend, and pressed once a second (it is a single-shot device). The aim sweeps up
+			-- and down the friend a little so a press that missed (and found nobody hurt, which costs nothing) catches it the next time.
+			if not M.Close then
+				M.Close = true;
+				M.ShotTimer = Timer();
+				Owner:EquipNamedDevice("Medikit", true);
+				SharedBehaviors.Trace(Owner, "medic: seeing to " .. Patient.PresetName);
+			end
+			local sweep = math.sin(M.Timer.ElapsedSimTimeMS * 0.004) * Patient.Height * 0.2;
+			local Aim = SceneMan:ShortestDistance(Owner.EyePos, Patient.Pos + Vector(0, sweep), false);
+			if Aim:MagnitudeIsGreaterThan(1) then
+				AI.Ctrl.AnalogAim = Aim.Normalized;
+			end
+			AI.lateralMoveState = Actor.LAT_STILL;
+			AI.medicHeal = false;
+			if M.ShotTimer:IsPastSimMS(1100) then
+				M.ShotTimer:Reset();
+				AI.medicHeal = true;
+			end
+		else
+			AI.medicHeal = false;
+			if M.Close then
+				M.Close = false;
+			end
+			-- The friend moved on: the walk follows it.
+			if SceneMan:ShortestDistance(M.Spot, Patient.Pos, false):MagnitudeIsGreaterThan(60) then
+				M.Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
+				Owner:ClearAIWaypoints();
+				Owner:AddAISceneWaypoint(M.Spot);
+				Owner.AIMode = Actor.AIMODE_GOTO;
+			end
+		end
+		return true;
+	end
+
+	-- Looking for someone to see to, once a second.
+	if AI.Target or AI.UnseenTarget or AI.Retreat or AI.Flank or AI.useMedikit or Owner:IsPlayerControlled() then
+		return false;
+	end
+	if AI.MedicLookTimer and not AI.MedicLookTimer:IsPastSimMS(1000) then
+		return false;
+	end
+	AI.MedicLookTimer = AI.MedicLookTimer or Timer();
+	AI.MedicLookTimer:Reset();
+	if not Owner:HasObject("Medikit") or Owner.OrderHold or Owner.OrderHasPost or SharedBehaviors.OrderKind(Owner) == "defend"
+		or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
+		return false;
+	end
+	local Patient = SharedBehaviors.FindPatient(Owner);
+	if not Patient then
+		return false;
+	end
+	local Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
+	AI.Medic = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Patient = Patient, Spot = Spot, Timer = Timer() };
+	Owner:SetNumberValue("AIMedic", 1);
+	Patient:SetNumberValue("AIMedicBy", Owner.UniqueID);
+	Owner.OrderAttack = false;
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "medic: going to " .. Patient.PresetName .. ", health " .. math.floor(Patient.Health));
+	return true;
+end
+
+-- Ends a medic's errand: the kit put away for a gun, the friend free for another medic, and the order kept from before put back (nil when
+-- a new order has taken its place).
+function HumanBehaviors.MedicEnd(AI, Owner, keep)
+	local M = AI.Medic;
+	AI.Medic = nil;
+	AI.medicHeal = false;
+	Owner:RemoveNumberValue("AIMedic");
+	if M and MovableMan:ValidMO(M.Patient) and M.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
+		M.Patient:RemoveNumberValue("AIMedicBy");
+	end
+	if Owner.EquippedItem and Owner.EquippedItem.PresetName == "Medikit" then
+		Owner:EquipFirearm(true);
+	end
+	if keep then
+		SharedBehaviors.RestoreOrder(AI, Owner, keep);
+	end
+	AI.MedicLookTimer = Timer(); -- (A second's pause before the next friend.)
+end
+
 -- stop the user from inadvertently modifying the storage table
 -- Mods written for older versions call the behaviours that are shared between kinds of unit (Patrol, GoToWpt, BrainSearch, GetTeamShootingSkill and so on) through this table.
 -- They live in SharedBehaviors now: anything not found here is looked up there, so those mods keep working.
