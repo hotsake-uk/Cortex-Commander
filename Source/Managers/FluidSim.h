@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace RTE {
 	class Vector;
@@ -72,6 +73,14 @@ namespace RTE {
 
 		/// Gets how long the last update took, in milliseconds, for statistics.
 		static float GetLastUpdateMS();
+
+		/// Gets the moving liquid pixels in an area, for the world simulation overlay. Call from the main thread, between sim updates.
+		/// @param corner The area's top left corner, in scene pixels (it may lie off a wrapping scene's edge).
+		/// @param width The area's width.
+		/// @param height The area's height.
+		/// @param pixels Filled with the pixels, as scene positions.
+		/// @param limit The most to give.
+		static void GetActivePixels(const Vector& corner, float width, float height, std::vector<Vector>& pixels, size_t limit);
 
 	private:
 		static bool s_Enabled; //!< Whether flowing liquids are on.
