@@ -1170,6 +1170,26 @@ void AHuman::DrawMoverDebug() const {
 	g_PrimitiveMan.DrawTextPrimitive(m_Pos + Vector(0.0F, -m_CharHeight * 0.6F), state, true, 1);
 }
 
+void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
+	Actor::GetDebugState(fields);
+	const RouteMover& mover = m_Mover;
+	auto number = [&fields](const char* name, double value) { fields.push_back({name, std::to_string(static_cast<long long>(std::llround(value))), false}); };
+	fields.push_back({"mover", mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : (mover.settling ? "settle" : "walk")), true});
+	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
+	number("stuckLevel", mover.stuckLevel);
+	number("impossibleAnswers", mover.impossibleAnswers);
+	if (mover.fuelWaiting) {
+		number("fuelWaitMs", mover.fuelWaitTimer.GetElapsedSimTimeMS());
+	}
+	if (mover.flight.active) {
+		number("landingX", mover.flight.landing.m_X);
+		number("landingY", mover.flight.floorY);
+		number("flightMs", mover.flight.totalTimer.GetElapsedSimTimeMS());
+		number("refuels", mover.flight.stages);
+	}
+	fields.push_back({"prone", m_ProneState != NOTPRONE ? "true" : "false", false});
+}
+
 int AHuman::MoveAlongRoute() {
 	RouteMover& mover = m_Mover;
 	if (g_SettingsMan.NavDebugOverlay() >= 2) {

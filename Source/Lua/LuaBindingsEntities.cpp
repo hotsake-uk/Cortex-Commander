@@ -191,6 +191,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("DebugInspected", &Actor::IsDebugPinned, &Actor::SetDebugInspected)
 	    .property("IsInspected", &Actor::IsDebugInspected)
 	    .def("IsAITracedOn", &Actor::IsAITracedOn)
+	    .def("DescribeDebugState", &Actor::DescribeDebugState)
 	    .property("IgnoredByAI", &Actor::IsIgnoredByAI, &Actor::SetIgnoredByAI)
 	    .property("BodyHitSound", &Actor::GetBodyHitSound, &LuaAdaptersPropertyOwnershipSafetyFaker::ActorSetBodyHitSound)
 	    .property("AlarmSound", &Actor::GetAlarmSound, &LuaAdaptersPropertyOwnershipSafetyFaker::ActorSetAlarmSound)

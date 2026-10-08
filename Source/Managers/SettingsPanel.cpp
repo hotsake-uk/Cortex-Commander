@@ -1,6 +1,7 @@
 #include "DebugMan.h"
 #include "Actor.h"
 #include "ActivityMan.h"
+#include "MovableMan.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "CameraMan.h"
@@ -536,6 +537,16 @@ void DebugMan::SettingsGUI() {
 		}
 		Tip("Lines written to the console and LogConsole.txt. AI, Pilot, Climb, Combat and Squad: the decisions of the units being inspected (Ctrl+I over a unit, units selected in the sandbox, the one you control). Path: each route found. Grid: what path grid updates cost. Sandbox: the sandbox's orders and tools. Perf: unit update times. The CCCP_*_LOG environment variables still switch them on for a run.");
 		Toggle("Trace every unit, not just inspected ones", g_SettingsMan.TraceAllUnits(), [](bool on) { g_SettingsMan.SetTraceAllUnits(on); });
+		if (Plain() && g_ActivityMan.IsInActivity() && ToolUI::Button("Copy state of inspected units")) {
+			std::string state;
+			for (const Actor* actor: g_MovableMan.GetActorList()) {
+				if (actor->IsDebugInspected()) {
+					state += actor->DescribeDebugState(false) + "\n";
+				}
+			}
+			ImGui::SetClipboardText(state.c_str());
+		}
+		Tip("Each inspected unit's state (Ctrl+I over a unit, units selected in the sandbox, the one you control) as one line, to the clipboard. The control link's 'inspect' command gives it as JSON.");
 		if (!Plain()) {
 			return;
 		}

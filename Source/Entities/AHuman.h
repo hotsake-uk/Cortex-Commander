@@ -317,6 +317,9 @@ namespace RTE {
 		/// @return 0 while moving, 1 arrived at the last waypoint, 2 when there is no route to it.
 		int MoveAlongRoute();
 
+		/// Adds the route-follower's state to the unit's debug state: what it's doing (walk, fuel wait, flight, refuel, shaft, step), its progress and stuck timers, stuck level, fuel wait, impossible answers and the flight's landing.
+		void GetDebugState(std::vector<DebugStateField>& fields) const override;
+
 		/// Forgets the route-follower's state (a new order, or another behaviour taking over).
 		void ResetRouteMovement();
 
