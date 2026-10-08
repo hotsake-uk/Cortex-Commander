@@ -1257,7 +1257,22 @@ int AHuman::MoveAlongRoute() {
 	if (m_MovePath.empty() && !mover.flight.active) {
 		return RouteMover::Moving;
 	}
-	if (m_MovePath.size() <= 1 && !mover.flight.active && m_Waypoints.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+	// A leg done with more waypoints queued: the route to this one is dropped, so the next tick asks for the route to the next. (Arrival was
+	// only ever judged against the last waypoint queued, so a unit at the end of its first leg stood there, hopped at 2.5 s and at 6 s
+	// marked its own goal avoided for its whole team before the stuck handling's re-path loaded the next leg.)
+	if (m_MovePath.size() <= 1 && !mover.flight.active && !m_Waypoints.empty() && m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		Vector legGround = Solid(m_MovePathGoal.m_X, m_MovePathGoal.m_Y) ? m_MovePathGoal : g_SceneMan.MovePointToGround(m_MovePathGoal, static_cast<int>(h * 0.2F), 4);
+		if (Towards(m_Pos, legGround).MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne) {
+			MoverTrace("leg done; on to the next waypoint");
+			m_MovePath.clear();
+			m_MovePathKinds.clear();
+			m_HasMovePathGoal = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			return RouteMover::Moving;
+		}
+	}
+	if (m_MovePath.size() <= 1 && !mover.flight.active && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		Vector goal = GetLastAIWaypoint();
 		Vector goalGround = Solid(goal.m_X, goal.m_Y) ? goal : g_SceneMan.MovePointToGround(goal, static_cast<int>(h * 0.2F), 4);
 		Vector toGoal = Towards(m_Pos, goalGround);
