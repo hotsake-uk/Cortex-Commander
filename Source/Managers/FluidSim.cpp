@@ -374,7 +374,7 @@ namespace {
 			Liquid named = LiquidFromName(name, Liquid::None);
 			bool flows = behaviour.Flows >= 0 ? behaviour.Flows == 1 : named != Liquid::None;
 			// (Blood runs only with the setting on: otherwise it stays where it fell, as it always did.)
-			if (id == s_BloodMaterial && !s_BloodFlows) {
+			if (id == s_BloodMaterial && !FluidSim::BloodFlows()) {
 				flows = false;
 			}
 			bool powderByName = name == "Sand" || name == "Snow" || name == "Earth Rubble" || name == "Ashes";
