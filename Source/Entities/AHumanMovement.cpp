@@ -1297,6 +1297,9 @@ int AHuman::MoveAlongRoute() {
 			if (FindLanding(landing, landingFloorY, pointsToLanding, takeOff)) {
 				from = takeOff;
 				to = landing;
+				// (The climb is one step in the route, from the take-off to the top rung beside the landing: marking the route's next point,
+				// the top of the climb that every way up there passes, left the same climb the cheapest, and the unit stood at the same spot.)
+				AvoidPathLink(takeOff, landing, 20000.0F);
 			}
 			float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
 			if (mover.stuckLevel > 0 && Towards(mover.stuckSpot, to).MagnitudeIsLessThan(near) && !mover.stuckSpotTimer.IsPastSimMS(60000)) {
@@ -1845,6 +1848,7 @@ int AHuman::MoveAlongRoute() {
 		}
 	} else {
 		mover.takeOffCommitted = false;
+		mover.noTakeOff = false;
 	}
 	bool wantsClimb = above > h * 0.3F && (kind == PathStepKind::Jump || !CanWalkTo(point, pointFloor >= 0.0F ? pointFloor : point.m_Y + h * 0.4F));
 	if (flightAhead && !CanWalkTo(landing, landingFloorY)) {
@@ -1949,6 +1953,25 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen || cornerVia;
+		if (canTakeOff) {
+			mover.noTakeOff = false;
+		} else if (!mover.noTakeOff) {
+			mover.noTakeOff = true;
+			mover.noTakeOffTimer.Reset();
+		} else if (mover.noTakeOffTimer.IsPastSimMS(2500)) {
+			// No flight from this take-off for two and a half seconds, stepping about it included: the route's take-off is wrong for this
+			// unit here (under the ledge's lip, the way up or across blocked). Any step from near here to near that landing is made dearer and
+			// the route asked again, so the next climb goes from elsewhere: a column further out, or another way up. (Left to the stuck
+			// handling, the unit stood six seconds and the route that came back was the same climb from the same spot.)
+			MoverTrace("no take-off from here for " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)) + "; a route from elsewhere");
+			AvoidPathLink(takeOff, landing, 20000.0F);
+			AvoidPathLink(takeOff, landing, 20000.0F);
+			mover.noTakeOff = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			RefreshRoute();
+			return RouteMover::Moving;
+		}
 		if (!canTakeOff) {
 			mover.fuelWaiting = false;
 			if (mover.traceTimer.IsPastSimMS(1000)) {
