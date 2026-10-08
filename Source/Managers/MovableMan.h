@@ -602,6 +602,11 @@ namespace RTE {
 		std::unordered_set<const MovableObject*> m_ValidItems;
 		std::unordered_set<const MovableObject*> m_ValidParticles;
 
+		/// Whether an object is already in the scene (in any of the lists, or added this update), for the adds to refuse a second add of it.
+		/// @param movableObject The object about to be added.
+		/// @return Whether it is already in; if so a warning is printed, once per kind of object.
+		bool AlreadyAdded(const MovableObject* movableObject);
+
 		// Mutexes to ensure MOs aren't being removed from separate threads at the same time
 		std::mutex m_ActorsMutex;
 		std::mutex m_ItemsMutex;
