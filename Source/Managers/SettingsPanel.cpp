@@ -512,6 +512,17 @@ void DebugMan::SettingsGUI() {
 
 	auto debug = [&]() {
 		Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0Solid objects and distance to them\0Where the sun is visible\0");
+		Check("Freeze simulation", &m_FreezeSim);
+		Tip("The world stands still, in any game, until this is unticked. The Step buttons let it move on one update (a sixtieth of a second) or a second's worth at a time.");
+		if (m_FreezeSim && Plain()) {
+			if (ToolUI::Button("Step 1 update")) {
+				m_FreezeStepsWanted += 1;
+			}
+			ImGui::SameLine();
+			if (ToolUI::Button("Step 60")) {
+				m_FreezeStepsWanted += 60;
+			}
+		}
 		Check("Performance statistics", &m_ShowPerformanceMan);
 		Check("Actor debug drawing", &m_ShowActorDebugGui);
 		Check("Draw camera bounds", &m_DrawCameraBounds);

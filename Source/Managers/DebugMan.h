@@ -127,6 +127,13 @@ namespace RTE {
 		LightingSettings m_PhotoSavedSettings;
 		bool m_ReleasedMouseForImGui{false}; //!< Whether the mouse was taken from the game so ImGui windows can be used.
 
+		bool m_FreezeSim{false}; //!< "Freeze simulation" on the Debug page: the world stands still, in any game, until it's unticked or stepped.
+		bool m_FrozeSim{false}; //!< Whether it's this that paused the simulation, so only this unpauses it.
+		int m_FreezeStepsWanted{0}; //!< Updates to let the frozen world do, from the Step buttons.
+
+		/// Holds the simulation paused while "Freeze simulation" is ticked, letting through the updates the Step buttons ask for. Runs after the sandbox's own pause, so it wins.
+		void UpdateFreeze();
+
 		bool m_DrawCameraBounds{false};
 		bool m_DrawSpriteBounds{false};
 
