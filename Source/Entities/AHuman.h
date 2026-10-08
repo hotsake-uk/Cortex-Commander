@@ -853,6 +853,7 @@ namespace RTE {
 			Vector leapFrom;
 			Vector leapTo;
 			Timer leapTimer;
+			long long pilotedFallTick = -1; //!< The sim update the route-follower last flew a fall without a flight (PilotFlight for the point), for the motor's brake to keep off.
 			bool standUp = false; //!< At a leap's take-off lying down: the motor's prone stance gives way (see UpdateAIMotor), for a moment after.
 			Timer standUpTimer;
 			bool noTakeOff = false; //!< At a take-off that the flight can't begin from, just now.
