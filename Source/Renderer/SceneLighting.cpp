@@ -3264,6 +3264,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_UnitOutlineRowShader->SetInt("rteSceneDepth", 1);
 		m_UnitOutlineRowShader->SetFloat("rteForegroundDepth", foregroundDepth);
 		m_UnitOutlineRowShader->SetInt("rteRadius", outlineRadius);
+		m_UnitOutlineRowShader->SetBool("rteOverEverything", m_Settings.UnitOutlineOverEverything);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
 		glActiveTexture(GL_TEXTURE1);

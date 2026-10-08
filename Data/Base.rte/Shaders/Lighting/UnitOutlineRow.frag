@@ -10,6 +10,7 @@ out vec4 FragColor; // R distance along the row in 255ths (255 none in reach), G
 uniform sampler2D rteSurface;
 uniform sampler2D rteSceneDepth;
 uniform float rteForegroundDepth; // Depth between the foreground (terrain, objects) and the terrain background.
+uniform bool rteOverEverything; // Draw over foreground terrain too.
 uniform int rteRadius; // In pixels, at most 12.
 
 int SlotAt(int x, int y, int width) {
@@ -48,6 +49,6 @@ void main() {
 	// The stroke goes over the sky, the terrain background, other objects and water (surface 0.25, see LightComposite.frag's WaterAt), never
 	// over foreground terrain.
 	float surface = texelFetch(rteSurface, pixel, 0).b;
-	bool open = texelFetch(rteSceneDepth, pixel, 0).r >= rteForegroundDepth || surface > 0.5 || abs(surface - 0.25) < 0.08;
+	bool open = rteOverEverything || texelFetch(rteSceneDepth, pixel, 0).r >= rteForegroundDepth || surface > 0.5 || abs(surface - 0.25) < 0.08;
 	FragColor = vec4(float(nearest) / 255.0, float(slot) / 255.0, open ? 1.0 : 0.0, 1.0);
 }

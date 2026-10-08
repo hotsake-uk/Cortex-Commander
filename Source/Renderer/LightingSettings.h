@@ -329,6 +329,7 @@ namespace RTE {
 		float ShockwaveStrength = 1.0F; //!< Multiplier for explosion shockwave refraction.
 
 		bool UnitOutline = false; //!< A stroke round each unit and what it holds, over the sky, the background and other objects but never over terrain. Off: no outline, as before.
+		bool UnitOutlineOverEverything = false; //!< The stroke is drawn over terrain and water too (everything but the post-processing), so a unit hidden behind them still shows its outline. Off: never over foreground terrain.
 		float UnitOutlineWidth = 1.0F; //!< How thick the stroke is, in the game's pixels (1 to 4). Zoomed out it is thickened to keep its size on screen.
 		bool UnitOutlineTeamColor = true; //!< Each unit's stroke is its side's colour (red, green, blue, yellow; white for no side). Off: all are UnitOutlineColor.
 		glm::vec3 UnitOutlineColor = {1.0F, 1.0F, 1.0F}; //!< The stroke's colour when not by side, as shown on screen.

@@ -353,6 +353,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireStyle = std::stoi(reader.ReadPropValue()) != 0 ? LightingSettings::FireBoth : LightingSettings::FirePixel; });
 	MatchProperty("FireFlameSize", { g_PostProcessMan.GetLightingSettings().FireFlameSize = std::stof(reader.ReadPropValue()); });
 	MatchProperty("UnitOutline", { g_PostProcessMan.GetLightingSettings().UnitOutline = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitOutlineOverEverything", { g_PostProcessMan.GetLightingSettings().UnitOutlineOverEverything = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineWidth", { g_PostProcessMan.GetLightingSettings().UnitOutlineWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 4.0F); });
 	MatchProperty("UnitOutlineTeamColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineTeamColor = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineColor = glm::clamp(ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().UnitOutlineColor), glm::vec3(0.0F), glm::vec3(1.0F)); });
@@ -687,6 +688,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FireStyle", lighting.FireStyle);
 	writer.NewPropertyWithValue("FireFlameSize", lighting.FireFlameSize);
 	writer.NewPropertyWithValue("UnitOutline", lighting.UnitOutline);
+	writer.NewPropertyWithValue("UnitOutlineOverEverything", lighting.UnitOutlineOverEverything);
 	writer.NewPropertyWithValue("UnitOutlineWidth", lighting.UnitOutlineWidth);
 	writer.NewPropertyWithValue("UnitOutlineTeamColor", lighting.UnitOutlineTeamColor);
 	writer.NewPropertyWithValue("UnitOutlineColor", WriteVec3(lighting.UnitOutlineColor));

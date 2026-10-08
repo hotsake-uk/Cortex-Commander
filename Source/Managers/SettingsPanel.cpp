@@ -717,6 +717,8 @@ void DebugMan::SettingsGUI() {
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
+		Check("Outline over everything", &settings.UnitOutlineOverEverything);
+		Tip("Draw the outline over terrain and water too, above everything but post-processing, so a unit hidden behind them still shows.");
 		Slider("Outline width (px)", &settings.UnitOutlineWidth, 1.0F, 4.0F, "%.1f");
 		Tip("In the game's pixels. Zoomed out, the stroke is thickened to keep its size on screen.");
 		Check("Outline in team colour", &settings.UnitOutlineTeamColor);
