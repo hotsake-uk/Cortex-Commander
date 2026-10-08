@@ -1621,15 +1621,19 @@ int ACrab::MoveAlongRoute() {
 			return 2;
 		}
 		UpdateMovePath();
-		if (m_ImpossiblePaths > 0) {
+		// Each answer once: for three seconds after an impossible answer UpdateMovePath only waits, and counting every tick of that wait
+		// gave up on the goal in three ticks, before it had been asked again at all.
+		if (m_ImpossiblePaths > 0 && m_ImpossiblePaths != mover.impossibleSeen) {
 			++mover.impossibleAnswers;
 		}
+		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
 	if (IsWaitingOnNewMovePath() || m_MovePath.empty()) {
 		return 0;
 	}
 	mover.impossibleAnswers = 0;
+	mover.impossibleSeen = m_ImpossiblePaths;
 
 	// On the ground: floor under its middle or either side of its body (a crab is wide).
 	float floorHere = CrabFloorUnder(m_Pos, h * 0.9F);
