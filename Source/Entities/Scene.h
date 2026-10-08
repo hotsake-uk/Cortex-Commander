@@ -550,6 +550,7 @@ namespace RTE {
 			float TimeOfDay = -1.0F;
 			float DayLengthMinutes = -1.0F;
 			int WeatherType = -1;
+			std::string WeatherName; //!< A Weather preset's name, which beats WeatherType (a custom weather's slot depends on the mods loaded). Empty for none.
 			float WeatherIntensity = -1.0F;
 			float Wind = -100000.0F; //!< Not set below -10000.
 			std::string PostShader; //!< A mod post pass for this Scene, a Shader preset's name (LightingSettings::ModShaders). Empty for none.

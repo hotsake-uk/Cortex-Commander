@@ -24,6 +24,9 @@ uniform float rteShelterSoftness; // How far splashes' lines are spread sideways
 uniform float rteAmount; // 0..1, how many of the places a splash can be have one at a time.
 uniform vec3 rteSkyLight;
 uniform float rteOwnLight;
+uniform vec3 rteSplashColor; // Linear (Weather::SplashColor).
+uniform float rteSplashGlow; // Light a splash gives off itself (Weather::SplashGlow).
+uniform bool rteSheltered; // The weather is kept out from under roofs (Weather::Shelter). Off: it splashes everywhere it lands.
 
 float Hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -98,7 +101,9 @@ void main() {
 	if (alpha <= 0.0) {
 		discard;
 	}
-	if (rteShelterOn) {
+	if (!rteSheltered) {
+		// Weather that gets everywhere splashes everywhere.
+	} else if (rteShelterOn) {
 		// Each place a splash can be has its own line, nudged a little so the edge of a shelter is soft. Ground within a cell or so above doesn't count, as with the march.
 		float nudge = (Hash(vec2(floor(world.x / 6.0), band + 0.5)) - 0.5) * 2.0 * rteShelterSoftness;
 		if (world.y - 1.2 * rteCellSize * rteFall.y > ShelterFirst(world, nudge)) {
@@ -109,5 +114,5 @@ void main() {
 	}
 	vec3 light = max(rteSkyLight, vec3(rteOwnLight)) + texture(rteDynamicLight, fragment / rteScreenSize).rgb * 1.5;
 	// A touch brighter than the rain itself: a splash catches the light.
-	FragColor = vec4(vec3(0.85, 0.92, 1.0) * (light * 1.25 + 0.08), clamp(alpha, 0.0, 1.0));
+	FragColor = vec4(rteSplashColor * (light * 1.25 + 0.08 + rteSplashGlow), clamp(alpha, 0.0, 1.0));
 }

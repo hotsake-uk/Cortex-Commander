@@ -1,4 +1,5 @@
 #include "SandboxInternal.h"
+#include "Weather.h"
 
 bool Sandbox::s_Open = false;
 
@@ -996,7 +997,7 @@ void Sandbox::DrawGUI() {
 					ImGui::Separator();
 				}
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
-				ImGui::Combo("Weather", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
+				ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 				ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
 				ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.1f");

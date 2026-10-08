@@ -1,4 +1,6 @@
 #include "SceneLighting.h"
+#include "Weather.h"
+#include "PresetMan.h"
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
 #include "FluidSim.h"
@@ -940,7 +942,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetInt("rteWetMap", 8);
 	m_TerrainShader->SetBool("rteWetMapOn", m_Settings.WetnessMap && m_WetMap[0].Texture);
 	m_TerrainShader->SetFloat("rtePuddles", m_Settings.Enabled ? std::clamp(m_Settings.Puddles, 0.0F, 1.0F) : 0.0F);
-	m_TerrainShader->SetFloat("rteRainNow", m_Settings.WeatherType == 1 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F);
+	m_TerrainShader->SetFloat("rteRainNow", WeatherRain());
 	m_TerrainShader->SetInt("rteFlowField", 7);
 	m_TerrainShader->SetFloat("rteFlowSurface", (m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled()) ? std::clamp(m_Settings.WaterFlowStrength, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteWorldGrid", 6);
@@ -998,7 +1000,8 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWaterRipples", (m_Settings.Enabled && m_Settings.WaterReflections) ? std::clamp(m_Settings.WaterRipples, 0.0F, 2.0F) : 0.0F);
 	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
 	{
-		glm::vec2 fall = m_Settings.WeatherType == 2 ? glm::vec2(m_Settings.Wind * 0.6F, 45.0F) : glm::vec2(m_Settings.Wind, 640.0F);
+		const Weather* weather = CurrentWeather();
+		glm::vec2 fall = (weather && weather->GetParams().SnowCover > 0.0F) ? weather->GetMeanFall(m_Settings.Wind) : glm::vec2(m_Settings.Wind, 640.0F);
 		fall.x = std::clamp(fall.x, -fall.y * 2.0F, fall.y * 2.0F);
 		m_TerrainShader->SetVector2f("rteWeatherFall", glm::normalize(fall));
 		// The shelter map is made for the falling weather; the ground uses it when it was made for the way the ground's cover goes by (as close as the map is kept),
@@ -1310,24 +1313,39 @@ void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& ch
 }
 
 glm::vec2 SceneLighting::WeatherFall() const {
-	switch (m_Settings.WeatherType) {
-		case 2:
-			// Snow: the flakes' fall speeds average 45 px/s, and the wind carries them at 0.6 of its speed.
-			return glm::vec2(m_Settings.Wind * 0.6F, 45.0F);
-		case 3:
-			// Ash: slower still, 24 px/s on average.
-			return glm::vec2(m_Settings.Wind * 0.6F, 24.0F);
-		default:
-			// Rain, and what the ground goes by when there's no weather or a dust storm (wetness and snow that are left).
-			return glm::vec2(m_Settings.Wind, 640.0F);
+	// The mean way the drops fall (snow 45 px/s at 0.6 of the wind, ash 24): rain's way when there's no weather, or it's blown level (a dust storm), for the wetness
+	// and snow that are left.
+	const Weather* weather = CurrentWeather();
+	if (weather && weather->GetParams().Shelter && !weather->GetParams().Blown && weather->GetMeanFall(m_Settings.Wind).y > 0.0F) {
+		return weather->GetMeanFall(m_Settings.Wind);
 	}
+	return glm::vec2(m_Settings.Wind, 640.0F);
+}
+
+const Weather* SceneLighting::CurrentWeather() const {
+	return Weather::GetSlot(m_Settings.WeatherType, m_Settings.CustomWeather);
+}
+
+float SceneLighting::WeatherAmount() const {
+	return CurrentWeather() ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+}
+
+float SceneLighting::WeatherRain() const {
+	const Weather* weather = CurrentWeather();
+	return weather ? std::clamp(weather->GetParams().Rain * m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+}
+
+float SceneLighting::WeatherOvercast() const {
+	const Weather* weather = CurrentWeather();
+	return weather ? std::clamp(weather->GetParams().Overcast * m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
 }
 
 void SceneLighting::UpdateShelterMap(bool terrainChanged, const glm::ivec4& changedArea) {
 	glm::vec2 fall = WeatherFall();
 	// The rays come down the way the weather falls: x moves the other way to the wind for each pixel down, as the strip counts it.
 	float slope = -fall.x / fall.y;
-	bool falling = m_Settings.WeatherType >= 1 && m_Settings.WeatherType <= 3 && m_Settings.WeatherIntensity > 0.0F;
+	const Weather* weather = CurrentWeather();
+	bool falling = weather && weather->GetParams().Shelter && !weather->GetParams().Blown && weather->GetParams().DropsPerScreen > 0.0F && fall.y > 0.0F && m_Settings.WeatherIntensity > 0.0F;
 	bool coverLeft = m_Settings.LivingWorld && (m_SnowCover > 0.01F || m_Wetness > 0.01F);
 	// Weather driven flatter than six across for one down is marched as before: the strip would be far wider than the scene for little gain.
 	if (!m_Settings.ShelterMask || !(falling || coverLeft) || std::abs(slope) > c_ShelterMaxSlope || m_WrapY || m_SceneWidth <= 0 || m_SceneHeight <= 0 || !m_OccupancyTexture.Texture) {
@@ -1445,7 +1463,7 @@ void SceneLighting::UpdateWetMap(float seconds) {
 	m_WetnessUpdateShader->Enable();
 	m_WetnessUpdateShader->SetInt("rtePrevious", 0);
 	m_WetnessUpdateShader->SetInt("rteOccupancy", 1);
-	m_WetnessUpdateShader->SetFloat("rteRain", m_Settings.WeatherType == 1 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F);
+	m_WetnessUpdateShader->SetFloat("rteRain", WeatherRain());
 	m_WetnessUpdateShader->SetFloat("rteSeconds", seconds);
 	m_WetnessUpdateShader->SetFloat("rteDrySeconds", std::clamp(m_Settings.WetDrySeconds, 10.0F, 600.0F));
 	glActiveTexture(GL_TEXTURE0);
@@ -1497,7 +1515,7 @@ void SceneLighting::UpdateFog() {
 	float hour = m_Settings.TimeOfDay;
 	float dawn = glm::smoothstep(3.5F, 5.5F, hour) * (1.0F - glm::smoothstep(6.5F, 9.0F, hour));
 	float night = (hour >= 21.0F || hour < 3.5F) ? 0.25F : 0.0F;
-	float rain = m_Settings.WeatherType == 1 ? 0.35F * m_Settings.WeatherIntensity : 0.0F;
+	float rain = CurrentWeather() ? CurrentWeather()->GetParams().Mist * m_Settings.WeatherIntensity : 0.0F;
 	float mist = std::clamp(m_Settings.FogMorningMist, 0.0F, 1.0F) * std::max(dawn, std::max(night, rain)) * seconds * 0.15F;
 
 	constexpr int maxPuffs = 16;
@@ -1561,6 +1579,10 @@ void SceneLighting::Update() {
 	float nightDim = std::pow(1.0F - std::clamp(m_Settings.DeepNightDarkness, 0.0F, 0.97F) * deepNight, 2.2F);
 	m_NightDim = nightDim;
 	m_EffectiveSky = m_Settings.SkyColor * daylight * nightDim;
+	// Weather can tint the sky's light (Weather::SceneTint), as far as it's heavy.
+	if (const Weather* weather = CurrentWeather(); weather && weather->GetParams().SceneTint != glm::vec3(1.0F)) {
+		m_EffectiveSky *= glm::mix(glm::vec3(1.0F), weather->GetParams().SceneTint, std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F));
+	}
 	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
 	m_SkyDaylight = daylight;
 	{
@@ -1598,7 +1620,7 @@ void SceneLighting::Update() {
 		// Around midday the art is right as it is and is left alone; the replacement comes in through the afternoon and goes out through the morning.
 		float away = hour < 12.0F ? 1.0F - glm::smoothstep(7.5F, 9.5F, hour) : glm::smoothstep(14.5F, 16.5F, hour);
 		// Bad weather greys the sky at any hour.
-		float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		float overcast = WeatherOvercast();
 		if (overcast > 0.0F) {
 			auto grey = [overcast](const glm::vec3& color) {
 				float brightness = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
@@ -1618,7 +1640,7 @@ void SceneLighting::Update() {
 	bool sunIsUp = m_Settings.TimeOfDay >= 6.0F && m_Settings.TimeOfDay <= 18.0F;
 	float sunArc = ((sunIsUp ? m_Settings.TimeOfDay : std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F)) - 12.0F) / 6.0F;
 	m_SunDirection = glm::normalize(glm::vec2(sunArc * 1.05F, -1.0F));
-	float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+	float overcast = WeatherOvercast();
 	m_SunShadowStrength = m_Settings.SunShadows * (1.0F - glm::smoothstep(0.8F, 1.0F, std::abs(sunArc))) * (sunIsUp ? 1.0F : 0.6F) * (1.0F - 0.8F * overcast);
 	m_SunArc = sunArc;
 	// The sun's disc sinks into the horizon haze at dawn and dusk, and weather hides it.
@@ -1633,13 +1655,14 @@ void SceneLighting::Update() {
 		m_LightningRandom = m_LightningRandom * 1664525u + 1013904223u;
 		return static_cast<float>(m_LightningRandom >> 8) / static_cast<float>(1u << 24);
 	};
-	if (m_Settings.WeatherType == 1 && m_Settings.WeatherIntensity > 0.5F) {
+	float lightningRate = CurrentWeather() ? CurrentWeather()->GetParams().Lightning : 0.0F;
+	if (lightningRate > 0.0F && m_Settings.WeatherIntensity > 0.5F) {
 		m_NextLightningSeconds -= frameSeconds;
 		if (m_NextLightningSeconds <= 0.0F) {
 			m_LightningSecondsLeft = 0.45F;
-			// Heavier storms flash more often.
+			// Heavier storms flash more often, and weather with more lightning in it (Weather::Lightning, 1 as rain) more often still.
 			float storm = (m_Settings.WeatherIntensity - 0.5F) * 2.0F;
-			m_NextLightningSeconds = (6.0F + nextRandom() * 16.0F) * (1.2F - 0.6F * storm);
+			m_NextLightningSeconds = (6.0F + nextRandom() * 16.0F) * (1.2F - 0.6F * storm) / lightningRate;
 		}
 	}
 	if (m_LightningSecondsLeft > 0.0F) {
@@ -1653,13 +1676,14 @@ void SceneLighting::Update() {
 	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning;
 
 	// Snow settles over about a minute of heavy snowfall and melts slower than that; rain wets the ground quickly and dries slowly.
-	float snowTarget = m_Settings.WeatherType == 2 ? m_Settings.WeatherIntensity : 0.0F;
-	float wetTarget = m_Settings.WeatherType == 1 ? std::min(1.0F, m_Settings.WeatherIntensity * 1.3F) : 0.0F;
+	const Weather* weatherNow = CurrentWeather();
+	float snowTarget = weatherNow ? weatherNow->GetParams().SnowCover * m_Settings.WeatherIntensity : 0.0F;
+	float wetTarget = weatherNow ? std::min(1.0F, weatherNow->GetParams().Rain * m_Settings.WeatherIntensity * 1.3F) : 0.0F;
 	m_SnowCover += std::clamp(snowTarget - m_SnowCover, -frameSeconds / 90.0F, frameSeconds / 60.0F);
 	m_Wetness += std::clamp(wetTarget - m_Wetness, -frameSeconds / 60.0F, frameSeconds / 8.0F);
 	// Cloud cover gathers over about twenty seconds when rain, snow or ash sets in and breaks up over a minute and a half after.
 	{
-		float weatherCloud = (m_Settings.WeatherType >= 1 && m_Settings.WeatherType <= 3) ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		float weatherCloud = weatherNow ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) * weatherNow->GetParams().CloudCover : 0.0F;
 		auto targetFor = [weatherCloud](float clearCover) {
 			float coverClear = std::clamp(clearCover, 0.0F, 1.0F);
 			return coverClear + (1.0F - coverClear) * std::min(weatherCloud * 1.4F, 1.0F);
@@ -2550,15 +2574,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	auto depthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
 	m_CompositeShader->SetFloat("rteBackgroundNearDepth", depthForZ(c_BackgroundDepth));
 	m_CompositeShader->SetFloat("rteBackgroundFarDepth", depthForZ(c_BackgroundDepth + c_BackgroundDepthRange));
-	// A dust storm hangs a tan haze over the distance; ash fall a grey one.
+	// Weather hazes the distance: a dust storm tan, ash fall grey (Weather::HazeColor, HazeColorAmount and Haze).
 	glm::vec3 atmosphereColor = m_Settings.AtmosphereColor;
 	float atmosphereHaze = m_Settings.AtmosphereHaze;
-	if (m_Settings.WeatherType == 4) {
-		atmosphereColor = glm::mix(atmosphereColor, glm::vec3(0.8F, 0.64F, 0.42F), std::min(m_Settings.WeatherIntensity, 1.0F));
-		atmosphereHaze = std::min(atmosphereHaze + 0.55F * m_Settings.WeatherIntensity, 1.0F);
-	} else if (m_Settings.WeatherType == 3) {
-		atmosphereColor = glm::mix(atmosphereColor, glm::vec3(0.42F, 0.4F, 0.4F), std::min(m_Settings.WeatherIntensity, 1.0F) * 0.8F);
-		atmosphereHaze = std::min(atmosphereHaze + 0.3F * m_Settings.WeatherIntensity, 1.0F);
+	if (const Weather* weather = CurrentWeather(); weather && (weather->GetParams().HazeColorAmount > 0.0F || weather->GetParams().Haze > 0.0F)) {
+		atmosphereColor = glm::mix(atmosphereColor, weather->GetParams().HazeColor, std::min(m_Settings.WeatherIntensity, 1.0F) * weather->GetParams().HazeColorAmount);
+		atmosphereHaze = std::min(atmosphereHaze + weather->GetParams().Haze * m_Settings.WeatherIntensity, 1.0F);
 	}
 	m_CompositeShader->SetVector3f("rteAtmosphereColor", atmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
 	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? atmosphereHaze : 0.0F);
@@ -2576,7 +2597,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);
 	m_CompositeShader->SetVector3f("rteSkyHorizon", m_SkyHorizon);
 	m_CompositeShader->SetVector3f("rteSkyCloud", m_SkyCloud);
-	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(m_Settings.WeatherType > 0 ? m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
+	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(CurrentWeather() ? CurrentWeather()->GetParams().Overcast * m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
 	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	{
 		// The moon follows the same arc as the sun, high in the sky behind everything. Player screens are drawn top down, so y 0 is the top.
@@ -2822,28 +2843,57 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	}
 
 	logStages.Next("Lighting: precipitation");
-	// Rain or snow, lit by the sky, over the lit scene.
-	if (m_Settings.WeatherType > 0 && m_Settings.WeatherIntensity > 0.0F) {
+	// The weather's drops (Weather.h: rain, snow and every other Weather preset), lit by the sky, over the lit scene.
+	if (const Weather* weather = CurrentWeather(); weather && m_Settings.WeatherIntensity > 0.0F && weather->GetParams().DropsPerScreen > 0.0F) {
 		TracyGpuZone("Precipitation");
-		static constexpr float dropsPerScreen[5] = {0.0F, 2500.0F, 1500.0F, 1800.0F, 2200.0F};
-		int dropCount = static_cast<int>(m_Settings.WeatherIntensity * dropsPerScreen[std::clamp(m_Settings.WeatherType, 0, 4)] * (static_cast<float>(width * height) / (960.0F * 540.0F)));
+		const Weather::Params& look = weather->GetParams();
+		int dropCount = static_cast<int>(m_Settings.WeatherIntensity * look.DropsPerScreen * (static_cast<float>(width * height) / (960.0F * 540.0F)));
+		// A mod's own drop shader (Weather::DropShader), if it's defined and compiled and mod shaders are on; otherwise the game's.
+		const Shader* dropShader = m_PrecipitationShader.get();
+		if (!look.DropShader.empty() && m_Settings.ModShaders) {
+			const Shader* own = dynamic_cast<const Shader*>(g_PresetMan.GetEntityPreset("Shader", look.DropShader));
+			if (own && own->IsValid()) {
+				dropShader = own;
+			}
+		}
+		float glow = std::clamp(m_Settings.WeatherGlow, 0.0F, 2.0F);
 		glEnable(GL_BLEND);
 		glBlendEquation(GL_FUNC_ADD);
 		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-		m_PrecipitationShader->Enable();
-		m_PrecipitationShader->SetVector2f("rteScreenSize", screenSize);
-		m_PrecipitationShader->SetVector2f("rteScreenOrigin", origin);
-		m_PrecipitationShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
-		m_PrecipitationShader->SetInt("rteType", m_Settings.WeatherType);
-		m_PrecipitationShader->SetFloat("rteWind", m_Settings.Wind);
-		m_PrecipitationShader->SetInt("rteOccupancy", 0);
-		m_PrecipitationShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
-		m_PrecipitationShader->SetVector2f("rteGridWorldSize", gridWorldSize);
-		m_PrecipitationShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
-		m_PrecipitationShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
-		m_PrecipitationShader->SetInt("rteDynamicLight", 1);
-		m_PrecipitationShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
-		SetShelterUniforms(*m_PrecipitationShader, m_ShelterMapReady && m_Settings.WeatherType != 4, 3);
+		dropShader->Enable();
+		dropShader->SetVector2f("rteScreenSize", screenSize);
+		dropShader->SetVector2f("rteScreenOrigin", origin);
+		dropShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		dropShader->SetInt("rteType", m_Settings.WeatherType);
+		dropShader->SetFloat("rteWind", m_Settings.Wind);
+		dropShader->SetInt("rteOccupancy", 0);
+		dropShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
+		dropShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		dropShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+		dropShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
+		dropShader->SetInt("rteDynamicLight", 1);
+		dropShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
+		// How the drops move and look.
+		dropShader->SetVector2f("rteFallSpeed", glm::vec2(look.FallSpeedMin, look.FallSpeedMax));
+		dropShader->SetFloat("rteWindFactor", look.WindFactor);
+		dropShader->SetVector3f("rteSway", glm::vec3(look.Sway, look.SwayRateMin, look.SwayRateMax));
+		dropShader->SetBool("rteBlown", look.Blown);
+		dropShader->SetVector4f("rteBlownWind", glm::vec4(look.BlownWindScale, look.BlownMinSpeed, look.BlownSpeedMin, look.BlownSpeedMax));
+		dropShader->SetVector2f("rteSwirl", glm::vec2(look.Swirl, look.SwirlRate));
+		dropShader->SetVector2f("rteJitter", glm::vec2(look.Jitter, look.JitterRate));
+		dropShader->SetVector2f("rteLength", glm::vec2(look.LengthMin, look.LengthMax));
+		dropShader->SetFloat("rteWidth", look.Width);
+		dropShader->SetVector2f("rteAlpha", glm::vec2(look.AlphaMin, look.AlphaMax));
+		dropShader->SetBool("rteSheltered", look.Shelter);
+		dropShader->SetInt("rteShape", look.Shape);
+		dropShader->SetVector3f("rteDropColor", look.DropColor);
+		dropShader->SetVector3f("rteDropColor2", look.DropColor2);
+		dropShader->SetFloat("rteGlow", look.DropGlow * glow);
+		dropShader->SetVector2f("rtePulse", glm::vec2(look.PulseRate, std::clamp(look.PulseDepth, 0.0F, 1.0F)));
+		dropShader->SetFloat("rteTwinkle", std::clamp(look.Twinkle, 0.0F, 1.0F));
+		dropShader->SetFloat("rteStrength", m_Settings.ModShaderStrength);
+		// The shelter map is made for the drops' mean fall; blown drops go their own way and march instead.
+		SetShelterUniforms(*dropShader, m_ShelterMapReady && look.Shelter && !look.Blown, 3);
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, m_ShelterMap.Texture);
 		glActiveTexture(GL_TEXTURE0);
@@ -2853,9 +2903,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		glBindVertexArray(m_EmptyVAO);
 		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
-		// Raindrops splashing on whatever they land on.
+		// Drops splashing on whatever they land on (rain's, Weather::Splashes).
 		std::shared_ptr<DepthTexture> splashDepth = playerScreen->GetDepthTexture().lock();
-		if (m_Settings.WeatherType == 1 && m_Settings.RainSplashes > 0.0F && splashDepth) {
+		if (look.Splashes > 0.0F && m_Settings.RainSplashes > 0.0F && splashDepth) {
 			m_RainSplashShader->Enable();
 			m_RainSplashShader->SetInt("rteSceneDepth", 2);
 			m_RainSplashShader->SetInt("rteOccupancy", 0);
@@ -2868,11 +2918,14 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			m_RainSplashShader->SetVector2f("rteScreenSize", screenSize);
 			m_RainSplashShader->SetVector2f("rteScreenOrigin", origin);
 			m_RainSplashShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
-			m_RainSplashShader->SetVector2f("rteFall", glm::normalize(glm::vec2(m_Settings.Wind, 640.0F)));
-			m_RainSplashShader->SetFloat("rteAmount", std::clamp(m_Settings.WeatherIntensity * m_Settings.RainSplashes * 0.45F, 0.0F, 1.0F));
+			m_RainSplashShader->SetVector2f("rteFall", glm::normalize(WeatherFall()));
+			m_RainSplashShader->SetFloat("rteAmount", std::clamp(m_Settings.WeatherIntensity * m_Settings.RainSplashes * 0.45F * look.Splashes, 0.0F, 1.0F));
 			m_RainSplashShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
 			m_RainSplashShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
-			SetShelterUniforms(*m_RainSplashShader, m_ShelterMapReady, 3);
+			m_RainSplashShader->SetVector3f("rteSplashColor", look.SplashColor);
+			m_RainSplashShader->SetFloat("rteSplashGlow", look.SplashGlow * glow);
+			m_RainSplashShader->SetBool("rteSheltered", look.Shelter);
+			SetShelterUniforms(*m_RainSplashShader, m_ShelterMapReady && look.Shelter, 3);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, splashDepth->GetTextureId());
 			glActiveTexture(GL_TEXTURE0);
@@ -2886,7 +2939,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	if (m_Settings.Enabled && m_Settings.GodRays > 0.0F && sceneDepth) {
 		TracyGpuZone("God Rays");
 		float sunArc = std::abs(m_SunDirection.x / std::max(-m_SunDirection.y, 0.001F)) / 1.05F;
-		float overcast = m_Settings.WeatherType > 0 ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+		float overcast = WeatherOvercast();
 		float shaftStrength = m_Settings.GodRays * 0.5F * (1.0F - glm::smoothstep(0.8F, 1.0F, sunArc)) * (1.0F - 0.8F * overcast);
 		glViewport(0, 0, m_GodRays.Width, m_GodRays.Height);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_GodRays.Framebuffer);

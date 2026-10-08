@@ -2,6 +2,8 @@
 
 #include "glm/glm.hpp"
 
+#include <string>
+
 namespace RTE {
 
 	/// Tunable parameters of the scene lighting and post-processing. Colors are linear.
@@ -205,7 +207,10 @@ namespace RTE {
 		float AtmosphereHaze = 0.18F; //!< How much the furthest background layers fade into the atmosphere, 0 to 1.
 		glm::vec3 AtmosphereColor = {0.62F, 0.74F, 0.95F}; //!< Color of the atmosphere at noon, linear. Tinted by the time of day.
 
-		int WeatherType = 0; //!< 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm.
+		int WeatherType = 0; //!< The weather's slot (Weather.h): 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on the other Weather presets, mods' included.
+		std::string WeatherName; //!< A custom weather (slot 5 on) asked for by name before the presets were loaded (saved settings); picked up into WeatherType once they are.
+		bool CustomWeather = true; //!< Weather types past the built-in four (data and mods' Weather presets) can be chosen. Off: they fall clear and the menu lists the built-in four.
+		float WeatherGlow = 1.0F; //!< How much light glowing weather (acid rain, embers) gives off, 0 to 2. Built-in weather doesn't glow.
 		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
 		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
 
