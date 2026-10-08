@@ -296,7 +296,9 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	PathNode* startNode = openNode(GetPathNodeAtGridCoords(startNodeX, startNodeY), start);
 	// A searcher with a jetpack asking from the air (a re-path or a route check part way through a jump) flies on from where it is; see
 	// AdjacentCost.
-	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
+	// (Only with a jet to fly on, and not on a ladder the searcher climbs: a re-path part way up a ladder was offered plain-sight flights
+	// off the rung, cheaper than the rungs, and a unit with no jet let go and fell.)
+	s_FlyingStart = (startNode && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && !(s_ClimbsLadders && startNode->Ladder) && !NodeIsOnSolidGround(*startNode)) ? startNode : nullptr;
 	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY), end);
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
@@ -1435,6 +1437,11 @@ float PathFinder::FallCost(const PathNode& to) const {
 	if (s_JumpHeight == FLT_MAX || g_SceneMan.IsPointInNoGravArea(to.Pos)) {
 		return 0.0F;
 	}
+	// Onto a ladder it climbs: held by the rungs, no fall. (Priced as the shaft's drop, the step from the floor onto the top of a deep
+	// laddered shaft cost a jetless unit 1000, and any way round won.)
+	if (s_ClimbsLadders && to.Ladder) {
+		return 0.0F;
+	}
 	int drop = DropNodes(to);
 	// A drop the searcher wouldn't land from unhurt, with no jet to brake it (LM-9): not routed. (Priced, not cut: a unit already falling
 	// still gets a route, the least bad one.) Unless it lands in water deep enough to take the fall (LM-4): a dive is no fall to the bottom.
@@ -1714,20 +1721,33 @@ bool PathFinder::LeapFits(const PathNode& from, const PathNode& to) const {
 }
 
 bool PathFinder::LipAt(const PathNode& to, float direction) const {
-	// Half a node short of the landing, nothing within half a node under its floor: a face to get up, not a slope a walk goes up.
-	int x = static_cast<int>(to.Pos.m_X - direction * static_cast<float>(m_NodeDimension) * 0.5F);
-	int top = static_cast<int>(to.Surface) - 2;
-	for (int y = top; y <= top + 2 + m_NodeDimension / 2; ++y) {
-		if (TerrNav(x, y) != MaterialColorKeys::g_MaterialAir) {
-			return false;
+	// Back from the landing's middle towards the take-off, a node's worth, every 2 px: the ground's top dropping by half a node or more
+	// from one column to the next (or no ground within a node and a half under the floor) is the face to get up; ground that falls away
+	// gradually is a slope a walk goes up. (One column half a node short saw only a face in the near half of the landing's cell, and about
+	// half of real ledges, their face in the cell before, lost their mantle to a jump.)
+	const int nodeSize = m_NodeDimension;
+	const int top = static_cast<int>(to.Surface) - 2;
+	const int bottom = static_cast<int>(to.Surface) + nodeSize + nodeSize / 2;
+	float last = to.Surface;
+	for (int d = 2; d <= nodeSize; d += 2) {
+		int x = static_cast<int>(to.Pos.m_X - direction * static_cast<float>(d));
+		int y = top;
+		while (y <= bottom && (TerrNav(x, y) == MaterialColorKeys::g_MaterialAir || LiquidOf(TerrNav(x, y)) != PathLiquid::None)) {
+			++y;
 		}
+		if (y > bottom || static_cast<float>(y) - last >= static_cast<float>(nodeSize) * 0.5F) {
+			return true;
+		}
+		last = static_cast<float>(y);
 	}
-	return true;
+	return false;
 }
 
 bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const {
 	const float nodeSize = static_cast<float>(m_NodeDimension);
-	if (from.Surface < 0.0F || to.Surface < 0.0F || std::abs(from.Surface - to.Surface) > nodeSize * 1.5F) {
+	// (No steeper than the legs walk, 40 degrees (AHuman's walk angle): at a node and a half over one, slopes to 56 degrees were routed as
+	// walks, and the unit pressed into a face its legs couldn't take. Steeper is stairs, a scramble, a mantle or a jump.)
+	if (from.Surface < 0.0F || to.Surface < 0.0F || std::abs(from.Surface - to.Surface) > nodeSize * 0.84F) {
 		return false;
 	}
 	// Room to walk it, at the least crouched, at both ends and over the middle of the way.

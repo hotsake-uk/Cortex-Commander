@@ -517,13 +517,13 @@ namespace RTE {
 		/// @param to The floor it lands on.
 		bool GapBetween(const PathNode& from, const PathNode& to) const;
 
-		/// Whether a floor is the top of a face (a lip) seen from the way a leap comes: half a node short of it, no ground within half a node
-		/// under its floor. A slope up to it is walked.
+		/// Whether a floor is the top of a face (a lip) seen from the way a leap or a mantle comes: within a node back from its middle, the
+		/// ground's top drops half a node or more between two 2 px columns. A slope up to it is walked.
 		/// @param to The floor.
 		/// @param direction -1 for a leap leftward, 1 rightward.
 		bool LipAt(const PathNode& to, float direction) const;
 
-		/// Whether the legs walk from one floor node to its diagonal neighbour up or down an incline: the ground's top between them rises or
+		/// Whether the legs walk from one floor node to its diagonal neighbour up or down an incline no steeper than 40 degrees: the ground's top between them rises or
 		/// falls by less than half a node from one 2 px column to the next (a face that size is a lip), with no gap, and the body's middle
 		/// clear over the way. However the straight line between the node centres meets the ground.
 		/// @param from The floor walked from.
