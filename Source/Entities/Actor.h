@@ -815,6 +815,15 @@ namespace RTE {
 		/// drops). @return The height, in pixels; FLT_MAX in no gravity or with no threshold.
 		float GetMaxSafeFallHeight() const;
 
+		/// Gets how deep this is in liquid (ActorWater): 0 dry, 1 feet in, 2 body in, 3 head under.
+		int GetLiquidDepth() const;
+
+		/// Gets how much air this has left, from 1 (full, or it doesn't breathe) to 0 (drowning).
+		float GetAirLeft() const;
+
+		/// Gets whether this floats in liquid, rising to the surface and swimming along it, rather than walking the bottom.
+		bool IsFloater() const;
+
 		/// Gets this Actor's base dig strength, or the strength of terrain they can expect to walk through without tools.
 		/// @return The actors base dig strength.
 		float GetAIBaseDigStrength() const { return m_AIBaseDigStrength; }
