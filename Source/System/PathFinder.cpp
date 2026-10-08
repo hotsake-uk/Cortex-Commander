@@ -1572,8 +1572,8 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->LeftUp->Pos, stairsColor);
 			}
 			// Leap links (see AddLeapLinks), as an arc of two lines over the gap or up onto the lip, from the floors they can start from: the
-			// edge of a floor, or under a lip a node to either side.
-			if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX) {
+			// edge of a floor, or under a lip a node to either side. (None in no-gravity areas, as the search offers none there.)
+			if (s_LeapHeight > 0.0F && s_JumpHeight < FLT_MAX && !g_SceneMan.IsPointInNoGravArea(node->Pos)) {
 				auto lip = [node](const PathNode* side) { return side && side->Surface >= 0.0F && side->Surface < node->Surface - 4.0F; };
 				if (IsFloorEdge(*node) || lip(node->Left) || lip(node->Right)) {
 					leaps.clear();
