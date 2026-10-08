@@ -158,7 +158,13 @@ namespace {
 		ClearWaterSpawners,
 		ClearEffects, //!< Count: 1 the last one only, else all.
 		UndoTerrain, //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
-		AutoBattle //!< Count: how many sides fight (0 stops a battle under way); Choice: each side's budget; Position and Radius: the view's middle and width.
+		AutoBattle, //!< Count: how many sides fight (0 stops a battle under way); Choice: each side's budget; Position and Radius: the view's middle and width.
+		// The new liquids and loose materials (SB-2), poured like water: appended, so the tools before keep their numbers.
+		Mud,
+		Tar,
+		Mercury,
+		Gravel,
+		GlassShards
 	};
 
 	struct ToolInfo {
@@ -229,6 +235,11 @@ namespace {
 	    {Tool::OrderMove, "Move a side here", 0.0F, false},
 	    {Tool::GymStart, "Gym start", 0.0F, false},
 	    {Tool::GymGoal, "Gym goal", 0.0F, false},
+	    {Tool::Mud, "Mud", 0.03F, true},
+	    {Tool::Tar, "Tar", 0.03F, true},
+	    {Tool::Mercury, "Mercury", 0.03F, true},
+	    {Tool::Gravel, "Gravel", 0.03F, true},
+	    {Tool::GlassShards, "Glass shards", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -3084,6 +3095,21 @@ namespace {
 			case Tool::Oil:
 				FluidSim::Pour(at, radius * 0.5F, "Oil");
 				break;
+			case Tool::Mud:
+				FluidSim::Pour(at, radius * 0.5F, "Mud");
+				break;
+			case Tool::Tar:
+				FluidSim::Pour(at, radius * 0.5F, "Tar");
+				break;
+			case Tool::Mercury:
+				FluidSim::Pour(at, radius * 0.5F, "Mercury");
+				break;
+			case Tool::Gravel:
+				FluidSim::Pour(at, radius * 0.5F, "Gravel");
+				break;
+			case Tool::GlassShards:
+				FluidSim::Pour(at, radius * 0.5F, "Glass Shards");
+				break;
 			case Tool::WaterSpawner:
 				if (s_WaterSpawners.size() < 64) {
 					s_WaterSpawners.push_back({at, std::max(1, stroke.Radius / 2)});
@@ -3672,6 +3698,12 @@ namespace {
 				return {Icon::Drop, IM_COL32(140, 230, 60, 255)};
 			case Tool::Oil:
 				return {Icon::Drop, IM_COL32(120, 90, 140, 255)};
+			case Tool::Mud:
+				return {Icon::Drop, IM_COL32(150, 105, 60, 255)};
+			case Tool::Tar:
+				return {Icon::Drop, IM_COL32(70, 60, 55, 255)};
+			case Tool::Mercury:
+				return {Icon::Drop, IM_COL32(200, 205, 215, 255)};
 			case Tool::WaterSpawner:
 				return {Icon::Down, IM_COL32(90, 170, 240, 255)};
 			case Tool::Smoke:
@@ -3682,6 +3714,10 @@ namespace {
 				return {Icon::Grains, IM_COL32(222, 190, 120, 255)};
 			case Tool::LooseSnow:
 				return {Icon::Grains, IM_COL32(240, 245, 255, 255)};
+			case Tool::Gravel:
+				return {Icon::Grains, IM_COL32(150, 145, 135, 255)};
+			case Tool::GlassShards:
+				return {Icon::Grains, IM_COL32(190, 225, 235, 255)};
 			case Tool::Sand:
 				return {Icon::Grains, IM_COL32(200, 170, 100, 255)};
 			case Tool::Boulder:
@@ -6483,6 +6519,7 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
+				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury});
 				ImGui::SeparatorText("Water that keeps coming");
 				ToolButtons({Tool::WaterSpawner});
 				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");
@@ -6497,7 +6534,7 @@ void Sandbox::DrawGUI() {
 					ImGui::TextDisabled("%d pouring", static_cast<int>(s_WaterSpawners.size()));
 				}
 				ImGui::SeparatorText("Loose things");
-				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Boulder, Tool::Slab});
+				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);

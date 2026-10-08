@@ -33,6 +33,8 @@ namespace RTE {
 		std::string MeltsTo; //!< What it melts into beside something hot (ice and snow: "Water").
 		std::string BoilsTo; //!< What it boils into against something hot ("Air" for steam, water's).
 		std::string SettlesTo; //!< What it sets into where it meets something that douses it (lava: "Stone").
+		std::string DriesTo; //!< What a liquid dries into where it lies still with air over it (mud: "Earth"), from the top down.
+		float DryChance = -1.0F; //!< The chance, each time the terrain's sweep passes a still surface pixel of it (every few seconds), that it dries.
 		int Look = -1; //!< The liquid look it's drawn with (RenderMan::SetLiquidPaletteColor: 1 water, 2 lava, 3 acid, 4 oil...), 0 for plain.
 		int Glow = -1; //!< How brightly a liquid of it glows, 0 to 255 (lava 230).
 		int Stains = -1; //!< 1 if drops of it leave stains where they land (blood, oil).
