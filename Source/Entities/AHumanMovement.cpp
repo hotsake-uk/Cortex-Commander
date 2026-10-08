@@ -499,6 +499,7 @@ void AHuman::UpdateLadder() {
 			return;
 		}
 	}
+	const Vector before = ladder.pos;
 	ladder.pos.m_Y += dy;
 	ladder.climbed += std::abs(dy);
 
@@ -510,7 +511,10 @@ void AHuman::UpdateLadder() {
 
 	// The body is put where the climb has it, and its speed is what that movement is (the limbs and the camera go by it); upright; the
 	// ladder's rungs passed (the limbs take them, the body hangs among them).
-	m_Vel = Towards(m_Pos, ladder.pos) * (c_MPP / dt);
+	// (The speed is the climb's own movement this frame, not the way back from where physics left the body: that way includes last frame's
+	// speed already travelled, so each frame's speed undid the last one's, flipping fast and slow every frame, and the limbs, placed from
+	// where physics left the body, shook the whole climber.)
+	m_Vel = Towards(before, ladder.pos) * (c_MPP / dt);
 	m_Pos = ladder.pos;
 	m_AngularVel = 0.0F;
 	m_Rotation.SetRadAngle(m_Rotation.GetRadAngle() * 0.8F);
