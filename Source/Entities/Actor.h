@@ -53,6 +53,7 @@ namespace RTE {
 			CRAWL,
 			ARMCRAWL,
 			CLIMB,
+			WALKCROUCH, //!< Not a state of its own (a crouched walker is in WALK): the slot for the crouched walk's leg paths, which a walker more than half crouched strides on.
 			MOVEMENTSTATECOUNT
 		};
 
