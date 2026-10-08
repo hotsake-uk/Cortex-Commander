@@ -1069,7 +1069,6 @@ void FrameMan::Draw() {
 			}
 			m_BackBuffer->End();
 		}
-		//g_PostProcessMan.AdjustEffectsPosToPlayerScreen(playerScreen, drawScreen, screenOffset, screenRelativeEffects, screenRelativeGlowBoxes);
 	}
 
 	// Clears the pixels that have been revealed from the unseen layers
