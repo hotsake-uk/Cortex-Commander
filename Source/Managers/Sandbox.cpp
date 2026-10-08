@@ -6411,6 +6411,51 @@ namespace {
 		}
 	}
 
+	/// The character state line (SettingsMan::ShowSandboxCharacterState): over your character's head, what UpdatePlayer keeps track of: whether
+	/// you are in it, the updates left before stepping in, flying and how hard it is pinned, its side and whether the AI ignores it (Neutral),
+	/// the item it has out with its kit key, and the AI mode it is left in while you are not in it.
+	void DrawCharacterState() {
+		Actor* actor = g_SettingsMan.ShowSandboxCharacterState() ? GetRef(s_PlayerUnit) : nullptr;
+		if (!actor) {
+			return;
+		}
+		static const char* const modeNames[] = {"none", "sentry", "patrol", "go to", "hunt brains", "dig gold", "return", "stay", "scuttle", "deliver", "bomb", "squad"};
+		std::string line = s_Possessed == actor ? "you're in it" : "AI has it";
+		if (s_PlayerEnterPending > 0) {
+			line += ", stepping in within " + std::to_string(s_PlayerEnterPending) + " updates";
+		}
+		if (s_Flying) {
+			line += ", flying";
+		}
+		if (actor->GetPinStrength() > 0.0F) {
+			char pin[48];
+			std::snprintf(pin, sizeof(pin), ", pinned %.0f", actor->GetPinStrength());
+			line += pin;
+		}
+		int team = actor->GetTeam();
+		line += std::string(", ") + (team >= 0 && team < c_Sides ? c_SideNames[team] : "no side");
+		if (actor->IsIgnoredByAI()) {
+			line += ", neutral";
+		}
+		if (const AHuman* human = dynamic_cast<const AHuman*>(actor)) {
+			const HeldDevice* held = human->GetEquippedItem();
+			std::string heldName = held ? held->GetPresetName() : std::string("nothing");
+			auto key = std::find(s_Player.Kit.begin(), s_Player.Kit.end(), heldName);
+			line += ", holding " + heldName + (key != s_Player.Kit.end() ? " (key " + std::to_string(key - s_Player.Kit.begin() + 1) + ")" : std::string());
+		}
+		int mode = actor->GetAIMode();
+		line += std::string(", AI mode ") + (mode >= 0 && mode < static_cast<int>(std::size(modeNames)) ? modeNames[mode] : "?");
+		ImVec2 at = ToScreen(actor->GetPos() - Vector(0.0F, actor->GetRadius() + 14.0F));
+		if (!OnPicture(at, 40.0F)) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		ImVec2 size = ImGui::CalcTextSize(line.c_str());
+		ImVec2 corner(std::floor(at.x - size.x * 0.5F), std::floor(at.y - size.y));
+		drawList->AddRectFilled(ImVec2(corner.x - 3.0F, corner.y - 2.0F), ImVec2(corner.x + size.x + 3.0F, corner.y + size.y + 2.0F), IM_COL32(10, 12, 10, 190));
+		drawList->AddText(corner, team >= 0 && team < c_Sides ? c_SideColors[team] : IM_COL32(230, 230, 220, 255), line.c_str());
+	}
+
 	/// The sandbox orders overlay (SettingsMan::SandboxOrdersOverlay): for each unit, the order waiting for the next update as a dashed line to
 	/// where it goes, its standing order as a tag over its head (with a line back to its post or place when it's off it), why it was last sent
 	/// for two seconds after, and a red flash each time the standing orders send it again.
@@ -6503,4 +6548,5 @@ void Sandbox::DrawDebug() {
 	DrawSelectionCameraOverlay();
 	DrawPaintAudit();
 	DrawAutoBattleColony();
+	DrawCharacterState();
 }
