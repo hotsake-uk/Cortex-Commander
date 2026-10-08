@@ -24,6 +24,9 @@ namespace RTE {
 		/// Gets whether a terrain material can burn. Cheap; safe to call from collision code.
 		static bool IsFlammable(int materialID);
 
+		/// Gets whether the table IsFlammable reads has been built for the current scene's materials (on the first terrain fire update of a scene).
+		static bool FlammabilityKnown();
+
 		/// Gets whether a moving object sets flammable terrain alight when it touches it (fire, flame and napalm particles). Thread safe.
 		static bool IsFireSource(const MovableObject* object);
 

@@ -232,6 +232,10 @@ bool TerrainFire::IsFlammable(int materialID) {
 	return s_FuelTableBuilt && materialID > 0 && materialID < 256 && s_FuelTable[materialID] != Fuel::None;
 }
 
+bool TerrainFire::FlammabilityKnown() {
+	return s_FuelTableBuilt;
+}
+
 bool TerrainFire::IsFireSource(const MovableObject* object) {
 	if (!object) {
 		return false;
