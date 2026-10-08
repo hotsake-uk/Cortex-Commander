@@ -9,11 +9,17 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 	end
 
 	local HitPoint;
-	local FoundMO = Owner:LookForMOs(viewAngDeg, rte.grassID, false);
-	if FoundMO then
-		HitPoint = SceneMan:GetLastRayHitPos();
-		if AI.isPlayerOwned and SceneMan:IsUnseen(HitPoint.X, HitPoint.Y, Owner.Team) and SceneMan:IsUnseen(FoundMO.Pos.X, FoundMO.Pos.Y, Owner.Team) then -- AI-teams ignore the fog
-			FoundMO = nil; -- target hidden behind the fog
+	local FoundMO;
+	if SharedBehaviors.CanScan(Owner) then
+		-- The engine's scan (see SharedBehaviors.ScanForTargets), as the humans look: crabs and turrets a narrower view, the fog seen to.
+		FoundMO, HitPoint = SharedBehaviors.ScanForTargets(AI, Owner, AI.skill or select(3, SharedBehaviors.GetTeamShootingSkill(Owner.Team)), 100 * Owner.Perceptiveness, AI.Target and 3 or 2);
+	else
+		FoundMO = Owner:LookForMOs(viewAngDeg, rte.grassID, false);
+		if FoundMO then
+			HitPoint = SceneMan:GetLastRayHitPos();
+			if AI.isPlayerOwned and SceneMan:IsUnseen(HitPoint.X, HitPoint.Y, Owner.Team) and SceneMan:IsUnseen(FoundMO.Pos.X, FoundMO.Pos.Y, Owner.Team) then -- AI-teams ignore the fog
+				FoundMO = nil; -- target hidden behind the fog
+			end
 		end
 	end
 
