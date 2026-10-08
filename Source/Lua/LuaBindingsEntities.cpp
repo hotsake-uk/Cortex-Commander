@@ -1345,6 +1345,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Scene) {
 	    .def("GetScenePathStepKinds", &Scene::GetScenePathStepKinds, luabind::return_stl_iterator)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync)
 	    .def("CalculatePathAsync", &LuaAdaptersScene::CalculatePathAsync1)
+	    .def("CalculatePathAsyncForActor", &LuaAdaptersScene::CalculatePathAsyncForActor)
 
 	    .enum_("PlacedObjectSets")[luabind::value("PLACEONLOAD", Scene::PlacedObjectSets::PLACEONLOAD),
 	                               luabind::value("BLUEPRINT", Scene::PlacedObjectSets::BLUEPRINT),

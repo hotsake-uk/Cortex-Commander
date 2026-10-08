@@ -341,6 +341,25 @@ void LuaAdaptersScene::CalculatePathAsync(Scene* luaSelfObject, const luabind::o
 	luaSelfObject->CalculatePathAsync(start, end, jumpHeight, digStrength, team, callLuaCallback);
 }
 
+void LuaAdaptersScene::CalculatePathAsyncForActor(Scene* luaSelfObject, const luabind::object& callback, const Actor* actor, const Vector& start, const Vector& end, Activity::Teams team) {
+	team = std::clamp(team, Activity::Teams::NoTeam, Activity::Teams::TeamFour);
+	// As CalculatePathAsync: the callback is kept in the Lua state under an ID, and called from the main thread once the search is done.
+	lua_State* luaState = mainthread(G(callback.interpreter()));
+	static std::atomic<int> currentCallbackId = 1 << 30; // (Apart from CalculatePathAsync's IDs, which share the table.)
+	int thisCallbackId = currentCallbackId++;
+	if (luabind::type(callback) == LUA_TFUNCTION && callback.is_valid()) {
+		luabind::call_function<void>(luaState, "_AddAsyncPathCallback", thisCallbackId, callback);
+	}
+	auto callLuaCallback = [luaState, thisCallbackId](std::shared_ptr<volatile PathRequest> pathRequestVol) {
+		g_LuaMan.AddLuaScriptCallback([luaState, thisCallbackId, pathRequestVol]() {
+			PathRequest pathRequest = const_cast<PathRequest&>(*pathRequestVol);
+			luabind::call_function<void>(luaState, "_TriggerAsyncPathCallback", thisCallbackId, pathRequest);
+		});
+	};
+	PathAgent agent = actor ? actor->GetPathAgent() : PathAgent();
+	luaSelfObject->CalculatePathAsync(start, end, agent, team, callLuaCallback);
+}
+
 void LuaAdaptersAHuman::ReloadFirearms(AHuman* luaSelfObject) {
 	luaSelfObject->ReloadFirearms(false);
 }
