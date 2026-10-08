@@ -31,6 +31,7 @@
 
 #include <array>
 #include <string>
+#include <thread>
 
 using namespace RTE;
 
@@ -260,8 +261,10 @@ bool SceneEditorGUI::TestBrainResidence(bool noBrainIsOK) {
 		return false;
 	}
 
-	// Block on our path request completing
-	while (m_PathRequest && !m_PathRequest->complete) {};
+	// Block on our path request completing (yielding: spun on with none, this took a core from the very search it waited on).
+	while (m_PathRequest && !m_PathRequest->complete) {
+		std::this_thread::yield();
+	}
 
 	// Nope! Not valid spot for this brain we found, need to force user to re-place it
 	if (m_BrainSkyPathCost > MAXBRAINPATHCOST && m_RequireClearPathToOrbit) {
@@ -747,7 +750,9 @@ void SceneEditorGUI::Update() {
 			// Placing governor brain, which actually just puts it back into the resident brain roster
 			if (m_PreviousMode == INSTALLINGBRAIN) {
 				// Force our path request to complete so we know whether we can place or not
-				while (m_PathRequest && !m_PathRequest->complete) {};
+				while (m_PathRequest && !m_PathRequest->complete) {
+					std::this_thread::yield();
+				}
 
 				// Only place if the brain has a clear path to the sky!
 				if (m_BrainSkyPathCost <= MAXBRAINPATHCOST || !m_RequireClearPathToOrbit) {

@@ -2701,6 +2701,68 @@ bool PathFinder::UpdateNodeList(const std::vector<int>& nodeVec) {
 	return anyChange;
 }
 
+bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>& nodeVec) {
+	ZoneScoped;
+
+	if (&from == this || from.m_NodeGrid.size() != m_NodeGrid.size() || from.m_NodeDimension != m_NodeDimension) {
+		return false;
+	}
+
+	// The fields UpdateNodeCosts writes for its own node; m_Navigable and the links between nodes belong to each grid.
+	std::for_each(
+	    std::execution::par_unseq,
+	    nodeVec.begin(),
+	    nodeVec.end(),
+	    [this, &from](int nodeId) {
+		    const PathNode& source = from.m_NodeGrid[nodeId];
+		    PathNode& node = m_NodeGrid[nodeId];
+		    node.Anchor = source.Anchor;
+		    node.Ladder = source.Ladder;
+		    node.Surface = source.Surface;
+		    node.FreeHeight = source.FreeHeight;
+		    node.ClearLeft = source.ClearLeft;
+		    node.ClearRight = source.ClearRight;
+		    node.StairsUpRight = source.StairsUpRight;
+		    node.Grounded = source.Grounded;
+		    node.StairsUpLeft = source.StairsUpLeft;
+		    node.ScrambleUpRight = source.ScrambleUpRight;
+		    node.ScrambleUpLeft = source.ScrambleUpLeft;
+		    node.Liquid = source.Liquid;
+		    node.LiquidDepth = source.LiquidDepth;
+		    node.StepOverRise = source.StepOverRise;
+		    node.StepOverRoom = source.StepOverRoom;
+		    node.StepOverRiseLeft = source.StepOverRiseLeft;
+		    node.StepOverRoomLeft = source.StepOverRoomLeft;
+		    node.RightMaterial = source.RightMaterial;
+		    node.DownMaterial = source.DownMaterial;
+		    node.UpRightMaterial = source.UpRightMaterial;
+		    node.RightDownMaterial = source.RightDownMaterial;
+	    });
+
+	// And the neighbours' side of those, as UpdateNodeList's second pass does.
+	std::for_each(
+	    std::execution::par_unseq,
+	    nodeVec.begin(),
+	    nodeVec.end(),
+	    [this](int nodeId) {
+		    PathNode* node = &m_NodeGrid[nodeId];
+		    if (node->Right) {
+			    node->Right->LeftMaterial = node->RightMaterial;
+		    }
+		    if (node->Down) {
+			    node->Down->UpMaterial = node->DownMaterial;
+		    }
+		    if (node->UpRight) {
+			    node->UpRight->DownLeftMaterial = node->UpRightMaterial;
+		    }
+		    if (node->RightDown) {
+			    node->RightDown->LeftUpMaterial = node->RightDownMaterial;
+		    }
+	    });
+
+	return true;
+}
+
 void PathFinder::MarkBoxNavigable(Box box, bool navigable) {
 	std::vector<int> pathNodesInBox = GetNodeIdsInBox(box);
 	std::for_each(
