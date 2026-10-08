@@ -490,10 +490,10 @@ void DebugMan::SettingsGUI() {
 		}
 		{
 			int nav = g_SettingsMan.NavDebugOverlay();
-			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0")) {
+			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
 				g_SettingsMan.SetNavDebugOverlay(nav);
 			}
-			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow).");
+			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs, pale green arcs for leaps. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
 		}
 		{
 			int team = g_SettingsMan.DebugTeam();

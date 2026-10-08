@@ -3,6 +3,8 @@
 #include "DebugDraw.h"
 #include "Actor.h"
 #include "MovableMan.h"
+#include "PathFinder.h"
+#include "Scene.h"
 #include "SettingsMan.h"
 
 #include <cmath>
@@ -145,4 +147,90 @@ void DebugOverlays::DrawCombatOverlay() {
 			drawList->AddText(ImVec2(to.x + 9.0F, to.y - ImGui::GetTextLineHeight() * 0.5F), IM_COL32(235, 70, 60, 255), ("retreat" + seconds(actor, "AI_RetreatMs")).c_str());
 		}
 	}
+}
+
+void DebugOverlays::DrawNavNode() {
+	Scene* scene = g_SceneMan.GetScene();
+	if (g_SettingsMan.NavDebugOverlay() < 3 || !scene) {
+		return;
+	}
+	const ImGuiIO& io = ImGui::GetIO();
+	if (io.WantCaptureMouse || !InView(io.MousePos, 0.0F)) {
+		return;
+	}
+	Vector pointer = DebugDraw::MouseScenePosition();
+	// The grid as the inspected unit sees it (see Scene::GetNavDebugActor), or else as the debug team's unit nearest the pointer does.
+	int team = g_SettingsMan.DebugTeam();
+	const Actor* searcher = scene->GetNavDebugActor();
+	if (!searcher) {
+		float nearest = 0.0F;
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			float distance = g_SceneMan.ShortestDistance(pointer, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
+			if (actor->GetTeam() == team && (!searcher || distance < nearest)) {
+				searcher = actor;
+				nearest = distance;
+			}
+		}
+	}
+	PathAgent agent;
+	agent.StandHeight = 44.0F;
+	agent.CrawlHeight = 24.0F;
+	if (searcher) {
+		agent = searcher->GetPathAgent();
+	}
+	PathFinder& pathFinder = scene->GetPathFinder(static_cast<Activity::Teams>(team));
+	std::vector<PathFinder::DebugEdge> edges = pathFinder.DescribeEdgesAt(pointer, agent);
+
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float thick = std::max(1.0F, std::floor(1.5F / DebugDraw::ScenePixelsPerWindowPixel()));
+	static const char* const kindNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap"};
+	static const ImU32 kindColors[] = {IM_COL32(80, 220, 90, 230), IM_COL32(240, 210, 60, 230), IM_COL32(120, 170, 255, 230), IM_COL32(170, 170, 170, 230), IM_COL32(200, 130, 70, 230), IM_COL32(255, 120, 200, 230), IM_COL32(220, 80, 220, 230), IM_COL32(255, 150, 40, 230), IM_COL32(140, 255, 200, 230)};
+	for (const PathFinder::DebugEdge& edge: edges) {
+		int kind = std::clamp(static_cast<int>(edge.Kind), 0, static_cast<int>(std::size(kindNames)) - 1);
+		ImU32 color = edge.Flight ? IM_COL32(255, 255, 255, 230) : kindColors[kind];
+		ImVec2 from = DebugDraw::ToScreen(edge.From);
+		ImVec2 to = DebugDraw::ToScreen(edge.To);
+		drawList->AddLine(from, to, color, thick);
+		if (edge.Flight) {
+			// The landing: a white tick.
+			drawList->AddLine(ImVec2(to.x - 5.0F, to.y), ImVec2(to.x + 5.0F, to.y), color, thick * 2.0F);
+		}
+		char text[64];
+		if (edge.Flight) {
+			std::snprintf(text, sizeof(text), "flight %.1f fuel %.1fs", edge.Cost, edge.FuelMS / 1000.0F);
+		} else {
+			std::snprintf(text, sizeof(text), "%s %.1f", kindNames[kind], edge.Cost);
+		}
+		std::string label = text;
+		if (edge.AvoidCost > 0.01F) {
+			std::snprintf(text, sizeof(text), " (+%.1f failed here)", edge.AvoidCost);
+			label += text;
+		}
+		ImVec2 middle((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F);
+		ImVec2 size = ImGui::CalcTextSize(label.c_str());
+		drawList->AddRectFilled(ImVec2(middle.x - 1.0F, middle.y - 1.0F), ImVec2(middle.x + size.x + 1.0F, middle.y + size.y + 1.0F), IM_COL32(10, 12, 10, 170));
+		drawList->AddText(middle, color, label.c_str());
+	}
+
+	// What the grid makes of the node, in lines of a readable width, over the pointer.
+	std::vector<std::string> lines;
+	lines.push_back("Team " + std::to_string(team + 1) + " grid, as " + (searcher ? searcher->GetPresetName() + " #" + std::to_string(searcher->GetUniqueID()) : std::string("a soldier's size")));
+	std::string description = pathFinder.DescribeNodeAt(pointer);
+	std::string line;
+	size_t start = 0;
+	while (start < description.size()) {
+		size_t end = description.find(' ', start);
+		std::string word = description.substr(start, end == std::string::npos ? std::string::npos : end - start);
+		start = end == std::string::npos ? description.size() : end + 1;
+		if (!line.empty() && line.size() + word.size() > 44) {
+			lines.push_back(line);
+			line.clear();
+		}
+		line += line.empty() ? word : " " + word;
+	}
+	if (!line.empty()) {
+		lines.push_back(line);
+	}
+	lines.push_back(std::to_string(edges.size()) + " ways out");
+	DrawLabel(drawList, ImVec2(io.MousePos.x, io.MousePos.y - 24.0F), lines, IM_COL32(150, 200, 255, 255));
 }

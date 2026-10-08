@@ -2527,6 +2527,23 @@ bool Scene::PositionsAreTheSamePathNode(const Vector& pos1, const Vector& pos2) 
 	return const_cast<Scene*>(this)->GetPathFinder(Activity::Teams::NoTeam).PositionsAreTheSamePathNode(pos1, pos2);
 }
 
+const Actor* Scene::GetNavDebugActor() const {
+	const Actor* best = nullptr;
+	float bestDistance = 0.0F;
+	Vector middle = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), static_cast<float>(g_FrameMan.GetPlayerScreenHeight())) * 0.5F;
+	for (const Actor* actor: g_MovableMan.GetActorList()) {
+		if (actor->GetTeam() != g_SettingsMan.DebugTeam() || !actor->IsDebugInspected()) {
+			continue;
+		}
+		float distance = g_SceneMan.ShortestDistance(middle, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude();
+		if (!best || distance < bestDistance) {
+			best = actor;
+			bestDistance = distance;
+		}
+	}
+	return best;
+}
+
 void Scene::Update() {
 	ZoneScoped;
 
@@ -2536,7 +2553,14 @@ void Scene::Update() {
 	if (g_SettingsMan.NavDebugOverlay() > 0 && g_ActivityMan.ActivityRunning()) {
 		Vector corner = g_CameraMan.GetOffset(0);
 		Box view(corner, static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), static_cast<float>(g_FrameMan.GetPlayerScreenHeight()));
-		GetPathFinder(static_cast<Activity::Teams>(g_SettingsMan.DebugTeam())).DrawDebug(view);
+		// Drawn for the inspected unit of that team nearest the view's middle (its sizes, its leaps), or else a soldier's.
+		PathAgent agent;
+		agent.StandHeight = 44.0F;
+		agent.CrawlHeight = 24.0F;
+		if (const Actor* inspected = GetNavDebugActor()) {
+			agent = inspected->GetPathAgent();
+		}
+		GetPathFinder(static_cast<Activity::Teams>(g_SettingsMan.DebugTeam())).DrawDebug(view, agent);
 	}
 
 	if (m_pTerrain) {

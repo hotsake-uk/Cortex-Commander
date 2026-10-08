@@ -189,13 +189,33 @@ namespace RTE {
 		int GetCurrentPathingRequests() const { return m_CurrentPathingRequests.load(); }
 
 		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
-		/// green where a soldier stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs, magenta
-		/// for the stairs.
+		/// green where the searcher stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs,
+		/// magenta for the stairs, pale green arcs for the searcher's leaps.
 		/// @param area The part of the scene to draw, in scene coordinates.
-		void DrawDebug(const Box& area);
+		/// @param agent The searcher whose sizes and leaps to show (the inspected unit's, or a soldier's).
+		void DrawDebug(const Box& area, const PathAgent& agent);
 
-		/// Debug: what the grid makes of the node at a scene point, as a line of text (its surface, ground, room and the material each way).
+		/// Debug: what the grid makes of the node at a scene point, as a line of text (its surface, ground, room and the material each way,
+		/// its step-overs, stairs and ladder, and its anchor).
 		std::string DescribeNodeAt(const Vector& scenePos);
+
+		/// One way out of a node, for the navigation overlay's node under the pointer (see DescribeEdgesAt).
+		struct DebugEdge {
+			Vector From; //!< Where the step starts: the node's standing point (or its anchor, in the air).
+			Vector To; //!< Where the step goes: the target node's standing point (or its anchor, in the air).
+			float Cost = 0.0F; //!< What the search pays for the step, the searcher's recent failures included.
+			float AvoidCost = 0.0F; //!< How much of Cost is for those failures (PathAgent::Avoid and AvoidLinks).
+			PathStepKind Kind = PathStepKind::Walk; //!< What the step is, as the route would label it (StepKindBetween).
+			bool Flight = false; //!< Whether it is a flight link (see AddFlightLinks).
+			float FuelMS = 0.0F; //!< A flight link's fuel, as the route-follower reckons it, in ms.
+		};
+
+		/// Debug: every way out of the node at a scene point, as a searcher is offered them (AdjacentCost with its sizes, jet, legs and recent
+		/// failures), with what each step is and costs. Borrows this thread's searcher for the call and puts it back.
+		/// @param scenePos The point.
+		/// @param agent The searcher.
+		/// @return The ways out; none for no node or one that can't be navigated.
+		std::vector<DebugEdge> DescribeEdgesAt(const Vector& scenePos, const PathAgent& agent);
 
 		/// Recalculates all the costs between all the PathNodes by tracing lines in the material layer and summing all the material strengths for each encountered pixel. Also resets the pather itself.
 		void RecalculateAllCosts();
@@ -395,6 +415,23 @@ namespace RTE {
 		/// @param node The node the flights leave from.
 		/// @param adjacentList The list to add the links to.
 		void AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList);
+
+		/// A flight link from a node (see CollectFlightLinks).
+		struct FlightLink {
+			const PathNode* target; //!< The landing.
+			float cost; //!< What the search pays for it.
+			float fuel; //!< The fuel it takes, in ms.
+		};
+
+		/// All the flight links from a node at the edge of its floor, cheapest first: AddFlightLinks offers the first few, and the navigation
+		/// overlay shows their fuel.
+		/// @param node The node the flights leave from.
+		/// @param links Where to put them.
+		void CollectFlightLinks(const PathNode& node, std::vector<FlightLink>& links);
+
+		/// Sets this thread's searcher (its sizes, jet, legs, dig and breach strength and recent failures) from an agent, as a search does
+		/// before it starts.
+		void ApplyAgent(const PathAgent& agent);
 
 		/// Whether a node stands at the edge of its floor: on ground, with a neighbour to one side that isn't.
 		bool IsFloorEdge(const PathNode& node) const;
