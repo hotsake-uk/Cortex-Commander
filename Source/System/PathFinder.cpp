@@ -1132,6 +1132,15 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	if (s_ClimbsLadders && to->Ladder && !from->Ladder && dy < -1.0F && dy >= -2.0F * nodeSize - 1.0F && std::abs(dx) <= nodeSize + 1.0F) {
 		return PathStepKind::Ladder;
 	}
+	// A mantle (see the mantle edges in AdjacentCost, whose test this is): up onto a ledge one or two nodes up and one across, within the
+	// searcher's pull. A kind of its own: as a non-neighbour or a line through the ledge's corner it was labelled a jump, given an apex point
+	// 40 px over the landing and flown as a jet climb, with the climb's fuel and arrival checks, and a unit with no jet couldn't follow it.
+	if (s_MantleHeight > 0.0F && s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && dy < -1.0F && dy >= -2.0F * nodeSize - 1.0F && from->Surface >= 0.0F && to->Surface >= 0.0F) {
+		float rise = from->Surface - to->Surface;
+		if (rise > 4.0F && rise <= s_MantleHeight && static_cast<float>(to->FreeHeight) >= s_StandHeight && static_cast<float>(from->FreeHeight) >= s_StandHeight + rise * 0.5F) {
+			return PathStepKind::Mantle;
+		}
+	}
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
 	// line at all but up the column and over onto a ledge (the landing edges), which is a jump. (Read as a dig, a step up onto a 24 px
 	// ledge whose corner the line clipped was neither hopped nor climbed by a unit with no digger, and it stood at the step for ever.)

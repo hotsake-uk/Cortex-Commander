@@ -991,12 +991,12 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 		if (index > 30) {
 			break;
 		}
-		// (A leg up or down a ladder is climbed, and a leap is leapt: no flight, and where it ends is no landing for one.)
+		// (A leg up or down a ladder is climbed, a leap is leapt and a mantle pulled up onto: no flight, and where it ends is no landing for one.)
 		PathStepKind legKind = kindIt != m_MovePathKinds.end() ? *kindIt : PathStepKind::Walk;
 		if (kindIt != m_MovePathKinds.end()) {
 			++kindIt;
 		}
-		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap) {
+		if (legKind == PathStepKind::Ladder || legKind == PathStepKind::Leap || legKind == PathStepKind::Mantle) {
 			if (airborne) {
 				break;
 			}
@@ -1754,6 +1754,17 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 		ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		return RouteMover::Moving;
+	}
+
+	// ---- A mantle: walked into the ledge with the move key held, which pulls the body up onto it (Actor::TryStartMantle starts the pull
+	// when the way on is blocked and there is room up and over). No jet. While pulling, the pull has the body. ----
+	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
+		if (!IsMantling()) {
+			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		} else {
+			mover.progressTimer.Reset();
+		}
 		return RouteMover::Moving;
 	}
 
