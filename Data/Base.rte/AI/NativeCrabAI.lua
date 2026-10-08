@@ -179,6 +179,7 @@ function NativeCrabAI:Update(Owner)
 				local Point, LeaderGround = SharedBehaviors.SquadPoint(self, Owner, Leader);
 				self.squadPoint = Point;
 				SharedBehaviors.SquadTrimPath(Owner, Point, LeaderGround);
+				SharedBehaviors.DrawSquadDebug(self, Owner, Leader, Point);
 			else
 				-- make the last waypoint marker stick to the MO we are following
 				self.squadPoint = nil;

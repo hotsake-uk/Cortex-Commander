@@ -579,6 +579,8 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("A label over each unit: its AI mode, the kind of step it's on and the next, the route's cost, the engine mover's state (walk, flight, refuel, fuel wait, settle), how long since it last made progress, its stuck level and impossible-route count, and from its scripts the behaviour, climb stage, target (and whether it's in sight), squad leader and slot, and cover, flank and retreat spots.");
 		}
+		Toggle("Squad links and trails", g_SettingsMan.ShowSquadLinks(), [](bool on) { g_SettingsMan.SetShowSquadLinks(on); });
+		Tip("For inspected units in a squad: a green line from the leader to each follower, the leader's trail (yellow) that followers measure back along, and each follower's place in line as a white ring with its slot number.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
