@@ -1,4 +1,5 @@
 #include "DebugMan.h"
+#include "Weather.h"
 #include "Actor.h"
 #include "ActivityMan.h"
 #include "MovableMan.h"
@@ -203,11 +204,21 @@ void DebugMan::SettingsGUI() {
 			Slider("Day length (minutes)", &settings.DayLengthMinutes, 0.5F, 60.0F, "%.1f", ImGuiSliderFlags_Logarithmic);
 		}
 		Heading("Weather");
-		Combo("Precipitation", &settings.WeatherType, "Clear\0Rain\0Snow\0Ash fall\0Dust storm\0");
+		{
+			// Every Weather preset: the built-in four, then the others (Base.rte's own and mods'), unless those are turned off.
+			std::string weatherItems = Weather::GetComboItems(settings.CustomWeather);
+			Combo("Precipitation", &settings.WeatherType, weatherItems.c_str());
+		}
 		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
 		Slider("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		Tip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
+		Check("More weather types", &settings.CustomWeather);
+		Tip("Weather beyond rain, snow, ash and dust: the game's own extra kinds and any mods add (AddWeather = Weather). Off: the menu lists the four, and other weather falls clear.");
+		if (settings.CustomWeather) {
+			Slider("Weather glow", &settings.WeatherGlow, 0.0F, 2.0F);
+			Tip("How much light glowing weather gives off (acid rain, embers, sparks). 0: it's only lit, like rain.");
+		}
 		Slider("Rain splashes", &settings.RainSplashes, 0.0F, 2.0F);
 		Tip("Little splashes where rain lands on ground, water, roofs and units. 0 for none.");
 		Check("Exact shelter from the weather", &settings.ShelterMask);
@@ -230,8 +241,9 @@ void DebugMan::SettingsGUI() {
 			ImGui::SeparatorText("This scene's own time and weather");
 			const Scene::Atmosphere& own = scene->GetAtmosphere();
 			if (own.TimeOfDay >= 0.0F || own.WeatherType >= 0) {
-				static const char* weatherNames[] = {"clear", "rain", "snow", "ash fall", "dust storm"};
-				ImGui::Text("Set: %.1f h, %s", own.TimeOfDay, own.WeatherType >= 0 && own.WeatherType <= 4 ? weatherNames[own.WeatherType] : "default weather");
+				std::vector<std::string> weatherNames = Weather::GetSlotNames();
+				std::string weatherName = !own.WeatherName.empty() ? own.WeatherName : (own.WeatherType >= 0 && own.WeatherType < static_cast<int>(weatherNames.size()) ? weatherNames[own.WeatherType] : "default weather");
+				ImGui::Text("Set: %.1f h, %s", own.TimeOfDay, weatherName.c_str());
 			} else {
 				ImGui::TextDisabled("Not set (uses the player's settings)");
 			}
@@ -240,6 +252,9 @@ void DebugMan::SettingsGUI() {
 				atmosphere.TimeOfDay = settings.TimeOfDay;
 				atmosphere.DayLengthMinutes = settings.DayLengthMinutes;
 				atmosphere.WeatherType = settings.WeatherType;
+				// A custom weather is kept by name too, since its slot depends on the mods loaded.
+				const Weather* weather = settings.WeatherType > Weather::c_BuiltInCount ? Weather::GetSlot(settings.WeatherType) : nullptr;
+				atmosphere.WeatherName = weather ? weather->GetPresetName() : "";
 				atmosphere.WeatherIntensity = settings.WeatherIntensity;
 				atmosphere.Wind = settings.Wind;
 				atmosphere.PostShader = own.PostShader;

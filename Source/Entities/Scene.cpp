@@ -1076,6 +1076,7 @@ int Scene::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("TimeOfDay", { reader >> m_Atmosphere.TimeOfDay; });
 	MatchProperty("DayLengthMinutes", { reader >> m_Atmosphere.DayLengthMinutes; });
 	MatchProperty("WeatherType", { reader >> m_Atmosphere.WeatherType; });
+	MatchProperty("Weather", { m_Atmosphere.WeatherName = reader.ReadPropValue(); });
 	MatchProperty("WeatherIntensity", { reader >> m_Atmosphere.WeatherIntensity; });
 	MatchProperty("Wind", { reader >> m_Atmosphere.Wind; });
 	MatchProperty("PostShader", { m_Atmosphere.PostShader = reader.ReadPropValue(); });
@@ -1208,6 +1209,9 @@ int Scene::Save(Writer& writer) const {
 	}
 	if (m_Atmosphere.WeatherType >= 0) {
 		writer.NewPropertyWithValue("WeatherType", m_Atmosphere.WeatherType);
+	}
+	if (!m_Atmosphere.WeatherName.empty()) {
+		writer.NewPropertyWithValue("Weather", m_Atmosphere.WeatherName);
 	}
 	if (m_Atmosphere.WeatherIntensity >= 0.0F) {
 		writer.NewPropertyWithValue("WeatherIntensity", m_Atmosphere.WeatherIntensity);

@@ -806,6 +806,7 @@
     <ClInclude Include="Source\Renderer\raylib\rlutils.h" />
     <ClInclude Include="Source\Renderer\RenderTarget.h" />
     <ClInclude Include="Source\Renderer\Shader.h" />
+    <ClInclude Include="Source\Renderer\Weather.h" />
     <ClInclude Include="Source\Renderer\BigTexture.h" />
     <ClInclude Include="Source\Renderer\TextOverlay.h" />
     <ClInclude Include="Source\Renderer\EffectsParticles.h" />
@@ -1089,6 +1090,7 @@
     <ClCompile Include="Source\Renderer\BlendMode.cpp" />
     <ClCompile Include="Source\Renderer\RenderTarget.cpp" />
     <ClCompile Include="Source\Renderer\Shader.cpp" />
+    <ClCompile Include="Source\Renderer\Weather.cpp" />
     <ClCompile Include="Source\Renderer\Draw.cpp" />
     <ClCompile Include="Source\Renderer\BigTexture.cpp" />
     <ClCompile Include="Source\Renderer\TextOverlay.cpp" />

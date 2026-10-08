@@ -263,7 +263,8 @@ Press **F8** for **Photo Mode**:
 | `DayLengthMinutes` | 0 | Length of a full day/night cycle in minutes. 0 keeps the time fixed. |
 | `AtmosphereHaze` / `AtmosphereColor` | 0.18 / 0.62 0.74 0.95 | Distant background layers fade into the atmosphere, based on their parallax. |
 | `GodRays` | 0.7 | Light shafts in the air of caves and bunkers, where the sun (or moon) gets in through an opening. |
-| `WeatherType` | 0 | 0 clear, 1 rain, 2 snow, 3 ash fall (grey flakes and a grey haze), 4 dust storm (dust blown level, a tan haze, and units see up to half as far). Precipitation doesn't fall under overhangs or in caves. |
+| `WeatherType` | 0 | 0 clear, 1 rain, 2 snow, 3 ash fall (grey flakes and a grey haze), 4 dust storm (dust blown level, a tan haze, and units see up to half as far), 5 on the other weather types (see "Weather" below). Precipitation doesn't fall under overhangs or in caves. A type past 4 is also saved as `WeatherName`, since its number depends on the mods loaded. |
+| `CustomWeather` / `WeatherGlow` | 1 / 1 | Weather types past the built-in four can be chosen (off: they fall clear and the menu lists the four), and how much light glowing weather gives off (0–2). |
 | `WeatherIntensity` / `Wind` | 0.6 / 60 | How heavy the rain or snow is, and its horizontal speed in px/s. |
 | `LightingGlowIntensity` / `LightingGlowRadiusScale` | 2.5 / 8 | Brightness and reach of the light that glow effects cast. |
 | `LightingShadowStrength` | 0.85 | How much terrain blocks dynamic lights. |
@@ -308,6 +309,7 @@ AddScene = Scene
 	TimeOfDay = 17.5        // Hours. Dusk.
 	DayLengthMinutes = 0    // 0 freezes the time.
 	WeatherType = 2         // 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm
+	// or by name, which any weather type has: Weather = Acid Rain
 	WeatherIntensity = 0.7
 	Wind = -90
 	...
@@ -416,7 +418,9 @@ PostProcessMan:AddLight(position, radius, r, g, b, intensity)
 -- Atmosphere for scripted scenes:
 PostProcessMan.TimeOfDay = 6.8          -- dawn
 PostProcessMan.DayLengthMinutes = 20    -- 0 to freeze the time
-PostProcessMan.WeatherType = 1          -- 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm
+PostProcessMan.WeatherType = 1          -- 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on the others
+PostProcessMan.WeatherName = "Snow"     -- or by a Weather preset's name ("Clear" for none)
+local loop = PostProcessMan.WeatherSound  -- the SoundContainer the weather names for a script to loop, or ""
 PostProcessMan.WeatherIntensity = 0.9
 PostProcessMan.Wind = -120
 PostProcessMan.LightingEnabled = true
@@ -429,6 +433,61 @@ PostProcessMan:SetTiltShift(0.55, 1.0)     -- sharp band (0 top .. 1 bottom), st
 ```
 
 Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) lasts until the next Scene loads. It is never saved over the player's own settings.
+
+## Weather
+
+Every kind of weather is a `Weather` preset, the built-in four included (`Base.rte/Weather/Weather.ini`). It says how the drops look and move and what the weather does to the sky and the ground; it is purely visual. What rain, snow and dust do to the game (damping fire, slowing walkers, cutting sight) goes by the built-in slots 1 to 4, whatever their presets look like.
+
+The weather menu, `WeatherType` and Lua number the types: 0 clear, 1 to 4 the presets named `Rain`, `Snow`, `Ash Fall` and `Dust Storm`, then every other Weather preset in the order the modules load. A mod **changes** a built-in type by defining a Weather with its name, and **adds** one with any other name. Scenes and Lua can also pick weather by name.
+
+```ini
+AddWeather = Weather
+	PresetName = Glowing Drizzle
+	DropsPerScreen = 1800      // On a 960x540 screen at full intensity.
+	DropShape = Streak         // Streak, Flake, Spark or Orb.
+	DropColor = 0.3 1.0 0.4    // Linear, 0 to 1. DropColor2 gives each drop a colour between the two.
+	DropGlow = 1.2             // Light it gives off itself; above 1 feeds the bloom.
+	FallSpeedMin = 300
+	FallSpeedMax = 420
+	Sway = 6                   // Pixels side to side.
+	PulseRate = 1.5
+	PulseDepth = 0.6
+	Splashes = 1
+	SplashColor = 0.4 1.0 0.5
+	SplashGlow = 0.8
+	Overcast = 0.8
+	CloudCover = 1
+	SceneTint = 0.85 1.0 0.8
+```
+
+| Key | Default | What it does |
+|---|---|---|
+| `DropsPerScreen` | 0 | How many drops on a 960x540 screen at full intensity (scaled by the screen and the intensity). 0 draws none. |
+| `DropShape` | Streak | `Streak` (fades to its tail, rain), `Flake` (soft dot, snow), `Spark` (bright head, short tail), `Orb` (soft glowing ball). |
+| `DropColor` / `DropColor2` | 0.7 0.78 0.9 | Linear colour of a drop, lit by the sky and lights; each drop is somewhere between the two. `DropColor` sets both. |
+| `DropGlow` | 0 | Light a drop gives off itself, not lit by anything (scaled by the player's Weather glow). |
+| `AlphaMin` / `AlphaMax` | 0.25 / 0.5 | How solid a drop is. |
+| `LengthMin` / `LengthMax` / `Width` | 7 / 13 / 1 | Size in pixels, along and across the way it moves. |
+| `FallSpeedMin` / `FallSpeedMax` | 520 / 760 | Pixels per second down. Negative rises (nothing above shelters rising drops). |
+| `WindFactor` | 1 | How much of the wind the drops take. |
+| `Sway`, `SwayRateMin` / `SwayRateMax` | 0, 0.6 / 1.4 | Side to side drift in pixels, and how fast (radians per second). |
+| `Blown`, `BlownWindScale`, `BlownMinSpeed`, `BlownSpeedMin` / `BlownSpeedMax` | 0, 2.5, 260, 0.7 / 1.3 | Blown nearly level, like the dust storm: sideways at the wind times the scale, at least the least speed, each drop between the two speeds; down at the fall speed. |
+| `Swirl` / `SwirlRate` | 0 / 2 | Circling around the path: pixels, radians per second. |
+| `Jitter` / `JitterRate` | 0 / 4 | Sudden sideways jumps: pixels, jumps per second. |
+| `PulseRate` / `PulseDepth` | 0 / 0 | Brightening and dimming: cycles per second, how far it dims (0–1). |
+| `Twinkle` | 0 | 0–1, sparkling on and off at random. |
+| `Shelter` | 1 | Kept out from under roofs, overhangs and caves along the way it falls. 0: everywhere but inside the ground. |
+| `DropShader` | | A `Shader` preset to draw the drops with (with Mod shaders on). Its vertex shader must be `Base.rte/Shaders/Lighting/Precipitation.vert`; its fragment shader gets that shader's outputs (`quadPos` 0–1 across and along the drop, `worldPos`, `dropAlpha`, flat `reaches` (discard below 0.5) and flat `dropSeeds`, three random numbers per drop) and the uniforms `Precipitation.frag` uses, `rteType` (the slot) and `rteStrength`. |
+| `Splashes` / `SplashColor` / `SplashGlow` | 0 / 0.85 0.92 1 / 0 | Splashes where it lands (1 as rain, scaled by the player's Rain splashes), their colour and their own light. |
+| `Rain` | 0 | How much it counts as rain: wets the ground and fills puddles (1 as rain). |
+| `SnowCover` | 0 | How much it settles on the ground as snow (1 as snow). |
+| `Mist` | 0 | Ground mist it brings (0.35 as rain). |
+| `Overcast` | 0 | How much it greys the sky and dims the sun and stars (1 as all the built-in weather). |
+| `CloudCover` | 0 | How much cloud it brings in (1 as rain, snow and ash). |
+| `Lightning` | 0 | Lightning once it's heavier than half: 1 as rain, more for more often. |
+| `HazeColor` / `HazeColorAmount` / `Haze` | 0 0 0 / 0 / 0 | The colour it gives the distance haze, how far, and how much thicker it makes it (ash: grey, 0.8, 0.3; dust: tan, 1, 0.55). |
+| `SceneTint` | 1 1 1 | Multiplies the sky's light on the scene at full intensity. |
+| `Sound` | | A SoundContainer preset for a script to loop while it falls (`PostProcessMan.WeatherSound`); the engine doesn't play it itself. |
 
 ## Shaders
 

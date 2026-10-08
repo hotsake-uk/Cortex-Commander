@@ -18,6 +18,7 @@ sources += files(
 'RenderTarget.cpp',
 'SceneLighting.cpp',
 'Shader.cpp',
+'Weather.cpp',
 'Shapes.cpp',
 'Texture.cpp',
 'Vertex.cpp',

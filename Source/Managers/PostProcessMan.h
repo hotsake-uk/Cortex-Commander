@@ -343,7 +343,16 @@ namespace RTE {
 		float GetDayLengthMinutes() const { return m_LightingSettings.DayLengthMinutes; }
 		void SetDayLengthMinutes(float minutes) { m_LightingSettings.DayLengthMinutes = std::max(minutes, 0.0F); }
 		int GetWeatherType() const { return m_LightingSettings.WeatherType; }
-		void SetWeatherType(int weatherType) { m_LightingSettings.WeatherType = std::clamp(weatherType, 0, 4); }
+		/// Sets the weather by slot (Weather.h): 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on the other Weather presets. Kept within the slots there are.
+		void SetWeatherType(int weatherType);
+		/// Gets the name of the weather now: its Weather preset's name, or "Clear".
+		std::string GetWeatherName() const;
+		/// Sets the weather by its Weather preset's name ("Clear" for none). An unknown name leaves it as it is, with a word in the console.
+		void SetWeatherName(const std::string& name);
+		/// Gets the SoundContainer preset the weather now names for a script to loop while it falls (Weather::Sound), or "" for none.
+		std::string GetWeatherSound() const;
+		/// Picks up a custom weather asked for by name before the Weather presets were loaded (LightingSettings::WeatherName), and keeps the slot within the slots there are.
+		void ResolveWeather();
 		float GetWeatherIntensity() const { return m_LightingSettings.WeatherIntensity; }
 		void SetWeatherIntensity(float intensity) { m_LightingSettings.WeatherIntensity = std::clamp(intensity, 0.0F, 1.0F); }
 		float GetWind() const { return m_LightingSettings.Wind; }

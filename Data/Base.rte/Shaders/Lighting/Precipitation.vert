@@ -1,18 +1,31 @@
 // Precipitation.vert
-// Procedural rain/snow: every 6 vertices make one drop's quad, positioned from a hash of its index. No vertex buffers.
+// Procedural weather drops: every 6 vertices make one drop's quad, positioned from a hash of its index. No vertex buffers.
 // Drops live in a world space field that repeats every screen-sized cell, so they stay put relative to the world as the camera moves.
+// How they move is the weather's (Weather.h, a Weather preset such as Base.rte/Weather/Weather.ini's Rain): a mod's DropShader uses this vertex shader with its own fragment shader.
 #version 330 core
 
 out vec2 quadPos; // 0..1 across and along the drop.
 out vec2 worldPos;
 out float dropAlpha;
 flat out float reaches; // 1 if this drop can get to where it is, 0 if something is in the way upwind.
+flat out vec3 dropSeeds; // Three random numbers 0..1 of this drop's own, for the fragment shader's colour, pulse and twinkle.
 
 uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform float rteTime;
-uniform int rteType; // 1 rain, 2 snow, 3 ash fall, 4 dust storm.
+uniform int rteType; // The weather's slot (0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on others), for a mod's shader to tell them apart.
 uniform float rteWind; // Horizontal speed, pixels per second.
+uniform vec2 rteFallSpeed; // Down, pixels per second, min and max: each drop's is between them. Negative rises.
+uniform float rteWindFactor; // How much of the wind the drops take.
+uniform vec3 rteSway; // Side to side drift: pixels, and how fast, radians per second, min and max.
+uniform bool rteBlown; // Blown nearly level (a dust storm).
+uniform vec4 rteBlownWind; // Blown: the wind's scale, the least speed, and each drop's speed against that, min and max. Down at rteFallSpeed.
+uniform vec2 rteSwirl; // Circling around the path: pixels, radians per second.
+uniform vec2 rteJitter; // Sudden sideways jumps: pixels, jumps per second.
+uniform vec2 rteLength; // Along the way it moves, pixels, min and max.
+uniform float rteWidth; // Across, pixels.
+uniform vec2 rteAlpha; // How solid, min and max.
+uniform bool rteSheltered; // Kept out from under roofs and overhangs. Off: everywhere but inside the ground.
 uniform sampler2D rteOccupancy; // The world's grid of solid ground: A = how full each cell is (R is how much it stops light, which water barely does).
 uniform vec2 rteGridWorldSize;
 uniform float rteCellSize; // World pixels per grid cell.
@@ -59,37 +72,46 @@ void main() {
 	float seedB = Hash(float(drop) * 1.731 + 4.1);
 	float seedC = Hash(float(drop) * 0.913 + 9.7);
 
-	// Snow and ash are flakes that drift down; rain and dust are streaks.
-	bool snow = rteType == 2 || rteType == 3;
-	bool dust = rteType == 4;
-	float fallSpeed = rteType == 3 ? mix(14.0, 34.0, seedC) : (snow ? mix(30.0, 60.0, seedC) : mix(520.0, 760.0, seedC));
-	vec2 velocity = vec2(rteWind * (snow ? 0.6 : 1.0), fallSpeed);
-	if (dust) {
-		// A dust storm blows nearly level, at least at a stiff breeze whatever the wind setting.
-		float gale = (rteWind < 0.0 ? -1.0 : 1.0) * max(abs(rteWind) * 2.5, 260.0);
-		velocity = vec2(gale * mix(0.7, 1.3, seedC), mix(10.0, 60.0, seedA));
+	float fallSpeed = mix(rteFallSpeed.x, rteFallSpeed.y, seedC);
+	vec2 velocity = vec2(rteWind * rteWindFactor, fallSpeed);
+	if (rteBlown) {
+		// Blown nearly level, at least at a stiff breeze whatever the wind setting.
+		float gale = (rteWind < 0.0 ? -1.0 : 1.0) * max(abs(rteWind) * rteBlownWind.x, rteBlownWind.y);
+		velocity = vec2(gale * mix(rteBlownWind.z, rteBlownWind.w, seedC), mix(rteFallSpeed.x, rteFallSpeed.y, seedA));
 	}
 
 	// A repeating field slightly larger than the screen.
 	vec2 fieldSize = rteScreenSize + vec2(64.0);
 	vec2 fieldPos = vec2(seedA, seedB) * fieldSize + velocity * rteTime;
-	if (snow) {
-		fieldPos.x += sin(rteTime * mix(0.6, 1.4, seedC) + seedA * 30.0) * 12.0;
+	if (rteSway.x != 0.0) {
+		fieldPos.x += sin(rteTime * mix(rteSway.y, rteSway.z, seedC) + seedA * 30.0) * rteSway.x;
+	}
+	if (rteSwirl.x != 0.0) {
+		float turn = rteTime * rteSwirl.y * mix(0.7, 1.3, seedC) + seedB * 6.2832;
+		fieldPos += vec2(cos(turn), sin(turn)) * rteSwirl.x;
+	}
+	if (rteJitter.x != 0.0) {
+		// Now and then it jumps to a new place sideways, and stays there until the next jump.
+		float beat = floor(rteTime * rteJitter.y + seedC * 7.0);
+		fieldPos.x += (Hash(beat * 1.37 + float(drop) * 0.173) - 0.5) * 2.0 * rteJitter.x;
 	}
 	vec2 relative = mod(fieldPos - rteScreenOrigin, fieldSize) - vec2(32.0);
 	vec2 head = rteScreenOrigin + relative;
 
 	vec2 direction = normalize(velocity);
 	vec2 side = vec2(-direction.y, direction.x);
-	float length = rteType == 3 ? 3.0 : snow ? 2.0 : (dust ? mix(5.0, 11.0, seedC) : mix(7.0, 13.0, seedC));
-	float width = rteType == 3 ? 3.0 : snow ? 2.0 : (dust ? 1.5 : 1.0);
+	float length = mix(rteLength.x, rteLength.y, seedC);
+	float width = rteWidth;
 	vec2 position = head - direction * length * (1.0 - cornerPos.y) + side * width * (cornerPos.x - 0.5);
 
 	// Shelter is worked out for the drop as a whole, along the line it is falling down: rain driven by wind gets in under an overhang on the windward side
 	// and leaves a dry strip beyond a wall on the lee side. Each drop's line is nudged a little so the edge of the shelter is soft, not ruled.
 	if (textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).a > 0.9) {
 		reaches = 0.0;
-	} else if (rteShelterOn && !dust) {
+	} else if (!rteSheltered || velocity.y <= 0.0) {
+		// Weather that goes everywhere, and drops that rise, which nothing above shelters.
+		reaches = 1.0;
+	} else if (rteShelterOn) {
 		// The drop reaches where it is if the first solid point on its line is below it. Ground within a cell or so above it doesn't count, as with the march, which starts
 		// that far back so that the ground a drop is about to land on, blurred over its grid cell, doesn't shelter it.
 		float lead = (0.8 + seedA) * rteCellSize * direction.y;
@@ -107,7 +129,8 @@ void main() {
 	}
 	worldPos = position;
 	quadPos = cornerPos;
-	dropAlpha = rteType == 3 ? mix(0.75, 1.0, seedA) : snow ? mix(0.55, 0.9, seedA) : (dust ? mix(0.15, 0.4, seedA) : mix(0.25, 0.5, seedA));
+	dropAlpha = mix(rteAlpha.x, rteAlpha.y, seedA);
+	dropSeeds = vec3(seedA, seedB, seedC);
 	vec2 screenPos = position - rteScreenOrigin;
 	gl_Position = vec4((screenPos / rteScreenSize) * 2.0 - 1.0, 0.0, 1.0);
 }

@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include "Weather.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -292,6 +293,9 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
 	MatchProperty("WeatherType", { g_PostProcessMan.GetLightingSettings().WeatherType = std::stoi(reader.ReadPropValue()); });
+	MatchProperty("WeatherName", { g_PostProcessMan.GetLightingSettings().WeatherName = reader.ReadPropValue(); });
+	MatchProperty("CustomWeather", { g_PostProcessMan.GetLightingSettings().CustomWeather = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
@@ -586,6 +590,17 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);
 	writer.NewPropertyWithValue("AtmosphereColor", WriteVec3(lighting.AtmosphereColor));
 	writer.NewPropertyWithValue("WeatherType", lighting.WeatherType);
+	if (!lighting.WeatherName.empty()) {
+		// Still waiting to be found among the presets: kept as it was asked for.
+		writer.NewPropertyWithValue("WeatherName", lighting.WeatherName);
+	} else if (lighting.WeatherType > Weather::c_BuiltInCount) {
+		// A custom weather's slot depends on the mods loaded, so it's found again by name.
+		if (const Weather* weather = Weather::GetSlot(lighting.WeatherType)) {
+			writer.NewPropertyWithValue("WeatherName", weather->GetPresetName());
+		}
+	}
+	writer.NewPropertyWithValue("CustomWeather", lighting.CustomWeather);
+	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
