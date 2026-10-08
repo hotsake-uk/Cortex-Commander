@@ -277,6 +277,12 @@ namespace RTE {
 		/// Sets whether move previews show whether each standing spot can be reached.
 		void SetShowSandboxSpotReach(bool show) { m_SandboxSpotReach = show; }
 
+		/// Whether units in a sandbox control group show the group's number by them (RC-6).
+		bool ShowSandboxGroupBadges() const { return m_SandboxGroupBadges; }
+
+		/// Sets whether units in a sandbox control group show the group's number by them.
+		void SetShowSandboxGroupBadges(bool show) { m_SandboxGroupBadges = show; }
+
 		/// Gets whether the lighting-by-source readout is on.
 		bool ShowLightsBySource() const { return m_LightsBySource; }
 
@@ -587,6 +593,7 @@ namespace RTE {
 		int m_WorldSimOverlay; //!< What the world simulation overlay shows (see WorldSimOverlay).
 		bool m_SandboxStrokeLog; //!< Whether the sandbox's stroke log is on (see ShowSandboxStrokeLog).
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
+		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's auto battle and colony readout is on (see ShowSandboxAutoBattle).
