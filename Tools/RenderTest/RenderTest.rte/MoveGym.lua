@@ -5,9 +5,10 @@
 -- lump and a gap (LM-8). Some soldiers have their jetpack taken off, so the legs have to do it.
 -- Uses only the same calls as the recovery gym, so it runs on any build that has the courses' features.
 
-local PadY = 380; -- The pads' blocks are centred on this line, well above the hills (which top out at y 559).
+local PadY = 380; -- The pads' top edge, well above the hills (which top out at y 559). (A Concrete Block's Pos is its top-left corner: its
+-- BitmapOffset is 0,0, which skips TerrainObject's centring.)
 local Block = 24;
-local PadTop = PadY - Block * 0.5;
+local PadTop = PadY;
 
 local Cases = {
 	{ name = "low beam (duck under)", ceiling = 34 },
@@ -17,7 +18,7 @@ local Cases = {
 	{ name = "two walking at each other", headOn = true },
 	{ name = "friend standing in the way", friend = "standing" },
 	{ name = "crab over a lump", lump = 10, crab = true },
-	{ name = "crab across a gap", gap = 36, crab = true },
+	{ name = "crab across a gap", gap = 48, crab = true },
 };
 
 function MoveGymScript:StartScript()
@@ -59,7 +60,7 @@ function MoveGymScript:UpdateScript()
 	local t = self.timer.ElapsedSimTimeMS;
 	if not self.built and t > 2000 then
 		self.built = true;
-		-- A pad of 14 blocks (336 px) per course, 440 px apart.
+		-- A pad of 14 blocks (336 px) per course, 440 px apart. (A gap is whole blocks left out: 48 px is two.)
 		for i, case in ipairs(Cases) do
 			local x = 100 + (i - 1) * 440;
 			case.padX = x;
@@ -73,15 +74,15 @@ function MoveGymScript:UpdateScript()
 				-- A low beam over the middle with so much head room under it, and a wall up from it, so the way is under, not over.
 				local bottom = PadTop - case.ceiling;
 				for bx = x + 120, x + 216, Block do
-					self:PlaceBlock(bx, bottom - Block * 0.5);
+					self:PlaceBlock(bx, bottom - Block);
 				end
 				for k = 1, 4 do
-					self:PlaceBlock(x + 168, bottom - Block * 0.5 - k * Block);
+					self:PlaceBlock(x + 168, bottom - Block - k * Block);
 				end
 			end
 			if case.lump then
 				-- One block sunk into the pad so only so much of it stands up.
-				self:PlaceBlock(x + 168, PadTop + Block * 0.5 - case.lump);
+				self:PlaceBlock(x + 168, PadTop - case.lump);
 			end
 		end
 		SandboxDo("Look around", Vector(900, PadY), 0, 0, 1, "");
