@@ -534,8 +534,22 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	local nearIn = AI.squadPoint and 0.15 or 0.3;
 	local nearOut = AI.squadPoint and 0.25 or 0.4;
 	local moving = Target.Vel.Largest > 1;
+	-- Near the place and in a door's sweep: out of it. (Only near the place: a follower on its way through a doorway walks on through.)
+	local Exit = not moving and ToGoal.Largest < H * 1.5 and SharedBehaviors.DoorSweepExit(Owner, Goal);
+	if Exit then
+		AI.followHold = false;
+		SharedBehaviors.StepTo(AI, Owner, Exit, 600);
+		return true;
+	end
+	-- (Out of it, with the place still in the open door's sweep: waited for here, near the place, till the door shuts.)
+	if not moving and ToGoal.Largest < H * 1.5 and SharedBehaviors.DoorSweptBy(Owner, Goal) then
+		if SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive then
+			Owner:CancelTacticalMove();
+		end
+		return true;
+	end
 	if AI.followHold then
-		local off = ToGoal.Largest > H * nearOut + targetH * nearOut or moving or SharedBehaviors.InDoorSweep(Owner);
+		local off = ToGoal.Largest > H * nearOut + targetH * nearOut or moving;
 		if not off and InSight() then
 			-- (Held: no move of the engine's either.)
 			if SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive then
@@ -1685,15 +1699,41 @@ end
 -- Whether the unit stands in the way of a door of ours (or no one's) that isn't shut: where its moving piece will be when it closes,
 -- which it does a second and a half after its sensors last saw a body, on whatever is there.
 function SharedBehaviors.InDoorSweep(Owner)
-	for mo in MovableMan:GetMOsInRadius(Owner.Pos, Owner.Height * 1.2) do
+	return SharedBehaviors.DoorSweptBy(Owner, Owner.Pos) ~= nil;
+end
+
+-- The open door of the unit's side whose piece sweeps a place (the unit's own, or one it means to stand on), or nil.
+function SharedBehaviors.DoorSweptBy(Owner, Pos)
+	for mo in MovableMan:GetMOsInRadius(Pos, Owner.Height * 1.2) do
 		if mo.ClassName == "ADoor" and (mo.Team == Owner.Team or mo.Team == Activity.NOTEAM) then
 			local door = ToADoor(mo);
-			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Owner.Pos, Owner.Height * 0.3) then
-				return true;
+			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Pos, Owner.Height * 0.3) then
+				return door;
 			end
 		end
 	end
-	return false;
+	return nil;
+end
+
+-- Standing in a door's sweep: the nearest spot on this floor clear of it, the goal's side first, onto ground. nil when not in a sweep,
+-- or no such spot is near. (A squad's place in the sweep was let go of, walked to again, and held again: the follower stood in the door
+-- for good.)
+function SharedBehaviors.DoorSweepExit(Owner, Goal)
+	local door = SharedBehaviors.DoorSweptBy(Owner, Owner.Pos);
+	if not door then
+		return nil;
+	end
+	local H = Owner.Height;
+	local first = SceneMan:ShortestDistance(Owner.Pos, Goal, false).X < 0 and -1 or 1;
+	for _, reach in ipairs({0.5, 0.8, 1.2}) do
+		for _, side in ipairs({first, -first}) do
+			local Spot = Owner.Pos + Vector(side * H * reach, 0);
+			if not door:SweepContains(Spot, H * 0.3) and SharedBehaviors.StepIsSafe(Owner, side) then
+				return Spot;
+			end
+		end
+	end
+	return nil;
 end
 
 -- Whether a step sideways from here is onto ground, not off a drop or into a wall. @param dir -1 or 1.
@@ -2382,6 +2422,11 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
 											-- (And not held in the way of a door's piece: see InDoorSweep.)
 											local off = ToGoal.Largest > Owner.Height * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1 or SharedBehaviors.InDoorSweep(Owner);
+											local Exit = SharedBehaviors.DoorSweepExit(Owner, Goal);
+											if Exit then
+												Waypoint.Pos = Exit; -- (Out of the sweep, not back to the place in it.)
+												break;
+											end
 											if off and StraightTo() then
 												Waypoint.Pos = Goal;
 												break;
