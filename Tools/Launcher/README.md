@@ -25,7 +25,7 @@ To use an older commit, or to Build / Run separately, delete the cached build, o
 **Run latest** fetches, moves to the newest commit of the chosen branch, and runs it, building only if that commit has not been built yet.
 
 ## Mods folder
-Set **Mods folder** to a folder containing `*.rte` mods (or a single `.rte` folder). Before each run the launcher creates a directory junction for each one inside the version's `Data` folder, skipping any the version already has. Nothing is copied, so every version sees the same mods.
+Set **Mods folder** to a folder containing `*.rte` mods (or a single `.rte` folder). Before each run the launcher copies each one into the version's `Data` folder, transferring only files that changed and removing files you deleted from the source. A mod folder the version ships itself is never touched.
 
 ## Settings.ini
 Set the **Settings.ini** box (or browse for a file) to have the launcher copy that file into the version's folder every time it runs a version, replacing whatever is there. The game rewrites its own copy on exit, so your chosen file is never modified. Clear the box to let each version use its own settings.

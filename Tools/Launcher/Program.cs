@@ -63,7 +63,7 @@ class MainForm : Form
 	readonly Button fetchBtn = new() { Text = "Fetch", AutoSize = true };
 	readonly Button buildBtn = new() { Text = "Build", AutoSize = true };
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
-	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to link into each version's Data folder" };
+	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Data folder" };
 	readonly Button runLatestBtn = new() { Text = "Run latest", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Run", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
@@ -560,7 +560,9 @@ class MainForm : Form
 		else await BuildAndRun(true);
 	}
 
-	// Junctions every *.rte folder of the mods folder into the version's Data folder, so one set of mods serves every version.
+	// Copies every *.rte folder of the mods folder into the version's Data folder (only files that changed), so each version runs with its own copy.
+	// A folder the version ships itself is left alone; ones the launcher copied are marked and kept in sync with the source.
+	const string CopyMarker = ".launcher-copy";
 	void LinkMods(CommitInfo c)
 	{
 		var src = modsBox.Text.Trim();
@@ -572,16 +574,35 @@ class MainForm : Form
 		if (dirs.Length == 0 && src.EndsWith(".rte", StringComparison.OrdinalIgnoreCase)) dirs = new[] { src };
 		foreach (var d in dirs)
 		{
-			var link = Path.Combine(data, Path.GetFileName(d));
-			if (Directory.Exists(link) || File.Exists(link)) continue; // already linked, or the version ships its own
+			var dest = Path.Combine(data, Path.GetFileName(d));
+			if (Directory.Exists(dest) && !File.Exists(Path.Combine(dest, CopyMarker))) { Append($"Skipping {Path.GetFileName(d)}: the version has its own"); continue; }
 			try
 			{
-				var psi = new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{d}\"") { CreateNoWindow = true, UseShellExecute = false };
-				using var p = Process.Start(psi)!; p.WaitForExit();
-				Append(p.ExitCode == 0 ? $"Linked mod {Path.GetFileName(d)}" : $"Could not link {Path.GetFileName(d)}");
+				int n = SyncDir(d, dest);
+				File.WriteAllText(Path.Combine(dest, CopyMarker), "");
+				Append(n > 0 ? $"Copied mod {Path.GetFileName(d)} ({n} files)" : $"Mod {Path.GetFileName(d)} up to date");
 			}
-			catch (Exception ex) { Append("Mod link failed: " + ex.Message); }
+			catch (Exception ex) { Append($"Mod copy failed for {Path.GetFileName(d)}: " + ex.Message); }
 		}
+	}
+
+	static int SyncDir(string src, string dest)
+	{
+		int n = 0;
+		Directory.CreateDirectory(dest);
+		foreach (var f in Directory.GetFiles(src))
+		{
+			var t = Path.Combine(dest, Path.GetFileName(f));
+			var fi = new FileInfo(f);
+			if (File.Exists(t) && new FileInfo(t).Length == fi.Length && File.GetLastWriteTimeUtc(t) == fi.LastWriteTimeUtc) continue;
+			File.Copy(f, t, true); File.SetLastWriteTimeUtc(t, fi.LastWriteTimeUtc); n++;
+		}
+		foreach (var d in Directory.GetDirectories(src)) n += SyncDir(d, Path.Combine(dest, Path.GetFileName(d)));
+		foreach (var f in Directory.GetFiles(dest))
+			if (Path.GetFileName(f) != CopyMarker && !File.Exists(Path.Combine(src, Path.GetFileName(f)))) File.Delete(f);
+		foreach (var d in Directory.GetDirectories(dest))
+			if (!Directory.Exists(Path.Combine(src, Path.GetFileName(d)))) Directory.Delete(d, true);
+		return n;
 	}
 
 	void MarkCached(CommitInfo c)
