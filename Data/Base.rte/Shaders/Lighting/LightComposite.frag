@@ -332,7 +332,7 @@ void main() {
 				albedo.rgb *= 1.0 - 0.3 * min(rteWaterRefraction, 1.0) * smoothstep(4.0, 64.0, depth);
 			}
 			// Only a real surface mirrors: open to air (or a unit) above it. Water filling a tunnel up to its rock roof has no surface to mirror in,
-			// only the refracted wall behind it.
+			// only the refracted wall behind it (with Soft reflections, a weak short mirror of the rock near the surface).
 			vec2 aboveSurface = gl_FragCoord.xy - vec2(0.0, surfaceDistance);
 			bool openAbove = surfaceDistance > 0.0 && OpenAirAt(aboveSurface);
 			// Soft reflections also mirror under rock the water touches (a weak, short image of the terrain at the surface), so the reflection
@@ -372,9 +372,11 @@ void main() {
 					}
 					if (weightSum > 0.0) {
 						float openness = 0.0;
-						for (int i = -3; i <= 3; ++i) {
-							vec2 side = aboveSurface + vec2(float(i) * 3.0, 0.0);
-							openness += (side.x < 0.0 || side.x >= rteScreenSize.x || OpenAirAt(side)) ? 1.0 : 0.0;
+						if (openAbove) {
+							for (int i = -3; i <= 3; ++i) {
+								vec2 side = aboveSurface + vec2(float(i) * 3.0, 0.0);
+								openness += (side.x < 0.0 || side.x >= rteScreenSize.x || OpenAirAt(side)) ? 1.0 : 0.0;
+							}
 						}
 						openness = smoothstep(0.2, 0.9, openness / 7.0);
 						// Open air above mirrors fully; terrain touching the water mirrors weakly and only near the surface.
