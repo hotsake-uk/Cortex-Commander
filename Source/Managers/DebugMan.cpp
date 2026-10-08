@@ -331,6 +331,7 @@ void DebugMan::DrawOverlays() {
 	DebugOverlays::DrawSunDirection();
 	DebugOverlays::DrawWorldSim();
 	Sandbox::DrawOrderLabels();
+	DebugOverlays::DrawCameraBounds();
 }
 
 void DebugMan::DrawImGui() {

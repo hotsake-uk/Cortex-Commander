@@ -41,5 +41,9 @@ namespace RTE {
 
 		/// The world simulation overlay: moving liquid, burning ground, smoke, falling pieces or the weather in view, as the setting says.
 		void DrawWorldSim();
+
+		/// The camera bounds overlay (DebugMan::DrawCameraBounds): each player screen's view as an outline, its scroll target with a line from the
+		/// view's middle, its offset and occlusion, and the scene's edges where the scene doesn't wrap.
+		void DrawCameraBounds();
 	} // namespace DebugOverlays
 } // namespace RTE
