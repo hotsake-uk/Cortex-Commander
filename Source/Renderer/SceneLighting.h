@@ -61,6 +61,42 @@ namespace RTE {
 		/// @return The terrain shader, or nullptr if there's no scene.
 		const Shader* PrepareTerrainShader();
 
+		/// One light of the first player screen's last frame, for the light sources overlay (see SetRecordDebugLights).
+		struct DebugLight {
+			Vector Pos; //!< Scene coordinates.
+			glm::vec3 Color{0.0F}; //!< Linear, intensity included, before the player's light colour settings.
+			float Radius = 0.0F;
+			glm::vec2 Direction{1.0F, 0.0F}; //!< A cone light's direction, y down.
+			float ConeCos = -2.0F; //!< A cone light's half angle's cosine; below -1 for an all-round light.
+			bool Glow = false; //!< Cast by a glow effect rather than registered as a light.
+			bool Dropped = false; //!< Left out for the cap on lights on screen (LightingSettings::MaxScreenLights).
+		};
+
+		/// Counts of the first player screen's last frame's lights, for the light sources overlay.
+		struct DebugLightCounts {
+			int Glows = 0; //!< Lights cast by glow effects.
+			int Lights = 0; //!< All-round lights drawn (after merging and the cap).
+			int Cones = 0; //!< Cone lights drawn.
+			int Merged = 0; //!< All-round lights merged into another on the same spot.
+			int Dropped = 0; //!< Lights left out for the cap.
+			float ReachSquared = 0.0F; //!< The drawn lights' radii squared, summed: about how many pixels the light pass fills.
+		};
+
+		/// Sets whether the first player screen's lights are kept each frame for the light sources overlay. Off, nothing is kept.
+		void SetRecordDebugLights(bool record) { m_RecordDebugLights = record; }
+
+		/// Gets the first player screen's lights from the last frame recorded (see SetRecordDebugLights).
+		const std::vector<DebugLight>& GetDebugLights() const { return m_DebugLights; }
+
+		/// Gets the counts that go with GetDebugLights.
+		const DebugLightCounts& GetDebugLightCounts() const { return m_DebugLightCounts; }
+
+		/// Gets the direction towards the sun (or the moon at night) this frame, a unit vector in scene pixels, y down.
+		glm::vec2 GetSunDirection() const { return m_SunDirection; }
+
+		/// Gets the sun's shadow strength this frame, after the time of day and the weather.
+		float GetSunShadowStrength() const { return m_SunShadowStrength; }
+
 		/// Gets statistics from the last frame, for the Graphics Lab.
 		int GetLastLightCount() const { return m_LastLightCount; }
 		int GetGridCellSize() const { return m_CellSize; }
@@ -144,6 +180,9 @@ namespace RTE {
 		GLTarget m_OccupancyTexture;
 		GLTarget m_SkylineTexture;
 		GLTarget m_SkyLight[2]; //!< Ping-ponged sky light propagation buffers. R = sky light, G = how much of the sun (or moon) is visible.
+		bool m_RecordDebugLights = false; //!< Whether LightPlayerScreen keeps the first screen's lights for the light sources overlay.
+		std::vector<DebugLight> m_DebugLights; //!< The first screen's lights from the last frame recorded.
+		DebugLightCounts m_DebugLightCounts; //!< Their counts.
 		glm::vec2 m_SunDirection{0.0F, -1.0F}; //!< Unit vector towards the sun (or the moon at night) in scene pixels, y down, this frame.
 		float m_SunShadowStrength = 0.0F; //!< Sun shadow strength after time of day and weather, this frame.
 		float m_SunDiscStrength = 0.0F; //!< How bright the sun's disc is in the sky this frame: none at night, fading at the horizon and under weather.
