@@ -52,6 +52,7 @@
 #include <initializer_list>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -246,6 +247,7 @@ namespace {
 	constexpr const char* c_OrderNames = "Hold position\0Attack nearest enemy\0Hunt brains\0Patrol\0Go to rally point\0Do nothing\0Dig for gold\0Move to a place\0";
 	constexpr const char* c_AttackTag = "SandboxAttack"; //!< Number value on units told to attack, so they get a new target when theirs dies.
 	constexpr const char* c_TargetTag = "SandboxTarget"; //!< Number value on units told to attack one enemy in particular: its unique ID. They keep after it while it lives.
+	constexpr const char* c_AutoTargetTag = "SandboxAutoTarget"; //!< Number value on units told to attack the nearest enemy: the unique ID of the one picked for them, which isn't held to.
 	constexpr const char* c_AttackXTag = "SandboxAttackX"; //!< Number values on units told to attack towards a place: they fight what is near it, and hold there otherwise.
 	constexpr const char* c_AttackYTag = "SandboxAttackY";
 	constexpr const char* c_DefendXTag = "SandboxDefendX"; //!< Number values on units told to defend a spot: they fight from it and go back to it when moved off.
@@ -671,17 +673,35 @@ namespace {
 		return actor && actor->GetTeam() >= 0 && actor->GetTeam() < c_Sides && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F;
 	}
 
+	/// Enemies a unit sent at the nearest one gave up on (no way to them): the unit's unique ID to the enemy's and when, so the next pick is
+	/// another for a while, not the same one again every second.
+	std::unordered_map<long, std::pair<long, double>> s_GaveUpOn;
+	constexpr double c_GaveUpOnMS = 20000.0;
+
+	/// The nearest enemy to send a unit told to attack at: not craft (a ship overhead is no place to walk to), and a brain only when nothing
+	/// else is left (one in a sealed bunker drew every unit to the bunker's wall), nor one the unit lately had no way to.
 	Actor* NearestEnemy(const Actor* of) {
+		long gaveUpOn = 0;
+		if (auto it = s_GaveUpOn.find(static_cast<long>(of->GetUniqueID())); it != s_GaveUpOn.end()) {
+			if (g_TimerMan.GetSimTimeMS() - it->second.second < c_GaveUpOnMS) {
+				gaveUpOn = it->second.first;
+			} else {
+				s_GaveUpOn.erase(it);
+			}
+		}
 		Actor* nearest = nullptr;
 		float nearestDistance = 0.0F;
+		bool nearestIsBrain = false;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor == of || !IsCombatant(actor) || actor->GetTeam() == of->GetTeam() || actor->IsIgnoredByAI()) {
+			if (actor == of || !IsCombatant(actor) || actor->GetTeam() == of->GetTeam() || actor->IsIgnoredByAI() || dynamic_cast<const ACraft*>(actor) || (gaveUpOn != 0 && static_cast<long>(actor->GetUniqueID()) == gaveUpOn)) {
 				continue;
 			}
+			bool brain = actor->IsInGroup("Brains");
 			float distance = g_SceneMan.ShortestDistance(of->GetPos(), actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-			if (!nearest || distance < nearestDistance) {
+			if (!nearest || (nearestIsBrain && !brain) || (brain == nearestIsBrain && distance < nearestDistance)) {
 				nearest = actor;
 				nearestDistance = distance;
+				nearestIsBrain = brain;
 			}
 		}
 		return nearest;
@@ -723,12 +743,15 @@ namespace {
 	};
 	std::vector<PendingOrder> s_PendingOrders;
 
-	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack) {
+	/// @param lock Whether the unit keeps after this enemy while it lives (an enemy picked by the player), rather than being free to fight
+	/// what it meets on the way (one picked for it).
+	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, bool lock = false) {
 		CancelRetreatAndFlank(unit);
 		unit->RemoveNumberValue(c_AttackTag);
 		unit->RemoveNumberValue(c_DefendXTag);
 		unit->RemoveNumberValue(c_DefendYTag);
-		if (attack && target) {
+		unit->RemoveNumberValue(c_AutoTargetTag);
+		if (attack && target && lock) {
 			unit->SetNumberValue(c_TargetTag, static_cast<double>(target->GetUniqueID()));
 		} else {
 			unit->RemoveNumberValue(c_TargetTag);
@@ -749,6 +772,7 @@ namespace {
 		CancelRetreatAndFlank(unit);
 		unit->RemoveNumberValue(c_AttackTag);
 		unit->RemoveNumberValue(c_TargetTag);
+		unit->RemoveNumberValue(c_AutoTargetTag);
 		unit->RemoveNumberValue(c_AttackXTag);
 		unit->RemoveNumberValue(c_AttackYTag);
 		unit->RemoveNumberValue(c_DefendXTag);
@@ -822,8 +846,12 @@ namespace {
 		actor->RemoveNumberValue(c_AttackTag);
 		switch (order) {
 			case Order::Attack:
+				// The nearest enemy is where it is sent, not one it has to keep after: on the way the AI fights whatever it meets, and the
+				// unit is only sent again when it has nothing to go for. (Held to the pick, as it was, the unit was pulled back to it every
+				// second from whatever it had stopped to fight, which ended that fight each time.)
 				if (Actor* enemy = NearestEnemy(actor)) {
 					SendUnit(actor, enemy->GetPos(), enemy, true);
+					actor->SetNumberValue(c_AutoTargetTag, static_cast<double>(enemy->GetUniqueID()));
 				} else {
 					actor->SetNumberValue(c_AttackTag, 1.0);
 					actor->ClearAIWaypoints();
@@ -888,16 +916,21 @@ namespace {
 			if (actor->GetNumberValue(c_AttackTag) <= 0.0 || actor->IsPlayerControlled() || !IsCombatant(actor) || actor->NumberValueExists("OnFire") || actor->NumberValueExists("AIRetreat") || actor->NumberValueExists("AIFlank")) {
 				continue;
 			}
+			// (Nor one with an order about to take: between being sent and the order taking it is after nothing.)
+			if (std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& order) { return order.Unit.Unit == actor; })) {
+				continue;
+			}
 			const MovableObject* target = actor->GetMOMoveTarget();
 			const Actor* targetActor = target && g_MovableMan.ValidMO(target) ? dynamic_cast<const Actor*>(target) : nullptr;
-			bool chasingEnemy = actor->GetAIMode() == Actor::AIMODE_GOTO && targetActor && IsCombatant(targetActor) && targetActor->GetTeam() != actor->GetTeam();
+			// (Any enemy: the one it was sent at, or one the AI went after itself, in whatever mode its attack runs.)
+			bool chasingEnemy = targetActor && IsCombatant(targetActor) && targetActor->GetTeam() != actor->GetTeam();
 			// An enemy chosen for it is kept after while it lives, whatever else is about.
 			if (Actor* chosen = ActorWithID(static_cast<long>(actor->GetNumberValue(c_TargetTag))); chosen && IsCombatant(chosen) && chosen->GetTeam() != actor->GetTeam()) {
 				if (!chasingEnemy || targetActor != chosen) {
 					bool towardsPlace = actor->NumberValueExists(c_AttackXTag);
 					double x = actor->GetNumberValue(c_AttackXTag);
 					double y = actor->GetNumberValue(c_AttackYTag);
-					SendUnit(actor, chosen->GetPos(), chosen, true);
+					SendUnit(actor, chosen->GetPos(), chosen, true, true);
 					if (towardsPlace) {
 						actor->SetNumberValue(c_AttackXTag, x);
 						actor->SetNumberValue(c_AttackYTag, y);
@@ -924,6 +957,14 @@ namespace {
 				actor->SetNumberValue(c_AttackXTag, x);
 				actor->SetNumberValue(c_AttackYTag, y);
 				continue;
+			}
+			// Not after anything: the enemy picked for it last time, still there, is one it had no way to (its route came back impossible and
+			// the order was dropped), so it is given a rest from that one.
+			// (Only with no waypoint left: an order applied this same update has its MO waypoint queued but not yet loaded as the move
+			// target, so a unit just sent reads as after nothing. A stand-down on an impossible route clears the waypoints, whatever the
+			// mode is left at.)
+			if (Actor* picked = ActorWithID(static_cast<long>(actor->GetNumberValue(c_AutoTargetTag))); picked && IsCombatant(picked) && actor->GetWaypointsSize() == 0) {
+				s_GaveUpOn[static_cast<long>(actor->GetUniqueID())] = {static_cast<long>(picked->GetUniqueID()), g_TimerMan.GetSimTimeMS()};
 			}
 			GiveOrder(actor, Order::Attack);
 		}
@@ -2116,7 +2157,7 @@ namespace {
 		if (attack) {
 			for (const UnitRef& ref: s_Selected) {
 				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
-					SendUnit(unit, target->GetPos(), target, true);
+					SendUnit(unit, target->GetPos(), target, true, true);
 				}
 			}
 			MarkOrder(target->GetPos(), IM_COL32(239, 106, 91, 255));
