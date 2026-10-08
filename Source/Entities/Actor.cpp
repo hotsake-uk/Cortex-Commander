@@ -633,7 +633,7 @@ Controller::InputMode Actor::SwapControllerModes(Controller::InputMode newMode, 
 	return returnMode;
 }
 
-float Actor::LookRandomNormalNum() {
+float Actor::LookRandomNormalNum() const {
 	if (m_LookRandomState == 0) {
 		// SplitMix64 of the unique ID, so actors start on unrelated streams.
 		uint64_t seed = static_cast<uint64_t>(GetUniqueID()) + 0x9E3779B97F4A7C15ULL;

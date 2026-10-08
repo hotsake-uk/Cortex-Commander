@@ -1045,10 +1045,10 @@ namespace RTE {
 		/// Protected member variable and method declarations
 	protected:
 		/// Returns a uniformly distributed number in [-1, 1] for the spread of Look rays.
-		/// Look runs on the sight-ray worker threads, where the global sim random generator must not be used. This draws from a small per-actor xorshift stream instead,
+		/// Look runs on the sight-ray worker threads and the LookFor* helpers on the threaded AI, where the global sim random generator must not be used. This draws from a small per-actor xorshift stream instead,
 		/// seeded from the unique ID, so it is deterministic and each actor is only ever advanced by the one worker that handles it.
 		/// @return Uniformly distributed random number in the range [-1, 1].
-		float LookRandomNormalNum();
+		float LookRandomNormalNum() const;
 
 		/// Function that is called when we get a new movepath.
 		/// This processes and cleans up the movepath.
@@ -1180,7 +1180,7 @@ namespace RTE {
 		float m_SightDistance;
 		// How perceptive this is of alarming events going on around him, 0.0 - 1.0
 		float m_Perceptiveness;
-		uint64_t m_LookRandomState; //!< Xorshift state for Look's ray spread, see LookRandomNormalNum. 0 means not seeded yet.
+		mutable uint64_t m_LookRandomState; //!< Xorshift state for the Look and LookFor* ray spreads, see LookRandomNormalNum. 0 means not seeded yet.
 		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
 		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
 		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.

@@ -1516,7 +1516,7 @@ bool AHuman::Look(float FOVSpread, float range) {
 
 bool AHuman::LookForGold(float FOVSpread, float range, Vector& foundLocation) const {
 	Vector ray(m_HFlipped ? -range : range, 0);
-	ray.DegRotate(FOVSpread * RandomNormalNum());
+	ray.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	return g_SceneMan.CastMaterialRay(m_Pos, ray, g_MaterialGold, foundLocation, 4);
 }
@@ -1543,7 +1543,7 @@ MovableObject* AHuman::LookForMOs(float FOVSpread, unsigned char ignoreMaterial,
 	aimMatrix.SetXFlipped(m_HFlipped);
 	lookVector *= aimMatrix;
 	// Add the spread
-	lookVector.DegRotate(FOVSpread * RandomNormalNum());
+	lookVector.DegRotate(FOVSpread * LookRandomNormalNum());
 
 	// Night: the look ray reaches less far in the dark (see GetNightSightScale).
 	lookVector *= GetNightSightScale();
