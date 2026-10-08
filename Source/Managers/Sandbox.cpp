@@ -1,4 +1,5 @@
 #include "SandboxInternal.h"
+#include "MenuMan.h"
 #include "Weather.h"
 
 bool Sandbox::s_Open = false;
@@ -475,6 +476,12 @@ void Sandbox::DrawGUI() {
 			ForgetPictures();
 		}
 		s_GodViewSetUp = false;
+	}
+	// Nothing of the sandbox over the menus: the game's still loaded behind them, so the bar and the window went on being drawn over the
+	// main menu (the menu loop draws the debug GUI too) after leaving a Sandbox game, until another game was started.
+	if (g_MenuMan.GetIsInMenuScreen()) {
+		UnmarkSelection();
+		return;
 	}
 	if (GameActivity* game = CurrentGame(); s_Open && game && game->IsFreeBuildMode()) {
 		game->SetFreeBuildMode(false);
