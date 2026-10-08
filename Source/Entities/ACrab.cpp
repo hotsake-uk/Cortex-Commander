@@ -1644,8 +1644,19 @@ int ACrab::MoveAlongRoute() {
 	}
 	const bool airborne = floorHere < 0.0F;
 
+	// A leg done with more waypoints queued: on to the next (see AHuman::MoveAlongRoute).
+	if (m_MovePath.size() <= 1 && !m_Waypoints.empty() && m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget) && !airborne) {
+		if (CrabTowards(m_Pos, m_MovePathGoal).MagnitudeIsLessThan(std::max(m_MoveProximityLimit * 1.5F, h * 0.4F))) {
+			m_MovePath.clear();
+			m_MovePathKinds.clear();
+			m_HasMovePathGoal = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			return 0;
+		}
+	}
 	// Arrived: the last point, the goal within reach, standing.
-	if (m_MovePath.size() <= 1 && m_Waypoints.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+	if (m_MovePath.size() <= 1 && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		Vector goal = GetLastAIWaypoint();
 		if (CrabTowards(m_Pos, goal).MagnitudeIsLessThan(std::max(m_MoveProximityLimit * 1.5F, h * 0.4F)) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			return 1;
