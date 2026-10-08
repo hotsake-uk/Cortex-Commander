@@ -870,6 +870,7 @@
     <ClInclude Include="Source\Managers\ActorWater.h" />
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
+    <ClInclude Include="Source\Managers\SandboxInternal.h" />
     <ClInclude Include="Source\Managers\Colony.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
     <ClInclude Include="Source\Managers\SettingsMan.h" />
@@ -1424,6 +1425,13 @@
     <ClCompile Include="Source\Managers\ActorFire.cpp" />
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
+    <ClCompile Include="Source\Managers\SandboxCatalogue.cpp" />
+    <ClCompile Include="Source\Managers\SandboxOrders.cpp" />
+    <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
+    <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />
+    <ClCompile Include="Source\Managers\SandboxWindow.cpp" />
+    <ClCompile Include="Source\Managers\SandboxGym.cpp" />
+    <ClCompile Include="Source\Managers\SandboxDebug.cpp" />
     <ClCompile Include="Source\Managers\Colony.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
