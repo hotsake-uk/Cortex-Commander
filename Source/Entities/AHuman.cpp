@@ -1760,6 +1760,13 @@ void AHuman::UpdateLimbPathSpeed() {
 		travelSpeedMultiplier *= WeatherEffects::GetWalkSpeedMultiplier();
 		// Wading is slower still
 		travelSpeedMultiplier *= ActorWater::GetWalkSpeedMultiplier(this);
+		// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
+		if (m_PaceLimit > 0.0F) {
+			const float fullSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;
+			if (fullSpeed > m_PaceLimit) {
+				travelSpeedMultiplier *= m_PaceLimit / fullSpeed;
+			}
+		}
 
 		// If we're moving slowly horizontally, move at reduced speed (otherwise our legs kick about wildly as we're not yet up to speed)
 		// Calculate a min multiplier that is based on the total walkpath speed (so a fast walkpath has a smaller multipler). This is so a slow walkpath gets up to speed faster

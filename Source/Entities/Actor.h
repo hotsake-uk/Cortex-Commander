@@ -478,6 +478,12 @@ namespace RTE {
 		/// Sets the movement rule (MovementRule) of the standing order, until the next order.
 		void SetMovementRule(int rule) { m_StandingOrder.Movement = std::clamp(rule, 0, static_cast<int>(MOVEMENTRULECOUNT) - 1); }
 
+		/// Gets the pace this walks no faster than (m/s), or 0 for none: set to keep a group together at its slowest member's pace (RC-5).
+		float GetPaceLimit() const { return m_PaceLimit; }
+
+		/// Sets the pace this walks no faster than (m/s); 0 or less for none. Not saved: whoever sets it clears it when the march is over.
+		void SetPaceLimit(float pace) { m_PaceLimit = std::max(pace, 0.0F); }
+
 		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
 		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
 		/// mode it is already in, is seen as new without dropping the unit out of its mode for an update first.
@@ -1341,6 +1347,7 @@ namespace RTE {
 		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
 		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
 		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
+		float m_PaceLimit; //!< The walking pace this keeps to, m/s, or 0 for its own (see GetPaceLimit).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI
 		std::list<std::pair<Vector, const MovableObject*>> m_Waypoints;
