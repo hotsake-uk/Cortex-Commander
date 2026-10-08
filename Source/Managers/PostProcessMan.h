@@ -328,7 +328,8 @@ namespace RTE {
 		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
 		LightingSettings m_PlayerAtmosphere; //!< The player's own atmosphere settings, captured when the first Scene loads.
 		bool m_PlayerAtmosphereCaptured = false;
-		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates.
+		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
+		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.
 
 		/// An active explosion shockwave.
 		struct Shockwave {
@@ -367,6 +368,10 @@ namespace RTE {
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.
 		std::unique_ptr<Shader> m_Blit8; //!< Shader for blitting the 8bpp backbuffer to the 32bpp backbuffer.
 		std::unique_ptr<Shader> m_PostProcessShader; //!< Shader for drawing bitmap post effects.
+
+		/// Fills in a scene light from what RegisterLight was given, without registering it.
+		/// @return Whether the light is worth registering (a positive radius and intensity, in a sim update that will be drawn).
+		bool MakeSceneLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, SceneLight& light) const;
 
 #pragma region Post Effect Handling
 		/// Gets all screen effects that are located within a box in the scene. Their coordinates will be returned relative to the upper left corner of the box passed in here.

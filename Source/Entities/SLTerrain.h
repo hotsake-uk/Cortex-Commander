@@ -225,6 +225,10 @@ namespace RTE {
 		/// @param light The light, with its position in scene coordinates.
 		void AddLight(const TerrainLight& light);
 
+		/// Queues a light to be added to the scenery on the next light update, as AddLight would. Safe to call from any thread, for Lua scripts (ThreadedUpdate runs them in parallel).
+		/// @param light The light, with its position in scene coordinates.
+		void QueueLight(const TerrainLight& light);
+
 		/// Removes the scenery lights for which the test says so.
 		/// @return How many were removed.
 		int RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove);
@@ -302,7 +306,8 @@ namespace RTE {
 		int m_LightCellColumns; //!< How many cells wide that grid is.
 		bool m_LightCellsStale; //!< Whether the lights have changed since the grid was made.
 		std::vector<std::pair<Vector, float>> m_LightBreaks; //!< Places and distances where lights are to be smashed on the next update.
-		std::mutex m_LightBreaksMutex; //!< Guards m_LightBreaks.
+		std::vector<TerrainLight> m_QueuedLights; //!< Lights added from scripts, waiting for the next light update.
+		std::mutex m_LightBreaksMutex; //!< Guards m_LightBreaks and m_QueuedLights.
 
 		std::deque<Box> m_UpdatedMaterialAreas; //!< List of areas of the material layer (main bitmap) which have been affected by new objects copied to it. These boxes are NOT wrapped, and can be out of bounds!
 

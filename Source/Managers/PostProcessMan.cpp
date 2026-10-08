@@ -136,22 +136,34 @@ void PostProcessMan::UpdatePalette() {
 }
 
 void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity) {
-	if (radius <= 0.0F || intensity <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
-		return;
+	SceneLight light;
+	if (MakeSceneLight(pos, color, radius, intensity, light)) {
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
 	}
-	glm::vec3 linearColor(std::pow(std::clamp(color.r, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.g, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.b, 0.0F, 255.0F) / 255.0F, 2.2F));
-	m_SceneLights.push_back({pos, linearColor * intensity, radius});
 }
 
 void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity) {
-	size_t before = m_SceneLights.size();
-	RegisterLight(pos, color, radius, intensity);
-	if (m_SceneLights.size() > before) {
+	SceneLight light;
+	if (MakeSceneLight(pos, color, radius, intensity, light)) {
 		glm::vec2 dir(direction.m_X, direction.m_Y);
 		float length = glm::length(dir);
-		m_SceneLights.back().m_Direction = length > 0.0001F ? dir / length : glm::vec2(1.0F, 0.0F);
-		m_SceneLights.back().m_ConeCos = std::cos(halfAngleDegrees * c_PI / 180.0F);
+		light.m_Direction = length > 0.0001F ? dir / length : glm::vec2(1.0F, 0.0F);
+		light.m_ConeCos = std::cos(halfAngleDegrees * c_PI / 180.0F);
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
 	}
+}
+
+bool PostProcessMan::MakeSceneLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, SceneLight& light) const {
+	if (radius <= 0.0F || intensity <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return false;
+	}
+	glm::vec3 linearColor(std::pow(std::clamp(color.r, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.g, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.b, 0.0F, 255.0F) / 255.0F, 2.2F));
+	light.m_Pos = pos;
+	light.m_Color = linearColor * intensity;
+	light.m_Radius = radius;
+	return true;
 }
 
 void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const {
