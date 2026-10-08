@@ -1470,7 +1470,7 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 	local kind = SharedBehaviors.OrderKind(Owner);
 	-- Pinned down already behind low cover (PeekUpdate's): it holds there, ducking and peeking; the Aim loop's own crouch and prone would
 	-- fight the peeking's stances.
-	if not AI.Cover and why == "suppressed" and AI.peekCover then
+	if not AI.Cover and why == "suppressed" and AI.Peek then
 		return true;
 	end
 	if not AI.Cover then
@@ -1553,13 +1553,14 @@ function HumanBehaviors.PeekUpdate(AI, Owner)
 	local moving = AI.lateralMoveState ~= Actor.LAT_STILL and not (AI.Cover and AI.Cover.There);
 	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
 		AI.Peek = nil;
+		AI.peekCover = nil;
 		return;
 	end
 	AI.PeekCheckTimer = AI.PeekCheckTimer or Timer();
 	if AI.peekCover == nil or AI.PeekCheckTimer:IsPastSimMS(500) then
 		AI.PeekCheckTimer:Reset();
 		AI.peekCover = SharedBehaviors.CoverAt(Owner, SceneMan:MovePointToGround(Owner.Pos, 0, 4), Target.Pos) == "low";
-		if not AI.ducked and SharedBehaviors.CanSee(Owner.EyePos, Target.Pos) then
+		if SharedBehaviors.CanSee(Owner.EyePos, Target.Pos) then
 			AI.PeekSeenTimer = AI.PeekSeenTimer or Timer();
 			AI.PeekSeenTimer:Reset();
 		end
