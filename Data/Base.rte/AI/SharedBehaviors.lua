@@ -2380,6 +2380,22 @@ end
 --   told to attack towards a place, it goes for the nearest enemy within 500 px of the place, else back to the place and stands ready;
 --   otherwise it goes for the nearest enemy it has a route to, by route length, trying the few nearest in a straight line. An enemy it
 --   was sent at and stood down from (no route) is skipped for 20 s. Brains only when nothing else is left; never craft.
+-- The blocking route searches an attack order's pick may make, per Lua state, per sim update: one. Each takes a few ms and up to about
+-- 90 on a big map, and the frame waits for every state's AI; when a dropship wave landed under an attack order, each unit ran up to
+-- four on the same tick and the game froze for up to 190 ms (INC-STALL-1). A unit out of budget carries on next update.
+local AttackSearchTick, AttackSearchesThisTick = -1, 0;
+local function TakeAttackSearch()
+	local tick = TimerMan.SimTimeMS;
+	if tick ~= AttackSearchTick then
+		AttackSearchTick, AttackSearchesThisTick = tick, 0;
+	end
+	if AttackSearchesThisTick >= 1 then
+		return false;
+	end
+	AttackSearchesThisTick = AttackSearchesThisTick + 1;
+	return true;
+end
+
 function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 	if not Owner.OrderAttack then
 		AI.AttackOrder = nil;
@@ -2395,12 +2411,17 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 	if AI.orderSerial ~= nil and Owner.AIOrderSerial ~= AI.orderSerial then
 		state.first = true;
 	end
-	if not state.first and not state.Timer:IsPastSimMS(state.wait or 1000) then
-		return;
+	-- (A pick spread over updates by the search budget goes on at once; taken out of the state here, so a return before the pick drops it.)
+	local search = state.Search;
+	state.Search = nil;
+	if not search then
+		if not state.first and not state.Timer:IsPastSimMS(state.wait or 1000) then
+			return;
+		end
+		state.first = false;
+		state.wait = nil;
+		state.Timer:Reset();
 	end
-	state.first = false;
-	state.wait = nil;
-	state.Timer:Reset();
 	if AI.Target or AI.Retreat or AI.Flank or Owner:NumberValueExists("OnFire") or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
 		return;
 	end
@@ -2498,40 +2519,59 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 	end
 	Owner.OrderAutoTargetID = 0;
 
-	-- The few nearest in a straight line (brains after everyone else), then the shortest route among them.
-	local Candidates = {};
-	for _, Act in ipairs(Enemies) do
-		if not state.GaveUpOn[Act.UniqueID] then
-			table.insert(Candidates, { Act = Act, brain = Act:IsInGroup("Brains"), dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, SceneMan.SceneWrapsX).SqrMagnitude });
+	-- The few nearest in a straight line (brains after everyone else), then the shortest route among them, one search per update at most
+	-- when other units are searching too (TakeAttackSearch). The enemies are kept by unique ID between updates, in case one is gone.
+	if not search then
+		local Candidates = {};
+		for _, Act in ipairs(Enemies) do
+			if not state.GaveUpOn[Act.UniqueID] then
+				table.insert(Candidates, { id = Act.UniqueID, brain = Act:IsInGroup("Brains"), dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, SceneMan.SceneWrapsX).SqrMagnitude });
+			end
+		end
+		table.sort(Candidates, function(a, b)
+			if a.brain ~= b.brain then
+				return not a.brain;
+			end
+			return a.dist < b.dist;
+		end);
+		search = { list = {}, next = 1, bestLength = math.huge, bestIsBrain = false };
+		for i = 1, math.min(#Candidates, 4) do
+			search.list[i] = Candidates[i];
 		end
 	end
-	table.sort(Candidates, function(a, b)
-		if a.brain ~= b.brain then
-			return not a.brain;
-		end
-		return a.dist < b.dist;
-	end);
-	local best, bestLength, bestIsBrain = nil, math.huge, false;
-	for i = 1, math.min(#Candidates, 4) do
-		local c = Candidates[i];
+	local ByID = {};
+	for _, Act in ipairs(Enemies) do
+		ByID[Act.UniqueID] = Act;
+	end
+	while search.next <= #search.list do
+		local c = search.list[search.next];
 		-- (Once a non-brain with a route is found, brains further down the list can't beat it.)
-		if best and c.brain and not bestIsBrain then
+		if search.bestID and c.brain and not search.bestIsBrain then
 			break;
 		end
-		local length = SceneMan.Scene:CalculatePathForActor(Owner, Owner.Pos, c.Act.Pos, Owner.Team);
-		if length > 0 then
-			-- (A route cut short at an obstacle ends somewhere else: not a way to the enemy.)
-			local Last;
-			for Point in SceneMan.Scene:GetScenePath() do
-				Last = Point;
+		local Act = ByID[c.id];
+		if Act then
+			if not TakeAttackSearch() then
+				state.Search = search;
+				return;
 			end
-			if Last and not SceneMan:ShortestDistance(Last, c.Act.Pos, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(Owner.Height + 40) and length < bestLength then
-				best, bestLength, bestIsBrain = c.Act, length, c.brain;
+			local length = SceneMan.Scene:CalculatePathForActor(Owner, Owner.Pos, Act.Pos, Owner.Team);
+			if length > 0 then
+				-- (A route cut short at an obstacle ends somewhere else: not a way to the enemy.)
+				local Last;
+				for Point in SceneMan.Scene:GetScenePath() do
+					Last = Point;
+				end
+				if Last and not SceneMan:ShortestDistance(Last, Act.Pos, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(Owner.Height + 40) and length < search.bestLength then
+					search.bestID, search.bestLength, search.bestIsBrain = c.id, length, c.brain;
+				end
+			else
+				state.GaveUpOn[c.id] = Timer();
 			end
-		else
-			state.GaveUpOn[c.Act.UniqueID] = Timer();
 		end
+		search.next = search.next + 1;
 	end
+	local best = search.bestID and ByID[search.bestID];
 	if best then
 		goAfter(best, "nearest by route");
 		Owner.OrderAutoTargetID = best.UniqueID;
