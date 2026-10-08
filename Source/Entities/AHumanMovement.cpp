@@ -788,6 +788,38 @@ bool AHuman::InDoorSweep() const {
 	return false;
 }
 
+void AHuman::RememberStuckRemedy(const Vector& spot, int remedy, bool worked) {
+	const float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
+	// (One entry per remedy and spot: the newest outcome stands.)
+	for (auto entry = m_StuckRemedyMemory.begin(); entry != m_StuckRemedyMemory.end();) {
+		bool same = entry->Remedy == remedy && g_SceneMan.ShortestDistance(entry->Spot, spot, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(near);
+		entry = same || entry->Age.IsPastSimMS(120000) ? m_StuckRemedyMemory.erase(entry) : std::next(entry);
+	}
+	m_StuckRemedyMemory.push_back({spot, remedy, worked, Timer()});
+	while (m_StuckRemedyMemory.size() > 24) {
+		m_StuckRemedyMemory.pop_front();
+	}
+}
+
+int AHuman::PickStuckRemedy(const Vector& spot, const std::array<bool, static_cast<int>(StuckRemedy::Count)>& allowed, unsigned int tried) const {
+	const float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
+	std::array<int, static_cast<int>(StuckRemedy::Count)> known;
+	known.fill(0); // 0 nothing known here, 1 worked, -1 failed (in the last two minutes).
+	for (const StuckRemedyMemory& entry: m_StuckRemedyMemory) {
+		if (!entry.Age.IsPastSimMS(120000) && g_SceneMan.ShortestDistance(entry.Spot, spot, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(near)) {
+			known[entry.Remedy] = entry.Worked ? 1 : -1;
+		}
+	}
+	for (int pass = 0; pass < 2; ++pass) {
+		for (int remedy = 0; remedy < static_cast<int>(StuckRemedy::Count); ++remedy) {
+			if (allowed[remedy] && !(tried & (1U << remedy)) && known[remedy] == (pass == 0 ? 1 : 0)) {
+				return remedy;
+			}
+		}
+	}
+	return -1;
+}
+
 void AHuman::ResetRouteMovement() {
 	m_Mover = RouteMover();
 	m_Mover.lastProgressPos = m_Pos;
@@ -1297,6 +1329,10 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	fields.push_back({"mover", mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : (mover.settling ? "settle" : "walk")), true});
 	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
 	number("stuckLevel", mover.stuckLevel);
+	{
+		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", false});
+	}
 	number("impossibleAnswers", mover.impossibleAnswers);
 	if (mover.fuelWaiting) {
 		number("fuelWaitMs", mover.fuelWaitTimer.GetElapsedSimTimeMS());
@@ -1522,6 +1558,12 @@ int AHuman::MoveAlongRoute() {
 		mover.flight = RouteMover::Flight();
 		mover.bestGap = -1.0F;
 		mover.progressTimer.Reset();
+		// (A remedy still being tried when the re-path came didn't work: noted so, not taken for having worked when the timer starts again.)
+		if (mover.remedy >= 0) {
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, false);
+			mover.remedy = -1;
+		}
+		mover.remedyTried = 0;
 		return RouteMover::Moving;
 	}
 	// Now and then, or the next point out of sight on the ground for a second: a fresh route.
@@ -2469,21 +2511,83 @@ int AHuman::MoveAlongRoute() {
 			lowObstacle = true;
 		}
 	}
-	// Stuck (no progress for 2.5 s, and a new route at 6): a hop. (A back-off the other way, as 8.0's random flips did, read as pacing, and
-	// lying down for a moment as lying down at random: neither.)
-	float stuckMS = static_cast<float>(mover.progressTimer.GetElapsedSimTimeMS());
-	bool layingDown = false;
-	if (!stuck) {
-		mover.stuckBackedOff = false;
-		mover.stuckLayDown = false;
-	} else if (!mover.fuelWaiting) {
-		// (No lying down when stuck: under a low ceiling the crawl rules lie it down; anywhere else it read as lying down at random.)
+	// Stuck (no progress for 2.5 s, and a new route at 6): the small things a player tries before the big one (LM-3), one at a time, each
+	// for a moment and judged by progress: duck, back off half a body and come on again, leap, hop with the jet, lie down and crawl, stand
+	// up. Each only when it can do something here (room to duck, floor behind, the legs to leap, a jet with head room, room to crawl, room
+	// to stand), none twice in one stuck spell, one that failed at this spot lately left out, and one that worked here tried first. (As
+	// unconditional moves, 8.0's back-offs read as pacing and its lying down as lying down at random, and a jetless unit had nothing.)
+	const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800};
+	if (!stuck || mover.fuelWaiting) {
+		if (mover.remedy >= 0 && !mover.fuelWaiting) {
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, true);
+			MoverTrace(std::string("stuck remedy worked: ") + remedyNames[mover.remedy]);
+		}
+		mover.remedy = -1;
+		mover.remedyTried = 0;
+	} else {
+		if (mover.remedy >= 0 && mover.remedyTimer.IsPastSimMS(remedyWindowMS[mover.remedy])) {
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, false);
+			MoverTrace(std::string("stuck remedy didn't work: ") + remedyNames[mover.remedy]);
+			mover.remedy = -1;
+		}
+		if (mover.remedy < 0) {
+			std::array<bool, static_cast<int>(StuckRemedy::Count)> allowed{};
+			allowed[static_cast<int>(StuckRemedy::Crouch)] = !prone && !crouch && m_ProneState == NOTPRONE && crouched < standing - 1.0F;
+			float floorBehind = FloorUnder(m_Pos + Vector(-direction * h * 0.5F, 0.0F), feet + h * 0.3F);
+			allowed[static_cast<int>(StuckRemedy::BackOff)] = !prone && m_ProneState == NOTPRONE && floorBehind >= 0.0F && std::abs(floorBehind - floorY) < h * 0.3F;
+			allowed[static_cast<int>(StuckRemedy::Leap)] = !prone && CanLeap();
+			allowed[static_cast<int>(StuckRemedy::Hop)] = standardJet && !prone && m_pJetpack->GetJetTimeLeft() > 300.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
+			const float crawlRoom = std::max(8.0F, h * 0.2F);
+			allowed[static_cast<int>(StuckRemedy::Prone)] = !prone && !steep && m_ProneState == NOTPRONE && !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - crawlRoom), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+			allowed[static_cast<int>(StuckRemedy::Stand)] = m_ProneState == PRONE && !noRoomHere && !noRoomAhead;
+			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
+			if (mover.remedy >= 0) {
+				mover.remedyTried |= 1U << mover.remedy;
+				mover.remedyTimer.Reset();
+				mover.remedySpot = m_Pos;
+				MoverTrace(std::string("stuck; ") + remedyNames[mover.remedy]);
+			}
+		}
+		switch (static_cast<StuckRemedy>(mover.remedy)) {
+			case StuckRemedy::Crouch:
+				ctrl.SetState(BODY_PRONE, false);
+				ctrl.SetState(BODY_CROUCH, true);
+				break;
+			case StuckRemedy::BackOff:
+				if (!mover.remedyTimer.IsPastSimMS(400)) {
+					ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, false);
+					ctrl.SetState(direction < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+					ctrl.SetState(MOVE_FAST, false);
+				}
+				break;
+			case StuckRemedy::Leap:
+				if (!mover.remedyTimer.IsPastSimMS(200)) {
+					ctrl.SetState(BODY_LEAP, true);
+				}
+				break;
+			case StuckRemedy::Prone:
+				ctrl.SetState(BODY_CROUCH, false);
+				ctrl.SetState(BODY_PRONE, true);
+				break;
+			case StuckRemedy::Stand:
+				ctrl.SetState(BODY_PRONE, false);
+				break;
+			default:
+				break;
+		}
+	}
+	// The stuck remedy's hop with the jet, at the start of its moment.
+	if (mover.remedy == static_cast<int>(StuckRemedy::Hop) && standardJet && !mover.remedyTimer.IsPastSimMS(350)) {
+		ctrl.SetState(BODY_JUMP, true);
+		SetAimAngle(above > h * 0.2F ? c_HalfPI * 0.7F : 0.2F);
 	}
 	// A wall, or a step up the legs don't take: a hop (the mantle takes most steps).
-	if ((stuck || wallAhead || lowObstacle) && standardJet && !prone && !layingDown && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
+	if ((wallAhead || lowObstacle) && standardJet && !prone && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > 300.0F) {
 		if (mover.hopTimer.IsPastSimMS(1200)) {
 			mover.hopTimer.Reset();
-			MoverTrace(stuck ? "stuck; hop" : (wallAhead ? "wall ahead; hop" : "low obstacle; hop"));
+			MoverTrace(wallAhead ? "wall ahead; hop" : "low obstacle; hop");
 		}
 		if (!mover.hopTimer.IsPastSimMS(350)) {
 			ctrl.SetState(BODY_JUMP, true);

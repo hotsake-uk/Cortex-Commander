@@ -898,8 +898,10 @@ namespace RTE {
 			bool digging = false; //!< Digging along the route (a Dig step), the digger out; put away again after.
 			float digSweep = 0.0F; //!< The digger's sweep either side of the way, radians.
 			bool digSweepUp = true;
-			bool stuckBackedOff = false; //!< Whether the stuck handling has backed off, and lain down, this time stuck (traced once each).
-			bool stuckLayDown = false;
+			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
+			Timer remedyTimer; //!< Since it began.
+			Vector remedySpot; //!< Where the unit was stuck when it began.
+			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
@@ -922,6 +924,30 @@ namespace RTE {
 			FlightRecord debugFlight;
 		};
 		RouteMover m_Mover;
+
+		/// The small things a stuck unit tries before the follower's re-path at 6 s, in the order they are tried (LM-3).
+		enum class StuckRemedy {
+			Crouch, //!< Duck and keep walking.
+			BackOff, //!< Half a body back, then on again.
+			Leap, //!< A leap on the legs.
+			Hop, //!< A hop with the jet.
+			Prone, //!< Lie down and crawl.
+			Stand, //!< Stand up from lying down.
+			Count
+		};
+		/// What a remedy did at a spot: kept across routes and orders (the route-follower's own state starts again with each), so a remedy
+		/// that failed at a spot is not tried there again for a while, and one that worked is tried first.
+		struct StuckRemedyMemory {
+			Vector Spot;
+			int Remedy = 0;
+			bool Worked = false;
+			Timer Age;
+		};
+		std::deque<StuckRemedyMemory> m_StuckRemedyMemory;
+		void RememberStuckRemedy(const Vector& spot, int remedy, bool worked);
+		/// Picks the next remedy to try at a spot, of those allowed now and not tried this time stuck: one that worked there first, then the
+		/// rest in order, leaving out those that failed there last time. @return The remedy, or -1 for none.
+		int PickStuckRemedy(const Vector& spot, const std::array<bool, static_cast<int>(StuckRemedy::Count)>& allowed, unsigned int tried) const;
 
 		/// Climbing a ladder: the body held to the ladder's line and moved along it by the climb (as the mantle moves it: gravity, the jet and
 		/// the walls are nothing to it meanwhile), the hands and feet on the rungs, one limb at a time, hand and opposite foot in turn.
