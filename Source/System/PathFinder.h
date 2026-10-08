@@ -388,6 +388,7 @@ namespace RTE {
 		};
 		std::vector<AvoidLink> m_TeamAvoidLinks; //!< Flights this team's units have failed lately: from where, for where, until when.
 		mutable std::mutex m_TeamAvoidMutex;
+		static constexpr size_t c_TeamAvoidKept = 256; //!< How many team avoid places, and how many team avoid flights, are kept at most.
 		std::deque<DebugSolve> m_RecentSolves; //!< The last few searches, for the recent path solves overlay (see GetRecentSolves).
 		mutable std::mutex m_RecentSolvesMutex;
 		static constexpr size_t c_RecentSolvesKept = 8;
@@ -397,11 +398,13 @@ namespace RTE {
 
 	public:
 		/// Remembers a place a unit of this grid's team failed at, for every unit of the team to route around for a while.
-		void AddTeamAvoid(const Vector& place, double untilMS);
+		/// Drops the ones expired by nowMS, and the oldest past c_TeamAvoidKept.
+		void AddTeamAvoid(const Vector& place, double untilMS, double nowMS);
 		/// The team's remembered failures still in force, added to a list.
 		void GetTeamAvoid(std::vector<Vector>& places, double nowMS) const;
 		/// Remembers a flight a unit of this grid's team failed: from that take-off for that landing, dearer for the whole team for a while.
-		void AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS);
+		/// Drops the ones expired by nowMS, and the oldest past c_TeamAvoidKept.
+		void AddTeamAvoidLink(const Vector& from, const Vector& to, double untilMS, double nowMS);
 		/// The team's failed flights still in force, added to a list.
 		void GetTeamAvoidLinks(std::vector<std::pair<Vector, Vector>>& links, double nowMS) const;
 
