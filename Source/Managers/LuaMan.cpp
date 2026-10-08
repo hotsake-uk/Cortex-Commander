@@ -714,6 +714,13 @@ int LuaStateWrapper::RunScriptConditionalTestFunctionObject(const LuabindObjectW
 	}
 
 	const std::string& path = functionObject->GetFilePath();
+
+	// As in RunScriptFunctionObject: the timings entry is found once, now, as the function object (and `path`) may be gone after the call.
+	PerformanceMan::ScriptTiming* timing = nullptr;
+	if (&g_LuaMan.GetMasterScriptState() == this) {
+		timing = &m_ScriptTimings[path];
+	}
+
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	{
 		ZoneScoped;
@@ -733,9 +740,9 @@ int LuaStateWrapper::RunScriptConditionalTestFunctionObject(const LuabindObjectW
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
 	// only track time in non-MT scripts, for now
-	if (&g_LuaMan.GetMasterScriptState() == this) {
-		m_ScriptTimings[path].m_Time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-		m_ScriptTimings[path].m_CallCount++;
+	if (timing) {
+		timing->m_Time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+		timing->m_CallCount++;
 	}
 
 	lua_pop(m_State, 1);
