@@ -562,6 +562,7 @@ end
 -- unit near at hand (SharedBehaviors.FollowStep), and what to do on arrival. (Gold digging keeps 8.0's GoToWpt: a digger's unit uses it.)
 function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 	Owner:ResetRouteMovement();
+	AI.routeHeld = false;
 	AI.jetClimb = false;
 	Owner:RemoveNumberValue("AI_StuckForTime");
 	while true do
@@ -585,6 +586,16 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			Owner:ResetRouteMovement();
 		end
 		AI.engineMover = not holding; -- (And the run key: the follower runs where the way is open.)
+		if holding then
+			AI.routeHeld = true;
+		elseif AI.routeHeld then
+			-- Back from a hold (a fight, a look at an alarm): the route-follower's timers and flight start again. It isn't called while
+			-- held, so its stuck timers ran on through the hold, and the first tick after a fight of more than 6 s marked the step it was on
+			-- avoided, for the whole team when a flight was ahead, and asked for a new route; a flight cut short by the hold was judged
+			-- failed and its take-off avoided too.
+			AI.routeHeld = false;
+			Owner:ResetRouteMovement();
+		end
 		if not holding then
 			local result = Owner:MoveAlongRoute();
 			if result == 1 then
