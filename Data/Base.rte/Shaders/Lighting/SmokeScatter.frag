@@ -50,8 +50,12 @@ void main() {
 	}
 	vec2 densityTexel = 1.0 / vec2(textureSize(rteDensity, 0));
 	// The smoke's own colour (what its sprites look like), brightened a little since scattering lights it through.
-	// The colour is averaged from the sprites' sRGB palette colours, so it's made linear to match the light.
-	vec3 tint = mix(rteSmokeColor, min(pow(smoke.rgb / density, vec3(2.2)) * 1.25, vec3(1.0)), rteShadingStrength);
+	// The colour is averaged from the sprites' sRGB palette colours: its hue is made linear to match the light, which keeps coloured smoke from washing out,
+	// but at the brightness it had, since grey smoke made linear would scatter only about half the light it did.
+	vec3 spriteColor = smoke.rgb / density;
+	vec3 linearColor = pow(spriteColor, vec3(2.2));
+	linearColor *= Luminance(spriteColor) / max(Luminance(linearColor), 1e-4);
+	vec3 tint = mix(rteSmokeColor, min(linearColor * 1.25, vec3(1.0)), rteShadingStrength);
 	// Towards the brightest light around (uphill in the light buffer): smoke between here and it shades this side.
 	vec2 step = 4.0 / rteScreenSize;
 	vec2 uphill = vec2(Luminance(texture(rteDynamicLight, uv + vec2(step.x, 0.0)).rgb) - Luminance(texture(rteDynamicLight, uv - vec2(step.x, 0.0)).rgb),
