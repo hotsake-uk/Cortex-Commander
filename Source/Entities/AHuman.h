@@ -929,6 +929,8 @@ namespace RTE {
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it
 		                                      //!< reads, and crashed the game before its window opened.)
 		static std::optional<Vector> LadderNear(const Vector& point, float reachX, float reachY);
+		/// Drops the route's points up to a flight's landing: up to the one nearest the landing, or the planned count if none is near it.
+		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
