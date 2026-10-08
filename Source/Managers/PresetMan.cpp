@@ -203,6 +203,9 @@ bool PresetMan::LoadAllDataModules() {
 		}
 	}
 
+	// The progress report presents at most every 33 ms, so its last lines are shown now.
+	LoadingScreen::FlushProgressReport();
+
 	if (g_SettingsMan.IsMeasuringModuleLoadTime()) {
 		std::chrono::milliseconds moduleLoadElapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - moduleLoadTimerStart);
 		g_ConsoleMan.PrintString("Module load duration is: " + std::to_string(moduleLoadElapsedTime.count()) + "ms");

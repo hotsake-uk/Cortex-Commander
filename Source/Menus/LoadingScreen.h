@@ -2,6 +2,7 @@
 
 #include "Singleton.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -50,6 +51,9 @@ namespace RTE {
 		/// @param newItem Whether to start a new line in the log writer and to scroll the bitmap.
 		static void LoadingSplashProgressReport(const std::string& reportString, bool newItem = false);
 
+		/// Presents the progress report if lines were added since it was last shown (the report presents at most every 33 ms). Call when loading ends.
+		static void FlushProgressReport();
+
 		/// Draws the loading splash to the screen.
 		void DrawLoadingSplash();
 
@@ -60,6 +64,11 @@ namespace RTE {
 
 	private:
 		static int s_ProgressFramesDrawn; //!< How many frames the progress report has drawn to the screen.
+		static bool s_ProgressUnshown; //!< Whether the progress box has lines that haven't been presented yet.
+		static std::chrono::steady_clock::time_point s_LastProgressPresent; //!< When the progress report was last presented.
+
+		/// Draws the progress box and the loading background and presents the frame.
+		static void PresentProgress();
 
 		std::unique_ptr<Writer> m_LoadingLogWriter; //!< The Writer that generates the loading log.
 
