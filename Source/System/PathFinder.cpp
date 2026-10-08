@@ -1222,7 +1222,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		if (allowDiagonal && s_JumpHeight < FLT_MAX && node->Surface >= 0.0F) {
 			auto slopeWalk = [&](const PathNode* to, const Material* along, bool up) {
 				if (to && to->m_Navigable && !Open(*along) && SurfaceWalkable(*node, *to)) {
-					adjCost.cost = (up ? 1.4F + extraUpCost * 1.4F : 1.4F) + radiatedCost;
+					adjCost.cost = ((up ? 1.4F + extraUpCost * 1.4F : 1.4F) + radiatedCost) * HeadRoomFactor(*node, *to);
 					adjCost.state = const_cast<PathNode*>(to);
 					adjacentList->push_back(adjCost);
 				}
@@ -1688,7 +1688,7 @@ bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const
 	float dx = g_SceneMan.ShortestDistance(from.Pos, to.Pos).m_X;
 	float direction = dx < 0.0F ? -1.0F : 1.0F;
 	float waist = std::min(s_CrouchHeight, s_StandHeight) * 0.5F;
-	if (!Open(*StrongestMaterialAlongLine(Vector(from.Pos.m_X, from.Surface - waist), Vector(to.Pos.m_X, to.Surface - waist)))) {
+	if (!Open(*StrongestMaterialAlongLine(Vector(from.Pos.m_X, from.Surface - waist), Vector(from.Pos.m_X + dx, to.Surface - waist)))) {
 		return false;
 	}
 	// The ground's top every 2 px across, from a step over the higher floor to a step under the lower: no rise or drop from one to the next
