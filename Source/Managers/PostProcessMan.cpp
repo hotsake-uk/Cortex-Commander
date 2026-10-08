@@ -12,6 +12,9 @@
 #include "RenderMan.h"
 
 #include "PresetMan.h"
+#include "ActivityMan.h"
+#include "Activity.h"
+#include "ConsoleMan.h"
 #include "GLStateMan.h"
 #include "RenderTarget.h"
 
@@ -149,6 +152,39 @@ void PostProcessMan::SetPaletteCycle(int from, int to, float period) {
 
 void PostProcessMan::ClearPaletteAnimation() {
 	g_RenderMan.ClearPaletteAnimation();
+}
+
+void PostProcessMan::SetPostShader(const std::string& shaderName) {
+	std::scoped_lock lock(m_PostShaderMutex);
+	m_PostShaderName = shaderName == "None" ? "" : shaderName;
+}
+
+std::string PostProcessMan::GetPostShader() const {
+	std::scoped_lock lock(m_PostShaderMutex);
+	return m_PostShaderName;
+}
+
+const Shader* PostProcessMan::GetActivePostShader() {
+	std::string name = GetPostShader();
+	if (name.empty() && g_ActivityMan.GetActivity()) {
+		name = g_ActivityMan.GetActivity()->GetPostShader();
+	}
+	if (name.empty() && g_SceneMan.GetScene()) {
+		name = g_SceneMan.GetScene()->GetAtmosphere().PostShader;
+	}
+	if (name != m_ActivePostShaderName) {
+		m_ActivePostShaderName = name;
+		m_ActivePostShader = nullptr;
+		if (!name.empty()) {
+			const Shader* shader = dynamic_cast<const Shader*>(g_PresetMan.GetEntityPreset("Shader", name));
+			if (!shader) {
+				g_ConsoleMan.PrintString("ERROR: The post shader \"" + name + "\" isn't defined. The screen is drawn without it.");
+			} else if (shader->IsValid()) {
+				m_ActivePostShader = shader;
+			}
+		}
+	}
+	return m_ActivePostShader;
 }
 
 void PostProcessMan::LoadPaletteAnimation() {

@@ -16,6 +16,7 @@
 #include "Serializable.h"
 #include "System.h"
 #include "PostProcessMan.h"
+#include "Shader.h"
 
 #include "Base64/base64.h"
 #include "tracy/Tracy.hpp"
@@ -127,6 +128,8 @@ void MovableObject::Clear() {
 	m_RenderOpacity = 1.0F;
 	m_Metalness = -1.0F;
 	m_Gloss = -1.0F;
+	m_ShaderName.clear();
+	m_Shader = nullptr;
 
 	m_UniqueID = 0;
 
@@ -266,6 +269,8 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_RenderOpacity = reference.m_RenderOpacity;
 	m_Metalness = reference.m_Metalness;
 	m_Gloss = reference.m_Gloss;
+	m_ShaderName = reference.m_ShaderName;
+	m_Shader = reference.m_Shader;
 
 	m_ForceIntoMasterLuaState = reference.m_ForceIntoMasterLuaState;
 	for (const auto& scriptPath: reference.m_AllLoadedScripts) {
@@ -414,6 +419,7 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 	MatchProperty("RenderOpacity", { reader >> m_RenderOpacity; m_RenderOpacity = std::clamp(m_RenderOpacity, 0.0F, 1.0F); });
 	MatchProperty("Metalness", { reader >> m_Metalness; m_Metalness = std::min(m_Metalness, 1.0F); });
 	MatchProperty("Gloss", { reader >> m_Gloss; m_Gloss = std::min(m_Gloss, 1.0F); });
+	MatchProperty("Shader", { SetShaderName(reader.ReadPropValue()); });
 	MatchProperty("EffectStartTime", { reader >> m_EffectStartTime; });
 	MatchProperty("EffectRotAngle", { reader >> m_EffectRotAngle; });
 	MatchProperty("InheritEffectRotAngle", { reader >> m_InheritEffectRotAngle; });
@@ -545,6 +551,9 @@ int MovableObject::Save(Writer& writer) const {
 	}
 	if (m_Gloss >= 0.0F) {
 		writer.NewPropertyWithValue("Gloss", m_Gloss);
+	}
+	if (!m_ShaderName.empty()) {
+		writer.NewPropertyWithValue("Shader", m_ShaderName);
 	}
 	writer.NewProperty("EffectStartTime");
 	writer << m_EffectStartTime;
@@ -929,8 +938,38 @@ void MovableObject::ApplyImpulses() {
 	m_ImpulseForces.clear();
 }
 
+void MovableObject::SetShaderName(const std::string& shaderName) {
+	m_ShaderName = shaderName;
+	m_Shader = nullptr;
+	if (shaderName.empty() || shaderName == "None") {
+		m_ShaderName.clear();
+		return;
+	}
+	const Shader* shader = dynamic_cast<const Shader*>(g_PresetMan.GetEntityPreset("Shader", shaderName, GetModuleID()));
+	if (!shader) {
+		g_ConsoleMan.PrintString("ERROR: " + GetPresetName() + " asks for the shader \"" + shaderName + "\", which isn't defined (define its AddShader before the object). It's drawn as usual.");
+	} else if (shader->IsValid()) {
+		m_Shader = shader;
+	}
+}
+
 Color MovableObject::ApplyRenderBlendMode() const {
 	g_RenderMan.SetCurrentSurface(GetRenderSurface());
+	// A mod's own shader: this object's, or else the unit's or object's it is part of, so a cloaked mech is cloaked down to its arms. Glows and flashes
+	// drawn added or screened on top keep the game's shader unless they ask for one themselves.
+	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.ModShaders) {
+		const MovableObject* root = GetRootParent();
+		const Shader* shader = m_Shader ? m_Shader : (m_RenderBlendMode == 0 && root != this ? root->m_Shader : nullptr);
+		if (shader) {
+			float health = 1.0F;
+			if (root->IsActor()) {
+				const Actor* actor = static_cast<const Actor*>(root);
+				health = actor->GetMaxHealth() > 0.0F ? std::clamp(actor->GetHealth() / actor->GetMaxHealth(), 0.0F, 1.0F) : 1.0F;
+			}
+			float seed = static_cast<float>((static_cast<unsigned long>(root->GetUniqueID()) * 2654435761UL) & 0xFFFFUL) / 65536.0F;
+			g_RenderMan.BeginObjectShader(shader, PostProcessMan::GetEffectTime(), seed, health, std::clamp(lighting.ModShaderStrength, 0.0F, 1.0F), lighting.Enabled ? lighting.Relief : 0.0F);
+		}
+	}
 	int opacity = static_cast<int>(m_RenderOpacity * 255.0F);
 	switch (m_RenderBlendMode) {
 		case 1:
@@ -958,6 +997,7 @@ Color MovableObject::ApplyRenderBlendMode() const {
 
 void MovableObject::RestoreRenderBlendMode() const {
 	g_RenderMan.SetCurrentSurface(glm::u8vec4(0));
+	g_RenderMan.EndObjectShader();
 	if (m_RenderBlendMode != 0 || m_RenderOpacity < 1.0F) {
 		g_RenderMan.SetActiveBlendMode(BlendMode(Blend::ALPHA));
 	}

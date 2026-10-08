@@ -284,6 +284,7 @@ Press **F8** for **Photo Mode**:
 | `GradeTemperature` / `GradeTint` / `GradeContrast` | 0 / 0 / 1 | White balance and contrast. |
 | `GradeShadowTint` / `GradeHighlightTint` | 1 1 1 / 1 1 1 | Split toning. |
 | `FilmGrain` / `ChromaticAberration` | 0 / 0 | Film grain (0–1) and lens fringing (pixels). |
+| `ModShaders` / `ModShaderStrength` | 1 / 1 | Mods' own object shaders and post passes (see "Mod shaders" below). Off draws everything with the game's shaders. The strength (0–1) is handed to mods' shaders as `rteStrength`. |
 
 ## Scene atmosphere (INI)
 
@@ -420,3 +421,84 @@ Atmosphere changed from Lua (time, weather, sky and ambient colours, grade) last
 The lighting shaders live in `Data/Base.rte/Shaders/Lighting/`. The sprite shader `Base.rte/Shaders/Blit8.frag` and the terrain shader `Base.rte/Shaders/Terrain.frag` write two more outputs. Custom shaders used for scene drawing should write them too.
 - **Location 1, normals:** the screen-space normal's x and y in RG, 1 minus the surface's shininess in B, and in alpha 0 for "nothing drawn" or 0.5–1 for "drawn, with emissive strength 0–1".
 - **Location 2, surface:** how metallic in R, how glossy in G, and in B 1 for solid objects that cast shadows (0 for terrain, particles and effects). Sprites get these per vertex (`rteVertexSurface`), set by the object being drawn.
+
+## Mod shaders
+
+A mod can draw its objects with its own shader, and give a scene or an activity its own pass over the whole screen. The player can turn both off ("Mod shaders" in the settings panel's Camera and image page). A shader that fails to compile or link is reported in the console and left unused; the mod still loads.
+
+Declare the shader in the mod's own INI, before anything that uses it:
+
+```ini
+AddShader = Shader
+	PresetName = My Hologram
+	VertexShader = MyMod.rte/Shaders/Hologram.vert
+	FragmentShader = MyMod.rte/Shaders/Hologram.frag
+```
+
+### On objects
+
+```ini
+AddActor = AHuman
+	PresetName = Ghost Trooper
+	Shader = My Hologram    // None, or leave it out, for the game's own
+	...
+```
+
+From Lua: `actor.Shader = "My Hologram"` (an empty string goes back to the game's shader). A part with no shader of its own (an arm, a held gun) is drawn with its unit's or object's, unless it is drawn added or screened on top (`RenderBlendMode` 1 or 2).
+
+An object shader takes everything `Blit8.vert` and `Blit8.frag` take (start from copies of them), and must write the same three outputs as the sprite shader (location 0 colour, 1 normals, 2 surface, as above), or the lighting reads garbage where the object is. On top of those it is given:
+
+| Uniform | What it is |
+|---|---|
+| `float rteTime` | Seconds of effect time. It holds while the game is paused. |
+| `float rteObjectSeed` | 0 to 1, the same for the unit every frame and different between units. |
+| `float rteHealth` | The unit's health, 0 to 1. 1 for anything that isn't a unit. |
+| `float rteStrength` | The player's "Mod shader strength", 0 to 1. Fade the effect by it. |
+| `float rteRelief` | How much sprites' own shading counts as relief, as `Blit8.frag` uses it. |
+
+The palette (`rtePalette`, unit 0), the drawn texture (`rteTexture`, unit 1) and the glow palette (`rteEmissivePalette`, unit 2) are bound as for the game's sprites, and `rteIndexed` says whether the texture holds palette indices.
+
+### On the screen
+
+```ini
+AddScene = Scene
+	PresetName = My Sandstorm Valley
+	PostShader = My Sandstorm Filter
+	...
+
+AddActivity = GAScripted
+	PresetName = Scanner Mission
+	PostShader = My Scanner Overlay
+	...
+```
+
+From Lua: `PostProcessMan:SetPostShader("My Scanner Overlay")`, or `""` to go back to the activity's or scene's own. A script's choice lasts until the next activity starts; otherwise the activity's wins over the scene's.
+
+The pass runs on the lit scene in HDR, after the lighting and before exposure, bloom and tonemapping. Use `Base.rte/Shaders/Lighting/Fullscreen.vert` as its vertex shader (it hands over `textureUV`, 0 to 1 from the bottom left). It writes one output, the new scene colour, and is given:
+
+| Uniform | What it is |
+|---|---|
+| `sampler2D rteScene` | The lit scene to redraw (unit 0). Keep its alpha. |
+| `sampler2D rteSceneDepth` | The scene's depth (unit 1). |
+| `float rteForegroundDepth` | Depths below this are the terrain and what is in front of it; above it, the backgrounds and sky. |
+| `vec2 rteScreenSize` | The player screen's size in pixels. |
+| `vec2 rteScreenOrigin` | The scene position of its top left corner, for effects fixed to the world. |
+| `float rteTime` / `float rteStrength` | As for object shaders. |
+
+```glsl
+// A minimal scanner overlay.
+#version 330 core
+in vec2 textureUV;
+out vec4 FragColor;
+uniform sampler2D rteScene;
+uniform vec2 rteScreenSize;
+uniform float rteTime;
+uniform float rteStrength;
+
+void main() {
+	vec4 scene = texture(rteScene, textureUV);
+	float line = 0.5 + 0.5 * sin(textureUV.y * rteScreenSize.y * 0.5 - rteTime * 6.0);
+	vec3 tinted = vec3(dot(scene.rgb, vec3(0.3, 0.59, 0.11))) * vec3(0.4, 1.0, 0.6) * (0.85 + 0.15 * line);
+	FragColor = vec4(mix(scene.rgb, tinted, rteStrength), scene.a);
+}
+```

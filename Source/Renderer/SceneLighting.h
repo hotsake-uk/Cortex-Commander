@@ -226,6 +226,7 @@ namespace RTE {
 		glm::vec2 m_IndirectHistoryOrigin[c_MaxScreens]; //!< Per player screen, the screen origin the history was made at, for reprojection.
 		bool m_IndirectHistoryValid[c_MaxScreens] = {};
 		GLTarget m_HDRScene;
+		GLTarget m_ModPostScene; //!< A copy of the lit scene for a mod's post pass to read (LightingSettings::ModShaders). Made when one is first used.
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
 		static constexpr int c_RCCascadeCount = 5;
