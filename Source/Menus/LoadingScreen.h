@@ -52,9 +52,15 @@ namespace RTE {
 
 		/// Draws the loading splash to the screen.
 		void DrawLoadingSplash();
+
+		/// Gets how many frames the progress report has drawn to the screen, each one presented in full (for the start-up timing report).
+		/// @return The number of frames drawn by LoadingSplashProgressReport.
+		static int GetProgressFramesDrawn() { return s_ProgressFramesDrawn; }
 #pragma endregion
 
 	private:
+		static int s_ProgressFramesDrawn; //!< How many frames the progress report has drawn to the screen.
+
 		std::unique_ptr<Writer> m_LoadingLogWriter; //!< The Writer that generates the loading log.
 
 		BITMAP* m_LoadingSplashBitmap; //!< BITMAP that is used for drawing the splash screen.

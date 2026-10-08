@@ -19,6 +19,8 @@
 
 using namespace RTE;
 
+int LoadingScreen::s_ProgressFramesDrawn = 0;
+
 LoadingScreen::LoadingScreen()  { Clear(); }
 void LoadingScreen::Clear() {
 	m_LoadingLogWriter = nullptr;
@@ -149,6 +151,7 @@ void LoadingScreen::LoadingSplashProgressReport(const std::string& reportString,
 		g_WindowMan.GetScreenBuffer()->Begin();
 		g_LoadingScreen.m_LoadingBackground->Draw(loadingSplashTargetBox, loadingSplashTargetBox);
 		g_WindowMan.UploadFrame();
+		++s_ProgressFramesDrawn;
 	}
 }
 
