@@ -3,20 +3,27 @@
     benchmark_history.csv  one row per course result: when, which run, which build and version, which follower, the course, arrived or
                            not, and the time
     benchmark_summary.csv  one row per run and suite: courses, arrived, success rate, mean time of the arrivals
+    benchmark_versions.csv one row per version (and follower, where one version measured two): every run of that version pooled,
+                           with attempts, arrived, success rate and mean time for each suite in the same columns on every row
 
 Run it any time (python Tools/RenderTest/BenchHistory.py); it reads Results/<label>/<build>/results.csv and git, and writes only the two
-files. The version of a run is the game's version (Source/System/GameVersion.h) of the code it measured: the last commit before the run
+files. With --from-history it reads the committed benchmark_history.csv instead and writes only benchmark_versions.csv, for a
+checkout without the runs' own results. The version of a run is the game's version (Source/System/GameVersion.h) of the code it measured: the last commit before the run
 began, or, for a run of work tested before its commit (a commit within the hour after it began), that commit's version, with
 tested_before_commit = yes. A run's start is its job.json's, or its first log's time less a suite's run.
 
 Columns to graph by: date (or version_order) on the x axis; suite, follower and condition to split series; success_rate and
 mean_seconds to plot. Compare like with like: a suite's course list has changed now and then (courses_in_suite says how many).
+For progress by version, benchmark_versions.csv: version_order on the x axis, a suite's <suite>_success_rate or <suite>_mean_seconds
+on the y; a blank means that version never ran the suite. Versions before per-commit numbering (8.0) all read 7.0.0, so that row
+pools every run of our AI before then; the original AI has a row of its own.
 """
 import csv
 import datetime
 import glob
 import os
 import subprocess
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
@@ -51,6 +58,75 @@ def follower(label, build):
 
 def condition(label):
     return 'no jetpacks' if 'nojet' in label else 'standard'
+
+
+# The suites benchmark_versions.csv has columns for, in this order; a no-jetpack suite gets a "_nojet" group of its own.
+VERSION_SUITES = ['AIGym', 'Sky', 'Tower', 'AIBywater', 'AIHemslock', 'Flight', 'Recover', 'Tower_nojet']
+
+
+def version_key(version):
+    """Sorts versions numerically (8.1.9 before 8.1.13); a version that isn't numbers sorts first."""
+    try:
+        return (1, tuple(int(part) for part in version.split('.')))
+    except ValueError:
+        return (0, (version,))
+
+
+def write_versions(rows):
+    """benchmark_versions.csv: one row per version and follower, every run of it pooled, the same columns on every row."""
+    groups = {}
+    for r in rows:
+        key = (r['version'], r['follower'])
+        g = groups.setdefault(key, {'dates': [], 'runs': set(), 'commits': set(), 'before': set(), 'suites': {}})
+        g['dates'].append(r['date'])
+        g['runs'].add((r['run_label'], r['build']))
+        g['commits'].add(r['commit'])
+        g['before'].add(r['tested_before_commit'])
+        suite = r['suite'] + ('_nojet' if r['condition'] == 'no jetpacks' else '')
+        s = g['suites'].setdefault(suite, {'attempts': 0, 'arrived': 0, 'times': []})
+        s['attempts'] += 1
+        s['arrived'] += int(r['arrived'])
+        if r['seconds']:
+            s['times'].append(float(r['seconds']))
+    # The original AI first, then ours by version; within a version, followers in the order they were first run.
+    keys = sorted(groups, key=lambda k: (k[1] != 'original AI', version_key(k[0]), min(groups[k]['dates'])))
+    versions = []
+    for order, key in enumerate(keys, 1):
+        g = groups[key]
+        row = {
+            'version_order': order,
+            'version': key[0],
+            'follower': key[1],
+            'first_date': min(g['dates']),
+            'last_date': max(g['dates']),
+            'runs': len(g['runs']),
+            'commits': len(g['commits']),
+            'commit_list': ' '.join(sorted(g['commits'])),
+            'tested_before_commit': 'yes' if g['before'] == {'yes'} else 'some' if 'yes' in g['before'] else 'no',
+            'suites_measured': len(g['suites']),
+        }
+        for suite in VERSION_SUITES + sorted(set(g['suites']) - set(VERSION_SUITES)):
+            s = g['suites'].get(suite)
+            row[f'{suite}_attempts'] = s['attempts'] if s else ''
+            row[f'{suite}_arrived'] = s['arrived'] if s else ''
+            row[f'{suite}_success_rate'] = round(s['arrived'] / s['attempts'], 3) if s else ''
+            row[f'{suite}_mean_seconds'] = round(sum(s['times']) / len(s['times']), 1) if s and s['times'] else ''
+        versions.append(row)
+    extra = set().union(*(v.keys() for v in versions)) - set(versions[0].keys())
+    if extra:
+        raise SystemExit(f'Suites with no column in VERSION_SUITES: {sorted(extra)}; add them there.')
+    path = os.path.join(RESULTS, 'benchmark_versions.csv')
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=list(versions[0].keys()))
+        w.writeheader()
+        w.writerows(versions)
+    print(f'{len(versions)} version rows -> {path}')
+
+
+if '--from-history' in sys.argv:
+    with open(os.path.join(RESULTS, 'benchmark_history.csv'), encoding='utf-8-sig') as f:
+        write_versions(list(csv.DictReader(f)))
+    sys.exit()
 
 
 rows = []
@@ -158,3 +234,4 @@ with open(path, 'w', newline='', encoding='utf-8') as f:
     w.writerows(summary)
 print(f'{len(rows)} course results from {len(commits)} runs -> {history}')
 print(f'{len(summary)} run and suite rows -> {path}')
+write_versions(rows)

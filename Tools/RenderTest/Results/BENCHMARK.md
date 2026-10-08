@@ -74,15 +74,22 @@ fair comparison; the later rows are single quick checks (one repeat), so a cours
 
 ### The data, for graphs
 
-`python Tools/RenderTest/BenchHistory.py` rebuilds two files here from every run's `results.csv` (and git, for versions):
+`python Tools/RenderTest/BenchHistory.py` rebuilds three files here from every run's `results.csv` (and git, for versions):
 
 - `benchmark_history.csv`: one row per course attempt: date, run_label, build (`ours` or `base` for the original AI),
   version, commit, tested_before_commit, follower, condition (`standard` or `no jetpacks`), suite, course, repeat, arrived
   (1 or 0), result, seconds.
 - `benchmark_summary.csv`: one row per run and suite (and `All`): version_order (the runs in time order, for an x axis),
   courses_in_suite, repeats, attempts, arrived, success_rate, mean_seconds (of the arrivals).
+- `benchmark_versions.csv`: one row per version (two where a version measured two followers), every run of it pooled, with
+  the same columns on every row: version_order, version, follower, first_date, last_date, runs, commits, suites_measured, then
+  `<suite>_attempts`, `_arrived`, `_success_rate` and `_mean_seconds` for AIGym, Sky, Tower, AIBywater, AIHemslock, Flight,
+  Recover and Tower_nojet (blank where a version never ran that suite). Every version before 8.0 reads 7.0.0, so that row
+  pools all our runs before per-commit numbering; the original AI has its own row first.
+  `python Tools/RenderTest/BenchHistory.py --from-history` rebuilds just this file from `benchmark_history.csv`.
 
-Graph success_rate (or mean_seconds) against date or version_order, one series per follower, faceted by suite. Compare like
+Graph success_rate (or mean_seconds) against date or version_order, one series per follower, faceted by suite; for progress
+by version, plot a suite's `_success_rate` column from `benchmark_versions.csv` against its version_order. Compare like
 with like: courses_in_suite changes when a suite's courses did, and the `fix*`, `ab*` and `flight1`-`17` runs are partial
 runs from tuning. A run tested before its commit carries that commit's version (tested_before_commit = yes); where two
 commits came minutes apart the version can be one out.
