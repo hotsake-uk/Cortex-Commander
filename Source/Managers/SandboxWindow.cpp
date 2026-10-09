@@ -476,16 +476,20 @@ namespace SandboxDetail {
 		if (std::none_of(tabs.begin(), tabs.end(), [](const char* name) { return s_CurrentTab == name; })) {
 			s_CurrentTab = tabs.front();
 		}
-		// Two rows, the first the longer by one when the count is odd. Each button takes an equal share of the width.
-		size_t perRow = (tabs.size() + 1) / 2;
+		// Two rows, the first the longer by one when the count is odd; more when the panel is too narrow for the names to fit. Each button takes an equal
+		// share of the width, so the rows are laid out here, not left to the wrapping of controls that don't fit.
 		float spacing = ImGui::GetStyle().ItemSpacing.x;
-		for (size_t row = 0; row < 2; ++row) {
+		float room = ImGui::GetContentRegionAvail().x;
+		float widest = 0.0F;
+		for (const char* name: tabs) {
+			widest = std::max(widest, ImGui::CalcTextSize(name).x + ImGui::GetStyle().FramePadding.x * 2.0F);
+		}
+		size_t fits = std::max<size_t>(1, static_cast<size_t>((room + spacing) / (widest + spacing)));
+		size_t perRow = std::min((tabs.size() + 1) / 2, fits);
+		for (size_t row = 0; row * perRow < tabs.size(); ++row) {
 			size_t first = row * perRow;
 			size_t last = std::min(tabs.size(), first + perRow);
-			if (first >= last) {
-				break;
-			}
-			float width = (ImGui::GetContentRegionAvail().x - spacing * static_cast<float>(perRow - 1)) / static_cast<float>(perRow);
+			float width = std::floor((room - spacing * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
 			for (size_t i = first; i < last; ++i) {
 				if (i > first) {
 					ImGui::SameLine();
