@@ -358,6 +358,7 @@ namespace SandboxDetail {
 		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
 		std::string Kind; //!< A subcategory to list by: for units "Infantry", "Mecha", "Turrets"; for items "Primary weapons", "Grenades", "Tools"...
 		bool Modded = false; //!< From a module that isn't one of the game's own.
+		bool Jetpack = false; //!< Units: it has a jetpack it can fly with (one with some jet time).
 		int Width = 0; //!< Structures: footprint, for the preview.
 		int Height = 0;
 		float OffsetX = 0.0F;
@@ -402,6 +403,7 @@ namespace SandboxDetail {
 		std::vector<int> Factions; //!< The module IDs of the factions its units come from; none for any faction.
 		bool FavouritesOnly = false; //!< Only units marked as favourites (of those factions); any, when none are.
 		bool Crabs = false; //!< Crabs among them (ACrab: crabs, and the tanks and walkers built on them). Off by default.
+		bool JetpackOnly = false; //!< Only units with a jetpack.
 		BattleStyle Style = BattleStyle::Attack;
 		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
 		int Budget = 5000; //!< What it may spend in all, in oz.
@@ -504,6 +506,7 @@ namespace SandboxDetail {
 		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
 		bool Random = false; //!< Drops: random units from every faction rather than the one chosen.
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
+		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
@@ -625,6 +628,7 @@ namespace SandboxDetail {
 	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;
+	inline bool s_JetpackOnly = false; //!< The Spawn tab's "Jetpacks only": units without one aren't listed, or picked for random drops.
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
@@ -1491,6 +1495,11 @@ namespace SandboxDetail {
 	void KeepCraftWhole(ACraft* ship);
 	void SpawnUnits(const Stroke& stroke, bool brain);
 	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly);
+
+	/// Takes the units without a jetpack out of a pool to pick from.
+	inline void DropJetless(std::vector<const Preset*>& pool) {
+		std::erase_if(pool, [](const Preset* unit) { return !unit->Jetpack; });
+	}
 	const Preset* RandomPick(const std::vector<const Preset*>& pool);
 	void DropSquad(const Stroke& stroke);
 	void SpawnItem(const Stroke& stroke);
