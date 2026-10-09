@@ -460,6 +460,7 @@ namespace SandboxDetail {
 
 	/// A Battle Director unit told to defend a place: it holds a post there and goes after enemies near it, but only so far (UpdateBattleDefenders).
 	struct BattleDefender {
+		int Team = 0; //!< Its team, whose card's place, radius and chase distance it goes by while the team still defends one.
 		Vector Center; //!< The place it defends.
 		float Radius = 150.0F;
 		float Chase = 300.0F; //!< How far past Radius from Center it may go after an enemy.

@@ -75,22 +75,61 @@ namespace SandboxDetail {
 
 		/// Gives a unit just bought its post in the place its team defends: somewhere on the ground inside the radius. It walks there once its
 		/// ship has let it out, and from then on UpdateBattleDefenders sends it after enemies near the place and back again.
-		void DefendPlace(Actor* unit, const BattleSettings& settings) {
+		/// A post somewhere on the ground inside a defended place's radius.
+		Vector PostIn(const BattleSettings& settings) {
 			float radius = static_cast<float>(std::max(settings.DefendRadius, 1));
 			Vector around = settings.DefendPos + Vector((Random01() * 2.0F - 1.0F) * radius * 0.6F, 0.0F);
 			g_SceneMan.WrapPosition(around);
 			std::vector<Vector> spots = StandingSpots(around, 1);
-			Vector post = spots.empty() ? settings.DefendPos : spots.front();
+			return spots.empty() ? settings.DefendPos : spots.front();
+		}
+
+		/// The place, radius and chase distance a defender goes by: its team card's as they are now, so a change on the card reaches the
+		/// units already in (they kept what the card said when they were bought: chase distance lowered, they still chased as far as before).
+		void FollowCard(BattleDefender& defender) {
+			if (defender.Team < 0 || defender.Team >= c_Sides || !Defends(s_BattleTeams[defender.Team].Settings)) {
+				return;
+			}
+			const BattleSettings& settings = s_BattleTeams[defender.Team].Settings;
+			defender.Radius = static_cast<float>(std::max(settings.DefendRadius, 1));
+			defender.Chase = static_cast<float>(std::max(settings.ChaseDistance, 0));
+			if (!g_SceneMan.ShortestDistance(defender.Center, settings.DefendPos, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F)) {
+				// The place moved: a post in the new one.
+				defender.Center = settings.DefendPos;
+				defender.Post = PostIn(settings);
+			}
+		}
+
+		/// Gives a unit just bought its post in the place its team defends: somewhere on the ground inside the radius. It walks there once its
+		/// ship has let it out, and from then on UpdateBattleDefenders sends it after enemies near the place and back again.
+		void DefendPlace(Actor* unit, const BattleSettings& settings) {
+			Vector post = PostIn(settings);
 			unit->ClearAIWaypoints();
 			unit->AddAISceneWaypoint(post);
 			unit->SetAIMode(Actor::AIMODE_GOTO);
 			unit->SetOrderPost(post);
 			BattleDefender& defender = s_BattleDefenders[unit->GetUniqueID()];
+			defender.Team = unit->GetTeam();
 			defender.Center = settings.DefendPos;
-			defender.Radius = radius;
+			defender.Radius = static_cast<float>(std::max(settings.DefendRadius, 1));
 			defender.Chase = static_cast<float>(std::max(settings.ChaseDistance, 0));
 			defender.Post = post;
 			defender.Made = g_TimerMan.GetSimUpdateCount();
+		}
+
+		/// Whether a defender is at its post or on its way back to it, as UpdateBattleDefenders last sent it: its post kept, no attack order, and
+		/// not walking anywhere else. Its own AI can put an attack back on it after (a flank or a fall-back started mid-chase puts back the
+		/// order it had then), which this sees.
+		bool HeadingForPost(const Actor* unit, const BattleDefender& defender) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			// (Its post the one it has now: the place may have been moved on the card since.)
+			if (!unit->GetOrderHasPost() || unit->GetOrderAttack() || !g_SceneMan.ShortestDistance(unit->GetOrderPost(), defender.Post, wraps).MagnitudeIsLessThan(60.0F)) {
+				return false;
+			}
+			if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
+				return !unit->GetMOMoveTarget() && g_SceneMan.ShortestDistance(unit->GetLastAIWaypoint(), defender.Post, wraps).MagnitudeIsLessThan(60.0F);
+			}
+			return true;
 		}
 
 		/// Starts a team sending ships: afresh (nothing spent or sent yet), or carrying on where it stopped unless it had run out of money.
@@ -227,7 +266,9 @@ namespace SandboxDetail {
 
 	/// The defenders of a place go after enemies near it, but only so far: an enemy within the defend radius and chase distance of the place
 	/// is gone after, while the defender itself is within that of the place; with none, or once it has strayed past that, it goes back to its
-	/// post, where it stands and fights from (ReturnDefenders sees it settled there). Every half second.
+	/// post, where it stands and fights from (ReturnDefenders sees it settled there). Every half second, by the team card as it is now.
+	/// (It was sent back once, when its chase ended, and never looked at again: one whose AI took the attack up again after, or that went off
+	/// after enemies of its own accord, kept going till it died. Now any defender not chasing and not heading for its post is sent back.)
 	void UpdateBattleDefenders() {
 		if (s_BattleDefenders.empty()) {
 			return;
@@ -261,6 +302,7 @@ namespace SandboxDetail {
 				++entry;
 				continue;
 			}
+			FollowCard(defender);
 			const float reach = defender.Radius + defender.Chase;
 			Actor* enemy = nullptr;
 			if (g_SceneMan.ShortestDistance(defender.Center, unit->GetPos(), wraps).MagnitudeIsLessThan(reach)) {
@@ -281,7 +323,7 @@ namespace SandboxDetail {
 					defender.ChasingID = static_cast<long>(enemy->GetUniqueID());
 					SendUnit(unit, enemy->GetPos(), enemy, true, "defending: after an enemy", false, true);
 				}
-			} else if (defender.ChasingID != 0) {
+			} else if (defender.ChasingID != 0 || !HeadingForPost(unit, defender)) {
 				defender.ChasingID = 0;
 				SendUnit(unit, defender.Post, nullptr, false, "defending: back to its post", false, true);
 				unit->SetOrderPost(defender.Post);
