@@ -188,7 +188,9 @@ namespace SandboxDetail {
 		Steam,
 		// More plants (appended, so the tools before keep their numbers): the base game's mushrooms, and trees drawn for the sandbox (Tools/MakeTreeSprites.py).
 		Mushrooms,
-		Trees
+		Trees,
+		// Appended, so the tools before keep their numbers.
+		TreeTrunk //!< The base game's "Tree Trunk": wood, darker, like a tree's.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -303,6 +305,7 @@ namespace SandboxDetail {
 	    {Tool::Trees, "Trees", 0.03F, true},
 	    {Tool::Methane, "Methane", 0.06F, true},
 	    {Tool::Steam, "Steam", 0.06F, true},
+	    {Tool::TreeTrunk, "Tree trunk", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -324,6 +327,7 @@ namespace SandboxDetail {
 			case Tool::Ice:
 			case Tool::Grass:
 			case Tool::Wood:
+			case Tool::TreeTrunk:
 			case Tool::Concrete:
 			case Tool::Stone:
 			case Tool::DenseEarth:
@@ -390,7 +394,7 @@ namespace SandboxDetail {
 	constexpr float c_GoldEarthShare = 0.06F;
 
 	/// The base game's ground materials offered under "More terrain..." (those a game doesn't have are left out).
-	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
+	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Tree Trunk", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
 
 	/// The Paint tab's tools (its brushes, loose things, springs and terrain): with one in hand the right button digs (see Sandbox::DrawGUI).
 	inline bool IsPaintTool(Tool kind) { return c_Tools[ToolIndex(kind)].UsesRadius; }

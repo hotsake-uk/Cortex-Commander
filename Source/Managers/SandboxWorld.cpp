@@ -293,6 +293,8 @@ namespace SandboxDetail {
 				return "Grass";
 			case Tool::Wood:
 				return "Wood";
+			case Tool::TreeTrunk:
+				return "Tree Trunk";
 			case Tool::Concrete:
 				return "Concrete";
 			case Tool::Stone:
@@ -1221,6 +1223,7 @@ namespace SandboxDetail {
 					case Tool::Ice:
 					case Tool::Grass:
 					case Tool::Wood:
+					case Tool::TreeTrunk:
 					case Tool::Concrete:
 					case Tool::Stone:
 					case Tool::DenseEarth:
@@ -1607,6 +1610,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::Wood:
 				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape);
+				break;
+			case Tool::TreeTrunk:
+				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape);
 				break;
 			case Tool::Concrete:
 				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);
