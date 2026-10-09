@@ -1136,6 +1136,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MovableObject) {
 	    .def("RemoveObjectValue", &MovableObject::RemoveObjectValue)
 	    .def("StringValueExists", &MovableObject::StringValueExists)
 	    .def("NumberValueExists", &MovableObject::NumberValueExists)
+	    .def("GetPublishedNumberValue", &MovableObject::GetPublishedNumberValue)
+	    .def("PublishedNumberValueExists", &MovableObject::PublishedNumberValueExists)
 	    .def("ObjectValueExists", &MovableObject::ObjectValueExists)
 	    .def("GetAltitude", &MovableObject::GetAltitude)
 	    .def("GetWhichMOToNotHit", &MovableObject::GetWhichMOToNotHit)

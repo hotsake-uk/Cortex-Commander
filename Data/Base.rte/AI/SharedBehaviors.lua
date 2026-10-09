@@ -723,14 +723,14 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 			and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
 			local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
 			if Dist:MagnitudeIsLessThan(400) then
-				if Mate:NumberValueExists("AITargetID") then
-					local id = Mate:GetNumberValue("AITargetID");
+				if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
+					local id = SharedBehaviors.PeerValue(Mate, "AITargetID");
 					targetedBy[id] = (targetedBy[id] or 0) + 1;
 					if Target and id == Target.UniqueID and (not pairedWith or Mate.UniqueID < pairedWith) then
 						pairedWith = Mate.UniqueID;
 					end
 				end
-				if Mate:NumberValueExists("AIContactMS") and now - Mate:GetNumberValue("AIContactMS") < 5000 then
+				if SharedBehaviors.PeerValueExists(Mate, "AIContactMS") and now - SharedBehaviors.PeerValue(Mate, "AIContactMS") < 5000 then
 					squadContact = true;
 				end
 				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
@@ -2597,10 +2597,10 @@ end
 
 -- Medics (AC-7). Whether a unit can patch up others: one carrying a medikit, or a medic drone (which heals all round it), still standing.
 -- (Another unit's inventory is not looked through: each AI runs on a worker thread of its own and changes its own inventory as it goes, so
--- a unit with a kit says so in a number value of its own, see AdvertiseMedikit, and number values are safe to read across threads.)
+-- a unit with a kit says so in a number value of its own, see AdvertiseMedikit, read as published, see PeerValue.)
 function SharedBehaviors.IsMedic(Act)
 	-- (People and crabs only: a craft carrying a kit in its hold is no medic.)
-	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and Act:GetNumberValue("AIHasMedikit") == 1));
+	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and SharedBehaviors.PeerValue(Act, "AIHasMedikit") == 1));
 end
 
 -- Says, on the unit itself, whether it carries a medikit (see IsMedic), once a second.
@@ -2638,13 +2638,9 @@ function SharedBehaviors.FindPatient(Owner)
 			and (IsAHuman(Act) or IsACrab(Act)) then
 			local share = Act.Health / Act.MaxHealth;
 			if share < bestShare then
-				local range = Act:GetNumberValue("AIRetreat") == 2 and 1200 or 400;
-				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) then
-					local by = Act:NumberValueExists("AIMedicBy") and Act:GetNumberValue("AIMedicBy") or 0;
-					local Other = by ~= 0 and by ~= Owner.UniqueID and MovableMan:FindObjectByUniqueID(by) or nil;
-					if not (Other and IsActor(Other) and ToActor(Other):NumberValueExists("AIMedic")) then
-						Best, bestShare = Act, share;
-					end
+				local range = SharedBehaviors.PeerValue(Act, "AIRetreat") == 2 and 1200 or 400;
+				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) and not SharedBehaviors.MedicSeeingTo(Act, Owner.UniqueID) then
+					Best, bestShare = Act, share;
 				end
 			end
 		end
@@ -2792,6 +2788,43 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 		AI.Flank = nil;
 		AI.FlankRestTimer = Timer();
 	end
+end
+
+-- Another unit's number values, for the AI: as they were published at the start of this update (MovableObject:GetPublishedNumberValue).
+-- Each unit's AI runs on a worker thread of its own and changes its own values as it goes, so another unit's live values are never read
+-- here, and no unit's are ever written but its own. (Its live ones for an older exe without the published copy.)
+local HasPublishedCached = nil;
+local function HasPublished(Act)
+	if HasPublishedCached == nil then
+		local ok, value = pcall(function() return Act.GetPublishedNumberValue; end);
+		HasPublishedCached = ok and value ~= nil;
+	end
+	return HasPublishedCached;
+end
+function SharedBehaviors.PeerValue(Act, key)
+	if HasPublished(Act) then
+		return Act:GetPublishedNumberValue(key);
+	end
+	return Act:GetNumberValue(key);
+end
+function SharedBehaviors.PeerValueExists(Act, key)
+	if HasPublished(Act) then
+		return Act:PublishedNumberValueExists(key);
+	end
+	return Act:NumberValueExists(key);
+end
+
+-- The medic of a unit's team seeing to it, other than the one given: a medic says which friend it is going to on itself ("AIMedicFor"),
+-- and of two that went for the same friend on the same update the one with the lower unique ID keeps it. @return The medic's unique ID, or nil.
+function SharedBehaviors.MedicSeeingTo(Act, exceptID)
+	local best;
+	for Medic in MovableMan.Actors do
+		if Medic.Team == Act.Team and Medic.UniqueID ~= exceptID and Medic.Status < Actor.DYING and SharedBehaviors.PeerValue(Medic, "AIMedicFor") == Act.UniqueID
+			and (not best or Medic.UniqueID < best) then
+			best = Medic.UniqueID;
+		end
+	end
+	return best;
 end
 
 -- Whether the engine's team memory (AC-2: SceneMan.ReportEnemy and the rest) is there, for a build without it (an older exe).

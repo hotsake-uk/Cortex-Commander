@@ -1401,6 +1401,11 @@ void MovableMan::Update() {
 	m_ActorsSeeFuture.wait();
 	// Nothing else runs now, and the AI threads read the ladders below.
 	AHuman::RefreshLadderNodes();
+	// Nor any script: the units' values as they stand, for the AI scripts on other threads to read this update (GetPublishedNumberValue) while
+	// each unit's own script changes its live ones.
+	for (Actor* actor: m_Actors) {
+		actor->PublishNumberValues();
+	}
 
 	// ---TEMP ---
 	// These are here for multithreaded AI, but will be unnecessary when multithreaded-sim-and-render is in!
