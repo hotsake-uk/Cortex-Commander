@@ -665,7 +665,7 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !io.WantTextInput && (CurrentTool().Kind == Tool::BattleSpawnZone || IsModeZoneTool(CurrentTool().Kind)) && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
 		s_ZoneDraft.pop_back();
 	}
-	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
+	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
 		QueueSimChange(Tool::UndoTerrain);
@@ -1054,6 +1054,7 @@ void Sandbox::DrawGUI() {
 				} else if (kind == Tool::Structure) {
 					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
+				UndoButton();
 				EndSandboxTab();
 			}
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
@@ -1086,6 +1087,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
 				ImGui::TextDisabled("Doors and turrets belong to:");
 				SideChooser();
+				UndoButton();
 				ImGui::Separator();
 				if (ToolUI::Button("The game's own build menu", ImVec2(-1.0F, 0.0F))) {
 					// Placing through the game's build menu instead. Choose Done in its pie menu (or press Tab) to come back.
@@ -1298,12 +1300,7 @@ void Sandbox::DrawGUI() {
 				ImGui::RadioButton("Spray", &shape, 2);
 				s_BrushShape = static_cast<BrushShape>(shape);
 				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, a square as wide as the brush, or a soft spray that scatters it over the circle, thickest in the middle, building up while held.");
-				ImGui::BeginDisabled(s_PaintUndo.empty());
-				if (ToolUI::Button("Undo terrain")) {
-					QueueSimChange(Tool::UndoTerrain);
-				}
-				ImGui::EndDisabled();
-				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time, up to about 8 million pixels in all: the oldest go first, and a stroke held for more than a few seconds is undone in parts.");
+				UndoButton();
 				EndSandboxTab();
 			}
 			if (SandboxTab("Boom")) {

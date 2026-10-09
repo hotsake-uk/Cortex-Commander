@@ -48,24 +48,35 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// Lets the oldest steps of the undo history go, to keep it to c_PaintUndoSteps steps and c_PaintUndoPixels pixels.
+	void TrimUndo() {
+		size_t pixelsKept = 0;
+		for (const PaintUndoStep& kept: s_PaintUndo) {
+			pixelsKept += kept.Pixels.size() + kept.Background.size();
+		}
+		while (s_PaintUndo.size() > 1 && (s_PaintUndo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
+			pixelsKept -= s_PaintUndo.front().Pixels.size() + s_PaintUndo.front().Background.size();
+			s_PaintUndo.pop_front();
+		}
+	}
+
+	/// Starts a new step of the undo history.
+	void PushUndoStep() {
+		ClosePaintUndoStep(true);
+		s_PaintUndo.emplace_back();
+		s_PaintUndo.back().LastUpdate = g_TimerMan.GetSimUpdateCount();
+	}
+
 	/// Keeps a pixel as it is, before a paint or build stroke changes it, for the undo.
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y) {
 		if (!s_RecordPaint || x < 0 || y < 0 || x > 0xFFFF || y > 0xFFFF) {
 			return;
 		}
 		long long update = g_TimerMan.GetSimUpdateCount();
-		// A new step for a new stroke, or when this stroke's step is full.
-		if (s_PaintUndo.empty() || update - s_PaintUndo.back().LastUpdate > 15 || s_PaintUndo.back().Pixels.size() >= c_PaintUndoPixelsPerStep) {
-			ClosePaintUndoStep(true);
-			s_PaintUndo.emplace_back();
-			size_t pixelsKept = 0;
-			for (const PaintUndoStep& kept: s_PaintUndo) {
-				pixelsKept += kept.Pixels.size();
-			}
-			while (s_PaintUndo.size() > 1 && (s_PaintUndo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
-				pixelsKept -= s_PaintUndo.front().Pixels.size();
-				s_PaintUndo.pop_front();
-			}
+		// A new step for a new stroke, after a placing click, or when this stroke's step is full.
+		if (s_PaintUndo.empty() || s_PaintUndo.back().Sealed || update - s_PaintUndo.back().LastUpdate > 15 || s_PaintUndo.back().Pixels.size() >= c_PaintUndoPixelsPerStep) {
+			PushUndoStep();
+			TrimUndo();
 		}
 		PaintUndoStep& step = s_PaintUndo.back();
 		step.LastUpdate = update;
@@ -79,28 +90,79 @@ namespace SandboxDetail {
 		step.Bottom = std::max(step.Bottom, y);
 	}
 
-	/// Puts back what the last paint or build stroke changed, as any change to the terrain is made: the pathfinder and the lighting told,
-	/// hanging ground and liquid round it woken.
+	/// Notes something a placing click made, for the undo to take away again.
+	void NotePlaced(const MovableObject* object) {
+		if (s_RecordPlaced && object && !s_PaintUndo.empty() && !s_PaintUndo.back().Sealed) {
+			s_PaintUndo.back().Placed.push_back(object->GetUniqueID());
+		}
+	}
+
+	/// Keeps the ground a bunker piece will be drawn over, foreground, material and background, for the undo.
+	void RecordTerrainObjectArea(const TerrainObject& piece) {
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain || s_PaintUndo.empty()) {
+			return;
+		}
+		Vector corner = (piece.GetPos() + piece.GetBitmapOffset()).GetFloored();
+		for (int dy = 0; dy < piece.GetBitmapHeight(); ++dy) {
+			for (int dx = 0; dx < piece.GetBitmapWidth(); ++dx) {
+				int x = corner.GetFloorIntX() + dx;
+				int y = corner.GetFloorIntY() + dy;
+				g_SceneMan.WrapPosition(x, y);
+				if (x < 0 || y < 0 || x >= terrain->GetWidth() || y >= terrain->GetHeight() || x > 0xFFFF || y > 0xFFFF) {
+					continue;
+				}
+				size_t before = s_PaintUndo.back().Pixels.size();
+				RecordPaintPixel(terrain, x, y);
+				// (Only the first time this step sees the pixel, as for the foreground.)
+				if (s_PaintUndo.back().Pixels.size() > before) {
+					s_PaintUndo.back().Background.push_back({static_cast<unsigned short>(x), static_cast<unsigned short>(y), static_cast<unsigned char>(terrain->GetBGColorPixel(x, y))});
+				}
+			}
+		}
+	}
+
+	/// Takes back the newest step of the undo history. A paint step's ground is put back as any change to the terrain is made: the
+	/// pathfinder and the lighting told, hanging ground and liquid round it woken. A placing step's units, craft and things are taken away
+	/// (not your character, nor the unit you are in, nor a thing a unit has picked up since), and its colony building forgotten.
 	void UndoPaint() {
-		while (!s_PaintUndo.empty() && s_PaintUndo.back().Pixels.empty()) {
+		while (!s_PaintUndo.empty() && s_PaintUndo.back().Empty()) {
 			s_PaintUndo.pop_back();
 		}
 		if (s_PaintUndo.empty() || !g_SceneMan.GetScene()) {
 			return;
 		}
-		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		const PaintUndoStep& step = s_PaintUndo.back();
-		Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
-		Vector center = area.GetCenter();
-		float reach = static_cast<float>(std::max(area.GetWidth(), area.GetHeight())) * 0.75F;
-		// (Undoing a paint takes ground away, which can leave what is over it hanging, as a dig does.)
-		TerrainCollapse::BeginChange(center, reach + 30.0F);
-		for (auto pixel = step.Pixels.rbegin(); pixel != step.Pixels.rend(); ++pixel) {
-			terrain->SetMaterialPixel(pixel->X, pixel->Y, pixel->Material);
-			terrain->SetFGColorPixel(pixel->X, pixel->Y, pixel->Color);
+		for (long id: step.Placed) {
+			MovableObject* object = g_MovableMan.FindObjectByUniqueID(id);
+			if (!object || object->IsSetToDelete() || object->GetRootParent() != object) {
+				continue;
+			}
+			if (object == s_Possessed || object == GetRef(s_PlayerUnit)) {
+				continue;
+			}
+			object->SetToDelete(true);
 		}
-		terrain->AddUpdatedMaterialArea(area);
-		FluidSim::Disturb(center, reach + 2.0F);
+		if (step.ColonyBuilding >= 0) {
+			Colony::Remove(step.ColonyBuilding);
+		}
+		if (!step.Pixels.empty()) {
+			SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+			Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
+			Vector center = area.GetCenter();
+			float reach = static_cast<float>(std::max(area.GetWidth(), area.GetHeight())) * 0.75F;
+			// (Undoing a paint takes ground away, which can leave what is over it hanging, as a dig does.)
+			TerrainCollapse::BeginChange(center, reach + 30.0F);
+			for (auto pixel = step.Pixels.rbegin(); pixel != step.Pixels.rend(); ++pixel) {
+				terrain->SetMaterialPixel(pixel->X, pixel->Y, pixel->Material);
+				terrain->SetFGColorPixel(pixel->X, pixel->Y, pixel->Color);
+			}
+			for (const UndoBackgroundPixel& pixel: step.Background) {
+				terrain->SetBGColorPixel(pixel.X, pixel.Y, pixel.Color);
+			}
+			terrain->AddUpdatedMaterialArea(area);
+			FluidSim::Disturb(center, reach + 2.0F);
+		}
 		s_PaintUndo.pop_back();
 	}
 
@@ -923,6 +985,7 @@ namespace SandboxDetail {
 		if (invincible) {
 			KeepCraftWhole(ship);
 		}
+		NotePlaced(ship);
 		g_MovableMan.AddActor(ship);
 		return cost;
 	}
@@ -957,6 +1020,7 @@ namespace SandboxDetail {
 			// (Facing the middle of the view as it was at the click: read from the camera here, in the sim, a replay faced them by
 			// wherever the view happened to be.)
 			actor->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
+			NotePlaced(actor);
 			g_MovableMan.AddActor(actor);
 			GiveOrder(actor, brain ? Order::Hold : stroke.Orders);
 		}
@@ -1004,6 +1068,8 @@ namespace SandboxDetail {
 		for (int i = 0; i < stroke.Count; ++i) {
 			const Preset* pick = stroke.Random ? RandomPick(pool) : preset;
 			if (Actor* unit = pick ? CreateUnit(*pick, stroke.Team, stroke.Loadout, stroke.Orders) : nullptr) {
+				// (Each noted as well as the craft: once out of it, taking the craft away leaves them.)
+				NotePlaced(unit);
 				units.push_back(unit);
 			}
 		}
@@ -1022,6 +1088,7 @@ namespace SandboxDetail {
 				explosive->Activate();
 			}
 		}
+		NotePlaced(item);
 		AddObject(item);
 	}
 
@@ -1059,6 +1126,11 @@ namespace SandboxDetail {
 				placedActor->SetNumberValue("SandboxPlaced", 1.0);
 			}
 		}
+		if (const MovableObject* movable = dynamic_cast<MovableObject*>(object)) {
+			NotePlaced(movable);
+		} else if (const TerrainObject* piece = dynamic_cast<TerrainObject*>(object)) {
+			RecordTerrainObjectArea(*piece);
+		}
 		g_SceneMan.AddSceneObject(object);
 	}
 
@@ -1093,12 +1165,38 @@ namespace SandboxDetail {
 					case Tool::BuildTank:
 						s_RecordPaint = true;
 						break;
+					// A placing click is a step of its own: what it makes, and the ground a bunker piece or building draws over.
+					case Tool::Structure:
+					case Tool::Barracks:
+					case Tool::Extractor:
+						s_RecordPaint = true;
+						[[fallthrough]];
+					case Tool::Unit:
+					case Tool::Brain:
+					case Tool::Item:
+					case Tool::Drop:
+						s_RecordPlaced = true;
+						PushUndoStep();
+						break;
 					default:
 						s_RecordPaint = false;
 						break;
 				}
 			}
-			~RecordingPaint() { s_RecordPaint = false; }
+			~RecordingPaint() {
+				if (s_RecordPlaced && !s_PaintUndo.empty()) {
+					s_PaintUndo.back().Sealed = true;
+					ClosePaintUndoStep(true);
+					// (Trimmed only now, so a click that made nothing doesn't push the oldest step out.)
+					if (s_PaintUndo.back().Empty()) {
+						s_PaintUndo.pop_back();
+					} else {
+						TrimUndo();
+					}
+				}
+				s_RecordPaint = false;
+				s_RecordPlaced = false;
+			}
 		} recordingPaint(stroke.Kind);
 		if (stroke.Fill >= 0 && IsTerrainBrush(stroke.Kind)) {
 			FillTerrainShape(stroke);
@@ -1118,12 +1216,17 @@ namespace SandboxDetail {
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
 					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
-					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count);
+					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count);
+					if (!s_PaintUndo.empty()) {
+						s_PaintUndo.back().ColonyBuilding = built;
+					}
 				}
 				break;
 			case Tool::Extractor:
 				ActivateSide(stroke.Team);
-				Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1);
+				if (int built = Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
+					s_PaintUndo.back().ColonyBuilding = built;
+				}
 				break;
 			case Tool::PlayerRemake:
 				if (Actor* old = GetRef(s_PlayerUnit)) {
