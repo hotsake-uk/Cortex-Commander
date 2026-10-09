@@ -2947,6 +2947,16 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("Shift with any order adds it to the selected units' plans: they carry out each when the one before is over\n(a move when they get there, an attack when the enemy is dead). Defend with Shift held ends the plan holding ground.\nA right click on a numbered marker drops that step.");
 			ImGui::SameLine();
 			ImGui::BeginDisabled(alive == 0);
+			if (ToolUI::SmallButton("Clear all orders")) {
+				Stroke stroke;
+				stroke.Kind = Tool::OrderSelected;
+				stroke.Count = 121;
+				s_Queue.push_back(stroke);
+			}
+			ImGui::SetItemTooltip("Every order the selected units have, forgotten: where they were going, what they were after, what they defend or guard,\ntheir plans and patrols, a battle mode's job for them. They stand where they are and fight back from there.\n(Cancel instead puts them back on their side's standing orders.)");
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(alive == 0);
 			if (ToolUI::SmallButton("Follow")) {
 				s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
 				s_FollowAction = false;
