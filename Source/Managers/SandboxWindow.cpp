@@ -640,11 +640,13 @@ namespace SandboxDetail {
 		return false;
 	}
 
-	void PictureGrid(Tool kind, const char* group) {
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto) {
 		LoadFavouritesFile();
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
-		char* filter = FilterFor(kind, true);
+		// A picker keeps its search and filters apart from the tool's, under the character's tool.
+		Tool filterKey = pickInto ? Tool::PlayCharacter : kind;
+		char* filter = FilterFor(filterKey, true);
 		ImGui::SetNextItemWidth(-1.0F);
 		ImGui::InputTextWithHint("##filter", "Search...", filter, 64);
 		// Narrowing the list: by subcategory (not for structures, whose own Kind combo does that), by mod, and whether mods are listed at all.
@@ -681,18 +683,20 @@ namespace SandboxDetail {
 			if (kind != Tool::Structure) {
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(third);
-				ChoiceCombo("##kind", s_KindFilter[kind], kinds);
+				ChoiceCombo("##kind", s_KindFilter[filterKey], kinds);
 				ImGui::SetItemTooltip("The kind of thing listed.");
 			}
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(third);
-			ChoiceCombo("##mod", s_ModFilter[kind], mods);
+			ChoiceCombo("##mod", s_ModFilter[filterKey], mods);
 			ImGui::SetItemTooltip("Only things from this module (faction or mod).");
 		}
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float cell = ImGui::GetFontSize() * 6.0F;
 		float labelHeight = ImGui::GetTextLineHeight() * 2.0F;
-		ImGui::BeginChild("##pictures", ImVec2(-1.0F, std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F)), ImGuiChildFlags_Borders);
+		// A picker sits among other settings, so it keeps to a few rows rather than filling the rest of the window.
+		float height = pickInto ? (cell + labelHeight + style.ItemSpacing.y) * 2.6F : std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F);
+		ImGui::BeginChild("##pictures", ImVec2(-1.0F, height), ImGuiChildFlags_Borders);
 		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
 		int shown = 0;
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -701,7 +705,7 @@ namespace SandboxDetail {
 			if (!ContainsIgnoringCase(preset.Label, filter) || (group && preset.Group != group)) {
 				continue;
 			}
-			if ((!s_ShowModded && preset.Modded) || (!s_KindFilter[kind].empty() && preset.Kind != s_KindFilter[kind]) || (!s_ModFilter[kind].empty() && preset.Module != s_ModFilter[kind])) {
+			if ((!s_ShowModded && preset.Modded) || (!s_KindFilter[filterKey].empty() && preset.Kind != s_KindFilter[filterKey]) || (!s_ModFilter[filterKey].empty() && preset.Module != s_ModFilter[filterKey])) {
 				continue;
 			}
 			if (s_FavouritesOnly && FindFavourite(kind, preset.PresetName) < 0) {
@@ -717,7 +721,7 @@ namespace SandboxDetail {
 			bool hovered = ImGui::IsItemHovered();
 			// Only the ones on screen have their pictures made.
 			if (ImGui::IsItemVisible()) {
-				bool selected = i == choice;
+				bool selected = pickInto ? preset.PresetName == *pickInto : i == choice;
 				// In the colours of the game's own menu skin: navy cells, the picked one lit with a gold edge.
 				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well);
 				drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), selected ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, selected ? 2.0F : 1.0F);
@@ -741,15 +745,17 @@ namespace SandboxDetail {
 			}
 			if (hovered) {
 				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
-				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() ? "\nRight click: keep it on the bar, or take it off" : "");
+				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() && !pickInto ? "\nRight click: keep it on the bar, or take it off" : "");
 			}
 			if (picked && ImGui::GetIO().KeyCtrl) {
 				ToggleFavourite(kind, preset.PresetName);
+			} else if (picked && pickInto) {
+				*pickInto = preset.PresetName;
 			} else if (picked) {
 				choice = i;
 				TookTool(ToolIndex(kind));
 			}
-			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode() && !pickInto) {
 				TogglePin(kind, preset.PresetName);
 			}
 			if (ImGui::IsItemVisible() && FindPin(kind, preset.PresetName) >= 0) {

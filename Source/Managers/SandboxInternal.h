@@ -564,6 +564,7 @@ namespace SandboxDetail {
 		bool FlyKey = true; //!< N switches flying through anything on and off.
 		bool EnterOnClose = true; //!< There is a character at all: putting the tools away puts you in it. Off, you only ever look around.
 		bool Neutral = false; //!< On no side as far as the AI goes: its units take no notice of the character.
+		bool InheritKit = false; //!< Whether the character also carries what a unit of its base class (Body) is spawned with, besides the kit.
 	};
 	inline PlayerSetup s_Player;
 	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
@@ -1429,7 +1430,9 @@ namespace SandboxDetail {
 	void PaletteColor(int index, unsigned char* rgb);
 	const PiecePicture& PictureOf(const Preset& preset);
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
-	void PictureGrid(Tool kind, const char* group);
+	/// The picture browser of a list, as on the Spawn tab. @param pickInto If given, a click sets this to the preset name picked (and that
+	/// one is shown as chosen) instead of taking up the tool, with search and filters of its own.
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto = nullptr);
 	void FormationCombo(const char* id);
 	void DrawOrderFeedback();
 	void DrawMinimap();
