@@ -752,6 +752,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
+		Tip("Every map has hard left and right edges and one copy of the world, instead of looping round. Takes effect when the next map loads.");
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");

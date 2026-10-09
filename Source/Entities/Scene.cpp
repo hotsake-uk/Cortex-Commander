@@ -469,6 +469,10 @@ int Scene::Create(const Scene& reference) {
 int Scene::LoadData(bool placeObjects, bool initPathfinding, bool placeUnits) {
 	RTEAssert(m_pTerrain, "Terrain not instantiated before trying to load its data!");
 
+	if (g_SettingsMan.NoSceneWrap()) {
+		m_pTerrain->ForceNoWrapX(m_pTerrain->WrapsX());
+	}
+
 	///////////////////////////////////
 	// Load Terrain's data
 	if (m_pTerrain->LoadData() < 0) {

@@ -123,6 +123,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_NoSceneWrap = false;
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
@@ -548,6 +549,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
@@ -913,6 +915,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);

@@ -199,6 +199,10 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
+		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
+		/// Takes effect when a scene is next loaded.
+		bool NoSceneWrap() const { return m_NoSceneWrap; }
+
 		/// How strongly fire pins units down and shakes them (Actor::GetSuppression and GetMorale): 0 for not at all, 1 as designed, 2 double.
 		float AISuppression() const { return m_AISuppression; }
 
@@ -431,6 +435,9 @@ namespace RTE {
 
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
+
+		/// Sets whether every scene is played without wrapping horizontally. Takes effect when a scene is next loaded.
+		void SetNoSceneWrap(bool enable) { m_NoSceneWrap = enable; }
 
 		/// Sets how strongly fire pins units down and shakes them, 0 to 2.
 		void SetAISuppression(float scale) { m_AISuppression = std::clamp(scale, 0.0F, 2.0F); }
@@ -694,6 +701,7 @@ namespace RTE {
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
+		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
