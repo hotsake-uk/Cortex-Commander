@@ -1,6 +1,6 @@
 // The Battle Director's modes: preset games played by its teams, set up from a few choices (how many a side, which teams, and a base
 // drawn for each) rather than every team's card. Each mode is a row of c_Modes: its name, what it asks for, and its rules, which hook into the Battle
-// Director as it buys and sends units (SandboxBattle.cpp). Capture the flag is the first.
+// Director as it buys and sends units (SandboxBattle.cpp). Capture the flag, king of the hill, assault, last team standing and VIP hunt.
 
 #include "SandboxInternal.h"
 
@@ -110,20 +110,12 @@ namespace SandboxDetail {
 			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, (color & 0x00FFFFFF) | (static_cast<ImU32>(255.0F * alpha) << 24), text);
 		}
 
-		/// The score of the mode's game, each team in its colour, across the top: with who has won, once someone has.
-		void DrawScore(const char* title) {
-			std::string line = title;
-			for (int side = 0; side < c_Sides; ++side) {
-				if (TeamIn(s_ModeRun.Settings, side)) {
-					line += "    " + SideName(side) + " " + std::to_string(s_ModeRun.Score[side]);
-				}
-			}
-			if (s_ModeRun.Settings.ScoreToWin > 0) {
-				line += "    (first to " + std::to_string(s_ModeRun.Settings.ScoreToWin) + ")";
-			}
+		/// The score line of the mode's game across the top, with how it ended once it has (or the latest happening, for a few seconds).
+		void DrawScore(const std::string& line) {
 			Banner(line.c_str(), 64.0F, IM_COL32(255, 255, 255, 255), 1.0F);
-			if (s_ModeRun.Over && s_ModeRun.Winner >= 0) {
-				Banner((SideName(s_ModeRun.Winner) + " wins!").c_str(), 92.0F, c_SideColors[s_ModeRun.Winner], 1.0F);
+			if (s_ModeRun.Over) {
+				const std::string result = !s_ModeRun.Result.empty() ? s_ModeRun.Result : (s_ModeRun.Winner >= 0 ? SideName(s_ModeRun.Winner) + " wins!" : "A draw");
+				Banner(result.c_str(), 92.0F, s_ModeRun.Winner >= 0 ? c_SideColors[s_ModeRun.Winner] : IM_COL32(255, 255, 255, 255), 1.0F);
 			} else if (s_ModeRun.NoteAt >= 0 && !s_ModeRun.Note.empty()) {
 				// (Five seconds of game time, the last one fading.)
 				float seconds = static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_ModeRun.NoteAt) / UpdatesPerSecond();
@@ -132,6 +124,122 @@ namespace SandboxDetail {
 				}
 			}
 		}
+
+		/// A title with each team in the game's score after it, as "KING OF THE HILL    Red 34 s    Green 12 s".
+		std::string Scores(const char* title, const char* unit) {
+			std::string line = title;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (TeamIn(s_ModeRun.Settings, side)) {
+					line += "    " + SideName(side) + " " + std::to_string(s_ModeRun.Score[side]) + unit;
+				}
+			}
+			return line;
+		}
+
+		/// Minutes and seconds, as "3:07".
+		std::string Clock(float seconds) {
+			const int whole = std::max(static_cast<int>(std::ceil(seconds)), 0);
+			char text[16];
+			std::snprintf(text, sizeof(text), "%d:%02d", whole / 60, whole % 60);
+			return text;
+		}
+
+		void ClearHighlights();
+
+		/// The game won (or ended without a winner, at -1): the teams stopped, every glow off, and how it ended said.
+		void EndGame(int winner, const std::string& result) {
+			s_ModeRun.Over = true;
+			s_ModeRun.Winner = winner;
+			s_ModeRun.Result = result;
+			ClearHighlights();
+			for (BattleTeam& team: s_BattleTeams) {
+				team.Running = false;
+			}
+			Say(result);
+		}
+
+		/// The units of the teams in the game that fight: not ships, and not brains.
+		std::vector<Actor*> Fighters() {
+			std::vector<Actor*> fighters;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains") && TeamIn(s_ModeRun.Settings, actor->GetTeam())) {
+					fighters.push_back(actor);
+				}
+			}
+			return fighters;
+		}
+
+		/// The middle of a zone: its corners averaged (they are kept next to the first, so this holds across a wrap seam too).
+		Vector ZoneMiddle(const std::vector<Vector>& zone) {
+			Vector sum;
+			for (const Vector& corner: zone) {
+				sum += corner;
+			}
+			Vector middle = zone.empty() ? sum : sum * (1.0F / static_cast<float>(zone.size()));
+			g_SceneMan.WrapPosition(middle);
+			return middle;
+		}
+
+		/// How many of each team's fighters are in a zone.
+		std::array<int, c_Sides> CountIn(const std::vector<Vector>& zone, const std::vector<Actor*>& fighters) {
+			std::array<int, c_Sides> count{};
+			for (const Actor* fighter: fighters) {
+				if (fighter->GetTeam() >= 0 && fighter->GetTeam() < c_Sides && IsInZone(zone, fighter->GetPos())) {
+					++count[fighter->GetTeam()];
+				}
+			}
+			return count;
+		}
+
+		/// A place for a mode's units to defend (MakeDefender): its middle, how far round it they stand, how much further they go after an
+		/// enemy, and the share that roam it rather than hold a post.
+		BattleSettings PostAt(const Vector& at, float radius, float chase, int roamPercent) {
+			BattleSettings post;
+			post.Style = BattleStyle::Defend;
+			post.DefendPos = at;
+			post.HasDefendPos = true;
+			post.DefendRadius = static_cast<int>(radius);
+			post.ChaseDistance = static_cast<int>(chase);
+			post.RoamPercent = roamPercent;
+			return post;
+		}
+
+		/// New units sent to defend a place, rather than attack.
+		void SendToDefend(const std::vector<Actor*>& wave, const BattleSettings& post) {
+			for (Actor* unit: wave) {
+				unit->SetOrderAttack(false);
+				MakeDefender(unit, post);
+			}
+		}
+
+		/// The bases of the teams ticked, shaded in their colours.
+		void DrawBases(ImDrawList* drawList, const BattleModeSettings& settings) {
+			for (int side = 0; side < c_Sides; ++side) {
+				if (settings.Plays[side]) {
+					DrawBase(drawList, settings.Bases[side], c_SideColors[side]);
+				}
+			}
+		}
+
+		/// One of the mode's zones on the map: shaded, outlined, and named over its middle.
+		void DrawModeZone(ImDrawList* drawList, const std::vector<Vector>& zone, ImU32 color, int fill, int line, float thickness, const std::string& label) {
+			if (zone.size() < 3) {
+				return;
+			}
+			std::vector<ImVec2> corners = ZoneOnScreen(zone, std::max(ScenePixelsPerWindowPixel(), 0.01F));
+			drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(fill, 0, 255)) << 24));
+			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(line, 0, 255)) << 24), ImDrawFlags_Closed, thickness);
+			if (!label.empty()) {
+				ImVec2 middle = ToScreen(ZoneMiddle(zone));
+				ImVec2 size = ImGui::CalcTextSize(label.c_str());
+				ImVec2 at(middle.x - size.x * 0.5F, middle.y - size.y * 0.5F);
+				drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
+				drawList->AddText(at, (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(line, 120, 255)) << 24), label.c_str());
+			}
+		}
+
+		/// A pulse from 0 to 1 and back, a few times a second, for what is to catch the eye.
+		float Pulse(float speed = 5.0F) { return 0.5F + 0.5F * std::sin(static_cast<float>(ImGui::GetTime()) * speed); }
 
 		// ---- Capture the flag ----
 
@@ -412,13 +520,7 @@ namespace SandboxDetail {
 						++s_ModeRun.Score[team];
 						SendHome(side);
 						if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
-							s_ModeRun.Over = true;
-							s_ModeRun.Winner = team;
-							ClearCarriers();
-							for (BattleTeam& battleTeam: s_BattleTeams) {
-								battleTeam.Running = false;
-							}
-							Say(SideName(team) + " wins, " + std::to_string(s_ModeRun.Score[team]) + " captures");
+							EndGame(team, SideName(team) + " wins, " + std::to_string(s_ModeRun.Score[team]) + " captures");
 							return;
 						}
 						Say(SideName(team) + " captured " + SideName(side) + "'s flag");
@@ -732,40 +834,776 @@ namespace SandboxDetail {
 					DrawFlag(drawList, ToScreen(flag.Pos), color);
 				}
 			}
-			if (CurrentTool().Kind == Tool::BattleModeBase) {
-				DrawZoneDraft(drawList, std::max(ScenePixelsPerWindowPixel(), 0.01F));
+			if (running) {
+				DrawScore(Scores("CAPTURE THE FLAG", "") + (settings.ScoreToWin > 0 ? "    (first to " + std::to_string(settings.ScoreToWin) + ")" : ""));
+			}
+		}
+
+		std::string FlagsStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " captures, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+
+		// ---- Hunters (last team standing's units, and VIP hunt's) ----
+
+		/// What a hunter goes after, of the fighters in the game: nullptr to leave it be.
+		using Prey = Actor* (*)(const FlagRunner& runner, const Actor* unit, const std::vector<Actor*>& fighters);
+
+		/// The nearest enemy of a unit's, or nullptr.
+		Actor* NearestEnemy(const Actor* unit, const std::vector<Actor*>& fighters) {
+			Actor* nearest = nullptr;
+			float nearestDistance = 0.0F;
+			for (Actor* other: fighters) {
+				if (other->GetTeam() == unit->GetTeam()) {
+					continue;
+				}
+				float distance = g_SceneMan.ShortestDistance(unit->GetPos(), other->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+				if (!nearest || distance < nearestDistance) {
+					nearest = other;
+					nearestDistance = distance;
+				}
+			}
+			return nearest;
+		}
+
+		/// Each hunter (kept as capture the flag's runners are, in s_Runners), every half second: sent after its prey.
+		void UpdateHunters(long long now, Prey prey, const char* reason) {
+			const std::vector<Actor*> fighters = Fighters();
+			std::unordered_map<long, Actor*> byID;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				byID[actor->GetUniqueID()] = actor;
+			}
+			const long long riding = static_cast<long long>(60.0F * UpdatesPerSecond());
+			for (auto entry = s_Runners.begin(); entry != s_Runners.end();) {
+				FlagRunner& runner = entry->second;
+				auto found = byID.find(entry->first);
+				Actor* unit = found == byID.end() ? nullptr : found->second;
+				if (!unit) {
+					entry = runner.Seen || now - runner.Made > riding ? s_Runners.erase(entry) : std::next(entry);
+					continue;
+				}
+				runner.Seen = true;
+				if (!IsCombatant(unit)) {
+					entry = s_Runners.erase(entry);
+					continue;
+				}
+				if (!unit->IsPlayerControlled()) {
+					if (Actor* target = prey(runner, unit, fighters)) {
+						SendRunner(unit, runner, target->GetPos(), target, reason, now);
+					}
+				}
+				++entry;
+			}
+		}
+
+		/// New units made hunters, each after one of the other teams in the game (picked at random).
+		void MakeHunters(int side, const std::vector<Actor*>& wave) {
+			std::vector<int> enemies;
+			for (int other = 0; other < c_Sides; ++other) {
+				if (other != side && TeamIn(s_ModeRun.Settings, other)) {
+					enemies.push_back(other);
+				}
+			}
+			for (Actor* unit: wave) {
+				FlagRunner& runner = s_Runners[unit->GetUniqueID()];
+				runner.Team = side;
+				runner.Target = enemies.empty() ? -1 : enemies[std::min(enemies.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(enemies.size())))];
+				runner.Made = g_TimerMan.GetSimUpdateCount();
+			}
+		}
+
+		// ---- King of the hill ----
+
+		int s_Hill = 0; //!< The hill in play, of the mode's zones.
+		long long s_HillSince = 0; //!< The sim update it came into play on (held back while the AI is paused).
+		std::array<float, c_Sides> s_Held{}; //!< Seconds each team has held the hill.
+		int s_Holder = -1; //!< The team holding it now: -1 nobody, -2 more than one (contested).
+
+		/// Where the teams fight for the hill in play: every unit defends it.
+		BattleSettings HillPost() {
+			const std::vector<std::vector<Vector>>& zones = s_ModeRun.Settings.Zones;
+			const std::vector<Vector>& hill = zones[std::clamp(s_Hill, 0, static_cast<int>(zones.size()) - 1)];
+			const float radius = GuardRadius(hill);
+			return PostAt(ZoneMiddle(hill), radius, radius + 250.0F, 0);
+		}
+
+		void HillStart() {
+			s_Hill = 0;
+			s_HillSince = g_TimerMan.GetSimUpdateCount();
+			s_Held.fill(0.0F);
+			s_Holder = -1;
+		}
+
+		void HillSettingsChanged() {
+			if (s_Hill >= static_cast<int>(s_ModeRun.Settings.Zones.size())) {
+				s_Hill = 0;
+			}
+		}
+
+		void HillUnitsMade(int side, const std::vector<Actor*>& wave) {
+			if (!s_ModeRun.Settings.Zones.empty()) {
+				SendToDefend(wave, HillPost());
+			}
+		}
+
+		/// The next hill comes into play: every team's units make for it.
+		void MoveHill(int next) {
+			s_Hill = next;
+			s_HillSince = g_TimerMan.GetSimUpdateCount();
+			s_Holder = -1;
+			const BattleSettings post = HillPost();
+			for (int side = 0; side < c_Sides; ++side) {
+				RecentreDefenders(side, post.DefendPos, false, static_cast<float>(post.DefendRadius));
+			}
+			Say("The hill moves: hill " + std::to_string(next + 1) + "!");
+		}
+
+		/// Twice a second or so (every six updates): who is on the hill, and the seconds it scores them.
+		void HillUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				++s_HillSince;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty() || now % 6 != 0) {
+				return;
+			}
+			std::array<int, c_Sides> on = CountIn(settings.Zones[s_Hill], Fighters());
+			int holder = -1;
+			int most = 0;
+			int teams = 0;
+			bool tied = false;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || on[side] == 0) {
+					continue;
+				}
+				++teams;
+				if (on[side] > most) {
+					most = on[side];
+					holder = side;
+					tied = false;
+				} else if (on[side] == most) {
+					tied = true;
+				}
+			}
+			if (teams > 1 && (!settings.MajorityScores || tied)) {
+				holder = -2;
+			}
+			if (holder != s_Holder) {
+				if (holder >= 0) {
+					Say(SideName(holder) + " holds the hill");
+				} else if (holder == -2) {
+					Say("The hill is contested");
+				}
+				s_Holder = holder;
+			}
+			if (holder >= 0) {
+				s_Held[holder] += 6.0F / UpdatesPerSecond();
+				s_ModeRun.Score[holder] = static_cast<int>(s_Held[holder]);
+				if (settings.HoldToWin > 0 && s_Held[holder] >= static_cast<float>(settings.HoldToWin)) {
+					EndGame(holder, SideName(holder) + " is king of the hill!");
+					return;
+				}
+			}
+			if (settings.Zones.size() > 1 && settings.HillMoveSeconds > 0 && static_cast<float>(now - s_HillSince) >= static_cast<float>(settings.HillMoveSeconds) * UpdatesPerSecond()) {
+				MoveHill((s_Hill + 1) % static_cast<int>(settings.Zones.size()));
+			}
+		}
+
+		void HillPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::SliderInt("Hold to win", &setup.HoldToWin, 0, 600, setup.HoldToWin > 0 ? "%d s" : "play on");
+			ImGui::SetItemTooltip("Seconds a team has to hold the hill, all told, to win. It scores only while it alone has units on it. 0: it goes on till you stop it.");
+			changed |= ImGui::SliderInt("Hill moves every", &setup.HillMoveSeconds, 0, 300, setup.HillMoveSeconds > 0 ? "%d s" : "never");
+			ImGui::SetItemTooltip("With more than one hill drawn: seconds before the next one comes into play, and everyone has to run for it. Never: the first one stays.");
+			changed |= ToolUI::Checkbox("Most units on it scores", &setup.MajorityScores);
+			ImGui::SetItemTooltip("A hill with more than one team on it scores for the team with the most units there. Off: a contested hill scores for nobody.");
+		}
+
+		void HillDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			DrawBases(drawList, settings);
+			for (int i = 0; i < static_cast<int>(settings.Zones.size()); ++i) {
+				const std::string name = settings.Zones.size() > 1 ? "HILL " + std::to_string(i + 1) : "HILL";
+				if (!running) {
+					DrawModeZone(drawList, settings.Zones[i], IM_COL32(255, 255, 255, 255), 30, 200, 2.0F, name);
+				} else if (i != s_Hill) {
+					DrawModeZone(drawList, settings.Zones[i], IM_COL32(160, 160, 160, 255), 0, 70, 1.0F, "");
+				} else {
+					// In play: in the colour of whoever holds it, pulsing; orange while fought over.
+					const ImU32 color = s_Holder >= 0 ? c_SideColors[s_Holder] : (s_Holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255));
+					const float pulse = Pulse();
+					DrawModeZone(drawList, settings.Zones[i], color, static_cast<int>(40.0F + 40.0F * pulse), 230, 2.0F + pulse * 2.0F, s_Holder == -2 ? name + ": CONTESTED" : name);
+				}
 			}
 			if (running) {
-				DrawScore("CAPTURE THE FLAG");
+				std::string line = Scores("KING OF THE HILL", " s");
+				if (settings.HoldToWin > 0) {
+					line += "    (" + std::to_string(settings.HoldToWin) + " s wins)";
+				}
+				if (settings.Zones.size() > 1 && settings.HillMoveSeconds > 0 && !s_ModeRun.Over) {
+					line += "    hill moves in " + Clock(static_cast<float>(settings.HillMoveSeconds) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_HillSince) / UpdatesPerSecond());
+				}
+				DrawScore(line);
 			}
+		}
+
+		std::string HillStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " s held, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+
+		// ---- Assault ----
+
+		int s_Objective = 0; //!< The objective the attackers are after, of the mode's zones in order.
+		float s_Progress = 0.0F; //!< Seconds they have stood in it with no defender there.
+		bool s_Contested = false; //!< Both sides in it: the taking held where it is.
+		long long s_Deadline = 0; //!< The sim update the attackers' time runs out on; 0 for no limit.
+
+		int AttackerOf(const BattleModeSettings& settings) { return std::clamp(settings.Attacker, 0, c_Sides - 1); }
+
+		/// Where both sides fight: the objective being taken.
+		BattleSettings ObjectivePost() {
+			const std::vector<std::vector<Vector>>& zones = s_ModeRun.Settings.Zones;
+			const std::vector<Vector>& objective = zones[std::clamp(s_Objective, 0, static_cast<int>(zones.size()) - 1)];
+			const float radius = GuardRadius(objective);
+			return PostAt(ZoneMiddle(objective), radius, radius + 300.0F, 0);
+		}
+
+		bool AssaultReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[AttackerOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[AttackerOf(setup)] + ", the attackers, or pick others to attack.";
+				return false;
+			}
+			return true;
+		}
+
+		void AssaultStart() {
+			s_Objective = 0;
+			s_Progress = 0.0F;
+			s_Contested = false;
+			const int limit = s_ModeRun.Settings.TimeLimit;
+			s_Deadline = limit > 0 ? g_TimerMan.GetSimUpdateCount() + static_cast<long long>(static_cast<float>(limit) * UpdatesPerSecond()) : 0;
+		}
+
+		void AssaultSettingsChanged() {
+			if (s_Objective >= static_cast<int>(s_ModeRun.Settings.Zones.size())) {
+				s_Objective = 0;
+			}
+		}
+
+		void AssaultUnitsMade(int side, const std::vector<Actor*>& wave) {
+			if (!s_ModeRun.Settings.Zones.empty()) {
+				SendToDefend(wave, ObjectivePost());
+			}
+		}
+
+		/// The first of the defending teams (who are named as the winners when time runs out), or -1 with more than one.
+		int OnlyDefender(const BattleModeSettings& settings) {
+			int defender = -1;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (side != AttackerOf(settings) && TeamIn(settings, side)) {
+					if (defender >= 0) {
+						return -1;
+					}
+					defender = side;
+				}
+			}
+			return defender;
+		}
+
+		/// Every six updates: the attackers take the objective while they stand in it with no defender there (fought over, it holds; left,
+		/// it slips back), then the next; the defenders win if their time runs out first.
+		void AssaultUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_Deadline += s_Deadline > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty() || now % 6 != 0) {
+				return;
+			}
+			const int attacker = AttackerOf(settings);
+			std::array<int, c_Sides> in = CountIn(settings.Zones[s_Objective], Fighters());
+			int defenders = 0;
+			for (int side = 0; side < c_Sides; ++side) {
+				defenders += side != attacker && TeamIn(settings, side) ? in[side] : 0;
+			}
+			const float step = 6.0F / UpdatesPerSecond();
+			const bool wasContested = s_Contested;
+			s_Contested = in[attacker] > 0 && defenders > 0;
+			if (s_Contested && !wasContested) {
+				Say("Objective " + std::to_string(s_Objective + 1) + " is being fought over");
+			}
+			if (in[attacker] > 0 && defenders == 0) {
+				s_Progress += step;
+			} else if (in[attacker] == 0) {
+				s_Progress = std::max(s_Progress - step * 0.5F, 0.0F);
+			}
+			if (s_Progress >= static_cast<float>(std::max(settings.CaptureSeconds, 1))) {
+				++s_ModeRun.Score[attacker];
+				++s_Objective;
+				s_Progress = 0.0F;
+				s_Contested = false;
+				if (s_Objective >= static_cast<int>(settings.Zones.size())) {
+					s_Objective = static_cast<int>(settings.Zones.size()) - 1;
+					EndGame(attacker, SideName(attacker) + " took every objective!");
+					return;
+				}
+				if (s_Deadline > 0) {
+					s_Deadline += static_cast<long long>(static_cast<float>(settings.BonusSeconds) * UpdatesPerSecond());
+				}
+				const BattleSettings post = ObjectivePost();
+				for (int side = 0; side < c_Sides; ++side) {
+					RecentreDefenders(side, post.DefendPos, false, static_cast<float>(post.DefendRadius));
+				}
+				Say("Objective " + std::to_string(s_Objective) + " taken" + (s_Deadline > 0 && settings.BonusSeconds > 0 ? ": +" + std::to_string(settings.BonusSeconds) + " s" : std::string()) + ". On to the next!");
+			}
+			if (s_Deadline > 0 && now >= s_Deadline) {
+				const int defender = OnlyDefender(settings);
+				EndGame(defender, "Time's up: " + (defender >= 0 ? SideName(defender) : std::string("the defenders")) + " held!");
+			}
+		}
+
+		void AssaultPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Attackers", &setup.Attacker, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that attacks. Every other team ticked defends.");
+			changed |= ImGui::SliderInt("Seconds to take one", &setup.CaptureSeconds, 3, 120, "%d s");
+			ImGui::SetItemTooltip("How long the attackers have to stand in an objective, with no defender in it, to take it. Fought over, the count holds; left empty, it slips back.");
+			changed |= ImGui::SliderInt("Time limit", &setup.TimeLimit, 0, 1800, setup.TimeLimit > 0 ? "%d s" : "none");
+			ImGui::SetItemTooltip("Seconds the attackers have to take them all, or the defenders win. 0: no limit.");
+			ImGui::BeginDisabled(setup.TimeLimit <= 0);
+			changed |= ImGui::SliderInt("Added per objective", &setup.BonusSeconds, 0, 300, "%d s");
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Seconds added to the attackers' time for each objective they take.");
+		}
+
+		void AssaultDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int attacker = AttackerOf(settings);
+			DrawBases(drawList, settings);
+			for (int i = 0; i < static_cast<int>(settings.Zones.size()); ++i) {
+				const std::string name = "OBJECTIVE " + std::to_string(i + 1);
+				if (!running) {
+					DrawModeZone(drawList, settings.Zones[i], IM_COL32(255, 255, 255, 255), 30, 200, 2.0F, name);
+				} else if (i < s_Objective || (s_ModeRun.Over && s_ModeRun.Winner == attacker)) {
+					DrawModeZone(drawList, settings.Zones[i], c_SideColors[attacker], 25, 120, 1.0F, name + ": TAKEN");
+				} else if (i > s_Objective) {
+					DrawModeZone(drawList, settings.Zones[i], IM_COL32(160, 160, 160, 255), 0, 90, 1.0F, name);
+				} else {
+					const float pulse = Pulse();
+					const ImU32 color = s_Contested ? IM_COL32(255, 150, 40, 255) : (s_Progress > 0.0F ? c_SideColors[attacker] : IM_COL32(255, 255, 255, 255));
+					DrawModeZone(drawList, settings.Zones[i], color, static_cast<int>(35.0F + 35.0F * pulse), 230, 2.0F + 2.0F * pulse, name);
+					// How far it is taken, as a bar under its name.
+					const float taken = std::clamp(s_Progress / static_cast<float>(std::max(settings.CaptureSeconds, 1)), 0.0F, 1.0F);
+					ImVec2 middle = ToScreen(ZoneMiddle(settings.Zones[i]));
+					ImVec2 from(middle.x - 40.0F, middle.y + 12.0F);
+					drawList->AddRectFilled(from, ImVec2(from.x + 80.0F, from.y + 6.0F), IM_COL32(0, 0, 0, 160), 2.0F);
+					drawList->AddRectFilled(from, ImVec2(from.x + 80.0F * taken, from.y + 6.0F), c_SideColors[attacker], 2.0F);
+				}
+			}
+			if (running) {
+				std::string line = "ASSAULT    " + SideName(attacker) + " attacking    objective " + std::to_string(std::min(s_Objective + 1, static_cast<int>(settings.Zones.size()))) + " of " + std::to_string(settings.Zones.size());
+				if (s_Contested) {
+					line += "    CONTESTED";
+				} else if (s_Progress > 0.0F) {
+					line += "    taking: " + std::to_string(static_cast<int>(100.0F * s_Progress / static_cast<float>(std::max(settings.CaptureSeconds, 1)))) + "%";
+				}
+				if (s_Deadline > 0 && !s_ModeRun.Over) {
+					line += "    " + Clock(static_cast<float>(s_Deadline - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()) + " left";
+				}
+				DrawScore(line);
+			}
+		}
+
+		std::string AssaultStatus(int side) { return std::string(side == AttackerOf(s_ModeRun.Settings) ? "attacking, " : "defending, ") + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+
+		// ---- Last team standing ----
+
+		std::array<bool, c_Sides> s_Out{}; //!< Teams with no units left to send and none left in.
+
+		int TicketsLeft(int side) { return std::max(s_ModeRun.Settings.Tickets - s_BattleTeams[side].Sent, 0); }
+
+		void StandingStart() {
+			s_Out.fill(false);
+			for (int side = 0; side < c_Sides; ++side) {
+				s_ModeRun.Score[side] = TeamIn(s_ModeRun.Settings, side) ? std::max(s_ModeRun.Settings.Tickets, 0) : 0;
+			}
+		}
+
+		/// No more units than a team has tickets left for.
+		int StandingRoom(int side, int room) { return TeamIn(s_ModeRun.Settings, side) ? std::min(room, TicketsLeft(side)) : room; }
+
+		Actor* StandingPrey(const FlagRunner&, const Actor* unit, const std::vector<Actor*>& fighters) { return NearestEnemy(unit, fighters); }
+
+		/// Every half second the hunters go after the nearest enemy; every second, a team with no tickets and no units left is out, and the
+		/// last team in wins.
+		void StandingUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (aiPaused || s_ModeRun.Over) {
+				return;
+			}
+			if (now % 30 == 15) {
+				UpdateHunters(now, StandingPrey, "last team standing: after the nearest enemy");
+			}
+			if (now % 60 != 0) {
+				return;
+			}
+			int left = 0;
+			int last = -1;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side)) {
+					continue;
+				}
+				s_ModeRun.Score[side] = TicketsLeft(side);
+				if (!s_Out[side] && TicketsLeft(side) == 0 && Sandbox::CountUnits(side) == 0) {
+					s_Out[side] = true;
+					Say(SideName(side) + " is out!");
+				}
+				if (!s_Out[side]) {
+					++left;
+					last = side;
+				}
+			}
+			if (left == 1) {
+				EndGame(last, SideName(last) + " is the last team standing!");
+			} else if (left == 0) {
+				EndGame(-1, "Nobody is left standing: a draw");
+			}
+		}
+
+		void StandingPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::SliderInt("Tickets", &setup.Tickets, 5, 500, "%d units a team");
+			ImGui::SetItemTooltip("Units each team gets in all, the first lot counted. Once a team's are spent and its last unit falls, it's out. The last team in wins.");
+		}
+
+		void StandingDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			DrawBases(drawList, settings);
+			if (running) {
+				std::string line = "LAST TEAM STANDING";
+				for (int side = 0; side < c_Sides; ++side) {
+					if (TeamIn(settings, side)) {
+						line += "    " + SideName(side) + (s_Out[side] ? " out" : " " + std::to_string(TicketsLeft(side) + Sandbox::CountUnits(side)) + " left");
+					}
+				}
+				DrawScore(line);
+			}
+		}
+
+		std::string StandingStatus(int side) { return s_Out[side] ? std::string("out") : std::to_string(TicketsLeft(side)) + " tickets left, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+
+		// ---- VIP hunt ----
+
+		struct Vip {
+			UnitRef Unit;
+			bool Has = false; //!< Its team has one (Unit, while it lives).
+			Vector Pos; //!< Where it was last seen.
+			long long NextAt = 0; //!< The sim update its team gets a new one on, once it has fallen.
+		};
+		std::array<Vip, c_Sides> s_Vips;
+
+		/// Where a team's VIP keeps to: its point, if placed in its base, else the middle of its base.
+		Vector VipSpot(const BattleModeSettings& settings, int side) {
+			const std::vector<Vector>& base = settings.Bases[side];
+			if (settings.HasPoint[side] && IsInZone(base, settings.Points[side])) {
+				return settings.Points[side];
+			}
+			return ZoneMiddle(base);
+		}
+
+		/// The VIPs' glow off, and nobody a VIP.
+		void ClearVips() {
+			for (Vip& vip: s_Vips) {
+				if (Actor* unit = GetRef(vip.Unit)) {
+					unit->SetHighlighted(false);
+				}
+				vip = Vip();
+			}
+		}
+
+		void VipStart() { ClearVips(); }
+
+		/// A team's new units: some stay as the VIP's bodyguards, the rest hunt an enemy's.
+		void VipUnitsMade(int side, const std::vector<Actor*>& wave) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const float radius = GuardRadius(settings.Bases[side]);
+			const BattleSettings guard = PostAt(VipSpot(settings, side), radius * 0.6F, radius * 0.6F + 250.0F, 30);
+			std::vector<Actor*> hunters;
+			for (Actor* unit: wave) {
+				if (Random01() * 100.0F < static_cast<float>(settings.GuardPercent)) {
+					unit->SetOrderAttack(false);
+					MakeDefender(unit, guard);
+				} else {
+					hunters.push_back(unit);
+				}
+			}
+			MakeHunters(side, hunters);
+		}
+
+		Actor* LiveVip(int side) {
+			Actor* unit = side >= 0 && side < c_Sides ? GetRef(s_Vips[side].Unit) : nullptr;
+			return unit && IsCombatant(unit) ? unit : nullptr;
+		}
+
+		/// A hunter goes for the VIP of the team it was sent after, or the nearest enemy VIP while that team has none, or else the nearest enemy.
+		Actor* VipPrey(const FlagRunner& runner, const Actor* unit, const std::vector<Actor*>& fighters) {
+			if (Actor* vip = LiveVip(runner.Target)) {
+				return vip;
+			}
+			Actor* nearest = nullptr;
+			float nearestDistance = 0.0F;
+			for (int side = 0; side < c_Sides; ++side) {
+				Actor* vip = side != unit->GetTeam() ? LiveVip(side) : nullptr;
+				if (!vip) {
+					continue;
+				}
+				float distance = g_SceneMan.ShortestDistance(unit->GetPos(), vip->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+				if (!nearest || distance < nearestDistance) {
+					nearest = vip;
+					nearestDistance = distance;
+				}
+			}
+			return nearest ? nearest : NearestEnemy(unit, fighters);
+		}
+
+		/// One of a team's units made its VIP: the one nearest its spot (not one you are playing). It glows, and keeps to its base.
+		void PickVip(int side, const std::vector<Actor*>& fighters) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const Vector spot = VipSpot(settings, side);
+			Actor* pick = nullptr;
+			float nearest = 0.0F;
+			for (Actor* fighter: fighters) {
+				if (fighter->GetTeam() != side || fighter->IsPlayerControlled()) {
+					continue;
+				}
+				float distance = g_SceneMan.ShortestDistance(fighter->GetPos(), spot, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+				if (!pick || distance < nearest) {
+					pick = fighter;
+					nearest = distance;
+				}
+			}
+			if (!pick) {
+				return;
+			}
+			Vip& vip = s_Vips[side];
+			vip.Unit = MakeRef(pick);
+			vip.Has = true;
+			vip.Pos = pick->GetPos();
+			pick->SetHighlighted(true);
+			s_Runners.erase(pick->GetUniqueID());
+			pick->SetOrderAttack(false);
+			const float radius = GuardRadius(settings.Bases[side]);
+			MakeDefender(pick, PostAt(spot, radius * 0.5F, 60.0F, 60));
+			Say(SideName(side) + " has a VIP");
+		}
+
+		/// Each update the VIPs are followed; every six, a fallen one is scored to the enemy team nearest it, and a team due one gets it.
+		void VipUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				for (Vip& vip: s_Vips) {
+					++vip.NextAt;
+				}
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			bool anyAlive = false;
+			for (Vip& vip: s_Vips) {
+				if (Actor* unit = GetRef(vip.Unit)) {
+					vip.Pos = unit->GetPos();
+					anyAlive |= IsCombatant(unit);
+				}
+			}
+			g_PostProcessMan.GetLightingSettings().HighlightUnits = anyAlive;
+			if (s_ModeRun.Over) {
+				return;
+			}
+			if (now % 6 == 3) {
+				const std::vector<Actor*> fighters = Fighters();
+				for (int side = 0; side < c_Sides; ++side) {
+					if (!TeamIn(settings, side)) {
+						continue;
+					}
+					Vip& vip = s_Vips[side];
+					if (vip.Has && !LiveVip(side)) {
+						if (Actor* unit = GetRef(vip.Unit)) {
+							unit->SetHighlighted(false);
+						}
+						vip.Unit = MakeRef(nullptr);
+						vip.Has = false;
+						vip.NextAt = now + static_cast<long long>(static_cast<float>(std::max(settings.VipRespawnSeconds, 0)) * UpdatesPerSecond());
+						// (Scored to whoever is nearest where it fell: the one most likely to have done it.)
+						int killer = -1;
+						float nearest = 0.0F;
+						for (const Actor* fighter: fighters) {
+							float distance = g_SceneMan.ShortestDistance(fighter->GetPos(), vip.Pos, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+							if (fighter->GetTeam() != side && (killer < 0 || distance < nearest)) {
+								killer = fighter->GetTeam();
+								nearest = distance;
+							}
+						}
+						if (killer < 0) {
+							Say(SideName(side) + "'s VIP fell");
+							continue;
+						}
+						++s_ModeRun.Score[killer];
+						if (settings.KillsToWin > 0 && s_ModeRun.Score[killer] >= settings.KillsToWin) {
+							EndGame(killer, SideName(killer) + " wins the VIP hunt!");
+							return;
+						}
+						Say(SideName(killer) + " got " + SideName(side) + "'s VIP");
+					} else if (!vip.Has && now >= vip.NextAt) {
+						PickVip(side, fighters);
+					}
+				}
+			}
+			if (now % 30 == 15) {
+				UpdateHunters(now, VipPrey, "VIP hunt: after their VIP");
+			}
+		}
+
+		void VipPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::SliderInt("VIPs to win", &setup.KillsToWin, 0, 20, setup.KillsToWin > 0 ? "%d" : "play on");
+			ImGui::SetItemTooltip("The first team to bring down this many enemy VIPs wins. 0: it goes on till you stop it.");
+			changed |= ImGui::SliderInt("Bodyguards", &setup.GuardPercent, 0, 90, "%d%% of each team");
+			ImGui::SetItemTooltip("The share of each team's units that stay round its VIP. The rest hunt the enemy's.");
+			changed |= ImGui::SliderInt("New VIP after", &setup.VipRespawnSeconds, 0, 120, "%d s");
+			ImGui::SetItemTooltip("Seconds after a team's VIP falls before one of its units takes its place.");
+		}
+
+		void VipDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			DrawBases(drawList, settings);
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!settings.Plays[side] || settings.Bases[side].size() < 3) {
+					continue;
+				}
+				if (!running) {
+					if (settings.HasPoint[side]) {
+						ImVec2 at = ToScreen(settings.Points[side]);
+						drawList->AddCircle(ImVec2(at.x, at.y - 10.0F), 10.0F, c_SideColors[side], 20, 2.0F);
+						drawList->AddText(ImVec2(at.x - 10.0F, at.y - 34.0F), c_SideColors[side], "VIP");
+					}
+					continue;
+				}
+				// A crown over the head of each team's VIP, in its colour.
+				if (Actor* vip = LiveVip(side)) {
+					ImVec2 top = ToScreen(vip->GetPos() - Vector(0.0F, vip->GetHeight() * 0.5F + 14.0F));
+					const float bob = 2.0F * Pulse(3.0F);
+					ImVec2 crown[5] = {ImVec2(top.x - 9.0F, top.y - bob), ImVec2(top.x - 9.0F, top.y - 10.0F - bob), ImVec2(top.x - 3.0F, top.y - 5.0F - bob), ImVec2(top.x + 3.0F, top.y - 12.0F - bob), ImVec2(top.x + 9.0F, top.y - 10.0F - bob)};
+					drawList->AddConvexPolyFilled(crown, 5, c_SideColors[side]);
+					drawList->AddRectFilled(ImVec2(top.x - 9.0F, top.y - 2.0F - bob), ImVec2(top.x + 9.0F, top.y + 2.0F - bob), c_SideColors[side]);
+					drawList->AddText(ImVec2(top.x - 10.0F, top.y - 28.0F - bob), IM_COL32(255, 255, 255, 230), "VIP");
+				}
+			}
+			if (running) {
+				std::string line = Scores("VIP HUNT", "") + (settings.KillsToWin > 0 ? "    (first to " + std::to_string(settings.KillsToWin) + ")" : "");
+				for (int side = 0; side < c_Sides; ++side) {
+					if (TeamIn(settings, side) && !s_Vips[side].Has && s_Vips[side].NextAt > g_TimerMan.GetSimUpdateCount()) {
+						line += "    " + SideName(side) + "'s new VIP in " + std::to_string(static_cast<int>(std::ceil(static_cast<float>(s_Vips[side].NextAt - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()))) + " s";
+					}
+				}
+				DrawScore(line);
+			}
+		}
+
+		std::string VipStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " VIPs got, " + (LiveVip(side) ? "VIP up, " : "no VIP, ") + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+
+		/// Every mode's glows off: capture the flag's carriers, and the VIPs.
+		void ClearHighlights() {
+			ClearCarriers();
+			ClearVips();
 		}
 
 		/// One of the Battle Director's modes: what it is called and asks for, and its rules. Any of the rules can be left out.
 		struct BattleModeInfo {
 			const char* Name;
 			const char* Blurb; //!< What the game is, for the top of its panel.
-			const char* PointName; //!< What each team's point in its base is to it, as "flag"; nullptr for none.
-			int MinTeams;
+			const char* PointName = nullptr; //!< What each team's point in its base is to it, as "flag"; nullptr for none.
+			const char* ZoneName = nullptr; //!< What its own zones are, as "hill"; nullptr for none.
+			int MinTeams = 2;
+			int MinZones = 0;
+			/// Whatever else its game needs set up to start, and if it isn't, why.
+			bool (*Ready)(const BattleModeSettings& setup, std::string& why) = nullptr;
 			/// The settings a team in the game plays by (BaseTeam, unless the mode wants otherwise), from its card's.
-			BattleSettings (*TeamSettings)(const BattleModeSettings& settings, int side, const BattleSettings& card);
-			void (*Start)(); //!< Its own state afresh, as the game starts.
-			void (*SettingsChanged)(); //!< The panel changed while the game is on.
-			void (*UnitsMade)(int side, const std::vector<Actor*>& wave); //!< A team's new units, bought but not yet in (riding in, or about to appear).
-			Vector (*SpawnSpot)(int side, const std::vector<Vector>& zone, float height); //!< Where in a spawn zone a team's new unit appears (SpotInZone, if left out).
-			void (*Update)(bool aiPaused); //!< Each sim update, while its game is on.
-			void (*Panel)(BattleModeSettings& setup, bool& changed); //!< Its own choices, on the Battle tab.
-			void (*Draw)(bool running); //!< On the map: its bases and points while set up (running false), and its game while on.
+			BattleSettings (*TeamSettings)(const BattleModeSettings& settings, int side, const BattleSettings& card) = BaseTeam;
+			void (*Start)() = nullptr; //!< Its own state afresh, as the game starts.
+			void (*SettingsChanged)() = nullptr; //!< The panel changed while the game is on.
+			void (*UnitsMade)(int side, const std::vector<Actor*>& wave) = nullptr; //!< A team's new units, bought but not yet in (riding in, or about to appear).
+			Vector (*SpawnSpot)(int side, const std::vector<Vector>& zone, float height) = nullptr; //!< Where in a spawn zone a team's new unit appears (SpotInZone, if left out).
+			int (*Room)(int side, int room) = nullptr; //!< How many more units a team may have now, of the room its unit limit leaves.
+			void (*Update)(bool aiPaused) = nullptr; //!< Each sim update, while its game is on.
+			void (*Panel)(BattleModeSettings& setup, bool& changed) = nullptr; //!< Its own choices, on the Battle tab.
+			void (*Draw)(bool running) = nullptr; //!< On the map: its bases and zones while set up (running false), and its game while on.
+			std::string (*Status)(int side) = nullptr; //!< How a team is getting on, for its row on the Battle tab while the game is on.
 		};
 
-		constexpr BattleModeInfo c_Modes[] = {
-		    {"Custom", "", nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
-		    {"Capture the flag",
-		     "Each team has a base, drawn on the map, that its units appear in (away from its flag), with its flag inside. Its units go for the enemy's flag and "
-		     "bring it back into their own base, while some stay to guard theirs. A flag can only be captured while the team's own is at home. "
-		     "A carrier glows, and if it falls it drops the flag, which glows too: an enemy can pick it up, or one of its own team touch it to "
-		     "send it home (it goes home by itself after the seconds set). A flag is never lost: one that falls off the map, gets buried or "
-		     "lands where nobody can reach goes home.",
-		     "flag", 2, FlagsTeam, FlagsStart, FlagsSettingsChanged, FlagsUnitsMade, FlagsSpawnSpot, FlagsUpdate, FlagsPanel, FlagsDraw},
+		const BattleModeInfo c_Modes[] = {
+		    {.Name = "Custom", .Blurb = "", .MinTeams = 0, .TeamSettings = nullptr},
+		    {.Name = "Capture the flag",
+		     .Blurb = "Each team has a base, drawn on the map, that its units appear in (away from its flag), with its flag inside. Its units go for the enemy's flag and "
+		              "bring it back into their own base, while some stay to guard theirs. A flag can only be captured while the team's own is at home. "
+		              "A carrier glows, and if it falls it drops the flag, which glows too: an enemy can pick it up, or one of its own team touch it to "
+		              "send it home (it goes home by itself after the seconds set). A flag is never lost: one that falls off the map, gets buried or "
+		              "lands where nobody can reach goes home.",
+		     .PointName = "flag",
+		     .TeamSettings = FlagsTeam,
+		     .Start = FlagsStart,
+		     .SettingsChanged = FlagsSettingsChanged,
+		     .UnitsMade = FlagsUnitsMade,
+		     .SpawnSpot = FlagsSpawnSpot,
+		     .Update = FlagsUpdate,
+		     .Panel = FlagsPanel,
+		     .Draw = FlagsDraw,
+		     .Status = FlagsStatus},
+		    {.Name = "King of the hill",
+		     .Blurb = "Draw a hill (or a few) on the map and a base for each team. Every unit fights for the hill: a team scores a second for every second it alone "
+		              "has units on it, and the first to the seconds set wins. With more than one hill, it can move on every so often, and everyone has to run for "
+		              "the next.",
+		     .ZoneName = "hill",
+		     .MinZones = 1,
+		     .Start = HillStart,
+		     .SettingsChanged = HillSettingsChanged,
+		     .UnitsMade = HillUnitsMade,
+		     .Update = HillUpdate,
+		     .Panel = HillPanel,
+		     .Draw = HillDraw,
+		     .Status = HillStatus},
+		    {.Name = "Assault",
+		     .Blurb = "One team attacks a line of objectives, drawn in order on the map, and the rest defend them. The attackers take an objective by standing in it "
+		              "with no defender there for the seconds set, then go on to the next, and every one taken buys them more time. They win by taking the last; "
+		              "the defenders win if the clock runs out first.",
+		     .ZoneName = "objective",
+		     .MinZones = 1,
+		     .Ready = AssaultReady,
+		     .Start = AssaultStart,
+		     .SettingsChanged = AssaultSettingsChanged,
+		     .UnitsMade = AssaultUnitsMade,
+		     .Update = AssaultUpdate,
+		     .Panel = AssaultPanel,
+		     .Draw = AssaultDraw,
+		     .Status = AssaultStatus},
+		    {.Name = "Last team standing",
+		     .Blurb = "Every team gets so many units in all (its tickets), and they hunt down the nearest enemy wherever it is. Fallen units are replaced while a "
+		              "team has tickets left; once they're spent and its last unit falls, it's out. The last team in wins.",
+		     .Start = StandingStart,
+		     .UnitsMade = MakeHunters,
+		     .Room = StandingRoom,
+		     .Update = StandingUpdate,
+		     .Panel = StandingPanel,
+		     .Draw = StandingDraw,
+		     .Status = StandingStatus},
+		    {.Name = "VIP hunt",
+		     .Blurb = "One unit of each team is its VIP: it glows, wears a crown, and keeps to its base with bodyguards round it. The rest of the team hunt the enemy "
+		              "VIPs. Bring one down and your team scores, and theirs gets a new VIP a few seconds later. The first to the VIPs set wins.",
+		     .PointName = "VIP",
+		     .Start = VipStart,
+		     .UnitsMade = VipUnitsMade,
+		     .Update = VipUpdate,
+		     .Panel = VipPanel,
+		     .Draw = VipDraw,
+		     .Status = VipStatus},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
@@ -789,7 +1627,11 @@ namespace SandboxDetail {
 				why = "Tick at least " + std::to_string(mode.MinTeams) + " teams.";
 				return false;
 			}
-			return true;
+			if (mode.ZoneName && static_cast<int>(setup.Zones.size()) < mode.MinZones) {
+				why = std::string("Draw ") + (mode.MinZones > 1 ? std::to_string(mode.MinZones) + " " + mode.ZoneName + "s" : std::string("a ") + mode.ZoneName) + " on the map.";
+				return false;
+			}
+			return !mode.Ready || mode.Ready(setup, why);
 		}
 
 		/// Every team set up for the mode's game, from its card as it now is in the sim.
@@ -804,7 +1646,7 @@ namespace SandboxDetail {
 		}
 
 		void StopMode() {
-			ClearCarriers();
+			ClearHighlights();
 			s_ModeRun.Running = false;
 			s_ModeRun.Over = false;
 			for (BattleTeam& team: s_BattleTeams) {
@@ -812,6 +1654,8 @@ namespace SandboxDetail {
 			}
 		}
 		std::array<std::vector<Vector>, c_Sides> s_ScriptBaseDrafts; //!< The corners of a base a script is putting down, one SandboxDo at a time.
+		std::vector<Vector> s_ScriptZoneDraft; //!< The corners of a mode zone a script is putting down.
+		constexpr size_t c_MaxModeZones = 8;
 
 		/// The team being set up has its base drawn: sent, with the flag tool given to it next (to place its flag in it).
 		void BaseDrawn(const std::vector<Vector>& base) {
@@ -823,25 +1667,45 @@ namespace SandboxDetail {
 			SendBattleMode();
 			TakeBattleTool(Tool::BattleModePoint, team);
 		}
+
+		/// One of the mode's zones drawn (a hill, the next objective): sent, with the tool kept in hand for another.
+		void ZoneDrawn(const std::vector<Vector>& zone) {
+			if (s_ModeSetup.Zones.size() < c_MaxModeZones) {
+				s_ModeSetup.Zones.push_back(zone);
+				SendBattleMode();
+			}
+			if (s_ModeSetup.Zones.size() >= c_MaxModeZones) {
+				PutDownBattleTool();
+			}
+		}
+
+		/// A base or a mode zone closed, by the tool in hand.
+		void ModeZoneClosed(const std::vector<Vector>& zone) {
+			if (CurrentTool().Kind == Tool::BattleModeZone) {
+				ZoneDrawn(zone);
+			} else {
+				BaseDrawn(zone);
+			}
+		}
 	} // namespace
 
-	/// The next corner of the base being drawn (s_ZoneDraft), or the base closed, with one on its first corner: true then.
+	/// The next corner of the base or mode zone being drawn (s_ZoneDraft), or it closed, with one on its first corner: true then.
 	bool ModeBaseCorner(const Vector& position, float closeWithin) {
 		BattleSettings made;
 		if (!AddZoneCorner(s_ZoneDraft, made, position, closeWithin) || made.SpawnZones.empty()) {
 			return false;
 		}
-		BaseDrawn(made.SpawnZones.front());
+		ModeZoneClosed(made.SpawnZones.front());
 		return true;
 	}
 
-	/// The base being drawn closed (Enter), if it has three corners or more.
+	/// The base or mode zone being drawn closed (Enter), if it has three corners or more.
 	bool CloseModeBase() {
 		BattleSettings made;
 		if (!CloseSpawnZone(s_ZoneDraft, made) || made.SpawnZones.empty()) {
 			return false;
 		}
-		BaseDrawn(made.SpawnZones.front());
+		ModeZoneClosed(made.SpawnZones.front());
 		return true;
 	}
 
@@ -865,6 +1729,13 @@ namespace SandboxDetail {
 					s_ModeRun.Settings.Bases[stroke.Team] = made.SpawnZones.front();
 					s_ModeSetup.Bases[stroke.Team] = made.SpawnZones.front();
 				}
+			}
+		} else if (stroke.Kind == Tool::BattleModeZone) {
+			// From a script's SandboxDo: one corner a call, closed with one on its first corner, and added to the mode's zones.
+			BattleSettings made;
+			if (AddZoneCorner(s_ScriptZoneDraft, made, stroke.Position, 20.0F) && !made.SpawnZones.empty() && s_ModeSetup.Zones.size() < c_MaxModeZones) {
+				s_ModeSetup.Zones.push_back(made.SpawnZones.front());
+				s_ModeRun.Settings.Zones = s_ModeSetup.Zones;
 			}
 		} else if (stroke.Kind == Tool::BattleModePoint) {
 			// From a script's SandboxDo: the window sends the whole settings instead.
@@ -895,7 +1766,10 @@ namespace SandboxDetail {
 			s_ModeRun.Score.fill(0);
 			s_ModeRun.Note.clear();
 			s_ModeRun.NoteAt = -1;
+			s_ModeRun.Result.clear();
 			s_BattleDefenders.clear();
+			ClearHighlights();
+			s_Runners.clear();
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -942,6 +1816,11 @@ namespace SandboxDetail {
 		return mode.SpawnSpot ? mode.SpawnSpot(side, zone, height) : SpotInZone(zone, height);
 	}
 
+	int ModeRoom(int side, int room) {
+		const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
+		return s_ModeRun.Running && mode.Room ? mode.Room(side, room) : room;
+	}
+
 	void UpdateBattleMode(bool aiPaused) {
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); s_ModeRun.Running && mode.Update) {
 			mode.Update(aiPaused);
@@ -950,7 +1829,7 @@ namespace SandboxDetail {
 
 	/// A new game: no mode's game is on, and the points set (on the last game's scene) are gone. The mode chosen stays.
 	void ForgetBattleMode() {
-		ClearCarriers();
+		ClearHighlights();
 		const BattleMode chosen = s_ModeSetup.Mode;
 		s_ModeRun = BattleModeRun();
 		s_ModeSetup.HasPoint.fill(false);
@@ -958,6 +1837,8 @@ namespace SandboxDetail {
 			s_ModeSetup.Bases[side].clear();
 			s_ScriptBaseDrafts[side].clear();
 		}
+		s_ModeSetup.Zones.clear();
+		s_ScriptZoneDraft.clear();
 		s_ModeRun.Settings = s_ModeSetup;
 		s_ModeRun.Settings.Mode = chosen;
 		s_Runners.clear();
@@ -1006,7 +1887,7 @@ namespace SandboxDetail {
 			SendBattleMode(BattleModeStart);
 		}
 		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("%s", ready ? "The game starts afresh: scores back to nothing, every flag at home in its base." : why.c_str());
+		ImGui::SetItemTooltip("%s", ready ? "The game starts afresh, with the scores back to nothing." : why.c_str());
 		ImGui::SameLine();
 		ImGui::BeginDisabled(!running);
 		if (ToolUI::Button("Stop", ImVec2(-1.0F, 0.0F))) {
@@ -1032,6 +1913,49 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Each team's units come in by ship over their base (each team's card says which craft), rather than appearing in it.");
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
+		}
+
+		if (mode.ZoneName) {
+			const std::string zone = mode.ZoneName;
+			std::string title = zone + "s";
+			title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0])));
+			ImGui::SeparatorText(title.c_str());
+			ImGui::PushID("zones");
+			ImGui::BeginDisabled(running);
+			const bool drawing = CurrentTool().Kind == Tool::BattleModeZone;
+			ImGui::BeginDisabled(!drawing && setup.Zones.size() >= c_MaxModeZones);
+			if (ToolUI::Button(drawing ? "Done##zone" : ("Draw a " + zone + "##zone").c_str())) {
+				if (drawing) {
+					PutDownBattleTool();
+				} else {
+					TakeBattleTool(Tool::BattleModeZone, s_BattleEditTeam);
+				}
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("%s", drawing ? "Click the corners on the map, then click the first corner again (or press Enter) to close it. Then draw the next, or Done." : ("Then click out the corners of a " + zone + " on the map. Up to " + std::to_string(c_MaxModeZones) + ".").c_str());
+			ImGui::SameLine();
+			ImGui::BeginDisabled(setup.Zones.empty());
+			if (ToolUI::Button("Take back the last##zone")) {
+				setup.Zones.pop_back();
+				changed = true;
+			}
+			ImGui::SameLine();
+			if (ToolUI::Button("Clear##zone")) {
+				setup.Zones.clear();
+				changed = true;
+			}
+			ImGui::EndDisabled();
+			ImGui::EndDisabled();
+			if (running) {
+				ImGui::SetItemTooltip("Stop the game to change them.");
+			}
+			ImGui::SameLine();
+			if (setup.Zones.empty()) {
+				ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "none yet");
+			} else {
+				ImGui::TextDisabled("%d drawn", static_cast<int>(setup.Zones.size()));
+			}
+			ImGui::PopID();
 		}
 
 		ImGui::SeparatorText("Teams");
@@ -1072,7 +1996,7 @@ namespace SandboxDetail {
 				}
 				ImGui::SameLine();
 				if (running) {
-					ImGui::TextDisabled("%d captures, %d in", s_ModeRun.Score[side], Sandbox::CountUnits(side));
+					ImGui::TextDisabled("%s", mode.Status ? mode.Status(side).c_str() : (std::to_string(Sandbox::CountUnits(side)) + " in").c_str());
 				} else if (setup.Bases[side].empty()) {
 					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "no base");
 				} else if (mode.PointName && !setup.HasPoint[side]) {
@@ -1100,10 +2024,14 @@ namespace SandboxDetail {
 		if (!mode.Draw) {
 			return;
 		}
+		const Tool held = CurrentTool().Kind;
 		if (s_ModeRun.Running && s_ModeRun.Settings.Mode == s_ModeSetup.Mode) {
 			mode.Draw(true);
-		} else if ((Sandbox::IsOpen() && s_CurrentTab == "Battle") || CurrentTool().Kind == Tool::BattleModePoint || CurrentTool().Kind == Tool::BattleModeBase) {
+		} else if ((Sandbox::IsOpen() && s_CurrentTab == "Battle") || held == Tool::BattleModePoint || held == Tool::BattleModeBase || held == Tool::BattleModeZone) {
 			mode.Draw(false);
+		}
+		if (held == Tool::BattleModeBase || held == Tool::BattleModeZone) {
+			DrawZoneDraft(ImGui::GetBackgroundDrawList(), std::max(ScenePixelsPerWindowPixel(), 0.01F));
 		}
 	}
 } // namespace SandboxDetail

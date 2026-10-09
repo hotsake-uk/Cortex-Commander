@@ -987,6 +987,7 @@ namespace SandboxDetail {
 			case Tool::BattleSpawnZone:
 			case Tool::BattleModePoint:
 			case Tool::BattleModeBase:
+			case Tool::BattleModeZone:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -1282,7 +1283,7 @@ namespace SandboxDetail {
 			}
 			return;
 		}
-		if (kind == Tool::BattleModeBase) {
+		if (kind == Tool::BattleModeBase || kind == Tool::BattleModeZone) {
 			// The next corner of the team's base being drawn; sent once it's closed.
 			ModeBaseCorner(position, ZoneCloseDistance());
 			return;

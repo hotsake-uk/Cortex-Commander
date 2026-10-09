@@ -332,13 +332,18 @@ namespace SandboxDetail {
 	/// them).
 	void MakeDefender(Actor* unit, const BattleSettings& settings) { DefendPlace(unit, settings); }
 
-	/// Moves the place a team's defenders defend (a mode's guards going after their flag), each given a post in the new one: right at it with
-	/// atIt (to pick up what lies there), else somewhere on the ground inside their radius.
-	void RecentreDefenders(int team, const Vector& centre, bool atIt) {
+	/// Moves the place a team's defenders defend (a mode's guards going after their flag, or its units on to the next hill), each given a
+	/// post in the new one: right at it with atIt (to pick up what lies there), else somewhere on the ground inside their radius (a new one,
+	/// with chase distance to match, when radius is given).
+	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius) {
 		const bool wraps = g_SceneMan.SceneWrapsX();
 		for (auto& [id, defender]: s_BattleDefenders) {
 			if (defender.Team != team || g_SceneMan.ShortestDistance(defender.Center, centre, wraps).MagnitudeIsLessThan(1.0F)) {
 				continue;
+			}
+			if (radius >= 0.0F) {
+				defender.Chase = std::max(defender.Chase - defender.Radius, 0.0F) + radius;
+				defender.Radius = radius;
 			}
 			defender.Center = centre;
 			defender.IdleSince = -1;
@@ -490,6 +495,10 @@ namespace SandboxDetail {
 			// Under a unit limit, only as many as top it up (counting those still riding in): none at all when it's reached, till the next
 			// burst.
 			int room = settings.UnitLimit > 0 ? settings.UnitLimit - Sandbox::CountUnits(side) : std::numeric_limits<int>::max();
+			if (s_ModeRun.Running) {
+				// (A mode may hold it to fewer: last team standing's units left to send.)
+				room = ModeRoom(side, room);
+			}
 			if (room <= 0) {
 				team.FillFirst = false;
 				continue;
@@ -625,7 +634,7 @@ namespace SandboxDetail {
 		}
 		const int side = stroke.Team;
 		const bool oneTeam = side >= 0 && side < c_Sides;
-		if (stroke.Kind == Tool::BattleModePoint || stroke.Kind == Tool::BattleModeBase || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
+		if (stroke.Kind == Tool::BattleModePoint || stroke.Kind == Tool::BattleModeBase || stroke.Kind == Tool::BattleModeZone || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
 			ApplyBattleMode(stroke);
 			return;
 		}

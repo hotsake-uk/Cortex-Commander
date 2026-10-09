@@ -168,11 +168,12 @@ namespace SandboxDetail {
 		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
 		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
 		BattleModePoint, //!< The Battle Director's modes: a click inside the team's base sets its point (s_BattleEditTeam), as capture the flag's flag.
-		BattleModeBase //!< The Battle Director's modes: each click puts down a corner of the team's base (s_BattleEditTeam), as a spawn zone's.
+		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of the team's base (s_BattleEditTeam), as a spawn zone's.
+		BattleModeZone //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
 	};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -256,6 +257,7 @@ namespace SandboxDetail {
 	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
 	    {Tool::BattleModePoint, "Flag", 0.0F, false},
 	    {Tool::BattleModeBase, "Team's base", 0.0F, false},
+	    {Tool::BattleModeZone, "Mode zone", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -431,6 +433,10 @@ namespace SandboxDetail {
 	enum class BattleMode {
 		Custom,
 		CaptureTheFlag,
+		KingOfTheHill,
+		Assault,
+		LastTeamStanding,
+		VipHunt,
 		Count
 	};
 
@@ -448,6 +454,17 @@ namespace SandboxDetail {
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
+		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
+		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
+		int HillMoveSeconds = 0; //!< King of the hill, with more than one hill: seconds before the hill moves on to the next. 0: it stays put.
+		bool MajorityScores = false; //!< King of the hill: a hill with more than one team on it scores for the team with the most there, not for none.
+		int Attacker = 0; //!< Assault: the side that attacks; the rest defend.
+		int CaptureSeconds = 15; //!< Assault: seconds attackers stand in an objective with no defender in it to take it.
+		int TimeLimit = 300; //!< Assault: seconds the attackers have; each objective taken adds BonusSeconds.
+		int BonusSeconds = 60;
+		int Tickets = 60; //!< Last team standing: units each team gets in all, its first ones counted.
+		int KillsToWin = 5; //!< VIP hunt: enemy VIPs a team has to bring down to win.
+		int VipRespawnSeconds = 20; //!< VIP hunt: seconds before a fallen VIP's team has a new one.
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -563,6 +580,7 @@ namespace SandboxDetail {
 		bool Over = false; //!< Won: the teams stopped, and the result shown till the mode is started again, stopped or left.
 		int Winner = -1;
 		std::array<int, c_Sides> Score{};
+		std::string Result; //!< Once over: how it ended, as "Red is the last team standing" (or, when empty, who won).
 		std::string Note; //!< The latest happening, shown over the game for a few seconds (as "Green has Red's flag").
 		long long NoteAt = -1; //!< The sim update it happened on.
 	};
@@ -1511,12 +1529,13 @@ namespace SandboxDetail {
 	void PutDownBattleTool();
 	bool FactionPicker(BattleSettings& setup);
 	void MakeDefender(Actor* unit, const BattleSettings& settings);
-	void RecentreDefenders(int team, const Vector& centre, bool atIt);
+	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius = -1.0F);
 	void SendBattleMode(int command = BattleModeSet);
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height);
+	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();
 	void BattleModeTab();
