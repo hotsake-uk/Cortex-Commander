@@ -1462,7 +1462,7 @@ namespace SandboxDetail {
 			}
 		} else {
 			float outline = tool.UsesRadius ? static_cast<float>(s_Radius) / scale : 6.0F;
-			if (IsTerrainBrush(tool.Kind) && s_SquareBrush) {
+			if (IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Square) {
 				// The square brush: the square it paints.
 				float half = std::max(outline, 3.0F);
 				drawList->AddRect(ImVec2(io.MousePos.x - half, io.MousePos.y - half), ImVec2(io.MousePos.x + half, io.MousePos.y + half), white, 0.0F, 0, 1.5F);
@@ -2750,8 +2750,12 @@ namespace SandboxDetail {
 				}
 				ImGui::SameLine();
 			}
-			if (IsTerrainBrush(tool.Kind) && ToolUI::SmallButton(s_SquareBrush ? "Square" : "Circle")) {
-				s_SquareBrush = !s_SquareBrush;
+			if (IsTerrainBrush(tool.Kind)) {
+				// Circle, Square, Spray, round and round.
+				static const char* const shapes[] = {"Circle", "Square", "Spray"};
+				if (ToolUI::SmallButton(shapes[static_cast<int>(s_BrushShape)])) {
+					s_BrushShape = static_cast<BrushShape>((static_cast<int>(s_BrushShape) + 1) % 3);
+				}
 			}
 			ImGui::NewLine();
 		} else if (tool.Kind == Tool::Unit || tool.Kind == Tool::Drop) {
