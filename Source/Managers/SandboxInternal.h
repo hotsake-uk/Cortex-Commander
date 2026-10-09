@@ -167,13 +167,18 @@ namespace SandboxDetail {
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
 		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
 		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
-		BattleModePoint, //!< The Battle Director's modes: a click inside the team's base sets its point (s_BattleEditTeam), as capture the flag's flag.
-		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of the team's base (s_BattleEditTeam), as a spawn zone's.
-		BattleModeZone //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
+		BattleModePoint, //!< The Battle Director's modes: a click sets the team's point (s_BattleEditTeam), as capture the flag's flag.
+		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of another of the team's spawn zones (s_BattleEditTeam).
+		BattleModeZone, //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
+		BattleModeGoal, //!< The Battle Director's modes: each click puts down a corner of the team's goal zone (s_BattleEditTeam), as one flag's.
+		BattleModeFlag //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag).
 	};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag; }
+
+	/// The Battle Director's mode tools that draw a polygon a corner at a click (closed on its first corner, or Enter).
+	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -256,8 +261,10 @@ namespace SandboxDetail {
 	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
 	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
 	    {Tool::BattleModePoint, "Flag", 0.0F, false},
-	    {Tool::BattleModeBase, "Team's base", 0.0F, false},
+	    {Tool::BattleModeBase, "Team's spawn zone", 0.0F, false},
 	    {Tool::BattleModeZone, "Mode zone", 0.0F, false},
+	    {Tool::BattleModeGoal, "Team's goal zone", 0.0F, false},
+	    {Tool::BattleModeFlag, "Neutral flag", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -269,6 +276,9 @@ namespace SandboxDetail {
 		}
 		return 0;
 	}
+
+	/// The Paint tab's tools (its brushes, loose things, springs and terrain): with one in hand the right button digs (see Sandbox::DrawGUI).
+	inline bool IsPaintTool(Tool kind) { return c_Tools[ToolIndex(kind)].UsesRadius; }
 
 	constexpr int c_Sides = 4;
 	// The game's own team colours, as on the team icons over units' heads.
@@ -348,6 +358,7 @@ namespace SandboxDetail {
 		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
 		std::string Kind; //!< A subcategory to list by: for units "Infantry", "Mecha", "Turrets"; for items "Primary weapons", "Grenades", "Tools"...
 		bool Modded = false; //!< From a module that isn't one of the game's own.
+		bool Jetpack = false; //!< Units: it has a jetpack it can fly with (one with some jet time).
 		int Width = 0; //!< Structures: footprint, for the preview.
 		int Height = 0;
 		float OffsetX = 0.0F;
@@ -391,6 +402,8 @@ namespace SandboxDetail {
 		bool Active = false; //!< Takes part: started by "Start battle".
 		std::vector<int> Factions; //!< The module IDs of the factions its units come from; none for any faction.
 		bool FavouritesOnly = false; //!< Only units marked as favourites (of those factions); any, when none are.
+		bool Crabs = false; //!< Crabs among them (ACrab: crabs, and the tanks and walkers built on them). Off by default.
+		bool JetpackOnly = false; //!< Only units with a jetpack.
 		BattleStyle Style = BattleStyle::Attack;
 		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
 		int Budget = 5000; //!< What it may spend in all, in oz.
@@ -437,6 +450,7 @@ namespace SandboxDetail {
 		Assault,
 		LastTeamStanding,
 		VipHunt,
+		OneFlag,
 		Count
 	};
 
@@ -446,14 +460,21 @@ namespace SandboxDetail {
 		BattleMode Mode = BattleMode::Custom;
 		int TeamSize = 16; //!< Most units each team has alive at once.
 		std::array<bool, c_Sides> Plays = {true, true, false, false}; //!< The teams taking part, by side.
-		std::array<std::vector<Vector>, c_Sides> Bases; //!< Each team's base, drawn as a polygon as a spawn zone is: its units appear in it.
+		std::array<std::vector<std::vector<Vector>>, c_Sides> SpawnZones; //!< Each team's spawn zones, drawn as polygons: its units appear in them.
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
+		std::array<std::vector<Vector>, c_Sides> Goals; //!< One flag: each team's goal zone, drawn as a polygon, that it brings the flag into to score.
+		bool HasFlagSpot = false; //!< One flag: whether the neutral flag's place is set. Without, the game can't start.
+		Vector FlagSpot;
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
+		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
+		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
+		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
+		int RouteVariety = 0; //!< Every mode: the share of each team's units, in percent, given a taste in routes of their own (Actor::SetRouteSeed), so they spread over the ways to where they're going rather than all taking the shortest.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
 		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
 		int HillMoveSeconds = 0; //!< King of the hill, with more than one hill: seconds before the hill moves on to the next. 0: it stays put.
@@ -487,6 +508,7 @@ namespace SandboxDetail {
 		bool Random = false; //!< Units and drops: random units rather than the one chosen.
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
 		int RandomFaction = -1; //!< With Random: only this faction's units (an index into s_FactionModules), -1 for every faction.
+		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
@@ -604,10 +626,12 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
 	// The Unit and Drop tools' random units (copied into the stroke at the click): from every faction, one faction or the favourites.
 	inline bool s_RandomUnits = false;
 	inline bool s_RandomFavourites = false;
 	inline int s_RandomFaction = -1; //!< -1 every faction, otherwise an index into s_FactionModules.
+	inline bool s_JetpackOnly = false; //!< The Spawn tab's "Jetpacks only": units without one aren't listed, or picked at random.
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
@@ -643,6 +667,7 @@ namespace SandboxDetail {
 	inline int s_CameraWarmupFrames = 0; //!< Frames to leave the camera alone at the start of a game, while the game mode points it somewhere sensible.
 	inline Vector s_CameraCenter;
 	inline float s_StrokeTimer = 0.0F;
+	inline float s_DigTimer = 0.0F; //!< As s_StrokeTimer, for the right button's digging with a Paint tool in hand.
 	inline std::vector<Stroke> s_Queue;
 	inline std::array<Vector, c_Sides> s_RallyPoints;
 	inline std::array<bool, c_Sides> s_RallySet{};
@@ -1480,6 +1505,11 @@ namespace SandboxDetail {
 
 	/// A short name for such a source, for the tool bar and tooltips: "Random units", "Random favourites" or "Random Coalition".
 	std::string RandomSourceName(bool favouritesOnly, int faction);
+
+	/// Takes the units without a jetpack out of a pool to pick from.
+	inline void DropJetless(std::vector<const Preset*>& pool) {
+		std::erase_if(pool, [](const Preset* unit) { return !unit->Jetpack; });
+	}
 	const Preset* RandomPick(const std::vector<const Preset*>& pool);
 	void DropSquad(const Stroke& stroke);
 	void SpawnItem(const Stroke& stroke);
@@ -1560,7 +1590,7 @@ namespace SandboxDetail {
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
-	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height);
+	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();

@@ -442,6 +442,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("PrintDebugInfo", &SettingsMan::PrintDebugInfo, &SettingsMan::SetPrintDebugInfo)
 	    .property("RecommendedMOIDCount", &SettingsMan::RecommendedMOIDCount)
 	    .property("AIUpdateInterval", &SettingsMan::GetAIUpdateInterval, &SettingsMan::SetAIUpdateInterval)
+	    .property("AIThreatAvoidance", &SettingsMan::AIThreatAvoidance, &SettingsMan::SetAIThreatAvoidance)
 	    .property("NavDebugOverlay", &SettingsMan::NavDebugOverlay, &SettingsMan::SetNavDebugOverlay)
 	    .def("IsDebugChannelOn", &SettingsMan::IsDebugChannelOn)
 	    .property("UnitInspector", &SettingsMan::UnitInspector, &SettingsMan::SetUnitInspector)

@@ -656,6 +656,9 @@ namespace SandboxDetail {
 		// Random (units only): each one picked on its own from the pool, the squad spread as for a chosen unit.
 		bool random = stroke.Random && !brain;
 		std::vector<const Preset*> pool = random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
+		if (stroke.JetpackOnly) {
+			DropJetless(pool);
+		}
 		const Preset* chosen = random ? nullptr : ChosenPreset(brain ? Tool::Brain : Tool::Unit, stroke.Choice);
 		if (random ? pool.empty() : !chosen) {
 			return;
@@ -715,6 +718,9 @@ namespace SandboxDetail {
 	void DropSquad(const Stroke& stroke) {
 		// Random: each unit picked on its own from every faction's units, or from the favourites.
 		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
+		if (stroke.JetpackOnly) {
+			DropJetless(pool);
+		}
 		const Preset* preset = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.Choice);
 		if (stroke.Random ? pool.empty() : !preset) {
 			return;
@@ -997,6 +1003,8 @@ namespace SandboxDetail {
 			case Tool::BattleModePoint:
 			case Tool::BattleModeBase:
 			case Tool::BattleModeZone:
+			case Tool::BattleModeGoal:
+			case Tool::BattleModeFlag:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -1280,20 +1288,26 @@ namespace SandboxDetail {
 			return;
 		}
 		if (kind == Tool::BattleModePoint) {
-			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on, so long as
-			// it is inside the team's base.
+			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on.
 			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
-			if (IsInZone(s_ModeSetup.Bases[team], position)) {
-				Vector at = position;
-				g_SceneMan.WrapPosition(at);
-				s_ModeSetup.Points[team] = at;
-				s_ModeSetup.HasPoint[team] = true;
-				SendBattleMode();
-			}
+			Vector at = position;
+			g_SceneMan.WrapPosition(at);
+			s_ModeSetup.Points[team] = at;
+			s_ModeSetup.HasPoint[team] = true;
+			SendBattleMode();
 			return;
 		}
-		if (kind == Tool::BattleModeBase || kind == Tool::BattleModeZone) {
-			// The next corner of the team's base being drawn; sent once it's closed.
+		if (kind == Tool::BattleModeFlag) {
+			// The neutral flag (one flag) stands here from now on.
+			Vector at = position;
+			g_SceneMan.WrapPosition(at);
+			s_ModeSetup.FlagSpot = at;
+			s_ModeSetup.HasFlagSpot = true;
+			SendBattleMode();
+			return;
+		}
+		if (IsModeZoneTool(kind)) {
+			// The next corner of the team's spawn zone, goal zone or the mode's zone being drawn; sent once it's closed.
 			ModeBaseCorner(position, ZoneCloseDistance());
 			return;
 		}
@@ -1323,6 +1337,7 @@ namespace SandboxDetail {
 		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;
 		stroke.FavouritesOnly = s_RandomFavourites;
 		stroke.RandomFaction = s_RandomFaction;
+		stroke.JetpackOnly = s_JetpackOnly;
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
 			stroke.Material = s_SpringLiquid;
 			stroke.Rate = s_SpringRate;

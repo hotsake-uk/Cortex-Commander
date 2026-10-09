@@ -550,7 +550,7 @@ void Sandbox::DrawGUI() {
 			if (CurrentTool().Kind != Tool::None) {
 				hint += std::string("    In hand: ") + CurrentTool().Name;
 			}
-			hint += "    Right drag / WASD: move    Wheel: zoom";
+			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom" : "    Right drag / WASD: move    Wheel: zoom";
 			hint += s_BarShown ? "    U: hide the bar" : "    U: show the bar";
 		} else {
 			hint += "    P: back above";
@@ -656,13 +656,13 @@ void Sandbox::DrawGUI() {
 			if (CloseSpawnZone(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)])) {
 				SendBattleSettings(s_BattleEditTeam);
 			}
-		} else if ((CurrentTool().Kind == Tool::BattleModeBase || CurrentTool().Kind == Tool::BattleModeZone) && !s_ZoneDraft.empty()) {
+		} else if (IsModeZoneTool(CurrentTool().Kind) && !s_ZoneDraft.empty()) {
 			CloseModeBase();
 		} else {
 			PutDownBattleTool();
 		}
 	}
-	if (InGame() && !io.WantTextInput && (CurrentTool().Kind == Tool::BattleSpawnZone || CurrentTool().Kind == Tool::BattleModeBase || CurrentTool().Kind == Tool::BattleModeZone) && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
+	if (InGame() && !io.WantTextInput && (CurrentTool().Kind == Tool::BattleSpawnZone || IsModeZoneTool(CurrentTool().Kind)) && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
 		s_ZoneDraft.pop_back();
 	}
 	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
@@ -740,6 +740,15 @@ void Sandbox::DrawGUI() {
 				// (The Flow slider: the pouring brushes pour less often.)
 				s_StrokeTimer = PoursLiquid(tool.Kind) ? tool.Interval / std::clamp(s_Flow, 0.1F, 1.0F) : tool.Interval;
 				QueueStroke(tool.Kind, position);
+			}
+		}
+		// With a Paint tool in hand the right button always digs, whatever material or brush is picked (the middle button and WASD move
+		// the view). Not while you play a unit: the right button is its own then.
+		if (IsPaintTool(tool.Kind) && !s_Possessed && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+			s_DigTimer -= io.DeltaTime;
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || s_DigTimer <= 0.0F) {
+				s_DigTimer = c_Tools[ToolIndex(Tool::Dig)].Interval;
+				QueueStroke(Tool::Dig, position);
 			}
 		}
 		DrawSideRing();
@@ -974,6 +983,8 @@ void Sandbox::DrawGUI() {
 					}
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {
+					ToolUI::Checkbox("Jetpacks only", &s_JetpackOnly);
+					ImGui::SetItemTooltip("Only units with a jetpack: those without one aren't listed, or picked at random.");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");

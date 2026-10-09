@@ -1295,6 +1295,14 @@ PathAgent Actor::GetPathAgent() const {
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
 	agent.Caution = g_SettingsMan.AIMoveCaution();
+	// For a unit a game mode wants kept safe (a flag carrier), where everyone stood when last published, so the route keeps clear of its
+	// enemies (see PathFinder::ThreatCost). Everyone else takes the shortest way.
+	agent.ThreatWeight = m_RouteThreatAvoidance * g_SettingsMan.AIThreatAvoidance();
+	agent.RouteSeed = m_RouteSeed;
+	if (agent.ThreatWeight > 0.0F) {
+		agent.Threats = g_MovableMan.GetPublishedThreats();
+		agent.ThreatTeam = m_Team;
+	}
 	// In liquid (LM-4): whether it floats and swims, how long it holds its breath, and whether lava is any danger to it, as ActorWater and
 	// ActorFire have it (with them off, water is only waded and lava harms nothing). What doesn't breathe isn't flesh, and doesn't burn.
 	bool waterActs = ActorWater::IsEnabled() && FluidSim::IsEnabled();
@@ -1748,8 +1756,13 @@ void Actor::UpdateHeadlamp() {
 		m_HeadlampFade = 0.0F;
 		return;
 	}
+	// How bright the lamp is drawn: full, except at night by the clock, where it comes up with the dark as it used to.
+	float strength = 1.0F;
 	if (lighting.HeadlampsByDay) {
 		m_HeadlampLit = true;
+	} else if (!lighting.HeadlampsOnlyInDark) {
+		strength = GetNightAmount();
+		m_HeadlampLit = strength > 0.05F;
 	} else {
 		// On when it gets darker than the threshold, off only once it's a little lighter than it: at the edge of a lamp's light or a cave mouth,
 		// or with the light wavering (a fire, a flash), the lamp stays as it is instead of flickering.
@@ -1780,8 +1793,8 @@ void Actor::UpdateHeadlamp() {
 			static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
 			color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
 		}
-		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade, LightSource::Headlamps);
-		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade, LightSource::Headlamps);
+		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
+		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
 	}
 }
 

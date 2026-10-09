@@ -43,6 +43,14 @@ namespace SandboxDetail {
 					pool.insert(pool.end(), units.begin(), units.end());
 				}
 			}
+			// No crabs (ACrab: crabs, and the tanks and walkers built on them) unless the team's card says so: they can't climb most of what
+			// the infantry can, and stood in the way of everyone else.
+			if (!settings.Crabs) {
+				std::erase_if(pool, [](const Preset* unit) { return unit->ClassName == "ACrab"; });
+			}
+			if (settings.JetpackOnly) {
+				DropJetless(pool);
+			}
 			if (settings.FavouritesOnly) {
 				std::vector<const Preset*> favourites;
 				for (const Preset* unit: pool) {
@@ -615,7 +623,7 @@ namespace SandboxDetail {
 					ActivateSide(side);
 					for (Actor* unit: wave) {
 						team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-						unit->SetPos(s_ModeRun.Running ? ModeSpawnSpot(side, zone, unit->GetHeight()) : ZoneSpawnSpot(zone, unit->GetHeight()));
+						unit->SetPos(s_ModeRun.Running ? ModeSpawnSpot(side, zone, unit) : ZoneSpawnSpot(zone, unit->GetHeight()));
 						g_MovableMan.AddActor(unit);
 					}
 					team.Sent += static_cast<int>(wave.size());
@@ -634,7 +642,7 @@ namespace SandboxDetail {
 		}
 		const int side = stroke.Team;
 		const bool oneTeam = side >= 0 && side < c_Sides;
-		if (stroke.Kind == Tool::BattleModePoint || stroke.Kind == Tool::BattleModeBase || stroke.Kind == Tool::BattleModeZone || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
+		if (stroke.Kind == Tool::BattleModePoint || IsModeZoneTool(stroke.Kind) || stroke.Kind == Tool::BattleModeFlag || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
 			ApplyBattleMode(stroke);
 			return;
 		}
@@ -766,6 +774,11 @@ namespace SandboxDetail {
 			ImGui::EndCombo();
 		}
 		ImGui::SetItemTooltip("The factions this team's units come from. None ticked: any faction.");
+		changed |= ToolUI::Checkbox("Spawn crabs", &setup.Crabs);
+		ImGui::SetItemTooltip("Crabs among this team's units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.");
+		ImGui::SameLine();
+		changed |= ToolUI::Checkbox("Jetpacks only", &setup.JetpackOnly);
+		ImGui::SetItemTooltip("Only units with a jetpack: those without one aren't sent.");
 		return changed;
 	}
 

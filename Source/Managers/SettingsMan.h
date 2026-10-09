@@ -45,7 +45,7 @@ namespace RTE {
 		/// Overwrites the settings file to save changes made from within the game.
 		void UpdateSettingsFile() const;
 
-		/// Saves every setting that can be tuned while the game runs (the look, time and weather, water, fire, falling ground) as a named preset, a file in Userdata/Presets.
+		/// Saves every setting in the settings panel (the look, time and weather, water, fire, falling ground, the AI, the HUD, the overlays) as a named preset, a file in Userdata/Presets.
 		/// @param name The name. Characters that can't be in a file's name are dropped.
 		/// @return The name it was saved under, or nothing if it couldn't be.
 		std::string SavePreset(const std::string& name) const;
@@ -61,8 +61,9 @@ namespace RTE {
 		/// Gets the names of the presets there are, in order.
 		std::vector<std::string> ListPresets() const;
 
-		/// Writes the settings that can be tuned while the game runs: what a preset holds, and part of the settings file.
-		void SaveTunables(Writer& writer, const struct LightingSettings& lighting) const;
+		/// Writes every setting in the settings panel: what a preset holds, and part of the settings file.
+		/// @param forPreset Whether it's for a preset, which also holds what is only for the moment (game speed, the AI paused, the debug view, frozen simulation...) and says which speech is on as well as off.
+		void SaveTunables(Writer& writer, const struct LightingSettings& lighting, bool forPreset) const;
 #pragma endregion
 
 #pragma region Engine Settings
@@ -205,9 +206,20 @@ namespace RTE {
 		/// other way (each node dug priced at the material's integrity, as before), 1 as designed (a short cut through soft ground beats a long
 		/// way round), 2 twice as readily.
 		float AIDigWillingness() const { return m_AIDigWillingness; }
+
+		/// How much the routes of units a game mode wants kept safe (Actor::GetRouteThreatAvoidance: a capture the flag carrier) keep clear of
+		/// enemies (PathFinder::ThreatCost): 0 not at all, 1 as designed (a way past a crowd of enemies loses to a longer one past none; one
+		/// sentry is skirted only when going round is short), 2 twice as much. Other units always take the shortest way.
+		float AIThreatAvoidance() const { return m_AIThreatAvoidance; }
 		/// How reckless AI units are on the move, 0 (careful) to 1 (reckless); 0.5 is as designed. It scales how long a unit steadies itself
 		/// before it jets, how much fuel it waits for, and how much the route search shies from hard jumps and long drops (see AIMoveCaution).
 		float AIRecklessness() const { return m_AIRecklessness; }
+
+		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
+		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
+
+		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
+		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
 		float AIMoveCaution() const { return std::pow(2.0F, (0.5F - m_AIRecklessness) * 2.0F); }
@@ -425,8 +437,14 @@ namespace RTE {
 
 		/// Sets how readily units with a digger tunnel; see AIDigWillingness.
 		void SetAIDigWillingness(float scale) { m_AIDigWillingness = std::clamp(scale, 0.0F, 2.0F); }
+		/// Sets how much safe-route units keep clear of enemies, 0 to 2; see AIThreatAvoidance.
+		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
+		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
+		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
+		/// Sets which digger those units are handed; see AISpawnDiggerType.
+		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
@@ -678,7 +696,10 @@ namespace RTE {
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
+		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
+		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
+		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.

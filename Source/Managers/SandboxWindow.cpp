@@ -20,9 +20,9 @@ namespace SandboxDetail {
 		}
 		ImGuiIO& io = ImGui::GetIO();
 		bool movedByHand = false;
-		// Dragging with the right button moves the view, unless the tool in hand makes things for a side: then the right button is for the ring of sides, and the
-		// middle button (or the keys) moves the view.
-		bool rightPans = !TakesSide(CurrentTool().Kind) || !Sandbox::CapturesWorldClicks();
+		// Dragging with the right button moves the view, unless the tool in hand makes things for a side or is a Paint tool: then the right button is for the
+		// ring of sides or digs, and the middle button (or the keys) moves the view.
+		bool rightPans = !(TakesSide(CurrentTool().Kind) || (IsPaintTool(CurrentTool().Kind) && !s_Possessed)) || !Sandbox::CapturesWorldClicks();
 		if (!io.WantCaptureMouse && !s_RingOpen && ((rightPans && ImGui::IsMouseDown(ImGuiMouseButton_Right)) || ImGui::IsMouseDown(ImGuiMouseButton_Middle))) {
 			s_CameraCenter -= Vector(io.MouseDelta.x, io.MouseDelta.y) * ScenePixelsPerWindowPixel();
 			movedByHand = io.MouseDelta.x != 0.0F || io.MouseDelta.y != 0.0F;
@@ -265,6 +265,10 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
 			case Tool::BattleModeZone:
 				return {Icon::Flag, IM_COL32(120, 220, 160, 255)};
+			case Tool::BattleModeGoal:
+				return {Icon::Wall, IM_COL32(120, 220, 160, 255)};
+			case Tool::BattleModeFlag:
+				return {Icon::Flag, IM_COL32(240, 240, 240, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:
@@ -891,6 +895,9 @@ namespace SandboxDetail {
 			if (s_FavouritesOnly && FindFavourite(kind, preset.PresetName) < 0) {
 				continue;
 			}
+			if (s_JetpackOnly && (kind == Tool::Unit || kind == Tool::Drop) && !pickInto && !preset.Jetpack) {
+				continue;
+			}
 			if (shown++ % columns != 0) {
 				ImGui::SameLine();
 			}
@@ -1356,7 +1363,7 @@ namespace SandboxDetail {
 			const char* Keys;
 			const char* What;
 		};
-		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint"}};
+		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"},
 		                              {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"},
 		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
