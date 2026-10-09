@@ -2295,6 +2295,8 @@ namespace SandboxDetail {
 			float Best = 0.0F; //!< The nearest it has come to it.
 			Vector From; //!< Where it was when it last came nearer.
 			long long Since = 0; //!< When it last came nearer (or was there, or fighting).
+			float BestRoute = 0.0F; //!< The least it has had left to go along its route, or 0 with none.
+			float Route = 0.0F; //!< What it had left to go along its route when last looked at.
 		};
 
 		std::unordered_map<long, StuckWatch> s_Stuck; //!< By unique ID.
@@ -2316,11 +2318,26 @@ namespace SandboxDetail {
 			return false;
 		}
 
+		/// How far a unit has left to go along its route to a goal (where it is to the route's first point, along the route, then from its
+		/// end to the goal), or 0 with no route. A route round danger or a longer way can lead away from the goal for a while, all the
+		/// while getting shorter.
+		float RouteLeft(const Actor* unit, const Vector& goal) {
+			const std::list<Vector>& path = unit->GetMovePath();
+			if (path.empty()) {
+				return 0.0F;
+			}
+			float left = DistanceBetween(unit->GetPos(), path.front());
+			for (auto point = path.begin(), next = std::next(point); next != path.end(); point = next++) {
+				left += DistanceBetween(*point, *next);
+			}
+			return left + DistanceBetween(path.back(), goal);
+		}
+
 		bool IsVip(const Actor* unit) {
 			return std::any_of(s_Vips.begin(), s_Vips.end(), [unit](const Vip& vip) { return RefersTo(vip.Unit, unit); });
 		}
 
-		/// Every second: a unit that has come no nearer its objective for the time set (stuck in a hole, on a ledge, or with no way there) is
+		/// Every second: a unit that has come no nearer its objective, nor along its route there, for the time set (stuck in a hole, on a ledge, or with no way there) is
 		/// taken away and another comes in its place at once, on the team's next spawn. One there, or with an enemy near (fighting), isn't
 		/// stuck; nor is a VIP, or one a player is controlling.
 		void UpdateStuck(bool aiPaused) {
@@ -2358,10 +2375,16 @@ namespace SandboxDetail {
 				});
 				auto [entry, made] = s_Stuck.try_emplace(id);
 				StuckWatch& watch = entry->second;
+				const float route = RouteLeft(unit, goal);
 				if (made || distance < near || engaged) {
-					watch = {goal, distance, at, now};
+					watch = {goal, distance, at, now, route, route};
 					continue;
 				}
+				if (route > 0.0F && (watch.Route <= 0.0F || route > watch.Route + 100.0F)) {
+					// (A new route, or a longer one round something: measured along from here.)
+					watch.BestRoute = route;
+				}
+				watch.Route = route;
 				if (DistanceBetween(goal, watch.Goal) > 100.0F) {
 					// (Sent somewhere else, or after someone who has moved: measured afresh from here, and counted as getting on if it has
 					// moved itself since.)
@@ -2374,6 +2397,12 @@ namespace SandboxDetail {
 				}
 				if (distance < watch.Best - 30.0F) {
 					watch.Best = distance;
+					watch.From = at;
+					watch.Since = now;
+				}
+				if (route > 0.0F && route < watch.BestRoute - 30.0F && DistanceBetween(at, watch.From) > 30.0F) {
+					// (Getting on along its route, even one that for now leads away: and moving, not just flipping between two routes.)
+					watch.BestRoute = route;
 					watch.From = at;
 					watch.Since = now;
 				}
