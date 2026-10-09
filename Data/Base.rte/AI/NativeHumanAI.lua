@@ -228,6 +228,8 @@ function NativeHumanAI:Update(Owner)
 	local objective = SharedBehaviors.OnObjective(Owner);
 	if objective then
 		SharedBehaviors.FocusOnObjective(self, Owner);
+	elseif SharedBehaviors.Rushing(Owner) then
+		SharedBehaviors.FocusOnRush(self, Owner);
 	end
 
 	-- check if the AI mode has changed or if we need a new behavior

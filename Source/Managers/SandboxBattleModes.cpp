@@ -2615,6 +2615,67 @@ namespace SandboxDetail {
 			return std::any_of(s_Vips.begin(), s_Vips.end(), [unit](const Vip& vip) { return RefersTo(vip.Unit, unit); });
 		}
 
+		// ---- Units that rush the objective ----
+
+		std::unordered_set<long> s_Rushers; //!< By unique ID: the units chosen to rush the objective (RushPercent).
+		std::array<int, c_Sides> s_RushMade = {}; //!< Each team's units handed out since the game started, and of them chosen to rush, to keep to the share exactly.
+		std::array<int, c_Sides> s_RushChosen = {};
+
+		/// Whether a place a unit is headed for is its own team's to guard (its own flag, its own VIP): a guard there isn't rushing anywhere, and
+		/// chasing an intruder off it, must still fight.
+		bool GuardingOwn(int side, const Vector& goal, const std::vector<BattleObjective>& objectives) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			return std::any_of(objectives.begin(), objectives.end(), [&](const BattleObjective& objective) {
+				return objective.Zone.empty() && objective.DefendedBy(side) && !objective.AttackedBy(side) && g_SceneMan.ShortestDistance(goal, objective.Pos, wraps).MagnitudeIsLessThan(objective.Radius + 150.0F);
+			});
+		}
+
+		/// Four times a second: each unit chosen to rush is marked (SandboxRush, read by the AI: SharedBehaviors.Rushing) while it's on its way to
+		/// its objective, and not once it's there, so there it fights as any other.
+		void UpdateRushers(bool aiPaused) {
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (aiPaused || now % 15 != 5 || s_Rushers.empty()) {
+				return;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const std::vector<BattleObjective> objectives = BattleObjectives();
+			std::unordered_set<long> seen;
+			for (Actor* unit: Fighters()) {
+				const long id = unit->GetUniqueID();
+				if (!s_Rushers.count(id)) {
+					continue;
+				}
+				seen.insert(id);
+				Vector goal;
+				float near = 0.0F;
+				const bool rushing = !unit->IsPlayerControlled() && !IsVip(unit) && ObjectiveOf(unit, goal, near) && !g_SceneMan.ShortestDistance(unit->GetPos(), goal, wraps).MagnitudeIsLessThan(near) && !GuardingOwn(unit->GetTeam(), goal, objectives);
+				if (rushing) {
+					unit->SetNumberValue("SandboxRush", 1.0);
+				} else if (unit->NumberValueExists("SandboxRush")) {
+					unit->RemoveNumberValue("SandboxRush");
+				}
+			}
+			std::erase_if(s_Rushers, [&seen](long id) { return !seen.count(id); });
+		}
+
+		/// Picks which of a team's new units rush, so the share of all it has had keeps to the setting.
+		void ChooseRushers(int side, const std::vector<Actor*>& wave) {
+			if (side < 0 || side >= c_Sides) {
+				return;
+			}
+			const int percent = std::clamp(s_ModeRun.Settings.RushPercent[side], 0, 100);
+			for (Actor* unit: wave) {
+				if (!unit) {
+					continue;
+				}
+				++s_RushMade[side];
+				if (s_RushChosen[side] * 100 < percent * s_RushMade[side]) {
+					++s_RushChosen[side];
+					s_Rushers.insert(unit->GetUniqueID());
+				}
+			}
+		}
+
 		/// Every second: a unit that has come no nearer its objective, nor along its route there, for the time set (stuck in a hole, on a ledge, or with no way there) is
 		/// taken away and another comes in its place at once, on the team's next spawn. One there, or with an enemy near (fighting), isn't
 		/// stuck; nor is a VIP, or one a player is controlling.
@@ -2848,6 +2909,9 @@ namespace SandboxDetail {
 			s_Runners.clear();
 			StartRespawns();
 			s_Stuck.clear();
+			s_Rushers.clear();
+			s_RushMade.fill(0);
+			s_RushChosen.fill(0);
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -2894,6 +2958,9 @@ namespace SandboxDetail {
 		}
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); s_ModeRun.Running && mode.UnitsMade) {
 			mode.UnitsMade(side, wave);
+		}
+		if (s_ModeRun.Running) {
+			ChooseRushers(side, wave);
 		}
 	}
 
@@ -2961,6 +3028,7 @@ namespace SandboxDetail {
 			mode.Update(aiPaused);
 		}
 		UpdateStuck(aiPaused);
+		UpdateRushers(aiPaused);
 		if (!aiPaused) {
 			UpdateRespawnLimit(g_TimerMan.GetSimUpdateCount());
 		}
@@ -2987,6 +3055,7 @@ namespace SandboxDetail {
 		s_Flags = {};
 		s_OneFlag = Flag();
 		s_Stuck.clear();
+		s_Rushers.clear();
 	}
 
 	/// The mode list at the top of the Battle tab. Whether a mode (not the cards) is chosen.
@@ -3229,6 +3298,9 @@ namespace SandboxDetail {
 				if (FactionPicker(s_BattleSetup[side])) {
 					SendBattleSettings(side);
 				}
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+				changed |= ImGui::SliderInt("Rush the objective##rush", &setup.RushPercent[side], 0, 100, setup.RushPercent[side] > 0 ? "%d%% of its units" : "none");
+				ImGui::SetItemTooltip("The share of this team's units that make a beeline for the objective: on the way they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight. Once there they fight as the rest do. Guards (of their own flag or VIP) never rush.");
 				ImGui::Unindent();
 			}
 			ImGui::PopID();

@@ -528,6 +528,7 @@ namespace SandboxDetail {
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
 		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
+		std::array<int, c_Sides> RushPercent = {30, 30, 30, 30}; //!< Every mode: the share of each team's units, in percent, that rush the objective: on their way there they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight.
 		int RouteVariety = 0; //!< Every mode: the share of each team's units, in percent, given a taste in routes of their own (Actor::SetRouteSeed), so they spread over the ways to where they're going rather than all taking the shortest.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
 		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
