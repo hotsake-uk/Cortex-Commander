@@ -153,7 +153,7 @@ namespace SandboxDetail {
 		GymRemove,
 		ClearWaterSpawners,
 		ClearEffects, //!< Count: 1 the last one only, else all.
-		UndoTerrain, //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
+		UndoTerrain, //!< Takes back the newest step of the undo history, a paint stroke or a placing click (see s_PaintUndo).
 		BattleTeam, //!< The Battle Director: Team's settings (Battle) set, and Count a BattleCommand. (Was the auto battle's, AutoBattle: renamed, so the tools after keep their numbers.)
 		// The new liquids and loose materials (SB-2), poured like water: appended, so the tools before keep their numbers.
 		Mud,
@@ -1068,15 +1068,24 @@ namespace SandboxDetail {
 	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
 	inline UnitRef s_CommanderReturnTo; //!< The unit you were playing, to go back into.
 
-	/// Terrain painting's undo: each step is what one stroke of a paint or build tool changed (a drag of the brush is one step: changes
-	/// less than a quarter second apart run together), pixel by pixel as it was before, the first change to each pixel only. The last 20
-	/// steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke longer than a step
-	/// holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
+	/// The sandbox's undo, one history for painting and placing (Ctrl+Z takes back the newest step, whichever it was). A paint step is what
+	/// one stroke of a paint or build tool changed (a drag of the brush is one step: changes less than a quarter second apart run together),
+	/// pixel by pixel as it was before, the first change to each pixel only. A placing step is one click of the Spawn or Build tools: the
+	/// units, craft, items, doors and colony buildings it made (taken away again), and the ground a bunker piece or building drew over (put
+	/// back). The last 20 steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke
+	/// longer than a step holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
 	struct PaintUndoPixel {
 		unsigned short X; //!< (Scenes are well under 65536 px on a side.)
 		unsigned short Y;
 		unsigned char Material;
 		unsigned char Color; //!< The 8 bit foreground colour.
+	};
+
+	/// A background pixel as it was, for a bunker piece's undo (only those draw on the background).
+	struct UndoBackgroundPixel {
+		unsigned short X;
+		unsigned short Y;
+		unsigned char Color;
 	};
 
 	struct PaintUndoStep {
@@ -1087,11 +1096,19 @@ namespace SandboxDetail {
 		int Right = INT_MIN;
 		int Bottom = INT_MIN;
 		long long LastUpdate = 0;
+		std::vector<UndoBackgroundPixel> Background; //!< A bunker piece's: the background it drew over.
+		std::vector<long> Placed; //!< The unique IDs of what a placing step made.
+		int ColonyBuilding = -1; //!< The colony building a placing step built, or -1.
+		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
+
+		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
 
 	inline bool s_RecordPaint = false; //!< While a paint or build stroke is applied (see Apply): only the player's own strokes are undone, not craters.
+
+	inline bool s_RecordPlaced = false; //!< While a placing click is applied (see Apply): what it makes is noted for the undo (NotePlaced).
 
 	constexpr size_t c_PaintUndoSteps = 20;
 
@@ -1663,6 +1680,7 @@ namespace SandboxDetail {
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y);
 	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
+	void NotePlaced(const MovableObject* object);
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
 	void FillTerrainShape(const Stroke& stroke);
@@ -1824,6 +1842,7 @@ namespace SandboxDetail {
 	void DrawPinMark(ImDrawList* drawList, ImVec2 from, ImVec2 to);
 	void ToolButtons(std::initializer_list<Tool> tools);
 	void SideChooser();
+	void UndoButton(); //!< Takes back the newest step of the shared paint and placing undo (Tool::UndoTerrain), as Ctrl+Z does.
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);
 	void LoadoutChooser(const char* label = "Loadout");
 	void ForgetPictures();
