@@ -93,11 +93,31 @@ namespace SandboxDetail {
 			const BattleSettings& settings = s_BattleTeams[defender.Team].Settings;
 			defender.Radius = static_cast<float>(std::max(settings.DefendRadius, 1));
 			defender.Chase = static_cast<float>(std::max(settings.ChaseDistance, 0));
-			if (!g_SceneMan.ShortestDistance(defender.Center, settings.DefendPos, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F)) {
+			defender.Roams = defender.RoamRoll * 100.0F < static_cast<float>(settings.RoamPercent);
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			if (!g_SceneMan.ShortestDistance(defender.Center, settings.DefendPos, wraps).MagnitudeIsLessThan(1.0F)) {
 				// The place moved: a post in the new one.
 				defender.Center = settings.DefendPos;
 				defender.Post = PostIn(settings);
+				defender.IdleSince = -1;
+			} else if (!defender.Roams && !g_SceneMan.ShortestDistance(defender.Center, defender.Post, wraps).MagnitudeIsLessThan(defender.Radius + 30.0F)) {
+				// Roaming no more (the share was lowered), and out in the zone: a post inside the radius again.
+				defender.Post = PostIn(settings);
 			}
+		}
+
+		/// Somewhere on the ground for a roamer to walk to next: anywhere inside the place's radius and chase distance.
+		Vector RoamSpot(const BattleDefender& defender) {
+			const float reach = defender.Radius + defender.Chase;
+			for (int attempt = 0; attempt < 6; ++attempt) {
+				Vector around = defender.Center + Vector((Random01() * 2.0F - 1.0F) * reach * 0.9F, 0.0F);
+				g_SceneMan.WrapPosition(around);
+				std::vector<Vector> spots = StandingSpots(around, 1);
+				if (!spots.empty() && g_SceneMan.ShortestDistance(defender.Center, spots.front(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(reach * 0.95F)) {
+					return spots.front();
+				}
+			}
+			return defender.Post;
 		}
 
 		/// Gives a unit just bought its post in the place its team defends: somewhere on the ground inside the radius. It walks there once its
@@ -115,6 +135,8 @@ namespace SandboxDetail {
 			defender.Chase = static_cast<float>(std::max(settings.ChaseDistance, 0));
 			defender.Post = post;
 			defender.Made = g_TimerMan.GetSimUpdateCount();
+			defender.RoamRoll = Random01();
+			defender.Roams = defender.RoamRoll * 100.0F < static_cast<float>(settings.RoamPercent);
 		}
 
 		/// Whether a defender is at its post or on its way back to it, as UpdateBattleDefenders last sent it: its post kept, no attack order, and
@@ -327,6 +349,18 @@ namespace SandboxDetail {
 				defender.ChasingID = 0;
 				SendUnit(unit, defender.Post, nullptr, false, "defending: back to its post", false, true);
 				unit->SetOrderPost(defender.Post);
+				defender.IdleSince = -1;
+			} else if (defender.Roams && unit->GetAIMode() != Actor::AIMODE_GOTO) {
+				// A roamer at its spot: it waits a few seconds, then walks on to another somewhere in the zone.
+				if (defender.IdleSince < 0) {
+					defender.IdleSince = now;
+					defender.Dwell = static_cast<long long>((3.0F + Random01() * 7.0F) * UpdatesPerSecond());
+				} else if (now - defender.IdleSince > defender.Dwell) {
+					defender.Post = RoamSpot(defender);
+					defender.IdleSince = -1;
+					SendUnit(unit, defender.Post, nullptr, false, "defending: roaming", false, true);
+					unit->SetOrderPost(defender.Post);
+				}
 			}
 			++entry;
 		}
@@ -622,6 +656,8 @@ namespace SandboxDetail {
 				ImGui::SetItemTooltip("How far round the defence point its units stand and fight.");
 				changed |= ImGui::SliderInt("Chase distance", &setup.ChaseDistance, 0, 1500, "%d px");
 				ImGui::SetItemTooltip("How far past the radius they go after an enemy before giving up and going back to their posts.");
+				changed |= ImGui::SliderInt("Roaming", &setup.RoamPercent, 0, 100, "%d%% of them");
+				ImGui::SetItemTooltip("The share of its defenders that roam the whole zone, radius and chase distance alike, from spot to spot, rather than holding a post. They still go after enemies in it, and never past it.");
 			}
 
 			ImGui::SeparatorText("Waves");

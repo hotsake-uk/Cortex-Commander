@@ -393,6 +393,7 @@ namespace SandboxDetail {
 		Vector DefendPos; //!< Defend: the middle of the place its units hold.
 		int DefendRadius = 150; //!< Defend: how far round DefendPos its units stand and fight.
 		int ChaseDistance = 300; //!< Defend: how far past the radius they go after an enemy before giving up and going back.
+		int RoamPercent = 0; //!< Defend: the share of its defenders, in percent, that roam the whole chase zone rather than hold a post.
 	};
 
 	/// What a Tool::BattleTeam stroke does, by its Count, besides setting Team's settings.
@@ -465,7 +466,11 @@ namespace SandboxDetail {
 		Vector Center; //!< The place it defends.
 		float Radius = 150.0F;
 		float Chase = 300.0F; //!< How far past Radius from Center it may go after an enemy.
-		Vector Post; //!< Where it stands when there's nothing to chase.
+		Vector Post; //!< Where it stands when there's nothing to chase (a roamer: the spot it's walking to, or waiting at).
+		float RoamRoll = 0.0F; //!< Its own 0-1 roll, fixed when bought: it roams while that's under the card's RoamPercent.
+		bool Roams = false; //!< Roams the chase zone, from one spot to another, rather than holding a post.
+		long long IdleSince = -1; //!< A roamer: the sim update it was first seen waiting at its spot, -1 while on its way.
+		long long Dwell = 0; //!< A roamer: how long it waits at a spot before going on, in sim updates.
 		long ChasingID = 0; //!< The enemy it was sent after, 0 when at (or on its way back to) its post.
 		bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
 		long long Made = 0; //!< The sim update it was made on.
