@@ -256,9 +256,10 @@ GameViewRect DebugMan::GetUncoveredView() const {
 }
 
 float DebugMan::GetPanelWidth(PanelSide side) const {
+	// A fixed share of the window's width, whatever its size; the controls in them wrap onto more lines to fit.
 	// The right side holds the settings panel, which has its list of categories beside its controls, so it is the wider.
-	float displayWidth = ImGui::GetIO().DisplaySize.x;
-	return side == PanelSide::Left ? std::min(m_PanelWidth * GetToolScale(), displayWidth * 0.32F) : std::min(m_PanelWidth * 1.4F * GetToolScale(), displayWidth * 0.4F);
+	float share = m_PanelWidth / 100.0F;
+	return std::floor(ImGui::GetIO().DisplaySize.x * (side == PanelSide::Left ? share : std::min(share * 1.4F, 0.45F)));
 }
 
 void DebugMan::DrawToolWindowControls() {
@@ -272,10 +273,16 @@ void DebugMan::DrawToolWindowControls() {
 		ImGui::SetItemTooltip("How big the tool windows are drawn: type a number from 0.4 to 1.5 and press Enter. 1 is the old size; 0.7 is the usual.");
 		float panelWidth = m_PanelWidth;
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
-		if (ImGui::InputFloat("Panel width", &panelWidth, 20.0F, 60.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-			m_PanelWidth = std::clamp(panelWidth, 240.0F, 700.0F);
+		if (ImGui::InputFloat("Panel width (% of screen)", &panelWidth, 1.0F, 5.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+			m_PanelWidth = std::clamp(panelWidth, 10.0F, 40.0F);
 		}
-		ImGui::SetItemTooltip("How wide the side panels are, before the size above: type a number from 240 to 700 and press Enter.");
+		ImGui::SetItemTooltip("How wide the side panels are, as a share of the window's width: type a number from 10 to 40 and press Enter.\nThe right panel is 1.4 times as wide. Controls that don't fit on a line go onto the next.");
+		float barWidth = m_BarWidth;
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+		if (ImGui::InputFloat("Sandbox bar width (% of screen)", &barWidth, 5.0F, 10.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+			m_BarWidth = std::clamp(barWidth, 25.0F, 100.0F);
+		}
+		ImGui::SetItemTooltip("How wide the sandbox's bar along the bottom is, as a share of the game's picture: type a number from 25 to 100 and press Enter.\nControls that don't fit on a line go onto the next.");
 		ToolUI::Checkbox("The game's own pixel lettering", &m_PixelFont);
 		ImGui::SetItemTooltip("On: these windows are lettered in the game's small pixel font. Off: a smooth font, which is easier to read at length.");
 		ToolUI::Checkbox("Dock tool windows at the sides", &m_DockPanels);
@@ -430,6 +437,8 @@ void DebugMan::DrawImGui() {
 }
 
 bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
+	// Controls set side by side go onto the next line when they don't fit the panel's width (popped in EndPanel).
+	ImGui::PushWrapSameLine();
 	if (!m_DockPanels) {
 		m_PanelKind = 0;
 		return ImGui::Begin(name, open);
@@ -460,6 +469,7 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 }
 
 void DebugMan::EndPanel() {
+	ImGui::PopWrapSameLine();
 	if (m_PanelKind == 0) {
 		ImGui::End();
 		return;

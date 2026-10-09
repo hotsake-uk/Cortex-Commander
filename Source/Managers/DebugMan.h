@@ -107,7 +107,8 @@ namespace RTE {
 		bool m_ShowGraphicsLab{false};
 		bool m_PanelsOverlay{true}; //!< Docked panels lie over the game's picture, which keeps its full size, instead of pushing it into the space between them.
 		bool m_DockPanels{true}; //!< Tool windows are panels at the sides of the game's picture, not floating over it.
-		float m_PanelWidth{380.0F}; //!< Width of the docked panels, before the interface scale.
+		float m_PanelWidth{21.0F}; //!< Width of the docked panel at the left, in percent of the window's width; the one at the right is 1.4 times it.
+		float m_BarWidth{50.0F}; //!< Width of the sandbox bar along the bottom, in percent of the game's picture.
 		float m_ToolScale{0.7F}; //!< How big the tool windows' text and controls are, as a share of the size that follows the window's height.
 
 		/// Gets how much the tool windows are scaled: with the window's height (720 px = 1x), times the size the player chose.
@@ -152,6 +153,9 @@ namespace RTE {
 		float GetPanelWidth(PanelSide side) const;
 
 	public:
+		/// Gets how wide the sandbox bar is, as a share (0 to 1) of the game's picture. Its controls wrap onto more lines inside that.
+		float GetBarWidthShare() const { return m_BarWidth / 100.0F; }
+
 		/// Gets the part of the game's picture not covered by docked panels this frame, in window pixels: where things that must stay in sight (the sandbox bar, banners) go.
 		GameViewRect GetUncoveredView() const;
 
