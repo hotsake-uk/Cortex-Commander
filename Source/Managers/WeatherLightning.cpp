@@ -13,6 +13,7 @@
 #include "SceneLighting.h"
 #include "SceneMan.h"
 #include "SoundContainer.h"
+#include "ActorFire.h"
 #include "TerrainFire.h"
 #include "TimerMan.h"
 #include "Vector.h"
@@ -117,6 +118,8 @@ void WeatherLightning::Strike(const Vector& target, const std::function<float()>
 	TerrainFire::QueueIgniteArea(ground, 12.0F);
 	TerrainFire::QueueIgniteArea(ground, 6.0F);
 	if (harmUnits) {
+		// What it lands on burns, people as well as grass.
+		ActorFire::QueueIgniteArea(ground, 6.0F);
 		// Units within 30 px are struck: up to six charges driven down into the body, fewer the further off, so the blow lands as shots
 		// do, through wounds, armour and the unit's own scripts, and can take a limb. (It took up to 80 health off directly, which went
 		// round all of that and killed a 100-health unit outright within 6 px, never dismembering.)

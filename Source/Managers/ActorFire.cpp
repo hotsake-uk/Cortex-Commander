@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 using namespace RTE;
@@ -35,6 +34,7 @@ namespace {
 	std::vector<Burner> s_Burners; //!< In the order they caught fire, so updates are deterministic.
 	std::vector<MovableObject*> s_IgniteQueue;
 	std::vector<MovableObject*> s_DouseQueue;
+	std::vector<std::pair<Vector, float>> s_AreaQueue; //!< Fire put straight onto an area (the sandbox's fire brush, lightning): position, radius.
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
 	unsigned int s_Random = 0x2F1E3D5Bu;
@@ -64,29 +64,6 @@ namespace {
 
 	bool CanBurn(const Actor* actor) {
 		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F && MadeOfFlesh(actor);
-	}
-
-	/// Whether something hitting a unit is the kind of fire that sets people alight: burning fuel and flame-thrower flames.
-	/// Not the puff of an explosion, a jetpack's flame, smoke, a muzzle flash or a laser: those are named "fire" and "flame" too, and used to set people alight at a touch.
-	bool SetsUnitsAlight(const MovableObject* hitter) {
-		static std::unordered_map<std::string, bool> cache;
-		static std::mutex cacheMutex;
-		// A fast, sharp thing is a shot (a bullet, a laser pulse), whatever it's called.
-		if (hitter->GetSharpness() > 5.0F) {
-			return false;
-		}
-		const std::string& name = hitter->GetPresetName();
-		std::scoped_lock lock(cacheMutex);
-		auto found = cache.find(name);
-		if (found != cache.end()) {
-			return found->second;
-		}
-		auto has = [&name](const char* part) { return name.find(part) != std::string::npos; };
-		bool flame = has("Napalm") || has("Incendi") || has("Flamer") || (has("Flame") && has("Hurt")) || has("Burn Particle") || has("Ground Flame");
-		bool harmless = has("Smoke") || has("Puff") || has("Laser") || has("Jet") || has("Sweetener") || has("Muzzle") || has("Body Flame");
-		bool result = flame && !harmless;
-		cache.emplace(name, result);
-		return result;
 	}
 
 	std::vector<Burner>::iterator FindBurner(const MovableObject* object) {
@@ -142,7 +119,8 @@ void ActorFire::OnHit(const MovableObject* hitter, MovableObject* hitRoot, const
 	if (!s_Enabled || !hitter || !hitRoot || hitRoot == hitter) {
 		return;
 	}
-	bool fire = SetsUnitsAlight(hitter);
+	// The same rule as for the ground (TerrainFire::IsFireSource), so what sets grass alight sets people alight too.
+	bool fire = TerrainFire::IsFireSource(hitter);
 	bool water = !fire && TerrainFire::IsDousingParticle(hitter, hitterMaterial);
 	if (!fire && !water) {
 		return;
@@ -151,6 +129,16 @@ void ActorFire::OnHit(const MovableObject* hitter, MovableObject* hitRoot, const
 	std::vector<MovableObject*>& queue = fire ? s_IgniteQueue : s_DouseQueue;
 	if (queue.size() < 512) {
 		queue.push_back(hitRoot);
+	}
+}
+
+void ActorFire::QueueIgniteArea(const Vector& position, float radius) {
+	if (!s_Enabled) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_AreaQueue.size() < 256) {
+		s_AreaQueue.emplace_back(position, radius);
 	}
 }
 
@@ -170,10 +158,12 @@ void ActorFire::Update() {
 	}
 	std::vector<MovableObject*> ignitions;
 	std::vector<MovableObject*> douses;
+	std::vector<std::pair<Vector, float>> areas;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		ignitions.swap(s_IgniteQueue);
 		douses.swap(s_DouseQueue);
+		areas.swap(s_AreaQueue);
 	}
 	if (!s_Enabled || !s_Scene) {
 		s_Burners.clear();
@@ -186,7 +176,7 @@ void ActorFire::Update() {
 			g_PostProcessMan.RegisterLight(burner.Object->GetPos(), glm::vec3(255.0F, 140.0F, 50.0F), 70.0F, 0.9F, LightSource::Fire);
 		}
 	}
-	if (g_TimerMan.GetSimUpdateCount() % c_TickInterval != 0 && ignitions.empty() && douses.empty()) {
+	if (g_TimerMan.GetSimUpdateCount() % c_TickInterval != 0 && ignitions.empty() && douses.empty() && areas.empty()) {
 		return;
 	}
 
@@ -206,6 +196,21 @@ void ActorFire::Update() {
 		// Things that aren't units (fuel barrels) go up at once, as before.
 		if (!dynamic_cast<Actor*>(object) || Random01() < 0.2F) {
 			Ignite(object);
+		}
+	}
+	// Fire put straight onto an area sets alight every unit (and fuel barrel) it touches, at once: painting fire over someone sets them
+	// burning as it does the oil they stand in. (It only lit the ground, so people over rock or earth never caught.)
+	for (const auto& [center, radius]: areas) {
+		bool wraps = g_SceneMan.SceneWrapsX();
+		for (Actor* actor: g_MovableMan.m_Actors) {
+			if (CanBurn(actor) && g_SceneMan.ShortestDistance(center, actor->GetPos(), wraps).MagnitudeIsLessThan(radius + actor->GetRadius() * 0.5F)) {
+				Ignite(actor);
+			}
+		}
+		for (MovableObject* item: g_MovableMan.m_Items) {
+			if (item->NumberValueExists("Flammable") && g_SceneMan.ShortestDistance(center, item->GetPos(), wraps).MagnitudeIsLessThan(radius + item->GetRadius() * 0.5F)) {
+				Ignite(item);
+			}
 		}
 	}
 	for (MovableObject* object: douses) {
@@ -304,4 +309,5 @@ void ActorFire::Clear() {
 	std::scoped_lock lock(s_QueueMutex);
 	s_IgniteQueue.clear();
 	s_DouseQueue.clear();
+	s_AreaQueue.clear();
 }

@@ -35,6 +35,7 @@
 #include "SoundContainer.h"
 #include "TDExplosive.h"
 #include "TerrainCollapse.h"
+#include "ActorFire.h"
 #include "TerrainFire.h"
 #include "WeatherLightning.h"
 #include "TerrainObject.h"
