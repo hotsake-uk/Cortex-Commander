@@ -621,7 +621,8 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves. Returns what the units cost.
-	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft) {
+	/// @param invincible Whether the craft takes no harm, and is taken away once it has unloaded and left (KeepCraftWhole).
+	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible) {
 		const CraftChoice& choice = c_Crafts[std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)];
 		ACraft* ship = dynamic_cast<ACraft*>(CreateBaseObject(choice.ClassName, choice.PresetName));
 		float cost = 0.0F;
@@ -644,6 +645,9 @@ namespace SandboxDetail {
 		ship->SetControllerMode(Controller::CIM_AI);
 		ship->SetAIMode(Actor::AIMODE_DELIVER);
 		ship->ResetAllTimers();
+		if (invincible) {
+			KeepCraftWhole(ship);
+		}
 		g_MovableMan.AddActor(ship);
 		return cost;
 	}
@@ -976,24 +980,24 @@ namespace SandboxDetail {
 				GymRemoveUnits();
 				break;
 			case Tool::ClearWaterSpawners:
-				s_WaterSpawners.clear();
+				// All of them, or only those that pour the material named.
+				if (stroke.Material.empty()) {
+					s_WaterSpawners.clear();
+				} else {
+					s_WaterSpawners.erase(std::remove_if(s_WaterSpawners.begin(), s_WaterSpawners.end(), [&stroke](const WaterSpawner& spring) { return spring.Liquid == stroke.Material; }), s_WaterSpawners.end());
+				}
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();
 				break;
-			case Tool::AutoBattle:
-				if (stroke.Count <= 0) {
-					s_AutoRunning = false;
-					s_AutoWinner = -2;
-					break;
-				}
-				for (int side = 0; side < c_Sides; ++side) {
-					s_AutoSides[side].Active = side < stroke.Count;
-					s_AutoSides[side].Budget = std::max(stroke.Choice, 1);
-				}
-				s_AutoRandom = stroke.Random;
-				s_AutoFavourites = stroke.FavouritesOnly;
-				BeginAutoBattle(stroke.Position, static_cast<float>(stroke.Radius));
+			case Tool::BattleTeam:
+			case Tool::BattleDefendPoint:
+			case Tool::BattleDropLine:
+			case Tool::BattleSpawnZone:
+			case Tool::BattleModePoint:
+			case Tool::BattleModeBase:
+			case Tool::BattleModeZone:
+				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
 				if (stroke.Count == 1) {
@@ -1056,9 +1060,26 @@ namespace SandboxDetail {
 			case Tool::Cryo:
 				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid");
 				break;
+			case Tool::Blood:
+				// Blood only flows with the setting on (it stays where it fell otherwise), so the brush turns it on.
+				if (!FluidSim::BloodFlows()) {
+					FluidSim::SetBloodFlows(true);
+				}
+				FluidSim::Pour(at, radius * 0.5F, "Blood");
+				break;
+			case Tool::PourOther:
+				if (!stroke.Material.empty()) {
+					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str());
+				}
+				break;
 			case Tool::WaterSpawner:
 				if (s_WaterSpawners.size() < 64) {
-					s_WaterSpawners.push_back({at, std::max(1, stroke.Radius / 2)});
+					WaterSpawner spring;
+					spring.Position = at;
+					spring.Radius = std::max(1, stroke.Radius / 2);
+					spring.Liquid = stroke.Material.empty() ? "Water" : stroke.Material;
+					spring.Rate = std::clamp(stroke.Rate, 0.05F, 1.0F);
+					s_WaterSpawners.push_back(spring);
 				}
 				break;
 			case Tool::LooseSand:
@@ -1204,13 +1225,13 @@ namespace SandboxDetail {
 				break;
 			}
 			case Tool::BuildTank:
-				// An open concrete tank, filled with water.
+				// An open concrete tank, filled with water, or what the springs pour (Paint > Springs).
 				PaintBox(at + Vector(-70.0F, 40.0F), 140, 8, "Concrete");
 				PaintBox(at + Vector(-70.0F, -48.0F), 8, 90, "Concrete");
 				PaintBox(at + Vector(62.0F, -48.0F), 8, 90, "Concrete");
 				for (float y = -30.0F; y <= 26.0F; y += 14.0F) {
 					for (float x = -48.0F; x <= 48.0F; x += 16.0F) {
-						FluidSim::Pour(at + Vector(x, y), 9.0F, "Water");
+						FluidSim::Pour(at + Vector(x, y), 9.0F, stroke.Material.empty() ? "Water" : stroke.Material.c_str());
 					}
 				}
 				break;
@@ -1249,6 +1270,40 @@ namespace SandboxDetail {
 	}
 
 	void QueueStroke(Tool kind, const Vector& position) {
+		if (kind == Tool::BattleDefendPoint) {
+			// The team being set up on the Battle tab defends here from now on.
+			BattleSettings& setup = s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+			setup.DefendPos = position;
+			g_SceneMan.WrapPosition(setup.DefendPos);
+			setup.HasDefendPos = true;
+			SendBattleSettings(s_BattleEditTeam);
+			return;
+		}
+		if (kind == Tool::BattleModePoint) {
+			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on, so long as
+			// it is inside the team's base.
+			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
+			if (IsInZone(s_ModeSetup.Bases[team], position)) {
+				Vector at = position;
+				g_SceneMan.WrapPosition(at);
+				s_ModeSetup.Points[team] = at;
+				s_ModeSetup.HasPoint[team] = true;
+				SendBattleMode();
+			}
+			return;
+		}
+		if (kind == Tool::BattleModeBase || kind == Tool::BattleModeZone) {
+			// The next corner of the team's base being drawn; sent once it's closed.
+			ModeBaseCorner(position, ZoneCloseDistance());
+			return;
+		}
+		if (kind == Tool::BattleSpawnZone) {
+			// The next corner of the zone being drawn; sent once it's closed.
+			if (AddZoneCorner(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position, ZoneCloseDistance())) {
+				SendBattleSettings(s_BattleEditTeam);
+			}
+			return;
+		}
 		Stroke stroke;
 		stroke.Kind = kind;
 		stroke.Position = position;
@@ -1268,6 +1323,12 @@ namespace SandboxDetail {
 		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;
 		stroke.FavouritesOnly = s_RandomFavourites;
 		stroke.RandomFaction = s_RandomFaction;
+		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
+			stroke.Material = s_SpringLiquid;
+			stroke.Rate = s_SpringRate;
+		} else if (kind == Tool::PourOther) {
+			stroke.Material = s_OtherPourable;
+		}
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);

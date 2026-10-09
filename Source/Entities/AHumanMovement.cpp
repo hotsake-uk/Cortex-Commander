@@ -73,42 +73,27 @@ namespace {
 // it aims up and presses up, down likewise. The nodes are found among the scene's particles now and then and kept.
 std::vector<Vector> AHuman::s_LadderNodes;
 double AHuman::s_LadderNodesSimTimeMS = -1.0;
-std::shared_mutex AHuman::s_LadderNodesMutex;
+
+void AHuman::RefreshLadderNodes() {
+	// (Was done by whichever AI thread found the nodes out of date, under a lock every ladder lookup on every thread took. Here, on the main
+	// thread before the AI runs, the lookups need none. A sim clock gone back means a new game.)
+	double now = g_TimerMan.GetSimTimeMS();
+	if (s_LadderNodesSimTimeMS >= 0.0 && now >= s_LadderNodesSimTimeMS && now - s_LadderNodesSimTimeMS <= 4000.0) {
+		return;
+	}
+	s_LadderNodesSimTimeMS = now;
+	static const std::string c_LadderNodeName = "Background Ladder Node";
+	s_LadderNodes.clear();
+	// Pinned first, as most particles aren't, then the name.
+	for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+		if (particle && particle->GetPinStrength() > 0.0F && particle->GetPresetName() == c_LadderNodeName) {
+			s_LadderNodes.push_back(particle->GetPos());
+		}
+	}
+}
 
 std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
-	// (Called from the AI's threads, several units at once: the one that finds the nodes out of date finds them again under the lock while
-	// the rest wait, and the node found is handed back by value, not as a pointer into a list another thread may be refilling.)
-	double now = g_TimerMan.GetSimTimeMS();
-	auto outOfDate = [now]() { return s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0; };
-	bool refresh;
-	{
-		std::shared_lock lock(s_LadderNodesMutex);
-		refresh = outOfDate();
-	}
-	if (refresh) {
-		// The one that claims the refresh walks the particles outside the lock, and the rest go on with the nodes as they were meanwhile (they
-		// waited on the walk before: a millisecond in a big battle). Pinned first, as most particles aren't, then the name.
-		bool claimed = false;
-		{
-			std::unique_lock lock(s_LadderNodesMutex);
-			if (outOfDate()) {
-				s_LadderNodesSimTimeMS = now;
-				claimed = true;
-			}
-		}
-		if (claimed) {
-			static const std::string c_LadderNodeName = "Background Ladder Node";
-			std::vector<Vector> nodes;
-			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
-				if (particle && particle->GetPinStrength() > 0.0F && particle->GetPresetName() == c_LadderNodeName) {
-					nodes.push_back(particle->GetPos());
-				}
-			}
-			std::unique_lock lock(s_LadderNodesMutex);
-			s_LadderNodes.swap(nodes);
-		}
-	}
-	std::shared_lock lock(s_LadderNodesMutex);
+	// (Called from the AI's threads, several units at once: read only, refreshed by RefreshLadderNodes while none of them runs.)
 	std::optional<Vector> best;
 	float bestDistance = std::numeric_limits<float>::max();
 	for (const Vector& node: s_LadderNodes) {
@@ -1382,7 +1367,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("stuckLevel", mover.stuckLevel);
 	{
 		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
-		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", false});
+		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
 	if (mover.fuelWaiting) {
@@ -2452,7 +2437,13 @@ int AHuman::MoveAlongRoute() {
 		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
 		// (Never more than 85 hundredths of the tank, which a standing unit's own hops kept it from; and the wait ends after six seconds
 		// whatever the tank says, on a timer of its own, since standing still here is not being stuck.)
-		float needed = std::min(FlightFuelNeeded(landing, landingFloorY), m_pJetpack->GetJetTimeTotal() * 0.85F);
+		// (The AI movement settings: a careful unit waits for a little more than the flight takes and settles longer, a reckless one less;
+		// with the fuel wait off it goes on a tenth of what it needs, with the steadying off it takes off mid-stride.)
+		const float caution = g_SettingsMan.AIMoveCaution();
+		float needed = std::min(FlightFuelNeeded(landing, landingFloorY) * std::clamp(0.8F + caution * 0.2F, 0.9F, 1.2F), m_pJetpack->GetJetTimeTotal() * 0.85F);
+		if (!g_SettingsMan.AIWaitsForFuel()) {
+			needed *= 0.1F;
+		}
 		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
 			mover.fuelWaitTimer.Reset();
@@ -2465,7 +2456,7 @@ int AHuman::MoveAlongRoute() {
 		// and upright for up to most of a second, by how far the landing is past three bodies off. A small error at take-off is a big one
 		// at the end of a long flight, and long flights were the ones missed and flown again.
 		float flightLength = toLanding.GetMagnitude();
-		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F);
+		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution;
 		// (Upright against its own standing pose, which leans for some bodies: measured against straight up, a soldier whose stance leans
 		// more than the tolerance never counted as settled, and stood at the foot of the ledge for good.)
 		float uprightError = std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND]));
@@ -2475,14 +2466,14 @@ int AHuman::MoveAlongRoute() {
 		}
 		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
 		// never quite settled stood at its take-off with nothing to move it on.)
-		bool wantsSettle = canTakeOff && !hop && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		bool wantsSettle = canTakeOff && !hop && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
 		if (wantsSettle && !mover.settling) {
 			mover.settling = true;
 			mover.settleWaitTimer.Reset();
 		} else if (!wantsSettle) {
 			mover.settling = false;
 		}
-		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500)) {
+		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500.0 * std::max(1.0F, caution))) {
 			wantsSettle = false;
 		}
 		if (wantsSettle) {

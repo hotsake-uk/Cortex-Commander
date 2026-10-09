@@ -166,6 +166,12 @@ namespace RTE {
 		/// Sets whether units run by the AI take no notice of this Actor. For a player walking about a battle as a bystander.
 		void SetIgnoredByAI(bool ignored) { m_IgnoredByAI = ignored; }
 
+		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
+		bool IsHighlighted() const { return m_Highlighted; }
+
+		/// Sets whether this Actor is drawn with a bright glowing outline: a capture the flag carrier.
+		void SetHighlighted(bool highlighted) { m_Highlighted = highlighted; }
+
 		/// Sets whether or not this Actor can be controlled by human players.
 		/// @param playerControllable Whether or not this Actor should be able to be controlled by human players.
 		void SetPlayerControllable(bool playerControllable) { m_PlayerControllable = playerControllable; }
@@ -1235,6 +1241,7 @@ namespace RTE {
 		Controller m_Controller;
 		bool m_PlayerControllable; //!< Whether or not this Actor can be controlled by human players.
 		bool m_IgnoredByAI = false; //!< Whether units run by the AI take no notice of this Actor. Not copied or saved: it is set on the one Actor while it lives.
+		bool m_Highlighted = false; //!< Drawn with a bright glowing outline. Not copied or saved, as m_IgnoredByAI.
 
 		// Sounds
 		SoundContainer* m_BodyHitSound;

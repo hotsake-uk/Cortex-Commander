@@ -98,6 +98,125 @@ namespace SandboxDetail {
 		return changed;
 	}
 
+	std::vector<std::string> PourableNames() {
+		std::vector<std::string> names;
+		for (int id = 1; id < 256; ++id) {
+			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+			if (!material || material->GetIndex() != id) {
+				continue;
+			}
+			const std::string& name = material->GetPresetName();
+			// (The powder rule is FluidSim's own, BuildTables: Powder set, or unset and one of the stock powder names. Liquids it says itself.)
+			const MaterialBehaviour& behaviour = material->GetBehaviour();
+			bool powderByName = name == "Sand" || name == "Snow" || name == "Earth Rubble" || name == "Ashes";
+			bool powder = FluidSim::PowdersEnabled() && !FluidSim::IsLiquid(id) && (behaviour.Powder >= 0 ? behaviour.Powder == 1 : powderByName);
+			if (FluidSim::IsLiquid(id) || powder) {
+				names.push_back(name);
+			}
+		}
+		std::sort(names.begin(), names.end());
+		names.erase(std::unique(names.begin(), names.end()), names.end());
+		return names;
+	}
+
+	ImU32 MaterialMarkColor(const std::string& name, int alpha) {
+		const Material* material = g_SceneMan.GetMaterial(name);
+		if (!material || material->GetColor().GetIndex() <= 0) {
+			return IM_COL32(70, 160, 255, alpha);
+		}
+		return IM_COL32(std::min(material->GetColor().GetR() + 50, 255), std::min(material->GetColor().GetG() + 50, 255), std::min(material->GetColor().GetB() + 50, 255), alpha);
+	}
+
+	std::vector<std::pair<std::string, int>> SpringCounts() {
+		std::map<std::string, int> counts;
+		for (const WaterSpawner& spring: s_WaterSpawners) {
+			++counts[spring.Liquid];
+		}
+		return std::vector<std::pair<std::string, int>>(counts.begin(), counts.end());
+	}
+
+	bool PoursLiquid(Tool kind) {
+		switch (kind) {
+			case Tool::Water:
+			case Tool::Lava:
+			case Tool::Acid:
+			case Tool::Oil:
+			case Tool::Mud:
+			case Tool::Tar:
+			case Tool::Mercury:
+			case Tool::Fuel:
+			case Tool::Cryo:
+			case Tool::Blood:
+			case Tool::PourOther:
+			case Tool::WaterSpawner:
+			case Tool::BuildTank:
+				return true;
+			default:
+				return PoursPowder(kind);
+		}
+	}
+
+	bool PoursPowder(Tool kind) {
+		return kind == Tool::LooseSand || kind == Tool::LooseSnow || kind == Tool::Gravel || kind == Tool::GlassShards;
+	}
+
+	const char* ToolUnavailableReason(Tool kind) {
+		if (PoursLiquid(kind) && !FluidSim::IsEnabled()) {
+			return "Flowing liquids are off (World > Simulations, or F6 > Water): nothing is poured.";
+		}
+		if (PoursPowder(kind) && !FluidSim::PowdersEnabled()) {
+			return "Loose ground is off (World > Simulations, or F6 > Water): sand, snow, gravel and glass aren't poured.";
+		}
+		return nullptr;
+	}
+
+	const char* ToolTipText(Tool kind) {
+		switch (kind) {
+			case Tool::Fire:
+				return "Sets what burns alight: grass, wood, oil and fuel catch; rock doesn't.";
+			case Tool::Water:
+				return "Flows, pools and puts out fire. Freezes in snowy weather if that is on.";
+			case Tool::Lava:
+				return "Slow and heavy. Sets things alight, burns units and turns to stone where it meets water.";
+			case Tool::Acid:
+				return "Eats through soft ground and hurts units standing in it.";
+			case Tool::Oil:
+				return "A dark, glossy liquid that floats on water and burns.";
+			case Tool::Smoke:
+				return "Thick smoke that drifts with the wind and hides units from sight.";
+			case Tool::ToxicGas:
+				return "Poisonous gas that hurts units in it.";
+			case Tool::Mud:
+				return "Thick and slow; units wade through it sluggishly. Dries back to earth over time.";
+			case Tool::Tar:
+				return "Very sticky: units get stuck in it. Burns slowly.";
+			case Tool::Mercury:
+				return "Heavy and harmful: units float high on it and are hurt by it.";
+			case Tool::Fuel:
+				return "Runs like water and explodes when it burns.";
+			case Tool::Cryo:
+				return "Freezes water it touches, chills and frosts units, and boils off over time.";
+			case Tool::Blood:
+				return "Runs and pools, then soaks away. Turns on \"Spilt blood runs and pools\" (F6 > Water) if it is off.";
+			case Tool::PourOther:
+				return "Pours the liquid or powder chosen under \"More...\": every one the game has, mods' included (rubble, ash, ...).";
+			case Tool::WaterSpawner:
+				return "Click to place a spring that keeps pouring, as wide as the brush. What it pours and how fast are set under Springs.";
+			case Tool::LooseSand:
+				return "Falls and piles into slopes.";
+			case Tool::LooseSnow:
+				return "Falls and piles, a little sticky; melts to water.";
+			case Tool::Gravel:
+				return "Falls and piles like sand, heavier.";
+			case Tool::GlassShards:
+				return "Falls and piles, and cuts units walking through it.";
+			case Tool::BuildTank:
+				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
+			default:
+				return nullptr;
+		}
+	}
+
 	ToolLook LookOf(Tool kind) {
 		switch (kind) {
 			case Tool::None:
@@ -134,6 +253,18 @@ namespace SandboxDetail {
 				return {Icon::Person, IM_COL32(120, 220, 120, 255)};
 			case Tool::GymGoal:
 				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
+			case Tool::BattleDefendPoint:
+				return {Icon::Flag, IM_COL32(120, 200, 220, 255)};
+			case Tool::BattleDropLine:
+				return {Icon::Down, IM_COL32(120, 200, 220, 255)};
+			case Tool::BattleSpawnZone:
+				return {Icon::Person, IM_COL32(120, 200, 220, 255)};
+			case Tool::BattleModePoint:
+				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
+			case Tool::BattleModeBase:
+				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
+			case Tool::BattleModeZone:
+				return {Icon::Flag, IM_COL32(120, 220, 160, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:
@@ -158,6 +289,10 @@ namespace SandboxDetail {
 				return {Icon::Drop, IM_COL32(220, 190, 60, 255)};
 			case Tool::Cryo:
 				return {Icon::Drop, IM_COL32(180, 235, 255, 255)};
+			case Tool::Blood:
+				return {Icon::Drop, IM_COL32(170, 20, 25, 255)};
+			case Tool::PourOther:
+				return {Icon::Grains, IM_COL32(200, 180, 150, 255)};
 			case Tool::WaterSpawner:
 				return {Icon::Down, IM_COL32(90, 170, 240, 255)};
 			case Tool::Smoke:
@@ -279,6 +414,83 @@ namespace SandboxDetail {
 	}
 
 
+	std::vector<const char*> VisibleTabs() {
+		std::vector<const char*> tabs;
+		if (Sandbox::IsGodMode()) {
+			tabs.push_back("You");
+		}
+		tabs.push_back("Spawn");
+		if (c_ShowColonyTab) {
+			tabs.push_back("Colony");
+		}
+		tabs.push_back("Build");
+		tabs.push_back("Orders");
+		tabs.push_back("Battle");
+		if (Sandbox::IsGodMode()) {
+			tabs.push_back("Gym");
+		}
+		for (const char* name: {"Paint", "Boom", "Effects", "World", "Keys"}) {
+			tabs.push_back(name);
+		}
+		return tabs;
+	}
+
+	bool DrawTabRows() {
+		std::vector<const char*> tabs = VisibleTabs();
+		// (Asked for from the bar, or by a test run: TestTab says so for the tab named.)
+		for (const char* name: tabs) {
+			if (TestTab(name) & ImGuiTabItemFlags_SetSelected) {
+				s_CurrentTab = name;
+			}
+		}
+		if (std::none_of(tabs.begin(), tabs.end(), [](const char* name) { return s_CurrentTab == name; })) {
+			s_CurrentTab = tabs.front();
+		}
+		// Two rows, the first the longer by one when the count is odd. Each button takes an equal share of the width.
+		size_t perRow = (tabs.size() + 1) / 2;
+		float spacing = ImGui::GetStyle().ItemSpacing.x;
+		for (size_t row = 0; row < 2; ++row) {
+			size_t first = row * perRow;
+			size_t last = std::min(tabs.size(), first + perRow);
+			if (first >= last) {
+				break;
+			}
+			float width = (ImGui::GetContentRegionAvail().x - spacing * static_cast<float>(perRow - 1)) / static_cast<float>(perRow);
+			for (size_t i = first; i < last; ++i) {
+				if (i > first) {
+					ImGui::SameLine();
+				}
+				bool showing = s_CurrentTab == tabs[i];
+				if (showing) {
+					ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+					ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrab));
+				}
+				std::string label = std::string(tabs[i]) + "##tab";
+				if (ToolUI::Button(label.c_str(), ImVec2(width, 0.0F)) && !showing) {
+					s_CurrentTab = tabs[i];
+				}
+				if (showing) {
+					ImGui::PopStyleColor(2);
+				}
+			}
+		}
+		ImGui::Separator();
+		return true;
+	}
+
+	bool SandboxTab(const char* name) {
+		if (s_CurrentTab != name) {
+			return false;
+		}
+		ImGui::PushID(name);
+		return true;
+	}
+
+	void EndSandboxTab() {
+		ImGui::PopID();
+	}
+
+
 	int FindPin(Tool kind, const std::string& presetName) {
 		for (size_t i = 0; i < s_Pins.size(); ++i) {
 			if (s_Pins[i].Kind == kind && s_Pins[i].PresetName == presetName) {
@@ -383,8 +595,13 @@ namespace SandboxDetail {
 			}
 			ImGui::PushID(index);
 			ImVec2 at = ImGui::GetCursorScreenPos();
+			// A tool its simulation is off for does nothing: shown greyed, with the reason (it can still be taken, to work once it's on).
+			const char* unavailable = ToolUnavailableReason(kind);
 			if (ImGui::InvisibleButton("##tool", ImVec2(width, height))) {
 				TookTool(index);
+			}
+			if (const char* tip = ToolTipText(kind); tip || unavailable) {
+				ImGui::SetItemTooltip("%s%s%s", tip ? tip : "", tip && unavailable ? "\n\n" : "", unavailable ? unavailable : "");
 			}
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
 				TogglePin(kind, "");
@@ -395,6 +612,9 @@ namespace SandboxDetail {
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
 			ToolLook look = LookOf(kind);
+			if (unavailable) {
+				look.Color = (look.Color & 0x00FFFFFF) | (static_cast<ImU32>(90) << IM_COL32_A_SHIFT);
+			}
 			DrawIcon(drawList, look.Art, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, look.Color);
 			if (FindPin(kind, "") >= 0) {
 				DrawPinMark(drawList, at, to);
@@ -403,7 +623,7 @@ namespace SandboxDetail {
 			float wrap = width - pad;
 			ImVec2 nameSize = ImGui::CalcTextSize(name, nullptr, false, wrap);
 			ImGui::PushClipRect(at, to, true);
-			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name, nullptr, wrap);
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : (unavailable ? ImGuiCol_TextDisabled : ImGuiCol_Text)), name, nullptr, wrap);
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}
@@ -600,11 +820,13 @@ namespace SandboxDetail {
 		return false;
 	}
 
-	void PictureGrid(Tool kind, const char* group) {
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto) {
 		LoadFavouritesFile();
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
-		char* filter = FilterFor(kind, true);
+		// A picker keeps its search and filters apart from the tool's, under the character's tool.
+		Tool filterKey = pickInto ? Tool::PlayCharacter : kind;
+		char* filter = FilterFor(filterKey, true);
 		ImGui::SetNextItemWidth(-1.0F);
 		ImGui::InputTextWithHint("##filter", "Search...", filter, 64);
 		// Narrowing the list: by subcategory (not for structures, whose own Kind combo does that), by mod, and whether mods are listed at all.
@@ -641,18 +863,20 @@ namespace SandboxDetail {
 			if (kind != Tool::Structure) {
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(third);
-				ChoiceCombo("##kind", s_KindFilter[kind], kinds);
+				ChoiceCombo("##kind", s_KindFilter[filterKey], kinds);
 				ImGui::SetItemTooltip("The kind of thing listed.");
 			}
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(third);
-			ChoiceCombo("##mod", s_ModFilter[kind], mods);
+			ChoiceCombo("##mod", s_ModFilter[filterKey], mods);
 			ImGui::SetItemTooltip("Only things from this module (faction or mod).");
 		}
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float cell = ImGui::GetFontSize() * 6.0F;
 		float labelHeight = ImGui::GetTextLineHeight() * 2.0F;
-		ImGui::BeginChild("##pictures", ImVec2(-1.0F, std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F)), ImGuiChildFlags_Borders);
+		// A picker sits among other settings, so it keeps to a few rows rather than filling the rest of the window.
+		float height = pickInto ? (cell + labelHeight + style.ItemSpacing.y) * 2.6F : std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F);
+		ImGui::BeginChild("##pictures", ImVec2(-1.0F, height), ImGuiChildFlags_Borders);
 		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
 		int shown = 0;
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -661,7 +885,7 @@ namespace SandboxDetail {
 			if (!ContainsIgnoringCase(preset.Label, filter) || (group && preset.Group != group)) {
 				continue;
 			}
-			if ((!s_ShowModded && preset.Modded) || (!s_KindFilter[kind].empty() && preset.Kind != s_KindFilter[kind]) || (!s_ModFilter[kind].empty() && preset.Module != s_ModFilter[kind])) {
+			if ((!s_ShowModded && preset.Modded) || (!s_KindFilter[filterKey].empty() && preset.Kind != s_KindFilter[filterKey]) || (!s_ModFilter[filterKey].empty() && preset.Module != s_ModFilter[filterKey])) {
 				continue;
 			}
 			if (s_FavouritesOnly && FindFavourite(kind, preset.PresetName) < 0) {
@@ -677,10 +901,10 @@ namespace SandboxDetail {
 			bool hovered = ImGui::IsItemHovered();
 			// Only the ones on screen have their pictures made.
 			if (ImGui::IsItemVisible()) {
-				bool selected = i == choice;
-				// In the colours of the game's own menus: olive cells, the picked one brighter with a gold edge.
-				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(85, 96, 68, 255) : hovered ? IM_COL32(57, 75, 42, 255) : IM_COL32(24, 29, 21, 255));
-				drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), selected ? IM_COL32(242, 182, 61, 255) : IM_COL32(60, 70, 48, 255), 0.0F, 0, selected ? 2.0F : 1.0F);
+				bool selected = pickInto ? preset.PresetName == *pickInto : i == choice;
+				// In the colours of the game's own menu skin: navy cells, the picked one lit with a gold edge.
+				drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well);
+				drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), selected ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, selected ? 2.0F : 1.0F);
 				const PiecePicture& picture = PictureOf(preset);
 				if (picture.Width > 0) {
 					// As big as fits, by whole pixels when it can be so the art stays crisp.
@@ -696,20 +920,22 @@ namespace SandboxDetail {
 				}
 				ImGui::PushClipRect(ImVec2(at.x + 2.0F, at.y + cell), ImVec2(at.x + size.x - 2.0F, at.y + size.y), true);
 				ImVec2 nameSize = ImGui::CalcTextSize(preset.PresetName.c_str(), nullptr, false, cell - 4.0F);
-				drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(at.x + std::max((cell - nameSize.x) * 0.5F, 2.0F), at.y + cell), IM_COL32(230, 232, 238, 255), preset.PresetName.c_str(), nullptr, cell - 4.0F);
+				drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(at.x + std::max((cell - nameSize.x) * 0.5F, 2.0F), at.y + cell), ToolTheme::Text, preset.PresetName.c_str(), nullptr, cell - 4.0F);
 				ImGui::PopClipRect();
 			}
 			if (hovered) {
 				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
-				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() ? "\nRight click: keep it on the bar, or take it off" : "");
+				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() && !pickInto ? "\nRight click: keep it on the bar, or take it off" : "");
 			}
 			if (picked && ImGui::GetIO().KeyCtrl) {
 				ToggleFavourite(kind, preset.PresetName);
+			} else if (picked && pickInto) {
+				*pickInto = preset.PresetName;
 			} else if (picked) {
 				choice = i;
 				TookTool(ToolIndex(kind));
 			}
-			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode()) {
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode() && !pickInto) {
 				TogglePin(kind, preset.PresetName);
 			}
 			if (ImGui::IsItemVisible() && FindPin(kind, preset.PresetName) >= 0) {
@@ -1740,7 +1966,8 @@ namespace SandboxDetail {
 					}
 				}
 			}
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing) {
+			// Not while you play a unit: the right button is its own then.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !io.WantCaptureMouse && hasRing && !s_Possessed) {
 				s_RingOpen = true;
 				s_RingPage = 0;
 				s_RingCenter = io.MousePos;
@@ -2134,7 +2361,7 @@ namespace SandboxDetail {
 	}
 
 	void SideStatus() {
-		// The fighting units each side has, as the auto battle counts them (Sandbox::CountUnits): not brains or craft, but a craft's passengers.
+		// The fighting units each side has, as the Battle Director counts them (Sandbox::CountUnits): not brains or craft, but a craft's passengers.
 		// ("Red 7" was one brain, one dropship and five soldiers.)
 		std::array<int, c_Sides> counts{};
 		for (int side = 0; side < c_Sides; ++side) {
@@ -2146,16 +2373,17 @@ namespace SandboxDetail {
 			}
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s %d", c_SideNames[side], counts[side]);
 		}
-		// The order labels overlay adds how each auto battle side stands.
-		if (g_SettingsMan.ShowOrderLabels() && s_AutoRunning) {
+		// The order labels overlay adds how each Battle Director team stands.
+		if (g_SettingsMan.ShowOrderLabels()) {
 			long long now = g_TimerMan.GetSimUpdateCount();
+			float perSecond = 1.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 			for (int side = 0; side < c_Sides; ++side) {
-				const AutoSide& autoSide = s_AutoSides[side];
-				if (!autoSide.Active) {
+				const BattleTeam& team = s_BattleTeams[side];
+				if (!team.Running) {
 					continue;
 				}
-				std::string wave = autoSide.Broke ? std::string("broke") : "next wave " + std::to_string(std::max(0LL, autoSide.NextWave - now) / 60) + "s";
-				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s: budget %d, spent %.0f, sent %d, %s", c_SideNames[side], autoSide.Budget, autoSide.Spent, autoSide.Sent, wave.c_str());
+				std::string wave = team.Broke ? std::string("broke") : "next ships " + std::to_string(static_cast<int>(static_cast<float>(std::max(0LL, team.NextWave - now)) / perSecond)) + "s";
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s: spent %.0f, sent %d, %s", c_SideNames[side], team.Spent, team.Sent, wave.c_str());
 			}
 		}
 	}
@@ -2192,6 +2420,23 @@ namespace SandboxDetail {
 				}
 			}
 		}
+		// Reset: starts the game over on the same map, once the player has said they are sure.
+		if (ToolUI::SmallButton("Reset")) {
+			ImGui::OpenPopup("Reset the map?##sandboxReset");
+		}
+		ImGui::SetItemTooltip("Throws away everything made here and loads the current map afresh.");
+		if (ImGui::BeginPopupModal("Reset the map?##sandboxReset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::TextUnformatted("Are you sure? Everything on the map is lost and it loads afresh.");
+			if (ToolUI::SmallButton("Yes, reset")) {
+				g_ActivityMan.SetRestartActivity();
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Cancel")) {
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
 	}
 
 
@@ -2225,16 +2470,16 @@ namespace SandboxDetail {
 			drawList->PathLineTo(ImVec2(at.x - grow, at.y - grow + cut));
 		};
 		shape(pixel * 2.0F);
-		drawList->PathFillConvex(IM_COL32(14, 17, 12, 230));
+		drawList->PathFillConvex((ToolTheme::EdgeDark & 0x00FFFFFF) | (230u << IM_COL32_A_SHIFT));
 		shape(0.0F);
-		drawList->PathFillConvex(IM_COL32(44, 53, 37, 245));
+		drawList->PathFillConvex((ToolTheme::Panel & 0x00FFFFFF) | (245u << IM_COL32_A_SHIFT));
 		shape(pixel);
-		drawList->PathStroke(IM_COL32(170, 128, 48, 255), ImDrawFlags_Closed, pixel);
+		drawList->PathStroke(ToolTheme::Edge, ImDrawFlags_Closed, pixel);
 		// A faint lighter band along the top, as a lip.
-		drawList->AddRectFilled(ImVec2(at.x + cut, at.y + pixel), ImVec2(to.x - cut, at.y + pixel * 2.0F), IM_COL32(255, 240, 180, 30));
+		drawList->AddRectFilled(ImVec2(at.x + cut, at.y + pixel), ImVec2(to.x - cut, at.y + pixel * 2.0F), (ToolTheme::EdgeLight & 0x00FFFFFF) | (60u << IM_COL32_A_SHIFT));
 		// Studs in the corners.
 		for (ImVec2 corner: {ImVec2(at.x + cut, at.y + cut), ImVec2(to.x - cut, at.y + cut), ImVec2(at.x + cut, to.y - cut), ImVec2(to.x - cut, to.y - cut)}) {
-			drawList->AddRectFilled(ImVec2(corner.x - pixel, corner.y - pixel), ImVec2(corner.x + pixel, corner.y + pixel), IM_COL32(242, 182, 61, 160));
+			drawList->AddRectFilled(ImVec2(corner.x - pixel, corner.y - pixel), ImVec2(corner.x + pixel, corner.y + pixel), (ToolTheme::Gold & 0x00FFFFFF) | (160u << IM_COL32_A_SHIFT));
 		}
 	}
 
@@ -2511,12 +2756,13 @@ namespace SandboxDetail {
 			const char* Tip;
 		};
 		static const Part parts[] = {
-		    {"Spawn", Icon::Person, IM_COL32(232, 224, 190, 255), "Spawn: units, squads dropped from orbit, brains and items"},
+		    {"Spawn", Icon::Person, ToolTheme::Text, "Spawn: units, squads dropped from orbit, brains and items"},
 		    {"Build", Icon::Wall, IM_COL32(170, 170, 165, 255), "Build: bunker pieces, placed straight into the world"},
 		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Paint: fire, liquids, smoke, loose and solid ground"},
 		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Boom: blasts, strikes from the sky, and things to knock down"},
 		    {"Effects", Icon::Star, IM_COL32(255, 220, 120, 255), "Effects: lights and particle effects to put down"},
-		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders: orders for whole sides, and auto battles"},
+		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders: orders for whole sides"},
+		    {"Battle", Icon::Rocket, IM_COL32(239, 106, 91, 255), "Battle: teams that keep dropping in waves to fight, attack or defend"},
 		    {"World", Icon::Cloud, IM_COL32(190, 190, 190, 255), "World: time, weather, the speed of the world, the camera"},
 		    {"You", Icon::Person, IM_COL32(130, 220, 120, 255), "You: your own character, what it is, carries and can do"},
 		};
@@ -2534,7 +2780,7 @@ namespace SandboxDetail {
 			if (ContextRow()) {
 				ImVec2 at = ImGui::GetCursorScreenPos();
 				float width = ImGui::GetContentRegionAvail().x;
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), IM_COL32(170, 128, 48, 160));
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), (ToolTheme::Edge & 0x00FFFFFF) | (160u << IM_COL32_A_SHIFT));
 				ImGui::Dummy(ImVec2(width, pixel * 3.0F));
 			}
 			// What you've pinned, in a row of its own above the rest.
@@ -2595,7 +2841,7 @@ namespace SandboxDetail {
 				// A gold rule between the pins and the rest.
 				ImVec2 at = ImGui::GetCursorScreenPos();
 				float width = ImGui::GetContentRegionAvail().x;
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), IM_COL32(170, 128, 48, 160));
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + pixel), ImVec2(at.x + width, at.y + pixel * 2.0F), (ToolTheme::Edge & 0x00FFFFFF) | (160u << IM_COL32_A_SHIFT));
 				ImGui::Dummy(ImVec2(width, pixel * 3.0F));
 			}
 
@@ -2626,7 +2872,7 @@ namespace SandboxDetail {
 				if (BarTile("##side", tip.c_str(), false, [&](ImDrawList* drawList, ImVec2 at, float room) {
 					    float inset = room * 0.2F;
 					    drawList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), c_SideColors[s_Team]);
-					    drawList->AddRect(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), IM_COL32(20, 24, 16, 255), 0.0F, 0, pixel);
+					    drawList->AddRect(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), ToolTheme::EdgeDark, 0.0F, 0, pixel);
 				    }) == 1) {
 					s_Team = (s_Team + 1) % c_Sides;
 				}
@@ -2651,7 +2897,7 @@ namespace SandboxDetail {
 						s_WantedTab = part.Name;
 						s_CurrentTab = part.Name;
 						// Whatever was last picked on that part comes back to hand with it; the first time, the part's first tool.
-						static const std::map<std::string, Tool> firstTools = {{"Spawn", Tool::Unit}, {"Build", Tool::Structure}, {"Paint", Tool::Fire}, {"Boom", Tool::Grenade}, {"Effects", Tool::Effect}, {"Orders", Tool::Command}, {"You", Tool::PlayCharacter}};
+						static const std::map<std::string, Tool> firstTools = {{"Spawn", Tool::Unit}, {"Build", Tool::Structure}, {"Paint", Tool::Fire}, {"Boom", Tool::Grenade}, {"Effects", Tool::Effect}, {"Orders", Tool::Command}, {"Battle", Tool::None}, {"You", Tool::PlayCharacter}};
 						if (auto remembered = s_LastToolOfTab.find(part.Name); remembered != s_LastToolOfTab.end()) {
 							s_ToolIndex = remembered->second;
 						} else if (auto first = firstTools.find(part.Name); first != firstTools.end()) {

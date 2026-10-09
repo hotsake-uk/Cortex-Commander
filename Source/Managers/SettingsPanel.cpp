@@ -123,6 +123,38 @@ namespace {
 		}
 	}
 
+	/// The event looks one by one (G-11), each with a button that plays it once so it can be judged: the blast flash is the one most players
+	/// bothered by flashing want off.
+	void EventLookSwitches(LightingSettings& settings) {
+		struct EventLook {
+			const char* Label;
+			bool* On;
+			int Look;
+			const char* Tip;
+		};
+		const EventLook looks[] = {
+		    {"Blast flash", &settings.EventBlastFlash, LightingSettings::LookFlash, "The picture washes out white and warm for a moment after a huge blast. Off if flashing bothers you."},
+		    {"Hurt look", &settings.EventHurtLook, LightingSettings::LookHurt, "When your unit is badly hurt the picture drains, darkens at the edges and beats faintly like a pulse."},
+		    {"Fire warmth", &settings.EventFireWarmth, LightingSettings::LookWarm, "The picture warms a little standing by a fire."},
+		};
+		for (const EventLook& look: looks) {
+			Check(look.Label, look.On);
+			Tip(look.Tip);
+			if (!s_LastShown) {
+				continue;
+			}
+			ImGui::PushID(look.Label);
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!*look.On);
+			if (ToolUI::Button("Preview")) {
+				g_PostProcessMan.PulseGrade(look.Look, 1.0F, look.Look == LightingSettings::LookFlash ? 40.0F : 300.0F, look.Look == LightingSettings::LookFlash ? 1100.0F : 1800.0F);
+			}
+			ImGui::SetItemTooltip("Plays this look once, at the event grade strength.");
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+	}
+
 	void DrawPresets() {
 		if (!s_PresetsListed) {
 			s_Presets = g_SettingsMan.ListPresets();
@@ -233,8 +265,6 @@ void DebugMan::SettingsGUI() {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
-		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
-		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
 		if (int strikes = static_cast<int>(WeatherLightning::GetStrikes()); Combo("Storm lightning", &strikes, "In the sky only\0Strikes the ground, starts fires\0Strikes the ground, fires and hurts units\0")) {
 			WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(strikes, 0, 2)));
@@ -318,13 +348,17 @@ void DebugMan::SettingsGUI() {
 		if (settings.FogVolume > 0.0F) {
 			Slider("Dawn mist", &settings.FogMorningMist, 0.0F, 1.0F);
 			Tip("How much mist gathers low in open ground around dawn, a little at night and more in rain.");
+			Slider("Mist and dust opacity", &settings.FogOpacity, 0.0F, 1.0F);
+			Tip("How much the thickest mist and dust hides what's behind it, units included. Lower lets more of their colour through.");
 			Slider("Mist clears after (seconds)", &settings.FogClearSeconds, 3.0F, 120.0F, "%.0f");
 		}
 		Check("Lightning bolts", &settings.LightningBolts);
 		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
-		if (settings.LightningBolts) {
-			Slider("Lightning brightness", &settings.LightningBrightness, 0.2F, 2.0F);
-			Tip("How bright the bolt and the light it throws on the ground and air are. 1: as first made.");
+		Check("Storm flashes", &settings.StormFlashes);
+		Tip("Heavy rain, and weather with lightning in it, flashes the whole sky now and then. Turn it off if flashing light bothers you; bolts are drawn as the setting above has them.");
+		if (settings.LightningBolts || settings.StormFlashes) {
+			Slider("Lightning brightness", &settings.LightningBrightness, 0.0F, 2.0F);
+			Tip("How bright the bolt, the light it throws on the ground and air, and a storm's sky flash are. 1: as first made. 0: no flash at all.");
 		}
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
@@ -421,11 +455,23 @@ void DebugMan::SettingsGUI() {
 		Tip("How much tracers' lights differ from one another in size and brightness, and waver as they fly. 0: all alike and steady.");
 		Check("Aiming dots light the scene", &settings.AimDotsLight);
 		Tip("The dots that show where a weapon points always glow. On, they also cast light on what is around them.");
+		Heading("Lightsabers");
+		Slider("Blade light brightness", &settings.SaberLightBrightness, 0.0F, 4.0F);
+		Tip("How brightly lightsaber blades light up their holder, the ground and the walls around them. 0: the blade still shows but lights nothing.");
+		Slider("Blade light reach", &settings.SaberLightReach, 0.2F, 3.0F);
+		Slider("Blade glow in the air", &settings.SaberAirGlow, 0.0F, 4.0F);
+		Tip("The soft glow of a blade's light in the air around it.");
 	};
 
 	auto surfaces = [&]() {
 		Slider("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		Slider("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
+		Check("Shine on units from lights", &settings.UnitShineLights);
+		Tip("Headlamps, fire, muzzle flashes and other lights throw highlights on units and brighten their edges facing the light. Off: units keep their art and only take the light's colour and brightness, so a unit's own headlamp can't wash it out white.");
+		Check("Shine on units from lamps", &settings.UnitShineLamps);
+		Tip("The same for steady scenery lamps.");
+		Check("Shine on units from the sun", &settings.UnitShineSun);
+		Tip("The sun (or moon) glints on units' glossy and metal parts.");
 		Slider("Metal reflections", &settings.Metals, 0.0F, 2.0F);
 		Slider("Surface relief", &settings.Relief, 0.0F, 1.5F);
 		Check("Wet, sooty, snowy and hot surfaces", &settings.SurfaceStates);
@@ -453,8 +499,11 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
 		}
-		Toggle("Loose sand and snow slide", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Loose ground (sand, snow, gravel, glass) slides", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
+		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
+		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);
@@ -474,6 +523,8 @@ void DebugMan::SettingsGUI() {
 			Check("Reflection ripples with the surface", &settings.WaterMirrorSurface);
 			Tip("The mirrored scene is moved by the surface above it, so it wobbles as one image where the water moves and goes clean where it's still. Off: each pixel's own ripple moves it, as before. How much is the Ripples slider.");
 		}
+		Check("Wavy lines of light", &settings.WaterCaustics);
+		Tip("The thin bright wavy lines that wander and cross through water. Off: water is smooth, without them.");
 		Heading("Moving water");
 		Check("Surface follows the flow", &settings.WaterFlowSurface);
 		Tip("Still water goes glassy, a stream's ripples run downstream, the surface rings out where a pour lands and fast water froths through. Off: the same slow waves everywhere, as before. Needs flowing liquids on.");
@@ -652,6 +703,7 @@ void DebugMan::SettingsGUI() {
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {
 			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+			EventLookSwitches(settings);
 		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
@@ -693,6 +745,17 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
 		}
+		{
+			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
+			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
+			}
+			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
+		}
+		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
+		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
+		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
+		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
 		{
 			int paths = Actor::ShowAIPaths();
 			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
@@ -867,7 +930,7 @@ void DebugMan::SettingsGUI() {
 			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0")) {
 				g_SettingsMan.SetWorldSimOverlay(world);
 			}
-			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid pixels on the move (blue). Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
+			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
 		}
 	};
 
@@ -888,7 +951,7 @@ void DebugMan::SettingsGUI() {
 		Tip("While dragging a selection box: the box as the selection will really use it, with a ring on each unit it will take and in red any part past the scene's seam, which takes nobody. Always: the unit the game says you control (green) against the one the sandbox thinks you're in (blue), the observation target (yellow cross), the free camera's centre (cyan cross), and the view's scale.");
 		Toggle("Terrain paint audit", g_SettingsMan.ShowSandboxPaintAudit(), [](bool on) { g_SettingsMan.SetShowSandboxPaintAudit(on); });
 		Tip("The last two dozen discs and boxes of terrain the sandbox painted, dug, filled or cleared, fading over ten seconds: dug and cleared in orange, painted and filled in green, grey where nothing changed. The newest are labelled with the material and whether falling ground and liquid were told of the change, a missing one in red. For the areas the path grid has yet to catch up on, turn on Terrain update boxes on the Debug page.");
-		Toggle("Auto battle and colony", g_SettingsMan.ShowSandboxAutoBattle(), [](bool on) { g_SettingsMan.SetShowSandboxAutoBattle(on); });
+		Toggle("Battle and colony", g_SettingsMan.ShowSandboxAutoBattle(), [](bool on) { g_SettingsMan.SetShowSandboxAutoBattle(on); });
 		Tip("A readout in the top left: for each side in the auto battle, what it has spent of its budget, its next wave and whether it is broke; its units on the ground against those still in its craft; and its cheapest unit against what a wave may spend (in red when it can't buy any). Then each colony building: what it is doing, its training, and its units alive with those dead or dying counted apart.");
 		Toggle("Character state", g_SettingsMan.ShowSandboxCharacterState(), [](bool on) { g_SettingsMan.SetShowSandboxCharacterState(on); });
 		Tip("One line over your sandbox character's head: whether you're in it, the updates left before you step in, flying and how hard it is pinned, its side and whether it's neutral (ignored by the AI), what it has out and that item's number key, and the AI mode it is left in while you're not in it.");

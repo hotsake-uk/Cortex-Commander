@@ -61,13 +61,13 @@ Smoke Grenade, Toxic Gas Grenade, Flare, **Napalm Flamer** (burning fuel that po
 Pick **Sandbox** on the main menu and play as a god:
 - **Tab** hides and shows the sandbox tools (the world pauses while they're open, and whatever tool you picked keeps working with them hidden). **P** puts you in **your own character**: a body and kit you choose, with optional abilities (no harm, endless jetpack and ammunition, flying through anything, ignored by enemies). Or switch the character off and just look around.
 - **Spawn anything:** units from every faction (with squad size, loadout and orders), brains, items, and bunkers through the game's own build menu, for four sides.
-- **Drop squads** by dropship or rocket. Run **auto battles** where each side gets a faction and a budget and the AI buys and sends waves until one side is left.
+- **Drop squads** by dropship or rocket. Run battles with the **Battle Director**: each team gets its factions, a play style (attack, hunt brains, defend a place, patrol, hold), a budget and its ships (dropship or rocket, anywhere or over a drawn drop line, so many every so many seconds), and keeps sending waves until stopped. Or pick a preset **mode**, where you only choose how many a side and draw each team's base: **capture the flag** (steal the enemy's flag and bring it home, the carrier glowing), **king of the hill** (hold a drawn hill, which can move on every so often), **assault** (one team takes a line of objectives against the clock), **last team standing** (so many units a team, the last team left wins) and **VIP hunt** (each team guards a glowing, crowned VIP and hunts the others').
 - **Command** units: box-select them, then click to move or attack. **Follow** a unit, or let the camera follow the action. **Take control** of any unit yourself.
 - **Paint** fire, water, lava, acid, oil, smoke, gas and terrain. Call down grenades, bombs, napalm and **lightning**.
 - **Pause AI** to set up a battlefield in peace, then let everyone loose.
 - Change the weather and time of day, and use slow motion.
 - Place lights and particle effects, pour water from spawners, and call in strikes: rockets, artillery, napalm, meteors, crashing dropships.
-- Scriptable from Lua (`SandboxDo`, `SandboxAutoBattleSide`, `SandboxPauseAI`, ...).
+- Scriptable from Lua (`SandboxDo`, `SandboxBattleTeam`, `SandboxPauseAI`, ...).
 
 ### One settings panel
 **F6** opens a panel with every setting that can be changed while the game runs (time and weather, lighting, water, fire and smoke, falling ground, camera and image, HUD, debug views), sorted into categories with a search box. Any setup can be saved as a **named preset** and loaded again later; presets are plain files in `Userdata\Presets`.

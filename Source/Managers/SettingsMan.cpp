@@ -122,6 +122,9 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_AISuppression = 1.0F;
+	m_AIRecklessness = 0.5F;
+	m_AISteadyBeforeJet = true;
+	m_AIWaitForFuel = true;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -281,7 +284,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom));
 		// Settings saved before the shadow effects existed have no values for them: follow the saved preset. Values in the file come after this and win.
 		g_PostProcessMan.GetLightingSettings().ApplyShadowPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+		// The light-spreading steps weren't saved before: follow the saved preset too (Low 3, Ultra 12), so they don't go back to 6.
+		LightingSettings preset;
+		preset.ApplyQualityPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+		g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = preset.PropagationIterationsPerFrame;
 	});
+	MatchProperty("LightingPropagationSteps", { g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = std::clamp(std::stoi(reader.ReadPropValue()), 1, 32); });
 	MatchProperty("UnitShadows", { g_PostProcessMan.GetLightingSettings().UnitShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadows", { g_PostProcessMan.GetLightingSettings().SunShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadowMap", { g_PostProcessMan.GetLightingSettings().SunShadowMap = std::stoi(reader.ReadPropValue()) != 0; });
@@ -311,9 +319,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
 	MatchProperty("FogVolume", { g_PostProcessMan.GetLightingSettings().FogVolume = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.5F); });
 	MatchProperty("FogMorningMist", { g_PostProcessMan.GetLightingSettings().FogMorningMist = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("FogOpacity", { g_PostProcessMan.GetLightingSettings().FogOpacity = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("FogClearSeconds", { g_PostProcessMan.GetLightingSettings().FogClearSeconds = std::clamp(std::stof(reader.ReadPropValue()), 3.0F, 120.0F); });
 	MatchProperty("LightningBolts", { g_PostProcessMan.GetLightingSettings().LightningBolts = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("LightningBrightness", { g_PostProcessMan.GetLightingSettings().LightningBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.2F, 2.0F); });
+	MatchProperty("LightningBrightness", { g_PostProcessMan.GetLightingSettings().LightningBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("StormFlashes", { g_PostProcessMan.GetLightingSettings().StormFlashes = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("GodRayDecay", { reader.ReadPropValue(); }); // In older settings files. Light shafts now follow where the sun reaches, so they have no decay to set.
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
@@ -341,6 +351,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
+	MatchProperty("UnitShineLights", { g_PostProcessMan.GetLightingSettings().UnitShineLights = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineLamps", { g_PostProcessMan.GetLightingSettings().UnitShineLamps = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineSun", { g_PostProcessMan.GetLightingSettings().UnitShineSun = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
@@ -398,6 +411,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EventLooks", { g_PostProcessMan.GetLightingSettings().EventLooks = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("EventLookStrength", { g_PostProcessMan.GetLightingSettings().EventLookStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EventBlastFlash", { g_PostProcessMan.GetLightingSettings().EventBlastFlash = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("EventHurtLook", { g_PostProcessMan.GetLightingSettings().EventHurtLook = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("EventFireWarmth", { g_PostProcessMan.GetLightingSettings().EventFireWarmth = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SunDisc", { g_PostProcessMan.GetLightingSettings().SunDisc = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudShadows", { g_PostProcessMan.GetLightingSettings().CloudShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudLayer", { g_PostProcessMan.GetLightingSettings().CloudLayer = std::stoi(reader.ReadPropValue()) != 0; });
@@ -420,6 +436,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterSoftReflection", { g_PostProcessMan.GetLightingSettings().WaterSoftReflection = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterMirrorSurface", { g_PostProcessMan.GetLightingSettings().WaterMirrorSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFoamBubbles", { g_PostProcessMan.GetLightingSettings().WaterFoamBubbles = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterCaustics", { g_PostProcessMan.GetLightingSettings().WaterCaustics = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFlowSurface", { g_PostProcessMan.GetLightingSettings().WaterFlowSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFlowStrength", { g_PostProcessMan.GetLightingSettings().WaterFlowStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("DistinctLiquidLooks", { g_PostProcessMan.GetLightingSettings().DistinctLiquidLooks = std::stoi(reader.ReadPropValue()) != 0; });
@@ -444,6 +461,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TracerGlow", { g_PostProcessMan.GetLightingSettings().TracerGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightBrightness", { g_PostProcessMan.GetLightingSettings().TracerLightBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightRandomness", { g_PostProcessMan.GetLightingSettings().TracerLightRandomness = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SaberLightBrightness", { g_PostProcessMan.GetLightingSettings().SaberLightBrightness = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("SaberLightReach", { g_PostProcessMan.GetLightingSettings().SaberLightReach = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("SaberAirGlow", { g_PostProcessMan.GetLightingSettings().SaberAirGlow = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("TracerLightReach", { g_PostProcessMan.GetLightingSettings().TracerLightReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightSaturation", { g_PostProcessMan.GetLightingSettings().LightSaturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightTint", { g_PostProcessMan.GetLightingSettings().LightTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().LightTint); });
@@ -522,6 +542,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
+	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
+	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -629,12 +652,15 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingForegroundAmbient", WriteVec3(lighting.ForegroundAmbient));
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
+	writer.NewPropertyWithValue("LightingPropagationSteps", lighting.PropagationIterationsPerFrame);
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
 	writer.NewPropertyWithValue("FogVolume", lighting.FogVolume);
 	writer.NewPropertyWithValue("FogMorningMist", lighting.FogMorningMist);
+	writer.NewPropertyWithValue("FogOpacity", lighting.FogOpacity);
 	writer.NewPropertyWithValue("FogClearSeconds", lighting.FogClearSeconds);
 	writer.NewPropertyWithValue("LightningBolts", lighting.LightningBolts);
 	writer.NewPropertyWithValue("LightningBrightness", lighting.LightningBrightness);
+	writer.NewPropertyWithValue("StormFlashes", lighting.StormFlashes);
 	writer.NewPropertyWithValue("SkyFollowsTime", lighting.SkyFollowsTime);
 	writer.NewPropertyWithValue("DeepNightDarkness", lighting.DeepNightDarkness);
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);
@@ -672,6 +698,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
 	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
+	writer.NewPropertyWithValue("UnitShineLights", lighting.UnitShineLights);
+	writer.NewPropertyWithValue("UnitShineLamps", lighting.UnitShineLamps);
+	writer.NewPropertyWithValue("UnitShineSun", lighting.UnitShineSun);
 	writer.NewPropertyWithValue("LightingMetals", lighting.Metals);
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);
@@ -734,6 +763,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
 	writer.NewPropertyWithValue("EventLooks", lighting.EventLooks);
 	writer.NewPropertyWithValue("EventLookStrength", lighting.EventLookStrength);
+	writer.NewPropertyWithValue("EventBlastFlash", lighting.EventBlastFlash);
+	writer.NewPropertyWithValue("EventHurtLook", lighting.EventHurtLook);
+	writer.NewPropertyWithValue("EventFireWarmth", lighting.EventFireWarmth);
 	writer.NewPropertyWithValue("SunDisc", lighting.SunDisc);
 	writer.NewPropertyWithValue("CloudShadows", lighting.CloudShadows);
 	writer.NewPropertyWithValue("CloudLayer", lighting.CloudLayer);
@@ -761,6 +793,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterThinFlow", lighting.WaterThinFlow);
 	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
 	writer.NewPropertyWithValue("DistinctLiquidLooks", lighting.DistinctLiquidLooks);
+	writer.NewPropertyWithValue("WaterCaustics", lighting.WaterCaustics);
 	writer.NewPropertyWithValue("WaterFlowSurface", lighting.WaterFlowSurface);
 	writer.NewPropertyWithValue("WaterFlowStrength", lighting.WaterFlowStrength);
 	writer.NewPropertyWithValue("WaterLightGlow", lighting.WaterLightGlow);
@@ -781,6 +814,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("TracerLightBrightness", lighting.TracerLightBrightness);
 	writer.NewPropertyWithValue("TracerLightReach", lighting.TracerLightReach);
 	writer.NewPropertyWithValue("TracerLightRandomness", lighting.TracerLightRandomness);
+	writer.NewPropertyWithValue("SaberLightBrightness", lighting.SaberLightBrightness);
+	writer.NewPropertyWithValue("SaberLightReach", lighting.SaberLightReach);
+	writer.NewPropertyWithValue("SaberAirGlow", lighting.SaberAirGlow);
 	writer.NewPropertyWithValue("LightSaturation", lighting.LightSaturation);
 	writer.NewPropertyWithValue("LightTint", WriteVec3(lighting.LightTint));
 	writer.NewPropertyWithValue("LampBrightness", lighting.LampBrightness);
@@ -978,6 +1014,9 @@ int SettingsMan::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("UnitSpeechOff", off);
 	}
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
+	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);

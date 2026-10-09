@@ -8,6 +8,7 @@
 #include "SceneLighting.h"
 #include "SLTerrain.h"
 #include "FluidSim.h"
+#include "Material.h"
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
@@ -17,9 +18,11 @@
 #include "SettingsMan.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <iterator>
 #include <mutex>
 #include <string>
@@ -467,12 +470,47 @@ void DebugOverlays::DrawWorldSim() {
 			std::vector<Vector> pixels;
 			const size_t limit = 40000;
 			FluidSim::GetActivePixels(view.GetCorner(), view.GetWidth(), view.GetHeight(), pixels, limit);
+			// Each material its own colour (its terrain colour, so water reads blue and lava orange), liquids filled and powders hollow, with
+			// a count of each in view: the one window onto which liquids and powders (SB-1, SB-2) are moving.
+			std::array<int, 256> counts{};
+			std::array<ImU32, 256> colors{};
+			for (int id = 1; id < 256; ++id) {
+				const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+				// (Brightened a little, so dark liquids like tar and oil still show over the scene.)
+				colors[id] = material && material->GetColor().GetIndex() > 0 ? IM_COL32(std::min(material->GetColor().GetR() + 50, 255), std::min(material->GetColor().GetG() + 50, 255), std::min(material->GetColor().GetB() + 50, 255), 200) : IM_COL32(70, 160, 255, 170);
+			}
 			for (const Vector& pixel: pixels) {
+				int material = g_SceneMan.GetTerrMatter(pixel.GetFloorIntX(), pixel.GetFloorIntY()) & 0xFF;
+				++counts[material];
 				ImVec2 at = DebugDraw::ToScreen(pixel);
-				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), IM_COL32(70, 160, 255, 170));
+				if (FluidSim::IsLiquid(material) || dot < 3.0F) {
+					drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), colors[material]);
+				} else {
+					drawList->AddRect(at, ImVec2(at.x + dot, at.y + dot), colors[material]);
+				}
 			}
 			std::snprintf(text, sizeof(text), "moving liquid: %d pixels, %d in view%s, %.2f ms an update", FluidSim::GetActiveCount(), static_cast<int>(pixels.size()), pixels.size() >= limit ? "+" : "", FluidSim::GetLastUpdateMS());
 			caption(text);
+			// The legend: each material moving in view, most first.
+			std::vector<std::pair<int, int>> moving;
+			for (int id = 1; id < 256; ++id) {
+				if (counts[id] > 0) {
+					moving.emplace_back(counts[id], id);
+				}
+			}
+			std::sort(moving.begin(), moving.end(), std::greater<>());
+			ImVec2 origin = DebugDraw::ViewOrigin();
+			float line = ImGui::GetTextLineHeight();
+			float top = origin.y + 8.0F + line * 3.0F;
+			for (size_t i = 0; i < std::min<size_t>(moving.size(), 12); ++i) {
+				const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(moving[i].second));
+				std::snprintf(text, sizeof(text), "%s%s: %d", material ? material->GetPresetName().c_str() : "?", FluidSim::IsLiquid(moving[i].second) ? "" : " (powder)", moving[i].first);
+				ImVec2 size = ImGui::CalcTextSize(text);
+				float y = top + static_cast<float>(i) * (line + 2.0F);
+				drawList->AddRectFilled(ImVec2(origin.x + 4.0F, y - 1.0F), ImVec2(origin.x + 24.0F + size.x, y + line + 1.0F), IM_COL32(10, 12, 10, 190));
+				drawList->AddRectFilled(ImVec2(origin.x + 7.0F, y + 2.0F), ImVec2(origin.x + 7.0F + line - 4.0F, y + line - 2.0F), colors[moving[i].second]);
+				drawList->AddText(ImVec2(origin.x + 10.0F + line, y), IM_COL32(235, 235, 220, 255), text);
+			}
 			break;
 		}
 		case 2: {

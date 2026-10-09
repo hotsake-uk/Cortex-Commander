@@ -238,6 +238,9 @@ namespace RTE {
 		float UpscaleSharpness = 1.0F; //!< How crisp the picture is when scaled up to the window: 1 even, sharp pixels as before, down to 0 plainly smoothed.
 		float Scanlines = 0.0F; //!< CRT style scanlines on the final image, 0 (off) to 1.
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
+		bool UnitShineLights = false; //!< Lights (headlamps, fire, muzzle flashes, any light that moves) throw highlights on units and other solid objects and brighten their edges facing them. Off by default: a unit's own headlamp washed it out white.
+		bool UnitShineLamps = true; //!< Steady scenery lamps do the same.
+		bool UnitShineSun = true; //!< The sun (or moon) glints on units and other solid objects.
 		float Metals = 1.0F; //!< How strongly metallic surfaces mirror their surroundings (sky from above, ground from below) and glint in the sun, 0 for none.
 		float Relief = 0.6F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
 		float SunDisc = 1.0F; //!< Brightness of the sun drawn in the sky by day, 0 for none.
@@ -263,6 +266,7 @@ namespace RTE {
 		bool WaterSoftReflection = true; //!< The reflection is blurred more the deeper it is, fades out with depth and where the open air above the pool ends, and isn't clipped hard at the edge of the screen or other water. Off: sharp and cut off, as before.
 		bool DistinctLiquidLooks = true; //!< Liquids past water, lava and acid (oil, mud, slime, mercury and new ones) each have their own look. Off: they are all drawn as water. Water, lava and acid look the same either way.
 		bool WaterFlowSurface = true; //!< Water's surface follows how the water moves: still water goes glassy, a stream's ripples run downstream, the surface rings out where a pour lands and fast churn froths. Off: the same slow waves everywhere, as before.
+		bool WaterCaustics = true; //!< The thin bright wavy lines of light that wander through water. Off: water is drawn without them.
 		float WaterFlowStrength = 1.0F; //!< How strongly, 0 (as off) to 1.
 		float WaterFoamBubbles = 0.5F; //!< How much froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
 		float WaterMistSize = 0.45F; //!< How big each puff of spray is: 1 is about 3 to 6 pixels across at first.
@@ -305,11 +309,17 @@ namespace RTE {
 		glm::vec3 HeadlampColor = {1.0F, 0.875F, 0.687F}; //!< Color of the beams (linear).
 		float HeadlampGlow = 0.35F; //!< Brightness of the small glow around the lamp itself.
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
+		float SaberLightBrightness = 1.0F; //!< Brightness of the light lightsaber blades (energy blades) throw on what's around them.
+		float SaberLightReach = 0.8F; //!< Multiplier for how far that light reaches.
+		float SaberAirGlow = 1.0F; //!< How strongly blades glow in the air around them, 0 for none.
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		bool EventLooks = true; //!< The grade answers what happens: it flashes with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire; scripts can pulse it and crossfade between looks. Off: the grade stays as set, as before.
 		float EventLookStrength = 1.0F; //!< How strongly events push the grade, 0 to 2.
+		bool EventBlastFlash = true; //!< The washed-out flash after a huge blast (LookFlash, scripts' pulses of it too). Off for players bothered by flashing.
+		bool EventHurtLook = true; //!< The drain, dark edges and faint heartbeat when your unit is badly hurt (LookHurt).
+		bool EventFireWarmth = true; //!< The warmer grade standing by a fire (LookWarm).
 		bool DepthOfField = false; //!< Blur what's nearer or further than the focus by how far it is from it, like a camera lens. Off: everything is sharp as before.
 		float DepthOfFieldFocus = 0.0F; //!< Where the focus is: 0 the battlefield (units and terrain), 1 the furthest background.
 		float DepthOfFieldStrength = 1.0F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).
@@ -334,6 +344,7 @@ namespace RTE {
 		bool UnitOutlineTeamColor = true; //!< Each unit's stroke is its side's colour (red, green, blue, yellow; white for no side). Off: all are UnitOutlineColor.
 		glm::vec3 UnitOutlineColor = {1.0F, 1.0F, 1.0F}; //!< The stroke's colour when not by side, as shown on screen.
 		float UnitOutlineOpacity = 0.8F; //!< How solid the stroke is, 0 (unseen) to 1.
+		bool HighlightUnits = false; //!< Set by the game, not saved: some unit is highlighted (Actor::SetHighlighted), so the outline pass runs for its bright, pulsing glow even with UnitOutline off.
 
 		bool PaletteAnimation = true; //!< Animated palette flags: glowing liquids (lava) breathe, and colours set in Base.rte/PaletteAnimation.ini or by scripts pulse or cycle. Off: the palette stands still, as before.
 		float PaletteAnimationStrength = 1.0F; //!< How far the pulses swing from each colour's own glow, 0 to 1.
@@ -342,9 +353,11 @@ namespace RTE {
 		float SkyFollowsTime = 1.0F; //!< How far the sky art (painted as a blue day) takes the colours of the hour away from midday: a dark night sky, a red dawn and dusk, grey in bad weather. 0 only darkens the art, as before.
 		float FogVolume = 0.6F; //!< How thick mist and dust in the air are drawn: dawn mist in valleys, steam off water on lava, dust after a collapse, mist from scripts. It drifts with the wind, is lit by the sky and lamps and clears with time. 0: none, as before.
 		float FogMorningMist = 0.5F; //!< How much mist gathers low in open valleys around dawn (and a little at night and in rain), 0 to 1.
+		float FogOpacity = 0.85F; //!< How much of what's behind the thickest mist and dust is hidden, 0 to 1. Lower lets more of its colour through.
 		float FogClearSeconds = 25.0F; //!< About how long mist and dust take to clear, in game seconds.
 		bool LightningBolts = true; //!< Lightning is drawn as a jagged, forked bolt of light from the sky that lights up where it strikes. Off: the sandbox's bolt is a line of particles, as before.
-		float LightningBrightness = 1.0F; //!< How bright lightning bolts and the light they cast are, 0.2 to 2. 1: as first made.
+		float LightningBrightness = 1.0F; //!< How bright lightning bolts, the light they cast and storms' sky flashes are, 0 to 2. 1: as first made.
+		bool StormFlashes = true; //!< Storms (heavy rain, and weather with lightning in it) flash the whole sky now and then. Off for players bothered by flashing.
 		float GodRays = 0.7F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
 		float Embers = 1.0F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.

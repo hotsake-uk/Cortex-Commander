@@ -25,7 +25,10 @@ void main() {
 	}
 	vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 	float sky = smoothstep(0.0, 1.0, texture(rteSkyLight, worldPos / rteGridWorldSize).r);
-	vec3 light = mix(rteAmbient, rteSkyColor, sky) + texture(rteDynamicLight, gl_FragCoord.xy / rteScreenSize).rgb;
+	// The lights soften towards 2 as they pile up, the same as on surfaces (LightComposite.frag's rteMaxDynamicLight): taken raw, puffs next to a fire
+	// or a few lamps went near white while the ground under them didn't.
+	vec3 lamps = 2.0 * (1.0 - exp(-texture(rteDynamicLight, gl_FragCoord.xy / rteScreenSize).rgb / 2.0));
+	vec3 light = mix(rteAmbient, rteSkyColor, sky) + lamps;
 	vec3 albedo = vertexColor.rgb;
 	if (albedo.b > 1.0) {
 		// Spray off water (its colour is sent with 1 added as the sign): pale stuff that catches whatever light there is, so it's never drawn darker than this.

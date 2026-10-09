@@ -281,6 +281,57 @@ void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& directio
 	}
 }
 
+void PostProcessMan::RegisterEnergyBeam(const Vector& from, const Vector& to, const glm::vec3& color, float width, float brightness, float lightRadius) {
+	if (brightness <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return;
+	}
+	glm::vec3 clamped = glm::clamp(color, glm::vec3(0.0F), glm::vec3(255.0F)) / 255.0F;
+	{
+		std::scoped_lock lock(m_SceneLightsMutex);
+		if (m_EnergyBeams.size() >= 256) {
+			return;
+		}
+		m_EnergyBeams.push_back({glm::vec2(from.m_X, from.m_Y), glm::vec2(to.m_X, to.m_Y), clamped, std::clamp(width, 0.5F, 12.0F), std::min(brightness, 4.0F)});
+	}
+	if (lightRadius <= 0.0F) {
+		return;
+	}
+	// The light comes from the whole length, so its colour round the blade is real light: on the holder, the ground, and the air.
+	const LightingSettings& settings = GetLightingSettings();
+	RegisterLineLight(from, to, color, lightRadius * settings.SaberLightReach, brightness * 0.8F * settings.SaberLightBrightness, LightSource::Objects);
+}
+
+void PostProcessMan::GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
+	for (const EnergyBeam& beam: m_EnergyBeams) {
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			glm::vec2 shift(static_cast<float>(wrapX) * sceneWidth, 0.0F);
+			glm::vec2 from = beam.From + shift - box;
+			glm::vec2 to = beam.To + shift - box;
+			float margin = beam.Width * 4.0F + 4.0F;
+			if (std::max(from.x, to.x) + margin < 0.0F || std::min(from.x, to.x) - margin > static_cast<float>(boxWidth) || std::max(from.y, to.y) + margin < 0.0F || std::min(from.y, to.y) - margin > static_cast<float>(boxHeight)) {
+				continue;
+			}
+			segments.push_back({from, to, beam.Color, beam.Width, beam.Brightness});
+		}
+	}
+}
+
+void PostProcessMan::RegisterLineLight(const Vector& from, const Vector& to, const glm::vec3& color, float radius, float intensity, LightSource source) {
+	SceneLight light;
+	Vector along = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+	if (MakeSceneLight(from + along * 0.5F, color, radius, intensity, light)) {
+		light.m_Source = source;
+		light.m_Line = glm::vec2(along.m_X, along.m_Y) * 0.5F;
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
+	}
+}
+
 bool PostProcessMan::MakeSceneLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, SceneLight& light) const {
 	if (radius <= 0.0F || intensity <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
 		return false;
@@ -306,8 +357,9 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 					continue;
 				}
 				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
-				if (relativePos.m_X + light.m_Radius >= 0 && relativePos.m_Y + light.m_Radius >= 0 && relativePos.m_X - light.m_Radius <= boxWidth && relativePos.m_Y - light.m_Radius <= boxHeight) {
-					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source, light.m_Steady});
+				float reach = light.GetReach();
+				if (relativePos.m_X + reach >= 0 && relativePos.m_Y + reach >= 0 && relativePos.m_X - reach <= boxWidth && relativePos.m_Y - reach <= boxHeight) {
+					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source, light.m_Steady, light.m_Line});
 				}
 			}
 		}
@@ -320,7 +372,7 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 	}
 	float now = GetSmoothSimTime();
 	for (const LightningBolt& bolt: bolts) {
-		float flash = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.2F, 2.0F);
+		float flash = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.0F, 2.0F);
 		if (flash <= 0.01F) {
 			continue;
 		}
@@ -404,8 +456,8 @@ void PostProcessMan::IndexLastSceneLights() {
 		if (light.m_Radius <= 0.0F) {
 			continue;
 		}
-		CellRuns runsX = cellRuns(light.m_Pos.m_X, light.m_Radius, sceneWidth, wrapsX);
-		CellRuns runsY = cellRuns(light.m_Pos.m_Y, light.m_Radius, sceneHeight, wrapsY);
+		CellRuns runsX = cellRuns(light.m_Pos.m_X, light.GetReach(), sceneWidth, wrapsX);
+		CellRuns runsY = cellRuns(light.m_Pos.m_Y, light.GetReach(), sceneHeight, wrapsY);
 		for (int ry = 0; ry < runsY.Count; ++ry) {
 			for (int cellY = runsY.First[ry]; cellY <= runsY.Last[ry]; ++cellY) {
 				for (int rx = 0; rx < runsX.Count; ++rx) {
@@ -431,6 +483,11 @@ float PostProcessMan::GetDynamicLightAt(const Vector& pos) const {
 			return;
 		}
 		Vector toLight = g_SceneMan.ShortestDistance(pos, light.m_Pos, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		// A line light is as close as the nearest point of its line.
+		if (float lineSq = glm::dot(light.m_Line, light.m_Line); lineSq > 0.0F) {
+			float along = std::clamp(-(toLight.m_X * light.m_Line.x + toLight.m_Y * light.m_Line.y) / lineSq, -1.0F, 1.0F);
+			toLight += Vector(light.m_Line.x, light.m_Line.y) * along;
+		}
 		if (!toLight.MagnitudeIsLessThan(light.m_Radius)) {
 			return;
 		}
@@ -585,7 +642,7 @@ void PostProcessMan::GetLightningBolts(const Vector& boxPos, int boxWidth, int b
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
 	for (const LightningBolt& bolt: bolts) {
-		float brightness = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.2F, 2.0F);
+		float brightness = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.0F, 2.0F);
 		if (brightness <= 0.01F) {
 			continue;
 		}
@@ -773,6 +830,19 @@ void PostProcessMan::ClearEventLooks() {
 	m_LookBlendOn = false;
 }
 
+bool PostProcessMan::EventLookAllowed(int look) const {
+	switch (look) {
+		case LightingSettings::LookFlash:
+			return m_LightingSettings.EventBlastFlash;
+		case LightingSettings::LookHurt:
+			return m_LightingSettings.EventHurtLook;
+		case LightingSettings::LookWarm:
+			return m_LightingSettings.EventFireWarmth;
+		default:
+			return true;
+	}
+}
+
 LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings::GradeLook& playerGrade, float strength, const std::vector<std::pair<int, float>>& extra) {
 	using GradeLook = LightingSettings::GradeLook;
 	auto mixGrade = [](const GradeLook& a, const GradeLook& b, float t) {
@@ -801,6 +871,9 @@ LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings
 		}
 		std::erase_if(m_GradePulses, [now](const GradePulse& pulse) { return now - pulse.StartSeconds > static_cast<double>(pulse.AttackSeconds + pulse.ReleaseSeconds); });
 		for (const GradePulse& pulse: m_GradePulses) {
+			if (!EventLookAllowed(pulse.Look)) {
+				continue;
+			}
 			float age = static_cast<float>(now - pulse.StartSeconds);
 			float weight = age < pulse.AttackSeconds ? age / std::max(pulse.AttackSeconds, 0.001F) : 1.0F - (age - pulse.AttackSeconds) / pulse.ReleaseSeconds;
 			weight = std::clamp(weight, 0.0F, 1.0F);
@@ -808,7 +881,7 @@ LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings
 		}
 	}
 	for (const auto& [look, weight]: extra) {
-		if (weight > 0.0F) {
+		if (weight > 0.0F && EventLookAllowed(look)) {
 			push(grade, look, weight * strength);
 		}
 	}

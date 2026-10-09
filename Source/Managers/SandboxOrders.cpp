@@ -1,4 +1,4 @@
-// Orders to units: sending, holding and standing orders, selection, group moves and the auto battle.
+// Orders to units: sending, holding and standing orders, selection and group moves.
 
 #include "SandboxInternal.h"
 
@@ -101,6 +101,7 @@ namespace SandboxDetail {
 			standing.PostFacing = 0;
 			unit->SetPaceLimit(0.0F);
 			s_GuardPosts.erase(unit->GetUniqueID());
+			s_BattleDefenders.erase(unit->GetUniqueID());
 			DropPlan(unit);
 		}
 		if (!attack) {
@@ -164,6 +165,7 @@ namespace SandboxDetail {
 		DropPlan(unit);
 		s_MoveWatch.erase(unit->GetUniqueID());
 		s_GuardPosts.erase(unit->GetUniqueID());
+		s_BattleDefenders.erase(unit->GetUniqueID());
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
 		unit->SetPaceLimit(0.0F);
@@ -204,6 +206,7 @@ namespace SandboxDetail {
 		DropPlan(actor);
 		s_MoveWatch.erase(actor->GetUniqueID());
 		s_GuardPosts.erase(actor->GetUniqueID());
+		s_BattleDefenders.erase(actor->GetUniqueID());
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->ClearStandingOrder();
@@ -1423,7 +1426,7 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// The faction's units an auto battle can buy: soldiers mostly, the odd crab.
+	/// The faction's units the Battle Director can buy: soldiers mostly, the odd crab.
 	std::vector<const Preset*> FactionUnits(int moduleID) {
 		std::vector<const Preset*> units;
 		for (const Preset& unit: s_Units) {
@@ -1434,142 +1437,6 @@ namespace SandboxDetail {
 		}
 		return units;
 	}
-
-	float AutoLaneX(int side) {
-		if (s_RallySet[side]) {
-			return s_RallyPoints[side].m_X;
-		}
-		static constexpr float lanes[c_Sides] = {-0.7F, 0.7F, -0.35F, 0.35F};
-		// (Spaced by the view's width at the start, not now: zooming during the battle moved where the waves landed.)
-		Vector lane = s_AutoCenter + Vector(lanes[side] * s_AutoLaneWidth, 0.0F);
-		g_SceneMan.WrapPosition(lane);
-		return lane.m_X;
-	}
-
-	/// Each side in an auto battle buys a wave every so often with what's left of its budget and sends it in to attack, until one side is left.
-	void UpdateAutoBattle() {
-		if (!s_AutoRunning) {
-			return;
-		}
-		long long now = g_TimerMan.GetSimUpdateCount();
-		for (int side = 0; side < c_Sides; ++side) {
-			AutoSide& autoSide = s_AutoSides[side];
-			if (!autoSide.Active || autoSide.Broke || now < autoSide.NextWave || s_FactionModules.empty()) {
-				continue;
-			}
-			autoSide.NextWave = now + 900;
-			std::vector<const Preset*> choices;
-			if (s_AutoRandom) {
-				// Random units from every faction (or the favourites): a few dozen of them, picked afresh each wave, are priced and bought
-				// from, not the whole catalogue (each pricing makes the unit and its loadout).
-				choices = RandomUnitPool(s_AutoFavourites);
-				for (size_t i = 0; i < choices.size() && i < 24; ++i) {
-					size_t other = i + std::min(choices.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(choices.size() - i)));
-					std::swap(choices[i], choices[other]);
-				}
-				if (choices.size() > 24) {
-					choices.resize(24);
-				}
-			} else {
-				choices = FactionUnits(s_FactionModules[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1)]);
-			}
-			float left = static_cast<float>(autoSide.Budget) - autoSide.Spent;
-			// What each of the faction's units costs as bought (with its loadout), and the cheapest. The wave's budget is at least the
-			// cheapest unit, and picks are made only from what still fits: a faction whose cheapest unit cost over 900 (heavy mechs, some
-			// mods) never filled a wave and was called broke before buying anything, and twelve random picks over budget did the same to
-			// a side that could still afford its cheapest.
-			std::vector<std::pair<const Preset*, float>> priced;
-			float cheapest = -1.0F;
-			for (const Preset* choice: choices) {
-				if (Actor* unit = CreateUnit(*choice, side, 0, Order::Attack)) {
-					float cost = unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-					delete unit;
-					priced.emplace_back(choice, cost);
-					cheapest = cheapest < 0.0F ? cost : std::min(cheapest, cost);
-				}
-			}
-			float waveBudget = std::min(left, std::max(900.0F, cheapest));
-			std::vector<Actor*> wave;
-			float waveCost = 0.0F;
-			for (int attempt = 0; attempt < 12 && wave.size() < 5; ++attempt) {
-				std::vector<const Preset*> affordable;
-				for (const auto& [choice, cost]: priced) {
-					if (waveCost + cost <= waveBudget) {
-						affordable.push_back(choice);
-					}
-				}
-				if (affordable.empty()) {
-					break;
-				}
-				const Preset* pick = affordable[std::min(affordable.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(affordable.size())))];
-				Actor* unit = CreateUnit(*pick, side, 0, Order::Attack);
-				float cost = unit ? unit->GetTotalValue(unit->GetModuleID(), 1.0F) : 0.0F;
-				if (unit && waveCost + cost <= waveBudget) {
-					wave.push_back(unit);
-					waveCost += cost;
-				} else {
-					delete unit;
-				}
-			}
-			if (wave.empty()) {
-				autoSide.Broke = true;
-				continue;
-			}
-			// (Counted as sent only once a craft took them: with no craft to be had, DropUnits deletes the units and returns nothing.)
-			int waveSize = static_cast<int>(wave.size());
-			float paid = DropUnits(wave, side, AutoLaneX(side), 0);
-			if (paid > 0.0F) {
-				autoSide.Sent += waveSize;
-				autoSide.Spent += paid;
-			}
-		}
-		// One side left standing wins.
-		if (now % 60 == 0) {
-			int standing = 0;
-			int lastStanding = -1;
-			bool anySent = false;
-			for (int side = 0; side < c_Sides; ++side) {
-				const AutoSide& autoSide = s_AutoSides[side];
-				if (!autoSide.Active) {
-					continue;
-				}
-				anySent = anySent || autoSide.Sent > 0;
-				if (!autoSide.Broke || Sandbox::CountUnits(side) > 0) {
-					++standing;
-					lastStanding = side;
-				}
-			}
-			if (anySent && standing <= 1) {
-				s_AutoRunning = false;
-				s_AutoWinner = standing == 1 ? lastStanding : -1;
-				std::string result = s_AutoWinner >= 0 ? std::string(c_SideNames[s_AutoWinner]) + " wins!" : std::string("It's a draw!");
-				g_FrameMan.SetScreenText(result, 0, 0, 6000, true);
-				g_ConsoleMan.PrintString("SANDBOX: Auto battle over. " + result);
-			}
-		}
-	}
-
-	/// Starts an auto battle between the active sides, the waves landing in lanes about a middle spaced by a width (the view's, taken when
-	/// it was asked for).
-	void BeginAutoBattle(const Vector& center, float laneWidth) {
-		if (!s_CatalogueBuilt) {
-			BuildCatalogue();
-		}
-		s_AutoCenter = center;
-		s_AutoLaneWidth = laneWidth;
-		long long now = g_TimerMan.GetSimUpdateCount();
-		for (int side = 0; side < c_Sides; ++side) {
-			AutoSide& autoSide = s_AutoSides[side];
-			autoSide.Spent = 0.0F;
-			autoSide.Sent = 0;
-			autoSide.Broke = false;
-			// Staggered, so the first ships don't all arrive at once.
-			autoSide.NextWave = now + side * 60;
-		}
-		s_AutoWinner = -2;
-		s_AutoRunning = true;
-	}
-
 
 	/// Notes a tool use as it is applied, for the stroke log and, with the Sandbox debug channel on, the console: the update, the tool, where,
 	/// the side and orders, and the choice and count it was made with.

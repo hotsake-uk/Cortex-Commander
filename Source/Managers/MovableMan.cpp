@@ -692,7 +692,9 @@ bool MovableMan::AlreadyAdded(const MovableObject* movableObject) {
 	// Added twice (a script adding something that is already in the scene), an object was deleted once and then read again when it was
 	// deleted the second time, which crashed the game: a dropped gun added twice went when a blast destroyed it. The second add is refused,
 	// and said so once per kind of object. (Each list's lock is taken on its own, never two at once.)
-	if (!movableObject) {
+	// Most adds are of objects new to the scene: their own flag says so, with no lock. (The three looks under the lists' locks, on every
+	// particle spawned from every script thread, were most of the cost of an add.)
+	if (!movableObject || !movableObject->HasEverBeenAddedToMovableMan()) {
 		return false;
 	}
 	bool already;
@@ -1397,6 +1399,13 @@ void MovableMan::Update() {
 
 	// Finish our Seeing rays from last frame before anything here moves actors or changes m_Actors (the workers index it by position and read actor state).
 	m_ActorsSeeFuture.wait();
+	// Nothing else runs now, and the AI threads read the ladders below.
+	AHuman::RefreshLadderNodes();
+	// Nor any script: the units' values as they stand, for the AI scripts on other threads to read this update (GetPublishedNumberValue) while
+	// each unit's own script changes its live ones.
+	for (Actor* actor: m_Actors) {
+		actor->PublishNumberValues();
+	}
 
 	// ---TEMP ---
 	// These are here for multithreaded AI, but will be unnecessary when multithreaded-sim-and-render is in!

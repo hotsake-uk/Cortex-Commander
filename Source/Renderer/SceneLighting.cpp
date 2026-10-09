@@ -1008,6 +1008,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
 	m_TerrainShader->SetFloat("rteWaterFoam", m_Settings.Enabled ? m_Settings.WaterFoam : 0.0F);
 	m_TerrainShader->SetFloat("rteThinFlow", m_Settings.Enabled ? std::clamp(m_Settings.WaterThinFlow, 0.0F, 2.0F) : 0.0F);
+	m_TerrainShader->SetBool("rteWaterCaustics", m_Settings.WaterCaustics);
 	m_TerrainShader->SetFloat("rteWaterFoamStray", std::clamp(m_Settings.WaterFoamStray, 0.0F, 1.0F));
 	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
 	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
@@ -1698,7 +1699,7 @@ void SceneLighting::Update() {
 		return static_cast<float>(m_LightningRandom >> 8) / static_cast<float>(1u << 24);
 	};
 	float lightningRate = CurrentWeather() ? CurrentWeather()->GetParams().Lightning : 0.0F;
-	if (lightningRate > 0.0F && m_Settings.WeatherIntensity > 0.5F) {
+	if (lightningRate > 0.0F && m_Settings.WeatherIntensity > 0.5F && m_Settings.StormFlashes) {
 		m_NextLightningSeconds -= frameSeconds;
 		if (m_NextLightningSeconds <= 0.0F) {
 			m_LightningSecondsLeft = 0.45F;
@@ -1716,7 +1717,12 @@ void SceneLighting::Update() {
 	} else {
 		m_Lightning = 0.0F;
 	}
-	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning;
+	// The player's lightning brightness scales the flash too, and Storm flashes off stops it (an accessibility switch: whole-sky flashes).
+	if (!m_Settings.StormFlashes) {
+		m_Lightning = 0.0F;
+		m_LightningSecondsLeft = 0.0F;
+	}
+	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning * std::clamp(m_Settings.LightningBrightness, 0.0F, 2.0F);
 
 	// Snow settles over about a minute of heavy snowfall and melts slower than that; rain wets the ground quickly and dries slowly.
 	const Weather* weatherNow = CurrentWeather();
@@ -2043,6 +2049,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	};
 	size_t lightCount = 0;
 	size_t coneLightStart = SIZE_MAX; // The first cone light's quad; all lights before it shine all round.
+	size_t lineLightStart = SIZE_MAX; // The first line light's quad, between the lights from a point and the cone lights.
 	// The light sources overlay's copy of the first screen's lights, in scene coordinates.
 	bool recordLights = m_RecordDebugLights && screenIndex == 0;
 	if (recordLights) {
@@ -2104,7 +2111,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				if (m_LampCacheReady && light.m_Steady && light.m_ConeCos < -1.0F) {
 					continue;
 				}
-				if (light.m_ConeCos >= -1.0F) {
+				if (light.m_ConeCos >= -1.0F || light.m_Line != glm::vec2(0.0F)) {
 					mergedLights.push_back(light);
 					continue;
 				}
@@ -2144,30 +2151,43 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			}
 			shownLights.resize(lightBudget);
 		}
-		// All-round lights first, cone lights last, so the beam pass draws only the cone lights instead of rasterising every light to discard it.
-		std::stable_partition(shownLights.begin(), shownLights.end(), [](const SceneLight* light) { return light->m_ConeCos < -1.0F; });
+		// All-round lights from a point first, then line lights, then cone lights, so the pass that draws light in the air (line lights' glow, cone
+		// lights' beams) draws only those instead of rasterising every light to discard it.
+		auto lightOrder = [](const SceneLight* light) { return light->m_ConeCos >= -1.0F ? 2 : (light->m_Line != glm::vec2(0.0F) ? 1 : 0); };
+		std::stable_sort(shownLights.begin(), shownLights.end(), [&lightOrder](const SceneLight* a, const SceneLight* b) { return lightOrder(a) < lightOrder(b); });
 		for (const SceneLight* shownLight: shownLights) {
 			const SceneLight& light = *shownLight;
+			bool line = lightOrder(&light) == 1;
+			if (line && lineLightStart == SIZE_MAX) {
+				lineLightStart = lightCount;
+			}
 			if (light.m_ConeCos >= -1.0F && coneLightStart == SIZE_MAX) {
 				coneLightStart = lightCount;
 			}
 			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
-			addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
+			if (line) {
+				// A box round the whole line, as far out as the light reaches; the shader rounds the ends off.
+				addQuad(center, glm::vec2(glm::length(light.m_Line) + light.m_Radius, light.m_Radius), std::atan2(light.m_Line.y, light.m_Line.x), styled(light.m_Color), light.m_Radius);
+			} else {
+				addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
+			}
 			if (recordLights) {
 				recordLight(light.m_Pos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, false, false);
 			}
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
 				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
-				m_QuadVertices[vertex].ConeX = light.m_Direction.x;
-				m_QuadVertices[vertex].ConeY = light.m_Direction.y;
-				m_QuadVertices[vertex].ConeCos = light.m_ConeCos;
+				// Line lights pass the half line instead of a direction, and a cone cosine below -2.5 to mark them.
+				m_QuadVertices[vertex].ConeX = line ? light.m_Line.x : light.m_Direction.x;
+				m_QuadVertices[vertex].ConeY = line ? light.m_Line.y : light.m_Direction.y;
+				m_QuadVertices[vertex].ConeCos = line ? -3.0F : light.m_ConeCos;
 			}
 			++lightCount;
 		}
 	}
 	coneLightStart = std::min(coneLightStart, lightCount);
+	lineLightStart = std::min(lineLightStart, coneLightStart);
 	m_LastLightCount = static_cast<int>(lightCount);
 	size_t emissiveStart = m_QuadVertices.size() / 4;
 	std::vector<GLuint> emissiveTextures;
@@ -2221,6 +2241,29 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			emissiveHeat.push_back(0.0F);
 			addQuad(middle, glm::vec2(length * 0.5F + 0.5F, segment.Width * 0.5F + 0.2F), angle, glm::min(glm::vec3(0.9F, 0.94F, 1.0F) * segment.Brightness * 1.2F, glm::vec3(1.0F)), 0.0F);
 			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+		}
+	}
+
+	// Energy beams (lightsaber blades): only a thin white-hot core, rounded at the tip. The colour round it is all light, from the beam's line light.
+	{
+		std::vector<EnergyBeamSegment> beams;
+		g_PostProcessMan.GetEnergyBeams(Vector(origin.x, origin.y), width, height, beams);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		GLuint puffTexture = EffectsParticles::GetPuffTexture();
+		for (const EnergyBeamSegment& beam: beams) {
+			glm::vec2 along = beam.To - beam.From;
+			float length = glm::length(along);
+			float angle = length > 0.01F ? std::atan2(along.y, along.x) : 0.0F;
+			glm::vec3 core = glm::min(glm::mix(beam.Color, glm::vec3(1.0F), 0.65F) * beam.Brightness, glm::vec3(1.0F));
+			float halfWidth = beam.Width * 0.5F;
+			// The core stops short of the tip by its half width, and a round dot of the same width finishes it, so it never ends square.
+			float coreLength = std::max(length - halfWidth, 0.0F);
+			addQuad(beam.From + (length > 0.01F ? along / length : glm::vec2(0.0F)) * (coreLength * 0.5F), glm::vec2(coreLength * 0.5F, halfWidth), angle, core, 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+			addQuad(beam.To - (length > 0.01F ? along / length : glm::vec2(0.0F)) * halfWidth, glm::vec2(halfWidth * 1.6F), 0.0F, core, 0.0F);
+			emissiveTextures.push_back(puffTexture);
 			emissiveHeat.push_back(0.0F);
 		}
 	}
@@ -2502,6 +2545,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetInt("rteNormals", 1);
 		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
 		m_PointLightShader->SetFloat("rteSpecular", m_Settings.Specular);
+		m_PointLightShader->SetBool("rteUnitShine", m_Settings.UnitShineLights);
 		m_PointLightShader->SetBool("rteBeamMode", false);
 		m_PointLightShader->SetInt("rteOccluders", 2);
 		m_PointLightShader->SetInt("rteSurface", 3);
@@ -2534,6 +2578,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_LampCacheApplyShader->SetVector2f("rteCacheWorldSize", glm::vec2(static_cast<float>(m_LampCache.Width * m_LampCacheCell), static_cast<float>(m_LampCache.Height * m_LampCacheCell)));
 		m_LampCacheApplyShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
 		m_LampCacheApplyShader->SetFloat("rteSpecular", m_Settings.Specular);
+		m_LampCacheApplyShader->SetBool("rteUnitShine", m_Settings.UnitShineLamps);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, m_LampDirection.Texture);
 		glActiveTexture(GL_TEXTURE2);
@@ -2727,6 +2772,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteSunMapStart", m_SunMapStart);
 	m_CompositeShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
 	m_CompositeShader->SetFloat("rteSunMapSoftness", std::clamp(m_Settings.SunShadowSoftness, 0.0F, 2.0F));
+	m_CompositeShader->SetFloat("rteFogOpacity", std::clamp(m_Settings.FogOpacity, 0.0F, 1.0F));
 	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
@@ -2754,6 +2800,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteCloudSize", cloudLayer ? std::clamp(m_Settings.CloudSize, 0.4F, 2.5F) : 1.0F);
 	m_CompositeShader->SetFloat("rteCloudHeight", cloudLayer ? std::clamp(m_Settings.CloudHeight, 0.0F, 1.0F) : 1.0F);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
+	m_CompositeShader->SetBool("rteUnitSunGlint", m_Settings.UnitShineSun);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glActiveTexture(GL_TEXTURE9);
@@ -2850,8 +2897,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
-	// Flashlight beams visible in the air, as light catching dust. Only cone lights draw anything here, and they're the last of the lights.
-	if (lightCount > coneLightStart && m_Settings.Enabled) {
+	// Flashlight beams and the glow round line lights (lightsaber blades) visible in the air, as light catching dust. Only cone and line lights draw
+	// anything here, and they're the last of the lights.
+	if (lightCount > lineLightStart && m_Settings.Enabled) {
 		TracyGpuZone("Light Beams");
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
 		glViewport(0, 0, width, height);
@@ -2865,6 +2913,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
 		m_PointLightShader->SetBool("rteBeamMode", true);
+		m_PointLightShader->SetFloat("rteLineGlow", m_Settings.SaberAirGlow);
 		m_PointLightShader->SetInt("rteOccluders", 2);
 		m_PointLightShader->SetInt("rteSurface", 3);
 		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
@@ -2875,7 +2924,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
-		DrawQuads(coneLightStart, lightCount - coneLightStart);
+		DrawQuads(lineLightStart, lightCount - lineLightStart);
 		m_PointLightShader->SetBool("rteBeamMode", false);
 		glDisable(GL_BLEND);
 	}
@@ -3251,11 +3300,15 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// Width in the game's pixels at normal zoom; zoomed out the view holds more of them per screen pixel, so the stroke is widened to match.
 	logStages.Next("Lighting: unit outlines");
 	float outlineWidth = 0.0F;
+	float highlightWidth = 0.0F;
 	int outlineRadius = 0;
-	if (m_Settings.UnitOutline && surface && m_Settings.UnitOutlineOpacity > 0.0F) {
+	const bool outlines = m_Settings.UnitOutline && m_Settings.UnitOutlineOpacity > 0.0F;
+	if ((outlines || m_Settings.HighlightUnits) && surface) {
 		float zoom = std::max(g_FrameMan.GetCurrentCameraZoom(), 0.1F);
-		outlineWidth = std::min(std::clamp(m_Settings.UnitOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F);
-		outlineRadius = static_cast<int>(std::ceil(outlineWidth + 1.0F)) - 1;
+		outlineWidth = outlines ? std::min(std::clamp(m_Settings.UnitOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		// A highlighted unit's glow (Actor::SetHighlighted): five of the game's pixels, as far as the search reaches.
+		highlightWidth = m_Settings.HighlightUnits ? std::min(5.0F / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		outlineRadius = static_cast<int>(std::ceil(std::max(outlineWidth, highlightWidth) + 1.0F)) - 1;
 		glDisable(GL_BLEND);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_OutlineRows.Framebuffer);
 		glViewport(0, 0, width, height);
@@ -3326,6 +3379,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
 	m_TonemapShader->SetInt("rteOutlineRows", 5);
 	m_TonemapShader->SetFloat("rteOutlineWidth", outlineWidth);
+	m_TonemapShader->SetFloat("rteHighlightWidth", highlightWidth);
 	m_TonemapShader->SetInt("rteOutlineRadius", outlineRadius);
 	m_TonemapShader->SetFloat("rteOutlineOpacity", std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
 	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor);
