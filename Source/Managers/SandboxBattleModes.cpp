@@ -4,6 +4,10 @@
 
 #include "SandboxInternal.h"
 
+#include <deque>
+#include <functional>
+#include <unordered_set>
+
 namespace SandboxDetail {
 	namespace {
 		/// Sim updates in a second of game time.
@@ -48,6 +52,7 @@ namespace SandboxDetail {
 			BattleSettings team;
 			team.Factions = card.Factions;
 			team.FavouritesOnly = card.FavouritesOnly;
+			team.Crabs = card.Crabs;
 			team.Craft = card.Craft;
 			team.Active = TeamIn(settings, side);
 			team.Style = BattleStyle::Attack;
@@ -55,8 +60,9 @@ namespace SandboxDetail {
 			team.UnitLimit = std::clamp(settings.TeamSize, 1, 200);
 			team.WaveSize = PerWave(settings);
 			team.ZoneUnits = PerWave(settings);
-			team.ZoneEverySeconds = 15;
-			team.EverySeconds = 25;
+			// (Looked at every second, or every few for ships: how many come is held to those whose respawn time is up, ModeRoom.)
+			team.ZoneEverySeconds = 1;
+			team.EverySeconds = 5;
 			if (!team.Active) {
 				return team;
 			}
@@ -83,7 +89,8 @@ namespace SandboxDetail {
 
 		/// A base drawn on the map: its area shaded in its team's colour.
 		void DrawBase(ImDrawList* drawList, const std::vector<Vector>& base, ImU32 color) {
-			if (base.size() < 3) {
+			const Tool held = CurrentTool().Kind;
+			if (base.size() < 3 || (!s_ShowModeBases && held != Tool::BattleModeBase && held != Tool::BattleModePoint)) {
 				return;
 			}
 			std::vector<ImVec2> corners = ZoneOnScreen(base, std::max(ScenePixelsPerWindowPixel(), 0.01F));
@@ -241,6 +248,160 @@ namespace SandboxDetail {
 		/// A pulse from 0 to 1 and back, a few times a second, for what is to catch the eye.
 		float Pulse(float speed = 5.0F) { return 0.5F + 0.5F * std::sin(static_cast<float>(ImGui::GetTime()) * speed); }
 
+		// ---- Where new units appear ----
+
+		std::vector<Vector> s_SpawnedAt; //!< Where units have appeared this update, so the next ones don't land on top of them.
+		long long s_SpawnedOn = -1;
+
+		/// Somewhere in a spawn zone for a new unit, of a dozen picks: the one least bad (by badness, if given), away from where the others
+		/// appearing this update went. (All a team at once in a small base came out on top of each other, and spent their first half
+		/// minute stepping round and hopping over one another.)
+		Vector SpreadSpot(const std::vector<Vector>& zone, float height, const std::function<float(const Vector&)>& badness) {
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_SpawnedOn != now) {
+				s_SpawnedAt.clear();
+				s_SpawnedOn = now;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			Vector best;
+			float bestScore = 0.0F;
+			for (int attempt = 0; attempt < 12; ++attempt) {
+				Vector spot = SpotInZone(zone, height);
+				float score = badness ? badness(spot) : 0.0F;
+				for (const Vector& other: s_SpawnedAt) {
+					if (g_SceneMan.ShortestDistance(spot, other, wraps).MagnitudeIsLessThan(30.0F)) {
+						score += 10000.0F;
+					}
+				}
+				if (attempt == 0 || score < bestScore) {
+					best = spot;
+					bestScore = score;
+				}
+			}
+			s_SpawnedAt.push_back(best);
+			return best;
+		}
+
+		float DistanceBetween(const Vector& a, const Vector& b) { return g_SceneMan.ShortestDistance(a, b, g_SceneMan.SceneWrapsX()).GetMagnitude(); }
+
+		// ---- Respawning ----
+
+		std::array<std::unordered_set<long>, c_Sides> s_Alive; //!< The unique IDs of each team's units last seen alive.
+		std::array<std::deque<long long>, c_Sides> s_FellAt; //!< When each team's fallen units fell, the oldest first, till they are replaced.
+		std::array<int, c_Sides> s_Released{}; //!< Units each team may have sent so far: its team size, and one for each fallen unit whose time is up.
+		int s_SizeReleased = 0; //!< The team size s_Released was given for.
+
+		void StartRespawns() {
+			for (int side = 0; side < c_Sides; ++side) {
+				s_Alive[side].clear();
+				s_FellAt[side].clear();
+				s_Released[side] = s_ModeRun.Settings.TeamSize;
+			}
+			s_SizeReleased = s_ModeRun.Settings.TeamSize;
+		}
+
+		/// Twice a second: the units that have fallen since, each to be replaced once the respawn time is up. (Before, a fallen unit's place
+		/// was filled at the team's next spawn, every 15 s.) With the AI paused, the clocks are held back.
+		void UpdateRespawns(bool aiPaused) {
+			if (aiPaused) {
+				for (std::deque<long long>& fell: s_FellAt) {
+					for (long long& at: fell) {
+						++at;
+					}
+				}
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_SizeReleased != s_ModeRun.Settings.TeamSize) {
+				// (The team size changed during the game: more room at once, or less as units fall.)
+				for (int& released: s_Released) {
+					released += std::max(s_ModeRun.Settings.TeamSize - s_SizeReleased, 0);
+				}
+				s_SizeReleased = s_ModeRun.Settings.TeamSize;
+			}
+			if (now % 30 != 0) {
+				return;
+			}
+			std::array<std::unordered_set<long>, c_Sides> seen;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				const int team = actor->GetTeam();
+				if (team >= 0 && team < c_Sides && IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains")) {
+					seen[team].insert(actor->GetUniqueID());
+				}
+			}
+			const long long wait = static_cast<long long>(static_cast<float>(std::max(s_ModeRun.Settings.RespawnSeconds, 0)) * UpdatesPerSecond());
+			for (int side = 0; side < c_Sides; ++side) {
+				for (long id: s_Alive[side]) {
+					if (!seen[side].count(id)) {
+						s_FellAt[side].push_back(now);
+					}
+				}
+				s_Alive[side] = std::move(seen[side]);
+				while (!s_FellAt[side].empty() && now - s_FellAt[side].front() >= wait) {
+					s_FellAt[side].pop_front();
+					++s_Released[side];
+				}
+			}
+		}
+
+		/// Seconds till a team's next fallen unit is replaced, or -1 with none waiting.
+		float NextRespawnIn(int side) {
+			if (s_FellAt[side].empty()) {
+				return -1.0F;
+			}
+			return static_cast<float>(std::max(s_ModeRun.Settings.RespawnSeconds, 0)) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_FellAt[side].front()) / UpdatesPerSecond();
+		}
+
+		// ---- Markers on the map ----
+
+		/// A column of light standing up from a place, in a colour, pulsing, with a glow round its foot: seen from across the map.
+		void DrawBeacon(ImDrawList* drawList, ImVec2 foot, ImU32 color, float strength = 1.0F) {
+			const float pulse = Pulse(4.0F);
+			const ImU32 rgb = color & 0x00FFFFFF;
+			const float height = 240.0F;
+			const auto alpha = [&](float a) { return static_cast<ImU32>(std::clamp(a * strength, 0.0F, 255.0F)) << 24; };
+			// Soft and wide, then a bright core, each fading out going up.
+			drawList->AddRectFilledMultiColor(ImVec2(foot.x - 16.0F, foot.y - height), ImVec2(foot.x + 16.0F, foot.y), rgb, rgb, rgb | alpha(70.0F + 40.0F * pulse), rgb | alpha(70.0F + 40.0F * pulse));
+			drawList->AddRectFilledMultiColor(ImVec2(foot.x - 6.0F, foot.y - height), ImVec2(foot.x + 6.0F, foot.y), rgb, rgb, rgb | alpha(170.0F + 60.0F * pulse), rgb | alpha(170.0F + 60.0F * pulse));
+			drawList->AddRectFilledMultiColor(ImVec2(foot.x - 1.5F, foot.y - height * 0.8F), ImVec2(foot.x + 1.5F, foot.y), IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 230), IM_COL32(255, 255, 255, 230));
+			for (int ring = 5; ring >= 1; --ring) {
+				drawList->AddCircleFilled(ImVec2(foot.x, foot.y - 14.0F), (8.0F + 9.0F * static_cast<float>(ring)) * (0.9F + 0.2F * pulse), rgb | alpha(26.0F + 30.0F * pulse), 32);
+			}
+			drawList->AddCircle(ImVec2(foot.x, foot.y - 14.0F), 30.0F + 8.0F * pulse, rgb | alpha(200.0F * (1.0F - pulse) + 40.0F), 32, 2.5F);
+		}
+
+		/// A label on a dark plate, centred over a place on screen.
+		void DrawTag(ImDrawList* drawList, ImVec2 over, const std::string& text, ImU32 color) {
+			ImVec2 size = ImGui::CalcTextSize(text.c_str());
+			ImVec2 at(over.x - size.x * 0.5F, over.y - size.y);
+			drawList->AddRectFilled(ImVec2(at.x - 5.0F, at.y - 3.0F), ImVec2(at.x + size.x + 5.0F, at.y + size.y + 3.0F), IM_COL32(0, 0, 0, 190), 4.0F);
+			drawList->AddRect(ImVec2(at.x - 5.0F, at.y - 3.0F), ImVec2(at.x + size.x + 5.0F, at.y + size.y + 3.0F), color, 4.0F, 0, 1.5F);
+			drawList->AddText(at, color, text.c_str());
+		}
+
+		/// A place off the edge of the view: an arrow at the edge pointing to it, with its label, so it can always be found.
+		void DrawOffScreen(ImDrawList* drawList, ImVec2 place, const std::string& label, ImU32 color) {
+			const GameViewRect view = g_DebugMan.GetUncoveredView();
+			const float margin = 28.0F;
+			if (place.x >= view.x && place.x <= view.x + view.w && place.y >= view.y && place.y <= view.y + view.h) {
+				return;
+			}
+			const ImVec2 middle(view.x + view.w * 0.5F, view.y + view.h * 0.5F);
+			ImVec2 way(place.x - middle.x, place.y - middle.y);
+			const float length = std::max(std::sqrt(way.x * way.x + way.y * way.y), 0.001F);
+			way = ImVec2(way.x / length, way.y / length);
+			// Out from the middle to the edge, along the way to it.
+			const float reachX = way.x != 0.0F ? (view.w * 0.5F - margin) / std::abs(way.x) : 1.0e9F;
+			const float reachY = way.y != 0.0F ? (view.h * 0.5F - margin) / std::abs(way.y) : 1.0e9F;
+			const float reach = std::min(reachX, reachY);
+			const ImVec2 tip(middle.x + way.x * reach, middle.y + way.y * reach);
+			const ImVec2 side(-way.y, way.x);
+			const float pulse = 0.8F + 0.2F * Pulse(6.0F);
+			drawList->AddTriangleFilled(ImVec2(tip.x + way.x * 14.0F * pulse, tip.y + way.y * 14.0F * pulse), ImVec2(tip.x + side.x * 10.0F, tip.y + side.y * 10.0F), ImVec2(tip.x - side.x * 10.0F, tip.y - side.y * 10.0F), color);
+			drawList->AddTriangle(ImVec2(tip.x + way.x * 14.0F * pulse, tip.y + way.y * 14.0F * pulse), ImVec2(tip.x + side.x * 10.0F, tip.y + side.y * 10.0F), ImVec2(tip.x - side.x * 10.0F, tip.y - side.y * 10.0F), IM_COL32(0, 0, 0, 200), 1.5F);
+			DrawTag(drawList, ImVec2(tip.x - way.x * 22.0F, tip.y - way.y * 22.0F + 6.0F), label, color);
+		}
+
 		// ---- Capture the flag ----
 
 		/// Where a team's flag is.
@@ -280,24 +441,18 @@ namespace SandboxDetail {
 
 		void SetUpTeams();
 
-		/// Somewhere in a team's base for a new unit to appear: never at its own flag. The first of a few picks at least c_SpawnClear from it,
-		/// else the furthest of them (a base too small for that).
-		Vector FlagsSpawnSpot(int side, const std::vector<Vector>& zone, float height) {
+		/// Somewhere in a team's base for a new unit to appear: never at its own flag (at least c_SpawnClear from it, as far as the base
+		/// allows). A unit going for an enemy's flag appears on the side of the base nearest it, so it doesn't have to make its way through its
+		/// own guards first; a guard appears near the flag.
+		Vector FlagsSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
 			const Vector flag = s_Flags[std::clamp(side, 0, c_Sides - 1)].Home;
-			Vector best = SpotInZone(zone, height);
-			float bestDistance = -1.0F;
-			for (int attempt = 0; attempt < 16; ++attempt) {
-				Vector spot = attempt == 0 ? best : SpotInZone(zone, height);
-				float distance = g_SceneMan.ShortestDistance(spot, flag, g_SceneMan.SceneWrapsX()).GetMagnitude();
-				if (distance >= c_SpawnClear) {
-					return spot;
-				}
-				if (distance > bestDistance) {
-					best = spot;
-					bestDistance = distance;
-				}
-			}
-			return best;
+			auto runner = unit ? s_Runners.find(unit->GetUniqueID()) : s_Runners.end();
+			const bool runs = runner != s_Runners.end() && runner->second.Target >= 0 && runner->second.Target < c_Sides;
+			const Vector goal = runs ? s_Flags[runner->second.Target].Home : flag;
+			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&](const Vector& spot) {
+				const float fromFlag = DistanceBetween(spot, flag);
+				return (fromFlag < c_SpawnClear ? 5000.0F + (c_SpawnClear - fromFlag) * 10.0F : 0.0F) + DistanceBetween(spot, goal);
+			});
 		}
 
 		/// A capture the flag team's settings: as every mode's (BaseTeam), with its ships' drop line kept to the part of its base furthest from
@@ -461,7 +616,8 @@ namespace SandboxDetail {
 			BattleSettings guard;
 			guard.DefendPos = s_Flags[side].State == FlagState::Home ? s_Flags[side].Home : s_Flags[side].Pos;
 			guard.HasDefendPos = true;
-			guard.DefendRadius = static_cast<int>(GuardRadius(settings.Bases[side]));
+			// (Close round the flag, not spread across the whole base, where they stood in the way of their own team going out.)
+			guard.DefendRadius = static_cast<int>(std::min(GuardRadius(settings.Bases[side]), 110.0F));
 			guard.ChaseDistance = guard.DefendRadius + 250;
 			guard.RoamPercent = 30;
 			const long long now = g_TimerMan.GetSimUpdateCount();
@@ -470,6 +626,9 @@ namespace SandboxDetail {
 					unit->SetOrderAttack(false);
 					MakeDefender(unit, guard);
 				} else {
+					// (Without the attack order it was made with: its AI took that up as soon as it had walked off its first waypoint, and went
+					// after the nearest enemy instead of the flag.)
+					unit->SetOrderAttack(false);
 					FlagRunner& runner = s_Runners[unit->GetUniqueID()];
 					runner.Team = side;
 					runner.Target = enemies[std::min(enemies.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(enemies.size())))];
@@ -560,9 +719,10 @@ namespace SandboxDetail {
 			}
 		}
 
-		/// Whether a flag standing at a place is buried: ground where its cloth is.
+		/// Whether a flag standing at a place is buried: ground where its cloth is (near the top of its pole: low down, a tuft of grass on a
+		/// slope was enough to call a flag buried and move it).
 		bool Buried(const Vector& at) {
-			Vector cloth = at - Vector(0.0F, 6.0F);
+			Vector cloth = at - Vector(0.0F, 22.0F);
 			g_SceneMan.WrapPosition(cloth);
 			return g_SceneMan.GetTerrMatter(cloth.GetFloorIntX(), cloth.GetFloorIntY()) != g_MaterialAir;
 		}
@@ -572,6 +732,7 @@ namespace SandboxDetail {
 			if (!g_SceneMan.GetScene() || !unit) {
 				return true;
 			}
+			// (From the ground under it, as its own AI searches: from a flying unit's place in the air no way was found.)
 			return RouteReachable(RouteCost(unit, at - Vector(0.0F, 10.0F)));
 		}
 
@@ -618,35 +779,36 @@ namespace SandboxDetail {
 				if (!settings.MoveStuckPoint) {
 					continue;
 				}
-				// An enemy's unit to try the way with (the nearest of any team after it).
-				const Actor* enemy = nullptr;
-				float nearest = 0.0F;
+				// The enemy's units to try the way with: the three nearest of any team after it, walkers first. (One was enough before, and the
+				// nearest being a tank that can't climb, or a drone, was taken to mean nobody could get there.)
+				std::vector<std::pair<float, const Actor*>> enemies;
 				for (Actor* actor: SandboxAccess::Actors()) {
 					if (actor->GetTeam() == side || !TeamIn(settings, actor->GetTeam()) || !IsCombatant(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 						continue;
 					}
-					float distance = g_SceneMan.ShortestDistance(actor->GetPos(), flag.Home, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-					if (!enemy || distance < nearest) {
-						enemy = actor;
-						nearest = distance;
-					}
+					const float distance = g_SceneMan.ShortestDistance(actor->GetPos(), flag.Home, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+					enemies.emplace_back(dynamic_cast<const AHuman*>(actor) ? distance : distance + 1.0e8F, actor);
 				}
+				std::sort(enemies.begin(), enemies.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+				enemies.resize(std::min<size_t>(enemies.size(), 3));
+				const auto reachable = [&enemies](const Vector& at) {
+					return enemies.empty() || std::any_of(enemies.begin(), enemies.end(), [&at](const auto& enemy) { return CanReach(enemy.second, at); });
+				};
 				// Ground blasted away under it: it falls onto what's below.
 				Vector settled = Grounded(flag.Home);
-				bool stuck = Buried(flag.Home) || !IsInZone(settings.Bases[side], settled);
-				if (!stuck && !g_SceneMan.ShortestDistance(settled, flag.Home, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(2.0F)) {
+				if (IsInZone(settings.Bases[side], settled) && !g_SceneMan.ShortestDistance(settled, flag.Home, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(2.0F)) {
 					FlagMoved(side, settled);
 				}
-				if (!stuck && enemy) {
-					flag.Unreachable = CanReach(enemy, flag.Home) ? 0 : flag.Unreachable + 1;
-					stuck = flag.Unreachable >= 2;
-				}
+				// (Twice running, whatever the reason, so one look at a moment's mess doesn't move it.)
+				const bool trapped = Buried(flag.Home) || !IsInZone(settings.Bases[side], settled) || !reachable(flag.Home);
+				flag.Unreachable = trapped ? flag.Unreachable + 1 : 0;
+				bool stuck = flag.Unreachable >= 2;
 				if (!stuck) {
 					continue;
 				}
 				for (int attempt = 0; attempt < 10; ++attempt) {
 					Vector spot = SpotInZone(settings.Bases[side], 0.0F);
-					if (!Buried(spot) && (!enemy || CanReach(enemy, spot))) {
+					if (!Buried(spot) && reachable(spot)) {
 						flag.Unreachable = 0;
 						FlagMoved(side, spot);
 						Say(SideName(side) + "'s flag couldn't be got to: moved in its base");
@@ -661,7 +823,9 @@ namespace SandboxDetail {
 			const bool wraps = g_SceneMan.SceneWrapsX();
 			const bool moved = !runner.HasSent || !g_SceneMan.ShortestDistance(runner.Sent, to, wraps).MagnitudeIsLessThan(target ? 120.0F : 40.0F);
 			// (Not straight after being sent: the order is only taken up on the next update, and one with no way there drops it again.)
-			const bool stopped = unit->GetAIMode() != Actor::AIMODE_GOTO && now - runner.SentAt > static_cast<long long>(3.0F * UpdatesPerSecond()) && !g_SceneMan.ShortestDistance(unit->GetPos(), to, wraps).MagnitudeIsLessThan(c_FlagReach);
+			// (Or still on GOTO with no way left to walk: an order whose route was given up on.)
+			const bool idle = unit->GetAIMode() != Actor::AIMODE_GOTO || (unit->GetMovePathSize() == 0 && !unit->IsWaitingOnNewMovePath() && !unit->GetMOMoveTarget());
+			const bool stopped = idle && now - runner.SentAt > static_cast<long long>(3.0F * UpdatesPerSecond()) && !g_SceneMan.ShortestDistance(unit->GetPos(), to, wraps).MagnitudeIsLessThan(c_FlagReach);
 			// (And again every few seconds while it chases someone, as they move.)
 			const bool stale = target && now - runner.SentAt > static_cast<long long>(4.0F * UpdatesPerSecond());
 			if (!moved && !stopped && !stale) {
@@ -800,35 +964,35 @@ namespace SandboxDetail {
 					continue;
 				}
 				const Flag& flag = s_Flags[side];
+				const std::string name = SideName(side) + " flag";
 				if (flag.State != FlagState::Home) {
 					// Where it stands at home, empty.
 					ImVec2 home = ToScreen(flag.Home);
 					drawList->AddCircle(ImVec2(home.x, home.y - 6.0F), 12.0F, (color & 0x00FFFFFF) | (90u << 24), 24, 2.0F);
 				}
-				if (flag.State == FlagState::Carried) {
-					// Over its carrier's head (its middle, and a bit).
-					ImVec2 over = ToScreen(flag.Pos);
-					DrawFlag(drawList, ImVec2(over.x, over.y - 18.0F), color, 0.8F);
+				Actor* carrier = flag.State == FlagState::Carried ? GetRef(flag.Carrier) : nullptr;
+				if (carrier) {
+					// Over its carrier's head: the flag, its column of light, and who has it, in words.
+					ImVec2 head = ToScreen(carrier->GetPos() - Vector(0.0F, carrier->GetHeight() * 0.5F));
+					const float bob = 3.0F * Pulse(4.0F);
+					DrawBeacon(drawList, ImVec2(head.x, head.y - 4.0F), color, 0.8F);
+					DrawFlag(drawList, ImVec2(head.x, head.y - 6.0F - bob), color, 0.9F);
+					DrawTag(drawList, ImVec2(head.x, head.y - 44.0F - bob), SideName(carrier->GetTeam()) + " HAS THE " + SideName(side) + " FLAG", color);
+					DrawOffScreen(drawList, head, name + " (taken)", color);
 				} else if (flag.State == FlagState::Dropped) {
-					// Lying out: it glows, pulsing, so it is seen from afar, with the seconds till it goes home over it.
+					// Lying out: its light, and the seconds till it goes home over it.
 					ImVec2 foot = ToScreen(flag.Pos);
-					ImVec2 middle(foot.x + 6.0F, foot.y - 18.0F);
-					const float pulse = 0.65F + 0.35F * std::sin(static_cast<float>(ImGui::GetTime()) * 6.0F);
-					for (int ring = 4; ring >= 1; --ring) {
-						const float radius = (14.0F + 7.0F * static_cast<float>(ring)) * (0.9F + 0.1F * pulse);
-						drawList->AddCircleFilled(middle, radius, IM_COL32(255, 240, 150, static_cast<int>(pulse * 34.0F)), 32);
-					}
-					drawList->AddCircle(middle, 22.0F * (0.9F + 0.1F * pulse), IM_COL32(255, 250, 200, static_cast<int>(pulse * 220.0F)), 32, 2.0F);
+					DrawBeacon(drawList, foot, color, 1.0F);
 					DrawFlag(drawList, foot, color);
 					const float left = static_cast<float>(std::max(settings.ReturnSeconds, 1)) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - flag.DroppedAt) / UpdatesPerSecond();
-					char seconds[16];
-					std::snprintf(seconds, sizeof(seconds), "%d s", std::max(static_cast<int>(std::ceil(left)), 0));
-					ImVec2 size = ImGui::CalcTextSize(seconds);
-					ImVec2 at(middle.x - size.x * 0.5F, middle.y - 36.0F);
-					drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 150), 3.0F);
-					drawList->AddText(at, IM_COL32(255, 240, 150, 255), seconds);
+					DrawTag(drawList, ImVec2(foot.x + 6.0F, foot.y - 40.0F), name + " DROPPED: home in " + std::to_string(std::max(static_cast<int>(std::ceil(left)), 0)) + " s", color);
+					DrawOffScreen(drawList, foot, name + " (dropped)", color);
 				} else {
-					DrawFlag(drawList, ToScreen(flag.Pos), color);
+					ImVec2 foot = ToScreen(flag.Pos);
+					DrawBeacon(drawList, foot, color, 0.8F);
+					DrawFlag(drawList, foot, color, 1.2F);
+					DrawTag(drawList, ImVec2(foot.x + 6.0F, foot.y - 46.0F), name, color);
+					DrawOffScreen(drawList, foot, name, color);
 				}
 			}
 			if (running) {
@@ -938,6 +1102,12 @@ namespace SandboxDetail {
 			if (!s_ModeRun.Settings.Zones.empty()) {
 				SendToDefend(wave, HillPost());
 			}
+		}
+
+		/// New units appear on the side of their base nearest the hill.
+		Vector HillSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
+			const Vector hill = HillPost().DefendPos;
+			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&hill](const Vector& spot) { return DistanceBetween(spot, hill); });
 		}
 
 		/// The next hill comes into play: every team's units make for it.
@@ -1088,6 +1258,12 @@ namespace SandboxDetail {
 			if (!s_ModeRun.Settings.Zones.empty()) {
 				SendToDefend(wave, ObjectivePost());
 			}
+		}
+
+		/// New units appear on the side of their base nearest the objective.
+		Vector AssaultSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
+			const Vector objective = ObjectivePost().DefendPos;
+			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&objective](const Vector& spot) { return DistanceBetween(spot, objective); });
 		}
 
 		/// The first of the defending teams (who are named as the winners when time runs out), or -1 with more than one.
@@ -1528,7 +1704,7 @@ namespace SandboxDetail {
 			void (*Start)() = nullptr; //!< Its own state afresh, as the game starts.
 			void (*SettingsChanged)() = nullptr; //!< The panel changed while the game is on.
 			void (*UnitsMade)(int side, const std::vector<Actor*>& wave) = nullptr; //!< A team's new units, bought but not yet in (riding in, or about to appear).
-			Vector (*SpawnSpot)(int side, const std::vector<Vector>& zone, float height) = nullptr; //!< Where in a spawn zone a team's new unit appears (SpotInZone, if left out).
+			Vector (*SpawnSpot)(int side, const std::vector<Vector>& zone, const Actor* unit) = nullptr; //!< Where in a spawn zone a team's new unit appears (spread out, if left out).
 			int (*Room)(int side, int room) = nullptr; //!< How many more units a team may have now, of the room its unit limit leaves.
 			void (*Update)(bool aiPaused) = nullptr; //!< Each sim update, while its game is on.
 			void (*Panel)(BattleModeSettings& setup, bool& changed) = nullptr; //!< Its own choices, on the Battle tab.
@@ -1563,6 +1739,7 @@ namespace SandboxDetail {
 		     .Start = HillStart,
 		     .SettingsChanged = HillSettingsChanged,
 		     .UnitsMade = HillUnitsMade,
+		     .SpawnSpot = HillSpawnSpot,
 		     .Update = HillUpdate,
 		     .Panel = HillPanel,
 		     .Draw = HillDraw,
@@ -1577,6 +1754,7 @@ namespace SandboxDetail {
 		     .Start = AssaultStart,
 		     .SettingsChanged = AssaultSettingsChanged,
 		     .UnitsMade = AssaultUnitsMade,
+		     .SpawnSpot = AssaultSpawnSpot,
 		     .Update = AssaultUpdate,
 		     .Panel = AssaultPanel,
 		     .Draw = AssaultDraw,
@@ -1767,6 +1945,7 @@ namespace SandboxDetail {
 			s_BattleDefenders.clear();
 			ClearHighlights();
 			s_Runners.clear();
+			StartRespawns();
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -1808,18 +1987,27 @@ namespace SandboxDetail {
 		}
 	}
 
-	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height) {
+	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
 		const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
-		return mode.SpawnSpot ? mode.SpawnSpot(side, zone, height) : SpotInZone(zone, height);
+		return mode.SpawnSpot ? mode.SpawnSpot(side, zone, unit) : SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, nullptr);
 	}
 
 	int ModeRoom(int side, int room) {
+		if (!s_ModeRun.Running || side < 0 || side >= c_Sides) {
+			return room;
+		}
+		// Only as many as have been given back by the respawn time, of those fallen.
+		room = std::min(room, s_Released[side] - s_BattleTeams[side].Sent);
 		const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
-		return s_ModeRun.Running && mode.Room ? mode.Room(side, room) : room;
+		return mode.Room ? mode.Room(side, room) : room;
 	}
 
 	void UpdateBattleMode(bool aiPaused) {
-		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); s_ModeRun.Running && mode.Update) {
+		if (!s_ModeRun.Running) {
+			return;
+		}
+		UpdateRespawns(aiPaused);
+		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); mode.Update) {
 			mode.Update(aiPaused);
 		}
 	}
@@ -1897,7 +2085,9 @@ namespace SandboxDetail {
 		}
 
 		changed |= ImGui::SliderInt("Team size", &setup.TeamSize, 2, 100, "%d alive at most");
-		ImGui::SetItemTooltip("Most units each team has alive at once. Fallen ones are replaced, %d at a time.", PerWave(setup));
+		ImGui::SetItemTooltip("Most units each team has alive at once.");
+		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
+		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
 		if (ToolUI::RadioButton("Appear in their base##arrive", !setup.ByShip)) {
 			setup.ByShip = false;
 			changed = true;
@@ -1908,6 +2098,8 @@ namespace SandboxDetail {
 			changed = true;
 		}
 		ImGui::SetItemTooltip("Each team's units come in by ship over their base (each team's card says which craft), rather than appearing in it.");
+		ToolUI::Checkbox("Show bases on the map", &s_ShowModeBases);
+		ImGui::SetItemTooltip("The outline and shading of each team's base. Off, they're hidden (still shown while you draw a base or place its point); flags, hills and the rest still show.");
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
 		}
@@ -2032,3 +2224,24 @@ namespace SandboxDetail {
 		}
 	}
 } // namespace SandboxDetail
+
+void Sandbox::StartBattleMode(int mode, int teamSize, bool byShip) {
+	using namespace SandboxDetail;
+	if (!InGame()) {
+		return;
+	}
+	BattleModeSettings settings = s_ModeRun.Settings;
+	settings.Mode = static_cast<BattleMode>(std::clamp(mode, 0, static_cast<int>(BattleMode::Count) - 1));
+	settings.TeamSize = std::clamp(teamSize, 2, 100);
+	settings.ByShip = byShip;
+	for (int side = 0; side < c_Sides; ++side) {
+		settings.Plays[side] = settings.Bases[side].size() >= 3;
+	}
+	s_ModeSetup = settings;
+	Stroke stroke;
+	stroke.Kind = Tool::BattleTeam;
+	stroke.Team = -1;
+	stroke.Count = settings.Mode == BattleMode::Custom ? BattleModeStop : BattleModeStart;
+	stroke.Mode = settings;
+	ApplyBattleMode(stroke);
+}

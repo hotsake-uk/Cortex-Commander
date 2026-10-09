@@ -391,6 +391,7 @@ namespace SandboxDetail {
 		bool Active = false; //!< Takes part: started by "Start battle".
 		std::vector<int> Factions; //!< The module IDs of the factions its units come from; none for any faction.
 		bool FavouritesOnly = false; //!< Only units marked as favourites (of those factions); any, when none are.
+		bool Crabs = false; //!< Crabs among them (ACrab: crabs, and the tanks and walkers built on them). Off by default.
 		BattleStyle Style = BattleStyle::Attack;
 		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
 		int Budget = 5000; //!< What it may spend in all, in oz.
@@ -454,6 +455,7 @@ namespace SandboxDetail {
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
+		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
 		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
 		int HillMoveSeconds = 0; //!< King of the hill, with more than one hill: seconds before the hill moves on to the next. 0: it stays put.
@@ -603,6 +605,7 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	inline bool s_ShowModeBases = true; //!< The teams' bases shaded and outlined on the map (always while one is being drawn, or its point placed).
 	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;
@@ -1551,7 +1554,7 @@ namespace SandboxDetail {
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
-	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height);
+	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();
