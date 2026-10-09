@@ -283,6 +283,10 @@ void DebugMan::DrawToolWindowControls() {
 			m_BarWidth = std::clamp(barWidth, 25.0F, 100.0F);
 		}
 		ImGui::SetItemTooltip("How wide the sandbox's bar along the bottom is, as a share of the game's picture: type a number from 25 to 100 and press Enter.\nControls that don't fit on a line go onto the next.");
+		static const char* const placements[] = {"Side panel", "Floating window", "Large window"};
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 9.0F);
+		ImGui::Combo("Sandbox window", &m_SandboxPlacement, placements, IM_ARRAYSIZE(placements));
+		ImGui::SetItemTooltip("How the sandbox's tools are shown.\nSide panel: docked at the left, its width as above (drag its edge to change it).\nFloating window: a window to move and resize as you like.\nLarge window: nine tenths of the screen, in the middle of it.");
 		ToolUI::Checkbox("The game's own pixel lettering", &m_PixelFont);
 		ImGui::SetItemTooltip("On: these windows are lettered in the game's small pixel font. Off: a smooth font, which is easier to read at length.");
 		ToolUI::Checkbox("Dock tool windows at the sides", &m_DockPanels);
@@ -436,10 +440,18 @@ void DebugMan::DrawImGui() {
 
 }
 
-bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
+bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement) {
 	// Controls set side by side go onto the next line when they don't fit the panel's width (popped in EndPanel).
 	ImGui::PushWrapSameLine();
-	if (!m_DockPanels) {
+	if (placement == PanelPlacement::Large) {
+		// Most of the screen, in the middle of it; a window of its own, so the floating one keeps its place and size.
+		ImGuiIO& io = ImGui::GetIO();
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F), ImGuiCond_Always, ImVec2(0.5F, 0.5F));
+		ImGui::SetNextWindowSize(ImVec2(std::floor(io.DisplaySize.x * 0.9F), std::floor(io.DisplaySize.y * 0.9F)), ImGuiCond_Always);
+		m_PanelKind = 0;
+		return ImGui::Begin((std::string(name) + "Large").c_str(), open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
+	}
+	if (!m_DockPanels || placement == PanelPlacement::Floating) {
 		m_PanelKind = 0;
 		return ImGui::Begin(name, open);
 	}
