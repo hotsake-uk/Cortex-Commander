@@ -290,6 +290,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainSides", { FluidSim::SetDrainsSides(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("PowdersFallOut", { FluidSim::SetPowdersFallOut(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -925,6 +926,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("BloodFlows", FluidSim::BloodFlows());
 	writer.NewPropertyWithValue("LiquidsDrainBottom", FluidSim::DrainsBottom());
 	writer.NewPropertyWithValue("LiquidsDrainSides", FluidSim::DrainsSides());
+	writer.NewPropertyWithValue("PowdersFallOut", FluidSim::PowdersFallOut());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
