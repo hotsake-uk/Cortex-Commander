@@ -1719,7 +1719,7 @@ end
 -- A few steps behind something the target can't see through, to reload or to recover from a hit, and then out again (LeaveCover).
 -- A defender only goes as far as half a body, so it's still at its post. @return Whether the legs are taken for it this tick.
 function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
-	if AI.flying or Owner.aggressive then
+	if AI.flying or Owner.aggressive or SharedBehaviors.OnObjective(Owner) then
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
@@ -1940,7 +1940,7 @@ function HumanBehaviors.PeekUpdate(AI, Owner)
 	AI.ducked = false;
 	local Target = AI.Target;
 	local moving = AI.lateralMoveState ~= Actor.LAT_STILL and not (AI.Cover and AI.Cover.There);
-	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
+	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or SharedBehaviors.OnObjective(Owner) or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
 		AI.Peek = nil;
 		AI.peekCover = nil;
 		return;

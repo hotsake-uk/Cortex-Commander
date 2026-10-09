@@ -224,6 +224,12 @@ function NativeHumanAI:Update(Owner)
 	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
 	SharedBehaviors.AttackOrderUpdate(self, Owner);
 
+	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
+	local objective = SharedBehaviors.OnObjective(Owner);
+	if objective then
+		SharedBehaviors.FocusOnObjective(self, Owner);
+	end
+
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or if we're told to go somewhere and aren't: after arriving the mode stays GOTO while the behaviour is Sentry, and a new order with new
 	-- waypoints then looked like no change at all, so the unit never set off until the mode was knocked out of GOTO and back.)
@@ -615,7 +621,7 @@ function NativeHumanAI:Update(Owner)
 					self.BehaviorCleanup = nil;
 				end
 
-				if not self.NextBehavior and not self.PickupHD and self.PickUpTimer:IsPastSimMS(10000) then
+				if not self.NextBehavior and not self.PickupHD and not objective and self.PickUpTimer:IsPastSimMS(10000) then
 					self.PickUpTimer:Reset();
 
 					if not Owner:EquipFirearm(false) then
@@ -637,7 +643,10 @@ function NativeHumanAI:Update(Owner)
 		end
 
 		-- listen and react to AlarmEvents and AlarmPoints
-		if AlarmPoint.Largest > 0 then
+		-- (Not on the objective: turning to an alarm, a medikit or an alarm event stopped a flag carrier on its way.)
+		if objective then
+			self.useMedikit = false;
+		elseif AlarmPoint.Largest > 0 then
 			if not self.Target and not self.UnseenTarget then
 				self.AlarmPos = Vector(AlarmPoint.X, AlarmPoint.Y);
 				self:CreateFaceAlarmBehavior(Owner);
@@ -685,30 +694,39 @@ function NativeHumanAI:Update(Owner)
 	if self.Target and MovableMan:ValidMO(self.Target) then
 		self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 	end
-	HumanBehaviors.LeaveCover(self, Owner);
-	HumanBehaviors.PeekUpdate(self, Owner);
-	HumanBehaviors.LobUpdate(self, Owner);
-	HumanBehaviors.SmokeUpdate(self, Owner);
-	SharedBehaviors.SquadTactics(self, Owner);
-	SharedBehaviors.FlankUpdate(self, Owner);
-	HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
-	HumanBehaviors.UseTheWorld(self, Owner);
-	-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
-	local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
-	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
-		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+	-- (On the objective, only what doesn't stop it or turn it off its way: smoke on the move, reloading, and what it remembers.)
+	if not objective then
+		HumanBehaviors.LeaveCover(self, Owner);
 	end
-	SharedBehaviors.RetreatUpdate(self, Owner);
+	HumanBehaviors.PeekUpdate(self, Owner);
+	if not objective then
+		HumanBehaviors.LobUpdate(self, Owner);
+	end
+	HumanBehaviors.SmokeUpdate(self, Owner);
+	if not objective then
+		SharedBehaviors.SquadTactics(self, Owner);
+		SharedBehaviors.FlankUpdate(self, Owner);
+		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
+		HumanBehaviors.UseTheWorld(self, Owner);
+		-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
+		local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
+		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
+			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+		end
+		SharedBehaviors.RetreatUpdate(self, Owner);
+	end
 	SharedBehaviors.RememberUpdate(self, Owner);
 	SharedBehaviors.AdvertiseMedikit(self, Owner);
-	HumanBehaviors.MedicUpdate(self, Owner);
+	if not objective then
+		HumanBehaviors.MedicUpdate(self, Owner);
+	end
 	HumanBehaviors.ReloadInLull(self, Owner);
 
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then
 			self.teamBlockState = Actor.NOTBLOCKED;
 		end
-	elseif self.teamBlockState == Actor.BLOCKED then	-- we are blocked by a team-mate, stop
+	elseif self.teamBlockState == Actor.BLOCKED and not objective then	-- we are blocked by a team-mate, stop
 		self.lateralMoveState = Actor.LAT_STILL;
 		self.jump = false;
 		if self.BlockedTimer:IsPastSimMS(20000) then
@@ -927,6 +945,27 @@ end
 function NativeHumanAI:CreateAttackBehavior(Owner)
 	self.ReloadTimer:Reset();
 	self.TargetLostTimer:Reset();
+
+	-- Running the objective: shoots at it on the way if it has a gun to, and otherwise lets it be (no closing in, throwing or going for a weapon).
+	if SharedBehaviors.OnObjective(Owner) then
+		if not IsADoor(self.Target) and Owner:EquipFirearm(true) and not Owner.EquippedItem:HasObjectInGroup("Weapons - Melee") then
+			self.NextBehavior = coroutine.create(HumanBehaviors.ShootTarget);
+			self.NextBehaviorName = "ShootTarget";
+			self.NextCleanup = function(AI)
+				AI.fire = false;
+				AI.canHitTarget = false;
+				AI.closingIn = false;
+				AI.ShotBlockedTimer = nil;
+				AI.deviceState = AHuman.STILL;
+				AI.proneState = AHuman.NOTPRONE;
+				HumanBehaviors.StopRangeStep(AI, Owner);
+				AI.TargetLostTimer:SetSimTimeLimitMS(2000);
+			end
+		else
+			self.Target = nil;
+		end
+		return;
+	end
 
 	if self.PickupHD then
 		-- We're currently trying to pickup a weapon, do that instead
