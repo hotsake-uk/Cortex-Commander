@@ -1287,7 +1287,7 @@ void Sandbox::DrawGUI() {
 					ImGui::RadioButton("Square##fill", &fill, 2);
 					s_FillShape = static_cast<FillShape>(fill);
 				}
-				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
+				ImGui::SliderInt("Brush size", &s_Radius, 1, c_MaxBrushRadius, "%d", ImGuiSliderFlags_Logarithmic);
 				int shape = static_cast<int>(s_BrushShape);
 				ImGui::TextUnformatted("Brush shape");
 				ImGui::SameLine();
