@@ -682,6 +682,7 @@ namespace SandboxDetail {
 			Vector Sent; //!< Where it was last sent.
 			bool HasSent = false;
 			long long SentAt = 0;
+			bool Fighting = false; //!< Last sent to attack whoever it's after (near enough to), not to move on.
 			bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
 			long long Made = 0;
 		};
@@ -1096,22 +1097,44 @@ namespace SandboxDetail {
 		}
 
 		/// Sends a runner somewhere, unless it is already on its way there (or near enough), so it isn't stopped and started every half second.
+		constexpr float c_EngageReach = 400.0F; //!< How near a runner or hunter has to be to whoever it's after to fight them; further, it moves on.
+
+		/// Whether a runner sent on to a place (not to fight) has been taken off its way by its own AI: an attack, something to chase, a
+		/// fall-back or a flank, or a walk somewhere else. As a defender is (HeadingForPost), it's sent on again at once.
+		bool Strayed(const Actor* unit, const FlagRunner& runner) {
+			if (unit->GetOrderAttack() || unit->GetMOMoveTarget() || unit->NumberValueExists(c_RetreatTag) || unit->NumberValueExists(c_FlankTag)) {
+				return true;
+			}
+			// (A walk somewhere else only once it has a way: while its route is looked for, its last waypoint reads as where it stands.)
+			return unit->GetAIMode() == Actor::AIMODE_GOTO && unit->GetMovePathSize() > 0 && !unit->IsWaitingOnNewMovePath() && !g_SceneMan.ShortestDistance(unit->GetLastAIWaypoint(), runner.Sent, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(60.0F);
+		}
+
+		/// Sends a runner or hunter to a place, after someone (target) or not. Like a defender making for its zone, it moves on, shooting on
+		/// the way, and is put back on its way the moment its AI takes it off (to fight, chase, fall back or flank); only within c_EngageReach
+		/// of whoever it's after does it go to fight them.
 		void SendRunner(Actor* unit, FlagRunner& runner, const Vector& to, Actor* target, const char* reason, long long now) {
 			const bool wraps = g_SceneMan.SceneWrapsX();
-			const bool moved = !runner.HasSent || !g_SceneMan.ShortestDistance(runner.Sent, to, wraps).MagnitudeIsLessThan(target ? 120.0F : 40.0F);
+			const bool fight = target && g_SceneMan.ShortestDistance(unit->GetPos(), to, wraps).MagnitudeIsLessThan(c_EngageReach);
+			const bool moved = !runner.HasSent || fight != runner.Fighting || !g_SceneMan.ShortestDistance(runner.Sent, to, wraps).MagnitudeIsLessThan(target ? 120.0F : 40.0F);
 			// (Not straight after being sent: the order is only taken up on the next update, and one with no way there drops it again.)
 			// (Or still on GOTO with no way left to walk: an order whose route was given up on.)
 			const bool idle = unit->GetAIMode() != Actor::AIMODE_GOTO || (unit->GetMovePathSize() == 0 && !unit->IsWaitingOnNewMovePath() && !unit->GetMOMoveTarget());
 			const bool stopped = idle && now - runner.SentAt > static_cast<long long>(3.0F * UpdatesPerSecond()) && !g_SceneMan.ShortestDistance(unit->GetPos(), to, wraps).MagnitudeIsLessThan(c_FlagReach);
-			// (And again every few seconds while it chases someone, as they move.)
+			// (And again every few seconds while it goes after someone, as they move.)
 			const bool stale = target && now - runner.SentAt > static_cast<long long>(4.0F * UpdatesPerSecond());
-			if (!moved && !stopped && !stale) {
+			const bool strayed = !fight && runner.HasSent && now - runner.SentAt > static_cast<long long>(0.4F * UpdatesPerSecond()) && Strayed(unit, runner);
+			if (!moved && !stopped && !stale && !strayed) {
 				return;
 			}
 			runner.Sent = to;
 			runner.HasSent = true;
 			runner.SentAt = now;
-			SendUnit(unit, to, target, target != nullptr, reason, false, true);
+			runner.Fighting = fight;
+			SendUnit(unit, to, fight ? target : nullptr, fight, reason, false, true);
+			if (!fight) {
+				// (Its way there a post, as a defender's is: the AI moves on to it rather than falling back, and fights on the move.)
+				unit->SetOrderPost(to);
+			}
 		}
 
 		/// A unit that has just picked up an enemy's flag: straight for its own base with it, whatever it was doing, there and then. A guard
