@@ -801,6 +801,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HeldDevice) {
 	    .property("BladeEnergy", &HeldDevice::IsBladeEnergy, &HeldDevice::SetBladeEnergy)
 	    .property("BladeStart", &HeldDevice::GetBladeStart, &HeldDevice::SetBladeStart)
 	    .property("BladeEnd", &HeldDevice::GetBladeEnd, &HeldDevice::SetBladeEnd)
+	    .property("BladeHiltGap", &HeldDevice::GetBladeHiltGap, &HeldDevice::SetBladeHiltGap)
 	    .property("BladeStartPos", &HeldDevice::GetBladeStartPos)
 	    .property("BladeEndPos", &HeldDevice::GetBladeEndPos)
 	    .property("BladeColor", &HeldDevice::GetBladeColor, &HeldDevice::SetBladeColor)
