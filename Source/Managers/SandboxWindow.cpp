@@ -220,6 +220,8 @@ namespace SandboxDetail {
 				return {Icon::Person, IM_COL32(120, 200, 220, 255)};
 			case Tool::BattleModePoint:
 				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
+			case Tool::BattleModeBase:
+				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:

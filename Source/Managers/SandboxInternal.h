@@ -167,11 +167,12 @@ namespace SandboxDetail {
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
 		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
 		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
-		BattleModePoint //!< The Battle Director's modes: a click sets the team's point (s_BattleEditTeam), as capture the flag's flag.
+		BattleModePoint, //!< The Battle Director's modes: a click inside the team's base sets its point (s_BattleEditTeam), as capture the flag's flag.
+		BattleModeBase //!< The Battle Director's modes: each click puts down a corner of the team's base (s_BattleEditTeam), as a spawn zone's.
 	};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -253,7 +254,8 @@ namespace SandboxDetail {
 	    {Tool::BattleDefendPoint, "Defence point", 0.0F, false},
 	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
 	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
-	    {Tool::BattleModePoint, "Team's base", 0.0F, false},
+	    {Tool::BattleModePoint, "Flag", 0.0F, false},
+	    {Tool::BattleModeBase, "Team's base", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -432,26 +434,17 @@ namespace SandboxDetail {
 		Count
 	};
 
-	/// How big a mode's battle is: how many units each team keeps in, and how many come at a time.
-	enum class BattleSize {
-		Small,
-		Medium,
-		Large,
-		Huge,
-		Count
-	};
-	constexpr const char* c_BattleSizeNames[] = {"Small", "Medium", "Large", "Huge"};
-	static_assert(std::size(c_BattleSizeNames) == static_cast<size_t>(BattleSize::Count), "c_BattleSizeNames must name each BattleSize.");
-
 	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
 	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
 	struct BattleModeSettings {
 		BattleMode Mode = BattleMode::Custom;
-		BattleSize Size = BattleSize::Medium;
+		int TeamSize = 16; //!< Most units each team has alive at once.
 		std::array<bool, c_Sides> Plays = {true, true, false, false}; //!< The teams taking part, by side.
-		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point set: its base (capture the flag: where its flag stands).
+		std::array<std::vector<Vector>, c_Sides> Bases; //!< Each team's base, drawn as a polygon as a spawn zone is: its units appear in it.
+		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
-		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing at it.
+		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
+		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 	};
@@ -1505,6 +1498,14 @@ namespace SandboxDetail {
 	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);
 	bool CloseSpawnZone(std::vector<Vector>& draft, BattleSettings& settings);
 	float ZoneCloseDistance();
+	std::vector<ImVec2> ZoneOnScreen(const std::vector<Vector>& zone, float scale);
+	void DrawZoneDraft(ImDrawList* drawList, float scale);
+	/// Whether a place is inside a zone drawn as a polygon (a spawn zone, a mode's base), across a wrap or not.
+	bool IsInZone(const std::vector<Vector>& zone, const Vector& at);
+	/// A place picked at random inside a zone drawn as a polygon, on its ground, for something this tall to stand at (its middle).
+	Vector SpotInZone(const std::vector<Vector>& zone, float height);
+	bool ModeBaseCorner(const Vector& position, float closeWithin);
+	bool CloseModeBase();
 	void PutDownBattleTool();
 	bool FactionPicker(BattleSettings& setup);
 	void MakeDefender(Actor* unit, const BattleSettings& settings);

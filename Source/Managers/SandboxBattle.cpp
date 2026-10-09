@@ -619,7 +619,7 @@ namespace SandboxDetail {
 		}
 		const int side = stroke.Team;
 		const bool oneTeam = side >= 0 && side < c_Sides;
-		if (stroke.Kind == Tool::BattleModePoint || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
+		if (stroke.Kind == Tool::BattleModePoint || stroke.Kind == Tool::BattleModeBase || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
 			ApplyBattleMode(stroke);
 			return;
 		}
@@ -1049,27 +1049,44 @@ namespace SandboxDetail {
 				drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), color, ImDrawFlags_Closed, 2.0F);
 			}
 		}
-		// The zone being drawn: its corners so far and on to the pointer, and its first corner ringed (filled when the pointer is close
-		// enough for a click to close it).
-		if (kind == Tool::BattleSpawnZone && !s_ZoneDraft.empty()) {
-			const ImU32 color = c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
-			std::vector<ImVec2> corners = ZoneOnScreen(s_ZoneDraft, scale);
-			ImVec2 first = corners.front();
-			if (Sandbox::CapturesWorldClicks()) {
-				Vector pointer = MouseScenePosition();
-				Vector fromFirst = g_SceneMan.ShortestDistance(s_ZoneDraft.front(), pointer, g_SceneMan.SceneWrapsX());
-				corners.emplace_back(first.x + fromFirst.m_X / scale, first.y + fromFirst.m_Y / scale);
-				if (s_ZoneDraft.size() >= 3 && fromFirst.MagnitudeIsLessThan(ZoneCloseDistance())) {
-					drawList->AddCircleFilled(first, 7.0F, color, 16);
-				}
-			}
-			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), color, 0, 2.0F);
-			drawList->AddCircle(first, 7.0F, color, 16, 2.0F);
-			for (size_t i = 1; i < s_ZoneDraft.size(); ++i) {
-				drawList->AddCircleFilled(corners[i], 3.0F, color, 8);
-			}
+		if (kind == Tool::BattleSpawnZone) {
+			DrawZoneDraft(drawList, scale);
 		}
 	}
+
+	/// The zone being drawn (a spawn zone, or a mode's base): its corners so far and on to the pointer, and its first corner ringed (filled
+	/// when the pointer is close enough for a click to close it).
+	void DrawZoneDraft(ImDrawList* drawList, float scale) {
+		if (s_ZoneDraft.empty()) {
+			return;
+		}
+		const ImU32 color = c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+		std::vector<ImVec2> corners = ZoneOnScreen(s_ZoneDraft, scale);
+		ImVec2 first = corners.front();
+		if (Sandbox::CapturesWorldClicks()) {
+			Vector pointer = MouseScenePosition();
+			Vector fromFirst = g_SceneMan.ShortestDistance(s_ZoneDraft.front(), pointer, g_SceneMan.SceneWrapsX());
+			corners.emplace_back(first.x + fromFirst.m_X / scale, first.y + fromFirst.m_Y / scale);
+			if (s_ZoneDraft.size() >= 3 && fromFirst.MagnitudeIsLessThan(ZoneCloseDistance())) {
+				drawList->AddCircleFilled(first, 7.0F, color, 16);
+			}
+		}
+		drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), color, 0, 2.0F);
+		drawList->AddCircle(first, 7.0F, color, 16, 2.0F);
+		for (size_t i = 1; i < s_ZoneDraft.size(); ++i) {
+			drawList->AddCircleFilled(corners[i], 3.0F, color, 8);
+		}
+	}
+
+	bool IsInZone(const std::vector<Vector>& zone, const Vector& at) {
+		if (zone.size() < 3) {
+			return false;
+		}
+		// (On the same side of a wrap as the first corner, as the corners are.)
+		return InsideZone(zone, zone.front() + g_SceneMan.ShortestDistance(zone.front(), at, g_SceneMan.SceneWrapsX()));
+	}
+
+	Vector SpotInZone(const std::vector<Vector>& zone, float height) { return ZoneSpawnSpot(zone, height); }
 } // namespace SandboxDetail
 
 void Sandbox::SetBattleTeam(int team, const std::string& factions, int style, int budget) {

@@ -3299,11 +3299,15 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	// Width in the game's pixels at normal zoom; zoomed out the view holds more of them per screen pixel, so the stroke is widened to match.
 	logStages.Next("Lighting: unit outlines");
 	float outlineWidth = 0.0F;
+	float highlightWidth = 0.0F;
 	int outlineRadius = 0;
-	if (m_Settings.UnitOutline && surface && m_Settings.UnitOutlineOpacity > 0.0F) {
+	const bool outlines = m_Settings.UnitOutline && m_Settings.UnitOutlineOpacity > 0.0F;
+	if ((outlines || m_Settings.HighlightUnits) && surface) {
 		float zoom = std::max(g_FrameMan.GetCurrentCameraZoom(), 0.1F);
-		outlineWidth = std::min(std::clamp(m_Settings.UnitOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F);
-		outlineRadius = static_cast<int>(std::ceil(outlineWidth + 1.0F)) - 1;
+		outlineWidth = outlines ? std::min(std::clamp(m_Settings.UnitOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		// A highlighted unit's glow (Actor::SetHighlighted): five of the game's pixels, as far as the search reaches.
+		highlightWidth = m_Settings.HighlightUnits ? std::min(5.0F / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		outlineRadius = static_cast<int>(std::ceil(std::max(outlineWidth, highlightWidth) + 1.0F)) - 1;
 		glDisable(GL_BLEND);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_OutlineRows.Framebuffer);
 		glViewport(0, 0, width, height);
@@ -3374,6 +3378,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
 	m_TonemapShader->SetInt("rteOutlineRows", 5);
 	m_TonemapShader->SetFloat("rteOutlineWidth", outlineWidth);
+	m_TonemapShader->SetFloat("rteHighlightWidth", highlightWidth);
 	m_TonemapShader->SetInt("rteOutlineRadius", outlineRadius);
 	m_TonemapShader->SetFloat("rteOutlineOpacity", std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
 	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor);
