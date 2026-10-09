@@ -223,6 +223,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("SharpAimProgress", &Actor::GetSharpAimProgress)
 	    .property("Height", &Actor::GetHeight)
 	    .property("AIMode", &Actor::GetAIMode, &Actor::SetAIMode)
+	    .property("RouteThreatAvoidance", &Actor::GetRouteThreatAvoidance, &Actor::SetRouteThreatAvoidance)
+	    .property("RouteSeed", &Actor::GetRouteSeed, &Actor::SetRouteSeed)
 	    .property("AIOrderSerial", &Actor::GetAIOrderSerial)
 	    .property("OrderAttack", &Actor::GetOrderAttack, &Actor::SetOrderAttack)
 	    .property("OrderTargetID", &Actor::GetOrderTargetID, &Actor::SetOrderTargetID)

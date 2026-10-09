@@ -482,14 +482,17 @@ namespace SandboxDetail {
 			return team;
 		}
 
-		/// A flag's carrier glows (Actor::SetHighlighted) while it has it, and stops when it hasn't.
+		/// A flag's carrier glows (Actor::SetHighlighted) while it has it, and stops when it hasn't; and while it has it, its routes take the
+		/// safest viable way, round the enemy rather than through them (Actor::SetRouteThreatAvoidance).
 		void SetCarrier(Flag& flag, Actor* carrier) {
 			if (Actor* old = GetRef(flag.Carrier)) {
 				old->SetHighlighted(false);
+				old->SetRouteThreatAvoidance(0.0F);
 			}
 			flag.Carrier = MakeRef(carrier);
 			if (carrier) {
 				carrier->SetHighlighted(true);
+				carrier->SetRouteThreatAvoidance(1.0F);
 			}
 		}
 
@@ -1982,6 +1985,14 @@ namespace SandboxDetail {
 	}
 
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave) {
+		// Route variety: that share of the units each get a taste in routes of their own; the rest take the shortest way.
+		if (s_ModeRun.Running && s_ModeRun.Settings.RouteVariety > 0) {
+			for (Actor* unit: wave) {
+				if (unit && RandomNum<int>(0, 99) < s_ModeRun.Settings.RouteVariety) {
+					unit->SetRouteSeed(static_cast<unsigned>(RandomNum<int>(1, 1 << 30)));
+				}
+			}
+		}
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); s_ModeRun.Running && mode.UnitsMade) {
 			mode.UnitsMade(side, wave);
 		}
@@ -2088,6 +2099,8 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Most units each team has alive at once.");
 		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
 		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
+		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
+		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
 		if (ToolUI::RadioButton("Appear in their base##arrive", !setup.ByShip)) {
 			setup.ByShip = false;
 			changed = true;

@@ -99,6 +99,12 @@ thread_local std::set<std::pair<const RTE::PathNode*, const RTE::PathNode*>> s_L
 thread_local bool s_KeepLinks = false;
 thread_local std::unordered_map<const RTE::PathNode*, std::vector<micropather::StateCost>> s_LeapLinksKept;
 thread_local std::unordered_map<const RTE::PathNode*, std::vector<micropather::StateCost>> s_FlightLinksKept;
+thread_local const ThreatField* s_Threats = nullptr; // Where the units were when the searcher asked (PathAgent::Threats); none for no threat cost.
+thread_local int s_ThreatTeamIndex = 0; // The searcher's team + 1, the index of its own side in s_Threats.
+thread_local float s_ThreatWeight = 0.0F; // How much the searcher shies from enemies (PathAgent::ThreatWeight).
+thread_local Vector s_ThreatGoal; // The search's goal: steps this near it cost nothing for enemies (see ThreatCost).
+thread_local bool s_ThreatGoalSet = false; // Whether s_ThreatGoal is this search's.
+thread_local unsigned s_RouteSeed = 0; // The searcher's taste in routes (PathAgent::RouteSeed); 0 for none.
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -307,6 +313,10 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	PathNode* endNode = openNode(GetPathNodeAtGridCoords(endNodeX, endNodeY), end);
 	if (endNode && !NodeIsOnSolidGround(*endNode) && endNode->Down && endNode->Down->m_Navigable && NodeIsOnSolidGround(*endNode->Down)) {
 		endNode = endNode->Down;
+	}
+	if (endNode) {
+		s_ThreatGoal = endNode->Pos;
+		s_ThreatGoalSet = true;
 	}
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
@@ -573,6 +583,11 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_CrossesLava = agent.CrossesLava;
 	s_Caution = agent.Caution;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
+	s_ThreatWeight = agent.ThreatWeight;
+	s_Threats = (agent.Threats && agent.ThreatWeight > 0.0F && !agent.Threats->All.empty()) ? agent.Threats.get() : nullptr;
+	s_ThreatTeamIndex = agent.ThreatTeam + 1;
+	s_ThreatGoalSet = false;
+	s_RouteSeed = agent.RouteSeed;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
 	// Actors capable of jumping/jetpacking can jump upwards.
@@ -626,6 +641,12 @@ namespace {
 		const RTE::PathNode* FlyingStart = s_FlyingStart;
 		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
 		const std::vector<Vector>* Avoid = s_Avoid;
+		const ThreatField* Threats = s_Threats;
+		int ThreatTeamIndex = s_ThreatTeamIndex;
+		float ThreatWeight = s_ThreatWeight;
+		Vector ThreatGoal = s_ThreatGoal;
+		bool ThreatGoalSet = s_ThreatGoalSet;
+		unsigned RouteSeed = s_RouteSeed;
 
 		~SearcherState() {
 			s_JumpHeight = JumpHeight;
@@ -654,6 +675,12 @@ namespace {
 			s_FlyingStart = FlyingStart;
 			s_AvoidLinks = AvoidLinks;
 			s_Avoid = Avoid;
+			s_Threats = Threats;
+			s_ThreatTeamIndex = ThreatTeamIndex;
+			s_ThreatWeight = ThreatWeight;
+			s_ThreatGoal = ThreatGoal;
+			s_ThreatGoalSet = ThreatGoalSet;
+			s_RouteSeed = RouteSeed;
 		}
 	};
 } // namespace
@@ -1373,6 +1400,20 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	if (s_Avoid) {
 		for (micropather::StateCost& adjacent: *adjacentList) {
 			adjacent.cost += AvoidCost(*static_cast<const PathNode*>(adjacent.state));
+		}
+	}
+	// Enemies near (PathAgent::Threats): every step into a node they cover costs more, the more of them the dearer, so a route past a crowd
+	// of them loses to a longer one past none. (Only added to: the search's estimate of what is left stays under the true cost.)
+	if (s_Threats) {
+		for (micropather::StateCost& adjacent: *adjacentList) {
+			adjacent.cost += ThreatCost(*static_cast<const PathNode*>(adjacent.state));
+		}
+	}
+	// The searcher's own taste in routes (PathAgent::RouteSeed): a game mode's units each with their own go different ways round where the
+	// ways are near enough alike, rather than all down the one.
+	if (s_RouteSeed != 0) {
+		for (micropather::StateCost& adjacent: *adjacentList) {
+			adjacent.cost += VarietyCost(*static_cast<const PathNode*>(adjacent.state));
 		}
 	}
 	// A flight failed lately (PathAgent::AvoidLinks): from near that take-off to near that landing costs more, so the next route takes off
@@ -2199,6 +2240,44 @@ float PathFinder::AvoidCost(const PathNode& node) const {
 		}
 	}
 	return 0.0F;
+}
+
+float PathFinder::VarietyCost(const PathNode& node) const {
+	if (s_RouteSeed == 0) {
+		return 0.0F;
+	}
+	const int block = m_NodeDimension * 8;
+	unsigned x = static_cast<unsigned>(std::max(0, static_cast<int>(node.Pos.m_X) / block));
+	unsigned y = static_cast<unsigned>(std::max(0, static_cast<int>(node.Pos.m_Y) / block));
+	// (A hash of the block and the seed, mixed as MurmurHash3's finaliser does: the same block always costs the searcher the same.)
+	unsigned hash = (x * 73856093u) ^ (y * 19349663u) ^ (s_RouteSeed * 83492791u);
+	hash ^= hash >> 16;
+	hash *= 0x85EBCA6Bu;
+	hash ^= hash >> 13;
+	hash *= 0xC2B2AE35u;
+	hash ^= hash >> 16;
+	// Up to a node's walk again: a way up to about half as long again can win for one seed, and the shortest still wins for most when the
+	// others are much longer.
+	return static_cast<float>(hash & 0xFFFFu) / 65536.0F;
+}
+
+float PathFinder::ThreatCost(const PathNode& node) const {
+	if (!s_Threats) {
+		return 0.0F;
+	}
+	// Near the goal every route pays alike, and pricing it only made the search look further round for nothing: units sent at the enemy
+	// get there.
+	if (s_ThreatGoalSet && g_SceneMan.ShortestDistance(node.Pos, s_ThreatGoal).MagnitudeIsLessThan(static_cast<float>(ThreatField::c_CellSize * ThreatField::c_Reach))) {
+		return 0.0F;
+	}
+	float enemies = s_Threats->EnemiesNear(node.Pos, s_ThreatTeamIndex);
+	if (enemies <= 0.01F) {
+		return 0.0F;
+	}
+	// A node's walk costs about 1. Walked straight past, one enemy is counted along twenty cells at half a unit each on average, so 1.2 a
+	// cell makes it worth about twelve nodes of detour: one sentry is skirted only when going round is short, twenty are worth a walk of
+	// a couple of hundred nodes, most of a large map, to avoid.
+	return enemies * 1.2F * s_ThreatWeight;
 }
 
 float PathFinder::GetMaterialTransitionCost(const Material& material) const {

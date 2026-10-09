@@ -51,6 +51,34 @@ namespace RTE {
 		Lava //!< Sets flesh alight (ActorFire): routed through only by what doesn't burn (PathAgent::CrossesLava).
 	};
 
+	/// Where every team's units stood when it was last built (MovableMan::PublishThreats): for each team, and for all teams together, how many
+	/// units are near each cell of the scene, each counted 1 where it stands and less out to c_Reach cells away. A route search reads it to
+	/// price steps past the searcher's enemies (see PathFinder::ThreatCost). Built whole on the main thread and never changed after, so a
+	/// search holds its own copy of the pointer (PathAgent::Threats) and reads it on its worker thread while the next one is built and
+	/// published: the path grid itself is not touched, and nothing is locked.
+	struct ThreatField {
+		static constexpr int c_CellSize = 24; //!< A cell's side, in pixels: a path node's.
+		static constexpr int c_Reach = 10; //!< How far a unit counts, in cells: a little over a screen's half width at the closest.
+		int Width = 0; //!< Cells across the scene.
+		int Height = 0; //!< Cells down it.
+		std::vector<float> All; //!< Every unit's presence, all teams together, a float per cell, rows from the top.
+		std::vector<std::vector<float>> Teams; //!< The same per team, by team + 1 (0 for no team): what a searcher takes off All for its own side. Empty for a team with no units.
+
+		/// How many of the searcher's enemies are near a scene point: everyone's presence there less its own side's.
+		/// @param pos The scene point.
+		/// @param teamIndex The searcher's team + 1.
+		float EnemiesNear(const Vector& pos, int teamIndex) const {
+			int x = std::clamp(static_cast<int>(pos.m_X) / c_CellSize, 0, Width - 1);
+			int y = std::clamp(static_cast<int>(pos.m_Y) / c_CellSize, 0, Height - 1);
+			size_t cell = static_cast<size_t>(y) * Width + x;
+			float enemies = All[cell];
+			if (teamIndex >= 0 && teamIndex < static_cast<int>(Teams.size()) && !Teams[teamIndex].empty()) {
+				enemies -= Teams[teamIndex][cell];
+			}
+			return enemies;
+		}
+	};
+
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
 	struct PathAgent {
 		float JumpHeight = FLT_MAX; //!< How high it can get on a jump or a tank of jet fuel, in metres. FLT_MAX for anything that flies.
@@ -76,6 +104,10 @@ namespace RTE {
 		float BreathSeconds = FLT_MAX; //!< How long it holds its breath with its head under, in seconds (ActorWater::GetBreathSeconds); FLT_MAX for what doesn't breathe.
 		bool CrossesLava = false; //!< Whether it may be routed through lava: what doesn't burn (machines).
 		float Caution = 1.0F; //!< How much the search shies from hard flights and long drops: 1 as designed, more for careful, less for reckless (SettingsMan::AIMoveCaution).
+		std::shared_ptr<const ThreatField> Threats; //!< Where the units were when last published (MovableMan::GetPublishedThreats): steps near its enemies cost more. None for no such cost.
+		int ThreatTeam = -1; //!< The searcher's team, whose own units are no threat to it.
+		float ThreatWeight = 1.0F; //!< How much it shies from routes past enemies: 1 as designed, 0 not at all, 2 twice as much (SettingsMan::AIThreatAvoidance).
+		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};
 
 	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
@@ -643,6 +675,14 @@ namespace RTE {
 
 		/// What a step into a node costs over its own for the searcher's recent failures there (PathAgent::Avoid).
 		float AvoidCost(const PathNode& node) const;
+
+		/// What a step into a node costs over its own for the searcher's taste in routes (PathAgent::RouteSeed): 0 to 1 a node, the same over
+		/// each 8 by 8 block of nodes, so a route takes or leaves whole stretches, not single cells.
+		float VarietyCost(const PathNode& node) const;
+
+		/// What a step into a node costs over its own for the searcher's enemies near it (PathAgent::Threats): nothing near the goal, which
+		/// every route has to reach however many are there.
+		float ThreatCost(const PathNode& node) const;
 
 		/// Gets the average cost for all transitions out of this PathNode, ignoring infinities/unpathable transitions.
 		/// @param node The PathNode to get the average transition cost for.

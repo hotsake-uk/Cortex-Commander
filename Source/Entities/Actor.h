@@ -172,6 +172,20 @@ namespace RTE {
 		/// Sets whether this Actor is drawn with a bright glowing outline: a capture the flag carrier.
 		void SetHighlighted(bool highlighted) { m_Highlighted = highlighted; }
 
+		/// Gets how much this Actor's routes keep clear of its enemies (PathFinder::ThreatCost): 0, the shortest way, unless a game mode asks
+		/// for a safe one, as capture the flag does for a flag carrier. Scaled by the AIThreatAvoidance setting.
+		float GetRouteThreatAvoidance() const { return m_RouteThreatAvoidance; }
+
+		/// Sets how much this Actor's routes keep clear of its enemies: 1 for a game mode's safest viable route, 0 for the shortest.
+		void SetRouteThreatAvoidance(float avoidance) { m_RouteThreatAvoidance = std::max(avoidance, 0.0F); }
+
+		/// Gets this Actor's own taste in routes (PathAgent::RouteSeed): units with different seeds go different ways where the ways are near
+		/// enough alike. 0, the shortest way, unless a game mode gives it one (Battle Director's route variety).
+		unsigned GetRouteSeed() const { return m_RouteSeed; }
+
+		/// Sets this Actor's own taste in routes; 0 for the shortest way.
+		void SetRouteSeed(unsigned seed) { m_RouteSeed = seed; }
+
 		/// Sets whether or not this Actor can be controlled by human players.
 		/// @param playerControllable Whether or not this Actor should be able to be controlled by human players.
 		void SetPlayerControllable(bool playerControllable) { m_PlayerControllable = playerControllable; }
@@ -1257,6 +1271,8 @@ namespace RTE {
 		bool m_PlayerControllable; //!< Whether or not this Actor can be controlled by human players.
 		bool m_IgnoredByAI = false; //!< Whether units run by the AI take no notice of this Actor. Not copied or saved: it is set on the one Actor while it lives.
 		bool m_Highlighted = false; //!< Drawn with a bright glowing outline. Not copied or saved, as m_IgnoredByAI.
+		unsigned m_RouteSeed = 0; //!< Its own taste in routes (see GetRouteSeed). Not copied or saved, as m_IgnoredByAI.
+		float m_RouteThreatAvoidance = 0.0F; //!< How much its routes keep clear of enemies, for a game mode that wants it safe (see GetRouteThreatAvoidance). Not copied or saved, as m_IgnoredByAI.
 
 		// Sounds
 		SoundContainer* m_BodyHitSound;

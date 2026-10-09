@@ -247,6 +247,7 @@ These are built and compile, but nobody has looked at them in real play or in a 
 - **Scenery lamps:** saving and loading a game with lamps; the Browncoat pieces in a real scene; whether the build menus list the new "Bunker Lights" group.
 - **The interior light slider** (settings panel) and the linked unit light floor: not tried in the running game.
 - **The Mod Manager's "FAILED TO LOAD" entry:** not opened to look at.
+- **Flag carriers take the safest route home:** in capture the flag, a unit carrying a flag weighs the enemies along a route when picking one, so a way past twenty of them loses to a longer one past none ("Safe routes in game modes" under AI behaviour, saved in presets; 0 turns it off). Other units, and other modes, still take the shortest way; Lua game modes can ask for it with an actor's `RouteThreatAvoidance`. Not yet watched in a battle.
 - **Linux and macOS builds:** the new files are in the build scripts, but only Windows has been built and run.
 
 ## Not built
