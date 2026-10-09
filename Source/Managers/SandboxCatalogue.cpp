@@ -21,12 +21,8 @@ namespace SandboxDetail {
 			// The subcategory, from the groups the game files put the thing in.
 			if (preset.ClassName == "AHuman") {
 				preset.Kind = object->IsInGroup("Brains") ? "Brains" : "Infantry";
-				const AEJetpack* jetpack = static_cast<const AHuman*>(object)->GetJetpack();
-				preset.Jetpack = jetpack && jetpack->GetJetTimeTotal() > 0.0F;
 			} else if (preset.ClassName == "ACrab") {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
-				const AEJetpack* jetpack = static_cast<const ACrab*>(object)->GetJetpack();
-				preset.Jetpack = jetpack && jetpack->GetJetTimeTotal() > 0.0F;
 			} else if (preset.ClassName == "HDFirearm") {
 				preset.Kind = object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {
@@ -35,6 +31,14 @@ namespace SandboxDetail {
 				preset.Kind = object->IsInGroup("Shields") ? "Shields" : "Other items";
 			} else {
 				preset.Kind = group;
+			}
+			if (const Actor* actor = dynamic_cast<const Actor*>(object)) {
+				// How high its jetpack lifts it, worked out from the jet's thrust and fuel against the unit's weight, as the path finder does.
+				// A jetpack is no use for this unless it really flies: many mods' units carry one only to fake a hop, from before units
+				// could leap on their legs, and those can't get up what a flying unit can.
+				const float lift = actor->EstimateJumpHeight();
+				preset.JetLift = lift == FLT_MAX ? -1.0F : lift;
+				preset.Jetpack = lift >= c_JetpackFlyingLift;
 			}
 			if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
 				preset.Width = terrainObject->GetBitmapWidth();
