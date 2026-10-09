@@ -440,6 +440,7 @@ namespace SandboxDetail {
 		constexpr float c_SpawnClear = 150.0F;
 
 		void SetUpTeams();
+		void TakeFlagHome(Actor* unit, int flagSide, long long now);
 
 		/// Somewhere in a team's base for a new unit to appear: never at its own flag (at least c_SpawnClear from it, as far as the base
 		/// allows). A unit going for an enemy's flag appears on the side of the base nearest it, so it doesn't have to make its way through its
@@ -482,16 +483,20 @@ namespace SandboxDetail {
 			return team;
 		}
 
-		/// A flag's carrier glows (Actor::SetHighlighted) while it has it, and stops when it hasn't; and while it has it, its routes take the
-		/// safest viable way, round the enemy rather than through them (Actor::SetRouteThreatAvoidance).
+		/// A flag's carrier glows (Actor::SetHighlighted) while it has it, and stops when it hasn't. It is tagged as running the objective
+		/// too (SandboxObjective), which its AI puts before everything else: no falling back, taking cover, flanking, chasing, healing others
+		/// or looking for weapons on the way home (SharedBehaviors.OnObjective). And its routes take the safest viable way, round the enemy
+		/// rather than through them (Actor::SetRouteThreatAvoidance).
 		void SetCarrier(Flag& flag, Actor* carrier) {
 			if (Actor* old = GetRef(flag.Carrier)) {
 				old->SetHighlighted(false);
+				old->RemoveNumberValue("SandboxObjective");
 				old->SetRouteThreatAvoidance(0.0F);
 			}
 			flag.Carrier = MakeRef(carrier);
 			if (carrier) {
 				carrier->SetHighlighted(true);
+				carrier->SetNumberValue("SandboxObjective", 1.0);
 				carrier->SetRouteThreatAvoidance(1.0F);
 			}
 		}
@@ -717,6 +722,7 @@ namespace SandboxDetail {
 					flag.State = FlagState::Carried;
 					SetCarrier(flag, nearest);
 					flag.Pos = nearest->GetPos();
+					TakeFlagHome(nearest, side, now);
 					Say(SideName(nearest->GetTeam()) + " has " + SideName(side) + "'s flag");
 				}
 			}
@@ -838,6 +844,26 @@ namespace SandboxDetail {
 			runner.HasSent = true;
 			runner.SentAt = now;
 			SendUnit(unit, to, target, target != nullptr, reason, false, true);
+		}
+
+		/// A unit that has just picked up an enemy's flag: straight for its own base with it, whatever it was doing, there and then. A guard
+		/// becomes a runner for it (its post kept, it went back there with the flag, and nothing sent it home).
+		void TakeFlagHome(Actor* unit, int flagSide, long long now) {
+			if (unit->IsPlayerControlled() || !TeamIn(s_ModeRun.Settings, unit->GetTeam())) {
+				return;
+			}
+			s_BattleDefenders.erase(unit->GetUniqueID());
+			unit->SetOrderAttack(false);
+			auto [entry, made] = s_Runners.try_emplace(unit->GetUniqueID());
+			FlagRunner& runner = entry->second;
+			if (made) {
+				runner.Team = unit->GetTeam();
+				runner.Target = flagSide;
+				runner.Made = now;
+			}
+			runner.Seen = true;
+			runner.HasSent = false;
+			SendRunner(unit, runner, s_Flags[runner.Team].Home, nullptr, "flag: taking it home", now);
 		}
 
 		/// Each runner, every half second: a carrier makes for its own base, the rest for the flag they're after (or with whoever of theirs is
@@ -1865,6 +1891,111 @@ namespace SandboxDetail {
 				BaseDrawn(zone);
 			}
 		}
+
+		// ---- Units that can't get to their objective ----
+
+		/// How a unit has been getting on towards its objective: the nearest it has come to it, and since when it has come no nearer.
+		struct StuckWatch {
+			Vector Goal; //!< Its objective when last looked at.
+			float Best = 0.0F; //!< The nearest it has come to it.
+			Vector From; //!< Where it was when it last came nearer.
+			long long Since = 0; //!< When it last came nearer (or was there, or fighting).
+		};
+
+		std::unordered_map<long, StuckWatch> s_Stuck; //!< By unique ID.
+
+		/// Where a unit of a mode's game is headed and how near counts as there, or false for none: a runner's or hunter's last destination,
+		/// or the place a defender (on a hill, an objective, a flag) keeps to.
+		bool ObjectiveOf(const Actor* unit, Vector& goal, float& near) {
+			const long id = unit->GetUniqueID();
+			if (auto runner = s_Runners.find(id); runner != s_Runners.end() && runner->second.HasSent) {
+				goal = runner->second.Sent;
+				near = c_FlagReach + 30.0F;
+				return true;
+			}
+			if (auto defender = s_BattleDefenders.find(id); defender != s_BattleDefenders.end()) {
+				goal = defender->second.Center;
+				near = defender->second.Radius + 40.0F;
+				return true;
+			}
+			return false;
+		}
+
+		bool IsVip(const Actor* unit) {
+			return std::any_of(s_Vips.begin(), s_Vips.end(), [unit](const Vip& vip) { return RefersTo(vip.Unit, unit); });
+		}
+
+		/// Every second: a unit that has come no nearer its objective for the time set (stuck in a hole, on a ledge, or with no way there) is
+		/// taken away and another comes in its place at once, on the team's next spawn. One there, or with an enemy near (fighting), isn't
+		/// stuck; nor is a VIP, or one a player is controlling.
+		void UpdateStuck(bool aiPaused) {
+			if (aiPaused) {
+				for (auto& [id, watch]: s_Stuck) {
+					++watch.Since;
+				}
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (now % 60 != 15) {
+				return;
+			}
+			const int seconds = s_ModeRun.Settings.StuckSeconds;
+			if (seconds <= 0 || s_ModeRun.Over) {
+				s_Stuck.clear();
+				return;
+			}
+			const long long limit = static_cast<long long>(static_cast<float>(seconds) * UpdatesPerSecond());
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const std::vector<Actor*> fighters = Fighters();
+			std::unordered_set<long> seen;
+			for (Actor* unit: fighters) {
+				Vector goal;
+				float near = 0.0F;
+				const long id = unit->GetUniqueID();
+				if (unit->IsPlayerControlled() || IsVip(unit) || !ObjectiveOf(unit, goal, near)) {
+					continue;
+				}
+				seen.insert(id);
+				const Vector at = unit->GetPos();
+				const float distance = DistanceBetween(at, goal);
+				const bool engaged = std::any_of(fighters.begin(), fighters.end(), [&](const Actor* other) {
+					return other->GetTeam() != unit->GetTeam() && g_SceneMan.ShortestDistance(at, other->GetPos(), wraps).MagnitudeIsLessThan(300.0F);
+				});
+				auto [entry, made] = s_Stuck.try_emplace(id);
+				StuckWatch& watch = entry->second;
+				if (made || distance < near || engaged) {
+					watch = {goal, distance, at, now};
+					continue;
+				}
+				if (DistanceBetween(goal, watch.Goal) > 100.0F) {
+					// (Sent somewhere else, or after someone who has moved: measured afresh from here, and counted as getting on if it has
+					// moved itself since.)
+					watch.Goal = goal;
+					watch.Best = distance;
+					if (DistanceBetween(at, watch.From) > 80.0F) {
+						watch.From = at;
+						watch.Since = now;
+					}
+				}
+				if (distance < watch.Best - 30.0F) {
+					watch.Best = distance;
+					watch.From = at;
+					watch.Since = now;
+				}
+				if (now - watch.Since < limit) {
+					continue;
+				}
+				// Stuck: gone, and not counted as fallen (UpdateRespawns), so another comes at once; nor does it use up a ticket.
+				const int side = unit->GetTeam();
+				g_ConsoleMan.PrintString("BATTLE: a " + SideName(side) + " unit couldn't get to its objective for " + std::to_string(seconds) + " s: respawned");
+				unit->SetToDelete(true);
+				s_Alive[side].erase(id);
+				s_BattleTeams[side].Sent = std::max(s_BattleTeams[side].Sent - 1, 0);
+				s_Stuck.erase(entry);
+				seen.erase(id);
+			}
+			std::erase_if(s_Stuck, [&seen](const auto& entry) { return !seen.count(entry.first); });
+		}
 	} // namespace
 
 	/// The next corner of the base or mode zone being drawn (s_ZoneDraft), or it closed, with one on its first corner: true then.
@@ -1949,6 +2080,7 @@ namespace SandboxDetail {
 			ClearHighlights();
 			s_Runners.clear();
 			StartRespawns();
+			s_Stuck.clear();
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -2021,6 +2153,7 @@ namespace SandboxDetail {
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); mode.Update) {
 			mode.Update(aiPaused);
 		}
+		UpdateStuck(aiPaused);
 	}
 
 	/// A new game: no mode's game is on, and the points set (on the last game's scene) are gone. The mode chosen stays.
@@ -2039,6 +2172,7 @@ namespace SandboxDetail {
 		s_ModeRun.Settings.Mode = chosen;
 		s_Runners.clear();
 		s_Flags = {};
+		s_Stuck.clear();
 	}
 
 	/// The mode list at the top of the Battle tab. Whether a mode (not the cards) is chosen.
@@ -2099,6 +2233,8 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Most units each team has alive at once.");
 		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
 		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
+		changed |= ImGui::SliderInt("Respawn if stuck", &setup.StuckSeconds, 0, 120, setup.StuckSeconds > 0 ? "after %d s" : "never");
+		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
 		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
 		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
 		if (ToolUI::RadioButton("Appear in their base##arrive", !setup.ByShip)) {
