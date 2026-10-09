@@ -270,6 +270,9 @@ namespace SandboxDetail {
 		return 0;
 	}
 
+	/// The Paint tab's tools (its brushes, loose things, springs and terrain): with one in hand the right button digs (see Sandbox::DrawGUI).
+	inline bool IsPaintTool(Tool kind) { return c_Tools[ToolIndex(kind)].UsesRadius; }
+
 	constexpr int c_Sides = 4;
 	// The game's own team colours, as on the team icons over units' heads.
 	constexpr const char* c_SideNames[c_Sides] = {"Red", "Green", "Blue", "Yellow"};
@@ -646,6 +649,7 @@ namespace SandboxDetail {
 	inline int s_CameraWarmupFrames = 0; //!< Frames to leave the camera alone at the start of a game, while the game mode points it somewhere sensible.
 	inline Vector s_CameraCenter;
 	inline float s_StrokeTimer = 0.0F;
+	inline float s_DigTimer = 0.0F; //!< As s_StrokeTimer, for the right button's digging with a Paint tool in hand.
 	inline std::vector<Stroke> s_Queue;
 	inline std::array<Vector, c_Sides> s_RallyPoints;
 	inline std::array<bool, c_Sides> s_RallySet{};

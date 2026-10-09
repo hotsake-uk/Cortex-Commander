@@ -539,7 +539,7 @@ void Sandbox::DrawGUI() {
 			if (CurrentTool().Kind != Tool::None) {
 				hint += std::string("    In hand: ") + CurrentTool().Name;
 			}
-			hint += "    Right drag / WASD: move    Wheel: zoom";
+			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom" : "    Right drag / WASD: move    Wheel: zoom";
 			hint += s_BarShown ? "    U: hide the bar" : "    U: show the bar";
 		} else {
 			hint += "    P: back above";
@@ -729,6 +729,15 @@ void Sandbox::DrawGUI() {
 				// (The Flow slider: the pouring brushes pour less often.)
 				s_StrokeTimer = PoursLiquid(tool.Kind) ? tool.Interval / std::clamp(s_Flow, 0.1F, 1.0F) : tool.Interval;
 				QueueStroke(tool.Kind, position);
+			}
+		}
+		// With a Paint tool in hand the right button always digs, whatever material or brush is picked (the middle button and WASD move
+		// the view). Not while you play a unit: the right button is its own then.
+		if (IsPaintTool(tool.Kind) && !s_Possessed && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+			s_DigTimer -= io.DeltaTime;
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || s_DigTimer <= 0.0F) {
+				s_DigTimer = c_Tools[ToolIndex(Tool::Dig)].Interval;
+				QueueStroke(Tool::Dig, position);
 			}
 		}
 		DrawSideRing();
