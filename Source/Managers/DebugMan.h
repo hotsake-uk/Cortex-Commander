@@ -55,11 +55,16 @@ namespace RTE {
 
 		/// Which side of the window a tool panel docks at.
 		enum class PanelSide { Left, Right };
+		/// How a tool window is shown: docked at its side (or floating, when docking is off), floating and resizable, or large in the middle of the screen.
+		enum class PanelPlacement { Docked, Floating, Large };
 
 		/// Begins a tool window. With docking on (the default) it is a panel fixed at one side of the game's picture, sharing that side with any others open there;
-		/// with docking off it's an ordinary floating window. Use it like ImGui::Begin, and close with ImGui::End.
+		/// with docking off, or placement Floating, it is an ordinary floating window; with placement Large, nine tenths of the screen in the middle. Use it like ImGui::Begin, and close with EndPanel.
 		/// @param name The window's title. @param open Set to false when the player closes it; nullptr for no close button. @param side Where it docks.
-		bool BeginPanel(const char* name, bool* open, PanelSide side);
+		bool BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement = PanelPlacement::Docked);
+
+		/// Gets how the sandbox's window is shown, as chosen under "Size and layout of these windows".
+		PanelPlacement GetSandboxPlacement() const { return static_cast<PanelPlacement>(m_SandboxPlacement); }
 
 		/// Ends a tool window begun with BeginPanel, whatever BeginPanel returned.
 		void EndPanel();
@@ -107,7 +112,9 @@ namespace RTE {
 		bool m_ShowGraphicsLab{false};
 		bool m_PanelsOverlay{true}; //!< Docked panels lie over the game's picture, which keeps its full size, instead of pushing it into the space between them.
 		bool m_DockPanels{true}; //!< Tool windows are panels at the sides of the game's picture, not floating over it.
-		float m_PanelWidth{380.0F}; //!< Width of the docked panels, before the interface scale.
+		float m_PanelWidth{21.0F}; //!< Width of the docked panel at the left, in percent of the window's width; the one at the right is 1.4 times it.
+		int m_SandboxPlacement{0}; //!< How the sandbox's window is shown: a PanelPlacement.
+		float m_BarWidth{50.0F}; //!< Width of the sandbox bar along the bottom, in percent of the game's picture.
 		float m_ToolScale{0.7F}; //!< How big the tool windows' text and controls are, as a share of the size that follows the window's height.
 
 		/// Gets how much the tool windows are scaled: with the window's height (720 px = 1x), times the size the player chose.
@@ -151,7 +158,13 @@ namespace RTE {
 		/// Gets how wide the docked panel at a side is, in window pixels.
 		float GetPanelWidth(PanelSide side) const;
 
+		/// The grip along the inner edge of a docked panel that sets the panels' width when dragged. Called inside the panel's window.
+		void PanelEdgeHandle(PanelSide side);
+
 	public:
+		/// Gets how wide the sandbox bar is, as a share (0 to 1) of the game's picture. Its controls wrap onto more lines inside that.
+		float GetBarWidthShare() const { return m_BarWidth / 100.0F; }
+
 		/// Gets the part of the game's picture not covered by docked panels this frame, in window pixels: where things that must stay in sight (the sandbox bar, banners) go.
 		GameViewRect GetUncoveredView() const;
 

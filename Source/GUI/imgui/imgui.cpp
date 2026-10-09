@@ -4053,6 +4053,7 @@ ImGuiContext::ImGuiContext(ImFontAtlas* shared_font_atlas)
     TempInputId = 0;
     memset(&DataTypeZeroValue, 0, sizeof(DataTypeZeroValue));
     BeginMenuDepth = BeginComboDepth = 0;
+    WrapSameLineDepth = 0;
     ColorEditOptions = ImGuiColorEditFlags_DefaultOptions_;
     ColorEditCurrentID = ColorEditSavedID = 0;
     ColorEditSavedHue = ColorEditSavedSat = 0.0f;
@@ -7631,6 +7632,9 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
         window->DC.CurrLineSize = window->DC.PrevLineSize = ImVec2(0.0f, 0.0f);
         window->DC.CurrLineTextBaseOffset = window->DC.PrevLineTextBaseOffset = 0.0f;
         window->DC.IsSameLine = window->DC.IsSetPos = false;
+        window->DC.WrapIndex = 0;
+        window->DC.WrapPendingKey = 0;
+        window->DC.WrapPendingGroupDepth = 0;
 
         window->DC.NavLayerCurrent = ImGuiNavLayer_Main;
         window->DC.NavLayersActiveMask = window->DC.NavLayersActiveMaskNext;
@@ -10705,6 +10709,10 @@ void ImGui::ItemSize(const ImVec2& size, float text_baseline_y)
     // but since ItemSize() is not yet an API that moves the cursor (to handle e.g. wrapping) enlarging the height has the same effect.
     const float offset_to_match_baseline_y = (text_baseline_y >= 0) ? ImMax(0.0f, window->DC.CurrLineTextBaseOffset - text_baseline_y) : 0.0f;
 
+    // [Cortex] The width of the item placed after a SameLine(), kept for deciding next frame whether it fits on the line.
+    if (window->DC.WrapPendingKey != 0 && window->DC.WrapPendingGroupDepth == g.GroupStack.Size)
+        WrapSameLineRecord(window, size.x);
+
     const float line_y1 = window->DC.IsSameLine ? window->DC.CursorPosPrevLine.y : window->DC.CursorPos.y;
     const float line_height = ImMax(window->DC.CurrLineSize.y, /*ImMax(*/window->DC.CursorPos.y - line_y1/*, 0.0f)*/ + size.y + offset_to_match_baseline_y);
 
@@ -10735,6 +10743,53 @@ IM_MSVC_RUNTIME_CHECKS_RESTORE
 //      offset_from_start_x != 0 : align to specified x position (relative to window/group left)
 //      spacing_w < 0            : use default spacing if offset_from_start_x == 0, no spacing if offset_from_start_x != 0
 //      spacing_w >= 0           : enforce spacing amount
+// [Cortex] Wrapping SameLine(): see PushWrapSameLine().
+void ImGui::PushWrapSameLine()
+{
+    ImGuiContext& g = *GImGui;
+    g.WrapSameLineDepth++;
+}
+
+void ImGui::PopWrapSameLine()
+{
+    ImGuiContext& g = *GImGui;
+    IM_ASSERT(g.WrapSameLineDepth > 0);
+    g.WrapSameLineDepth--;
+}
+
+// An item that ends right on the right edge is taken to be one sized to the room left (a width of -1), and is kept as needing only a little room.
+void ImGui::WrapSameLineRecord(ImGuiWindow* window, float width)
+{
+    const bool fills = ImFabs(window->DC.CursorPos.x + width - window->WorkRect.Max.x) <= 1.0f;
+    window->WrapWidths.SetFloat(window->DC.WrapPendingKey, fills ? -1.0f : width);
+    window->DC.WrapPendingKey = 0;
+}
+
+bool ImGui::WrapSameLineBreaks(ImGuiWindow* window, float spacing_w)
+{
+    ImGuiContext& g = *GImGui;
+    window->DC.WrapPendingKey = 0;
+    if (g.WrapSameLineDepth <= 0)
+        return false;
+    // Not where the width is fitted to the contents, as there the room is only what the contents took last frame; nor in tables, columns, groups or menu bars.
+    if ((window->Flags & ImGuiWindowFlags_AlwaysAutoResize) || (window->ChildFlags & ImGuiChildFlags_AutoResizeX) || window->AutoFitFramesX > 0)
+        return false;
+    if (window->DC.LayoutType != ImGuiLayoutType_Vertical || window->DC.CurrentColumns != NULL || (g.CurrentTable != NULL && g.CurrentTable->InnerWindow == window))
+        return false;
+    if (g.GroupStack.Size > 0 && g.GroupStack.back().WindowID == window->ID)
+        return false;
+    // Kept by the item before, so a row whose items come and go keeps each one's width; by the count of SameLine() calls when that item has no ID (text, a dummy).
+    const int index = window->DC.WrapIndex++;
+    const ImGuiID key = g.LastItemData.ID != 0 ? ImHashData(&g.LastItemData.ID, sizeof(ImGuiID), window->ID ^ 0x5A3E11u) : ImHashData(&index, sizeof(int), window->ID ^ 0x5A3E12u);
+    window->DC.WrapPendingKey = key;
+    window->DC.WrapPendingGroupDepth = g.GroupStack.Size;
+    float width = window->WrapWidths.GetFloat(key, 0.0f);
+    if (width < 0.0f)
+        width = g.FontSize * 4.0f;
+    const float line_start = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
+    return width > 0.0f && window->DC.CursorPosPrevLine.x > line_start + 1.0f && window->DC.CursorPosPrevLine.x + spacing_w + width > window->WorkRect.Max.x + 0.5f;
+}
+
 void ImGui::SameLine(float offset_from_start_x, float spacing_w)
 {
     ImGuiContext& g = *GImGui;
@@ -10753,6 +10808,9 @@ void ImGui::SameLine(float offset_from_start_x, float spacing_w)
     {
         if (spacing_w < 0.0f)
             spacing_w = g.Style.ItemSpacing.x;
+        // [Cortex] Inside PushWrapSameLine(), the next item goes on a new line instead when last frame it didn't fit after this one.
+        if (WrapSameLineBreaks(window, spacing_w))
+            return;
         window->DC.CursorPos.x = window->DC.CursorPosPrevLine.x + spacing_w;
         window->DC.CursorPos.y = window->DC.CursorPosPrevLine.y;
     }
@@ -11052,6 +11110,8 @@ void ImGui::EndGroup()
     }
 
     window->DC.CurrLineTextBaseOffset = ImMax(window->DC.PrevLineTextBaseOffset, group_data.BackupCurrLineTextBaseOffset); // FIXME: Incorrect, we should grab the base offset from the *first line* of the group but it is hard to obtain now.
+    if (window->DC.WrapPendingKey != 0 && window->DC.WrapPendingGroupDepth == g.GroupStack.Size - 1) // [Cortex] A group placed after a SameLine() is one item.
+        WrapSameLineRecord(window, group_bb.GetWidth());
     ItemSize(group_bb.GetSize());
     ItemAdd(group_bb, 0, NULL, ImGuiItemFlags_NoTabStop);
 

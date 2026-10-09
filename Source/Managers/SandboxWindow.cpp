@@ -2689,9 +2689,13 @@ namespace SandboxDetail {
 	}
 
 
-	/// A thin upright gold rule between groups of tiles on the bar.
+	/// A thin upright gold rule between groups of tiles on the bar; none where the bar's width has put the next group on a line of its own.
 	void BarDivider() {
+		float lineY = ImGui::GetCursorPosY();
 		ImGui::SameLine(0.0F, ToolUI::Pixel() * 4.0F);
+		if (ImGui::GetCursorPosY() >= lineY) {
+			return;
+		}
 		ImVec2 at = ImGui::GetCursorScreenPos();
 		float height = ToolUI::Pixel() * 24.0F;
 		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + ToolUI::Pixel()), ImVec2(at.x + ToolUI::Pixel(), at.y + height - ToolUI::Pixel()), IM_COL32(170, 128, 48, 200));
@@ -3083,12 +3087,15 @@ namespace SandboxDetail {
 		static const Tool mainTools[] = {Tool::None, Tool::Command, Tool::Follow, Tool::Possess, Tool::Remove, Tool::RallyPoint};
 
 		ImGui::SetNextWindowPos(ImVec2(view.x + view.w * 0.5F, view.y + view.h - pixel * 6.0F), ImGuiCond_Always, ImVec2(0.5F, 1.0F));
+		// A fixed share of the picture's width, and as tall as its contents: the tiles and controls go onto more lines to fit (new ones too, wherever they are added).
+		ImGui::SetNextWindowSize(ImVec2(std::floor(view.w * g_DebugMan.GetBarWidthShare()), 0.0F), ImGuiCond_Always);
+		ImGui::PushWrapSameLine();
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0F, 8.0F));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pixel * 8.0F, pixel * 5.0F));
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pixel * 2.0F, pixel * 3.0F));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
-		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
+		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
 			BarPlate();
 			// The settings of the tool in hand, in a row of their own at the top.
 			if (ContextRow()) {
@@ -3225,5 +3232,6 @@ namespace SandboxDetail {
 		ImGui::End();
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(4);
+		ImGui::PopWrapSameLine();
 	}
 } // namespace SandboxDetail
