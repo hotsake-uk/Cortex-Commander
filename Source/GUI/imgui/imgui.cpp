@@ -10757,11 +10757,12 @@ void ImGui::PopWrapSameLine()
     g.WrapSameLineDepth--;
 }
 
-// An item that ends right on the right edge is taken to be one sized to the room left (a width of -1), and is kept as needing only a little room.
+// An item that ends right on the right edge may be one sized to the room left (a width of -1): it is kept as a negative width, needing no more room than
+// a few letters, or than it took if that was less (a row of buttons sharing out the width exactly ends on the edge too, and must stay on its line).
 void ImGui::WrapSameLineRecord(ImGuiWindow* window, float width)
 {
     const bool fills = ImFabs(window->DC.CursorPos.x + width - window->WorkRect.Max.x) <= 1.0f;
-    window->WrapWidths.SetFloat(window->DC.WrapPendingKey, fills ? -1.0f : width);
+    window->WrapWidths.SetFloat(window->DC.WrapPendingKey, fills ? -ImMax(width, 1.0f) : width);
     window->DC.WrapPendingKey = 0;
 }
 
@@ -10785,9 +10786,12 @@ bool ImGui::WrapSameLineBreaks(ImGuiWindow* window, float spacing_w)
     window->DC.WrapPendingGroupDepth = g.GroupStack.Size;
     float width = window->WrapWidths.GetFloat(key, 0.0f);
     if (width < 0.0f)
-        width = g.FontSize * 4.0f;
+        width = ImMin(-width, g.FontSize * 4.0f);
     const float line_start = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
-    return width > 0.0f && window->DC.CursorPosPrevLine.x > line_start + 1.0f && window->DC.CursorPosPrevLine.x + spacing_w + width > window->WorkRect.Max.x + 0.5f;
+    // Widths are last frame's, so an item sized to share out the room there is (a row of equal buttons) can come out a little over when the
+    // room changes; such an item may run into half the window's padding, as far as it is drawn, rather than flip between lines frame to frame.
+    const float slack = ImMax(0.5f, window->WindowPadding.x * 0.5f);
+    return width > 0.0f && window->DC.CursorPosPrevLine.x > line_start + 1.0f && window->DC.CursorPosPrevLine.x + spacing_w + width > window->WorkRect.Max.x + slack;
 }
 
 void ImGui::SameLine(float offset_from_start_x, float spacing_w)

@@ -257,9 +257,11 @@ GameViewRect DebugMan::GetUncoveredView() const {
 
 float DebugMan::GetPanelWidth(PanelSide side) const {
 	// A fixed share of the window's width, whatever its size; the controls in them wrap onto more lines to fit.
-	// The right side holds the settings panel, which has its list of categories beside its controls, so it is the wider.
-	float share = m_PanelWidth / 100.0F;
-	return std::floor(ImGui::GetIO().DisplaySize.x * (side == PanelSide::Left ? share : std::min(share * 1.4F, 0.45F)));
+	// Each side has its own width. Never narrower than about 16 letters, below which the controls can't be laid out sensibly.
+	float share = (side == PanelSide::Left ? m_PanelWidth : m_PanelWidthRight) / 100.0F;
+	float displayWidth = ImGui::GetIO().DisplaySize.x;
+	float least = std::min(ImGui::GetFontSize() * 16.0F, displayWidth * 0.45F);
+	return std::floor(std::max(displayWidth * share, least));
 }
 
 void DebugMan::DrawToolWindowControls() {
@@ -271,12 +273,15 @@ void DebugMan::DrawToolWindowControls() {
 			m_ToolScale = std::clamp(toolScale, 0.4F, 1.5F);
 		}
 		ImGui::SetItemTooltip("How big the tool windows are drawn: type a number from 0.4 to 1.5 and press Enter. 1 is the old size; 0.7 is the usual.");
-		float panelWidth = m_PanelWidth;
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
-		if (ImGui::InputFloat("Panel width (% of screen)", &panelWidth, 1.0F, 5.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-			m_PanelWidth = std::clamp(panelWidth, 10.0F, 40.0F);
+		for (bool left: {true, false}) {
+			float& setting = left ? m_PanelWidth : m_PanelWidthRight;
+			float panelWidth = setting;
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+			if (ImGui::InputFloat(left ? "Left panel width (% of screen)" : "Right panel width (% of screen)", &panelWidth, 1.0F, 5.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+				setting = std::clamp(panelWidth, 10.0F, 45.0F);
+			}
+			ImGui::SetItemTooltip("How wide the panel at this side is, as a share of the window's width: type a number from 10 to 45 and press Enter, or drag the panel's inner edge.\nControls that don't fit on a line go onto the next.");
 		}
-		ImGui::SetItemTooltip("How wide the side panels are, as a share of the window's width: type a number from 10 to 40 and press Enter, or drag a panel's inner edge.\nThe right panel is 1.4 times as wide. Controls that don't fit on a line go onto the next.");
 		float barWidth = m_BarWidth;
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
 		if (ImGui::InputFloat("Sandbox bar width (% of screen)", &barWidth, 5.0F, 10.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -404,7 +409,7 @@ void DebugMan::DrawImGui() {
 	if (m_ShowDebugWindow) {
 		m_ShowDebugWindow = false;
 		m_ShowWorldDebug = true;
-		m_SettingsCategory = 10;
+		m_SettingsCategory = 12; // "Debug".
 	}
 	if (m_ShowWorldDebug) {
 		SettingsGUI();
@@ -449,11 +454,11 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPla
 		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F), ImGuiCond_Always, ImVec2(0.5F, 0.5F));
 		ImGui::SetNextWindowSize(ImVec2(std::floor(io.DisplaySize.x * 0.9F), std::floor(io.DisplaySize.y * 0.9F)), ImGuiCond_Always);
 		m_PanelKind = 0;
-		return ImGui::Begin((std::string(name) + "Large").c_str(), open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
+		return ImGui::Begin((std::string(name) + "Large").c_str(), open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysVerticalScrollbar);
 	}
 	if (!m_DockPanels || placement == PanelPlacement::Floating) {
 		m_PanelKind = 0;
-		return ImGui::Begin(name, open);
+		return ImGui::Begin(name, open, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 	}
 	ImGuiIO& io = ImGui::GetIO();
 	float width = GetPanelWidth(side);
@@ -476,7 +481,8 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPla
 	seen = frame;
 	if (ImGui::BeginTabItem(name, open, flags)) {
 		m_PanelKind = 2;
-		ImGui::BeginChild("##Body");
+		// The scroll bar always there, so its coming and going doesn't change the width the controls wrap to (which would change the height, and the scroll bar...).
+		ImGui::BeginChild("##Body", ImVec2(0.0F, 0.0F), ImGuiChildFlags_None, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 		return true;
 	}
 	m_PanelKind = 1;
@@ -499,15 +505,14 @@ void DebugMan::PanelEdgeHandle(PanelSide side) {
 	bool active = ImGui::IsItemActive();
 	if (active && io.DisplaySize.x > 0.0F) {
 		float wanted = side == PanelSide::Left ? io.MousePos.x : io.DisplaySize.x - io.MousePos.x;
-		float share = wanted / io.DisplaySize.x * 100.0F;
-		m_PanelWidth = std::clamp(side == PanelSide::Left ? share : share / 1.4F, 10.0F, 40.0F);
+		(side == PanelSide::Left ? m_PanelWidth : m_PanelWidthRight) = std::clamp(wanted / io.DisplaySize.x * 100.0F, 10.0F, 45.0F);
 	}
 	if (hovered || active) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 		float lineX = side == PanelSide::Left ? edge - 2.0F : edge + 1.0F;
 		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(lineX, windowPos.y), ImVec2(lineX + 1.0F, windowPos.y + windowSize.y), ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive : ImGuiCol_SeparatorHovered));
 	}
-	ImGui::SetItemTooltip("Drag to make the panels wider or narrower.");
+	ImGui::SetItemTooltip("Drag to make this panel wider or narrower.");
 	ImGui::PopClipRect();
 	ImGui::SetCursorScreenPos(cursor);
 }

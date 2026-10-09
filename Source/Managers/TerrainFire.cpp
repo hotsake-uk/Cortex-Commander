@@ -48,11 +48,11 @@ namespace {
 	constexpr FuelProperties c_Fuels[] = {
 	    {0, 0, 0.0F, false}, // None
 	    {25, 50, 0.25F, false}, // Grass
-	    {40, 90, 0.12F, true}, // Wood (it was 0.07: a wood fire crept a pixel a second along the surface and often went out)
+	    {30, 70, 0.3F, true}, // Wood (it was 0.07, then 0.12: a lit plank crept a pixel or two a second along its top, a thin line of fire that looked like nothing was burning)
 	    {20, 40, 0.5F, false}, // Oil
 	};
 
-	constexpr float c_BurnOutCatch = 0.3F; //!< Chance a pixel burning out sets each flammable neighbour alight: the heat it leaves eats into what was behind it.
+	constexpr float c_BurnOutCatch = 0.4F; //!< Chance a pixel burning out sets each flammable neighbour alight: the heat it leaves eats into what was behind it.
 	constexpr int c_TickInterval = 3; //!< Sim updates per fire tick (about 20 per second).
 	constexpr size_t c_MaxBurning = 6000;
 

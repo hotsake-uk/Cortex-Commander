@@ -742,7 +742,9 @@ void Sandbox::DrawGUI() {
 			}
 		} else if (IsPlantBrush(tool.Kind)) {
 			// A plant where clicked, then another each Plant spacing the pointer goes across while held: a row along the ground.
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || (ImGui::IsMouseDown(ImGuiMouseButton_Left) && std::abs(g_SceneMan.ShortestDistance(Vector(s_LastPlantX, position.m_Y), position, g_SceneMan.SceneWrapsX()).m_X) >= static_cast<float>(s_PlantSpacing))) {
+			// (Trees at least about a tree's width apart, so a drag doesn't pile them into one.)
+			float spacing = tool.Kind == Tool::Trees ? std::max(static_cast<float>(s_PlantSpacing), 40.0F * s_PlantScale) : static_cast<float>(s_PlantSpacing);
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || (ImGui::IsMouseDown(ImGuiMouseButton_Left) && std::abs(g_SceneMan.ShortestDistance(Vector(s_LastPlantX, position.m_Y), position, g_SceneMan.SceneWrapsX()).m_X) >= spacing)) {
 				s_LastPlantX = position.m_X;
 				QueueStroke(tool.Kind, position);
 			}
@@ -1247,11 +1249,13 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Plants");
-				ToolButtons({Tool::Plants, Tool::Cacti});
+				ToolButtons({Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees});
+				ImGui::SliderFloat("Plant size", &s_PlantScale, 0.5F, 3.0F, "x%.1f");
+				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms and trees are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is.");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
 				ImGui::SeparatorText("Terrain");
-				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
+				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
 				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});
 				{
 					// The rest of the base game's ground, for the "Other terrain" tool.
