@@ -1894,7 +1894,8 @@ void MovableMan::Update() {
 				}
 				if (terrMat->GetIndex() != g_MaterialAir && FluidSim::IsLiquid((*parIt)->GetMaterial()->GetIndex())) {
 					// A drop of liquid that comes to rest inside liquid (bodies and particles pass through it) would vanish into the pixel that's already there.
-					// It rises to the surface above instead, so splashes lose nothing.
+					// It rises to the surface above instead, so splashes lose nothing. The same up through grass and foliage, which liquid flows through: a drop
+					// that came to rest in a plant was not drawn (the plant ranks over it) and was lost, so water poured onto grass splashed itself away.
 					int dropX = parPos.GetFloorIntX();
 					int dropY = parPos.GetFloorIntY();
 					for (int up = 0; up < 400 && dropY >= 0; ++up, --dropY) {
@@ -1905,7 +1906,7 @@ void MovableMan::Update() {
 							terrMat = g_SceneMan.GetMaterialFromID(g_MaterialAir);
 							break;
 						}
-						if (!FluidSim::IsLiquid(material)) {
+						if (!FluidSim::IsLiquid(material) && !FluidSim::LetsLiquidsThrough(material)) {
 							break;
 						}
 					}
