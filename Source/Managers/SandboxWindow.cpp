@@ -212,6 +212,8 @@ namespace SandboxDetail {
 				return "Falls and piles, and cuts units walking through it.";
 			case Tool::BuildTank:
 				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
+			case Tool::TreeTrunk:
+				return "Wood, darker, like a tree's trunk. Burns like wood.";
 			case Tool::DenseEarth:
 				return "The base game's dense earth: darker and tougher to dig than earth.";
 			case Tool::GoldEarth:
@@ -339,6 +341,8 @@ namespace SandboxDetail {
 				return {Icon::Chunk, IM_COL32(110, 180, 70, 255)};
 			case Tool::Wood:
 				return {Icon::Chunk, IM_COL32(170, 120, 70, 255)};
+			case Tool::TreeTrunk:
+				return {Icon::Chunk, IM_COL32(95, 65, 40, 255)};
 			case Tool::Concrete:
 				return {Icon::Chunk, IM_COL32(170, 170, 165, 255)};
 			case Tool::Stone:

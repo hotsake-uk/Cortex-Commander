@@ -1251,7 +1251,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
 				ImGui::SeparatorText("Terrain");
-				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
+				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
 				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});
 				{
 					// The rest of the base game's ground, for the "Other terrain" tool.
