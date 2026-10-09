@@ -1778,8 +1778,8 @@ end
 -- one sent by the sandbox fight the same way.
 
 -- Whether the unit is running the objective: the sandbox's battle modes tag a unit carrying a flag home (SandboxObjective). Getting there
--- comes before every other behaviour: it shoots on the way, but doesn't fall back, take cover, flank, sidestep, chase, wait on a
--- team-mate in the way, heal others or go looking for weapons (SharedBehaviors.FocusOnObjective).
+-- comes before every other behaviour: it doesn't stop to fight (or shoot at all), fall back, take cover, flank, sidestep, chase, wait on
+-- a team-mate in the way, heal others or go looking for weapons (SharedBehaviors.FocusOnObjective). It just goes.
 function SharedBehaviors.OnObjective(Owner)
 	return Owner:NumberValueExists("SandboxObjective");
 end
@@ -1801,13 +1801,20 @@ function SharedBehaviors.FocusOnObjective(AI, Owner)
 	AI.medicHeal = false;
 	AI.PickupHD = nil;
 	AI.closingIn = false;
+	AI.Target = nil;
+	AI.UnseenTarget = nil;
+	AI.fire = false;
+	AI.squadShoot = false;
+	if AI.deviceState == AHuman.AIMING then
+		AI.deviceState = AHuman.STILL;
+	end
 	if AI.teamBlockState == Actor.BLOCKED then
 		AI.teamBlockState = Actor.IGNORINGBLOCK;
 		AI.BlockedTimer:Reset();
 	end
-	-- (A behaviour that would stop it or take it off its way goes: closing in, throwing, turning to an alarm, laying down fire, or going
-	-- for a weapon or a tool. Shooting on the move stays.)
-	local offTheWay = {AttackTarget = true, ThrowTarget = true, LobAt = true, FaceAlarm = true, ShootArea = true, WeaponSearch = true, ToolSearch = true};
+	-- (A behaviour that would stop it or take it off its way goes: any fight, turning to an alarm, laying down fire, or going for a
+	-- weapon or a tool.)
+	local offTheWay = {AttackTarget = true, ShootTarget = true, ThrowTarget = true, LobAt = true, ThrowSmoke = true, PinArea = true, FaceAlarm = true, ShootArea = true, WeaponSearch = true, ToolSearch = true};
 	if AI.NextBehavior and offTheWay[AI.NextBehaviorName] then
 		AI.NextBehavior = nil;
 		AI.NextBehaviorName = nil;
