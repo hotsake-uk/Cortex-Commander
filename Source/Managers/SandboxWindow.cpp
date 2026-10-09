@@ -2747,9 +2747,9 @@ namespace SandboxDetail {
 		if (tool.UsesRadius) {
 			start(tool.Name);
 			ImGui::SetNextItemWidth(field);
-			ImGui::SliderInt("##brush", &s_Radius, 1, 40, "Brush %d px");
+			ImGui::SliderInt("##brush", &s_Radius, 1, c_MaxBrushRadius, "Brush %d px", ImGuiSliderFlags_Logarithmic);
 			ImGui::SameLine();
-			for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 10}, {"L", 24}}) {
+			for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 10}, {"L", 24}, {"XL", 60}}) {
 				if (ToolUI::SmallButton(label)) {
 					s_Radius = size;
 				}

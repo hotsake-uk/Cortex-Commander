@@ -790,6 +790,7 @@ namespace SandboxDetail {
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
+	constexpr int c_MaxBrushRadius = 120; //!< The biggest the brush size goes (was 40).
 	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
 	inline bool s_ShapeFill = false; //!< Brush type Shape: the terrain brushes fill a shape dragged out on the world rather than painting where the pointer goes.
@@ -1094,7 +1095,7 @@ namespace SandboxDetail {
 
 	constexpr size_t c_PaintUndoSteps = 20;
 
-	constexpr size_t c_PaintUndoPixelsPerStep = 1000000; //!< About 3.5 s of the 40 px brush held down.
+	constexpr size_t c_PaintUndoPixelsPerStep = 1000000; //!< About 3.5 s of a 40 px brush held down (a stroke past it is undone in parts).
 
 	constexpr size_t c_PaintUndoPixels = 8000000; //!< All the steps together: 48 MB.
 
