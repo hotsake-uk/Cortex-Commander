@@ -3336,6 +3336,8 @@ namespace SandboxDetail {
 			ToolUI::Checkbox(("Show " + zones + " on the map").c_str(), &s_ShowModeZones);
 			ImGui::SetItemTooltip("%s", ("The outline and shading of the " + zones + ". Off, they're hidden but for their names (still shown while you draw one); \"Show battle objectives\" lights them up apart from this.").c_str());
 		}
+		ToolUI::Checkbox("Show battle info", &s_ShowBattleInfo);
+		ImGui::SetItemTooltip("While a battle is on, a panel under the score: each team's tally, units in and fallen, respawns left, and how many are waiting to come back and when the next does.");
 		ToolUI::Checkbox("Show battle objectives", &s_ShowObjectives);
 		ImGui::SetItemTooltip("What the game is about lit up on the map, in each mode's own look: a glowing ring round each flag and VIP, the ground along a hill glowing, the terrain and buildings in an assault objective glowing, a glowing line round each goal.");
 		if (s_ShowObjectives) {
@@ -3530,7 +3532,63 @@ namespace SandboxDetail {
 
 	/// On the map: the mode's bases and points while it is set up (with the Battle tab showing, or one of its tools in hand), and its game while on, with
 	/// the window open or not.
+	/// While a battle is on (a mode's game, or the Battle Director's teams), under the score: a line for each team, in its colour, with how it
+	/// stands now: the mode's own tally, its units in and fallen, its respawns left and when the next comes; or, in a custom battle, its
+	/// units in, sent and money left.
+	static void DrawBattleInfo() {
+		if (!s_ShowBattleInfo) {
+			return;
+		}
+		const bool modeOn = s_ModeRun.Running;
+		std::vector<std::pair<std::string, ImU32>> lines;
+		for (int side = 0; side < c_Sides; ++side) {
+			const BattleTeam& team = s_BattleTeams[side];
+			const int in = Sandbox::CountUnits(side);
+			std::string line = c_SideNames[side];
+			if (modeOn) {
+				if (!TeamIn(s_ModeRun.Settings, side)) {
+					continue;
+				}
+				const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
+				line += "    " + (mode.Status ? mode.Status(side) : std::to_string(in) + " in");
+				line += "    " + std::to_string(std::max(team.Sent - in, 0)) + " fallen";
+				const int respawns = RespawnsLeft(side);
+				line += respawns < 0 ? std::string("    respawns: no limit") : "    " + std::to_string(respawns) + (respawns == 1 ? " respawn left" : " respawns left");
+				if (const size_t waiting = s_FellAt[side].size(); waiting > 0 && respawns != 0) {
+					line += "    " + std::to_string(waiting) + " waiting, next in " + std::to_string(std::max(static_cast<int>(std::ceil(NextRespawnIn(side))), 0)) + " s";
+				}
+			} else {
+				if (!team.Running) {
+					continue;
+				}
+				line += "    " + std::to_string(in) + " in    " + std::to_string(team.Sent) + " sent    " + std::to_string(std::max(team.Sent - in, 0)) + " fallen";
+				line += team.Settings.EndlessMoney ? std::string("    money: endless") : "    " + std::to_string(std::max(static_cast<int>(static_cast<float>(team.Settings.Budget) - team.Spent), 0)) + " oz left" + (team.Broke ? " (broke)" : "");
+			}
+			lines.emplace_back(line, c_SideColors[side]);
+		}
+		if (lines.empty()) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		const GameViewRect view = g_DebugMan.GetUncoveredView();
+		const float lineHeight = ImGui::GetTextLineHeight() + 2.0F;
+		float width = 0.0F;
+		for (const auto& [text, color]: lines) {
+			width = std::max(width, ImGui::CalcTextSize(text.c_str()).x);
+		}
+		// (Under the score line and its result or latest happening, in a mode's game; at the top in a custom battle, which has none.)
+		const ImVec2 at(view.x + (view.w - width) * 0.5F, view.y + (modeOn ? 124.0F : 64.0F));
+		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 5.0F), ImVec2(at.x + width + 10.0F, at.y + lineHeight * static_cast<float>(lines.size()) + 3.0F), IM_COL32(0, 0, 0, 130), 4.0F);
+		for (size_t i = 0; i < lines.size(); ++i) {
+			drawList->AddText(ImVec2(at.x, at.y + lineHeight * static_cast<float>(i)), lines[i].second, lines[i].first.c_str());
+		}
+	}
+
 	void DrawBattleMode() {
+		const bool battleOn = s_ModeRun.Running || std::any_of(s_BattleTeams.begin(), s_BattleTeams.end(), [](const BattleTeam& team) { return team.Running; });
+		if (battleOn) {
+			DrawBattleInfo();
+		}
 		const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
 		if (!mode.Draw) {
 			return;
