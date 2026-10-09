@@ -78,6 +78,7 @@ void HDFirearm::Clear() {
 	m_IsAnimatedManually = false;
 
 	m_LegacyCompatibilityRoundsAlwaysFireUnflipped = false;
+	m_AIDigStrength = 0.0F;
 }
 
 int HDFirearm::Create() {
@@ -164,6 +165,7 @@ int HDFirearm::Create(const HDFirearm& reference) {
 	m_IsAnimatedManually = reference.m_IsAnimatedManually;
 
 	m_LegacyCompatibilityRoundsAlwaysFireUnflipped = reference.m_LegacyCompatibilityRoundsAlwaysFireUnflipped;
+	m_AIDigStrength = reference.m_AIDigStrength;
 
 	return 0;
 }
@@ -247,6 +249,7 @@ int HDFirearm::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("MuzzleOffset", { reader >> m_MuzzleOff; });
 	MatchProperty("EjectionOffset", { reader >> m_EjectOff; });
 	MatchProperty("LegacyCompatibilityRoundsAlwaysFireUnflipped", { reader >> m_LegacyCompatibilityRoundsAlwaysFireUnflipped; });
+	MatchProperty("AIDigStrength", { reader >> m_AIDigStrength; });
 
 	EndPropertyList;
 }
@@ -321,6 +324,9 @@ int HDFirearm::Save(Writer& writer) const {
 	writer << m_EjectOff;
 
 	writer.NewPropertyWithValue("LegacyCompatibilityRoundsAlwaysFireUnflipped", m_LegacyCompatibilityRoundsAlwaysFireUnflipped);
+	if (m_AIDigStrength > 0.0F) {
+		writer.NewPropertyWithValue("AIDigStrength", m_AIDigStrength);
+	}
 
 	return 0;
 }
@@ -1021,6 +1027,10 @@ void HDFirearm::Update() {
 }
 
 float HDFirearm::EstimateDigStrength() const {
+	// A tool that digs in its own script (the Constructor fires a Null Round and cuts the ground itself) says what it cuts (DG-3).
+	if (m_AIDigStrength > 0.0F) {
+		return m_AIDigStrength;
+	}
 	return m_pMagazine ? m_pMagazine->EstimateDigStrength() : m_pMagazineReference->EstimateDigStrength();
 }
 

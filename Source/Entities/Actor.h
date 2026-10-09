@@ -434,6 +434,37 @@ namespace RTE {
 			MOVEMENTRULECOUNT
 		};
 
+		/// What kind of order a unit's standing order is (RC-1/RC-3/RC-11): the order the player gave, so the HUD, the failure markers and the
+		/// route search can tell a dig-to from a move without reading it off the other parts. Set by whoever gives the order.
+		enum OrderKind {
+			ORDER_NONE = 0, //!< No order given, or one this list has no kind for (an AI mode set straight on the unit).
+			ORDER_MOVE, //!< Go to a place.
+			ORDER_ATTACKMOVE, //!< Go to a place, fighting what it meets on the way (RC-2).
+			ORDER_ATTACK, //!< Go after an enemy, or the nearest enemy.
+			ORDER_GUARD, //!< Keep with a friendly unit, or hold a place against all comers.
+			ORDER_DEFEND, //!< Stand at a post and fight from it (RC-4).
+			ORDER_PATROL, //!< Walk a patrol route.
+			ORDER_DIGTO, //!< Dig to a place, which may be inside the ground (RC-11): the route keeps the buried target and tunnels rather than walks round.
+			ORDERKINDCOUNT
+		};
+
+		/// Why a unit's order stopped short (RC-7, RC-11): told to the player at the unit's "no route" marker, and kept on the order until the next one.
+		enum OrderFailReason {
+			ORDERFAIL_NONE = 0, //!< It hasn't failed.
+			ORDERFAIL_NOROUTE, //!< There is no way there it can take.
+			ORDERFAIL_NODIGGER, //!< A dig order, and it has nothing to dig with.
+			ORDERFAIL_TOOHARD, //!< A dig order, and the way there is through ground its digger doesn't cut (FailMaterial says which).
+			ORDERFAIL_LOSTDIGGER, //!< A dig order, and it lost its digger on the way.
+			ORDERFAIL_OUTOFREACH, //!< A dig order to a place no one can dig to: off the scene, or in its bottom margin.
+			ORDERFAILREASONCOUNT
+		};
+
+		/// The player's words for why an order failed (OrderFailReason), with the material for ORDERFAIL_TOOHARD when there is one.
+		/// @param reason An OrderFailReason.
+		/// @param materialID The material the way is blocked by, 0 for none known.
+		/// @return A few words, e.g. "too hard: Concrete".
+		static std::string OrderFailText(int reason, int materialID = 0);
+
 		/// A unit's standing order (AI review section 6 item 2): what it was told to do, one typed record that the sandbox, the AI scripts, the HUD and saves all read, where
 		/// before it was six number values under string keys ("SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX/Y", "SandboxDefendX/Y",
 		/// "SandboxHold") that C++ and Lua each spelled out. The parts are independent, as the number values were.
@@ -448,6 +479,11 @@ namespace RTE {
 			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
 			int Movement = MOVE_FOLLOW_ORDER; //!< The movement rule (MovementRule) the player set for this order, MOVE_FOLLOW_ORDER for the order's own.
 			int PostFacing = 0; //!< Which way to face at the post (RC-4): -1 left, 1 right, 0 either.
+			int Kind = ORDER_NONE; //!< What kind of order this is (OrderKind).
+			bool HasDigTarget = false; //!< Whether it was told to dig to a place (DigTarget, RC-11).
+			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
+			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
+			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -486,6 +522,44 @@ namespace RTE {
 		void SetOrderPostFacing(int facing) { m_StandingOrder.PostFacing = facing < 0 ? -1 : (facing > 0 ? 1 : 0); }
 		bool GetOrderHold() const { return m_StandingOrder.Hold; }
 		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
+		int GetOrderKind() const { return m_StandingOrder.Kind; }
+		void SetOrderKind(int kind) { m_StandingOrder.Kind = std::clamp(kind, 0, static_cast<int>(ORDERKINDCOUNT) - 1); }
+		bool GetOrderHasDigTarget() const { return m_StandingOrder.HasDigTarget; }
+		const Vector& GetOrderDigTarget() const { return m_StandingOrder.DigTarget; }
+		void SetOrderDigTarget(const Vector& target) {
+			m_StandingOrder.DigTarget = target;
+			m_StandingOrder.HasDigTarget = true;
+		}
+		void ClearOrderDigTarget() { m_StandingOrder.HasDigTarget = false; }
+		int GetOrderFailReason() const { return m_StandingOrder.FailReason; }
+		void SetOrderFailReason(int reason) { m_StandingOrder.FailReason = std::clamp(reason, 0, static_cast<int>(ORDERFAILREASONCOUNT) - 1); }
+		int GetOrderFailMaterial() const { return m_StandingOrder.FailMaterial; }
+
+		/// Marks the standing order failed (RC-7): why, and the material in the way when that is the reason.
+		/// @param reason An OrderFailReason.
+		/// @param materialID The material in the way, for ORDERFAIL_TOOHARD; 0 for none known.
+		void FailOrder(int reason, int materialID = 0) {
+			SetOrderFailReason(reason);
+			m_StandingOrder.FailMaterial = materialID;
+		}
+
+		/// Gets the player's words for why this' order stopped short (OrderFailText), empty when it hasn't.
+		std::string GetOrderFailText() const { return m_StandingOrder.FailReason == ORDERFAIL_NONE ? std::string() : OrderFailText(m_StandingOrder.FailReason, m_StandingOrder.FailMaterial); }
+
+		/// Works out what digging to a place would take this, from where it stands, as a dig-to order would route it (RC-11; PathFinder::PlanDig).
+		/// Runs the search now, on the calling thread.
+		/// @param target The place to dig to, in the ground or not.
+		/// @return The plan.
+		DigPlan PlanDigTo(const Vector& target) const;
+
+		/// Whether this can dig to a place (PlanDigTo's verdict is Ok).
+		bool CanDigTo(const Vector& target) const { return PlanDigTo(target).Result == DigPlan::Ok; }
+
+		/// What digging to a place would take this, in the player's words (PathFinder::DescribeDigPlan): e.g. "Dig 4 m, hardest Earth, about 12 s".
+		std::string DescribeDigTo(const Vector& target) const { return PathFinder::DescribeDigPlan(PlanDigTo(target), EstimateDigStrength()); }
+
+		/// Whether this is on a dig-to order (RC-11) that is still going: told to dig to a place and in GOTO for it.
+		bool IsDiggingTo() const { return m_StandingOrder.Kind == ORDER_DIGTO && m_StandingOrder.HasDigTarget && m_AIMode == AIMODE_GOTO; }
 
 		/// Gets the weapons rule (WeaponRule): what this may shoot at.
 		int GetWeaponRule() const { return m_WeaponRule; }

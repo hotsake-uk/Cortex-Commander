@@ -661,6 +661,8 @@ bool AHuman::HandlePieCommand(PieSliceType pieSliceIndex) {
 			ClearAIWaypoints();
 		} else if (pieSliceIndex == PieSliceType::GoldDig) {
 			m_AIMode = AIMODE_GOLDDIG;
+		} else if (pieSliceIndex == PieSliceType::DigTo) {
+			// (The point is picked next, in GameActivity's dig-to cursor, which gives the order once the dig checks out: RC-11.)
 		} else {
 			return Actor::HandlePieCommand(pieSliceIndex);
 		}

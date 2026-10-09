@@ -1607,6 +1607,45 @@ void GameActivity::Update() {
 			g_CameraMan.SetScrollTarget(m_DeathViewTarget[player], 0.1, ScreenOfPlayer(player));
 		}
 
+		///////////////////////////////////////////////////
+		// Picking a place for the controlled actor to dig to (RC-11)
+
+		else if (m_ViewState[player] == ViewState::AIGoldDigPoint) {
+			m_PlayerController[player].RelativeCursorMovement(m_ActorCursor[player]);
+			g_SceneMan.ForceBounds(m_ActorCursor[player]);
+			g_CameraMan.SetScrollTarget(m_ActorCursor[player], 0.1, ScreenOfPlayer(player));
+			Actor* digger = m_ControlledActor[player];
+			digger->GetController()->SetDisabled(true);
+			// The plan from where it stands, worked out again when the cursor has moved and a quarter of a second has passed (each is a search).
+			if (Scene* scene = g_SceneMan.GetScene(); scene && m_DigToPlanTimer[player].IsPastRealMS(250) && g_SceneMan.ShortestDistance(m_DigToPlanAt[player], m_ActorCursor[player]).MagnitudeIsGreaterThan(3.0F)) {
+				m_DigToPlanTimer[player].Reset();
+				m_DigToPlanAt[player] = m_ActorCursor[player];
+				m_DigToPlan[player] = scene->PlanDig(digger->GetPathStart(), m_ActorCursor[player], digger->GetPathAgent(), static_cast<Activity::Teams>(digger->GetTeam()));
+			}
+			const DigPlan& plan = m_DigToPlan[player];
+			g_FrameMan.SetScreenText("Dig to here: " + PathFinder::DescribeDigPlan(plan, digger->EstimateDigStrength()), ScreenOfPlayer(player));
+			if (m_PlayerController[player].IsState(PRESS_SECONDARY) || m_PlayerController[player].IsState(ACTOR_NEXT_PREP) || m_PlayerController[player].IsState(ACTOR_PREV_PREP)) {
+				digger->GetController()->SetDisabled(false);
+				m_ViewState[player] = ViewState::Normal;
+				g_FrameMan.ClearScreenText(ScreenOfPlayer(player));
+			} else if (m_PlayerController[player].IsState(PRESS_FACEBUTTON) || m_PlayerController[player].IsState(PRESS_PRIMARY)) {
+				// Given only when the dig checks out for this unit; otherwise the line above says why, and the cursor stays.
+				if (plan.Result == DigPlan::Ok && g_SceneMan.ShortestDistance(m_DigToPlanAt[player], m_ActorCursor[player]).MagnitudeIsLessThan(3.0F)) {
+					Actor::StandingOrder& order = digger->GetStandingOrder();
+					order = Actor::StandingOrder();
+					order.Kind = Actor::ORDER_DIGTO;
+					order.HasDigTarget = true;
+					order.DigTarget = m_ActorCursor[player];
+					digger->ClearAIWaypoints();
+					digger->AddAISceneWaypoint(m_ActorCursor[player]);
+					digger->SetAIMode(Actor::AIMODE_GOTO);
+					digger->GetController()->SetDisabled(false);
+					m_ViewState[player] = ViewState::Normal;
+					g_FrameMan.ClearScreenText(ScreenOfPlayer(player));
+				}
+			}
+		}
+
 		////////////////////////////////////////////////////
 		// Normal scrolling to view the currently controlled Actor
 		// But only if we're not editing something, because editor will scroll the screen himself
@@ -1615,7 +1654,7 @@ void GameActivity::Update() {
 			g_CameraMan.SetScrollTarget(m_ControlledActor[player]->GetViewPoint(), 0.1, ScreenOfPlayer(player));
 		}
 
-		if (m_ControlledActor[player] && m_ViewState[player] != ViewState::DeathWatch && m_ViewState[player] != ViewState::ActorSelect && m_ViewState[player] != ViewState::AIGoToPoint && m_ViewState[player] != ViewState::UnitSelectCircle) {
+		if (m_ControlledActor[player] && m_ViewState[player] != ViewState::DeathWatch && m_ViewState[player] != ViewState::ActorSelect && m_ViewState[player] != ViewState::AIGoToPoint && m_ViewState[player] != ViewState::AIGoldDigPoint && m_ViewState[player] != ViewState::UnitSelectCircle) {
 			PieMenu* controlledActorPieMenu = m_ControlledActor[player]->GetPieMenu();
 			if (controlledActorPieMenu && m_ControlledActor[player]->GetController()->IsState(PIE_MENU_ACTIVE)) {
 				if (!m_BuyMenuEnabled && controlledActorPieMenu->IsEnabling()) {
@@ -1640,6 +1679,14 @@ void GameActivity::Update() {
 					m_ViewState[player] = ViewState::AIGoToPoint;
 					m_ControlledActor[player]->ClearAIWaypoints();
 					m_ActorCursor[player] = m_ControlledActor[player]->GetPos();
+					m_ControlledActor[player]->GetController()->SetDisabled(true);
+				} else if (command == PieSliceType::DigTo) {
+					// Dig to (RC-11): a cursor to pick the place, which shows whether this unit can dig there (the view state the old Gold Dig
+					// point picking left unused).
+					m_ViewState[player] = ViewState::AIGoldDigPoint;
+					m_ActorCursor[player] = m_ControlledActor[player]->GetPos();
+					m_DigToPlan[player] = DigPlan();
+					m_DigToPlanAt[player] = Vector(-10000.0F, -10000.0F);
 					m_ControlledActor[player]->GetController()->SetDisabled(true);
 				} else if (command == PieSliceType::FormSquad) {
 					// Find out if we have any connected units, and disconnect them
@@ -2111,6 +2158,23 @@ void GameActivity::DrawGUI(BITMAP* pTargetBitmap, const Vector& targetPos, int w
 		// Draw a line from the last set waypoint to the cursor
 		if (m_ControlledActor[PoS] && g_MovableMan.IsActor(m_ControlledActor[PoS]))
 			g_FrameMan.DrawLine(pTargetBitmap, m_ControlledActor[PoS]->GetLastAIWaypoint() - targetPos, m_ActorCursor[PoS] - targetPos, g_YellowGlowColor, 0, AILINEDOTSPACING, 0, true);
+	}
+	// The dig-to cursor (RC-11): the way there from the unit, dug steps in red, and the cursor.
+	else if (m_ViewState[PoS] == ViewState::AIGoldDigPoint) {
+		const DigPlan& plan = m_DigToPlan[PoS];
+		auto kind = plan.Kinds.begin();
+		for (auto at = plan.Route.begin(); at != plan.Route.end() && std::next(at) != plan.Route.end(); ++at) {
+			bool dug = kind != plan.Kinds.end() && *kind == PathStepKind::Dig;
+			g_FrameMan.DrawLine(pTargetBitmap, *at - targetPos, *std::next(at) - targetPos, dug ? g_RedColor : g_YellowGlowColor, 0, dug ? 0 : AILINEDOTSPACING, 0, true);
+			if (kind != plan.Kinds.end()) {
+				++kind;
+			}
+		}
+		Vector center = m_ActorCursor[PoS] - targetPos;
+		int color = plan.Result == DigPlan::Ok ? g_YellowGlowColor : g_RedColor;
+		circle(pTargetBitmap, center.m_X, center.m_Y, m_CursorTimer.AlternateReal(150) ? 6 : 8, color);
+		circlefill(pTargetBitmap, center.m_X, center.m_Y, 2, color);
+		g_PostProcessMan.RegisterGlowArea(m_ActorCursor[PoS], 10);
 	}
 	// Group selection circle
 	else if (m_ViewState[PoS] == ViewState::UnitSelectCircle) {

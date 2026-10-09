@@ -235,6 +235,11 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderPost", &Actor::GetOrderPost, &Actor::SetOrderPost)
 	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
 	    .property("OrderPostFacing", &Actor::GetOrderPostFacing, &Actor::SetOrderPostFacing)
+	    .property("OrderKind", &Actor::GetOrderKind, &Actor::SetOrderKind)
+	    .property("OrderHasDigTarget", &Actor::GetOrderHasDigTarget)
+	    .property("OrderDigTarget", &Actor::GetOrderDigTarget, &Actor::SetOrderDigTarget)
+	    .property("OrderFailReason", &Actor::GetOrderFailReason, &Actor::SetOrderFailReason)
+	    .property("OrderFailText", &Actor::GetOrderFailText)
 	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
 	    .property("PaceLimit", &Actor::GetPaceLimit, &Actor::SetPaceLimit)
 	    .property("MovementRule", &Actor::GetMovementRule, &Actor::SetMovementRule)
@@ -299,6 +304,10 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("ClearStandingOrder", &Actor::ClearStandingOrder)
 	    .def("ClearOrderAttackPlace", &Actor::ClearOrderAttackPlace)
 	    .def("ClearOrderPost", &Actor::ClearOrderPost)
+	    .def("ClearOrderDigTarget", &Actor::ClearOrderDigTarget)
+	    .def("CanDigTo", &Actor::CanDigTo)
+	    .def("DescribeDigTo", &Actor::DescribeDigTo)
+	    .def("FailOrder", &Actor::FailOrder)
 	    .def("GetLastAIWaypoint", &Actor::GetLastAIWaypoint)
 	    .def("GetAIMOWaypointID", &Actor::GetAIMOWaypointID)
 	    .def("GetWaypointListSize", &Actor::GetWaypointsSize)
@@ -367,6 +376,20 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	                           luabind::value("MOVE_ENGAGE", Actor::MovementRule::MOVE_ENGAGE),
 	                           luabind::value("MOVE_ONLY", Actor::MovementRule::MOVE_ONLY),
 	                           luabind::value("MOVE_HOLD_GROUND", Actor::MovementRule::MOVE_HOLD_GROUND)]
+	    .enum_("OrderKind")[luabind::value("ORDER_NONE", Actor::OrderKind::ORDER_NONE),
+	                        luabind::value("ORDER_MOVE", Actor::OrderKind::ORDER_MOVE),
+	                        luabind::value("ORDER_ATTACKMOVE", Actor::OrderKind::ORDER_ATTACKMOVE),
+	                        luabind::value("ORDER_ATTACK", Actor::OrderKind::ORDER_ATTACK),
+	                        luabind::value("ORDER_GUARD", Actor::OrderKind::ORDER_GUARD),
+	                        luabind::value("ORDER_DEFEND", Actor::OrderKind::ORDER_DEFEND),
+	                        luabind::value("ORDER_PATROL", Actor::OrderKind::ORDER_PATROL),
+	                        luabind::value("ORDER_DIGTO", Actor::OrderKind::ORDER_DIGTO)]
+	    .enum_("OrderFailReason")[luabind::value("ORDERFAIL_NONE", Actor::OrderFailReason::ORDERFAIL_NONE),
+	                              luabind::value("ORDERFAIL_NOROUTE", Actor::OrderFailReason::ORDERFAIL_NOROUTE),
+	                              luabind::value("ORDERFAIL_NODIGGER", Actor::OrderFailReason::ORDERFAIL_NODIGGER),
+	                              luabind::value("ORDERFAIL_TOOHARD", Actor::OrderFailReason::ORDERFAIL_TOOHARD),
+	                              luabind::value("ORDERFAIL_LOSTDIGGER", Actor::OrderFailReason::ORDERFAIL_LOSTDIGGER),
+	                              luabind::value("ORDERFAIL_OUTOFREACH", Actor::OrderFailReason::ORDERFAIL_OUTOFREACH)]
 	    .enum_("ActionState")[luabind::value("MOVING", Actor::ActionState::MOVING),
 	                          luabind::value("MOVING_FAST", Actor::ActionState::MOVING_FAST),
 	                          luabind::value("FIRING", Actor::ActionState::FIRING),
@@ -733,6 +756,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HDFirearm) {
 	    .property("EjectionPos", &HDFirearm::GetEjectionPos)
 	    .property("EjectionOffset", &HDFirearm::GetEjectionOffset, &HDFirearm::SetEjectionOffset)
 	    .property("RateOfFire", &HDFirearm::GetRateOfFire, &HDFirearm::SetRateOfFire)
+	    .property("AIDigStrength", &HDFirearm::GetAIDigStrength, &HDFirearm::SetAIDigStrength)
 	    .property("MSPerRound", &HDFirearm::GetMSPerRound)
 	    .property("FullAuto", &HDFirearm::IsFullAuto, &HDFirearm::SetFullAuto)
 	    .property("Reloadable", &HDFirearm::IsReloadable, &HDFirearm::SetReloadable)
@@ -1265,7 +1289,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieSlice) {
 	                        luabind::value("Team1", static_cast<int>(PieSliceType::EditorTeam1)),
 	                        luabind::value("Team2", static_cast<int>(PieSliceType::EditorTeam2)),
 	                        luabind::value("Team3", static_cast<int>(PieSliceType::EditorTeam3)),
-	                        luabind::value("Team4", static_cast<int>(PieSliceType::EditorTeam4))];
+	                        luabind::value("Team4", static_cast<int>(PieSliceType::EditorTeam4)),
+	                        luabind::value("DigTo", static_cast<int>(PieSliceType::DigTo))];
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieMenu) {

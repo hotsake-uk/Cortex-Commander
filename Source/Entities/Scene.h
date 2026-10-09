@@ -710,6 +710,9 @@ namespace RTE {
 		/// @return The total cost of the path, or -1 when there is none.
 		float CalculatePath(const Vector& start, const Vector& end, std::list<Vector>& pathResult, const PathAgent& agent, Activity::Teams team, std::list<PathStepKind>* kinds = nullptr);
 
+		/// Works out what digging to a place would take a searcher on a team's grid (RC-11; see PathFinder::PlanDig). Runs on the calling thread.
+		DigPlan PlanDig(const Vector& start, const Vector& target, const PathAgent& agent, Activity::Teams team) { return GetPathFinder(team).PlanDig(start, target, agent); }
+
 		/// The kinds of the steps of the last path calculated on this thread through CalculatePathForActor, as PathStepKind values (0 walk,
 		/// 1 crawl, 2 jump, 3 fall, 4 dig, 5 door, 6 stairs, 7 ladder, 8 leap, 9 mantle, 10 crouch, 11 scramble, 12 swim, 13 wade), one per point of GetScenePath after the first.
 		std::list<int>& GetScenePathStepKinds();

@@ -1083,6 +1083,11 @@ namespace SandboxDetail {
 					kind = CommandMode::Guard;
 					goal = leader->GetPos();
 					hasGoal = true;
+				} else if (unit->IsDiggingTo()) {
+					// Digging to a place (RC-11), with its line to the place.
+					kind = CommandMode::DigTo;
+					goal = unit->GetOrderDigTarget();
+					hasGoal = true;
 				} else if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
 					kind = unit->GetMovementRule() == Actor::MOVE_ENGAGE ? CommandMode::AttackMove : CommandMode::Move;
 					if (unit->GetWaypointsSize() > 0) {
@@ -1125,6 +1130,10 @@ namespace SandboxDetail {
 				} else if (kind == CommandMode::Patrol) {
 					drawList->AddCircle(mark, r, color, 0, 1.5F);
 					drawList->AddTriangleFilled(ImVec2(mark.x + r, mark.y - 3.0F), ImVec2(mark.x + r + 3.0F, mark.y + 1.0F), ImVec2(mark.x + r - 3.0F, mark.y + 1.0F), color);
+				} else if (kind == CommandMode::DigTo) {
+					// A spade: the handle, and the blade pointing into the ground.
+					drawList->AddLine(ImVec2(mark.x, mark.y - r), ImVec2(mark.x, mark.y), color, 1.5F);
+					drawList->AddTriangleFilled(ImVec2(mark.x - r * 0.8F, mark.y), ImVec2(mark.x + r * 0.8F, mark.y), ImVec2(mark.x, mark.y + r), color);
 				}
 			}
 		}
@@ -1190,7 +1199,10 @@ namespace SandboxDetail {
 			drawList->AddCircleFilled(at, 9.0F, IM_COL32(0, 0, 0, alpha * 2 / 3));
 			drawList->AddLine(ImVec2(at.x - 5.0F, at.y - 5.0F), ImVec2(at.x + 5.0F, at.y + 5.0F), red, over ? 3.0F : 2.0F);
 			drawList->AddLine(ImVec2(at.x - 5.0F, at.y + 5.0F), ImVec2(at.x + 5.0F, at.y - 5.0F), red, over ? 3.0F : 2.0F);
-			std::string text = over ? "No route for " + std::to_string(alive) + (alive == 1 ? " unit: click to send it again" : " units: click to send them again") : std::string("No route");
+			// (With why, RC-7: "too hard to dig: Concrete", "lost its digger", as the unit's order or the dig-to's check found.)
+			std::string reason = marker.Reason.empty() ? std::string("no route") : marker.Reason;
+			reason[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(reason[0])));
+			std::string text = over ? reason + " for " + std::to_string(alive) + (alive == 1 ? " unit: click to " : " units: click to ") + (marker.Dig ? "dig again" : "send again") : reason;
 			drawList->AddText(ImVec2(at.x + 12.0F, at.y - ImGui::GetTextLineHeight() * 0.5F), red, text.c_str());
 		}
 
@@ -1358,6 +1370,8 @@ namespace SandboxDetail {
 			mode(CommandMode::DefendAt);
 		} else if (pressed(ImGuiKey_R)) {
 			mode(CommandMode::Patrol);
+		} else if (pressed(ImGuiKey_X)) {
+			mode(CommandMode::DigTo);
 		}
 		if (!s_Selected.empty() && (pressed(ImGuiKey_H) || pressed(ImGuiKey_C))) {
 			// Defend where they stand (with Shift, the last step of their plans), or cancel their orders: as the ring's slices.
@@ -1406,7 +1420,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
 				for (size_t i = 0; i < count; ++i) {
@@ -1603,6 +1617,37 @@ namespace SandboxDetail {
 				// And the zone they'll hold: the radius they go after enemies in, and the chase past it (faint).
 				DrawDefendZone(drawList, point, static_cast<float>(s_DefendRadius), static_cast<float>(s_DefendChase), amber);
 				label = "Defend here with " + count + "  (drag left or right to face that way)";
+			} else if (s_CommandMode == CommandMode::DigTo) {
+				// Dig to (RC-11): the lead digger's way there, walked parts in the mode's colour and dug parts from yellow (soft) to red-orange
+				// (near its digger's limit); where it can't go, a red cross on what stops it. And the verdict in words.
+				ImU32 sand = c_CommandModeColors[static_cast<int>(CommandMode::DigTo)];
+				const DigPreview& preview = DigToPreview(units, point);
+				const DigPlan& plan = preview.Plan;
+				auto kind = plan.Kinds.begin();
+				for (auto at = plan.Route.begin(); at != plan.Route.end() && std::next(at) != plan.Route.end(); ++at) {
+					const Vector& from = *at;
+					const Vector& to = *std::next(at);
+					ImU32 color = (sand & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT);
+					float width = pixel * 1.5F;
+					if (kind != plan.Kinds.end() && *kind == PathStepKind::Dig) {
+						float hardness = std::clamp(g_SceneMan.CastMaxStrengthRay(from, to, 2) / std::max(preview.LeadStrength, 1.0F), 0.0F, 1.0F);
+						color = IM_COL32(250, static_cast<int>(220.0F - 130.0F * hardness), static_cast<int>(90.0F - 60.0F * hardness), 235);
+						width = pixel * 3.0F;
+					}
+					drawList->AddLine(ToScreen(from), ToScreen(to), color, width);
+					if (kind != plan.Kinds.end()) {
+						++kind;
+					}
+				}
+				if (plan.Result == DigPlan::TooHard) {
+					ImU32 red = IM_COL32(239, 90, 80, 255);
+					ImVec2 at = ToScreen(plan.BlockingAt);
+					float arm = pixel * 5.0F;
+					drawList->AddLine(ImVec2(at.x - arm, at.y - arm), ImVec2(at.x + arm, at.y + arm), red, pixel * 2.0F);
+					drawList->AddLine(ImVec2(at.x - arm, at.y + arm), ImVec2(at.x + arm, at.y - arm), red, pixel * 2.0F);
+				}
+				crosshair(point, plan.Result == DigPlan::Ok ? sand : IM_COL32(239, 90, 80, 200), pixel * 6.0F);
+				label = "Dig to here with " + count + ": " + DigVerdict(preview);
 			} else if (s_CommandMode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (s_CommandMode == CommandMode::Guard) {
@@ -2131,8 +2176,8 @@ namespace SandboxDetail {
 				label = std::string(weapons ? "Weapons: " : "Movement: ") + (rule == -1 ? "mixed" : (rule < 0 ? "..." : (weapons ? c_WeaponRuleNames[rule] : c_MovementRuleNames[rule])));
 				return label.c_str();
 			};
-			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Attack-move", c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "Speed"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"Focus on objective", IM_COL32(180, 140, 240, 255), "Flag"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
-			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
+			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Attack-move", c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "Speed"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"Focus on objective", IM_COL32(180, 140, 240, 255), "Flag"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}, {"Dig to", c_CommandModeColors[static_cast<int>(CommandMode::DigTo)], "Dig"}};
+			int picked = DrawRing(commands, s_CommandMode == CommandMode::DigTo ? 11 : static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
 			}
@@ -2158,6 +2203,9 @@ namespace SandboxDetail {
 			} else if (picked == 10) {
 				s_RingOpen = true;
 				s_RingPage = 1;
+			} else if (picked == 11) {
+				// Dig to (RC-11): the clicks to come tunnel to the point.
+				s_CommandMode = CommandMode::DigTo;
 			}
 			return;
 		}
@@ -2848,7 +2896,7 @@ namespace SandboxDetail {
 				}
 				ImGui::PopStyleColor();
 				// (Its key, RC-6; all of them are on the Keys page.)
-				static const char* keys[] = {"M", "T", "G", "F", "B", "R"};
+				static const char* keys[] = {"M", "T", "G", "F", "B", "R", "X"};
 				ImGui::SetItemTooltip("Key: %s", keys[std::min<size_t>(static_cast<size_t>(mode), std::size(keys) - 1)]);
 			}
 			// The patrol route being clicked out (RC-4): started as a loop or back and forth once it has two points.

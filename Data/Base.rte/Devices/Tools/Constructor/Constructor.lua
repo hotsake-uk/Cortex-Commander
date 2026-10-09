@@ -219,6 +219,12 @@ function Update(self)
 		if playerControlled then
 			self.operatedByAI = false;
 			self.toAutoBuild = true;
+		elseif actor.ClassName == "AHuman" and ToAHuman(actor).DiggingRoute then
+			-- Cutting its way along a route (a dig step of the engine's follower, or a dig-to order): it digs, whatever mode it was left in.
+			-- (Left in spray mode, the follower's trigger sprayed concrete into the face it was meant to be cutting.)
+			if self:GetStringValue("ConstructorMode") ~= "Dig" then
+				self:SetStringValue("ConstructorMode", "Dig");
+			end
 		elseif actor.AIMode == Actor.AIMODE_GOLDDIG then
 			if self.toAutoBuild == false then
 				if self:GetStringValue("ConstructorMode") == "Spray" then

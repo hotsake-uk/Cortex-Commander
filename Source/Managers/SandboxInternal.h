@@ -880,11 +880,20 @@ namespace SandboxDetail {
 		Guard, //!< Follow the friendly unit clicked and stay with it.
 		AttackMove, //!< Walk to the point, stopping to fight any enemy met on the way, then carry on to it (RC-2).
 		DefendAt, //!< Post the units round the point to hold it, facing the way the button was dragged (RC-4).
-		Patrol //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
+		Patrol, //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
+		DigTo //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
 	};
 	inline CommandMode s_CommandMode = CommandMode::Move;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255)};
+
+	/// What a dig-to to the point under the cursor would come to for the selected units (RC-11; DigToPreview).
+	struct DigPreview {
+		DigPlan Plan; //!< The lead digger's plan: the first unit that can dig there, else the first unit.
+		float LeadStrength = 0.0F; //!< What that unit's digger cuts.
+		int Units = 0; //!< How many units were checked.
+		int CanDig = 0; //!< How many of them can dig there.
+	};
 	inline std::vector<Vector> s_PatrolDraft; //!< The points of the patrol route being clicked out (RC-4), in order.
 	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
 	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
@@ -1049,6 +1058,8 @@ namespace SandboxDetail {
 		Vector Destination;
 		std::vector<UnitRef> Units;
 		long long At = 0; //!< The sim update it was last added to.
+		std::string Reason = "no route"; //!< Why they couldn't get there, in the player's words (Actor::OrderFailText), the last one added.
+		bool Dig = false; //!< Whether it was a dig-to (RC-11): a click sends them to dig there again, rather than to move there.
 	};
 	inline std::vector<NoRoute> s_NoRoutes;
 	constexpr long long c_NoRouteUpdates = 60 * 10; //!< How long a "no route" marker stays, in sim updates.
@@ -1743,7 +1754,13 @@ namespace SandboxDetail {
 	std::vector<Actor*> UnitsToMove(int team, bool selectedOnly);
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false, int facing = 0);
 	void FacingMoveSelected(const Vector& point, const Vector& facingPoint, bool shift);
-	void AddNoRoute(Actor* unit, const Vector& destination);
+	void AddNoRoute(Actor* unit, const Vector& destination, const std::string& reason = std::string(), bool dig = false);
+	int OrderKindFor(const char* reason);
+	std::vector<DigPlan> DigPlansFor(const std::vector<Actor*>& units, const Vector& point);
+	int DigFailReason(const DigPlan& plan);
+	void DigUnitsTo(const std::vector<Actor*>& units, const Vector& point);
+	const DigPreview& DigToPreview(const std::vector<Actor*>& units, const Vector& point);
+	std::string DigVerdict(const DigPreview& preview);
 	void UpdateMoveWatch();
 	void ReissueNoRoute(const Vector& destination);
 	void MapOrder(const Vector& point, bool shift);
