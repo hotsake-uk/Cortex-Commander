@@ -248,7 +248,7 @@ void Sandbox::TogglePlay(bool atPointer) {
 
 std::string Sandbox::GetCharacterSetup() {
 	std::string setup = s_Player.Body + "|" + std::to_string(s_Player.Team) + "|";
-	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral}) {
+	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral, s_Player.InheritKit}) {
 		setup += flag ? '1' : '0';
 	}
 	setup += "|";
@@ -349,7 +349,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 	s_Player.Body = parts[0];
 	s_Player.Team = std::clamp(std::atoi(parts[1].c_str()), 0, c_Sides - 1);
-	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral};
+	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral, &s_Player.InheritKit};
 	for (size_t i = 0; i < std::size(flags) && i < parts[2].size(); ++i) {
 		*flags[i] = parts[2][i] == '1';
 	}
@@ -859,17 +859,19 @@ void Sandbox::DrawGUI() {
 					ToolUI::RadioButton((std::string(c_SideNames[side]) + "##you").c_str(), &s_Player.Team, side);
 					ImGui::PopStyleColor();
 				}
-				static char bodyFilter[48] = "";
 				static char kitFilter[48] = "";
-				if (ImGui::BeginCombo("Body", s_Player.Body.c_str(), ImGuiComboFlags_HeightLarge)) {
-					ImGui::InputTextWithHint("##bodyFilter", "Search...", bodyFilter, sizeof(bodyFilter));
-					for (const Preset& unit: s_Units) {
-						if (ContainsIgnoringCase(unit.Label, bodyFilter) && ImGui::Selectable(unit.Label.c_str(), unit.PresetName == s_Player.Body)) {
-							s_Player.Body = unit.PresetName;
-						}
-					}
-					ImGui::EndCombo();
+				// The base class: any unit there is, picked from the same browser as the Spawn tab's, folded away until wanted.
+				bool knownBody = FindPreset(s_Units, s_Player.Body) != nullptr;
+				std::string baseHeader = "Base class: " + s_Player.Body + (knownBody ? "" : "  (not in this game)") + "###baseClass";
+				bool baseOpen = ImGui::CollapsingHeader(baseHeader.c_str());
+				ImGui::SetItemTooltip("The unit your character is made as. Open to pick any unit, as on the Spawn tab.");
+				if (baseOpen) {
+					ImGui::PushID("baseClass");
+					PictureGrid(Tool::Unit, nullptr, &s_Player.Body);
+					ImGui::PopID();
 				}
+				ToolUI::Checkbox("Inherit its equipment", &s_Player.InheritKit);
+				ImGui::SetItemTooltip("On: the character also carries what a unit of this kind is spawned with (its own items and its faction's guns), besides the kit below.\nOff: it carries only the kit below.");
 				ImGui::SeparatorText("What it carries");
 				int removeItem = -1;
 				for (size_t i = 0; i < s_Player.Kit.size(); ++i) {
@@ -901,7 +903,7 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Button("Usual kit")) {
 					s_Player.Kit = PlayerSetup().Kit;
 				}
-				ImGui::TextDisabled("A new body or kit is used the next time the character is made.");
+				ImGui::TextDisabled("A new base class or kit is used the next time the character is made.");
 				ImGui::BeginDisabled(!exists);
 				if (ToolUI::Button("Make it again now")) {
 					Stroke stroke;

@@ -80,6 +80,14 @@ namespace SandboxDetail {
 		if (!actor) {
 			return nullptr;
 		}
+		if (s_Player.InheritKit) {
+			// What a unit of that kind carries when spawned: its own inventory and its faction's guns, the kit going on top.
+			GiveLoadout(actor, *body, 0);
+		} else {
+			while (MovableObject* item = actor->RemoveInventoryItemAtIndex(0)) {
+				delete item;
+			}
+		}
 		for (const std::string& itemName: s_Player.Kit) {
 			if (const Preset* item = FindPreset(s_Items, itemName)) {
 				if (MovableObject* object = CreateObject(item->ClassName, item->PresetName, item->ModuleID)) {
