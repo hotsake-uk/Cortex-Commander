@@ -166,11 +166,12 @@ namespace SandboxDetail {
 		PourOther, //!< Pours the liquid or powder chosen under "More..." (Stroke::Material).
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
 		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
-		BattleSpawnZone //!< The Battle Director: a click puts down a spawn zone for the team (s_BattleEditTeam), or takes away the one clicked on.
+		BattleSpawnZone, //!< The Battle Director: a click puts down a spawn zone for the team (s_BattleEditTeam), or takes away the one clicked on.
+		BattleModePoint //!< The Battle Director's modes: a click sets the team's point (s_BattleEditTeam), as capture the flag's flag.
 	};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -252,6 +253,7 @@ namespace SandboxDetail {
 	    {Tool::BattleDefendPoint, "Defence point", 0.0F, false},
 	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
 	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
+	    {Tool::BattleModePoint, "Team's base", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -415,7 +417,43 @@ namespace SandboxDetail {
 		BattleStopTeam, //!< Team stops sending waves. Its units already in stay.
 		BattleStartAll, //!< Every active team starts afresh: spent and sent back to nothing.
 		BattleStopAll, //!< Every team stops.
-		BattleClearCraft //!< Team's ships, all of them, taken off the map (with anyone still aboard).
+		BattleClearCraft, //!< Team's ships, all of them, taken off the map (with anyone still aboard).
+		BattleModeSet, //!< No team's settings: the mode's (Stroke::Mode) only.
+		BattleModeStart, //!< The mode's settings, and its game started afresh, every team in it set up by it (BattleModeInfo::TeamSettings).
+		BattleModeStop //!< The mode's game stopped, and every team with it.
+	};
+
+	/// The Battle Director's preset modes: a game with rules of its own, set up from a few choices (how big, which teams, and a point for
+	/// each) instead of every team's card. Custom is the cards as they are. Each is described by its BattleModeInfo (SandboxBattleModes.cpp),
+	/// so another slots in by adding to this and to that table.
+	enum class BattleMode {
+		Custom,
+		CaptureTheFlag,
+		Count
+	};
+
+	/// How big a mode's battle is: how many units each team keeps in, and how many come at a time.
+	enum class BattleSize {
+		Small,
+		Medium,
+		Large,
+		Huge,
+		Count
+	};
+	constexpr const char* c_BattleSizeNames[] = {"Small", "Medium", "Large", "Huge"};
+	static_assert(std::size(c_BattleSizeNames) == static_cast<size_t>(BattleSize::Count), "c_BattleSizeNames must name each BattleSize.");
+
+	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
+	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
+	struct BattleModeSettings {
+		BattleMode Mode = BattleMode::Custom;
+		BattleSize Size = BattleSize::Medium;
+		std::array<bool, c_Sides> Plays = {true, true, false, false}; //!< The teams taking part, by side.
+		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point set: its base (capture the flag: where its flag stands).
+		std::array<Vector, c_Sides> Points;
+		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing at it.
+		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
+		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -440,6 +478,7 @@ namespace SandboxDetail {
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
+		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 	};
 
 	struct CraftChoice {
@@ -519,6 +558,19 @@ namespace SandboxDetail {
 	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
 	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
 	inline std::vector<BattleCraft> s_BattleCraft;
+
+	/// The Battle Director's mode as the sim runs it: the settings last sent from the window, and how the game is going.
+	struct BattleModeRun {
+		BattleModeSettings Settings;
+		bool Running = false; //!< A mode's game is on: its rules run each update.
+		bool Over = false; //!< Won: the teams stopped, and the result shown till the mode is started again, stopped or left.
+		int Winner = -1;
+		std::array<int, c_Sides> Score{};
+		std::string Note; //!< The latest happening, shown over the game for a few seconds (as "Green has Red's flag").
+		long long NoteAt = -1; //!< The sim update it happened on.
+	};
+	inline BattleModeRun s_ModeRun;
+	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
 	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;
@@ -1450,6 +1502,18 @@ namespace SandboxDetail {
 	void TakeBattleTool(Tool kind, int team);
 	void ToggleSpawnZone(BattleSettings& settings, const Vector& position);
 	void PutDownBattleTool();
+	bool FactionPicker(BattleSettings& setup);
+	void MakeDefender(Actor* unit, const BattleSettings& settings);
+	void RecentreDefenders(int team, const Vector& centre, bool atIt);
+	void SendBattleMode(int command = BattleModeSet);
+	void ApplyBattleMode(const Stroke& stroke);
+	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
+	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
+	void UpdateBattleMode(bool aiPaused);
+	void ForgetBattleMode();
+	void BattleModeTab();
+	void DrawBattleMode();
+	bool BattleModeChooser();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
 	void QueueStroke(Tool kind, const Vector& position);
