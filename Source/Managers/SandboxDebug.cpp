@@ -151,9 +151,11 @@ namespace {
 			const WaterSpawner& spawner = s_WaterSpawners[i];
 			ImVec2 at = ToScreen(spawner.Position);
 			bool hovered = pointedAt(at);
-			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(90, 170, 255, 230);
+			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : MaterialMarkColor(spawner.Liquid);
 			drawList->AddCircle(at, std::max(static_cast<float>(spawner.Radius) / scale, 4.0F), color, 0, 2.0F);
-			std::string text = "water " + std::to_string(spawner.Radius) + " px";
+			// (A filled dot in what it pours, so a row of springs reads as water here, lava there.)
+			drawList->AddCircleFilled(at, 3.0F, MaterialMarkColor(spawner.Liquid, spawner.On ? 255 : 110));
+			std::string text = spawner.Liquid + " " + std::to_string(spawner.Radius) + " px" + (spawner.On ? "" : " (off)");
 			if (hovered) {
 				text += "  (Delete: remove)";
 				if (removeKey && removeEffect < 0) {

@@ -451,6 +451,10 @@ namespace RTE {
 		/// Ends every grade pulse and look blend. At the start of each activity.
 		void ClearEventLooks();
 
+		/// Gets whether the player lets the grade be pushed towards an event look: the blast flash, the hurt look and fire warmth each have their own switch (LightingSettings::EventBlastFlash and the rest).
+		/// @param look The look (LightingSettings::LookHurt, LookFlash, LookWarm; any other is always allowed).
+		bool EventLookAllowed(int look) const;
+
 		/// Gets the grade to draw with: the player's (or a script's look blend), with the pulses playing now on top, each scaled by strength.
 		/// @param playerGrade The grade the player set.
 		/// @param strength LightingSettings::EventLookStrength.

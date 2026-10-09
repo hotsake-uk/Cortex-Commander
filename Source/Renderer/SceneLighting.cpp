@@ -1699,7 +1699,7 @@ void SceneLighting::Update() {
 		return static_cast<float>(m_LightningRandom >> 8) / static_cast<float>(1u << 24);
 	};
 	float lightningRate = CurrentWeather() ? CurrentWeather()->GetParams().Lightning : 0.0F;
-	if (lightningRate > 0.0F && m_Settings.WeatherIntensity > 0.5F) {
+	if (lightningRate > 0.0F && m_Settings.WeatherIntensity > 0.5F && m_Settings.StormFlashes) {
 		m_NextLightningSeconds -= frameSeconds;
 		if (m_NextLightningSeconds <= 0.0F) {
 			m_LightningSecondsLeft = 0.45F;
@@ -1717,7 +1717,12 @@ void SceneLighting::Update() {
 	} else {
 		m_Lightning = 0.0F;
 	}
-	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning;
+	// The player's lightning brightness scales the flash too, and Storm flashes off stops it (an accessibility switch: whole-sky flashes).
+	if (!m_Settings.StormFlashes) {
+		m_Lightning = 0.0F;
+		m_LightningSecondsLeft = 0.0F;
+	}
+	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning * std::clamp(m_Settings.LightningBrightness, 0.0F, 2.0F);
 
 	// Snow settles over about a minute of heavy snowfall and melts slower than that; rain wets the ground quickly and dries slowly.
 	const Weather* weatherNow = CurrentWeather();

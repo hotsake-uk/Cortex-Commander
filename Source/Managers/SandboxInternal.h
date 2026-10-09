@@ -162,6 +162,8 @@ namespace SandboxDetail {
 		GlassShards,
 		Fuel,
 		Cryo,
+		Blood, //!< Pours blood, turning flowing blood on (FluidSim::BloodFlows) if it is off.
+		PourOther, //!< Pours the liquid or powder chosen under "More..." (Stroke::Material).
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
 		BattleDropLine //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
 	};
@@ -190,7 +192,7 @@ namespace SandboxDetail {
 	    {Tool::Lava, "Lava", 0.03F, true},
 	    {Tool::Acid, "Acid", 0.03F, true},
 	    {Tool::Oil, "Oil", 0.03F, true},
-	    {Tool::WaterSpawner, "Water spawner", 0.0F, true},
+	    {Tool::WaterSpawner, "Spring", 0.0F, true},
 	    {Tool::LooseSand, "Loose sand", 0.03F, true},
 	    {Tool::LooseSnow, "Loose snow", 0.03F, true},
 	    {Tool::Boulder, "Boulder", 0.0F, true},
@@ -241,6 +243,8 @@ namespace SandboxDetail {
 	    {Tool::GlassShards, "Glass shards", 0.03F, true},
 	    {Tool::Fuel, "Fuel", 0.03F, true},
 	    {Tool::Cryo, "Cryogenic fluid", 0.03F, true},
+	    {Tool::Blood, "Blood", 0.03F, true},
+	    {Tool::PourOther, "Other", 0.03F, true},
 	    {Tool::BattleDefendPoint, "Defence point", 0.0F, false},
 	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
 	};
@@ -422,6 +426,8 @@ namespace SandboxDetail {
 		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
 		bool Random = false; //!< Drops: random units from every faction rather than the one chosen.
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
+		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
+		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 	};
 
@@ -884,9 +890,38 @@ namespace SandboxDetail {
 	struct WaterSpawner {
 		Vector Position;
 		int Radius = 3; //!< How wide the pour is: air within this many pixels of the place is kept full of water.
+		std::string Liquid = "Water"; //!< What it pours, by preset name: any liquid or powder FluidSim pours.
+		float Rate = 1.0F; //!< How much of the time it pours, 0.05 to 1 (1 every update).
+		float Due = 0.0F; //!< Rate summed since its last pour: it pours when this reaches 1.
+		bool On = true; //!< Off, it stays where it is and pours nothing until turned on again.
 	};
 
 	inline std::vector<WaterSpawner> s_WaterSpawners;
+	inline std::string s_SpringLiquid = "Water"; //!< What new springs and the tank pour (Paint > Springs).
+	inline float s_SpringRate = 1.0F; //!< How much of the time new springs pour.
+	inline std::string s_OtherPourable; //!< The liquid or powder the "Other" tool pours, picked under "More...".
+	inline float s_Flow = 1.0F; //!< How fast the pouring tools pour while held, 0.1 to 1 (they pour every 0.03 s at 1).
+
+	/// The preset names of every material FluidSim pours with the simulations as they are now (liquids, and powders while they slide), mods'
+	/// included, sorted. Read from the materials' behaviour as FluidSim sorts them (IsLiquid; Powder, or the stock powder names).
+	std::vector<std::string> PourableNames();
+
+	/// A liquid's or powder's colour (its terrain colour, brightened a little so dark ones like tar and oil still show), by preset name: the
+	/// marker of a spring that pours it. A blue for a name that is not a material.
+	ImU32 MaterialMarkColor(const std::string& name, int alpha = 230);
+
+	/// The springs placed, by what they pour, sorted by name: for the "remove all" choice.
+	std::vector<std::pair<std::string, int>> SpringCounts();
+
+	/// Whether a tool pours a liquid or powder (FluidSim), and then whether it needs loose powders on to do anything.
+	bool PoursLiquid(Tool kind);
+	bool PoursPowder(Tool kind);
+
+	/// Why a tool would do nothing as the settings are, or nothing: flowing liquids or loose powders off.
+	const char* ToolUnavailableReason(Tool kind);
+
+	/// What a tool does, for its button's tooltip, or nothing.
+	const char* ToolTipText(Tool kind);
 
 	/// Something on its way in from the sky: a rocket, a shell or a bomb. It is kept on its line until it gets there or hits something, then goes off.
 	struct Incoming {

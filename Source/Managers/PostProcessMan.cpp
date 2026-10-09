@@ -366,7 +366,7 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 	}
 	float now = GetSmoothSimTime();
 	for (const LightningBolt& bolt: bolts) {
-		float flash = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.2F, 2.0F);
+		float flash = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.0F, 2.0F);
 		if (flash <= 0.01F) {
 			continue;
 		}
@@ -631,7 +631,7 @@ void PostProcessMan::GetLightningBolts(const Vector& boxPos, int boxWidth, int b
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
 	for (const LightningBolt& bolt: bolts) {
-		float brightness = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.2F, 2.0F);
+		float brightness = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.0F, 2.0F);
 		if (brightness <= 0.01F) {
 			continue;
 		}
@@ -819,6 +819,19 @@ void PostProcessMan::ClearEventLooks() {
 	m_LookBlendOn = false;
 }
 
+bool PostProcessMan::EventLookAllowed(int look) const {
+	switch (look) {
+		case LightingSettings::LookFlash:
+			return m_LightingSettings.EventBlastFlash;
+		case LightingSettings::LookHurt:
+			return m_LightingSettings.EventHurtLook;
+		case LightingSettings::LookWarm:
+			return m_LightingSettings.EventFireWarmth;
+		default:
+			return true;
+	}
+}
+
 LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings::GradeLook& playerGrade, float strength, const std::vector<std::pair<int, float>>& extra) {
 	using GradeLook = LightingSettings::GradeLook;
 	auto mixGrade = [](const GradeLook& a, const GradeLook& b, float t) {
@@ -847,6 +860,9 @@ LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings
 		}
 		std::erase_if(m_GradePulses, [now](const GradePulse& pulse) { return now - pulse.StartSeconds > static_cast<double>(pulse.AttackSeconds + pulse.ReleaseSeconds); });
 		for (const GradePulse& pulse: m_GradePulses) {
+			if (!EventLookAllowed(pulse.Look)) {
+				continue;
+			}
 			float age = static_cast<float>(now - pulse.StartSeconds);
 			float weight = age < pulse.AttackSeconds ? age / std::max(pulse.AttackSeconds, 0.001F) : 1.0F - (age - pulse.AttackSeconds) / pulse.ReleaseSeconds;
 			weight = std::clamp(weight, 0.0F, 1.0F);
@@ -854,7 +870,7 @@ LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings
 		}
 	}
 	for (const auto& [look, weight]: extra) {
-		if (weight > 0.0F) {
+		if (weight > 0.0F && EventLookAllowed(look)) {
 			push(grade, look, weight * strength);
 		}
 	}
