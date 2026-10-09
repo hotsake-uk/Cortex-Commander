@@ -23,6 +23,7 @@
 #include "GUIButton.h"
 #include "GUILabel.h"
 #include "GUIComboBox.h"
+#include "GUICheckbox.h"
 #include "System.h"
 
 #include "SceneEditorGUI.h"
@@ -46,6 +47,7 @@ void SceneEditor::Clear() {
 	m_pNewBG1Combo = 0;
 	m_pNewBG2Combo = 0;
 	m_pNewBG3Combo = 0;
+	m_pNewWrapXCheckbox = 0;
 }
 
 int SceneEditor::Create() {
@@ -126,6 +128,7 @@ int SceneEditor::Start() {
 	m_pNewBG1Combo = dynamic_cast<GUIComboBox*>(m_pGUIController->GetControl("NewBG1CB"));
 	m_pNewBG2Combo = dynamic_cast<GUIComboBox*>(m_pGUIController->GetControl("NewBG2CB"));
 	m_pNewBG3Combo = dynamic_cast<GUIComboBox*>(m_pGUIController->GetControl("NewBG3CB"));
+	m_pNewWrapXCheckbox = dynamic_cast<GUICheckbox*>(m_pGUIController->GetControl("NewWrapXCheckbox"));
 	m_pNewButton = dynamic_cast<GUIButton*>(m_pGUIController->GetControl("NewSceneButton"));
 	m_pNewCancel = dynamic_cast<GUIButton*>(m_pGUIController->GetControl("NewCancelButton"));
 
@@ -300,6 +303,9 @@ void SceneEditor::Update() {
 					if (pItem && !pItem->m_Name.empty()) {
 						SLTerrain* pNewTerrain = dynamic_cast<SLTerrain*>(g_PresetMan.GetEntityPreset("SLTerrain", pItem->m_Name, m_ModuleSpaceID)->Clone());
 						RTEAssert(pNewTerrain, "No SLTerrain of that name defined!");
+						if (m_pNewWrapXCheckbox) {
+							pNewTerrain->SetWrapX(m_pNewWrapXCheckbox->GetCheck() == GUICheckbox::Checked);
+						}
 						pNewScene->Create(pNewTerrain);
 					}
 
@@ -486,6 +492,11 @@ void SceneEditor::Update() {
 				if (anEvent.GetMsg() == GUIComboBox::Closed)
 					UpdateNewDialog();
 			}
+
+			// Picking a terrain resets the wrap checkbox to that terrain's own setting
+			if (anEvent.GetControl() == m_pNewTerrainCombo && anEvent.GetMsg() == GUIComboBox::Closed) {
+				UpdateNewWrapXCheckbox();
+			}
 		}
 	}
 }
@@ -603,6 +614,7 @@ void SceneEditor::UpdateNewDialog() {
 	}
 	// Select the first one
 	m_pNewTerrainCombo->SetSelectedIndex(0);
+	UpdateNewWrapXCheckbox();
 
 	// Refill backdrops
 	m_pNewBG1Combo->SetText("");
@@ -658,6 +670,20 @@ void SceneEditor::UpdateLoadDialog() {
 
 	// Select the first one
 	m_pLoadNameCombo->SetSelectedIndex(0);
+}
+
+void SceneEditor::UpdateNewWrapXCheckbox() {
+	if (!m_pNewWrapXCheckbox) {
+		return;
+	}
+	bool wrapX = true;
+	GUIListPanel::Item* pItem = m_pNewTerrainCombo->GetItem(m_pNewTerrainCombo->GetSelectedIndex());
+	if (pItem && !pItem->m_Name.empty()) {
+		if (const SLTerrain* terrainPreset = dynamic_cast<const SLTerrain*>(g_PresetMan.GetEntityPreset("SLTerrain", pItem->m_Name))) {
+			wrapX = terrainPreset->WrapsX();
+		}
+	}
+	m_pNewWrapXCheckbox->SetCheck(wrapX ? GUICheckbox::Checked : GUICheckbox::Unchecked);
 }
 
 void SceneEditor::UpdateSaveDialog() {

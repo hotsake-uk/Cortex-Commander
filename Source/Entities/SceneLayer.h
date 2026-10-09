@@ -138,6 +138,10 @@ namespace RTE {
 		/// @return Whether this SceneLayer wraps on the X axis or not.
 		bool WrapsX() const { return m_WrapX; }
 
+		/// Sets whether the layer wraps around the X axis. Only takes effect if set before the layer's bitmaps are loaded.
+		/// @param wrapX Whether this SceneLayer should wrap on the X axis.
+		void SetWrapX(bool wrapX) { m_WrapX = wrapX; }
+
 		/// Indicates whether the layer is set to wrap around the Y axis when scrolled out of bounds.
 		/// @return Whether this SceneLayer wraps on the Y axis or not.
 		bool WrapsY() const { return m_WrapY; }
