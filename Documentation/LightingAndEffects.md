@@ -220,7 +220,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 - **World tab:** weather, wind, time of day, slow motion, a free camera toggle, and putting out all fire.
 - **In other games:** F7 opens the same tools as a debug panel.
 - **Lua:**
-  - `SandboxDo(tool, position, side, order, count, presetName)` uses any tool from a script. For example, `SandboxDo("Units", pos, 1, 1, 4, "Soldier Light")` spawns four Red soldiers told to attack. A "Drop squad" with the preset name `"Random units"` or `"Random favourites"` drops random units.
+  - `SandboxDo(tool, position, side, order, count, presetName)` uses any tool from a script. For example, `SandboxDo("Units", pos, 1, 1, 4, "Soldier Light")` spawns four Red soldiers told to attack. A "Drop squad" or "Units" with the preset name `"Random units"`, `"Random favourites"` or `"Random <faction>"` (e.g. `"Random Coalition"`) drops or spawns random units, `count` of them.
   - `SandboxCountUnits(side)` counts a side's units, and `SandboxBuildMode(true/false)` opens or closes the build menu.
 
 **Modern HUD** (`ModernHUD`, in Video settings and F6) is drawn crisply at window resolution on top of the classic HUD. It is off by default. It adds:
