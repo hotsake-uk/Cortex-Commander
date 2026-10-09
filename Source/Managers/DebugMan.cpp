@@ -276,7 +276,7 @@ void DebugMan::DrawToolWindowControls() {
 		if (ImGui::InputFloat("Panel width (% of screen)", &panelWidth, 1.0F, 5.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
 			m_PanelWidth = std::clamp(panelWidth, 10.0F, 40.0F);
 		}
-		ImGui::SetItemTooltip("How wide the side panels are, as a share of the window's width: type a number from 10 to 40 and press Enter.\nThe right panel is 1.4 times as wide. Controls that don't fit on a line go onto the next.");
+		ImGui::SetItemTooltip("How wide the side panels are, as a share of the window's width: type a number from 10 to 40 and press Enter, or drag a panel's inner edge.\nThe right panel is 1.4 times as wide. Controls that don't fit on a line go onto the next.");
 		float barWidth = m_BarWidth;
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
 		if (ImGui::InputFloat("Sandbox bar width (% of screen)", &barWidth, 5.0F, 10.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -452,6 +452,9 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 	ImGui::SetNextWindowSize(ImVec2(width, io.DisplaySize.y), ImGuiCond_Always);
 	ImGui::Begin(side == PanelSide::Left ? "##ToolsLeft" : "##ToolsRight", nullptr,
 	             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+	if (m_PanelsThisFrame[sideIndex] == 1) {
+		PanelEdgeHandle(side);
+	}
 	ImGui::BeginTabBar("##ToolTabs", ImGuiTabBarFlags_FittingPolicyScroll);
 	// A tool window that has just been opened comes to the front.
 	static std::unordered_map<ImGuiID, int> lastSeen;
@@ -466,6 +469,35 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 	}
 	m_PanelKind = 1;
 	return false;
+}
+
+void DebugMan::PanelEdgeHandle(PanelSide side) {
+	// A strip along the panel's inner edge: dragged, it sets the panels' width, kept as a share of the window's width.
+	ImGuiIO& io = ImGui::GetIO();
+	ImVec2 windowPos = ImGui::GetWindowPos();
+	ImVec2 windowSize = ImGui::GetWindowSize();
+	float grip = std::max(6.0F, ImGui::GetFontSize() * 0.4F);
+	float edge = side == PanelSide::Left ? windowPos.x + windowSize.x : windowPos.x;
+	ImVec2 from(side == PanelSide::Left ? edge - grip : edge, windowPos.y);
+	ImVec2 cursor = ImGui::GetCursorScreenPos();
+	ImGui::PushClipRect(windowPos, ImVec2(windowPos.x + windowSize.x, windowPos.y + windowSize.y), false);
+	ImGui::SetCursorScreenPos(from);
+	ImGui::InvisibleButton("##panelEdge", ImVec2(grip, windowSize.y));
+	bool hovered = ImGui::IsItemHovered();
+	bool active = ImGui::IsItemActive();
+	if (active && io.DisplaySize.x > 0.0F) {
+		float wanted = side == PanelSide::Left ? io.MousePos.x : io.DisplaySize.x - io.MousePos.x;
+		float share = wanted / io.DisplaySize.x * 100.0F;
+		m_PanelWidth = std::clamp(side == PanelSide::Left ? share : share / 1.4F, 10.0F, 40.0F);
+	}
+	if (hovered || active) {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+		float lineX = side == PanelSide::Left ? edge - 2.0F : edge + 1.0F;
+		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(lineX, windowPos.y), ImVec2(lineX + 1.0F, windowPos.y + windowSize.y), ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive : ImGuiCol_SeparatorHovered));
+	}
+	ImGui::SetItemTooltip("Drag to make the panels wider or narrower.");
+	ImGui::PopClipRect();
+	ImGui::SetCursorScreenPos(cursor);
 }
 
 void DebugMan::EndPanel() {

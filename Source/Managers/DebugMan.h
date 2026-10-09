@@ -152,6 +152,9 @@ namespace RTE {
 		/// Gets how wide the docked panel at a side is, in window pixels.
 		float GetPanelWidth(PanelSide side) const;
 
+		/// The grip along the inner edge of a docked panel that sets the panels' width when dragged. Called inside the panel's window.
+		void PanelEdgeHandle(PanelSide side);
+
 	public:
 		/// Gets how wide the sandbox bar is, as a share (0 to 1) of the game's picture. Its controls wrap onto more lines inside that.
 		float GetBarWidthShare() const { return m_BarWidth / 100.0F; }
