@@ -1119,12 +1119,39 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 			rgb = paler(16) | paler(8) | paler(0);
 		}
 	}
-	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount)), 1, 80);
-	int columns = std::clamp(static_cast<int>(width / 4.0F), 1, std::min(total, 20));
-	for (int column = 0; column < columns; ++column) {
-		float across = columns > 1 ? static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F : 0.0F;
-		int here = total / columns + (column < total % columns ? 1 : 0);
-		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y), Vector(), 0.05F, here, rgb);
+	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	float density = std::clamp(settings.SplashFrothDensity, 0.1F, 6.0F);
+	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount * density)), 1, 240);
+	// (Render only: its own random numbers, never the simulation's.)
+	static unsigned int s_VisualRandom = 0x2545F491u;
+	auto visualRandom = []() {
+		s_VisualRandom ^= s_VisualRandom << 13;
+		s_VisualRandom ^= s_VisualRandom >> 17;
+		s_VisualRandom ^= s_VisualRandom << 5;
+		return static_cast<float>(s_VisualRandom & 0xFFFFFF) / static_cast<float>(0x1000000);
+	};
+	// Little bursts, not a row: a few centres at random places over the width (more of them the wider it is), each puff thrown out round one of
+	// them, flatter than it is wide, so the froth comes in separate clumps with gaps between.
+	int bursts = std::clamp(static_cast<int>(width / 14.0F * (0.6F + visualRandom() * 0.8F)), 1, 8);
+	std::array<float, 8> burstX{};
+	std::array<float, 8> burstReach{};
+	for (int burst = 0; burst < bursts; ++burst) {
+		burstX[burst] = (visualRandom() - 0.5F) * width;
+		burstReach[burst] = 2.5F + visualRandom() * 5.0F;
+	}
+	float specks = std::clamp(settings.SplashFrothSpecks, 0.0F, 3.0F);
+	for (int puff = 0; puff < total; ++puff) {
+		int burst = static_cast<int>(visualRandom() * static_cast<float>(bursts)) % bursts;
+		float angle = visualRandom() * 6.2831853F;
+		float radius = burstReach[burst] * std::sqrt(visualRandom());
+		float x = position.m_X + burstX[burst] + std::cos(angle) * radius;
+		float y = position.m_Y + std::sin(angle) * radius * 0.45F - 1.0F;
+		EffectsParticles::Emit("Froth", Vector(x, y), Vector(), 0.6F, 1, rgb);
+		// Pixel-sized specks in front of the puffs: a pale one or two hopping off the surface at each, now and then.
+		if (specks > 0.0F && visualRandom() < std::min(0.6F * specks, 1.0F)) {
+			Vector hop((visualRandom() - 0.5F) * 2.0F, -(0.5F + visualRandom() * 1.5F));
+			EffectsParticles::Emit("Droplets", Vector(x + (visualRandom() - 0.5F) * 3.0F, y - 1.0F), hop, 0.3F, 1 + (specks > 1.5F && visualRandom() < 0.5F ? 1 : 0), 0xE6F4FF);
+		}
 	}
 }
 

@@ -66,7 +66,7 @@ namespace RTE {
 		/// Applies what was queued from the window, keeps attacking units on a target and keeps the god view. Call once per sim update, from the main thread, before the fire, liquid and object updates.
 		static void Update();
 
-		/// Forgets the last game's sandbox state (orders, selection, effects, auto battle, colonies, the AI pause) and has the god view set up
+		/// Forgets the last game's sandbox state (orders, selection, effects, battle, colonies, the AI pause) and has the god view set up
 		/// afresh. Called by ActivityMan::StartActivity for every game it starts, before the game's own start-up.
 		static void OnActivityStarted();
 
@@ -90,18 +90,39 @@ namespace RTE {
 		/// @return Whether the game is now building.
 		static bool SetBuildMode(bool build);
 
-		/// Sets up one side of an auto battle (Lua: SandboxAutoBattleSide).
+		/// Sets up one team of the Battle Director, as its card on the Battle tab does (Lua: SandboxBattleTeam). The team's other settings stay as they are.
+		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow.
+		/// @param factions The factions its units come from, by module name ("Coalition" or "Browncoats.rte"), comma-separated; empty for any.
+		/// @param style How it fights: 0 attack nearest enemy, 1 hunt brains, 2 defend a place (SandboxBattleDefend), 3 patrol, 4 hold position.
+		/// @param budget How much it can spend in all; 0 for no limit, below 0 to leave the team out.
+		static void SetBattleTeam(int team, const std::string& factions, int style, int budget);
+
+		/// Sets how a Battle Director team's ships come in (Lua: SandboxBattleDrops).
 		/// @param team The side.
-		/// @param faction The faction's module name, like "Coalition" or "Browncoats.rte".
-		/// @param budget How much the side can spend, 0 to leave it out.
+		/// @param craft 0 dropship, 1 rocket.
+		/// @param ships How many set off together, each with a wave of its own.
+		/// @param everySeconds Seconds of game time between them.
+		/// @param waveSize Units in each.
+		/// @param invincible Whether the ships take no harm (and are taken away once they've left).
+		static void SetBattleDrops(int team, int craft, int ships, int everySeconds, int waveSize, bool invincible);
+
+		/// Sets the place a Battle Director team defends, for its "defend a place" style (Lua: SandboxBattleDefend).
+		/// @param team The side.
+		/// @param place The middle of the place.
+		/// @param radius How far round it the team's units stand and fight.
+		/// @param chase How far past that they go after an enemy before going back.
+		static void SetBattleDefend(int team, const Vector& place, int radius, int chase);
+
+		/// Starts every team set up for the Battle Director afresh (Lua: SandboxBattleStart). It runs until stopped.
+		static void StartBattle();
+
+		/// Stops every Battle Director team sending waves (Lua: SandboxBattleStop). Their units already in stay.
+		static void StopBattle();
+
+		/// The old auto battle's calls, kept for one release for scripts that use them: a team attacking with one faction's units, or any
+		/// faction's (Lua: SandboxAutoBattleSide, SandboxAutoBattleRandom, SandboxStartAutoBattle). Use the SandboxBattle calls instead.
 		static void SetAutoBattleSide(int team, const std::string& faction, int budget);
-
-		/// Sets whether the next auto battle a script starts buys random units rather than each side's faction (Lua: SandboxAutoBattleRandom).
-		/// @param random Whether the waves are random units from every faction.
-		/// @param favouritesOnly With random: only units marked as favourites (any, when none are).
 		static void SetAutoBattleRandom(bool random, bool favouritesOnly);
-
-		/// Starts an auto battle between the sides set up for it (Lua: SandboxStartAutoBattle).
 		static void StartAutoBattle();
 
 		/// Pauses or resumes the AI everywhere: AI-run units stand still until it's resumed (Lua: SandboxPauseAI).

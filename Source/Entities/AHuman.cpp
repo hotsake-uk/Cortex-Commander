@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "TerrainCollapse.h"
 #include "ConsoleMan.h"
 #include "SmokeGrid.h"
 #include "WeatherEffects.h"
@@ -2443,6 +2444,11 @@ void AHuman::PreControllerUpdate() {
 					m_WalkAngle[BGROUND] = Matrix();
 				} else {
 					m_StrideFrame = true;
+					// A foot coming down on sand disturbs it, shoving it the way the unit is going.
+					if (AtomGroup* foot = (m_pFGLeg && m_pFGFootGroup) ? m_pFGFootGroup : m_pBGFootGroup; foot && std::abs(m_Vel.m_X) > 0.3F) {
+						Vector footPos = foot->GetLimbPos(m_HFlipped);
+						TerrainCollapse::NoteFootfall(static_cast<int>(footPos.m_X), static_cast<int>(footPos.m_Y), m_Vel.m_X < 0.0F ? -1 : 1, std::abs(m_Vel.m_X));
+					}
 					RunScriptedFunctionInAppropriateScripts("OnStride");
 				}
 			}
@@ -3339,6 +3345,17 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 				}
 				rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 6, drawPos.GetFloorIntX() + static_cast<int>(15.0F * jetTimeRatio), drawPos.GetFloorIntY() + m_HUDStack + 7, gaugeColor);
 			}
+			m_HUDStack -= 9;
+		}
+
+		// Air left while its head is under liquid (LM-4), so the player sees the unit is about to drown. It blinks in the last quarter.
+		if (float air = ActorWater::GetAir(this); air < 1.0F && m_Status != INACTIVE && !m_Controller.IsState(PIE_MENU_ACTIVE)) {
+			if (air > 0.25F || m_IconBlinkTimer.AlternateSim(200)) {
+				pSmallFont->DrawAligned(&allegroBitmap, drawPos.GetFloorIntX() - 2, drawPos.GetFloorIntY() + m_HUDStack + 3, "Air", GUIFont::Right);
+			}
+			rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1, drawPos.GetFloorIntY() + m_HUDStack + 7, drawPos.GetFloorIntX() + 15, drawPos.GetFloorIntY() + m_HUDStack + 8, 245);
+			int gaugeColor = air > 0.5F ? 149 : (air > 0.25F ? 77 : 13);
+			rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 6, drawPos.GetFloorIntX() + static_cast<int>(15.0F * air), drawPos.GetFloorIntY() + m_HUDStack + 7, gaugeColor);
 			m_HUDStack -= 9;
 		}
 

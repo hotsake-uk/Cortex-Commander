@@ -769,6 +769,8 @@ int main(int argc, char** argv) {
 	g_ThreadMan.GetPriorityThreadPool().wait_for_tasks();
 	g_ThreadMan.GetBackgroundThreadPool().wait_for_tasks();
 
+	// Keep what was changed in F6 and not saved since (the panel saves when it closes, but not when the game is quit with it open).
+	g_SettingsMan.UpdateSettingsFile();
 	DestroyManagers();
 
 	SDL_Quit();

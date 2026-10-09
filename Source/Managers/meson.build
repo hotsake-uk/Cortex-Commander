@@ -39,6 +39,8 @@ sources += files(
 'SandboxPlayer.cpp',
 'SandboxWindow.cpp',
 'SandboxGym.cpp',
+'SandboxBattle.cpp',
+'SandboxBattleModes.cpp',
 'SandboxDebug.cpp',
 'SandboxMinimap.cpp',
 'Colony.cpp',

@@ -655,7 +655,7 @@ namespace RTE {
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
-		bool m_SandboxAutoBattle; //!< Whether the sandbox's auto battle and colony readout is on (see ShowSandboxAutoBattle).
+		bool m_SandboxAutoBattle; //!< Whether the sandbox's battle and colony readout is on (see ShowSandboxAutoBattle). (Named for the auto battle the Battle Director replaced, so settings files keep it.)
 		bool m_SandboxPaintAudit; //!< Whether the sandbox's terrain paint audit is on (see ShowSandboxPaintAudit).
 		bool m_SandboxSelectionCamera; //!< Whether the sandbox's selection and camera overlay is on (see ShowSandboxSelectionCamera).
 		bool m_SandboxEffects; //!< Whether the sandbox's incoming and effects overlay is on (see ShowSandboxEffects).

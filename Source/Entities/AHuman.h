@@ -53,6 +53,10 @@ namespace RTE {
 
 		/// Public member variable, method and friend function declarations
 	public:
+		/// Finds the scene's background ladder nodes again if they are over 4 s old, on the main thread, before the units and their AI update.
+		/// The AI threads then read them with no lock: nothing writes them while those threads run.
+		static void RefreshLadderNodes();
+
 		// Concrete allocation and cloning definitions
 		EntityAllocation(AHuman);
 		AddScriptFunctionNames(Actor, "OnStride");
@@ -1018,9 +1022,7 @@ namespace RTE {
 		/// The hands and feet on the rungs.
 		void UpdateLadderLimbs();
 		void LetGoOfLadder(const Vector& velocity);
-		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
-		static std::shared_mutex s_LadderNodesMutex; //!< The AI's route-following runs on several threads at once: one refreshes the nodes
-		                                             //!< while the others read them.
+		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see RefreshLadderNodes).
 		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it
 		                                      //!< reads, and crashed the game before its window opened.)

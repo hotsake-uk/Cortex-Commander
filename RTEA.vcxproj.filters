@@ -859,6 +859,12 @@
     <ClCompile Include="Source\Managers\SandboxGym.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxBattle.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxBattleModes.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\SandboxDebug.cpp">
       <Filter>Managers</Filter>
     </ClCompile>

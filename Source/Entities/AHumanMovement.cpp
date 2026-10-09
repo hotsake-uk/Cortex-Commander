@@ -3,6 +3,7 @@
 // script it replaces (SharedBehaviors.GoToWpt) had grown into a dozen controllers handing the unit between them, and every hand-over was
 // a stutter of the jet or a turn in the air. Flights are flown by AHuman::PilotFlight. The script keeps its hook: it calls this each
 // tick from a coroutine of its own (SharedBehaviors.GoToRoute), and a mod that replaces that keeps working.
+#include "SoundContainer.h"
 #include "AHuman.h"
 #include "ActorWater.h"
 #include "ADoor.h"
@@ -73,42 +74,27 @@ namespace {
 // it aims up and presses up, down likewise. The nodes are found among the scene's particles now and then and kept.
 std::vector<Vector> AHuman::s_LadderNodes;
 double AHuman::s_LadderNodesSimTimeMS = -1.0;
-std::shared_mutex AHuman::s_LadderNodesMutex;
+
+void AHuman::RefreshLadderNodes() {
+	// (Was done by whichever AI thread found the nodes out of date, under a lock every ladder lookup on every thread took. Here, on the main
+	// thread before the AI runs, the lookups need none. A sim clock gone back means a new game.)
+	double now = g_TimerMan.GetSimTimeMS();
+	if (s_LadderNodesSimTimeMS >= 0.0 && now >= s_LadderNodesSimTimeMS && now - s_LadderNodesSimTimeMS <= 4000.0) {
+		return;
+	}
+	s_LadderNodesSimTimeMS = now;
+	static const std::string c_LadderNodeName = "Background Ladder Node";
+	s_LadderNodes.clear();
+	// Pinned first, as most particles aren't, then the name.
+	for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+		if (particle && particle->GetPinStrength() > 0.0F && particle->GetPresetName() == c_LadderNodeName) {
+			s_LadderNodes.push_back(particle->GetPos());
+		}
+	}
+}
 
 std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
-	// (Called from the AI's threads, several units at once: the one that finds the nodes out of date finds them again under the lock while
-	// the rest wait, and the node found is handed back by value, not as a pointer into a list another thread may be refilling.)
-	double now = g_TimerMan.GetSimTimeMS();
-	auto outOfDate = [now]() { return s_LadderNodesSimTimeMS < 0.0 || now - s_LadderNodesSimTimeMS > 4000.0; };
-	bool refresh;
-	{
-		std::shared_lock lock(s_LadderNodesMutex);
-		refresh = outOfDate();
-	}
-	if (refresh) {
-		// The one that claims the refresh walks the particles outside the lock, and the rest go on with the nodes as they were meanwhile (they
-		// waited on the walk before: a millisecond in a big battle). Pinned first, as most particles aren't, then the name.
-		bool claimed = false;
-		{
-			std::unique_lock lock(s_LadderNodesMutex);
-			if (outOfDate()) {
-				s_LadderNodesSimTimeMS = now;
-				claimed = true;
-			}
-		}
-		if (claimed) {
-			static const std::string c_LadderNodeName = "Background Ladder Node";
-			std::vector<Vector> nodes;
-			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
-				if (particle && particle->GetPinStrength() > 0.0F && particle->GetPresetName() == c_LadderNodeName) {
-					nodes.push_back(particle->GetPos());
-				}
-			}
-			std::unique_lock lock(s_LadderNodesMutex);
-			s_LadderNodes.swap(nodes);
-		}
-	}
-	std::shared_lock lock(s_LadderNodesMutex);
+	// (Called from the AI's threads, several units at once: read only, refreshed by RefreshLadderNodes while none of them runs.)
 	std::optional<Vector> best;
 	float bestDistance = std::numeric_limits<float>::max();
 	for (const Vector& node: s_LadderNodes) {
@@ -1382,7 +1368,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("stuckLevel", mover.stuckLevel);
 	{
 		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
-		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", false});
+		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
 	if (mover.fuelWaiting) {

@@ -153,7 +153,7 @@ namespace SandboxDetail {
 		ClearWaterSpawners,
 		ClearEffects, //!< Count: 1 the last one only, else all.
 		UndoTerrain, //!< Puts back the terrain the last paint or build stroke changed (see s_PaintUndo).
-		AutoBattle, //!< Count: how many sides fight (0 stops a battle under way); Choice: each side's budget; Position and Radius: the view's middle and width.
+		BattleTeam, //!< The Battle Director: Team's settings (Battle) set, and Count a BattleCommand. (Was the auto battle's, AutoBattle: renamed, so the tools after keep their numbers.)
 		// The new liquids and loose materials (SB-2), poured like water: appended, so the tools before keep their numbers.
 		Mud,
 		Tar,
@@ -161,8 +161,19 @@ namespace SandboxDetail {
 		Gravel,
 		GlassShards,
 		Fuel,
-		Cryo
+		Cryo,
+		Blood, //!< Pours blood, turning flowing blood on (FluidSim::BloodFlows) if it is off.
+		PourOther, //!< Pours the liquid or powder chosen under "More..." (Stroke::Material).
+		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
+		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
+		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
+		BattleModePoint, //!< The Battle Director's modes: a click inside the team's base sets its point (s_BattleEditTeam), as capture the flag's flag.
+		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of the team's base (s_BattleEditTeam), as a spawn zone's.
+		BattleModeZone //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
 	};
+
+	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -188,7 +199,7 @@ namespace SandboxDetail {
 	    {Tool::Lava, "Lava", 0.03F, true},
 	    {Tool::Acid, "Acid", 0.03F, true},
 	    {Tool::Oil, "Oil", 0.03F, true},
-	    {Tool::WaterSpawner, "Water spawner", 0.0F, true},
+	    {Tool::WaterSpawner, "Spring", 0.0F, true},
 	    {Tool::LooseSand, "Loose sand", 0.03F, true},
 	    {Tool::LooseSnow, "Loose snow", 0.03F, true},
 	    {Tool::Boulder, "Boulder", 0.0F, true},
@@ -239,6 +250,14 @@ namespace SandboxDetail {
 	    {Tool::GlassShards, "Glass shards", 0.03F, true},
 	    {Tool::Fuel, "Fuel", 0.03F, true},
 	    {Tool::Cryo, "Cryogenic fluid", 0.03F, true},
+	    {Tool::Blood, "Blood", 0.03F, true},
+	    {Tool::PourOther, "Other", 0.03F, true},
+	    {Tool::BattleDefendPoint, "Defence point", 0.0F, false},
+	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
+	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
+	    {Tool::BattleModePoint, "Flag", 0.0F, false},
+	    {Tool::BattleModeBase, "Team's base", 0.0F, false},
+	    {Tool::BattleModeZone, "Mode zone", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -354,6 +373,100 @@ namespace SandboxDetail {
 	inline std::vector<const Preset*> s_Weapons; //!< Guns among the items, for loadouts.
 	inline bool s_CatalogueBuilt = false;
 
+	/// How a Battle Director team fights (BattleSettings::Style). All but Defend are the unit orders of the same names.
+	enum class BattleStyle {
+		Attack,
+		HuntBrains,
+		Defend,
+		Patrol,
+		Hold,
+		Count
+	};
+	constexpr const char* c_BattleStyleNames[] = {"Attack nearest enemy", "Hunt brains", "Defend a place", "Patrol", "Hold position"};
+	static_assert(std::size(c_BattleStyleNames) == static_cast<size_t>(BattleStyle::Count), "c_BattleStyleNames must name each BattleStyle.");
+
+	/// What the Battle tab's card for one team says: which units it buys, how it fights, and how its ships come in. The window keeps its own
+	/// copy (s_BattleSetup) and sends it to the sim in a stroke (Tool::BattleTeam) whenever it changes, as every other choice is sent.
+	struct BattleSettings {
+		bool Active = false; //!< Takes part: started by "Start battle".
+		std::vector<int> Factions; //!< The module IDs of the factions its units come from; none for any faction.
+		bool FavouritesOnly = false; //!< Only units marked as favourites (of those factions); any, when none are.
+		BattleStyle Style = BattleStyle::Attack;
+		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
+		int Budget = 5000; //!< What it may spend in all, in oz.
+		int WaveSize = 5; //!< Units in each ship.
+		int UnitLimit = 0; //!< Most units it has in at once, counting those still in its ships: none sent past it, fewer to top it up. 0 for no limit.
+		int Craft = 0; //!< Index into c_Crafts.
+		bool DropOnLine = false; //!< Ships come in over the drop line, not anywhere across the scene.
+		bool HasLine = false;
+		Vector LineA; //!< The drop line's ends: only its span across counts, as ships come in from the top (or the bottom).
+		Vector LineB;
+		int ShipsPerBurst = 1; //!< Ships that set off together, each with a wave of its own. 0 for none: the team's units come only from its spawn zones.
+		std::vector<std::vector<Vector>> SpawnZones; //!< Areas of the map drawn as polygons (their corners in order, each next to the first, not wrapped), that its units appear in, besides (or instead of) coming in by ship.
+		int ZoneEverySeconds = 30; //!< Seconds of game time between one lot of units at the spawn zones and the next.
+		int ZoneUnits = 3; //!< Units that appear at each spawn zone each time.
+		int EverySeconds = 30; //!< Seconds of game time between bursts.
+		bool Invincible = false; //!< Its ships take no harm, and are taken away once they've unloaded and left.
+		bool HasDefendPos = false;
+		Vector DefendPos; //!< Defend: the middle of the place its units hold.
+		int DefendRadius = 150; //!< Defend: how far round DefendPos its units stand and fight.
+		int ChaseDistance = 300; //!< Defend: how far past the radius they go after an enemy before giving up and going back.
+		int RoamPercent = 0; //!< Defend: the share of its defenders, in percent, that roam the whole chase zone rather than hold a post.
+	};
+
+	/// What a Tool::BattleTeam stroke does, by its Count, besides setting Team's settings.
+	enum BattleCommand {
+		BattleSet = 0, //!< Only the settings.
+		BattleStartTeam, //!< Team starts (or carries on, if it ran before) sending waves.
+		BattleStopTeam, //!< Team stops sending waves. Its units already in stay.
+		BattleStartAll, //!< Every active team starts afresh: spent and sent back to nothing.
+		BattleStopAll, //!< Every team stops.
+		BattleClearCraft, //!< Team's ships, all of them, taken off the map (with anyone still aboard).
+		BattleModeSet, //!< No team's settings: the mode's (Stroke::Mode) only.
+		BattleModeStart, //!< The mode's settings, and its game started afresh, every team in it set up by it (BattleModeInfo::TeamSettings).
+		BattleModeStop //!< The mode's game stopped, and every team with it.
+	};
+
+	/// The Battle Director's preset modes: a game with rules of its own, set up from a few choices (how big, which teams, and a point for
+	/// each) instead of every team's card. Custom is the cards as they are. Each is described by its BattleModeInfo (SandboxBattleModes.cpp),
+	/// so another slots in by adding to this and to that table.
+	enum class BattleMode {
+		Custom,
+		CaptureTheFlag,
+		KingOfTheHill,
+		Assault,
+		LastTeamStanding,
+		VipHunt,
+		Count
+	};
+
+	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
+	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
+	struct BattleModeSettings {
+		BattleMode Mode = BattleMode::Custom;
+		int TeamSize = 16; //!< Most units each team has alive at once.
+		std::array<bool, c_Sides> Plays = {true, true, false, false}; //!< The teams taking part, by side.
+		std::array<std::vector<Vector>, c_Sides> Bases; //!< Each team's base, drawn as a polygon as a spawn zone is: its units appear in it.
+		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
+		std::array<Vector, c_Sides> Points;
+		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
+		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
+		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
+		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
+		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
+		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
+		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
+		int HillMoveSeconds = 0; //!< King of the hill, with more than one hill: seconds before the hill moves on to the next. 0: it stays put.
+		bool MajorityScores = false; //!< King of the hill: a hill with more than one team on it scores for the team with the most there, not for none.
+		int Attacker = 0; //!< Assault: the side that attacks; the rest defend.
+		int CaptureSeconds = 15; //!< Assault: seconds attackers stand in an objective with no defender in it to take it.
+		int TimeLimit = 300; //!< Assault: seconds the attackers have; each objective taken adds BonusSeconds.
+		int BonusSeconds = 60;
+		int Tickets = 60; //!< Last team standing: units each team gets in all, its first ones counted.
+		int KillsToWin = 5; //!< VIP hunt: enemy VIPs a team has to bring down to win.
+		int VipRespawnSeconds = 20; //!< VIP hunt: seconds before a fallen VIP's team has a new one.
+	};
+
 	/// One queued action, with the settings it was made with.
 	struct Stroke {
 		Tool Kind;
@@ -371,8 +484,12 @@ namespace SandboxDetail {
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
 		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
-		bool Random = false; //!< Drops and auto battles: random units from every faction rather than the one chosen.
+		bool Random = false; //!< Drops: random units from every faction rather than the one chosen.
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
+		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
+		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
+		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
+		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 	};
 
 	struct CraftChoice {
@@ -397,15 +514,39 @@ namespace SandboxDetail {
 	inline bool RefersTo(const UnitRef& ref, const Actor* actor) { return actor && ref.Unit == actor && ref.ID == static_cast<long>(actor->GetUniqueID()); }
 
 
-	/// One side in an auto battle.
-	struct AutoSide {
-		bool Active = false;
-		int Faction = 0; //!< Index into s_FactionModules.
-		int Budget = 5000;
+	/// One team in the Battle Director, as the sim runs it: the settings last sent from the window, and how it is getting on.
+	struct BattleTeam {
+		BattleSettings Settings;
+		bool Running = false; //!< Sending waves.
 		float Spent = 0.0F;
 		int Sent = 0;
-		long long NextWave = 0;
+		long long NextWave = 0; //!< The sim update its next burst of ships sets off on.
+		long long NextZoneWave = 0; //!< The sim update units next appear at its spawn zones on.
+		std::vector<Vector> ZoneDraft; //!< The corners of a spawn zone a script is putting down, one SandboxDo at a time, till it closes it.
 		bool Broke = false; //!< Can't afford another unit.
+		bool FillFirst = false; //!< Its next lot of ships or spawn zone units brings it up to its unit limit at once (a mode's game starting with whole teams).
+	};
+
+	/// A Battle Director unit told to defend a place: it holds a post there and goes after enemies near it, but only so far (UpdateBattleDefenders).
+	struct BattleDefender {
+		int Team = 0; //!< Its team, whose card's place, radius and chase distance it goes by while the team still defends one.
+		Vector Center; //!< The place it defends.
+		float Radius = 150.0F;
+		float Chase = 300.0F; //!< How far past Radius from Center it may go after an enemy.
+		Vector Post; //!< Where it stands when there's nothing to chase (a roamer: the spot it's walking to, or waiting at).
+		float RoamRoll = 0.0F; //!< Its own 0-1 roll, fixed when bought: it roams while that's under the card's RoamPercent.
+		bool Roams = false; //!< Roams the chase zone, from one spot to another, rather than holding a post.
+		long long IdleSince = -1; //!< A roamer: the sim update it was first seen waiting at its spot, -1 while on its way.
+		long long Dwell = 0; //!< A roamer: how long it waits at a spot before going on, in sim updates.
+		long ChasingID = 0; //!< The enemy it was sent after, 0 when at (or on its way back to) its post.
+		bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
+		long long Made = 0; //!< The sim update it was made on.
+	};
+
+	/// A Battle Director ship that can't be hurt, kept whole until it has delivered and left (UpdateBattleCraft).
+	struct BattleCraft {
+		UnitRef Ship;
+		long long Emptied = -1; //!< The sim update it was first seen empty after delivering, -1 until then.
 	};
 
 	inline int s_ToolIndex = 0;
@@ -418,20 +559,34 @@ namespace SandboxDetail {
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
 	inline ImVec2 s_DragStart;
-	inline std::array<AutoSide, 4> s_AutoSides;
-	inline bool s_AutoRunning = false;
-	inline int s_AutoWinner = -2; //!< -2 no result yet, -1 a draw, otherwise the winning side.
-	inline Vector s_AutoCenter;
-	inline float s_AutoLaneWidth = 0.0F; //!< The view's width when the auto battle began: the lanes the waves land in are spaced by it.
-	inline bool s_AutoRandom = false; //!< The waves are random units from every faction (or the favourites), not each side's own faction's.
-	inline bool s_AutoFavourites = false; //!< With s_AutoRandom: only units marked as favourites.
-	inline bool s_ScriptAutoRandom = false; //!< A script's auto battle (SandboxStartAutoBattle) is random units (SandboxAutoBattleRandom).
-	inline bool s_ScriptAutoFavourites = false; //!< With s_ScriptAutoRandom: only units marked as favourites.
-	// The window's choices for an auto battle and for a random drop (copied into the stroke at the click).
-	inline int s_AutoSideCount = 2;
-	inline int s_AutoBudget = 5000;
-	inline bool s_AutoRandomChoice = true;
-	inline bool s_AutoFavouritesChoice = false;
+	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
+	inline std::array<BattleSettings, c_Sides> s_BattleSetup = [] { //!< The Battle tab's cards, the window's copy (sent to the sim as each changes).
+		std::array<BattleSettings, c_Sides> setup;
+		// Red against Green to start with.
+		setup[0].Active = true;
+		setup[1].Active = true;
+		return setup;
+	}();
+	inline int s_BattleEditTeam = 0; //!< The team the defence point and drop line tools set.
+	inline std::vector<Vector> s_ZoneDraft; //!< The corners of the spawn zone being drawn with the Battle tab's tool, in order.
+	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
+	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
+	inline std::vector<BattleCraft> s_BattleCraft;
+
+	/// The Battle Director's mode as the sim runs it: the settings last sent from the window, and how the game is going.
+	struct BattleModeRun {
+		BattleModeSettings Settings;
+		bool Running = false; //!< A mode's game is on: its rules run each update.
+		bool Over = false; //!< Won: the teams stopped, and the result shown till the mode is started again, stopped or left.
+		int Winner = -1;
+		std::array<int, c_Sides> Score{};
+		std::string Result; //!< Once over: how it ended, as "Red is the last team standing" (or, when empty, who won).
+		std::string Note; //!< The latest happening, shown over the game for a few seconds (as "Green has Red's flag").
+		long long NoteAt = -1; //!< The sim update it happened on.
+	};
+	inline BattleModeRun s_ModeRun;
+	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;
 	inline std::vector<int> s_FactionModules;
@@ -500,6 +655,7 @@ namespace SandboxDetail {
 		bool FlyKey = true; //!< N switches flying through anything on and off.
 		bool EnterOnClose = true; //!< There is a character at all: putting the tools away puts you in it. Off, you only ever look around.
 		bool Neutral = false; //!< On no side as far as the AI goes: its units take no notice of the character.
+		bool InheritKit = false; //!< Whether the character also carries what a unit of its base class (Body) is spawned with, besides the kit.
 	};
 	inline PlayerSetup s_Player;
 	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
@@ -820,9 +976,38 @@ namespace SandboxDetail {
 	struct WaterSpawner {
 		Vector Position;
 		int Radius = 3; //!< How wide the pour is: air within this many pixels of the place is kept full of water.
+		std::string Liquid = "Water"; //!< What it pours, by preset name: any liquid or powder FluidSim pours.
+		float Rate = 1.0F; //!< How much of the time it pours, 0.05 to 1 (1 every update).
+		float Due = 0.0F; //!< Rate summed since its last pour: it pours when this reaches 1.
+		bool On = true; //!< Off, it stays where it is and pours nothing until turned on again.
 	};
 
 	inline std::vector<WaterSpawner> s_WaterSpawners;
+	inline std::string s_SpringLiquid = "Water"; //!< What new springs and the tank pour (Paint > Springs).
+	inline float s_SpringRate = 1.0F; //!< How much of the time new springs pour.
+	inline std::string s_OtherPourable; //!< The liquid or powder the "Other" tool pours, picked under "More...".
+	inline float s_Flow = 1.0F; //!< How fast the pouring tools pour while held, 0.1 to 1 (they pour every 0.03 s at 1).
+
+	/// The preset names of every material FluidSim pours with the simulations as they are now (liquids, and powders while they slide), mods'
+	/// included, sorted. Read from the materials' behaviour as FluidSim sorts them (IsLiquid; Powder, or the stock powder names).
+	std::vector<std::string> PourableNames();
+
+	/// A liquid's or powder's colour (its terrain colour, brightened a little so dark ones like tar and oil still show), by preset name: the
+	/// marker of a spring that pours it. A blue for a name that is not a material.
+	ImU32 MaterialMarkColor(const std::string& name, int alpha = 230);
+
+	/// The springs placed, by what they pour, sorted by name: for the "remove all" choice.
+	std::vector<std::pair<std::string, int>> SpringCounts();
+
+	/// Whether a tool pours a liquid or powder (FluidSim), and then whether it needs loose powders on to do anything.
+	bool PoursLiquid(Tool kind);
+	bool PoursPowder(Tool kind);
+
+	/// Why a tool would do nothing as the settings are, or nothing: flowing liquids or loose powders off.
+	const char* ToolUnavailableReason(Tool kind);
+
+	/// What a tool does, for its button's tooltip, or nothing.
+	const char* ToolTipText(Tool kind);
 
 	/// Something on its way in from the sky: a rocket, a shell or a bomb. It is kept on its line until it gets there or hits something, then goes off.
 	struct Incoming {
@@ -1265,7 +1450,8 @@ namespace SandboxDetail {
 	void StrikeLightning(const Vector& target);
 	void GiveLoadout(Actor* actor, const Preset& unit, int loadout);
 	Actor* CreateUnit(const Preset& preset, int team, int loadout, Order order);
-	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft);
+	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible = false);
+	void KeepCraftWhole(ACraft* ship);
 	void SpawnUnits(const Stroke& stroke, bool brain);
 	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly);
 	const Preset* RandomPick(const std::vector<const Preset*>& pool);
@@ -1321,9 +1507,40 @@ namespace SandboxDetail {
 	void QueueRule(bool weapons, int rule);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
-	float AutoLaneX(int side);
-	void UpdateAutoBattle();
-	void BeginAutoBattle(const Vector& center, float laneWidth);
+	void UpdateBattle(bool aiPaused);
+	void ApplyBattleStroke(const Stroke& stroke);
+	void SendBattleSettings(int team, int command = BattleSet);
+	void ForgetBattle();
+	void UpdateBattleDefenders();
+	void BattleTab();
+	void DrawBattleMarks();
+	void TakeBattleTool(Tool kind, int team);
+	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);
+	bool CloseSpawnZone(std::vector<Vector>& draft, BattleSettings& settings);
+	float ZoneCloseDistance();
+	std::vector<ImVec2> ZoneOnScreen(const std::vector<Vector>& zone, float scale);
+	void DrawZoneDraft(ImDrawList* drawList, float scale);
+	/// Whether a place is inside a zone drawn as a polygon (a spawn zone, a mode's base), across a wrap or not.
+	bool IsInZone(const std::vector<Vector>& zone, const Vector& at);
+	/// A place picked at random inside a zone drawn as a polygon, on its ground, for something this tall to stand at (its middle).
+	Vector SpotInZone(const std::vector<Vector>& zone, float height);
+	bool ModeBaseCorner(const Vector& position, float closeWithin);
+	bool CloseModeBase();
+	void PutDownBattleTool();
+	bool FactionPicker(BattleSettings& setup);
+	void MakeDefender(Actor* unit, const BattleSettings& settings);
+	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius = -1.0F);
+	void SendBattleMode(int command = BattleModeSet);
+	void ApplyBattleMode(const Stroke& stroke);
+	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
+	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
+	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height);
+	int ModeRoom(int side, int room);
+	void UpdateBattleMode(bool aiPaused);
+	void ForgetBattleMode();
+	void BattleModeTab();
+	void DrawBattleMode();
+	bool BattleModeChooser();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
 	void QueueStroke(Tool kind, const Vector& position);
@@ -1332,6 +1549,17 @@ namespace SandboxDetail {
 	void DrawIcon(ImDrawList* drawList, Icon icon, ImVec2 at, float pixel, ImU32 color);
 	void TookTool(int toolIndex);
 	ImGuiTabItemFlags TestTab(const char* name);
+
+	/// The sandbox window's tabs, in two rows of buttons (a tab bar doesn't wrap): the names of the tabs on offer now, in order.
+	std::vector<const char*> VisibleTabs();
+
+	/// Brings the tab asked for (from the bar, or a test run) to the front, then draws the rows of tab buttons, the one showing lit.
+	/// Returns whether there is a tab to draw.
+	bool DrawTabRows();
+
+	/// Whether a tab is the one showing, to be drawn with its page, and then closed with EndSandboxTab. (As ImGui::BeginTabItem and EndTabItem.)
+	bool SandboxTab(const char* name);
+	void EndSandboxTab();
 	int FindPin(Tool kind, const std::string& presetName);
 	void TogglePin(Tool kind, const std::string& presetName);
 	void SavePinsFile();
@@ -1349,7 +1577,9 @@ namespace SandboxDetail {
 	void PaletteColor(int index, unsigned char* rgb);
 	const PiecePicture& PictureOf(const Preset& preset);
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
-	void PictureGrid(Tool kind, const char* group);
+	/// The picture browser of a list, as on the Spawn tab. @param pickInto If given, a click sets this to the preset name picked (and that
+	/// one is shown as chosen) instead of taking up the tool, with search and filters of its own.
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto = nullptr);
 	void FormationCombo(const char* id);
 	void DrawOrderFeedback();
 	void DrawMinimap();
@@ -1407,15 +1637,15 @@ namespace SandboxDetail {
 		bool hovered = ImGui::IsItemHovered();
 		ImVec2 to(at.x + size.x, at.y + size.y);
 		// A sunken socket; the one in use sits raised and gold-edged, the one under the pointer lightens.
-		ImU32 well = selected ? IM_COL32(105, 121, 71, 255) : hovered ? IM_COL32(68, 82, 54, 255) : IM_COL32(30, 37, 26, 255);
+		ImU32 well = selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well;
 		drawList->AddRectFilled(at, to, well);
 		if (selected) {
-			drawList->AddRect(at, to, IM_COL32(242, 182, 61, 255), 0.0F, 0, pixel);
-			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), IM_COL32(255, 240, 180, 90));
+			drawList->AddRect(at, to, ToolTheme::Gold, 0.0F, 0, pixel);
+			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), (ToolTheme::EdgeLight & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT));
 		} else {
-			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), IM_COL32(0, 0, 0, 110));
-			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), IM_COL32(0, 0, 0, 110));
-			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, IM_COL32(255, 240, 180, 24));
+			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), ToolTheme::EdgeDark);
+			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), ToolTheme::EdgeDark);
+			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, (ToolTheme::Edge & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT));
 		}
 		drawPicture(drawList, ImVec2(at.x + pad, at.y + pad), picture);
 		if (hovered && tip && *tip) {

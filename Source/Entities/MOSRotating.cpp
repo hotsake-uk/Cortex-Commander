@@ -1939,11 +1939,16 @@ glm::u8vec4 MOSRotating::GetRenderSurface() const {
 	unsigned char solid = castsShadow ? 255 : 0;
 	// With unit outlines on, a unit and everything on it carries its side in the solid flag, for the outline pass (UnitOutlineRow.frag): just under
 	// full for shadow casters, so they still read as solid, and just over none for the rest. Slot 1 is no side, 2 to 5 teams 1 to 4. Doors are left out.
-	if (g_PostProcessMan.GetLightingSettings().UnitOutline && m_RenderBlendMode == 0) {
+	// A highlighted unit (Actor::SetHighlighted) is slot 6, whatever the setting, and always reads as a shadow caster: 8 * 6 would read as water.
+	if (m_RenderBlendMode == 0 && (g_PostProcessMan.GetLightingSettings().UnitOutline || g_PostProcessMan.GetLightingSettings().HighlightUnits)) {
 		const MovableObject* root = GetRootParent();
 		if (root->IsActor() && root->GetClassName() != "ADoor") {
-			int slot = std::clamp(root->GetTeam(), -1, 3) + 2;
-			solid = static_cast<unsigned char>(castsShadow ? 255 - 8 * slot : 8 * slot);
+			if (static_cast<const Actor*>(root)->IsHighlighted()) {
+				solid = static_cast<unsigned char>(255 - 8 * 6);
+			} else if (g_PostProcessMan.GetLightingSettings().UnitOutline) {
+				int slot = std::clamp(root->GetTeam(), -1, 3) + 2;
+				solid = static_cast<unsigned char>(castsShadow ? 255 - 8 * slot : 8 * slot);
+			}
 		}
 	}
 	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), solid, static_cast<unsigned char>(packedStates));
