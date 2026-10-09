@@ -474,6 +474,7 @@ namespace SandboxDetail {
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
+		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
 		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
 		int RouteVariety = 0; //!< Every mode: the share of each team's units, in percent, given a taste in routes of their own (Actor::SetRouteSeed), so they spread over the ways to where they're going rather than all taking the shortest.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
@@ -506,8 +507,9 @@ namespace SandboxDetail {
 		int Craft = 0; //!< Drops: index into c_Crafts.
 		bool HasView = false; //!< Whether ViewMiddleX was taken, when the stroke was made on screen (not by a script).
 		float ViewMiddleX = 0.0F; //!< The middle of the view across, at the click: spawned units face it. (Taken then, not read in the sim.)
-		bool Random = false; //!< Drops: random units from every faction rather than the one chosen.
+		bool Random = false; //!< Units and drops: random units rather than the one chosen.
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
+		int RandomFaction = -1; //!< With Random: only this faction's units (an index into s_FactionModules), -1 for every faction.
 		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
@@ -629,10 +631,11 @@ namespace SandboxDetail {
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
 	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
-	// The window's choices for a random drop (copied into the stroke at the click).
-	inline bool s_DropRandom = false;
-	inline bool s_DropFavourites = false;
-	inline bool s_JetpackOnly = false; //!< The Spawn tab's "Jetpacks only": units without one aren't listed, or picked for random drops.
+	// The Unit and Drop tools' random units (copied into the stroke at the click): from every faction, one faction or the favourites.
+	inline bool s_RandomUnits = false;
+	inline bool s_RandomFavourites = false;
+	inline int s_RandomFaction = -1; //!< -1 every faction, otherwise an index into s_FactionModules.
+	inline bool s_JetpackOnly = false; //!< The Spawn tab's "Jetpacks only": units without one aren't listed, or picked at random.
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
@@ -1503,7 +1506,14 @@ namespace SandboxDetail {
 	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible = false);
 	void KeepCraftWhole(ACraft* ship);
 	void SpawnUnits(const Stroke& stroke, bool brain);
-	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly);
+	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly, int faction = -1);
+
+	/// A combo to pick where random units come from: every faction, the favourites, or one faction. Sets the three values, which are
+	/// the arguments of RandomUnitPool. Returns whether the choice changed. (The Battle tab's factions use the same pool call.)
+	bool RandomSourceCombo(const char* label, bool& favouritesOnly, int& faction);
+
+	/// A short name for such a source, for the tool bar and tooltips: "Random units", "Random favourites" or "Random Coalition".
+	std::string RandomSourceName(bool favouritesOnly, int faction);
 
 	/// Takes the units without a jetpack out of a pool to pick from.
 	inline void DropJetless(std::vector<const Preset*>& pool) {
