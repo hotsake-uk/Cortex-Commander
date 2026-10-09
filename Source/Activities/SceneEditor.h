@@ -21,6 +21,7 @@ namespace RTE {
 	class GUIButton;
 	class GUILabel;
 	class GUIComboBox;
+	class GUICheckbox;
 
 	/// Activity for editing scenes.
 	/// 9/17/2007 Spliced out and made to derive from EditorActivty
@@ -111,6 +112,9 @@ namespace RTE {
 		/// Updates the New dialog box, populates its lists etc.
 		void UpdateNewDialog() override;
 
+		/// Sets the new scene wrap checkbox to match the currently selected terrain preset.
+		void UpdateNewWrapXCheckbox();
+
 		/// Updates the Load dialog box, populates its lists etc.
 		void UpdateLoadDialog() override;
 
@@ -137,6 +141,8 @@ namespace RTE {
 		GUIComboBox* m_pNewBG2Combo;
 		// The combobox which lists all the background SceneLayer:s that can be loaded for a new scene, far/sky
 		GUIComboBox* m_pNewBG3Combo;
+		// Whether the new scene should wrap horizontally, or have hard left and right edges
+		GUICheckbox* m_pNewWrapXCheckbox;
 
 		/// Private member variable and method declarations
 	private:
