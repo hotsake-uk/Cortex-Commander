@@ -2583,7 +2583,8 @@ namespace SandboxDetail {
 				near = c_FlagReach + 30.0F;
 				return true;
 			}
-			if (auto defender = s_BattleDefenders.find(id); defender != s_BattleDefenders.end()) {
+			// (Not one a player told to defend somewhere: that's their order, and it isn't taken away for being slow to get there.)
+			if (auto defender = s_BattleDefenders.find(id); defender != s_BattleDefenders.end() && !defender->second.Commanded) {
 				goal = defender->second.Center;
 				near = defender->second.Radius + 40.0F;
 				return true;
@@ -2837,7 +2838,8 @@ namespace SandboxDetail {
 			s_ModeRun.Note.clear();
 			s_ModeRun.NoteAt = -1;
 			s_ModeRun.Result.clear();
-			s_BattleDefenders.clear();
+			// (Not those a player told to defend somewhere: their order stands.)
+			std::erase_if(s_BattleDefenders, [](const auto& entry) { return !entry.second.Commanded; });
 			ClearHighlights();
 			s_Runners.clear();
 			StartRespawns();
@@ -2888,6 +2890,43 @@ namespace SandboxDetail {
 		}
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); s_ModeRun.Running && mode.UnitsMade) {
 			mode.UnitsMade(side, wave);
+		}
+	}
+
+	/// Puts a unit on its team's job in the battle (the "Battle objective" order): in a mode's game its team plays in, what the mode gives
+	/// its own new units, on the attack (capture the flag: go for an enemy flag; VIP: hunt an enemy VIP; king of the hill and assault: the
+	/// hill or the objective), none of them kept back as guards, which is what Defend is for; else, for a Battle Director team defending a
+	/// place, a post there. False when the battle has nothing for it.
+	bool JoinBattleObjective(Actor* unit) {
+		if (!unit || dynamic_cast<const ACraft*>(unit) || unit->IsInGroup("Brains")) {
+			return false;
+		}
+		const int side = unit->GetTeam();
+		if (side < 0 || side >= c_Sides) {
+			return false;
+		}
+		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side)) {
+			// (Sent in as reinforcements: the mode's guard share is for its own waves.)
+			const int guards = s_ModeRun.Settings.GuardPercent;
+			s_ModeRun.Settings.GuardPercent = 0;
+			ModeUnitsMade(side, {unit});
+			s_ModeRun.Settings.GuardPercent = guards;
+			return true;
+		}
+		const BattleSettings& card = s_BattleTeams[side].Settings;
+		if (card.Style == BattleStyle::Defend && card.HasDefendPos) {
+			MakeDefender(unit, card);
+			return true;
+		}
+		return false;
+	}
+
+	/// Lets a unit go from a mode's game (a flag runner, a hunter) when a player gives it an order of their own, so the order isn't
+	/// overruled half a second later; "Battle objective" puts it back.
+	void ReleaseFromBattleMode(const Actor* unit) {
+		if (unit) {
+			s_Runners.erase(unit->GetUniqueID());
+			s_Stuck.erase(unit->GetUniqueID());
 		}
 	}
 

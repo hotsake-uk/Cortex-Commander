@@ -710,6 +710,15 @@ namespace SandboxDetail {
 		GiveLoadout(actor, preset, loadout);
 		actor->SetTeam(team);
 		actor->SetControllerMode(Controller::CIM_AI);
+		if (order == Order::BattleObjective) {
+			// Its team's job in the battle, taken up once its ship lets it out (a flag to go for, a hill, the place its card defends); with
+			// none, as Attack.
+			actor->SetAIMode(Actor::AIMODE_SENTRY);
+			if (JoinBattleObjective(actor)) {
+				return actor;
+			}
+			order = Order::Attack;
+		}
 		switch (order) {
 			case Order::Attack:
 				// Gets its target once it's out among the enemy.
