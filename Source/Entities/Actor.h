@@ -610,6 +610,10 @@ namespace RTE {
 		/// The searcher this actor is to the path grid: what it can jump, dig and breach, and how big it is.
 		virtual PathAgent GetPathAgent() const;
 
+		/// Where this actor's own route searches start from (see UpdateMovePath): the ground under it when that is near, else where it is.
+		/// A search from anywhere else (its centre, half a body over the ground) can answer differently from the one its AI will make.
+		Vector GetPathStart() const;
+
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
 		Vector GetMovePathEnd() const {

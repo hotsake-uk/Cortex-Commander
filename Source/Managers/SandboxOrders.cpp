@@ -472,14 +472,13 @@ namespace SandboxDetail {
 		Scene* scene = g_SceneMan.GetScene();
 		size_t reachable = 0;
 		if (scene && !units.empty()) {
-			std::list<Vector> path;
 			const Actor* leader = units.front();
 			for (SpotReach& entry: preview) {
 				if (reachable >= units.size()) {
 					break;
 				}
-				float cost = scene->CalculatePath(leader->GetPos(), entry.Spot, path, leader->EstimateJumpHeight(), leader->EstimateDigStrength(), static_cast<Activity::Teams>(leader->GetTeam()), leader->EstimateBreachStrength());
-				entry.Cost = cost >= 0.0F && cost < 100000.0F ? cost : -1.0F;
+				float cost = RouteCost(leader, entry.Spot);
+				entry.Cost = RouteReachable(cost) ? cost : -1.0F;
 				reachable += entry.Cost >= 0.0F ? 1 : 0;
 			}
 		}
@@ -524,12 +523,10 @@ namespace SandboxDetail {
 		// (The grid isn't rebuilt under them: that happens on this thread, which waits here.)
 		if (Scene* scene = g_SceneMan.GetScene(); scene && !units.empty()) {
 			std::vector<Vector> reachable;
-			// With the unit's own reach, as its AI will search: the same jump height, dig strength and breaching, on its team's grid.
+			// With the unit's own reach, as its AI will search (see RouteCost): the searcher worked out once, here, for every search.
 			const Actor* leader = units.front();
-			const Vector from = leader->GetPos();
-			const float jumpHeight = leader->EstimateJumpHeight();
-			const float digStrength = leader->EstimateDigStrength();
-			const float breachStrength = leader->EstimateBreachStrength();
+			const Vector from = leader->GetPathStart();
+			const PathAgent agent = leader->GetPathAgent();
 			const Activity::Teams team = static_cast<Activity::Teams>(leader->GetTeam());
 			size_t batch = std::max<size_t>(units.size(), 4);
 			for (size_t first = 0; first < spots.size() && reachable.size() < units.size(); first += batch) {
@@ -539,8 +536,7 @@ namespace SandboxDetail {
 				std::iota(indices.begin(), indices.end(), size_t{0});
 				std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t i) {
 					std::list<Vector> path;
-					float cost = scene->CalculatePath(from, spots[first + i], path, jumpHeight, digStrength, team, breachStrength);
-					reaches[i] = cost >= 0.0F && cost < 100000.0F ? 1 : 0;
+					reaches[i] = RouteReachable(scene->CalculatePath(from, spots[first + i], path, agent, team)) ? 1 : 0;
 				});
 				for (size_t i = 0; i < count && reachable.size() < units.size(); ++i) {
 					if (reaches[i]) {
