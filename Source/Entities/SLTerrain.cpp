@@ -662,6 +662,11 @@ int SLTerrain::LoadData() {
 	RTEAssert(m_BGColorLayer.get(), "Terrain's background layer not instantiated before trying to load its data!");
 
 	if (m_FGColorLayer->IsLoadedFromDisk() && m_BGColorLayer->IsLoadedFromDisk()) {
+		// The "no map wrapping" setting turned the terrain's wrapping off (Scene::LoadData): the layers saved with it follow.
+		if (m_WrapXForcedOff) {
+			m_FGColorLayer->ForceNoWrapX(m_FGColorLayer->WrapsX());
+			m_BGColorLayer->ForceNoWrapX(m_BGColorLayer->WrapsX());
+		}
 		m_FGColorLayer->LoadData();
 		m_BGColorLayer->LoadData();
 	} else {
@@ -670,6 +675,10 @@ int SLTerrain::LoadData() {
 
 		m_BGColorLayer->Destroy();
 		m_BGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
+		if (m_WrapXForcedOff) {
+			m_FGColorLayer->ForceNoWrapX(true);
+			m_BGColorLayer->ForceNoWrapX(true);
+		}
 	}
 	// However the layers were made (Destroy above clears it), the background walls are drawn behind the objects and the foreground in front. The lighting tells them apart by this depth.
 	m_FGColorLayer->SetZOrder(c_DefaultDrawDepth);

@@ -140,7 +140,18 @@ namespace RTE {
 
 		/// Sets whether the layer wraps around the X axis. Only takes effect if set before the layer's bitmaps are loaded.
 		/// @param wrapX Whether this SceneLayer should wrap on the X axis.
-		void SetWrapX(bool wrapX) { m_WrapX = wrapX; }
+		void SetWrapX(bool wrapX) {
+			m_WrapX = wrapX;
+			m_WrapXForcedOff = false;
+		}
+
+		/// Turns off wrapping on the X axis for this play only (the "no map wrapping" setting): the layer still saves with the wrapping it was made with.
+		/// Only takes effect if done before the layer's bitmaps are loaded.
+		/// @param savedWrapX Whether the layer should still save as wrapping on the X axis.
+		void ForceNoWrapX(bool savedWrapX) {
+			m_WrapXForcedOff = m_WrapXForcedOff || savedWrapX;
+			m_WrapX = false;
+		}
 
 		/// Indicates whether the layer is set to wrap around the Y axis when scrolled out of bounds.
 		/// @return Whether this SceneLayer wraps on the Y axis or not.
@@ -242,6 +253,7 @@ namespace RTE {
 
 		bool m_WrapX; //!< Whether wrapping is enabled on the X axis.
 		bool m_WrapY; //!< Whether wrapping is enable on the Y axis.
+		bool m_WrapXForcedOff; //!< Whether X wrapping was on until ForceNoWrapX turned it off, so it is saved as on.
 
 		Vector m_OriginOffset; //!< Offset of this SceneLayer off the top left edge of the screen.
 		Vector m_Offset; //!< The current scrolled offset of this SceneLayer, before being adjusted with the origin offset.
