@@ -580,6 +580,17 @@ void DebugMan::SettingsGUI() {
 		Tip("A falling piece goes through loose bits of ground up to this size instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
 		Slider("How hard a landing cracks a piece", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
 		Slider("Seconds still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
+		Heading("Hitting units");
+		Slider("How much falling pieces hurt", &tuning.HitDamage, 0.0F, 5.0F, "%.2fx");
+		Tip("Damage is a share of the unit's full health, by how fast the piece is moving into it and how heavy it is for the unit. At 1 a block a metre across falling 10 m/s onto a soldier takes about a quarter to a third of their health. 0: pieces never hurt.");
+		Slider("Slowest hit that hurts (m/s)", &tuning.HitMinSpeed, 0.0F, 15.0F, "%.1f");
+		Tip("Only the speed above this counts toward the damage. Lower: slow slides and short drops hurt too.");
+		SliderI("Smallest piece that hurts (pixels)", &tuning.HitMinPixels, 0, 1000, "%d", ImGuiSliderFlags_Logarithmic);
+		Tip("Smaller pieces only push units about. 400 pixels is a block a metre across.");
+		Slider("Heaviest a piece counts (x unit's mass)", &tuning.HitMassCap, 0.1F, 20.0F, "%.1fx", ImGuiSliderFlags_Logarithmic);
+		Tip("A piece heavier than this many times the unit it hits hurts only as much as one this heavy. Higher: big boulders are deadlier than big rocks.");
+		Slider("How hard pieces knock units", &tuning.HitKnockback, 0.0F, 3.0F, "%.2fx");
+		Tip("How hard falling pieces shove the units and loose objects they hit. Units knocked flying into the ground take the usual impact damage on top.");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
 		}
