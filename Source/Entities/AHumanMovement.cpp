@@ -2949,8 +2949,11 @@ int AHuman::MoveAlongRoute() {
 	if (std::abs(toPoint.m_X) > 3.0F) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 	} else if (kind == PathStepKind::Scramble && above > h * 0.1F) {
-		// (Under the top of a scramble, still on the face: on up it the way the body faces, which is the way the slope goes.)
-		ctrl.SetState(m_HFlipped ? MOVE_LEFT : MOVE_RIGHT, true);
+		// (Under the top of a scramble, still on the face: on up it the way the slope goes, from the step's foot to its top. The way the body
+		// faced was taken for that, and a unit facing back, as one does in a fight or after a glance behind, walked off the face.)
+		float across = g_SceneMan.ShortestDistance(m_PrevPathTarget, point).m_X;
+		bool goLeft = std::abs(across) > 1.0F ? across < 0.0F : m_HFlipped;
+		ctrl.SetState(goLeft ? MOVE_LEFT : MOVE_RIGHT, true);
 	}
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.

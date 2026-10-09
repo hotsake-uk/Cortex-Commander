@@ -47,6 +47,8 @@ namespace {
 		Kind Type;
 		float Angle = 0.0F; //!< How a puff's soft shape is turned, and whether it is mirrored: each one its own, so no two look alike.
 		bool Mirrored = false;
+		float Opacity = 1.0F; //!< How solid a drop is drawn (a splash's under-layer: LightingSettings::SplashUnderOpacity).
+		bool Under = false; //!< A drop of a splash's under-layer, drawn before (under) every other drop and chip.
 	};
 
 	struct SpawnRequest {
@@ -59,6 +61,9 @@ namespace {
 		int EmitKind = -1; //!< A Kind to emit directly (mods), or -1.
 		int EmitCount = 0;
 		float EmitSpread = 0.0F;
+		float EmitSize = 1.0F; //!< How big emitted drops are drawn, in pixels across.
+		float EmitOpacity = 1.0F; //!< How solid emitted drops are.
+		bool EmitUnder = false; //!< Whether emitted drops are a splash's under-layer.
 	};
 
 	constexpr size_t c_MaxParticles = 8000;
@@ -163,9 +168,13 @@ namespace {
 						     RandomRange(2.0F, 4.5F) * std::max(froth.SplashFrothSize, 0.05F), request.MaterialColor ? color : glm::u8vec3(215, 238, 250), Kind::Froth});
 						break;
 					}
-					case Kind::Droplet:
-						Add({request.Position, velocity, 0.0F, RandomRange(1.2F, 2.4F), 1.0F, request.MaterialColor ? color : glm::u8vec3(150, 190, 230), Kind::Droplet});
+					case Kind::Droplet: {
+						Particle drop{request.Position, velocity, 0.0F, RandomRange(1.2F, 2.4F), request.EmitSize, request.MaterialColor ? color : glm::u8vec3(150, 190, 230), Kind::Droplet};
+						drop.Opacity = request.EmitOpacity;
+						drop.Under = request.EmitUnder;
+						Add(drop);
 						break;
+					}
 					default:
 						Add({request.Position, velocity, 0.0F, RandomRange(1.0F, 2.5F), 1.0F, request.MaterialColor ? color : glm::u8vec3(120, 110, 100), Kind::Debris});
 						break;
@@ -383,6 +392,28 @@ bool EffectsParticles::Emit(const std::string& kind, const Vector& position, con
 	return true;
 }
 
+void EffectsParticles::EmitDroplets(const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB, float size, float opacity, bool under) {
+	if (count <= 0) {
+		return;
+	}
+	SpawnRequest request;
+	request.EmitKind = static_cast<int>(Kind::Droplet);
+	request.EmitCount = std::min(count, 200);
+	request.EmitSpread = std::clamp(spread, 0.0F, 1.0F);
+	request.Position = glm::vec2(position.m_X, position.m_Y);
+	request.Velocity = glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM;
+	request.Energy = 0.0F;
+	request.MaterialColor = colorRGB & 0xFFFFFF;
+	request.Hardness = 0.0F;
+	request.EmitSize = std::clamp(size, 1.0F, 4.0F);
+	request.EmitOpacity = std::clamp(opacity, 0.0F, 1.0F);
+	request.EmitUnder = under;
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Queue.size() < 2000) {
+		s_Queue.push_back(request);
+	}
+}
+
 void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialColor, float hardness) {
 	// Only fast hits make visible chips and sparks.
 	if (velocity.GetSqrMagnitude() < 15.0F * 15.0F || s_ImpactBudget.load(std::memory_order_relaxed) <= 0) {
@@ -504,15 +535,21 @@ void EffectsParticles::Update(float amount) {
 }
 
 void EffectsParticles::Draw(const Camera& camera) {
-	for (const Particle& particle: s_Particles) {
-		if (particle.Type != Kind::Debris && particle.Type != Kind::Droplet) {
-			continue;
-		}
-		float remaining = 1.0F - particle.Age / particle.Life;
-		{
-			// Chips stay solid until the end of their life, then fade.
-			int alpha = static_cast<int>(255.0F * std::clamp(remaining * 4.0F, 0.0F, 1.0F));
-			RTE::Draw::Rectangle(FloatRect(std::floor(particle.Position.x), std::floor(particle.Position.y), 1.0F, 1.0F), Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha));
+	// Two passes: a splash's under-layer first, so every other drop and chip is drawn over it.
+	for (bool underPass: {true, false}) {
+		for (const Particle& particle: s_Particles) {
+			if ((particle.Type != Kind::Debris && particle.Type != Kind::Droplet) || particle.Under != underPass) {
+				continue;
+			}
+			float remaining = 1.0F - particle.Age / particle.Life;
+			// Chips stay solid until the end of their life, then fade. Drops bigger than a pixel are centred on where they are.
+			int alpha = static_cast<int>(255.0F * std::clamp(remaining * 4.0F, 0.0F, 1.0F) * std::clamp(particle.Opacity, 0.0F, 1.0F));
+			if (alpha <= 0) {
+				continue;
+			}
+			float size = particle.Type == Kind::Droplet ? std::clamp(std::round(particle.Size), 1.0F, 4.0F) : 1.0F;
+			float offset = std::floor((size - 1.0F) * 0.5F);
+			RTE::Draw::Rectangle(FloatRect(std::floor(particle.Position.x) - offset, std::floor(particle.Position.y) - offset, size, size), Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha));
 		}
 	}
 }
