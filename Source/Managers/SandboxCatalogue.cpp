@@ -21,8 +21,12 @@ namespace SandboxDetail {
 			// The subcategory, from the groups the game files put the thing in.
 			if (preset.ClassName == "AHuman") {
 				preset.Kind = object->IsInGroup("Brains") ? "Brains" : "Infantry";
+				const AEJetpack* jetpack = static_cast<const AHuman*>(object)->GetJetpack();
+				preset.Jetpack = jetpack && jetpack->GetJetTimeTotal() > 0.0F;
 			} else if (preset.ClassName == "ACrab") {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
+				const AEJetpack* jetpack = static_cast<const ACrab*>(object)->GetJetpack();
+				preset.Jetpack = jetpack && jetpack->GetJetTimeTotal() > 0.0F;
 			} else if (preset.ClassName == "HDFirearm") {
 				preset.Kind = object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {

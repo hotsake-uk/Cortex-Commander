@@ -48,6 +48,9 @@ namespace SandboxDetail {
 			if (!settings.Crabs) {
 				std::erase_if(pool, [](const Preset* unit) { return unit->ClassName == "ACrab"; });
 			}
+			if (settings.JetpackOnly) {
+				DropJetless(pool);
+			}
 			if (settings.FavouritesOnly) {
 				std::vector<const Preset*> favourites;
 				for (const Preset* unit: pool) {
@@ -773,6 +776,9 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("The factions this team's units come from. None ticked: any faction.");
 		changed |= ToolUI::Checkbox("Spawn crabs", &setup.Crabs);
 		ImGui::SetItemTooltip("Crabs among this team's units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.");
+		ImGui::SameLine();
+		changed |= ToolUI::Checkbox("Jetpacks only", &setup.JetpackOnly);
+		ImGui::SetItemTooltip("Only units with a jetpack: those without one aren't sent.");
 		return changed;
 	}
 

@@ -850,6 +850,9 @@ namespace SandboxDetail {
 			if (s_FavouritesOnly && FindFavourite(kind, preset.PresetName) < 0) {
 				continue;
 			}
+			if (s_JetpackOnly && (kind == Tool::Unit || kind == Tool::Drop) && !pickInto && !preset.Jetpack) {
+				continue;
+			}
 			if (shown++ % columns != 0) {
 				ImGui::SameLine();
 			}

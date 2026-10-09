@@ -706,6 +706,9 @@ namespace SandboxDetail {
 	void DropSquad(const Stroke& stroke) {
 		// Random: each unit picked on its own from every faction's units, or from the favourites.
 		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly) : std::vector<const Preset*>();
+		if (stroke.JetpackOnly) {
+			DropJetless(pool);
+		}
 		const Preset* preset = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.Choice);
 		if (stroke.Random ? pool.empty() : !preset) {
 			return;
@@ -1310,6 +1313,7 @@ namespace SandboxDetail {
 		stroke.Craft = s_Craft;
 		stroke.Random = kind == Tool::Drop && s_DropRandom;
 		stroke.FavouritesOnly = s_DropFavourites;
+		stroke.JetpackOnly = s_JetpackOnly;
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
 			stroke.Material = s_SpringLiquid;
 			stroke.Rate = s_SpringRate;
