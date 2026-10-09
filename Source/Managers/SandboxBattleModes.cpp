@@ -390,6 +390,37 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Respawns a team has left (units it may send beyond its first team size), or -1 for no limit.
+		int RespawnsLeft(int side) {
+			const int most = s_ModeRun.Settings.MaxRespawns;
+			return most > 0 ? std::max(most - std::max(s_BattleTeams[side].Sent - s_ModeRun.Settings.TeamSize, 0), 0) : -1;
+		}
+
+		/// With a limit on respawns, every second: a team with none left and no units in is out, and the last team left in wins.
+		void UpdateRespawnLimit(long long now) {
+			if (s_ModeRun.Settings.MaxRespawns <= 0 || s_ModeRun.Over || now % 60 != 30) {
+				return;
+			}
+			int left = 0;
+			int last = -1;
+			int teams = 0;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(s_ModeRun.Settings, side)) {
+					continue;
+				}
+				++teams;
+				// (Not before its first units have come: they're bought and on their way only after the game starts.)
+				const bool out = s_BattleTeams[side].Sent > 0 && RespawnsLeft(side) == 0 && Sandbox::CountUnits(side) == 0;
+				if (!out) {
+					++left;
+					last = side;
+				}
+			}
+			if (teams >= 2 && left <= 1) {
+				EndGame(last, last >= 0 ? SideName(last) + " wins: the others are out of respawns" : "Everyone is out of respawns: a draw");
+			}
+		}
+
 		/// Seconds till a team's next fallen unit is replaced, or -1 with none waiting.
 		float NextRespawnIn(int side) {
 			if (s_FellAt[side].empty()) {
@@ -2520,8 +2551,11 @@ namespace SandboxDetail {
 		if (!s_ModeRun.Running || side < 0 || side >= c_Sides) {
 			return room;
 		}
-		// Only as many as have been given back by the respawn time, of those fallen.
+		// Only as many as have been given back by the respawn time, of those fallen, and the respawns left (if they're limited).
 		room = std::min(room, s_Released[side] - s_BattleTeams[side].Sent);
+		if (const int respawns = RespawnsLeft(side); respawns >= 0) {
+			room = std::min(room, std::max(s_ModeRun.Settings.TeamSize - s_BattleTeams[side].Sent, 0) + respawns);
+		}
 		const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
 		return mode.Room ? mode.Room(side, room) : room;
 	}
@@ -2535,6 +2569,9 @@ namespace SandboxDetail {
 			mode.Update(aiPaused);
 		}
 		UpdateStuck(aiPaused);
+		if (!aiPaused) {
+			UpdateRespawnLimit(g_TimerMan.GetSimUpdateCount());
+		}
 	}
 
 	/// A new game: no mode's game is on, and the points set (on the last game's scene) are gone. The mode chosen stays.
@@ -2618,6 +2655,8 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Most units each team has alive at once.");
 		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
 		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
+		changed |= ImGui::SliderInt("Most respawns", &setup.MaxRespawns, 0, 500, setup.MaxRespawns > 0 ? "%d a team" : "no limit");
+		ImGui::SetItemTooltip("How many fallen units each team gets back in all, after its first team size. A team with none left and no units in is out, and the last team in wins. 0: no limit. (A unit respawned for being stuck isn't counted.)");
 		changed |= ImGui::SliderInt("Respawn if stuck", &setup.StuckSeconds, 0, 120, setup.StuckSeconds > 0 ? "after %d s" : "never");
 		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
 		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
@@ -2745,7 +2784,11 @@ namespace SandboxDetail {
 					ImGui::SetItemTooltip("%s", placing ? "Click on the map to put it there; Enter (or this) when it's where you want it." : ("Then click on the map where this team's " + point + " is to stand. Not placed: somewhere in its spawn zones.").c_str());
 				}
 				if (running) {
-					ImGui::TextDisabled("%s", mode.Status ? mode.Status(side).c_str() : (std::to_string(Sandbox::CountUnits(side)) + " in").c_str());
+					std::string status = mode.Status ? mode.Status(side) : std::to_string(Sandbox::CountUnits(side)) + " in";
+					if (const int respawns = RespawnsLeft(side); respawns >= 0) {
+						status += ", " + std::to_string(respawns) + (respawns == 1 ? " respawn left" : " respawns left");
+					}
+					ImGui::TextDisabled("%s", status.c_str());
 				} else if (!HasZones(setup, side)) {
 					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "no spawn zone");
 				} else {
