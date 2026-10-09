@@ -2987,6 +2987,23 @@ namespace SandboxDetail {
 				QueueOrder(Order::BattleObjective);
 			}
 			ImGui::SetItemTooltip("Send the selected units after their team's objective in the battle: an enemy flag, an enemy VIP, the hill or the\nobjective in play, or the place their Battle Director card defends; with none, they attack. (Key: O)");
+			// The Orders tab's list, for the selected units rather than a whole side: the same choice, kept in step with the tab.
+			ImGui::SameLine();
+			s_Order = std::clamp(s_Order, 0, c_OrderCount - 1);
+			ImGui::SetNextItemWidth(field * 0.9F);
+			ImGui::Combo("##selectedOrders", &s_Order, OrderName, nullptr, c_OrderCount);
+			ImGui::SetItemTooltip("Orders for the selected units, as the Orders tab gives a whole side.");
+			ImGui::SameLine();
+			const bool moveTo = static_cast<Order>(s_Order) == Order::MoveTo;
+			if (ToolUI::SmallButton(moveTo ? "Click where##giveSelected" : "Give orders##giveSelected")) {
+				if (moveTo) {
+					// (A move needs a place: the clicks are put to moving.)
+					s_CommandMode = CommandMode::Move;
+				} else {
+					QueueOrder(static_cast<Order>(s_Order));
+				}
+			}
+			ImGui::SetItemTooltip(moveTo ? "Move to a place: click on the map where the selected units should go (the command tool's Move)." : "Give the selected units the order in the list.");
 			ImGui::EndDisabled();
 			ImGui::SameLine();
 			ImGui::BeginDisabled(alive == 0);
