@@ -11,14 +11,43 @@ namespace RTE {
 	class AirPressure {
 
 	public:
-		/// Gets whether blasts travel as waves of pressure through the air (a gameplay setting).
+		/// How strongly the air does each thing it does. Every value is a multiplier on how it comes, 1.
+		struct Tuning {
+			float BlastStrength = 1.0F; //!< How much pressure a blast puts into the air: 2 twice as much, 0.5 half.
+			float BlastReach = 1.0F; //!< How far a wave carries before it dies away: 2 about twice as far, 0.5 half.
+			float PushStrength = 1.0F; //!< How hard moving air pushes smoke, loose things and gibs.
+			float UnitPush = 1.0F; //!< How hard moving air pushes units, on top of PushStrength. 0: units are never pushed.
+			float LiquidThrow = 1.0F; //!< How readily a wave running up through liquid throws it into the air. 0: never.
+			float WindStrength = 1.0F; //!< How hard the weather's wind carries smoke and spray.
+			float WindGas = 1.0F; //!< How fast the weather's wind carries gas (SB-6) along. 0: the wind leaves gas be.
+		};
+
+		/// Gets whether the air does anything at all: blast waves, wind on smoke and wind on gas (a gameplay setting, over the ones below).
+		static bool IsOn() { return s_On; }
+
+		/// Sets whether the air does anything at all.
+		static void SetOn(bool on);
+
+		/// Gets how strongly the air does each thing it does, to read or change.
+		static Tuning& GetTuning() { return s_Tuning; }
+
+		/// Gets whether blasts travel as waves of pressure through the air (a gameplay setting, while IsOn).
 		static bool IsEnabled() { return s_Enabled; }
 
 		/// Sets whether blasts travel as waves of pressure through the air.
 		static void SetEnabled(bool enabled);
 
-		/// Gets whether the weather's wind carries smoke and spray along (a gameplay setting).
+		/// Gets whether the weather's wind carries smoke and spray along (a gameplay setting, while IsOn).
 		static bool WindMovesSmoke() { return s_Wind; }
+
+		/// Gets the wind the air carries things with, from -1 (a gale blowing left) to 1 (a gale blowing right): the weather's wind times
+		/// Tuning::WindStrength, 0 while the air is off or the wind doesn't carry smoke.
+		static float GetWind();
+
+		/// Gets whether a point is in the lee of ground upwind of it, where the wind eddies instead of blowing through.
+		/// @param position Where, in scene coordinates.
+		/// @param wind The wind, as GetWind gives it: only its sign (which way is upwind) counts.
+		static bool IsSheltered(const Vector& position, float wind);
 
 		/// Sets whether the weather's wind carries smoke and spray along.
 		static void SetWindMovesSmoke(bool enabled) { s_Wind = enabled; }
@@ -38,6 +67,13 @@ namespace RTE {
 		/// Gets how many cells the waves are being worked out over, for statistics.
 		static int GetActiveCells();
 
+		/// Gets the part of the scene the waves are being worked out over, in scene pixels, for the debug overlay.
+		/// @return Whether any wave is going; if not, the rest are left as they were.
+		static bool GetActiveArea(int& left, int& top, int& right, int& bottom);
+
+		/// Gets how many pixels a side each cell of the waves' grid covers.
+		static int GetCellSize();
+
 		/// Advances the waves and the wind one simulation step. Call once per sim update, from the main thread, before the liquids' update.
 		static void Update();
 
@@ -51,6 +87,8 @@ namespace RTE {
 		/// The weather's wind carries smoke, and fine spray more weakly, along; in the lee of ground upwind of it, it eddies instead.
 		static void BlowSmoke(long long update);
 
+		static bool s_On; //!< Whether the air does anything at all.
+		static Tuning s_Tuning; //!< How strongly the air does each thing it does.
 		static bool s_Enabled; //!< Whether blasts travel as waves of pressure.
 		static bool s_Wind; //!< Whether the wind carries smoke and spray.
 	};

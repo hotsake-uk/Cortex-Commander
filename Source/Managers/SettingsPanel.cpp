@@ -215,6 +215,7 @@ namespace {
 		if (ToolUI::Button("Usual settings")) {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
+			AirPressure::GetTuning() = AirPressure::Tuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -648,10 +649,6 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How much of the gas is drawn: green puffs for toxic gas, steam puffs, and haze for built-up smoke. 0 draws none (the gas still does what it does); methane is never drawn.");
 		}
-		Toggle("Blast waves", AirPressure::IsEnabled(), [](bool on) { AirPressure::SetEnabled(on); });
-		Tip("An explosion sends a wave of air out that bounces off walls: it carries far down a corridor and fades fast in the open, pushes smoke, loose things and (a little) units, and throws up the water in a flooded room.");
-		Toggle("Wind carries smoke", AirPressure::WindMovesSmoke(), [](bool on) { AirPressure::SetWindMovesSmoke(on); });
-		Tip("The weather's wind carries smoke and fine spray along, and they eddy in the lee of walls and ridges.");
 		Slider("Soft smoke", &settings.SoftSmoke, 0.0F, 3.0F);
 		Tip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		Slider("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);
@@ -682,6 +679,41 @@ void DebugMan::SettingsGUI() {
 		float hitStop = g_CameraMan.GetHitStopStrength();
 		if (Slider("Hit-stop on big blasts", &hitStop, 0.0F, 2.0F)) {
 			g_CameraMan.SetHitStopStrength(hitStop);
+		}
+	};
+
+	auto airAndWind = [&]() {
+		AirPressure::Tuning& tuning = AirPressure::GetTuning();
+		Toggle("Air and wind", AirPressure::IsOn(), [](bool on) { AirPressure::SetOn(on); });
+		Tip("Everything below: blast waves through the air, and the weather's wind carrying smoke, spray and gas. Off: none of it, and explosions push things only as they always have.");
+		if (Plain()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("(%d cells of blast waves)", AirPressure::GetActiveCells());
+		}
+		ImGui::BeginDisabled(!AirPressure::IsOn());
+		Heading("Blast waves");
+		Toggle("Blast waves", AirPressure::IsEnabled(), [](bool on) { AirPressure::SetEnabled(on); });
+		Tip("An explosion sends a wave of air out that bounces off walls: it carries far down a corridor and fades fast in the open, pushes smoke, loose things and (a little) units, and throws up the water in a flooded room.");
+		Slider("Blast strength", &tuning.BlastStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How much pressure an explosion puts into the air. 0: explosions make no wave.");
+		Slider("How far blasts carry", &tuning.BlastReach, 0.25F, 3.0F, "%.2fx");
+		Tip("How slowly a wave dies away: at 2 it carries about twice as far down a corridor before it fades.");
+		Slider("Push on smoke and loose things", &tuning.PushStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the moving air shoves smoke, gibs, dropped items and spray. 0: the wave pushes nothing (it still throws up water).");
+		Slider("Push on units", &tuning.UnitPush, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the moving air shoves units, on top of the push above. Units are heavy, so at 1 a big blast beside one moves it a little. 0: units are never pushed.");
+		Slider("Water thrown up", &tuning.LiquidThrow, 0.0F, 5.0F, "%.2fx");
+		Tip("How readily a wave running up through water (or any liquid) throws it into the air at the surface. Higher: weaker waves throw it too. 0: never.");
+		Heading("Wind");
+		Toggle("Wind carries smoke", AirPressure::WindMovesSmoke(), [](bool on) { AirPressure::SetWindMovesSmoke(on); });
+		Tip("The weather's wind (Time & weather, Wind) carries smoke, fine spray and gas along, and they eddy in the lee of walls and ridges.");
+		Slider("Wind strength", &tuning.WindStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the wind carries smoke, spray and gas, against how hard the weather's wind blows. 0: the wind moves nothing.");
+		Slider("Wind carries gas", &tuning.WindGas, 0.0F, 5.0F, "%.2fx");
+		Tip("How fast the wind carries gas (smoke built up, toxic gas, methane, steam) along where it blows through; gas in the lee of ground stays. Gas blown past the edge of the map is gone. 0: the wind leaves gas be.");
+		ImGui::EndDisabled();
+		if (Plain() && ToolUI::Button("Usual air and wind")) {
+			tuning = AirPressure::Tuning();
 		}
 	};
 
@@ -1063,6 +1095,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Each rocket, shell, bomb or falling craft on its way in as its line, where it will hit with its crater, and the updates it has left; each effect put down, numbered, with its main light's reach as a ring and storm cells' next flash; each water spring as its pour. Point at an effect or a spring and press Delete to remove just that one.");
 		Toggle("Gas", g_SettingsMan.ShowSandboxGas(), [](bool on) { g_SettingsMan.SetShowSandboxGas(on); });
 		Tip("The gas in view, a cell every 8 pixels: grey for smoke, green for toxic gas, orange for methane, white for steam, stronger where it is thicker; what is under the pointer is written by it. Nothing shows while the Gas setting is off.");
+		Toggle("Air and wind", g_SettingsMan.ShowSandboxAir(), [](bool on) { g_SettingsMan.SetShowSandboxAir(on); });
+		Tip("The blast waves in view, a cell every 8 pixels: red where the air is pressed together, blue where it is thinned, with a line for which way it moves; a yellow box round the part of the map the waves are worked out over. With a wind: arrows for where it carries things, and orange dots where it is sheltered by ground upwind. What is under the pointer is written by it. Nothing shows while Air and wind is off.");
 		Toggle("Selection and camera", g_SettingsMan.ShowSandboxSelectionCamera(), [](bool on) { g_SettingsMan.SetShowSandboxSelectionCamera(on); });
 		Tip("While dragging a selection box: the box as the selection will really use it, with a ring on each unit it will take and in red any part past the scene's seam, which takes nobody. Always: the unit the game says you control (green) against the one the sandbox thinks you're in (blue), the observation target (yellow cross), the free camera's centre (cyan cross), and the view's scale.");
 		Toggle("Terrain paint audit", g_SettingsMan.ShowSandboxPaintAudit(), [](bool on) { g_SettingsMan.SetShowSandboxPaintAudit(on); });
@@ -1085,6 +1119,7 @@ void DebugMan::SettingsGUI() {
 	    {"Surfaces", surfaces},
 	    {"Water", water},
 	    {"Fire, smoke & blast", fireAndSmoke},
+	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},

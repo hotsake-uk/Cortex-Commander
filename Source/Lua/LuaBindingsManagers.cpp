@@ -464,6 +464,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("ShowSandboxSelectionCamera", &SettingsMan::ShowSandboxSelectionCamera, &SettingsMan::SetShowSandboxSelectionCamera)
 	    .property("ShowSandboxEffects", &SettingsMan::ShowSandboxEffects, &SettingsMan::SetShowSandboxEffects)
 	    .property("ShowSandboxGas", &SettingsMan::ShowSandboxGas, &SettingsMan::SetShowSandboxGas)
+	    .property("ShowSandboxAir", &SettingsMan::ShowSandboxAir, &SettingsMan::SetShowSandboxAir)
 	    .property("ShowSandboxSimState", &SettingsMan::ShowSandboxSimState, &SettingsMan::SetShowSandboxSimState)
 	    .property("SandboxOrdersOverlay", &SettingsMan::SandboxOrdersOverlay, &SettingsMan::SetSandboxOrdersOverlay)
 	    .property("ShowOrderLabels", &SettingsMan::ShowOrderLabels, &SettingsMan::SetShowOrderLabels)

@@ -1,4 +1,5 @@
 #include "GasGrid.h"
+#include "AirPressure.h"
 #include "ACraft.h"
 #include "ADoor.h"
 #include "Actor.h"
@@ -43,6 +44,7 @@ namespace {
 	constexpr int c_OpenEvery = 8; //!< Which cells are open is looked at again every this many updates.
 	constexpr int c_HurtEvery = 15; //!< Units feel the gas every this many updates.
 	constexpr float c_MethaneBurns = 0.15F; //!< Methane this thick or more goes up where it meets fire.
+	constexpr float c_WindDrift = 0.1F; //!< What share of a cell's gas a full wind carries into the next cell downwind each update (with AirPressure's WindGas at 1).
 	constexpr int c_MaxBlastsShown = 6; //!< The most methane blasts drawn (with their sound) each update; the rest burn without.
 
 	/// How each gas behaves.
@@ -61,6 +63,7 @@ namespace {
 	std::array<std::vector<float>, c_Kinds> s_Gas; //!< Per kind, how thick it is in each cell.
 	std::array<std::vector<float>, c_Kinds> s_Change; //!< Per kind, this update's change in each cell, so the order cells are worked through doesn't matter.
 	std::vector<unsigned char> s_Open; //!< Whether each cell lets gas in (air, not ground or liquid), for the cells in the active area.
+	std::vector<unsigned char> s_Exposed; //!< Whether the wind blows through each cell (not in the lee of ground upwind), worked out each update the wind blows for the cells with gas.
 	std::vector<unsigned char> s_Burning; //!< Cells where methane went up last update, which light the methane beside them.
 	int s_GridWidth = 0;
 	int s_GridHeight = 0;
@@ -186,6 +189,21 @@ namespace {
 		int width = s_GridWidth;
 		bool sidesOpen = !g_SceneMan.SceneWrapsX();
 		bool topAndBottomOpen = !g_SceneMan.SceneWrapsY();
+		// The weather's wind carries gas along where it blows through (SB-5), not in the lee of walls and ridges.
+		float wind = AirPressure::GetWind();
+		float drift = std::abs(wind) >= 0.02F ? std::clamp(wind * c_WindDrift * std::max(AirPressure::GetTuning().WindGas, 0.0F), -0.25F, 0.25F) : 0.0F;
+		if (drift != 0.0F) {
+			for (int y = s_Top; y < s_Bottom; ++y) {
+				for (int x = s_Left; x < s_Right; ++x) {
+					size_t cell = Index(x, y);
+					bool any = false;
+					for (int kind = 0; kind < c_Kinds && !any; ++kind) {
+						any = s_Gas[kind][cell] > c_Trace;
+					}
+					s_Exposed[cell] = any && s_Open[cell] && !AirPressure::IsSheltered(Vector(static_cast<float>(x * c_Cell + c_Cell / 2), static_cast<float>(y * c_Cell + c_Cell / 2)), wind) ? 1 : 0;
+				}
+			}
+		}
 		for (int kind = 0; kind < c_Kinds; ++kind) {
 			std::vector<float>& gas = s_Gas[kind];
 			std::vector<float>& change = s_Change[kind];
@@ -204,7 +222,14 @@ namespace {
 					float here = gas[cell];
 					if (x + 1 < s_Right && s_Open[cell + 1]) {
 						float there = gas[cell + 1];
-						float flow = std::clamp((here - there) * c_Spread, -there * 0.25F, here * 0.25F);
+						float flow = (here - there) * c_Spread;
+						// Downwind, out of the cell the wind blows through.
+						if (drift > 0.0F && s_Exposed[cell]) {
+							flow += drift * here;
+						} else if (drift < 0.0F && s_Exposed[cell + 1]) {
+							flow += drift * there;
+						}
+						flow = std::clamp(flow, -there * 0.25F, here * 0.25F);
 						change[cell] -= flow;
 						change[cell + 1] += flow;
 					}
@@ -219,11 +244,13 @@ namespace {
 					}
 					// Out past the scene's edge, into air with no gas in it: evening out, and buoyant gas rising out of the top or sinking out of the bottom.
 					// (Each edge takes the place of the neighbour that isn't there, so at most a quarter of the cell each way, as between cells.)
+					// (The wind blows gas out of a side it blows towards.)
+					float blownOut = drift != 0.0F && s_Exposed[cell] ? std::abs(drift) : 0.0F;
 					if (sidesOpen && x == 0) {
-						change[cell] -= here * c_Spread;
+						change[cell] -= std::min(here * (c_Spread + (drift < 0.0F ? blownOut : 0.0F)), here * 0.25F);
 					}
 					if (sidesOpen && x == width - 1) {
-						change[cell] -= here * c_Spread;
+						change[cell] -= std::min(here * (c_Spread + (drift > 0.0F ? blownOut : 0.0F)), here * 0.25F);
 					}
 					if (topAndBottomOpen && y == 0) {
 						change[cell] -= std::min(here * (c_Spread + std::max(0.0F, buoyancy) * c_Rise), here * 0.25F);
@@ -378,6 +405,7 @@ void GasGrid::Clear() {
 		s_Change[kind].clear();
 	}
 	s_Open.clear();
+	s_Exposed.clear();
 	s_Burning.clear();
 	s_GridWidth = s_GridHeight = 0;
 	s_Left = s_Right = s_Top = s_Bottom = 0;
@@ -517,6 +545,7 @@ void GasGrid::Update() {
 			s_Change[kind].assign(cells, 0.0F);
 		}
 		s_Open.assign(cells, 0);
+		s_Exposed.assign(cells, 0);
 		s_Burning.assign(cells, 0);
 		s_Left = s_Right = s_Top = s_Bottom = 0;
 	}

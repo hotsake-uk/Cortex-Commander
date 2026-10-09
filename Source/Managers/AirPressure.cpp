@@ -21,6 +21,8 @@
 
 using namespace RTE;
 
+bool AirPressure::s_On = true;
+AirPressure::Tuning AirPressure::s_Tuning;
 bool AirPressure::s_Enabled = true;
 bool AirPressure::s_Wind = true;
 
@@ -150,11 +152,15 @@ namespace {
 	/// @return The largest pressure or movement left anywhere, to know when the waves are over.
 	float Step() {
 		int width = s_GridWidth;
+		// Reaching further is losing less each step: at 2, half as much.
+		float reach = std::max(AirPressure::GetTuning().BlastReach, 0.1F);
+		float flowDamping = 1.0F - (1.0F - c_FlowDamping) / reach;
+		float pressureDamping = 1.0F - (1.0F - c_PressureDamping) / reach;
 		for (int y = s_Top; y < s_Bottom; ++y) {
 			for (int x = s_Left; x < s_Right; ++x) {
 				int cell = y * width + x;
-				s_FlowX[cell] = x + 1 < s_Right && s_Open[cell] != Solid && s_Open[cell + 1] != Solid ? (s_FlowX[cell] + c_WaveRate * (s_Pressure[cell] - s_Pressure[cell + 1])) * c_FlowDamping : 0.0F;
-				s_FlowY[cell] = y + 1 < s_Bottom && s_Open[cell] != Solid && s_Open[cell + width] != Solid ? (s_FlowY[cell] + c_WaveRate * (s_Pressure[cell] - s_Pressure[cell + width])) * c_FlowDamping : 0.0F;
+				s_FlowX[cell] = x + 1 < s_Right && s_Open[cell] != Solid && s_Open[cell + 1] != Solid ? (s_FlowX[cell] + c_WaveRate * (s_Pressure[cell] - s_Pressure[cell + 1])) * flowDamping : 0.0F;
+				s_FlowY[cell] = y + 1 < s_Bottom && s_Open[cell] != Solid && s_Open[cell + width] != Solid ? (s_FlowY[cell] + c_WaveRate * (s_Pressure[cell] - s_Pressure[cell + width])) * flowDamping : 0.0F;
 			}
 		}
 		float loudest = 0.0F;
@@ -166,7 +172,7 @@ namespace {
 					continue;
 				}
 				float outflow = s_FlowX[cell] - (x > s_Left ? s_FlowX[cell - 1] : 0.0F) + s_FlowY[cell] - (y > s_Top ? s_FlowY[cell - width] : 0.0F);
-				float pressure = (s_Pressure[cell] - c_WaveRate * outflow) * (y == 0 ? c_SkyRelease : c_PressureDamping);
+				float pressure = (s_Pressure[cell] - c_WaveRate * outflow) * (y == 0 ? c_SkyRelease : pressureDamping);
 				s_Pressure[cell] = pressure;
 				loudest = std::max({loudest, std::abs(pressure), std::abs(s_FlowX[cell]), std::abs(s_FlowY[cell])});
 			}
@@ -195,13 +201,18 @@ namespace {
 
 	/// Where the wave runs up through liquid to its surface, it throws the liquid there into the air.
 	void ThrowLiquid(long long update) {
+		float readily = AirPressure::GetTuning().LiquidThrow;
+		if (readily <= 0.0F) {
+			return;
+		}
+		float throwsAbove = c_ThrowsLiquid / readily;
 		int throws = 0;
 		for (int y = std::max(s_Top, 1); y < s_Bottom && throws < c_MaxThrowsPerUpdate; ++y) {
 			for (int x = s_Left; x < s_Right && throws < c_MaxThrowsPerUpdate; ++x) {
 				int cell = y * s_GridWidth + x;
 				// Upwards out of the cell is its top side's movement, negative; each surface cell throws at most every fourth update.
 				float upwards = -s_FlowY[cell - s_GridWidth];
-				if (s_Open[cell] == Liquid && s_Open[cell - s_GridWidth] == Air && upwards > c_ThrowsLiquid && ((update + cell) & 3) == 0) {
+				if (s_Open[cell] == Liquid && s_Open[cell - s_GridWidth] == Air && upwards > throwsAbove && ((update + cell) & 3) == 0) {
 					Vector at(static_cast<float>(x * c_Cell + c_Cell / 2), static_cast<float>(y * c_Cell));
 					FluidSim::Splash(at, 6.0F, std::clamp(upwards * 0.15F, 0.1F, 0.6F), std::clamp(upwards * 2.5F, 3.0F, 18.0F));
 					++throws;
@@ -214,7 +225,11 @@ namespace {
 
 /// The moving air pushes what is in it: a weightless thing (smoke) as fast as the air, a heavy one (a unit) hardly at all.
 void AirPressure::PushObjects() {
-	auto push = [](MovableObject* object) {
+	float strength = s_Tuning.PushStrength;
+	if (strength <= 0.0F) {
+		return;
+	}
+	auto push = [strength](MovableObject* object, float share) {
 		if (!object || object->ToDelete() || object->GetPinStrength() > 0.0F) {
 			return;
 		}
@@ -226,30 +241,29 @@ void AirPressure::PushObjects() {
 		if (flow.MagnitudeIsLessThan(0.05F)) {
 			return;
 		}
-		Vector change = flow * (c_Push / (1.0F + std::max(object->GetMass(), 0.0F) * 0.05F));
+		Vector change = flow * (c_Push * strength * share / (1.0F + std::max(object->GetMass(), 0.0F) * 0.05F));
 		change.CapMagnitude(c_MaxPush);
 		object->SetVel(object->GetVel() + change);
 	};
 	for (Actor* actor: g_MovableMan.m_Actors) {
-		if (!dynamic_cast<const ADoor*>(actor)) {
-			push(actor);
+		if (s_Tuning.UnitPush > 0.0F && !dynamic_cast<const ADoor*>(actor)) {
+			push(actor, s_Tuning.UnitPush);
 		}
 	}
 	for (MovableObject* item: g_MovableMan.m_Items) {
-		push(item);
+		push(item, 1.0F);
 	}
 	for (MovableObject* particle: g_MovableMan.m_Particles) {
-		push(particle);
+		push(particle, 1.0F);
 	}
 }
 
 /// The weather's wind carries smoke, and fine spray more weakly, along; in the lee of ground upwind of it, it eddies instead.
 void AirPressure::BlowSmoke(long long update) {
-	float wind = WeatherEffects::GetWind();
+	float wind = GetWind();
 	if (std::abs(wind) < 0.02F) {
 		return;
 	}
-	float side = wind > 0.0F ? 1.0F : -1.0F;
 	float time = static_cast<float>(update % 100000) * 0.05F;
 	for (MovableObject* particle: g_MovableMan.m_Particles) {
 		if (!particle || particle->ToDelete() || particle->GetPinStrength() > 0.0F) {
@@ -267,11 +281,7 @@ void AirPressure::BlowSmoke(long long update) {
 			continue;
 		}
 		const Vector& position = particle->GetPos();
-		bool sheltered = false;
-		for (int reach = 12; reach <= 36 && !sheltered; reach += 12) {
-			int material = g_SceneMan.GetTerrMatter(static_cast<int>(position.m_X - side * static_cast<float>(reach)), position.GetFloorIntY());
-			sheltered = material != g_MaterialAir && !FluidSim::IsLiquid(material);
-		}
+		bool sheltered = IsSheltered(position, wind);
 		float swirl = std::sin(position.m_X * 0.03F + position.m_Y * 0.05F + time);
 		Vector velocity = particle->GetVel();
 		if (sheltered) {
@@ -285,6 +295,44 @@ void AirPressure::BlowSmoke(long long update) {
 		particle->SetVel(velocity);
 	}
 }
+
+void AirPressure::SetOn(bool on) {
+	if (s_On != on) {
+		s_On = on;
+		Clear();
+	}
+}
+
+float AirPressure::GetWind() {
+	return s_On && s_Wind ? WeatherEffects::GetWind() * std::max(s_Tuning.WindStrength, 0.0F) : 0.0F;
+}
+
+bool AirPressure::IsSheltered(const Vector& position, float wind) {
+	float side = wind > 0.0F ? 1.0F : -1.0F;
+	for (int reach = 12; reach <= 36; reach += 12) {
+		int material = g_SceneMan.GetTerrMatter(static_cast<int>(position.m_X - side * static_cast<float>(reach)), position.GetFloorIntY());
+		if (material != g_MaterialAir && !FluidSim::IsLiquid(material)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool AirPressure::GetActiveArea(int& left, int& top, int& right, int& bottom) {
+	if (!Active()) {
+		return false;
+	}
+	left = s_Left * c_Cell;
+	top = s_Top * c_Cell;
+	right = s_Right * c_Cell;
+	bottom = s_Bottom * c_Cell;
+	return true;
+}
+
+int AirPressure::GetCellSize() {
+	return c_Cell;
+}
+
 void AirPressure::SetEnabled(bool enabled) {
 	if (s_Enabled != enabled) {
 		s_Enabled = enabled;
@@ -293,7 +341,7 @@ void AirPressure::SetEnabled(bool enabled) {
 }
 
 void AirPressure::Blast(const Vector& position, float energy) {
-	if (!s_Enabled || !std::isfinite(energy) || energy <= 0.0F) {
+	if (!s_On || !s_Enabled || !std::isfinite(energy) || energy <= 0.0F || s_Tuning.BlastStrength <= 0.0F) {
 		return;
 	}
 	std::scoped_lock lock(s_QueueMutex);
@@ -344,6 +392,10 @@ void AirPressure::Update() {
 		Clear();
 		return;
 	}
+	if (!s_On) {
+		Clear();
+		return;
+	}
 	long long update = g_TimerMan.GetSimUpdateCount();
 	if (s_Wind) {
 		BlowSmoke(update);
@@ -376,6 +428,15 @@ void AirPressure::Update() {
 	}
 	// (Blasts made from parallel code are sorted so they land in the same order every time.)
 	std::sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Energy < b.Energy); });
+	// The area is grown for every blast first, so what is open is worked out once for them all.
+	for (const BlastRequest& blast: blasts) {
+		if (int cell = CellAt(Vector(static_cast<float>(blast.X), static_cast<float>(blast.Y))); cell >= 0) {
+			Grow(cell % s_GridWidth - 3, cell / s_GridWidth - 3, cell % s_GridWidth + 4, cell / s_GridWidth + 4);
+		}
+	}
+	if (!blasts.empty() && Active()) {
+		WorkOutOpenness(materialBitmap);
+	}
 	for (const BlastRequest& blast: blasts) {
 		int cell = CellAt(Vector(static_cast<float>(blast.X), static_cast<float>(blast.Y)));
 		if (cell < 0) {
@@ -383,9 +444,7 @@ void AirPressure::Update() {
 		}
 		int x = cell % s_GridWidth;
 		int y = cell / s_GridWidth;
-		Grow(x - 3, y - 3, x + 4, y + 4);
-		WorkOutOpenness(materialBitmap);
-		float pressure = std::clamp(std::sqrt(blast.Energy) * 0.15F, 2.0F, 40.0F);
+		float pressure = std::clamp(std::sqrt(blast.Energy) * 0.15F, 2.0F, 40.0F) * s_Tuning.BlastStrength;
 		// The blast's own cell and the four around it; one buried in the ground (all solid) puts its pressure into what is open beside it.
 		for (int dy = -1; dy <= 1; ++dy) {
 			for (int dx = -1; dx <= 1; ++dx) {

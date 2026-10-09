@@ -160,6 +160,7 @@ void SettingsMan::Clear() {
 	m_SandboxSelectionCamera = false;
 	m_SandboxEffects = false;
 	m_SandboxGas = false;
+	m_SandboxAir = false;
 	m_SandboxSimState = false;
 	m_SandboxOrdersOverlay = 0;
 	m_DebugChannels = 0;
@@ -291,6 +292,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("GasShown", { GasGrid::SetShown(std::stof(reader.ReadPropValue())); });
+	MatchProperty("AirAndWind", { AirPressure::SetOn(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("AirBlastStrength", { AirPressure::GetTuning().BlastStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirBlastReach", { AirPressure::GetTuning().BlastReach = std::clamp(std::stof(reader.ReadPropValue()), 0.25F, 3.0F); });
+	MatchProperty("AirPushStrength", { AirPressure::GetTuning().PushStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirUnitPush", { AirPressure::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirLiquidThrow", { AirPressure::GetTuning().LiquidThrow = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("WindStrength", { AirPressure::GetTuning().WindStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("WindCarriesGas", { AirPressure::GetTuning().WindGas = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("BlastWaves", { AirPressure::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WindMovesSmoke", { AirPressure::SetWindMovesSmoke(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -631,6 +640,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSelectionCamera", { reader >> m_SandboxSelectionCamera; });
 	MatchProperty("SandboxEffects", { reader >> m_SandboxEffects; });
 	MatchProperty("SandboxGas", { reader >> m_SandboxGas; });
+	MatchProperty("SandboxAir", { reader >> m_SandboxAir; });
 	MatchProperty("SandboxSimState", { reader >> m_SandboxSimState; });
 	MatchProperty("SandboxOrdersOverlay", { int which = 0; reader >> which; SetSandboxOrdersOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
@@ -957,6 +967,14 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
 	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
+	writer.NewPropertyWithValue("AirAndWind", AirPressure::IsOn());
+	writer.NewPropertyWithValue("AirBlastStrength", AirPressure::GetTuning().BlastStrength);
+	writer.NewPropertyWithValue("AirBlastReach", AirPressure::GetTuning().BlastReach);
+	writer.NewPropertyWithValue("AirPushStrength", AirPressure::GetTuning().PushStrength);
+	writer.NewPropertyWithValue("AirUnitPush", AirPressure::GetTuning().UnitPush);
+	writer.NewPropertyWithValue("AirLiquidThrow", AirPressure::GetTuning().LiquidThrow);
+	writer.NewPropertyWithValue("WindStrength", AirPressure::GetTuning().WindStrength);
+	writer.NewPropertyWithValue("WindCarriesGas", AirPressure::GetTuning().WindGas);
 	writer.NewPropertyWithValue("BlastWaves", AirPressure::IsEnabled());
 	writer.NewPropertyWithValue("WindMovesSmoke", AirPressure::WindMovesSmoke());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
@@ -1013,6 +1031,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
 	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
 	writer.NewPropertyWithValue("SandboxGas", m_SandboxGas);
+	writer.NewPropertyWithValue("SandboxAir", m_SandboxAir);
 	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
 	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
 	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
