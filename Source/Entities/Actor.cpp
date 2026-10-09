@@ -1295,6 +1295,14 @@ PathAgent Actor::GetPathAgent() const {
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
 	agent.Caution = g_SettingsMan.AIMoveCaution();
+	// For a unit a game mode wants kept safe (a flag carrier), where everyone stood when last published, so the route keeps clear of its
+	// enemies (see PathFinder::ThreatCost). Everyone else takes the shortest way.
+	agent.ThreatWeight = m_RouteThreatAvoidance * g_SettingsMan.AIThreatAvoidance();
+	agent.RouteSeed = m_RouteSeed;
+	if (agent.ThreatWeight > 0.0F) {
+		agent.Threats = g_MovableMan.GetPublishedThreats();
+		agent.ThreatTeam = m_Team;
+	}
 	// In liquid (LM-4): whether it floats and swims, how long it holds its breath, and whether lava is any danger to it, as ActorWater and
 	// ActorFire have it (with them off, water is only waded and lava harms nothing). What doesn't breathe isn't flesh, and doesn't burn.
 	bool waterActs = ActorWater::IsEnabled() && FluidSim::IsEnabled();

@@ -830,6 +830,13 @@ void DebugMan::SettingsGUI() {
 			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units only dig what their digger's regular rounds cut, and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
 		}
 		{
+			float threats = g_SettingsMan.AIThreatAvoidance();
+			if (Slider("Safe routes in game modes", &threats, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAIThreatAvoidance(threats);
+			}
+			Tip("How much a unit that a game mode wants kept safe weighs the enemies along a route when picking one: a capture the flag carrier taking an enemy flag home. At 1 a way past a crowd of enemies loses to a longer one past none: twenty in the way are worth walking most of a large map round, while a lone sentry is only skirted when going round is short. Places they are sent to are reached however many enemies are there. Every other unit takes the shortest way. 0 turns it off.");
+		}
+		{
 			float spawnDiggers = g_SettingsMan.AISpawnDiggerChance();
 			if (Slider("Units spawn with a digger", &spawnDiggers, 0.0F, 100.0F, "%.0f%%")) {
 				g_SettingsMan.SetAISpawnDiggerChance(spawnDiggers);

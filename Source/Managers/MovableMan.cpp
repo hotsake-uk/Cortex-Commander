@@ -24,6 +24,8 @@
 #include "SettingsMan.h"
 #include "LuaMan.h"
 #include "ThreadMan.h"
+#include "PathFinder.h"
+#include "ACraft.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -53,6 +55,7 @@ MovableMan::~MovableMan() {
 
 void MovableMan::Clear() {
 	m_Actors.clear();
+	m_PublishedThreats.reset();
 	m_Doors.clear();
 	m_ContiguousActorIDs.clear();
 	m_Items.clear();
@@ -1409,6 +1412,75 @@ void MovableMan::ReloadLuaScripts() {
 	}
 }
 
+void MovableMan::PublishThreats() {
+	ZoneScoped;
+
+	auto field = std::make_shared<ThreatField>();
+	const int cellSize = ThreatField::c_CellSize;
+	const int reach = ThreatField::c_Reach;
+	field->Width = std::max(1, (g_SceneMan.GetSceneWidth() + cellSize - 1) / cellSize);
+	field->Height = std::max(1, (g_SceneMan.GetSceneHeight() + cellSize - 1) / cellSize);
+	const size_t cells = static_cast<size_t>(field->Width) * field->Height;
+	field->Teams.resize(Activity::MaxTeamCount + 1);
+	const bool wrapsX = g_SceneMan.SceneWrapsX();
+	const bool wrapsY = g_SceneMan.SceneWrapsY();
+
+	// A unit counts 1 in its own cell and less out to the reach, nothing past it.
+	static const std::vector<std::tuple<int, int, float>> s_Kernel = [reach]() {
+		std::vector<std::tuple<int, int, float>> kernel;
+		for (int dy = -reach; dy <= reach; ++dy) {
+			for (int dx = -reach; dx <= reach; ++dx) {
+				float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+				if (distance < static_cast<float>(reach)) {
+					kernel.emplace_back(dx, dy, 1.0F - distance / static_cast<float>(reach));
+				}
+			}
+		}
+		return kernel;
+	}();
+
+	for (const Actor* actor: m_Actors) {
+		// What fights: not doors, nor craft (a ship landing is no reason to go round), nor the dying.
+		if (!actor || actor->GetStatus() >= Actor::DYING || actor->GetHealth() <= 0.0F || dynamic_cast<const ADoor*>(actor) || dynamic_cast<const ACraft*>(actor)) {
+			continue;
+		}
+		int teamIndex = actor->GetTeam() + 1;
+		if (teamIndex < 0 || teamIndex >= static_cast<int>(field->Teams.size())) {
+			continue;
+		}
+		if (field->All.empty()) {
+			field->All.assign(cells, 0.0F);
+		}
+		std::vector<float>& team = field->Teams[teamIndex];
+		if (team.empty()) {
+			team.assign(cells, 0.0F);
+		}
+		const Vector& pos = actor->GetPos();
+		int cx = static_cast<int>(std::floor(pos.m_X / static_cast<float>(cellSize)));
+		int cy = static_cast<int>(std::floor(pos.m_Y / static_cast<float>(cellSize)));
+		for (const auto& [dx, dy, weight]: s_Kernel) {
+			int x = cx + dx;
+			int y = cy + dy;
+			if (x < 0 || x >= field->Width) {
+				if (!wrapsX) {
+					continue;
+				}
+				x = ((x % field->Width) + field->Width) % field->Width;
+			}
+			if (y < 0 || y >= field->Height) {
+				if (!wrapsY) {
+					continue;
+				}
+				y = ((y % field->Height) + field->Height) % field->Height;
+			}
+			size_t cell = static_cast<size_t>(y) * field->Width + x;
+			field->All[cell] += weight;
+			team[cell] += weight;
+		}
+	}
+	m_PublishedThreats = std::move(field);
+}
+
 void MovableMan::Update() {
 	ZoneScoped;
 
@@ -1427,6 +1499,15 @@ void MovableMan::Update() {
 	// each unit's own script changes its live ones.
 	for (Actor* actor: m_Actors) {
 		actor->PublishNumberValues();
+	}
+	// And where they all stand, for the routes of units a game mode wants kept safe (a flag carrier) to steer clear of enemies: four times
+	// a second, as a crowd doesn't move far in that, and only while there is such a unit.
+	if (g_SettingsMan.AIThreatAvoidance() > 0.0F && std::any_of(m_Actors.begin(), m_Actors.end(), [](const Actor* actor) { return actor->GetRouteThreatAvoidance() > 0.0F; })) {
+		if (!m_PublishedThreats || m_SimUpdateFrameNumber % 15 == 0) {
+			PublishThreats();
+		}
+	} else {
+		m_PublishedThreats.reset();
 	}
 
 	// ---TEMP ---
