@@ -186,6 +186,9 @@ namespace SandboxDetail {
 		// Gases that live in the gas grid (SB-6): appended, so the tools before keep their numbers.
 		Methane,
 		Steam,
+		// More plants (appended, so the tools before keep their numbers): the base game's mushrooms, and trees drawn for the sandbox (Tools/MakeTreeSprites.py).
+		Mushrooms,
+		Trees,
 		// Appended, so the tools before keep their numbers.
 		TreeTrunk //!< The base game's "Tree Trunk": wood, darker, like a tree's.
 	};
@@ -298,6 +301,8 @@ namespace SandboxDetail {
 	    {Tool::TerrainOther, "Other terrain", 0.03F, true},
 	    {Tool::Plants, "Plants", 0.03F, true},
 	    {Tool::Cacti, "Cacti", 0.03F, true},
+	    {Tool::Mushrooms, "Mushrooms", 0.03F, true},
+	    {Tool::Trees, "Trees", 0.03F, true},
 	    {Tool::Methane, "Methane", 0.06F, true},
 	    {Tool::Steam, "Steam", 0.06F, true},
 	    {Tool::TreeTrunk, "Tree trunk", 0.03F, true},
@@ -335,7 +340,10 @@ namespace SandboxDetail {
 	}
 
 	/// The plant brushes: each puts the game's own plant pictures on the ground along the stroke, s_PlantSpacing apart.
-	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti; }
+	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti || kind == Tool::Mushrooms || kind == Tool::Trees; }
+
+	/// How many rows at the bottom of a tree picture are its roots, set into the ground (as Tools/MakeTreeSprites.py draws them).
+	constexpr int c_TreeRootDepth = 12;
 
 	/// How the terrain brushes lay down what they paint or dig (Paint > Terrain).
 	enum class BrushShape {
@@ -635,6 +643,7 @@ namespace SandboxDetail {
 		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
+		float Scale = 1.0F; //!< Plant brushes: how big the plant is drawn, 1 as the game's own art (s_PlantScale).
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
@@ -801,6 +810,7 @@ namespace SandboxDetail {
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
 	constexpr int c_MaxBrushRadius = 120; //!< The biggest the brush size goes (was 40).
+	inline float s_PlantScale = 1.0F; //!< How big the plant brushes draw their plants, 1 as the game's own art (Paint > Plants).
 	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
 	inline bool s_ShapeFill = false; //!< Brush type Shape: the terrain brushes fill a shape dragged out on the world rather than painting where the pointer goes.
@@ -1694,7 +1704,7 @@ namespace SandboxDetail {
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
 	void FillTerrainShape(const Stroke& stroke);
-	void PlacePlant(const Vector& at, int radius, Tool kind);
+	void PlacePlant(const Vector& at, int radius, Tool kind, float scale = 1.0F);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
 	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight);

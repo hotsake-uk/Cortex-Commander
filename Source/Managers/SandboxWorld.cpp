@@ -328,15 +328,76 @@ namespace SandboxDetail {
 		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare);
 	}
 
-	/// Puts one of the game's own plant pictures on the ground at a point, as its maps have them: the ground found under the point (or over it,
-	/// with the point in the ground), within the brush size and a little more, and the plant set into it as the map's own are.
-	void PlacePlant(const Vector& at, int radius, Tool kind) {
-		const char* debrisName = kind == Tool::Cacti ? (Random01() < 0.7F ? "Small Cacti" : "Cacti") : "Plants";
-		const TerrainDebris* debris = dynamic_cast<const TerrainDebris*>(g_PresetMan.GetEntityPreset("TerrainDebris", debrisName, "Base.rte"));
-		if (!debris || debris->GetPieceCount() == 0) {
+	/// A base game terrain debris preset, by name.
+	const TerrainDebris* DebrisPreset(const char* name) {
+		const TerrainDebris* debris = dynamic_cast<const TerrainDebris*>(g_PresetMan.GetEntityPreset("TerrainDebris", name, "Base.rte"));
+		return debris && debris->GetPieceCount() > 0 ? debris : nullptr;
+	}
+
+	/// Draws a plant picture into the terrain, scaled (nearest pixel, so it keeps the look of the art) and maybe mirrored, in a material:
+	/// each of its pixels takes the picture's colour and the material, ground included (roots are set into it, as the maps' plants are).
+	/// Kept for the undo first.
+	void DrawPlantPicture(SLTerrain* terrain, BITMAP* picture, int left, int top, float scale, bool mirror, int material) {
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(picture->w) * scale));
+		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(picture->h) * scale));
+		for (int dy = 0; dy < scaledHeight; ++dy) {
+			int sourceY = std::min(picture->h - 1, static_cast<int>(static_cast<float>(dy) / scale));
+			for (int dx = 0; dx < scaledWidth; ++dx) {
+				int sourceX = std::min(picture->w - 1, static_cast<int>(static_cast<float>(dx) / scale));
+				int color = _getpixel(picture, mirror ? picture->w - 1 - sourceX : sourceX, sourceY);
+				if (color == ColorKeys::g_MaskColor) {
+					continue;
+				}
+				int x = left + dx;
+				int y = top + dy;
+				if (g_SceneMan.SceneWrapsX()) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height || terrain->GetMaterialPixel(x, y) == g_MaterialOutOfBounds) {
+					continue;
+				}
+				RecordPaintPixel(terrain, x, y);
+				terrain->SetMaterialPixel(x, y, material);
+				terrain->SetFGColorPixel(x, y, color);
+			}
+		}
+	}
+
+	/// Puts one of the game's own plant pictures (or one of the sandbox's trees) on the ground at a point, as its maps have them: the ground
+	/// found under the point (or over it, with the point in the ground), within the brush size and a little more, and the plant set into it
+	/// as the map's own are.
+	/// @param scale How big it is drawn, 1 as the art is (Plant size).
+	void PlacePlant(const Vector& at, int radius, Tool kind, float scale) {
+		scale = std::clamp(scale, 0.25F, 4.0F);
+		const TerrainDebris* debris = nullptr;
+		const TerrainDebris* leaves = nullptr;
+		switch (kind) {
+			case Tool::Cacti:
+				debris = DebrisPreset(Random01() < 0.7F ? "Small Cacti" : "Cacti");
+				break;
+			case Tool::Mushrooms: {
+				// Mostly small ones, as the maps have them.
+				static const char* const mushrooms[] = {"Small Red Mushrooms", "Small Yellow Mushrooms", "Red Mushrooms", "Yellow Mushrooms"};
+				float pick = Random01();
+				debris = DebrisPreset(mushrooms[pick < 0.35F ? 0 : (pick < 0.7F ? 1 : (pick < 0.85F ? 2 : 3))]);
+				break;
+			}
+			case Tool::Trees:
+				debris = DebrisPreset("Sandbox Tree Trunks");
+				leaves = DebrisPreset("Sandbox Tree Leaves");
+				break;
+			default:
+				debris = DebrisPreset("Plants");
+				break;
+		}
+		if (!debris) {
 			return;
 		}
-		BITMAP* piece = debris->GetPiece(static_cast<int>(Random01() * static_cast<float>(debris->GetPieceCount())) % debris->GetPieceCount());
+		int pieceIndex = static_cast<int>(Random01() * static_cast<float>(debris->GetPieceCount())) % debris->GetPieceCount();
+		BITMAP* piece = debris->GetPiece(pieceIndex);
+		BITMAP* leafPiece = leaves && pieceIndex < leaves->GetPieceCount() ? leaves->GetPiece(pieceIndex) : nullptr;
 		if (!piece) {
 			return;
 		}
@@ -365,28 +426,38 @@ namespace SandboxDetail {
 		if (!solid(y + 1) || solid(y)) {
 			return;
 		}
-		// y is the last air above the ground; the piece's middle goes the debris's depth into it, as ScatterOnTerrain puts it.
-		int minDepth = debris->GetMinDepth();
-		int depth = minDepth + static_cast<int>(Random01() * static_cast<float>(std::max(debris->GetMaxDepth() - minDepth + 1, 1)));
-		Vector corner(static_cast<float>(x - piece->w / 2), static_cast<float>(y + 1 + depth - piece->h / 2));
-		// The square DrawPiece may change, kept for the undo first.
-		int side = 10 + std::max(piece->w, piece->h);
-		int left = corner.GetFloorIntX() - (side - piece->w) / 2;
-		int upper = corner.GetFloorIntY() - (side - piece->h) / 2;
-		for (int dy = 0; dy < side; ++dy) {
-			for (int dx = 0; dx < side; ++dx) {
-				int px = left + dx;
-				int py = upper + dy;
-				if (px >= 0 && py >= 0 && px < width && py < height) {
-					RecordPaintPixel(terrain, px, py);
+		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(piece->w) * scale));
+		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(piece->h) * scale));
+		int left = x - scaledWidth / 2;
+		int upper;
+		if (kind == Tool::Trees) {
+			// y is the last air above the ground; the tree's roots go into it.
+			upper = y + 1 + static_cast<int>(static_cast<float>(c_TreeRootDepth) * scale) - scaledHeight;
+		} else {
+			// The piece's middle goes the debris's depth into the ground, as ScatterOnTerrain puts it.
+			int minDepth = debris->GetMinDepth();
+			int depth = minDepth + static_cast<int>(Random01() * static_cast<float>(std::max(debris->GetMaxDepth() - minDepth + 1, 1)));
+			upper = y + 1 + static_cast<int>(static_cast<float>(depth) * scale) - scaledHeight / 2;
+		}
+		bool mirror = Random01() < 0.5F;
+		int material = debris->GetDebrisMaterial().GetIndex();
+		if (kind == Tool::Trees) {
+			// The trunk in the tree trunk material where the game has it (it burns as a tree does), else the wood the preset names.
+			for (const char* name: {"Tree Trunk", "Tree trunk"}) {
+				if (const Material* trunk = g_SceneMan.GetMaterial(name); trunk && trunk->GetIndex() != g_MaterialAir) {
+					material = trunk->GetIndex();
+					break;
 				}
 			}
 		}
-		debris->DrawPiece(terrain, piece, corner);
-		Box changed(Vector(static_cast<float>(left), static_cast<float>(upper)), static_cast<float>(side), static_cast<float>(side));
+		DrawPlantPicture(terrain, piece, left, upper, scale, mirror, material);
+		if (leafPiece) {
+			DrawPlantPicture(terrain, leafPiece, left, upper, scale, mirror, leaves->GetDebrisMaterial().GetIndex());
+		}
+		int changedWidth = std::max(scaledWidth, leafPiece ? static_cast<int>(static_cast<float>(leafPiece->w) * scale) : 0);
+		Box changed(Vector(static_cast<float>(left), static_cast<float>(upper)), static_cast<float>(changedWidth), static_cast<float>(scaledHeight));
 		terrain->AddUpdatedMaterialArea(changed);
-		SLTerrain::NoteMaterialChangeBox(left, upper, left + side - 1, upper + side - 1);
-		FluidSim::Disturb(Vector(static_cast<float>(x), static_cast<float>(y)), static_cast<float>(side));
+		FluidSim::Disturb(Vector(static_cast<float>(x), static_cast<float>(y)), static_cast<float>(std::max(changedWidth, scaledHeight)));
 	}
 
 	/// Fills a box with a terrain material, where there's air (or everything, to build over what's there).
@@ -1160,6 +1231,8 @@ namespace SandboxDetail {
 					case Tool::TerrainOther:
 					case Tool::Plants:
 					case Tool::Cacti:
+					case Tool::Mushrooms:
+					case Tool::Trees:
 					case Tool::BuildBeam:
 					case Tool::BuildPillar:
 					case Tool::BuildRoom:
@@ -1555,7 +1628,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::Plants:
 			case Tool::Cacti:
-				PlacePlant(at, stroke.Radius, stroke.Kind);
+			case Tool::Mushrooms:
+			case Tool::Trees:
+				PlacePlant(at, stroke.Radius, stroke.Kind, stroke.Scale);
 				break;
 			case Tool::TerrainOther:
 				if (!stroke.Material.empty()) {
@@ -1776,6 +1851,7 @@ namespace SandboxDetail {
 			stroke.Material = s_OtherTerrain;
 		}
 		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
+		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);

@@ -222,6 +222,10 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down rows of the game's own plants, as its maps have them, as far apart as Plant spacing says.";
 			case Tool::Cacti:
 				return "Drag along the ground to put down rows of the game's own cacti, big and small.";
+			case Tool::Mushrooms:
+				return "Drag along the ground to put down the game's own red and yellow mushrooms, mostly small ones.";
+			case Tool::Trees:
+				return "Drag along the ground to plant big trees: leafy, pine, tall and autumn ones, their trunks of tree trunk (wood without it) and their leaves of vegetation, so they burn and can be cut down.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			default:
@@ -357,6 +361,10 @@ namespace SandboxDetail {
 				return {Icon::Plant, IM_COL32(110, 190, 80, 255)};
 			case Tool::Cacti:
 				return {Icon::Plant, IM_COL32(150, 190, 90, 255)};
+			case Tool::Mushrooms:
+				return {Icon::Plant, IM_COL32(230, 90, 70, 255)};
+			case Tool::Trees:
+				return {Icon::Plant, IM_COL32(70, 140, 60, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:
@@ -480,16 +488,20 @@ namespace SandboxDetail {
 		if (std::none_of(tabs.begin(), tabs.end(), [](const char* name) { return s_CurrentTab == name; })) {
 			s_CurrentTab = tabs.front();
 		}
-		// Two rows, the first the longer by one when the count is odd. Each button takes an equal share of the width.
-		size_t perRow = (tabs.size() + 1) / 2;
+		// Two rows, the first the longer by one when the count is odd; more when the panel is too narrow for the names to fit. Each button takes an equal
+		// share of the width, so the rows are laid out here, not left to the wrapping of controls that don't fit.
 		float spacing = ImGui::GetStyle().ItemSpacing.x;
-		for (size_t row = 0; row < 2; ++row) {
+		float room = ImGui::GetContentRegionAvail().x;
+		float widest = 0.0F;
+		for (const char* name: tabs) {
+			widest = std::max(widest, ImGui::CalcTextSize(name).x + ImGui::GetStyle().FramePadding.x * 2.0F);
+		}
+		size_t fits = std::max<size_t>(1, static_cast<size_t>((room + spacing) / (widest + spacing)));
+		size_t perRow = std::min((tabs.size() + 1) / 2, fits);
+		for (size_t row = 0; row * perRow < tabs.size(); ++row) {
 			size_t first = row * perRow;
 			size_t last = std::min(tabs.size(), first + perRow);
-			if (first >= last) {
-				break;
-			}
-			float width = (ImGui::GetContentRegionAvail().x - spacing * static_cast<float>(perRow - 1)) / static_cast<float>(perRow);
+			float width = std::floor((room - spacing * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
 			for (size_t i = first; i < last; ++i) {
 				if (i > first) {
 					ImGui::SameLine();

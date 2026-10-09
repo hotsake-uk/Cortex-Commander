@@ -538,7 +538,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("PixelToolFont", { g_DebugMan.m_PixelFont = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ToolScale", { g_DebugMan.m_ToolScale = std::clamp(std::stof(reader.ReadPropValue()), 0.4F, 1.5F); });
 	MatchProperty("PanelWidth", { /* Was in pixels (380 by default); about 18 of them to a percent of a 1080p window. */ g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()) / 18.0F, 10.0F, 40.0F); });
-	MatchProperty("PanelWidthPercent", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 40.0F); });
+	MatchProperty("PanelWidthPercent", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 45.0F); });
+	MatchProperty("RightPanelWidthPercent", { g_DebugMan.m_PanelWidthRight = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 45.0F); });
 	MatchProperty("SandboxPanelPlacement", { g_DebugMan.m_SandboxPlacement = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
 	MatchProperty("SandboxBarWidthPercent", { g_DebugMan.m_BarWidth = std::clamp(std::stof(reader.ReadPropValue()), 25.0F, 100.0F); });
 	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
@@ -1041,6 +1042,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
 	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
 	writer.NewPropertyWithValue("PanelWidthPercent", g_DebugMan.m_PanelWidth);
+	writer.NewPropertyWithValue("RightPanelWidthPercent", g_DebugMan.m_PanelWidthRight);
 	writer.NewPropertyWithValue("SandboxBarWidthPercent", g_DebugMan.m_BarWidth);
 	writer.NewPropertyWithValue("SandboxPanelPlacement", g_DebugMan.m_SandboxPlacement);
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
