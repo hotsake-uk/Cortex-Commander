@@ -56,6 +56,7 @@
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
 #include "ActionMenu.h"
@@ -573,6 +574,8 @@ void RunGameLoop() {
 				TerrainCollapse::Update();
 				logStages.Next("Sim: liquids");
 				FluidSim::Update();
+				logStages.Next("Sim: gas");
+				GasGrid::Update();
 				logStages.Next("Sim: units in water");
 				ActorWater::Update();
 			}

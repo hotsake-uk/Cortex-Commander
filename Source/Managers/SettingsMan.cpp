@@ -12,6 +12,7 @@
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
@@ -157,6 +158,7 @@ void SettingsMan::Clear() {
 	m_SandboxPaintAudit = false;
 	m_SandboxSelectionCamera = false;
 	m_SandboxEffects = false;
+	m_SandboxGas = false;
 	m_SandboxSimState = false;
 	m_SandboxOrdersOverlay = 0;
 	m_DebugChannels = 0;
@@ -286,6 +288,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("GasShown", { GasGrid::SetShown(std::stof(reader.ReadPropValue())); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
@@ -623,6 +627,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxPaintAudit", { reader >> m_SandboxPaintAudit; });
 	MatchProperty("SandboxSelectionCamera", { reader >> m_SandboxSelectionCamera; });
 	MatchProperty("SandboxEffects", { reader >> m_SandboxEffects; });
+	MatchProperty("SandboxGas", { reader >> m_SandboxGas; });
 	MatchProperty("SandboxSimState", { reader >> m_SandboxSimState; });
 	MatchProperty("SandboxOrdersOverlay", { int which = 0; reader >> which; SetSandboxOrdersOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
@@ -947,6 +952,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseHitKnockback", TerrainCollapse::GetTuning().HitKnockback);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
+	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
+	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
@@ -1000,6 +1007,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
 	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
 	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
+	writer.NewPropertyWithValue("SandboxGas", m_SandboxGas);
 	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
 	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
 	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);

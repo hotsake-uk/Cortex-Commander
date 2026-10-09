@@ -1,6 +1,7 @@
 // Changing the world: painting and building, effects, incoming fire, lightning, spawning units, items and structures, and the stroke queue that applies every tool use.
 
 #include "SandboxInternal.h"
+#include "GasGrid.h"
 
 namespace SandboxDetail {
 	void Detonate(const char* presetName, const Vector& position) {
@@ -1498,13 +1499,23 @@ namespace SandboxDetail {
 				break;
 			case Tool::Smoke:
 				SpawnPuffs("Thick Smoke Ball", at, stroke.Radius, 2);
+				GasGrid::Add(at, GasGrid::Smoke, 0.25F);
 				break;
 			case Tool::ToxicGas:
 				SpawnPuffs("Toxic Gas Ball", at, stroke.Radius, 2);
-				// The invisible cloud that does the harm, now and then so painting doesn't stack hundreds of them.
-				if (Random01() < 0.15F) {
+				// What does the harm is the gas itself (SB-6), which sinks and pools: the grenade's own invisible cloud isn't needed as well.
+				// With the Gas setting off, the cloud does the harm as before, now and then so painting doesn't stack hundreds of them.
+				if (GasGrid::IsEnabled()) {
+					GasGrid::Add(at, GasGrid::Toxic, 0.3F);
+				} else if (Random01() < 0.15F) {
 					SpawnPuffs("Toxic Gas Cloud", at, 0, 1);
 				}
+				break;
+			case Tool::Methane:
+				GasGrid::Add(at, GasGrid::Methane, 0.3F);
+				break;
+			case Tool::Steam:
+				GasGrid::Add(at, GasGrid::Steam, 0.3F);
 				break;
 			case Tool::Dig:
 				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape);

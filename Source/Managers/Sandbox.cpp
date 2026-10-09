@@ -1165,6 +1165,8 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SliderFloat("Flow", &s_Flow, 0.1F, 1.0F, "%.2f");
 				ImGui::SetItemTooltip("How fast the liquid and loose-ground brushes pour while held. 1: as fast as they go.");
+				ToolButtons({Tool::Methane, Tool::Steam});
+				ImGui::SetItemTooltip("Gases fill the air they are let into and stay in a closed room. Toxic gas sinks and hurts whoever breathes it; methane rises, can't be seen, and goes up in a chain of blasts where it meets fire; steam rises, scalds and condenses away. Turn on the Gas overlay (Settings, sandbox overlays) to see where it is.");
 				ImGui::SeparatorText("Springs");
 				ToolButtons({Tool::WaterSpawner});
 				ImGui::SameLine();

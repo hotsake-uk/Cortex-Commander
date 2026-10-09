@@ -1,4 +1,5 @@
 #include "TerrainFire.h"
+#include "GasGrid.h"
 #include "Constants.h"
 #include "ConsoleMan.h"
 #include "Material.h"
@@ -298,6 +299,8 @@ bool TerrainFire::IsBurningNear(const Vector& position, int radius) {
 void TerrainFire::SpawnSteam(const Vector& position, int count) {
 	// The steam also hangs in the air a while after the puffs are gone (the fog volume; render only).
 	g_PostProcessMan.RegisterFog(position + Vector(0.0F, -6.0F), 10.0F + 3.0F * static_cast<float>(count), 0.08F * static_cast<float>(count));
+	// And it is real steam, which rises, scalds and condenses (SB-6).
+	GasGrid::Add(position + Vector(0.0F, -4.0F), GasGrid::Steam, 0.15F * static_cast<float>(count));
 	for (int i = 0; i < count; ++i) {
 		if (MovableObject* steam = CreateEffect("MOSParticle", "Steam Puff")) {
 			steam->SetPos(position + Vector((Random01(s_Random) - 0.5F) * 6.0F, -2.0F - Random01(s_Random) * 4.0F));
