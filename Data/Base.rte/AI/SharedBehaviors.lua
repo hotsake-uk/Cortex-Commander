@@ -769,7 +769,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	-- Spreading out under fire.
 	local suppression = SharedBehaviors.Suppression(AI, Owner);
 	local underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
-	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
+	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not SharedBehaviors.Rushing(Owner) and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
 		SharedBehaviors.Trace(Owner, "squad: spreading out");
 		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(besideDir * 40, 0), 800);
 	end
@@ -1784,6 +1784,48 @@ function SharedBehaviors.OnObjective(Owner)
 	return Owner:NumberValueExists("SandboxObjective");
 end
 
+-- A unit rushing the objective (a battle mode's share of a team's units, on their way to it: the sandbox marks them): it keeps moving
+-- and shoots on the way, but doesn't take cover, flank, fall back, sidestep, go after what it can't hit, or stop for anything else
+-- (SharedBehaviors.FocusOnRush). Unlike a carrier it still fights: on the move.
+function SharedBehaviors.Rushing(Owner)
+	return Owner:NumberValueExists("SandboxRush");
+end
+
+-- Every update of a unit rushing the objective: what would take it off its way goes; its fight, on the move, stays.
+function SharedBehaviors.FocusOnRush(AI, Owner)
+	AI.Cover = nil;
+	AI.Peek = nil;
+	AI.Investigate = nil;
+	Owner:RemoveNumberValue("AIInvestigate");
+	if AI.Flank then
+		AI.Flank = nil;
+		Owner:RemoveNumberValue("AIFlank");
+	end
+	if AI.Medic then
+		AI.Medic = nil;
+		Owner:RemoveNumberValue("AIMedic");
+		Owner:RemoveNumberValue("AIMedicFor");
+	end
+	AI.medicHeal = false;
+	AI.PickupHD = nil;
+	AI.closingIn = false;
+	local offTheWay = {ThrowSmoke = true, PinArea = true, FaceAlarm = true, ShootArea = true, WeaponSearch = true, ToolSearch = true, LobAt = true};
+	if AI.NextBehavior and offTheWay[AI.NextBehaviorName] then
+		AI.NextBehavior = nil;
+		AI.NextBehaviorName = nil;
+		AI.NextCleanup = nil;
+	end
+	if AI.Behavior and offTheWay[AI.BehaviorName] then
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		AI.Behavior = nil;
+		AI.BehaviorName = nil;
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+			AI.BehaviorCleanup = nil;
+		end
+	end
+end
+
 -- Every update of a unit running the objective: whatever else it was doing is dropped, so only its way there is left.
 function SharedBehaviors.FocusOnObjective(AI, Owner)
 	AI.Cover = nil;
@@ -1836,7 +1878,7 @@ end
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
 	-- (Running the objective comes before everything, a fall-back too: get there, shooting on the way.)
-	if SharedBehaviors.OnObjective(Owner) then
+	if SharedBehaviors.OnObjective(Owner) or SharedBehaviors.Rushing(Owner) then
 		return "move";
 	end
 	-- (The movement rule the player set for this order (RC-1) wins over what the order says, except for a fall-back.)
@@ -2773,7 +2815,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	end
 	-- (Hurt, with no enemy about; or shaken (morale under 0.3), which pulls a unit back whatever its health and in the middle of a fight.)
 	local shaken = SharedBehaviors.Shaken(AI, Owner);
-	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
+	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") or SharedBehaviors.Rushing(Owner) then
 		return false;
 	end
 	-- Only once hurt since its order was given (or, shaken, once the order has stood a while): an order given to a unit already hurt, or
@@ -3009,6 +3051,9 @@ end
 -- every unit on that thread, and the frame, waited with it. A caller that wants its flank keeps calling while AI.FlankSearch is there; one
 -- not called again within three seconds is dropped (FlankUpdate). @return Whether one was started.
 function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
+	if SharedBehaviors.Rushing(Owner) then
+		return false;
+	end
 	local search = AI.FlankSearch;
 	if search then
 		if search.pending > 0 and not search.Timer:IsPastSimMS(3000) then
