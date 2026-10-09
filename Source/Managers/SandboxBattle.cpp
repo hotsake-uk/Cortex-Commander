@@ -601,7 +601,7 @@ namespace SandboxDetail {
 					ActivateSide(side);
 					for (Actor* unit: wave) {
 						team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-						unit->SetPos(ZoneSpawnSpot(zone, unit->GetHeight()));
+						unit->SetPos(s_ModeRun.Running ? ModeSpawnSpot(side, zone, unit->GetHeight()) : ZoneSpawnSpot(zone, unit->GetHeight()));
 						g_MovableMan.AddActor(unit);
 					}
 					team.Sent += static_cast<int>(wave.size());

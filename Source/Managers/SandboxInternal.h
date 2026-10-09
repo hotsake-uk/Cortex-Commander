@@ -1514,6 +1514,7 @@ namespace SandboxDetail {
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
+	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();
 	void BattleModeTab();
