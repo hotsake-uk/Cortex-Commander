@@ -212,6 +212,12 @@ namespace SandboxDetail {
 				return "Falls and piles, and cuts units walking through it.";
 			case Tool::BuildTank:
 				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
+			case Tool::DenseEarth:
+				return "The base game's dense earth: darker and tougher to dig than earth.";
+			case Tool::GoldEarth:
+				return "Earth with flecks of gold in it, as the base game's maps have, for units to dig out.";
+			case Tool::TerrainOther:
+				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			default:
 				return nullptr;
 		}
@@ -327,6 +333,14 @@ namespace SandboxDetail {
 				return {Icon::Chunk, IM_COL32(170, 120, 70, 255)};
 			case Tool::Concrete:
 				return {Icon::Chunk, IM_COL32(170, 170, 165, 255)};
+			case Tool::Stone:
+				return {Icon::Chunk, IM_COL32(135, 130, 125, 255)};
+			case Tool::DenseEarth:
+				return {Icon::Chunk, IM_COL32(105, 70, 45, 255)};
+			case Tool::GoldEarth:
+				return {Icon::Chunk, IM_COL32(230, 190, 60, 255)};
+			case Tool::TerrainOther:
+				return {Icon::Chunk, IM_COL32(200, 160, 120, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:
@@ -932,6 +946,9 @@ namespace SandboxDetail {
 			}
 			if (hovered) {
 				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
+				if (kind == Tool::Unit || kind == Tool::Drop) {
+					size = preset.JetLift < 0.0F ? "\nJetpack: flies without limit" : preset.JetLift <= 0.0F ? "\nNo jetpack, or one too weak to lift it" : "\nJetpack lifts it about " + std::to_string(static_cast<int>(std::round(preset.JetLift))) + " m" + (preset.Jetpack ? "" : " (too little to fly)");
+				}
 				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() && !pickInto ? "\nRight click: keep it on the bar, or take it off" : "");
 			}
 			if (picked && ImGui::GetIO().KeyCtrl) {
@@ -1435,7 +1452,13 @@ namespace SandboxDetail {
 			}
 		} else {
 			float outline = tool.UsesRadius ? static_cast<float>(s_Radius) / scale : 6.0F;
-			drawList->AddCircle(io.MousePos, std::max(outline, 3.0F), tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::RallyPoint ? c_SideColors[s_Team] : white, 0, 1.5F);
+			if (IsTerrainBrush(tool.Kind) && s_SquareBrush) {
+				// The square brush: the square it paints.
+				float half = std::max(outline, 3.0F);
+				drawList->AddRect(ImVec2(io.MousePos.x - half, io.MousePos.y - half), ImVec2(io.MousePos.x + half, io.MousePos.y + half), white, 0.0F, 0, 1.5F);
+			} else {
+				drawList->AddCircle(io.MousePos, std::max(outline, 3.0F), tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::RallyPoint ? c_SideColors[s_Team] : white, 0, 1.5F);
+			}
 		}
 		if (const Preset* preset = (tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::Item || tool.Kind == Tool::Structure) ? ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)) : nullptr) {
 			label = preset->PresetName;
@@ -2711,6 +2734,9 @@ namespace SandboxDetail {
 					s_Radius = size;
 				}
 				ImGui::SameLine();
+			}
+			if (IsTerrainBrush(tool.Kind) && ToolUI::SmallButton(s_SquareBrush ? "Square" : "Circle")) {
+				s_SquareBrush = !s_SquareBrush;
 			}
 			ImGui::NewLine();
 		} else if (tool.Kind == Tool::Unit || tool.Kind == Tool::Drop) {

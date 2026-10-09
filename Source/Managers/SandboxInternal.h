@@ -172,7 +172,12 @@ namespace SandboxDetail {
 		BattleModeZone, //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
 		BattleModeGoal, //!< The Battle Director's modes: each click puts down a corner of the team's goal zone (s_BattleEditTeam), as one flag's.
 		BattleModeFlag, //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag).
-		ClearMap //!< Clears one kind of thing off the whole map (Count a ClearKind): the World tab's Clear. Appended, so the tools before keep their numbers.
+		ClearMap, //!< Clears one kind of thing off the whole map (Count a ClearKind): the World tab's Clear. Appended, so the tools before keep their numbers.
+		// More terrain to paint, from the base game's materials: appended, so the tools before keep their numbers.
+		Stone,
+		DenseEarth, //!< The base game's "Dense Earth": darker, tougher earth.
+		GoldEarth, //!< Earth with gold in it, as the base game's scenes have (c_GoldEarthShare of it gold).
+		TerrainOther //!< Paints the terrain material chosen under "More terrain..." (Stroke::Material).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -277,6 +282,10 @@ namespace SandboxDetail {
 	    {Tool::BattleModeZone, "Mode zone", 0.0F, false},
 	    {Tool::BattleModeGoal, "Team's goal zone", 0.0F, false},
 	    {Tool::BattleModeFlag, "Neutral flag", 0.0F, false},
+	    {Tool::Stone, "Stone", 0.03F, true},
+	    {Tool::DenseEarth, "Dark earth", 0.03F, true},
+	    {Tool::GoldEarth, "Earth with gold", 0.03F, true},
+	    {Tool::TerrainOther, "Other terrain", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -288,6 +297,32 @@ namespace SandboxDetail {
 		}
 		return 0;
 	}
+
+	/// The Paint tab's terrain brushes: dig and the materials painted into the air, the ones the brush shape (s_SquareBrush) is for.
+	constexpr bool IsTerrainBrush(Tool kind) {
+		switch (kind) {
+			case Tool::Dig:
+			case Tool::Earth:
+			case Tool::Sand:
+			case Tool::Ice:
+			case Tool::Grass:
+			case Tool::Wood:
+			case Tool::Concrete:
+			case Tool::Stone:
+			case Tool::DenseEarth:
+			case Tool::GoldEarth:
+			case Tool::TerrainOther:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	/// How much of what the "Earth with gold" brush paints is gold.
+	constexpr float c_GoldEarthShare = 0.06F;
+
+	/// The base game's ground materials offered under "More terrain..." (those a game doesn't have are left out).
+	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
 
 	/// The Paint tab's tools (its brushes, loose things, springs and terrain): with one in hand the right button digs (see Sandbox::DrawGUI).
 	inline bool IsPaintTool(Tool kind) { return c_Tools[ToolIndex(kind)].UsesRadius; }
@@ -363,6 +398,10 @@ namespace SandboxDetail {
 	}
 
 	/// A preset the sandbox can spawn.
+	/// How high, in metres, a unit's jetpack has to lift it to count as flying, for "Jetpacks only". Jetpacks that only fake a hop (as
+	/// many mods' units have, from before units could leap) lift a couple of metres; ones that fly lift well over ten.
+	constexpr float c_JetpackFlyingLift = 5.0F;
+
 	struct Preset {
 		std::string Label;
 		std::string ClassName;
@@ -372,7 +411,8 @@ namespace SandboxDetail {
 		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
 		std::string Kind; //!< A subcategory to list by: for units "Infantry", "Mecha", "Turrets"; for items "Primary weapons", "Grenades", "Tools"...
 		bool Modded = false; //!< From a module that isn't one of the game's own.
-		bool Jetpack = false; //!< Units: it has a jetpack it can fly with (one with some jet time).
+		bool Jetpack = false; //!< Units: its jetpack really flies it: lifts it at least c_JetpackFlyingLift.
+		float JetLift = 0.0F; //!< Units: how high its jetpack lifts it from a standstill, in metres (Actor::EstimateJumpHeight); -1 for without limit.
 		int Width = 0; //!< Structures: footprint, for the preview.
 		int Height = 0;
 		float OffsetX = 0.0F;
@@ -528,6 +568,7 @@ namespace SandboxDetail {
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
+		bool Square = false; //!< Terrain brushes: a square of the brush size either way of the point rather than a circle (s_SquareBrush).
 	};
 
 	struct CraftChoice {
@@ -687,6 +728,8 @@ namespace SandboxDetail {
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
+	inline bool s_SquareBrush = false; //!< The terrain brushes paint and dig squares rather than circles (Paint > Terrain).
+	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
 	inline int s_BrainChoice = 0;
 	inline int s_ItemChoice = 0;
@@ -1539,7 +1582,7 @@ namespace SandboxDetail {
 	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
-	void PaintTerrain(const Vector& center, int radius, const char* materialName);
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, bool square = false, float goldShare = 0.0F);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
 	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight);
