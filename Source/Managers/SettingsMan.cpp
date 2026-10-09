@@ -122,6 +122,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_AISuppression = 1.0F;
+	m_AIDigWillingness = 1.0F;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -523,6 +524,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
+	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -980,6 +982,7 @@ int SettingsMan::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("UnitSpeechOff", off);
 	}
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);

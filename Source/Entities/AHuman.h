@@ -338,6 +338,8 @@ namespace RTE {
 		bool IsJetFlying() const { return m_JetFlying && !m_Ladder.active; }
 		/// Whether the route-follower is flying a planned flight just now (take-off to landing; see MoveAlongRoute).
 		bool IsFlyingRoute() const { return m_Mover.flight.active; }
+		/// Whether the route-follower is digging along the route just now, the digger out and its trigger held (a Dig step; see MoveAlongRoute).
+		bool IsDiggingRoute() const { return m_Mover.digging; }
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
@@ -902,6 +904,15 @@ namespace RTE {
 			bool digging = false; //!< Digging along the route (a Dig step), the digger out; put away again after.
 			float digSweep = 0.0F; //!< The digger's sweep either side of the way, radians.
 			bool digSweepUp = true;
+			Vector digPoint; //!< The route's point the dig under way is for, and how long it may stand there digging without getting nearer (from the ground it found ahead).
+			Timer digTimer;
+			double digBudgetMS = 0.0;
+			float digBestGap = 0.0F; //!< The nearest it has got to that point while digging.
+			Vector digRefused; //!< The route's point a dig was given up on (too hard, or too long): walked, not dug, until a new route comes.
+			bool digRefusedSet = false;
+			Vector unstickDig; //!< The route's point of a step of another kind it was stuck on with ground it cuts in the way: dug to (see MoveAlongRoute).
+			bool unstickDigSet = false;
+			Timer digRefusedTimer; //!< Since then: after the half minute the avoided step lasts, a route through there again is dug again.
 			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
 			Timer remedyTimer; //!< Since it began.
 			Vector remedySpot; //!< Where the unit was stuck when it began.
