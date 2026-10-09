@@ -124,6 +124,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_AISuppression = 1.0F;
+	m_AIDigWillingness = 1.0F;
 	m_AIRecklessness = 0.5F;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
@@ -553,6 +554,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
+	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
@@ -906,6 +908,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);

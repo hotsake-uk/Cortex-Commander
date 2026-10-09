@@ -234,6 +234,7 @@ Last updated: 5 October 2026.
 - Copied presets with their own sprites drew the wrong frames.
 - Settings listed after one particular line in `Settings.ini` were silently ignored.
 - A crash in the modern HUD when the controlled unit was deleted.
+- AI units with a digger never dug: the route-follower asked for a new route every second at the dig face, and the AI script let go of the digger's trigger every update. They now dig, through short stretches of ground their digger cuts when going round is much longer (an "AI digging" slider in the settings says how readily), and give up and go round when the ground is harder than their digger cuts or the cut stops getting anywhere.
 
 ---
 
