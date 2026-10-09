@@ -292,9 +292,13 @@ namespace SandboxDetail {
 			if (zone.size() < 3) {
 				return;
 			}
-			std::vector<ImVec2> corners = ZoneOnScreen(zone, std::max(ScenePixelsPerWindowPixel(), 0.01F));
-			drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(fill, 0, 255)) << 24));
-			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(line, 0, 255)) << 24), ImDrawFlags_Closed, thickness);
+			// (Hidden with "Show hills on the map" or the like off, but for its name, unless one is being drawn.)
+			const Tool held = CurrentTool().Kind;
+			if (s_ShowModeZones || held == Tool::BattleModeZone || held == Tool::BattleModeGoal) {
+				std::vector<ImVec2> corners = ZoneOnScreen(zone, std::max(ScenePixelsPerWindowPixel(), 0.01F));
+				drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(fill, 0, 255)) << 24));
+				drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(line, 0, 255)) << 24), ImDrawFlags_Closed, thickness);
+			}
 			if (!label.empty()) {
 				ImVec2 middle = ToScreen(ZoneMiddle(zone));
 				ImVec2 size = ImGui::CalcTextSize(label.c_str());
@@ -3074,6 +3078,11 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
 		ToolUI::Checkbox("Show spawn zones on the map", &s_ShowModeBases);
 		ImGui::SetItemTooltip("The outline and shading of each team's spawn zones. Off, they're hidden (still shown while you draw one or place a point); flags, hills and the rest still show.");
+		if (mode.ZoneName || mode.Goals) {
+			const std::string zones = mode.ZoneName ? std::string(mode.ZoneName) + "s" : std::string("goal zones");
+			ToolUI::Checkbox(("Show " + zones + " on the map").c_str(), &s_ShowModeZones);
+			ImGui::SetItemTooltip("%s", ("The outline and shading of the " + zones + ". Off, they're hidden but for their names (still shown while you draw one); \"Show battle objectives\" lights them up apart from this.").c_str());
+		}
 		ToolUI::Checkbox("Show battle objectives", &s_ShowObjectives);
 		ImGui::SetItemTooltip("What the game is about lit up on the map, in each mode's own look: a glowing ring round each flag and VIP, the ground along a hill glowing, the terrain and buildings in an assault objective glowing, a glowing line round each goal.");
 		if (s_ShowObjectives) {
