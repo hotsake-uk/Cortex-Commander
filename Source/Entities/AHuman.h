@@ -931,6 +931,11 @@ namespace RTE {
 			Timer blockIgnoreTimer;
 			long yieldTo = 0; //!< The unit this one is giving way to, head on, by unique ID, or 0.
 			Timer yieldTimer; //!< Since it began giving way.
+			long long arrivedTick = -1; //!< The sim update the follower last answered arrived on (standing at the goal is no pin).
+			int unpinDir = 0; //!< Getting free after a pin just now: the way it steps (-1 left, 1 right), and since when.
+			int unpinLevel = 0; //!< How many times running it has been pinned at this spot (see m_PinSpot).
+			Vector unpinFrom;
+			Timer unpinTimer;
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
@@ -977,6 +982,25 @@ namespace RTE {
 		/// Picks the next remedy to try at a spot, of those allowed now and not tried this time stuck: one that worked there first, then the
 		/// rest in order, leaving out those that failed there last time. @return The remedy, or -1 for none.
 		int PickStuckRemedy(const Vector& spot, const std::array<bool, static_cast<int>(StuckRemedy::Count)>& allowed, unsigned int tried) const;
+
+		/// The pin watch, under everything else the route-follower does: a unit with somewhere to go whose body hasn't left a small circle for
+		/// 8 s is pinned, whatever it thinks it is doing (pressing up a ladder into a lip, a mantle caught and lost again and again, a flight
+		/// that can't take off from under an overhang, the same route asked for over and over). It lets go of what it holds, pushes the body
+		/// clear of the terrain it is wedged in, steps out to the side with more room (with a hop or leap the second time at the same spot),
+		/// and asks for a route another way, the steps it was pinned on made dearer for it. @return Whether the unpin has the keys this tick.
+		bool WatchForPin(bool holding);
+		/// Begins getting free of a pin (see WatchForPin).
+		void Unpin();
+		bool m_PinAnchorSet = false; //!< The pin watch: where the body was when it last moved, and since when. Kept out of the follower's own
+		Vector m_PinAnchor;            //!< state, which starts again whenever its caller skips a tick or two (as the AI's script does while a
+		Timer m_PinTimer;              //!< route is asked for), so a unit re-asked for the same route every few seconds never counted as pinned.
+		bool m_PinWideAnchorSet = false; //!< The same in a wider circle, for a unit going round and round one spot.
+		Vector m_PinWideAnchor;
+		Timer m_PinWideTimer;
+		double m_PinLastWatchMS = -1.0; //!< When the watch last ran (sim ms): a gap of over a second and a half is a hold by the caller.
+		Vector m_PinSpot; //!< Where the unit was last pinned, and how many times running near there (kept across routes and orders).
+		int m_PinCount = 0;
+		Timer m_PinSpotTimer;
 
 		/// Climbing a ladder: the body held to the ladder's line and moved along it by the climb (as the mantle moves it: gravity, the jet and
 		/// the walls are nothing to it meanwhile), the hands and feet on the rungs, one limb at a time, hand and opposite foot in turn.

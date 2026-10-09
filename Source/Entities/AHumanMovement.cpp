@@ -1378,6 +1378,11 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
+	number("pinnedMs", m_PinAnchorSet ? m_PinTimer.GetElapsedSimTimeMS() : 0.0);
+	if (mover.unpinDir != 0) {
+		number("unpinDir", mover.unpinDir);
+		number("unpinLevel", mover.unpinLevel);
+	}
 	if (mover.fuelWaiting) {
 		number("fuelWaitMs", mover.fuelWaitTimer.GetElapsedSimTimeMS());
 	}
@@ -1390,6 +1395,162 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	fields.push_back({"prone", m_ProneState != NOTPRONE ? "true" : "false", false});
 }
 
+bool AHuman::WatchForPin(bool holding) {
+	RouteMover& mover = m_Mover;
+	const float h = m_CharHeight;
+	// Getting free: out to the side for a second (a little longer each time at the same spot), or until well clear of where it was pinned,
+	// then a route from there.
+	if (mover.unpinDir != 0) {
+		Controller& ctrl = m_Controller;
+		const bool clear = Towards(mover.unpinFrom, m_Pos).MagnitudeIsGreaterThan(h * 0.6F);
+		if (clear || holding || mover.unpinTimer.IsPastSimMS(1000 + 300 * std::min(mover.unpinLevel, 3))) {
+			MoverTrace(clear ? "free of the pin; a route from here" : "done stepping out of the pin; a route from here");
+			mover.unpinDir = 0;
+			m_PinAnchorSet = false;
+			m_PinWideAnchorSet = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			mover.remedy = -1;
+			mover.remedyTried = 0;
+			RefreshRoute();
+			return false;
+		}
+		ctrl.SetState(BODY_PRONE, false);
+		ctrl.SetState(mover.unpinDir < 0 ? MOVE_RIGHT : MOVE_LEFT, false);
+		ctrl.SetState(mover.unpinDir < 0 ? MOVE_LEFT : MOVE_RIGHT, true);
+		ctrl.SetState(MOVE_UP, false);
+		ctrl.SetState(MOVE_DOWN, false);
+		// (Pinned there before: a hop out on the jet, or else a leap, at the start of the step.)
+		if (mover.unpinLevel >= 2) {
+			const bool standardJet = m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+			if (standardJet && m_pJetpack->GetJetTimeLeft() > 300.0F && !mover.unpinTimer.IsPastSimMS(300)) {
+				ctrl.SetState(BODY_JUMP, true);
+				SetAimAngle(0.6F);
+			} else if (!standardJet && CanLeap() && !mover.unpinTimer.IsPastSimMS(200)) {
+				ctrl.SetState(BODY_LEAP, true);
+			}
+		} else {
+			ctrl.SetState(BODY_JUMP, false);
+		}
+		return true;
+	}
+	// The watch: held (fighting, a tactical step, digging, giving way, getting up, nowhere to go) is not pinned, and the clock starts again.
+	// Pinned: the body not out of a small circle (two fifths of a body) for 8 s; or going round in a larger one (a body and a half) for 20,
+	// trying the same climb from the same nook and coming back down to it each time.
+	const double now = g_TimerMan.GetSimTimeMS();
+	const bool gap = m_PinLastWatchMS < 0.0 || now - m_PinLastWatchMS > 1500.0;
+	m_PinLastWatchMS = now;
+	const bool reset = holding || gap;
+	if (reset || !m_PinAnchorSet || Towards(m_PinAnchor, m_Pos).MagnitudeIsGreaterThan(std::max(24.0F, h * 0.4F))) {
+		m_PinAnchorSet = true;
+		m_PinAnchor = m_Pos;
+		m_PinTimer.Reset();
+	}
+	if (reset || !m_PinWideAnchorSet || Towards(m_PinWideAnchor, m_Pos).MagnitudeIsGreaterThan(std::max(60.0F, h * 1.5F))) {
+		m_PinWideAnchorSet = true;
+		m_PinWideAnchor = m_Pos;
+		m_PinWideTimer.Reset();
+	}
+	if (m_PinTimer.IsPastSimMS(8000) || m_PinWideTimer.IsPastSimMS(20000)) {
+		Unpin();
+		return mover.unpinDir != 0;
+	}
+	return false;
+}
+
+void AHuman::Unpin() {
+	RouteMover& mover = m_Mover;
+	const float h = m_CharHeight;
+	// Pinned at much the same spot again inside the minute: more each time.
+	if (m_PinCount > 0 && Towards(m_PinSpot, m_Pos).MagnitudeIsLessThan(h) && !m_PinSpotTimer.IsPastSimMS(60000)) {
+		++m_PinCount;
+	} else {
+		m_PinCount = 1;
+	}
+	m_PinSpot = m_Pos;
+	m_PinSpotTimer.Reset();
+	const int level = m_PinCount;
+	MoverTrace(std::string(m_PinTimer.IsPastSimMS(8000) ? "pinned for 8 s" : "going round the same spot for 20 s") + " (" + std::to_string(level) + (level == 1 ? " time" : " times") + " here); letting go and stepping out");
+	Say("Stuck");
+
+	// Let go of whatever holds the body here: the ladder, the mantle, the flight in hand.
+	if (m_Ladder.active) {
+		LetGoOfLadder(Vector(static_cast<float>(-m_Ladder.wallSide) * 1.5F, 0.0F));
+	}
+	m_Mantling = false;
+	mover.flight = RouteMover::Flight();
+	mover.fuelWaiting = false;
+	mover.settling = false;
+	mover.takeOffCommitted = false;
+	mover.noTakeOff = false;
+	mover.leapWatch = false;
+
+	// The steps it was pinned on, dearer for it for a while: the route's next few points from here, and the next point itself (each time
+	// at the same spot, more), so the route asked for after is another way where there is one.
+	{
+		int index = 0;
+		for (const Vector& point: m_MovePath) {
+			if (++index > 3) {
+				break;
+			}
+			for (int mark = 0; mark < std::min(level, 3); ++mark) {
+				AvoidPathLink(m_Pos, point, 30000.0F);
+			}
+		}
+		if (!m_MovePath.empty()) {
+			AvoidPathPoint(m_MovePath.front(), 30000.0F);
+		}
+	}
+
+	// Wedged in the terrain (the body doesn't fit where it is): put at the nearest place within half a body where it does.
+	if (!BodyFitsShifted(Vector(), m_pHead)) {
+		bool placed = false;
+		for (float distance = 2.0F; distance <= h * 0.5F && !placed; distance += 2.0F) {
+			for (int step = 0; step < 16 && !placed; ++step) {
+				// (Up and to the sides before down: the ways out of a wedge are rarely through the floor.)
+				float angle = c_HalfPI + static_cast<float>((step + 1) / 2) * (c_PI / 8.0F) * (step % 2 == 0 ? 1.0F : -1.0F);
+				Vector shift(std::cos(angle) * distance, -std::sin(angle) * distance);
+				if (BodyFitsShifted(shift, m_pHead)) {
+					m_Pos += shift;
+					g_SceneMan.WrapPosition(m_Pos);
+					m_Vel.Reset();
+					placed = true;
+					MoverTrace("wedged; moved " + std::to_string(static_cast<int>(shift.m_X)) + "," + std::to_string(static_cast<int>(shift.m_Y)) + " clear");
+				}
+			}
+		}
+	}
+
+	// The way out: the side with more room to walk along, open overhead counting for more (out from under the overhang). Even, away from
+	// where the route was trying to go, which is what pinned it.
+	auto room = [&](float side) {
+		float free = 0.0F;
+		for (float dx = 4.0F; dx <= h; dx += 4.0F) {
+			if (!BodyFitsShifted(Vector(side * dx, 0.0F), m_pHead) && !BodyFitsShifted(Vector(side * dx, -6.0F), m_pHead)) {
+				break;
+			}
+			free = dx;
+		}
+		float headTop = m_Pos.m_Y - h * 0.3F;
+		if (free >= h * 0.3F && ColumnOpen(m_Pos.m_X + side * free, headTop, headTop - h)) {
+			free += h;
+		}
+		return free;
+	};
+	float leftRoom = room(-1.0F);
+	float rightRoom = room(1.0F);
+	int dir = leftRoom > rightRoom ? -1 : 1;
+	if (leftRoom == rightRoom && !m_MovePath.empty()) {
+		dir = Towards(m_Pos, m_MovePath.front()).m_X > 0.0F ? -1 : 1;
+	}
+	mover.unpinDir = dir;
+	mover.unpinLevel = level;
+	mover.unpinFrom = m_Pos;
+	mover.unpinTimer.Reset();
+	m_PinAnchorSet = false;
+	m_PinWideAnchorSet = false;
+}
+
 int AHuman::MoveAlongRoute() {
 	RouteMover& mover = m_Mover;
 	// Not called for a while: whoever drives it held the unit (to fight, to look at an alarm, to follow someone near at hand). Its timers
@@ -1400,6 +1561,17 @@ int AHuman::MoveAlongRoute() {
 		ResetRouteMovement();
 	}
 	mover.lastCallTick = tick;
+	// Pinned where it is a long while, whatever it is doing: let go and step out (see WatchForPin).
+	{
+		const bool somewhere = !m_Waypoints.empty() || !m_MovePath.empty() || m_HasMovePathGoal || g_MovableMan.ValidMO(m_pMOMoveTarget);
+		const bool arrived = mover.arrivedTick >= 0 && tick - mover.arrivedTick <= static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1);
+		// (Nor beside a unit it follows, which may stand still as long as it likes.)
+		const bool atTarget = g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(m_Pos, m_pMOMoveTarget->GetPos()).MagnitudeIsLessThan(m_CharHeight * 1.5F);
+		const bool holding = !somewhere || arrived || atTarget || m_Tactical.active || m_GettingUp || mover.digging || mover.yieldTo != 0 || m_Status == DYING || m_Status == DEAD;
+		if (WatchForPin(holding)) {
+			return RouteMover::Moving;
+		}
+	}
 	// Pulling up onto a ledge (a mantle, or a ledge caught in the air, LM-6): the body is the mantle's until it is over. The flight in hand
 	// waits for it, so a catch under the landing ends on the landing (judged there, the route popped to it) rather than being taken for a
 	// flight out of fuel short of it while the hands pulled.
@@ -1444,6 +1616,7 @@ int AHuman::MoveAlongRoute() {
 
 	// Nothing to go to.
 	if (m_Waypoints.empty() && m_MovePath.empty() && !m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		mover.arrivedTick = tick;
 		return RouteMover::Arrived;
 	}
 	// A tactical move (a step into cover, a crawl forward to shoot; see TacticalMoveTo) has the legs: the route waits for it.
@@ -1527,7 +1700,8 @@ int AHuman::MoveAlongRoute() {
 		// waiting on it, 42 px short.)
 		if (toGoal.MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			MoverTrace("arrived");
-			return RouteMover::Arrived;
+			mover.arrivedTick = tick;
+		return RouteMover::Arrived;
 		}
 	}
 
@@ -1549,6 +1723,10 @@ int AHuman::MoveAlongRoute() {
 				bool passed = toNext.MagnitudeIsLessThan(toPoint.GetMagnitude()) || (toPoint.m_X * toNext.m_X < 0.0F && std::abs(toPoint.m_X) > 6.0F && std::abs(toPoint.m_X) < h * 0.5F && std::abs(toPoint.m_Y) < h * 0.5F);
 				// (A point above us under a low ceiling is not passed from below it: the climb reaches it in its own terms.)
 				bool lowCeiling = m_ProneState == PRONE && m_MovePath.front().m_Y < m_Pos.m_Y - 6.0F;
+				// (Nor the top of a jump from the ground: it is the corner the flight goes round. Under a ledge's lip the point after it, over
+				// the lip, is nearer than the top of the climb out past the lip, so the top was dropped, the flight's take-off was left under the
+				// lip, no flight could begin there, and the unit asked for the same route again and again, pinned under the lip.)
+				lowCeiling = lowCeiling || (!airborne && !m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Jump && toPoint.m_Y < -h * 0.3F);
 				if (passed && !lowCeiling && g_SceneMan.CastObstacleRay(m_Pos, toNext, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 9) < 0.0F) {
 					PopRoutePoint();
 					continue;
@@ -2840,7 +3018,8 @@ int AHuman::MoveAlongRoute() {
 			Vector goal = GetLastAIWaypoint();
 			if (Towards(m_Pos, goal).MagnitudeIsLessThan(h) || Towards(blocker->GetPos(), goal).MagnitudeIsLessThan(h)) {
 				MoverTrace("arrived (a unit of ours on the goal)");
-				return RouteMover::Arrived;
+				mover.arrivedTick = tick;
+		return RouteMover::Arrived;
 			}
 		}
 		if (!blocker) {
