@@ -171,8 +171,20 @@ namespace SandboxDetail {
 		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of another of the team's spawn zones (s_BattleEditTeam).
 		BattleModeZone, //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
 		BattleModeGoal, //!< The Battle Director's modes: each click puts down a corner of the team's goal zone (s_BattleEditTeam), as one flag's.
-		BattleModeFlag //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag).
+		BattleModeFlag, //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag).
+		ClearMap //!< Clears one kind of thing off the whole map (Count a ClearKind): the World tab's Clear. Appended, so the tools before keep their numbers.
 	};
+
+	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
+	enum class ClearKind {
+		Buildings, //!< Doors, the bunker parts put down and colony buildings; with Choice 1, the building materials too (c_BuildingMaterials).
+		Liquids, //!< The liquids in Stroke::Materials; with Choice 1, the springs that pour them too.
+		Units, //!< Every unit of the side in Team, or of every side with -1. Not doors, nor your character.
+		Ground //!< The terrain materials in Stroke::Materials.
+	};
+
+	/// What bunkers and the things the sandbox builds are made of, cleared with the buildings.
+	constexpr const char* c_BuildingMaterials[] = {"Concrete", "Metal", "Mega Metal", "Mangled Metal", "Door Metal", "Scrap Metal", "Glass", "Civilian Stuff", "Military Stuff", "Ladder"};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
 	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag; }
@@ -513,6 +525,7 @@ namespace SandboxDetail {
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
+		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
 	};
 
 	struct CraftChoice {
@@ -1486,6 +1499,9 @@ namespace SandboxDetail {
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
 	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight);
+	void ClearMap(const Stroke& stroke);
+	void ScanMapMaterials();
+	void ClearMapPopup();
 	void QueueSimChange(Tool kind, int count = 0);
 	glm::vec3 Hue(float turn);
 	void UpdateEffects();

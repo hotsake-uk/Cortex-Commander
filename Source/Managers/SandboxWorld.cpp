@@ -259,6 +259,128 @@ namespace SandboxDetail {
 
 
 
+	/// Turns every pixel of the marked materials on the map to air. Not kept for the undo (it can be millions of pixels: the window asks first),
+	/// and ground left hanging stays where it is, as the map's own floating ground does. The liquid round each patch that changed is woken, to flow into it.
+	/// @return How many pixels were cleared.
+	int ClearMaterialsEverywhere(const std::array<bool, 256>& clear) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const BITMAP* materials = terrain->GetMaterialBitmap();
+		const int width = materials->w;
+		const int height = materials->h;
+		constexpr int tile = 64;
+		const int tilesWide = (width + tile - 1) / tile;
+		std::vector<char> changedTiles(static_cast<size_t>(tilesWide) * static_cast<size_t>((height + tile - 1) / tile), 0);
+		int cleared = 0;
+		int left = width;
+		int top = height;
+		int right = -1;
+		int bottom = -1;
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				int material = materials->line[y][x];
+				if (!clear[material] || material == g_MaterialAir || material == g_MaterialOutOfBounds) {
+					continue;
+				}
+				terrain->SetMaterialPixel(x, y, g_MaterialAir);
+				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				changedTiles[static_cast<size_t>(y / tile) * tilesWide + x / tile] = 1;
+				left = std::min(left, x);
+				top = std::min(top, y);
+				right = std::max(right, x);
+				bottom = std::max(bottom, y);
+				++cleared;
+			}
+		}
+		if (cleared == 0) {
+			return 0;
+		}
+		terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1)));
+		for (size_t i = 0; i < changedTiles.size(); ++i) {
+			if (changedTiles[i]) {
+				Vector middle(static_cast<float>((static_cast<int>(i) % tilesWide) * tile + tile / 2), static_cast<float>((static_cast<int>(i) / tilesWide) * tile + tile / 2));
+				FluidSim::Disturb(middle, static_cast<float>(tile) * 0.75F + 2.0F);
+			}
+		}
+		return cleared;
+	}
+
+	void ClearMap(const Stroke& stroke) {
+		if (!g_SceneMan.GetScene() || !g_SceneMan.GetScene()->GetTerrain()) {
+			return;
+		}
+		std::array<bool, 256> clear{};
+		for (int material: stroke.Materials) {
+			if (material > 0 && material < 256) {
+				clear[material] = true;
+			}
+		}
+		const Actor* you = GetRef(s_PlayerUnit);
+		switch (static_cast<ClearKind>(stroke.Count)) {
+			case ClearKind::Buildings: {
+				int removed = 0;
+				for (Actor* actor: SandboxAccess::Actors()) {
+					if (dynamic_cast<ADoor*>(actor) || actor->GetNumberValue("SandboxPlaced") != 0.0) {
+						actor->SetToDelete(true);
+						++removed;
+					}
+				}
+				std::vector<int> buildings;
+				for (const Colony::Building& building: Colony::Buildings()) {
+					buildings.push_back(building.ID);
+				}
+				for (int id: buildings) {
+					Colony::Remove(id);
+				}
+				int pixels = 0;
+				if (stroke.Choice == 1) {
+					for (const char* name: c_BuildingMaterials) {
+						if (const Material* material = g_SceneMan.GetMaterial(name); material && material->GetIndex() > 0 && material->GetIndex() < 256) {
+							clear[material->GetIndex()] = true;
+						}
+					}
+					pixels = ClearMaterialsEverywhere(clear);
+				}
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(removed) + " doors and bunker parts, " + std::to_string(buildings.size()) + " colony buildings and " + std::to_string(pixels) + " pixels of what they were built of.");
+				break;
+			}
+			case ClearKind::Liquids: {
+				for (int material = 0; material < 256; ++material) {
+					clear[material] = clear[material] && FluidSim::IsLiquid(material);
+				}
+				if (stroke.Choice == 1) {
+					// Springs that pour what was cleared, so it doesn't come straight back.
+					s_WaterSpawners.erase(std::remove_if(s_WaterSpawners.begin(), s_WaterSpawners.end(), [&clear](const WaterSpawner& spring) {
+						                      const Material* material = g_SceneMan.GetMaterial(spring.Liquid);
+						                      return material && material->GetIndex() > 0 && material->GetIndex() < 256 && clear[material->GetIndex()];
+					                      }),
+					                      s_WaterSpawners.end());
+				}
+				int pixels = ClearMaterialsEverywhere(clear);
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(pixels) + " pixels of liquid.");
+				break;
+			}
+			case ClearKind::Units: {
+				int removed = 0;
+				for (Actor* actor: SandboxAccess::Actors()) {
+					if ((stroke.Team < 0 || actor->GetTeam() == stroke.Team) && !dynamic_cast<ADoor*>(actor) && actor->GetNumberValue("SandboxPlaced") == 0.0 && actor != you) {
+						actor->SetToDelete(true);
+						++removed;
+					}
+				}
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(removed) + " units.");
+				break;
+			}
+			case ClearKind::Ground: {
+				for (int material = 0; material < 256; ++material) {
+					clear[material] = clear[material] && !FluidSim::IsLiquid(material);
+				}
+				int pixels = ClearMaterialsEverywhere(clear);
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(pixels) + " pixels of ground.");
+				break;
+			}
+		}
+	}
+
 	/// Queues a change the window asks for, to be made in the next simulation update like a click on the world. (Made from the window
 	/// directly, gym units appeared with no sim step and their timers started on the spot, and the effect and spring lists were cleared
 	/// under the update that walks them.)
@@ -995,6 +1117,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();
+				break;
+			case Tool::ClearMap:
+				ClearMap(stroke);
 				break;
 			case Tool::BattleTeam:
 			case Tool::BattleDefendPoint:

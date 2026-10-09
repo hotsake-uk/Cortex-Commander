@@ -2444,6 +2444,196 @@ namespace SandboxDetail {
 			}
 			ImGui::EndPopup();
 		}
+		ImGui::SameLine();
+		if (ToolUI::SmallButton("Clear...")) {
+			ImGui::OpenPopup("Clear the map##sandboxClear");
+			ScanMapMaterials();
+		}
+		ImGui::SetItemTooltip("Takes one kind of thing off the whole map: the buildings, liquids (some or all), units, or kinds of ground (some or all).");
+		ClearMapPopup();
+	}
+
+	/// The materials on the map, each with how many pixels of it there are, for the Clear window's lists. Taken when the window opens.
+	struct MapMaterial {
+		int ID;
+		std::string Name;
+		int Pixels;
+		bool Liquid;
+	};
+	std::vector<MapMaterial> s_MapMaterials;
+	std::set<int> s_ClearPicked; //!< The liquids or kinds of ground ticked in the Clear window.
+	int s_ClearKind = 0; //!< Which ClearKind the Clear window is set to.
+	int s_ClearSide = -1; //!< The side whose units go, -1 for every side.
+	bool s_ClearBuildingMaterials = true; //!< Buildings: what they were built of goes too.
+	bool s_ClearSprings = true; //!< Liquids: the springs that pour them go too.
+	bool s_ClearAsking = false; //!< The Clear window is asking whether the player is sure.
+
+	void ScanMapMaterials() {
+		s_MapMaterials.clear();
+		s_ClearPicked.clear();
+		s_ClearAsking = false;
+		Scene* scene = g_SceneMan.GetScene();
+		if (!scene || !scene->GetTerrain()) {
+			return;
+		}
+		const BITMAP* materials = scene->GetTerrain()->GetMaterialBitmap();
+		std::array<int, 256> counts{};
+		for (int y = 0; y < materials->h; ++y) {
+			for (int x = 0; x < materials->w; ++x) {
+				++counts[materials->line[y][x]];
+			}
+		}
+		for (int id = 0; id < 256; ++id) {
+			if (counts[id] == 0 || id == g_MaterialAir || id == g_MaterialOutOfBounds) {
+				continue;
+			}
+			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+			s_MapMaterials.push_back({id, material ? material->GetPresetName() : "Material " + std::to_string(id), counts[id], FluidSim::IsLiquid(id)});
+		}
+		std::sort(s_MapMaterials.begin(), s_MapMaterials.end(), [](const MapMaterial& a, const MapMaterial& b) { return a.Pixels > b.Pixels; });
+	}
+
+	/// The Clear window: what to clear, then whether the player is sure (as Reset asks).
+	void ClearMapPopup() {
+		ImGui::SetNextWindowSizeConstraints(ImVec2(ToolUI::Pixel() * 260.0F, 0.0F), ImVec2(FLT_MAX, ImGui::GetIO().DisplaySize.y * 0.8F));
+		if (!ImGui::BeginPopupModal("Clear the map##sandboxClear", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			return;
+		}
+		const ClearKind kind = static_cast<ClearKind>(s_ClearKind);
+		const bool listed = kind == ClearKind::Liquids || kind == ClearKind::Ground;
+		auto pickedNames = [listed]() {
+			std::string names;
+			if (!listed) {
+				return names;
+			}
+			for (const MapMaterial& material: s_MapMaterials) {
+				if (s_ClearPicked.count(material.ID)) {
+					names += (names.empty() ? "" : ", ") + material.Name;
+				}
+			}
+			return names;
+		};
+		if (!s_ClearAsking) {
+			for (auto [label, choice]: {std::pair{"Buildings", ClearKind::Buildings}, std::pair{"Liquids", ClearKind::Liquids}, std::pair{"Units", ClearKind::Units}, std::pair{"Ground", ClearKind::Ground}}) {
+				if (choice != ClearKind::Buildings) {
+					ImGui::SameLine();
+				}
+				if (ToolUI::RadioButton(label, &s_ClearKind, static_cast<int>(choice))) {
+					s_ClearPicked.clear();
+				}
+			}
+			ImGui::Separator();
+			switch (kind) {
+				case ClearKind::Buildings:
+					ImGui::TextUnformatted("Every door and bunker part, and the colony buildings.");
+					ToolUI::Checkbox("And what they're built of", &s_ClearBuildingMaterials);
+					ImGui::SetItemTooltip("Every pixel of concrete, metal, glass and bunker material on the map, the built things on the Boom tab included.");
+					break;
+				case ClearKind::Units:
+					if (ImGui::BeginCombo("Whose", s_ClearSide < 0 ? "Every side" : c_SideNames[s_ClearSide])) {
+						if (ImGui::Selectable("Every side", s_ClearSide < 0)) {
+							s_ClearSide = -1;
+						}
+						for (int side = 0; side < c_Sides; ++side) {
+							if (ImGui::Selectable(c_SideNames[side], s_ClearSide == side)) {
+								s_ClearSide = side;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::TextDisabled("Craft and brains go too; doors and your character stay.");
+					break;
+				case ClearKind::Liquids:
+				case ClearKind::Ground: {
+					bool liquids = kind == ClearKind::Liquids;
+					int shown = 0;
+					for (const MapMaterial& material: s_MapMaterials) {
+						shown += material.Liquid == liquids ? 1 : 0;
+					}
+					if (shown == 0) {
+						ImGui::TextDisabled(liquids ? "There is no liquid on the map." : "There is no ground on the map.");
+						break;
+					}
+					if (ToolUI::SmallButton("All")) {
+						for (const MapMaterial& material: s_MapMaterials) {
+							if (material.Liquid == liquids) {
+								s_ClearPicked.insert(material.ID);
+							}
+						}
+					}
+					ImGui::SameLine();
+					if (ToolUI::SmallButton("None")) {
+						s_ClearPicked.clear();
+					}
+					if (ImGui::BeginChild("##clearKinds", ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(std::min(shown, 12) + 1)), ImGuiChildFlags_Borders)) {
+						for (const MapMaterial& material: s_MapMaterials) {
+							if (material.Liquid != liquids) {
+								continue;
+							}
+							bool picked = s_ClearPicked.count(material.ID) != 0;
+							std::string label = material.Name + "  (" + std::to_string(material.Pixels) + " pixels)##" + std::to_string(material.ID);
+							if (ToolUI::Checkbox(label.c_str(), &picked)) {
+								if (picked) {
+									s_ClearPicked.insert(material.ID);
+								} else {
+									s_ClearPicked.erase(material.ID);
+								}
+							}
+						}
+					}
+					ImGui::EndChild();
+					if (liquids) {
+						ToolUI::Checkbox("And the springs that pour them", &s_ClearSprings);
+					}
+					break;
+				}
+			}
+			ImGui::Separator();
+			ImGui::BeginDisabled(listed && s_ClearPicked.empty());
+			if (ToolUI::SmallButton("Clear")) {
+				s_ClearAsking = true;
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Cancel")) {
+				ImGui::CloseCurrentPopup();
+			}
+		} else {
+			std::string what;
+			switch (kind) {
+				case ClearKind::Buildings:
+					what = s_ClearBuildingMaterials ? "every door, bunker part and colony building, and all the concrete, metal and glass on the map" : "every door, bunker part and colony building";
+					break;
+				case ClearKind::Liquids:
+					what = "all the " + pickedNames() + (s_ClearSprings ? ", and the springs that pour it" : "");
+					break;
+				case ClearKind::Units:
+					what = s_ClearSide < 0 ? "every side's units" : std::string("the ") + c_SideNames[s_ClearSide] + " side's units";
+					break;
+				case ClearKind::Ground:
+					what = "all the " + pickedNames();
+					break;
+			}
+			ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ToolUI::Pixel() * 320.0F);
+			ImGui::TextWrapped("Are you sure? This takes %s off the map, and it can't be undone.", what.c_str());
+			ImGui::PopTextWrapPos();
+			if (ToolUI::SmallButton("Yes, clear")) {
+				Stroke stroke;
+				stroke.Kind = Tool::ClearMap;
+				stroke.Count = s_ClearKind;
+				stroke.Team = s_ClearSide;
+				stroke.Choice = (kind == ClearKind::Buildings && s_ClearBuildingMaterials) || (kind == ClearKind::Liquids && s_ClearSprings) ? 1 : 0;
+				stroke.Materials.assign(s_ClearPicked.begin(), s_ClearPicked.end());
+				s_Queue.push_back(stroke);
+				s_ClearAsking = false;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Back")) {
+				s_ClearAsking = false;
+			}
+		}
+		ImGui::EndPopup();
 	}
 
 
