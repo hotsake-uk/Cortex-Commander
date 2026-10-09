@@ -768,6 +768,18 @@ void DebugMan::SettingsGUI() {
 			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units only dig what their digger's regular rounds cut, and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
 		}
 		{
+			float spawnDiggers = g_SettingsMan.AISpawnDiggerChance();
+			if (Slider("Units spawn with a digger", &spawnDiggers, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAISpawnDiggerChance(spawnDiggers);
+			}
+			Tip("The share of units, every team's, that are handed a digger as they come into the scene, whether bought, dropped in or placed with it, if they don't carry one already. It goes in their inventory, so they keep their own guns in hand and get it out when a route calls for digging. 0 hands out none.");
+			int diggerType = g_SettingsMan.AISpawnDiggerType();
+			if (Combo("Digger they spawn with", &diggerType, "Light Digger\0Medium Digger\0Heavy Digger\0A random one\0")) {
+				g_SettingsMan.SetAISpawnDiggerType(diggerType);
+			}
+			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig.");
+		}
+		{
 			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
 			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
 				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
