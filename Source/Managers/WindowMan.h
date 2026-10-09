@@ -4,6 +4,7 @@
 #include "glm/fwd.hpp"
 #include "glad/gl.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -26,6 +27,7 @@ namespace RTE {
 	};
 
 	class Shader;
+	class Texture;
 	class RenderTarget;
 
 	struct SDLWindowDeleter {

@@ -195,7 +195,7 @@ From Lua, each 0 to 1 on any object: `actor.Wetness`, `actor.Soot`, `actor.SnowC
 **Tool windows** (`DockPanels`, on; `PanelWidth`, 380): the Sandbox, the settings panel, Photo Mode and the other tool windows are panels at the sides of the window, and the game's picture is fitted into the space between them, so nothing covers it. The Sandbox docks left; the rest dock right, as tabs of one panel. The settings panel's Debug category has the switch to let them float again, their size and the panel width.
 
 **Night gameplay**:
-- **Headlamps** (`Headlamps`): after dark, soldiers wear headlamps that throw a cone of light where they aim, with a faint visible beam.
+- **Headlamps** (`Headlamps`): where it's dark around them, soldiers switch on headlamps that throw a cone of light where they aim, with a faint visible beam. "Dark" is the light where the unit stands: the sky's (the time of day, none under a roof or in a cave) plus lamps, fires and flashes nearby, but not headlamps. A lamp comes on below `HeadlampDarkThreshold` (0.5, where 1 is open daylight) and goes off only 0.1 above it, so it doesn't flicker at the edge of a light, and fades over about a third of a second. So soldiers light up in a cave by day and switch off under a lit lamp at night. Lua: `actor.HeadlampLit`.
 - **AI sight** (`NightAffectsAI`): AI sees only about half as far at night without a headlamp, or 80% with one. This changes gameplay.
 - **Flare:** a buyable grenade that burns red for about 45 seconds.
 - **Cone lights:** available to code via `PostProcessMan::RegisterConeLight`.

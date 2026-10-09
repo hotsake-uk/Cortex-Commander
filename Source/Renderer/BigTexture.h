@@ -1,9 +1,11 @@
 #pragma once
+#include <memory>
 #include <vector>
 #include "raylib/raylib.h"
 #include "Box.h"
 struct BITMAP;
 namespace RTE {
+	class BitmapTexture;
 	/// BigTexture for big BITMAPS
 	struct BigTexture {
 		/// Constructs a BigTexture from a bitmap, generating extra textures as needed.

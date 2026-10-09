@@ -8,6 +8,7 @@
 #include "ADoor.h"
 #include "ACraft.h"
 #include "ACrab.h"
+#include "SoundContainer.h"
 #include "AEJetpack.h"
 #include "AtomGroup.h"
 #include "Arm.h"

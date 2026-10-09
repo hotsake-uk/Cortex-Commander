@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include "MOSParticle.h"
 #include "Material.h"
+#include "Atom.h"
 #include "MovableMan.h"
 #include "SceneMan.h"
 #include "Vector.h"

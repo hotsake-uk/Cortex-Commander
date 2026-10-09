@@ -399,8 +399,12 @@ void DebugMan::SettingsGUI() {
 			Combo("Lamp map detail", &settings.LampCacheDetail, "Coarse (8 px)\0Medium (4 px)\0Fine (2 px)\0");
 		}
 		Heading("Headlamps");
-		Check("Headlamps at night", &settings.Headlamps);
+		Check("Headlamps in the dark", &settings.Headlamps);
 		Check("Headlamps by day as well", &settings.HeadlampsByDay);
+		if (!settings.HeadlampsByDay) {
+			Slider("How dark before they come on", &settings.HeadlampDarkThreshold, 0.05F, 0.95F);
+			Tip("The light around a unit (sky, lamps, fires; 1 is open daylight) below which its headlamp comes on. It goes off again a little above it, so units at the edge of a light don't flicker.");
+		}
 		Slider("Beam brightness", &settings.HeadlampBrightness, 0.0F, 5.0F);
 		Slider("Beam reach (px)", &settings.HeadlampReach, 40.0F, 600.0F, "%.0f");
 		Slider("Beam width (degrees)", &settings.HeadlampWidth, 5.0F, 80.0F, "%.0f");
