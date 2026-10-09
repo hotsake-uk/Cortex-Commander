@@ -1,4 +1,5 @@
 #include "TerrainCollapse.h"
+#include "Actor.h"
 #include "Atom.h"
 #include "Constants.h"
 #include "Material.h"
@@ -179,6 +180,7 @@ namespace {
 		bool Done = false;
 		bool Wet = false; //!< Whether it was in liquid last update.
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
+		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
 	};
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
@@ -1120,7 +1122,15 @@ namespace {
 		}
 
 		// Units in the way are hit, and slow it a little.
-		if (glm::length(body.Vel) > 1.2F) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		float secondsPerUpdate = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+		float metersPerSecond = c_MPP / secondsPerUpdate; //!< Pixels per update to m/s.
+		// (Slower than this nothing is hit; lower when hits are set to hurt at lower speeds, so those hits are found.)
+		float hitSpeed = std::clamp(tuning.HitDamage > 0.0F ? tuning.HitMinSpeed / metersPerSecond : 1.2F, 0.4F, 1.2F);
+		if (glm::length(body.Vel) > hitSpeed) {
+			long long now = g_TimerMan.GetSimUpdateCount();
+			constexpr long long c_HurtCooldown = 20; //!< Updates before the same piece can hurt the same unit again.
+			body.Hurt.erase(std::remove_if(body.Hurt.begin(), body.Hurt.end(), [now](const std::pair<long, long long>& hurt) { return now - hurt.second >= c_HurtCooldown; }), body.Hurt.end());
 			MovableObject* struck[4] = {};
 			int struckCount = 0;
 			for (size_t i = 0; i < body.Outline.size() && struckCount < 4; i += 3) {
@@ -1137,8 +1147,27 @@ namespace {
 				}
 				struck[struckCount++] = object;
 				float objectMass = std::max(object->GetMass(), 1.0F);
+				// Hurt by how fast the piece closes on the unit above the slowest speed that hurts, and by how heavy it is for the unit (up to the cap),
+				// as a share of the unit's full health so big and small units alike take the same share from the same blow.
+				if (Actor* actor = dynamic_cast<Actor*>(object); actor && tuning.HitDamage > 0.0F && body.PixelCount >= tuning.HitMinPixels && !actor->IsDead()) {
+					long id = actor->GetUniqueID();
+					bool hurtLately = std::any_of(body.Hurt.begin(), body.Hurt.end(), [id](const std::pair<long, long long>& hurt) { return hurt.first == id; });
+					float speed = glm::length(body.Vel);
+					glm::vec2 actorVel(actor->GetVel().GetX() / metersPerSecond, actor->GetVel().GetY() / metersPerSecond);
+					float closing = speed > 0.0F ? glm::dot(body.Vel - actorVel, body.Vel / speed) * metersPerSecond : 0.0F;
+					if (!hurtLately && closing > tuning.HitMinSpeed) {
+						float heft = std::min(body.Mass / objectMass, std::max(tuning.HitMassCap, 0.0F));
+						float damage = (closing - tuning.HitMinSpeed) * heft * 0.06F * tuning.HitDamage * actor->GetMaxHealth();
+						if (damage > 0.0F) {
+							actor->AddHealth(-damage);
+							body.Hurt.emplace_back(id, now);
+						}
+					}
+				}
 				float weight = std::min(body.Mass, objectMass * 2.0F + 20.0F);
-				object->AddAbsImpulseForce(Vector(body.Vel.x, body.Vel.y) * (3.0F * weight), Vector(at.x, at.y));
+				if (tuning.HitKnockback > 0.0F) {
+					object->AddAbsImpulseForce(Vector(body.Vel.x, body.Vel.y) * (3.0F * weight * tuning.HitKnockback), Vector(at.x, at.y));
+				}
 				body.Vel *= 1.0F - std::min(0.3F, objectMass / (objectMass + body.Mass));
 			}
 		}

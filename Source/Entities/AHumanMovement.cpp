@@ -9,6 +9,7 @@
 #include "ADoor.h"
 #include "ACraft.h"
 #include "ACrab.h"
+#include "SoundContainer.h"
 #include "AEJetpack.h"
 #include "AtomGroup.h"
 #include "Arm.h"
@@ -1629,8 +1630,11 @@ int AHuman::MoveAlongRoute() {
 		bool inSight = !g_SceneMan.CastStrengthRay(m_Pos, toPoint, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
 		// (A ladder's next point is often out of sight, over a lip or down a hatch: the climb goes to it, not a new route every second.)
 		bool ladderStep = !m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Ladder;
+		// (Nor a dig's: its point is in the ground being dug, out of sight until the cut reaches it. With a new route every second, the
+		// digger never got as far as firing, and a unit routed through a bank of earth stood at its face for good.)
+		bool digStep = ((!m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Dig) || mover.digging) && HasObjectInGroup("Tools - Diggers");
 		// (Nor from under the water: the bank's point is over the lip from down there.)
-		if (inSight || airborne || inLiquid || ladderStep || DoorAhead(m_MovePath.front())) {
+		if (inSight || airborne || inLiquid || ladderStep || digStep || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
@@ -2132,12 +2136,77 @@ int AHuman::MoveAlongRoute() {
 	// A dig step (ground this unit's digger cuts, on the route): the digger out, aimed along the way and swept a little either side, fired
 	// while there is ground within reach ahead, and the legs on into the cut once its first part is clear; put away again when the way is
 	// open. (The script's follower did this for diggers; now the engine's does, and diggers follow routes like everyone else.)
-	if (kind == PathStepKind::Dig && HasObjectInGroup("Tools - Diggers")) {
+	// It digs only what its digger cuts, and not for ever: ground ahead harder than that (the grid's view was stale, or the step crossed a
+	// seam of stone), or standing at the face three times as long as a node of it should take, and the step is marked for this unit and its
+	// side and a route asked for afresh, which goes round, or through somewhere softer. (With no limit, a unit sent at ground its digger only
+	// scratched stood at the face firing for ever: the progress timer was reset every tick it dug, so the stuck remedies never ran.)
+	// A unit with a digger stuck on a step of another kind, with ground it cuts between it and the point, digs too: what is left of a cut
+	// (the top of a plug, debris fallen back in) reads to the grid as a lip to crawl under or hop, and the unit was stuck at it for good.
+	const bool hasDigger = HasObjectInGroup("Tools - Diggers");
+	bool digRefused = mover.digRefusedSet && !mover.digRefusedTimer.IsPastSimMS(30000) && Towards(mover.digRefused, point).MagnitudeIsLessThan(1.0F);
+	if (kind != PathStepKind::Dig && !mover.digging && hasDigger && !digRefused && mover.progressTimer.IsPastSimMS(2000) && kind != PathStepKind::Ladder && kind != PathStepKind::Door && toPoint.MagnitudeIsLessThan(h)) {
+		mover.unstickDig = point;
+		mover.unstickDigSet = true;
+	}
+	const bool unstickDig = mover.unstickDigSet && Towards(mover.unstickDig, point).MagnitudeIsLessThan(1.0F);
+	if ((kind == PathStepKind::Dig || unstickDig) && !digRefused && hasDigger) {
 		Vector way = toPoint;
 		if (way.MagnitudeIsGreaterThan(1.0F)) {
 			way.Normalize();
 			Vector hit;
-			bool groundAhead = g_SceneMan.CastStrengthRay(m_Pos, way * (h * 0.5F), 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
+			// What the step goes through: towards its point and no further, so not the floor under the point or a roof over it, which the
+			// digger's sweep scratches but the step doesn't cross.
+			const float gap = toPoint.GetMagnitude();
+			const Vector along = way * std::min(h * 0.5F, gap);
+			bool groundAhead = g_SceneMan.CastStrengthRay(m_Pos, along, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
+			const float cuts = groundAhead ? EstimateDigStrength() : 0.0F;
+			if (!groundAhead) {
+				mover.unstickDigSet = false;
+			}
+			if (groundAhead && (!mover.digging || Towards(mover.digPoint, point).MagnitudeIsGreaterThan(1.0F))) {
+				// A new cut, or on to the next point of this one: the time it may take from here.
+				mover.digPoint = point;
+				mover.digTimer.Reset();
+				mover.digBestGap = gap;
+				float hardest = g_SceneMan.CastMaxStrengthRay(m_Pos, m_Pos + along, 2);
+				mover.digBudgetMS = std::max(8000.0, 3000.0 * static_cast<double>(PathFinder::DigSecondsPerNode(PathFinder::DigHardness(hardest, cuts))));
+			} else if (groundAhead && gap < mover.digBestGap - 4.0F) {
+				// Getting on into the cut: the time again from here. (Only standing at the face for the whole of it is given up on, not a cut
+				// that is slow but going: a unit most of the way through a plug was sent the long way round.)
+				mover.digBestGap = gap;
+				mover.digTimer.Reset();
+			}
+			const char* giveUp = nullptr;
+			if (groundAhead && g_SceneMan.CastStrengthRay(m_Pos, along, cuts, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
+				giveUp = "ground ahead harder than the digger cuts";
+			} else if (groundAhead && mover.digTimer.IsPastSimMS(mover.digBudgetMS)) {
+				giveUp = "the cut is taking too long";
+			}
+			if (giveUp && kind != PathStepKind::Dig) {
+				// (Dug only to get unstuck: the step itself is no dig, so it isn't marked, and the stuck remedies have it again.)
+				MoverTrace(std::string("dig to get unstuck given up: ") + giveUp);
+				mover.unstickDigSet = false;
+				mover.digRefused = point;
+				mover.digRefusedSet = true;
+				mover.digRefusedTimer.Reset();
+				groundAhead = false;
+			} else if (giveUp) {
+				MoverTrace(std::string("dig given up: ") + giveUp + "; a way round");
+				// (Four marks, a hundred on that step: about what the dig itself was priced at, so the way round wins unless there is none.)
+				for (int k = 0; k < 4; ++k) {
+					AvoidPathLink(m_Pos, point, 30000.0F);
+				}
+				mover.digRefused = point;
+				mover.digRefusedSet = true;
+				mover.digRefusedTimer.Reset();
+				if (mover.digging) {
+					mover.digging = false;
+					EquipFirearm(true);
+				}
+				RefreshRoute();
+				mover.progressTimer.Reset();
+				return RouteMover::Moving;
+			}
 			if (groundAhead && EquipDiggingTool(true)) {
 				mover.digging = true;
 				if (std::abs(way.m_X) > 0.15F) {

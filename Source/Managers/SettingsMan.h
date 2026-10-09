@@ -201,6 +201,10 @@ namespace RTE {
 		/// How strongly fire pins units down and shakes them (Actor::GetSuppression and GetMorale): 0 for not at all, 1 as designed, 2 double.
 		float AISuppression() const { return m_AISuppression; }
 
+		/// How readily units with a digger tunnel through ground rather than go round it (PathFinder's dig edges): 0 only when there is no
+		/// other way (each node dug priced at the material's integrity, as before), 1 as designed (a short cut through soft ground beats a long
+		/// way round), 2 twice as readily.
+		float AIDigWillingness() const { return m_AIDigWillingness; }
 		/// How reckless AI units are on the move, 0 (careful) to 1 (reckless); 0.5 is as designed. It scales how long a unit steadies itself
 		/// before it jets, how much fuel it waits for, and how much the route search shies from hard jumps and long drops (see AIMoveCaution).
 		float AIRecklessness() const { return m_AIRecklessness; }
@@ -419,6 +423,8 @@ namespace RTE {
 		/// Sets how strongly fire pins units down and shakes them, 0 to 2.
 		void SetAISuppression(float scale) { m_AISuppression = std::clamp(scale, 0.0F, 2.0F); }
 
+		/// Sets how readily units with a digger tunnel; see AIDigWillingness.
+		void SetAIDigWillingness(float scale) { m_AIDigWillingness = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
 
@@ -671,6 +677,7 @@ namespace RTE {
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
+		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).

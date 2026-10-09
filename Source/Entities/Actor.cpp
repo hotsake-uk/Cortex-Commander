@@ -108,6 +108,9 @@ void Actor::Clear() {
 	m_HeadlampBrightness = 1.0F;
 	m_HeadlampColor.SetRGB(255, 240, 215);
 	m_HeadlampHasColor = false;
+	m_HeadlampLit = false;
+	m_HeadlampFade = 0.0F;
+	m_HeadlampSkyOpen = -1.0F;
 	m_SpeechSet.clear();
 	m_Speech = UnitSpeech::State();
 	m_PainThreshold = 15.0F;
@@ -268,6 +271,9 @@ int Actor::Create(const Actor& reference) {
 	m_SpeechSet = reference.m_SpeechSet;
 	m_HeadlampColor = reference.m_HeadlampColor;
 	m_HeadlampHasColor = reference.m_HeadlampHasColor;
+	m_HeadlampLit = reference.m_HeadlampLit;
+	m_HeadlampFade = reference.m_HeadlampFade;
+	m_HeadlampSkyOpen = reference.m_HeadlampSkyOpen;
 	m_PainThreshold = reference.m_PainThreshold;
 	m_CanRevealUnseen = reference.m_CanRevealUnseen;
 	m_CharHeight = reference.m_CharHeight;
@@ -1705,6 +1711,71 @@ float Actor::GetNightAmount() {
 	return std::clamp((0.45F - dayFactor) / 0.35F, 0.0F, 1.0F);
 }
 
+float Actor::GetAmbientLightForHeadlamp() {
+	const Vector eyes = GetEyePos();
+	// The sky: how open it is above, from three rays up (straight and a little to either side) that either reach the air above a roof's
+	// thickness or stop in the ground. Looked again every few updates, each unit on its own turn, as the ground and the unit move slowly next to that.
+	if (m_HeadlampSkyOpen < 0.0F || (g_TimerMan.GetSimUpdateCount() + GetUniqueID()) % 8 == 0) {
+		const float up = std::max(160.0F, GetHeight() * 3.0F);
+		int open = 0;
+		for (float sideways: {0.0F, -0.5F, 0.5F}) {
+			Vector roof;
+			if (!g_SceneMan.CastNotMaterialRay(eyes, Vector(up * sideways, -up), g_MaterialAir, roof)) {
+				++open;
+			}
+		}
+		m_HeadlampSkyOpen = static_cast<float>(open) / 3.0F;
+	}
+	float sky = (1.0F - GetNightAmount()) * m_HeadlampSkyOpen;
+	// The scenery's own light where the unit stands. Headlamps don't count: its own would switch itself off, and two units' would switch each other off.
+	float lamps = g_PostProcessMan.GetDynamicLightAt(eyes, false);
+	return sky + lamps;
+}
+
+void Actor::UpdateHeadlamp() {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (!lighting.Headlamps || !lighting.Enabled || m_HeadlampBrightness <= 0.0F || m_Status == DEAD || m_Status == DYING) {
+		m_HeadlampLit = false;
+		m_HeadlampFade = 0.0F;
+		return;
+	}
+	if (lighting.HeadlampsByDay) {
+		m_HeadlampLit = true;
+	} else {
+		// On when it gets darker than the threshold, off only once it's a little lighter than it: at the edge of a lamp's light or a cave mouth,
+		// or with the light wavering (a fire, a flash), the lamp stays as it is instead of flickering.
+		const float threshold = std::clamp(lighting.HeadlampDarkThreshold, 0.0F, 1.0F);
+		const float margin = 0.1F;
+		float light = GetAmbientLightForHeadlamp();
+		if (m_HeadlampLit && light > threshold + margin) {
+			m_HeadlampLit = false;
+		} else if (!m_HeadlampLit && light < threshold) {
+			m_HeadlampLit = true;
+		}
+	}
+	// It comes on and goes off over about a third of a second.
+	const float step = g_TimerMan.GetDeltaTimeSecs() / 0.3F;
+	m_HeadlampFade = std::clamp(m_HeadlampFade + (m_HeadlampLit ? step : -step), 0.0F, 1.0F);
+
+	// A headlamp lighting where the actor looks, plus a little glow around it.
+	if (m_HeadlampFade > 0.0F) {
+		Vector eyePos = GetEyePos();
+		float aimAngle = GetAimAngle(true);
+		// CC angles are counter-clockwise with Y up; screen space is Y down.
+		Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
+		// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
+		glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
+		if (m_HeadlampHasColor) {
+			color = glm::vec3(m_HeadlampColor.GetR(), m_HeadlampColor.GetG(), m_HeadlampColor.GetB());
+		} else if (lighting.HeadlampTeamTint > 0.0F && m_Team >= 0 && m_Team < 4) {
+			static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
+			color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
+		}
+		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade, LightSource::Headlamps);
+		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade, LightSource::Headlamps);
+	}
+}
+
 float Actor::GetNightSightScale() const {
 	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 	// Blown dust hides things day or night.
@@ -1815,7 +1886,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		if (night > 0.05F) {
 			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
 			// A lit headlamp gives its wearer away whichever way it points (AC-11).
-			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || (lighting.Headlamps && candidate.actor->GetHeadlampBrightness() > 0.0F)) {
+			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || candidate.actor->IsHeadlampLit()) {
 				lit = std::max(lit, candidate.actor->GetController()->IsState(WEAPON_FIRE) ? 1.0F : 0.6F);
 			}
 			// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
@@ -2075,26 +2146,7 @@ void Actor::PostUpdate() {
 }
 
 void Actor::Update() {
-	// Night: a headlamp lighting where the actor looks, plus a little glow around it. Render only.
-	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_HeadlampBrightness > 0.0F && m_Status != DEAD && m_Status != DYING) {
-		float night = lighting.HeadlampsByDay ? 1.0F : GetNightAmount();
-		if (night > 0.05F) {
-			Vector eyePos = GetEyePos();
-			float aimAngle = GetAimAngle(true);
-			// CC angles are counter-clockwise with Y up; screen space is Y down.
-			Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
-			// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
-			glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
-			if (m_HeadlampHasColor) {
-				color = glm::vec3(m_HeadlampColor.GetR(), m_HeadlampColor.GetG(), m_HeadlampColor.GetB());
-			} else if (lighting.HeadlampTeamTint > 0.0F && m_Team >= 0 && m_Team < 4) {
-				static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
-				color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
-			}
-			g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * night, LightSource::Headlamps);
-			g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * night, LightSource::Headlamps);
-		}
-	}
+	UpdateHeadlamp();
 
 	ZoneScoped;
 

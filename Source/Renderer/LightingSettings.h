@@ -314,6 +314,7 @@ namespace RTE {
 		float SaberAirGlow = 1.0F; //!< How strongly blades glow in the air around them, 0 for none.
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
+		float HeadlampDarkThreshold = 0.5F; //!< How dark it must be around a unit for its headlamp to come on, as the light there (sky, lamps, fires; 1 is open daylight): on below this, off again a little above it. So a lamp comes on in a cave by day and goes off next to a lit lamp at night.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		bool EventLooks = true; //!< The grade answers what happens: it flashes with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire; scripts can pulse it and crossfade between looks. Off: the grade stays as set, as before.
 		float EventLookStrength = 1.0F; //!< How strongly events push the grade, 0 to 2.
@@ -375,7 +376,7 @@ namespace RTE {
 		bool WetnessMap = true; //!< Rain wets the ground place by place and it dries after, hard rock and concrete slower than earth, with puddles in the dips after long rain. Off: all exposed ground is equally wet, as before.
 		float WetDrySeconds = 120.0F; //!< Game seconds for wet earth to dry once the rain stops, 10 to 600; rock takes up to three times as long.
 		float Puddles = 1.0F; //!< How much water standing in dips is drawn as reflecting puddles, 0 (none) to 1.
-		bool Headlamps = true; //!< At night, soldiers switch on headlamps that light the way they're looking.
+		bool Headlamps = true; //!< Where it's dark around them (at night, in caves, under roofs), soldiers switch on headlamps that light the way they're looking.
 		bool NightAffectsAI = false; //!< Stealth (AC-11): at night the AI sees less far and less in the dark, under a roof or away from lights, a lit headlamp gives its wearer away, and footsteps are heard (Actor::HearFootsteps). Changes gameplay; off by default so the AI is not handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
