@@ -2976,6 +2976,17 @@ namespace SandboxDetail {
 		if (side < 0 || side >= c_Sides) {
 			return false;
 		}
+		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side) && !ModeOf(s_ModeRun.Settings.Mode).UnitsMade) {
+			// A mode with no job of its own for new units: to its nearest objective (BattleObjectiveFor), held as a defend zone round it.
+			BattleObjective objective;
+			bool defend = false;
+			if (!BattleObjectiveFor(side, unit->GetPos(), objective, defend)) {
+				return false;
+			}
+			const float radius = std::max(objective.Radius, 60.0F);
+			MakeDefender(unit, PostAt(objective.Pos, radius, radius + 250.0F, 0));
+			return true;
+		}
 		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side)) {
 			// (Sent in as reinforcements: the mode's guard share is for its own waves.)
 			const int guards = s_ModeRun.Settings.GuardPercent;

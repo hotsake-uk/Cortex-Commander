@@ -1311,7 +1311,7 @@ namespace SandboxDetail {
 	}
 
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
-	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3).
+	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -1349,6 +1349,15 @@ namespace SandboxDetail {
 		} else if (choice == 13) {
 			// Defend with Shift: holding ground where the plan leaves them, as its last step (RC-3).
 			PlanStepFor(units, PlanKind::Defend, point, nullptr);
+		} else if (choice == 21) {
+			// Clear all orders: everything they were told forgotten (HoldUnit: their way, target, post, guard, defend zone, pace, plan and
+			// patrol, a battle mode's job), holding where they stand, without the side's standing orders put back as Cancel does.
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				s_Plans.erase(unit->GetUniqueID());
+				AnswerOrder(unit, "OrderCancel");
+				MarkOrder(unit->GetPos(), IM_COL32(200, 160, 120, 255));
+			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).
 			for (Actor* unit: units) {
@@ -1420,6 +1429,14 @@ namespace SandboxDetail {
 		Stroke stroke;
 		stroke.Kind = Tool::OrderSelected;
 		stroke.Count = (weapons ? 200 : 300) + rule;
+		s_Queue.push_back(stroke);
+	}
+
+	/// Gives the selected units an order (the side's orders, as the command menus give them), on the next sim update like any order.
+	void QueueOrder(Order order) {
+		Stroke stroke;
+		stroke.Kind = Tool::OrderSelected;
+		stroke.Orders = order;
 		s_Queue.push_back(stroke);
 	}
 
