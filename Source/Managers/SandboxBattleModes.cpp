@@ -2053,6 +2053,154 @@ namespace SandboxDetail {
 
 		std::string AssaultStatus(int side) { return std::string(side == AttackerOf(s_ModeRun.Settings) ? "attacking, " : "defending, ") + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
+		// ---- Team commanders ----
+
+		/// What a team's AI commander is doing, as it splits its units between the objective in play and the next one with defend zones, as a
+		/// player would with the command bar's Defend at (UpdateCommanders).
+		struct Commander {
+			int Objective = -1; //!< The objective in play when it last planned (of the mode's zones).
+			bool FellBack = false; //!< Assault defenders: everyone sent back to hold the next objective, the one in play as good as lost.
+			int Next = -1; //!< The objective it holds some back on, -1 for none.
+			int OnNow = 0; //!< Its units on the objective in play.
+			int OnNext = 0; //!< And on the next.
+		};
+		std::array<Commander, c_Sides> s_Commanders;
+
+		/// Whether a team's units are split by a commander: ticked for it, in a mode that has objectives one after another.
+		bool HasCommander(const BattleModeSettings& settings, int side) {
+			return (settings.Mode == BattleMode::Assault || settings.Mode == BattleMode::KingOfTheHill) && side >= 0 && side < c_Sides && settings.Commander[side] && TeamIn(settings, side);
+		}
+
+		/// Where a mode's units hold one of its zones: as HillPost and ObjectivePost give the one in play.
+		BattleSettings ZonePost(int zone) {
+			const std::vector<std::vector<Vector>>& zones = s_ModeRun.Settings.Zones;
+			const std::vector<Vector>& area = zones[std::clamp(zone, 0, static_cast<int>(zones.size()) - 1)];
+			const float radius = GuardRadius(area);
+			return PostAt(ZoneMiddle(area), radius, radius + (s_ModeRun.Settings.Mode == BattleMode::Assault ? 300.0F : 250.0F), 0);
+		}
+
+		/// A unit's own fixed roll, from its unique ID: who goes ahead to the next objective stays the same from one plan to the next.
+		float CommanderRoll(long id) {
+			uint32_t hash = static_cast<uint32_t>(id) * 2654435761u;
+			hash ^= hash >> 16;
+			return static_cast<float>(hash & 0xFFFFu) / 65536.0F;
+		}
+
+		/// A team's commander's plan for now: the objective it holds (the one in play), the next one (-1 for none), and the share of its units,
+		/// in percent, it puts on the next. False when it has nothing to say (assault's attackers, who all go for the objective in play).
+		bool CommanderPlan(int side, Commander& commander, int& now, int& next, int& share) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const int count = static_cast<int>(settings.Zones.size());
+			next = -1;
+			share = 0;
+			if (settings.Mode == BattleMode::Assault) {
+				if (side == AttackerOf(settings)) {
+					return false;
+				}
+				now = s_Objective;
+				if (commander.Objective != now) {
+					// (The one fallen back to is in play now: hold it, some on the one after.)
+					commander.FellBack = false;
+				}
+				if (now + 1 >= count) {
+					return true; // The last one: everyone holds it.
+				}
+				next = now + 1;
+				// Taken this far by attackers standing in it with nobody of ours there: it's going, so everyone back to the next one; once the
+				// attackers have been pushed off and the taking has slipped most of the way back, up to it again.
+				const float taken = 100.0F * s_Progress / static_cast<float>(std::max(settings.CaptureSeconds, 1));
+				const float fallBack = static_cast<float>(std::clamp(settings.CommanderFallBack, 1, 100));
+				if (!commander.FellBack && taken >= fallBack) {
+					commander.FellBack = true;
+					Say(SideName(side) + "'s commander: fall back to objective " + std::to_string(next + 1) + "!");
+				} else if (commander.FellBack && taken <= fallBack * 0.25F) {
+					commander.FellBack = false;
+					Say(SideName(side) + "'s commander: back up to objective " + std::to_string(now + 1));
+				}
+				share = commander.FellBack ? 100 : settings.CommanderReserve;
+				return true;
+			}
+			// King of the hill: with the hill moving on, some go ahead to the next one before it does, to be there first.
+			now = s_Hill;
+			if (count > 1 && settings.HillMoveSeconds > 0) {
+				const float left = static_cast<float>(settings.HillMoveSeconds) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_HillSince) / UpdatesPerSecond();
+				if (left <= std::max(15.0F, static_cast<float>(settings.HillMoveSeconds) * 0.25F)) {
+					next = (now + 1) % count;
+					share = settings.CommanderReserve;
+				}
+			}
+			return true;
+		}
+
+		/// Twice a second: each team with a commander has its mode's defenders (not those a player told to defend somewhere) split between the
+		/// objective in play and the next as its plan says, the same units going ahead each time (by their rolls), each moved only when its
+		/// place changes.
+		void UpdateCommanders(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused || s_ModeRun.Over || settings.Zones.empty() || g_TimerMan.GetSimUpdateCount() % 30 != 20) {
+				return;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			for (int side = 0; side < c_Sides; ++side) {
+				Commander& commander = s_Commanders[side];
+				int now = 0;
+				int next = -1;
+				int share = 0;
+				if (!HasCommander(settings, side) || !CommanderPlan(side, commander, now, next, share)) {
+					commander = Commander();
+					continue;
+				}
+				commander.Objective = now;
+				commander.Next = next;
+				std::vector<std::pair<float, BattleDefender*>> units;
+				for (auto& [id, defender]: s_BattleDefenders) {
+					if (!defender.Commanded && defender.Team == side) {
+						units.emplace_back(CommanderRoll(id), &defender);
+					}
+				}
+				std::sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+				const int ahead = next >= 0 ? static_cast<int>(std::lround(static_cast<float>(units.size()) * static_cast<float>(std::clamp(share, 0, 100)) / 100.0F)) : 0;
+				const BattleSettings nowPost = ZonePost(now);
+				const BattleSettings nextPost = ZonePost(next);
+				for (int i = 0; i < static_cast<int>(units.size()); ++i) {
+					const BattleSettings& post = i < ahead ? nextPost : nowPost;
+					BattleDefender& defender = *units[i].second;
+					if (!g_SceneMan.ShortestDistance(defender.Center, post.DefendPos, wraps).MagnitudeIsLessThan(1.0F)) {
+						MoveDefender(defender, post.DefendPos, false, static_cast<float>(post.DefendRadius));
+					}
+				}
+				commander.OnNext = ahead;
+				commander.OnNow = static_cast<int>(units.size()) - ahead;
+			}
+		}
+
+		/// What a team's commander is doing, for its row on the Battle tab: "" with none.
+		std::string CommanderStatus(int side) {
+			if (!HasCommander(s_ModeRun.Settings, side) || s_Commanders[side].Objective < 0) {
+				return "";
+			}
+			const Commander& commander = s_Commanders[side];
+			const std::string zone = s_ModeRun.Settings.Mode == BattleMode::Assault ? "objective " : "hill ";
+			if (commander.FellBack) {
+				return "; commander: all back to " + zone + std::to_string(commander.Next + 1);
+			}
+			std::string status = "; commander: " + std::to_string(commander.OnNow) + " on " + zone + std::to_string(commander.Objective + 1);
+			if (commander.Next >= 0) {
+				status += ", " + std::to_string(commander.OnNext) + " on " + zone + std::to_string(commander.Next + 1);
+			}
+			return status;
+		}
+
+		/// The commanders' choices, on the Battle tab under the teams, for the modes that have them.
+		void CommanderPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::SliderInt("Held on the next objective", &setup.CommanderReserve, 0, 60, "%d%%");
+			ImGui::SetItemTooltip("Teams with a commander: the share of their units it puts on the next objective (or, on king of the hill, sends ahead to the next hill before it moves), ready for when the one in play goes.");
+			if (setup.Mode == BattleMode::Assault) {
+				changed |= ImGui::SliderInt("Fall back when taken", &setup.CommanderFallBack, 10, 100, "%d%%");
+				ImGui::SetItemTooltip("Defending teams with a commander: once the attackers have got this far taking the objective in play, everyone falls back to hold the next one. They go back up if the taking slips back most of the way.");
+			}
+		}
+
 		// ---- Last team standing ----
 
 		std::array<bool, c_Sides> s_Out{}; //!< Teams with no units left to send and none left in.
@@ -2935,6 +3083,7 @@ namespace SandboxDetail {
 			s_Rushers.clear();
 			s_RushMade.fill(0);
 			s_RushChosen.fill(0);
+			s_Commanders = {};
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -3061,6 +3210,7 @@ namespace SandboxDetail {
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); mode.Update) {
 			mode.Update(aiPaused);
 		}
+		UpdateCommanders(aiPaused);
 		UpdateStuck(aiPaused);
 		UpdateRushers(aiPaused);
 		if (!aiPaused) {
@@ -3316,6 +3466,7 @@ namespace SandboxDetail {
 					if (const int respawns = RespawnsLeft(side); respawns >= 0) {
 						status += ", " + std::to_string(respawns) + (respawns == 1 ? " respawn left" : " respawns left");
 					}
+					status += CommanderStatus(side);
 					ImGui::TextDisabled("%s", status.c_str());
 				} else if (!HasZones(setup, side)) {
 					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "no spawn zone");
@@ -3331,6 +3482,12 @@ namespace SandboxDetail {
 					}
 				}
 				ImGui::Indent();
+				if (setup.Mode == BattleMode::Assault || setup.Mode == BattleMode::KingOfTheHill) {
+					changed |= ToolUI::Checkbox("AI commander", &setup.Commander[side]);
+					ImGui::SetItemTooltip("%s", setup.Mode == BattleMode::Assault
+					                                ? "Defending: a commander splits this team between the objective in play and the next one, and pulls everyone back to the next when the one in play is about to be taken. (Attackers all go for the objective in play either way.) Can be changed during the game."
+					                                : "With the hill moving on: a commander sends some of this team ahead to the next hill before it moves, to be there first. Can be changed during the game.");
+				}
 				if (FactionPicker(s_BattleSetup[side])) {
 					SendBattleSettings(side);
 				}
@@ -3340,6 +3497,10 @@ namespace SandboxDetail {
 				ImGui::Unindent();
 			}
 			ImGui::PopID();
+		}
+		if ((setup.Mode == BattleMode::Assault || setup.Mode == BattleMode::KingOfTheHill) && std::any_of(setup.Commander.begin(), setup.Commander.end(), [](bool on) { return on; })) {
+			ImGui::SeparatorText("AI commanders");
+			CommanderPanel(setup, changed);
 		}
 		if (changed) {
 			SendBattleMode();
