@@ -437,8 +437,12 @@ void DebugMan::SettingsGUI() {
 			Combo("Lamp map detail", &settings.LampCacheDetail, "Coarse (8 px)\0Medium (4 px)\0Fine (2 px)\0");
 		}
 		Heading("Headlamps");
-		Check("Headlamps at night", &settings.Headlamps);
+		Check("Headlamps in the dark", &settings.Headlamps);
 		Check("Headlamps by day as well", &settings.HeadlampsByDay);
+		if (!settings.HeadlampsByDay) {
+			Slider("How dark before they come on", &settings.HeadlampDarkThreshold, 0.05F, 0.95F);
+			Tip("The light around a unit (sky, lamps, fires; 1 is open daylight) below which its headlamp comes on. It goes off again a little above it, so units at the edge of a light don't flicker.");
+		}
 		Slider("Beam brightness", &settings.HeadlampBrightness, 0.0F, 5.0F);
 		Slider("Beam reach (px)", &settings.HeadlampReach, 40.0F, 600.0F, "%.0f");
 		Slider("Beam width (degrees)", &settings.HeadlampWidth, 5.0F, 80.0F, "%.0f");
@@ -639,6 +643,17 @@ void DebugMan::SettingsGUI() {
 		Slider("Sand disturbed by walking", &tuning.ScuffStrength, 0.0F, 3.0F);
 		Tip("Units walking or running on sand and other loose ground knock a few surface pixels loose and shove them the way they go, so a slope slumps a little. 0: off. Mod materials opt in with Scuffs in their ini.");
 		Slider("Seconds still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
+		Heading("Hitting units");
+		Slider("How much falling pieces hurt", &tuning.HitDamage, 0.0F, 5.0F, "%.2fx");
+		Tip("Damage is a share of the unit's full health, by how fast the piece is moving into it and how heavy it is for the unit. At 1 a block a metre across falling 10 m/s onto a soldier takes about a quarter to a third of their health. 0: pieces never hurt.");
+		Slider("Slowest hit that hurts (m/s)", &tuning.HitMinSpeed, 0.0F, 15.0F, "%.1f");
+		Tip("Only the speed above this counts toward the damage. Lower: slow slides and short drops hurt too.");
+		SliderI("Smallest piece that hurts (pixels)", &tuning.HitMinPixels, 0, 1000, "%d", ImGuiSliderFlags_Logarithmic);
+		Tip("Smaller pieces only push units about. 400 pixels is a block a metre across.");
+		Slider("Heaviest a piece counts (x unit's mass)", &tuning.HitMassCap, 0.1F, 20.0F, "%.1fx", ImGuiSliderFlags_Logarithmic);
+		Tip("A piece heavier than this many times the unit it hits hurts only as much as one this heavy. Higher: big boulders are deadlier than big rocks.");
+		Slider("How hard pieces knock units", &tuning.HitKnockback, 0.0F, 3.0F, "%.2fx");
+		Tip("How hard falling pieces shove the units and loose objects they hit. Units knocked flying into the ground take the usual impact damage on top.");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
 		}
@@ -744,6 +759,13 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetAISuppression(suppression);
 			}
 			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
+		}
+		{
+			float dig = g_SettingsMan.AIDigWillingness();
+			if (Slider("AI digging", &dig, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAIDigWillingness(dig);
+			}
+			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units only dig what their digger's regular rounds cut, and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
 		}
 		{
 			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;

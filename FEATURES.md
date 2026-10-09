@@ -133,7 +133,7 @@ Last updated: 5 October 2026.
 - **Swimming and drowning.** Units move through liquid instead of destroying it. Wading slows them. Light units float and heavy ones sink. Living soldiers run out of air after 12 seconds under water; robots do not breathe.
 - **Smoke and gas block sight.** Units and the AI cannot see through thick smoke or steam, so smoke screens work.
 - **Weather that matters.** Rain and snow weaken fire. Snow slows walking by up to 15%. Wind pushes fire. Dust storms cut how far units see.
-- **Night matters.** After dark, soldiers wear headlamps that light where they aim. The AI sees about half as far at night without one.
+- **Night matters.** Where it's dark around them (at night, in caves, under roofs), soldiers switch on headlamps that light where they aim, and switch them off again under a lit lamp or back in daylight. The AI sees about half as far at night without one.
 - **Saved games** store burning fire and moving liquid, and continue them when loaded.
 
 ## 9. New equipment
@@ -234,6 +234,7 @@ Last updated: 5 October 2026.
 - Copied presets with their own sprites drew the wrong frames.
 - Settings listed after one particular line in `Settings.ini` were silently ignored.
 - A crash in the modern HUD when the controlled unit was deleted.
+- AI units with a digger never dug: the route-follower asked for a new route every second at the dig face, and the AI script let go of the digger's trigger every update. They now dig, through short stretches of ground their digger cuts when going round is much longer (an "AI digging" slider in the settings says how readily), and give up and go round when the ground is harder than their digger cuts or the cut stops getting anywhere.
 
 ---
 
