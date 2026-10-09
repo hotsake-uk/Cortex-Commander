@@ -116,6 +116,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxBattleDefend", &Sandbox::SetBattleDefend),
 	                         luabind::def("SandboxBattleStart", &Sandbox::StartBattle),
 	                         luabind::def("SandboxBattleStop", &Sandbox::StopBattle),
+	                         luabind::def("SandboxBattleMode", &Sandbox::StartBattleMode),
 	                         luabind::def("SandboxAutoBattleSide", &Sandbox::SetAutoBattleSide),
 	                         luabind::def("SandboxAutoBattleRandom", &Sandbox::SetAutoBattleRandom),
 	                         luabind::def("SandboxStartAutoBattle", &Sandbox::StartAutoBattle),

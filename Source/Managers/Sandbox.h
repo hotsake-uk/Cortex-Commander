@@ -119,6 +119,13 @@ namespace RTE {
 		/// Stops every Battle Director team sending waves (Lua: SandboxBattleStop). Their units already in stay.
 		static void StopBattle();
 
+		/// Starts one of the Battle Director's modes (Lua: SandboxBattleMode), with the teams whose bases are drawn ("Team's base" with
+		/// SandboxDo) and the mode's other settings as the Battle tab has them. A mode of 0 (custom) stops the mode's game.
+		/// @param mode 1 capture the flag, 2 king of the hill, 3 assault, 4 last team standing, 5 VIP hunt.
+		/// @param teamSize Most units each team has alive at once.
+		/// @param byShip Whether they come in by ship over their base, rather than appearing in it.
+		static void StartBattleMode(int mode, int teamSize, bool byShip);
+
 		/// The old auto battle's calls, kept for one release for scripts that use them: a team attacking with one faction's units, or any
 		/// faction's (Lua: SandboxAutoBattleSide, SandboxAutoBattleRandom, SandboxStartAutoBattle). Use the SandboxBattle calls instead.
 		static void SetAutoBattleSide(int team, const std::string& faction, int budget);

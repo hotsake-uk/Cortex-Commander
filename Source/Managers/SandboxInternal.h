@@ -454,6 +454,7 @@ namespace SandboxDetail {
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
+		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
 		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
 		int HillMoveSeconds = 0; //!< King of the hill, with more than one hill: seconds before the hill moves on to the next. 0: it stays put.
@@ -1535,7 +1536,7 @@ namespace SandboxDetail {
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
-	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, float height);
+	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();
