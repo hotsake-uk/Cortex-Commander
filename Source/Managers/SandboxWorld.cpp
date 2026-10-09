@@ -117,7 +117,9 @@ namespace SandboxDetail {
 	}
 
 	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
-	void PaintTerrain(const Vector& center, int radius, const char* materialName) {
+	/// @param square A square of radius either way of the center rather than a circle (the brush shape, s_SquareBrush).
+	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, bool square, float goldShare) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -140,6 +142,15 @@ namespace SandboxDetail {
 			darker.RecalculateIndex();
 			speckleColor = darker.GetIndex() > 1 ? darker.GetIndex() : color;
 		}
+		const Material* gold = materialName && goldShare > 0.0F ? g_SceneMan.GetMaterial("Gold") : nullptr;
+		int goldColor = ColorKeys::g_MaskColor;
+		if (gold && gold->GetIndex() != g_MaterialAir) {
+			Color goldMaterialColor = gold->GetColor();
+			goldMaterialColor.RecalculateIndex();
+			goldColor = goldMaterialColor.GetIndex();
+		} else {
+			gold = nullptr;
+		}
 		int centerX = center.GetFloorIntX();
 		int centerY = center.GetFloorIntY();
 		if (!materialName) {
@@ -149,7 +160,7 @@ namespace SandboxDetail {
 		bool changed = false;
 		for (int dy = -radius; dy <= radius; ++dy) {
 			for (int dx = -radius; dx <= radius; ++dx) {
-				if (dx * dx + dy * dy > radius * radius) {
+				if (!square && dx * dx + dy * dy > radius * radius) {
 					continue;
 				}
 				int x = centerX + dx;
@@ -166,8 +177,13 @@ namespace SandboxDetail {
 					continue;
 				}
 				RecordPaintPixel(terrain, x, y);
-				terrain->SetMaterialPixel(x, y, material);
-				terrain->SetFGColorPixel(x, y, materialName ? PaintedColor(paintMaterial, x, y, color, speckleColor) : color);
+				if (gold && Random01() < goldShare) {
+					terrain->SetMaterialPixel(x, y, gold->GetIndex());
+					terrain->SetFGColorPixel(x, y, PaintedColor(gold, x, y, goldColor, goldColor));
+				} else {
+					terrain->SetMaterialPixel(x, y, material);
+					terrain->SetFGColorPixel(x, y, materialName ? PaintedColor(paintMaterial, x, y, color, speckleColor) : color);
+				}
 				changed = true;
 			}
 		}
@@ -934,6 +950,10 @@ namespace SandboxDetail {
 					case Tool::Grass:
 					case Tool::Wood:
 					case Tool::Concrete:
+					case Tool::Stone:
+					case Tool::DenseEarth:
+					case Tool::GoldEarth:
+					case Tool::TerrainOther:
 					case Tool::BuildBeam:
 					case Tool::BuildPillar:
 					case Tool::BuildRoom:
@@ -1247,25 +1267,39 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::Dig:
-				PaintTerrain(at, stroke.Radius, nullptr);
+				PaintTerrain(at, stroke.Radius, nullptr, stroke.Square);
 				break;
 			case Tool::Earth:
-				PaintTerrain(at, stroke.Radius, "Earth");
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Square);
 				break;
 			case Tool::Sand:
-				PaintTerrain(at, stroke.Radius, "Sand");
+				PaintTerrain(at, stroke.Radius, "Sand", stroke.Square);
 				break;
 			case Tool::Ice:
-				PaintTerrain(at, stroke.Radius, "Ice");
+				PaintTerrain(at, stroke.Radius, "Ice", stroke.Square);
 				break;
 			case Tool::Grass:
-				PaintTerrain(at, stroke.Radius, "Grass");
+				PaintTerrain(at, stroke.Radius, "Grass", stroke.Square);
 				break;
 			case Tool::Wood:
-				PaintTerrain(at, stroke.Radius, "Wood");
+				PaintTerrain(at, stroke.Radius, "Wood", stroke.Square);
 				break;
 			case Tool::Concrete:
-				PaintTerrain(at, stroke.Radius, "Concrete");
+				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Square);
+				break;
+			case Tool::Stone:
+				PaintTerrain(at, stroke.Radius, "Stone", stroke.Square);
+				break;
+			case Tool::DenseEarth:
+				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Square);
+				break;
+			case Tool::GoldEarth:
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Square, c_GoldEarthShare);
+				break;
+			case Tool::TerrainOther:
+				if (!stroke.Material.empty()) {
+					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Square);
+				}
 				break;
 			case Tool::Grenade:
 				Detonate("Frag Grenade", at);
@@ -1477,7 +1511,10 @@ namespace SandboxDetail {
 			stroke.Rate = s_SpringRate;
 		} else if (kind == Tool::PourOther) {
 			stroke.Material = s_OtherPourable;
+		} else if (kind == Tool::TerrainOther) {
+			stroke.Material = s_OtherTerrain;
 		}
+		stroke.Square = IsTerrainBrush(kind) && s_SquareBrush;
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);

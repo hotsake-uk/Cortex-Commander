@@ -1183,7 +1183,33 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});
+				{
+					// The rest of the base game's ground, for the "Other terrain" tool.
+					if (ImGui::BeginCombo("More terrain...", s_OtherTerrain.c_str())) {
+						for (const char* name: c_TerrainMaterials) {
+							const Material* material = g_SceneMan.GetMaterial(name);
+							if (!material || material->GetIndex() == g_MaterialAir) {
+								continue;
+							}
+							if (ImGui::Selectable(name, s_OtherTerrain == name)) {
+								s_OtherTerrain = name;
+								TookTool(ToolIndex(Tool::TerrainOther));
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SetItemTooltip("The base game's ground materials. Picking one takes the Other terrain tool.");
+				}
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
+				int shape = s_SquareBrush ? 1 : 0;
+				ImGui::TextUnformatted("Brush shape");
+				ImGui::SameLine();
+				ImGui::RadioButton("Circle", &shape, 0);
+				ImGui::SameLine();
+				ImGui::RadioButton("Square", &shape, 1);
+				s_SquareBrush = shape == 1;
+				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, or a square as wide as the brush.");
 				ImGui::BeginDisabled(s_PaintUndo.empty());
 				if (ToolUI::Button("Undo terrain")) {
 					QueueSimChange(Tool::UndoTerrain);
