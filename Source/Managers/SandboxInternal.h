@@ -586,6 +586,7 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	inline bool s_ShowModeBases = true; //!< The teams' bases shaded and outlined on the map (always while one is being drawn, or its point placed).
 	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;

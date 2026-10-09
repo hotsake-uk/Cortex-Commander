@@ -83,7 +83,8 @@ namespace SandboxDetail {
 
 		/// A base drawn on the map: its area shaded in its team's colour.
 		void DrawBase(ImDrawList* drawList, const std::vector<Vector>& base, ImU32 color) {
-			if (base.size() < 3) {
+			const Tool held = CurrentTool().Kind;
+			if (base.size() < 3 || (!s_ShowModeBases && held != Tool::BattleModeBase && held != Tool::BattleModePoint)) {
 				return;
 			}
 			std::vector<ImVec2> corners = ZoneOnScreen(base, std::max(ScenePixelsPerWindowPixel(), 0.01F));
@@ -1911,6 +1912,8 @@ namespace SandboxDetail {
 			changed = true;
 		}
 		ImGui::SetItemTooltip("Each team's units come in by ship over their base (each team's card says which craft), rather than appearing in it.");
+		ToolUI::Checkbox("Show bases on the map", &s_ShowModeBases);
+		ImGui::SetItemTooltip("The outline and shading of each team's base. Off, they're hidden (still shown while you draw a base or place its point); flags, hills and the rest still show.");
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
 		}
