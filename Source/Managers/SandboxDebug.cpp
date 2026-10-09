@@ -3,6 +3,7 @@
 #include "SandboxInternal.h"
 #include "DebugDraw.h"
 #include "GasGrid.h"
+#include "AirPressure.h"
 
 namespace {
 	/// A dashed line between window positions, as the orders overlay draws an order waiting for the next update.
@@ -598,6 +599,94 @@ namespace {
 			drawList->AddText(ImVec2(mouse.x + 16.0F, mouse.y + 30.0F), IM_COL32(230, 230, 220, 255), text.c_str());
 		}
 	}
+
+	/// The air overlay (SettingsMan::ShowSandboxAir): the blast waves' pressure and movement in view with the area they are worked out over,
+	/// the wind as arrows with the places sheltered from it, and what the air is doing under the pointer.
+	void DrawAirOverlay() {
+		if (!g_SettingsMan.ShowSandboxAir() || !AirPressure::IsOn()) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		float cell = static_cast<float>(AirPressure::GetCellSize());
+		Box view = DebugDraw::ViewBox();
+		float viewLeft = view.GetCorner().m_X;
+		float viewTop = view.GetCorner().m_Y;
+		float viewRight = viewLeft + view.GetWidth();
+		float viewBottom = viewTop + view.GetHeight();
+
+		// The waves: only over the part of the map they are worked out over, and only what of it is in view.
+		if (int left, top, right, bottom; AirPressure::GetActiveArea(left, top, right, bottom)) {
+			float fromX = std::max(static_cast<float>(left), std::floor(viewLeft / cell) * cell);
+			float fromY = std::max(static_cast<float>(top), std::floor(viewTop / cell) * cell);
+			float toX = std::min(static_cast<float>(right), viewRight + cell);
+			float toY = std::min(static_cast<float>(bottom), viewBottom + cell);
+			int across = static_cast<int>((toX - fromX) / cell) + 1;
+			int down = static_cast<int>((toY - fromY) / cell) + 1;
+			// Far out, every other cell (or fewer) so the overlay costs little.
+			int step = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(std::max(across, 1)) * static_cast<float>(std::max(down, 1)) / 20000.0F))));
+			float size = cell * static_cast<float>(step) / scale;
+			for (float y = fromY; y < toY; y += cell * static_cast<float>(step)) {
+				for (float x = fromX; x < toX; x += cell * static_cast<float>(step)) {
+					Vector middle(x + cell * 0.5F, y + cell * 0.5F);
+					float pressure = AirPressure::GetPressure(middle);
+					if (std::abs(pressure) >= 0.05F) {
+						int alpha = static_cast<int>(std::clamp(30.0F + std::abs(pressure) * 25.0F, 30.0F, 180.0F));
+						ImU32 color = pressure > 0.0F ? IM_COL32(240, 70, 50, alpha) : IM_COL32(70, 120, 250, alpha);
+						ImVec2 corner = ToScreen(Vector(x, y));
+						drawList->AddRectFilled(corner, ImVec2(corner.x + size, corner.y + size), color);
+					}
+					// Which way the air moves, every other cell: a line from the middle as long as the push it gives.
+					if ((static_cast<int>(x / cell) / step) % 2 == 0 && (static_cast<int>(y / cell) / step) % 2 == 0) {
+						Vector flow = AirPressure::GetFlow(middle);
+						if (!flow.MagnitudeIsLessThan(0.1F)) {
+							Vector end = middle + flow.GetNormalized() * std::min(flow.GetMagnitude() * 3.0F, cell * 2.0F * static_cast<float>(step));
+							drawList->AddLine(ToScreen(middle), ToScreen(end), IM_COL32(255, 240, 200, 200), 1.0F);
+						}
+					}
+				}
+			}
+			drawList->AddRect(ToScreen(Vector(static_cast<float>(left), static_cast<float>(top))), ToScreen(Vector(static_cast<float>(right), static_cast<float>(bottom))), IM_COL32(250, 220, 60, 200), 0.0F, 0, 1.5F);
+		}
+
+		// The wind: an arrow every 48 pixels of open air, the way and as hard as it carries things, or an orange dot where ground upwind shelters it.
+		float wind = AirPressure::GetWind();
+		if (std::abs(wind) >= 0.02F) {
+			constexpr float spacing = 48.0F;
+			float gap = spacing * std::max(1.0F, std::ceil(view.GetWidth() / spacing / 40.0F));
+			for (float y = std::floor(viewTop / gap) * gap + gap * 0.5F; y < viewBottom; y += gap) {
+				for (float x = std::floor(viewLeft / gap) * gap + gap * 0.5F; x < viewRight; x += gap) {
+					Vector at(x, y);
+					if (g_SceneMan.GetTerrMatter(at.GetFloorIntX(), at.GetFloorIntY()) != g_MaterialAir) {
+						continue;
+					}
+					ImVec2 point = ToScreen(at);
+					if (AirPressure::IsSheltered(at, wind)) {
+						drawList->AddCircleFilled(point, 3.0F, IM_COL32(250, 150, 50, 200));
+						continue;
+					}
+					float length = std::clamp(std::abs(wind), 0.1F, 2.0F) * 14.0F;
+					float side = wind > 0.0F ? 1.0F : -1.0F;
+					ImVec2 tip(point.x + side * length * 0.5F, point.y);
+					ImVec2 tail(point.x - side * length * 0.5F, point.y);
+					drawList->AddLine(tail, tip, IM_COL32(150, 220, 255, 190), 1.5F);
+					drawList->AddTriangleFilled(tip, ImVec2(tip.x - side * 5.0F, tip.y - 3.5F), ImVec2(tip.x - side * 5.0F, tip.y + 3.5F), IM_COL32(150, 220, 255, 190));
+				}
+			}
+		}
+
+		// Under the pointer.
+		Vector pointer = DebugDraw::MouseScenePosition();
+		float pressure = AirPressure::GetPressure(pointer);
+		Vector flow = AirPressure::GetFlow(pointer);
+		char text[160];
+		std::snprintf(text, sizeof(text), "pressure %.2f  flow %.2f, %.2f  wind %.2f%s  (%d wave cells)", pressure, flow.m_X, flow.m_Y, wind, std::abs(wind) >= 0.02F && AirPressure::IsSheltered(pointer, wind) ? " sheltered" : "", AirPressure::GetActiveCells());
+		const ImVec2& mouse = ImGui::GetIO().MousePos;
+		ImVec2 textSize = ImGui::CalcTextSize(text);
+		float below = g_SettingsMan.ShowSandboxGas() ? 48.0F : 30.0F;
+		drawList->AddRectFilled(ImVec2(mouse.x + 14.0F, mouse.y + below), ImVec2(mouse.x + 18.0F + textSize.x, mouse.y + below + textSize.y), IM_COL32(10, 12, 10, 190));
+		drawList->AddText(ImVec2(mouse.x + 16.0F, mouse.y + below), IM_COL32(230, 230, 220, 255), text);
+	}
 } // namespace
 
 void Sandbox::DrawDebug() {
@@ -608,6 +697,7 @@ void Sandbox::DrawDebug() {
 	DrawSimState();
 	DrawEffectsOverlay();
 	DrawGasOverlay();
+	DrawAirOverlay();
 	DrawSelectionCameraOverlay();
 	DrawPaintAudit();
 	DrawAutoBattleColony();

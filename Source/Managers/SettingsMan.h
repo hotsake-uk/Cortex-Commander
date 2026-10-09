@@ -396,6 +396,12 @@ namespace RTE {
 		/// Sets whether the sandbox's gas overlay is on.
 		void SetShowSandboxGas(bool show) { m_SandboxGas = show; }
 
+		/// Gets whether the sandbox's air overlay is on: the pressure and movement of blast waves (SB-5) in view, the area they are worked out over, and the wind and where it is sheltered.
+		bool ShowSandboxAir() const { return m_SandboxAir; }
+
+		/// Sets whether the sandbox's air overlay is on.
+		void SetShowSandboxAir(bool show) { m_SandboxAir = show; }
+
 		/// Gets whether the sandbox's sim state readout is on: what is pausing the world, the AI pause, sim updates per drawn frame, the sandbox's queued and applied tool uses and steps, and the time scale.
 		bool ShowSandboxSimState() const { return m_SandboxSimState; }
 
@@ -709,6 +715,7 @@ namespace RTE {
 		bool m_SandboxSelectionCamera; //!< Whether the sandbox's selection and camera overlay is on (see ShowSandboxSelectionCamera).
 		bool m_SandboxEffects; //!< Whether the sandbox's incoming and effects overlay is on (see ShowSandboxEffects).
 		bool m_SandboxGas; //!< Whether the sandbox's gas overlay is on (see ShowSandboxGas).
+		bool m_SandboxAir; //!< Whether the sandbox's air overlay is on (see ShowSandboxAir).
 		bool m_SandboxSimState; //!< Whether the sandbox's sim state readout is on (see ShowSandboxSimState).
 		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
 		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).
