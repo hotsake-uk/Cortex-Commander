@@ -2452,7 +2452,13 @@ int AHuman::MoveAlongRoute() {
 		// On the ground, with the fuel the flight takes: off. Short of it, waits (walking the while if the point is level).
 		// (Never more than 85 hundredths of the tank, which a standing unit's own hops kept it from; and the wait ends after six seconds
 		// whatever the tank says, on a timer of its own, since standing still here is not being stuck.)
-		float needed = std::min(FlightFuelNeeded(landing, landingFloorY), m_pJetpack->GetJetTimeTotal() * 0.85F);
+		// (The AI movement settings: a careful unit waits for a little more than the flight takes and settles longer, a reckless one less;
+		// with the fuel wait off it goes on a tenth of what it needs, with the steadying off it takes off mid-stride.)
+		const float caution = g_SettingsMan.AIMoveCaution();
+		float needed = std::min(FlightFuelNeeded(landing, landingFloorY) * std::clamp(0.8F + caution * 0.2F, 0.9F, 1.2F), m_pJetpack->GetJetTimeTotal() * 0.85F);
+		if (!g_SettingsMan.AIWaitsForFuel()) {
+			needed *= 0.1F;
+		}
 		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
 			mover.fuelWaitTimer.Reset();
@@ -2465,7 +2471,7 @@ int AHuman::MoveAlongRoute() {
 		// and upright for up to most of a second, by how far the landing is past three bodies off. A small error at take-off is a big one
 		// at the end of a long flight, and long flights were the ones missed and flown again.
 		float flightLength = toLanding.GetMagnitude();
-		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F);
+		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution;
 		// (Upright against its own standing pose, which leans for some bodies: measured against straight up, a soldier whose stance leans
 		// more than the tolerance never counted as settled, and stood at the foot of the ledge for good.)
 		float uprightError = std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND]));
@@ -2475,14 +2481,14 @@ int AHuman::MoveAlongRoute() {
 		}
 		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
 		// never quite settled stood at its take-off with nothing to move it on.)
-		bool wantsSettle = canTakeOff && !hop && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		bool wantsSettle = canTakeOff && !hop && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
 		if (wantsSettle && !mover.settling) {
 			mover.settling = true;
 			mover.settleWaitTimer.Reset();
 		} else if (!wantsSettle) {
 			mover.settling = false;
 		}
-		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500)) {
+		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500.0 * std::max(1.0F, caution))) {
 			wantsSettle = false;
 		}
 		if (wantsSettle) {

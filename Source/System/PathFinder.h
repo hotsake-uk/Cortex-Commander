@@ -74,6 +74,7 @@ namespace RTE {
 		bool Floats = false; //!< Whether it floats in deep water (ActorWater::IsFloater) and swims along the surface, rather than walking the bottom.
 		float BreathSeconds = FLT_MAX; //!< How long it holds its breath with its head under, in seconds (ActorWater::GetBreathSeconds); FLT_MAX for what doesn't breathe.
 		bool CrossesLava = false; //!< Whether it may be routed through lava: what doesn't burn (machines).
+		float Caution = 1.0F; //!< How much the search shies from hard flights and long drops: 1 as designed, more for careful, less for reckless (SettingsMan::AIMoveCaution).
 	};
 
 	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
