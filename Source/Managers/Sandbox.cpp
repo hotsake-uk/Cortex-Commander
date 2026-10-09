@@ -734,6 +734,12 @@ void Sandbox::DrawGUI() {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				QueueStroke(tool.Kind, position);
 			}
+		} else if (IsPlantBrush(tool.Kind)) {
+			// A plant where clicked, then another each Plant spacing the pointer goes across while held: a row along the ground.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || (ImGui::IsMouseDown(ImGuiMouseButton_Left) && std::abs(g_SceneMan.ShortestDistance(Vector(s_LastPlantX, position.m_Y), position, g_SceneMan.SceneWrapsX()).m_X) >= static_cast<float>(s_PlantSpacing))) {
+				s_LastPlantX = position.m_X;
+				QueueStroke(tool.Kind, position);
+			}
 		} else if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			s_StrokeTimer -= io.DeltaTime;
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || s_StrokeTimer <= 0.0F) {
@@ -1181,6 +1187,10 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
+				ImGui::SeparatorText("Plants");
+				ToolButtons({Tool::Plants, Tool::Cacti});
+				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
+				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
 				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});
@@ -1202,14 +1212,16 @@ void Sandbox::DrawGUI() {
 					ImGui::SetItemTooltip("The base game's ground materials. Picking one takes the Other terrain tool.");
 				}
 				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
-				int shape = s_SquareBrush ? 1 : 0;
+				int shape = static_cast<int>(s_BrushShape);
 				ImGui::TextUnformatted("Brush shape");
 				ImGui::SameLine();
 				ImGui::RadioButton("Circle", &shape, 0);
 				ImGui::SameLine();
 				ImGui::RadioButton("Square", &shape, 1);
-				s_SquareBrush = shape == 1;
-				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, or a square as wide as the brush.");
+				ImGui::SameLine();
+				ImGui::RadioButton("Spray", &shape, 2);
+				s_BrushShape = static_cast<BrushShape>(shape);
+				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, a square as wide as the brush, or a soft spray that scatters it over the circle, thickest in the middle, building up while held.");
 				ImGui::BeginDisabled(s_PaintUndo.empty());
 				if (ToolUI::Button("Undo terrain")) {
 					QueueSimChange(Tool::UndoTerrain);

@@ -1182,16 +1182,38 @@ void FluidSim::VisualSplash(const Vector& position, float width, float speed, in
 	}
 	// A crown: drops thrown up and out from across the width that went in, highest from the middle, flattest and furthest from the edges; the
 	// stronger the setting, the more of them and the higher. (Render only: the effects' own random numbers, nothing the simulation reads.)
+	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 	float lift = std::sqrt(strength);
-	int columns = std::clamp(static_cast<int>(width / 5.0F), 3, 24);
-	int perColumn = std::clamp(static_cast<int>(std::round(speed * 0.35F * strength)), 1, 14);
-	for (int column = 0; column < columns; ++column) {
-		float across = static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F;
-		Vector at(position.m_X + across * width * 0.55F, position.m_Y - 1.0F);
-		Vector velocity(across * speed * 0.3F * lift, -speed * (0.75F - 0.35F * std::abs(across)) * lift);
-		EffectsParticles::Emit("Droplets", at, velocity, 0.18F, perColumn, rgb);
+	auto crown = [&](float amount, float height, float reach, float spread, unsigned int color, float size, float opacity, bool under) {
+		int columns = std::clamp(static_cast<int>(width * std::sqrt(reach) / 5.0F), 3, 32);
+		int perColumn = std::clamp(static_cast<int>(std::round(speed * 0.35F * strength * amount)), 1, std::max(static_cast<int>(std::round(14.0F * amount)), 1));
+		for (int column = 0; column < columns; ++column) {
+			float across = static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F;
+			Vector at(position.m_X + across * width * 0.55F, position.m_Y - 1.0F);
+			Vector velocity(across * speed * 0.3F * lift * reach, -speed * (0.75F - 0.35F * std::abs(across)) * lift * height);
+			EffectsParticles::EmitDroplets(at, velocity, spread, perColumn, color, size, opacity, under);
+		}
+	};
+	// A second layer under the first, in a colour of its own (mixed with the liquid's as much as asked), with its own height, width, size and look.
+	float under = std::clamp(settings.SplashUnder, 0.0F, 3.0F);
+	if (under > 0.0F) {
+		glm::vec3 liquid = rgb != 0 ? glm::vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255.0F : glm::vec3(150.0F, 190.0F, 230.0F) / 255.0F;
+		glm::vec3 mixed = glm::mix(glm::clamp(settings.SplashUnderColor, 0.0F, 1.0F), liquid, std::clamp(settings.SplashUnderLiquidColor, 0.0F, 1.0F));
+		glm::uvec3 bytes(glm::round(mixed * 255.0F));
+		// 0 would mean the drops' own default colour: black is a pixel off it.
+		unsigned int underRGB = (bytes.r << 16) | (bytes.g << 8) | bytes.b;
+		underRGB = underRGB != 0 ? underRGB : 0x010101u;
+		crown(under, std::clamp(settings.SplashUnderHeight, 0.05F, 3.0F), std::clamp(settings.SplashUnderWidth, 0.2F, 3.0F), 0.18F + std::clamp(settings.SplashUnderScatter, 0.0F, 1.0F) * 0.82F, underRGB,
+		      settings.SplashUnderDropSize, settings.SplashUnderOpacity, true);
 	}
-	EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength), 2, 60), mistRGB);
+	float drops = std::clamp(settings.SplashDrops, 0.0F, 4.0F);
+	if (drops > 0.0F) {
+		crown(drops, std::clamp(settings.SplashHeight, 0.2F, 3.0F), std::clamp(settings.SplashWidth, 0.2F, 3.0F), 0.18F, rgb, settings.SplashDropSize, 1.0F, false);
+	}
+	float spray = std::clamp(settings.SplashSpray, 0.0F, 3.0F);
+	if (spray > 0.0F) {
+		EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift * std::clamp(settings.SplashHeight, 0.2F, 3.0F)), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength * spray), 2, 120), mistRGB);
+	}
 }
 
 bool FluidSim::KeepLiquidAt(int x, int y) {

@@ -1887,6 +1887,12 @@ void AHuman::PreControllerUpdate() {
 					m_Paths[FGROUND][WALKCROUCH].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 					m_Paths[BGROUND][WALKCROUCH].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 				}
+				// And the arms' climb, the way the legs go: left facing the body, a unit backing into a step or a rough slope pulled itself
+				// away from it with the arms when the legs found no room, and never got up it.
+				if (m_Controller.IsState(MOVE_LEFT) != m_Controller.IsState(MOVE_RIGHT)) {
+					m_Paths[FGROUND][CLIMB].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+					m_Paths[BGROUND][CLIMB].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+				}
 			} else if ((m_Controller.IsState(MOVE_RIGHT) && m_HFlipped) || (m_Controller.IsState(MOVE_LEFT) && !m_HFlipped)) {
 				SetHFlipped(!m_HFlipped);
 				m_CheckTerrIntersection = true;
@@ -2010,10 +2016,25 @@ void AHuman::PreControllerUpdate() {
 		}
 		m_AimAngle = analogAim.GetAbsRadAngle();
 
-		// (An AI unit flying out of a fight faces the way it is going; its aim is only a look, which the head and arms take relative to that.)
-		bool faceTravel = aiNotFighting && m_MovementState == JUMP && std::abs(m_Vel.m_X) > 1.5F;
-		if (faceTravel) {
-			analogAim.m_X = m_Vel.m_X > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
+		// (An AI unit on the move out of a fight faces the way it is going; its aim is only a look, which the head and arms take relative to
+		// that. Only flying at speed did, so a unit walking under a glance behind it (an alarm, a squad's look where its leader looks) was
+		// turned to the look here after the walk had turned it the way it was going, every frame: it walked backwards, its stride restarted
+		// each frame, and it never got up a step or onto a ledge. Flying slowly, as up a shaft, it faces where the route goes next.)
+		float travel = 0.0F;
+		if (aiNotFighting) {
+			const bool left = m_Controller.IsState(MOVE_LEFT);
+			const bool right = m_Controller.IsState(MOVE_RIGHT);
+			if (m_MovementState == JUMP && std::abs(m_Vel.m_X) > 1.5F) {
+				travel = m_Vel.m_X;
+			} else if (m_MovementState == JUMP && !m_MovePath.empty()) {
+				float toNext = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_X;
+				travel = std::abs(toNext) > 4.0F ? toNext : 0.0F;
+			} else if (left != right) {
+				travel = right ? 1.0F : -1.0F;
+			}
+		}
+		if (travel != 0.0F) {
+			analogAim.m_X = travel > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
 		}
 		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
 			SetHFlipped(!m_HFlipped);

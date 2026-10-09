@@ -38,6 +38,7 @@
 #include "TerrainFire.h"
 #include "WeatherLightning.h"
 #include "TerrainObject.h"
+#include "TerrainDebris.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "AEJetpack.h"
@@ -177,7 +178,10 @@ namespace SandboxDetail {
 		Stone,
 		DenseEarth, //!< The base game's "Dense Earth": darker, tougher earth.
 		GoldEarth, //!< Earth with gold in it, as the base game's scenes have (c_GoldEarthShare of it gold).
-		TerrainOther //!< Paints the terrain material chosen under "More terrain..." (Stroke::Material).
+		TerrainOther, //!< Paints the terrain material chosen under "More terrain..." (Stroke::Material).
+		// Plants, drawn from the base game's own plant pictures (its "Plants", "Cacti" and "Small Cacti" terrain debris): appended, so the tools before keep their numbers.
+		Plants,
+		Cacti
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -286,6 +290,8 @@ namespace SandboxDetail {
 	    {Tool::DenseEarth, "Dark earth", 0.03F, true},
 	    {Tool::GoldEarth, "Earth with gold", 0.03F, true},
 	    {Tool::TerrainOther, "Other terrain", 0.03F, true},
+	    {Tool::Plants, "Plants", 0.03F, true},
+	    {Tool::Cacti, "Cacti", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -298,7 +304,7 @@ namespace SandboxDetail {
 		return 0;
 	}
 
-	/// The Paint tab's terrain brushes: dig and the materials painted into the air, the ones the brush shape (s_SquareBrush) is for.
+	/// The Paint tab's terrain brushes: dig and the materials painted into the air, the ones the brush shape (s_BrushShape) is for.
 	constexpr bool IsTerrainBrush(Tool kind) {
 		switch (kind) {
 			case Tool::Dig:
@@ -317,6 +323,16 @@ namespace SandboxDetail {
 				return false;
 		}
 	}
+
+	/// The plant brushes: each puts the game's own plant pictures on the ground along the stroke, s_PlantSpacing apart.
+	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti; }
+
+	/// How the terrain brushes lay down what they paint or dig (Paint > Terrain).
+	enum class BrushShape {
+		Circle,
+		Square, //!< A square of the brush size either way of the point.
+		Spray //!< A soft spray: scattered pixels over the circle, thickest in the middle, building up while held.
+	};
 
 	/// How much of what the "Earth with gold" brush paints is gold.
 	constexpr float c_GoldEarthShare = 0.06F;
@@ -528,6 +544,7 @@ namespace SandboxDetail {
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
 		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
+		std::array<int, c_Sides> RushPercent = {30, 30, 30, 30}; //!< Every mode: the share of each team's units, in percent, that rush the objective: on their way there they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight.
 		int RouteVariety = 0; //!< Every mode: the share of each team's units, in percent, given a taste in routes of their own (Actor::SetRouteSeed), so they spread over the ways to where they're going rather than all taking the shortest.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
 		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
@@ -573,7 +590,7 @@ namespace SandboxDetail {
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
-		bool Square = false; //!< Terrain brushes: a square of the brush size either way of the point rather than a circle (s_SquareBrush).
+		BrushShape Shape = BrushShape::Circle; //!< Terrain brushes: how they lay it down (s_BrushShape).
 	};
 
 	struct CraftChoice {
@@ -721,6 +738,7 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	inline bool s_ShowModeZones = true; //!< A mode's own zones (hills, assault objectives, goal zones) shaded and outlined on the map (always while one is being drawn).
 	inline bool s_ShowObjectives = true; //!< Each battle mode's objectives (its flags, hills, goals...) lit up on the map, each in the look it asks for.
 	inline int s_ObjectiveLook = 0; //!< The look of zone objectives: 0 each mode's own, else an ObjectiveLook (plus one) for all of them.
 	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
@@ -732,7 +750,9 @@ namespace SandboxDetail {
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
-	inline bool s_SquareBrush = false; //!< The terrain brushes paint and dig squares rather than circles (Paint > Terrain).
+	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
+	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
+	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
 	inline int s_BrainChoice = 0;
@@ -1187,7 +1207,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -1451,6 +1471,19 @@ namespace SandboxDetail {
 	    "..##...##..."
 	    ".##.....##.."
 	    "............",
+	    // Plant
+	    "......#....."
+	    ".....###...."
+	    "..##.#+#...."
+	    ".####.#.##.."
+	    "..##+.####.."
+	    "...##.#+#..."
+	    "#....##....#"
+	    ".##..#...##."
+	    "..##.#.###.."
+	    "...#####...."
+	    ".....#......"
+	    "....###.....",
 	};
 
 	struct ToolLook {
@@ -1586,7 +1619,8 @@ namespace SandboxDetail {
 	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, bool square = false, float goldShare = 0.0F);
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
+	void PlacePlant(const Vector& at, int radius, Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
 	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight);
@@ -1668,6 +1702,7 @@ namespace SandboxDetail {
 	int SelectedRule(bool weapons);
 	int SelectedAIMode();
 	void QueueRule(bool weapons, int rule);
+	void QueueOrder(Order order);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
 	void UpdateBattle(bool aiPaused);
