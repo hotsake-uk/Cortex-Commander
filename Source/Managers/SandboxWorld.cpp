@@ -1271,16 +1271,13 @@ namespace SandboxDetail {
 			return;
 		}
 		if (kind == Tool::BattleModePoint) {
-			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on, so long as
-			// it is inside the team's base.
+			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on.
 			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
-			if (IsInZone(s_ModeSetup.Bases[team], position)) {
-				Vector at = position;
-				g_SceneMan.WrapPosition(at);
-				s_ModeSetup.Points[team] = at;
-				s_ModeSetup.HasPoint[team] = true;
-				SendBattleMode();
-			}
+			Vector at = position;
+			g_SceneMan.WrapPosition(at);
+			s_ModeSetup.Points[team] = at;
+			s_ModeSetup.HasPoint[team] = true;
+			SendBattleMode();
 			return;
 		}
 		if (kind == Tool::BattleModeBase || kind == Tool::BattleModeZone) {

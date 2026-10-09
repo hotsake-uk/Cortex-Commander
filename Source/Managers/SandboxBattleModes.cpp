@@ -1,5 +1,5 @@
-// The Battle Director's modes: preset games played by its teams, set up from a few choices (how many a side, which teams, and a base
-// drawn for each) rather than every team's card. Each mode is a row of c_Modes: its name, what it asks for, and its rules, which hook into the Battle
+// The Battle Director's modes: preset games played by its teams, set up from a few choices (how many a side, which teams, and spawn
+// zones drawn for each, with a point such as its flag) rather than every team's card. Each mode is a row of c_Modes: its name, what it asks for, and its rules, which hook into the Battle
 // Director as it buys and sends units (SandboxBattle.cpp). Capture the flag, king of the hill, assault, last team standing and VIP hunt.
 
 #include "SandboxInternal.h"
@@ -16,8 +16,34 @@ namespace SandboxDetail {
 		/// Units that come at a time to a team of so many: a quarter of it, from 1 to 10.
 		int PerWave(const BattleModeSettings& settings) { return std::clamp((settings.TeamSize + 3) / 4, 1, 10); }
 
-		/// Whether a team is in the mode's game: ticked, with its base drawn.
-		bool TeamIn(const BattleModeSettings& settings, int side) { return side >= 0 && side < c_Sides && settings.Plays[side] && settings.Bases[side].size() >= 3; }
+		/// A team's spawn zones that are drawn (closed, with three corners or more).
+		std::vector<std::vector<Vector>> ZonesOf(const BattleModeSettings& settings, int side) {
+			std::vector<std::vector<Vector>> zones;
+			if (side >= 0 && side < c_Sides) {
+				std::copy_if(settings.SpawnZones[side].begin(), settings.SpawnZones[side].end(), std::back_inserter(zones), [](const std::vector<Vector>& zone) { return zone.size() >= 3; });
+			}
+			return zones;
+		}
+
+		bool HasZones(const BattleModeSettings& settings, int side) { return !ZonesOf(settings, side).empty(); }
+
+		/// Whether a place is in any of a team's spawn zones.
+		bool InZones(const BattleModeSettings& settings, int side, const Vector& at) {
+			const std::vector<std::vector<Vector>> zones = ZonesOf(settings, side);
+			return std::any_of(zones.begin(), zones.end(), [&at](const std::vector<Vector>& zone) { return IsInZone(zone, at); });
+		}
+
+		/// Somewhere on the ground in one of a team's spawn zones, picked at random (or the origin with none).
+		Vector SpotInZones(const BattleModeSettings& settings, int side) {
+			const std::vector<std::vector<Vector>> zones = ZonesOf(settings, side);
+			if (zones.empty()) {
+				return Vector();
+			}
+			return SpotInZone(zones[std::min(static_cast<size_t>(Random01() * static_cast<float>(zones.size())), zones.size() - 1)], 0.0F);
+		}
+
+		/// Whether a team is in the mode's game: ticked, with a spawn zone drawn.
+		bool TeamIn(const BattleModeSettings& settings, int side) { return side >= 0 && side < c_Sides && settings.Plays[side] && HasZones(settings, side); }
 
 		/// How far across a base reaches either side of its middle, and where across its edges are.
 		void BaseSpan(const std::vector<Vector>& base, float& left, float& right) {
@@ -46,8 +72,24 @@ namespace SandboxDetail {
 
 		std::string SideName(int side) { return side >= 0 && side < c_Sides ? c_SideNames[side] : "?"; }
 
+		/// The widest of some zones (the first of those as wide), for ships to drop their units over.
+		const std::vector<Vector>& WidestZone(const std::vector<std::vector<Vector>>& zones) {
+			size_t widest = 0;
+			float widestSpan = -1.0F;
+			for (size_t i = 0; i < zones.size(); ++i) {
+				float left = 0.0F;
+				float right = 0.0F;
+				BaseSpan(zones[i], left, right);
+				if (right - left > widestSpan) {
+					widest = i;
+					widestSpan = right - left;
+				}
+			}
+			return zones[widest];
+		}
+
 		/// The settings every mode's team plays by: its factions from its card, money without end, and up to the team size alive, appearing
-		/// in its base (or coming in by ship over it).
+		/// in its spawn zones (or coming in by ship over the widest).
 		BattleSettings BaseTeam(const BattleModeSettings& settings, int side, const BattleSettings& card) {
 			BattleSettings team;
 			team.Factions = card.Factions;
@@ -66,9 +108,10 @@ namespace SandboxDetail {
 			if (!team.Active) {
 				return team;
 			}
-			const std::vector<Vector>& base = settings.Bases[side];
+			const std::vector<std::vector<Vector>> zones = ZonesOf(settings, side);
 			if (settings.ByShip) {
-				// Over the base, from one side of it to the other.
+				// Over its widest spawn zone, from one side of it to the other.
+				const std::vector<Vector>& base = WidestZone(zones);
 				float left = 0.0F;
 				float right = 0.0F;
 				BaseSpan(base, left, right);
@@ -82,12 +125,12 @@ namespace SandboxDetail {
 				g_SceneMan.WrapPosition(team.LineB);
 			} else {
 				team.ShipsPerBurst = 0;
-				team.SpawnZones.push_back(base);
+				team.SpawnZones = zones;
 			}
 			return team;
 		}
 
-		/// A base drawn on the map: its area shaded in its team's colour.
+		/// A spawn zone drawn on the map: its area shaded in its team's colour.
 		void DrawBase(ImDrawList* drawList, const std::vector<Vector>& base, ImU32 color) {
 			const Tool held = CurrentTool().Kind;
 			if (base.size() < 3 || (!s_ShowModeBases && held != Tool::BattleModeBase && held != Tool::BattleModePoint)) {
@@ -219,11 +262,13 @@ namespace SandboxDetail {
 			}
 		}
 
-		/// The bases of the teams ticked, shaded in their colours.
+		/// The spawn zones of the teams ticked, shaded in their colours.
 		void DrawBases(ImDrawList* drawList, const BattleModeSettings& settings) {
 			for (int side = 0; side < c_Sides; ++side) {
 				if (settings.Plays[side]) {
-					DrawBase(drawList, settings.Bases[side], c_SideColors[side]);
+					for (const std::vector<Vector>& zone: settings.SpawnZones[side]) {
+						DrawBase(drawList, zone, c_SideColors[side]);
+					}
 				}
 			}
 		}
@@ -436,15 +481,18 @@ namespace SandboxDetail {
 
 		constexpr float c_FlagReach = 50.0F; //!< How near a unit's middle has to come to a flag to pick it up (or bring it home, or capture with it).
 
-		/// How far from its own flag a team's units appear, or as far as its base allows.
+		/// How far from its own flag a team's units appear, or as far as its spawn zone allows.
 		constexpr float c_SpawnClear = 150.0F;
+
+		/// How far from where it was placed a flag may move (fallen, or moved where it can be got to).
+		constexpr float c_FlagWander = 300.0F;
 
 		void SetUpTeams();
 		void TakeFlagHome(Actor* unit, int flagSide, long long now);
 
-		/// Somewhere in a team's base for a new unit to appear: never at its own flag (at least c_SpawnClear from it, as far as the base
-		/// allows). A unit going for an enemy's flag appears on the side of the base nearest it, so it doesn't have to make its way through its
-		/// own guards first; a guard appears near the flag.
+		/// Somewhere in one of a team's spawn zones for a new unit to appear: never at its own flag (at least c_SpawnClear from it, as far as
+		/// the zone allows). A unit going for an enemy's flag appears on the side of the zone nearest it, so it doesn't have to make its way
+		/// through its own guards first; a guard appears near the flag.
 		Vector FlagsSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
 			const Vector flag = s_Flags[std::clamp(side, 0, c_Sides - 1)].Home;
 			auto runner = unit ? s_Runners.find(unit->GetUniqueID()) : s_Runners.end();
@@ -456,17 +504,18 @@ namespace SandboxDetail {
 			});
 		}
 
-		/// A capture the flag team's settings: as every mode's (BaseTeam), with its ships' drop line kept to the part of its base furthest from
-		/// its flag, so they don't land their units on it either.
+		/// A capture the flag team's settings: as every mode's (BaseTeam), with its ships' drop line kept to the part of a spawn zone furthest
+		/// from its flag, so they don't land their units on it either.
 		BattleSettings FlagsTeam(const BattleModeSettings& settings, int side, const BattleSettings& card) {
 			BattleSettings team = BaseTeam(settings, side, card);
 			if (!team.Active || !team.HasLine) {
 				return team;
 			}
+			const std::vector<Vector>& zone = WidestZone(ZonesOf(settings, side));
 			float left = 0.0F;
 			float right = 0.0F;
-			BaseSpan(settings.Bases[side], left, right);
-			const Vector& base = settings.Bases[side].front();
+			BaseSpan(zone, left, right);
+			const Vector& base = zone.front();
 			// (The flag across, on the base's side of a wrap.)
 			const float flagX = base.m_X + g_SceneMan.ShortestDistance(base, s_Flags[side].Home, g_SceneMan.SceneWrapsX()).m_X;
 			const float clearLeft = flagX - c_SpawnClear;
@@ -557,13 +606,12 @@ namespace SandboxDetail {
 			SetUpTeams();
 		}
 
-		/// Where a team's flag stands at home: its point if placed in its base, else somewhere on the ground in its base.
+		/// Where a team's flag stands at home: its point if placed, else somewhere on the ground in one of its spawn zones.
 		Vector FlagHome(const BattleModeSettings& settings, int side) {
-			const std::vector<Vector>& base = settings.Bases[side];
-			if (settings.HasPoint[side] && IsInZone(base, settings.Points[side])) {
+			if (settings.HasPoint[side]) {
 				return settings.Points[side];
 			}
-			return base.size() >= 3 ? SpotInZone(base, 0.0F) : settings.Points[side];
+			return HasZones(settings, side) ? SpotInZones(settings, side) : settings.Points[side];
 		}
 
 		/// The team whose flag a unit is carrying, or -1.
@@ -588,8 +636,7 @@ namespace SandboxDetail {
 			}
 		}
 
-		/// The panel changed while the game is on: a flag placed somewhere new, or left outside its base when that was drawn again, moves there
-		/// (or somewhere in the base), if it's at home.
+		/// The panel changed while the game is on: a flag placed somewhere new moves there, if it's at home.
 		void FlagsSettingsChanged() {
 			const BattleModeSettings& settings = s_ModeRun.Settings;
 			for (int side = 0; side < c_Sides; ++side) {
@@ -597,8 +644,8 @@ namespace SandboxDetail {
 				if (!TeamIn(settings, side)) {
 					continue;
 				}
-				const bool placedElsewhere = settings.HasPoint[side] && IsInZone(settings.Bases[side], settings.Points[side]) && !g_SceneMan.ShortestDistance(flag.Home, settings.Points[side], g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F);
-				if (placedElsewhere || !IsInZone(settings.Bases[side], flag.Home)) {
+				const bool placedElsewhere = settings.HasPoint[side] && !g_SceneMan.ShortestDistance(flag.Home, settings.Points[side], g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F);
+				if (placedElsewhere) {
 					flag.Home = FlagHome(settings, side);
 					if (flag.State == FlagState::Home) {
 						SendHome(side);
@@ -622,7 +669,7 @@ namespace SandboxDetail {
 			guard.DefendPos = s_Flags[side].State == FlagState::Home ? s_Flags[side].Home : s_Flags[side].Pos;
 			guard.HasDefendPos = true;
 			// (Close round the flag, not spread across the whole base, where they stood in the way of their own team going out.)
-			guard.DefendRadius = static_cast<int>(std::min(GuardRadius(settings.Bases[side]), 110.0F));
+			guard.DefendRadius = 110;
 			guard.ChaseDistance = guard.DefendRadius + 250;
 			guard.RoamPercent = 30;
 			const long long now = g_TimerMan.GetSimUpdateCount();
@@ -678,9 +725,9 @@ namespace SandboxDetail {
 					}
 					flag.Pos = carrier->GetPos();
 					const int team = carrier->GetTeam();
-					const bool home = TeamIn(settings, team) && (IsInZone(settings.Bases[team], carrier->GetPos()) || g_SceneMan.ShortestDistance(carrier->GetPos(), s_Flags[team].Home, wraps).MagnitudeIsLessThan(c_FlagReach));
+					const bool home = TeamIn(settings, team) && g_SceneMan.ShortestDistance(carrier->GetPos(), s_Flags[team].Home, wraps).MagnitudeIsLessThan(c_FlagReach);
 					if (home && s_Flags[team].State == FlagState::Home) {
-						// Brought into its own base, with its own flag there: a capture.
+						// Brought to its own flag, with that at home: a capture.
 						++s_ModeRun.Score[team];
 						SendHome(side);
 						if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
@@ -800,24 +847,35 @@ namespace SandboxDetail {
 				const auto reachable = [&enemies](const Vector& at) {
 					return enemies.empty() || std::any_of(enemies.begin(), enemies.end(), [&at](const auto& enemy) { return CanReach(enemy.second, at); });
 				};
-				// Ground blasted away under it: it falls onto what's below.
+				// Ground blasted away under it: it falls onto what's below (if that's still near where it was placed).
+				const Vector anchor = FlagHome(settings, side);
+				const bool wraps = g_SceneMan.SceneWrapsX();
 				Vector settled = Grounded(flag.Home);
-				if (IsInZone(settings.Bases[side], settled) && !g_SceneMan.ShortestDistance(settled, flag.Home, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(2.0F)) {
+				const bool nearAnchor = settings.HasPoint[side] ? g_SceneMan.ShortestDistance(settled, anchor, wraps).MagnitudeIsLessThan(c_FlagWander) : InZones(settings, side, settled);
+				if (nearAnchor && !g_SceneMan.ShortestDistance(settled, flag.Home, wraps).MagnitudeIsLessThan(2.0F)) {
 					FlagMoved(side, settled);
 				}
 				// (Twice running, whatever the reason, so one look at a moment's mess doesn't move it.)
-				const bool trapped = Buried(flag.Home) || !IsInZone(settings.Bases[side], settled) || !reachable(flag.Home);
+				const bool trapped = Buried(flag.Home) || !nearAnchor || !reachable(flag.Home);
 				flag.Unreachable = trapped ? flag.Unreachable + 1 : 0;
 				bool stuck = flag.Unreachable >= 2;
 				if (!stuck) {
 					continue;
 				}
+				// Somewhere on the ground near where it was placed (further off with each try), or in its spawn zones when it wasn't placed.
 				for (int attempt = 0; attempt < 10; ++attempt) {
-					Vector spot = SpotInZone(settings.Bases[side], 0.0F);
+					Vector spot;
+					if (settings.HasPoint[side]) {
+						spot = anchor + Vector((Random01() * 2.0F - 1.0F) * c_FlagWander * static_cast<float>(attempt + 1) / 10.0F, -40.0F);
+						g_SceneMan.WrapPosition(spot);
+						spot = Grounded(spot);
+					} else {
+						spot = SpotInZones(settings, side);
+					}
 					if (!Buried(spot) && reachable(spot)) {
 						flag.Unreachable = 0;
 						FlagMoved(side, spot);
-						Say(SideName(side) + "'s flag couldn't be got to: moved in its base");
+						Say(SideName(side) + "'s flag couldn't be got to: moved nearby");
 						break;
 					}
 				}
@@ -968,7 +1026,7 @@ namespace SandboxDetail {
 			changed |= ImGui::SliderInt("Dropped flag returns after", &setup.ReturnSeconds, 5, 180, "%d s");
 			ImGui::SetItemTooltip("How long a dropped flag lies (glowing, with its seconds counting down over it) before it goes back home by itself, if nobody picks it up first.");
 			changed |= ToolUI::Checkbox("Move a flag nobody can get to", &setup.MoveStuckPoint);
-			ImGui::SetItemTooltip("A flag that gets buried, loses the ground under it, or that the enemy can find no way to, moves somewhere else in its base they can get to. Off: it stays where it is.");
+			ImGui::SetItemTooltip("A flag that gets buried, loses the ground under it, or that the enemy can find no way to, moves somewhere nearby they can get to. Off: it stays where it is.");
 		}
 
 		void FlagsDraw(bool running) {
@@ -979,7 +1037,9 @@ namespace SandboxDetail {
 					continue;
 				}
 				const ImU32 color = c_SideColors[side];
-				DrawBase(drawList, settings.Bases[side], color);
+				for (const std::vector<Vector>& zone: settings.SpawnZones[side]) {
+					DrawBase(drawList, zone, color);
+				}
 				if (!running) {
 					if (settings.HasPoint[side]) {
 						DrawFlag(drawList, ToScreen(settings.Points[side]), color);
@@ -1501,14 +1561,16 @@ namespace SandboxDetail {
 		};
 		std::array<Vip, c_Sides> s_Vips;
 
-		/// Where a team's VIP keeps to: its point, if placed in its base, else the middle of its base.
+		/// Where a team's VIP keeps to: its point, if placed, else the middle of its widest spawn zone.
 		Vector VipSpot(const BattleModeSettings& settings, int side) {
-			const std::vector<Vector>& base = settings.Bases[side];
-			if (settings.HasPoint[side] && IsInZone(base, settings.Points[side])) {
+			if (settings.HasPoint[side] || !HasZones(settings, side)) {
 				return settings.Points[side];
 			}
-			return ZoneMiddle(base);
+			return ZoneMiddle(WidestZone(ZonesOf(settings, side)));
 		}
+
+		/// How far round a team's VIP its bodyguards stand: half its widest spawn zone across, from 60 to 400 px.
+		float VipGuardRadius(const BattleModeSettings& settings, int side) { return HasZones(settings, side) ? GuardRadius(WidestZone(ZonesOf(settings, side))) : 150.0F; }
 
 		/// The VIPs' glow off, and nobody a VIP.
 		void ClearVips() {
@@ -1525,7 +1587,7 @@ namespace SandboxDetail {
 		/// A team's new units: some stay as the VIP's bodyguards, the rest hunt an enemy's.
 		void VipUnitsMade(int side, const std::vector<Actor*>& wave) {
 			const BattleModeSettings& settings = s_ModeRun.Settings;
-			const float radius = GuardRadius(settings.Bases[side]);
+			const float radius = VipGuardRadius(settings, side);
 			const BattleSettings guard = PostAt(VipSpot(settings, side), radius * 0.6F, radius * 0.6F + 250.0F, 30);
 			std::vector<Actor*> hunters;
 			for (Actor* unit: wave) {
@@ -1591,7 +1653,7 @@ namespace SandboxDetail {
 			pick->SetHighlighted(true);
 			s_Runners.erase(pick->GetUniqueID());
 			pick->SetOrderAttack(false);
-			const float radius = GuardRadius(settings.Bases[side]);
+			const float radius = VipGuardRadius(settings, side);
 			MakeDefender(pick, PostAt(spot, radius * 0.5F, 60.0F, 60));
 			Say(SideName(side) + " has a VIP");
 		}
@@ -1675,7 +1737,7 @@ namespace SandboxDetail {
 			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
 			DrawBases(drawList, settings);
 			for (int side = 0; side < c_Sides; ++side) {
-				if (!settings.Plays[side] || settings.Bases[side].size() < 3) {
+				if (!settings.Plays[side] || !HasZones(settings, side)) {
 					continue;
 				}
 				if (!running) {
@@ -1741,8 +1803,8 @@ namespace SandboxDetail {
 		const BattleModeInfo c_Modes[] = {
 		    {.Name = "Custom", .Blurb = "", .MinTeams = 0, .TeamSettings = nullptr},
 		    {.Name = "Capture the flag",
-		     .Blurb = "Each team has a base, drawn on the map, that its units appear in (away from its flag), with its flag inside. Its units go for the enemy's flag and "
-		              "bring it back into their own base, while some stay to guard theirs. A flag can only be captured while the team's own is at home. "
+		     .Blurb = "Each team has a flag, placed on the map, and one or more spawn zones drawn that its units appear in (away from its flag). Its units go for "
+		              "the enemy's flag and bring it back to their own, while some stay to guard theirs. A flag can only be captured while the team's own is at home. "
 		              "A carrier glows, and if it falls it drops the flag, which glows too: an enemy can pick it up, or one of its own team touch it to "
 		              "send it home (it goes home by itself after the seconds set). A flag is never lost: one that falls off the map, gets buried or "
 		              "lands where nobody can reach goes home.",
@@ -1757,7 +1819,7 @@ namespace SandboxDetail {
 		     .Draw = FlagsDraw,
 		     .Status = FlagsStatus},
 		    {.Name = "King of the hill",
-		     .Blurb = "Draw a hill (or a few) on the map and a base for each team. Every unit fights for the hill: a team scores a second for every second it alone "
+		     .Blurb = "Draw a hill (or a few) on the map and spawn zones for each team. Every unit fights for the hill: a team scores a second for every second it alone "
 		              "has units on it, and the first to the seconds set wins. With more than one hill, it can move on every so often, and everyone has to run for "
 		              "the next.",
 		     .ZoneName = "hill",
@@ -1796,7 +1858,7 @@ namespace SandboxDetail {
 		     .Draw = StandingDraw,
 		     .Status = StandingStatus},
 		    {.Name = "VIP hunt",
-		     .Blurb = "One unit of each team is its VIP: it glows, wears a crown, and keeps to its base with bodyguards round it. The rest of the team hunt the enemy "
+		     .Blurb = "One unit of each team is its VIP: it glows, wears a crown, and keeps to its point (or its widest spawn zone) with bodyguards round it. The rest of the team hunt the enemy "
 		              "VIPs. Bring one down and your team scores, and theirs gets a new VIP a few seconds later. The first to the VIPs set wins.",
 		     .PointName = "VIP",
 		     .Start = VipStart,
@@ -1819,8 +1881,8 @@ namespace SandboxDetail {
 					continue;
 				}
 				++ticked;
-				if (setup.Bases[side].size() < 3) {
-					why = std::string(c_SideNames[side]) + "'s base isn't drawn yet.";
+				if (!HasZones(setup, side)) {
+					why = std::string(c_SideNames[side]) + " has no spawn zone drawn yet.";
 					return false;
 				}
 			}
@@ -1854,19 +1916,22 @@ namespace SandboxDetail {
 				team.Running = false;
 			}
 		}
-		std::array<std::vector<Vector>, c_Sides> s_ScriptBaseDrafts; //!< The corners of a base a script is putting down, one SandboxDo at a time.
+		std::array<std::vector<Vector>, c_Sides> s_ScriptBaseDrafts; //!< The corners of a spawn zone a script is putting down, one SandboxDo at a time.
+		constexpr size_t c_MaxSpawnZones = 8; //!< Spawn zones a team can have.
 		std::vector<Vector> s_ScriptZoneDraft; //!< The corners of a mode zone a script is putting down.
 		constexpr size_t c_MaxModeZones = 8;
 
-		/// The team being set up has its base drawn: sent, with the flag tool given to it next (to place its flag in it).
-		void BaseDrawn(const std::vector<Vector>& base) {
+		/// The team being set up has another spawn zone drawn: sent, with the tool kept in hand for another (up to c_MaxSpawnZones).
+		void BaseDrawn(const std::vector<Vector>& zone) {
 			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
-			s_ModeSetup.Bases[team] = base;
-			if (s_ModeSetup.HasPoint[team] && !IsInZone(base, s_ModeSetup.Points[team])) {
-				s_ModeSetup.HasPoint[team] = false;
+			std::vector<std::vector<Vector>>& zones = s_ModeSetup.SpawnZones[team];
+			if (zones.size() < c_MaxSpawnZones) {
+				zones.push_back(zone);
+				SendBattleMode();
 			}
-			SendBattleMode();
-			TakeBattleTool(Tool::BattleModePoint, team);
+			if (zones.size() >= c_MaxSpawnZones) {
+				PutDownBattleTool();
+			}
 		}
 
 		/// One of the mode's zones drawn (a hill, the next objective): sent, with the tool kept in hand for another.
@@ -2031,9 +2096,9 @@ namespace SandboxDetail {
 			// From a script's SandboxDo: one corner a call, closed with one on its first corner.
 			if (stroke.Team >= 0 && stroke.Team < c_Sides) {
 				BattleSettings made;
-				if (AddZoneCorner(s_ScriptBaseDrafts[stroke.Team], made, stroke.Position, 20.0F) && !made.SpawnZones.empty()) {
-					s_ModeRun.Settings.Bases[stroke.Team] = made.SpawnZones.front();
-					s_ModeSetup.Bases[stroke.Team] = made.SpawnZones.front();
+				if (AddZoneCorner(s_ScriptBaseDrafts[stroke.Team], made, stroke.Position, 20.0F) && !made.SpawnZones.empty() && s_ModeSetup.SpawnZones[stroke.Team].size() < c_MaxSpawnZones) {
+					s_ModeSetup.SpawnZones[stroke.Team].push_back(made.SpawnZones.front());
+					s_ModeRun.Settings.SpawnZones[stroke.Team] = s_ModeSetup.SpawnZones[stroke.Team];
 				}
 			}
 		} else if (stroke.Kind == Tool::BattleModeZone) {
@@ -2152,7 +2217,7 @@ namespace SandboxDetail {
 		s_ModeRun = BattleModeRun();
 		s_ModeSetup.HasPoint.fill(false);
 		for (int side = 0; side < c_Sides; ++side) {
-			s_ModeSetup.Bases[side].clear();
+			s_ModeSetup.SpawnZones[side].clear();
 			s_ScriptBaseDrafts[side].clear();
 		}
 		s_ModeSetup.Zones.clear();
@@ -2178,7 +2243,7 @@ namespace SandboxDetail {
 			s_ModeSetup.Mode = static_cast<BattleMode>(mode);
 			SendBattleMode();
 		}
-		ImGui::SetItemTooltip("Custom: set each team up on its card. Or a preset game, where you only pick how many a side and draw each team's base.");
+		ImGui::SetItemTooltip("Custom: set each team up on its card. Or a preset game, where you only pick how many a side and draw each team's spawn zones.");
 		return s_ModeSetup.Mode != BattleMode::Custom;
 	}
 
@@ -2224,7 +2289,7 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
 		changed |= ImGui::SliderInt("Respawn if stuck", &setup.StuckSeconds, 0, 120, setup.StuckSeconds > 0 ? "after %d s" : "never");
 		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
-		if (ToolUI::RadioButton("Appear in their base##arrive", !setup.ByShip)) {
+		if (ToolUI::RadioButton("Appear in their spawn zones##arrive", !setup.ByShip)) {
 			setup.ByShip = false;
 			changed = true;
 		}
@@ -2233,9 +2298,9 @@ namespace SandboxDetail {
 			setup.ByShip = true;
 			changed = true;
 		}
-		ImGui::SetItemTooltip("Each team's units come in by ship over their base (each team's card says which craft), rather than appearing in it.");
-		ToolUI::Checkbox("Show bases on the map", &s_ShowModeBases);
-		ImGui::SetItemTooltip("The outline and shading of each team's base. Off, they're hidden (still shown while you draw a base or place its point); flags, hills and the rest still show.");
+		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
+		ToolUI::Checkbox("Show spawn zones on the map", &s_ShowModeBases);
+		ImGui::SetItemTooltip("The outline and shading of each team's spawn zones. Off, they're hidden (still shown while you draw one or place a point); flags, hills and the rest still show.");
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
 		}
@@ -2284,7 +2349,7 @@ namespace SandboxDetail {
 		}
 
 		ImGui::SeparatorText("Teams");
-		const std::string point = mode.PointName ? mode.PointName : "base";
+		const std::string point = mode.PointName ? mode.PointName : "point";
 		for (int side = 0; side < c_Sides; ++side) {
 			ImGui::PushID(side);
 			ImGui::BeginDisabled(running);
@@ -2297,16 +2362,31 @@ namespace SandboxDetail {
 			}
 			if (setup.Plays[side]) {
 				ImGui::SameLine();
+				std::vector<std::vector<Vector>>& zones = setup.SpawnZones[side];
 				const bool drawing = CurrentTool().Kind == Tool::BattleModeBase && s_BattleEditTeam == side;
-				if (ToolUI::Button(drawing ? "Done##base" : (setup.Bases[side].empty() ? "Draw base##base" : "Redraw base##base"))) {
+				ImGui::BeginDisabled(!drawing && zones.size() >= c_MaxSpawnZones);
+				if (ToolUI::Button(drawing ? "Done##base" : "Add spawn zone##base")) {
 					if (drawing) {
 						PutDownBattleTool();
 					} else {
 						TakeBattleTool(Tool::BattleModeBase, side);
 					}
 				}
-				ImGui::SetItemTooltip("%s", drawing ? "Click the corners of the base on the map, then click the first corner again (or press Enter) to close it. Backspace takes back the last corner." : "Then click out the corners of this team's base on the map: its units appear in it.");
-				if (mode.PointName && !setup.Bases[side].empty()) {
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("%s", drawing ? "Click the corners on the map, then click the first corner again (or press Enter) to close it. Then draw the next, or Done." : ("Then click out the corners of a spawn zone for this team on the map: its units appear in its zones. Up to " + std::to_string(c_MaxSpawnZones) + ".").c_str());
+				if (!zones.empty()) {
+					ImGui::SameLine();
+					if (ToolUI::Button("Take back the last##base")) {
+						zones.pop_back();
+						changed = true;
+					}
+					ImGui::SameLine();
+					if (ToolUI::Button("Clear##base")) {
+						zones.clear();
+						changed = true;
+					}
+				}
+				if (mode.PointName) {
 					ImGui::SameLine();
 					const bool placing = CurrentTool().Kind == Tool::BattleModePoint && s_BattleEditTeam == side;
 					std::string label = placing ? "Done (Enter)##point" : (setup.HasPoint[side] ? "Move " : "Place ") + point + "##point";
@@ -2317,17 +2397,20 @@ namespace SandboxDetail {
 							TakeBattleTool(Tool::BattleModePoint, side);
 						}
 					}
-					ImGui::SetItemTooltip("%s", placing ? "Click inside the base to put it there; Enter (or this) when it's where you want it." : ("Then click inside the base where this team's " + point + " is to stand. Not placed: somewhere in the base.").c_str());
+					ImGui::SetItemTooltip("%s", placing ? "Click on the map to put it there; Enter (or this) when it's where you want it." : ("Then click on the map where this team's " + point + " is to stand. Not placed: somewhere in its spawn zones.").c_str());
 				}
-				ImGui::SameLine();
 				if (running) {
 					ImGui::TextDisabled("%s", mode.Status ? mode.Status(side).c_str() : (std::to_string(Sandbox::CountUnits(side)) + " in").c_str());
-				} else if (setup.Bases[side].empty()) {
-					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "no base");
-				} else if (mode.PointName && !setup.HasPoint[side]) {
-					ImGui::TextDisabled("%s anywhere in it", point.c_str());
+				} else if (!HasZones(setup, side)) {
+					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "no spawn zone");
 				} else {
-					ImGui::TextDisabled("ready");
+					const int count = static_cast<int>(ZonesOf(setup, side).size());
+					const std::string zonesText = std::to_string(count) + (count == 1 ? " spawn zone" : " spawn zones");
+					if (mode.PointName && !setup.HasPoint[side]) {
+						ImGui::TextDisabled("%s, %s in one of them", zonesText.c_str(), point.c_str());
+					} else {
+						ImGui::TextDisabled("%s, ready", zonesText.c_str());
+					}
 				}
 				ImGui::Indent();
 				if (FactionPicker(s_BattleSetup[side])) {
@@ -2371,7 +2454,7 @@ void Sandbox::StartBattleMode(int mode, int teamSize, bool byShip) {
 	settings.TeamSize = std::clamp(teamSize, 2, 100);
 	settings.ByShip = byShip;
 	for (int side = 0; side < c_Sides; ++side) {
-		settings.Plays[side] = settings.Bases[side].size() >= 3;
+		settings.Plays[side] = HasZones(settings, side);
 	}
 	s_ModeSetup = settings;
 	Stroke stroke;

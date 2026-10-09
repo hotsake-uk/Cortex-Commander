@@ -167,8 +167,8 @@ namespace SandboxDetail {
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
 		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
 		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
-		BattleModePoint, //!< The Battle Director's modes: a click inside the team's base sets its point (s_BattleEditTeam), as capture the flag's flag.
-		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of the team's base (s_BattleEditTeam), as a spawn zone's.
+		BattleModePoint, //!< The Battle Director's modes: a click sets the team's point (s_BattleEditTeam), as capture the flag's flag.
+		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of another of the team's spawn zones (s_BattleEditTeam).
 		BattleModeZone //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
 	};
 
@@ -256,7 +256,7 @@ namespace SandboxDetail {
 	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
 	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
 	    {Tool::BattleModePoint, "Flag", 0.0F, false},
-	    {Tool::BattleModeBase, "Team's base", 0.0F, false},
+	    {Tool::BattleModeBase, "Team's spawn zone", 0.0F, false},
 	    {Tool::BattleModeZone, "Mode zone", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
@@ -447,7 +447,7 @@ namespace SandboxDetail {
 		BattleMode Mode = BattleMode::Custom;
 		int TeamSize = 16; //!< Most units each team has alive at once.
 		std::array<bool, c_Sides> Plays = {true, true, false, false}; //!< The teams taking part, by side.
-		std::array<std::vector<Vector>, c_Sides> Bases; //!< Each team's base, drawn as a polygon as a spawn zone is: its units appear in it.
+		std::array<std::vector<std::vector<Vector>>, c_Sides> SpawnZones; //!< Each team's spawn zones, drawn as polygons: its units appear in them.
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
@@ -606,7 +606,7 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
-	inline bool s_ShowModeBases = true; //!< The teams' bases shaded and outlined on the map (always while one is being drawn, or its point placed).
+	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
 	// The window's choices for a random drop (copied into the stroke at the click).
 	inline bool s_DropRandom = false;
 	inline bool s_DropFavourites = false;
