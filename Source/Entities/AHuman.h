@@ -1042,7 +1042,8 @@ namespace RTE {
 		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		/// The nearest unit of this side standing in the walk's way (LM-2): within half a body and a little ahead on the side it walks to (and
-		/// no further than reach) and about level; not a door, a craft or a unit with no legs (a turret). @param direction -1 walking left, 1
+		/// no further than reach) and about level; not a door, a craft, a unit with no legs (a turret), nor one whose body ours passes through
+		/// (both ignoring team hits, as every AHuman and ACrab does by default, or either ignoring actor hits). @param direction -1 walking left, 1
 		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
 		Actor* UnitAhead(float direction, float reach) const;
 		bool InDoorSweep() const;

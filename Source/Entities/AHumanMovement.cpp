@@ -796,6 +796,13 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 		if (!actor || actor == this || actor->GetTeam() != m_Team || actor->GetStatus() == DYING || actor->GetStatus() == DEAD || dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
 			continue;
 		}
+		// (Not one our body passes through: units of a side that both ignore team hits don't collide (Atom::IsIgnoringMOID), and every
+		// AHuman and ACrab does by default, so walking on through it is the way past; only one that does collide, a mod's unit with
+		// IgnoresTeamHits = 0, is stepped round, hopped over or waited for. Before, every friend counted, and units waited behind, gave way
+		// to and jetted over teammates they could have walked through.)
+		if ((IgnoresTeamHits() && actor->IgnoresTeamHits()) || GetIgnoresActorHits() || actor->GetIgnoresActorHits()) {
+			continue;
+		}
 		// (Not something that never moves out of the way: a turret, a crab with no legs.)
 		if (const ACrab* crab = dynamic_cast<const ACrab*>(actor); crab && !crab->GetLeftFGLeg() && !crab->GetLeftBGLeg() && !crab->GetRightFGLeg() && !crab->GetRightBGLeg()) {
 			continue;
@@ -2787,7 +2794,8 @@ int AHuman::MoveAlongRoute() {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		mover.progressTimer.Reset();
 	}
-	// A unit of our own side in the way (LM-2). The bodies of a side collide, and the walk pushed into one until the stuck handling blamed
+	// A unit of our own side in the way (LM-2), one whose body ours collides with (UnitAhead: most of a side pass through each other, and
+	// those aren't in the way at all). The walk pushed into one until the stuck handling blamed
 	// the ground there and marked it impassable for the whole team. Now: one going our way is followed at its pace; one lying down (or a
 	// low crab) is leapt over, or hopped with the jet; two coming at each other, the one with the lower ID backs off until there is a body's
 	// gap and lets the other by; one standing in the way is hopped over when there is a jet and room, else waited for. Only a unit nearer
