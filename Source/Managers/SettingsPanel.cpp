@@ -318,6 +318,8 @@ void DebugMan::SettingsGUI() {
 		if (settings.FogVolume > 0.0F) {
 			Slider("Dawn mist", &settings.FogMorningMist, 0.0F, 1.0F);
 			Tip("How much mist gathers low in open ground around dawn, a little at night and more in rain.");
+			Slider("Mist and dust opacity", &settings.FogOpacity, 0.0F, 1.0F);
+			Tip("How much the thickest mist and dust hides what's behind it, units included. Lower lets more of their colour through.");
 			Slider("Mist clears after (seconds)", &settings.FogClearSeconds, 3.0F, 120.0F, "%.0f");
 		}
 		Check("Lightning bolts", &settings.LightningBolts);

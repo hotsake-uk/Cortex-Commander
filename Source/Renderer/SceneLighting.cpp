@@ -2753,6 +2753,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteSunMapStart", m_SunMapStart);
 	m_CompositeShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
 	m_CompositeShader->SetFloat("rteSunMapSoftness", std::clamp(m_Settings.SunShadowSoftness, 0.0F, 2.0F));
+	m_CompositeShader->SetFloat("rteFogOpacity", std::clamp(m_Settings.FogOpacity, 0.0F, 1.0F));
 	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);

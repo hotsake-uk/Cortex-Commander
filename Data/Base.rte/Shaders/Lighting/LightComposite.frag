@@ -75,6 +75,7 @@ uniform float rteTime; // Seconds, for twinkling.
 uniform float rteWaterReflection; // How strongly water mirrors the scene above its surface, 0 for none.
 uniform sampler2D rteFog; // World grid, R = how thick mist or dust hangs in the air there (FogUpdate.frag).
 uniform float rteFogStrength; // How thick the fog volume is drawn, 0 for none.
+uniform float rteFogOpacity; // How much of what's behind the thickest fog it hides, 0 to 1 (LightingSettings::FogOpacity).
 uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
 uniform bool rteWaterSoftReflection; // The reflection is softened with depth (a blur that widens, a fade that deepens), feathered where the open air above the pool ends, and not clipped hard where it leaves the screen or meets other water. Off: sharp and cut off, as before.
 uniform bool rteWaterMirrorSurface; // The reflection is wobbled by the tilt of the surface above each pixel (the terrain pass's normal there, which follows the flow), the whole column together. Off: by the pixel's own tilt, as before.
@@ -637,7 +638,7 @@ void main() {
 		vec2 fogWorld = rteScreenOrigin + gl_FragCoord.xy;
 		float fog = texture(rteFog, fogWorld / rteGridWorldSize).r;
 		if (fog > 0.002) {
-			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * 0.85;
+			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * rteFogOpacity;
 			float fogSky = smoothstep(0.0, 1.0, texture(rteSkyLight, fogWorld / rteGridWorldSize).r);
 			vec3 fogLamps = rteMaxDynamicLight * (1.0 - exp(-texture(rteDynamicLight, screenUV).rgb / rteMaxDynamicLight));
 			litColor = mix(litColor, vec3(0.82, 0.85, 0.9) * (mix(rteAmbient, rteSkyColor, fogSky) + fogLamps), amount);

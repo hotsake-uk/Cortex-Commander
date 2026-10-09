@@ -346,6 +346,7 @@ namespace RTE {
 		float SkyFollowsTime = 1.0F; //!< How far the sky art (painted as a blue day) takes the colours of the hour away from midday: a dark night sky, a red dawn and dusk, grey in bad weather. 0 only darkens the art, as before.
 		float FogVolume = 0.6F; //!< How thick mist and dust in the air are drawn: dawn mist in valleys, steam off water on lava, dust after a collapse, mist from scripts. It drifts with the wind, is lit by the sky and lamps and clears with time. 0: none, as before.
 		float FogMorningMist = 0.5F; //!< How much mist gathers low in open valleys around dawn (and a little at night and in rain), 0 to 1.
+		float FogOpacity = 0.85F; //!< How much of what's behind the thickest mist and dust is hidden, 0 to 1. Lower lets more of its colour through.
 		float FogClearSeconds = 25.0F; //!< About how long mist and dust take to clear, in game seconds.
 		bool LightningBolts = true; //!< Lightning is drawn as a jagged, forked bolt of light from the sky that lights up where it strikes. Off: the sandbox's bolt is a line of particles, as before.
 		float LightningBrightness = 1.0F; //!< How bright lightning bolts and the light they cast are, 0.2 to 2. 1: as first made.
