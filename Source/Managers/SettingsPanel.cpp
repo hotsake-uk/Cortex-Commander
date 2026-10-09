@@ -426,6 +426,12 @@ void DebugMan::SettingsGUI() {
 	auto surfaces = [&]() {
 		Slider("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		Slider("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
+		Check("Shine on units from lights", &settings.UnitShineLights);
+		Tip("Headlamps, fire, muzzle flashes and other lights throw highlights on units and brighten their edges facing the light. Off: units keep their art and only take the light's colour and brightness, so a unit's own headlamp can't wash it out white.");
+		Check("Shine on units from lamps", &settings.UnitShineLamps);
+		Tip("The same for steady scenery lamps.");
+		Check("Shine on units from the sun", &settings.UnitShineSun);
+		Tip("The sun (or moon) glints on units' glossy and metal parts.");
 		Slider("Metal reflections", &settings.Metals, 0.0F, 2.0F);
 		Slider("Surface relief", &settings.Relief, 0.0F, 1.5F);
 		Check("Wet, sooty, snowy and hot surfaces", &settings.SurfaceStates);

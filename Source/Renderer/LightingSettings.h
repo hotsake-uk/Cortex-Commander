@@ -238,6 +238,9 @@ namespace RTE {
 		float UpscaleSharpness = 1.0F; //!< How crisp the picture is when scaled up to the window: 1 even, sharp pixels as before, down to 0 plainly smoothed.
 		float Scanlines = 0.0F; //!< CRT style scanlines on the final image, 0 (off) to 1.
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
+		bool UnitShineLights = false; //!< Lights (headlamps, fire, muzzle flashes, any light that moves) throw highlights on units and other solid objects and brighten their edges facing them. Off by default: a unit's own headlamp washed it out white.
+		bool UnitShineLamps = true; //!< Steady scenery lamps do the same.
+		bool UnitShineSun = true; //!< The sun (or moon) glints on units and other solid objects.
 		float Metals = 1.0F; //!< How strongly metallic surfaces mirror their surroundings (sky from above, ground from below) and glint in the sun, 0 for none.
 		float Relief = 0.6F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
 		float SunDisc = 1.0F; //!< Brightness of the sun drawn in the sky by day, 0 for none.

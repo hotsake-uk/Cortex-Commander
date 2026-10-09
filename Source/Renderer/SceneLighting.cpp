@@ -2526,6 +2526,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetInt("rteNormals", 1);
 		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
 		m_PointLightShader->SetFloat("rteSpecular", m_Settings.Specular);
+		m_PointLightShader->SetBool("rteUnitShine", m_Settings.UnitShineLights);
 		m_PointLightShader->SetBool("rteBeamMode", false);
 		m_PointLightShader->SetInt("rteOccluders", 2);
 		m_PointLightShader->SetInt("rteSurface", 3);
@@ -2558,6 +2559,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_LampCacheApplyShader->SetVector2f("rteCacheWorldSize", glm::vec2(static_cast<float>(m_LampCache.Width * m_LampCacheCell), static_cast<float>(m_LampCache.Height * m_LampCacheCell)));
 		m_LampCacheApplyShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
 		m_LampCacheApplyShader->SetFloat("rteSpecular", m_Settings.Specular);
+		m_LampCacheApplyShader->SetBool("rteUnitShine", m_Settings.UnitShineLamps);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, m_LampDirection.Texture);
 		glActiveTexture(GL_TEXTURE2);
@@ -2778,6 +2780,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteCloudSize", cloudLayer ? std::clamp(m_Settings.CloudSize, 0.4F, 2.5F) : 1.0F);
 	m_CompositeShader->SetFloat("rteCloudHeight", cloudLayer ? std::clamp(m_Settings.CloudHeight, 0.0F, 1.0F) : 1.0F);
 	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
+	m_CompositeShader->SetBool("rteUnitSunGlint", m_Settings.UnitShineSun);
 	glActiveTexture(GL_TEXTURE8);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glActiveTexture(GL_TEXTURE9);

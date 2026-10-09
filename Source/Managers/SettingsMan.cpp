@@ -341,6 +341,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
+	MatchProperty("UnitShineLights", { g_PostProcessMan.GetLightingSettings().UnitShineLights = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineLamps", { g_PostProcessMan.GetLightingSettings().UnitShineLamps = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineSun", { g_PostProcessMan.GetLightingSettings().UnitShineSun = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
@@ -673,6 +676,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
 	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
+	writer.NewPropertyWithValue("UnitShineLights", lighting.UnitShineLights);
+	writer.NewPropertyWithValue("UnitShineLamps", lighting.UnitShineLamps);
+	writer.NewPropertyWithValue("UnitShineSun", lighting.UnitShineSun);
 	writer.NewPropertyWithValue("LightingMetals", lighting.Metals);
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);

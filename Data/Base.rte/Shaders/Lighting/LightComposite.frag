@@ -39,6 +39,7 @@ uniform float rteCloudPeriod; // Scene width on a wrapping scene with the cloud 
 uniform float rteCloudSize; // How big the clouds are, 1 as usual: scales the patches (sky and shadows alike), the puffs and the depth of the band.
 uniform float rteCloudHeight; // How high the cloud band sits, 1 along the top of the view as usual, 0 starting halfway down it.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
+uniform bool rteUnitSunGlint; // The sun glints on units and other solid objects too (LightingSettings::UnitShineSun).
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
 uniform vec3 rteBackgroundLight; // Linear light on the distant background layers.
@@ -465,7 +466,7 @@ void main() {
 		if (rteWaterGlow > 0.0 && abs(texture(rteSurface, screenUV).b - 0.25) < 0.08) {
 			waterGlow = dynamicLight * rteWaterGlow;
 		}
-		// Highlights from the lights, in the lights' own color (PointLight.frag throws none on units and other solid objects).
+		// Highlights from the lights, in the lights' own color (PointLight.frag and LampCacheApply.frag may leave units and other solid objects out).
 		highlights = dynamicSample.rgb / max(max(dynamicSample.r, max(dynamicSample.g, dynamicSample.b)), 0.001) * min(dynamicSample.a, 6.0);
 		// Daylight has a direction. Where the sun (or moon) can't be seen, the sky light is dimmer and cooler; under open sky in full sun it is exactly as without shadows.
 		bool solidObject = normalSample.a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
@@ -527,9 +528,9 @@ void main() {
 				float mirrored = lean >= 0.0 ? mix(1.0, 1.75, lean) : mix(1.0, 0.4, -lean);
 				light *= mix(1.0, mirrored, metalness * min(rteMetals, 1.5));
 			}
-			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches. Not on units and other solid objects, which keep their art (the lights' highlights skip them too).
+			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches. On units and other solid objects only if asked.
 			float gloss = max(surfaceSample.g, 1.0 - normalSample.b);
-			if (gloss > 0.1 && !solidObject) {
+			if (gloss > 0.1 && (rteUnitSunGlint || !solidObject)) {
 				vec3 halfway = normalize(vec3(rteSunDirection * 0.8, 0.6) + vec3(0.0, 0.0, 1.0));
 				highlights += rteSkyColor * pow(max(dot(normal, halfway), 0.0), mix(24.0, 90.0, gloss)) * gloss * daylight * rteMetals * rteSpecular * mix(0.5, 1.6, metalness);
 			}
