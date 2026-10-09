@@ -309,6 +309,9 @@ namespace RTE {
 		glm::vec3 HeadlampColor = {1.0F, 0.875F, 0.687F}; //!< Color of the beams (linear).
 		float HeadlampGlow = 0.35F; //!< Brightness of the small glow around the lamp itself.
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
+		float SaberLightBrightness = 1.0F; //!< Brightness of the light lightsaber blades (energy blades) throw on what's around them.
+		float SaberLightReach = 0.8F; //!< Multiplier for how far that light reaches.
+		float SaberAirGlow = 1.0F; //!< How strongly blades glow in the air around them, 0 for none.
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
