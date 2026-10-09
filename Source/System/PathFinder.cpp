@@ -62,6 +62,7 @@ thread_local int s_JumpHeightDiagonal = 0;
 // Needs to be thread-local because of how it's passed around, unfortunately it doesn't seem we can give userdata for a path agent in MicroPather.
 // TODO: Enhance MicroPather to add that capability (or write our own pather)!
 thread_local float s_DigStrength = 0.0F;
+thread_local float s_DigWillingness = 1.0F; // The AI digging setting, as it was when this thread's search began (SettingsMan::AIDigWillingness).
 
 // What door material the search can get through: dug, or shot open. Doors used to be open to everyone, so a unit with a rifle that couldn't
 // scratch a blast door was routed through it, and stood at it.
@@ -592,6 +593,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	// Actors capable of digging can use s_DigStrength to modify the node adjacency cost.
 	s_DigStrength = agent.DigStrength;
 	s_BreachStrength = agent.BreachStrength < 0.0F ? agent.DigStrength : agent.BreachStrength;
+	s_DigWillingness = g_SettingsMan.AIDigWillingness();
 }
 
 namespace {
@@ -2206,6 +2208,11 @@ float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	bool door = material.GetIndex() == MaterialColorKeys::g_MaterialDoor;
 	if (strength > (door ? s_BreachStrength : s_DigStrength)) {
 		strength *= 1000.0F;
+	} else if (!door && strength > c_PathFindingDefaultDigStrength) {
+		// Ground this searcher's digger cuts: priced by how long the cut takes (DigNodeCost). (At its integrity, a node of earth cost seventy
+		// of walking and a diagonal dug up through it three times that, so a digger went round anything with a way round, however long, and
+		// was never seen to dig.)
+		strength = DigNodeCost(strength, s_DigStrength, s_DigWillingness);
 	}
 
 	return strength;
