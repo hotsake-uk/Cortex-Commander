@@ -1501,7 +1501,12 @@ namespace SandboxDetail {
 			case Tool::ToxicGas:
 				SpawnPuffs("Toxic Gas Ball", at, stroke.Radius, 2);
 				// What does the harm is the gas itself (SB-6), which sinks and pools: the grenade's own invisible cloud isn't needed as well.
-				GasGrid::Add(at, GasGrid::Toxic, 0.3F);
+				// With the Gas setting off, the cloud does the harm as before, now and then so painting doesn't stack hundreds of them.
+				if (GasGrid::IsEnabled()) {
+					GasGrid::Add(at, GasGrid::Toxic, 0.3F);
+				} else if (Random01() < 0.15F) {
+					SpawnPuffs("Toxic Gas Cloud", at, 0, 1);
+				}
 				break;
 			case Tool::Methane:
 				GasGrid::Add(at, GasGrid::Methane, 0.3F);

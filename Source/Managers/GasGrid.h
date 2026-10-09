@@ -7,7 +7,7 @@ namespace RTE {
 
 	/// Gas as a grid element (SB-6): smoke, toxic gas, methane and steam held in a coarse grid over the scene. Each spreads through open air
 	/// and is stopped by ground and liquid, so it fills a sealed room and leaks out of an open one; heavy gas (toxic) sinks and pools low,
-	/// light gas (methane, steam) rises and escapes to the sky, smoke drifts up and slowly settles out, steam condenses away. Toxic gas hurts
+	/// light gas (methane, steam) rises and escapes to the sky (gas that drifts past any edge of the scene that doesn't wrap is gone), smoke drifts up and slowly settles out, steam condenses away. Toxic gas hurts
 	/// whoever breathes it, steam scalds, and methane goes up in a chain of blasts where it meets fire. Smoke, toxic gas and steam block sight.
 	/// Part of the simulation and deterministic: fixed sim steps, cells and objects in a fixed order, its own seeded random numbers.
 	class GasGrid {

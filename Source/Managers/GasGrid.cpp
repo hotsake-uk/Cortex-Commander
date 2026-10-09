@@ -49,14 +49,13 @@ namespace {
 	struct GasProperties {
 		float Buoyancy; //!< Up for light gas, down (negative) for heavy.
 		float Keeps; //!< What of it is left each update (smoke settles out, steam condenses).
-		float Vents; //!< What of it is left each update in the top row, open to the sky.
 		float Hides; //!< How much a cell full of it hides, in the smoke map's units (0 for methane, which can't be seen).
 	};
 	constexpr GasProperties c_Gases[c_Kinds] = {
-	    {0.5F, 0.9985F, 0.95F, 1.2F}, // Smoke
-	    {-1.0F, 0.9997F, 0.99F, 0.6F}, // Toxic
-	    {1.0F, 0.99995F, 0.93F, 0.0F}, // Methane
-	    {1.5F, 0.993F, 0.93F, 0.8F}, // Steam
+	    {0.5F, 0.9985F, 1.2F}, // Smoke
+	    {-1.0F, 0.9997F, 0.6F}, // Toxic
+	    {1.0F, 0.99995F, 0.0F}, // Methane
+	    {1.5F, 0.993F, 0.8F}, // Steam
 	};
 
 	std::array<std::vector<float>, c_Kinds> s_Gas; //!< Per kind, how thick it is in each cell.
@@ -181,9 +180,12 @@ namespace {
 	}
 
 	/// Gas evens out between open cells beside each other, and buoyant gas trades places with the air above or below.
+	/// Gas that reaches the scene's edge (a side that doesn't wrap, the top or the bottom) goes on out of it, as into empty air, and is gone.
 	/// @return The thickest any gas is anywhere, to know when it has all gone.
 	float Spread() {
 		int width = s_GridWidth;
+		bool sidesOpen = !g_SceneMan.SceneWrapsX();
+		bool topAndBottomOpen = !g_SceneMan.SceneWrapsY();
 		for (int kind = 0; kind < c_Kinds; ++kind) {
 			std::vector<float>& gas = s_Gas[kind];
 			std::vector<float>& change = s_Change[kind];
@@ -215,6 +217,20 @@ namespace {
 						change[cell] -= flow;
 						change[cell + width] += flow;
 					}
+					// Out past the scene's edge, into air with no gas in it: evening out, and buoyant gas rising out of the top or sinking out of the bottom.
+					// (Each edge takes the place of the neighbour that isn't there, so at most a quarter of the cell each way, as between cells.)
+					if (sidesOpen && x == 0) {
+						change[cell] -= here * c_Spread;
+					}
+					if (sidesOpen && x == width - 1) {
+						change[cell] -= here * c_Spread;
+					}
+					if (topAndBottomOpen && y == 0) {
+						change[cell] -= std::min(here * (c_Spread + std::max(0.0F, buoyancy) * c_Rise), here * 0.25F);
+					}
+					if (topAndBottomOpen && y == s_GridHeight - 1) {
+						change[cell] -= std::min(here * (c_Spread - std::min(0.0F, buoyancy) * c_Rise), here * 0.25F);
+					}
 				}
 			}
 		}
@@ -223,7 +239,7 @@ namespace {
 			std::vector<float>& gas = s_Gas[kind];
 			const std::vector<float>& change = s_Change[kind];
 			for (int y = s_Top; y < s_Bottom; ++y) {
-				float keeps = y == 0 ? c_Gases[kind].Keeps * c_Gases[kind].Vents : c_Gases[kind].Keeps;
+				float keeps = c_Gases[kind].Keeps;
 				for (int x = s_Left; x < s_Right; ++x) {
 					size_t cell = Index(x, y);
 					// (Ground or liquid that fills a cell with gas in it pushes the gas out into the cells around next update: what was there is spread to them.)
