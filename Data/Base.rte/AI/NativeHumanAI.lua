@@ -753,6 +753,13 @@ function NativeHumanAI:Update(Owner)
 	if self.deviceState == AHuman.AIMING then
 		self.Ctrl:SetState(Controller.AIM_SHARP, true);
 	end
+	-- Sharp aim is the engine's sign of a fight: the aim holds the facing (walking or flying backwards) for a second and a half after it.
+	-- Only with an enemy to fight, then, while on the move: an alarm's glance, a squad's look where its leader looks or a watch on where an
+	-- enemy was all aim sharp, and units walked and flew backwards to where they were going, missed the steps and ledges ahead of them,
+	-- and couldn't climb up onto them.
+	if not self.Target and not self.UnseenTarget and (self.engineMover or self.flying or self.lateralMoveState ~= Actor.LAT_STILL) then
+		self.Ctrl:SetState(Controller.AIM_SHARP, false);
+	end
 	-- force jetpack at detrimental downwards velocity
 	-- (Not while the engine's route-follower and pilot fly the unit: the pilot brakes a fall for its landing, and lit over its head the
 	-- jet threw flights off.)
