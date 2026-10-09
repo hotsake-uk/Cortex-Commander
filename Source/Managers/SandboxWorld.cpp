@@ -986,6 +986,8 @@ namespace SandboxDetail {
 			case Tool::BattleDropLine:
 			case Tool::BattleSpawnZone:
 			case Tool::BattleModePoint:
+			case Tool::BattleModeBase:
+			case Tool::BattleModeZone:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -1269,18 +1271,28 @@ namespace SandboxDetail {
 			return;
 		}
 		if (kind == Tool::BattleModePoint) {
-			// The team being set up in the Battle tab's mode panel has its base (capture the flag: its flag) here from now on.
+			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on, so long as
+			// it is inside the team's base.
 			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
-			Vector at = position;
-			g_SceneMan.WrapPosition(at);
-			s_ModeSetup.Points[team] = at;
-			s_ModeSetup.HasPoint[team] = true;
-			SendBattleMode();
+			if (IsInZone(s_ModeSetup.Bases[team], position)) {
+				Vector at = position;
+				g_SceneMan.WrapPosition(at);
+				s_ModeSetup.Points[team] = at;
+				s_ModeSetup.HasPoint[team] = true;
+				SendBattleMode();
+			}
+			return;
+		}
+		if (kind == Tool::BattleModeBase || kind == Tool::BattleModeZone) {
+			// The next corner of the team's base being drawn; sent once it's closed.
+			ModeBaseCorner(position, ZoneCloseDistance());
 			return;
 		}
 		if (kind == Tool::BattleSpawnZone) {
-			ToggleSpawnZone(s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position);
-			SendBattleSettings(s_BattleEditTeam);
+			// The next corner of the zone being drawn; sent once it's closed.
+			if (AddZoneCorner(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position, ZoneCloseDistance())) {
+				SendBattleSettings(s_BattleEditTeam);
+			}
 			return;
 		}
 		Stroke stroke;
