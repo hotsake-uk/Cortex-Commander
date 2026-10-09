@@ -984,7 +984,7 @@ void Sandbox::DrawGUI() {
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {
 					ToolUI::Checkbox("Jetpacks only", &s_JetpackOnly);
-					ImGui::SetItemTooltip("Only units with a jetpack: those without one aren't listed, or picked at random.");
+					ImGui::SetItemTooltip("Only units whose jetpack really flies them (lifts them 5 m or more). Units without one, or with one that only gives a hop, aren't listed or picked at random. Hover a unit to see its lift.");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");

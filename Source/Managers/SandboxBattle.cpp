@@ -844,7 +844,7 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Crabs among this team's units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.");
 		ImGui::SameLine();
 		changed |= ToolUI::Checkbox("Jetpacks only", &setup.JetpackOnly);
-		ImGui::SetItemTooltip("Only units with a jetpack: those without one aren't sent.");
+		ImGui::SetItemTooltip("Only units whose jetpack really flies them (lifts them 5 m or more). Units without one, or with one that only gives a hop, aren't sent.");
 		return changed;
 	}
 

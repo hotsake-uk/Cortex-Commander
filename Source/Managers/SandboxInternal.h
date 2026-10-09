@@ -363,6 +363,10 @@ namespace SandboxDetail {
 	}
 
 	/// A preset the sandbox can spawn.
+	/// How high, in metres, a unit's jetpack has to lift it to count as flying, for "Jetpacks only". Jetpacks that only fake a hop (as
+	/// many mods' units have, from before units could leap) lift a couple of metres; ones that fly lift well over ten.
+	constexpr float c_JetpackFlyingLift = 5.0F;
+
 	struct Preset {
 		std::string Label;
 		std::string ClassName;
@@ -372,7 +376,8 @@ namespace SandboxDetail {
 		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
 		std::string Kind; //!< A subcategory to list by: for units "Infantry", "Mecha", "Turrets"; for items "Primary weapons", "Grenades", "Tools"...
 		bool Modded = false; //!< From a module that isn't one of the game's own.
-		bool Jetpack = false; //!< Units: it has a jetpack it can fly with (one with some jet time).
+		bool Jetpack = false; //!< Units: its jetpack really flies it: lifts it at least c_JetpackFlyingLift.
+		float JetLift = 0.0F; //!< Units: how high its jetpack lifts it from a standstill, in metres (Actor::EstimateJumpHeight); -1 for without limit.
 		int Width = 0; //!< Structures: footprint, for the preview.
 		int Height = 0;
 		float OffsetX = 0.0F;

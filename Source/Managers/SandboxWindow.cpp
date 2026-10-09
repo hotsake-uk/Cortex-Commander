@@ -932,6 +932,9 @@ namespace SandboxDetail {
 			}
 			if (hovered) {
 				std::string size = preset.Width > 0 ? "\n" + std::to_string(preset.Width) + " x " + std::to_string(preset.Height) + " pixels" : "";
+				if (kind == Tool::Unit || kind == Tool::Drop) {
+					size = preset.JetLift < 0.0F ? "\nJetpack: flies without limit" : preset.JetLift <= 0.0F ? "\nNo jetpack, or one too weak to lift it" : "\nJetpack lifts it about " + std::to_string(static_cast<int>(std::round(preset.JetLift))) + " m" + (preset.Jetpack ? "" : " (too little to fly)");
+				}
 				ImGui::SetTooltip("%s\n%s%s%s\nCtrl+click: a favourite, or not", preset.PresetName.c_str(), preset.Module.c_str(), size.c_str(), Sandbox::IsGodMode() && !pickInto ? "\nRight click: keep it on the bar, or take it off" : "");
 			}
 			if (picked && ImGui::GetIO().KeyCtrl) {
