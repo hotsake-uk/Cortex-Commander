@@ -85,6 +85,7 @@ thread_local bool s_Floats = false; // Whether the searcher floats and swims in 
 thread_local float s_BreathSeconds = FLT_MAX; // How long it holds its breath under water, s (PathAgent::BreathSeconds).
 thread_local bool s_CrossesLava = false; // Whether it may be routed through lava (PathAgent::CrossesLava).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
+thread_local float s_Caution = 1.0F; // How much the searcher shies from hard flights and long drops (PathAgent::Caution).
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
 // The steps of this search whose cheapest edge was a leap (see AdjacentCost): only those are labelled Leap (StepKindBetween). Labelled by
@@ -569,6 +570,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_Floats = agent.Floats;
 	s_BreathSeconds = agent.BreathSeconds;
 	s_CrossesLava = agent.CrossesLava;
+	s_Caution = agent.Caution;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
@@ -618,6 +620,7 @@ namespace {
 		float BreathSeconds = s_BreathSeconds;
 		bool CrossesLava = s_CrossesLava;
 		float JetClimbMSPerPx = s_JetClimbMSPerPx;
+		float Caution = s_Caution;
 		const RTE::PathNode* FlyingStart = s_FlyingStart;
 		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
 		const std::vector<Vector>* Avoid = s_Avoid;
@@ -645,6 +648,7 @@ namespace {
 			s_BreathSeconds = BreathSeconds;
 			s_CrossesLava = CrossesLava;
 			s_JetClimbMSPerPx = JetClimbMSPerPx;
+			s_Caution = Caution;
 			s_FlyingStart = FlyingStart;
 			s_AvoidLinks = AvoidLinks;
 			s_Avoid = Avoid;
@@ -1512,7 +1516,7 @@ float PathFinder::FallCost(const PathNode& to) const {
 			return 1000.0F;
 		}
 	}
-	return drop > c_SafeFallNodes ? c_FallCostPerNode : 0.0F;
+	return drop > c_SafeFallNodes ? c_FallCostPerNode * s_Caution : 0.0F;
 }
 
 bool PathFinder::Open(const Material& material) const {
@@ -2135,7 +2139,8 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 			if (cruiseY < standY - 2.0F) {
 				risk += ColumnGrazeCost(node.Pos.m_X, standY, cruiseY);
 			}
-			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target) + risk;
+			// (Weighed by the searcher's caution: a careful unit pays more to avoid a hard flight, a reckless one takes it for the time saved.)
+			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target) + risk * s_Caution;
 			links.push_back({target, cost, fuel});
 		}
 	}

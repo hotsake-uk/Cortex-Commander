@@ -1279,6 +1279,7 @@ PathAgent Actor::GetPathAgent() const {
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
+	agent.Caution = g_SettingsMan.AIMoveCaution();
 	// In liquid (LM-4): whether it floats and swims, how long it holds its breath, and whether lava is any danger to it, as ActorWater and
 	// ActorFire have it (with them off, water is only waded and lava harms nothing). What doesn't breathe isn't flesh, and doesn't burn.
 	bool waterActs = ActorWater::IsEnabled() && FluidSim::IsEnabled();
