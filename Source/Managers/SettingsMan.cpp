@@ -28,6 +28,8 @@
 #include "PerformanceMan.h"
 #include "UInputMan.h"
 #include "DebugMan.h"
+#include "TimerMan.h"
+#include "Controller.h"
 #include "System.h"
 
 #include <sstream>
@@ -490,6 +492,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AimDotsLight", { g_PostProcessMan.GetLightingSettings().AimDotsLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampsByDay", { g_PostProcessMan.GetLightingSettings().HeadlampsByDay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampDarkThreshold", { g_PostProcessMan.GetLightingSettings().HeadlampDarkThreshold = std::stof(reader.ReadPropValue()); });
+	MatchProperty("HeadlampsOnlyInDark", { g_PostProcessMan.GetLightingSettings().HeadlampsOnlyInDark = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LightPropagationSteps", { g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = std::clamp(std::stoi(reader.ReadPropValue()), 1, 32); });
 	MatchProperty("PanelsOverlay", { g_DebugMan.m_PanelsOverlay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DockPanels", { g_DebugMan.m_DockPanels = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SandboxCharacter", { Sandbox::SetCharacterSetup(reader.ReadPropValue()); });
@@ -547,6 +551,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
+	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -561,6 +566,20 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
 	MatchProperty("ShowSquadLinks", { reader >> m_ShowSquadLinks; });
+	MatchProperty("ShowRecentSolves", { reader >> m_ShowRecentSolves; });
+	MatchProperty("ShowTerrainUpdates", { reader >> m_ShowTerrainUpdates; });
+	// Only in presets (see SaveTunables): what the panel holds for the moment.
+	MatchProperty("GameSpeed", { g_TimerMan.SetTimeScale(std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 4.0F)); });
+	MatchProperty("PauseAI", { Controller::SetAIPaused(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("CameraZoom", { g_FrameMan.SetCameraZoom(std::stof(reader.ReadPropValue())); });
+	MatchProperty("FreezeSimulation", { g_DebugMan.m_FreezeSim = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ShowPerformanceStats", { g_DebugMan.m_ShowPerformanceMan = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ShowActorDebugDrawing", { g_DebugMan.m_ShowActorDebugGui = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("DrawCameraBounds", { g_DebugMan.m_DrawCameraBounds = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("DrawSpriteBounds", { g_DebugMan.m_DrawSpriteBounds = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ImGuiDemoWindow", { g_DebugMan.m_ImGuiDemoWindow = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("FreeCam", { g_DebugMan.m_EnableFreeCam = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("FreeCamZoom", { g_DebugMan.m_FreeCamZoom = std::stof(reader.ReadPropValue()); });
 	MatchProperty("ShowOrderLabels", { reader >> m_ShowOrderLabels; });
 	MatchProperty("CombatOverlay", { int which = 0; reader >> which; SetCombatOverlay(which); });
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
@@ -655,7 +674,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	EndPropertyList;
 }
 
-void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting) const {
+void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
 	writer.NewPropertyWithValue("LightingSettingsVersion", c_LightingSettingsVersion);
 	writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
@@ -844,6 +863,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("HeadlampTeamTint", lighting.HeadlampTeamTint);
 	writer.NewPropertyWithValue("HeadlampsByDay", lighting.HeadlampsByDay);
 	writer.NewPropertyWithValue("HeadlampDarkThreshold", lighting.HeadlampDarkThreshold);
+	writer.NewPropertyWithValue("HeadlampsOnlyInDark", lighting.HeadlampsOnlyInDark);
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
@@ -886,6 +906,82 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
+	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
+	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
+
+	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
+	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
+	writer.NewPropertyWithValue("AISpawnDiggerChance", m_AISpawnDiggerChance);
+	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
+	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
+	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
+	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
+	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
+	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
+	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
+	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
+	if (forPreset) {
+		// The settings file only lists what is off, over everything on; a preset loads over what is set now, so it says what is on too.
+		for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
+			if (UnitSpeech::IsTriggerOn(trigger.Key)) {
+				writer.NewPropertyWithValue("UnitSpeechOn", trigger.Key);
+			}
+		}
+	}
+	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
+		writer.NewPropertyWithValue("UnitSpeechOff", off);
+	}
+	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
+	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
+	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
+	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
+	writer.NewPropertyWithValue("ShowRecentSolves", m_ShowRecentSolves);
+	writer.NewPropertyWithValue("ShowSquadLinks", m_ShowSquadLinks);
+	writer.NewPropertyWithValue("ShowOrderLabels", m_ShowOrderLabels);
+	writer.NewPropertyWithValue("ShowTerrainUpdates", m_ShowTerrainUpdates);
+	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
+	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
+	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
+	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
+	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
+	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
+	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
+	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
+	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
+	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
+	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
+	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
+	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
+	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
+	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
+	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
+	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
+	writer.NewPropertyWithValue("PanelWidth", g_DebugMan.m_PanelWidth);
+	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
+	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
+
+	if (forPreset) {
+		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.
+		writer.NewPropertyWithValue("GameSpeed", g_TimerMan.GetTimeScale());
+		writer.NewPropertyWithValue("PauseAI", Controller::IsAIPaused());
+		writer.NewPropertyWithValue("CameraZoom", g_FrameMan.GetCameraZoom());
+		writer.NewPropertyWithValue("LightingDebugView", lighting.DebugView);
+		writer.NewPropertyWithValue("FreezeSimulation", g_DebugMan.m_FreezeSim);
+		writer.NewPropertyWithValue("ShowPerformanceStats", g_DebugMan.m_ShowPerformanceMan);
+		writer.NewPropertyWithValue("ShowActorDebugDrawing", g_DebugMan.m_ShowActorDebugGui);
+		writer.NewPropertyWithValue("DrawCameraBounds", g_DebugMan.m_DrawCameraBounds);
+		writer.NewPropertyWithValue("DrawSpriteBounds", g_DebugMan.m_DrawSpriteBounds);
+		writer.NewPropertyWithValue("ImGuiDemoWindow", g_DebugMan.m_ImGuiDemoWindow);
+		writer.NewPropertyWithValue("FreeCam", g_DebugMan.m_EnableFreeCam);
+		writer.NewPropertyWithValue("FreeCamZoom", g_DebugMan.m_FreeCamZoom);
+	}
 }
 
 namespace {
@@ -922,7 +1018,7 @@ std::string SettingsMan::SavePreset(const std::string& name) const {
 	}
 	writer.ObjectStart(GetClassName());
 	// As they are on screen now, not as the player's own behind a scene that sets its time and weather.
-	SaveTunables(writer, g_PostProcessMan.GetLightingSettings());
+	SaveTunables(writer, g_PostProcessMan.GetLightingSettings(), true);
 	writer.ObjectEnd();
 	writer.EndWrite();
 	return safe;
@@ -972,24 +1068,17 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
-	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
-	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
 	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
 	writer.NewLine(false);
 	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
-	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
-	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
-	writer.NewPropertyWithValue("PanelWidth", g_DebugMan.m_PanelWidth);
-	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
-	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
 	writer.NewPropertyWithValue("SandboxCharacter", Sandbox::GetCharacterSetup());
 	if (ControlLink::s_SettingsPort > 0) {
 		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
 	}
-	SaveTunables(writer, lighting);
+	SaveTunables(writer, lighting, false);
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
@@ -1021,50 +1110,14 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
 	writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
 	writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
-	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
-	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
-	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
-	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
-	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
-	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
-		writer.NewPropertyWithValue("UnitSpeechOff", off);
-	}
-	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
-	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
-	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
-	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
-	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
-	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
-	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
-	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
-	writer.NewPropertyWithValue("ShowSquadLinks", m_ShowSquadLinks);
-	writer.NewPropertyWithValue("ShowOrderLabels", m_ShowOrderLabels);
-	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
-	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
-	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
-	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
-	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
-	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
-	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
-	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
-	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
-	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
-	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
-	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
-	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
-	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
-	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
-	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
-	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
-	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 	writer.NewPropertyWithValue("ScrapCompactingHeight", g_SceneMan.m_ScrapCompactingHeight);
 	writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
@@ -1074,8 +1127,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLineString("// Screen Shake Settings", false);
 	writer.NewLine(false);
 	writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
-	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
-	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
 	writer.NewPropertyWithValue("ScreenShakeDecay", g_CameraMan.m_ScreenShakeDecay);
 	writer.NewPropertyWithValue("MaxScreenShakeTime", g_CameraMan.m_MaxScreenShakeTime);
 	writer.NewPropertyWithValue("DefaultShakePerUnitOfGibEnergy", g_CameraMan.m_DefaultShakePerUnitOfGibEnergy);
