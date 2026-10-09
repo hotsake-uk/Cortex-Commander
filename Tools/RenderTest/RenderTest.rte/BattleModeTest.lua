@@ -21,9 +21,9 @@ function BattleModeTestScript:Base(team, x)
 	local y = ground.Y;
 	local corners = { Vector(x - 150, y - 200), Vector(x + 150, y - 200), Vector(x + 150, y + 30), Vector(x - 150, y + 30) };
 	for _, c in ipairs(corners) do
-		SandboxDo("Team's base", c, team, 0, 1, "");
+		SandboxDo("Team's spawn zone", c, team, 0, 1, "");
 	end
-	SandboxDo("Team's base", corners[1], team, 0, 1, "");
+	SandboxDo("Team's spawn zone", corners[1], team, 0, 1, "");
 	self.centres = self.centres or {};
 	self.centres[team] = Vector(x, y - 50);
 	self:Log(string.format("base %d at %.0f, ground %.0f", team, x, y));
