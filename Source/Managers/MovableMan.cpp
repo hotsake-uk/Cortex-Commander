@@ -11,6 +11,7 @@
 #include "AHuman.h"
 #include "MOPixel.h"
 #include "HeldDevice.h"
+#include "HDFirearm.h"
 #include "SLTerrain.h"
 #include "Controller.h"
 #include "AtomGroup.h"
@@ -726,6 +727,26 @@ bool MovableMan::AlreadyAdded(const MovableObject* movableObject) {
 	return already;
 }
 
+// Hands a unit coming into the scene a digger, as many units as the spawn-with-a-digger setting asks, if it has none already.
+// Each unit is rolled for only once, so one that gets into a craft and back out again isn't rolled for twice.
+static void GiveSpawnDigger(Actor* actor) {
+	float chance = g_SettingsMan.AISpawnDiggerChance();
+	AHuman* human = dynamic_cast<AHuman*>(actor);
+	if (chance <= 0.0F || !human || (!human->GetFGArm() && !human->GetBGArm()) || human->NumberValueExists("SpawnDiggerRolled")) {
+		return;
+	}
+	human->SetNumberValue("SpawnDiggerRolled", 1);
+	if (human->HasObjectInGroup("Tools - Diggers") || RandomNum(0.0F, 100.0F) >= chance) {
+		return;
+	}
+	static const char* const diggers[] = {"Light Digger", "Medium Digger", "Heavy Digger"};
+	int type = g_SettingsMan.AISpawnDiggerType();
+	const char* name = diggers[type >= 0 && type < 3 ? type : RandomNum(0, 2)];
+	if (const HDFirearm* preset = dynamic_cast<const HDFirearm*>(g_PresetMan.GetEntityPreset("HDFirearm", name, "Base.rte"))) {
+		human->AddInventoryItem(dynamic_cast<MovableObject*>(preset->Clone()));
+	}
+}
+
 void MovableMan::AddActor(Actor* actorToAdd) {
 	if (AlreadyAdded(actorToAdd)) {
 		return;
@@ -746,6 +767,7 @@ void MovableMan::AddActor(Actor* actorToAdd) {
 			actorToAdd->NotResting();
 			actorToAdd->NewFrame();
 			actorToAdd->SetAge(0);
+			GiveSpawnDigger(actorToAdd);
 		}
 
 		{
