@@ -632,6 +632,11 @@ void Sandbox::DrawGUI() {
 	if (IsGodMode() && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_U, false)) {
 		s_BarShown = !s_BarShown;
 	}
+	// Enter: done with the Battle tab's defence point or drop line tool, which goes back to the one in hand before (PutDownBattleTool). Not
+	// part way through a drag, so the line being drawn isn't lost.
+	if (InGame() && !io.WantTextInput && !s_Dragging && (CurrentTool().Kind == Tool::BattleDefendPoint || CurrentTool().Kind == Tool::BattleDropLine) && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) {
+		PutDownBattleTool();
+	}
 	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {

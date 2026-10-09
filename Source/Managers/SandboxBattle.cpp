@@ -75,22 +75,83 @@ namespace SandboxDetail {
 
 		/// Gives a unit just bought its post in the place its team defends: somewhere on the ground inside the radius. It walks there once its
 		/// ship has let it out, and from then on UpdateBattleDefenders sends it after enemies near the place and back again.
-		void DefendPlace(Actor* unit, const BattleSettings& settings) {
+		/// A post somewhere on the ground inside a defended place's radius.
+		Vector PostIn(const BattleSettings& settings) {
 			float radius = static_cast<float>(std::max(settings.DefendRadius, 1));
 			Vector around = settings.DefendPos + Vector((Random01() * 2.0F - 1.0F) * radius * 0.6F, 0.0F);
 			g_SceneMan.WrapPosition(around);
 			std::vector<Vector> spots = StandingSpots(around, 1);
-			Vector post = spots.empty() ? settings.DefendPos : spots.front();
+			return spots.empty() ? settings.DefendPos : spots.front();
+		}
+
+		/// The place, radius and chase distance a defender goes by: its team card's as they are now, so a change on the card reaches the
+		/// units already in (they kept what the card said when they were bought: chase distance lowered, they still chased as far as before).
+		void FollowCard(BattleDefender& defender) {
+			if (defender.Team < 0 || defender.Team >= c_Sides || !Defends(s_BattleTeams[defender.Team].Settings)) {
+				return;
+			}
+			const BattleSettings& settings = s_BattleTeams[defender.Team].Settings;
+			defender.Radius = static_cast<float>(std::max(settings.DefendRadius, 1));
+			defender.Chase = static_cast<float>(std::max(settings.ChaseDistance, 0));
+			defender.Roams = defender.RoamRoll * 100.0F < static_cast<float>(settings.RoamPercent);
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			if (!g_SceneMan.ShortestDistance(defender.Center, settings.DefendPos, wraps).MagnitudeIsLessThan(1.0F)) {
+				// The place moved: a post in the new one.
+				defender.Center = settings.DefendPos;
+				defender.Post = PostIn(settings);
+				defender.IdleSince = -1;
+			} else if (!defender.Roams && !g_SceneMan.ShortestDistance(defender.Center, defender.Post, wraps).MagnitudeIsLessThan(defender.Radius + 30.0F)) {
+				// Roaming no more (the share was lowered), and out in the zone: a post inside the radius again.
+				defender.Post = PostIn(settings);
+			}
+		}
+
+		/// Somewhere on the ground for a roamer to walk to next: anywhere inside the place's radius and chase distance.
+		Vector RoamSpot(const BattleDefender& defender) {
+			const float reach = defender.Radius + defender.Chase;
+			for (int attempt = 0; attempt < 6; ++attempt) {
+				Vector around = defender.Center + Vector((Random01() * 2.0F - 1.0F) * reach * 0.9F, 0.0F);
+				g_SceneMan.WrapPosition(around);
+				std::vector<Vector> spots = StandingSpots(around, 1);
+				if (!spots.empty() && g_SceneMan.ShortestDistance(defender.Center, spots.front(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(reach * 0.95F)) {
+					return spots.front();
+				}
+			}
+			return defender.Post;
+		}
+
+		/// Gives a unit just bought its post in the place its team defends: somewhere on the ground inside the radius. It walks there once its
+		/// ship has let it out, and from then on UpdateBattleDefenders sends it after enemies near the place and back again.
+		void DefendPlace(Actor* unit, const BattleSettings& settings) {
+			Vector post = PostIn(settings);
 			unit->ClearAIWaypoints();
 			unit->AddAISceneWaypoint(post);
 			unit->SetAIMode(Actor::AIMODE_GOTO);
 			unit->SetOrderPost(post);
 			BattleDefender& defender = s_BattleDefenders[unit->GetUniqueID()];
+			defender.Team = unit->GetTeam();
 			defender.Center = settings.DefendPos;
-			defender.Radius = radius;
+			defender.Radius = static_cast<float>(std::max(settings.DefendRadius, 1));
 			defender.Chase = static_cast<float>(std::max(settings.ChaseDistance, 0));
 			defender.Post = post;
 			defender.Made = g_TimerMan.GetSimUpdateCount();
+			defender.RoamRoll = Random01();
+			defender.Roams = defender.RoamRoll * 100.0F < static_cast<float>(settings.RoamPercent);
+		}
+
+		/// Whether a defender is at its post or on its way back to it, as UpdateBattleDefenders last sent it: its post kept, no attack order, and
+		/// not walking anywhere else. Its own AI can put an attack back on it after (a flank or a fall-back started mid-chase puts back the
+		/// order it had then), which this sees.
+		bool HeadingForPost(const Actor* unit, const BattleDefender& defender) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			// (Its post the one it has now: the place may have been moved on the card since.)
+			if (!unit->GetOrderHasPost() || unit->GetOrderAttack() || !g_SceneMan.ShortestDistance(unit->GetOrderPost(), defender.Post, wraps).MagnitudeIsLessThan(60.0F)) {
+				return false;
+			}
+			if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
+				return !unit->GetMOMoveTarget() && g_SceneMan.ShortestDistance(unit->GetLastAIWaypoint(), defender.Post, wraps).MagnitudeIsLessThan(60.0F);
+			}
+			return true;
 		}
 
 		/// Starts a team sending ships: afresh (nothing spent or sent yet), or carrying on where it stopped unless it had run out of money.
@@ -122,14 +183,40 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Ends a ship that can't be hurt and hasn't left: it stops flying and dies, but doesn't blow up. It falls, and once it lies still the
+		/// game settles it into the terrain where it lies, as a body is (MovableMan), so it becomes part of the ground rather than a wreck that
+		/// nothing can shift.
+		void SettleCraft(ACraft* ship) {
+			if (!g_MovableMan.IsParticleSettlingEnabled()) {
+				// (With settling turned off in the settings it would lie there for good: it is taken away instead.)
+				ship->SetToDelete(true);
+				return;
+			}
+			ship->SetScuttleOnDeath(false);
+			ship->SetAIMode(Actor::AIMODE_SENTRY);
+			ship->SetHealth(0.0F);
+			ship->SetStatus(Actor::DEAD);
+			// (A ship whose own rest time is never, read from its file, would never be settled.)
+			if (ship->GetRestThreshold() < 0) {
+				ship->SetRestThreshold(500);
+			}
+		}
+
 		/// The ships that can't be hurt are kept so, each update, until they've unloaded and gone: off the top (or bottom) of the scene, where
-		/// the game takes them away itself, or else half a minute after they were emptied, so none is left standing about.
+		/// the game takes them away itself. One still about ten seconds after it was emptied, and not climbing away, is settled into the
+		/// terrain (SettleCraft), so none is left standing about, or hanging over the battle.
 		void UpdateBattleCraft() {
 			long long now = g_TimerMan.GetSimUpdateCount();
-			long long linger = static_cast<long long>(30.0F * UpdatesPerSecond());
+			long long linger = static_cast<long long>(10.0F * UpdatesPerSecond());
 			for (auto craft = s_BattleCraft.begin(); craft != s_BattleCraft.end();) {
 				ACraft* ship = dynamic_cast<ACraft*>(GetRef(craft->Ship));
 				if (!ship || ship->IsSetToDelete()) {
+					craft = s_BattleCraft.erase(craft);
+					continue;
+				}
+				// (One past its time but still on its way up and out is leaving, and is let be.)
+				if (ship->IsInventoryEmpty() && craft->Emptied >= 0 && now - craft->Emptied > linger && ship->GetVel().GetY() > -2.0F) {
+					SettleCraft(ship);
 					craft = s_BattleCraft.erase(craft);
 					continue;
 				}
@@ -141,16 +228,20 @@ namespace SandboxDetail {
 				if (ship->GetStatus() == Actor::DYING || ship->GetStatus() == Actor::DEAD) {
 					ship->SetStatus(Actor::STABLE);
 				}
-				if (ship->IsInventoryEmpty()) {
-					if (craft->Emptied < 0) {
-						craft->Emptied = now;
-					} else if (now - craft->Emptied > linger) {
-						ship->SetToDelete(true);
-						craft = s_BattleCraft.erase(craft);
-						continue;
-					}
+				if (ship->IsInventoryEmpty() && craft->Emptied < 0) {
+					craft->Emptied = now;
 				}
 				++craft;
+			}
+		}
+
+		/// Takes every ship of a team off the map, at once and without a blast: the ships that can't be hurt and any other, with anyone still
+		/// aboard.
+		void ClearTeamCraft(int side) {
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (dynamic_cast<ACraft*>(actor) && actor->GetTeam() == side) {
+					actor->SetToDelete(true);
+				}
 			}
 		}
 
@@ -197,7 +288,9 @@ namespace SandboxDetail {
 
 	/// The defenders of a place go after enemies near it, but only so far: an enemy within the defend radius and chase distance of the place
 	/// is gone after, while the defender itself is within that of the place; with none, or once it has strayed past that, it goes back to its
-	/// post, where it stands and fights from (ReturnDefenders sees it settled there). Every half second.
+	/// post, where it stands and fights from (ReturnDefenders sees it settled there). Every half second, by the team card as it is now.
+	/// (It was sent back once, when its chase ended, and never looked at again: one whose AI took the attack up again after, or that went off
+	/// after enemies of its own accord, kept going till it died. Now any defender not chasing and not heading for its post is sent back.)
 	void UpdateBattleDefenders() {
 		if (s_BattleDefenders.empty()) {
 			return;
@@ -231,6 +324,7 @@ namespace SandboxDetail {
 				++entry;
 				continue;
 			}
+			FollowCard(defender);
 			const float reach = defender.Radius + defender.Chase;
 			Actor* enemy = nullptr;
 			if (g_SceneMan.ShortestDistance(defender.Center, unit->GetPos(), wraps).MagnitudeIsLessThan(reach)) {
@@ -251,10 +345,22 @@ namespace SandboxDetail {
 					defender.ChasingID = static_cast<long>(enemy->GetUniqueID());
 					SendUnit(unit, enemy->GetPos(), enemy, true, "defending: after an enemy", false, true);
 				}
-			} else if (defender.ChasingID != 0) {
+			} else if (defender.ChasingID != 0 || !HeadingForPost(unit, defender)) {
 				defender.ChasingID = 0;
 				SendUnit(unit, defender.Post, nullptr, false, "defending: back to its post", false, true);
 				unit->SetOrderPost(defender.Post);
+				defender.IdleSince = -1;
+			} else if (defender.Roams && unit->GetAIMode() != Actor::AIMODE_GOTO) {
+				// A roamer at its spot: it waits a few seconds, then walks on to another somewhere in the zone.
+				if (defender.IdleSince < 0) {
+					defender.IdleSince = now;
+					defender.Dwell = static_cast<long long>((3.0F + Random01() * 7.0F) * UpdatesPerSecond());
+				} else if (now - defender.IdleSince > defender.Dwell) {
+					defender.Post = RoamSpot(defender);
+					defender.IdleSince = -1;
+					SendUnit(unit, defender.Post, nullptr, false, "defending: roaming", false, true);
+					unit->SetOrderPost(defender.Post);
+				}
 			}
 			++entry;
 		}
@@ -281,6 +387,12 @@ namespace SandboxDetail {
 				continue;
 			}
 			team.NextWave = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(settings.EverySeconds, 1)) * UpdatesPerSecond()));
+			// Under a unit limit, only as many as top it up (counting those still riding in): none at all when it's reached, till the next
+			// burst.
+			int room = settings.UnitLimit > 0 ? settings.UnitLimit - Sandbox::CountUnits(side) : std::numeric_limits<int>::max();
+			if (room <= 0) {
+				continue;
+			}
 			// A few dozen of the units it may buy, picked afresh each burst, are priced and bought from, not the whole list (each pricing
 			// makes the unit and its loadout).
 			std::vector<const Preset*> choices = BattleUnitPool(settings);
@@ -307,13 +419,14 @@ namespace SandboxDetail {
 			}
 			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
 			const int ships = std::clamp(settings.ShipsPerBurst, 1, 10);
-			for (int ship = 0; ship < ships; ++ship) {
+			for (int ship = 0; ship < ships && room > 0; ++ship) {
+				const int shipSize = std::min(waveSize, room);
 				float left = settings.EndlessMoney ? std::numeric_limits<float>::max() : static_cast<float>(settings.Budget) - team.Spent;
 				// (180 a unit: the 900 a wave of five always had.)
-				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(waveSize), cheapest));
+				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(shipSize), cheapest));
 				std::vector<Actor*> wave;
 				float waveCost = 0.0F;
-				for (int attempt = 0; attempt < waveSize * 3 && static_cast<int>(wave.size()) < waveSize; ++attempt) {
+				for (int attempt = 0; attempt < shipSize * 3 && static_cast<int>(wave.size()) < shipSize; ++attempt) {
 					std::vector<const Preset*> affordable;
 					for (const auto& [choice, cost]: priced) {
 						if (waveCost + cost <= waveBudget) {
@@ -349,6 +462,7 @@ namespace SandboxDetail {
 				if (paid > 0.0F) {
 					team.Sent += count;
 					team.Spent += paid;
+					room -= count;
 				}
 			}
 		}
@@ -399,6 +513,11 @@ namespace SandboxDetail {
 			case BattleStopAll:
 				for (BattleTeam& team: s_BattleTeams) {
 					team.Running = false;
+				}
+				break;
+			case BattleClearCraft:
+				if (oneTeam) {
+					ClearTeamCraft(side);
 				}
 				break;
 			default:
@@ -519,10 +638,14 @@ namespace SandboxDetail {
 			}
 			if (setup.Style == BattleStyle::Defend) {
 				bool placing = CurrentTool().Kind == Tool::BattleDefendPoint && s_BattleEditTeam == side;
-				if (ToolUI::Button(placing ? "Click the map...##defend" : "Set defence point")) {
-					s_BattleEditTeam = side;
-					TookTool(ToolIndex(Tool::BattleDefendPoint));
+				if (ToolUI::Button(placing ? "Done (Enter)##defend" : "Set defence point")) {
+					if (placing) {
+						PutDownBattleTool();
+					} else {
+						TakeBattleTool(Tool::BattleDefendPoint, side);
+					}
 				}
+				ImGui::SetItemTooltip(placing ? "Click the map to move it; Enter (or this) when it's where you want it." : "Then click the map where its units are to stand.");
 				ImGui::SameLine();
 				if (setup.HasDefendPos) {
 					ImGui::TextDisabled("set at %d, %d", setup.DefendPos.GetFloorIntX(), setup.DefendPos.GetFloorIntY());
@@ -533,6 +656,8 @@ namespace SandboxDetail {
 				ImGui::SetItemTooltip("How far round the defence point its units stand and fight.");
 				changed |= ImGui::SliderInt("Chase distance", &setup.ChaseDistance, 0, 1500, "%d px");
 				ImGui::SetItemTooltip("How far past the radius they go after an enemy before giving up and going back to their posts.");
+				changed |= ImGui::SliderInt("Roaming", &setup.RoamPercent, 0, 100, "%d%% of them");
+				ImGui::SetItemTooltip("The share of its defenders that roam the whole zone, radius and chase distance alike, from spot to spot, rather than holding a post. They still go after enemies in it, and never past it.");
 			}
 
 			ImGui::SeparatorText("Waves");
@@ -542,6 +667,8 @@ namespace SandboxDetail {
 				ImGui::SetItemTooltip("What the team may spend in all. Once it can't afford another unit it stops sending ships; starting it again gives it its budget back.");
 			}
 			changed |= ImGui::SliderInt("Units per ship", &setup.WaveSize, 1, 10);
+			changed |= ImGui::SliderInt("Unit limit", &setup.UnitLimit, 0, 200, setup.UnitLimit > 0 ? "%d units" : "no limit");
+			ImGui::SetItemTooltip("Most units the team has in at once, counting those still in its ships. At the limit no ships come; below it, only enough units to top it up. 0: no limit.");
 
 			ImGui::SeparatorText("Ships");
 			changed |= ImGui::Combo("Craft", &setup.Craft, "Dropship\0Rocket\0");
@@ -558,10 +685,14 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("Ships come in only over a line you draw on the map, spread along it.");
 			if (setup.DropOnLine) {
 				bool drawing = CurrentTool().Kind == Tool::BattleDropLine && s_BattleEditTeam == side;
-				if (ToolUI::Button(drawing ? "Drag on the map...##line" : "Draw drop line")) {
-					s_BattleEditTeam = side;
-					TookTool(ToolIndex(Tool::BattleDropLine));
+				if (ToolUI::Button(drawing ? "Save line (Enter)##line" : "Draw drop line")) {
+					if (drawing) {
+						PutDownBattleTool();
+					} else {
+						TakeBattleTool(Tool::BattleDropLine, side);
+					}
 				}
+				ImGui::SetItemTooltip(drawing ? "Drag on the map to draw it (again to redraw); Enter (or this) to save it and put the tool down." : "Then drag on the map along where the ships are to come in.");
 				ImGui::SameLine();
 				if (setup.HasLine) {
 					ImGui::TextDisabled("drawn");
@@ -574,7 +705,12 @@ namespace SandboxDetail {
 			changed |= ImGui::SliderInt("Every", &setup.EverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
 			ImGui::SetItemTooltip("Seconds of game time between one lot of ships and the next.");
 			changed |= ToolUI::Checkbox("Ships can't be hurt", &setup.Invincible);
-			ImGui::SetItemTooltip("The ships take no harm, and are taken away once they've unloaded and left, so no wrecks build up.");
+			ImGui::SetItemTooltip("The ships take no harm. One that hasn't left ten seconds after it unloaded falls dead, without a blast, and becomes part of the ground.");
+			if (ToolUI::Button("Clear all drop ships", ImVec2(-1.0F, 0.0F))) {
+				SendBattleSettings(side, BattleClearCraft);
+				changed = false;
+			}
+			ImGui::SetItemTooltip("Every ship of this team taken off the map now, without a blast, with anyone still aboard.");
 			if (changed) {
 				SendBattleSettings(side);
 			}
@@ -604,6 +740,25 @@ namespace SandboxDetail {
 		for (int side = 0; side < c_Sides; ++side) {
 			BattleCard(side);
 		}
+	}
+
+	/// Puts the card's defence point or drop line tool in hand, for a team, keeping the tool it replaces for PutDownBattleTool.
+	void TakeBattleTool(Tool kind, int team) {
+		Tool held = CurrentTool().Kind;
+		if (held != Tool::BattleDefendPoint && held != Tool::BattleDropLine) {
+			s_ToolBeforeBattle = s_ToolIndex;
+		}
+		s_BattleEditTeam = team;
+		TookTool(ToolIndex(kind));
+	}
+
+	/// Done with the defence point or drop line tool (Enter, or the card's button): what it set is kept, as it was sent the moment it was
+	/// clicked or drawn, and the tool in hand before is given back (the command tool, if none). The tool stayed in hand till another was
+	/// picked, with nothing to say you'd finished.
+	void PutDownBattleTool() {
+		int back = s_ToolBeforeBattle >= 0 ? s_ToolBeforeBattle : ToolIndex(Tool::Command);
+		s_ToolBeforeBattle = -1;
+		TookTool(back);
 	}
 
 	/// On the map, while the Battle tab is showing or one of its tools is in hand: each defending team's place (its radius, and how far past

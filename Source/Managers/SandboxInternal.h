@@ -384,6 +384,7 @@ namespace SandboxDetail {
 		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
 		int Budget = 5000; //!< What it may spend in all, in oz.
 		int WaveSize = 5; //!< Units in each ship.
+		int UnitLimit = 0; //!< Most units it has in at once, counting those still in its ships: none sent past it, fewer to top it up. 0 for no limit.
 		int Craft = 0; //!< Index into c_Crafts.
 		bool DropOnLine = false; //!< Ships come in over the drop line, not anywhere across the scene.
 		bool HasLine = false;
@@ -396,6 +397,7 @@ namespace SandboxDetail {
 		Vector DefendPos; //!< Defend: the middle of the place its units hold.
 		int DefendRadius = 150; //!< Defend: how far round DefendPos its units stand and fight.
 		int ChaseDistance = 300; //!< Defend: how far past the radius they go after an enemy before giving up and going back.
+		int RoamPercent = 0; //!< Defend: the share of its defenders, in percent, that roam the whole chase zone rather than hold a post.
 	};
 
 	/// What a Tool::BattleTeam stroke does, by its Count, besides setting Team's settings.
@@ -404,7 +406,8 @@ namespace SandboxDetail {
 		BattleStartTeam, //!< Team starts (or carries on, if it ran before) sending waves.
 		BattleStopTeam, //!< Team stops sending waves. Its units already in stay.
 		BattleStartAll, //!< Every active team starts afresh: spent and sent back to nothing.
-		BattleStopAll //!< Every team stops.
+		BattleStopAll, //!< Every team stops.
+		BattleClearCraft //!< Team's ships, all of them, taken off the map (with anyone still aboard).
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -465,10 +468,15 @@ namespace SandboxDetail {
 
 	/// A Battle Director unit told to defend a place: it holds a post there and goes after enemies near it, but only so far (UpdateBattleDefenders).
 	struct BattleDefender {
+		int Team = 0; //!< Its team, whose card's place, radius and chase distance it goes by while the team still defends one.
 		Vector Center; //!< The place it defends.
 		float Radius = 150.0F;
 		float Chase = 300.0F; //!< How far past Radius from Center it may go after an enemy.
-		Vector Post; //!< Where it stands when there's nothing to chase.
+		Vector Post; //!< Where it stands when there's nothing to chase (a roamer: the spot it's walking to, or waiting at).
+		float RoamRoll = 0.0F; //!< Its own 0-1 roll, fixed when bought: it roams while that's under the card's RoamPercent.
+		bool Roams = false; //!< Roams the chase zone, from one spot to another, rather than holding a post.
+		long long IdleSince = -1; //!< A roamer: the sim update it was first seen waiting at its spot, -1 while on its way.
+		long long Dwell = 0; //!< A roamer: how long it waits at a spot before going on, in sim updates.
 		long ChasingID = 0; //!< The enemy it was sent after, 0 when at (or on its way back to) its post.
 		bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
 		long long Made = 0; //!< The sim update it was made on.
@@ -499,6 +507,7 @@ namespace SandboxDetail {
 		return setup;
 	}();
 	inline int s_BattleEditTeam = 0; //!< The team the defence point and drop line tools set.
+	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
 	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
 	inline std::vector<BattleCraft> s_BattleCraft;
 	// The window's choices for a random drop (copied into the stroke at the click).
@@ -1428,6 +1437,8 @@ namespace SandboxDetail {
 	void UpdateBattleDefenders();
 	void BattleTab();
 	void DrawBattleMarks();
+	void TakeBattleTool(Tool kind, int team);
+	void PutDownBattleTool();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
 	void QueueStroke(Tool kind, const Vector& position);
