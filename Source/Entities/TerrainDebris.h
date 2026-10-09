@@ -57,6 +57,9 @@ namespace RTE {
 		/// @param index Which, from 0 to GetPieceCount() - 1.
 		BITMAP* GetPiece(int index) const { return index >= 0 && index < GetPieceCount() ? m_Bitmaps[index] : nullptr; }
 
+		/// The material this TerrainDebris's pieces are made of.
+		const Material& GetDebrisMaterial() const { return m_Material; }
+
 		/// How deep below the surface a piece of this is put, at the least and the most, as ScatterOnTerrain puts them.
 		int GetMinDepth() const { return m_MinDepth; }
 		int GetMaxDepth() const { return m_MaxDepth; }
