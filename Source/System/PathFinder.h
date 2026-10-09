@@ -6,6 +6,7 @@
 #include "System/MicroPather/micropather.h"
 
 #include <array>
+#include <algorithm>
 #include <atomic>
 #include <limits>
 #include <deque>
@@ -382,6 +383,30 @@ namespace RTE {
 		/// @param targetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The offset into the scene where the target bitmap's upper left corner is located.
 		void DebugRender(BITMAP* targetBitmap, const Vector& targetPos = Vector()) const;
+#pragma endregion
+
+#pragma region Digging
+		/// How hard a material is for a digger: its integrity as a share of what the digger cuts, 0 to 1 (over 1, it doesn't cut it).
+		static float DigHardness(float integrity, float digStrength) { return integrity / std::max(digStrength, 1.0F); }
+
+		/// About how long a unit takes to dig its way through a node of ground of this hardness (DigHardness), in seconds: two or three through
+		/// ground well under its digger's strength, getting on for eight close to it (the rounds knock fewer pixels loose the less they beat the
+		/// integrity by). (Measured in a gym: three nodes of earth took a Heavy Digger about twenty seconds, cut, swept and walked into.)
+		static float DigSecondsPerNode(float hardness) { return 2.0F + 6.0F * hardness * hardness; }
+
+		/// What a node dug through costs a searcher, in walked nodes, for a material it cuts: from the time it takes (DigSecondsPerNode), so a
+		/// short cut through soft ground beats a long way round and a cut close to the digger's limit only a much longer one; scaled by the
+		/// AI digging setting (SettingsMan::AIDigWillingness). Never more than the material's integrity, the price before.
+		/// @param integrity The material's integrity.
+		/// @param digStrength What the searcher's digger cuts.
+		/// @param willingness The AI digging setting; 0 prices the node at its integrity.
+		static float DigNodeCost(float integrity, float digStrength, float willingness) {
+			if (willingness <= 0.0F) {
+				return integrity;
+			}
+			float hardness = DigHardness(integrity, digStrength);
+			return std::min(integrity, (2.0F + 2.0F * DigSecondsPerNode(hardness)) / willingness);
+		}
 #pragma endregion
 
 	private:

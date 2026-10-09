@@ -721,12 +721,15 @@ function NativeHumanAI:Update(Owner)
 		self.BlockedTimer:Reset();
 	end
 
-	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used)
+	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used, and so is a digger cutting the route)
 	local mayFire = SharedBehaviors.MayFire(self, Owner);
+	-- (The engine's route-follower holds a digger's trigger itself on a dig step, AHuman::MoveAlongRoute; let go of here every update, the
+	-- digger never fired, and a unit routed through ground stood at its face with the digger out.)
+	local routeDig = self.engineMover and Owner.DiggingRoute == true;
 	if self.squadShoot then
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, mayFire and (self.fire or self.squadShoot));
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or routeDig);
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or routeDig);
 	end
 
 	if self.deviceState == AHuman.AIMING then
