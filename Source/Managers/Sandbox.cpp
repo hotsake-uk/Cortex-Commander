@@ -638,8 +638,19 @@ void Sandbox::DrawGUI() {
 	}
 	// Enter: done with the Battle tab's defence point, drop line or spawn zone tool, which goes back to the one in hand before (PutDownBattleTool). Not
 	// part way through a drag, so the line being drawn isn't lost.
+	// With a spawn zone part drawn, Enter closes it instead (three corners or more; fewer are dropped), and Backspace takes back its last
+	// corner.
 	if (InGame() && !io.WantTextInput && !s_Dragging && IsBattleTool(CurrentTool().Kind) && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) {
-		PutDownBattleTool();
+		if (CurrentTool().Kind == Tool::BattleSpawnZone && !s_ZoneDraft.empty()) {
+			if (CloseSpawnZone(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)])) {
+				SendBattleSettings(s_BattleEditTeam);
+			}
+		} else {
+			PutDownBattleTool();
+		}
+	}
+	if (InGame() && !io.WantTextInput && CurrentTool().Kind == Tool::BattleSpawnZone && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
+		s_ZoneDraft.pop_back();
 	}
 	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.

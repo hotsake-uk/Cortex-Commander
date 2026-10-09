@@ -1279,8 +1279,10 @@ namespace SandboxDetail {
 			return;
 		}
 		if (kind == Tool::BattleSpawnZone) {
-			ToggleSpawnZone(s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position);
-			SendBattleSettings(s_BattleEditTeam);
+			// The next corner of the zone being drawn; sent once it's closed.
+			if (AddZoneCorner(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position, ZoneCloseDistance())) {
+				SendBattleSettings(s_BattleEditTeam);
+			}
 			return;
 		}
 		Stroke stroke;

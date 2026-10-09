@@ -67,7 +67,7 @@ namespace SandboxDetail {
 				g_SceneMan.WrapPosition(team.LineB);
 			} else {
 				team.ShipsPerBurst = 0;
-				team.SpawnZones.push_back(base);
+				team.SpawnZones.push_back({base - Vector(60.0F, 40.0F), base + Vector(60.0F, -40.0F), base + Vector(60.0F, 20.0F), base - Vector(60.0F, -20.0F)});
 			}
 			return team;
 		}

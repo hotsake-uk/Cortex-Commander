@@ -166,7 +166,7 @@ namespace SandboxDetail {
 		PourOther, //!< Pours the liquid or powder chosen under "More..." (Stroke::Material).
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
 		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
-		BattleSpawnZone, //!< The Battle Director: a click puts down a spawn zone for the team (s_BattleEditTeam), or takes away the one clicked on.
+		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
 		BattleModePoint //!< The Battle Director's modes: a click sets the team's point (s_BattleEditTeam), as capture the flag's flag.
 	};
 
@@ -398,7 +398,7 @@ namespace SandboxDetail {
 		Vector LineA; //!< The drop line's ends: only its span across counts, as ships come in from the top (or the bottom).
 		Vector LineB;
 		int ShipsPerBurst = 1; //!< Ships that set off together, each with a wave of its own. 0 for none: the team's units come only from its spawn zones.
-		std::vector<Vector> SpawnZones; //!< Places on the map its units appear at, besides (or instead of) coming in by ship.
+		std::vector<std::vector<Vector>> SpawnZones; //!< Areas of the map drawn as polygons (their corners in order, each next to the first, not wrapped), that its units appear in, besides (or instead of) coming in by ship.
 		int ZoneEverySeconds = 30; //!< Seconds of game time between one lot of units at the spawn zones and the next.
 		int ZoneUnits = 3; //!< Units that appear at each spawn zone each time.
 		int EverySeconds = 30; //!< Seconds of game time between bursts.
@@ -511,6 +511,7 @@ namespace SandboxDetail {
 		int Sent = 0;
 		long long NextWave = 0; //!< The sim update its next burst of ships sets off on.
 		long long NextZoneWave = 0; //!< The sim update units next appear at its spawn zones on.
+		std::vector<Vector> ZoneDraft; //!< The corners of a spawn zone a script is putting down, one SandboxDo at a time, till it closes it.
 		bool Broke = false; //!< Can't afford another unit.
 	};
 
@@ -555,6 +556,7 @@ namespace SandboxDetail {
 		return setup;
 	}();
 	inline int s_BattleEditTeam = 0; //!< The team the defence point and drop line tools set.
+	inline std::vector<Vector> s_ZoneDraft; //!< The corners of the spawn zone being drawn with the Battle tab's tool, in order.
 	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
 	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
 	inline std::vector<BattleCraft> s_BattleCraft;
@@ -1500,7 +1502,9 @@ namespace SandboxDetail {
 	void BattleTab();
 	void DrawBattleMarks();
 	void TakeBattleTool(Tool kind, int team);
-	void ToggleSpawnZone(BattleSettings& settings, const Vector& position);
+	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);
+	bool CloseSpawnZone(std::vector<Vector>& draft, BattleSettings& settings);
+	float ZoneCloseDistance();
 	void PutDownBattleTool();
 	bool FactionPicker(BattleSettings& setup);
 	void MakeDefender(Actor* unit, const BattleSettings& settings);
