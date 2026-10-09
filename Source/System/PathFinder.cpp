@@ -713,8 +713,9 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 	const_cast<Vector&>(pathRequest->targetPos) = end;
 
 	// Counted from the moment it's queued, not from when a thread picks it up: the grid's cost updates wait for the count to be zero, and
-	// a request still in the queue when they ran was then solved on a grid being written under it (new requests are only queued from the
-	// main thread, which is the one doing the rebuild, so with nothing queued or running the rebuild has the grid to itself).
+	// a request still in the queue when they ran was then solved on a grid being written under it. The count goes up under
+	// m_HeldRequestsMutex, which HoldNewRequests takes too, so once a hold has seen zero no search starts until ReleaseHeldRequests, from
+	// whichever thread it is asked for (the AI scripts ask from worker threads).
 	auto send = [this, start, end, agent, callback, pathRequest]() {
 		++m_CurrentPathingRequests;
 		g_ThreadMan.GetBackgroundThreadPool().push_task(
