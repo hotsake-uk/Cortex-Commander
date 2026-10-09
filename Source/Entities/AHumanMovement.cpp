@@ -1619,6 +1619,13 @@ int AHuman::MoveAlongRoute() {
 		mover.arrivedTick = tick;
 		return RouteMover::Arrived;
 	}
+	// A dig-to order (RC-11) with nothing left to dig with (the digger dropped, shot off, or the arm that held it gone): it stops, and says
+	// why, rather than walking a route through the ground it can no longer cut.
+	if (IsDiggingTo() && !IsPlayerControlled() && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F) {
+		MoverTrace("dig-to: no digger left; stopping");
+		FailOrder(ORDERFAIL_LOSTDIGGER);
+		return RouteMover::Impossible;
+	}
 	// A tactical move (a step into cover, a crawl forward to shoot; see TacticalMoveTo) has the legs: the route waits for it.
 	if (m_Tactical.active) {
 		mover.progressTimer.Reset();
@@ -1698,7 +1705,10 @@ int AHuman::MoveAlongRoute() {
 		Vector toGoal = Towards(m_Pos, goalGround);
 		// (Within reach is the waypoint's own limit and a little: a unit standing 42 px from a point it called reached was, to everything
 		// waiting on it, 42 px short.)
-		if (toGoal.MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
+		// (A dig-to's target is in the ground, RC-11, and the body stands on the floor of its tunnel: the target at its feet or over its head
+		// is as near as it gets, so within half a height is there.)
+		const float reach = IsDiggingTo() && Solid(goal.m_X, goal.m_Y) ? std::max(h * 0.45F, m_MoveProximityLimit * 1.5F) : std::min(h * 0.4F, m_MoveProximityLimit * 1.5F);
+		if (toGoal.MagnitudeIsLessThan(reach) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			MoverTrace("arrived");
 			mover.arrivedTick = tick;
 		return RouteMover::Arrived;
@@ -2413,6 +2423,11 @@ int AHuman::MoveAlongRoute() {
 				mover.digBestGap = gap;
 				float hardest = g_SceneMan.CastMaxStrengthRay(m_Pos, m_Pos + along, 2);
 				mover.digBudgetMS = std::max(8000.0, 3000.0 * static_cast<double>(PathFinder::DigSecondsPerNode(PathFinder::DigHardness(hardest, cuts))));
+				// (Told to dig there, RC-11, it is given twice as long before it looks for a way round: the player asked for the tunnel, and
+				// stone cut slower than the rate model has it sent a Heavy Digger off up a jet climb it then stood under for half a minute.)
+				if (IsDiggingTo()) {
+					mover.digBudgetMS *= 2.0;
+				}
 			} else if (groundAhead && gap < mover.digBestGap - 4.0F) {
 				// Getting on into the cut: the time again from here. (Only standing at the face for the whole of it is given up on, not a cut
 				// that is slow but going: a unit most of the way through a plug was sent the long way round.)

@@ -562,6 +562,10 @@ namespace RTE {
 		Timer m_ActorSelectTimer[Players::MaxPlayerCount];
 		// The cursor for selecting new Actors
 		Vector m_ActorCursor[Players::MaxPlayerCount];
+		// The dig-to cursor's plan for the controlled actor (RC-11), where it was worked out for, and when.
+		DigPlan m_DigToPlan[Players::MaxPlayerCount];
+		Vector m_DigToPlanAt[Players::MaxPlayerCount];
+		Timer m_DigToPlanTimer[Players::MaxPlayerCount];
 		// Highlighted actor while cursor switching; will be switched to if switch button is released now
 		Actor* m_pLastMarkedActor[Players::MaxPlayerCount];
 		// The last selected landing zone

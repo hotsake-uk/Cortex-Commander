@@ -66,6 +66,25 @@ namespace SandboxDetail {
 
 
 
+	/// The kind of order (Actor::OrderKind) a unit sent with this reason (SendUnit) is on.
+	int OrderKindFor(const char* reason) {
+		std::string_view why = reason ? reason : "";
+		if (why.starts_with("dig to")) {
+			return Actor::ORDER_DIGTO;
+		} else if (why.starts_with("attack-move")) {
+			return Actor::ORDER_ATTACKMOVE;
+		} else if (why.starts_with("attack")) {
+			return Actor::ORDER_ATTACK;
+		} else if (why.starts_with("guard")) {
+			return Actor::ORDER_GUARD;
+		} else if (why.starts_with("defend")) {
+			return Actor::ORDER_DEFEND;
+		} else if (why.starts_with("move") || why == "to the rally point" || why.starts_with("sent again")) {
+			return Actor::ORDER_MOVE;
+		}
+		return Actor::ORDER_NONE;
+	}
+
 	/// Sends a unit to a place, or after a unit, from the next update (see PendingOrder).
 	/// @param reason Why, in a few words, for the orders overlay.
 	/// @param lock Whether the unit keeps after this enemy while it lives (an enemy picked by the player), rather than being free to fight
@@ -108,6 +127,14 @@ namespace SandboxDetail {
 		if (!attack) {
 			standing.HasAttackPlace = false;
 		}
+		// What kind of order it is (RC-11's OrderKind), by the reason it was sent with; one the standing orders resend keeps its kind. And a new
+		// order starts with no failure (RC-7) and no place to dig to: DigUnitsTo sets that after this.
+		if (!resend) {
+			standing.Kind = OrderKindFor(reason);
+			standing.HasDigTarget = false;
+		}
+		standing.FailReason = Actor::ORDERFAIL_NONE;
+		standing.FailMaterial = 0;
 		// An earlier order still waiting is dropped.
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
@@ -131,6 +158,8 @@ namespace SandboxDetail {
 				trigger = "OrderGuard";
 			} else if (why == "defend at") {
 				trigger = "OrderDefend";
+			} else if (why == "dig to") {
+				trigger = "OrderDig";
 			}
 			AnswerOrder(unit, trigger);
 		}
@@ -233,6 +262,7 @@ namespace SandboxDetail {
 				// of a fight to be re-sent from here, as the sandbox's once-a-second retarget pass did.
 				s_SendNotes[actor->GetUniqueID()] = {"attack order", false, g_TimerMan.GetSimUpdateCount()};
 				actor->SetOrderAttack(true);
+				actor->SetOrderKind(Actor::ORDER_ATTACK);
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
 			case Order::HuntBrains:
@@ -240,6 +270,7 @@ namespace SandboxDetail {
 				break;
 			case Order::Patrol:
 				actor->SetAIMode(Actor::AIMODE_PATROL);
+				actor->SetOrderKind(Actor::ORDER_PATROL);
 				break;
 			case Order::Rally:
 				if (int team = actor->GetTeam(); team >= 0 && team < c_Sides && s_RallySet[team]) {
@@ -613,15 +644,131 @@ namespace SandboxDetail {
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(attackMove ? CommandMode::AttackMove : CommandMode::Move)]);
 	}
 
+	std::vector<DigPlan> DigPlansFor(const std::vector<Actor*>& units, const Vector& point) {
+		std::vector<DigPlan> plans(units.size());
+		Scene* scene = g_SceneMan.GetScene();
+		if (!scene || units.empty()) {
+			return plans;
+		}
+		// Each unit as its own AI would search, worked out here on this thread (the agent reads the unit, its team's avoid marks and the
+		// published threats), and the searches side by side, as MoveUnitsTo's are. (The grid isn't rebuilt under them: that happens on this
+		// thread, which waits here.)
+		std::vector<Vector> starts;
+		std::vector<PathAgent> agents;
+		for (const Actor* unit: units) {
+			starts.push_back(unit->GetPathStart());
+			agents.push_back(unit->GetPathAgent());
+		}
+		std::vector<size_t> indices(units.size());
+		std::iota(indices.begin(), indices.end(), size_t{0});
+		std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t i) { plans[i] = scene->PlanDig(starts[i], point, agents[i], static_cast<Activity::Teams>(units[i]->GetTeam())); });
+		return plans;
+	}
+
+	int DigFailReason(const DigPlan& plan) {
+		switch (plan.Result) {
+			case DigPlan::Ok:
+				return Actor::ORDERFAIL_NONE;
+			case DigPlan::NoDigger:
+				return Actor::ORDERFAIL_NODIGGER;
+			case DigPlan::TooHard:
+				return Actor::ORDERFAIL_TOOHARD;
+			case DigPlan::OutOfReach:
+				return Actor::ORDERFAIL_OUTOFREACH;
+			default:
+				return Actor::ORDERFAIL_NOROUTE;
+		}
+	}
+
+	/// Sends units to dig to a point (RC-11), which may be inside the ground: each is checked with its own digger first (DigPlansFor, the
+	/// checks side by side), and only those that can get there are sent, to the point itself. The others stay where they are, with a marker
+	/// at the point saying why (no digger, too hard, no route), as a move that can't get there has (RC-7).
+	void DigUnitsTo(const std::vector<Actor*>& units, const Vector& point) {
+		std::vector<DigPlan> plans = DigPlansFor(units, point);
+		for (size_t i = 0; i < units.size(); ++i) {
+			Actor* unit = units[i];
+			if (unit->IsPlayerControlled() || dynamic_cast<const ACraft*>(unit)) {
+				continue;
+			}
+			if (plans[i].Result == DigPlan::Ok) {
+				SendUnit(unit, point, nullptr, false, "dig to");
+				unit->SetOrderDigTarget(point);
+				// A digger keeps digging (RC-1's Move only): it shoots back if its weapons rule lets it, but doesn't stop to fight.
+				unit->SetMovementRule(Actor::MOVE_ONLY);
+			} else {
+				// Not sent: whatever it was doing it goes on doing, and the marker says why it didn't go.
+				AddNoRoute(unit, point, Actor::OrderFailText(DigFailReason(plans[i]), plans[i].BlockingMaterial), true);
+			}
+		}
+	}
+
+	/// What a dig-to to a point would come to for the selected units, for the cursor (RC-11): the lead digger's plan (the first unit whose
+	/// plan is Ok, else the first unit's), and how many can dig there. Worked out again only when the point or the units change, or half a
+	/// second of frames on, as SpotReachPreview is.
+	const DigPreview& DigToPreview(const std::vector<Actor*>& units, const Vector& point) {
+		static DigPreview preview;
+		static Vector lastPoint;
+		static size_t lastCount = 0;
+		static long lastLeader = -1;
+		static int lastFrame = -1000;
+		long leaderID = units.empty() ? -1 : static_cast<long>(units.front()->GetUniqueID());
+		int frame = ImGui::GetFrameCount();
+		if (units.size() == lastCount && leaderID == lastLeader && frame - lastFrame < 30 && g_SceneMan.ShortestDistance(point, lastPoint, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(3.0F)) {
+			return preview;
+		}
+		lastPoint = point;
+		lastCount = units.size();
+		lastLeader = leaderID;
+		lastFrame = frame;
+		preview = DigPreview();
+		preview.Units = static_cast<int>(units.size());
+		std::vector<DigPlan> plans = DigPlansFor(units, point);
+		int lead = -1;
+		for (size_t i = 0; i < plans.size(); ++i) {
+			if (plans[i].Result == DigPlan::Ok) {
+				++preview.CanDig;
+				if (lead < 0) {
+					lead = static_cast<int>(i);
+				}
+			}
+		}
+		if (!plans.empty()) {
+			preview.Plan = plans[lead >= 0 ? lead : 0];
+			preview.LeadStrength = units[lead >= 0 ? lead : 0]->EstimateDigStrength();
+		}
+		return preview;
+	}
+
+	/// The words for a dig-to's preview (RC-11): how much is dug and about how long, or why it can't be, and how many of the units can.
+	std::string DigVerdict(const DigPreview& preview) {
+		std::string verdict = PathFinder::DescribeDigPlan(preview.Plan, preview.LeadStrength);
+		if (preview.Units > 1) {
+			verdict += "\n" + std::to_string(preview.CanDig) + " of " + std::to_string(preview.Units) + " can dig there";
+		}
+		return verdict;
+	}
+
 	/// Marks a place a unit can't get to (RC-7), with any other marker near it, so a group sent there has one marker.
-	void AddNoRoute(Actor* unit, const Vector& destination) {
+	void AddNoRoute(Actor* unit, const Vector& destination, const std::string& reason, bool dig) {
 		long long now = g_TimerMan.GetSimUpdateCount();
+		// Why (RC-7): as given (an order's check that found it can't), else what stopped the unit's order on the way, else no route; and
+		// kept on the unit's order when it was sent.
+		std::string why = reason;
+		if (why.empty()) {
+			if (unit->GetOrderFailReason() == Actor::ORDERFAIL_NONE) {
+				unit->FailOrder(Actor::ORDERFAIL_NOROUTE);
+			}
+			why = unit->GetOrderFailText();
+			dig = dig || unit->GetOrderKind() == Actor::ORDER_DIGTO;
+		}
 		auto near = std::find_if(s_NoRoutes.begin(), s_NoRoutes.end(), [&destination](const NoRoute& marker) { return g_SceneMan.ShortestDistance(marker.Destination, destination, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(40.0F); });
 		if (near == s_NoRoutes.end()) {
 			s_NoRoutes.push_back({destination, {}, now});
 			near = std::prev(s_NoRoutes.end());
 		}
 		near->At = now;
+		near->Reason = why;
+		near->Dig = near->Dig || dig;
 		if (std::none_of(near->Units.begin(), near->Units.end(), [unit](const UnitRef& ref) { return RefersTo(ref, unit); })) {
 			near->Units.push_back(MakeRef(unit));
 			// It says it can't get there (unit speech).
@@ -670,11 +817,21 @@ namespace SandboxDetail {
 			return;
 		}
 		std::vector<UnitRef> units = marker->Units;
+		const bool dig = marker->Dig;
 		s_NoRoutes.erase(marker);
+		std::vector<Actor*> diggers;
 		for (const UnitRef& ref: units) {
 			if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
-				SendUnit(unit, destination, nullptr, false, "sent again (no route)");
+				// (A dig-to is checked and given again as one, RC-11: sent as a move, its target was lifted out of the ground.)
+				if (dig) {
+					diggers.push_back(unit);
+				} else {
+					SendUnit(unit, destination, nullptr, false, "sent again (no route)");
+				}
 			}
+		}
+		if (!diggers.empty()) {
+			DigUnitsTo(diggers, destination);
 		}
 		MarkOrder(destination, IM_COL32(110, 180, 250, 255));
 	}
@@ -727,6 +884,10 @@ namespace SandboxDetail {
 			}
 			case CommandMode::DefendAt:
 				DefendAtSelected(point, point, shift);
+				return;
+			case CommandMode::DigTo:
+				DigUnitsTo(units, point);
+				MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
 				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
@@ -980,6 +1141,12 @@ namespace SandboxDetail {
 				return;
 			}
 			OrderSelectedUnits(1, position);
+			return;
+		}
+		if (s_CommandMode == CommandMode::DigTo) {
+			// Dig to the point, in the ground or not (RC-11): each unit checked with its own digger first, and only those that can are sent.
+			DigUnitsTo(UnitsToMove(0, true), position);
+			MarkOrder(position, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {

@@ -156,6 +156,7 @@ Last updated: 5 October 2026.
 - **Build** bunkers during play with the game's own build menu. Money never runs out.
 - **Orders:** hold, attack the nearest enemy, hunt brains, patrol, or go to a rally point.
 - **Command:** drag a box around units, then click where they should go or what they should attack.
+- **Dig to here** (X): click a point, inside the ground or not, and the selected units with a digger that cuts the way tunnel to it and hold there. The cursor shows the tunnel and says how far, through what and about how long, or why not ("Too hard: Concrete"). Units that can't are left where they are, with a marker saying why. The same order is on a unit's own pie menu ("Dig To Here").
 - **Take control** of any unit and play it yourself.
 - **Drop squads** arrive by dropship or rocket.
 - **Auto battle:** give each side a faction and a budget. The AI buys and sends waves until one side is left.
@@ -193,6 +194,7 @@ Last updated: 5 October 2026.
 
 ## 13. Additions for mod makers
 
+- **`AIDigStrength`** on a firearm says what it digs, for tools that dig in their own script (the Constructor is 180). In Lua, units have `OrderKind`, `OrderDigTarget`, `OrderFailReason`/`OrderFailText`, `CanDigTo` and `DescribeDigTo`.
 - **In INI files:** lights on objects (colour, reach, brightness, flicker, beam), lamps on scenery pieces, metal and gloss values, blend mode and opacity, shadow casting on or off, shimmer, visual particle emission, and per-scene time and weather.
 - **In Lua:** time of day, weather and light colours; adding lights and shimmer; pouring liquid; asking whether smoke blocks a line of sight; reading fire and liquid counts; camera zoom; applying a look; surface states; scenery lamps; and all the sandbox tools.
 - **Old content improves by itself.** Glows become lights, sprites get edge lighting, smoke scatters light, without any change to the mod.

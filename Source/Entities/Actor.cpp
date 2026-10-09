@@ -450,6 +450,21 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> facing;
 		SetOrderPostFacing(facing);
 	});
+	MatchProperty("OrderKind", {
+		int kind = 0;
+		reader >> kind;
+		SetOrderKind(kind);
+	});
+	MatchProperty("OrderDigTarget", {
+		reader >> m_StandingOrder.DigTarget;
+		m_StandingOrder.HasDigTarget = true;
+	});
+	MatchProperty("OrderFailReason", {
+		int reason = 0;
+		reader >> reason;
+		SetOrderFailReason(reason);
+	});
+	MatchProperty("OrderFailMaterial", { reader >> m_StandingOrder.FailMaterial; });
 	MatchProperty("OrderMovement", {
 		int rule = 0;
 		reader >> rule;
@@ -574,6 +589,18 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_StandingOrder.PostFacing != 0) {
 		writer.NewPropertyWithValue("OrderPostFacing", m_StandingOrder.PostFacing);
+	}
+	if (m_StandingOrder.Kind != ORDER_NONE) {
+		writer.NewPropertyWithValue("OrderKind", m_StandingOrder.Kind);
+	}
+	if (m_StandingOrder.HasDigTarget) {
+		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
+	}
+	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
+		writer.NewPropertyWithValue("OrderFailReason", m_StandingOrder.FailReason);
+		if (m_StandingOrder.FailMaterial != 0) {
+			writer.NewPropertyWithValue("OrderFailMaterial", m_StandingOrder.FailMaterial);
+		}
 	}
 	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
 		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);
@@ -1284,6 +1311,33 @@ bool Actor::IsFloater() const {
 	return ActorWater::IsFloater(this);
 }
 
+std::string Actor::OrderFailText(int reason, int materialID) {
+	switch (reason) {
+		case ORDERFAIL_NOROUTE:
+			return "no route";
+		case ORDERFAIL_NODIGGER:
+			return "no digger";
+		case ORDERFAIL_TOOHARD: {
+			const Material* material = materialID > 0 ? g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(materialID)) : nullptr;
+			return material && material->GetIndex() == materialID ? "too hard to dig: " + material->GetPresetName() : std::string("too hard to dig");
+		}
+		case ORDERFAIL_LOSTDIGGER:
+			return "lost its digger";
+		case ORDERFAIL_OUTOFREACH:
+			return "out of reach";
+		default:
+			return std::string();
+	}
+}
+
+DigPlan Actor::PlanDigTo(const Vector& target) const {
+	Scene* scene = g_SceneMan.GetScene();
+	if (!scene) {
+		return DigPlan();
+	}
+	return scene->PlanDig(GetPathStart(), target, GetPathAgent(), static_cast<Activity::Teams>(m_Team));
+}
+
 PathAgent Actor::GetPathAgent() const {
 	PathAgent agent;
 	agent.JumpHeight = EstimateJumpHeight();
@@ -1314,6 +1368,12 @@ PathAgent Actor::GetPathAgent() const {
 	agent.CrawlHeight = agent.StandHeight;
 	// (Half the sprite's reach, near enough; at a third of it a soldier was sent down a shaft its own width, and stuck there.)
 	agent.HalfWidth = std::clamp(GetRadius() * 0.5F, 8.0F, 16.0F);
+	// On a dig-to order (RC-11): the route ends at the buried target itself, not at the open node next to it, and tunnels where a move would
+	// walk round (a quarter of the dig cost: a node dug costs about as much as one or two walked).
+	if (IsDiggingTo()) {
+		agent.DigGoal = true;
+		agent.DigCostScale = PathAgent::c_DigToCostScale;
+	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
 			agent.Avoid.push_back(avoid.first);
@@ -1693,14 +1753,21 @@ void Actor::PreControllerUpdate() {
 		if (m_WaitingAtDoor) {
 			m_PathRetryTimer.Reset();
 		}
-		bool impossible = !cutAtDoor && m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F && m_MovePath.size() <= 3;
+		// (On a dig-to order, a digger too: the way there is through ground its digger doesn't cut, and it stops with that reason rather
+		// than standing at the face. RC-11.)
+		const bool digTo = IsDiggingTo();
+		const bool overStrength = !cutAtDoor && m_PathRequest->totalCost > 100000.0F && (digTo || EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
+		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && overStrength && m_MovePath.size() <= 3;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
-		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || (!cutAtDoor && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
+		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || overStrength;
+		const int cutMaterial = m_PathRequest->cutMaterial;
 		if (impossible) {
 			m_PathRetryTimer.Reset();
 			m_MovePath.clear();
 			m_MovePathKinds.clear();
+			// Why, for the player when it stands down (RC-7): a digger's dig-to stops at ground it doesn't cut; anyone else's has no route.
+			FailOrder(digTo && EstimateDigStrength() > c_PathFindingDefaultDigStrength + 1.0F ? ORDERFAIL_TOOHARD : (digTo ? ORDERFAIL_NODIGGER : ORDERFAIL_NOROUTE), cutMaterial);
 			if (m_ImpossiblePaths >= 6) {
 				m_ImpossiblePaths = 0;
 				m_Waypoints.clear();
@@ -1710,6 +1777,10 @@ void Actor::PreControllerUpdate() {
 			}
 			m_PathRequest.reset();
 			return;
+		}
+		// (A way there after all: an earlier answer's reason no longer holds.)
+		if (int reason = m_StandingOrder.FailReason; reason == ORDERFAIL_NOROUTE || reason == ORDERFAIL_TOOHARD || reason == ORDERFAIL_NODIGGER) {
+			FailOrder(ORDERFAIL_NONE);
 		}
 		m_PathRequest.reset();
 		OnNewMovePath();
@@ -2736,6 +2807,17 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 		}
 	}
 	flag("orderHold", order.Hold);
+	static const char* const orderKindNames[] = {"none", "move", "attack-move", "attack", "guard", "defend", "patrol", "dig to"};
+	if (order.Kind != ORDER_NONE) {
+		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
+	}
+	if (order.HasDigTarget) {
+		number("orderDigX", std::floor(order.DigTarget.m_X));
+		number("orderDigY", std::floor(order.DigTarget.m_Y));
+	}
+	if (order.FailReason != ORDERFAIL_NONE) {
+		fields.push_back({"orderFailed", OrderFailText(order.FailReason, order.FailMaterial), true});
+	}
 	static const char* const weaponRuleNames[] = {"at will", "return fire", "hold fire"};
 	static const char* const movementRuleNames[] = {"follow order", "engage", "move only", "hold ground"};
 	fields.push_back({"weaponRule", m_WeaponRule >= 0 && m_WeaponRule < static_cast<int>(std::size(weaponRuleNames)) ? weaponRuleNames[m_WeaponRule] : std::to_string(m_WeaponRule), true});

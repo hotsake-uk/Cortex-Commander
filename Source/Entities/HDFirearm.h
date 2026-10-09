@@ -448,9 +448,15 @@ namespace RTE {
 		void DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), int whichScreen = 0, bool playerControlled = false) override;
 		void DrawHUD(const Camera& camera) override;
 
-		/// Estimates what material strength one round in the magazine can destroy.
-		/// @return The maximum material strength the regular or the tracer round can destroy.
+		/// Estimates what material strength one round in the magazine can destroy, or what the device says it digs (AIDigStrength).
+		/// @return The strongest material the regular rounds (or, with none, the tracers) destroy, or AIDigStrength when that is set.
 		float EstimateDigStrength() const;
+
+		/// Gets what this says it digs, for a tool that cuts the ground in its own script rather than with its rounds (DG-3); 0 for none.
+		float GetAIDigStrength() const { return m_AIDigStrength; }
+
+		/// Sets what this says it digs; 0 or less to go by its rounds again.
+		void SetAIDigStrength(float strength) { m_AIDigStrength = std::max(strength, 0.0F); }
 
 		/// Whether at least one round has already been	fired during the current activation.
 		/// @return Returns true if at least one round has already been fired during the current activation.
@@ -596,6 +602,7 @@ namespace RTE {
 		// is done by external Lua code
 		bool m_IsAnimatedManually;
 
+		float m_AIDigStrength; //!< What this digs, for the AI and the path grid, when its script digs rather than its rounds (the Constructor's Null Round rates 1): the strongest material it cuts. 0 to go by the rounds.
 		bool m_LegacyCompatibilityRoundsAlwaysFireUnflipped; //<! Legacy compatibility flag to make it so rounds don't flip with the gun. Useful for old mods with things like missiles that accounted for the old code that didn't flip them properly.
 
 		/* TODO

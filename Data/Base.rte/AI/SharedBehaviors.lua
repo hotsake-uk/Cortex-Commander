@@ -873,6 +873,10 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 					-- waypoints) never came for an AI unit, and plans, patrols, shift Defend-at and keep-together all stalled at the first
 					-- step. (The AI's update takes the mode change for a sentry order and keeps a post put back by RestoreOrder.)
 					if hadGoal then
+						-- Dug through to where it was told to dig to (RC-11): it holds there, in its tunnel, rather than wandering back out of it.
+						if Actor.ORDER_DIGTO ~= nil and Owner.OrderKind == Actor.ORDER_DIGTO then
+							Owner.OrderHold = true;
+						end
 						Owner.AIMode = Actor.AIMODE_SENTRY;
 					end
 				end
