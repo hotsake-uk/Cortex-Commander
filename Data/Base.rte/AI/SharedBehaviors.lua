@@ -1777,10 +1777,61 @@ end
 -- from its AI mode and the tags the sandbox's command tool leaves on it, so a unit sent somewhere by the game's own waypoint order and
 -- one sent by the sandbox fight the same way.
 
+-- Whether the unit is running the objective: the sandbox's battle modes tag a unit carrying a flag home (SandboxObjective). Getting there
+-- comes before every other behaviour: it shoots on the way, but doesn't fall back, take cover, flank, sidestep, chase, wait on a
+-- team-mate in the way, heal others or go looking for weapons (SharedBehaviors.FocusOnObjective).
+function SharedBehaviors.OnObjective(Owner)
+	return Owner:NumberValueExists("SandboxObjective");
+end
+
+-- Every update of a unit running the objective: whatever else it was doing is dropped, so only its way there is left.
+function SharedBehaviors.FocusOnObjective(AI, Owner)
+	AI.Cover = nil;
+	AI.Investigate = nil;
+	Owner:RemoveNumberValue("AIInvestigate");
+	if AI.Flank then
+		AI.Flank = nil;
+		Owner:RemoveNumberValue("AIFlank");
+	end
+	if AI.Medic then
+		AI.Medic = nil;
+		Owner:RemoveNumberValue("AIMedic");
+		Owner:RemoveNumberValue("AIMedicFor");
+	end
+	AI.medicHeal = false;
+	AI.PickupHD = nil;
+	AI.closingIn = false;
+	if AI.teamBlockState == Actor.BLOCKED then
+		AI.teamBlockState = Actor.IGNORINGBLOCK;
+		AI.BlockedTimer:Reset();
+	end
+	-- (A behaviour that would stop it or take it off its way goes: closing in, throwing, turning to an alarm, laying down fire, or going
+	-- for a weapon or a tool. Shooting on the move stays.)
+	local offTheWay = {AttackTarget = true, ThrowTarget = true, LobAt = true, FaceAlarm = true, ShootArea = true, WeaponSearch = true, ToolSearch = true};
+	if AI.NextBehavior and offTheWay[AI.NextBehaviorName] then
+		AI.NextBehavior = nil;
+		AI.NextBehaviorName = nil;
+		AI.NextCleanup = nil;
+	end
+	if AI.Behavior and offTheWay[AI.BehaviorName] then
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		AI.Behavior = nil;
+		AI.BehaviorName = nil;
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+			AI.BehaviorCleanup = nil;
+		end
+	end
+end
+
 -- What the unit has been told to do, as the fighting rules read it: "move" (get there; shoot back on the way but don't stop for it),
 -- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
+	-- (Running the objective comes before everything, a fall-back too: get there, shooting on the way.)
+	if SharedBehaviors.OnObjective(Owner) then
+		return "move";
+	end
 	-- (The movement rule the player set for this order (RC-1) wins over what the order says, except for a fall-back.)
 	local rule = Owner.MovementRule;
 	if rule ~= Actor.MOVE_FOLLOW_ORDER and not Owner:NumberValueExists("AIRetreat") then
