@@ -305,6 +305,7 @@ namespace SandboxDetail {
 		Rally,
 		Idle,
 		DigGold,
+		BattleObjective,
 		MoveTo
 	};
 	/// What the sandbox says about an order, by Order: one table for the names and for where each may be given, in place of name lists and
@@ -321,6 +322,7 @@ namespace SandboxDetail {
 	    {"Go to rally point", true},
 	    {"Do nothing", true},
 	    {"Dig for gold", true},
+	    {"Battle objective", true},
 	    {"Move to a place", false},
 	};
 	constexpr int c_OrderCount = static_cast<int>(sizeof(c_Orders) / sizeof(c_Orders[0]));
@@ -594,6 +596,8 @@ namespace SandboxDetail {
 		long ChasingID = 0; //!< The enemy it was sent after, 0 when at (or on its way back to) its post.
 		bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
 		long long Made = 0; //!< The sim update it was made on.
+		bool Commanded = false; //!< Told to defend by a player's order (Defend at, defend here, guard): its own place, radius and chase distance,
+		                        //!< kept whatever the team cards and modes do, till it is given another order.
 	};
 
 	/// A Battle Director ship that can't be hurt, kept whole until it has delivered and left (UpdateBattleCraft).
@@ -766,6 +770,11 @@ namespace SandboxDetail {
 	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
 	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
+	/// The zone a Defend order holds, as a Battle Director team's defend place is (UpdateBattleDefenders): units stand inside the radius,
+	/// go after enemies that come within the radius and chase distance, and come back after; a share of them roam the zone.
+	inline int s_DefendRadius = 100; //!< px from the point.
+	inline int s_DefendChase = 200; //!< px past the radius.
+	inline int s_DefendRoam = 0; //!< % of the units that roam the zone rather than hold a post.
 	/// How units sent somewhere together stand there (RC-5). Side on, a formation is an order along the ground: who is in front and how close.
 	enum class Formation {
 		Line, //!< Abreast round the point at the spacing, the nearest unit in the middle: as moves always were.
@@ -1636,6 +1645,12 @@ namespace SandboxDetail {
 	bool FactionPicker(BattleSettings& setup);
 	void MakeDefender(Actor* unit, const BattleSettings& settings);
 	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius = -1.0F);
+	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post);
+	void MoveCommandedZone(Actor* unit, const Vector& centre, const Vector& post);
+	void DrawDefendZone(ImDrawList* drawList, const Vector& centre, float radius, float chase, ImU32 color);
+	void DrawCommandedZones(ImDrawList* drawList);
+	bool JoinBattleObjective(Actor* unit);
+	void ReleaseFromBattleMode(const Actor* unit);
 	void SendBattleMode(int command = BattleModeSet);
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
