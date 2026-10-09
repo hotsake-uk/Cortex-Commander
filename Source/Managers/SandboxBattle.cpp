@@ -122,14 +122,40 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Ends a ship that can't be hurt and hasn't left: it stops flying and dies, but doesn't blow up. It falls, and once it lies still the
+		/// game settles it into the terrain where it lies, as a body is (MovableMan), so it becomes part of the ground rather than a wreck that
+		/// nothing can shift.
+		void SettleCraft(ACraft* ship) {
+			if (!g_MovableMan.IsParticleSettlingEnabled()) {
+				// (With settling turned off in the settings it would lie there for good: it is taken away instead.)
+				ship->SetToDelete(true);
+				return;
+			}
+			ship->SetScuttleOnDeath(false);
+			ship->SetAIMode(Actor::AIMODE_SENTRY);
+			ship->SetHealth(0.0F);
+			ship->SetStatus(Actor::DEAD);
+			// (A ship whose own rest time is never, read from its file, would never be settled.)
+			if (ship->GetRestThreshold() < 0) {
+				ship->SetRestThreshold(500);
+			}
+		}
+
 		/// The ships that can't be hurt are kept so, each update, until they've unloaded and gone: off the top (or bottom) of the scene, where
-		/// the game takes them away itself, or else half a minute after they were emptied, so none is left standing about.
+		/// the game takes them away itself. One still about ten seconds after it was emptied, and not climbing away, is settled into the
+		/// terrain (SettleCraft), so none is left standing about, or hanging over the battle.
 		void UpdateBattleCraft() {
 			long long now = g_TimerMan.GetSimUpdateCount();
-			long long linger = static_cast<long long>(30.0F * UpdatesPerSecond());
+			long long linger = static_cast<long long>(10.0F * UpdatesPerSecond());
 			for (auto craft = s_BattleCraft.begin(); craft != s_BattleCraft.end();) {
 				ACraft* ship = dynamic_cast<ACraft*>(GetRef(craft->Ship));
 				if (!ship || ship->IsSetToDelete()) {
+					craft = s_BattleCraft.erase(craft);
+					continue;
+				}
+				// (One past its time but still on its way up and out is leaving, and is let be.)
+				if (ship->IsInventoryEmpty() && craft->Emptied >= 0 && now - craft->Emptied > linger && ship->GetVel().GetY() > -2.0F) {
+					SettleCraft(ship);
 					craft = s_BattleCraft.erase(craft);
 					continue;
 				}
@@ -141,16 +167,20 @@ namespace SandboxDetail {
 				if (ship->GetStatus() == Actor::DYING || ship->GetStatus() == Actor::DEAD) {
 					ship->SetStatus(Actor::STABLE);
 				}
-				if (ship->IsInventoryEmpty()) {
-					if (craft->Emptied < 0) {
-						craft->Emptied = now;
-					} else if (now - craft->Emptied > linger) {
-						ship->SetToDelete(true);
-						craft = s_BattleCraft.erase(craft);
-						continue;
-					}
+				if (ship->IsInventoryEmpty() && craft->Emptied < 0) {
+					craft->Emptied = now;
 				}
 				++craft;
+			}
+		}
+
+		/// Takes every ship of a team off the map, at once and without a blast: the ships that can't be hurt and any other, with anyone still
+		/// aboard.
+		void ClearTeamCraft(int side) {
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (dynamic_cast<ACraft*>(actor) && actor->GetTeam() == side) {
+					actor->SetToDelete(true);
+				}
 			}
 		}
 
@@ -401,6 +431,11 @@ namespace SandboxDetail {
 					team.Running = false;
 				}
 				break;
+			case BattleClearCraft:
+				if (oneTeam) {
+					ClearTeamCraft(side);
+				}
+				break;
 			default:
 				break;
 		}
@@ -519,10 +554,14 @@ namespace SandboxDetail {
 			}
 			if (setup.Style == BattleStyle::Defend) {
 				bool placing = CurrentTool().Kind == Tool::BattleDefendPoint && s_BattleEditTeam == side;
-				if (ToolUI::Button(placing ? "Click the map...##defend" : "Set defence point")) {
-					s_BattleEditTeam = side;
-					TookTool(ToolIndex(Tool::BattleDefendPoint));
+				if (ToolUI::Button(placing ? "Done (Enter)##defend" : "Set defence point")) {
+					if (placing) {
+						PutDownBattleTool();
+					} else {
+						TakeBattleTool(Tool::BattleDefendPoint, side);
+					}
 				}
+				ImGui::SetItemTooltip(placing ? "Click the map to move it; Enter (or this) when it's where you want it." : "Then click the map where its units are to stand.");
 				ImGui::SameLine();
 				if (setup.HasDefendPos) {
 					ImGui::TextDisabled("set at %d, %d", setup.DefendPos.GetFloorIntX(), setup.DefendPos.GetFloorIntY());
@@ -558,10 +597,14 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("Ships come in only over a line you draw on the map, spread along it.");
 			if (setup.DropOnLine) {
 				bool drawing = CurrentTool().Kind == Tool::BattleDropLine && s_BattleEditTeam == side;
-				if (ToolUI::Button(drawing ? "Drag on the map...##line" : "Draw drop line")) {
-					s_BattleEditTeam = side;
-					TookTool(ToolIndex(Tool::BattleDropLine));
+				if (ToolUI::Button(drawing ? "Save line (Enter)##line" : "Draw drop line")) {
+					if (drawing) {
+						PutDownBattleTool();
+					} else {
+						TakeBattleTool(Tool::BattleDropLine, side);
+					}
 				}
+				ImGui::SetItemTooltip(drawing ? "Drag on the map to draw it (again to redraw); Enter (or this) to save it and put the tool down." : "Then drag on the map along where the ships are to come in.");
 				ImGui::SameLine();
 				if (setup.HasLine) {
 					ImGui::TextDisabled("drawn");
@@ -574,7 +617,12 @@ namespace SandboxDetail {
 			changed |= ImGui::SliderInt("Every", &setup.EverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
 			ImGui::SetItemTooltip("Seconds of game time between one lot of ships and the next.");
 			changed |= ToolUI::Checkbox("Ships can't be hurt", &setup.Invincible);
-			ImGui::SetItemTooltip("The ships take no harm, and are taken away once they've unloaded and left, so no wrecks build up.");
+			ImGui::SetItemTooltip("The ships take no harm. One that hasn't left ten seconds after it unloaded falls dead, without a blast, and becomes part of the ground.");
+			if (ToolUI::Button("Clear all drop ships", ImVec2(-1.0F, 0.0F))) {
+				SendBattleSettings(side, BattleClearCraft);
+				changed = false;
+			}
+			ImGui::SetItemTooltip("Every ship of this team taken off the map now, without a blast, with anyone still aboard.");
 			if (changed) {
 				SendBattleSettings(side);
 			}
@@ -604,6 +652,25 @@ namespace SandboxDetail {
 		for (int side = 0; side < c_Sides; ++side) {
 			BattleCard(side);
 		}
+	}
+
+	/// Puts the card's defence point or drop line tool in hand, for a team, keeping the tool it replaces for PutDownBattleTool.
+	void TakeBattleTool(Tool kind, int team) {
+		Tool held = CurrentTool().Kind;
+		if (held != Tool::BattleDefendPoint && held != Tool::BattleDropLine) {
+			s_ToolBeforeBattle = s_ToolIndex;
+		}
+		s_BattleEditTeam = team;
+		TookTool(ToolIndex(kind));
+	}
+
+	/// Done with the defence point or drop line tool (Enter, or the card's button): what it set is kept, as it was sent the moment it was
+	/// clicked or drawn, and the tool in hand before is given back (the command tool, if none). The tool stayed in hand till another was
+	/// picked, with nothing to say you'd finished.
+	void PutDownBattleTool() {
+		int back = s_ToolBeforeBattle >= 0 ? s_ToolBeforeBattle : ToolIndex(Tool::Command);
+		s_ToolBeforeBattle = -1;
+		TookTool(back);
 	}
 
 	/// On the map, while the Battle tab is showing or one of its tools is in hand: each defending team's place (its radius, and how far past

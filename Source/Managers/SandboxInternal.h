@@ -400,7 +400,8 @@ namespace SandboxDetail {
 		BattleStartTeam, //!< Team starts (or carries on, if it ran before) sending waves.
 		BattleStopTeam, //!< Team stops sending waves. Its units already in stay.
 		BattleStartAll, //!< Every active team starts afresh: spent and sent back to nothing.
-		BattleStopAll //!< Every team stops.
+		BattleStopAll, //!< Every team stops.
+		BattleClearCraft //!< Team's ships, all of them, taken off the map (with anyone still aboard).
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -493,6 +494,7 @@ namespace SandboxDetail {
 		return setup;
 	}();
 	inline int s_BattleEditTeam = 0; //!< The team the defence point and drop line tools set.
+	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
 	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
 	inline std::vector<BattleCraft> s_BattleCraft;
 	// The window's choices for a random drop (copied into the stroke at the click).
@@ -1393,6 +1395,8 @@ namespace SandboxDetail {
 	void UpdateBattleDefenders();
 	void BattleTab();
 	void DrawBattleMarks();
+	void TakeBattleTool(Tool kind, int team);
+	void PutDownBattleTool();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
 	void QueueStroke(Tool kind, const Vector& position);
