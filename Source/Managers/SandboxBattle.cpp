@@ -165,6 +165,7 @@ namespace SandboxDetail {
 			}
 			team.Running = true;
 			team.NextWave = g_TimerMan.GetSimUpdateCount() + delay;
+			team.NextZoneWave = team.NextWave;
 		}
 
 		/// Starts every active team afresh, and stops the rest.
@@ -374,6 +375,7 @@ namespace SandboxDetail {
 		if (aiPaused) {
 			for (BattleTeam& team: s_BattleTeams) {
 				++team.NextWave;
+				++team.NextZoneWave;
 			}
 			return;
 		}
@@ -383,10 +385,21 @@ namespace SandboxDetail {
 		for (int side = 0; side < c_Sides; ++side) {
 			BattleTeam& team = s_BattleTeams[side];
 			const BattleSettings& settings = team.Settings;
-			if (!team.Running || team.Broke || now < team.NextWave || s_FactionModules.empty()) {
+			if (!team.Running || team.Broke || s_FactionModules.empty()) {
 				continue;
 			}
-			team.NextWave = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(settings.EverySeconds, 1)) * UpdatesPerSecond()));
+			// Ships and spawn zones each on a clock of their own.
+			const bool shipsDue = settings.ShipsPerBurst > 0 && now >= team.NextWave;
+			const bool zonesDue = !settings.SpawnZones.empty() && now >= team.NextZoneWave;
+			if (!shipsDue && !zonesDue) {
+				continue;
+			}
+			if (shipsDue) {
+				team.NextWave = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(settings.EverySeconds, 1)) * UpdatesPerSecond()));
+			}
+			if (zonesDue) {
+				team.NextZoneWave = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(settings.ZoneEverySeconds, 1)) * UpdatesPerSecond()));
+			}
 			// Under a unit limit, only as many as top it up (counting those still riding in): none at all when it's reached, till the next
 			// burst.
 			int room = settings.UnitLimit > 0 ? settings.UnitLimit - Sandbox::CountUnits(side) : std::numeric_limits<int>::max();
@@ -417,16 +430,15 @@ namespace SandboxDetail {
 					cheapest = cheapest < 0.0F ? cost : std::min(cheapest, cost);
 				}
 			}
-			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
-			const int ships = std::clamp(settings.ShipsPerBurst, 1, 10);
-			for (int ship = 0; ship < ships && room > 0; ++ship) {
-				const int shipSize = std::min(waveSize, room);
+			// Buys one ship's or one zone's units, as many as fit what's left of the budget, up to a number; none when nothing more can be
+			// afforded, which leaves the team broke.
+			auto buyWave = [&](int size) {
+				std::vector<Actor*> wave;
 				float left = settings.EndlessMoney ? std::numeric_limits<float>::max() : static_cast<float>(settings.Budget) - team.Spent;
 				// (180 a unit: the 900 a wave of five always had.)
-				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(shipSize), cheapest));
-				std::vector<Actor*> wave;
+				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(size), cheapest));
 				float waveCost = 0.0F;
-				for (int attempt = 0; attempt < shipSize * 3 && static_cast<int>(wave.size()) < shipSize; ++attempt) {
+				for (int attempt = 0; attempt < size * 3 && static_cast<int>(wave.size()) < size; ++attempt) {
 					std::vector<const Preset*> affordable;
 					for (const auto& [choice, cost]: priced) {
 						if (waveCost + cost <= waveBudget) {
@@ -449,20 +461,58 @@ namespace SandboxDetail {
 				if (wave.empty()) {
 					// Nothing left it can afford (or nothing to buy at all).
 					team.Broke = !settings.EndlessMoney || priced.empty();
-					break;
-				}
-				if (Defends(settings)) {
+				} else if (Defends(settings)) {
 					for (Actor* unit: wave) {
 						DefendPlace(unit, settings);
 					}
 				}
-				// (Counted as sent only once a craft took them: with no craft to be had, DropUnits deletes the units and returns nothing.)
-				int count = static_cast<int>(wave.size());
-				float paid = DropUnits(wave, side, DropX(settings, ship, ships), settings.Craft, settings.Invincible);
-				if (paid > 0.0F) {
-					team.Sent += count;
-					team.Spent += paid;
-					room -= count;
+				return wave;
+			};
+			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
+			if (shipsDue) {
+				const int ships = std::clamp(settings.ShipsPerBurst, 1, 10);
+				for (int ship = 0; ship < ships && room > 0 && !team.Broke; ++ship) {
+					std::vector<Actor*> wave = buyWave(std::min(waveSize, room));
+					if (wave.empty()) {
+						break;
+					}
+					// (Counted as sent only once a craft took them: with no craft to be had, DropUnits deletes the units and returns nothing.)
+					int count = static_cast<int>(wave.size());
+					float paid = DropUnits(wave, side, DropX(settings, ship, ships), settings.Craft, settings.Invincible);
+					if (paid > 0.0F) {
+						team.Sent += count;
+						team.Spent += paid;
+						room -= count;
+					}
+				}
+			}
+			if (zonesDue) {
+				// The zones in a fresh order each time, so a limit or a budget that runs short doesn't always leave out the same ones.
+				std::vector<Vector> zones = settings.SpawnZones;
+				for (size_t i = 0; i + 1 < zones.size(); ++i) {
+					std::swap(zones[i], zones[i + std::min(zones.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(zones.size() - i)))]);
+				}
+				const int perZone = std::clamp(settings.ZoneUnits, 1, 20);
+				for (const Vector& zone: zones) {
+					if (room <= 0 || team.Broke) {
+						break;
+					}
+					std::vector<Actor*> wave = buyWave(std::min(perZone, room));
+					if (wave.empty()) {
+						break;
+					}
+					// Each on the ground there, spread out sideways, and dropped in from just above its feet.
+					std::vector<Vector> spots = StandingSpots(zone, static_cast<int>(wave.size()));
+					ActivateSide(side);
+					for (size_t i = 0; i < wave.size(); ++i) {
+						Actor* unit = wave[i];
+						Vector feet = i < spots.size() ? spots[i] : zone;
+						team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
+						unit->SetPos(feet - Vector(0.0F, unit->GetHeight() * 0.5F));
+						g_MovableMan.AddActor(unit);
+					}
+					team.Sent += static_cast<int>(wave.size());
+					room -= static_cast<int>(wave.size());
 				}
 			}
 		}
@@ -476,11 +526,13 @@ namespace SandboxDetail {
 		}
 		const int side = stroke.Team;
 		const bool oneTeam = side >= 0 && side < c_Sides;
-		if (stroke.Kind == Tool::BattleDefendPoint || stroke.Kind == Tool::BattleDropLine) {
+		if (IsBattleTool(stroke.Kind)) {
 			// From a script's SandboxDo: the window sends the whole settings instead.
 			if (oneTeam) {
 				BattleSettings& settings = s_BattleTeams[side].Settings;
-				if (stroke.Kind == Tool::BattleDefendPoint) {
+				if (stroke.Kind == Tool::BattleSpawnZone) {
+					ToggleSpawnZone(settings, stroke.Position);
+				} else if (stroke.Kind == Tool::BattleDefendPoint) {
 					settings.DefendPos = stroke.Position;
 					settings.HasDefendPos = true;
 				} else {
@@ -547,10 +599,13 @@ namespace SandboxDetail {
 			team.NextWave = 0;
 			team.Settings.HasDefendPos = false;
 			team.Settings.HasLine = false;
+			team.Settings.SpawnZones.clear();
+			team.NextZoneWave = 0;
 		}
 		for (BattleSettings& setup: s_BattleSetup) {
 			setup.HasDefendPos = false;
 			setup.HasLine = false;
+			setup.SpawnZones.clear();
 		}
 		s_BattleDefenders.clear();
 		s_BattleCraft.clear();
@@ -700,8 +755,8 @@ namespace SandboxDetail {
 					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "not drawn: anywhere till it is");
 				}
 			}
-			changed |= ImGui::SliderInt("Ships at a time", &setup.ShipsPerBurst, 1, 6);
-			ImGui::SetItemTooltip("How many ships set off together, each with a wave of its own and its own place to come in.");
+			changed |= ImGui::SliderInt("Ships at a time", &setup.ShipsPerBurst, 0, 6, setup.ShipsPerBurst > 0 ? "%d" : "no ships");
+			ImGui::SetItemTooltip("How many ships set off together, each with a wave of its own and its own place to come in. 0: no ships, the team's units come only from its spawn zones.");
 			changed |= ImGui::SliderInt("Every", &setup.EverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
 			ImGui::SetItemTooltip("Seconds of game time between one lot of ships and the next.");
 			changed |= ToolUI::Checkbox("Ships can't be hurt", &setup.Invincible);
@@ -711,6 +766,35 @@ namespace SandboxDetail {
 				changed = false;
 			}
 			ImGui::SetItemTooltip("Every ship of this team taken off the map now, without a blast, with anyone still aboard.");
+
+			ImGui::SeparatorText("Spawn zones");
+			bool zoning = CurrentTool().Kind == Tool::BattleSpawnZone && s_BattleEditTeam == side;
+			if (ToolUI::Button(zoning ? "Done (Enter)##zones" : "Place spawn zones")) {
+				if (zoning) {
+					PutDownBattleTool();
+				} else {
+					TakeBattleTool(Tool::BattleSpawnZone, side);
+				}
+			}
+			ImGui::SetItemTooltip(zoning ? "Click the map to put a zone down, or on one to take it away; Enter (or this) when done." : "Then click the map wherever this team's units are to appear, as many places as you like.");
+			ImGui::SameLine();
+			if (setup.SpawnZones.empty()) {
+				ImGui::TextDisabled("none");
+			} else {
+				ImGui::TextDisabled("%d placed", static_cast<int>(setup.SpawnZones.size()));
+				ImGui::SameLine();
+				if (ToolUI::Button("Clear##zones")) {
+					setup.SpawnZones.clear();
+					changed = true;
+				}
+				ImGui::SetItemTooltip("Takes away all of this team's spawn zones.");
+			}
+			if (!setup.SpawnZones.empty()) {
+				changed |= ImGui::SliderInt("Units per zone", &setup.ZoneUnits, 1, 10);
+				ImGui::SetItemTooltip("How many units appear at each zone each time (fewer when the budget or the unit limit runs short).");
+				changed |= ImGui::SliderInt("Every##zones", &setup.ZoneEverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
+				ImGui::SetItemTooltip("Seconds of game time between one lot of units at the zones and the next. The zones keep their own time, apart from the ships.");
+			}
 			if (changed) {
 				SendBattleSettings(side);
 			}
@@ -745,7 +829,7 @@ namespace SandboxDetail {
 	/// Puts the card's defence point or drop line tool in hand, for a team, keeping the tool it replaces for PutDownBattleTool.
 	void TakeBattleTool(Tool kind, int team) {
 		Tool held = CurrentTool().Kind;
-		if (held != Tool::BattleDefendPoint && held != Tool::BattleDropLine) {
+		if (!IsBattleTool(held)) {
 			s_ToolBeforeBattle = s_ToolIndex;
 		}
 		s_BattleEditTeam = team;
@@ -761,11 +845,23 @@ namespace SandboxDetail {
 		TookTool(back);
 	}
 
+	/// Puts down a spawn zone at a place, or takes away the one there (within 40 px). At most 16 a team.
+	void ToggleSpawnZone(BattleSettings& settings, const Vector& position) {
+		Vector at = position;
+		g_SceneMan.WrapPosition(at);
+		auto near = std::find_if(settings.SpawnZones.begin(), settings.SpawnZones.end(), [&at](const Vector& zone) { return g_SceneMan.ShortestDistance(zone, at, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(40.0F); });
+		if (near != settings.SpawnZones.end()) {
+			settings.SpawnZones.erase(near);
+		} else if (settings.SpawnZones.size() < 16) {
+			settings.SpawnZones.push_back(at);
+		}
+	}
+
 	/// On the map, while the Battle tab is showing or one of its tools is in hand: each defending team's place (its radius, and how far past
-	/// it its units chase, fainter), and each team's drop line.
+	/// it its units chase, fainter), each team's drop line, and its spawn zones.
 	void DrawBattleMarks() {
 		Tool kind = CurrentTool().Kind;
-		if (!(Sandbox::IsOpen() && s_CurrentTab == "Battle") && kind != Tool::BattleDefendPoint && kind != Tool::BattleDropLine) {
+		if (!(Sandbox::IsOpen() && s_CurrentTab == "Battle") && !IsBattleTool(kind)) {
 			return;
 		}
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
@@ -791,6 +887,13 @@ namespace SandboxDetail {
 					ImVec2 at(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
 					drawList->AddTriangleFilled(ImVec2(at.x - 5.0F, at.y - 12.0F), ImVec2(at.x + 5.0F, at.y - 12.0F), ImVec2(at.x, at.y - 4.0F), color);
 				}
+			}
+			for (size_t i = 0; i < setup.SpawnZones.size(); ++i) {
+				ImVec2 middle = ToScreen(setup.SpawnZones[i]);
+				drawList->AddCircleFilled(middle, 14.0F, faint, 24);
+				drawList->AddCircle(middle, 14.0F, color, 24, 2.0F);
+				drawList->AddLine(ImVec2(middle.x - 7.0F, middle.y), ImVec2(middle.x + 7.0F, middle.y), color, 2.0F);
+				drawList->AddLine(ImVec2(middle.x, middle.y - 7.0F), ImVec2(middle.x, middle.y + 7.0F), color, 2.0F);
 			}
 		}
 	}
@@ -820,7 +923,7 @@ void Sandbox::SetBattleDrops(int team, int craft, int ships, int everySeconds, i
 	}
 	BattleSettings& settings = s_BattleTeams[team].Settings;
 	settings.Craft = std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
-	settings.ShipsPerBurst = std::clamp(ships, 1, 10);
+	settings.ShipsPerBurst = std::clamp(ships, 0, 10);
 	settings.EverySeconds = std::max(everySeconds, 1);
 	settings.WaveSize = std::clamp(waveSize, 1, 20);
 	settings.Invincible = invincible;

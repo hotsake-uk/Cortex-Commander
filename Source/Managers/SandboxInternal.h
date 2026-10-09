@@ -165,8 +165,12 @@ namespace SandboxDetail {
 		Blood, //!< Pours blood, turning flowing blood on (FluidSim::BloodFlows) if it is off.
 		PourOther, //!< Pours the liquid or powder chosen under "More..." (Stroke::Material).
 		BattleDefendPoint, //!< The Battle Director: a click sets the place the team being set up defends (s_BattleEditTeam).
-		BattleDropLine //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
+		BattleDropLine, //!< The Battle Director: a drag draws the line the team's ships come in over (s_BattleEditTeam).
+		BattleSpawnZone //!< The Battle Director: a click puts down a spawn zone for the team (s_BattleEditTeam), or takes away the one clicked on.
 	};
+
+	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -247,6 +251,7 @@ namespace SandboxDetail {
 	    {Tool::PourOther, "Other", 0.03F, true},
 	    {Tool::BattleDefendPoint, "Defence point", 0.0F, false},
 	    {Tool::BattleDropLine, "Drop line", 0.0F, false},
+	    {Tool::BattleSpawnZone, "Spawn zone", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -390,7 +395,10 @@ namespace SandboxDetail {
 		bool HasLine = false;
 		Vector LineA; //!< The drop line's ends: only its span across counts, as ships come in from the top (or the bottom).
 		Vector LineB;
-		int ShipsPerBurst = 1; //!< Ships that set off together, each with a wave of its own.
+		int ShipsPerBurst = 1; //!< Ships that set off together, each with a wave of its own. 0 for none: the team's units come only from its spawn zones.
+		std::vector<Vector> SpawnZones; //!< Places on the map its units appear at, besides (or instead of) coming in by ship.
+		int ZoneEverySeconds = 30; //!< Seconds of game time between one lot of units at the spawn zones and the next.
+		int ZoneUnits = 3; //!< Units that appear at each spawn zone each time.
 		int EverySeconds = 30; //!< Seconds of game time between bursts.
 		bool Invincible = false; //!< Its ships take no harm, and are taken away once they've unloaded and left.
 		bool HasDefendPos = false;
@@ -463,6 +471,7 @@ namespace SandboxDetail {
 		float Spent = 0.0F;
 		int Sent = 0;
 		long long NextWave = 0; //!< The sim update its next burst of ships sets off on.
+		long long NextZoneWave = 0; //!< The sim update units next appear at its spawn zones on.
 		bool Broke = false; //!< Can't afford another unit.
 	};
 
@@ -1439,6 +1448,7 @@ namespace SandboxDetail {
 	void BattleTab();
 	void DrawBattleMarks();
 	void TakeBattleTool(Tool kind, int team);
+	void ToggleSpawnZone(BattleSettings& settings, const Vector& position);
 	void PutDownBattleTool();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
