@@ -206,6 +206,11 @@ namespace RTE {
 		/// other way (each node dug priced at the material's integrity, as before), 1 as designed (a short cut through soft ground beats a long
 		/// way round), 2 twice as readily.
 		float AIDigWillingness() const { return m_AIDigWillingness; }
+
+		/// How much the routes of units a game mode wants kept safe (Actor::GetRouteThreatAvoidance: a capture the flag carrier) keep clear of
+		/// enemies (PathFinder::ThreatCost): 0 not at all, 1 as designed (a way past a crowd of enemies loses to a longer one past none; one
+		/// sentry is skirted only when going round is short), 2 twice as much. Other units always take the shortest way.
+		float AIThreatAvoidance() const { return m_AIThreatAvoidance; }
 		/// How reckless AI units are on the move, 0 (careful) to 1 (reckless); 0.5 is as designed. It scales how long a unit steadies itself
 		/// before it jets, how much fuel it waits for, and how much the route search shies from hard jumps and long drops (see AIMoveCaution).
 		float AIRecklessness() const { return m_AIRecklessness; }
@@ -432,6 +437,8 @@ namespace RTE {
 
 		/// Sets how readily units with a digger tunnel; see AIDigWillingness.
 		void SetAIDigWillingness(float scale) { m_AIDigWillingness = std::clamp(scale, 0.0F, 2.0F); }
+		/// Sets how much safe-route units keep clear of enemies, 0 to 2; see AIThreatAvoidance.
+		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
@@ -689,6 +696,7 @@ namespace RTE {
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
+		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).

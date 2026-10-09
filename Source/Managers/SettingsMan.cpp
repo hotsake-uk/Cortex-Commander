@@ -125,6 +125,7 @@ void SettingsMan::Clear() {
 	m_EnableMantling = true;
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
+	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	m_AISpawnDiggerChance = 0.0F;
 	m_AISpawnDiggerType = 1;
@@ -557,6 +558,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
 	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
+	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
@@ -913,6 +915,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
+	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);
 	writer.NewPropertyWithValue("AISpawnDiggerChance", m_AISpawnDiggerChance);
 	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
