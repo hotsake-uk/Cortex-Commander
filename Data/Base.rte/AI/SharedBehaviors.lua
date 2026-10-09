@@ -2582,6 +2582,19 @@ function SharedBehaviors.RetreatWalkOver(AI, Owner)
 	return AI.Retreat.WaitTimer:IsPastSimMS(1000) and Owner:GetWaypointListSize() == 0 and Owner.MovePathSize == 0 and not Owner.IsWaitingOnNewMovePath;
 end
 
+-- The order the unit has, as a key that changes when it is given another: the mode, and for a move where it goes (to 24 px) or whom it follows.
+function SharedBehaviors.OrderKey(Owner)
+	local mode = Owner.AIMode;
+	if mode == Actor.AIMODE_GOTO or mode == Actor.AIMODE_SQUAD then
+		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+			return mode .. ":" .. Owner.MOMoveTarget.UniqueID;
+		end
+		local Goal = Owner:GetLastAIWaypoint();
+		return mode .. ":" .. math.floor(Goal.X / 24) .. "," .. math.floor(Goal.Y / 24);
+	end
+	return tostring(mode);
+end
+
 -- Whether the unit has been given another order since a fall-back or a flank sent it to a spot: another mode, or a waypoint queued last
 -- that isn't the spot. (Put back unconditionally, a pie-menu order given meanwhile was wiped up to 25 s later.) Not something to follow:
 -- the AI's own detours (to a weapon to pick up, closing on a target) set that and queue the spot again after it.
@@ -2652,10 +2665,22 @@ end
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
 function SharedBehaviors.RetreatUpdate(AI, Owner)
+	-- The order in hand, and the health the unit had when it was given (see below).
+	local orderKey = SharedBehaviors.OrderKey(Owner);
+	if orderKey ~= AI.RetreatOrderKey then
+		AI.RetreatOrderKey = orderKey;
+		AI.RetreatOrderHealth = Owner.Health;
+		AI.RetreatOrderWounds = Owner.WoundCount;
+		AI.RetreatOrderTimer = AI.RetreatOrderTimer or Timer();
+		AI.RetreatOrderTimer:Reset();
+	end
+	-- (Wounds patched meanwhile: the next one counts from what is left.)
+	AI.RetreatOrderWounds = math.min(AI.RetreatOrderWounds or Owner.WoundCount, Owner.WoundCount);
 	-- The tag taken off by someone else (a sandbox order): the fall-back is over and the order it would have put back is gone too.
 	if AI.Retreat and not Owner:NumberValueExists("AIRetreat") then
 		SharedBehaviors.Trace(Owner, "retreat: called off by a new order");
 		AI.Retreat = nil;
+		AI.RetreatOrderHealth, AI.RetreatOrderWounds = Owner.Health, Owner.WoundCount; -- (The order that called it off counts from here.)
 		return false;
 	end
 	-- Another order given meanwhile: the fall-back is over, and that order stands.
@@ -2663,6 +2688,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		SharedBehaviors.Trace(Owner, "retreat: called off by another order");
 		Owner:RemoveNumberValue("AIRetreat");
 		AI.Retreat = nil;
+		AI.RetreatOrderHealth, AI.RetreatOrderWounds = Owner.Health, Owner.WoundCount; -- (The order that called it off counts from here.)
 		return false;
 	end
 	if AI.Retreat then
@@ -2690,6 +2716,16 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	-- (Hurt, with no enemy about; or shaken (morale under 0.3), which pulls a unit back whatever its health and in the middle of a fight.)
 	local shaken = SharedBehaviors.Shaken(AI, Owner);
 	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
+		return false;
+	end
+	-- Only once hurt since its order was given (or, shaken, once the order has stood a while): an order given to a unit already hurt, or
+	-- one that called a fall-back off, or the one a fall-back put back, stands until the unit is hurt again. (Without this a unit under 30%
+	-- health fell back two seconds into any order it was given, and again the very tick an order called its fall-back off, before it took
+	-- a step: sent anywhere, it stood where it was, or walked back to the friend it had waited by, for good.)
+	-- (Hurt is a new wound, or a fifth of its health gone some other way, a fall or a blast: not the health the wounds it had bleed away.)
+	local hurtSinceOrder = Owner.WoundCount > AI.RetreatOrderWounds or Owner.Health < AI.RetreatOrderHealth - Owner.MaxHealth * 0.2;
+	if not hurtSinceOrder and not (shaken and AI.RetreatOrderTimer:IsPastSimMS(10000)) then
+		AI.RetreatCheckTimer = nil;
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
