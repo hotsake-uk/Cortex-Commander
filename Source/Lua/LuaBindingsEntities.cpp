@@ -240,6 +240,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("PassengerSlots", &Actor::GetPassengerSlots, &Actor::SetPassengerSlots)
 	    .property("Perceptiveness", &Actor::GetPerceptiveness, &Actor::SetPerceptiveness)
 	    .property("HeadlampBrightness", &Actor::GetHeadlampBrightness, &Actor::SetHeadlampBrightness)
+	    .property("HeadlampLit", &Actor::IsHeadlampLit)
 	    .def("SetHeadlampColor", &Actor::SetHeadlampColor)
 	    .def("ClearHeadlampColor", &Actor::ClearHeadlampColor)
 	    .property("PainThreshold", &Actor::GetPainThreshold, &Actor::SetPainThreshold)

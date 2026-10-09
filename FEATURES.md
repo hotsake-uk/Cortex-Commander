@@ -133,7 +133,7 @@ Last updated: 5 October 2026.
 - **Swimming and drowning.** Units move through liquid instead of destroying it. Wading slows them. Light units float and heavy ones sink. Living soldiers run out of air after 12 seconds under water; robots do not breathe.
 - **Smoke and gas block sight.** Units and the AI cannot see through thick smoke or steam, so smoke screens work.
 - **Weather that matters.** Rain and snow weaken fire. Snow slows walking by up to 15%. Wind pushes fire. Dust storms cut how far units see.
-- **Night matters.** After dark, soldiers wear headlamps that light where they aim. The AI sees about half as far at night without one.
+- **Night matters.** Where it's dark around them (at night, in caves, under roofs), soldiers switch on headlamps that light where they aim, and switch them off again under a lit lamp or back in daylight. The AI sees about half as far at night without one.
 - **Saved games** store burning fire and moving liquid, and continue them when loaded.
 
 ## 9. New equipment
