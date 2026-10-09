@@ -2371,6 +2371,23 @@ namespace SandboxDetail {
 				}
 			}
 		}
+		// Reset: starts the game over on the same map, once the player has said they are sure.
+		if (ToolUI::SmallButton("Reset")) {
+			ImGui::OpenPopup("Reset the map?##sandboxReset");
+		}
+		ImGui::SetItemTooltip("Throws away everything made here and loads the current map afresh.");
+		if (ImGui::BeginPopupModal("Reset the map?##sandboxReset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::TextUnformatted("Are you sure? Everything on the map is lost and it loads afresh.");
+			if (ToolUI::SmallButton("Yes, reset")) {
+				g_ActivityMan.SetRestartActivity();
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Cancel")) {
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
 	}
 
 
