@@ -2086,6 +2086,64 @@ int AHuman::MoveAlongRoute() {
 		return RouteMover::Moving;
 	}
 
+	// ---- No legs (both shot off): the route is flown in short hops, point to point along it, not walked. With no legs the walk's keys
+	// only rocked the body where it lay, and the unit was stuck at the first point for the rest of the order. Each hop is a flight like any
+	// other (the pilot's, landed and popped as above): to the furthest of the next few points with floor under it that the body can fly to
+	// straight. With nothing like that ahead (a climb the route's own flight takes, a dig, a ladder), the rest of the follower has it. ----
+	if (!m_pFGLeg && !m_pBGLeg && standardJet) {
+		Vector hop;
+		float hopFloorY = 0.0F;
+		int hopPoints = 0;
+		int index = 0;
+		for (const Vector& routePoint: m_MovePath) {
+			if (++index > 8) {
+				break;
+			}
+			Vector off = Towards(m_Pos, routePoint);
+			if (off.MagnitudeIsGreaterThan(h * 4.0F)) {
+				break;
+			}
+			float floorY = FloorUnder(routePoint, h * 0.8F);
+			if (floorY >= 0.0F && std::abs(off.m_X) >= h * 0.25F && FlightWayClear(routePoint, floorY)) {
+				hop = routePoint;
+				hopFloorY = floorY;
+				hopPoints = index;
+			}
+		}
+		if (hopPoints > 0) {
+			float needed = std::min(FlightFuelNeeded(hop, hopFloorY), m_pJetpack->GetJetTimeTotal() * 0.9F);
+			if (m_pJetpack->GetJetTimeLeft() < std::max(needed, JetRelightFuel())) {
+				// (Lying where it is while the tank fills: not stuck for it.)
+				mover.progressTimer.Reset();
+				mover.hopTimer.Reset();
+				if (mover.traceTimer.IsPastSimMS(1000)) {
+					mover.traceTimer.Reset();
+					MoverTrace("no legs; waiting for fuel: " + std::to_string(static_cast<int>(m_pJetpack->GetJetTimeLeft())) + " of " + std::to_string(static_cast<int>(needed)));
+				}
+				return RouteMover::Moving;
+			}
+			mover.flight = RouteMover::Flight();
+			mover.flight.active = true;
+			mover.settling = false;
+			mover.flight.landing = hop;
+			mover.flight.floorY = hopFloorY;
+			mover.flight.pointsToLanding = hopPoints;
+			mover.flight.timer.Reset();
+			mover.flight.totalTimer.Reset();
+			mover.flight.riseTimer.Reset();
+			mover.flight.startY = m_Pos.m_Y;
+			mover.flight.bestY = m_Pos.m_Y;
+			mover.flight.takeOff = m_Pos;
+			mover.progressTimer.Reset();
+			MoverTrace("no legs; hop for " + std::to_string(static_cast<int>(hop.m_X)) + "," + std::to_string(static_cast<int>(hopFloorY)));
+			Vector command = PilotFlight(hop, hopFloorY);
+			ctrl.SetState(BODY_JUMPSTART, true);
+			ctrl.SetState(BODY_JUMP, true);
+			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
+			return RouteMover::Moving;
+		}
+	}
+
 	// ---- A leap: walked to the take-off, the edge of the gap or the foot of the lip, and leapt from there with the move key held (the
 	// push forward goes the way the key does). At the take-off and not yet able to leap (the legs gather a moment after a landing), it
 	// waits there rather than walking off the edge. Not getting nearer for a second short of the take-off, it leaps from where it is. ----
