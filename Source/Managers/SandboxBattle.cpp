@@ -265,6 +265,67 @@ namespace SandboxDetail {
 			}
 			return factions;
 		}
+
+		/// Whether a place is inside a spawn zone (its corners as stored, so the place is to be on the same side of a wrap as the first).
+		bool InsideZone(const std::vector<Vector>& zone, const Vector& at) {
+			bool inside = false;
+			for (size_t i = 0, j = zone.size() - 1; i < zone.size(); j = i++) {
+				const Vector& a = zone[i];
+				const Vector& b = zone[j];
+				if ((a.m_Y > at.m_Y) != (b.m_Y > at.m_Y) && at.m_X < (b.m_X - a.m_X) * (at.m_Y - a.m_Y) / (b.m_Y - a.m_Y) + a.m_X) {
+					inside = !inside;
+				}
+			}
+			return inside;
+		}
+
+		/// Whether a place (not yet wrapped) is open air.
+		bool AirAt(Vector at) {
+			g_SceneMan.WrapPosition(at);
+			return g_SceneMan.GetTerrMatter(at.GetFloorIntX(), at.GetFloorIntY()) == g_MaterialAir;
+		}
+
+		/// Where a unit (this tall) appears in a spawn zone: a place picked at random inside it, then down onto the ground if there is any
+		/// below in the zone (or up out of it, if the place is in it), so units stand on whatever ground the zone takes in. A zone drawn
+		/// in the open sky lets them fall from where they appear.
+		Vector ZoneSpawnSpot(const std::vector<Vector>& zone, float height) {
+			float left = zone[0].m_X, right = zone[0].m_X, top = zone[0].m_Y, bottom = zone[0].m_Y;
+			Vector middle;
+			for (const Vector& corner: zone) {
+				left = std::min(left, corner.m_X);
+				right = std::max(right, corner.m_X);
+				top = std::min(top, corner.m_Y);
+				bottom = std::max(bottom, corner.m_Y);
+				middle += corner / static_cast<float>(zone.size());
+			}
+			const Vector down(0.0F, 1.0F);
+			for (int tries = 0; tries < 60; ++tries) {
+				Vector at(left + Random01() * (right - left), top + Random01() * (bottom - top));
+				if (!InsideZone(zone, at)) {
+					continue;
+				}
+				while (InsideZone(zone, at) && !AirAt(at)) {
+					at -= down;
+				}
+				if (!InsideZone(zone, at)) {
+					continue; // (Ground all the way up to the zone's edge.)
+				}
+				while (InsideZone(zone, at + down) && AirAt(at + down)) {
+					at += down;
+				}
+				Vector spot = at - Vector(0.0F, height * 0.5F);
+				g_SceneMan.WrapPosition(spot);
+				return spot;
+			}
+			// A zone that's all ground (or too thin to land a pick in): its middle, lifted out of the ground.
+			int up = 0;
+			while (up < 400 && !AirAt(middle - Vector(0.0F, static_cast<float>(up)))) {
+				++up;
+			}
+			Vector spot = middle - Vector(0.0F, static_cast<float>(up) + height * 0.5F);
+			g_SceneMan.WrapPosition(spot);
+			return spot;
+		}
 	} // namespace
 
 	/// Makes a craft take no harm: no wound hurts it and nothing breaks it apart or knocks a part off it, and UpdateBattleCraft keeps it whole
@@ -490,12 +551,15 @@ namespace SandboxDetail {
 			}
 			if (zonesDue) {
 				// The zones in a fresh order each time, so a limit or a budget that runs short doesn't always leave out the same ones.
-				std::vector<Vector> zones = settings.SpawnZones;
+				std::vector<std::vector<Vector>> zones = settings.SpawnZones;
 				for (size_t i = 0; i + 1 < zones.size(); ++i) {
 					std::swap(zones[i], zones[i + std::min(zones.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(zones.size() - i)))]);
 				}
 				const int perZone = std::clamp(settings.ZoneUnits, 1, 20);
-				for (const Vector& zone: zones) {
+				for (const std::vector<Vector>& zone: zones) {
+					if (zone.size() < 3) {
+						continue;
+					}
 					if (room <= 0 || team.Broke) {
 						break;
 					}
@@ -503,18 +567,11 @@ namespace SandboxDetail {
 					if (wave.empty()) {
 						break;
 					}
-					// Each on its own spot of the zone, the same every time, as a squad is put down with the Spawn tab's unit tool.
+					// Each somewhere inside the zone, on its ground.
 					ActivateSide(side);
-					for (size_t i = 0; i < wave.size(); ++i) {
-						Actor* unit = wave[i];
+					for (Actor* unit: wave) {
 						team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-						// (Lifted out of the ground if the spot is in it, so a zone put down on the ground doesn't bury its units to the waist.)
-						Vector spot = ZoneSpot(zone, static_cast<int>(i), static_cast<int>(wave.size()));
-						int up = 0;
-						while (up < 200 && g_SceneMan.GetTerrMatter(spot.GetFloorIntX(), spot.GetFloorIntY() - up) != g_MaterialAir) {
-							++up;
-						}
-						unit->SetPos(spot - Vector(0.0F, static_cast<float>(up) + unit->GetHeight() * 0.5F));
+						unit->SetPos(ZoneSpawnSpot(zone, unit->GetHeight()));
 						g_MovableMan.AddActor(unit);
 					}
 					team.Sent += static_cast<int>(wave.size());
@@ -537,7 +594,8 @@ namespace SandboxDetail {
 			if (oneTeam) {
 				BattleSettings& settings = s_BattleTeams[side].Settings;
 				if (stroke.Kind == Tool::BattleSpawnZone) {
-					ToggleSpawnZone(settings, stroke.Position);
+					// A corner of a zone: a script puts one down per call, and closes the zone with one on its first corner.
+					AddZoneCorner(s_BattleTeams[side].ZoneDraft, settings, stroke.Position, 20.0F);
 				} else if (stroke.Kind == Tool::BattleDefendPoint) {
 					settings.DefendPos = stroke.Position;
 					settings.HasDefendPos = true;
@@ -606,6 +664,7 @@ namespace SandboxDetail {
 			team.Settings.HasDefendPos = false;
 			team.Settings.HasLine = false;
 			team.Settings.SpawnZones.clear();
+			team.ZoneDraft.clear();
 			team.NextZoneWave = 0;
 		}
 		for (BattleSettings& setup: s_BattleSetup) {
@@ -613,6 +672,7 @@ namespace SandboxDetail {
 			setup.HasLine = false;
 			setup.SpawnZones.clear();
 		}
+		s_ZoneDraft.clear();
 		s_BattleDefenders.clear();
 		s_BattleCraft.clear();
 		s_ScriptAnyFaction = false;
@@ -775,19 +835,25 @@ namespace SandboxDetail {
 
 			ImGui::SeparatorText("Spawn zones");
 			bool zoning = CurrentTool().Kind == Tool::BattleSpawnZone && s_BattleEditTeam == side;
-			if (ToolUI::Button(zoning ? "Done (Enter)##zones" : "Place spawn zones")) {
+			if (ToolUI::Button(zoning ? "Done##zones" : "Draw spawn zones")) {
 				if (zoning) {
 					PutDownBattleTool();
 				} else {
 					TakeBattleTool(Tool::BattleSpawnZone, side);
 				}
 			}
-			ImGui::SetItemTooltip(zoning ? "Click the map to put a zone down, or on one to take it away; Enter (or this) when done." : "Then click the map wherever this team's units are to appear, as many places as you like.");
+			ImGui::SetItemTooltip(zoning ? "Click the corners of a zone on the map, then click the first corner again (or press Enter) to close it. Backspace takes back the last corner. Enter with no zone part drawn, or this, when done." : "Then click out the corners of each area this team's units are to appear in, as many areas as you like.");
 			ImGui::SameLine();
 			if (setup.SpawnZones.empty()) {
 				ImGui::TextDisabled("none");
 			} else {
-				ImGui::TextDisabled("%d placed", static_cast<int>(setup.SpawnZones.size()));
+				ImGui::TextDisabled("%d drawn", static_cast<int>(setup.SpawnZones.size()));
+				ImGui::SameLine();
+				if (ToolUI::Button("Undo##zones")) {
+					setup.SpawnZones.pop_back();
+					changed = true;
+				}
+				ImGui::SetItemTooltip("Takes away the last spawn zone drawn.");
 				ImGui::SameLine();
 				if (ToolUI::Button("Clear##zones")) {
 					setup.SpawnZones.clear();
@@ -797,7 +863,7 @@ namespace SandboxDetail {
 			}
 			if (!setup.SpawnZones.empty()) {
 				changed |= ImGui::SliderInt("Units per zone", &setup.ZoneUnits, 1, 10);
-				ImGui::SetItemTooltip("How many units appear at each zone each time (fewer when the budget or the unit limit runs short).");
+				ImGui::SetItemTooltip("How many units appear in each zone each time, anywhere inside it (fewer when the budget or the unit limit runs short).");
 				changed |= ImGui::SliderInt("Every##zones", &setup.ZoneEverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
 				ImGui::SetItemTooltip("Seconds of game time between one lot of units at the zones and the next. The zones keep their own time, apart from the ships.");
 			}
@@ -834,6 +900,7 @@ namespace SandboxDetail {
 
 	/// Puts the card's defence point or drop line tool in hand, for a team, keeping the tool it replaces for PutDownBattleTool.
 	void TakeBattleTool(Tool kind, int team) {
+		s_ZoneDraft.clear();
 		Tool held = CurrentTool().Kind;
 		if (!IsBattleTool(held)) {
 			s_ToolBeforeBattle = s_ToolIndex;
@@ -846,29 +913,54 @@ namespace SandboxDetail {
 	/// clicked or drawn, and the tool in hand before is given back (the command tool, if none). The tool stayed in hand till another was
 	/// picked, with nothing to say you'd finished.
 	void PutDownBattleTool() {
+		s_ZoneDraft.clear();
 		int back = s_ToolBeforeBattle >= 0 ? s_ToolBeforeBattle : ToolIndex(Tool::Command);
 		s_ToolBeforeBattle = -1;
 		TookTool(back);
 	}
 
-	/// Where one of a spawn zone's units appears: in a row either side of the place the zone was put down, 16 px apart, as the Spawn tab's
-	/// unit tool puts a squad down (SpawnUnits). The same spots every time.
-	Vector ZoneSpot(const Vector& zone, int unit, int count) {
-		Vector spot = zone + Vector((static_cast<float>(unit) - static_cast<float>(count - 1) * 0.5F) * 16.0F, 0.0F);
-		g_SceneMan.WrapPosition(spot);
-		return spot;
-	}
-
-	/// Puts down a spawn zone at a place, or takes away the one there (within 40 px). At most 16 a team.
-	void ToggleSpawnZone(BattleSettings& settings, const Vector& position) {
+	/// Puts down the next corner of a spawn zone being drawn. One on (within closeWithin of) the first corner, with at least three down,
+	/// closes the zone instead (CloseSpawnZone): true then. The corners are kept next to the first, not wrapped, so a zone can cross a
+	/// wrapping map's seam. At most 32 corners.
+	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin) {
 		Vector at = position;
 		g_SceneMan.WrapPosition(at);
-		auto near = std::find_if(settings.SpawnZones.begin(), settings.SpawnZones.end(), [&at](const Vector& zone) { return g_SceneMan.ShortestDistance(zone, at, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(40.0F); });
-		if (near != settings.SpawnZones.end()) {
-			settings.SpawnZones.erase(near);
-		} else if (settings.SpawnZones.size() < 16) {
-			settings.SpawnZones.push_back(at);
+		if (draft.empty()) {
+			draft.push_back(at);
+			return false;
 		}
+		Vector fromFirst = g_SceneMan.ShortestDistance(draft.front(), at, g_SceneMan.SceneWrapsX());
+		if (draft.size() >= 3 && fromFirst.MagnitudeIsLessThan(closeWithin)) {
+			return CloseSpawnZone(draft, settings);
+		}
+		if (draft.size() < 32) {
+			draft.push_back(draft.front() + fromFirst);
+		}
+		return false;
+	}
+
+	/// The spawn zone being drawn made one of the team's zones, if it has three corners or more (at most 16 zones a team). The draft is
+	/// emptied either way.
+	bool CloseSpawnZone(std::vector<Vector>& draft, BattleSettings& settings) {
+		bool made = draft.size() >= 3 && settings.SpawnZones.size() < 16;
+		if (made) {
+			settings.SpawnZones.push_back(draft);
+		}
+		draft.clear();
+		return made;
+	}
+
+	/// How near the first corner of the spawn zone being drawn a click closes it: 12 window pixels, in the scene.
+	float ZoneCloseDistance() { return 12.0F * std::max(ScenePixelsPerWindowPixel(), 0.01F); }
+
+	/// A spawn zone's corners on the screen, each placed from the first, so a zone across a wrapping map's seam is drawn whole.
+	std::vector<ImVec2> ZoneOnScreen(const std::vector<Vector>& zone, float scale) {
+		std::vector<ImVec2> corners;
+		ImVec2 first = ToScreen(zone.front());
+		for (const Vector& corner: zone) {
+			corners.emplace_back(first.x + (corner.m_X - zone.front().m_X) / scale, first.y + (corner.m_Y - zone.front().m_Y) / scale);
+		}
+		return corners;
 	}
 
 	/// On the map, while the Battle tab is showing or one of its tools is in hand: each defending team's place (its radius, and how far past
@@ -902,23 +994,31 @@ namespace SandboxDetail {
 					drawList->AddTriangleFilled(ImVec2(at.x - 5.0F, at.y - 12.0F), ImVec2(at.x + 5.0F, at.y - 12.0F), ImVec2(at.x, at.y - 4.0F), color);
 				}
 			}
-			// Each zone: a mark for every unit it puts down, where that unit appears.
-			const int perZone = std::clamp(setup.ZoneUnits, 1, 20);
-			for (const Vector& zone: setup.SpawnZones) {
-				for (int i = 0; i < perZone; ++i) {
-					ImVec2 at = ToScreen(ZoneSpot(zone, i, perZone));
-					drawList->AddCircleFilled(at, 5.0F, faint, 12);
-					drawList->AddCircle(at, 5.0F, color, 12, 1.5F);
-				}
+			// Each zone: its area, shaded.
+			for (const std::vector<Vector>& zone: setup.SpawnZones) {
+				std::vector<ImVec2> corners = ZoneOnScreen(zone, scale);
+				drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (50u << 24));
+				drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), color, ImDrawFlags_Closed, 2.0F);
 			}
 		}
-		// The spawn zone tool in hand: where its units would appear, at the pointer, before the click.
-		if (kind == Tool::BattleSpawnZone && Sandbox::CapturesWorldClicks()) {
-			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
-			const int perZone = std::clamp(s_BattleSetup[team].ZoneUnits, 1, 20);
-			Vector pointer = MouseScenePosition();
-			for (int i = 0; i < perZone; ++i) {
-				drawList->AddCircle(ToScreen(ZoneSpot(pointer, i, perZone)), 5.0F, c_SideColors[team], 12, 1.5F);
+		// The zone being drawn: its corners so far and on to the pointer, and its first corner ringed (filled when the pointer is close
+		// enough for a click to close it).
+		if (kind == Tool::BattleSpawnZone && !s_ZoneDraft.empty()) {
+			const ImU32 color = c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+			std::vector<ImVec2> corners = ZoneOnScreen(s_ZoneDraft, scale);
+			ImVec2 first = corners.front();
+			if (Sandbox::CapturesWorldClicks()) {
+				Vector pointer = MouseScenePosition();
+				Vector fromFirst = g_SceneMan.ShortestDistance(s_ZoneDraft.front(), pointer, g_SceneMan.SceneWrapsX());
+				corners.emplace_back(first.x + fromFirst.m_X / scale, first.y + fromFirst.m_Y / scale);
+				if (s_ZoneDraft.size() >= 3 && fromFirst.MagnitudeIsLessThan(ZoneCloseDistance())) {
+					drawList->AddCircleFilled(first, 7.0F, color, 16);
+				}
+			}
+			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), color, 0, 2.0F);
+			drawList->AddCircle(first, 7.0F, color, 16, 2.0F);
+			for (size_t i = 1; i < s_ZoneDraft.size(); ++i) {
+				drawList->AddCircleFilled(corners[i], 3.0F, color, 8);
 			}
 		}
 	}
