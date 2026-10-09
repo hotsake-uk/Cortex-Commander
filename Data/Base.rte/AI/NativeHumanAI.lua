@@ -694,7 +694,7 @@ function NativeHumanAI:Update(Owner)
 	if self.Target and MovableMan:ValidMO(self.Target) then
 		self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 	end
-	-- (On the objective, only what doesn't stop it or turn it off its way: smoke on the move, reloading, and what it remembers.)
+	-- (On the objective, only what doesn't stop it or turn it off its way: reloading, and what it remembers.)
 	if not objective then
 		HumanBehaviors.LeaveCover(self, Owner);
 	end
@@ -702,8 +702,8 @@ function NativeHumanAI:Update(Owner)
 	if not objective then
 		HumanBehaviors.LobUpdate(self, Owner);
 	end
-	HumanBehaviors.SmokeUpdate(self, Owner);
 	if not objective then
+		HumanBehaviors.SmokeUpdate(self, Owner);
 		SharedBehaviors.SquadTactics(self, Owner);
 		SharedBehaviors.FlankUpdate(self, Owner);
 		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
@@ -946,24 +946,9 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 	self.ReloadTimer:Reset();
 	self.TargetLostTimer:Reset();
 
-	-- Running the objective: shoots at it on the way if it has a gun to, and otherwise lets it be (no closing in, throwing or going for a weapon).
+	-- Running the objective: no fight at all, not even a stop to shoot; it just goes.
 	if SharedBehaviors.OnObjective(Owner) then
-		if not IsADoor(self.Target) and Owner:EquipFirearm(true) and not Owner.EquippedItem:HasObjectInGroup("Weapons - Melee") then
-			self.NextBehavior = coroutine.create(HumanBehaviors.ShootTarget);
-			self.NextBehaviorName = "ShootTarget";
-			self.NextCleanup = function(AI)
-				AI.fire = false;
-				AI.canHitTarget = false;
-				AI.closingIn = false;
-				AI.ShotBlockedTimer = nil;
-				AI.deviceState = AHuman.STILL;
-				AI.proneState = AHuman.NOTPRONE;
-				HumanBehaviors.StopRangeStep(AI, Owner);
-				AI.TargetLostTimer:SetSimTimeLimitMS(2000);
-			end
-		else
-			self.Target = nil;
-		end
+		self.Target = nil;
 		return;
 	end
 
