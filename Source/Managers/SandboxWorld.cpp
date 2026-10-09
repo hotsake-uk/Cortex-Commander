@@ -988,6 +988,8 @@ namespace SandboxDetail {
 			case Tool::BattleModePoint:
 			case Tool::BattleModeBase:
 			case Tool::BattleModeZone:
+			case Tool::BattleModeGoal:
+			case Tool::BattleModeFlag:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -1280,8 +1282,17 @@ namespace SandboxDetail {
 			SendBattleMode();
 			return;
 		}
-		if (kind == Tool::BattleModeBase || kind == Tool::BattleModeZone) {
-			// The next corner of the team's base being drawn; sent once it's closed.
+		if (kind == Tool::BattleModeFlag) {
+			// The neutral flag (one flag) stands here from now on.
+			Vector at = position;
+			g_SceneMan.WrapPosition(at);
+			s_ModeSetup.FlagSpot = at;
+			s_ModeSetup.HasFlagSpot = true;
+			SendBattleMode();
+			return;
+		}
+		if (IsModeZoneTool(kind)) {
+			// The next corner of the team's spawn zone, goal zone or the mode's zone being drawn; sent once it's closed.
 			ModeBaseCorner(position, ZoneCloseDistance());
 			return;
 		}

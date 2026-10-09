@@ -121,7 +121,7 @@ namespace RTE {
 
 		/// Starts one of the Battle Director's modes (Lua: SandboxBattleMode), with the teams whose spawn zones are drawn ("Team's spawn
 		/// zone" with SandboxDo, one zone per closed polygon) and the mode's other settings as the Battle tab has them. A mode of 0 (custom) stops the mode's game.
-		/// @param mode 1 capture the flag, 2 king of the hill, 3 assault, 4 last team standing, 5 VIP hunt.
+		/// @param mode 1 capture the flag, 2 king of the hill, 3 assault, 4 last team standing, 5 VIP hunt, 6 one flag.
 		/// @param teamSize Most units each team has alive at once.
 		/// @param byShip Whether they come in by ship over their widest spawn zone, rather than appearing in their zones.
 		static void StartBattleMode(int mode, int teamSize, bool byShip);

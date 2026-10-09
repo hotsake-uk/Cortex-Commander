@@ -169,11 +169,16 @@ namespace SandboxDetail {
 		BattleSpawnZone, //!< The Battle Director: each click puts down a corner of a spawn zone for the team (s_BattleEditTeam); a click on the first corner, or Enter, closes it.
 		BattleModePoint, //!< The Battle Director's modes: a click sets the team's point (s_BattleEditTeam), as capture the flag's flag.
 		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of another of the team's spawn zones (s_BattleEditTeam).
-		BattleModeZone //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
+		BattleModeZone, //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
+		BattleModeGoal, //!< The Battle Director's modes: each click puts down a corner of the team's goal zone (s_BattleEditTeam), as one flag's.
+		BattleModeFlag //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag).
 	};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag; }
+
+	/// The Battle Director's mode tools that draw a polygon a corner at a click (closed on its first corner, or Enter).
+	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -258,6 +263,8 @@ namespace SandboxDetail {
 	    {Tool::BattleModePoint, "Flag", 0.0F, false},
 	    {Tool::BattleModeBase, "Team's spawn zone", 0.0F, false},
 	    {Tool::BattleModeZone, "Mode zone", 0.0F, false},
+	    {Tool::BattleModeGoal, "Team's goal zone", 0.0F, false},
+	    {Tool::BattleModeFlag, "Neutral flag", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -441,6 +448,7 @@ namespace SandboxDetail {
 		Assault,
 		LastTeamStanding,
 		VipHunt,
+		OneFlag,
 		Count
 	};
 
@@ -453,6 +461,9 @@ namespace SandboxDetail {
 		std::array<std::vector<std::vector<Vector>>, c_Sides> SpawnZones; //!< Each team's spawn zones, drawn as polygons: its units appear in them.
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
+		std::array<std::vector<Vector>, c_Sides> Goals; //!< One flag: each team's goal zone, drawn as a polygon, that it brings the flag into to score.
+		bool HasFlagSpot = false; //!< One flag: whether the neutral flag's place is set. Without, the game can't start.
+		Vector FlagSpot;
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
