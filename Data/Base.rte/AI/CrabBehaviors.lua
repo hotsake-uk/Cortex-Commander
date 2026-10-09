@@ -418,7 +418,12 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 				end
 			end
 			-- Out of reach or out of sight for a second and a half: somewhere else to shoot it from (AC-9).
-			if BlockedTimer and BlockedTimer:IsPastSimMS(1500) then
+			-- (A flank's routes asked for: started once they are back.)
+			if AI.FlankSearch then
+				if SharedBehaviors.StartFlank(AI, Owner, AI.Target.Pos, PrjDat and PrjDat.rng < 2000 and PrjDat.rng or 500) then
+					break;
+				end
+			elseif BlockedTimer and BlockedTimer:IsPastSimMS(1500) then
 				BlockedTimer = nil;
 				if SharedBehaviors.StartFlank(AI, Owner, AI.Target.Pos, PrjDat and PrjDat.rng < 2000 and PrjDat.rng or 500) then
 					break;

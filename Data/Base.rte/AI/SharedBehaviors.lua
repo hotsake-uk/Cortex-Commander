@@ -2284,9 +2284,10 @@ function SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos)
 	return false;
 end
 
--- A place from which a dug-in target can be shot: above it or to one side, with a line of sight to it, that the pather can reach in
--- not too many nodes. @param range How far this unit's weapon reaches. @return The spot, or nil.
-function SharedBehaviors.FindFlank(AI, Owner, TargetPos, range)
+-- Places from which a dug-in target can be shot: above it or to one side, with a line of sight to it, at a fair distance. Whether the
+-- pather can reach one, and in how many nodes, is asked separately (StartFlank). @param range How far this unit's weapon reaches.
+-- @return The spots, in order of preference.
+function SharedBehaviors.FlankCandidates(AI, Owner, TargetPos, range)
 	local stand = math.max(150, math.min(400, range * 0.6));
 	local candidates = {};
 	for _, angle in ipairs({60, 90, 120, 40, 140}) do -- Degrees up from the target's right, over the top.
@@ -2295,21 +2296,18 @@ function SharedBehaviors.FindFlank(AI, Owner, TargetPos, range)
 	end
 	table.insert(candidates, TargetPos + Vector(stand, -Owner.Height));
 	table.insert(candidates, TargetPos + Vector(-stand, -Owner.Height));
-	local best, bestCost = nil, 50; -- The cap: a flank worth fifty nodes is a walk across the map.
+	local spots = {};
 	for _, Spot in ipairs(candidates) do
 		Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 6);
 		-- Somewhere else (a flank of ten pixels was the same spot with the same problem), seen from about where the gun would be held.
 		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) == rte.airID and SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height * 1.5) and SharedBehaviors.CanSee(Spot + Vector(0, -Owner.Height * 0.1), TargetPos) then
 			local Dist = SceneMan:ShortestDistance(Spot, TargetPos, false);
 			if Dist:MagnitudeIsGreaterThan(stand * 0.5) and Dist:MagnitudeIsLessThan(range) then
-				local cost = SceneMan.Scene:CalculatePath(Owner.Pos, Spot, Owner.JumpHeight, 35, Owner.Team);
-				if cost > 1 and cost < bestCost then
-					best, bestCost = Spot, cost;
-				end
+				table.insert(spots, Spot);
 			end
 		end
 	end
-	return best, bestCost;
+	return spots;
 end
 
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
@@ -2765,6 +2763,10 @@ end
 -- A flank once started is seen through: when the unit gets there (or gives up), its order is put back and it looks for the target again.
 -- Called every tick by the AI's update.
 function SharedBehaviors.FlankUpdate(AI, Owner)
+	-- (A flank's routes asked for and not called for since: the moment has passed.)
+	if AI.FlankSearch and AI.FlankSearch.Timer:IsPastSimMS(3000) then
+		AI.FlankSearch = nil;
+	end
 	if not AI.Flank then
 		return;
 	end
@@ -2875,8 +2877,39 @@ function SharedBehaviors.InvestigateUpdate(AI, Owner)
 	end
 end
 
--- Starts a flank towards a spot with a line of sight to a target that can't be shot from here. @return Whether one was started.
+-- Starts a flank towards a spot with a line of sight to a target that can't be shot from here. The routes to the spots are asked for on
+-- the pathing threads, and the flank starts on a later call once they are back: it waited for up to seven routes on the AI's own thread, and
+-- every unit on that thread, and the frame, waited with it. A caller that wants its flank keeps calling while AI.FlankSearch is there; one
+-- not called again within three seconds is dropped (FlankUpdate). @return Whether one was started.
 function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
+	local search = AI.FlankSearch;
+	if search then
+		if search.pending > 0 and not search.Timer:IsPastSimMS(3000) then
+			return false;
+		end
+		AI.FlankSearch = nil;
+		if AI.Flank or AI.Retreat or search.Timer:IsPastSimMS(3000) then
+			return false;
+		end
+		local best, bestCost = nil, 50; -- The cap: a flank worth fifty nodes is a walk across the map.
+		for i, Spot in ipairs(search.spots) do
+			local cost = search.costs[i];
+			if cost and cost > 1 and cost < bestCost then
+				best, bestCost = Spot, cost;
+			end
+		end
+		if not best then
+			SharedBehaviors.Trace(Owner, "flank: nowhere to go");
+			return false;
+		end
+		AI.Flank = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = best, Timer = Timer() };
+		Owner:SetNumberValue("AIFlank", 1);
+		Owner:ClearAIWaypoints();
+		Owner:AddAISceneWaypoint(best);
+		Owner.AIMode = Actor.AIMODE_GOTO;
+		SharedBehaviors.Trace(Owner, "flank: to " .. math.floor(best.X) .. "," .. math.floor(best.Y) .. " (" .. bestCost .. " nodes)");
+		return true;
+	end
 	if AI.Flank or AI.Retreat or not SharedBehaviors.MayClose(AI, Owner) or AI.skill < 40 then
 		return false;
 	end
@@ -2887,18 +2920,21 @@ function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
 	if math.random() * 100 > AI.skill then
 		return false; -- The better the AI, the more often it thinks of it.
 	end
-	local Spot, cost = SharedBehaviors.FindFlank(AI, Owner, TargetPos, range);
-	if not Spot then
+	local spots = SharedBehaviors.FlankCandidates(AI, Owner, TargetPos, range);
+	if #spots == 0 then
 		SharedBehaviors.Trace(Owner, "flank: nowhere to go");
 		return false;
 	end
-	AI.Flank = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Spot, Timer = Timer() };
-	Owner:SetNumberValue("AIFlank", 1);
-	Owner:ClearAIWaypoints();
-	Owner:AddAISceneWaypoint(Spot);
-	Owner.AIMode = Actor.AIMODE_GOTO;
-	SharedBehaviors.Trace(Owner, "flank: to " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y) .. " (" .. cost .. " nodes)");
-	return true;
+	search = { spots = spots, costs = {}, pending = #spots, Timer = Timer() };
+	AI.FlankSearch = search;
+	for i, Spot in ipairs(spots) do
+		-- (As Scene:CalculatePath counted it: the route's points, or -1 for none.)
+		SceneMan.Scene:CalculatePathAsync(function(pathRequest)
+			search.costs[i] = pathRequest.PathLength > 0 and pathRequest.PathLength or -1;
+			search.pending = search.pending - 1;
+		end, Owner.Pos, Spot, Owner.JumpHeight, 35, Owner.Team);
+	end
+	return false;
 end
 
 function SharedBehaviors.GetRealVelocity(Owner)

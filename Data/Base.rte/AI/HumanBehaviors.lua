@@ -1403,7 +1403,12 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						if not shotClear and AI.Target.EyePos and SharedBehaviors.CanSee(Weapon.Pos, AI.Target.EyePos) then
 							shotClear = true;
 						end
-						if shotClear then
+						if AI.FlankSearch then
+							-- (A flank's routes asked for: started once they are back.)
+							if SharedBehaviors.StartFlank(AI, Owner, TargetPoint, PrjDat and PrjDat.rng or 500) then
+								break;
+							end
+						elseif shotClear then
 							AI.ShotBlockedTimer = nil;
 						elseif not AI.ShotBlockedTimer then
 							AI.ShotBlockedTimer = Timer();
