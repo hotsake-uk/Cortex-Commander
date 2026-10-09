@@ -723,7 +723,7 @@ function NativeHumanAI:Update(Owner)
 	local mayFire = SharedBehaviors.MayFire(self, Owner);
 	-- (The engine's route-follower holds a digger's trigger itself on a dig step, AHuman::MoveAlongRoute; let go of here every update, the
 	-- digger never fired, and a unit routed through ground stood at its face with the digger out.)
-	local routeDig = self.engineMover and Owner.DiggingRoute == true;
+	local routeDig = self.engineMover == true and Owner.DiggingRoute == true;
 	if self.squadShoot then
 		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or routeDig);
 	else
