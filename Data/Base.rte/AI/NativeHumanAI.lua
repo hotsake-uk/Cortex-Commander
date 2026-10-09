@@ -149,12 +149,10 @@ function NativeHumanAI:Update(Owner)
 			Owner:RemoveNumberValue("AITargetID");
 			self.overwatch = false;
 			-- (And a medic's errand, AC-7: the friend it was going to is free for another medic.)
-			if self.Medic and MovableMan:ValidMO(self.Medic.Patient) and self.Medic.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
-				self.Medic.Patient:RemoveNumberValue("AIMedicBy");
-			end
 			self.Medic = nil;
 			self.medicHeal = false;
 			Owner:RemoveNumberValue("AIMedic");
+			Owner:RemoveNumberValue("AIMedicFor");
 
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;

@@ -1019,7 +1019,7 @@ namespace RTE {
 		/// Returns the string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
 		/// @return The value associated with the key.
-		std::string GetStringValue(const std::string& key) const;
+		const std::string& GetStringValue(const std::string& key) const;
 
 		/// Returns an encoded string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
@@ -1077,6 +1077,23 @@ namespace RTE {
 		/// @param key The key to check.
 		/// @return Whether or not there is an associated value for this key.
 		bool NumberValueExists(const std::string& key) const;
+
+		/// Gets a number value as it was when the units' values were last published (PublishNumberValues), or 0 if it did not exist then.
+		/// For reading another unit's values from an AI script: the AI scripts run on worker threads, one per Lua state, and the unit's own
+		/// script may be changing its live values on another thread meanwhile. The published copy only changes on the main thread, while no
+		/// script runs, so it is safe to read from any of them.
+		/// @param key The key to look up.
+		/// @return The published value, or 0.
+		double GetPublishedNumberValue(const std::string& key) const;
+
+		/// Checks whether a number value existed when the units' values were last published. See GetPublishedNumberValue.
+		/// @param key The key to check.
+		/// @return Whether it did.
+		bool PublishedNumberValueExists(const std::string& key) const;
+
+		/// Copies the live number values to the published ones (GetPublishedNumberValue). On the main thread only, while no script runs: once
+		/// a frame for every unit, before the AI updates (MovableMan::Update).
+		void PublishNumberValues() { m_PublishedNumberValueMap = m_NumberValueMap; }
 
 		/// Checks whether the entity value associated with the specified key exists.
 		/// @param key The key to check.
@@ -1375,6 +1392,7 @@ namespace RTE {
 
 		std::unordered_map<std::string, std::string> m_StringValueMap; //<! Map to store any generic strings available from script
 		std::unordered_map<std::string, double> m_NumberValueMap; //<! Map to store any generic numbers available from script
+		std::unordered_map<std::string, double> m_PublishedNumberValueMap; //!< The number values as last published, for other units' scripts to read (see GetPublishedNumberValue).
 		std::unordered_map<std::string, Entity*> m_ObjectValueMap; //<! Map to store any generic object pointers available from script
 		static std::string ms_EmptyString;
 
