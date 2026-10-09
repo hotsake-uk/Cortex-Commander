@@ -173,7 +173,21 @@ namespace {
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("A preset holds every setting in this panel, from the look, the time and weather, water, fire and how the ground falls to the AI, the HUD, the overlays and the game speed.\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SetItemTooltip("A preset holds every setting in this panel, from the look, the time and weather, water, fire and how the ground falls to the AI, the HUD, the overlays and the game speed, and the game's own settings from the Settings menu (items shown, map wrapping, screen shake...).\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SameLine();
+		const std::string& startupPreset = g_SettingsMan.GetStartupPreset();
+		bool loadsAtStart = s_PresetName[0] && startupPreset == s_PresetName;
+		ImGui::BeginDisabled(s_PresetName[0] == 0 || (!loadsAtStart && std::find(s_Presets.begin(), s_Presets.end(), std::string(s_PresetName)) == s_Presets.end()));
+		if (ImGui::Checkbox("Load at start", &loadsAtStart)) {
+			g_SettingsMan.SetStartupPreset(loadsAtStart ? s_PresetName : "");
+			g_SettingsMan.UpdateSettingsFile();
+			s_PresetMessage = loadsAtStart ? std::string("\"") + s_PresetName + "\" loads every time the game starts." : "No preset loads at start.";
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Loads this preset every time the game starts, over Settings.ini, so you don't have to pick it each time.\nThe game speed, freezing, the AI pause and the debug views in it are left off at start.\nChanges made later are only kept in it if it is saved again.");
+		if (!startupPreset.empty()) {
+			ImGui::TextDisabled("Loads at start: %s", startupPreset.c_str());
+		}
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
 		ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName));
 		ImGui::SameLine();
@@ -188,6 +202,10 @@ namespace {
 		ImGui::SameLine();
 		if (ToolUI::Button("Delete")) {
 			s_PresetMessage = g_SettingsMan.DeletePreset(s_PresetName) ? std::string("Deleted \"") + s_PresetName + "\"." : "There is no preset of that name.";
+			if (g_SettingsMan.GetStartupPreset() == s_PresetName) {
+				g_SettingsMan.SetStartupPreset("");
+				g_SettingsMan.UpdateSettingsFile();
+			}
 			s_PresetName[0] = 0;
 			s_PresetsListed = false;
 		}
