@@ -265,6 +265,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseBlastPush", { TerrainCollapse::GetTuning().BlastPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
+	MatchProperty("CollapseHitDamage", { TerrainCollapse::GetTuning().HitDamage = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 20.0F); });
+	MatchProperty("CollapseHitMinSpeed", { TerrainCollapse::GetTuning().HitMinSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 30.0F); });
+	MatchProperty("CollapseHitMinPixels", { TerrainCollapse::GetTuning().HitMinPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
+	MatchProperty("CollapseHitMassCap", { TerrainCollapse::GetTuning().HitMassCap = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 50.0F); });
+	MatchProperty("CollapseHitKnockback", { TerrainCollapse::GetTuning().HitKnockback = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -820,6 +825,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
+	writer.NewPropertyWithValue("CollapseHitDamage", TerrainCollapse::GetTuning().HitDamage);
+	writer.NewPropertyWithValue("CollapseHitMinSpeed", TerrainCollapse::GetTuning().HitMinSpeed);
+	writer.NewPropertyWithValue("CollapseHitMinPixels", TerrainCollapse::GetTuning().HitMinPixels);
+	writer.NewPropertyWithValue("CollapseHitMassCap", TerrainCollapse::GetTuning().HitMassCap);
+	writer.NewPropertyWithValue("CollapseHitKnockback", TerrainCollapse::GetTuning().HitKnockback);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());

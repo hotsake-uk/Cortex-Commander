@@ -23,6 +23,11 @@ namespace RTE {
 			float BlastPush = 0.5F; //!< How hard explosions throw loose pieces: 0 not at all, 1 hard, 3 very hard. Lower also means fewer pieces lying at rest are picked up again.
 			int CrushPixels = 24; //!< A falling piece goes through loose bits of ground of up to this many pixels (leftover scraps, nuggets, a few grains) and flattens them, instead of being held up by them. Never more than a quarter of its own size. 0 turns this off.
 			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
+			float HitDamage = 1.0F; //!< How much a falling piece hurts the units it hits: at 1 a block a metre across (about 100 kg) falling 10 m/s onto a soldier takes about a quarter to a third of their health, at 2 twice that. 0 turns hit damage off (pieces still knock units about).
+			float HitMinSpeed = 4.0F; //!< How fast in m/s a piece has to be moving into a unit to hurt it at all. Only the speed above this counts.
+			int HitMinPixels = 12; //!< Pieces smaller than this many pixels never hurt (gravel, a few grains).
+			float HitMassCap = 3.0F; //!< A piece heavier than this many times the unit it hits counts as only this heavy, so a boulder doesn't hurt endlessly more than a big rock.
+			float HitKnockback = 1.0F; //!< How hard pieces shove the units and loose objects they hit: 0 not at all, 1 as before, 2 twice as hard.
 		};
 
 		/// Gets the tuning numbers, to read or change.
