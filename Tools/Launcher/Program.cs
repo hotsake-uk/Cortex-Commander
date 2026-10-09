@@ -187,7 +187,7 @@ class MainForm : Form
 		settings.SettingsIni = iniBox.Text.Trim();
 		settings.ModsDir = modsBox.Text.Trim();
 		settings.PresetsDir = presetsBox.Text.Trim();
-		settings.LastRef = branchBox.Text.Trim();
+		if (branchBox.Text.Trim() != "") settings.LastRef = branchBox.Text.Trim(); // empty at startup, before the saved branch is restored
 		settings.Save();
 	}
 
@@ -347,6 +347,7 @@ class MainForm : Form
 	async Task LoadCommits(string refName)
 	{
 		var shown = refName;
+		if (branchBox.Text.Trim() != "") { settings.LastRef = branchBox.Text.Trim(); try { settings.Save(); } catch { } } // remembered as soon as it is chosen, not only on exit
 		if (refName.StartsWith("tag: ")) refName = refName[5..];
 		else if (versionShas.TryGetValue(refName, out var vsha)) refName = vsha;
 		currentRef = refName;
