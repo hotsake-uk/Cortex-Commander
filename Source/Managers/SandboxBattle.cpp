@@ -350,20 +350,25 @@ namespace SandboxDetail {
 			if (defender.Commanded || defender.Team != team || g_SceneMan.ShortestDistance(defender.Center, centre, wraps).MagnitudeIsLessThan(1.0F)) {
 				continue;
 			}
-			if (radius >= 0.0F) {
-				defender.Chase = std::max(defender.Chase - defender.Radius, 0.0F) + radius;
-				defender.Radius = radius;
-			}
-			defender.Center = centre;
-			defender.IdleSince = -1;
-			if (atIt) {
-				defender.Post = centre;
-			} else {
-				Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * defender.Radius * 0.6F, 0.0F);
-				g_SceneMan.WrapPosition(around);
-				std::vector<Vector> spots = StandingSpots(around, 1);
-				defender.Post = spots.empty() ? centre : spots.front();
-			}
+			MoveDefender(defender, centre, atIt, radius);
+		}
+	}
+
+	/// Moves one defender's place (RecentreDefenders, a team commander's split), as RecentreDefenders says.
+	void MoveDefender(BattleDefender& defender, const Vector& centre, bool atIt, float radius) {
+		if (radius >= 0.0F) {
+			defender.Chase = std::max(defender.Chase - defender.Radius, 0.0F) + radius;
+			defender.Radius = radius;
+		}
+		defender.Center = centre;
+		defender.IdleSince = -1;
+		if (atIt) {
+			defender.Post = centre;
+		} else {
+			Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * defender.Radius * 0.6F, 0.0F);
+			g_SceneMan.WrapPosition(around);
+			std::vector<Vector> spots = StandingSpots(around, 1);
+			defender.Post = spots.empty() ? centre : spots.front();
 		}
 	}
 
