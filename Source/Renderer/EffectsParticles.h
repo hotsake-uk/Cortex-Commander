@@ -58,6 +58,12 @@ namespace RTE {
 		/// @return Whether the kind was recognised.
 		static bool Emit(const std::string& kind, const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB);
 
+		/// Queues drops of a splash ("Droplets", see Emit) drawn their own size and opacity, and optionally as an under-layer drawn beneath every other drop. Thread safe. Render only.
+		/// @param size How big each drop is drawn, in pixels across, 1 to 4.
+		/// @param opacity How solid each drop is, 0 to 1.
+		/// @param under Whether they are drawn under every other drop and chip.
+		static void EmitDroplets(const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB, float size, float opacity, bool under);
+
 		/// Queues a glowing ember that rises from a fire. Render only.
 		static void SpawnEmber(const Vector& position);
 
