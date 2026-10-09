@@ -1661,6 +1661,8 @@ namespace SandboxDetail {
 	void ForgetBattleMode();
 	void BattleModeTab();
 	void DrawBattleMode();
+	/// What a battle mode's tool in hand is for, in the mode chosen, by the pointer (as "Red flag", "Hill"); empty for the tool's own name.
+	std::string BattleToolLabel(Tool kind);
 	bool BattleModeChooser();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
