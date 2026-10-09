@@ -1625,6 +1625,7 @@ namespace SandboxDetail {
 	int SelectedRule(bool weapons);
 	int SelectedAIMode();
 	void QueueRule(bool weapons, int rule);
+	void QueueOrder(Order order);
 	void FindAction();
 	std::vector<const Preset*> FactionUnits(int moduleID);
 	void UpdateBattle(bool aiPaused);

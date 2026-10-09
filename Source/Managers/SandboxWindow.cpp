@@ -1332,6 +1332,10 @@ namespace SandboxDetail {
 			stroke.Count = 100 + (ImGui::IsKeyPressed(ImGuiKey_H, false) ? (io.KeyShift ? 13 : 3) : 2);
 			s_Queue.push_back(stroke);
 		}
+		if (!s_Selected.empty() && pressed(ImGuiKey_O)) {
+			// Focus on objective: their team's job in the battle, as the ring's slice.
+			QueueOrder(Order::BattleObjective);
+		}
 		if (!s_Selected.empty() && pressed(ImGuiKey_V)) {
 			// The next weapons rule (from mixed, the first).
 			QueueRule(true, (std::max(SelectedRule(true), -1) + 1) % static_cast<int>(Actor::WEAPONRULECOUNT));
@@ -1367,9 +1371,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"},
-		                              {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"},
-		                              {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
 				for (size_t i = 0; i < count; ++i) {
@@ -1844,7 +1846,7 @@ namespace SandboxDetail {
 		// settings for the orders to come.
 		using Kind = ActionMenu::Kind;
 		menu.Heading("Selected units", Kind::Command);
-		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect"}, -1);
+		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect", "Focus on objective"}, -1);
 		menu.Heading("AI mode", Kind::State);
 		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
 		menu.Heading("Weapons", Kind::State);
@@ -1882,6 +1884,8 @@ namespace SandboxDetail {
 				case Now:
 					if (cell.Value == 2) {
 						s_Selected.clear();
+					} else if (cell.Value == 3) {
+						QueueOrder(Order::BattleObjective);
 					} else {
 						// Defend where they stand (Shift: as the last step of their plans, RC-3), or cancel their orders.
 						Stroke stroke;
@@ -2081,7 +2085,7 @@ namespace SandboxDetail {
 				label = std::string(weapons ? "Weapons: " : "Movement: ") + (rule == -1 ? "mixed" : (rule < 0 ? "..." : (weapons ? c_WeaponRuleNames[rule] : c_MovementRuleNames[rule])));
 				return label.c_str();
 			};
-			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Attack-move", c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "Speed"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
+			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Attack-move", c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "Speed"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"Focus on objective", IM_COL32(180, 140, 240, 255), "Flag"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}};
 			int picked = DrawRing(commands, static_cast<int>(s_CommandMode), s_RingPage == 2);
 			if (picked == -2) {
 				return;
@@ -2103,6 +2107,9 @@ namespace SandboxDetail {
 				s_RingOpen = true;
 				s_RingPage = picked == 7 ? 3 : 4;
 			} else if (picked == 9) {
+				// Their team's objective in the battle (the "Battle objective" order): a flag to take, a hill to hold, the place it defends.
+				QueueOrder(Order::BattleObjective);
+			} else if (picked == 10) {
 				s_RingOpen = true;
 				s_RingPage = 1;
 			}
