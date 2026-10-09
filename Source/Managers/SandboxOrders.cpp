@@ -1423,6 +1423,14 @@ namespace SandboxDetail {
 		s_Queue.push_back(stroke);
 	}
 
+	/// Gives the selected units an order (the side's orders, as the command menus give them), on the next sim update like any order.
+	void QueueOrder(Order order) {
+		Stroke stroke;
+		stroke.Kind = Tool::OrderSelected;
+		stroke.Orders = order;
+		s_Queue.push_back(stroke);
+	}
+
 	/// The closest pair of enemies anywhere: where the fighting is.
 	void FindAction() {
 		s_ActionSpotValid = false;
