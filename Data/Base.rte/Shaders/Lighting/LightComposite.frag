@@ -39,6 +39,7 @@ uniform float rteCloudPeriod; // Scene width on a wrapping scene with the cloud 
 uniform float rteCloudSize; // How big the clouds are, 1 as usual: scales the patches (sky and shadows alike), the puffs and the depth of the band.
 uniform float rteCloudHeight; // How high the cloud band sits, 1 along the top of the view as usual, 0 starting halfway down it.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
+uniform bool rteUnitSunGlint; // The sun glints on units and other solid objects too (LightingSettings::UnitShineSun).
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
 uniform vec3 rteBackgroundLight; // Linear light on the distant background layers.
@@ -74,6 +75,7 @@ uniform float rteTime; // Seconds, for twinkling.
 uniform float rteWaterReflection; // How strongly water mirrors the scene above its surface, 0 for none.
 uniform sampler2D rteFog; // World grid, R = how thick mist or dust hangs in the air there (FogUpdate.frag).
 uniform float rteFogStrength; // How thick the fog volume is drawn, 0 for none.
+uniform float rteFogOpacity; // How much of what's behind the thickest fog it hides, 0 to 1 (LightingSettings::FogOpacity).
 uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
 uniform bool rteWaterSoftReflection; // The reflection is softened with depth (a blur that widens, a fade that deepens), feathered where the open air above the pool ends, and not clipped hard where it leaves the screen or meets other water. Off: sharp and cut off, as before.
 uniform bool rteWaterMirrorSurface; // The reflection is wobbled by the tilt of the surface above each pixel (the terrain pass's normal there, which follows the flow), the whole column together. Off: by the pixel's own tilt, as before.
@@ -465,7 +467,7 @@ void main() {
 		if (rteWaterGlow > 0.0 && abs(texture(rteSurface, screenUV).b - 0.25) < 0.08) {
 			waterGlow = dynamicLight * rteWaterGlow;
 		}
-		// Highlights from the lights, in the lights' own color.
+		// Highlights from the lights, in the lights' own color (PointLight.frag and LampCacheApply.frag may leave units and other solid objects out).
 		highlights = dynamicSample.rgb / max(max(dynamicSample.r, max(dynamicSample.g, dynamicSample.b)), 0.001) * min(dynamicSample.a, 6.0);
 		// Daylight has a direction. Where the sun (or moon) can't be seen, the sky light is dimmer and cooler; under open sky in full sun it is exactly as without shadows.
 		bool solidObject = normalSample.a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
@@ -527,9 +529,9 @@ void main() {
 				float mirrored = lean >= 0.0 ? mix(1.0, 1.75, lean) : mix(1.0, 0.4, -lean);
 				light *= mix(1.0, mirrored, metalness * min(rteMetals, 1.5));
 			}
-			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches.
+			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches. On units and other solid objects only if asked.
 			float gloss = max(surfaceSample.g, 1.0 - normalSample.b);
-			if (gloss > 0.1) {
+			if (gloss > 0.1 && (rteUnitSunGlint || !solidObject)) {
 				vec3 halfway = normalize(vec3(rteSunDirection * 0.8, 0.6) + vec3(0.0, 0.0, 1.0));
 				highlights += rteSkyColor * pow(max(dot(normal, halfway), 0.0), mix(24.0, 90.0, gloss)) * gloss * daylight * rteMetals * rteSpecular * mix(0.5, 1.6, metalness);
 			}
@@ -636,7 +638,7 @@ void main() {
 		vec2 fogWorld = rteScreenOrigin + gl_FragCoord.xy;
 		float fog = texture(rteFog, fogWorld / rteGridWorldSize).r;
 		if (fog > 0.002) {
-			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * 0.85;
+			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * rteFogOpacity;
 			float fogSky = smoothstep(0.0, 1.0, texture(rteSkyLight, fogWorld / rteGridWorldSize).r);
 			vec3 fogLamps = rteMaxDynamicLight * (1.0 - exp(-texture(rteDynamicLight, screenUV).rgb / rteMaxDynamicLight));
 			litColor = mix(litColor, vec3(0.82, 0.85, 0.9) * (mix(rteAmbient, rteSkyColor, fogSky) + fogLamps), amount);

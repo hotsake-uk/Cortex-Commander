@@ -319,6 +319,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
 	MatchProperty("FogVolume", { g_PostProcessMan.GetLightingSettings().FogVolume = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.5F); });
 	MatchProperty("FogMorningMist", { g_PostProcessMan.GetLightingSettings().FogMorningMist = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("FogOpacity", { g_PostProcessMan.GetLightingSettings().FogOpacity = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("FogClearSeconds", { g_PostProcessMan.GetLightingSettings().FogClearSeconds = std::clamp(std::stof(reader.ReadPropValue()), 3.0F, 120.0F); });
 	MatchProperty("LightningBolts", { g_PostProcessMan.GetLightingSettings().LightningBolts = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightningBrightness", { g_PostProcessMan.GetLightingSettings().LightningBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
@@ -350,6 +351,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
+	MatchProperty("UnitShineLights", { g_PostProcessMan.GetLightingSettings().UnitShineLights = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineLamps", { g_PostProcessMan.GetLightingSettings().UnitShineLamps = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineSun", { g_PostProcessMan.GetLightingSettings().UnitShineSun = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
@@ -649,6 +653,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
 	writer.NewPropertyWithValue("FogVolume", lighting.FogVolume);
 	writer.NewPropertyWithValue("FogMorningMist", lighting.FogMorningMist);
+	writer.NewPropertyWithValue("FogOpacity", lighting.FogOpacity);
 	writer.NewPropertyWithValue("FogClearSeconds", lighting.FogClearSeconds);
 	writer.NewPropertyWithValue("LightningBolts", lighting.LightningBolts);
 	writer.NewPropertyWithValue("LightningBrightness", lighting.LightningBrightness);
@@ -690,6 +695,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
 	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
+	writer.NewPropertyWithValue("UnitShineLights", lighting.UnitShineLights);
+	writer.NewPropertyWithValue("UnitShineLamps", lighting.UnitShineLamps);
+	writer.NewPropertyWithValue("UnitShineSun", lighting.UnitShineSun);
 	writer.NewPropertyWithValue("LightingMetals", lighting.Metals);
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);
