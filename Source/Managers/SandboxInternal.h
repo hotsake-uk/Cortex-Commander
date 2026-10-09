@@ -391,6 +391,7 @@ namespace SandboxDetail {
 		bool Active = false; //!< Takes part: started by "Start battle".
 		std::vector<int> Factions; //!< The module IDs of the factions its units come from; none for any faction.
 		bool FavouritesOnly = false; //!< Only units marked as favourites (of those factions); any, when none are.
+		bool Crabs = false; //!< Crabs among them (ACrab: crabs, and the tanks and walkers built on them). Off by default.
 		BattleStyle Style = BattleStyle::Attack;
 		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
 		int Budget = 5000; //!< What it may spend in all, in oz.

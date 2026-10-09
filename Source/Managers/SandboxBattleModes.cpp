@@ -52,6 +52,7 @@ namespace SandboxDetail {
 			BattleSettings team;
 			team.Factions = card.Factions;
 			team.FavouritesOnly = card.FavouritesOnly;
+			team.Crabs = card.Crabs;
 			team.Craft = card.Craft;
 			team.Active = TeamIn(settings, side);
 			team.Style = BattleStyle::Attack;
