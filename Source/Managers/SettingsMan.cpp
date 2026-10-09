@@ -122,7 +122,10 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_AISuppression = 1.0F;
+	m_AIDigWillingness = 1.0F;
 	m_AIRecklessness = 0.5F;
+	m_AISpawnDiggerChance = 0.0F;
+	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
 	m_NavDebugOverlay = 0;
@@ -269,6 +272,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseScuffStrength", { TerrainCollapse::GetTuning().ScuffStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
+	MatchProperty("CollapseHitDamage", { TerrainCollapse::GetTuning().HitDamage = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 20.0F); });
+	MatchProperty("CollapseHitMinSpeed", { TerrainCollapse::GetTuning().HitMinSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 30.0F); });
+	MatchProperty("CollapseHitMinPixels", { TerrainCollapse::GetTuning().HitMinPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
+	MatchProperty("CollapseHitMassCap", { TerrainCollapse::GetTuning().HitMassCap = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 50.0F); });
+	MatchProperty("CollapseHitKnockback", { TerrainCollapse::GetTuning().HitKnockback = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -481,6 +489,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowAIPaths", { Actor::SetShowAIPaths(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2)); });
 	MatchProperty("AimDotsLight", { g_PostProcessMan.GetLightingSettings().AimDotsLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampsByDay", { g_PostProcessMan.GetLightingSettings().HeadlampsByDay = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("HeadlampDarkThreshold", { g_PostProcessMan.GetLightingSettings().HeadlampDarkThreshold = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PanelsOverlay", { g_DebugMan.m_PanelsOverlay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DockPanels", { g_DebugMan.m_DockPanels = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SandboxCharacter", { Sandbox::SetCharacterSetup(reader.ReadPropValue()); });
@@ -542,7 +551,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
+	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
+	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
@@ -831,6 +843,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("HeadlampGlow", lighting.HeadlampGlow);
 	writer.NewPropertyWithValue("HeadlampTeamTint", lighting.HeadlampTeamTint);
 	writer.NewPropertyWithValue("HeadlampsByDay", lighting.HeadlampsByDay);
+	writer.NewPropertyWithValue("HeadlampDarkThreshold", lighting.HeadlampDarkThreshold);
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
@@ -864,6 +877,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
+	writer.NewPropertyWithValue("CollapseHitDamage", TerrainCollapse::GetTuning().HitDamage);
+	writer.NewPropertyWithValue("CollapseHitMinSpeed", TerrainCollapse::GetTuning().HitMinSpeed);
+	writer.NewPropertyWithValue("CollapseHitMinPixels", TerrainCollapse::GetTuning().HitMinPixels);
+	writer.NewPropertyWithValue("CollapseHitMassCap", TerrainCollapse::GetTuning().HitMassCap);
+	writer.NewPropertyWithValue("CollapseHitKnockback", TerrainCollapse::GetTuning().HitKnockback);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
@@ -1014,6 +1032,7 @@ int SettingsMan::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("UnitSpeechOff", off);
 	}
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);

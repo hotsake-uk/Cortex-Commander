@@ -610,6 +610,10 @@ namespace RTE {
 		/// The searcher this actor is to the path grid: what it can jump, dig and breach, and how big it is.
 		virtual PathAgent GetPathAgent() const;
 
+		/// Where this actor's own route searches start from (see UpdateMovePath): the ground under it when that is near, else where it is.
+		/// A search from anywhere else (its centre, half a body over the ground) can answer differently from the one its AI will make.
+		Vector GetPathStart() const;
+
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
 		Vector GetMovePathEnd() const {
@@ -675,6 +679,9 @@ namespace RTE {
 		/// How bright this unit's own headlamp is next to others': 1 is the usual, 0 means it has none (a drone with no lamp, a creature).
 		float GetHeadlampBrightness() const { return m_HeadlampBrightness; }
 		void SetHeadlampBrightness(float brightness) { m_HeadlampBrightness = std::max(brightness, 0.0F); }
+
+		/// Whether this unit's headlamp is switched on now: it has one, headlamps are on, and it's dark where it stands (see UpdateHeadlamp).
+		bool IsHeadlampLit() const { return m_HeadlampLit; }
 
 		/// Has this unit say one of a trigger's lines over its head (unit speech, see UnitSpeech::Say), on the settings' chance.
 		/// @param trigger The trigger, as Speech.ini names it ("TakeCover").
@@ -1001,6 +1008,10 @@ namespace RTE {
 		/// Gets how dark it is from the time of day, 0 by day to 1 at full night.
 		static float GetNightAmount();
 
+		/// Gets how much light there is where this actor stands, for its headlamp: the sky's (the time of day, less under a roof or in a cave) and
+		/// the scenery's (lamps, fires, flashes; not headlamps, its own or others'), 0 for none, about 1 for open daylight or a bright lamp close by.
+		float GetAmbientLightForHeadlamp();
+
 		/// Gets how far this actor can see relative to daylight: less at night, unless it has a headlamp on (night gameplay).
 		float GetNightSightScale() const;
 
@@ -1195,6 +1206,10 @@ namespace RTE {
 		/// Starts updating this Actor's movepath.
 		virtual void UpdateMovePath();
 
+		/// Switches the headlamp on when it's dark where this unit stands and off when it's light again, fading between, and registers its
+		/// light for the frame. Render only. The two thresholds sit a little apart so a unit at the edge of the light doesn't flicker.
+		void UpdateHeadlamp();
+
 		/// Asks for the route to the current goal again, from where this is now, the same check an order makes. The answer replaces the
 		/// route only when it says the goal is reachable from here (solved, and not only through ground or a door that can't be got through);
 		/// otherwise the route being followed is kept. For a unit in flight, whose route can fall behind it: checked often, a jet's
@@ -1323,6 +1338,9 @@ namespace RTE {
 		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
 		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
 		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.
+		bool m_HeadlampLit; //!< Whether the headlamp is switched on: it's dark around this unit (with a margin either way, see UpdateHeadlamp).
+		float m_HeadlampFade; //!< How far the headlamp has come on, 0 off to 1 fully on: it fades rather than pops.
+		float m_HeadlampSkyOpen; //!< How much of the sky is open above this unit, 0 (a cave, under a roof) to 1 (open air), from a few rays up; below 0 when not looked yet.
 		std::string m_SpeechSet; //!< The set of lines this unit speaks from, empty for the default (see GetSpeechSet).
 		UnitSpeech::State m_Speech; //!< What this unit is saying and said lately (see UnitSpeech).
 		/// Damage value above which this will play PainSound

@@ -288,8 +288,9 @@ namespace RTE {
 		/// How lit a place was by the dynamic lights of the last finished sim update (lamps, flames, muzzle flashes, headlamps), 0 to 1: CPU
 		/// side only, for the AI's sight (see Actor::ScanForEnemies). Not the sky's light, nor anything read back from the GPU.
 		/// @param pos The place, in scene coordinates.
+		/// @param countHeadlamps Whether units' headlamps count (not for deciding whether a headlamp should be on, see Actor::UpdateHeadlamp).
 		/// @return 0 for no light reaching it, up to 1 for a bright one close by.
-		float GetDynamicLightAt(const Vector& pos) const;
+		float GetDynamicLightAt(const Vector& pos, bool countHeadlamps = true) const;
 
 		/// Registers an explosion shockwave. Ring size and strength scale with the energy released.
 		/// @param pos Scene position of the explosion.

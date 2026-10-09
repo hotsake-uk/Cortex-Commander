@@ -729,14 +729,11 @@ namespace SandboxDetail {
 
 		/// Whether a unit could walk (jump, dig, or break through, as it can) from where it is to a flag at a place.
 		bool CanReach(const Actor* unit, const Vector& at) {
-			Scene* scene = g_SceneMan.GetScene();
-			if (!scene || !unit) {
+			if (!g_SceneMan.GetScene() || !unit) {
 				return true;
 			}
-			std::list<Vector> path;
-			// (From the ground under it: from a flying unit's place in the air no way was found, and a flag was taken to be cut off.)
-			float cost = scene->CalculatePath(Grounded(unit->GetPos()) - Vector(0.0F, 10.0F), at - Vector(0.0F, 10.0F), path, unit->EstimateJumpHeight(), unit->EstimateDigStrength(), static_cast<Activity::Teams>(unit->GetTeam()), unit->EstimateBreachStrength());
-			return cost >= 0.0F && cost < 100000.0F;
+			// (From the ground under it, as its own AI searches: from a flying unit's place in the air no way was found.)
+			return RouteReachable(RouteCost(unit, at - Vector(0.0F, 10.0F)));
 		}
 
 		/// Every five seconds: a dropped flag that is buried, has nothing left under it, or that no unit can get to twice running goes home, so

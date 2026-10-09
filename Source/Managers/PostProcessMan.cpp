@@ -476,10 +476,10 @@ void PostProcessMan::IndexLastSceneLights() {
 	}
 }
 
-float PostProcessMan::GetDynamicLightAt(const Vector& pos) const {
+float PostProcessMan::GetDynamicLightAt(const Vector& pos, bool countHeadlamps) const {
 	float lit = 0.0F;
-	auto addLight = [&lit, &pos](const SceneLight& light) {
-		if (light.m_Radius <= 0.0F) {
+	auto addLight = [&lit, &pos, countHeadlamps](const SceneLight& light) {
+		if (light.m_Radius <= 0.0F || (!countHeadlamps && light.m_Source == LightSource::Headlamps)) {
 			return;
 		}
 		Vector toLight = g_SceneMan.ShortestDistance(pos, light.m_Pos, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());

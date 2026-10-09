@@ -515,6 +515,23 @@ namespace SandboxDetail {
 	/// same address was taken for it: the new unit counted as selected, or had the dead one's pending order.)
 	inline bool RefersTo(const UnitRef& ref, const Actor* actor) { return actor && ref.Unit == actor && ref.ID == static_cast<long>(actor->GetUniqueID()); }
 
+	/// What a unit's route from where it stands to a place costs, searched as its own AI searches (the whole of its PathAgent, from the
+	/// ground under it, on its team's grid); -1 for no route. 100000 or more is a route only through ground it can't get through.
+	/// (Searched with just its jump, dig and breach strengths, the searcher had no stairs, slopes, ladders, leaps, mantles or jetpack
+	/// flights, and a soldier "couldn't get to" any spot up a step or a stair that its AI then walked to: "no route" markers and the unit
+	/// saying so on orders that went fine, the formation's spots picked among the wrong ones, and flags sent home.)
+	inline float RouteCost(const Actor* unit, const Vector& to) {
+		Scene* scene = g_SceneMan.GetScene();
+		if (!scene || !unit) {
+			return -1.0F;
+		}
+		std::list<Vector> path;
+		return scene->CalculatePath(unit->GetPathStart(), to, path, unit->GetPathAgent(), static_cast<Activity::Teams>(unit->GetTeam()));
+	}
+
+	/// Whether RouteCost found a way there the unit can take.
+	inline bool RouteReachable(float cost) { return cost >= 0.0F && cost < 100000.0F; }
+
 
 	/// One team in the Battle Director, as the sim runs it: the settings last sent from the window, and how it is getting on.
 	struct BattleTeam {
