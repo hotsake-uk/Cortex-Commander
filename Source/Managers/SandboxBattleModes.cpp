@@ -166,7 +166,6 @@ namespace SandboxDetail {
 		std::unordered_map<long, FlagRunner> s_Runners; //!< By unique ID.
 
 		constexpr float c_FlagReach = 50.0F; //!< How near a unit's middle has to come to a flag to pick it up (or bring it home, or capture with it).
-		constexpr float c_FlagReturnSeconds = 30.0F; //!< A dropped flag nobody touches goes home after this long.
 
 		/// How far from its own flag a team's units appear, or as far as its base allows.
 		constexpr float c_SpawnClear = 150.0F;
@@ -243,6 +242,34 @@ namespace SandboxDetail {
 		Vector Grounded(const Vector& at) {
 			std::vector<Vector> spots = StandingSpots(at, 1);
 			return spots.empty() ? at : spots.front();
+		}
+
+		/// Where a flag let go of at a place comes to rest: out of the ground if it's in it, then straight down onto whatever is below, however
+		/// far. False when there is nothing below (off the map, or into a bottomless drop), so it is to go home rather than be lost.
+		bool FallTo(const Vector& at, Vector& ground) {
+			Vector spot = at;
+			g_SceneMan.WrapPosition(spot);
+			const int width = g_SceneMan.GetSceneWidth();
+			const int height = g_SceneMan.GetSceneHeight();
+			int x = spot.GetFloorIntX();
+			int y = std::max(spot.GetFloorIntY(), 0);
+			if (x < 0 || x >= width || y >= height - 1) {
+				return false;
+			}
+			for (int up = 0; up < 200 && y > 0 && g_SceneMan.GetTerrMatter(x, y) != g_MaterialAir; ++up) {
+				--y;
+			}
+			if (g_SceneMan.GetTerrMatter(x, y) != g_MaterialAir) {
+				return false;
+			}
+			while (y < height - 1 && g_SceneMan.GetTerrMatter(x, y + 1) == g_MaterialAir) {
+				++y;
+			}
+			if (y >= height - 1) {
+				return false;
+			}
+			ground = Vector(static_cast<float>(x), static_cast<float>(y));
+			return true;
 		}
 
 		/// A flag back at its base, and its team's guards back round it.
@@ -361,12 +388,20 @@ namespace SandboxDetail {
 				if (flag.State == FlagState::Carried) {
 					Actor* carrier = GetRef(flag.Carrier);
 					if (!carrier || !IsCombatant(carrier)) {
+						// Down where its carrier fell (or was last seen), on the ground below: never lost off the map or down a pit with no
+						// bottom, but home.
+						Vector ground;
+						if (!FallTo(flag.Pos, ground)) {
+							SendHome(side);
+							Say(SideName(side) + "'s flag fell where nobody could get it: back home");
+							continue;
+						}
 						flag.State = FlagState::Dropped;
-						flag.Pos = Grounded(flag.Pos);
+						flag.Pos = ground;
 						SetCarrier(flag, nullptr);
 						flag.DroppedAt = now;
 						RecentreDefenders(side, flag.Pos, true);
-						Say(SideName(side) + "'s flag is down");
+						Say(SideName(side) + "'s flag is down: back home in " + std::to_string(std::max(settings.ReturnSeconds, 1)) + " s");
 						continue;
 					}
 					flag.Pos = carrier->GetPos();
@@ -390,7 +425,7 @@ namespace SandboxDetail {
 					}
 					continue;
 				}
-				if (flag.State == FlagState::Dropped && static_cast<float>(now - flag.DroppedAt) > c_FlagReturnSeconds * UpdatesPerSecond()) {
+				if (flag.State == FlagState::Dropped && static_cast<float>(now - flag.DroppedAt) > static_cast<float>(std::max(settings.ReturnSeconds, 1)) * UpdatesPerSecond()) {
 					SendHome(side);
 					Say(SideName(side) + "'s flag went back to its base");
 					continue;
@@ -441,8 +476,9 @@ namespace SandboxDetail {
 			return cost >= 0.0F && cost < 100000.0F;
 		}
 
-		/// Every five seconds, with MoveStuckPoint: a flag at home that is buried, has lost the ground under it, or can't be got to by an enemy
-		/// twice running is moved somewhere else in its base that can (a dropped one buried is sent home).
+		/// Every five seconds: a dropped flag that is buried, has nothing left under it, or that no unit can get to twice running goes home, so
+		/// it is never lost. With MoveStuckPoint, a flag at home that is buried, has lost the ground under it, or can't be got to by an enemy
+		/// twice running is moved somewhere else in its base that can.
 		void UpdateStuckFlags() {
 			const BattleModeSettings& settings = s_ModeRun.Settings;
 			for (int side = 0; side < c_Sides; ++side) {
@@ -451,10 +487,36 @@ namespace SandboxDetail {
 					continue;
 				}
 				if (flag.State == FlagState::Dropped) {
-					if (Buried(flag.Pos)) {
+					Vector ground;
+					if (Buried(flag.Pos) || !FallTo(flag.Pos, ground)) {
 						SendHome(side);
-						Say(SideName(side) + "'s flag was buried: back to its base");
+						Say(SideName(side) + "'s flag was lost: back to its base");
+						continue;
 					}
+					// (Ground blasted away under it: it falls onto what's below.)
+					flag.Pos = ground;
+					// Anyone at all who could get to it: the nearest unit of any team in the game.
+					const Actor* nearestUnit = nullptr;
+					float nearestDistance = 0.0F;
+					for (Actor* actor: SandboxAccess::Actors()) {
+						if (!TeamIn(settings, actor->GetTeam()) || !IsCombatant(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
+							continue;
+						}
+						float distance = g_SceneMan.ShortestDistance(actor->GetPos(), flag.Pos, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+						if (!nearestUnit || distance < nearestDistance) {
+							nearestUnit = actor;
+							nearestDistance = distance;
+						}
+					}
+					flag.Unreachable = !nearestUnit || CanReach(nearestUnit, flag.Pos) ? 0 : flag.Unreachable + 1;
+					if (flag.Unreachable >= 2) {
+						flag.Unreachable = 0;
+						SendHome(side);
+						Say(SideName(side) + "'s flag lay where nobody could get it: back to its base");
+					}
+					continue;
+				}
+				if (!settings.MoveStuckPoint) {
 					continue;
 				}
 				// An enemy's unit to try the way with (the nearest of any team after it).
@@ -601,7 +663,7 @@ namespace SandboxDetail {
 			if (now % 6 == 0) {
 				UpdateFlags(now);
 			}
-			if (s_ModeRun.Settings.MoveStuckPoint && !s_ModeRun.Over && now % 300 == 150) {
+			if (!s_ModeRun.Over && now % 300 == 150) {
 				UpdateStuckFlags();
 			}
 			if (!s_ModeRun.Over && now % 30 == 15) {
@@ -614,6 +676,8 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("The first team to bring this many enemy flags home to its own wins, and the battle stops. 0: it goes on till you stop it.");
 			changed |= ImGui::SliderInt("Guards", &setup.GuardPercent, 0, 90, "%d%% of each team");
 			ImGui::SetItemTooltip("The share of each team's units that stay to guard its flag, and go after it if it's taken. The rest go for the enemy's.");
+			changed |= ImGui::SliderInt("Dropped flag returns after", &setup.ReturnSeconds, 5, 180, "%d s");
+			ImGui::SetItemTooltip("How long a dropped flag lies (glowing, with its seconds counting down over it) before it goes back home by itself, if nobody picks it up first.");
 			changed |= ToolUI::Checkbox("Move a flag nobody can get to", &setup.MoveStuckPoint);
 			ImGui::SetItemTooltip("A flag that gets buried, loses the ground under it, or that the enemy can find no way to, moves somewhere else in its base they can get to. Off: it stays where it is.");
 		}
@@ -646,6 +710,24 @@ namespace SandboxDetail {
 					// Over its carrier's head (its middle, and a bit).
 					ImVec2 over = ToScreen(flag.Pos);
 					DrawFlag(drawList, ImVec2(over.x, over.y - 18.0F), color, 0.8F);
+				} else if (flag.State == FlagState::Dropped) {
+					// Lying out: it glows, pulsing, so it is seen from afar, with the seconds till it goes home over it.
+					ImVec2 foot = ToScreen(flag.Pos);
+					ImVec2 middle(foot.x + 6.0F, foot.y - 18.0F);
+					const float pulse = 0.65F + 0.35F * std::sin(static_cast<float>(ImGui::GetTime()) * 6.0F);
+					for (int ring = 4; ring >= 1; --ring) {
+						const float radius = (14.0F + 7.0F * static_cast<float>(ring)) * (0.9F + 0.1F * pulse);
+						drawList->AddCircleFilled(middle, radius, IM_COL32(255, 240, 150, static_cast<int>(pulse * 34.0F)), 32);
+					}
+					drawList->AddCircle(middle, 22.0F * (0.9F + 0.1F * pulse), IM_COL32(255, 250, 200, static_cast<int>(pulse * 220.0F)), 32, 2.0F);
+					DrawFlag(drawList, foot, color);
+					const float left = static_cast<float>(std::max(settings.ReturnSeconds, 1)) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - flag.DroppedAt) / UpdatesPerSecond();
+					char seconds[16];
+					std::snprintf(seconds, sizeof(seconds), "%d s", std::max(static_cast<int>(std::ceil(left)), 0));
+					ImVec2 size = ImGui::CalcTextSize(seconds);
+					ImVec2 at(middle.x - size.x * 0.5F, middle.y - 36.0F);
+					drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 150), 3.0F);
+					drawList->AddText(at, IM_COL32(255, 240, 150, 255), seconds);
 				} else {
 					DrawFlag(drawList, ToScreen(flag.Pos), color);
 				}
@@ -680,8 +762,9 @@ namespace SandboxDetail {
 		    {"Capture the flag",
 		     "Each team has a base, drawn on the map, that its units appear in (away from its flag), with its flag inside. Its units go for the enemy's flag and "
 		     "bring it back into their own base, while some stay to guard theirs. A flag can only be captured while the team's own is at home. "
-		     "A carrier glows, and if it falls it drops the flag: an enemy can pick it up, or one of its own team touch it to send it home (it "
-		     "goes home by itself after 30 seconds).",
+		     "A carrier glows, and if it falls it drops the flag, which glows too: an enemy can pick it up, or one of its own team touch it to "
+		     "send it home (it goes home by itself after the seconds set). A flag is never lost: one that falls off the map, gets buried or "
+		     "lands where nobody can reach goes home.",
 		     "flag", 2, FlagsTeam, FlagsStart, FlagsSettingsChanged, FlagsUnitsMade, FlagsSpawnSpot, FlagsUpdate, FlagsPanel, FlagsDraw},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
@@ -827,6 +910,8 @@ namespace SandboxDetail {
 				team.Broke = false;
 				team.NextWave = g_TimerMan.GetSimUpdateCount() + delay;
 				team.NextZoneWave = team.NextWave;
+				// (The whole team in at the start, not a few at a time.)
+				team.FillFirst = team.Running;
 				delay += team.Running ? 60 : 0;
 			}
 			Say(std::string(mode.Name) + ": go!");

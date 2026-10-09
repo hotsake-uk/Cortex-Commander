@@ -491,6 +491,7 @@ namespace SandboxDetail {
 			// burst.
 			int room = settings.UnitLimit > 0 ? settings.UnitLimit - Sandbox::CountUnits(side) : std::numeric_limits<int>::max();
 			if (room <= 0) {
+				team.FillFirst = false;
 				continue;
 			}
 			// A few dozen of the units it may buy, picked afresh each burst, are priced and bought from, not the whole list (each pricing
@@ -563,9 +564,11 @@ namespace SandboxDetail {
 			};
 			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
 			if (shipsDue) {
-				const int ships = std::clamp(settings.ShipsPerBurst, 1, 10);
+				// (Filling the team at once: as many ships as it takes, up to ten, each as full as need be.)
+				const int ships = team.FillFirst && room < std::numeric_limits<int>::max() ? std::clamp((room + waveSize - 1) / waveSize, 1, 10) : std::clamp(settings.ShipsPerBurst, 1, 10);
+				const int shipSize = team.FillFirst && room < std::numeric_limits<int>::max() ? std::clamp((room + ships - 1) / ships, 1, 20) : waveSize;
 				for (int ship = 0; ship < ships && room > 0 && !team.Broke; ++ship) {
-					std::vector<Actor*> wave = buyWave(std::min(waveSize, room), false);
+					std::vector<Actor*> wave = buyWave(std::min(shipSize, room), false);
 					if (wave.empty()) {
 						break;
 					}
@@ -585,7 +588,9 @@ namespace SandboxDetail {
 				for (size_t i = 0; i + 1 < zones.size(); ++i) {
 					std::swap(zones[i], zones[i + std::min(zones.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(zones.size() - i)))]);
 				}
-				const int perZone = std::clamp(settings.ZoneUnits, 1, 20);
+				// (Filling the team at once: its whole limit shared between the zones.)
+				const int usable = static_cast<int>(std::count_if(zones.begin(), zones.end(), [](const std::vector<Vector>& zone) { return zone.size() >= 3; }));
+				const int perZone = team.FillFirst && room < std::numeric_limits<int>::max() ? std::max((room + std::max(usable, 1) - 1) / std::max(usable, 1), 1) : std::clamp(settings.ZoneUnits, 1, 20);
 				for (const std::vector<Vector>& zone: zones) {
 					if (zone.size() < 3) {
 						continue;
@@ -608,6 +613,7 @@ namespace SandboxDetail {
 					room -= static_cast<int>(wave.size());
 				}
 			}
+			team.FillFirst = false;
 		}
 	}
 

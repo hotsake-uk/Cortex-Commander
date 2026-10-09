@@ -447,6 +447,7 @@ namespace SandboxDetail {
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
+		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -506,6 +507,7 @@ namespace SandboxDetail {
 		long long NextZoneWave = 0; //!< The sim update units next appear at its spawn zones on.
 		std::vector<Vector> ZoneDraft; //!< The corners of a spawn zone a script is putting down, one SandboxDo at a time, till it closes it.
 		bool Broke = false; //!< Can't afford another unit.
+		bool FillFirst = false; //!< Its next lot of ships or spawn zone units brings it up to its unit limit at once (a mode's game starting with whole teams).
 	};
 
 	/// A Battle Director unit told to defend a place: it holds a post there and goes after enemies near it, but only so far (UpdateBattleDefenders).
