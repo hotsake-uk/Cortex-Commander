@@ -89,8 +89,8 @@ class MainForm : Form
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly TextBox presetsBox = new() { Width = 420, PlaceholderText = "optional shared settings-presets folder, linked into every version" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
-	readonly Button clearAllBtn = new() { Text = "Clear all builds", AutoSize = true };
-	readonly Button runBtn = new() { Text = "Launch only", AutoSize = true };
+	readonly Button clearAllBtn = new() { Text = "Delete build", AutoSize = true };
+	readonly Button runBtn = new() { Text = "Launch built", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
 	readonly Button openBtn = new() { Text = "Open folder", AutoSize = true };
@@ -115,6 +115,7 @@ class MainForm : Form
 		configBox.SelectedItem = settings.Configuration;
 		if (configBox.SelectedIndex < 0) configBox.SelectedIndex = 0;
 		repoBox.Text = settings.RepoPath;
+		try { SweepTrash(); } catch { }
 		try { Defaults.Extract(); } catch (Exception ex) { Append("Could not unpack default settings: " + ex.Message); }
 		// Empty, or still pointing at the main checkout's Userdata, means "use the defaults that ship with the launcher".
 		static bool OldPath(string p) => p == "" || (p.Contains("Community-Project", StringComparison.OrdinalIgnoreCase) && p.Contains("Userdata", StringComparison.OrdinalIgnoreCase));
@@ -191,7 +192,13 @@ class MainForm : Form
 	}
 
 	string Repo => repoBox.Text.Trim();
-	string WorktreePath(CommitInfo c) => Path.Combine(settings.EffectiveVersionsDir, c.Short);
+	// One build slot: a single checkout that is moved to whichever commit you build, so only one version is ever on disk.
+	string WorktreePath(CommitInfo c) => SlotPath;
+	string SlotPath => Path.Combine(settings.EffectiveVersionsDir, "Current");
+	string BuiltMarker => Path.Combine(SlotPath, ".launcher-built");
+	// "sha config" of the last successful build in the slot, or "".
+	string BuiltInfo() { try { return File.Exists(BuiltMarker) ? File.ReadAllText(BuiltMarker).Trim() : ""; } catch { return ""; } }
+	bool IsBuilt(CommitInfo c) => BuiltInfo() == $"{c.Sha} {settings.Configuration}" && File.Exists(ExePath(c));
 	string ExeName => settings.Configuration switch
 	{
 		"Debug Release" => "Cortex Command.debug.release.exe",
@@ -359,7 +366,7 @@ class MainForm : Form
 			item.SubItems.Add(c.Date);
 			item.SubItems.Add(c.Author);
 			item.SubItems.Add(c.Subject);
-			item.SubItems.Add(File.Exists(ExePath(c)) ? "yes" : "");
+			item.SubItems.Add(IsBuilt(c) ? "yes" : "");
 			commitList.Items.Add(item);
 		}
 		if (commitList.Items.Count > 0) commitList.Items[0].Selected = true;
@@ -419,8 +426,15 @@ class MainForm : Form
 
 	async Task<bool> EnsureWorktree(CommitInfo c, CancellationToken ct)
 	{
-		var path = WorktreePath(c);
-		if (Directory.Exists(path) && File.Exists(Path.Combine(path, "RTEA.sln"))) return true;
+		var path = SlotPath;
+		if (Directory.Exists(path) && File.Exists(Path.Combine(path, "RTEA.sln")))
+		{
+			var (_, head) = await Git("rev-parse HEAD", path);
+			if (head.Trim() == c.Sha) return true;
+			// Move the one checkout to the chosen commit; build outputs are untracked, so the next build is incremental.
+			Append($"Switching the build slot to {c.Short}");
+			return await Exec("git", $"checkout -f --detach {c.Sha}", path, ct) == 0;
+		}
 		Directory.CreateDirectory(settings.EffectiveVersionsDir);
 		await Exec("git", "worktree prune", Repo, ct, false);
 		return await Exec("git", $"worktree add --detach \"{path}\" {c.Sha}", Repo, ct) == 0;
@@ -452,6 +466,7 @@ class MainForm : Form
 				var code = await Exec(msbuild, $"/m /nologo /v:m /p:Configuration=\"{settings.Configuration}\" /p:Platform=x64 RTEA.sln", dir, ct);
 				if (code != 0) { Append($"BUILD FAILED (exit {code}) after {sw.Elapsed:mm\\:ss}"); return; }
 				Append($"Build succeeded in {sw.Elapsed:mm\\:ss}");
+				File.WriteAllText(BuiltMarker, $"{c.Sha} {settings.Configuration}");
 				MarkCached(c);
 			}
 			if (run) Launch(c);
@@ -566,13 +581,13 @@ class MainForm : Form
 	void MarkCached(CommitInfo c)
 	{
 		foreach (ListViewItem it in commitList.Items)
-			if (((CommitInfo)it.Tag!).Sha == c.Sha) it.SubItems[5].Text = File.Exists(ExePath(c)) ? "yes" : "";
+			it.SubItems[5].Text = IsBuilt((CommitInfo)it.Tag!) ? "yes" : "";
 	}
 
 	void Launch(CommitInfo c)
 	{
 		var exe = ExePath(c);
-		if (!File.Exists(exe)) { Append($"Not built yet for this configuration: {exe}"); return; }
+		if (!IsBuilt(c)) { Append(BuiltInfo() == "" ? "Nothing is built yet. Press Build & Launch." : $"Only one build is kept, and it is {BuiltInfo().Split(' ')[0][..10]} ({BuiltInfo().Split(' ', 2).ElementAtOrDefault(1)}), not {c.Short}. Press Build & Launch."); return; }
 		LinkMods(c);
 		LinkPresets(c);
 		var ini = iniBox.Text.Trim();
@@ -587,15 +602,35 @@ class MainForm : Form
 		Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = WorktreePath(c), UseShellExecute = true });
 	}
 
+	// Deleting tens of thousands of files is slow on Windows, so rename the folder out of the way (instant), then let a hidden `rd /s /q` empty it
+	// in the background. `git worktree prune` afterwards forgets the checkout.
+	void TrashFast(string dir)
+	{
+		var trash = Path.Combine(settings.EffectiveVersionsDir, ".trash");
+		Directory.CreateDirectory(trash);
+		var dest = Path.Combine(trash, Guid.NewGuid().ToString("N"));
+		try { Directory.Move(dir, dest); }
+		catch (Exception ex) { Append($"Could not move {Path.GetFileName(dir)} aside ({ex.Message}); is the game still running?"); return; }
+		SweepTrash();
+	}
+
+	void SweepTrash()
+	{
+		var trash = Path.Combine(settings.EffectiveVersionsDir, ".trash");
+		if (!Directory.Exists(trash)) return;
+		foreach (var d in Directory.GetDirectories(trash))
+			try { Process.Start(new ProcessStartInfo("cmd.exe", $"/c rd /s /q \"{d}\"") { CreateNoWindow = true, UseShellExecute = false }); } catch { }
+	}
+
 	// Removes every cached checkout and build. The default Settings.ini and presets live in the launcher's own folder, and the presets link inside each
 	// version is unlinked (not followed) first, so nothing shared is touched.
 	async Task ClearAllBuilds()
 	{
 		var root = settings.EffectiveVersionsDir;
-		var dirs = Directory.Exists(root) ? Directory.GetDirectories(root) : Array.Empty<string>();
+		var dirs = Directory.Exists(root) ? Directory.GetDirectories(root).Where(d => Path.GetFileName(d) != ".trash").ToArray() : Array.Empty<string>();
 		if (dirs.Length == 0) { Append("No builds to clear."); return; }
 		if (MessageBox.Show($"Delete all {dirs.Length} cached builds in\n{root}?\n\nYour Settings.ini, presets and mods are kept.", "Clear all builds", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-		SetBusy(true, "Clearing builds...");
+		SetBusy(true, "Deleting build...");
 		foreach (var d in dirs)
 		{
 			try
@@ -604,15 +639,11 @@ class MainForm : Form
 				if (Directory.Exists(link) && new DirectoryInfo(link).Attributes.HasFlag(FileAttributes.ReparsePoint)) Directory.Delete(link, false);
 			}
 			catch (Exception ex) { Append($"Could not unlink presets in {Path.GetFileName(d)}, skipping it: {ex.Message}"); continue; }
-			await Exec("git", $"worktree remove --force \"{d}\"", Repo, default, false);
-			if (Directory.Exists(d))
-			{
-				try { Directory.Delete(d, true); } catch (Exception ex) { Append($"Could not fully delete {Path.GetFileName(d)}: {ex.Message}"); }
-			}
+			TrashFast(d);
 		}
 		await Exec("git", "worktree prune", Repo, default, false);
 		foreach (ListViewItem it in commitList.Items) it.SubItems[5].Text = "";
-		Append("All builds cleared. Settings and presets kept.");
+		Append("Build deleted (the last bits are cleared in the background). Settings and presets kept.");
 		SetBusy(false, currentRef);
 	}
 
