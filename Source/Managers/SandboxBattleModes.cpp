@@ -2525,6 +2525,9 @@ namespace SandboxDetail {
 			std::vector<std::vector<Vector>>& zones = s_ModeSetup.SpawnZones[team];
 			if (zones.size() < c_MaxSpawnZones) {
 				zones.push_back(zone);
+				// (The same zones as the team's Battle Director card: one set of spawn zones a team, whichever way it plays.)
+				s_BattleSetup[team].SpawnZones = zones;
+				SendBattleSettings(team);
 				SendBattleMode();
 			}
 			if (zones.size() >= c_MaxSpawnZones) {
@@ -2777,6 +2780,7 @@ namespace SandboxDetail {
 				if (AddZoneCorner(s_ScriptBaseDrafts[stroke.Team], made, stroke.Position, 20.0F) && !made.SpawnZones.empty() && s_ModeSetup.SpawnZones[stroke.Team].size() < c_MaxSpawnZones) {
 					s_ModeSetup.SpawnZones[stroke.Team].push_back(made.SpawnZones.front());
 					s_ModeRun.Settings.SpawnZones[stroke.Team] = s_ModeSetup.SpawnZones[stroke.Team];
+					s_BattleSetup[stroke.Team].SpawnZones = s_ModeSetup.SpawnZones[stroke.Team];
 				}
 			}
 		} else if (stroke.Kind == Tool::BattleModeZone) {
@@ -2968,6 +2972,19 @@ namespace SandboxDetail {
 		const bool running = s_ModeRun.Running && s_ModeRun.Settings.Mode == setup.Mode;
 		bool changed = false;
 		ImGui::TextWrapped("%s", mode.Blurb);
+		if (!running) {
+			// Every mode plays from the teams' spawn zones on their Battle Director cards (drawn there, or here): one set a team.
+			for (int side = 0; side < c_Sides; ++side) {
+				std::vector<std::vector<Vector>> card = s_BattleSetup[side].SpawnZones;
+				if (card.size() > c_MaxSpawnZones) {
+					card.resize(c_MaxSpawnZones);
+				}
+				if (setup.SpawnZones[side] != card) {
+					setup.SpawnZones[side] = std::move(card);
+					changed = true;
+				}
+			}
+		}
 
 		std::string why;
 		const bool ready = ModeReady(setup, why);
@@ -3099,16 +3116,20 @@ namespace SandboxDetail {
 					}
 				}
 				ImGui::EndDisabled();
-				ImGui::SetItemTooltip("%s", drawing ? "Click the corners on the map, then click the first corner again (or press Enter) to close it. Then draw the next, or Done." : ("Then click out the corners of a spawn zone for this team on the map: its units appear in its zones. Up to " + std::to_string(c_MaxSpawnZones) + ".").c_str());
+				ImGui::SetItemTooltip("%s", drawing ? "Click the corners on the map, then click the first corner again (or press Enter) to close it. Then draw the next, or Done." : ("Then click out the corners of a spawn zone for this team on the map: its units appear in its zones. Up to " + std::to_string(c_MaxSpawnZones) + ". The same zones as its Battle Director card, so every mode (and a custom battle) uses them.").c_str());
 				if (!zones.empty()) {
 					ImGui::SameLine();
 					if (ToolUI::Button("Take back the last##base")) {
 						zones.pop_back();
+						s_BattleSetup[side].SpawnZones = zones;
+						SendBattleSettings(side);
 						changed = true;
 					}
 					ImGui::SameLine();
 					if (ToolUI::Button("Clear##base")) {
 						zones.clear();
+						s_BattleSetup[side].SpawnZones.clear();
+						SendBattleSettings(side);
 						changed = true;
 					}
 				}
@@ -3166,6 +3187,29 @@ namespace SandboxDetail {
 		}
 		if (changed) {
 			SendBattleMode();
+		}
+	}
+
+	std::string BattleToolLabel(Tool kind) {
+		const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
+		const std::string team = SideName(std::clamp(s_BattleEditTeam, 0, c_Sides - 1));
+		switch (kind) {
+			case Tool::BattleModeBase:
+				return team + " spawn zone";
+			case Tool::BattleModeGoal:
+				return team + " goal zone";
+			case Tool::BattleModePoint:
+				return mode.PointName ? team + " " + mode.PointName : std::string();
+			case Tool::BattleModeZone: {
+				if (!mode.ZoneName) {
+					return std::string();
+				}
+				std::string name = mode.ZoneName;
+				name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+				return name;
+			}
+			default:
+				return std::string();
 		}
 	}
 

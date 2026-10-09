@@ -264,7 +264,7 @@ namespace SandboxDetail {
 			case Tool::BattleModeBase:
 				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
 			case Tool::BattleModeZone:
-				return {Icon::Flag, IM_COL32(120, 220, 160, 255)};
+				return {Icon::Target, IM_COL32(120, 220, 160, 255)};
 			case Tool::BattleModeGoal:
 				return {Icon::Wall, IM_COL32(120, 220, 160, 255)};
 			case Tool::BattleModeFlag:
@@ -1400,7 +1400,10 @@ namespace SandboxDetail {
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		float scale = ScenePixelsPerWindowPixel();
 		ImU32 white = IM_COL32(255, 255, 255, 170);
-		std::string label = tool.Name;
+		std::string label = IsBattleTool(tool.Kind) ? BattleToolLabel(tool.Kind) : std::string();
+		if (label.empty()) {
+			label = tool.Name;
+		}
 		if (tool.Kind == Tool::Barracks || tool.Kind == Tool::Extractor) {
 			// The plot it will take, on the ground under the pointer.
 			const Colony::Type& type = Colony::GetType(tool.Kind == Tool::Barracks ? Colony::Kind::Barracks : Colony::Kind::Extractor);
