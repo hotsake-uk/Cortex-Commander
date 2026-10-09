@@ -216,6 +216,10 @@ namespace SandboxDetail {
 				return "The base game's dense earth: darker and tougher to dig than earth.";
 			case Tool::GoldEarth:
 				return "Earth with flecks of gold in it, as the base game's maps have, for units to dig out.";
+			case Tool::Plants:
+				return "Drag along the ground to put down rows of the game's own plants, as its maps have them, as far apart as Plant spacing says.";
+			case Tool::Cacti:
+				return "Drag along the ground to put down rows of the game's own cacti, big and small.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			default:
@@ -341,6 +345,10 @@ namespace SandboxDetail {
 				return {Icon::Chunk, IM_COL32(230, 190, 60, 255)};
 			case Tool::TerrainOther:
 				return {Icon::Chunk, IM_COL32(200, 160, 120, 255)};
+			case Tool::Plants:
+				return {Icon::Plant, IM_COL32(110, 190, 80, 255)};
+			case Tool::Cacti:
+				return {Icon::Plant, IM_COL32(150, 190, 90, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:

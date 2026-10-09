@@ -38,6 +38,7 @@
 #include "TerrainFire.h"
 #include "WeatherLightning.h"
 #include "TerrainObject.h"
+#include "TerrainDebris.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "AEJetpack.h"
@@ -177,7 +178,10 @@ namespace SandboxDetail {
 		Stone,
 		DenseEarth, //!< The base game's "Dense Earth": darker, tougher earth.
 		GoldEarth, //!< Earth with gold in it, as the base game's scenes have (c_GoldEarthShare of it gold).
-		TerrainOther //!< Paints the terrain material chosen under "More terrain..." (Stroke::Material).
+		TerrainOther, //!< Paints the terrain material chosen under "More terrain..." (Stroke::Material).
+		// Plants, drawn from the base game's own plant pictures (its "Plants", "Cacti" and "Small Cacti" terrain debris): appended, so the tools before keep their numbers.
+		Plants,
+		Cacti
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -286,6 +290,8 @@ namespace SandboxDetail {
 	    {Tool::DenseEarth, "Dark earth", 0.03F, true},
 	    {Tool::GoldEarth, "Earth with gold", 0.03F, true},
 	    {Tool::TerrainOther, "Other terrain", 0.03F, true},
+	    {Tool::Plants, "Plants", 0.03F, true},
+	    {Tool::Cacti, "Cacti", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -317,6 +323,9 @@ namespace SandboxDetail {
 				return false;
 		}
 	}
+
+	/// The plant brushes: each puts the game's own plant pictures on the ground along the stroke, s_PlantSpacing apart.
+	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti; }
 
 	/// How much of what the "Earth with gold" brush paints is gold.
 	constexpr float c_GoldEarthShare = 0.06F;
@@ -728,6 +737,8 @@ namespace SandboxDetail {
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
+	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
+	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
 	inline bool s_SquareBrush = false; //!< The terrain brushes paint and dig squares rather than circles (Paint > Terrain).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
@@ -1183,7 +1194,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -1447,6 +1458,19 @@ namespace SandboxDetail {
 	    "..##...##..."
 	    ".##.....##.."
 	    "............",
+	    // Plant
+	    "......#....."
+	    ".....###...."
+	    "..##.#+#...."
+	    ".####.#.##.."
+	    "..##+.####.."
+	    "...##.#+#..."
+	    "#....##....#"
+	    ".##..#...##."
+	    "..##.#.###.."
+	    "...#####...."
+	    ".....#......"
+	    "....###.....",
 	};
 
 	struct ToolLook {
@@ -1583,6 +1607,7 @@ namespace SandboxDetail {
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, bool square = false, float goldShare = 0.0F);
+	void PlacePlant(const Vector& at, int radius, Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
 	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight);
