@@ -501,14 +501,12 @@ namespace SandboxDetail {
 					if (wave.empty()) {
 						break;
 					}
-					// Each on the ground there, spread out sideways, and dropped in from just above its feet.
-					std::vector<Vector> spots = StandingSpots(zone, static_cast<int>(wave.size()));
+					// Each on its own spot of the zone, the same every time, as a squad is put down with the Spawn tab's unit tool.
 					ActivateSide(side);
 					for (size_t i = 0; i < wave.size(); ++i) {
 						Actor* unit = wave[i];
-						Vector feet = i < spots.size() ? spots[i] : zone;
 						team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-						unit->SetPos(feet - Vector(0.0F, unit->GetHeight() * 0.5F));
+						unit->SetPos(ZoneSpot(zone, static_cast<int>(i), static_cast<int>(wave.size())));
 						g_MovableMan.AddActor(unit);
 					}
 					team.Sent += static_cast<int>(wave.size());
@@ -845,6 +843,14 @@ namespace SandboxDetail {
 		TookTool(back);
 	}
 
+	/// Where one of a spawn zone's units appears: in a row either side of the place the zone was put down, 16 px apart, as the Spawn tab's
+	/// unit tool puts a squad down (SpawnUnits). The same spots every time.
+	Vector ZoneSpot(const Vector& zone, int unit, int count) {
+		Vector spot = zone + Vector((static_cast<float>(unit) - static_cast<float>(count - 1) * 0.5F) * 16.0F, 0.0F);
+		g_SceneMan.WrapPosition(spot);
+		return spot;
+	}
+
 	/// Puts down a spawn zone at a place, or takes away the one there (within 40 px). At most 16 a team.
 	void ToggleSpawnZone(BattleSettings& settings, const Vector& position) {
 		Vector at = position;
@@ -888,12 +894,23 @@ namespace SandboxDetail {
 					drawList->AddTriangleFilled(ImVec2(at.x - 5.0F, at.y - 12.0F), ImVec2(at.x + 5.0F, at.y - 12.0F), ImVec2(at.x, at.y - 4.0F), color);
 				}
 			}
-			for (size_t i = 0; i < setup.SpawnZones.size(); ++i) {
-				ImVec2 middle = ToScreen(setup.SpawnZones[i]);
-				drawList->AddCircleFilled(middle, 14.0F, faint, 24);
-				drawList->AddCircle(middle, 14.0F, color, 24, 2.0F);
-				drawList->AddLine(ImVec2(middle.x - 7.0F, middle.y), ImVec2(middle.x + 7.0F, middle.y), color, 2.0F);
-				drawList->AddLine(ImVec2(middle.x, middle.y - 7.0F), ImVec2(middle.x, middle.y + 7.0F), color, 2.0F);
+			// Each zone: a mark for every unit it puts down, where that unit appears.
+			const int perZone = std::clamp(setup.ZoneUnits, 1, 20);
+			for (const Vector& zone: setup.SpawnZones) {
+				for (int i = 0; i < perZone; ++i) {
+					ImVec2 at = ToScreen(ZoneSpot(zone, i, perZone));
+					drawList->AddCircleFilled(at, 5.0F, faint, 12);
+					drawList->AddCircle(at, 5.0F, color, 12, 1.5F);
+				}
+			}
+		}
+		// The spawn zone tool in hand: where its units would appear, at the pointer, before the click.
+		if (kind == Tool::BattleSpawnZone && Sandbox::CapturesWorldClicks()) {
+			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
+			const int perZone = std::clamp(s_BattleSetup[team].ZoneUnits, 1, 20);
+			Vector pointer = MouseScenePosition();
+			for (int i = 0; i < perZone; ++i) {
+				drawList->AddCircle(ToScreen(ZoneSpot(pointer, i, perZone)), 5.0F, c_SideColors[team], 12, 1.5F);
 			}
 		}
 	}

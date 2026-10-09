@@ -1449,6 +1449,7 @@ namespace SandboxDetail {
 	void DrawBattleMarks();
 	void TakeBattleTool(Tool kind, int team);
 	void ToggleSpawnZone(BattleSettings& settings, const Vector& position);
+	Vector ZoneSpot(const Vector& zone, int unit, int count);
 	void PutDownBattleTool();
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
