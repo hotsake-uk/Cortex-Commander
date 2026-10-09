@@ -1345,9 +1345,18 @@ namespace SandboxDetail {
 		/// Where a team takes the flag to score: its goal zone's middle, on the ground.
 		Vector GoalSpot(const BattleModeSettings& settings, int side) { return Grounded(ZoneMiddle(settings.Goals[side])); }
 
+		int s_FlagPlace = -1; //!< Where the flag last came in: its placed spot (-2), one of the flag spawn zones (its index), or -1 for none yet.
+
+		/// The flag spawn zones drawn (the mode's zones, closed).
+		std::vector<std::vector<Vector>> FlagZones(const BattleModeSettings& settings) {
+			std::vector<std::vector<Vector>> zones;
+			std::copy_if(settings.Zones.begin(), settings.Zones.end(), std::back_inserter(zones), [](const std::vector<Vector>& zone) { return zone.size() >= 3; });
+			return zones;
+		}
+
 		bool OneFlagReady(const BattleModeSettings& setup, std::string& why) {
-			if (!setup.HasFlagSpot) {
-				why = "Place the flag on the map.";
+			if (!setup.HasFlagSpot && FlagZones(setup).empty()) {
+				why = "Place the flag, or draw a flag spawn zone or more, on the map.";
 				return false;
 			}
 			for (int side = 0; side < c_Sides; ++side) {
@@ -1359,10 +1368,35 @@ namespace SandboxDetail {
 			return true;
 		}
 
-		/// The flag back on its spot, nobody carrying it.
-		void OneFlagHome() {
+		/// Somewhere new for the flag to come in: one of its places (the spot placed, and each flag spawn zone) picked at random, not the one it
+		/// came in at last unless there is no other; in a zone, somewhere on the ground in it.
+		Vector NextFlagSpot() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const std::vector<std::vector<Vector>> zones = FlagZones(settings);
+			std::vector<int> places;
+			if (settings.HasFlagSpot) {
+				places.push_back(-2);
+			}
+			for (int i = 0; i < static_cast<int>(zones.size()); ++i) {
+				places.push_back(i);
+			}
+			if (places.empty()) {
+				return settings.FlagSpot;
+			}
+			if (places.size() > 1) {
+				std::erase(places, s_FlagPlace);
+			}
+			s_FlagPlace = places[std::min(static_cast<size_t>(Random01() * static_cast<float>(places.size())), places.size() - 1)];
+			return s_FlagPlace == -2 ? settings.FlagSpot : SpotInZone(zones[s_FlagPlace], 0.0F);
+		}
+
+		/// The flag back on its spot, nobody carrying it: where it came in (back after it was dropped), or somewhere new (after a score, and at
+		/// the start), NextFlagSpot.
+		void OneFlagHome(bool somewhereNew = false) {
 			s_OneFlag.State = FlagState::Home;
-			s_OneFlag.Home = s_ModeRun.Settings.FlagSpot;
+			if (somewhereNew || s_FlagPlace == -1) {
+				s_OneFlag.Home = NextFlagSpot();
+			}
 			s_OneFlag.Pos = s_OneFlag.Home;
 			SetCarrier(s_OneFlag, nullptr);
 			s_OneFlag.DroppedAt = -1;
@@ -1372,13 +1406,18 @@ namespace SandboxDetail {
 			SetCarrier(s_OneFlag, nullptr);
 			s_Runners.clear();
 			s_OneFlag = Flag();
-			OneFlagHome();
+			s_FlagPlace = -1;
+			OneFlagHome(true);
 		}
 
-		/// The flag placed somewhere new while the game is on: it moves there, if nobody has it.
+		/// The flag's places changed while the game is on: if the one it came in at is gone (moved, or its zone taken away), it comes in again
+		/// somewhere, if nobody has it.
 		void OneFlagSettingsChanged() {
-			if (s_OneFlag.State != FlagState::Carried && !g_SceneMan.ShortestDistance(s_OneFlag.Home, s_ModeRun.Settings.FlagSpot, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F)) {
-				OneFlagHome();
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const std::vector<std::vector<Vector>> zones = FlagZones(settings);
+			const bool still = s_FlagPlace == -2 ? settings.HasFlagSpot && g_SceneMan.ShortestDistance(s_OneFlag.Home, settings.FlagSpot, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F) : s_FlagPlace >= 0 && s_FlagPlace < static_cast<int>(zones.size()) && IsInZone(zones[s_FlagPlace], s_OneFlag.Home);
+			if (s_OneFlag.State != FlagState::Carried && !still) {
+				OneFlagHome(true);
 			}
 		}
 
@@ -1443,9 +1482,9 @@ namespace SandboxDetail {
 				flag.Pos = carrier->GetPos();
 				const int team = carrier->GetTeam();
 				if (TeamIn(settings, team) && settings.Goals[team].size() >= 3 && IsInZone(settings.Goals[team], carrier->GetPos())) {
-					// Brought into its team's goal: a score, and the flag back on its spot.
+					// Brought into its team's goal: a score, and the next flag comes in somewhere new.
 					++s_ModeRun.Score[team];
-					OneFlagHome();
+					OneFlagHome(true);
 					if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
 						EndGame(team, SideName(team) + " wins, " + std::to_string(s_ModeRun.Score[team]) + " goals");
 						return;
@@ -1550,12 +1589,23 @@ namespace SandboxDetail {
 					TakeBattleTool(Tool::BattleModeFlag, s_BattleEditTeam);
 				}
 			}
-			ImGui::SetItemTooltip("%s", placing ? "Click on the map to put it there; Enter (or this) when it's where you want it." : "Then click on the map where the one flag every team is after stands.");
+			ImGui::SetItemTooltip("%s", placing ? "Click on the map to put it there; Enter (or this) when it's where you want it." : "Then click on the map where the one flag every team is after stands. With flag spawn zones drawn too (below), this spot is one of the places it can come in.");
 			ImGui::SameLine();
+			const int zones = static_cast<int>(FlagZones(setup).size());
 			if (setup.HasFlagSpot) {
 				ImGui::TextDisabled("placed");
+			} else if (zones > 0) {
+				ImGui::TextDisabled("not placed: it comes in in the flag spawn zones");
 			} else {
-				ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "not placed yet");
+				ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "not placed yet (or draw flag spawn zones below)");
+			}
+			if (setup.HasFlagSpot) {
+				ImGui::SameLine();
+				if (ToolUI::Button("Take away##oneflagspot")) {
+					setup.HasFlagSpot = false;
+					changed = true;
+				}
+				ImGui::SetItemTooltip("The placed spot goes; the flag comes in only in the flag spawn zones.");
 			}
 			changed |= ImGui::SliderInt("Goals to win", &setup.ScoreToWin, 0, 10, setup.ScoreToWin > 0 ? "%d" : "play on");
 			ImGui::SetItemTooltip("The first team to bring the flag into its goal zone this many times wins, and the battle stops. 0: it goes on till you stop it.");
@@ -1573,6 +1623,11 @@ namespace SandboxDetail {
 				}
 			}
 			const ImU32 color = c_NeutralColor;
+			const std::vector<std::vector<Vector>> zones = FlagZones(settings);
+			for (int i = 0; i < static_cast<int>(zones.size()); ++i) {
+				const bool current = running && s_FlagPlace == i;
+				DrawModeZone(drawList, zones[i], color, current ? 40 : 20, current ? 220 : 120, current ? 2.5F : 1.5F, zones.size() > 1 ? "FLAG SPAWN " + std::to_string(i + 1) : "FLAG SPAWN");
+			}
 			if (!running) {
 				if (settings.HasFlagSpot) {
 					DrawFlag(drawList, ToScreen(settings.FlagSpot), color, 1.2F);
@@ -2625,9 +2680,11 @@ namespace SandboxDetail {
 		     .Status = VipStatus,
 		     .Objectives = VipObjectives},
 		    {.Name = "One flag",
-		     .Blurb = "One neutral flag, placed on the map, and every team after it. Each team has spawn zones and a goal zone drawn on the map: bring the flag "
+		     .Blurb = "One neutral flag, and every team after it. Place it on the map, or draw flag spawn zones (or both): after every score the next flag comes in "
+		              "somewhere new, in another of them. Each team has spawn zones and a goal zone drawn on the map: bring the flag "
 		              "into your own goal to score. Whoever carries it glows and makes straight for their goal, their team-mates go with them and everyone "
 		              "else goes after them. A dropped flag can be picked up by anyone, and goes back to its spot by itself after the seconds set.",
+		     .ZoneName = "flag spawn zone",
 		     .Goals = true,
 		     .Ready = OneFlagReady,
 		     .Start = OneFlagStart,
