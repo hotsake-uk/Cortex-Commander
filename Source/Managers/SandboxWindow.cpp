@@ -1874,7 +1874,7 @@ namespace SandboxDetail {
 		// settings for the orders to come.
 		using Kind = ActionMenu::Kind;
 		menu.Heading("Selected units", Kind::Command);
-		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect", "Focus on objective"}, -1);
+		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect", "Focus on objective", "Follow team orders"}, -1);
 		menu.Heading("AI mode", Kind::State);
 		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
 		menu.Heading("Weapons", Kind::State);
@@ -1914,6 +1914,11 @@ namespace SandboxDetail {
 						s_Selected.clear();
 					} else if (cell.Value == 3) {
 						QueueOrder(Order::BattleObjective);
+					} else if (cell.Value == 4) {
+						Stroke stroke;
+						stroke.Kind = Tool::OrderSelected;
+						stroke.Count = 122;
+						s_Queue.push_back(stroke);
 					} else {
 						// Defend where they stand (Shift: as the last step of their plans, RC-3), or cancel their orders.
 						Stroke stroke;
@@ -2746,9 +2751,9 @@ namespace SandboxDetail {
 		if (tool.UsesRadius) {
 			start(tool.Name);
 			ImGui::SetNextItemWidth(field);
-			ImGui::SliderInt("##brush", &s_Radius, 1, 40, "Brush %d px");
+			ImGui::SliderInt("##brush", &s_Radius, 1, c_MaxBrushRadius, "Brush %d px", ImGuiSliderFlags_Logarithmic);
 			ImGui::SameLine();
-			for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 10}, {"L", 24}}) {
+			for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 10}, {"L", 24}, {"XL", 60}}) {
 				if (ToolUI::SmallButton(label)) {
 					s_Radius = size;
 				}
@@ -2970,6 +2975,39 @@ namespace SandboxDetail {
 				s_Queue.push_back(stroke);
 			}
 			ImGui::SetItemTooltip("Every order the selected units have, forgotten: where they were going, what they were after, what they defend or guard,\ntheir plans and patrols, a battle mode's job for them. They stand where they are and fight back from there.\n(Cancel instead puts them back on their side's standing orders.)");
+			ImGui::EndDisabled();
+			// Handing them back (RC-9's commander, or anyone): to the battle, or else the side's orders.
+			ImGui::SameLine();
+			ImGui::BeginDisabled(alive == 0);
+			if (ToolUI::SmallButton("Follow team orders")) {
+				Stroke stroke;
+				stroke.Kind = Tool::OrderSelected;
+				stroke.Count = 122;
+				s_Queue.push_back(stroke);
+			}
+			ImGui::SetItemTooltip("Hand the selected units back: everything you told them forgotten, and they take up their team's orders again.\nIn a battle mode's game, its job for them (and its AI commander's, where the team has one); with the Battle Director\ndefending a place for their team, a post there; else the side's orders as set in the Orders list.");
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Focus on objective")) {
+				QueueOrder(Order::BattleObjective);
+			}
+			ImGui::SetItemTooltip("Send the selected units after their team's objective in the battle: an enemy flag, an enemy VIP, the hill or the\nobjective in play, or the place their Battle Director card defends; with none, they attack. (Key: O)");
+			// The Orders tab's list, for the selected units rather than a whole side: the same choice, kept in step with the tab.
+			ImGui::SameLine();
+			s_Order = std::clamp(s_Order, 0, c_OrderCount - 1);
+			ImGui::SetNextItemWidth(field * 0.9F);
+			ImGui::Combo("##selectedOrders", &s_Order, OrderName, nullptr, c_OrderCount);
+			ImGui::SetItemTooltip("Orders for the selected units, as the Orders tab gives a whole side.");
+			ImGui::SameLine();
+			const bool moveTo = static_cast<Order>(s_Order) == Order::MoveTo;
+			if (ToolUI::SmallButton(moveTo ? "Click where##giveSelected" : "Give orders##giveSelected")) {
+				if (moveTo) {
+					// (A move needs a place: the clicks are put to moving.)
+					s_CommandMode = CommandMode::Move;
+				} else {
+					QueueOrder(static_cast<Order>(s_Order));
+				}
+			}
+			ImGui::SetItemTooltip(moveTo ? "Move to a place: click on the map where the selected units should go (the command tool's Move)." : "Give the selected units the order in the list.");
 			ImGui::EndDisabled();
 			ImGui::SameLine();
 			ImGui::BeginDisabled(alive == 0);

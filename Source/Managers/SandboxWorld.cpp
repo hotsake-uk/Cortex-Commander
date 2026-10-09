@@ -116,10 +116,11 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
-	/// @param shape A circle, a square of radius either way of the center, or a soft spray over the circle (the brush shape, s_BrushShape).
+	/// Paints terrain material into the air, or digs it out when there's no material, over the pixels of a box (scene pixels, both ends
+	/// included, unwrapped) that inside says are in: the brushes' discs and the filled shapes.
 	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
+	template <typename Inside>
+	void PaintArea(int left, int top, int right, int bottom, Inside inside, const char* materialName, float goldShare) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -151,25 +152,21 @@ namespace SandboxDetail {
 		} else {
 			gold = nullptr;
 		}
-		int centerX = center.GetFloorIntX();
-		int centerY = center.GetFloorIntY();
+		Box area(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1));
+		Vector center = area.GetCenter();
+		float reach = std::max(area.GetWidth(), area.GetHeight()) * 0.5F;
 		if (!materialName) {
 			// Dug-out ground may be left hanging. Told before the digging, so it knows what was hanging already.
-			TerrainCollapse::BeginChange(center, static_cast<float>(radius + 30));
+			TerrainCollapse::BeginChange(center, reach + 30.0F);
 		}
 		bool changed = false;
-		for (int dy = -radius; dy <= radius; ++dy) {
-			for (int dx = -radius; dx <= radius; ++dx) {
-				int distanceSquared = dx * dx + dy * dy;
-				if (shape != BrushShape::Square && distanceSquared > radius * radius) {
+		for (int sceneY = top; sceneY <= bottom; ++sceneY) {
+			for (int sceneX = left; sceneX <= right; ++sceneX) {
+				if (!inside(sceneX, sceneY)) {
 					continue;
 				}
-				// The spray: a few of the pixels each stroke, more towards the middle, so holding it builds up softly.
-				if (shape == BrushShape::Spray && Random01() > 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)))) {
-					continue;
-				}
-				int x = centerX + dx;
-				int y = centerY + dy;
+				int x = sceneX;
+				int y = sceneY;
 				if (g_SceneMan.SceneWrapsX()) {
 					x = ((x % width) + width) % width;
 				}
@@ -193,12 +190,77 @@ namespace SandboxDetail {
 			}
 		}
 		if (changed) {
-			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(centerX - radius), static_cast<float>(centerY - radius)), static_cast<float>(radius * 2 + 1), static_cast<float>(radius * 2 + 1)));
+			terrain->AddUpdatedMaterialArea(area);
 			// Liquid around the change may flow into it, and dug-out ground may be left hanging.
-			FluidSim::Disturb(center, static_cast<float>(radius + 2));
-
+			FluidSim::Disturb(center, reach + 2.0F);
 		}
-		NotePaint(Box(Vector(static_cast<float>(centerX - radius), static_cast<float>(centerY - radius)), static_cast<float>(radius * 2 + 1), static_cast<float>(radius * 2 + 1)), materialName ? "paint" : "dig", materialName, !materialName, changed, changed);
+		NotePaint(area, materialName ? "paint" : "dig", materialName, !materialName, changed, changed);
+	}
+
+	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
+	/// @param shape A circle, a square of radius either way of the center, or a soft spray over the circle (the brush shape, s_BrushShape).
+	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
+		int centerX = center.GetFloorIntX();
+		int centerY = center.GetFloorIntY();
+		auto inside = [&](int x, int y) {
+			int dx = x - centerX;
+			int dy = y - centerY;
+			int distanceSquared = dx * dx + dy * dy;
+			if (shape != BrushShape::Square && distanceSquared > radius * radius) {
+				return false;
+			}
+			// The spray: a few of the pixels each stroke, more towards the middle, so holding it builds up softly.
+			return shape != BrushShape::Spray || Random01() <= 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)));
+		};
+		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, inside, materialName, goldShare);
+	}
+
+	/// The material a terrain brush paints (nullptr: Dig), and how much of it is gold.
+	const char* TerrainBrushMaterial(const Stroke& stroke, float& goldShare) {
+		goldShare = 0.0F;
+		switch (stroke.Kind) {
+			case Tool::Earth:
+				return "Earth";
+			case Tool::Sand:
+				return "Sand";
+			case Tool::Ice:
+				return "Ice";
+			case Tool::Grass:
+				return "Grass";
+			case Tool::Wood:
+				return "Wood";
+			case Tool::Concrete:
+				return "Concrete";
+			case Tool::Stone:
+				return "Stone";
+			case Tool::DenseEarth:
+				return "Dense Earth";
+			case Tool::GoldEarth:
+				goldShare = c_GoldEarthShare;
+				return "Earth";
+			case Tool::TerrainOther:
+				return stroke.Material.c_str();
+			default:
+				return nullptr;
+		}
+	}
+
+	/// Fills a shape dragged out with a terrain brush (Brush type Shape) with its material, or digs it out with Dig, in one go.
+	void FillTerrainShape(const Stroke& stroke) {
+		float goldShare = 0.0F;
+		const char* materialName = TerrainBrushMaterial(stroke, goldShare);
+		if (stroke.Kind == Tool::TerrainOther && stroke.Material.empty()) {
+			return;
+		}
+		FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
+		const Vector& start = stroke.Position;
+		const Vector& end = stroke.Position2;
+		int left = static_cast<int>(std::floor(std::min(start.m_X, end.m_X)));
+		int right = static_cast<int>(std::floor(std::max(start.m_X, end.m_X)));
+		int top = static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y)));
+		int bottom = static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y)));
+		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare);
 	}
 
 	/// Puts one of the game's own plant pictures on the ground at a point, as its maps have them: the ground found under the point (or over it,
@@ -1038,6 +1100,10 @@ namespace SandboxDetail {
 			}
 			~RecordingPaint() { s_RecordPaint = false; }
 		} recordingPaint(stroke.Kind);
+		if (stroke.Fill >= 0 && IsTerrainBrush(stroke.Kind)) {
+			FillTerrainShape(stroke);
+			return;
+		}
 		switch (stroke.Kind) {
 			case Tool::Possess:
 				TakeControl(at);

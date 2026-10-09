@@ -39,6 +39,19 @@ namespace RTE {
 		/// Sets whether still water freezes over in snowy weather.
 		static void SetFreezingEnabled(bool enabled) { s_Freezing = enabled; }
 
+		/// Gets whether liquid that reaches the bottom of the map runs out of it and is gone, rather than pooling on the bottom row (a gameplay setting, off unless turned on).
+		static bool DrainsBottom() { return s_DrainBottom; }
+
+		/// Sets whether liquid drains out of the bottom of the map.
+		static void SetDrainsBottom(bool enabled) { s_DrainBottom = enabled; }
+
+		/// Gets whether liquid that reaches the left or right edge of the map runs out of it and is gone, rather than banking up against it (a gameplay
+		/// setting, off unless turned on). A map that wraps sideways has no side edges, so this does nothing there.
+		static bool DrainsSides() { return s_DrainSides; }
+
+		/// Sets whether liquid drains out of the sides of the map.
+		static void SetDrainsSides(bool enabled) { s_DrainSides = enabled; }
+
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
@@ -139,5 +152,7 @@ namespace RTE {
 		static bool s_Powders; //!< Whether loose powders slide and pile.
 		static bool s_Freezing; //!< Whether still water freezes over in snowy weather.
 		static bool s_BloodFlows; //!< Whether settled blood runs and pools.
+		static bool s_DrainBottom; //!< Whether liquid drains out of the bottom of the map.
+		static bool s_DrainSides; //!< Whether liquid drains out of the sides of the map (where it doesn't wrap).
 	};
 } // namespace RTE

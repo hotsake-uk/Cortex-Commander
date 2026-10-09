@@ -334,6 +334,44 @@ namespace SandboxDetail {
 		Spray //!< A soft spray: scattered pixels over the circle, thickest in the middle, building up while held.
 	};
 
+	/// The shapes the terrain brushes fill with Brush type Shape (s_ShapeFill): dragged out as a box, filled in one go.
+	enum class FillShape {
+		Circle, //!< The circle (or oval) in the box.
+		Triangle, //!< Its point at the side of the box the drag began, its base along the other.
+		Square //!< The whole box.
+	};
+
+	/// Whether a pixel is in a filled shape dragged out from start to end (scene pixels, end not wrapped round from start).
+	inline bool InFillShape(FillShape shape, const Vector& start, const Vector& end, int x, int y) {
+		float left = std::min(start.m_X, end.m_X);
+		float right = std::max(start.m_X, end.m_X);
+		float top = std::min(start.m_Y, end.m_Y);
+		float bottom = std::max(start.m_Y, end.m_Y);
+		float px = static_cast<float>(x) + 0.5F;
+		float py = static_cast<float>(y) + 0.5F;
+		if (px < left || px > right + 1.0F || py < top || py > bottom + 1.0F) {
+			return false;
+		}
+		float halfWidth = std::max((right + 1.0F - left) * 0.5F, 0.5F);
+		float halfHeight = std::max((bottom + 1.0F - top) * 0.5F, 0.5F);
+		float middleX = left + halfWidth;
+		switch (shape) {
+			case FillShape::Circle: {
+				float nx = (px - middleX) / halfWidth;
+				float ny = (py - (top + halfHeight)) / halfHeight;
+				return nx * nx + ny * ny <= 1.0F;
+			}
+			case FillShape::Triangle: {
+				// Dragged down: the point at the top. Dragged up: at the bottom.
+				bool pointUp = end.m_Y >= start.m_Y;
+				float along = (pointUp ? py - top : bottom + 1.0F - py) / (halfHeight * 2.0F);
+				return std::abs(px - middleX) <= along * halfWidth;
+			}
+			default:
+				return true;
+		}
+	}
+
 	/// How much of what the "Earth with gold" brush paints is gold.
 	constexpr float c_GoldEarthShare = 0.06F;
 
@@ -591,6 +629,7 @@ namespace SandboxDetail {
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
 		BrushShape Shape = BrushShape::Circle; //!< Terrain brushes: how they lay it down (s_BrushShape).
+		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
 	};
 
 	struct CraftChoice {
@@ -751,8 +790,13 @@ namespace SandboxDetail {
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
+	constexpr int c_MaxBrushRadius = 120; //!< The biggest the brush size goes (was 40).
 	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
+	inline bool s_ShapeFill = false; //!< Brush type Shape: the terrain brushes fill a shape dragged out on the world rather than painting where the pointer goes.
+	inline FillShape s_FillShape = FillShape::Square; //!< The shape they fill then.
+	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
+	inline Vector s_ShapeStart;
 	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
@@ -1051,7 +1095,7 @@ namespace SandboxDetail {
 
 	constexpr size_t c_PaintUndoSteps = 20;
 
-	constexpr size_t c_PaintUndoPixelsPerStep = 1000000; //!< About 3.5 s of the 40 px brush held down.
+	constexpr size_t c_PaintUndoPixelsPerStep = 1000000; //!< About 3.5 s of a 40 px brush held down (a stroke past it is undone in parts).
 
 	constexpr size_t c_PaintUndoPixels = 8000000; //!< All the steps together: 48 MB.
 
@@ -1621,6 +1665,7 @@ namespace SandboxDetail {
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
+	void FillTerrainShape(const Stroke& stroke);
 	void PlacePlant(const Vector& at, int radius, Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);

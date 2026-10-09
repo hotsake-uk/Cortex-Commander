@@ -1311,7 +1311,8 @@ namespace SandboxDetail {
 	}
 
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
-	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders.
+	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders, 22 hand them
+	/// back to their team's orders.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -1357,6 +1358,20 @@ namespace SandboxDetail {
 				s_Plans.erase(unit->GetUniqueID());
 				AnswerOrder(unit, "OrderCancel");
 				MarkOrder(unit->GetPos(), IM_COL32(200, 160, 120, 255));
+			}
+		} else if (choice == 22) {
+			// Follow team orders: everything they were told forgotten, as Clear all orders does, and handed back to their team: the battle's
+			// job for them (a mode's, which its AI commander then splits, or the place their Battle Director card defends), else the side's
+			// orders as the Orders list has them.
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				s_Plans.erase(unit->GetUniqueID());
+				if (!JoinBattleObjective(unit)) {
+					const Order order = static_cast<Order>(s_Order);
+					GiveOrder(unit, order == Order::MoveTo || order == Order::BattleObjective ? Order::Hold : order);
+				}
+				AnswerOrder(unit, "OrderCancel");
+				MarkOrder(unit->GetPos(), IM_COL32(180, 140, 240, 255));
 			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).

@@ -730,6 +730,12 @@ void Sandbox::DrawGUI() {
 				s_DragStart = io.MousePos;
 				s_DoubleClick = false;
 			}
+		} else if (IsTerrainBrush(tool.Kind) && s_ShapeFill) {
+			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below).
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_ShapeDragging = true;
+				s_ShapeStart = position;
+			}
 		} else if (tool.Interval <= 0.0F) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				QueueStroke(tool.Kind, position);
@@ -763,6 +769,55 @@ void Sandbox::DrawGUI() {
 		}
 	} else {
 		s_RingOpen = false;
+	}
+	if (s_ShapeDragging) {
+		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled; Shift keeps it as wide as it
+		// is tall, Escape drops it.
+		if (!InGame() || !IsTerrainBrush(CurrentTool().Kind) || !s_ShapeFill || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			s_ShapeDragging = false;
+		} else {
+			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
+			if (io.KeyShift) {
+				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
+				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
+			}
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImU32 outline = IM_COL32(255, 255, 255, 220);
+			float left = std::min(s_ShapeStart.m_X, end.m_X);
+			float right = std::max(s_ShapeStart.m_X, end.m_X) + 1.0F;
+			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
+			float bottom = std::max(s_ShapeStart.m_Y, end.m_Y) + 1.0F;
+			float middleX = (left + right) * 0.5F;
+			if (s_FillShape == FillShape::Circle) {
+				constexpr int c_Points = 48;
+				ImVec2 points[c_Points];
+				for (int i = 0; i < c_Points; ++i) {
+					float turn = static_cast<float>(i) / static_cast<float>(c_Points) * 6.2831853F;
+					points[i] = ToScreen(Vector(middleX + std::cos(turn) * (right - left) * 0.5F, (top + bottom) * 0.5F + std::sin(turn) * (bottom - top) * 0.5F));
+				}
+				drawList->AddPolyline(points, c_Points, outline, ImDrawFlags_Closed, 1.5F);
+			} else if (s_FillShape == FillShape::Triangle) {
+				bool pointUp = end.m_Y >= s_ShapeStart.m_Y;
+				ImVec2 point = ToScreen(Vector(middleX, pointUp ? top : bottom));
+				ImVec2 baseLeft = ToScreen(Vector(left, pointUp ? bottom : top));
+				ImVec2 baseRight = ToScreen(Vector(right, pointUp ? bottom : top));
+				drawList->AddTriangle(point, baseLeft, baseRight, outline, 1.5F);
+			} else {
+				drawList->AddRect(ToScreen(Vector(left, top)), ToScreen(Vector(right, bottom)), outline, 0.0F, 0, 1.5F);
+			}
+			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				s_ShapeDragging = false;
+				Stroke stroke;
+				stroke.Kind = CurrentTool().Kind;
+				stroke.Position = s_ShapeStart;
+				stroke.Position2 = end;
+				stroke.Fill = static_cast<int>(s_FillShape);
+				if (stroke.Kind == Tool::TerrainOther) {
+					stroke.Material = s_OtherTerrain;
+				}
+				s_Queue.push_back(stroke);
+			}
+		}
 	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
@@ -1211,7 +1266,28 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::SetItemTooltip("The base game's ground materials. Picking one takes the Other terrain tool.");
 				}
-				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
+				ImGui::TextUnformatted("Brush type");
+				ImGui::SameLine();
+				if (ImGui::RadioButton("Brush", !s_ShapeFill)) {
+					s_ShapeFill = false;
+				}
+				ImGui::SameLine();
+				if (ImGui::RadioButton("Shape", s_ShapeFill)) {
+					s_ShapeFill = true;
+				}
+				ImGui::SetItemTooltip("Shape: click and drag out a circle, triangle or square on the world, and the terrain brush in hand fills it (Dig digs it out). Shift keeps it as wide as tall; Escape drops it.");
+				if (s_ShapeFill) {
+					int fill = static_cast<int>(s_FillShape);
+					ImGui::TextUnformatted("Shape");
+					ImGui::SameLine();
+					ImGui::RadioButton("Circle##fill", &fill, 0);
+					ImGui::SameLine();
+					ImGui::RadioButton("Triangle##fill", &fill, 1);
+					ImGui::SameLine();
+					ImGui::RadioButton("Square##fill", &fill, 2);
+					s_FillShape = static_cast<FillShape>(fill);
+				}
+				ImGui::SliderInt("Brush size", &s_Radius, 1, c_MaxBrushRadius, "%d", ImGuiSliderFlags_Logarithmic);
 				int shape = static_cast<int>(s_BrushShape);
 				ImGui::TextUnformatted("Brush shape");
 				ImGui::SameLine();
