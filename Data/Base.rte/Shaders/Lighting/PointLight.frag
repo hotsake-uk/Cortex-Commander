@@ -9,7 +9,7 @@ in vec4 lightColor;
 in vec2 lightCenter;
 in float lightRadius;
 in vec2 screenPos;
-in vec3 lightCone;
+in vec3 lightCone; // Cone lights: direction and the cosine of the half angle. Line lights: the half line (xy) and below -2.5 (z). All-round lights: z below -1.5.
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 DirectionOut;
@@ -22,7 +22,7 @@ uniform sampler2D rteNormals; // Player screen normals: RG = normal xy * 0.5 + 0
 uniform float rteSpecular; // Strength of highlights on shiny surfaces (metal, concrete, wet ground, water).
 uniform vec2 rteScreenSize;
 uniform float rteEdgeLighting;
-uniform bool rteBeamMode; // Drawing the visible beam of cone lights over the lit scene, instead of light falling on surfaces.
+uniform bool rteBeamMode; // Drawing light seen in the air over the lit scene (cone lights' beams, the glow round line lights), instead of light falling on surfaces.
 uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest pixel of a solid object.
 uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
@@ -167,10 +167,23 @@ float TerrainShadowSoft(vec2 fromWorld, vec2 toWorld) {
 }
 
 void main() {
-	if (rteBeamMode && lightCone.z < -1.5) {
+	bool lineLight = lightCone.z < -2.5;
+	if (rteBeamMode && lightCone.z < -1.5 && !lineLight) {
 		discard;
 	}
-	float distanceSq = dot(localPos, localPos);
+	// Where the light comes from for this pixel: its centre, or for a line light the nearest point of the line, so it falls off round the whole line
+	// with rounded ends, and shadows are cast from the part of it that's closest.
+	vec2 source = lightCenter;
+	float distanceSq;
+	if (lineLight) {
+		vec2 halfLine = lightCone.xy;
+		vec2 fromCenter = gl_FragCoord.xy - lightCenter;
+		source = lightCenter + halfLine * clamp(dot(fromCenter, halfLine) / max(dot(halfLine, halfLine), 0.0001), -1.0, 1.0);
+		vec2 offset = (gl_FragCoord.xy - source) / lightRadius;
+		distanceSq = dot(offset, offset);
+	} else {
+		distanceSq = dot(localPos, localPos);
+	}
 	if (distanceSq >= 1.0) {
 		discard;
 	}
@@ -192,12 +205,12 @@ void main() {
 	// Soft shadow from the terrain between this pixel and the light.
 	float cell = rteCacheMode ? rteCacheCell : 1.0;
 	vec2 fromWorld = rteScreenOrigin + gl_FragCoord.xy * cell;
-	vec2 toWorld = rteScreenOrigin + lightCenter * cell;
+	vec2 toWorld = rteScreenOrigin + source * cell;
 	float transmittance = rteShadowFieldOn ? TerrainShadowSoft(fromWorld, toWorld) : TerrainShadowMarch(fromWorld, toWorld);
 
 	if (rteCacheMode) {
 		vec3 arriving = lightColor.rgb * falloff * transmittance;
-		vec3 toLight = normalize(vec3((lightCenter - gl_FragCoord.xy) * cell, lightRadius * 0.25));
+		vec3 toLight = normalize(vec3((source - gl_FragCoord.xy) * cell, lightRadius * 0.25));
 		FragColor = vec4(arriving, 0.0);
 		DirectionOut = vec4(toLight.xy * dot(arriving, vec3(0.2126, 0.7152, 0.0722)), 0.0, 0.0);
 		return;
@@ -205,9 +218,15 @@ void main() {
 
 	if (rteUnitShadows > 0.0) {
 		bool fromSolid = !rteBeamMode && texture(rteSurface, gl_FragCoord.xy / rteScreenSize).b > 0.5;
-		transmittance *= mix(1.0, ObjectShadow(gl_FragCoord.xy, lightCenter, fromSolid), rteUnitShadows);
+		transmittance *= mix(1.0, ObjectShadow(gl_FragCoord.xy, source, fromSolid), rteUnitShadows);
 	}
 
+	if (rteBeamMode && lineLight) {
+		// A glow in the air round the line, strongest close in: what makes a blade look hot against an empty sky.
+		float closeIn = 1.0 - sqrt(distanceSq);
+		FragColor = vec4(lightColor.rgb * (falloff * 0.06 + closeIn * closeIn * closeIn * closeIn * 0.22) * transmittance, 1.0);
+		return;
+	}
 	if (rteBeamMode) {
 		// A faint haze along the beam, brightest near the lamp.
 		FragColor = vec4(lightColor.rgb * vec3(1.0, 0.92, 0.78) * falloff * transmittance * 0.035, 1.0);
@@ -221,7 +240,7 @@ void main() {
 	if (normalSample.a > 0.25) {
 		vec2 normalXY = normalSample.xy * 2.0 - 1.0;
 		vec3 normal = vec3(normalXY, sqrt(max(1.0 - dot(normalXY, normalXY), 0.0)));
-		vec3 toLight = normalize(vec3(lightCenter - gl_FragCoord.xy, lightRadius * 0.25));
+		vec3 toLight = normalize(vec3(source - gl_FragCoord.xy, lightRadius * 0.25));
 		shading = mix(1.0, clamp(dot(normal, toLight) / max(toLight.z, 0.05), 0.0, 2.5), rteEdgeLighting);
 		// Shiny surfaces throw the light back at the viewer where it strikes them squarely: a hot spot near the light, and glints on edges and relief turned towards it.
 		// The glossier the surface the tighter the highlight, and metal throws back more of the light.
