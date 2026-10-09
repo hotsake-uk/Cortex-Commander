@@ -267,6 +267,31 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
+	/// Gives a unit just bought a post in a place it defends, as a defending team's are given theirs (a mode's guards, by settings made for
+	/// them).
+	void MakeDefender(Actor* unit, const BattleSettings& settings) { DefendPlace(unit, settings); }
+
+	/// Moves the place a team's defenders defend (a mode's guards going after their flag), each given a post in the new one: right at it with
+	/// atIt (to pick up what lies there), else somewhere on the ground inside their radius.
+	void RecentreDefenders(int team, const Vector& centre, bool atIt) {
+		const bool wraps = g_SceneMan.SceneWrapsX();
+		for (auto& [id, defender]: s_BattleDefenders) {
+			if (defender.Team != team || g_SceneMan.ShortestDistance(defender.Center, centre, wraps).MagnitudeIsLessThan(1.0F)) {
+				continue;
+			}
+			defender.Center = centre;
+			defender.IdleSince = -1;
+			if (atIt) {
+				defender.Post = centre;
+			} else {
+				Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * defender.Radius * 0.6F, 0.0F);
+				g_SceneMan.WrapPosition(around);
+				std::vector<Vector> spots = StandingSpots(around, 1);
+				defender.Post = spots.empty() ? centre : spots.front();
+			}
+		}
+	}
+
 	/// Makes a craft take no harm: no wound hurts it and nothing breaks it apart or knocks a part off it, and UpdateBattleCraft keeps it whole
 	/// and takes it away once it has delivered and left.
 	void KeepCraftWhole(ACraft* ship) {
@@ -371,6 +396,7 @@ namespace SandboxDetail {
 	/// stopped. With the AI paused, nothing is sent and the clocks are held back, so the waves don't all come at once after.
 	void UpdateBattle(bool aiPaused) {
 		UpdateBattleCraft();
+		UpdateBattleMode(aiPaused);
 		long long now = g_TimerMan.GetSimUpdateCount();
 		if (aiPaused) {
 			for (BattleTeam& team: s_BattleTeams) {
@@ -466,6 +492,10 @@ namespace SandboxDetail {
 						DefendPlace(unit, settings);
 					}
 				}
+				if (!wave.empty() && s_ModeRun.Running) {
+					// (A mode's own jobs for them: capture the flag's guards and flag runners.)
+					ModeUnitsMade(side, wave);
+				}
 				return wave;
 			};
 			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
@@ -526,6 +556,10 @@ namespace SandboxDetail {
 		}
 		const int side = stroke.Team;
 		const bool oneTeam = side >= 0 && side < c_Sides;
+		if (stroke.Kind == Tool::BattleModePoint || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
+			ApplyBattleMode(stroke);
+			return;
+		}
 		if (IsBattleTool(stroke.Kind)) {
 			// From a script's SandboxDo: the window sends the whole settings instead.
 			if (oneTeam) {
@@ -546,7 +580,8 @@ namespace SandboxDetail {
 			return;
 		}
 		if (oneTeam) {
-			s_BattleTeams[side].Settings = stroke.Battle;
+			// (While a mode's game is on, the card is only where its units come from: the rest is the mode's.)
+			s_BattleTeams[side].Settings = s_ModeRun.Running ? ModeTeamSettings(side, stroke.Battle) : stroke.Battle;
 		}
 		switch (stroke.Count) {
 			case BattleStartTeam:
@@ -560,6 +595,9 @@ namespace SandboxDetail {
 				}
 				break;
 			case BattleStartAll:
+				// (The cards' battle, not a mode's.)
+				s_ModeRun.Running = false;
+				s_ModeRun.Over = false;
 				StartAllTeams();
 				break;
 			case BattleStopAll:
@@ -611,45 +649,46 @@ namespace SandboxDetail {
 		s_BattleCraft.clear();
 		s_ScriptAnyFaction = false;
 		s_ScriptFavourites = false;
+		ForgetBattleMode();
+	}
+
+	/// The card's factions: a list to tick, none ticked for any faction.
+	bool FactionPicker(BattleSettings& setup) {
+		bool changed = false;
+		std::string preview = "Any faction";
+		if (setup.Factions.size() == 1) {
+			auto known = std::find(s_FactionModules.begin(), s_FactionModules.end(), setup.Factions.front());
+			preview = known != s_FactionModules.end() && static_cast<size_t>(known - s_FactionModules.begin()) < s_FactionNames.size() ? s_FactionNames[known - s_FactionModules.begin()] : std::string("1 faction");
+		} else if (setup.Factions.size() > 1) {
+			preview = std::to_string(setup.Factions.size()) + " factions";
+		}
+		if (ImGui::BeginCombo("Factions", preview.c_str(), ImGuiComboFlags_HeightLarge)) {
+			bool any = setup.Factions.empty();
+			if (ToolUI::Checkbox("Any faction", &any) && any) {
+				setup.Factions.clear();
+				changed = true;
+			}
+			for (size_t i = 0; i < s_FactionModules.size() && i < s_FactionNames.size(); ++i) {
+				auto at = std::find(setup.Factions.begin(), setup.Factions.end(), s_FactionModules[i]);
+				bool ticked = at != setup.Factions.end();
+				ImGui::PushID(static_cast<int>(i));
+				if (ToolUI::Checkbox(s_FactionNames[i].c_str(), &ticked)) {
+					if (ticked) {
+						setup.Factions.push_back(s_FactionModules[i]);
+					} else {
+						setup.Factions.erase(at);
+					}
+					changed = true;
+				}
+				ImGui::PopID();
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::SetItemTooltip("The factions this team's units come from. None ticked: any faction.");
+		return changed;
 	}
 
 	namespace {
-		/// The card's factions: a list to tick, none ticked for any faction.
-		bool FactionPicker(BattleSettings& setup) {
-			bool changed = false;
-			std::string preview = "Any faction";
-			if (setup.Factions.size() == 1) {
-				auto known = std::find(s_FactionModules.begin(), s_FactionModules.end(), setup.Factions.front());
-				preview = known != s_FactionModules.end() && static_cast<size_t>(known - s_FactionModules.begin()) < s_FactionNames.size() ? s_FactionNames[known - s_FactionModules.begin()] : std::string("1 faction");
-			} else if (setup.Factions.size() > 1) {
-				preview = std::to_string(setup.Factions.size()) + " factions";
-			}
-			if (ImGui::BeginCombo("Factions", preview.c_str(), ImGuiComboFlags_HeightLarge)) {
-				bool any = setup.Factions.empty();
-				if (ToolUI::Checkbox("Any faction", &any) && any) {
-					setup.Factions.clear();
-					changed = true;
-				}
-				for (size_t i = 0; i < s_FactionModules.size() && i < s_FactionNames.size(); ++i) {
-					auto at = std::find(setup.Factions.begin(), setup.Factions.end(), s_FactionModules[i]);
-					bool ticked = at != setup.Factions.end();
-					ImGui::PushID(static_cast<int>(i));
-					if (ToolUI::Checkbox(s_FactionNames[i].c_str(), &ticked)) {
-						if (ticked) {
-							setup.Factions.push_back(s_FactionModules[i]);
-						} else {
-							setup.Factions.erase(at);
-						}
-						changed = true;
-					}
-					ImGui::PopID();
-				}
-				ImGui::EndCombo();
-			}
-			ImGui::SetItemTooltip("The factions this team's units come from. None ticked: any faction.");
-			return changed;
-		}
-
 		/// One team's card on the Battle tab.
 		void BattleCard(int side) {
 			BattleSettings& setup = s_BattleSetup[side];
@@ -804,6 +843,11 @@ namespace SandboxDetail {
 
 	/// The Battle tab: a card for each team, and the battle started and stopped.
 	void BattleTab() {
+		if (BattleModeChooser()) {
+			// A mode: its own panel instead of the cards.
+			BattleModeTab();
+			return;
+		}
 		ImGui::TextWrapped("Teams that keep sending in ships of units, until you stop them. Set each team up on its card and tick Active, then start the battle. A team can be started or stopped on its own while it runs.");
 		bool anyRunning = std::any_of(s_BattleTeams.begin(), s_BattleTeams.end(), [](const BattleTeam& team) { return team.Running; });
 		float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
@@ -862,6 +906,10 @@ namespace SandboxDetail {
 	void DrawBattleMarks() {
 		Tool kind = CurrentTool().Kind;
 		if (!(Sandbox::IsOpen() && s_CurrentTab == "Battle") && !IsBattleTool(kind)) {
+			return;
+		}
+		if (s_ModeSetup.Mode != BattleMode::Custom) {
+			// (A mode draws its own: DrawBattleMode.)
 			return;
 		}
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();

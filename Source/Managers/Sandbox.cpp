@@ -580,6 +580,10 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !Colony::Buildings().empty() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		DrawColony();
 	}
+	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		// A Battle Director mode's game: its flags and score, with the window open or not.
+		DrawBattleMode();
+	}
 	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
 	// working. Only the window itself is left out.
 	bool hiddenButAbove = !s_Open && IsLookingAround();

@@ -985,6 +985,7 @@ namespace SandboxDetail {
 			case Tool::BattleDefendPoint:
 			case Tool::BattleDropLine:
 			case Tool::BattleSpawnZone:
+			case Tool::BattleModePoint:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -1265,6 +1266,16 @@ namespace SandboxDetail {
 			g_SceneMan.WrapPosition(setup.DefendPos);
 			setup.HasDefendPos = true;
 			SendBattleSettings(s_BattleEditTeam);
+			return;
+		}
+		if (kind == Tool::BattleModePoint) {
+			// The team being set up in the Battle tab's mode panel has its base (capture the flag: its flag) here from now on.
+			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
+			Vector at = position;
+			g_SceneMan.WrapPosition(at);
+			s_ModeSetup.Points[team] = at;
+			s_ModeSetup.HasPoint[team] = true;
+			SendBattleMode();
 			return;
 		}
 		if (kind == Tool::BattleSpawnZone) {
