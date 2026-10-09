@@ -117,9 +117,9 @@ namespace SandboxDetail {
 	}
 
 	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
-	/// @param square A square of radius either way of the center rather than a circle (the brush shape, s_SquareBrush).
+	/// @param shape A circle, a square of radius either way of the center, or a soft spray over the circle (the brush shape, s_BrushShape).
 	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, bool square, float goldShare) {
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -160,7 +160,12 @@ namespace SandboxDetail {
 		bool changed = false;
 		for (int dy = -radius; dy <= radius; ++dy) {
 			for (int dx = -radius; dx <= radius; ++dx) {
-				if (!square && dx * dx + dy * dy > radius * radius) {
+				int distanceSquared = dx * dx + dy * dy;
+				if (shape != BrushShape::Square && distanceSquared > radius * radius) {
+					continue;
+				}
+				// The spray: a few of the pixels each stroke, more towards the middle, so holding it builds up softly.
+				if (shape == BrushShape::Spray && Random01() > 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)))) {
 					continue;
 				}
 				int x = centerX + dx;
@@ -1330,34 +1335,34 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::Dig:
-				PaintTerrain(at, stroke.Radius, nullptr, stroke.Square);
+				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape);
 				break;
 			case Tool::Earth:
-				PaintTerrain(at, stroke.Radius, "Earth", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape);
 				break;
 			case Tool::Sand:
-				PaintTerrain(at, stroke.Radius, "Sand", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Sand", stroke.Shape);
 				break;
 			case Tool::Ice:
-				PaintTerrain(at, stroke.Radius, "Ice", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Ice", stroke.Shape);
 				break;
 			case Tool::Grass:
-				PaintTerrain(at, stroke.Radius, "Grass", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Grass", stroke.Shape);
 				break;
 			case Tool::Wood:
-				PaintTerrain(at, stroke.Radius, "Wood", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape);
 				break;
 			case Tool::Concrete:
-				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);
 				break;
 			case Tool::Stone:
-				PaintTerrain(at, stroke.Radius, "Stone", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Stone", stroke.Shape);
 				break;
 			case Tool::DenseEarth:
-				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Square);
+				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Shape);
 				break;
 			case Tool::GoldEarth:
-				PaintTerrain(at, stroke.Radius, "Earth", stroke.Square, c_GoldEarthShare);
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, c_GoldEarthShare);
 				break;
 			case Tool::Plants:
 			case Tool::Cacti:
@@ -1365,7 +1370,7 @@ namespace SandboxDetail {
 				break;
 			case Tool::TerrainOther:
 				if (!stroke.Material.empty()) {
-					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Square);
+					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape);
 				}
 				break;
 			case Tool::Grenade:
@@ -1581,7 +1586,7 @@ namespace SandboxDetail {
 		} else if (kind == Tool::TerrainOther) {
 			stroke.Material = s_OtherTerrain;
 		}
-		stroke.Square = IsTerrainBrush(kind) && s_SquareBrush;
+		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);

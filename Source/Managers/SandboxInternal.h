@@ -304,7 +304,7 @@ namespace SandboxDetail {
 		return 0;
 	}
 
-	/// The Paint tab's terrain brushes: dig and the materials painted into the air, the ones the brush shape (s_SquareBrush) is for.
+	/// The Paint tab's terrain brushes: dig and the materials painted into the air, the ones the brush shape (s_BrushShape) is for.
 	constexpr bool IsTerrainBrush(Tool kind) {
 		switch (kind) {
 			case Tool::Dig:
@@ -326,6 +326,13 @@ namespace SandboxDetail {
 
 	/// The plant brushes: each puts the game's own plant pictures on the ground along the stroke, s_PlantSpacing apart.
 	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti; }
+
+	/// How the terrain brushes lay down what they paint or dig (Paint > Terrain).
+	enum class BrushShape {
+		Circle,
+		Square, //!< A square of the brush size either way of the point.
+		Spray //!< A soft spray: scattered pixels over the circle, thickest in the middle, building up while held.
+	};
 
 	/// How much of what the "Earth with gold" brush paints is gold.
 	constexpr float c_GoldEarthShare = 0.06F;
@@ -578,7 +585,7 @@ namespace SandboxDetail {
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
-		bool Square = false; //!< Terrain brushes: a square of the brush size either way of the point rather than a circle (s_SquareBrush).
+		BrushShape Shape = BrushShape::Circle; //!< Terrain brushes: how they lay it down (s_BrushShape).
 	};
 
 	struct CraftChoice {
@@ -740,7 +747,7 @@ namespace SandboxDetail {
 	inline int s_Radius = 6;
 	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
-	inline bool s_SquareBrush = false; //!< The terrain brushes paint and dig squares rather than circles (Paint > Terrain).
+	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
 	inline int s_BrainChoice = 0;
@@ -1607,7 +1614,7 @@ namespace SandboxDetail {
 	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, bool square = false, float goldShare = 0.0F);
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
 	void PlacePlant(const Vector& at, int radius, Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
