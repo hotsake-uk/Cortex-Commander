@@ -353,6 +353,12 @@ namespace SandboxDetail {
 				continue;
 			}
 			team.NextWave = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(settings.EverySeconds, 1)) * UpdatesPerSecond()));
+			// Under a unit limit, only as many as top it up (counting those still riding in): none at all when it's reached, till the next
+			// burst.
+			int room = settings.UnitLimit > 0 ? settings.UnitLimit - Sandbox::CountUnits(side) : std::numeric_limits<int>::max();
+			if (room <= 0) {
+				continue;
+			}
 			// A few dozen of the units it may buy, picked afresh each burst, are priced and bought from, not the whole list (each pricing
 			// makes the unit and its loadout).
 			std::vector<const Preset*> choices = BattleUnitPool(settings);
@@ -379,13 +385,14 @@ namespace SandboxDetail {
 			}
 			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
 			const int ships = std::clamp(settings.ShipsPerBurst, 1, 10);
-			for (int ship = 0; ship < ships; ++ship) {
+			for (int ship = 0; ship < ships && room > 0; ++ship) {
+				const int shipSize = std::min(waveSize, room);
 				float left = settings.EndlessMoney ? std::numeric_limits<float>::max() : static_cast<float>(settings.Budget) - team.Spent;
 				// (180 a unit: the 900 a wave of five always had.)
-				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(waveSize), cheapest));
+				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(shipSize), cheapest));
 				std::vector<Actor*> wave;
 				float waveCost = 0.0F;
-				for (int attempt = 0; attempt < waveSize * 3 && static_cast<int>(wave.size()) < waveSize; ++attempt) {
+				for (int attempt = 0; attempt < shipSize * 3 && static_cast<int>(wave.size()) < shipSize; ++attempt) {
 					std::vector<const Preset*> affordable;
 					for (const auto& [choice, cost]: priced) {
 						if (waveCost + cost <= waveBudget) {
@@ -421,6 +428,7 @@ namespace SandboxDetail {
 				if (paid > 0.0F) {
 					team.Sent += count;
 					team.Spent += paid;
+					room -= count;
 				}
 			}
 		}
@@ -623,6 +631,8 @@ namespace SandboxDetail {
 				ImGui::SetItemTooltip("What the team may spend in all. Once it can't afford another unit it stops sending ships; starting it again gives it its budget back.");
 			}
 			changed |= ImGui::SliderInt("Units per ship", &setup.WaveSize, 1, 10);
+			changed |= ImGui::SliderInt("Unit limit", &setup.UnitLimit, 0, 200, setup.UnitLimit > 0 ? "%d units" : "no limit");
+			ImGui::SetItemTooltip("Most units the team has in at once, counting those still in its ships. At the limit no ships come; below it, only enough units to top it up. 0: no limit.");
 
 			ImGui::SeparatorText("Ships");
 			changed |= ImGui::Combo("Craft", &setup.Craft, "Dropship\0Rocket\0");

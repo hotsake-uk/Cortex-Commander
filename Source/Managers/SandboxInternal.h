@@ -380,6 +380,7 @@ namespace SandboxDetail {
 		bool EndlessMoney = false; //!< Budget is ignored: it never runs out.
 		int Budget = 5000; //!< What it may spend in all, in oz.
 		int WaveSize = 5; //!< Units in each ship.
+		int UnitLimit = 0; //!< Most units it has in at once, counting those still in its ships: none sent past it, fewer to top it up. 0 for no limit.
 		int Craft = 0; //!< Index into c_Crafts.
 		bool DropOnLine = false; //!< Ships come in over the drop line, not anywhere across the scene.
 		bool HasLine = false;
