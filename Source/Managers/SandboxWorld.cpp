@@ -984,6 +984,7 @@ namespace SandboxDetail {
 			case Tool::BattleTeam:
 			case Tool::BattleDefendPoint:
 			case Tool::BattleDropLine:
+			case Tool::BattleSpawnZone:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -1263,6 +1264,11 @@ namespace SandboxDetail {
 			setup.DefendPos = position;
 			g_SceneMan.WrapPosition(setup.DefendPos);
 			setup.HasDefendPos = true;
+			SendBattleSettings(s_BattleEditTeam);
+			return;
+		}
+		if (kind == Tool::BattleSpawnZone) {
+			ToggleSpawnZone(s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position);
 			SendBattleSettings(s_BattleEditTeam);
 			return;
 		}
