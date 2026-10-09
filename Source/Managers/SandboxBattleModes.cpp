@@ -95,6 +95,7 @@ namespace SandboxDetail {
 			team.Factions = card.Factions;
 			team.FavouritesOnly = card.FavouritesOnly;
 			team.Crabs = card.Crabs;
+			team.JetpackOnly = card.JetpackOnly;
 			team.Craft = card.Craft;
 			team.Active = TeamIn(settings, side);
 			team.Style = BattleStyle::Attack;

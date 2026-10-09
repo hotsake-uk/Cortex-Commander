@@ -970,6 +970,8 @@ void Sandbox::DrawGUI() {
 					}
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {
+					ToolUI::Checkbox("Jetpacks only", &s_JetpackOnly);
+					ImGui::SetItemTooltip("Only units with a jetpack: those without one aren't listed, or picked for random drops.");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");
