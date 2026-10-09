@@ -432,11 +432,13 @@ namespace SandboxDetail {
 			}
 			// Buys one ship's or one zone's units, as many as fit what's left of the budget, up to a number; none when nothing more can be
 			// afforded, which leaves the team broke.
-			auto buyWave = [&](int size) {
+			// A ship's wave spends at most 180 a unit (the 900 a wave of five always had), unless money is no object; a spawn zone's may spend
+			// whatever is left, so it puts down as many as it was asked for while the money lasts (held to 180 a unit, it was asked for three
+			// and put down one or two, and with dear units often none at all past the cheapest).
+			auto buyWave = [&](int size, bool wholeBudget) {
 				std::vector<Actor*> wave;
 				float left = settings.EndlessMoney ? std::numeric_limits<float>::max() : static_cast<float>(settings.Budget) - team.Spent;
-				// (180 a unit: the 900 a wave of five always had.)
-				float waveBudget = std::min(left, std::max(180.0F * static_cast<float>(size), cheapest));
+				float waveBudget = wholeBudget || settings.EndlessMoney ? left : std::min(left, std::max(180.0F * static_cast<float>(size), cheapest));
 				float waveCost = 0.0F;
 				for (int attempt = 0; attempt < size * 3 && static_cast<int>(wave.size()) < size; ++attempt) {
 					std::vector<const Preset*> affordable;
@@ -472,7 +474,7 @@ namespace SandboxDetail {
 			if (shipsDue) {
 				const int ships = std::clamp(settings.ShipsPerBurst, 1, 10);
 				for (int ship = 0; ship < ships && room > 0 && !team.Broke; ++ship) {
-					std::vector<Actor*> wave = buyWave(std::min(waveSize, room));
+					std::vector<Actor*> wave = buyWave(std::min(waveSize, room), false);
 					if (wave.empty()) {
 						break;
 					}
@@ -497,7 +499,7 @@ namespace SandboxDetail {
 					if (room <= 0 || team.Broke) {
 						break;
 					}
-					std::vector<Actor*> wave = buyWave(std::min(perZone, room));
+					std::vector<Actor*> wave = buyWave(std::min(perZone, room), true);
 					if (wave.empty()) {
 						break;
 					}
@@ -506,7 +508,13 @@ namespace SandboxDetail {
 					for (size_t i = 0; i < wave.size(); ++i) {
 						Actor* unit = wave[i];
 						team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-						unit->SetPos(ZoneSpot(zone, static_cast<int>(i), static_cast<int>(wave.size())));
+						// (Lifted out of the ground if the spot is in it, so a zone put down on the ground doesn't bury its units to the waist.)
+						Vector spot = ZoneSpot(zone, static_cast<int>(i), static_cast<int>(wave.size()));
+						int up = 0;
+						while (up < 200 && g_SceneMan.GetTerrMatter(spot.GetFloorIntX(), spot.GetFloorIntY() - up) != g_MaterialAir) {
+							++up;
+						}
+						unit->SetPos(spot - Vector(0.0F, static_cast<float>(up) + unit->GetHeight() * 0.5F));
 						g_MovableMan.AddActor(unit);
 					}
 					team.Sent += static_cast<int>(wave.size());
