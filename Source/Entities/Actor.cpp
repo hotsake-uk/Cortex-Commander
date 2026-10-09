@@ -1739,8 +1739,13 @@ void Actor::UpdateHeadlamp() {
 		m_HeadlampFade = 0.0F;
 		return;
 	}
+	// How bright the lamp is drawn: full, except at night by the clock, where it comes up with the dark as it used to.
+	float strength = 1.0F;
 	if (lighting.HeadlampsByDay) {
 		m_HeadlampLit = true;
+	} else if (!lighting.HeadlampsOnlyInDark) {
+		strength = GetNightAmount();
+		m_HeadlampLit = strength > 0.05F;
 	} else {
 		// On when it gets darker than the threshold, off only once it's a little lighter than it: at the edge of a lamp's light or a cave mouth,
 		// or with the light wavering (a fire, a flash), the lamp stays as it is instead of flickering.
@@ -1771,8 +1776,8 @@ void Actor::UpdateHeadlamp() {
 			static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
 			color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
 		}
-		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade, LightSource::Headlamps);
-		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade, LightSource::Headlamps);
+		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
+		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
 	}
 }
 

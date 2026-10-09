@@ -304,6 +304,7 @@ namespace RTE {
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.
+		bool HeadlampsOnlyInDark = true; //!< Headlamps follow the light where each unit stands: on in the dark (at night, in caves, under roofs), off in the light, by HeadlampDarkThreshold. Off: every headlamp comes on at night by the clock, wherever its unit is, as before.
 		float HeadlampDarkThreshold = 0.5F; //!< How dark it must be around a unit for its headlamp to come on, as the light there (sky, lamps, fires; 1 is open daylight): on below this, off again a little above it. So a lamp comes on in a cave by day and goes off next to a lit lamp at night.
 		float BackgroundBlur = 0.6F; //!< How much the far background layers are softened, for depth. 0 leaves them sharp.
 		bool EventLooks = true; //!< The grade answers what happens: it flashes with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire; scripts can pulse it and crossfade between looks. Off: the grade stays as set, as before.

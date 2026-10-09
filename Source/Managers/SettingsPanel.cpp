@@ -141,7 +141,7 @@ namespace {
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("A preset holds every setting in this panel: the look, the time and weather, water, fire, and how the ground falls.\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SetItemTooltip("A preset holds every setting in this panel, from the look, the time and weather, water, fire and how the ground falls to the AI, the HUD, the overlays and the game speed.\nThey are files in Userdata/Presets, so they can be copied and shared.");
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
 		ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName));
 		ImGui::SameLine();
@@ -402,6 +402,10 @@ void DebugMan::SettingsGUI() {
 		Check("Headlamps in the dark", &settings.Headlamps);
 		Check("Headlamps by day as well", &settings.HeadlampsByDay);
 		if (!settings.HeadlampsByDay) {
+			Check("Only where it's dark around them", &settings.HeadlampsOnlyInDark);
+			Tip("Each unit's headlamp follows the light where it stands: on at night, in caves and under roofs, off in daylight and next to a lit lamp or a fire. Off: every headlamp comes on at night by the clock, wherever its unit is, as before.");
+		}
+		if (!settings.HeadlampsByDay && settings.HeadlampsOnlyInDark) {
 			Slider("How dark before they come on", &settings.HeadlampDarkThreshold, 0.05F, 0.95F);
 			Tip("The light around a unit (sky, lamps, fires; 1 is open daylight) below which its headlamp comes on. It goes off again a little above it, so units at the edge of a light don't flicker.");
 		}
@@ -686,52 +690,8 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal speed")) {
 			g_TimerMan.SetTimeScale(1.0F);
 		}
-		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
-		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
-		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
-		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
-		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
-		{
-			float suppression = g_SettingsMan.AISuppression();
-			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
-				g_SettingsMan.SetAISuppression(suppression);
-			}
-			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
-		}
-		{
-			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
-			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
-				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
-			}
-			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
-		}
-		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
-		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
-		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
-		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
-		{
-			int paths = Actor::ShowAIPaths();
-			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
-				Actor::SetShowAIPaths(paths);
-			}
-			Tip("The dotted yellow line from a unit to where it's been told to go, with each node marked. Never: only the unit you're controlling shows its path. Selected: the units picked with the sandbox's command tool.");
-		}
-		{
-			int nav = g_SettingsMan.NavDebugOverlay();
-			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
-				g_SettingsMan.SetNavDebugOverlay(nav);
-			}
-			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs, pale green arcs for leaps. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
-		}
-		{
-			int team = g_SettingsMan.DebugTeam();
-			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
-				g_SettingsMan.SetDebugTeam(team);
-			}
-			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
-		}
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
@@ -784,6 +744,33 @@ void DebugMan::SettingsGUI() {
 				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
 			}
 		}
+	};
+
+	// How the AI behaves: what it notices, how fire and losses get to it, and how many chances it takes getting about.
+	auto aiBehaviour = [&]() {
+		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
+		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
+		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
+		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
+		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
+		{
+			float suppression = g_SettingsMan.AISuppression();
+			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAISuppression(suppression);
+			}
+			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
+		}
+		{
+			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
+			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
+			}
+			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
+		}
+		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
+		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
+		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
+		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
 	};
 
 	auto debug = [&]() {
@@ -848,6 +835,27 @@ void DebugMan::SettingsGUI() {
 
 	// What the AI is thinking, drawn over the game: each overlay keys off the units being inspected (Ctrl+I over a unit, units selected in the sandbox, the one you control).
 	auto aiDebug = [&]() {
+		{
+			int paths = Actor::ShowAIPaths();
+			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
+				Actor::SetShowAIPaths(paths);
+			}
+			Tip("The dotted yellow line from a unit to where it's been told to go, with each node marked. Never: only the unit you're controlling shows its path. Selected: the units picked with the sandbox's command tool.");
+		}
+		{
+			int nav = g_SettingsMan.NavDebugOverlay();
+			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
+				g_SettingsMan.SetNavDebugOverlay(nav);
+			}
+			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs, pale green arcs for leaps. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
+		}
+		{
+			int team = g_SettingsMan.DebugTeam();
+			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
+				g_SettingsMan.SetDebugTeam(team);
+			}
+			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
+		}
 		{
 			int inspector = g_SettingsMan.UnitInspector();
 			if (Combo("Unit inspector", &inspector, "Off\0Inspected units\0Every unit in view\0")) {
@@ -925,6 +933,7 @@ void DebugMan::SettingsGUI() {
 	    {"Falling ground", fallingGround},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
+	    {"AI behaviour", aiBehaviour},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
 	    {"Render debug", renderDebug},

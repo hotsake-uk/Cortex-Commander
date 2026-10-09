@@ -45,7 +45,7 @@ namespace RTE {
 		/// Overwrites the settings file to save changes made from within the game.
 		void UpdateSettingsFile() const;
 
-		/// Saves every setting that can be tuned while the game runs (the look, time and weather, water, fire, falling ground) as a named preset, a file in Userdata/Presets.
+		/// Saves every setting in the settings panel (the look, time and weather, water, fire, falling ground, the AI, the HUD, the overlays) as a named preset, a file in Userdata/Presets.
 		/// @param name The name. Characters that can't be in a file's name are dropped.
 		/// @return The name it was saved under, or nothing if it couldn't be.
 		std::string SavePreset(const std::string& name) const;
@@ -61,8 +61,9 @@ namespace RTE {
 		/// Gets the names of the presets there are, in order.
 		std::vector<std::string> ListPresets() const;
 
-		/// Writes the settings that can be tuned while the game runs: what a preset holds, and part of the settings file.
-		void SaveTunables(Writer& writer, const struct LightingSettings& lighting) const;
+		/// Writes every setting in the settings panel: what a preset holds, and part of the settings file.
+		/// @param forPreset Whether it's for a preset, which also holds what is only for the moment (game speed, the AI paused, the debug view, frozen simulation...) and says which speech is on as well as off.
+		void SaveTunables(Writer& writer, const struct LightingSettings& lighting, bool forPreset) const;
 #pragma endregion
 
 #pragma region Engine Settings
