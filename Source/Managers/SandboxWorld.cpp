@@ -1416,7 +1416,10 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::Fire:
+				// It sets alight what it's painted over: the ground that burns, and the units and fuel barrels there (it lit only the ground, so
+				// oil went up and the people standing in it didn't).
 				TerrainFire::QueueIgniteArea(at, radius);
+				ActorFire::QueueIgniteArea(at, radius);
 				// Something to see even over rock, which doesn't burn. (Only to see: a stroke of the brush is a dozen of these a second, and as
 				// they were they hit and hurt units the fire wasn't painted on. What burns is the fire itself.)
 				if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {

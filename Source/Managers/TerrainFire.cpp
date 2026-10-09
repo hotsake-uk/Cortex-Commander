@@ -47,10 +47,11 @@ namespace {
 	constexpr FuelProperties c_Fuels[] = {
 	    {0, 0, 0.0F, false}, // None
 	    {25, 50, 0.25F, false}, // Grass
-	    {40, 90, 0.07F, true}, // Wood
+	    {40, 90, 0.12F, true}, // Wood (it was 0.07: a wood fire crept a pixel a second along the surface and often went out)
 	    {20, 40, 0.5F, false}, // Oil
 	};
 
+	constexpr float c_BurnOutCatch = 0.3F; //!< Chance a pixel burning out sets each flammable neighbour alight: the heat it leaves eats into what was behind it.
 	constexpr int c_TickInterval = 3; //!< Sim updates per fire tick (about 20 per second).
 	constexpr size_t c_MaxBurning = 6000;
 
@@ -77,7 +78,7 @@ namespace {
 	std::array<bool, 256> s_DousingTable{};
 	int s_WaterColor = -1; //!< Palette index water is drawn with.
 	std::mutex s_QueueMutex;
-	std::unordered_map<std::string, bool> s_FireSourceCache;
+	std::unordered_map<std::string, unsigned char> s_FireSourceCache; //!< What each preset name says it is (IsFireSource).
 	std::mutex s_FireSourceMutex;
 
 	const void* s_Scene = nullptr;
@@ -240,15 +241,37 @@ bool TerrainFire::IsFireSource(const MovableObject* object) {
 	if (!object) {
 		return false;
 	}
+	// One rule for what is fire, for the ground and for units alike (ActorFire::OnHit asks this too): burning fuel, napalm, incendiaries and
+	// the flames of fire itself. Not what only looks or is named like fire: smoke, an explosion's puff, a jetpack's or rocket's flame, a
+	// muzzle flash, a laser, a glow or a light, or the flames licking off a burning unit (it spreads its own fire). These lit grass but not
+	// people, or the other way round, as each kept its own list.
+	enum Kind : unsigned char { NotFire, Fire, FireEvenSharp };
+	Kind kind = NotFire;
 	const std::string& name = object->GetPresetName();
-	std::scoped_lock lock(s_FireSourceMutex);
-	auto found = s_FireSourceCache.find(name);
-	if (found != s_FireSourceCache.end()) {
-		return found->second;
+	{
+		std::scoped_lock lock(s_FireSourceMutex);
+		auto found = s_FireSourceCache.find(name);
+		if (found != s_FireSourceCache.end()) {
+			kind = static_cast<Kind>(found->second);
+		} else {
+			bool named = Contains(name, "Fire") || Contains(name, "Flame") || Contains(name, "Napalm") || Contains(name, "Burn") || Contains(name, "Incendi") || Contains(name, "Ember") || Contains(name, "Molotov");
+			bool harmless = Contains(name, "Smoke") || Contains(name, "Puff") || Contains(name, "Laser") || Contains(name, "Jet") || Contains(name, "Sweetener") || Contains(name, "Muzzle") ||
+			                Contains(name, "Body Flame") || Contains(name, "Glow") || Contains(name, "Light") || Contains(name, "Trace") || Contains(name, "Rocket");
+			if (named && !harmless) {
+				kind = (Contains(name, "Napalm") || Contains(name, "Incendi") || Contains(name, "Flame")) ? FireEvenSharp : Fire;
+			}
+			s_FireSourceCache.emplace(name, static_cast<unsigned char>(kind));
+		}
 	}
-	bool source = Contains(name, "Fire") || Contains(name, "Flame") || Contains(name, "Napalm") || Contains(name, "Burn") || Contains(name, "Incendi") || Contains(name, "Ember");
-	s_FireSourceCache.emplace(name, source);
-	return source;
+	// A fast, sharp thing is a shot (a bullet), whatever it's called, unless it's a flame or an incendiary round.
+	if (object->GetSharpness() > 5.0F) {
+		if (kind == FireEvenSharp) {
+			return true;
+		}
+		const Material* material = object->GetMaterial();
+		return material && Contains(material->GetPresetName(), "Incendi");
+	}
+	return kind != NotFire;
 }
 
 bool TerrainFire::IsBurningNear(const Vector& position, int radius) {
@@ -484,7 +507,7 @@ void TerrainFire::Update() {
 	int maxX = -1;
 	int maxY = -1;
 	for (int key: burntOut) {
-		const BurningPixel& pixel = s_Burning[key];
+		const BurningPixel pixel = s_Burning[key];
 		unsigned char burntMaterial = static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y));
 		bool ash = (s_FuelTable[burntMaterial] != Fuel::None ? s_FuelProps[burntMaterial].LeavesAsh : c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh) && s_AshMaterial > 0;
 		terrain->SetMaterialPixel(pixel.X, pixel.Y, ash ? s_AshMaterial : g_MaterialAir);
@@ -494,6 +517,13 @@ void TerrainFire::Update() {
 		maxX = std::max(maxX, pixel.X);
 		maxY = std::max(maxY, pixel.Y);
 		s_Burning.erase(key);
+		// Fire needs air (IsExposed), so a block of wood only ever burnt its outer skin: the pixels behind came into the air as the skin burnt out,
+		// but by then nothing beside them was burning. The heat a pixel leaves as it goes sets what's behind it going, so wood burns in and through.
+		for (const auto& neighbour: neighbours) {
+			if (Random01(s_Random) < c_BurnOutCatch * damping) {
+				spreadTo.emplace_back(pixel.X + neighbour[0], pixel.Y + neighbour[1]);
+			}
+		}
 	}
 	if (maxX >= 0) {
 		// Let the pathfinder know the terrain changed.
