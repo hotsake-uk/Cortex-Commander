@@ -95,7 +95,8 @@ namespace SandboxDetail {
 		/// The place, radius and chase distance a defender goes by: its team card's as they are now, so a change on the card reaches the
 		/// units already in (they kept what the card said when they were bought: chase distance lowered, they still chased as far as before).
 		void FollowCard(BattleDefender& defender) {
-			if (defender.Team < 0 || defender.Team >= c_Sides || !Defends(s_BattleTeams[defender.Team].Settings)) {
+			// (One a player told to defend goes by its own order's zone: CommandDefender.)
+			if (defender.Commanded || defender.Team < 0 || defender.Team >= c_Sides || !Defends(s_BattleTeams[defender.Team].Settings)) {
 				return;
 			}
 			const BattleSettings& settings = s_BattleTeams[defender.Team].Settings;
@@ -346,7 +347,7 @@ namespace SandboxDetail {
 	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius) {
 		const bool wraps = g_SceneMan.SceneWrapsX();
 		for (auto& [id, defender]: s_BattleDefenders) {
-			if (defender.Team != team || g_SceneMan.ShortestDistance(defender.Center, centre, wraps).MagnitudeIsLessThan(1.0F)) {
+			if (defender.Commanded || defender.Team != team || g_SceneMan.ShortestDistance(defender.Center, centre, wraps).MagnitudeIsLessThan(1.0F)) {
 				continue;
 			}
 			if (radius >= 0.0F) {
@@ -363,6 +364,67 @@ namespace SandboxDetail {
 				std::vector<Vector> spots = StandingSpots(around, 1);
 				defender.Post = spots.empty() ? centre : spots.front();
 			}
+		}
+	}
+
+	/// Makes a unit a player has told to defend a place (Defend at, defend where it stands, guard something) a defender of it as a Battle
+	/// Director team's are (UpdateBattleDefenders): it holds its post, goes after enemies that come within the zone's radius and chase
+	/// distance, and comes back after. The zone is the command row's as it is now. The unit is already on its way to its post (SendUnit),
+	/// which drops any defending it was doing before, so this comes after.
+	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post) {
+		if (!unit || dynamic_cast<const ACraft*>(unit)) {
+			return;
+		}
+		BattleDefender& defender = s_BattleDefenders[unit->GetUniqueID()];
+		defender = BattleDefender();
+		defender.Commanded = true;
+		defender.Team = unit->GetTeam();
+		defender.Center = centre;
+		defender.Radius = static_cast<float>(std::max(s_DefendRadius, 1));
+		defender.Chase = static_cast<float>(std::max(s_DefendChase, 0));
+		defender.Post = post;
+		defender.Made = g_TimerMan.GetSimUpdateCount();
+		defender.RoamRoll = Random01();
+		defender.Roams = defender.RoamRoll * 100.0F < static_cast<float>(s_DefendRoam);
+	}
+
+	/// Moves a commanded defender's zone along with what it guards (UpdateGuards): its middle and its post, the radius and chase kept.
+	void MoveCommandedZone(Actor* unit, const Vector& centre, const Vector& post) {
+		if (auto defender = unit ? s_BattleDefenders.find(unit->GetUniqueID()) : s_BattleDefenders.end(); defender != s_BattleDefenders.end() && defender->second.Commanded) {
+			defender->second.Center = centre;
+			defender->second.Post = post;
+			defender->second.IdleSince = -1;
+		}
+	}
+
+	/// A defend zone on the map, as the Battle Director's cards draw theirs: the radius in the colour, the chase distance past it faint.
+	void DrawDefendZone(ImDrawList* drawList, const Vector& centre, float radius, float chase, ImU32 color) {
+		const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+		const float pixel = ToolUI::Pixel();
+		const ImU32 faint = (color & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT);
+		const ImVec2 middle = ToScreen(centre);
+		drawList->AddCircle(middle, std::max(radius, 1.0F) / scale, color, 48, pixel * 1.5F);
+		if (chase > 0.0F) {
+			drawList->AddCircle(middle, (radius + chase) / scale, faint, 64, pixel);
+		}
+	}
+
+	/// The zones the selected units were told to defend, each drawn once however many hold it.
+	void DrawCommandedZones(ImDrawList* drawList) {
+		std::vector<const BattleDefender*> drawn;
+		const ImU32 amber = c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)];
+		for (const UnitRef& ref: s_Selected) {
+			const Actor* unit = GetRef(ref);
+			auto found = unit ? s_BattleDefenders.find(unit->GetUniqueID()) : s_BattleDefenders.end();
+			if (found == s_BattleDefenders.end() || !found->second.Commanded) {
+				continue;
+			}
+			const BattleDefender& zone = found->second;
+			if (std::any_of(drawn.begin(), drawn.end(), [&zone](const BattleDefender* other) { return other->Radius == zone.Radius && other->Chase == zone.Chase && g_SceneMan.ShortestDistance(other->Center, zone.Center, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F); })) {
+				continue;
+			}
+			drawn.push_back(&zone);
+			DrawDefendZone(drawList, zone.Center, zone.Radius, zone.Chase, amber);
 		}
 	}
 
@@ -431,6 +493,10 @@ namespace SandboxDetail {
 				float nearest = 0.0F;
 				for (Actor* other: fighters) {
 					if (other->GetTeam() == unit->GetTeam() || !g_SceneMan.ShortestDistance(defender.Center, other->GetPos(), wraps).MagnitudeIsLessThan(reach)) {
+						continue;
+					}
+					// (A player's defenders don't go after what their side can't see, in commander mode: RC-9.)
+					if (defender.Commanded && HiddenFromCommander(other)) {
 						continue;
 					}
 					float distance = g_SceneMan.ShortestDistance(unit->GetPos(), other->GetPos(), wraps).GetSqrMagnitude();

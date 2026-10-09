@@ -102,6 +102,7 @@ namespace SandboxDetail {
 			unit->SetPaceLimit(0.0F);
 			s_GuardPosts.erase(unit->GetUniqueID());
 			s_BattleDefenders.erase(unit->GetUniqueID());
+			ReleaseFromBattleMode(unit);
 			DropPlan(unit);
 		}
 		if (!attack) {
@@ -150,6 +151,7 @@ namespace SandboxDetail {
 				return "OrderHold";
 			case Order::Attack:
 			case Order::HuntBrains:
+			case Order::BattleObjective:
 				return "OrderAttack";
 			case Order::Patrol:
 				return "OrderPatrol";
@@ -166,6 +168,7 @@ namespace SandboxDetail {
 		s_MoveWatch.erase(unit->GetUniqueID());
 		s_GuardPosts.erase(unit->GetUniqueID());
 		s_BattleDefenders.erase(unit->GetUniqueID());
+		ReleaseFromBattleMode(unit);
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
 		unit->SetPaceLimit(0.0F);
@@ -207,6 +210,7 @@ namespace SandboxDetail {
 		s_MoveWatch.erase(actor->GetUniqueID());
 		s_GuardPosts.erase(actor->GetUniqueID());
 		s_BattleDefenders.erase(actor->GetUniqueID());
+		ReleaseFromBattleMode(actor);
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->ClearStandingOrder();
@@ -214,6 +218,14 @@ namespace SandboxDetail {
 		// anything that later put a GOTO back (a fall-back's RestoreOrder, the AI's own new-order check) walked it off along them.
 		actor->ClearAIWaypoints();
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return RefersTo(pending.Unit, actor); }), s_PendingOrders.end());
+		if (order == Order::BattleObjective) {
+			// Its team's job in the battle (a mode's game, or the place its Battle Director card defends); with none, as Attack.
+			actor->SetAIMode(Actor::AIMODE_SENTRY);
+			if (JoinBattleObjective(actor)) {
+				return;
+			}
+			order = Order::Attack;
+		}
 		switch (order) {
 			case Order::Attack:
 				// Which enemy to go for is the unit's AI's to pick (SharedBehaviors.AttackOrderUpdate): the nearest it has a route to, on its
@@ -782,6 +794,8 @@ namespace SandboxDetail {
 			Vector spot = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
 			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, "guard");
 			unit->SetOrderPost(spot);
+			// It defends the thing as a Battle Director defender does its place: after enemies that come near, then back to its post.
+			CommandDefender(unit, place, spot);
 			s_GuardPosts[unit->GetUniqueID()] = {object ? static_cast<long>(object->GetUniqueID()) : 0, building ? building->ID : 0, place};
 		}
 	}
@@ -797,7 +811,10 @@ namespace SandboxDetail {
 					break;
 				}
 			}
-			if (!unit || !unit->GetOrderHasPost()) {
+			// (One off after an enemy near what it guards has no post just then, but is still a guard: its zone says so, CommandDefender.)
+			auto zone = unit ? s_BattleDefenders.find(guard->first) : s_BattleDefenders.end();
+			const bool defending = zone != s_BattleDefenders.end() && zone->second.Commanded;
+			if (!unit || (!unit->GetOrderHasPost() && !defending)) {
 				guard = s_GuardPosts.erase(guard);
 				continue;
 			}
@@ -822,13 +839,17 @@ namespace SandboxDetail {
 				continue;
 			}
 			if (g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(40.0F)) {
-				// Its post moves with it, the same way off it as before.
-				Vector post = unit->GetOrderPost() + g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX());
+				// Its post moves with it, the same way off it as before, and the zone it defends round it. (One off after an enemy is left to
+				// it: it comes back to the new post when the chase is over.)
+				Vector post = (defending ? zone->second.Post : unit->GetOrderPost()) + g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX());
 				g_SceneMan.WrapPosition(post);
 				std::vector<Vector> spot = StandingSpots(post, 1);
 				post = spot.empty() ? post : spot.front();
-				SendUnit(unit, post + Vector(0.0F, -4.0F), nullptr, false, "guard (moved)", false, true);
-				unit->SetOrderPost(post);
+				if (!defending || zone->second.ChasingID == 0) {
+					SendUnit(unit, post + Vector(0.0F, -4.0F), nullptr, false, "guard (moved)", false, true);
+					unit->SetOrderPost(post);
+				}
+				MoveCommandedZone(unit, now, post);
 				guard->second.Place = now;
 			}
 			++guard;
@@ -1072,6 +1093,7 @@ namespace SandboxDetail {
 				HoldUnit(unit);
 				unit->SetOrderPost(unit->GetPos());
 				unit->SetOrderPostFacing(step.Facing);
+				CommandDefender(unit, unit->GetPos(), unit->GetPos());
 				break;
 			case PlanKind::Wait:
 				// (It stays where the step before left it: nothing to give.)
@@ -1239,6 +1261,8 @@ namespace SandboxDetail {
 				SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, "defend at");
 				units[i]->SetOrderPost(spot);
 				units[i]->SetOrderPostFacing(facing);
+				// The place is a defend zone, as a Battle Director team's is: the radius and chase distance on the command row.
+				CommandDefender(units[i], point, spot);
 			}
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
@@ -1318,6 +1342,7 @@ namespace SandboxDetail {
 			for (Actor* unit: units) {
 				HoldUnit(unit);
 				unit->SetOrderPost(unit->GetPos());
+				CommandDefender(unit, unit->GetPos(), unit->GetPos());
 				AnswerOrder(unit, "OrderDefend");
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}

@@ -1436,6 +1436,8 @@ namespace SandboxDetail {
 			}
 			label = units.empty() ? std::string(c_SideNames[s_Team]) + " has no units to move" : std::to_string(units.size()) + (units.size() == 1 ? " unit will come here" : " units will come here");
 		} else if (tool.Kind == Tool::Command) {
+			// The zones the selected units already defend.
+			DrawCommandedZones(drawList);
 			// What the click will do, in the mode's own colour and marks.
 			Vector point = MouseScenePosition();
 			Actor* under = dynamic_cast<Actor*>(ObjectUnder(point, true));
@@ -1508,6 +1510,8 @@ namespace SandboxDetail {
 				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
 					flag(spot, amber);
 				}
+				// And the zone they'll hold: the radius they go after enemies in, and the chase past it (faint).
+				DrawDefendZone(drawList, point, static_cast<float>(s_DefendRadius), static_cast<float>(s_DefendChase), amber);
 				label = "Defend here with " + count + "  (drag left or right to face that way)";
 			} else if (s_CommandMode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
@@ -1531,14 +1535,16 @@ namespace SandboxDetail {
 					for (const Vector& spot: StandingSpots(object->GetPos(), static_cast<int>(units.size()))) {
 						flag(spot, green);
 					}
-					label = count + " guard " + object->GetPresetName() + ", holding posts round it";
+					DrawDefendZone(drawList, object->GetPos(), static_cast<float>(s_DefendRadius), static_cast<float>(s_DefendChase), green);
+					label = count + " guard " + object->GetPresetName() + ", holding posts round it and seeing off enemies that come near";
 				} else if (building) {
 					const Colony::Type& type = Colony::GetType(building->What);
 					drawList->AddRect(ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height))), ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), green, 0.0F, 0, pixel * 1.5F);
 					for (const Vector& spot: StandingSpots(building->Ground, static_cast<int>(units.size()))) {
 						flag(spot, green);
 					}
-					label = count + " guard the " + type.Name + ", holding posts round it";
+					DrawDefendZone(drawList, building->Ground, static_cast<float>(s_DefendRadius), static_cast<float>(s_DefendChase), green);
+					label = count + " guard the " + type.Name + ", holding posts round it and seeing off enemies that come near";
 				} else {
 					label = "Guard: point at a friendly unit, your brain or craft, a crate or a colony building for " + count + " to stay with";
 				}
@@ -2577,6 +2583,21 @@ namespace SandboxDetail {
 				ImGui::SameLine();
 				ToolUI::Checkbox("Keep together", &s_KeepPace);
 				ImGui::SetItemTooltip("On: units sent together walk at the pace of the slowest of them till they get there, so the fast ones don't arrive alone.");
+			}
+			// The zone a defend or guard holds, as a Battle Director team's defend place (its card's same three settings).
+			if (s_CommandMode == CommandMode::DefendAt || s_CommandMode == CommandMode::Guard) {
+				ImGui::SameLine(0.0F, pixel * 6.0F);
+				ImGui::SetNextItemWidth(field * 0.7F);
+				ImGui::SliderInt("##defendRadius", &s_DefendRadius, 30, 600, "Zone %d px");
+				ImGui::SetItemTooltip("Defend (and guarding a craft, crate or building): how far round the place the zone reaches.\nThey stand inside it and go after any enemy that comes into it.");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(field * 0.7F);
+				ImGui::SliderInt("##defendChase", &s_DefendChase, 0, 1500, "Chase %d px");
+				ImGui::SetItemTooltip("How much further than the zone they go after an enemy, before coming back to their posts.");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(field * 0.6F);
+				ImGui::SliderInt("##defendRoam", &s_DefendRoam, 0, 100, "Roam %d%%");
+				ImGui::SetItemTooltip("The share of them that walk about the zone from spot to spot, rather than holding a post.");
 			}
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			// What is drawn of orders as they play out (RC-7) and of control groups (RC-6), kept in the settings.
