@@ -528,6 +528,10 @@ void DebugMan::SettingsGUI() {
 		Toggle("Loose ground (sand, snow, gravel, glass) slides", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
 		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
 		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
+		Toggle("Liquids drain out of the map bottom", FluidSim::DrainsBottom(), [](bool on) { FluidSim::SetDrainsBottom(on); });
+		Tip("Liquid that reaches the bottom of the map runs out of it and is gone. Off: it pools on the bottom, as before. Powders (sand, snow) still pile there.");
+		Toggle("Liquids drain out of the map sides", FluidSim::DrainsSides(), [](bool on) { FluidSim::SetDrainsSides(on); });
+		Tip("Liquid that reaches the left or right edge of the map runs out of it and is gone. Off: it banks up against the edge, as before. A map that wraps round sideways has no edges there, so this only does something on maps that don't wrap (or with map wrapping turned off).");
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
 		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);

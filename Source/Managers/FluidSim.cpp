@@ -40,6 +40,8 @@ bool FluidSim::s_Enabled = true;
 bool FluidSim::s_Powders = true;
 bool FluidSim::s_Freezing = false;
 bool FluidSim::s_BloodFlows = false;
+bool FluidSim::s_DrainBottom = false;
+bool FluidSim::s_DrainSides = false;
 
 namespace {
 	enum class Liquid : unsigned char {
@@ -653,6 +655,27 @@ namespace {
 		return x >= 0 && y >= 0 && x < width && y < height;
 	}
 
+	/// Whether a spot just off the map is one liquid runs out through (FluidSim::DrainsBottom, DrainsSides): below the bottom, or past a side of a
+	/// map that doesn't wrap. A liquid moving there is gone. Call with the spot as it was, before InWorld.
+	bool Drains(int x, int y, int width, int height) {
+		if (y >= height) {
+			return FluidSim::DrainsBottom();
+		}
+		return y >= 0 && (x < 0 || x >= width) && !s_WrapsX && FluidSim::DrainsSides();
+	}
+
+	/// Whether a spot is somewhere a liquid (not a powder) can go: in the map and Passable, or off it through a draining edge.
+	bool LiquidCanGo(BITMAP* materialBitmap, int x, int y, int width, int height, int liquid) {
+		int inX = x;
+		int inY = y;
+		return InWorld(inX, inY, width, height) ? Passable(materialBitmap->line[inY][inX], liquid) : Drains(x, y, width, height);
+	}
+
+	/// Whether a liquid pixel at a spot is on an edge it drains out through, so it should be woken to go.
+	bool AtDrainingEdge(int x, int y, int width, int height) {
+		return (y == height - 1 && FluidSim::DrainsBottom()) || ((x == 0 || x == width - 1) && !s_WrapsX && FluidSim::DrainsSides());
+	}
+
 	void Activate(int x, int y, int width, int height, const SLTerrain* terrain) {
 		if (InWorld(x, y, width, height) && !s_Active.Contains(y * width + x) && KindAt(terrain, x, y) != Liquid::None) {
 			if (s_Active.Count < c_MaxActive) {
@@ -743,7 +766,8 @@ namespace {
 			int lookX = x + side * step;
 			int lookY = y;
 			if (!InWorld(lookX, lookY, width, height)) {
-				return 0;
+				// (Off a side the map drains through: the drop is there, liquid only.)
+				return Drains(x + side * step, y, width, height) && FluidSim::IsLiquid(own) ? step : 0;
 			}
 			int material = materialBitmap->line[y][lookX];
 			if (Passable(material, own)) {
@@ -930,7 +954,10 @@ namespace {
 		int y = static_cast<int>(index / static_cast<size_t>(width));
 		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
 			// Nearly every pixel isn't liquid, so that's checked first and costs next to nothing.
-			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
+			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && AtDrainingEdge(x, y, width, height) && !s_Active.Contains(static_cast<int>(index))) {
+				// On an edge of the map liquid drains out through: woken, it goes (left resting there from before the setting was turned on, or loaded with the scene).
+				Activate(x, y, width, height, terrain);
+			} else if (sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
 				// Air (or grass it flows through, or a lighter liquid it sinks through) right below, or below and to a side, means it has somewhere to go.
 				const int swept = materialBitmap->line[y][x];
 				const unsigned char* below = materialBitmap->line[y + 1];
@@ -1606,8 +1633,10 @@ void FluidSim::Update() {
 		}
 
 		// (Air, grass and foliage it flows through, or a lighter liquid it changes places with: Passable.)
+		// (Off the map through an edge it drains out of, for a liquid: Drains. A move there takes it away.)
+		const bool canDrain = kind != Liquid::Powder;
 		auto canMoveTo = [&](int tx, int ty) {
-			return InWorld(tx, ty, width, height) && Passable(materialBitmap->line[ty][tx], ownMaterial);
+			return canDrain ? LiquidCanGo(materialBitmap, tx, ty, width, height, ownMaterial) : (InWorld(tx, ty, width, height) && Passable(materialBitmap->line[ty][tx], ownMaterial));
 		};
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
@@ -1638,7 +1667,11 @@ void FluidSim::Update() {
 			}
 			// (Into a lighter liquid only a pixel a step, and only as the first: falling into a pool it stops at the surface, sinks at that pace, and never
 			// trades places with liquid on the far side of a gap it just fell through.)
-			auto openAt = [&](int tx, int ty) { return InWorld(tx, ty, width, height) && OpenTo(materialBitmap->line[ty][tx], ownMaterial); };
+			auto openAt = [&](int tx, int ty) {
+				int inX = tx;
+				int inY = ty;
+				return InWorld(inX, inY, width, height) ? OpenTo(materialBitmap->line[inY][inX], ownMaterial) : (canDrain && Drains(tx, ty, width, height));
+			};
 			auto fallsInto = [&](int tx, int ty, int fall) { return fall == 0 ? canMoveTo(tx, ty) : openAt(tx, ty); };
 			for (int fall = 0; fall < steps; ++fall) {
 				if (drift != 0 && Random01() < 0.5F && fallsInto(targetX + drift, targetY + 1, fall)) {
@@ -1751,6 +1784,10 @@ void FluidSim::Update() {
 							int lookX = x + side * step;
 							int lookY = y;
 							if (!InWorld(lookX, lookY, width, height)) {
+								// (Out through a side the map drains through.)
+								if (Drains(x + side * step, y, width, height)) {
+									found = step;
+								}
 								break;
 							}
 							int material = materialBitmap->line[lookY][lookX];
@@ -1857,6 +1894,16 @@ void FluidSim::Update() {
 			} else {
 				waitingToSearch = true;
 			}
+		}
+		if (moved && canDrain && Drains(targetX, targetY, width, height)) {
+			// Gone off the map through an edge it drains out of: the spot it left empties, and what was resting around it may follow.
+			if (anyFire && TerrainFire::IsFlammable(ownMaterial)) {
+				TerrainFire::Extinguish(x, y);
+			}
+			Uncover(terrain, x, y, width);
+			s_Active.Remove(key);
+			ActivateAround(x, y, width, height, terrain);
+			continue;
 		}
 		if (moved) {
 			// Applied straight away: going bottom to top, the pixel above sees this one already gone and can follow it down in the same step.
