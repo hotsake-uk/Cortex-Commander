@@ -343,6 +343,7 @@ class MainForm : Form
 		if (refName.StartsWith("tag: ")) refName = refName[5..];
 		else if (versionShas.TryGetValue(refName, out var vsha)) refName = vsha;
 		currentRef = refName;
+		loadGen++; // abandon any version fill still running for the previous list
 		var (code, output) = await Git($"log {refName} -n 60 --date-order --date=iso --format=%H%x09%cd%x09%an%x09%s --");
 		commitList.Items.Clear();
 		if (code != 0) { Append($"git log failed for '{refName}': {output.Trim()}"); return; }
@@ -366,18 +367,41 @@ class MainForm : Form
 		_ = FillVersions(commits, refName);
 	}
 
-	// Reads the game version at each commit so the list shows 8.2.x numbers.
+	// Reads the game version at each commit so the list shows 8.2.x numbers. Many commits share one version (it only changes when a version bump lands),
+	// so the commit that introduced a version is shown plain and later ones as 8.2.537+N (N = commits since the bump), which makes every row distinct.
+	int loadGen;
 	async Task FillVersions(List<CommitInfo> commits, string forRef)
 	{
+		int gen = ++loadGen;
 		var re = new Regex("c_VersionString\\s*=\\s*\"([^\"]+)\"");
+		var versions = new string?[commits.Count];
 		for (int i = 0; i < commits.Count; i++)
 		{
-			if (forRef != currentRef) return;
 			var (code, text) = await Git($"show {commits[i].Sha}:Source/System/GameVersion.h");
+			if (gen != loadGen) return; // a newer load replaced this list
 			var m = code == 0 ? re.Match(text) : null;
-			if (forRef != currentRef || i >= commitList.Items.Count) return;
-			commitList.Items[i].SubItems[1].Text = m is { Success: true } ? m.Groups[1].Value : "?";
+			versions[i] = m is { Success: true } ? m.Groups[1].Value : "?";
 		}
+		// The commit that introduced each version is the newest one that touched GameVersion.h; the rest are N commits past it.
+		var adders = new Dictionary<string, string>();
+		var bySha = new Dictionary<string, string>();
+		for (int i = 0; i < commits.Count; i++)
+		{
+			var v = versions[i]!;
+			if (v == "?") { bySha[commits[i].Sha] = v; continue; }
+			if (!adders.TryGetValue(v, out var adder))
+			{
+				var (c1, o1) = await Git($"log {commits[i].Sha} --format=%H -n 1 -- Source/System/GameVersion.h");
+				if (gen != loadGen) return;
+				adders[v] = adder = c1 == 0 ? o1.Trim() : "";
+			}
+			if (adder == "" || commits[i].Sha == adder) { bySha[commits[i].Sha] = v; continue; }
+			var (c2, o2) = await Git($"rev-list --count {commits[i].Sha} ^{adder}");
+			if (gen != loadGen) return;
+			bySha[commits[i].Sha] = c2 == 0 && int.TryParse(o2.Trim(), out var n) && n > 0 ? $"{v}+{n}" : v;
+		}
+		foreach (ListViewItem it in commitList.Items)
+			if (bySha.TryGetValue(((CommitInfo)it.Tag!).Sha, out var l)) it.SubItems[1].Text = l;
 	}
 
 	async Task<string?> FindMsBuild()
