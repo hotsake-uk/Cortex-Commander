@@ -31,7 +31,9 @@ void main() {
 	vec2 worldPos = rteScreenOrigin + uv * rteScreenSize;
 	vec2 light = texture(rteSkyLight, worldPos / rteGridWorldSize).rg;
 	// A beam only shows against shade: under open sky everything is lit and there's nothing to see, so it fades in with how enclosed the place is.
-	float enclosed = 1.0 - smoothstep(0.25, 0.8, light.r);
+	// The fade starts just short of open sky and runs deep into the shade, so a beam coming in past a cliff edge or a cave mouth builds up gradually. Before, it ran from 0.8 to 0.25,
+	// which sky light falling off a few percent per cell crossed within a few cells of the opening, so beams appeared abruptly partway down a cliff.
+	float enclosed = 1.0 - smoothstep(0.1, 0.97, light.r);
 	// Squared so beams have defined edges where terrain cuts them off.
 	float shaft = light.g * light.g * enclosed;
 	// Streaks: vary brightness across the beams (perpendicular to the sun direction), drifting slowly, like dust in the light.
