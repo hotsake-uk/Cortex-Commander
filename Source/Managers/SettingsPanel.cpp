@@ -455,6 +455,12 @@ void DebugMan::SettingsGUI() {
 		Tip("How much tracers' lights differ from one another in size and brightness, and waver as they fly. 0: all alike and steady.");
 		Check("Aiming dots light the scene", &settings.AimDotsLight);
 		Tip("The dots that show where a weapon points always glow. On, they also cast light on what is around them.");
+		Heading("Lightsabers");
+		Slider("Blade light brightness", &settings.SaberLightBrightness, 0.0F, 4.0F);
+		Tip("How brightly lightsaber blades light up their holder, the ground and the walls around them. 0: the blade still shows but lights nothing.");
+		Slider("Blade light reach", &settings.SaberLightReach, 0.2F, 3.0F);
+		Slider("Blade glow in the air", &settings.SaberAirGlow, 0.0F, 4.0F);
+		Tip("The soft glow of a blade's light in the air around it.");
 	};
 
 	auto surfaces = [&]() {

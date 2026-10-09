@@ -23,6 +23,7 @@ uniform float rteSpecular; // Strength of highlights on shiny surfaces (metal, c
 uniform bool rteUnitShine; // Highlights and brighter edges on units and other solid objects too (LightingSettings::UnitShineLights).
 uniform vec2 rteScreenSize;
 uniform float rteEdgeLighting;
+uniform float rteLineGlow; // How strongly line lights glow in the air in beam mode (LightingSettings::SaberAirGlow).
 uniform bool rteBeamMode; // Drawing light seen in the air over the lit scene (cone lights' beams, the glow round line lights), instead of light falling on surfaces.
 uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest pixel of a solid object.
 uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
@@ -225,7 +226,7 @@ void main() {
 	if (rteBeamMode && lineLight) {
 		// A glow in the air round the line, strongest close in: what makes a blade look hot against an empty sky.
 		float closeIn = 1.0 - sqrt(distanceSq);
-		FragColor = vec4(lightColor.rgb * (falloff * 0.06 + closeIn * closeIn * closeIn * closeIn * 0.22) * transmittance, 1.0);
+		FragColor = vec4(lightColor.rgb * (falloff * 0.01 + closeIn * closeIn * closeIn * closeIn * 0.05) * rteLineGlow * transmittance, 1.0);
 		return;
 	}
 	if (rteBeamMode) {

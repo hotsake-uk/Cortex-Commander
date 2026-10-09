@@ -461,6 +461,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TracerGlow", { g_PostProcessMan.GetLightingSettings().TracerGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightBrightness", { g_PostProcessMan.GetLightingSettings().TracerLightBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightRandomness", { g_PostProcessMan.GetLightingSettings().TracerLightRandomness = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SaberLightBrightness", { g_PostProcessMan.GetLightingSettings().SaberLightBrightness = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("SaberLightReach", { g_PostProcessMan.GetLightingSettings().SaberLightReach = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("SaberAirGlow", { g_PostProcessMan.GetLightingSettings().SaberAirGlow = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("TracerLightReach", { g_PostProcessMan.GetLightingSettings().TracerLightReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightSaturation", { g_PostProcessMan.GetLightingSettings().LightSaturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightTint", { g_PostProcessMan.GetLightingSettings().LightTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().LightTint); });
@@ -811,6 +814,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("TracerLightBrightness", lighting.TracerLightBrightness);
 	writer.NewPropertyWithValue("TracerLightReach", lighting.TracerLightReach);
 	writer.NewPropertyWithValue("TracerLightRandomness", lighting.TracerLightRandomness);
+	writer.NewPropertyWithValue("SaberLightBrightness", lighting.SaberLightBrightness);
+	writer.NewPropertyWithValue("SaberLightReach", lighting.SaberLightReach);
+	writer.NewPropertyWithValue("SaberAirGlow", lighting.SaberAirGlow);
 	writer.NewPropertyWithValue("LightSaturation", lighting.LightSaturation);
 	writer.NewPropertyWithValue("LightTint", WriteVec3(lighting.LightTint));
 	writer.NewPropertyWithValue("LampBrightness", lighting.LampBrightness);

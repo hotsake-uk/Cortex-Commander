@@ -2913,6 +2913,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
 		m_PointLightShader->SetBool("rteBeamMode", true);
+		m_PointLightShader->SetFloat("rteLineGlow", m_Settings.SaberAirGlow);
 		m_PointLightShader->SetInt("rteOccluders", 2);
 		m_PointLightShader->SetInt("rteSurface", 3);
 		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);

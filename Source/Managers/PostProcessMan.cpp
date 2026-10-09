@@ -297,7 +297,8 @@ void PostProcessMan::RegisterEnergyBeam(const Vector& from, const Vector& to, co
 		return;
 	}
 	// The light comes from the whole length, so its colour round the blade is real light: on the holder, the ground, and the air.
-	RegisterLineLight(from, to, color, lightRadius, brightness * 2.2F, LightSource::Objects);
+	const LightingSettings& settings = GetLightingSettings();
+	RegisterLineLight(from, to, color, lightRadius * settings.SaberLightReach, brightness * 0.8F * settings.SaberLightBrightness, LightSource::Objects);
 }
 
 void PostProcessMan::GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const {
