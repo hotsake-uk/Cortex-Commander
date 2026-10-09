@@ -43,6 +43,9 @@ namespace SandboxDetail {
 					pool.insert(pool.end(), units.begin(), units.end());
 				}
 			}
+			// No crabs (ACrab: crabs, and the tanks and walkers built on them) in a battle for now: they can't climb most of what the
+			// infantry can, and stood in the way of everyone else.
+			std::erase_if(pool, [](const Preset* unit) { return unit->ClassName == "ACrab"; });
 			if (settings.FavouritesOnly) {
 				std::vector<const Preset*> favourites;
 				for (const Preset* unit: pool) {
