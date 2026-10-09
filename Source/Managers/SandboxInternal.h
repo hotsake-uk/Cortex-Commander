@@ -675,6 +675,7 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	inline bool s_ShowModeZones = true; //!< A mode's own zones (hills, assault objectives, goal zones) shaded and outlined on the map (always while one is being drawn).
 	inline bool s_ShowObjectives = true; //!< Each battle mode's objectives (its flags, hills, goals...) lit up on the map, each in the look it asks for.
 	inline int s_ObjectiveLook = 0; //!< The look of zone objectives: 0 each mode's own, else an ObjectiveLook (plus one) for all of them.
 	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
