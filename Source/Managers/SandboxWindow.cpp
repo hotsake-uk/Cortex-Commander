@@ -220,6 +220,10 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down rows of the game's own plants, as its maps have them, as far apart as Plant spacing says.";
 			case Tool::Cacti:
 				return "Drag along the ground to put down rows of the game's own cacti, big and small.";
+			case Tool::Mushrooms:
+				return "Drag along the ground to put down the game's own red and yellow mushrooms, mostly small ones.";
+			case Tool::Trees:
+				return "Drag along the ground to plant big trees: leafy, pine, tall and autumn ones, their trunks of tree trunk (wood without it) and their leaves of vegetation, so they burn and can be cut down.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			default:
@@ -353,6 +357,10 @@ namespace SandboxDetail {
 				return {Icon::Plant, IM_COL32(110, 190, 80, 255)};
 			case Tool::Cacti:
 				return {Icon::Plant, IM_COL32(150, 190, 90, 255)};
+			case Tool::Mushrooms:
+				return {Icon::Plant, IM_COL32(230, 90, 70, 255)};
+			case Tool::Trees:
+				return {Icon::Plant, IM_COL32(70, 140, 60, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:
