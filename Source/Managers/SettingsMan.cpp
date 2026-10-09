@@ -59,6 +59,7 @@ namespace {
 	/// 2: brighter ambient light in interiors and caves.
 	constexpr int c_LightingSettingsVersion = 2;
 	int s_ReadLightingSettingsVersion = 0; //!< Version of the lighting settings in the file being read, 0 when it has none.
+	bool s_ReadingStartupPreset = false; //!< Whether the preset loaded at start is being read, when the panel's settings for the moment are passed over.
 } // namespace
 
 const std::string SettingsMan::c_ClassName = "SettingsMan";
@@ -112,6 +113,7 @@ bool SettingsMan::TraceAllUnits() const {
 void SettingsMan::Clear() {
 	m_SettingsPath = System::GetUserdataDirectory() + "Settings.ini";
 	m_SettingsNeedOverwrite = false;
+	m_StartupPreset.clear();
 	s_ReadLightingSettingsVersion = 0;
 
 	m_FlashOnBrainDamage = true;
@@ -325,7 +327,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LightingSkyColor", { g_PostProcessMan.GetLightingSettings().SkyColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().SkyColor); });
 	MatchProperty("LightingAirFalloff", { g_PostProcessMan.GetLightingSettings().AirFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
-	MatchProperty("LightingDebugView", { g_PostProcessMan.GetLightingSettings().DebugView = std::stoi(reader.ReadPropValue()); }); // Read only, for automated screenshots.
+	MatchProperty("LightingDebugView", { int view = std::stoi(reader.ReadPropValue()); if (!s_ReadingStartupPreset) { g_PostProcessMan.GetLightingSettings().DebugView = view; } }); // Read only, for automated screenshots.
 	MatchProperty("DeepNightDarkness", { g_PostProcessMan.GetLightingSettings().DeepNightDarkness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SkyFollowsTime", { g_PostProcessMan.GetLightingSettings().SkyFollowsTime = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
@@ -586,17 +588,18 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowRecentSolves", { reader >> m_ShowRecentSolves; });
 	MatchProperty("ShowTerrainUpdates", { reader >> m_ShowTerrainUpdates; });
 	// Only in presets (see SaveTunables): what the panel holds for the moment.
-	MatchProperty("GameSpeed", { g_TimerMan.SetTimeScale(std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 4.0F)); });
-	MatchProperty("PauseAI", { Controller::SetAIPaused(std::stoi(reader.ReadPropValue()) != 0); });
-	MatchProperty("CameraZoom", { g_FrameMan.SetCameraZoom(std::stof(reader.ReadPropValue())); });
-	MatchProperty("FreezeSimulation", { g_DebugMan.m_FreezeSim = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("ShowPerformanceStats", { g_DebugMan.m_ShowPerformanceMan = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("ShowActorDebugDrawing", { g_DebugMan.m_ShowActorDebugGui = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("DrawCameraBounds", { g_DebugMan.m_DrawCameraBounds = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("DrawSpriteBounds", { g_DebugMan.m_DrawSpriteBounds = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("ImGuiDemoWindow", { g_DebugMan.m_ImGuiDemoWindow = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("FreeCam", { g_DebugMan.m_EnableFreeCam = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("FreeCamZoom", { g_DebugMan.m_FreeCamZoom = std::stof(reader.ReadPropValue()); });
+	// The panel's settings for the moment: in presets only, and passed over in the one loaded at start so the game doesn't start in them.
+	MatchProperty("GameSpeed", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_TimerMan.SetTimeScale(std::clamp(std::stof(value), 0.1F, 4.0F)); } });
+	MatchProperty("PauseAI", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Controller::SetAIPaused(std::stoi(value) != 0); } });
+	MatchProperty("CameraZoom", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_FrameMan.SetCameraZoom(std::stof(value)); } });
+	MatchProperty("FreezeSimulation", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_FreezeSim = std::stoi(value) != 0; } });
+	MatchProperty("ShowPerformanceStats", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_ShowPerformanceMan = std::stoi(value) != 0; } });
+	MatchProperty("ShowActorDebugDrawing", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_ShowActorDebugGui = std::stoi(value) != 0; } });
+	MatchProperty("DrawCameraBounds", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_DrawCameraBounds = std::stoi(value) != 0; } });
+	MatchProperty("DrawSpriteBounds", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_DrawSpriteBounds = std::stoi(value) != 0; } });
+	MatchProperty("ImGuiDemoWindow", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_ImGuiDemoWindow = std::stoi(value) != 0; } });
+	MatchProperty("FreeCam", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_EnableFreeCam = std::stoi(value) != 0; } });
+	MatchProperty("FreeCamZoom", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_FreeCamZoom = std::stof(value); } });
 	MatchProperty("ShowOrderLabels", { reader >> m_ShowOrderLabels; });
 	MatchProperty("CombatOverlay", { int which = 0; reader >> which; SetCombatOverlay(which); });
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
@@ -668,6 +671,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DrawPixelCheckVisualizations", { reader >> g_SceneMan.m_DrawPixelCheckVisualizations; });
 	MatchProperty("PrintDebugInfo", { reader >> m_PrintDebugInfo; });
 	MatchProperty("EnableDebugMenus", { reader >> g_DebugMan.m_ShowDebugWindow; });
+	MatchProperty("StartupPreset", { m_StartupPreset = reader.ReadPropValue(); });
 	MatchProperty("ControlLinkPort", { ControlLink::s_SettingsPort = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("ShowGraphicsLab", { g_DebugMan.m_ShowGraphicsLab = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShowWorldDebug", { g_DebugMan.m_ShowWorldDebug = std::stoi(reader.ReadPropValue()) != 0; }); // Read only, for automated captures.
@@ -1000,6 +1004,26 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
 
 	if (forPreset) {
+		// The game's own settings from the Settings menu, so a preset loaded at start brings them back too. Settings.ini keeps them in its own sections.
+		writer.NewPropertyWithValue("ShowForeignItems", m_ShowForeignItems);
+		writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
+		writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
+		writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);
+		writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
+		writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
+		writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
+		writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
+		writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
+		writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
+		writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
+		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
+		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
+		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
+
 		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.
 		writer.NewPropertyWithValue("GameSpeed", g_TimerMan.GetTimeScale());
 		writer.NewPropertyWithValue("PauseAI", Controller::IsAIPaused());
@@ -1069,6 +1093,23 @@ bool SettingsMan::LoadPreset(const std::string& name) {
 	return CreateSerializable(reader, true, false, false) >= 0;
 }
 
+void SettingsMan::SetStartupPreset(const std::string& name) {
+	m_StartupPreset = PresetFileName(name);
+}
+
+bool SettingsMan::LoadStartupPreset() {
+	if (m_StartupPreset.empty()) {
+		return false;
+	}
+	s_ReadingStartupPreset = true;
+	bool loaded = LoadPreset(m_StartupPreset);
+	s_ReadingStartupPreset = false;
+	if (!loaded) {
+		g_ConsoleMan.PrintString("WARNING: The preset to load at start, \"" + m_StartupPreset + "\", isn't in Userdata/Presets. Settings.ini is used as it is.");
+	}
+	return loaded;
+}
+
 bool SettingsMan::DeletePreset(const std::string& name) const {
 	std::error_code error;
 	return std::filesystem::remove(PresetFolder() + PresetFileName(name) + ".ini", error);
@@ -1109,6 +1150,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxCharacter", Sandbox::GetCharacterSetup());
 	if (ControlLink::s_SettingsPort > 0) {
 		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
+	}
+	if (!m_StartupPreset.empty()) {
+		writer.NewPropertyWithValue("StartupPreset", m_StartupPreset);
 	}
 	SaveTunables(writer, lighting, false);
 

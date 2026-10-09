@@ -736,6 +736,10 @@ int main(int argc, char** argv) {
 	g_PresetMan.LoadAllDataModules();
 	s_StartupTiming.Mark("loading the data modules (Data, Mods, Userdata)");
 
+	// After the modules, so a custom weather in it is found by name.
+	g_SettingsMan.LoadStartupPreset();
+	s_StartupTiming.Mark("preset to load at start");
+
 	ControlLink::Start();
 	s_StartupTiming.Mark("control link");
 

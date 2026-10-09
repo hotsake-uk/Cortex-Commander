@@ -61,6 +61,19 @@ namespace RTE {
 		/// Gets the names of the presets there are, in order.
 		std::vector<std::string> ListPresets() const;
 
+		/// Gets the preset loaded every time the game starts, over Settings.ini.
+		/// @return The preset's name, or nothing for none.
+		const std::string& GetStartupPreset() const { return m_StartupPreset; }
+
+		/// Sets the preset loaded every time the game starts. Kept in Settings.ini.
+		/// @param name The preset's name, or nothing for none.
+		void SetStartupPreset(const std::string& name);
+
+		/// Loads the preset set to load at start, if there is one. Call once at start-up, after the data modules are loaded.
+		/// The panel's settings for the moment (game speed, frozen, the AI paused, debug views) are left as they are, so the game doesn't start in them.
+		/// @return Whether a preset was loaded.
+		bool LoadStartupPreset();
+
 		/// Writes every setting in the settings panel: what a preset holds, and part of the settings file.
 		/// @param forPreset Whether it's for a preset, which also holds what is only for the moment (game speed, the AI paused, the debug view, frozen simulation...) and says which speech is on as well as off.
 		void SaveTunables(Writer& writer, const struct LightingSettings& lighting, bool forPreset) const;
@@ -761,6 +774,7 @@ namespace RTE {
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
 
 		std::string m_SettingsPath; //!< String containing the Path to the Settings.ini file.
+		std::string m_StartupPreset; //!< The preset loaded every time the game starts, over Settings.ini. Nothing for none.
 
 		/// Clears all the member variables of this SettingsMan, effectively resetting the members of this abstraction level only.
 		void Clear();
