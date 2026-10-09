@@ -45,6 +45,19 @@ namespace SandboxDetail {
 		/// Whether a team is in the mode's game: ticked, with a spawn zone drawn.
 		bool TeamIn(const BattleModeSettings& settings, int side) { return side >= 0 && side < c_Sides && settings.Plays[side] && HasZones(settings, side); }
 
+		unsigned Bit(int side) { return side >= 0 && side < c_Sides ? 1u << side : 0u; }
+
+		/// A bit for each team in the mode's game (BattleObjective::Attackers, Defenders).
+		unsigned TeamsIn(const BattleModeSettings& settings) {
+			unsigned teams = 0;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (TeamIn(settings, side)) {
+					teams |= Bit(side);
+				}
+			}
+			return teams;
+		}
+
 		/// How far across a base reaches either side of its middle, and where across its edges are.
 		void BaseSpan(const std::vector<Vector>& base, float& left, float& right) {
 			left = base.empty() ? 0.0F : base.front().m_X;
@@ -477,6 +490,167 @@ namespace SandboxDetail {
 			drawList->AddTriangleFilled(ImVec2(tip.x + way.x * 14.0F * pulse, tip.y + way.y * 14.0F * pulse), ImVec2(tip.x + side.x * 10.0F, tip.y + side.y * 10.0F), ImVec2(tip.x - side.x * 10.0F, tip.y - side.y * 10.0F), color);
 			drawList->AddTriangle(ImVec2(tip.x + way.x * 14.0F * pulse, tip.y + way.y * 14.0F * pulse), ImVec2(tip.x + side.x * 10.0F, tip.y + side.y * 10.0F), ImVec2(tip.x - side.x * 10.0F, tip.y - side.y * 10.0F), IM_COL32(0, 0, 0, 200), 1.5F);
 			DrawTag(drawList, ImVec2(tip.x - way.x * 22.0F, tip.y - way.y * 22.0F + 6.0F), label, color);
+		}
+
+		// ---- Objectives lit up (any mode's, the same way) ----
+
+		/// What the terrain in a zone looks like to light it up, worked out now and then (it changes as it's dug and blown up): the line along the
+		/// top of the ground across it, and the solid cells in it with those at an edge (to air) marked.
+		struct ZoneTerrain {
+			std::vector<Vector> Zone;
+			long long At = -1;
+			std::vector<std::vector<Vector>> Crest; //!< Runs of the ground's top, left to right.
+			float Cell = 4.0F;
+			std::vector<std::pair<Vector, bool>> Cells; //!< Each solid cell's top left, and whether it's at an edge.
+		};
+
+		std::vector<ZoneTerrain> s_ZoneTerrain;
+
+		bool SolidAt(float x, float y) {
+			Vector at(x, y);
+			g_SceneMan.WrapPosition(at);
+			return g_SceneMan.GetTerrMatter(at.GetFloorIntX(), at.GetFloorIntY()) != g_MaterialAir;
+		}
+
+		const ZoneTerrain& TerrainOf(const std::vector<Vector>& zone) {
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			auto found = std::find_if(s_ZoneTerrain.begin(), s_ZoneTerrain.end(), [&zone](const ZoneTerrain& terrain) { return terrain.Zone == zone; });
+			if (found == s_ZoneTerrain.end()) {
+				if (s_ZoneTerrain.size() > 32) {
+					s_ZoneTerrain.clear();
+				}
+				found = s_ZoneTerrain.insert(s_ZoneTerrain.end(), ZoneTerrain{.Zone = zone});
+			}
+			ZoneTerrain& terrain = *found;
+			// (Twice a second, or afresh after a new game.)
+			if (terrain.At >= 0 && now >= terrain.At && now - terrain.At < 30) {
+				return terrain;
+			}
+			terrain.At = now;
+			terrain.Crest.clear();
+			terrain.Cells.clear();
+			float left = zone.front().m_X;
+			float right = left;
+			float top = zone.front().m_Y;
+			float bottom = top;
+			for (const Vector& corner: zone) {
+				left = std::min(left, corner.m_X);
+				right = std::max(right, corner.m_X);
+				top = std::min(top, corner.m_Y);
+				bottom = std::max(bottom, corner.m_Y);
+			}
+			// The ground's top: in each column, the first solid point under air, inside the zone.
+			std::vector<Vector> run;
+			for (float x = left; x <= right; x += 3.0F) {
+				bool found = false;
+				for (float y = top; y <= bottom; y += 2.0F) {
+					if (IsInZone(zone, Vector(x, y)) && SolidAt(x, y) && !SolidAt(x, y - 2.0F)) {
+						if (!run.empty() && (std::abs(run.back().m_Y - y) > 12.0F || x - run.back().m_X > 4.0F)) {
+							terrain.Crest.push_back(std::move(run));
+							run.clear();
+						}
+						run.emplace_back(x, y);
+						found = true;
+						break;
+					}
+				}
+				if (!found && !run.empty()) {
+					terrain.Crest.push_back(std::move(run));
+					run.clear();
+				}
+			}
+			if (!run.empty()) {
+				terrain.Crest.push_back(std::move(run));
+			}
+			// The solid cells, no more than a few thousand of them however big the zone.
+			const float area = std::max((right - left) * (bottom - top), 1.0F);
+			terrain.Cell = std::max(3.0F, std::ceil(std::sqrt(area / 6000.0F)));
+			const float cell = terrain.Cell;
+			for (float y = top; y < bottom; y += cell) {
+				for (float x = left; x < right; x += cell) {
+					const float midX = x + cell * 0.5F;
+					const float midY = y + cell * 0.5F;
+					if (!IsInZone(zone, Vector(midX, midY)) || !SolidAt(midX, midY)) {
+						continue;
+					}
+					const bool edge = !SolidAt(midX - cell, midY) || !SolidAt(midX + cell, midY) || !SolidAt(midX, midY - cell) || !SolidAt(midX, midY + cell);
+					terrain.Cells.emplace_back(Vector(x, y), edge);
+				}
+			}
+			return terrain;
+		}
+
+		/// A line drawn as a glow: wide and faint under narrow and bright.
+		void GlowPolyline(ImDrawList* drawList, const std::vector<ImVec2>& points, ImU32 color, bool closed, float strength) {
+			if (points.size() < 2) {
+				return;
+			}
+			const ImU32 rgb = color & 0x00FFFFFF;
+			const ImDrawFlags flags = closed ? ImDrawFlags_Closed : ImDrawFlags_None;
+			const auto alpha = [strength](float a) { return static_cast<ImU32>(std::clamp(a * strength, 0.0F, 255.0F)) << 24; };
+			drawList->AddPolyline(points.data(), static_cast<int>(points.size()), rgb | alpha(30.0F), flags, 14.0F);
+			drawList->AddPolyline(points.data(), static_cast<int>(points.size()), rgb | alpha(70.0F), flags, 7.0F);
+			drawList->AddPolyline(points.data(), static_cast<int>(points.size()), rgb | alpha(230.0F), flags, 2.5F);
+			drawList->AddPolyline(points.data(), static_cast<int>(points.size()), IM_COL32(255, 255, 255, 0) | alpha(120.0F), flags, 1.0F);
+		}
+
+		/// One objective lit up on the map in a look (a zone asked for as a marker gets an outline; a place asked for in a zone look, a marker).
+		void DrawObjective(ImDrawList* drawList, const BattleObjective& objective, ObjectiveLook look) {
+			const float strength = (objective.Live ? 0.75F + 0.25F * Pulse(3.0F) : 0.3F);
+			const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+			if (objective.Zone.size() < 3) {
+				look = ObjectiveLook::Marker;
+			} else if (look == ObjectiveLook::Marker) {
+				look = ObjectiveLook::Outline;
+			}
+			switch (look) {
+				case ObjectiveLook::Marker: {
+					// A ring of light on the ground round it, as wide as near enough counts.
+					const ImVec2 at = ToScreen(objective.Pos);
+					const float radius = std::max(objective.Radius / scale, 10.0F);
+					const ImU32 rgb = objective.Color & 0x00FFFFFF;
+					const auto alpha = [strength](float a) { return static_cast<ImU32>(std::clamp(a * strength, 0.0F, 255.0F)) << 24; };
+					drawList->AddEllipseFilled(at, ImVec2(radius, radius * 0.35F), rgb | alpha(40.0F), 0.0F, 40);
+					drawList->AddEllipse(at, ImVec2(radius, radius * 0.35F), rgb | alpha(60.0F), 0.0F, 40, 8.0F);
+					drawList->AddEllipse(at, ImVec2(radius, radius * 0.35F), rgb | alpha(220.0F), 0.0F, 40, 2.0F);
+					break;
+				}
+				case ObjectiveLook::Outline:
+					GlowPolyline(drawList, ZoneOnScreen(objective.Zone, scale), objective.Color, true, strength);
+					break;
+				case ObjectiveLook::Ground: {
+					for (const std::vector<Vector>& run: TerrainOf(objective.Zone).Crest) {
+						std::vector<ImVec2> points;
+						points.reserve(run.size());
+						for (const Vector& point: run) {
+							points.push_back(ToScreen(point));
+						}
+						GlowPolyline(drawList, points, objective.Color, false, strength);
+					}
+					break;
+				}
+				case ObjectiveLook::Glow: {
+					const ZoneTerrain& terrain = TerrainOf(objective.Zone);
+					// The solid cells tinted, the edges (where the terrain and buildings meet the air) lit up, with a soft glow out round them.
+					const ImU32 rgb = objective.Color & 0x00FFFFFF;
+					const auto alpha = [strength](float a) { return static_cast<ImU32>(std::clamp(a * strength, 0.0F, 255.0F)) << 24; };
+					const ImVec4 tint = ImGui::ColorConvertU32ToFloat4(objective.Color);
+					const ImU32 bright = ImGui::ColorConvertFloat4ToU32(ImVec4(0.5F + tint.x * 0.5F, 0.5F + tint.y * 0.5F, 0.5F + tint.z * 0.5F, 1.0F)) & 0x00FFFFFF;
+					const Vector size(terrain.Cell, terrain.Cell);
+					const Vector halo(terrain.Cell * 1.5F, terrain.Cell * 1.5F);
+					for (const auto& [corner, isEdge]: terrain.Cells) {
+						if (isEdge) {
+							drawList->AddRectFilled(ToScreen(corner - halo), ToScreen(corner + size + halo), rgb | alpha(22.0F), terrain.Cell / scale);
+						}
+					}
+					for (const auto& [corner, isEdge]: terrain.Cells) {
+						drawList->AddRectFilled(ToScreen(corner), ToScreen(corner + size), isEdge ? bright | alpha(200.0F) : rgb | alpha(60.0F));
+					}
+					break;
+				}
+				default:
+					break;
+			}
 		}
 
 		// ---- Capture the flag ----
@@ -1121,6 +1295,18 @@ namespace SandboxDetail {
 			}
 		}
 
+		void FlagsObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const unsigned teams = TeamsIn(settings);
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || (!running && !settings.HasPoint[side])) {
+					continue;
+				}
+				BattleObjective flag{.Name = SideName(side) + " flag", .Radius = c_FlagReach, .Color = c_SideColors[side], .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(side), .Defenders = Bit(side)};
+				flag.Pos = running ? s_Flags[side].Pos : settings.Points[side];
+				out.push_back(flag);
+			}
+		}
+
 		std::string FlagsStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " captures, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
 		// ---- One flag ----
@@ -1397,6 +1583,22 @@ namespace SandboxDetail {
 			DrawScore(Scores("ONE FLAG", "") + (settings.ScoreToWin > 0 ? "    (first to " + std::to_string(settings.ScoreToWin) + ")" : ""));
 		}
 
+		void OneFlagObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const unsigned teams = TeamsIn(settings);
+			const Actor* carrier = running && s_OneFlag.State == FlagState::Carried ? GetRef(s_OneFlag.Carrier) : nullptr;
+			const int holder = carrier ? carrier->GetTeam() : -1;
+			if (running || settings.HasFlagSpot) {
+				// (Carried: the carrier's team-mates go with it, everyone else after it.)
+				out.push_back({.Name = "The flag", .Pos = running ? s_OneFlag.Pos : settings.FlagSpot, .Radius = c_FlagReach, .Color = c_NeutralColor, .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(holder), .Defenders = Bit(holder)});
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || settings.Goals[side].size() < 3) {
+					continue;
+				}
+				out.push_back({.Name = SideName(side) + " goal", .Pos = ZoneMiddle(settings.Goals[side]), .Zone = settings.Goals[side], .Color = c_SideColors[side], .Look = ObjectiveLook::Outline, .Attackers = holder == side ? Bit(side) : 0u});
+			}
+		}
+
 		std::string OneFlagStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " goals, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
 		// ---- Hunters (last team standing's units, and VIP hunt's) ----
@@ -1610,6 +1812,25 @@ namespace SandboxDetail {
 			}
 		}
 
+		void HillObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const unsigned teams = TeamsIn(settings);
+			for (int i = 0; i < static_cast<int>(settings.Zones.size()); ++i) {
+				if (settings.Zones[i].size() < 3) {
+					continue;
+				}
+				BattleObjective hill{.Name = settings.Zones.size() > 1 ? "Hill " + std::to_string(i + 1) : "Hill", .Pos = ZoneMiddle(settings.Zones[i]), .Zone = settings.Zones[i], .Look = ObjectiveLook::Ground};
+				hill.Live = !running || i == s_Hill;
+				if (running && hill.Live) {
+					hill.Color = s_Holder >= 0 ? c_SideColors[s_Holder] : (s_Holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255));
+					hill.Defenders = s_Holder >= 0 ? Bit(s_Holder) : 0u;
+					hill.Attackers = teams & ~hill.Defenders;
+				} else if (running) {
+					hill.Color = IM_COL32(160, 160, 160, 255);
+				}
+				out.push_back(hill);
+			}
+		}
+
 		std::string HillStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " s held, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
 		// ---- Assault ----
@@ -1780,6 +2001,26 @@ namespace SandboxDetail {
 					line += "    " + Clock(static_cast<float>(s_Deadline - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()) + " left";
 				}
 				DrawScore(line);
+			}
+		}
+
+		void AssaultObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const unsigned teams = TeamsIn(settings);
+			const int attacker = AttackerOf(settings);
+			for (int i = 0; i < static_cast<int>(settings.Zones.size()); ++i) {
+				if (settings.Zones[i].size() < 3) {
+					continue;
+				}
+				BattleObjective objective{.Name = "Objective " + std::to_string(i + 1), .Pos = ZoneMiddle(settings.Zones[i]), .Zone = settings.Zones[i], .Look = ObjectiveLook::Glow};
+				objective.Live = !running || (i == s_Objective && !s_ModeRun.Over);
+				if (running && objective.Live) {
+					objective.Color = s_Contested ? IM_COL32(255, 150, 40, 255) : c_SideColors[attacker];
+					objective.Attackers = Bit(attacker);
+					objective.Defenders = teams & ~Bit(attacker);
+				} else if (running) {
+					objective.Color = i < s_Objective ? c_SideColors[attacker] : IM_COL32(160, 160, 160, 255);
+				}
+				out.push_back(objective);
 			}
 		}
 
@@ -2080,6 +2321,27 @@ namespace SandboxDetail {
 			}
 		}
 
+		void VipObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const unsigned teams = TeamsIn(settings);
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side)) {
+					continue;
+				}
+				BattleObjective vip{.Name = SideName(side) + " VIP", .Radius = 80.0F, .Color = c_SideColors[side], .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(side), .Defenders = Bit(side)};
+				if (!running) {
+					if (!settings.HasPoint[side]) {
+						continue;
+					}
+					vip.Pos = settings.Points[side];
+				} else if (const Actor* unit = LiveVip(side)) {
+					vip.Pos = unit->GetPos();
+				} else {
+					continue;
+				}
+				out.push_back(vip);
+			}
+		}
+
 		std::string VipStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " VIPs got, " + (LiveVip(side) ? "VIP up, " : "no VIP, ") + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
 		/// Every mode's glows off: capture the flag's carriers, and the VIPs.
@@ -2111,6 +2373,9 @@ namespace SandboxDetail {
 			void (*Panel)(BattleModeSettings& setup, bool& changed) = nullptr; //!< Its own choices, on the Battle tab.
 			void (*Draw)(bool running) = nullptr; //!< On the map: its bases and zones while set up (running false), and its game while on.
 			std::string (*Status)(int side) = nullptr; //!< How a team is getting on, for its row on the Battle tab while the game is on.
+			/// What its game is about (BattleObjective): its flags, hills, goals or VIPs, as set up (running false) or now. Lit up on the map with "Show
+			/// battle objectives" on, in the looks it gives them, and what a team's units are sent for by the commander's "Battle objective" order.
+			void (*Objectives)(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) = nullptr;
 		};
 
 		const BattleModeInfo c_Modes[] = {
@@ -2130,7 +2395,8 @@ namespace SandboxDetail {
 		     .Update = FlagsUpdate,
 		     .Panel = FlagsPanel,
 		     .Draw = FlagsDraw,
-		     .Status = FlagsStatus},
+		     .Status = FlagsStatus,
+		     .Objectives = FlagsObjectives},
 		    {.Name = "King of the hill",
 		     .Blurb = "Draw a hill (or a few) on the map and spawn zones for each team. Every unit fights for the hill: a team scores a second for every second it alone "
 		              "has units on it, and the first to the seconds set wins. With more than one hill, it can move on every so often, and everyone has to run for "
@@ -2144,7 +2410,8 @@ namespace SandboxDetail {
 		     .Update = HillUpdate,
 		     .Panel = HillPanel,
 		     .Draw = HillDraw,
-		     .Status = HillStatus},
+		     .Status = HillStatus,
+		     .Objectives = HillObjectives},
 		    {.Name = "Assault",
 		     .Blurb = "One team attacks a line of objectives, drawn in order on the map, and the rest defend them. The attackers take an objective by standing in it "
 		              "with no defender there for the seconds set, then go on to the next, and every one taken buys them more time. They win by taking the last; "
@@ -2159,7 +2426,8 @@ namespace SandboxDetail {
 		     .Update = AssaultUpdate,
 		     .Panel = AssaultPanel,
 		     .Draw = AssaultDraw,
-		     .Status = AssaultStatus},
+		     .Status = AssaultStatus,
+		     .Objectives = AssaultObjectives},
 		    {.Name = "Last team standing",
 		     .Blurb = "Every team gets so many units in all (its tickets), and they hunt down the nearest enemy wherever it is. Fallen units are replaced while a "
 		              "team has tickets left; once they're spent and its last unit falls, it's out. The last team in wins.",
@@ -2179,7 +2447,8 @@ namespace SandboxDetail {
 		     .Update = VipUpdate,
 		     .Panel = VipPanel,
 		     .Draw = VipDraw,
-		     .Status = VipStatus},
+		     .Status = VipStatus,
+		     .Objectives = VipObjectives},
 		    {.Name = "One flag",
 		     .Blurb = "One neutral flag, placed on the map, and every team after it. Each team has spawn zones and a goal zone drawn on the map: bring the flag "
 		              "into your own goal to score. Whoever carries it glows and makes straight for their goal, their team-mates go with them and everyone "
@@ -2193,7 +2462,8 @@ namespace SandboxDetail {
 		     .Update = OneFlagUpdate,
 		     .Panel = OneFlagPanel,
 		     .Draw = OneFlagDraw,
-		     .Status = OneFlagStatus},
+		     .Status = OneFlagStatus,
+		     .Objectives = OneFlagObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
@@ -2421,6 +2691,52 @@ namespace SandboxDetail {
 			std::erase_if(s_Stuck, [&seen](const auto& entry) { return !seen.count(entry.first); });
 		}
 	} // namespace
+
+	std::vector<BattleObjective> BattleObjectives() {
+		const bool running = s_ModeRun.Running;
+		const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+		std::vector<BattleObjective> objectives;
+		if (const BattleModeInfo& mode = ModeOf(settings.Mode); mode.Objectives) {
+			mode.Objectives(settings, running, objectives);
+		}
+		return objectives;
+	}
+
+	bool BattleObjectiveFor(int side, const Vector& from, BattleObjective& objective, bool& defend) {
+		if (!s_ModeRun.Running || s_ModeRun.Over) {
+			return false;
+		}
+		const bool wraps = g_SceneMan.SceneWrapsX();
+		float best = 0.0F;
+		bool found = false;
+		for (const BattleObjective& candidate: BattleObjectives()) {
+			const bool attack = candidate.AttackedBy(side);
+			if (!candidate.Live || (!attack && !candidate.DefendedBy(side))) {
+				continue;
+			}
+			// (Anything to go for before anything to hold, then the nearest.)
+			const float distance = g_SceneMan.ShortestDistance(from, candidate.Pos, wraps).GetMagnitude() + (attack ? 0.0F : 1.0e7F);
+			if (!found || distance < best) {
+				objective = candidate;
+				defend = !attack;
+				best = distance;
+				found = true;
+			}
+		}
+		return found;
+	}
+
+	/// The mode's objectives lit up on the map, under the rest of what it draws, with "Show battle objectives" on.
+	static void DrawObjectives() {
+		if (!s_ShowObjectives) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		const int override = std::clamp(s_ObjectiveLook, 0, static_cast<int>(ObjectiveLook::Count));
+		for (const BattleObjective& objective: BattleObjectives()) {
+			DrawObjective(drawList, objective, override > 0 && objective.Zone.size() >= 3 ? static_cast<ObjectiveLook>(override - 1) : objective.Look);
+		}
+	}
 
 	/// The next corner of the base or mode zone being drawn (s_ZoneDraft), or it closed, with one on its first corner: true then.
 	bool ModeBaseCorner(const Vector& position, float closeWithin) {
@@ -2702,6 +3018,15 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
 		ToolUI::Checkbox("Show spawn zones on the map", &s_ShowModeBases);
 		ImGui::SetItemTooltip("The outline and shading of each team's spawn zones. Off, they're hidden (still shown while you draw one or place a point); flags, hills and the rest still show.");
+		ToolUI::Checkbox("Show battle objectives", &s_ShowObjectives);
+		ImGui::SetItemTooltip("What the game is about lit up on the map, in each mode's own look: a glowing ring round each flag and VIP, the ground along a hill glowing, the terrain and buildings in an assault objective glowing, a glowing line round each goal.");
+		if (s_ShowObjectives) {
+			static const char* const looks[] = {"Each mode's own", "Glowing ring", "Glowing outline", "Glowing ground line", "Glowing terrain"};
+			static_assert(std::size(looks) == static_cast<size_t>(ObjectiveLook::Count) + 1, "A name for each ObjectiveLook.");
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+			ImGui::Combo("Objective look", &s_ObjectiveLook, looks, static_cast<int>(std::size(looks)));
+			ImGui::SetItemTooltip("How zone objectives (hills, assault objectives, goals) are lit up: as the mode has them, or all the same way. Flags and VIPs always get a ring.");
+		}
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
 		}
@@ -2853,8 +3178,10 @@ namespace SandboxDetail {
 		}
 		const Tool held = CurrentTool().Kind;
 		if (s_ModeRun.Running && s_ModeRun.Settings.Mode == s_ModeSetup.Mode) {
+			DrawObjectives();
 			mode.Draw(true);
 		} else if ((Sandbox::IsOpen() && s_CurrentTab == "Battle") || held == Tool::BattleModePoint || held == Tool::BattleModeFlag || IsModeZoneTool(held)) {
+			DrawObjectives();
 			mode.Draw(false);
 		}
 		if (IsModeZoneTool(held)) {

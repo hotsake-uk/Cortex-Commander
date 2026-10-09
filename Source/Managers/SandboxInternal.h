@@ -614,6 +614,38 @@ namespace SandboxDetail {
 	inline std::vector<BattleCraft> s_BattleCraft;
 
 	/// The Battle Director's mode as the sim runs it: the settings last sent from the window, and how the game is going.
+	/// How a battle objective is lit up on the map, with "Show battle objectives" on (DrawObjectives).
+	enum class ObjectiveLook {
+		Marker, //!< A place (a flag, a VIP): a glowing ring on the ground round it.
+		Outline, //!< A zone: a glowing line round its edge.
+		Ground, //!< A zone: the ground across it glowing, a line along the top of the terrain (a hill's crest).
+		Glow, //!< A zone: the terrain and buildings in it glowing, brightest at their edges.
+		Count
+	};
+
+	/// Something a battle mode's game is about, the same for every mode (BattleModeInfo::Objectives): where it is, who goes for it and who holds it,
+	/// and how it shows. The commander's "Battle objective" order, the stuck check and the map all read these.
+	struct BattleObjective {
+		std::string Name; //!< As "Red flag", "Hill 2".
+		Vector Pos; //!< Where to go for it: the place, or the middle of the zone.
+		std::vector<Vector> Zone; //!< Its area, or empty for a place.
+		float Radius = 60.0F; //!< How near a place counts as at it (a zone: being in it).
+		ImU32 Color = IM_COL32(255, 255, 255, 255);
+		ObjectiveLook Look = ObjectiveLook::Marker;
+		unsigned Attackers = 0; //!< A bit per team that goes for it (to take it, capture it, kill it, score in it).
+		unsigned Defenders = 0; //!< A bit per team that holds it.
+		bool Live = true; //!< In play now; false for one taken, not yet in play, or a flag's empty stand.
+
+		bool AttackedBy(int side) const { return side >= 0 && side < 32 && (Attackers >> side) & 1u; }
+		bool DefendedBy(int side) const { return side >= 0 && side < 32 && (Defenders >> side) & 1u; }
+	};
+
+	/// The objectives of the battle mode's game now (with it on), or as set up on the Battle tab (with it not).
+	std::vector<BattleObjective> BattleObjectives();
+	/// The objective a team's unit at a place should go for in the mode's game on now: the nearest live one its team attacks, else the nearest it
+	/// defends (defend true). False with no game on, or none for that team.
+	bool BattleObjectiveFor(int side, const Vector& from, BattleObjective& objective, bool& defend);
+
 	struct BattleModeRun {
 		BattleModeSettings Settings;
 		bool Running = false; //!< A mode's game is on: its rules run each update.
@@ -626,6 +658,8 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	inline bool s_ShowObjectives = true; //!< Each battle mode's objectives (its flags, hills, goals...) lit up on the map, each in the look it asks for.
+	inline int s_ObjectiveLook = 0; //!< The look of zone objectives: 0 each mode's own, else an ObjectiveLook (plus one) for all of them.
 	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
 	// The Unit and Drop tools' random units (copied into the stroke at the click): from every faction, one faction or the favourites.
 	inline bool s_RandomUnits = false;
