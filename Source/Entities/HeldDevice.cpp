@@ -67,6 +67,7 @@ void HeldDevice::Clear() {
 
 	m_BladeStart.Reset();
 	m_BladeEnd.Reset();
+	m_BladeHiltGap = 0.0F;
 	m_BladeEnergy = false;
 	m_BladeColor.SetRGB(255, 255, 255);
 	m_BladeWidth = 1.6F;
@@ -200,6 +201,7 @@ int HeldDevice::Create(const HeldDevice& reference) {
 
 	m_BladeStart = reference.m_BladeStart;
 	m_BladeEnd = reference.m_BladeEnd;
+	m_BladeHiltGap = reference.m_BladeHiltGap;
 	m_BladeEnergy = reference.m_BladeEnergy;
 	m_BladeColor = reference.m_BladeColor;
 	m_BladeWidth = reference.m_BladeWidth;
@@ -266,6 +268,10 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("VisualRecoilMultiplier", { reader >> m_VisualRecoilMultiplier; });
 	MatchProperty("BladeStart", { reader >> m_BladeStart; });
 	MatchProperty("BladeEnd", { reader >> m_BladeEnd; });
+	MatchProperty("BladeHiltGap", {
+		reader >> m_BladeHiltGap;
+		m_BladeHiltGap = std::max(m_BladeHiltGap, 0.0F);
+	});
 	MatchProperty("BladeEnergy", { reader >> m_BladeEnergy; });
 	MatchProperty("BladeColor", { reader >> m_BladeColor; });
 	MatchProperty("BladeWidth", { reader >> m_BladeWidth; });
@@ -355,6 +361,7 @@ int HeldDevice::Save(Writer& writer) const {
 	if (HasBlade()) {
 		writer.NewPropertyWithValue("BladeStart", m_BladeStart);
 		writer.NewPropertyWithValue("BladeEnd", m_BladeEnd);
+		writer.NewPropertyWithValue("BladeHiltGap", m_BladeHiltGap);
 		writer.NewPropertyWithValue("BladeEnergy", m_BladeEnergy);
 		writer.NewPropertyWithValue("BladeColor", m_BladeColor);
 		writer.NewPropertyWithValue("BladeWidth", m_BladeWidth);
@@ -840,7 +847,16 @@ void HeldDevice::PostUpdate() {
 		// Flickers a little, like it's alive.
 		float flicker = 0.93F + 0.07F * std::sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.037F + static_cast<float>(m_UniqueID));
 		glm::vec3 color(m_BladeColor.GetR(), m_BladeColor.GetG(), m_BladeColor.GetB());
-		g_PostProcessMan.RegisterEnergyBeam(start, start + bladeVec, color, m_BladeWidth, m_BladeBrightness * flicker * (0.4F + 0.6F * m_BladeExtension), GetBladeLightRadius());
+		float brightness = m_BladeBrightness * flicker * (0.4F + 0.6F * m_BladeExtension);
+		if (m_BladeHiltGap > 0.0F) {
+			// A double-bladed staff: a blade out of each end of the hilt.
+			Vector middle = start + bladeVec * 0.5F;
+			float hilt = std::min(m_BladeHiltGap * 0.5F / std::max(bladeVec.GetMagnitude() * 0.5F, 0.001F), 1.0F);
+			g_PostProcessMan.RegisterEnergyBeam(middle + bladeVec * (0.5F * hilt), start + bladeVec, color, m_BladeWidth, brightness, GetBladeLightRadius());
+			g_PostProcessMan.RegisterEnergyBeam(middle - bladeVec * (0.5F * hilt), start, color, m_BladeWidth, brightness, GetBladeLightRadius());
+		} else {
+			g_PostProcessMan.RegisterEnergyBeam(start, start + bladeVec, color, m_BladeWidth, brightness, GetBladeLightRadius());
+		}
 	}
 
 	bool sweepValid = m_BladePreviousValid && m_BladePreviousRootID == rootID && !g_SceneMan.ShortestDistance(m_BladePreviousStart, start, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(80.0F);

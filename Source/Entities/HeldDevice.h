@@ -351,11 +351,18 @@ namespace RTE {
 		/// Sets the blade's tip.
 		void SetBladeEnd(const Vector& end) { m_BladeEnd = end; }
 
-		/// Gets the scene position of the blade's base, as it is now (an energy blade's grows from it as it ignites).
-		Vector GetBladeStartPos() const { return m_Pos + RotateOffset(m_BladeStart); }
+		/// Gets the length in the middle of a double-bladed staff's blade where the hilt is and there's no blade, in pixels. 0 for a blade with one end.
+		float GetBladeHiltGap() const { return m_BladeHiltGap; }
+
+		/// Sets the length in the middle of the blade where the hilt is, making it a double-bladed staff: BladeStart and BladeEnd are then its two tips.
+		void SetBladeHiltGap(float gap) { m_BladeHiltGap = std::max(gap, 0.0F); }
+
+		/// Gets the scene position of the blade's base, as it is now (an energy blade's grows from it as it ignites). A double-bladed staff's other tip,
+		/// short of BladeStart while it ignites.
+		Vector GetBladeStartPos() const { return m_Pos + RotateOffset(m_BladeHiltGap > 0.0F ? GetBladeMiddle() - GetBladeHalf() * GetBladeReach() : m_BladeStart); }
 
 		/// Gets the scene position of the blade's tip, as it is now: short of BladeEnd while an energy blade ignites or goes out.
-		Vector GetBladeEndPos() const { return m_Pos + RotateOffset(m_BladeStart + (m_BladeEnd - m_BladeStart) * m_BladeExtension); }
+		Vector GetBladeEndPos() const { return m_Pos + RotateOffset(m_BladeHiltGap > 0.0F ? GetBladeMiddle() + GetBladeHalf() * GetBladeReach() : m_BladeStart + (m_BladeEnd - m_BladeStart) * m_BladeExtension); }
 
 		/// Gets the blade's colour: an energy blade's glow and light.
 		Color GetBladeColor() const { return m_BladeColor; }
@@ -531,8 +538,20 @@ namespace RTE {
 			Recover //!< Going back to the stance, after the strike or after bouncing off something hard.
 		};
 
+		/// A double-bladed staff's middle, and the way from it to BladeEnd, unflipped and unrotated.
+		Vector GetBladeMiddle() const { return (m_BladeStart + m_BladeEnd) * 0.5F; }
+		Vector GetBladeHalf() const { return (m_BladeEnd - m_BladeStart) * 0.5F; }
+
+		/// How far out a double-bladed staff's blades reach now, as a fraction of the half length: from the hilt's end when out to the tips when lit.
+		float GetBladeReach() const {
+			float half = GetBladeHalf().GetMagnitude();
+			float hilt = half > 0.0F ? std::min(m_BladeHiltGap * 0.5F / half, 1.0F) : 0.0F;
+			return hilt + (1.0F - hilt) * m_BladeExtension;
+		}
+
 		Vector m_BladeStart; //!< The blade's base, relative to this' position, unflipped and unrotated.
 		Vector m_BladeEnd; //!< The blade's tip. The same as m_BladeStart for no blade.
+		float m_BladeHiltGap; //!< A double-bladed staff's hilt length in the middle of the blade, pixels. 0 for a blade with one end.
 		bool m_BladeEnergy; //!< An energy blade (lightsaber): see IsBladeEnergy.
 		Color m_BladeColor; //!< An energy blade's glow and light colour.
 		float m_BladeWidth; //!< An energy blade's core width, in pixels.
