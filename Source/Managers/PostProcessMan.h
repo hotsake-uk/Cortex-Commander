@@ -63,6 +63,10 @@ namespace RTE {
 		float m_ConeCos = -2.0F; //!< Cosine of the cone's half angle; below -1 is an ordinary all-round light.
 		LightSource m_Source = LightSource::Other; //!< What registered it.
 		bool m_Steady = false; //!< A scenery lamp that shines all round without flickering or pulsing: drawn from the lamp cache when that's on (LightingSettings::LampCache).
+		glm::vec2 m_Line{0.0F}; //!< For line lights (a lightsaber's blade): from m_Pos, the middle, to one end. Zero for a light from a point.
+
+		/// Gets how far from m_Pos the light reaches: its radius, plus half its length for a line light.
+		float GetReach() const { return m_Radius + glm::length(m_Line); }
 	};
 
 	/// One straight piece of a lightning bolt as seen by a player screen (PostProcessMan::GetLightningBolts).
@@ -73,11 +77,11 @@ namespace RTE {
 		float Brightness; //!< This frame's, 0 to about 1.6 (the first stroke is brightest).
 	};
 
-	/// An energy beam (a lightsaber's blade, a cutting beam) as seen by a player screen (PostProcessMan::GetEnergyBeams): a white-hot core in a halo of its colour.
+	/// An energy beam (a lightsaber's blade, a cutting beam) as seen by a player screen (PostProcessMan::GetEnergyBeams): a thin white-hot core.
 	struct EnergyBeamSegment {
 		glm::vec2 From; //!< Relative to the screen.
 		glm::vec2 To;
-		glm::vec3 Color; //!< The halo's colour, 0 to 1.
+		glm::vec3 Color; //!< The core's tint, 0 to 1.
 		float Width; //!< The core's width, in pixels.
 		float Brightness; //!< 0 to about 2.
 	};
@@ -223,14 +227,20 @@ namespace RTE {
 		/// @param halfAngleDegrees Half the cone's width.
 		void RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
 
-		/// Registers an energy beam for the current frame: a straight line of light such as a lightsaber's blade, drawn as a white-hot core in a halo of its
-		/// colour that blooms, and lighting what's around it along its whole length. Registered on every sim update like lights. Safe from any thread.
+		/// Registers a line light for the current frame: light from a whole straight line (a lightsaber's blade) instead of a point, falling off round it
+		/// with rounded ends, and showing as a faint glow in the air around it.
 		/// @param from One end, scene coordinates.
 		/// @param to The other end.
-		/// @param color The halo's and the light's colour in 0-255 gamma space, like INI colors.
+		void RegisterLineLight(const Vector& from, const Vector& to, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
+
+		/// Registers an energy beam for the current frame: a straight line of light such as a lightsaber's blade, drawn as a thin white-hot core, with
+		/// all the colour round it coming from a line light along its whole length. Registered on every sim update like lights. Safe from any thread.
+		/// @param from One end, scene coordinates.
+		/// @param to The other end.
+		/// @param color The core's tint and the light's colour in 0-255 gamma space, like INI colors.
 		/// @param width The core's width in pixels, about 1 to 4.
 		/// @param brightness 1 for a lightsaber.
-		/// @param lightRadius How far its light reaches from the beam, in pixels. 0 for no light, only the glow.
+		/// @param lightRadius How far its light reaches from the beam, in pixels. 0 for no light, only the core.
 		void RegisterEnergyBeam(const Vector& from, const Vector& to, const glm::vec3& color, float width, float brightness, float lightRadius);
 
 		/// Registers an energy beam for the current frame, from Lua. See RegisterEnergyBeam.

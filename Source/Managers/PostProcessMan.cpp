@@ -296,15 +296,8 @@ void PostProcessMan::RegisterEnergyBeam(const Vector& from, const Vector& to, co
 	if (lightRadius <= 0.0F) {
 		return;
 	}
-	// The light comes from the whole length: a row of lights along it, a few pixels in from each end, sharing the beam's brightness.
-	Vector along = to - from;
-	float length = along.GetMagnitude();
-	int count = std::clamp(static_cast<int>(std::ceil(length / 12.0F)), 1, 6);
-	float each = brightness * 1.4F / std::sqrt(static_cast<float>(count));
-	for (int light = 0; light < count; ++light) {
-		float place = count == 1 ? 0.5F : (0.1F + 0.8F * static_cast<float>(light) / static_cast<float>(count - 1));
-		RegisterLight(from + along * place, color, lightRadius, each, LightSource::Objects);
-	}
+	// The light comes from the whole length, so its colour round the blade is real light: on the holder, the ground, and the air.
+	RegisterLineLight(from, to, color, lightRadius, brightness * 2.2F, LightSource::Objects);
 }
 
 void PostProcessMan::GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const {
@@ -324,6 +317,17 @@ void PostProcessMan::GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxH
 			}
 			segments.push_back({from, to, beam.Color, beam.Width, beam.Brightness});
 		}
+	}
+}
+
+void PostProcessMan::RegisterLineLight(const Vector& from, const Vector& to, const glm::vec3& color, float radius, float intensity, LightSource source) {
+	SceneLight light;
+	Vector along = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+	if (MakeSceneLight(from + along * 0.5F, color, radius, intensity, light)) {
+		light.m_Source = source;
+		light.m_Line = glm::vec2(along.m_X, along.m_Y) * 0.5F;
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
 	}
 }
 
@@ -352,8 +356,9 @@ void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int bo
 					continue;
 				}
 				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
-				if (relativePos.m_X + light.m_Radius >= 0 && relativePos.m_Y + light.m_Radius >= 0 && relativePos.m_X - light.m_Radius <= boxWidth && relativePos.m_Y - light.m_Radius <= boxHeight) {
-					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source, light.m_Steady});
+				float reach = light.GetReach();
+				if (relativePos.m_X + reach >= 0 && relativePos.m_Y + reach >= 0 && relativePos.m_X - reach <= boxWidth && relativePos.m_Y - reach <= boxHeight) {
+					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source, light.m_Steady, light.m_Line});
 				}
 			}
 		}
@@ -450,8 +455,8 @@ void PostProcessMan::IndexLastSceneLights() {
 		if (light.m_Radius <= 0.0F) {
 			continue;
 		}
-		CellRuns runsX = cellRuns(light.m_Pos.m_X, light.m_Radius, sceneWidth, wrapsX);
-		CellRuns runsY = cellRuns(light.m_Pos.m_Y, light.m_Radius, sceneHeight, wrapsY);
+		CellRuns runsX = cellRuns(light.m_Pos.m_X, light.GetReach(), sceneWidth, wrapsX);
+		CellRuns runsY = cellRuns(light.m_Pos.m_Y, light.GetReach(), sceneHeight, wrapsY);
 		for (int ry = 0; ry < runsY.Count; ++ry) {
 			for (int cellY = runsY.First[ry]; cellY <= runsY.Last[ry]; ++cellY) {
 				for (int rx = 0; rx < runsX.Count; ++rx) {
@@ -477,6 +482,11 @@ float PostProcessMan::GetDynamicLightAt(const Vector& pos) const {
 			return;
 		}
 		Vector toLight = g_SceneMan.ShortestDistance(pos, light.m_Pos, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+		// A line light is as close as the nearest point of its line.
+		if (float lineSq = glm::dot(light.m_Line, light.m_Line); lineSq > 0.0F) {
+			float along = std::clamp(-(toLight.m_X * light.m_Line.x + toLight.m_Y * light.m_Line.y) / lineSq, -1.0F, 1.0F);
+			toLight += Vector(light.m_Line.x, light.m_Line.y) * along;
+		}
 		if (!toLight.MagnitudeIsLessThan(light.m_Radius)) {
 			return;
 		}

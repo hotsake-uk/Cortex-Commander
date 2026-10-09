@@ -2049,6 +2049,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	};
 	size_t lightCount = 0;
 	size_t coneLightStart = SIZE_MAX; // The first cone light's quad; all lights before it shine all round.
+	size_t lineLightStart = SIZE_MAX; // The first line light's quad, between the lights from a point and the cone lights.
 	// The light sources overlay's copy of the first screen's lights, in scene coordinates.
 	bool recordLights = m_RecordDebugLights && screenIndex == 0;
 	if (recordLights) {
@@ -2110,7 +2111,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				if (m_LampCacheReady && light.m_Steady && light.m_ConeCos < -1.0F) {
 					continue;
 				}
-				if (light.m_ConeCos >= -1.0F) {
+				if (light.m_ConeCos >= -1.0F || light.m_Line != glm::vec2(0.0F)) {
 					mergedLights.push_back(light);
 					continue;
 				}
@@ -2150,30 +2151,43 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			}
 			shownLights.resize(lightBudget);
 		}
-		// All-round lights first, cone lights last, so the beam pass draws only the cone lights instead of rasterising every light to discard it.
-		std::stable_partition(shownLights.begin(), shownLights.end(), [](const SceneLight* light) { return light->m_ConeCos < -1.0F; });
+		// All-round lights from a point first, then line lights, then cone lights, so the pass that draws light in the air (line lights' glow, cone
+		// lights' beams) draws only those instead of rasterising every light to discard it.
+		auto lightOrder = [](const SceneLight* light) { return light->m_ConeCos >= -1.0F ? 2 : (light->m_Line != glm::vec2(0.0F) ? 1 : 0); };
+		std::stable_sort(shownLights.begin(), shownLights.end(), [&lightOrder](const SceneLight* a, const SceneLight* b) { return lightOrder(a) < lightOrder(b); });
 		for (const SceneLight* shownLight: shownLights) {
 			const SceneLight& light = *shownLight;
+			bool line = lightOrder(&light) == 1;
+			if (line && lineLightStart == SIZE_MAX) {
+				lineLightStart = lightCount;
+			}
 			if (light.m_ConeCos >= -1.0F && coneLightStart == SIZE_MAX) {
 				coneLightStart = lightCount;
 			}
 			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
-			addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
+			if (line) {
+				// A box round the whole line, as far out as the light reaches; the shader rounds the ends off.
+				addQuad(center, glm::vec2(glm::length(light.m_Line) + light.m_Radius, light.m_Radius), std::atan2(light.m_Line.y, light.m_Line.x), styled(light.m_Color), light.m_Radius);
+			} else {
+				addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
+			}
 			if (recordLights) {
 				recordLight(light.m_Pos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, false, false);
 			}
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
 				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
-				m_QuadVertices[vertex].ConeX = light.m_Direction.x;
-				m_QuadVertices[vertex].ConeY = light.m_Direction.y;
-				m_QuadVertices[vertex].ConeCos = light.m_ConeCos;
+				// Line lights pass the half line instead of a direction, and a cone cosine below -2.5 to mark them.
+				m_QuadVertices[vertex].ConeX = line ? light.m_Line.x : light.m_Direction.x;
+				m_QuadVertices[vertex].ConeY = line ? light.m_Line.y : light.m_Direction.y;
+				m_QuadVertices[vertex].ConeCos = line ? -3.0F : light.m_ConeCos;
 			}
 			++lightCount;
 		}
 	}
 	coneLightStart = std::min(coneLightStart, lightCount);
+	lineLightStart = std::min(lineLightStart, coneLightStart);
 	m_LastLightCount = static_cast<int>(lightCount);
 	size_t emissiveStart = m_QuadVertices.size() / 4;
 	std::vector<GLuint> emissiveTextures;
@@ -2231,25 +2245,25 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 
-	// Energy beams (lightsaber blades): a white-hot core in a halo of the beam's colour, and a fainter wide glow around both for the bloom to spread.
+	// Energy beams (lightsaber blades): only a thin white-hot core, rounded at the tip. The colour round it is all light, from the beam's line light.
 	{
 		std::vector<EnergyBeamSegment> beams;
 		g_PostProcessMan.GetEnergyBeams(Vector(origin.x, origin.y), width, height, beams);
 		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		GLuint puffTexture = EffectsParticles::GetPuffTexture();
 		for (const EnergyBeamSegment& beam: beams) {
 			glm::vec2 along = beam.To - beam.From;
 			float length = glm::length(along);
 			float angle = length > 0.01F ? std::atan2(along.y, along.x) : 0.0F;
-			glm::vec2 middle = (beam.From + beam.To) * 0.5F;
-			glm::vec3 halo = beam.Color * beam.Color;
-			addQuad(middle, glm::vec2(length * 0.5F + beam.Width * 2.0F, beam.Width * 3.5F + 1.5F), angle, glm::min(halo * beam.Brightness * 0.35F, glm::vec3(1.0F)), 0.0F);
+			glm::vec3 core = glm::min(glm::mix(beam.Color, glm::vec3(1.0F), 0.65F) * beam.Brightness, glm::vec3(1.0F));
+			float halfWidth = beam.Width * 0.5F;
+			// The core stops short of the tip by its half width, and a round dot of the same width finishes it, so it never ends square.
+			float coreLength = std::max(length - halfWidth, 0.0F);
+			addQuad(beam.From + (length > 0.01F ? along / length : glm::vec2(0.0F)) * (coreLength * 0.5F), glm::vec2(coreLength * 0.5F, halfWidth), angle, core, 0.0F);
 			emissiveTextures.push_back(whiteTexture);
 			emissiveHeat.push_back(0.0F);
-			addQuad(middle, glm::vec2(length * 0.5F + beam.Width, beam.Width * 1.6F + 0.5F), angle, glm::min(halo * beam.Brightness * 0.9F, glm::vec3(1.0F)), 0.0F);
-			emissiveTextures.push_back(whiteTexture);
-			emissiveHeat.push_back(0.0F);
-			addQuad(middle, glm::vec2(length * 0.5F + beam.Width * 0.5F, beam.Width * 0.5F), angle, glm::min(glm::mix(beam.Color, glm::vec3(1.0F), 0.8F) * beam.Brightness * 1.2F, glm::vec3(1.0F)), 0.0F);
-			emissiveTextures.push_back(whiteTexture);
+			addQuad(beam.To - (length > 0.01F ? along / length : glm::vec2(0.0F)) * halfWidth, glm::vec2(halfWidth * 1.6F), 0.0F, core, 0.0F);
+			emissiveTextures.push_back(puffTexture);
 			emissiveHeat.push_back(0.0F);
 		}
 	}
@@ -2883,8 +2897,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	}
 
-	// Flashlight beams visible in the air, as light catching dust. Only cone lights draw anything here, and they're the last of the lights.
-	if (lightCount > coneLightStart && m_Settings.Enabled) {
+	// Flashlight beams and the glow round line lights (lightsaber blades) visible in the air, as light catching dust. Only cone and line lights draw
+	// anything here, and they're the last of the lights.
+	if (lightCount > lineLightStart && m_Settings.Enabled) {
 		TracyGpuZone("Light Beams");
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
 		glViewport(0, 0, width, height);
@@ -2908,7 +2923,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
-		DrawQuads(coneLightStart, lightCount - coneLightStart);
+		DrawQuads(lineLightStart, lightCount - lineLightStart);
 		m_PointLightShader->SetBool("rteBeamMode", false);
 		glDisable(GL_BLEND);
 	}
