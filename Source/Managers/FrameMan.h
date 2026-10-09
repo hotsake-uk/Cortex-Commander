@@ -100,7 +100,7 @@ namespace RTE {
 		int GetUnzoomedPlayerScreenHeight() const;
 
 		static constexpr float c_MinCameraZoom = 0.4F;
-		static constexpr float c_MaxCameraZoom = 2.0F;
+		static constexpr float c_MaxCameraZoom = 4.0F;
 #pragma endregion
 
 #pragma region Split-Screen Handling
