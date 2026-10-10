@@ -215,7 +215,7 @@ namespace RTE {
 		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
 		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
 
-		float TimeOfDay = 6.334282F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
+		float TimeOfDay = 6.323529F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
 		float DayLengthMinutes = 25.4F; //!< Real minutes for a full day/night cycle (in sim time, so it pauses with the game). 0 keeps the time of day fixed.
 
 		float GlowLightIntensity = 2.5F; //!< Brightness of the lights cast by glow effects.

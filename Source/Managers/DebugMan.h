@@ -115,8 +115,8 @@ namespace RTE {
 		bool m_ShowGraphicsLab{false};
 		bool m_PanelsOverlay{true}; //!< Docked panels lie over the game's picture, which keeps its full size, instead of pushing it into the space between them.
 		bool m_DockPanels{true}; //!< Tool windows are panels at the sides of the game's picture, not floating over it.
-		float m_PanelWidth{21.0F}; //!< Width of the docked panel at the left, in percent of the window's width.
-		float m_PanelWidthRight{29.0F}; //!< Width of the docked panel at the right, in percent of the window's width.
+		float m_PanelWidth{25.833332F}; //!< Width of the docked panel at the left, in percent of the window's width.
+		float m_PanelWidthRight{20.15625F}; //!< Width of the docked panel at the right, in percent of the window's width.
 		int m_SandboxPlacement{0}; //!< How the sandbox's window is shown: a PanelPlacement.
 		float m_BarWidth{50.0F}; //!< Width of the sandbox bar along the bottom, in percent of the game's picture.
 		float m_ToolScale{0.7F}; //!< How big the tool windows' text and controls are, as a share of the size that follows the window's height.
