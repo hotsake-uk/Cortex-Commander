@@ -11,6 +11,7 @@
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
 #include "GasGrid.h"
@@ -156,6 +157,7 @@ void SettingsMan::Clear() {
 	m_SandboxSpotReach = false;
 	m_SandboxGroupBadges = true;
 	m_SandboxOrderGlyphs = 1;
+	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
 	m_SandboxMinimap = false;
 	m_LightsBySource = false;
@@ -327,6 +329,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseHitMassCap", { TerrainCollapse::GetTuning().HitMassCap = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 50.0F); });
 	MatchProperty("CollapseHitKnockback", { TerrainCollapse::GetTuning().HitKnockback = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -708,6 +712,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
+	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
@@ -1038,6 +1043,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("LiquidsDrainSides", FluidSim::DrainsSides());
 	writer.NewPropertyWithValue("PowdersFallOut", FluidSim::PowdersFallOut());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
+	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
+	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
@@ -1167,6 +1174,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
@@ -1344,6 +1352,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);

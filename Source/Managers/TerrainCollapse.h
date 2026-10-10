@@ -78,6 +78,14 @@ namespace RTE {
 		/// Sets whether pieces of buildings fall.
 		static void SetBuildingsFall(bool fall) { s_BuildingsFall = fall; }
 
+		/// Gets whether falling pieces go through trees (a gameplay setting): rock coming down from above falls through a standing tree rather
+		/// than landing on it, and a falling tree goes through other trees; a tree coming down still lands on the ground. Off (as the game comes)
+		/// trees are solid to falling pieces like any ground.
+		static bool PassesTrees() { return s_PassesTrees; }
+
+		/// Sets whether falling pieces go through trees.
+		static void SetPassesTrees(bool passes) { s_PassesTrees = passes; }
+
 		/// Queues a check for floating terrain around a crater. Thread safe.
 		/// @param position Centre of the crater, in scene coordinates.
 		/// @param radius How far around it to look.
@@ -88,6 +96,22 @@ namespace RTE {
 		/// @param radius Its rough radius in pixels (3 to 60).
 		/// @param materialName The material's name, e.g. "Stone".
 		static void SpawnChunk(const Vector& position, float radius, const char* materialName);
+
+		/// Breaks all the ground in a box loose (the sandbox's "Make it fall"): every piece of terrain inside it, whatever it is made of, is cut
+		/// out along the box's edges and falls like any loose piece, cracking, crumbling, splintering or bending as it lands by its materials.
+		/// A big box is cut into rough chunks first. What was held up only by the ground taken is checked afterwards and falls too.
+		/// Doors and the world's edge stay. Thread safe; applied on the next sim step.
+		/// @param left The box, in scene pixels, inclusive.
+		/// @param top The box, in scene pixels, inclusive.
+		/// @param right The box, in scene pixels, inclusive.
+		/// @param bottom The box, in scene pixels, inclusive.
+		/// @return A number for this drop, for TakeBackDrop; 0 if collapsing terrain is off (nothing falls then).
+		static int DropArea(int left, int top, int right, int bottom);
+
+		/// Takes a drop back, for an undo: its pieces still falling are lifted out of the terrain and gone, and those that came to rest are taken
+		/// out of the ground where they lie, if nothing has changed them since. The ground where they were is the caller's to put back. Main thread only.
+		/// @param drop The number DropArea gave.
+		static void TakeBackDrop(int drop);
 
 		/// Runs due checks. Call once per sim update, from the main thread.
 		static void Update();
@@ -116,6 +140,7 @@ namespace RTE {
 	private:
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
 		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.
+		static bool s_PassesTrees; //!< Whether falling pieces go through trees.
 		static Tuning s_Tuning; //!< What falls and how.
 	};
 } // namespace RTE

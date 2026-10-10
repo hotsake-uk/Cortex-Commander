@@ -2,6 +2,7 @@
 #include "ActorWater.h"
 #include "ActorFire.h"
 #include "FluidSim.h"
+#include "TerrainTrees.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
@@ -1481,7 +1482,7 @@ namespace {
 	/// water's own surface and was pulled up onto it.)
 	bool IsGroundAt(int x, int y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(x, y);
-		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id);
+		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id);
 	}
 } // namespace
 

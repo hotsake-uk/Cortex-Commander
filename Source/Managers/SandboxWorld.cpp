@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "GasGrid.h"
+#include "TerrainTrees.h"
 
 namespace SandboxDetail {
 	void Detonate(const char* presetName, const Vector& position) {
@@ -167,6 +168,10 @@ namespace SandboxDetail {
 		}
 		if (step.ColonyBuilding >= 0) {
 			Colony::Remove(step.ColonyBuilding);
+		}
+		if (step.Drop != 0) {
+			// "Make it fall": its pieces gone from wherever they are, and the ground back where it was.
+			TerrainCollapse::TakeBackDrop(step.Drop);
 		}
 		if (!step.Pixels.empty()) {
 			SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
@@ -598,7 +603,17 @@ namespace SandboxDetail {
 		}
 		DrawPlantPicture(terrain, plan.Piece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, material);
 		if (plan.LeafPiece) {
-			DrawPlantPicture(terrain, plan.LeafPiece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, plan.Leaves->GetDebrisMaterial().GetIndex());
+			int leafMaterial = plan.Leaves->GetDebrisMaterial().GetIndex();
+			if (kind == Tool::Trees) {
+				// A tree's leaves in the tree leaves material where the game has it, so they're known for a tree's (TerrainTrees), not a bush.
+				if (const Material* leaves = g_SceneMan.GetMaterial("Tree Leaves"); leaves && leaves->GetIndex() != g_MaterialAir) {
+					leafMaterial = leaves->GetIndex();
+				}
+			}
+			DrawPlantPicture(terrain, plan.LeafPiece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, leafMaterial);
+		}
+		if (kind == Tool::Trees) {
+			TerrainTrees::NoteChanged();
 		}
 		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->w) * plan.Scale));
 		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->h) * plan.Scale));
@@ -1652,6 +1667,22 @@ namespace SandboxDetail {
 			case Tool::UndoTerrain:
 				UndoPaint();
 				break;
+			case Tool::CollapseArea: {
+				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
+				int left = static_cast<int>(std::floor(std::min(stroke.Position.m_X, end.m_X)));
+				int top = static_cast<int>(std::floor(std::min(stroke.Position.m_Y, end.m_Y)));
+				int right = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_X, end.m_X))), left + c_MaxDropSide - 1);
+				int bottom = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_Y, end.m_Y))), top + c_MaxDropSide - 1);
+				if (int drop = TerrainCollapse::DropArea(left, top, right, bottom); drop != 0) {
+					// A step of its own in the undo, which takes the drop back.
+					PushUndoStep();
+					s_PaintUndo.back().Drop = drop;
+					s_PaintUndo.back().Sealed = true;
+					TrimUndo();
+				}
+				NotePaint(Box(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1)), "fall", "", true, true, true);
+				break;
+			}
 			case Tool::ClearMap:
 				ClearMap(stroke);
 				break;
@@ -1804,6 +1835,7 @@ namespace SandboxDetail {
 				break;
 			case Tool::TreeTrunk:
 				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape);
+				TerrainTrees::NoteChanged();
 				break;
 			case Tool::Concrete:
 				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);
