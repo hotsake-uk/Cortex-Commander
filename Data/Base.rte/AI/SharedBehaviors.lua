@@ -358,6 +358,82 @@ function SharedBehaviors.Patrol(AI, Owner, Abort)
 	return true;
 end
 
+-- Whether a unit has been told to suppress a place (the sandbox's Suppress command), and where: the centre and radius, or nil.
+function SharedBehaviors.SuppressZone(Owner)
+	if not Owner:NumberValueExists("SandboxSuppressX") then
+		return nil;
+	end
+	return Vector(Owner:GetNumberValue("SandboxSuppressX"), Owner:GetNumberValue("SandboxSuppressY")), Owner:GetNumberValue("SandboxSuppressR");
+end
+
+-- Every update of a unit under a suppress order. Whatever would take it off its job goes (its fights, turning to alarms, cover), it walks
+-- in till its weapon reaches the zone and stands there, and then HumanBehaviors.SuppressZone does the firing.
+-- @return Whether the unit is suppressing (so it is to take no notice of enemies in sight).
+function SharedBehaviors.SuppressUpdate(AI, Owner)
+	local Centre, radius = SharedBehaviors.SuppressZone(Owner);
+	if not Centre then
+		AI.SuppressWalking = nil;
+		return false;
+	end
+	AI.Target = nil;
+	AI.UnseenTarget = nil;
+	AI.OldTargetPos = nil;
+	AI.Cover = nil;
+	AI.Peek = nil;
+	AI.Investigate = nil;
+	Owner:RemoveNumberValue("AIInvestigate");
+	if AI.Flank then
+		AI.Flank = nil;
+		Owner:RemoveNumberValue("AIFlank");
+	end
+	AI.closingIn = false;
+	local offTheWay = {AttackTarget = true, ShootTarget = true, ThrowTarget = true, LobAt = true, ThrowSmoke = true, PinArea = true, FaceAlarm = true, ShootArea = true};
+	if AI.NextBehavior and offTheWay[AI.NextBehaviorName] then
+		AI.NextBehavior = nil;
+		AI.NextBehaviorName = nil;
+		AI.NextCleanup = nil;
+	end
+	if AI.Behavior and offTheWay[AI.BehaviorName] then
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		AI.Behavior = nil;
+		AI.BehaviorName = nil;
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+			AI.BehaviorCleanup = nil;
+		end
+	end
+
+	-- How far its weapon reaches, looked at again every second (the weapon may change).
+	if not AI.SuppressReachTimer or AI.SuppressReachTimer:IsPastSimMS(1000) then
+		AI.SuppressReachTimer = Timer();
+		AI.SuppressReach = math.min(SharedBehaviors.GetProjectileData(Owner).rng, 700);
+	end
+	local reach = AI.SuppressReach * 0.85;
+	local dist = SceneMan:ShortestDistance(Owner.Pos, Centre, SceneMan.SceneWrapsX).Magnitude;
+	if AI.SuppressWalking then
+		if dist <= reach * 0.9 then
+			-- In range: stand here.
+			AI.SuppressWalking = nil;
+			Owner:ClearAIWaypoints();
+			Owner.AIMode = Actor.AIMODE_SENTRY;
+			AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
+			AI.SentryFacing = SceneMan:ShortestDistance(Owner.Pos, Centre, SceneMan.SceneWrapsX).X < 0;
+		end
+	elseif dist > reach then
+		AI.SuppressWalking = true;
+		Owner:ClearAIWaypoints();
+		Owner:AddAISceneWaypoint(Centre);
+		Owner.AIMode = Actor.AIMODE_GOTO;
+	end
+
+	if not AI.SuppressWalking and AI.BehaviorName ~= "SuppressZone" and AI.NextBehaviorName ~= "SuppressZone"
+		and (not AI.SuppressTry or AI.SuppressTry:IsPastSimMS(1000)) then
+		AI.SuppressTry = Timer();
+		AI:CreateSuppressZoneBehavior(Owner);
+	end
+	return true;
+end
+
 -- sharp aim at an area where we expect the enemy to be
 function SharedBehaviors.PinArea(AI, Owner, Abort)
 	if AI.OldTargetPos then

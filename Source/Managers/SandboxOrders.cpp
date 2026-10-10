@@ -148,6 +148,9 @@ namespace SandboxDetail {
 		s_SendNotes[unit->GetUniqueID()] = {reason, resend, g_TimerMan.GetSimUpdateCount()};
 		CancelRetreatAndFlank(unit);
 		Actor::StandingOrder& standing = unit->GetStandingOrder();
+		if (!resend) {
+			ClearSuppress(unit);
+		}
 		standing.Attack = false;
 		standing.HasPost = false;
 		standing.AutoTargetID = 0;
@@ -234,6 +237,7 @@ namespace SandboxDetail {
 	/// Holds a unit where it is, forgetting every order it had.
 	void HoldUnit(Actor* unit) {
 		DropPlan(unit);
+		ClearSuppress(unit);
 		s_MoveWatch.erase(unit->GetUniqueID());
 		s_GuardPosts.erase(unit->GetUniqueID());
 		s_BattleDefenders.erase(unit->GetUniqueID());
@@ -276,6 +280,7 @@ namespace SandboxDetail {
 		}
 		CancelRetreatAndFlank(actor);
 		DropPlan(actor);
+		ClearSuppress(actor);
 		s_MoveWatch.erase(actor->GetUniqueID());
 		s_GuardPosts.erase(actor->GetUniqueID());
 		s_BattleDefenders.erase(actor->GetUniqueID());
@@ -925,6 +930,9 @@ namespace SandboxDetail {
 			case CommandMode::DefendAt:
 				DefendAtSelected(point, point, shift);
 				return;
+			case CommandMode::Suppress:
+				SuppressSelected(point);
+				return;
 			case CommandMode::DigTo:
 				DigUnitsTo(units, point);
 				MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
@@ -1193,6 +1201,10 @@ namespace SandboxDetail {
 				return;
 			}
 			OrderSelectedUnits(1, position);
+			return;
+		}
+		if (s_CommandMode == CommandMode::Suppress) {
+			SuppressSelected(position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::DigTo) {
@@ -1485,6 +1497,45 @@ namespace SandboxDetail {
 			}
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
+	}
+
+	/// Orders the selected units to suppress a place: each holds ground and fires into a zone of the radius on the command row round the
+	/// point, aiming about it at random, for as long as it has the order. They need no target, and take no notice of what else is in sight;
+	/// one out of range walks in till it is in, then stands. The AI does the firing (HumanBehaviors.SuppressZone), told the zone by number
+	/// values on the unit; any other order, a hold or a cancel takes them off (ClearSuppress).
+	void SuppressSelected(const Vector& point) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		Vector centre = point;
+		g_SceneMan.WrapPosition(centre);
+		for (Actor* unit: units) {
+			HoldUnit(unit);
+			unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+			unit->SetNumberValue("SandboxSuppressX", centre.m_X);
+			unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
+			unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(s_SuppressRadius, 10)));
+			s_SendNotes[unit->GetUniqueID()] = {"suppress", false, g_TimerMan.GetSimUpdateCount()};
+			AnswerOrder(unit, "OrderSuppress");
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Suppress)]);
+	}
+
+	/// Whether a unit is suppressing a place, and where and how wide.
+	bool SuppressZoneOf(const Actor* unit, Vector& centre, float& radius) {
+		if (!unit || !unit->NumberValueExists("SandboxSuppressX")) {
+			return false;
+		}
+		centre = Vector(static_cast<float>(unit->GetNumberValue("SandboxSuppressX")), static_cast<float>(unit->GetNumberValue("SandboxSuppressY")));
+		radius = static_cast<float>(unit->GetNumberValue("SandboxSuppressR"));
+		return true;
+	}
+
+	/// Takes a unit off a suppress order, if it has one: any other order does.
+	void ClearSuppress(Actor* unit) {
+		if (unit && unit->NumberValueExists("SandboxSuppressX")) {
+			unit->RemoveNumberValue("SandboxSuppressX");
+			unit->RemoveNumberValue("SandboxSuppressY");
+			unit->RemoveNumberValue("SandboxSuppressR");
+		}
 	}
 
 	/// Sends the selected units on a patrol (RC-4): round the points in order, fighting what they meet and pausing at each, then round again,

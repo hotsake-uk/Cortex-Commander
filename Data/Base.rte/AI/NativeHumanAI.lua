@@ -224,6 +224,9 @@ function NativeHumanAI:Update(Owner)
 	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
 	SharedBehaviors.AttackOrderUpdate(self, Owner);
 
+	-- A suppress order (the sandbox's Suppress): fire into its zone, whatever else is in sight (see SharedBehaviors.SuppressUpdate).
+	local suppressing = SharedBehaviors.SuppressUpdate(self, Owner);
+
 	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
 	local objective = SharedBehaviors.OnObjective(Owner);
 	if objective then
@@ -328,7 +331,7 @@ function NativeHumanAI:Update(Owner)
 	-- look for targets (only those its temperament lets it fight, NC-1; a target it may no longer have is dropped first)
 	SharedBehaviors.DropForbiddenTarget(self, Owner);
 	local FoundMO, HitPoint = self.SpotTargets(self, Owner, self.skill);
-	if FoundMO and not SharedBehaviors.MayTarget(self, Owner, FoundMO) then
+	if FoundMO and (suppressing or not SharedBehaviors.MayTarget(self, Owner, FoundMO)) then
 		FoundMO = nil;
 	end
 	if FoundMO then
@@ -1069,6 +1072,22 @@ function NativeHumanAI:CreateSuppressBehavior(Owner)
 		AI.UnseenTarget = nil;
 		AI.deviceState = AHuman.STILL;
 		AI.proneState = AHuman.NOTPRONE;
+	end
+end
+
+-- Fire into the zone a suppress order named, for as long as the order stands.
+function NativeHumanAI:CreateSuppressZoneBehavior(Owner)
+	if not Owner:EquipFirearm(true) then
+		if Owner.FirearmIsEmpty then
+			Owner:ReloadFirearms();
+		end
+		return;
+	end
+	self.NextBehavior = coroutine.create(HumanBehaviors.SuppressZone);
+	self.NextBehaviorName = "SuppressZone";
+	self.NextCleanup = function(AI)
+		AI.fire = false;
+		AI.deviceState = AHuman.STILL;
 	end
 end
 
