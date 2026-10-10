@@ -26,7 +26,7 @@
 using namespace RTE;
 
 bool UnitSpeech::s_Enabled = true;
-int UnitSpeech::s_ChancePercent = 40;
+int UnitSpeech::s_ChancePercent = 76;
 bool UnitSpeech::s_ShowEnemies = true;
 
 namespace {

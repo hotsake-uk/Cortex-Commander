@@ -22,7 +22,7 @@ CameraMan::~CameraMan() {
 }
 
 void CameraMan::Clear() {
-	m_ScreenShakeStrength = 1.0F;
+	m_ScreenShakeStrength = 0.0F;
 	m_ScreenShakeDecay = 50.0F;
 	m_MaxScreenShakeTime = 1.0F;
 	m_DefaultShakePerUnitOfGibEnergy = 0.001F;
