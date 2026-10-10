@@ -329,6 +329,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseHitKnockback", { TerrainCollapse::GetTuning().HitKnockback = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1041,6 +1042,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PowdersFallOut", FluidSim::PowdersFallOut());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
+	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
