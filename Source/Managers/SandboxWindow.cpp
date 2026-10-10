@@ -239,6 +239,10 @@ namespace SandboxDetail {
 				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
+			case Tool::Rope:
+				return "Click to put down a rope of the kind picked under Ropes: each click is a point it's tied at, to the unit or thing clicked, else the ground there; a click in the air leaves it loose there. Right click, Enter or Escape finishes it. It swings and sags, is pulled taut by what's tied to it, and can be cut by bullets and blasts or burnt (the kinds that burn). Ctrl+Z takes the whole rope away.";
+			case Tool::RopeCut:
+				return "Click on a rope to cut it there.";
 			case Tool::Metal:
 				return "Paints the metal chosen under Metals: the bunkers' plating, or gold, silver, bronze, brass, copper and chrome, which catch the sun and lamplight in their own colour.";
 			default:
@@ -376,6 +380,12 @@ namespace SandboxDetail {
 				return {Icon::Chunk, MaterialMarkColor(s_OtherTerrain, 255)};
 			case Tool::CollapseArea:
 				return {Icon::Down, IM_COL32(242, 150, 60, 255)};
+			case Tool::Rope: {
+				const RopeSim::TypeInfo& type = RopeSim::GetType(s_RopeType);
+				return {Icon::Rope, IM_COL32(type.R, type.G, type.B, 255)};
+			}
+			case Tool::RopeCut:
+				return {Icon::Cross, IM_COL32(230, 120, 100, 255)};
 			case Tool::Metal:
 				for (const PaintMetal& metal: c_PaintMetals) {
 					if (s_PaintMetal == metal.Material) {

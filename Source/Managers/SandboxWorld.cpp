@@ -173,6 +173,13 @@ namespace SandboxDetail {
 			// "Make it fall": its pieces gone from wherever they are, and the ground back where it was.
 			TerrainCollapse::TakeBackDrop(step.Drop);
 		}
+		if (step.Rope != 0) {
+			// A rope: taken away, the one being put down included (the next click starts another).
+			RopeSim::Remove(step.Rope);
+			if (s_RopeDrawing == step.Rope) {
+				s_RopeDrawing = 0;
+			}
+		}
 		if (!step.Pixels.empty()) {
 			SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 			Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
@@ -1689,6 +1696,42 @@ namespace SandboxDetail {
 			case Tool::ClearMap:
 				ClearMap(stroke);
 				break;
+			case Tool::Rope:
+				if (stroke.Choice == 2) {
+					// Every rope taken away (and out of the undo).
+					RopeSim::Clear();
+					s_RopeDrawing = 0;
+					for (PaintUndoStep& step: s_PaintUndo) {
+						step.Rope = 0;
+					}
+				} else if (stroke.Choice == 1) {
+					// Finished: the next click starts another. One only started, with a single point, is no rope: it goes, with its undo step.
+					if (s_RopeDrawing != 0 && RopeSim::GetPointCount(s_RopeDrawing) < 2) {
+						RopeSim::Remove(s_RopeDrawing);
+						for (PaintUndoStep& step: s_PaintUndo) {
+							if (step.Rope == s_RopeDrawing) {
+								step.Rope = 0;
+							}
+						}
+					}
+					s_RopeDrawing = 0;
+				} else if (s_RopeDrawing != 0 && RopeSim::GetPointCount(s_RopeDrawing) > 0) {
+					RopeSim::AddPoint(s_RopeDrawing, at);
+				} else {
+					int type = RopeSim::FindType(stroke.Material);
+					s_RopeDrawing = RopeSim::Create(type >= 0 ? type : s_RopeType, stroke.Rate, at);
+					if (s_RopeDrawing != 0) {
+						// A step of its own in the undo, which takes the whole rope away.
+						PushUndoStep();
+						s_PaintUndo.back().Rope = s_RopeDrawing;
+						s_PaintUndo.back().Sealed = true;
+						TrimUndo();
+					}
+				}
+				break;
+			case Tool::RopeCut:
+				RopeSim::QueueCut(at, 4.0F);
+				break;
 			case Tool::BattleTeam:
 			case Tool::BattleDefendPoint:
 			case Tool::BattleDropLine:
@@ -2088,6 +2131,12 @@ namespace SandboxDetail {
 			stroke.Material = s_OtherTerrain;
 		} else if (kind == Tool::Metal) {
 			stroke.Material = s_PaintMetal;
+		} else if (kind == Tool::Rope) {
+			// The next point of the rope being put down (or its first), of the kind and slack picked.
+			stroke.Material = RopeSim::GetType(s_RopeType).Name;
+			stroke.Rate = s_RopeSlack;
+			stroke.Choice = 0;
+			s_RopeDraft.push_back(position);
 		}
 		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
 		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;

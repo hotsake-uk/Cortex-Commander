@@ -13,6 +13,7 @@
 #include "SLTerrain.h"
 #include "TerrainCollapse.h"
 #include "TerrainCandle.h"
+#include "RopeSim.h"
 #include "Scene.h"
 #include "TimerMan.h"
 #include "Vector.h"
@@ -371,6 +372,8 @@ void TerrainFire::QueueIgniteArea(const Vector& position, float radius) {
 	if (!s_Enabled) {
 		return;
 	}
+	// Ropes that burn catch from the same fire (the fire brush, a blast, lightning, a gas burning).
+	RopeSim::QueueIgniteArea(position, radius);
 	std::scoped_lock lock(s_QueueMutex);
 	s_AreaQueue.emplace_back(glm::vec2(position.m_X, position.m_Y), radius);
 }
