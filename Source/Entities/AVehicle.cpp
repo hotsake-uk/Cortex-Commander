@@ -357,6 +357,8 @@ void AVehicle::UpdateWheels() {
 	float angularChange = 0.0F;
 	float pushingUp = 0.0F; //!< The springs' push this update, as acceleration: how much weight is on the wheels, for their grip.
 	int onGround = 0;
+	float bottomedOut = 0.0F; //!< How far the deepest bottomed-out wheel is into the ground, in pixels.
+	float bottomedShare = 0.0F; //!< How much of the cart's weight is on wheels that have bottomed out.
 	float share = m_Wheels.empty() ? 0.0F : 1.0F / static_cast<float>(m_Wheels.size());
 
 	for (Wheel& wheel: m_Wheels) {
@@ -382,11 +384,13 @@ void AVehicle::UpdateWheels() {
 		if (wheel.OnGround) {
 			wheel.Compression = std::clamp(m_SuspensionTravel - lowest, 0.0F, m_SuspensionTravel);
 			++onGround;
-			float squeeze = (wheel.Compression - previous) * c_MPP / deltaTime;
+			// (Held to a sensible speed: set down with a wheel in the ground, the spring is all the way in at once, and would fling it up.)
+			float squeeze = std::clamp((wheel.Compression - previous) * c_MPP / deltaTime, -3.0F, 3.0F);
 			float push = share * (m_SuspensionStiffness * wheel.Compression * c_MPP + m_SuspensionDamping * squeeze);
-			// Bottomed out with the ground still higher (a hard landing, driving into a step): the spring is solid, and pushes as hard as it must.
+			// Bottomed out with the ground still higher (a hard landing, driving into a step): the spring is solid (see below).
 			if (lowest < 0.0F) {
-				push += share * m_SuspensionStiffness * 4.0F * -lowest * c_MPP;
+				bottomedOut = std::max(bottomedOut, -lowest);
+				bottomedShare += share;
 			}
 			push = std::max(push, 0.0F);
 			pushingUp += push;
@@ -433,6 +437,16 @@ void AVehicle::UpdateWheels() {
 
 	m_Vel += velocityChange;
 	m_AngularVel += angularChange;
+
+	// A bottomed-out spring is solid: the body goes no further down onto it, and is lifted back out of the ground as far as the wheel went in.
+	// Without this a hard landing or a step drives the body down onto the ground, and a heavy one digs itself in to soft ground and sticks.
+	if (bottomedShare > 0.0F) {
+		float into = m_Vel.Dot(down);
+		if (into > 0.0F) {
+			m_Vel -= down * into * std::min(bottomedShare, 1.0F);
+		}
+		m_Pos -= down * std::min(bottomedOut, 2.0F) * std::min(bottomedShare, 1.0F);
+	}
 
 	// The wheels ride up on their springs and turn as far as they've rolled.
 	speedAlong = m_Vel.Dot(along);
