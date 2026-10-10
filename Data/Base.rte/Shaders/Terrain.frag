@@ -487,7 +487,14 @@ void main() {
 						lean = vec2(texture(rteFlowField, (worldPos + vec2(cellStep.x, 0.0)) / rteGridWorldSize).g - texture(rteFlowField, (worldPos - vec2(cellStep.x, 0.0)) / rteGridWorldSize).g,
 						            texture(rteFlowField, (worldPos + vec2(0.0, cellStep.y)) / rteGridWorldSize).g - texture(rteFlowField, (worldPos - vec2(0.0, cellStep.y)) / rteGridWorldSize).g) * 0.6 * flowAmount;
 					}
-					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * calm * mix(1.0, 0.5, deep) + lean * rteWaterRipples * lookSurface.z, 0.0));
+					// Wind chop: where the surface is open to the sky (not under a roof or in a cave), smaller, quicker waves run downwind, the harder
+					// the wind the more, still water too.
+					vec2 chop = vec2(0.0);
+					float windChop = min(abs(rteWind) / 150.0, 1.5);
+					if (windChop > 0.02 && worldPos.y <= texture(rteSkyline, vec2(worldPos.x / rteGridWorldSize.x, 0.5)).r * rteGridWorldSize.y + 24.0) {
+						chop = RippleSlope(worldPos * 1.9 - vec2(rteTime * rteWind * 0.25, 0.0)) * windChop * 0.35 * mix(1.0, 0.2, deep);
+					}
+					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * calm * mix(1.0, 0.5, deep) + (lean + chop) * rteWaterRipples * lookSurface.z, 0.0));
 				}
 				glowsThrough = 0.25 * lookStyle.w;
 				if (LiquidLook(colorIndex) == 0) {
