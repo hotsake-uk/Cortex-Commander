@@ -1137,6 +1137,26 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Whether a team-mate of a flag's carrier goes with it all the way to score: EscortPercent of them do, the same ones each time.
+		bool Escorts(const Actor* unit) {
+			const uint32_t mixed = static_cast<uint32_t>(unit->GetUniqueID()) * 2654435761u;
+			return static_cast<int>((mixed >> 8) % 100u) < s_ModeRun.Settings.EscortPercent;
+		}
+
+		/// Where a team-mate of a flag's carrier goes, the carrier taking it from a place (from) to score at another (goal): with the carrier;
+		/// or, for one that doesn't escort it (Escorts) once the carrier is past halfway, halfway, to hold the ground ahead of the goal there.
+		void SeeCarrierHome(Actor* unit, FlagRunner& runner, const Actor* carrier, const Vector& from, const Vector& goal, long long now) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const Vector back = g_SceneMan.ShortestDistance(goal, from, wraps);
+			if (!Escorts(unit) && g_SceneMan.ShortestDistance(goal, carrier->GetPos(), wraps).MagnitudeIsLessThan(back.GetMagnitude() * 0.5F)) {
+				Vector halfway = goal + back * 0.5F;
+				g_SceneMan.WrapPosition(halfway);
+				SendRunner(unit, runner, Grounded(halfway), nullptr, "flag: holding the ground ahead", now);
+			} else {
+				SendRunner(unit, runner, carrier->GetPos(), nullptr, "flag: seeing it home", now);
+			}
+		}
+
 		/// A unit that has just picked up an enemy's flag: straight for its own base with it, whatever it was doing, there and then. A guard
 		/// becomes a runner for it (its post kept, it went back there with the flag, and nothing sent it home).
 		void TakeFlagHome(Actor* unit, int flagSide, long long now) {
@@ -1210,7 +1230,7 @@ namespace SandboxDetail {
 				const Flag& theirs = s_Flags[runner.Target];
 				Actor* carrier = theirs.State == FlagState::Carried ? GetRef(theirs.Carrier) : nullptr;
 				if (carrier && carrier->GetTeam() == team) {
-					SendRunner(unit, runner, carrier->GetPos(), nullptr, "flag: seeing it home", now);
+					SeeCarrierHome(unit, runner, carrier, theirs.Home, s_Flags[team].Home, now);
 				} else if (carrier) {
 					// (Another team has it: after them.)
 					SendRunner(unit, runner, carrier->GetPos(), carrier, "flag: after the one with it", now);
@@ -1259,6 +1279,8 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("The first team to bring this many enemy flags home to its own wins, and the battle stops. 0: it goes on till you stop it.");
 			changed |= ImGui::SliderInt("Guards", &setup.GuardPercent, 0, 90, "%d%% of each team");
 			ImGui::SetItemTooltip("The share of each team's units that stay to guard its flag, and go after it if it's taken. The rest go for the enemy's.");
+			changed |= ImGui::SliderInt("Go with the carrier", &setup.EscortPercent, 0, 100, "%d%% all the way");
+			ImGui::SetItemTooltip("The share of a flag carrier's team-mates that go with it all the way to score. The rest go with it until it's halfway, then stay there to hold the ground ahead, in the way of anyone coming after it.");
 			changed |= ImGui::SliderInt("Dropped flag returns after", &setup.ReturnSeconds, 5, 180, "%d s");
 			ImGui::SetItemTooltip("How long a dropped flag lies (glowing, with its seconds counting down over it) before it goes back home by itself, if nobody picks it up first.");
 			changed |= ToolUI::Checkbox("Move a flag nobody can get to", &setup.MoveStuckPoint);
@@ -1330,6 +1352,7 @@ namespace SandboxDetail {
 				}
 				BattleObjective flag{.Name = SideName(side) + " flag", .Radius = c_FlagReach, .Color = c_SideColors[side], .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(side), .Defenders = Bit(side)};
 				flag.Pos = running ? s_Flags[side].Pos : settings.Points[side];
+				flag.Shown = !(running && s_Flags[side].State == FlagState::Carried); // (Carried: the flag over its carrier's head marks it.)
 				out.push_back(flag);
 			}
 		}
@@ -1562,7 +1585,7 @@ namespace SandboxDetail {
 				if (carrier == unit) {
 					SendRunner(unit, runner, GoalSpot(settings, runner.Team), nullptr, "flag: taking it to our goal", now);
 				} else if (carrier && carrier->GetTeam() == runner.Team) {
-					SendRunner(unit, runner, carrier->GetPos(), nullptr, "flag: seeing it to our goal", now);
+					SeeCarrierHome(unit, runner, carrier, s_OneFlag.Home, GoalSpot(settings, runner.Team), now);
 				} else if (carrier) {
 					SendRunner(unit, runner, carrier->GetPos(), carrier, "flag: after the one with it", now);
 				} else {
@@ -1655,6 +1678,8 @@ namespace SandboxDetail {
 			}
 			changed |= ImGui::SliderInt("Goals to win", &setup.ScoreToWin, 0, 10, setup.ScoreToWin > 0 ? "%d" : "play on");
 			ImGui::SetItemTooltip("The first team to bring the flag into its goal zone this many times wins, and the battle stops. 0: it goes on till you stop it.");
+			changed |= ImGui::SliderInt("Go with the carrier", &setup.EscortPercent, 0, 100, "%d%% all the way");
+			ImGui::SetItemTooltip("The share of a flag carrier's team-mates that go with it all the way to score. The rest go with it until it's halfway, then stay there to hold the ground ahead, in the way of anyone coming after it.");
 			changed |= ImGui::SliderInt("Dropped flag returns after", &setup.ReturnSeconds, 5, 180, "%d s");
 			ImGui::SetItemTooltip("How long a dropped flag lies (glowing, with its seconds counting down over it) before it goes back to its spot by itself, if nobody picks it up first.");
 		}
@@ -1733,7 +1758,7 @@ namespace SandboxDetail {
 			const int holder = carrier ? carrier->GetTeam() : -1;
 			if (running || (!settings.FlagByZones && !settings.FlagSpots.empty())) {
 				// (Carried: the carrier's team-mates go with it, everyone else after it. Set up, it stands at the first flag position.)
-				out.push_back({.Name = "The flag", .Pos = running ? s_OneFlag.Pos : settings.FlagSpots.front(), .Radius = c_FlagReach, .Color = c_NeutralColor, .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(holder), .Defenders = Bit(holder)});
+				out.push_back({.Name = "The flag", .Pos = running ? s_OneFlag.Pos : settings.FlagSpots.front(), .Radius = c_FlagReach, .Color = c_NeutralColor, .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(holder), .Defenders = Bit(holder), .Shown = !carrier});
 			}
 			for (int side = 0; side < c_Sides; ++side) {
 				if (!TeamIn(settings, side) || settings.Goals[side].size() < 3) {
@@ -3096,6 +3121,9 @@ namespace SandboxDetail {
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 		const int override = std::clamp(s_ObjectiveLook, 0, static_cast<int>(ObjectiveLook::Count));
 		for (const BattleObjective& objective: BattleObjectives()) {
+			if (!objective.Shown) {
+				continue;
+			}
 			DrawObjective(drawList, objective, override > 0 && objective.Zone.size() >= 3 ? static_cast<ObjectiveLook>(override - 1) : objective.Look);
 		}
 	}

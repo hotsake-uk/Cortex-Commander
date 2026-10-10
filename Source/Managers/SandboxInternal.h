@@ -598,6 +598,7 @@ namespace SandboxDetail {
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
+		int EscortPercent = 50; //!< Capture the flag and one flag: the share of a carrier's team-mates, in percent, that go with it all the way to score; the rest go with it only until it's halfway home, then stay there to hold the ground ahead.
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
@@ -775,6 +776,7 @@ namespace SandboxDetail {
 		unsigned Attackers = 0; //!< A bit per team that goes for it (to take it, capture it, kill it, score in it).
 		unsigned Defenders = 0; //!< A bit per team that holds it.
 		bool Live = true; //!< In play now; false for one taken, not yet in play, or a flag's empty stand.
+		bool Shown = true; //!< Lit up on the map with "Show battle objectives" on; false for a carried flag (the flag over its carrier's head marks it).
 
 		bool AttackedBy(int side) const { return side >= 0 && side < 32 && (Attackers >> side) & 1u; }
 		bool DefendedBy(int side) const { return side >= 0 && side < 32 && (Defenders >> side) & 1u; }
