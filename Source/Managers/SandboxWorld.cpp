@@ -263,20 +263,80 @@ namespace SandboxDetail {
 	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
 	/// @param shape A circle, a square of radius either way of the center, or a soft spray over the circle (the brush shape, s_BrushShape).
 	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	/// Whether a scene pixel is under a terrain brush: a circle, a square of radius either way of the center, or a soft spray over the circle.
+	bool InBrush(int centerX, int centerY, int radius, BrushShape shape, int x, int y) {
+		int dx = x - centerX;
+		int dy = y - centerY;
+		int distanceSquared = dx * dx + dy * dy;
+		if (shape != BrushShape::Square && distanceSquared > radius * radius) {
+			return false;
+		}
+		// The spray: a few of the pixels each stroke, more towards the middle, so holding it builds up softly.
+		return shape != BrushShape::Spray || Random01() <= 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)));
+	}
+
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
 		int centerX = center.GetFloorIntX();
 		int centerY = center.GetFloorIntY();
-		auto inside = [&](int x, int y) {
-			int dx = x - centerX;
-			int dy = y - centerY;
-			int distanceSquared = dx * dx + dy * dy;
-			if (shape != BrushShape::Square && distanceSquared > radius * radius) {
-				return false;
+		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, [&](int x, int y) { return InBrush(centerX, centerY, radius, shape, x, y); }, materialName, goldShare);
+	}
+
+	/// Grows grass up into the air from the top of the ground, wherever a top is among the pixels of a box (scene pixels, both ends included,
+	/// unwrapped) that inside says are in, as the base game's maps have on their topsoil (its "Grass" frosting): a few pixels thick, a little
+	/// more or less from column to column. Ground that already has grass on it, and plants and ash, get none, so going over it again adds nothing.
+	template <typename Inside>
+	void GrowGrassArea(int left, int top, int right, int bottom, Inside inside) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const Material* grass = g_SceneMan.GetMaterial("Grass");
+		if (!grass || grass->GetIndex() == g_MaterialAir) {
+			return;
+		}
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		Color grassColor = grass->GetColor();
+		grassColor.RecalculateIndex();
+		Color darker = grassColor;
+		darker.SetRGB(grassColor.GetR() * 4 / 5, grassColor.GetG() * 4 / 5, grassColor.GetB() * 4 / 5);
+		darker.RecalculateIndex();
+		int color = grassColor.GetIndex();
+		int speckleColor = darker.GetIndex() > 1 ? darker.GetIndex() : color;
+		constexpr int c_MinThickness = 3;
+		constexpr int c_MaxThickness = 7;
+		bool changed = false;
+		for (int sceneX = left; sceneX <= right; ++sceneX) {
+			int x = sceneX;
+			if (g_SceneMan.SceneWrapsX()) {
+				x = ((x % width) + width) % width;
 			}
-			// The spray: a few of the pixels each stroke, more towards the middle, so holding it builds up softly.
-			return shape != BrushShape::Spray || Random01() <= 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)));
-		};
-		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, inside, materialName, goldShare);
+			if (x < 0 || x >= width) {
+				continue;
+			}
+			// The same thickness each time for a column, so painting over the edge of earlier grass lines up with it.
+			unsigned int hash = static_cast<unsigned int>(x) * 2654435761u;
+			int thickness = c_MinThickness + static_cast<int>((hash >> 16) % (c_MaxThickness - c_MinThickness + 1));
+			for (int y = std::max(top, 1); y <= std::min(bottom, height - 1); ++y) {
+				int ground = terrain->GetMaterialPixel(x, y);
+				if (terrain->GetMaterialPixel(x, y - 1) != g_MaterialAir || ground == g_MaterialAir || ground == g_MaterialOutOfBounds || ground == grass->GetIndex() || FluidSim::IsLiquid(ground) || !inside(sceneX, y)) {
+					continue;
+				}
+				const Material* groundMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(ground));
+				if (!groundMaterial || groundMaterial->GetIntegrity() < 5.0F) {
+					continue;
+				}
+				for (int above = y - 1; above >= std::max(0, y - thickness) && terrain->GetMaterialPixel(x, above) == g_MaterialAir; --above) {
+					RecordPaintPixel(terrain, x, above);
+					terrain->SetMaterialPixel(x, above, grass->GetIndex());
+					terrain->SetFGColorPixel(x, above, PaintedColor(grass, x, above, color, speckleColor));
+					changed = true;
+				}
+			}
+		}
+		Box area(Vector(static_cast<float>(left), static_cast<float>(top - c_MaxThickness)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1 + c_MaxThickness));
+		if (changed) {
+			terrain->AddUpdatedMaterialArea(area);
+			FluidSim::Disturb(area.GetCenter(), std::max(area.GetWidth(), area.GetHeight()) * 0.5F + 2.0F);
+		}
+		NotePaint(area, "paint", "Grass", false, changed, changed);
 	}
 
 	/// The material a terrain brush paints (nullptr: Dig), and how much of it is gold.
@@ -313,6 +373,13 @@ namespace SandboxDetail {
 
 	/// Fills a shape dragged out with a terrain brush (Brush type Shape) with its material, or digs it out with Dig, in one go.
 	void FillTerrainShape(const Stroke& stroke) {
+		if (stroke.Kind == Tool::GrowGrass) {
+			FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
+			const Vector& start = stroke.Position;
+			const Vector& end = stroke.Position2;
+			GrowGrassArea(static_cast<int>(std::floor(std::min(start.m_X, end.m_X))), static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y))), static_cast<int>(std::floor(std::max(start.m_X, end.m_X))), static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y))), [&](int x, int y) { return InFillShape(shape, start, end, x, y); });
+			return;
+		}
 		float goldShare = 0.0F;
 		const char* materialName = TerrainBrushMaterial(stroke, goldShare);
 		if (stroke.Kind == Tool::TerrainOther && stroke.Material.empty()) {
@@ -1229,6 +1296,7 @@ namespace SandboxDetail {
 					case Tool::DenseEarth:
 					case Tool::GoldEarth:
 					case Tool::TerrainOther:
+					case Tool::GrowGrass:
 					case Tool::Plants:
 					case Tool::Cacti:
 					case Tool::Mushrooms:
@@ -1644,6 +1712,13 @@ namespace SandboxDetail {
 					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape);
 				}
 				break;
+			case Tool::GrowGrass: {
+				int centerX = at.GetFloorIntX();
+				int centerY = at.GetFloorIntY();
+				int brushRadius = stroke.Radius;
+				GrowGrassArea(centerX - brushRadius, centerY - brushRadius, centerX + brushRadius, centerY + brushRadius, [&](int x, int y) { return InBrush(centerX, centerY, brushRadius, stroke.Shape, x, y); });
+				break;
+			}
 			case Tool::Grenade:
 				Detonate("Frag Grenade", at);
 				break;

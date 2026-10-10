@@ -226,6 +226,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down rows of the game's own cacti, big and small.";
 			case Tool::Mushrooms:
 				return "Drag along the ground to put down the game's own red and yellow mushrooms, mostly small ones.";
+			case Tool::GrowGrass:
+				return "Brush over the ground to grow grass on top of it, a few pixels thick, as the game's own maps have on their topsoil. Grows only up into the air, and only where there's no grass yet.";
 			case Tool::Trees:
 				return "Drag along the ground to plant big trees: leafy, pine, tall and autumn ones, their trunks of tree trunk (wood without it) and their leaves of vegetation, so they burn and can be cut down.";
 			case Tool::TerrainOther:
@@ -369,6 +371,8 @@ namespace SandboxDetail {
 				return {Icon::Plant, IM_COL32(230, 90, 70, 255)};
 			case Tool::Trees:
 				return {Icon::Plant, IM_COL32(70, 140, 60, 255)};
+			case Tool::GrowGrass:
+				return {Icon::Plant, IM_COL32(140, 210, 80, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:
