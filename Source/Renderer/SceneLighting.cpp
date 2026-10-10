@@ -1005,7 +1005,8 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	}
 	m_TerrainShader->SetBool("rteLivingWorld", m_Settings.LivingWorld);
 	m_TerrainShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
-	m_TerrainShader->SetFloat("rteWind", m_Settings.Wind);
+	// The wind as it blows now, gusts and all (AirPressure::GetNaturalWind): plants sway with it and open water chops.
+	m_TerrainShader->SetFloat("rteWind", AirPressure::GetNaturalWind());
 	m_TerrainShader->SetFloat("rteSnowCover", m_Settings.LivingWorld ? m_SnowCover : 0.0F);
 	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
 	m_TerrainShader->SetFloat("rteWaterFoam", m_Settings.Enabled ? m_Settings.WaterFoam : 0.0F);
@@ -1585,7 +1586,7 @@ void SceneLighting::UpdateFog() {
 	m_FogUpdateShader->SetInt("rteSkyLight", 2);
 	m_FogUpdateShader->SetVector2f("rteGridSize", glm::vec2(m_GridWidth, m_GridHeight));
 	// Mist drifts at a fraction of the wind (pixels per second), and a little even in still air.
-	m_FogUpdateShader->SetVector2f("rteDrift", glm::vec2((m_Settings.Wind * 0.5F + 2.0F) * seconds / cell, 0.0F));
+	m_FogUpdateShader->SetVector2f("rteDrift", glm::vec2((AirPressure::GetNaturalWind() * 0.5F + 2.0F) * seconds / cell, 0.0F));
 	m_FogUpdateShader->SetFloat("rteKeep", std::exp(-seconds / std::max(m_Settings.FogClearSeconds, 1.0F)));
 	m_FogUpdateShader->SetFloat("rteMist", mist);
 	m_FogUpdateShader->SetInt("rtePuffCount", puffCount);
@@ -2877,7 +2878,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetVector3f("rteSunDisc", m_Settings.Enabled ? glm::mix(glm::vec3(1.0F, 0.97F, 0.88F), glm::vec3(1.0F, 0.6F, 0.3F), glm::smoothstep(0.55F, 1.0F, std::abs(m_SunArc))) * m_SunDiscStrength : glm::vec3(0.0F));
 	// Clouds only shade while there's direct sun to block, and they drift with the wind (slowly even in still air), in sim time.
 	// (Worked out in double and wrapped far out, so the drift stays smooth after hours of play; the clouds jump once when it wraps, every few hours.)
-	m_CloudDrift = static_cast<float>(std::fmod(PostProcessMan::GetSmoothSimTimePrecise() * static_cast<double>(m_Settings.Wind * 0.35F + 6.0F), 65536.0));
+	// (Gusts and shifts of the natural wind add how far they have carried things beyond the steady wind, so the clouds speed up and slow down without jumping.)
+	m_CloudDrift = static_cast<float>(std::fmod(PostProcessMan::GetSmoothSimTimePrecise() * static_cast<double>(m_Settings.Wind * 0.35F + 6.0F) + static_cast<double>(AirPressure::GetNaturalWindDrift()) * 0.35, 65536.0));
 	m_CompositeShader->SetFloat("rteCloudShadows", m_Settings.Enabled ? m_Settings.CloudShadows * std::min(m_SunShadowStrength * 2.0F, 1.0F) : 0.0F);
 	m_CompositeShader->SetFloat("rteCloudDrift", m_CloudDrift);
 	// The cloud layer, and the cover its shadows share with it. Off, the shadows keep the spread they always had (a cover of 0.5).
@@ -3123,6 +3125,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		dropShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		dropShader->SetInt("rteType", m_Settings.WeatherType);
 		dropShader->SetFloat("rteWind", m_Settings.Wind);
+		// The natural wind: how far its gusts have carried the drops beyond the steady wind, and how it blows now (which way the streaks lean).
+		dropShader->SetFloat("rteWindDrift", AirPressure::GetNaturalWindDrift());
+		dropShader->SetFloat("rteWindNow", AirPressure::GetNaturalWind());
 		dropShader->SetInt("rteOccupancy", 0);
 		dropShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
 		dropShader->SetVector2f("rteGridWorldSize", gridWorldSize);
