@@ -62,7 +62,7 @@ Last updated: 5 October 2026.
 - **The sun has a direction.** Daylight comes from one side and turns with the time of day. The far side of a hill and the ground under an overhang are dimmer and cooler. At night the moon does the same, more faintly.
 - **Sunbeams indoors.** Where the sun shines through an opening into a cave or bunker, it lights what it falls on and the beam is visible in the air.
 - **Contact shading.** Back walls darken slightly right next to objects and solid ground, so things look attached to the scene.
-- **Terrain shadows on the background.** The terrain casts a soft shadow on the scenery behind it, away from the sun or moon, so hills and floating chunks no longer look flat against the backdrop.
+- **Terrain shadows on the background.** The terrain casts a drop shadow on the scenery behind it, offset away from the sun or moon, so hills and floating chunks no longer look flat against the backdrop.
 - **Opt out.** An object can be marked as not casting a shadow (energy shields, holograms).
 
 ## 4. Materials and surface states

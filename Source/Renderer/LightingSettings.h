@@ -229,8 +229,8 @@ namespace RTE {
 		bool SunShadowMap = true; //!< Sun (and moon) shadows from a shadow map of the scene: pixel-sharp next to what casts them and softer further off, and they follow the sun at once. Off: from the light grid, 4 px cells that catch up with the sun over a few frames, as before.
 		float SunShadowSoftness = 1.0F; //!< How soft those shadows grow with distance from what casts them, 0 (sharp) to 2.
 		float SunShadows = 0.55F; //!< Directional daylight: how much dimmer and cooler ground, walls and units are where the sun (or the moon at night) can't be seen, 0 to 1. 0 turns it off.
-		float BackgroundShadows = 0.6F; //!< How dark the shadows are that the terrain casts on the background scenery behind it, away from the sun (or the moon at night), so the ground stands out from the backdrop instead of looking pasted flat on it, 0 to 1. 0 turns them off, as before. Never on the sky itself.
-		float BackgroundShadowLength = 1.0F; //!< How far those shadows reach, 0.25 to 3: 1 is about 12 pixels on the nearest scenery up to about 40 on the furthest, which also softens more.
+		float BackgroundShadows = 0.6F; //!< How dark the drop shadow is that the terrain casts on the background scenery behind it, offset away from the sun (or the moon at night), so the ground stands out from the backdrop instead of looking pasted flat on it, 0 to 1. 0 turns them off, as before. Never on the sky itself.
+		float BackgroundShadowLength = 1.0F; //!< How far that shadow is offset, 0.25 to 3: 1 is about 10 pixels on the nearest scenery up to about 26 on the furthest, whose edge is also softer.
 		float ContactShading = 0.4F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
 		float IndirectLight = 0.35F; //!< One bounce of light: lit surfaces bleed their color onto their surroundings. 0 to disable.

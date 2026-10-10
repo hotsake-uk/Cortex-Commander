@@ -352,10 +352,10 @@ void DebugMan::SettingsGUI() {
 			Slider("Sun shadow softness", &settings.SunShadowSoftness, 0.0F, 2.0F);
 		}
 		Slider("Terrain shadows on the background", &settings.BackgroundShadows, 0.0F, 1.0F);
-		Tip("The terrain casts a shadow on the scenery behind it, away from the sun (or the moon at night), so hills and floating chunks stand out from the backdrop instead of looking flat against it. Never on the sky itself. 0: none, as before. On from the Low preset up.");
+		Tip("The terrain casts a drop shadow on the scenery behind it, offset away from the sun (or the moon at night), so hills and floating chunks stand out from the backdrop instead of looking flat against it. Never on the sky itself. 0: none, as before. On from the Low preset up.");
 		if (settings.BackgroundShadows > 0.0F) {
-			Slider("Background shadow length", &settings.BackgroundShadowLength, 0.25F, 3.0F);
-			Tip("How far those shadows reach. The further back the scenery, the longer and softer they fall.");
+			Slider("Background shadow offset", &settings.BackgroundShadowLength, 0.25F, 3.0F);
+			Tip("How far the shadow is offset from the terrain. The further back the scenery, the further it falls and the softer its edge.");
 		}
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		Check("Clouds in the sky", &settings.CloudLayer);
