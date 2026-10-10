@@ -9,7 +9,7 @@ namespace RTE {
 	class Vector;
 
 	/// Ropes, threads, chains and cables strung through the world: each a line of light points held a fixed length apart that swings, sags,
-	/// drapes over the ground and blows in the wind, tied where it was put down to the ground, to a unit or to a thing. Tied to the ground it
+	/// drapes over the ground and blows in the wind, tied where it was put down to the ground, to a loose piece of falling terrain, to a unit or to a thing. Tied to the ground it
 	/// holds fast there until the ground under it is dug, burnt or blown away; tied to a unit or a thing it follows it, and pulls on it once it
 	/// is taut (as the grapple gun's line pulls its user: what moves away along the rope is stopped, and what hangs from it hangs). Each kind is
 	/// its own material: how heavy it is, how much it holds before it snaps, how far it stretches, whether it burns and how hard it is to cut.

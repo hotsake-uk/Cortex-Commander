@@ -15,6 +15,7 @@
 #include "Scene.h"
 #include "SceneMan.h"
 #include "Shapes.h"
+#include "TerrainCollapse.h"
 #include "TerrainFire.h"
 #include "TimerMan.h"
 #include "Vector.h"
@@ -99,10 +100,11 @@ namespace {
 
 	struct Anchor {
 		int Node = 0;
-		bool Object = false; //!< Tied to a unit or a thing, else to the ground.
+		bool Object = false; //!< Tied to a unit or a thing, else to the ground (or a loose piece of it).
+		bool Piece = false; //!< Tied to a loose piece of terrain that is falling or tumbling (Object is false).
 		glm::ivec2 Pixel{0, 0}; //!< The ground: the pixel of ground holding it (wrapped).
-		long ObjectID = 0; //!< A unit or thing: its unique ID.
-		Vector Local; //!< A unit or thing: where on it, from its middle, as it is upright and unflipped.
+		long ObjectID = 0; //!< A unit or thing: its unique ID. A loose piece: its ID (TerrainCollapse::FindPiece).
+		Vector Local; //!< A unit, thing or loose piece: where on it, from its middle, as it is upright and unflipped (a piece: unturned).
 		float Tension = 0.0F; //!< How hard it's pulled, in kg, smoothed over a few updates.
 	};
 
@@ -208,6 +210,7 @@ namespace {
 	/// Ties a new point to what is at a place: a unit or a thing there or right beside it, else the ground, else nothing.
 	/// @return Whether it is tied to anything.
 	bool TieAt(Anchor& anchor, const Vector& at) {
+		anchor.Piece = false;
 		int x = at.GetFloorIntX();
 		int y = at.GetFloorIntY();
 		for (int reach = 0; reach <= 4; ++reach) {
@@ -234,6 +237,12 @@ namespace {
 							int py = y + dy;
 							g_SceneMan.WrapPosition(px, py);
 							anchor.Object = false;
+							// Ground that is falling or tumbling as a loose piece is tied to as that piece, which it then follows.
+							Vector onPiece(static_cast<float>(px) + 0.5F, static_cast<float>(py) + 0.5F);
+							if (TerrainCollapse::FindPiece(px, py, onPiece, anchor.ObjectID, anchor.Local)) {
+								anchor.Piece = true;
+								return true;
+							}
 							anchor.Pixel = glm::ivec2(px, py);
 							return true;
 						}
@@ -523,6 +532,18 @@ namespace {
 				node.Prev = node.Pos;
 				node.Pos = node.Pos + Between(node.Pos, point);
 				node.Safe = node.Pos;
+			} else if (anchor.Piece) {
+				Vector point;
+				Vector velocity;
+				float mass = 0.0F;
+				if (TerrainCollapse::GetPiece(anchor.ObjectID, anchor.Local, point, velocity, mass)) {
+					node.Prev = node.Pos;
+					node.Pos = node.Pos + Between(node.Pos, ToGlm(point));
+					node.Safe = node.Pos;
+				} else if (!TieAt(anchor, ToVector(node.Pos))) {
+					// It has come to rest (and is ground again, which TieAt finds) or broken up and left nothing there.
+					DropAnchor(rope, i);
+				}
 			} else if (checkGround && !Solid(static_cast<float>(anchor.Pixel.x), static_cast<float>(anchor.Pixel.y))) {
 				DropAnchor(rope, i);
 			} else {
@@ -633,6 +654,38 @@ namespace {
 		}
 	}
 
+	/// What a tie is fastened to, as far as pulling on it goes.
+	struct Fastened {
+		MovableObject* Object = nullptr; //!< The unit or thing tied to.
+		MovableObject* Root = nullptr; //!< The unit or the whole thing it is a part of.
+		bool Piece = false; //!< A loose piece of terrain.
+		long PieceID = 0;
+		bool Movable = false; //!< Whether pulling moves it: not a pinned thing, nor something with no weight.
+		float Mass = 0.0F;
+		Vector Vel; //!< In m/s.
+	};
+
+	Fastened FastenedTo(const Anchor& anchor) {
+		Fastened fastened;
+		if (anchor.Object) {
+			fastened.Object = ObjectOf(anchor);
+			fastened.Root = fastened.Object ? fastened.Object->GetRootParent() : nullptr;
+			if (fastened.Root && fastened.Root->GetPinStrength() <= 0.0F && fastened.Root->GetMass() > 0.0F) {
+				fastened.Movable = true;
+				fastened.Mass = fastened.Root->GetMass();
+				fastened.Vel = fastened.Root->GetVel();
+			}
+		} else if (anchor.Piece) {
+			Vector point;
+			if (TerrainCollapse::GetPiece(anchor.ObjectID, anchor.Local, point, fastened.Vel, fastened.Mass) && fastened.Mass > 0.0F) {
+				fastened.Piece = true;
+				fastened.PieceID = anchor.ObjectID;
+				fastened.Movable = true;
+			}
+		}
+		return fastened;
+	}
+
 	/// Pulls each unit and thing a rope is tied to: once a stretch of rope from it to the next tie is taut, what moves it further away along
 	/// the rope is stopped, as the grapple gun's line stops its user; a loose end hanging from it hangs its weight on it. Snaps the rope where
 	/// it is pulled harder than it holds.
@@ -643,8 +696,7 @@ namespace {
 		}
 		for (size_t index = 0; index < rope.Anchors.size(); ++index) {
 			Anchor& anchor = rope.Anchors[index];
-			MovableObject* object = anchor.Object ? ObjectOf(anchor) : nullptr;
-			MovableObject* root = object ? object->GetRootParent() : nullptr;
+			Fastened self = FastenedTo(anchor);
 			float tension = 0.0F;
 			int worstLink = -1;
 			for (int direction: {-1, 1}) {
@@ -691,23 +743,23 @@ namespace {
 				} else if (excess > 0.0F) {
 					load = (excess / std::max(rest, 1.0F)) * 10.0F;
 				}
-				if (root && root->GetPinStrength() <= 0.0F && root->GetMass() > 0.0F) {
+				if (self.Movable) {
 					glm::vec2 toward = rope.Nodes[node + direction].Pos - rope.Nodes[node].Pos;
 					float distance = glm::length(toward);
 					if (distance > 1e-4F) {
 						Vector way = ToVector(toward / distance);
-						float massA = root->GetMass();
+						float massA = self.Mass;
 						float force = 0.0F;
 						if (other < 0) {
 							force = hanging * gravity;
 						} else if (excess > 0.0F) {
 							const Anchor& end = rope.Anchors[other];
-							MovableObject* endObject = end.Object ? ObjectOf(end) : nullptr;
-							MovableObject* endRoot = endObject ? endObject->GetRootParent() : nullptr;
-							if (endRoot != root) {
-								bool endMoves = endRoot && endRoot->GetPinStrength() <= 0.0F && endRoot->GetMass() > 0.0F;
-								float share = endMoves ? endRoot->GetMass() / (massA + endRoot->GetMass()) : 1.0F;
-								Vector relative = root->GetVel() - (endMoves ? endRoot->GetVel() : Vector());
+							Fastened endTie = FastenedTo(end);
+							bool sameBody = (self.Root && endTie.Root == self.Root) || (self.Piece && endTie.Piece && endTie.PieceID == self.PieceID);
+							if (!sameBody) {
+								bool endMoves = endTie.Movable;
+								float share = endMoves ? endTie.Mass / (massA + endTie.Mass) : 1.0F;
+								Vector relative = self.Vel - (endMoves ? endTie.Vel : Vector());
 								float away = -relative.Dot(way);
 								if (type.Stiffness >= 0.5F || excess > rest * type.MaxStretch) {
 									// Stopped going further, and drawn back to its length a little at a time.
@@ -724,10 +776,13 @@ namespace {
 						}
 						if (force > 0.0F) {
 							// A unit is pulled at its middle (pulled at a hand or a foot it spun); a thing at the point it's tied.
-							if (root->IsActor()) {
-								root->AddForce(way * force);
+							if (self.Piece) {
+								// A loose piece is pulled where it's tied, and turns if that is off its middle.
+								TerrainCollapse::PullPiece(self.PieceID, ToVector(rope.Nodes[anchor.Node].Pos), Vector(way.m_X, way.m_Y) * (force * seconds / massA));
+							} else if (self.Root->IsActor()) {
+								self.Root->AddForce(way * force);
 							} else {
-								root->AddAbsForce(way * force, ObjectPoint(*object, anchor.Local));
+								self.Root->AddAbsForce(way * force, ObjectPoint(*self.Object, anchor.Local));
 							}
 							load = force / std::max(gravity, 1.0F);
 						}
@@ -1268,7 +1323,7 @@ void RopeSim::GetDebug(std::vector<DebugLink>& links, std::vector<DebugAnchor>& 
 			burning += node.Burn > 0.0F ? 1 : 0;
 		}
 		for (const Anchor& anchor: rope.Anchors) {
-			anchors.push_back({rope.Nodes[anchor.Node].Pos, anchor.Object ? 1 : 0});
+			anchors.push_back({rope.Nodes[anchor.Node].Pos, anchor.Object || anchor.Piece ? 1 : 0});
 		}
 	}
 }
@@ -1284,11 +1339,11 @@ std::string RopeSim::GetSaveState() {
 		for (const Link& link: rope.Links) {
 			stream << ' ' << link.Rest << ' ' << (link.Cut ? 1 : 0);
 		}
-		// Only the ground ties: a unit or thing comes back from the saved game as a new one, so that end is loose.
-		int groundTies = static_cast<int>(std::count_if(rope.Anchors.begin(), rope.Anchors.end(), [](const Anchor& anchor) { return !anchor.Object; }));
+		// Only the ground ties: a unit, thing or loose piece comes back from the saved game as a new one, so that end is loose.
+		int groundTies = static_cast<int>(std::count_if(rope.Anchors.begin(), rope.Anchors.end(), [](const Anchor& anchor) { return !anchor.Object && !anchor.Piece; }));
 		stream << ' ' << groundTies;
 		for (const Anchor& anchor: rope.Anchors) {
-			if (!anchor.Object) {
+			if (!anchor.Object && !anchor.Piece) {
 				stream << ' ' << anchor.Node << ' ' << anchor.Pixel.x << ' ' << anchor.Pixel.y;
 			}
 		}

@@ -137,6 +137,30 @@ namespace RTE {
 		/// @param pieces Filled with them.
 		static void GetFallingPieces(std::vector<FallingPiece>& pieces);
 
+		/// Finds the loose piece moving right now that has a pixel at a place, so something can be tied to it (a rope). Call from the simulation.
+		/// @param x The pixel, in scene coordinates.
+		/// @param y The pixel, in scene coordinates.
+		/// @param at The point to tie to, in scene coordinates (on that pixel).
+		/// @param id Set to the piece's ID, kept for as long as it is a piece.
+		/// @param local Set to where at is on the piece, as it is unturned and measured from its middle.
+		/// @return Whether a piece is there.
+		static bool FindPiece(int x, int y, const Vector& at, long& id, Vector& local);
+
+		/// Gets where a point on a loose piece is now, and how it moves.
+		/// @param id The piece's ID (FindPiece).
+		/// @param local Where on it (FindPiece).
+		/// @param point Set to the point's place in the scene.
+		/// @param velocity Set to the point's speed, in m/s.
+		/// @param mass Set to the piece's mass.
+		/// @return Whether the piece is still a piece: false once it has come to rest (and is ground again) or broken up.
+		static bool GetPiece(long id, const Vector& local, Vector& point, Vector& velocity, float& mass);
+
+		/// Changes how a point on a loose piece moves, as a pull on it would: along a way, the point's speed that way changed by so much, the piece spun as it is pulled off its middle.
+		/// @param id The piece's ID (FindPiece).
+		/// @param point Where it is pulled, in the scene.
+		/// @param change How much the point's velocity is to change by, in m/s.
+		static void PullPiece(long id, const Vector& point, const Vector& change);
+
 	private:
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
 		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.

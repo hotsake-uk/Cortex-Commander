@@ -273,6 +273,7 @@ namespace {
 		bool Wet = false; //!< Whether it was in liquid last update.
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
 		int Drop = 0; //!< The sandbox drop it came from (TerrainCollapse::DropArea), or 0. The pieces it breaks into keep it.
+		long Id = 0; //!< Given the first time something is tied to it (TerrainCollapse::FindPiece); 0 before.
 		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
 	};
 
@@ -289,6 +290,7 @@ namespace {
 		return trunk * 5 > solid && trunk > 0;
 	}
 
+	long s_NextPieceId = 1;
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
 
@@ -2969,6 +2971,72 @@ int TerrainCollapse::GetCollapsedCount() {
 
 int TerrainCollapse::GetFallingCount() {
 	return static_cast<int>(s_Bodies.size());
+}
+
+bool TerrainCollapse::FindPiece(int x, int y, const Vector& at, long& id, Vector& local) {
+	if (s_Bodies.empty() || s_Width <= 0 || !WrapInWorld(x, y)) {
+		return false;
+	}
+	int key = y * s_Width + x;
+	for (Body& body: s_Bodies) {
+		if (body.Done) {
+			continue;
+		}
+		for (const auto& [stamped, pixel]: body.Stamped) {
+			if (stamped != key) {
+				continue;
+			}
+			if (body.Id == 0) {
+				body.Id = s_NextPieceId++;
+			}
+			Vector offset = g_SceneMan.ShortestDistance(Vector(body.Pos.x, body.Pos.y), at, g_SceneMan.SceneWrapsX());
+			float c = std::cos(body.Angle);
+			float s = std::sin(body.Angle);
+			id = body.Id;
+			local = Vector(offset.m_X * c + offset.m_Y * s, -offset.m_X * s + offset.m_Y * c);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool TerrainCollapse::GetPiece(long id, const Vector& local, Vector& point, Vector& velocity, float& mass) {
+	for (const Body& body: s_Bodies) {
+		if (body.Done || body.Id != id) {
+			continue;
+		}
+		glm::vec2 offset = ToWorld(body, glm::vec2(local.m_X, local.m_Y), glm::vec2(0.0F), body.Angle);
+		glm::vec2 speed = body.Vel + body.Spin * glm::vec2(-offset.y, offset.x);
+		float metersPerSecond = c_MPP / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+		point = Vector(body.Pos.x + offset.x, body.Pos.y + offset.y);
+		velocity = Vector(speed.x * metersPerSecond, speed.y * metersPerSecond);
+		mass = body.Mass;
+		return true;
+	}
+	return false;
+}
+
+void TerrainCollapse::PullPiece(long id, const Vector& point, const Vector& change) {
+	for (Body& body: s_Bodies) {
+		if (body.Done || body.Id != id) {
+			continue;
+		}
+		float metersPerSecond = c_MPP / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+		glm::vec2 wanted(change.m_X / metersPerSecond, change.m_Y / metersPerSecond);
+		float size = glm::length(wanted);
+		if (size < 1e-6F) {
+			return;
+		}
+		glm::vec2 way = wanted / size;
+		Vector away = g_SceneMan.ShortestDistance(Vector(body.Pos.x, body.Pos.y), point, g_SceneMan.SceneWrapsX());
+		glm::vec2 arm(away.m_X, away.m_Y);
+		float armCrossWay = Cross(arm, way);
+		// The push that changes the point's speed along the way by that much, shared between moving the piece and turning it.
+		float push = size / (1.0F / body.Mass + armCrossWay * armCrossWay / body.Inertia);
+		body.Vel += way * (push / body.Mass);
+		body.Spin += armCrossWay * push / body.Inertia;
+		return;
+	}
 }
 
 void TerrainCollapse::GetFallingPieces(std::vector<FallingPiece>& pieces) {
