@@ -112,6 +112,21 @@ namespace RTE {
 		/// Adds a tone to, or takes it from, those a side's units speak in. With none left, the side takes any.
 		static void SetTeamTone(int team, const std::string& tone, bool on);
 
+		/// Gets how often a tone is picked against the others a side speaks in, 0 to 100 (Speech.ini's ToneWeight, else 100, unless set).
+		static int GetToneWeight(const std::string& tone);
+
+		/// Gets what a tone is like, for the settings (Speech.ini's ToneDescription); empty if none says.
+		static std::string GetToneDescription(const std::string& tone);
+
+		/// Sets how often a tone is picked against the others a side speaks in, 0 to 100.
+		static void SetToneWeight(const std::string& tone, int weight);
+
+		/// Gets the tones' weights as Settings.ini keeps them: "Serious:10, Funny:90" (tones not listed are 100).
+		static std::string GetToneWeightsText();
+
+		/// Sets the tones' weights from Settings.ini's text.
+		static void SetToneWeightsText(const std::string& text);
+
 		/// Has a side take lines of any tone.
 		static void SetTeamAnyTone(int team);
 #pragma endregion
