@@ -46,6 +46,7 @@ sources += files(
 'SandboxWindow.cpp',
 'SandboxGym.cpp',
 'SandboxBattle.cpp',
+'SandboxBattlePresets.cpp',
 'SandboxBattleModes.cpp',
 'SandboxDebug.cpp',
 'SandboxMinimap.cpp',

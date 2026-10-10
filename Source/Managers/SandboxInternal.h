@@ -2174,6 +2174,11 @@ namespace SandboxDetail {
 	void ForgetBattle();
 	void UpdateBattleDefenders();
 	void BattleTab();
+	/// A game has started: the Battle tab's setup saved to load with its map goes in once the map is there (BattlePresetsUpdate).
+	void BattlePresetsNewGame();
+	void BattlePresetsUpdate();
+	/// The Battle tab's setups saved for the map, to save, load, delete, or mark to load with the map.
+	void BattlePresetsPanel();
 	void DrawBattleMarks();
 	void TakeBattleTool(Tool kind, int team);
 	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);

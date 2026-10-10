@@ -1030,6 +1030,7 @@ namespace SandboxDetail {
 
 	/// The Battle tab: a card for each team, and the battle started and stopped.
 	void BattleTab() {
+		BattlePresetsPanel();
 		if (BattleModeChooser()) {
 			// A mode: its own panel instead of the cards.
 			BattleModeTab();

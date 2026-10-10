@@ -1455,6 +1455,7 @@
     <ClCompile Include="Source\Managers\SandboxWindow.cpp" />
     <ClCompile Include="Source\Managers\SandboxGym.cpp" />
     <ClCompile Include="Source\Managers\SandboxBattle.cpp" />
+    <ClCompile Include="Source\Managers\SandboxBattlePresets.cpp" />
     <ClCompile Include="Source\Managers\SandboxBattleModes.cpp" />
     <ClCompile Include="Source\Managers\SandboxDebug.cpp" />
     <ClCompile Include="Source\Managers\Colony.cpp" />
