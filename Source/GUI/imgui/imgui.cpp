@@ -11563,7 +11563,10 @@ void ImGui::SetTooltipV(const char* fmt, va_list args)
 {
     if (!BeginTooltipEx(ImGuiTooltipFlags_OverridePrevious, ImGuiWindowFlags_None))
         return;
+    // Wrap long tooltips at a fixed width so they stay on screen (CCCP: max tooltip width)
+    PushTextWrapPos(GetFontSize() * 24.0f);
     TextV(fmt, args);
+    PopTextWrapPos();
     EndTooltip();
 }
 
@@ -12129,9 +12132,14 @@ ImVec2 ImGui::FindBestWindowPosForPopupEx(const ImVec2& ref_pos, const ImVec2& s
     // Fallback when not enough room:
     *last_dir = ImGuiDir_None;
 
-    // For tooltip we prefer avoiding the cursor at all cost even if it means that part of the tooltip won't be visible.
+    // For tooltip we prefer avoiding the cursor at all cost, but keep the whole tooltip inside the outer rect when it fits
     if (policy == ImGuiPopupPositionPolicy_Tooltip)
-        return ref_pos + ImVec2(2, 2);
+    {
+        ImVec2 pos = ref_pos + ImVec2(2, 2);
+        pos.x = ImMax(ImMin(pos.x, r_outer.Max.x - size.x), r_outer.Min.x);
+        pos.y = ImMax(ImMin(pos.y, r_outer.Max.y - size.y), r_outer.Min.y);
+        return pos;
+    }
 
     // Otherwise try to keep within display
     ImVec2 pos = ref_pos;
