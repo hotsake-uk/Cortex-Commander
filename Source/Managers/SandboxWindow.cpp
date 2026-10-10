@@ -640,9 +640,13 @@ namespace SandboxDetail {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel() * 2.0F;
-		const int perRow = 4;
+		// About the size they are four to a row in the side panel, whatever the window's width: a wider window (the large view) fits more of them
+		// to a row rather than making them bigger. Never fewer than four to a row, as in a narrow panel.
 		float gap = style.ItemSpacing.x * 0.5F;
-		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float room = ImGui::GetContentRegionAvail().x;
+		float tile = ImGui::GetFontSize() * 6.5F;
+		const int perRow = std::max(4, static_cast<int>((room + gap) / (tile + gap)));
+		float width = std::floor((room - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
 		float pad = pixel * 2.0F;
 		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int column = 0;
