@@ -142,7 +142,9 @@ Write-Scenario "GoldenNoon" $bunker @() -DefaultLighting
 Write-Scenario "GoldenNight" ($bunker + @{ TimeOfDay = 23 }) @() -DefaultLighting
 Write-Scenario "GoldenCaves" $caves @("Render Test Camera Tour") -DefaultLighting
 Write-Scenario "GoldenClassic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0; EffectsParticles = 0; Stains = 0; LivingWorld = 0; SmokeScattering = 0 }) @() -DefaultLighting
-Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 }) @() -DefaultLighting
+# The grey lighting views are shown through the exposure, which at the default 2.06 turns them nearly white: neutral exposure keeps their shading visible.
+$neutralExposure = @{ PostExposure = 1; AutoExposure = 0 }
+Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 } + $neutralExposure) @() -DefaultLighting
 Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLighting
 
 Write-Scenario "BunkerAsh" ($bunker + @{ WeatherType = 3; WeatherIntensity = 0.9 }) @()
@@ -176,7 +178,7 @@ Write-Scenario "ShadowsNightGrey" ($shadowBunker + @{ TimeOfDay = 23; LightingDe
 Write-Scenario "ShadowsNightGreyOff" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGrey" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 }) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGreyOff" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
-Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0; CloudShadows = 0 }) @("Render Test Shadows") -DefaultLighting
+Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0; CloudShadows = 0 } + $neutralExposure) @("Render Test Shadows") -DefaultLighting
 # Materials: units of different makes with a lamp in the tutorial bunker, by night and by day, each with metal reflections and relief off for comparison.
 $noMaterials = @{ LightingMetals = 0; LightingRelief = 0 }
 Write-Scenario "MaterialsNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Materials")
