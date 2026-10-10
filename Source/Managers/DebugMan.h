@@ -34,6 +34,10 @@ namespace RTE {
 		/// Toggles photo mode (F8): frozen time, a free camera, look controls and window resolution screenshots.
 		void TogglePhotoMode() { m_ShowPhotoMode = !m_ShowPhotoMode; }
 
+		/// The pause hotkey: holds the world still in any game until pressed again, whether or not the sandbox tools are open.
+		void ToggleUserPause() { m_UserPause = !m_UserPause; }
+		bool IsUserPaused() const { return m_UserPause; }
+
 		/// Gets whether photo mode is open and hiding the HUD and screen text.
 		bool IsPhotoModeHidingHUD() const { return m_PhotoModeActive && m_PhotoHideHUD; }
 
@@ -147,6 +151,7 @@ namespace RTE {
 		bool m_ReleasedMouseForImGui{false}; //!< Whether the mouse was taken from the game so ImGui windows can be used.
 
 		bool m_FreezeSim{false}; //!< "Freeze simulation" on the Debug page: the world stands still, in any game, until it's unticked or stepped.
+		bool m_UserPause{false}; //!< The pause hotkey is holding the world still.
 		bool m_FrozeSim{false}; //!< Whether it's this that paused the simulation, so only this unpauses it.
 		int m_FreezeStepsWanted{0}; //!< Updates to let the frozen world do, from the Step buttons.
 
