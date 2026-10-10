@@ -3675,6 +3675,33 @@ namespace SandboxDetail {
 			} else {
 				ImGui::TextDisabled("%d drawn", static_cast<int>(setup.Zones.size()));
 			}
+			// (Each one by name, as on the map, to delete on its own: the ones after it move up, an assault's objectives keeping their order.
+			// Hovering a row lights its zone up on the map.)
+			ImGui::BeginDisabled(running);
+			std::string name = zone;
+			name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+			int deleted = -1;
+			for (int i = 0; i < static_cast<int>(setup.Zones.size()); ++i) {
+				ImGui::PushID(i);
+				ImGui::BeginGroup();
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted((name + " " + std::to_string(i + 1)).c_str());
+				ImGui::SameLine();
+				if (ToolUI::Button("Delete")) {
+					deleted = i;
+				}
+				ImGui::EndGroup();
+				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && setup.Zones[i].size() >= 3) {
+					std::vector<ImVec2> corners = ZoneOnScreen(setup.Zones[i], std::max(ScenePixelsPerWindowPixel(), 0.01F));
+					ImGui::GetForegroundDrawList()->AddPolyline(corners.data(), static_cast<int>(corners.size()), IM_COL32(255, 220, 80, 255), ImDrawFlags_Closed, 3.0F);
+				}
+				ImGui::PopID();
+			}
+			if (deleted >= 0) {
+				setup.Zones.erase(setup.Zones.begin() + deleted);
+				changed = true;
+			}
+			ImGui::EndDisabled();
 			ImGui::PopID();
 		}
 
