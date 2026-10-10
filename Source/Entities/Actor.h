@@ -600,6 +600,10 @@ namespace RTE {
 		/// Sets whether this is a non-combatant, whatever its temperament.
 		void SetNonCombatant(bool nonCombatant) { m_NonCombatant = nonCombatant ? 1 : 0; }
 
+		/// Whether this is an animal (in the "Actors - Livestock", "Actors - Wildlife" or "Animals" group): it says nothing in unit speech
+		/// and carries no weapons, so it has none to drop.
+		bool IsAnimal() const;
+
 		/// The side that last hurt this (NC-1): the team of the shot, blade or blast, Activity::NoTeam if none has yet.
 		int GetLastAttackerTeam() const { return m_LastAttackerTeam; }
 
@@ -906,7 +910,7 @@ namespace RTE {
 		/// Adds an inventory item to this Actor.
 		/// @param AddToInventoryBack(pItemToAdd An pointer to the new item to add. Ownership IS TRANSFERRED!
 		/// @return None..
-		virtual void AddInventoryItem(MovableObject* pItemToAdd) { AddToInventoryBack(pItemToAdd); }
+		virtual void AddInventoryItem(MovableObject* pItemToAdd);
 
 		/// Removes a specified item from the actor's inventory. Only one item is removed at a time.
 		/// @param RemoveInventoryItem("" Preset name of an item to remove.
@@ -956,6 +960,9 @@ namespace RTE {
 		/// instantaneously, so check for ejection being complete with
 		/// IsInventoryEmpty().
 		virtual void DropAllInventory();
+
+		/// Deletes the weapons, tools and other held devices in an animal's inventory (see IsAnimal), so it has none to drop. Does nothing to other actors.
+		void DiscardAnimalWeapons();
 
 		/// Converts all of the Gold carried by this Actor into MovableObjects and ejects them into the Scene.
 		virtual void DropAllGold();
