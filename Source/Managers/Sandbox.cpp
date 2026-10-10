@@ -522,6 +522,8 @@ bool Sandbox::CapturesWorldClicks() {
 }
 
 void Sandbox::DrawGUI() {
+	// In the Sandbox game mode the right mouse button opens no menu while you play a unit.
+	Controller::SetRightClickMenuBlocked(IsGodMode() && InGame() && s_Possessed != nullptr);
 	// A new Sandbox game opens the god view: the window and the free camera.
 	if (IsGodMode()) {
 		if (s_GodViewPending || !s_GodViewSetUp) {

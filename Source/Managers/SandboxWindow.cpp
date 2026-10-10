@@ -2532,7 +2532,6 @@ namespace SandboxDetail {
 			float x = std::cos(middle) > 0.3F ? anchor.x : (std::cos(middle) < -0.3F ? anchor.x - nameSize.x : anchor.x - nameSize.x * 0.5F);
 			float y = std::sin(middle) > 0.3F ? anchor.y : (std::sin(middle) < -0.3F ? anchor.y - nameSize.y : anchor.y - nameSize.y * 0.5F);
 			ImVec2 pos(std::floor(x), std::floor(y));
-			drawList->AddText(ImVec2(pos.x + pixel, pos.y + pixel), IM_COL32(0, 0, 0, 220), label);
 			drawList->AddText(pos, IM_COL32(255, 255, 255, 255), label);
 		}
 		static const bool testHeld = std::getenv("CCCP_TEST_RING") != nullptr;
@@ -3521,7 +3520,11 @@ namespace SandboxDetail {
 		auto faded = [alpha](ImU32 tint, float share) { return (tint & 0x00FFFFFF) | (static_cast<ImU32>(static_cast<float>((tint >> IM_COL32_A_SHIFT) & 0xFF) * share * alpha) << IM_COL32_A_SHIFT); };
 		ImVec2 to(at.x + size.x, at.y + size.y);
 		if (chosen) {
-			drawList->AddRectFilled(at, to, faded(plain ? ToolTheme::EdgeLight : color, 0.9F));
+			// A darker shade of its colour, so the light lettering (whose pixel font has a dark edge of its own) reads on it.
+			ImU32 fill = plain ? ToolTheme::Edge : color;
+			auto shade = [fill](int shift) { return static_cast<ImU32>(static_cast<float>((fill >> shift) & 0xFF) * 0.45F) << shift; };
+			drawList->AddRectFilled(at, to, faded(shade(IM_COL32_R_SHIFT) | shade(IM_COL32_G_SHIFT) | shade(IM_COL32_B_SHIFT) | IM_COL32_A_MASK, 1.0F));
+			drawList->AddRect(at, to, faded(plain ? ToolTheme::EdgeLight : color, 1.0F), 0.0F, 0, pixel);
 			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel * 2.0F), to, faded(ToolTheme::Gold, 1.0F));
 		} else {
 			drawList->AddRectFilled(at, to, faded(held ? ToolTheme::WellPressed : hovered ? ToolTheme::WellHover
@@ -3531,11 +3534,10 @@ namespace SandboxDetail {
 				drawList->AddRectFilled(at, ImVec2(at.x + pixel * 2.0F, to.y), faded(color, 1.0F));
 			}
 		}
-		const ImU32 dark = IM_COL32(16, 18, 26, 255);
 		float textX = at.x + style.FramePadding.x + (plain ? 0.0F : pixel * 2.0F);
-		drawList->AddText(ImVec2(std::floor(textX), at.y + style.FramePadding.y), faded(chosen ? dark : (plain ? ToolTheme::Text : color), 1.0F), label, end);
+		drawList->AddText(ImVec2(std::floor(textX), at.y + style.FramePadding.y), faded(chosen || plain ? ToolTheme::Text : color, 1.0F), label, end);
 		if (key) {
-			drawList->AddText(ImVec2(std::floor(textX + textWidth + pixel * 5.0F), at.y + style.FramePadding.y), faded(chosen ? dark : ToolTheme::Text, 0.45F), key);
+			drawList->AddText(ImVec2(std::floor(textX + textWidth + pixel * 5.0F), at.y + style.FramePadding.y), faded(ToolTheme::Text, chosen ? 0.7F : 0.45F), key);
 		}
 		if (tip && *tip && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
 			ImGui::SetTooltip("%s", tip);
@@ -4435,7 +4437,9 @@ namespace SandboxDetail {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0F);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
-		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
+		if (ImGui::Begin("##SandboxBar", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus)) {
+			// Behind every other window: the settings panel and the sandbox window open over it.
+			ImGui::BringWindowToDisplayBack(ImGui::GetCurrentWindow());
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			// The strips' backgrounds go under what is on them, drawn once it is known where the shelf ends.
 			drawList->ChannelsSplit(2);
@@ -4521,9 +4525,11 @@ namespace SandboxDetail {
 				if (i > 0) {
 					ImGui::SameLine();
 				}
-				std::string tip = std::string(part.Tip) + (firstShelf ? (holding ? "\nClick: open its panel, or put it away" : "\nClick: take up its tools") : (showing ? "\nClick: put the panel away" : "\nClick: open its panel"));
+				std::string tip = std::string(part.Tip) + (firstShelf ? "\nClick: take up its tools (Panel > on the shelf opens the full panel)" : (showing ? "\nClick: put the panel away" : "\nClick: open its panel"));
 				if (BarTile("##part", part.Name, tip.c_str(), showing || holding, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, part.Art, at, room / 12.0F, part.Color); }) == 1) {
-					if (firstShelf && !holding) {
+					if (firstShelf && holding) {
+						// Its tools are in hand already: the window opens from the shelf's Panel > button, never from here.
+					} else if (firstShelf) {
 						// The tool last used on this part, if it is one of its own; else its first.
 						int toolIndex = ToolIndex(firstShelf->Tools.front());
 						if (auto remembered = s_LastToolOfTab.find(part.Name); remembered != s_LastToolOfTab.end()) {
@@ -4620,8 +4626,8 @@ namespace SandboxDetail {
 				if (BarTile(
 				        "##count", c_SideNames[side], tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) {
 					        float inset = room * 0.08F;
-					        tileList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), (c_SideColors[side] & 0x00FFFFFF) | ((count > 0 ? 200u : 70u) << IM_COL32_A_SHIFT));
-					        PictureText(tileList, at, room, count > 0 ? IM_COL32(16, 18, 26, 255) : IM_COL32(200, 200, 200, 160), number.c_str());
+					        tileList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), (c_SideColors[side] & 0x00FFFFFF) | ((count > 0 ? 110u : 50u) << IM_COL32_A_SHIFT));
+					        PictureText(tileList, at, room, count > 0 ? ToolTheme::Text : IM_COL32(200, 200, 200, 160), number.c_str());
 				        },
 				        c_SideColors[side]) == 1) {
 					s_Selected.clear();
