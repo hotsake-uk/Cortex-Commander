@@ -16,13 +16,26 @@ namespace RTE {
 		/// The numbers that decide what falls and how, for tuning (World Debug, F6) and saved with the settings.
 		struct Tuning {
 			bool FloatingStays = true; //!< A mass that was already hanging in the air before a blast stays up when it's chipped; if it's cut in two, the bigger part stays and the smaller falls. Off, anything touching nothing falls.
-			int NeckWidth = 3; //!< A piece held on by a neck of ground no wider than this many pixels snaps off. 0 turns this off.
-			int MaxPiecePixels = 30000; //!< A connected piece bigger than this counts as the world itself and never falls.
-			int MinFittingPixels = 150; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
-			float BreakStrength = 1.0F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
-			float BlastPush = 0.5F; //!< How hard explosions throw loose pieces: 0 not at all, 1 hard, 3 very hard. Lower also means fewer pieces lying at rest are picked up again.
-			int CrushPixels = 24; //!< A falling piece goes through loose bits of ground of up to this many pixels (leftover scraps, nuggets, a few grains) and flattens them, instead of being held up by them. Never more than a quarter of its own size. 0 turns this off.
+			int NeckWidth = 15; //!< A piece held on by a neck of ground no wider than this many pixels snaps off. 0 turns this off.
+			int MaxPiecePixels = 16755; //!< A connected piece bigger than this counts as the world itself and never falls.
+			int MinFittingPixels = 184; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
+			float BreakStrength = 0.67F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
+			/// How fast in m/s a piece has to land to break, by its materials' BreakStyle (each material's ImpactStrength scales its style's).
+			/// A piece of several materials goes by the ones that carry it: leaves, grass and ash don't count. Pieces move at most 27 m/s, so above that never.
+			float ShatterSpeed = 7.0F; //!< Concrete, glass, ice.
+			float CrackSpeed = 9.0F; //!< Earth, stone and anything not listed.
+			float CrumbleSpeed = 2.0F; //!< Sand, snow, gravel, rubble, ash.
+			float SplinterSpeed = 22.0F; //!< Wood and tree trunks: a tree lands whole unless it comes down very hard.
+			float BendSpeed = 12.0F; //!< Metal: it never breaks, but above this a long thin piece folds at a crease where it lands and a chunky one dents.
+			float BlastPush = 2.44F; //!< How hard explosions throw loose pieces: 0 not at all, 1 hard, 3 very hard. Lower also means fewer pieces lying at rest are picked up again.
+			int CrushPixels = 149; //!< A falling piece goes through loose bits of ground of up to this many pixels (leftover scraps, nuggets, a few grains) and flattens them, instead of being held up by them. Never more than a quarter of its own size. 0 turns this off.
+			float ScuffStrength = 1.0F; //!< How much loose ground (sand and the like, per its Scuffs material property) is knocked loose and shoved along by units walking or running on it: 1 a few pixels a step, 2 more, 0 none.
 			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
+			float HitDamage = 3.05F; //!< How much a falling piece hurts the units it hits: at 1 a block a metre across (about 100 kg) falling 10 m/s onto a soldier takes about a quarter to a third of their health, at 2 twice that. 0 turns hit damage off (pieces still knock units about).
+			float HitMinSpeed = 5.0F; //!< How fast in m/s a piece has to be moving into a unit to hurt it at all. Only the speed above this counts.
+			int HitMinPixels = 66; //!< Pieces smaller than this many pixels never hurt (gravel, a few grains).
+			float HitMassCap = 20.0F; //!< A piece heavier than this many times the unit it hits counts as only this heavy, so a boulder doesn't hurt endlessly more than a big rock.
+			float HitKnockback = 3.0F; //!< How hard pieces shove the units and loose objects they hit: 0 not at all, 1 as before, 2 twice as hard.
 		};
 
 		/// Gets the tuning numbers, to read or change.
@@ -39,6 +52,13 @@ namespace RTE {
 		/// @param x The pixel, in scene coordinates.
 		/// @param y The pixel, in scene coordinates.
 		static void NoteDamage(int x, int y);
+
+		/// Tells the system a unit's foot came down at a point, so loose ground under it (a material with Scuffs) is knocked loose and shoved the way the unit travels. Thread safe.
+		/// @param x The foot, in scene coordinates.
+		/// @param y The foot, in scene coordinates.
+		/// @param direction Which way the unit is going: -1 left, 1 right.
+		/// @param speed How fast it is going, in pixels per update.
+		static void NoteFootfall(int x, int y, int direction, float speed);
 
 		/// Tells the system that terrain around a point is about to be removed by something other than an explosion (a digging tool), then checks for loose pieces afterwards.
 		/// Call it before the terrain changes, from the main thread: it notes what was already hanging in the air there, so only what the change cuts loose falls.
@@ -58,6 +78,14 @@ namespace RTE {
 		/// Sets whether pieces of buildings fall.
 		static void SetBuildingsFall(bool fall) { s_BuildingsFall = fall; }
 
+		/// Gets whether falling pieces go through trees (a gameplay setting): rock coming down from above falls through a standing tree rather
+		/// than landing on it, and a falling tree goes through other trees; a tree coming down still lands on the ground. Off (as the game comes)
+		/// trees are solid to falling pieces like any ground.
+		static bool PassesTrees() { return s_PassesTrees; }
+
+		/// Sets whether falling pieces go through trees.
+		static void SetPassesTrees(bool passes) { s_PassesTrees = passes; }
+
 		/// Queues a check for floating terrain around a crater. Thread safe.
 		/// @param position Centre of the crater, in scene coordinates.
 		/// @param radius How far around it to look.
@@ -68,6 +96,22 @@ namespace RTE {
 		/// @param radius Its rough radius in pixels (3 to 60).
 		/// @param materialName The material's name, e.g. "Stone".
 		static void SpawnChunk(const Vector& position, float radius, const char* materialName);
+
+		/// Breaks all the ground in a box loose (the sandbox's "Make it fall"): every piece of terrain inside it, whatever it is made of, is cut
+		/// out along the box's edges and falls like any loose piece, cracking, crumbling, splintering or bending as it lands by its materials.
+		/// A big box is cut into rough chunks first. What was held up only by the ground taken is checked afterwards and falls too.
+		/// Doors and the world's edge stay. Thread safe; applied on the next sim step.
+		/// @param left The box, in scene pixels, inclusive.
+		/// @param top The box, in scene pixels, inclusive.
+		/// @param right The box, in scene pixels, inclusive.
+		/// @param bottom The box, in scene pixels, inclusive.
+		/// @return A number for this drop, for TakeBackDrop; 0 if collapsing terrain is off (nothing falls then).
+		static int DropArea(int left, int top, int right, int bottom);
+
+		/// Takes a drop back, for an undo: its pieces still falling are lifted out of the terrain and gone, and those that came to rest are taken
+		/// out of the ground where they lie, if nothing has changed them since. The ground where they were is the caller's to put back. Main thread only.
+		/// @param drop The number DropArea gave.
+		static void TakeBackDrop(int drop);
 
 		/// Runs due checks. Call once per sim update, from the main thread.
 		static void Update();
@@ -81,20 +125,22 @@ namespace RTE {
 		/// Gets how many loose pieces are moving right now, for statistics.
 		static int GetFallingCount();
 
-		/// One loose piece, for the world simulation overlay.
+		/// One loose piece, for the world simulation overlay and unit speech.
 		struct FallingPiece {
 			float X, Y; //!< Its centre of mass, in the scene.
 			float Radius; //!< Its furthest pixel from that.
 			float VelX, VelY; //!< Pixels per update.
+			bool Tree = false; //!< Mostly tree trunk: a tree coming down.
 		};
 
-		/// Gets the loose pieces moving right now, for the world simulation overlay. Call from the main thread, between sim updates.
+		/// Gets the loose pieces moving right now, for the world simulation overlay and unit speech. Call from the main thread, between sim updates.
 		/// @param pieces Filled with them.
 		static void GetFallingPieces(std::vector<FallingPiece>& pieces);
 
 	private:
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
 		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.
+		static bool s_PassesTrees; //!< Whether falling pieces go through trees.
 		static Tuning s_Tuning; //!< What falls and how.
 	};
 } // namespace RTE

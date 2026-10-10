@@ -38,6 +38,7 @@ uniform bool rteWetMapOn; // Wetness from the wetness map (LightingSettings::Wet
 uniform sampler2D rteWetMap; // The light grid's cells: R = how wet, 0 to 1, and past 1 water standing in dips, up to 2.
 uniform float rtePuddles; // How much of that standing water is drawn as puddles, 0 for none.
 uniform float rteRainNow; // How hard it's raining, 0 to 1, for drops on puddles.
+uniform bool rteWaterCaustics; // The thin wavy lines of light through water. Off: none.
 uniform float rteWaterFoamStray; // How much of that froth a stray pixel or two of water gets, against a stream of them: 0 none (they stay bare pixels), 1 as much.
 uniform float rteWaterFoamBright; // How bright the froth is drawn.
 uniform float rteWaterFoamBubbles; // How much the froth bubbles (flickers lighter and darker): 0 smooth like still water, 1 lively.
@@ -243,6 +244,9 @@ float WaterAround(vec2 uv, vec2 texel) {
 
 // The thin bright lines of light that wander and cross through water. The same in still water and in the froth of a pour, so the two look like one thing.
 float WaterCaustic(vec2 world) {
+	if (!rteWaterCaustics) {
+		return 0.0;
+	}
 	float bandA = sin(world.x * 0.13 + rteTime * 0.9 + 2.0 * sin(world.y * 0.11 + rteTime * 0.6));
 	float bandB = sin(world.x * 0.07 - rteTime * 0.7 + 1.5 * sin(world.y * 0.17 - rteTime * 0.5));
 	return pow(max(0.0, 1.0 - abs(bandA + bandB) * 0.9), 6.0);
@@ -483,7 +487,14 @@ void main() {
 						lean = vec2(texture(rteFlowField, (worldPos + vec2(cellStep.x, 0.0)) / rteGridWorldSize).g - texture(rteFlowField, (worldPos - vec2(cellStep.x, 0.0)) / rteGridWorldSize).g,
 						            texture(rteFlowField, (worldPos + vec2(0.0, cellStep.y)) / rteGridWorldSize).g - texture(rteFlowField, (worldPos - vec2(0.0, cellStep.y)) / rteGridWorldSize).g) * 0.6 * flowAmount;
 					}
-					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * calm * mix(1.0, 0.5, deep) + lean * rteWaterRipples * lookSurface.z, 0.0));
+					// Wind chop: where the surface is open to the sky (not under a roof or in a cave), smaller, quicker waves run downwind, the harder
+					// the wind the more, still water too.
+					vec2 chop = vec2(0.0);
+					float windChop = min(abs(rteWind) / 150.0, 1.5);
+					if (windChop > 0.02 && worldPos.y <= texture(rteSkyline, vec2(worldPos.x / rteGridWorldSize.x, 0.5)).r * rteGridWorldSize.y + 24.0) {
+						chop = RippleSlope(worldPos * 1.9 - vec2(rteTime * rteWind * 0.25, 0.0)) * windChop * 0.35 * mix(1.0, 0.2, deep);
+					}
+					normal = normalize(normal + vec3(slope * 0.45 * rteWaterRipples * lookSurface.z * calm * mix(1.0, 0.5, deep) + (lean + chop) * rteWaterRipples * lookSurface.z, 0.0));
 				}
 				glowsThrough = 0.25 * lookStyle.w;
 				if (LiquidLook(colorIndex) == 0) {

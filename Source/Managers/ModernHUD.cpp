@@ -1,6 +1,7 @@
 #include "WindowMan.h"
 #include "ModernHUD.h"
 #include "AHuman.h"
+#include "ACraft.h"
 #include "ActorWater.h"
 #include "Activity.h"
 #include "ActivityMan.h"
@@ -23,7 +24,7 @@
 
 using namespace RTE;
 
-bool ModernHUD::s_Enabled = false;
+bool ModernHUD::s_Enabled = true;
 
 namespace {
 	/// A downscaled picture of the scene's terrain, rebuilt now and then.
@@ -221,7 +222,7 @@ void ModernHUD::Draw() {
 		DrawBar(drawList, base, ImVec2(barWidth, barHeight), healthFraction, healthColor, label);
 		base.y += barHeight + 6.0F * scale;
 		if (float air = ActorWater::GetAir(controlled); air < 1.0F) {
-			DrawBar(drawList, ImVec2(base.x, base.y - barHeight * 2.0F - 12.0F * scale - 20.0F * scale - 14.0F * scale), ImVec2(barWidth, 12.0F * scale), air, air > 0.3F ? IM_COL32(110, 190, 255, 255) : IM_COL32(230, 60, 50, 255), "");
+			DrawBar(drawList, ImVec2(base.x, base.y - barHeight * 2.0F - 12.0F * scale - 20.0F * scale - 14.0F * scale), ImVec2(barWidth, 12.0F * scale), air, air > 0.3F ? IM_COL32(110, 190, 255, 255) : IM_COL32(230, 60, 50, 255), "Air");
 		}
 		if (const AHuman* human = dynamic_cast<const AHuman*>(controlled)) {
 			if (const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(human->GetEquippedItem())) {
@@ -304,7 +305,8 @@ void ModernHUD::Draw() {
 		s_Health.clear();
 	}
 
-	// Loss feed, top left below the funds: units that died or vanished since last frame.
+	// Feed, top left below the funds: units that died or vanished since last frame, and units that spawned in (appeared, or got out of
+	// their ship). Not ships coming and going, nor what is there when a scene starts.
 	std::unordered_map<const Actor*, std::pair<std::string, int>> currentActors;
 	for (const Actor* actor: g_MovableMan.m_Actors) {
 		if (actor && !actor->IsDead()) {
@@ -314,6 +316,18 @@ void ModernHUD::Draw() {
 	for (const auto& [actor, info]: s_KnownActors) {
 		if (!currentActors.count(actor)) {
 			s_Feed.push_back({info.first + " lost", info.second, ImGui::GetTime()});
+		}
+	}
+	if (!s_KnownActors.empty()) {
+		// (Several of a team at once on one line, as a battle's wave, so they don't push everything else off.)
+		std::unordered_map<int, std::vector<std::string>> spawned;
+		for (const Actor* actor: g_MovableMan.m_Actors) {
+			if (actor && !actor->IsDead() && !s_KnownActors.count(actor) && !dynamic_cast<const ACraft*>(actor)) {
+				spawned[actor->GetTeam()].push_back(actor->GetPresetName());
+			}
+		}
+		for (const auto& [team, names]: spawned) {
+			s_Feed.push_back({names.size() == 1 ? names.front() + " spawned in" : std::to_string(names.size()) + " units spawned in", team, ImGui::GetTime()});
 		}
 	}
 	s_KnownActors.swap(currentActors);

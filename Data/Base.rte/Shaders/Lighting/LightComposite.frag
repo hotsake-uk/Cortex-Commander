@@ -19,6 +19,8 @@ uniform vec2 rteSunDirection; // Unit vector towards the sun (or the moon at nig
 uniform float rteSunShadows; // How much shade darkens the sky light, 0 (no directional daylight) to 1.
 uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at full strength: darker and cooler.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
+uniform float rteBackgroundShadows; // How dark the terrain's shadows on the background scenery behind it are, 0 (off) to 1, after time of day and weather.
+uniform float rteBackgroundShadowLength; // How far those shadows reach, 1 as usual.
 uniform float rteContactShading; // How much background walls darken right next to solid objects and terrain, 0 (off) to 1.
 uniform float rteMetals; // How strongly metallic surfaces mirror their surroundings and glint in the sun, 0 for none.
 uniform float rteBackgroundBlur; // How much the far background layers are softened, 0 for none.
@@ -39,6 +41,7 @@ uniform float rteCloudPeriod; // Scene width on a wrapping scene with the cloud 
 uniform float rteCloudSize; // How big the clouds are, 1 as usual: scales the patches (sky and shadows alike), the puffs and the depth of the band.
 uniform float rteCloudHeight; // How high the cloud band sits, 1 along the top of the view as usual, 0 starting halfway down it.
 uniform float rteSpecular; // Strength of highlights on shiny surfaces.
+uniform bool rteUnitSunGlint; // The sun glints on units and other solid objects too (LightingSettings::UnitShineSun).
 uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
 uniform float rteBackgroundDepth; // Depth beyond which pixels belong to the distant background layers (or nothing was drawn).
 uniform vec3 rteBackgroundLight; // Linear light on the distant background layers.
@@ -74,6 +77,7 @@ uniform float rteTime; // Seconds, for twinkling.
 uniform float rteWaterReflection; // How strongly water mirrors the scene above its surface, 0 for none.
 uniform sampler2D rteFog; // World grid, R = how thick mist or dust hangs in the air there (FogUpdate.frag).
 uniform float rteFogStrength; // How thick the fog volume is drawn, 0 for none.
+uniform float rteFogOpacity; // How much of what's behind the thickest fog it hides, 0 to 1 (LightingSettings::FogOpacity).
 uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
 uniform bool rteWaterSoftReflection; // The reflection is softened with depth (a blur that widens, a fade that deepens), feathered where the open air above the pool ends, and not clipped hard where it leaves the screen or meets other water. Off: sharp and cut off, as before.
 uniform bool rteWaterMirrorSurface; // The reflection is wobbled by the tilt of the surface above each pixel (the terrain pass's normal there, which follows the flow), the whole column together. Off: by the pixel's own tilt, as before.
@@ -149,6 +153,21 @@ float ObjectSunShadow(vec2 from, bool fromSolid) {
 		t += max(clearance * 0.95, 1.0);
 	}
 	return clamp(visibility, 0.0, 1.0);
+}
+
+// How much the terrain in front shades a pixel of the background scenery, 0 to 1: a drop shadow. The scenery stands some way behind the battlefield, so the terrain's
+// silhouette falls on it shifted away from the sun (or moon): a pixel is in shadow where there's terrain that far towards the sun from it. Read from the light grid, so terrain
+// just off the screen still casts. The further back the layer, the further the shadow is thrown and the softer its edge.
+float BackgroundShadow(vec2 worldPos, float layerDistance) {
+	vec2 offset = rteSunDirection * rteBackgroundShadowLength * mix(10.0, 26.0, layerDistance);
+	float soft = 1.5 + 3.0 * layerDistance;
+	vec2 center = worldPos + offset;
+	float cover = 0.4 * texture(rteOccupancy, center / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center + vec2(soft, 0.0)) / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center - vec2(soft, 0.0)) / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center + vec2(0.0, soft)) / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center - vec2(0.0, soft)) / rteGridWorldSize).r;
+	return smoothstep(0.3, 0.7, cover) * mix(1.0, 0.7, layerDistance);
 }
 
 float CloudHash(vec2 p) {
@@ -358,6 +377,11 @@ void main() {
 		// Only layers that barely scroll (the sky itself) get stars, so they never show on mountains or nearer scenery.
 		// They also fade towards the horizon, where distant mountains usually are.
 		skyLayer = smoothstep(0.88, 0.95, distance);
+		if (rteBackgroundShadows > 0.0 && skyLayer < 1.0 && sceneDepth < 0.9999) {
+			// The terrain casts its shadow on the scenery behind it, so it stands out from the backdrop instead of looking pasted flat on it. Never on the sky itself.
+			float shadow = BackgroundShadow(rteScreenOrigin + gl_FragCoord.xy, distance) * rteBackgroundShadows * (1.0 - skyLayer);
+			light *= mix(vec3(1.0), rteShadeTint * 0.8, shadow);
+		}
 		nightSkyAmount = rteNightSky * smoothstep(0.88, 0.95, distance) * (1.0 - smoothstep(0.25, 0.48, screenUV.y)); // Player screens are drawn top down: UV y 0 is the top.
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
@@ -465,7 +489,7 @@ void main() {
 		if (rteWaterGlow > 0.0 && abs(texture(rteSurface, screenUV).b - 0.25) < 0.08) {
 			waterGlow = dynamicLight * rteWaterGlow;
 		}
-		// Highlights from the lights, in the lights' own color.
+		// Highlights from the lights, in the lights' own color (PointLight.frag and LampCacheApply.frag may leave units and other solid objects out).
 		highlights = dynamicSample.rgb / max(max(dynamicSample.r, max(dynamicSample.g, dynamicSample.b)), 0.001) * min(dynamicSample.a, 6.0);
 		// Daylight has a direction. Where the sun (or moon) can't be seen, the sky light is dimmer and cooler; under open sky in full sun it is exactly as without shadows.
 		bool solidObject = normalSample.a > 0.25 && texture(rteSurface, screenUV).b > 0.5;
@@ -527,9 +551,9 @@ void main() {
 				float mirrored = lean >= 0.0 ? mix(1.0, 1.75, lean) : mix(1.0, 0.4, -lean);
 				light *= mix(1.0, mirrored, metalness * min(rteMetals, 1.5));
 			}
-			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches.
+			// The sun (or moon) glints on glossy surfaces turned halfway between it and the viewer, where daylight reaches. On units and other solid objects only if asked.
 			float gloss = max(surfaceSample.g, 1.0 - normalSample.b);
-			if (gloss > 0.1) {
+			if (gloss > 0.1 && (rteUnitSunGlint || !solidObject)) {
 				vec3 halfway = normalize(vec3(rteSunDirection * 0.8, 0.6) + vec3(0.0, 0.0, 1.0));
 				highlights += rteSkyColor * pow(max(dot(normal, halfway), 0.0), mix(24.0, 90.0, gloss)) * gloss * daylight * rteMetals * rteSpecular * mix(0.5, 1.6, metalness);
 			}
@@ -636,7 +660,7 @@ void main() {
 		vec2 fogWorld = rteScreenOrigin + gl_FragCoord.xy;
 		float fog = texture(rteFog, fogWorld / rteGridWorldSize).r;
 		if (fog > 0.002) {
-			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * 0.85;
+			float amount = (1.0 - exp(-fog * rteFogStrength * 2.0)) * rteFogOpacity;
 			float fogSky = smoothstep(0.0, 1.0, texture(rteSkyLight, fogWorld / rteGridWorldSize).r);
 			vec3 fogLamps = rteMaxDynamicLight * (1.0 - exp(-texture(rteDynamicLight, screenUV).rgb / rteMaxDynamicLight));
 			litColor = mix(litColor, vec3(0.82, 0.85, 0.9) * (mix(rteAmbient, rteSkyColor, fogSky) + fogLamps), amount);

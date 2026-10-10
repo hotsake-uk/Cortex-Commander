@@ -31,6 +31,9 @@ SettingsGameplayGUI::SettingsGameplayGUI(GUIControlManager* parentControlManager
 	m_EndlessMetaGameCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxEndlessMetaGame"));
 	m_EndlessMetaGameCheckbox->SetCheck(g_SettingsMan.EndlessMetaGameMode());
 
+	m_NoSceneWrapCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxNoSceneWrap"));
+	m_NoSceneWrapCheckbox->SetCheck(g_SettingsMan.NoSceneWrap());
+
 	m_ShowEnemyHUDCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxEnemyHUD"));
 	m_ShowEnemyHUDCheckbox->SetCheck(g_SettingsMan.ShowEnemyHUD());
 
@@ -136,6 +139,8 @@ void SettingsGameplayGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			g_SettingsMan.SetCrabBombsEnabled(m_EnableCrabBombsCheckbox->GetCheck());
 		} else if (guiEvent.GetControl() == m_EndlessMetaGameCheckbox) {
 			g_SettingsMan.SetEndlessMetaGameMode(m_EndlessMetaGameCheckbox->GetCheck());
+		} else if (guiEvent.GetControl() == m_NoSceneWrapCheckbox) {
+			g_SettingsMan.SetNoSceneWrap(m_NoSceneWrapCheckbox->GetCheck());
 		} else if (guiEvent.GetControl() == m_ShowEnemyHUDCheckbox) {
 			g_SettingsMan.SetShowEnemyHUD(m_ShowEnemyHUDCheckbox->GetCheck());
 		} else if (guiEvent.GetControl() == m_EnableSmartBuyMenuNavigationCheckbox) {

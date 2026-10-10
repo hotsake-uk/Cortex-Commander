@@ -3,6 +3,7 @@
 namespace RTE {
 	class Material;
 	class MovableObject;
+	class Vector;
 
 	/// Units on fire: flames, napalm, burning ground and lava set them alight. A burning unit takes damage, panics and runs, and sets grass and nearby units alight as it goes, until it burns out or water puts it out.
 	/// Anything else with a "Flammable" number value gets an "Ignited" number value instead, for its own script to act on (fuel barrels explode).
@@ -21,6 +22,11 @@ namespace RTE {
 		/// @param hitRoot The root parent of what was hit.
 		/// @param hitterMaterial The hitter's material.
 		static void OnHit(const MovableObject* hitter, MovableObject* hitRoot, const Material* hitterMaterial);
+
+		/// Queues fire put straight onto an area (the sandbox's fire brush, a lightning strike): every unit and fuel barrel it touches catches. Thread safe.
+		/// @param position The centre.
+		/// @param radius How far it reaches, in pixels.
+		static void QueueIgniteArea(const Vector& position, float radius);
 
 		/// Burns, spreads and puts out fire on units. Call once per sim update, from the main thread, after the terrain fire update.
 		static void Update();

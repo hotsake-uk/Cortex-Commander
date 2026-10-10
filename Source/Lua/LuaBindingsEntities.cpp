@@ -223,6 +223,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("SharpAimProgress", &Actor::GetSharpAimProgress)
 	    .property("Height", &Actor::GetHeight)
 	    .property("AIMode", &Actor::GetAIMode, &Actor::SetAIMode)
+	    .property("RouteThreatAvoidance", &Actor::GetRouteThreatAvoidance, &Actor::SetRouteThreatAvoidance)
+	    .property("RouteSeed", &Actor::GetRouteSeed, &Actor::SetRouteSeed)
 	    .property("AIOrderSerial", &Actor::GetAIOrderSerial)
 	    .property("OrderAttack", &Actor::GetOrderAttack, &Actor::SetOrderAttack)
 	    .property("OrderTargetID", &Actor::GetOrderTargetID, &Actor::SetOrderTargetID)
@@ -233,13 +235,25 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderPost", &Actor::GetOrderPost, &Actor::SetOrderPost)
 	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
 	    .property("OrderPostFacing", &Actor::GetOrderPostFacing, &Actor::SetOrderPostFacing)
+	    .property("OrderKind", &Actor::GetOrderKind, &Actor::SetOrderKind)
+	    .property("OrderHasDigTarget", &Actor::GetOrderHasDigTarget)
+	    .property("OrderDigTarget", &Actor::GetOrderDigTarget, &Actor::SetOrderDigTarget)
+	    .property("OrderFailReason", &Actor::GetOrderFailReason, &Actor::SetOrderFailReason)
+	    .property("OrderFailText", &Actor::GetOrderFailText)
 	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
+	    .property("Temperament", &Actor::GetTemperament, &Actor::SetTemperament)
+	    .property("NonCombatant", &Actor::IsNonCombatant, &Actor::SetNonCombatant)
+	    .property("LastAttackerTeam", &Actor::GetLastAttackerTeam)
+	    .property("LastAttackerID", &Actor::GetLastAttackerID)
+	    .property("MSSinceHurt", &Actor::GetMSSinceHurt)
+	    .property("LastHurtFrom", &Actor::GetLastHurtFrom)
 	    .property("PaceLimit", &Actor::GetPaceLimit, &Actor::SetPaceLimit)
 	    .property("MovementRule", &Actor::GetMovementRule, &Actor::SetMovementRule)
 	    .property("DeploymentID", &Actor::GetDeploymentID)
 	    .property("PassengerSlots", &Actor::GetPassengerSlots, &Actor::SetPassengerSlots)
 	    .property("Perceptiveness", &Actor::GetPerceptiveness, &Actor::SetPerceptiveness)
 	    .property("HeadlampBrightness", &Actor::GetHeadlampBrightness, &Actor::SetHeadlampBrightness)
+	    .property("HeadlampLit", &Actor::IsHeadlampLit)
 	    .def("SetHeadlampColor", &Actor::SetHeadlampColor)
 	    .def("ClearHeadlampColor", &Actor::ClearHeadlampColor)
 	    .property("PainThreshold", &Actor::GetPainThreshold, &Actor::SetPainThreshold)
@@ -255,6 +269,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("Morale", &Actor::GetMorale)
 	    .def("Say", &Actor::Say)
 	    .def("SayText", &Actor::SayText)
+	    .def("SayAbout", &Actor::SayAbout)
+	    .property("SpeechName", &Actor::GetSpeechName)
 	    .property("SpeechSet", &Actor::GetSpeechSet, &Actor::SetSpeechSet)
 	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)
@@ -296,6 +312,10 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("ClearStandingOrder", &Actor::ClearStandingOrder)
 	    .def("ClearOrderAttackPlace", &Actor::ClearOrderAttackPlace)
 	    .def("ClearOrderPost", &Actor::ClearOrderPost)
+	    .def("ClearOrderDigTarget", &Actor::ClearOrderDigTarget)
+	    .def("CanDigTo", &Actor::CanDigTo)
+	    .def("DescribeDigTo", &Actor::DescribeDigTo)
+	    .def("FailOrder", &Actor::FailOrder)
 	    .def("GetLastAIWaypoint", &Actor::GetLastAIWaypoint)
 	    .def("GetAIMOWaypointID", &Actor::GetAIMOWaypointID)
 	    .def("GetWaypointListSize", &Actor::GetWaypointsSize)
@@ -360,10 +380,28 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .enum_("WeaponRule")[luabind::value("WEAPONS_AT_WILL", Actor::WeaponRule::WEAPONS_AT_WILL),
 	                         luabind::value("WEAPONS_RETURN_FIRE", Actor::WeaponRule::WEAPONS_RETURN_FIRE),
 	                         luabind::value("WEAPONS_HOLD", Actor::WeaponRule::WEAPONS_HOLD)]
+	    .enum_("Temperament")[luabind::value("TEMPERAMENT_FIGHTER", Actor::Temperament::TEMPERAMENT_FIGHTER),
+	                          luabind::value("TEMPERAMENT_DEFENSIVE", Actor::Temperament::TEMPERAMENT_DEFENSIVE),
+	                          luabind::value("TEMPERAMENT_SKITTISH", Actor::Temperament::TEMPERAMENT_SKITTISH),
+	                          luabind::value("TEMPERAMENT_PACIFIST", Actor::Temperament::TEMPERAMENT_PACIFIST)]
 	    .enum_("MovementRule")[luabind::value("MOVE_FOLLOW_ORDER", Actor::MovementRule::MOVE_FOLLOW_ORDER),
 	                           luabind::value("MOVE_ENGAGE", Actor::MovementRule::MOVE_ENGAGE),
 	                           luabind::value("MOVE_ONLY", Actor::MovementRule::MOVE_ONLY),
 	                           luabind::value("MOVE_HOLD_GROUND", Actor::MovementRule::MOVE_HOLD_GROUND)]
+	    .enum_("OrderKind")[luabind::value("ORDER_NONE", Actor::OrderKind::ORDER_NONE),
+	                        luabind::value("ORDER_MOVE", Actor::OrderKind::ORDER_MOVE),
+	                        luabind::value("ORDER_ATTACKMOVE", Actor::OrderKind::ORDER_ATTACKMOVE),
+	                        luabind::value("ORDER_ATTACK", Actor::OrderKind::ORDER_ATTACK),
+	                        luabind::value("ORDER_GUARD", Actor::OrderKind::ORDER_GUARD),
+	                        luabind::value("ORDER_DEFEND", Actor::OrderKind::ORDER_DEFEND),
+	                        luabind::value("ORDER_PATROL", Actor::OrderKind::ORDER_PATROL),
+	                        luabind::value("ORDER_DIGTO", Actor::OrderKind::ORDER_DIGTO)]
+	    .enum_("OrderFailReason")[luabind::value("ORDERFAIL_NONE", Actor::OrderFailReason::ORDERFAIL_NONE),
+	                              luabind::value("ORDERFAIL_NOROUTE", Actor::OrderFailReason::ORDERFAIL_NOROUTE),
+	                              luabind::value("ORDERFAIL_NODIGGER", Actor::OrderFailReason::ORDERFAIL_NODIGGER),
+	                              luabind::value("ORDERFAIL_TOOHARD", Actor::OrderFailReason::ORDERFAIL_TOOHARD),
+	                              luabind::value("ORDERFAIL_LOSTDIGGER", Actor::OrderFailReason::ORDERFAIL_LOSTDIGGER),
+	                              luabind::value("ORDERFAIL_OUTOFREACH", Actor::OrderFailReason::ORDERFAIL_OUTOFREACH)]
 	    .enum_("ActionState")[luabind::value("MOVING", Actor::ActionState::MOVING),
 	                          luabind::value("MOVING_FAST", Actor::ActionState::MOVING_FAST),
 	                          luabind::value("FIRING", Actor::ActionState::FIRING),
@@ -397,6 +435,21 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ActorSighting) {
 	    .def_readonly("Visibility", &ActorSighting::Visibility)
 	    .def_readonly("Distance", &ActorSighting::Distance)
 	    .def_readonly("Head", &ActorSighting::Head);
+}
+
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
+	return ConcreteTypeLuaClassDefinition(AVehicle, Actor)
+
+	    .property("Driver", &AVehicle::GetDriver)
+	    .property("HasDriver", &AVehicle::HasDriver)
+	    .property("Throttle", &AVehicle::GetThrottle)
+	    .property("MaxSpeed", &AVehicle::GetMaxSpeed, &AVehicle::SetMaxSpeed)
+	    .property("WheelsOnGround", &AVehicle::GetWheelsOnGround)
+	    .property("SunkFraction", &AVehicle::GetSunkFraction)
+	    .property("SeatOffset", &AVehicle::GetSeatOffset)
+
+	    .def("TakeDriver", &AVehicle::TakeDriver)
+	    .def("EjectDriver", &AVehicle::EjectDriver);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
@@ -492,6 +545,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("JetAccelRatio", &AHuman::GetJetAccelRatio)
 	    .property("JetFlying", &AHuman::IsJetFlying)
 	    .property("FlyingRoute", &AHuman::IsFlyingRoute)
+	    .property("DiggingRoute", &AHuman::IsDiggingRoute)
 	    .property("ClimbingLadder", &AHuman::IsClimbingLadder)
 	    .property("LegJumpHeight", &AHuman::GetLegJumpHeight, &AHuman::SetLegJumpHeight)
 	    .property("LegJumpSpeed", &AHuman::GetLegJumpSpeed, &AHuman::SetLegJumpSpeed)
@@ -729,6 +783,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HDFirearm) {
 	    .property("EjectionPos", &HDFirearm::GetEjectionPos)
 	    .property("EjectionOffset", &HDFirearm::GetEjectionOffset, &HDFirearm::SetEjectionOffset)
 	    .property("RateOfFire", &HDFirearm::GetRateOfFire, &HDFirearm::SetRateOfFire)
+	    .property("AIDigStrength", &HDFirearm::GetAIDigStrength, &HDFirearm::SetAIDigStrength)
 	    .property("MSPerRound", &HDFirearm::GetMSPerRound)
 	    .property("FullAuto", &HDFirearm::IsFullAuto, &HDFirearm::SetFullAuto)
 	    .property("Reloadable", &HDFirearm::IsReloadable, &HDFirearm::SetReloadable)
@@ -797,7 +852,28 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HeldDevice) {
 	    .property("Supported", &HeldDevice::GetSupported, &HeldDevice::SetSupported)
 	    .property("GetsHitByMOsWhenHeld", &HeldDevice::GetsHitByMOsWhenHeld, &HeldDevice::SetGetsHitByMOsWhenHeld)
 	    .property("VisualRecoilMultiplier", &HeldDevice::GetVisualRecoilMultiplier, &HeldDevice::SetVisualRecoilMultiplier)
+	    .property("HasBlade", &HeldDevice::HasBlade)
+	    .property("BladeEnergy", &HeldDevice::IsBladeEnergy, &HeldDevice::SetBladeEnergy)
+	    .property("BladeStart", &HeldDevice::GetBladeStart, &HeldDevice::SetBladeStart)
+	    .property("BladeEnd", &HeldDevice::GetBladeEnd, &HeldDevice::SetBladeEnd)
+	    .property("BladeHiltGap", &HeldDevice::GetBladeHiltGap, &HeldDevice::SetBladeHiltGap)
+	    .property("BladeStartPos", &HeldDevice::GetBladeStartPos)
+	    .property("BladeEndPos", &HeldDevice::GetBladeEndPos)
+	    .property("BladeColor", &HeldDevice::GetBladeColor, &HeldDevice::SetBladeColor)
+	    .property("BladeLightRadius", &HeldDevice::GetBladeLightRadius, &HeldDevice::SetBladeLightRadius)
+	    .property("BladeBrightness", &HeldDevice::GetBladeBrightness, &HeldDevice::SetBladeBrightness)
+	    .property("BladeLit", &HeldDevice::IsBladeLit, &HeldDevice::SetBladeLit)
+	    .property("BladeExtension", &HeldDevice::GetBladeExtension)
+	    .property("BladeSharpness", &HeldDevice::GetBladeSharpness, &HeldDevice::SetBladeSharpness)
+	    .property("BladeMass", &HeldDevice::GetBladeMass, &HeldDevice::SetBladeMass)
+	    .property("BladeCutsTerrain", &HeldDevice::GetBladeCutsTerrain, &HeldDevice::SetBladeCutsTerrain)
+	    .property("MeleeSwingArc", &HeldDevice::GetMeleeSwingArc, &HeldDevice::SetMeleeSwingArc)
+	    .property("MeleeSwingAngle", &HeldDevice::GetMeleeSwingAngle)
+	    .property("IsSwinging", &HeldDevice::IsSwinging)
+	    .property("BladeJustClashed", &HeldDevice::BladeJustClashed)
+	    .property("TimeSinceBladeHit", &HeldDevice::GetTimeSinceBladeHit)
 
+	    .def("StartMeleeSwing", &HeldDevice::StartMeleeSwing)
 	    .def("IsBeingHeld", &HeldDevice::IsBeingHeld)
 	    .def("IsWeapon", &HeldDevice::IsWeapon)
 	    .def("IsTool", &HeldDevice::IsTool)
@@ -1116,6 +1192,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MovableObject) {
 	    .def("RemoveObjectValue", &MovableObject::RemoveObjectValue)
 	    .def("StringValueExists", &MovableObject::StringValueExists)
 	    .def("NumberValueExists", &MovableObject::NumberValueExists)
+	    .def("GetPublishedNumberValue", &MovableObject::GetPublishedNumberValue)
+	    .def("PublishedNumberValueExists", &MovableObject::PublishedNumberValueExists)
 	    .def("ObjectValueExists", &MovableObject::ObjectValueExists)
 	    .def("GetAltitude", &MovableObject::GetAltitude)
 	    .def("GetWhichMOToNotHit", &MovableObject::GetWhichMOToNotHit)
@@ -1238,7 +1316,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieSlice) {
 	                        luabind::value("Team1", static_cast<int>(PieSliceType::EditorTeam1)),
 	                        luabind::value("Team2", static_cast<int>(PieSliceType::EditorTeam2)),
 	                        luabind::value("Team3", static_cast<int>(PieSliceType::EditorTeam3)),
-	                        luabind::value("Team4", static_cast<int>(PieSliceType::EditorTeam4))];
+	                        luabind::value("Team4", static_cast<int>(PieSliceType::EditorTeam4)),
+	                        luabind::value("DigTo", static_cast<int>(PieSliceType::DigTo)),
+	                        luabind::value("GetOut", static_cast<int>(PieSliceType::GetOut))];
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieMenu) {

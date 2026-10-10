@@ -4,6 +4,7 @@
 #include "MovableMan.h"
 #include "TextOverlay.h"
 #include "EffectsParticles.h"
+#include "RopeSim.h"
 #include "SceneLighting.h"
 
 #include "SDL3/SDL_surface.h"
@@ -173,7 +174,7 @@ void FrameMan::SetCameraZoom(float zoom) {
 }
 
 void FrameMan::StepCameraZoom(bool in) {
-	static constexpr float steps[] = {0.4F, 0.5F, 0.75F, 1.0F, 1.5F, 2.0F};
+	static constexpr float steps[] = {0.4F, 0.5F, 0.75F, 1.0F, 1.5F, 2.0F, 3.0F, 4.0F, 6.0F, 8.0F};
 	float zoom = m_CameraZoomTarget;
 	if (in) {
 		for (float step: steps) {
@@ -908,7 +909,8 @@ void FrameMan::Draw() {
 	}
 	{
 		PerformanceMan::LogScope logScope("Draw: visual particles update");
-		EffectsParticles::Update(g_PostProcessMan.GetLightingSettings().EffectsParticles);
+		const LightingSettings& effects = g_PostProcessMan.GetLightingSettings();
+		EffectsParticles::Update(effects.EffectsSparks, effects.EffectsDust, effects.EffectsDebris);
 		EffectsParticles::BeginFrame();
 	}
 
@@ -952,6 +954,7 @@ void FrameMan::Draw() {
 				g_SceneMan.Draw(camera);
 
 				EffectsParticles::Draw(camera);
+				RopeSim::Draw(camera);
 				g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
 			}
 

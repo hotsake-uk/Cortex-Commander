@@ -6,6 +6,7 @@
 #include "System/MicroPather/micropather.h"
 
 #include <array>
+#include <algorithm>
 #include <atomic>
 #include <limits>
 #include <deque>
@@ -50,6 +51,34 @@ namespace RTE {
 		Lava //!< Sets flesh alight (ActorFire): routed through only by what doesn't burn (PathAgent::CrossesLava).
 	};
 
+	/// Where every team's units stood when it was last built (MovableMan::PublishThreats): for each team, and for all teams together, how many
+	/// units are near each cell of the scene, each counted 1 where it stands and less out to c_Reach cells away. A route search reads it to
+	/// price steps past the searcher's enemies (see PathFinder::ThreatCost). Built whole on the main thread and never changed after, so a
+	/// search holds its own copy of the pointer (PathAgent::Threats) and reads it on its worker thread while the next one is built and
+	/// published: the path grid itself is not touched, and nothing is locked.
+	struct ThreatField {
+		static constexpr int c_CellSize = 24; //!< A cell's side, in pixels: a path node's.
+		static constexpr int c_Reach = 10; //!< How far a unit counts, in cells: a little over a screen's half width at the closest.
+		int Width = 0; //!< Cells across the scene.
+		int Height = 0; //!< Cells down it.
+		std::vector<float> All; //!< Every unit's presence, all teams together, a float per cell, rows from the top.
+		std::vector<std::vector<float>> Teams; //!< The same per team, by team + 1 (0 for no team): what a searcher takes off All for its own side. Empty for a team with no units.
+
+		/// How many of the searcher's enemies are near a scene point: everyone's presence there less its own side's.
+		/// @param pos The scene point.
+		/// @param teamIndex The searcher's team + 1.
+		float EnemiesNear(const Vector& pos, int teamIndex) const {
+			int x = std::clamp(static_cast<int>(pos.m_X) / c_CellSize, 0, Width - 1);
+			int y = std::clamp(static_cast<int>(pos.m_Y) / c_CellSize, 0, Height - 1);
+			size_t cell = static_cast<size_t>(y) * Width + x;
+			float enemies = All[cell];
+			if (teamIndex >= 0 && teamIndex < static_cast<int>(Teams.size()) && !Teams[teamIndex].empty()) {
+				enemies -= Teams[teamIndex][cell];
+			}
+			return enemies;
+		}
+	};
+
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
 	struct PathAgent {
 		float JumpHeight = FLT_MAX; //!< How high it can get on a jump or a tank of jet fuel, in metres. FLT_MAX for anything that flies.
@@ -74,6 +103,14 @@ namespace RTE {
 		bool Floats = false; //!< Whether it floats in deep water (ActorWater::IsFloater) and swims along the surface, rather than walking the bottom.
 		float BreathSeconds = FLT_MAX; //!< How long it holds its breath with its head under, in seconds (ActorWater::GetBreathSeconds); FLT_MAX for what doesn't breathe.
 		bool CrossesLava = false; //!< Whether it may be routed through lava: what doesn't burn (machines).
+		float Caution = 1.0F; //!< How much the search shies from hard flights and long drops: 1 as designed, more for careful, less for reckless (SettingsMan::AIMoveCaution).
+		std::shared_ptr<const ThreatField> Threats; //!< Where the units were when last published (MovableMan::GetPublishedThreats): steps near its enemies cost more. None for no such cost.
+		int ThreatTeam = -1; //!< The searcher's team, whose own units are no threat to it.
+		float ThreatWeight = 1.0F; //!< How much it shies from routes past enemies: 1 as designed, 0 not at all, 2 twice as much (SettingsMan::AIThreatAvoidance).
+		bool DigGoal = false; //!< Whether the goal is a place to dig to (RC-11): a goal inside the ground is the node it is in, not the open node next to it, so the route ends in the ground.
+		float DigCostScale = 1.0F; //!< What a node dug through costs it, as a share of the usual price (DigNodeCost): under 1 tunnels where going round would be shorter for a move.
+		static constexpr float c_DigToCostScale = 0.25F; //!< DigCostScale on a dig-to order (RC-11): a node dug costs about one or two walked, so a dig-to tunnels through a hill rather than walking four times as far round it.
+		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};
 
 	/// Whether an async path request is done: set by the worker that solved it once the results are written, read by the thread that asked.
@@ -99,9 +136,32 @@ namespace RTE {
 		std::list<PathStepKind> kinds; //!< What each step of the path is, one per point of path after the first.
 		float pathLength = 0.0f;
 		float totalCost = 0.0f;
+		int cutMaterial = 0; //!< The material in the way where the route was cut short (see cutAtDoor), 0 when it wasn't cut.
 		bool cutAtDoor = false; //!< Whether the route was cut short at a door the searcher can't get through (yet): a door opens, or is shot open, so this is no dead end.
 		Vector startPos;
 		Vector targetPos;
+	};
+
+	/// What a dig to a place would take a searcher (RC-11): whether it can, the way, how much of it is dug and how long that takes, and what
+	/// stops it when it can't. Worked out by PathFinder::PlanDig, for the order's check before it is given and its preview.
+	struct DigPlan {
+		/// Whether the searcher can dig there.
+		enum Verdict {
+			Ok = 0, //!< It can: Route is the way.
+			NoDigger, //!< It has nothing that digs.
+			TooHard, //!< The way there is through ground its digger doesn't cut: Blocking at BlockingAt (the target's own ground, when that is too hard).
+			NoRoute, //!< There is no way there at all.
+			OutOfReach //!< The place is off the scene, or in its bottom margin.
+		};
+		Verdict Result = NoRoute;
+		std::list<Vector> Route; //!< The way, as the searcher's route would be (its last point the target itself). Up to the obstacle for TooHard.
+		std::list<PathStepKind> Kinds; //!< What each step of Route is, one per point after the first.
+		int DigSteps = 0; //!< How many of the steps are dug.
+		float DigSeconds = 0.0F; //!< About how long the digging takes, in seconds (PathFinder::DigSecondsPerNode for each step dug).
+		int HardestMaterial = 0; //!< The strongest material on a step dug, 0 for none.
+		int BlockingMaterial = 0; //!< For TooHard, the material in the way, 0 for none known.
+		Vector BlockingAt; //!< For TooHard, about where it is.
+		bool Floods = false; //!< Whether a step dug is next to liquid: the tunnel lets it in. A warning, not a refusal.
 	};
 
 	using PathCompleteCallback = std::function<void(std::shared_ptr<volatile PathRequest>)>;
@@ -216,6 +276,20 @@ namespace RTE {
 		/// @param agent What the searcher can do and how big it is.
 		/// @param kinds Where to put what each step is, one per point of the path after the first; may be nullptr.
 		int CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, const PathAgent& agent, std::list<PathStepKind>* kinds);
+
+		/// Works out what digging to a place would take a searcher (RC-11), as a dig-to order routes it: the goal kept where it is, in the ground
+		/// or not, and dug ground priced down (PathAgent::DigGoal, c_DigToCostScale). Runs the search on the calling thread.
+		/// @param start Where the searcher starts (Actor::GetPathStart).
+		/// @param target The place to dig to.
+		/// @param agent The searcher (Actor::GetPathAgent); its dig settings are set here.
+		/// @return The plan: whether it can, the way, and what stops it when it can't.
+		DigPlan PlanDig(const Vector& start, const Vector& target, PathAgent agent);
+
+		/// A dig plan in the player's words (RC-11): how far is dug, the hardest of it and about how long, or why it can't be done.
+		/// @param plan The plan (PlanDig).
+		/// @param digStrength What the searcher's digger cuts, for a plan that's too hard.
+		/// @return E.g. "Dig 4 m, hardest Earth, about 12 s" or "Too hard: Concrete; its digger cuts up to 75".
+		static std::string DescribeDigPlan(const DigPlan& plan, float digStrength);
 
 		/// Calculates and returns the least difficult path between two points on the current scene.
 		/// This is asynchronous and thus will not block the current thread.
@@ -382,6 +456,31 @@ namespace RTE {
 		/// @param targetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The offset into the scene where the target bitmap's upper left corner is located.
 		void DebugRender(BITMAP* targetBitmap, const Vector& targetPos = Vector()) const;
+#pragma endregion
+
+#pragma region Digging
+		/// How hard a material is for a digger: its integrity as a share of what the digger cuts, 0 to 1 (over 1, it doesn't cut it).
+		static float DigHardness(float integrity, float digStrength) { return integrity / std::max(digStrength, 1.0F); }
+
+		/// About how long a unit takes to dig its way through a node of ground of this hardness (DigHardness), in seconds: two or three through
+		/// ground well under its digger's strength, getting on for eight close to it (the rounds knock fewer pixels loose the less they beat the
+		/// integrity by). (Measured in a gym: three nodes of earth took a Heavy Digger about twenty seconds, cut, swept and walked into.)
+		static float DigSecondsPerNode(float hardness) { return 2.0F + 6.0F * hardness * hardness; }
+
+		/// What a node dug through costs a searcher, in walked nodes, for a material it cuts: from the time it takes (DigSecondsPerNode), so a
+		/// short cut through soft ground beats a long way round and a cut close to the digger's limit only a much longer one; scaled by the
+		/// AI digging setting (SettingsMan::AIDigWillingness). Never more than the material's integrity, the price before.
+		/// @param integrity The material's integrity.
+		/// @param digStrength What the searcher's digger cuts.
+		/// @param willingness The AI digging setting; 0 prices the node at its integrity.
+		/// @param scale The searcher's own share of that price (PathAgent::DigCostScale): under 1 for a dig-to order.
+		static float DigNodeCost(float integrity, float digStrength, float willingness, float scale = 1.0F) {
+			if (willingness <= 0.0F) {
+				return integrity * scale;
+			}
+			float hardness = DigHardness(integrity, digStrength);
+			return std::min(integrity, (2.0F + 2.0F * DigSecondsPerNode(hardness)) / willingness) * scale;
+		}
 #pragma endregion
 
 	private:
@@ -617,6 +716,14 @@ namespace RTE {
 
 		/// What a step into a node costs over its own for the searcher's recent failures there (PathAgent::Avoid).
 		float AvoidCost(const PathNode& node) const;
+
+		/// What a step into a node costs over its own for the searcher's taste in routes (PathAgent::RouteSeed): 0 to 1 a node, the same over
+		/// each 8 by 8 block of nodes, so a route takes or leaves whole stretches, not single cells.
+		float VarietyCost(const PathNode& node) const;
+
+		/// What a step into a node costs over its own for the searcher's enemies near it (PathAgent::Threats): nothing near the goal, which
+		/// every route has to reach however many are there.
+		float ThreatCost(const PathNode& node) const;
 
 		/// Gets the average cost for all transitions out of this PathNode, ignoring infinities/unpathable transitions.
 		/// @param node The PathNode to get the average transition cost for.

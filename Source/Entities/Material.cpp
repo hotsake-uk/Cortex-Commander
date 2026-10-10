@@ -1,5 +1,8 @@
 #include "Material.h"
 #include "Constants.h"
+#include "SceneMan.h"
+#include "SettingsMan.h"
+#include "FluidSim.h"
 
 #include <algorithm>
 #include <string>
@@ -61,6 +64,29 @@ float Material::GetMetalness() const {
 	return m_Metalness;
 }
 
+bool Material::IsBody() const {
+	if (m_IsBody < 0) {
+		const std::string& name = GetPresetName();
+		m_IsBody = (name == "Bone" || name.find("Flesh") != std::string::npos) ? 1 : 0;
+	}
+	return m_IsBody != 0;
+}
+
+unsigned char Material::GetTerrainSettleMaterial(bool settleMaterialDisabled, bool fromBody) const {
+	unsigned char settleMaterial = settleMaterialDisabled ? m_Index : GetSettleMaterial();
+	if (fromBody && g_SettingsMan.BodyGearSettlesAsScraps() && m_Index != g_MaterialAir && !IsBody() && !FluidSim::IsLiquid(m_Index) && !FluidSim::IsLiquid(settleMaterial)) {
+		// Flesh Scraps by name, looked up once (it's Base.rte's, so its number doesn't change); 0 if there's none, and gear settles as before.
+		static const unsigned char scrapsIndex = [] {
+			const Material* scraps = g_SceneMan.GetMaterial("Flesh Scraps");
+			return scraps ? scraps->GetIndex() : static_cast<unsigned char>(0);
+		}();
+		if (scrapsIndex != 0) {
+			return scrapsIndex;
+		}
+	}
+	return settleMaterial;
+}
+
 float Material::GetGloss() const {
 	if (m_Gloss < 0.0F) {
 		m_Gloss = GuessSurface(GetPresetName()).Gloss;
@@ -83,6 +109,7 @@ void Material::Clear() {
 	m_SettleMaterialIndex = 0;
 	m_SpawnMaterialIndex = 0;
 	m_IsScrap = false;
+	m_IsBody = -1;
 	m_Metalness = -1.0F;
 	m_Gloss = -1.0F;
 	m_Behaviour = MaterialBehaviour();
@@ -111,6 +138,7 @@ int Material::Create(const Material& reference) {
 	m_SettleMaterialIndex = reference.m_SettleMaterialIndex;
 	m_SpawnMaterialIndex = reference.m_SpawnMaterialIndex;
 	m_IsScrap = reference.m_IsScrap;
+	m_IsBody = reference.m_IsBody;
 	m_Metalness = reference.m_Metalness;
 	m_Gloss = reference.m_Gloss;
 	m_Behaviour = reference.m_Behaviour;
@@ -155,6 +183,7 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SettleMaterial", { reader >> m_SettleMaterialIndex; });
 	MatchForwards("SpawnMaterial") MatchProperty("TransformsInto", { reader >> m_SpawnMaterialIndex; });
 	MatchProperty("IsScrap", { reader >> m_IsScrap; });
+	MatchProperty("IsBody", { bool isBody = false; reader >> isBody; m_IsBody = isBody ? 1 : 0; });
 	MatchProperty("Metalness", {
 		reader >> m_Metalness;
 		m_Metalness = std::clamp(m_Metalness, 0.0F, 1.0F);
@@ -180,6 +209,10 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BurnSpread", { reader >> m_Behaviour.BurnSpread; });
 	MatchProperty("LeavesAsh", { reader >> m_Behaviour.LeavesAsh; });
 	MatchProperty("BurnBlast", { reader >> m_Behaviour.BurnBlast; });
+	MatchProperty("Scuffs", { reader >> m_Behaviour.Scuffs; });
+	MatchProperty("BreakStyle", { reader >> m_Behaviour.BreakStyle; });
+	MatchProperty("ImpactStrength", { reader >> m_Behaviour.ImpactStrength; });
+	MatchProperty("NeckWidth", { reader >> m_Behaviour.NeckWidth; });
 	MatchProperty("Douses", { reader >> m_Behaviour.Douses; });
 	MatchProperty("FreezesTo", { reader >> m_Behaviour.FreezesTo; });
 	MatchProperty("MeltsTo", { reader >> m_Behaviour.MeltsTo; });
@@ -255,6 +288,10 @@ int Material::Save(Writer& writer) const {
 		number("LiquidWeight", b.LiquidWeight);
 		number("SlideChance", b.SlideChance);
 		number("Sticky", b.Sticky);
+		number("Scuffs", b.Scuffs);
+		text("BreakStyle", b.BreakStyle);
+		number("ImpactStrength", b.ImpactStrength);
+		number("NeckWidth", b.NeckWidth);
 		text("Burns", b.Burns);
 		number("BurnMinTicks", b.BurnMinTicks);
 		number("BurnMaxTicks", b.BurnMaxTicks);

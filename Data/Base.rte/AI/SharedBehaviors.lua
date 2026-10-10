@@ -723,14 +723,14 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 			and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
 			local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
 			if Dist:MagnitudeIsLessThan(400) then
-				if Mate:NumberValueExists("AITargetID") then
-					local id = Mate:GetNumberValue("AITargetID");
+				if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
+					local id = SharedBehaviors.PeerValue(Mate, "AITargetID");
 					targetedBy[id] = (targetedBy[id] or 0) + 1;
 					if Target and id == Target.UniqueID and (not pairedWith or Mate.UniqueID < pairedWith) then
 						pairedWith = Mate.UniqueID;
 					end
 				end
-				if Mate:NumberValueExists("AIContactMS") and now - Mate:GetNumberValue("AIContactMS") < 5000 then
+				if SharedBehaviors.PeerValueExists(Mate, "AIContactMS") and now - SharedBehaviors.PeerValue(Mate, "AIContactMS") < 5000 then
 					squadContact = true;
 				end
 				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
@@ -769,7 +769,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	-- Spreading out under fire.
 	local suppression = SharedBehaviors.Suppression(AI, Owner);
 	local underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
-	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
+	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not SharedBehaviors.Rushing(Owner) and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
 		SharedBehaviors.Trace(Owner, "squad: spreading out");
 		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(besideDir * 40, 0), 800);
 	end
@@ -790,7 +790,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	end
 end
 
--- An actor as its own class, for the scripts that read its class's members (legs, doors): AHuman, ACrab, ACRocket, ACDropShip, ADoor, or Actor.
+-- An actor as its own class, for the scripts that read its class's members (legs, doors): AHuman, ACrab, ACRocket, ACDropShip, ADoor, AVehicle, or Actor.
 function SharedBehaviors.ToActorClass(MO)
 	if MO.ClassName == "AHuman" then
 		return ToAHuman(MO);
@@ -802,6 +802,8 @@ function SharedBehaviors.ToActorClass(MO)
 		return ToACDropShip(MO);
 	elseif MO.ClassName == "ADoor" then
 		return ToADoor(MO);
+	elseif MO.ClassName == "AVehicle" then
+		return ToAVehicle(MO);
 	end
 	return ToActor(MO);
 end
@@ -873,6 +875,10 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 					-- waypoints) never came for an AI unit, and plans, patrols, shift Defend-at and keep-together all stalled at the first
 					-- step. (The AI's update takes the mode change for a sentry order and keeps a post put back by RestoreOrder.)
 					if hadGoal then
+						-- Dug through to where it was told to dig to (RC-11): it holds there, in its tunnel, rather than wandering back out of it.
+						if Actor.ORDER_DIGTO ~= nil and Owner.OrderKind == Actor.ORDER_DIGTO then
+							Owner.OrderHold = true;
+						end
 						Owner.AIMode = Actor.AIMODE_SENTRY;
 					end
 				end
@@ -1777,10 +1783,110 @@ end
 -- from its AI mode and the tags the sandbox's command tool leaves on it, so a unit sent somewhere by the game's own waypoint order and
 -- one sent by the sandbox fight the same way.
 
+-- Whether the unit is running the objective: the sandbox's battle modes tag a unit carrying a flag home (SandboxObjective). Getting there
+-- comes before every other behaviour: it doesn't stop to fight (or shoot at all), fall back, take cover, flank, sidestep, chase, wait on
+-- a team-mate in the way, heal others or go looking for weapons (SharedBehaviors.FocusOnObjective). It just goes.
+function SharedBehaviors.OnObjective(Owner)
+	return Owner:NumberValueExists("SandboxObjective");
+end
+
+-- A unit rushing the objective (a battle mode's share of a team's units, on their way to it: the sandbox marks them): it keeps moving
+-- and shoots on the way, but doesn't take cover, flank, fall back, sidestep, go after what it can't hit, or stop for anything else
+-- (SharedBehaviors.FocusOnRush). Unlike a carrier it still fights: on the move.
+function SharedBehaviors.Rushing(Owner)
+	return Owner:NumberValueExists("SandboxRush");
+end
+
+-- Every update of a unit rushing the objective: what would take it off its way goes; its fight, on the move, stays.
+function SharedBehaviors.FocusOnRush(AI, Owner)
+	AI.Cover = nil;
+	AI.Peek = nil;
+	AI.Investigate = nil;
+	Owner:RemoveNumberValue("AIInvestigate");
+	if AI.Flank then
+		AI.Flank = nil;
+		Owner:RemoveNumberValue("AIFlank");
+	end
+	if AI.Medic then
+		AI.Medic = nil;
+		Owner:RemoveNumberValue("AIMedic");
+		Owner:RemoveNumberValue("AIMedicFor");
+	end
+	AI.medicHeal = false;
+	AI.PickupHD = nil;
+	AI.closingIn = false;
+	local offTheWay = {ThrowSmoke = true, PinArea = true, FaceAlarm = true, ShootArea = true, WeaponSearch = true, ToolSearch = true, LobAt = true};
+	if AI.NextBehavior and offTheWay[AI.NextBehaviorName] then
+		AI.NextBehavior = nil;
+		AI.NextBehaviorName = nil;
+		AI.NextCleanup = nil;
+	end
+	if AI.Behavior and offTheWay[AI.BehaviorName] then
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		AI.Behavior = nil;
+		AI.BehaviorName = nil;
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+			AI.BehaviorCleanup = nil;
+		end
+	end
+end
+
+-- Every update of a unit running the objective: whatever else it was doing is dropped, so only its way there is left.
+function SharedBehaviors.FocusOnObjective(AI, Owner)
+	AI.Cover = nil;
+	AI.Investigate = nil;
+	Owner:RemoveNumberValue("AIInvestigate");
+	if AI.Flank then
+		AI.Flank = nil;
+		Owner:RemoveNumberValue("AIFlank");
+	end
+	if AI.Medic then
+		AI.Medic = nil;
+		Owner:RemoveNumberValue("AIMedic");
+		Owner:RemoveNumberValue("AIMedicFor");
+	end
+	AI.medicHeal = false;
+	AI.PickupHD = nil;
+	AI.closingIn = false;
+	AI.Target = nil;
+	AI.UnseenTarget = nil;
+	AI.fire = false;
+	AI.squadShoot = false;
+	if AI.deviceState == AHuman.AIMING then
+		AI.deviceState = AHuman.STILL;
+	end
+	if AI.teamBlockState == Actor.BLOCKED then
+		AI.teamBlockState = Actor.IGNORINGBLOCK;
+		AI.BlockedTimer:Reset();
+	end
+	-- (A behaviour that would stop it or take it off its way goes: any fight, turning to an alarm, laying down fire, or going for a
+	-- weapon or a tool.)
+	local offTheWay = {AttackTarget = true, ShootTarget = true, ThrowTarget = true, LobAt = true, ThrowSmoke = true, PinArea = true, FaceAlarm = true, ShootArea = true, WeaponSearch = true, ToolSearch = true};
+	if AI.NextBehavior and offTheWay[AI.NextBehaviorName] then
+		AI.NextBehavior = nil;
+		AI.NextBehaviorName = nil;
+		AI.NextCleanup = nil;
+	end
+	if AI.Behavior and offTheWay[AI.BehaviorName] then
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		AI.Behavior = nil;
+		AI.BehaviorName = nil;
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+			AI.BehaviorCleanup = nil;
+		end
+	end
+end
+
 -- What the unit has been told to do, as the fighting rules read it: "move" (get there; shoot back on the way but don't stop for it),
 -- "attack" (fight whatever is met, closing in), "defend" (stand this ground, move as little as can be) or "guard" (the sentry, patrol
 -- and gold-digging modes: stop and fight what turns up, and chase it as the game's AI always has).
 function SharedBehaviors.OrderKind(Owner)
+	-- (Running the objective comes before everything, a fall-back too: get there, shooting on the way.)
+	if SharedBehaviors.OnObjective(Owner) or SharedBehaviors.Rushing(Owner) then
+		return "move";
+	end
 	-- (The movement rule the player set for this order (RC-1) wins over what the order says, except for a fall-back.)
 	local rule = Owner.MovementRule;
 	if rule ~= Actor.MOVE_FOLLOW_ORDER and not Owner:NumberValueExists("AIRetreat") then
@@ -1809,11 +1915,231 @@ function SharedBehaviors.OrderKind(Owner)
 	return "guard";
 end
 
+-- Temperaments (NC-1). How long a unit that only fights back stays roused after the last time it was hurt, in sim ms.
+SharedBehaviors.ProvokedMS = 12000;
+
+-- Whether a Defensive unit is roused, and by whom: hurt by another side in the last ProvokedMS, or pinned by near misses (which carry no
+-- side). @return The side that hurt it, true for any side (near misses), or nil when it is calm.
+function SharedBehaviors.Provoked(AI, Owner)
+	if Owner.MSSinceHurt < SharedBehaviors.ProvokedMS and Owner.LastAttackerTeam ~= Activity.NOTEAM and Owner.LastAttackerTeam ~= Owner.Team then
+		return Owner.LastAttackerTeam;
+	end
+	if SharedBehaviors.Suppression(AI, Owner) > 0.2 then
+		return true;
+	end
+	return nil;
+end
+
+-- Whether a unit may take an enemy it has found as its target, by its temperament (NC-1): a Fighter any; a Defensive one only from the
+-- side that roused it (any, roused by near misses); a Skittish or Pacifist one none at all. Nobody targets a unit the AI is told to ignore.
+function SharedBehaviors.MayTarget(AI, Owner, MO)
+	if not MO then
+		return false;
+	end
+	if IsActor(MO) and ToActor(MO).IgnoredByAI then
+		return false;
+	end
+	local temperament = Owner.Temperament;
+	if temperament == Actor.TEMPERAMENT_FIGHTER then
+		return true;
+	elseif temperament == Actor.TEMPERAMENT_DEFENSIVE then
+		local by = SharedBehaviors.Provoked(AI, Owner);
+		return by == true or (by ~= nil and MO.Team == by);
+	end
+	return false;
+end
+
+-- Whether a unit never starts a fight (NC-1): Skittish or Pacifist.
+function SharedBehaviors.NeverFights(Owner)
+	local temperament = Owner.Temperament;
+	return temperament == Actor.TEMPERAMENT_SKITTISH or temperament == Actor.TEMPERAMENT_PACIFIST;
+end
+
+-- A target it may no longer have (NC-1): a Defensive unit calmed down, or a temperament changed. Dropped, with its fight; called once an
+-- update before targets are looked for. @return Whether it was dropped.
+local fightBehaviors = { ShootTarget = true, ThrowTarget = true, AttackTarget = true, ShootArea = true, PinArea = true };
+function SharedBehaviors.DropForbiddenTarget(AI, Owner)
+	if not AI.Target or SharedBehaviors.MayTarget(AI, Owner, AI.Target) then
+		return false;
+	end
+	AI.Target = nil;
+	AI.OldTargetPos = nil;
+	AI.UnseenTarget = nil;
+	AI.fire = false;
+	if AI.NextBehavior and fightBehaviors[AI.NextBehaviorName] then
+		AI.NextBehavior, AI.NextCleanup, AI.NextBehaviorName = nil, nil, nil;
+	end
+	if AI.Behavior and fightBehaviors[AI.BehaviorName] then
+		-- (Told to abort, as the AI's own switch does, so the coroutine isn't left hanging.)
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+		end
+		AI.Behavior, AI.BehaviorName, AI.BehaviorCleanup = nil, nil, nil;
+	end
+	return true;
+end
+
+-- Running away (NC-1): a Skittish unit hurt, pinned by near misses, come on by a soldier of another side close by, or near a friend of
+-- its kind that is running, runs away from it about 15 m along the ground, waits a moment and goes back to what it was doing. It says
+-- on itself that it is running, and from where ("AIFleeing", "AIFleeFromX/Y"), so the herd runs with it. Called every update.
+function SharedBehaviors.FleeUpdate(AI, Owner)
+	if Owner.Temperament ~= Actor.TEMPERAMENT_SKITTISH or Owner:IsPlayerControlled() then
+		if AI.Flee then
+			Owner:RemoveNumberValue("AIFleeing");
+			AI.Flee = nil;
+		end
+		return false;
+	end
+	if AI.Flee then
+		if not Owner:NumberValueExists("AIFlee") or SharedBehaviors.OrderChangedSince(Owner, AI.Flee.Spot) then
+			-- (Another order given meanwhile: it stands.)
+			SharedBehaviors.Trace(Owner, "flee: called off by an order");
+			Owner:RemoveNumberValue("AIFlee");
+			Owner:RemoveNumberValue("AIFleeing");
+			AI.Flee = nil;
+			return false;
+		end
+		local there = SceneMan:ShortestDistance(Owner.Pos, AI.Flee.Spot, false):MagnitudeIsLessThan(Owner.Height + 20);
+		if there and not AI.Flee.There then
+			AI.Flee.There = true;
+			AI.Flee.Timer:Reset();
+			Owner:SetNumberValue("AIFleeing", 0);
+		end
+		-- (Hurt again or still shot at where it ran to: off again, further.)
+		local again = Owner.MSSinceHurt < 300 or SharedBehaviors.Suppression(AI, Owner) > 0.4;
+		if (AI.Flee.There and AI.Flee.Timer:IsPastSimMS(again and 0 or 4000)) or AI.Flee.Timer:IsPastSimMS(12000) then
+			SharedBehaviors.Trace(Owner, "flee: over");
+			Owner:RemoveNumberValue("AIFlee");
+			Owner:RemoveNumberValue("AIFleeing");
+			SharedBehaviors.RestoreOrder(AI, Owner, AI.Flee.Keep);
+			AI.Flee = nil;
+			AI.FleeRestTimer = Timer();
+		end
+		return AI.Flee ~= nil;
+	end
+	-- What to run from, checked twice a second: a blow, near misses (from where the alarm last was), a soldier of another side close by,
+	-- or a running friend of the same side close by (from where it ran from).
+	AI.FleeCheckTimer = AI.FleeCheckTimer or Timer();
+	local hurt = Owner.MSSinceHurt < 400;
+	if not hurt and not AI.FleeCheckTimer:IsPastSimMS(500) then
+		return false;
+	end
+	AI.FleeCheckTimer:Reset();
+	local From;
+	if hurt then
+		From = Owner.LastHurtFrom;
+	elseif SharedBehaviors.Suppression(AI, Owner) > 0.2 and AI.AlarmPos then
+		From = AI.AlarmPos;
+	else
+		local best = 130;
+		for Act in MovableMan.Actors do
+			if Act.ID ~= Owner.ID and Act.Status < Actor.DYING then
+				local dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false).Magnitude;
+				if dist < best then
+					if Act.Team ~= Owner.Team and Act.ClassName ~= "ADoor" and not IsACraft(Act) and not Act.NonCombatant then
+						From, best = Act.Pos, dist;
+					elseif Act.Team == Owner.Team and dist < 160 and SharedBehaviors.PeerValue(Act, "AIFleeing") == 1 and SharedBehaviors.PeerValueExists(Act, "AIFleeFromX") then
+						From, best = Vector(SharedBehaviors.PeerValue(Act, "AIFleeFromX"), SharedBehaviors.PeerValue(Act, "AIFleeFromY")), dist;
+					end
+				end
+			end
+		end
+	end
+	if not From then
+		return false;
+	end
+	-- (A moment's rest between runs, unless hurt: a herd beside a soldier walked off and back for good.)
+	if not hurt and AI.FleeRestTimer and not AI.FleeRestTimer:IsPastSimMS(3000) then
+		return false;
+	end
+	local dx = SceneMan:ShortestDistance(From, Owner.Pos, false).X;
+	local dir = dx >= 0 and 1 or -1;
+	if math.abs(dx) < 2 then
+		dir = math.random() < 0.5 and -1 or 1;
+	end
+	local Spot;
+	for _, run in ipairs({300, 180, 90}) do
+		local Try = SceneMan:MovePointToGround(Owner.Pos + Vector(dir * run, -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+		if SceneMan:GetTerrMatter(Try.X, Try.Y) == rte.airID then
+			Spot = Try;
+			break;
+		end
+	end
+	if not Spot then
+		return false;
+	end
+	AI.Flee = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Timer = Timer(), Spot = Spot, There = false };
+	Owner:SetNumberValue("AIFlee", 1);
+	Owner:SetNumberValue("AIFleeing", 1);
+	Owner:SetNumberValue("AIFleeFromX", From.X);
+	Owner:SetNumberValue("AIFleeFromY", From.Y);
+	Owner.OrderAttack = false;
+	AI.Target = nil;
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "flee: from " .. math.floor(From.X) .. "," .. math.floor(From.Y) .. " to " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
+	return true;
+end
+
+-- Grazing (NC-1): livestock left standing about (a sentry) wander a little round where they were left, a few seconds at a time, so a
+-- field of animals isn't a field of statues: up to 4.5 m either way, or 2.5 m when told to hold position.
+function SharedBehaviors.GrazeUpdate(AI, Owner)
+	if AI.Flee or not Owner:IsInGroup("Actors - Livestock") or Owner:IsPlayerControlled() or Owner.OrderAttack then
+		return;
+	end
+	if Owner.AIMode ~= Actor.AIMODE_SENTRY and not (Owner.AIMode == Actor.AIMODE_GOTO and AI.Grazing) then
+		AI.GrazeHome, AI.Grazing = nil, nil;
+		return;
+	end
+	AI.GrazeHome = AI.GrazeHome or Vector(Owner.Pos.X, Owner.Pos.Y);
+	AI.GrazeTimer = AI.GrazeTimer or Timer();
+	AI.GrazeWait = AI.GrazeWait or math.random(3000, 9000);
+	if Owner.AIMode == Actor.AIMODE_GOTO then
+		if AI.GrazeTimer:IsPastSimMS(8000) then
+			-- (Couldn't get there: stand where it is.)
+			Owner:ClearAIWaypoints();
+			Owner.AIMode = Actor.AIMODE_SENTRY;
+			AI.Grazing = nil;
+			AI.GrazeTimer:Reset();
+		end
+		return;
+	end
+	if AI.Grazing then
+		AI.Grazing = nil;
+		AI.GrazeTimer:Reset();
+	end
+	if not AI.GrazeTimer:IsPastSimMS(AI.GrazeWait) then
+		return;
+	end
+	AI.GrazeTimer:Reset();
+	AI.GrazeWait = math.random(3000, 9000);
+	local reach = Owner.OrderHold and 50 or 90;
+	local Spot = SceneMan:MovePointToGround(AI.GrazeHome + Vector(math.random(-reach, reach), -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+	if SceneMan:GetTerrMatter(Spot.X, Spot.Y) ~= rte.airID or SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsLessThan(20) then
+		return;
+	end
+	AI.Grazing = true;
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+end
+
 -- Whether the unit's weapons rule (RC-1) lets it pull the trigger now: always at will, never on hold fire, and on return fire only while
 -- it is being shot at, hurt or pinned down by near misses in the last four seconds. Call once an update (it keeps the health it last saw).
 function SharedBehaviors.MayFire(AI, Owner)
 	-- Ducked down behind low cover (AC-4): the gun is behind it too.
 	if AI.ducked then
+		return false;
+	end
+	-- Its nature first (NC-1): a unit that never fights never pulls the trigger, and one that only fights back does so only while provoked.
+	local temperament = Owner.Temperament;
+	if temperament == Actor.TEMPERAMENT_SKITTISH or temperament == Actor.TEMPERAMENT_PACIFIST then
+		AI.ruleLastHealth = Owner.Health;
+		return false;
+	elseif temperament == Actor.TEMPERAMENT_DEFENSIVE and not SharedBehaviors.Provoked(AI, Owner) then
+		AI.ruleLastHealth = Owner.Health;
 		return false;
 	end
 	local rule = Owner.WeaponRule;
@@ -1832,6 +2158,12 @@ end
 -- What MayFire last said, without its side effects (it keeps the health it last saw, and is called once an update): for starting a throw,
 -- which takes a second or two of the trigger held. (Grenades and smoke under the weapons rule too, AC-5.)
 function SharedBehaviors.RuleLetsFire(AI, Owner)
+	local temperament = Owner.Temperament;
+	if temperament == Actor.TEMPERAMENT_SKITTISH or temperament == Actor.TEMPERAMENT_PACIFIST then
+		return false;
+	elseif temperament == Actor.TEMPERAMENT_DEFENSIVE and not SharedBehaviors.Provoked(AI, Owner) then
+		return false;
+	end
 	local rule = Owner.WeaponRule;
 	if rule == Actor.WEAPONS_RETURN_FIRE then
 		return AI.UnderFireTimer ~= nil and not AI.UnderFireTimer:IsPastSimMS(4000);
@@ -2284,9 +2616,10 @@ function SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos)
 	return false;
 end
 
--- A place from which a dug-in target can be shot: above it or to one side, with a line of sight to it, that the pather can reach in
--- not too many nodes. @param range How far this unit's weapon reaches. @return The spot, or nil.
-function SharedBehaviors.FindFlank(AI, Owner, TargetPos, range)
+-- Places from which a dug-in target can be shot: above it or to one side, with a line of sight to it, at a fair distance. Whether the
+-- pather can reach one, and in how many nodes, is asked separately (StartFlank). @param range How far this unit's weapon reaches.
+-- @return The spots, in order of preference.
+function SharedBehaviors.FlankCandidates(AI, Owner, TargetPos, range)
 	local stand = math.max(150, math.min(400, range * 0.6));
 	local candidates = {};
 	for _, angle in ipairs({60, 90, 120, 40, 140}) do -- Degrees up from the target's right, over the top.
@@ -2295,21 +2628,18 @@ function SharedBehaviors.FindFlank(AI, Owner, TargetPos, range)
 	end
 	table.insert(candidates, TargetPos + Vector(stand, -Owner.Height));
 	table.insert(candidates, TargetPos + Vector(-stand, -Owner.Height));
-	local best, bestCost = nil, 50; -- The cap: a flank worth fifty nodes is a walk across the map.
+	local spots = {};
 	for _, Spot in ipairs(candidates) do
 		Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 6);
 		-- Somewhere else (a flank of ten pixels was the same spot with the same problem), seen from about where the gun would be held.
 		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) == rte.airID and SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height * 1.5) and SharedBehaviors.CanSee(Spot + Vector(0, -Owner.Height * 0.1), TargetPos) then
 			local Dist = SceneMan:ShortestDistance(Spot, TargetPos, false);
 			if Dist:MagnitudeIsGreaterThan(stand * 0.5) and Dist:MagnitudeIsLessThan(range) then
-				local cost = SceneMan.Scene:CalculatePath(Owner.Pos, Spot, Owner.JumpHeight, 35, Owner.Team);
-				if cost > 1 and cost < bestCost then
-					best, bestCost = Spot, cost;
-				end
+				table.insert(spots, Spot);
 			end
 		end
 	end
-	return best, bestCost;
+	return spots;
 end
 
 -- Keeps a unit's standing order so it can be put back after a flank or a retreat.
@@ -2584,6 +2914,19 @@ function SharedBehaviors.RetreatWalkOver(AI, Owner)
 	return AI.Retreat.WaitTimer:IsPastSimMS(1000) and Owner:GetWaypointListSize() == 0 and Owner.MovePathSize == 0 and not Owner.IsWaitingOnNewMovePath;
 end
 
+-- The order the unit has, as a key that changes when it is given another: the mode, and for a move where it goes (to 24 px) or whom it follows.
+function SharedBehaviors.OrderKey(Owner)
+	local mode = Owner.AIMode;
+	if mode == Actor.AIMODE_GOTO or mode == Actor.AIMODE_SQUAD then
+		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+			return mode .. ":" .. Owner.MOMoveTarget.UniqueID;
+		end
+		local Goal = Owner:GetLastAIWaypoint();
+		return mode .. ":" .. math.floor(Goal.X / 24) .. "," .. math.floor(Goal.Y / 24);
+	end
+	return tostring(mode);
+end
+
 -- Whether the unit has been given another order since a fall-back or a flank sent it to a spot: another mode, or a waypoint queued last
 -- that isn't the spot. (Put back unconditionally, a pie-menu order given meanwhile was wiped up to 25 s later.) Not something to follow:
 -- the AI's own detours (to a weapon to pick up, closing on a target) set that and queue the spot again after it.
@@ -2599,10 +2942,10 @@ end
 
 -- Medics (AC-7). Whether a unit can patch up others: one carrying a medikit, or a medic drone (which heals all round it), still standing.
 -- (Another unit's inventory is not looked through: each AI runs on a worker thread of its own and changes its own inventory as it goes, so
--- a unit with a kit says so in a number value of its own, see AdvertiseMedikit, and number values are safe to read across threads.)
+-- a unit with a kit says so in a number value of its own, see AdvertiseMedikit, read as published, see PeerValue.)
 function SharedBehaviors.IsMedic(Act)
 	-- (People and crabs only: a craft carrying a kit in its hold is no medic.)
-	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and Act:GetNumberValue("AIHasMedikit") == 1));
+	return Act.Status < Actor.DYING and Act.Health > 0 and (Act.PresetName == "Medic Drone" or (Act.ClassName == "AHuman" and SharedBehaviors.PeerValue(Act, "AIHasMedikit") == 1));
 end
 
 -- Says, on the unit itself, whether it carries a medikit (see IsMedic), once a second.
@@ -2640,13 +2983,9 @@ function SharedBehaviors.FindPatient(Owner)
 			and (IsAHuman(Act) or IsACrab(Act)) then
 			local share = Act.Health / Act.MaxHealth;
 			if share < bestShare then
-				local range = Act:GetNumberValue("AIRetreat") == 2 and 1200 or 400;
-				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) then
-					local by = Act:NumberValueExists("AIMedicBy") and Act:GetNumberValue("AIMedicBy") or 0;
-					local Other = by ~= 0 and by ~= Owner.UniqueID and MovableMan:FindObjectByUniqueID(by) or nil;
-					if not (Other and IsActor(Other) and ToActor(Other):NumberValueExists("AIMedic")) then
-						Best, bestShare = Act, share;
-					end
+				local range = SharedBehaviors.PeerValue(Act, "AIRetreat") == 2 and 1200 or 400;
+				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) and not SharedBehaviors.MedicSeeingTo(Act, Owner.UniqueID) then
+					Best, bestShare = Act, share;
 				end
 			end
 		end
@@ -2658,10 +2997,22 @@ end
 -- patched up, then takes its order up again whether or not it was. Not a brain, not a defender, not a sentry a player posted.
 -- Called every tick by the AI's update. @return Whether the unit is falling back.
 function SharedBehaviors.RetreatUpdate(AI, Owner)
+	-- The order in hand, and the health the unit had when it was given (see below).
+	local orderKey = SharedBehaviors.OrderKey(Owner);
+	if orderKey ~= AI.RetreatOrderKey then
+		AI.RetreatOrderKey = orderKey;
+		AI.RetreatOrderHealth = Owner.Health;
+		AI.RetreatOrderWounds = Owner.WoundCount;
+		AI.RetreatOrderTimer = AI.RetreatOrderTimer or Timer();
+		AI.RetreatOrderTimer:Reset();
+	end
+	-- (Wounds patched meanwhile: the next one counts from what is left.)
+	AI.RetreatOrderWounds = math.min(AI.RetreatOrderWounds or Owner.WoundCount, Owner.WoundCount);
 	-- The tag taken off by someone else (a sandbox order): the fall-back is over and the order it would have put back is gone too.
 	if AI.Retreat and not Owner:NumberValueExists("AIRetreat") then
 		SharedBehaviors.Trace(Owner, "retreat: called off by a new order");
 		AI.Retreat = nil;
+		AI.RetreatOrderHealth, AI.RetreatOrderWounds = Owner.Health, Owner.WoundCount; -- (The order that called it off counts from here.)
 		return false;
 	end
 	-- Another order given meanwhile: the fall-back is over, and that order stands.
@@ -2669,6 +3020,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		SharedBehaviors.Trace(Owner, "retreat: called off by another order");
 		Owner:RemoveNumberValue("AIRetreat");
 		AI.Retreat = nil;
+		AI.RetreatOrderHealth, AI.RetreatOrderWounds = Owner.Health, Owner.WoundCount; -- (The order that called it off counts from here.)
 		return false;
 	end
 	if AI.Retreat then
@@ -2695,7 +3047,17 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 	end
 	-- (Hurt, with no enemy about; or shaken (morale under 0.3), which pulls a unit back whatever its health and in the middle of a fight.)
 	local shaken = SharedBehaviors.Shaken(AI, Owner);
-	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") then
+	if (not shaken and (Owner.Health >= Owner.MaxHealth * 0.3 or AI.Target or AI.UnseenTarget)) or Owner:IsPlayerControlled() or Owner:HasObjectInGroup("Brains") or SharedBehaviors.Rushing(Owner) then
+		return false;
+	end
+	-- Only once hurt since its order was given (or, shaken, once the order has stood a while): an order given to a unit already hurt, or
+	-- one that called a fall-back off, or the one a fall-back put back, stands until the unit is hurt again. (Without this a unit under 30%
+	-- health fell back two seconds into any order it was given, and again the very tick an order called its fall-back off, before it took
+	-- a step: sent anywhere, it stood where it was, or walked back to the friend it had waited by, for good.)
+	-- (Hurt is a new wound, or a fifth of its health gone some other way, a fall or a blast: not the health the wounds it had bleed away.)
+	local hurtSinceOrder = Owner.WoundCount > AI.RetreatOrderWounds or Owner.Health < AI.RetreatOrderHealth - Owner.MaxHealth * 0.2;
+	if not hurtSinceOrder and not (shaken and AI.RetreatOrderTimer:IsPastSimMS(10000)) then
+		AI.RetreatCheckTimer = nil;
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
@@ -2765,6 +3127,10 @@ end
 -- A flank once started is seen through: when the unit gets there (or gives up), its order is put back and it looks for the target again.
 -- Called every tick by the AI's update.
 function SharedBehaviors.FlankUpdate(AI, Owner)
+	-- (A flank's routes asked for and not called for since: the moment has passed.)
+	if AI.FlankSearch and AI.FlankSearch.Timer:IsPastSimMS(3000) then
+		AI.FlankSearch = nil;
+	end
 	if not AI.Flank then
 		return;
 	end
@@ -2790,6 +3156,43 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 		AI.Flank = nil;
 		AI.FlankRestTimer = Timer();
 	end
+end
+
+-- Another unit's number values, for the AI: as they were published at the start of this update (MovableObject:GetPublishedNumberValue).
+-- Each unit's AI runs on a worker thread of its own and changes its own values as it goes, so another unit's live values are never read
+-- here, and no unit's are ever written but its own. (Its live ones for an older exe without the published copy.)
+local HasPublishedCached = nil;
+local function HasPublished(Act)
+	if HasPublishedCached == nil then
+		local ok, value = pcall(function() return Act.GetPublishedNumberValue; end);
+		HasPublishedCached = ok and value ~= nil;
+	end
+	return HasPublishedCached;
+end
+function SharedBehaviors.PeerValue(Act, key)
+	if HasPublished(Act) then
+		return Act:GetPublishedNumberValue(key);
+	end
+	return Act:GetNumberValue(key);
+end
+function SharedBehaviors.PeerValueExists(Act, key)
+	if HasPublished(Act) then
+		return Act:PublishedNumberValueExists(key);
+	end
+	return Act:NumberValueExists(key);
+end
+
+-- The medic of a unit's team seeing to it, other than the one given: a medic says which friend it is going to on itself ("AIMedicFor"),
+-- and of two that went for the same friend on the same update the one with the lower unique ID keeps it. @return The medic's unique ID, or nil.
+function SharedBehaviors.MedicSeeingTo(Act, exceptID)
+	local best;
+	for Medic in MovableMan.Actors do
+		if Medic.Team == Act.Team and Medic.UniqueID ~= exceptID and Medic.Status < Actor.DYING and SharedBehaviors.PeerValue(Medic, "AIMedicFor") == Act.UniqueID
+			and (not best or Medic.UniqueID < best) then
+			best = Medic.UniqueID;
+		end
+	end
+	return best;
 end
 
 -- Whether the engine's team memory (AC-2: SceneMan.ReportEnemy and the rest) is there, for a build without it (an older exe).
@@ -2875,8 +3278,42 @@ function SharedBehaviors.InvestigateUpdate(AI, Owner)
 	end
 end
 
--- Starts a flank towards a spot with a line of sight to a target that can't be shot from here. @return Whether one was started.
+-- Starts a flank towards a spot with a line of sight to a target that can't be shot from here. The routes to the spots are asked for on
+-- the pathing threads, and the flank starts on a later call once they are back: it waited for up to seven routes on the AI's own thread, and
+-- every unit on that thread, and the frame, waited with it. A caller that wants its flank keeps calling while AI.FlankSearch is there; one
+-- not called again within three seconds is dropped (FlankUpdate). @return Whether one was started.
 function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
+	if SharedBehaviors.Rushing(Owner) then
+		return false;
+	end
+	local search = AI.FlankSearch;
+	if search then
+		if search.pending > 0 and not search.Timer:IsPastSimMS(3000) then
+			return false;
+		end
+		AI.FlankSearch = nil;
+		if AI.Flank or AI.Retreat or search.Timer:IsPastSimMS(3000) then
+			return false;
+		end
+		local best, bestCost = nil, 50; -- The cap: a flank worth fifty nodes is a walk across the map.
+		for i, Spot in ipairs(search.spots) do
+			local cost = search.costs[i];
+			if cost and cost > 1 and cost < bestCost then
+				best, bestCost = Spot, cost;
+			end
+		end
+		if not best then
+			SharedBehaviors.Trace(Owner, "flank: nowhere to go");
+			return false;
+		end
+		AI.Flank = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = best, Timer = Timer() };
+		Owner:SetNumberValue("AIFlank", 1);
+		Owner:ClearAIWaypoints();
+		Owner:AddAISceneWaypoint(best);
+		Owner.AIMode = Actor.AIMODE_GOTO;
+		SharedBehaviors.Trace(Owner, "flank: to " .. math.floor(best.X) .. "," .. math.floor(best.Y) .. " (" .. bestCost .. " nodes)");
+		return true;
+	end
 	if AI.Flank or AI.Retreat or not SharedBehaviors.MayClose(AI, Owner) or AI.skill < 40 then
 		return false;
 	end
@@ -2887,18 +3324,21 @@ function SharedBehaviors.StartFlank(AI, Owner, TargetPos, range)
 	if math.random() * 100 > AI.skill then
 		return false; -- The better the AI, the more often it thinks of it.
 	end
-	local Spot, cost = SharedBehaviors.FindFlank(AI, Owner, TargetPos, range);
-	if not Spot then
+	local spots = SharedBehaviors.FlankCandidates(AI, Owner, TargetPos, range);
+	if #spots == 0 then
 		SharedBehaviors.Trace(Owner, "flank: nowhere to go");
 		return false;
 	end
-	AI.Flank = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Spot, Timer = Timer() };
-	Owner:SetNumberValue("AIFlank", 1);
-	Owner:ClearAIWaypoints();
-	Owner:AddAISceneWaypoint(Spot);
-	Owner.AIMode = Actor.AIMODE_GOTO;
-	SharedBehaviors.Trace(Owner, "flank: to " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y) .. " (" .. cost .. " nodes)");
-	return true;
+	search = { spots = spots, costs = {}, pending = #spots, Timer = Timer() };
+	AI.FlankSearch = search;
+	for i, Spot in ipairs(spots) do
+		-- (As Scene:CalculatePath counted it: the route's points, or -1 for none.)
+		SceneMan.Scene:CalculatePathAsync(function(pathRequest)
+			search.costs[i] = pathRequest.PathLength > 0 and pathRequest.PathLength or -1;
+			search.pending = search.pending - 1;
+		end, Owner.Pos, Spot, Owner.JumpHeight, 35, Owner.Team);
+	end
+	return false;
 end
 
 function SharedBehaviors.GetRealVelocity(Owner)
@@ -4622,6 +5062,10 @@ function SharedBehaviors.CalculateThreatLevel(MO, Owner)
 		end
 	elseif MO.ClassName == "ADoor" then
 		priority = priority * 0.3;
+	end
+	-- Animals and civilians last (NC-1): shot when there's nobody else to shoot.
+	if IsActor(MO) and ToActor(MO).NonCombatant then
+		priority = priority - 2.0;
 	end
 
 	return priority - MO.Health / 500; -- prioritize damaged targets

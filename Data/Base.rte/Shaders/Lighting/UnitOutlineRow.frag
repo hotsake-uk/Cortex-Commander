@@ -3,13 +3,15 @@
 // and that unit's side. Tonemap.frag finishes the search down the columns; the two together give the true distance to the nearest unit pixel
 // for the cost of a line each way rather than a whole square.
 // Units are marked in the surface buffer's solid flag (MOSRotating::GetRenderSurface): 255 - 8 * slot for shadow casters, 8 * slot for the
-// rest, slot 1 for no team and 2 to 5 for teams 1 to 4. Other values (255 solid, 0, 64 water, 128 shining) are not units.
+// rest, slot 1 for no team and 2 to 5 for teams 1 to 4, and 255 - 8 * 6 for a highlighted unit (slot 6). Other values (255 solid, 0, 64 water,
+// 128 shining) are not units.
 
 out vec4 FragColor; // R distance along the row in 255ths (255 none in reach), G the slot in 255ths (0 none), B 1 where an outline may be drawn here.
 
 uniform sampler2D rteSurface;
 uniform sampler2D rteSceneDepth;
 uniform float rteForegroundDepth; // Depth between the foreground (terrain, objects) and the terrain background.
+uniform bool rteOverEverything; // Draw over foreground terrain too.
 uniform int rteRadius; // In pixels, at most 12.
 
 int SlotAt(int x, int y, int width) {
@@ -17,7 +19,7 @@ int SlotAt(int x, int y, int width) {
 		return 0;
 	}
 	int value = int(texelFetch(rteSurface, ivec2(x, y), 0).b * 255.0 + 0.5);
-	if (value >= 211 && value <= 251) {
+	if (value >= 203 && value <= 251) {
 		return (255 - value + 4) / 8;
 	}
 	if (value >= 4 && value <= 44) {
@@ -48,6 +50,6 @@ void main() {
 	// The stroke goes over the sky, the terrain background, other objects and water (surface 0.25, see LightComposite.frag's WaterAt), never
 	// over foreground terrain.
 	float surface = texelFetch(rteSurface, pixel, 0).b;
-	bool open = texelFetch(rteSceneDepth, pixel, 0).r >= rteForegroundDepth || surface > 0.5 || abs(surface - 0.25) < 0.08;
+	bool open = rteOverEverything || texelFetch(rteSceneDepth, pixel, 0).r >= rteForegroundDepth || surface > 0.5 || abs(surface - 0.25) < 0.08;
 	FragColor = vec4(float(nearest) / 255.0, float(slot) / 255.0, open ? 1.0 : 0.0, 1.0);
 }

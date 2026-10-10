@@ -1,4 +1,6 @@
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
+#include "Actor.h"
 #include "Atom.h"
 #include "Constants.h"
 #include "Material.h"
@@ -29,6 +31,7 @@ using namespace RTE;
 
 bool TerrainCollapse::s_Enabled = true;
 bool TerrainCollapse::s_BuildingsFall = true;
+bool TerrainCollapse::s_PassesTrees = false;
 TerrainCollapse::Tuning TerrainCollapse::s_Tuning;
 
 namespace {
@@ -43,6 +46,7 @@ namespace {
 		int Radius;
 		long long DueUpdate; //!< Sim update count when the check runs.
 		std::shared_ptr<Before> Was; //!< Null if nothing is known of how things were.
+		int Drop = 0; //!< The check after a sandbox drop (TerrainCollapse::DropArea): what it lets fall belongs to that drop, for its undo.
 	};
 
 	constexpr int c_MinBodyPixels = 6; //!< Pieces smaller than this fall as loose particles.
@@ -59,8 +63,64 @@ namespace {
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
+	std::array<bool, 256> s_Leaves{}; //!< Vegetation: the leaves of trees and the base game's plants.
+	std::array<bool, 256> s_TreeTrunk{}; //!< The wood of trees. A tree's leaves hang on its trunk, not on whatever ground or tree their tips brush against.
+	std::array<bool, 256> s_Loose{}; //!< Loose ground that a tree coming down goes through: sand, snow, rubble, gravel and the like.
+	bool s_ProperGroundOnly = false; //!< Set while a tree coming down is stepped: it meets proper ground only, not plants, liquid or loose ground.
+	std::array<bool, 256> s_NoHold{}; //!< Ash and charcoal: loose powder that neither holds anything up nor joins anything into one piece.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
+	std::array<float, 256> s_Scuff{}; //!< How readily walking on a material knocks it loose, 0 to 1.
+	/// How a material breaks when a falling piece of it lands hard (MaterialBehaviour::BreakStyle). Each has its own threshold in the tuning.
+	enum BreakStyle : unsigned char { c_Shatter, c_Crack, c_Crumble, c_Splinter, c_Bend, c_StyleCount };
+	std::array<unsigned char, 256> s_Style{};
+	std::array<float, 256> s_ImpactStrength{}; //!< Multiplies its style's threshold.
+	std::array<int, 256> s_Neck{}; //!< How thin a neck of it snaps, in pixels; -1 for the tuning's NeckWidth.
+
+	/// A material's break style and strength from its ini, or else the stock rule by name, so old mods' materials behave sensibly.
+	void StockBreaking(const Material& material, unsigned char& style, float& strength, int& neck) {
+		const MaterialBehaviour& behaviour = material.GetBehaviour();
+		const std::string& name = material.GetPresetName();
+		auto has = [&name](const char* word) { return name.find(word) != std::string::npos; };
+		style = c_Crack;
+		strength = 1.0F;
+		neck = -1;
+		if (has("Wood") || has("Tree Trunk") || has("Timber")) {
+			style = c_Splinter;
+			strength = has("Tree Trunk") ? 1.0F : 0.8F;
+			// Wood holds by a sliver: a burning trunk stands until it's burnt right through.
+			neck = 0;
+		} else if (has("Scrap") || has("Mangled") || has("Shards")) {
+			style = has("Shards") ? c_Crumble : c_Crack;
+		} else if (has("Metal") || has("Plate") || has("Ladder") || has("Rubber") || has("Gold") || name == "Armoured Military Stuff") {
+			style = c_Bend;
+		} else if (has("Concrete") || has("Glass") || has("Ice")) {
+			style = c_Shatter;
+			strength = has("Glass") ? 0.45F : (has("Ice") ? 0.7F : 1.0F);
+		} else if (behaviour.Powder > 0 || has("Sand") || has("Snow") || has("Topsoil") || has("Rubble") || has("Gravel") || has("Ash") || has("Charcoal") || has("Vegetation") || has("Leaves") || has("Grass")) {
+			style = c_Crumble;
+		} else if (has("Bedrock") || has("Cave Ceiling")) {
+			strength = 1.8F;
+		} else if (has("Stone")) {
+			strength = has("Lunar") ? 1.0F : 1.2F;
+		} else if (has("Dense")) {
+			strength = 1.1F;
+		} else if (has("Earth")) {
+			strength = 0.9F;
+		}
+		static const std::pair<const char*, BreakStyle> names[] = {{"Shatter", c_Shatter}, {"Crack", c_Crack}, {"Crumble", c_Crumble}, {"Splinter", c_Splinter}, {"Bend", c_Bend}};
+		for (const auto& [styleName, value]: names) {
+			if (behaviour.BreakStyle == styleName) {
+				style = value;
+			}
+		}
+		if (behaviour.ImpactStrength >= 0.0F) {
+			strength = behaviour.ImpactStrength;
+		}
+		if (behaviour.NeckWidth >= 0) {
+			neck = behaviour.NeckWidth;
+		}
+	}
 	int s_IceMaterial = 0;
 	int s_WaterMaterial = 0;
 	int s_WaterColor = 0;
@@ -70,10 +130,18 @@ namespace {
 		s_Fixed.fill(false);
 		s_Structure.fill(false);
 		s_Flimsy.fill(false);
+		s_Leaves.fill(false);
+		s_TreeTrunk.fill(false);
+		s_NoHold.fill(false);
+		s_Loose.fill(false);
 		s_IceMaterial = 0;
 		s_WaterMaterial = 0;
 		s_Density.fill(1.0F);
 		s_Toughness.fill(60.0F);
+		s_Scuff.fill(0.0F);
+		s_Style.fill(c_Crack);
+		s_ImpactStrength.fill(1.0F);
+		s_Neck.fill(-1);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -81,8 +149,14 @@ namespace {
 			}
 			s_Density[id] = std::clamp(material->GetPixelDensity(), 0.05F, 50.0F);
 			s_Toughness[id] = std::clamp(material->GetIntegrity(), 1.0F, 600.0F);
+			s_Scuff[id] = std::clamp(material->GetBehaviour().Scuffs, 0.0F, 1.0F);
 			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
+			StockBreaking(*material, s_Style[id], s_ImpactStrength[id], s_Neck[id]);
 			const std::string& name = material->GetPresetName();
+			s_Leaves[id] = name == "Vegetation" || TerrainTrees::IsLeaves(id);
+			s_TreeTrunk[id] = name == "Tree Trunk" || TerrainTrees::IsTrunk(id);
+			s_NoHold[id] = name == "Ashes" || name == "Charcoal";
+			s_Loose[id] = material->GetBehaviour().Powder > 0 || name.find("Sand") != std::string::npos || name.find("Snow") != std::string::npos || name.find("Rubble") != std::string::npos || name.find("Gravel") != std::string::npos;
 			if (name == "Ice") {
 				s_IceMaterial = id;
 			} else if (name == "Water") {
@@ -100,7 +174,7 @@ namespace {
 			if (name.find("Scrap") != std::string::npos || name.find("Mangled") != std::string::npos) {
 				continue;
 			}
-			for (const char* word: {"Concrete", "Metal", "Ladder", "Military", "Civilian", "Glass"}) {
+			for (const char* word: {"Concrete", "Metal", "Plate", "Ladder", "Military", "Civilian", "Glass"}) {
 				if (name.find(word) != std::string::npos) {
 					s_Structure[id] = true;
 					break;
@@ -134,6 +208,26 @@ namespace {
 		std::string Material;
 	};
 	std::vector<ChunkRequest> s_ChunkRequests;
+	/// A box of ground to break loose, from the sandbox (TerrainCollapse::DropArea).
+	struct DropRequest {
+		int Left, Top, Right, Bottom;
+		int Drop;
+	};
+	std::vector<DropRequest> s_DropRequests;
+	int s_NextDrop = 1;
+	/// What a drop took and where it went, so it can be taken back (TerrainCollapse::TakeBackDrop).
+	struct DropRecord {
+		struct Pixel {
+			int Key;
+			unsigned char Material;
+			unsigned char Color;
+		};
+		std::vector<Pixel> Original; //!< Every pixel its pieces were lifted from, as it was.
+		std::vector<std::pair<int, unsigned char>> Rested; //!< Where its pieces came to rest, and of what.
+	};
+	std::map<int, DropRecord> s_Drops; //!< By drop number: the newest c_MaxDrops (the sandbox's undo keeps 20 steps).
+	constexpr size_t c_MaxDrops = 20;
+	int s_LiftDrop = 0; //!< While a drop's pieces are lifted (LiftPiece): the drop they belong to.
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: the same scene restarted, or a new one at the old one's address, still counts as new (as in FluidSim).
@@ -162,6 +256,8 @@ namespace {
 		float Inertia = 1.0F;
 		float Radius = 1.0F; //!< Furthest pixel from the centre of mass.
 		float Toughness = 60.0F; //!< Average strength of its materials.
+		std::array<float, c_StyleCount> StyleStrength{}; //!< Its carrying pixels' ImpactStrength summed, by break style: with the tuning's thresholds, how hard a landing breaks it.
+		int CarryingPixels = 0; //!< Its pixels that count for how hard it is to break: all but leaves, grass and ash, unless it's nothing else.
 		int PixelCount = 0;
 		glm::vec2 Pos{0.0F}; //!< Of the centre of mass, in the scene.
 		glm::vec2 Vel{0.0F}; //!< Pixels per update.
@@ -176,7 +272,23 @@ namespace {
 		bool Done = false;
 		bool Wet = false; //!< Whether it was in liquid last update.
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
+		int Drop = 0; //!< The sandbox drop it came from (TerrainCollapse::DropArea), or 0. The pieces it breaks into keep it.
+		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
 	};
+
+	/// Whether a piece is a tree coming down: a good share of tree trunk, its leaves the rest. (Every 7th pixel is enough to tell.)
+	bool IsTree(const Body& body) {
+		int trunk = 0;
+		int solid = 0;
+		for (size_t i = 0; i < body.Materials.size(); i += 7) {
+			if (unsigned char material = body.Materials[i]; material != 0) {
+				++solid;
+				trunk += s_TreeTrunk[material] ? 1 : 0;
+			}
+		}
+		return trunk * 5 > solid && trunk > 0;
+	}
+
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
 
@@ -186,6 +298,7 @@ namespace {
 		glm::vec2 Center{0.0F};
 		float Radius = 0.0F;
 		long long When = 0; //!< Sim update when it came to rest.
+		int Drop = 0; //!< The sandbox drop it came from, or 0.
 	};
 	std::vector<Rested> s_Rested;
 	constexpr size_t c_MaxRested = 64;
@@ -195,6 +308,14 @@ namespace {
 		float Reach, Push;
 	};
 	std::vector<BlastRequest> s_Blasts;
+
+	/// A foot coming down, queued from the units' updates.
+	struct Footfall {
+		int X, Y, Direction;
+		float Speed;
+	};
+	std::vector<Footfall> s_Footfalls;
+	constexpr size_t c_MaxFootfalls = 64;
 
 	/// What the checks know about each terrain pixel. A flat array, a byte per pixel: with hash sets a single check of a big crater took 20 to 40 ms, a visible hitch after every blast.
 	enum PixelState : unsigned char {
@@ -218,13 +339,13 @@ namespace {
 		return x >= 0 && y >= 0 && x < s_Width && y < s_Height;
 	}
 
-	/// Whether a falling piece would hit something at a point: solid ground, not liquid.
+	/// Whether a falling piece would hit something at a point: solid ground, not liquid, and not a tree while pieces go through trees.
 	bool SolidAt(const BITMAP* materialBitmap, int x, int y) {
 		if (!WrapInWorld(x, y)) {
 			return false;
 		}
 		int material = materialBitmap->line[y][x];
-		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material);
+		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_ProperGroundOnly && s_Loose[material]) && !(TerrainCollapse::PassesTrees() && TerrainTrees::IsTreeMaterial(material));
 	}
 
 	/// Works out a body's mass, centre, inertia and outline from its bitmap. Returns false if nothing is left of it.
@@ -234,6 +355,9 @@ namespace {
 		double centerY = 0.0;
 		double toughness = 0.0;
 		body.PixelCount = 0;
+		body.StyleStrength.fill(0.0F);
+		body.CarryingPixels = 0;
+		std::array<float, c_StyleCount> flimsyStrength{};
 		for (int y = 0; y < body.H; ++y) {
 			for (int x = 0; x < body.W; ++x) {
 				int material = body.Materials[static_cast<size_t>(y) * body.W + x];
@@ -244,6 +368,12 @@ namespace {
 					centerY += (static_cast<double>(y) + 0.5) * density;
 					toughness += s_Toughness[material];
 					++body.PixelCount;
+					if (s_Flimsy[material]) {
+						flimsyStrength[s_Style[material]] += s_ImpactStrength[material];
+					} else {
+						body.StyleStrength[s_Style[material]] += s_ImpactStrength[material];
+						++body.CarryingPixels;
+					}
 				}
 			}
 		}
@@ -253,6 +383,11 @@ namespace {
 		body.Mass = static_cast<float>(mass);
 		body.Center = glm::vec2(static_cast<float>(centerX / mass), static_cast<float>(centerY / mass));
 		body.Toughness = static_cast<float>(toughness / body.PixelCount);
+		// Leaves on a trunk don't make it weaker; a piece of nothing but leaves goes by them.
+		if (body.CarryingPixels == 0) {
+			body.StyleStrength = flimsyStrength;
+			body.CarryingPixels = body.PixelCount;
+		}
 		double inertia = 0.0;
 		float radius = 1.0F;
 		std::vector<glm::vec2> edge;
@@ -459,8 +594,9 @@ namespace {
 					continue;
 				}
 				int existing = materialBitmap->line[wy][wx];
-				// Liquid is pushed aside (below); grass and the like is flattened; anything else solid is left as it is.
-				if (existing != g_MaterialAir && !FluidSim::IsLiquid(existing) && !s_Flimsy[existing]) {
+				// Liquid is pushed aside (below); grass and the like is flattened; anything else solid is left as it is. A tree a piece goes
+				// through is left as it is too, leaves and all: the piece goes behind it.
+				if (existing != g_MaterialAir && !FluidSim::IsLiquid(existing) && (!s_Flimsy[existing] || (TerrainCollapse::PassesTrees() && TerrainTrees::IsTreeMaterial(existing)))) {
 					continue;
 				}
 				if (FluidSim::IsLiquid(existing)) {
@@ -525,6 +661,12 @@ namespace {
 		FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), body.Radius + 6.0F);
 	}
 
+	/// Whether this many more pixels can be thrown off as loose particles this update. Beyond that, a scrap stays a little body of its own and comes apart later,
+	/// rather than vanishing.
+	bool CanThrow(size_t count) {
+		return s_DebrisThisUpdate + static_cast<int>(count) <= c_MaxDebrisPerUpdate;
+	}
+
 	/// Throws a pixel of a body off as a loose particle.
 	void ThrowDebris(int material, int colorIndex, const glm::vec2& position, const glm::vec2& velocity) {
 		if (s_DebrisThisUpdate >= c_MaxDebrisPerUpdate || colorIndex == ColorKeys::g_MaskColor) {
@@ -535,11 +677,24 @@ namespace {
 			return;
 		}
 		++s_DebrisThisUpdate;
+		// A pixel of a piece pressed against the ground can sit a hair inside it, and a particle that starts inside the ground is lost: lift it clear first.
+		glm::vec2 at = position;
+		if (SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr) {
+			const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+			for (int lift = 0; lift < 8; ++lift) {
+				int x = static_cast<int>(std::floor(at.x));
+				int y = static_cast<int>(std::floor(at.y)) - lift;
+				if (!WrapInWorld(x, y) || materialBitmap->line[y][x] == g_MaterialAir || FluidSim::IsLiquid(materialBitmap->line[y][x])) {
+					at.y -= static_cast<float>(lift);
+					break;
+				}
+			}
+		}
 		// Loose bits fly off at the piece's own speed: fast ones of hard material strike sparks where they hit.
 		Color color;
 		color.SetRGBWithIndex(colorIndex);
 		// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
-		MOPixel* pixel = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(position.x, position.y), Vector(velocity.x * 3.0F, velocity.y * 3.0F), new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
+		MOPixel* pixel = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(at.x, at.y), Vector(velocity.x * 3.0F, velocity.y * 3.0F), new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
 		pixel->SetToHitMOs(false);
 		g_MovableMan.AddParticle(pixel);
 	}
@@ -598,43 +753,234 @@ namespace {
 		return sum / length;
 	}
 
-	/// Cracks a body into pieces along lines through the point where it hit. The pieces become bodies of their own, or loose particles if they're tiny.
+	/// Puts a pixel of loose ground into the terrain at the nearest free place at or above a point (a little to either side as it goes up).
+	/// Returns false if there's no room near.
+	bool PlaceGrain(SLTerrain* terrain, int material, int colorIndex, int x, int y) {
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		for (int up = 0; up < 12; ++up) {
+			for (int side: {0, -1, 1, -2, 2}) {
+				int px = x + side;
+				int py = y - up;
+				if (!WrapInWorld(px, py) || materialBitmap->line[py][px] != g_MaterialAir) {
+					continue;
+				}
+				terrain->SetMaterialPixel(px, py, material);
+				terrain->SetFGColorPixel(px, py, colorIndex);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/// How hard a landing breaks a body, in pixels per update: its carrying materials' style thresholds, each scaled by the material's ImpactStrength, averaged by pixel count.
+	float BreakSpeed(const Body& body) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		const float thresholds[c_StyleCount] = {tuning.ShatterSpeed, tuning.CrackSpeed, tuning.CrumbleSpeed, tuning.SplinterSpeed, tuning.BendSpeed};
+		float sum = 0.0F;
+		for (int style = 0; style < c_StyleCount; ++style) {
+			sum += body.StyleStrength[style] * std::max(thresholds[style], 0.0F);
+		}
+		// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
+		float metresPerSecond = sum / static_cast<float>(std::max(body.CarryingPixels, 1));
+		return metresPerSecond / 3.0F * std::max(tuning.BreakStrength, 0.1F);
+	}
+
+	/// Breaks a body where it hit, each of its materials by its own style (MaterialBehaviour::BreakStyle): Shatter splits it into many jagged shards around the hit
+	/// with a spray of chips, Crack cuts it along a few lines, Crumble turns what's near the hit into loose grains, Splinter snaps it across its length into a few
+	/// long pieces, and Bend (metal) holds together. Leaves and grass go with the style of what carries them. The pieces become bodies of their own, or loose
+	/// particles if they're tiny.
 	void Break(Body& body, const glm::vec2& hitPoint, float violence) {
 		float c = std::cos(body.Angle);
 		float s = std::sin(body.Angle);
 		glm::vec2 offset = hitPoint - body.Pos;
 		glm::vec2 hitLocal(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
-		int cuts = 1 + (violence > 1.5F ? 1 : 0) + (body.Toughness < 60.0F ? 1 : 0);
+		// Leaves go with the style that carries the most of the piece.
+		int mainStyle = c_Crack;
+		for (int style = 0; style < c_StyleCount; ++style) {
+			if (body.StyleStrength[style] > body.StyleStrength[mainStyle]) {
+				mainStyle = style;
+			}
+		}
 		struct Cut {
 			glm::vec2 Through, Across;
 			float Wobble, Phase;
 		};
-		std::vector<Cut> lines;
+		auto sideOf = [](const std::vector<Cut>& lines, const glm::vec2& at) {
+			int side = 0;
+			for (size_t i = 0; i < lines.size(); ++i) {
+				glm::vec2 from = at - lines[i].Through;
+				float along = from.x * -lines[i].Across.y + from.y * lines[i].Across.x;
+				// A jagged line rather than a ruled one.
+				float distance = glm::dot(from, lines[i].Across) + lines[i].Wobble * std::sin(along * 0.45F + lines[i].Phase) + 0.6F * std::sin(along * 1.7F);
+				side |= (distance > 0.0F ? 1 : 0) << i;
+			}
+			return side;
+		};
+		// Crack: a few lines, the first from where it hit, the others nearer the middle.
+		std::vector<Cut> cracks;
+		int cuts = 1 + (violence > 1.5F ? 1 : 0) + (body.Toughness < 60.0F ? 1 : 0);
 		for (int i = 0; i < cuts; ++i) {
 			float angle = Random01() * 3.14159F;
-			// The first crack runs from where it hit; the others cross the body nearer its middle.
 			glm::vec2 through = i == 0 ? glm::mix(hitLocal, body.Center, 0.35F) : body.Center + glm::vec2(Random01() - 0.5F, Random01() - 0.5F) * body.Radius * 0.8F;
-			lines.push_back({through, glm::vec2(std::cos(angle), std::sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
+			cracks.push_back({through, glm::vec2(std::cos(angle), std::sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
 		}
+		// Splinter: across its long axis (the grain), through the middle nudged toward the hit; a second snap only for a huge hit.
+		std::vector<Cut> snaps;
+		{
+			double xx = 0.0;
+			double yy = 0.0;
+			double xy = 0.0;
+			for (int y = 0; y < body.H; ++y) {
+				for (int x = 0; x < body.W; ++x) {
+					if (body.Materials[static_cast<size_t>(y) * body.W + x]) {
+						double dx = static_cast<double>(x) + 0.5 - body.Center.x;
+						double dy = static_cast<double>(y) + 0.5 - body.Center.y;
+						xx += dx * dx;
+						yy += dy * dy;
+						xy += dx * dy;
+					}
+				}
+			}
+			float grain = 0.5F * static_cast<float>(std::atan2(2.0 * xy, xx - yy));
+			glm::vec2 along(std::cos(grain), std::sin(grain));
+			float hitAlong = glm::dot(hitLocal - body.Center, along);
+			int count = violence > 2.5F ? 2 : 1;
+			for (int i = 0; i < count; ++i) {
+				float at = i == 0 ? hitAlong * 0.35F : -hitAlong * 0.5F + (Random01() - 0.5F) * body.Radius * 0.4F;
+				// The cut runs across the grain, a little askew, with a ragged, splintery edge.
+				float skew = (Random01() - 0.5F) * 0.5F;
+				glm::vec2 across(std::cos(grain + skew), std::sin(grain + skew));
+				snaps.push_back({body.Center + along * at, across, 1.5F + Random01() * 1.5F, Random01() * 6.28F});
+			}
+		}
+		// Shatter: shards around seed points, most of them near the hit.
+		std::vector<glm::vec2> seeds;
+		std::vector<float> seedPhase;
+		int shards = std::clamp(static_cast<int>(3.0F + 2.0F * violence + static_cast<float>(body.PixelCount) / 400.0F), 4, 12);
+		for (int i = 0; i < shards; ++i) {
+			glm::vec2 seed = body.Center;
+			for (int attempt = 0; attempt < 30; ++attempt) {
+				glm::vec2 candidate(Random01() * static_cast<float>(body.W), Random01() * static_cast<float>(body.H));
+				int cx = std::clamp(static_cast<int>(candidate.x), 0, body.W - 1);
+				int cy = std::clamp(static_cast<int>(candidate.y), 0, body.H - 1);
+				if (!body.Materials[static_cast<size_t>(cy) * body.W + cx]) {
+					continue;
+				}
+				seed = candidate;
+				if (Random01() < std::exp(-glm::length(candidate - hitLocal) / std::max(body.Radius * 0.5F, 1.0F))) {
+					break;
+				}
+			}
+			seeds.push_back(seed);
+			seedPhase.push_back(Random01() * 6.28F);
+		}
+		// How far from the hit brittle material is powdered and loose ground falls apart into grains.
+		float chipRadius = 1.5F + std::min(violence, 4.0F);
+		float crumbleRadius = body.Radius * std::min(1.0F, 0.35F + 0.25F * violence) + 2.0F;
+		int debrisLeft = c_MaxDebrisPerUpdate - s_DebrisThisUpdate;
+		constexpr int c_Loose = -3; //!< A pixel thrown off as a loose particle.
+		constexpr int c_Grain = -4; //!< A pixel of loose ground let go where it is, as loose grains in the terrain (the powders then slide them down: FluidSim).
 		std::vector<int> region(body.Materials.size(), -1);
 		for (int y = 0; y < body.H; ++y) {
 			for (int x = 0; x < body.W; ++x) {
 				int local = y * body.W + x;
-				if (!body.Materials[local]) {
+				int material = body.Materials[local];
+				if (!material) {
 					continue;
 				}
 				glm::vec2 at(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
-				int side = 0;
-				for (size_t i = 0; i < lines.size(); ++i) {
-					glm::vec2 from = at - lines[i].Through;
-					float along = from.x * -lines[i].Across.y + from.y * lines[i].Across.x;
-					// A jagged line rather than a ruled one.
-					float distance = glm::dot(from, lines[i].Across) + lines[i].Wobble * std::sin(along * 0.45F + lines[i].Phase) + 0.6F * std::sin(along * 1.7F);
-					side |= (distance > 0.0F ? 1 : 0) << i;
+				float fromHit = glm::length(at - hitLocal);
+				int style = s_Flimsy[material] ? mainStyle : s_Style[material];
+				int id = 0;
+				bool loose = false;
+				switch (style) {
+					case c_Shatter: {
+						size_t nearest = 0;
+						float best = 1.0e9F;
+						for (size_t i = 0; i < seeds.size(); ++i) {
+							// Jittered, so the shards have jagged edges.
+							float distance = glm::length(at - seeds[i]) + 1.5F * std::sin(at.x * 0.9F + seedPhase[i]) + 1.2F * std::sin(at.y * 1.3F - seedPhase[i]);
+							if (distance < best) {
+								best = distance;
+								nearest = i;
+							}
+						}
+						id = 0x100 + static_cast<int>(nearest);
+						loose = fromHit < chipRadius && Random01() < 0.4F;
+						break;
+					}
+					case c_Crumble:
+						id = 0x200;
+						loose = fromHit < crumbleRadius;
+						break;
+					case c_Splinter:
+						id = 0x300 + sideOf(snaps, at);
+						break;
+					case c_Bend:
+						id = 0x400;
+						break;
+					default:
+						id = sideOf(cracks, at);
+						break;
 				}
-				region[local] = side;
+				if (loose && style == c_Crumble) {
+					region[local] = c_Grain;
+				} else if (loose && debrisLeft > 0) {
+					--debrisLeft;
+					region[local] = c_Loose;
+				} else {
+					region[local] = id;
+				}
 			}
 		}
+		// Splinters: a few chips of wood off the edges of each snap.
+		for (int local = 0; local < static_cast<int>(region.size()) && debrisLeft > 0; ++local) {
+			if (region[local] < 0x300 || region[local] >= 0x400) {
+				continue;
+			}
+			int x = local % body.W;
+			int y = local / body.W;
+			bool onBreak = (x > 0 && region[local - 1] >= 0 && region[local - 1] != region[local]) || (x + 1 < body.W && region[local + 1] >= 0 && region[local + 1] != region[local]) ||
+			               (y > 0 && region[local - body.W] >= 0 && region[local - body.W] != region[local]) || (y + 1 < body.H && region[local + body.W] >= 0 && region[local + body.W] != region[local]);
+			if (onBreak && Random01() < 0.35F) {
+				--debrisLeft;
+				region[local] = c_Loose;
+			}
+		}
+		// Grains go straight into the terrain where they are, rather than as particles: a heap of particles landing together settles on top of each other and
+		// most are lost.
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		int grains = 0;
+		for (int local = 0; local < static_cast<int>(region.size()) && terrain; ++local) {
+			if (region[local] != c_Grain) {
+				continue;
+			}
+			glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
+			glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
+			if (PlaceGrain(terrain, body.Materials[local], body.Colors[local], static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
+				region[local] = -2;
+				++grains;
+			} else {
+				region[local] = 0x200;
+			}
+		}
+		if (grains > 0) {
+			float reach = body.Radius + 4.0F;
+			terrain->AddUpdatedMaterialArea(Box(Vector(body.Pos.x - reach, body.Pos.y - reach), reach * 2.0F, reach * 2.0F));
+			FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), reach + 4.0F);
+		}
+		for (int local = 0; local < static_cast<int>(region.size()); ++local) {
+			if (region[local] == c_Loose) {
+				glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
+				glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
+				glm::vec2 arm = at - body.Pos;
+				// Grains spill at the piece's speed; chips fly up and out.
+				float spray = s_Style[body.Materials[local]] == c_Crumble ? 0.6F : 1.5F + 0.4F * std::min(violence, 3.0F);
+				ThrowDebris(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(Random01() - 0.5F, -Random01()) * spray);
+				region[local] = -2;
+			}
+		}
+		float burst = mainStyle == c_Shatter ? 0.25F + 0.2F * std::min(violence, 3.0F) : 0.25F;
 		// Each connected part of each side is a piece.
 		std::vector<int> stack;
 		std::vector<int> part;
@@ -675,7 +1021,7 @@ namespace {
 					}
 				}
 			}
-			if (static_cast<int>(part.size()) < 20) {
+			if (static_cast<int>(part.size()) < (mainStyle == c_Shatter ? c_MinBodyPixels : 20) && CanThrow(part.size())) {
 				for (int local: part) {
 					glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
 					glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
@@ -703,15 +1049,17 @@ namespace {
 			piece.Angle = body.Angle;
 			glm::vec2 arm = piece.Pos - body.Pos;
 			float armLength = glm::length(arm);
-			piece.Vel = body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + (armLength > 0.01F ? arm / armLength * 0.25F : glm::vec2(0.0F));
+			piece.Vel = body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + (armLength > 0.01F ? arm / armLength * burst : glm::vec2(0.0F));
 			piece.Spin = body.Spin + (Random01() - 0.5F) * 0.03F;
 			piece.Generation = body.Generation + 1;
 			piece.BreakCooldown = 12;
+			piece.Drop = body.Drop;
 			s_NewBodies.push_back(std::move(piece));
 		}
 		body.Done = true;
-		// A burst of dust where it broke (visual only).
-		ThrowDust(hitPoint, std::min(6 + body.PixelCount / 60, 40), body.Materials, body.Colors);
+		// A burst of dust where it broke (visual only): a cloud where something brittle shatters or loose ground falls apart.
+		int dust = 6 + body.PixelCount / 60;
+		ThrowDust(hitPoint, std::min(mainStyle == c_Shatter || mainStyle == c_Crumble ? dust * 2 : dust, mainStyle == c_Shatter || mainStyle == c_Crumble ? 60 : 40), body.Materials, body.Colors);
 	}
 
 	/// Brings a body up to date after pixels have been shot, dug or blasted off it: its outline (what it collides with), mass and centre are worked out again
@@ -766,7 +1114,7 @@ namespace {
 			return;
 		}
 		for (const std::vector<int>& part: parts) {
-			if (static_cast<int>(part.size()) < c_MinBodyPixels) {
+			if (static_cast<int>(part.size()) < c_MinBodyPixels && CanThrow(part.size())) {
 				for (int local: part) {
 					glm::vec2 offset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
 					ThrowDebris(body.Materials[local], body.Colors[local], ToWorld(body, offset, body.Pos, body.Angle), body.Vel);
@@ -804,16 +1152,295 @@ namespace {
 			piece.Spin = body.Spin;
 			piece.Generation = body.Generation;
 			piece.BreakCooldown = body.BreakCooldown;
+			piece.Drop = body.Drop;
 			piece.Age = body.Age;
 			s_NewBodies.push_back(std::move(piece));
 		}
 		body.Done = true;
 	}
 
+	/// Turns a point in the scene into a body's own bitmap.
+	glm::vec2 ToLocal(const Body& body, const glm::vec2& point) {
+		float c = std::cos(body.Angle);
+		float s = std::sin(body.Angle);
+		glm::vec2 offset = point - body.Pos;
+		return glm::vec2(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
+	}
+
+	/// A long piece of metal (a beam, a girder, a plate) hit hard off its middle bends instead of breaking: it folds at a crease between the middle and where it hit,
+	/// the part beyond the crease turned on with the way it was moving, by more the harder the hit and the thinner it is. The bent shape is drawn into a fresh bitmap
+	/// and the piece is a rigid body again. Returns false, changing nothing, if it isn't long and thin enough to bend (it dents instead).
+	/// Call while the body is lifted out of the terrain.
+	bool BendAtCrease(Body& body, const glm::vec2& hitPoint, float violence) {
+		// Its long axis and how long and thick it is, from the spread of its pixels.
+		double xx = 0.0;
+		double yy = 0.0;
+		double xy = 0.0;
+		for (int y = 0; y < body.H; ++y) {
+			for (int x = 0; x < body.W; ++x) {
+				if (body.Materials[static_cast<size_t>(y) * body.W + x]) {
+					double dx = static_cast<double>(x) + 0.5 - body.Center.x;
+					double dy = static_cast<double>(y) + 0.5 - body.Center.y;
+					xx += dx * dx;
+					yy += dy * dy;
+					xy += dx * dy;
+				}
+			}
+		}
+		float grain = 0.5F * static_cast<float>(std::atan2(2.0 * xy, xx - yy));
+		glm::vec2 along(std::cos(grain), std::sin(grain));
+		glm::vec2 across(-along.y, along.x);
+		double count = static_cast<double>(std::max(body.PixelCount, 1));
+		float varAlong = static_cast<float>((xx * along.x * along.x + 2.0 * xy * along.x * along.y + yy * along.y * along.y) / count);
+		float varAcross = static_cast<float>((xx * across.x * across.x + 2.0 * xy * across.x * across.y + yy * across.y * across.y) / count);
+		float length = std::sqrt(12.0F * std::max(varAlong, 0.0F));
+		float thickness = std::max(std::sqrt(12.0F * std::max(varAcross, 0.0F)), 1.0F);
+		if (length < 20.0F || length < thickness * 3.0F) {
+			return false;
+		}
+		// How far it folds: more for a harder hit and a thinner piece (stiffness grows with the square of the thickness), in steps of 5 degrees so the crease stays tidy.
+		constexpr float c_Step = 0.0872665F;
+		float angle = std::min(0.12F * (violence - 1.0F) + 0.1F, 0.6F) * std::clamp(36.0F / (thickness * thickness), 0.2F, 2.0F);
+		angle = std::floor(std::min(angle, 0.6F) / c_Step) * c_Step;
+		if (angle < c_Step) {
+			return false;
+		}
+		glm::vec2 hitLocal = ToLocal(body, hitPoint);
+		float hitAlong = glm::dot(hitLocal - body.Center, along);
+		// The crease: between the middle and where it hit. What lies beyond it, away from the hit, is what turns.
+		glm::vec2 crease = body.Center + along * (hitAlong * 0.3F);
+		glm::vec2 far = hitAlong >= 0.0F ? -along : along;
+		// Turned the way the piece was moving, as the end that hit stops and the rest carries on.
+		float c = std::cos(body.Angle);
+		float s = std::sin(body.Angle);
+		glm::vec2 velLocal(body.Vel.x * c + body.Vel.y * s, -body.Vel.x * s + body.Vel.y * c);
+		glm::vec2 arm = far * (length * 0.5F);
+		if (glm::dot(glm::vec2(-arm.y, arm.x), velLocal) < 0.0F) {
+			angle = -angle;
+		}
+		auto turn = [&](const glm::vec2& point, float cosine, float sine) {
+			glm::vec2 from = point - crease;
+			return crease + glm::vec2(from.x * cosine - from.y * sine, from.x * sine + from.y * cosine);
+		};
+		auto pixelAt = [&body](const glm::vec2& point) -> int {
+			int x = static_cast<int>(std::floor(point.x));
+			int y = static_cast<int>(std::floor(point.y));
+			if (x < 0 || y < 0 || x >= body.W || y >= body.H) {
+				return -1;
+			}
+			int local = y * body.W + x;
+			return body.Materials[local] ? local : -1;
+		};
+		Body bent;
+		glm::vec2 shift(0.0F);
+		const BITMAP* materialBitmap = g_SceneMan.GetScene()->GetTerrain()->GetMaterialBitmap();
+		auto tryFold = [&](float fold) {
+			float ca = std::cos(fold);
+			float sa = std::sin(fold);
+			// The new bitmap's bounds: the near part where it was, the far part turned.
+			float minX = 0.0F;
+			float minY = 0.0F;
+			float maxX = static_cast<float>(body.W);
+			float maxY = static_cast<float>(body.H);
+			for (int y = 0; y < body.H; ++y) {
+				for (int x = 0; x < body.W; ++x) {
+					glm::vec2 at(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
+					if (body.Materials[static_cast<size_t>(y) * body.W + x] && glm::dot(at - crease, far) > 0.0F) {
+						glm::vec2 moved = turn(at, ca, sa);
+						minX = std::min(minX, moved.x - 1.0F);
+						minY = std::min(minY, moved.y - 1.0F);
+						maxX = std::max(maxX, moved.x + 1.0F);
+						maxY = std::max(maxY, moved.y + 1.0F);
+					}
+				}
+			}
+			shift = glm::vec2(-std::floor(minX), -std::floor(minY));
+			bent = Body();
+			bent.W = static_cast<int>(std::ceil(maxX)) + static_cast<int>(shift.x);
+			bent.H = static_cast<int>(std::ceil(maxY)) + static_cast<int>(shift.y);
+			bent.Materials.assign(static_cast<size_t>(bent.W) * bent.H, 0);
+			bent.Colors.assign(static_cast<size_t>(bent.W) * bent.H, 0);
+			// The far part's side of the crease, turned with it.
+			glm::vec2 farTurned = glm::vec2(far.x * ca - far.y * sa, far.x * sa + far.y * ca);
+			for (int y = 0; y < bent.H; ++y) {
+				for (int x = 0; x < bent.W; ++x) {
+					glm::vec2 at = glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - shift;
+					int source = -1;
+					if (glm::dot(at - crease, far) <= 0.0F && glm::dot(at - crease, farTurned) <= 0.0F) {
+						// The near part, where it was.
+						source = pixelAt(at);
+					} else if (glm::dot(at - crease, farTurned) > 0.0F) {
+						// The far part, turned back to where it came from.
+						glm::vec2 from = turn(at, ca, -sa);
+						if (glm::dot(from - crease, far) > 0.0F) {
+							source = pixelAt(from);
+						}
+					} else {
+						// The wedge opened on the outside of the bend: filled from the crease itself, so the metal stretches rather than tears.
+						glm::vec2 onCrease = at - far * glm::dot(at - crease, far);
+						source = pixelAt(onCrease - far * 0.5F);
+					}
+					if (source >= 0) {
+						size_t index = static_cast<size_t>(y) * bent.W + x;
+						bent.Materials[index] = body.Materials[source];
+						bent.Colors[index] = body.Colors[source];
+					}
+				}
+			}
+			if (!FinishBody(bent, glm::vec2(0.0F))) {
+				return false;
+			}
+			// Not into the ground: a fold that would push it into solid ground is too much (a beam lying flat can't fold down through the floor).
+			glm::vec2 pos = ToWorld(body, bent.Center - shift - body.Center, body.Pos, body.Angle);
+			int buried = 0;
+			for (int y = 0; y < bent.H; ++y) {
+				for (int x = 0; x < bent.W; ++x) {
+					if (bent.Materials[static_cast<size_t>(y) * bent.W + x]) {
+						glm::vec2 world = ToWorld(body, glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - bent.Center, pos, body.Angle);
+						buried += SolidAt(materialBitmap, static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))) ? 1 : 0;
+					}
+				}
+			}
+			return buried <= std::max(2, bent.PixelCount / 100);
+		};
+		// The fold the hit asks for, or less if that would go into the ground.
+		bool folded = false;
+		for (float fold = angle; std::abs(fold) >= c_Step * 0.99F && !folded; fold -= (angle > 0.0F ? c_Step : -c_Step)) {
+			folded = tryFold(fold);
+		}
+		if (!folded) {
+			return false;
+		}
+		// Where it is in the scene: its bitmap moved by the shift, the same angle.
+		bent.Pos = ToWorld(body, bent.Center - shift - body.Center, body.Pos, body.Angle);
+		bent.Angle = body.Angle;
+		// Bending takes up some of the blow.
+		bent.Vel = body.Vel * 0.75F;
+		bent.Spin = body.Spin * 0.75F;
+		bent.Generation = body.Generation + 1;
+		bent.BreakCooldown = 20;
+		bent.Drop = body.Drop;
+		bent.Age = body.Age;
+		bent.Wet = body.Wet;
+		bent.Hurt = std::move(body.Hurt);
+		body = std::move(bent);
+		// A clank of dust and sparks of its colour where it hit (visual only).
+		ThrowDust(hitPoint, 6, body.Materials, body.Colors);
+		return true;
+	}
+
+	/// Metal (Bend) hit harder than it takes doesn't break: it dents where it hit, a shallow round bite pushed in from its surface, deeper the harder the hit.
+	/// Call while the body is lifted out of the terrain. It may come apart if the dent goes right through a thin part.
+	void Dent(Body& body, const glm::vec2& hitPoint, float violence) {
+		glm::vec2 hitLocal = ToLocal(body, hitPoint);
+		glm::vec2 inward = body.Center - hitLocal;
+		float length = glm::length(inward);
+		inward = length > 0.01F ? inward / length : glm::vec2(0.0F, 1.0F);
+		float depth = std::clamp(violence, 1.0F, 4.0F);
+		float radius = 3.0F + depth * 1.5F;
+		glm::vec2 bite = hitLocal - inward * (radius - depth);
+		int removed = 0;
+		for (int y = std::max(0, static_cast<int>(bite.y - radius)); y <= std::min(body.H - 1, static_cast<int>(bite.y + radius)); ++y) {
+			for (int x = std::max(0, static_cast<int>(bite.x - radius)); x <= std::min(body.W - 1, static_cast<int>(bite.x + radius)); ++x) {
+				int local = y * body.W + x;
+				if (body.Materials[local] && glm::length(glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - bite) < radius) {
+					body.Materials[local] = 0;
+					++removed;
+				}
+			}
+		}
+		++body.Generation;
+		body.BreakCooldown = 20;
+		if (removed > 0) {
+			// A clank of dust and sparks of its colour (visual only).
+			ThrowDust(hitPoint, std::min(3 + removed / 4, 12), body.Materials, body.Colors);
+			Rebuild(body);
+		}
+	}
+
+	/// A piece with leaves (or grass) on it that lands hard sheds some: the harder the landing, the more, nearest where it hit first. The piece itself holds together.
+	/// Call while the body is lifted out of the terrain. Returns true if any came off.
+	bool ShedLeaves(Body& body, const glm::vec2& hitPoint, float hit, float breakSpeed) {
+		if (body.CarryingPixels >= body.PixelCount) {
+			return false;
+		}
+		// From a third of the way to breaking, up to most of them at the point of breaking.
+		float share = std::clamp((hit / std::max(breakSpeed, 0.1F) - 0.33F) * 0.9F, 0.0F, 0.6F);
+		if (share <= 0.0F) {
+			return false;
+		}
+		glm::vec2 hitLocal = ToLocal(body, hitPoint);
+		float reach = std::max(body.Radius, 1.0F);
+		int shed = 0;
+		for (int local = 0; local < static_cast<int>(body.Materials.size()) && s_DebrisThisUpdate < c_MaxDebrisPerUpdate; ++local) {
+			int material = body.Materials[local];
+			if (!material || !s_Flimsy[material]) {
+				continue;
+			}
+			glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
+			float closeness = 1.0F - std::min(glm::length(at - hitLocal) / reach, 1.0F);
+			if (Random01() < share * (0.3F + closeness)) {
+				glm::vec2 world = ToWorld(body, at - body.Center, body.Pos, body.Angle);
+				ThrowDebris(material, body.Colors[local], world, body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
+				body.Materials[local] = 0;
+				++shed;
+			}
+		}
+		if (shed == 0) {
+			return false;
+		}
+		// Leaves left hanging on nothing but other loose leaves go too (shredded, or thrown while there's room), so the tree stays one piece rather than
+		// dropping a scatter of leafy scraps.
+		std::vector<unsigned char> held(body.Materials.size(), 0);
+		std::vector<int> stack;
+		for (int local = 0; local < static_cast<int>(body.Materials.size()); ++local) {
+			if (body.Materials[local] && !s_Flimsy[body.Materials[local]]) {
+				held[local] = 1;
+				stack.push_back(local);
+			}
+		}
+		while (!stack.empty()) {
+			int local = stack.back();
+			stack.pop_back();
+			int x = local % body.W;
+			int y = local / body.W;
+			for (int dy = -1; dy <= 1; ++dy) {
+				for (int dx = -1; dx <= 1; ++dx) {
+					int nx = x + dx;
+					int ny = y + dy;
+					if (nx < 0 || ny < 0 || nx >= body.W || ny >= body.H) {
+						continue;
+					}
+					int neighbour = ny * body.W + nx;
+					if (body.Materials[neighbour] && !held[neighbour]) {
+						held[neighbour] = 1;
+						stack.push_back(neighbour);
+					}
+				}
+			}
+		}
+		for (int local = 0; local < static_cast<int>(body.Materials.size()); ++local) {
+			if (body.Materials[local] && !held[local]) {
+				if (CanThrow(1)) {
+					glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
+					ThrowDebris(body.Materials[local], body.Colors[local], ToWorld(body, at - body.Center, body.Pos, body.Angle), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
+				}
+				body.Materials[local] = 0;
+			}
+		}
+		Rebuild(body);
+		return true;
+	}
+
 	/// A body has stopped: it stays in the terrain as ordinary ground.
 	void Settle(SLTerrain* terrain, Body& body) {
 		for (const auto& [key, local]: body.Stamped) {
 			s_State[key] &= static_cast<unsigned char>(~c_Falling);
+		}
+		if (auto drop = body.Drop ? s_Drops.find(body.Drop) : s_Drops.end(); drop != s_Drops.end()) {
+			for (const auto& [key, local]: body.Stamped) {
+				drop->second.Rested.emplace_back(key, body.Materials[local]);
+			}
 		}
 		if (body.Stamped.size() >= 10 && body.Stamped.size() <= 8000) {
 			Rested rested;
@@ -824,6 +1451,7 @@ namespace {
 			rested.Center = body.Pos;
 			rested.Radius = body.Radius;
 			rested.When = g_TimerMan.GetSimUpdateCount();
+			rested.Drop = body.Drop;
 			if (s_Rested.size() >= c_MaxRested) {
 				s_Rested.erase(s_Rested.begin());
 			}
@@ -838,13 +1466,19 @@ namespace {
 
 	/// Moves a body for one update.
 	void StepBody(SLTerrain* terrain, Body& body) {
+		// A tree coming down meets proper ground only: plants, liquid and loose ground such as sand don't hold it or stop it. Once it has landed
+		// and been stamped back into the terrain it is ground like any other.
+		struct ProperGroundScope {
+			explicit ProperGroundScope(bool on) { s_ProperGroundOnly = on; }
+			~ProperGroundScope() { s_ProperGroundOnly = false; }
+		} properGroundScope(IsTree(body));
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		Unstamp(terrain, body);
 		++body.Age;
 		if (body.BreakCooldown > 0) {
 			--body.BreakCooldown;
 		}
-		if (body.PixelCount < c_MinBodyPixels) {
+		if (body.PixelCount < c_MinBodyPixels && CanThrow(static_cast<size_t>(body.PixelCount))) {
 			Crumble(body);
 			return;
 		}
@@ -1109,7 +1743,15 @@ namespace {
 		}
 
 		// Units in the way are hit, and slow it a little.
-		if (glm::length(body.Vel) > 1.2F) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		float secondsPerUpdate = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+		float metersPerSecond = c_MPP / secondsPerUpdate; //!< Pixels per update to m/s.
+		// (Slower than this nothing is hit; lower when hits are set to hurt at lower speeds, so those hits are found.)
+		float hitSpeed = std::clamp(tuning.HitDamage > 0.0F ? tuning.HitMinSpeed / metersPerSecond : 1.2F, 0.4F, 1.2F);
+		if (glm::length(body.Vel) > hitSpeed) {
+			long long now = g_TimerMan.GetSimUpdateCount();
+			constexpr long long c_HurtCooldown = 20; //!< Updates before the same piece can hurt the same unit again.
+			body.Hurt.erase(std::remove_if(body.Hurt.begin(), body.Hurt.end(), [now](const std::pair<long, long long>& hurt) { return now - hurt.second >= c_HurtCooldown; }), body.Hurt.end());
 			MovableObject* struck[4] = {};
 			int struckCount = 0;
 			for (size_t i = 0; i < body.Outline.size() && struckCount < 4; i += 3) {
@@ -1126,21 +1768,62 @@ namespace {
 				}
 				struck[struckCount++] = object;
 				float objectMass = std::max(object->GetMass(), 1.0F);
+				// Hurt by how fast the piece closes on the unit above the slowest speed that hurts, and by how heavy it is for the unit (up to the cap),
+				// as a share of the unit's full health so big and small units alike take the same share from the same blow.
+				// A tree coming down goes through units and vehicles as a standing one does, while they don't bump into trees.
+				if (object->IsActor() && !TerrainTrees::UnitsCollide() && IsTree(body)) {
+					continue;
+				}
+				if (Actor* actor = dynamic_cast<Actor*>(object); actor && tuning.HitDamage > 0.0F && body.PixelCount >= tuning.HitMinPixels && !actor->IsDead()) {
+					long id = actor->GetUniqueID();
+					bool hurtLately = std::any_of(body.Hurt.begin(), body.Hurt.end(), [id](const std::pair<long, long long>& hurt) { return hurt.first == id; });
+					float speed = glm::length(body.Vel);
+					glm::vec2 actorVel(actor->GetVel().GetX() / metersPerSecond, actor->GetVel().GetY() / metersPerSecond);
+					float closing = speed > 0.0F ? glm::dot(body.Vel - actorVel, body.Vel / speed) * metersPerSecond : 0.0F;
+					if (!hurtLately && closing > tuning.HitMinSpeed) {
+						float heft = std::min(body.Mass / objectMass, std::max(tuning.HitMassCap, 0.0F));
+						float damage = (closing - tuning.HitMinSpeed) * heft * 0.06F * tuning.HitDamage * actor->GetMaxHealth();
+						if (damage > 0.0F) {
+							actor->AddHealth(-damage);
+							body.Hurt.emplace_back(id, now);
+						}
+					}
+				}
 				float weight = std::min(body.Mass, objectMass * 2.0F + 20.0F);
-				object->AddAbsImpulseForce(Vector(body.Vel.x, body.Vel.y) * (3.0F * weight), Vector(at.x, at.y));
+				if (tuning.HitKnockback > 0.0F) {
+					object->AddAbsImpulseForce(Vector(body.Vel.x, body.Vel.y) * (3.0F * weight * tuning.HitKnockback), Vector(at.x, at.y));
+				}
 				body.Vel *= 1.0F - std::min(0.3F, objectMass / (objectMass + body.Mass));
 			}
 		}
 
 		// Hit harder than its material can take: it cracks.
-		float breakSpeed = (1.6F + body.Toughness / 45.0F) * std::max(TerrainCollapse::GetTuning().BreakStrength, 0.1F);
+		float breakSpeed = BreakSpeed(body);
 		// A thud of dust where it lands (visual only).
 		if (hardestHit > 1.2F) {
 			ThrowDust(hardestPoint, std::min(static_cast<int>((3.0F + static_cast<float>(body.PixelCount) / 120.0F) * hardestHit * 0.5F), 30), body.Materials, body.Colors);
 		}
+		// A tree that lands hard loses leaves, whether or not its trunk breaks.
+		if (body.BreakCooldown == 0 && ShedLeaves(body, hardestPoint, hardestHit, breakSpeed)) {
+			body.BreakCooldown = 6;
+			if (body.Done) {
+				return;
+			}
+		}
 		if (hardestHit > breakSpeed && body.BreakCooldown == 0 && body.Generation < c_MaxGeneration && body.PixelCount >= c_MinBreakPixels) {
-			Break(body, hardestPoint, hardestHit / breakSpeed);
-			return;
+			// Metal through and through dents; anything else breaks, each material its own way.
+			if (body.StyleStrength[c_Bend] > 0.0F && body.StyleStrength[c_Bend] >= 0.999F * (body.StyleStrength[c_Shatter] + body.StyleStrength[c_Crack] + body.StyleStrength[c_Crumble] + body.StyleStrength[c_Splinter] + body.StyleStrength[c_Bend])) {
+				// A chunky piece only dents when hit well over the threshold.
+				if (!BendAtCrease(body, hardestPoint, hardestHit / breakSpeed) && hardestHit > breakSpeed * 1.5F) {
+					Dent(body, hardestPoint, hardestHit / breakSpeed);
+				}
+				if (body.Done) {
+					return;
+				}
+			} else {
+				Break(body, hardestPoint, hardestHit / breakSpeed);
+				return;
+			}
 		}
 
 		float movedBy = glm::length(body.Pos - startPos) + std::abs(body.Angle - startAngle) * body.Radius;
@@ -1171,8 +1854,37 @@ namespace {
 		s_Bodies.erase(std::remove_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return body.Done; }), s_Bodies.end());
 	}
 
+	/// Whether two touching pixels' materials make one piece. With tree rules, leaves join only leaves and tree trunk: a tree hangs on its own trunk,
+	/// so one whose trunk is cut falls with its leaves, even where they brush the ground or a wall.
+	bool Joins(int material, int other, bool treeRules, int x, int y, int otherX, int otherY) {
+		if (!treeRules) {
+			return true;
+		}
+		if (s_Leaves[material] != s_Leaves[other]) {
+			if (!s_TreeTrunk[s_Leaves[material] ? other : material]) {
+				return false;
+			}
+		}
+		// Two trees' leaves that touch don't make them one: each tree hangs on its own trunk, so one whose trunk is cut comes down whole, whatever
+		// its leaves rest against. (Pixels belonging to no tree found, such as scraps, join as they did.)
+		if (s_Leaves[material] || s_Leaves[other] || (s_TreeTrunk[material] && s_TreeTrunk[other])) {
+			long a = TerrainTrees::OwnerIDAt(x, y);
+			long b = TerrainTrees::OwnerIDAt(otherX, otherY);
+			if (a != 0 && b != 0 && a != b) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/// Whether a pixel can start a search for loose pieces. The search is done twice: first from everything but leaves, with tree rules, which finds
+	/// trees as pieces (trunk and leaves); then from the leaves not yet reached, without, so plants and leaves on no trunk hold on by anything they touch.
+	bool StartsSearch(int material, bool treeRules) {
+		return material != g_MaterialAir && !FluidSim::IsLiquid(material) && !s_NoHold[material] && !(treeRules && s_Leaves[material]);
+	}
+
 	/// Flood fills the solid piece containing a pixel. Returns true if it's a floating piece that should fall, filling its pixels.
-	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece, bool keepFittings = true) {
+	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece, bool keepFittings = true, bool treeRules = false) {
 		piece.clear();
 		s_Stack.clear();
 		s_FillSeen.clear();
@@ -1212,14 +1924,18 @@ namespace {
 					}
 					int neighbour = ny * width + nx;
 					unsigned char state = s_State[neighbour];
+					int neighbourMaterial = materialBitmap->line[ny][nx];
+					// Liquid, ash and charcoal hold nothing up.
+					if (neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial) || s_NoHold[neighbourMaterial] || !Joins(material, neighbourMaterial, treeRules, x, y, nx, ny)) {
+						continue;
+					}
 					if (state & c_Supported) {
 						// Joined to a piece already found to be held up.
 						floating = false;
 						continue;
 					}
-					int neighbourMaterial = materialBitmap->line[ny][nx];
-					// Liquid holds nothing up, and a piece that's already falling isn't support either.
-					if ((state & (c_Seen | c_Falling)) || neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial)) {
+					// A piece that's already falling isn't support either.
+					if (state & (c_Seen | c_Falling)) {
 						continue;
 					}
 					s_State[neighbour] |= c_Seen;
@@ -1292,16 +2008,24 @@ namespace {
 		};
 		static std::vector<unsigned char> solid;
 		static std::vector<unsigned char> pared;
+		static std::vector<unsigned char> pareBy; //!< How far each pixel is pared, by its material's own neck width (MaterialBehaviour::NeckWidth): 0 for wood, which holds by a sliver.
 		static std::vector<int> owner;
 		static std::vector<int> depth;
 		static std::vector<int> queue;
 		size_t cells = static_cast<size_t>(side) * side;
 		solid.assign(cells, 0);
 		pared.assign(cells, 0);
+		pareBy.assign(cells, static_cast<unsigned char>(pare));
 		owner.assign(cells, -1);
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
-				solid[static_cast<size_t>(wy) * side + wx] = solidAt(left + wx, top + wy) ? 1 : 0;
+				size_t cell = static_cast<size_t>(wy) * side + wx;
+				solid[cell] = solidAt(left + wx, top + wy) ? 1 : 0;
+				if (int x = left + wx, y = top + wy; solid[cell] && WrapInWorld(x, y) && y < s_Height) {
+					if (int neck = s_Neck[materialBitmap->line[y][x]]; neck >= 0 && neck < neckWidth) {
+						pareBy[cell] = static_cast<unsigned char>((neck + 1) / 2);
+					}
+				}
 			}
 		}
 		// Rows of solid first, then columns of those: a pixel is kept if everything within the paring distance of it is solid. Beyond the window counts as solid.
@@ -1310,7 +2034,8 @@ namespace {
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
 				bool all = true;
-				for (int d = -pare; d <= pare && all; ++d) {
+				int by = pareBy[static_cast<size_t>(wy) * side + wx];
+				for (int d = -by; d <= by && all; ++d) {
 					int x = wx + d;
 					all = x < 0 || x >= side || solid[static_cast<size_t>(wy) * side + x];
 				}
@@ -1320,7 +2045,8 @@ namespace {
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
 				bool all = true;
-				for (int d = -pare; d <= pare && all; ++d) {
+				int by = pareBy[static_cast<size_t>(wy) * side + wx];
+				for (int d = -by; d <= by && all; ++d) {
 					int y = wy + d;
 					all = y < 0 || y >= side || rows[static_cast<size_t>(y) * side + wx];
 				}
@@ -1493,23 +2219,25 @@ namespace {
 	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
 	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check) {
 		auto was = std::make_shared<Before>();
+		TerrainTrees::GetTrees(); // Which tree each pixel is part of, as it stands before the change (see Joins).
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		std::vector<int> piece;
 		s_Touched.clear();
-		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(s_Height - 1, check.Y + check.Radius); ++y) {
-			for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
-				int x = rawX;
-				if (!WrapInWorld(x, y)) {
-					continue;
-				}
-				int key = y * s_Width + x;
-				int material = materialBitmap->line[y][x];
-				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || (s_State[key] & (c_Seen | c_Falling))) {
-					continue;
-				}
-				if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece, false)) {
-					std::sort(piece.begin(), piece.end());
-					was->Floating.push_back(piece);
+		for (bool treeRules: {true, false}) {
+			for (int y = std::max(0, check.Y - check.Radius); y <= std::min(s_Height - 1, check.Y + check.Radius); ++y) {
+				for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
+					int x = rawX;
+					if (!WrapInWorld(x, y)) {
+						continue;
+					}
+					int key = y * s_Width + x;
+					if (!StartsSearch(materialBitmap->line[y][x], treeRules) || (s_State[key] & (c_Seen | c_Falling))) {
+						continue;
+					}
+					if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece, false, treeRules)) {
+						std::sort(piece.begin(), piece.end());
+						was->Floating.push_back(piece);
+					}
 				}
 			}
 		}
@@ -1548,6 +2276,10 @@ namespace {
 		body.H = maxY - minY + 1;
 		body.Materials.assign(static_cast<size_t>(body.W) * body.H, 0);
 		body.Colors.assign(static_cast<size_t>(body.W) * body.H, 0);
+		auto drop = s_LiftDrop ? s_Drops.find(s_LiftDrop) : s_Drops.end();
+		if (drop != s_Drops.end()) {
+			body.Drop = s_LiftDrop;
+		}
 		for (int pieceKey: piece) {
 			int px = pieceKey % width;
 			int py = pieceKey / width;
@@ -1556,6 +2288,9 @@ namespace {
 			body.Colors[local] = static_cast<unsigned char>(terrain->GetFGColorPixel(px, py));
 			body.Stamped.emplace_back(pieceKey, local);
 			s_State[pieceKey] |= c_Falling;
+			if (drop != s_Drops.end()) {
+				drop->second.Original.push_back({pieceKey, body.Materials[local], body.Colors[local]});
+			}
 		}
 		if (!FinishBody(body, glm::vec2(static_cast<float>(minX), static_cast<float>(minY)))) {
 			return;
@@ -1595,32 +2330,35 @@ namespace {
 		}
 
 		// Everything loose around the point, and for each, which mass that was already hanging in the air it came from (-1 for none: it was part of the world).
+		TerrainTrees::GetTrees(); // (Stale by up to a second, which is as wanted: the trees as they stood before a cut.)
 		std::vector<std::vector<int>> loose;
 		std::vector<int> cameFrom;
 		std::vector<int> piece;
 		s_Touched.clear();
-		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
-			const unsigned char* materialRow = materialBitmap->line[y];
-			for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
-				int x = wrapX ? (rawX % width + width) % width : rawX;
-				if (x < 0 || x >= width) {
-					continue;
-				}
-				int key = y * width + x;
-				if (materialRow[x] == g_MaterialAir || FluidSim::IsLiquid(materialRow[x]) || (s_State[key] & (c_Seen | c_Falling))) {
-					continue;
-				}
-				if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, !(tuning.FloatingStays && check.Was))) {
-					continue;
-				}
-				int origin = -1;
-				for (size_t i = 0; tuning.FloatingStays && check.Was && i < check.Was->Floating.size() && origin < 0; ++i) {
-					if (ShareIn(piece, check.Was->Floating[i]) > 0.5F) {
-						origin = static_cast<int>(i);
+		for (bool treeRules: {true, false}) {
+			for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
+				const unsigned char* materialRow = materialBitmap->line[y];
+				for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
+					int x = wrapX ? (rawX % width + width) % width : rawX;
+					if (x < 0 || x >= width) {
+						continue;
 					}
+					int key = y * width + x;
+					if (!StartsSearch(materialRow[x], treeRules) || (s_State[key] & (c_Seen | c_Falling))) {
+						continue;
+					}
+					if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, !(tuning.FloatingStays && check.Was), treeRules)) {
+						continue;
+					}
+					int origin = -1;
+					for (size_t i = 0; tuning.FloatingStays && check.Was && i < check.Was->Floating.size() && origin < 0; ++i) {
+						if (ShareIn(piece, check.Was->Floating[i]) > 0.5F) {
+							origin = static_cast<int>(i);
+						}
+					}
+					loose.push_back(piece);
+					cameFrom.push_back(origin);
 				}
-				loose.push_back(piece);
-				cameFrom.push_back(origin);
 			}
 		}
 		for (int key: s_Touched) {
@@ -1635,7 +2373,10 @@ namespace {
 				falls = other != i && cameFrom[other] == cameFrom[i] && (loose[other].size() > loose[i].size() || (loose[other].size() == loose[i].size() && other < i));
 			}
 			if (falls) {
+				// (What a drop's check lets fall is that drop's too, and taken back with it.)
+				s_LiftDrop = check.Drop;
 				LiftPiece(terrain, loose[i]);
+				s_LiftDrop = 0;
 			}
 		}
 	}
@@ -1705,7 +2446,177 @@ namespace {
 		Stamp(terrain, body);
 		s_Bodies.push_back(std::move(body));
 	}
+
+	/// Breaks all the ground in a box loose (TerrainCollapse::DropArea). Inside the box the ground comes away in pieces, each joined up on
+	/// its own; a big box is cut into rough chunks about c_DropChunk pixels across first (round random points, as rock cracks), so it falls
+	/// and tumbles as rubble rather than as one huge slab. Then what was held up only by what was taken is checked, as after a dig.
+	void DropBox(SLTerrain* terrain, const DropRequest& request, long long now) {
+		constexpr int c_DropChunk = 110;
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int left = request.Left;
+		int right = request.Right;
+		int top = std::max(request.Top, 0);
+		int bottom = std::min(request.Bottom, s_Height - 1);
+		if (!s_WrapX) {
+			left = std::max(left, 0);
+			right = std::min(right, s_Width - 1);
+		}
+		right = std::min(right, left + s_Width - 1);
+		if (right < left || bottom < top) {
+			return;
+		}
+		int boxWidth = right - left + 1;
+		int boxHeight = bottom - top + 1;
+		while (s_Drops.size() >= c_MaxDrops) {
+			s_Drops.erase(s_Drops.begin());
+		}
+		s_Drops[request.Drop];
+		// How things are round it first, so the check afterwards lets fall only what taking the box cuts loose.
+		int middleX = left + boxWidth / 2;
+		WrapInWorld(middleX, top);
+		int reach = std::min(static_cast<int>(std::hypot(static_cast<float>(boxWidth), static_cast<float>(boxHeight)) * 0.5F) + 40, 600);
+		Check after{middleX, top + boxHeight / 2, reach, 0, LookBefore(terrain, {middleX, top + boxHeight / 2, reach, now, nullptr}), request.Drop};
+
+		// Which chunk each pixel of the box falls in (-1 for no ground): one for a small box, else the nearest of a jittered grid of points.
+		bool chunked = boxWidth * boxHeight > TerrainCollapse::GetTuning().MaxPiecePixels;
+		int gridWidth = (boxWidth + c_DropChunk - 1) / c_DropChunk;
+		int gridHeight = (boxHeight + c_DropChunk - 1) / c_DropChunk;
+		std::vector<glm::vec2> seeds;
+		if (chunked) {
+			seeds.reserve(static_cast<size_t>(gridWidth) * gridHeight);
+			for (int gy = 0; gy < gridHeight; ++gy) {
+				for (int gx = 0; gx < gridWidth; ++gx) {
+					seeds.emplace_back((static_cast<float>(gx) + 0.15F + Random01() * 0.7F) * c_DropChunk, (static_cast<float>(gy) + 0.15F + Random01() * 0.7F) * c_DropChunk);
+				}
+			}
+		}
+		std::vector<int> chunk(static_cast<size_t>(boxWidth) * boxHeight, -1);
+		auto keyOf = [&](int bx, int by) {
+			int x = left + bx;
+			int y = top + by;
+			WrapInWorld(x, y);
+			return y * s_Width + x;
+		};
+		for (int by = 0; by < boxHeight; ++by) {
+			for (int bx = 0; bx < boxWidth; ++bx) {
+				int key = keyOf(bx, by);
+				int material = materialBitmap->line[key / s_Width][key % s_Width];
+				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || s_Fixed[material] || (s_State[key] & c_Falling)) {
+					continue;
+				}
+				int nearest = 0;
+				if (chunked) {
+					float best = 1e9F;
+					int gx = bx / c_DropChunk;
+					int gy = by / c_DropChunk;
+					for (int ny = std::max(gy - 1, 0); ny <= std::min(gy + 1, gridHeight - 1); ++ny) {
+						for (int nx = std::max(gx - 1, 0); nx <= std::min(gx + 1, gridWidth - 1); ++nx) {
+							glm::vec2 offset = seeds[static_cast<size_t>(ny) * gridWidth + nx] - glm::vec2(static_cast<float>(bx) + 0.5F, static_cast<float>(by) + 0.5F);
+							if (float distance = glm::dot(offset, offset); distance < best) {
+								best = distance;
+								nearest = ny * gridWidth + nx;
+							}
+						}
+					}
+				}
+				chunk[static_cast<size_t>(by) * boxWidth + bx] = nearest;
+			}
+		}
+		// Each joined-up piece of a chunk is lifted out on its own, the box's own edges cutting it from the ground round it.
+		std::vector<int> stack;
+		std::vector<int> piece;
+		s_LiftDrop = request.Drop;
+		for (int start = 0; start < static_cast<int>(chunk.size()); ++start) {
+			if (chunk[start] < 0) {
+				continue;
+			}
+			int id = chunk[start];
+			chunk[start] = -1;
+			stack.assign(1, start);
+			piece.clear();
+			while (!stack.empty()) {
+				int local = stack.back();
+				stack.pop_back();
+				int bx = local % boxWidth;
+				int by = local / boxWidth;
+				piece.push_back(keyOf(bx, by));
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = bx + dx;
+						int ny = by + dy;
+						if (nx < 0 || ny < 0 || nx >= boxWidth || ny >= boxHeight) {
+							continue;
+						}
+						int neighbour = ny * boxWidth + nx;
+						if (chunk[neighbour] == id) {
+							chunk[neighbour] = -1;
+							stack.push_back(neighbour);
+						}
+					}
+				}
+			}
+			LiftPiece(terrain, piece);
+		}
+		s_LiftDrop = 0;
+		FluidSim::Disturb(Vector(static_cast<float>(left + boxWidth / 2), static_cast<float>(top + boxHeight / 2)), static_cast<float>(reach));
+		after.DueUpdate = now + 20;
+		s_Scheduled.push_back(after);
+		after.DueUpdate = now + 60;
+		s_Scheduled.push_back(after);
+	}
+
+	/// A step on loose ground: the few surface pixels just ahead of the foot (in the way the unit is going) come loose and are pushed along, so a run down a sand slope slumps it a little.
+	void Scuff(SLTerrain* terrain, const Footfall& step) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int depth = tuning.ScuffStrength >= 1.5F ? 3 : 2;
+		std::vector<int> piece;
+		float scuffiness = 0.0F;
+		for (int column = 0; column < 3; ++column) {
+			int x = step.X + step.Direction * (column + 1);
+			if (!WrapInWorld(x, step.Y)) {
+				continue;
+			}
+			// The surface of this column near the foot: the first ground with air above it.
+			for (int y = std::max(step.Y - 3, 1); y < std::min(step.Y + 5, s_Height); ++y) {
+				int material = materialBitmap->line[y][x];
+				if (material == g_MaterialAir || materialBitmap->line[y - 1][x] != g_MaterialAir) {
+					continue;
+				}
+				for (int below = 0; below < depth && y + below < s_Height; ++below) {
+					int key = (y + below) * s_Width + x;
+					int belowMaterial = materialBitmap->line[y + below][x];
+					if (s_Scuff[belowMaterial] <= 0.0F || s_Fixed[belowMaterial] || (s_State[key] & c_Falling)) {
+						break;
+					}
+					scuffiness = std::max(scuffiness, s_Scuff[belowMaterial]);
+					piece.push_back(key);
+				}
+				break;
+			}
+		}
+		if (static_cast<int>(piece.size()) < c_MinBodyPixels || Random01() > std::min(1.0F, tuning.ScuffStrength * scuffiness * 0.6F)) {
+			return;
+		}
+		size_t before = s_Bodies.size();
+		LiftPiece(terrain, piece);
+		if (s_Bodies.size() > before) {
+			float push = std::clamp(tuning.ScuffStrength, 0.0F, 2.0F) * std::clamp(step.Speed, 0.4F, 1.5F);
+			s_Bodies.back().Vel += glm::vec2(static_cast<float>(step.Direction) * (0.35F + 0.25F * Random01()) * push, -0.25F * push);
+			s_Bodies.back().Still = 0;
+		}
+	}
 } // namespace
+
+void TerrainCollapse::NoteFootfall(int x, int y, int direction, float speed) {
+	if (!s_Enabled || s_Tuning.ScuffStrength <= 0.0F || x < 0 || y < 0 || direction == 0) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Footfalls.size() < c_MaxFootfalls) {
+		s_Footfalls.push_back({x, y, direction < 0 ? -1 : 1, speed});
+	}
+}
 
 void TerrainCollapse::QueueCheck(const Vector& position, float radius) {
 	if (!s_Enabled) {
@@ -1759,6 +2670,78 @@ void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const cha
 	s_ChunkRequests.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), materialName ? materialName : "Stone"});
 }
 
+int TerrainCollapse::DropArea(int left, int top, int right, int bottom) {
+	if (!s_Enabled) {
+		return 0;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	int drop = s_NextDrop++;
+	s_DropRequests.push_back({std::min(left, right), std::min(top, bottom), std::max(left, right), std::max(top, bottom), drop});
+	return drop;
+}
+
+void TerrainCollapse::TakeBackDrop(int drop) {
+	{
+		std::scoped_lock lock(s_QueueMutex);
+		s_DropRequests.erase(std::remove_if(s_DropRequests.begin(), s_DropRequests.end(), [drop](const DropRequest& request) { return request.Drop == drop; }), s_DropRequests.end());
+	}
+	auto found = s_Drops.find(drop);
+	if (found == s_Drops.end()) {
+		return;
+	}
+	DropRecord record = std::move(found->second);
+	s_Drops.erase(found);
+	Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
+	if (!terrain || scene != s_Scene || s_State.size() != static_cast<size_t>(s_Width) * static_cast<size_t>(s_Height)) {
+		return;
+	}
+	const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+	int minX = s_Width;
+	int minY = s_Height;
+	int maxX = -1;
+	int maxY = -1;
+	auto grow = [&](int key) {
+		minX = std::min(minX, key % s_Width);
+		maxX = std::max(maxX, key % s_Width);
+		minY = std::min(minY, key / s_Width);
+		maxY = std::max(maxY, key / s_Width);
+	};
+	// Its pieces still falling are lifted out and gone.
+	for (Body& body: s_Bodies) {
+		if (body.Drop == drop && !body.Done) {
+			for (const auto& [key, local]: body.Stamped) {
+				grow(key);
+			}
+			Unstamp(terrain, body);
+			body.Done = true;
+		}
+	}
+	s_Bodies.erase(std::remove_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return body.Done; }), s_Bodies.end());
+	// Those that came to rest are taken out of the ground where they lie, where it's still what they left.
+	for (const auto& [key, material]: record.Rested) {
+		if (materialBitmap->line[key / s_Width][key % s_Width] == material && !(s_State[key] & c_Falling)) {
+			terrain->SetMaterialPixel(key % s_Width, key / s_Width, g_MaterialAir);
+			terrain->SetFGColorPixel(key % s_Width, key / s_Width, ColorKeys::g_MaskColor);
+			grow(key);
+		}
+	}
+	s_Rested.erase(std::remove_if(s_Rested.begin(), s_Rested.end(), [drop](const Rested& rested) { return rested.Drop == drop; }), s_Rested.end());
+	// And the ground is put back where it was (not over a piece of another fall passing through).
+	for (const DropRecord::Pixel& pixel: record.Original) {
+		if (!(s_State[pixel.Key] & c_Falling)) {
+			terrain->SetMaterialPixel(pixel.Key % s_Width, pixel.Key / s_Width, pixel.Material);
+			terrain->SetFGColorPixel(pixel.Key % s_Width, pixel.Key / s_Width, pixel.Color);
+			grow(pixel.Key);
+		}
+	}
+	if (maxX >= minX) {
+		Box area(Vector(static_cast<float>(minX), static_cast<float>(minY)), static_cast<float>(maxX - minX + 1), static_cast<float>(maxY - minY + 1));
+		terrain->AddUpdatedMaterialArea(area);
+		FluidSim::Disturb(area.GetCenter(), std::max(area.GetWidth(), area.GetHeight()) * 0.5F + 4.0F);
+	}
+}
+
 void TerrainCollapse::Update() {
 	if (g_SceneMan.GetScene() != s_Scene || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		Clear();
@@ -1791,6 +2774,8 @@ void TerrainCollapse::Update() {
 	}
 	long long now = g_TimerMan.GetSimUpdateCount();
 	std::vector<ChunkRequest> chunks;
+	std::vector<Footfall> footfalls;
+	std::vector<DropRequest> drops;
 	std::vector<Check> pending;
 	{
 		std::scoped_lock lock(s_QueueMutex);
@@ -1799,6 +2784,8 @@ void TerrainCollapse::Update() {
 		std::sort(s_Pending.begin(), s_Pending.end(), [](const Check& a, const Check& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 		pending.swap(s_Pending);
 		chunks.swap(s_ChunkRequests);
+		footfalls.swap(s_Footfalls);
+		drops.swap(s_DropRequests);
 	}
 	for (const Check& check: pending) {
 		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
@@ -1808,6 +2795,14 @@ void TerrainCollapse::Update() {
 	}
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
+	}
+	for (const DropRequest& request: drops) {
+		DropBox(terrain, request, now);
+	}
+	// Steps on loose ground, in a fixed order, a few an update.
+	std::sort(footfalls.begin(), footfalls.end(), [](const Footfall& a, const Footfall& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Direction < b.Direction); });
+	for (size_t i = 0; i < footfalls.size() && i < 8; ++i) {
+		Scuff(terrain, footfalls[i]);
 	}
 	// Explosions throw loose pieces: the ones still moving, and ones lying where they came to rest in the last minute, which are lifted out of the ground again.
 	{
@@ -1862,6 +2857,7 @@ void TerrainCollapse::Update() {
 					size_t before = s_Bodies.size();
 					LiftPiece(terrain, piece);
 					if (s_Bodies.size() > before) {
+						s_Bodies.back().Drop = s_Drops.count(rested.Drop) ? rested.Drop : 0;
 						throwBody(s_Bodies.back());
 					}
 				}
@@ -1962,6 +2958,9 @@ void TerrainCollapse::Clear() {
 	s_Pending.clear();
 	s_Scheduled.clear();
 	s_ChunkRequests.clear();
+	s_Footfalls.clear();
+	s_DropRequests.clear();
+	s_Drops.clear();
 }
 
 int TerrainCollapse::GetCollapsedCount() {
@@ -1974,6 +2973,6 @@ int TerrainCollapse::GetFallingCount() {
 
 void TerrainCollapse::GetFallingPieces(std::vector<FallingPiece>& pieces) {
 	for (const Body& body: s_Bodies) {
-		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y});
+		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y, IsTree(body)});
 	}
 }

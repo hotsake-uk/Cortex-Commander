@@ -27,6 +27,7 @@
 
 namespace RTE {
 
+	class Camera;
 	class Scene;
 	class SceneLayer;
 	class SceneLayerTracked;
@@ -245,6 +246,16 @@ namespace RTE {
 			~LiquidsPassable() { --s_LiquidsPassableDepth; }
 			LiquidsPassable(const LiquidsPassable&) = delete;
 			LiquidsPassable& operator=(const LiquidsPassable&) = delete;
+		};
+
+		/// While one of these is alive on a thread, GetTerrMatter on that thread reports trees as air while units and vehicles don't bump into
+		/// them (TerrainTrees::ActorsPass). Units' and vehicles' own updates and their AI run under it, so what they feel for as they move (floor,
+		/// walls, steps, ledges, what's in the way ahead) is the ground they meet, not the trees they walk through.
+		struct TreesPassable {
+			TreesPassable() { ++s_TreesPassableDepth; }
+			~TreesPassable() { --s_TreesPassableDepth; }
+			TreesPassable(const TreesPassable&) = delete;
+			TreesPassable& operator=(const TreesPassable&) = delete;
 		};
 
 		/// While one of these is alive on a thread, GetTerrMatter on that thread reports liquid in the terrain as air for as far into it as the liquid
@@ -699,6 +710,47 @@ namespace RTE {
 		/// Gets where a team last saw a unit a player controls (AC-2), or a zero vector if not within maxAgeMS sim milliseconds.
 		Vector GetPlayerLastSeenPos(int team, float maxAgeMS) const;
 
+		/// Lets gas out into the air at a point (SB-6). Thread safe; applied on the next sim update.
+		/// @param position Where, in scene coordinates.
+		/// @param kind 0 smoke, 1 toxic gas, 2 methane, 3 steam.
+		/// @param amount How much: 1 fills a cell (8 pixels a side) thick.
+		void AddGas(const Vector& position, int kind, float amount) const;
+
+		/// Gets how thick a gas is at a point (SB-6), 0 for none, 1 for a cell full.
+		/// @param position Where, in scene coordinates.
+		/// @param kind 0 smoke, 1 toxic gas, 2 methane, 3 steam.
+		float GetGas(const Vector& position, int kind) const;
+
+		/// Gets how a passing blast wave moves the air at a point (SB-5), as the push it gives a weightless thing each update; zero in still air.
+		/// @param position Where, in scene coordinates.
+		Vector GetAirFlow(const Vector& position) const;
+
+		/// Sends a wave of pressure through the air from a point, as an explosion does (SB-5). Thread safe; applied on the next sim update.
+		/// @param position Where, in scene coordinates.
+		/// @param energy How big a blast, as an explosion's gib energy (a grenade is a few thousand).
+		void AddAirBlast(const Vector& position, float energy) const;
+
+		/// Puts a rope from one point to another, tied at each end to what is there: a unit or a thing, else the ground, else nothing (a loose
+		/// end). Thread safe; made on the next sim update.
+		/// @param type What it's made of: "Rope", "Thread", "Chain", "Steel cable" or "Bungee cord" (any other name is rope).
+		/// @param from Where it starts, in scene coordinates.
+		/// @param to Where it goes to.
+		/// @param slack How much longer than the straight line it is, 0 to 1 (0.1 hangs a little).
+		/// @return Its id, for AddRopePoint and RemoveRope.
+		int AddRope(const std::string& type, const Vector& from, const Vector& to, float slack) const;
+
+		/// Carries a rope on to another point, tied there to what is there as AddRope ties its ends. Thread safe; made on the next sim update.
+		void AddRopePoint(int rope, const Vector& position) const;
+
+		/// Takes a rope away. Thread safe.
+		void RemoveRope(int rope) const;
+
+		/// Cuts every rope within a circle. Thread safe.
+		void CutRopes(const Vector& position, float radius) const;
+
+		/// Gets how many ropes there are.
+		int GetRopeCount() const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 
@@ -1133,6 +1185,7 @@ namespace RTE {
 
 		bool m_DrawRayCastVisualizations; //!< Whether to visibly draw RayCasts to the Scene debug Bitmap.
 		static thread_local int s_LiquidsPassableDepth; //!< How many LiquidsPassable scopes are alive on this thread.
+		static thread_local int s_TreesPassableDepth; //!< How many TreesPassable scopes are alive on this thread.
 		static thread_local LiquidsSeeThrough::State s_SeeThrough; //!< The innermost LiquidsSeeThrough scope alive on this thread, if any.
 		bool m_DrawPixelCheckVisualizations; //!< Whether to visibly draw pixel checks (GetTerrMatter and GetMOIDPixel) to the Scene debug Bitmap.
 

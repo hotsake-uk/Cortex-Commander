@@ -41,6 +41,7 @@
 #include "ACRocket.h"
 #include "Actor.h"
 #include "ADoor.h"
+#include "AVehicle.h"
 #include "AEmitter.h"
 #include "AEJetpack.h"
 #include "AHuman.h"
@@ -115,6 +116,7 @@ namespace RTE {
 		LuaEntityCreateFunctionsDeclarationsForType(Turret);
 		LuaEntityCreateFunctionsDeclarationsForType(Actor);
 		LuaEntityCreateFunctionsDeclarationsForType(ADoor);
+		LuaEntityCreateFunctionsDeclarationsForType(AVehicle);
 		LuaEntityCreateFunctionsDeclarationsForType(AHuman);
 		LuaEntityCreateFunctionsDeclarationsForType(ACrab);
 		LuaEntityCreateFunctionsDeclarationsForType(ACraft);
@@ -154,6 +156,7 @@ namespace RTE {
 		LuaEntityCloneFunctionDeclarationForType(Turret);
 		LuaEntityCloneFunctionDeclarationForType(Actor);
 		LuaEntityCloneFunctionDeclarationForType(ADoor);
+		LuaEntityCloneFunctionDeclarationForType(AVehicle);
 		LuaEntityCloneFunctionDeclarationForType(AHuman);
 		LuaEntityCloneFunctionDeclarationForType(ACrab);
 		LuaEntityCloneFunctionDeclarationForType(ACraft);
@@ -198,6 +201,7 @@ namespace RTE {
 		LuaEntityCastFunctionsDeclarationsForType(Turret);
 		LuaEntityCastFunctionsDeclarationsForType(Actor);
 		LuaEntityCastFunctionsDeclarationsForType(ADoor);
+		LuaEntityCastFunctionsDeclarationsForType(AVehicle);
 		LuaEntityCastFunctionsDeclarationsForType(AHuman);
 		LuaEntityCastFunctionsDeclarationsForType(ACrab);
 		LuaEntityCastFunctionsDeclarationsForType(ACraft);

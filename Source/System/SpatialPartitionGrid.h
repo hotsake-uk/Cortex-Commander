@@ -4,6 +4,7 @@
 #include "Activity.h"
 
 #include "Constants.h"
+#include "Rectangles.h"
 
 #include "tsl/hopscotch_set.h"
 

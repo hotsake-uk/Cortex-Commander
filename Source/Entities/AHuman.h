@@ -53,6 +53,10 @@ namespace RTE {
 
 		/// Public member variable, method and friend function declarations
 	public:
+		/// Finds the scene's background ladder nodes again if they are over 4 s old, on the main thread, before the units and their AI update.
+		/// The AI threads then read them with no lock: nothing writes them while those threads run.
+		static void RefreshLadderNodes();
+
 		// Concrete allocation and cloning definitions
 		EntityAllocation(AHuman);
 		AddScriptFunctionNames(Actor, "OnStride");
@@ -338,6 +342,8 @@ namespace RTE {
 		bool IsJetFlying() const { return m_JetFlying && !m_Ladder.active; }
 		/// Whether the route-follower is flying a planned flight just now (take-off to landing; see MoveAlongRoute).
 		bool IsFlyingRoute() const { return m_Mover.flight.active; }
+		/// Whether the route-follower is digging along the route just now, the digger out and its trigger held (a Dig step; see MoveAlongRoute).
+		bool IsDiggingRoute() const { return m_Mover.digging; }
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
@@ -519,6 +525,11 @@ namespace RTE {
 
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
+
+		/// Does the calculations necessary to detect whether this AHuman is at rest or not. A dead body propped up on its head, a shoulder
+		/// or its feet doesn't count as at rest (and so doesn't settle into the terrain) until it has toppled over to lie down, or has been
+		/// stuck for a while.
+		void RestDetection() override;
 
 		/// Draws this AHuman's current graphical representation to a
 		/// BITMAP of choice.
@@ -902,6 +913,15 @@ namespace RTE {
 			bool digging = false; //!< Digging along the route (a Dig step), the digger out; put away again after.
 			float digSweep = 0.0F; //!< The digger's sweep either side of the way, radians.
 			bool digSweepUp = true;
+			Vector digPoint; //!< The route's point the dig under way is for, and how long it may stand there digging without getting nearer (from the ground it found ahead).
+			Timer digTimer;
+			double digBudgetMS = 0.0;
+			float digBestGap = 0.0F; //!< The nearest it has got to that point while digging.
+			Vector digRefused; //!< The route's point a dig was given up on (too hard, or too long): walked, not dug, until a new route comes.
+			bool digRefusedSet = false;
+			Vector unstickDig; //!< The route's point of a step of another kind it was stuck on with ground it cuts in the way: dug to (see MoveAlongRoute).
+			bool unstickDigSet = false;
+			Timer digRefusedTimer; //!< Since then: after the half minute the avoided step lasts, a route through there again is dug again.
 			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
 			Timer remedyTimer; //!< Since it began.
 			Vector remedySpot; //!< Where the unit was stuck when it began.
@@ -916,6 +936,11 @@ namespace RTE {
 			Timer blockIgnoreTimer;
 			long yieldTo = 0; //!< The unit this one is giving way to, head on, by unique ID, or 0.
 			Timer yieldTimer; //!< Since it began giving way.
+			long long arrivedTick = -1; //!< The sim update the follower last answered arrived on (standing at the goal is no pin).
+			int unpinDir = 0; //!< Getting free after a pin just now: the way it steps (-1 left, 1 right), and since when.
+			int unpinLevel = 0; //!< How many times running it has been pinned at this spot (see m_PinSpot).
+			Vector unpinFrom;
+			Timer unpinTimer;
 			Vector debugTakeOff; //!< Where the flight ahead takes off, for the overlay; hasTakeOff when there is one.
 			bool hasTakeOff = false;
 			bool takeOffCommitted = false; //!< Reached a take-off, and lining up for it nearby: the flight's rules hold until off or a while.
@@ -962,6 +987,25 @@ namespace RTE {
 		/// Picks the next remedy to try at a spot, of those allowed now and not tried this time stuck: one that worked there first, then the
 		/// rest in order, leaving out those that failed there last time. @return The remedy, or -1 for none.
 		int PickStuckRemedy(const Vector& spot, const std::array<bool, static_cast<int>(StuckRemedy::Count)>& allowed, unsigned int tried) const;
+
+		/// The pin watch, under everything else the route-follower does: a unit with somewhere to go whose body hasn't left a small circle for
+		/// 8 s is pinned, whatever it thinks it is doing (pressing up a ladder into a lip, a mantle caught and lost again and again, a flight
+		/// that can't take off from under an overhang, the same route asked for over and over). It lets go of what it holds, pushes the body
+		/// clear of the terrain it is wedged in, steps out to the side with more room (with a hop or leap the second time at the same spot),
+		/// and asks for a route another way, the steps it was pinned on made dearer for it. @return Whether the unpin has the keys this tick.
+		bool WatchForPin(bool holding);
+		/// Begins getting free of a pin (see WatchForPin).
+		void Unpin();
+		bool m_PinAnchorSet = false; //!< The pin watch: where the body was when it last moved, and since when. Kept out of the follower's own
+		Vector m_PinAnchor;            //!< state, which starts again whenever its caller skips a tick or two (as the AI's script does while a
+		Timer m_PinTimer;              //!< route is asked for), so a unit re-asked for the same route every few seconds never counted as pinned.
+		bool m_PinWideAnchorSet = false; //!< The same in a wider circle, for a unit going round and round one spot.
+		Vector m_PinWideAnchor;
+		Timer m_PinWideTimer;
+		double m_PinLastWatchMS = -1.0; //!< When the watch last ran (sim ms): a gap of over a second and a half is a hold by the caller.
+		Vector m_PinSpot; //!< Where the unit was last pinned, and how many times running near there (kept across routes and orders).
+		int m_PinCount = 0;
+		Timer m_PinSpotTimer;
 
 		/// Climbing a ladder: the body held to the ladder's line and moved along it by the climb (as the mantle moves it: gravity, the jet and
 		/// the walls are nothing to it meanwhile), the hands and feet on the rungs, one limb at a time, hand and opposite foot in turn.
@@ -1018,9 +1062,7 @@ namespace RTE {
 		/// The hands and feet on the rungs.
 		void UpdateLadderLimbs();
 		void LetGoOfLadder(const Vector& velocity);
-		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see LadderNear).
-		static std::shared_mutex s_LadderNodesMutex; //!< The AI's route-following runs on several threads at once: one refreshes the nodes
-		                                             //!< while the others read them.
+		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see RefreshLadderNodes).
 		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it
 		                                      //!< reads, and crashed the game before its window opened.)
@@ -1029,7 +1071,8 @@ namespace RTE {
 		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
 		ADoor* DoorAhead(const Vector& toPoint) const;
 		/// The nearest unit of this side standing in the walk's way (LM-2): within half a body and a little ahead on the side it walks to (and
-		/// no further than reach) and about level; not a door, a craft or a unit with no legs (a turret). @param direction -1 walking left, 1
+		/// no further than reach) and about level; not a door, a craft, a unit with no legs (a turret), nor one whose body ours passes through
+		/// (both ignoring team hits, as every AHuman and ACrab does by default, or either ignoring actor hits). @param direction -1 walking left, 1
 		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
 		Actor* UnitAhead(float direction, float reach) const;
 		bool InDoorSweep() const;

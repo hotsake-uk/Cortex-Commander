@@ -22,6 +22,7 @@ namespace RTE {
 			glm::vec2 Direction; //!< Unit vector along the streak.
 			float Length; //!< Streak length in pixels.
 			glm::vec3 Color; //!< Linear-ish brightness, fed to the emissive buffer.
+			bool Behind = false; //!< Drawn in the effects layer, behind units and the ground in front (LightingSettings::Behind).
 		};
 
 		/// A translucent puff (dust) to draw lit over the scene, in screen space.
@@ -31,6 +32,7 @@ namespace RTE {
 			glm::vec4 Color; //!< RGB albedo 0..1 in gamma space, A opacity.
 			float Angle = 0.0F; //!< How its soft shape is turned, in radians.
 			bool Mirrored = false; //!< Whether its soft shape is mirrored.
+			bool Behind = false; //!< Drawn in the effects layer, behind units and the ground in front (LightingSettings::Behind).
 		};
 
 		/// Gets a color as 0xRRGGBB: its RGB if set, otherwise its palette index looked up in the palette. 0 if it has neither (index 0 is the mask color).
@@ -58,12 +60,21 @@ namespace RTE {
 		/// @return Whether the kind was recognised.
 		static bool Emit(const std::string& kind, const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB);
 
+		/// Queues drops of a splash ("Droplets", see Emit) drawn their own size and opacity, and optionally as an under-layer drawn beneath every other drop. Thread safe. Render only.
+		/// @param size How big each drop is drawn, in pixels across, 1 to 4.
+		/// @param opacity How solid each drop is, 0 to 1.
+		/// @param under Whether they are drawn under every other drop and chip.
+		static void EmitDroplets(const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB, float size, float opacity, bool under);
+
 		/// Queues a glowing ember that rises from a fire. Render only.
 		static void SpawnEmber(const Vector& position);
 
 		/// Moves all particles on by however much simulation time passed since the last call, and adds queued spawns. Call once per frame.
-		/// @param amount Multiplier for how many particles spawn; 0 turns the system off.
-		static void Update(float amount);
+		/// @param sparks Multiplier for how many sparks spawn; 0 for none.
+		/// @param dust Multiplier for how many dust puffs spawn; 0 for none.
+		/// @param debris Multiplier for how many debris chips spawn; 0 for none.
+		/// Every other kind (embers, smoke, fire, spray, drops, froth) follows the largest of the three; all three 0 turns the system off.
+		static void Update(float sparks, float dust, float debris);
 
 		/// Draws the opaque debris chips into the scene (so they're lit like everything else). Call while drawing a camera's view.
 		/// Translucent dust is drawn later over the lit scene, see GetPuffs.

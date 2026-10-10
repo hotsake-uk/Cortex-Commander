@@ -10,6 +10,8 @@
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
+#include "AirPressure.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -22,7 +24,9 @@
 #include "SettingsMan.h"
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
 #include "TimerMan.h"
@@ -33,6 +37,7 @@
 #include "ToolWidgets.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstring>
 #include <functional>
@@ -123,6 +128,38 @@ namespace {
 		}
 	}
 
+	/// The event looks one by one (G-11), each with a button that plays it once so it can be judged: the blast flash is the one most players
+	/// bothered by flashing want off.
+	void EventLookSwitches(LightingSettings& settings) {
+		struct EventLook {
+			const char* Label;
+			bool* On;
+			int Look;
+			const char* Tip;
+		};
+		const EventLook looks[] = {
+		    {"Blast flash", &settings.EventBlastFlash, LightingSettings::LookFlash, "The picture washes out white and warm for a moment after a huge blast. Off if flashing bothers you."},
+		    {"Hurt look", &settings.EventHurtLook, LightingSettings::LookHurt, "When your unit is badly hurt the picture drains, darkens at the edges and beats faintly like a pulse."},
+		    {"Fire warmth", &settings.EventFireWarmth, LightingSettings::LookWarm, "The picture warms a little standing by a fire."},
+		};
+		for (const EventLook& look: looks) {
+			Check(look.Label, look.On);
+			Tip(look.Tip);
+			if (!s_LastShown) {
+				continue;
+			}
+			ImGui::PushID(look.Label);
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!*look.On);
+			if (ToolUI::Button("Preview")) {
+				g_PostProcessMan.PulseGrade(look.Look, 1.0F, look.Look == LightingSettings::LookFlash ? 40.0F : 300.0F, look.Look == LightingSettings::LookFlash ? 1100.0F : 1800.0F);
+			}
+			ImGui::SetItemTooltip("Plays this look once, at the event grade strength.");
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+	}
+
 	void DrawPresets() {
 		if (!s_PresetsListed) {
 			s_Presets = g_SettingsMan.ListPresets();
@@ -141,7 +178,21 @@ namespace {
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("A preset holds every setting in this panel: the look, the time and weather, water, fire, and how the ground falls.\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SetItemTooltip("A preset holds every setting in this panel, from the look, the time and weather, water, fire and how the ground falls to the AI, the HUD, the overlays and the game speed, and the game's own settings from the Settings menu (items shown, map wrapping, screen shake...).\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SameLine();
+		const std::string& startupPreset = g_SettingsMan.GetStartupPreset();
+		bool loadsAtStart = s_PresetName[0] && startupPreset == s_PresetName;
+		ImGui::BeginDisabled(s_PresetName[0] == 0 || (!loadsAtStart && std::find(s_Presets.begin(), s_Presets.end(), std::string(s_PresetName)) == s_Presets.end()));
+		if (ImGui::Checkbox("Load at start", &loadsAtStart)) {
+			g_SettingsMan.SetStartupPreset(loadsAtStart ? s_PresetName : "");
+			g_SettingsMan.UpdateSettingsFile();
+			s_PresetMessage = loadsAtStart ? std::string("\"") + s_PresetName + "\" loads every time the game starts." : "No preset loads at start.";
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Loads this preset every time the game starts, over Settings.ini, so you don't have to pick it each time.\nThe game speed, freezing, the AI pause and the debug views in it are left off at start.\nChanges made later are only kept in it if it is saved again.");
+		if (!startupPreset.empty()) {
+			ImGui::TextDisabled("Loads at start: %s", startupPreset.c_str());
+		}
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
 		ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName));
 		ImGui::SameLine();
@@ -156,6 +207,10 @@ namespace {
 		ImGui::SameLine();
 		if (ToolUI::Button("Delete")) {
 			s_PresetMessage = g_SettingsMan.DeletePreset(s_PresetName) ? std::string("Deleted \"") + s_PresetName + "\"." : "There is no preset of that name.";
+			if (g_SettingsMan.GetStartupPreset() == s_PresetName) {
+				g_SettingsMan.SetStartupPreset("");
+				g_SettingsMan.UpdateSettingsFile();
+			}
 			s_PresetName[0] = 0;
 			s_PresetsListed = false;
 		}
@@ -163,6 +218,7 @@ namespace {
 		if (ToolUI::Button("Usual settings")) {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
+			AirPressure::GetTuning() = AirPressure::Tuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -217,6 +273,19 @@ void DebugMan::SettingsGUI() {
 		}
 		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
+		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
+		{
+			AirPressure::Tuning& air = AirPressure::GetTuning();
+			Slider("Wind gusts", &air.Gusts, 0.0F, 3.0F, "%.2fx");
+			Tip("How much the wind gusts and lulls every few seconds: at 1 gusts blow about half again as hard, at 2 nearly twice. 0: a steady wind.");
+			Slider("Wind shifts", &air.Shifts, 0.0F, 3.0F, "%.2fx");
+			Tip("How much the wind's strength wanders over a minute or so, and the light breeze's way with it. 0: it stays as set.");
+			Slider("Light breeze", &air.Breeze, 0.0F, 100.0F, "%.0f px/s");
+			Tip("A breeze that blows even with the wind at 0, wandering in strength and now and then turning about. 0: still air is still.");
+			if (Plain()) {
+				ImGui::TextDisabled("Blowing now: %.0f px/s", AirPressure::GetNaturalWind());
+			}
+		}
 		Slider("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		Tip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
 		Check("More weather types", &settings.CustomWeather);
@@ -233,8 +302,6 @@ void DebugMan::SettingsGUI() {
 			Slider("Shelter edge softness", &settings.ShelterSoftness, 0.0F, 2.0F);
 		}
 		Toggle("Still water freezes over in snow", FluidSim::FreezingEnabled(), [](bool on) { FluidSim::SetFreezingEnabled(on); });
-		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
-		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
 		Check("Living world (sway, snow, wet ground)", &settings.LivingWorld);
 		if (int strikes = static_cast<int>(WeatherLightning::GetStrikes()); Combo("Storm lightning", &strikes, "In the sky only\0Strikes the ground, starts fires\0Strikes the ground, fires and hurts units\0")) {
 			WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(strikes, 0, 2)));
@@ -300,6 +367,12 @@ void DebugMan::SettingsGUI() {
 		if (settings.SunShadowMap) {
 			Slider("Sun shadow softness", &settings.SunShadowSoftness, 0.0F, 2.0F);
 		}
+		Slider("Terrain shadows on the background", &settings.BackgroundShadows, 0.0F, 1.0F);
+		Tip("The terrain casts a drop shadow on the scenery behind it, offset away from the sun (or the moon at night), so hills and floating chunks stand out from the backdrop instead of looking flat against it. Never on the sky itself. 0: none, as before. On from the Low preset up.");
+		if (settings.BackgroundShadows > 0.0F) {
+			Slider("Background shadow offset", &settings.BackgroundShadowLength, 0.25F, 3.0F);
+			Tip("How far the shadow is offset from the terrain. The further back the scenery, the further it falls and the softer its edge.");
+		}
 		Slider("Cloud shadows", &settings.CloudShadows, 0.0F, 1.0F);
 		Check("Clouds in the sky", &settings.CloudLayer);
 		Tip("Clouds drift across the sky with the wind, the same clouds whose shadows cross the ground. They gather and darken in rain, snow and ash fall, break up again after, and catch the colours of dawn and dusk. Off: an empty sky, as before. On from the Medium preset up.");
@@ -318,13 +391,17 @@ void DebugMan::SettingsGUI() {
 		if (settings.FogVolume > 0.0F) {
 			Slider("Dawn mist", &settings.FogMorningMist, 0.0F, 1.0F);
 			Tip("How much mist gathers low in open ground around dawn, a little at night and more in rain.");
+			Slider("Mist and dust opacity", &settings.FogOpacity, 0.0F, 1.0F);
+			Tip("How much the thickest mist and dust hides what's behind it, units included. Lower lets more of their colour through.");
 			Slider("Mist clears after (seconds)", &settings.FogClearSeconds, 3.0F, 120.0F, "%.0f");
 		}
 		Check("Lightning bolts", &settings.LightningBolts);
 		Tip("Lightning (the sandbox's tool and storm cells, and scripts) is drawn as a jagged, forked bolt of light from the sky, flickering twice, lighting up where it strikes and the air along it. Off: the sandbox draws its bolt as a line of particles, as before.");
-		if (settings.LightningBolts) {
-			Slider("Lightning brightness", &settings.LightningBrightness, 0.2F, 2.0F);
-			Tip("How bright the bolt and the light it throws on the ground and air are. 1: as first made.");
+		Check("Storm flashes", &settings.StormFlashes);
+		Tip("Heavy rain, and weather with lightning in it, flashes the whole sky now and then. Turn it off if flashing light bothers you; bolts are drawn as the setting above has them.");
+		if (settings.LightningBolts || settings.StormFlashes) {
+			Slider("Lightning brightness", &settings.LightningBrightness, 0.0F, 2.0F);
+			Tip("How bright the bolt, the light it throws on the ground and air, and a storm's sky flash are. 1: as first made. 0: no flash at all.");
 		}
 		Slider("Haze", &settings.AtmosphereHaze, 0.0F, 1.0F);
 		Tint("Haze colour", &settings.AtmosphereColor.x);
@@ -371,6 +448,10 @@ void DebugMan::SettingsGUI() {
 			Slider("Shadow softness", &settings.LightShadowSoftness, 0.0F, 2.0F);
 			Tip("How soft the edges of those shadows are. 0: sharp. Bigger lights are always softer than small ones.");
 		}
+		if (settings.LightShadowField) {
+			Check("Soft light edge on walls", &settings.SoftWallLight);
+			Tip("Where a light touches a wall, the lit patch on the wall fades out at its edge. Off (hard): the edge is sharp, as before.");
+		}
 		Slider("Shadows of units and objects", &settings.UnitShadows, 0.0F, 1.0F);
 		Slider("Contact shading", &settings.ContactShading, 0.0F, 1.0F);
 		Heading("Bounced light");
@@ -399,8 +480,16 @@ void DebugMan::SettingsGUI() {
 			Combo("Lamp map detail", &settings.LampCacheDetail, "Coarse (8 px)\0Medium (4 px)\0Fine (2 px)\0");
 		}
 		Heading("Headlamps");
-		Check("Headlamps at night", &settings.Headlamps);
+		Check("Headlamps in the dark", &settings.Headlamps);
 		Check("Headlamps by day as well", &settings.HeadlampsByDay);
+		if (!settings.HeadlampsByDay) {
+			Check("Only where it's dark around them", &settings.HeadlampsOnlyInDark);
+			Tip("Each unit's headlamp follows the light where it stands: on at night, in caves and under roofs, off in daylight and next to a lit lamp or a fire. Off: every headlamp comes on at night by the clock, wherever its unit is, as before.");
+		}
+		if (!settings.HeadlampsByDay && settings.HeadlampsOnlyInDark) {
+			Slider("How dark before they come on", &settings.HeadlampDarkThreshold, 0.05F, 0.95F);
+			Tip("The light around a unit (sky, lamps, fires; 1 is open daylight) below which its headlamp comes on. It goes off again a little above it, so units at the edge of a light don't flicker.");
+		}
 		Slider("Beam brightness", &settings.HeadlampBrightness, 0.0F, 5.0F);
 		Slider("Beam reach (px)", &settings.HeadlampReach, 40.0F, 600.0F, "%.0f");
 		Slider("Beam width (degrees)", &settings.HeadlampWidth, 5.0F, 80.0F, "%.0f");
@@ -417,11 +506,23 @@ void DebugMan::SettingsGUI() {
 		Tip("How much tracers' lights differ from one another in size and brightness, and waver as they fly. 0: all alike and steady.");
 		Check("Aiming dots light the scene", &settings.AimDotsLight);
 		Tip("The dots that show where a weapon points always glow. On, they also cast light on what is around them.");
+		Heading("Lightsabers");
+		Slider("Blade light brightness", &settings.SaberLightBrightness, 0.0F, 4.0F);
+		Tip("How brightly lightsaber blades light up their holder, the ground and the walls around them. 0: the blade still shows but lights nothing.");
+		Slider("Blade light reach", &settings.SaberLightReach, 0.2F, 3.0F);
+		Slider("Blade glow in the air", &settings.SaberAirGlow, 0.0F, 4.0F);
+		Tip("The soft glow of a blade's light in the air around it.");
 	};
 
 	auto surfaces = [&]() {
 		Slider("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
 		Slider("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
+		Check("Shine on units from lights", &settings.UnitShineLights);
+		Tip("Headlamps, fire, muzzle flashes and other lights throw highlights on units and brighten their edges facing the light. Off: units keep their art and only take the light's colour and brightness, so a unit's own headlamp can't wash it out white.");
+		Check("Shine on units from lamps", &settings.UnitShineLamps);
+		Tip("The same for steady scenery lamps.");
+		Check("Shine on units from the sun", &settings.UnitShineSun);
+		Tip("The sun (or moon) glints on units' glossy and metal parts.");
 		Slider("Metal reflections", &settings.Metals, 0.0F, 2.0F);
 		Slider("Surface relief", &settings.Relief, 0.0F, 1.5F);
 		Check("Wet, sooty, snowy and hot surfaces", &settings.SurfaceStates);
@@ -449,8 +550,17 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d moving, %.2f ms)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
 		}
-		Toggle("Loose sand and snow slide", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Loose ground (sand, snow, gravel, glass) slides", FluidSim::PowdersEnabled(), [](bool on) { FluidSim::SetPowdersEnabled(on); });
+		Toggle("Spilt blood runs and pools", FluidSim::BloodFlows(), [](bool on) { FluidSim::SetBloodFlows(on); });
+		Tip("Off, blood stays where it falls, as it always has. On, it runs downhill, pools, and slowly dries away (with flowing liquids on).");
+		Toggle("Liquids drain out of the map bottom", FluidSim::DrainsBottom(), [](bool on) { FluidSim::SetDrainsBottom(on); });
+		Tip("Liquid that reaches the bottom of the map runs out of it and is gone. Off: it pools on the bottom, as before. Sand and snow are the setting below.");
+		Toggle("Liquids drain out of the map sides", FluidSim::DrainsSides(), [](bool on) { FluidSim::SetDrainsSides(on); });
+		Tip("Liquid that reaches the left or right edge of the map runs out of it and is gone. Off: it banks up against the edge, as before. A map that wraps round sideways has no edges there, so this only does something on maps that don't wrap (or with map wrapping turned off).");
+		Toggle("Loose ground falls out of the map", FluidSim::PowdersFallOut(), [](bool on) { FluidSim::SetPowdersFallOut(on); });
+		Tip("Sand, snow, gravel and other loose ground that slides down to the bottom of the map, or off a side that doesn't wrap, falls out of it and is gone. Off: it piles up there, as before.");
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
+		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);
@@ -470,6 +580,8 @@ void DebugMan::SettingsGUI() {
 			Check("Reflection ripples with the surface", &settings.WaterMirrorSurface);
 			Tip("The mirrored scene is moved by the surface above it, so it wobbles as one image where the water moves and goes clean where it's still. Off: each pixel's own ripple moves it, as before. How much is the Ripples slider.");
 		}
+		Check("Wavy lines of light", &settings.WaterCaustics);
+		Tip("The thin bright wavy lines that wander and cross through water. Off: water is smooth, without them.");
 		Heading("Moving water");
 		Check("Surface follows the flow", &settings.WaterFlowSurface);
 		Tip("Still water goes glassy, a stream's ripples run downstream, the surface rings out where a pour lands and fast water froths through. Off: the same slow waves everywhere, as before. Needs flowing liquids on.");
@@ -490,13 +602,40 @@ void DebugMan::SettingsGUI() {
 		Heading("Splashes");
 		Slider("Splash size", &settings.WaterSplash, 0.0F, 4.0F);
 		Tip("How big the splash is when falling ground or a broken-off piece drops into water (or any liquid): drops and spray thrown up, by how fast and how wide it went in. Only for the eye: the water it pushes aside raises the level. 0 for none.");
+		Slider("Splash drops", &settings.SplashDrops, 0.0F, 4.0F);
+		Tip("How many drops a splash throws for the same size. 0: none, only spray and froth.");
+		Slider("Splash height", &settings.SplashHeight, 0.2F, 3.0F);
+		Tip("How high the drops are thrown. 1 as it is.");
+		Slider("Splash width", &settings.SplashWidth, 0.2F, 3.0F);
+		Tip("How far out to the sides the drops are thrown. Low: straight up. High: a wide, flat crown.");
+		Slider("Splash drop size", &settings.SplashDropSize, 1.0F, 4.0F);
+		Tip("How big each drop is drawn, in pixels across.");
+		Slider("Splash spray", &settings.SplashSpray, 0.0F, 3.0F);
+		Tip("How much soft spray goes up with the drops. 0 for none.");
 		Check("Turn each froth and spray puff randomly", &settings.PuffVariety);
 		Tip("Each puff of spray, froth mist, dust and smoke is turned and mirrored its own way when it appears, so they don't all show the same shape. Off: all the same way up.");
 		Slider("Thin streams shown", &settings.WaterThinFlow, 0.0F, 2.0F);
 		Tip("How much water running over the ground only a pixel or two deep is shown up: paler, with spray skipping along it, so a thin stream can be seen. Only for the eye. 0 for not at all.");
+		Heading("Splash under-layer");
+		Slider("Under-layer drops", &settings.SplashUnder, 0.0F, 3.0F);
+		Tip("A second layer of drops thrown with every splash, drawn under the first in a colour of its own, with its own height, width and size. 1 is about as many as the first layer. 0 for none.");
+		Tint("Under-layer colour", &settings.SplashUnderColor.x);
+		Slider("Under-layer takes the liquid's colour", &settings.SplashUnderLiquidColor, 0.0F, 1.0F);
+		Tip("0: the colour above only. 1: the liquid's own colour, like the first layer.");
+		Slider("Under-layer height", &settings.SplashUnderHeight, 0.05F, 3.0F);
+		Tip("How high it is thrown. 1 as high as the plain splash; below 1 it stays low, under the main crown.");
+		Slider("Under-layer width", &settings.SplashUnderWidth, 0.2F, 3.0F);
+		Tip("How far out to the sides it is thrown. 1 as far as the plain splash.");
+		Slider("Under-layer drop size", &settings.SplashUnderDropSize, 1.0F, 4.0F);
+		Tip("How big each of its drops is drawn, in pixels across.");
+		Slider("Under-layer opacity", &settings.SplashUnderOpacity, 0.0F, 1.0F);
+		Slider("Under-layer scatter", &settings.SplashUnderScatter, 0.0F, 1.0F);
+		Tip("How much its drops stray from each other. 0: a tidy crown. 1: every which way.");
 		Heading("Splash froth");
 		Slider("Splash froth", &settings.SplashFroth, 0.0F, 3.0F);
 		Tip("How much froth a splash leaves sitting on the surface, and how much the surface froths where the level rises because something fell in. Only for the eye. 0 for none.");
+		Slider("Splash froth density", &settings.SplashFrothDensity, 0.2F, 6.0F);
+		Slider("Splash froth specks", &settings.SplashFrothSpecks, 0.0F, 3.0F);
 		Slider("Splash froth bubble size", &settings.SplashFrothSize, 0.2F, 3.0F);
 		Slider("Splash froth life", &settings.SplashFrothLife, 0.2F, 4.0F);
 		Tip("How long the froth stays on the surface before it fades: 1 is a couple of seconds.");
@@ -522,8 +661,26 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d burning)", TerrainFire::GetCount());
 		}
+		if (float chance = TerrainFire::GetEmberIgniteChance(); Slider("Embers set things alight", &chance, 0.0F, 10.0F, "%.2f%% a second")) {
+			TerrainFire::SetEmberIgniteChance(chance);
+		}
+		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
+		Toggle("Candles burn forever", TerrainCandle::GetBurnMinutes() <= 0.0F, [](bool on) { TerrainCandle::SetBurnMinutes(on ? 0.0F : 2.0F); });
+		Tip("Lit candles (Paint > Plants > Candles) keep burning and never melt down. Off, they burn down in the time below.");
+		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
+			TerrainCandle::SetBurnMinutes(minutes);
+		}
+		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
+		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
+		Tip("Smoke, toxic gas, methane and steam spread through the air and stay in closed rooms: smoke builds up where it can't get out, toxic gas sinks and pools and hurts whoever breathes it, methane rises and goes up in a chain of blasts where it meets fire, steam rises, scalds and condenses away. Smoke, toxic gas and steam block sight.");
+		if (GasGrid::IsEnabled()) {
+			if (float shown = GasGrid::GetShown(); Slider("Gas shown", &shown, 0.0F, 2.0F)) {
+				GasGrid::SetShown(shown);
+			}
+			Tip("How much of the gas is drawn: green puffs for toxic gas, steam puffs, and haze for built-up smoke. 0 draws none (the gas still does what it does); methane is never drawn.");
+		}
 		Slider("Soft smoke", &settings.SoftSmoke, 0.0F, 3.0F);
 		Tip("Every puff of the game's smoke trails soft, billowing smoke as well, so it hangs and rolls. 0: only the game's own smoke sprites.");
 		Slider("Smoke scattering", &settings.SmokeScattering, 0.0F, 3.0F);
@@ -541,7 +698,12 @@ void DebugMan::SettingsGUI() {
 			Slider("Flame height", &settings.FireFlameSize, 0.2F, 3.0F);
 			Slider("Flame brightness", &settings.FireFlameBrightness, 0.2F, 2.0F);
 		}
-		Slider("Sparks, dust and debris", &settings.EffectsParticles, 0.0F, 3.0F);
+		Slider("Sparks", &settings.EffectsSparks, 0.0F, 3.0F);
+		Slider("Spark lights", &settings.SparkLights, 0.0F, 2.0F);
+		Tip("How bright the glow and light of the game's own sparks are, off hits and blasts. 0: they fly without lighting anything. With Sparks at 0 they're off too.");
+		Slider("Dust", &settings.EffectsDust, 0.0F, 3.0F);
+		Slider("Debris", &settings.EffectsDebris, 0.0F, 3.0F);
+		Tip("Sparks: glowing streaks off explosions and hard hits. Dust: soft puffs off explosions and soft ground. Debris: little chips that bounce. Embers, explosion fire and smoke, and splash spray follow the highest of the three, and go only when all three are 0.");
 		if (Plain()) {
 			ImGui::TextDisabled("%d effects particles alive", EffectsParticles::GetCount());
 		}
@@ -557,6 +719,70 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	auto effectLayers = [&]() {
+		Combo("All effects", &settings.EffectLayers, "Each its own layer\0All in front\0All behind\0");
+		Tip("Where the visual-only effects are drawn. Behind: in the effects layer, between the battlefield and the background, so units and the ground in front hide them while they still drift over the back walls of caves and bunkers and the sky. In front: over everything, as before. Each its own layer: as set for each one below.");
+		Heading("Each effect");
+		static constexpr const char* c_Labels[LightingSettings::EffectLayerCount] = {"Smoke", "Soft smoke", "Spray mist", "Splash drops", "Froth", "Dust", "Debris chips", "Sparks", "Embers", "Explosion fire"};
+		static constexpr const char* c_Tips[LightingSettings::EffectLayerCount] = {
+		    "The game's smoke sprites (smoke grenades, engines, guns, burning), and the light smoke scatters.",
+		    "The soft, billowing smoke the smoke sprites trail, and the smoke explosions leave behind.",
+		    "The pale spray off falling and splashing water.",
+		    "The drops a splash throws.",
+		    "The froth that sits on water where something splashed in, in flat clumps.",
+		    "Puffs of dust from blasts and from hits on soft ground.",
+		    "The little chips blasts and hits throw.",
+		    "Glowing sparks from blasts and from hits on hard ground.",
+		    "Embers lifting off fires.",
+		    "The balls of fire that swell and roll up from explosions."};
+		ImGui::BeginDisabled(settings.EffectLayers != LightingSettings::EffectLayersEach);
+		for (int layer = 0; layer < LightingSettings::EffectLayerCount; ++layer) {
+			int behind = settings.EffectBehind[layer] ? 1 : 0;
+			if (Combo(c_Labels[layer], &behind, "In front\0Behind\0")) {
+				settings.EffectBehind[layer] = behind != 0;
+			}
+			Tip(c_Tips[layer]);
+		}
+		ImGui::EndDisabled();
+	};
+
+	auto airAndWind = [&]() {
+		AirPressure::Tuning& tuning = AirPressure::GetTuning();
+		Toggle("Air and wind", AirPressure::IsOn(), [](bool on) { AirPressure::SetOn(on); });
+		Tip("Everything below: blast waves through the air, and the weather's wind carrying smoke, spray and gas. Off: none of it, and explosions push things only as they always have.");
+		if (Plain()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("(%d cells of blast waves)", AirPressure::GetActiveCells());
+		}
+		ImGui::BeginDisabled(!AirPressure::IsOn());
+		Slider("Overall strength and speed", &tuning.Overall, 0.0F, 5.0F, "%.2fx");
+		Tip("Over everything below at once: how hard blasts push and throw water, how hard the wind carries smoke, effects and gas, how far the flames bend, and how fast blast waves travel. 2: twice as strong and twice as fast. 0: the air does nothing. The sliders below set each part against this.");
+		Heading("Blast waves");
+		Toggle("Blast waves", AirPressure::IsEnabled(), [](bool on) { AirPressure::SetEnabled(on); });
+		Tip("An explosion sends a wave of air out that bounces off walls: it carries far down a corridor and fades fast in the open, pushes smoke, loose things and (a little) units, and throws up the water in a flooded room.");
+		Slider("Blast strength", &tuning.BlastStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How much pressure an explosion puts into the air. 0: explosions make no wave.");
+		Slider("How far blasts carry", &tuning.BlastReach, 0.25F, 3.0F, "%.2fx");
+		Tip("How slowly a wave dies away: at 2 it carries about twice as far down a corridor before it fades.");
+		Slider("Push on smoke and loose things", &tuning.PushStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the moving air shoves smoke, gibs, dropped items and spray. 0: the wave pushes nothing (it still throws up water).");
+		Slider("Push on units", &tuning.UnitPush, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the moving air shoves units, on top of the push above. Units are heavy, so at 1 a big blast beside one moves it a little. 0: units are never pushed.");
+		Slider("Water thrown up", &tuning.LiquidThrow, 0.0F, 5.0F, "%.2fx");
+		Tip("How readily a wave running up through water (or any liquid) throws it into the air at the surface. Higher: weaker waves throw it too. 0: never.");
+		Heading("Wind");
+		Toggle("Wind carries smoke", AirPressure::WindMovesSmoke(), [](bool on) { AirPressure::SetWindMovesSmoke(on); });
+		Tip("The weather's wind (Time & weather, Wind) carries smoke of every kind (grenades, explosions, flames, smoke trails, soft smoke), steam, embers, dust, fine spray and gas along, and they eddy in the lee of walls and ridges. Off: none of them lean with the wind; the rain, snow, fog and clouds still do.");
+		Slider("Wind strength", &tuning.WindStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the wind carries smoke, spray and gas, against how hard the weather's wind blows. 0: the wind moves nothing.");
+		Slider("Wind carries gas", &tuning.WindGas, 0.0F, 5.0F, "%.2fx");
+		Tip("How fast the wind carries gas (smoke built up, toxic gas, methane, steam) along where it blows through; gas in the lee of ground stays. Gas blown past the edge of the map is gone. 0: the wind leaves gas be.");
+		ImGui::EndDisabled();
+		if (Plain() && ToolUI::Button("Usual air and wind")) {
+			tuning = AirPressure::Tuning();
+		}
+	};
+
 	auto fallingGround = [&]() {
 		TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
 		Toggle("Collapsing terrain", TerrainCollapse::IsEnabled(), [](bool on) { TerrainCollapse::SetEnabled(on); });
@@ -564,11 +790,24 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextDisabled("%d pieces moving, %d pixels fell", TerrainCollapse::GetFallingCount(), TerrainCollapse::GetCollapsedCount());
 		}
 		Toggle("Pieces of buildings fall too", TerrainCollapse::BuildingsFall(), [](bool on) { TerrainCollapse::SetBuildingsFall(on); });
+		Toggle("Units and vehicles bump into trees", TerrainTrees::UnitsCollide(), [](bool on) { TerrainTrees::SetUnitsCollide(on); });
+		Tip("Off (as the game comes): units walk and vehicles drive through trees, and a tree coming down falls through them too. Trees still burn, stand until their trunks burn through, fall and land on the ground, and bullets, fire and liquids still meet them. On: trees are solid to units and vehicles like any ground, and a falling tree hits them.");
+		{
+			int strayPercent = TerrainTrees::StrayBulletPercent();
+			if (SliderI("Stray bullets that hit trees (%)", &strayPercent, 0, 100)) {
+				TerrainTrees::SetStrayBulletPercent(strayPercent);
+			}
+		}
+		Tip("Bullets go past trees. This is the chance that a bullet meeting a tree strikes it instead, now and then, and then it barely marks the tree. Rockets and the like clear a trunk but strike the leaves, so trees give cover from them. Fire and explosions work on trees as they always did.");
+		Toggle("Trees only meet the ground under them", TerrainCollapse::PassesTrees(), [](bool on) { TerrainCollapse::SetPassesTrees(on); });
+		Tip("On: rock and other ground falling from above goes through a standing tree (behind it, leaving the tree whole) rather than landing on it, and a falling tree goes through other trees. A tree that is cut or burnt through still falls over and lands on the ground. Off (as the game comes): trees are solid to falling pieces like any ground.");
+		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
+		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
 		Check("Floating masses stay up when chipped", &tuning.FloatingStays);
 		Tip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
-		Tip("A piece left joined to the rest by a neck no wider than this breaks off and falls. 0: only pieces cut right through fall.");
+		Tip("A piece left joined to the rest by a neck no wider than this breaks off and falls. 0: only pieces cut right through fall. Wood always holds until it's cut or burnt right through, so a burning tree stands (a material's own NeckWidth in its ini).");
 		SliderI("Biggest piece that can fall (pixels)", &tuning.MaxPiecePixels, 500, 200000, "%d", ImGuiSliderFlags_Logarithmic);
 		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
@@ -578,8 +817,33 @@ void DebugMan::SettingsGUI() {
 		Tip("0: explosions don't move loose pieces at all. Higher: pieces still moving are thrown harder, and more of the pieces lying at rest near a blast are picked up and thrown.");
 		SliderI("Loose scraps it flattens (pixels)", &tuning.CrushPixels, 0, 300);
 		Tip("A falling piece goes through loose bits of ground up to this size instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
-		Slider("How hard a landing cracks a piece", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
+		Slider("Sand disturbed by walking", &tuning.ScuffStrength, 0.0F, 3.0F);
+		Tip("Units walking or running on sand and other loose ground knock a few surface pixels loose and shove them the way they go, so a slope slumps a little. 0: off. Mod materials opt in with Scuffs in their ini.");
 		Slider("Seconds still before it's ground again", &tuning.RestSeconds, 0.2F, 15.0F, "%.1f");
+		Heading("Breaking when it lands");
+		Slider("How hard a landing breaks a piece (all)", &tuning.BreakStrength, 0.2F, 5.0F, "%.2fx");
+		Tip("Scales every threshold below: 2 takes twice as hard a landing, 0.5 half.");
+		Slider("Concrete, glass, ice (Shatter, m/s)", &tuning.ShatterSpeed, 0.5F, 30.0F, "%.1f");
+		Tip("How fast a piece of brittle material has to land to break. 7 m/s is a drop of about 1.4 m. Glass breaks at under half this, ice at 0.7 of it.");
+		Slider("Earth, stone (Crack, m/s)", &tuning.CrackSpeed, 0.5F, 30.0F, "%.1f");
+		Tip("Earth, stone and any material not listed elsewhere. 9 m/s is a drop of about 2.2 m. Earth breaks at 0.9 of this, stone at 1.2, bedrock at 1.8.");
+		Slider("Sand, snow, rubble (Crumble, m/s)", &tuning.CrumbleSpeed, 0.5F, 30.0F, "%.1f");
+		Tip("Loose ground that falls apart easily. Leaves and grass count only in a piece of nothing else.");
+		Slider("Wood, tree trunks (Splinter, m/s)", &tuning.SplinterSpeed, 0.5F, 30.0F, "%.1f");
+		Tip("22 m/s is a drop of about 13 m: a felled or burnt-through tree lands whole. A tree's leaves don't make it weaker. Planks break at 0.8 of this.");
+		Slider("Metal (Bend, m/s)", &tuning.BendSpeed, 0.5F, 30.0F, "%.1f");
+		Tip("Metal never breaks from a landing. Above this, a long thin piece (a beam, a plate) folds at a crease, more the harder the hit and the thinner it is, and a chunky piece dents. Falling pieces move at most 27 m/s, so above that never.");
+		Heading("Hitting units");
+		Slider("How much falling pieces hurt", &tuning.HitDamage, 0.0F, 5.0F, "%.2fx");
+		Tip("Damage is a share of the unit's full health, by how fast the piece is moving into it and how heavy it is for the unit. At 1 a block a metre across falling 10 m/s onto a soldier takes about a quarter to a third of their health. 0: pieces never hurt.");
+		Slider("Slowest hit that hurts (m/s)", &tuning.HitMinSpeed, 0.0F, 15.0F, "%.1f");
+		Tip("Only the speed above this counts toward the damage. Lower: slow slides and short drops hurt too.");
+		SliderI("Smallest piece that hurts (pixels)", &tuning.HitMinPixels, 0, 1000, "%d", ImGuiSliderFlags_Logarithmic);
+		Tip("Smaller pieces only push units about. 400 pixels is a block a metre across.");
+		Slider("Heaviest a piece counts (x unit's mass)", &tuning.HitMassCap, 0.1F, 20.0F, "%.1fx", ImGuiSliderFlags_Logarithmic);
+		Tip("A piece heavier than this many times the unit it hits hurts only as much as one this heavy. Higher: big boulders are deadlier than big rocks.");
+		Slider("How hard pieces knock units", &tuning.HitKnockback, 0.0F, 3.0F, "%.2fx");
+		Tip("How hard falling pieces shove the units and loose objects they hit. Units knocked flying into the ground take the usual impact damage on top.");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
 		}
@@ -644,6 +908,7 @@ void DebugMan::SettingsGUI() {
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {
 			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+			EventLookSwitches(settings);
 		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
@@ -671,44 +936,20 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal speed")) {
 			g_TimerMan.SetTimeScale(1.0F);
 		}
-		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
-		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
-		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
-		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
-		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
-		{
-			float suppression = g_SettingsMan.AISuppression();
-			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
-				g_SettingsMan.SetAISuppression(suppression);
-			}
-			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
+		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
+		Tip("Every map has hard left and right edges and one copy of the world, instead of looping round. Takes effect when the next map loads.");
+		float bleedOut = g_SettingsMan.BleedOutChance();
+		if (Slider("Wounds that keep bleeding", &bleedOut, 0.0F, 100.0F, "%.0f%%")) {
+			g_SettingsMan.SetBleedOutChance(bleedOut);
 		}
-		{
-			int paths = Actor::ShowAIPaths();
-			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
-				Actor::SetShowAIPaths(paths);
-			}
-			Tip("The dotted yellow line from a unit to where it's been told to go, with each node marked. Never: only the unit you're controlling shows its path. Selected: the units picked with the sandbox's command tool.");
-		}
-		{
-			int nav = g_SettingsMan.NavDebugOverlay();
-			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
-				g_SettingsMan.SetNavDebugOverlay(nav);
-			}
-			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs, pale green arcs for leaps. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
-		}
-		{
-			int team = g_SettingsMan.DebugTeam();
-			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
-				g_SettingsMan.SetDebugTeam(team);
-			}
-			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
-		}
+		Tip("Every wound bleeds, and most stop after a while. This is the chance one keeps on bleeding instead, so the unit, players' and every other, keeps losing health until it's patched up or bleeds out. 0 is as before: wounds stop when they always did. 100: every wound keeps bleeding.");
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
+		Check("Outline over everything", &settings.UnitOutlineOverEverything);
+		Tip("Draw the outline over terrain and water too, above everything but post-processing, so a unit hidden behind them still shows.");
 		Slider("Outline width (px)", &settings.UnitOutlineWidth, 1.0F, 4.0F, "%.1f");
 		Tip("In the game's pixels. Zoomed out, the stroke is thickened to keep its size on screen.");
 		Check("Outline in team colour", &settings.UnitOutlineTeamColor);
@@ -717,6 +958,8 @@ void DebugMan::SettingsGUI() {
 			Tint("Outline colour", &settings.UnitOutlineColor.x);
 		}
 		Slider("Outline opacity", &settings.UnitOutlineOpacity, 0.0F, 1.0F);
+		Slider("Outline glow light", &settings.UnitOutlineGlow, 0.0F, 2.0F);
+		Tip("Each outlined unit gives off a soft light in its outline's colour (its side's, the colour above, or a flag carrier's pink), lighting the ground and units round it. Needs lighting on. 0 is off.");
 		Heading("HUD");
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
@@ -741,15 +984,114 @@ void DebugMan::SettingsGUI() {
 			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
 			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
-			for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
-				std::string label = "Speech: " + trigger.Name + "##Speech" + trigger.Key;
-				Toggle(label.c_str(), UnitSpeech::IsTriggerOn(trigger.Key), [&trigger](bool on) { UnitSpeech::SetTriggerOn(trigger.Key, on); });
-				std::string example = UnitSpeech::GetExampleLine(UnitSpeech::FindTrigger(trigger.Key));
-				std::string tip = trigger.Description.empty() ? trigger.Name : trigger.Description;
-				if (!example.empty()) {
-					tip += "\nFor example: \"" + example + "\"";
+			// Each side's tones: what kind of lines its units say. None ticked is any.
+			{
+				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
+				const std::vector<std::string> tones = UnitSpeech::GetTones();
+				// The mix of tones: how often each comes up against the others. A side shares it between the tones it speaks in.
+				int toneTotal = 0;
+				for (const std::string& tone: tones) {
+					toneTotal += UnitSpeech::GetToneWeight(tone);
 				}
-				Tip(tip.c_str());
+				for (const std::string& tone: tones) {
+					int weight = UnitSpeech::GetToneWeight(tone);
+					const int share = toneTotal > 0 ? (weight * 100 + toneTotal / 2) / toneTotal : 0;
+					std::string label = tone + " lines, share of the mix##SpeechToneMix" + tone;
+					std::string format = "%d (" + std::to_string(share) + "%% of lines)";
+					if (SliderI(label.c_str(), &weight, 0, 100, format.c_str())) {
+						UnitSpeech::SetToneWeight(tone, weight);
+					}
+					Tip("How often a unit says a line of this tone against the others: Funny 90 and Serious 10 is nine funny lines to one serious. "
+					    "A side that speaks only some tones (below) shares the whole mix between those, keeping their balance; a side of one tone always speaks it. "
+					    "Speech chance above still decides how often anything is said at all.");
+				}
+				for (int team = 0; team < 4; ++team) {
+					std::string anyLabel = std::string(sideNames[team]) + " side speaks: any tone##SpeechToneAny" + std::to_string(team);
+					Toggle(anyLabel.c_str(), UnitSpeech::TeamUsesAnyTone(team), [team](bool on) {
+						if (on) {
+							UnitSpeech::SetTeamAnyTone(team);
+						}
+					});
+					Tip("Its units say lines of every tone. Untick by picking one or more tones instead.");
+					for (const std::string& tone: tones) {
+						if (s_LastShown) {
+							ImGui::SameLine();
+						}
+						std::string label = tone + "##SpeechTone" + std::to_string(team) + tone;
+						const bool on = !UnitSpeech::TeamUsesAnyTone(team) && UnitSpeech::TeamUsesTone(team, tone);
+						Toggle(label.c_str(), on, [team, tone](bool set) { UnitSpeech::SetTeamTone(team, tone, set); });
+						const std::string description = UnitSpeech::GetToneDescription(tone);
+						std::string tip = std::string(sideNames[team]) + " side's units say " + tone + " lines" + (description.empty() ? "." : ": " + description) +
+						                  " Tick more than one to mix them.";
+						Tip(tip.c_str());
+					}
+				}
+			}
+			// The triggers under their groups (Speech.ini's Group), each group folding away with buttons to turn all of it on or off; a search
+			// lists the matching ones flat.
+			const std::vector<UnitSpeech::Trigger>& triggers = UnitSpeech::GetTriggers();
+			std::vector<std::string> groups;
+			for (const UnitSpeech::Trigger& trigger: triggers) {
+				const std::string group = trigger.Group.empty() ? "Other" : trigger.Group;
+				if (std::find(groups.begin(), groups.end(), group) == groups.end()) {
+					groups.push_back(group);
+				}
+			}
+			for (const std::string& group: groups) {
+				auto inGroup = [&group](const UnitSpeech::Trigger& trigger) { return (trigger.Group.empty() ? "Other" : trigger.Group) == group; };
+				bool open = true;
+				if (Plain()) {
+					int count = 0;
+					int on = 0;
+					for (const UnitSpeech::Trigger& trigger: triggers) {
+						if (inGroup(trigger)) {
+							++count;
+							on += UnitSpeech::IsTriggerOn(trigger.Key) ? 1 : 0;
+						}
+					}
+					std::string header = "Speech: " + group + " (" + std::to_string(on) + "/" + std::to_string(count) + " on)###SpeechGroup" + group;
+					open = ImGui::TreeNode(header.c_str());
+					if (open) {
+						std::string allOn = "All on##SpeechAllOn" + group;
+						std::string allOff = "All off##SpeechAllOff" + group;
+						bool setAll = false;
+						bool setTo = true;
+						if (ToolUI::Button(allOn.c_str())) {
+							setAll = true;
+						}
+						ImGui::SameLine();
+						if (ToolUI::Button(allOff.c_str())) {
+							setAll = true;
+							setTo = false;
+						}
+						if (setAll) {
+							for (const UnitSpeech::Trigger& trigger: triggers) {
+								if (inGroup(trigger)) {
+									UnitSpeech::SetTriggerOn(trigger.Key, setTo);
+								}
+							}
+						}
+					}
+				}
+				if (!open) {
+					continue;
+				}
+				for (const UnitSpeech::Trigger& trigger: triggers) {
+					if (!inGroup(trigger)) {
+						continue;
+					}
+					std::string label = "Speech: " + trigger.Name + "##Speech" + trigger.Key;
+					Toggle(label.c_str(), UnitSpeech::IsTriggerOn(trigger.Key), [&trigger](bool on) { UnitSpeech::SetTriggerOn(trigger.Key, on); });
+					std::string example = UnitSpeech::GetExampleLine(UnitSpeech::FindTrigger(trigger.Key));
+					std::string tip = trigger.Description.empty() ? trigger.Name : trigger.Description;
+					if (!example.empty()) {
+						tip += "\nFor example: \"" + example + "\"";
+					}
+					Tip(tip.c_str());
+				}
+				if (Plain()) {
+					ImGui::TreePop();
+				}
 			}
 			if (Plain() && ToolUI::Button("Reload speech lines")) {
 				UnitSpeech::Reload();
@@ -758,6 +1100,59 @@ void DebugMan::SettingsGUI() {
 				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
 			}
 		}
+	};
+
+	// How the AI behaves: what it notices, how fire and losses get to it, and how many chances it takes getting about.
+	auto aiBehaviour = [&]() {
+		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
+		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
+		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
+		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
+		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
+		{
+			float suppression = g_SettingsMan.AISuppression();
+			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAISuppression(suppression);
+			}
+			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
+		}
+		{
+			float dig = g_SettingsMan.AIDigWillingness();
+			if (Slider("AI digging", &dig, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAIDigWillingness(dig);
+			}
+			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units only dig what their digger's regular rounds cut, and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
+		}
+		{
+			float threats = g_SettingsMan.AIThreatAvoidance();
+			if (Slider("Safe routes in game modes", &threats, 0.0F, 2.0F, "%.2fx")) {
+				g_SettingsMan.SetAIThreatAvoidance(threats);
+			}
+			Tip("How much a unit that a game mode wants kept safe weighs the enemies along a route when picking one: a capture the flag carrier taking an enemy flag home. At 1 a way past a crowd of enemies loses to a longer one past none: twenty in the way are worth walking most of a large map round, while a lone sentry is only skirted when going round is short. Places they are sent to are reached however many enemies are there. Every other unit takes the shortest way. 0 turns it off.");
+		}
+		{
+			float spawnDiggers = g_SettingsMan.AISpawnDiggerChance();
+			if (Slider("Units spawn with a digger", &spawnDiggers, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAISpawnDiggerChance(spawnDiggers);
+			}
+			Tip("The share of units, every team's, that are handed a digger as they come into the scene, whether bought, dropped in or placed with it, if they don't carry one already. It goes in their inventory, so they keep their own guns in hand and get it out when a route calls for digging. 0 hands out none.");
+			int diggerType = g_SettingsMan.AISpawnDiggerType();
+			if (Combo("Digger they spawn with", &diggerType, "Light Digger\0Medium Digger\0Heavy Digger\0A random one\0")) {
+				g_SettingsMan.SetAISpawnDiggerType(diggerType);
+			}
+			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig.");
+		}
+		{
+			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
+			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
+			}
+			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
+		}
+		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
+		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
+		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
+		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
 	};
 
 	auto debug = [&]() {
@@ -823,6 +1218,27 @@ void DebugMan::SettingsGUI() {
 	// What the AI is thinking, drawn over the game: each overlay keys off the units being inspected (Ctrl+I over a unit, units selected in the sandbox, the one you control).
 	auto aiDebug = [&]() {
 		{
+			int paths = Actor::ShowAIPaths();
+			if (Combo("Paths of units moving under AI", &paths, "Never\0Always\0Selected units only\0")) {
+				Actor::SetShowAIPaths(paths);
+			}
+			Tip("The dotted yellow line from a unit to where it's been told to go, with each node marked. Never: only the unit you're controlling shows its path. Selected: the units picked with the sandbox's command tool.");
+		}
+		{
+			int nav = g_SettingsMan.NavDebugOverlay();
+			if (Combo("Navigation debug overlay", &nav, "Off\0Path grid\0Path grid and flights\0Path grid, flights and the node under the pointer\0")) {
+				g_SettingsMan.SetNavDebugOverlay(nav);
+			}
+			Tip("The pathfinder's grid in view: a dot where a unit can stand (green), only crawl (yellow) or not fit (red); cyan lines for low obstacles it steps over, magenta for stairs, pale green arcs for leaps. Sizes and leaps are the inspected unit's (Ctrl+I) of the team below, else a soldier's. With flights: each flight's chosen landing (white) and the engine pilot's predicted path (yellow). With the node under the pointer: what the grid makes of that node, and every way out of it drawn with its kind and cost, flights with their fuel.");
+		}
+		{
+			int team = g_SettingsMan.DebugTeam();
+			if (Combo("Team the debug overlays show", &team, "Team 1\0Team 2\0Team 3\0Team 4\0")) {
+				g_SettingsMan.SetDebugTeam(team);
+			}
+			Tip("Whose view the debug overlays draw: the navigation overlay's path grid, for one, differs by team where doors are.");
+		}
+		{
 			int inspector = g_SettingsMan.UnitInspector();
 			if (Combo("Unit inspector", &inspector, "Off\0Inspected units\0Every unit in view\0")) {
 				g_SettingsMan.SetUnitInspector(inspector);
@@ -854,10 +1270,10 @@ void DebugMan::SettingsGUI() {
 		Tip("An arrow from the middle of the screen towards the sun, or the moon at night, with how strong its shadows are right now after the time of day and the weather.");
 		{
 			int world = g_SettingsMan.WorldSimOverlay();
-			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0")) {
+			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0Ropes\0")) {
 				g_SettingsMan.SetWorldSimOverlay(world);
 			}
-			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid pixels on the move (blue). Burning ground: each burning pixel, yellow when fresh to red as it burns out. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is.");
+			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out, and a ring round each lit candle. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is. Ropes: each link green when slack to red when about to snap, orange where it burns, a square where it's tied to the ground and a ring where it's tied to a unit or thing.");
 		}
 	};
 
@@ -874,11 +1290,15 @@ void DebugMan::SettingsGUI() {
 		Tip("A readout in the bottom right: whether the world is paused and by what (the sandbox's tools, photo mode, Freeze simulation, the game's pause), the AI pause, how many sim updates ran for this frame, the sandbox's tool uses queued and applied last update and the steps still wanted, and the time scale against the speed the simulation actually manages.");
 		Toggle("Incoming and effects", g_SettingsMan.ShowSandboxEffects(), [](bool on) { g_SettingsMan.SetShowSandboxEffects(on); });
 		Tip("Each rocket, shell, bomb or falling craft on its way in as its line, where it will hit with its crater, and the updates it has left; each effect put down, numbered, with its main light's reach as a ring and storm cells' next flash; each water spring as its pour. Point at an effect or a spring and press Delete to remove just that one.");
+		Toggle("Gas", g_SettingsMan.ShowSandboxGas(), [](bool on) { g_SettingsMan.SetShowSandboxGas(on); });
+		Tip("The gas in view, a cell every 8 pixels: grey for smoke, green for toxic gas, orange for methane, white for steam, stronger where it is thicker; what is under the pointer is written by it. Nothing shows while the Gas setting is off.");
+		Toggle("Air and wind", g_SettingsMan.ShowSandboxAir(), [](bool on) { g_SettingsMan.SetShowSandboxAir(on); });
+		Tip("The blast waves in view, a cell every 8 pixels: red where the air is pressed together, blue where it is thinned, with a line for which way it moves; a yellow box round the part of the map the waves are worked out over. With a wind: arrows for where it carries things, and orange dots where it is sheltered by ground upwind. What is under the pointer is written by it. Nothing shows while Air and wind is off.");
 		Toggle("Selection and camera", g_SettingsMan.ShowSandboxSelectionCamera(), [](bool on) { g_SettingsMan.SetShowSandboxSelectionCamera(on); });
 		Tip("While dragging a selection box: the box as the selection will really use it, with a ring on each unit it will take and in red any part past the scene's seam, which takes nobody. Always: the unit the game says you control (green) against the one the sandbox thinks you're in (blue), the observation target (yellow cross), the free camera's centre (cyan cross), and the view's scale.");
 		Toggle("Terrain paint audit", g_SettingsMan.ShowSandboxPaintAudit(), [](bool on) { g_SettingsMan.SetShowSandboxPaintAudit(on); });
 		Tip("The last two dozen discs and boxes of terrain the sandbox painted, dug, filled or cleared, fading over ten seconds: dug and cleared in orange, painted and filled in green, grey where nothing changed. The newest are labelled with the material and whether falling ground and liquid were told of the change, a missing one in red. For the areas the path grid has yet to catch up on, turn on Terrain update boxes on the Debug page.");
-		Toggle("Auto battle and colony", g_SettingsMan.ShowSandboxAutoBattle(), [](bool on) { g_SettingsMan.SetShowSandboxAutoBattle(on); });
+		Toggle("Battle and colony", g_SettingsMan.ShowSandboxAutoBattle(), [](bool on) { g_SettingsMan.SetShowSandboxAutoBattle(on); });
 		Tip("A readout in the top left: for each side in the auto battle, what it has spent of its budget, its next wave and whether it is broke; its units on the ground against those still in its craft; and its cheapest unit against what a wave may spend (in red when it can't buy any). Then each colony building: what it is doing, its training, and its units alive with those dead or dying counted apart.");
 		Toggle("Character state", g_SettingsMan.ShowSandboxCharacterState(), [](bool on) { g_SettingsMan.SetShowSandboxCharacterState(on); });
 		Tip("One line over your sandbox character's head: whether you're in it, the updates left before you step in, flying and how hard it is pinned, its side and whether it's neutral (ignored by the AI), what it has out and that item's number key, and the AI mode it is left in while you're not in it.");
@@ -896,9 +1316,12 @@ void DebugMan::SettingsGUI() {
 	    {"Surfaces", surfaces},
 	    {"Water", water},
 	    {"Fire, smoke & blast", fireAndSmoke},
+	    {"Effect layers", effectLayers},
+	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
+	    {"AI behaviour", aiBehaviour},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
 	    {"Render debug", renderDebug},

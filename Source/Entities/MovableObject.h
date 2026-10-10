@@ -13,6 +13,7 @@
 #include "Material.h"
 #include "glm/glm.hpp"
 #include "MovableMan.h"
+#include "TerrainTrees.h"
 
 #include <set>
 
@@ -338,14 +339,22 @@ namespace RTE {
 		/// flying on its jet passes the ladders' rungs (AHuman sets it), and meets them again once the jet has been out a moment.
 		unsigned char GetPassMaterial() const { return m_PassMaterial; }
 		void SetPassMaterial(unsigned char material) { m_PassMaterial = material; }
-		/// Whether a terrain material is one this object's body passes through just now (its root's pass material).
+		/// Whether a terrain material is one this object's body passes through just now: its root's pass material, or a tree's for a unit or
+		/// vehicle (and what it carries) while they don't bump into trees (TerrainTrees::ActorsPass).
 		bool PassesMaterial(unsigned char material) const {
 			if (material == 0) {
 				return false;
 			}
 			const MovableObject* root = GetRootParent();
-			return root->m_PassMaterial != 0 && root->m_PassMaterial == material;
+			return (root->m_PassMaterial != 0 && root->m_PassMaterial == material) || (TerrainTrees::ActorsPass(material) && root->IsActor()) || PassesTreeAsShot(material);
 		}
+
+		/// Whether this is a shot that goes past a tree material: a bullet (a small fast particle that hits MOs, not fire) past all of a tree but for
+		/// the odd stray one (TerrainTrees::StrayBulletPercent), and a launched rocket past its trunk but not its leaves.
+		bool PassesTreeAsShot(unsigned char material) const;
+
+		/// Whether this is a bullet or other small shot (not fire) that hits MOs.
+		bool IsBullet() const;
 
 		/// Sets whether this will collide with any Terrain
 		/// @param ignores Whether this can hit terrain.
@@ -461,6 +470,10 @@ namespace RTE {
 		/// @param newValue Boolean indicating whether or not the effect can be obscured.
 		void SetEffectAlwaysShows(bool newValue) { m_EffectAlwaysShows = newValue; }
 
+		/// Gets whether this MovableObject's screen effect is a spark's glow, scaled by the Spark lights setting (LightingSettings::SparkLights).
+		/// @return Whether the screen effect is a spark's glow.
+		bool GetSparkGlow() const { return m_SparkGlow; }
+
 		/// Sets the current angular velocity of this MovableObject. Positive is
 		/// a counter clockwise rotation.
 		/// @param newRotVel The new angular velocity in radians per second.
@@ -525,6 +538,12 @@ namespace RTE {
 		/// the MovableMan update.
 		/// @param toSettle Whether to mark this MO for settling or not. (default: true)
 		void SetToSettle(bool toSettle = true) { m_ToSettle = toSettle; }
+
+		/// Whether this came off a unit: a limb, a piece of armour, a gib from one. Its solid material settles as Flesh Scraps (see Material::GetTerrainSettleMaterial).
+		bool IsFromBody() const { return m_FromBody; }
+
+		/// Sets whether this came off a unit.
+		void SetFromBody(bool fromBody = true) { m_FromBody = fromBody; }
 
 		/// Marks this MovableObject for deletion at the end of the MovableMan
 		/// update.
@@ -1019,7 +1038,7 @@ namespace RTE {
 		/// Returns the string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
 		/// @return The value associated with the key.
-		std::string GetStringValue(const std::string& key) const;
+		const std::string& GetStringValue(const std::string& key) const;
 
 		/// Returns an encoded string value associated with the specified key or "" if it does not exist.
 		/// @param key Key to retrieve value.
@@ -1077,6 +1096,23 @@ namespace RTE {
 		/// @param key The key to check.
 		/// @return Whether or not there is an associated value for this key.
 		bool NumberValueExists(const std::string& key) const;
+
+		/// Gets a number value as it was when the units' values were last published (PublishNumberValues), or 0 if it did not exist then.
+		/// For reading another unit's values from an AI script: the AI scripts run on worker threads, one per Lua state, and the unit's own
+		/// script may be changing its live values on another thread meanwhile. The published copy only changes on the main thread, while no
+		/// script runs, so it is safe to read from any of them.
+		/// @param key The key to look up.
+		/// @return The published value, or 0.
+		double GetPublishedNumberValue(const std::string& key) const;
+
+		/// Checks whether a number value existed when the units' values were last published. See GetPublishedNumberValue.
+		/// @param key The key to check.
+		/// @return Whether it did.
+		bool PublishedNumberValueExists(const std::string& key) const;
+
+		/// Copies the live number values to the published ones (GetPublishedNumberValue). On the main thread only, while no script runs: once
+		/// a frame for every unit, before the AI updates (MovableMan::Update).
+		void PublishNumberValues() { m_PublishedNumberValueMap = m_NumberValueMap; }
 
 		/// Checks whether the entity value associated with the specified key exists.
 		/// @param key The key to check.
@@ -1350,6 +1386,7 @@ namespace RTE {
 		// Mark to have the MovableMan copy this the terrain layers at the end
 		// of update.
 		bool m_ToSettle;
+		bool m_FromBody; //!< Whether this came off a unit (see IsFromBody).
 		// Mark to delete at the end of MovableMan update
 		bool m_ToDelete;
 		// To draw this guy's HUD or not
@@ -1375,6 +1412,7 @@ namespace RTE {
 
 		std::unordered_map<std::string, std::string> m_StringValueMap; //<! Map to store any generic strings available from script
 		std::unordered_map<std::string, double> m_NumberValueMap; //<! Map to store any generic numbers available from script
+		std::unordered_map<std::string, double> m_PublishedNumberValueMap; //!< The number values as last published, for other units' scripts to read (see GetPublishedNumberValue).
 		std::unordered_map<std::string, Entity*> m_ObjectValueMap; //<! Map to store any generic object pointers available from script
 		static std::string ms_EmptyString;
 
@@ -1396,6 +1434,7 @@ namespace RTE {
 		int m_EffectStopStrength;
 		// The effect can't be obscured
 		bool m_EffectAlwaysShows;
+		bool m_SparkGlow; //!< The screen effect is a spark's glow: its strength, and so the light it casts, follows LightingSettings::SparkLights, and it's gone with EffectsSparks at 0.
 		Color m_LightColor; //!< Color of the light this casts, 0-255.
 		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.

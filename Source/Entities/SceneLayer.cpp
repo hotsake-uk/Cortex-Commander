@@ -44,6 +44,7 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Clear() {
 	m_MainBitmapOwned = false;
 	m_WrapX = true;
 	m_WrapY = true;
+	m_WrapXForcedOff = false;
 	m_OriginOffset.Reset();
 	m_Offset.Reset();
 	m_ZOrder = 0.0F;
@@ -115,6 +116,7 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const SceneLayerImpl&
 
 	m_BitmapFile = reference.m_BitmapFile;
 	m_WrapX = reference.m_WrapX;
+	m_WrapXForcedOff = reference.m_WrapXForcedOff;
 	m_WrapY = reference.m_WrapY;
 	m_OriginOffset = reference.m_OriginOffset;
 	// The depth has to survive copying: scenes are played from copies of their presets, and the lighting tells the terrain's background walls from its foreground by depth.
@@ -171,7 +173,7 @@ template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Save(Writer& writer) const {
 	Entity::Save(writer);
 
-	writer.NewPropertyWithValue("WrapX", m_WrapX);
+	writer.NewPropertyWithValue("WrapX", m_WrapX || m_WrapXForcedOff);
 	writer.NewPropertyWithValue("WrapY", m_WrapY);
 	writer.NewPropertyWithValue("BitmapFile", m_BitmapFile);
 

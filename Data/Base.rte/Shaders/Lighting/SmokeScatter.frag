@@ -26,6 +26,9 @@ uniform sampler2D rteSunMap; // 1 row: for each ray from the sun, the scene y of
 uniform float rteSunMapSlope;
 uniform float rteSunMapStart;
 uniform float rteSunMapTexel;
+uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
+uniform bool rteEffectsLayer; // Smoke is in the effects layer (LightingSettings::LayerSmoke): it neither lights nor shades what's in front of it.
+uniform float rteEffectsFrontDepth; // Depth below which a pixel is in front of the effects layer: a unit or the ground in front.
 
 float Luminance(vec3 color) {
 	return dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -38,14 +41,18 @@ void main() {
 	if (density <= 0.002) {
 		discard;
 	}
+	if (rteEffectsLayer && texture(rteSceneDepth, uv).r < rteEffectsFrontDepth) {
+		discard;
+	}
 	// Smoke this thick is opaque to the eye; scattering saturates rather than growing without bound.
 	float coverage = 1.0 - exp(-density * 1.5);
-	vec3 light = texture(rteDynamicLight, uv).rgb;
+	// Softened towards 2 as lights pile up, as on surfaces (LightComposite.frag's rteMaxDynamicLight), rather than taken raw up to 4.
+	vec3 light = 2.0 * (1.0 - exp(-texture(rteDynamicLight, uv).rgb / 2.0));
 	if (rteGIStrength > 0.0) {
-		light += texture(rteGI, uv).rgb * rteGIStrength;
+		light += min(texture(rteGI, uv).rgb * rteGIStrength, vec3(2.0));
 	}
 	if (!rteShading) {
-		FragColor = vec4(min(light, vec3(4.0)) * rteSmokeColor * coverage * rteStrength, 1.0);
+		FragColor = vec4(light * rteSmokeColor * coverage * rteStrength, 1.0);
 		return;
 	}
 	vec2 densityTexel = 1.0 / vec2(textureSize(rteDensity, 0));
@@ -77,7 +84,7 @@ void main() {
 	}
 	float sunPassing = exp(-texture(rteDensity, uv + normalize(rteSunDirection) * densityTexel * 6.0).a * 1.4);
 	vec3 sun = rteSunLight * sunVisible * sunPassing * 0.6;
-	vec3 scattered = (min(light, vec3(4.0)) * mix(1.0, lightPassing, rteShadingStrength) + sun * rteShadingStrength) * tint * coverage * rteStrength;
+	vec3 scattered = (light * mix(1.0, lightPassing, rteShadingStrength) + sun * rteShadingStrength) * tint * coverage * rteStrength;
 	float shade = coverage * (1.0 - sunPassing) * sunVisible * min(Luminance(rteSunLight), 1.0) * 0.45 * rteShadingStrength;
 	FragColor = vec4(scattered, 1.0 - shade);
 }

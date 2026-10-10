@@ -49,6 +49,27 @@ namespace RTE {
 		/// Places random pieces of this TerrainDebris's at random positions on the specified SLTerrain.
 		/// @param terrain The SLTerrain to scatter this TerrainDebris on. Ownership is NOT transferred!
 		void ScatterOnTerrain(SLTerrain* terrain);
+
+		/// How many pieces (pictures) this TerrainDebris has.
+		int GetPieceCount() const { return static_cast<int>(m_Bitmaps.size()); }
+
+		/// One of this TerrainDebris's pieces. Ownership is NOT transferred!
+		/// @param index Which, from 0 to GetPieceCount() - 1.
+		BITMAP* GetPiece(int index) const { return index >= 0 && index < GetPieceCount() ? m_Bitmaps[index] : nullptr; }
+
+		/// The material this TerrainDebris's pieces are made of.
+		const Material& GetDebrisMaterial() const { return m_Material; }
+
+		/// How deep below the surface a piece of this is put, at the least and the most, as ScatterOnTerrain puts them.
+		int GetMinDepth() const { return m_MinDepth; }
+		int GetMaxDepth() const { return m_MaxDepth; }
+
+		/// Draws one piece onto the terrain in this TerrainDebris's material, flipped and turned as it allows, as ScatterOnTerrain does (the sandbox's plant brushes).
+		/// The pixels changed are within a square of 10 + the piece's larger side, centered on the piece.
+		/// @param terrain The SLTerrain to draw on. Ownership is NOT transferred!
+		/// @param piece The piece, from GetPiece.
+		/// @param corner Where the piece's top left corner goes.
+		void DrawPiece(SLTerrain* terrain, BITMAP* piece, const Vector& corner) const { DrawToTerrain(terrain, piece, corner); }
 #pragma endregion
 
 	private:

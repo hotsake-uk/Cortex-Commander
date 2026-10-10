@@ -54,6 +54,7 @@ Last updated: 5 October 2026.
 - **Bounce light.** Lit surfaces pass some of their colour to nearby surfaces. A stronger version (called radiance cascades) is part of the Ultra quality preset.
 - **Auto exposure.** The picture adapts when the whole screen is very bright or very dark, like an eye or a camera does.
 - **Light in smoke.** Smoke near a fire, a lamp or a muzzle flash glows with that light.
+- **Effect layers.** Smoke, mist, splashes, dust and the other visual-only effects can each sit in their own layer between the battlefield and the background: units and the ground in front hide them, and they drift over cave walls and the sky behind them. One setting puts them all in front or all behind, and each has its own.
 
 ## 3. Shadows
 
@@ -62,6 +63,7 @@ Last updated: 5 October 2026.
 - **The sun has a direction.** Daylight comes from one side and turns with the time of day. The far side of a hill and the ground under an overhang are dimmer and cooler. At night the moon does the same, more faintly.
 - **Sunbeams indoors.** Where the sun shines through an opening into a cave or bunker, it lights what it falls on and the beam is visible in the air.
 - **Contact shading.** Back walls darken slightly right next to objects and solid ground, so things look attached to the scene.
+- **Terrain shadows on the background.** The terrain casts a drop shadow on the scenery behind it, offset away from the sun or moon, so hills and floating chunks no longer look flat against the backdrop.
 - **Opt out.** An object can be marked as not casting a shadow (energy shields, holograms).
 
 ## 4. Materials and surface states
@@ -133,7 +135,7 @@ Last updated: 5 October 2026.
 - **Swimming and drowning.** Units move through liquid instead of destroying it. Wading slows them. Light units float and heavy ones sink. Living soldiers run out of air after 12 seconds under water; robots do not breathe.
 - **Smoke and gas block sight.** Units and the AI cannot see through thick smoke or steam, so smoke screens work.
 - **Weather that matters.** Rain and snow weaken fire. Snow slows walking by up to 15%. Wind pushes fire. Dust storms cut how far units see.
-- **Night matters.** After dark, soldiers wear headlamps that light where they aim. The AI sees about half as far at night without one.
+- **Night matters.** Where it's dark around them (at night, in caves, under roofs), soldiers switch on headlamps that light where they aim, and switch them off again under a lit lamp or back in daylight. The AI sees about half as far at night without one.
 - **Saved games** store burning fire and moving liquid, and continue them when loaded.
 
 ## 9. New equipment
@@ -156,6 +158,7 @@ Last updated: 5 October 2026.
 - **Build** bunkers during play with the game's own build menu. Money never runs out.
 - **Orders:** hold, attack the nearest enemy, hunt brains, patrol, or go to a rally point.
 - **Command:** drag a box around units, then click where they should go or what they should attack.
+- **Dig to here** (X): click a point, inside the ground or not, and the selected units with a digger that cuts the way tunnel to it and hold there. The cursor shows the tunnel and says how far, through what and about how long, or why not ("Too hard: Concrete"). Units that can't are left where they are, with a marker saying why. The same order is on a unit's own pie menu ("Dig To Here").
 - **Take control** of any unit and play it yourself.
 - **Drop squads** arrive by dropship or rocket.
 - **Auto battle:** give each side a faction and a budget. The AI buys and sends waves until one side is left.
@@ -187,12 +190,15 @@ Last updated: 5 October 2026.
 - **Settings panel (F6).** Every setting that can be tuned while the game runs, in one panel: eleven categories, a search across all of them, and named presets that hold everything (files in `Userdata/Presets`). It replaces the World Debug, Graphics Lab and Debug Options windows.
 - **Tab.** In a game, puts every tool window away or brings them back. In the Sandbox game mode that is the switch between the tools (with the world paused) and your own character.
 - **Sandbox character.** A body and kit of your choice with optional abilities: no harm, endless jetpack and ammunition, number keys for the kit, flying through anything, ignored by enemy AI. It can be switched off to only look around.
-- **Colony buildings (first step).** A barracks trains units and keeps a number alive; an extractor earns supply. Hidden for now: the Sandbox's Colony tab is switched off in the code (`c_ShowColonyTab` in `Sandbox.cpp`).
+- **Colony buildings (first step).** A barracks trains units and keeps a number alive; an extractor earns supply. With "Buildings need power" on, a barracks also needs power from a generator of its side within reach while it trains, and short of it stops ("No power") or, as set, trains slower (a quarter pace with no power at all). They are in the Sandbox's Colony tab.
+- **Temperaments and non-combatants.** Every unit has a temperament: a Fighter fights as ordered; a Defensive unit fights only back, at the side that hurt it, for 12 s after; a Skittish unit never fights and runs about 15 m from whatever hurts it, shoots near it or comes close, its herd running with it, then goes back to what it was doing; a Pacifist never fights and carries on regardless. Skittish and Pacifist units are non-combatants: they aren't counted as a side's units, sent in battle waves, ordered with the rest of a side, carry flags, picked as random units or targeted until nobody else is in view. Farm animals (chickens, pigs, sheep, goats, cows, a bull) and civilians come with the game; livestock left standing wander about where they were put. The Spawn tab can list only fighters or only non-combatants and spawn units with any temperament, and a unit's action menu changes it.
 - **Ambient lighting slider.** One control for how bright interiors are without lamps. Turn it down and bunkers are lit by their lamps, and go dark where the lamps are shot out. It also lowers the minimum light on units, so units in a dark room are dark too.
 - **Settings versioning.** When the default look changes a lot, old saved values are ignored so players get the new look.
 
 ## 13. Additions for mod makers
 
+- **`Temperament`** (Fighter, Defensive, Skittish, Pacifist) and **`NonCombatant`** on actors; group a preset in `Non-combatants` to keep it out of battles and random picks. In Lua: `Temperament`, `NonCombatant`, `LastAttackerTeam`, `LastAttackerID`, `MSSinceHurt`, `LastHurtFrom`.
+- **`AIDigStrength`** on a firearm says what it digs, for tools that dig in their own script (the Constructor is 180). In Lua, units have `OrderKind`, `OrderDigTarget`, `OrderFailReason`/`OrderFailText`, `CanDigTo` and `DescribeDigTo`.
 - **In INI files:** lights on objects (colour, reach, brightness, flicker, beam), lamps on scenery pieces, metal and gloss values, blend mode and opacity, shadow casting on or off, shimmer, visual particle emission, and per-scene time and weather.
 - **In Lua:** time of day, weather and light colours; adding lights and shimmer; pouring liquid; asking whether smoke blocks a line of sight; reading fire and liquid counts; camera zoom; applying a look; surface states; scenery lamps; and all the sandbox tools.
 - **Old content improves by itself.** Glows become lights, sprites get edge lighting, smoke scatters light, without any change to the mod.
@@ -234,6 +240,7 @@ Last updated: 5 October 2026.
 - Copied presets with their own sprites drew the wrong frames.
 - Settings listed after one particular line in `Settings.ini` were silently ignored.
 - A crash in the modern HUD when the controlled unit was deleted.
+- AI units with a digger never dug: the route-follower asked for a new route every second at the dig face, and the AI script let go of the digger's trigger every update. They now dig, through short stretches of ground their digger cuts when going round is much longer (an "AI digging" slider in the settings says how readily), and give up and go round when the ground is harder than their digger cuts or the cut stops getting anywhere.
 
 ---
 
@@ -246,6 +253,8 @@ These are built and compile, but nobody has looked at them in real play or in a 
 - **Scenery lamps:** saving and loading a game with lamps; the Browncoat pieces in a real scene; whether the build menus list the new "Bunker Lights" group.
 - **The interior light slider** (settings panel) and the linked unit light floor: not tried in the running game.
 - **The Mod Manager's "FAILED TO LOAD" entry:** not opened to look at.
+- **Flag carriers take the safest route home:** in capture the flag, a unit carrying a flag weighs the enemies along a route when picking one, so a way past twenty of them loses to a longer one past none ("Safe routes in game modes" under AI behaviour, saved in presets; 0 turns it off). Other units, and other modes, still take the shortest way; Lua game modes can ask for it with an actor's `RouteThreatAvoidance`. Not yet watched in a battle.
+- **Route variety in Battle Director modes:** a "Route variety" slider gives that share of each team's new units a taste in routes of their own, so they spread over ways that are nearly as short instead of filing down one (Lua: an actor's `RouteSeed`). On Ketanot Hills, Bessor Split and Dvorak Caves ten seeds gave 2 to 8 different routes per crossing, almost all within 3% of the shortest. Not yet watched in a battle.
 - **Linux and macOS builds:** the new files are in the build scripts, but only Windows has been built and run.
 
 ## Not built

@@ -1,6 +1,8 @@
 // Changing the world: painting and building, effects, incoming fire, lightning, spawning units, items and structures, and the stroke queue that applies every tool use.
 
 #include "SandboxInternal.h"
+#include "GasGrid.h"
+#include "TerrainTrees.h"
 
 namespace SandboxDetail {
 	void Detonate(const char* presetName, const Vector& position) {
@@ -24,9 +26,30 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// The texture a material is painted with: its own terrain texture, or for the metals the base game gives none, the sandbox's (c_PaintTextures).
+	BITMAP* TextureToPaint(const Material* material) {
+		if (!material) {
+			return nullptr;
+		}
+		if (BITMAP* own = material->GetFGTexture()) {
+			return own;
+		}
+		// Loaded once, the first time anything is painted (a function static, so loading it is safe from any thread).
+		static const std::unordered_map<std::string, BITMAP*> c_Loaded = [] {
+			std::unordered_map<std::string, BITMAP*> loaded;
+			for (const PaintTexture& texture: c_PaintTextures) {
+				ContentFile file(texture.Path);
+				loaded[texture.Material] = file.GetAsBitmap();
+			}
+			return loaded;
+		}();
+		auto found = c_Loaded.find(material->GetPresetName());
+		return found != c_Loaded.end() ? found->second : nullptr;
+	}
+
 	/// The foreground colour painted ground gets at a scene pixel: the material's own terrain texture, tiled across the scene the way generated terrain is, so painted ground matches the real thing. A material without a texture gets its flat colour with a darker speckle.
 	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor) {
-		if (BITMAP* texture = material ? material->GetFGTexture() : nullptr; texture && texture->w > 0 && texture->h > 0 && bitmap_color_depth(texture) == 8) {
+		if (BITMAP* texture = TextureToPaint(material); texture && texture->w > 0 && texture->h > 0 && bitmap_color_depth(texture) == 8) {
 			int texel = _getpixel(texture, x % texture->w, y % texture->h);
 			if (texel != ColorKeys::g_MaskColor) {
 				return texel;
@@ -48,24 +71,35 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// Lets the oldest steps of the undo history go, to keep it to c_PaintUndoSteps steps and c_PaintUndoPixels pixels.
+	void TrimUndo() {
+		size_t pixelsKept = 0;
+		for (const PaintUndoStep& kept: s_PaintUndo) {
+			pixelsKept += kept.Pixels.size() + kept.Background.size();
+		}
+		while (s_PaintUndo.size() > 1 && (s_PaintUndo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
+			pixelsKept -= s_PaintUndo.front().Pixels.size() + s_PaintUndo.front().Background.size();
+			s_PaintUndo.pop_front();
+		}
+	}
+
+	/// Starts a new step of the undo history.
+	void PushUndoStep() {
+		ClosePaintUndoStep(true);
+		s_PaintUndo.emplace_back();
+		s_PaintUndo.back().LastUpdate = g_TimerMan.GetSimUpdateCount();
+	}
+
 	/// Keeps a pixel as it is, before a paint or build stroke changes it, for the undo.
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y) {
 		if (!s_RecordPaint || x < 0 || y < 0 || x > 0xFFFF || y > 0xFFFF) {
 			return;
 		}
 		long long update = g_TimerMan.GetSimUpdateCount();
-		// A new step for a new stroke, or when this stroke's step is full.
-		if (s_PaintUndo.empty() || update - s_PaintUndo.back().LastUpdate > 15 || s_PaintUndo.back().Pixels.size() >= c_PaintUndoPixelsPerStep) {
-			ClosePaintUndoStep(true);
-			s_PaintUndo.emplace_back();
-			size_t pixelsKept = 0;
-			for (const PaintUndoStep& kept: s_PaintUndo) {
-				pixelsKept += kept.Pixels.size();
-			}
-			while (s_PaintUndo.size() > 1 && (s_PaintUndo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
-				pixelsKept -= s_PaintUndo.front().Pixels.size();
-				s_PaintUndo.pop_front();
-			}
+		// A new step for a new stroke, after a placing click, or when this stroke's step is full.
+		if (s_PaintUndo.empty() || s_PaintUndo.back().Sealed || update - s_PaintUndo.back().LastUpdate > 15 || s_PaintUndo.back().Pixels.size() >= c_PaintUndoPixelsPerStep) {
+			PushUndoStep();
+			TrimUndo();
 		}
 		PaintUndoStep& step = s_PaintUndo.back();
 		step.LastUpdate = update;
@@ -79,28 +113,90 @@ namespace SandboxDetail {
 		step.Bottom = std::max(step.Bottom, y);
 	}
 
-	/// Puts back what the last paint or build stroke changed, as any change to the terrain is made: the pathfinder and the lighting told,
-	/// hanging ground and liquid round it woken.
+	/// Notes something a placing click made, for the undo to take away again.
+	void NotePlaced(const MovableObject* object) {
+		if (s_RecordPlaced && object && !s_PaintUndo.empty() && !s_PaintUndo.back().Sealed) {
+			s_PaintUndo.back().Placed.push_back(object->GetUniqueID());
+		}
+	}
+
+	/// Keeps the ground a bunker piece will be drawn over, foreground, material and background, for the undo.
+	void RecordTerrainObjectArea(const TerrainObject& piece) {
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain || s_PaintUndo.empty()) {
+			return;
+		}
+		Vector corner = (piece.GetPos() + piece.GetBitmapOffset()).GetFloored();
+		for (int dy = 0; dy < piece.GetBitmapHeight(); ++dy) {
+			for (int dx = 0; dx < piece.GetBitmapWidth(); ++dx) {
+				int x = corner.GetFloorIntX() + dx;
+				int y = corner.GetFloorIntY() + dy;
+				g_SceneMan.WrapPosition(x, y);
+				if (x < 0 || y < 0 || x >= terrain->GetWidth() || y >= terrain->GetHeight() || x > 0xFFFF || y > 0xFFFF) {
+					continue;
+				}
+				size_t before = s_PaintUndo.back().Pixels.size();
+				RecordPaintPixel(terrain, x, y);
+				// (Only the first time this step sees the pixel, as for the foreground.)
+				if (s_PaintUndo.back().Pixels.size() > before) {
+					s_PaintUndo.back().Background.push_back({static_cast<unsigned short>(x), static_cast<unsigned short>(y), static_cast<unsigned char>(terrain->GetBGColorPixel(x, y))});
+				}
+			}
+		}
+	}
+
+	/// Takes back the newest step of the undo history. A paint step's ground is put back as any change to the terrain is made: the
+	/// pathfinder and the lighting told, hanging ground and liquid round it woken. A placing step's units, craft and things are taken away
+	/// (not your character, nor the unit you are in, nor a thing a unit has picked up since), and its colony building forgotten.
 	void UndoPaint() {
-		while (!s_PaintUndo.empty() && s_PaintUndo.back().Pixels.empty()) {
+		while (!s_PaintUndo.empty() && s_PaintUndo.back().Empty()) {
 			s_PaintUndo.pop_back();
 		}
 		if (s_PaintUndo.empty() || !g_SceneMan.GetScene()) {
 			return;
 		}
-		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		const PaintUndoStep& step = s_PaintUndo.back();
-		Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
-		Vector center = area.GetCenter();
-		float reach = static_cast<float>(std::max(area.GetWidth(), area.GetHeight())) * 0.75F;
-		// (Undoing a paint takes ground away, which can leave what is over it hanging, as a dig does.)
-		TerrainCollapse::BeginChange(center, reach + 30.0F);
-		for (auto pixel = step.Pixels.rbegin(); pixel != step.Pixels.rend(); ++pixel) {
-			terrain->SetMaterialPixel(pixel->X, pixel->Y, pixel->Material);
-			terrain->SetFGColorPixel(pixel->X, pixel->Y, pixel->Color);
+		for (long id: step.Placed) {
+			MovableObject* object = g_MovableMan.FindObjectByUniqueID(id);
+			if (!object || object->IsSetToDelete() || object->GetRootParent() != object) {
+				continue;
+			}
+			if (object == s_Possessed || object == GetRef(s_PlayerUnit)) {
+				continue;
+			}
+			object->SetToDelete(true);
 		}
-		terrain->AddUpdatedMaterialArea(area);
-		FluidSim::Disturb(center, reach + 2.0F);
+		if (step.ColonyBuilding >= 0) {
+			Colony::Remove(step.ColonyBuilding);
+		}
+		if (step.Drop != 0) {
+			// "Make it fall": its pieces gone from wherever they are, and the ground back where it was.
+			TerrainCollapse::TakeBackDrop(step.Drop);
+		}
+		if (step.Rope != 0) {
+			// A rope: taken away, the one being put down included (the next click starts another).
+			RopeSim::Remove(step.Rope);
+			if (s_RopeDrawing == step.Rope) {
+				s_RopeDrawing = 0;
+			}
+		}
+		if (!step.Pixels.empty()) {
+			SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+			Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
+			Vector center = area.GetCenter();
+			float reach = static_cast<float>(std::max(area.GetWidth(), area.GetHeight())) * 0.75F;
+			// (Undoing a paint takes ground away, which can leave what is over it hanging, as a dig does.)
+			TerrainCollapse::BeginChange(center, reach + 30.0F);
+			for (auto pixel = step.Pixels.rbegin(); pixel != step.Pixels.rend(); ++pixel) {
+				terrain->SetMaterialPixel(pixel->X, pixel->Y, pixel->Material);
+				terrain->SetFGColorPixel(pixel->X, pixel->Y, pixel->Color);
+			}
+			for (const UndoBackgroundPixel& pixel: step.Background) {
+				terrain->SetBGColorPixel(pixel.X, pixel.Y, pixel.Color);
+			}
+			terrain->AddUpdatedMaterialArea(area);
+			FluidSim::Disturb(center, reach + 2.0F);
+		}
 		s_PaintUndo.pop_back();
 	}
 
@@ -116,8 +212,11 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
-	void PaintTerrain(const Vector& center, int radius, const char* materialName) {
+	/// Paints terrain material into the air, or digs it out when there's no material, over the pixels of a box (scene pixels, both ends
+	/// included, unwrapped) that inside says are in: the brushes' discs and the filled shapes.
+	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	template <typename Inside>
+	void PaintArea(int left, int top, int right, int bottom, Inside inside, const char* materialName, float goldShare) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -140,20 +239,30 @@ namespace SandboxDetail {
 			darker.RecalculateIndex();
 			speckleColor = darker.GetIndex() > 1 ? darker.GetIndex() : color;
 		}
-		int centerX = center.GetFloorIntX();
-		int centerY = center.GetFloorIntY();
+		const Material* gold = materialName && goldShare > 0.0F ? g_SceneMan.GetMaterial("Gold") : nullptr;
+		int goldColor = ColorKeys::g_MaskColor;
+		if (gold && gold->GetIndex() != g_MaterialAir) {
+			Color goldMaterialColor = gold->GetColor();
+			goldMaterialColor.RecalculateIndex();
+			goldColor = goldMaterialColor.GetIndex();
+		} else {
+			gold = nullptr;
+		}
+		Box area(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1));
+		Vector center = area.GetCenter();
+		float reach = std::max(area.GetWidth(), area.GetHeight()) * 0.5F;
 		if (!materialName) {
 			// Dug-out ground may be left hanging. Told before the digging, so it knows what was hanging already.
-			TerrainCollapse::BeginChange(center, static_cast<float>(radius + 30));
+			TerrainCollapse::BeginChange(center, reach + 30.0F);
 		}
 		bool changed = false;
-		for (int dy = -radius; dy <= radius; ++dy) {
-			for (int dx = -radius; dx <= radius; ++dx) {
-				if (dx * dx + dy * dy > radius * radius) {
+		for (int sceneY = top; sceneY <= bottom; ++sceneY) {
+			for (int sceneX = left; sceneX <= right; ++sceneX) {
+				if (!inside(sceneX, sceneY)) {
 					continue;
 				}
-				int x = centerX + dx;
-				int y = centerY + dy;
+				int x = sceneX;
+				int y = sceneY;
 				if (g_SceneMan.SceneWrapsX()) {
 					x = ((x % width) + width) % width;
 				}
@@ -166,18 +275,391 @@ namespace SandboxDetail {
 					continue;
 				}
 				RecordPaintPixel(terrain, x, y);
-				terrain->SetMaterialPixel(x, y, material);
-				terrain->SetFGColorPixel(x, y, materialName ? PaintedColor(paintMaterial, x, y, color, speckleColor) : color);
+				if (gold && Random01() < goldShare) {
+					terrain->SetMaterialPixel(x, y, gold->GetIndex());
+					terrain->SetFGColorPixel(x, y, PaintedColor(gold, x, y, goldColor, goldColor));
+				} else {
+					terrain->SetMaterialPixel(x, y, material);
+					terrain->SetFGColorPixel(x, y, materialName ? PaintedColor(paintMaterial, x, y, color, speckleColor) : color);
+				}
 				changed = true;
 			}
 		}
 		if (changed) {
-			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(centerX - radius), static_cast<float>(centerY - radius)), static_cast<float>(radius * 2 + 1), static_cast<float>(radius * 2 + 1)));
+			terrain->AddUpdatedMaterialArea(area);
 			// Liquid around the change may flow into it, and dug-out ground may be left hanging.
-			FluidSim::Disturb(center, static_cast<float>(radius + 2));
-
+			FluidSim::Disturb(center, reach + 2.0F);
 		}
-		NotePaint(Box(Vector(static_cast<float>(centerX - radius), static_cast<float>(centerY - radius)), static_cast<float>(radius * 2 + 1), static_cast<float>(radius * 2 + 1)), materialName ? "paint" : "dig", materialName, !materialName, changed, changed);
+		NotePaint(area, materialName ? "paint" : "dig", materialName, !materialName, changed, changed);
+	}
+
+	/// Paints a disc of terrain material into the air, or digs one out when there's no material.
+	/// @param shape A circle, a square of radius either way of the center, or a soft spray over the circle (the brush shape, s_BrushShape).
+	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	/// Whether a scene pixel is under a terrain brush: a circle, a square of radius either way of the center, or a soft spray over the circle.
+	bool InBrush(int centerX, int centerY, int radius, BrushShape shape, int x, int y) {
+		int dx = x - centerX;
+		int dy = y - centerY;
+		int distanceSquared = dx * dx + dy * dy;
+		if (shape != BrushShape::Square && distanceSquared > radius * radius) {
+			return false;
+		}
+		// The spray: a few of the pixels each stroke, more towards the middle, so holding it builds up softly.
+		return shape != BrushShape::Spray || Random01() <= 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)));
+	}
+
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
+		int centerX = center.GetFloorIntX();
+		int centerY = center.GetFloorIntY();
+		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, [&](int x, int y) { return InBrush(centerX, centerY, radius, shape, x, y); }, materialName, goldShare);
+	}
+
+	/// Grows grass up into the air from the top of the ground, wherever a top is among the pixels of a box (scene pixels, both ends included,
+	/// unwrapped) that inside says are in, as the base game's maps have on their topsoil (its "Grass" frosting): a few pixels thick, a little
+	/// more or less from column to column. Ground that already has grass on it, and plants and ash, get none, so going over it again adds nothing.
+	template <typename Inside>
+	void GrowGrassArea(int left, int top, int right, int bottom, Inside inside) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const Material* grass = g_SceneMan.GetMaterial("Grass");
+		if (!grass || grass->GetIndex() == g_MaterialAir) {
+			return;
+		}
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		Color grassColor = grass->GetColor();
+		grassColor.RecalculateIndex();
+		Color darker = grassColor;
+		darker.SetRGB(grassColor.GetR() * 4 / 5, grassColor.GetG() * 4 / 5, grassColor.GetB() * 4 / 5);
+		darker.RecalculateIndex();
+		int color = grassColor.GetIndex();
+		int speckleColor = darker.GetIndex() > 1 ? darker.GetIndex() : color;
+		constexpr int c_MinThickness = 3;
+		constexpr int c_MaxThickness = 7;
+		bool changed = false;
+		for (int sceneX = left; sceneX <= right; ++sceneX) {
+			int x = sceneX;
+			if (g_SceneMan.SceneWrapsX()) {
+				x = ((x % width) + width) % width;
+			}
+			if (x < 0 || x >= width) {
+				continue;
+			}
+			// The same thickness each time for a column, so painting over the edge of earlier grass lines up with it.
+			unsigned int hash = static_cast<unsigned int>(x) * 2654435761u;
+			int thickness = c_MinThickness + static_cast<int>((hash >> 16) % (c_MaxThickness - c_MinThickness + 1));
+			for (int y = std::max(top, 1); y <= std::min(bottom, height - 1); ++y) {
+				int ground = terrain->GetMaterialPixel(x, y);
+				if (terrain->GetMaterialPixel(x, y - 1) != g_MaterialAir || ground == g_MaterialAir || ground == g_MaterialOutOfBounds || ground == grass->GetIndex() || FluidSim::IsLiquid(ground) || !inside(sceneX, y)) {
+					continue;
+				}
+				const Material* groundMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(ground));
+				if (!groundMaterial || groundMaterial->GetIntegrity() < 5.0F) {
+					continue;
+				}
+				for (int above = y - 1; above >= std::max(0, y - thickness) && terrain->GetMaterialPixel(x, above) == g_MaterialAir; --above) {
+					RecordPaintPixel(terrain, x, above);
+					terrain->SetMaterialPixel(x, above, grass->GetIndex());
+					terrain->SetFGColorPixel(x, above, PaintedColor(grass, x, above, color, speckleColor));
+					changed = true;
+				}
+			}
+		}
+		Box area(Vector(static_cast<float>(left), static_cast<float>(top - c_MaxThickness)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1 + c_MaxThickness));
+		if (changed) {
+			terrain->AddUpdatedMaterialArea(area);
+			FluidSim::Disturb(area.GetCenter(), std::max(area.GetWidth(), area.GetHeight()) * 0.5F + 2.0F);
+		}
+		NotePaint(area, "paint", "Grass", false, changed, changed);
+	}
+
+	/// The material a terrain brush paints (nullptr: Dig), and how much of it is gold.
+	const char* TerrainBrushMaterial(const Stroke& stroke, float& goldShare) {
+		goldShare = 0.0F;
+		switch (stroke.Kind) {
+			case Tool::Earth:
+				return "Earth";
+			case Tool::Sand:
+				return "Sand";
+			case Tool::Ice:
+				return "Ice";
+			case Tool::Grass:
+				return "Grass";
+			case Tool::Wood:
+				return "Wood";
+			case Tool::TreeTrunk:
+				return "Tree Trunk";
+			case Tool::Concrete:
+				return "Concrete";
+			case Tool::Stone:
+				return "Stone";
+			case Tool::DenseEarth:
+				return "Dense Earth";
+			case Tool::GoldEarth:
+				goldShare = c_GoldEarthShare;
+				return "Earth";
+			case Tool::TerrainOther:
+			case Tool::Metal:
+				return stroke.Material.c_str();
+			default:
+				return nullptr;
+		}
+	}
+
+	/// Fills a shape dragged out with a terrain brush (Brush type Shape) with its material, or digs it out with Dig, in one go.
+	void FillTerrainShape(const Stroke& stroke) {
+		if (stroke.Kind == Tool::GrowGrass) {
+			FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
+			const Vector& start = stroke.Position;
+			const Vector& end = stroke.Position2;
+			GrowGrassArea(static_cast<int>(std::floor(std::min(start.m_X, end.m_X))), static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y))), static_cast<int>(std::floor(std::max(start.m_X, end.m_X))), static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y))), [&](int x, int y) { return InFillShape(shape, start, end, x, y); });
+			return;
+		}
+		float goldShare = 0.0F;
+		const char* materialName = TerrainBrushMaterial(stroke, goldShare);
+		if ((stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) && stroke.Material.empty()) {
+			return;
+		}
+		FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
+		const Vector& start = stroke.Position;
+		const Vector& end = stroke.Position2;
+		int left = static_cast<int>(std::floor(std::min(start.m_X, end.m_X)));
+		int right = static_cast<int>(std::floor(std::max(start.m_X, end.m_X)));
+		int top = static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y)));
+		int bottom = static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y)));
+		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare);
+	}
+
+	/// A base game terrain debris preset, by name.
+	const TerrainDebris* DebrisPreset(const char* name) {
+		const TerrainDebris* debris = dynamic_cast<const TerrainDebris*>(g_PresetMan.GetEntityPreset("TerrainDebris", name, "Base.rte"));
+		return debris && debris->GetPieceCount() > 0 ? debris : nullptr;
+	}
+
+	/// Draws a plant picture into the terrain, scaled (nearest pixel, so it keeps the look of the art) and maybe mirrored, in a material:
+	/// each of its pixels takes the picture's colour and the material, ground included (roots are set into it, as the maps' plants are).
+	/// Kept for the undo first.
+	void DrawPlantPicture(SLTerrain* terrain, BITMAP* picture, int left, int top, float scale, bool mirror, int material) {
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(picture->w) * scale));
+		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(picture->h) * scale));
+		for (int dy = 0; dy < scaledHeight; ++dy) {
+			int sourceY = std::min(picture->h - 1, static_cast<int>(static_cast<float>(dy) / scale));
+			for (int dx = 0; dx < scaledWidth; ++dx) {
+				int sourceX = std::min(picture->w - 1, static_cast<int>(static_cast<float>(dx) / scale));
+				int color = _getpixel(picture, mirror ? picture->w - 1 - sourceX : sourceX, sourceY);
+				if (color == ColorKeys::g_MaskColor) {
+					continue;
+				}
+				int x = left + dx;
+				int y = top + dy;
+				if (g_SceneMan.SceneWrapsX()) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height || terrain->GetMaterialPixel(x, y) == g_MaterialOutOfBounds) {
+					continue;
+				}
+				RecordPaintPixel(terrain, x, y);
+				terrain->SetMaterialPixel(x, y, material);
+				terrain->SetFGColorPixel(x, y, color);
+			}
+		}
+	}
+
+	PlantRoll RollPlant() {
+		// Its own random numbers, so showing the next plant doesn't move the sandbox's own (Random01) along.
+		static unsigned int state = 0x9E3779B9u;
+		auto next = [] {
+			state ^= state << 13;
+			state ^= state >> 17;
+			state ^= state << 5;
+			return static_cast<float>(state & 0xFFFFFF) / static_cast<float>(0x1000000);
+		};
+		PlantRoll roll;
+		roll.Variant = next();
+		roll.Piece = next();
+		roll.Jitter = next();
+		roll.Depth = next();
+		roll.Mirror = next() < 0.5F;
+		return roll;
+	}
+
+	/// Works out where one of the game's own plant pictures (or one of the sandbox's trees or candles) goes on the ground at a point, as its
+	/// maps have them: the ground found under the point (or over it, with the point in the ground), within the brush size and a little more,
+	/// and the plant set into it as the map's own are. Changes nothing, so the cursor can show it (DrawCursor).
+	/// @param scale How big it is drawn, 1 as the art is (Plant size). @param roll Which plant, mirrored or not, and where.
+	/// @return Whether there is ground for it there.
+	bool PlanPlant(const Vector& at, int radius, Tool kind, float scale, const PlantRoll& roll, PlantPlacement& out) {
+		scale = std::clamp(scale, 0.25F, 4.0F);
+		const TerrainDebris* debris = nullptr;
+		const TerrainDebris* leaves = nullptr;
+		switch (kind) {
+			case Tool::Cacti:
+				debris = DebrisPreset(roll.Variant < 0.7F ? "Small Cacti" : "Cacti");
+				break;
+			case Tool::Mushrooms: {
+				// Mostly small ones, as the maps have them.
+				static const char* const mushrooms[] = {"Small Red Mushrooms", "Small Yellow Mushrooms", "Red Mushrooms", "Yellow Mushrooms"};
+				float pick = roll.Variant;
+				debris = DebrisPreset(mushrooms[pick < 0.35F ? 0 : (pick < 0.7F ? 1 : (pick < 0.85F ? 2 : 3))]);
+				break;
+			}
+			case Tool::Trees:
+				debris = DebrisPreset("Sandbox Tree Trunks");
+				leaves = DebrisPreset("Sandbox Tree Leaves");
+				break;
+			case Tool::Candles:
+				// The wax, and its wick drawn over it (as a tree's leaves over its trunk). In whole steps of size, so a wick never comes out
+				// missing or two pixels wide on one side.
+				debris = DebrisPreset("Sandbox Candle Wax");
+				leaves = DebrisPreset("Sandbox Candle Wicks");
+				scale = std::max(std::round(scale), 1.0F);
+				break;
+			default:
+				debris = DebrisPreset("Plants");
+				break;
+		}
+		if (!debris || !g_SceneMan.GetScene()) {
+			return false;
+		}
+		int pieceIndex = static_cast<int>(roll.Piece * static_cast<float>(debris->GetPieceCount())) % debris->GetPieceCount();
+		BITMAP* piece = debris->GetPiece(pieceIndex);
+		BITMAP* leafPiece = leaves && pieceIndex < leaves->GetPieceCount() ? leaves->GetPiece(pieceIndex) : nullptr;
+		if (!piece) {
+			return false;
+		}
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		int width = terrain->GetBitmap()->w;
+		int height = terrain->GetBitmap()->h;
+		int x = at.GetFloorIntX() + static_cast<int>((roll.Jitter - 0.5F) * 4.0F);
+		if (g_SceneMan.SceneWrapsX()) {
+			x = ((x % width) + width) % width;
+		}
+		if (x < 0 || x >= width) {
+			return false;
+		}
+		auto solid = [&](int y) { return y >= height || (y >= 0 && !terrain->IsAirPixel(x, y)); };
+		int reach = std::max(radius, 4) + 40;
+		int y = std::clamp(at.GetFloorIntY(), 0, height - 1);
+		// In the ground: up to its surface. In the air: down to the ground.
+		int top = y - reach;
+		while (y > top && y > 0 && solid(y)) {
+			--y;
+		}
+		int bottom = at.GetFloorIntY() + reach;
+		while (y < bottom && y < height - 1 && !solid(y + 1)) {
+			++y;
+		}
+		if (!solid(y + 1) || solid(y)) {
+			return false;
+		}
+		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(piece->w) * scale));
+		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(piece->h) * scale));
+		int upper;
+		if (kind == Tool::Trees) {
+			// y is the last air above the ground; the tree's roots go into it.
+			upper = y + 1 + static_cast<int>(static_cast<float>(c_TreeRootDepth) * scale) - scaledHeight;
+		} else if (kind == Tool::Candles) {
+			// Standing on the ground, its foot a row into it so it stands firm.
+			upper = y + 1 + static_cast<int>(scale) - scaledHeight;
+		} else {
+			// The piece's middle goes the debris's depth into the ground, as ScatterOnTerrain puts it.
+			int minDepth = debris->GetMinDepth();
+			int depth = minDepth + std::min(static_cast<int>(roll.Depth * static_cast<float>(std::max(debris->GetMaxDepth() - minDepth + 1, 1))), std::max(debris->GetMaxDepth() - minDepth, 0));
+			upper = y + 1 + static_cast<int>(static_cast<float>(depth) * scale) - scaledHeight / 2;
+		}
+		out.Debris = debris;
+		out.Leaves = leafPiece ? leaves : nullptr;
+		out.Piece = piece;
+		out.LeafPiece = leafPiece;
+		out.Left = x - scaledWidth / 2;
+		out.Upper = upper;
+		out.GroundX = x;
+		out.GroundY = y;
+		out.Scale = scale;
+		out.Mirror = roll.Mirror;
+		return true;
+	}
+
+	/// Puts one of the game's own plant pictures (or one of the sandbox's trees or candles) on the ground at a point (see PlanPlant).
+	/// @param roll The plant the cursor showed, or none to roll one here.
+	void PlacePlant(const Vector& at, int radius, Tool kind, float scale, const PlantRoll* roll) {
+		PlantRoll rolled;
+		if (!roll) {
+			rolled.Variant = Random01();
+			rolled.Piece = Random01();
+			rolled.Jitter = Random01();
+			rolled.Depth = Random01();
+			rolled.Mirror = Random01() < 0.5F;
+			roll = &rolled;
+		}
+		PlantPlacement plan;
+		if (!PlanPlant(at, radius, kind, scale, *roll, plan)) {
+			return;
+		}
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		int material = plan.Debris->GetDebrisMaterial().GetIndex();
+		if (kind == Tool::Trees) {
+			// The trunk in the tree trunk material where the game has it (it burns as a tree does), else the wood the preset names.
+			for (const char* name: {"Tree Trunk", "Tree trunk"}) {
+				if (const Material* trunk = g_SceneMan.GetMaterial(name); trunk && trunk->GetIndex() != g_MaterialAir) {
+					material = trunk->GetIndex();
+					break;
+				}
+			}
+		}
+		DrawPlantPicture(terrain, plan.Piece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, material);
+		if (plan.LeafPiece) {
+			int leafMaterial = plan.Leaves->GetDebrisMaterial().GetIndex();
+			if (kind == Tool::Trees) {
+				// A tree's leaves in the tree leaves material where the game has it, so they're known for a tree's (TerrainTrees), not a bush.
+				if (const Material* leaves = g_SceneMan.GetMaterial("Tree Leaves"); leaves && leaves->GetIndex() != g_MaterialAir) {
+					leafMaterial = leaves->GetIndex();
+				}
+			}
+			DrawPlantPicture(terrain, plan.LeafPiece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, leafMaterial);
+		}
+		if (kind == Tool::Trees) {
+			TerrainTrees::NoteChanged();
+		}
+		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->w) * plan.Scale));
+		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->h) * plan.Scale));
+		int changedWidth = std::max(scaledWidth, plan.LeafPiece ? static_cast<int>(static_cast<float>(plan.LeafPiece->w) * plan.Scale) : 0);
+		Box changed(Vector(static_cast<float>(plan.Left), static_cast<float>(plan.Upper)), static_cast<float>(changedWidth), static_cast<float>(scaledHeight));
+		terrain->AddUpdatedMaterialArea(changed);
+		FluidSim::Disturb(Vector(static_cast<float>(plan.GroundX), static_cast<float>(plan.GroundY)), static_cast<float>(std::max(changedWidth, scaledHeight)));
+	}
+
+	/// The terrain material a terrain brush paints (the main one, for "Earth with gold"), or none for dig and grow grass.
+	const char* TerrainBrushMaterial(Tool kind) {
+		switch (kind) {
+			case Tool::Earth:
+			case Tool::GoldEarth:
+				return "Earth";
+			case Tool::Sand:
+				return "Sand";
+			case Tool::Ice:
+				return "Ice";
+			case Tool::Grass:
+			case Tool::GrowGrass:
+				return "Grass";
+			case Tool::Wood:
+				return "Wood";
+			case Tool::TreeTrunk:
+				return "Tree Trunk";
+			case Tool::Concrete:
+				return "Concrete";
+			case Tool::Stone:
+				return "Stone";
+			case Tool::DenseEarth:
+				return "Dense Earth";
+			case Tool::TerrainOther:
+				return s_OtherTerrain.c_str();
+			case Tool::Metal:
+				return s_PaintMetal.c_str();
+			default:
+				return nullptr;
+		}
 	}
 
 	/// Fills a box with a terrain material, where there's air (or everything, to build over what's there).
@@ -221,7 +703,7 @@ namespace SandboxDetail {
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
 	bool TakesSide(Tool kind) {
-		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::OrderMove;
+		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator || kind == Tool::OrderMove;
 	}
 
 	/// Clears a box of the terrain to air.
@@ -258,6 +740,128 @@ namespace SandboxDetail {
 	}
 
 
+
+	/// Turns every pixel of the marked materials on the map to air. Not kept for the undo (it can be millions of pixels: the window asks first),
+	/// and ground left hanging stays where it is, as the map's own floating ground does. The liquid round each patch that changed is woken, to flow into it.
+	/// @return How many pixels were cleared.
+	int ClearMaterialsEverywhere(const std::array<bool, 256>& clear) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const BITMAP* materials = terrain->GetMaterialBitmap();
+		const int width = materials->w;
+		const int height = materials->h;
+		constexpr int tile = 64;
+		const int tilesWide = (width + tile - 1) / tile;
+		std::vector<char> changedTiles(static_cast<size_t>(tilesWide) * static_cast<size_t>((height + tile - 1) / tile), 0);
+		int cleared = 0;
+		int left = width;
+		int top = height;
+		int right = -1;
+		int bottom = -1;
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				int material = materials->line[y][x];
+				if (!clear[material] || material == g_MaterialAir || material == g_MaterialOutOfBounds) {
+					continue;
+				}
+				terrain->SetMaterialPixel(x, y, g_MaterialAir);
+				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				changedTiles[static_cast<size_t>(y / tile) * tilesWide + x / tile] = 1;
+				left = std::min(left, x);
+				top = std::min(top, y);
+				right = std::max(right, x);
+				bottom = std::max(bottom, y);
+				++cleared;
+			}
+		}
+		if (cleared == 0) {
+			return 0;
+		}
+		terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1)));
+		for (size_t i = 0; i < changedTiles.size(); ++i) {
+			if (changedTiles[i]) {
+				Vector middle(static_cast<float>((static_cast<int>(i) % tilesWide) * tile + tile / 2), static_cast<float>((static_cast<int>(i) / tilesWide) * tile + tile / 2));
+				FluidSim::Disturb(middle, static_cast<float>(tile) * 0.75F + 2.0F);
+			}
+		}
+		return cleared;
+	}
+
+	void ClearMap(const Stroke& stroke) {
+		if (!g_SceneMan.GetScene() || !g_SceneMan.GetScene()->GetTerrain()) {
+			return;
+		}
+		std::array<bool, 256> clear{};
+		for (int material: stroke.Materials) {
+			if (material > 0 && material < 256) {
+				clear[material] = true;
+			}
+		}
+		const Actor* you = GetRef(s_PlayerUnit);
+		switch (static_cast<ClearKind>(stroke.Count)) {
+			case ClearKind::Buildings: {
+				int removed = 0;
+				for (Actor* actor: SandboxAccess::Actors()) {
+					if (dynamic_cast<ADoor*>(actor) || actor->GetNumberValue("SandboxPlaced") != 0.0) {
+						actor->SetToDelete(true);
+						++removed;
+					}
+				}
+				std::vector<int> buildings;
+				for (const Colony::Building& building: Colony::Buildings()) {
+					buildings.push_back(building.ID);
+				}
+				for (int id: buildings) {
+					Colony::Remove(id);
+				}
+				int pixels = 0;
+				if (stroke.Choice == 1) {
+					for (const char* name: c_BuildingMaterials) {
+						if (const Material* material = g_SceneMan.GetMaterial(name); material && material->GetIndex() > 0 && material->GetIndex() < 256) {
+							clear[material->GetIndex()] = true;
+						}
+					}
+					pixels = ClearMaterialsEverywhere(clear);
+				}
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(removed) + " doors and bunker parts, " + std::to_string(buildings.size()) + " colony buildings and " + std::to_string(pixels) + " pixels of what they were built of.");
+				break;
+			}
+			case ClearKind::Liquids: {
+				for (int material = 0; material < 256; ++material) {
+					clear[material] = clear[material] && FluidSim::IsLiquid(material);
+				}
+				if (stroke.Choice == 1) {
+					// Springs that pour what was cleared, so it doesn't come straight back.
+					s_WaterSpawners.erase(std::remove_if(s_WaterSpawners.begin(), s_WaterSpawners.end(), [&clear](const WaterSpawner& spring) {
+						                      const Material* material = g_SceneMan.GetMaterial(spring.Liquid);
+						                      return material && material->GetIndex() > 0 && material->GetIndex() < 256 && clear[material->GetIndex()];
+					                      }),
+					                      s_WaterSpawners.end());
+				}
+				int pixels = ClearMaterialsEverywhere(clear);
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(pixels) + " pixels of liquid.");
+				break;
+			}
+			case ClearKind::Units: {
+				int removed = 0;
+				for (Actor* actor: SandboxAccess::Actors()) {
+					if ((stroke.Team < 0 || actor->GetTeam() == stroke.Team) && !dynamic_cast<ADoor*>(actor) && actor->GetNumberValue("SandboxPlaced") == 0.0 && actor != you) {
+						actor->SetToDelete(true);
+						++removed;
+					}
+				}
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(removed) + " units.");
+				break;
+			}
+			case ClearKind::Ground: {
+				for (int material = 0; material < 256; ++material) {
+					clear[material] = clear[material] && !FluidSim::IsLiquid(material);
+				}
+				int pixels = ClearMaterialsEverywhere(clear);
+				g_ConsoleMan.PrintString("SANDBOX: Cleared " + std::to_string(pixels) + " pixels of ground.");
+				break;
+			}
+		}
+	}
 
 	/// Queues a change the window asks for, to be made in the next simulation update like a click on the world. (Made from the window
 	/// directly, gym units appeared with no sim step and their timers started on the spot, and the effect and spring lists were cleared
@@ -588,6 +1192,15 @@ namespace SandboxDetail {
 		GiveLoadout(actor, preset, loadout);
 		actor->SetTeam(team);
 		actor->SetControllerMode(Controller::CIM_AI);
+		if (order == Order::BattleObjective) {
+			// Its team's job in the battle, taken up once its ship lets it out (a flag to go for, a hill, the place its card defends); with
+			// none, as Attack.
+			actor->SetAIMode(Actor::AIMODE_SENTRY);
+			if (JoinBattleObjective(actor)) {
+				return actor;
+			}
+			order = Order::Attack;
+		}
 		switch (order) {
 			case Order::Attack:
 				// Gets its target once it's out among the enemy.
@@ -621,7 +1234,8 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves. Returns what the units cost.
-	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft) {
+	/// @param invincible Whether the craft takes no harm, and is taken away once it has unloaded and left (KeepCraftWhole).
+	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible) {
 		const CraftChoice& choice = c_Crafts[std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)];
 		ACraft* ship = dynamic_cast<ACraft*>(CreateBaseObject(choice.ClassName, choice.PresetName));
 		float cost = 0.0F;
@@ -644,24 +1258,36 @@ namespace SandboxDetail {
 		ship->SetControllerMode(Controller::CIM_AI);
 		ship->SetAIMode(Actor::AIMODE_DELIVER);
 		ship->ResetAllTimers();
+		if (invincible) {
+			KeepCraftWhole(ship);
+		}
+		NotePlaced(ship);
 		g_MovableMan.AddActor(ship);
 		return cost;
 	}
 
 	void SpawnUnits(const Stroke& stroke, bool brain) {
-		const Preset* preset = ChosenPreset(brain ? Tool::Brain : Tool::Unit, stroke.Choice);
-		if (!preset) {
+		// Random (units only): each one picked on its own from the pool, the squad spread as for a chosen unit.
+		bool random = stroke.Random && !brain;
+		std::vector<const Preset*> pool = random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
+		if (stroke.JetpackOnly) {
+			DropJetless(pool);
+		}
+		const Preset* chosen = random ? nullptr : ChosenPreset(brain ? Tool::Brain : Tool::Unit, stroke.Choice);
+		if (random ? pool.empty() : !chosen) {
 			return;
 		}
 		ActivateSide(stroke.Team);
 		int count = brain ? 1 : stroke.Count;
 		for (int i = 0; i < count; ++i) {
-			Actor* actor = dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID));
+			const Preset* preset = random ? RandomPick(pool) : chosen;
+			Actor* actor = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
 			if (!actor) {
 				return;
 			}
 			if (!brain) {
 				GiveLoadout(actor, *preset, stroke.Loadout);
+				ApplyTemperament(actor, stroke.Temperament);
 			}
 			// A squad spreads out sideways from the click.
 			float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
@@ -671,20 +1297,28 @@ namespace SandboxDetail {
 			// (Facing the middle of the view as it was at the click: read from the camera here, in the sim, a replay faced them by
 			// wherever the view happened to be.)
 			actor->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
+			NotePlaced(actor);
 			g_MovableMan.AddActor(actor);
 			GiveOrder(actor, brain ? Order::Hold : stroke.Orders);
 		}
 	}
 
 
-	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or only those marked as favourites in
-	/// the unit or drop lists. With no favourite units marked, every faction's, rather than nothing at all.
-	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly) {
+	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or one faction's (an index into
+	/// s_FactionModules, -1 for all), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
+	/// marked, all of the faction's, rather than nothing at all.
+	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly, int faction) {
 		std::vector<const Preset*> all;
 		std::vector<const Preset*> favourites;
+		int moduleID = faction >= 0 && faction < static_cast<int>(s_FactionModules.size()) ? s_FactionModules[faction] : -1;
 		for (const Preset& unit: s_Units) {
+			if (moduleID >= 0 && unit.ModuleID != moduleID) {
+				continue;
+			}
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
-			if (!entity || entity->IsInGroup("Actors - Turrets")) {
+			// (Nor vehicles, VH-1: nobody drives one placed or bought on its own.)
+			// (Nor animals and civilians, NC-1: a random squad is soldiers.)
+			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity)) {
 				continue;
 			}
 			all.push_back(&unit);
@@ -701,7 +1335,10 @@ namespace SandboxDetail {
 
 	void DropSquad(const Stroke& stroke) {
 		// Random: each unit picked on its own from every faction's units, or from the favourites.
-		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly) : std::vector<const Preset*>();
+		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
+		if (stroke.JetpackOnly) {
+			DropJetless(pool);
+		}
 		const Preset* preset = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.Choice);
 		if (stroke.Random ? pool.empty() : !preset) {
 			return;
@@ -710,6 +1347,9 @@ namespace SandboxDetail {
 		for (int i = 0; i < stroke.Count; ++i) {
 			const Preset* pick = stroke.Random ? RandomPick(pool) : preset;
 			if (Actor* unit = pick ? CreateUnit(*pick, stroke.Team, stroke.Loadout, stroke.Orders) : nullptr) {
+				ApplyTemperament(unit, stroke.Temperament);
+				// (Each noted as well as the craft: once out of it, taking the craft away leaves them.)
+				NotePlaced(unit);
 				units.push_back(unit);
 			}
 		}
@@ -728,6 +1368,7 @@ namespace SandboxDetail {
 				explosive->Activate();
 			}
 		}
+		NotePlaced(item);
 		AddObject(item);
 	}
 
@@ -765,6 +1406,11 @@ namespace SandboxDetail {
 				placedActor->SetNumberValue("SandboxPlaced", 1.0);
 			}
 		}
+		if (const MovableObject* movable = dynamic_cast<MovableObject*>(object)) {
+			NotePlaced(movable);
+		} else if (const TerrainObject* piece = dynamic_cast<TerrainObject*>(object)) {
+			RecordTerrainObjectArea(*piece);
+		}
 		g_SceneMan.AddSceneObject(object);
 	}
 
@@ -783,7 +1429,19 @@ namespace SandboxDetail {
 					case Tool::Ice:
 					case Tool::Grass:
 					case Tool::Wood:
+					case Tool::TreeTrunk:
 					case Tool::Concrete:
+					case Tool::Stone:
+					case Tool::DenseEarth:
+					case Tool::GoldEarth:
+					case Tool::TerrainOther:
+					case Tool::Metal:
+					case Tool::GrowGrass:
+					case Tool::Plants:
+					case Tool::Cacti:
+					case Tool::Mushrooms:
+					case Tool::Trees:
+					case Tool::Candles:
 					case Tool::BuildBeam:
 					case Tool::BuildPillar:
 					case Tool::BuildRoom:
@@ -793,13 +1451,44 @@ namespace SandboxDetail {
 					case Tool::BuildTank:
 						s_RecordPaint = true;
 						break;
+					// A placing click is a step of its own: what it makes, and the ground a bunker piece or building draws over.
+					case Tool::Structure:
+					case Tool::Barracks:
+					case Tool::Extractor:
+					case Tool::Generator:
+						s_RecordPaint = true;
+						[[fallthrough]];
+					case Tool::Unit:
+					case Tool::Brain:
+					case Tool::Item:
+					case Tool::Drop:
+						s_RecordPlaced = true;
+						PushUndoStep();
+						break;
 					default:
 						s_RecordPaint = false;
 						break;
 				}
 			}
-			~RecordingPaint() { s_RecordPaint = false; }
+			~RecordingPaint() {
+				if (s_RecordPlaced && !s_PaintUndo.empty()) {
+					s_PaintUndo.back().Sealed = true;
+					ClosePaintUndoStep(true);
+					// (Trimmed only now, so a click that made nothing doesn't push the oldest step out.)
+					if (s_PaintUndo.back().Empty()) {
+						s_PaintUndo.pop_back();
+					} else {
+						TrimUndo();
+					}
+				}
+				s_RecordPaint = false;
+				s_RecordPlaced = false;
+			}
 		} recordingPaint(stroke.Kind);
+		if (stroke.Fill >= 0 && IsTerrainBrush(stroke.Kind)) {
+			FillTerrainShape(stroke);
+			return;
+		}
 		switch (stroke.Kind) {
 			case Tool::Possess:
 				TakeControl(at);
@@ -814,12 +1503,23 @@ namespace SandboxDetail {
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
 					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
-					Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count);
+					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count);
+					if (!s_PaintUndo.empty()) {
+						s_PaintUndo.back().ColonyBuilding = built;
+					}
 				}
 				break;
 			case Tool::Extractor:
 				ActivateSide(stroke.Team);
-				Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1);
+				if (int built = Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
+					s_PaintUndo.back().ColonyBuilding = built;
+				}
+				break;
+			case Tool::Generator:
+				ActivateSide(stroke.Team);
+				if (int built = Colony::Place(Colony::Kind::Generator, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
+					s_PaintUndo.back().ColonyBuilding = built;
+				}
 				break;
 			case Tool::PlayerRemake:
 				if (Actor* old = GetRef(s_PlayerUnit)) {
@@ -940,7 +1640,7 @@ namespace SandboxDetail {
 				// Not your character (an AI unit only while you're out of it: told to attack with the rest, it ran off to fight), nor craft
 				// (a dropship delivering was sent off with its squad still in it, and tagged to attack, yanked about every second after).
 				for (Actor* actor: SandboxAccess::Actors()) {
-					if (actor->GetTeam() == stroke.Team && IsCombatant(actor) && !actor->IsPlayerControlled() && actor != GetRef(s_PlayerUnit) && !dynamic_cast<const ACraft*>(actor)) {
+					if (actor->GetTeam() == stroke.Team && IsSoldier(actor) && !actor->IsPlayerControlled() && actor != GetRef(s_PlayerUnit) && !dynamic_cast<const ACraft*>(actor)) {
 						GiveOrder(actor, stroke.Orders);
 					}
 				}
@@ -967,24 +1667,81 @@ namespace SandboxDetail {
 				GymRemoveUnits();
 				break;
 			case Tool::ClearWaterSpawners:
-				s_WaterSpawners.clear();
+				// All of them, or only those that pour the material named.
+				if (stroke.Material.empty()) {
+					s_WaterSpawners.clear();
+				} else {
+					s_WaterSpawners.erase(std::remove_if(s_WaterSpawners.begin(), s_WaterSpawners.end(), [&stroke](const WaterSpawner& spring) { return spring.Liquid == stroke.Material; }), s_WaterSpawners.end());
+				}
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();
 				break;
-			case Tool::AutoBattle:
-				if (stroke.Count <= 0) {
-					s_AutoRunning = false;
-					s_AutoWinner = -2;
-					break;
+			case Tool::CollapseArea: {
+				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
+				int left = static_cast<int>(std::floor(std::min(stroke.Position.m_X, end.m_X)));
+				int top = static_cast<int>(std::floor(std::min(stroke.Position.m_Y, end.m_Y)));
+				int right = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_X, end.m_X))), left + c_MaxDropSide - 1);
+				int bottom = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_Y, end.m_Y))), top + c_MaxDropSide - 1);
+				if (int drop = TerrainCollapse::DropArea(left, top, right, bottom); drop != 0) {
+					// A step of its own in the undo, which takes the drop back.
+					PushUndoStep();
+					s_PaintUndo.back().Drop = drop;
+					s_PaintUndo.back().Sealed = true;
+					TrimUndo();
 				}
-				for (int side = 0; side < c_Sides; ++side) {
-					s_AutoSides[side].Active = side < stroke.Count;
-					s_AutoSides[side].Budget = std::max(stroke.Choice, 1);
+				NotePaint(Box(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1)), "fall", "", true, true, true);
+				break;
+			}
+			case Tool::ClearMap:
+				ClearMap(stroke);
+				break;
+			case Tool::Rope:
+				if (stroke.Choice == 2) {
+					// Every rope taken away (and out of the undo).
+					RopeSim::Clear();
+					s_RopeDrawing = 0;
+					for (PaintUndoStep& step: s_PaintUndo) {
+						step.Rope = 0;
+					}
+				} else if (stroke.Choice == 1) {
+					// Finished: the next click starts another. One only started, with a single point, is no rope: it goes, with its undo step.
+					if (s_RopeDrawing != 0 && RopeSim::GetPointCount(s_RopeDrawing) < 2) {
+						RopeSim::Remove(s_RopeDrawing);
+						for (PaintUndoStep& step: s_PaintUndo) {
+							if (step.Rope == s_RopeDrawing) {
+								step.Rope = 0;
+							}
+						}
+					}
+					s_RopeDrawing = 0;
+				} else if (s_RopeDrawing != 0 && RopeSim::GetPointCount(s_RopeDrawing) > 0) {
+					RopeSim::AddPoint(s_RopeDrawing, at);
+				} else {
+					int type = RopeSim::FindType(stroke.Material);
+					s_RopeDrawing = RopeSim::Create(type >= 0 ? type : s_RopeType, stroke.Rate, at);
+					if (s_RopeDrawing != 0) {
+						// A step of its own in the undo, which takes the whole rope away.
+						PushUndoStep();
+						s_PaintUndo.back().Rope = s_RopeDrawing;
+						s_PaintUndo.back().Sealed = true;
+						TrimUndo();
+					}
 				}
-				s_AutoRandom = stroke.Random;
-				s_AutoFavourites = stroke.FavouritesOnly;
-				BeginAutoBattle(stroke.Position, static_cast<float>(stroke.Radius));
+				break;
+			case Tool::RopeCut:
+				RopeSim::QueueCut(at, 4.0F);
+				break;
+			case Tool::BattleTeam:
+			case Tool::BattleDefendPoint:
+			case Tool::BattleDropLine:
+			case Tool::BattleSpawnZone:
+			case Tool::BattleModePoint:
+			case Tool::BattleModeBase:
+			case Tool::BattleModeZone:
+			case Tool::BattleModeGoal:
+			case Tool::BattleModeFlag:
+				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
 				if (stroke.Count == 1) {
@@ -1004,7 +1761,10 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::Fire:
+				// It sets alight what it's painted over: the ground that burns, and the units and fuel barrels there (it lit only the ground, so
+				// oil went up and the people standing in it didn't).
 				TerrainFire::QueueIgniteArea(at, radius);
+				ActorFire::QueueIgniteArea(at, radius);
 				// Something to see even over rock, which doesn't burn. (Only to see: a stroke of the brush is a dozen of these a second, and as
 				// they were they hit and hurt units the fire wasn't painted on. What burns is the fire itself.)
 				if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
@@ -1047,9 +1807,26 @@ namespace SandboxDetail {
 			case Tool::Cryo:
 				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid");
 				break;
+			case Tool::Blood:
+				// Blood only flows with the setting on (it stays where it fell otherwise), so the brush turns it on.
+				if (!FluidSim::BloodFlows()) {
+					FluidSim::SetBloodFlows(true);
+				}
+				FluidSim::Pour(at, radius * 0.5F, "Blood");
+				break;
+			case Tool::PourOther:
+				if (!stroke.Material.empty()) {
+					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str());
+				}
+				break;
 			case Tool::WaterSpawner:
 				if (s_WaterSpawners.size() < 64) {
-					s_WaterSpawners.push_back({at, std::max(1, stroke.Radius / 2)});
+					WaterSpawner spring;
+					spring.Position = at;
+					spring.Radius = std::max(1, stroke.Radius / 2);
+					spring.Liquid = stroke.Material.empty() ? "Water" : stroke.Material;
+					spring.Rate = std::clamp(stroke.Rate, 0.05F, 1.0F);
+					s_WaterSpawners.push_back(spring);
 				}
 				break;
 			case Tool::LooseSand:
@@ -1066,35 +1843,78 @@ namespace SandboxDetail {
 				break;
 			case Tool::Smoke:
 				SpawnPuffs("Thick Smoke Ball", at, stroke.Radius, 2);
+				GasGrid::Add(at, GasGrid::Smoke, 0.25F);
 				break;
 			case Tool::ToxicGas:
 				SpawnPuffs("Toxic Gas Ball", at, stroke.Radius, 2);
-				// The invisible cloud that does the harm, now and then so painting doesn't stack hundreds of them.
-				if (Random01() < 0.15F) {
+				// What does the harm is the gas itself (SB-6), which sinks and pools: the grenade's own invisible cloud isn't needed as well.
+				// With the Gas setting off, the cloud does the harm as before, now and then so painting doesn't stack hundreds of them.
+				if (GasGrid::IsEnabled()) {
+					GasGrid::Add(at, GasGrid::Toxic, 0.3F);
+				} else if (Random01() < 0.15F) {
 					SpawnPuffs("Toxic Gas Cloud", at, 0, 1);
 				}
 				break;
+			case Tool::Methane:
+				GasGrid::Add(at, GasGrid::Methane, 0.3F);
+				break;
+			case Tool::Steam:
+				GasGrid::Add(at, GasGrid::Steam, 0.3F);
+				break;
 			case Tool::Dig:
-				PaintTerrain(at, stroke.Radius, nullptr);
+				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape);
 				break;
 			case Tool::Earth:
-				PaintTerrain(at, stroke.Radius, "Earth");
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape);
 				break;
 			case Tool::Sand:
-				PaintTerrain(at, stroke.Radius, "Sand");
+				PaintTerrain(at, stroke.Radius, "Sand", stroke.Shape);
 				break;
 			case Tool::Ice:
-				PaintTerrain(at, stroke.Radius, "Ice");
+				PaintTerrain(at, stroke.Radius, "Ice", stroke.Shape);
 				break;
 			case Tool::Grass:
-				PaintTerrain(at, stroke.Radius, "Grass");
+				PaintTerrain(at, stroke.Radius, "Grass", stroke.Shape);
 				break;
 			case Tool::Wood:
-				PaintTerrain(at, stroke.Radius, "Wood");
+				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape);
+				break;
+			case Tool::TreeTrunk:
+				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape);
+				TerrainTrees::NoteChanged();
 				break;
 			case Tool::Concrete:
-				PaintTerrain(at, stroke.Radius, "Concrete");
+				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);
 				break;
+			case Tool::Stone:
+				PaintTerrain(at, stroke.Radius, "Stone", stroke.Shape);
+				break;
+			case Tool::DenseEarth:
+				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Shape);
+				break;
+			case Tool::GoldEarth:
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, c_GoldEarthShare);
+				break;
+			case Tool::Plants:
+			case Tool::Cacti:
+			case Tool::Mushrooms:
+			case Tool::Trees:
+			case Tool::Candles:
+				PlacePlant(at, stroke.Radius, stroke.Kind, stroke.Scale, stroke.HasPlantRoll ? &stroke.Plant : nullptr);
+				break;
+			case Tool::TerrainOther:
+			case Tool::Metal:
+				if (!stroke.Material.empty()) {
+					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape);
+				}
+				break;
+			case Tool::GrowGrass: {
+				int centerX = at.GetFloorIntX();
+				int centerY = at.GetFloorIntY();
+				int brushRadius = stroke.Radius;
+				GrowGrassArea(centerX - brushRadius, centerY - brushRadius, centerX + brushRadius, centerY + brushRadius, [&](int x, int y) { return InBrush(centerX, centerY, brushRadius, stroke.Shape, x, y); });
+				break;
+			}
 			case Tool::Grenade:
 				Detonate("Frag Grenade", at);
 				break;
@@ -1195,13 +2015,13 @@ namespace SandboxDetail {
 				break;
 			}
 			case Tool::BuildTank:
-				// An open concrete tank, filled with water.
+				// An open concrete tank, filled with water, or what the springs pour (Paint > Springs).
 				PaintBox(at + Vector(-70.0F, 40.0F), 140, 8, "Concrete");
 				PaintBox(at + Vector(-70.0F, -48.0F), 8, 90, "Concrete");
 				PaintBox(at + Vector(62.0F, -48.0F), 8, 90, "Concrete");
 				for (float y = -30.0F; y <= 26.0F; y += 14.0F) {
 					for (float x = -48.0F; x <= 48.0F; x += 16.0F) {
-						FluidSim::Pour(at + Vector(x, y), 9.0F, "Water");
+						FluidSim::Pour(at + Vector(x, y), 9.0F, stroke.Material.empty() ? "Water" : stroke.Material.c_str());
 					}
 				}
 				break;
@@ -1240,6 +2060,47 @@ namespace SandboxDetail {
 	}
 
 	void QueueStroke(Tool kind, const Vector& position) {
+		if (kind == Tool::BattleDefendPoint) {
+			// The team being set up on the Battle tab defends here from now on.
+			BattleSettings& setup = s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+			setup.DefendPos = position;
+			g_SceneMan.WrapPosition(setup.DefendPos);
+			setup.HasDefendPos = true;
+			SendBattleSettings(s_BattleEditTeam);
+			return;
+		}
+		if (kind == Tool::BattleModePoint) {
+			// The team being set up in the Battle tab's mode panel has its point (capture the flag: its flag) here from now on.
+			const int team = std::clamp(s_BattleEditTeam, 0, c_Sides - 1);
+			Vector at = position;
+			g_SceneMan.WrapPosition(at);
+			s_ModeSetup.Points[team] = at;
+			s_ModeSetup.HasPoint[team] = true;
+			SendBattleMode();
+			return;
+		}
+		if (kind == Tool::BattleModeFlag) {
+			// Another position the neutral flag (one flag) comes in at, after those placed already.
+			if (s_ModeSetup.FlagSpots.size() < c_MaxFlagSpots) {
+				Vector at = position;
+				g_SceneMan.WrapPosition(at);
+				s_ModeSetup.FlagSpots.push_back(at);
+				SendBattleMode();
+			}
+			return;
+		}
+		if (IsModeZoneTool(kind)) {
+			// The next corner of the team's spawn zone, goal zone or the mode's zone being drawn; sent once it's closed.
+			ModeBaseCorner(position, ZoneCloseDistance());
+			return;
+		}
+		if (kind == Tool::BattleSpawnZone) {
+			// The next corner of the zone being drawn; sent once it's closed.
+			if (AddZoneCorner(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], position, ZoneCloseDistance())) {
+				SendBattleSettings(s_BattleEditTeam);
+			}
+			return;
+		}
 		Stroke stroke;
 		stroke.Kind = kind;
 		stroke.Position = position;
@@ -1256,8 +2117,35 @@ namespace SandboxDetail {
 		}
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
-		stroke.Random = kind == Tool::Drop && s_DropRandom;
-		stroke.FavouritesOnly = s_DropFavourites;
+		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;
+		stroke.FavouritesOnly = s_RandomFavourites;
+		stroke.RandomFaction = s_RandomFaction;
+		stroke.JetpackOnly = s_JetpackOnly;
+		stroke.Temperament = (kind == Tool::Drop || kind == Tool::Unit) ? s_SpawnTemperament : -1;
+		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
+			stroke.Material = s_SpringLiquid;
+			stroke.Rate = s_SpringRate;
+		} else if (kind == Tool::PourOther) {
+			stroke.Material = s_OtherPourable;
+		} else if (kind == Tool::TerrainOther) {
+			stroke.Material = s_OtherTerrain;
+		} else if (kind == Tool::Metal) {
+			stroke.Material = s_PaintMetal;
+		} else if (kind == Tool::Rope) {
+			// The next point of the rope being put down (or its first), of the kind and slack picked.
+			stroke.Material = RopeSim::GetType(s_RopeType).Name;
+			stroke.Rate = s_RopeSlack;
+			stroke.Choice = 0;
+			s_RopeDraft.push_back(position);
+		}
+		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
+		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;
+		if (IsPlantBrush(kind)) {
+			// The plant the cursor showed; the next one is shown from now.
+			stroke.HasPlantRoll = true;
+			stroke.Plant = s_NextPlant;
+			s_NextPlant = RollPlant();
+		}
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		s_Queue.push_back(stroke);

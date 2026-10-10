@@ -20,6 +20,27 @@ local function isDown(Enemy)
 	return not MovableMan:ValidMO(Enemy) or Enemy.Status >= Actor.DYING or Enemy.Health <= 0;
 end
 
+-- What a unit says on seeing an enemy: what kind of enemy it is, where that's worth a line of its own (US-2).
+local function spottedTrigger(Owner, Target)
+	if Owner.WeaponRule == Actor.WEAPONS_HOLD then
+		return "SpottedHoldingFire";
+	end
+	if Target then
+		if Target:IsInGroup("Actors - Wildlife") then
+			return "Wildlife";
+		elseif Target.ClassName == "ACDropShip" or Target.ClassName == "ACRocket" then
+			return "EnemyCraft";
+		elseif Target.ClassName == "AVehicle" then
+			return "EnemyVehicle";
+		elseif Target:IsInGroup("Brains") then
+			return "EnemyBrain";
+		elseif Target.ClassName == "ACrab" then
+			return "EnemyWalker";
+		end
+	end
+	return "EnemySpotted";
+end
+
 -- @param AI The unit's AI.
 -- @param Owner The unit.
 -- @param ordered Whether an order was given since the AI's last update (the AI's own "ordered").
@@ -41,6 +62,8 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	Now.FireTimer = Last.FireTimer;
 	Now.TargetTimer = Last.TargetTimer;
 	Now.KilledID = Last.KilledID;
+	Now.Streak = Last.Streak or 0;
+	Now.StreakTimer = Last.StreakTimer or Timer();
 	if AI.fire then
 		Now.FireTimer:Reset();
 	end
@@ -58,6 +81,16 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	local oldDown = Old and isDown(Old);
 	if oldDown and Now.KilledID ~= Last.TargetID and not Last.FireTimer:IsPastSimMS(2000) then
 		Now.KilledID = Last.TargetID;
+		-- (Three down within 20 s of the first: a streak, said in place of another "got one".)
+		if Now.Streak == 0 or Now.StreakTimer:IsPastSimMS(20000) then
+			Now.Streak = 0;
+			Now.StreakTimer:Reset();
+		end
+		Now.Streak = Now.Streak + 1;
+		if Now.Streak >= 3 then
+			say("KillStreak");
+			Now.Streak = 0;
+		end
 		say("Kill");
 	end
 	if Now.Retreat and not Last.Retreat then
@@ -80,7 +113,7 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	end
 	-- (Not the same fight picked up again: an enemy seen again within a few seconds of the last one isn't news.)
 	if Now.Seen and not Last.Seen and Last.TargetTimer:IsPastSimMS(5000) then
-		say(Owner.WeaponRule == Actor.WEAPONS_HOLD and "SpottedHoldingFire" or "EnemySpotted");
+		say(spottedTrigger(Owner, Now.Target));
 	end
 	-- (On return fire only, opening up means it was shot at: RC-1.)
 	if Now.Firing and not Last.Firing and Owner.WeaponRule == Actor.WEAPONS_RETURN_FIRE then
@@ -102,6 +135,10 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	end
 	if Now.Medikit and not Last.Medikit then
 		say("Healing");
+	end
+	-- A long quiet spell with nothing to shoot at, standing about: now and then it says so (Bored's long cooldown keeps it rare).
+	if not Now.Target and not Now.UnseenTarget and Now.TargetTimer:IsPastSimMS(90000) and Now.Suppression < 0.05 and Owner.Vel:MagnitudeIsLessThan(0.5) then
+		say("Bored");
 	end
 
 	-- Orders, and getting where it was sent: only for a player's units, and not the AI's own fall-backs and flanks.

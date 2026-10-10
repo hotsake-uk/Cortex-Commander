@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "TerrainCollapse.h"
 #include "ConsoleMan.h"
 #include "SmokeGrid.h"
 #include "WeatherEffects.h"
@@ -32,6 +33,13 @@
 #include "tracy/Tracy.hpp"
 
 using namespace RTE;
+
+namespace {
+	/// How far from lying flat (in radians) a dead body may rest before it's tipped on over and kept from settling.
+	constexpr float c_DeadLyingTolerance = 0.7F;
+	/// How long after dying a body is tipped and kept from settling while not lying down, before it's left where it is (wedged in a gap).
+	constexpr double c_DeadToppleGiveUpMS = 6000.0;
+} // namespace
 
 ConcreteClassInfo(AHuman, Actor, 20);
 
@@ -660,6 +668,8 @@ bool AHuman::HandlePieCommand(PieSliceType pieSliceIndex) {
 			ClearAIWaypoints();
 		} else if (pieSliceIndex == PieSliceType::GoldDig) {
 			m_AIMode = AIMODE_GOLDDIG;
+		} else if (pieSliceIndex == PieSliceType::DigTo) {
+			// (The point is picked next, in GameActivity's dig-to cursor, which gives the order once the dig checks out: RC-11.)
 		} else {
 			return Actor::HandlePieCommand(pieSliceIndex);
 		}
@@ -1886,6 +1896,12 @@ void AHuman::PreControllerUpdate() {
 					m_Paths[FGROUND][WALKCROUCH].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 					m_Paths[BGROUND][WALKCROUCH].SetHFlip(m_Controller.IsState(MOVE_LEFT));
 				}
+				// And the arms' climb, the way the legs go: left facing the body, a unit backing into a step or a rough slope pulled itself
+				// away from it with the arms when the legs found no room, and never got up it.
+				if (m_Controller.IsState(MOVE_LEFT) != m_Controller.IsState(MOVE_RIGHT)) {
+					m_Paths[FGROUND][CLIMB].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+					m_Paths[BGROUND][CLIMB].SetHFlip(m_Controller.IsState(MOVE_LEFT));
+				}
 			} else if ((m_Controller.IsState(MOVE_RIGHT) && m_HFlipped) || (m_Controller.IsState(MOVE_LEFT) && !m_HFlipped)) {
 				SetHFlipped(!m_HFlipped);
 				m_CheckTerrIntersection = true;
@@ -2009,10 +2025,25 @@ void AHuman::PreControllerUpdate() {
 		}
 		m_AimAngle = analogAim.GetAbsRadAngle();
 
-		// (An AI unit flying out of a fight faces the way it is going; its aim is only a look, which the head and arms take relative to that.)
-		bool faceTravel = aiNotFighting && m_MovementState == JUMP && std::abs(m_Vel.m_X) > 1.5F;
-		if (faceTravel) {
-			analogAim.m_X = m_Vel.m_X > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
+		// (An AI unit on the move out of a fight faces the way it is going; its aim is only a look, which the head and arms take relative to
+		// that. Only flying at speed did, so a unit walking under a glance behind it (an alarm, a squad's look where its leader looks) was
+		// turned to the look here after the walk had turned it the way it was going, every frame: it walked backwards, its stride restarted
+		// each frame, and it never got up a step or onto a ledge. Flying slowly, as up a shaft, it faces where the route goes next.)
+		float travel = 0.0F;
+		if (aiNotFighting) {
+			const bool left = m_Controller.IsState(MOVE_LEFT);
+			const bool right = m_Controller.IsState(MOVE_RIGHT);
+			if (m_MovementState == JUMP && std::abs(m_Vel.m_X) > 1.5F) {
+				travel = m_Vel.m_X;
+			} else if (m_MovementState == JUMP && !m_MovePath.empty()) {
+				float toNext = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_X;
+				travel = std::abs(toNext) > 4.0F ? toNext : 0.0F;
+			} else if (left != right) {
+				travel = right ? 1.0F : -1.0F;
+			}
+		}
+		if (travel != 0.0F) {
+			analogAim.m_X = travel > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
 		}
 		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
 			SetHFlipped(!m_HFlipped);
@@ -2443,6 +2474,11 @@ void AHuman::PreControllerUpdate() {
 					m_WalkAngle[BGROUND] = Matrix();
 				} else {
 					m_StrideFrame = true;
+					// A foot coming down on sand disturbs it, shoving it the way the unit is going.
+					if (AtomGroup* foot = (m_pFGLeg && m_pFGFootGroup) ? m_pFGFootGroup : m_pBGFootGroup; foot && std::abs(m_Vel.m_X) > 0.3F) {
+						Vector footPos = foot->GetLimbPos(m_HFlipped);
+						TerrainCollapse::NoteFootfall(static_cast<int>(footPos.m_X), static_cast<int>(footPos.m_Y), m_Vel.m_X < 0.0F ? -1 : 1, std::abs(m_Vel.m_X));
+					}
 					RunScriptedFunctionInAppropriateScripts("OnStride");
 				}
 			}
@@ -3012,6 +3048,19 @@ void AHuman::Update() {
 		} else {
 			m_Status = DEAD;
 		}
+	} else if (m_Status == DEAD && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
+		// A body keeps falling until it lies down: one propped on its head or a shoulder with its legs in the air, or still on its feet, is
+		// tipped on over by its own weight towards whichever side it leans to, rather than freezing there as an obstacle. Only while it rests
+		// on something; in the air it tumbles freely.
+		float wrapped = NormalizeAngleBetweenNegativePIAndPI(rot);
+		float lean = std::sin(wrapped);
+		float rotTarget = lean > 0.05F ? c_HalfPI : (lean < -0.05F ? -c_HalfPI : (m_AngularVel != 0.0F ? std::copysign(c_HalfPI, m_AngularVel) : (m_HFlipped ? c_HalfPI : -c_HalfPI)));
+		float rotDiff = rotTarget - wrapped;
+		if (std::abs(rotDiff) > c_DeadLyingTolerance && !g_SceneMan.OverAltitude(m_Pos, static_cast<int>(m_SpriteRadius) + 4, 3)) {
+			// Strongest balanced on end, where nothing else would tip it.
+			float push = (rotDiff > 0.0F ? 1.0F : -1.0F) * (4.0F + 6.0F * std::abs(std::cos(wrapped)));
+			m_AngularVel += push * g_TimerMan.GetDeltaTimeSecs();
+		}
 	}
 	m_Rotation.SetRadAngle(rot);
 
@@ -3037,6 +3086,20 @@ void AHuman::Update() {
 	// Misc.
 
 	//    m_DeepCheck = true/*m_Status == DEAD*/;
+}
+
+void AHuman::RestDetection() {
+	Actor::RestDetection();
+
+	if (m_Status == DEAD && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
+		float rotDiff = c_HalfPI - std::abs(NormalizeAngleBetweenNegativePIAndPI(m_Rotation.GetRadAngle()));
+		if (std::abs(rotDiff) > c_DeadLyingTolerance) {
+			m_AngOscillations = 0;
+			m_VelOscillations = 0;
+			m_RestTimer.Reset();
+			m_ToSettle = false;
+		}
+	}
 }
 
 void AHuman::DrawThrowingReticle(BITMAP* targetBitmap, const Vector& targetPos, float progressScalar) const {
@@ -3339,6 +3402,17 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 				}
 				rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 6, drawPos.GetFloorIntX() + static_cast<int>(15.0F * jetTimeRatio), drawPos.GetFloorIntY() + m_HUDStack + 7, gaugeColor);
 			}
+			m_HUDStack -= 9;
+		}
+
+		// Air left while its head is under liquid (LM-4), so the player sees the unit is about to drown. It blinks in the last quarter.
+		if (float air = ActorWater::GetAir(this); air < 1.0F && m_Status != INACTIVE && !m_Controller.IsState(PIE_MENU_ACTIVE)) {
+			if (air > 0.25F || m_IconBlinkTimer.AlternateSim(200)) {
+				pSmallFont->DrawAligned(&allegroBitmap, drawPos.GetFloorIntX() - 2, drawPos.GetFloorIntY() + m_HUDStack + 3, "Air", GUIFont::Right);
+			}
+			rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1, drawPos.GetFloorIntY() + m_HUDStack + 7, drawPos.GetFloorIntX() + 15, drawPos.GetFloorIntY() + m_HUDStack + 8, 245);
+			int gaugeColor = air > 0.5F ? 149 : (air > 0.25F ? 77 : 13);
+			rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 6, drawPos.GetFloorIntX() + static_cast<int>(15.0F * air), drawPos.GetFloorIntY() + m_HUDStack + 7, gaugeColor);
 			m_HUDStack -= 9;
 		}
 

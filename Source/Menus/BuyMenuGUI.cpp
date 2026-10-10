@@ -2010,6 +2010,7 @@ void BuyMenuGUI::CategoryChange(bool focusOnCategoryTabs) {
 	} else if (m_MenuCategory == MECHA) {
 		AddObjectsToItemList(catalogList, "AHuman", mechaCategoryGroups, false);
 		AddObjectsToItemList(catalogList, "ACrab", mechaCategoryGroups, false);
+		AddObjectsToItemList(catalogList, "AVehicle");
 	} else if (m_MenuCategory == TOOLS) {
 		AddObjectsToItemList(catalogList, "HeldDevice", {"Tools"});
 	} else if (m_MenuCategory == GUNS) {

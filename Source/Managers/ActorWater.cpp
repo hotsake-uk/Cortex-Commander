@@ -4,6 +4,7 @@
 #include "AEJetpack.h"
 #include "AHuman.h"
 #include "ADoor.h"
+#include "AVehicle.h"
 #include "Actor.h"
 #include "FluidSim.h"
 #include "Material.h"
@@ -187,7 +188,7 @@ void ActorWater::Update() {
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
 	float gravity = g_SceneMan.GetGlobalAcc().m_Y;
 	for (Actor* actor: g_MovableMan.m_Actors) {
-		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor) || dynamic_cast<AVehicle*>(actor)) {
 			continue;
 		}
 		// (A body dying but not yet gone still floats or sinks and is dragged; only breath, swimming and harm are for the living.)

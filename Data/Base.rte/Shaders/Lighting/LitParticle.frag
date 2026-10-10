@@ -5,6 +5,7 @@
 
 in vec2 textureUV;
 in vec4 vertexColor; // RGB albedo in gamma space, A opacity.
+in float vertexLayer; // 1 for a particle in the effects layer, behind units and the ground in front (LightingSettings::Behind).
 out vec4 FragColor;
 
 uniform sampler2D rteTexture; // Particle shape, alpha.
@@ -17,15 +18,25 @@ uniform vec3 rteAmbient;
 uniform vec3 rteSkyColor;
 uniform float rteMistBright; // How bright spray off water is drawn.
 uniform float rteMistGlow; // The least light spray off water is drawn with, so it shows in the dark.
+uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
+uniform bool rteEffectsLayer; // Some particles are drawn in the effects layer.
+uniform float rteEffectsFrontDepth; // Depth below which a pixel is in front of the effects layer: a unit or the ground in front.
 
 void main() {
 	float alpha = texture(rteTexture, textureUV).a * vertexColor.a;
 	if (alpha <= 0.003) {
 		discard;
 	}
+	// A particle in the effects layer is hidden by whatever is in front of it.
+	if (rteEffectsLayer && vertexLayer > 0.5 && texture(rteSceneDepth, gl_FragCoord.xy / rteScreenSize).r < rteEffectsFrontDepth) {
+		discard;
+	}
 	vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
 	float sky = smoothstep(0.0, 1.0, texture(rteSkyLight, worldPos / rteGridWorldSize).r);
-	vec3 light = mix(rteAmbient, rteSkyColor, sky) + texture(rteDynamicLight, gl_FragCoord.xy / rteScreenSize).rgb;
+	// The lights soften towards 2 as they pile up, the same as on surfaces (LightComposite.frag's rteMaxDynamicLight): taken raw, puffs next to a fire
+	// or a few lamps went near white while the ground under them didn't.
+	vec3 lamps = 2.0 * (1.0 - exp(-texture(rteDynamicLight, gl_FragCoord.xy / rteScreenSize).rgb / 2.0));
+	vec3 light = mix(rteAmbient, rteSkyColor, sky) + lamps;
 	vec3 albedo = vertexColor.rgb;
 	if (albedo.b > 1.0) {
 		// Spray off water (its colour is sent with 1 added as the sign): pale stuff that catches whatever light there is, so it's never drawn darker than this.

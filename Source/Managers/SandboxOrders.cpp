@@ -1,4 +1,4 @@
-// Orders to units: sending, holding and standing orders, selection, group moves and the auto battle.
+// Orders to units: sending, holding and standing orders, selection and group moves.
 
 #include "SandboxInternal.h"
 
@@ -26,6 +26,46 @@ namespace SandboxDetail {
 	/// Whether an actor is a real unit on a side (not a door or other neutral scenery).
 	bool IsCombatant(const Actor* actor) {
 		return actor && actor->GetTeam() >= 0 && actor->GetTeam() < c_Sides && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F;
+	}
+
+	bool IsSoldier(const Actor* actor) {
+		return IsCombatant(actor) && !actor->IsNonCombatant();
+	}
+
+	bool IsNonCombatantPreset(const Entity* entity) {
+		const Actor* actor = dynamic_cast<const Actor*>(entity);
+		return actor && (actor->IsNonCombatant() || actor->IsInGroup("Non-combatants"));
+	}
+
+	void ApplyTemperament(Actor* actor, int temperament) {
+		if (actor && temperament >= 0 && temperament < Actor::TEMPERAMENTCOUNT) {
+			actor->SetTemperament(temperament);
+			// (Made a fighter, a cow fights; made skittish, a soldier runs: the side it is counted on follows what it now is.)
+			actor->SetNonCombatant(temperament >= Actor::TEMPERAMENT_SKITTISH);
+		}
+	}
+
+	void TemperamentCombo(const char* label) {
+		static const char* const tips[] = {
+		    "Fights as its orders and weapons rule say.",
+		    "Fights only back: at the side that hurt it, for a while after.",
+		    "Never fights: runs from whatever hurts or shoots at it, then goes back to what it was doing. A non-combatant.",
+		    "Never fights, and doesn't run either: it carries on with what it was doing. A non-combatant."};
+		const char* current = s_SpawnTemperament < 0 ? "Own temperament" : Actor::TemperamentName(s_SpawnTemperament);
+		if (ImGui::BeginCombo(label, current)) {
+			if (ImGui::Selectable("Own temperament", s_SpawnTemperament < 0)) {
+				s_SpawnTemperament = -1;
+			}
+			ImGui::SetItemTooltip("Each unit as its game files make it: soldiers fight, animals run.");
+			for (int i = 0; i < Actor::TEMPERAMENTCOUNT; ++i) {
+				if (ImGui::Selectable(Actor::TemperamentName(i), s_SpawnTemperament == i)) {
+					s_SpawnTemperament = i;
+				}
+				ImGui::SetItemTooltip("%s", tips[i]);
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::SetItemTooltip("The temperament units are spawned with: what they are like by nature, whatever their orders.");
 	}
 
 	/// Whether a unit can be selected and commanded: a combatant on a side, not a brain, not a craft (a ship is ordered by its own AI; sent off
@@ -66,6 +106,25 @@ namespace SandboxDetail {
 
 
 
+	/// The kind of order (Actor::OrderKind) a unit sent with this reason (SendUnit) is on.
+	int OrderKindFor(const char* reason) {
+		std::string_view why = reason ? reason : "";
+		if (why.starts_with("dig to")) {
+			return Actor::ORDER_DIGTO;
+		} else if (why.starts_with("attack-move")) {
+			return Actor::ORDER_ATTACKMOVE;
+		} else if (why.starts_with("attack")) {
+			return Actor::ORDER_ATTACK;
+		} else if (why.starts_with("guard")) {
+			return Actor::ORDER_GUARD;
+		} else if (why.starts_with("defend")) {
+			return Actor::ORDER_DEFEND;
+		} else if (why.starts_with("move") || why == "to the rally point" || why.starts_with("sent again")) {
+			return Actor::ORDER_MOVE;
+		}
+		return Actor::ORDER_NONE;
+	}
+
 	/// Sends a unit to a place, or after a unit, from the next update (see PendingOrder).
 	/// @param reason Why, in a few words, for the orders overlay.
 	/// @param lock Whether the unit keeps after this enemy while it lives (an enemy picked by the player), rather than being free to fight
@@ -101,11 +160,21 @@ namespace SandboxDetail {
 			standing.PostFacing = 0;
 			unit->SetPaceLimit(0.0F);
 			s_GuardPosts.erase(unit->GetUniqueID());
+			s_BattleDefenders.erase(unit->GetUniqueID());
+			ReleaseFromBattleMode(unit);
 			DropPlan(unit);
 		}
 		if (!attack) {
 			standing.HasAttackPlace = false;
 		}
+		// What kind of order it is (RC-11's OrderKind), by the reason it was sent with; one the standing orders resend keeps its kind. And a new
+		// order starts with no failure (RC-7) and no place to dig to: DigUnitsTo sets that after this.
+		if (!resend) {
+			standing.Kind = OrderKindFor(reason);
+			standing.HasDigTarget = false;
+		}
+		standing.FailReason = Actor::ORDERFAIL_NONE;
+		standing.FailMaterial = 0;
 		// An earlier order still waiting is dropped.
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 		s_PendingOrders.push_back({MakeRef(unit), waypoint, target, target ? static_cast<long>(target->GetUniqueID()) : 0, attack});
@@ -129,6 +198,8 @@ namespace SandboxDetail {
 				trigger = "OrderGuard";
 			} else if (why == "defend at") {
 				trigger = "OrderDefend";
+			} else if (why == "dig to") {
+				trigger = "OrderDig";
 			}
 			AnswerOrder(unit, trigger);
 		}
@@ -149,6 +220,7 @@ namespace SandboxDetail {
 				return "OrderHold";
 			case Order::Attack:
 			case Order::HuntBrains:
+			case Order::BattleObjective:
 				return "OrderAttack";
 			case Order::Patrol:
 				return "OrderPatrol";
@@ -164,6 +236,8 @@ namespace SandboxDetail {
 		DropPlan(unit);
 		s_MoveWatch.erase(unit->GetUniqueID());
 		s_GuardPosts.erase(unit->GetUniqueID());
+		s_BattleDefenders.erase(unit->GetUniqueID());
+		ReleaseFromBattleMode(unit);
 		CancelRetreatAndFlank(unit);
 		unit->ClearStandingOrder();
 		unit->SetPaceLimit(0.0F);
@@ -204,6 +278,8 @@ namespace SandboxDetail {
 		DropPlan(actor);
 		s_MoveWatch.erase(actor->GetUniqueID());
 		s_GuardPosts.erase(actor->GetUniqueID());
+		s_BattleDefenders.erase(actor->GetUniqueID());
+		ReleaseFromBattleMode(actor);
 		// Every earlier order's tags go, as HoldUnit does: a defender told to patrol was dragged back to its post every second by
 		// ReturnDefenders, and to the AI ("defend") never closed in, flanked or fell back; an old target or attack-place pulled it there.
 		actor->ClearStandingOrder();
@@ -211,6 +287,14 @@ namespace SandboxDetail {
 		// anything that later put a GOTO back (a fall-back's RestoreOrder, the AI's own new-order check) walked it off along them.
 		actor->ClearAIWaypoints();
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return RefersTo(pending.Unit, actor); }), s_PendingOrders.end());
+		if (order == Order::BattleObjective) {
+			// Its team's job in the battle (a mode's game, or the place its Battle Director card defends); with none, as Attack.
+			actor->SetAIMode(Actor::AIMODE_SENTRY);
+			if (JoinBattleObjective(actor)) {
+				return;
+			}
+			order = Order::Attack;
+		}
 		switch (order) {
 			case Order::Attack:
 				// Which enemy to go for is the unit's AI's to pick (SharedBehaviors.AttackOrderUpdate): the nearest it has a route to, on its
@@ -218,6 +302,7 @@ namespace SandboxDetail {
 				// of a fight to be re-sent from here, as the sandbox's once-a-second retarget pass did.
 				s_SendNotes[actor->GetUniqueID()] = {"attack order", false, g_TimerMan.GetSimUpdateCount()};
 				actor->SetOrderAttack(true);
+				actor->SetOrderKind(Actor::ORDER_ATTACK);
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
 			case Order::HuntBrains:
@@ -225,6 +310,7 @@ namespace SandboxDetail {
 				break;
 			case Order::Patrol:
 				actor->SetAIMode(Actor::AIMODE_PATROL);
+				actor->SetOrderKind(Actor::ORDER_PATROL);
 				break;
 			case Order::Rally:
 				if (int team = actor->GetTeam(); team >= 0 && team < c_Sides && s_RallySet[team]) {
@@ -469,14 +555,13 @@ namespace SandboxDetail {
 		Scene* scene = g_SceneMan.GetScene();
 		size_t reachable = 0;
 		if (scene && !units.empty()) {
-			std::list<Vector> path;
 			const Actor* leader = units.front();
 			for (SpotReach& entry: preview) {
 				if (reachable >= units.size()) {
 					break;
 				}
-				float cost = scene->CalculatePath(leader->GetPos(), entry.Spot, path, leader->EstimateJumpHeight(), leader->EstimateDigStrength(), static_cast<Activity::Teams>(leader->GetTeam()), leader->EstimateBreachStrength());
-				entry.Cost = cost >= 0.0F && cost < 100000.0F ? cost : -1.0F;
+				float cost = RouteCost(leader, entry.Spot);
+				entry.Cost = RouteReachable(cost) ? cost : -1.0F;
 				reachable += entry.Cost >= 0.0F ? 1 : 0;
 			}
 		}
@@ -501,7 +586,7 @@ namespace SandboxDetail {
 			}
 		} else {
 			for (Actor* actor: SandboxAccess::Actors()) {
-				if (actor->GetTeam() == team && IsCombatant(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor)) {
+				if (actor->GetTeam() == team && IsSoldier(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor)) {
 					units.push_back(actor);
 				}
 			}
@@ -521,12 +606,10 @@ namespace SandboxDetail {
 		// (The grid isn't rebuilt under them: that happens on this thread, which waits here.)
 		if (Scene* scene = g_SceneMan.GetScene(); scene && !units.empty()) {
 			std::vector<Vector> reachable;
-			// With the unit's own reach, as its AI will search: the same jump height, dig strength and breaching, on its team's grid.
+			// With the unit's own reach, as its AI will search (see RouteCost): the searcher worked out once, here, for every search.
 			const Actor* leader = units.front();
-			const Vector from = leader->GetPos();
-			const float jumpHeight = leader->EstimateJumpHeight();
-			const float digStrength = leader->EstimateDigStrength();
-			const float breachStrength = leader->EstimateBreachStrength();
+			const Vector from = leader->GetPathStart();
+			const PathAgent agent = leader->GetPathAgent();
 			const Activity::Teams team = static_cast<Activity::Teams>(leader->GetTeam());
 			size_t batch = std::max<size_t>(units.size(), 4);
 			for (size_t first = 0; first < spots.size() && reachable.size() < units.size(); first += batch) {
@@ -536,8 +619,7 @@ namespace SandboxDetail {
 				std::iota(indices.begin(), indices.end(), size_t{0});
 				std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t i) {
 					std::list<Vector> path;
-					float cost = scene->CalculatePath(from, spots[first + i], path, jumpHeight, digStrength, team, breachStrength);
-					reaches[i] = cost >= 0.0F && cost < 100000.0F ? 1 : 0;
+					reaches[i] = RouteReachable(scene->CalculatePath(from, spots[first + i], path, agent, team)) ? 1 : 0;
 				});
 				for (size_t i = 0; i < count && reachable.size() < units.size(); ++i) {
 					if (reaches[i]) {
@@ -602,15 +684,131 @@ namespace SandboxDetail {
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(attackMove ? CommandMode::AttackMove : CommandMode::Move)]);
 	}
 
+	std::vector<DigPlan> DigPlansFor(const std::vector<Actor*>& units, const Vector& point) {
+		std::vector<DigPlan> plans(units.size());
+		Scene* scene = g_SceneMan.GetScene();
+		if (!scene || units.empty()) {
+			return plans;
+		}
+		// Each unit as its own AI would search, worked out here on this thread (the agent reads the unit, its team's avoid marks and the
+		// published threats), and the searches side by side, as MoveUnitsTo's are. (The grid isn't rebuilt under them: that happens on this
+		// thread, which waits here.)
+		std::vector<Vector> starts;
+		std::vector<PathAgent> agents;
+		for (const Actor* unit: units) {
+			starts.push_back(unit->GetPathStart());
+			agents.push_back(unit->GetPathAgent());
+		}
+		std::vector<size_t> indices(units.size());
+		std::iota(indices.begin(), indices.end(), size_t{0});
+		std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t i) { plans[i] = scene->PlanDig(starts[i], point, agents[i], static_cast<Activity::Teams>(units[i]->GetTeam())); });
+		return plans;
+	}
+
+	int DigFailReason(const DigPlan& plan) {
+		switch (plan.Result) {
+			case DigPlan::Ok:
+				return Actor::ORDERFAIL_NONE;
+			case DigPlan::NoDigger:
+				return Actor::ORDERFAIL_NODIGGER;
+			case DigPlan::TooHard:
+				return Actor::ORDERFAIL_TOOHARD;
+			case DigPlan::OutOfReach:
+				return Actor::ORDERFAIL_OUTOFREACH;
+			default:
+				return Actor::ORDERFAIL_NOROUTE;
+		}
+	}
+
+	/// Sends units to dig to a point (RC-11), which may be inside the ground: each is checked with its own digger first (DigPlansFor, the
+	/// checks side by side), and only those that can get there are sent, to the point itself. The others stay where they are, with a marker
+	/// at the point saying why (no digger, too hard, no route), as a move that can't get there has (RC-7).
+	void DigUnitsTo(const std::vector<Actor*>& units, const Vector& point) {
+		std::vector<DigPlan> plans = DigPlansFor(units, point);
+		for (size_t i = 0; i < units.size(); ++i) {
+			Actor* unit = units[i];
+			if (unit->IsPlayerControlled() || dynamic_cast<const ACraft*>(unit)) {
+				continue;
+			}
+			if (plans[i].Result == DigPlan::Ok) {
+				SendUnit(unit, point, nullptr, false, "dig to");
+				unit->SetOrderDigTarget(point);
+				// A digger keeps digging (RC-1's Move only): it shoots back if its weapons rule lets it, but doesn't stop to fight.
+				unit->SetMovementRule(Actor::MOVE_ONLY);
+			} else {
+				// Not sent: whatever it was doing it goes on doing, and the marker says why it didn't go.
+				AddNoRoute(unit, point, Actor::OrderFailText(DigFailReason(plans[i]), plans[i].BlockingMaterial), true);
+			}
+		}
+	}
+
+	/// What a dig-to to a point would come to for the selected units, for the cursor (RC-11): the lead digger's plan (the first unit whose
+	/// plan is Ok, else the first unit's), and how many can dig there. Worked out again only when the point or the units change, or half a
+	/// second of frames on, as SpotReachPreview is.
+	const DigPreview& DigToPreview(const std::vector<Actor*>& units, const Vector& point) {
+		static DigPreview preview;
+		static Vector lastPoint;
+		static size_t lastCount = 0;
+		static long lastLeader = -1;
+		static int lastFrame = -1000;
+		long leaderID = units.empty() ? -1 : static_cast<long>(units.front()->GetUniqueID());
+		int frame = ImGui::GetFrameCount();
+		if (units.size() == lastCount && leaderID == lastLeader && frame - lastFrame < 30 && g_SceneMan.ShortestDistance(point, lastPoint, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(3.0F)) {
+			return preview;
+		}
+		lastPoint = point;
+		lastCount = units.size();
+		lastLeader = leaderID;
+		lastFrame = frame;
+		preview = DigPreview();
+		preview.Units = static_cast<int>(units.size());
+		std::vector<DigPlan> plans = DigPlansFor(units, point);
+		int lead = -1;
+		for (size_t i = 0; i < plans.size(); ++i) {
+			if (plans[i].Result == DigPlan::Ok) {
+				++preview.CanDig;
+				if (lead < 0) {
+					lead = static_cast<int>(i);
+				}
+			}
+		}
+		if (!plans.empty()) {
+			preview.Plan = plans[lead >= 0 ? lead : 0];
+			preview.LeadStrength = units[lead >= 0 ? lead : 0]->EstimateDigStrength();
+		}
+		return preview;
+	}
+
+	/// The words for a dig-to's preview (RC-11): how much is dug and about how long, or why it can't be, and how many of the units can.
+	std::string DigVerdict(const DigPreview& preview) {
+		std::string verdict = PathFinder::DescribeDigPlan(preview.Plan, preview.LeadStrength);
+		if (preview.Units > 1) {
+			verdict += "\n" + std::to_string(preview.CanDig) + " of " + std::to_string(preview.Units) + " can dig there";
+		}
+		return verdict;
+	}
+
 	/// Marks a place a unit can't get to (RC-7), with any other marker near it, so a group sent there has one marker.
-	void AddNoRoute(Actor* unit, const Vector& destination) {
+	void AddNoRoute(Actor* unit, const Vector& destination, const std::string& reason, bool dig) {
 		long long now = g_TimerMan.GetSimUpdateCount();
+		// Why (RC-7): as given (an order's check that found it can't), else what stopped the unit's order on the way, else no route; and
+		// kept on the unit's order when it was sent.
+		std::string why = reason;
+		if (why.empty()) {
+			if (unit->GetOrderFailReason() == Actor::ORDERFAIL_NONE) {
+				unit->FailOrder(Actor::ORDERFAIL_NOROUTE);
+			}
+			why = unit->GetOrderFailText();
+			dig = dig || unit->GetOrderKind() == Actor::ORDER_DIGTO;
+		}
 		auto near = std::find_if(s_NoRoutes.begin(), s_NoRoutes.end(), [&destination](const NoRoute& marker) { return g_SceneMan.ShortestDistance(marker.Destination, destination, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(40.0F); });
 		if (near == s_NoRoutes.end()) {
 			s_NoRoutes.push_back({destination, {}, now});
 			near = std::prev(s_NoRoutes.end());
 		}
 		near->At = now;
+		near->Reason = why;
+		near->Dig = near->Dig || dig;
 		if (std::none_of(near->Units.begin(), near->Units.end(), [unit](const UnitRef& ref) { return RefersTo(ref, unit); })) {
 			near->Units.push_back(MakeRef(unit));
 			// It says it can't get there (unit speech).
@@ -659,11 +857,21 @@ namespace SandboxDetail {
 			return;
 		}
 		std::vector<UnitRef> units = marker->Units;
+		const bool dig = marker->Dig;
 		s_NoRoutes.erase(marker);
+		std::vector<Actor*> diggers;
 		for (const UnitRef& ref: units) {
 			if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled()) {
-				SendUnit(unit, destination, nullptr, false, "sent again (no route)");
+				// (A dig-to is checked and given again as one, RC-11: sent as a move, its target was lifted out of the ground.)
+				if (dig) {
+					diggers.push_back(unit);
+				} else {
+					SendUnit(unit, destination, nullptr, false, "sent again (no route)");
+				}
 			}
+		}
+		if (!diggers.empty()) {
+			DigUnitsTo(diggers, destination);
 		}
 		MarkOrder(destination, IM_COL32(110, 180, 250, 255));
 	}
@@ -716,6 +924,10 @@ namespace SandboxDetail {
 			}
 			case CommandMode::DefendAt:
 				DefendAtSelected(point, point, shift);
+				return;
+			case CommandMode::DigTo:
+				DigUnitsTo(units, point);
+				MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
 				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
@@ -783,6 +995,8 @@ namespace SandboxDetail {
 			Vector spot = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
 			SendUnit(unit, spot + Vector(0.0F, -4.0F), nullptr, false, "guard");
 			unit->SetOrderPost(spot);
+			// It defends the thing as a Battle Director defender does its place: after enemies that come near, then back to its post.
+			CommandDefender(unit, place, spot);
 			s_GuardPosts[unit->GetUniqueID()] = {object ? static_cast<long>(object->GetUniqueID()) : 0, building ? building->ID : 0, place};
 		}
 	}
@@ -798,7 +1012,10 @@ namespace SandboxDetail {
 					break;
 				}
 			}
-			if (!unit || !unit->GetOrderHasPost()) {
+			// (One off after an enemy near what it guards has no post just then, but is still a guard: its zone says so, CommandDefender.)
+			auto zone = unit ? s_BattleDefenders.find(guard->first) : s_BattleDefenders.end();
+			const bool defending = zone != s_BattleDefenders.end() && zone->second.Commanded;
+			if (!unit || (!unit->GetOrderHasPost() && !defending)) {
 				guard = s_GuardPosts.erase(guard);
 				continue;
 			}
@@ -823,13 +1040,17 @@ namespace SandboxDetail {
 				continue;
 			}
 			if (g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(40.0F)) {
-				// Its post moves with it, the same way off it as before.
-				Vector post = unit->GetOrderPost() + g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX());
+				// Its post moves with it, the same way off it as before, and the zone it defends round it. (One off after an enemy is left to
+				// it: it comes back to the new post when the chase is over.)
+				Vector post = (defending ? zone->second.Post : unit->GetOrderPost()) + g_SceneMan.ShortestDistance(guard->second.Place, now, g_SceneMan.SceneWrapsX());
 				g_SceneMan.WrapPosition(post);
 				std::vector<Vector> spot = StandingSpots(post, 1);
 				post = spot.empty() ? post : spot.front();
-				SendUnit(unit, post + Vector(0.0F, -4.0F), nullptr, false, "guard (moved)", false, true);
-				unit->SetOrderPost(post);
+				if (!defending || zone->second.ChasingID == 0) {
+					SendUnit(unit, post + Vector(0.0F, -4.0F), nullptr, false, "guard (moved)", false, true);
+					unit->SetOrderPost(post);
+				}
+				MoveCommandedZone(unit, now, post);
 				guard->second.Place = now;
 			}
 			++guard;
@@ -915,8 +1136,20 @@ namespace SandboxDetail {
 		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
 		}
+		const bool selecting = s_CommandMode == CommandMode::Select;
+		if (selecting && target && IsSelectable(target) && !s_Selected.empty() && target->GetTeam() != SelectionTeam() && modifier != 1) {
+			// Selecting: a unit of another side starts a new selection (Shift can't mix sides in one).
+			s_Selected.clear();
+		}
 		bool friendly = target && IsSelectable(target) && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
 		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return RefersTo(ref, target); });
+		if (selecting && !friendly) {
+			// Selecting, a click on nothing to select lets the selection go (Shift keeps it).
+			if (modifier == 0) {
+				s_Selected.clear();
+			}
+			return;
+		}
 		if (s_CommandMode == CommandMode::Guard) {
 			// Follow the friend clicked, or (RC-10) your side's brain; or stand guard by a craft, a crate or a colony building. With nothing
 			// there, nothing happens.
@@ -962,6 +1195,12 @@ namespace SandboxDetail {
 			OrderSelectedUnits(1, position);
 			return;
 		}
+		if (s_CommandMode == CommandMode::DigTo) {
+			// Dig to the point, in the ground or not (RC-11): each unit checked with its own digger first, and only those that can are sent.
+			DigUnitsTo(UnitsToMove(0, true), position);
+			MarkOrder(position, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
+			return;
+		}
 		if (s_CommandMode == CommandMode::AttackMove) {
 			if (modifier == 1) {
 				PlanStepFor(UnitsToMove(0, true), PlanKind::AttackMove, position, nullptr);
@@ -972,7 +1211,7 @@ namespace SandboxDetail {
 			return;
 		}
 		// Move: a friend is picked up into the selection, an enemy attacked, the ground gone to.
-		if (friendly && (modifier != 0 || !selected || s_Selected.size() == 1)) {
+		if (friendly && (selecting || modifier != 0 || !selected || s_Selected.size() == 1)) {
 			if (modifier == 2) {
 				// Every unit of that kind in sight.
 				GameViewRect view = g_WindowMan.GetGameViewRect();
@@ -1026,7 +1265,7 @@ namespace SandboxDetail {
 		Actor* target = nullptr;
 		float nearest = 400.0F * 400.0F;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || HiddenFromCommander(actor)) {
+			if (!IsSoldier(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || HiddenFromCommander(actor)) {
 				continue;
 			}
 			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -1073,6 +1312,7 @@ namespace SandboxDetail {
 				HoldUnit(unit);
 				unit->SetOrderPost(unit->GetPos());
 				unit->SetOrderPostFacing(step.Facing);
+				CommandDefender(unit, unit->GetPos(), unit->GetPos());
 				break;
 			case PlanKind::Wait:
 				// (It stays where the step before left it: nothing to give.)
@@ -1240,6 +1480,8 @@ namespace SandboxDetail {
 				SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, "defend at");
 				units[i]->SetOrderPost(spot);
 				units[i]->SetOrderPostFacing(facing);
+				// The place is a defend zone, as a Battle Director team's is: the radius and chase distance on the command row.
+				CommandDefender(units[i], point, spot);
 			}
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
@@ -1288,7 +1530,8 @@ namespace SandboxDetail {
 	}
 
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
-	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3).
+	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders, 22 hand them
+	/// back to their team's orders.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -1319,12 +1562,36 @@ namespace SandboxDetail {
 			for (Actor* unit: units) {
 				HoldUnit(unit);
 				unit->SetOrderPost(unit->GetPos());
+				CommandDefender(unit, unit->GetPos(), unit->GetPos());
 				AnswerOrder(unit, "OrderDefend");
 				MarkOrder(unit->GetPos(), IM_COL32(242, 182, 61, 255));
 			}
 		} else if (choice == 13) {
 			// Defend with Shift: holding ground where the plan leaves them, as its last step (RC-3).
 			PlanStepFor(units, PlanKind::Defend, point, nullptr);
+		} else if (choice == 21) {
+			// Clear all orders: everything they were told forgotten (HoldUnit: their way, target, post, guard, defend zone, pace, plan and
+			// patrol, a battle mode's job), holding where they stand, without the side's standing orders put back as Cancel does.
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				s_Plans.erase(unit->GetUniqueID());
+				AnswerOrder(unit, "OrderCancel");
+				MarkOrder(unit->GetPos(), IM_COL32(200, 160, 120, 255));
+			}
+		} else if (choice == 22) {
+			// Follow team orders: everything they were told forgotten, as Clear all orders does, and handed back to their team: the battle's
+			// job for them (a mode's, which its AI commander then splits, or the place their Battle Director card defends), else the side's
+			// orders as the Orders list has them.
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				s_Plans.erase(unit->GetUniqueID());
+				if (!JoinBattleObjective(unit)) {
+					const Order order = static_cast<Order>(s_Order);
+					GiveOrder(unit, order == Order::MoveTo || order == Order::BattleObjective ? Order::Hold : order);
+				}
+				AnswerOrder(unit, "OrderCancel");
+				MarkOrder(unit->GetPos(), IM_COL32(180, 140, 240, 255));
+			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).
 			for (Actor* unit: units) {
@@ -1399,17 +1666,25 @@ namespace SandboxDetail {
 		s_Queue.push_back(stroke);
 	}
 
+	/// Gives the selected units an order (the side's orders, as the command menus give them), on the next sim update like any order.
+	void QueueOrder(Order order) {
+		Stroke stroke;
+		stroke.Kind = Tool::OrderSelected;
+		stroke.Orders = order;
+		s_Queue.push_back(stroke);
+	}
+
 	/// The closest pair of enemies anywhere: where the fighting is.
 	void FindAction() {
 		s_ActionSpotValid = false;
 		float best = 0.0F;
 		std::deque<Actor*>& actors = SandboxAccess::Actors();
 		for (size_t i = 0; i < actors.size(); ++i) {
-			if (!IsCombatant(actors[i])) {
+			if (!IsSoldier(actors[i])) {
 				continue;
 			}
 			for (size_t j = i + 1; j < actors.size(); ++j) {
-				if (!IsCombatant(actors[j]) || actors[j]->GetTeam() == actors[i]->GetTeam()) {
+				if (!IsSoldier(actors[j]) || actors[j]->GetTeam() == actors[i]->GetTeam()) {
 					continue;
 				}
 				Vector between = g_SceneMan.ShortestDistance(actors[i]->GetPos(), actors[j]->GetPos(), g_SceneMan.SceneWrapsX());
@@ -1423,153 +1698,17 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// The faction's units an auto battle can buy: soldiers mostly, the odd crab.
+	/// The faction's units the Battle Director can buy: soldiers mostly, the odd crab.
 	std::vector<const Preset*> FactionUnits(int moduleID) {
 		std::vector<const Preset*> units;
 		for (const Preset& unit: s_Units) {
 			const Entity* entity = unit.ModuleID == moduleID ? g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID) : nullptr;
-			if (entity && !entity->IsInGroup("Actors - Turrets")) {
+			if (entity && !entity->IsInGroup("Actors - Turrets") && !entity->IsInGroup("Actors - Vehicles") && !IsNonCombatantPreset(entity)) {
 				units.push_back(&unit);
 			}
 		}
 		return units;
 	}
-
-	float AutoLaneX(int side) {
-		if (s_RallySet[side]) {
-			return s_RallyPoints[side].m_X;
-		}
-		static constexpr float lanes[c_Sides] = {-0.7F, 0.7F, -0.35F, 0.35F};
-		// (Spaced by the view's width at the start, not now: zooming during the battle moved where the waves landed.)
-		Vector lane = s_AutoCenter + Vector(lanes[side] * s_AutoLaneWidth, 0.0F);
-		g_SceneMan.WrapPosition(lane);
-		return lane.m_X;
-	}
-
-	/// Each side in an auto battle buys a wave every so often with what's left of its budget and sends it in to attack, until one side is left.
-	void UpdateAutoBattle() {
-		if (!s_AutoRunning) {
-			return;
-		}
-		long long now = g_TimerMan.GetSimUpdateCount();
-		for (int side = 0; side < c_Sides; ++side) {
-			AutoSide& autoSide = s_AutoSides[side];
-			if (!autoSide.Active || autoSide.Broke || now < autoSide.NextWave || s_FactionModules.empty()) {
-				continue;
-			}
-			autoSide.NextWave = now + 900;
-			std::vector<const Preset*> choices;
-			if (s_AutoRandom) {
-				// Random units from every faction (or the favourites): a few dozen of them, picked afresh each wave, are priced and bought
-				// from, not the whole catalogue (each pricing makes the unit and its loadout).
-				choices = RandomUnitPool(s_AutoFavourites);
-				for (size_t i = 0; i < choices.size() && i < 24; ++i) {
-					size_t other = i + std::min(choices.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(choices.size() - i)));
-					std::swap(choices[i], choices[other]);
-				}
-				if (choices.size() > 24) {
-					choices.resize(24);
-				}
-			} else {
-				choices = FactionUnits(s_FactionModules[std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1)]);
-			}
-			float left = static_cast<float>(autoSide.Budget) - autoSide.Spent;
-			// What each of the faction's units costs as bought (with its loadout), and the cheapest. The wave's budget is at least the
-			// cheapest unit, and picks are made only from what still fits: a faction whose cheapest unit cost over 900 (heavy mechs, some
-			// mods) never filled a wave and was called broke before buying anything, and twelve random picks over budget did the same to
-			// a side that could still afford its cheapest.
-			std::vector<std::pair<const Preset*, float>> priced;
-			float cheapest = -1.0F;
-			for (const Preset* choice: choices) {
-				if (Actor* unit = CreateUnit(*choice, side, 0, Order::Attack)) {
-					float cost = unit->GetTotalValue(unit->GetModuleID(), 1.0F);
-					delete unit;
-					priced.emplace_back(choice, cost);
-					cheapest = cheapest < 0.0F ? cost : std::min(cheapest, cost);
-				}
-			}
-			float waveBudget = std::min(left, std::max(900.0F, cheapest));
-			std::vector<Actor*> wave;
-			float waveCost = 0.0F;
-			for (int attempt = 0; attempt < 12 && wave.size() < 5; ++attempt) {
-				std::vector<const Preset*> affordable;
-				for (const auto& [choice, cost]: priced) {
-					if (waveCost + cost <= waveBudget) {
-						affordable.push_back(choice);
-					}
-				}
-				if (affordable.empty()) {
-					break;
-				}
-				const Preset* pick = affordable[std::min(affordable.size() - 1, static_cast<size_t>(Random01() * static_cast<float>(affordable.size())))];
-				Actor* unit = CreateUnit(*pick, side, 0, Order::Attack);
-				float cost = unit ? unit->GetTotalValue(unit->GetModuleID(), 1.0F) : 0.0F;
-				if (unit && waveCost + cost <= waveBudget) {
-					wave.push_back(unit);
-					waveCost += cost;
-				} else {
-					delete unit;
-				}
-			}
-			if (wave.empty()) {
-				autoSide.Broke = true;
-				continue;
-			}
-			// (Counted as sent only once a craft took them: with no craft to be had, DropUnits deletes the units and returns nothing.)
-			int waveSize = static_cast<int>(wave.size());
-			float paid = DropUnits(wave, side, AutoLaneX(side), 0);
-			if (paid > 0.0F) {
-				autoSide.Sent += waveSize;
-				autoSide.Spent += paid;
-			}
-		}
-		// One side left standing wins.
-		if (now % 60 == 0) {
-			int standing = 0;
-			int lastStanding = -1;
-			bool anySent = false;
-			for (int side = 0; side < c_Sides; ++side) {
-				const AutoSide& autoSide = s_AutoSides[side];
-				if (!autoSide.Active) {
-					continue;
-				}
-				anySent = anySent || autoSide.Sent > 0;
-				if (!autoSide.Broke || Sandbox::CountUnits(side) > 0) {
-					++standing;
-					lastStanding = side;
-				}
-			}
-			if (anySent && standing <= 1) {
-				s_AutoRunning = false;
-				s_AutoWinner = standing == 1 ? lastStanding : -1;
-				std::string result = s_AutoWinner >= 0 ? std::string(c_SideNames[s_AutoWinner]) + " wins!" : std::string("It's a draw!");
-				g_FrameMan.SetScreenText(result, 0, 0, 6000, true);
-				g_ConsoleMan.PrintString("SANDBOX: Auto battle over. " + result);
-			}
-		}
-	}
-
-	/// Starts an auto battle between the active sides, the waves landing in lanes about a middle spaced by a width (the view's, taken when
-	/// it was asked for).
-	void BeginAutoBattle(const Vector& center, float laneWidth) {
-		if (!s_CatalogueBuilt) {
-			BuildCatalogue();
-		}
-		s_AutoCenter = center;
-		s_AutoLaneWidth = laneWidth;
-		long long now = g_TimerMan.GetSimUpdateCount();
-		for (int side = 0; side < c_Sides; ++side) {
-			AutoSide& autoSide = s_AutoSides[side];
-			autoSide.Spent = 0.0F;
-			autoSide.Sent = 0;
-			autoSide.Broke = false;
-			// Staggered, so the first ships don't all arrive at once.
-			autoSide.NextWave = now + side * 60;
-		}
-		s_AutoWinner = -2;
-		s_AutoRunning = true;
-	}
-
 
 	/// Notes a tool use as it is applied, for the stroke log and, with the Sandbox debug channel on, the console: the update, the tool, where,
 	/// the side and orders, and the choice and count it was made with.

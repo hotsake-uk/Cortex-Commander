@@ -4,6 +4,7 @@
 
 namespace RTE {
 
+	class Camera;
 	class MOSRotating;
 	class LimbPath;
 

@@ -23,8 +23,14 @@ namespace RTE {
 		int Viscosity = -1; //!< Sideways speed gained a step while it has somewhere to run, in quarter pixels (low is thick).
 		int LiquidWeight = -1; //!< Heavier sinks through lighter.
 		float SlideChance = -1.0F; //!< For a powder: the chance a step of sliding down a slope.
+		float Scuffs = -1.0F; //!< For loose ground: how readily a unit walking or running on it knocks surface pixels loose and shoves them along (TerrainCollapse), 0 to 1. 0 or unset: not at all. Sand 1.
 		int Sticky = -1; //!< For a powder: 1 to slide only off a drop two deep, so it stands steeper (snow).
-		std::string Burns; //!< "Grass", "Wood" or "Oil" for how it burns (TerrainFire), "None" for not at all.
+		std::string BreakStyle; //!< How a falling piece of it breaks when it lands hard (TerrainCollapse): "Shatter" (concrete, glass), "Crack" (earth, stone), "Crumble" (sand, snow),
+		                        //!< "Splinter" (wood: lands whole unless the hit is huge) or "Bend" (metal: doesn't break). Each style's threshold is a setting (F6, Falling ground).
+		float ImpactStrength = -1.0F; //!< How hard a landing it takes to break, as a multiple of its style's threshold: 2 takes twice as hard a hit, 0.5 half.
+		int NeckWidth = -1; //!< A piece held on by a neck of it no wider than this many pixels snaps off and falls (TerrainCollapse). 0: it holds until cut right through (wood).
+		                    //!< Unset: the Falling ground setting.
+		std::string Burns; //!< "Grass", "Wood", "Oil" or "Ember" (smoulders, glowing: charcoal) for how it burns (TerrainFire), "None" for not at all.
 		int BurnMinTicks = -1; //!< How long a pixel of it burns, in fire ticks (a twentieth of a second), at the least and the most.
 		int BurnMaxTicks = -1;
 		float BurnSpread = -1.0F; //!< The chance a fire tick of setting each flammable neighbour alight.
@@ -145,6 +151,20 @@ namespace RTE {
 		/// @return The settling material index of this or the regular index.
 		unsigned char GetSettleMaterial() const { return (m_SettleMaterialIndex != 0) ? m_SettleMaterialIndex : m_Index; }
 
+		/// The material a particle or sprite of this is drawn into the terrain's material layer as when it settles: GetSettleMaterial, or this
+		/// material itself when the object has SettleMaterialDisabled. What came off a unit (see MovableObject::IsFromBody) that isn't flesh or bone
+		/// (see IsBody), its metal plating, gear and robot parts, settles as Flesh Scraps instead while the BodyGearSettlesAsScraps setting is on,
+		/// so the remains of the fallen keep their look but dig like the rest of them rather than leaving lumps of metal in the way. Liquids and
+		/// air are left as they are.
+		/// @param settleMaterialDisabled Whether the settling object keeps its own material rather than this one's SettleMaterial.
+		/// @param fromBody Whether the settling object came off a unit.
+		/// @return The material index to write into the terrain.
+		unsigned char GetTerrainSettleMaterial(bool settleMaterialDisabled, bool fromBody) const;
+
+		/// Whether this is what bodies are made of: flesh and bone. Set with IsBody in INI; when it isn't, any material named Bone or with
+		/// Flesh in its name counts.
+		bool IsBody() const;
+
 		/// Gets the material index to spawn instead of this one for special effects.
 		/// @return The material index to spawn instead of this one for special effects. 0 means to spawn the same material as this.
 		unsigned char GetSpawnMaterial() const { return m_SpawnMaterialIndex; }
@@ -214,6 +234,7 @@ namespace RTE {
 		unsigned char m_SettleMaterialIndex; //!< The material to turn particles of this into when they settle on the terrain. 0 here means to spawn this material.
 		unsigned char m_SpawnMaterialIndex; //!< The material to spawn instead of this one for special effects, etc. 0 here means to spawn this material.
 		bool m_IsScrap; //!< Whether this material is scrap material made from gibs of things that have already been blown apart.
+		mutable int m_IsBody; //!< Whether this is what bodies are made of (see IsBody). Below 0 until set or first asked for, when it's worked out from the name.
 
 		mutable float m_Metalness; //!< How metallic this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
 		MaterialBehaviour m_Behaviour; //!< How this behaves in the terrain's liquid, powder and fire simulations.

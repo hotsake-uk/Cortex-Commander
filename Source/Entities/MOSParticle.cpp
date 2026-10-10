@@ -5,6 +5,7 @@
 #include "Actor.h"
 #include "PostProcessMan.h"
 #include "Draw.h"
+#include "RenderMan.h"
 #include "Texture.h"
 #include "allegro.h"
 #include "FrameMan.h"
@@ -250,7 +251,7 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 		int spriteY = drawPositions.at(i).GetFloorIntY();
 		switch (mode) {
 			case g_DrawMaterial:
-				draw_character_ex(targetBitmap, m_aSprite[m_Frame], spriteX, spriteY, m_SettleMaterialDisabled ? GetMaterial()->GetIndex() : GetMaterial()->GetSettleMaterial(), -1);
+				draw_character_ex(targetBitmap, m_aSprite[m_Frame], spriteX, spriteY, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled, m_FromBody), -1);
 				break;
 			case g_DrawWhite:
 				draw_character_ex(targetBitmap, m_aSprite[m_Frame], spriteX, spriteY, g_WhiteColor, -1);
@@ -297,13 +298,21 @@ void MOSParticle::Draw(const Camera& camera) const {
 			return;
 		}
 	}
+	// Smoke: weightless air particles that float up.
+	bool smoke = m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir;
+	// It's drawn in the effects layer (LightingSettings::Behind), behind units and the ground in front: whatever is nearer hides it, whichever is drawn first.
+	float previousZOffset = g_RenderMan.GetCurrentZOffset();
+	if (smoke && g_PostProcessMan.GetLightingSettings().Behind(LightingSettings::LayerSmoke)) {
+		g_RenderMan.SetCurrentZOffset(c_EffectsDepth);
+	}
 	Vector spritePos((GetRenderPos() + m_SpriteOffset).GetFloored());
 	Color tint = ApplyRenderBlendMode();
 	ApplySpriteMaps();
 	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, tint);
 	RestoreRenderBlendMode();
-	// Smoke (weightless air particles that float up) scatters the light passing through it.
-	if (m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir) {
+	g_RenderMan.SetCurrentZOffset(previousZOffset);
+	// Smoke scatters the light passing through it.
+	if (smoke) {
 		float density = m_Lifetime > 0 ? std::clamp(1.0F - static_cast<float>(GetAge()) / static_cast<float>(m_Lifetime), 0.0F, 1.0F) : 1.0F;
 		Vector center = GetRenderPos();
 		EffectsParticles::RegisterSmoke(this, glm::vec2(center.m_X, center.m_Y), m_SpriteRadius, density, SpriteColor(m_Sprites[m_Frame].get()));

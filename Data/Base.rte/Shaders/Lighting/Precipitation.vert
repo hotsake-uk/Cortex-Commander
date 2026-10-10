@@ -14,7 +14,9 @@ uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin; // World position of the screen's top left pixel.
 uniform float rteTime;
 uniform int rteType; // The weather's slot (0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on others), for a mod's shader to tell them apart.
-uniform float rteWind; // Horizontal speed, pixels per second.
+uniform float rteWind; // Horizontal speed, pixels per second: the weather's steady wind.
+uniform float rteWindDrift; // How far the natural wind's gusts and shifts have carried things beyond the steady wind, pixels.
+uniform float rteWindNow; // The wind as it blows now, gusts and all, pixels per second.
 uniform vec2 rteFallSpeed; // Down, pixels per second, min and max: each drop's is between them. Negative rises.
 uniform float rteWindFactor; // How much of the wind the drops take.
 uniform vec3 rteSway; // Side to side drift: pixels, and how fast, radians per second, min and max.
@@ -83,6 +85,11 @@ void main() {
 	// A repeating field slightly larger than the screen.
 	vec2 fieldSize = rteScreenSize + vec2(64.0);
 	vec2 fieldPos = vec2(seedA, seedB) * fieldSize + velocity * rteTime;
+	if (!rteBlown) {
+		// Gusts carry the drops along further and lean them over more, without making them jump.
+		fieldPos.x += rteWindDrift * rteWindFactor;
+		velocity.x += (rteWindNow - rteWind) * rteWindFactor;
+	}
 	if (rteSway.x != 0.0) {
 		fieldPos.x += sin(rteTime * mix(rteSway.y, rteSway.z, seedC) + seedA * 30.0) * rteSway.x;
 	}

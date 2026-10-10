@@ -8,10 +8,14 @@
 #include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
+#include "AirPressure.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
@@ -28,9 +32,14 @@
 #include "PerformanceMan.h"
 #include "UInputMan.h"
 #include "DebugMan.h"
+#include "TimerMan.h"
+#include "Controller.h"
 #include "System.h"
 
 #include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
@@ -57,6 +66,7 @@ namespace {
 	/// 2: brighter ambient light in interiors and caves.
 	constexpr int c_LightingSettingsVersion = 2;
 	int s_ReadLightingSettingsVersion = 0; //!< Version of the lighting settings in the file being read, 0 when it has none.
+	bool s_ReadingStartupPreset = false; //!< Whether the preset loaded at start is being read, when the panel's settings for the moment are passed over.
 } // namespace
 
 const std::string SettingsMan::c_ClassName = "SettingsMan";
@@ -110,18 +120,29 @@ bool SettingsMan::TraceAllUnits() const {
 void SettingsMan::Clear() {
 	m_SettingsPath = System::GetUserdataDirectory() + "Settings.ini";
 	m_SettingsNeedOverwrite = false;
+	m_StartupPreset.clear();
 	s_ReadLightingSettingsVersion = 0;
 
 	m_FlashOnBrainDamage = true;
 	m_BlipOnRevealUnseen = false;
-	m_UnheldItemsHUDDisplayRange = 25 * c_PPM;
+	m_UnheldItemsHUDDisplayRange = 0;
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_BodyGearSettlesAsScraps = true;
+	m_NoSceneWrap = true;
 	m_AISuppression = 1.0F;
+	m_AIDigWillingness = 1.0F;
+	m_AIThreatAvoidance = 1.0F;
+	m_AIRecklessness = 0.5F;
+	m_AISpawnDiggerChance = 0.0F;
+	m_BleedOutChance = 0.0F;
+	m_AISpawnDiggerType = 1;
+	m_AISteadyBeforeJet = true;
+	m_AIWaitForFuel = true;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -137,6 +158,7 @@ void SettingsMan::Clear() {
 	m_SandboxSpotReach = false;
 	m_SandboxGroupBadges = true;
 	m_SandboxOrderGlyphs = 1;
+	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
 	m_SandboxMinimap = false;
 	m_LightsBySource = false;
@@ -145,6 +167,8 @@ void SettingsMan::Clear() {
 	m_SandboxPaintAudit = false;
 	m_SandboxSelectionCamera = false;
 	m_SandboxEffects = false;
+	m_SandboxGas = false;
+	m_SandboxAir = false;
 	m_SandboxSimState = false;
 	m_SandboxOrdersOverlay = 0;
 	m_DebugChannels = 0;
@@ -152,7 +176,7 @@ void SettingsMan::Clear() {
 	m_ShowFPSAndVersion = true;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
-	m_ShowUnitTags = true;
+	m_ShowUnitTags = false;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
@@ -225,9 +249,38 @@ int SettingsMan::Initialize() {
 	return failureCode;
 }
 
+namespace {
+	/// The settings file's text for the settings as they are now.
+	std::string SettingsText() {
+		auto stream = std::make_unique<std::ostringstream>();
+		*stream << std::fixed << std::setprecision(6);
+		std::ostringstream* text = stream.get();
+		Writer settingsWriter(std::move(stream));
+		g_SettingsMan.Save(settingsWriter);
+		return text->str();
+	}
+}
+
 void SettingsMan::UpdateSettingsFile() const {
-	Writer settingsWriter(m_SettingsPath);
-	g_SettingsMan.Save(settingsWriter);
+	std::string text = SettingsText();
+	std::ofstream file(m_SettingsPath, std::ios::out | std::ios::trunc);
+	file << text;
+	file.close();
+	if (file) {
+		m_LastWrittenSettings = std::move(text);
+	}
+}
+
+void SettingsMan::SaveSettingsIfChanged() const {
+	static std::chrono::steady_clock::time_point s_LastLook;
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - s_LastLook < std::chrono::seconds(1)) {
+		return;
+	}
+	s_LastLook = now;
+	if (SettingsText() != m_LastWrittenSettings) {
+		UpdateSettingsFile();
+	}
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {
@@ -262,17 +315,52 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseMaxPiece", { TerrainCollapse::GetTuning().MaxPiecePixels = std::clamp(std::stoi(reader.ReadPropValue()), 500, 200000); });
 	MatchProperty("CollapseMinFitting", { TerrainCollapse::GetTuning().MinFittingPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
 	MatchProperty("CollapseBreakStrength", { TerrainCollapse::GetTuning().BreakStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 10.0F); });
+	MatchProperty("CollapseShatterSpeed", { TerrainCollapse::GetTuning().ShatterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseCrackSpeed", { TerrainCollapse::GetTuning().CrackSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseCrumbleSpeed", { TerrainCollapse::GetTuning().CrumbleSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseSplinterSpeed", { TerrainCollapse::GetTuning().SplinterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseBendSpeed", { TerrainCollapse::GetTuning().BendSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
 	MatchProperty("CollapseBlastPush", { TerrainCollapse::GetTuning().BlastPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
+	MatchProperty("CollapseScuffStrength", { TerrainCollapse::GetTuning().ScuffStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
+	MatchProperty("CollapseHitDamage", { TerrainCollapse::GetTuning().HitDamage = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 20.0F); });
+	MatchProperty("CollapseHitMinSpeed", { TerrainCollapse::GetTuning().HitMinSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 30.0F); });
+	MatchProperty("CollapseHitMinPixels", { TerrainCollapse::GetTuning().HitMinPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
+	MatchProperty("CollapseHitMassCap", { TerrainCollapse::GetTuning().HitMassCap = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 50.0F); });
+	MatchProperty("CollapseHitKnockback", { TerrainCollapse::GetTuning().HitKnockback = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
 	MatchProperty("CollapseBuildings", { TerrainCollapse::SetBuildingsFall(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
+	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("GasShown", { GasGrid::SetShown(std::stof(reader.ReadPropValue())); });
+	MatchProperty("AirAndWind", { AirPressure::SetOn(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("WindGusts", { AirPressure::GetTuning().Gusts = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
+	MatchProperty("WindShifts", { AirPressure::GetTuning().Shifts = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
+	MatchProperty("WindBreeze", { AirPressure::GetTuning().Breeze = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 200.0F); });
+	MatchProperty("AirOverall", { AirPressure::GetTuning().Overall = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirBlastStrength", { AirPressure::GetTuning().BlastStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirBlastReach", { AirPressure::GetTuning().BlastReach = std::clamp(std::stof(reader.ReadPropValue()), 0.25F, 3.0F); });
+	MatchProperty("AirPushStrength", { AirPressure::GetTuning().PushStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirUnitPush", { AirPressure::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("AirLiquidThrow", { AirPressure::GetTuning().LiquidThrow = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("WindStrength", { AirPressure::GetTuning().WindStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("WindCarriesGas", { AirPressure::GetTuning().WindGas = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("BlastWaves", { AirPressure::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("WindMovesSmoke", { AirPressure::SetWindMovesSmoke(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("LiquidsDrainSides", { FluidSim::SetDrainsSides(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("PowdersFallOut", { FluidSim::SetPowdersFallOut(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LoosePowders", { FluidSim::SetPowdersEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("EmberIgniteChance", { TerrainFire::SetEmberIgniteChance(std::stof(reader.ReadPropValue())); });
+	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
@@ -280,13 +368,20 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		g_PostProcessMan.GetLightingSettings().GraphicsQuality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom));
 		// Settings saved before the shadow effects existed have no values for them: follow the saved preset. Values in the file come after this and win.
 		g_PostProcessMan.GetLightingSettings().ApplyShadowPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+		// The light-spreading steps weren't saved before: follow the saved preset too (Low 3, Ultra 12), so they don't go back to 6.
+		LightingSettings preset;
+		preset.ApplyQualityPreset(g_PostProcessMan.GetLightingSettings().GraphicsQuality);
+		g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = preset.PropagationIterationsPerFrame;
 	});
+	MatchProperty("LightingPropagationSteps", { g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = std::clamp(std::stoi(reader.ReadPropValue()), 1, 32); });
 	MatchProperty("UnitShadows", { g_PostProcessMan.GetLightingSettings().UnitShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadows", { g_PostProcessMan.GetLightingSettings().SunShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadowMap", { g_PostProcessMan.GetLightingSettings().SunShadowMap = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShelterMask", { g_PostProcessMan.GetLightingSettings().ShelterMask = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShelterSoftness", { g_PostProcessMan.GetLightingSettings().ShelterSoftness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadowSoftness", { g_PostProcessMan.GetLightingSettings().SunShadowSoftness = std::stof(reader.ReadPropValue()); });
+	MatchProperty("BackgroundShadows", { g_PostProcessMan.GetLightingSettings().BackgroundShadows = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("BackgroundShadowLength", { g_PostProcessMan.GetLightingSettings().BackgroundShadowLength = std::clamp(std::stof(reader.ReadPropValue()), 0.25F, 3.0F); });
 	MatchProperty("ContactShading", { g_PostProcessMan.GetLightingSettings().ContactShading = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingAmbient", {
@@ -304,15 +399,17 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LightingSkyColor", { g_PostProcessMan.GetLightingSettings().SkyColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().SkyColor); });
 	MatchProperty("LightingAirFalloff", { g_PostProcessMan.GetLightingSettings().AirFalloff = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingSolidFalloff", { g_PostProcessMan.GetLightingSettings().SolidFalloff = std::stof(reader.ReadPropValue()); });
-	MatchProperty("LightingDebugView", { g_PostProcessMan.GetLightingSettings().DebugView = std::stoi(reader.ReadPropValue()); }); // Read only, for automated screenshots.
+	MatchProperty("LightingDebugView", { int view = std::stoi(reader.ReadPropValue()); if (!s_ReadingStartupPreset) { g_PostProcessMan.GetLightingSettings().DebugView = view; } }); // Read only, for automated screenshots.
 	MatchProperty("DeepNightDarkness", { g_PostProcessMan.GetLightingSettings().DeepNightDarkness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SkyFollowsTime", { g_PostProcessMan.GetLightingSettings().SkyFollowsTime = std::stof(reader.ReadPropValue()); });
 	MatchProperty("GodRays", { g_PostProcessMan.GetLightingSettings().GodRays = std::stof(reader.ReadPropValue()); });
 	MatchProperty("FogVolume", { g_PostProcessMan.GetLightingSettings().FogVolume = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.5F); });
 	MatchProperty("FogMorningMist", { g_PostProcessMan.GetLightingSettings().FogMorningMist = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("FogOpacity", { g_PostProcessMan.GetLightingSettings().FogOpacity = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("FogClearSeconds", { g_PostProcessMan.GetLightingSettings().FogClearSeconds = std::clamp(std::stof(reader.ReadPropValue()), 3.0F, 120.0F); });
 	MatchProperty("LightningBolts", { g_PostProcessMan.GetLightingSettings().LightningBolts = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("LightningBrightness", { g_PostProcessMan.GetLightingSettings().LightningBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.2F, 2.0F); });
+	MatchProperty("LightningBrightness", { g_PostProcessMan.GetLightingSettings().LightningBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("StormFlashes", { g_PostProcessMan.GetLightingSettings().StormFlashes = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("GodRayDecay", { reader.ReadPropValue(); }); // In older settings files. Light shafts now follow where the sun reaches, so they have no decay to set.
 	MatchProperty("AtmosphereHaze", { g_PostProcessMan.GetLightingSettings().AtmosphereHaze = std::stof(reader.ReadPropValue()); });
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
@@ -329,6 +426,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LightingMaxScreenLights", { g_PostProcessMan.GetLightingSettings().MaxScreenLights = std::max(std::stoi(reader.ReadPropValue()), 0); });
 	MatchProperty("LightingShadowStrength", { g_PostProcessMan.GetLightingSettings().ShadowStrength = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightShadowField", { g_PostProcessMan.GetLightingSettings().LightShadowField = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("SoftWallLight", { g_PostProcessMan.GetLightingSettings().SoftWallLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightShadowSoftness", { g_PostProcessMan.GetLightingSettings().LightShadowSoftness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
 	MatchProperty("RadianceCascades", { g_PostProcessMan.GetLightingSettings().RadianceCascades = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("GIStrength", { g_PostProcessMan.GetLightingSettings().GIStrength = std::stof(reader.ReadPropValue()); });
@@ -339,6 +437,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
+	MatchProperty("UnitShineLights", { g_PostProcessMan.GetLightingSettings().UnitShineLights = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineLamps", { g_PostProcessMan.GetLightingSettings().UnitShineLamps = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitShineSun", { g_PostProcessMan.GetLightingSettings().UnitShineSun = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
@@ -351,10 +452,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FireShader", { g_PostProcessMan.GetLightingSettings().FireStyle = std::stoi(reader.ReadPropValue()) != 0 ? LightingSettings::FireBoth : LightingSettings::FirePixel; });
 	MatchProperty("FireFlameSize", { g_PostProcessMan.GetLightingSettings().FireFlameSize = std::stof(reader.ReadPropValue()); });
 	MatchProperty("UnitOutline", { g_PostProcessMan.GetLightingSettings().UnitOutline = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitOutlineOverEverything", { g_PostProcessMan.GetLightingSettings().UnitOutlineOverEverything = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineWidth", { g_PostProcessMan.GetLightingSettings().UnitOutlineWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 4.0F); });
 	MatchProperty("UnitOutlineTeamColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineTeamColor = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitOutlineColor", { g_PostProcessMan.GetLightingSettings().UnitOutlineColor = glm::clamp(ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().UnitOutlineColor), glm::vec3(0.0F), glm::vec3(1.0F)); });
 	MatchProperty("UnitOutlineOpacity", { g_PostProcessMan.GetLightingSettings().UnitOutlineOpacity = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UnitOutlineGlow", { g_PostProcessMan.GetLightingSettings().UnitOutlineGlow = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
 	MatchProperty("PaletteAnimation", { g_PostProcessMan.GetLightingSettings().PaletteAnimation = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("PaletteAnimationStrength", { g_PostProcessMan.GetLightingSettings().PaletteAnimationStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("FireFlameBrightness", { g_PostProcessMan.GetLightingSettings().FireFlameBrightness = std::stof(reader.ReadPropValue()); });
@@ -362,7 +465,18 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SmokeShading", { g_PostProcessMan.GetLightingSettings().SmokeShading = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SmokeShadingStrength", { g_PostProcessMan.GetLightingSettings().SmokeShadingStrength = std::stof(reader.ReadPropValue()); });
-	MatchProperty("EffectsParticles", { g_PostProcessMan.GetLightingSettings().EffectsParticles = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsParticles", {
+		// The one setting sparks, dust and debris shared before they were split: carried over to all three.
+		float amount = std::stof(reader.ReadPropValue());
+		LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		lighting.EffectsSparks = amount;
+		lighting.EffectsDust = amount;
+		lighting.EffectsDebris = amount;
+	});
+	MatchProperty("EffectsSparks", { g_PostProcessMan.GetLightingSettings().EffectsSparks = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDust", { g_PostProcessMan.GetLightingSettings().EffectsDust = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDebris", { g_PostProcessMan.GetLightingSettings().EffectsDebris = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SparkLights", { g_PostProcessMan.GetLightingSettings().SparkLights = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Headlamps", { g_PostProcessMan.GetLightingSettings().Headlamps = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
@@ -395,6 +509,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FilmGrain", { g_PostProcessMan.GetLightingSettings().FilmGrain = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EventLooks", { g_PostProcessMan.GetLightingSettings().EventLooks = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("EventLookStrength", { g_PostProcessMan.GetLightingSettings().EventLookStrength = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EventBlastFlash", { g_PostProcessMan.GetLightingSettings().EventBlastFlash = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("EventHurtLook", { g_PostProcessMan.GetLightingSettings().EventHurtLook = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("EventFireWarmth", { g_PostProcessMan.GetLightingSettings().EventFireWarmth = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SunDisc", { g_PostProcessMan.GetLightingSettings().SunDisc = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudShadows", { g_PostProcessMan.GetLightingSettings().CloudShadows = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CloudLayer", { g_PostProcessMan.GetLightingSettings().CloudLayer = std::stoi(reader.ReadPropValue()) != 0; });
@@ -409,6 +526,17 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterFoamBrightness", { g_PostProcessMan.GetLightingSettings().WaterFoamBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFoamGlow", { g_PostProcessMan.GetLightingSettings().WaterFoamGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SoftSmoke", { g_PostProcessMan.GetLightingSettings().SoftSmoke = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectLayers", { g_PostProcessMan.GetLightingSettings().EffectLayers = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
+	MatchProperty("LayerSmoke", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSmoke] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerSoftSmoke", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSoftSmoke] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerMist", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerMist] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerSplash", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSplash] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerFroth", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerFroth] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerDust", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerDust] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerDebris", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerDebris] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerSparks", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSparks] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerEmbers", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerEmbers] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerFire", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerFire] = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterLightGlow", { g_PostProcessMan.GetLightingSettings().WaterLightGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterReflections", { g_PostProcessMan.GetLightingSettings().WaterReflections = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterReflectionStrength", { g_PostProcessMan.GetLightingSettings().WaterReflectionStrength = std::stof(reader.ReadPropValue()); });
@@ -417,6 +545,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterSoftReflection", { g_PostProcessMan.GetLightingSettings().WaterSoftReflection = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterMirrorSurface", { g_PostProcessMan.GetLightingSettings().WaterMirrorSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFoamBubbles", { g_PostProcessMan.GetLightingSettings().WaterFoamBubbles = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WaterCaustics", { g_PostProcessMan.GetLightingSettings().WaterCaustics = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFlowSurface", { g_PostProcessMan.GetLightingSettings().WaterFlowSurface = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterFlowStrength", { g_PostProcessMan.GetLightingSettings().WaterFlowStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("DistinctLiquidLooks", { g_PostProcessMan.GetLightingSettings().DistinctLiquidLooks = std::stoi(reader.ReadPropValue()) != 0; });
@@ -427,11 +556,26 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterMist", { g_PostProcessMan.GetLightingSettings().WaterMist = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterThinFlow", { g_PostProcessMan.GetLightingSettings().WaterThinFlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SplashFroth", { g_PostProcessMan.GetLightingSettings().SplashFroth = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothDensity", { g_PostProcessMan.GetLightingSettings().SplashFrothDensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashFrothSpecks", { g_PostProcessMan.GetLightingSettings().SplashFrothSpecks = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SplashFrothSize", { g_PostProcessMan.GetLightingSettings().SplashFrothSize = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SplashFrothLife", { g_PostProcessMan.GetLightingSettings().SplashFrothLife = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SplashFrothOpacity", { g_PostProcessMan.GetLightingSettings().SplashFrothOpacity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PuffVariety", { g_PostProcessMan.GetLightingSettings().PuffVariety = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterSplash", { g_PostProcessMan.GetLightingSettings().WaterSplash = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashDrops", { g_PostProcessMan.GetLightingSettings().SplashDrops = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashHeight", { g_PostProcessMan.GetLightingSettings().SplashHeight = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashWidth", { g_PostProcessMan.GetLightingSettings().SplashWidth = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashDropSize", { g_PostProcessMan.GetLightingSettings().SplashDropSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashSpray", { g_PostProcessMan.GetLightingSettings().SplashSpray = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnder", { g_PostProcessMan.GetLightingSettings().SplashUnder = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderLiquidColor", { g_PostProcessMan.GetLightingSettings().SplashUnderLiquidColor = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderHeight", { g_PostProcessMan.GetLightingSettings().SplashUnderHeight = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderWidth", { g_PostProcessMan.GetLightingSettings().SplashUnderWidth = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderDropSize", { g_PostProcessMan.GetLightingSettings().SplashUnderDropSize = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderOpacity", { g_PostProcessMan.GetLightingSettings().SplashUnderOpacity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderScatter", { g_PostProcessMan.GetLightingSettings().SplashUnderScatter = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SplashUnderColor", { g_PostProcessMan.GetLightingSettings().SplashUnderColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().SplashUnderColor); });
 	MatchProperty("WaterMistBrightness", { g_PostProcessMan.GetLightingSettings().WaterMistBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterMistGlow", { g_PostProcessMan.GetLightingSettings().WaterMistGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("RainSplashes", { g_PostProcessMan.GetLightingSettings().RainSplashes = std::stof(reader.ReadPropValue()); });
@@ -439,6 +583,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TracerGlow", { g_PostProcessMan.GetLightingSettings().TracerGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightBrightness", { g_PostProcessMan.GetLightingSettings().TracerLightBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightRandomness", { g_PostProcessMan.GetLightingSettings().TracerLightRandomness = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SaberLightBrightness", { g_PostProcessMan.GetLightingSettings().SaberLightBrightness = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("SaberLightReach", { g_PostProcessMan.GetLightingSettings().SaberLightReach = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("SaberAirGlow", { g_PostProcessMan.GetLightingSettings().SaberAirGlow = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("TracerLightReach", { g_PostProcessMan.GetLightingSettings().TracerLightReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightSaturation", { g_PostProcessMan.GetLightingSettings().LightSaturation = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightTint", { g_PostProcessMan.GetLightingSettings().LightTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().LightTint); });
@@ -456,6 +603,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowAIPaths", { Actor::SetShowAIPaths(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2)); });
 	MatchProperty("AimDotsLight", { g_PostProcessMan.GetLightingSettings().AimDotsLight = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeadlampsByDay", { g_PostProcessMan.GetLightingSettings().HeadlampsByDay = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("HeadlampDarkThreshold", { g_PostProcessMan.GetLightingSettings().HeadlampDarkThreshold = std::stof(reader.ReadPropValue()); });
+	MatchProperty("HeadlampsOnlyInDark", { g_PostProcessMan.GetLightingSettings().HeadlampsOnlyInDark = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LightPropagationSteps", { g_PostProcessMan.GetLightingSettings().PropagationIterationsPerFrame = std::clamp(std::stoi(reader.ReadPropValue()), 1, 32); });
 	MatchProperty("PanelsOverlay", { g_DebugMan.m_PanelsOverlay = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DockPanels", { g_DebugMan.m_DockPanels = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SandboxCharacter", { Sandbox::SetCharacterSetup(reader.ReadPropValue()); });
@@ -463,7 +613,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxFavourites", { /* Favourites used to live here; they have their own file now. */ reader.ReadPropValue(); });
 	MatchProperty("PixelToolFont", { g_DebugMan.m_PixelFont = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ToolScale", { g_DebugMan.m_ToolScale = std::clamp(std::stof(reader.ReadPropValue()), 0.4F, 1.5F); });
-	MatchProperty("PanelWidth", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 240.0F, 700.0F); });
+	MatchProperty("PanelWidth", { /* Was in pixels (380 by default); about 18 of them to a percent of a 1080p window. */ g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()) / 18.0F, 10.0F, 40.0F); });
+	MatchProperty("PanelWidthPercent", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 45.0F); });
+	MatchProperty("RightPanelWidthPercent", { g_DebugMan.m_PanelWidthRight = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 45.0F); });
+	MatchProperty("SandboxPanelPlacement", { g_DebugMan.m_SandboxPlacement = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
+	MatchProperty("SandboxBarWidthPercent", { g_DebugMan.m_BarWidth = std::clamp(std::stof(reader.ReadPropValue()), 25.0F, 100.0F); });
 	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DepthOfField", { g_PostProcessMan.GetLightingSettings().DepthOfField = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DepthOfFieldFocus", { g_PostProcessMan.GetLightingSettings().DepthOfFieldFocus = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -509,18 +663,49 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
+	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
+	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
+	MatchProperty("UnitSpeechTones1", { UnitSpeech::SetTeamTonesText(0, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones2", { UnitSpeech::SetTeamTonesText(1, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechToneMix", { UnitSpeech::SetToneWeightsText(reader.ReadPropValue()); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
+	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
+	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
+	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
+	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
+	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
+	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
+	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
 	MatchProperty("ShowSquadLinks", { reader >> m_ShowSquadLinks; });
+	MatchProperty("ShowRecentSolves", { reader >> m_ShowRecentSolves; });
+	MatchProperty("ShowTerrainUpdates", { reader >> m_ShowTerrainUpdates; });
+	// Only in presets (see SaveTunables): what the panel holds for the moment.
+	// The panel's settings for the moment: in presets only, and passed over in the one loaded at start so the game doesn't start in them.
+	MatchProperty("GameSpeed", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_TimerMan.SetTimeScale(std::clamp(std::stof(value), 0.1F, 4.0F)); } });
+	MatchProperty("PauseAI", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Controller::SetAIPaused(std::stoi(value) != 0); } });
+	MatchProperty("CameraZoom", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_FrameMan.SetCameraZoom(std::stof(value)); } });
+	MatchProperty("FreezeSimulation", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_FreezeSim = std::stoi(value) != 0; } });
+	MatchProperty("ShowPerformanceStats", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_ShowPerformanceMan = std::stoi(value) != 0; } });
+	MatchProperty("ShowActorDebugDrawing", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_ShowActorDebugGui = std::stoi(value) != 0; } });
+	MatchProperty("DrawCameraBounds", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_DrawCameraBounds = std::stoi(value) != 0; } });
+	MatchProperty("DrawSpriteBounds", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_DrawSpriteBounds = std::stoi(value) != 0; } });
+	MatchProperty("ImGuiDemoWindow", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_ImGuiDemoWindow = std::stoi(value) != 0; } });
+	MatchProperty("FreeCam", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_EnableFreeCam = std::stoi(value) != 0; } });
+	MatchProperty("FreeCamZoom", { std::string value = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { g_DebugMan.m_FreeCamZoom = std::stof(value); } });
 	MatchProperty("ShowOrderLabels", { reader >> m_ShowOrderLabels; });
 	MatchProperty("CombatOverlay", { int which = 0; reader >> which; SetCombatOverlay(which); });
 	MatchProperty("ShowLightSources", { reader >> m_ShowLightSources; });
@@ -530,6 +715,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
+	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
@@ -538,6 +724,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxPaintAudit", { reader >> m_SandboxPaintAudit; });
 	MatchProperty("SandboxSelectionCamera", { reader >> m_SandboxSelectionCamera; });
 	MatchProperty("SandboxEffects", { reader >> m_SandboxEffects; });
+	MatchProperty("SandboxGas", { reader >> m_SandboxGas; });
+	MatchProperty("SandboxAir", { reader >> m_SandboxAir; });
 	MatchProperty("SandboxSimState", { reader >> m_SandboxSimState; });
 	MatchProperty("SandboxOrdersOverlay", { int which = 0; reader >> which; SetSandboxOrdersOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
@@ -592,6 +780,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DrawPixelCheckVisualizations", { reader >> g_SceneMan.m_DrawPixelCheckVisualizations; });
 	MatchProperty("PrintDebugInfo", { reader >> m_PrintDebugInfo; });
 	MatchProperty("EnableDebugMenus", { reader >> g_DebugMan.m_ShowDebugWindow; });
+	MatchProperty("StartupPreset", { m_StartupPreset = reader.ReadPropValue(); });
 	MatchProperty("ControlLinkPort", { ControlLink::s_SettingsPort = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("ShowGraphicsLab", { g_DebugMan.m_ShowGraphicsLab = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShowWorldDebug", { g_DebugMan.m_ShowWorldDebug = std::stoi(reader.ReadPropValue()) != 0; }); // Read only, for automated captures.
@@ -615,7 +804,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	EndPropertyList;
 }
 
-void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting) const {
+void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
 	writer.NewPropertyWithValue("LightingSettingsVersion", c_LightingSettingsVersion);
 	writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
@@ -624,12 +813,15 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingForegroundAmbient", WriteVec3(lighting.ForegroundAmbient));
 	writer.NewPropertyWithValue("LightingAirFalloff", lighting.AirFalloff);
 	writer.NewPropertyWithValue("LightingSolidFalloff", lighting.SolidFalloff);
+	writer.NewPropertyWithValue("LightingPropagationSteps", lighting.PropagationIterationsPerFrame);
 	writer.NewPropertyWithValue("GodRays", lighting.GodRays);
 	writer.NewPropertyWithValue("FogVolume", lighting.FogVolume);
 	writer.NewPropertyWithValue("FogMorningMist", lighting.FogMorningMist);
+	writer.NewPropertyWithValue("FogOpacity", lighting.FogOpacity);
 	writer.NewPropertyWithValue("FogClearSeconds", lighting.FogClearSeconds);
 	writer.NewPropertyWithValue("LightningBolts", lighting.LightningBolts);
 	writer.NewPropertyWithValue("LightningBrightness", lighting.LightningBrightness);
+	writer.NewPropertyWithValue("StormFlashes", lighting.StormFlashes);
 	writer.NewPropertyWithValue("SkyFollowsTime", lighting.SkyFollowsTime);
 	writer.NewPropertyWithValue("DeepNightDarkness", lighting.DeepNightDarkness);
 	writer.NewPropertyWithValue("AtmosphereHaze", lighting.AtmosphereHaze);
@@ -655,6 +847,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("LightingMaxScreenLights", lighting.MaxScreenLights);
 	writer.NewPropertyWithValue("LightingShadowStrength", lighting.ShadowStrength);
 	writer.NewPropertyWithValue("LightShadowField", lighting.LightShadowField);
+	writer.NewPropertyWithValue("SoftWallLight", lighting.SoftWallLight);
 	writer.NewPropertyWithValue("LightShadowSoftness", lighting.LightShadowSoftness);
 	writer.NewPropertyWithValue("UnitShadows", lighting.UnitShadows);
 	writer.NewPropertyWithValue("SunShadows", lighting.SunShadows);
@@ -662,10 +855,15 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("SunShadowSoftness", lighting.SunShadowSoftness);
 	writer.NewPropertyWithValue("ShelterMask", lighting.ShelterMask);
 	writer.NewPropertyWithValue("ShelterSoftness", lighting.ShelterSoftness);
+	writer.NewPropertyWithValue("BackgroundShadows", lighting.BackgroundShadows);
+	writer.NewPropertyWithValue("BackgroundShadowLength", lighting.BackgroundShadowLength);
 	writer.NewPropertyWithValue("ContactShading", lighting.ContactShading);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
 	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
+	writer.NewPropertyWithValue("UnitShineLights", lighting.UnitShineLights);
+	writer.NewPropertyWithValue("UnitShineLamps", lighting.UnitShineLamps);
+	writer.NewPropertyWithValue("UnitShineSun", lighting.UnitShineSun);
 	writer.NewPropertyWithValue("LightingMetals", lighting.Metals);
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);
@@ -682,16 +880,21 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FireStyle", lighting.FireStyle);
 	writer.NewPropertyWithValue("FireFlameSize", lighting.FireFlameSize);
 	writer.NewPropertyWithValue("UnitOutline", lighting.UnitOutline);
+	writer.NewPropertyWithValue("UnitOutlineOverEverything", lighting.UnitOutlineOverEverything);
 	writer.NewPropertyWithValue("UnitOutlineWidth", lighting.UnitOutlineWidth);
 	writer.NewPropertyWithValue("UnitOutlineTeamColor", lighting.UnitOutlineTeamColor);
 	writer.NewPropertyWithValue("UnitOutlineColor", WriteVec3(lighting.UnitOutlineColor));
 	writer.NewPropertyWithValue("UnitOutlineOpacity", lighting.UnitOutlineOpacity);
+	writer.NewPropertyWithValue("UnitOutlineGlow", lighting.UnitOutlineGlow);
 	writer.NewPropertyWithValue("PaletteAnimation", lighting.PaletteAnimation);
 	writer.NewPropertyWithValue("PaletteAnimationStrength", lighting.PaletteAnimationStrength);
 	writer.NewPropertyWithValue("FireFlameBrightness", lighting.FireFlameBrightness);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
 	writer.NewPropertyWithValue("Embers", lighting.Embers);
-	writer.NewPropertyWithValue("EffectsParticles", lighting.EffectsParticles);
+	writer.NewPropertyWithValue("EffectsSparks", lighting.EffectsSparks);
+	writer.NewPropertyWithValue("EffectsDust", lighting.EffectsDust);
+	writer.NewPropertyWithValue("EffectsDebris", lighting.EffectsDebris);
+	writer.NewPropertyWithValue("SparkLights", lighting.SparkLights);
 	writer.NewPropertyWithValue("SmokeScattering", lighting.SmokeScattering);
 	writer.NewPropertyWithValue("SmokeShading", lighting.SmokeShading);
 	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);
@@ -727,6 +930,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("FilmGrain", lighting.FilmGrain);
 	writer.NewPropertyWithValue("EventLooks", lighting.EventLooks);
 	writer.NewPropertyWithValue("EventLookStrength", lighting.EventLookStrength);
+	writer.NewPropertyWithValue("EventBlastFlash", lighting.EventBlastFlash);
+	writer.NewPropertyWithValue("EventHurtLook", lighting.EventHurtLook);
+	writer.NewPropertyWithValue("EventFireWarmth", lighting.EventFireWarmth);
 	writer.NewPropertyWithValue("SunDisc", lighting.SunDisc);
 	writer.NewPropertyWithValue("CloudShadows", lighting.CloudShadows);
 	writer.NewPropertyWithValue("CloudLayer", lighting.CloudLayer);
@@ -744,14 +950,30 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterFoamGlow", lighting.WaterFoamGlow);
 	writer.NewPropertyWithValue("WaterMist", lighting.WaterMist);
 	writer.NewPropertyWithValue("WaterSplash", lighting.WaterSplash);
+	writer.NewPropertyWithValue("SplashDrops", lighting.SplashDrops);
+	writer.NewPropertyWithValue("SplashHeight", lighting.SplashHeight);
+	writer.NewPropertyWithValue("SplashWidth", lighting.SplashWidth);
+	writer.NewPropertyWithValue("SplashDropSize", lighting.SplashDropSize);
+	writer.NewPropertyWithValue("SplashSpray", lighting.SplashSpray);
+	writer.NewPropertyWithValue("SplashUnder", lighting.SplashUnder);
+	writer.NewPropertyWithValue("SplashUnderLiquidColor", lighting.SplashUnderLiquidColor);
+	writer.NewPropertyWithValue("SplashUnderHeight", lighting.SplashUnderHeight);
+	writer.NewPropertyWithValue("SplashUnderWidth", lighting.SplashUnderWidth);
+	writer.NewPropertyWithValue("SplashUnderDropSize", lighting.SplashUnderDropSize);
+	writer.NewPropertyWithValue("SplashUnderOpacity", lighting.SplashUnderOpacity);
+	writer.NewPropertyWithValue("SplashUnderScatter", lighting.SplashUnderScatter);
+	writer.NewPropertyWithValue("SplashUnderColor", WriteVec3(lighting.SplashUnderColor));
 	writer.NewPropertyWithValue("PuffVariety", lighting.PuffVariety);
 	writer.NewPropertyWithValue("SplashFroth", lighting.SplashFroth);
+	writer.NewPropertyWithValue("SplashFrothDensity", lighting.SplashFrothDensity);
+	writer.NewPropertyWithValue("SplashFrothSpecks", lighting.SplashFrothSpecks);
 	writer.NewPropertyWithValue("SplashFrothSize", lighting.SplashFrothSize);
 	writer.NewPropertyWithValue("SplashFrothLife", lighting.SplashFrothLife);
 	writer.NewPropertyWithValue("SplashFrothOpacity", lighting.SplashFrothOpacity);
 	writer.NewPropertyWithValue("WaterThinFlow", lighting.WaterThinFlow);
 	writer.NewPropertyWithValue("WaterFoamBubbles", lighting.WaterFoamBubbles);
 	writer.NewPropertyWithValue("DistinctLiquidLooks", lighting.DistinctLiquidLooks);
+	writer.NewPropertyWithValue("WaterCaustics", lighting.WaterCaustics);
 	writer.NewPropertyWithValue("WaterFlowSurface", lighting.WaterFlowSurface);
 	writer.NewPropertyWithValue("WaterFlowStrength", lighting.WaterFlowStrength);
 	writer.NewPropertyWithValue("WaterLightGlow", lighting.WaterLightGlow);
@@ -762,6 +984,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("WaterMirrorSurface", lighting.WaterMirrorSurface);
 	writer.NewPropertyWithValue("WaterSoftReflection", lighting.WaterSoftReflection);
 	writer.NewPropertyWithValue("SoftSmoke", lighting.SoftSmoke);
+	writer.NewPropertyWithValue("EffectLayers", lighting.EffectLayers);
+	for (int layer = 0; layer < LightingSettings::EffectLayerCount; ++layer) {
+		writer.NewPropertyWithValue(LightingSettings::EffectLayerKeys[layer], lighting.EffectBehind[layer]);
+	}
 	writer.NewPropertyWithValue("WaterMistSize", lighting.WaterMistSize);
 	writer.NewPropertyWithValue("WaterMistLife", lighting.WaterMistLife);
 	writer.NewPropertyWithValue("WaterMistOpacity", lighting.WaterMistOpacity);
@@ -772,6 +998,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("TracerLightBrightness", lighting.TracerLightBrightness);
 	writer.NewPropertyWithValue("TracerLightReach", lighting.TracerLightReach);
 	writer.NewPropertyWithValue("TracerLightRandomness", lighting.TracerLightRandomness);
+	writer.NewPropertyWithValue("SaberLightBrightness", lighting.SaberLightBrightness);
+	writer.NewPropertyWithValue("SaberLightReach", lighting.SaberLightReach);
+	writer.NewPropertyWithValue("SaberAirGlow", lighting.SaberAirGlow);
 	writer.NewPropertyWithValue("LightSaturation", lighting.LightSaturation);
 	writer.NewPropertyWithValue("LightTint", WriteVec3(lighting.LightTint));
 	writer.NewPropertyWithValue("LampBrightness", lighting.LampBrightness);
@@ -786,6 +1015,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("HeadlampGlow", lighting.HeadlampGlow);
 	writer.NewPropertyWithValue("HeadlampTeamTint", lighting.HeadlampTeamTint);
 	writer.NewPropertyWithValue("HeadlampsByDay", lighting.HeadlampsByDay);
+	writer.NewPropertyWithValue("HeadlampDarkThreshold", lighting.HeadlampDarkThreshold);
+	writer.NewPropertyWithValue("HeadlampsOnlyInDark", lighting.HeadlampsOnlyInDark);
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
@@ -803,25 +1034,170 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting)
 	writer.NewPropertyWithValue("SpriteMapStrength", lighting.SpriteMapStrength);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
+	writer.NewPropertyWithValue("EmberIgniteChance", TerrainFire::GetEmberIgniteChance());
+	writer.NewPropertyWithValue("CandleBurnMinutes", TerrainCandle::GetBurnMinutes());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
 	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
 	writer.NewPropertyWithValue("LightningStrikes", static_cast<int>(WeatherLightning::GetStrikes()));
 	writer.NewPropertyWithValue("BloodFlows", FluidSim::BloodFlows());
+	writer.NewPropertyWithValue("LiquidsDrainBottom", FluidSim::DrainsBottom());
+	writer.NewPropertyWithValue("LiquidsDrainSides", FluidSim::DrainsSides());
+	writer.NewPropertyWithValue("PowdersFallOut", FluidSim::PowdersFallOut());
 	writer.NewPropertyWithValue("CollapseBuildings", TerrainCollapse::BuildingsFall());
+	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
+	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
+	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
 	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
+	writer.NewPropertyWithValue("CollapseShatterSpeed", TerrainCollapse::GetTuning().ShatterSpeed);
+	writer.NewPropertyWithValue("CollapseCrackSpeed", TerrainCollapse::GetTuning().CrackSpeed);
+	writer.NewPropertyWithValue("CollapseCrumbleSpeed", TerrainCollapse::GetTuning().CrumbleSpeed);
+	writer.NewPropertyWithValue("CollapseSplinterSpeed", TerrainCollapse::GetTuning().SplinterSpeed);
+	writer.NewPropertyWithValue("CollapseBendSpeed", TerrainCollapse::GetTuning().BendSpeed);
+	writer.NewPropertyWithValue("CollapseScuffStrength", TerrainCollapse::GetTuning().ScuffStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
+	writer.NewPropertyWithValue("CollapseHitDamage", TerrainCollapse::GetTuning().HitDamage);
+	writer.NewPropertyWithValue("CollapseHitMinSpeed", TerrainCollapse::GetTuning().HitMinSpeed);
+	writer.NewPropertyWithValue("CollapseHitMinPixels", TerrainCollapse::GetTuning().HitMinPixels);
+	writer.NewPropertyWithValue("CollapseHitMassCap", TerrainCollapse::GetTuning().HitMassCap);
+	writer.NewPropertyWithValue("CollapseHitKnockback", TerrainCollapse::GetTuning().HitKnockback);
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
+	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
+	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
+	writer.NewPropertyWithValue("AirAndWind", AirPressure::IsOn());
+	writer.NewPropertyWithValue("WindGusts", AirPressure::GetTuning().Gusts);
+	writer.NewPropertyWithValue("WindShifts", AirPressure::GetTuning().Shifts);
+	writer.NewPropertyWithValue("WindBreeze", AirPressure::GetTuning().Breeze);
+	writer.NewPropertyWithValue("AirOverall", AirPressure::GetTuning().Overall);
+	writer.NewPropertyWithValue("AirBlastStrength", AirPressure::GetTuning().BlastStrength);
+	writer.NewPropertyWithValue("AirBlastReach", AirPressure::GetTuning().BlastReach);
+	writer.NewPropertyWithValue("AirPushStrength", AirPressure::GetTuning().PushStrength);
+	writer.NewPropertyWithValue("AirUnitPush", AirPressure::GetTuning().UnitPush);
+	writer.NewPropertyWithValue("AirLiquidThrow", AirPressure::GetTuning().LiquidThrow);
+	writer.NewPropertyWithValue("WindStrength", AirPressure::GetTuning().WindStrength);
+	writer.NewPropertyWithValue("WindCarriesGas", AirPressure::GetTuning().WindGas);
+	writer.NewPropertyWithValue("BlastWaves", AirPressure::IsEnabled());
+	writer.NewPropertyWithValue("WindMovesSmoke", AirPressure::WindMovesSmoke());
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
+	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
+	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
+
+	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
+	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
+	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
+	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
+	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
+	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);
+	writer.NewPropertyWithValue("AISpawnDiggerChance", m_AISpawnDiggerChance);
+	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
+	writer.NewPropertyWithValue("BleedOutChance", m_BleedOutChance);
+	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
+	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
+	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
+	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
+	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
+	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
+	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
+	for (int team = 0; team < 4; ++team) {
+		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
+	}
+	writer.NewPropertyWithValue("UnitSpeechToneMix", UnitSpeech::GetToneWeightsText());
+	if (forPreset) {
+		// The settings file only lists what is off, over everything on; a preset loads over what is set now, so it says what is on too.
+		for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
+			if (UnitSpeech::IsTriggerOn(trigger.Key)) {
+				writer.NewPropertyWithValue("UnitSpeechOn", trigger.Key);
+			}
+		}
+	}
+	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
+		writer.NewPropertyWithValue("UnitSpeechOff", off);
+	}
+	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
+	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
+	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
+	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
+	writer.NewPropertyWithValue("ShowRecentSolves", m_ShowRecentSolves);
+	writer.NewPropertyWithValue("ShowSquadLinks", m_ShowSquadLinks);
+	writer.NewPropertyWithValue("ShowOrderLabels", m_ShowOrderLabels);
+	writer.NewPropertyWithValue("ShowTerrainUpdates", m_ShowTerrainUpdates);
+	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
+	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
+	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
+	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
+	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
+	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
+	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
+	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
+	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
+	writer.NewPropertyWithValue("SandboxGas", m_SandboxGas);
+	writer.NewPropertyWithValue("SandboxAir", m_SandboxAir);
+	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
+	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
+	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
+	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
+	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
+	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
+	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
+	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
+	writer.NewPropertyWithValue("PanelWidthPercent", g_DebugMan.m_PanelWidth);
+	writer.NewPropertyWithValue("RightPanelWidthPercent", g_DebugMan.m_PanelWidthRight);
+	writer.NewPropertyWithValue("SandboxBarWidthPercent", g_DebugMan.m_BarWidth);
+	writer.NewPropertyWithValue("SandboxPanelPlacement", g_DebugMan.m_SandboxPlacement);
+	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
+	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
+
+	if (forPreset) {
+		// The game's own settings from the Settings menu, so a preset loaded at start brings them back too. Settings.ini keeps them in its own sections.
+		writer.NewPropertyWithValue("ShowForeignItems", m_ShowForeignItems);
+		writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
+		writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
+		writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);
+		writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
+		writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
+		writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
+		writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
+		writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
+		writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
+		writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
+		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
+		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
+		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
+		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
+
+		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.
+		writer.NewPropertyWithValue("GameSpeed", g_TimerMan.GetTimeScale());
+		writer.NewPropertyWithValue("PauseAI", Controller::IsAIPaused());
+		writer.NewPropertyWithValue("CameraZoom", g_FrameMan.GetCameraZoom());
+		writer.NewPropertyWithValue("LightingDebugView", lighting.DebugView);
+		writer.NewPropertyWithValue("FreezeSimulation", g_DebugMan.m_FreezeSim);
+		writer.NewPropertyWithValue("ShowPerformanceStats", g_DebugMan.m_ShowPerformanceMan);
+		writer.NewPropertyWithValue("ShowActorDebugDrawing", g_DebugMan.m_ShowActorDebugGui);
+		writer.NewPropertyWithValue("DrawCameraBounds", g_DebugMan.m_DrawCameraBounds);
+		writer.NewPropertyWithValue("DrawSpriteBounds", g_DebugMan.m_DrawSpriteBounds);
+		writer.NewPropertyWithValue("ImGuiDemoWindow", g_DebugMan.m_ImGuiDemoWindow);
+		writer.NewPropertyWithValue("FreeCam", g_DebugMan.m_EnableFreeCam);
+		writer.NewPropertyWithValue("FreeCamZoom", g_DebugMan.m_FreeCamZoom);
+	}
 }
 
 namespace {
@@ -843,6 +1219,7 @@ namespace {
 	}
 
 	std::string PresetFolder() { return System::GetUserdataDirectory() + "Presets/"; }
+	std::string BuiltInPresetFolder() { return System::GetDataDirectory() + "Presets/"; } //!< Presets that ship with the game. The player's own of the same name come first.
 }
 
 std::string SettingsMan::SavePreset(const std::string& name) const {
@@ -858,7 +1235,7 @@ std::string SettingsMan::SavePreset(const std::string& name) const {
 	}
 	writer.ObjectStart(GetClassName());
 	// As they are on screen now, not as the player's own behind a scene that sets its time and weather.
-	SaveTunables(writer, g_PostProcessMan.GetLightingSettings());
+	SaveTunables(writer, g_PostProcessMan.GetLightingSettings(), true);
 	writer.ObjectEnd();
 	writer.EndWrite();
 	return safe;
@@ -867,7 +1244,10 @@ std::string SettingsMan::SavePreset(const std::string& name) const {
 bool SettingsMan::LoadPreset(const std::string& name) {
 	std::string path = PresetFolder() + PresetFileName(name) + ".ini";
 	if (!std::filesystem::exists(path)) {
-		return false;
+		path = BuiltInPresetFolder() + PresetFileName(name) + ".ini";
+		if (!std::filesystem::exists(path)) {
+			return false;
+		}
 	}
 	Reader reader(path, false, nullptr, true, true);
 	if (!reader.ReaderOK()) {
@@ -875,6 +1255,23 @@ bool SettingsMan::LoadPreset(const std::string& name) {
 	}
 	// The same reading as the settings file gets, of a file that holds only the tunable settings.
 	return CreateSerializable(reader, true, false, false) >= 0;
+}
+
+void SettingsMan::SetStartupPreset(const std::string& name) {
+	m_StartupPreset = PresetFileName(name);
+}
+
+bool SettingsMan::LoadStartupPreset() {
+	if (m_StartupPreset.empty()) {
+		return false;
+	}
+	s_ReadingStartupPreset = true;
+	bool loaded = LoadPreset(m_StartupPreset);
+	s_ReadingStartupPreset = false;
+	if (!loaded) {
+		g_ConsoleMan.PrintString("WARNING: The preset to load at start, \"" + m_StartupPreset + "\", isn't in Userdata/Presets or Data/Presets. Settings.ini is used as it is.");
+	}
+	return loaded;
 }
 
 bool SettingsMan::DeletePreset(const std::string& name) const {
@@ -885,12 +1282,15 @@ bool SettingsMan::DeletePreset(const std::string& name) const {
 std::vector<std::string> SettingsMan::ListPresets() const {
 	std::vector<std::string> names;
 	std::error_code error;
-	for (const auto& entry: std::filesystem::directory_iterator(PresetFolder(), error)) {
-		if (entry.is_regular_file() && entry.path().extension() == ".ini") {
-			names.push_back(entry.path().stem().string());
+	for (const std::string& folder: {PresetFolder(), BuiltInPresetFolder()}) {
+		for (const auto& entry: std::filesystem::directory_iterator(folder, error)) {
+			if (entry.is_regular_file() && entry.path().extension() == ".ini") {
+				names.push_back(entry.path().stem().string());
+			}
 		}
 	}
 	std::sort(names.begin(), names.end());
+	names.erase(std::unique(names.begin(), names.end()), names.end());
 	return names;
 }
 
@@ -908,24 +1308,20 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
-	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
-	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
 	writer.NewLineString("// Lighting and Post-Processing Settings (colors are linear R G B)", false);
 	writer.NewLine(false);
 	const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
-	writer.NewPropertyWithValue("DockPanels", g_DebugMan.m_DockPanels);
-	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
-	writer.NewPropertyWithValue("PanelWidth", g_DebugMan.m_PanelWidth);
-	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
-	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
 	writer.NewPropertyWithValue("SandboxCharacter", Sandbox::GetCharacterSetup());
 	if (ControlLink::s_SettingsPort > 0) {
 		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
 	}
-	SaveTunables(writer, lighting);
+	if (!m_StartupPreset.empty()) {
+		writer.NewPropertyWithValue("StartupPreset", m_StartupPreset);
+	}
+	SaveTunables(writer, lighting, false);
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
@@ -957,46 +1353,15 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
 	writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
 	writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
-	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
-	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
-	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
-	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
-	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
-	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
-		writer.NewPropertyWithValue("UnitSpeechOff", off);
-	}
-	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
-	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
-	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
-	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
-	writer.NewPropertyWithValue("ShowSquadLinks", m_ShowSquadLinks);
-	writer.NewPropertyWithValue("ShowOrderLabels", m_ShowOrderLabels);
-	writer.NewPropertyWithValue("CombatOverlay", m_CombatOverlay);
-	writer.NewPropertyWithValue("ShowLightSources", m_ShowLightSources);
-	writer.NewPropertyWithValue("ShowSunDirection", m_ShowSunDirection);
-	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
-	writer.NewPropertyWithValue("SandboxStrokeLog", m_SandboxStrokeLog);
-	writer.NewPropertyWithValue("SandboxSpotReach", m_SandboxSpotReach);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
-	writer.NewPropertyWithValue("LightsBySource", m_LightsBySource);
-	writer.NewPropertyWithValue("SandboxCharacterState", m_SandboxCharacterState);
-	writer.NewPropertyWithValue("SandboxAutoBattle", m_SandboxAutoBattle);
-	writer.NewPropertyWithValue("SandboxPaintAudit", m_SandboxPaintAudit);
-	writer.NewPropertyWithValue("SandboxSelectionCamera", m_SandboxSelectionCamera);
-	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
-	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
-	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
-	writer.NewPropertyWithValue("DebugChannels", m_DebugChannels);
-	writer.NewPropertyWithValue("TraceAllUnits", m_TraceAllUnits);
-	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
-	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 	writer.NewPropertyWithValue("ScrapCompactingHeight", g_SceneMan.m_ScrapCompactingHeight);
 	writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
@@ -1006,8 +1371,6 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLineString("// Screen Shake Settings", false);
 	writer.NewLine(false);
 	writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
-	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
-	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
 	writer.NewPropertyWithValue("ScreenShakeDecay", g_CameraMan.m_ScreenShakeDecay);
 	writer.NewPropertyWithValue("MaxScreenShakeTime", g_CameraMan.m_MaxScreenShakeTime);
 	writer.NewPropertyWithValue("DefaultShakePerUnitOfGibEnergy", g_CameraMan.m_DefaultShakePerUnitOfGibEnergy);

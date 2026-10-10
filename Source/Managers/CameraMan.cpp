@@ -22,7 +22,7 @@ CameraMan::~CameraMan() {
 }
 
 void CameraMan::Clear() {
-	m_ScreenShakeStrength = 1.0F;
+	m_ScreenShakeStrength = 0.0F;
 	m_ScreenShakeDecay = 50.0F;
 	m_MaxScreenShakeTime = 1.0F;
 	m_DefaultShakePerUnitOfGibEnergy = 0.001F;
@@ -88,6 +88,32 @@ void CameraMan::SetScrollTarget(const Vector& targetCenter, float speed, int scr
 	// Don't override a set wrapping, it will be reset to false upon a drawn frame.
 	screen.TargetXWrapped = screen.TargetXWrapped || targetXWrapped;
 	screen.TargetYWrapped = screen.TargetYWrapped || targetYWrapped;
+}
+
+Vector CameraMan::ClampScrollCenter(const Vector& center, int screenId) {
+	Scene* scene = g_SceneMan.GetScene();
+	if (!scene || !scene->GetTerrain() || screenId < 0 || screenId >= c_MaxScreenCount) {
+		return center;
+	}
+	const SLTerrain* terrain = scene->GetTerrain();
+	const Screen& screen = m_Screens[screenId];
+	Vector frameSize = GetFrameSize(screenId);
+
+	// The inverse of how Update turns the scroll target into an offset, then the limits CheckOffset holds that offset to (low edge first, then high).
+	Vector result(center);
+	if (!terrain->WrapsX()) {
+		float shift = static_cast<float>(g_FrameMan.GetPlayerScreenWidth() / 2) + screen.ScreenOcclusion.GetX() / 2.0F;
+		float offset = std::max(center.GetX() - shift, 0.0F);
+		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->w - frameSize.GetFloorIntX()));
+		result.SetX(offset + shift);
+	}
+	if (!terrain->WrapsY()) {
+		float shift = static_cast<float>(g_FrameMan.GetPlayerScreenHeight() / 2) + screen.ScreenOcclusion.GetY() / 2.0F;
+		float offset = std::max(center.GetY() - shift, 0.0F);
+		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->h - frameSize.GetFloorIntY()));
+		result.SetY(offset + shift);
+	}
+	return result;
 }
 
 float CameraMan::TargetDistanceScalar(const Vector& point) const {

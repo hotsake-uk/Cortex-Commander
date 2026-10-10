@@ -4053,6 +4053,8 @@ ImGuiContext::ImGuiContext(ImFontAtlas* shared_font_atlas)
     TempInputId = 0;
     memset(&DataTypeZeroValue, 0, sizeof(DataTypeZeroValue));
     BeginMenuDepth = BeginComboDepth = 0;
+    WrapSameLineDepth = 0;
+    FlowItemsDepth = 0;
     ColorEditOptions = ImGuiColorEditFlags_DefaultOptions_;
     ColorEditCurrentID = ColorEditSavedID = 0;
     ColorEditSavedHue = ColorEditSavedSat = 0.0f;
@@ -6091,7 +6093,7 @@ bool ImGui::BeginChildEx(const char* name, ImGuiID id, const ImVec2& size_arg, I
     // Forward size
     // Important: Begin() has special processing to switch condition to ImGuiCond_FirstUseEver for a given axis when ImGuiChildFlags_ResizeXXX is set.
     // (the alternative would to store conditional flags per axis, which is possible but more code)
-    const ImVec2 size_avail = GetContentRegionAvail();
+    const ImVec2 size_avail = GetContentRegionAvailRaw();
     const ImVec2 size_default((child_flags & ImGuiChildFlags_AutoResizeX) ? 0.0f : size_avail.x, (child_flags & ImGuiChildFlags_AutoResizeY) ? 0.0f : size_avail.y);
     ImVec2 size = CalcItemSize(size_arg, size_default.x, size_default.y);
 
@@ -7631,6 +7633,11 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
         window->DC.CurrLineSize = window->DC.PrevLineSize = ImVec2(0.0f, 0.0f);
         window->DC.CurrLineTextBaseOffset = window->DC.PrevLineTextBaseOffset = 0.0f;
         window->DC.IsSameLine = window->DC.IsSetPos = false;
+        window->DC.WrapIndex = 0;
+        window->DC.WrapPendingKey = 0;
+        window->DC.WrapPendingGroupDepth = 0;
+        window->DC.FlowIndex = 0;
+        window->DC.FlowApplied = false;
 
         window->DC.NavLayerCurrent = ImGuiNavLayer_Main;
         window->DC.NavLayersActiveMask = window->DC.NavLayersActiveMaskNext;
@@ -10705,6 +10712,11 @@ void ImGui::ItemSize(const ImVec2& size, float text_baseline_y)
     // but since ItemSize() is not yet an API that moves the cursor (to handle e.g. wrapping) enlarging the height has the same effect.
     const float offset_to_match_baseline_y = (text_baseline_y >= 0) ? ImMax(0.0f, window->DC.CurrLineTextBaseOffset - text_baseline_y) : 0.0f;
 
+    // [Cortex] The width of the item placed after a SameLine(), kept for deciding next frame whether it fits on the line.
+    window->DC.FlowApplied = false;
+    if (window->DC.WrapPendingKey != 0 && window->DC.WrapPendingGroupDepth == g.GroupStack.Size)
+        WrapSameLineRecord(window, size);
+
     const float line_y1 = window->DC.IsSameLine ? window->DC.CursorPosPrevLine.y : window->DC.CursorPos.y;
     const float line_height = ImMax(window->DC.CurrLineSize.y, /*ImMax(*/window->DC.CursorPos.y - line_y1/*, 0.0f)*/ + size.y + offset_to_match_baseline_y);
 
@@ -10727,6 +10739,8 @@ void ImGui::ItemSize(const ImVec2& size, float text_baseline_y)
     // Horizontal layout mode
     if (window->DC.LayoutType == ImGuiLayoutType_Horizontal)
         SameLine();
+    else if (g.FlowItemsDepth > 0)
+        FlowAfterItem(window, size);
 }
 IM_MSVC_RUNTIME_CHECKS_RESTORE
 
@@ -10735,12 +10749,130 @@ IM_MSVC_RUNTIME_CHECKS_RESTORE
 //      offset_from_start_x != 0 : align to specified x position (relative to window/group left)
 //      spacing_w < 0            : use default spacing if offset_from_start_x == 0, no spacing if offset_from_start_x != 0
 //      spacing_w >= 0           : enforce spacing amount
+// [Cortex] Wrapping SameLine(): see PushWrapSameLine().
+void ImGui::PushWrapSameLine()
+{
+    ImGuiContext& g = *GImGui;
+    g.WrapSameLineDepth++;
+}
+
+void ImGui::PopWrapSameLine()
+{
+    ImGuiContext& g = *GImGui;
+    IM_ASSERT(g.WrapSameLineDepth > 0);
+    g.WrapSameLineDepth--;
+}
+
+// An item that ends right on the right edge may be one sized to the room left (a width of -1): it is kept as a negative width, needing no more room than
+// a few letters, or than it took if that was less (a row of buttons sharing out the width exactly ends on the edge too, and must stay on its line).
+void ImGui::WrapSameLineRecord(ImGuiWindow* window, const ImVec2& size)
+{
+    const float width = size.x;
+    const bool fills = ImFabs(window->DC.CursorPos.x + width - window->WorkRect.Max.x) <= 1.0f;
+    window->WrapWidths.SetFloat(window->DC.WrapPendingKey, fills ? -ImMax(width, 1.0f) : width);
+    window->WrapWidths.SetFloat(window->DC.WrapPendingKey ^ 0x6F1A5Bu, size.y);
+    window->DC.WrapPendingKey = 0;
+}
+
+static bool WrapWindowEligible(ImGuiWindow* window)
+{
+    ImGuiContext& g = *GImGui;
+    if ((window->Flags & ImGuiWindowFlags_AlwaysAutoResize) || (window->ChildFlags & ImGuiChildFlags_AutoResizeX) || window->AutoFitFramesX > 0)
+        return false;
+    if (window->DC.LayoutType != ImGuiLayoutType_Vertical || window->DC.CurrentColumns != NULL || (g.CurrentTable != NULL && g.CurrentTable->InnerWindow == window))
+        return false;
+    if (g.GroupStack.Size > 0 && g.GroupStack.back().WindowID == window->ID)
+        return false;
+    return true;
+}
+
+// [Cortex] Flowing items: see PushFlowItems().
+void ImGui::PushFlowItems()
+{
+    ImGuiContext& g = *GImGui;
+    g.FlowItemsDepth++;
+}
+
+void ImGui::PopFlowItems()
+{
+    ImGuiContext& g = *GImGui;
+    IM_ASSERT(g.FlowItemsDepth > 0);
+    g.FlowItemsDepth--;
+}
+
+// After an item one line high that doesn't reach the right edge: the next goes on the same line if, by its size last frame, it is one line high too,
+// doesn't fill the room left, and fits. Anything that asks where the cursor is, moves it, or starts a group or another line first puts it back (FlowUndo).
+void ImGui::FlowAfterItem(ImGuiWindow* window, const ImVec2& size)
+{
+    ImGuiContext& g = *GImGui;
+    if (window->SkipItems || !WrapWindowEligible(window))
+        return;
+    const int index = window->DC.FlowIndex++;
+    const ImGuiID seed = window->IDStack.Size > 0 ? window->IDStack.back() : window->ID;
+    const ImGuiID key = ImHashData(&index, sizeof(int), seed ^ 0x3C6EF372u);
+    window->DC.WrapPendingKey = key;
+    window->DC.WrapPendingGroupDepth = g.GroupStack.Size;
+    const float line_height = g.FontSize + g.Style.FramePadding.y * 2.0f + 1.0f;
+    if (size.x <= 0.0f || size.y <= 0.0f || size.y > line_height || window->DC.CursorPosPrevLine.x >= window->WorkRect.Max.x - 1.0f)
+        return;
+    const float next_width = window->WrapWidths.GetFloat(key, 0.0f);
+    const float next_height = window->WrapWidths.GetFloat(key ^ 0x6F1A5Bu, 0.0f);
+    if (next_width <= 0.0f || next_height <= 0.0f || next_height > line_height)
+        return;
+    const float spacing_w = g.Style.ItemSpacing.x * 2.0f;
+    if (window->DC.CursorPosPrevLine.x + spacing_w + next_width > window->WorkRect.Max.x + 0.5f)
+        return;
+    window->DC.FlowNewLinePos = window->DC.CursorPos;
+    window->DC.FlowApplied = true;
+    window->DC.CursorPos.x = window->DC.CursorPosPrevLine.x + spacing_w;
+    window->DC.CursorPos.y = window->DC.CursorPosPrevLine.y;
+    window->DC.CurrLineSize = window->DC.PrevLineSize;
+    window->DC.CurrLineTextBaseOffset = window->DC.PrevLineTextBaseOffset;
+    window->DC.IsSameLine = true;
+}
+
+void ImGui::FlowUndo(ImGuiWindow* window)
+{
+    if (window == NULL || !window->DC.FlowApplied)
+        return;
+    window->DC.FlowApplied = false;
+    window->DC.CursorPos = window->DC.FlowNewLinePos;
+    window->DC.CurrLineSize = ImVec2(0.0f, 0.0f);
+    window->DC.CurrLineTextBaseOffset = 0.0f;
+    window->DC.IsSameLine = false;
+}
+
+bool ImGui::WrapSameLineBreaks(ImGuiWindow* window, float spacing_w)
+{
+    ImGuiContext& g = *GImGui;
+    window->DC.WrapPendingKey = 0;
+    if (g.WrapSameLineDepth <= 0)
+        return false;
+    // Not where the width is fitted to the contents, as there the room is only what the contents took last frame; nor in tables, columns, groups or menu bars.
+    if (!WrapWindowEligible(window))
+        return false;
+    // Kept by the item before, so a row whose items come and go keeps each one's width; by the count of SameLine() calls when that item has no ID (text, a dummy).
+    const int index = window->DC.WrapIndex++;
+    const ImGuiID key = g.LastItemData.ID != 0 ? ImHashData(&g.LastItemData.ID, sizeof(ImGuiID), window->ID ^ 0x5A3E11u) : ImHashData(&index, sizeof(int), window->ID ^ 0x5A3E12u);
+    window->DC.WrapPendingKey = key;
+    window->DC.WrapPendingGroupDepth = g.GroupStack.Size;
+    float width = window->WrapWidths.GetFloat(key, 0.0f);
+    if (width < 0.0f)
+        width = ImMin(-width, g.FontSize * 4.0f);
+    const float line_start = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
+    // Widths are last frame's, so an item sized to share out the room there is (a row of equal buttons) can come out a little over when the
+    // room changes; such an item may run into half the window's padding, as far as it is drawn, rather than flip between lines frame to frame.
+    const float slack = ImMax(0.5f, window->WindowPadding.x * 0.5f);
+    return width > 0.0f && window->DC.CursorPosPrevLine.x > line_start + 1.0f && window->DC.CursorPosPrevLine.x + spacing_w + width > window->WorkRect.Max.x + slack;
+}
+
 void ImGui::SameLine(float offset_from_start_x, float spacing_w)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = g.CurrentWindow;
     if (window->SkipItems)
         return;
+    FlowUndo(window);
 
     if (offset_from_start_x != 0.0f)
     {
@@ -10753,6 +10885,9 @@ void ImGui::SameLine(float offset_from_start_x, float spacing_w)
     {
         if (spacing_w < 0.0f)
             spacing_w = g.Style.ItemSpacing.x;
+        // [Cortex] Inside PushWrapSameLine(), the next item goes on a new line instead when last frame it didn't fit after this one.
+        if (WrapSameLineBreaks(window, spacing_w))
+            return;
         window->DC.CursorPos.x = window->DC.CursorPosPrevLine.x + spacing_w;
         window->DC.CursorPos.y = window->DC.CursorPosPrevLine.y;
     }
@@ -10764,12 +10899,14 @@ void ImGui::SameLine(float offset_from_start_x, float spacing_w)
 ImVec2 ImGui::GetCursorScreenPos()
 {
     ImGuiWindow* window = GetCurrentWindowRead();
+    FlowUndo(window);
     return window->DC.CursorPos;
 }
 
 void ImGui::SetCursorScreenPos(const ImVec2& pos)
 {
     ImGuiWindow* window = GetCurrentWindow();
+    FlowUndo(window);
     window->DC.CursorPos = pos;
     //window->DC.CursorMaxPos = ImMax(window->DC.CursorMaxPos, window->DC.CursorPos);
     window->DC.IsSetPos = true;
@@ -10780,24 +10917,28 @@ void ImGui::SetCursorScreenPos(const ImVec2& pos)
 ImVec2 ImGui::GetCursorPos()
 {
     ImGuiWindow* window = GetCurrentWindowRead();
+    FlowUndo(window);
     return window->DC.CursorPos - window->Pos + window->Scroll;
 }
 
 float ImGui::GetCursorPosX()
 {
     ImGuiWindow* window = GetCurrentWindowRead();
+    FlowUndo(window);
     return window->DC.CursorPos.x - window->Pos.x + window->Scroll.x;
 }
 
 float ImGui::GetCursorPosY()
 {
     ImGuiWindow* window = GetCurrentWindowRead();
+    FlowUndo(window);
     return window->DC.CursorPos.y - window->Pos.y + window->Scroll.y;
 }
 
 void ImGui::SetCursorPos(const ImVec2& local_pos)
 {
     ImGuiWindow* window = GetCurrentWindow();
+    FlowUndo(window);
     window->DC.CursorPos = window->Pos - window->Scroll + local_pos;
     //window->DC.CursorMaxPos = ImMax(window->DC.CursorMaxPos, window->DC.CursorPos);
     window->DC.IsSetPos = true;
@@ -10806,6 +10947,7 @@ void ImGui::SetCursorPos(const ImVec2& local_pos)
 void ImGui::SetCursorPosX(float x)
 {
     ImGuiWindow* window = GetCurrentWindow();
+    FlowUndo(window);
     window->DC.CursorPos.x = window->Pos.x - window->Scroll.x + x;
     //window->DC.CursorMaxPos.x = ImMax(window->DC.CursorMaxPos.x, window->DC.CursorPos.x);
     window->DC.IsSetPos = true;
@@ -10814,6 +10956,7 @@ void ImGui::SetCursorPosX(float x)
 void ImGui::SetCursorPosY(float y)
 {
     ImGuiWindow* window = GetCurrentWindow();
+    FlowUndo(window);
     window->DC.CursorPos.y = window->Pos.y - window->Scroll.y + y;
     //window->DC.CursorMaxPos.y = ImMax(window->DC.CursorMaxPos.y, window->DC.CursorPos.y);
     window->DC.IsSetPos = true;
@@ -10829,6 +10972,7 @@ void ImGui::Indent(float indent_w)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = GetCurrentWindow();
+    FlowUndo(window);
     window->DC.Indent.x += (indent_w != 0.0f) ? indent_w : g.Style.IndentSpacing;
     window->DC.CursorPos.x = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
 }
@@ -10837,6 +10981,7 @@ void ImGui::Unindent(float indent_w)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = GetCurrentWindow();
+    FlowUndo(window);
     window->DC.Indent.x -= (indent_w != 0.0f) ? indent_w : g.Style.IndentSpacing;
     window->DC.CursorPos.x = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
 }
@@ -10904,7 +11049,7 @@ float ImGui::CalcItemWidth()
         w = window->DC.ItemWidth;
     if (w < 0.0f)
     {
-        float region_avail_x = GetContentRegionAvail().x;
+        float region_avail_x = GetContentRegionAvailRaw().x;
         w = ImMax(1.0f, region_avail_x + w);
     }
     w = IM_TRUNC(w);
@@ -10919,7 +11064,7 @@ ImVec2 ImGui::CalcItemSize(ImVec2 size, float default_w, float default_h)
 {
     ImVec2 avail;
     if (size.x < 0.0f || size.y < 0.0f)
-        avail = GetContentRegionAvail();
+        avail = GetContentRegionAvailRaw();
 
     if (size.x == 0.0f)
         size.x = default_w;
@@ -10958,7 +11103,14 @@ float ImGui::GetFrameHeightWithSpacing()
     return g.FontSize + g.Style.FramePadding.y * 2.0f + g.Style.ItemSpacing.y;
 }
 
+// [Cortex] Asked for by the caller, the room left is that of a fresh line: an item flowed onto the line before (PushFlowItems) goes back to its own.
 ImVec2 ImGui::GetContentRegionAvail()
+{
+    FlowUndo(GImGui->CurrentWindow);
+    return GetContentRegionAvailRaw();
+}
+
+ImVec2 ImGui::GetContentRegionAvailRaw()
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = g.CurrentWindow;
@@ -10972,7 +11124,7 @@ ImVec2 ImGui::GetContentRegionAvail()
 // They are bizarre local-coordinates which don't play well with scrolling.
 ImVec2 ImGui::GetContentRegionMax()
 {
-    return GetContentRegionAvail() + GetCursorScreenPos() - GetWindowPos();
+    return GetContentRegionAvailRaw() + GetCursorScreenPos() - GetWindowPos();
 }
 
 ImVec2 ImGui::GetWindowContentRegionMin()
@@ -10995,6 +11147,7 @@ void ImGui::BeginGroup()
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = g.CurrentWindow;
+    FlowUndo(window);
 
     g.GroupStack.resize(g.GroupStack.Size + 1);
     ImGuiGroupData& group_data = g.GroupStack.back();
@@ -11052,6 +11205,8 @@ void ImGui::EndGroup()
     }
 
     window->DC.CurrLineTextBaseOffset = ImMax(window->DC.PrevLineTextBaseOffset, group_data.BackupCurrLineTextBaseOffset); // FIXME: Incorrect, we should grab the base offset from the *first line* of the group but it is hard to obtain now.
+    if (window->DC.WrapPendingKey != 0 && window->DC.WrapPendingGroupDepth == g.GroupStack.Size - 1) // [Cortex] A group placed after a SameLine() is one item.
+        WrapSameLineRecord(window, group_bb.GetSize());
     ItemSize(group_bb.GetSize());
     ItemAdd(group_bb, 0, NULL, ImGuiItemFlags_NoTabStop);
 

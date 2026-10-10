@@ -141,30 +141,19 @@ Round* Magazine::PopNextRound() {
 }
 
 float Magazine::EstimateDigStrength() const {
-	float maxPenetration = 1;
-	if (m_pTracerRound) {
-		// Find the next tracer
-		const MovableObject* pBullet = m_pTracerRound->GetNextParticle();
-		if (pBullet) {
-			if (m_pTracerRound->GetAIFireVel() > 0)
-				maxPenetration = std::max(maxPenetration, m_pTracerRound->GetAIFireVel() * abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0f));
-			else
-				maxPenetration = std::max(maxPenetration, m_pTracerRound->GetFireVel() * abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0f));
+	auto penetration = [](const Round* round) {
+		const MovableObject* pBullet = round ? round->GetNextParticle() : nullptr;
+		if (!pBullet) {
+			return 0.0F;
 		}
-	}
-
-	if (m_pRegularRound) {
-		// Find the next regular bullet
-		const MovableObject* pBullet = m_pRegularRound->GetNextParticle();
-		if (pBullet) {
-			if (m_pRegularRound->GetAIFireVel() > 0)
-				maxPenetration = std::max(maxPenetration, m_pRegularRound->GetAIFireVel() * abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0f));
-			else
-				maxPenetration = std::max(maxPenetration, m_pRegularRound->GetFireVel() * abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0f));
-		}
-	}
-
-	return maxPenetration;
+		float velocity = round->GetAIFireVel() > 0 ? round->GetAIFireVel() : round->GetFireVel();
+		return velocity * std::abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0F);
+	};
+	// What the regular rounds cut, which is what the tool keeps cutting: the tracer, one round in ten, is only taken when there are no
+	// regular rounds. (Rated by the stronger of the two, a Light Digger was planned through dense earth and stone that only its tracers
+	// scratch, at a dozen pixels a second, and a Heavy Digger through metal; the unit stood at the face firing.)
+	float regular = penetration(m_pRegularRound);
+	return std::max(1.0F, regular > 0.0F ? regular : penetration(m_pTracerRound));
 }
 
 float Magazine::GetBulletAccScalar() {

@@ -25,6 +25,16 @@ namespace {
 	}
 } // namespace
 
+namespace {
+	/// TryPenetrate, but a bullet that strikes a tree mostly just stops against it (a stray bullet barely marks a tree).
+	bool TryPenetrateFor(const RTE::MovableObject* owner, int x, int y, const RTE::Vector& impulse, const RTE::Vector& velocity, float& retardation, float airRatio, int numPenetrations, int orphansRadius, int orphansMaxArea, float orphansRate) {
+		if (owner && owner->IsBullet() && RTE::TerrainTrees::IsTreeMaterial(RTE::g_SceneMan.GetTerrMatter(x, y)) && RTE::RandomNum() > 0.05F) {
+			return false;
+		}
+		return RTE::g_SceneMan.TryPenetrate(x, y, impulse, velocity, retardation, airRatio, numPenetrations, orphansRadius, orphansMaxArea, orphansRate);
+	}
+} // namespace
+
 const std::string Atom::c_ClassName = "Atom";
 std::mutex Atom::s_MemoryPoolMutex;
 std::vector<void*> Atom::s_AllocatedPool;
@@ -830,7 +840,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 			if (!m_OwnerMO->m_IgnoreTerrain && domSteps == 0 && TerrFor(m_OwnerMO, intPos[X], intPos[Y]) != g_MaterialAir && !(passesLiquids && FluidSim::ShotDepth(g_SceneMan.GetTerrMatter(intPos[X], intPos[Y])) > 0)) {
 				++hitCount;
 				hit[X] = hit[Y] = true;
-				if (g_SceneMan.TryPenetrate(intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.5F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {
+				if (TryPenetrateFor(m_OwnerMO, intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.5F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {
 					// segProgress = 0.0F;
 					velocity += velocity * retardation;
 					continue;
@@ -1013,7 +1023,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 				}
 
 				// Try penetration of the terrain.
-				if (hitMaterial->GetIndex() != g_MaterialOutOfBounds && g_SceneMan.TryPenetrate(intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.65F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {
+				if (hitMaterial->GetIndex() != g_MaterialOutOfBounds && TryPenetrateFor(m_OwnerMO, intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.65F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {
 					hit[dom] = hit[sub] = sinkHit = true;
 					++m_NumPenetrations;
 					m_ChangedDir = false;

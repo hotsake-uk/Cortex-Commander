@@ -1,6 +1,8 @@
 #include "SandboxInternal.h"
+#include "ActorWater.h"
 #include "MenuMan.h"
 #include "Weather.h"
+#include "TerrainCandle.h"
 
 bool Sandbox::s_Open = false;
 
@@ -28,6 +30,19 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	}
 	if (toolName == "Remove effects") {
 		s_Effects.clear();
+		return true;
+	}
+	if (toolName == "Finish rope" || toolName == "Remove ropes") {
+		// The rope a script is putting down a point at a time ("Rope") finished, or every rope taken away.
+		Stroke stroke;
+		stroke.Kind = Tool::Rope;
+		stroke.Choice = toolName == "Finish rope" ? 1 : 2;
+		s_Queue.push_back(stroke);
+		return true;
+	}
+	if (toolName == "Undo") {
+		// As Ctrl+Z: the newest paint stroke, placing click or drop taken back.
+		QueueSimChange(Tool::UndoTerrain);
 		return true;
 	}
 	if (toolName == "Effect") {
@@ -64,9 +79,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return true;
 	}
 	int toolIndex = -1;
+	// (The spring tool's old name, still taken from scripts.)
+	const std::string lookedFor = ContainsIgnoringCase("Water spawner", toolName.c_str()) && toolName.size() == 13 ? std::string("Spring") : toolName;
 	for (int i = 0; i < c_ToolCount; ++i) {
 		std::string name = c_Tools[i].Name;
-		if (name.size() == toolName.size() && ContainsIgnoringCase(name, toolName.c_str())) {
+		if (name.size() == lookedFor.size() && ContainsIgnoringCase(name, lookedFor.c_str())) {
 			toolIndex = i;
 		}
 	}
@@ -74,6 +91,17 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return false;
 	}
 	stroke.Kind = c_Tools[toolIndex].Kind;
+	if (stroke.Kind == Tool::CollapseArea) {
+		// A box of half-size count around the point, as "Select".
+		stroke.Position = position - Vector(static_cast<float>(count), static_cast<float>(count));
+		stroke.Position2 = position + Vector(static_cast<float>(count), static_cast<float>(count));
+		s_Queue.push_back(stroke);
+		return true;
+	}
+	if (stroke.Kind == Tool::Command && s_CommandMode == CommandMode::Select) {
+		// (A script's command clicks are orders, as they were before the tool started out selecting: a move, or an attack on an enemy.)
+		s_CommandMode = CommandMode::Move;
+	}
 	if (stroke.Kind == Tool::None) {
 		// "Look around" from a script: put the free camera on the point, and stop following anything.
 		s_FreeCamera = true;
@@ -84,10 +112,21 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		g_CameraMan.SetScroll(position, 0);
 		return true;
 	}
-	if (stroke.Kind == Tool::Drop && (presetName == "Random units" || presetName == "Random favourites")) {
-		// A drop of random units, as the window's "Random units" box: each one picked from every faction's units, or from the favourites.
+	int randomFaction = -1;
+	if (presetName.rfind("Random ", 0) == 0) {
+		// "Random <faction>" as the window's box gives: the faction by name, as SandboxAutoBattleSide takes it.
+		std::string name = presetName.substr(7);
+		for (size_t i = 0; i < s_FactionNames.size(); ++i) {
+			if (s_FactionNames[i] == name || s_FactionNames[i] + ".rte" == name) {
+				randomFaction = static_cast<int>(i);
+			}
+		}
+	}
+	if ((stroke.Kind == Tool::Drop || stroke.Kind == Tool::Unit) && (presetName == "Random units" || presetName == "Random favourites" || randomFaction >= 0)) {
+		// Random units, as the window's "Random units" box: each one picked from every faction's units, from the favourites or from one faction.
 		stroke.Random = true;
 		stroke.FavouritesOnly = presetName == "Random favourites";
+		stroke.RandomFaction = randomFaction;
 	} else if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
@@ -102,49 +141,48 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 			ChoiceFor(stroke.Kind) = stroke.Choice;
 		}
 	}
+	if (stroke.Kind == Tool::Rope) {
+		// The next point of the rope being put down (or its first). The preset name is its kind ("Chain"); none, the one picked in the window.
+		stroke.Choice = 0;
+		stroke.Material = RopeSim::FindType(presetName) >= 0 ? presetName : std::string(RopeSim::GetType(s_RopeType).Name);
+		stroke.Rate = s_RopeSlack;
+		s_Queue.push_back(stroke);
+		return true;
+	}
+	if (stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) {
+		// The material to paint is the preset name; none, the one chosen in the window.
+		stroke.Material = !presetName.empty() ? presetName : (stroke.Kind == Tool::Metal ? s_PaintMetal : s_OtherTerrain);
+	}
 	if (std::getenv("CCCP_TEST_POINTER")) {
 		// Test runs that show what the pointer does: what a script used stays in hand, for the side it used.
 		s_ToolIndex = toolIndex;
 		s_Team = std::clamp(team, 0, c_Sides - 1);
+		if (c_Tools[toolIndex].UsesRadius) {
+			s_Radius = std::clamp(stroke.Radius, 1, c_MaxBrushRadius);
+		} else if (stroke.Kind == Tool::Unit) {
+			s_SquadSize = std::max(stroke.Count, 1);
+		}
 	}
 	s_Queue.push_back(stroke);
 	return true;
-}
-
-void Sandbox::SetAutoBattleSide(int team, const std::string& faction, int budget) {
-	if (!s_CatalogueBuilt && InGame()) {
-		BuildCatalogue();
-	}
-	if (team < 0 || team >= c_Sides) {
-		return;
-	}
-	AutoSide& autoSide = s_AutoSides[team];
-	autoSide.Active = budget > 0;
-	autoSide.Budget = budget;
-	for (size_t i = 0; i < s_FactionNames.size(); ++i) {
-		if (s_FactionNames[i] == faction || s_FactionNames[i] + ".rte" == faction) {
-			autoSide.Faction = static_cast<int>(i);
-		}
-	}
 }
 
 void Sandbox::SetAIPaused(bool paused) {
 	Controller::SetAIPaused(paused);
 }
 
-void Sandbox::SetAutoBattleRandom(bool random, bool favouritesOnly) {
-	s_ScriptAutoRandom = random;
-	s_ScriptAutoFavourites = random && favouritesOnly;
+void Sandbox::SetColonyPower(bool needsPower, bool slowWithout) {
+	Colony::NeedsPower() = needsPower;
+	Colony::WithoutPower() = slowWithout ? Colony::NoPower::Slows : Colony::NoPower::Stops;
 }
 
-void Sandbox::StartAutoBattle() {
-	if (!InGame()) {
-		return;
+std::string Sandbox::ColonyStatus(int id) {
+	for (const Colony::Building& building: Colony::Buildings()) {
+		if (building.ID == id) {
+			return building.Status;
+		}
 	}
-	// A script's battle is between the factions it set up for each side, unless it asked for random units (SandboxAutoBattleRandom).
-	s_AutoRandom = s_ScriptAutoRandom;
-	s_AutoFavourites = s_ScriptAutoFavourites;
-	BeginAutoBattle(g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F), static_cast<float>(g_FrameMan.GetPlayerScreenWidth()));
+	return "";
 }
 
 bool Sandbox::SetBuildMode(bool build) {
@@ -168,7 +206,8 @@ int Sandbox::CountUnits(int team) {
 	int count = 0;
 	for (const Actor* actor: SandboxAccess::Actors()) {
 		// (Not a brain: it doesn't fight, and a side down to its brain is out of the battle.)
-		if (!IsCombatant(actor) || actor->GetTeam() != team || actor->IsInGroup("Brains")) {
+		// (Nor a non-combatant, NC-1: an animal or a civilian isn't a unit in the fight.)
+		if (!IsSoldier(actor) || actor->GetTeam() != team || actor->IsInGroup("Brains")) {
 			continue;
 		}
 		if (!dynamic_cast<const ACraft*>(actor)) {
@@ -176,7 +215,7 @@ int Sandbox::CountUnits(int team) {
 			continue;
 		}
 		// The passengers of a craft of the side's, still on the way in: inventory, not in the world. (Left out, a side whose last wave
-		// was in the air was "gone", and the auto battle was called for the other side.)
+		// was in the air was "gone", and the old auto battle was called for the other side.)
 		for (const MovableObject* item: *actor->GetInventory()) {
 			if (const Actor* passenger = dynamic_cast<const Actor*>(item); passenger && !passenger->IsDead() && passenger->GetHealth() > 0.0F) {
 				++count;
@@ -277,7 +316,7 @@ void Sandbox::TogglePlay(bool atPointer) {
 
 std::string Sandbox::GetCharacterSetup() {
 	std::string setup = s_Player.Body + "|" + std::to_string(s_Player.Team) + "|";
-	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral}) {
+	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral, s_Player.InheritKit}) {
 		setup += flag ? '1' : '0';
 	}
 	setup += "|";
@@ -378,7 +417,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 	s_Player.Body = parts[0];
 	s_Player.Team = std::clamp(std::atoi(parts[1].c_str()), 0, c_Sides - 1);
-	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral};
+	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral, &s_Player.InheritKit};
 	for (size_t i = 0; i < std::size(flags) && i < parts[2].size(); ++i) {
 		*flags[i] = parts[2][i] == '1';
 	}
@@ -431,6 +470,7 @@ void Sandbox::ToggleCommander() {
 		s_FreeCameraStarted = false;
 		s_FollowTarget = UnitRef();
 		s_ToolIndex = ToolIndex(Tool::Command);
+		s_CommandMode = CommandMode::Select;
 		s_Open = true;
 		return;
 	}
@@ -488,8 +528,6 @@ void Sandbox::DrawGUI() {
 			s_RallySet.fill(false);
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
-			s_AutoRunning = false;
-			s_AutoWinner = -2;
 			s_ToolIndex = ToolIndex(Tool::Unit);
 		}
 	} else {
@@ -570,7 +608,7 @@ void Sandbox::DrawGUI() {
 			if (CurrentTool().Kind != Tool::None) {
 				hint += std::string("    In hand: ") + CurrentTool().Name;
 			}
-			hint += "    Right drag / WASD: move    Wheel: zoom";
+			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom" : "    Right drag / WASD: move    Wheel: zoom";
 			hint += s_BarShown ? "    U: hide the bar" : "    U: show the bar";
 		} else {
 			hint += "    P: back above";
@@ -585,6 +623,19 @@ void Sandbox::DrawGUI() {
 		}
 		banner(hint.c_str(), 8.0F, IM_COL32(255, 255, 255, 255), std::clamp(s_PlayHintSeconds, 0.0F, 1.0F));
 	}
+	{
+		// The swim keys (LM-4), the first time the unit you play is in liquid over its waist.
+		static long swimHintedFor = 0;
+		static float swimHintSeconds = 0.0F;
+		if (s_Possessed && s_PossessedID != swimHintedFor && g_MovableMan.IsActor(s_Possessed) && static_cast<long>(s_Possessed->GetUniqueID()) == s_PossessedID && ActorWater::IsEnabled() && ActorWater::GetDepth(s_Possessed) >= 2) {
+			swimHintedFor = s_PossessedID;
+			swimHintSeconds = 7.0F;
+		}
+		if (swimHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
+			swimHintSeconds -= ImGui::GetIO().DeltaTime;
+			banner("Swimming: Up or Jump strokes up, Down or Crouch dives    Air runs out with the head under: watch the Air gauge", 34.0F, IM_COL32(150, 210, 255, 255), std::clamp(swimHintSeconds, 0.0F, 1.0F));
+		}
+	}
 	if (Controller::IsAIPaused() && InGame()) {
 		// A reminder that nobody will move until it's resumed.
 		const char* banner = "AI PAUSED";
@@ -597,6 +648,10 @@ void Sandbox::DrawGUI() {
 	}
 	if (InGame() && !Colony::Buildings().empty() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		DrawColony();
+	}
+	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		// A Battle Director mode's game: its flags and score, with the window open or not.
+		DrawBattleMode();
 	}
 	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
 	// working. Only the window itself is left out.
@@ -627,6 +682,7 @@ void Sandbox::DrawGUI() {
 	UpdateFreeCamera();
 	if (InGame()) {
 		DrawRallyPoints();
+		DrawBattleMarks();
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
@@ -649,9 +705,53 @@ void Sandbox::DrawGUI() {
 	if (IsGodMode() && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_U, false)) {
 		s_BarShown = !s_BarShown;
 	}
-	// Ctrl+Z: the last terrain paint or build stroke undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
-	if (InGame() && io.KeyCtrl && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
+	// Enter: done with the Battle tab's defence point, drop line or spawn zone tool, which goes back to the one in hand before (PutDownBattleTool). Not
+	// part way through a drag, so the line being drawn isn't lost.
+	// With a spawn zone part drawn, Enter closes it instead (three corners or more; fewer are dropped), and Backspace takes back its last
+	// corner.
+	if (InGame() && !io.WantTextInput && !s_Dragging && IsBattleTool(CurrentTool().Kind) && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) {
+		if (CurrentTool().Kind == Tool::BattleSpawnZone && !s_ZoneDraft.empty()) {
+			if (CloseSpawnZone(s_ZoneDraft, s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)])) {
+				SendBattleSettings(s_BattleEditTeam);
+			}
+		} else if (IsModeZoneTool(CurrentTool().Kind) && !s_ZoneDraft.empty()) {
+			CloseModeBase();
+		} else {
+			PutDownBattleTool();
+		}
+	}
+	if (InGame() && !io.WantTextInput && (CurrentTool().Kind == Tool::BattleSpawnZone || IsModeZoneTool(CurrentTool().Kind)) && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
+		s_ZoneDraft.pop_back();
+	}
+	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
+	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
 		QueueSimChange(Tool::UndoTerrain);
+		// (A rope part put down is taken away whole, so the next click starts a new one.)
+		s_RopeDraft.clear();
+	}
+	// The rope being put down is finished with Enter or Escape, a right click (not a drag, which moves the view), or another tool taken up.
+	if (!s_RopeDraft.empty()) {
+		bool finish = !InGame() || CurrentTool().Kind != Tool::Rope;
+		if (!io.WantTextInput && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+			finish = true;
+		}
+		if (!io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+			s_RopeRightDown = true;
+			s_RopeRightStart = io.MousePos;
+		}
+		if (s_RopeRightDown && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+			s_RopeRightDown = false;
+			finish = finish || std::abs(io.MousePos.x - s_RopeRightStart.x) + std::abs(io.MousePos.y - s_RopeRightStart.y) < 6.0F;
+		}
+		if (finish) {
+			Stroke stroke;
+			stroke.Kind = Tool::Rope;
+			stroke.Choice = 1;
+			s_Queue.push_back(stroke);
+			s_RopeDraft.clear();
+			s_RopeRightDown = false;
+		}
 	}
 	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
 	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
@@ -706,16 +806,59 @@ void Sandbox::DrawGUI() {
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 			}
+		} else if (tool.Kind == Tool::BattleDropLine) {
+			// Drag along where the team's ships are to come in.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_Dragging = true;
+				s_DragStart = io.MousePos;
+				s_DoubleClick = false;
+			}
+		} else if (DragsShape(tool.Kind)) {
+			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_ShapeDragging = true;
+				s_ShapeStart = position;
+			}
 		} else if (tool.Interval <= 0.0F) {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				QueueStroke(tool.Kind, position);
+			}
+		} else if (IsPlantBrush(tool.Kind)) {
+			// A plant where clicked, then another each Plant spacing the pointer goes across while held: a row along the ground.
+			// (Trees at least about a tree's width apart, so a drag doesn't pile them into one.)
+			float spacing = tool.Kind == Tool::Trees ? std::max(static_cast<float>(s_PlantSpacing), 40.0F * s_PlantScale) : (tool.Kind == Tool::Candles ? std::max(static_cast<float>(s_PlantSpacing), 12.0F * std::max(std::round(s_PlantScale), 1.0F)) : static_cast<float>(s_PlantSpacing));
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || (ImGui::IsMouseDown(ImGuiMouseButton_Left) && std::abs(g_SceneMan.ShortestDistance(Vector(s_LastPlantX, position.m_Y), position, g_SceneMan.SceneWrapsX()).m_X) >= spacing)) {
+				s_LastPlantX = position.m_X;
 				QueueStroke(tool.Kind, position);
 			}
 		} else if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			s_StrokeTimer -= io.DeltaTime;
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || s_StrokeTimer <= 0.0F) {
-				s_StrokeTimer = tool.Interval;
+				// (The Flow slider: the pouring brushes pour less often.)
+				s_StrokeTimer = PoursLiquid(tool.Kind) ? tool.Interval / std::clamp(s_Flow, 0.1F, 1.0F) : tool.Interval;
 				QueueStroke(tool.Kind, position);
 			}
+		}
+		// With a Paint tool in hand the right button always digs, whatever material or brush is picked (the middle button and WASD move
+		// the view). Not while you play a unit: the right button is its own then.
+		if (IsPaintTool(tool.Kind) && !s_Possessed && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+			s_DigTimer -= io.DeltaTime;
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || s_DigTimer <= 0.0F) {
+				s_DigTimer = c_Tools[ToolIndex(Tool::Dig)].Interval;
+				QueueStroke(Tool::Dig, position);
+			}
+		}
+		if (tool.Kind == Tool::Rope && !s_RopeDraft.empty()) {
+			// The rope's next stretch, from its last point to the pointer, in its colour, with how long it is.
+			const RopeSim::TypeInfo& type = RopeSim::GetType(s_RopeType);
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImVec2 from = ToScreen(s_RopeDraft.back());
+			ImU32 color = IM_COL32(type.R, type.G, type.B, 230);
+			drawList->AddLine(from, io.MousePos, color, 2.0F);
+			drawList->AddCircleFilled(from, 3.0F, color);
+			float length = g_SceneMan.ShortestDistance(s_RopeDraft.back(), position, g_SceneMan.SceneWrapsX()).GetMagnitude() * (1.0F + s_RopeSlack);
+			std::string label = std::to_string(static_cast<int>(length)) + " px    right click or Enter: done";
+			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), color, label.c_str());
 		}
 		DrawSideRing();
 		if (!s_RingOpen) {
@@ -724,13 +867,81 @@ void Sandbox::DrawGUI() {
 	} else {
 		s_RingOpen = false;
 	}
+	if (s_ShapeDragging) {
+		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled; Shift keeps it as wide as it
+		// is tall, Escape drops it.
+		if (!InGame() || !DragsShape(CurrentTool().Kind) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			s_ShapeDragging = false;
+		} else {
+			bool dropBox = CurrentTool().Kind == Tool::CollapseArea;
+			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
+			if (io.KeyShift) {
+				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
+				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
+			}
+			if (dropBox) {
+				// (No bigger than c_MaxDropSide either way.)
+				constexpr float c_Most = static_cast<float>(c_MaxDropSide - 1);
+				end = s_ShapeStart + Vector(std::clamp(end.m_X - s_ShapeStart.m_X, -c_Most, c_Most), std::clamp(end.m_Y - s_ShapeStart.m_Y, -c_Most, c_Most));
+			}
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImU32 outline = IM_COL32(255, 255, 255, 220);
+			float left = std::min(s_ShapeStart.m_X, end.m_X);
+			float right = std::max(s_ShapeStart.m_X, end.m_X) + 1.0F;
+			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
+			float bottom = std::max(s_ShapeStart.m_Y, end.m_Y) + 1.0F;
+			float middleX = (left + right) * 0.5F;
+			if (dropBox) {
+				// The box whose ground will fall: shaded, edged in warning orange, with its size.
+				ImVec2 topLeft = ToScreen(Vector(left, top));
+				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
+				drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(242, 150, 60, 50));
+				drawList->AddRect(topLeft, bottomRight, IM_COL32(242, 150, 60, 235), 0.0F, 0, 2.0F);
+				std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
+				drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), IM_COL32(242, 150, 60, 235), size.c_str());
+			} else if (s_FillShape == FillShape::Circle) {
+				constexpr int c_Points = 48;
+				ImVec2 points[c_Points];
+				for (int i = 0; i < c_Points; ++i) {
+					float turn = static_cast<float>(i) / static_cast<float>(c_Points) * 6.2831853F;
+					points[i] = ToScreen(Vector(middleX + std::cos(turn) * (right - left) * 0.5F, (top + bottom) * 0.5F + std::sin(turn) * (bottom - top) * 0.5F));
+				}
+				drawList->AddPolyline(points, c_Points, outline, ImDrawFlags_Closed, 1.5F);
+			} else if (s_FillShape == FillShape::Triangle) {
+				bool pointUp = end.m_Y >= s_ShapeStart.m_Y;
+				ImVec2 point = ToScreen(Vector(middleX, pointUp ? top : bottom));
+				ImVec2 baseLeft = ToScreen(Vector(left, pointUp ? bottom : top));
+				ImVec2 baseRight = ToScreen(Vector(right, pointUp ? bottom : top));
+				drawList->AddTriangle(point, baseLeft, baseRight, outline, 1.5F);
+			} else {
+				drawList->AddRect(ToScreen(Vector(left, top)), ToScreen(Vector(right, bottom)), outline, 0.0F, 0, 1.5F);
+			}
+			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				s_ShapeDragging = false;
+				Stroke stroke;
+				stroke.Kind = CurrentTool().Kind;
+				stroke.Position = s_ShapeStart;
+				stroke.Position2 = end;
+				stroke.Fill = static_cast<int>(s_FillShape);
+				if (stroke.Kind == Tool::TerrainOther) {
+					stroke.Material = s_OtherTerrain;
+				} else if (stroke.Kind == Tool::Metal) {
+					stroke.Material = s_PaintMetal;
+				}
+				s_Queue.push_back(stroke);
+			}
+		}
+	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
 		// Defend at (RC-4), and a move or attack-move with Alt held (RC-5), drag the way to face, drawn as an arrow; anything else drags a box
 		// to select.
 		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
 		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
-		if (defendAt || facingMove) {
+		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
+		if (dropLine) {
+			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);
+		} else if (defendAt || facingMove) {
 			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
 			float side = now.x >= s_DragStart.x ? 1.0F : -1.0F;
@@ -748,7 +959,16 @@ void Sandbox::DrawGUI() {
 			Vector end = g_CameraMan.GetOffset(0) + Vector(now.x - ViewOrigin().x, now.y - ViewOrigin().y) * scale;
 			bool dragged = std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
 			bool give = true;
-			if (defendAt) {
+			if (dropLine) {
+				// The team being set up on the Battle tab has its ships come in over this line from now on.
+				BattleSettings& setup = s_BattleSetup[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)];
+				setup.LineA = start;
+				setup.LineB = dragged ? end : start;
+				setup.HasLine = true;
+				setup.DropOnLine = true;
+				SendBattleSettings(s_BattleEditTeam);
+				give = false;
+			} else if (defendAt) {
 				stroke.Kind = Tool::Command;
 				stroke.Position = start;
 				g_SceneMan.WrapPosition(stroke.Position);
@@ -790,7 +1010,7 @@ void Sandbox::DrawGUI() {
 	}
 	ImGui::SetNextWindowSize(ImVec2(430.0F, 0.0F), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 445.0F, 40.0F), ImGuiCond_FirstUseEver);
-	if (g_DebugMan.BeginPanel(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open, DebugMan::PanelSide::Left)) {
+	if (g_DebugMan.BeginPanel(IsGodMode() ? "Sandbox (F7)###Sandbox" : "Sandbox tools (F7)###Sandbox", &s_Open, DebugMan::PanelSide::Left, g_DebugMan.GetSandboxPlacement(), true)) {
 		if (!InGame()) {
 			g_DebugMan.DrawToolWindowControls();
 			ImGui::TextWrapped("Start a game to use the sandbox. Pick \"Sandbox\" on the main menu for the full god mode.");
@@ -807,8 +1027,22 @@ void Sandbox::DrawGUI() {
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
 			CommanderPanel();
 		}
-		if (ImGui::BeginTabBar("SandboxTabs")) {
-			if (IsGodMode() && ImGui::BeginTabItem("You", nullptr, TestTab("You"))) {
+		// How this window is shown, at the top of it where it can be found: docked at the side, floating, or most of the screen.
+		{
+			int placement = static_cast<int>(g_DebugMan.GetSandboxPlacement());
+			static const char* const placementNames[] = {"Side panel", "Floating", "Large"};
+			static const char* const placementTips[] = {"Docked at the left of the screen; drag its edge to make it wider or narrower.", "A window to move and resize as you like.", "Nine tenths of the screen, in the middle of it."};
+			ImGui::TextDisabled("View");
+			for (int choice = 0; choice < 3; ++choice) {
+				ImGui::SameLine();
+				if (ToolUI::RadioButton(placementNames[choice], &placement, choice)) {
+					g_DebugMan.SetSandboxPlacement(static_cast<DebugMan::PanelPlacement>(placement));
+				}
+				ImGui::SetItemTooltip("%s", placementTips[choice]);
+			}
+		}
+		if (DrawTabRows()) {
+			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
 				bool exists = GetRef(s_PlayerUnit) != nullptr;
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
@@ -819,7 +1053,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("On: Tab puts the tools away and puts you in your character.\nOff: there is no character. Tab only hides and shows the tools, and you go on looking around from above.");
 				if (!s_Player.EnterOnClose) {
 					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
-					ImGui::EndTabItem();
+					EndSandboxTab();
 				} else {
 				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
 				if (ToolUI::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
@@ -850,17 +1084,19 @@ void Sandbox::DrawGUI() {
 					ToolUI::RadioButton((std::string(c_SideNames[side]) + "##you").c_str(), &s_Player.Team, side);
 					ImGui::PopStyleColor();
 				}
-				static char bodyFilter[48] = "";
 				static char kitFilter[48] = "";
-				if (ImGui::BeginCombo("Body", s_Player.Body.c_str(), ImGuiComboFlags_HeightLarge)) {
-					ImGui::InputTextWithHint("##bodyFilter", "Search...", bodyFilter, sizeof(bodyFilter));
-					for (const Preset& unit: s_Units) {
-						if (ContainsIgnoringCase(unit.Label, bodyFilter) && ImGui::Selectable(unit.Label.c_str(), unit.PresetName == s_Player.Body)) {
-							s_Player.Body = unit.PresetName;
-						}
-					}
-					ImGui::EndCombo();
+				// The base class: any unit there is, picked from the same browser as the Spawn tab's, folded away until wanted.
+				bool knownBody = FindPreset(s_Units, s_Player.Body) != nullptr;
+				std::string baseHeader = "Base class: " + s_Player.Body + (knownBody ? "" : "  (not in this game)") + "###baseClass";
+				bool baseOpen = ImGui::CollapsingHeader(baseHeader.c_str());
+				ImGui::SetItemTooltip("The unit your character is made as. Open to pick any unit, as on the Spawn tab.");
+				if (baseOpen) {
+					ImGui::PushID("baseClass");
+					PictureGrid(Tool::Unit, nullptr, &s_Player.Body);
+					ImGui::PopID();
 				}
+				ToolUI::Checkbox("Inherit its equipment", &s_Player.InheritKit);
+				ImGui::SetItemTooltip("On: the character also carries what a unit of this kind is spawned with (its own items and its faction's guns), besides the kit below.\nOff: it carries only the kit below.");
 				ImGui::SeparatorText("What it carries");
 				int removeItem = -1;
 				for (size_t i = 0; i < s_Player.Kit.size(); ++i) {
@@ -892,7 +1128,7 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Button("Usual kit")) {
 					s_Player.Kit = PlayerSetup().Kit;
 				}
-				ImGui::TextDisabled("A new body or kit is used the next time the character is made.");
+				ImGui::TextDisabled("A new base class or kit is used the next time the character is made.");
 				ImGui::BeginDisabled(!exists);
 				if (ToolUI::Button("Make it again now")) {
 					Stroke stroke;
@@ -906,10 +1142,10 @@ void Sandbox::DrawGUI() {
 					s_Queue.push_back(stroke);
 				}
 				ImGui::EndDisabled();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 				}
 			}
-			if (ImGui::BeginTabItem("Spawn", nullptr, TestTab("Spawn"))) {
+			if (SandboxTab("Spawn")) {
 				s_CurrentTab = "Spawn";
 				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
@@ -924,15 +1160,24 @@ void Sandbox::DrawGUI() {
 				}
 				if (kind == Tool::Drop) {
 					ImGui::Combo("Craft", &s_Craft, "Dropship\0Rocket\0");
-					ToolUI::Checkbox("Random units", &s_DropRandom);
-					ImGui::SetItemTooltip("Each unit in the craft is picked at random from every faction's units, not the one chosen above.");
-					if (s_DropRandom) {
+				}
+				if (kind == Tool::Unit || kind == Tool::Drop) {
+					ToolUI::Checkbox("Random units", &s_RandomUnits);
+					ImGui::SetItemTooltip(kind == Tool::Drop ? "Each unit in the craft is picked at random, not the one chosen above." : "Each unit in the squad is picked at random, not the one chosen above. Squad size is how many.");
+					if (s_RandomUnits) {
 						ImGui::SameLine();
-						ToolUI::Checkbox("Favourites only##drop", &s_DropFavourites);
-						ImGui::SetItemTooltip("Picks only from the units marked as favourites (Ctrl+click on a tile). With none marked, from every unit.");
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6F);
+						RandomSourceCombo("From##random", s_RandomFavourites, s_RandomFaction);
 					}
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {
+					ToolUI::Checkbox("Jetpacks only", &s_JetpackOnly);
+					ImGui::SetItemTooltip("Only units whose jetpack really flies them (lifts them 5 m or more). Units without one, or with one that only gives a hop, aren't listed or picked at random. Hover a unit to see its lift.");
+					ImGui::SameLine();
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+					ImGui::Combo("##shown", &s_UnitsShown, "All units\0Fighters only\0Non-combatants only\0");
+					ImGui::SetItemTooltip("Which units are listed: all of them, only fighters, or only non-combatants (animals, civilians: units that never start a fight).");
+					TemperamentCombo("Temperament");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");
@@ -941,15 +1186,16 @@ void Sandbox::DrawGUI() {
 				} else if (kind == Tool::Structure) {
 					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
-				ImGui::EndTabItem();
+				UndoButton();
+				EndSandboxTab();
 			}
 			// The colony buildings work (scripts can still place them with SandboxDo) but their tab is hidden until they are taken further.
-			if (c_ShowColonyTab && ImGui::BeginTabItem("Colony", nullptr, TestTab("Colony"))) {
+			if (c_ShowColonyTab && SandboxTab("Colony")) {
 				s_CurrentTab = "Colony";
 				ColonyTab();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Build", nullptr, TestTab("Build"))) {
+			if (SandboxTab("Build")) {
 				s_CurrentTab = "Build";
 				// Coming to this tab picks up the building tool.
 				static int shownLast = -10;
@@ -973,15 +1219,16 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
 				ImGui::TextDisabled("Doors and turrets belong to:");
 				SideChooser();
+				UndoButton();
 				ImGui::Separator();
 				if (ToolUI::Button("The game's own build menu", ImVec2(-1.0F, 0.0F))) {
 					// Placing through the game's build menu instead. Choose Done in its pie menu (or press Tab) to come back.
 					Sandbox::SetBuildMode(true);
 				}
 				ImGui::SetItemTooltip("Puts these tools away and opens the build menu the game uses before a battle: everything it offers, moved and placed with the game's own cursor.\nDone in its menu, or Tab, comes back here.");
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Orders", nullptr, TestTab("Orders"))) {
+			if (SandboxTab("Orders")) {
 				s_CurrentTab = "Orders";
 				ImGui::TextWrapped("Give every unit on a side new orders. Units told to attack find a new target when theirs dies.");
 				SideChooser();
@@ -1014,76 +1261,221 @@ void Sandbox::DrawGUI() {
 					s_Queue.push_back(stroke);
 				}
 				ImGui::TextDisabled("Rally point: pick the tool above and click to place this side's flag.");
-
-				ImGui::SeparatorText("Auto battle");
-				ImGui::TextWrapped("Each side buys waves of units with its budget and drops them in to attack, until one side is left.");
-				ImGui::SliderInt("Sides", &s_AutoSideCount, 2, c_Sides);
-				ImGui::SetItemTooltip("Red and Green, then Blue, then Yellow.");
-				ImGui::SliderInt("Budget per side", &s_AutoBudget, 500, 50000, "%d oz", ImGuiSliderFlags_Logarithmic);
-				ToolUI::Checkbox("Random units", &s_AutoRandomChoice);
-				ImGui::SetItemTooltip("Every wave is random units from every faction. Off, each side buys from a faction of its own.");
-				if (s_AutoRandomChoice) {
-					ImGui::SameLine();
-					ToolUI::Checkbox("Favourites only##auto", &s_AutoFavouritesChoice);
-					ImGui::SetItemTooltip("Picks only from the units marked as favourites (Ctrl+click on a tile). With none marked, from every unit.");
-				}
-				if (ToolUI::Button(s_AutoRunning ? "Start again" : "Start auto battle", ImVec2(s_AutoRunning ? ImGui::GetContentRegionAvail().x * 0.5F : -1.0F, 0.0F))) {
-					Stroke stroke;
-					stroke.Kind = Tool::AutoBattle;
-					stroke.Count = s_AutoSideCount;
-					stroke.Choice = s_AutoBudget;
-					stroke.Random = s_AutoRandomChoice;
-					stroke.FavouritesOnly = s_AutoFavouritesChoice;
-					// (The view's middle and width now, so the sim doesn't read the camera: see S4.)
-					stroke.Position = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
-					stroke.Radius = g_FrameMan.GetPlayerScreenWidth();
-					s_Queue.push_back(stroke);
-				}
-				if (s_AutoRunning) {
-					ImGui::SameLine();
-					if (ToolUI::Button("Stop", ImVec2(-1.0F, 0.0F))) {
-						QueueSimChange(Tool::AutoBattle, 0);
-					}
-				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (IsGodMode() && ImGui::BeginTabItem("Gym", nullptr, TestTab("Gym"))) {
+			if (SandboxTab("Battle")) {
+				s_CurrentTab = "Battle";
+				BattleTab();
+				EndSandboxTab();
+			}
+			if (IsGodMode() && SandboxTab("Gym")) {
 				s_CurrentTab = "Gym";
 				GymTab();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Paint", nullptr, TestTab("Paint"))) {
+			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
-				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo});
-				ImGui::SeparatorText("Water that keeps coming");
+				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood});
+				{
+					// Every other pourable (rubble, ash, mods' liquids), a button each, for the "Other" tool. Those with buttons of their own above
+					// (and in Loose things) aren't repeated.
+					static const char* const c_HaveButtons[] = {"Water", "Lava", "Acid", "Oil", "Mud", "Tar", "Mercury", "Fuel", "Cryogenic Fluid", "Blood", "Sand", "Snow", "Gravel", "Glass Shards"};
+					std::vector<std::string> pourables = PourableNames();
+					pourables.erase(std::remove_if(pourables.begin(), pourables.end(), [](const std::string& name) { return std::find(std::begin(c_HaveButtons), std::end(c_HaveButtons), name) != std::end(c_HaveButtons); }), pourables.end());
+					MaterialButtons(Tool::PourOther, s_OtherPourable, pourables);
+				}
+				ImGui::SliderFloat("Flow", &s_Flow, 0.1F, 1.0F, "%.2f");
+				ImGui::SetItemTooltip("How fast the liquid and loose-ground brushes pour while held. 1: as fast as they go.");
+				ToolButtons({Tool::Methane, Tool::Steam});
+				ImGui::SetItemTooltip("Gases fill the air they are let into and stay in a closed room. Toxic gas sinks and hurts whoever breathes it; methane rises, can't be seen, and goes up in a chain of blasts where it meets fire; steam rises, scalds and condenses away. Turn on the Gas overlay (Settings, sandbox overlays) to see where it is.");
+				ImGui::SeparatorText("Springs");
 				ToolButtons({Tool::WaterSpawner});
-				ImGui::SetItemTooltip("Click to place a spring that pours water for good, as wide as the brush size below. Place as many as you like.");
 				ImGui::SameLine();
 				ImGui::BeginDisabled(s_WaterSpawners.empty());
-				if (ToolUI::Button("Remove all water spawners")) {
+				if (ToolUI::Button("Remove all springs")) {
 					QueueSimChange(Tool::ClearWaterSpawners);
 				}
 				ImGui::EndDisabled();
-				if (!s_WaterSpawners.empty()) {
+				{
+					// Remove all of one kind: the kinds placed, each with how many.
+					static std::string removeKind;
+					std::vector<std::pair<std::string, int>> kinds = SpringCounts();
+					auto chosen = std::find_if(kinds.begin(), kinds.end(), [](const auto& kind) { return kind.first == removeKind; });
+					if (chosen == kinds.end() && !kinds.empty()) {
+						removeKind = kinds.front().first;
+						chosen = kinds.begin();
+					}
+					ImGui::BeginDisabled(kinds.empty());
+					std::string shown = chosen != kinds.end() ? chosen->first + " " + std::to_string(chosen->second) : "(none placed)";
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+					if (ImGui::BeginCombo("##removeKind", shown.c_str())) {
+						for (const auto& [name, count]: kinds) {
+							if (ImGui::Selectable((name + " " + std::to_string(count)).c_str(), name == removeKind)) {
+								removeKind = name;
+							}
+						}
+						ImGui::EndCombo();
+					}
 					ImGui::SameLine();
-					ImGui::TextDisabled("%d pouring", static_cast<int>(s_WaterSpawners.size()));
+					if (ToolUI::Button(("Remove all " + (chosen != kinds.end() ? removeKind : std::string("of one kind"))).c_str())) {
+						Stroke stroke;
+						stroke.Kind = Tool::ClearWaterSpawners;
+						stroke.Material = removeKind;
+						s_Queue.push_back(stroke);
+					}
+					ImGui::EndDisabled();
+				}
+				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str())) {
+					for (const std::string& name: PourableNames()) {
+						if (ImGui::Selectable(name.c_str(), name == s_SpringLiquid)) {
+							s_SpringLiquid = name;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::SetItemTooltip("What new springs pour, and what the Boom tab's tank is filled with.");
+				ImGui::SliderFloat("Spring rate", &s_SpringRate, 0.05F, 1.0F, "%.2f");
+				ImGui::SetItemTooltip("How much of the time new springs pour. 1: they keep the air around them full.");
+				// Each spring: what it pours, on or off, removed (as the overlay's Delete does, from the ImGui frame).
+				int removeSpring = -1;
+				for (size_t i = 0; i < s_WaterSpawners.size(); ++i) {
+					WaterSpawner& spring = s_WaterSpawners[i];
+					ImGui::PushID(static_cast<int>(i));
+					ToolUI::Checkbox("##on", &spring.On);
+					ImGui::SetItemTooltip("Pouring. Off, it stays put and pours nothing.");
+					ImGui::SameLine();
+					{
+						// (A swatch in the colour of what it pours, as on the map.)
+						float side = ImGui::GetTextLineHeight() * 0.7F;
+						ImVec2 at = ImGui::GetCursorScreenPos();
+						ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x, at.y + side * 0.2F), ImVec2(at.x + side, at.y + side * 1.2F), MaterialMarkColor(spring.Liquid, spring.On ? 255 : 110));
+						ImGui::Dummy(ImVec2(side, 0.0F));
+						ImGui::SameLine();
+					}
+					ImGui::Text("%s, %d px, at %d,%d", spring.Liquid.c_str(), spring.Radius, spring.Position.GetFloorIntX(), spring.Position.GetFloorIntY());
+					ImGui::SameLine();
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
+					ImGui::SliderFloat("##rate", &spring.Rate, 0.05F, 1.0F, "rate %.2f");
+					ImGui::SameLine();
+					if (ToolUI::Button("x")) {
+						removeSpring = static_cast<int>(i);
+					}
+					ImGui::PopID();
+				}
+				if (removeSpring >= 0) {
+					s_WaterSpawners.erase(s_WaterSpawners.begin() + removeSpring);
 				}
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
-				ImGui::SeparatorText("Terrain");
-				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::Concrete});
-				ImGui::SliderInt("Brush size", &s_Radius, 1, 40);
-				ImGui::BeginDisabled(s_PaintUndo.empty());
-				if (ToolUI::Button("Undo terrain")) {
-					QueueSimChange(Tool::UndoTerrain);
+				ImGui::SeparatorText("Plants");
+				ToolButtons({Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass, Tool::Candles});
+				ImGui::SliderFloat("Plant size", &s_PlantScale, 0.5F, 3.0F, "x%.1f");
+				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms, trees and candles are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is (candles go up in whole steps, x1, x2, x3).");
+				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
+				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
+				{
+					// How long candles burn (the same setting as Settings > Fire and smoke).
+					bool forever = TerrainCandle::GetBurnMinutes() <= 0.0F;
+					if (ToolUI::Checkbox("Candles burn forever", &forever)) {
+						TerrainCandle::SetBurnMinutes(forever ? 0.0F : 2.0F);
+					}
+					ImGui::SetItemTooltip("Lit candles keep burning and never melt down. Off, they burn down in the Candle burn time.");
+					if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F) {
+						ImGui::SameLine();
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+						if (ImGui::SliderFloat("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f min", ImGuiSliderFlags_Logarithmic)) {
+							TerrainCandle::SetBurnMinutes(minutes);
+						}
+						ImGui::SetItemTooltip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer.");
+					}
+				}
+				ImGui::SeparatorText("Ropes");
+				ToolButtons({Tool::Rope, Tool::RopeCut});
+				ImGui::SameLine();
+				ImGui::BeginDisabled(RopeSim::GetCount() == 0);
+				if (ToolUI::Button("Remove all ropes")) {
+					Stroke stroke;
+					stroke.Kind = Tool::Rope;
+					stroke.Choice = 2;
+					s_Queue.push_back(stroke);
+					s_RopeDraft.clear();
 				}
 				ImGui::EndDisabled();
-				ImGui::SetItemTooltip("Puts back the terrain the last brush stroke or built thing changed (Ctrl+Z). The last 20 can be undone, one at a time.");
-				ImGui::EndTabItem();
+				for (int type = 0; type < RopeSim::GetTypeCount(); ++type) {
+					if (type % 3 != 0) {
+						ImGui::SameLine();
+					}
+					const RopeSim::TypeInfo& info = RopeSim::GetType(type);
+					if (ToolUI::RadioButton(info.Name, s_RopeType == type)) {
+						s_RopeType = type;
+						TookTool(ToolIndex(Tool::Rope));
+					}
+					ImGui::SetItemTooltip("%s", info.About);
+				}
+				{
+					int slack = static_cast<int>(std::round(s_RopeSlack * 100.0F));
+					if (ImGui::SliderInt("Rope slack", &slack, 0, 100, "%d%%")) {
+						s_RopeSlack = static_cast<float>(slack) / 100.0F;
+					}
+					ImGui::SetItemTooltip("How much longer than the straight line between its points the rope is: 0 strung tight, 10%% hangs a little, 50%% droops well down.");
+				}
+				ImGui::SeparatorText("Terrain");
+				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
+				{
+					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
+					// under Metals) aren't repeated.
+					static const char* const c_HaveButtons[] = {"Earth", "Dense Earth", "Stone", "Ice", "Sand", "Grass", "Wood", "Tree Trunk", "Concrete"};
+					std::vector<std::string> terrain;
+					for (const char* name: c_TerrainMaterials) {
+						bool own = std::find_if(std::begin(c_HaveButtons), std::end(c_HaveButtons), [name](const char* other) { return std::string(other) == name; }) != std::end(c_HaveButtons);
+						own = own || std::any_of(std::begin(c_PaintMetals), std::end(c_PaintMetals), [name](const PaintMetal& metal) { return std::string(metal.Material) == name; });
+						if (!own) {
+							terrain.emplace_back(name);
+						}
+					}
+					MaterialButtons(Tool::TerrainOther, s_OtherTerrain, terrain);
+				}
+				ImGui::SeparatorText("Metals");
+				MetalButtons();
+				ImGui::TextUnformatted("Brush type");
+				ImGui::SameLine();
+				if (ImGui::RadioButton("Brush", !s_ShapeFill)) {
+					s_ShapeFill = false;
+				}
+				ImGui::SameLine();
+				if (ImGui::RadioButton("Shape", s_ShapeFill)) {
+					s_ShapeFill = true;
+				}
+				ImGui::SetItemTooltip("Shape: click and drag out a circle, triangle or square on the world, and the terrain brush in hand fills it (Dig digs it out). Shift keeps it as wide as tall; Escape drops it.");
+				if (s_ShapeFill) {
+					int fill = static_cast<int>(s_FillShape);
+					ImGui::TextUnformatted("Shape");
+					ImGui::SameLine();
+					ImGui::RadioButton("Circle##fill", &fill, 0);
+					ImGui::SameLine();
+					ImGui::RadioButton("Triangle##fill", &fill, 1);
+					ImGui::SameLine();
+					ImGui::RadioButton("Square##fill", &fill, 2);
+					s_FillShape = static_cast<FillShape>(fill);
+				}
+				ImGui::SliderInt("Brush size", &s_Radius, 1, c_MaxBrushRadius, "%d", ImGuiSliderFlags_Logarithmic);
+				int shape = static_cast<int>(s_BrushShape);
+				ImGui::TextUnformatted("Brush shape");
+				ImGui::SameLine();
+				ImGui::RadioButton("Circle", &shape, 0);
+				ImGui::SameLine();
+				ImGui::RadioButton("Square", &shape, 1);
+				ImGui::SameLine();
+				ImGui::RadioButton("Spray", &shape, 2);
+				s_BrushShape = static_cast<BrushShape>(shape);
+				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, a square as wide as the brush, or a soft spray that scatters it over the circle, thickest in the middle, building up while held.");
+				UndoButton();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Boom", nullptr, TestTab("Boom"))) {
+			if (SandboxTab("Boom")) {
 				s_CurrentTab = "Boom";
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
@@ -1097,9 +1489,9 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Things to knock down");
 				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Effects", nullptr, TestTab("Effects"))) {
+			if (SandboxTab("Effects")) {
 				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
 				ImGui::SeparatorText("Lights");
@@ -1136,9 +1528,9 @@ void Sandbox::DrawGUI() {
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("World", nullptr, TestTab("World"))) {
+			if (SandboxTab("World")) {
 				s_CurrentTab = "World";
 				if (IsGodMode()) {
 					SideStatus();
@@ -1176,18 +1568,44 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
+				// The world simulations the Paint tools need, here as well as in F6, so a brush that does nothing says why and can be fixed on the spot.
+				ImGui::SeparatorText("Simulations");
+				{
+					bool liquids = FluidSim::IsEnabled();
+					if (ToolUI::Checkbox("Flowing liquids", &liquids)) {
+						FluidSim::SetEnabled(liquids);
+					}
+					ImGui::SetItemTooltip("Off: liquids stay where they are and nothing more can be poured.");
+					ImGui::SameLine();
+					bool powders = FluidSim::PowdersEnabled();
+					if (ToolUI::Checkbox("Loose ground", &powders)) {
+						FluidSim::SetPowdersEnabled(powders);
+					}
+					ImGui::SetItemTooltip("Sand, snow, gravel and glass slide and pile. Off: they can't be poured.");
+					ImGui::SameLine();
+					bool blood = FluidSim::BloodFlows();
+					if (ToolUI::Checkbox("Blood flows", &blood)) {
+						FluidSim::SetBloodFlows(blood);
+					}
+					ImGui::SetItemTooltip("Spilt blood runs and pools, then soaks away. Off: it stays where it fell.");
+					ImGui::SameLine();
+					bool freezing = FluidSim::FreezingEnabled();
+					if (ToolUI::Checkbox("Freezing", &freezing)) {
+						FluidSim::SetFreezingEnabled(freezing);
+					}
+					ImGui::SetItemTooltip("Still water freezes over in snowy weather.");
+				}
 				ImGui::Text("%d burning, %d liquid pixels flowing", TerrainFire::GetCount(), FluidSim::GetActiveCount());
 				if (ToolUI::Button("Put out all fire")) {
 					TerrainFire::Clear();
 				}
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			if (ImGui::BeginTabItem("Keys", nullptr, TestTab("Keys"))) {
+			if (SandboxTab("Keys")) {
 				s_CurrentTab = "Keys";
 				KeysPage();
-				ImGui::EndTabItem();
+				EndSandboxTab();
 			}
-			ImGui::EndTabBar();
 		}
 	}
 	g_DebugMan.EndPanel();
@@ -1207,9 +1625,6 @@ void Sandbox::OnActivityStarted() {
 	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
-	// A script's choice of random units for its auto battle is for that game only.
-	s_ScriptAutoRandom = false;
-	s_ScriptAutoFavourites = false;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
 	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
 	s_Possessed = nullptr;
@@ -1224,8 +1639,7 @@ void Sandbox::OnActivityStarted() {
 	}
 	s_OrderMarks.clear();
 	s_FollowTarget = UnitRef();
-	s_AutoRunning = false;
-	s_AutoWinner = -2;
+	ForgetBattle();
 	s_PendingOrders.clear();
 	s_Commander = false;
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
@@ -1261,10 +1675,17 @@ void Sandbox::Update() {
 	UpdateMoveWatch();
 	UpdateIncoming();
 	UpdateEffects();
-	for (const WaterSpawner& spawner: s_WaterSpawners) {
-		FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), "Water");
+	for (WaterSpawner& spawner: s_WaterSpawners) {
+		if (!spawner.On) {
+			continue;
+		}
+		spawner.Due += std::clamp(spawner.Rate, 0.05F, 1.0F);
+		if (spawner.Due >= 1.0F) {
+			spawner.Due -= 1.0F;
+			FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), spawner.Liquid.c_str());
+		}
 	}
-	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and auto battle kept dropping waves,
+	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and the battle kept dropping waves,
 	// all on units held still. (Its wave clocks are held back as well, so the waves don't all come at once after.) Attackers pick their own
 	// enemies in their AI (SharedBehaviors.AttackOrderUpdate), which the pause holds as it is.
 	const bool aiPaused = Controller::IsAIPaused();
@@ -1277,13 +1698,7 @@ void Sandbox::Update() {
 	GymUpdate();
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
 	// can't be had are the AI's own business now, and re-ordering a unit every three seconds only restarted whatever it was in the middle of.)
-	if (aiPaused) {
-		for (AutoSide& autoSide: s_AutoSides) {
-			++autoSide.NextWave;
-		}
-	} else {
-		UpdateAutoBattle();
-	}
+	UpdateBattle(aiPaused);
 	Colony::Update();
 	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
 		FindAction();

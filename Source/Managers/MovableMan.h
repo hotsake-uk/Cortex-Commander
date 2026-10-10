@@ -15,18 +15,21 @@
 #include <shared_mutex>
 #include <map>
 #include <future>
+#include <memory>
 #include <unordered_set>
 
 #define g_MovableMan MovableMan::Instance()
 
 namespace RTE {
 
+	class Camera;
 	class MovableObject;
 	class Actor;
 	class HeldDevice;
 	class MOPixel;
 	class MOSprite;
 	class AHuman;
+	struct ThreatField;
 	class ADoor;
 	class SceneLayer;
 	class SceneObject;
@@ -61,6 +64,8 @@ namespace RTE {
 		friend class Sandbox;
 		friend class ActorFire;
 		friend class ActorWater;
+		friend class GasGrid;
+		friend class AirPressure;
 
 		/// Public member variable, method and friend function declarations
 	public:
@@ -560,6 +565,11 @@ namespace RTE {
 		/// @return Current sim update frame number.
 		unsigned int GetSimUpdateFrameNumber() const { return m_SimUpdateFrameNumber; }
 
+		/// Gets where every team's units stood when last published (see PublishThreats), for a route search to keep its searcher clear of its
+		/// enemies. The field is never changed once published: hold the pointer for as long as it's read, on any thread.
+		/// @return The field, or none before the first.
+		std::shared_ptr<const ThreatField> GetPublishedThreats() const { return m_PublishedThreats; }
+
 		/// Gets pointers to the MOs that are within the given Box, and whose team is not ignored.
 		/// @param box The Box to get MOs within.
 		/// @param ignoreTeam The team to ignore.
@@ -707,11 +717,17 @@ namespace RTE {
 
 		unsigned int m_SimUpdateFrameNumber;
 
+		std::shared_ptr<const ThreatField> m_PublishedThreats; //!< Where the units stood when last published (see GetPublishedThreats). Swapped for a new one only at the start of Update, while nothing reads it.
+
 		// Global map which stores all objects so they could be foud by their unique ID
 		std::map<long int, MovableObject*> m_KnownObjects;
 
 		/// Private member variable and method declarations
 	private:
+		/// Builds a new ThreatField from where the units stand and publishes it in place of the last (see GetPublishedThreats). On the main
+		/// thread, at the start of Update, while no AI runs; searches already under way keep the field they started with.
+		void PublishThreats();
+
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this object.
 
 		/// Empties the MOID table's slots of an object taken out of the scene (it and its attachables) and gives them no ID (see RemoveActor).

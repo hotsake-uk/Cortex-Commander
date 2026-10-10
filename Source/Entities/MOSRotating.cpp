@@ -2,6 +2,7 @@
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
 #include "TerrainCollapse.h"
+#include "AirPressure.h"
 #include "FluidSim.h"
 
 #include "CameraMan.h"
@@ -12,6 +13,7 @@
 #include "ACraft.h"
 #include "ADoor.h"
 #include "ActorWater.h"
+#include "RopeSim.h"
 #include "MOPixel.h"
 #include "MOSParticle.h"
 #include "AEmitter.h"
@@ -33,6 +35,16 @@
 using namespace RTE;
 
 ConcreteClassInfo(MOSRotating, MOSprite, 500);
+
+// Every wound bleeds as its definition says, most of them for a while and then they stop. As often as the bleed-out chance setting asks,
+// one keeps on bleeding instead, until the unit is patched up or bleeds out.
+static void RollWoundBleedOut(AEmitter* wound) {
+	float chance = g_SettingsMan.BleedOutChance();
+	if (chance <= 0.0F || wound->GetEmitDamage() <= 0.0F || wound->GetEmitCountLimit() <= 0 || RandomNum(0.0F, 100.0F) >= chance) {
+		return;
+	}
+	wound->SetEmitCountLimit(0);
+}
 
 BITMAP* MOSRotating::m_spTempBitmap16 = 0;
 BITMAP* MOSRotating::m_spTempBitmap32 = 0;
@@ -853,6 +865,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 			pEntryWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier());
 			// Adjust position so that it looks like the hole is actually *on* the Hitee.
 			entryPos[dom] += increment[dom] * (pEntryWound->GetSpriteWidth() / 2);
+			RollWoundBleedOut(pEntryWound);
 			AddWoundExt(pEntryWound, entryPos + m_SpriteOffset, true, true, false);
 			pEntryWound = 0;
 		}
@@ -869,6 +882,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 				pExitWound->SetInheritedRotAngleOffset(dir.GetAbsRadAngle());
 				float damageMultiplier = pExitWound->HasNoSetDamageMultiplier() ? 1.0F : pExitWound->GetDamageMultiplier();
 				pExitWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier());
+				RollWoundBleedOut(pExitWound);
 				AddWoundExt(pExitWound, exitPos + m_SpriteOffset, true, false, true);
 				pExitWound = 0;
 			}
@@ -933,7 +947,19 @@ void MOSRotating::GibThis(const Vector& impactImpulse, MovableObject* movableObj
 	m_ToDelete = true;
 }
 
+bool MOSRotating::ComesFromBody() const {
+	if (dynamic_cast<const HeldDevice*>(this)) {
+		return false;
+	}
+	if (m_FromBody) {
+		return true;
+	}
+	const MovableObject* root = GetRootParent();
+	return dynamic_cast<const Actor*>(root) && !dynamic_cast<const ACraft*>(root) && !dynamic_cast<const ADoor*>(root);
+}
+
 void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore) {
+	bool fromBody = ComesFromBody();
 	// Explosions push a refraction shockwave out, scaled by the energy of the gibs flying out (the same measure used for automatic screen shake).
 	float gibEnergy = 0.0F;
 	for (const Gib* gibSettingsObject: m_Gibs) {
@@ -974,6 +1000,10 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
 		TerrainCollapse::Blast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
+		// Ropes near it are thrown out, and cut close to it.
+		RopeSim::QueueBlast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
+		// And sends a wave of pressure through the air, down corridors and up through water (SB-5).
+		AirPressure::Blast(m_Pos, gibEnergy);
 		// Liquid and loose powder are woken, and a blast in or beside liquid throws it into the air: only where there is some (L-6). Most gibs are on dry land, and each queued splash
 		// scans its whole disc, with only 64 a step, so a big gib event starved the splashes of units landing and of pours.
 		if (float liquidReach = std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F); FluidSim::IsFlowingNear(m_Pos, liquidReach)) {
@@ -1053,6 +1083,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					gibParticleClone->SetIgnoresTeamHits(true);
 				}
 
+				gibParticleClone->SetFromBody(fromBody || gibParticleClone->IsFromBody());
 				g_MovableMan.AddParticle(gibParticleClone);
 			}
 		} else {
@@ -1111,6 +1142,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					gibParticleClone->SetIgnoresTeamHits(true);
 				}
 
+				gibParticleClone->SetFromBody(fromBody || gibParticleClone->IsFromBody());
 				g_MovableMan.AddParticle(gibParticleClone);
 			}
 		}
@@ -1626,6 +1658,9 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 	if (!m_Attachables.empty()) {
 		m_Attachables.remove(attachable);
 	}
+	if (!dynamic_cast<HeldDevice*>(attachable) && ComesFromBody()) {
+		attachable->SetFromBody();
+	}
 	attachable->SetParent(nullptr);
 	m_AttachableAndWoundMass -= attachable->GetMass();
 
@@ -1648,6 +1683,7 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 			if (parentBreakWound) {
 				parentBreakWound->SetDrawnAfterParent(attachable->IsDrawnAfterParent());
 				parentBreakWound->SetInheritedRotAngleOffset((attachable->GetParentOffset() * m_Rotation).GetAbsRadAngle());
+				RollWoundBleedOut(parentBreakWound);
 				AddWound(parentBreakWound, attachable->GetParentOffset(), false);
 				parentBreakWound = nullptr;
 			}
@@ -1656,6 +1692,7 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 			AEmitter* childBreakWound = dynamic_cast<AEmitter*>(attachable->GetBreakWound()->Clone());
 			if (childBreakWound) {
 				childBreakWound->SetInheritedRotAngleOffset(attachable->GetJointOffset().GetAbsRadAngle());
+				RollWoundBleedOut(childBreakWound);
 				attachable->AddWound(childBreakWound, attachable->GetJointOffset());
 				childBreakWound = nullptr;
 			}
@@ -1773,7 +1810,7 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 		// TODO: Fix that MaterialAir and KeyColor don't work at all because they're drawing 0 to a field of 0's
 		// Draw the requested material silhouette on the material bitmap
 		if (mode == g_DrawMaterial) {
-			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, m_SettleMaterialDisabled ? GetMaterial()->GetIndex() : GetMaterial()->GetSettleMaterial(), -1);
+			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled, ComesFromBody()), -1);
 		} else if (mode == g_DrawWhite) {
 			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, g_WhiteColor, -1);
 		} else if (mode == g_DrawDoor) {
@@ -1939,11 +1976,16 @@ glm::u8vec4 MOSRotating::GetRenderSurface() const {
 	unsigned char solid = castsShadow ? 255 : 0;
 	// With unit outlines on, a unit and everything on it carries its side in the solid flag, for the outline pass (UnitOutlineRow.frag): just under
 	// full for shadow casters, so they still read as solid, and just over none for the rest. Slot 1 is no side, 2 to 5 teams 1 to 4. Doors are left out.
-	if (g_PostProcessMan.GetLightingSettings().UnitOutline && m_RenderBlendMode == 0) {
+	// A highlighted unit (Actor::SetHighlighted) is slot 6, whatever the setting, and always reads as a shadow caster: 8 * 6 would read as water.
+	if (m_RenderBlendMode == 0 && (g_PostProcessMan.GetLightingSettings().UnitOutline || g_PostProcessMan.GetLightingSettings().HighlightUnits)) {
 		const MovableObject* root = GetRootParent();
 		if (root->IsActor() && root->GetClassName() != "ADoor") {
-			int slot = std::clamp(root->GetTeam(), -1, 3) + 2;
-			solid = static_cast<unsigned char>(castsShadow ? 255 - 8 * slot : 8 * slot);
+			if (static_cast<const Actor*>(root)->IsHighlighted()) {
+				solid = static_cast<unsigned char>(255 - 8 * 6);
+			} else if (g_PostProcessMan.GetLightingSettings().UnitOutline) {
+				int slot = std::clamp(root->GetTeam(), -1, 3) + 2;
+				solid = static_cast<unsigned char>(castsShadow ? 255 - 8 * slot : 8 * slot);
+			}
 		}
 	}
 	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), solid, static_cast<unsigned char>(packedStates));

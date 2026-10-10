@@ -166,6 +166,26 @@ namespace RTE {
 		/// Sets whether units run by the AI take no notice of this Actor. For a player walking about a battle as a bystander.
 		void SetIgnoredByAI(bool ignored) { m_IgnoredByAI = ignored; }
 
+		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
+		bool IsHighlighted() const { return m_Highlighted; }
+
+		/// Sets whether this Actor is drawn with a bright glowing outline: a capture the flag carrier.
+		void SetHighlighted(bool highlighted) { m_Highlighted = highlighted; }
+
+		/// Gets how much this Actor's routes keep clear of its enemies (PathFinder::ThreatCost): 0, the shortest way, unless a game mode asks
+		/// for a safe one, as capture the flag does for a flag carrier. Scaled by the AIThreatAvoidance setting.
+		float GetRouteThreatAvoidance() const { return m_RouteThreatAvoidance; }
+
+		/// Sets how much this Actor's routes keep clear of its enemies: 1 for a game mode's safest viable route, 0 for the shortest.
+		void SetRouteThreatAvoidance(float avoidance) { m_RouteThreatAvoidance = std::max(avoidance, 0.0F); }
+
+		/// Gets this Actor's own taste in routes (PathAgent::RouteSeed): units with different seeds go different ways where the ways are near
+		/// enough alike. 0, the shortest way, unless a game mode gives it one (Battle Director's route variety).
+		unsigned GetRouteSeed() const { return m_RouteSeed; }
+
+		/// Sets this Actor's own taste in routes; 0 for the shortest way.
+		void SetRouteSeed(unsigned seed) { m_RouteSeed = seed; }
+
 		/// Sets whether or not this Actor can be controlled by human players.
 		/// @param playerControllable Whether or not this Actor should be able to be controlled by human players.
 		void SetPlayerControllable(bool playerControllable) { m_PlayerControllable = playerControllable; }
@@ -405,6 +425,26 @@ namespace RTE {
 			WEAPONRULECOUNT
 		};
 
+		/// What a unit is like by nature (NC-1): set by its preset (or overridden when it is spawned), it outlasts every order, and the AI
+		/// never fights more than it allows whatever the weapons rule says. Skittish and Pacifist units are non-combatants unless set otherwise.
+		enum Temperament {
+			TEMPERAMENT_FIGHTER = 0, //!< Fights as its orders and weapons rule say (the game's own behaviour).
+			TEMPERAMENT_DEFENSIVE, //!< Fights only back: at the side that hurt it, for a while after it was hurt.
+			TEMPERAMENT_SKITTISH, //!< Never fights; runs from whatever hurts or shoots at it, then goes back to what it was doing.
+			TEMPERAMENT_PACIFIST, //!< Never fights, and doesn't run either: it carries on with what it was doing.
+			TEMPERAMENTCOUNT
+		};
+
+		/// The name of a Temperament ("Fighter", "Defensive", "Skittish", "Pacifist"), for INI files and the sandbox.
+		/// @param temperament A Temperament.
+		/// @return Its name, or "" for none.
+		static const char* TemperamentName(int temperament);
+
+		/// The Temperament an INI value names: a name (any case) or its number.
+		/// @param value The value as written.
+		/// @return The Temperament, or -1 for none.
+		static int TemperamentFromString(const std::string& value);
+
 		/// How a unit moves when it meets an enemy (RC-1). Each order sets it back to following the order; the player can then change it.
 		enum MovementRule {
 			MOVE_FOLLOW_ORDER = 0, //!< As the order has it: a move keeps walking, an attack closes in, a post is held.
@@ -413,6 +453,37 @@ namespace RTE {
 			MOVE_HOLD_GROUND, //!< Fights from where it stands, never leaving the spot to chase.
 			MOVEMENTRULECOUNT
 		};
+
+		/// What kind of order a unit's standing order is (RC-1/RC-3/RC-11): the order the player gave, so the HUD, the failure markers and the
+		/// route search can tell a dig-to from a move without reading it off the other parts. Set by whoever gives the order.
+		enum OrderKind {
+			ORDER_NONE = 0, //!< No order given, or one this list has no kind for (an AI mode set straight on the unit).
+			ORDER_MOVE, //!< Go to a place.
+			ORDER_ATTACKMOVE, //!< Go to a place, fighting what it meets on the way (RC-2).
+			ORDER_ATTACK, //!< Go after an enemy, or the nearest enemy.
+			ORDER_GUARD, //!< Keep with a friendly unit, or hold a place against all comers.
+			ORDER_DEFEND, //!< Stand at a post and fight from it (RC-4).
+			ORDER_PATROL, //!< Walk a patrol route.
+			ORDER_DIGTO, //!< Dig to a place, which may be inside the ground (RC-11): the route keeps the buried target and tunnels rather than walks round.
+			ORDERKINDCOUNT
+		};
+
+		/// Why a unit's order stopped short (RC-7, RC-11): told to the player at the unit's "no route" marker, and kept on the order until the next one.
+		enum OrderFailReason {
+			ORDERFAIL_NONE = 0, //!< It hasn't failed.
+			ORDERFAIL_NOROUTE, //!< There is no way there it can take.
+			ORDERFAIL_NODIGGER, //!< A dig order, and it has nothing to dig with.
+			ORDERFAIL_TOOHARD, //!< A dig order, and the way there is through ground its digger doesn't cut (FailMaterial says which).
+			ORDERFAIL_LOSTDIGGER, //!< A dig order, and it lost its digger on the way.
+			ORDERFAIL_OUTOFREACH, //!< A dig order to a place no one can dig to: off the scene, or in its bottom margin.
+			ORDERFAILREASONCOUNT
+		};
+
+		/// The player's words for why an order failed (OrderFailReason), with the material for ORDERFAIL_TOOHARD when there is one.
+		/// @param reason An OrderFailReason.
+		/// @param materialID The material the way is blocked by, 0 for none known.
+		/// @return A few words, e.g. "too hard: Concrete".
+		static std::string OrderFailText(int reason, int materialID = 0);
 
 		/// A unit's standing order (AI review section 6 item 2): what it was told to do, one typed record that the sandbox, the AI scripts, the HUD and saves all read, where
 		/// before it was six number values under string keys ("SandboxAttack", "SandboxTarget", "SandboxAutoTarget", "SandboxAttackX/Y", "SandboxDefendX/Y",
@@ -428,6 +499,11 @@ namespace RTE {
 			bool Hold = false; //!< Told to hold position: the AI neither wanders off nor falls back.
 			int Movement = MOVE_FOLLOW_ORDER; //!< The movement rule (MovementRule) the player set for this order, MOVE_FOLLOW_ORDER for the order's own.
 			int PostFacing = 0; //!< Which way to face at the post (RC-4): -1 left, 1 right, 0 either.
+			int Kind = ORDER_NONE; //!< What kind of order this is (OrderKind).
+			bool HasDigTarget = false; //!< Whether it was told to dig to a place (DigTarget, RC-11).
+			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
+			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
+			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -466,12 +542,80 @@ namespace RTE {
 		void SetOrderPostFacing(int facing) { m_StandingOrder.PostFacing = facing < 0 ? -1 : (facing > 0 ? 1 : 0); }
 		bool GetOrderHold() const { return m_StandingOrder.Hold; }
 		void SetOrderHold(bool hold) { m_StandingOrder.Hold = hold; }
+		int GetOrderKind() const { return m_StandingOrder.Kind; }
+		void SetOrderKind(int kind) { m_StandingOrder.Kind = std::clamp(kind, 0, static_cast<int>(ORDERKINDCOUNT) - 1); }
+		bool GetOrderHasDigTarget() const { return m_StandingOrder.HasDigTarget; }
+		const Vector& GetOrderDigTarget() const { return m_StandingOrder.DigTarget; }
+		void SetOrderDigTarget(const Vector& target) {
+			m_StandingOrder.DigTarget = target;
+			m_StandingOrder.HasDigTarget = true;
+		}
+		void ClearOrderDigTarget() { m_StandingOrder.HasDigTarget = false; }
+		int GetOrderFailReason() const { return m_StandingOrder.FailReason; }
+		void SetOrderFailReason(int reason) { m_StandingOrder.FailReason = std::clamp(reason, 0, static_cast<int>(ORDERFAILREASONCOUNT) - 1); }
+		int GetOrderFailMaterial() const { return m_StandingOrder.FailMaterial; }
+
+		/// Marks the standing order failed (RC-7): why, and the material in the way when that is the reason.
+		/// @param reason An OrderFailReason.
+		/// @param materialID The material in the way, for ORDERFAIL_TOOHARD; 0 for none known.
+		void FailOrder(int reason, int materialID = 0) {
+			SetOrderFailReason(reason);
+			m_StandingOrder.FailMaterial = materialID;
+		}
+
+		/// Gets the player's words for why this' order stopped short (OrderFailText), empty when it hasn't.
+		std::string GetOrderFailText() const { return m_StandingOrder.FailReason == ORDERFAIL_NONE ? std::string() : OrderFailText(m_StandingOrder.FailReason, m_StandingOrder.FailMaterial); }
+
+		/// Works out what digging to a place would take this, from where it stands, as a dig-to order would route it (RC-11; PathFinder::PlanDig).
+		/// Runs the search now, on the calling thread.
+		/// @param target The place to dig to, in the ground or not.
+		/// @return The plan.
+		DigPlan PlanDigTo(const Vector& target) const;
+
+		/// Whether this can dig to a place (PlanDigTo's verdict is Ok).
+		bool CanDigTo(const Vector& target) const { return PlanDigTo(target).Result == DigPlan::Ok; }
+
+		/// What digging to a place would take this, in the player's words (PathFinder::DescribeDigPlan): e.g. "Dig 4 m, hardest Earth, about 12 s".
+		std::string DescribeDigTo(const Vector& target) const { return PathFinder::DescribeDigPlan(PlanDigTo(target), EstimateDigStrength()); }
+
+		/// Whether this is on a dig-to order (RC-11) that is still going: told to dig to a place and in GOTO for it.
+		bool IsDiggingTo() const { return m_StandingOrder.Kind == ORDER_DIGTO && m_StandingOrder.HasDigTarget && m_AIMode == AIMODE_GOTO; }
 
 		/// Gets the weapons rule (WeaponRule): what this may shoot at.
 		int GetWeaponRule() const { return m_WeaponRule; }
 
 		/// Sets the weapons rule (WeaponRule).
 		void SetWeaponRule(int rule) { m_WeaponRule = std::clamp(rule, 0, static_cast<int>(WEAPONRULECOUNT) - 1); }
+
+		/// Gets this' temperament (Temperament): what it is like by nature.
+		int GetTemperament() const { return m_Temperament; }
+
+		/// Sets this' temperament (Temperament).
+		void SetTemperament(int temperament) { m_Temperament = std::clamp(temperament, 0, static_cast<int>(TEMPERAMENTCOUNT) - 1); }
+
+		/// Whether this is a non-combatant (NC-1): not a soldier, so it isn't counted, sent into battle or commanded as one. Set on the preset
+		/// (NonCombatant), else it follows the temperament: Skittish and Pacifist units are non-combatants.
+		bool IsNonCombatant() const { return m_NonCombatant >= 0 ? m_NonCombatant != 0 : m_Temperament >= TEMPERAMENT_SKITTISH; }
+
+		/// Sets whether this is a non-combatant, whatever its temperament.
+		void SetNonCombatant(bool nonCombatant) { m_NonCombatant = nonCombatant ? 1 : 0; }
+
+		/// The side that last hurt this (NC-1): the team of the shot, blade or blast, Activity::NoTeam if none has yet.
+		int GetLastAttackerTeam() const { return m_LastAttackerTeam; }
+
+		/// The unique ID of the unit that last hurt this when it was hit by the unit itself (a blade, a body), 0 otherwise (a shot carries only its side).
+		long GetLastAttackerID() const { return m_LastAttackerID; }
+
+		/// Sim milliseconds since something of another side last hurt this, or a very large number if nothing has.
+		double GetMSSinceHurt() const { return m_LastAttackerTeam == Activity::NoTeam ? 1.0e9 : m_HurtTimer.GetElapsedSimTimeMS(); }
+
+		/// Notes that something of another side hurt this (NC-1): a hit on it or on a part of it (Attachable::ParticlePenetration).
+		/// @param hitor What hit it.
+		/// @param hitVelocity How fast it was going, for where it came from.
+		void NoteHurtBy(const MovableObject* hitor, const Vector& hitVelocity);
+
+		/// Where the blow that last hurt this came from: a point back along it, as the alarm point is.
+		const Vector& GetLastHurtFrom() const { return m_LastHurtFrom; }
 
 		/// Gets the movement rule (MovementRule) of the standing order: how this moves when it meets an enemy.
 		int GetMovementRule() const { return m_StandingOrder.Movement; }
@@ -604,6 +748,10 @@ namespace RTE {
 		/// The searcher this actor is to the path grid: what it can jump, dig and breach, and how big it is.
 		virtual PathAgent GetPathAgent() const;
 
+		/// Where this actor's own route searches start from (see UpdateMovePath): the ground under it when that is near, else where it is.
+		/// A search from anywhere else (its centre, half a body over the ground) can answer differently from the one its AI will make.
+		Vector GetPathStart() const;
+
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
 		Vector GetMovePathEnd() const {
@@ -670,10 +818,22 @@ namespace RTE {
 		float GetHeadlampBrightness() const { return m_HeadlampBrightness; }
 		void SetHeadlampBrightness(float brightness) { m_HeadlampBrightness = std::max(brightness, 0.0F); }
 
+		/// Whether this unit's headlamp is switched on now: it has one, headlamps are on, and it's dark where it stands (see UpdateHeadlamp).
+		bool IsHeadlampLit() const { return m_HeadlampLit; }
+
 		/// Has this unit say one of a trigger's lines over its head (unit speech, see UnitSpeech::Say), on the settings' chance.
 		/// @param trigger The trigger, as Speech.ini names it ("TakeCover").
 		/// @return Whether a line was said.
 		bool Say(const std::string& trigger) { return UnitSpeech::Say(*this, trigger); }
+
+		/// Has this unit say one of a trigger's lines about another unit, as Say: a line with "{name}" in it names that unit ("They got {name}!").
+		/// @param trigger The trigger, as Speech.ini names it ("ManDown").
+		/// @param subject The unit the line is about; none for a line that names nobody.
+		/// @return Whether a line was said.
+		bool SayAbout(const std::string& trigger, const Actor* subject) { return UnitSpeech::SayAbout(*this, trigger, subject); }
+
+		/// Gets the name this unit's friends call it in unit speech (Speech.ini's UnitName list, picked by the unit's ID).
+		std::string GetSpeechName() const { return UnitSpeech::GetName(*this); }
 
 		/// Has this unit answer an order the player just gave it, as Say (see UnitSpeech::SayOrder). For the commands that give orders.
 		/// @param trigger The trigger, as Speech.ini names it ("OrderMove").
@@ -914,6 +1074,9 @@ namespace RTE {
 		/// @return The number of waypoints in the MovePath.
 		int GetMovePathSize() const { return m_MovePath.size(); }
 
+		/// The points of this' current MovePath, nearest first.
+		const std::list<Vector>& GetMovePath() const { return m_MovePath; }
+
 		/// Returns whether we're waiting on a new pending movepath.
 		/// @return Whether we're waiting on a new pending movepath.
 		bool IsWaitingOnNewMovePath() const { return m_PathRequest != nullptr || m_UpdateMovePath; }
@@ -994,6 +1157,10 @@ namespace RTE {
 
 		/// Gets how dark it is from the time of day, 0 by day to 1 at full night.
 		static float GetNightAmount();
+
+		/// Gets how much light there is where this actor stands, for its headlamp: the sky's (the time of day, less under a roof or in a cave) and
+		/// the scenery's (lamps, fires, flashes; not headlamps, its own or others'), 0 for none, about 1 for open daylight or a bright lamp close by.
+		float GetAmbientLightForHeadlamp();
 
 		/// Gets how far this actor can see relative to daylight: less at night, unless it has a headlamp on (night gameplay).
 		float GetNightSightScale() const;
@@ -1189,6 +1356,13 @@ namespace RTE {
 		/// Starts updating this Actor's movepath.
 		virtual void UpdateMovePath();
 
+		/// Switches the headlamp on when it's dark where this unit stands and off when it's light again, fading between, and registers its
+		/// light for the frame. Render only. The two thresholds sit a little apart so a unit at the edge of the light doesn't flicker.
+		void UpdateHeadlamp();
+
+		/// Registers the light this unit's outline gives off, in the outline's colour, when LightingSettings::UnitOutlineGlow is up and the outline is drawn.
+		void UpdateOutlineGlow();
+
 		/// Asks for the route to the current goal again, from where this is now, the same check an order makes. The answer replaces the
 		/// route only when it says the goal is reachable from here (solved, and not only through ground or a door that can't be got through);
 		/// otherwise the route being followed is kept. For a unit in flight, whose route can fall behind it: checked often, a jet's
@@ -1235,6 +1409,9 @@ namespace RTE {
 		Controller m_Controller;
 		bool m_PlayerControllable; //!< Whether or not this Actor can be controlled by human players.
 		bool m_IgnoredByAI = false; //!< Whether units run by the AI take no notice of this Actor. Not copied or saved: it is set on the one Actor while it lives.
+		bool m_Highlighted = false; //!< Drawn with a bright glowing outline. Not copied or saved, as m_IgnoredByAI.
+		unsigned m_RouteSeed = 0; //!< Its own taste in routes (see GetRouteSeed). Not copied or saved, as m_IgnoredByAI.
+		float m_RouteThreatAvoidance = 0.0F; //!< How much its routes keep clear of enemies, for a game mode that wants it safe (see GetRouteThreatAvoidance). Not copied or saved, as m_IgnoredByAI.
 
 		// Sounds
 		SoundContainer* m_BodyHitSound;
@@ -1316,6 +1493,9 @@ namespace RTE {
 		float m_HeadlampBrightness; //!< This unit's headlamp next to the usual: 1 the same, 0 none.
 		Color m_HeadlampColor; //!< This unit's own headlamp color, if it has one.
 		bool m_HeadlampHasColor; //!< Whether m_HeadlampColor is used instead of the player's setting.
+		bool m_HeadlampLit; //!< Whether the headlamp is switched on: it's dark around this unit (with a margin either way, see UpdateHeadlamp).
+		float m_HeadlampFade; //!< How far the headlamp has come on, 0 off to 1 fully on: it fades rather than pops.
+		float m_HeadlampSkyOpen; //!< How much of the sky is open above this unit, 0 (a cave, under a roof) to 1 (open air), from a few rays up; below 0 when not looked yet.
 		std::string m_SpeechSet; //!< The set of lines this unit speaks from, empty for the default (see GetSpeechSet).
 		UnitSpeech::State m_Speech; //!< What this unit is saying and said lately (see UnitSpeech).
 		/// Damage value above which this will play PainSound
@@ -1389,6 +1569,12 @@ namespace RTE {
 		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
 		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
 		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
+		int m_Temperament; //!< What this is like by nature (see Temperament).
+		int m_NonCombatant; //!< 1 or 0 as set on the preset, -1 to follow the temperament (see IsNonCombatant).
+		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.
+		long m_LastAttackerID; //!< The unit that last hurt this, if it hit this itself, else 0 (see GetLastAttackerID). Not saved.
+		Timer m_HurtTimer; //!< Since this was last hurt by another side (see GetMSSinceHurt). Not saved.
+		Vector m_LastHurtFrom; //!< Where that blow came from (see GetLastHurtFrom). Not saved.
 		float m_PaceLimit; //!< The walking pace this keeps to, m/s, or 0 for its own (see GetPaceLimit).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI

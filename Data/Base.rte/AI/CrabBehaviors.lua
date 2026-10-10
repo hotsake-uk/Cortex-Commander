@@ -41,6 +41,8 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 				FoundMO = ToACDropShip(FoundMO);
 			elseif FoundMO.ClassName == "ADoor" and FoundMO.Team ~= Activity.NOTEAM and Owner.AIMode ~= Actor.AIMODE_SENTRY and ToADoor(FoundMO).Door and ToADoor(FoundMO).Door:IsAttached() and SharedBehaviors.GetProjectileData(Owner).pen * 0.9 > ToADoor(FoundMO).Door.Material.StructuralIntegrity then
 				FoundMO = ToADoor(FoundMO);
+			elseif FoundMO.ClassName == "AVehicle" then	-- A cart or other vehicle (VH-1).
+				FoundMO = ToAVehicle(FoundMO);
 			elseif FoundMO.ClassName == "Actor" then
 				FoundMO = ToActor(FoundMO);
 			else
@@ -418,7 +420,12 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 				end
 			end
 			-- Out of reach or out of sight for a second and a half: somewhere else to shoot it from (AC-9).
-			if BlockedTimer and BlockedTimer:IsPastSimMS(1500) then
+			-- (A flank's routes asked for: started once they are back.)
+			if AI.FlankSearch then
+				if SharedBehaviors.StartFlank(AI, Owner, AI.Target.Pos, PrjDat and PrjDat.rng < 2000 and PrjDat.rng or 500) then
+					break;
+				end
+			elseif BlockedTimer and BlockedTimer:IsPastSimMS(1500) then
 				BlockedTimer = nil;
 				if SharedBehaviors.StartFlank(AI, Owner, AI.Target.Pos, PrjDat and PrjDat.rng < 2000 and PrjDat.rng or 500) then
 					break;
@@ -447,6 +454,8 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 					ClosestEnemy = ToAHuman(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "ACrab" then
 					ClosestEnemy = ToACrab(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "AVehicle" then
+					ClosestEnemy = ToAVehicle(ClosestEnemy);
 				else
 					ClosestEnemy = nil;
 				end

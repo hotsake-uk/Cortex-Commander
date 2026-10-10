@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PostProcessMan.h"
+#include "AirPressure.h"
 
 #include <algorithm>
 
@@ -24,7 +25,7 @@ namespace RTE {
 
 		/// Gets the wind, from -1 (a gale blowing left) to 1 (a gale blowing right).
 		inline float GetWind() {
-			return std::clamp(g_PostProcessMan.GetLightingSettings().Wind / 150.0F, -1.0F, 1.0F);
+			return std::clamp(AirPressure::GetNaturalWind() / 150.0F, -1.0F, 1.0F);
 		}
 
 		/// Gets how thick a dust storm is, 0 for none to 1.

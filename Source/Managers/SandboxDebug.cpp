@@ -1,6 +1,9 @@
 // The sandbox's debug overlays (Sandbox::DrawDebug).
 
 #include "SandboxInternal.h"
+#include "DebugDraw.h"
+#include "GasGrid.h"
+#include "AirPressure.h"
 
 namespace {
 	/// A dashed line between window positions, as the orders overlay draws an order waiting for the next update.
@@ -151,9 +154,11 @@ namespace {
 			const WaterSpawner& spawner = s_WaterSpawners[i];
 			ImVec2 at = ToScreen(spawner.Position);
 			bool hovered = pointedAt(at);
-			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(90, 170, 255, 230);
+			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : MaterialMarkColor(spawner.Liquid);
 			drawList->AddCircle(at, std::max(static_cast<float>(spawner.Radius) / scale, 4.0F), color, 0, 2.0F);
-			std::string text = "water " + std::to_string(spawner.Radius) + " px";
+			// (A filled dot in what it pours, so a row of springs reads as water here, lava there.)
+			drawList->AddCircleFilled(at, 3.0F, MaterialMarkColor(spawner.Liquid, spawner.On ? 255 : 110));
+			std::string text = spawner.Liquid + " " + std::to_string(spawner.Radius) + " px" + (spawner.On ? "" : " (off)");
 			if (hovered) {
 				text += "  (Delete: remove)";
 				if (removeKey && removeEffect < 0) {
@@ -299,53 +304,26 @@ namespace {
 		}
 	}
 
-	/// The auto battle and colony readout (SettingsMan::ShowSandboxAutoBattle), in the top left of the picture: for each side in the auto
-	/// battle, what it has spent of its budget, the updates to its next wave and whether it is broke; its units on the ground (as CountUnits
-	/// counts them, which decides who is left) against those still riding in its craft (review R9); and the cheapest unit on its list against
-	/// what a wave may spend (review S7). Then each colony building with what it is doing, its training progress and its units alive, those
-	/// dead or dying but not yet gone counted apart (review R8).
+	/// The battle and colony readout (SettingsMan::ShowSandboxAutoBattle), in the top left of the picture: a line for each Battle Director team
+	/// that is active or running, with whether it is running, how it fights, the units it has sent, those it has alive (as CountUnits counts
+	/// them, a craft's passengers too) and what it has spent. Then each colony building with what it is doing, its training progress and its
+	/// units alive, those dead or dying but not yet gone counted apart (review R8).
 	void DrawAutoBattleColony() {
 		if (!g_SettingsMan.ShowSandboxAutoBattle()) {
 			return;
 		}
 		const ImU32 plain = IM_COL32(230, 230, 220, 255);
-		const ImU32 warn = IM_COL32(255, 120, 100, 255);
 		std::vector<std::pair<std::string, ImU32>> lines;
-		long long now = g_TimerMan.GetSimUpdateCount();
 		char text[256];
 		for (int side = 0; side < c_Sides; ++side) {
-			const AutoSide& autoSide = s_AutoSides[side];
-			if (!autoSide.Active) {
+			const BattleTeam& team = s_BattleTeams[side];
+			if (!team.Running && !team.Settings.Active) {
 				continue;
 			}
-			if (lines.empty()) {
-				lines.emplace_back(s_AutoRunning ? std::string("Auto battle running") : s_AutoWinner == -2 ? std::string("Auto battle not running") : s_AutoWinner == -1 ? std::string("Auto battle over: a draw") : std::string("Auto battle over: ") + c_SideNames[s_AutoWinner] + " won", plain);
-			}
-			int faction = s_FactionModules.empty() ? -1 : std::clamp(autoSide.Faction, 0, static_cast<int>(s_FactionModules.size()) - 1);
-			const char* factionName = faction >= 0 && faction < static_cast<int>(s_FactionNames.size()) ? s_FactionNames[faction].c_str() : "?";
-			long long nextWave = std::max(autoSide.NextWave - now, 0LL);
-			std::snprintf(text, sizeof(text), "%s (%s): spent %.0f of %d, %d sent, next wave in %lld updates%s", c_SideNames[side], factionName, autoSide.Spent, autoSide.Budget, autoSide.Sent, nextWave, autoSide.Broke ? ", BROKE" : "");
+			const BattleSettings& settings = team.Settings;
+			std::string spent = settings.EndlessMoney ? std::to_string(static_cast<int>(team.Spent)) + " (no limit)" : std::to_string(static_cast<int>(team.Spent)) + " of " + std::to_string(settings.Budget);
+			std::snprintf(text, sizeof(text), "%s: %s, %s, %d sent, %d alive, spent %s", c_SideNames[side], team.Running ? (team.Broke ? "running, out of money" : "running") : "stopped", c_BattleStyleNames[static_cast<int>(settings.Style)], team.Sent, Sandbox::CountUnits(side), spent.c_str());
 			lines.emplace_back(text, c_SideColors[side]);
-			int inCraft = 0;
-			for (const Actor* actor: SandboxAccess::Actors()) {
-				if (actor->GetTeam() == side && dynamic_cast<const ACraft*>(actor)) {
-					for (const MovableObject* item: *actor->GetInventory()) {
-						inCraft += item && item->IsActor() ? 1 : 0;
-					}
-				}
-			}
-			// The list price of the cheapest unit it may pick (without the kit it is given, which the wave also pays for), against what one wave may spend.
-			float cheapest = -1.0F;
-			if (faction >= 0) {
-				for (const Preset* unit: FactionUnits(s_FactionModules[faction])) {
-					const SceneObject* object = dynamic_cast<const SceneObject*>(g_PresetMan.GetEntityPreset(unit->ClassName, unit->PresetName, unit->ModuleID));
-					float cost = object ? object->GetGoldValue(unit->ModuleID, 1.0F, 1.0F) : 0.0F;
-					cheapest = cheapest < 0.0F ? cost : std::min(cheapest, cost);
-				}
-			}
-			float waveBudget = std::min(static_cast<float>(autoSide.Budget) - autoSide.Spent, 900.0F);
-			std::snprintf(text, sizeof(text), "    %d on the ground, %d in craft; cheapest unit %.0f, a wave may spend %.0f", Sandbox::CountUnits(side), inCraft, std::max(cheapest, 0.0F), std::max(waveBudget, 0.0F));
-			lines.emplace_back(text, cheapest < 0.0F || cheapest > waveBudget ? warn : plain);
 		}
 		for (const Colony::Building& building: Colony::Buildings()) {
 			const Colony::Type& type = Colony::GetType(building.What);
@@ -359,11 +337,15 @@ namespace {
 				}
 				std::snprintf(text, sizeof(text), "; %s %.0f%%; %d of %d alive (%d dead or dying, not yet gone); %d trained", building.Paid ? "training" : "waiting to pay", building.Progress * 100.0F, static_cast<int>(building.Alive.size()), building.KeepAlive, dying, building.Produced);
 				line += text;
+				if (Colony::NeedsPower()) {
+					std::snprintf(text, sizeof(text), "; power %.0f%%", building.Power * 100.0F);
+					line += text;
+				}
 			}
 			lines.emplace_back(line, building.Team >= 0 && building.Team < c_Sides ? c_SideColors[building.Team] : plain);
 		}
 		if (lines.empty()) {
-			lines.emplace_back("No auto battle sides and no colony buildings", plain);
+			lines.emplace_back("No battle teams and no colony buildings", plain);
 		}
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		GameViewRect view = g_WindowMan.GetGameViewRect();
@@ -431,7 +413,7 @@ namespace {
 		if (!g_SettingsMan.ShowLightsBySource()) {
 			return;
 		}
-		static const char* const sourceNames[] = {"other", "objects", "hot spots", "headlamps", "tracers", "scenery lamps", "fire", "sandbox effects", "scripts"};
+		static const char* const sourceNames[] = {"other", "objects", "hot spots", "headlamps", "tracers", "scenery lamps", "fire", "sandbox effects", "scripts", "unit outlines"};
 		static_assert(std::size(sourceNames) == static_cast<size_t>(LightSource::Count));
 		std::array<int, static_cast<size_t>(LightSource::Count)> counts{};
 		std::array<int, static_cast<size_t>(LightSource::Count)> cones{};
@@ -566,6 +548,151 @@ namespace {
 	}
 } // namespace
 
+namespace {
+	/// The gas overlay (SettingsMan::ShowSandboxGas): each cell of the gas grid in view tinted by its thickest gas, and the gas under the pointer by it.
+	void DrawGasOverlay() {
+		if (!g_SettingsMan.ShowSandboxGas() || !GasGrid::IsEnabled()) {
+			return;
+		}
+		static const ImU32 tints[GasGrid::KindCount] = {IM_COL32(150, 150, 150, 0), IM_COL32(120, 230, 60, 0), IM_COL32(255, 160, 60, 0), IM_COL32(240, 245, 255, 0)};
+		static const char* names[GasGrid::KindCount] = {"smoke", "toxic", "methane", "steam"};
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		constexpr float cell = 8.0F;
+		Box view = DebugDraw::ViewBox();
+		int across = static_cast<int>(view.GetWidth() / cell) + 2;
+		int down = static_cast<int>(view.GetHeight() / cell) + 2;
+		float startX = std::floor(view.GetCorner().m_X / cell) * cell;
+		float startY = std::floor(view.GetCorner().m_Y / cell) * cell;
+		// Far out, every other cell (or fewer) so the overlay costs little.
+		int step = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(across) * static_cast<float>(down) / 20000.0F))));
+		for (int row = 0; row < down; row += step) {
+			for (int column = 0; column < across; column += step) {
+				Vector at(startX + static_cast<float>(column) * cell, startY + static_cast<float>(row) * cell);
+				Vector middle = at + Vector(cell * 0.5F, cell * 0.5F);
+				int thickest = -1;
+				float most = 0.02F;
+				for (int kind = 0; kind < GasGrid::KindCount; ++kind) {
+					if (float thickness = GasGrid::Get(middle, static_cast<GasGrid::Kind>(kind)); thickness > most) {
+						most = thickness;
+						thickest = kind;
+					}
+				}
+				if (thickest < 0) {
+					continue;
+				}
+				ImU32 color = tints[thickest] | (static_cast<ImU32>(std::clamp(40.0F + most * 150.0F, 40.0F, 190.0F)) << IM_COL32_A_SHIFT);
+				ImVec2 corner = ToScreen(at);
+				float size = cell * static_cast<float>(step) / scale;
+				drawList->AddRectFilled(corner, ImVec2(corner.x + size, corner.y + size), color);
+			}
+		}
+		Vector pointer = DebugDraw::MouseScenePosition();
+		std::string text;
+		for (int kind = 0; kind < GasGrid::KindCount; ++kind) {
+			if (float thickness = GasGrid::Get(pointer, static_cast<GasGrid::Kind>(kind)); thickness >= 0.01F) {
+				char part[32];
+				std::snprintf(part, sizeof(part), "%s%s %.2f", text.empty() ? "" : "  ", names[kind], thickness);
+				text += part;
+			}
+		}
+		if (!text.empty()) {
+			const ImVec2& mouse = ImGui::GetIO().MousePos;
+			ImVec2 size = ImGui::CalcTextSize(text.c_str());
+			drawList->AddRectFilled(ImVec2(mouse.x + 14.0F, mouse.y + 30.0F), ImVec2(mouse.x + 18.0F + size.x, mouse.y + 30.0F + size.y), IM_COL32(10, 12, 10, 190));
+			drawList->AddText(ImVec2(mouse.x + 16.0F, mouse.y + 30.0F), IM_COL32(230, 230, 220, 255), text.c_str());
+		}
+	}
+
+	/// The air overlay (SettingsMan::ShowSandboxAir): the blast waves' pressure and movement in view with the area they are worked out over,
+	/// the wind as arrows with the places sheltered from it, and what the air is doing under the pointer.
+	void DrawAirOverlay() {
+		if (!g_SettingsMan.ShowSandboxAir() || !AirPressure::IsOn()) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		float cell = static_cast<float>(AirPressure::GetCellSize());
+		Box view = DebugDraw::ViewBox();
+		float viewLeft = view.GetCorner().m_X;
+		float viewTop = view.GetCorner().m_Y;
+		float viewRight = viewLeft + view.GetWidth();
+		float viewBottom = viewTop + view.GetHeight();
+
+		// The waves: only over the part of the map they are worked out over, and only what of it is in view.
+		if (int left, top, right, bottom; AirPressure::GetActiveArea(left, top, right, bottom)) {
+			float fromX = std::max(static_cast<float>(left), std::floor(viewLeft / cell) * cell);
+			float fromY = std::max(static_cast<float>(top), std::floor(viewTop / cell) * cell);
+			float toX = std::min(static_cast<float>(right), viewRight + cell);
+			float toY = std::min(static_cast<float>(bottom), viewBottom + cell);
+			int across = static_cast<int>((toX - fromX) / cell) + 1;
+			int down = static_cast<int>((toY - fromY) / cell) + 1;
+			// Far out, every other cell (or fewer) so the overlay costs little.
+			int step = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(std::max(across, 1)) * static_cast<float>(std::max(down, 1)) / 20000.0F))));
+			float size = cell * static_cast<float>(step) / scale;
+			for (float y = fromY; y < toY; y += cell * static_cast<float>(step)) {
+				for (float x = fromX; x < toX; x += cell * static_cast<float>(step)) {
+					Vector middle(x + cell * 0.5F, y + cell * 0.5F);
+					float pressure = AirPressure::GetPressure(middle);
+					if (std::abs(pressure) >= 0.05F) {
+						int alpha = static_cast<int>(std::clamp(30.0F + std::abs(pressure) * 25.0F, 30.0F, 180.0F));
+						ImU32 color = pressure > 0.0F ? IM_COL32(240, 70, 50, alpha) : IM_COL32(70, 120, 250, alpha);
+						ImVec2 corner = ToScreen(Vector(x, y));
+						drawList->AddRectFilled(corner, ImVec2(corner.x + size, corner.y + size), color);
+					}
+					// Which way the air moves, every other cell: a line from the middle as long as the push it gives.
+					if ((static_cast<int>(x / cell) / step) % 2 == 0 && (static_cast<int>(y / cell) / step) % 2 == 0) {
+						Vector flow = AirPressure::GetFlow(middle);
+						if (!flow.MagnitudeIsLessThan(0.1F)) {
+							Vector end = middle + flow.GetNormalized() * std::min(flow.GetMagnitude() * 3.0F, cell * 2.0F * static_cast<float>(step));
+							drawList->AddLine(ToScreen(middle), ToScreen(end), IM_COL32(255, 240, 200, 200), 1.0F);
+						}
+					}
+				}
+			}
+			drawList->AddRect(ToScreen(Vector(static_cast<float>(left), static_cast<float>(top))), ToScreen(Vector(static_cast<float>(right), static_cast<float>(bottom))), IM_COL32(250, 220, 60, 200), 0.0F, 0, 1.5F);
+		}
+
+		// The wind: an arrow every 48 pixels of open air, the way and as hard as it carries things, or an orange dot where ground upwind shelters it.
+		float wind = AirPressure::GetWind();
+		if (std::abs(wind) >= 0.02F) {
+			constexpr float spacing = 48.0F;
+			float gap = spacing * std::max(1.0F, std::ceil(view.GetWidth() / spacing / 40.0F));
+			for (float y = std::floor(viewTop / gap) * gap + gap * 0.5F; y < viewBottom; y += gap) {
+				for (float x = std::floor(viewLeft / gap) * gap + gap * 0.5F; x < viewRight; x += gap) {
+					Vector at(x, y);
+					if (g_SceneMan.GetTerrMatter(at.GetFloorIntX(), at.GetFloorIntY()) != g_MaterialAir) {
+						continue;
+					}
+					ImVec2 point = ToScreen(at);
+					if (AirPressure::IsSheltered(at, wind)) {
+						drawList->AddCircleFilled(point, 3.0F, IM_COL32(250, 150, 50, 200));
+						continue;
+					}
+					float length = std::clamp(std::abs(wind), 0.1F, 2.0F) * 14.0F;
+					float side = wind > 0.0F ? 1.0F : -1.0F;
+					ImVec2 tip(point.x + side * length * 0.5F, point.y);
+					ImVec2 tail(point.x - side * length * 0.5F, point.y);
+					drawList->AddLine(tail, tip, IM_COL32(150, 220, 255, 190), 1.5F);
+					drawList->AddTriangleFilled(tip, ImVec2(tip.x - side * 5.0F, tip.y - 3.5F), ImVec2(tip.x - side * 5.0F, tip.y + 3.5F), IM_COL32(150, 220, 255, 190));
+				}
+			}
+		}
+
+		// Under the pointer.
+		Vector pointer = DebugDraw::MouseScenePosition();
+		float pressure = AirPressure::GetPressure(pointer);
+		Vector flow = AirPressure::GetFlow(pointer);
+		char text[160];
+		std::snprintf(text, sizeof(text), "pressure %.2f  flow %.2f, %.2f  wind %.2f%s  (%d wave cells)", pressure, flow.m_X, flow.m_Y, wind, std::abs(wind) >= 0.02F && AirPressure::IsSheltered(pointer, wind) ? " sheltered" : "", AirPressure::GetActiveCells());
+		const ImVec2& mouse = ImGui::GetIO().MousePos;
+		ImVec2 textSize = ImGui::CalcTextSize(text);
+		float below = g_SettingsMan.ShowSandboxGas() ? 48.0F : 30.0F;
+		drawList->AddRectFilled(ImVec2(mouse.x + 14.0F, mouse.y + below), ImVec2(mouse.x + 18.0F + textSize.x, mouse.y + below + textSize.y), IM_COL32(10, 12, 10, 190));
+		drawList->AddText(ImVec2(mouse.x + 16.0F, mouse.y + below), IM_COL32(230, 230, 220, 255), text);
+	}
+} // namespace
+
 void Sandbox::DrawDebug() {
 	if (!g_ActivityMan.GetActivity() || !g_SceneMan.GetScene()) {
 		return;
@@ -573,6 +700,8 @@ void Sandbox::DrawDebug() {
 	DrawOrdersOverlay();
 	DrawSimState();
 	DrawEffectsOverlay();
+	DrawGasOverlay();
+	DrawAirOverlay();
 	DrawSelectionCameraOverlay();
 	DrawPaintAudit();
 	DrawAutoBattleColony();

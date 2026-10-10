@@ -13,6 +13,10 @@
 #include "Actor.h"
 #include "SLTerrain.h"
 #include "FluidSim.h"
+#include "TerrainFire.h"
+#include "MOPixel.h"
+#include "MOSParticle.h"
+#include "AEmitter.h"
 #include "PieMenu.h"
 #include "Serializable.h"
 #include "System.h"
@@ -23,20 +27,9 @@
 #include "tracy/Tracy.hpp"
 
 #include <array>
-#include <mutex>
 #include "Texture.h"
 
 using namespace RTE;
-
-namespace {
-	/// Locks for the number, string and object values. The AI scripts run on worker threads, one per Lua state, and since AC-2 and AC-7 they read and write the
-	/// values of other units than their own (a medic marks the friend it is going to, and checks a friend falling back to one), so two
-	/// threads could change, or change and read, one unit's map at once and crash. One of a few locks, picked by the object's address.
-	std::array<std::mutex, 64> s_NumberValueLocks;
-	std::mutex& NumberValueLock(const void* object) {
-		return s_NumberValueLocks[(reinterpret_cast<uintptr_t>(object) >> 6) % s_NumberValueLocks.size()];
-	}
-} // namespace
 
 AbstractClassInfo(MovableObject, SceneObject);
 
@@ -94,6 +87,7 @@ void MovableObject::Clear() {
 	m_AlreadyHitBy.clear();
 	m_VelOscillations = 0;
 	m_ToSettle = false;
+	m_FromBody = false;
 	m_ToDelete = false;
 	m_HUDVisible = true;
 	m_IsTraveling = false;
@@ -119,6 +113,7 @@ void MovableObject::Clear() {
 	m_EffectStartStrength = 128;
 	m_EffectStopStrength = 128;
 	m_EffectAlwaysShows = false;
+	m_SparkGlow = false;
 	m_PostEffectEnabled = false;
 	m_LightColor.SetRGB(255, 255, 255);
 	m_LightRadius = 0.0F;
@@ -264,6 +259,7 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_pMOToNotHit = reference.m_pMOToNotHit;
 	m_MOIgnoreTimer = reference.m_MOIgnoreTimer;
 	m_MissionCritical = reference.m_MissionCritical;
+	m_FromBody = reference.m_FromBody;
 	m_CanBeSquished = reference.m_CanBeSquished;
 	m_HUDVisible = reference.m_HUDVisible;
 	m_PostEffectEnabled = reference.m_PostEffectEnabled;
@@ -309,6 +305,7 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_EffectStartStrength = reference.m_EffectStartStrength;
 	m_EffectStopStrength = reference.m_EffectStopStrength;
 	m_EffectAlwaysShows = reference.m_EffectAlwaysShows;
+	m_SparkGlow = reference.m_SparkGlow;
 	m_RemoveOrphanTerrainRadius = reference.m_RemoveOrphanTerrainRadius;
 	m_RemoveOrphanTerrainMaxArea = reference.m_RemoveOrphanTerrainMaxArea;
 	m_RemoveOrphanTerrainRate = reference.m_RemoveOrphanTerrainRate;
@@ -324,12 +321,9 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_SimUpdatesBetweenScriptedUpdates = reference.m_SimUpdatesBetweenScriptedUpdates;
 	m_SimUpdatesSinceLastScriptedUpdate = reference.m_SimUpdatesSinceLastScriptedUpdate;
 
-	{
-		std::scoped_lock lock(NumberValueLock(&reference));
-		m_StringValueMap = reference.m_StringValueMap;
-		m_NumberValueMap = reference.m_NumberValueMap;
-		m_ObjectValueMap = reference.m_ObjectValueMap;
-	}
+	m_StringValueMap = reference.m_StringValueMap;
+	m_NumberValueMap = reference.m_NumberValueMap;
+	m_ObjectValueMap = reference.m_ObjectValueMap;
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
 	g_MovableMan.RegisterObject(this);
@@ -456,6 +450,7 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 		m_EffectStopStrength = std::floor((float)255 * strength);
 	});
 	MatchProperty("EffectAlwaysShows", { reader >> m_EffectAlwaysShows; });
+	MatchProperty("SparkGlow", { reader >> m_SparkGlow; });
 	MatchProperty("DamageOnCollision", { reader >> m_DamageOnCollision; });
 	MatchProperty("DamageOnPenetration", { reader >> m_DamageOnPenetration; });
 	MatchProperty("WoundDamageMultiplier", { reader >> m_WoundDamageMultiplier; });
@@ -581,6 +576,8 @@ int MovableObject::Save(Writer& writer) const {
 	writer << (float)m_EffectStopStrength / 255.0f;
 	writer.NewProperty("EffectAlwaysShows");
 	writer << m_EffectAlwaysShows;
+	writer.NewProperty("SparkGlow");
+	writer << m_SparkGlow;
 	writer.NewProperty("DamageOnCollision");
 	writer << m_DamageOnCollision;
 	writer.NewProperty("DamageOnPenetration");
@@ -596,22 +593,12 @@ int MovableObject::Save(Writer& writer) const {
 	writer.NewProperty("SimUpdatesBetweenScriptedUpdates");
 	writer << m_SimUpdatesBetweenScriptedUpdates;
 
-	std::unordered_map<std::string, double> numberValues;
-	{
-		std::scoped_lock lock(NumberValueLock(this));
-		numberValues = m_NumberValueMap;
-	}
-	for (const auto& [key, value]: numberValues) {
+	for (const auto& [key, value]: m_NumberValueMap) {
 		writer.ObjectStart("AddCustomValue = NumberValue");
 		writer.NewPropertyWithValue(key, value);
 	}
 
-	std::unordered_map<std::string, std::string> stringValues;
-	{
-		std::scoped_lock lock(NumberValueLock(this));
-		stringValues = m_StringValueMap;
-	}
-	for (const auto& [key, value]: stringValues) {
+	for (const auto& [key, value]: m_StringValueMap) {
 		writer.ObjectStart("AddCustomValue = StringValue");
 		writer.NewPropertyWithValue(key, value);
 	}
@@ -1196,8 +1183,7 @@ int MovableObject::UpdateScripts() {
 	return status;
 }
 
-std::string MovableObject::GetStringValue(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
+const std::string& MovableObject::GetStringValue(const std::string& key) const {
 	auto itr = m_StringValueMap.find(key);
 	if (itr == m_StringValueMap.end()) {
 		return ms_EmptyString;
@@ -1207,7 +1193,6 @@ std::string MovableObject::GetStringValue(const std::string& key) const {
 }
 
 std::string MovableObject::GetEncodedStringValue(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_StringValueMap.find(key);
 	if (itr == m_StringValueMap.end()) {
 		return ms_EmptyString;
@@ -1217,7 +1202,6 @@ std::string MovableObject::GetEncodedStringValue(const std::string& key) const {
 }
 
 double MovableObject::GetNumberValue(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_NumberValueMap.find(key);
 	if (itr == m_NumberValueMap.end()) {
 		return 0.0;
@@ -1226,8 +1210,16 @@ double MovableObject::GetNumberValue(const std::string& key) const {
 	return itr->second;
 }
 
+double MovableObject::GetPublishedNumberValue(const std::string& key) const {
+	auto itr = m_PublishedNumberValueMap.find(key);
+	return itr == m_PublishedNumberValueMap.end() ? 0.0 : itr->second;
+}
+
+bool MovableObject::PublishedNumberValueExists(const std::string& key) const {
+	return m_PublishedNumberValueMap.find(key) != m_PublishedNumberValueMap.end();
+}
+
 Entity* MovableObject::GetObjectValue(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
 	auto itr = m_ObjectValueMap.find(key);
 	if (itr == m_ObjectValueMap.end()) {
 		return nullptr;
@@ -1237,52 +1229,42 @@ Entity* MovableObject::GetObjectValue(const std::string& key) const {
 }
 
 void MovableObject::SetStringValue(const std::string& key, const std::string& value) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap[key] = value;
 }
 
 void MovableObject::SetEncodedStringValue(const std::string& key, const std::string& value) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap[key] = base64_encode(value, true);
 }
 
 void MovableObject::SetNumberValue(const std::string& key, double value) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_NumberValueMap[key] = value;
 }
 
 void MovableObject::SetObjectValue(const std::string& key, Entity* value) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_ObjectValueMap[key] = value;
 }
 
 void MovableObject::RemoveStringValue(const std::string& key) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_StringValueMap.erase(key);
 }
 
 void MovableObject::RemoveNumberValue(const std::string& key) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_NumberValueMap.erase(key);
 }
 
 void MovableObject::RemoveObjectValue(const std::string& key) {
-	std::scoped_lock lock(NumberValueLock(this));
 	m_ObjectValueMap.erase(key);
 }
 
 bool MovableObject::StringValueExists(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
 	return m_StringValueMap.find(key) != m_StringValueMap.end();
 }
 
 bool MovableObject::NumberValueExists(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
 	return m_NumberValueMap.find(key) != m_NumberValueMap.end();
 }
 
 bool MovableObject::ObjectValueExists(const std::string& key) const {
-	std::scoped_lock lock(NumberValueLock(this));
 	return m_ObjectValueMap.find(key) != m_ObjectValueMap.end();
 }
 
@@ -1421,7 +1403,16 @@ bool MovableObject::DrawToTerrain(SLTerrain* terrain) {
 void MovableObject::SetPostScreenEffectToDraw() const {
 	if (m_AgeTimer.GetElapsedSimTimeMS() >= m_EffectStartTime && (m_EffectStopTime == 0 || !m_AgeTimer.IsPastSimMS(m_EffectStopTime))) {
 		if (m_EffectAlwaysShows || !g_SceneMan.ObscuredPoint(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY())) {
-			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS()), m_EffectRotAngle);
+			float strength = Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS());
+			if (m_SparkGlow) {
+				// A spark's glow and the light it casts follow Spark lights, and go with the sparks when they're turned off.
+				const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+				strength *= lighting.EffectsSparks > 0.0F ? lighting.SparkLights : 0.0F;
+				if (strength < 1.0F) {
+					return;
+				}
+			}
+			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle);
 		}
 	}
 }
@@ -1447,4 +1438,28 @@ void MovableObject::AddHeatAt(const Vector& offset, float heat, float radius) {
 	} else if (coolest && coolest->Heat < heat) {
 		*coolest = {offset, std::min(heat, 1.0F), radius};
 	}
+}
+
+bool MovableObject::IsBullet() const {
+	return m_HitsMOs && (dynamic_cast<const MOPixel*>(this) || dynamic_cast<const MOSParticle*>(this)) && !TerrainFire::IsFireSource(this);
+}
+
+bool MovableObject::PassesTreeAsShot(unsigned char material) const {
+	if (!TerrainTrees::IsTreeMaterial(material) || m_IgnoreTerrain) {
+		return false;
+	}
+	const MovableObject* root = GetRootParent();
+	if (root->IsActor() || root->IsDevice()) {
+		return false;
+	}
+	if (root->IsBullet()) {
+		// A bullet goes past a tree, but some are strays that strike it. Which, is fixed for each bullet, by its number.
+		unsigned int roll = (static_cast<unsigned int>(root->m_UniqueID) * 2654435761u) >> 7;
+		return static_cast<int>(roll % 100) >= TerrainTrees::StrayBulletPercent();
+	}
+	// A rocket in flight clears a tree's trunk, so trees give cover from them, but its leaves stop it.
+	if (TerrainTrees::IsTrunk(material) && m_HitsMOs && dynamic_cast<const AEmitter*>(root) && root == this && root->m_Vel.MagnitudeIsGreaterThan(10.0F)) {
+		return true;
+	}
+	return false;
 }

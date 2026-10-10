@@ -5,6 +5,7 @@
 #include "glad/gl.h"
 #include "glm/glm.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <list>
@@ -229,6 +230,7 @@ namespace RTE {
 		DebugLightCounts m_DebugLightCounts; //!< Their counts.
 		glm::vec2 m_SunDirection{0.0F, -1.0F}; //!< Unit vector towards the sun (or the moon at night) in scene pixels, y down, this frame.
 		float m_SunShadowStrength = 0.0F; //!< Sun shadow strength after time of day and weather, this frame.
+		float m_BackgroundShadowStrength = 0.0F; //!< How dark the terrain's shadows on the background are after time of day and weather, this frame (LightingSettings::BackgroundShadows).
 		float m_SunDiscStrength = 0.0F; //!< How bright the sun's disc is in the sky this frame: none at night, fading at the horizon and under weather.
 		float m_SunArc = 0.0F; //!< Where the sun is along its path, -1 rising to 1 setting.
 		float m_CloudDrift = 0.0F; //!< How far the clouds have drifted with the wind, in scene pixels.

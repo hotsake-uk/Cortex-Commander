@@ -13,7 +13,7 @@ function SandboxArmiesScript:Log(text)
 end
 
 function SandboxArmiesScript:UpdateScript()
-	-- A squad dropped by dropship, an auto battle between two factions, and the dropped squad commanded across the map.
+	-- A squad dropped by dropship, a battle between two factions (the Battle Director), and the dropped squad commanded across the map.
 	local t = self.timer.ElapsedSimTimeMS;
 	local origin = CameraMan:GetOffset(0);
 	local w = FrameMan.PlayerScreenWidth;
@@ -22,10 +22,13 @@ function SandboxArmiesScript:UpdateScript()
 		self.stage = 1;
 		self.dropX = origin.X + w * 0.5;
 		self:Log("drop " .. tostring(SandboxDo("Drop squad", Vector(self.dropX, 0), 0, 0, 3, "Soldier Light")));
-		SandboxAutoBattleSide(1, "Browncoats", 2500);
-		SandboxAutoBattleSide(2, "Techion", 2500);
-		SandboxStartAutoBattle();
-		self:Log("auto battle started");
+		-- Green and Blue attack, a dropship of five every 15 seconds each, until their 2500 oz are spent.
+		SandboxBattleTeam(1, "Browncoats", 0, 2500);
+		SandboxBattleTeam(2, "Techion", 0, 2500);
+		SandboxBattleDrops(1, 0, 1, 15, 5, false);
+		SandboxBattleDrops(2, 0, 1, 15, 5, false);
+		SandboxBattleStart();
+		self:Log("battle started");
 	elseif self.stage == 1 and t > 14000 then
 		self.stage = 2;
 		local red = nil;

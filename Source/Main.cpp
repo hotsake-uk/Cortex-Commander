@@ -56,11 +56,15 @@
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
+#include "AirPressure.h"
 #include "SmokeGrid.h"
 #include "Sandbox.h"
 #include "ActionMenu.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
+#include "RopeSim.h"
+#include "UnitSpeech.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -305,11 +309,15 @@ void PollSDLEvents() {
 	SDL_Event sdlEvent;
 	// Commands from a companion program on this computer (the Workbench), if the link was asked for.
 	ControlLink::Update();
+	// A setting changed on any page is written straight away, so it isn't lost if the game doesn't get to quit cleanly.
+	g_SettingsMan.SaveSettingsIfChanged();
 	while (SDL_PollEvent(&sdlEvent)) {
 		// Clicks, scrolls and typing aimed at a debug window shouldn't also reach the game (releases always do, so nothing gets stuck down).
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
 		// Function keys (debug window toggles, quicksave and so on) always reach the game, so a focused debug window can still be closed with its key.
-		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12;
+		// So does Tab, which puts the tool windows away and back: a floating or large sandbox window that had the keyboard took it for moving between its
+		// controls, so it only went away when docked at the side.
+		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && ((sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12) || sdlEvent.key.scancode == SDL_SCANCODE_TAB);
 		// In the game's own menus (the pause menu over a game) the menu has every click and key: the tool windows aren't drawn there, and
 		// what they wanted is from the last game frame. (A sandbox tool left in hand, or a tool window that had the keyboard, took the pause
 		// menu's clicks for the world under it, so it could only be used from a unit, T-14.)
@@ -354,7 +362,11 @@ void PollSDLEvents() {
 			default:
 				break;
 		}
-		ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+		// Tab (without Ctrl or Alt) is the game's, not for moving between a tool window's controls.
+		bool plainTab = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode == SDL_SCANCODE_TAB && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI));
+		if (!plainTab) {
+			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+		}
 		// Debug window toggles work every frame, even while the simulation is frozen (photo mode) and input otherwise isn't processed.
 		// Tab in a game is the one key for all of them: every tool window away (in the Sandbox game mode, into your character: Shift+Tab puts it down where the
 		// mouse points), or all of them back. Alt+Tab and Ctrl+Tab are left alone.
@@ -366,6 +378,10 @@ void PollSDLEvents() {
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_P && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
 		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 			Sandbox::TogglePlay((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
+		}
+		// Pause/Break: holds the world still until pressed again, with the sandbox tools open or closed.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_PAUSE && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen()) {
+			g_DebugMan.ToggleUserPause();
 		}
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {
 			if (sdlEvent.key.scancode == SDL_SCANCODE_F6) {
@@ -571,10 +587,18 @@ void RunGameLoop() {
 				ActorFire::Update();
 				logStages.Next("Sim: terrain collapse");
 				TerrainCollapse::Update();
+				logStages.Next("Sim: air pressure and wind");
+				AirPressure::Update();
 				logStages.Next("Sim: liquids");
 				FluidSim::Update();
+				logStages.Next("Sim: gas");
+				GasGrid::Update();
 				logStages.Next("Sim: units in water");
 				ActorWater::Update();
+				logStages.Next("Sim: ropes");
+				RopeSim::Update();
+				logStages.Next("Sim: unit speech");
+				UnitSpeech::UpdateWorld();
 			}
 
 			// CCCP_TIME_SCALE: the simulation run faster than real time (3 for three times), for test runs; set once the game is going.
@@ -736,6 +760,10 @@ int main(int argc, char** argv) {
 	g_PresetMan.LoadAllDataModules();
 	s_StartupTiming.Mark("loading the data modules (Data, Mods, Userdata)");
 
+	// After the modules, so a custom weather in it is found by name.
+	g_SettingsMan.LoadStartupPreset();
+	s_StartupTiming.Mark("preset to load at start");
+
 	ControlLink::Start();
 	s_StartupTiming.Mark("control link");
 
@@ -769,6 +797,8 @@ int main(int argc, char** argv) {
 	g_ThreadMan.GetPriorityThreadPool().wait_for_tasks();
 	g_ThreadMan.GetBackgroundThreadPool().wait_for_tasks();
 
+	// Keep anything changed in the last second, before the every-second check saw it.
+	g_SettingsMan.UpdateSettingsFile();
 	DestroyManagers();
 
 	SDL_Quit();

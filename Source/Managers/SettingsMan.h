@@ -45,7 +45,11 @@ namespace RTE {
 		/// Overwrites the settings file to save changes made from within the game.
 		void UpdateSettingsFile() const;
 
-		/// Saves every setting that can be tuned while the game runs (the look, time and weather, water, fire, falling ground) as a named preset, a file in Userdata/Presets.
+		/// Writes the settings file when any setting differs from what was last written, so a change on any page is on disk within a second, not only when a menu closes or the game quits cleanly.
+		/// Call once a frame; it looks at most once a second.
+		void SaveSettingsIfChanged() const;
+
+		/// Saves every setting in the settings panel (the look, time and weather, water, fire, falling ground, the AI, the HUD, the overlays) as a named preset, a file in Userdata/Presets.
 		/// @param name The name. Characters that can't be in a file's name are dropped.
 		/// @return The name it was saved under, or nothing if it couldn't be.
 		std::string SavePreset(const std::string& name) const;
@@ -61,8 +65,22 @@ namespace RTE {
 		/// Gets the names of the presets there are, in order.
 		std::vector<std::string> ListPresets() const;
 
-		/// Writes the settings that can be tuned while the game runs: what a preset holds, and part of the settings file.
-		void SaveTunables(Writer& writer, const struct LightingSettings& lighting) const;
+		/// Gets the preset loaded every time the game starts, over Settings.ini.
+		/// @return The preset's name, or nothing for none.
+		const std::string& GetStartupPreset() const { return m_StartupPreset; }
+
+		/// Sets the preset loaded every time the game starts. Kept in Settings.ini.
+		/// @param name The preset's name, or nothing for none.
+		void SetStartupPreset(const std::string& name);
+
+		/// Loads the preset set to load at start, if there is one. Call once at start-up, after the data modules are loaded.
+		/// The panel's settings for the moment (game speed, frozen, the AI paused, debug views) are left as they are, so the game doesn't start in them.
+		/// @return Whether a preset was loaded.
+		bool LoadStartupPreset();
+
+		/// Writes every setting in the settings panel: what a preset holds, and part of the settings file.
+		/// @param forPreset Whether it's for a preset, which also holds what is only for the moment (game speed, the AI paused, the debug view, frozen simulation...) and says which speech is on as well as off.
+		void SaveTunables(Writer& writer, const struct LightingSettings& lighting, bool forPreset) const;
 #pragma endregion
 
 #pragma region Engine Settings
@@ -198,8 +216,51 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
+		/// Whether everything that came off a unit and isn't flesh or bone (metal plating, gear, robot parts) settles into the terrain as Flesh Scraps,
+		/// keeping its colours, as the flesh does (see Material::GetTerrainSettleMaterial).
+		bool BodyGearSettlesAsScraps() const { return m_BodyGearSettlesAsScraps; }
+
+		/// Sets whether what came off a unit settles as Flesh Scraps. Remains already in the terrain stay as they settled.
+		void SetBodyGearSettlesAsScraps(bool enable) { m_BodyGearSettlesAsScraps = enable; }
+
+		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
+		/// Takes effect when a scene is next loaded.
+		bool NoSceneWrap() const { return m_NoSceneWrap; }
+
 		/// How strongly fire pins units down and shakes them (Actor::GetSuppression and GetMorale): 0 for not at all, 1 as designed, 2 double.
 		float AISuppression() const { return m_AISuppression; }
+
+		/// How readily units with a digger tunnel through ground rather than go round it (PathFinder's dig edges): 0 only when there is no
+		/// other way (each node dug priced at the material's integrity, as before), 1 as designed (a short cut through soft ground beats a long
+		/// way round), 2 twice as readily.
+		float AIDigWillingness() const { return m_AIDigWillingness; }
+
+		/// How much the routes of units a game mode wants kept safe (Actor::GetRouteThreatAvoidance: a capture the flag carrier) keep clear of
+		/// enemies (PathFinder::ThreatCost): 0 not at all, 1 as designed (a way past a crowd of enemies loses to a longer one past none; one
+		/// sentry is skirted only when going round is short), 2 twice as much. Other units always take the shortest way.
+		float AIThreatAvoidance() const { return m_AIThreatAvoidance; }
+		/// How reckless AI units are on the move, 0 (careful) to 1 (reckless); 0.5 is as designed. It scales how long a unit steadies itself
+		/// before it jets, how much fuel it waits for, and how much the route search shies from hard jumps and long drops (see AIMoveCaution).
+		float AIRecklessness() const { return m_AIRecklessness; }
+
+		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
+		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
+
+		/// Gets the percentage, 0 to 100, of wounds (hits, and limbs torn off) that keep bleeding until the unit bleeds out or is patched up,
+		/// rather than stopping when their own definition says. 0, the default, is every wound as it is defined.
+		float BleedOutChance() const { return m_BleedOutChance; }
+
+		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
+		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
+
+		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
+		float AIMoveCaution() const { return std::pow(2.0F, (0.5F - m_AIRecklessness) * 2.0F); }
+
+		/// Whether AI units stand still and upright before a jetpack climb or jump (on, as designed), or take off mid-stride.
+		bool AISteadiesBeforeJet() const { return m_AISteadyBeforeJet; }
+
+		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
+		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
 
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
 		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
@@ -265,12 +326,12 @@ namespace RTE {
 		void SetCombatOverlay(int which) { m_CombatOverlay = std::clamp(which, 0, 2); }
 
 		/// Gets what the world simulation overlay shows: 0 nothing, 1 moving liquid, 2 burning ground, 3 smoke thick enough to hide things,
-		/// 4 loose falling pieces of terrain, 5 the weather (wind and what's falling).
+		/// 4 loose falling pieces of terrain, 5 the weather (wind and what's falling), 6 ropes (how hard each is pulled, and where it's tied).
 		int WorldSimOverlay() const { return m_WorldSimOverlay; }
 
 		/// Sets what the world simulation overlay shows; see WorldSimOverlay.
-		/// @param which 0 to 5.
-		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 5); }
+		/// @param which 0 to 6.
+		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 6); }
 
 		/// Gets whether the sandbox's stroke log is on.
 		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }
@@ -295,6 +356,12 @@ namespace RTE {
 
 		/// Sets SandboxOrderGlyphs; see there.
 		void SetSandboxOrderGlyphs(int which) { m_SandboxOrderGlyphs = std::clamp(which, 0, 2); }
+
+		/// How the sandbox's Spawn tab shows what units and items are like (cost, health, mass, fire rate...): 0 not at all, 1 in the tooltip of the one under the pointer, 2 on every tile as well.
+		int SandboxSpawnStats() const { return m_SandboxSpawnStats; }
+
+		/// Sets SandboxSpawnStats; see there.
+		void SetSandboxSpawnStats(int which) { m_SandboxSpawnStats = std::clamp(which, 0, 2); }
 
 		/// Whether the sandbox pings where units of the selection's side come under fire (RC-7).
 		bool ShowSandboxAttackPings() const { return m_SandboxAttackPings; }
@@ -343,6 +410,18 @@ namespace RTE {
 
 		/// Sets whether the sandbox's incoming and effects overlay is on.
 		void SetShowSandboxEffects(bool show) { m_SandboxEffects = show; }
+
+		/// Gets whether the sandbox's gas overlay is on: each cell of the gas grid (SB-6) in view, tinted by the gas in it (methane too, which can't otherwise be seen).
+		bool ShowSandboxGas() const { return m_SandboxGas; }
+
+		/// Sets whether the sandbox's gas overlay is on.
+		void SetShowSandboxGas(bool show) { m_SandboxGas = show; }
+
+		/// Gets whether the sandbox's air overlay is on: the pressure and movement of blast waves (SB-5) in view, the area they are worked out over, and the wind and where it is sheltered.
+		bool ShowSandboxAir() const { return m_SandboxAir; }
+
+		/// Sets whether the sandbox's air overlay is on.
+		void SetShowSandboxAir(bool show) { m_SandboxAir = show; }
 
 		/// Gets whether the sandbox's sim state readout is on: what is pausing the world, the AI pause, sim updates per drawn frame, the sandbox's queued and applied tool uses and steps, and the time scale.
 		bool ShowSandboxSimState() const { return m_SandboxSimState; }
@@ -403,8 +482,30 @@ namespace RTE {
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
 
+		/// Sets whether every scene is played without wrapping horizontally. Takes effect when a scene is next loaded.
+		void SetNoSceneWrap(bool enable) { m_NoSceneWrap = enable; }
+
 		/// Sets how strongly fire pins units down and shakes them, 0 to 2.
 		void SetAISuppression(float scale) { m_AISuppression = std::clamp(scale, 0.0F, 2.0F); }
+
+		/// Sets how readily units with a digger tunnel; see AIDigWillingness.
+		void SetAIDigWillingness(float scale) { m_AIDigWillingness = std::clamp(scale, 0.0F, 2.0F); }
+		/// Sets how much safe-route units keep clear of enemies, 0 to 2; see AIThreatAvoidance.
+		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
+		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
+		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
+		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
+		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
+		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
+		void SetBleedOutChance(float percent) { m_BleedOutChance = std::clamp(percent, 0.0F, 100.0F); }
+		/// Sets which digger those units are handed; see AISpawnDiggerType.
+		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
+
+		/// Sets whether AI units steady themselves before they jet.
+		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
+
+		/// Sets whether AI units wait for fuel before they jet.
+		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
 
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
@@ -628,14 +729,17 @@ namespace RTE {
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
+		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
-		bool m_SandboxAutoBattle; //!< Whether the sandbox's auto battle and colony readout is on (see ShowSandboxAutoBattle).
+		bool m_SandboxAutoBattle; //!< Whether the sandbox's battle and colony readout is on (see ShowSandboxAutoBattle). (Named for the auto battle the Battle Director replaced, so settings files keep it.)
 		bool m_SandboxPaintAudit; //!< Whether the sandbox's terrain paint audit is on (see ShowSandboxPaintAudit).
 		bool m_SandboxSelectionCamera; //!< Whether the sandbox's selection and camera overlay is on (see ShowSandboxSelectionCamera).
 		bool m_SandboxEffects; //!< Whether the sandbox's incoming and effects overlay is on (see ShowSandboxEffects).
+		bool m_SandboxGas; //!< Whether the sandbox's gas overlay is on (see ShowSandboxGas).
+		bool m_SandboxAir; //!< Whether the sandbox's air overlay is on (see ShowSandboxAir).
 		bool m_SandboxSimState; //!< Whether the sandbox's sim state readout is on (see ShowSandboxSimState).
 		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
 		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).
@@ -647,8 +751,18 @@ namespace RTE {
 		bool m_ShowOrderLabels; //!< Whether the order labels overlay is on (see ShowOrderLabels).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
+		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
+		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
+		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
+		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
+		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
+		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
+		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
+		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
+		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
+		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.
@@ -700,6 +814,8 @@ namespace RTE {
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
 
 		std::string m_SettingsPath; //!< String containing the Path to the Settings.ini file.
+		mutable std::string m_LastWrittenSettings; //!< The settings file's text as this game last wrote it, to tell when a setting has changed since.
+		std::string m_StartupPreset; //!< The preset loaded every time the game starts, over Settings.ini. Nothing for none.
 
 		/// Clears all the member variables of this SettingsMan, effectively resetting the members of this abstraction level only.
 		void Clear();

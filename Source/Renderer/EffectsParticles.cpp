@@ -1,4 +1,5 @@
 #include "EffectsParticles.h"
+#include "AirPressure.h"
 #include "Camera.h"
 #include "Constants.h"
 #include "PostProcessMan.h"
@@ -9,6 +10,7 @@
 #include "Material.h"
 #include "Color.h"
 #include "Draw.h"
+#include "RenderMan.h"
 #include "Texture.h"
 #include "glad/gl.h"
 
@@ -37,6 +39,22 @@ namespace {
 		Froth //!< Froth on a liquid's surface where something splashed in or the level rose: a pale bubbly puff that sits on it, swells a little and fades over seconds.
 	};
 
+	/// Which of the effect layer settings (LightingSettings::EffectLayer) a kind of particle goes by.
+	LightingSettings::EffectLayer LayerOf(Kind kind) {
+		switch (kind) {
+			case Kind::Spark: return LightingSettings::LayerSparks;
+			case Kind::Debris: return LightingSettings::LayerDebris;
+			case Kind::Dust: return LightingSettings::LayerDust;
+			case Kind::Ember: return LightingSettings::LayerEmbers;
+			case Kind::Fire: return LightingSettings::LayerFire;
+			case Kind::Smoke: return LightingSettings::LayerSoftSmoke;
+			case Kind::Mist: return LightingSettings::LayerMist;
+			case Kind::Droplet: return LightingSettings::LayerSplash;
+			case Kind::Froth: return LightingSettings::LayerFroth;
+		}
+		return LightingSettings::LayerSoftSmoke;
+	}
+
 	struct Particle {
 		glm::vec2 Position; //!< Scene pixels.
 		glm::vec2 Velocity; //!< Pixels per second.
@@ -47,6 +65,8 @@ namespace {
 		Kind Type;
 		float Angle = 0.0F; //!< How a puff's soft shape is turned, and whether it is mirrored: each one its own, so no two look alike.
 		bool Mirrored = false;
+		float Opacity = 1.0F; //!< How solid a drop is drawn (a splash's under-layer: LightingSettings::SplashUnderOpacity).
+		bool Under = false; //!< A drop of a splash's under-layer, drawn before (under) every other drop and chip.
 	};
 
 	struct SpawnRequest {
@@ -59,6 +79,9 @@ namespace {
 		int EmitKind = -1; //!< A Kind to emit directly (mods), or -1.
 		int EmitCount = 0;
 		float EmitSpread = 0.0F;
+		float EmitSize = 1.0F; //!< How big emitted drops are drawn, in pixels across.
+		float EmitOpacity = 1.0F; //!< How solid emitted drops are.
+		bool EmitUnder = false; //!< Whether emitted drops are a splash's under-layer.
 	};
 
 	constexpr size_t c_MaxParticles = 8000;
@@ -126,9 +149,32 @@ namespace {
 		}
 	}
 
-	void SpawnFromRequest(const SpawnRequest& request, float amount) {
+	/// How many of each kind to spawn: sparks, dust and debris each have their own setting; everything else (embers, smoke, fire, spray,
+	/// drops and froth) follows the largest of the three, so it only goes when all three are off, as with the one setting before.
+	struct Amounts {
+		float Sparks;
+		float Dust;
+		float Debris;
+
+		float Others() const { return std::max({Sparks, Dust, Debris}); }
+
+		float For(Kind kind) const {
+			switch (kind) {
+				case Kind::Spark: return Sparks;
+				case Kind::Dust: return Dust;
+				case Kind::Debris: return Debris;
+				default: return Others();
+			}
+		}
+	};
+
+	void SpawnFromRequest(const SpawnRequest& request, const Amounts& amounts) {
 		if (request.EmitKind >= 0) {
 			Kind kind = static_cast<Kind>(request.EmitKind);
+			float amount = amounts.For(kind);
+			if (amount <= 0.0F) {
+				return;
+			}
 			float speed = glm::length(request.Velocity);
 			int count = std::max(static_cast<int>(std::round(static_cast<float>(request.EmitCount) * amount)), request.EmitCount > 0 ? 1 : 0);
 			for (int i = 0; i < count; ++i) {
@@ -163,9 +209,13 @@ namespace {
 						     RandomRange(2.0F, 4.5F) * std::max(froth.SplashFrothSize, 0.05F), request.MaterialColor ? color : glm::u8vec3(215, 238, 250), Kind::Froth});
 						break;
 					}
-					case Kind::Droplet:
-						Add({request.Position, velocity, 0.0F, RandomRange(1.2F, 2.4F), 1.0F, request.MaterialColor ? color : glm::u8vec3(150, 190, 230), Kind::Droplet});
+					case Kind::Droplet: {
+						Particle drop{request.Position, velocity, 0.0F, RandomRange(1.2F, 2.4F), request.EmitSize, request.MaterialColor ? color : glm::u8vec3(150, 190, 230), Kind::Droplet};
+						drop.Opacity = request.EmitOpacity;
+						drop.Under = request.EmitUnder;
+						Add(drop);
 						break;
+					}
 					default:
 						Add({request.Position, velocity, 0.0F, RandomRange(1.0F, 2.5F), 1.0F, request.MaterialColor ? color : glm::u8vec3(120, 110, 100), Kind::Debris});
 						break;
@@ -174,25 +224,29 @@ namespace {
 			return;
 		}
 		if (request.Ember) {
+			if (amounts.Others() <= 0.0F) {
+				return;
+			}
 			Add({request.Position, glm::vec2(RandomRange(-8.0F, 8.0F), RandomRange(-40.0F, -20.0F)), 0.0F, RandomRange(0.8F, 2.0F), 1.0F, glm::u8vec3(255, 160, 60), Kind::Ember});
 			return;
 		}
 		if (request.Energy > 0.0F) {
 			// Explosion: a burst of sparks, a ring of dust, and chips of whatever it went off against.
-			float scale = std::clamp(request.Energy / 6000.0F, 0.3F, 3.0F) * amount;
-			int sparkCount = static_cast<int>(40.0F * scale);
+			float energyScale = std::clamp(request.Energy / 6000.0F, 0.3F, 3.0F);
+			float scale = energyScale * amounts.Others();
+			int sparkCount = static_cast<int>(40.0F * energyScale * amounts.Sparks);
 			for (int i = 0; i < sparkCount; ++i) {
 				glm::vec2 direction = RandomDirection();
 				direction.y -= 0.35F;
-				Add({request.Position, glm::normalize(direction) * RandomRange(120.0F, 520.0F) * std::sqrt(scale), 0.0F, RandomRange(0.25F, 0.9F), 1.0F, glm::u8vec3(255, 220, 140), Kind::Spark});
+				Add({request.Position, glm::normalize(direction) * RandomRange(120.0F, 520.0F) * std::sqrt(energyScale * amounts.Sparks), 0.0F, RandomRange(0.25F, 0.9F), 1.0F, glm::u8vec3(255, 220, 140), Kind::Spark});
 			}
-			int dustCount = static_cast<int>(10.0F * scale);
+			int dustCount = static_cast<int>(10.0F * energyScale * amounts.Dust);
 			glm::u8vec3 dustColor(110, 100, 92);
 			int groundMaterial = g_SceneMan.GetTerrMatter(static_cast<int>(request.Position.x), static_cast<int>(request.Position.y + 6.0F));
 			if (groundMaterial != g_MaterialAir) {
 				glm::u8vec3 materialRGB = UnpackRGB(EffectsParticles::ColorToRGB(g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(groundMaterial))->GetColor()));
 				dustColor = glm::u8vec3(glm::mix(glm::vec3(materialRGB), glm::vec3(dustColor), 0.5F));
-				int chipCount = static_cast<int>(24.0F * scale);
+				int chipCount = static_cast<int>(24.0F * energyScale * amounts.Debris);
 				for (int i = 0; i < chipCount; ++i) {
 					glm::vec2 direction = RandomDirection();
 					direction.y = -std::abs(direction.y) - 0.3F;
@@ -200,7 +254,7 @@ namespace {
 				}
 			}
 			for (int i = 0; i < dustCount; ++i) {
-				glm::vec2 offset = RandomDirection() * RandomRange(2.0F, 12.0F) * std::sqrt(scale);
+				glm::vec2 offset = RandomDirection() * RandomRange(2.0F, 12.0F) * std::sqrt(energyScale * amounts.Dust);
 				Add({request.Position + offset, glm::normalize(offset + glm::vec2(0.0F, -2.0F)) * RandomRange(15.0F, 60.0F), 0.0F, RandomRange(1.5F, 3.5F), RandomRange(3.0F, 6.0F), dustColor, Kind::Dust});
 			}
 			// The fireball: balls of fire that swell and roll upwards, each leaving smoke that appears as it burns out and hangs in the air for a few seconds.
@@ -216,9 +270,9 @@ namespace {
 				unsigned char grey = static_cast<unsigned char>(RandomRange(38.0F, 62.0F));
 				Add({request.Position + offset, velocity * 0.6F, -fireLife * 0.6F, RandomRange(3.0F, 6.5F), size * 1.2F, glm::u8vec3(grey, grey, grey), Kind::Smoke});
 			}
-			if (groundMaterial != g_MaterialAir) {
+			if (groundMaterial != g_MaterialAir && amounts.Dust > 0.0F) {
 				// A ring of dust racing out along the ground either side.
-				int ringCount = static_cast<int>(9.0F * scale) + 2;
+				int ringCount = static_cast<int>(9.0F * energyScale * amounts.Dust) + 2;
 				for (int i = 0; i < ringCount; ++i) {
 					float side = (i % 2 == 0) ? 1.0F : -1.0F;
 					glm::vec2 velocity(side * RandomRange(90.0F, 260.0F) * reach, RandomRange(-25.0F, -5.0F));
@@ -235,15 +289,15 @@ namespace {
 		glm::vec2 back = -request.Velocity / speed;
 		glm::u8vec3 materialRGB = UnpackRGB(request.MaterialColor);
 		if (request.Hardness > 0.5F) {
-			int sparkCount = static_cast<int>(RandomRange(2.0F, 5.0F) * amount);
+			int sparkCount = static_cast<int>(RandomRange(2.0F, 5.0F) * amounts.Sparks);
 			for (int i = 0; i < sparkCount; ++i) {
 				glm::vec2 direction = glm::normalize(back + RandomDirection() * 0.9F);
 				Add({request.Position, direction * RandomRange(80.0F, 260.0F), 0.0F, RandomRange(0.15F, 0.45F), 1.0F, glm::u8vec3(255, 230, 170), Kind::Spark});
 			}
-		} else {
+		} else if (amounts.Dust > 0.0F) {
 			Add({request.Position + back * 2.0F, back * RandomRange(10.0F, 30.0F) + glm::vec2(0.0F, -8.0F), 0.0F, RandomRange(0.8F, 1.6F), RandomRange(2.0F, 3.5F), materialRGB, Kind::Dust});
 		}
-		int chipCount = static_cast<int>(RandomRange(1.0F, 4.0F) * amount);
+		int chipCount = static_cast<int>(RandomRange(1.0F, 4.0F) * amounts.Debris);
 		for (int i = 0; i < chipCount; ++i) {
 			glm::vec2 direction = glm::normalize(back + RandomDirection() * 0.7F + glm::vec2(0.0F, -0.4F));
 			Add({request.Position + back * 1.5F, direction * RandomRange(40.0F, 140.0F), 0.0F, RandomRange(0.8F, 2.0F), 1.0F, materialRGB, Kind::Debris});
@@ -383,6 +437,28 @@ bool EffectsParticles::Emit(const std::string& kind, const Vector& position, con
 	return true;
 }
 
+void EffectsParticles::EmitDroplets(const Vector& position, const Vector& velocity, float spread, int count, unsigned int colorRGB, float size, float opacity, bool under) {
+	if (count <= 0) {
+		return;
+	}
+	SpawnRequest request;
+	request.EmitKind = static_cast<int>(Kind::Droplet);
+	request.EmitCount = std::min(count, 200);
+	request.EmitSpread = std::clamp(spread, 0.0F, 1.0F);
+	request.Position = glm::vec2(position.m_X, position.m_Y);
+	request.Velocity = glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM;
+	request.Energy = 0.0F;
+	request.MaterialColor = colorRGB & 0xFFFFFF;
+	request.Hardness = 0.0F;
+	request.EmitSize = std::clamp(size, 1.0F, 4.0F);
+	request.EmitOpacity = std::clamp(opacity, 0.0F, 1.0F);
+	request.EmitUnder = under;
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Queue.size() < 2000) {
+		s_Queue.push_back(request);
+	}
+}
+
 void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocity, unsigned int materialColor, float hardness) {
 	// Only fast hits make visible chips and sparks.
 	if (velocity.GetSqrMagnitude() < 15.0F * 15.0F || s_ImpactBudget.load(std::memory_order_relaxed) <= 0) {
@@ -395,7 +471,8 @@ void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocit
 	s_Queue.push_back({false, glm::vec2(position.m_X, position.m_Y), glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM, 0.0F, materialColor, hardness});
 }
 
-void EffectsParticles::Update(float amount) {
+void EffectsParticles::Update(float sparks, float dust, float debris) {
+	Amounts amounts{sparks, dust, debris};
 	long long simUpdate = g_TimerMan.GetSimUpdateCount();
 	float seconds = s_LastSimUpdate >= 0 ? std::min(static_cast<float>(simUpdate - s_LastSimUpdate) * g_TimerMan.GetDeltaTimeSecs(), 0.1F) : 0.0F;
 	s_LastSimUpdate = simUpdate;
@@ -406,21 +483,57 @@ void EffectsParticles::Update(float amount) {
 		std::scoped_lock lock(s_QueueMutex);
 		requests.swap(s_Queue);
 	}
-	if (amount <= 0.0F || !g_SceneMan.GetScene()) {
+	if (amounts.Others() <= 0.0F || !g_SceneMan.GetScene()) {
 		s_Particles.clear();
 		return;
 	}
 	for (const SpawnRequest& request: requests) {
-		SpawnFromRequest(request, amount);
+		SpawnFromRequest(request, amounts);
 	}
 	if (seconds <= 0.0F) {
 		return;
 	}
 
-	float wind = g_PostProcessMan.GetLightingSettings().Wind;
+	// The air (SB-5) carries the light effects: the wind as Air & wind has it (off with it, scaled by its Wind strength), turning over
+	// behind ground upwind of them as the game's own smoke does, and a passing blast wave shoving them as it shoves smoke.
+	float windSpeed = AirPressure::GetWindSpeed();
+	float simUpdates = std::min(seconds / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F), 4.0F);
+	bool blasts = AirPressure::GetActiveCells() > 0;
+	auto windAt = [windSpeed](const Particle& particle) {
+		if (windSpeed == 0.0F) {
+			return 0.0F;
+		}
+		return AirPressure::IsSheltered(Vector(particle.Position.x, particle.Position.y), windSpeed) ? windSpeed * -0.15F : windSpeed;
+	};
+	auto blastPush = [blasts, simUpdates](Particle& particle, float share) {
+		if (blasts) {
+			Vector push = AirPressure::GetPush(Vector(particle.Position.x, particle.Position.y));
+			particle.Velocity += glm::vec2(push.m_X, push.m_Y) * (c_PPM * share * simUpdates);
+		}
+	};
 	constexpr float gravity = 9.8F * c_PPM;
 	for (Particle& particle: s_Particles) {
 		particle.Age += seconds;
+		float wind = 0.0F;
+		switch (particle.Type) {
+			case Kind::Ember:
+			case Kind::Smoke:
+			case Kind::Dust:
+				wind = windAt(particle);
+				blastPush(particle, 1.0F);
+				break;
+			case Kind::Fire:
+			case Kind::Mist:
+				wind = windAt(particle);
+				blastPush(particle, 0.6F);
+				break;
+			case Kind::Froth:
+				wind = windAt(particle);
+				blastPush(particle, 0.2F);
+				break;
+			default:
+				break;
+		}
 		if (particle.Type == Kind::Ember) {
 			// Embers float up on the heat, wobble, and drift with the wind.
 			particle.Velocity += (glm::vec2(wind * 0.5F + std::sin(particle.Age * 7.0F + particle.Life * 13.0F) * 15.0F, -30.0F) - particle.Velocity) * std::min(1.0F, seconds * 1.5F);
@@ -504,20 +617,32 @@ void EffectsParticles::Update(float amount) {
 }
 
 void EffectsParticles::Draw(const Camera& camera) {
-	for (const Particle& particle: s_Particles) {
-		if (particle.Type != Kind::Debris && particle.Type != Kind::Droplet) {
-			continue;
-		}
-		float remaining = 1.0F - particle.Age / particle.Life;
-		{
-			// Chips stay solid until the end of their life, then fade.
-			int alpha = static_cast<int>(255.0F * std::clamp(remaining * 4.0F, 0.0F, 1.0F));
-			RTE::Draw::Rectangle(FloatRect(std::floor(particle.Position.x), std::floor(particle.Position.y), 1.0F, 1.0F), Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha));
+	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
+	float previousZOffset = g_RenderMan.GetCurrentZOffset();
+	// Two passes: a splash's under-layer first, so every other drop and chip is drawn over it.
+	for (bool underPass: {true, false}) {
+		for (const Particle& particle: s_Particles) {
+			if ((particle.Type != Kind::Debris && particle.Type != Kind::Droplet) || particle.Under != underPass) {
+				continue;
+			}
+			float remaining = 1.0F - particle.Age / particle.Life;
+			// Chips stay solid until the end of their life, then fade. Drops bigger than a pixel are centred on where they are.
+			int alpha = static_cast<int>(255.0F * std::clamp(remaining * 4.0F, 0.0F, 1.0F) * std::clamp(particle.Opacity, 0.0F, 1.0F));
+			if (alpha <= 0) {
+				continue;
+			}
+			float size = particle.Type == Kind::Droplet ? std::clamp(std::round(particle.Size), 1.0F, 4.0F) : 1.0F;
+			float offset = std::floor((size - 1.0F) * 0.5F);
+			// In the effects layer the depth test puts it behind units and the ground in front, drawn before it.
+			g_RenderMan.SetCurrentZOffset(layers.Behind(LayerOf(particle.Type)) ? c_EffectsDepth : previousZOffset);
+			RTE::Draw::Rectangle(FloatRect(std::floor(particle.Position.x) - offset, std::floor(particle.Position.y) - offset, size, size), Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha));
 		}
 	}
+	g_RenderMan.SetCurrentZOffset(previousZOffset);
 }
 
 void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int height, std::vector<Spark>& sparks) {
+	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
@@ -540,14 +665,15 @@ void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int h
 		// Motion blurred streak: longer when fast.
 		if (particle.Type == Kind::Ember) {
 			float life = 1.0F - particle.Age / particle.Life;
-			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life)});
+			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life), layers.Behind(LightingSettings::LayerEmbers)});
 			continue;
 		}
-		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle)});
+		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle), layers.Behind(LightingSettings::LayerSparks)});
 	}
 }
 
 void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& puffs) {
+	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
@@ -569,9 +695,11 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		float remaining = 1.0F - particle.Age / particle.Life;
 		// Smoke comes in slowly as its fire dies; dust is there at once.
 		float fadeIn = std::clamp(particle.Age * (particle.Type == Kind::Smoke ? 2.5F : 6.0F), 0.0F, 1.0F);
+		// In the effects layer, behind units and the ground in front, or in front of everything (LightingSettings::Behind).
+		bool behind = layers.Behind(LayerOf(particle.Type));
 		if (particle.Type == Kind::Mist) {
 			// A colour above 1 tells the particle shader this one keeps a little light of its own (see LitParticle.frag).
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored, behind});
 			continue;
 		}
 		if (particle.Type == Kind::Froth) {
@@ -580,11 +708,12 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored});
 			continue;
 		}
-		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored});
+		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored, behind});
 	}
 }
 
 void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& fire) {
+	bool behind = g_PostProcessMan.GetLightingSettings().Behind(LightingSettings::LayerFire);
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
@@ -606,7 +735,7 @@ void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int hei
 		// White hot at first, through yellow and orange to a dull red as it burns out.
 		float burnt = std::clamp(particle.Age / particle.Life, 0.0F, 1.0F);
 		glm::vec3 color = burnt < 0.35F ? glm::mix(glm::vec3(1.0F, 0.95F, 0.75F), glm::vec3(1.0F, 0.7F, 0.2F), burnt / 0.35F) : glm::mix(glm::vec3(1.0F, 0.7F, 0.2F), glm::vec3(0.6F, 0.12F, 0.02F), (burnt - 0.35F) / 0.65F);
-		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F)});
+		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F), 0.0F, false, behind});
 	}
 }
 

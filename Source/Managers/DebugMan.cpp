@@ -57,49 +57,49 @@ float DebugMan::GetToolScale() const {
 }
 
 namespace {
-	/// Dresses the tool windows in the game's own menu colours (the olive panels, parchment text and gold of its skins) with square, hard-edged shapes.
+	/// Dresses the tool windows in the game's own menu skin (see ToolTheme): slate panels, navy wells, periwinkle edges and gold lettering, with square, hard-edged shapes.
 	void ApplyGameTheme(ImGuiStyle& style) {
-		auto rgb = [](int r, int g, int b, float a = 1.0F) { return ImVec4(static_cast<float>(r) / 255.0F, static_cast<float>(g) / 255.0F, static_cast<float>(b) / 255.0F, a); };
-		const ImVec4 panel = rgb(38, 46, 32, 0.93F);
-		const ImVec4 panelDark = rgb(24, 29, 21);
-		const ImVec4 field = rgb(57, 75, 42);
-		const ImVec4 fieldHover = rgb(85, 96, 68);
-		const ImVec4 fieldActive = rgb(105, 121, 71);
-		const ImVec4 gold = rgb(242, 182, 61);
-		const ImVec4 goldDim = rgb(170, 128, 48);
-		const ImVec4 parchment = rgb(232, 224, 190);
+		using namespace ToolTheme;
+		const ImVec4 panel = Vec(Panel, 0.96F);
+		const ImVec4 panelDark = Vec(EdgeDark);
+		const ImVec4 field = Vec(Well);
+		const ImVec4 fieldHover = Vec(WellHover);
+		const ImVec4 fieldActive = Vec(WellPressed);
+		const ImVec4 gold = Vec(Gold);
+		const ImVec4 goldDim = Vec(Edge);
+		const ImVec4 parchment = Vec(Gold);
 		ImVec4* colors = style.Colors;
 		colors[ImGuiCol_Text] = parchment;
-		colors[ImGuiCol_TextDisabled] = rgb(150, 150, 120);
+		colors[ImGuiCol_TextDisabled] = Vec(IM_COL32(141, 145, 141, 255));
 		colors[ImGuiCol_WindowBg] = panel;
-		colors[ImGuiCol_ChildBg] = rgb(0, 0, 0, 0.0F);
-		colors[ImGuiCol_PopupBg] = rgb(30, 37, 26, 0.98F);
+		colors[ImGuiCol_ChildBg] = Vec(0, 0.0F);
+		colors[ImGuiCol_PopupBg] = Vec(Well, 0.98F);
 		colors[ImGuiCol_Border] = goldDim;
-		colors[ImGuiCol_BorderShadow] = rgb(0, 0, 0, 0.0F);
+		colors[ImGuiCol_BorderShadow] = Vec(0, 0.0F);
 		colors[ImGuiCol_FrameBg] = field;
 		colors[ImGuiCol_FrameBgHovered] = fieldHover;
 		colors[ImGuiCol_FrameBgActive] = fieldActive;
 		colors[ImGuiCol_TitleBg] = panelDark;
-		colors[ImGuiCol_TitleBgActive] = field;
+		colors[ImGuiCol_TitleBgActive] = Vec(Panel);
 		colors[ImGuiCol_TitleBgCollapsed] = panelDark;
 		colors[ImGuiCol_MenuBarBg] = panelDark;
-		colors[ImGuiCol_ScrollbarBg] = panelDark;
-		colors[ImGuiCol_ScrollbarGrab] = fieldHover;
-		colors[ImGuiCol_ScrollbarGrabHovered] = fieldActive;
-		colors[ImGuiCol_ScrollbarGrabActive] = gold;
+		colors[ImGuiCol_ScrollbarBg] = fieldHover;
+		colors[ImGuiCol_ScrollbarGrab] = field;
+		colors[ImGuiCol_ScrollbarGrabHovered] = fieldHover;
+		colors[ImGuiCol_ScrollbarGrabActive] = fieldActive;
 		colors[ImGuiCol_CheckMark] = gold;
 		colors[ImGuiCol_SliderGrab] = gold;
-		colors[ImGuiCol_SliderGrabActive] = rgb(255, 214, 110);
+		colors[ImGuiCol_SliderGrabActive] = Vec(EdgeLight);
 		colors[ImGuiCol_Button] = field;
 		colors[ImGuiCol_ButtonHovered] = fieldHover;
-		colors[ImGuiCol_ButtonActive] = goldDim;
+		colors[ImGuiCol_ButtonActive] = fieldActive;
 		colors[ImGuiCol_Header] = field;
 		colors[ImGuiCol_HeaderHovered] = fieldHover;
-		colors[ImGuiCol_HeaderActive] = goldDim;
+		colors[ImGuiCol_HeaderActive] = fieldActive;
 		colors[ImGuiCol_Separator] = goldDim;
 		colors[ImGuiCol_SeparatorHovered] = gold;
 		colors[ImGuiCol_SeparatorActive] = gold;
-		colors[ImGuiCol_ResizeGrip] = fieldHover;
+		colors[ImGuiCol_ResizeGrip] = goldDim;
 		colors[ImGuiCol_ResizeGripHovered] = gold;
 		colors[ImGuiCol_ResizeGripActive] = gold;
 		colors[ImGuiCol_Tab] = panelDark;
@@ -109,13 +109,13 @@ namespace {
 		colors[ImGuiCol_TabDimmed] = panelDark;
 		colors[ImGuiCol_TabDimmedSelected] = field;
 		colors[ImGuiCol_PlotHistogram] = gold;
-		colors[ImGuiCol_TextSelectedBg] = rgb(170, 128, 48, 0.6F);
+		colors[ImGuiCol_TextSelectedBg] = Vec(Edge, 0.6F);
 		colors[ImGuiCol_NavHighlight] = gold;
 		// Hard edges throughout: nothing in the game's own menus is rounded.
 		style.WindowRounding = style.ChildRounding = style.FrameRounding = style.PopupRounding = style.ScrollbarRounding = style.GrabRounding = style.TabRounding = 0.0F;
 		style.WindowBorderSize = 2.0F;
 		style.ChildBorderSize = 1.0F;
-		style.FrameBorderSize = 0.0F;
+		style.FrameBorderSize = 1.0F; // the skin's raised edge round buttons and fields
 		style.TabBarBorderSize = 2.0F;
 		style.TabBarOverlineSize = 2.0F;
 		style.SeparatorTextBorderSize = 2.0F;
@@ -256,9 +256,12 @@ GameViewRect DebugMan::GetUncoveredView() const {
 }
 
 float DebugMan::GetPanelWidth(PanelSide side) const {
-	// The right side holds the settings panel, which has its list of categories beside its controls, so it is the wider.
+	// A fixed share of the window's width, whatever its size; the controls in them wrap onto more lines to fit.
+	// Each side has its own width. Never narrower than about 16 letters, below which the controls can't be laid out sensibly.
+	float share = (side == PanelSide::Left ? m_PanelWidth : m_PanelWidthRight) / 100.0F;
 	float displayWidth = ImGui::GetIO().DisplaySize.x;
-	return side == PanelSide::Left ? std::min(m_PanelWidth * GetToolScale(), displayWidth * 0.32F) : std::min(m_PanelWidth * 1.4F * GetToolScale(), displayWidth * 0.4F);
+	float least = std::min(ImGui::GetFontSize() * 16.0F, displayWidth * 0.45F);
+	return std::floor(std::max(displayWidth * share, least));
 }
 
 void DebugMan::DrawToolWindowControls() {
@@ -270,12 +273,25 @@ void DebugMan::DrawToolWindowControls() {
 			m_ToolScale = std::clamp(toolScale, 0.4F, 1.5F);
 		}
 		ImGui::SetItemTooltip("How big the tool windows are drawn: type a number from 0.4 to 1.5 and press Enter. 1 is the old size; 0.7 is the usual.");
-		float panelWidth = m_PanelWidth;
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
-		if (ImGui::InputFloat("Panel width", &panelWidth, 20.0F, 60.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-			m_PanelWidth = std::clamp(panelWidth, 240.0F, 700.0F);
+		for (bool left: {true, false}) {
+			float& setting = left ? m_PanelWidth : m_PanelWidthRight;
+			float panelWidth = setting;
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+			if (ImGui::InputFloat(left ? "Left panel width (% of screen)" : "Right panel width (% of screen)", &panelWidth, 1.0F, 5.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+				setting = std::clamp(panelWidth, 10.0F, 45.0F);
+			}
+			ImGui::SetItemTooltip("How wide the panel at this side is, as a share of the window's width: type a number from 10 to 45 and press Enter, or drag the panel's inner edge.\nControls that don't fit on a line go onto the next.");
 		}
-		ImGui::SetItemTooltip("How wide the side panels are, before the size above: type a number from 240 to 700 and press Enter.");
+		float barWidth = m_BarWidth;
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+		if (ImGui::InputFloat("Sandbox bar width (% of screen)", &barWidth, 5.0F, 10.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+			m_BarWidth = std::clamp(barWidth, 25.0F, 100.0F);
+		}
+		ImGui::SetItemTooltip("How wide the sandbox's bar along the bottom is, as a share of the game's picture: type a number from 25 to 100 and press Enter.\nControls that don't fit on a line go onto the next.");
+		static const char* const placements[] = {"Side panel", "Floating window", "Large window"};
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 9.0F);
+		ImGui::Combo("Sandbox window", &m_SandboxPlacement, placements, IM_ARRAYSIZE(placements));
+		ImGui::SetItemTooltip("How the sandbox's tools are shown.\nSide panel: docked at the left, its width as above (drag its edge to change it).\nFloating window: a window to move and resize as you like.\nLarge window: nine tenths of the screen, in the middle of it.");
 		ToolUI::Checkbox("The game's own pixel lettering", &m_PixelFont);
 		ImGui::SetItemTooltip("On: these windows are lettered in the game's small pixel font. Off: a smooth font, which is easier to read at length.");
 		ToolUI::Checkbox("Dock tool windows at the sides", &m_DockPanels);
@@ -289,6 +305,21 @@ void DebugMan::DrawToolWindowControls() {
 }
 
 void DebugMan::UpdateFreeze() {
+	// The pause hotkey keeps its own hold on the world, so the sandbox tools closing (which let go of theirs) leave it paused.
+	if (m_UserPause && !g_ActivityMan.IsInActivity()) {
+		m_UserPause = false;
+	}
+	g_TimerMan.PauseSim(m_UserPause, TimerMan::SimPauseUser);
+	if (m_UserPause) {
+		const char* text = "PAUSED  -  Pause: resume";
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		ImVec2 size = ImGui::CalcTextSize(text);
+		float scale = UsingPixelFont() ? 1.0F : 1.3F;
+		GameViewRect view = GetUncoveredView();
+		ImVec2 at(view.x + view.w - size.x * scale - 20.0F, view.y + 10.0F);
+		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, 150), 4.0F);
+		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), text);
+	}
 	if (m_FreezeSim && g_ActivityMan.IsInActivity()) {
 		g_TimerMan.PauseSim(true, TimerMan::SimPauseDebugFreeze);
 		m_FrozeSim = true;
@@ -393,11 +424,18 @@ void DebugMan::DrawImGui() {
 	if (m_ShowDebugWindow) {
 		m_ShowDebugWindow = false;
 		m_ShowWorldDebug = true;
-		m_SettingsCategory = 10;
+		m_SettingsCategory = 12; // "Debug".
 	}
 	if (m_ShowWorldDebug) {
 		SettingsGUI();
 	}
+	// F6 changes are kept when the panel closes (the game-only switches there, mantling, hit-stop, frame cap and the rest, are on no other page that saves).
+	// The atmosphere saved is still the player's own, as "Keep for next time" leaves it, so a scene's weather isn't written.
+	static bool settingsWereOpen = false;
+	if (settingsWereOpen && !m_ShowWorldDebug) {
+		g_SettingsMan.UpdateSettingsFile();
+	}
+	settingsWereOpen = m_ShowWorldDebug;
 
 	Sandbox::DrawGUI();
 	UpdateFreeze();
@@ -422,10 +460,34 @@ void DebugMan::DrawImGui() {
 
 }
 
-bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
-	if (!m_DockPanels) {
+bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement, bool flow) {
+	// With flow: no slider or list wider than about 20 letters, and controls one line high side by side as long as they fit (popped in EndPanel), so a
+	// wide window (the large view) has rows of them rather than each stretched across it.
+	m_PanelFlow = false;
+	auto startBody = [this, flow]() {
+		if (flow) {
+			ImGui::PushItemWidth(std::min(ImGui::GetWindowWidth() * 0.65F, ImGui::GetFontSize() * 20.0F));
+			ImGui::PushFlowItems();
+			m_PanelFlow = true;
+		}
+	};
+	// Controls set side by side go onto the next line when they don't fit the panel's width (popped in EndPanel).
+	ImGui::PushWrapSameLine();
+	if (placement == PanelPlacement::Large) {
+		// Most of the screen, in the middle of it; a window of its own, so the floating one keeps its place and size.
+		ImGuiIO& io = ImGui::GetIO();
+		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F), ImGuiCond_Always, ImVec2(0.5F, 0.5F));
+		ImGui::SetNextWindowSize(ImVec2(std::floor(io.DisplaySize.x * 0.9F), std::floor(io.DisplaySize.y * 0.9F)), ImGuiCond_Always);
 		m_PanelKind = 0;
-		return ImGui::Begin(name, open);
+		bool shown = ImGui::Begin((std::string(name) + "Large").c_str(), open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		startBody();
+		return shown;
+	}
+	if (!m_DockPanels || placement == PanelPlacement::Floating) {
+		m_PanelKind = 0;
+		bool shown = ImGui::Begin(name, open, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		startBody();
+		return shown;
 	}
 	ImGuiIO& io = ImGui::GetIO();
 	float width = GetPanelWidth(side);
@@ -436,6 +498,9 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 	ImGui::SetNextWindowSize(ImVec2(width, io.DisplaySize.y), ImGuiCond_Always);
 	ImGui::Begin(side == PanelSide::Left ? "##ToolsLeft" : "##ToolsRight", nullptr,
 	             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+	if (m_PanelsThisFrame[sideIndex] == 1) {
+		PanelEdgeHandle(side);
+	}
 	ImGui::BeginTabBar("##ToolTabs", ImGuiTabBarFlags_FittingPolicyScroll);
 	// A tool window that has just been opened comes to the front.
 	static std::unordered_map<ImGuiID, int> lastSeen;
@@ -445,14 +510,50 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side) {
 	seen = frame;
 	if (ImGui::BeginTabItem(name, open, flags)) {
 		m_PanelKind = 2;
-		ImGui::BeginChild("##Body");
+		// The scroll bar always there, so its coming and going doesn't change the width the controls wrap to (which would change the height, and the scroll bar...).
+		ImGui::BeginChild("##Body", ImVec2(0.0F, 0.0F), ImGuiChildFlags_None, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		startBody();
 		return true;
 	}
 	m_PanelKind = 1;
 	return false;
 }
 
+void DebugMan::PanelEdgeHandle(PanelSide side) {
+	// A strip along the panel's inner edge: dragged, it sets the panels' width, kept as a share of the window's width.
+	ImGuiIO& io = ImGui::GetIO();
+	ImVec2 windowPos = ImGui::GetWindowPos();
+	ImVec2 windowSize = ImGui::GetWindowSize();
+	float grip = std::max(6.0F, ImGui::GetFontSize() * 0.4F);
+	float edge = side == PanelSide::Left ? windowPos.x + windowSize.x : windowPos.x;
+	ImVec2 from(side == PanelSide::Left ? edge - grip : edge, windowPos.y);
+	ImVec2 cursor = ImGui::GetCursorScreenPos();
+	ImGui::PushClipRect(windowPos, ImVec2(windowPos.x + windowSize.x, windowPos.y + windowSize.y), false);
+	ImGui::SetCursorScreenPos(from);
+	ImGui::InvisibleButton("##panelEdge", ImVec2(grip, windowSize.y));
+	bool hovered = ImGui::IsItemHovered();
+	bool active = ImGui::IsItemActive();
+	if (active && io.DisplaySize.x > 0.0F) {
+		float wanted = side == PanelSide::Left ? io.MousePos.x : io.DisplaySize.x - io.MousePos.x;
+		(side == PanelSide::Left ? m_PanelWidth : m_PanelWidthRight) = std::clamp(wanted / io.DisplaySize.x * 100.0F, 10.0F, 45.0F);
+	}
+	if (hovered || active) {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+		float lineX = side == PanelSide::Left ? edge - 2.0F : edge + 1.0F;
+		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(lineX, windowPos.y), ImVec2(lineX + 1.0F, windowPos.y + windowSize.y), ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive : ImGuiCol_SeparatorHovered));
+	}
+	ImGui::SetItemTooltip("Drag to make this panel wider or narrower.");
+	ImGui::PopClipRect();
+	ImGui::SetCursorScreenPos(cursor);
+}
+
 void DebugMan::EndPanel() {
+	ImGui::PopWrapSameLine();
+	if (m_PanelFlow) {
+		ImGui::PopFlowItems();
+		ImGui::PopItemWidth();
+		m_PanelFlow = false;
+	}
 	if (m_PanelKind == 0) {
 		ImGui::End();
 		return;
@@ -632,6 +733,16 @@ void DebugMan::PhotoModeGUI() {
 			if (settings.TiltShift) {
 				ImGui::SliderFloat("Sharp band", &settings.TiltShiftLine, 0.0F, 1.0F);
 				ImGui::SliderFloat("Tilt-shift blur", &settings.TiltShiftStrength, 0.0F, 2.0F);
+			}
+			// The event looks (G-11): off, or one by one, so a shot isn't taken through a blast's flash or the hurt look.
+			ToolUI::Checkbox("Grade answers events", &settings.EventLooks);
+			if (settings.EventLooks) {
+				ImGui::SliderFloat("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
+				ToolUI::Checkbox("Blast flash", &settings.EventBlastFlash);
+				ImGui::SameLine();
+				ToolUI::Checkbox("Hurt look", &settings.EventHurtLook);
+				ImGui::SameLine();
+				ToolUI::Checkbox("Fire warmth", &settings.EventFireWarmth);
 			}
 			if (ToolUI::Button("Reset look")) {
 				settings = m_PhotoSavedSettings;

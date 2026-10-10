@@ -9,8 +9,10 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <map>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 using namespace RTE;
@@ -41,8 +43,17 @@ namespace {
 		bool PlayerControlled; //!< Whether a player controlled the enemy.
 		long long Update; //!< The sim update it was seen on.
 	};
-	std::mutex s_PendingMutex;
-	std::vector<PendingReport> s_Pending;
+	/// The queue is split over a few shards, each with its own lock, picked by the reporting thread, so AI threads reporting at once don't
+	/// wait on one lock; the main thread takes them all, and sorts them, at Update.
+	struct PendingShard {
+		std::mutex Mutex;
+		std::vector<PendingReport> Reports;
+	};
+	std::array<PendingShard, 16> s_PendingShards;
+	PendingShard& PendingShardForThisThread() {
+		static thread_local PendingShard& shard = s_PendingShards[std::hash<std::thread::id>{}(std::this_thread::get_id()) % s_PendingShards.size()];
+		return shard;
+	}
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0;
 
@@ -68,15 +79,17 @@ void ThreatMemory::Report(const Actor* reporter, const Actor* enemy) {
 		return;
 	}
 	// Called from the AI scripts, on worker threads: queued, and applied on the main thread by Update.
-	std::scoped_lock lock(s_PendingMutex);
-	s_Pending.push_back({reporter->GetUniqueID(), enemy->GetUniqueID(), team, reporter->GetPos(), enemy->GetPos(), enemy->IsPlayerControlled(), g_TimerMan.GetSimUpdateCount()});
+	PendingShard& shard = PendingShardForThisThread();
+	std::scoped_lock lock(shard.Mutex);
+	shard.Reports.push_back({reporter->GetUniqueID(), enemy->GetUniqueID(), team, reporter->GetPos(), enemy->GetPos(), enemy->IsPlayerControlled(), g_TimerMan.GetSimUpdateCount()});
 }
 
 void ThreatMemory::ApplyReports() {
 	std::vector<PendingReport> reports;
-	{
-		std::scoped_lock lock(s_PendingMutex);
-		reports.swap(s_Pending);
+	for (PendingShard& shard: s_PendingShards) {
+		std::scoped_lock lock(shard.Mutex);
+		reports.insert(reports.end(), shard.Reports.begin(), shard.Reports.end());
+		shard.Reports.clear();
 	}
 	if (!s_Enabled || reports.empty()) {
 		return;
@@ -175,9 +188,9 @@ void ThreatMemory::Update() {
 }
 
 void ThreatMemory::Clear() {
-	{
-		std::scoped_lock lock(s_PendingMutex);
-		s_Pending.clear();
+	for (PendingShard& shard: s_PendingShards) {
+		std::scoped_lock lock(shard.Mutex);
+		shard.Reports.clear();
 	}
 	for (std::map<long, Memory>& memories: s_Memories) {
 		memories.clear();

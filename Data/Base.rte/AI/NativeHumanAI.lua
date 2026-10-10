@@ -149,12 +149,10 @@ function NativeHumanAI:Update(Owner)
 			Owner:RemoveNumberValue("AITargetID");
 			self.overwatch = false;
 			-- (And a medic's errand, AC-7: the friend it was going to is free for another medic.)
-			if self.Medic and MovableMan:ValidMO(self.Medic.Patient) and self.Medic.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
-				self.Medic.Patient:RemoveNumberValue("AIMedicBy");
-			end
 			self.Medic = nil;
 			self.medicHeal = false;
 			Owner:RemoveNumberValue("AIMedic");
+			Owner:RemoveNumberValue("AIMedicFor");
 
 			self.proneState = AHuman.NOTPRONE;
 			self.SentryFacing = Owner.HFlipped;
@@ -225,6 +223,14 @@ function NativeHumanAI:Update(Owner)
 
 	-- An attack order picks and re-picks its own enemy here (see SharedBehaviors.AttackOrderUpdate), before the new-order check below takes up a redirect.
 	SharedBehaviors.AttackOrderUpdate(self, Owner);
+
+	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
+	local objective = SharedBehaviors.OnObjective(Owner);
+	if objective then
+		SharedBehaviors.FocusOnObjective(self, Owner);
+	elseif SharedBehaviors.Rushing(Owner) then
+		SharedBehaviors.FocusOnRush(self, Owner);
+	end
 
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or if we're told to go somewhere and aren't: after arriving the mode stays GOTO while the behaviour is Sentry, and a new order with new
@@ -319,8 +325,12 @@ function NativeHumanAI:Update(Owner)
 		Owner:EquipShieldInBGArm(); -- try to equip a shield
 	end
 
-	-- look for targets
+	-- look for targets (only those its temperament lets it fight, NC-1; a target it may no longer have is dropped first)
+	SharedBehaviors.DropForbiddenTarget(self, Owner);
 	local FoundMO, HitPoint = self.SpotTargets(self, Owner, self.skill);
+	if FoundMO and not SharedBehaviors.MayTarget(self, Owner, FoundMO) then
+		FoundMO = nil;
+	end
 	if FoundMO then
 		--TODO: decide whether to attack based on the material strength of found MO
 		if self.Behavior ~= nil and self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then	-- found the same target
@@ -340,6 +350,8 @@ function NativeHumanAI:Update(Owner)
 				FoundMO = ToACDropShip(FoundMO);
 			elseif FoundMO.ClassName == "ADoor" and FoundMO.Team ~= Activity.NOTEAM and Owner.AIMode ~= Actor.AIMODE_SENTRY and ToADoor(FoundMO).Door and ToADoor(FoundMO).Door:IsAttached() then
 				FoundMO = ToADoor(FoundMO);
+			elseif FoundMO.ClassName == "AVehicle" then	-- A cart or other vehicle (VH-1): shot to pieces like any enemy, driven or not.
+				FoundMO = ToAVehicle(FoundMO);
 			elseif FoundMO.ClassName == "Actor" then
 				FoundMO = ToActor(FoundMO);
 			else
@@ -617,7 +629,7 @@ function NativeHumanAI:Update(Owner)
 					self.BehaviorCleanup = nil;
 				end
 
-				if not self.NextBehavior and not self.PickupHD and self.PickUpTimer:IsPastSimMS(10000) then
+				if not self.NextBehavior and not self.PickupHD and not objective and self.PickUpTimer:IsPastSimMS(10000) then
 					self.PickUpTimer:Reset();
 
 					if not Owner:EquipFirearm(false) then
@@ -639,7 +651,10 @@ function NativeHumanAI:Update(Owner)
 		end
 
 		-- listen and react to AlarmEvents and AlarmPoints
-		if AlarmPoint.Largest > 0 then
+		-- (Not on the objective: turning to an alarm, a medikit or an alarm event stopped a flag carrier on its way.)
+		if objective then
+			self.useMedikit = false;
+		elseif AlarmPoint.Largest > 0 then
 			if not self.Target and not self.UnseenTarget then
 				self.AlarmPos = Vector(AlarmPoint.X, AlarmPoint.Y);
 				self:CreateFaceAlarmBehavior(Owner);
@@ -687,30 +702,42 @@ function NativeHumanAI:Update(Owner)
 	if self.Target and MovableMan:ValidMO(self.Target) then
 		self.LastEnemyPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 	end
-	HumanBehaviors.LeaveCover(self, Owner);
-	HumanBehaviors.PeekUpdate(self, Owner);
-	HumanBehaviors.LobUpdate(self, Owner);
-	HumanBehaviors.SmokeUpdate(self, Owner);
-	SharedBehaviors.SquadTactics(self, Owner);
-	SharedBehaviors.FlankUpdate(self, Owner);
-	HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
-	HumanBehaviors.UseTheWorld(self, Owner);
-	-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
-	local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
-	if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
-		SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+	-- (On the objective, only what doesn't stop it or turn it off its way: reloading, and what it remembers.)
+	if not objective then
+		HumanBehaviors.LeaveCover(self, Owner);
 	end
-	SharedBehaviors.RetreatUpdate(self, Owner);
+	HumanBehaviors.PeekUpdate(self, Owner);
+	if not objective then
+		HumanBehaviors.LobUpdate(self, Owner);
+	end
+	if not objective then
+		HumanBehaviors.SmokeUpdate(self, Owner);
+		SharedBehaviors.SquadTactics(self, Owner);
+		SharedBehaviors.FlankUpdate(self, Owner);
+		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
+		HumanBehaviors.UseTheWorld(self, Owner);
+		-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
+		local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
+		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
+			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
+		end
+		SharedBehaviors.RetreatUpdate(self, Owner);
+	end
+	-- (Its nature, NC-1: a skittish unit runs from danger, and livestock left standing graze about.)
+	SharedBehaviors.FleeUpdate(self, Owner);
+	SharedBehaviors.GrazeUpdate(self, Owner);
 	SharedBehaviors.RememberUpdate(self, Owner);
 	SharedBehaviors.AdvertiseMedikit(self, Owner);
-	HumanBehaviors.MedicUpdate(self, Owner);
+	if not objective then
+		HumanBehaviors.MedicUpdate(self, Owner);
+	end
 	HumanBehaviors.ReloadInLull(self, Owner);
 
 	if self.teamBlockState == Actor.IGNORINGBLOCK then
 		if self.BlockedTimer:IsPastSimMS(10000) then
 			self.teamBlockState = Actor.NOTBLOCKED;
 		end
-	elseif self.teamBlockState == Actor.BLOCKED then	-- we are blocked by a team-mate, stop
+	elseif self.teamBlockState == Actor.BLOCKED and not objective then	-- we are blocked by a team-mate, stop
 		self.lateralMoveState = Actor.LAT_STILL;
 		self.jump = false;
 		if self.BlockedTimer:IsPastSimMS(20000) then
@@ -721,16 +748,26 @@ function NativeHumanAI:Update(Owner)
 		self.BlockedTimer:Reset();
 	end
 
-	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used)
+	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used, and so is a digger cutting the route)
 	local mayFire = SharedBehaviors.MayFire(self, Owner);
+	-- (The engine's route-follower holds a digger's trigger itself on a dig step, AHuman::MoveAlongRoute; let go of here every update, the
+	-- digger never fired, and a unit routed through ground stood at its face with the digger out.)
+	local routeDig = self.engineMover == true and Owner.DiggingRoute == true;
 	if self.squadShoot then
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, mayFire and (self.fire or self.squadShoot));
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or routeDig);
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or routeDig);
 	end
 
 	if self.deviceState == AHuman.AIMING then
 		self.Ctrl:SetState(Controller.AIM_SHARP, true);
+	end
+	-- Sharp aim is the engine's sign of a fight: the aim holds the facing (walking or flying backwards) for a second and a half after it.
+	-- Only with an enemy to fight, then, while on the move: an alarm's glance, a squad's look where its leader looks or a watch on where an
+	-- enemy was all aim sharp, and units walked and flew backwards to where they were going, missed the steps and ledges ahead of them,
+	-- and couldn't climb up onto them.
+	if not self.Target and not self.UnseenTarget and (self.engineMover or self.flying or self.lateralMoveState ~= Actor.LAT_STILL) then
+		self.Ctrl:SetState(Controller.AIM_SHARP, false);
 	end
 	-- force jetpack at detrimental downwards velocity
 	-- (Not while the engine's route-follower and pilot fly the unit: the pilot brakes a fall for its landing, and lit over its head the
@@ -926,6 +963,12 @@ end
 function NativeHumanAI:CreateAttackBehavior(Owner)
 	self.ReloadTimer:Reset();
 	self.TargetLostTimer:Reset();
+
+	-- Running the objective: no fight at all, not even a stop to shoot; it just goes.
+	if SharedBehaviors.OnObjective(Owner) then
+		self.Target = nil;
+		return;
+	end
 
 	if self.PickupHD then
 		-- We're currently trying to pickup a weapon, do that instead

@@ -2,7 +2,11 @@
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
+#include "GasGrid.h"
+#include "AirPressure.h"
+#include "RopeSim.h"
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
 #include "ActorFire.h"
@@ -134,6 +138,9 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 
 	m_pCurrentScene = pNewScene;
 	++m_SceneGeneration;
+	// Which materials are trees', before the path grids are worked out from the terrain (they walk through trees or go round them).
+	TerrainTrees::BuildTables();
+	TerrainTrees::Clear();
 	if (m_pCurrentScene->LoadData(placeObjects, true, placeUnits) < 0) {
 		g_ConsoleMan.PrintString("ERROR: Loading scene \'" + m_pCurrentScene->GetPresetName() + "\' failed! Has it been properly defined?");
 		return -1;
@@ -399,6 +406,7 @@ BITMAP* SceneMan::GetDebugBitmap() const {
 }
 
 thread_local int SceneMan::s_LiquidsPassableDepth = 0;
+thread_local int SceneMan::s_TreesPassableDepth = 0;
 thread_local SceneMan::LiquidsSeeThrough::State SceneMan::s_SeeThrough;
 
 unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
@@ -427,6 +435,10 @@ unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	int material = getpixel(pTMatBitmap, pixelX, pixelY);
 	// Bodies move through liquid, see LiquidsPassable.
 	if (s_LiquidsPassableDepth > 0 && material != g_MaterialAir && FluidSim::IsLiquid(material)) {
+		return g_MaterialAir;
+	}
+	// Units and vehicles go through trees, see TreesPassable.
+	if (s_TreesPassableDepth > 0 && TerrainTrees::ActorsPass(material)) {
 		return g_MaterialAir;
 	}
 	// Looks and the AI's shot checks go into liquid as far as it lets them, see LiquidsSeeThrough.
@@ -1520,6 +1532,44 @@ Vector SceneMan::GetRememberedEnemyPos(int team, const Vector& near, float maxAg
 
 Vector SceneMan::GetPlayerLastSeenPos(int team, float maxAgeMS) const {
 	return ThreatMemory::GetPlayerLastSeen(team, maxAgeMS);
+}
+
+void SceneMan::AddGas(const Vector& position, int kind, float amount) const {
+	if (kind >= 0 && kind < GasGrid::KindCount) {
+		GasGrid::Add(position, static_cast<GasGrid::Kind>(kind), amount);
+	}
+}
+
+float SceneMan::GetGas(const Vector& position, int kind) const {
+	return kind >= 0 && kind < GasGrid::KindCount ? GasGrid::Get(position, static_cast<GasGrid::Kind>(kind)) : 0.0F;
+}
+
+Vector SceneMan::GetAirFlow(const Vector& position) const {
+	return AirPressure::GetFlow(position);
+}
+
+void SceneMan::AddAirBlast(const Vector& position, float energy) const {
+	AirPressure::Blast(position, energy);
+}
+
+int SceneMan::AddRope(const std::string& type, const Vector& from, const Vector& to, float slack) const {
+	return RopeSim::QueueRope(std::max(RopeSim::FindType(type), 0), slack, {from, to});
+}
+
+void SceneMan::AddRopePoint(int rope, const Vector& position) const {
+	RopeSim::QueueAddPoint(rope, position);
+}
+
+void SceneMan::RemoveRope(int rope) const {
+	RopeSim::QueueRemove(rope);
+}
+
+void SceneMan::CutRopes(const Vector& position, float radius) const {
+	RopeSim::QueueCut(position, radius);
+}
+
+int SceneMan::GetRopeCount() const {
+	return RopeSim::GetCount();
 }
 
 int SceneMan::GetBurningUnitCount() const {

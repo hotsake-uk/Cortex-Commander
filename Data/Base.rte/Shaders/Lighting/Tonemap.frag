@@ -38,6 +38,7 @@ uniform float rteOutlineOpacity;
 uniform bool rteOutlineTeamColor; // Each outline in its side's colour, else all in rteOutlineColor.
 uniform vec3 rteOutlineColor; // In display (gamma) space.
 uniform vec3 rteOutlineSideColors[5]; // By slot - 1: no team, then teams 1 to 4. In display space.
+uniform float rteHighlightWidth; // A highlighted unit's glow (slot 6), in pixels; 0 for none.
 
 vec3 Shoulder(vec3 color) {
 	if (rteShoulderStart >= 0.999) {
@@ -107,7 +108,7 @@ void main() {
 		float midtones = 1.0 - abs(dot(outputColor, vec3(0.333)) * 2.0 - 1.0);
 		outputColor += noise * rteFilmGrain * 0.12 * midtones;
 	}
-	if (rteOutlineWidth > 0.0 && rteDebugView == 0) {
+	if ((rteOutlineWidth > 0.0 || rteHighlightWidth > 0.0) && rteDebugView == 0) {
 		// Unit outlines: finish UnitOutlineRow.frag's search down this column for the nearest unit pixel. Not on the unit itself (its distance
 		// is 0) and only where the stroke may go (B). Full strength out to the width, then fading over one pixel, which softens the corners.
 		ivec2 pixel = ivec2(gl_FragCoord.xy);
@@ -133,7 +134,17 @@ void main() {
 					slot = rowSlot;
 				}
 			}
-			if (slot > 0) {
+			if (slot == 6) {
+				// A highlighted unit (a flag carrier, a VIP): a bright stroke hard against it, glowing out to the width and pulsing. A soft pink,
+				// a colour no team has (red, green, blue and yellow).
+				float distance = sqrt(nearest);
+				float stroke = 1.0 - smoothstep(1.5, 2.5, distance);
+				float glow = 1.0 - smoothstep(0.0, rteHighlightWidth, distance);
+				float pulse = 0.7 + 0.3 * sin(rteTime * 6.0);
+				vec3 hot = vec3(0.55, 0.22, 0.38);
+				outputColor = mix(outputColor, vec3(0.9, 0.55, 0.72), stroke);
+				outputColor = clamp(outputColor + hot * glow * glow * pulse * (1.0 - stroke), 0.0, 1.0);
+			} else if (slot > 0 && rteOutlineWidth > 0.0) {
 				float coverage = 1.0 - smoothstep(rteOutlineWidth, rteOutlineWidth + 1.0, sqrt(nearest));
 				vec3 stroke = rteOutlineTeamColor ? rteOutlineSideColors[clamp(slot - 1, 0, 4)] : rteOutlineColor;
 				outputColor = mix(outputColor, stroke, coverage * rteOutlineOpacity);

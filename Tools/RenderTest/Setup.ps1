@@ -1,6 +1,8 @@
-param([string]$Repo = "")
+param([string]$Repo = "", [string]$Base = "")
 # Installs the RenderTest.rte dev mod into Mods/ and writes the scenario settings files used by Capture.ps1 into Userdata/RenderTest/.
-# Each scenario is the player's Settings.ini with a few keys overridden, so it starts straight into a known scene with known effects.
+# Each scenario is the releasezone2 preset (Data/Presets/releasezone2.ini, the same as the built-in defaults) with the keys it depends on overridden,
+# so it starts straight into a known scene with known effects. A scenario must override everything it relies on (its debug view included):
+# the base only sets the look. -Base <file> starts from another settings file instead, e.g. -Base Userdata\Settings.ini for your own.
 . (Join-Path $PSScriptRoot "Common.ps1")
 if (-not $Repo) { $Repo = $RepoRoot }
 
@@ -8,8 +10,8 @@ $modsDir = Join-Path $Repo $(if ($env:CCCP_MODS_DIR) { $env:CCCP_MODS_DIR } else
 if (-not (Test-Path $modsDir)) { New-Item -ItemType Directory -Path $modsDir | Out-Null }
 Copy-Item -Recurse -Force (Join-Path $PSScriptRoot "RenderTest.rte") $modsDir
 
-$baseSettings = Join-Path $Repo "Userdata\Settings.ini"
-if (-not (Test-Path $baseSettings)) { throw "Run the game once first so Userdata\Settings.ini exists." }
+$baseSettings = if ($Base) { if ([System.IO.Path]::IsPathRooted($Base)) { $Base } else { Join-Path $Repo $Base } } else { Join-Path $Repo "Data\Presets\releasezone2.ini" }
+if (-not (Test-Path $baseSettings)) { throw "The base settings file $baseSettings doesn't exist." }
 $scenarioDir = Join-Path $Repo "Userdata\RenderTest"
 if (-not (Test-Path $scenarioDir)) { New-Item -ItemType Directory -Path $scenarioDir | Out-Null }
 
@@ -28,7 +30,8 @@ function Write-Scenario([string]$Name, [hashtable]$Overrides, [string[]]$GlobalS
 		# Cloud shadows and the clouds in the sky drift, so a golden scene would differ from run to run with them on.
 		if (-not $Overrides.ContainsKey('CloudShadows')) { $Overrides.CloudShadows = 0 }
 		if (-not $Overrides.ContainsKey('CloudLayer')) { $Overrides.CloudLayer = 0 }
-		# Golden scenarios use the built-in lighting defaults, so the player's own tweaks (time of day, quality, weather) can't change the baselines.
+		# Golden scenarios use the built-in lighting defaults, so the player's own tweaks (time of day, quality, weather) can't change the baselines
+		# when -Base is their own Settings.ini. The preset has no such section and already matches the defaults.
 		# The grade's answers to blasts, wounds and fire depend on the run, so they're off too.
 		if (-not $Overrides.ContainsKey('EventLooks')) { $Overrides.EventLooks = 0 }
 		$inLighting = $false
@@ -101,14 +104,15 @@ Write-Scenario "LiquidWeapons" ($play + @{ TimeOfDay = 20 }) @("Render Test Liqu
 Write-Scenario "WeatherCalm" ($play + @{ WeatherType = 0; Wind = 0 }) @("Render Test Weather")
 Write-Scenario "WeatherRain" ($play + @{ WeatherType = 1; WeatherIntensity = 0.9; Wind = 0 }) @("Render Test Weather")
 Write-Scenario "WeatherSnow" ($play + @{ WeatherType = 2; WeatherIntensity = 1; Wind = 0 }) @("Render Test Weather")
-Write-Scenario "WeatherWindRight" ($play + @{ WeatherType = 0; Wind = 150 }) @("Render Test Weather")
-Write-Scenario "WeatherWindLeft" ($play + @{ WeatherType = 0; Wind = -150 }) @("Render Test Weather")
+Write-Scenario "WeatherWindRight" ($play + @{ WeatherType = 0; Wind = 150; WorldSimOverlay = 5 }) @("Render Test Weather")
+Write-Scenario "WeatherWindLeft" ($play + @{ WeatherType = 0; Wind = -150; WorldSimOverlay = 5 }) @("Render Test Weather")
 Write-Scenario "SoakFeatures" ($play + @{ TimeOfDay = 19; WeatherType = 1; WeatherIntensity = 0.7; Wind = 90 }) @("Render Test Grenades", "Render Test Liquid Weapons", "Render Test Weather")
 $sandbox = @{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAScripted"; DefaultActivityName = "Sandbox"; DefaultSceneName = "Ketanot Hills" }
 Write-Scenario "Sandbox" $sandbox @()
 Write-Scenario "SandboxBattle" $sandbox @("Render Test Sandbox")
 Write-Scenario "FireUnits" $sandbox @("Render Test Fire Units")
 Write-Scenario "SandboxArmies" $sandbox @("Render Test Sandbox Armies")
+Write-Scenario "BattleMode" ($sandbox + @{ DebugChannels = 64 }) @("Render Test Battle Mode")
 Write-Scenario "PauseAI" $sandbox @("Render Test Pause AI")
 Write-Scenario "Swim" $sandbox @("Render Test Swim")
 Write-Scenario "Cut" ($sandbox + @{ TimeOfDay = 12; WeatherType = 0 }) @("Render Test Cut")
@@ -138,7 +142,9 @@ Write-Scenario "GoldenNoon" $bunker @() -DefaultLighting
 Write-Scenario "GoldenNight" ($bunker + @{ TimeOfDay = 23 }) @() -DefaultLighting
 Write-Scenario "GoldenCaves" $caves @("Render Test Camera Tour") -DefaultLighting
 Write-Scenario "GoldenClassic" ($bunker + @{ LightingEnabled = 0; BloomEnabled = 0; DistortionEnabled = 0; ScorchMarks = 0; Embers = 0; EffectsParticles = 0; Stains = 0; LivingWorld = 0; SmokeScattering = 0 }) @() -DefaultLighting
-Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 }) @() -DefaultLighting
+# The grey lighting views are shown through the exposure, which at the default 2.06 turns them nearly white: neutral exposure keeps their shading visible.
+$neutralExposure = @{ PostExposure = 1; AutoExposure = 0 }
+Write-Scenario "GoldenLightingOnly" ($bunker + @{ TimeOfDay = 19; LightingDebugView = 1 } + $neutralExposure) @() -DefaultLighting
 Write-Scenario "GoldenInterior" ($tutorial + @{ TimeOfDay = 23 }) @() -DefaultLighting
 
 Write-Scenario "BunkerAsh" ($bunker + @{ WeatherType = 3; WeatherIntensity = 0.9 }) @()
@@ -172,7 +178,7 @@ Write-Scenario "ShadowsNightGrey" ($shadowBunker + @{ TimeOfDay = 23; LightingDe
 Write-Scenario "ShadowsNightGreyOff" ($shadowBunker + @{ TimeOfDay = 23; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGrey" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 }) @("Render Test Shadows")
 Write-Scenario "ShadowsDayGreyOff" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1 } + $noShadows) @("Render Test Shadows")
-Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0; CloudShadows = 0 }) @("Render Test Shadows") -DefaultLighting
+Write-Scenario "GoldenShadows" ($shadowBunker + @{ TimeOfDay = 15.5; LightingDebugView = 1; ModernHUD = 0; CloudShadows = 0 } + $neutralExposure) @("Render Test Shadows") -DefaultLighting
 # Materials: units of different makes with a lamp in the tutorial bunker, by night and by day, each with metal reflections and relief off for comparison.
 $noMaterials = @{ LightingMetals = 0; LightingRelief = 0 }
 Write-Scenario "MaterialsNight" ($shadowBunker + @{ TimeOfDay = 23 }) @("Render Test Materials")

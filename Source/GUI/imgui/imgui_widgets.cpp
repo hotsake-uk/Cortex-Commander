@@ -167,6 +167,8 @@ void ImGui::TextEx(const char* text, const char* text_end, ImGuiTextFlags flags)
     // Accept null ranges
     if (text == text_end)
         text = text_end = "";
+    if (window->DC.TextWrapPos >= 0.0f) // [Cortex] Wrapped text (a paragraph) starts its own line.
+        FlowUndo(window);
 
     // Calculate length
     const char* text_begin = text;
@@ -1542,6 +1544,11 @@ void ImGui::NewLine()
     ImGuiWindow* window = GetCurrentWindow();
     if (window->SkipItems)
         return;
+    if (window->DC.FlowApplied) // [Cortex] An item flowed onto the line before goes back to its own, which is this new line.
+    {
+        FlowUndo(window);
+        return;
+    }
 
     ImGuiContext& g = *GImGui;
     const ImGuiLayoutType backup_layout_type = window->DC.LayoutType;
@@ -1573,6 +1580,7 @@ void ImGui::SeparatorEx(ImGuiSeparatorFlags flags, float thickness)
     ImGuiWindow* window = GetCurrentWindow();
     if (window->SkipItems)
         return;
+    FlowUndo(window); // [Cortex]
 
     ImGuiContext& g = *GImGui;
     IM_ASSERT(ImIsPowerOfTwo(flags & (ImGuiSeparatorFlags_Horizontal | ImGuiSeparatorFlags_Vertical)));   // Check that only 1 option is selected
@@ -1654,6 +1662,7 @@ void ImGui::SeparatorTextEx(ImGuiID id, const char* label, const char* label_end
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = g.CurrentWindow;
+    FlowUndo(window); // [Cortex] A heading starts its own line.
     ImGuiStyle& style = g.Style;
 
     const ImVec2 label_size = CalcTextSize(label, label_end, false);
@@ -6567,6 +6576,7 @@ bool ImGui::TreeNodeBehavior(ImGuiID id, ImGuiTreeNodeFlags flags, const char* l
     ImGuiWindow* window = GetCurrentWindow();
     if (window->SkipItems)
         return false;
+    FlowUndo(window); // [Cortex] A tree node or header starts its own line.
 
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
@@ -8929,7 +8939,7 @@ bool ImGui::BeginMenuEx(const char* label, const char* icon, bool enabled)
         float icon_w = (icon && icon[0]) ? CalcTextSize(icon, NULL).x : 0.0f;
         float checkmark_w = IM_TRUNC(g.FontSize * 1.20f);
         float min_w = window->DC.MenuColumns.DeclColumns(icon_w, label_size.x, 0.0f, checkmark_w); // Feedback to next frame
-        float extra_w = ImMax(0.0f, GetContentRegionAvail().x - min_w);
+        float extra_w = ImMax(0.0f, GetContentRegionAvailRaw().x - min_w);
         ImVec2 text_pos(window->DC.CursorPos.x + offsets->OffsetLabel, window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
         pressed = Selectable("", menu_is_open, selectable_flags | ImGuiSelectableFlags_SpanAvailWidth, ImVec2(min_w, label_size.y));
         LogSetNextTextDecoration("", ">");
@@ -9136,7 +9146,7 @@ bool ImGui::MenuItemEx(const char* label, const char* icon, const char* shortcut
         float shortcut_w = (shortcut && shortcut[0]) ? CalcTextSize(shortcut, NULL).x : 0.0f;
         float checkmark_w = IM_TRUNC(g.FontSize * 1.20f);
         float min_w = window->DC.MenuColumns.DeclColumns(icon_w, label_size.x, shortcut_w, checkmark_w); // Feedback for next frame
-        float stretch_w = ImMax(0.0f, GetContentRegionAvail().x - min_w);
+        float stretch_w = ImMax(0.0f, GetContentRegionAvailRaw().x - min_w);
         pressed = Selectable("", false, selectable_flags | ImGuiSelectableFlags_SpanAvailWidth, ImVec2(min_w, label_size.y));
         if (g.LastItemData.StatusFlags & ImGuiItemStatusFlags_Visible)
         {

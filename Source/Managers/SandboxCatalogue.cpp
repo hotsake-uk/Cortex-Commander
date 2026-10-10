@@ -3,6 +3,89 @@
 #include "SandboxInternal.h"
 
 namespace SandboxDetail {
+	namespace {
+		/// A number as it reads best: whole when it is whole or big, else to one place.
+		std::string Number(float value) {
+			char text[32];
+			std::snprintf(text, sizeof(text), std::abs(value) >= 10.0F || value == std::round(value) ? "%.0f" : "%.1f", value);
+			return text;
+		}
+
+		/// Fills in a preset's Stats and StatsShort from what its game files say about it: its cost, and by kind its health, mass, toughness,
+		/// fire rate, magazine and so on. Nothing here is worked out by firing or dropping it; it is the numbers the INI gives.
+		void FillStats(Preset& preset, const SceneObject* object) {
+			std::string& stats = preset.Stats;
+			std::vector<std::string> brief;
+			float cost = object->GetTotalValue(0, 1.0F, 1.0F);
+			stats += "\nCost: " + (cost > 0.0F ? Number(cost) + " oz" : std::string("free"));
+			brief.push_back(cost > 0.0F ? Number(cost) + " oz" : "free");
+			const MOSRotating* body = dynamic_cast<const MOSRotating*>(object);
+			if (const Actor* actor = dynamic_cast<const Actor*>(object)) {
+				stats += std::string("\nTemperament: ") + Actor::TemperamentName(actor->GetTemperament()) + (IsNonCombatantPreset(actor) ? " (non-combatant)" : "");
+				stats += "\nHealth: " + Number(actor->GetMaxHealth());
+				stats += "\nMass: " + Number(actor->GetMass()) + " kg (with what it carries)";
+				brief.push_back(Number(actor->GetMaxHealth()) + " HP");
+				brief.push_back(Number(actor->GetMass()) + " kg");
+				int wounds = actor->GetGibWoundLimit();
+				stats += wounds > 0 ? "\nBody blown apart after " + std::to_string(wounds) + " wounds" : "\nBody never blown apart by wounds";
+				if (actor->GetGibImpulseLimit() > 0.0F) {
+					stats += "\nBody blown apart by a blow over " + Number(actor->GetGibImpulseLimit());
+				}
+				if (actor->GetSightDistance() > 0.0F) {
+					stats += "\nSight: " + Number(actor->GetSightDistance()) + " px";
+				}
+				stats += preset.JetLift < 0.0F ? "\nJetpack: flies without limit" : preset.JetLift <= 0.0F ? "\nNo jetpack, or one too weak to lift it" : "\nJetpack lifts it about " + Number(std::round(preset.JetLift)) + " m" + (preset.Jetpack ? "" : " (too little to fly)");
+			} else if (const HDFirearm* gun = dynamic_cast<const HDFirearm*>(object)) {
+				stats += "\nMass: " + Number(gun->GetMass()) + " kg";
+				stats += "\nFire rate: " + std::to_string(gun->GetRateOfFire()) + " a minute, " + (gun->IsFullAuto() ? "automatic" : "one a pull");
+				brief.push_back(std::to_string(gun->GetRateOfFire()) + " rpm");
+				if (const Magazine* magazine = gun->GetMagazine()) {
+					int capacity = magazine->GetCapacity();
+					stats += capacity < 0 ? "\nMagazine: never runs out" : "\nMagazine: " + std::to_string(capacity) + " rounds, " + Number(static_cast<float>(gun->GetReloadTime()) / 1000.0F) + " s to reload";
+					brief.push_back(capacity < 0 ? "no reload" : std::to_string(capacity) + " rds");
+					if (const Round* round = magazine->GetNextRound()) {
+						if (round->ParticleCount() > 1) {
+							stats += "\nShot: " + std::to_string(round->ParticleCount()) + " pellets";
+						}
+						if (round->GetFireVel() > 0.0F) {
+							stats += "\nMuzzle speed: " + Number(round->GetFireVel()) + " m/s";
+						}
+						if (const MovableObject* bullet = round->GetNextParticle()) {
+							stats += "\nBullet: " + Number(bullet->GetMass() * 1000.0F) + " g, sharpness " + Number(bullet->GetSharpness());
+							if (bullet->WoundDamageMultiplier() != 1.0F) {
+								stats += "\nWound damage: x" + Number(bullet->WoundDamageMultiplier());
+							}
+						}
+					}
+					if (gun->GetAIPenetration() > 0.0F) {
+						stats += "\nPenetration: " + Number(gun->GetAIPenetration());
+					}
+					if (gun->GetAIBlastRadius() > 0.0F) {
+						stats += "\nBlast: about " + Number(gun->GetAIBlastRadius()) + " px across";
+					}
+				}
+				stats += "\nSpread: " + Number(gun->GetShakeRange()) + " degrees, aimed " + Number(gun->GetSharpShakeRange());
+			} else if (const TDExplosive* bomb = dynamic_cast<const TDExplosive*>(object)) {
+				stats += "\nMass: " + Number(bomb->GetMass()) + " kg";
+				brief.push_back(Number(bomb->GetMass()) + " kg");
+				if (bomb->GetTriggerDelay() > 0) {
+					stats += "\nFuse: " + Number(static_cast<float>(bomb->GetTriggerDelay()) / 1000.0F) + " s";
+					brief.push_back(Number(static_cast<float>(bomb->GetTriggerDelay()) / 1000.0F) + " s fuse");
+				}
+				stats += "\nThrown at " + Number(bomb->GetMinThrowVel()) + " to " + Number(bomb->GetMaxThrowVel()) + " m/s";
+			} else if (body) {
+				stats += "\nMass: " + Number(body->GetMass()) + " kg";
+				brief.push_back(Number(body->GetMass()) + " kg");
+				if (body->GetGibWoundLimit() > 0) {
+					stats += "\nBreaks after " + std::to_string(body->GetGibWoundLimit()) + " wounds";
+				}
+			}
+			for (const std::string& line: brief) {
+				preset.StatsShort += (preset.StatsShort.empty() ? "" : "\n") + line;
+			}
+		}
+	} // namespace
+
 	void AddPresets(std::vector<Preset>& list, const std::list<Entity*>& entities, bool buyableOnly, bool skipBrains, const char* group) {
 		for (const Entity* entity: entities) {
 			const SceneObject* object = dynamic_cast<const SceneObject*>(entity);
@@ -23,6 +106,8 @@ namespace SandboxDetail {
 				preset.Kind = object->IsInGroup("Brains") ? "Brains" : "Infantry";
 			} else if (preset.ClassName == "ACrab") {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
+			} else if (preset.ClassName == "AVehicle") {
+				preset.Kind = "Vehicles";
 			} else if (preset.ClassName == "HDFirearm") {
 				preset.Kind = object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {
@@ -32,12 +117,23 @@ namespace SandboxDetail {
 			} else {
 				preset.Kind = group;
 			}
+			if (const Actor* actor = dynamic_cast<const Actor*>(object)) {
+				// How high its jetpack lifts it, worked out from the jet's thrust and fuel against the unit's weight, as the path finder does.
+				// A jetpack is no use for this unless it really flies: many mods' units carry one only to fake a hop, from before units
+				// could leap on their legs, and those can't get up what a flying unit can.
+				const float lift = actor->EstimateJumpHeight();
+				preset.JetLift = lift == FLT_MAX ? -1.0F : lift;
+				preset.Jetpack = lift >= c_JetpackFlyingLift;
+				preset.NonCombatant = IsNonCombatantPreset(actor);
+				preset.Temperament = actor->GetTemperament();
+			}
 			if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
 				preset.Width = terrainObject->GetBitmapWidth();
 				preset.Height = terrainObject->GetBitmapHeight();
 				preset.OffsetX = terrainObject->GetBitmapOffset().m_X;
 				preset.OffsetY = terrainObject->GetBitmapOffset().m_Y;
 			}
+			FillStats(preset, object);
 			list.push_back(std::move(preset));
 		}
 	}
@@ -64,7 +160,7 @@ namespace SandboxDetail {
 		s_Structures.clear();
 		s_Armouries.clear();
 		s_Weapons.clear();
-		for (const char* type: {"AHuman", "ACrab"}) {
+		for (const char* type: {"AHuman", "ACrab", "AVehicle"}) {
 			std::list<Entity*> entities;
 			g_PresetMan.GetAllOfType(entities, type);
 			AddPresets(s_Units, entities, true, true);
@@ -125,9 +221,6 @@ namespace SandboxDetail {
 				s_FactionModules.push_back(unit.ModuleID);
 				s_FactionNames.push_back(unit.Module.substr(0, unit.Module.find(".rte")));
 			}
-		}
-		for (size_t side = 0; side < s_AutoSides.size(); ++side) {
-			s_AutoSides[side].Faction = std::min(static_cast<int>(side), static_cast<int>(s_FactionModules.size()) - 1);
 		}
 		s_UnitChoice = preferredIndex(s_Units, "Soldier Light");
 		s_BrainChoice = preferredIndex(s_Brains, "Brain Case");

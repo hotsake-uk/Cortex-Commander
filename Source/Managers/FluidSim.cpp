@@ -13,6 +13,7 @@
 #include "SLTerrain.h"
 #include "Scene.h"
 #include "TerrainFire.h"
+#include "GasGrid.h"
 #include "TimerMan.h"
 #include "WeatherEffects.h"
 #include "Vector.h"
@@ -38,8 +39,11 @@ using namespace RTE;
 
 bool FluidSim::s_Enabled = true;
 bool FluidSim::s_Powders = true;
-bool FluidSim::s_Freezing = false;
-bool FluidSim::s_BloodFlows = false;
+bool FluidSim::s_Freezing = true;
+bool FluidSim::s_BloodFlows = true;
+bool FluidSim::s_DrainBottom = true;
+bool FluidSim::s_DrainSides = true;
+bool FluidSim::s_PowdersFallOut = true;
 
 namespace {
 	enum class Liquid : unsigned char {
@@ -653,6 +657,28 @@ namespace {
 		return x >= 0 && y >= 0 && x < width && y < height;
 	}
 
+	/// Whether a spot just off the map is one liquid runs out through (FluidSim::DrainsBottom, DrainsSides), or for a powder, one it falls out
+	/// through (FluidSim::PowdersFallOut): below the bottom, or past a side of a map that doesn't wrap. What moves there is gone. Call with the
+	/// spot as it was, before InWorld.
+	bool Drains(int x, int y, int width, int height, bool powder) {
+		if (y >= height) {
+			return powder ? FluidSim::PowdersFallOut() : FluidSim::DrainsBottom();
+		}
+		return y >= 0 && (x < 0 || x >= width) && !s_WrapsX && (powder ? FluidSim::PowdersFallOut() : FluidSim::DrainsSides());
+	}
+
+	/// Whether a spot is somewhere a liquid or powder can go: in the map and Passable, or off it through an edge it drains or falls out of.
+	bool CanGo(BITMAP* materialBitmap, int x, int y, int width, int height, int liquid, bool powder) {
+		int inX = x;
+		int inY = y;
+		return InWorld(inX, inY, width, height) ? Passable(materialBitmap->line[inY][inX], liquid) : Drains(x, y, width, height, powder);
+	}
+
+	/// Whether a liquid or powder pixel at a spot is on an edge it drains or falls out through, so it should be woken to go.
+	bool AtDrainingEdge(int x, int y, int width, int height, bool powder) {
+		return (y == height - 1 && Drains(x, height, width, height, powder)) || ((x == 0 || x == width - 1) && Drains(x == 0 ? -1 : width, y, width, height, powder));
+	}
+
 	void Activate(int x, int y, int width, int height, const SLTerrain* terrain) {
 		if (InWorld(x, y, width, height) && !s_Active.Contains(y * width + x) && KindAt(terrain, x, y) != Liquid::None) {
 			if (s_Active.Count < c_MaxActive) {
@@ -743,7 +769,8 @@ namespace {
 			int lookX = x + side * step;
 			int lookY = y;
 			if (!InWorld(lookX, lookY, width, height)) {
-				return 0;
+				// (Off a side the map drains through: the drop is there, liquid only.)
+				return Drains(x + side * step, y, width, height, false) && FluidSim::IsLiquid(own) ? step : 0;
 			}
 			int material = materialBitmap->line[y][lookX];
 			if (Passable(material, own)) {
@@ -899,6 +926,8 @@ namespace {
 		}
 		if ((reaction.Effects & Fizz) && Random01() < 0.3F) {
 			TerrainFire::SpawnSteam(at, 1);
+			// Acid eating metal gives off fumes (SB-6).
+			GasGrid::Add(at, GasGrid::Toxic, 0.03F);
 		}
 		if (reaction.Effects & Ignite) {
 			TerrainFire::QueueIgnite(nx, ny);
@@ -930,7 +959,11 @@ namespace {
 		int y = static_cast<int>(index / static_cast<size_t>(width));
 		for (int i = 0; i < c_SweepPixelsPerUpdate; ++i) {
 			// Nearly every pixel isn't liquid, so that's checked first and costs next to nothing.
-			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
+			if (Liquid sweptKind = s_Kinds[materialBitmap->line[y][x]]; sweptKind != Liquid::None && AtDrainingEdge(x, y, width, height, sweptKind == Liquid::Powder) && !s_Active.Contains(static_cast<int>(index))) {
+				// On an edge of the map liquid drains out through, or powder falls out through: woken, it goes (left resting there from before the setting
+				// was turned on, or loaded with the scene).
+				Activate(x, y, width, height, terrain);
+			} else if (sweptKind != Liquid::None && sweptKind != Liquid::Powder && y + 1 < height && !s_Active.Contains(static_cast<int>(index))) {
 				// Air (or grass it flows through, or a lighter liquid it sinks through) right below, or below and to a side, means it has somewhere to go.
 				const int swept = materialBitmap->line[y][x];
 				const unsigned char* below = materialBitmap->line[y + 1];
@@ -993,6 +1026,10 @@ namespace {
 
 bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
+}
+
+bool FluidSim::LetsLiquidsThrough(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_LetsLiquidsThrough[materialID];
 }
 
 int FluidSim::SightDepth(int materialID) {
@@ -1119,12 +1156,39 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 			rgb = paler(16) | paler(8) | paler(0);
 		}
 	}
-	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount)), 1, 80);
-	int columns = std::clamp(static_cast<int>(width / 4.0F), 1, std::min(total, 20));
-	for (int column = 0; column < columns; ++column) {
-		float across = columns > 1 ? static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F : 0.0F;
-		int here = total / columns + (column < total % columns ? 1 : 0);
-		EffectsParticles::Emit("Froth", Vector(position.m_X + across * width * 0.5F, position.m_Y), Vector(), 0.05F, here, rgb);
+	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	float density = std::clamp(settings.SplashFrothDensity, 0.1F, 6.0F);
+	int total = std::clamp(static_cast<int>(std::round(static_cast<float>(count) * amount * density)), 1, 240);
+	// (Render only: its own random numbers, never the simulation's.)
+	static unsigned int s_VisualRandom = 0x2545F491u;
+	auto visualRandom = []() {
+		s_VisualRandom ^= s_VisualRandom << 13;
+		s_VisualRandom ^= s_VisualRandom >> 17;
+		s_VisualRandom ^= s_VisualRandom << 5;
+		return static_cast<float>(s_VisualRandom & 0xFFFFFF) / static_cast<float>(0x1000000);
+	};
+	// Little bursts, not a row: a few centres at random places over the width (more of them the wider it is), each puff thrown out round one of
+	// them, flatter than it is wide, so the froth comes in separate clumps with gaps between.
+	int bursts = std::clamp(static_cast<int>(width / 14.0F * (0.6F + visualRandom() * 0.8F)), 1, 8);
+	std::array<float, 8> burstX{};
+	std::array<float, 8> burstReach{};
+	for (int burst = 0; burst < bursts; ++burst) {
+		burstX[burst] = (visualRandom() - 0.5F) * width;
+		burstReach[burst] = 2.5F + visualRandom() * 5.0F;
+	}
+	float specks = std::clamp(settings.SplashFrothSpecks, 0.0F, 3.0F);
+	for (int puff = 0; puff < total; ++puff) {
+		int burst = static_cast<int>(visualRandom() * static_cast<float>(bursts)) % bursts;
+		float angle = visualRandom() * 6.2831853F;
+		float radius = burstReach[burst] * std::sqrt(visualRandom());
+		float x = position.m_X + burstX[burst] + std::cos(angle) * radius;
+		float y = position.m_Y + std::sin(angle) * radius * 0.45F - 1.0F;
+		EffectsParticles::Emit("Froth", Vector(x, y), Vector(), 0.6F, 1, rgb);
+		// Pixel-sized specks in front of the puffs: a pale one or two hopping off the surface at each, now and then.
+		if (specks > 0.0F && visualRandom() < std::min(0.6F * specks, 1.0F)) {
+			Vector hop((visualRandom() - 0.5F) * 2.0F, -(0.5F + visualRandom() * 1.5F));
+			EffectsParticles::Emit("Droplets", Vector(x + (visualRandom() - 0.5F) * 3.0F, y - 1.0F), hop, 0.3F, 1 + (specks > 1.5F && visualRandom() < 0.5F ? 1 : 0), 0xE6F4FF);
+		}
 	}
 }
 
@@ -1155,16 +1219,38 @@ void FluidSim::VisualSplash(const Vector& position, float width, float speed, in
 	}
 	// A crown: drops thrown up and out from across the width that went in, highest from the middle, flattest and furthest from the edges; the
 	// stronger the setting, the more of them and the higher. (Render only: the effects' own random numbers, nothing the simulation reads.)
+	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 	float lift = std::sqrt(strength);
-	int columns = std::clamp(static_cast<int>(width / 5.0F), 3, 24);
-	int perColumn = std::clamp(static_cast<int>(std::round(speed * 0.35F * strength)), 1, 14);
-	for (int column = 0; column < columns; ++column) {
-		float across = static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F;
-		Vector at(position.m_X + across * width * 0.55F, position.m_Y - 1.0F);
-		Vector velocity(across * speed * 0.3F * lift, -speed * (0.75F - 0.35F * std::abs(across)) * lift);
-		EffectsParticles::Emit("Droplets", at, velocity, 0.18F, perColumn, rgb);
+	auto crown = [&](float amount, float height, float reach, float spread, unsigned int color, float size, float opacity, bool under) {
+		int columns = std::clamp(static_cast<int>(width * std::sqrt(reach) / 5.0F), 3, 32);
+		int perColumn = std::clamp(static_cast<int>(std::round(speed * 0.35F * strength * amount)), 1, std::max(static_cast<int>(std::round(14.0F * amount)), 1));
+		for (int column = 0; column < columns; ++column) {
+			float across = static_cast<float>(column) / static_cast<float>(columns - 1) * 2.0F - 1.0F;
+			Vector at(position.m_X + across * width * 0.55F, position.m_Y - 1.0F);
+			Vector velocity(across * speed * 0.3F * lift * reach, -speed * (0.75F - 0.35F * std::abs(across)) * lift * height);
+			EffectsParticles::EmitDroplets(at, velocity, spread, perColumn, color, size, opacity, under);
+		}
+	};
+	// A second layer under the first, in a colour of its own (mixed with the liquid's as much as asked), with its own height, width, size and look.
+	float under = std::clamp(settings.SplashUnder, 0.0F, 3.0F);
+	if (under > 0.0F) {
+		glm::vec3 liquid = rgb != 0 ? glm::vec3((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF) / 255.0F : glm::vec3(150.0F, 190.0F, 230.0F) / 255.0F;
+		glm::vec3 mixed = glm::mix(glm::clamp(settings.SplashUnderColor, 0.0F, 1.0F), liquid, std::clamp(settings.SplashUnderLiquidColor, 0.0F, 1.0F));
+		glm::uvec3 bytes(glm::round(mixed * 255.0F));
+		// 0 would mean the drops' own default colour: black is a pixel off it.
+		unsigned int underRGB = (bytes.r << 16) | (bytes.g << 8) | bytes.b;
+		underRGB = underRGB != 0 ? underRGB : 0x010101u;
+		crown(under, std::clamp(settings.SplashUnderHeight, 0.05F, 3.0F), std::clamp(settings.SplashUnderWidth, 0.2F, 3.0F), 0.18F + std::clamp(settings.SplashUnderScatter, 0.0F, 1.0F) * 0.82F, underRGB,
+		      settings.SplashUnderDropSize, settings.SplashUnderOpacity, true);
 	}
-	EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength), 2, 60), mistRGB);
+	float drops = std::clamp(settings.SplashDrops, 0.0F, 4.0F);
+	if (drops > 0.0F) {
+		crown(drops, std::clamp(settings.SplashHeight, 0.2F, 3.0F), std::clamp(settings.SplashWidth, 0.2F, 3.0F), 0.18F, rgb, settings.SplashDropSize, 1.0F, false);
+	}
+	float spray = std::clamp(settings.SplashSpray, 0.0F, 3.0F);
+	if (spray > 0.0F) {
+		EffectsParticles::Emit("Mist", position + Vector(0.0F, -2.0F), Vector(0.0F, -speed * 0.12F * lift * std::clamp(settings.SplashHeight, 0.2F, 3.0F)), 0.9F, std::clamp(static_cast<int>(width * 0.25F * strength * spray), 2, 120), mistRGB);
+	}
 }
 
 bool FluidSim::KeepLiquidAt(int x, int y) {
@@ -1344,7 +1430,8 @@ void FluidSim::Update() {
 					ChangePixel(terrain, x, row, liquid.Material, liquid.Color);
 					Activate(x, row, width, height, terrain);
 					placed = true;
-				} else if (!IsLiquid(material)) {
+				} else if (!IsLiquid(material) && !s_LetsLiquidsThrough[material & 0xFF]) {
+					// (Up through grass and foliage too, as liquid flows: stopped by a plant over the pool, it was lost.)
 					break;
 				}
 			}
@@ -1557,9 +1644,9 @@ void FluidSim::Update() {
 		}
 
 		// (Air, grass and foliage it flows through, or a lighter liquid it changes places with: Passable.)
-		auto canMoveTo = [&](int tx, int ty) {
-			return InWorld(tx, ty, width, height) && Passable(materialBitmap->line[ty][tx], ownMaterial);
-		};
+		// (Or off the map through an edge it drains or falls out of: Drains. A move there takes it away.)
+		const bool isPowder = kind == Liquid::Powder;
+		auto canMoveTo = [&](int tx, int ty) { return CanGo(materialBitmap, tx, ty, width, height, ownMaterial, isPowder); };
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
 		int velX = s_Active.VelXOf(key);
@@ -1589,7 +1676,11 @@ void FluidSim::Update() {
 			}
 			// (Into a lighter liquid only a pixel a step, and only as the first: falling into a pool it stops at the surface, sinks at that pace, and never
 			// trades places with liquid on the far side of a gap it just fell through.)
-			auto openAt = [&](int tx, int ty) { return InWorld(tx, ty, width, height) && OpenTo(materialBitmap->line[ty][tx], ownMaterial); };
+			auto openAt = [&](int tx, int ty) {
+				int inX = tx;
+				int inY = ty;
+				return InWorld(inX, inY, width, height) ? OpenTo(materialBitmap->line[inY][inX], ownMaterial) : Drains(tx, ty, width, height, isPowder);
+			};
 			auto fallsInto = [&](int tx, int ty, int fall) { return fall == 0 ? canMoveTo(tx, ty) : openAt(tx, ty); };
 			for (int fall = 0; fall < steps; ++fall) {
 				if (drift != 0 && Random01() < 0.5F && fallsInto(targetX + drift, targetY + 1, fall)) {
@@ -1702,6 +1793,10 @@ void FluidSim::Update() {
 							int lookX = x + side * step;
 							int lookY = y;
 							if (!InWorld(lookX, lookY, width, height)) {
+								// (Out through a side the map drains through.)
+								if (Drains(x + side * step, y, width, height, false)) {
+									found = step;
+								}
 								break;
 							}
 							int material = materialBitmap->line[lookY][lookX];
@@ -1808,6 +1903,16 @@ void FluidSim::Update() {
 			} else {
 				waitingToSearch = true;
 			}
+		}
+		if (moved && Drains(targetX, targetY, width, height, isPowder)) {
+			// Gone off the map through an edge it drains or falls out of: the spot it left empties, and what was resting around it may follow.
+			if (anyFire && TerrainFire::IsFlammable(ownMaterial)) {
+				TerrainFire::Extinguish(x, y);
+			}
+			Uncover(terrain, x, y, width);
+			s_Active.Remove(key);
+			ActivateAround(x, y, width, height, terrain);
+			continue;
 		}
 		if (moved) {
 			// Applied straight away: going bottom to top, the pixel above sees this one already gone and can follow it down in the same step.

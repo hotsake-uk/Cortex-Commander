@@ -8,18 +8,23 @@
 #include "SceneLighting.h"
 #include "SLTerrain.h"
 #include "FluidSim.h"
+#include "Material.h"
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
+#include "RopeSim.h"
 #include "WeatherEffects.h"
 #include "PathFinder.h"
 #include "Scene.h"
 #include "SettingsMan.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <iterator>
 #include <mutex>
 #include <string>
@@ -467,12 +472,47 @@ void DebugOverlays::DrawWorldSim() {
 			std::vector<Vector> pixels;
 			const size_t limit = 40000;
 			FluidSim::GetActivePixels(view.GetCorner(), view.GetWidth(), view.GetHeight(), pixels, limit);
+			// Each material its own colour (its terrain colour, so water reads blue and lava orange), liquids filled and powders hollow, with
+			// a count of each in view: the one window onto which liquids and powders (SB-1, SB-2) are moving.
+			std::array<int, 256> counts{};
+			std::array<ImU32, 256> colors{};
+			for (int id = 1; id < 256; ++id) {
+				const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+				// (Brightened a little, so dark liquids like tar and oil still show over the scene.)
+				colors[id] = material && material->GetColor().GetIndex() > 0 ? IM_COL32(std::min(material->GetColor().GetR() + 50, 255), std::min(material->GetColor().GetG() + 50, 255), std::min(material->GetColor().GetB() + 50, 255), 200) : IM_COL32(70, 160, 255, 170);
+			}
 			for (const Vector& pixel: pixels) {
+				int material = g_SceneMan.GetTerrMatter(pixel.GetFloorIntX(), pixel.GetFloorIntY()) & 0xFF;
+				++counts[material];
 				ImVec2 at = DebugDraw::ToScreen(pixel);
-				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), IM_COL32(70, 160, 255, 170));
+				if (FluidSim::IsLiquid(material) || dot < 3.0F) {
+					drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), colors[material]);
+				} else {
+					drawList->AddRect(at, ImVec2(at.x + dot, at.y + dot), colors[material]);
+				}
 			}
 			std::snprintf(text, sizeof(text), "moving liquid: %d pixels, %d in view%s, %.2f ms an update", FluidSim::GetActiveCount(), static_cast<int>(pixels.size()), pixels.size() >= limit ? "+" : "", FluidSim::GetLastUpdateMS());
 			caption(text);
+			// The legend: each material moving in view, most first.
+			std::vector<std::pair<int, int>> moving;
+			for (int id = 1; id < 256; ++id) {
+				if (counts[id] > 0) {
+					moving.emplace_back(counts[id], id);
+				}
+			}
+			std::sort(moving.begin(), moving.end(), std::greater<>());
+			ImVec2 origin = DebugDraw::ViewOrigin();
+			float line = ImGui::GetTextLineHeight();
+			float top = origin.y + 8.0F + line * 3.0F;
+			for (size_t i = 0; i < std::min<size_t>(moving.size(), 12); ++i) {
+				const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(moving[i].second));
+				std::snprintf(text, sizeof(text), "%s%s: %d", material ? material->GetPresetName().c_str() : "?", FluidSim::IsLiquid(moving[i].second) ? "" : " (powder)", moving[i].first);
+				ImVec2 size = ImGui::CalcTextSize(text);
+				float y = top + static_cast<float>(i) * (line + 2.0F);
+				drawList->AddRectFilled(ImVec2(origin.x + 4.0F, y - 1.0F), ImVec2(origin.x + 24.0F + size.x, y + line + 1.0F), IM_COL32(10, 12, 10, 190));
+				drawList->AddRectFilled(ImVec2(origin.x + 7.0F, y + 2.0F), ImVec2(origin.x + 7.0F + line - 4.0F, y + line - 2.0F), colors[moving[i].second]);
+				drawList->AddText(ImVec2(origin.x + 10.0F + line, y), IM_COL32(235, 235, 220, 255), text);
+			}
 			break;
 		}
 		case 2: {
@@ -486,7 +526,14 @@ void DebugOverlays::DrawWorldSim() {
 				ImVec2 at(origin.x + pixel.x / perPixel, origin.y + pixel.y / perPixel);
 				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), color);
 			}
-			std::snprintf(text, sizeof(text), "burning ground: %d pixels, %d in view", TerrainFire::GetCount(), static_cast<int>(burning.size()));
+			// Lit candles: a ring round each flame.
+			std::vector<TerrainCandle::Flame> candles;
+			TerrainCandle::GetFlames(glm::vec2(view.GetCorner().m_X, view.GetCorner().m_Y), static_cast<int>(view.GetWidth()), static_cast<int>(view.GetHeight()), candles);
+			for (const TerrainCandle::Flame& candle: candles) {
+				ImVec2 at(origin.x + candle.Tip.x / perPixel, origin.y + (candle.Tip.y - 2.5F * candle.Size) / perPixel);
+				drawList->AddCircle(at, 6.0F * candle.Size / perPixel + 3.0F, IM_COL32(255, 210, 120, 220), 12, 1.5F);
+			}
+			std::snprintf(text, sizeof(text), "burning ground: %d pixels, %d in view; candles lit: %d", TerrainFire::GetCount(), static_cast<int>(burning.size()), TerrainCandle::GetCount());
 			caption(text);
 			break;
 		}
@@ -547,6 +594,30 @@ void DebugOverlays::DrawWorldSim() {
 				drawList->AddTriangleFilled(ImVec2(tip.x + head, tip.y), ImVec2(tip.x, tip.y - 6.0F), ImVec2(tip.x, tip.y + 6.0F), color);
 			}
 			std::snprintf(text, sizeof(text), "wind %+.2f   rain %.2f   snow %.2f   dust %.2f   sight x%.2f   walking x%.2f", wind, WeatherEffects::GetRain(), WeatherEffects::GetSnow(), WeatherEffects::GetDust(), WeatherEffects::GetSightMultiplier(), WeatherEffects::GetWalkSpeedMultiplier());
+			caption(text);
+			break;
+		}
+		case 6: {
+			// Ropes: each link by how hard it's pulled (green slack, red about to snap; orange alight), and where each is tied.
+			std::vector<RopeSim::DebugLink> links;
+			std::vector<RopeSim::DebugAnchor> anchors;
+			int nodes = 0;
+			int burning = 0;
+			RopeSim::GetDebug(links, anchors, nodes, burning);
+			float thickness = std::max(2.0F, 1.5F / perPixel);
+			for (const RopeSim::DebugLink& link: links) {
+				ImU32 color = link.Burning ? IM_COL32(255, 150, 40, 255) : IM_COL32(static_cast<int>(80.0F + 175.0F * link.Load), static_cast<int>(220.0F - 180.0F * link.Load), 60, 230);
+				drawList->AddLine(DebugDraw::ToScreen(Vector(link.A.x, link.A.y)), DebugDraw::ToScreen(Vector(link.B.x, link.B.y)), color, thickness);
+			}
+			for (const RopeSim::DebugAnchor& anchor: anchors) {
+				ImVec2 at = DebugDraw::ToScreen(Vector(anchor.Pos.x, anchor.Pos.y));
+				if (anchor.Kind == 0) {
+					drawList->AddRect(ImVec2(at.x - 4.0F, at.y - 4.0F), ImVec2(at.x + 4.0F, at.y + 4.0F), IM_COL32(255, 255, 255, 230), 0.0F, 0, 2.0F);
+				} else {
+					drawList->AddCircle(at, 5.0F, IM_COL32(110, 200, 255, 230), 12, 2.0F);
+				}
+			}
+			std::snprintf(text, sizeof(text), "ropes: %d, %d points, %d links, %d ties, %d points burning", RopeSim::GetCount(), nodes, static_cast<int>(links.size()), static_cast<int>(anchors.size()), burning);
 			caption(text);
 			break;
 		}

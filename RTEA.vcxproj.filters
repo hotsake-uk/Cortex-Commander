@@ -199,6 +199,12 @@
     <ClInclude Include="Source\Managers\ThreatMemory.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\GasGrid.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Managers\AirPressure.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\SmokeGrid.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -220,7 +226,16 @@
     <ClInclude Include="Source\Managers\TerrainCollapse.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\TerrainTrees.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\TerrainFire.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Managers\TerrainCandle.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Managers\RopeSim.h">
       <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\WeatherLightning.h">
@@ -353,6 +368,9 @@
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\ADoor.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\AVehicle.h">
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\AEmitter.h">
@@ -859,6 +877,12 @@
     <ClCompile Include="Source\Managers\SandboxGym.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxBattle.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxBattleModes.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\SandboxDebug.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -871,10 +895,19 @@
     <ClCompile Include="Source\Managers\UnitSpeech.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\UnitSpeechWorld.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\ActorFire.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ThreatMemory.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\GasGrid.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\AirPressure.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SmokeGrid.cpp">
@@ -892,7 +925,16 @@
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\TerrainTrees.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\TerrainFire.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\TerrainCandle.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\RopeSim.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\WeatherLightning.cpp">
@@ -1031,6 +1073,9 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ADoor.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\AVehicle.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\AEmitter.cpp">

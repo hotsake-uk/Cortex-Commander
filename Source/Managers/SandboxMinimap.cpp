@@ -205,7 +205,7 @@ namespace SandboxDetail {
 			}
 			drawList->PopClipRect();
 			if (hovered && !s_MapDragging) {
-				ImGui::SetTooltip("Click: look here.  Drag: select the units in the box.\nRight click: %s here (Shift: add it to their plans).", s_CommandMode == CommandMode::Patrol ? "a point of the patrol route" : c_CommandModeNames[static_cast<int>(s_CommandMode)]);
+				ImGui::SetTooltip("Click: look here.  Drag: select the units in the box.\nRight click: %s here (Shift: add it to their plans).", s_CommandMode == CommandMode::Patrol ? "a point of the patrol route" : c_CommandModeNames[static_cast<int>(s_CommandMode == CommandMode::Select ? CommandMode::Move : s_CommandMode)]);
 			}
 		}
 		ImGui::End();

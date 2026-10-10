@@ -2,6 +2,7 @@
 #include "ActorWater.h"
 #include "ActorFire.h"
 #include "FluidSim.h"
+#include "TerrainTrees.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
 #include "SceneLighting.h"
@@ -50,7 +51,7 @@ BITMAP* Actor::m_apAIIcons[AIMODE_COUNT];
 std::vector<BITMAP*> Actor::m_apSelectArrow;
 std::vector<BITMAP*> Actor::m_apAlarmExclamation;
 bool Actor::m_sIconsLoaded = false;
-int Actor::s_ShowAIPaths = 0;
+int Actor::s_ShowAIPaths = 2;
 
 #define ARROWTIME 1000
 
@@ -108,6 +109,9 @@ void Actor::Clear() {
 	m_HeadlampBrightness = 1.0F;
 	m_HeadlampColor.SetRGB(255, 240, 215);
 	m_HeadlampHasColor = false;
+	m_HeadlampLit = false;
+	m_HeadlampFade = 0.0F;
+	m_HeadlampSkyOpen = -1.0F;
 	m_SpeechSet.clear();
 	m_Speech = UnitSpeech::State();
 	m_PainThreshold = 15.0F;
@@ -128,6 +132,12 @@ void Actor::Clear() {
 	m_AIOrderSerial = 0;
 	m_StandingOrder = StandingOrder();
 	m_WeaponRule = WEAPONS_AT_WILL;
+	m_Temperament = TEMPERAMENT_FIGHTER;
+	m_NonCombatant = -1;
+	m_LastAttackerTeam = Activity::NoTeam;
+	m_LastAttackerID = 0;
+	m_HurtTimer.Reset();
+	m_LastHurtFrom.Reset();
 	m_PaceLimit = 0.0F;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
@@ -268,6 +278,9 @@ int Actor::Create(const Actor& reference) {
 	m_SpeechSet = reference.m_SpeechSet;
 	m_HeadlampColor = reference.m_HeadlampColor;
 	m_HeadlampHasColor = reference.m_HeadlampHasColor;
+	m_HeadlampLit = reference.m_HeadlampLit;
+	m_HeadlampFade = reference.m_HeadlampFade;
+	m_HeadlampSkyOpen = reference.m_HeadlampSkyOpen;
 	m_PainThreshold = reference.m_PainThreshold;
 	m_CanRevealUnseen = reference.m_CanRevealUnseen;
 	m_CharHeight = reference.m_CharHeight;
@@ -320,6 +333,8 @@ int Actor::Create(const Actor& reference) {
 	m_AIMode = reference.m_AIMode;
 	m_StandingOrder = reference.m_StandingOrder;
 	m_WeaponRule = reference.m_WeaponRule;
+	m_Temperament = reference.m_Temperament;
+	m_NonCombatant = reference.m_NonCombatant;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -444,6 +459,21 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> facing;
 		SetOrderPostFacing(facing);
 	});
+	MatchProperty("OrderKind", {
+		int kind = 0;
+		reader >> kind;
+		SetOrderKind(kind);
+	});
+	MatchProperty("OrderDigTarget", {
+		reader >> m_StandingOrder.DigTarget;
+		m_StandingOrder.HasDigTarget = true;
+	});
+	MatchProperty("OrderFailReason", {
+		int reason = 0;
+		reader >> reason;
+		SetOrderFailReason(reason);
+	});
+	MatchProperty("OrderFailMaterial", { reader >> m_StandingOrder.FailMaterial; });
 	MatchProperty("OrderMovement", {
 		int rule = 0;
 		reader >> rule;
@@ -453,6 +483,21 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		int rule = 0;
 		reader >> rule;
 		SetWeaponRule(rule);
+	});
+	MatchProperty("Temperament", {
+		std::string value;
+		reader >> value;
+		int temperament = TemperamentFromString(value);
+		if (temperament < 0) {
+			reader.ReportError("Unknown Temperament \"" + value + "\": use Fighter, Defensive, Skittish or Pacifist.");
+		} else {
+			SetTemperament(temperament);
+		}
+	});
+	MatchProperty("NonCombatant", {
+		bool nonCombatant = false;
+		reader >> nonCombatant;
+		SetNonCombatant(nonCombatant);
 	});
 	MatchProperty("SpecialBehaviour_AddAISceneWaypoint", {
 		Vector waypointToAdd;
@@ -569,11 +614,29 @@ int Actor::Save(Writer& writer) const {
 	if (m_StandingOrder.PostFacing != 0) {
 		writer.NewPropertyWithValue("OrderPostFacing", m_StandingOrder.PostFacing);
 	}
+	if (m_StandingOrder.Kind != ORDER_NONE) {
+		writer.NewPropertyWithValue("OrderKind", m_StandingOrder.Kind);
+	}
+	if (m_StandingOrder.HasDigTarget) {
+		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
+	}
+	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
+		writer.NewPropertyWithValue("OrderFailReason", m_StandingOrder.FailReason);
+		if (m_StandingOrder.FailMaterial != 0) {
+			writer.NewPropertyWithValue("OrderFailMaterial", m_StandingOrder.FailMaterial);
+		}
+	}
 	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
 		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);
 	}
 	if (m_WeaponRule != WEAPONS_AT_WILL) {
 		writer.NewPropertyWithValue("WeaponRule", m_WeaponRule);
+	}
+	if (m_Temperament != TEMPERAMENT_FIGHTER) {
+		writer.NewPropertyWithValue("Temperament", std::string(TemperamentName(m_Temperament)));
+	}
+	if (m_NonCombatant >= 0) {
+		writer.NewPropertyWithValue("NonCombatant", m_NonCombatant != 0);
 	}
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
@@ -1114,6 +1177,43 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 	}
 }
 
+const char* Actor::TemperamentName(int temperament) {
+	static const char* names[TEMPERAMENTCOUNT] = {"Fighter", "Defensive", "Skittish", "Pacifist"};
+	return temperament >= 0 && temperament < TEMPERAMENTCOUNT ? names[temperament] : "";
+}
+
+int Actor::TemperamentFromString(const std::string& value) {
+	for (int temperament = 0; temperament < TEMPERAMENTCOUNT; ++temperament) {
+		const char* name = TemperamentName(temperament);
+		if (value.size() == std::strlen(name) && std::equal(value.begin(), value.end(), name, [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+			return temperament;
+		}
+	}
+	if (!value.empty() && std::all_of(value.begin(), value.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) {
+		int temperament = std::atoi(value.c_str());
+		return temperament < TEMPERAMENTCOUNT ? temperament : -1;
+	}
+	return -1;
+}
+
+void Actor::NoteHurtBy(const MovableObject* hitor, const Vector& hitVelocity) {
+	// The side of the shot or blade, and the unit itself when it was the unit (or something held by it) that hit. (A shot carries only its
+	// side: the firearm sets its team, HDFirearm::Update.)
+	const MovableObject* root = hitor ? hitor->GetRootParent() : nullptr;
+	int team = root ? root->GetTeam() : Activity::NoTeam;
+	if (team == Activity::NoTeam || team == m_Team) {
+		return;
+	}
+	m_LastAttackerTeam = team;
+	const Actor* attacker = dynamic_cast<const Actor*>(root);
+	m_LastAttackerID = attacker ? attacker->GetUniqueID() : 0;
+	Vector from(hitVelocity);
+	from.SetMagnitude(std::max(m_CharHeight, 1.0F) * 3.0F);
+	m_LastHurtFrom = m_Pos - from;
+	g_SceneMan.WrapPosition(m_LastHurtFrom);
+	m_HurtTimer.Reset();
+}
+
 bool Actor::ParticlePenetration(HitData& hd) {
 	bool penetrated = MOSRotating::ParticlePenetration(hd);
 
@@ -1136,6 +1236,9 @@ bool Actor::ParticlePenetration(HitData& hd) {
 		extruded = m_Pos - extruded;
 		g_SceneMan.WrapPosition(extruded);
 		AlarmPoint(extruded);
+	}
+	if ((penetrated || damageToAdd > 0) && m_Health > 0) {
+		NoteHurtBy(hitor, hd.HitVel[HITOR]);
 	}
 
 	return penetrated;
@@ -1182,15 +1285,7 @@ void Actor::UpdateMovePath() {
 		}
 		return g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
 	};
-	// The start is on the ground too, but not when that is far below: a unit part way up a jetpack climb, or just dropped from a ship, would be given
-	// a route that begins at the bottom and heads down for it. The ground has to be near for the start to be moved to it.
-	// (And not when the unit is off the ground at all, a quarter of a body over where it would stand: a route asked for in the air, by a
-	// re-path or a route check part way through a jump, started at the floor below and behind the unit, so its first point turned the unit
-	// back and dropped it there, undoing the jump. From where the unit is, the route goes on from there.)
-	Vector start = onGround(m_Pos);
-	if (start.m_Y - m_Pos.m_Y > m_CharHeight * 0.25F) {
-		start = m_Pos;
-	}
+	Vector start = GetPathStart();
 
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
 	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
@@ -1242,6 +1337,23 @@ void Actor::UpdateMovePath() {
 	m_UpdateMovePath = false;
 }
 
+Vector Actor::GetPathStart() const {
+	// On the ground, as the goal is (see UpdateMovePath), but not when that is far below: a unit part way up a jetpack climb, or just dropped
+	// from a ship, would be given a route that begins at the bottom and heads down for it. The ground has to be near for the start to be moved to it.
+	// (And not when the unit is off the ground at all, a quarter of a body over where it would stand: a route asked for in the air, by a
+	// re-path or a route check part way through a jump, started at the floor below and behind the unit, so its first point turned the unit
+	// back and dropped it there, undoing the jump. From where the unit is, the route goes on from there.)
+	Vector inScene(m_Pos.m_X, std::max(1.0F, m_Pos.m_Y));
+	if (g_SceneMan.GetTerrMatter(static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y)) != MaterialColorKeys::g_MaterialAir) {
+		return inScene;
+	}
+	Vector start = g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
+	if (start.m_Y - m_Pos.m_Y > m_CharHeight * 0.25F) {
+		start = m_Pos;
+	}
+	return start;
+}
+
 float Actor::EstimateDigStrength() const {
 	return m_AIBaseDigStrength;
 }
@@ -1269,6 +1381,33 @@ bool Actor::IsFloater() const {
 	return ActorWater::IsFloater(this);
 }
 
+std::string Actor::OrderFailText(int reason, int materialID) {
+	switch (reason) {
+		case ORDERFAIL_NOROUTE:
+			return "no route";
+		case ORDERFAIL_NODIGGER:
+			return "no digger";
+		case ORDERFAIL_TOOHARD: {
+			const Material* material = materialID > 0 ? g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(materialID)) : nullptr;
+			return material && material->GetIndex() == materialID ? "too hard to dig: " + material->GetPresetName() : std::string("too hard to dig");
+		}
+		case ORDERFAIL_LOSTDIGGER:
+			return "lost its digger";
+		case ORDERFAIL_OUTOFREACH:
+			return "out of reach";
+		default:
+			return std::string();
+	}
+}
+
+DigPlan Actor::PlanDigTo(const Vector& target) const {
+	Scene* scene = g_SceneMan.GetScene();
+	if (!scene) {
+		return DigPlan();
+	}
+	return scene->PlanDig(GetPathStart(), target, GetPathAgent(), static_cast<Activity::Teams>(m_Team));
+}
+
 PathAgent Actor::GetPathAgent() const {
 	PathAgent agent;
 	agent.JumpHeight = EstimateJumpHeight();
@@ -1279,6 +1418,15 @@ PathAgent Actor::GetPathAgent() const {
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
+	agent.Caution = g_SettingsMan.AIMoveCaution();
+	// For a unit a game mode wants kept safe (a flag carrier), where everyone stood when last published, so the route keeps clear of its
+	// enemies (see PathFinder::ThreatCost). Everyone else takes the shortest way.
+	agent.ThreatWeight = m_RouteThreatAvoidance * g_SettingsMan.AIThreatAvoidance();
+	agent.RouteSeed = m_RouteSeed;
+	if (agent.ThreatWeight > 0.0F) {
+		agent.Threats = g_MovableMan.GetPublishedThreats();
+		agent.ThreatTeam = m_Team;
+	}
 	// In liquid (LM-4): whether it floats and swims, how long it holds its breath, and whether lava is any danger to it, as ActorWater and
 	// ActorFire have it (with them off, water is only waded and lava harms nothing). What doesn't breathe isn't flesh, and doesn't burn.
 	bool waterActs = ActorWater::IsEnabled() && FluidSim::IsEnabled();
@@ -1290,6 +1438,12 @@ PathAgent Actor::GetPathAgent() const {
 	agent.CrawlHeight = agent.StandHeight;
 	// (Half the sprite's reach, near enough; at a third of it a soldier was sent down a shaft its own width, and stuck there.)
 	agent.HalfWidth = std::clamp(GetRadius() * 0.5F, 8.0F, 16.0F);
+	// On a dig-to order (RC-11): the route ends at the buried target itself, not at the open node next to it, and tunnels where a move would
+	// walk round (a quarter of the dig cost: a node dug costs about as much as one or two walked).
+	if (IsDiggingTo()) {
+		agent.DigGoal = true;
+		agent.DigCostScale = PathAgent::c_DigToCostScale;
+	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
 			agent.Avoid.push_back(avoid.first);
@@ -1397,7 +1551,7 @@ namespace {
 	/// water's own surface and was pulled up onto it.)
 	bool IsGroundAt(int x, int y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(x, y);
-		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id);
+		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id);
 	}
 } // namespace
 
@@ -1669,14 +1823,21 @@ void Actor::PreControllerUpdate() {
 		if (m_WaitingAtDoor) {
 			m_PathRetryTimer.Reset();
 		}
-		bool impossible = !cutAtDoor && m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F && m_MovePath.size() <= 3;
+		// (On a dig-to order, a digger too: the way there is through ground its digger doesn't cut, and it stops with that reason rather
+		// than standing at the face. RC-11.)
+		const bool digTo = IsDiggingTo();
+		const bool overStrength = !cutAtDoor && m_PathRequest->totalCost > 100000.0F && (digTo || EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
+		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && overStrength && m_MovePath.size() <= 3;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
-		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || (!cutAtDoor && m_PathRequest->totalCost > 100000.0F && EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
+		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || overStrength;
+		const int cutMaterial = m_PathRequest->cutMaterial;
 		if (impossible) {
 			m_PathRetryTimer.Reset();
 			m_MovePath.clear();
 			m_MovePathKinds.clear();
+			// Why, for the player when it stands down (RC-7): a digger's dig-to stops at ground it doesn't cut; anyone else's has no route.
+			FailOrder(digTo && EstimateDigStrength() > c_PathFindingDefaultDigStrength + 1.0F ? ORDERFAIL_TOOHARD : (digTo ? ORDERFAIL_NODIGGER : ORDERFAIL_NOROUTE), cutMaterial);
 			if (m_ImpossiblePaths >= 6) {
 				m_ImpossiblePaths = 0;
 				m_Waypoints.clear();
@@ -1686,6 +1847,10 @@ void Actor::PreControllerUpdate() {
 			}
 			m_PathRequest.reset();
 			return;
+		}
+		// (A way there after all: an earlier answer's reason no longer holds.)
+		if (int reason = m_StandingOrder.FailReason; reason == ORDERFAIL_NOROUTE || reason == ORDERFAIL_TOOHARD || reason == ORDERFAIL_NODIGGER) {
+			FailOrder(ORDERFAIL_NONE);
 		}
 		m_PathRequest.reset();
 		OnNewMovePath();
@@ -1702,6 +1867,99 @@ float Actor::GetNightAmount() {
 	glm::vec3 daylight = SceneLighting::GetDaylightTint(g_PostProcessMan.GetLightingSettings().TimeOfDay);
 	float dayFactor = glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F));
 	return std::clamp((0.45F - dayFactor) / 0.35F, 0.0F, 1.0F);
+}
+
+float Actor::GetAmbientLightForHeadlamp() {
+	const Vector eyes = GetEyePos();
+	// The sky: how open it is above, from three rays up (straight and a little to either side) that either reach the air above a roof's
+	// thickness or stop in the ground. Looked again every few updates, each unit on its own turn, as the ground and the unit move slowly next to that.
+	if (m_HeadlampSkyOpen < 0.0F || (g_TimerMan.GetSimUpdateCount() + GetUniqueID()) % 8 == 0) {
+		const float up = std::max(160.0F, GetHeight() * 3.0F);
+		int open = 0;
+		for (float sideways: {0.0F, -0.5F, 0.5F}) {
+			Vector roof;
+			if (!g_SceneMan.CastNotMaterialRay(eyes, Vector(up * sideways, -up), g_MaterialAir, roof)) {
+				++open;
+			}
+		}
+		m_HeadlampSkyOpen = static_cast<float>(open) / 3.0F;
+	}
+	float sky = (1.0F - GetNightAmount()) * m_HeadlampSkyOpen;
+	// The scenery's own light where the unit stands. Headlamps don't count: its own would switch itself off, and two units' would switch each other off.
+	float lamps = g_PostProcessMan.GetDynamicLightAt(eyes, false);
+	return sky + lamps;
+}
+
+void Actor::UpdateHeadlamp() {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (!lighting.Headlamps || !lighting.Enabled || m_HeadlampBrightness <= 0.0F || m_Status == DEAD || m_Status == DYING) {
+		m_HeadlampLit = false;
+		m_HeadlampFade = 0.0F;
+		return;
+	}
+	// How bright the lamp is drawn: full, except at night by the clock, where it comes up with the dark as it used to.
+	float strength = 1.0F;
+	if (lighting.HeadlampsByDay) {
+		m_HeadlampLit = true;
+	} else if (!lighting.HeadlampsOnlyInDark) {
+		strength = GetNightAmount();
+		m_HeadlampLit = strength > 0.05F;
+	} else {
+		// On when it gets darker than the threshold, off only once it's a little lighter than it: at the edge of a lamp's light or a cave mouth,
+		// or with the light wavering (a fire, a flash), the lamp stays as it is instead of flickering.
+		const float threshold = std::clamp(lighting.HeadlampDarkThreshold, 0.0F, 1.0F);
+		const float margin = 0.1F;
+		float light = GetAmbientLightForHeadlamp();
+		if (m_HeadlampLit && light > threshold + margin) {
+			m_HeadlampLit = false;
+		} else if (!m_HeadlampLit && light < threshold) {
+			m_HeadlampLit = true;
+		}
+	}
+	// It comes on and goes off over about a third of a second.
+	const float step = g_TimerMan.GetDeltaTimeSecs() / 0.3F;
+	m_HeadlampFade = std::clamp(m_HeadlampFade + (m_HeadlampLit ? step : -step), 0.0F, 1.0F);
+
+	// A headlamp lighting where the actor looks, plus a little glow around it.
+	if (m_HeadlampFade > 0.0F) {
+		Vector eyePos = GetEyePos();
+		float aimAngle = GetAimAngle(true);
+		// CC angles are counter-clockwise with Y up; screen space is Y down.
+		Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
+		// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
+		glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
+		if (m_HeadlampHasColor) {
+			color = glm::vec3(m_HeadlampColor.GetR(), m_HeadlampColor.GetG(), m_HeadlampColor.GetB());
+		} else if (lighting.HeadlampTeamTint > 0.0F && m_Team >= 0 && m_Team < 4) {
+			static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
+			color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
+		}
+		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
+		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
+	}
+}
+
+void Actor::UpdateOutlineGlow() {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor") {
+		return;
+	}
+	// The outline's own colour, as Tonemap.frag draws it: a highlighted unit's pink (a flag carrier, a VIP), pulsing with its stroke, else the side's or the set one.
+	glm::vec3 color;
+	float brightness = std::min(lighting.UnitOutlineGlow, 2.0F);
+	if (m_Highlighted) {
+		color = glm::vec3(0.9F, 0.55F, 0.72F);
+		brightness *= 0.7F + 0.3F * std::sin(PostProcessMan::GetEffectTime() * 6.0F);
+	} else if (lighting.UnitOutline && lighting.UnitOutlineOpacity > 0.0F) {
+		// The sides' colours as SceneLighting gives them to the outline, and white for no side.
+		static const glm::vec3 sideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
+		color = lighting.UnitOutlineTeamColor ? sideColors[std::clamp(m_Team, -1, 3) + 1] : glm::clamp(lighting.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F));
+	} else {
+		return;
+	}
+	// From the middle of the body, reaching a little past the unit so the ground and anyone beside it pick up the colour.
+	float reach = std::max(40.0F, GetHeight() * 1.5F);
+	g_PostProcessMan.RegisterLight(m_Pos, color * 255.0F, reach, brightness, LightSource::Outlines);
 }
 
 float Actor::GetNightSightScale() const {
@@ -1814,7 +2072,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		if (night > 0.05F) {
 			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
 			// A lit headlamp gives its wearer away whichever way it points (AC-11).
-			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || (lighting.Headlamps && candidate.actor->GetHeadlampBrightness() > 0.0F)) {
+			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || candidate.actor->IsHeadlampLit()) {
 				lit = std::max(lit, candidate.actor->GetController()->IsState(WEAPON_FIRE) ? 1.0F : 0.6F);
 			}
 			// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
@@ -1859,7 +2117,7 @@ float Actor::GetFootstepNoise() const {
 	Vector underfoot;
 	if (g_SceneMan.CastNotMaterialRay(m_Pos, Vector(0.0F, m_CharHeight * 0.6F + 8.0F), g_MaterialAir, underfoot)) {
 		const Material* floor = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(underfoot.GetFloorIntX(), underfoot.GetFloorIntY()));
-		if (floor && floor->GetPresetName().find("Metal") != std::string::npos) {
+		if (floor && (floor->GetPresetName().find("Metal") != std::string::npos || floor->GetPresetName().find("Plate") != std::string::npos)) {
 			noise *= 1.5F;
 		}
 	}
@@ -2006,7 +2264,18 @@ void Actor::UpdateSuppressionAndMorale() {
 					Vector notUsed;
 					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
 						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
-						friendActor->Say("ManDown");
+						// (The last of them near here says so; the rest name who went down.)
+						bool alone = true;
+						for (const Actor* other: g_MovableMan.GetActorList()) {
+							if (other != this && other != friendActor && other->GetTeam() == m_Team && other->GetStatus() != DYING && other->GetStatus() != DEAD && !other->IsInGroup("Brains") && other->FeelsFire() &&
+							    g_SceneMan.ShortestDistance(friendActor->GetPos(), other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(400.0F)) {
+								alone = false;
+								break;
+							}
+						}
+						if (!alone || !friendActor->SayAbout("AllAlone", this)) {
+							friendActor->SayAbout("ManDown", this);
+						}
 					}
 				}
 			}
@@ -2074,26 +2343,8 @@ void Actor::PostUpdate() {
 }
 
 void Actor::Update() {
-	// Night: a headlamp lighting where the actor looks, plus a little glow around it. Render only.
-	if (const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings(); lighting.Headlamps && lighting.Enabled && m_HeadlampBrightness > 0.0F && m_Status != DEAD && m_Status != DYING) {
-		float night = lighting.HeadlampsByDay ? 1.0F : GetNightAmount();
-		if (night > 0.05F) {
-			Vector eyePos = GetEyePos();
-			float aimAngle = GetAimAngle(true);
-			// CC angles are counter-clockwise with Y up; screen space is Y down.
-			Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
-			// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
-			glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
-			if (m_HeadlampHasColor) {
-				color = glm::vec3(m_HeadlampColor.GetR(), m_HeadlampColor.GetG(), m_HeadlampColor.GetB());
-			} else if (lighting.HeadlampTeamTint > 0.0F && m_Team >= 0 && m_Team < 4) {
-				static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
-				color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
-			}
-			g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * night, LightSource::Headlamps);
-			g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * night, LightSource::Headlamps);
-		}
-	}
+	UpdateHeadlamp();
+	UpdateOutlineGlow();
 
 	ZoneScoped;
 
@@ -2640,6 +2891,48 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("status", m_Status);
 	fields.push_back({"aiMode", m_AIMode >= 0 && m_AIMode < static_cast<int>(std::size(modeNames)) ? modeNames[m_AIMode] : std::to_string(m_AIMode), true});
 	flag("playerControlled", IsPlayerControlled());
+	// The standing order (AI6-2): what the unit was told to do, since the sandbox stopped keeping it in the Sandbox... number values.
+	const StandingOrder& order = m_StandingOrder;
+	flag("orderAttack", order.Attack);
+	if (order.TargetID != 0) {
+		number("orderTarget", static_cast<double>(order.TargetID));
+	}
+	if (order.AutoTargetID != 0) {
+		number("orderAutoTarget", static_cast<double>(order.AutoTargetID));
+	}
+	if (order.HasAttackPlace) {
+		number("orderAttackX", std::floor(order.AttackPlace.m_X));
+		number("orderAttackY", std::floor(order.AttackPlace.m_Y));
+	}
+	if (order.HasPost) {
+		number("orderPostX", std::floor(order.Post.m_X));
+		number("orderPostY", std::floor(order.Post.m_Y));
+		if (order.PostFacing != 0) {
+			fields.push_back({"orderPostFacing", order.PostFacing < 0 ? "left" : "right", true});
+		}
+	}
+	flag("orderHold", order.Hold);
+	static const char* const orderKindNames[] = {"none", "move", "attack-move", "attack", "guard", "defend", "patrol", "dig to"};
+	if (order.Kind != ORDER_NONE) {
+		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
+	}
+	if (order.HasDigTarget) {
+		number("orderDigX", std::floor(order.DigTarget.m_X));
+		number("orderDigY", std::floor(order.DigTarget.m_Y));
+	}
+	if (order.FailReason != ORDERFAIL_NONE) {
+		fields.push_back({"orderFailed", OrderFailText(order.FailReason, order.FailMaterial), true});
+	}
+	static const char* const weaponRuleNames[] = {"at will", "return fire", "hold fire"};
+	static const char* const movementRuleNames[] = {"follow order", "engage", "move only", "hold ground"};
+	fields.push_back({"weaponRule", m_WeaponRule >= 0 && m_WeaponRule < static_cast<int>(std::size(weaponRuleNames)) ? weaponRuleNames[m_WeaponRule] : std::to_string(m_WeaponRule), true});
+	fields.push_back({"temperament", TemperamentName(m_Temperament), true});
+	flag("nonCombatant", IsNonCombatant());
+	if (m_LastAttackerTeam != Activity::NoTeam) {
+		number("lastAttackerTeam", m_LastAttackerTeam);
+		number("sinceHurtMS", std::floor(GetMSSinceHurt()));
+	}
+	fields.push_back({"movementRule", order.Movement >= 0 && order.Movement < static_cast<int>(std::size(movementRuleNames)) ? movementRuleNames[order.Movement] : std::to_string(order.Movement), true});
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());

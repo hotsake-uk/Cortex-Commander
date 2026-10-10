@@ -39,8 +39,31 @@ namespace RTE {
 		/// Sets whether still water freezes over in snowy weather.
 		static void SetFreezingEnabled(bool enabled) { s_Freezing = enabled; }
 
+		/// Gets whether liquid that reaches the bottom of the map runs out of it and is gone, rather than pooling on the bottom row (a gameplay setting, off unless turned on).
+		static bool DrainsBottom() { return s_DrainBottom; }
+
+		/// Sets whether liquid drains out of the bottom of the map.
+		static void SetDrainsBottom(bool enabled) { s_DrainBottom = enabled; }
+
+		/// Gets whether liquid that reaches the left or right edge of the map runs out of it and is gone, rather than banking up against it (a gameplay
+		/// setting, off unless turned on). A map that wraps sideways has no side edges, so this does nothing there.
+		static bool DrainsSides() { return s_DrainSides; }
+
+		/// Sets whether liquid drains out of the sides of the map.
+		static void SetDrainsSides(bool enabled) { s_DrainSides = enabled; }
+
+		/// Gets whether loose ground (sand, snow, gravel: the powders) that reaches the bottom or a side of the map falls out of it and is gone,
+		/// rather than piling there (a gameplay setting, off unless turned on). As for liquids, a map that wraps sideways has no side edges.
+		static bool PowdersFallOut() { return s_PowdersFallOut; }
+
+		/// Sets whether loose ground falls out of the map.
+		static void SetPowdersFallOut(bool enabled) { s_PowdersFallOut = enabled; }
+
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
+
+		/// Gets whether liquids flow through a material as if it weren't there (grass, foliage: MaterialBehaviour::LiquidsPassThrough).
+		static bool LetsLiquidsThrough(int materialID);
 
 		/// Gets whether a flowing liquid holds up and drags at bodies in it (ActorWater): every flowing liquid, oil and lava included (L-5); what
 		/// each does to a body is its material's (weight, stickiness, touch damage).
@@ -139,5 +162,8 @@ namespace RTE {
 		static bool s_Powders; //!< Whether loose powders slide and pile.
 		static bool s_Freezing; //!< Whether still water freezes over in snowy weather.
 		static bool s_BloodFlows; //!< Whether settled blood runs and pools.
+		static bool s_DrainBottom; //!< Whether liquid drains out of the bottom of the map.
+		static bool s_DrainSides; //!< Whether liquid drains out of the sides of the map (where it doesn't wrap).
+		static bool s_PowdersFallOut; //!< Whether loose ground falls out of the bottom and sides of the map.
 	};
 } // namespace RTE

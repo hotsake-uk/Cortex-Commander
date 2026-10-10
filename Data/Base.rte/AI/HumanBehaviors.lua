@@ -1214,6 +1214,8 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					ClosestEnemy = ToAHuman(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "ACrab" then
 					ClosestEnemy = ToACrab(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "AVehicle" then
+					ClosestEnemy = ToAVehicle(ClosestEnemy);
 				else
 					ClosestEnemy = nil;
 				end
@@ -1403,7 +1405,12 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						if not shotClear and AI.Target.EyePos and SharedBehaviors.CanSee(Weapon.Pos, AI.Target.EyePos) then
 							shotClear = true;
 						end
-						if shotClear then
+						if AI.FlankSearch then
+							-- (A flank's routes asked for: started once they are back.)
+							if SharedBehaviors.StartFlank(AI, Owner, TargetPoint, PrjDat and PrjDat.rng or 500) then
+								break;
+							end
+						elseif shotClear then
 							AI.ShotBlockedTimer = nil;
 						elseif not AI.ShotBlockedTimer then
 							AI.ShotBlockedTimer = Timer();
@@ -1714,7 +1721,7 @@ end
 -- A few steps behind something the target can't see through, to reload or to recover from a hit, and then out again (LeaveCover).
 -- A defender only goes as far as half a body, so it's still at its post. @return Whether the legs are taken for it this tick.
 function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
-	if AI.flying or Owner.aggressive then
+	if AI.flying or Owner.aggressive or SharedBehaviors.OnObjective(Owner) or SharedBehaviors.Rushing(Owner) then
 		return false;
 	end
 	local kind = SharedBehaviors.OrderKind(Owner);
@@ -1804,7 +1811,7 @@ function HumanBehaviors.UseTheWorld(AI, Owner)
 		AI.DouseTimer:Reset();
 		local Friend;
 		for Act in MovableMan.Actors do
-			if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act:NumberValueExists("OnFire") and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(220) and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
+			if Act.Team == Owner.Team and Act.ID ~= Owner.ID and SharedBehaviors.PeerValueExists(Act, "OnFire") and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(220) and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
 				Friend = Act;
 				break;
 			end
@@ -1935,7 +1942,7 @@ function HumanBehaviors.PeekUpdate(AI, Owner)
 	AI.ducked = false;
 	local Target = AI.Target;
 	local moving = AI.lateralMoveState ~= Actor.LAT_STILL and not (AI.Cover and AI.Cover.There);
-	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
+	if not Target or not MovableMan:ValidMO(Target) or moving or AI.flying or Owner.aggressive or AI.closingIn or SharedBehaviors.OnObjective(Owner) or SharedBehaviors.Rushing(Owner) or AI.proneState == AHuman.PRONE or not SharedBehaviors.EngineMotor(Owner) then
 		AI.Peek = nil;
 		AI.peekCover = nil;
 		return;
@@ -2084,6 +2091,8 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 									AI.Target = ToACDropShip(MO);
 								elseif MO.ClassName == "ADoor" then
 									AI.Target = ToADoor(MO);
+								elseif MO.ClassName == "AVehicle" then
+									AI.Target = ToAVehicle(MO);
 								elseif MO.ClassName == "Actor" then
 									AI.Target = ToActor(MO);
 								else
@@ -2441,6 +2450,8 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 			over = "an enemy about";
 		elseif not MovableMan:ValidMO(Patient) or Patient.Status >= Actor.DYING or Patient.Health <= 0 then
 			over = "the friend is gone";
+		elseif (SharedBehaviors.MedicSeeingTo(Patient, Owner.UniqueID) or math.huge) < Owner.UniqueID then
+			over = "another medic has the friend"; -- (Two went for the same friend on the same update: the lower unique ID keeps it.)
 		elseif Patient.Health >= Patient.MaxHealth * 0.9 and Patient.WoundCount == 0 then
 			over = "patched up";
 		elseif not Owner:HasObject("Medikit") then
@@ -2521,7 +2532,7 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 	local Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
 	AI.Medic = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Patient = Patient, Spot = Spot, Timer = Timer() };
 	Owner:SetNumberValue("AIMedic", 1);
-	Patient:SetNumberValue("AIMedicBy", Owner.UniqueID);
+	Owner:SetNumberValue("AIMedicFor", Patient.UniqueID); -- (On itself: no unit's AI writes another's values, see SharedBehaviors.PeerValue.)
 	Owner.OrderAttack = false;
 	Owner:ClearAIWaypoints();
 	Owner:AddAISceneWaypoint(Spot);
@@ -2537,9 +2548,7 @@ function HumanBehaviors.MedicEnd(AI, Owner, keep)
 	AI.Medic = nil;
 	AI.medicHeal = false;
 	Owner:RemoveNumberValue("AIMedic");
-	if M and MovableMan:ValidMO(M.Patient) and M.Patient:GetNumberValue("AIMedicBy") == Owner.UniqueID then
-		M.Patient:RemoveNumberValue("AIMedicBy");
-	end
+	Owner:RemoveNumberValue("AIMedicFor");
 	if Owner.EquippedItem and Owner.EquippedItem.PresetName == "Medikit" then
 		Owner:EquipFirearm(true);
 	end

@@ -469,6 +469,10 @@ int Scene::Create(const Scene& reference) {
 int Scene::LoadData(bool placeObjects, bool initPathfinding, bool placeUnits) {
 	RTEAssert(m_pTerrain, "Terrain not instantiated before trying to load its data!");
 
+	if (g_SettingsMan.NoSceneWrap()) {
+		m_pTerrain->ForceNoWrapX(m_pTerrain->WrapsX());
+	}
+
 	///////////////////////////////////
 	// Load Terrain's data
 	if (m_pTerrain->LoadData() < 0) {
@@ -2405,6 +2409,16 @@ int Scene::SetOwnerOfAllDoors(int team, int player) {
 }
 
 void Scene::ResetPathFinding() {
+	// New searches are held on every grid for the whole rewrite, so none starts on a grid half written (the waits below only see the ones
+	// already sent); they go once it's done.
+	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
+		GetPathFinder(static_cast<Activity::Teams>(team)).HoldNewRequests();
+	}
+	struct ReleaseHeld {
+		Scene* scene;
+		~ReleaseHeld() { scene->ReleaseHeldPathRequests(); }
+	} releaseHeld{this};
+
 	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
 	noTeamPathFinder.RecalculateAllCosts();
 	std::vector<int> allNodes(noTeamPathFinder.GetNodeCount());
@@ -2468,18 +2482,24 @@ void Scene::UpdatePathFinding() {
 		if ((m_pTerrain->GetUpdatedMaterialAreas().empty() && m_TeamGridUpdateAreas.empty() && noTeamPathFinder.GetWaitingNodeCount() == 0 && !teamGridBehind()) || !starvedTimer.IsPastRealMS(300)) {
 			return;
 		}
-		// Starved: new searches are held back on every grid, and the ones running finish on their own threads; a later call, finding none left,
-		// rewrites the grid and lets the held ones go. (The main thread waited for them here, up to the longest search, and a search to a place
-		// with no way through goes over the whole map: hitches of 150 to 380 ms every so often in a fight, INC-STALL-3.)
-		bool idle = true;
-		for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
-			if (!GetPathFinder(static_cast<Activity::Teams>(team)).HoldNewRequests()) {
-				idle = false;
-			}
+	}
+	// No search ever reads a grid while it is written: new searches are held back on every grid, under the lock they are sent under, and the
+	// grid is only written once none is queued or running. Starved, the ones running finish on their own threads and a later call, finding
+	// none left, rewrites the grid and lets the held ones go. (The main thread waited for them here, up to the longest search, and a search
+	// to a place with no way through goes over the whole map: hitches of 150 to 380 ms every so often in a fight, INC-STALL-3.) Not starved,
+	// the hold is still taken, so the count read above going stale (a search sent from another thread since) can't let one run under the write.
+	bool idle = true;
+	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
+		if (!GetPathFinder(static_cast<Activity::Teams>(team)).HoldNewRequests()) {
+			idle = false;
 		}
-		if (!idle) {
-			return;
+	}
+	if (!idle) {
+		if (!requestsInFlight) {
+			// (Not starved: no reason to keep new searches back until the next call.)
+			ReleaseHeldPathRequests();
 		}
+		return;
 	}
 	starvedTimer.Reset();
 	// Whatever this call does, the grids take new searches again when it's over, and those held back meanwhile are sent.
