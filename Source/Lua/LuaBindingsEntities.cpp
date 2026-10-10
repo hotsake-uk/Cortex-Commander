@@ -425,6 +425,20 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ActorSighting) {
 	    .def_readonly("Head", &ActorSighting::Head);
 }
 
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
+	return ConcreteTypeLuaClassDefinition(AVehicle, Actor)
+
+	    .property("Driver", &AVehicle::GetDriver)
+	    .property("HasDriver", &AVehicle::HasDriver)
+	    .property("Throttle", &AVehicle::GetThrottle)
+	    .property("MaxSpeed", &AVehicle::GetMaxSpeed, &AVehicle::SetMaxSpeed)
+	    .property("WheelsOnGround", &AVehicle::GetWheelsOnGround)
+	    .property("SeatOffset", &AVehicle::GetSeatOffset)
+
+	    .def("TakeDriver", &AVehicle::TakeDriver)
+	    .def("EjectDriver", &AVehicle::EjectDriver);
+}
+
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
 	return ConcreteTypeLuaClassDefinition(ADoor, Actor)
 
@@ -1290,7 +1304,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieSlice) {
 	                        luabind::value("Team2", static_cast<int>(PieSliceType::EditorTeam2)),
 	                        luabind::value("Team3", static_cast<int>(PieSliceType::EditorTeam3)),
 	                        luabind::value("Team4", static_cast<int>(PieSliceType::EditorTeam4)),
-	                        luabind::value("DigTo", static_cast<int>(PieSliceType::DigTo))];
+	                        luabind::value("DigTo", static_cast<int>(PieSliceType::DigTo)),
+	                        luabind::value("GetOut", static_cast<int>(PieSliceType::GetOut))];
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieMenu) {

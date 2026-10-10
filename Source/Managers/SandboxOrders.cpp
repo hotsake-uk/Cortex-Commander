@@ -1651,7 +1651,7 @@ namespace SandboxDetail {
 		std::vector<const Preset*> units;
 		for (const Preset& unit: s_Units) {
 			const Entity* entity = unit.ModuleID == moduleID ? g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID) : nullptr;
-			if (entity && !entity->IsInGroup("Actors - Turrets")) {
+			if (entity && !entity->IsInGroup("Actors - Turrets") && !entity->IsInGroup("Actors - Vehicles")) {
 				units.push_back(&unit);
 			}
 		}
