@@ -379,8 +379,9 @@ void PollSDLEvents() {
 		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 			Sandbox::TogglePlay((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
 		}
-		// Pause/Break: holds the world still until pressed again, with the sandbox tools open or closed.
-		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_PAUSE && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen()) {
+		// Pause/Break, or O on keyboards without one: holds the world still until pressed again, with the sandbox tools open or closed.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() &&
+		    (sdlEvent.key.scancode == SDL_SCANCODE_PAUSE || (sdlEvent.key.scancode == SDL_SCANCODE_O && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput))) {
 			g_DebugMan.ToggleUserPause();
 		}
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {
