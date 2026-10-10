@@ -1,5 +1,6 @@
 #include "AVehicle.h"
 
+#include "AEmitter.h"
 #include "AHuman.h"
 #include "ActivityMan.h"
 #include "Atom.h"
@@ -15,6 +16,7 @@
 #include "Sandbox.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
+#include "SoundContainer.h"
 #include "TimerMan.h"
 
 #include "GUI.h"
@@ -124,6 +126,7 @@ void AVehicle::Clear() {
 	m_WaterMaxSpeed = 4.0F;
 	m_WaterDrag = 0.4F;
 	m_RowingStroke = 0.0F;
+	m_PlaningTrim = 0.0F;
 	m_PropellerOffset.Reset();
 	m_HasPropeller = false;
 	m_Oar = nullptr;
@@ -131,6 +134,10 @@ void AVehicle::Clear() {
 	m_StrokePhase = 0.0F;
 	m_Submerged = 0.0F;
 	m_WakeTimer.Reset();
+	m_EngineSound = nullptr;
+	m_Exhaust = nullptr;
+	m_EngineRunning = false;
+	m_EngineLoad = 0.0F;
 	m_Driver = nullptr;
 	m_Throttle = 0.0F;
 	m_Braking = false;
@@ -157,11 +164,20 @@ int AVehicle::Create(const AVehicle& reference) {
 	if (reference.m_Oar) {
 		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_Oar->GetUniqueID());
 	}
+	if (reference.m_Exhaust) {
+		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_Exhaust->GetUniqueID());
+	}
 
 	Actor::Create(reference);
 
 	if (reference.m_Oar) {
 		SetOar(dynamic_cast<Attachable*>(reference.m_Oar->Clone()));
+	}
+	if (reference.m_Exhaust) {
+		SetExhaust(dynamic_cast<AEmitter*>(reference.m_Exhaust->Clone()));
+	}
+	if (reference.m_EngineSound) {
+		m_EngineSound = dynamic_cast<SoundContainer*>(reference.m_EngineSound->Clone());
 	}
 	for (const Wheel& wheel: reference.m_Wheels) {
 		// (A bare strut whose wheel was shot off isn't copied.)
@@ -195,6 +211,7 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_WaterMaxSpeed = reference.m_WaterMaxSpeed;
 	m_WaterDrag = reference.m_WaterDrag;
 	m_RowingStroke = reference.m_RowingStroke;
+	m_PlaningTrim = reference.m_PlaningTrim;
 	m_PropellerOffset = reference.m_PropellerOffset;
 	m_HasPropeller = reference.m_HasPropeller;
 	m_OarSweep = reference.m_OarSweep;
@@ -222,6 +239,13 @@ void AVehicle::Destroy(bool notInherited) {
 	if (m_Oar) {
 		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Oar->GetUniqueID());
 	}
+	if (m_Exhaust) {
+		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Exhaust->GetUniqueID());
+	}
+	if (m_EngineSound) {
+		m_EngineSound->Stop();
+	}
+	delete m_EngineSound;
 	if (!notInherited) {
 		Actor::Destroy();
 	}
@@ -256,12 +280,19 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("WaterMaxSpeed", { reader >> m_WaterMaxSpeed; });
 	MatchProperty("WaterDrag", { reader >> m_WaterDrag; });
 	MatchProperty("RowingStroke", { reader >> m_RowingStroke; });
+	MatchProperty("PlaningTrim", { reader >> m_PlaningTrim; });
 	MatchProperty("PropellerOffset", {
 		reader >> m_PropellerOffset;
 		m_HasPropeller = true;
 	});
 	MatchProperty("Oar", { SetOar(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("OarSweep", { reader >> m_OarSweep; });
+	MatchProperty("EngineSound", {
+		delete m_EngineSound;
+		m_EngineSound = new SoundContainer;
+		reader >> m_EngineSound;
+	});
+	MatchProperty("Exhaust", { SetExhaust(dynamic_cast<AEmitter*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
 	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
 	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
@@ -304,6 +335,7 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("WaterMaxSpeed", m_WaterMaxSpeed);
 	writer.NewPropertyWithValue("WaterDrag", m_WaterDrag);
 	writer.NewPropertyWithValue("RowingStroke", m_RowingStroke);
+	writer.NewPropertyWithValue("PlaningTrim", m_PlaningTrim);
 	if (m_HasPropeller) {
 		writer.NewPropertyWithValue("PropellerOffset", m_PropellerOffset);
 	}
@@ -312,6 +344,14 @@ int AVehicle::Save(Writer& writer) const {
 		writer << m_Oar;
 	}
 	writer.NewPropertyWithValue("OarSweep", m_OarSweep);
+	if (m_EngineSound) {
+		writer.NewProperty("EngineSound");
+		writer << m_EngineSound;
+	}
+	if (m_Exhaust) {
+		writer.NewProperty("Exhaust");
+		writer << m_Exhaust;
+	}
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
 	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
 	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
@@ -381,6 +421,53 @@ void AVehicle::SetOar(Attachable* newOar) {
 	// It swings about where it is fixed (UpdateHull); it goes into the water, not the ground.
 	newOar->SetInheritsRotAngle(true);
 	newOar->SetCollidesWithTerrainWhileAttached(false);
+}
+
+void AVehicle::SetExhaust(AEmitter* newExhaust) {
+	if (m_Exhaust && m_Exhaust->IsAttached()) {
+		RemoveAndDeleteAttachable(m_Exhaust);
+	}
+	m_Exhaust = newExhaust;
+	if (!newExhaust) {
+		return;
+	}
+	AddAttachable(newExhaust);
+
+	m_HardcodedAttachableUniqueIDsAndRemovers.insert({newExhaust->GetUniqueID(), [](MOSRotating* parent, Attachable* attachable) {
+		                                                  AVehicle* vehicle = dynamic_cast<AVehicle*>(parent);
+		                                                  if (vehicle->m_Exhaust == attachable) {
+			                                                  vehicle->m_Exhaust = nullptr;
+		                                                  }
+	                                                  }});
+
+	newExhaust->SetInheritsRotAngle(true);
+	newExhaust->SetCollidesWithTerrainWhileAttached(false);
+	newExhaust->EnableEmission(false);
+}
+
+void AVehicle::UpdateEngine(bool canDrive) {
+	bool running = canDrive && (m_EngineSound || m_Exhaust);
+	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	// The load follows the throttle over about half a second: it revs up and dies down rather than jump.
+	float target = running ? std::abs(m_Throttle) : 0.0F;
+	m_EngineLoad += (target - m_EngineLoad) * std::min(deltaTime * 2.5F, 1.0F);
+	if (m_EngineSound) {
+		if (running) {
+			if (!m_EngineSound->IsBeingPlayed()) {
+				m_EngineSound->Play(m_Pos);
+			}
+			m_EngineSound->SetPosition(m_Pos);
+			m_EngineSound->SetPitch(0.75F + m_EngineLoad * 0.7F);
+		} else if (m_EngineSound->IsBeingPlayed()) {
+			m_EngineSound->Stop();
+		}
+	}
+	if (m_Exhaust) {
+		m_Exhaust->EnableEmission(running);
+		// (Thicker working hard.)
+		m_Exhaust->SetThrottle(m_EngineLoad * 2.0F - 1.0F);
+	}
+	m_EngineRunning = running;
 }
 
 void AVehicle::RemoveWheel(const Attachable* wheel) {
@@ -766,7 +853,10 @@ bool AVehicle::UpdateHull() {
 	across *= std::max(1.0F - 3.0F * m_Submerged * deltaTime, 0.0F);
 	m_Vel = along * speedAlong + across;
 	m_AngularVel *= std::max(1.0F - 2.5F * m_Submerged * deltaTime, 0.0F);
-	m_AngularVel -= Wrapped(rotation) * 6.0F * m_Submerged * deltaTime;
+	// (Going fast bow first, a planing hull rides with its bow up: it is kept at that trim instead of level.)
+	float forward = std::clamp(speedAlong * GetFlipFactor() / std::max(m_WaterMaxSpeed, 0.1F), 0.0F, 1.0F);
+	float trim = m_PlaningTrim * forward * GetFlipFactor();
+	m_AngularVel -= Wrapped(rotation - trim) * 6.0F * m_Submerged * deltaTime;
 
 	// Driven along by the oars or the motor, if the blades or the propeller are in the water.
 	bool rowing = m_Throttle != 0.0F && m_WaterThrust > 0.0F;
@@ -852,6 +942,7 @@ void AVehicle::Update() {
 		}
 	}
 
+	UpdateEngine(canDrive);
 	UpdateWheels();
 	UpdateHull();
 	if (m_Oar) {

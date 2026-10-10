@@ -451,6 +451,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("SubmergedFraction", &AVehicle::GetSubmergedFraction)
 	    .property("HasHull", &AVehicle::HasHull)
 	    .property("Oar", &AVehicle::GetOar)
+	    .property("Exhaust", &AVehicle::GetExhaust)
+	    .property("EngineRunning", &AVehicle::IsEngineRunning)
+	    .property("EngineLoad", &AVehicle::GetEngineLoad)
 
 	    .def("TakeDriver", &AVehicle::TakeDriver)
 	    .def("EjectDriver", &AVehicle::EjectDriver);

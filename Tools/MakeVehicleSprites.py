@@ -9,6 +9,8 @@ cab, an engine with a stack, shock towers and coil springs over the shocks), the
 
 The rowing boat (VH-2): a clinker-built hull with a painted top strake, the oar that swings in its oarlock, and the icon.
 
+The motor boat (VH-2): a little white speedboat with an outboard motor on its transom, and the icon.
+
 Run from the repository's root: python Tools/MakeVehicleSprites.py
 """
 
@@ -21,6 +23,7 @@ from PIL import Image
 OUT = Path("Data/Base.rte/Actors/Vehicles/WoodenCart")
 HOPPER_OUT = Path("Data/Base.rte/Actors/Vehicles/Moonhopper")
 BOAT_OUT = Path("Data/Base.rte/Actors/Vehicles/RowingBoat")
+MOTOR_OUT = Path("Data/Base.rte/Actors/Vehicles/MotorBoat")
 PALETTE = Image.open("Data/Base.rte/palette.bmp").getpalette()[:768]
 
 # Palette ramps, dark to light.
@@ -484,6 +487,97 @@ def boat_hull_points():
     return [(x - BOAT_MID[0], boat_bottom(x) - BOAT_MID[1]) for x in range(6, BOAT_W - 2, 12)]
 
 
+# The motor boat's size (keep in step with MotorBoat.ini): the picture and its middle in it, where the outboard's propeller and stack are.
+MOTOR_W, MOTOR_H = 96, 30
+MOTOR_MID = (46, 13)
+MOTOR_PROP = (4, 26)
+MOTOR_STACK = (3, 0)
+WHITE = [94, 124, 173, 183, 50, 174, 97, 99]
+RED = [6, 11, 12, 13, 38]
+
+
+def motor_top(x):
+    """The gunwale: level, rising a little towards the bow."""
+    return 6 if x < 60 else round(6 - 3 * ((x - 60) / 35) ** 2)
+
+
+def motor_bottom(x):
+    """A planing hull: a flat run aft, sweeping up to a raked bow."""
+    if x < 50:
+        return 20
+    return round(20 - 15 * ((x - 50) / 45) ** 1.8)
+
+
+def motor_hull():
+    """A small speedboat, facing right: a white hull with a red stripe and a dark band at the waterline, a raked windscreen, a chrome
+    rail, and an outboard motor on the transom, its leg and propeller hanging below the hull."""
+    c = Canvas(MOTOR_W, MOTOR_H, 41)
+    for x in range(8, MOTOR_W):
+        top, bottom = motor_top(x), motor_bottom(x)
+        for y in range(top, bottom + 1):
+            u = (y - top) / max(bottom - top, 1)
+            light = 0.8 - u * 0.45
+            if y == top:
+                light += 0.15
+            if y == bottom:
+                light -= 0.3
+            ramp = WHITE
+            if top + 2 <= y <= top + 3:
+                ramp, light = RED, 0.75 - (y - top - 2) * 0.25
+            elif y >= bottom - 2:
+                ramp, light = BOAT_BLUE, 0.35 - (y - bottom + 2) * 0.1
+            c.put(x, y, shade(ramp, dither(x, y, light, 0.03)))
+    # The transom, square and a little darker.
+    for y in range(motor_top(8), motor_bottom(8) + 1):
+        c.put(8, y, shade(WHITE, 0.3))
+        c.put(9, y, shade(WHITE, 0.45))
+    # A chrome rail along the gunwale at the bow, and the windscreen raked back over the cockpit.
+    for x in range(64, 92):
+        c.put(x, motor_top(x) - 1, CHROME[7] if x % 6 else CHROME[3])
+    for y in range(0, 6):
+        lean = (5 - y) // 2
+        for x in range(56, 59):
+            c.put(x + lean, y, shade(GLASS, 0.85 - y * 0.06 - (x - 56) * 0.18))
+        c.put(59 + lean, y, CHROME[6])
+    for x in range(54, 64):
+        c.put(x, 5, CHROME[5])
+    # The back of the driver's seat, padded, just showing over the gunwale.
+    for y in range(1, 6):
+        for x in range(30, 35):
+            c.put(x, y, shade(RED, 0.55 - (x - 30) * 0.08 + (0.2 if y == 1 else 0.0)))
+    # The outboard: a cowling on the transom, its leg down past the hull, the cavitation plate and the propeller.
+    for y in range(1, 9):
+        for x in range(0, 9):
+            if (x, y) in ((0, 1), (8, 1), (0, 8)):
+                continue
+            light = 0.55 - (y - 1) * 0.05 - x * 0.02 + (0.2 if y == 1 else 0.0)
+            c.put(x, y, shade(IRON, dither(x, y, light, 0.03)))
+    for x in range(1, 8):
+        c.put(x, 4, RED[3])
+    for y in range(MOTOR_STACK[1], 2):
+        c.put(MOTOR_STACK[0], y, IRON[1])
+    for y in range(9, 26):
+        for x, light in ((3, 0.6), (4, 0.4), (5, 0.25)):
+            c.put(x, y, shade(IRON, dither(x, y, light, 0.03)))
+    for x in range(1, 8):
+        c.put(x, 22, IRON[4])
+    for x, y in ((4, 24), (4, 25), (4, 26), (4, 27), (3, 25), (5, 27), (2, 24), (6, 28), (1, 24), (7, 28)):
+        c.put(x, y, CHROME[5] if y < 26 else CHROME[3])
+    return c.image()
+
+
+def motor_icon(hull):
+    img = Image.new("P", (MOTOR_W, MOTOR_H), 0)
+    img.putpalette(PALETTE)
+    img.paste(hull, (0, 0))
+    return img
+
+
+def motor_hull_points():
+    """The hull points for the INI: along the bottom, from the middle."""
+    return [(x - MOTOR_MID[0], motor_bottom(x) - MOTOR_MID[1]) for x in range(12, MOTOR_W - 4, 12)]
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     body = cart_body()
@@ -510,6 +604,12 @@ def main():
     oar.save(BOAT_OUT / "RowingBoatOar.png")
     boat_icon(hull, oar).save(BOAT_OUT / "RowingBoatIcon.png")
     print("Rowing boat hull points:", boat_hull_points())
+
+    MOTOR_OUT.mkdir(parents=True, exist_ok=True)
+    hull = motor_hull()
+    hull.save(MOTOR_OUT / "MotorBoatHull.png")
+    motor_icon(hull).save(MOTOR_OUT / "MotorBoatIcon.png")
+    print("Motor boat hull points:", motor_hull_points())
 
 
 if __name__ == "__main__":

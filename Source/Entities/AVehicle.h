@@ -5,6 +5,8 @@
 namespace RTE {
 
 	class Attachable;
+	class AEmitter;
+	class SoundContainer;
 
 	/// A wheeled vehicle (VH-1): a body held up off the ground by sprung wheels, which roll it over bumps and slopes. It is driven by a unit
 	/// that climbs in to the seat, drawn sitting in it, and gets out again. The body's own atoms only meet the ground when the springs bottom
@@ -68,6 +70,19 @@ namespace RTE {
 
 		/// Gets the oar, if it has one. Ownership is NOT transferred!
 		Attachable* GetOar() const { return m_Oar; }
+
+		/// Sets the exhaust: an emitter that runs while the engine does (smoke from a motor's stack). Ownership IS transferred!
+		/// @param newExhaust The exhaust to set. nullptr removes it.
+		void SetExhaust(AEmitter* newExhaust);
+
+		/// Gets the exhaust, if it has one. Ownership is NOT transferred!
+		AEmitter* GetExhaust() const { return m_Exhaust; }
+
+		/// Gets whether its engine is running: it has one, and someone is driving (or it drives itself).
+		bool IsEngineRunning() const { return m_EngineRunning; }
+
+		/// Gets how hard the engine is working, 0 (ticking over) to 1 (flat out), eased towards the throttle.
+		float GetEngineLoad() const { return m_EngineLoad; }
 
 		/// Gets how much of its hull is in liquid, 0 (none, or no hull) to 1 (all its hull points under by the hull's draft), from the last update.
 		float GetSubmergedFraction() const { return m_Submerged; }
@@ -185,6 +200,7 @@ namespace RTE {
 		float m_WaterThrust; //!< How hard it speeds up in water with the driver rowing or the motor on, in m/s each second. 0: it doesn't drive in water.
 		float m_WaterMaxSpeed; //!< The top speed it is driven at in water, in m/s.
 		float m_WaterDrag; //!< How much water slows it going along, in a share of its speed each second at full depth (side on and up and down, a good deal more).
+		float m_PlaningTrim; //!< How far the bow lifts at its top speed in water, in radians: a speedboat rides up on the water as it goes.
 		float m_RowingStroke; //!< How long a stroke of the oars takes, in ms: it is pushed along in pulses, as the blades pull. 0: a steady push (a motor or a paddle wheel).
 		Vector m_PropellerOffset; //!< Where the push comes from, from the body's middle upright and facing right: it only drives with that point in liquid.
 		bool m_HasPropeller; //!< Whether a PropellerOffset was given. Without, it drives with any of the hull in liquid.
@@ -193,6 +209,11 @@ namespace RTE {
 		float m_StrokePhase; //!< How far through a stroke the oar is, in radians: the blade pulls in the first half.
 		float m_Submerged; //!< How much of the hull was in liquid in the last update, 0 to 1.
 		Timer m_WakeTimer; //!< Since it last left froth or spray on the water, so it leaves a little at a time.
+
+		SoundContainer* m_EngineSound; //!< The engine's running sound, looped while it runs, its pitch going up with the load. None: no engine.
+		AEmitter* m_Exhaust; //!< Runs while the engine does. Owned by this, as an attachable.
+		bool m_EngineRunning; //!< Whether the engine ran in the last update.
+		float m_EngineLoad; //!< How hard the engine is working, 0 to 1, eased towards the throttle.
 		Timer m_HopTimer; //!< Since it last jumped, so it can't bounce itself up a cliff.
 
 		Actor* m_Driver; //!< The unit in the driver's seat, out of the scene while it's in here. Owned.
@@ -214,6 +235,10 @@ namespace RTE {
 		/// Holds the hull up on the liquid it is in, slows it in it and keeps it upright, and drives it along with the oars or motor.
 		/// @return Whether any of the hull is in liquid.
 		bool UpdateHull();
+
+		/// Runs the engine while someone drives: its sound, its pitch with the load, and the exhaust.
+		/// @param canDrive Whether it can be driven this update (someone in the seat, or it drives itself, and not wrecked).
+		void UpdateEngine(bool canDrive);
 
 		/// Lets a friendly unit beside the seat that asks to get in, get in; lets the driver out when they ask.
 		void UpdateBoarding();
