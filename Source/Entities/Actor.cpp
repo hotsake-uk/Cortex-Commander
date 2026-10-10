@@ -1884,7 +1884,6 @@ void Actor::UpdateOutlineGlow() {
 		// The sides' colours as SceneLighting gives them to the outline, and white for no side.
 		static const glm::vec3 sideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
 		color = lighting.UnitOutlineTeamColor ? sideColors[std::clamp(m_Team, -1, 3) + 1] : glm::clamp(lighting.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F));
-		brightness *= std::clamp(lighting.UnitOutlineOpacity, 0.0F, 1.0F);
 	} else {
 		return;
 	}
