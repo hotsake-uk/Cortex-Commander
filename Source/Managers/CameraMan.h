@@ -89,6 +89,14 @@ namespace RTE {
 		/// @return Current target vector in Scene coordinates.
 		Vector GetScrollTarget(int screenId = 0) const;
 
+		/// Pulls a view centre in so the view it asks for doesn't run past a hard (non-wrapping) scene edge, the same way the screen's offset is held in.
+		/// Panning code that keeps its own centre should keep the clamped one: otherwise the centre keeps going past the edge while the view stays put,
+		/// and the view only moves again once it has been brought all the way back.
+		/// @param center The wanted view centre in Scene coordinates.
+		/// @param screenId Which screen the centre is for.
+		/// @return The centre, held in on each axis the scene doesn't wrap on.
+		Vector ClampScrollCenter(const Vector& center, int screenId = 0);
+
 		/// Interpolates a smooth scroll of the view from wherever it is now, towards centering on a new scroll target over time.
 		/// @param targetCenter The new target vector in Scene coordinates.
 		/// @param speed The normalized speed at screen the view scrolls. 0 being no movement, and 1.0 being instant movement to the target in one frame.
