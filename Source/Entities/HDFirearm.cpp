@@ -6,6 +6,7 @@
 #include "FrameMan.h"
 #include "PresetMan.h"
 #include "PostProcessMan.h"
+#include "SettingsMan.h"
 
 #include "Magazine.h"
 #include "ThrownDevice.h"
@@ -1077,6 +1078,12 @@ void HDFirearm::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whic
 	HeldDevice::DrawHUD(pTargetBitmap, targetPos, whichScreen);
 
 	if (!m_Parent || IsReloading() || m_MaxSharpLength == 0) {
+		return;
+	}
+
+	// The setting hides the aim reticles of CPU-controlled units' weapons (a turret's too, through the crab it's on); the player's always show.
+	const Actor* rootActor = dynamic_cast<const Actor*>(GetRootParent());
+	if (!g_SettingsMan.ShowCPUAimReticles() && !(rootActor && rootActor->IsPlayerControlled())) {
 		return;
 	}
 

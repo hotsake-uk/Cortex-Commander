@@ -596,7 +596,8 @@ int SceneMan::RemoveOrphans(int posX, int posY,
 		m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 		m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 		// Liquid resting against the pixel that just went may now have somewhere to flow.
-		FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F); TerrainCollapse::NoteDamage(posX, posY);
+		FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
+		TerrainCollapse::NoteDamage(posX, posY);
 	}
 
 	int xoff[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
@@ -686,7 +687,8 @@ bool SceneMan::TryPenetrate(int posX,
 			m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
-			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F); TerrainCollapse::NoteDamage(posX, posY);
+			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
+			TerrainCollapse::NoteDamage(posX, posY);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
 		// (Never liquid: past its first few pixels a shot through a pool erased about two in three of the rest with no drop to show for
@@ -695,7 +697,8 @@ bool SceneMan::TryPenetrate(int posX,
 			m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, g_MaskColor);
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
-			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F); TerrainCollapse::NoteDamage(posX, posY);
+			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
+			TerrainCollapse::NoteDamage(posX, posY);
 		}
 
 		// Save the impulse force effects of the penetrating particle.
@@ -717,6 +720,11 @@ bool SceneMan::TryPenetrate(int posX,
 
 			for (int testY = posY - 1; testY > posY - m_ScrapCompactingHeight && testY >= 0; --testY) {
 				if ((testMaterialID = _getpixel(pMaterial, posX, testY)) != g_MaterialAir) {
+					// A tree stands in the open with no wall behind it, but on its own trunk, not as scrap: the column stops at it. (A step into the
+					// grass at a tree's foot took the trunk and leaves above it, all of a small tree.)
+					if (TerrainTrees::IsTreeMaterial(testMaterialID)) {
+						break;
+					}
 					sceneMat = GetMaterialFromID(testMaterialID);
 
 					if (sceneMat->IsScrap() || _getpixel(pBGColor, posX, testY) == g_MaskColor) {
@@ -794,7 +802,8 @@ MOPixel* SceneMan::DislodgePixel(int posX, int posY) {
 	m_pCurrentScene->GetTerrain()->SetFGColorPixel(posX, posY, ColorKeys::g_MaskColor);
 	m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, MaterialColorKeys::g_MaterialAir);
 	// Liquid resting against the pixel that just went may now have somewhere to flow.
-	FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F); TerrainCollapse::NoteDamage(posX, posY);
+	FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
+	TerrainCollapse::NoteDamage(posX, posY);
 
 	return pixelMO;
 }
@@ -2008,13 +2017,13 @@ MOID SceneMan::CastMORay(const Vector& start, const Vector& ray, const std::vect
 
 			// Loop through ignored MOIDs to see if the one we found is ignored
 			bool ignoredMOIDHit = false;
-			for (auto ignoredMOID : ignoreMOIDs) {
+			for (auto ignoredMOID: ignoreMOIDs) {
 				if (hitMOID == ignoredMOID || g_MovableMan.GetRootMOID(hitMOID) == ignoredMOID) {
 					ignoredMOIDHit = true;
 					break;
 				}
 			}
-			
+
 			if (hitMOID != g_NoMOID && !ignoredMOIDHit) {
 				// Save last ray pos
 				s_LastRayHitPos.SetXY(intPos[X], intPos[Y]);
@@ -2136,7 +2145,7 @@ bool SceneMan::CastFindMORay(const Vector& start, const Vector& ray, MOID target
 	return false;
 }
 
-const std::vector<MovableObject*>*  SceneMan::CastAllMOsRay(const Vector& start, const Vector& ray, const std::vector<MOID>& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, bool ignoreAllTerrain, int skip) const {
+const std::vector<MovableObject*>* SceneMan::CastAllMOsRay(const Vector& start, const Vector& ray, const std::vector<MOID>& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, bool ignoreAllTerrain, int skip) const {
 	LiquidsSeeThrough seeThrough(false, skip + 1); // A look sees into and through water (FluidSim::SightDepth).
 	std::vector<MovableObject*>* vectorForLua = new std::vector<MovableObject*>();
 
@@ -2200,15 +2209,15 @@ const std::vector<MovableObject*>*  SceneMan::CastAllMOsRay(const Vector& start,
 
 			// Scene wrapping, if necessary
 			g_SceneMan.WrapPosition(intPos[X], intPos[Y]);
-				
+
 			// Detect MOs
 			std::vector<MovableObject*> hitMOs;
 			hitMOs = partitionGrid.GetMOsAtPosition(intPos[X], intPos[Y], ignoreTeam, false);
 
 			// Loop through the gotten MOs and check if we're ignoring their IDs - if not, put them onto our return vector
-			for (MovableObject* mo : hitMOs) {
+			for (MovableObject* mo: hitMOs) {
 				MOID moid = mo->GetID();
-				for (auto ignoredMOID : ignoreMOIDs) {
+				for (auto ignoredMOID: ignoreMOIDs) {
 					if (moid != ignoredMOID && g_MovableMan.GetRootMOID(moid) != ignoredMOID) {
 						// Save last ray pos
 						s_LastRayHitPos.SetXY(intPos[X], intPos[Y]);
@@ -2312,7 +2321,7 @@ float SceneMan::CastObstacleRay(const Vector& start, const Vector& ray, Vector& 
 
 			// Loop through ignored MOIDs to see if the one we found is ignored
 			bool ignoredMOIDHit = false;
-			for (auto ignoredMOID : ignoreMOIDs) {
+			for (auto ignoredMOID: ignoreMOIDs) {
 				if (checkMOID == ignoredMOID || g_MovableMan.GetRootMOID(checkMOID) == ignoredMOID) {
 					ignoredMOIDHit = true;
 					break;
@@ -2845,7 +2854,6 @@ void SceneMan::Draw(BITMAP* targetBitmap, BITMAP* targetGUIBitmap, const Vector&
 }
 
 void SceneMan::DrawGUI(const Camera& camera) {
-
 }
 
 void SceneMan::Draw(const Camera& camera) {
@@ -2876,6 +2884,20 @@ void SceneMan::Draw(const Camera& camera) {
 	g_RenderMan.EndLayerUniforms();
 	g_RenderMan.SetCurrentShader(sceneShader);
 
+	// Trees behind units: the foreground's trees are drawn before the objects, the rest of it after (TerrainTrees::DrawnBehindUnits).
+	GLint treePassUniform = terrainShader ? terrainShader->GetUniformLocation("rteTreePass") : -1;
+	bool treesBehind = TerrainTrees::DrawnBehindUnits() && treePassUniform >= 0 && foregroundUniform >= 0;
+	if (treesBehind) {
+		logStages.Next("Scene draw: trees");
+		terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
+		g_RenderMan.SetCurrentShader(terrainShader);
+		g_RenderMan.BeginLayerUniform(std::make_shared<BoolValue>(foregroundUniform, true), foregroundUniform);
+		g_RenderMan.BeginLayerUniform(std::make_shared<IntValue>(treePassUniform, 1), treePassUniform);
+		terrainLayer->Draw(camera);
+		g_RenderMan.EndLayerUniforms();
+		g_RenderMan.SetCurrentShader(sceneShader);
+	}
+
 	logStages.Next("Scene draw: objects");
 	g_MovableMan.Draw(camera);
 
@@ -2883,6 +2905,7 @@ void SceneMan::Draw(const Camera& camera) {
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
 	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
 	g_RenderMan.BeginLayerUniform(std::make_shared<BoolValue>(foregroundUniform, true), foregroundUniform);
+	g_RenderMan.BeginLayerUniform(std::make_shared<IntValue>(treePassUniform, treesBehind ? 2 : 0), treePassUniform);
 	terrainLayer->Draw(camera);
 	g_RenderMan.EndLayerUniforms();
 	g_RenderMan.SetCurrentShader(sceneShader);

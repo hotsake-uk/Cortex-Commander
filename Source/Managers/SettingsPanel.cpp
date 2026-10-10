@@ -26,6 +26,7 @@
 #include "TerrainCollapse.h"
 #include "TerrainTrees.h"
 #include "TerrainFire.h"
+#include "RopeSim.h"
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
@@ -671,6 +672,11 @@ void DebugMan::SettingsGUI() {
 			TerrainCandle::SetBurnMinutes(minutes);
 		}
 		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
+		Toggle("Dropped ropes settle into the ground", RopeSim::GetSettleSeconds() > 0.0F, [](bool on) { RopeSim::SetSettleSeconds(on ? 5.0F : 0.0F); });
+		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
+			RopeSim::SetSettleSeconds(settle);
+		}
+		Tip("A rope, chain or cable that is no longer tied to anything and has lain still this long turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
@@ -801,6 +807,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Bullets go past trees. This is the chance that a bullet meeting a tree strikes it instead, now and then, and then it barely marks the tree. Rockets and the like clear a trunk but strike the leaves, so trees give cover from them. Fire and explosions work on trees as they always did.");
 		Toggle("Trees only meet the ground under them", TerrainCollapse::PassesTrees(), [](bool on) { TerrainCollapse::SetPassesTrees(on); });
 		Tip("On: rock and other ground falling from above goes through a standing tree (behind it, leaving the tree whole) rather than landing on it, and a falling tree goes through other trees. A tree that is cut or burnt through still falls over and lands on the ground. Off (as the game comes): trees are solid to falling pieces like any ground.");
+		Toggle("Units in front of trees", TerrainTrees::DrawnBehindUnits(), [](bool on) { TerrainTrees::SetDrawnBehindUnits(on); });
+		Tip("On (as the game comes): a tree is drawn behind units and everything else that moves, so a unit walking through a tree is seen in front of its trunk and leaves. Off: trees are drawn over them like the rest of the ground. (Needs the lighting's terrain shader; very large scenes draw trees in front.)");
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
 		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
@@ -809,7 +817,7 @@ void DebugMan::SettingsGUI() {
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
 		Tip("A piece left joined to the rest by a neck no wider than this breaks off and falls. 0: only pieces cut right through fall. Wood always holds until it's cut or burnt right through, so a burning tree stands (a material's own NeckWidth in its ini).");
 		SliderI("Biggest piece that can fall (pixels)", &tuning.MaxPiecePixels, 500, 200000, "%d", ImGuiSliderFlags_Logarithmic);
-		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block.");
+		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block. A tree's trunk and leaves don't count, so a big tree cut through still comes down whole.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
 		Tip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
 		Heading("How it falls");
@@ -831,6 +839,15 @@ void DebugMan::SettingsGUI() {
 		Tip("Loose ground that falls apart easily. Leaves and grass count only in a piece of nothing else.");
 		Slider("Wood, tree trunks (Splinter, m/s)", &tuning.SplinterSpeed, 0.5F, 30.0F, "%.1f");
 		Tip("22 m/s is a drop of about 13 m: a felled or burnt-through tree lands whole. A tree's leaves don't make it weaker. Planks break at 0.8 of this.");
+		Slider("Leaves break apart (x easier)", &tuning.LeafBreakEase, 1.0F, 20.0F, "%.1fx");
+		Tip("How much more easily a falling tree's leaves (and grass) come off and break up when it lands than the piece itself breaks: at 4 a landing at a quarter of the speed strips as many, and a hard one nearly all of them. A clump of nothing but leaves comes apart this much more easily too. 1: as easily as the rest.");
+		{
+			int litterPercent = static_cast<int>(std::round(tuning.LeafLitter * 100.0F));
+			if (SliderI("Leaves left on the ground (%)", &litterPercent, 0, 100)) {
+				tuning.LeafLitter = static_cast<float>(litterPercent) / 100.0F;
+			}
+		}
+		Tip("Of the leaves (and grass) that come off a falling tree or break off a clump, how many are laid on the ground below as plant matter rather than thrown as loose bits, most of which vanish as they land. 100: all of them stay. 0: all are thrown, as before. Leaves thrown when too many are flying at once are laid down either way rather than lost.");
 		Slider("Metal (Bend, m/s)", &tuning.BendSpeed, 0.5F, 30.0F, "%.1f");
 		Tip("Metal never breaks from a landing. Above this, a long thin piece (a beam, a plate) folds at a crease, more the harder the hit and the thinner it is, and a chunky piece dents. Falling pieces move at most 27 m/s, so above that never.");
 		Heading("Hitting units");
@@ -966,6 +983,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
+		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
+		Tip("The yellow dots along the sights of a weapon a CPU-controlled unit is aiming, and of a turret's. Off: only your own units' are drawn. Your own aim is always shown.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });
 		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the action menu: a list above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
@@ -1306,6 +1325,8 @@ void DebugMan::SettingsGUI() {
 		Tip("In the move previews (the Command tool's Move and the Move order), every spot the order will look at with the first unit's path cost to it: green where a unit will be sent, red where it has no way there and the spot is passed over, grey where it wasn't needed. Each is a path search, so it is worked out again only as the pointer moves.");
 		Toggle("Stroke log", g_SettingsMan.ShowSandboxStrokeLog(), [](bool on) { g_SettingsMan.SetShowSandboxStrokeLog(on); });
 		Tip("The last 20 sandbox tool uses as they are applied, in the top right: the sim update, the tool, where, the side, the orders, and the choice and count. With the Sandbox lines ticked under Debug text in the console, each also goes to the console.");
+		Toggle("Bottom bar's counts, AI, speed and undo", g_SettingsMan.ShowSandboxBarRight(), [](bool on) { g_SettingsMan.SetShowSandboxBarRight(on); });
+		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open) and undo. Off, the bar is shorter; undo is still Ctrl+Z.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {

@@ -204,6 +204,7 @@ void Controller::GetInputFromPlayer() {
 }
 
 bool Controller::s_AIPaused = false;
+bool Controller::s_RightClickMenuBlocked = false;
 
 bool Controller::IsHeldByPausedAI() const {
 	// (Not craft: held, a craft's controls go slack and it drops out of the sky, delivery and passengers with it.)
@@ -390,7 +391,8 @@ void Controller::UpdatePlayerPieMenuInput(std::array<bool, ControlState::CONTROL
 	}
 
 	// PIE MENU ACTIVE
-	const bool activeAnalog = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_PIEMENU_ANALOG) || g_UInputMan.ElementReleased(m_Player, InputElements::INPUT_PIEMENU_ANALOG);
+	// (Not the right mouse button where it is kept from it: in the Sandbox game mode while you play a unit.)
+	const bool activeAnalog = !(s_RightClickMenuBlocked && IsMouseControlled()) && (g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_PIEMENU_ANALOG) || g_UInputMan.ElementReleased(m_Player, InputElements::INPUT_PIEMENU_ANALOG));
 	const bool activeDigital = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_PIEMENU_DIGITAL) || g_UInputMan.ElementReleased(m_Player, InputElements::INPUT_PIEMENU_DIGITAL);
 	if (activeAnalog || activeDigital) {
 		if (m_ControlledActor && m_ControlledActor->GetPieMenu()->IsInNormalAnimationMode() && !m_ControlledActor->GetPieMenu()->IsVisible()) {

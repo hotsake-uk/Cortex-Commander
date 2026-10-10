@@ -103,7 +103,7 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 	const ImU32 goldDim = IM_COL32(170, 128, 48, 255);
 	const ImU32 text = IM_COL32(232, 224, 190, 255);
 	const ImU32 textDim = IM_COL32(150, 146, 120, 255);
-	const ImU32 textOnLit = IM_COL32(20, 18, 10, 255);
+	const ImU32 textOnLit = IM_COL32(255, 255, 255, 255); // Light: the pixel font has a dark edge of its own, which smudges dark lettering.
 	auto colourOf = [](Kind kind, int alpha) {
 		switch (kind) {
 			case Kind::Command:
@@ -150,7 +150,9 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 		bool lit = cell.Chosen && cell.Section != Kind::Command;
 		ImU32 fill;
 		if (lit) {
-			fill = colour;
+			// A darker shade of its colour, edged in the colour itself, so the light lettering reads on it.
+			auto shade = [colour](int shift) { return static_cast<ImU32>(static_cast<float>((colour >> shift) & 0xFF) * 0.45F) << shift; };
+			fill = shade(IM_COL32_R_SHIFT) | shade(IM_COL32_G_SHIFT) | shade(IM_COL32_B_SHIFT) | IM_COL32_A_MASK;
 		} else if (cell.Section == Kind::Command) {
 			// Buttons: raised, blue-grey.
 			fill = hovered ? IM_COL32(62, 88, 118, 255) : IM_COL32(44, 62, 84, 255);
@@ -163,6 +165,9 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 			drawList->AddRect(cell.Min, cell.Max, colourOf(Kind::Command, 90), rounding * 0.75F, 0, 1.0F);
 		} else if (!lit && !hovered) {
 			drawList->AddRect(cell.Min, cell.Max, IM_COL32(70, 80, 58, 255), rounding * 0.75F, 0, 1.0F);
+		}
+		if (lit && !hovered) {
+			drawList->AddRect(cell.Min, cell.Max, colour, rounding * 0.75F, 0, std::max(1.0F, 1.5F * scale));
 		}
 		if (hovered) {
 			drawList->AddRect(cell.Min, cell.Max, lit ? IM_COL32(255, 250, 230, 255) : colour, rounding * 0.75F, 0, std::max(1.0F, 1.5F * scale));
@@ -180,10 +185,6 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 		}
 		ImU32 labelColour = lit ? textOnLit : (cell.Enabled ? text : textDim);
 		drawList->AddText(font, fontSize, at, labelColour, label.c_str());
-		if (lit) {
-			// Twice, a pixel apart: bold, so it reads on the fill.
-			drawList->AddText(font, fontSize, ImVec2(at.x + 1.0F, at.y), labelColour, label.c_str());
-		}
 	}
 }
 
@@ -304,7 +305,7 @@ void ActionMenu::Update() {
 	PieMenu* pieMenu = actor ? actor->GetPieMenu() : nullptr;
 	bool held = g_UInputMan.ElementHeld(Players::PlayerOne, InputElements::INPUT_PIEMENU_ANALOG);
 	bool released = g_UInputMan.ElementReleased(Players::PlayerOne, InputElements::INPUT_PIEMENU_ANALOG);
-	bool usable = pieMenu && pieMenu->IsReplacedByActionMenu() && pieMenu->IsEnabled();
+	bool usable = pieMenu && pieMenu->IsReplacedByActionMenu() && pieMenu->IsEnabled() && !Controller::IsRightClickMenuBlocked();
 
 	if (!s_Open) {
 		if (!held || !usable) {

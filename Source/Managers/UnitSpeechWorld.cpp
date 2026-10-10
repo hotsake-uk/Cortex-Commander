@@ -291,7 +291,7 @@ namespace {
 					}
 					continue;
 				}
-				if (actor->GetStatus() < Actor::DYING && actor->GetTeam() >= 0 && !dynamic_cast<const AVehicle*>(actor)) {
+				if (actor->GetStatus() < Actor::DYING && actor->GetTeam() >= 0 && !dynamic_cast<const AVehicle*>(actor) && !actor->IsAnimal()) {
 					Living.push_back(actor);
 				}
 				if (actor->GetStatus() >= Actor::DYING) {
@@ -490,8 +490,11 @@ namespace {
 			if (piece.VelY < 1.0F) {
 				continue;
 			}
+			// (Only a piece that is really about to land on it: above it, near, and the reach capped, since a tall trunk's far tip is no threat to a unit hundreds of pixels off.)
 			Vector toPiece = g_SceneMan.ShortestDistance(position, Vector(piece.X, piece.Y), g_SceneMan.SceneWrapsX());
-			if (toPiece.m_Y < 0.0F && toPiece.m_Y > -240.0F && std::abs(toPiece.m_X + piece.VelX * 10.0F) < piece.Radius + 40.0F) {
+			Vector soon = toPiece + Vector(piece.VelX, piece.VelY) * 10.0F;
+			const float reach = std::min(piece.Radius, 120.0F) + 30.0F;
+			if (toPiece.m_Y < 0.0F && toPiece.m_Y > -200.0F && soon.GetMagnitude() < reach) {
 				(piece.Tree ? treeOverhead : rockOverhead) = true;
 			}
 		}
@@ -752,6 +755,10 @@ void UnitSpeech::UpdateWorld() {
 			continue;
 		}
 		senses.NextLookUpdate = update + c_LookEvery;
+		// (Nor an animal: it has nothing to say at all.)
+		if (actor->IsAnimal()) {
+			continue;
+		}
 		if (!shared.Built) {
 			shared.Build(nowMS);
 		}

@@ -62,6 +62,9 @@ namespace RTE {
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
+		/// Gets whether a material is simulated as flowing: a liquid, or loose powder (sand, snow, rubble) that falls and piles.
+		static bool IsFlowing(int materialID);
+
 		/// Gets whether liquids flow through a material as if it weren't there (grass, foliage: MaterialBehaviour::LiquidsPassThrough).
 		static bool LetsLiquidsThrough(int materialID);
 
@@ -84,7 +87,8 @@ namespace RTE {
 		/// @param liquidName "Water", "Lava", "Acid" or "Oil", or a powder: "Sand", "Snow", "Earth Rubble" or "Ashes".
 		/// @param lifeSeconds How long the pixels poured last, in seconds: each is gone that long after it was poured, wherever it has flowed to by then (a spring that
 		/// makes a stream or a waterfall that never fills what it runs into). 0 (the default): for ever. Not kept in saved games.
-		static void Pour(const Vector& position, float radius, const char* liquidName, float lifeSeconds = 0.0F);
+		/// @param over What the pour may replace besides air: 1 liquids and loose ground, 2 solid terrain (not the edge of the world). 0 (the default): air only.
+		static void Pour(const Vector& position, float radius, const char* liquidName, float lifeSeconds = 0.0F, int over = 0);
 
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);

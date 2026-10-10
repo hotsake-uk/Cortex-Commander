@@ -47,6 +47,19 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	}
 	if (toolName == "Effect") {
 		// The preset name is the effect's name.
+		LoadCustomEffects();
+		for (size_t i = 0; i < s_CustomEffects.size(); ++i) {
+			if (presetName == s_CustomEffects[i].Name) {
+				Stroke placed;
+				placed.Kind = Tool::Effect;
+				placed.Position = position;
+				placed.Choice = static_cast<int>(EffectKind::Count) + static_cast<int>(i);
+				placed.Layers = s_CustomEffects[i].Layers;
+				placed.Material = s_CustomEffects[i].Name;
+				s_Queue.push_back(placed);
+				return true;
+			}
+		}
 		for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
 			if (presetName == c_Effects[i].Name) {
 				Stroke placed;
@@ -509,6 +522,8 @@ bool Sandbox::CapturesWorldClicks() {
 }
 
 void Sandbox::DrawGUI() {
+	// In the Sandbox game mode the right mouse button opens no menu while you play a unit.
+	Controller::SetRightClickMenuBlocked(IsGodMode() && InGame() && s_Possessed != nullptr);
 	// A new Sandbox game opens the god view: the window and the free camera.
 	if (IsGodMode()) {
 		if (s_GodViewPending || !s_GodViewSetUp) {
@@ -572,7 +587,14 @@ void Sandbox::DrawGUI() {
 					Apply(stroke);
 				}
 			}
-			if (s_StepsWanted > 0 || !s_Queue.empty() || s_PlayerEnterPending > 0) {
+			// Lights, glows and the like are put together by the sim update from the settings as they stand (the lamps' brightness and tint, fire and
+			// effect looks...), so a setting changed while the world stands still showed only once it ran again. A widget in use (a slider dragged, a
+			// box ticked, a button let go) lets an update through, a slow few a second while it is held, and one as it is let go.
+			static bool widgetWasActive = false;
+			const bool widgetActive = ImGui::GetActiveID() != 0;
+			const bool settingsTouched = (widgetActive && ImGui::GetFrameCount() % 6 == 0) || (widgetWasActive && !widgetActive);
+			widgetWasActive = widgetActive;
+			if (s_StepsWanted > 0 || !s_Queue.empty() || s_PlayerEnterPending > 0 || settingsTouched) {
 				g_TimerMan.StepSim(1);
 				s_StepsWanted = std::max(s_StepsWanted - 1, 0);
 			}
@@ -662,6 +684,8 @@ void Sandbox::DrawGUI() {
 			BuildCatalogue();
 		}
 		DrawBar();
+	} else {
+		s_BarHeight = 0.0F;
 	}
 	if (!s_Open && !hiddenButAbove) {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
@@ -704,6 +728,16 @@ void Sandbox::DrawGUI() {
 	// U: the bar along the bottom hidden or shown again, in the god view, so long as no text box has the keys.
 	if (IsGodMode() && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_U, false)) {
 		s_BarShown = !s_BarShown;
+	}
+	// E: the plant brush in hand's next picture (Shift: the one before), held down to run through them; F: the next one flipped. In the god
+	// view, so long as no text box has the keys.
+	if (InGame() && !s_Possessed && IsPlantBrush(CurrentTool().Kind) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		if (ImGui::IsKeyPressed(ImGuiKey_E)) {
+			StepNextPlant(CurrentTool().Kind, io.KeyShift ? -1 : 1);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+			FlipNextPlant(CurrentTool().Kind);
+		}
 	}
 	// Enter: done with the Battle tab's defence point, drop line or spawn zone tool, which goes back to the one in hand before (PutDownBattleTool). Not
 	// part way through a drag, so the line being drawn isn't lost.
@@ -923,6 +957,7 @@ void Sandbox::DrawGUI() {
 				stroke.Position = s_ShapeStart;
 				stroke.Position2 = end;
 				stroke.Fill = static_cast<int>(s_FillShape);
+				stroke.Over = CurrentPaintOver();
 				if (stroke.Kind == Tool::TerrainOther) {
 					stroke.Material = s_OtherTerrain;
 				} else if (stroke.Kind == Tool::Metal) {
@@ -1179,12 +1214,31 @@ void Sandbox::DrawGUI() {
 					ImGui::SetItemTooltip("Which units are listed: all of them, only fighters, or only non-combatants (animals, civilians: units that never start a fight).");
 					TemperamentCombo("Temperament");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
+					// An animal or a civilian has no kit to choose and takes no orders to fight (it is only one if the chosen unit is: random picks are soldiers unless asked for otherwise).
+					const Preset* chosenUnit = kind == Tool::Unit && !s_RandomUnits ? ChosenPreset(kind, ChoiceFor(kind)) : nullptr;
+					ImGui::BeginDisabled(chosenUnit && chosenUnit->NonCombatant);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");
+					ImGui::EndDisabled();
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {
-					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
+					ImGui::SeparatorText("Lights and fires: shine from the background");
+				{
+					int column = 0;
+					for (int i = 0; i < static_cast<int>(DecorKind::Count); ++i) {
+						if (column++ % 3 != 0) {
+							ImGui::SameLine();
+						}
+						if (ToolUI::RadioButton(DecorName(i), c_Tools[s_ToolIndex].Kind == Tool::Decor && s_DecorChoice == i)) {
+							s_DecorChoice = i;
+							TookTool(ToolIndex(Tool::Decor));
+						}
+						ImGui::SetItemTooltip("%s", DecorTip(i));
+					}
+				}
+				ImGui::Separator();
+				ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
 				UndoButton();
 				EndSandboxTab();
@@ -1275,6 +1329,12 @@ void Sandbox::DrawGUI() {
 			}
 			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
+				ImGui::SeparatorText("Paint over");
+				ToolUI::Checkbox("Liquids", &s_PaintOverLiquids);
+				ImGui::SetItemTooltip("The liquid, loose-ground and terrain brushes replace water, lava, oil, sand, snow and the like, instead of only filling air. Dig is as it was.");
+				ImGui::SameLine();
+				ToolUI::Checkbox("Terrain", &s_PaintOverTerrain);
+				ImGui::SetItemTooltip("The liquid, loose-ground and terrain brushes replace solid terrain (earth, rock, concrete, metal, ...) instead of only filling air. The edge of the world stays. Dig is as it was.");
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
 				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood});
@@ -1335,7 +1395,7 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::EndCombo();
 				}
-				ImGui::SetItemTooltip("What new springs pour, and what the Boom tab's tank is filled with.");
+				ImGui::SetItemTooltip("What new springs pour, and what the tank is filled with.");
 				ImGui::SliderFloat("Spring rate", &s_SpringRate, 0.05F, 1.0F, "%.2f");
 				ImGui::SetItemTooltip("How much of the time new springs pour. 1: they keep the air around them full.");
 				ImGui::SliderFloat("Spring lifetime", &s_SpringLife, 0.0F, 120.0F, s_SpringLife <= 0.0F ? "for ever" : "%.0f s");
@@ -1381,6 +1441,9 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms, trees and candles are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is (candles go up in whole steps, x1, x2, x3).");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
+				if (IsPlantBrush(CurrentTool().Kind)) {
+					PlantPickPanel(CurrentTool().Kind);
+				}
 				{
 					// How long candles burn (the same setting as Settings > Fire and smoke).
 					bool forever = TerrainCandle::GetBurnMinutes() <= 0.0F;
@@ -1486,6 +1549,10 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
 				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
+				ImGui::SeparatorText("Force: shoves and scatters, burns and harms nothing");
+				ToolButtons({Tool::ForceBlast, Tool::HugeForceBlast, Tool::Implosion, Tool::Updraft, Tool::GustRight, Tool::GustLeft});
+				ImGui::SeparatorText("For show");
+				ToolButtons({Tool::SmokeBomb, Tool::Fireworks});
 				ImGui::SeparatorText("From the sky: click where it should land");
 				ToolButtons({Tool::RocketStrike, Tool::RocketBarrage, Tool::CarpetBomb, Tool::Artillery, Tool::NapalmRain, Tool::OrbitalBeam, Tool::BoulderRain});
 				ImGui::SeparatorText("Craft that don't make it: click where it comes down");
@@ -1493,8 +1560,6 @@ void Sandbox::DrawGUI() {
 				if (!s_Incoming.empty()) {
 					ImGui::TextDisabled("%d on the way", static_cast<int>(s_Incoming.size()));
 				}
-				ImGui::SeparatorText("Things to knock down");
-				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
 				EndSandboxTab();
 			}
 			if (SandboxTab("Effects")) {
@@ -1522,6 +1587,7 @@ void Sandbox::DrawGUI() {
 				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
 				ImGui::SeparatorText("Particles and air");
 				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				CustomEffectsUI();
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
 				if (ToolUI::Button("Remove all effects")) {
@@ -1628,6 +1694,7 @@ void Sandbox::OnActivityStarted() {
 	s_WaterSpawners.clear();
 	s_Incoming.clear();
 	s_Effects.clear();
+	s_Decor.clear();
 	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
@@ -1667,6 +1734,7 @@ void Sandbox::Update() {
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
 		s_Effects.clear();
+		s_Decor.clear();
 		return;
 	}
 	ApplyPendingOrders();
@@ -1681,6 +1749,7 @@ void Sandbox::Update() {
 	UpdateMoveWatch();
 	UpdateIncoming();
 	UpdateEffects();
+	UpdateDecor();
 	for (WaterSpawner& spawner: s_WaterSpawners) {
 		if (!spawner.On) {
 			continue;

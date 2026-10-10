@@ -974,7 +974,36 @@ MovableObject* Actor::SetInventoryItemAtIndex(MovableObject* newInventoryItem, i
 	return currentInventoryItemAtIndex;
 }
 
+bool Actor::IsAnimal() const {
+	return IsInGroup("Actors - Livestock") || IsInGroup("Actors - Wildlife") || IsInGroup("Animals");
+}
+
+void Actor::AddInventoryItem(MovableObject* pItemToAdd) {
+	// An animal carries no weapons (nor tools, shields or grenades).
+	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsAnimal()) {
+		delete pItemToAdd;
+		return;
+	}
+	AddToInventoryBack(pItemToAdd);
+}
+
+void Actor::DiscardAnimalWeapons() {
+	if (!IsAnimal()) {
+		return;
+	}
+	// Whatever an animal came by some other way (its preset, a script), it doesn't leave lying around.
+	for (auto itr = m_Inventory.begin(); itr != m_Inventory.end();) {
+		if (dynamic_cast<HeldDevice*>(*itr)) {
+			delete *itr;
+			itr = m_Inventory.erase(itr);
+		} else {
+			++itr;
+		}
+	}
+}
+
 void Actor::DropAllInventory() {
+	DiscardAnimalWeapons();
 	MovableObject* pObject = 0;
 	Actor* pPassenger = 0;
 	float velMin, velMax, angularVel;
@@ -1095,6 +1124,7 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 	MOSRotating::GibThis(impactImpulse, movableObjectToIgnore);
 
 	// Throw out all the inventory with the appropriate force and directions
+	DiscardAnimalWeapons();
 	MovableObject* pObject = 0;
 	Actor* pPassenger = 0;
 	float velMin, velRange, angularVel;

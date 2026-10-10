@@ -8,6 +8,7 @@
 #include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "RopeSim.h"
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
@@ -170,6 +171,7 @@ void SettingsMan::Clear() {
 	m_SandboxGas = false;
 	m_SandboxAir = false;
 	m_SandboxSimState = false;
+	m_SandboxBarRight = false;
 	m_SandboxOrdersOverlay = 0;
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
@@ -177,6 +179,7 @@ void SettingsMan::Clear() {
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
+	m_ShowCPUAimReticles = true;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
@@ -259,7 +262,7 @@ namespace {
 		g_SettingsMan.Save(settingsWriter);
 		return text->str();
 	}
-}
+} // namespace
 
 void SettingsMan::UpdateSettingsFile() const {
 	std::string text = SettingsText();
@@ -333,6 +336,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UnitsInFrontOfTrees", { TerrainTrees::SetDrawnBehindUnits(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("CollapseLeafBreakEase", { TerrainCollapse::GetTuning().LeafBreakEase = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 50.0F); });
+	MatchProperty("CollapseLeafLitter", { TerrainCollapse::GetTuning().LeafLitter = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -360,6 +366,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("EmberIgniteChance", { TerrainFire::SetEmberIgniteChance(std::stof(reader.ReadPropValue())); });
+	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -617,7 +624,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("PanelWidthPercent", { g_DebugMan.m_PanelWidth = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 45.0F); });
 	MatchProperty("RightPanelWidthPercent", { g_DebugMan.m_PanelWidthRight = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 45.0F); });
 	MatchProperty("SandboxPanelPlacement", { g_DebugMan.m_SandboxPlacement = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
-	MatchProperty("SandboxBarWidthPercent", { g_DebugMan.m_BarWidth = std::clamp(std::stof(reader.ReadPropValue()), 25.0F, 100.0F); });
+	MatchProperty("SandboxBarWidthPercent", { reader.ReadPropValue(); }); // (The bar is the picture's width now; kept so older settings files still read.)
 	MatchProperty("BackgroundBlur", { g_PostProcessMan.GetLightingSettings().BackgroundBlur = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DepthOfField", { g_PostProcessMan.GetLightingSettings().DepthOfField = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("DepthOfFieldFocus", { g_PostProcessMan.GetLightingSettings().DepthOfFieldFocus = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -727,6 +734,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxGas", { reader >> m_SandboxGas; });
 	MatchProperty("SandboxAir", { reader >> m_SandboxAir; });
 	MatchProperty("SandboxSimState", { reader >> m_SandboxSimState; });
+	MatchProperty("SandboxBarRight", { reader >> m_SandboxBarRight; });
 	MatchProperty("SandboxOrdersOverlay", { int which = 0; reader >> which; SetSandboxOrdersOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
@@ -734,6 +742,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
+	MatchProperty("ShowCPUAimReticles", { reader >> m_ShowCPUAimReticles; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
 	MatchProperty("ScrapCompactingHeight", { reader >> g_SceneMan.m_ScrapCompactingHeight; });
 	MatchProperty("AutomaticGoldDeposit", { reader >> m_AutomaticGoldDeposit; });
@@ -1035,6 +1044,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("EmberIgniteChance", TerrainFire::GetEmberIgniteChance());
+	writer.NewPropertyWithValue("RopeSettleSeconds", RopeSim::GetSettleSeconds());
 	writer.NewPropertyWithValue("CandleBurnMinutes", TerrainCandle::GetBurnMinutes());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
@@ -1049,6 +1059,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
 	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
 	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
+	writer.NewPropertyWithValue("UnitsInFrontOfTrees", TerrainTrees::DrawnBehindUnits());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
@@ -1058,6 +1069,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseCrackSpeed", TerrainCollapse::GetTuning().CrackSpeed);
 	writer.NewPropertyWithValue("CollapseCrumbleSpeed", TerrainCollapse::GetTuning().CrumbleSpeed);
 	writer.NewPropertyWithValue("CollapseSplinterSpeed", TerrainCollapse::GetTuning().SplinterSpeed);
+	writer.NewPropertyWithValue("CollapseLeafBreakEase", TerrainCollapse::GetTuning().LeafBreakEase);
+	writer.NewPropertyWithValue("CollapseLeafLitter", TerrainCollapse::GetTuning().LeafLitter);
 	writer.NewPropertyWithValue("CollapseBendSpeed", TerrainCollapse::GetTuning().BendSpeed);
 	writer.NewPropertyWithValue("CollapseScuffStrength", TerrainCollapse::GetTuning().ScuffStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
@@ -1107,6 +1120,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
+	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
@@ -1144,6 +1158,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
 	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
 	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
+	writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
 	writer.NewPropertyWithValue("SandboxGas", m_SandboxGas);
 	writer.NewPropertyWithValue("SandboxAir", m_SandboxAir);
@@ -1157,7 +1172,6 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PanelsOverlay", g_DebugMan.m_PanelsOverlay);
 	writer.NewPropertyWithValue("PanelWidthPercent", g_DebugMan.m_PanelWidth);
 	writer.NewPropertyWithValue("RightPanelWidthPercent", g_DebugMan.m_PanelWidthRight);
-	writer.NewPropertyWithValue("SandboxBarWidthPercent", g_DebugMan.m_BarWidth);
 	writer.NewPropertyWithValue("SandboxPanelPlacement", g_DebugMan.m_SandboxPlacement);
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
 	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
@@ -1182,6 +1196,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+		writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
 		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.
@@ -1220,7 +1235,7 @@ namespace {
 
 	std::string PresetFolder() { return System::GetUserdataDirectory() + "Presets/"; }
 	std::string BuiltInPresetFolder() { return System::GetDataDirectory() + "Presets/"; } //!< Presets that ship with the game. The player's own of the same name come first.
-}
+} // namespace
 
 std::string SettingsMan::SavePreset(const std::string& name) const {
 	std::string safe = PresetFileName(name);

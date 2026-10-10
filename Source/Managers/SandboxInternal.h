@@ -204,7 +204,18 @@ namespace SandboxDetail {
 		CollapseArea, //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
 		// Appended, so the tools before keep their numbers.
 		Rope, //!< Each click a point of a rope (RopeSim), tied to what is there; Choice 1 finishes it, 2 takes every rope away. Material: its kind; Rate: its slack.
-		RopeCut //!< A click cuts the ropes under the pointer.
+		RopeCut, //!< A click cuts the ropes under the pointer.
+		// The Boom tab's blasts of force, which shove and scatter but burn and harm nothing: appended, so the tools before keep their numbers.
+		ForceBlast, //!< A burst that throws units, things, debris and smoke out from the point.
+		HugeForceBlast, //!< The same, wider and harder.
+		Implosion, //!< The reverse: everything near is pulled in to the point.
+		Updraft, //!< A column of air that lifts what is over the point.
+		GustRight, //!< A gale across the point, to the right.
+		GustLeft, //!< A gale across the point, to the left.
+		SmokeBomb, //!< A burst of thick smoke, with no blast.
+		Fireworks, //!< Bursts of coloured sparks in the air above the point.
+		// Appended, so the tools before keep their numbers.
+		Decor //!< A light or fire put in the background (Choice a DecorKind): it shines until a blast or a shot destroys it, and nothing collides with it.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -327,6 +338,15 @@ namespace SandboxDetail {
 	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
 	    {Tool::Rope, "Rope", 0.0F, false},
 	    {Tool::RopeCut, "Cut rope", 0.0F, false},
+	    {Tool::ForceBlast, "Force blast", 0.0F, false},
+	    {Tool::HugeForceBlast, "Huge force blast", 0.0F, false},
+	    {Tool::Implosion, "Implosion", 0.0F, false},
+	    {Tool::Updraft, "Updraft", 0.0F, false},
+	    {Tool::GustRight, "Gust right", 0.0F, false},
+	    {Tool::GustLeft, "Gust left", 0.0F, false},
+	    {Tool::SmokeBomb, "Smoke bomb", 0.0F, false},
+	    {Tool::Fireworks, "Fireworks", 0.0F, false},
+	    {Tool::Decor, "Background light", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -688,6 +708,105 @@ namespace SandboxDetail {
 		float Jitter = 0.5F; //!< Where across, a little either side of the point, 0 to 1.
 		float Depth = 0.0F; //!< How deep into the ground, within the preset's depths, 0 to 1.
 		bool Mirror = false;
+		int Entry = -1; //!< Which picture of the brush's gallery (PlantGallery) exactly, or -1 to take it from the chances above.
+		Tool Kind = Tool::Plants; //!< The brush Entry is a picture of.
+	};
+
+	/// One ingredient of an effect you make yourself: a light, a source of particles, a force or a bit of the air. An effect is a list of them, all running at once.
+	enum class LayerKind {
+		Light, //!< A round light: Size is how far it reaches.
+		Spotlight, //!< A beam: Size is its reach, Spread how wide, Angle which way, Spin how fast it turns.
+		Sparks,
+		Embers,
+		Smoke, //!< Looks only: it doesn't block sight.
+		Dust,
+		Mist,
+		Debris,
+		Gas, //!< Real gas in the gas grid (Option: smoke, toxic gas, methane or steam).
+		Flames, //!< Real fire: it burns.
+		Shimmer,
+		Shockwave, //!< Pulses of rippling air (Rate a second). No blast.
+		Lightning, //!< Real strikes (Rate a second): fire and harm where they land.
+		Force, //!< Pushes units, things and debris about, harming nothing (Option: blow along Angle, push out, pull in, lift).
+		Count
+	};
+
+	/// Which of an EffectLayer's controls a kind uses.
+	enum LayerControl : unsigned {
+		LcSize = 1,
+		LcRate = 2,
+		LcSpeed = 4,
+		LcSpread = 8,
+		LcAngle = 16,
+		LcSpin = 32,
+		LcIntensity = 64,
+		LcFlicker = 128,
+		LcPulse = 256,
+		LcOption = 512,
+		LcColour = 1024,
+		LcOffset = 2048
+	};
+
+	struct LayerInfo {
+		const char* Name;
+		const char* Tip;
+		unsigned Uses;
+	};
+
+	constexpr LayerInfo c_Layers[static_cast<int>(LayerKind::Count)] = {
+	    {"Light", "A round light, which can flicker and pulse.", LcSize | LcIntensity | LcFlicker | LcPulse | LcColour | LcOffset},
+	    {"Spotlight", "A beam of light, which can point where you like and turn.", LcSize | LcSpread | LcAngle | LcSpin | LcIntensity | LcFlicker | LcPulse | LcColour | LcOffset},
+	    {"Sparks", "Glowing streaks thrown out.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcColour | LcOffset},
+	    {"Embers", "Glowing specks that rise and drift.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcColour | LcOffset},
+	    {"Smoke", "Soft dark puffs that roll up and linger. Looks only: units see through it.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcColour | LcOffset},
+	    {"Dust", "Soft puffs of dust.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcColour | LcOffset},
+	    {"Mist", "A soft pale spray that hangs and thins.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcColour | LcOffset},
+	    {"Debris", "Little chips that bounce.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcColour | LcOffset},
+	    {"Gas", "Real gas let out into the air: it drifts, rises and settles as gas does (gas must be on in F6).", LcSize | LcRate | LcIntensity | LcOption | LcOffset},
+	    {"Flames", "Real flame: it burns what it touches.", LcSize | LcRate | LcSpeed | LcSpread | LcAngle | LcSpin | LcOffset},
+	    {"Heat shimmer", "The air shimmering, as over something hot.", LcSize | LcIntensity | LcOffset},
+	    {"Shockwave pulses", "A blast wave rippling out, over and over. No blast.", LcSize | LcRate | LcIntensity | LcOffset},
+	    {"Lightning strikes", "Real bolts from the sky across the area: fire and harm where they land.", LcSize | LcRate | LcOffset},
+	    {"Force field", "Shoves units, things, debris and smoke about and harms nothing.", LcSize | LcSpeed | LcAngle | LcOption | LcIntensity | LcOffset},
+	};
+
+	/// A layer's controls. What each means depends on the kind (see LayerInfo::Uses).
+	struct EffectLayer {
+		LayerKind Kind = LayerKind::Light;
+		float Size = 60.0F; //!< Pixels: how far a light reaches, how wide the place particles come from is, how far a force or shimmer reaches.
+		float Rate = 12.0F; //!< Particles, pulses or strikes a second.
+		float Speed = 4.0F; //!< Metres a second particles leave at; a force's strength.
+		float Spread = 0.4F; //!< 0 (straight) to 1 (every way); a spotlight's width.
+		float Angle = 0.0F; //!< Degrees: 0 up, 90 right, 180 down.
+		float Spin = 0.0F; //!< Degrees a second the angle turns.
+		float Intensity = 1.0F; //!< How bright, how thick or how strong.
+		float Flicker = 0.0F; //!< 0 to 1: how much a light flickers.
+		float Pulse = 0.0F; //!< Times a second a light swells and fades.
+		int Option = 0;
+		bool OwnColour = false; //!< Particles: use Colour rather than the kind's own.
+		float Colour[3] = {1.0F, 0.72F, 0.35F}; //!< 0 to 1.
+		float OffsetX = 0.0F; //!< Pixels from where the effect is put.
+		float OffsetY = 0.0F;
+	};
+
+	/// An effect made in the Effects tab, kept in Userdata/SandboxEffects.txt.
+	struct CustomEffect {
+		std::string Name;
+		std::vector<EffectLayer> Layers;
+	};
+
+	/// A light or fire for the background (Tool::Decor).
+	enum class DecorKind {
+		WallLamp,
+		CeilingLamp,
+		Lantern,
+		StripLight,
+		WarningLight,
+		Candle,
+		Candelabra,
+		Torch,
+		Campfire,
+		Count
 	};
 
 	struct Stroke {
@@ -710,6 +829,7 @@ namespace SandboxDetail {
 		bool FavouritesOnly = false; //!< With Random: only units marked as favourites (any, when none are).
 		int RandomFaction = -1; //!< With Random: only this faction's units (an index into s_FactionModules), -1 for every faction.
 		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
+		std::vector<EffectLayer> Layers; //!< Tool::Effect with a made effect (Choice from EffectKind::Count): its layers, taken at the click.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		float Life = 0.0F; //!< Springs: how many seconds what they pour lasts, 0 for ever.
@@ -720,6 +840,7 @@ namespace SandboxDetail {
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
 		BrushShape Shape = BrushShape::Circle; //!< Terrain brushes: how they lay it down (s_BrushShape).
+		int Over = 0; //!< Terrain and liquid brushes: what they may paint over besides air, PaintOver flags (Paint > Paint over), taken at the click.
 		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
 	};
@@ -904,6 +1025,14 @@ namespace SandboxDetail {
 
 	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
 	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
+	/// What the Paint tab's brushes may paint over besides air (flags): Paint > Paint over.
+	namespace PaintOver {
+		constexpr int Liquids = 1; //!< Liquids and loose ground (sand, snow, rubble): replaced by what is painted.
+		constexpr int Terrain = 2; //!< Solid terrain: replaced by what is painted.
+	} // namespace PaintOver
+	inline bool s_PaintOverLiquids = false; //!< Paint > Paint over > Liquids.
+	inline bool s_PaintOverTerrain = false; //!< Paint > Paint over > Terrain.
+	inline int CurrentPaintOver() { return (s_PaintOverLiquids ? PaintOver::Liquids : 0) | (s_PaintOverTerrain ? PaintOver::Terrain : 0); }
 	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_PaintMetal = "Metal"; //!< What the Metal tool paints, picked under Metals (a c_PaintMetals material).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
@@ -1321,9 +1450,35 @@ namespace SandboxDetail {
 		float Seed = 0.0F; //!< 0 to 1, so two of a kind side by side aren't in step.
 		float Flash = 0.0F; //!< Storms: how bright the current flash is.
 		int Wait = 0; //!< Storms: sim updates until the next flash.
+		std::string Name; //!< A made effect (Kind EffectKind::Count): its name,
+		std::vector<EffectLayer> Layers; //!< and its layers, as they were when it was put down.
+		std::vector<float> Due; //!< Each layer's particles owed, so a slow rate still comes out evenly.
 	};
 
 	inline std::vector<PlacedEffect> s_Effects;
+
+	/// The effects the player made, kept in Userdata/SandboxEffects.txt the moment they change. Picked in the Effects tab as s_EffectChoice
+	/// from EffectKind::Count on (the first is EffectKind::Count).
+	inline std::vector<CustomEffect> s_CustomEffects;
+	inline bool s_CustomEffectsLoaded = false;
+	inline bool s_CustomEffectsDirty = false;
+	constexpr const char* c_CustomEffectsFile = "Userdata/SandboxEffects.txt";
+	inline int s_DecorChoice = 0;
+
+	/// A background light or fire put down with Tool::Decor: its light is one of the scenery's lamps (so a blast or a shot destroys it), and its picture is painted into the background layer, put back as it was when the light goes.
+	struct PlacedDecor {
+		DecorKind Kind;
+		Vector Position;
+		float Seed = 0.0F;
+		int Age = 0; //!< Sim updates since it was put down: the light is given a moment to appear before it is looked for.
+		int Left = 0; //!< Where the picture's top left corner is, in scene pixels,
+		int Top = 0;
+		int Width = 0;
+		int Height = 0;
+		std::vector<int> Behind; //!< and what the background layer held under each of its pixels (-1: not painted over).
+	};
+
+	inline std::vector<PlacedDecor> s_Decor;
 
 	/// A place water keeps pouring from until it's removed: a spring, a burst pipe, a tap left on.
 	struct WaterSpawner {
@@ -1719,6 +1874,7 @@ namespace SandboxDetail {
 
 	inline std::vector<Pin> s_Pins;
 
+	inline float s_BarHeight = 0.0F; //!< How tall the bar along the bottom was drawn last, 0 when it isn't there: what is shown at the foot of the picture goes above it.
 	inline bool s_BarShown = true; //!< Whether the bar along the bottom is up (U hides and shows it); up at the start of every game.
 
 	/// Things marked as favourites (Ctrl+click on a tile): a star on the tile, and a filter to list only them.
@@ -1837,6 +1993,9 @@ namespace SandboxDetail {
 	void ReturnDefenders();
 	void ActivateSide(int team);
 	void Detonate(const char* presetName, const Vector& position);
+	/// How a ForceBurst pushes.
+	enum class ForceShape { Out, In, Up, Along };
+	void ForceBurst(const Vector& position, float radius, float speed, ForceShape shape, const Vector& direction = Vector(), bool show = true);
 	void SpawnPuffs(const char* presetName, const Vector& position, int radius, int count);
 	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor);
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y);
@@ -1844,7 +2003,7 @@ namespace SandboxDetail {
 	void UndoPaint();
 	void NotePlaced(const MovableObject* object);
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F, int over = 0);
 	void FillTerrainShape(const Stroke& stroke);
 	/// Where and how a plant brush's plant goes on the ground (PlanPlant): the pictures it is drawn from and its top left corner, in scene pixels.
 	struct PlantPlacement {
@@ -1862,7 +2021,32 @@ namespace SandboxDetail {
 	bool PlanPlant(const Vector& at, int radius, Tool kind, float scale, const PlantRoll& roll, PlantPlacement& out);
 	void PlacePlant(const Vector& at, int radius, Tool kind, float scale = 1.0F, const PlantRoll* roll = nullptr);
 	inline PlantRoll s_NextPlant; //!< The plant the plant brush in hand puts down next, shown under the cursor; rolled again as each is queued.
-	PlantRoll RollPlant();
+	/// One picture a plant brush can put down: one piece of one of its debris presets (and its leaves or wick, for trees and candles).
+	struct PlantPicture {
+		const TerrainDebris* Debris = nullptr;
+		const TerrainDebris* Leaves = nullptr;
+		BITMAP* Piece = nullptr;
+		BITMAP* LeafPiece = nullptr;
+		const char* Group = ""; //!< Which of the brush's kinds it is (small cacti, red mushrooms, ...).
+	};
+	/// Every picture a plant brush can put down, in order: its gallery (Paint > Plants).
+	std::vector<PlantPicture> PlantGallery(Tool kind);
+	/// Which of its pictures a plant brush puts down (Paint > Plants): any, or only the ones picked from its gallery, at random or in turn,
+	/// facing either way or one.
+	struct PlantPick {
+		std::vector<int> Chosen; //!< Gallery pictures picked, in the order picked; none for any of them.
+		bool InTurn = false; //!< The ones picked one after another, rather than at random.
+		int Turn = 0; //!< The next of the ones picked, in turn.
+		int Facing = 0; //!< 0 either way at random, 1 as drawn, 2 mirrored.
+	};
+	inline std::map<Tool, PlantPick> s_PlantPicks; //!< Each plant brush's pick (Paint > Plants).
+	PlantRoll RollPlant(Tool kind);
+	/// The gallery picture a roll puts down for a plant brush, or -1 for none.
+	int PlantEntryOf(Tool kind, const PlantRoll& roll, const std::vector<PlantPicture>& gallery);
+	/// The next plant shown under the cursor moved on to the next of the brush's pictures (the next picked, or the next of all), or back (E, Shift+E).
+	void StepNextPlant(Tool kind, int step);
+	/// The next plant shown under the cursor turned the other way (F).
+	void FlipNextPlant(Tool kind);
 	const char* TerrainBrushMaterial(Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
@@ -1873,6 +2057,17 @@ namespace SandboxDetail {
 	void QueueSimChange(Tool kind, int count = 0);
 	glm::vec3 Hue(float turn);
 	void UpdateEffects();
+	void UpdateDecor();
+	const char* DecorName(int kind);
+	const char* DecorTip(int kind);
+	void PlaceDecor(DecorKind kind, const Vector& position);
+	/// The effects made in the Effects tab: read from and written to their file, and the starting points offered for a new one.
+	void LoadCustomEffects();
+	void SaveCustomEffects();
+	constexpr int c_EffectTemplateCount = 7;
+	const char* EffectTemplateName(int index);
+	CustomEffect EffectTemplate(int index);
+	void RunEffectLayers(PlacedEffect& effect, const Vector& at, float phase);
 	void Launch(int delay, const Vector& from, const Vector& target, float speed, const char* preset, int crater, const char* className = "TDExplosive", int team = 0);
 	void UpdateIncoming();
 	void StrikeLightning(const Vector& target);
@@ -2019,6 +2214,7 @@ namespace SandboxDetail {
 	int FindPin(Tool kind, const std::string& presetName);
 	void TogglePin(Tool kind, const std::string& presetName);
 	void SavePinsFile();
+	void CustomEffectsUI();
 	int FindFavourite(Tool kind, const std::string& presetName);
 	void SaveFavouritesFile();
 	void LoadFavouritesFile();
@@ -2052,6 +2248,8 @@ namespace SandboxDetail {
 	void LookAtUnits(const std::vector<UnitRef>& units);
 	void CommandHotkeys();
 	void KeysPage();
+	/// Paint > Plants, with a plant brush in hand: which of its pictures it puts down (PlantPick), from a gallery of them all.
+	void PlantPickPanel(Tool kind);
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
 	const PiecePicture& PictureOfBitmap(BITMAP* bitmap, bool repeat = false);
@@ -2081,39 +2279,41 @@ namespace SandboxDetail {
 	void SideStatus();
 	void TimeControls();
 	void BarDivider();
-	void BarPlate();
-	bool ContextRow();
+	bool ShelfRow();
 	void DrawBar();
 #pragma endregion
 
-	/// One tile of the bar: a small picture drawn by the caller, lit when it is the one in use, its name as a tooltip.
+	/// One tile of the bar: a small picture drawn by the caller, with its name under it when given (else the tile is only the picture). The one in use
+	/// sits in a dark well with a gold line along its foot and its name in gold; the one under the pointer lightens.
+	/// @param labelColor The colour of the name, 0 for the usual.
 	/// @return 1 if clicked, 2 if right-clicked, 0 otherwise.
-	template <typename DrawPicture> int BarTile(const char* id, const char* tip, bool selected, DrawPicture drawPicture) {
+	template <typename DrawPicture> int BarTile(const char* id, const char* label, const char* tip, bool selected, DrawPicture drawPicture, ImU32 labelColor = 0) {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel();
-		float dot = pixel * 1.5F; // One pixel of the picture.
-		float picture = dot * 12.0F;
-		float pad = pixel * 3.0F;
-		ImVec2 size(picture + pad * 2.0F, picture + pad * 2.0F);
+		float picture = std::floor(pixel * 1.5F * 12.0F);
+		float pad = pixel * 2.0F;
+		float labelWidth = label ? ImGui::CalcTextSize(label).x : 0.0F;
+		float width = std::floor(label ? std::max({picture + pad * 4.0F, labelWidth + pad * 4.0F, ImGui::GetFontSize() * 3.4F}) : picture + pad * 2.0F);
+		float height = std::floor(pad * 2.0F + picture + (label ? ImGui::GetFontSize() : 0.0F));
 		ImVec2 at = ImGui::GetCursorScreenPos();
-		int result = ImGui::InvisibleButton(id, size) ? 1 : 0;
+		int result = ImGui::InvisibleButton(id, ImVec2(width, height)) ? 1 : 0;
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
 			result = 2;
 		}
 		bool hovered = ImGui::IsItemHovered();
-		ImVec2 to(at.x + size.x, at.y + size.y);
-		// A sunken socket; the one in use sits raised and gold-edged, the one under the pointer lightens.
-		ImU32 well = selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well;
-		drawList->AddRectFilled(at, to, well);
+		ImVec2 to(at.x + width, at.y + height);
 		if (selected) {
-			drawList->AddRect(at, to, ToolTheme::Gold, 0.0F, 0, pixel);
-			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), (ToolTheme::EdgeLight & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT));
-		} else {
-			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), ToolTheme::EdgeDark);
-			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), ToolTheme::EdgeDark);
-			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, (ToolTheme::Edge & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT));
+			drawList->AddRectFilled(at, to, (ToolTheme::Well & 0x00FFFFFF) | (200u << IM_COL32_A_SHIFT));
+			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel * 2.0F), to, ToolTheme::Gold);
+		} else if (hovered) {
+			drawList->AddRectFilled(at, to, (ToolTheme::WellHover & 0x00FFFFFF) | (200u << IM_COL32_A_SHIFT));
 		}
-		drawPicture(drawList, ImVec2(at.x + pad, at.y + pad), picture);
+		drawPicture(drawList, ImVec2(std::floor(at.x + (width - picture) * 0.5F), at.y + pad), picture);
+		if (label) {
+			ImU32 ink = selected ? ToolTheme::Gold : labelColor != 0 ? labelColor
+			                                                         : (ToolTheme::Text & 0x00FFFFFF) | (215u << IM_COL32_A_SHIFT);
+			drawList->AddText(ImVec2(std::floor(at.x + (width - labelWidth) * 0.5F), at.y + pad + picture), ink, label);
+		}
 		if (hovered && tip && *tip) {
 			ImGui::SetTooltip("%s", tip);
 		}

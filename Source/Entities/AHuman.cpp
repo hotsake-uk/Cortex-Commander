@@ -678,6 +678,11 @@ bool AHuman::HandlePieCommand(PieSliceType pieSliceIndex) {
 }
 
 void AHuman::AddInventoryItem(MovableObject* pItemToAdd) {
+	// (An animal carries no weapons: Actor::AddInventoryItem turns them away.)
+	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsAnimal()) {
+		Actor::AddInventoryItem(pItemToAdd);
+		return;
+	}
 	// If we have nothing in inventory, and nothing in our hands, just grab this first thing added to us.
 	if (HeldDevice* itemToAddAsHeldDevice = dynamic_cast<HeldDevice*>(pItemToAdd); itemToAddAsHeldDevice && m_Inventory.empty() && m_pFGArm && m_pFGArm->IsAttached() && !m_pFGArm->GetHeldDevice()) {
 		m_pFGArm->SetHeldDevice(itemToAddAsHeldDevice);
