@@ -177,6 +177,15 @@ namespace RTE {
 		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
 		static void SetCharacterSetup(const std::string& setup);
 
+		/// A unit got into a vehicle (VH-1, AVehicle::TakeDriver): the unit is gone from the scene, a copy of it kept in the vehicle. If it was the
+		/// unit you were controlling, you are in the vehicle now, not back to the god view; if it was your character, it is in there.
+		/// @param unit The unit that got in, still in the scene this update. @param vehicle The vehicle.
+		static void OnUnitBoarded(const Actor* unit, Actor* vehicle);
+
+		/// A unit got out of a vehicle (AVehicle::EjectDriver), as a new unit in the scene: if it was your character, that is your character again.
+		/// @param vehicle The vehicle. @param unit The unit that got out.
+		static void OnUnitLeftVehicle(const Actor* vehicle, Actor* unit);
+
 	private:
 		static bool s_Open; //!< Whether the sandbox window is open.
 

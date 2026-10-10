@@ -298,3 +298,36 @@ namespace SandboxDetail {
 		}
 	}
 } // namespace SandboxDetail
+
+void Sandbox::OnUnitBoarded(const Actor* unit, Actor* vehicle) {
+	using namespace SandboxDetail;
+	if (!unit || !vehicle) {
+		return;
+	}
+	bool character = GetRef(s_PlayerUnit) == unit;
+	if (character) {
+		StopFlying();
+		s_PlayerVehicle = MakeRef(vehicle);
+		s_PlayerUnit = UnitRef();
+	}
+	// Into the vehicle, not back to the god view: the unit you were in is deleted this update, and the next look would have found it gone.
+	if (s_Possessed == unit) {
+		SetPossessed(vehicle);
+	}
+}
+
+void Sandbox::OnUnitLeftVehicle(const Actor* vehicle, Actor* unit) {
+	using namespace SandboxDetail;
+	if (!unit || !vehicle) {
+		return;
+	}
+	if (s_PlayerVehicle.Unit == vehicle && s_PlayerVehicle.ID == static_cast<long>(vehicle->GetUniqueID())) {
+		s_PlayerUnit = MakeRef(unit);
+		s_PlayerVehicle = UnitRef();
+		// (The copy that got out is a new unit, with the gib limits taken off while it couldn't be hurt: the saved ones are put back on it in time.)
+		s_PlayerGibLimits.ID = static_cast<long>(unit->GetUniqueID());
+	}
+	if (s_Possessed == vehicle) {
+		SetPossessed(unit);
+	}
+}
