@@ -73,7 +73,8 @@ namespace {
 				if (!g_SceneMan.WrapPosition(x, y) && !g_SceneMan.IsWithinBounds(x, y)) {
 					continue;
 				}
-				if (IsPlant(terrain->GetMaterialPixel(x, y))) {
+				// (Not a tree's leaves while vehicles drive through trees: the tree is left whole.)
+				if (int material = terrain->GetMaterialPixel(x, y); IsPlant(material) && !TerrainTrees::ActorsPass(material)) {
 					terrain->SetMaterialPixel(x, y, g_MaterialAir);
 					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
 				}
