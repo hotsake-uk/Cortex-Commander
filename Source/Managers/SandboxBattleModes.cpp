@@ -85,6 +85,24 @@ namespace SandboxDetail {
 
 		std::string SideName(int side) { return side >= 0 && side < c_Sides ? c_SideNames[side] : "?"; }
 
+		/// Has the unit of a side nearest a point, within reach, say one of a unit speech trigger's lines (UnitSpeech): a flag taken, lost.
+		void UnitSays(const Vector& point, int team, float reach, const Actor* except, const char* trigger) {
+			Actor* nearest = nullptr;
+			float nearestDistance = reach * reach;
+			for (Actor* actor: g_MovableMan.GetActorList()) {
+				if (actor == except || actor->GetTeam() != team || !IsCombatant(actor) || dynamic_cast<const ACraft*>(actor)) {
+					continue;
+				}
+				if (float distance = g_SceneMan.ShortestDistance(actor->GetPos(), point, g_SceneMan.SceneWrapsX()).GetSqrMagnitude(); distance < nearestDistance) {
+					nearest = actor;
+					nearestDistance = distance;
+				}
+			}
+			if (nearest) {
+				nearest->Say(trigger);
+			}
+		}
+
 		/// The widest of some zones (the first of those as wide), for ships to drop their units over.
 		const std::vector<Vector>& WidestZone(const std::vector<std::vector<Vector>>& zones) {
 			size_t widest = 0;
@@ -937,6 +955,7 @@ namespace SandboxDetail {
 						SetCarrier(flag, nullptr);
 						flag.DroppedAt = now;
 						RecentreDefenders(side, flag.Pos, true);
+						UnitSays(flag.Pos, side, 400.0F, nullptr, "FlagDropped");
 						Say(SideName(side) + "'s flag is down: back home in " + std::to_string(std::max(settings.ReturnSeconds, 1)) + " s");
 						continue;
 					}
@@ -945,6 +964,7 @@ namespace SandboxDetail {
 					const bool home = TeamIn(settings, team) && g_SceneMan.ShortestDistance(carrier->GetPos(), s_Flags[team].Home, wraps).MagnitudeIsLessThan(c_FlagReach);
 					if (home && s_Flags[team].State == FlagState::Home) {
 						// Brought to its own flag, with that at home: a capture.
+						carrier->Say("FlagCaptured");
 						++s_ModeRun.Score[team];
 						SendHome(side);
 						if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
@@ -978,12 +998,15 @@ namespace SandboxDetail {
 				}
 				if (nearest->GetTeam() == side) {
 					SendHome(side);
+					nearest->Say("FlagReturned");
 					Say(SideName(side) + " took its flag back");
 				} else if (CarriedBy(nearest) < 0) {
 					flag.State = FlagState::Carried;
 					SetCarrier(flag, nearest);
 					flag.Pos = nearest->GetPos();
 					TakeFlagHome(nearest, side, now);
+					nearest->Say("FlagTaken");
+					UnitSays(flag.Pos, side, 500.0F, nullptr, "FlagStolen");
 					Say(SideName(nearest->GetTeam()) + " has " + SideName(side) + "'s flag");
 				}
 			}
@@ -1520,6 +1543,9 @@ namespace SandboxDetail {
 					flag.Pos = ground;
 					SetCarrier(flag, nullptr);
 					flag.DroppedAt = now;
+					if (carrier) {
+						UnitSays(flag.Pos, carrier->GetTeam(), 400.0F, carrier, "FlagDropped");
+					}
 					Say("The flag is down: back to its spot in " + std::to_string(std::max(settings.ReturnSeconds, 1)) + " s");
 					return;
 				}
@@ -1527,6 +1553,7 @@ namespace SandboxDetail {
 				const int team = carrier->GetTeam();
 				if (TeamIn(settings, team) && settings.Goals[team].size() >= 3 && IsInZone(settings.Goals[team], carrier->GetPos())) {
 					// Brought into its team's goal: a score, and the next flag comes in somewhere new.
+					carrier->Say("FlagCaptured");
 					++s_ModeRun.Score[team];
 					OneFlagHome(true);
 					if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
@@ -1557,6 +1584,7 @@ namespace SandboxDetail {
 				SetCarrier(flag, nearest);
 				flag.Pos = nearest->GetPos();
 				TakeFlagToGoal(nearest, now);
+				nearest->Say("FlagTaken");
 				Say(SideName(nearest->GetTeam()) + " has the flag");
 			}
 		}

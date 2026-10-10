@@ -889,6 +889,9 @@
     <ClCompile Include="Source\Managers\UnitSpeech.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\UnitSpeechWorld.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\ActorFire.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
