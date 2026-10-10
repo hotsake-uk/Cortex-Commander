@@ -916,6 +916,20 @@ void Sandbox::DrawGUI() {
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
 			CommanderPanel();
 		}
+		// How this window is shown, at the top of it where it can be found: docked at the side, floating, or most of the screen.
+		{
+			int placement = static_cast<int>(g_DebugMan.GetSandboxPlacement());
+			static const char* const placementNames[] = {"Side panel", "Floating", "Large"};
+			static const char* const placementTips[] = {"Docked at the left of the screen; drag its edge to make it wider or narrower.", "A window to move and resize as you like.", "Nine tenths of the screen, in the middle of it."};
+			ImGui::TextDisabled("View");
+			for (int choice = 0; choice < 3; ++choice) {
+				ImGui::SameLine();
+				if (ToolUI::RadioButton(placementNames[choice], &placement, choice)) {
+					g_DebugMan.SetSandboxPlacement(static_cast<DebugMan::PanelPlacement>(placement));
+				}
+				ImGui::SetItemTooltip("%s", placementTips[choice]);
+			}
+		}
 		if (DrawTabRows()) {
 			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";

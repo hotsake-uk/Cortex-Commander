@@ -66,6 +66,9 @@ namespace RTE {
 		/// Gets how the sandbox's window is shown, as chosen under "Size and layout of these windows".
 		PanelPlacement GetSandboxPlacement() const { return static_cast<PanelPlacement>(m_SandboxPlacement); }
 
+		/// Sets how the sandbox's window is shown.
+		void SetSandboxPlacement(PanelPlacement placement) { m_SandboxPlacement = static_cast<int>(placement); }
+
 		/// Ends a tool window begun with BeginPanel, whatever BeginPanel returned.
 		void EndPanel();
 
