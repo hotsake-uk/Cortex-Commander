@@ -697,7 +697,12 @@ void DebugMan::SettingsGUI() {
 			Slider("Flame height", &settings.FireFlameSize, 0.2F, 3.0F);
 			Slider("Flame brightness", &settings.FireFlameBrightness, 0.2F, 2.0F);
 		}
-		Slider("Sparks, dust and debris", &settings.EffectsParticles, 0.0F, 3.0F);
+		Slider("Sparks", &settings.EffectsSparks, 0.0F, 3.0F);
+		Slider("Spark lights", &settings.SparkLights, 0.0F, 2.0F);
+		Tip("How bright the glow and light of the game's own sparks are, off hits and blasts. 0: they fly without lighting anything. With Sparks at 0 they're off too.");
+		Slider("Dust", &settings.EffectsDust, 0.0F, 3.0F);
+		Slider("Debris", &settings.EffectsDebris, 0.0F, 3.0F);
+		Tip("Sparks: glowing streaks off explosions and hard hits. Dust: soft puffs off explosions and soft ground. Debris: little chips that bounce. Embers, explosion fire and smoke, and splash spray follow the highest of the three, and go only when all three are 0.");
 		if (Plain()) {
 			ImGui::TextDisabled("%d effects particles alive", EffectsParticles::GetCount());
 		}

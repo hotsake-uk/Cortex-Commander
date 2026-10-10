@@ -109,6 +109,7 @@ void MovableObject::Clear() {
 	m_EffectStartStrength = 128;
 	m_EffectStopStrength = 128;
 	m_EffectAlwaysShows = false;
+	m_SparkGlow = false;
 	m_PostEffectEnabled = false;
 	m_LightColor.SetRGB(255, 255, 255);
 	m_LightRadius = 0.0F;
@@ -300,6 +301,7 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_EffectStartStrength = reference.m_EffectStartStrength;
 	m_EffectStopStrength = reference.m_EffectStopStrength;
 	m_EffectAlwaysShows = reference.m_EffectAlwaysShows;
+	m_SparkGlow = reference.m_SparkGlow;
 	m_RemoveOrphanTerrainRadius = reference.m_RemoveOrphanTerrainRadius;
 	m_RemoveOrphanTerrainMaxArea = reference.m_RemoveOrphanTerrainMaxArea;
 	m_RemoveOrphanTerrainRate = reference.m_RemoveOrphanTerrainRate;
@@ -444,6 +446,7 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 		m_EffectStopStrength = std::floor((float)255 * strength);
 	});
 	MatchProperty("EffectAlwaysShows", { reader >> m_EffectAlwaysShows; });
+	MatchProperty("SparkGlow", { reader >> m_SparkGlow; });
 	MatchProperty("DamageOnCollision", { reader >> m_DamageOnCollision; });
 	MatchProperty("DamageOnPenetration", { reader >> m_DamageOnPenetration; });
 	MatchProperty("WoundDamageMultiplier", { reader >> m_WoundDamageMultiplier; });
@@ -569,6 +572,8 @@ int MovableObject::Save(Writer& writer) const {
 	writer << (float)m_EffectStopStrength / 255.0f;
 	writer.NewProperty("EffectAlwaysShows");
 	writer << m_EffectAlwaysShows;
+	writer.NewProperty("SparkGlow");
+	writer << m_SparkGlow;
 	writer.NewProperty("DamageOnCollision");
 	writer << m_DamageOnCollision;
 	writer.NewProperty("DamageOnPenetration");
@@ -1394,7 +1399,16 @@ bool MovableObject::DrawToTerrain(SLTerrain* terrain) {
 void MovableObject::SetPostScreenEffectToDraw() const {
 	if (m_AgeTimer.GetElapsedSimTimeMS() >= m_EffectStartTime && (m_EffectStopTime == 0 || !m_AgeTimer.IsPastSimMS(m_EffectStopTime))) {
 		if (m_EffectAlwaysShows || !g_SceneMan.ObscuredPoint(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY())) {
-			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS()), m_EffectRotAngle);
+			float strength = Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS());
+			if (m_SparkGlow) {
+				// A spark's glow and the light it casts follow Spark lights, and go with the sparks when they're turned off.
+				const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+				strength *= lighting.EffectsSparks > 0.0F ? lighting.SparkLights : 0.0F;
+				if (strength < 1.0F) {
+					return;
+				}
+			}
+			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle);
 		}
 	}
 }

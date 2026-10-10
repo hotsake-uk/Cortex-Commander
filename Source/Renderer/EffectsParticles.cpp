@@ -149,9 +149,32 @@ namespace {
 		}
 	}
 
-	void SpawnFromRequest(const SpawnRequest& request, float amount) {
+	/// How many of each kind to spawn: sparks, dust and debris each have their own setting; everything else (embers, smoke, fire, spray,
+	/// drops and froth) follows the largest of the three, so it only goes when all three are off, as with the one setting before.
+	struct Amounts {
+		float Sparks;
+		float Dust;
+		float Debris;
+
+		float Others() const { return std::max({Sparks, Dust, Debris}); }
+
+		float For(Kind kind) const {
+			switch (kind) {
+				case Kind::Spark: return Sparks;
+				case Kind::Dust: return Dust;
+				case Kind::Debris: return Debris;
+				default: return Others();
+			}
+		}
+	};
+
+	void SpawnFromRequest(const SpawnRequest& request, const Amounts& amounts) {
 		if (request.EmitKind >= 0) {
 			Kind kind = static_cast<Kind>(request.EmitKind);
+			float amount = amounts.For(kind);
+			if (amount <= 0.0F) {
+				return;
+			}
 			float speed = glm::length(request.Velocity);
 			int count = std::max(static_cast<int>(std::round(static_cast<float>(request.EmitCount) * amount)), request.EmitCount > 0 ? 1 : 0);
 			for (int i = 0; i < count; ++i) {
@@ -201,25 +224,29 @@ namespace {
 			return;
 		}
 		if (request.Ember) {
+			if (amounts.Others() <= 0.0F) {
+				return;
+			}
 			Add({request.Position, glm::vec2(RandomRange(-8.0F, 8.0F), RandomRange(-40.0F, -20.0F)), 0.0F, RandomRange(0.8F, 2.0F), 1.0F, glm::u8vec3(255, 160, 60), Kind::Ember});
 			return;
 		}
 		if (request.Energy > 0.0F) {
 			// Explosion: a burst of sparks, a ring of dust, and chips of whatever it went off against.
-			float scale = std::clamp(request.Energy / 6000.0F, 0.3F, 3.0F) * amount;
-			int sparkCount = static_cast<int>(40.0F * scale);
+			float energyScale = std::clamp(request.Energy / 6000.0F, 0.3F, 3.0F);
+			float scale = energyScale * amounts.Others();
+			int sparkCount = static_cast<int>(40.0F * energyScale * amounts.Sparks);
 			for (int i = 0; i < sparkCount; ++i) {
 				glm::vec2 direction = RandomDirection();
 				direction.y -= 0.35F;
-				Add({request.Position, glm::normalize(direction) * RandomRange(120.0F, 520.0F) * std::sqrt(scale), 0.0F, RandomRange(0.25F, 0.9F), 1.0F, glm::u8vec3(255, 220, 140), Kind::Spark});
+				Add({request.Position, glm::normalize(direction) * RandomRange(120.0F, 520.0F) * std::sqrt(energyScale * amounts.Sparks), 0.0F, RandomRange(0.25F, 0.9F), 1.0F, glm::u8vec3(255, 220, 140), Kind::Spark});
 			}
-			int dustCount = static_cast<int>(10.0F * scale);
+			int dustCount = static_cast<int>(10.0F * energyScale * amounts.Dust);
 			glm::u8vec3 dustColor(110, 100, 92);
 			int groundMaterial = g_SceneMan.GetTerrMatter(static_cast<int>(request.Position.x), static_cast<int>(request.Position.y + 6.0F));
 			if (groundMaterial != g_MaterialAir) {
 				glm::u8vec3 materialRGB = UnpackRGB(EffectsParticles::ColorToRGB(g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(groundMaterial))->GetColor()));
 				dustColor = glm::u8vec3(glm::mix(glm::vec3(materialRGB), glm::vec3(dustColor), 0.5F));
-				int chipCount = static_cast<int>(24.0F * scale);
+				int chipCount = static_cast<int>(24.0F * energyScale * amounts.Debris);
 				for (int i = 0; i < chipCount; ++i) {
 					glm::vec2 direction = RandomDirection();
 					direction.y = -std::abs(direction.y) - 0.3F;
@@ -227,7 +254,7 @@ namespace {
 				}
 			}
 			for (int i = 0; i < dustCount; ++i) {
-				glm::vec2 offset = RandomDirection() * RandomRange(2.0F, 12.0F) * std::sqrt(scale);
+				glm::vec2 offset = RandomDirection() * RandomRange(2.0F, 12.0F) * std::sqrt(energyScale * amounts.Dust);
 				Add({request.Position + offset, glm::normalize(offset + glm::vec2(0.0F, -2.0F)) * RandomRange(15.0F, 60.0F), 0.0F, RandomRange(1.5F, 3.5F), RandomRange(3.0F, 6.0F), dustColor, Kind::Dust});
 			}
 			// The fireball: balls of fire that swell and roll upwards, each leaving smoke that appears as it burns out and hangs in the air for a few seconds.
@@ -243,9 +270,9 @@ namespace {
 				unsigned char grey = static_cast<unsigned char>(RandomRange(38.0F, 62.0F));
 				Add({request.Position + offset, velocity * 0.6F, -fireLife * 0.6F, RandomRange(3.0F, 6.5F), size * 1.2F, glm::u8vec3(grey, grey, grey), Kind::Smoke});
 			}
-			if (groundMaterial != g_MaterialAir) {
+			if (groundMaterial != g_MaterialAir && amounts.Dust > 0.0F) {
 				// A ring of dust racing out along the ground either side.
-				int ringCount = static_cast<int>(9.0F * scale) + 2;
+				int ringCount = static_cast<int>(9.0F * energyScale * amounts.Dust) + 2;
 				for (int i = 0; i < ringCount; ++i) {
 					float side = (i % 2 == 0) ? 1.0F : -1.0F;
 					glm::vec2 velocity(side * RandomRange(90.0F, 260.0F) * reach, RandomRange(-25.0F, -5.0F));
@@ -262,15 +289,15 @@ namespace {
 		glm::vec2 back = -request.Velocity / speed;
 		glm::u8vec3 materialRGB = UnpackRGB(request.MaterialColor);
 		if (request.Hardness > 0.5F) {
-			int sparkCount = static_cast<int>(RandomRange(2.0F, 5.0F) * amount);
+			int sparkCount = static_cast<int>(RandomRange(2.0F, 5.0F) * amounts.Sparks);
 			for (int i = 0; i < sparkCount; ++i) {
 				glm::vec2 direction = glm::normalize(back + RandomDirection() * 0.9F);
 				Add({request.Position, direction * RandomRange(80.0F, 260.0F), 0.0F, RandomRange(0.15F, 0.45F), 1.0F, glm::u8vec3(255, 230, 170), Kind::Spark});
 			}
-		} else {
+		} else if (amounts.Dust > 0.0F) {
 			Add({request.Position + back * 2.0F, back * RandomRange(10.0F, 30.0F) + glm::vec2(0.0F, -8.0F), 0.0F, RandomRange(0.8F, 1.6F), RandomRange(2.0F, 3.5F), materialRGB, Kind::Dust});
 		}
-		int chipCount = static_cast<int>(RandomRange(1.0F, 4.0F) * amount);
+		int chipCount = static_cast<int>(RandomRange(1.0F, 4.0F) * amounts.Debris);
 		for (int i = 0; i < chipCount; ++i) {
 			glm::vec2 direction = glm::normalize(back + RandomDirection() * 0.7F + glm::vec2(0.0F, -0.4F));
 			Add({request.Position + back * 1.5F, direction * RandomRange(40.0F, 140.0F), 0.0F, RandomRange(0.8F, 2.0F), 1.0F, materialRGB, Kind::Debris});
@@ -444,7 +471,8 @@ void EffectsParticles::SpawnImpact(const Vector& position, const Vector& velocit
 	s_Queue.push_back({false, glm::vec2(position.m_X, position.m_Y), glm::vec2(velocity.m_X, velocity.m_Y) * c_PPM, 0.0F, materialColor, hardness});
 }
 
-void EffectsParticles::Update(float amount) {
+void EffectsParticles::Update(float sparks, float dust, float debris) {
+	Amounts amounts{sparks, dust, debris};
 	long long simUpdate = g_TimerMan.GetSimUpdateCount();
 	float seconds = s_LastSimUpdate >= 0 ? std::min(static_cast<float>(simUpdate - s_LastSimUpdate) * g_TimerMan.GetDeltaTimeSecs(), 0.1F) : 0.0F;
 	s_LastSimUpdate = simUpdate;
@@ -455,12 +483,12 @@ void EffectsParticles::Update(float amount) {
 		std::scoped_lock lock(s_QueueMutex);
 		requests.swap(s_Queue);
 	}
-	if (amount <= 0.0F || !g_SceneMan.GetScene()) {
+	if (amounts.Others() <= 0.0F || !g_SceneMan.GetScene()) {
 		s_Particles.clear();
 		return;
 	}
 	for (const SpawnRequest& request: requests) {
-		SpawnFromRequest(request, amount);
+		SpawnFromRequest(request, amounts);
 	}
 	if (seconds <= 0.0F) {
 		return;

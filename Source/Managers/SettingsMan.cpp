@@ -427,7 +427,18 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SmokeShading", { g_PostProcessMan.GetLightingSettings().SmokeShading = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SmokeShadingStrength", { g_PostProcessMan.GetLightingSettings().SmokeShadingStrength = std::stof(reader.ReadPropValue()); });
-	MatchProperty("EffectsParticles", { g_PostProcessMan.GetLightingSettings().EffectsParticles = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsParticles", {
+		// The one setting sparks, dust and debris shared before they were split: carried over to all three.
+		float amount = std::stof(reader.ReadPropValue());
+		LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		lighting.EffectsSparks = amount;
+		lighting.EffectsDust = amount;
+		lighting.EffectsDebris = amount;
+	});
+	MatchProperty("EffectsSparks", { g_PostProcessMan.GetLightingSettings().EffectsSparks = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDust", { g_PostProcessMan.GetLightingSettings().EffectsDust = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDebris", { g_PostProcessMan.GetLightingSettings().EffectsDebris = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SparkLights", { g_PostProcessMan.GetLightingSettings().SparkLights = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Headlamps", { g_PostProcessMan.GetLightingSettings().Headlamps = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
@@ -839,7 +850,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("FireFlameBrightness", lighting.FireFlameBrightness);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
 	writer.NewPropertyWithValue("Embers", lighting.Embers);
-	writer.NewPropertyWithValue("EffectsParticles", lighting.EffectsParticles);
+	writer.NewPropertyWithValue("EffectsSparks", lighting.EffectsSparks);
+	writer.NewPropertyWithValue("EffectsDust", lighting.EffectsDust);
+	writer.NewPropertyWithValue("EffectsDebris", lighting.EffectsDebris);
+	writer.NewPropertyWithValue("SparkLights", lighting.SparkLights);
 	writer.NewPropertyWithValue("SmokeScattering", lighting.SmokeScattering);
 	writer.NewPropertyWithValue("SmokeShading", lighting.SmokeShading);
 	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);

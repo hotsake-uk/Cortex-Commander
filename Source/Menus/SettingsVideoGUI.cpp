@@ -466,7 +466,9 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				lightingSettings.Stains = enabled;
 				lightingSettings.LivingWorld = enabled;
 				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
-				lightingSettings.EffectsParticles = enabled ? std::max(lightingSettings.EffectsParticles, 1.0F) : 0.0F;
+				lightingSettings.EffectsSparks = enabled ? std::max(lightingSettings.EffectsSparks, 1.0F) : 0.0F;
+				lightingSettings.EffectsDust = enabled ? std::max(lightingSettings.EffectsDust, 1.0F) : 0.0F;
+				lightingSettings.EffectsDebris = enabled ? std::max(lightingSettings.EffectsDebris, 1.0F) : 0.0F;
 			} else if (m_ModernHUDCheckbox && guiEvent.GetControl() == m_ModernHUDCheckbox) {
 				ModernHUD::SetEnabled(m_ModernHUDCheckbox->GetCheck());
 			} else if (m_SmoothHUDTextCheckbox && guiEvent.GetControl() == m_SmoothHUDTextCheckbox) {
