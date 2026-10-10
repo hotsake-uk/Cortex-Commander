@@ -680,7 +680,7 @@ void DebugMan::SettingsGUI() {
 		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
 			RopeSim::SetSettleSeconds(settle);
 		}
-		Tip("A rope, chain or cable that is no longer tied to anything and has lain still this long turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
+		Tip("A rope, chain or cable that is no longer tied to anything and has stayed within a small area (about 6 pixels of room) this long, even if it is still swaying, turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
