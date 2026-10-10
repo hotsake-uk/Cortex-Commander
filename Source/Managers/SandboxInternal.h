@@ -708,6 +708,8 @@ namespace SandboxDetail {
 		float Jitter = 0.5F; //!< Where across, a little either side of the point, 0 to 1.
 		float Depth = 0.0F; //!< How deep into the ground, within the preset's depths, 0 to 1.
 		bool Mirror = false;
+		int Entry = -1; //!< Which picture of the brush's gallery (PlantGallery) exactly, or -1 to take it from the chances above.
+		Tool Kind = Tool::Plants; //!< The brush Entry is a picture of.
 	};
 
 	/// One ingredient of an effect you make yourself: a light, a source of particles, a force or a bit of the air. An effect is a list of them, all running at once.
@@ -2019,7 +2021,32 @@ namespace SandboxDetail {
 	bool PlanPlant(const Vector& at, int radius, Tool kind, float scale, const PlantRoll& roll, PlantPlacement& out);
 	void PlacePlant(const Vector& at, int radius, Tool kind, float scale = 1.0F, const PlantRoll* roll = nullptr);
 	inline PlantRoll s_NextPlant; //!< The plant the plant brush in hand puts down next, shown under the cursor; rolled again as each is queued.
-	PlantRoll RollPlant();
+	/// One picture a plant brush can put down: one piece of one of its debris presets (and its leaves or wick, for trees and candles).
+	struct PlantPicture {
+		const TerrainDebris* Debris = nullptr;
+		const TerrainDebris* Leaves = nullptr;
+		BITMAP* Piece = nullptr;
+		BITMAP* LeafPiece = nullptr;
+		const char* Group = ""; //!< Which of the brush's kinds it is (small cacti, red mushrooms, ...).
+	};
+	/// Every picture a plant brush can put down, in order: its gallery (Paint > Plants).
+	std::vector<PlantPicture> PlantGallery(Tool kind);
+	/// Which of its pictures a plant brush puts down (Paint > Plants): any, or only the ones picked from its gallery, at random or in turn,
+	/// facing either way or one.
+	struct PlantPick {
+		std::vector<int> Chosen; //!< Gallery pictures picked, in the order picked; none for any of them.
+		bool InTurn = false; //!< The ones picked one after another, rather than at random.
+		int Turn = 0; //!< The next of the ones picked, in turn.
+		int Facing = 0; //!< 0 either way at random, 1 as drawn, 2 mirrored.
+	};
+	inline std::map<Tool, PlantPick> s_PlantPicks; //!< Each plant brush's pick (Paint > Plants).
+	PlantRoll RollPlant(Tool kind);
+	/// The gallery picture a roll puts down for a plant brush, or -1 for none.
+	int PlantEntryOf(Tool kind, const PlantRoll& roll, const std::vector<PlantPicture>& gallery);
+	/// The next plant shown under the cursor moved on to the next of the brush's pictures (the next picked, or the next of all), or back (E, Shift+E).
+	void StepNextPlant(Tool kind, int step);
+	/// The next plant shown under the cursor turned the other way (F).
+	void FlipNextPlant(Tool kind);
 	const char* TerrainBrushMaterial(Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
@@ -2221,6 +2248,8 @@ namespace SandboxDetail {
 	void LookAtUnits(const std::vector<UnitRef>& units);
 	void CommandHotkeys();
 	void KeysPage();
+	/// Paint > Plants, with a plant brush in hand: which of its pictures it puts down (PlantPick), from a gallery of them all.
+	void PlantPickPanel(Tool kind);
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
 	const PiecePicture& PictureOfBitmap(BITMAP* bitmap, bool repeat = false);
