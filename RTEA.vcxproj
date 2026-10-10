@@ -927,6 +927,7 @@
     <ClInclude Include="Source\Entities\ACRocket.h" />
     <ClInclude Include="Source\Entities\Actor.h" />
     <ClInclude Include="Source\Entities\ADoor.h" />
+    <ClInclude Include="Source\Entities\AVehicle.h" />
     <ClInclude Include="Source\Entities\AEmitter.h" />
     <ClInclude Include="Source\Entities\AHuman.h" />
     <ClInclude Include="Source\Entities\Arm.h" />
@@ -1495,6 +1496,7 @@
     <ClCompile Include="Source\Entities\ACRocket.cpp" />
     <ClCompile Include="Source\Entities\Actor.cpp" />
     <ClCompile Include="Source\Entities\ADoor.cpp" />
+    <ClCompile Include="Source\Entities\AVehicle.cpp" />
     <ClCompile Include="Source\Entities\AEmitter.cpp" />
     <ClCompile Include="Source\Entities\AHuman.cpp" />
     <ClCompile Include="Source\Entities\AHumanMovement.cpp" />

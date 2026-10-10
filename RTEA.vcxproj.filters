@@ -361,6 +361,9 @@
     <ClInclude Include="Source\Entities\ADoor.h">
       <Filter>Entities</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Entities\AVehicle.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Entities\AEmitter.h">
       <Filter>Entities</Filter>
     </ClInclude>
@@ -1049,6 +1052,9 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ADoor.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\AVehicle.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\AEmitter.cpp">

@@ -6,6 +6,7 @@ sources += files(
 'Activity.cpp',
 'Actor.cpp',
 'ADoor.cpp',
+'AVehicle.cpp',
 'ADSensor.cpp',
 'AEJetpack.cpp',
 'AEmitter.cpp',

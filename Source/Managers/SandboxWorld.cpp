@@ -1180,7 +1180,8 @@ namespace SandboxDetail {
 				continue;
 			}
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
-			if (!entity || entity->IsInGroup("Actors - Turrets")) {
+			// (Nor vehicles, VH-1: nobody drives one placed or bought on its own.)
+			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles")) {
 				continue;
 			}
 			all.push_back(&unit);

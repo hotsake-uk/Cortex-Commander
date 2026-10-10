@@ -165,6 +165,7 @@ void LuaStateWrapper::Initialize() {
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Actor),
 	                         RegisterLuaBindingsOfType(EntityLuaBindings, ActorSighting),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, ADoor),
+	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, AVehicle),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Arm),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Leg),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, AHuman),
