@@ -1880,8 +1880,14 @@ namespace SandboxDetail {
 
 		int s_Hill = 0; //!< The hill in play, of the mode's zones.
 		long long s_HillSince = 0; //!< The sim update it came into play on (held back while the AI is paused).
-		std::array<float, c_Sides> s_Held{}; //!< Seconds each team has held the hill.
+		std::array<float, c_Sides> s_Held{}; //!< Seconds each team has held the hill (playing for hills: the hill in play, since it came in).
 		int s_Holder = -1; //!< The team holding it now: -1 nobody, -2 more than one (contested).
+
+		/// Playing for a number of hills (HillsToWin), rather than for seconds held all told.
+		bool ForHills(const BattleModeSettings& settings) { return settings.HillsToWin > 0; }
+
+		/// Seconds a team has to hold the hill: all told to win, or playing for hills, on the one in play to take it.
+		int HoldSeconds(const BattleModeSettings& settings) { return ForHills(settings) ? std::max(settings.HoldToWin, 5) : settings.HoldToWin; }
 
 		/// Where the teams fight for the hill in play: every unit defends it.
 		BattleSettings HillPost() {
@@ -1921,6 +1927,9 @@ namespace SandboxDetail {
 			s_Hill = next;
 			s_HillSince = g_TimerMan.GetSimUpdateCount();
 			s_Holder = -1;
+			if (ForHills(s_ModeRun.Settings)) {
+				s_Held.fill(0.0F);
+			}
 			const BattleSettings post = HillPost();
 			for (int side = 0; side < c_Sides; ++side) {
 				RecentreDefenders(side, post.DefendPos, false, static_cast<float>(post.DefendRadius));
@@ -1970,9 +1979,29 @@ namespace SandboxDetail {
 			}
 			if (holder >= 0) {
 				s_Held[holder] += 6.0F / UpdatesPerSecond();
-				s_ModeRun.Score[holder] = static_cast<int>(s_Held[holder]);
-				if (settings.HoldToWin > 0 && s_Held[holder] >= static_cast<float>(settings.HoldToWin)) {
-					EndGame(holder, SideName(holder) + " is king of the hill!");
+				const int hold = HoldSeconds(settings);
+				if (!ForHills(settings)) {
+					s_ModeRun.Score[holder] = static_cast<int>(s_Held[holder]);
+					if (hold > 0 && s_Held[holder] >= static_cast<float>(hold)) {
+						EndGame(holder, SideName(holder) + " is king of the hill!");
+						return;
+					}
+				} else if (s_Held[holder] >= static_cast<float>(hold)) {
+					// Taken: a hill to its name, and the next comes into play (one hill: the same one, everyone's time on it started again).
+					const int taken = ++s_ModeRun.Score[holder];
+					const std::string hillName = settings.Zones.size() > 1 ? "hill " + std::to_string(s_Hill + 1) : "the hill";
+					if (taken >= settings.HillsToWin) {
+						EndGame(holder, SideName(holder) + " is king of the hill, " + std::to_string(taken) + (taken == 1 ? " hill" : " hills") + " taken!");
+						return;
+					}
+					Say(SideName(holder) + " takes " + hillName + " (" + std::to_string(taken) + " of " + std::to_string(settings.HillsToWin) + ")");
+					if (settings.Zones.size() > 1) {
+						MoveHill((s_Hill + 1) % static_cast<int>(settings.Zones.size()));
+					} else {
+						s_HillSince = now;
+						s_Held.fill(0.0F);
+						s_Holder = -1;
+					}
 					return;
 				}
 			}
@@ -1982,8 +2011,20 @@ namespace SandboxDetail {
 		}
 
 		void HillPanel(BattleModeSettings& setup, bool& changed) {
-			changed |= ImGui::SliderInt("Hold to win", &setup.HoldToWin, 0, 600, setup.HoldToWin > 0 ? "%d s" : "play on");
-			ImGui::SetItemTooltip("Seconds a team has to hold the hill, all told, to win. It scores only while it alone has units on it. 0: it goes on till you stop it.");
+			changed |= ImGui::SliderInt("Hills to win", &setup.HillsToWin, 0, 10, setup.HillsToWin > 0 ? "%d" : "off: time held");
+			ImGui::SetItemTooltip("Hills a team has to take to win the battle. A team takes the hill in play by holding it for the seconds below, then the next "
+			                      "hill comes into play (with one hill drawn, the same one again). Off: the seconds held, all told, win instead.");
+			if (ForHills(setup)) {
+				if (setup.HoldToWin < 5) {
+					setup.HoldToWin = 60;
+					changed = true;
+				}
+				changed |= ImGui::SliderInt("Hold to take a hill", &setup.HoldToWin, 5, 600, "%d s");
+				ImGui::SetItemTooltip("Seconds a team has to hold the hill in play to take it. It counts only while it alone has units on it, and starts again for everyone when the hill moves on.");
+			} else {
+				changed |= ImGui::SliderInt("Hold to win", &setup.HoldToWin, 0, 600, setup.HoldToWin > 0 ? "%d s" : "play on");
+				ImGui::SetItemTooltip("Seconds a team has to hold the hill, all told, to win. It scores only while it alone has units on it. 0: it goes on till you stop it.");
+			}
 			changed |= ImGui::SliderInt("Hill moves every", &setup.HillMoveSeconds, 0, 300, setup.HillMoveSeconds > 0 ? "%d s" : "never");
 			ImGui::SetItemTooltip("With more than one hill drawn: seconds before the next one comes into play, and everyone has to run for it. Never: the first one stays.");
 			changed |= ToolUI::Checkbox("Most units on it scores", &setup.MajorityScores);
@@ -2008,9 +2049,24 @@ namespace SandboxDetail {
 				}
 			}
 			if (running) {
-				std::string line = Scores("KING OF THE HILL", " s");
-				if (settings.HoldToWin > 0) {
-					line += "    (" + std::to_string(settings.HoldToWin) + " s wins)";
+				std::string line;
+				if (ForHills(settings)) {
+					line = Scores("KING OF THE HILL", "") + "    (first to " + std::to_string(settings.HillsToWin) + (settings.HillsToWin == 1 ? " hill)" : " hills)");
+					// How far each team has got to taking the hill in play.
+					std::string progress;
+					for (int side = 0; side < c_Sides; ++side) {
+						if (TeamIn(settings, side) && s_Held[side] >= 1.0F) {
+							progress += "  " + SideName(side) + " " + std::to_string(static_cast<int>(s_Held[side])) + "/" + std::to_string(HoldSeconds(settings)) + " s";
+						}
+					}
+					if (!progress.empty() && !s_ModeRun.Over) {
+						line += "    taking it:" + progress;
+					}
+				} else {
+					line = Scores("KING OF THE HILL", " s");
+					if (settings.HoldToWin > 0) {
+						line += "    (" + std::to_string(settings.HoldToWin) + " s wins)";
+					}
 				}
 				if (settings.Zones.size() > 1 && settings.HillMoveSeconds > 0 && !s_ModeRun.Over) {
 					line += "    hill moves in " + Clock(static_cast<float>(settings.HillMoveSeconds) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_HillSince) / UpdatesPerSecond());
@@ -2038,7 +2094,13 @@ namespace SandboxDetail {
 			}
 		}
 
-		std::string HillStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " s held, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+		std::string HillStatus(int side) {
+			if (ForHills(s_ModeRun.Settings)) {
+				const int hills = s_ModeRun.Score[side];
+				return std::to_string(hills) + (hills == 1 ? " hill, " : " hills, ") + std::to_string(static_cast<int>(s_Held[side])) + " s on this one, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return std::to_string(s_ModeRun.Score[side]) + " s held, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
 
 		// ---- Assault ----
 
@@ -2307,6 +2369,17 @@ namespace SandboxDetail {
 				if (left <= std::max(15.0F, static_cast<float>(settings.HillMoveSeconds) * 0.25F)) {
 					next = (now + 1) % count;
 					share = settings.CommanderReserve;
+				}
+			}
+			// Playing for hills: once a team is most of the way to taking this one, the next is about to come into play.
+			if (count > 1 && next < 0 && ForHills(settings)) {
+				const float hold = static_cast<float>(HoldSeconds(settings));
+				for (int team = 0; team < c_Sides; ++team) {
+					if (s_Held[team] >= hold * 0.75F) {
+						next = (now + 1) % count;
+						share = settings.CommanderReserve;
+						break;
+					}
 				}
 			}
 			return true;
@@ -2759,7 +2832,7 @@ namespace SandboxDetail {
 		    {.Name = "King of the hill",
 		     .Blurb = "Draw a hill (or a few) on the map and spawn zones for each team. Every unit fights for the hill: a team scores a second for every second it alone "
 		              "has units on it, and the first to the seconds set wins. With more than one hill, it can move on every so often, and everyone has to run for "
-		              "the next.",
+		              "the next. Or play for hills: holding the hill in play long enough takes it, the next comes in, and the first to take the hills set wins.",
 		     .ZoneName = "hill",
 		     .MinZones = 1,
 		     .Start = HillStart,
