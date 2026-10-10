@@ -21,6 +21,7 @@ namespace SandboxDetail {
 			brief.push_back(cost > 0.0F ? Number(cost) + " oz" : "free");
 			const MOSRotating* body = dynamic_cast<const MOSRotating*>(object);
 			if (const Actor* actor = dynamic_cast<const Actor*>(object)) {
+				stats += std::string("\nTemperament: ") + Actor::TemperamentName(actor->GetTemperament()) + (IsNonCombatantPreset(actor) ? " (non-combatant)" : "");
 				stats += "\nHealth: " + Number(actor->GetMaxHealth());
 				stats += "\nMass: " + Number(actor->GetMass()) + " kg (with what it carries)";
 				brief.push_back(Number(actor->GetMaxHealth()) + " HP");
@@ -123,6 +124,8 @@ namespace SandboxDetail {
 				const float lift = actor->EstimateJumpHeight();
 				preset.JetLift = lift == FLT_MAX ? -1.0F : lift;
 				preset.Jetpack = lift >= c_JetpackFlyingLift;
+				preset.NonCombatant = IsNonCombatantPreset(actor);
+				preset.Temperament = actor->GetTemperament();
 			}
 			if (const TerrainObject* terrainObject = dynamic_cast<const TerrainObject*>(entity)) {
 				preset.Width = terrainObject->GetBitmapWidth();
