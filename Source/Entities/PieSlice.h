@@ -54,7 +54,8 @@ namespace RTE {
 		EditorTeam4,
 		// AI Modes, later additions (kept at the end: the INI gives types by number)
 		DigTo, //!< Dig to a point picked next (RC-11): GameActivity's cursor checks the dig and gives the order.
-		GetOut //!< The driver gets out of a vehicle (VH-1, AVehicle).
+		GetOut, //!< The driver gets out of a vehicle (VH-1, AVehicle).
+		ChangeSeat //!< The unit the player is in a vehicle moves to its next empty seat (VH-3, AVehicle).
 	};
 
 	/// An individual PieSlice in a PieMenu.

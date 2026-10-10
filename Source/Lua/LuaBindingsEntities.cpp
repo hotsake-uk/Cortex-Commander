@@ -454,9 +454,20 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("Exhaust", &AVehicle::GetExhaust)
 	    .property("EngineRunning", &AVehicle::IsEngineRunning)
 	    .property("EngineLoad", &AVehicle::GetEngineLoad)
+	    .property("SeatCount", &AVehicle::GetSeatCount)
+	    .property("CrewCount", &AVehicle::GetCrewCount)
+	    .property("FreeSeat", &AVehicle::GetFreeSeat)
+	    .property("ControlSeat", &AVehicle::GetControlSeat)
+	    .property("Turret", &AVehicle::GetTurret)
 
 	    .def("TakeDriver", &AVehicle::TakeDriver)
-	    .def("EjectDriver", &AVehicle::EjectDriver);
+	    .def("EjectDriver", &AVehicle::EjectDriver)
+	    .def("GetSeatOccupant", &AVehicle::GetSeatOccupant)
+	    .def("IsGunnerSeat", &AVehicle::IsGunnerSeat)
+	    .def("TakeSeat", &AVehicle::TakeSeat)
+	    .def("EjectSeat", &AVehicle::EjectSeat)
+	    .def("EjectCrew", &AVehicle::EjectCrew)
+	    .def("ChangeSeat", &AVehicle::ChangeSeat);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
@@ -1325,7 +1336,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieSlice) {
 	                        luabind::value("Team3", static_cast<int>(PieSliceType::EditorTeam3)),
 	                        luabind::value("Team4", static_cast<int>(PieSliceType::EditorTeam4)),
 	                        luabind::value("DigTo", static_cast<int>(PieSliceType::DigTo)),
-	                        luabind::value("GetOut", static_cast<int>(PieSliceType::GetOut))];
+	                        luabind::value("GetOut", static_cast<int>(PieSliceType::GetOut)),
+	                        luabind::value("ChangeSeat", static_cast<int>(PieSliceType::ChangeSeat))];
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, PieMenu) {
