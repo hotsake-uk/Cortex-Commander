@@ -1277,7 +1277,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Plants");
-				ToolButtons({Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees});
+				ToolButtons({Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass});
 				ImGui::SliderFloat("Plant size", &s_PlantScale, 0.5F, 3.0F, "x%.1f");
 				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms and trees are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is.");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");

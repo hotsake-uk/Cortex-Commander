@@ -192,7 +192,9 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		TreeTrunk, //!< The base game's "Tree Trunk": wood, darker, like a tree's.
 		// Appended, so the tools before keep their numbers.
-		Generator //!< A colony generator: powers its side's buildings in range (Colony::NeedsPower).
+		Generator, //!< A colony generator: powers its side's buildings in range (Colony::NeedsPower).
+		// Appended, so the tools before keep their numbers.
+		GrowGrass //!< Grows a layer of grass up from the top of the ground under the brush, as the base game's maps have on their topsoil.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -309,6 +311,7 @@ namespace SandboxDetail {
 	    {Tool::Steam, "Steam", 0.06F, true},
 	    {Tool::TreeTrunk, "Tree trunk", 0.03F, true},
 	    {Tool::Generator, "Generator", 0.0F, false},
+	    {Tool::GrowGrass, "Grow grass", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -336,6 +339,7 @@ namespace SandboxDetail {
 			case Tool::DenseEarth:
 			case Tool::GoldEarth:
 			case Tool::TerrainOther:
+			case Tool::GrowGrass:
 				return true;
 			default:
 				return false;
