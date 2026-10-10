@@ -36,6 +36,9 @@
 #include "System.h"
 
 #include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
@@ -243,9 +246,38 @@ int SettingsMan::Initialize() {
 	return failureCode;
 }
 
+namespace {
+	/// The settings file's text for the settings as they are now.
+	std::string SettingsText() {
+		auto stream = std::make_unique<std::ostringstream>();
+		*stream << std::fixed << std::setprecision(6);
+		std::ostringstream* text = stream.get();
+		Writer settingsWriter(std::move(stream));
+		g_SettingsMan.Save(settingsWriter);
+		return text->str();
+	}
+}
+
 void SettingsMan::UpdateSettingsFile() const {
-	Writer settingsWriter(m_SettingsPath);
-	g_SettingsMan.Save(settingsWriter);
+	std::string text = SettingsText();
+	std::ofstream file(m_SettingsPath, std::ios::out | std::ios::trunc);
+	file << text;
+	file.close();
+	if (file) {
+		m_LastWrittenSettings = std::move(text);
+	}
+}
+
+void SettingsMan::SaveSettingsIfChanged() const {
+	static std::chrono::steady_clock::time_point s_LastLook;
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - s_LastLook < std::chrono::seconds(1)) {
+		return;
+	}
+	s_LastLook = now;
+	if (SettingsText() != m_LastWrittenSettings) {
+		UpdateSettingsFile();
+	}
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {

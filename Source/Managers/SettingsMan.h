@@ -45,6 +45,10 @@ namespace RTE {
 		/// Overwrites the settings file to save changes made from within the game.
 		void UpdateSettingsFile() const;
 
+		/// Writes the settings file when any setting differs from what was last written, so a change on any page is on disk within a second, not only when a menu closes or the game quits cleanly.
+		/// Call once a frame; it looks at most once a second.
+		void SaveSettingsIfChanged() const;
+
 		/// Saves every setting in the settings panel (the look, time and weather, water, fire, falling ground, the AI, the HUD, the overlays) as a named preset, a file in Userdata/Presets.
 		/// @param name The name. Characters that can't be in a file's name are dropped.
 		/// @return The name it was saved under, or nothing if it couldn't be.
@@ -796,6 +800,7 @@ namespace RTE {
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
 
 		std::string m_SettingsPath; //!< String containing the Path to the Settings.ini file.
+		mutable std::string m_LastWrittenSettings; //!< The settings file's text as this game last wrote it, to tell when a setting has changed since.
 		std::string m_StartupPreset; //!< The preset loaded every time the game starts, over Settings.ini. Nothing for none.
 
 		/// Clears all the member variables of this SettingsMan, effectively resetting the members of this abstraction level only.
