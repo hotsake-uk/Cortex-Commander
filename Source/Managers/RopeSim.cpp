@@ -1074,7 +1074,7 @@ void RopeSim::Update() {
 		}
 		s_PendingLoadState.clear();
 	}
-	if (!scene || !scene->GetTerrain()) {
+	if (!scene || !g_SceneMan.GetScene()->GetTerrain()) {
 		return;
 	}
 	if (!s_TablesBuilt) {
