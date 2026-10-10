@@ -697,6 +697,8 @@ namespace SandboxDetail {
 		int CommanderReserve = 30; //!< Its share of each such team's units, in percent, held on the next objective while the one in play is safe.
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
+		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders and
+		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -2195,6 +2197,9 @@ namespace SandboxDetail {
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
+
+	/// Whether a team is one the player commands in the mode's game that is on: its units get no orders from the mode or the Battle Director.
+	bool BattlePlayerCommands(int side);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
