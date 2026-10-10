@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Added</b></summary>
 
+- Medieval buildings: a Bonfire (a stacked pile of logs and branches that burns down), a Campfire (crossed logs in a ring of stones with glowing embers and a flickering light) and a Castle Gatehouse (two stone towers, a battlemented wall, a barred wooden gate that burns, and a torch each side). Drawn by `Tools/Medieval/fires.py`.
 - Sandbox background lights and fires (Build tab > Lights and fires): wall lamp, ceiling lamp, lantern, strip light, warning light, candle, candelabra, wall torch and campfire. They are painted into the background so nothing collides with them, shine for ever (the candles, torch and campfire flicker, smoke and throw embers), and a blast or a shot destroys them.
 - Sandbox Effects tab, Make your own: build effects from layers (light, spotlight, sparks, embers, smoke, dust, mist, debris, gas, flames, heat shimmer, shockwave pulses, lightning strikes and a force field), each with its own size, rate, speed, spread, direction, turning, brightness, flicker, pulse, colour and offset. Start from a template; copy, rename or delete them. They are kept in Userdata/SandboxEffects.txt and listed beside the built-in effects.
 - The Medieval buildings' lamps now flicker like candles.
