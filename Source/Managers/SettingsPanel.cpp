@@ -270,6 +270,19 @@ void DebugMan::SettingsGUI() {
 		}
 		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
+		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
+		{
+			AirPressure::Tuning& air = AirPressure::GetTuning();
+			Slider("Wind gusts", &air.Gusts, 0.0F, 3.0F, "%.2fx");
+			Tip("How much the wind gusts and lulls every few seconds: at 1 gusts blow about half again as hard, at 2 nearly twice. 0: a steady wind.");
+			Slider("Wind shifts", &air.Shifts, 0.0F, 3.0F, "%.2fx");
+			Tip("How much the wind's strength wanders over a minute or so, and the light breeze's way with it. 0: it stays as set.");
+			Slider("Light breeze", &air.Breeze, 0.0F, 100.0F, "%.0f px/s");
+			Tip("A breeze that blows even with the wind at 0, wandering in strength and now and then turning about. 0: still air is still.");
+			if (Plain()) {
+				ImGui::TextDisabled("Blowing now: %.0f px/s", AirPressure::GetNaturalWind());
+			}
+		}
 		Slider("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		Tip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
 		Check("More weather types", &settings.CustomWeather);
@@ -702,7 +715,7 @@ void DebugMan::SettingsGUI() {
 		    "The soft, billowing smoke the smoke sprites trail, and the smoke explosions leave behind.",
 		    "The pale spray off falling and splashing water.",
 		    "The drops a splash throws.",
-		    "The froth that sits on water where something splashed in. In front by default, since it lies on the water.",
+		    "The froth that sits on water where something splashed in, in flat clumps.",
 		    "Puffs of dust from blasts and from hits on soft ground.",
 		    "The little chips blasts and hits throw.",
 		    "Glowing sparks from blasts and from hits on hard ground.",

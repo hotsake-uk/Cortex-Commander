@@ -21,6 +21,11 @@ namespace RTE {
 			float LiquidThrow = 1.0F; //!< How readily a wave running up through liquid throws it into the air. 0: never.
 			float WindStrength = 5.0F; //!< How hard the weather's wind carries smoke and spray.
 			float WindGas = 1.71F; //!< How fast the weather's wind carries gas (SB-6) along. 0: the wind leaves gas be.
+			// Natural wind: the weather's wind as it really blows, rather than one steady speed. These change the wind itself, so everything that
+			// follows it does too (rain and snow, plants, fog, clouds, fire, smoke), whether or not the air does anything (IsOn).
+			float Gusts = 1.0F; //!< How much the wind gusts and lulls every few seconds: 1 gusts of about half again, 2 nearly twice. 0: steady.
+			float Shifts = 1.0F; //!< How much the wind's strength wanders over a minute or so, and the breeze's way with it. 0: it stays as set.
+			float Breeze = 12.0F; //!< A light breeze that blows even with no wind set, in pixels a second, wandering in strength and now and then turning about. 0: still air is still.
 		};
 
 		/// Gets whether the air does anything at all: blast waves, wind on smoke and wind on gas (a gameplay setting, over the ones below).
@@ -43,6 +48,14 @@ namespace RTE {
 
 		/// Gets whether the weather's wind carries smoke and spray along (a gameplay setting, while IsOn).
 		static bool WindMovesSmoke() { return s_Wind; }
+
+		/// Gets the wind as it blows now, in pixels a second, rightwards positive: the weather's wind (Time & weather, Wind) with the natural wind's
+		/// gusts, shifts and breeze (Tuning::Gusts, Shifts, Breeze). Deterministic: worked out from the sim time, the same on every machine.
+		static float GetNaturalWind();
+
+		/// Gets how far, in pixels, the natural wind has carried things beyond what the weather's steady wind would have, since the scene began:
+		/// for what is drawn from a time (falling rain and snow, cloud shadows), so that gusts move it along without making it jump.
+		static float GetNaturalWindDrift() { return s_NaturalDrift; }
 
 		/// Gets the wind the air carries things with, from -1 (a gale blowing left) to 1 (a gale blowing right): the weather's wind times
 		/// Tuning::WindStrength, 0 while the air is off or the wind doesn't carry smoke.
@@ -102,6 +115,7 @@ namespace RTE {
 
 		static bool s_On; //!< Whether the air does anything at all.
 		static Tuning s_Tuning; //!< How strongly the air does each thing it does.
+		static float s_NaturalDrift; //!< See GetNaturalWindDrift.
 		static bool s_Enabled; //!< Whether blasts travel as waves of pressure.
 		static bool s_Wind; //!< Whether the wind carries smoke and spray.
 	};

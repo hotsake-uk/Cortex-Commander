@@ -48,6 +48,8 @@ namespace RTE {
 			float Health = 0.0F; //!< Its health at the last look (vehicles).
 			long long CoveredSinceMS = 0; //!< Since when it has been under a roof thick enough to be underground, 0 for not.
 			long BodyID = 0; //!< The last body it remarked on, so it isn't remarked on again.
+			long CraftID = 0; //!< The last craft of its side it saw come in.
+			int Items = -1; //!< How many items it carries and holds, -1 for not counted yet.
 		};
 
 		/// What a unit is saying, and what it said lately. Kept on the actor (Actor::GetSpeech); only that actor's own updates write it.
@@ -111,7 +113,19 @@ namespace RTE {
 		/// @param actor Who says it.
 		/// @param triggerKey The trigger, as Speech.ini names it.
 		/// @return Whether a line was said.
-		static bool Say(Actor& actor, const std::string& triggerKey) { return Say(actor, triggerKey, false); }
+		static bool Say(Actor& actor, const std::string& triggerKey) { return Say(actor, triggerKey, false, nullptr); }
+
+		/// Has an actor say one of a trigger's lines about another, as Say. "{name}" in a line is the other's name (GetName); lines with it are
+		/// only picked when there is someone to name. "{self}", in any line, is the speaker's own.
+		/// @param actor Who says it.
+		/// @param triggerKey The trigger, as Speech.ini names it.
+		/// @param subject Who it's about; none for a line that names nobody.
+		/// @return Whether a line was said.
+		static bool SayAbout(Actor& actor, const std::string& triggerKey, const Actor* subject) { return Say(actor, triggerKey, false, subject); }
+
+		/// Gets the name a unit's friends call it: one of Speech.ini's UnitName list (its speech set's own, if that has one), picked by the unit's ID
+		/// so it stays the same all game.
+		static std::string GetName(const Actor& actor);
 
 		/// Has an actor answer an order the player just gave it ("Moving!", "Holding fire."), as Say. Called by the commands that give the order,
 		/// which know what it was; for a moment after, the AI's own answer to an order (UnitSpeech.lua, which only sees that some order came) is
@@ -151,8 +165,8 @@ namespace RTE {
 		static int s_ChancePercent; //!< The chance a trigger is said, 0 to 100.
 		static bool s_ShowEnemies; //!< Whether the other sides' units are heard too.
 
-		/// Say, from a command answering an order or not.
-		static bool Say(Actor& actor, const std::string& triggerKey, bool answeringOrder);
+		/// Say, from a command answering an order or not, about someone or not.
+		static bool Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject);
 
 		/// Reads the Speech.ini files if they haven't been yet. Safe from any thread.
 		static void EnsureLoaded();

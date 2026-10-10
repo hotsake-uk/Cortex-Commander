@@ -23,6 +23,7 @@ using namespace RTE;
 
 bool AirPressure::s_On = true;
 AirPressure::Tuning AirPressure::s_Tuning;
+float AirPressure::s_NaturalDrift = 0.0F;
 bool AirPressure::s_Enabled = true;
 bool AirPressure::s_Wind = true;
 
@@ -40,6 +41,22 @@ namespace {
 	constexpr float c_ThrowsLiquid = 0.6F; //!< Air pushing up out of liquid faster than this throws it.
 	constexpr int c_MaxThrowsPerUpdate = 8;
 	constexpr float c_WindSpeed = 4.0F; //!< How fast a full wind carries smoke, in metres a second.
+
+	/// Smooth noise along time, -1 to 1: a fixed random value at each whole number, eased between them. The same on every machine.
+	float TimeNoise(double t, unsigned int seed) {
+		double cell = std::floor(t);
+		auto value = [seed](long long at) {
+			unsigned int h = static_cast<unsigned int>(at) * 0x9E3779B1u ^ seed * 0x85EBCA77u;
+			h ^= h >> 15;
+			h *= 0x2C1B3C6Du;
+			h ^= h >> 12;
+			return static_cast<float>(h & 0xFFFFu) / 32767.5F - 1.0F;
+		};
+		float f = static_cast<float>(t - cell);
+		f = f * f * (3.0F - 2.0F * f);
+		long long at = static_cast<long long>(cell);
+		return value(at) + (value(at + 1) - value(at)) * f;
+	}
 
 	enum Openness : unsigned char {
 		Solid,
@@ -307,8 +324,30 @@ float AirPressure::GetWind() {
 	return s_On && s_Wind ? WeatherEffects::GetWind() * std::max(s_Tuning.WindStrength, 0.0F) * GetOverall() : 0.0F;
 }
 
+float AirPressure::GetNaturalWind() {
+	float base = g_PostProcessMan.GetLightingSettings().Wind;
+	float gusts = std::max(s_Tuning.Gusts, 0.0F);
+	float shifts = std::max(s_Tuning.Shifts, 0.0F);
+	float breeze = std::max(s_Tuning.Breeze, 0.0F);
+	if (gusts == 0.0F && shifts == 0.0F && breeze == 0.0F) {
+		return base;
+	}
+	double seconds = static_cast<double>(g_TimerMan.GetSimUpdateCount()) * static_cast<double>(g_TimerMan.GetDeltaTimeSecs());
+	// Over a minute or so the wind's strength wanders, and the breeze with it, now and then turning about.
+	float wander = TimeNoise(seconds / 70.0, 11u) * 0.7F + TimeNoise(seconds / 23.0, 12u) * 0.3F;
+	float breezeWay = std::clamp(0.35F + 1.3F * (TimeNoise(seconds / 95.0, 13u) * 0.8F + TimeNoise(seconds / 31.0, 14u) * 0.2F), -1.0F, 1.0F);
+	float mean = base * (1.0F + 0.4F * shifts * wander) + breeze * (shifts > 0.0F ? breezeWay : 1.0F);
+	// Every few seconds a gust, stronger than the wind as it is, and lulls between them.
+	float gust = TimeNoise(seconds / 4.5, 21u) * 0.65F + TimeNoise(seconds / 1.7, 22u) * 0.35F;
+	float rise = std::max(gust * 1.4F - 0.2F, 0.0F) * gusts;
+	float lull = std::max(-gust, 0.0F) * gusts;
+	float way = mean < 0.0F ? -1.0F : 1.0F;
+	float wind = mean * (1.0F + 0.5F * rise - 0.3F * lull) + way * 10.0F * rise;
+	return std::clamp(wind, -800.0F, 800.0F);
+}
+
 float AirPressure::GetWindSpeed() {
-	return s_On && s_Wind ? g_PostProcessMan.GetLightingSettings().Wind * std::max(s_Tuning.WindStrength, 0.0F) * GetOverall() : 0.0F;
+	return s_On && s_Wind ? GetNaturalWind() * std::max(s_Tuning.WindStrength, 0.0F) * GetOverall() : 0.0F;
 }
 
 Vector AirPressure::GetPush(const Vector& position) {
@@ -407,8 +446,11 @@ void AirPressure::Update() {
 	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
 	if (!terrain) {
 		Clear();
+		s_NaturalDrift = 0.0F;
 		return;
 	}
+	// How far gusts and shifts have carried things beyond the steady wind (wrapped far out so it stays precise).
+	s_NaturalDrift = std::fmod(s_NaturalDrift + (GetNaturalWind() - g_PostProcessMan.GetLightingSettings().Wind) * g_TimerMan.GetDeltaTimeSecs(), 65536.0F);
 	if (!s_On) {
 		Clear();
 		return;

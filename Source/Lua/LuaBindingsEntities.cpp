@@ -263,6 +263,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("Morale", &Actor::GetMorale)
 	    .def("Say", &Actor::Say)
 	    .def("SayText", &Actor::SayText)
+	    .def("SayAbout", &Actor::SayAbout)
+	    .property("SpeechName", &Actor::GetSpeechName)
 	    .property("SpeechSet", &Actor::GetSpeechSet, &Actor::SetSpeechSet)
 	    .property("MovePathNextStepKind", &Actor::GetMovePathNextStepKind)
 	    .property("MovePathEnd", &Actor::GetMovePathEnd)

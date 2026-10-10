@@ -62,6 +62,8 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	Now.FireTimer = Last.FireTimer;
 	Now.TargetTimer = Last.TargetTimer;
 	Now.KilledID = Last.KilledID;
+	Now.Streak = Last.Streak or 0;
+	Now.StreakTimer = Last.StreakTimer or Timer();
 	if AI.fire then
 		Now.FireTimer:Reset();
 	end
@@ -79,6 +81,16 @@ function UnitSpeech.Update(AI, Owner, ordered)
 	local oldDown = Old and isDown(Old);
 	if oldDown and Now.KilledID ~= Last.TargetID and not Last.FireTimer:IsPastSimMS(2000) then
 		Now.KilledID = Last.TargetID;
+		-- (Three down within 20 s of the first: a streak, said in place of another "got one".)
+		if Now.Streak == 0 or Now.StreakTimer:IsPastSimMS(20000) then
+			Now.Streak = 0;
+			Now.StreakTimer:Reset();
+		end
+		Now.Streak = Now.Streak + 1;
+		if Now.Streak >= 3 then
+			say("KillStreak");
+			Now.Streak = 0;
+		end
 		say("Kill");
 	end
 	if Now.Retreat and not Last.Retreat then
