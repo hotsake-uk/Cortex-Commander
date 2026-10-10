@@ -120,7 +120,7 @@ void SettingsMan::Clear() {
 
 	m_FlashOnBrainDamage = true;
 	m_BlipOnRevealUnseen = false;
-	m_UnheldItemsHUDDisplayRange = 25 * c_PPM;
+	m_UnheldItemsHUDDisplayRange = 0;
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
@@ -128,7 +128,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_BodiesSettleAsEarth = true;
-	m_NoSceneWrap = false;
+	m_NoSceneWrap = true;
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
@@ -169,7 +169,7 @@ void SettingsMan::Clear() {
 	m_ShowFPSAndVersion = true;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
-	m_ShowUnitTags = true;
+	m_ShowUnitTags = false;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
@@ -279,6 +279,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseMaxPiece", { TerrainCollapse::GetTuning().MaxPiecePixels = std::clamp(std::stoi(reader.ReadPropValue()), 500, 200000); });
 	MatchProperty("CollapseMinFitting", { TerrainCollapse::GetTuning().MinFittingPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
 	MatchProperty("CollapseBreakStrength", { TerrainCollapse::GetTuning().BreakStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 10.0F); });
+	MatchProperty("CollapseShatterSpeed", { TerrainCollapse::GetTuning().ShatterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseCrackSpeed", { TerrainCollapse::GetTuning().CrackSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseCrumbleSpeed", { TerrainCollapse::GetTuning().CrumbleSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseSplinterSpeed", { TerrainCollapse::GetTuning().SplinterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
+	MatchProperty("CollapseBendSpeed", { TerrainCollapse::GetTuning().BendSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
 	MatchProperty("CollapseBlastPush", { TerrainCollapse::GetTuning().BlastPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseScuffStrength", { TerrainCollapse::GetTuning().ScuffStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
@@ -963,6 +968,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
 	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
+	writer.NewPropertyWithValue("CollapseShatterSpeed", TerrainCollapse::GetTuning().ShatterSpeed);
+	writer.NewPropertyWithValue("CollapseCrackSpeed", TerrainCollapse::GetTuning().CrackSpeed);
+	writer.NewPropertyWithValue("CollapseCrumbleSpeed", TerrainCollapse::GetTuning().CrumbleSpeed);
+	writer.NewPropertyWithValue("CollapseSplinterSpeed", TerrainCollapse::GetTuning().SplinterSpeed);
+	writer.NewPropertyWithValue("CollapseBendSpeed", TerrainCollapse::GetTuning().BendSpeed);
 	writer.NewPropertyWithValue("CollapseScuffStrength", TerrainCollapse::GetTuning().ScuffStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);

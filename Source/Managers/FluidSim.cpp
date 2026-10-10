@@ -39,11 +39,11 @@ using namespace RTE;
 
 bool FluidSim::s_Enabled = true;
 bool FluidSim::s_Powders = true;
-bool FluidSim::s_Freezing = false;
-bool FluidSim::s_BloodFlows = false;
-bool FluidSim::s_DrainBottom = false;
-bool FluidSim::s_DrainSides = false;
-bool FluidSim::s_PowdersFallOut = false;
+bool FluidSim::s_Freezing = true;
+bool FluidSim::s_BloodFlows = true;
+bool FluidSim::s_DrainBottom = true;
+bool FluidSim::s_DrainSides = true;
+bool FluidSim::s_PowdersFallOut = true;
 
 namespace {
 	enum class Liquid : unsigned char {
