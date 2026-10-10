@@ -436,6 +436,15 @@ namespace SandboxDetail {
 			drawn.push_back(&zone);
 			DrawDefendZone(drawList, zone.Center, zone.Radius, zone.Chase, amber);
 		}
+		// And the places they were told to suppress.
+		const ImU32 violet = c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
+		for (const UnitRef& ref: s_Selected) {
+			Vector centre;
+			float radius = 0.0F;
+			if (SuppressZoneOf(GetRef(ref), centre, radius)) {
+				DrawDefendZone(drawList, centre, radius, 0.0F, violet);
+			}
+		}
 	}
 
 	/// Makes a craft take no harm: no wound hurts it and nothing breaks it apart or knocks a part off it, and UpdateBattleCraft keeps it whole

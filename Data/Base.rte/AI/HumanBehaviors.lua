@@ -2431,6 +2431,65 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 	return true
 end
 
+-- A suppress order (the sandbox's Suppress command): fire into a zone round a place, aiming about it at random and changing the spot every
+-- second or so, bursts from an automatic and single shots from the rest, reloading when dry, for as long as the unit has the order. It
+-- needs no target and fires whatever else is in sight; SharedBehaviors.SuppressUpdate walks it into range and keeps the fights off it.
+function HumanBehaviors.SuppressZone(AI, Owner, Abort)
+	local ShootTimer = Timer();
+	local ReaimTimer = Timer();
+	local reaimAfter = 0;
+	local AimPoint, aim, aimError;
+	local PrjDat, Weapon;
+	AI.fire = false;
+	while true do
+		local Centre, radius = SharedBehaviors.SuppressZone(Owner);
+		if not Centre then
+			return true;
+		end
+		if Owner.FirearmIsReady and Owner.EquippedItem and IsHDFirearm(Owner.EquippedItem) then
+			Weapon = ToHDFirearm(Owner.EquippedItem);
+			if not aim or ReaimTimer:IsPastSimMS(reaimAfter) then
+				-- A new spot in the zone (an even spread over its area).
+				ReaimTimer:Reset();
+				reaimAfter = RangeRand(700, 1800);
+				PrjDat = SharedBehaviors.GetProjectileData(Owner);
+				local angle = RangeRand(0, 2 * math.pi);
+				local away = radius * math.sqrt(math.random());
+				AimPoint = Centre + Vector(math.cos(angle) * away, math.sin(angle) * away);
+				local Dist = SceneMan:ShortestDistance(Owner.EquippedItem.Pos, AimPoint, SceneMan.SceneWrapsX);
+				aim = nil;
+				if Dist:MagnitudeIsLessThan(PrjDat.rng) then
+					aim = HumanBehaviors.GetAngleToHit(PrjDat, Dist);
+				end
+				aimError = RangeRand(-0.03, 0.03) * AI.aimSkill;
+				Owner:SetAimAngle(SceneMan:ShortestDistance(Owner.EyePos, AimPoint, SceneMan.SceneWrapsX).AbsRadAngle);
+			end
+			AI.deviceState = AHuman.AIMING;
+			if aim then
+				AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim + aimError + RangeRand(-0.02, 0.02) * AI.aimSkill);
+				if Weapon.FullAuto then
+					AI.BurstClock = AI.BurstClock or Timer();
+					AI.fire = AI.BurstClock.ElapsedSimTimeMS % 650 < 450;
+				elseif ShootTimer:IsPastSimMS(120 + 140 * AI.aimSkill) then
+					ShootTimer:Reset();
+					AI.fire = not AI.fire;
+				end
+			else
+				AI.fire = false;
+			end
+		else
+			-- Reloading, or dry: no fire; a dry gun is reloaded.
+			AI.deviceState = AHuman.POINTING;
+			AI.fire = false;
+			if Owner.FirearmIsEmpty then
+				Owner:ReloadFirearms();
+			end
+		end
+		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
+		if _abrt then return true end
+	end
+end
+
 -- Medics (AC-7): a unit carrying a medikit, with no enemy to deal with, goes to a badly hurt friend near by, puts the kit to it and patches
 -- it up, then takes its own order up again. A friend falling back to a medic (SharedBehaviors.RetreatUpdate) is seen to from further off.
 -- Not a unit told to hold its position or defend a spot, which stays where it was put. Called every tick by the AI's update.

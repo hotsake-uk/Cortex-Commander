@@ -1459,6 +1459,7 @@ namespace SandboxDetail {
 				bool hold = false;
 				bool hasGoal = false;
 				Vector goal;
+				float suppressRadius = 0.0F;
 				auto plan = s_Plans.find(unit->GetUniqueID());
 				const Actor* leader = FollowedBy(unit);
 				if (plan != s_Plans.end() && !plan->second.Route.empty()) {
@@ -1478,6 +1479,9 @@ namespace SandboxDetail {
 					kind = CommandMode::DefendAt;
 					goal = unit->GetOrderPost();
 					hasGoal = g_SceneMan.ShortestDistance(unit->GetPos(), goal, g_SceneMan.SceneWrapsX()).GetMagnitude() > 30.0F;
+				} else if (SuppressZoneOf(unit, goal, suppressRadius)) {
+					kind = CommandMode::Suppress;
+					hasGoal = true;
 				} else if (leader && leader->GetTeam() == unit->GetTeam()) {
 					kind = CommandMode::Guard;
 					goal = leader->GetPos();
@@ -1529,6 +1533,11 @@ namespace SandboxDetail {
 				} else if (kind == CommandMode::Patrol) {
 					drawList->AddCircle(mark, r, color, 0, 1.5F);
 					drawList->AddTriangleFilled(ImVec2(mark.x + r, mark.y - 3.0F), ImVec2(mark.x + r + 3.0F, mark.y + 1.0F), ImVec2(mark.x + r - 3.0F, mark.y + 1.0F), color);
+				} else if (kind == CommandMode::Suppress) {
+					// A burst: three rays out from a point.
+					for (float tilt: {-0.7F, 0.0F, 0.7F}) {
+						drawList->AddLine(ImVec2(mark.x - r * 0.8F, mark.y), ImVec2(mark.x + r * 0.9F, mark.y + tilt * r), color, 1.5F);
+					}
 				} else if (kind == CommandMode::DigTo) {
 					// A spade: the handle, and the blade pointing into the ground.
 					drawList->AddLine(ImVec2(mark.x, mark.y - r), ImVec2(mark.x, mark.y), color, 1.5F);
@@ -1771,6 +1780,8 @@ namespace SandboxDetail {
 			mode(CommandMode::Patrol);
 		} else if (pressed(ImGuiKey_X)) {
 			mode(CommandMode::DigTo);
+		} else if (pressed(ImGuiKey_Z) && !io.KeyCtrl) {
+			mode(CommandMode::Suppress);
 		}
 		if (!s_Selected.empty() && (pressed(ImGuiKey_H) || pressed(ImGuiKey_C))) {
 			// Defend where they stand (with Shift, the last step of their plans), or cancel their orders: as the ring's slices.
@@ -1819,7 +1830,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -2279,6 +2290,12 @@ namespace SandboxDetail {
 				// And the zone they'll hold: the radius they go after enemies in, and the chase past it (faint).
 				DrawDefendZone(drawList, point, static_cast<float>(s_DefendRadius), static_cast<float>(s_DefendChase), amber);
 				label = "Defend here with " + count + "  (drag left or right to face that way)";
+			} else if (s_CommandMode == CommandMode::Suppress) {
+				// Suppress: the zone the fire will land in.
+				ImU32 violet = c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
+				DrawDefendZone(drawList, point, static_cast<float>(s_SuppressRadius), 0.0F, violet);
+				crosshair(point, violet, pixel * 6.0F);
+				label = "Suppress here with " + count + ": they fire into the zone and keep firing";
 			} else if (s_CommandMode == CommandMode::DigTo) {
 				// Dig to (RC-11): the lead digger's way there, walked parts in the mode's colour and dug parts from yellow (soft) to red-orange
 				// (near its digger's limit); where it can't go, a red cross on what stops it. And the verdict in words.
@@ -4066,8 +4083,8 @@ namespace SandboxDetail {
 		line.Next();
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextColored(ToolTheme::Vec(ToolTheme::Gold), "Click to");
-		static const char* const keys[] = {"M", "T", "G", "F", "B", "R", "X"};
-		static const char* const tips[] = {"Walk to the place clicked, in the formation set.", "Go after the enemy clicked, and keep after it while it lives.", "Stay by the friend, craft, crate or building clicked and fight off what comes at it.", "Walk to the place, fighting whatever they meet on the way.", "Hold a zone round the place clicked and go after any enemy that comes into it.", "Click out a route, point by point; then Loop or Back and forth sets them off.", "Tunnel to the place clicked, through the ground or not (the units with a digger cut the way)."};
+		static const char* const keys[] = {"M", "T", "G", "F", "B", "R", "X", "Z"};
+		static const char* const tips[] = {"Walk to the place clicked, in the formation set.", "Go after the enemy clicked, and keep after it while it lives.", "Stay by the friend, craft, crate or building clicked and fight off what comes at it.", "Walk to the place, fighting whatever they meet on the way.", "Hold a zone round the place clicked and go after any enemy that comes into it.", "Click out a route, point by point; then Loop or Back and forth sets them off.", "Tunnel to the place clicked, through the ground or not (the units with a digger cut the way).", "Fire into a zone round the place clicked, and keep firing, whatever else is in sight. They walk into range first."};
 		{
 			int current = static_cast<int>(s_CommandMode);
 			line.Next(pixel * 4.0F);
@@ -4117,6 +4134,12 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(field * 0.7F);
 			ImGui::SliderInt("##defendRoam", &s_DefendRoam, 0, 100, "Roam %d%%");
 			ImGui::SetItemTooltip("The share of them that walk about the zone from spot to spot, rather than holding a post.");
+		} else if (s_CommandMode == CommandMode::Suppress) {
+			line.Divide();
+			line.Next();
+			ImGui::SetNextItemWidth(field * 0.8F);
+			ImGui::SliderInt("##suppressRadius", &s_SuppressRadius, 20, 400, "Zone %d px");
+			ImGui::SetItemTooltip("How far round the place the fire lands: they aim at random points inside it.");
 		} else if (s_CommandMode == CommandMode::Patrol) {
 			line.Divide();
 			line.Next();

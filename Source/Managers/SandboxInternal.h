@@ -1127,12 +1127,13 @@ namespace SandboxDetail {
 		DefendAt, //!< Post the units round the point to hold it, facing the way the button was dragged (RC-4).
 		Patrol, //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
 		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
+		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
 		Select //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing. What
 		       //!< the Command tool starts in, from the bar. (Last, so the ring's slices keep their places; the command row shows it first.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Select;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Select units"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(230, 230, 230, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Select units"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(230, 230, 230, 255)};
 
 	/// What a dig-to to the point under the cursor would come to for the selected units (RC-11; DigToPreview).
 	struct DigPreview {
@@ -1150,6 +1151,7 @@ namespace SandboxDetail {
 	inline int s_DefendRadius = 100; //!< px from the point.
 	inline int s_DefendChase = 200; //!< px past the radius.
 	inline int s_DefendRoam = 0; //!< % of the units that roam the zone rather than hold a post.
+	inline int s_SuppressRadius = 80; //!< px round the point a Suppress order fires into.
 	/// How units sent somewhere together stand there (RC-5). Side on, a formation is an order along the ground: who is in front and how close.
 	enum class Formation {
 		Line, //!< Abreast round the point at the spacing, the nearest unit in the middle: as moves always were.
@@ -2151,6 +2153,9 @@ namespace SandboxDetail {
 	void CommandSelected(const Vector& position, int modifier);
 	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing = 0);
 	void DefendAtSelected(const Vector& point, const Vector& facingPoint, bool shift);
+	void SuppressSelected(const Vector& point);
+	bool SuppressZoneOf(const Actor* unit, Vector& centre, float& radius);
+	void ClearSuppress(Actor* unit);
 	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth);
 	void DropPlan(const Actor* unit);
 	void UpdatePlans();
