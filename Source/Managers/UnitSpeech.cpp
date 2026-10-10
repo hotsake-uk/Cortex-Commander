@@ -20,6 +20,7 @@
 #include <functional>
 #include <mutex>
 #include <random>
+#include <map>
 #include <set>
 #include <thread>
 
@@ -34,7 +35,17 @@ namespace {
 	struct LineSet {
 		std::string Name;
 		std::vector<std::vector<std::string>> Lines;
+		std::vector<std::string> UnitNames; //!< What its units are called (UnitName), none to use the default set's.
 	};
+
+	/// The order a side works through a trigger's lines in: shuffled, each said once before any is said again, so a side doesn't repeat
+	/// itself while it has lines it hasn't said. By set, trigger and side.
+	struct Deck {
+		std::vector<int> Order;
+		size_t Next = 0;
+	};
+	std::map<long long, Deck> s_Decks;
+	std::mutex s_DeckMutex;
 
 	std::vector<UnitSpeech::Trigger> s_Triggers;
 	std::vector<LineSet> s_Sets; //!< The default set first.
@@ -110,6 +121,16 @@ namespace {
 					set = static_cast<int>(s_Sets.size()) - 1;
 				}
 				trigger = -1;
+				continue;
+			}
+			if (key == "UnitName") {
+				if (!value.empty() && std::find(s_Sets[set].UnitNames.begin(), s_Sets[set].UnitNames.end(), value) == s_Sets[set].UnitNames.end()) {
+					s_Sets[set].UnitNames.push_back(value);
+				}
+				continue;
+			}
+			if (key == "ClearUnitNames") {
+				s_Sets[set].UnitNames.clear();
 				continue;
 			}
 			if (key == "Trigger") {
@@ -239,6 +260,10 @@ void UnitSpeech::Reload() {
 void UnitSpeech::LoadAll() {
 	s_Triggers.clear();
 	s_Sets.clear();
+	{
+		std::scoped_lock lock(s_DeckMutex);
+		s_Decks.clear();
+	}
 	s_Sets.push_back({"Default", {}});
 	// Base.rte first (module 0), then every other module in load order, each adding to or changing what came before.
 	for (int module = 0; module < g_PresetMan.GetTotalModuleCount(); ++module) {
@@ -251,10 +276,10 @@ void UnitSpeech::LoadAll() {
 
 bool UnitSpeech::SayOrder(Actor& actor, const std::string& triggerKey) {
 	actor.GetSpeech().OrderAnsweredMS = std::max(g_TimerMan.GetSimTimeMS(), 1LL);
-	return Say(actor, triggerKey, true);
+	return Say(actor, triggerKey, true, nullptr);
 }
 
-bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answeringOrder) {
+bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject) {
 	if (!s_Enabled || s_ChancePercent <= 0 || actor.GetStatus() >= Actor::DYING) {
 		return false;
 	}
@@ -291,15 +316,22 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 	}
 	// The unit's own set's lines for this, else the default set's.
 	const std::vector<std::string>* lines = nullptr;
+	int lineSet = 0;
 	if (const std::string& setName = actor.GetSpeechSet(); !setName.empty()) {
 		if (int set = FindSet(setName); set > 0 && static_cast<size_t>(trigger) < s_Sets[set].Lines.size() && !s_Sets[set].Lines[trigger].empty()) {
 			lines = &s_Sets[set].Lines[trigger];
+			lineSet = set;
 		}
 	}
 	if (!lines && static_cast<size_t>(trigger) < s_Sets[0].Lines.size() && !s_Sets[0].Lines[trigger].empty()) {
 		lines = &s_Sets[0].Lines[trigger];
 	}
 	if (!lines) {
+		return false;
+	}
+	// A line that names someone, only with someone to name.
+	auto fits = [subject](const std::string& line) { return subject || line.find("{name}") == std::string::npos; };
+	if (std::none_of(lines->begin(), lines->end(), fits)) {
 		return false;
 	}
 	// A friend just said it: left to them. The side's slot is taken only by one who does say it.
@@ -314,16 +346,69 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 		} while (!teamSlot.compare_exchange_weak(last, std::max(now, 1LL), std::memory_order_relaxed));
 	}
 
-	int count = static_cast<int>(lines->size());
-	int pick = std::uniform_int_distribution<int>(0, count - 1)(Random());
-	// Not the same line twice running for the same thing.
-	if (count > 1 && state.Trigger == trigger && pick == state.Line) {
-		pick = (pick + 1 + std::uniform_int_distribution<int>(0, count - 2)(Random())) % count;
+	// The next line in the side's shuffled deck for this trigger, passing over those that don't fit.
+	const int count = static_cast<int>(lines->size());
+	int pick = -1;
+	{
+		std::scoped_lock lock(s_DeckMutex);
+		Deck& deck = s_Decks[(static_cast<long long>(lineSet) << 32) | (static_cast<long long>(trigger) << 8) | static_cast<long long>(team + 1)];
+		for (int tries = 0; tries <= count && pick < 0; ++tries) {
+			if (deck.Next >= deck.Order.size() || static_cast<int>(deck.Order.size()) != count) {
+				const int last = deck.Order.empty() || deck.Next == 0 ? -1 : deck.Order[deck.Next - 1];
+				deck.Order.resize(count);
+				for (int i = 0; i < count; ++i) {
+					deck.Order[i] = i;
+				}
+				std::shuffle(deck.Order.begin(), deck.Order.end(), Random());
+				// (Not the line just said, first again after the shuffle.)
+				if (count > 1 && deck.Order[0] == last) {
+					std::swap(deck.Order[0], deck.Order[count - 1]);
+				}
+				deck.Next = 0;
+			}
+			int candidate = deck.Order[deck.Next++];
+			if (fits((*lines)[candidate])) {
+				pick = candidate;
+			}
+		}
 	}
-	SayText(actor, (*lines)[pick], 0);
+	if (pick < 0) {
+		return false;
+	}
+	std::string text = (*lines)[pick];
+	auto replaceAll = [&text](const std::string& from, const std::string& to) {
+		for (size_t at = text.find(from); at != std::string::npos; at = text.find(from, at + to.size())) {
+			text.replace(at, from.size(), to);
+		}
+	};
+	if (subject) {
+		replaceAll("{name}", GetName(*subject));
+	}
+	replaceAll("{self}", GetName(actor));
+	SayText(actor, text, 0);
 	state.Trigger = trigger;
 	state.Line = pick;
 	return true;
+}
+
+std::string UnitSpeech::GetName(const Actor& actor) {
+	EnsureLoaded();
+	const std::vector<std::string>* names = nullptr;
+	if (const std::string& setName = actor.GetSpeechSet(); !setName.empty()) {
+		if (int set = FindSet(setName); set > 0 && !s_Sets[set].UnitNames.empty()) {
+			names = &s_Sets[set].UnitNames;
+		}
+	}
+	if (!names && !s_Sets.empty() && !s_Sets[0].UnitNames.empty()) {
+		names = &s_Sets[0].UnitNames;
+	}
+	if (!names) {
+		return "buddy";
+	}
+	// (Mixed, so units made one after another don't get neighbouring names off the list.)
+	unsigned long long id = static_cast<unsigned long long>(actor.GetUniqueID()) * 0x9E3779B97F4A7C15ULL;
+	id ^= id >> 29;
+	return (*names)[static_cast<size_t>(id % names->size())];
 }
 
 void UnitSpeech::SayText(Actor& actor, const std::string& text, int durationMS) {

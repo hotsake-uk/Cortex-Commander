@@ -2194,7 +2194,18 @@ void Actor::UpdateSuppressionAndMorale() {
 					Vector notUsed;
 					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
 						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
-						friendActor->Say("ManDown");
+						// (The last of them near here says so; the rest name who went down.)
+						bool alone = true;
+						for (const Actor* other: g_MovableMan.GetActorList()) {
+							if (other != this && other != friendActor && other->GetTeam() == m_Team && other->GetStatus() != DYING && other->GetStatus() != DEAD && !other->IsInGroup("Brains") && other->FeelsFire() &&
+							    g_SceneMan.ShortestDistance(friendActor->GetPos(), other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(400.0F)) {
+								alone = false;
+								break;
+							}
+						}
+						if (!alone || !friendActor->SayAbout("AllAlone", this)) {
+							friendActor->SayAbout("ManDown", this);
+						}
 					}
 				}
 			}

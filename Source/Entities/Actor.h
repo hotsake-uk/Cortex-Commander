@@ -776,6 +776,15 @@ namespace RTE {
 		/// @return Whether a line was said.
 		bool Say(const std::string& trigger) { return UnitSpeech::Say(*this, trigger); }
 
+		/// Has this unit say one of a trigger's lines about another unit, as Say: a line with "{name}" in it names that unit ("They got {name}!").
+		/// @param trigger The trigger, as Speech.ini names it ("ManDown").
+		/// @param subject The unit the line is about; none for a line that names nobody.
+		/// @return Whether a line was said.
+		bool SayAbout(const std::string& trigger, const Actor* subject) { return UnitSpeech::SayAbout(*this, trigger, subject); }
+
+		/// Gets the name this unit's friends call it in unit speech (Speech.ini's UnitName list, picked by the unit's ID).
+		std::string GetSpeechName() const { return UnitSpeech::GetName(*this); }
+
 		/// Has this unit answer an order the player just gave it, as Say (see UnitSpeech::SayOrder). For the commands that give orders.
 		/// @param trigger The trigger, as Speech.ini names it ("OrderMove").
 		/// @return Whether a line was said.
