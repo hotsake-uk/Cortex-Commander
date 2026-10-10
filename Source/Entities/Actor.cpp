@@ -50,7 +50,7 @@ BITMAP* Actor::m_apAIIcons[AIMODE_COUNT];
 std::vector<BITMAP*> Actor::m_apSelectArrow;
 std::vector<BITMAP*> Actor::m_apAlarmExclamation;
 bool Actor::m_sIconsLoaded = false;
-int Actor::s_ShowAIPaths = 0;
+int Actor::s_ShowAIPaths = 2;
 
 #define ARROWTIME 1000
 

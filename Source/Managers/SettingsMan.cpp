@@ -1123,6 +1123,7 @@ namespace {
 	}
 
 	std::string PresetFolder() { return System::GetUserdataDirectory() + "Presets/"; }
+	std::string BuiltInPresetFolder() { return System::GetDataDirectory() + "Presets/"; } //!< Presets that ship with the game. The player's own of the same name come first.
 }
 
 std::string SettingsMan::SavePreset(const std::string& name) const {
@@ -1147,7 +1148,10 @@ std::string SettingsMan::SavePreset(const std::string& name) const {
 bool SettingsMan::LoadPreset(const std::string& name) {
 	std::string path = PresetFolder() + PresetFileName(name) + ".ini";
 	if (!std::filesystem::exists(path)) {
-		return false;
+		path = BuiltInPresetFolder() + PresetFileName(name) + ".ini";
+		if (!std::filesystem::exists(path)) {
+			return false;
+		}
 	}
 	Reader reader(path, false, nullptr, true, true);
 	if (!reader.ReaderOK()) {
@@ -1169,7 +1173,7 @@ bool SettingsMan::LoadStartupPreset() {
 	bool loaded = LoadPreset(m_StartupPreset);
 	s_ReadingStartupPreset = false;
 	if (!loaded) {
-		g_ConsoleMan.PrintString("WARNING: The preset to load at start, \"" + m_StartupPreset + "\", isn't in Userdata/Presets. Settings.ini is used as it is.");
+		g_ConsoleMan.PrintString("WARNING: The preset to load at start, \"" + m_StartupPreset + "\", isn't in Userdata/Presets or Data/Presets. Settings.ini is used as it is.");
 	}
 	return loaded;
 }
@@ -1182,12 +1186,15 @@ bool SettingsMan::DeletePreset(const std::string& name) const {
 std::vector<std::string> SettingsMan::ListPresets() const {
 	std::vector<std::string> names;
 	std::error_code error;
-	for (const auto& entry: std::filesystem::directory_iterator(PresetFolder(), error)) {
-		if (entry.is_regular_file() && entry.path().extension() == ".ini") {
-			names.push_back(entry.path().stem().string());
+	for (const std::string& folder: {PresetFolder(), BuiltInPresetFolder()}) {
+		for (const auto& entry: std::filesystem::directory_iterator(folder, error)) {
+			if (entry.is_regular_file() && entry.path().extension() == ".ini") {
+				names.push_back(entry.path().stem().string());
+			}
 		}
 	}
 	std::sort(names.begin(), names.end());
+	names.erase(std::unique(names.begin(), names.end()), names.end());
 	return names;
 }
 
