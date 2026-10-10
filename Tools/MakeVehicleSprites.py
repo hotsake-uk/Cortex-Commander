@@ -88,9 +88,9 @@ class Canvas:
 # The cart's size: the body's picture, its middle in it, and where the wheels hang from the middle (keep in step with WoodenCart.ini).
 BODY_W, BODY_H = 100, 36
 BODY_MID = (50, 20)
-AXLE_X = 30  # Either side of the middle: the bed reaches well past the wheels at both ends, for balance.
-AXLE_Y = 16  # Below the middle, with the spring let all the way out.
-WHEEL_SIZE = 27
+AXLE_X = 24  # Either side of the middle: the bed reaches well past the wheels at both ends, for balance.
+AXLE_Y = 19  # Below the middle, with the spring let all the way out: the body rides well clear of the ground, the wheels reaching up its side.
+WHEEL_SIZE = 31
 
 
 def cart_body():
@@ -184,7 +184,7 @@ def planks():
 
 def icon(body, wheel):
     """The buy menu's picture: the body with its wheels on, as it sits on its springs."""
-    rest = 4  # How far the springs are pushed in at rest, about.
+    rest = 2  # How far the springs are pushed in at rest, about.
     drop = AXLE_Y - rest + WHEEL_SIZE // 2 + 1
     img = Image.new("P", (body.width, BODY_MID[1] + drop), 0)
     img.putpalette(PALETTE)
