@@ -2047,7 +2047,7 @@ float Actor::GetFootstepNoise() const {
 	Vector underfoot;
 	if (g_SceneMan.CastNotMaterialRay(m_Pos, Vector(0.0F, m_CharHeight * 0.6F + 8.0F), g_MaterialAir, underfoot)) {
 		const Material* floor = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(underfoot.GetFloorIntX(), underfoot.GetFloorIntY()));
-		if (floor && floor->GetPresetName().find("Metal") != std::string::npos) {
+		if (floor && (floor->GetPresetName().find("Metal") != std::string::npos || floor->GetPresetName().find("Plate") != std::string::npos)) {
 			noise *= 1.5F;
 		}
 	}

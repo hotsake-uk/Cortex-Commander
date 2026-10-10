@@ -25,9 +25,30 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// The texture a material is painted with: its own terrain texture, or for the metals the base game gives none, the sandbox's (c_PaintTextures).
+	BITMAP* TextureToPaint(const Material* material) {
+		if (!material) {
+			return nullptr;
+		}
+		if (BITMAP* own = material->GetFGTexture()) {
+			return own;
+		}
+		// Loaded once, the first time anything is painted (a function static, so loading it is safe from any thread).
+		static const std::unordered_map<std::string, BITMAP*> c_Loaded = [] {
+			std::unordered_map<std::string, BITMAP*> loaded;
+			for (const PaintTexture& texture: c_PaintTextures) {
+				ContentFile file(texture.Path);
+				loaded[texture.Material] = file.GetAsBitmap();
+			}
+			return loaded;
+		}();
+		auto found = c_Loaded.find(material->GetPresetName());
+		return found != c_Loaded.end() ? found->second : nullptr;
+	}
+
 	/// The foreground colour painted ground gets at a scene pixel: the material's own terrain texture, tiled across the scene the way generated terrain is, so painted ground matches the real thing. A material without a texture gets its flat colour with a darker speckle.
 	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor) {
-		if (BITMAP* texture = material ? material->GetFGTexture() : nullptr; texture && texture->w > 0 && texture->h > 0 && bitmap_color_depth(texture) == 8) {
+		if (BITMAP* texture = TextureToPaint(material); texture && texture->w > 0 && texture->h > 0 && bitmap_color_depth(texture) == 8) {
 			int texel = _getpixel(texture, x % texture->w, y % texture->h);
 			if (texel != ColorKeys::g_MaskColor) {
 				return texel;
@@ -365,6 +386,7 @@ namespace SandboxDetail {
 				goldShare = c_GoldEarthShare;
 				return "Earth";
 			case Tool::TerrainOther:
+			case Tool::Metal:
 				return stroke.Material.c_str();
 			default:
 				return nullptr;
@@ -382,7 +404,7 @@ namespace SandboxDetail {
 		}
 		float goldShare = 0.0F;
 		const char* materialName = TerrainBrushMaterial(stroke, goldShare);
-		if (stroke.Kind == Tool::TerrainOther && stroke.Material.empty()) {
+		if ((stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) && stroke.Material.empty()) {
 			return;
 		}
 		FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
@@ -611,6 +633,8 @@ namespace SandboxDetail {
 				return "Dense Earth";
 			case Tool::TerrainOther:
 				return s_OtherTerrain.c_str();
+			case Tool::Metal:
+				return s_PaintMetal.c_str();
 			default:
 				return nullptr;
 		}
@@ -1386,6 +1410,7 @@ namespace SandboxDetail {
 					case Tool::DenseEarth:
 					case Tool::GoldEarth:
 					case Tool::TerrainOther:
+					case Tool::Metal:
 					case Tool::GrowGrass:
 					case Tool::Plants:
 					case Tool::Cacti:
@@ -1800,6 +1825,7 @@ namespace SandboxDetail {
 				PlacePlant(at, stroke.Radius, stroke.Kind, stroke.Scale, stroke.HasPlantRoll ? &stroke.Plant : nullptr);
 				break;
 			case Tool::TerrainOther:
+			case Tool::Metal:
 				if (!stroke.Material.empty()) {
 					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape);
 				}
@@ -2024,6 +2050,8 @@ namespace SandboxDetail {
 			stroke.Material = s_OtherPourable;
 		} else if (kind == Tool::TerrainOther) {
 			stroke.Material = s_OtherTerrain;
+		} else if (kind == Tool::Metal) {
+			stroke.Material = s_PaintMetal;
 		}
 		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
 		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;

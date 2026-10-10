@@ -120,6 +120,10 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 			ChoiceFor(stroke.Kind) = stroke.Choice;
 		}
 	}
+	if (stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) {
+		// The material to paint is the preset name; none, the one chosen in the window.
+		stroke.Material = !presetName.empty() ? presetName : (stroke.Kind == Tool::Metal ? s_PaintMetal : s_OtherTerrain);
+	}
 	if (std::getenv("CCCP_TEST_POINTER")) {
 		// Test runs that show what the pointer does: what a script used stays in hand, for the side it used.
 		s_ToolIndex = toolIndex;
@@ -838,6 +842,8 @@ void Sandbox::DrawGUI() {
 				stroke.Fill = static_cast<int>(s_FillShape);
 				if (stroke.Kind == Tool::TerrainOther) {
 					stroke.Material = s_OtherTerrain;
+				} else if (stroke.Kind == Tool::Metal) {
+					stroke.Material = s_PaintMetal;
 				}
 				s_Queue.push_back(stroke);
 			}
@@ -1310,6 +1316,8 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::SetItemTooltip("The base game's ground materials. Picking one takes the Other terrain tool.");
 				}
+				ImGui::SeparatorText("Metals");
+				MetalButtons();
 				ImGui::TextUnformatted("Brush type");
 				ImGui::SameLine();
 				if (ImGui::RadioButton("Brush", !s_ShapeFill)) {
