@@ -459,6 +459,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("FreeSeat", &AVehicle::GetFreeSeat)
 	    .property("ControlSeat", &AVehicle::GetControlSeat)
 	    .property("Turret", &AVehicle::GetTurret)
+	    .property("Tracks", &AVehicle::GetTracks)
+	    .property("DrawsCrew", &AVehicle::DrawsCrew)
 
 	    .def("TakeDriver", &AVehicle::TakeDriver)
 	    .def("EjectDriver", &AVehicle::EjectDriver)

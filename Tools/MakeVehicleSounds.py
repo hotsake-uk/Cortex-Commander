@@ -3,6 +3,7 @@ and raises its pitch with the engine's load.
 
 The outboard motor: a small two-stroke, a buzzy bark at each firing over a rattle and a little hiss, 50 firings a second at pitch 1.
 The motor buggy: a big V-twin, two firings close together then a gap (the potato-potato of an air-cooled twin), deeper and rougher.
+The tank: a big diesel, a low, even rumble of many firings with a clatter in it.
 
 Run from the repository's root: python Tools/MakeVehicleSounds.py
 """
@@ -86,6 +87,7 @@ def v_twin(cycles_per_second, seconds, bark, seed):
 def main():
     write_wav(Path("Data/Base.rte/Actors/Vehicles/MotorBoat/OutboardLoop.wav"), two_stroke(50, 1.0, 190, 7))
     write_wav(Path("Data/Base.rte/Actors/Vehicles/MotorBuggy/BuggyEngineLoop.wav"), v_twin(16, 1.0, 95, 11))
+    write_wav(Path("Data/Base.rte/Actors/Vehicles/Tank/TankEngineLoop.wav"), two_stroke(36, 1.0, 58, 13))
 
 
 if __name__ == "__main__":

@@ -146,6 +146,16 @@ namespace RTE {
 		/// @return Whether they moved.
 		bool ChangeSeat();
 
+		/// Sets the tracks: a belt round the wheels whose picture's frames step along as it drives, so the links run round (a tank's). Ownership IS transferred!
+		/// @param newTracks The tracks to set. nullptr removes them.
+		void SetTracks(Attachable* newTracks);
+
+		/// Gets the tracks, if it has them. Ownership is NOT transferred!
+		Attachable* GetTracks() const { return m_Tracks; }
+
+		/// Gets whether the crew is drawn in their seats (an open vehicle) or hidden inside (a closed one, a tank).
+		bool DrawsCrew() const { return m_DrawsCrew; }
+
 		/// Gets the turret its gun is on, if it has one. Ownership is NOT transferred!
 		Turret* GetTurret() const { return m_Turret; }
 
@@ -286,6 +296,10 @@ namespace RTE {
 		float m_CrewThrowSpeed; //!< How hard a knock (a change in speed in one update, m/s) throws everyone out. 0 never does.
 		bool m_ThrowsCrewWhenFlipped; //!< Whether everyone falls out when it rolls onto its roof (an open vehicle; a closed one keeps them in).
 		Vector m_LastVel; //!< Its velocity at the end of the last update, to tell a crash by.
+		Attachable* m_Tracks; //!< The tracks, whose frames step along as it drives. Owned by this, as an attachable.
+		float m_TrackFrameLength; //!< How far it drives for the tracks to step on a frame, in pixels.
+		float m_TrackTravel; //!< How far the tracks have run round, in pixels, the way they run driving forward.
+		bool m_DrawsCrew; //!< Whether the crew is drawn in their seats, or hidden inside.
 
 		bool m_DriverRider; //!< Whether the driver got in by itself to ride somewhere (see Seat::Rider).
 		/// A unit called over to ride in it, on its way.
