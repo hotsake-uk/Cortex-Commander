@@ -45,6 +45,8 @@ namespace SandboxDetail {
 			}
 			// No crabs (ACrab: crabs, and the tanks and walkers built on them) unless the team's card says so: they can't climb most of what
 			// the infantry can, and stood in the way of everyone else.
+			// Nor animals or civilians (NC-1): a wave is soldiers.
+			std::erase_if(pool, [](const Preset* unit) { return unit->NonCombatant; });
 			if (!settings.Crabs) {
 				std::erase_if(pool, [](const Preset* unit) { return unit->ClassName == "ACrab"; });
 			}
@@ -472,7 +474,7 @@ namespace SandboxDetail {
 		std::vector<Actor*> fighters;
 		for (Actor* actor: SandboxAccess::Actors()) {
 			byID[actor->GetUniqueID()] = actor;
-			if (IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsIgnoredByAI()) {
+			if (IsSoldier(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsIgnoredByAI()) {
 				fighters.push_back(actor);
 			}
 		}

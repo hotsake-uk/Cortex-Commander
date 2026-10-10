@@ -28,6 +28,46 @@ namespace SandboxDetail {
 		return actor && actor->GetTeam() >= 0 && actor->GetTeam() < c_Sides && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F;
 	}
 
+	bool IsSoldier(const Actor* actor) {
+		return IsCombatant(actor) && !actor->IsNonCombatant();
+	}
+
+	bool IsNonCombatantPreset(const Entity* entity) {
+		const Actor* actor = dynamic_cast<const Actor*>(entity);
+		return actor && (actor->IsNonCombatant() || actor->IsInGroup("Non-combatants"));
+	}
+
+	void ApplyTemperament(Actor* actor, int temperament) {
+		if (actor && temperament >= 0 && temperament < Actor::TEMPERAMENTCOUNT) {
+			actor->SetTemperament(temperament);
+			// (Made a fighter, a cow fights; made skittish, a soldier runs: the side it is counted on follows what it now is.)
+			actor->SetNonCombatant(temperament >= Actor::TEMPERAMENT_SKITTISH);
+		}
+	}
+
+	void TemperamentCombo(const char* label) {
+		static const char* const tips[] = {
+		    "Fights as its orders and weapons rule say.",
+		    "Fights only back: at the side that hurt it, for a while after.",
+		    "Never fights: runs from whatever hurts or shoots at it, then goes back to what it was doing. A non-combatant.",
+		    "Never fights, and doesn't run either: it carries on with what it was doing. A non-combatant."};
+		const char* current = s_SpawnTemperament < 0 ? "Own temperament" : Actor::TemperamentName(s_SpawnTemperament);
+		if (ImGui::BeginCombo(label, current)) {
+			if (ImGui::Selectable("Own temperament", s_SpawnTemperament < 0)) {
+				s_SpawnTemperament = -1;
+			}
+			ImGui::SetItemTooltip("Each unit as its game files make it: soldiers fight, animals run.");
+			for (int i = 0; i < Actor::TEMPERAMENTCOUNT; ++i) {
+				if (ImGui::Selectable(Actor::TemperamentName(i), s_SpawnTemperament == i)) {
+					s_SpawnTemperament = i;
+				}
+				ImGui::SetItemTooltip("%s", tips[i]);
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::SetItemTooltip("The temperament units are spawned with: what they are like by nature, whatever their orders.");
+	}
+
 	/// Whether a unit can be selected and commanded: a combatant on a side, not a brain, not a craft (a ship is ordered by its own AI; sent off
 	/// with the squad, a dropship delivering hovered with its passengers inside).
 	bool IsSelectable(const Actor* actor) {
@@ -546,7 +586,7 @@ namespace SandboxDetail {
 			}
 		} else {
 			for (Actor* actor: SandboxAccess::Actors()) {
-				if (actor->GetTeam() == team && IsCombatant(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor)) {
+				if (actor->GetTeam() == team && IsSoldier(actor) && !actor->IsPlayerControlled() && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor)) {
 					units.push_back(actor);
 				}
 			}
@@ -1225,7 +1265,7 @@ namespace SandboxDetail {
 		Actor* target = nullptr;
 		float nearest = 400.0F * 400.0F;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || HiddenFromCommander(actor)) {
+			if (!IsSoldier(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || HiddenFromCommander(actor)) {
 				continue;
 			}
 			float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -1640,11 +1680,11 @@ namespace SandboxDetail {
 		float best = 0.0F;
 		std::deque<Actor*>& actors = SandboxAccess::Actors();
 		for (size_t i = 0; i < actors.size(); ++i) {
-			if (!IsCombatant(actors[i])) {
+			if (!IsSoldier(actors[i])) {
 				continue;
 			}
 			for (size_t j = i + 1; j < actors.size(); ++j) {
-				if (!IsCombatant(actors[j]) || actors[j]->GetTeam() == actors[i]->GetTeam()) {
+				if (!IsSoldier(actors[j]) || actors[j]->GetTeam() == actors[i]->GetTeam()) {
 					continue;
 				}
 				Vector between = g_SceneMan.ShortestDistance(actors[i]->GetPos(), actors[j]->GetPos(), g_SceneMan.SceneWrapsX());
@@ -1663,7 +1703,7 @@ namespace SandboxDetail {
 		std::vector<const Preset*> units;
 		for (const Preset& unit: s_Units) {
 			const Entity* entity = unit.ModuleID == moduleID ? g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID) : nullptr;
-			if (entity && !entity->IsInGroup("Actors - Turrets") && !entity->IsInGroup("Actors - Vehicles")) {
+			if (entity && !entity->IsInGroup("Actors - Turrets") && !entity->IsInGroup("Actors - Vehicles") && !IsNonCombatantPreset(entity)) {
 				units.push_back(&unit);
 			}
 		}

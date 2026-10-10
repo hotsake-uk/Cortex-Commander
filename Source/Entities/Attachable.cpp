@@ -330,6 +330,10 @@ bool Attachable::ParticlePenetration(HitData& hd) {
 				g_SceneMan.WrapPosition(extruded);
 				parentAsActor->AlarmPoint(extruded);
 			}
+			// Who hurt it (NC-1), for units that fight only back and units that run.
+			if (Actor* parentAsActor = dynamic_cast<Actor*>(GetRootParent()); parentAsActor && parentAsActor->GetHealth() > 0) {
+				parentAsActor->NoteHurtBy(hitor, hd.HitVel[HITOR]);
+			}
 		}
 	}
 

@@ -132,6 +132,12 @@ void Actor::Clear() {
 	m_AIOrderSerial = 0;
 	m_StandingOrder = StandingOrder();
 	m_WeaponRule = WEAPONS_AT_WILL;
+	m_Temperament = TEMPERAMENT_FIGHTER;
+	m_NonCombatant = -1;
+	m_LastAttackerTeam = Activity::NoTeam;
+	m_LastAttackerID = 0;
+	m_HurtTimer.Reset();
+	m_LastHurtFrom.Reset();
 	m_PaceLimit = 0.0F;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
@@ -327,6 +333,8 @@ int Actor::Create(const Actor& reference) {
 	m_AIMode = reference.m_AIMode;
 	m_StandingOrder = reference.m_StandingOrder;
 	m_WeaponRule = reference.m_WeaponRule;
+	m_Temperament = reference.m_Temperament;
+	m_NonCombatant = reference.m_NonCombatant;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -476,6 +484,21 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> rule;
 		SetWeaponRule(rule);
 	});
+	MatchProperty("Temperament", {
+		std::string value;
+		reader >> value;
+		int temperament = TemperamentFromString(value);
+		if (temperament < 0) {
+			reader.ReportError("Unknown Temperament \"" + value + "\": use Fighter, Defensive, Skittish or Pacifist.");
+		} else {
+			SetTemperament(temperament);
+		}
+	});
+	MatchProperty("NonCombatant", {
+		bool nonCombatant = false;
+		reader >> nonCombatant;
+		SetNonCombatant(nonCombatant);
+	});
 	MatchProperty("SpecialBehaviour_AddAISceneWaypoint", {
 		Vector waypointToAdd;
 		reader >> waypointToAdd;
@@ -608,6 +631,12 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_WeaponRule != WEAPONS_AT_WILL) {
 		writer.NewPropertyWithValue("WeaponRule", m_WeaponRule);
+	}
+	if (m_Temperament != TEMPERAMENT_FIGHTER) {
+		writer.NewPropertyWithValue("Temperament", std::string(TemperamentName(m_Temperament)));
+	}
+	if (m_NonCombatant >= 0) {
+		writer.NewPropertyWithValue("NonCombatant", m_NonCombatant != 0);
 	}
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
@@ -1148,6 +1177,43 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 	}
 }
 
+const char* Actor::TemperamentName(int temperament) {
+	static const char* names[TEMPERAMENTCOUNT] = {"Fighter", "Defensive", "Skittish", "Pacifist"};
+	return temperament >= 0 && temperament < TEMPERAMENTCOUNT ? names[temperament] : "";
+}
+
+int Actor::TemperamentFromString(const std::string& value) {
+	for (int temperament = 0; temperament < TEMPERAMENTCOUNT; ++temperament) {
+		const char* name = TemperamentName(temperament);
+		if (value.size() == std::strlen(name) && std::equal(value.begin(), value.end(), name, [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+			return temperament;
+		}
+	}
+	if (!value.empty() && std::all_of(value.begin(), value.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) {
+		int temperament = std::atoi(value.c_str());
+		return temperament < TEMPERAMENTCOUNT ? temperament : -1;
+	}
+	return -1;
+}
+
+void Actor::NoteHurtBy(const MovableObject* hitor, const Vector& hitVelocity) {
+	// The side of the shot or blade, and the unit itself when it was the unit (or something held by it) that hit. (A shot carries only its
+	// side: the firearm sets its team, HDFirearm::Update.)
+	const MovableObject* root = hitor ? hitor->GetRootParent() : nullptr;
+	int team = root ? root->GetTeam() : Activity::NoTeam;
+	if (team == Activity::NoTeam || team == m_Team) {
+		return;
+	}
+	m_LastAttackerTeam = team;
+	const Actor* attacker = dynamic_cast<const Actor*>(root);
+	m_LastAttackerID = attacker ? attacker->GetUniqueID() : 0;
+	Vector from(hitVelocity);
+	from.SetMagnitude(std::max(m_CharHeight, 1.0F) * 3.0F);
+	m_LastHurtFrom = m_Pos - from;
+	g_SceneMan.WrapPosition(m_LastHurtFrom);
+	m_HurtTimer.Reset();
+}
+
 bool Actor::ParticlePenetration(HitData& hd) {
 	bool penetrated = MOSRotating::ParticlePenetration(hd);
 
@@ -1170,6 +1236,9 @@ bool Actor::ParticlePenetration(HitData& hd) {
 		extruded = m_Pos - extruded;
 		g_SceneMan.WrapPosition(extruded);
 		AlarmPoint(extruded);
+	}
+	if ((penetrated || damageToAdd > 0) && m_Health > 0) {
+		NoteHurtBy(hitor, hd.HitVel[HITOR]);
 	}
 
 	return penetrated;
@@ -2857,6 +2926,12 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	static const char* const weaponRuleNames[] = {"at will", "return fire", "hold fire"};
 	static const char* const movementRuleNames[] = {"follow order", "engage", "move only", "hold ground"};
 	fields.push_back({"weaponRule", m_WeaponRule >= 0 && m_WeaponRule < static_cast<int>(std::size(weaponRuleNames)) ? weaponRuleNames[m_WeaponRule] : std::to_string(m_WeaponRule), true});
+	fields.push_back({"temperament", TemperamentName(m_Temperament), true});
+	flag("nonCombatant", IsNonCombatant());
+	if (m_LastAttackerTeam != Activity::NoTeam) {
+		number("lastAttackerTeam", m_LastAttackerTeam);
+		number("sinceHurtMS", std::floor(GetMSSinceHurt()));
+	}
 	fields.push_back({"movementRule", order.Movement >= 0 && order.Movement < static_cast<int>(std::size(movementRuleNames)) ? movementRuleNames[order.Movement] : std::to_string(order.Movement), true});
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
