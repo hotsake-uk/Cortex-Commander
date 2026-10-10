@@ -31,6 +31,7 @@
 using namespace RTE;
 
 bool TerrainFire::s_Enabled = true;
+float TerrainFire::s_EmberIgniteChance = 0.1F;
 
 namespace {
 	enum class Fuel : unsigned char {
@@ -489,6 +490,9 @@ void TerrainFire::Update() {
 	float emberChance = (rain == 0.0F && snow == 0.0F) ? 0.006F * std::abs(wind) : 0.0F;
 	float quenchChance = 0.3F * rain + 0.1F * snow;
 	std::vector<std::pair<int, int>> spreadTo;
+	std::vector<std::pair<int, int>> emberSpreadTo; //!< Where smouldering charcoal may set things alight: only what isn't charcoal itself, so embers can't keep each other going.
+	// The setting is percent per second; fire ticks come about 20 a second.
+	float emberIgnite = s_EmberIgniteChance * 0.01F * static_cast<float>(c_TickInterval) / 60.0F * damping;
 	std::vector<int> burntOut;
 	std::vector<int> goneOut;
 	for (auto& [key, pixel]: s_Burning) {
@@ -503,6 +507,13 @@ void TerrainFire::Update() {
 		for (int i = 0; i < 4 && !smouldering; ++i) {
 			if (Random01(s_Random) < fuel.Spread * directionScale[i] * damping) {
 				spreadTo.emplace_back(pixel.X + neighbours[i][0], pixel.Y + neighbours[i][1]);
+			}
+		}
+		if (smouldering && emberIgnite > 0.0F) {
+			for (const auto& neighbour: neighbours) {
+				if (Random01(s_Random) < emberIgnite) {
+					emberSpreadTo.emplace_back(pixel.X + neighbour[0], pixel.Y + neighbour[1]);
+				}
 			}
 		}
 		if (!smouldering && emberChance > 0.0F && Random01(s_Random) < emberChance) {
@@ -565,6 +576,11 @@ void TerrainFire::Update() {
 	}
 	for (const auto& [x, y]: spreadTo) {
 		TryIgnite(terrain, x, y, width, height);
+	}
+	for (auto [x, y]: emberSpreadTo) {
+		if (WrapPixel(x, y, width, height) && s_FuelTable[static_cast<unsigned char>(terrain->GetMaterialPixel(x, y))] != Fuel::Ember) {
+			TryIgnite(terrain, x, y, width, height);
+		}
 	}
 
 	// Group burning pixels into cells for flames, smoke and light. std::map keeps this ordered and deterministic.

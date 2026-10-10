@@ -21,6 +21,12 @@ namespace RTE {
 		/// Sets whether terrain fire is on.
 		static void SetEnabled(bool enabled) { s_Enabled = enabled; }
 
+		/// Gets the chance smouldering charcoal sets alight each flammable pixel touching it (not other charcoal), in percent per second (a gameplay setting).
+		static float GetEmberIgniteChance() { return s_EmberIgniteChance; }
+
+		/// Sets the chance smouldering charcoal sets alight each flammable pixel touching it, in percent per second (0 to 100).
+		static void SetEmberIgniteChance(float percentPerSecond) { s_EmberIgniteChance = percentPerSecond < 0.0F ? 0.0F : (percentPerSecond > 100.0F ? 100.0F : percentPerSecond); }
+
 		/// Gets whether a terrain material can burn. Cheap; safe to call from collision code.
 		static bool IsFlammable(int materialID);
 
@@ -85,5 +91,6 @@ namespace RTE {
 
 	private:
 		static bool s_Enabled; //!< Whether terrain fire is on.
+		static float s_EmberIgniteChance; //!< Percent per second that smouldering charcoal sets each flammable pixel touching it alight.
 	};
 } // namespace RTE

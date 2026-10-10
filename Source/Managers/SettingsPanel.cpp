@@ -645,6 +645,10 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d burning)", TerrainFire::GetCount());
 		}
+		if (float chance = TerrainFire::GetEmberIgniteChance(); Slider("Embers set things alight", &chance, 0.0F, 10.0F, "%.2f%% a second")) {
+			TerrainFire::SetEmberIgniteChance(chance);
+		}
+		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
