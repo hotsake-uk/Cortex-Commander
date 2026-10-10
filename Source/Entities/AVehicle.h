@@ -52,6 +52,11 @@ namespace RTE {
 		/// @param wheel The wheel to add.
 		void AddWheel(Attachable* wheel);
 
+		/// Adds a strut to the wheel added last: a leg that rides up and down with the wheel's middle (it doesn't turn with the wheel), drawn
+		/// behind the body so it slides up into it as the spring is pushed in. Its picture hangs up from where it is fixed. Ownership IS transferred!
+		/// @param strut The strut to add.
+		void AddStrut(Attachable* strut);
+
 		/// Gets the wheels this still has. Ownership is NOT transferred!
 		std::vector<Attachable*> GetWheels() const;
 
@@ -85,6 +90,12 @@ namespace RTE {
 
 		/// Sets the top speed it drives at on the flat, in m/s.
 		void SetMaxSpeed(float newSpeed) { m_MaxSpeed = newSpeed; }
+
+		/// Gets how fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
+		float GetHopSpeed() const { return m_HopSpeed; }
+
+		/// Sets how fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
+		void SetHopSpeed(float newSpeed) { m_HopSpeed = newSpeed; }
 
 		/// Gets where the driver sits, from the middle of the body when upright and facing right.
 		const Vector& GetSeatOffset() const { return m_SeatOffset; }
@@ -128,6 +139,7 @@ namespace RTE {
 		/// A wheel and how it hangs: where its spring is fixed, how far the spring is pushed in, and how far round it has turned.
 		struct Wheel {
 			Attachable* Part = nullptr; //!< The wheel. Owned by this, as an attachable.
+			Attachable* Strut = nullptr; //!< The leg it hangs on, if drawn: rides up and down with the wheel. Owned by this, as an attachable.
 			Vector Mount; //!< Where its middle is with the spring all the way out, from the body's middle, upright and facing right.
 			float Compression = 0.0F; //!< How far the spring is pushed in, in pixels, 0 to the suspension travel.
 			float Spin = 0.0F; //!< How far it has turned, in radians, the way it turns on the ground (rolling right is negative).
@@ -148,6 +160,8 @@ namespace RTE {
 		Vector m_ExitOffset; //!< Where the driver gets out, from the body's middle, upright and facing right (mirrored to whichever side is clear).
 		float m_BoardingReach; //!< How close to the seat a unit has to be to get in.
 		bool m_NeedsDriver; //!< Whether it only drives with someone in the seat (a cart does; a drone vehicle wouldn't).
+		float m_HopSpeed; //!< How fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
+		Timer m_HopTimer; //!< Since it last jumped, so it can't bounce itself up a cliff.
 
 		Actor* m_Driver; //!< The unit in the driver's seat, out of the scene while it's in here. Owned.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
@@ -173,6 +187,9 @@ namespace RTE {
 
 		/// Removes a wheel from the wheels this keeps track of, when it is shot off or otherwise taken away. Ownership passes to the caller.
 		void RemoveWheel(const Attachable* wheel);
+
+		/// Forgets a wheel's strut, when it is shot off or otherwise taken away. Ownership passes to the caller.
+		void RemoveStrut(const Attachable* strut);
 
 		/// Clears all the member variables of this AVehicle, effectively resetting the members of this abstraction level only.
 		void Clear();
