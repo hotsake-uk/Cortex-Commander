@@ -1121,6 +1121,167 @@ namespace {
 		return glm::vec2(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
 	}
 
+	/// A long piece of metal (a beam, a girder, a plate) hit hard off its middle bends instead of breaking: it folds at a crease between the middle and where it hit,
+	/// the part beyond the crease turned on with the way it was moving, by more the harder the hit and the thinner it is. The bent shape is drawn into a fresh bitmap
+	/// and the piece is a rigid body again. Returns false, changing nothing, if it isn't long and thin enough to bend (it dents instead).
+	/// Call while the body is lifted out of the terrain.
+	bool BendAtCrease(Body& body, const glm::vec2& hitPoint, float violence) {
+		// Its long axis and how long and thick it is, from the spread of its pixels.
+		double xx = 0.0;
+		double yy = 0.0;
+		double xy = 0.0;
+		for (int y = 0; y < body.H; ++y) {
+			for (int x = 0; x < body.W; ++x) {
+				if (body.Materials[static_cast<size_t>(y) * body.W + x]) {
+					double dx = static_cast<double>(x) + 0.5 - body.Center.x;
+					double dy = static_cast<double>(y) + 0.5 - body.Center.y;
+					xx += dx * dx;
+					yy += dy * dy;
+					xy += dx * dy;
+				}
+			}
+		}
+		float grain = 0.5F * static_cast<float>(std::atan2(2.0 * xy, xx - yy));
+		glm::vec2 along(std::cos(grain), std::sin(grain));
+		glm::vec2 across(-along.y, along.x);
+		double count = static_cast<double>(std::max(body.PixelCount, 1));
+		float varAlong = static_cast<float>((xx * along.x * along.x + 2.0 * xy * along.x * along.y + yy * along.y * along.y) / count);
+		float varAcross = static_cast<float>((xx * across.x * across.x + 2.0 * xy * across.x * across.y + yy * across.y * across.y) / count);
+		float length = std::sqrt(12.0F * std::max(varAlong, 0.0F));
+		float thickness = std::max(std::sqrt(12.0F * std::max(varAcross, 0.0F)), 1.0F);
+		if (length < 20.0F || length < thickness * 3.0F) {
+			return false;
+		}
+		// How far it folds: more for a harder hit and a thinner piece (stiffness grows with the square of the thickness), in steps of 5 degrees so the crease stays tidy.
+		constexpr float c_Step = 0.0872665F;
+		float angle = std::min(0.12F * (violence - 1.0F) + 0.1F, 0.6F) * std::clamp(36.0F / (thickness * thickness), 0.2F, 2.0F);
+		angle = std::floor(std::min(angle, 0.6F) / c_Step) * c_Step;
+		if (angle < c_Step) {
+			return false;
+		}
+		glm::vec2 hitLocal = ToLocal(body, hitPoint);
+		float hitAlong = glm::dot(hitLocal - body.Center, along);
+		// The crease: between the middle and where it hit. What lies beyond it, away from the hit, is what turns.
+		glm::vec2 crease = body.Center + along * (hitAlong * 0.3F);
+		glm::vec2 far = hitAlong >= 0.0F ? -along : along;
+		// Turned the way the piece was moving, as the end that hit stops and the rest carries on.
+		float c = std::cos(body.Angle);
+		float s = std::sin(body.Angle);
+		glm::vec2 velLocal(body.Vel.x * c + body.Vel.y * s, -body.Vel.x * s + body.Vel.y * c);
+		glm::vec2 arm = far * (length * 0.5F);
+		if (glm::dot(glm::vec2(-arm.y, arm.x), velLocal) < 0.0F) {
+			angle = -angle;
+		}
+		auto turn = [&](const glm::vec2& point, float cosine, float sine) {
+			glm::vec2 from = point - crease;
+			return crease + glm::vec2(from.x * cosine - from.y * sine, from.x * sine + from.y * cosine);
+		};
+		auto pixelAt = [&body](const glm::vec2& point) -> int {
+			int x = static_cast<int>(std::floor(point.x));
+			int y = static_cast<int>(std::floor(point.y));
+			if (x < 0 || y < 0 || x >= body.W || y >= body.H) {
+				return -1;
+			}
+			int local = y * body.W + x;
+			return body.Materials[local] ? local : -1;
+		};
+		Body bent;
+		glm::vec2 shift(0.0F);
+		const BITMAP* materialBitmap = g_SceneMan.GetScene()->GetTerrain()->GetMaterialBitmap();
+		auto tryFold = [&](float fold) {
+			float ca = std::cos(fold);
+			float sa = std::sin(fold);
+			// The new bitmap's bounds: the near part where it was, the far part turned.
+			float minX = 0.0F;
+			float minY = 0.0F;
+			float maxX = static_cast<float>(body.W);
+			float maxY = static_cast<float>(body.H);
+			for (int y = 0; y < body.H; ++y) {
+				for (int x = 0; x < body.W; ++x) {
+					glm::vec2 at(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
+					if (body.Materials[static_cast<size_t>(y) * body.W + x] && glm::dot(at - crease, far) > 0.0F) {
+						glm::vec2 moved = turn(at, ca, sa);
+						minX = std::min(minX, moved.x - 1.0F);
+						minY = std::min(minY, moved.y - 1.0F);
+						maxX = std::max(maxX, moved.x + 1.0F);
+						maxY = std::max(maxY, moved.y + 1.0F);
+					}
+				}
+			}
+			shift = glm::vec2(-std::floor(minX), -std::floor(minY));
+			bent = Body();
+			bent.W = static_cast<int>(std::ceil(maxX)) + static_cast<int>(shift.x);
+			bent.H = static_cast<int>(std::ceil(maxY)) + static_cast<int>(shift.y);
+			bent.Materials.assign(static_cast<size_t>(bent.W) * bent.H, 0);
+			bent.Colors.assign(static_cast<size_t>(bent.W) * bent.H, 0);
+			// The far part's side of the crease, turned with it.
+			glm::vec2 farTurned = glm::vec2(far.x * ca - far.y * sa, far.x * sa + far.y * ca);
+			for (int y = 0; y < bent.H; ++y) {
+				for (int x = 0; x < bent.W; ++x) {
+					glm::vec2 at = glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - shift;
+					int source = -1;
+					if (glm::dot(at - crease, far) <= 0.0F && glm::dot(at - crease, farTurned) <= 0.0F) {
+						// The near part, where it was.
+						source = pixelAt(at);
+					} else if (glm::dot(at - crease, farTurned) > 0.0F) {
+						// The far part, turned back to where it came from.
+						glm::vec2 from = turn(at, ca, -sa);
+						if (glm::dot(from - crease, far) > 0.0F) {
+							source = pixelAt(from);
+						}
+					} else {
+						// The wedge opened on the outside of the bend: filled from the crease itself, so the metal stretches rather than tears.
+						glm::vec2 onCrease = at - far * glm::dot(at - crease, far);
+						source = pixelAt(onCrease - far * 0.5F);
+					}
+					if (source >= 0) {
+						size_t index = static_cast<size_t>(y) * bent.W + x;
+						bent.Materials[index] = body.Materials[source];
+						bent.Colors[index] = body.Colors[source];
+					}
+				}
+			}
+			if (!FinishBody(bent, glm::vec2(0.0F))) {
+				return false;
+			}
+			// Not into the ground: a fold that would push it into solid ground is too much (a beam lying flat can't fold down through the floor).
+			glm::vec2 pos = ToWorld(body, bent.Center - shift - body.Center, body.Pos, body.Angle);
+			int buried = 0;
+			for (int y = 0; y < bent.H; ++y) {
+				for (int x = 0; x < bent.W; ++x) {
+					if (bent.Materials[static_cast<size_t>(y) * bent.W + x]) {
+						glm::vec2 world = ToWorld(body, glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - bent.Center, pos, body.Angle);
+						buried += SolidAt(materialBitmap, static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))) ? 1 : 0;
+					}
+				}
+			}
+			return buried <= std::max(2, bent.PixelCount / 100);
+		};
+		// The fold the hit asks for, or less if that would go into the ground.
+		bool folded = false;
+		for (float fold = angle; std::abs(fold) >= c_Step * 0.99F && !folded; fold -= (angle > 0.0F ? c_Step : -c_Step)) {
+			folded = tryFold(fold);
+		}
+		if (!folded) {
+			return false;
+		}
+		// Where it is in the scene: its bitmap moved by the shift, the same angle.
+		bent.Pos = ToWorld(body, bent.Center - shift - body.Center, body.Pos, body.Angle);
+		bent.Angle = body.Angle;
+		// Bending takes up some of the blow.
+		bent.Vel = body.Vel * 0.75F;
+		bent.Spin = body.Spin * 0.75F;
+		bent.Generation = body.Generation + 1;
+		bent.BreakCooldown = 20;
+		bent.Age = body.Age;
+		bent.Wet = body.Wet;
+		bent.Hurt = std::move(body.Hurt);
+		body = std::move(bent);
+		// A clank of dust and sparks of its colour where it hit (visual only).
+		ThrowDust(hitPoint, 6, body.Materials, body.Colors);
+		return true;
+	}
+
 	/// Metal (Bend) hit harder than it takes doesn't break: it dents where it hit, a shallow round bite pushed in from its surface, deeper the harder the hit.
 	/// Call while the body is lifted out of the terrain. It may come apart if the dent goes right through a thin part.
 	void Dent(Body& body, const glm::vec2& hitPoint, float violence) {
@@ -1589,7 +1750,10 @@ namespace {
 		if (hardestHit > breakSpeed && body.BreakCooldown == 0 && body.Generation < c_MaxGeneration && body.PixelCount >= c_MinBreakPixels) {
 			// Metal through and through dents; anything else breaks, each material its own way.
 			if (body.StyleStrength[c_Bend] > 0.0F && body.StyleStrength[c_Bend] >= 0.999F * (body.StyleStrength[c_Shatter] + body.StyleStrength[c_Crack] + body.StyleStrength[c_Crumble] + body.StyleStrength[c_Splinter] + body.StyleStrength[c_Bend])) {
-				Dent(body, hardestPoint, hardestHit / breakSpeed);
+				// A chunky piece only dents when hit well over the threshold.
+				if (!BendAtCrease(body, hardestPoint, hardestHit / breakSpeed) && hardestHit > breakSpeed * 1.5F) {
+					Dent(body, hardestPoint, hardestHit / breakSpeed);
+				}
 				if (body.Done) {
 					return;
 				}
