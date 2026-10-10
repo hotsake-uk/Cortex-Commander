@@ -6,12 +6,14 @@
 #include "Constants.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "FrameMan.h"
 #include "LightingSettings.h"
 #include "MOSprite.h"
 #include "Material.h"
 #include "MovableMan.h"
 #include "MovableObject.h"
 #include "PostProcessMan.h"
+#include "SLTerrain.h"
 #include "Scene.h"
 #include "SceneMan.h"
 #include "Shapes.h"
@@ -116,6 +118,7 @@ namespace {
 		std::vector<Node> Nodes;
 		std::vector<Link> Links; //!< Links[i] joins Nodes[i] and Nodes[i + 1].
 		std::vector<Anchor> Anchors;
+		float StillSeconds = 0.0F; //!< How long it has lain still tied to nothing.
 	};
 
 	/// A change asked for from a script or another thread, made at the next update in the order asked.
@@ -144,6 +147,7 @@ namespace {
 	std::array<unsigned char, 256> s_Hot{}; //!< Lava: sets what burns alight.
 	std::array<unsigned char, 256> s_Douses{}; //!< Puts fire out.
 	bool s_TablesBuilt = false;
+	float s_SettleSeconds = 5.0F; //!< How long a rope tied to nothing lies still before it becomes terrain; 0 never.
 
 	float Random01() {
 		s_Random ^= s_Random << 13;
@@ -550,6 +554,75 @@ namespace {
 				node.Prev = node.Pos;
 			}
 		}
+	}
+
+	/// Turns a rope that is tied to nothing and has lain still for a while into terrain: its links drawn into the ground as pixels of wood (steel
+	/// for the metal kinds) in its own colours, wherever there is air.
+	/// @return Whether it settled, and is to be taken away.
+	bool Settle(Rope& rope, float seconds) {
+		if (s_SettleSeconds <= 0.0F || !rope.Anchors.empty()) {
+			rope.StillSeconds = 0.0F;
+			return false;
+		}
+		float fastest = 0.0F;
+		for (const Node& node: rope.Nodes) {
+			if (node.Gone) {
+				continue;
+			}
+			// A burning rope burns on, one in liquid floats or sinks on.
+			if (node.Burn > 0.0F || s_Liquid[MaterialAt(node.Pos.x, node.Pos.y)]) {
+				rope.StillSeconds = 0.0F;
+				return false;
+			}
+			fastest = std::max(fastest, glm::length(node.Pos - node.Prev));
+		}
+		if (fastest > 0.4F) {
+			rope.StillSeconds = 0.0F;
+			return false;
+		}
+		rope.StillSeconds += seconds;
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (rope.StillSeconds < s_SettleSeconds || !terrain) {
+			return false;
+		}
+		const TypeData& type = TypeOf(rope);
+		const Material* material = g_SceneMan.GetMaterial(type.Burns ? "Wood" : "Metal");
+		if (!material) {
+			return false;
+		}
+		const PALETTE& palette = g_FrameMan.GetDefaultPalette();
+		int light = bestfit_color(palette, type.Light[0], type.Light[1], type.Light[2]);
+		int dark = bestfit_color(palette, type.Dark[0], type.Dark[1], type.Dark[2]);
+		auto lay = [&](int x, int y, int color) {
+			if (g_SceneMan.WrapPosition(x, y) && terrain->GetMaterialPixel(x, y) == g_MaterialAir) {
+				terrain->SetMaterialPixel(x, y, material->GetIndex());
+				terrain->SetFGColorPixel(x, y, color);
+			}
+		};
+		bool wide = type.Style == Look::Twisted || type.Style == Look::Banded;
+		float along = 0.0F;
+		for (size_t i = 0; i < rope.Links.size(); ++i) {
+			const Node& a = rope.Nodes[i];
+			const Node& b = rope.Nodes[i + 1];
+			glm::vec2 way = b.Pos - a.Pos;
+			float length = glm::length(way);
+			if (!rope.Links[i].Cut && !a.Gone && !b.Gone) {
+				int steps = std::max(1, static_cast<int>(std::ceil(std::max(std::abs(way.x), std::abs(way.y)))));
+				glm::ivec2 across = std::abs(way.x) >= std::abs(way.y) ? glm::ivec2(0, 1) : glm::ivec2(1, 0);
+				for (int step = 0; step < steps; ++step) {
+					glm::vec2 at = a.Pos + way * (static_cast<float>(step) / static_cast<float>(steps));
+					int x = static_cast<int>(std::floor(at.x));
+					int y = static_cast<int>(std::floor(at.y));
+					bool strand = static_cast<int>(std::floor((along + length * static_cast<float>(step) / static_cast<float>(steps)) * 0.5F)) % 2 == 0;
+					lay(x, y, strand ? light : dark);
+					if (wide) {
+						lay(x + across.x, y + across.y, strand ? dark : light);
+					}
+				}
+			}
+			along += length;
+		}
+		return true;
 	}
 
 	/// Moves the loose points on: their speed kept, less the air's drag, and gravity, the wind, blast waves and liquid on them.
@@ -1010,6 +1083,14 @@ namespace {
 	}
 } // namespace
 
+float RopeSim::GetSettleSeconds() {
+	return s_SettleSeconds;
+}
+
+void RopeSim::SetSettleSeconds(float seconds) {
+	s_SettleSeconds = std::clamp(seconds, 0.0F, 600.0F);
+}
+
 int RopeSim::GetTypeCount() {
 	return c_TypeCount;
 }
@@ -1156,6 +1237,7 @@ void RopeSim::Update() {
 		Burn(rope, seconds, update, lights);
 	}
 	HitByParticles();
+	std::erase_if(s_Ropes, [seconds](Rope& rope) { return Settle(rope, seconds); });
 	// Kept on the map: a rope that has gone round a wrapping map's seam is moved back a map's width, and one that has fallen off the bottom
 	// is gone.
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());

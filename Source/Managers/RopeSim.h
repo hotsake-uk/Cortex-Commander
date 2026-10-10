@@ -40,6 +40,12 @@ namespace RTE {
 			int Kind; //!< 0 the ground, 1 a unit or a thing.
 		};
 
+		/// Gets how long a rope that is tied to nothing has to lie still before it settles into the terrain, in seconds; 0 when ropes never settle.
+		static float GetSettleSeconds();
+
+		/// Sets how long a rope tied to nothing lies still before it settles (0 never).
+		static void SetSettleSeconds(float seconds);
+
 		/// Gets how many kinds of rope there are.
 		static int GetTypeCount();
 

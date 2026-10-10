@@ -26,6 +26,7 @@
 #include "TerrainCollapse.h"
 #include "TerrainTrees.h"
 #include "TerrainFire.h"
+#include "RopeSim.h"
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
@@ -671,6 +672,11 @@ void DebugMan::SettingsGUI() {
 			TerrainCandle::SetBurnMinutes(minutes);
 		}
 		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
+		Toggle("Dropped ropes settle into the ground", RopeSim::GetSettleSeconds() > 0.0F, [](bool on) { RopeSim::SetSettleSeconds(on ? 5.0F : 0.0F); });
+		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
+			RopeSim::SetSettleSeconds(settle);
+		}
+		Tip("A rope, chain or cable that is no longer tied to anything and has lain still this long turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
