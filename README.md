@@ -38,7 +38,7 @@ The Community Project's priority is a stable, faithful, multi-platform Cortex Co
 - **Time of day and weather:** a day/night cycle with stars, moon and lightning in storms. Rain darkens the ground, and snow settles on it and melts.
 - **Living world:** vegetation sways in the wind and bends in blast waves. Blood and oil stain terrain. Explosions throw sparks, dust and debris chips.
 - **Night gameplay:** soldiers wear headlamps after dark, AI sight shrinks at night, and there's a buyable Flare.
-- **Camera zoom:** Ctrl + mouse wheel zooms out (as far as the map allows, down to 0.4x) or in to 2x, in clean steps, with lighting and HUD intact.
+- **Camera zoom:** Ctrl + mouse wheel zooms out (as far as the map allows, down to 0.4x) or in to 8x, in clean steps, with lighting and HUD intact.
 - **Shine:** lights throw highlights on metal, concrete, wet ground and water.
 - **Photo mode (F8):** freeze time, free camera, look sliders, and screenshots at up to 4x internal resolution.
 - **Feel:** hit-stop on big blasts, a recoil kick, a frame cap and optional CRT scanlines.
@@ -69,6 +69,16 @@ Pick **Sandbox** on the main menu and play as a god:
 - Place lights and particle effects, pour water from spawners, and call in strikes: rockets, artillery, napalm, meteors, crashing dropships.
 - Scriptable from Lua (`SandboxDo`, `SandboxBattleTeam`, `SandboxPauseAI`, ...).
 
+### More recent additions
+- **Ropes:** rope, thread, chain, steel cable and bungee cord, hung with the Sandbox Rope tool.
+- **Trees** with their own materials: units can bump into or walk through them, bullets can pass them, rockets clear trunks, and cut trees fall whole.
+- **Non-combatants and temperaments:** farm animals and civilians, and temperaments that shape how units behave.
+- **Vehicles:** a Wooden Cart that units board, which breaks apart, burns and crushes plants.
+- **Medieval faction** (swords, archers, blades that spark on metal) and **medieval buildings**: huts, cottages, a longhouse, a stone house, a watchtower, tents, a market stall, a palisade, lit by candles and lanterns.
+- **Unit speech:** Serious, Casual and Funny tones per side, with mix sliders and mod tones.
+- **Sandbox paint:** metals (gold, silver, bronze, brass, copper, chrome, bunker plating), every liquid, powder and terrain, candles that burn down, and a "Make it fall" box.
+- A **Pause/Break** hotkey, split Sparks, Dust and Debris settings, a bleed chance setting, unit and item stats in the spawn panel, and settings that save as soon as they change.
+
 ### One settings panel
 **F6** opens a panel with every setting that can be changed while the game runs (time and weather, lighting, water, fire and smoke, falling ground, camera and image, HUD, debug views), sorted into categories with a search box. Any setup can be saved as a **named preset** and loaded again later; presets are plain files in `Userdata\Presets`.
 
@@ -87,6 +97,7 @@ Pick **Sandbox** on the main menu and play as a god:
 |---|---|
 | **Tab** | In a game: every tool window away, or back. In Sandbox mode the tool in hand keeps working with the windows hidden |
 | **P** | Sandbox mode: into your own character, or back above (Shift+P or Shift+Tab puts it down at the pointer first) |
+| **Pause/Break** | Holds the whole world paused, with menus open or closed |
 | **F6** | Settings panel: every setting that can be tuned while the game runs, in categories, searchable, with named presets |
 | **F7** | Sandbox tools (the whole game in Sandbox mode, a debug panel elsewhere) |
 | **F8** | Photo mode |
@@ -99,11 +110,11 @@ Full details of every setting, the INI properties for modders and the Lua API ar
 
 ## Status
 
-- **A work in progress,** developed and tested on **Windows** (Visual Studio 2022, OpenGL 3.3). New source files are added to the meson build for Linux and macOS, but those builds haven't been tested here yet.
+- **A work in progress,** developed and played on **Windows** (Visual Studio 2022, OpenGL 3.3). Every change is also compile-checked on Linux (Ubuntu 24.04, GCC 13, meson; see [Linux compile check](#linux-compile-check)), but the Linux build isn't played or tested in game.
 - **No prebuilt releases yet.** Build it from source (below). The game data is included in the repository.
 - **Mods** that work with the Community Project should work here too.
 - **How it's made:** this fork is developed with the help of AI coding assistance (Claude Code), with every change built and tested in the game. The commit history records what changed and why.
-- **Not done yet:** an SDL_GPU backend (Vulkan/Metal/DX12) and a tested Linux build. The reasons are in FEATURE_PROPOSAL.md.
+- **Not done yet:** an SDL_GPU backend (Vulkan/Metal/DX12) and a played and tested Linux build. The reasons are in FEATURE_PROPOSAL.md.
 
 Bug reports and ideas are welcome in this repository's issues. Please report problems with the base game to the [Community Project](https://github.com/cortex-command-community/Cortex-Command-Community-Project/issues) instead.
 
@@ -128,7 +139,7 @@ Then, in PowerShell:
 ```powershell
 git clone https://github.com/hotsake-uk/Cortex-Commander
 cd Cortex-Commander
-git checkout modernisation                 # skip if it is already the branch you got
+git checkout maindev                       # the main development branch (see Branches below)
 
 copy external\lib\win\fmod.dll .           # the game needs fmod.dll in the repository root
 
@@ -147,6 +158,24 @@ The game opens on the main menu. **Sandbox** there is the quickest way to see wh
 - Always run the game from the repository root, because `Data/` is found relative to the exe.
 - The first launch creates `Userdata\Settings.ini`. Video settings (lighting, bloom, quality presets) are in the in-game options, and the keys are listed under [Controls](#controls-and-where-things-are).
 - **Per-person files aren't in the repository:** settings, Workbench launch profiles and presets, saved games, screenshots and logs (git ignores `Userdata\`, `Mods\` and the game's log files). Every fresh clone starts on default settings with no mods.
+
+## Branches and contributing
+
+**`maindev`** is the main development branch. Each change is made on its own feature branch off `maindev` and goes back in through a pull request, which is merged once it builds. The older `dev-8.x` branches and `modernisation` are history; nothing new goes into them. See [HANDOVER.md](HANDOVER.md) for how the project is worked on day to day.
+
+## Linux compile check
+
+Used to check every change builds (Ubuntu 24.04, GCC 13). Everything except these system packages is vendored in `external/`.
+
+```sh
+sudo apt-get install -y --no-install-recommends libflac++-dev libminizip-dev liblz4-dev libpng-dev libx11-dev libtbb-dev \
+  libopengl-dev libgl-dev zlib1g-dev pkg-config cmake ninja-build ccache
+pip install meson   # 1.6 or later
+CC="ccache gcc" CXX="ccache g++" meson setup --buildtype=release -Ddebug_type=release -Db_lto=false -Db_pch=true build
+cd build && ninja   # done when it prints "Linking target CortexCommand"
+```
+
+Keep `-Db_pch=true` (without it `Source/Lua` fails on a missing `Camera` declaration) and leave `tracy_enable` at its default (turning it off breaks the link). The first build takes 10 to 15 minutes on 4 cores.
 
 ## Build configurations
 
