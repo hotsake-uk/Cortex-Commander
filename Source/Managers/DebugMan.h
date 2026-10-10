@@ -61,7 +61,8 @@ namespace RTE {
 		/// Begins a tool window. With docking on (the default) it is a panel fixed at one side of the game's picture, sharing that side with any others open there;
 		/// with docking off, or placement Floating, it is an ordinary floating window; with placement Large, nine tenths of the screen in the middle. Use it like ImGui::Begin, and close with EndPanel.
 		/// @param name The window's title. @param open Set to false when the player closes it; nullptr for no close button. @param side Where it docks.
-		bool BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement = PanelPlacement::Docked);
+		/// @param flow Controls one line high go side by side while they fit, and sliders and lists are kept to a sensible width, for a window that may be wide.
+		bool BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement = PanelPlacement::Docked, bool flow = false);
 
 		/// Gets how the sandbox's window is shown, as chosen under "Size and layout of these windows".
 		PanelPlacement GetSandboxPlacement() const { return static_cast<PanelPlacement>(m_SandboxPlacement); }
@@ -127,6 +128,7 @@ namespace RTE {
 		bool m_PixelFontInUse{false}; //!< Whether a pixel font is the one being drawn with this frame.
 		int m_PixelFontTries{0}; //!< Presents waited so far for the game's font art to be loadable (it is tried at the fifth, then every 60th, up to the 600th).
 		::ImFont* m_PixelFonts[4]{}; //!< The game's small font at 1x to 4x, each baked at its own size so no pixel is ever blurred.
+		bool m_PanelFlow{false}; //!< The BeginPanel in progress pushed the flowing of controls and an item width, for EndPanel to pop.
 		int m_PanelKind{0}; //!< What the BeginPanel in progress began, for EndPanel: 0 a floating window, 1 a tab that isn't the one showing, 2 the tab showing.
 		unsigned m_RememberedTools{0}; //!< The tool windows that were open when they were last closed together, as bits.
 		int m_PanelsThisFrame[2]{0, 0}; //!< How many panels have been begun at each side so far this frame.
