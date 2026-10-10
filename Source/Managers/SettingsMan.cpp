@@ -170,6 +170,7 @@ void SettingsMan::Clear() {
 	m_SandboxGas = false;
 	m_SandboxAir = false;
 	m_SandboxSimState = false;
+	m_SandboxBarRight = false;
 	m_SandboxOrdersOverlay = 0;
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
@@ -731,6 +732,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxGas", { reader >> m_SandboxGas; });
 	MatchProperty("SandboxAir", { reader >> m_SandboxAir; });
 	MatchProperty("SandboxSimState", { reader >> m_SandboxSimState; });
+	MatchProperty("SandboxBarRight", { reader >> m_SandboxBarRight; });
 	MatchProperty("SandboxOrdersOverlay", { int which = 0; reader >> which; SetSandboxOrdersOverlay(which); });
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
@@ -1153,6 +1155,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WorldSimOverlay", m_WorldSimOverlay);
 	writer.NewPropertyWithValue("SandboxOrdersOverlay", m_SandboxOrdersOverlay);
 	writer.NewPropertyWithValue("SandboxSimState", m_SandboxSimState);
+	writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 	writer.NewPropertyWithValue("SandboxEffects", m_SandboxEffects);
 	writer.NewPropertyWithValue("SandboxGas", m_SandboxGas);
 	writer.NewPropertyWithValue("SandboxAir", m_SandboxAir);
@@ -1190,6 +1193,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+		writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
 		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.

@@ -429,6 +429,12 @@ namespace RTE {
 		/// Sets whether the sandbox's sim state readout is on.
 		void SetShowSandboxSimState(bool show) { m_SandboxSimState = show; }
 
+		/// Gets whether the right-hand group of the sandbox's bottom bar is shown: each side's unit count, the AI pause, the speed of time, the step and undo. Off by default, which keeps the bar short.
+		bool ShowSandboxBarRight() const { return m_SandboxBarRight; }
+
+		/// Sets whether the right-hand group of the sandbox's bottom bar is shown.
+		void SetShowSandboxBarRight(bool show) { m_SandboxBarRight = show; }
+
 		/// Gets which units the sandbox orders overlay draws for: 0 none, 1 the sandbox's selection (or inspected units), 2 every unit in view. It shows each unit's order waiting for the next update, its standing order, and a red flash when the standing orders send it again.
 		int SandboxOrdersOverlay() const { return m_SandboxOrdersOverlay; }
 
@@ -747,6 +753,7 @@ namespace RTE {
 		bool m_SandboxGas; //!< Whether the sandbox's gas overlay is on (see ShowSandboxGas).
 		bool m_SandboxAir; //!< Whether the sandbox's air overlay is on (see ShowSandboxAir).
 		bool m_SandboxSimState; //!< Whether the sandbox's sim state readout is on (see ShowSandboxSimState).
+		bool m_SandboxBarRight; //!< Whether the right-hand group of the sandbox's bottom bar is shown (see ShowSandboxBarRight).
 		int m_SandboxOrdersOverlay; //!< Which units the sandbox orders overlay draws for (see SandboxOrdersOverlay).
 		bool m_ShowLightSources; //!< Whether the light sources overlay is on (see ShowLightSources).
 		bool m_ShowSunDirection; //!< Whether the sun direction overlay is on (see ShowSunDirection).

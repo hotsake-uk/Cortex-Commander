@@ -1319,6 +1319,8 @@ void DebugMan::SettingsGUI() {
 		Tip("In the move previews (the Command tool's Move and the Move order), every spot the order will look at with the first unit's path cost to it: green where a unit will be sent, red where it has no way there and the spot is passed over, grey where it wasn't needed. Each is a path search, so it is worked out again only as the pointer moves.");
 		Toggle("Stroke log", g_SettingsMan.ShowSandboxStrokeLog(), [](bool on) { g_SettingsMan.SetShowSandboxStrokeLog(on); });
 		Tip("The last 20 sandbox tool uses as they are applied, in the top right: the sim update, the tool, where, the side, the orders, and the choice and count. With the Sandbox lines ticked under Debug text in the console, each also goes to the console.");
+		Toggle("Bottom bar's counts, AI, speed and undo", g_SettingsMan.ShowSandboxBarRight(), [](bool on) { g_SettingsMan.SetShowSandboxBarRight(on); });
+		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open) and undo. Off, the bar is shorter; undo is still Ctrl+Z.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
