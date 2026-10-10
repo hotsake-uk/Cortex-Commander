@@ -57,6 +57,24 @@ namespace RTE {
 		/// @param strut The strut to add.
 		void AddStrut(Attachable* strut);
 
+		/// Adds a point on the hull that liquid holds up (VH-2: boats): one along the keel or bottom, from the body's middle upright and facing right.
+		/// Each is held up by as much of the column of HullDraft pixels above it as is in liquid, so a hull floats level at its waterline and rides waves.
+		/// @param point The point to add.
+		void AddHullPoint(const Vector& point) { m_HullPoints.push_back(point); }
+
+		/// Sets the oar (a rowing boat's): it swings to and fro about its ParentOffset as the driver rows, its blade dipping on each stroke. Ownership IS transferred!
+		/// @param newOar The oar to set. nullptr removes it.
+		void SetOar(Attachable* newOar);
+
+		/// Gets the oar, if it has one. Ownership is NOT transferred!
+		Attachable* GetOar() const { return m_Oar; }
+
+		/// Gets how much of its hull is in liquid, 0 (none, or no hull) to 1 (all its hull points under by the hull's draft), from the last update.
+		float GetSubmergedFraction() const { return m_Submerged; }
+
+		/// Gets whether it has a hull: points liquid holds up, and so drives in water.
+		bool HasHull() const { return !m_HullPoints.empty(); }
+
 		/// Gets the wheels this still has. Ownership is NOT transferred!
 		std::vector<Attachable*> GetWheels() const;
 
@@ -161,6 +179,20 @@ namespace RTE {
 		float m_BoardingReach; //!< How close to the seat a unit has to be to get in.
 		bool m_NeedsDriver; //!< Whether it only drives with someone in the seat (a cart does; a drone vehicle wouldn't).
 		float m_HopSpeed; //!< How fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
+
+		std::vector<Vector> m_HullPoints; //!< Points on the hull that liquid holds up, from the body's middle, upright and facing right. None: it has no hull.
+		float m_HullDraft; //!< How deep a hull point goes under before liquid holds it up as hard as it can, in pixels.
+		float m_WaterThrust; //!< How hard it speeds up in water with the driver rowing or the motor on, in m/s each second. 0: it doesn't drive in water.
+		float m_WaterMaxSpeed; //!< The top speed it is driven at in water, in m/s.
+		float m_WaterDrag; //!< How much water slows it going along, in a share of its speed each second at full depth (side on and up and down, a good deal more).
+		float m_RowingStroke; //!< How long a stroke of the oars takes, in ms: it is pushed along in pulses, as the blades pull. 0: a steady push (a motor or a paddle wheel).
+		Vector m_PropellerOffset; //!< Where the push comes from, from the body's middle upright and facing right: it only drives with that point in liquid.
+		bool m_HasPropeller; //!< Whether a PropellerOffset was given. Without, it drives with any of the hull in liquid.
+		Attachable* m_Oar; //!< The oar, swung to and fro as the driver rows. Owned by this, as an attachable.
+		float m_OarSweep; //!< How far the oar swings either way from its rest, in radians.
+		float m_StrokePhase; //!< How far through a stroke the oar is, in radians: the blade pulls in the first half.
+		float m_Submerged; //!< How much of the hull was in liquid in the last update, 0 to 1.
+		Timer m_WakeTimer; //!< Since it last left froth or spray on the water, so it leaves a little at a time.
 		Timer m_HopTimer; //!< Since it last jumped, so it can't bounce itself up a cliff.
 
 		Actor* m_Driver; //!< The unit in the driver's seat, out of the scene while it's in here. Owned.
@@ -178,6 +210,10 @@ namespace RTE {
 	private:
 		/// Works out each wheel's spring against the ground and pushes the body by them, drives and brakes the wheels on the ground, and turns them.
 		void UpdateWheels();
+
+		/// Holds the hull up on the liquid it is in, slows it in it and keeps it upright, and drives it along with the oars or motor.
+		/// @return Whether any of the hull is in liquid.
+		bool UpdateHull();
 
 		/// Lets a friendly unit beside the seat that asks to get in, get in; lets the driver out when they ask.
 		void UpdateBoarding();
