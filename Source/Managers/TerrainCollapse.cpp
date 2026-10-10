@@ -617,6 +617,12 @@ namespace {
 		FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), body.Radius + 6.0F);
 	}
 
+	/// Whether this many more pixels can be thrown off as loose particles this update. Beyond that, a scrap stays a little body of its own and comes apart later,
+	/// rather than vanishing.
+	bool CanThrow(size_t count) {
+		return s_DebrisThisUpdate + static_cast<int>(count) <= c_MaxDebrisPerUpdate;
+	}
+
 	/// Throws a pixel of a body off as a loose particle.
 	void ThrowDebris(int material, int colorIndex, const glm::vec2& position, const glm::vec2& velocity) {
 		if (s_DebrisThisUpdate >= c_MaxDebrisPerUpdate || colorIndex == ColorKeys::g_MaskColor) {
@@ -627,11 +633,24 @@ namespace {
 			return;
 		}
 		++s_DebrisThisUpdate;
+		// A pixel of a piece pressed against the ground can sit a hair inside it, and a particle that starts inside the ground is lost: lift it clear first.
+		glm::vec2 at = position;
+		if (SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr) {
+			const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+			for (int lift = 0; lift < 8; ++lift) {
+				int x = static_cast<int>(std::floor(at.x));
+				int y = static_cast<int>(std::floor(at.y)) - lift;
+				if (!WrapInWorld(x, y) || materialBitmap->line[y][x] == g_MaterialAir || FluidSim::IsLiquid(materialBitmap->line[y][x])) {
+					at.y -= static_cast<float>(lift);
+					break;
+				}
+			}
+		}
 		// Loose bits fly off at the piece's own speed: fast ones of hard material strike sparks where they hit.
 		Color color;
 		color.SetRGBWithIndex(colorIndex);
 		// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
-		MOPixel* pixel = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(position.x, position.y), Vector(velocity.x * 3.0F, velocity.y * 3.0F), new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
+		MOPixel* pixel = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(at.x, at.y), Vector(velocity.x * 3.0F, velocity.y * 3.0F), new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
 		pixel->SetToHitMOs(false);
 		g_MovableMan.AddParticle(pixel);
 	}
@@ -688,6 +707,25 @@ namespace {
 			return fallbackLength > 0.001F ? fallback / fallbackLength : glm::vec2(0.0F, -1.0F);
 		}
 		return sum / length;
+	}
+
+	/// Puts a pixel of loose ground into the terrain at the nearest free place at or above a point (a little to either side as it goes up).
+	/// Returns false if there's no room near.
+	bool PlaceGrain(SLTerrain* terrain, int material, int colorIndex, int x, int y) {
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		for (int up = 0; up < 12; ++up) {
+			for (int side: {0, -1, 1, -2, 2}) {
+				int px = x + side;
+				int py = y - up;
+				if (!WrapInWorld(px, py) || materialBitmap->line[py][px] != g_MaterialAir) {
+					continue;
+				}
+				terrain->SetMaterialPixel(px, py, material);
+				terrain->SetFGColorPixel(px, py, colorIndex);
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/// How hard a landing breaks a body, in pixels per update: its carrying materials' style thresholds, each scaled by the material's ImpactStrength, averaged by pixel count.
@@ -797,6 +835,7 @@ namespace {
 		float crumbleRadius = body.Radius * std::min(1.0F, 0.35F + 0.25F * violence) + 2.0F;
 		int debrisLeft = c_MaxDebrisPerUpdate - s_DebrisThisUpdate;
 		constexpr int c_Loose = -3; //!< A pixel thrown off as a loose particle.
+		constexpr int c_Grain = -4; //!< A pixel of loose ground let go where it is, as loose grains in the terrain (the powders then slide them down: FluidSim).
 		std::vector<int> region(body.Materials.size(), -1);
 		for (int y = 0; y < body.H; ++y) {
 			for (int x = 0; x < body.W; ++x) {
@@ -823,7 +862,7 @@ namespace {
 							}
 						}
 						id = 0x100 + static_cast<int>(nearest);
-						loose = fromHit < chipRadius;
+						loose = fromHit < chipRadius && Random01() < 0.4F;
 						break;
 					}
 					case c_Crumble:
@@ -840,7 +879,9 @@ namespace {
 						id = sideOf(cracks, at);
 						break;
 				}
-				if (loose && debrisLeft > 0) {
+				if (loose && style == c_Crumble) {
+					region[local] = c_Grain;
+				} else if (loose && debrisLeft > 0) {
 					--debrisLeft;
 					region[local] = c_Loose;
 				} else {
@@ -861,6 +902,28 @@ namespace {
 				--debrisLeft;
 				region[local] = c_Loose;
 			}
+		}
+		// Grains go straight into the terrain where they are, rather than as particles: a heap of particles landing together settles on top of each other and
+		// most are lost.
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		int grains = 0;
+		for (int local = 0; local < static_cast<int>(region.size()) && terrain; ++local) {
+			if (region[local] != c_Grain) {
+				continue;
+			}
+			glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
+			glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
+			if (PlaceGrain(terrain, body.Materials[local], body.Colors[local], static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
+				region[local] = -2;
+				++grains;
+			} else {
+				region[local] = 0x200;
+			}
+		}
+		if (grains > 0) {
+			float reach = body.Radius + 4.0F;
+			terrain->AddUpdatedMaterialArea(Box(Vector(body.Pos.x - reach, body.Pos.y - reach), reach * 2.0F, reach * 2.0F));
+			FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), reach + 4.0F);
 		}
 		for (int local = 0; local < static_cast<int>(region.size()); ++local) {
 			if (region[local] == c_Loose) {
@@ -914,7 +977,7 @@ namespace {
 					}
 				}
 			}
-			if (static_cast<int>(part.size()) < 20) {
+			if (static_cast<int>(part.size()) < (mainStyle == c_Shatter ? c_MinBodyPixels : 20) && CanThrow(part.size())) {
 				for (int local: part) {
 					glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
 					glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
@@ -1006,7 +1069,7 @@ namespace {
 			return;
 		}
 		for (const std::vector<int>& part: parts) {
-			if (static_cast<int>(part.size()) < c_MinBodyPixels) {
+			if (static_cast<int>(part.size()) < c_MinBodyPixels && CanThrow(part.size())) {
 				for (int local: part) {
 					glm::vec2 offset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
 					ThrowDebris(body.Materials[local], body.Colors[local], ToWorld(body, offset, body.Pos, body.Angle), body.Vel);
@@ -1155,7 +1218,7 @@ namespace {
 		if (body.BreakCooldown > 0) {
 			--body.BreakCooldown;
 		}
-		if (body.PixelCount < c_MinBodyPixels) {
+		if (body.PixelCount < c_MinBodyPixels && CanThrow(static_cast<size_t>(body.PixelCount))) {
 			Crumble(body);
 			return;
 		}
