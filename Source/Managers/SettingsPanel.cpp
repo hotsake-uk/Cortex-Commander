@@ -715,7 +715,7 @@ void DebugMan::SettingsGUI() {
 		    "The soft, billowing smoke the smoke sprites trail, and the smoke explosions leave behind.",
 		    "The pale spray off falling and splashing water.",
 		    "The drops a splash throws.",
-		    "The froth that sits on water where something splashed in. In front by default, since it lies on the water.",
+		    "The froth that sits on water where something splashed in, in flat clumps.",
 		    "Puffs of dust from blasts and from hits on soft ground.",
 		    "The little chips blasts and hits throw.",
 		    "Glowing sparks from blasts and from hits on hard ground.",
