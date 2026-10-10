@@ -1305,6 +1305,7 @@ namespace SandboxDetail {
 	inline std::vector<Incoming> s_Incoming;
 
 	inline UnitRef s_PlayerUnit; //!< Your character in the Sandbox game mode, while it lives.
+	inline UnitRef s_PlayerVehicle; //!< The vehicle your character is sitting in (VH-1), while it is: it is your character again when it gets out.
 
 	inline int s_PlayerEnterPending = 0; //!< Updates left to wait for the character to be in the world before stepping into it; 0 when not waiting.
 

@@ -10,6 +10,7 @@
 #include "MovableMan.h"
 #include "PieSlice.h"
 #include "PresetMan.h"
+#include "Sandbox.h"
 #include "SceneMan.h"
 #include "TimerMan.h"
 
@@ -233,6 +234,8 @@ bool AVehicle::TakeDriver(Actor* unit) {
 			activity->SwitchToActor(this, unit->GetController()->GetPlayer(), m_Team);
 		}
 	}
+	// (The Sandbox keeps its own hold on the unit you control and on your character: they go with it into the seat.)
+	Sandbox::OnUnitBoarded(unit, this);
 	m_BoardingTimer.Reset();
 	PlaceDriver();
 	// (Said by the vehicle, where the driver now sits: the driver is out of the scene while it's in here.)
@@ -275,6 +278,7 @@ Actor* AVehicle::EjectDriver() {
 	if (Activity* activity = g_ActivityMan.GetActivity(); activity && m_Controller.IsPlayerControlled() && activity->GetControlledActor(m_Controller.GetPlayer()) == this) {
 		activity->SwitchToActor(driver, m_Controller.GetPlayer(), driver->GetTeam());
 	}
+	Sandbox::OnUnitLeftVehicle(this, driver);
 	m_BoardingTimer.Reset();
 	driver->Say(IsDead() || m_Health <= 0.0F ? "BailOut" : "LeaveVehicle");
 	return driver;
