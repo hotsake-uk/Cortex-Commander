@@ -194,7 +194,9 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Generator, //!< A colony generator: powers its side's buildings in range (Colony::NeedsPower).
 		// Appended, so the tools before keep their numbers.
-		GrowGrass //!< Grows a layer of grass up from the top of the ground under the brush, as the base game's maps have on their topsoil.
+		GrowGrass, //!< Grows a layer of grass up from the top of the ground under the brush, as the base game's maps have on their topsoil.
+		// Appended, so the tools before keep their numbers.
+		Candles //!< Puts candles on the ground (Tools/MakeCandleSprites.py): wax with a wick, which fire lights and which burn down (TerrainCandle).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -312,6 +314,7 @@ namespace SandboxDetail {
 	    {Tool::TreeTrunk, "Tree trunk", 0.03F, true},
 	    {Tool::Generator, "Generator", 0.0F, false},
 	    {Tool::GrowGrass, "Grow grass", 0.03F, true},
+	    {Tool::Candles, "Candles", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -347,7 +350,7 @@ namespace SandboxDetail {
 	}
 
 	/// The plant brushes: each puts the game's own plant pictures on the ground along the stroke, s_PlantSpacing apart.
-	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti || kind == Tool::Mushrooms || kind == Tool::Trees; }
+	constexpr bool IsPlantBrush(Tool kind) { return kind == Tool::Plants || kind == Tool::Cacti || kind == Tool::Mushrooms || kind == Tool::Trees || kind == Tool::Candles; }
 
 	/// How many rows at the bottom of a tree picture are its roots, set into the ground (as Tools/MakeTreeSprites.py draws them).
 	constexpr int c_TreeRootDepth = 12;
@@ -1314,7 +1317,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -1591,6 +1594,19 @@ namespace SandboxDetail {
 	    "...#####...."
 	    ".....#......"
 	    "....###.....",
+	    // Candle
+	    "......+....."
+	    ".....+++...."
+	    ".....+++...."
+	    "......+....."
+	    "......#....."
+	    "....#####..."
+	    "....#####..."
+	    "...######..."
+	    "...######..."
+	    "....#####..."
+	    "....#####..."
+	    "..#########.",
 	};
 
 	struct ToolLook {
