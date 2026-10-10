@@ -206,7 +206,8 @@ int Sandbox::CountUnits(int team) {
 	int count = 0;
 	for (const Actor* actor: SandboxAccess::Actors()) {
 		// (Not a brain: it doesn't fight, and a side down to its brain is out of the battle.)
-		if (!IsCombatant(actor) || actor->GetTeam() != team || actor->IsInGroup("Brains")) {
+		// (Nor a non-combatant, NC-1: an animal or a civilian isn't a unit in the fight.)
+		if (!IsSoldier(actor) || actor->GetTeam() != team || actor->IsInGroup("Brains")) {
 			continue;
 		}
 		if (!dynamic_cast<const ACraft*>(actor)) {
@@ -1172,6 +1173,11 @@ void Sandbox::DrawGUI() {
 				if (kind == Tool::Unit || kind == Tool::Drop) {
 					ToolUI::Checkbox("Jetpacks only", &s_JetpackOnly);
 					ImGui::SetItemTooltip("Only units whose jetpack really flies them (lifts them 5 m or more). Units without one, or with one that only gives a hop, aren't listed or picked at random. Hover a unit to see its lift.");
+					ImGui::SameLine();
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+					ImGui::Combo("##shown", &s_UnitsShown, "All units\0Fighters only\0Non-combatants only\0");
+					ImGui::SetItemTooltip("Which units are listed: all of them, only fighters, or only non-combatants (animals, civilians: units that never start a fight).");
+					TemperamentCombo("Temperament");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");

@@ -1287,6 +1287,7 @@ namespace SandboxDetail {
 			}
 			if (!brain) {
 				GiveLoadout(actor, *preset, stroke.Loadout);
+				ApplyTemperament(actor, stroke.Temperament);
 			}
 			// A squad spreads out sideways from the click.
 			float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
@@ -1316,7 +1317,8 @@ namespace SandboxDetail {
 			}
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
 			// (Nor vehicles, VH-1: nobody drives one placed or bought on its own.)
-			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles")) {
+			// (Nor animals and civilians, NC-1: a random squad is soldiers.)
+			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity)) {
 				continue;
 			}
 			all.push_back(&unit);
@@ -1345,6 +1347,7 @@ namespace SandboxDetail {
 		for (int i = 0; i < stroke.Count; ++i) {
 			const Preset* pick = stroke.Random ? RandomPick(pool) : preset;
 			if (Actor* unit = pick ? CreateUnit(*pick, stroke.Team, stroke.Loadout, stroke.Orders) : nullptr) {
+				ApplyTemperament(unit, stroke.Temperament);
 				// (Each noted as well as the craft: once out of it, taking the craft away leaves them.)
 				NotePlaced(unit);
 				units.push_back(unit);
@@ -1637,7 +1640,7 @@ namespace SandboxDetail {
 				// Not your character (an AI unit only while you're out of it: told to attack with the rest, it ran off to fight), nor craft
 				// (a dropship delivering was sent off with its squad still in it, and tagged to attack, yanked about every second after).
 				for (Actor* actor: SandboxAccess::Actors()) {
-					if (actor->GetTeam() == stroke.Team && IsCombatant(actor) && !actor->IsPlayerControlled() && actor != GetRef(s_PlayerUnit) && !dynamic_cast<const ACraft*>(actor)) {
+					if (actor->GetTeam() == stroke.Team && IsSoldier(actor) && !actor->IsPlayerControlled() && actor != GetRef(s_PlayerUnit) && !dynamic_cast<const ACraft*>(actor)) {
 						GiveOrder(actor, stroke.Orders);
 					}
 				}
@@ -2118,6 +2121,7 @@ namespace SandboxDetail {
 		stroke.FavouritesOnly = s_RandomFavourites;
 		stroke.RandomFaction = s_RandomFaction;
 		stroke.JetpackOnly = s_JetpackOnly;
+		stroke.Temperament = (kind == Tool::Drop || kind == Tool::Unit) ? s_SpawnTemperament : -1;
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
 			stroke.Material = s_SpringLiquid;
 			stroke.Rate = s_SpringRate;

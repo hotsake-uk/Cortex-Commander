@@ -425,6 +425,26 @@ namespace RTE {
 			WEAPONRULECOUNT
 		};
 
+		/// What a unit is like by nature (NC-1): set by its preset (or overridden when it is spawned), it outlasts every order, and the AI
+		/// never fights more than it allows whatever the weapons rule says. Skittish and Pacifist units are non-combatants unless set otherwise.
+		enum Temperament {
+			TEMPERAMENT_FIGHTER = 0, //!< Fights as its orders and weapons rule say (the game's own behaviour).
+			TEMPERAMENT_DEFENSIVE, //!< Fights only back: at the side that hurt it, for a while after it was hurt.
+			TEMPERAMENT_SKITTISH, //!< Never fights; runs from whatever hurts or shoots at it, then goes back to what it was doing.
+			TEMPERAMENT_PACIFIST, //!< Never fights, and doesn't run either: it carries on with what it was doing.
+			TEMPERAMENTCOUNT
+		};
+
+		/// The name of a Temperament ("Fighter", "Defensive", "Skittish", "Pacifist"), for INI files and the sandbox.
+		/// @param temperament A Temperament.
+		/// @return Its name, or "" for none.
+		static const char* TemperamentName(int temperament);
+
+		/// The Temperament an INI value names: a name (any case) or its number.
+		/// @param value The value as written.
+		/// @return The Temperament, or -1 for none.
+		static int TemperamentFromString(const std::string& value);
+
 		/// How a unit moves when it meets an enemy (RC-1). Each order sets it back to following the order; the player can then change it.
 		enum MovementRule {
 			MOVE_FOLLOW_ORDER = 0, //!< As the order has it: a move keeps walking, an attack closes in, a post is held.
@@ -566,6 +586,36 @@ namespace RTE {
 
 		/// Sets the weapons rule (WeaponRule).
 		void SetWeaponRule(int rule) { m_WeaponRule = std::clamp(rule, 0, static_cast<int>(WEAPONRULECOUNT) - 1); }
+
+		/// Gets this' temperament (Temperament): what it is like by nature.
+		int GetTemperament() const { return m_Temperament; }
+
+		/// Sets this' temperament (Temperament).
+		void SetTemperament(int temperament) { m_Temperament = std::clamp(temperament, 0, static_cast<int>(TEMPERAMENTCOUNT) - 1); }
+
+		/// Whether this is a non-combatant (NC-1): not a soldier, so it isn't counted, sent into battle or commanded as one. Set on the preset
+		/// (NonCombatant), else it follows the temperament: Skittish and Pacifist units are non-combatants.
+		bool IsNonCombatant() const { return m_NonCombatant >= 0 ? m_NonCombatant != 0 : m_Temperament >= TEMPERAMENT_SKITTISH; }
+
+		/// Sets whether this is a non-combatant, whatever its temperament.
+		void SetNonCombatant(bool nonCombatant) { m_NonCombatant = nonCombatant ? 1 : 0; }
+
+		/// The side that last hurt this (NC-1): the team of the shot, blade or blast, Activity::NoTeam if none has yet.
+		int GetLastAttackerTeam() const { return m_LastAttackerTeam; }
+
+		/// The unique ID of the unit that last hurt this when it was hit by the unit itself (a blade, a body), 0 otherwise (a shot carries only its side).
+		long GetLastAttackerID() const { return m_LastAttackerID; }
+
+		/// Sim milliseconds since something of another side last hurt this, or a very large number if nothing has.
+		double GetMSSinceHurt() const { return m_LastAttackerTeam == Activity::NoTeam ? 1.0e9 : m_HurtTimer.GetElapsedSimTimeMS(); }
+
+		/// Notes that something of another side hurt this (NC-1): a hit on it or on a part of it (Attachable::ParticlePenetration).
+		/// @param hitor What hit it.
+		/// @param hitVelocity How fast it was going, for where it came from.
+		void NoteHurtBy(const MovableObject* hitor, const Vector& hitVelocity);
+
+		/// Where the blow that last hurt this came from: a point back along it, as the alarm point is.
+		const Vector& GetLastHurtFrom() const { return m_LastHurtFrom; }
 
 		/// Gets the movement rule (MovementRule) of the standing order: how this moves when it meets an enemy.
 		int GetMovementRule() const { return m_StandingOrder.Movement; }
@@ -1519,6 +1569,12 @@ namespace RTE {
 		unsigned int m_AIOrderSerial; //!< Bumped by every order given to this (see GetAIOrderSerial).
 		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
 		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
+		int m_Temperament; //!< What this is like by nature (see Temperament).
+		int m_NonCombatant; //!< 1 or 0 as set on the preset, -1 to follow the temperament (see IsNonCombatant).
+		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.
+		long m_LastAttackerID; //!< The unit that last hurt this, if it hit this itself, else 0 (see GetLastAttackerID). Not saved.
+		Timer m_HurtTimer; //!< Since this was last hurt by another side (see GetMSSinceHurt). Not saved.
+		Vector m_LastHurtFrom; //!< Where that blow came from (see GetLastHurtFrom). Not saved.
 		float m_PaceLimit; //!< The walking pace this keeps to, m/s, or 0 for its own (see GetPaceLimit).
 		// The list of waypoints remaining between which the paths are made. If this is empty, the last path is in teh MovePath
 		// The MO pointer in the pair is nonzero if the waypoint is tied to an MO in the scene, and gets updated each UpdateAI. This needs to be checked for validity/existence each UpdateAI

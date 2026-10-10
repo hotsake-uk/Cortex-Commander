@@ -535,6 +535,8 @@ namespace SandboxDetail {
 		std::string Group; //!< Structures: the kind of bunker piece ("Bunker Modules", "Bunker Lights"...), to list them by.
 		std::string Kind; //!< A subcategory to list by: for units "Infantry", "Mecha", "Turrets"; for items "Primary weapons", "Grenades", "Tools"...
 		bool Modded = false; //!< From a module that isn't one of the game's own.
+		bool NonCombatant = false; //!< Units: a non-combatant by its game files (Actor::IsNonCombatant, NC-1): an animal, a civilian.
+		int Temperament = 0; //!< Units: its temperament by its game files (Actor::Temperament).
 		bool Jetpack = false; //!< Units: its jetpack really flies it: lifts it at least c_JetpackFlyingLift.
 		float JetLift = 0.0F; //!< Units: how high its jetpack lifts it from a standstill, in metres (Actor::EstimateJumpHeight); -1 for without limit.
 		int Width = 0; //!< Structures: footprint, for the preview.
@@ -718,6 +720,7 @@ namespace SandboxDetail {
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
 		BrushShape Shape = BrushShape::Circle; //!< Terrain brushes: how they lay it down (s_BrushShape).
 		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
+		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
 	};
 
 	struct CraftChoice {
@@ -876,6 +879,8 @@ namespace SandboxDetail {
 	inline bool s_RandomUnits = false;
 	inline bool s_RandomFavourites = false;
 	inline int s_RandomFaction = -1; //!< -1 every faction, otherwise an index into s_FactionModules.
+	inline int s_UnitsShown = 0; //!< The Spawn tab's unit list (NC-1): 0 every unit, 1 fighters only, 2 non-combatants only.
+	inline int s_SpawnTemperament = -1; //!< The temperament units are spawned with (Actor::Temperament, NC-1), -1 for each one's own.
 	inline bool s_JetpackOnly = false; //!< The Spawn tab's "Jetpacks only": units without one aren't listed, or picked at random.
 	inline std::vector<int> s_FactionModules;
 	inline std::vector<std::string> s_FactionNames;
@@ -1808,6 +1813,16 @@ namespace SandboxDetail {
 	MovableObject* CreateBaseObject(const char* className, const char* presetName);
 	void AddObject(MovableObject* object);
 	bool IsCombatant(const Actor* actor);
+	/// Whether an actor is a soldier (NC-1): a combatant (IsCombatant) that isn't a non-combatant (an animal, a civilian). What is counted,
+	/// sent into battle, carries flags and is hunted; a non-combatant can still be selected and ordered about.
+	bool IsSoldier(const Actor* actor);
+	/// Whether a preset is a non-combatant's (an Actor whose IsNonCombatant holds, or one in the "Non-combatants" group): kept out of
+	/// the units battles and random picks are made from.
+	bool IsNonCombatantPreset(const Entity* entity);
+	/// Gives a spawned unit a temperament (Actor::Temperament), unless it is -1 (each one's own).
+	void ApplyTemperament(Actor* actor, int temperament);
+	/// The Spawn tab's temperament choice for spawned units (s_SpawnTemperament).
+	void TemperamentCombo(const char* label);
 	bool IsSelectable(const Actor* actor);
 	MovableObject* ObjectUnder(const Vector& position, bool actorsOnly);
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, const char* reason, bool lock = false, bool resend = false);

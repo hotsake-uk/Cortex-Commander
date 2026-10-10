@@ -176,8 +176,12 @@ function NativeCrabAI:Update(Owner)
 		self.lastAIMode = Owner.AIMode;
 	end
 
-	-- cast a ray to find targets
-	CrabBehaviors.LookForTargets(self, Owner);
+	-- cast a ray to find targets (only those its temperament lets it fight, NC-1)
+	SharedBehaviors.DropForbiddenTarget(self, Owner);
+	if not SharedBehaviors.NeverFights(Owner) then
+		CrabBehaviors.LookForTargets(self, Owner);
+		SharedBehaviors.DropForbiddenTarget(self, Owner);
+	end
 
 	self.squadShoot = false;
 	if Owner.MOMoveTarget then
@@ -334,6 +338,9 @@ function NativeCrabAI:Update(Owner)
 			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 		end
 		SharedBehaviors.RetreatUpdate(self, Owner);
+		-- (Its nature, NC-1: a skittish animal runs from danger, and livestock left standing graze about.)
+		SharedBehaviors.FleeUpdate(self, Owner);
+		SharedBehaviors.GrazeUpdate(self, Owner);
 		SharedBehaviors.RememberUpdate(self, Owner);
 
 		if self.teamBlockState == Actor.IGNORINGBLOCK then

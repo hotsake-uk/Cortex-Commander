@@ -1090,6 +1090,9 @@ namespace SandboxDetail {
 			if (s_JetpackOnly && (kind == Tool::Unit || kind == Tool::Drop) && !pickInto && !preset.Jetpack) {
 				continue;
 			}
+			if ((kind == Tool::Unit || kind == Tool::Drop) && !pickInto && ((s_UnitsShown == 1 && preset.NonCombatant) || (s_UnitsShown == 2 && !preset.NonCombatant))) {
+				continue;
+			}
 			if (shown++ % columns != 0) {
 				ImGui::SameLine();
 			}
@@ -1476,7 +1479,7 @@ namespace SandboxDetail {
 		int team = SelectionTeam();
 		std::vector<Actor*> idle;
 		for (Actor* actor: SandboxAccess::Actors()) {
-			if (actor->GetTeam() == team && IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && IsIdle(actor)) {
+			if (actor->GetTeam() == team && IsSoldier(actor) && !dynamic_cast<const ACraft*>(actor) && IsIdle(actor)) {
 				idle.push_back(actor);
 			}
 		}
@@ -3182,6 +3185,9 @@ namespace SandboxDetail {
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(field);
 			LoadoutChooser("##loadout");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(field);
+			TemperamentCombo("##temperament");
 			if (tool.Kind == Tool::Drop) {
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(field * 0.7F);
