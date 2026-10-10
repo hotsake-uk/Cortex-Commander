@@ -838,6 +838,7 @@ namespace SandboxDetail {
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
 		BrushShape Shape = BrushShape::Circle; //!< Terrain brushes: how they lay it down (s_BrushShape).
+		int Over = 0; //!< Terrain and liquid brushes: what they may paint over besides air, PaintOver flags (Paint > Paint over), taken at the click.
 		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
 	};
@@ -1022,6 +1023,14 @@ namespace SandboxDetail {
 
 	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
 	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
+	/// What the Paint tab's brushes may paint over besides air (flags): Paint > Paint over.
+	namespace PaintOver {
+		constexpr int Liquids = 1; //!< Liquids and loose ground (sand, snow, rubble): replaced by what is painted.
+		constexpr int Terrain = 2; //!< Solid terrain: replaced by what is painted.
+	} // namespace PaintOver
+	inline bool s_PaintOverLiquids = false; //!< Paint > Paint over > Liquids.
+	inline bool s_PaintOverTerrain = false; //!< Paint > Paint over > Terrain.
+	inline int CurrentPaintOver() { return (s_PaintOverLiquids ? PaintOver::Liquids : 0) | (s_PaintOverTerrain ? PaintOver::Terrain : 0); }
 	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_PaintMetal = "Metal"; //!< What the Metal tool paints, picked under Metals (a c_PaintMetals material).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
@@ -1991,7 +2000,7 @@ namespace SandboxDetail {
 	void UndoPaint();
 	void NotePlaced(const MovableObject* object);
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F, int over = 0);
 	void FillTerrainShape(const Stroke& stroke);
 	/// Where and how a plant brush's plant goes on the ground (PlanPlant): the pictures it is drawn from and its top left corner, in scene pixels.
 	struct PlantPlacement {

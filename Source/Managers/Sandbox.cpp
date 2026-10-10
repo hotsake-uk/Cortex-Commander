@@ -936,6 +936,7 @@ void Sandbox::DrawGUI() {
 				stroke.Position = s_ShapeStart;
 				stroke.Position2 = end;
 				stroke.Fill = static_cast<int>(s_FillShape);
+				stroke.Over = CurrentPaintOver();
 				if (stroke.Kind == Tool::TerrainOther) {
 					stroke.Material = s_OtherTerrain;
 				} else if (stroke.Kind == Tool::Metal) {
@@ -1307,6 +1308,12 @@ void Sandbox::DrawGUI() {
 			}
 			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
+				ImGui::SeparatorText("Paint over");
+				ToolUI::Checkbox("Liquids", &s_PaintOverLiquids);
+				ImGui::SetItemTooltip("The liquid, loose-ground and terrain brushes replace water, lava, oil, sand, snow and the like, instead of only filling air. Dig is as it was.");
+				ImGui::SameLine();
+				ToolUI::Checkbox("Terrain", &s_PaintOverTerrain);
+				ImGui::SetItemTooltip("The liquid, loose-ground and terrain brushes replace solid terrain (earth, rock, concrete, metal, ...) instead of only filling air. The edge of the world stays. Dig is as it was.");
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
 				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood});
