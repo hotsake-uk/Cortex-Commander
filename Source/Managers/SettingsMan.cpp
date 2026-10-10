@@ -259,7 +259,7 @@ namespace {
 		g_SettingsMan.Save(settingsWriter);
 		return text->str();
 	}
-}
+} // namespace
 
 void SettingsMan::UpdateSettingsFile() const {
 	std::string text = SettingsText();
@@ -333,6 +333,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UnitsInFrontOfTrees", { TerrainTrees::SetDrawnBehindUnits(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("CollapseLeafBreakEase", { TerrainCollapse::GetTuning().LeafBreakEase = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 50.0F); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1049,6 +1051,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
 	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
 	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
+	writer.NewPropertyWithValue("UnitsInFrontOfTrees", TerrainTrees::DrawnBehindUnits());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
@@ -1058,6 +1061,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseCrackSpeed", TerrainCollapse::GetTuning().CrackSpeed);
 	writer.NewPropertyWithValue("CollapseCrumbleSpeed", TerrainCollapse::GetTuning().CrumbleSpeed);
 	writer.NewPropertyWithValue("CollapseSplinterSpeed", TerrainCollapse::GetTuning().SplinterSpeed);
+	writer.NewPropertyWithValue("CollapseLeafBreakEase", TerrainCollapse::GetTuning().LeafBreakEase);
 	writer.NewPropertyWithValue("CollapseBendSpeed", TerrainCollapse::GetTuning().BendSpeed);
 	writer.NewPropertyWithValue("CollapseScuffStrength", TerrainCollapse::GetTuning().ScuffStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
@@ -1220,7 +1224,7 @@ namespace {
 
 	std::string PresetFolder() { return System::GetUserdataDirectory() + "Presets/"; }
 	std::string BuiltInPresetFolder() { return System::GetDataDirectory() + "Presets/"; } //!< Presets that ship with the game. The player's own of the same name come first.
-}
+} // namespace
 
 std::string SettingsMan::SavePreset(const std::string& name) const {
 	std::string safe = PresetFileName(name);

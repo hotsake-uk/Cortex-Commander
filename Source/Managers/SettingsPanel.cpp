@@ -801,6 +801,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Bullets go past trees. This is the chance that a bullet meeting a tree strikes it instead, now and then, and then it barely marks the tree. Rockets and the like clear a trunk but strike the leaves, so trees give cover from them. Fire and explosions work on trees as they always did.");
 		Toggle("Trees only meet the ground under them", TerrainCollapse::PassesTrees(), [](bool on) { TerrainCollapse::SetPassesTrees(on); });
 		Tip("On: rock and other ground falling from above goes through a standing tree (behind it, leaving the tree whole) rather than landing on it, and a falling tree goes through other trees. A tree that is cut or burnt through still falls over and lands on the ground. Off (as the game comes): trees are solid to falling pieces like any ground.");
+		Toggle("Units in front of trees", TerrainTrees::DrawnBehindUnits(), [](bool on) { TerrainTrees::SetDrawnBehindUnits(on); });
+		Tip("On (as the game comes): a tree is drawn behind units and everything else that moves, so a unit walking through a tree is seen in front of its trunk and leaves. Off: trees are drawn over them like the rest of the ground. (Needs the lighting's terrain shader; very large scenes draw trees in front.)");
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
 		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
@@ -809,7 +811,7 @@ void DebugMan::SettingsGUI() {
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
 		Tip("A piece left joined to the rest by a neck no wider than this breaks off and falls. 0: only pieces cut right through fall. Wood always holds until it's cut or burnt right through, so a burning tree stands (a material's own NeckWidth in its ini).");
 		SliderI("Biggest piece that can fall (pixels)", &tuning.MaxPiecePixels, 500, 200000, "%d", ImGuiSliderFlags_Logarithmic);
-		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block.");
+		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block. A tree's trunk and leaves don't count, so a big tree cut through still comes down whole.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
 		Tip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
 		Heading("How it falls");
@@ -831,6 +833,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Loose ground that falls apart easily. Leaves and grass count only in a piece of nothing else.");
 		Slider("Wood, tree trunks (Splinter, m/s)", &tuning.SplinterSpeed, 0.5F, 30.0F, "%.1f");
 		Tip("22 m/s is a drop of about 13 m: a felled or burnt-through tree lands whole. A tree's leaves don't make it weaker. Planks break at 0.8 of this.");
+		Slider("Leaves break apart (x easier)", &tuning.LeafBreakEase, 1.0F, 20.0F, "%.1fx");
+		Tip("How much more easily a falling tree's leaves (and grass) come off and break up when it lands than the piece itself breaks: at 4 a landing at a quarter of the speed strips as many, and a hard one nearly all of them. A clump of nothing but leaves comes apart this much more easily too. 1: as easily as the rest.");
 		Slider("Metal (Bend, m/s)", &tuning.BendSpeed, 0.5F, 30.0F, "%.1f");
 		Tip("Metal never breaks from a landing. Above this, a long thin piece (a beam, a plate) folds at a crease, more the harder the hit and the thinner it is, and a chunky piece dents. Falling pieces move at most 27 m/s, so above that never.");
 		Heading("Hitting units");
